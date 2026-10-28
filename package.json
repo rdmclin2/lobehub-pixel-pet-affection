@@ -1,6 +1,7 @@
 {
-  "name": "pixel-pet",
-  "version": "0.3.0",
+  "name": "pixel-pet-affection",
+  "productName": "Pixel Pet Affection",
+  "version": "0.4.0",
   "description": "Adult (18+) affection edition of a pixel-art desktop pet powered by a LobeHub agent",
   "main": "src/main/main.js",
   "license": "MIT",
@@ -9,7 +10,6 @@
     "start": "electron .",
     "test": "node --test \"test/*.test.js\"",
     "e2e": "node e2e/run.js",
-    "icon": "node scripts/make-icon.js",
     "dist:mac": "electron-builder --mac --universal --publish never",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:linux": "electron-builder --linux tar.gz --x64 --publish never"
@@ -29,9 +29,9 @@
     "url": "git+https://github.com/rdmclin2/lobehub-pixel-pet-affection.git"
   },
   "build": {
-    "appId": "com.onlyyours.pixelpet",
-    "productName": "Pixel Pet",
-    "copyright": "Copyright © LiJian",
+    "appId": "com.rdmclin2.pixelpet.affection",
+    "productName": "Pixel Pet Affection",
+    "copyright": "Copyright © LiJian, rdmclin2",
     "files": [
       "src/**/*",
       "package.json"
@@ -54,10 +54,10 @@
       "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "artifactName": "PixelPet-${version}-mac-${arch}.${ext}"
+      "artifactName": "PixelPetAffection-${version}-mac-${arch}.${ext}"
     },
     "dmg": {
-      "title": "Pixel Pet ${version}"
+      "title": "Pixel Pet Affection ${version}"
     },
     "win": {
       "target": [
@@ -75,14 +75,14 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "PixelPet-${version}-win-${arch}.${ext}"
+      "artifactName": "PixelPetAffection-${version}-win-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "PixelPet-${version}-win-${arch}-setup.${ext}"
+      "artifactName": "PixelPetAffection-${version}-win-${arch}-setup.${ext}"
     },
     "linux": {
       "target": [
@@ -95,8 +95,8 @@
       ],
       "icon": "build/icon.png",
       "category": "Game",
-      "executableName": "pixel-pet",
-      "artifactName": "PixelPet-${version}-linux-${arch}.${ext}"
+      "executableName": "pixel-pet-affection",
+      "artifactName": "PixelPetAffection-${version}-linux-${arch}.${ext}"
     }
   },
   "bugs": {

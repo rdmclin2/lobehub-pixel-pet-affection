@@ -5,7 +5,9 @@ const o = require('../src/core/outfits');
 const st = require('../src/core/pet-state');
 const { REL_STAGES } = require('../src/core/affection');
 const { migratePet } = require('../src/core/migrate');
-const S = require('../src/renderer/sprites');
+const fs = require('node:fs');
+const path = require('node:path');
+const { SPECIES_IDS } = require('../src/core/species');
 
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const ADULT = { ageConfirmed: true, adultContent: true };
@@ -23,23 +25,33 @@ test('every stage has at least one all-ages outfit; the adult stages also have a
   assert.ok(o.OUTFITS.every((x) => x.rating === 'all' || ['flirty', 'lover'].includes(x.stage)), 'adult outfits only in adult stages');
 });
 
-test('every outfit has its own art, and the art changes both the pet and the figure', () => {
-  const sig = (g) => g.map((r) => r.join('')).join('');
-  const plain = sig(S.frame({ speciesId: 'bubbo', status: 'idle' }).grid);
-  const figs = new Set();
-  for (const x of o.OUTFITS) {
-    assert.ok(S.OUTFIT_ART[x.id], `${x.id} has art`);
-    assert.equal(x.art, `src/renderer/sprites.js#OUTFIT_ART.${x.id}`);
-    assert.notEqual(sig(S.frame({ speciesId: 'bubbo', status: 'idle', outfit: x.id }).grid), plain, `${x.id} dresses the pet`);
-    figs.add(sig(S.figure(x.id)));
+test('every companion has its own picture for every outfit it can wear', () => {
+  const ROOT = path.join(__dirname, '..', 'src', 'renderer');
+  for (const sp of SPECIES_IDS) {
+    const pics = new Set();
+    for (const x of o.OUTFITS) {
+      if (sp === 'dafeiyu' && x.rating === 'adult') continue; // never offered (see compliance tests)
+      const art = o.artFor(sp, x.id);
+      if (sp === 'dafeiyu' && x.id === 'daily') {
+        assert.equal(art, null, 'Dafeiyu wears its signature outfit as its animated clips');
+        continue;
+      }
+      assert.equal(art, `assets/chars/${sp}/${x.id}.webp`);
+      assert.ok(fs.statSync(path.join(ROOT, art)).size > 1000, `${art} exists`);
+      pics.add(art);
+    }
+    assert.ok(pics.size >= 8, sp);
   }
-  assert.equal(figs.size, o.OUTFITS.length, 'every figure looks different');
-  assert.deepEqual(S.validate(), []);
+  assert.equal(o.artFor('embit', 'nope'), 'assets/chars/embit/daily.webp');
 });
 
-test('the wardrobe figure has adult proportions (over 6 heads tall)', () => {
-  const { headRows, bodyRows } = S.FIG_PROPORTIONS;
-  assert.ok(bodyRows / headRows >= 6, `${bodyRows}/${headRows}`);
+test('the wardrobe and the pet show the same picture: listOutfits carries the art', () => {
+  const p = mk(100, 'sprig');
+  const list = o.listOutfits(p, ADULT);
+  for (const x of list) assert.equal(x.art, o.artFor('sprig', x.id));
+  const d = o.listOutfits(mk(0, 'dafeiyu'), ADULT).find((x) => x.id === 'daily');
+  assert.equal(d.art, null);
+  assert.equal(d.label, '招牌女仆装');
 });
 
 test('a new pet wears the daily outfit; the wardrobe lists every outfit with locks and conditions', () => {

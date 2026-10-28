@@ -2,12 +2,13 @@
 
 > **⚠️ 成人向（18+）应用。** 本应用包含面向成年人的暧昧互动内容（调情、情话、约会幻想等），**不含露骨内容**。首次启动会询问是否年满 18 周岁；未满 18 岁或选择“只看全年龄”时，所有成人向内容都不会出现。成人向内容可随时在 ⋯ 菜单中关闭。
 
-一只住在桌面上的像素伙伴，大脑是你自己的 [LobeHub](https://lobehub.com) agent。本派生版把上游的“成长系统”改造成**好感度系统**：和它互动（摸摸、喂食、玩耍、聊天、话题）会提升好感度，好感度到达新阶段就会解锁新的对话话题和服饰。
+一位住在桌面上的二次元伙伴（三位原创成年角色 + 社区角色大肥鱼），大脑是你自己的 [LobeHub](https://lobehub.com) agent。本派生版把上游的“成长系统”改造成**好感度系统**：和它互动（摸摸、喂食、玩耍、聊天、话题）会提升好感度，好感度到达新阶段就会解锁新的对话话题和服饰。
 
 - **好感度反馈**：悬停时显示 💗 好感条、数值（♥42/100）、阶段名和“距「下一阶段」还差 N”；每次加分在宠物头顶飘出 `+N ♥`，冷却或当日上限时会说明原因。
 - **升级提示**：跨过阈值时弹出“🎉 关系升级”，逐一列出本次解锁的话题和服饰。
 - **话题面板**：按阶段分组，锁定话题显示 🔒 和解锁条件；点已解锁话题，agent 按该话题和当前阶段的语气回应。
-- **衣柜**：13 套像素服饰，锁定项显示 🔒 和解锁条件；换装立即生效。
+- **衣柜**：13 套服饰，每位角色每套服饰都有一张专属立绘；衣柜里看到的就是她换上后桌面上的样子，锁定项显示灰色剪影、🔒 和解锁条件，换装立即生效。
+- **放在哪里由你选**：唤醒时会问把 agent 建在哪里，默认是**个人空间**；也可以选你加入的某个 workspace（那里的成员可能看得到它）。之后所有调用都固定在这个空间。
 - **状态保持**：好感度、阶段、已解锁内容和当前服饰保存在本机 `pet.json`，退出重启后不变；18+ 回答和成人向开关保存在 `settings.json`。
 
 ## 好感度阶段
@@ -32,7 +33,7 @@
 | 暧昧（知己）♥60 | 交换小秘密、深夜谈心 | 调戏一下、吃醋模式、假装约会 | 浴衣 | 女仆装（长袖及膝）、露肩晚礼服（及地） |
 | 恋人（挚友）♥85 | 约定、回忆我们 | 土味情话、睡前悄悄话、奇奇怪怪的告白 | 情侣卫衣、花冠长裙 | 复古连体泳装（保守款）、丝绸睡袍（及膝、系好腰带） |
 
-合计 19 个话题（13 全年龄 + 6 成人向）、13 套服饰（9 全年龄 + 4 成人向）。每个阶段除话题外还有对应的离线台词（问候、被喂、被摸、玩耍、无聊、升级）。成人向关闭时，成人向话题、服饰和台词**完全隐藏**（不显示为锁定），身上的成人向服饰会自动换回最近穿过的全年龄服饰；重新开启后按已达到的阶段恢复，不需要重新攒好感。服饰立绘为本项目代码生成的像素画（MIT），所有人形立绘都是成年体型。
+合计 19 个话题（13 全年龄 + 6 成人向）、13 套服饰（9 全年龄 + 4 成人向）。每个阶段除话题外还有对应的离线台词（问候、被喂、被摸、玩耍、无聊、升级）。成人向关闭时，成人向话题、服饰和台词**完全隐藏**（不显示为锁定），身上的成人向服饰会自动换回最近穿过的全年龄服饰；重新开启后按已达到的阶段恢复，不需要重新攒好感。角色与服饰立绘由 gpt-image-2.5 通过 LobeHub 生成（来源、许可和重新生成方法见 [NOTICE.md](NOTICE.md)），所有立绘都是成年女性形象。
 
 ## 内容边界声明
 
@@ -60,10 +61,11 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择灵石、起名、唤醒
 ```
 
-- 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet`）。未签名，首次打开请参考下文上游 README 中的说明。
-- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`。
+- 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
+- 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
+- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出全部立绘总表 `out/e2e/outfit-sheet.png`。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
-- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 源码运行为 `~/.config/pixel-pet/`，打包版为 `~/.config/Pixel Pet/`）；⋯ 菜单中的“放生”会删除宠物和 LobeHub agent。
+- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和 LobeHub agent。
 
 ## 上游署名与许可
 

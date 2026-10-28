@@ -16,6 +16,8 @@ const RUN_CONTEXT_VARS = [
   'LOBEHUB_OPERATION_ID',
   'LOBEHUB_AGENT_ID',
   'LOBEHUB_ASSISTANT_MESSAGE_ID',
+  // The workspace scope is chosen per pet (see LhClient#setWorkspace), never inherited.
+  'LOBEHUB_WORKSPACE_ID',
 ];
 
 function cleanEnv(base = process.env) {
@@ -85,6 +87,26 @@ class LhClient {
   constructor({ bin, env } = {}) {
     this.bin = bin || findLh() || 'lh';
     this.env = env;
+    // null = the personal space; a string = that workspace; undefined = whatever `lh` defaults to
+    // (pets created before the choice existed live wherever lh pointed at the time).
+    this.workspaceId = null;
+  }
+
+  // Where the pet's agent lives. Every later call (run, edit, topic, file, delete) must use the same
+  // scope, or LobeHub cannot find the agent. `lh` takes the scope from LOBEHUB_WORKSPACE_ID first.
+  setWorkspace(workspaceId) {
+    this.workspaceId = workspaceId === undefined ? undefined : workspaceId || null;
+  }
+
+  _env() {
+    const env = { ...(this.env || withToolPath(cleanEnv(), this.bin)) };
+    if (this.workspaceId === undefined) {
+      if (process.env.LOBEHUB_WORKSPACE_ID && !env.LOBEHUB_WORKSPACE_ID) env.LOBEHUB_WORKSPACE_ID = process.env.LOBEHUB_WORKSPACE_ID;
+      return env;
+    }
+    delete env.LOBEHUB_WORKSPACE_ID;
+    if (this.workspaceId) env.LOBEHUB_WORKSPACE_ID = this.workspaceId;
+    return env;
   }
 
   // Every lh call is cancellable: cancel() stops all that are in flight (agent run, device lookup, daemon start...).
@@ -93,7 +115,7 @@ class LhClient {
     this._active = this._active || new Set();
     this._active.add(ac);
     try {
-      return await runLh(this.bin, args, { env: this.env || withToolPath(cleanEnv(), this.bin), signal: ac.signal, ...opts });
+      return await runLh(this.bin, args, { env: this._env(), signal: ac.signal, ...opts });
     } finally {
       this._active.delete(ac);
     }
@@ -102,6 +124,42 @@ class LhClient {
   // The user pressed Stop (or Esc): kill whatever lh is doing right now.
   cancel() {
     for (const ac of this._active || []) ac.abort();
+  }
+
+  // ---- workspaces -----------------------------------------------------------
+  // Workspaces the user belongs to: [{ id, slug, name }]. An older lh without the command lists none.
+  async listWorkspaces() {
+    const r = await this._run(['workspace', 'list', '--json'], { timeoutMs: 30000 });
+    if (r.code !== 0) return [];
+    try {
+      const list = JSON.parse(r.stdout);
+      return Array.isArray(list) ? list.filter((w) => w && w.id).map((w) => ({ id: w.id, slug: w.slug || null, name: w.name || w.slug || w.id })) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // A scope saved with `lh workspace use` applies to every call that does not name one, so with it set a
+  // personal pet would land in that workspace. Returns its id, or null when calls default to personal.
+  async pinnedWorkspace() {
+    const saved = this.workspaceId;
+    this.workspaceId = null;
+    try {
+      const r = await this._run(['workspace', 'current', '--json'], { timeoutMs: 30000 });
+      if (r.code !== 0) return null;
+      const cur = JSON.parse(r.stdout);
+      return cur && cur.source === 'settings' && cur.workspaceId ? cur.workspaceId : null;
+    } catch {
+      return null;
+    } finally {
+      this.workspaceId = saved;
+    }
+  }
+
+  // Only after the user agreed: clear the saved scope so calls without one go to the personal space.
+  async usePersonal() {
+    const r = await this._run(['workspace', 'use', '--personal'], { timeoutMs: 30000 });
+    if (r.code !== 0) throw new LhError(`Could not switch lh back to the personal space: ${(r.stderr || r.stdout).trim().slice(0, 200)}`, { code: r.code, stderr: r.stderr });
   }
 
   // ---- agent configuration -------------------------------------------------

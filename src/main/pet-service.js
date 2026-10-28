@@ -47,6 +47,8 @@ class PetService extends EventEmitter {
     const { pet, migrated } = migratePet(raw, t);
     if (migrated) this.store.backupOnce('pet.v1.bak.json');
     this.pet = pet;
+    // A pet's agent is reached in the space it was created in (no `space`: an older save, lh's default).
+    this.lh.setWorkspace(this.pet && this.pet.space ? this.pet.space.workspaceId : this.pet ? undefined : null);
     if (this.pet) {
       const { decay } = state.tick(this.pet, t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
@@ -76,8 +78,10 @@ class PetService extends EventEmitter {
       topics: dialogue.listTopics(this.pet, this.settings),
       outfits: outfits.listOutfits(this.pet, this.settings),
       outfit: outfits.wornOutfit(this.pet, this.settings),
+      art: outfits.artFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, element: sp.element },
+      space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
       busy: this.busy,
       local: { enabled: !!this.pet.localAbilities, ok: this._localOk, error: this.localError, warning: this.localWarning },
     };
@@ -104,12 +108,7 @@ class PetService extends EventEmitter {
     if (this.pet) this._save();
   }
 
-  // Login (if needed) -> create the LobeHub agent -> create local pet state.
-  async hatch({ speciesId, name, localAbilities = false, onStep = () => {}, onLoginPrompt = () => {} }) {
-    if (this.pet) throw new Error('A pet already exists');
-    const sp = getSpecies(speciesId);
-    const petName = (name || '').trim().slice(0, 12) || sp.nameZh;
-
+  async _login(onStep, onLoginPrompt) {
     onStep('checking-login');
     let user = await this.lh.whoami();
     if (!user) {
@@ -117,8 +116,39 @@ class PetService extends EventEmitter {
       user = await this.lh.login({ onPrompt: onLoginPrompt });
       if (!user) throw new Error('Login did not complete');
     }
+    return user;
+  }
+
+  // Before hatching: log in (if needed) and list where the pet's agent may live. The personal space
+  // always comes first and is the default; `pinned` is set when `lh workspace use` points every
+  // unscoped call at a workspace, so choosing personal also needs `lh workspace use --personal`.
+  async spaces({ onStep = () => {}, onLoginPrompt = () => {} } = {}) {
+    await this._login(onStep, onLoginPrompt);
+    this.lh.setWorkspace(null);
+    const [workspaces, pinnedId] = await Promise.all([this.lh.listWorkspaces(), this.lh.pinnedWorkspace()]);
+    const pinned = pinnedId ? workspaces.find((w) => w.id === pinnedId) || { id: pinnedId, name: pinnedId } : null;
+    return { workspaces, pinned };
+  }
+
+  // Login (if needed) -> create the LobeHub agent in the chosen space -> create local pet state.
+  // `space`: { workspaceId: null (personal, the default) | id, name, switchToPersonal }.
+  async hatch({ speciesId, name, localAbilities = false, space = null, onStep = () => {}, onLoginPrompt = () => {} }) {
+    if (this.pet) throw new Error('A pet already exists');
+    const sp = getSpecies(speciesId);
+    const petName = (name || '').trim().slice(0, 12) || sp.nameZh;
+    const workspaceId = (space && space.workspaceId) || null;
+
+    const user = await this._login(onStep, onLoginPrompt);
 
     onStep('creating-agent');
+    this.lh.setWorkspace(workspaceId);
+    if (!workspaceId) {
+      const pinned = await this.lh.pinnedWorkspace();
+      if (pinned) {
+        if (!(space && space.switchToPersonal)) throw new Error(`lh 目前固定在 workspace（${pinned}），没法建到个人空间。请在“放在哪里”里同意切回个人空间，或选择那个 workspace。`);
+        await this.lh.usePersonal();
+      }
+    }
     const { agentId } = await this.lh.createAgent({
       title: `${petName} (${sp.name})`,
       description: `Pixel Pet · ${sp.nameZh} · ${sp.element}`,
@@ -126,6 +156,7 @@ class PetService extends EventEmitter {
     });
 
     this.pet = state.createPet({ speciesId, name: petName, agentId, now: this.now() });
+    this.pet.space = { workspaceId, name: workspaceId ? String((space && space.name) || workspaceId).slice(0, 60) : '个人空间' };
     this.pet.owner = user.name;
     // the agent was just created with the current role
     this.pet.personaVersion = persona.PERSONA_VERSION;
@@ -527,6 +558,7 @@ class PetService extends EventEmitter {
     let deleted = false;
     if (deleteAgent) deleted = await this.lh.deleteAgent(this.pet.agentId);
     this.pet = null;
+    this.lh.setWorkspace(null);
     this.store.clear();
     this.emit('update', null);
     return { ok: true, deleted };

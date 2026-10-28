@@ -86,7 +86,7 @@ async function waitReply(page, timeout = 90000) {
 }
 const view = (page) => page.evaluate(async () => (await window.pet.boot()).view);
 const lhEnv = { ...process.env };
-for (const k of ['LOBEHUB_TOPIC_ID', 'LOBEHUB_OPERATION_ID', 'LOBEHUB_AGENT_ID', 'LOBEHUB_ASSISTANT_MESSAGE_ID']) delete lhEnv[k];
+for (const k of ['LOBEHUB_TOPIC_ID', 'LOBEHUB_OPERATION_ID', 'LOBEHUB_AGENT_ID', 'LOBEHUB_ASSISTANT_MESSAGE_ID', 'LOBEHUB_WORKSPACE_ID']) delete lhEnv[k]; // the live pet lives in the personal space
 lhEnv.LOBEHUB_JWT = '';
 const lh = (...a) => execFileSync('lh', a, { env: lhEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -127,10 +127,14 @@ async function fresh() {
       return `greeting: ${text.slice(0, 40)}`;
     }, page);
 
-    await step(S, 'CLI call order was whoami -> login -> agent create -> connect device -> bind -> agent run', async () => {
+    await step(S, 'CLI call order was whoami -> login -> workspaces -> agent create -> connect device -> bind -> agent run', async () => {
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
-      const seq = calls.map((a) => (a[0] === 'agent' ? `agent ${a[1]}` : a[0]));
-      const want = ['whoami', 'login', 'whoami', 'agent create', 'connect', 'connect', 'device', 'agent edit', 'agent run']; // connect = status check, then `connect --daemon`; device = `device list`
+      const all = calls.map((a) => (a[0] === 'agent' || a[0] === 'workspace' ? `${a[0]} ${a[1]}` : a[0]));
+      // where to put the agent is asked right after login (workspace list + the pinned-scope check)
+      const create = all.indexOf('agent create');
+      assert.ok(all.slice(0, create).includes('workspace list') && all.slice(0, create).includes('workspace current'), all.join(', '));
+      const seq = all.filter((c) => !c.startsWith('workspace '));
+      const want = ['whoami', 'login', 'whoami', 'whoami', 'agent create', 'connect', 'connect', 'device', 'agent edit', 'agent run']; // connect = status check, then `connect --daemon`; device = `device list`
       assert.deepEqual(seq.slice(0, want.length), want);
       const created = JSON.parse(fs.readFileSync(path.join(fakeDir, 'last-create.json'), 'utf8'));
       assert.match(created.systemRole, /泡鲸/);
@@ -150,7 +154,7 @@ async function fresh() {
       assert.equal(await hudOpacity(page), '0');
       assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), false);
       const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-      assert.ok(b.width <= 240 && b.height <= 300, `window is ${b.width}x${b.height}`);
+      assert.ok(b.width <= 240 && b.height <= 340, `window is ${b.width}x${b.height}`);
       return `window ${b.width}x${b.height}`;
     }, () => page);
 
@@ -181,7 +185,7 @@ async function fresh() {
       const events = [];
       await page.exposeFunction('__affLog', (e) => events.push(e));
       await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
       await page.waitForTimeout(800);
       const v = await view(page);
@@ -320,7 +324,7 @@ async function wardrobe() {
     });
 
     await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForSelector('.float');
       const float = await page.textContent('.float');
       await hover(page);
@@ -335,7 +339,7 @@ async function wardrobe() {
       // Test hook: 14 points (a day's cap is 12, so reaching 15 by hand takes two days); the pat that crosses is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800); // let the stage-up flash fade
@@ -407,7 +411,7 @@ async function wardrobe() {
       // Test hook: 34 points with today's counters reset; the pat that crosses 35 is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 34, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
@@ -424,7 +428,7 @@ async function wardrobe() {
     await step(S, 'crossing 60 by a pat moves 亲近 -> 暧昧 and unlocks the adult-tier topics and outfits (18+ on)', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 59, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
@@ -610,12 +614,12 @@ async function dafeiyu() {
       await page.waitForFunction(() => { const v = document.getElementById('pet-video'); return v.readyState >= 2 && !v.paused && v.videoWidth === 640; }, null, { timeout: 10000 });
       // right after hatching the pet is "talking" (its greeting), then settles into the idle clip
       await page.waitForFunction(() => document.getElementById('pet-video').dataset.key === 'idle', null, { timeout: 15000 });
-      assert.equal(await page.locator('#pet-canvas').isHidden(), true);
+      assert.equal(await page.locator('#char-wrap').isHidden(), true);
       // the pointer is still where the Hatch button was; a real user would move away
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
       await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
       const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-      assert.ok(b.width <= 240 && b.height <= 300, `window is ${b.width}x${b.height}`);
+      assert.ok(b.width <= 240 && b.height <= 340, `window is ${b.width}x${b.height}`);
       return `window ${b.width}x${b.height}, clip idle`;
     }, page);
 
@@ -936,12 +940,24 @@ async function live() {
       await page.uncheck('#local-opt'); // tests must never bind an agent to, or run tools on, a real computer
       await page.fill('#pet-name', '芽芽');
       await page.click('#hatch-btn');
+      // an account with workspaces is asked where to put the pet; keep the default (personal)
+      const where = await Promise.race([
+        page.waitForSelector('#space-box:not(.hidden)', { timeout: 120000 }).then(() => 'asked'),
+        page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 120000 }).then(() => 'not asked'),
+      ]);
+      let spaces = '';
+      if (where === 'asked') {
+        spaces = (await page.locator('.space-opt .nm').allTextContents()).length;
+        assert.equal(await page.locator('.space-opt input').first().isChecked(), true);
+        await page.click('#space-go');
+      }
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 120000 });
       const v = await view(page);
       agentId = v.pet.agentId;
       assert.match(agentId, /^agt_/);
+      assert.equal(v.space.personal, true);
       assert.equal(await page.locator('#login-box').isHidden(), true);
-      return `agent ${agentId}`;
+      return `agent ${agentId} in the personal space (space choice ${where}${spaces ? `, ${spaces} options` : ''})`;
     }, page);
 
     await step(S, 'the LobeHub agent exists and carries the pet persona', async () => {
@@ -1023,21 +1039,21 @@ async function live() {
         document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
       }, b64);
       await page.waitForSelector('#attach-row .attach-chip', { timeout: 5000 });
-      await page.fill('#chat-input', '这张图里有几个蛋？分别什么颜色？');
+      await page.fill('#chat-input', '这张图里的人头发是什么颜色？手里拿着什么？');
       await page.click('#chat-send');
       await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
       await idle();
       const b = (await bubbleText(page)).trim();
-      await record('picture question (three eggs)');
-      transcript.splice(transcript.length - 1, 0, '[picture sent] build/icon.png: 三颗像素蛋（米黄带橙点、浅蓝带蓝点、浅绿带绿点）+ 这张图里有几个蛋？分别什么颜色？');
-      assert.match(b, /蛋/, `reply: ${b}`);
-      assert.match(b, /三|3/, `reply: ${b}`);
+      await record('picture question (app icon)');
+      transcript.splice(transcript.length - 1, 0, '[picture sent] build/icon.png: 蓝色长卷发的动漫女性，手拿粉色爱心 + 这张图里的人头发是什么颜色？手里拿着什么？');
+      assert.match(b, /蓝/, `reply: ${b}`);
+      assert.match(b, /心/, `reply: ${b}`);
       return b.slice(0, 60);
     }, page);
 
     await step(S, 'affection crossing 15 moves the stage from 陌生 to 熟悉', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
-      await page.locator('#pet-canvas').click();
+      await page.locator('#char-wrap').click();
       await page.waitForTimeout(1200);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
@@ -1062,59 +1078,96 @@ async function live() {
   }
 }
 
+// ------------------------------------------------------------------ space
+// Where the pet's agent lives: the personal space is the default; a workspace can be chosen; with
+// `lh workspace use` pinned, choosing personal says that it switches lh back first.
+async function space() {
+  const S = 'space';
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-spacefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(fakeDir, 'workspaces.json'), JSON.stringify([{ id: 'ws_TEAM', slug: 'team', name: 'Team Space' }, { id: 'ws_LAB', slug: 'lab', name: 'Lab' }]));
+  fs.writeFileSync(path.join(fakeDir, 'pinned-workspace'), 'ws_TEAM');
+  const createCall = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((c) => c.args[0] === 'agent' && c.args[1] === 'create').pop();
+  const start = async (page) => {
+    await page.waitForSelector('.egg-card');
+    await page.locator('.egg-card').nth(2).click();
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#space-box:not(.hidden)', { timeout: 15000 });
+  };
+  let { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-space-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  try {
+    await step(S, 'after login it asks where to put the pet: personal first and selected, then each workspace', async () => {
+      await start(page);
+      const names = await page.locator('.space-opt .nm').allTextContents();
+      assert.deepEqual(names, ['个人空间', 'Team Space', 'Lab']);
+      assert.equal(await page.locator('.space-opt input').first().isChecked(), true);
+      assert.match(await page.textContent('#space-note'), /Team Space.*lh workspace use --personal/);
+      return names.join(' / ');
+    }, page);
+
+    await step(S, 'keeping the default puts the agent in the personal space (lh switched back to personal)', async () => {
+      await page.click('#space-go');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      assert.equal(createCall().env.workspace, null);
+      assert.equal(fs.existsSync(path.join(fakeDir, 'pinned-workspace')), false);
+      assert.match(await page.getAttribute('#meta', 'title'), /放在：个人空间/);
+    }, page);
+
+    await step(S, 'choosing a workspace creates the agent there', async () => {
+      await page.evaluate(() => window.pet.release({ deleteAgent: true }));
+      await app.close();
+      ({ app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-space2-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }));
+      await start(page);
+      assert.equal(await page.locator('#space-note').isHidden(), true, 'nothing is pinned any more');
+      await page.locator('.space-opt').nth(2).click();
+      await page.screenshot({ path: path.join(OUT, 'space-chooser-workspace.png') });
+      await page.click('#space-go');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      assert.equal(createCall().env.workspace, 'ws_LAB');
+      assert.match(await page.getAttribute('#meta', 'title'), /放在：Lab/);
+    }, () => page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ------------------------------------------------------------------ art
-// Contact sheet of every species x mood (adult body only), rendered by the app's own sprite code.
+// Contact sheet of every companion in every outfit, loaded from the same pictures the pet and the
+// wardrobe show (assets/chars/<species>/<outfit>.webp).
 async function art() {
   const S = 'art';
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-art-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-artfake-')) });
   try {
     await page.waitForSelector('.egg-card');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(900, 1000));
-    await step(S, 'sprite sheet: 3 species x 5 moods (adult body only)', async () => {
-      await page.evaluate(() => {
-        const Sp = window.Sprites;
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 760));
+    await step(S, 'outfit sheet: every companion in every outfit she can wear', async () => {
+      const { OUTFITS, artFor } = require('../src/core/outfits');
+      const rows = ['embit', 'bubbo', 'sprig', 'dafeiyu'].map((sp) => OUTFITS.map((o) => (sp === 'dafeiyu' && o.rating === 'adult' ? null : artFor(sp, o.id))));
+      const missing = await page.evaluate(async ({ rows, labels }) => {
         document.body.innerHTML = '';
-        const c = document.createElement('canvas');
-        const sc = 4, cell = 24 * sc + 8, sts = ['idle', 'happy', 'sad', 'hungry', 'sleep'];
-        const rows = [];
-        for (const sp of ['embit', 'bubbo', 'sprig']) rows.push([sp]);
-        c.width = sts.length * cell; c.height = rows.length * cell;
-        c.style.cssText = 'position:fixed;left:0;top:0;background:#e9e4f5;image-rendering:pixelated';
-        document.body.style.overflow = 'visible';
-        document.body.appendChild(c);
-        const ctx = c.getContext('2d');
-        rows.forEach(([sp], r) => sts.forEach((status, i) => {
-          const f = Sp.frame({ speciesId: sp, status, t: 0.3 });
-          Sp.drawGrid(ctx, f.grid, (k) => Sp.colorFor(sp, k), sc, i * cell + 4, r * cell + 4 + f.dy * sc);
-          for (const fx of f.effects) Sp.drawGrid(ctx, Sp.EFFECTS[fx.name], (k) => Sp.colorFor(sp, k), sc, i * cell + 4 + fx.x * sc, r * cell + 4 + fx.y * sc);
-        }));
-      });
-      await page.screenshot({ path: path.join(OUT, 'sprite-sheet.png'), clip: { x: 0, y: 0, width: 5 * 104, height: 3 * 104 } });
-      return 'rows: embit/bubbo/sprig (adult); columns: idle, happy, sad, hungry, sleep';
-    });
-
-    await step(S, 'outfit sheet: every outfit as an adult figure and on each pet', async () => {
-      const ids = await page.evaluate(() => {
-        const Sp = window.Sprites;
-        const ids = Object.keys(Sp.OUTFIT_ART);
-        document.body.innerHTML = '';
-        const c = document.createElement('canvas');
-        const cw = 64, fh = Sp.FIG.h * 2, ph = 24 * 2;
-        c.width = ids.length * cw; c.height = fh + 3 * ph + 16;
-        c.style.cssText = 'position:fixed;left:0;top:0;background:#e9e4f5;image-rendering:pixelated';
-        document.body.appendChild(c);
-        const ctx = c.getContext('2d');
-        ids.forEach((id, i) => {
-          Sp.drawGrid(ctx, Sp.figure(id), (k) => Sp.figureColor(id, 'bubbo', k), 2, i * cw + 10, 4);
-          ['embit', 'bubbo', 'sprig'].forEach((sp, r) => {
-            const f = Sp.frame({ speciesId: sp, status: 'idle', t: 0, outfit: id });
-            Sp.drawGrid(ctx, f.grid, (k) => Sp.colorFor(sp, k, id), 2, i * cw + 8, fh + 8 + r * ph);
-          });
-        });
-        return ids;
-      });
-      await page.screenshot({ path: path.join(OUT, 'outfit-sheet.png'), clip: { x: 0, y: 0, width: ids.length * 64, height: 54 * 2 + 3 * 48 + 16 } });
-      return `columns: ${ids.join(', ')}; top row: adult figure, then embit/bubbo/sprig wearing it`;
+        document.body.style.cssText = 'margin:0;background:#e9e4f5;overflow:visible';
+        const grid = document.createElement('div');
+        grid.style.cssText = `display:grid;grid-template-columns:repeat(${labels.length},80px);gap:2px;padding:4px;font:10px sans-serif;text-align:center`;
+        labels.forEach((l) => { const d = document.createElement('div'); d.textContent = l; grid.appendChild(d); });
+        const waits = [];
+        for (const row of rows) for (const src of row) {
+          const cell = document.createElement('div');
+          cell.style.cssText = 'height:170px;display:flex;align-items:flex-end;justify-content:center;background:#fff';
+          if (src) {
+            const img = document.createElement('img');
+            img.style.cssText = 'height:166px;max-width:78px;object-fit:contain';
+            img.src = src;
+            waits.push(img.decode().then(() => null, () => src));
+            cell.appendChild(img);
+          } else cell.textContent = '—';
+          grid.appendChild(cell);
+        }
+        document.body.appendChild(grid);
+        return (await Promise.all(waits)).filter(Boolean);
+      }, { rows, labels: OUTFITS.map((o) => o.label) });
+      assert.deepEqual(missing, []);
+      await page.screenshot({ path: path.join(OUT, 'outfit-sheet.png'), fullPage: true });
+      return `rows: embit/bubbo/sprig/dafeiyu; columns: ${OUTFITS.map((o) => o.id).join(', ')} (— = not offered / Dafeiyu's animated signature outfit)`;
     });
   } finally {
     await app.close().catch(() => {});
@@ -1128,6 +1181,7 @@ async function art() {
   if (which === 'dafeiyu' || which === 'all') await dafeiyu();
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }
   if (which === 'live' || which === 'all') await live();
+  if (which === 'space' || which === 'all') await space();
   if (which === 'art' || which === 'all') await art();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

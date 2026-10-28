@@ -12,24 +12,28 @@ Everything in `src/renderer/assets/dafeiyu/` comes from https://github.com/PC200
 
 See [src/renderer/assets/dafeiyu/NOTICE.md](src/renderer/assets/dafeiyu/NOTICE.md) for the full text and credits. Any build that includes these files is for non-commercial use only. To use this project commercially, remove that folder and the `dafeiyu` entry in `src/core/species.js` first.
 
-## Outfit art (服饰素材): made for this project, MIT
+## Character and outfit pictures (角色与服饰立绘): generated for this project
 
-Every outfit in the wardrobe is original pixel art drawn for this repository. No third-party images, sprite sheets, fonts or generated images are used. The art is code: `OUTFIT_ART` and the adult figure template `FIG_HALF` in [src/renderer/sprites.js](src/renderer/sprites.js) describe each pixel, and the app draws them at run time. The outfit table (id, name, stage, rating, art path) is `OUTFITS` in [src/core/outfits.js](src/core/outfits.js).
+Every companion is shown as a picture per outfit: `src/renderer/assets/chars/<species>/<outfit>.webp`. The same picture is used on the desktop and in the wardrobe, so changing clothes changes what you see. The app icon `build/icon.png` was made the same way.
 
-| id | 名称 | 解锁阶段 | 分级 | 来源 | 许可 |
-| --- | --- | --- | --- | --- | --- |
-| `daily` | 日常服 | 陌生 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.daily`） | MIT，可商用、可再分发 |
-| `scarf` | 针织围巾套装 | 陌生 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.scarf`） | MIT，可商用、可再分发 |
-| `casual` | 休闲卫衣 | 熟悉 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.casual`） | MIT，可商用、可再分发 |
-| `beret` | 贝雷帽画家装 | 熟悉 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.beret`） | MIT，可商用、可再分发 |
-| `pajamas` | 毛绒睡衣 | 亲近 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.pajamas`） | MIT，可商用、可再分发 |
-| `cat_ears` | 猫耳家居服 | 亲近 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.cat_ears`） | MIT，可商用、可再分发 |
-| `yukata` | 浴衣 | 暧昧 / 知己 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.yukata`） | MIT，可商用、可再分发 |
-| `maid` | 女仆装 | 暧昧 | 成人向 | 本项目自制（`sprites.js#OUTFIT_ART.maid`） | MIT，可商用、可再分发 |
-| `offshoulder_gown` | 露肩晚礼服 | 暧昧 | 成人向 | 本项目自制（`sprites.js#OUTFIT_ART.offshoulder_gown`） | MIT，可商用、可再分发 |
-| `couple_hoodie` | 情侣卫衣 | 恋人 / 挚友 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.couple_hoodie`） | MIT，可商用、可再分发 |
-| `flower_crown` | 花冠长裙 | 恋人 / 挚友 | 全年龄 | 本项目自制（`sprites.js#OUTFIT_ART.flower_crown`） | MIT，可商用、可再分发 |
-| `retro_swimsuit` | 复古连体泳装 | 恋人 | 成人向 | 本项目自制（`sprites.js#OUTFIT_ART.retro_swimsuit`） | MIT，可商用、可再分发 |
-| `silk_robe` | 丝绸睡袍 | 恋人 | 成人向 | 本项目自制（`sprites.js#OUTFIT_ART.silk_robe`） | MIT，可商用、可再分发 |
+- **How they were made.** Generated on 2026-10-28 with OpenAI `gpt-image-2.5-sunburst` through LobeHub (`lh generate image`), one prompt per character and outfit, then cut out from a flat magenta background, cropped and scaled (`scripts/art/`). The prompts are in [scripts/art/prompts.py](scripts/art/prompts.py) so the set can be regenerated.
+- **License.** The pictures of the three original companions (焰团 embit, 泡鲸 bubbo, 叶芽 sprig) and the icon are released under MIT with the code. No third-party images, sprite sheets or fonts are included.
+- **大肥鱼 (Dafeiyu) pictures** (`assets/chars/dafeiyu/`) depict the community character above, so they are a derivative work and keep its terms: **CC BY-NC-SA 4.0, no commercial use**, credit to https://github.com/PC2005-cloud/dsh-pet. Its signature outfit is still its original animation.
 
-Content notes: every figure is an adult (about 6.5 heads tall; the characters' set age is 25+). No outfit shows nudity or underwear; the adult-rated ones differ in style only (a knee-length long-sleeved maid dress, a floor-length off-shoulder gown, a retro one-piece swimsuit with shorts-cut legs, a knee-length belted robe). Adult-rated outfits are hidden unless the user confirmed 18+ and turned adult content on, and are never offered for 大肥鱼 (Dafeiyu), whose art is third-party and cannot be dressed.
+Content notes: every picture shows an adult woman (the characters' set age is 25+, adult proportions, no chibi or childlike styling). No picture shows nudity or underwear. The adult-rated outfits differ in style only: a knee-length long-sleeved maid dress, a floor-length off-shoulder gown with a high neckline, a retro one-piece swimsuit worn with a knee-length wrap skirt, and a knee-length belted robe over long pajama pants. Adult-rated outfits are hidden unless the user confirmed 18+ and turned adult content on, and are never offered for 大肥鱼.
+
+| id | 名称 | 解锁阶段 | 分级 | 立绘 |
+| --- | --- | --- | --- | --- |
+| `daily` | 日常服（大肥鱼：招牌女仆装，原版动画） | 陌生 | 全年龄 | 4 位角色各一张（大肥鱼用动画） |
+| `scarf` | 针织围巾套装 | 陌生 | 全年龄 | 4 位角色各一张 |
+| `casual` | 休闲卫衣 | 熟悉 | 全年龄 | 4 位角色各一张 |
+| `beret` | 贝雷帽画家装 | 熟悉 | 全年龄 | 4 位角色各一张 |
+| `pajamas` | 毛绒睡衣 | 亲近 | 全年龄 | 4 位角色各一张 |
+| `cat_ears` | 猫耳家居服 | 亲近 | 全年龄 | 4 位角色各一张 |
+| `yukata` | 浴衣 | 暧昧 / 知己 | 全年龄 | 4 位角色各一张 |
+| `maid` | 女仆装 | 暧昧 | 成人向 | 3 位原创角色各一张 |
+| `offshoulder_gown` | 露肩晚礼服 | 暧昧 | 成人向 | 3 位原创角色各一张 |
+| `couple_hoodie` | 情侣卫衣 | 恋人 / 挚友 | 全年龄 | 4 位角色各一张 |
+| `flower_crown` | 花冠长裙 | 恋人 / 挚友 | 全年龄 | 4 位角色各一张 |
+| `retro_swimsuit` | 复古连体泳装 | 恋人 | 成人向 | 3 位原创角色各一张 |
+| `silk_robe` | 丝绸睡袍 | 恋人 | 成人向 | 3 位原创角色各一张 |

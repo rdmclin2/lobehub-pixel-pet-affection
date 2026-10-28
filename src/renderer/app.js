@@ -35,7 +35,10 @@ let toastTimer = null;
 const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
-const isVideo = (id) => !!id && speciesOf(id) && speciesOf(id).art === 'video';
+// Every companion is a picture per outfit (`view.art`, see core/outfits.js artFor). Dafeiyu plays its
+// animated clips while wearing its signature outfit (art: null) and shows pictures for the others.
+const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.art);
+const FOOD_EMOJI = { rice: '🍚', cookie: '🍪', fruit: '🍎' };
 
 function playClip(video, sp, key, loop = true) {
   if (video.dataset.key === key) return;
@@ -115,7 +118,14 @@ function selectEgg(id) {
   selected = id;
   const sp = info.species.find((s) => s.id === id);
   for (const c of document.querySelectorAll('.egg-card')) c.classList.toggle('selected', c.dataset.species === id);
-  $('egg-info').textContent = `${elementLabel(sp.element)}：${sp.blurb}`;
+  const box = $('egg-info');
+  box.textContent = '';
+  const img = document.createElement('img');
+  img.className = 'egg-portrait';
+  img.alt = sp.nameZh;
+  img.src = sp.portrait;
+  box.appendChild(img);
+  box.appendChild(document.createTextNode(`${elementLabel(sp.element)}：${sp.blurb}`));
   $('hatch-btn').disabled = false;
   $('pet-name').placeholder = `给它起个名字（默认 ${sp.nameZh}）`;
 }
@@ -130,7 +140,7 @@ function showOnboarding() {
 }
 
 // ---------- hatching ----------
-const STEP_ORDER = ['checking-login', 'login', 'creating-agent', 'connecting-device', 'hatching'];
+const STEP_ORDER = ['checking-login', 'login', 'choose-space', 'creating-agent', 'connecting-device', 'hatching'];
 
 function setStep(step) {
   const idx = STEP_ORDER.indexOf(step);
@@ -142,6 +152,41 @@ function setStep(step) {
   hatchCracks = Math.min(3, Math.max(0, idx > 3 ? 3 : idx));
 }
 
+// Personal space first (the default), then every workspace. Resolves with the chosen space.
+function chooseSpace({ workspaces, pinned }) {
+  const list = $('space-list');
+  list.innerHTML = '';
+  const options = [{ workspaceId: null, name: '个人空间', hint: '只有你自己能看到（推荐）' }, ...workspaces.map((w) => ({ workspaceId: w.id, name: w.name, hint: 'workspace' }))];
+  options.forEach((o, i) => {
+    const row = document.createElement('label');
+    row.className = 'space-opt';
+    row.innerHTML = '<input type="radio" name="space" /><span class="nm"></span><span class="hint"></span>';
+    row.querySelector('input').value = String(i);
+    row.querySelector('input').checked = i === 0;
+    row.querySelector('.nm').textContent = o.name;
+    row.querySelector('.hint').textContent = o.hint;
+    list.appendChild(row);
+  });
+  const note = $('space-note');
+  const refreshNote = () => {
+    const personal = list.querySelector('input:checked').value === '0';
+    note.classList.toggle('hidden', !(personal && pinned));
+    if (pinned) note.textContent = `你的 lh 目前默认用 workspace「${pinned.name}」。放进个人空间会运行 lh workspace use --personal，把终端里 lh 的默认空间也切回个人。`;
+  };
+  list.addEventListener('change', refreshNote);
+  refreshNote();
+  $('hatching').classList.add('choosing'); // the stone makes room for the choice
+  $('space-box').classList.remove('hidden');
+  return new Promise((resolve) => {
+    $('space-go').onclick = () => {
+      const o = options[Number(list.querySelector('input:checked').value)];
+      $('space-box').classList.add('hidden');
+      $('hatching').classList.remove('choosing');
+      resolve({ workspaceId: o.workspaceId, name: o.name, switchToPersonal: !o.workspaceId && !!pinned });
+    };
+  });
+}
+
 async function startHatch() {
   const species = info.species.find((s) => s.id === selected);
   revealSpecies = null;
@@ -149,6 +194,7 @@ async function startHatch() {
   $('hatch-error').classList.add('hidden');
   $('hatch-retry').classList.add('hidden');
   $('login-box').classList.add('hidden');
+  $('space-box').classList.add('hidden');
   $('step-device').classList.toggle('hidden', !$('local-opt').checked);
   $('hatch-title').textContent = '唤醒中……';
   document.querySelectorAll('#steps li').forEach((li) => li.classList.remove('done', 'active'));
@@ -161,7 +207,17 @@ async function startHatch() {
     $('login-url').textContent = url;
     $('login-box').classList.remove('hidden');
   });
-  const res = await window.pet.hatch(species.id, $('pet-name').value, $('local-opt').checked);
+  let res = await window.pet.spaces();
+  if (res.ok) {
+    $('login-box').classList.add('hidden');
+    let space = { workspaceId: null, name: '个人空间', switchToPersonal: false };
+    // Only ask when there is a choice to make.
+    if (res.workspaces.length) {
+      setStep('choose-space');
+      space = await chooseSpace(res);
+    }
+    res = await window.pet.hatch(species.id, $('pet-name').value, $('local-opt').checked, space);
+  }
   offStep();
   offLogin();
 
@@ -183,6 +239,10 @@ async function startHatch() {
     $('hatch-vwrap').classList.remove('hidden');
     $('hatch-video').dataset.key = '';
     playClip($('hatch-video'), sp, 'hatch', false);
+  } else {
+    $('hatch-canvas').classList.add('hidden');
+    $('hatch-img').src = sp.portrait;
+    $('hatch-img').classList.remove('hidden');
   }
   setTimeout(() => {
     enterPet(res.view);
@@ -194,14 +254,28 @@ async function startHatch() {
 // ---------- pet ----------
 function applyArt() {
   const video = isVideo(view && view.pet.speciesId);
-  $('pet-canvas').classList.toggle('hidden', video);
+  $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
+  if (video) return;
+  const src = view.art;
+  const img = $('pet-img');
+  if (img.dataset.src !== src) {
+    img.dataset.src = src;
+    img.src = src;
+    img.alt = `${view.pet.name}`;
+    $('char-wrap').dataset.outfit = view.outfit;
+    // a short sparkle so the change of clothes is noticed
+    $('char-wrap').classList.remove('changed');
+    void $('char-wrap').offsetWidth;
+    $('char-wrap').classList.add('changed');
+  }
 }
 
 function enterPet(v) {
   view = v;
   revealSpecies = null;
   $('hatch-vwrap').classList.add('hidden');
+  $('hatch-img').classList.add('hidden');
   $('hatch-canvas').classList.remove('hidden');
   oneShot = null;
   $('pet-video').dataset.key = '';
@@ -230,7 +304,7 @@ function refreshHud() {
   const a = view.affection;
   const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
   $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
-  $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）`;
+  $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`;
   // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
   $('aff-stage').textContent = a.stageName;
   $('aff-stage').style.setProperty('--sc', a.color);
@@ -274,7 +348,7 @@ function onAffection(e) {
     floatText(`${e.delta} ♥（好久不见）`, 'minus');
   } else if (e.type === 'stage-up') {
     flashUntil = performance.now() + 700;
-    if (e.view) { view = e.view; refreshHud(); }
+    if (e.view) { view = e.view; applyArt(); refreshHud(); }
     showUnlockToast(e);
   }
 }
@@ -304,12 +378,24 @@ function hideToast() {
 }
 
 // ---------- wardrobe and topics (design 9.5, 9.6) ----------
-function drawFigure(canvas, outfitId, speciesId, scale) {
-  canvas.width = S.FIG.w * scale;
-  canvas.height = S.FIG.h * scale;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  S.drawGrid(ctx, S.figure(outfitId), (k) => S.figureColor(outfitId, speciesId, k), scale);
+// The same picture the pet shows when wearing the outfit (Dafeiyu's signature outfit is its idle clip).
+function outfitArt(o, speciesId) {
+  if (!o.art) {
+    const v = document.createElement('video');
+    v.className = 'look';
+    v.muted = true;
+    v.loop = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    v.src = `assets/${speciesId}/${speciesOf(speciesId).clips.idle}`;
+    return v;
+  }
+  const img = document.createElement('img');
+  img.className = 'look';
+  img.alt = o.label;
+  img.draggable = false;
+  img.src = o.art;
+  return img;
 }
 
 function panelMsg(text, ok = false) {
@@ -365,8 +451,8 @@ function renderWardrobe() {
   pv.className = 'preview';
   pv.id = 'outfit-preview';
   pv.dataset.outfit = worn.id;
-  pv.innerHTML = '<canvas></canvas><div class="nm"></div><div class="adult-note">当前穿着 · 成年（25+）</div>';
-  drawFigure(pv.querySelector('canvas'), worn.id, view.pet.speciesId, 3);
+  pv.innerHTML = '<div class="nm"></div><div class="adult-note">当前穿着 · 成年（25+）</div>';
+  pv.prepend(outfitArt(worn, view.pet.speciesId));
   pv.querySelector('.nm').textContent = worn.label;
   wrap.appendChild(pv);
   const grid = document.createElement('div');
@@ -378,8 +464,8 @@ function renderWardrobe() {
     const status = o.equipped ? '✓ 穿着中' : o.unlocked ? '点击穿上' : `🔒 ${o.condition}`;
     card.title = `${o.label}：${o.desc}`;
     card.setAttribute('aria-label', `${o.label}，${status}`);
-    card.innerHTML = '<canvas></canvas><div class="nm"></div><div class="st"></div>';
-    drawFigure(card.querySelector('canvas'), o.id, view.pet.speciesId, 2);
+    card.innerHTML = '<div class="nm"></div><div class="st"></div>';
+    card.prepend(outfitArt(o, view.pet.speciesId));
     card.querySelector('.nm').textContent = o.label;
     card.querySelector('.st').textContent = status;
     if (o.rating === 'adult') card.insertAdjacentHTML('beforeend', '<span class="tag adult">成人向</span>');
@@ -398,6 +484,7 @@ async function equip(o) {
     return;
   }
   view = r.view;
+  applyArt();
   refreshHud();
   panelMsg(`换好了：「${r.outfit.label}」`, true);
 }
@@ -505,9 +592,9 @@ async function doAct(kind, food) {
     eating = FOOD_SPRITE[food] || 'rice';
     setTimeout(() => { eating = null; }, video ? 3500 : 1600);
   }
-  if (video && r.ok) {
-    if (kind === 'pat') startOneShot('pat', 3000);
-    if (kind === 'play') startOneShot('play', 4000);
+  if (r.ok) {
+    if (kind === 'pat') startOneShot('pat', video ? 3000 : 1200);
+    if (kind === 'play') startOneShot('play', video ? 4000 : 1600);
   }
 }
 
@@ -733,18 +820,16 @@ async function release(deleteAgent) {
 }
 
 // ---------- render loop ----------
-function drawPet(ctx, t) {
-  const p = view.pet;
-  const status = thinking ? 'idle' : view.status;
-  const f = S.frame({ speciesId: p.speciesId, status, t, talking: performance.now() < talkUntil, eating, outfit: view.outfit });
-  const colorOf = (k) => S.colorFor(p.speciesId, k, view.outfit);
-  const scale = 5;
-  S.drawGrid(ctx, f.grid, colorOf, scale, 0, f.dy * scale);
-  for (const fx of f.effects) S.drawGrid(ctx, S.EFFECTS[fx.name], (k) => S.colorFor(p.speciesId, k), scale, fx.x * scale, fx.y * scale);
-  if (performance.now() < flashUntil) {
-    ctx.fillStyle = `rgba(255,255,255,${(flashUntil - performance.now()) / 700})`;
-    ctx.fillRect(0, 0, 120, 120);
-  }
+// The character picture moves with CSS (style.css, .char-wrap[data-status]); this only picks the state.
+const CHAR_FX = { sleep: '💤', hungry: '🍙?', sad: '💧', think: '💭', happy: '♪' };
+function animateChar() {
+  const wrap = $('char-wrap');
+  const now = performance.now();
+  const status = thinking ? 'think' : eating ? 'eat' : oneShot && now < oneShot.until ? oneShot.key : now < talkUntil ? 'talk' : view.status;
+  if (wrap.dataset.status !== status) wrap.dataset.status = status;
+  const fx = status === 'eat' ? FOOD_EMOJI[eating] || '🍚' : CHAR_FX[status] || '';
+  if ($('char-fx').textContent !== fx) $('char-fx').textContent = fx;
+  wrap.classList.toggle('flash', now < flashUntil);
 }
 
 function frameLoop(ts) {
@@ -761,10 +846,7 @@ function frameLoop(ts) {
     const ctx = $('hatch-canvas').getContext('2d');
     ctx.clearRect(0, 0, 192, 192);
     if (revealSpecies) {
-      const p = { speciesId: revealSpecies };
-      const f = S.frame({ speciesId: revealSpecies, status: 'happy', t, outfit: 'daily' });
-      S.drawGrid(ctx, f.grid, (k) => S.colorFor(p.speciesId, k, 'daily'), 8, 0, f.dy * 8);
-      for (const fx of f.effects) S.drawGrid(ctx, S.EFFECTS[fx.name], (k) => S.colorFor(p.speciesId, k), 8, fx.x * 8, fx.y * 8);
+      // the picture (or Dafeiyu's clip) is shown instead of the canvas
     } else {
       const sp = info.species.find((s) => s.id === selected);
       drawEggOn(ctx, sp, hatchCracks, 8, Math.round(Math.sin(t * 10)) * 4 * (hatchCracks > 0 ? 1 : 0.5), 0);
@@ -777,9 +859,7 @@ function frameLoop(ts) {
     if (isVideo(view.pet.speciesId)) {
       playClip($('pet-video'), speciesOf(view.pet.speciesId), desiredClip());
     } else {
-      const ctx = $('pet-canvas').getContext('2d');
-      ctx.clearRect(0, 0, 120, 120);
-      drawPet(ctx, t);
+      animateChar();
     }
   }
   setTimeout(() => requestAnimationFrame(frameLoop), 80); // ~12 fps keeps the pixel feel and idles cheaply
