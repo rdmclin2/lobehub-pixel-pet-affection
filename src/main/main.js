@@ -131,6 +131,7 @@ function wire() {
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
+  ipcMain.handle('unlock-all', () => service.unlockAll());
   ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);

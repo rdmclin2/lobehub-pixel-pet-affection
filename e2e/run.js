@@ -1078,6 +1078,64 @@ async function live() {
   }
 }
 
+// ------------------------------------------------------------------ advanced
+// Advanced settings: one click unlocks every stage, topic and outfit (adult ones with 18+ and adult on).
+async function advanced() {
+  const S = 'advanced';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adv-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-advfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: true, ageConfirmedAt: Date.now(), adultContent: true }));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  try {
+    await page.waitForSelector('.egg-card');
+    await page.locator('.egg-card').nth(0).click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+
+    await step(S, 'the ⋯ menu has 高级设置, which explains one-click unlock', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#panel:not(.hidden) #unlock-all');
+      assert.equal(await page.textContent('#panel-title'), '高级设置');
+      assert.match(await page.textContent('#panel-sub'), /陌生 ♥\d+/);
+      assert.equal(await page.locator('#unlock-all').isDisabled(), false);
+      return await page.textContent('#panel-sub');
+    }, page);
+
+    await step(S, 'one click unlocks every stage, topic and outfit (18+ and adult content on)', async () => {
+      await page.click('#unlock-all');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
+      const msg = await page.textContent('#panel-msg');
+      assert.match(msg, /已解锁：\d+ 个话题、\d+ 套服饰/);
+      assert.match(await page.textContent('#panel-sub'), /恋人 ♥100\/100 · 已满级 · 话题 19\/19 · 服饰 13\/13/);
+      assert.equal(await page.locator('#unlock-all').isDisabled(), true);
+      return msg;
+    }, page);
+
+    await step(S, 'the wardrobe shows everything unlocked and an adult outfit can be put on', async () => {
+      await idle();
+      await page.click('#panel-close');
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="silk_robe"]');
+      assert.equal(await page.locator('.card.locked').count(), 0);
+      assert.equal(await page.locator('.card').count(), 13);
+      await page.click('.card[data-outfit="silk_robe"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
+      await page.click('#panel-close');
+      await page.waitForFunction(() => (document.getElementById('pet-img').getAttribute('src') || '').endsWith('silk_robe.webp'));
+      assert.match(await page.textContent('#meta'), /恋人 ♥100 · 已满级/);
+      return 'pet now wears 丝绸睡袍';
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ------------------------------------------------------------------ space
 // Where the pet's agent lives: the personal space is the default; a workspace can be chosen; with
 // `lh workspace use` pinned, choosing personal says that it switches lh back first.
@@ -1182,6 +1240,7 @@ async function art() {
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }
   if (which === 'live' || which === 'all') await live();
   if (which === 'space' || which === 'all') await space();
+  if (which === 'advanced' || which === 'all') await advanced();
   if (which === 'art' || which === 'all') await art();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

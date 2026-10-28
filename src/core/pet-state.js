@@ -77,6 +77,15 @@ function setAffectionForTest(pet, value) {
   return { from, to: pet.relStage, stageUp: aff.stageIndex(pet.relStage) > aff.stageIndex(from), unlockedStages: aff.STAGE_IDS.slice(aff.stageIndex(fromPeak) + 1, aff.stageIndex(pet.peakStage) + 1) };
 }
 
+// Advanced settings, "一键解锁": full affection, so every stage and everything it unlocks is reached at once.
+// Adult-rated topics and outfits still need the 18+ answer and the adult switch (they are filtered on
+// display, not here). Returns the same shape as setAffectionForTest.
+function unlockAll(pet, now) {
+  const r = setAffectionForTest(pet, aff.MAX_AFFECTION);
+  pet.unlockedAllAt = now;
+  return r;
+}
+
 // Advance simulated time. Mutates and returns { pet, events, decay }.
 // `decay` is the affection lost to a long absence (design 2.4), 0 most of the time.
 function tick(pet, now) {
@@ -204,6 +213,7 @@ module.exports = {
   talkedTopic,
   putToSleep,
   setAffectionForTest,
+  unlockAll,
   touch,
   currentStatus,
   toAffectionProgress: aff.toAffectionProgress,

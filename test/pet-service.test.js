@@ -693,3 +693,48 @@ test('personal with a pinned lh scope needs consent, then switches lh back to pe
   assert.ok(!fs.existsSync(path.join(dir, 'pinned-workspace')));
   assert.equal(svc.pet.space.workspaceId, null);
 });
+
+// ---- advanced settings: unlock everything at once ----
+test('unlock all fills affection, reaches every stage and unlocks every topic and outfit, and survives a restart', async () => {
+  const { svc, dir, lh, clock } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true });
+  svc.settings = svc.settingsStore.load();
+  await svc.hatch({ speciesId: 'bubbo' });
+  const ups = [];
+  svc.on('affection', (e) => { if (e.type === 'stage-up') ups.push(e); });
+  const r = svc.unlockAll();
+  assert.equal(r.ok, true);
+  assert.equal(r.already, false);
+  assert.equal(r.view.pet.affection, 100);
+  assert.equal(r.view.pet.peakStage, 'lover');
+  assert.ok(r.view.outfits.every((o) => o.unlocked), 'every outfit');
+  assert.ok(r.view.topics.every((t) => t.unlocked), 'every topic');
+  assert.ok(r.unlocks.outfits.some((o) => o.id === 'maid'), 'adult outfits included while adult content is on');
+  await new Promise((res) => setImmediate(res));
+  assert.equal(ups.length, 1, 'one stage-up notice');
+  // the pet answers the stage-up first; while it speaks the unlock waits
+  assert.deepEqual(svc.unlockAll(), { ok: false, reason: 'busy' });
+  await new Promise((res) => { const off = (b) => { if (!b) { svc.off('thinking', off); res(); } }; svc.on('thinking', off); });
+  assert.equal(svc.unlockAll().already, true, 'a second unlock has nothing new');
+
+  const svc2 = new PetService({ lh, store: new Store(path.join(dir, 'data')), settingsStore: svc.settingsStore, now: () => clock.t });
+  assert.equal(svc2.init().pet.affection, 100);
+  assert.ok(svc2.view().outfits.every((o) => o.unlocked));
+});
+
+test('unlock all with adult content off unlocks the all-ages content only', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  await svc.hatch({ speciesId: 'embit' });
+  const r = svc.unlockAll();
+  assert.equal(r.ok, true);
+  assert.ok(r.view.outfits.every((o) => o.rating === 'all' && o.unlocked));
+  assert.ok(!r.unlocks.outfits.some((o) => o.id === 'maid'));
+  assert.equal(svc.equipOutfit('maid').ok, false, 'an adult outfit still cannot be worn');
+});
+
+test('unlock all is refused without a pet', () => {
+  const { svc } = setup();
+  assert.deepEqual(svc.unlockAll(), { ok: false, reason: 'empty' });
+});
