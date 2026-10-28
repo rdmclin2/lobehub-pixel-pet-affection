@@ -412,13 +412,13 @@ async function openPanel(kind) {
   $('chat-row').classList.add('hidden');
   hideToast();
   panelKind = kind;
-  const list = kind === 'wardrobe' ? view.outfits : view.topics;
+  const list = kind === 'wardrobe' ? view.outfits : kind === 'topics' ? view.topics : [];
   panelNew = new Set(list.filter((x) => x.isNew).map((x) => x.id));
   window.pet.panel(true);
   panelMsg('');
   $('panel').classList.remove('hidden');
   renderPanel();
-  await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
+  if (kind !== 'advanced') await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
 }
 
 function closePanel() {
@@ -436,6 +436,43 @@ function progressLine() {
 function renderPanel() {
   if (panelKind === 'wardrobe') renderWardrobe();
   else if (panelKind === 'topics') renderTopics();
+  else if (panelKind === 'advanced') renderAdvanced();
+}
+
+// Advanced settings: unlock everything at once (to see all the content, or to skip the grind).
+function renderAdvanced() {
+  const a = view.affection;
+  const unlocked = (l) => `${l.filter((x) => x.unlocked).length}/${l.length}`;
+  $('panel-title').textContent = '高级设置';
+  $('panel-sub').textContent = `${progressLine()} · 话题 ${unlocked(view.topics)} · 服饰 ${unlocked(view.outfits)}`;
+  const body = $('panel-body');
+  body.innerHTML = '';
+  const sec = document.createElement('div');
+  sec.className = 'adv-section';
+  sec.innerHTML = '<h3>一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
+  const all = !a.next && a.value >= a.max;
+  sec.querySelector('.adv-text').textContent = '直接把好感度加满（♥100），所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。解锁后不能撤销，之后的互动照常计分。';
+  sec.querySelector('.adv-note').textContent = settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
+  const btn = sec.querySelector('#unlock-all');
+  btn.textContent = all ? '已经全部解锁' : '解锁全部好感度和服饰';
+  btn.disabled = all;
+  btn.addEventListener('click', unlockAllNow);
+  body.appendChild(sec);
+}
+
+async function unlockAllNow() {
+  if (!confirm('把好感度直接加满，解锁全部阶段、话题和服饰？这一步不能撤销。')) return;
+  const r = await window.pet.unlockAll();
+  if (!r.ok) {
+    panelMsg(r.reason === 'busy' ? '它正在忙，等它说完再试。' : '现在没法解锁。');
+    return;
+  }
+  view = r.view;
+  applyArt();
+  refreshHud();
+  renderAdvanced();
+  const n = (l) => (l ? l.length : 0);
+  panelMsg(r.already ? '好感度已加满，内容之前就已全部解锁。' : `已解锁：${n(r.unlocks.topics)} 个话题、${n(r.unlocks.outfits)} 套服饰。去衣柜换上看看吧。`, true);
 }
 
 function renderWardrobe() {
@@ -630,6 +667,7 @@ function bindPetUi() {
     if (!m) return;
     $('main-menu').classList.add('hidden');
     if (m === 'quit') window.pet.quit();
+    if (m === 'advanced') openPanel('advanced');
     if (m === 'update') await window.pet.installUpdate();
     if (m === 'adult') {
       const label = (v, id) => ((v.outfits.find((o) => o.id === id) || {}).label || id);

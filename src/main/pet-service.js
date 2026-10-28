@@ -552,6 +552,21 @@ class PetService extends EventEmitter {
     return this.view();
   }
 
+  // Advanced settings: unlock every stage, topic and outfit at once (for impatient players and for
+  // checking the content). Returns what became available, as the user may see it.
+  unlockAll() {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    if (this.busy) return { ok: false, reason: 'busy' };
+    const r = state.unlockAll(this.pet, this.now());
+    const unlocks = {
+      topics: dialogue.topicsForStages(r.unlockedStages, this.pet, this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, this.pet, this.settings),
+    };
+    this._save();
+    if (r.unlockedStages.length) setImmediate(() => this._onStageUp(r));
+    return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0 };
+  }
+
   // Release the pet: optionally delete the LobeHub agent as well.
   async release({ deleteAgent = false } = {}) {
     if (!this.pet) return { ok: true };

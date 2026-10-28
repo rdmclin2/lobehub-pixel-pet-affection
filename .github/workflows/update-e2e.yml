@@ -67,7 +67,8 @@ jobs:
           Start-Process $setup.FullName -ArgumentList '/S' -Wait
           $exe = (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs'), $env:ProgramFiles -Recurse -Filter 'Pixel Pet Affection.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch 'win-unpacked' } | Select-Object -First 1).FullName
           Write-Host "installed at $exe"
-          function Ver { if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion } else { 'missing' } }
+          # Windows reports four parts (0.4.1.0)
+          function Ver { if (Test-Path $exe) { ((Get-Item $exe).VersionInfo.ProductVersion -replace '\.0$', '') } else { 'missing' } }
           Write-Host "installed $(Ver), latest release $latest"
           $env:PIXELPET_UPDATE_NOW = '1'
           $env:PIXELPET_DATA_DIR = Join-Path $env:RUNNER_TEMP 'pp-data'
