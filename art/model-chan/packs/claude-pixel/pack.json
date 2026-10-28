@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "id": "claude-pixel",
+  "name": "克洛蒂 · 像素",
+  "version": "1.0.0",
+  "author": "rdmclin2（gpt-image-2.5 生成，脚本像素化）；原设 ZipZipPipe，设定 lmy414",
+  "license": "CC BY-NC-SA 4.0",
+  "description": "Claude 娘 · 橘发菊纹（同人，非 Anthropic 官方）。16 位像素风，8 个标准动作 + 8 个扩展动作（daily_extra.png）。",
+  "species": "claude",
+  "kind": "sprites",
+  "pixelated": true,
+  "frame": {
+    "width": 83,
+    "height": 113
+  },
+  "actions": {
+    "idle": {
+      "row": 0,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "wave": {
+      "row": 0,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "lifted": {
+      "row": 1,
+      "col": 0,
+      "frames": 2,
+      "fps": 6
+    },
+    "eat": {
+      "row": 1,
+      "col": 2,
+      "frames": 2,
+      "fps": 3
+    },
+    "sleep": {
+      "row": 2,
+      "col": 0,
+      "frames": 2,
+      "fps": 1.5
+    },
+    "think": {
+      "row": 2,
+      "col": 2,
+      "frames": 2,
+      "fps": 2
+    },
+    "talk": {
+      "row": 3,
+      "col": 0,
+      "frames": 2,
+      "fps": 5
+    },
+    "cheer": {
+      "row": 3,
+      "col": 2,
+      "frames": 2,
+      "fps": 5
+    }
+  },
+  "outfits": {
+    "daily": "sheets/daily.png"
+  }
+}
