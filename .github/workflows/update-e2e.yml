@@ -65,7 +65,8 @@ jobs:
           $latest = (gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName).TrimStart('v')
           $setup = Get-ChildItem dist -Filter '*-setup.exe' | Select-Object -First 1
           Start-Process $setup.FullName -ArgumentList '/S' -Wait
-          $exe = Join-Path $env:LOCALAPPDATA 'Programs\pixel-pet-affection\Pixel Pet Affection.exe'
+          $exe = (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs'), $env:ProgramFiles -Recurse -Filter 'Pixel Pet Affection.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch 'win-unpacked' } | Select-Object -First 1).FullName
+          Write-Host "installed at $exe"
           function Ver { if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion } else { 'missing' } }
           Write-Host "installed $(Ver), latest release $latest"
           $env:PIXELPET_UPDATE_NOW = '1'
