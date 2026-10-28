@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('pet', {
   equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
   markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
   unlockAll: () => ipcRenderer.invoke('unlock-all'),
+  setPetSize: (id) => ipcRenderer.invoke('set-pet-size', { id }),
   panel: (open) => ipcRenderer.send('panel', !!open),
   chat: (text, images, files) => ipcRenderer.invoke('chat', { text, images, files }),
   // Absolute path of a dropped/pasted File (empty for in-memory data such as screenshots).

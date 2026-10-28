@@ -47,3 +47,14 @@ test('SettingsStore round-trips through settings.json and survives a corrupt fil
   fs.writeFileSync(path.join(dir, 'settings.json'), '{not json');
   assert.equal(new s.SettingsStore(dir).load().adultContent, false);
 });
+
+test('pet size defaults to 中, keeps a known size and drops an unknown one', () => {
+  const st = require('../src/core/settings');
+  assert.equal(st.normalizeSettings(null).petSize, 'm');
+  assert.equal(st.petScale(st.normalizeSettings(null)), 1);
+  assert.equal(st.normalizeSettings({ petSize: 'xl' }).petSize, 'xl');
+  assert.equal(st.petScale({ petSize: 'xl' }), 1.6);
+  assert.equal(st.normalizeSettings({ petSize: 'huge' }).petSize, 'm');
+  // answering the age gate keeps the size
+  assert.equal(st.answerAgeGate({ petSize: 's' }, true, 1).petSize, 's');
+});

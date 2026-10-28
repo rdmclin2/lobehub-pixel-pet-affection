@@ -34,6 +34,12 @@ let panelNew = new Set(); // items that were "new" when the panel opened (marked
 let toastTimer = null;
 const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
 
+// Every settings update also carries the pet size: the character area scales with it (style.css .stage).
+function setSettings(st) {
+  settings = st;
+  if (st && st.petScale) document.documentElement.style.setProperty('--pet-scale', String(st.petScale));
+}
+
 const speciesOf = (id) => info.species.find((s) => s.id === id);
 // Every companion is a picture per outfit (`view.art`, see core/outfits.js artFor). Dafeiyu plays its
 // animated clips while wearing its signature outfit (art: null) and shows pictures for the others.
@@ -90,7 +96,7 @@ function showAgeGate(after) {
 
 async function answerAgeGate(adult) {
   const r = await window.pet.confirmAge(adult);
-  settings = r.settings;
+  setSettings(r.settings);
   const after = gateAfter;
   gateAfter = null;
   if (after) after(r);
@@ -315,7 +321,7 @@ function refreshHud() {
   $('aff-row').setAttribute('aria-label', $('aff-row').title);
   $('btn-wardrobe').querySelector('.new-dot').classList.toggle('hidden', !view.outfits.some((o) => o.isNew));
   $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
-  settings = view.settings;
+  setSettings(view.settings);
   $('menu-adult').textContent = !settings.ageConfirmed ? '成人向内容：关（需年满 18 岁）' : `成人向内容：${settings.adultContent ? '开（点此关闭）' : '关（点此开启）'}`;
   const worn = view.outfits.find((o) => o.id === view.outfit);
   $('outfit-badge').textContent = `👗 ${worn ? worn.label : ''}`;
@@ -458,6 +464,29 @@ function renderAdvanced() {
   btn.disabled = all;
   btn.addEventListener('click', unlockAllNow);
   body.appendChild(sec);
+
+  const size = document.createElement('div');
+  size.className = 'adv-section';
+  size.innerHTML = '<h3>宠物大小</h3><p class="adv-text">桌面上的角色有多大。窗口会跟着变，右下角保持不动。</p><div class="size-row" role="radiogroup" aria-label="宠物大小"></div>';
+  const row = size.querySelector('.size-row');
+  for (const o of settings.petSizes || []) {
+    const b = document.createElement('button');
+    const on = o.id === settings.petSize;
+    b.className = `btn size-opt${on ? ' on' : ''}`;
+    b.dataset.size = o.id;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(on));
+    b.textContent = o.label;
+    b.addEventListener('click', async () => {
+      const r = await window.pet.setPetSize(o.id);
+      if (!r.ok) return;
+      setSettings(r.settings);
+      renderAdvanced();
+      panelMsg(`宠物大小：${o.label}。关掉这个面板就能看到效果。`, true);
+    });
+    row.appendChild(b);
+  }
+  body.appendChild(size);
 }
 
 async function unlockAllNow() {
@@ -937,9 +966,9 @@ async function main() {
   window.pet.onSay((m) => say(m.text, m.kind, m.source, m.reason));
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);
-  window.pet.onSettings((st) => { settings = st; });
+  window.pet.onSettings((st) => { setSettings(st); });
   window.pet.onUpdateStatus(onUpdateStatus);
-  settings = info.settings;
+  setSettings(info.settings);
   const start = (v) => (v ? enterPet(v) : showOnboarding());
   if (settings.needsAgeGate) showAgeGate((r) => start(r.view));
   else start(info.view);

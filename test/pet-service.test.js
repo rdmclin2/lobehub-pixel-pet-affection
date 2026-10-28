@@ -738,3 +738,19 @@ test('unlock all is refused without a pet', () => {
   const { svc } = setup();
   assert.deepEqual(svc.unlockAll(), { ok: false, reason: 'empty' });
 });
+
+test('pet size is saved in settings, reported to the UI and survives releasing the pet', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  await svc.hatch({ speciesId: 'sprig' });
+  const seen = [];
+  svc.on('settings', (st) => seen.push(st.petScale));
+  assert.deepEqual(svc.setPetSize('huge'), { ok: false, reason: 'unknown' });
+  const r = svc.setPetSize('l');
+  assert.equal(r.ok, true);
+  assert.equal(r.settings.petSize, 'l');
+  assert.equal(r.settings.petScale, 1.3);
+  assert.deepEqual(seen, [1.3]);
+  await svc.release({ deleteAgent: true });
+  assert.equal(svc.settingsStore.load().petSize, 'l');
+});

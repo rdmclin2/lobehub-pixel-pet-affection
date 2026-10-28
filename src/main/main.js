@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const { Store } = require('../core/store');
-const { SettingsStore } = require('../core/settings');
+const { SettingsStore, petScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
@@ -25,8 +25,25 @@ let service = null;
 let updater = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 
+// The pet window follows the chosen pet size: the character area is 150x190 at scale 1.
+function petDims() {
+  const k = petScale(service ? service.settings : null);
+  return { w: Math.round(Math.max(SIZES.pet.w, 150 * k + 80)), h: Math.round(SIZES.pet.h + 190 * (k - 1)) };
+}
+
+// Resize the pet window to its size setting, keeping its bottom-right corner where it is.
+function resizePet() {
+  const { w, h } = petDims();
+  const fit = (b) => {
+    const wa = screen.getDisplayMatching(b).workArea;
+    return { x: Math.max(wa.x, b.x + b.width - w), y: Math.max(wa.y, b.y + b.height - h), width: w, height: h };
+  };
+  if (petBounds) petBounds = fit(petBounds); // a panel is open: applied when it closes
+  else if (win) win.setBounds(fit(win.getBounds()));
+}
+
 function place(mode) {
-  const { w, h } = SIZES[mode];
+  const { w, h } = mode === 'pet' ? petDims() : SIZES[mode];
   const wa = screen.getPrimaryDisplay().workArea;
   if (mode === 'onboarding') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
@@ -132,6 +149,11 @@ function wire() {
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
   ipcMain.handle('unlock-all', () => service.unlockAll());
+  ipcMain.handle('set-pet-size', (_e, { id }) => {
+    const r = service.setPetSize(String(id || ''));
+    if (r.ok) resizePet();
+    return r;
+  });
   ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);

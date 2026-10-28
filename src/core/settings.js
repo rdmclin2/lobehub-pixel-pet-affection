@@ -8,7 +8,17 @@ const path = require('node:path');
 
 const AGE_GATE_VERSION = 1; // bump when the confirmation wording changes: everyone is asked again
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false };
+// How big the pet is drawn on the desktop (高级设置 → 宠物大小). The window grows with it.
+const PET_SIZES = [
+  { id: 's', label: '小', scale: 0.75 },
+  { id: 'm', label: '中', scale: 1 },
+  { id: 'l', label: '大', scale: 1.3 },
+  { id: 'xl', label: '特大', scale: 1.6 },
+];
+const DEFAULT_PET_SIZE = 'm';
+const petScale = (s) => (PET_SIZES.find((x) => x.id === (s && s.petSize)) || PET_SIZES.find((x) => x.id === DEFAULT_PET_SIZE)).scale;
+
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petSize: DEFAULT_PET_SIZE };
 
 // Adult content can only be on for a current, confirmed 18+ answer.
 function normalizeSettings(raw) {
@@ -18,6 +28,7 @@ function normalizeSettings(raw) {
   s.answered = current && s.answered === true;
   if (!s.ageConfirmed) s.ageConfirmedAt = null;
   s.adultContent = s.ageConfirmed && s.adultContent === true;
+  if (!PET_SIZES.some((x) => x.id === s.petSize)) s.petSize = DEFAULT_PET_SIZE;
   return s;
 }
 
@@ -70,4 +81,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SIZES, DEFAULT_PET_SIZE, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
