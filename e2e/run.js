@@ -1131,6 +1131,50 @@ async function advanced() {
       assert.match(await page.textContent('#meta'), /恋人 ♥100 · 已满级/);
       return 'pet now wears 丝绸睡袍';
     }, page);
+
+    const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+    const stageBox = () => page.evaluate(() => { const r = document.getElementById('stage').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
+    await step(S, 'pet size: 特大 makes the character and the window bigger, bottom-right corner stays put', async () => {
+      const before = await bounds();
+      const stage0 = await stageBox();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.click('.size-opt[data-size="xl"]');
+      await page.waitForSelector('.size-opt.on[data-size="xl"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '1.6');
+      await page.waitForFunction(() => window.outerHeight > 400);
+      const after = await bounds();
+      const stage1 = await stageBox();
+      assert.deepEqual([after.width, after.height], [320, 454]);
+      assert.equal(after.x + after.width, before.x + before.width, 'right edge kept');
+      assert.equal(after.y + after.height, before.y + before.height, 'bottom edge kept');
+      assert.deepEqual([stage1.w, stage1.h], [Math.round(stage0.w * 1.6), Math.round(stage0.h * 1.6)]);
+      await page.mouse.move(1, 1);
+      await page.screenshot({ path: path.join(OUT, 'pet-size-xl.png') });
+      return `window ${before.width}x${before.height} -> ${after.width}x${after.height}; stage ${stage0.w}x${stage0.h} -> ${stage1.w}x${stage1.h}`;
+    }, page);
+
+    await step(S, 'pet size: 小 shrinks it, and the size is kept across a restart', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.click('.size-opt[data-size="s"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '0.75');
+      await page.screenshot({ path: path.join(OUT, 'pet-size-s.png') });
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).petSize, 's');
+      await app.close();
+      const again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+      try {
+        await again.page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+        await again.page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '0.75');
+        const b = await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+        assert.deepEqual([b.width, b.height], [230, 293]);
+        return `after restart: ${b.width}x${b.height}`;
+      } finally {
+        await again.app.close().catch(() => {});
+      }
+    });
   } finally {
     await app.close().catch(() => {});
   }

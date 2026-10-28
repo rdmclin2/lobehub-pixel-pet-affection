@@ -65,7 +65,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings) };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScale: settingsLib.petScale(this.settings), petSizes: settingsLib.PET_SIZES };
   }
 
   view() {
@@ -448,6 +448,15 @@ class PetService extends EventEmitter {
   // ---- 18+ confirmation and the adult-content switch (design 8.3, 8.4) ----------------------
   getSettings() {
     return this.settingsView();
+  }
+
+  // 高级设置 → 宠物大小. Kept in settings.json, so it also applies to the next pet.
+  setPetSize(id) {
+    if (!settingsLib.PET_SIZES.some((x) => x.id === id)) return { ok: false, reason: 'unknown' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, petSize: id });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, settings: this.settingsView() };
   }
 
   answerAgeGate(isAdult) {

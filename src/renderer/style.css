@@ -53,7 +53,7 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 .bubble-tail { flex: none; position: relative; z-index: 1; width: 9px; height: 9px; margin: -9px auto 8px; background: #fff; border-right: 3px solid #2b2233; border-bottom: 3px solid #2b2233; transform: rotate(45deg); }
 .bubble.hidden + .bubble-tail { display: none; }
 .bubble.thinking { color: #8a7fb0; }
-.stage { width: 150px; height: 190px; position: relative; flex: none; display: flex; align-items: flex-end; justify-content: center; }
+.stage { zoom: var(--pet-scale, 1); width: 150px; height: 190px; position: relative; flex: none; display: flex; align-items: flex-end; justify-content: center; }
 #pet-canvas { cursor: grab; }
 /* The 大肥鱼 clips are 640x360 with the character in the middle: crop to her. */
 .vwrap { width: 150px; height: 150px; position: relative; overflow: hidden; cursor: grab; transform-origin: 50% 100%; }
@@ -200,3 +200,7 @@ body.busy.over .stop-btn { display: block; }
 .adv-section h3 { margin: 0 0 4px; font-size: 13px; }
 .adv-text { margin: 0 0 6px; line-height: 1.5; }
 .adv-note { margin: 0 0 8px; color: #6b5f7a; font-size: 11px; line-height: 1.5; }
+.adv-section + .adv-section { margin-top: 8px; }
+.size-row { display: flex; gap: 6px; }
+.size-opt { min-width: 52px; min-height: 30px; }
+.size-opt.on { background: #ffe9a8; border-color: #c9502a; font-weight: bold; }
