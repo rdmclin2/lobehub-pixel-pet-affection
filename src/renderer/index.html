@@ -25,19 +25,19 @@
   <!-- 1. choose an egg -->
   <section id="onboarding" class="screen hidden">
     <h1>选择你的第一个伙伴</h1>
-    <p class="sub">四颗蛋，只能带走一颗。</p>
+    <p class="sub">四块灵石，只能带走一块。</p>
     <div id="eggs" class="eggs"></div>
-    <div id="egg-info" class="egg-info">点一颗蛋看看。</div>
+    <div id="egg-info" class="egg-info">点一块灵石看看。</div>
     <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在菜单里随时关闭。</span></span></label>
     <div class="row">
       <input id="pet-name" maxlength="12" placeholder="给它起个名字（可选）" autocomplete="off" />
-      <button id="hatch-btn" class="btn primary" disabled>孵化</button>
+      <button id="hatch-btn" class="btn primary" disabled>唤醒</button>
     </div>
   </section>
 
   <!-- 2. login + create + hatch progress -->
   <section id="hatching" class="screen hidden">
-    <h1 id="hatch-title">孵化中……</h1>
+    <h1 id="hatch-title">唤醒中……</h1>
     <canvas id="hatch-canvas" width="192" height="192"></canvas>
     <div id="hatch-vwrap" class="vwrap hidden"><video id="hatch-video" muted playsinline></video></div>
     <ol id="steps" class="steps">
@@ -45,7 +45,7 @@
       <li data-step="login">在浏览器里登录 LobeHub</li>
       <li data-step="creating-agent">创建你的小精灵（lh agent）</li>
       <li data-step="connecting-device" id="step-device">连接这台电脑（让它能读写文件）</li>
-      <li data-step="hatching">破壳</li>
+      <li data-step="hatching">醒来</li>
     </ol>
     <div id="login-box" class="login-box hidden">
       <div id="login-msg">浏览器已打开登录页，请确认验证码：</div>

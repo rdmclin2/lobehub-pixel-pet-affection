@@ -46,13 +46,13 @@ async function step(scenario, name, fn, page) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
-async function launch(env, { gate = false } = {}) {
+async function launch(env, { gate = false, video = null } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   }
-  const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env } });
+  const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
@@ -108,7 +108,7 @@ async function fresh() {
     await step(S, 'choosing an egg enables hatching and shows its element', async () => {
       await page.locator('.egg-card').nth(1).click();
       assert.equal(await page.locator('#hatch-btn').isDisabled(), false);
-      assert.match(await page.locator('#egg-info').textContent(), /水之蛋/);
+      assert.match(await page.locator('#egg-info').textContent(), /水之灵石/);
       await page.fill('#pet-name', '小蓝');
     }, page);
 
@@ -265,7 +265,9 @@ async function wardrobe() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobe-fake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
-  let { app, page } = await launch(env, { gate: true });
+  const VIDEO = path.join(SHOTS, 'video');
+  fs.rmSync(VIDEO, { recursive: true, force: true });
+  let { app, page } = await launch(env, { gate: true, video: VIDEO });
   const shot = async (name) => { await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const petJson = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
@@ -296,11 +298,16 @@ async function wardrobe() {
       assert.equal(st.adultContent, true);
       await page.locator('.egg-card').nth(1).click();
       await page.fill('#pet-name', '小蓝');
+      assert.match(await page.textContent('#egg-info'), /水之灵石/);
+      const a = await shot('01b-new-pet-choose-companion');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await waitReply(page, 15000);
       await idle();
-      return `settings.json: ${JSON.stringify(st)}`;
+      await hover(page);
+      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸/);
+      const b = await shot('01c-new-pet-created');
+      return `${a}, ${b} · settings.json: ${JSON.stringify(st)}`;
     });
 
     await step(S, 'initial state: affection bar, number, stage name and distance to the next stage', async () => {
@@ -380,77 +387,159 @@ async function wardrobe() {
       assert.equal(await page.textContent('.topic[data-topic="riddle"] .st'), '点击聊聊');
       assert.equal(await page.textContent('.topic[data-topic="whine"] .st'), '🔒 亲近（♥35）解锁，还差 20');
       assert.match(await page.textContent('.topic[data-topic="tease"]'), /成人向.*🔒 暧昧（♥60）解锁/);
-      const f = await shot('09-topics-with-locked-items');
+      return await shot('09-topics-with-locked-items');
+    });
+
+    await step(S, 'a topic unlocked at 熟悉 can be started: the agent gets it and the pet answers', async () => {
+      await page.click('.topic[data-topic="riddle"]');
+      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      const b = await waitReply(page, 15000);
+      await idle();
+      const runs = fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+      const last = runs[runs.length - 1].prompt;
+      assert.match(last, /\[话题\] 脑筋急转弯/);
+      assert.match(last, /阶段=熟悉/);
+      assert.match(b, /脑筋急转弯/);
+      return `${await shot('10-unlocked-topic-started')} · bubble: ${b.slice(0, 80)}`;
+    });
+
+    await step(S, 'crossing 35 by a pat moves 熟悉 -> 亲近 and unlocks the next topics and outfits', async () => {
+      // Test hook: 34 points with today's counters reset; the pat that crosses 35 is real.
+      await page.evaluate(() => window.pet.debugSet({ affection: 34, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
+      await hover(page);
+      await page.locator('#pet-canvas').click();
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
+      await idle();
+      await page.waitForTimeout(800);
+      await hover(page);
+      const toast = await page.textContent('#unlock-toast');
+      assert.match(toast, /关系升级：亲近（♥35）/);
+      assert.match(toast, /解锁话题：「求安慰 \/ 打气」、「给彼此起昵称」、「撒娇模式」、「说说昨晚的怪梦」/);
+      assert.match(toast, /解锁服饰：「毛绒睡衣」、「猫耳家居服」/);
+      const f = await shot('11-stage-up-close');
+      await page.click('#toast-close');
+      return `${f} · ${toast.replace(/\s+/g, ' ').trim()}`;
+    });
+
+    await step(S, 'crossing 60 by a pat moves 亲近 -> 暧昧 and unlocks the adult-tier topics and outfits (18+ on)', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 59, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
+      await hover(page);
+      await page.locator('#pet-canvas').click();
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
+      await idle();
+      await page.waitForTimeout(800);
+      await hover(page);
+      const toast = await page.textContent('#unlock-toast');
+      assert.match(toast, /关系升级：暧昧（♥60）/);
+      assert.match(toast, /解锁话题：「交换小秘密」、「深夜谈心」、「调戏一下」、「吃醋模式」、「假装约会」/);
+      assert.match(toast, /解锁服饰：「浴衣」、「女仆装」、「露肩晚礼服」/);
+      return `${await shot('12-stage-up-flirty')} · ${toast.replace(/\s+/g, ' ').trim()}`;
+    });
+
+    await step(S, 'the topic panel now offers the 暧昧 topics; 恋人 topics stay locked', async () => {
+      await page.click('#toast-close');
+      await clickAct(page, 'topics');
+      await page.waitForSelector('#panel:not(.hidden) .topic');
+      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+      assert.equal(await page.textContent('.topic[data-topic="tease"] .st'), '点击聊聊');
+      assert.match(await page.textContent('.topic[data-topic="sweet_talk"] .st'), /🔒 恋人（♥85）解锁/);
+      await page.locator('.topic[data-topic="tease"]').scrollIntoViewIfNeeded();
+      const f = await shot('13-topics-flirty-unlocked');
       await closePanel();
       return f;
     });
 
-    await step(S, 'restart: the app is closed and relaunched, and the pet still wears the casual outfit', async () => {
+    await step(S, 'an adult outfit (maid) unlocked at 暧昧 can be worn while adult content is on', async () => {
+      await openWardrobe();
+      await page.click('.card[data-outfit="maid"]');
+      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
+      assert.equal(petJson().equippedOutfit, 'maid');
+      assert.equal(await page.locator('.card.locked').count(), 4);
+      const a = await shot('14-wardrobe-maid-equipped-adult-on');
+      await closePanel();
+      await hover(page);
+      return `${a}, ${await shot('15-pet-wearing-maid')}`;
+    });
+
+    await step(S, 'restart: the app is closed and relaunched; affection, stage, unlocks and the outfit are kept', async () => {
+      const before = await view(page);
       const pid0 = app.process().pid;
       restartLog.push(`$ PIXELPET_DATA_DIR=${data} electron . --no-sandbox   # launched by e2e/run.js (Playwright _electron.launch)`);
       restartLog.push(`[${new Date().toISOString()}] running app pid=${pid0}`);
-      restartLog.push(`[${new Date().toISOString()}] pet.json before close: equippedOutfit=${petJson().equippedOutfit} affection=${petJson().affection} relStage=${petJson().relStage}`);
+      const pj = petJson();
+      restartLog.push(`[${new Date().toISOString()}] pet.json before close: affection=${pj.affection} relStage=${pj.relStage} peakStage=${pj.peakStage} equippedOutfit=${pj.equippedOutfit} lastSafeOutfit=${pj.lastSafeOutfit}`);
+      restartLog.push(`[${new Date().toISOString()}] view before close: stage=${before.affection.stageName} ♥${before.affection.value}; unlocked topics ${before.topics.filter((t) => t.unlocked).length}/${before.topics.length}; unlocked outfits ${before.outfits.filter((o) => o.unlocked).length}/${before.outfits.length}`);
       await app.close();
       let alive = true;
       try { process.kill(pid0, 0); } catch { alive = false; }
       restartLog.push(`[${new Date().toISOString()}] app.close() done; process ${pid0} alive=${alive}`);
-      ({ app, page } = await launch(env));
+      ({ app, page } = await launch(env, { video: VIDEO }));
       const pid1 = app.process().pid;
       restartLog.push(`[${new Date().toISOString()}] relaunched app pid=${pid1} (same data dir)`);
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
       const v = await view(page);
-      restartLog.push(`[${new Date().toISOString()}] after restart: view.outfit=${v.outfit} stage=${v.affection.stageName} ♥${v.affection.value}`);
+      restartLog.push(`[${new Date().toISOString()}] view after restart: stage=${v.affection.stageName} ♥${v.affection.value}; outfit=${v.outfit}; unlocked topics ${v.topics.filter((t) => t.unlocked).length}/${v.topics.length}; unlocked outfits ${v.outfits.filter((o) => o.unlocked).length}/${v.outfits.length}`);
       assert.notEqual(pid1, pid0);
       assert.equal(alive, false);
-      assert.equal(v.outfit, 'casual');
+      assert.equal(v.outfit, 'maid');
+      assert.equal(v.affection.value, before.affection.value);
+      assert.equal(v.affection.stageName, '暧昧');
+      assert.deepEqual(v.topics.map((t) => [t.id, t.unlocked]), before.topics.map((t) => [t.id, t.unlocked]));
+      assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
-      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 休闲卫衣');
-      const a = await shot('10-after-restart-pet');
+      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 女仆装');
+      assert.match(await page.textContent('#meta'), /暧昧 ♥60/);
+      const a = await shot('16-after-restart-pet');
       await openWardrobe();
-      assert.equal(await cardStatus('casual'), '✓ 穿着中');
-      assert.equal(await page.getAttribute('#outfit-preview', 'data-outfit'), 'casual');
-      const b = await shot('11-after-restart-wardrobe');
-      restartLog.push(`[${new Date().toISOString()}] wardrobe after restart: casual card "${await cardStatus('casual')}", preview=${await page.getAttribute('#outfit-preview', 'data-outfit')}`);
+      assert.equal(await cardStatus('maid'), '✓ 穿着中');
+      assert.equal(await page.locator('.card.locked').count(), 4);
+      const b = await shot('17-after-restart-wardrobe');
+      await closePanel();
+      await clickAct(page, 'topics');
+      await page.waitForSelector('#panel:not(.hidden) .topic');
+      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+      assert.equal(await page.textContent('.topic[data-topic="tease"] .st'), '点击聊聊');
+      const c = await shot('18-after-restart-topics');
       await closePanel();
       fs.writeFileSync(path.join(SHOTS, 'restart-log.txt'), restartLog.join('\n') + '\n');
-      return `${a}, ${b} · pid ${pid0} -> ${pid1}`;
+      return `${a}, ${b}, ${c} · pid ${pid0} -> ${pid1}`;
     });
 
-    await step(S, 'adult switch: an adult outfit (maid) can be worn while adult content is on', async () => {
-      await page.evaluate(() => window.pet.debugSet({ affection: 70 })); // test hook: jump to 暧昧
-      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
-      await idle();
-      await page.click('#toast-close');
-      await openWardrobe();
-      await page.click('.card[data-outfit="maid"]');
-      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
-      const a = await shot('12-wardrobe-maid-equipped-adult-on');
-      await closePanel();
+    await step(S, 'adult switch off: adult topics and outfits disappear and the pet changes back to its last all-ages outfit', async () => {
       await clickAct(page, 'menu');
       assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：开（点此关闭）');
-      return `${a}, ${await shot('13-menu-adult-switch-on')}`;
-    });
-
-    await step(S, 'adult switch off: adult outfits disappear and the pet changes back to its last all-ages outfit', async () => {
+      const m = await shot('19-menu-adult-switch-on');
       await page.click('#menu-adult');
       await page.waitForFunction(() => /已换回「休闲卫衣」/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const v = await view(page);
       assert.equal(v.outfit, 'casual');
       assert.equal(v.affection.stageName, '知己');
       assert.equal(petJson().equippedOutfit, 'casual');
+      assert.deepEqual(v.topics.filter((t) => t.rating === 'adult'), []);
+      assert.deepEqual(v.outfits.filter((o) => o.rating === 'adult'), []);
       await hover(page);
-      const a = await shot('14-adult-off-pet-back-in-casual');
+      const a = await shot('20-adult-off-pet-back-in-casual');
       await clickAct(page, 'menu');
       assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：关（点此开启）');
-      const b = await shot('15-menu-adult-switch-off');
-      await page.locator('#main-menu').evaluate((m) => m.classList.add('hidden'));
+      const b = await shot('21-menu-adult-switch-off');
+      await page.locator('#main-menu').evaluate((el) => el.classList.add('hidden'));
       await openWardrobe();
       assert.equal(await page.locator('.card').count(), 9);
       assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0);
       assert.equal(await cardStatus('casual'), '✓ 穿着中');
-      const c = await shot('16-wardrobe-adult-off-no-adult-items');
+      assert.doesNotMatch(await page.textContent('#panel'), /成人向|暧昧|恋人/);
+      const c = await shot('22-wardrobe-adult-off-no-adult-items');
       await closePanel();
-      return `${a}, ${b}, ${c} · bubble: ${await bubbleText(page)}`;
+      await clickAct(page, 'topics');
+      await page.waitForSelector('#panel:not(.hidden) .topic');
+      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+      assert.equal(await page.locator('.topic').count(), 13);
+      assert.equal(await page.locator('.topic[data-topic="tease"]').count(), 0);
+      assert.doesNotMatch(await page.textContent('#panel'), /成人向|暧昧|恋人/);
+      const d = await shot('23-topics-adult-off-all-ages-only');
+      await closePanel();
+      const stateBlock = (await view(page)).affection.stageName;
+      return `${m}, ${a}, ${b}, ${c}, ${d} · stage shown as ${stateBlock} · bubble: ${await bubbleText(page)}`;
     });
   } finally {
     await app.close().catch(() => {});
@@ -502,7 +591,7 @@ async function dafeiyu() {
     await step(S, 'the egg screen offers four eggs and the fourth is the whale egg', async () => {
       await page.waitForSelector('.egg-card');
       assert.equal(await page.locator('.egg-card').count(), 4);
-      assert.match(await page.locator('.egg-card').nth(3).textContent(), /鲸之蛋/);
+      assert.match(await page.locator('.egg-card').nth(3).textContent(), /鲸之灵石/);
       await page.locator('.egg-card').nth(3).click();
       assert.match(await page.locator('#egg-info').textContent(), /大肥鱼|鱼片/);
       await page.fill('#pet-name', 'Mow');
