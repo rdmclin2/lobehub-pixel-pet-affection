@@ -2,7 +2,18 @@
 
 > **派生声明**：本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。大肥鱼素材仍遵循 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的非商用条款（CC BY-NC-SA 4.0）。
 >
-> 本派生版把原有的成长系统改造成**好感度系统**：互动提升好感，按阶段解锁分级对话和服饰。所有角色设定为成年人；成人向内容仅限暧昧、调情等非露骨内容，需要首次启动时确认年满 18 岁，并可随时关闭。改造设计见 [docs/affection-design.md](docs/affection-design.md)。以下为上游原 README。
+> 本派生版把原有的成长系统改造成**好感度系统**：互动提升好感，按阶段解锁分级对话和服饰。所有角色设定为成年人；成人向内容仅限暧昧、调情等非露骨内容，需要首次启动时确认年满 18 岁，并可随时关闭。改造设计见 [docs/affection-design.md](docs/affection-design.md)。
+>
+> 好感度版的界面：
+>
+> - **首次启动先问是否年满 18 岁**；选“只看全年龄”时，暧昧 / 恋人阶段显示为“知己 / 挚友”，不出现成人向话题和服饰。⋯ 菜单里有“成人向内容：开 / 关”。
+> - 悬停时显示 💗 好感条、数值（♥42/100）、阶段名和“距「下一阶段」还差 N”；每次加分在宠物头顶飘出 `+N ♥`。
+> - 升级时弹出提示，逐一列出本次解锁的话题和服饰。
+> - **衣柜**：13 套像素服饰（每个阶段至少一套全年龄服饰），锁定项显示 🔒 和解锁条件；换装立即生效并在重启后保持。关闭成人向内容时自动换回最近穿过的全年龄服饰。素材为本项目自制（MIT），见 [NOTICE.md](NOTICE.md)。
+> - **话题**：按阶段分组，锁定话题同样标注解锁条件。
+> - `xvfb-run -a node e2e/run.js wardrobe` 走完整流程，截图在 `out/e2e/affection-ui/`。
+>
+> 以下为上游原 README。
 
 ---
 

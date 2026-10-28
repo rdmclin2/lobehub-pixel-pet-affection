@@ -13,13 +13,14 @@ const { FOODS } = require('../core/pet-state');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
-const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 300 } };
+const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 300 }, panel: { w: 460, h: 540 } };
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
 
 let win = null;
 let service = null;
+let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 
 function place(mode) {
   const { w, h } = SIZES[mode];
@@ -117,6 +118,8 @@ function wire() {
   ipcMain.handle('get-settings', () => service.getSettings());
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
+  ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
+  ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.
@@ -149,7 +152,23 @@ function wire() {
     const [x, y] = win.getPosition();
     win.setPosition(Math.round(x + dx), Math.round(y + dy));
   });
-  ipcMain.on('place', (_e, mode) => { if (mode in SIZES) place(mode); });
+  ipcMain.on('place', (_e, mode) => { if (mode in SIZES) { petBounds = null; place(mode); } });
+  // Wardrobe / topic panel: grow the pet window up and to the left (its bottom-right corner stays put),
+  // then give the pet its old bounds back when the panel closes.
+  ipcMain.on('panel', (_e, open) => {
+    if (!win) return;
+    if (open && !petBounds) {
+      petBounds = win.getBounds();
+      const { w, h } = SIZES.panel;
+      const wa = screen.getDisplayMatching(petBounds).workArea;
+      const x = Math.max(wa.x, Math.min(petBounds.x + petBounds.width - w, wa.x + wa.width - w));
+      const y = Math.max(wa.y, Math.min(petBounds.y + petBounds.height - h, wa.y + wa.height - h));
+      win.setBounds({ x, y, width: w, height: h });
+    } else if (!open && petBounds) {
+      win.setBounds(petBounds);
+      petBounds = null;
+    }
+  });
   ipcMain.on('quit', () => app.quit());
 
   if (TEST_MODE) {

@@ -7,6 +7,21 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- 0. 18+ confirmation: first launch (or an outdated answer), and when turning adult content on -->
+  <section id="age-gate" class="screen hidden" role="dialog" aria-labelledby="age-title">
+    <h1 id="age-title">开始之前</h1>
+    <p class="gate-text">本应用包含面向成年人的暧昧互动内容（不含露骨内容）。<br />你是否已年满 18 周岁？</p>
+    <ul class="gate-list">
+      <li>所有角色都是成年人（设定年龄 25 岁以上）。</li>
+      <li>选择“只看全年龄”后，暧昧 / 恋人阶段会显示为“知己 / 挚友”，成人向话题和服饰不会出现。</li>
+      <li>之后可以随时在 ⋯ 菜单里关闭成人向内容。</li>
+    </ul>
+    <div class="row">
+      <button id="age-yes" class="btn primary">我已年满 18 岁</button>
+      <button id="age-no" class="btn">未满 18 岁 / 只看全年龄内容</button>
+    </div>
+  </section>
+
   <!-- 1. choose an egg -->
   <section id="onboarding" class="screen hidden">
     <h1>选择你的第一个伙伴</h1>
@@ -45,9 +60,17 @@
   <section id="pet-screen" class="screen hidden">
     <div id="bubble" class="bubble hidden"></div>
     <div class="bubble-tail"></div>
+    <div id="unlock-toast" class="unlock-toast hidden" role="status" aria-live="polite">
+      <button id="toast-close" class="toast-x" title="关闭" aria-label="关闭提示">×</button>
+      <div id="toast-title" class="toast-title"></div>
+      <div id="toast-body" class="toast-body"></div>
+      <button id="toast-open" class="btn toast-btn">去衣柜看看</button>
+    </div>
     <div id="stage" class="stage">
       <canvas id="pet-canvas" class="pet-hit" width="120" height="120"></canvas>
       <div id="vwrap" class="vwrap pet-hit hidden"><video id="pet-video" muted playsinline></video></div>
+      <div id="outfit-badge" class="outfit-badge"></div>
+      <div id="float-layer" class="float-layer" aria-live="polite"></div>
     </div>
     <!-- while the pet is working, hovering shows only this button (everything else stays hidden) -->
     <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）">■ 停止</button>
@@ -58,13 +81,20 @@
         <span title="心情">♥ <i id="bar-mood"></i></span>
         <span title="体力">⚡ <i id="bar-energy"></i></span>
       </div>
+      <div id="aff-row" class="aff-row" title="好感度">
+        <span id="aff-stage" class="aff-stage"></span>
+        <span class="aff-heart">💗</span><i id="bar-affection" class="aff-bar"></i>
+        <span id="aff-num" class="aff-num"></span>
+      </div>
       <div id="meta" class="meta"></div>
       <div id="toolbar" class="toolbar">
         <button class="btn" data-act="feed">喂食</button>
         <button class="btn" data-act="play">玩耍</button>
         <button class="btn" data-act="sleep">睡觉</button>
         <button class="btn" data-act="chat">聊天</button>
-        <button class="btn" data-act="menu">⋯</button>
+        <button class="btn" data-act="topics" id="btn-topics" title="话题：按好感度阶段解锁" aria-label="话题">话题<b class="new-dot hidden">新</b></button>
+        <button class="btn" data-act="wardrobe" id="btn-wardrobe" title="衣柜：按好感度阶段解锁服饰" aria-label="衣柜">衣柜<b class="new-dot hidden">新</b></button>
+        <button class="btn" data-act="menu" title="更多" aria-label="更多">⋯</button>
       </div>
       <div id="attach-row" class="attach-row hidden"></div>
       <div id="chat-row" class="row chat-row hidden">
@@ -74,6 +104,7 @@
       </div>
       <div id="food-menu" class="popup hidden"></div>
       <div id="main-menu" class="popup hidden">
+        <button class="btn" id="menu-adult" data-menu="adult">成人向内容：…</button>
         <button class="btn" id="menu-local" data-menu="local">本机能力：…</button>
         <button class="btn" data-menu="release">放生并删除 agent</button>
         <button class="btn" data-menu="forget">仅重置本地</button>
@@ -81,6 +112,19 @@
         <button class="btn" data-menu="credits">素材署名</button>
         <button class="btn" data-menu="quit">退出</button>
       </div>
+    </div>
+
+    <!-- wardrobe / topics: the window grows while one is open -->
+    <div id="panel" class="panel hidden" role="dialog" aria-labelledby="panel-title">
+      <div class="panel-head">
+        <div>
+          <div id="panel-title" class="panel-title"></div>
+          <div id="panel-sub" class="panel-sub"></div>
+        </div>
+        <button id="panel-close" class="btn" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div id="panel-msg" class="panel-msg hidden" role="status"></div>
+      <div id="panel-body" class="panel-body"></div>
     </div>
   </section>
 

@@ -5,6 +5,7 @@ const state = require('../core/pet-state');
 const persona = require('../core/persona');
 const { adultAllowed } = require('../core/affection');
 const dialogue = require('../core/dialogue');
+const outfits = require('../core/outfits');
 const { migratePet } = require('../core/migrate');
 const settingsLib = require('../core/settings');
 const { getSpecies } = require('../core/species');
@@ -47,7 +48,9 @@ class PetService extends EventEmitter {
     this.pet = pet;
     if (this.pet) {
       const { decay } = state.tick(this.pet, t);
-      if (migrated || decay > 0) this.store.save(this.pet);
+      // The settings may have changed while the app was closed (e.g. a re-asked age gate).
+      const { changed } = outfits.enforceOutfit(this.pet, this.settings);
+      if (migrated || decay > 0 || changed) this.store.save(this.pet);
       if (decay > 0) this._pendingDecay = decay;
     }
     return this.view();
@@ -70,6 +73,8 @@ class PetService extends EventEmitter {
       status: state.currentStatus(this.pet),
       affection: state.toAffectionProgress(this.pet, { adult: this._adult() }),
       topics: dialogue.listTopics(this.pet, this.settings),
+      outfits: outfits.listOutfits(this.pet, this.settings),
+      outfit: outfits.wornOutfit(this.pet, this.settings),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, element: sp.element },
       busy: this.busy,
@@ -351,8 +356,11 @@ class PetService extends EventEmitter {
   }
 
   async _onStageUp(r) {
-    const unlocks = dialogue.topicsForStages(r.unlockedStages, this.pet, this.settings);
-    this.emit('affection', { type: 'stage-up', stage: r.to, view: this.view(), unlocks: { topics: unlocks } });
+    const unlocks = {
+      topics: dialogue.topicsForStages(r.unlockedStages, this.pet, this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, this.pet, this.settings),
+    };
+    this.emit('affection', { type: 'stage-up', stage: r.to, view: this.view(), unlocks });
     await this._speak('stage_up');
   }
 
@@ -401,9 +409,20 @@ class PetService extends EventEmitter {
   answerAgeGate(isAdult) {
     this.settings = settingsLib.answerAgeGate(this.settings, !!isAdult, this.now());
     this.settingsStore.save(this.settings);
-    if (this.pet) this._save();
-    else this.emit('settings', this.settingsView());
-    return { ok: true, settings: this.settingsView() };
+    const outfitChanged = this._applySettings();
+    return { ok: true, settings: this.settingsView(), outfitChanged, view: this.view() };
+  }
+
+  // After a settings change: an adult outfit that may no longer be shown is swapped for the last
+  // all-ages one (design 8.4), then everything is saved and the UI refreshed.
+  _applySettings() {
+    if (!this.pet) {
+      this.emit('settings', this.settingsView());
+      return null;
+    }
+    const r = outfits.enforceOutfit(this.pet, this.settings);
+    this._save();
+    return r.changed ? { from: r.from, to: r.to } : null;
   }
 
   setAdultContent(on) {
@@ -411,9 +430,30 @@ class PetService extends EventEmitter {
     if (!r.ok) return { ok: false, reason: r.reason, settings: this.settingsView() };
     this.settings = r.settings;
     this.settingsStore.save(this.settings);
-    if (this.pet) this._save();
-    else this.emit('settings', this.settingsView());
-    return { ok: true, settings: this.settingsView() };
+    const outfitChanged = this._applySettings();
+    return { ok: true, settings: this.settingsView(), outfitChanged, view: this.view() };
+  }
+
+  // ---- wardrobe (design 5, 9.5) ---------------------------------------------------------------
+  // Only an unlocked outfit the user may see can be put on; the choice is saved with the pet.
+  equipOutfit(id) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const r = outfits.equipOutfit(this.pet, this.settings, String(id || ''));
+    if (!r.ok) return r;
+    this._save();
+    return { ok: true, outfit: r.outfit, view: this.view() };
+  }
+
+  // The user opened the wardrobe or topic panel: its unlocked items are no longer "new".
+  markSeen(kind) {
+    if (!this.pet || !['outfit', 'topic'].includes(kind)) return { ok: false };
+    const list = kind === 'outfit' ? outfits.listOutfits(this.pet, this.settings) : dialogue.listTopics(this.pet, this.settings);
+    const ids = list.filter((x) => x.isNew).map((x) => `${kind}:${x.id}`);
+    if (ids.length) {
+      this.pet.seenUnlocks = [...(this.pet.seenUnlocks || []), ...ids];
+      this._save();
+    }
+    return { ok: true, marked: ids.length };
   }
 
   // Care actions: instant, deterministic, no LLM cost (reaction line is canned).

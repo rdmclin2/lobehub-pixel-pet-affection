@@ -7,7 +7,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', 'src');
 // Display and prompt sources. lh-client / lh-path / local-device are CLI plumbing ("child process").
-const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/sprites.js', 'renderer/style.css'];
+const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'core/outfits.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/sprites.js', 'renderer/style.css'];
 const BANNED = /幼崽|少年|少女|萝莉|正太|\bbaby\b|\bchild\b|成长阶段|成长进化|破壳而出/;
 
 test('no growth stage or minor framing in display or prompt sources', () => {

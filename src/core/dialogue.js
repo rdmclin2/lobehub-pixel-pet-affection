@@ -156,6 +156,7 @@ function listTopics(pet, settings) {
       locked: !unlocked,
       condition: unlocked ? null : lockCondition(t.stage, pet.affection, adult),
       talkedToday: (pet.topicsToday || []).includes(t.id),
+      isNew: unlocked && t.stage !== 'stranger' && !(pet.seenUnlocks || []).includes(`topic:${t.id}`),
     };
   });
 }

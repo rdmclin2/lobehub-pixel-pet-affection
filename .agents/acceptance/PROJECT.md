@@ -32,6 +32,9 @@ CLI behaviour is exercised indirectly through the app.
 Test-only IPC (enabled by `PIXELPET_TEST=1`): `window.pet.debugSet(patch)` forces pet
 fields (hunger, affection, ...; forcing `affection` re-derives the stage), `window.pet.debugHeartbeat()` runs one proactive tick.
 `#bubble[data-source]` is `llm` or `fallback`, and `data-reason` says why a canned line was used.
+`e2e/run.js` writes an answered (all-ages) `settings.json` into each fresh data dir; `launch(env, { gate: true })` skips that so the first-launch 18+ gate shows.
+The `wardrobe` scenario drives gate -> pet -> affection -> stage-up notice -> wardrobe -> restart -> adult switch, with named screenshots in `out/e2e/affection-ui/` and the restart log in `restart-log.txt`.
+`node e2e/run.js all` includes `live` (real agent, real tokens); run scenarios by name to avoid it.
 
 ## 6. Known constraints
 

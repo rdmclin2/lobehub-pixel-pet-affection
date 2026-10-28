@@ -44,7 +44,14 @@ async function step(scenario, name, fn, page) {
   return rec.status === 'pass';
 }
 
-async function launch(env) {
+// Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
+// state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
+async function launch(env, { gate = false } = {}) {
+  const dir = env && env.PIXELPET_DATA_DIR;
+  if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
+  }
   const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env } });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
@@ -217,6 +224,20 @@ async function fresh() {
       return `after restart: ${await page.textContent('#meta')}`;
     }, () => page);
 
+    await step(S, 'without an 18+ answer the adult switch is off and only reopens the same 18+ confirmation', async () => {
+      await clickAct(page, 'menu');
+      assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：关（需年满 18 岁）');
+      await page.screenshot({ path: path.join(OUT, 'adult-switch-needs-18.png') });
+      await page.click('#menu-adult');
+      await page.waitForSelector('#age-gate:not(.hidden)');
+      await page.screenshot({ path: path.join(OUT, 'adult-switch-reopens-gate.png') });
+      await page.click('#age-no');
+      await page.waitForSelector('#pet-screen:not(.hidden)');
+      const v = await view(page);
+      assert.equal(v.settings.adultContent, false);
+      assert.ok(v.outfits.every((o) => o.rating === 'all'));
+    }, () => page);
+
     await step(S, 'release deletes the agent through lh and returns to egg selection', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="release"]');
@@ -226,6 +247,211 @@ async function fresh() {
       assert.ok(del && del[2].startsWith('agt_FAKE') && del.includes('--yes'), 'lh agent delete <id> --yes was not called');
       fs.writeFileSync(path.join(OUT, 'release-check.txt'), `$ ${del.length ? 'lh ' + del.join(' ') : ''}\n(recorded by the fake lh CLI used in this scenario; the app asked for the agent to be deleted, then returned to egg selection)\n`);
     }, () => page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------- wardrobe
+// The affection UI end to end on the real app: first-launch 18+ gate -> a pet -> interaction raises
+// affection -> stage-up notice naming the unlocked topics and outfits -> wardrobe with locked items ->
+// changing clothes -> restart keeps the outfit -> adult switch off falls back to an all-ages outfit.
+// Named screenshots go to out/e2e/affection-ui/.
+async function wardrobe() {
+  const S = 'wardrobe';
+  const SHOTS = path.join(OUT, 'affection-ui');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobe-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobe-fake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  let { app, page } = await launch(env, { gate: true });
+  const shot = async (name) => { await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const petJson = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  const restartLog = [];
+  const openWardrobe = async () => {
+    await clickAct(page, 'wardrobe');
+    await page.waitForSelector('#panel:not(.hidden) .card');
+    await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+  };
+  const closePanel = async () => {
+    await page.click('#panel-close');
+    await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+  };
+  const cardStatus = (id) => page.textContent(`.card[data-outfit="${id}"] .st`);
+  try {
+    await step(S, 'first launch asks for 18+ before anything else', async () => {
+      await page.waitForSelector('#age-gate:not(.hidden)', { timeout: 15000 });
+      assert.equal(await page.locator('#onboarding').isHidden(), true);
+      assert.match(await page.textContent('#age-gate'), /是否已年满 18 周岁/);
+      return await shot('01-age-gate-first-launch');
+    });
+
+    await step(S, 'answering 18+ goes on to companion selection and saves the answer', async () => {
+      await page.click('#age-yes');
+      await page.waitForSelector('#onboarding:not(.hidden)');
+      const st = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+      assert.equal(st.ageConfirmed, true);
+      assert.equal(st.adultContent, true);
+      await page.locator('.egg-card').nth(1).click();
+      await page.fill('#pet-name', '小蓝');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await idle();
+      return `settings.json: ${JSON.stringify(st)}`;
+    });
+
+    await step(S, 'initial state: affection bar, number, stage name and distance to the next stage', async () => {
+      await hover(page);
+      assert.equal((await page.textContent('#aff-stage')).trim(), '陌生');
+      assert.equal((await page.textContent('#aff-num')).trim(), '♥0/100');
+      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸 · 陌生 ♥0 · 距「熟悉」15/);
+      assert.equal(petJson().equippedOutfit, 'daily');
+      return `${await shot('02-initial-state')} · meta: ${await page.textContent('#meta')}`;
+    });
+
+    await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
+      await page.locator('#pet-canvas').click();
+      await page.waitForSelector('.float');
+      const float = await page.textContent('.float');
+      await hover(page);
+      await page.waitForFunction(() => !/♥0\//.test(document.getElementById('aff-num').textContent));
+      const f = await shot('03-affection-up');
+      assert.match(float, /^\+\d+(\.\d)? ♥$/); // first interaction of the day: +3 greet bonus, +1 pat (x1.2 when happy)
+      assert.ok((await view(page)).pet.affection >= 4);
+      return `${f} · float "${float}" · meta: ${await page.textContent('#meta')}`;
+    });
+
+    await step(S, 'crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics and outfits', async () => {
+      // Test hook: 14 points (a day's cap is 12, so reaching 15 by hand takes two days); the pat that crosses is real.
+      await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
+      await hover(page);
+      await page.locator('#pet-canvas').click();
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
+      await idle();
+      await page.waitForTimeout(800); // let the stage-up flash fade
+      await hover(page);
+      const toast = await page.textContent('#unlock-toast');
+      assert.match(toast, /关系升级：熟悉（♥15）/);
+      assert.match(toast, /解锁话题：「聊聊爱好」、「奇怪的冷知识」、「脑筋急转弯」/);
+      assert.match(toast, /解锁服饰：「休闲卫衣」、「贝雷帽画家装」/);
+      assert.equal(await page.locator('#btn-wardrobe .new-dot').isVisible(), true);
+      return `${await shot('04-stage-up-unlock-notice')} · ${toast.replace(/\s+/g, ' ').trim()}`;
+    });
+
+    await step(S, 'the wardrobe lists every outfit; locked ones are greyed with a lock and their condition', async () => {
+      await page.click('#toast-open');
+      await page.waitForSelector('#panel:not(.hidden) .card');
+      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+      assert.equal(await page.locator('.card').count(), 13);
+      assert.equal(await page.locator('.card.locked').count(), 9);
+      assert.equal(await cardStatus('daily'), '✓ 穿着中');
+      assert.equal(await cardStatus('pajamas'), '🔒 亲近（♥35）解锁，还差 20');
+      assert.equal(await cardStatus('maid'), '🔒 暧昧（♥60）解锁，还差 45');
+      return await shot('05-wardrobe-with-locked-items');
+    });
+
+    await step(S, 'a locked outfit cannot be put on: the wardrobe says what unlocks it', async () => {
+      await page.click('.card[data-outfit="pajamas"]');
+      await page.waitForSelector('#panel-msg:not(.hidden)');
+      assert.match(await page.textContent('#panel-msg'), /「毛绒睡衣」还没解锁：亲近（♥35）解锁，还差 20/);
+      assert.equal(petJson().equippedOutfit, 'daily');
+      return await shot('06-locked-outfit-refused');
+    });
+
+    await step(S, 'putting on an unlocked outfit changes the figure and marks it worn', async () => {
+      await page.click('.card[data-outfit="casual"]');
+      await page.waitForSelector('.card.equipped[data-outfit="casual"]');
+      assert.equal(await page.getAttribute('#outfit-preview', 'data-outfit'), 'casual');
+      assert.equal(await cardStatus('casual'), '✓ 穿着中');
+      assert.equal(petJson().equippedOutfit, 'casual');
+      const a = await shot('07-wardrobe-casual-equipped');
+      await closePanel();
+      await hover(page);
+      return `${a}, ${await shot('08-pet-wearing-casual')} · pet.json equippedOutfit=casual`;
+    });
+
+    await step(S, 'the topic panel marks locked topics with their unlock condition', async () => {
+      await clickAct(page, 'topics');
+      await page.waitForSelector('#panel:not(.hidden) .topic');
+      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
+      assert.equal(await page.textContent('.topic[data-topic="riddle"] .st'), '点击聊聊');
+      assert.equal(await page.textContent('.topic[data-topic="whine"] .st'), '🔒 亲近（♥35）解锁，还差 20');
+      assert.match(await page.textContent('.topic[data-topic="tease"]'), /成人向.*🔒 暧昧（♥60）解锁/);
+      const f = await shot('09-topics-with-locked-items');
+      await closePanel();
+      return f;
+    });
+
+    await step(S, 'restart: the app is closed and relaunched, and the pet still wears the casual outfit', async () => {
+      const pid0 = app.process().pid;
+      restartLog.push(`$ PIXELPET_DATA_DIR=${data} electron . --no-sandbox   # launched by e2e/run.js (Playwright _electron.launch)`);
+      restartLog.push(`[${new Date().toISOString()}] running app pid=${pid0}`);
+      restartLog.push(`[${new Date().toISOString()}] pet.json before close: equippedOutfit=${petJson().equippedOutfit} affection=${petJson().affection} relStage=${petJson().relStage}`);
+      await app.close();
+      let alive = true;
+      try { process.kill(pid0, 0); } catch { alive = false; }
+      restartLog.push(`[${new Date().toISOString()}] app.close() done; process ${pid0} alive=${alive}`);
+      ({ app, page } = await launch(env));
+      const pid1 = app.process().pid;
+      restartLog.push(`[${new Date().toISOString()}] relaunched app pid=${pid1} (same data dir)`);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      const v = await view(page);
+      restartLog.push(`[${new Date().toISOString()}] after restart: view.outfit=${v.outfit} stage=${v.affection.stageName} ♥${v.affection.value}`);
+      assert.notEqual(pid1, pid0);
+      assert.equal(alive, false);
+      assert.equal(v.outfit, 'casual');
+      await hover(page);
+      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 休闲卫衣');
+      const a = await shot('10-after-restart-pet');
+      await openWardrobe();
+      assert.equal(await cardStatus('casual'), '✓ 穿着中');
+      assert.equal(await page.getAttribute('#outfit-preview', 'data-outfit'), 'casual');
+      const b = await shot('11-after-restart-wardrobe');
+      restartLog.push(`[${new Date().toISOString()}] wardrobe after restart: casual card "${await cardStatus('casual')}", preview=${await page.getAttribute('#outfit-preview', 'data-outfit')}`);
+      await closePanel();
+      fs.writeFileSync(path.join(SHOTS, 'restart-log.txt'), restartLog.join('\n') + '\n');
+      return `${a}, ${b} · pid ${pid0} -> ${pid1}`;
+    });
+
+    await step(S, 'adult switch: an adult outfit (maid) can be worn while adult content is on', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 70 })); // test hook: jump to 暧昧
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
+      await idle();
+      await page.click('#toast-close');
+      await openWardrobe();
+      await page.click('.card[data-outfit="maid"]');
+      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
+      const a = await shot('12-wardrobe-maid-equipped-adult-on');
+      await closePanel();
+      await clickAct(page, 'menu');
+      assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：开（点此关闭）');
+      return `${a}, ${await shot('13-menu-adult-switch-on')}`;
+    });
+
+    await step(S, 'adult switch off: adult outfits disappear and the pet changes back to its last all-ages outfit', async () => {
+      await page.click('#menu-adult');
+      await page.waitForFunction(() => /已换回「休闲卫衣」/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
+      const v = await view(page);
+      assert.equal(v.outfit, 'casual');
+      assert.equal(v.affection.stageName, '知己');
+      assert.equal(petJson().equippedOutfit, 'casual');
+      await hover(page);
+      const a = await shot('14-adult-off-pet-back-in-casual');
+      await clickAct(page, 'menu');
+      assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：关（点此开启）');
+      const b = await shot('15-menu-adult-switch-off');
+      await page.locator('#main-menu').evaluate((m) => m.classList.add('hidden'));
+      await openWardrobe();
+      assert.equal(await page.locator('.card').count(), 9);
+      assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0);
+      assert.equal(await cardStatus('casual'), '✓ 穿着中');
+      const c = await shot('16-wardrobe-adult-off-no-adult-items');
+      await closePanel();
+      return `${a}, ${b}, ${c} · bubble: ${await bubbleText(page)}`;
+    });
   } finally {
     await app.close().catch(() => {});
   }
@@ -754,7 +980,7 @@ async function art() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-art-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-artfake-')) });
   try {
     await page.waitForSelector('.egg-card');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(820, 1000));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(900, 1000));
     await step(S, 'sprite sheet: 3 species x 5 moods (adult body only)', async () => {
       await page.evaluate(() => {
         const Sp = window.Sprites;
@@ -777,6 +1003,30 @@ async function art() {
       await page.screenshot({ path: path.join(OUT, 'sprite-sheet.png'), clip: { x: 0, y: 0, width: 5 * 104, height: 3 * 104 } });
       return 'rows: embit/bubbo/sprig (adult); columns: idle, happy, sad, hungry, sleep';
     });
+
+    await step(S, 'outfit sheet: every outfit as an adult figure and on each pet', async () => {
+      const ids = await page.evaluate(() => {
+        const Sp = window.Sprites;
+        const ids = Object.keys(Sp.OUTFIT_ART);
+        document.body.innerHTML = '';
+        const c = document.createElement('canvas');
+        const cw = 64, fh = Sp.FIG.h * 2, ph = 24 * 2;
+        c.width = ids.length * cw; c.height = fh + 3 * ph + 16;
+        c.style.cssText = 'position:fixed;left:0;top:0;background:#e9e4f5;image-rendering:pixelated';
+        document.body.appendChild(c);
+        const ctx = c.getContext('2d');
+        ids.forEach((id, i) => {
+          Sp.drawGrid(ctx, Sp.figure(id), (k) => Sp.figureColor(id, 'bubbo', k), 2, i * cw + 10, 4);
+          ['embit', 'bubbo', 'sprig'].forEach((sp, r) => {
+            const f = Sp.frame({ speciesId: sp, status: 'idle', t: 0, outfit: id });
+            Sp.drawGrid(ctx, f.grid, (k) => Sp.colorFor(sp, k, id), 2, i * cw + 8, fh + 8 + r * ph);
+          });
+        });
+        return ids;
+      });
+      await page.screenshot({ path: path.join(OUT, 'outfit-sheet.png'), clip: { x: 0, y: 0, width: ids.length * 64, height: 54 * 2 + 3 * 48 + 16 } });
+      return `columns: ${ids.join(', ')}; top row: adult figure, then embit/bubbo/sprig wearing it`;
+    });
   } finally {
     await app.close().catch(() => {});
   }
@@ -784,6 +1034,7 @@ async function art() {
 
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
+  if (which === 'wardrobe' || which === 'all') await wardrobe();
   if (which === 'migrate' || which === 'all') await migrate();
   if (which === 'dafeiyu' || which === 'all') await dafeiyu();
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }

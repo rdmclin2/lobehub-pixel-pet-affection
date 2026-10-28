@@ -8,6 +8,7 @@
 const aff = require('./affection');
 const { unlockedTopicIds } = require('./dialogue');
 const { SCHEMA_VERSION } = require('./migrate');
+const { DEFAULT_OUTFIT } = require('./outfits');
 
 const MIN = 60 * 1000;
 const MAX_OFFLINE_MIN = 8 * 60; // do not punish the owner for being away
@@ -30,6 +31,8 @@ function createPet({ speciesId, name, agentId, topicId = null, now }) {
     ...aff.initialAffection(now),
     unlockedTopics: unlockedTopicIds('stranger'),
     seenUnlocks: [],
+    equippedOutfit: DEFAULT_OUTFIT,
+    lastSafeOutfit: DEFAULT_OUTFIT,
     hunger: 30,
     mood: 70,
     energy: 90,
