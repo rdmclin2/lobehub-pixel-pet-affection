@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const aff = require('../src/core/affection');
 
 const T0 = new Date('2026-01-05T10:00:00').getTime();
@@ -154,9 +155,9 @@ test('progress for the UI: value, next stage and how much is missing', () => {
 });
 
 test('adult content needs both an 18+ answer and the switch, and is never allowed for Dafeiyu', () => {
-  assert.equal(aff.adultAllowed(null, 'embit'), false);
-  assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: false }, 'embit'), false);
-  assert.equal(aff.adultAllowed({ ageConfirmed: false, adultContent: true }, 'embit'), false);
-  assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: true }, 'embit'), true);
+  assert.equal(aff.adultAllowed(null, 'testchan'), false);
+  assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: false }, 'testchan'), false);
+  assert.equal(aff.adultAllowed({ ageConfirmed: false, adultContent: true }, 'testchan'), false);
+  assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: true }, 'testchan'), true);
   assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: true }, 'dafeiyu'), false);
 });

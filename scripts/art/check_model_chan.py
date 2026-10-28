@@ -1,40 +1,35 @@
-# Check the model-chan packs against bubbo-pixel's format and print one line per action frame.
-# Passes when every sheet is an RGBA PNG of the reference size, every frame of every action (pack.json +
-# actions-extra.json) has a visible figure, and every DeepSeek clip maps to a sprite action.
+# Check the model-chan pixel packs (src/renderer/packs/*-pixel, schema 2) and print one line per action.
+# Passes when every sheet is an RGBA PNG of 4 x 8 cells of 83 x 113, every state of the shared effects
+# layer (16) has an action, and every frame of every action has a visible figure.
 # usage: check_model_chan.py [repo root]
 import json, os, sys
 from PIL import Image
 
 root = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
-ref = json.load(open(os.path.join(root, 'src/renderer/packs/bubbo-pixel/pack.json')))
-ref_im = Image.open(os.path.join(root, 'src/renderer/packs/bubbo-pixel/sheets/daily.png'))
-fw, fh = ref['frame']['width'], ref['frame']['height']
-print(f"reference bubbo-pixel: {ref_im.format} {ref_im.mode} {ref_im.size}, frame {fw}x{fh}")
-clips = json.load(open(os.path.join(root, 'art/model-chan/characters.json')))['characters'][0]['art']['states']
+STATES = ['idle', 'look', 'happy', 'pat', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'hatch', 'evolve', 'lifted']
+FW, FH = 83, 113
+packs_dir = os.path.join(root, 'src/renderer/packs')
 bad = 0
-packs_dir = os.path.join(root, 'art/model-chan/packs')
-for pid in sorted(os.listdir(packs_dir)):
+for pid in sorted(p for p in os.listdir(packs_dir) if p.endswith('-pixel')):
     d = os.path.join(packs_dir, pid)
     pack = json.load(open(os.path.join(d, 'pack.json')))
-    extra = json.load(open(os.path.join(d, 'actions-extra.json')))
-    groups = [(pack['outfits']['daily'], pack['actions']), (extra['sheet'], extra['actions'])]
-    for rel, actions in groups:
-        im = Image.open(os.path.join(d, rel))
-        ok = im.format == ref_im.format and im.mode == ref_im.mode and im.size == ref_im.size and (pack['frame']['width'], pack['frame']['height']) == (fw, fh)
-        bad += not ok
-        print(f"{pid}/{rel}: {im.format} {im.mode} {im.size} {'OK' if ok else 'MISMATCH'}")
-        a = im.getchannel('A')
-        for name, v in actions.items():
-            counts = []
-            for k in range(v['frames']):
-                x, y = (v['col'] + k) * fw, v['row'] * fh
-                counts.append(sum(1 for p in a.crop((x, y, x + fw, y + fh)).getdata() if p))
-            good = all(c >= 400 for c in counts)
-            bad += not good
-            print(f"  {name:<11} row {v['row']} col {v['col']} x{v['frames']} @{v['fps']}fps  opaque px {counts} {'OK' if good else 'EMPTY'}")
-    known = set(pack['actions']) | set(extra['actions'])
-    missing = [c for c in clips if extra['clips'].get(c) not in known]
-    bad += bool(missing)
-    print(f"  DeepSeek states covered: {len(clips) - len(missing)}/{len(clips)}" + (f" missing {missing}" if missing else ''))
+    im = Image.open(os.path.join(d, pack['outfits']['daily']))
+    ok = pack['schema'] == 2 and im.format == 'PNG' and im.mode == 'RGBA' and im.size == (FW * 4, FH * 8) and (pack['frame']['width'], pack['frame']['height']) == (FW, FH)
+    bad += not ok
+    print(f"{pid}: schema {pack['schema']} {im.format} {im.mode} {im.size} {'OK' if ok else 'MISMATCH'}")
+    a = im.getchannel('A')
+    for name in STATES:
+        v = pack['actions'].get(name)
+        if not v:
+            bad += 1
+            print(f"  {name:<11} MISSING")
+            continue
+        counts = []
+        for k in range(v['frames']):
+            x, y = (v['col'] + k) * FW, v['row'] * FH
+            counts.append(sum(1 for p in a.crop((x, y, x + FW, y + FH)).getdata() if p))
+        good = all(c >= 400 for c in counts)
+        bad += not good
+        print(f"  {name:<11} row {v['row']} col {v['col']} x{v['frames']} @{v['fps']}fps  opaque px {counts} {'OK' if good else 'EMPTY'}")
 print('RESULT', 'PASS' if not bad else f'FAIL ({bad})')
 sys.exit(1 if bad else 0)

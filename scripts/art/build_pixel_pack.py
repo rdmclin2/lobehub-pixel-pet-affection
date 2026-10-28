@@ -5,7 +5,8 @@ import json, os, sys
 from PIL import Image
 
 src, species, dst = sys.argv[1], sys.argv[2], sys.argv[3]
-NAMES = {'embit': '焰团', 'bubbo': '泡鲸', 'sprig': '叶芽', 'dafeiyu': '大肥鱼'}
+CHARS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'characters')
+NAMES = {f[:-5]: json.load(open(os.path.join(CHARS, f)))['nameZh'] for f in os.listdir(CHARS) if f.endswith('.json')}
 ACTIONS = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer']
 FPS = {'idle': 2, 'wave': 4, 'lifted': 6, 'eat': 3, 'sleep': 1.5, 'think': 2, 'talk': 5, 'cheer': 5}
 COLS, ROWS = 4, 4

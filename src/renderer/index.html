@@ -22,15 +22,15 @@
     </div>
   </section>
 
-  <!-- 1. choose an egg -->
+  <!-- 1. choose a character -->
   <section id="onboarding" class="screen hidden">
-    <h1>选择你的第一个伙伴</h1>
-    <p class="sub">四块灵石，只能带走一块。</p>
-    <div id="eggs" class="eggs"></div>
-    <div id="egg-info" class="egg-info">点一块灵石看看。</div>
+    <h1>选择你的模型娘</h1>
+    <p class="sub">以 AI 模型厂商为主题的同人角色（非官方形象），选一位带回桌面。</p>
+    <div id="cards" class="cards" role="radiogroup" aria-label="角色"></div>
+    <div id="card-info" class="card-info">点一位看看。</div>
     <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在菜单里随时关闭。</span></span></label>
     <div class="row">
-      <input id="pet-name" maxlength="12" placeholder="给它起个名字（可选）" autocomplete="off" />
+      <input id="pet-name" maxlength="12" placeholder="给她起个名字（可选）" autocomplete="off" />
       <button id="hatch-btn" class="btn primary" disabled>唤醒</button>
     </div>
   </section>
@@ -38,14 +38,13 @@
   <!-- 2. login + create + hatch progress -->
   <section id="hatching" class="screen hidden">
     <h1 id="hatch-title">唤醒中……</h1>
-    <canvas id="hatch-canvas" width="192" height="192"></canvas>
-    <div id="hatch-look" class="hatch-img hidden"></div>
+    <div id="hatch-look" class="hatch-img asleep"></div>
     <div id="hatch-vwrap" class="vwrap hidden"><video id="hatch-video" muted playsinline></video></div>
     <ol id="steps" class="steps">
       <li data-step="checking-login">检查 LobeHub 登录</li>
       <li data-step="login">在浏览器里登录 LobeHub</li>
       <li data-step="choose-space" id="step-space">选择放在哪里</li>
-      <li data-step="creating-agent">创建你的小精灵（lh agent）</li>
+      <li data-step="creating-agent">创建她的 LobeHub agent（lh agent）</li>
       <li data-step="connecting-device" id="step-device">连接这台电脑（让它能读写文件）</li>
       <li data-step="hatching">醒来</li>
     </ol>
@@ -79,9 +78,12 @@
     <div id="stage" class="stage">
       <!-- drag to resize the pet (also Ctrl/⌘ + wheel over the pet); only shown while hovering -->
       <div id="resize-grip" class="resize-grip" title="拖动调整大小（也可以按住 Ctrl/⌘ 滚动滚轮）" aria-label="调整宠物大小" role="slider" aria-valuemin="50" aria-valuemax="250"></div>
-      <canvas id="pet-canvas" class="pet-hit hidden" width="120" height="120"></canvas>
-      <div id="char-wrap" class="char-wrap pet-hit hidden" data-status="idle"><div id="pet-look" class="look-slot"></div><span id="char-fx" class="char-fx"></span></div>
-      <div id="vwrap" class="vwrap pet-hit hidden"><video id="pet-video" muted playsinline></video></div>
+      <!-- the pet itself; the shared effects layer (fx.js) sets data-state / data-action / data-facing -->
+      <div id="pet-body" class="pet-body" data-state="idle" data-action="idle" data-facing="right">
+        <div id="char-wrap" class="char-wrap pet-hit hidden" data-status="idle"><div id="pet-look" class="look-slot"></div></div>
+        <div id="vwrap" class="vwrap pet-hit hidden"><video id="pet-video" muted playsinline></video></div>
+        <span id="char-fx" class="char-fx"></span>
+      </div>
       <div id="outfit-badge" class="outfit-badge"></div>
       <div id="float-layer" class="float-layer" aria-live="polite"></div>
     </div>
@@ -144,7 +146,8 @@
     </div>
   </section>
 
-  <script src="sprites.js"></script>
+  <script src="../core/fx.js"></script>
+  <script src="fx.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

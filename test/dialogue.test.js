@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const d = require('../src/core/dialogue');
 const st = require('../src/core/pet-state');
 const { stageLines } = d;
@@ -8,7 +9,7 @@ const { stageLines } = d;
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const ADULT = { ageConfirmed: true, adultContent: true };
 const OFF = { ageConfirmed: true, adultContent: false };
-const mk = (affection, speciesId = 'embit') => {
+const mk = (affection, speciesId = 'testchan') => {
   const p = st.createPet({ speciesId, name: 'E', agentId: 'a', now: T0 });
   st.setAffectionForTest(p, affection);
   return p;

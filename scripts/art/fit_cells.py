@@ -1,5 +1,5 @@
 # Fit a sliced 4 x 4 sheet (slice_sheet.py output) into fixed cells, so every sheet of every character uses
-# the same frame size as bubbo-pixel (83 x 113): figure centred, standing on the cell's bottom, scaled down
+# the frame size of the built-in pixel packs (83 x 113): figure centred, standing on the cell's bottom, scaled down
 # (nearest neighbour, keeps hard pixels) only when a frame is larger than the cell.
 # usage: fit_cells.py <sliced.png> <out.png> [cell_w cell_h]
 import sys

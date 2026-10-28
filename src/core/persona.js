@@ -3,9 +3,10 @@
 const { getSpecies } = require('./species');
 const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./affection');
 const { relationScope, listTopics } = require('./dialogue');
+const { describeTime } = require('./time-context');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 6;
+const PERSONA_VERSION = 7;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
@@ -69,7 +70,7 @@ function buildRelationSection(pet, settings) {
 // adult toggle, new topics) the agent's system role is updated before the next turn.
 function personaKey(pet, settings) {
   const r = relationScope(pet, settings);
-  return [PERSONA_VERSION, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')].join('|');
+  return [PERSONA_VERSION, pet.speciesId, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')].join('|');
 }
 
 function describeLevel(v, labels) {
@@ -100,7 +101,7 @@ function buildStateBlock(pet, now, settings = null) {
     `饥饿=${describeLevel(pet.hunger, ['饱', '有点饿', '很饿'])}；` +
     `心情=${describeLevel(pet.mood, ['低落', '一般', '开心'])}；` +
     `体力=${describeLevel(pet.energy, ['很累', '还行', '精神'])}；` +
-    `现在${hh}:${mm}；距上次互动${sinceMin}分钟\n` +
+    `现在${hh}:${mm}（${describeTime(d)}）；距上次互动${sinceMin}分钟\n` +
     buildRelationBlock(pet, settings)
   );
 }

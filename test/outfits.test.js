@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const o = require('../src/core/outfits');
 const st = require('../src/core/pet-state');
 const { REL_STAGES } = require('../src/core/affection');
@@ -9,7 +10,7 @@ const { migratePet } = require('../src/core/migrate');
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const ADULT = { ageConfirmed: true, adultContent: true };
 const OFF = { ageConfirmed: true, adultContent: false };
-const mk = (affection, speciesId = 'embit') => {
+const mk = (affection, speciesId = 'testchan') => {
   const p = st.createPet({ speciesId, name: 'E', agentId: 'a', now: T0 });
   st.setAffectionForTest(p, affection);
   return p;
@@ -76,7 +77,18 @@ test('adult content off: adult outfits are hidden (not locked) and the pet chang
 test('Dafeiyu never gets adult outfits', () => {
   const p = mk(95, 'dafeiyu');
   assert.ok(o.listOutfits(p, ADULT).every((x) => x.rating === 'all'));
-  assert.equal(o.equipOutfit(p, ADULT, 'maid').reason, 'hidden');
+  assert.equal(o.equipOutfit(p, ADULT, 'maid').reason, 'unavailable', 'it has no art for it either');
+});
+
+test('a character only offers the outfits it has art for', () => {
+  for (const id of ['claude', 'grok']) {
+    const p = mk(95, id);
+    assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), ['daily']);
+    assert.equal(o.listOutfits(p, ADULT)[0].label, id === 'claude' ? '橘白哥特长裙' : '黑金哥特礼服', 'its signature outfit name');
+    assert.equal(o.equipOutfit(p, ADULT, 'scarf').reason, 'unavailable');
+    assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'yukata' }, ADULT), 'daily');
+  }
+  assert.equal(o.listOutfits(mk(95, 'dafeiyu'), ADULT).length, 9, 'DeepSeek: 9 all-ages outfits');
 });
 
 test('stage-up unlock lists name the outfits the user can see', () => {
@@ -93,7 +105,7 @@ test('"new" marks unlocked outfits beyond the first stage until they are seen', 
 });
 
 test('saves without an outfit (older or hand-edited) open in the daily outfit', () => {
-  const { pet } = migratePet({ speciesId: 'embit', name: 'E', agentId: 'a', xp: 300, stage: 'adult' }, T0);
+  const { pet } = migratePet({ speciesId: 'testchan', name: 'E', agentId: 'a', xp: 300, stage: 'adult' }, T0);
   assert.equal(pet.equippedOutfit, 'daily');
   const { pet: odd } = migratePet({ ...pet, equippedOutfit: 'bikini' }, T0);
   assert.equal(odd.equippedOutfit, 'daily');

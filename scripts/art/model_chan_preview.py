@@ -48,18 +48,12 @@ for r, (c, kind) in enumerate(rows):
             img.alpha_composite(f, (x + (CW - f.width) // 2, y + CH - 6 - f.height))
         continue
     pdir = os.path.join(root, c['art']['pack'])
-    pack = json.load(open(os.path.join(pdir, 'pack.json')))
-    extra = json.load(open(os.path.join(pdir, 'actions-extra.json')))
-    sheets = {a: (pack['outfits']['daily'], v) for a, v in pack['actions'].items()}
-    sheets.update({a: (extra['sheet'], v) for a, v in extra['actions'].items()})
+    pack = json.load(open(os.path.join(pdir, 'pack.json')))  # schema 2: actions are named after the states
+    sheet = Image.open(os.path.join(pdir, pack['outfits']['daily'])).convert('RGBA')
     for i, s in enumerate(STATES):
-        action = extra['clips'].get(s, s)
-        rel, v = sheets[action]
-        sheet = Image.open(os.path.join(pdir, rel)).convert('RGBA')
+        v = pack['actions'][s]
         for k in range(v['frames']):
             fr = sheet.crop(((v['col'] + k) * FW, v['row'] * FH, (v['col'] + k + 1) * FW, (v['row'] + 1) * FH))
             img.alpha_composite(fr.resize((FW * SCALE, FH * SCALE), Image.NEAREST), (LEFT + i * CW + 6 + k * FW * SCALE, y + 6))
-        if action != s:
-            d.text((LEFT + i * CW + 8, y + CH - 30), f'→ {action}', fill=(200, 200, 210), font=font(18))
 img.convert('RGB').save(out, optimize=True)
 print(out, img.size)

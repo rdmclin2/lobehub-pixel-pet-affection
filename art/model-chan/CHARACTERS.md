@@ -47,13 +47,13 @@
 - **示例台词**：饿了“说真的，番茄汁呢？我快饿成纸片了。”；无聊“你是在加班，还是在假装加班？”；开心“嘿嘿，尖牙都笑出来了。”；困了“天亮了……吸血鬼要补觉了。”；问候“哈！你可算来了。”
 - **喜好**：深夜、番茄汁、冷笑话、新鲜八卦
 
-## 三、像素素材规格（与现有资源一致）
+## 三、像素素材规格
 
-- **对照的现有资源**：仓库内置像素包 `src/renderer/packs/bubbo-pixel`（schema 1）：RGBA PNG，单帧 83×113，每张 sheet 4 列 × 4 行 = 332×452，每个动作 2 帧。新包的 `pack.json` 的 `frame` 与 `actions`（行列、帧数、fps）与 bubbo-pixel **完全相同**，现有加载器 `src/core/packs.js` 可直接读取（单元测试 `test/model-chan-art.test.js` 用 `loadPacks` 实际加载三个包，`problems` 为空）。
-- **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上像素包标准动作 `lifted`（被拎起），共 16 个。
-- **映射**：`sheets/daily.png` 放 schema 1 的 8 个动作 `idle, wave, lifted, eat, sleep, think, talk, cheer`；`sheets/daily_extra.png` 放视频独有的 8 个 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`（排布写在 `actions-extra.json`）。`actions-extra.json` 的 `clips` 把 15 个视频状态逐一对应：happy→cheer、pat→wave、eat_rice→eat，其余同名。
-- **每个包的文件**：`pack.json`、`actions-extra.json`、`sheets/daily.png`、`sheets/daily_extra.png`。三个包：`art/model-chan/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`。
-- **为什么暂存在 `art/model-chan/packs/`**：`claude`、`grok` 两个 species 尚未注册进 `src/core/species.js`，直接放入 `src/renderer/packs/` 会让内置包校验失败；角色注册（后续任务）后整个目录 `git mv` 过去即可。
+> 2026-10-29（T-1158）更新：三个包已接入应用，位于 `src/renderer/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`，角色注册在 `src/characters/<id>.json`。原来暂存时的两张表（基础 8 动作 + 扩展 8 动作）已合并为一张 schema 2 精灵图，动作直接以状态命名。
+
+- **格式**：schema 2，RGBA PNG，单帧 83×113，每张 sheet 4 列 × 8 行 = 332×904，16 个动作 × 2 帧。
+- **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。三个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
+- **排布**：第 0–3 行 `idle, pat, lifted, eat_rice, sleep, think, talk, happy`，第 4–7 行 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`，每行两个动作、各 2 帧。
 - **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1092）：第一行是大肥鱼原视频参考帧，下面三行是三个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
 
 ## 四、素材来源与许可证
@@ -66,8 +66,8 @@
 
 **生成管线（原创生成，非改绘）**：`scripts/art/model_chan_prompts.py` 产出每角色 2 条英文提示词（`<id>_base` 8 个标准动作、`<id>_extra` 8 个扩展状态，每条一张 4×4 宫格）→ `lh generate image -m gpt-image-2.5-sunburst`（GPT Image 2.5）生成品红底宫格 → `scripts/art/slice_sheet.py` 抠图、像素化、限制调色板 → `scripts/art/fit_cells.py` 放入 83×113 格子并去品红边 → `scripts/art/build_model_chan_pack.py` 组包 → `scripts/art/check_model_chan.py` 校验 → `scripts/art/model_chan_preview.py` 出预览图。
 
-**发布协议**：由于身份锚点来自 CC BY-NC-SA 4.0 设定与“不可商用”的原设，`art/model-chan/packs/` 下的美术以 **CC BY-NC-SA 4.0** 发布：署名 ZipZipPipe（原设）、lmy414（设定补全）、rdmclin2（像素化）；禁止商用；改编作品须以相同协议发布。每个 `pack.json` 的 `license` 字段为 `CC BY-NC-SA 4.0`，`author` 字段写明上述署名；`art/model-chan/README.md` 的“来源与授权”一节有同样说明。仓库代码仍按 MIT。
+**发布协议**：由于身份锚点来自 CC BY-NC-SA 4.0 设定与“不可商用”的原设，`src/renderer/packs/` 下的模型娘美术以 **CC BY-NC-SA 4.0** 发布：署名 ZipZipPipe（原设）、lmy414（设定补全）、rdmclin2（像素化）；禁止商用；改编作品须以相同协议发布。每个 `pack.json` 的 `license` 字段为 `CC BY-NC-SA 4.0`，`author` 字段写明上述署名；`art/model-chan/README.md` 的“来源与授权”一节有同样说明。仓库代码仍按 MIT。
 
 ## 五、校验结果（摘录）
 
-`python3 scripts/art/check_model_chan.py`：参考 `bubbo-pixel: PNG RGBA (332, 452), frame 83x113`；三个包的 6 张 sheet 均为 `PNG RGBA (332, 452) OK`；16 个动作 × 2 帧全部有可见像素（每帧不透明像素 2851–4259）；每个包 `DeepSeek states covered: 15/15`；`RESULT PASS`。`npm test`：181 个测试全部通过（含 `test/model-chan-art.test.js`）。
+接入应用后（T-1158）：`python3 scripts/art/check_model_chan.py` 检查 `src/renderer/packs/*-pixel`：三个包均为 `schema 2 PNG RGBA (332, 904) OK`，16 个状态 × 2 帧全部有可见像素，`RESULT PASS`。

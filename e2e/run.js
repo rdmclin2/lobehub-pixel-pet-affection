@@ -99,16 +99,16 @@ async function fresh() {
   let { app, page } = await launch(env);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await step(S, 'first launch shows four eggs', async () => {
-      await page.waitForSelector('.egg-card');
-      assert.equal(await page.locator('.egg-card').count(), 4);
+    await step(S, 'first launch shows the three model-chan', async () => {
+      await page.waitForSelector('.char-card');
+      assert.equal(await page.locator('.char-card').count(), 3);
       assert.equal(await page.locator('#hatch-btn').isDisabled(), true);
     }, page);
 
-    await step(S, 'choosing an egg enables hatching and shows its element', async () => {
-      await page.locator('.egg-card').nth(1).click();
+    await step(S, 'choosing a character enables waking her and shows who she is', async () => {
+      await page.locator('.char-card').nth(2).click();
       assert.equal(await page.locator('#hatch-btn').isDisabled(), false);
-      assert.match(await page.locator('#egg-info').textContent(), /水之灵石/);
+      assert.match(await page.locator('#card-info').textContent(), /xAI|格萝可/);
       await page.fill('#pet-name', '小蓝');
     }, page);
 
@@ -121,7 +121,7 @@ async function fresh() {
 
     await step(S, 'after login the agent is created and the pet appears', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸 · 陌生 ♥\d+ · 距「熟悉」\d+/);
+      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 陌生 ♥\d+ · 距「熟悉」\d+/);
       const text = await waitReply(page, 15000);
       assert.match(text, /echo:/);
       return `greeting: ${text.slice(0, 40)}`;
@@ -137,7 +137,7 @@ async function fresh() {
       const want = ['whoami', 'login', 'whoami', 'whoami', 'agent create', 'connect', 'connect', 'device', 'agent edit', 'agent run']; // connect = status check, then `connect --daemon`; device = `device list`
       assert.deepEqual(seq.slice(0, want.length), want);
       const created = JSON.parse(fs.readFileSync(path.join(fakeDir, 'last-create.json'), 'utf8'));
-      assert.match(created.systemRole, /泡鲸/);
+      assert.match(created.systemRole, /格萝可/);
       assert.match(created.title, /小蓝/);
     });
 
@@ -145,7 +145,7 @@ async function fresh() {
       await app.close();
       ({ app, page } = await launch(env));
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
-      assert.equal(await page.locator('.egg-card').count() >= 0, true);
+      assert.equal(await page.locator('.char-card').count() >= 0, true);
       assert.equal(await page.locator('#onboarding').isHidden(), true);
       assert.match(await page.textContent('#meta'), /小蓝/);
     }, () => page);
@@ -185,7 +185,7 @@ async function fresh() {
       const events = [];
       await page.exposeFunction('__affLog', (e) => events.push(e));
       await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
       await page.waitForTimeout(800);
       const v = await view(page);
@@ -242,14 +242,14 @@ async function fresh() {
       assert.ok(v.outfits.every((o) => o.rating === 'all'));
     }, () => page);
 
-    await step(S, 'release deletes the agent through lh and returns to egg selection', async () => {
+    await step(S, 'release deletes the agent through lh and returns to character selection', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="release"]');
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 15000 });
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
       const del = calls.find((a) => a[0] === 'agent' && a[1] === 'delete');
       assert.ok(del && del[2].startsWith('agt_FAKE') && del.includes('--yes'), 'lh agent delete <id> --yes was not called');
-      fs.writeFileSync(path.join(OUT, 'release-check.txt'), `$ ${del.length ? 'lh ' + del.join(' ') : ''}\n(recorded by the fake lh CLI used in this scenario; the app asked for the agent to be deleted, then returned to egg selection)\n`);
+      fs.writeFileSync(path.join(OUT, 'release-check.txt'), `$ ${del.length ? 'lh ' + del.join(' ') : ''}\n(recorded by the fake lh CLI used in this scenario; the app asked for the agent to be deleted, then returned to character selection)\n`);
     }, () => page);
   } finally {
     await app.close().catch(() => {});
@@ -259,7 +259,8 @@ async function fresh() {
 // ------------------------------------------------------------- wardrobe
 // The affection UI end to end on the real app: first-launch 18+ gate -> a pet -> interaction raises
 // affection -> stage-up notice naming the unlocked topics and outfits -> wardrobe with locked items ->
-// changing clothes -> restart keeps the outfit -> adult switch off falls back to an all-ages outfit.
+// changing clothes -> restart keeps the outfit -> adult switch off. The companion is 大肥鱼 (DeepSeek):
+// like every model-chan she is all-ages, so the adult tiers never appear even with 18+ on.
 // Named screenshots go to out/e2e/affection-ui/.
 async function wardrobe() {
   const S = 'wardrobe';
@@ -300,16 +301,16 @@ async function wardrobe() {
       const st = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
       assert.equal(st.ageConfirmed, true);
       assert.equal(st.adultContent, true);
-      await page.locator('.egg-card').nth(1).click();
+      await page.locator('.char-card').nth(0).click();
       await page.fill('#pet-name', '小蓝');
-      assert.match(await page.textContent('#egg-info'), /水之灵石/);
+      assert.match(await page.textContent('#card-info'), /DeepSeek|大肥鱼/);
       const a = await shot('01b-new-pet-choose-companion');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await waitReply(page, 15000);
       await idle();
       await hover(page);
-      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸/);
+      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼/);
       const b = await shot('01c-new-pet-created');
       return `${a}, ${b} · settings.json: ${JSON.stringify(st)}`;
     });
@@ -318,13 +319,13 @@ async function wardrobe() {
       await hover(page);
       assert.equal((await page.textContent('#aff-stage')).trim(), '陌生');
       assert.equal((await page.textContent('#aff-num')).trim(), '♥0/100');
-      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸 · 陌生 ♥0 · 距「熟悉」15/);
+      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15/);
       assert.equal(petJson().equippedOutfit, 'daily');
       return `${await shot('02-initial-state')} · meta: ${await page.textContent('#meta')}`;
     });
 
     await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForSelector('.float');
       const float = await page.textContent('.float');
       await hover(page);
@@ -339,7 +340,7 @@ async function wardrobe() {
       // Test hook: 14 points (a day's cap is 12, so reaching 15 by hand takes two days); the pat that crosses is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800); // let the stage-up flash fade
@@ -352,15 +353,16 @@ async function wardrobe() {
       return `${await shot('04-stage-up-unlock-notice')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
-    await step(S, 'the wardrobe lists every outfit; locked ones are greyed with a lock and their condition', async () => {
+    await step(S, 'the wardrobe lists every outfit she has; locked ones are greyed with a lock and their condition', async () => {
       await page.click('#toast-open');
       await page.waitForSelector('#panel:not(.hidden) .card');
       await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
-      assert.equal(await page.locator('.card').count(), 13);
-      assert.equal(await page.locator('.card.locked').count(), 9);
+      assert.equal(await page.locator('.card').count(), 9, 'DeepSeek has 9 all-ages outfits');
+      assert.equal(await page.locator('.card.locked').count(), 5);
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
+      assert.equal(await page.textContent('.card[data-outfit="daily"] .nm'), '招牌女仆装');
       assert.equal(await cardStatus('pajamas'), '🔒 亲近（♥35）解锁，还差 20');
-      assert.equal(await cardStatus('maid'), '🔒 暧昧（♥60）解锁，还差 45');
+      assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0, 'no adult outfit, even with 18+ on: model-chan are all-ages');
       return await shot('05-wardrobe-with-locked-items');
     });
 
@@ -390,7 +392,8 @@ async function wardrobe() {
       await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
       assert.equal(await page.textContent('.topic[data-topic="riddle"] .st'), '点击聊聊');
       assert.equal(await page.textContent('.topic[data-topic="whine"] .st'), '🔒 亲近（♥35）解锁，还差 20');
-      assert.match(await page.textContent('.topic[data-topic="tease"]'), /成人向.*🔒 暧昧（♥60）解锁/);
+      assert.equal(await page.locator('.topic[data-topic="tease"]').count(), 0, 'no adult topic for an all-ages character');
+      assert.match(await page.textContent('.topic[data-topic="secret"] .st'), /🔒 知己（♥60）解锁/);
       return await shot('09-topics-with-locked-items');
     });
 
@@ -411,7 +414,7 @@ async function wardrobe() {
       // Test hook: 34 points with today's counters reset; the pat that crosses 35 is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 34, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
@@ -425,44 +428,43 @@ async function wardrobe() {
       return `${f} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
-    await step(S, 'crossing 60 by a pat moves 亲近 -> 暧昧 and unlocks the adult-tier topics and outfits (18+ on)', async () => {
+    await step(S, 'crossing 60 by a pat moves 亲近 -> 知己: an all-ages character unlocks no adult topics or outfits, even with 18+ on', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 59, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
       await hover(page);
       const toast = await page.textContent('#unlock-toast');
-      assert.match(toast, /关系升级：暧昧（♥60）/);
-      assert.match(toast, /解锁话题：「交换小秘密」、「深夜谈心」、「调戏一下」、「吃醋模式」、「假装约会」/);
-      assert.match(toast, /解锁服饰：「浴衣」、「女仆装」、「露肩晚礼服」/);
+      assert.match(toast, /关系升级：知己（♥60）/);
+      assert.equal((await page.textContent('#toast-body')).trim(), '解锁话题：「交换小秘密」、「深夜谈心」解锁服饰：「浴衣」');
       return `${await shot('12-stage-up-flirty')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
-    await step(S, 'the topic panel now offers the 暧昧 topics; 恋人 topics stay locked', async () => {
+    await step(S, 'the topic panel now offers the 知己 topics; 挚友 topics stay locked', async () => {
       await page.click('#toast-close');
       await clickAct(page, 'topics');
       await page.waitForSelector('#panel:not(.hidden) .topic');
       await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
-      assert.equal(await page.textContent('.topic[data-topic="tease"] .st'), '点击聊聊');
-      assert.match(await page.textContent('.topic[data-topic="sweet_talk"] .st'), /🔒 恋人（♥85）解锁/);
-      await page.locator('.topic[data-topic="tease"]').scrollIntoViewIfNeeded();
+      assert.equal(await page.textContent('.topic[data-topic="secret"] .st'), '点击聊聊');
+      assert.match(await page.textContent('.topic[data-topic="promise"] .st'), /🔒 挚友（♥85）解锁/);
+      await page.locator('.topic[data-topic="secret"]').scrollIntoViewIfNeeded();
       const f = await shot('13-topics-flirty-unlocked');
       await closePanel();
       return f;
     });
 
-    await step(S, 'an adult outfit (maid) unlocked at 暧昧 can be worn while adult content is on', async () => {
+    await step(S, 'the yukata unlocked at 知己 can be worn', async () => {
       await openWardrobe();
-      await page.click('.card[data-outfit="maid"]');
-      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
-      assert.equal(petJson().equippedOutfit, 'maid');
-      assert.equal(await page.locator('.card.locked').count(), 4);
-      const a = await shot('14-wardrobe-maid-equipped-adult-on');
+      await page.click('.card[data-outfit="yukata"]');
+      await page.waitForSelector('.card.equipped[data-outfit="yukata"]');
+      assert.equal(petJson().equippedOutfit, 'yukata');
+      assert.equal(await page.locator('.card.locked').count(), 2);
+      const a = await shot('14-wardrobe-yukata-equipped');
       await closePanel();
       await hover(page);
-      return `${a}, ${await shot('15-pet-wearing-maid')}`;
+      return `${a}, ${await shot('15-pet-wearing-yukata')}`;
     });
 
     await step(S, 'restart: the app is closed and relaunched; affection, stage, unlocks and the outfit are kept', async () => {
@@ -485,44 +487,44 @@ async function wardrobe() {
       restartLog.push(`[${new Date().toISOString()}] view after restart: stage=${v.affection.stageName} ♥${v.affection.value}; outfit=${v.outfit}; unlocked topics ${v.topics.filter((t) => t.unlocked).length}/${v.topics.length}; unlocked outfits ${v.outfits.filter((o) => o.unlocked).length}/${v.outfits.length}`);
       assert.notEqual(pid1, pid0);
       assert.equal(alive, false);
-      assert.equal(v.outfit, 'maid');
+      assert.equal(v.outfit, 'yukata');
       assert.equal(v.affection.value, before.affection.value);
-      assert.equal(v.affection.stageName, '暧昧');
+      assert.equal(v.affection.stageName, '知己');
       assert.deepEqual(v.topics.map((t) => [t.id, t.unlocked]), before.topics.map((t) => [t.id, t.unlocked]));
       assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
-      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 女仆装');
-      assert.match(await page.textContent('#meta'), /暧昧 ♥60/);
+      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 浴衣');
+      assert.match(await page.textContent('#meta'), /知己 ♥60/);
       const a = await shot('16-after-restart-pet');
       await openWardrobe();
-      assert.equal(await cardStatus('maid'), '✓ 穿着中');
-      assert.equal(await page.locator('.card.locked').count(), 4);
+      assert.equal(await cardStatus('yukata'), '✓ 穿着中');
+      assert.equal(await page.locator('.card.locked').count(), 2);
       const b = await shot('17-after-restart-wardrobe');
       await closePanel();
       await clickAct(page, 'topics');
       await page.waitForSelector('#panel:not(.hidden) .topic');
       await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
-      assert.equal(await page.textContent('.topic[data-topic="tease"] .st'), '点击聊聊');
+      assert.equal(await page.textContent('.topic[data-topic="secret"] .st'), '点击聊聊');
       const c = await shot('18-after-restart-topics');
       await closePanel();
       fs.writeFileSync(path.join(SHOTS, 'restart-log.txt'), restartLog.join('\n') + '\n');
       return `${a}, ${b}, ${c} · pid ${pid0} -> ${pid1}`;
     });
 
-    await step(S, 'adult switch off: adult topics and outfits disappear and the pet changes back to its last all-ages outfit', async () => {
+    await step(S, 'adult switch off: nothing adult was shown, so the all-ages character keeps her outfit and stage', async () => {
       await clickAct(page, 'menu');
       assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：开（点此关闭）');
       const m = await shot('19-menu-adult-switch-on');
       await page.click('#menu-adult');
-      await page.waitForFunction(() => /已换回「休闲卫衣」/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
+      await page.waitForFunction(() => /成人向内容已关闭/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const v = await view(page);
-      assert.equal(v.outfit, 'casual');
+      assert.equal(v.outfit, 'yukata');
       assert.equal(v.affection.stageName, '知己');
-      assert.equal(petJson().equippedOutfit, 'casual');
+      assert.equal(petJson().equippedOutfit, 'yukata');
       assert.deepEqual(v.topics.filter((t) => t.rating === 'adult'), []);
       assert.deepEqual(v.outfits.filter((o) => o.rating === 'adult'), []);
       await hover(page);
-      const a = await shot('20-adult-off-pet-back-in-casual');
+      const a = await shot('20-adult-off-pet-unchanged');
       await clickAct(page, 'menu');
       assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：关（点此开启）');
       const b = await shot('21-menu-adult-switch-off');
@@ -530,7 +532,7 @@ async function wardrobe() {
       await openWardrobe();
       assert.equal(await page.locator('.card').count(), 9);
       assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0);
-      assert.equal(await cardStatus('casual'), '✓ 穿着中');
+      assert.equal(await cardStatus('yukata'), '✓ 穿着中');
       assert.doesNotMatch(await page.textContent('#panel'), /成人向|暧昧|恋人/);
       const c = await shot('22-wardrobe-adult-off-no-adult-items');
       await closePanel();
@@ -558,25 +560,58 @@ async function migrate() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-migfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const now = Date.now();
+  // a growth-system save of the retired whale 泡鲸 (bubbo)
   const old = { speciesId: 'bubbo', name: '小蓝', agentId: 'agt_LEGACY', topicId: 'tpc_LEGACY', createdAt: now - 86400000, stage: 'child', xp: 150, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, owner: 'me', personaVersion: 3 };
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old, null, 2));
-  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, adultContent: false, appearance: { bubbo: 'bubbo-pixel' } }));
+  let { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   try {
-    await step(S, 'an old xp=150 / child save opens as 熟悉 ♥25 with the same agent and topic', async () => {
+    await step(S, 'an old 泡鲸 xp=150 / child save opens as 大肥鱼 熟悉 ♥25 with the same agent and topic, and says who took over', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await page.waitForFunction(() => /原来的角色已经下线/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      const bubble = await bubbleText(page);
+      assert.match(bubble, /大肥鱼/);
       await hover(page);
       const meta = await page.textContent('#meta');
-      assert.match(meta, /小蓝 · 泡鲸 · 熟悉 ♥25 · 距「亲近」10/);
+      assert.match(meta, /小蓝 · 大肥鱼 · 熟悉 ♥25 · 距「亲近」10/);
       const v = await view(page);
+      assert.equal(v.pet.speciesId, 'dafeiyu');
       assert.equal(v.pet.agentId, 'agt_LEGACY');
       assert.equal(v.pet.topicId, 'tpc_LEGACY');
       const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
       assert.equal(disk.schemaVersion, 2);
+      assert.equal(disk.speciesId, 'dafeiyu');
+      assert.equal(disk.retiredFrom.speciesId, 'bubbo');
       assert.equal('xp' in disk, false);
       assert.equal('stage' in disk, false);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8')), old);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, {}, 'the retired look is dropped');
+      // the agent gets the new persona before its next turn
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const edits = fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.systemRole);
+      assert.match(edits.pop().systemRole, /大肥鱼/);
       fs.writeFileSync(path.join(OUT, 'migrate-files.txt'), `--- pet.v1.bak.json (before) ---\n${JSON.stringify(old, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify(disk, null, 2)}\n`);
-      return `meta: ${meta}; legacy=${JSON.stringify(disk.legacy)}`;
+      return `bubble: ${bubble}; meta: ${meta}; retiredFrom=${JSON.stringify(disk.retiredFrom)}`;
+    }, page);
+
+    await step(S, 'a current save of the retired 焰团 wearing an adult outfit opens as 克洛蒂 in her own outfit, without a crash', async () => {
+      await app.close();
+      const saved = { schemaVersion: 2, speciesId: 'embit', name: '小火', agentId: 'agt_EMBIT', topicId: 'tpc_EMBIT', createdAt: now - 1e6, affection: 70, relStage: 'flirty', peakStage: 'flirty', hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, equippedOutfit: 'maid', lastSafeOutfit: 'yukata', personaVersion: 6 };
+      fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(saved, null, 2));
+      ({ app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await page.waitForFunction(() => /克洛蒂/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      await hover(page);
+      const v = await view(page);
+      assert.equal(v.pet.speciesId, 'claude');
+      assert.equal(v.outfit, 'daily');
+      assert.equal(v.look.packId, 'claude-pixel');
+      assert.equal(v.pet.affection, 70);
+      assert.match(await page.textContent('#meta'), /小火 · 克洛蒂 · 知己 ♥70/);
+      assert.equal(await page.locator('#pet-look canvas.sprite').count(), 1);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')).speciesId, 'bubbo', 'the backup is written once and never overwritten');
+      assert.doesNotMatch(app.stderrBuf, /Unknown species|TypeError/);
+      return `meta: ${await page.textContent('#meta')}; outfit maid → ${v.outfit}`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -592,12 +627,12 @@ async function dafeiyu() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const clip = () => page.evaluate(() => document.getElementById('pet-video').dataset.key);
   try {
-    await step(S, 'the egg screen offers four eggs and the fourth is the whale egg', async () => {
-      await page.waitForSelector('.egg-card');
-      assert.equal(await page.locator('.egg-card').count(), 4);
-      assert.match(await page.locator('.egg-card').nth(3).textContent(), /鲸之灵石/);
-      await page.locator('.egg-card').nth(3).click();
-      assert.match(await page.locator('#egg-info').textContent(), /大肥鱼|鱼片/);
+    await step(S, 'the character screen offers DeepSeek first', async () => {
+      await page.waitForSelector('.char-card');
+      assert.equal(await page.locator('.char-card').count(), 3);
+      assert.match(await page.locator('.char-card').nth(0).textContent(), /DeepSeek/);
+      await page.locator('.char-card').nth(0).click();
+      assert.match(await page.locator('#card-info').textContent(), /大肥鱼|鱼片/);
       await page.fill('#pet-name', 'Mow');
     }, page);
 
@@ -665,8 +700,8 @@ async function busy() {
   const calls = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(0).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(2).click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
@@ -839,8 +874,8 @@ async function daemonlaunch() {
   let { app, page } = await launch(env);
   const starts = () => (fs.existsSync(path.join(fakeDir, 'connects.log')) ? fs.readFileSync(path.join(fakeDir, 'connects.log'), 'utf8').trim().split('\n').length : 0);
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(2).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(1).click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'claiming a pet starts lh connect --daemon', async () => {
@@ -877,8 +912,8 @@ async function oldlh() {
   fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_OLD', hostname: '192.168.101.156', platform: process.platform, online: true, channels: [{ hostname: '192.168.101.156', connectedAt: new Date().toISOString() }] }]));
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_NO_AGENCY: '1' });
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(1).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(2).click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'an lh that cannot write the binding still works, and the pet says to upgrade lh', async () => {
@@ -906,8 +941,8 @@ async function longreply() {
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_LONG_REPLY: '1' });
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(1).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(2).click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'a very long reply scrolls inside the bubble and stays within the window', async () => {
@@ -945,9 +980,9 @@ async function live() {
   process.on('SIGINT', onSignal);
   const record = async (label) => transcript.push(`[${label}] (${await bubbleSource(page)}) ${await bubbleText(page)}`);
   try {
-    await page.waitForSelector('.egg-card');
+    await page.waitForSelector('.char-card');
     await step(S, 'real lh is logged in, so login is skipped and a real agent is created', async () => {
-      await page.locator('.egg-card').nth(2).click();
+      await page.locator('.char-card').nth(1).click();
       await page.uncheck('#local-opt'); // tests must never bind an agent to, or run tools on, a real computer
       await page.fill('#pet-name', '芽芽');
       await page.click('#hatch-btn');
@@ -974,7 +1009,7 @@ async function live() {
     await step(S, 'the LobeHub agent exists and carries the pet persona', async () => {
       const out = lh('agent', 'view', agentId);
       assert.match(out, /芽芽/);
-      assert.match(out, /叶芽/);
+      assert.match(out, /克洛蒂/);
       // keep an excerpt for the report; drop identity/workspace lines
       fs.writeFileSync(path.join(OUT, 'agent-view-excerpt.txt'), `$ lh agent view ${agentId}\n` + out.split('\n').filter((l) => !/user|workspace|email|token/i.test(l)).join('\n'));
       return 'agent view shows name + species persona';
@@ -1050,28 +1085,29 @@ async function live() {
         document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
       }, b64);
       await page.waitForSelector('#attach-row .attach-chip', { timeout: 5000 });
-      await page.fill('#chat-input', '这张图里的人头发是什么颜色？手里拿着什么？');
+      await page.fill('#chat-input', '这张图里有几个人？她们分别是什么发色？');
       await page.click('#chat-send');
       await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
       await idle();
       const b = (await bubbleText(page)).trim();
       await record('picture question (app icon)');
-      transcript.splice(transcript.length - 1, 0, '[picture sent] build/icon.png: 蓝色长卷发的动漫女性，手拿粉色爱心 + 这张图里的人头发是什么颜色？手里拿着什么？');
+      transcript.splice(transcript.length - 1, 0, '[picture sent] build/icon.png: 三位像素风模型娘（蓝发、橘发、金发）+ 这张图里有几个人？她们分别是什么发色？');
+      assert.match(b, /三|3/, `reply: ${b}`);
       assert.match(b, /蓝/, `reply: ${b}`);
-      assert.match(b, /心/, `reply: ${b}`);
+      assert.match(b, /橙|橘/, `reply: ${b}`);
       return b.slice(0, 60);
     }, page);
 
     await step(S, 'affection crossing 15 moves the stage from 陌生 to 熟悉', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
-      await page.locator('#char-wrap').click();
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
       await page.waitForTimeout(1200);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
       assert.match(await page.textContent('#meta'), /熟悉 ♥15/);
     }, page);
 
-    await step(S, 'release deletes the real agent and returns to egg selection', async () => {
+    await step(S, 'release deletes the real agent and returns to character selection', async () => {
       await idle(); // a stage-up makes the pet speak; controls stay hidden until it is done
       await clickAct(page, 'menu');
       await page.click('[data-menu="release"]');
@@ -1100,8 +1136,8 @@ async function advanced() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(0).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(0).click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -1117,30 +1153,30 @@ async function advanced() {
       return await page.textContent('#panel-sub');
     }, page);
 
-    await step(S, 'one click unlocks every stage, topic and outfit (18+ and adult content on)', async () => {
+    await step(S, 'one click unlocks every stage, topic and outfit (18+ on; 大肥鱼 is all-ages, so all-ages content only)', async () => {
       await page.click('#unlock-all');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
       const msg = await page.textContent('#panel-msg');
       assert.match(msg, /已解锁：\d+ 个话题、\d+ 套服饰/);
-      assert.match(await page.textContent('#panel-sub'), /恋人 ♥100\/100 · 已满级 · 话题 19\/19 · 服饰 13\/13/);
+      assert.match(await page.textContent('#panel-sub'), /挚友 ♥100\/100 · 已满级 · 话题 13\/13 · 服饰 9\/9/);
       assert.equal(await page.locator('#unlock-all').isDisabled(), true);
       return msg;
     }, page);
 
-    await step(S, 'the wardrobe shows everything unlocked and an adult outfit can be put on', async () => {
+    await step(S, 'the wardrobe shows everything unlocked and the last-stage outfit can be put on', async () => {
       await idle();
       await page.click('#panel-close');
       await clickAct(page, 'wardrobe');
-      await page.waitForSelector('.card[data-outfit="silk_robe"]');
+      await page.waitForSelector('.card[data-outfit="flower_crown"]');
       assert.equal(await page.locator('.card.locked').count(), 0);
-      assert.equal(await page.locator('.card').count(), 13);
-      await page.click('.card[data-outfit="silk_robe"]');
+      assert.equal(await page.locator('.card').count(), 9);
+      await page.click('.card[data-outfit="flower_crown"]');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
-      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.endsWith('/silk_robe'));
-      assert.match(await page.textContent('#meta'), /恋人 ♥100 · 已满级/);
-      return 'pet now wears 丝绸睡袍';
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.endsWith('/flower_crown'));
+      assert.match(await page.textContent('#meta'), /挚友 ♥100 · 已满级/);
+      return 'pet now wears 花冠长裙';
     }, page);
 
     const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
@@ -1222,8 +1258,9 @@ async function advanced() {
 }
 
 // ------------------------------------------------------------------ packs
-// Pet packs: 泡鲸 starts in the pixel pack; the look can be switched; a pack can be imported (here from a
-// folder through the test hook, the UI opens a file dialog), used, and removed again.
+// Pet packs: 格萝可 is drawn from her pixel pack; a pack can be imported (here from a folder through the
+// test hook, the UI opens a file dialog), used, and removed again; 大肥鱼 switches between her clips and
+// her pixel pack.
 async function packs() {
   const S = 'packs';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-packs-'));
@@ -1233,77 +1270,94 @@ async function packs() {
   const key = () => page.evaluate(() => document.getElementById('pet-look').dataset.key);
   const openAdvanced = async () => { await clickAct(page, 'menu'); await page.click('[data-menu="advanced"]'); await page.waitForSelector('.pack-list .pack-opt'); };
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(1).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(2).click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '泡鲸 starts as an animated pixel sprite; dragging plays the lifted action', async () => {
-      assert.equal(await key(), 'bubbo-pixel/daily');
+    await step(S, '格萝可 is an animated pixel sprite from grok-pixel; dragging plays the lifted action', async () => {
+      assert.equal(await key(), 'grok-pixel/daily');
       assert.equal(await page.locator('#pet-look canvas.sprite.pixelated').count(), 1);
       const box = await page.locator('#char-wrap').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
       await page.mouse.move(box.x + box.width / 2 - 20, box.y + box.height / 2 - 10, { steps: 4 });
-      const during = await page.evaluate(() => document.getElementById('char-wrap').dataset.status);
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.action === 'lifted', null, { timeout: 3000 });
       await page.screenshot({ path: path.join(OUT, 'pack-pixel-lifted.png') });
+      await page.waitForTimeout(250);
       await page.mouse.up();
-      assert.equal(during, 'lifted');
-      return 'status while dragging: lifted';
+      return 'action while dragging: lifted';
     }, page);
 
-    await step(S, '高级设置 lists the packs for this companion; switching to 立绘 changes the pet', async () => {
-      await openAdvanced();
-      const names = await page.locator('.pack-opt .meta b').allTextContents();
-      assert.deepEqual(names.sort(), ['泡鲸 · 像素', '泡鲸 · 立绘'].sort());
-      await page.click('.pack-opt[data-pack="bubbo-illustrated"] .pick');
-      await page.waitForSelector('.pack-opt.on[data-pack="bubbo-illustrated"]');
-      await page.click('#panel-close');
-      assert.equal(await key(), 'bubbo-illustrated/daily');
-      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance.bubbo, 'bubbo-illustrated');
-      return names.join(' / ');
-    }, page);
-
-    await step(S, 'an imported pack is listed as imported, can be used, and falls back for outfits it lacks', async () => {
+    await step(S, 'an imported pack is listed as imported, can be used, and the advanced list names it', async () => {
       const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-mypack-'));
-      const base = path.join(ROOT, 'src', 'renderer', 'packs', 'bubbo-pixel');
+      const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
       const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
       fs.mkdirSync(path.join(src, 'sheets'));
-      fs.copyFileSync(path.join(base, 'sheets', 'casual.png'), path.join(src, 'sheets', 'mine.png'));
-      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-bubbo', name: '我的泡鲸', author: 'tester', outfits: { daily: 'sheets/mine.png' } }));
+      fs.copyFileSync(path.join(base, 'sheets', 'daily.png'), path.join(src, 'sheets', 'mine.png'));
+      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: 'sheets/mine.png' } }));
       const r = await page.evaluate((d) => window.pet.debugImportPack(d), src);
       assert.equal(r.ok, true, JSON.stringify(r));
-      assert.ok(fs.existsSync(path.join(data, 'packs', 'my-bubbo', 'pack.json')), 'copied into the user pack folder');
+      assert.ok(fs.existsSync(path.join(data, 'packs', 'my-grok', 'pack.json')), 'copied into the user pack folder');
       await openAdvanced();
-      assert.match(await page.textContent('.pack-opt[data-pack="my-bubbo"] .meta span'), /导入/);
-      await page.click('.pack-opt[data-pack="my-bubbo"] .pick');
-      await page.waitForSelector('.pack-opt.on[data-pack="my-bubbo"]');
+      const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
+      assert.deepEqual(names.sort(), ['我的格萝可', '格萝可 · 像素'].sort());
+      assert.match(await page.textContent('.pack-opt[data-pack="my-grok"] .meta span'), /导入/);
+      await page.click('.pack-opt[data-pack="my-grok"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="my-grok"]');
       await page.screenshot({ path: path.join(OUT, 'pack-advanced-list.png') });
       await page.click('#panel-close');
-      assert.equal(await key(), 'my-bubbo/daily');
-      const v = await view(page);
-      assert.equal(v.outfits.find((o) => o.id === 'casual').look.packId, 'bubbo-pixel', 'missing outfits fall back');
-      return 'my-bubbo in use; other outfits from the default pack';
+      assert.equal(await key(), 'my-grok/daily');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance.grok, 'my-grok');
+      return names.join(' / ');
     }, page);
 
     await step(S, 'a broken pack is refused with its reasons', async () => {
       const bad = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-badpack-'));
-      fs.writeFileSync(path.join(bad, 'pack.json'), JSON.stringify({ schema: 1, id: 'bad', name: 'x', species: 'bubbo', kind: 'sprites', outfits: { daily: '../x.png' } }));
+      fs.writeFileSync(path.join(bad, 'pack.json'), JSON.stringify({ schema: 2, id: 'bad', name: 'x', species: 'grok', kind: 'sprites', outfits: { daily: '../x.png' } }));
       const r = await page.evaluate((d) => window.pet.debugImportPack(d), bad);
       assert.equal(r.ok, false);
       assert.ok(r.errors.some((e) => /relative path|frame|idle/.test(e)), r.errors.join('; '));
-      return r.errors.slice(0, 2).join('; ');
+      const old = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-oldpack-'));
+      fs.writeFileSync(path.join(old, 'pack.json'), JSON.stringify({ schema: 1, id: 'old-bubbo', name: 'x', species: 'bubbo', kind: 'pictures', outfits: { daily: 'a.png' } }));
+      const r2 = await page.evaluate((d) => window.pet.debugImportPack(d), old);
+      assert.equal(r2.ok, false);
+      assert.ok(r2.errors.some((e) => /species must be one of dafeiyu, claude, grok/.test(e)), r2.errors.join('; '));
+      return `${r.errors.slice(0, 2).join('; ')} | retired character: ${r2.errors.find((e) => /species/.test(e))}`;
     });
 
-    await step(S, 'removing the pack in use puts the companion back in its default pixel pack', async () => {
+    await step(S, 'removing the pack in use puts the companion back in her default pixel pack', async () => {
       await openAdvanced();
-      await page.click('.pack-opt[data-pack="my-bubbo"] .btn:not(.pick)');
-      await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack="my-bubbo"]'));
+      await page.click('.pack-opt[data-pack="my-grok"] .btn:not(.pick)');
+      await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack="my-grok"]'));
       await page.click('#panel-close');
-      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'bubbo-pixel/daily');
-      assert.equal(fs.existsSync(path.join(data, 'packs', 'my-bubbo')), false);
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'grok-pixel/daily');
+      assert.equal(fs.existsSync(path.join(data, 'packs', 'my-grok')), false);
+    }, page);
+
+    await step(S, '大肥鱼 switches between her animated clips and her pixel pack', async () => {
+      await openAdvanced();
+      await page.click('.char-opt[data-species="dafeiyu"] .pick');
+      await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
+      const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
+      assert.deepEqual(names.sort(), ['大肥鱼 · 像素', '大肥鱼 · 立绘'].sort());
+      await page.click('#panel-close');
+      await page.waitForSelector('#vwrap:not(.hidden)');
+      await page.waitForFunction(() => /dafeiyu\/(idle|hatch)\.webm$/.test(document.getElementById('pet-video').src), null, { timeout: 5000 });
+      await openAdvanced();
+      await page.click('.pack-opt[data-pack="dafeiyu-pixel"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="dafeiyu-pixel"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
+      assert.equal(await page.locator('#vwrap').isHidden(), true);
+      await page.screenshot({ path: path.join(OUT, 'pack-dafeiyu-pixel.png') });
+      await openAdvanced();
+      await page.click('.pack-opt[data-pack="dafeiyu-illustrated"] .pick');
+      await page.click('#panel-close');
+      await page.waitForSelector('#vwrap:not(.hidden)');
+      return `${names.join(' / ')}; clips → dafeiyu-pixel → clips`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -1329,8 +1383,8 @@ async function update() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-upd-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_UPDATE_TEST: '1', PIXELPET_UPDATE_FEED: feed });
   const statusText = () => page.textContent('#update-section .st');
   try {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(1).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(2).click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -1379,8 +1433,8 @@ async function space() {
   fs.writeFileSync(path.join(fakeDir, 'pinned-workspace'), 'ws_TEAM');
   const createCall = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((c) => c.args[0] === 'agent' && c.args[1] === 'create').pop();
   const start = async (page) => {
-    await page.waitForSelector('.egg-card');
-    await page.locator('.egg-card').nth(2).click();
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card').nth(1).click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#space-box:not(.hidden)', { timeout: 15000 });
   };
@@ -1422,70 +1476,361 @@ async function space() {
 }
 
 // ------------------------------------------------------------------ art
-// Contact sheet of every companion in every outfit, loaded from the same pictures the pet and the
-// wardrobe show (the pet packs in src/renderer/packs).
+// Contact sheets drawn by the app's own renderer (lookEl, the same code the pet and the wardrobe use):
+// every character in every outfit she offers, and every character in every state of the effects layer.
 async function art() {
   const S = 'art';
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-art-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-artfake-')) });
+  const { OUTFITS } = require('../src/core/outfits');
+  const P = require('../src/core/packs');
+  const { STATES } = require('../src/core/fx');
+  const { SPECIES, SPECIES_IDS } = require('../src/core/species');
+  const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
   try {
-    await page.waitForSelector('.egg-card');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 760));
-    await step(S, 'outfit sheet: every companion in every outfit she can wear (illustrated packs)', async () => {
-      const { OUTFITS } = require('../src/core/outfits');
-      const P = require('../src/core/packs');
-      const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
-      const look = (pk, sp, o) => P.resolveLook(packs, { packId: pk, fallbackId: pk, speciesId: sp, outfitId: o });
-      const rows = ['embit', 'bubbo', 'sprig', 'dafeiyu'].map((sp) => OUTFITS.map((o) => (sp === 'dafeiyu' && o.rating === 'adult' ? null : look(`${sp}-illustrated`, sp, o.id))));
-      rows.push(OUTFITS.map((o) => look('bubbo-pixel', 'bubbo', o.id)));
+    await page.waitForSelector('.char-card');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1500, 900));
+    await step(S, 'outfit sheet: every character in every outfit she offers', async () => {
+      const cols = OUTFITS.filter((o) => SPECIES_IDS.some((id) => SPECIES[id].outfits.includes(o.id)));
+      const rows = SPECIES_IDS.map((id) => ({ id, cells: cols.map((o) => (SPECIES[id].outfits.includes(o.id) ? { look: P.resolveLook(packs, { packId: P.chosenPack(packs, {}, id), fallbackId: P.fallbackPack(id), speciesId: id, outfitId: o.id }) } : null)) }));
       const missing = await page.evaluate(async ({ rows, labels }) => {
         document.body.innerHTML = '';
         document.body.style.cssText = 'margin:0;background:#e9e4f5;overflow:visible';
         const grid = document.createElement('div');
-        grid.style.cssText = `display:grid;grid-template-columns:repeat(${labels.length},80px);gap:2px;padding:4px;font:10px sans-serif;text-align:center`;
-        labels.forEach((l) => { const d = document.createElement('div'); d.textContent = l; grid.appendChild(d); });
+        grid.style.cssText = `display:grid;grid-template-columns:70px repeat(${labels.length},84px);gap:2px;padding:4px;font:10px sans-serif;text-align:center`;
+        ['', ...labels].forEach((l) => { const d = document.createElement('div'); d.textContent = l; grid.appendChild(d); });
         const waits = [];
-        for (const row of rows) for (const lk of row) {
-          const cell = document.createElement('div');
-          cell.style.cssText = 'height:170px;display:flex;align-items:flex-end;justify-content:center;background:#fff';
-          if (lk) {
-            const el = lookEl(lk, { className: 'look' }); // the app's own renderer (pictures and sprites)
-            el.style.cssText = 'height:166px;max-width:78px;object-fit:contain';
-            const img = lk.kind === 'sprites' ? sheet(lk.url) : el;
-            waits.push(img.decode().then(() => null, () => lk.url));
-            cell.appendChild(el);
-          } else cell.textContent = '—';
-          grid.appendChild(cell);
+        for (const row of rows) {
+          const h = document.createElement('div');
+          h.textContent = row.id;
+          h.style.cssText = 'align-self:center;font-weight:bold';
+          grid.appendChild(h);
+          for (const c of row.cells) {
+            const cell = document.createElement('div');
+            cell.style.cssText = 'height:150px;display:flex;align-items:flex-end;justify-content:center;background:#fff;overflow:hidden';
+            if (c) {
+              const el = lookEl(c.look, { className: 'look', speciesId: row.id }); // pictures, sprites, or her clips
+              el.style.cssText = c.look ? 'height:146px;max-width:82px;object-fit:contain' : 'height:84px;width:84px';
+              if (c.look) waits.push((c.look.kind === 'sprites' ? sheet(c.look.url) : el).decode().then(() => null, () => c.look.url));
+              cell.appendChild(el);
+            } else cell.textContent = '—';
+            grid.appendChild(cell);
+          }
         }
         document.body.appendChild(grid);
-        return (await Promise.all(waits)).filter(Boolean);
-      }, { rows, labels: OUTFITS.map((o) => o.label) });
+        const bad = (await Promise.all(waits)).filter(Boolean);
+        tickSprites(performance.now()); // the app's frame loop stopped with its screens gone: draw once
+        return bad;
+      }, { rows, labels: cols.map((o) => o.label) });
       assert.deepEqual(missing, []);
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(1200);
       await page.screenshot({ path: path.join(OUT, 'outfit-sheet.png'), fullPage: true });
-      return `rows: embit/bubbo/sprig/dafeiyu illustrated, bubbo pixel; columns: ${OUTFITS.map((o) => o.id).join(', ')}`;
+      return `rows: ${SPECIES_IDS.join(', ')}; columns: ${cols.map((o) => o.id).join(', ')} (— = no art, not offered)`;
     });
 
-    await step(S, 'pixel action sheet: 泡鲸 in every outfit doing every action, drawn by the app', async () => {
-      const { OUTFITS } = require('../src/core/outfits');
-      const P = require('../src/core/packs');
-      const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
-      const looks = OUTFITS.map((o) => P.resolveLook(packs, { packId: 'bubbo-pixel', fallbackId: 'bubbo-pixel', speciesId: 'bubbo', outfitId: o.id }));
-      await page.evaluate(async ({ looks, actions }) => {
+    await step(S, 'state sheet: every character in every state of the shared effects layer, drawn by the app', async () => {
+      const Fx = require('../src/core/fx');
+      const rows = [];
+      // 大肥鱼's clips (a frame from each), then every pixel pack
+      const sp = SPECIES.dafeiyu;
+      rows.push({ name: 'dafeiyu (clips)', cells: STATES.map((st) => ({ clip: `${sp.clipDir}/${sp.clips[Fx.resolveAction(st, (n) => !!sp.clips[n]).name]}`, exact: Fx.resolveAction(st, (n) => !!sp.clips[n]).exact })) });
+      for (const id of ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel']) {
+        const pk = packs.get(id);
+        const look = P.resolveLook(packs, { packId: id, fallbackId: id, speciesId: pk.species, outfitId: 'daily' });
+        rows.push({ name: id, cells: STATES.map((st) => ({ look, state: st })) });
+      }
+      const n = await page.evaluate(async ({ rows, states }) => {
         document.body.innerHTML = '';
+        document.body.style.cssText = 'margin:0;background:#2b2440;overflow:visible';
         const grid = document.createElement('div');
-        grid.style.cssText = `display:grid;grid-template-columns:repeat(${actions.length},88px);gap:2px;padding:4px;background:#2b2440`;
-        for (const lk of looks) for (const a of actions) {
-          const el = lookEl(lk, { className: 'look', action: () => a });
-          el.style.cssText = 'height:118px;width:auto';
-          grid.appendChild(el);
+        grid.style.cssText = `display:grid;grid-template-columns:96px repeat(${states.length},84px);gap:2px;padding:4px;font:10px sans-serif;color:#fff;text-align:center`;
+        ['', ...states].forEach((l) => { const d = document.createElement('div'); d.textContent = l; grid.appendChild(d); });
+        const waits = [];
+        for (const row of rows) {
+          const h = document.createElement('div');
+          h.textContent = row.name;
+          h.style.cssText = 'align-self:center;font-weight:bold';
+          grid.appendChild(h);
+          for (const c of row.cells) {
+            const cell = document.createElement('div');
+            cell.style.cssText = 'height:118px;display:flex;align-items:flex-end;justify-content:center;background:#3a3354;position:relative;overflow:hidden';
+            if (c.clip) {
+              const wrap = document.createElement('div');
+              wrap.className = 'look vlook';
+              wrap.style.cssText = 'width:84px;height:84px';
+              const v = document.createElement('video');
+              v.muted = true;
+              v.src = c.clip;
+              waits.push(new Promise((res) => { v.addEventListener('loadeddata', () => { v.currentTime = 2.5; v.addEventListener('seeked', res, { once: true }); }, { once: true }); setTimeout(res, 5000); }));
+              wrap.appendChild(v);
+              cell.appendChild(wrap);
+              if (!c.exact) { const t = document.createElement('span'); t.textContent = '↪'; t.style.cssText = 'position:absolute;top:2px;right:4px'; cell.appendChild(t); }
+            } else {
+              const el = lookEl(c.look, { className: 'look', action: () => c.state });
+              el.style.cssText = 'height:113px;width:auto';
+              waits.push(sheet(c.look.url).decode());
+              cell.appendChild(el);
+            }
+            grid.appendChild(cell);
+          }
         }
         document.body.appendChild(grid);
-        await Promise.all(looks.map((l) => sheet(l.url).decode()));
-      }, { looks, actions: P.ACTIONS });
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: path.join(OUT, 'pixel-action-sheet.png'), fullPage: true });
-      return `rows: ${OUTFITS.length} outfits; columns: ${P.ACTIONS.join(', ')}`;
+        await Promise.all(waits);
+        tickSprites(performance.now()); // the app's frame loop stopped with its screens gone: draw once
+        return rows.length * states.length;
+      }, { rows, states: STATES });
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: path.join(OUT, 'state-sheet.png'), fullPage: true });
+      return `${n} cells: rows dafeiyu clips + dafeiyu/claude/grok pixel; columns: ${STATES.join(', ')} (↪ = DeepSeek clip borrowed through the fallback chain)`;
     });
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------- roster
+// The model-chan roster: for every character, wake her up and trigger every effect of the shared
+// effects layer (src/core/fx.js + src/renderer/fx.js), asserting the state, what was played (clip or
+// sprite action) and taking a screenshot each time. One screen recording per character.
+const ROSTER = [
+  { id: 'dafeiyu', idx: 0, zh: '大肥鱼', vendor: 'DeepSeek' },
+  { id: 'claude', idx: 1, zh: '克洛蒂', vendor: 'Anthropic' },
+  { id: 'grok', idx: 2, zh: '格萝可', vendor: 'xAI' },
+];
+async function roster() {
+  const only = process.argv[3];
+  for (const ch of ROSTER) if (!only || only === ch.id) await rosterOne(ch);
+}
+async function rosterOne(ch) {
+  const S = `roster-${ch.id}`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-roster-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-rosterfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const VIDEO = path.join(OUT, 'roster-video', ch.id);
+  fs.rmSync(VIDEO, { recursive: true, force: true });
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_RUN_DELAY_MS: '2500' }, { video: VIDEO });
+  const fxState = () => page.evaluate(() => window.petFx.state());
+  const clip = () => page.evaluate(() => document.getElementById('pet-video').dataset.key || '');
+  // what the pet shows for `state`: the clip for a video character, the sprite action otherwise
+  const shows = async (state, want = state) => {
+    await page.waitForFunction((s) => window.petFx.state() && window.petFx.state().state === s, state, { timeout: 8000 });
+    const st = await fxState();
+    if (st.video) {
+      await page.waitForFunction((w) => document.getElementById('pet-video').dataset.key === w, want, { timeout: 5000 });
+      return `state=${st.state} clip=${await clip()}.webm`;
+    }
+    await page.waitForFunction((w) => window.petFx.state().action === w, want, { timeout: 3000 }).catch(() => {});
+    const now = await fxState();
+    assert.equal(now.action, want, `action for ${state}`);
+    assert.equal(now.exact, true, `${ch.id} has its own art for ${state}`);
+    return `state=${now.state} action=${now.action} (own sprite row)`;
+  };
+  const leave = () => page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const settle = async () => { await page.evaluate(() => window.petFx.cue('idle')); await page.waitForTimeout(150); };
+  try {
+    if (ch.idx === 0) {
+      await step(S, 'onboarding offers the three model-chan, no spirit stones', async () => {
+        await page.waitForSelector('.char-card');
+        assert.equal(await page.locator('.char-card').count(), 3);
+        const vendors = await page.locator('.char-card .vendor').allTextContents();
+        assert.deepEqual(vendors, ['DeepSeek', 'Anthropic', 'xAI']);
+        assert.doesNotMatch(await page.textContent('#onboarding'), /灵石|蛋/);
+        return vendors.join(' / ');
+      }, page);
+    }
+    await step(S, `choose ${ch.zh} (${ch.vendor})`, async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').nth(ch.idx).click();
+      assert.equal(await page.getAttribute(`.char-card[data-species="${ch.id}"]`, 'aria-checked'), 'true');
+      assert.match(await page.textContent('#card-info'), new RegExp(`${ch.vendor}|${ch.zh}`));
+      assert.equal(await page.locator('#hatch-btn').isDisabled(), false);
+      return (await page.textContent('#card-info')).slice(0, 60);
+    }, page);
+    await step(S, 'E1 wake-up plays her hatch state', async () => {
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#hatch-title:has-text("醒来了")', { timeout: 20000 });
+      await page.waitForTimeout(400);
+      if (ch.id === 'dafeiyu') {
+        assert.match(await page.evaluate(() => document.getElementById('hatch-video').src), /dafeiyu\/hatch\.webm$/);
+        return 'hatch.webm';
+      }
+      assert.equal(await page.locator('#hatch-look canvas.sprite').count(), 1);
+      return 'sprite hatch action';
+    }, page);
+    await step(S, 'E2 on the desktop she idles', async () => {
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await leave();
+      await idle();
+      await page.evaluate(() => window.pet.debugSet({ hunger: 30, mood: 55, energy: 90, sleeping: false }));
+      await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 });
+      assert.match(await page.textContent('#meta'), new RegExp(ch.zh));
+      return shows('idle');
+    }, page);
+    await step(S, 'E3a the idle chain starts a cue on its own (no input)', async () => {
+      await leave();
+      await page.waitForFunction(() => window.petFx.state().lastCue, null, { timeout: 30000 });
+      const st = await fxState();
+      return `idle chain played "${st.lastCue}" by itself (facing ${st.facing})`;
+    }, page);
+    await step(S, 'E3b look around', async () => { await page.evaluate(() => window.petFx.cue('look')); return shows('look'); }, page);
+    await step(S, 'E3c turn: the character is mirrored', async () => {
+      await settle();
+      await page.evaluate(() => window.petFx.face('right'));
+      await page.waitForFunction(() => window.petFx.state().facing === 'right', null, { timeout: 3000 });
+      const before = (await fxState()).facing;
+      await page.evaluate(() => window.petFx.cue('turn'));
+      await page.waitForFunction((b) => window.petFx.state().facing !== b, before, { timeout: 3000 });
+      const scale = await page.evaluate(() => getComputedStyle(document.querySelector('#pet-body[data-facing="left"] .char, #pet-body[data-facing="left"] video')).scale);
+      return `facing ${before} → ${(await fxState()).facing}, CSS scale ${scale}`;
+    }, page);
+    await step(S, 'E3d turn back', async () => {
+      await page.evaluate(() => window.petFx.cue('turn'));
+      await page.waitForFunction(() => window.petFx.state().facing === 'right', null, { timeout: 3000 });
+      return 'facing right';
+    }, page);
+    await step(S, 'E4 a click: a reaction with a squash and hearts', async () => {
+      await settle();
+      await hover(page);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await page.waitForFunction(() => ['pat', 'happy'].includes(window.petFx.state().state), null, { timeout: 4000 });
+      const squash = await page.evaluate(() => document.getElementById('pet-body').classList.contains('squash'));
+      assert.equal(squash, true, 'squash');
+      await page.waitForTimeout(150);
+      const st = await fxState();
+      const hearts = await page.locator('.heart-p').count();
+      assert.ok(hearts > 0, 'heart particles');
+      return `${await shows(st.state, st.video ? st.state : st.state)}, squash, ${hearts} hearts`;
+    }, page);
+    await step(S, 'E4b the next click picks the other reaction', async () => {
+      const first = (await fxState()).state;
+      await page.waitForTimeout(3200);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await page.waitForFunction((f) => ['pat', 'happy'].includes(window.petFx.state().state) && window.petFx.state().state !== f, first, { timeout: 4000 });
+      return `${first} → ${(await fxState()).state}`;
+    }, page);
+    await step(S, 'E5 dragged: she is lifted (dangling)', async () => {
+      await settle();
+      const box = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2 - 8, { steps: 4 });
+      await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 });
+      await page.waitForFunction(() => document.getElementById('pet-body').classList.contains('lifted'), null, { timeout: 2000 }); // set on the next frame
+      const st = await fxState();
+      const out = st.video ? `lifted → clip ${await clip()}.webm + ❗ overlay` : await shows('lifted');
+      await page.screenshot({ path: path.join(OUT, `${S}-lifted.png`) });
+      await page.waitForTimeout(250); // hold still before letting go: a drop, not a throw
+      await page.mouse.up();
+      assert.equal((await fxState()).flying, false, 'a slow release does not throw');
+      return out;
+    }, page);
+    await step(S, 'E6 thrown: flies, bounces off the screen edges and lands', async () => {
+      await leave();
+      await page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 10000 });
+      const before = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+      const res = await page.evaluate(() => window.petFx.throw(-1600, -900));
+      const after = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows()[0]; return { b: w.getBounds(), wa: screen.getDisplayMatching(w.getBounds()).workArea }; });
+      assert.ok(res && res.bounces >= 1, JSON.stringify(res));
+      assert.notDeepEqual([after.b.x, after.b.y], [before.x, before.y]);
+      assert.equal(after.b.y, after.wa.y + after.wa.height - after.b.height, 'rests on the bottom of the work area');
+      assert.ok(after.b.x >= after.wa.x && after.b.x + after.b.width <= after.wa.x + after.wa.width);
+      return `window ${before.x},${before.y} → ${after.b.x},${after.b.y}; ${res.bounces} bounces (${[...new Set(res.hits)].join(', ')})`;
+    }, page);
+    for (const [i, food] of [[0, 'rice'], [1, 'cookie'], [2, 'fruit']].map(([n, f]) => [n, f])) {
+      await step(S, `E7 fed ${food}`, async () => {
+        await idle();
+        await page.evaluate(() => window.pet.debugSet({ hunger: 70, sleeping: false, energy: 90 }));
+        await clickAct(page, 'feed');
+        await page.click(`#food-menu .btn >> nth=${i}`);
+        return shows(`eat_${food}`);
+      }, page);
+      await page.waitForTimeout(3600);
+    }
+    await step(S, 'E8 play', async () => {
+      await idle();
+      await page.evaluate(() => window.pet.debugSet({ energy: 90, sleeping: false, hunger: 20 }));
+      await clickAct(page, 'play');
+      return shows('play');
+    }, page);
+    await page.waitForTimeout(4200);
+    await step(S, 'E9 sleep', async () => {
+      await idle();
+      await page.evaluate(() => window.pet.debugSet({ energy: 20 }));
+      await clickAct(page, 'sleep');
+      await leave();
+      return shows('sleep');
+    }, page);
+    await step(S, 'E10a hungry', async () => {
+      await page.evaluate(() => window.pet.debugSet({ sleeping: false, hunger: 90, mood: 50 }));
+      return shows('hungry');
+    }, page);
+    await step(S, 'E10b sad', async () => {
+      await page.evaluate(() => window.pet.debugSet({ hunger: 20, mood: 10 }));
+      return shows('sad');
+    }, page);
+    await step(S, 'E10c happy', async () => {
+      await page.evaluate(() => window.pet.debugSet({ hunger: 20, mood: 90 }));
+      return shows('happy');
+    }, page);
+    await step(S, 'E11a work status: thinking while the agent works', async () => {
+      await page.evaluate(() => window.pet.debugSet({ mood: 55 }));
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '帮我想想今天吃什么');
+      await page.press('#chat-input', 'Enter');
+      await leave();
+      return shows('think');
+    }, page);
+    await step(S, 'E11b work status: talking when the reply arrives', async () => {
+      await page.waitForFunction(() => !document.getElementById('bubble').classList.contains('thinking') && /echo:/.test(document.getElementById('bubble').textContent), null, { timeout: 15000 });
+      return `${await shows('talk')}; bubble: ${(await bubbleText(page)).slice(0, 30)}`;
+    }, page);
+    await step(S, 'E11c work status: an error makes her upset', async () => {
+      await idle();
+      await page.waitForTimeout(4200);
+      await page.evaluate(() => window.petFx.error());
+      return shows('sad');
+    }, page);
+    await step(S, 'E11d the time background is in every message to the agent', async () => {
+      const prompt = fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop().prompt;
+      assert.match(prompt, /现在\d\d:\d\d（(凌晨|清晨|早上|上午|中午|下午|傍晚|晚上|深夜)，星期./);
+      return prompt.match(/现在[^；]+/)[0];
+    });
+    await step(S, 'E12 relationship stage-up: evolve, sparkle and hearts', async () => {
+      await page.waitForTimeout(3600);
+      await idle();
+      await page.evaluate(() => window.pet.debugSet({ affection: 16 }));
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
+      return `${await shows('evolve')}; toast: ${(await page.textContent('#toast-title')).trim()}`;
+    }, page);
+    await step(S, 'E13 a wardrobe with her own outfits', async () => {
+      await idle();
+      await page.click('#toast-close');
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card');
+      const ids = await page.$$eval('.card', (els) => els.map((e) => e.dataset.outfit));
+      const label = await page.textContent('.card[data-outfit="daily"] .nm');
+      if (ch.id === 'dafeiyu') assert.equal(ids.length, 9);
+      else assert.deepEqual(ids, ['daily']);
+      return `${ids.length} outfit(s); daily = ${label}`;
+    }, page);
+    await step(S, 'E14 switch character from the advanced settings, keeping the agent and affection', async () => {
+      await page.click('#panel-close');
+      const next = ROSTER[(ch.idx + 1) % ROSTER.length];
+      const before = await view(page);
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector(`.char-opt[data-species="${next.id}"] .pick`);
+      await page.click(`.char-opt[data-species="${next.id}"] .pick`);
+      await page.waitForSelector(`.char-opt.on[data-species="${next.id}"]`);
+      await page.screenshot({ path: path.join(OUT, `${S}-switch-panel.png`) });
+      await page.click('#panel-close');
+      const after = await view(page);
+      assert.equal(after.pet.speciesId, next.id);
+      assert.equal(after.pet.agentId, before.pet.agentId);
+      assert.equal(after.pet.affection, before.pet.affection);
+      await page.waitForFunction(() => window.petFx.state().state === 'hatch', null, { timeout: 4000 });
+      return `${ch.id} → ${next.id}; agent ${after.pet.agentId} kept, ♥${after.pet.affection}`;
+    }, page);
   } finally {
     await app.close().catch(() => {});
   }
@@ -1503,6 +1848,7 @@ async function art() {
   if (which === 'packs' || which === 'all') await packs();
   if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
+  if (which === 'roster' || which === 'all') await roster();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

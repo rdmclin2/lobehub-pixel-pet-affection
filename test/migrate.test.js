@@ -5,7 +5,7 @@ const { migratePet, affectionFromLegacy, needsMigration } = require('../src/core
 
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const legacy = (extra) => ({
-  speciesId: 'bubbo', name: '小蓝', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: T0 - 86400000,
+  speciesId: 'grok', name: '小蓝', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: T0 - 86400000,
   hunger: 40, mood: 60, energy: 70, sleeping: false, lastTickAt: T0, lastInteractionAt: T0, lastFedAt: T0, lastSpokeAt: 0,
   owner: 'me', personaVersion: 3, localAbilities: true, ...extra,
 });
@@ -35,7 +35,7 @@ test('an old save keeps the pet, agent and topic, drops xp/stage and records the
   assert.equal(pet.agentId, 'agt_OLD');
   assert.equal(pet.topicId, 'tpc_OLD');
   assert.equal(pet.name, '小蓝');
-  assert.equal(pet.speciesId, 'bubbo');
+  assert.equal(pet.speciesId, 'grok');
   assert.equal(pet.localAbilities, true);
   assert.equal(pet.personaVersion, 3); // so the agent's system role is upgraded on the next turn
   assert.equal(pet.affection, 36);
@@ -62,6 +62,6 @@ test('a migrated save is not migrated again, and corrupt input yields no pet', (
   assert.equal(again.migrated, false);
   assert.equal(again.pet.affection, pet.affection);
   assert.deepEqual(again.pet.legacy, pet.legacy);
-  assert.deepEqual(migratePet(null, T0), { pet: null, migrated: false });
-  assert.deepEqual(migratePet('garbage', T0), { pet: null, migrated: false });
+  assert.deepEqual(migratePet(null, T0), { pet: null, migrated: false, remapped: null });
+  assert.deepEqual(migratePet('garbage', T0), { pet: null, migrated: false, remapped: null });
 });

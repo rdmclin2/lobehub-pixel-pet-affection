@@ -8,9 +8,10 @@ const { SPECIES, SPECIES_IDS } = require('../src/core/species');
 const DIR = path.join(__dirname, '..', 'src', 'renderer', 'assets', 'dafeiyu');
 const REQUIRED_CLIPS = ['idle', 'happy', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'pat', 'hatch', 'evolve'];
 
-test('there are now four starter species and the 大肥鱼 is one of them', () => {
-  assert.equal(SPECIES_IDS.length, 4);
+test('the roster is the model-chan: DeepSeek 大肥鱼 (kept, video), Claude and Grok', () => {
+  assert.deepEqual(SPECIES_IDS, ['dafeiyu', 'claude', 'grok']);
   assert.equal(SPECIES.dafeiyu.nameZh, '大肥鱼');
+  assert.equal(SPECIES.dafeiyu.vendor, 'DeepSeek');
   assert.equal(SPECIES.dafeiyu.art, 'video');
 });
 
@@ -23,8 +24,12 @@ test('every status and reaction has a clip, and each clip is a real WebM file', 
   }
 });
 
-test('pixel species do not carry video fields, so the renderer keeps drawing them on canvas', () => {
-  for (const id of ['embit', 'bubbo', 'sprig']) assert.equal(SPECIES[id].art, undefined);
+test('pack characters do not carry video fields, so the renderer draws them from their pack', () => {
+  for (const id of ['grok', 'claude']) {
+    assert.equal(SPECIES[id].art, 'pack');
+    assert.equal(SPECIES[id].clips, null);
+    assert.equal(SPECIES[id].defaultPack, `${id}-pixel`);
+  }
 });
 
 test('the required credit and non-commercial terms ship with the assets and the README', () => {

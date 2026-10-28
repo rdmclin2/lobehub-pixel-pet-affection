@@ -24,15 +24,15 @@ const all = [...tones.map((t) => t.v), ...lines.map((l) => l.l), ...dialogue.TOP
 p(`content guard over every shipped string (${all.length}): ${all.filter((x) => !checkReply(x).ok).length} blocked`);
 
 for (const [label, settings] of [['ON (18+ confirmed, adult content on)', { ageConfirmed: true, adultContent: true }], ['OFF (18+ confirmed, adult content off)', { ageConfirmed: true, adultContent: false }], ['OFF (under 18 / all ages only)', { ageConfirmed: false, adultContent: false }]]) {
-  const pet = st.createPet({ speciesId: 'bubbo', name: 'T', agentId: 'a', now: 0 });
+  const pet = st.createPet({ speciesId: 'grok', name: 'T', agentId: 'a', now: 0 });
   st.setAffectionForTest(pet, 95); // highest stage: everything unlocked
   const scope = dialogue.relationScope(pet, settings);
   const pool = ['greet', 'fed', 'patted', 'played', 'bored', 'stage_up'].flatMap((k) => dialogue.stageLines(pet, settings, k));
-  p(`\n# 2. Adult content ${label} · 泡鲸 ♥95 (all stages unlocked)`);
+  p(`\n# 2. Adult content ${label} · 格萝可 ♥95 (all stages unlocked)`);
   p(`stage shown: ${scope.stageName}; tone sent to agent: ${scope.tone}`);
   p(`topics (${dialogue.listTopics(pet, settings).length}): ${dialogue.listTopics(pet, settings).map((t) => `${t.label}${t.rating === 'adult' ? '[成人向]' : ''}`).join('、')}`);
   p(`outfits (${outfits.listOutfits(pet, settings).length}): ${outfits.listOutfits(pet, settings).map((o) => `${o.label}${o.rating === 'adult' ? '[成人向]' : ''}`).join('、')}`);
   p(`offline lines at 恋人 stage (${pool.length}): ${pool.join(' / ')}`);
   p(`equip maid -> ${JSON.stringify(outfits.checkOutfit(pet, settings, 'maid').ok ? 'ok' : outfits.checkOutfit(pet, settings, 'maid').reason)}; topic tease -> ${dialogue.getTopic(pet, settings, 'tease').ok ? 'ok' : dialogue.getTopic(pet, settings, 'tease').reason}`);
-  p(`system role mentions adult topics: ${dialogue.TOPICS.filter((t) => t.rating === 'adult' && persona.buildSystemRole({ speciesId: 'bubbo', name: 'T', pet, settings }).includes(t.label)).map((t) => t.label).join('、') || '(none)'}`);
+  p(`system role mentions adult topics: ${dialogue.TOPICS.filter((t) => t.rating === 'adult' && persona.buildSystemRole({ speciesId: 'grok', name: 'T', pet, settings }).includes(t.label)).map((t) => t.label).join('、') || '(none)'}`);
 }

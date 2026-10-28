@@ -118,7 +118,7 @@ function wire() {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: service.lookFor(id, 'daily') || service.lookFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
   const onLoginPrompt = (p) => {
@@ -213,6 +213,18 @@ function wire() {
     const [x, y] = win.getPosition();
     win.setPosition(Math.round(x + dx), Math.round(y + dy));
   });
+  // Throwing the pet (src/core/fx.js stepThrow): the renderer runs the physics against the work area of
+  // the screen the window is on and moves the window frame by frame.
+  ipcMain.handle('work-area', () => {
+    if (!win) return null;
+    const b = win.getBounds();
+    return { bounds: b, area: screen.getDisplayMatching(b).workArea };
+  });
+  ipcMain.on('move-to', (_e, { x, y }) => {
+    if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    win.setPosition(Math.round(x), Math.round(y));
+  });
+  ipcMain.handle('switch-character', (_e, { id }) => service.switchCharacter(String(id || '')));
   ipcMain.on('place', (_e, mode) => { if (mode in SIZES) { petBounds = null; place(mode); } });
   // Wardrobe / topic panel: grow the pet window up and to the left (its bottom-right corner stays put),
   // then give the pet its old bounds back when the panel closes.

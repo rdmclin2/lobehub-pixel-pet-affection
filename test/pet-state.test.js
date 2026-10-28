@@ -5,7 +5,7 @@ const st = require('../src/core/pet-state');
 
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const MIN = 60000;
-const mk = () => st.createPet({ speciesId: 'bubbo', name: 'B', agentId: 'agt_x', now: T0 });
+const mk = () => st.createPet({ speciesId: 'grok', name: 'B', agentId: 'agt_x', now: T0 });
 
 test('new companion starts as a stranger with 0 affection and sane needs', () => {
   const p = mk();

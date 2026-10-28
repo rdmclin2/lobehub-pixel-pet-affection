@@ -1,107 +1,77 @@
 'use strict';
 
-// Four companions (three original + one community character). Each carries a persona that is
-// baked into the LobeHub agent's system role when the pet is created. Every character is an
-// adult (set age 25+); see docs/affection-design.md section 8.1.
-const SPECIES = {
-  embit: {
-    id: 'embit',
-    name: 'Embit',
-    nameZh: '焰团',
-    element: 'fire',
-    egg: { shell: '#f4d6a0', spot: '#e8573a' },
-    blurb: '成年火元素精灵，热情急性子，三分钟热度。',
-    personality:
-      '你是一位成年的火元素精灵（设定年龄 25 岁以上）。热情、急性子，爱起哄，三分钟热度，被冷落会闹脾气，被夸会得意地冒火星。',
-    catchphrase: '噼啪！',
-    likes: '热的食物、被摸头、玩耍',
-    fallback: {
-      hungry: ['肚子在冒烟了……饭呢？', '噼啪！再不喂我就熄火啦！'],
-      bored: ['喂，陪我玩嘛！', '噼啪，好无聊，来点刺激的！'],
-      happy: ['嘿嘿，再摸一下！', '噼啪！开心得冒火星！'],
-      sleepy: ['我先眯一会儿，火苗留着……'],
-      greet: ['噼啪！你来啦！'],
-    },
-  },
-  bubbo: {
-    id: 'bubbo',
-    name: 'Bubbo',
-    nameZh: '泡鲸',
-    element: 'water',
-    egg: { shell: '#bfe3f2', spot: '#3a7fd5' },
-    blurb: '成年水灵，慢吞吞软乎乎，爱吃白饭，爱犯困。',
-    personality:
-      '你是一位成年的水灵（设定年龄 25 岁以上），化身是一条慢吞吞、软乎乎的蓝色大鲸鱼。爱吃白饭，爱犯困，说话温柔带点懒，喜欢叫主人“鱼片”。',
-    catchphrase: '咕噜~',
-    likes: '白米饭、小憩、被轻轻戳',
-    fallback: {
-      hungry: ['咕噜……想吃白饭……', '鱼片，饭饭呢？'],
-      bored: ['咕噜，有点闷，戳戳我嘛。'],
-      happy: ['咕噜~好舒服~', '再戳一下下……'],
-      sleepy: ['咕噜……困了……'],
-      greet: ['咕噜~鱼片你来啦~'],
-    },
-  },
-  sprig: {
-    id: 'sprig',
-    name: 'Sprig',
-    nameZh: '叶芽',
-    element: 'grass',
-    egg: { shell: '#d9ecc0', spot: '#4fae4e' },
-    blurb: '成年草木精灵，内敛温柔，爱晒太阳，喜欢安静陪伴。',
-    personality:
-      '你是一位成年的草木精灵（设定年龄 25 岁以上），内敛温柔又好奇，爱晒太阳，喜欢安静地陪着主人，说话轻声细语，偶尔会冒出一些新奇的想法。',
-    catchphrase: '沙沙~',
-    likes: '阳光、清水、安静陪伴',
-    fallback: {
-      hungry: ['沙沙……有点渴了……', '能给我一点水和阳光吗？'],
-      bored: ['沙沙，你在忙什么呀？我能看看吗？'],
-      happy: ['沙沙~谢谢你~', '叶子都舒展开了。'],
-      sleepy: ['叶子要合上啦……晚安……'],
-      greet: ['沙沙，你好呀。'],
-    },
-  },
-  dafeiyu: {
-    id: 'dafeiyu',
-    name: 'Dafeiyu',
-    nameZh: '大肥鱼',
-    element: 'whale',
-    // Not pixel art: transparent VP9 clips from the community project dsh-pet (see
-    // src/renderer/assets/dafeiyu/NOTICE.md for the license and credits).
-    art: 'video',
-    clips: {
-      idle: 'idle.webm',
-      look: 'look.webm',
-      happy: 'happy.webm',
-      pat: 'pat.webm',
-      sad: 'sad.webm',
-      hungry: 'hungry.webm',
-      sleep: 'sleep.webm',
-      eat_rice: 'eat_rice.webm',
-      eat_cookie: 'eat_cookie.webm',
-      eat_fruit: 'eat_fruit.webm',
-      think: 'think.webm',
-      talk: 'talk.webm',
-      play: 'play.webm',
-      hatch: 'hatch.webm',
-      evolve: 'evolve.webm',
-    },
-    egg: { shell: '#5a6bb8', spot: '#dbe7ff' },
-    blurb: '社区人气的蓝色鲸鱼娘，爱吃白饭，叫你“鱼片”。（形象非 DeepSeek 官方）',
-    personality:
-      '你是 DeepSeek 社区里的“大肥鱼”（成年角色，设定年龄 25 岁以上）：一条蓝色的鲸鱼娘，穿女仆装，爱吃白饭，懒洋洋又有点嘴硬，喜欢叫主人“鱼片”。偶尔会冒出一句社区梗，比如“就一碗”“先养着吧”，但不要刷屏。你不是官方形象，被问到时可以坦然承认自己是社区二创。你和主人之间只用全年龄的友好语气，不调情、不暧昧。',
-    catchphrase: '咕噜~',
-    likes: '白米饭、摸鱼、被叫“大肥鱼”',
-    fallback: {
-      hungry: ['鱼片，饭呢？就一碗……', '咕噜……白饭白饭白饭……'],
-      bored: ['先养着吧？那倒是理我一下呀。', '鱼片，在忙吗？摸会儿鱼嘛。'],
-      happy: ['咕噜~吃饱饱摸肚子~', '厉害了我的鲸~'],
-      sleepy: ['深度睡眠中……勿扰。'],
-      greet: ['咕噜~鱼片你来啦~'],
-    },
-  },
-};
+// The companions: model-chan (模型娘) fan characters themed on AI model vendors. Each one is data, not
+// code: `src/characters/<id>.json` holds its vendor, persona, lines, theme colour, which outfits it has
+// art for, whether adult content may ever apply to it, its art (video clips or pet packs) and credits.
+// Every effect (src/core/fx.js, src/renderer/fx.js) is shared; a character only differs in this file,
+// its art and its lines. Every character is an adult (set age 25+); see docs/affection-design.md 8.1.
+// None of them is an official vendor mascot.
 
+const fs = require('node:fs');
+const path = require('node:path');
+
+const DIR = path.join(__dirname, '..', 'characters');
+const ID_RE = /^[a-z][a-z0-9]{1,19}$/;
+const FALLBACK_KINDS = ['hungry', 'bored', 'happy', 'sleepy', 'greet'];
+const ART_KINDS = ['video', 'pack'];
+
+// Characters that were retired with the model-chan roster, and who takes over an old save.
+// The whale goes to the DeepSeek whale; the others to the character closest in temperament.
+const RETIRED = { bubbo: 'dafeiyu', embit: 'claude', sprig: 'dafeiyu' };
+const DEFAULT_SPECIES = 'dafeiyu';
+
+const str = (v) => typeof v === 'string' && v.trim().length > 0;
+
+// Check one character file. Returns a list of problems (empty = valid).
+function validateCharacter(c) {
+  const errors = [];
+  if (!c || typeof c !== 'object') return ['not an object'];
+  if (!ID_RE.test(c.id || '')) errors.push('id must be 2–20 characters: a-z, 0-9, starting with a letter');
+  for (const k of ['vendor', 'name', 'nameZh', 'title', 'blurb', 'personality', 'catchphrase', 'likes']) if (!str(c[k])) errors.push(`${k} is required`);
+  if (!/^#[0-9a-fA-F]{6}$/.test(c.accent || '')) errors.push('accent must be a #rrggbb colour');
+  for (const k of FALLBACK_KINDS) if (!c.fallback || !Array.isArray(c.fallback[k]) || !c.fallback[k].length || !c.fallback[k].every(str)) errors.push(`fallback.${k} needs at least one line`);
+  if (typeof c.adult !== 'boolean') errors.push('adult must be true or false');
+  if (!Array.isArray(c.outfits) || !c.outfits.includes('daily')) errors.push('outfits must list the outfits it has art for, including daily');
+  const art = c.art || {};
+  if (!ART_KINDS.includes(art.kind)) errors.push(`art.kind must be one of ${ART_KINDS.join(', ')}`);
+  if (art.kind === 'video' && (!art.clips || !str(art.clips.idle) || !str(art.dir))) errors.push('a video character needs art.dir and art.clips.idle');
+  if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
+  if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
+  if (RETIRED[c.id]) errors.push(`${c.id} is a retired character id`);
+  return errors;
+}
+
+// Normalise a valid file into the shape the app uses.
+function toSpecies(c) {
+  const art = c.art;
+  return {
+    ...c,
+    // video characters keep `art: 'video'` + `clips` at the top level (what the renderer reads)
+    art: art.kind === 'video' ? 'video' : 'pack',
+    clips: art.kind === 'video' ? { ...art.clips } : null,
+    clipDir: art.kind === 'video' ? art.dir : null,
+    packs: [...art.packs],
+    defaultPack: art.kind === 'pack' ? art.packs[0] : null,
+    fallbackPack: art.fallbackPack || art.packs[0] || null,
+    fx: { noMirror: [], ...(c.fx || {}) },
+    signature: c.signature || null,
+  };
+}
+
+function loadCharacters(dir = DIR) {
+  const out = {};
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+  for (const f of files) {
+    const c = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    const errors = validateCharacter(c);
+    if (`${c.id}.json` !== f) errors.push(`file name must be ${c.id}.json`);
+    if (errors.length) throw new Error(`character ${f}: ${errors.join('; ')}`);
+    out[c.id] = toSpecies(c);
+  }
+  return Object.fromEntries(Object.entries(out).sort(([, a], [, b]) => (a.order || 99) - (b.order || 99)));
+}
+
+const SPECIES = loadCharacters();
 const SPECIES_IDS = Object.keys(SPECIES);
 
 function getSpecies(id) {
@@ -110,4 +80,25 @@ function getSpecies(id) {
   return s;
 }
 
-module.exports = { SPECIES, SPECIES_IDS, getSpecies };
+// The character a saved id stands for now: itself, its successor if it was retired, else the default.
+function resolveSpeciesId(id) {
+  if (SPECIES[id]) return id;
+  if (RETIRED[id] && SPECIES[RETIRED[id]]) return RETIRED[id];
+  return DEFAULT_SPECIES;
+}
+
+// Tests only: add a character (e.g. one that allows adult content) to the live registry.
+function registerCharacter(c) {
+  const errors = validateCharacter(c);
+  if (errors.length) throw new Error(errors.join('; '));
+  SPECIES[c.id] = toSpecies(c);
+  if (!SPECIES_IDS.includes(c.id)) SPECIES_IDS.push(c.id);
+  return SPECIES[c.id];
+}
+function unregisterCharacter(id) {
+  delete SPECIES[id];
+  const i = SPECIES_IDS.indexOf(id);
+  if (i >= 0) SPECIES_IDS.splice(i, 1);
+}
+
+module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, loadCharacters, registerCharacter, unregisterCharacter };

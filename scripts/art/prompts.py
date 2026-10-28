@@ -1,4 +1,5 @@
-# Prompts for the character pictures (scripts/art/generate.sh). Prints [{name, prompt}] as JSON.
+# Prompts for the illustrated outfit pictures (scripts/art/generate.sh) of 大肥鱼 (dafeiyu-illustrated).
+# The model-chan pixel packs have their own prompts: model_chan_prompts.py. Prints [{name, prompt}] as JSON.
 import json
 STYLE = ("Style: high-quality 2D anime illustration, clean dark lineart, soft cel shading, vibrant pastel colors. "
  "She is clearly an adult woman in her mid-20s with mature adult proportions (about 7 heads tall), adult face, not chibi, not childlike. "
@@ -6,9 +7,6 @@ STYLE = ("Style: high-quality 2D anime illustration, clean dark lineart, soft ce
  "whole body visible from head to feet, centered, with some empty margin around her. "
  "Background: perfectly flat solid pure magenta (#FF00FF) chroma-key color, no gradient, no floor, no shadow, no other objects, no text, no watermark.")
 CHARS = {
- "embit": "an adult fire-spirit woman: long vivid orange-red hair in a high ponytail whose tips glow softly like little flames, bright amber eyes, a small flame-shaped hair ornament, lively cheerful expression",
- "bubbo": "an adult water-spirit woman inspired by a gentle blue whale: wavy shoulder-length sky-blue hair fading to deeper blue at the tips, sleepy soft teal eyes, a small white whale-tail hair clip, relaxed dreamy expression",
- "sprig": "an adult forest-spirit woman: long straight mint-green hair with a small two-leaf sprout hairpin on top, soft green eyes, a tiny white flower tucked behind one ear, calm gentle shy expression",
  "dafeiyu": "an adult whale-girl character: long deep-blue hair with light-blue streaks, a small chubby blue whale tail behind her, light-blue eyes, lazy and slightly smug cute expression",
 }
 OUTFITS = {
@@ -32,6 +30,6 @@ for c, cd in CHARS.items():
     for o, od in OUTFITS.items():
         if c == "dafeiyu" and o not in ALL_AGES: continue
         jobs.append({"name": f"{c}_{o}", "prompt": f"Full-body standing character illustration of {cd}. She is wearing {od}. {STYLE}"})
-jobs.append({"name": "logo", "prompt": "Square app icon for a desktop companion app: a cute anime-style adult woman in her mid-20s (adult face and proportions, not chibi, not childlike) with long sky-blue wavy hair and a small white whale-tail hair clip, sleepy teal eyes, warm smile, winking, holding a small pink heart, bust-up portrait, fully clothed in a cozy cream knit sweater, clean cel-shaded 2D anime illustration, soft pastel pink-to-lavender background filling the whole square, centered, no text, no watermark"})
+jobs.append({"name": "logo", "prompt": 'Square app icon for a desktop companion app called Pixel Pet. Three cute 16-bit pixel-art fan characters shown from the chest up, side by side, close together, smiling at the viewer: on the left a chibi whale girl with long deep-blue hair fading to light blue, small whale-fin ears, a white maid headdress and a navy maid dress with a white apron; in the middle a calm young woman with long bright orange curly hair, an orange multi-petal flower hair ornament, amber eyes and a cream high-collared blouse with a black ribbon; on the right a playful young woman with long pale champagne-gold twin tails, a small black-and-gold crown, sapphire eyes, tiny cute fangs and a high-collared black gothic gown with a wine-red standing collar. Both women on the middle and right are clearly adults in their mid-20s with adult faces. Crisp hard-edged pixels, limited palette, no anti-aliasing. Background: a soft rounded square with a gentle lavender-to-pink gradient and a few small pixel hearts. No text, no letters, no logos, no watermark. Fully covered, modest clothing.'})
 if __name__ == '__main__':
     print(json.dumps(jobs))

@@ -1,11 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const { buildSystemRole, buildStateBlock, buildEventPrompt } = require('../src/core/persona');
 const st = require('../src/core/pet-state');
 
 test('system role carries name, species personality and a Chinese-by-default rule', () => {
-  for (const [id, zh] of [['embit', '焰团'], ['bubbo', '泡鲸'], ['sprig', '叶芽'], ['dafeiyu', '大肥鱼']]) {
+  for (const [id, zh] of [['testchan', '测试娘'], ['grok', '格萝可'], ['claude', '克洛蒂'], ['dafeiyu', '大肥鱼']]) {
     const r = buildSystemRole({ speciesId: id, name: '小测' });
     assert.match(r, /小测/);
     assert.match(r, new RegExp(zh));
@@ -15,7 +16,7 @@ test('system role carries name, species personality and a Chinese-by-default rul
 
 test('state block reflects hunger and time without leaking raw numbers', () => {
   const now = new Date('2026-01-05T08:05:00').getTime();
-  const p = st.createPet({ speciesId: 'embit', name: 'E', agentId: 'a', now });
+  const p = st.createPet({ speciesId: 'testchan', name: 'E', agentId: 'a', now });
   p.hunger = 90;
   const b = buildStateBlock(p, now);
   assert.match(b, /很饿/);
@@ -25,14 +26,14 @@ test('state block reflects hunger and time without leaking raw numbers', () => {
 
 test('event prompts start with the state block and an [事件] marker', () => {
   const now = Date.now();
-  const p = st.createPet({ speciesId: 'bubbo', name: 'B', agentId: 'a', now });
+  const p = st.createPet({ speciesId: 'grok', name: 'B', agentId: 'a', now });
   const prompt = buildEventPrompt('hungry', p, now);
   assert.match(prompt, /^\[状态\]/);
   assert.match(prompt, /\n\[事件\] /);
 });
 
 test('the persona keeps replies short and heavy work one step at a time, without refusing helpful tasks', () => {
-  const r = buildSystemRole({ speciesId: 'embit', name: 'E' });
+  const r = buildSystemRole({ speciesId: 'testchan', name: 'E' });
   assert.match(r, /50 个字以内/);
   assert.match(r, /一件一件来/);
   assert.match(r, /联网搜索/);
@@ -45,16 +46,16 @@ const { PERSONA_VERSION, CONTENT_RULES, buildTopicPrompt, buildChatPrompt } = re
 const { getTopic } = require('../src/core/dialogue');
 const ADULT = { ageConfirmed: true, adultContent: true };
 const OFF = { ageConfirmed: true, adultContent: false };
-const at = (affection, speciesId = 'embit') => {
+const at = (affection, speciesId = 'testchan') => {
   const now = new Date('2026-01-05T10:00:00').getTime();
   const p = st.createPet({ speciesId, name: 'E', agentId: 'a', now });
   st.setAffectionForTest(p, affection);
   return { p, now };
 };
 
-test('persona v5: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
-  assert.equal(PERSONA_VERSION, 6);
-  for (const id of ['embit', 'bubbo', 'sprig', 'dafeiyu']) {
+test('persona v7: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
+  assert.equal(PERSONA_VERSION, 7);
+  for (const id of ['testchan', 'grok', 'claude', 'dafeiyu']) {
     const r = buildSystemRole({ speciesId: id, name: 'X' });
     assert.match(r, /你是成年人/);
     assert.match(r, /25 岁以上/);
@@ -110,7 +111,7 @@ test('topic prompts use the [话题] marker and keep adult topics clean', () => 
 });
 
 const { personaKey } = require('../src/core/persona');
-const role = (affection, settings, speciesId = 'embit') => {
+const role = (affection, settings, speciesId = 'testchan') => {
   const { p } = at(affection, speciesId);
   return buildSystemRole({ speciesId, name: 'E', pet: p, settings });
 };
@@ -133,7 +134,7 @@ test('the system role itself carries the current stage, its tone and the unlocke
   assert.match(high, /已是最高阶段/);
   for (const r of [low, mid, high]) assert.ok(r.includes(CONTENT_RULES));
   // with no pet (agent creation) it is the first stage
-  assert.match(buildSystemRole({ speciesId: 'embit', name: 'E' }), /阶段=陌生（第 1\/5 阶段）/);
+  assert.match(buildSystemRole({ speciesId: 'testchan', name: 'E' }), /阶段=陌生（第 1\/5 阶段）/);
 });
 
 test('adult content off: the system role offers only all-ages tone and never names adult topics, even locked', () => {

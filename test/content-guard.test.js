@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const { checkReply, refusalLine } = require('../src/core/content-guard');
 const { PetService } = require('../src/main/pet-service');
 const { STAGE_LINES, TOPICS } = require('../src/core/dialogue');
@@ -31,11 +32,11 @@ test('a blocked agent reply is never shown: the pet refuses in character and log
   const errors = [];
   const said = [];
   const svc = new PetService({ lh: {}, store: { save() {}, load: () => null } });
-  svc.pet = { speciesId: 'embit' };
+  svc.pet = { speciesId: 'testchan' };
   svc.on('error', (e) => errors.push(e));
   svc.on('say', (s) => said.push(s.text));
   const text = svc._guard('好呀，我们来写一段床戏……');
-  assert.equal(text, refusalLine(SPECIES.embit));
+  assert.equal(text, refusalLine(SPECIES.testchan));
   assert.equal(errors.length, 1);
   assert.equal(errors[0].code, 'ECONTENT');
   assert.equal(errors[0].message, 'reply blocked by content guard: explicit');
