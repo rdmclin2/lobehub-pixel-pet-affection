@@ -9,6 +9,7 @@ const outfits = require('../core/outfits');
 const { migratePet } = require('../core/migrate');
 const settingsLib = require('../core/settings');
 const { getSpecies } = require('../core/species');
+const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -85,6 +86,16 @@ class PetService extends EventEmitter {
   _save() {
     this.store.save(this.pet);
     this.emit('update', this.view());
+  }
+
+  // An agent reply that crosses the content boundary is replaced by a refusal; only the category is logged.
+  _guard(text) {
+    const r = contentGuard.checkReply(text);
+    if (r.ok) return text;
+    const e = new Error(`reply blocked by content guard: ${r.category}`);
+    e.code = 'ECONTENT';
+    this.emit('error', e);
+    return contentGuard.refusalLine(getSpecies(this.pet.speciesId));
   }
 
   _say(text, source, kind, reason = null) {
@@ -280,7 +291,7 @@ class PetService extends EventEmitter {
       });
       if (res.topicId) this.pet.topicId = res.topicId;
       if (kind === 'greet_morning' || kind === 'greet_evening') this.pet.lastGreetDay = new Date(t).toDateString();
-      this._say(res.text, 'llm', kind);
+      this._say(this._guard(res.text), 'llm', kind);
     } catch (e) {
       if (e.code === 'ECANCELED') {
         this._save();
@@ -330,9 +341,10 @@ class PetService extends EventEmitter {
       const res = await this.lh.run({ agentId: this.pet.agentId, topicId: this.pet.topicId, prompt, tools: this._tools(), device: this._device() });
       if (res.topicId) this.pet.topicId = res.topicId;
       const { affection } = state.chatted(this.pet, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
-      this._say(res.text, 'llm', 'chat');
+      const text = this._guard(res.text);
+      this._say(text, 'llm', 'chat');
       this._reportAffection(affection);
-      return { ok: true, text: res.text, cost: res.cost, affection };
+      return { ok: true, text, cost: res.cost, affection };
     } catch (e) {
       if (e.code !== 'ECANCELED') this.emit('error', e);
       this._save(); // touch() above may have woken the pet; keep the sprite in sync
@@ -383,9 +395,10 @@ class PetService extends EventEmitter {
       const res = await this.lh.run({ agentId: this.pet.agentId, topicId: this.pet.topicId, prompt: persona.buildTopicPrompt(topic, this.pet, t, this.settings), tools: this._tools(), device: this._device() });
       if (res.topicId) this.pet.topicId = res.topicId;
       const { affection } = state.talkedTopic(this.pet, topic.id, this.now());
-      this._say(res.text, 'llm', `topic:${topic.id}`);
+      const text = this._guard(res.text);
+      this._say(text, 'llm', `topic:${topic.id}`);
       this._reportAffection(affection);
-      return { ok: true, text: res.text, affection };
+      return { ok: true, text, affection };
     } catch (e) {
       if (e.code === 'ECANCELED') {
         this._save();

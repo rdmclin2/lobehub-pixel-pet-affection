@@ -95,6 +95,8 @@ jobs:
         run: |
           ls -la dist
           cat > notes.md <<'NOTES'
+          > **成人向（18+）应用**：包含面向成年人的暧昧互动内容（不含露骨内容）。首次启动会确认是否年满 18 周岁，成人向内容可随时在“⋯”菜单关闭。内容边界与合规审查见 README 和 `docs/compliance-review.md`。
+
           ## 安装（macOS，Intel 与 Apple 芯片通用）
 
           1. 下载 `.dmg`（或 `.zip`），把 **Pixel Pet** 拖进“应用程序”。
@@ -110,7 +112,7 @@ jobs:
 
           ## 使用这台电脑（默认勾选，注意权限）
 
-          孵化页的“使用这台电脑”默认开启：应用会在认领和每次启动时确保 `lh connect --daemon` 在后台运行，并把宠物绑定到你的这台电脑。绑定后宠物能读写文件、搜索内容、运行命令，**权限等同你的账号，不是沙盒**；把文件拖给它时只传路径、不上传。不想要的话，孵化时取消勾选，或在“⋯”菜单里随时关闭。
+          唤醒页的“使用这台电脑”默认开启：应用会在认领和每次启动时确保 `lh connect --daemon` 在后台运行，并把宠物绑定到你的这台电脑。绑定后宠物能读写文件、搜索内容、运行命令，**权限等同你的账号，不是沙盒**；把文件拖给它时只传路径、不上传。不想要的话，唤醒时取消勾选，或在“⋯”菜单里随时关闭。
 
           ## 素材说明
 
@@ -118,8 +120,13 @@ jobs:
 
           ---
           NOTES
-          gh release create "${{ github.ref_name }}" dist/* \
-            --repo "${{ github.repository }}" \
-            --title "Pixel Pet ${{ github.ref_name }}" \
-            --notes-file notes.md \
-            --generate-notes
+          # A release may already exist (for example with a locally built Linux package): add the files to it.
+          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "${{ github.ref_name }}" dist/* \
+              --repo "${{ github.repository }}" \
+              --title "Pixel Pet ${{ github.ref_name }}" \
+              --notes-file notes.md \
+              --generate-notes
+          fi

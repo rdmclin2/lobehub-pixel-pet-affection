@@ -108,7 +108,7 @@ function buildEggs() {
 }
 
 function elementLabel(el) {
-  return { fire: '🔥 火之蛋', water: '💧 水之蛋', grass: '🌱 草之蛋', whale: '🐋 鲸之蛋' }[el] || el;
+  return { fire: '🔥 火之灵石', water: '💧 水之灵石', grass: '🌱 草之灵石', whale: '🐋 鲸之灵石' }[el] || el;
 }
 
 function selectEgg(id) {
@@ -123,7 +123,7 @@ function selectEgg(id) {
 function showOnboarding() {
   selected = null;
   $('hatch-btn').disabled = true;
-  $('egg-info').textContent = '点一颗蛋看看。';
+  $('egg-info').textContent = '点一块灵石看看。';
   $('pet-name').value = '';
   buildEggs();
   show('onboarding');
@@ -150,7 +150,7 @@ async function startHatch() {
   $('hatch-retry').classList.add('hidden');
   $('login-box').classList.add('hidden');
   $('step-device').classList.toggle('hidden', !$('local-opt').checked);
-  $('hatch-title').textContent = '孵化中……';
+  $('hatch-title').textContent = '唤醒中……';
   document.querySelectorAll('#steps li').forEach((li) => li.classList.remove('done', 'active'));
   show('hatching');
 
@@ -166,7 +166,7 @@ async function startHatch() {
   offLogin();
 
   if (!res.ok) {
-    $('hatch-title').textContent = '孵化失败';
+    $('hatch-title').textContent = '唤醒失败';
     $('hatch-error').textContent = res.error;
     $('hatch-error').classList.remove('hidden');
     $('hatch-retry').classList.remove('hidden');
@@ -176,7 +176,7 @@ async function startHatch() {
   $('login-box').classList.add('hidden');
   flashUntil = performance.now() + 700;
   revealSpecies = res.view.pet.speciesId;
-  $('hatch-title').textContent = `${res.view.pet.name} 破壳了！`;
+  $('hatch-title').textContent = `${res.view.pet.name} 醒来了！`;
   const sp = speciesOf(revealSpecies);
   if (sp.art === 'video') {
     $('hatch-canvas').classList.add('hidden');

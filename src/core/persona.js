@@ -5,7 +5,7 @@ const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./
 const { relationScope, listTopics } = require('./dialogue');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 5;
+const PERSONA_VERSION = 6;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [

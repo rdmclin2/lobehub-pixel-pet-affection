@@ -53,7 +53,7 @@ const at = (affection, speciesId = 'embit') => {
 };
 
 test('persona v5: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
-  assert.equal(PERSONA_VERSION, 5);
+  assert.equal(PERSONA_VERSION, 6);
   for (const id of ['embit', 'bubbo', 'sprig', 'dafeiyu']) {
     const r = buildSystemRole({ speciesId: id, name: 'X' });
     assert.match(r, /你是成年人/);

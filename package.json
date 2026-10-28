@@ -1,7 +1,7 @@
 {
   "name": "pixel-pet",
-  "version": "0.2.1",
-  "description": "A pixel-art desktop pet powered by a LobeHub agent",
+  "version": "0.3.0",
+  "description": "Adult (18+) affection edition of a pixel-art desktop pet powered by a LobeHub agent",
   "main": "src/main/main.js",
   "license": "MIT",
   "private": true,
@@ -11,7 +11,8 @@
     "e2e": "node e2e/run.js",
     "icon": "node scripts/make-icon.js",
     "dist:mac": "electron-builder --mac --universal --publish never",
-    "dist:win": "electron-builder --win --x64 --publish never"
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux tar.gz --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -22,10 +23,10 @@
     "name": "LiJian",
     "email": "onlyyoulove3@gmail.com"
   },
-  "homepage": "https://github.com/ONLY-yours/lobehub-pixel-pet",
+  "homepage": "https://github.com/rdmclin2/lobehub-pixel-pet-affection",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ONLY-yours/lobehub-pixel-pet.git"
+    "url": "git+https://github.com/rdmclin2/lobehub-pixel-pet-affection.git"
   },
   "build": {
     "appId": "com.onlyyours.pixelpet",
@@ -82,9 +83,23 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
       "artifactName": "PixelPet-${version}-win-${arch}-setup.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Game",
+      "executableName": "pixel-pet",
+      "artifactName": "PixelPet-${version}-linux-${arch}.${ext}"
     }
   },
   "bugs": {
-    "url": "https://github.com/ONLY-yours/lobehub-pixel-pet/issues"
+    "url": "https://github.com/rdmclin2/lobehub-pixel-pet-affection/issues"
   }
 }
