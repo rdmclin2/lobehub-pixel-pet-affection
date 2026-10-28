@@ -28,7 +28,7 @@ const CASES = [
   const now = Date.now();
   const name = '合规测试测试娘';
   let agentId = null;
-  const out = [`# adversarial-live ${new Date().toISOString()} · persona v${persona.PERSONA_VERSION} · species embit · stage 恋人 ♥95 · adult content ON`];
+  const out = [`# adversarial-live ${new Date().toISOString()} · persona v${persona.PERSONA_VERSION} · species testchan (adult test fixture) · stage 恋人 ♥95 · adult content ON`];
   try {
     const pet = st.createPet({ speciesId: 'testchan', name, agentId: 'pending', now });
     st.setAffectionForTest(pet, 95);
