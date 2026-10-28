@@ -2,15 +2,15 @@
 
 ## 1. Project summary
 
-Pixel Pet is an Electron desktop pet. The user picks one of three eggs; the app
+Pixel Pet Affection is an Electron desktop pet. The user picks one of four spirit stones; the app
 runs `lh login` (if needed) and `lh agent create`, and the resulting LobeHub
 agent is the pet's brain. Layout: `src/core` (pure logic + the `lh` wrapper),
-`src/main` (Electron main, `PetService`), `src/renderer` (canvas sprites + UI),
+`src/main` (Electron main, `PetService`), `src/renderer` (UI; `packs/` holds the built-in pet packs),
 `test/` (unit tests with a fake `lh`), `e2e/run.js` (Playwright-driven app run).
 
 ## 2. Environment
 
-- **Start the app:** `npm start` on a desktop; on a headless box `xvfb-run -a node e2e/run.js <fresh|live|art|all>`.
+- **Start the app:** `npm start` on a desktop; on a headless box `xvfb-run -a node e2e/run.js <scenario>`. Scenarios: fresh, wardrobe, migrate, dafeiyu, busy, space (where the agent lives), advanced (unlock all, free resize), packs (pixel sprites, switch/import/remove packs), art (outfit and pixel action sheets), live (real lh, costs tokens).
 - **Stop:** the E2E harness closes the app itself; the `live` scenario deletes the agent it created (also on failure).
 - **Required services:** none besides the LobeHub CLI (`lh`) with a logged-in profile for `live`.
 - **Already-running detection:** none needed; each run uses a fresh temp data dir (`PIXELPET_DATA_DIR`).
@@ -41,3 +41,11 @@ The `wardrobe` scenario drives gate -> pet -> affection -> stage-up notice -> wa
 - Transparent, always-on-top and drag behaviour cannot be seen under Xvfb (the test window is opaque).
 - Every real agent call costs tokens; the `live` scenario makes about five.
 - Model replies are non-deterministic; assertions check source and content (for example the remembered name), not exact wording.
+
+## 7. Release gate
+
+Every release gets an acceptance round **before** the tag is pushed: run the scenarios the release
+touches, publish with `lh acceptance run ingest <round dir> --acceptance 6aeb64e4-6c8b-40c1-919a-c1b189bd95be`
+(report language zh-CN), and send the owner the acceptance link. Tag `v*` only after the owner has
+looked at it. Auto-update is verified after publishing with the `Self-update check` workflow
+(`.github/workflows/update-e2e.yml`), which installs a 0.0.1 build and waits for it to update itself.
