@@ -1,0 +1,78 @@
+name: Self-update check
+
+# After a release is published: install a build that claims to be an old version, start it, and check
+# that it downloads the latest GitHub Release and replaces itself (the same path users get).
+on:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build an "old" app (version 0.0.1)
+        run: npx electron-builder --mac dir --arm64 --publish never -c.extraMetadata.version=0.0.1
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install it, start it and wait for it to update itself
+        run: |
+          set -euo pipefail
+          LATEST=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName | sed 's/^v//')
+          mkdir -p "$HOME/TestApps"
+          APP="$HOME/TestApps/Pixel Pet Affection.app"
+          ditto "dist/mac-arm64/Pixel Pet Affection.app" "$APP"
+          ver() { /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || echo missing; }
+          echo "installed $(ver), latest release $LATEST"
+          PIXELPET_UPDATE_NOW=1 PIXELPET_DATA_DIR="$(mktemp -d)" "$APP/Contents/MacOS/Pixel Pet Affection" > app.log 2>&1 &
+          for i in $(seq 1 120); do
+            [ "$(ver)" = "$LATEST" ] && break
+            sleep 5
+          done
+          echo "after: $(ver)"; ls -la "$HOME/TestApps"
+          [ "$(ver)" = "$LATEST" ]
+          sleep 10
+          pgrep -fl "TestApps/Pixel Pet Affection.app" && echo "the updated app was reopened"
+          pkill -f "TestApps/Pixel Pet Affection.app" || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - if: always()
+        run: cat app.log || true
+
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build an "old" installer (version 0.0.1)
+        run: npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=0.0.1
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install it, start it and wait for it to update itself
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $latest = (gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName).TrimStart('v')
+          $setup = Get-ChildItem dist -Filter '*-setup.exe' | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\pixel-pet-affection\Pixel Pet Affection.exe'
+          function Ver { if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion } else { 'missing' } }
+          Write-Host "installed $(Ver), latest release $latest"
+          $env:PIXELPET_UPDATE_NOW = '1'
+          $env:PIXELPET_DATA_DIR = Join-Path $env:RUNNER_TEMP 'pp-data'
+          Start-Process $exe
+          for ($i = 0; $i -lt 120; $i++) { if ((Ver) -eq $latest) { break }; Start-Sleep 5 }
+          Write-Host "after: $(Ver)"
+          if ((Ver) -ne $latest) { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'pixel-pet-affection-updater') -Recurse -ErrorAction SilentlyContinue | Select-Object FullName; exit 1 }
+          Start-Sleep 10
+          Get-Process 'Pixel Pet Affection' -ErrorAction SilentlyContinue | Select-Object Id, Path
+          Get-Process 'Pixel Pet Affection' -ErrorAction SilentlyContinue | Stop-Process -Force

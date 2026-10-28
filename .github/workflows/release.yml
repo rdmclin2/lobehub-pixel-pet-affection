@@ -44,12 +44,16 @@ jobs:
           APP="dist/mac-universal/Pixel Pet Affection.app"
           lipo -archs "$APP/Contents/MacOS/Pixel Pet Affection"
           codesign -dv "$APP" 2>&1 | head -5 || true
+      - name: Check the self-update files and the app swap
+        run: node e2e/update-smoke.js dist
       - uses: actions/upload-artifact@v4
         with:
           name: pixel-pet-mac
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
           if-no-files-found: error
 
   build-win:
@@ -71,12 +75,16 @@ jobs:
         run: |
           Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
           Get-ChildItem dist/win-unpacked -Name | Select-Object -First 12
+      - name: Check the self-update files
+        run: node e2e/update-smoke.js dist
       - uses: actions/upload-artifact@v4
         with:
           name: pixel-pet-win
           path: |
             dist/*.exe
             dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
           if-no-files-found: error
 
   release:
