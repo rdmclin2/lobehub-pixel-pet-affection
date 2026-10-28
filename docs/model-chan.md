@@ -82,10 +82,10 @@ npm start -- --no-sandbox
 
 ```bash
 mkdir -p /tmp/fake-lh && touch /tmp/fake-lh/loggedin
-LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DIR=/tmp/pp-demo PIXELPET_NO_CONNECT=1 npm start
+LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DIR=/tmp/pp-demo npm start
 ```
 
-试玩时在选择角色界面取消勾选“让它能使用这台电脑”（假 `lh` 没有设备可连）。
+假 `lh` 不联网、不创建真实 agent，聊天回复是 `echo: …`；`PIXELPET_DATA_DIR` 让试玩存档和正式存档分开。Linux 上同样可以在末尾加 `-- --no-sandbox`。
 
 ### 切换角色
 
