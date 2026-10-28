@@ -1,3 +1,11 @@
+# LobeHub Pixel Pet · 好感度版（Affection Edition）
+
+> **派生声明**：本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。大肥鱼素材仍遵循 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的非商用条款（CC BY-NC-SA 4.0）。
+>
+> 本派生版把原有的成长系统改造成**好感度系统**：互动提升好感，按阶段解锁分级对话和服饰。所有角色设定为成年人；成人向内容仅限暧昧、调情等非露骨内容，需要首次启动时确认年满 18 岁，并可随时关闭。改造设计见 [docs/affection-design.md](docs/affection-design.md)。以下为上游原 README。
+
+---
+
 # LobeHub Pixel Pet
 
 A pixel-art desktop pet whose brain is a [LobeHub](https://lobehub.com) agent. It needs a LobeHub account and the LobeHub CLI (`lh`). This is a community project that builds on LobeHub, not an official LobeHub product.
