@@ -27,6 +27,12 @@ let attachments = []; // [{ kind:'image', dataUrl, name } | { kind:'path', path,
 let oneShot = null; // { key, until } temporary video clip (pat, play, evolve, hatch)
 let pointerInside = false;
 let nextLook = 0;
+let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
+let gateAfter = null; // what to do once the age gate is answered
+let panelKind = null; // 'wardrobe' | 'topics' while a panel is open
+let panelNew = new Set(); // items that were "new" when the panel opened (marked seen right after)
+let toastTimer = null;
+const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
 const isVideo = (id) => !!id && speciesOf(id) && speciesOf(id).art === 'video';
@@ -68,6 +74,23 @@ function eggColor(species) {
 
 function drawEggOn(ctx, species, cracks, scale, dx = 0, dy = 0) {
   S.drawGrid(ctx, S.egg(cracks), eggColor(species), scale, dx, dy);
+}
+
+// ---------- 18+ confirmation (design 8.3) ----------
+// Shown before anything else on first launch, and again when someone who chose "all ages" wants to turn
+// adult content on from the menu. Closing the window without answering keeps adult content off.
+function showAgeGate(after) {
+  gateAfter = after;
+  window.pet.place('onboarding');
+  show('age-gate');
+}
+
+async function answerAgeGate(adult) {
+  const r = await window.pet.confirmAge(adult);
+  settings = r.settings;
+  const after = gateAfter;
+  gateAfter = null;
+  if (after) after(r);
 }
 
 // ---------- onboarding ----------
@@ -208,8 +231,222 @@ function refreshHud() {
   const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
   $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
   $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）`;
+  // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
+  $('aff-stage').textContent = a.stageName;
+  $('aff-stage').style.setProperty('--sc', a.color);
+  $('bar-affection').style.setProperty('--v', `${a.value}%`);
+  $('bar-affection').style.setProperty('--c', a.color);
+  $('aff-num').textContent = `♥${a.value}/${a.max}`;
+  $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
+  $('aff-row').setAttribute('aria-label', $('aff-row').title);
+  $('btn-wardrobe').querySelector('.new-dot').classList.toggle('hidden', !view.outfits.some((o) => o.isNew));
+  $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
+  settings = view.settings;
+  $('menu-adult').textContent = !settings.ageConfirmed ? '成人向内容：关（需年满 18 岁）' : `成人向内容：${settings.adultContent ? '开（点此关闭）' : '关（点此开启）'}`;
+  const worn = view.outfits.find((o) => o.id === view.outfit);
+  $('outfit-badge').textContent = `👗 ${worn ? worn.label : ''}`;
+  $('outfit-badge').title = `当前服饰：${worn ? worn.label : ''}`;
   const loc = view.local && view.local.enabled;
   $('menu-local').textContent = `本机能力：${loc ? '开（点此关闭）' : '关（点此开启）'}`;
+  if (panelKind) renderPanel();
+}
+
+// ---------- affection feedback (design 9.3, 9.4) ----------
+const BLOCK_NOTES = { cooldown: '刚刚已经很开心了', cap: '今天的好感攒满啦，明天见', daily: '这个今天已经做够啦', 'topic-today': '今天聊过这个了' };
+
+function floatText(text, cls = '') {
+  const el = document.createElement('div');
+  el.className = `float ${cls}`;
+  el.textContent = text;
+  $('float-layer').appendChild(el);
+  setTimeout(() => el.remove(), 1500);
+}
+
+function onAffection(e) {
+  if (e.type === 'gain') {
+    if (e.delta > 0) floatText(`+${e.delta} ♥`);
+    else if (e.delta < 0) floatText(`${e.delta} ♥`, 'minus');
+    else if (BLOCK_NOTES[e.blocked] && !notedBlocks.has(e.blocked)) {
+      notedBlocks.add(e.blocked);
+      floatText(BLOCK_NOTES[e.blocked], 'note');
+    }
+  } else if (e.type === 'decay') {
+    floatText(`${e.delta} ♥（好久不见）`, 'minus');
+  } else if (e.type === 'stage-up') {
+    flashUntil = performance.now() + 700;
+    if (e.view) { view = e.view; refreshHud(); }
+    showUnlockToast(e);
+  }
+}
+
+// A stage-up names everything it unlocked, and stays until closed (or for half a minute).
+function showUnlockToast(e) {
+  const a = (e.view || view).affection;
+  const names = (list) => (list && list.length ? list.map((x) => `「${x.label}」`).join('、') : '无');
+  $('toast-title').textContent = `🎉 关系升级：${a.stageName}（♥${a.value}）`;
+  const body = $('toast-body');
+  body.innerHTML = '';
+  for (const [k, list] of [['解锁话题', e.unlocks && e.unlocks.topics], ['解锁服饰', e.unlocks && e.unlocks.outfits]]) {
+    const line = document.createElement('div');
+    line.innerHTML = '<b></b>';
+    line.querySelector('b').textContent = `${k}：`;
+    line.appendChild(document.createTextNode(names(list)));
+    body.appendChild(line);
+  }
+  $('unlock-toast').classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 30000);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  $('unlock-toast').classList.add('hidden');
+}
+
+// ---------- wardrobe and topics (design 9.5, 9.6) ----------
+function drawFigure(canvas, outfitId, speciesId, scale) {
+  canvas.width = S.FIG.w * scale;
+  canvas.height = S.FIG.h * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  S.drawGrid(ctx, S.figure(outfitId), (k) => S.figureColor(outfitId, speciesId, k), scale);
+}
+
+function panelMsg(text, ok = false) {
+  const m = $('panel-msg');
+  m.textContent = text;
+  m.classList.toggle('ok', ok);
+  m.classList.toggle('hidden', !text);
+}
+
+async function openPanel(kind) {
+  if (thinking) return;
+  $('food-menu').classList.add('hidden');
+  $('main-menu').classList.add('hidden');
+  $('chat-row').classList.add('hidden');
+  hideToast();
+  panelKind = kind;
+  const list = kind === 'wardrobe' ? view.outfits : view.topics;
+  panelNew = new Set(list.filter((x) => x.isNew).map((x) => x.id));
+  window.pet.panel(true);
+  panelMsg('');
+  $('panel').classList.remove('hidden');
+  renderPanel();
+  await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
+}
+
+function closePanel() {
+  if (!panelKind) return;
+  panelKind = null;
+  $('panel').classList.add('hidden');
+  window.pet.panel(false);
+}
+
+function progressLine() {
+  const a = view.affection;
+  return `${a.stageName} ♥${a.value}/${a.max}${a.next ? ` · 距「${a.nextName}」还差 ${a.need}` : ' · 已满级'}`;
+}
+
+function renderPanel() {
+  if (panelKind === 'wardrobe') renderWardrobe();
+  else if (panelKind === 'topics') renderTopics();
+}
+
+function renderWardrobe() {
+  const list = view.outfits;
+  const worn = list.find((o) => o.id === view.outfit) || list[0];
+  $('panel-title').textContent = `衣柜 · ${view.pet.name}`;
+  $('panel-sub').textContent = `${progressLine()} · 已解锁 ${list.filter((o) => o.unlocked).length}/${list.length} 套`;
+  const body = $('panel-body');
+  body.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'wardrobe';
+  const pv = document.createElement('div');
+  pv.className = 'preview';
+  pv.id = 'outfit-preview';
+  pv.dataset.outfit = worn.id;
+  pv.innerHTML = '<canvas></canvas><div class="nm"></div><div class="adult-note">当前穿着 · 成年（25+）</div>';
+  drawFigure(pv.querySelector('canvas'), worn.id, view.pet.speciesId, 3);
+  pv.querySelector('.nm').textContent = worn.label;
+  wrap.appendChild(pv);
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  for (const o of list) {
+    const card = document.createElement('button');
+    card.className = `card${o.locked ? ' locked' : ''}${o.equipped ? ' equipped' : ''}`;
+    card.dataset.outfit = o.id;
+    const status = o.equipped ? '✓ 穿着中' : o.unlocked ? '点击穿上' : `🔒 ${o.condition}`;
+    card.title = `${o.label}：${o.desc}`;
+    card.setAttribute('aria-label', `${o.label}，${status}`);
+    card.innerHTML = '<canvas></canvas><div class="nm"></div><div class="st"></div>';
+    drawFigure(card.querySelector('canvas'), o.id, view.pet.speciesId, 2);
+    card.querySelector('.nm').textContent = o.label;
+    card.querySelector('.st').textContent = status;
+    if (o.rating === 'adult') card.insertAdjacentHTML('beforeend', '<span class="tag adult">成人向</span>');
+    if (panelNew.has(o.id)) card.insertAdjacentHTML('beforeend', '<span class="tag new">新</span>');
+    card.addEventListener('click', () => equip(o));
+    grid.appendChild(card);
+  }
+  wrap.appendChild(grid);
+  body.appendChild(wrap);
+}
+
+async function equip(o) {
+  const r = await window.pet.equipOutfit(o.id);
+  if (!r.ok) {
+    panelMsg(r.reason === 'locked' ? `🔒 「${o.label}」还没解锁：${r.condition}` : '这件现在不能穿。');
+    return;
+  }
+  view = r.view;
+  refreshHud();
+  panelMsg(`换好了：「${r.outfit.label}」`, true);
+}
+
+function renderTopics() {
+  const list = view.topics;
+  $('panel-title').textContent = `话题 · ${view.pet.name}`;
+  $('panel-sub').textContent = `${progressLine()} · 已解锁 ${list.filter((t) => t.unlocked).length}/${list.length} 个`;
+  const body = $('panel-body');
+  body.innerHTML = '';
+  const groups = [];
+  for (const t of list) {
+    let g = groups.find((x) => x.stage === t.stage);
+    if (!g) groups.push((g = { stage: t.stage, name: t.stageName, items: [] }));
+    g.items.push(t);
+  }
+  for (const g of groups) {
+    const sec = document.createElement('div');
+    sec.className = 'topic-group';
+    sec.innerHTML = '<h3></h3>';
+    sec.querySelector('h3').textContent = `${g.name}${g.items[0].locked ? `（${g.items[0].condition}）` : ''}`;
+    for (const t of g.items) {
+      const b = document.createElement('button');
+      b.className = `topic${t.locked ? ' locked' : ''}${t.talkedToday ? ' done' : ''}`;
+      b.dataset.topic = t.id;
+      const status = t.locked ? `🔒 ${t.condition}` : t.talkedToday ? '今天聊过了（不再加好感）' : '点击聊聊';
+      b.setAttribute('aria-label', `${t.label}，${status}`);
+      b.innerHTML = '<span class="nm"></span><span class="st"></span>';
+      b.querySelector('.nm').textContent = t.label;
+      b.querySelector('.st').textContent = status;
+      if (t.rating === 'adult') b.querySelector('.nm').insertAdjacentHTML('beforeend', ' <span class="tag">成人向</span>');
+      if (panelNew.has(t.id)) b.querySelector('.nm').insertAdjacentHTML('beforeend', ' <span class="tag">新</span>');
+      b.addEventListener('click', () => startTopic(t));
+      sec.appendChild(b);
+    }
+    body.appendChild(sec);
+  }
+}
+
+async function startTopic(t) {
+  if (t.locked) {
+    const r = await window.pet.talkTopic(t.id); // refused by the main process as well
+    panelMsg(`🔒 「${t.label}」还没解锁：${r.condition || t.condition}`);
+    return;
+  }
+  closePanel();
+  const r = await window.pet.talkTopic(t.id);
+  if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
+  if (!r.ok && r.reason === 'canceled') say('（好吧，不聊了。）', 'canceled', 'fallback');
 }
 
 function say(text, kind, source, reason) {
@@ -295,6 +532,7 @@ function bindPetUi() {
     $('main-menu').classList.add('hidden');
     if (act === 'feed') $('food-menu').classList.toggle('hidden');
     else if (act === 'play' || act === 'sleep') doAct(act);
+    else if (act === 'wardrobe' || act === 'topics') openPanel(act);
     else if (act === 'chat') {
       $('chat-row').classList.toggle('hidden');
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
@@ -305,6 +543,23 @@ function bindPetUi() {
     if (!m) return;
     $('main-menu').classList.add('hidden');
     if (m === 'quit') window.pet.quit();
+    if (m === 'adult') {
+      const label = (v, id) => ((v.outfits.find((o) => o.id === id) || {}).label || id);
+      if (!view.settings.ageConfirmed) {
+        // Only the same 18+ confirmation can turn adult content on; there is no other way in.
+        showAgeGate((r) => {
+          enterPet(r.view);
+          say(r.settings.adultContent ? '（成人向内容已开启，可以随时在菜单里关闭。）' : '（好的，继续只看全年龄内容。）', 'settings', 'fallback');
+        });
+        return;
+      }
+      const r = await window.pet.setAdult(!view.settings.adultContent);
+      if (r.ok) {
+        view = r.view;
+        refreshHud();
+        say(r.settings.adultContent ? '（成人向内容已开启。）' : `（成人向内容已关闭${r.outfitChanged ? `，已换回「${label(r.view, r.outfitChanged.to)}」` : ''}。）`, 'settings', 'fallback');
+      }
+    }
     if (m === 'log') window.pet.openLog();
     if (m === 'local') {
       const on = !(view && view.local && view.local.enabled);
@@ -481,8 +736,8 @@ async function release(deleteAgent) {
 function drawPet(ctx, t) {
   const p = view.pet;
   const status = thinking ? 'idle' : view.status;
-  const f = S.frame({ speciesId: p.speciesId, status, t, talking: performance.now() < talkUntil, eating });
-  const colorOf = (k) => S.colorFor(p.speciesId, k);
+  const f = S.frame({ speciesId: p.speciesId, status, t, talking: performance.now() < talkUntil, eating, outfit: view.outfit });
+  const colorOf = (k) => S.colorFor(p.speciesId, k, view.outfit);
   const scale = 5;
   S.drawGrid(ctx, f.grid, colorOf, scale, 0, f.dy * scale);
   for (const fx of f.effects) S.drawGrid(ctx, S.EFFECTS[fx.name], (k) => S.colorFor(p.speciesId, k), scale, fx.x * scale, fx.y * scale);
@@ -507,8 +762,8 @@ function frameLoop(ts) {
     ctx.clearRect(0, 0, 192, 192);
     if (revealSpecies) {
       const p = { speciesId: revealSpecies };
-      const f = S.frame({ speciesId: revealSpecies, status: 'happy', t });
-      S.drawGrid(ctx, f.grid, (k) => S.colorFor(p.speciesId, k), 8, 0, f.dy * 8);
+      const f = S.frame({ speciesId: revealSpecies, status: 'happy', t, outfit: 'daily' });
+      S.drawGrid(ctx, f.grid, (k) => S.colorFor(p.speciesId, k, 'daily'), 8, 0, f.dy * 8);
       for (const fx of f.effects) S.drawGrid(ctx, S.EFFECTS[fx.name], (k) => S.colorFor(p.speciesId, k), 8, fx.x * 8, fx.y * 8);
     } else {
       const sp = info.species.find((s) => s.id === selected);
@@ -537,16 +792,21 @@ async function main() {
   bindHover();
   $('hatch-btn').addEventListener('click', startHatch);
   $('hatch-retry').addEventListener('click', showOnboarding);
+  $('age-yes').addEventListener('click', () => answerAgeGate(true));
+  $('age-no').addEventListener('click', () => answerAgeGate(false));
+  $('panel-close').addEventListener('click', closePanel);
+  $('toast-close').addEventListener('click', hideToast);
+  $('toast-open').addEventListener('click', () => openPanel('wardrobe'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
   window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); } });
   window.pet.onSay((m) => say(m.text, m.kind, m.source, m.reason));
   window.pet.onThinking(setThinking);
-  window.pet.onAffection((a) => {
-    if (a.type !== 'stage-up') return;
-    flashUntil = performance.now() + 700;
-    if (a.view) { view = a.view; refreshHud(); }
-  });
-  if (info.view) enterPet(info.view);
-  else showOnboarding();
+  window.pet.onAffection(onAffection);
+  window.pet.onSettings((st) => { settings = st; });
+  settings = info.settings;
+  const start = (v) => (v ? enterPet(v) : showOnboarding());
+  if (settings.needsAgeGate) showAgeGate((r) => start(r.view));
+  else start(info.view);
   requestAnimationFrame(frameLoop);
 }
 

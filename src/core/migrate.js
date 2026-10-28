@@ -5,6 +5,7 @@
 
 const { initialAffection, stageForAffection, stageIndex, STAGE_IDS, MAX_AFFECTION } = require('./affection');
 const { unlockedTopicIds } = require('./dialogue');
+const { OUTFIT_IDS, DEFAULT_OUTFIT } = require('./outfits');
 
 const SCHEMA_VERSION = 2;
 const MIGRATION_CAP = 50; // migrated pets top out in 亲近 and never land in an adult stage
@@ -32,6 +33,9 @@ function normalizePet(pet, now) {
   for (const k of ['dailyCounts', 'lastAffectionAt']) if (!out[k] || typeof out[k] !== 'object') out[k] = {};
   if (!Array.isArray(out.topicsToday)) out.topicsToday = [];
   if (!Array.isArray(out.seenUnlocks)) out.seenUnlocks = [];
+  // An unknown or missing outfit (older saves, hand edits) falls back to the default outfit.
+  if (!OUTFIT_IDS.includes(out.equippedOutfit)) out.equippedOutfit = DEFAULT_OUTFIT;
+  if (!OUTFIT_IDS.includes(out.lastSafeOutfit)) out.lastSafeOutfit = DEFAULT_OUTFIT;
   out.unlockedTopics = unlockedTopicIds(out.peakStage);
   out.schemaVersion = SCHEMA_VERSION;
   delete out.xp;

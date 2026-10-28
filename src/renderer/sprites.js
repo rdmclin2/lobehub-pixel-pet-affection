@@ -170,12 +170,206 @@
     spark: ['.y.', 'yyy', '.y.'],
   };
 
+
+  // ---- outfits -------------------------------------------------------------------------------
+  // Every outfit is drawn twice from the data below (made for this project, MIT): as an overlay on the
+  // pet's body, and as a full-body figure for the wardrobe. The figure is an adult: about 6.5 heads
+  // tall (8-row head on a 50-row body), long legs, no childlike proportions. Nothing is revealing:
+  // the adult-rated outfits differ in style only. Colours use keys A..E (per outfit).
+  //
+  // Figure template, left half (mirrored to 20 columns). Regions: H hair, S skin, k eye, m mouth,
+  // 9 neck, 1 shoulders, 2 upper arm, 3 forearm, 4 torso, 5 hips, 6 thigh, 7 shin, 8 feet.
+  const FIG_HALF = [
+    '......HHHH', '.....HHHHH', '.....HHHSS', '.....HSkSS', '.....HSkSS', '.....HSSSS', '.....HSSSm', '.....H.SSS',
+    '.....H..99', '.....11111', '...2111111', '..22444444', '..22444444', '..22444444', '..22444444', '..22.44444',
+    '..33..4444', '..33..4444', '..33..4444', '..33.55555', '..33.55555', '..33.55555', '..33.55555', '..SS.55555',
+    '..SS.6666.', '..SS.6666.',
+    ...Array(10).fill('.....6666.'),
+    ...Array(12).fill('......777.'),
+    '.....8888.', '.....8888.',
+  ];
+  const FIG = { w: 22, h: 54, top: 3, left: 1 }; // padded grid: room for hats above and outlines around
+  const FIG_COMMON = { o: OUTLINE, S: '#f6d5b8', k: '#2b2233', m: '#c9505a' };
+  const HAIR = { embit: '#d9542f', bubbo: '#3a6fc4', sprig: '#3f8f45', dafeiyu: '#5a6bb8' };
+  const REGIONS = { 9: 'neck', 1: 'shoulders', 2: 'upperArm', 3: 'forearm', 4: 'torso', 5: 'hips', 6: 'thigh', 7: 'shin', 8: 'feet' };
+
+  // fig: region -> colour key ('S' = skin). ops (template coords, mirrored unless mirror:false):
+  //   { r:[y0,y1], c:[x0,x1], k, add }  paint a rectangle; without `add` only cells that are already drawn
+  //   { pattern:'dots'|'stripes', on, k, every }  repaint every n-th cell of colour `on`
+  // blob: the pet overlay. body/trim keys, optional pattern and a hat stamped on top of the head.
+  const BASE = { neck: 'S', shoulders: 'A', upperArm: 'A', forearm: 'A', torso: 'A', hips: 'B', thigh: 'B', shin: 'B', feet: 'C' };
+  const OUTFIT_ART = {
+    daily: {
+      colors: { A: '#f4f1ea', B: '#4a6fa5', C: '#6b4a2f' },
+      fig: { ...BASE },
+      ops: [{ r: [19, 19], c: [5, 9], k: 'C' }],
+      blob: { body: 'A', trim: 'B' },
+    },
+    scarf: {
+      colors: { A: '#e8d8b8', B: '#5a5560', C: '#4a3a30', D: '#d8443c' },
+      fig: { ...BASE },
+      ops: [{ r: [8, 10], c: [6, 9], k: 'D', add: true }, { r: [11, 16], c: [7, 7], k: 'D', mirror: false }],
+      blob: { body: 'A', trim: 'D' },
+    },
+    casual: {
+      colors: { A: '#9aa3ad', B: '#3f4652', C: '#f2f2f2', D: '#7d8691' },
+      fig: { ...BASE },
+      ops: [{ r: [8, 8], c: [6, 7], k: 'A', add: true }, { r: [16, 18], c: [7, 9], k: 'D' }, { r: [11, 13], c: [8, 8], k: 'C' }],
+      blob: { body: 'A', trim: 'D' },
+    },
+    beret: {
+      colors: { A: '#f4f1ea', B: '#2f4f8f', C: '#8a5a3a', D: '#c0392b', E: '#2b2233' },
+      fig: { ...BASE, hips: 'C', thigh: 'C', shin: 'C', feet: 'E' },
+      ops: [{ pattern: 'stripes', on: 'A', k: 'B', every: 2 }, { r: [11, 18], c: [6, 6], k: 'C' }, { r: [-1, -1], c: [5, 9], k: 'D', add: true }, { r: [0, 0], c: [4, 9], k: 'D', add: true }],
+      blob: { body: 'A', trim: 'C', pattern: 'stripes', alt: 'B', hat: ['..D...', '.DDDD.', 'DDDDDD'] },
+    },
+    pajamas: {
+      colors: { A: '#bcd8f5', B: '#ffffff', C: '#f5b8c8' },
+      fig: { ...BASE, hips: 'A', thigh: 'A', shin: 'A' },
+      ops: [{ pattern: 'dots', on: 'A', k: 'B', every: 4 }, { r: [-1, 0], c: [5, 9], k: 'A', add: true }, { r: [-2, -2], c: [3, 3], k: 'B', add: true, mirror: false }, { r: [-1, -1], c: [4, 4], k: 'A', add: true, mirror: false }],
+      blob: { body: 'A', trim: 'A', pattern: 'dots', alt: 'B', hat: ['B.....', '.AA...', '.AAAA.', 'AAAAAA'] },
+    },
+    cat_ears: {
+      colors: { A: '#f7b6c8', B: '#f7b6c8', C: '#ffffff', D: '#ffffff' },
+      fig: { ...BASE },
+      ops: [{ r: [-2, -2], c: [5, 5], k: 'H', add: true }, { r: [-1, -1], c: [5, 6], k: 'H', add: true }, { r: [-1, -1], c: [6, 6], k: 'A', add: true }, { r: [0, 0], c: [5, 9], k: 'D' }],
+      blob: { body: 'A', trim: 'D', hat: ['o......o', 'oo....oo', 'oAo..oAo'] },
+    },
+    yukata: {
+      colors: { A: '#2e3f73', B: '#ffffff', C: '#d8443c', D: '#c69c6d' },
+      fig: { ...BASE, hips: 'A', thigh: 'A', shin: 'A', feet: 'D' },
+      ops: [{ pattern: 'dots', on: 'A', k: 'B', every: 7 }, { r: [16, 18], c: [5, 9], k: 'C', add: true }, { r: [9, 12], c: [9, 9], k: 'B' }, { r: [24, 47], c: [9, 9], k: 'A', add: true }],
+      blob: { body: 'A', trim: 'C', pattern: 'dots', alt: 'B' },
+    },
+    maid: {
+      colors: { A: '#2b2b3a', B: '#ffffff', C: '#3a3346', D: '#1d1626' },
+      fig: { ...BASE, hips: 'A', thigh: 'A', shin: 'C', feet: 'D' },
+      ops: [
+        { r: [24, 35], c: [4, 9], k: 'A', add: true }, // knee-length skirt, no gap between the legs
+        { r: [14, 33], c: [7, 9], k: 'B' }, // apron
+        { r: [9, 10], c: [8, 9], k: 'B' }, // collar
+        { r: [22, 22], c: [2, 3], k: 'B' }, // cuffs
+        { r: [0, 0], c: [5, 9], k: 'B' }, // headband
+      ],
+      blob: { body: 'A', trim: 'B', pattern: 'apron', alt: 'B', hat: ['B.B.B.B', 'BBBBBBB'] },
+    },
+    offshoulder_gown: {
+      colors: { A: '#8e1f3c', B: '#e5c46b' },
+      fig: { neck: 'S', shoulders: 'S', upperArm: 'S', forearm: 'S', torso: 'A', hips: 'A', thigh: 'A', shin: 'A', feet: 'B' },
+      ops: [{ r: [11, 11], c: [2, 3], k: 'A' }, { r: [24, 47], c: [9, 9], k: 'A', add: true }, { r: [30, 47], c: [4, 4], k: 'A', add: true }, { r: [36, 47], c: [5, 5], k: 'A', add: true }, { r: [16, 16], c: [6, 9], k: 'B' }],
+      blob: { body: 'A', trim: 'B' },
+    },
+    couple_hoodie: {
+      colors: { A: '#f28cab', B: '#4a6fa5', C: '#ffffff', D: '#e0455f' },
+      fig: { ...BASE },
+      ops: [{ r: [8, 8], c: [6, 7], k: 'A', add: true }, { r: [12, 12], c: [8, 8], k: 'D' }, { r: [13, 13], c: [8, 9], k: 'D' }, { r: [14, 14], c: [9, 9], k: 'D' }],
+      blob: { body: 'A', trim: 'A', pattern: 'heart', alt: 'D' },
+    },
+    flower_crown: {
+      colors: { A: '#fbf7f0', B: '#ff9eb5', C: '#6cc16a', D: '#e5c46b' },
+      fig: { ...BASE, forearm: 'S', hips: 'A', thigh: 'A', shin: 'A', feet: 'D' },
+      ops: [{ r: [24, 47], c: [9, 9], k: 'A', add: true }, { r: [30, 47], c: [4, 4], k: 'A', add: true }, { r: [-1, 0], c: [5, 9], k: 'C', add: true }, { pattern: 'dots', on: 'C', k: 'B', every: 2 }],
+      blob: { body: 'A', trim: 'B', hat: ['B.C.B.C.B', 'CBCBCBCBC'] },
+    },
+    retro_swimsuit: {
+      colors: { A: '#24365e', B: '#ffffff', C: '#e8c99a', D: '#c69c6d' },
+      fig: { neck: 'S', shoulders: 'S', upperArm: 'S', forearm: 'S', torso: 'A', hips: 'A', thigh: 'S', shin: 'S', feet: 'D' },
+      ops: [{ r: [9, 10], c: [8, 8], k: 'A' }, { r: [24, 26], c: [5, 9], k: 'A', add: true }, { r: [14, 14], c: [5, 9], k: 'B' }, { r: [-1, -1], c: [5, 9], k: 'C', add: true }, { r: [0, 0], c: [3, 9], k: 'C', add: true }],
+      blob: { body: 'A', trim: 'B', pattern: 'stripes', alt: 'B', hat: ['..CCCC..', 'CCCCCCCC'] },
+    },
+    silk_robe: {
+      colors: { A: '#e9d6b0', B: '#c9a86a', C: '#f5e6c8' },
+      fig: { ...BASE, hips: 'A', thigh: 'A', shin: 'S', feet: 'C' },
+      ops: [{ r: [24, 34], c: [9, 9], k: 'A', add: true }, { r: [11, 15], c: [9, 9], k: 'B' }, { r: [16, 17], c: [5, 9], k: 'B' }, { r: [18, 21], c: [8, 8], k: 'B', mirror: false }],
+      blob: { body: 'A', trim: 'B' },
+    },
+  };
+
+  // Full-body adult figure in an outfit. Returns a FIG.w x FIG.h grid of keys (see figureColor).
+  function figure(outfitId) {
+    const art = OUTFIT_ART[outfitId] || OUTFIT_ART.daily;
+    const g = Array.from({ length: FIG.h }, () => Array(FIG.w).fill('.'));
+    const put = (r, c, ch) => {
+      const y = r + FIG.top;
+      const x = c + FIG.left;
+      if (y >= 0 && y < FIG.h && x >= 0 && x < FIG.w) g[y][x] = ch;
+    };
+    const at = (r, c) => g[r + FIG.top] && g[r + FIG.top][c + FIG.left];
+    FIG_HALF.forEach((row, r) => {
+      for (let c = 0; c < row.length; c++) {
+        let ch = row[c];
+        if (ch === '.') continue;
+        if (REGIONS[ch]) ch = art.fig[REGIONS[ch]] || 'S';
+        put(r, c, ch);
+        put(r, 19 - c, ch);
+      }
+    });
+    for (const op of art.ops || []) {
+      if (op.pattern) {
+        for (let y = 0; y < FIG.h; y++) for (let x = 0; x < FIG.w; x++) {
+          if (g[y][x] !== op.on) continue;
+          const hit = op.pattern === 'stripes' ? y % op.every === 0 : (x + y * 3) % op.every === 0;
+          if (hit) g[y][x] = op.k;
+        }
+        continue;
+      }
+      for (let r = op.r[0]; r <= op.r[1]; r++) for (let c = op.c[0]; c <= op.c[1]; c++) {
+        for (const cc of op.mirror === false ? [c] : [c, 19 - c]) {
+          const cur = at(r, cc);
+          if (cur === undefined) continue;
+          if (op.add || (cur !== '.' && cur !== 'k' && cur !== 'm')) put(r, cc, op.k);
+        }
+      }
+    }
+    // outline every empty cell that touches the figure
+    const solid = (x, y) => x >= 0 && y >= 0 && x < FIG.w && y < FIG.h && g[y][x] !== '.' && g[y][x] !== 'o';
+    for (let y = 0; y < FIG.h; y++) for (let x = 0; x < FIG.w; x++) {
+      if (g[y][x] === '.' && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) g[y][x] = 'o';
+    }
+    return g;
+  }
+
+  function figureColor(outfitId, speciesId, key) {
+    const art = OUTFIT_ART[outfitId] || OUTFIT_ART.daily;
+    if (key === 'H') return HAIR[speciesId] || HAIR.bubbo;
+    return FIG_COMMON[key] || art.colors[key] || null;
+  }
+
+  // Head and body rows of the figure template, for the adult-proportion check.
+  const FIG_PROPORTIONS = { headRows: FIG_HALF.findIndex((r) => r.includes('9')), bodyRows: FIG_HALF.length };
+
+  // Overlay an outfit on the pet's blob body (below the mouth) and put its hat on the head.
+  function dressBlob(g, speciesId, face, outfitId) {
+    const art = OUTFIT_ART[outfitId];
+    if (!art || !art.blob) return;
+    const b = art.blob;
+    const { cx, cy, ry } = dims(speciesId);
+    const from = face.my + 1; // the row under the mouth; mouth pixels themselves are never covered
+    for (let y = from; y < N; y++) for (let x = 0; x < N; x++) {
+      const ch = g[y][x];
+      if (ch === '.' || ch === 'o' || ch === 'k' || ch === 'r') continue;
+      let k = y === from ? b.trim : b.body;
+      if (y > from && b.pattern === 'stripes' && (y - from) % 2 === 0) k = b.alt;
+      if (y > from && b.pattern === 'dots' && (x + y * 2) % 3 === 0) k = b.alt;
+      if (y > from && b.pattern === 'apron' && Math.abs(x + 0.5 - cx) < 2.5) k = b.alt;
+      if (b.pattern === 'heart' && y === from + 1 && Math.abs(x + 0.5 - cx) < 2) k = b.alt;
+      if (b.pattern === 'heart' && y === from + 2 && Math.abs(x + 0.5 - cx) < 1) k = b.alt;
+      g[y][x] = k;
+    }
+    if (b.hat) {
+      const w = b.hat[0].length;
+      stamp(g, b.hat, Math.round(cx - w / 2), Math.round(cy - ry) - b.hat.length + 1);
+    }
+  }
+
   // Compose one animation frame. Returns { grid, dy, effects:[{name,x,y}] }.
-  function frame({ speciesId, status, t = 0, talking = false, eating = null }) {
+  // `outfit` dresses the body (colour keys A..E resolve through colorFor(speciesId, key, outfit)).
+  function frame({ speciesId, status, t = 0, talking = false, eating = null, outfit = null }) {
     const { grid, face } = buildBody(speciesId);
     const m = motion(status, t);
     drawEyes(grid, face, status, m.blink);
     drawMouth(grid, face, status, talking && Math.floor(t * 8) % 2 === 0);
+    if (outfit) dressBlob(grid, speciesId, face, outfit);
     const effects = [];
     if (status === 'sleep') effects.push({ name: 'zzz', x: 17, y: 2 + (Math.floor(t * 1.5) % 3) });
     if (status === 'happy') effects.push({ name: 'heart', x: 15, y: 1 + (Math.floor(t * 3) % 2) });
@@ -202,22 +396,35 @@
     return g;
   }
 
+  // Every species x status x outfit frame, and every outfit figure, uses only known colours.
   function validate() {
     const problems = [];
     for (const sp of Object.keys(PALETTES)) {
-      for (const status of ['idle', 'happy', 'sad', 'hungry', 'sleep']) {
-        const f = frame({ speciesId: sp, status, t: 0 });
-        if (f.grid.length !== N || f.grid.some((r) => r.length !== N)) problems.push(`${sp}/${status}: bad dimensions`);
-        const unknown = new Set();
-        f.grid.forEach((r) => r.forEach((c) => { if (c !== '.' && !PALETTES[sp][c] && !COMMON[c]) unknown.add(c); }));
-        if (unknown.size) problems.push(`${sp}/${status}: unknown palette keys ${[...unknown].join('')}`);
+      for (const outfit of [null, ...Object.keys(OUTFIT_ART)]) {
+        for (const status of ['idle', 'happy', 'sad', 'hungry', 'sleep']) {
+          const id = `${sp}/${outfit || '-'}/${status}`;
+          const f = frame({ speciesId: sp, status, t: 0, outfit });
+          if (f.grid.length !== N || f.grid.some((r) => r.length !== N)) problems.push(`${id}: bad dimensions`);
+          const unknown = new Set();
+          f.grid.forEach((r) => r.forEach((c) => { if (c !== '.' && !colorFor(sp, c, outfit)) unknown.add(c); }));
+          if (unknown.size) problems.push(`${id}: unknown palette keys ${[...unknown].join('')}`);
+        }
       }
+    }
+    for (const outfit of Object.keys(OUTFIT_ART)) {
+      const g = figure(outfit);
+      const unknown = new Set();
+      g.forEach((r) => r.forEach((c) => { if (c !== '.' && !figureColor(outfit, 'bubbo', c)) unknown.add(c); }));
+      if (unknown.size) problems.push(`figure ${outfit}: unknown keys ${[...unknown].join('')}`);
     }
     return problems;
   }
 
-  function colorFor(speciesId, key) {
-    return (PALETTES[speciesId] && PALETTES[speciesId][key]) || COMMON[key] || null;
+  function colorFor(speciesId, key, outfit = null) {
+    const own = (PALETTES[speciesId] && PALETTES[speciesId][key]) || COMMON[key];
+    if (own) return own;
+    const art = outfit && OUTFIT_ART[outfit];
+    return (art && art.colors[key]) || null;
   }
 
   // Draw a grid on a 2D canvas context.
@@ -232,5 +439,5 @@
     }
   }
 
-  return { N, PALETTES, COMMON, STAGE_DIM, EFFECTS, EGG_PAL, frame, egg, validate, colorFor, drawGrid, buildBody };
+  return { N, PALETTES, COMMON, STAGE_DIM, EFFECTS, EGG_PAL, OUTFIT_ART, FIG, FIG_PROPORTIONS, frame, egg, figure, figureColor, validate, colorFor, drawGrid, buildBody };
 });

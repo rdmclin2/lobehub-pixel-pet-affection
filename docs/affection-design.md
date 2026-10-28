@@ -191,17 +191,20 @@
 
 ## 5. 各阶段解锁的服饰
 
-服饰是叠加在成年体型上的像素图层（`sprites.js` 新增 `OUTFITS`，每件服饰按物种提供锚点偏移）。大肥鱼是视频立绘，无法叠加，只显示服饰徽标，并且只开放全年龄服饰。
+服饰数据在 `src/core/outfits.js`（`OUTFITS`），素材是 `src/renderer/sprites.js` 中的 `OUTFIT_ART`（本项目自制，MIT，见 NOTICE.md）。每套服饰画两次：叠加在宠物身体上，以及衣柜里的全身立绘。立绘是成年人体型（头身比约 1:6.5）。大肥鱼是视频立绘，无法叠加，只显示服饰名徽标，并且只开放全年龄服饰。
 
 | 阶段 | 服饰（id · 名称 · 分级） |
 | --- | --- |
-| 陌生 | `none` 无装扮 · 全；`scarf` 针织围巾 · 全 |
-| 熟悉 | `beret` 贝雷帽 · 全；`sunglasses` 墨镜 · 全 |
-| 亲近 | `pajamas` 毛绒睡衣 · 全；`bowtie` 领结礼服 · 全；`cat_ears` 猫耳发箍 · 全 |
-| 暧昧 | 成人向：`offshoulder_gown` 露肩晚礼服 · adult；`silk_robe` 丝绸睡袍 · adult。全年龄替代：`yukata` 浴衣 · 全 |
-| 恋人 | 成人向：`oversized_shirt` 宽大男友衬衫 · adult；`retro_swimsuit` 复古连体泳装 · adult。全年龄替代：`couple_hoodie` 情侣卫衣 · 全；`flower_crown` 花冠 · 全 |
+| 陌生 | `daily` 日常服 · 全（默认）；`scarf` 针织围巾套装 · 全 |
+| 熟悉 | `casual` 休闲卫衣 · 全；`beret` 贝雷帽画家装 · 全 |
+| 亲近 | `pajamas` 毛绒睡衣 · 全；`cat_ears` 猫耳家居服 · 全 |
+| 暧昧 | 成人向：`maid` 女仆装 · adult；`offshoulder_gown` 露肩晚礼服 · adult。全年龄：`yukata` 浴衣 · 全 |
+| 恋人 | 成人向：`retro_swimsuit` 复古连体泳装 · adult；`silk_robe` 丝绸睡袍 · adult。全年龄：`couple_hoodie` 情侣卫衣 · 全；`flower_crown` 花冠长裙 · 全 |
 
-所有服饰都不出现裸露、内衣化或性暗示性的姿态，“擦边”只体现在款式上（露肩、睡袍、泳装）。像素尺寸为 24×24，本身不具备露骨表现力。
+所有服饰都不出现裸露或内衣化，“擦边”只体现在款式上（长款女仆裙、露肩礼服、保守款连体泳装、及膝睡袍）。
+
+- 解锁按 `peakStage`，与话题一致；未解锁的服饰在衣柜里显示为灰色 + 🔒 + 条件，点击会被拒绝并提示条件（主进程同样校验）。
+- 当前服饰存为 `pet.equippedOutfit`；最近穿过的全年龄服饰存为 `pet.lastSafeOutfit`。启动、回答年龄确认、切换成人向开关时，如果当前服饰已不可见，就换回 `lastSafeOutfit`（再不行换回 `daily`）并保存。
 
 ---
 
@@ -219,7 +222,7 @@
    - `stage` 也缺失或是未知值时取 0（陌生）。
    - `xp` 与 `stage` 不一致时以 `xp` 为准（`xp` 是原始数据，`stage` 是派生值）。
    - `xp` 极大（例如 `1e9`）时，同样封顶 50。
-4. `peakStage = relStage = stageForAffection(affection)`，`equippedOutfit = 'none'`，其余计数器初始化为空，`affectionDay = 今天`。
+4. `peakStage = relStage = stageForAffection(affection)`，`equippedOutfit = 'daily'`，其余计数器初始化为空，`affectionDay = 今天`。
 5. 删除 `stage` 和 `xp` 字段，改为写入 `legacy: { xp, stage, migratedAt }`，用于排查问题和人工回滚。
 6. 设置 `schemaVersion: 2`，原子写回（沿用 `Store.save` 的 tmp + rename）。
 7. 因为 `personaVersion` 仍为 3，下一次对话前 `_ensureReady()` 会把 agent 的 system role 升级到 v5（成年设定 + 红线 + 当前关系段落）。
@@ -244,7 +247,8 @@
 | `lastAffectionAt` | `Record<source, number>`（ms） | 各来源最近一次计分的时间，用于冷却 |
 | `topicsToday` | `string[]` | 当天已计分的话题 id |
 | `lastDecayAt` | `number`（ms） | 上次结算离线衰减的时间 |
-| `equippedOutfit` | `string` | 当前穿着的服饰 id，默认 `'none'` |
+| `equippedOutfit` | `string` | 当前穿着的服饰 id，默认 `'daily'` |
+| `lastSafeOutfit` | `string` | 最近穿过的全年龄服饰，成人向关闭时换回它，默认 `'daily'` |
 | `seenUnlocks` | `string[]` | 用户已经看过的解锁项（用于显示“新”角标） |
 | `legacy` | `{ xp, stage, migratedAt } \| undefined` | 从 v1 迁移来的原始值 |
 | 删除 | `stage`、`xp` | 不再写入 |

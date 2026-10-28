@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('pet', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   confirmAge: (adult) => ipcRenderer.invoke('confirm-age', { adult }),
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
+  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
+  markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  panel: (open) => ipcRenderer.send('panel', !!open),
   chat: (text, images, files) => ipcRenderer.invoke('chat', { text, images, files }),
   // Absolute path of a dropped/pasted File (empty for in-memory data such as screenshots).
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },

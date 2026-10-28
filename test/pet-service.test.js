@@ -593,3 +593,46 @@ test('the agent system role is updated once when the stage or the adult switch c
   assert.match(roles[2], /阶段=知己（第 4\/5 阶段）；成人向=关/);
   assert.doesNotMatch(roles[2], /调戏一下/);
 });
+
+test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be worn, and the outfit survives a restart', async () => {
+  const { svc, events, mkSvc } = setupAff();
+  await svc.hatch({ speciesId: 'bubbo', name: 'B' });
+  svc.answerAgeGate(true);
+  svc.pet.mood = 50;
+  svc.pet.affection = 14;
+  svc.pet.dailyCounts = { greet: 1 };
+  svc.act('pat');
+  await tick();
+  const up = events.find((e) => e.type === 'stage-up');
+  assert.deepEqual(up.unlocks.outfits.map((x) => x.label), ['休闲卫衣', '贝雷帽画家装']);
+  assert.equal(svc.equipOutfit('pajamas').reason, 'locked');
+  const r = svc.equipOutfit('casual');
+  assert.equal(r.ok, true);
+  assert.equal(r.view.outfit, 'casual');
+  assert.equal(svc.markSeen('outfit').marked, 2);
+  await new Promise((res) => setTimeout(res, 300));
+
+  const v = mkSvc().init();
+  assert.equal(v.outfit, 'casual');
+  assert.equal(v.outfits.find((x) => x.id === 'casual').equipped, true);
+  assert.equal(v.outfits.some((x) => x.isNew), false);
+});
+
+test('turning adult content off swaps an adult outfit for the last all-ages one, also after a restart', async () => {
+  const { svc, mkSvc } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  svc.answerAgeGate(true);
+  svc.debugSet({ affection: 70 });
+  assert.equal(svc.equipOutfit('yukata').ok, true);
+  assert.equal(svc.equipOutfit('maid').ok, true);
+  const off = svc.setAdultContent(false);
+  assert.deepEqual(off.outfitChanged, { from: 'maid', to: 'yukata' });
+  assert.equal(off.view.outfit, 'yukata');
+  assert.ok(off.view.outfits.every((x) => x.rating === 'all'));
+  const v = mkSvc().init();
+  assert.equal(v.outfit, 'yukata');
+  assert.equal(v.pet.equippedOutfit, 'yukata');
+  // Turning it back on restores the unlocks (not the outfit: the user picks again).
+  const on = svc.setAdultContent(true);
+  assert.equal(on.view.outfits.find((x) => x.id === 'maid').unlocked, true);
+});
