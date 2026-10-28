@@ -1,6 +1,6 @@
 'use strict';
 // Procedural pixel-art spirit stones ("eggs") for the onboarding and hatching screens. The companions
-// themselves are pictures (assets/chars, see src/core/outfits.js artFor). Works in the browser
+// themselves come from pet packs (src/renderer/packs, see src/core/packs.js). Works in the browser
 // (window.Sprites) and in Node (tests).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();

@@ -11,7 +11,7 @@ const { PetService } = require('./pet-service');
 const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
-const { artFor } = require('../core/outfits');
+const { registerPackScheme, PackStore } = require('./packs');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -19,10 +19,12 @@ const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: 
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
+registerPackScheme();
 
 let win = null;
 let service = null;
 let updater = null;
+let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 
 // The pet window follows the pet's scale: the character area is 150x190 at 1, plus room for the bubble
@@ -116,7 +118,7 @@ function wire() {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: artFor(id, 'daily') || artFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: service.lookFor(id, 'daily') || service.lookFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
   const onLoginPrompt = (p) => {
@@ -154,6 +156,27 @@ function wire() {
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
   ipcMain.handle('unlock-all', () => service.unlockAll());
+  // pet packs (高级设置 → 外观)
+  ipcMain.handle('set-appearance', (_e, { id }) => service.setAppearance(String(id || '')));
+  ipcMain.handle('import-pack', async () => {
+    const r = await dialog.showOpenDialog(win, { title: '导入角色包', properties: ['openFile', 'openDirectory'], filters: [{ name: '角色包', extensions: ['zip', 'json'] }] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
+    const src = /pack\.json$/i.test(r.filePaths[0]) ? path.dirname(r.filePaths[0]) : r.filePaths[0];
+    try {
+      const out = await packStore.importFrom(src);
+      if (out.ok) service.setPacks(packStore.packs);
+      return out;
+    } catch (e) {
+      logError(e);
+      return { ok: false, errors: [e.message] };
+    }
+  });
+  ipcMain.handle('remove-pack', (_e, { id }) => {
+    const r = packStore.remove(String(id || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    return r;
+  });
+  ipcMain.on('open-packs-folder', () => shell.openPath(packStore.userDir));
   // While the user drags the resize handle: resize the window only. On release: save.
   ipcMain.handle('preview-pet-scale', (_e, { scale }) => resizePet(clampScale(scale)));
   ipcMain.handle('set-pet-scale', (_e, { scale }) => service.setPetScale(resizePet(clampScale(scale))));
@@ -213,6 +236,11 @@ function wire() {
   if (TEST_MODE) {
     // Test-only hooks used by the E2E suite to drive time-dependent behaviour.
     ipcMain.handle('debug-set', (_e, patch) => service.debugSet(patch));
+    ipcMain.handle('debug-import-pack', async (_e, dir) => {
+      const r = await packStore.importFrom(String(dir));
+      if (r.ok) service.setPacks(packStore.packs);
+      return r;
+    });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
@@ -231,7 +259,10 @@ function wire() {
 
 app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
-  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')) });
+  packStore = new PackStore();
+  packStore.serve();
+  for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
+  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   wire();
   createWindow();

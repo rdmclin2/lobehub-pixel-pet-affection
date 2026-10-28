@@ -17,7 +17,7 @@ p('# 1. Inventory (what the review covers)');
 p(`stage tone entries:        ${tones.length} (all ${tones.filter((t) => t.r === 'all').length}, adult ${tones.filter((t) => t.r === 'adult').length})`);
 p(`stage offline lines:       ${lines.length} (all ${lines.filter((l) => l.r === 'all').length}, adult ${lines.filter((l) => l.r === 'adult').length})`);
 p(`topics (label+prompt+fallback): ${dialogue.TOPICS.length} (all ${dialogue.TOPICS.filter((t) => t.rating === 'all').length}, adult ${dialogue.TOPICS.filter((t) => t.rating === 'adult').length})`);
-p(`outfits (name+desc+art):   ${outfits.OUTFITS.length} (all ${outfits.OUTFITS.filter((o) => o.rating === 'all').length}, adult ${outfits.OUTFITS.filter((o) => o.rating === 'adult').length}); pictures ${Object.keys(SPECIES).length} companions x their outfits (assets/chars)`);
+p(`outfits (name+desc+art):   ${outfits.OUTFITS.length} (all ${outfits.OUTFITS.filter((o) => o.rating === 'all').length}, adult ${outfits.OUTFITS.filter((o) => o.rating === 'adult').length}); pictures ${Object.keys(SPECIES).length} companions x their outfits (src/renderer/packs)`);
 p(`species personas:          ${Object.keys(SPECIES).length}; species fallback lines ${speciesLines.length}`);
 p(`system-role content rules: ${persona.CONTENT_RULES.split('\n').length - 1}; event hints ${Object.keys(persona.EVENT_HINT).length}`);
 const all = [...tones.map((t) => t.v), ...lines.map((l) => l.l), ...dialogue.TOPICS.flatMap((t) => [t.label, t.prompt, ...t.fallback]), ...outfits.OUTFITS.flatMap((o) => [o.label, o.desc]), ...speciesLines, ...Object.values(SPECIES).map((s) => s.personality)];

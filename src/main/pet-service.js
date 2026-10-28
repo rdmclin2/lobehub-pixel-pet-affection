@@ -9,6 +9,8 @@ const outfits = require('../core/outfits');
 const { migratePet } = require('../core/migrate');
 const settingsLib = require('../core/settings');
 const { getSpecies } = require('../core/species');
+const packsLib = require('../core/packs');
+const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
@@ -18,8 +20,10 @@ const LOCAL_RETRY_MS = 5 * 60 * 1000; // after a failure, do not hammer `lh` on 
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget() }) {
+  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null }) {
     super();
+    // pet packs (how the companions look); by default only the built-in ones
+    this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
     this.store = store;
     this.settingsStore = settingsStore;
@@ -76,9 +80,10 @@ class PetService extends EventEmitter {
       status: state.currentStatus(this.pet),
       affection: state.toAffectionProgress(this.pet, { adult: this._adult() }),
       topics: dialogue.listTopics(this.pet, this.settings),
-      outfits: outfits.listOutfits(this.pet, this.settings),
+      outfits: outfits.listOutfits(this.pet, this.settings).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
       outfit: outfits.wornOutfit(this.pet, this.settings),
-      art: outfits.artFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
+      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
+      appearance: { packId: packsLib.chosenPack(this.packs, this.settings.appearance, this.pet.speciesId), options: packsLib.packsFor(this.packs, this.pet.speciesId) },
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, element: sp.element },
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
@@ -448,6 +453,28 @@ class PetService extends EventEmitter {
   // ---- 18+ confirmation and the adult-content switch (design 8.3, 8.4) ----------------------
   getSettings() {
     return this.settingsView();
+  }
+
+  // How `speciesId` looks in `outfitId` with its chosen pack (null: Dafeiyu's signature clips).
+  lookFor(speciesId, outfitId) {
+    return packsLib.resolveLook(this.packs, { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId), fallbackId: packsLib.fallbackPack(speciesId), speciesId, outfitId });
+  }
+
+  // 高级设置 → 外观: dress the current companion in another pack of its species.
+  setAppearance(packId) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const p = this.packs.get(packId);
+    if (!p || p.species !== this.pet.speciesId) return { ok: false, reason: 'unknown' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [this.pet.speciesId]: p.id } });
+    this.settingsStore.save(this.settings);
+    this._save();
+    return { ok: true, view: this.view() };
+  }
+
+  // After packs were imported or removed.
+  setPacks(packs) {
+    this.packs = packs;
+    if (this.pet) this.emit('update', this.view());
   }
 
   // Pet size (any scale in PET_SCALE). Kept in settings.json, so it also applies to the next pet.

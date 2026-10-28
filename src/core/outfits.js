@@ -6,9 +6,9 @@
 // Dafeiyu. Turning adult content off puts the pet back into the last all-ages outfit it wore.
 //
 // Content boundary (design 8.2): nothing is revealing. The adult tier is about style only (a long maid
-// dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). Every
-// companion has one generated picture per outfit it can wear (`artFor`, made for this project with
-// gpt-image-2.5 through LobeHub, see NOTICE.md); every picture shows an adult woman.
+// dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). The art
+// for each outfit comes from the companion's pet pack (src/core/packs.js); every built-in picture
+// shows an adult woman (see NOTICE.md).
 
 const { getStage, stageIndex, stageName, adultAllowed } = require('./affection');
 
@@ -32,14 +32,8 @@ const OUTFIT_IDS = OUTFITS.map((o) => o.id);
 const DEFAULT_OUTFIT = 'daily';
 const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
 
-// Dafeiyu's own look is its animated clips (assets/dafeiyu): its default outfit shows them.
+// Dafeiyu's own look is its animated clips (assets/dafeiyu): its default outfit is shown by them.
 const SIGNATURE = { dafeiyu: { label: '招牌女仆装', desc: '大肥鱼原本的样子（动画）。' } };
-
-// The picture of `speciesId` wearing `outfitId`, relative to the renderer page; null = the species' clips.
-function artFor(speciesId, outfitId) {
-  if (SIGNATURE[speciesId] && outfitId === DEFAULT_OUTFIT) return null;
-  return `assets/chars/${speciesId}/${byId(outfitId) ? outfitId : DEFAULT_OUTFIT}.webp`;
-}
 
 function lockCondition(stageId, affection, adult) {
   const s = getStage(stageId);
@@ -73,7 +67,6 @@ function listOutfits(pet, settings) {
       id: o.id,
       label: own ? own.label : o.label,
       desc: own ? own.desc : o.desc,
-      art: artFor(pet.speciesId, o.id),
       stage: o.stage,
       stageName: stageName(o.stage, adult),
       rating: o.rating,
@@ -120,4 +113,4 @@ function outfitsForStages(stageIds, pet, settings) {
   return OUTFITS.filter((o) => stageIds.includes(o.stage) && isVisible(pet, settings, o)).map((o) => ({ id: o.id, label: o.label }));
 }
 
-module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, artFor, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };
+module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, SIGNATURE, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };

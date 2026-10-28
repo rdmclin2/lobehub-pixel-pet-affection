@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "bubbo-illustrated",
+  "name": "泡鲸 · 立绘",
+  "version": "1.0.0",
+  "author": "rdmclin2（gpt-image-2.5 生成）",
+  "license": "MIT",
+  "description": "二次元立绘，每套服饰一张，动作用轻微的摆动表现。",
+  "species": "bubbo",
+  "kind": "pictures",
+  "outfits": {
+    "beret": "beret.webp",
+    "casual": "casual.webp",
+    "cat_ears": "cat_ears.webp",
+    "couple_hoodie": "couple_hoodie.webp",
+    "daily": "daily.webp",
+    "flower_crown": "flower_crown.webp",
+    "maid": "maid.webp",
+    "offshoulder_gown": "offshoulder_gown.webp",
+    "pajamas": "pajamas.webp",
+    "retro_swimsuit": "retro_swimsuit.webp",
+    "scarf": "scarf.webp",
+    "silk_robe": "silk_robe.webp",
+    "yukata": "yukata.webp"
+  }
+}

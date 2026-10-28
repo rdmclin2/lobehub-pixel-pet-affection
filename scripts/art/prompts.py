@@ -33,4 +33,5 @@ for c, cd in CHARS.items():
         if c == "dafeiyu" and o not in ALL_AGES: continue
         jobs.append({"name": f"{c}_{o}", "prompt": f"Full-body standing character illustration of {cd}. She is wearing {od}. {STYLE}"})
 jobs.append({"name": "logo", "prompt": "Square app icon for a desktop companion app: a cute anime-style adult woman in her mid-20s (adult face and proportions, not chibi, not childlike) with long sky-blue wavy hair and a small white whale-tail hair clip, sleepy teal eyes, warm smile, winking, holding a small pink heart, bust-up portrait, fully clothed in a cozy cream knit sweater, clean cel-shaded 2D anime illustration, soft pastel pink-to-lavender background filling the whole square, centered, no text, no watermark"})
-print(json.dumps(jobs))
+if __name__ == '__main__':
+    print(json.dumps(jobs))
