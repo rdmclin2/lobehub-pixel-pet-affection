@@ -630,6 +630,7 @@ function bindPetUi() {
     if (!m) return;
     $('main-menu').classList.add('hidden');
     if (m === 'quit') window.pet.quit();
+    if (m === 'update') await window.pet.installUpdate();
     if (m === 'adult') {
       const label = (v, id) => ((v.outfits.find((o) => o.id === id) || {}).label || id);
       if (!view.settings.ageConfirmed) {
@@ -865,6 +866,22 @@ function frameLoop(ts) {
   setTimeout(() => requestAnimationFrame(frameLoop), 80); // ~12 fps keeps the pixel feel and idles cheaply
 }
 
+// ---------- updates (src/main/updater.js) ----------
+let updateAnnounced = null;
+function onUpdateStatus(u) {
+  const b = $('menu-update');
+  const label = { downloading: `正在下载新版本 v${u.version}…`, ready: `立即更新到 v${u.version} 并重启`, manual: `下载新版本 v${u.version}` }[u.status];
+  b.classList.toggle('hidden', !label);
+  b.disabled = u.status === 'downloading';
+  if (label) b.textContent = label;
+  if (!view || updateAnnounced === `${u.status}:${u.version}`) return;
+  const moveFirst = ['translocated', 'dmg', 'read-only'].includes(u.error);
+  if (u.status === 'ready') say(`（新版本 v${u.version} 已经下载好了。你离开电脑一会儿时我会自己重启更新，也可以在 ⋯ 菜单里立即更新。）`, 'update', 'fallback');
+  else if (u.status === 'manual') say(moveFirst ? `（有新版本 v${u.version}。先把我拖进“应用程序”文件夹再打开，以后就能自动更新了；这次可以在 ⋯ 菜单里下载。）` : `（有新版本 v${u.version}，可以在 ⋯ 菜单里下载。）`, 'update', 'fallback');
+  else return;
+  updateAnnounced = `${u.status}:${u.version}`;
+}
+
 // ---------- boot ----------
 async function main() {
   info = await window.pet.boot();
@@ -883,10 +900,12 @@ async function main() {
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);
   window.pet.onSettings((st) => { settings = st; });
+  window.pet.onUpdateStatus(onUpdateStatus);
   settings = info.settings;
   const start = (v) => (v ? enterPet(v) : showOnboarding());
   if (settings.needsAgeGate) showAgeGate((r) => start(r.view));
   else start(info.view);
+  if (info.update) onUpdateStatus(info.update);
   requestAnimationFrame(frameLoop);
 }
 

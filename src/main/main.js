@@ -8,6 +8,7 @@ const { LhClient } = require('../core/lh-client');
 const { Store } = require('../core/store');
 const { SettingsStore } = require('../core/settings');
 const { PetService } = require('./pet-service');
+const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { artFor } = require('../core/outfits');
@@ -21,6 +22,7 @@ if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
 
 let win = null;
 let service = null;
+let updater = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 
 function place(mode) {
@@ -92,7 +94,7 @@ function wire() {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: artFor(id, 'daily') || artFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: artFor(id, 'daily') || artFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
   const onLoginPrompt = (p) => {
@@ -180,6 +182,7 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
+  ipcMain.handle('update-install', () => updater.install());
 
   if (TEST_MODE) {
     // Test-only hooks used by the E2E suite to drive time-dependent behaviour.
@@ -196,14 +199,17 @@ function wire() {
   service.on('affection', (a) => send('affection', a));
   service.on('settings', (st) => send('settings', st));
   service.on('error', logError);
+  updater.on('status', (st) => send('update-status', st));
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
 }
 
 app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')) });
+  updater = new Updater({ isBusy: () => service.busy, log: logError });
   wire();
   createWindow();
+  updater.start();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);
 });
 
