@@ -739,18 +739,19 @@ test('unlock all is refused without a pet', () => {
   assert.deepEqual(svc.unlockAll(), { ok: false, reason: 'empty' });
 });
 
-test('pet size is saved in settings, reported to the UI and survives releasing the pet', async () => {
+test('pet scale is saved in settings, reported to the UI and survives releasing the pet', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'sprig' });
   const seen = [];
   svc.on('settings', (st) => seen.push(st.petScale));
-  assert.deepEqual(svc.setPetSize('huge'), { ok: false, reason: 'unknown' });
-  const r = svc.setPetSize('l');
+  assert.deepEqual(svc.setPetScale('big'), { ok: false, reason: 'invalid' });
+  const r = svc.setPetScale(1.42);
   assert.equal(r.ok, true);
-  assert.equal(r.settings.petSize, 'l');
-  assert.equal(r.settings.petScale, 1.3);
-  assert.deepEqual(seen, [1.3]);
+  assert.equal(r.settings.petScale, 1.42);
+  assert.deepEqual(r.settings.petScaleRange, { min: 0.5, max: 2.5, default: 1 });
+  assert.equal(svc.setPetScale(7).settings.petScale, 2.5);
+  assert.deepEqual(seen, [1.42, 2.5]);
   await svc.release({ deleteAgent: true });
-  assert.equal(svc.settingsStore.load().petSize, 'l');
+  assert.equal(svc.settingsStore.load().petScale, 2.5);
 });

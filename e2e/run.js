@@ -1134,43 +1134,67 @@ async function advanced() {
 
     const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
     const stageBox = () => page.evaluate(() => { const r = document.getElementById('stage').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
-    await step(S, 'pet size: 特大 makes the character and the window bigger, bottom-right corner stays put', async () => {
+    const scaleVar = () => page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')));
+    const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).petScale;
+    await step(S, 'dragging the corner handle up-left resizes the pet freely; the window follows, bottom-right corner stays put', async () => {
       const before = await bounds();
       const stage0 = await stageBox();
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.click('.size-opt[data-size="xl"]');
-      await page.waitForSelector('.size-opt.on[data-size="xl"]');
-      await page.click('#panel-close');
-      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '1.6');
-      await page.waitForFunction(() => window.outerHeight > 400);
+      await hover(page);
+      const g = await page.locator('#resize-grip').boundingBox();
+      await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(g.x + g.width / 2 - i * 10, g.y + g.height / 2 - i * 10);
+      await page.mouse.up();
+      await page.waitForFunction(() => !document.body.classList.contains('resizing'));
+      await page.waitForTimeout(300);
+      const k = await scaleVar();
       const after = await bounds();
       const stage1 = await stageBox();
-      assert.deepEqual([after.width, after.height], [320, 454]);
+      assert.ok(k > 1.2 && k < 2.5, `scale ${k}`);
+      assert.equal(saved(), k, 'saved on release');
+      assert.ok(after.height > before.height && after.width >= before.width);
       assert.equal(after.x + after.width, before.x + before.width, 'right edge kept');
       assert.equal(after.y + after.height, before.y + before.height, 'bottom edge kept');
-      assert.deepEqual([stage1.w, stage1.h], [Math.round(stage0.w * 1.6), Math.round(stage0.h * 1.6)]);
+      assert.ok(Math.abs(stage1.h - stage0.h * k) <= 2, `stage ${stage1.h} vs ${stage0.h} x ${k}`);
       await page.mouse.move(1, 1);
-      await page.screenshot({ path: path.join(OUT, 'pet-size-xl.png') });
-      return `window ${before.width}x${before.height} -> ${after.width}x${after.height}; stage ${stage0.w}x${stage0.h} -> ${stage1.w}x${stage1.h}`;
+      await page.screenshot({ path: path.join(OUT, 'pet-size-dragged.png') });
+      return `scale ${k}: window ${before.width}x${before.height} -> ${after.width}x${after.height}; stage ${stage0.h} -> ${stage1.h}px`;
     }, page);
 
-    await step(S, 'pet size: 小 shrinks it, and the size is kept across a restart', async () => {
+    await step(S, 'Ctrl + wheel over the pet makes it smaller, step by step', async () => {
+      const k0 = await scaleVar();
+      await page.mouse.move(110, (await bounds()).height - 200);
+      await page.keyboard.down('Control');
+      for (let i = 0; i < 4; i++) await page.mouse.wheel(0, 100);
+      await page.keyboard.up('Control');
+      await page.waitForFunction((k) => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) < k, k0);
+      await page.waitForTimeout(700); // saved 400 ms after the last notch
+      const k1 = await scaleVar();
+      assert.ok(Math.abs(k1 - k0 / 1.05 ** 4) < 0.02, `${k0} -> ${k1}`);
+      assert.equal(saved(), k1);
+      return `${k0} -> ${k1}`;
+    }, page);
+
+    await step(S, 'the slider in 高级设置 sets any size, and the size is kept across a restart', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
-      await page.click('.size-opt[data-size="s"]');
+      await page.waitForSelector('#size-range');
+      await page.evaluate(() => { const r = document.getElementById('size-range'); r.value = '60'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); });
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.match(await page.textContent('.size-val'), /60%/);
+      await page.screenshot({ path: path.join(OUT, 'pet-size-slider.png') });
       await page.click('#panel-close');
-      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '0.75');
-      await page.screenshot({ path: path.join(OUT, 'pet-size-s.png') });
-      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).petSize, 's');
+      await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
+      assert.equal(saved(), 0.6);
       await app.close();
       const again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
       try {
         await again.page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
-        await again.page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '0.75');
+        await again.page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
         const b = await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-        assert.deepEqual([b.width, b.height], [230, 293]);
-        return `after restart: ${b.width}x${b.height}`;
+        assert.deepEqual([b.width, b.height], [230, 264]);
+        await again.page.screenshot({ path: path.join(OUT, 'pet-size-small-after-restart.png') });
+        return `after restart: 60%, window ${b.width}x${b.height}`;
       } finally {
         await again.app.close().catch(() => {});
       }

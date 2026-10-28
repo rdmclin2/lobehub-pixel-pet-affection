@@ -65,7 +65,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScale: settingsLib.petScale(this.settings), petSizes: settingsLib.PET_SIZES };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE };
   }
 
   view() {
@@ -450,10 +450,10 @@ class PetService extends EventEmitter {
     return this.settingsView();
   }
 
-  // 高级设置 → 宠物大小. Kept in settings.json, so it also applies to the next pet.
-  setPetSize(id) {
-    if (!settingsLib.PET_SIZES.some((x) => x.id === id)) return { ok: false, reason: 'unknown' };
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, petSize: id });
+  // Pet size (any scale in PET_SCALE). Kept in settings.json, so it also applies to the next pet.
+  setPetScale(value) {
+    if (!Number.isFinite(Number(value))) return { ok: false, reason: 'invalid' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, petScale: settingsLib.clampScale(value) });
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };
