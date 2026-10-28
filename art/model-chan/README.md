@@ -1,6 +1,6 @@
 # 模型娘 · 首批角色素材
 
-以 AI 模型厂商为主题的同人“模型娘”形象，**不是厂商官方形象**。设定数据在 [`characters.json`](characters.json)（字段与 `src/core/species.js` 对齐），像素素材在 `packs/`。
+以 AI 模型厂商为主题的同人“模型娘”形象，**不是厂商官方形象**。设定文档见 [`CHARACTERS.md`](CHARACTERS.md)，设定数据在 [`characters.json`](characters.json)（字段与 `src/core/species.js` 对齐），像素素材在 `packs/`。
 
 | 角色 | 厂商 | 主题色 | 美术 | 素材位置 |
 | --- | --- | --- | --- | --- |
