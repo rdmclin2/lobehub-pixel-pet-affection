@@ -40,7 +40,7 @@
 | 行 | 触点 | 现状 | 处理 |
 | --- | --- | --- | --- |
 | 5 | `STAGE_ZH = { baby:'幼崽', child:'少年', adult:'成年' }` | 阶段中文名，含未成年表述 | **删除**，改为 `REL_STAGES[].nameZh`（陌生 / 熟悉 / 亲近 / 暧昧 / 恋人） |
-| 8 | `PERSONA_VERSION = 3` | 人设版本 | 升到 `4`，老 agent 的 system role 会经 `_ensureReady()` 自动更新一次 |
+| 8 | `PERSONA_VERSION = 3` | 人设版本 | 升到 `5`（v4 加入成年设定与红线，v5 加入“当前关系”段落），老 agent 的 system role 会经 `_ensureReady()` 自动更新一次；此后 `personaKey`（阶段、成人向开关、已解锁话题）变化时也会在下一轮对话前同步一次 |
 | 13–30 | `buildSystemRole()`，第 6 条提到“成长阶段” | system role | 改写：加入“你是成年人”设定、关系阶段说明、第 8 节的内容红线 |
 | 45–50 | `buildStateBlock()` 输出 `阶段=${STAGE_ZH[...]}` | 每条消息的 `[状态]` 块 | 改为 `关系=亲近；成人向=关`，并附加 `[关系]` 块（第 4.3 节） |
 | 60 | `EVENT_HINT.evolved = '你刚刚成长进化了！…'` | 进化事件 | 改为 `stage_up`：“你和主人的关系更进一步了…” |
@@ -222,7 +222,7 @@
 4. `peakStage = relStage = stageForAffection(affection)`，`equippedOutfit = 'none'`，其余计数器初始化为空，`affectionDay = 今天`。
 5. 删除 `stage` 和 `xp` 字段，改为写入 `legacy: { xp, stage, migratedAt }`，用于排查问题和人工回滚。
 6. 设置 `schemaVersion: 2`，原子写回（沿用 `Store.save` 的 tmp + rename）。
-7. 因为 `personaVersion` 仍为 3，下一次对话前 `_ensureReady()` 会把 agent 的 system role 升级到 v4（成年设定 + 红线）。
+7. 因为 `personaVersion` 仍为 3，下一次对话前 `_ensureReady()` 会把 agent 的 system role 升级到 v5（成年设定 + 红线 + 当前关系段落）。
 8. 老用户没有 `settings.json`：启动时先显示 18+ 确认屏（第 8.3 节），在确认之前 `adultContent = false`。
 9. `pet.json` 损坏时 `Store.load()` 返回 `null`，按无宠物处理；备份文件不受影响。
 
@@ -288,7 +288,7 @@
 
 **执行方式**：
 
-- system role（v4）中加入“内容红线”段落：遇到越界请求时，角色用自己的口吻温和拒绝并转移话题，不说教、不复述越界内容。
+- system role（v5）中加入“当前关系”段落（当前阶段、允许语气、已解锁/未解锁话题、下一阶段；成人向关闭时不列出任何成人向话题），以及“内容红线”段落：遇到越界请求时，角色用自己的口吻温和拒绝并转移话题，不说教、不复述越界内容。
 - 本地兜底：`src/core/content-guard.js` 对 agent 的回复做关键词和正则检查（露骨词表、未成年词表、强迫类词表）。命中时不显示原文，改为显示该物种的拒绝台词，并写入错误日志（只记录命中类别，不记录原文）。
 - 成人向话题的 `prompt` 一律附带“保持不露骨、点到为止”。
 

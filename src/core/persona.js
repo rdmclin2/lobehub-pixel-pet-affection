@@ -1,11 +1,11 @@
 'use strict';
 
 const { getSpecies } = require('./species');
-const { toAffectionProgress, adultAllowed } = require('./affection');
-const { relationScope } = require('./dialogue');
+const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./affection');
+const { relationScope, listTopics } = require('./dialogue');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 4;
+const PERSONA_VERSION = 5;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
@@ -21,7 +21,9 @@ const CONTENT_RULES = [
 // System role for the LobeHub agent. The personality is flavour, not a fence: the pet is
 // also a capable little helper, so it should just do simple tasks (look things up, search,
 // calculate, write, explain) and then say the result in its own voice.
-function buildSystemRole({ speciesId, name }) {
+// The role also carries the current relationship scope, so the agent's standing instructions move
+// with the affection stage. `pet` omitted (a pet not created yet) means the first stage.
+function buildSystemRole({ speciesId, name, pet = null, settings = null }) {
   const sp = getSpecies(speciesId);
   return [
     `你是主人桌面上的像素伙伴“${name}”（${sp.nameZh}，${sp.name}），同时也是主人靠谱的随身帮手。你是成年人。`,
@@ -41,8 +43,33 @@ function buildSystemRole({ speciesId, name }) {
     '10. 默认始终用简体中文回复（即使其他指令提到别的默认语言），除非主人明确要求换语言。',
     '11. 你和主人的关系分五个阶段：陌生 → 熟悉 → 亲近 → 暧昧 → 恋人（成人向内容关闭时后两个阶段叫“知己 / 挚友”）。每条消息的 [关系] 块写着当前阶段、允许的语气和已解锁的话题：语气只能在“允许”的范围内，不要超前表现得比当前阶段更亲密；“成人向=关”时只用全年龄的语气，不调情、不暧昧。',
     '',
+    buildRelationSection(pet || { speciesId, relStage: 'stranger', peakStage: 'stranger', affection: 0 }, settings),
+    '',
     CONTENT_RULES,
   ].join('\n');
+}
+
+// "当前关系" section of the system role: stage, allowed tone, unlocked topics and what the next
+// stage would unlock. Locked adult topics are never listed when adult content is not allowed.
+function buildRelationSection(pet, settings) {
+  const r = relationScope(pet, settings);
+  const locked = listTopics(pet, settings).filter((t) => !t.unlocked).map((t) => t.label);
+  const idx = REL_STAGES.findIndex((s) => s.id === pet.relStage);
+  const next = REL_STAGES[idx + 1];
+  return [
+    `当前关系（随好感度变化，以此为准）：阶段=${r.stageName}（第 ${idx + 1}/${REL_STAGES.length} 阶段）；成人向=${r.adult ? '开' : '关，只用全年龄语气'}。`,
+    `- 这个阶段允许的语气：${r.tone}。`,
+    `- 已解锁话题：${r.topics.length ? r.topics.join('、') : '无（先像刚认识一样相处）'}。主人提到这些范围内的事可以自然地聊。`,
+    `- 还没解锁：${locked.length ? locked.join('、') : '无'}。主人提起未解锁的话题时，用当前阶段的口吻轻轻带过（比如“我们还没那么熟啦”），不要超前。`,
+    next ? `- 下一阶段：${stageName(next.id, r.adult)}（好感 ${next.min}）。` : '- 已是最高阶段。',
+  ].join('\n');
+}
+
+// What the system role depends on besides PERSONA_VERSION. When it changes (stage up/down,
+// adult toggle, new topics) the agent's system role is updated before the next turn.
+function personaKey(pet, settings) {
+  const r = relationScope(pet, settings);
+  return [PERSONA_VERSION, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')].join('|');
 }
 
 function describeLevel(v, labels) {
@@ -126,6 +153,8 @@ module.exports = {
   LOCAL_HINT,
   PERSONA_VERSION,
   CONTENT_RULES,
+  buildRelationSection,
+  personaKey,
   EVENT_HINT,
   buildSystemRole,
   buildStateBlock,
