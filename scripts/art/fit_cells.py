@@ -1,13 +1,17 @@
 # Fit a sliced 4 x 4 sheet (slice_sheet.py output) into fixed cells, so every sheet of every character uses
 # the frame size of the built-in pixel packs (83 x 113): figure centred, standing on the cell's bottom, scaled down
 # (nearest neighbour, keeps hard pixels) only when a frame is larger than the cell.
-# usage: fit_cells.py <sliced.png> <out.png> [cell_w cell_h]
+# usage: fit_cells.py <sliced.png> <out.png> [cell_w cell_h] [--keep-violet]
+#   --keep-violet: for a violet-haired character (Gemini), only drop pixels that are mostly key colour and skip
+#   the pull to neutral; that pull cannot tell lavender hair from a pink rim and turns her hair grey.
 import sys
 import numpy as np
 from PIL import Image
 
-src, dst = sys.argv[1], sys.argv[2]
-CW, CH = (int(sys.argv[3]), int(sys.argv[4])) if len(sys.argv) > 4 else (83, 113)
+keep_violet = '--keep-violet' in sys.argv
+argv = [x for x in sys.argv if x != '--keep-violet']
+src, dst = argv[1], argv[2]
+CW, CH = (int(argv[3]), int(argv[4])) if len(argv) > 4 else (83, 113)
 COLS = ROWS = 4
 im = Image.open(src).convert('RGBA')
 w, h = im.width // COLS, im.height // ROWS
@@ -29,9 +33,10 @@ for dy in range(-2, 3):
 edge = solid & near
 spill = np.minimum(a[..., 0], a[..., 2]) - a[..., 1]
 a[spill > 70, 3] = 0
-fix = (edge & (spill > 12)) | (spill > 40)
-a[fix, 0] -= spill[fix]
-a[fix, 2] -= spill[fix]
+if not keep_violet:
+    fix = (edge & (spill > 12)) | (spill > 40)
+    a[fix, 0] -= spill[fix]
+    a[fix, 2] -= spill[fix]
 out = Image.fromarray(a.clip(0, 255).astype(np.uint8), 'RGBA')
 out.save(dst, optimize=True)
 print(dst, 'cell', CW, CH, 'sheet', out.size, 'scale', round(s, 3))

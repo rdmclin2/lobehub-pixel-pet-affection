@@ -11,8 +11,8 @@ const { buildStateBlock } = require('../src/core/persona');
 const st = require('../src/core/pet-state');
 
 test('every shipped character is a model-chan with a vendor, theme colour, lines and credits, and none allows adult content', () => {
-  assert.deepEqual(S.SPECIES_IDS, ['dafeiyu', 'claude', 'grok']);
-  assert.deepEqual(S.SPECIES_IDS.map((id) => S.SPECIES[id].vendor), ['DeepSeek', 'Anthropic', 'xAI']);
+  assert.deepEqual(S.SPECIES_IDS, ['dafeiyu', 'claude', 'grok', 'gemini']);
+  assert.deepEqual(S.SPECIES_IDS.map((id) => S.SPECIES[id].vendor), ['DeepSeek', 'Anthropic', 'xAI', 'Google']);
   for (const sp of Object.values(S.SPECIES)) {
     assert.deepEqual(S.validateCharacter({ ...JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'characters', `${sp.id}.json`), 'utf8')) }), []);
     assert.equal(sp.adult, false, `${sp.id} is all-ages`);

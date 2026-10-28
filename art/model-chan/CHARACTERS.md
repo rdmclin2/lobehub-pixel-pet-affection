@@ -10,6 +10,7 @@
 | 大肥鱼 Dafeiyu（DeepSeek 娘 · Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` 深海蓝 | `#2C4A8A` `#FFFFFF` `#6FA8E8` `#E8D6A0` | **保留原有 Q 版女仆装形象**（15 段透明视频不变），另出同一形象的像素版 `dafeiyu-pixel` | dsh-pet 视频；用户素材 ZipZipPipe《AI娘化》p00/p01；ai-chan-sheets `03_DeepSeek娘_鲸鱼娘` |
 | 克洛蒂 Clody（Claude 娘 · 橘发菊纹） | Anthropic / Claude | `#C4622D` 陶土橘 | `#C4622D` `#F4EAD8` `#1E1A18` `#C9A24A` | 新像素精灵 `claude-pixel` | ai-chan-sheets `设定图/11_Claude娘_Anthropic`；用户素材 ZipZipPipe《AI娘化》p02_Claude娘 |
 | 格萝可 Groko（Grok 娘 · 黑金吸血鬼） | xAI / Grok | `#8E1F33` 酒红 | `#8E1F33` `#16141A` `#C9A24A` `#F1E2B8` | 新像素精灵 `grok-pixel` | ai-chan-sheets `设定图/09_Grok娘_xAI`；用户素材 ZipZipPipe《AI娘化》p07_Grok娘 |
+| 杰米 Gemi（Gemini 娘 · 四角星猫耳；第二批，2026-10-29） | Google / Gemini | `#7B5CD6` 薰衣草紫 | `#7B5CD6` `#B9A3F0` `#1E1F4B` `#FFFFFF` | 新像素精灵 `gemini-pixel` | ai-chan-sheets `设定图/10_Gemini娘`；用户素材 ZipZipPipe《AI娘化》p04_Gemini娘 |
 
 ## 二、逐角色设定
 
@@ -47,6 +48,16 @@
 - **示例台词**：饿了“说真的，番茄汁呢？我快饿成纸片了。”；无聊“你是在加班，还是在假装加班？”；开心“嘿嘿，尖牙都笑出来了。”；困了“天亮了……吸血鬼要补觉了。”；问候“哈！你可算来了。”
 - **喜好**：深夜、番茄汁、冷笑话、新鲜八卦
 
+### 4. 杰米（Gemini 娘）— 第二批（2026-10-29）加入
+
+- **名称**：杰米 / Gemi；称号“Gemini 娘 · 四角星猫耳”
+- **厂商**：Google（模型 Gemini）
+- **主题色**：`#7B5CD6`（色板 `#7B5CD6` 薰衣草紫、`#B9A3F0` 浅紫、`#1E1F4B` 深藏青、`#FFFFFF` 白）
+- **外观要点**：成年女性比例。薰衣草紫过膝长发、卷曲呆毛；紫外粉内的尖猫耳、蓬松猫尾；异色瞳（画面左品红、右金黄）；深色发带配凹边四角星发饰。深藏青高领上衣、胸前四角星徽记、紫色缎面腰带与金色腰链、白底宽袖外披（两侧四角星吊坠飘带）、及踝深藏青长裙配白色荷叶边衬裙、不透明白色连裤袜、深紫厚底鞋。
+- **对原设的改动**：原设的露脐上衣、短裤和大腿腿环改为高领上衣、及踝长裙和不透明连裤袜；四角星只作纹样，不画 Google 标志或文字。
+- **性格**：活泼、好奇、反应快，看到新东西就想凑过去看看；说话轻快，偶尔小得意，被问住会坦率说“这个我得再查查”。口头禅“让我看看！”
+- **喜好**：星星、新奇的小玩意、晒太阳、逗猫棒
+
 ## 三、像素素材规格
 
 > 2026-10-29（T-1158）更新：三个包已接入应用，位于 `src/renderer/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`，角色注册在 `src/characters/<id>.json`。原来暂存时的两张表（基础 8 动作 + 扩展 8 动作）已合并为一张 schema 2 精灵图，动作直接以状态命名。
@@ -54,7 +65,7 @@
 - **格式**：schema 2，RGBA PNG，单帧 83×113，每张 sheet 4 列 × 8 行 = 332×904，16 个动作 × 2 帧。
 - **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。三个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
 - **排布**：第 0–3 行 `idle, pat, lifted, eat_rice, sleep, think, talk, happy`，第 4–7 行 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`，每行两个动作、各 2 帧。
-- **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1092）：第一行是大肥鱼原视频参考帧，下面三行是三个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
+- **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1330）：第一行是大肥鱼原视频参考帧，下面四行是四个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
 
 ## 四、素材来源与许可证
 

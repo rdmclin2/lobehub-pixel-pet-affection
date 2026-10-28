@@ -283,6 +283,7 @@ system role mentions adult topics: (none)
 | 离线台词 `fallback` 15 条 + 拒绝台词 3 条 | 通过：全部经过内容守卫（`test/content-guard.test.js`“every built-in line … passes the guard”）。 |
 | 成人向 | 三位都是 `adult: false`：成人向开启时也没有成人向阶段名、话题、台词和服饰（`test/outfits.test.js`、`test/compliance.test.js`）。 |
 | 像素图 claude-pixel / grok-pixel（各 16 动作 × 2 帧） | 通过：成人比例；格萝可原设的露肩、透肉连裤袜、腿环已改为高领礼服和不透明连裤袜；不画 X 标志与字样。总表 `out/e2e/state-sheet.png`。 |
+| 杰米（`gemini.json` + gemini-pixel，2026-10-29 加入） | 通过：人设写明成年 25 岁以上、同人非官方、全年龄语气，`adult: false`；像素图成人比例，原设的露脐上衣、短裤、腿环改为高领上衣、及踝长裙和不透明连裤袜；不画 Google 标志与文字（`test/compliance.test.js`、`test/characters.test.js` 覆盖）。 |
 | dafeiyu-pixel（16 × 2 帧） | 大肥鱼沿用社区原版 Q 版画风（唯一的画风例外），所以永远全年龄，与原视频一致。 |
 | 时间背景（`src/core/time-context.js`） | 通过：节日表只含成人通用的公历节日（删去了儿童节、教师节，避免学生/儿童联想）。 |
 | 界面文案（选择角色、唤醒、切换角色） | 通过：不再使用“灵石 / 蛋 / 孵化”；`test/compliance.test.js` 的禁用词扫描覆盖新文件 `src/core/fx.js`、`src/renderer/fx.js`、`src/core/time-context.js` 与 `src/characters/*.json`。 |

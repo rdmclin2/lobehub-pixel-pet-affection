@@ -4,7 +4,8 @@
 #   <id>_extra -> the 8 states only DeepSeek's video clips had (look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve)
 # Dafeiyu (DeepSeek) is the pixel version of her existing chibi maid look from dsh-pet.
 # Identity anchors are condensed from lmy414/ai-chan-sheets 设定图/<char>/提示词/A01 (CC BY-NC-SA 4.0), after the
-# original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求".
+# original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
+# shorts and thigh band become a covered top, a long skirt and opaque tights).
 import json, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
@@ -23,6 +24,12 @@ CHARS = {
           "a small black-and-gold spiked tiara with a gold ring emblem and a thin pale-gold crescent moon above it, sapphire-blue eyes, pointed elf ears, a confident mischievous grin showing two tiny fangs. "
           "She wears a long-sleeved black gothic gown buttoned up to a high neck with a wine-red lined pointed stand-up collar, white lace cuffs, a black corset sash with a gold ring emblem and a thin gold chain, "
           "an ankle-length layered black skirt with gold trim showing a wine-red underskirt, opaque black tights, and glossy black Mary Jane heels. Colours: black, wine red, gold and champagne blonde only"),
+ "gemini": ("Gemini-chan, an adult woman personifying the Gemini AI: very long voluminous lavender-violet hair reaching below her knees, fluffy and flaring outward, fading to pink-violet at the tips, one curled ahoge on top, "
+            "a pair of large pointed cat ears (violet outside, pink inside), heterochromia eyes (magenta-red on the left side of the picture, golden yellow on the right), a playful proud little smile, "
+            "a dark hair band with a large concave four-pointed sparkle-star ornament (the Gemini sparkle shape, never a five-pointed star) on her right, and a fluffy lavender cat tail behind her. "
+            "She wears a long-sleeved deep navy high-necked fitted top covering her midriff with a big four-pointed star emblem on the chest, a violet satin waist sash with gold trim and a thin gold waist chain with a star charm, "
+            "a white-and-navy wide-sleeved open overcoat with gold edging and two long ribbon tails with star charms, an ankle-length deep navy skirt with a white ruffled underskirt hem, "
+            "opaque white tights and deep violet platform shoes with iridescent soles. Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
 }
 
 EXTRA_ROWS = [

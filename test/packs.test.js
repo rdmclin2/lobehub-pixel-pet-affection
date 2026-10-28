@@ -23,8 +23,8 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-pixel', 'dafeiyu-illustrated', 'dafeiyu-pixel', 'grok-pixel']);
-  for (const id of ['dafeiyu', 'claude', 'grok']) {
+  assert.deepEqual([...packs.keys()].sort(), ['claude-pixel', 'dafeiyu-illustrated', 'dafeiyu-pixel', 'gemini-pixel', 'grok-pixel']);
+  for (const id of ['dafeiyu', 'claude', 'grok', 'gemini']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
     for (const outfit of sp.outfits) {
@@ -37,7 +37,7 @@ test('every built-in pack is valid, and every character has art for every outfit
 
 test('the model-chan pixel packs are schema 2 and animate every state of the shared effects layer', () => {
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
-  for (const id of ['claude-pixel', 'grok-pixel', 'dafeiyu-pixel']) {
+  for (const id of ['claude-pixel', 'grok-pixel', 'gemini-pixel', 'dafeiyu-pixel']) {
     const px = packs.get(id);
     assert.equal(px.schema, 2);
     assert.equal(px.kind, 'sprites');
