@@ -66,6 +66,16 @@ npm install
 npm start
 ```
 
+第一次运行时 Electron 会先下载自己的二进制（`Downloading Electron binary...`），稍等即可。
+
+**Linux 从源码运行**：如果启动就退出并提示 `The SUID sandbox helper binary was found, but is not configured correctly`，按提示给沙盒助手设置权限（推荐），或者加 `--no-sandbox` 启动：
+
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+# 或者
+npm start -- --no-sandbox
+```
+
 首次启动依次是：18+ 确认（选“只看全年龄”也能用全部模型娘）→ 选择模型娘（三张角色卡，显示厂商和介绍）→ 起名并点“唤醒” → 未登录时按提示完成 `lh` 登录 → 选择 agent 放在哪里（默认个人空间）→ 唤醒演出。之后宠物住在桌面上；鼠标悬停时才显示状态条和按钮。
 
 不连 LobeHub 也能试玩全部效果：`npm test` 用的假 `lh` 可以直接给应用用：
@@ -74,6 +84,8 @@ npm start
 mkdir -p /tmp/fake-lh && touch /tmp/fake-lh/loggedin
 LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DIR=/tmp/pp-demo PIXELPET_NO_CONNECT=1 npm start
 ```
+
+试玩时在选择角色界面取消勾选“让它能使用这台电脑”（假 `lh` 没有设备可连）。
 
 ### 切换角色
 

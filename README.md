@@ -96,6 +96,8 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
+- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [docs/model-chan.md](docs/model-chan.md#运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
+
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
 - **高级设置 · 一键解锁**（⋯ 菜单 → 高级设置）：直接把好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
 - **像素风与角色包**：克洛蒂、格萝可是 16 位像素风，每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⋯ 菜单 → 高级设置 → 外观里可以切换（大肥鱼：原版动画 / 像素），也能导入别人做的角色包（文件夹或 `.zip`）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
