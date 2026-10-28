@@ -1,5 +1,7 @@
 # 好感度版改造设计（成长系统 → 好感度系统）
 
+> **历史记录。** 本文写于模型娘改造之前。文中的焰团（embit）/ 泡鲸（bubbo）/ 叶芽（sprig）、“灵石”选择界面、`src/renderer/sprites.js`、`bubbo-pixel` 与 `*-illustrated` 原创立绘包已在 2026-10-29（T-1158）移除，角色体系改为模型娘（`src/characters/`），见 README「模型娘角色」。旧存档的迁移见 `src/core/species.js` 的 `RETIRED`。
+
 - 状态：设计稿（本文件只定义改造方案，不含实现）
 - 基线：上游 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet) v0.2.1（完整 23 个提交历史，HEAD `8eab442`，首提交 `e74ef71`），MIT
 - 本仓库：[rdmclin2/lobehub-pixel-pet-affection](https://github.com/rdmclin2/lobehub-pixel-pet-affection)（public）

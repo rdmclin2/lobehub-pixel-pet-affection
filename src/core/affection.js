@@ -1,5 +1,7 @@
 'use strict';
 
+const { SPECIES } = require('./species');
+
 // Affection (好感度) model: pure functions, every one takes `now` (ms) explicitly so it is
 // trivially testable. See docs/affection-design.md sections 2, 3 and 7.
 
@@ -191,7 +193,10 @@ function decay(pet, now) {
   return round1(before - pet.affection);
 }
 
-const adultAllowed = (settings, speciesId) => !!(settings && settings.ageConfirmed && settings.adultContent) && speciesId !== 'dafeiyu';
+// Adult content needs the user's 18+ answer, the switch on, AND a character whose file allows it
+// (`adult` in src/characters/<id>.json; every model-chan is all-ages).
+const adultAllowed = (settings, speciesId) => !!(settings && settings.ageConfirmed && settings.adultContent) && characterAllowsAdult(speciesId);
+const characterAllowsAdult = (speciesId) => !!(SPECIES[speciesId] && SPECIES[speciesId].adult === true);
 
 // Stage name as the user sees it: adult stages read 知己 / 挚友 when adult content is off.
 function stageName(stageId, adult) {

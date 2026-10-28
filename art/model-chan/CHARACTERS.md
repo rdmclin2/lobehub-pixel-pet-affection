@@ -1,0 +1,73 @@
+# 模型娘首批角色设定与像素素材（T-1157）
+
+桌宠仓库：rdmclin2/lobehub-pixel-pet-affection，分支 `feat/model-chan-art`。
+以 AI 模型厂商为主题的同人“模型娘”形象，**不是任何厂商的官方形象**。本文档可独立阅读；同样的设定数据以机器可读形式保存在仓库 `art/model-chan/characters.json`（字段与 `src/core/species.js` 对齐）。
+
+## 一、角色总表
+
+| 角色 | 厂商 / 模型 | 主题色（accent） | 色板 | 美术形式 | 参考素材来源 |
+| --- | --- | --- | --- | --- | --- |
+| 大肥鱼 Dafeiyu（DeepSeek 娘 · Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` 深海蓝 | `#2C4A8A` `#FFFFFF` `#6FA8E8` `#E8D6A0` | **保留原有 Q 版女仆装形象**（15 段透明视频不变），另出同一形象的像素版 `dafeiyu-pixel` | dsh-pet 视频；用户素材 ZipZipPipe《AI娘化》p00/p01；ai-chan-sheets `03_DeepSeek娘_鲸鱼娘` |
+| 克洛蒂 Clody（Claude 娘 · 橘发菊纹） | Anthropic / Claude | `#C4622D` 陶土橘 | `#C4622D` `#F4EAD8` `#1E1A18` `#C9A24A` | 新像素精灵 `claude-pixel` | ai-chan-sheets `设定图/11_Claude娘_Anthropic`；用户素材 ZipZipPipe《AI娘化》p02_Claude娘 |
+| 格萝可 Groko（Grok 娘 · 黑金吸血鬼） | xAI / Grok | `#8E1F33` 酒红 | `#8E1F33` `#16141A` `#C9A24A` `#F1E2B8` | 新像素精灵 `grok-pixel` | ai-chan-sheets `设定图/09_Grok娘_xAI`；用户素材 ZipZipPipe《AI娘化》p07_Grok娘 |
+
+## 二、逐角色设定
+
+### 1. 大肥鱼（DeepSeek 娘）— 保留原 Q 版女仆装，不重新设计
+
+- **名称**：大肥鱼 / Dafeiyu；称号“DeepSeek 娘 · 鲸鱼女仆（Q 版）”
+- **厂商**：DeepSeek
+- **主题色**：`#2C4A8A`（色板 `#2C4A8A` 深海蓝、`#FFFFFF` 白、`#6FA8E8` 浅蓝、`#E8D6A0` 浅金）
+- **外观要点**：沿用 dsh-pet 的原 Q 版（约 3 头身）女仆装：深蓝长发渐变到浅蓝发梢、环状呆毛、蓝色大眼、鲸鱼鳍耳与小尾鳍；深藏青长袖女仆装 + 白围裙（右下绣蓝色小鲸鱼）+ 白色女仆头饰、白连裤袜、黑色玛丽珍鞋。像素版 `dafeiyu-pixel` 就是这一形象按同一规格像素化，比例仍为 Q 版。
+- **性格**：DeepSeek 社区的蓝色鲸鱼娘，爱吃白饭，懒洋洋又有点嘴硬，叫主人“鱼片”；偶尔冒一句社区梗（“就一碗”“先养着吧”）。
+- **台词风格**：懒洋洋、软糯，句尾爱带“～”，嘴硬但好哄。口头禅“咕噜～”。
+- **示例台词**：饿了“鱼片，饭呢？就一碗……”；无聊“先养着吧？那倒是理我一下呀。”；开心“咕噜～吃饱饱摸肚子～”；困了“深度睡眠中……勿扰。”；问候“咕噜～鱼片你来啦～”
+- **喜好**：白米饭、摸鱼、被叫“大肥鱼”
+
+### 2. 克洛蒂（Claude 娘）
+
+- **名称**：克洛蒂 / Clody；称号“Claude 娘 · 橘发菊纹”
+- **厂商**：Anthropic（模型 Claude）
+- **主题色**：`#C4622D`（色板 `#C4622D` 陶土橘、`#F4EAD8` 奶油白、`#1E1A18` 墨黑、`#C9A24A` 金）
+- **外观要点**：成年女性比例。明亮橘色过膝长发、发梢螺旋卷；头右侧橙色多瓣菊花发饰 + 黑缎蝴蝶结；琥珀金垂眼，神情安静。奶油白荷叶边高领衬衫、黑缎领结配菊花胸针、奶油白短披肩（金滚边）、泡泡袖荷叶袖口、黑色束腰（金扣金链）、及踝奶油白百褶长裙（橘红前片 + 黑色侧片）、奶油白系带短靴。
+- **性格**：安静、温和、认真，说话有条理，爱读书和写东西；诚实，不确定时会直说“我不太确定”；被夸会小声道谢，偶尔慢半拍冒一句冷幽默。成年角色，只用全年龄友好语气。
+- **台词风格**：平静、礼貌、句子完整，常用“或许”“我想”；不卖萌、不夸张。口头禅“嗯，让我想想。”
+- **示例台词**：饿了“嗯……我好像有点饿了，可以给我一块饼干吗？”；无聊“要不要一起读一段书？”；开心“谢谢你，我很开心。”；困了“我先合一会儿眼……书签夹好了。”；问候“你来了。今天想聊点什么？”
+- **喜好**：书、热红茶、整理笔记、安静的午后
+
+### 3. 格萝可（Grok 娘）
+
+- **名称**：格萝可 / Groko；称号“Grok 娘 · 黑金吸血鬼”
+- **厂商**：xAI（模型 Grok）
+- **主题色**：`#8E1F33`（色板 `#8E1F33` 酒红、`#16141A` 夜黑、`#C9A24A` 金、`#F1E2B8` 香槟金）
+- **外观要点**：成年女性比例。浅香槟金超长发、高位双马尾配黑缎蝴蝶结；黑金小尖冠 + 金色圆环徽记 + 淡金新月；蓝宝石色眼睛、精灵尖耳、两颗小尖牙。黑色长袖哥特礼服（高领扣到领口）、酒红内衬尖角立领、白蕾丝袖口、黑色束腰（金环徽记与金链）、及踝黑色层叠长裙 + 酒红内裙、不透明黑色连裤袜、黑色亮面玛丽珍鞋。
+- **对原设的改动**：按仓库 `docs/pet-packs.md` 的内容要求，把原设的露肩礼服、透肉连裤袜和腿环改为高领礼服与不透明连裤袜；像素图不画 X 战斧和 X 字样（避免商标误认和镜像反字）。
+- **性格**：友善的夜行吸血鬼。机灵、嘴快、爱吐槽，带点叛逆和恶作剧，笑起来露出小尖牙；嘴上不饶人但心软，夜里精神最好。吐槽只针对事不针对人，全年龄友好语气。
+- **台词风格**：轻快、带吐槽和反问，句子短，爱用“哈！”“说真的”；不说脏话。口头禅“哈！有意思。”
+- **示例台词**：饿了“说真的，番茄汁呢？我快饿成纸片了。”；无聊“你是在加班，还是在假装加班？”；开心“嘿嘿，尖牙都笑出来了。”；困了“天亮了……吸血鬼要补觉了。”；问候“哈！你可算来了。”
+- **喜好**：深夜、番茄汁、冷笑话、新鲜八卦
+
+## 三、像素素材规格
+
+> 2026-10-29（T-1158）更新：三个包已接入应用，位于 `src/renderer/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`，角色注册在 `src/characters/<id>.json`。原来暂存时的两张表（基础 8 动作 + 扩展 8 动作）已合并为一张 schema 2 精灵图，动作直接以状态命名。
+
+- **格式**：schema 2，RGBA PNG，单帧 83×113，每张 sheet 4 列 × 8 行 = 332×904，16 个动作 × 2 帧。
+- **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。三个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
+- **排布**：第 0–3 行 `idle, pat, lifted, eat_rice, sleep, think, talk, happy`，第 4–7 行 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`，每行两个动作、各 2 帧。
+- **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1092）：第一行是大肥鱼原视频参考帧，下面三行是三个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
+
+## 四、素材来源与许可证
+
+| 来源 | 许可 / 授权 | 本项目的使用方式 |
+| --- | --- | --- |
+| lmy414/ai-chan-sheets（https://github.com/lmy414/ai-chan-sheets）`设定图/` | **CC BY-NC-SA 4.0**（署名、非商业、相同方式共享） | 只取文字层面的身份锚点（发型、配色、服饰、标志物、主题色），写成英文提示词；**没有复制或描摹**任何图片，也没有使用其 `参考原图/` 目录下的未授权原图 |
+| 用户素材：ZipZipPipe《AI娘化》（Pixiv 148186519，https://www.pixiv.net/artworks/148186519，用户文件 file_5SAeAA60gpeZ） | 作者声明：可取用、需署名、**不可商用** | 作为原始形象设计参考并署名，同样未直接复制图片 |
+| PC2005-cloud/dsh-pet（https://github.com/PC2005-cloud/dsh-pet） | 素材允许开源使用、禁止商用；大肥鱼形象 CC BY-NC-SA 4.0（仓库 `src/renderer/assets/dafeiyu/NOTICE.md`）；鲸鱼娘基于 上善无形 原创角色「溟月」二创 | 大肥鱼原 15 段视频保持不变；`dafeiyu-pixel` 按文字描述重画同一形象，不是逐帧描摹视频 |
+
+**生成管线（原创生成，非改绘）**：`scripts/art/model_chan_prompts.py` 产出每角色 2 条英文提示词（`<id>_base` 8 个标准动作、`<id>_extra` 8 个扩展状态，每条一张 4×4 宫格）→ `lh generate image -m gpt-image-2.5-sunburst`（GPT Image 2.5）生成品红底宫格 → `scripts/art/slice_sheet.py` 抠图、像素化、限制调色板 → `scripts/art/fit_cells.py` 放入 83×113 格子并去品红边 → `scripts/art/build_model_chan_pack.py` 组包 → `scripts/art/check_model_chan.py` 校验 → `scripts/art/model_chan_preview.py` 出预览图。
+
+**发布协议**：由于身份锚点来自 CC BY-NC-SA 4.0 设定与“不可商用”的原设，`src/renderer/packs/` 下的模型娘美术以 **CC BY-NC-SA 4.0** 发布：署名 ZipZipPipe（原设）、lmy414（设定补全）、rdmclin2（像素化）；禁止商用；改编作品须以相同协议发布。每个 `pack.json` 的 `license` 字段为 `CC BY-NC-SA 4.0`，`author` 字段写明上述署名；`art/model-chan/README.md` 的“来源与授权”一节有同样说明。仓库代码仍按 MIT。
+
+## 五、校验结果（摘录）
+
+接入应用后（T-1158）：`python3 scripts/art/check_model_chan.py` 检查 `src/renderer/packs/*-pixel`：三个包均为 `schema 2 PNG RGBA (332, 904) OK`，16 个状态 × 2 帧全部有可见像素，`RESULT PASS`。

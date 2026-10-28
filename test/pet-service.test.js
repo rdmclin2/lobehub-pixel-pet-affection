@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -24,7 +25,7 @@ test('first hatch with no login runs the login flow, creates the agent, and gree
   const { svc, said, dir } = setup();
   const steps = [];
   let prompt;
-  const { view } = await svc.hatch({ speciesId: 'sprig', name: '小芽', onStep: (s) => steps.push(s), onLoginPrompt: (p) => { prompt = p; } });
+  const { view } = await svc.hatch({ speciesId: 'claude', name: '小芽', onStep: (s) => steps.push(s), onLoginPrompt: (p) => { prompt = p; } });
   assert.deepEqual(steps, ['checking-login', 'login', 'creating-agent', 'hatching']);
   assert.equal(prompt.code, 'ABCD-1234');
   assert.equal(view.pet.name, '小芽');
@@ -32,7 +33,7 @@ test('first hatch with no login runs the login flow, creates the agent, and gree
   assert.equal(said[0].kind, 'met');
   assert.equal(said[0].source, 'llm');
   const created = JSON.parse(fs.readFileSync(path.join(dir, 'last-create.json')));
-  assert.match(created.systemRole, /叶芽/);
+  assert.match(created.systemRole, /克洛蒂/);
   assert.match(created.systemRole, /小芽/);
 });
 
@@ -40,15 +41,15 @@ test('already logged in skips login entirely', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   const steps = [];
-  await svc.hatch({ speciesId: 'embit', onStep: (s) => steps.push(s) });
+  await svc.hatch({ speciesId: 'testchan', onStep: (s) => steps.push(s) });
   assert.deepEqual(steps, ['checking-login', 'creating-agent', 'hatching']);
-  assert.equal(svc.pet.name, '焰团'); // default name comes from the species
+  assert.equal(svc.pet.name, '测试娘'); // default name comes from the species
 });
 
 test('pet persists across restarts and keeps its LobeHub topic', async () => {
   const { svc, dir, lh, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'bubbo', name: 'B' });
+  await svc.hatch({ speciesId: 'grok', name: 'B' });
   const topic = svc.pet.topicId;
   assert.ok(topic);
   const svc2 = new PetService({ lh, store: new Store(path.join(dir, 'data')), now: () => clock.t });
@@ -60,7 +61,7 @@ test('pet persists across restarts and keeps its LobeHub topic', async () => {
 test('chat sends state block + text to the agent and returns the reply', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   const r = await svc.chat('今天好累');
   assert.equal(r.ok, true);
   assert.equal(r.text, 'echo: 今天好累');
@@ -73,7 +74,7 @@ test('chat sends state block + text to the agent and returns the reply', async (
 test('when the agent call fails the pet degrades to canned lines instead of going silent', async () => {
   const { svc, dir, lh, said } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   lh.env.FAKE_LH_FAIL_RUN = '1';
   svc.pet.hunger = 95;
   svc.pet.lastSpokeAt = 0;
@@ -86,7 +87,7 @@ test('when the agent call fails the pet degrades to canned lines instead of goin
 test('heartbeat makes a hungry pet ask for food via the agent, then stays quiet (cooldown)', async () => {
   const { svc, dir, said, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'bubbo', name: 'B' });
+  await svc.hatch({ speciesId: 'grok', name: 'B' });
   said.length = 0;
   clock.t += 13 * 60000; // past the post-hatch speaking cooldown
   svc.pet.hunger = 95;
@@ -105,7 +106,7 @@ test('LLM budget exhaustion falls back to canned lines', async () => {
   const { svc, dir, said, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   svc.budget.max = 0;
-  await svc.hatch({ speciesId: 'sprig', name: 'S' });
+  await svc.hatch({ speciesId: 'claude', name: 'S' });
   assert.equal(said[0].source, 'fallback');
   clock.t += 1;
 });
@@ -113,7 +114,7 @@ test('LLM budget exhaustion falls back to canned lines', async () => {
 test('release deletes the agent when asked and clears local state', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   const r = await svc.release({ deleteAgent: true });
   assert.equal(r.deleted, true);
   assert.equal(svc.pet, null);
@@ -125,14 +126,14 @@ test('release deletes the agent when asked and clears local state', async () => 
 test('cannot hatch twice', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit' });
-  await assert.rejects(() => svc.hatch({ speciesId: 'bubbo' }), /already exists/);
+  await svc.hatch({ speciesId: 'testchan' });
+  await assert.rejects(() => svc.hatch({ speciesId: 'grok' }), /already exists/);
 });
 
 test('care actions change needs and say something', async () => {
   const { svc, dir, said } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.pet.hunger = 70;
   const r = svc.act('feed', 'rice');
   assert.equal(r.ok, true);
@@ -144,7 +145,7 @@ test('care actions change needs and say something', async () => {
 test('a failed chat reports the error code and leaves a consistent, awake pet', async () => {
   const { svc, dir, lh } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'bubbo', name: 'B' });
+  await svc.hatch({ speciesId: 'grok', name: 'B' });
   svc.pet.sleeping = true;
   lh.env.FAKE_LH_FAIL_RUN = 'auth';
   const r = await svc.chat('hi');
@@ -161,7 +162,7 @@ const myDevice = (id) => ({ deviceId: id, hostname: 'Mac', platform: process.pla
 async function hatched(opts = {}) {
   const ctx = setup();
   fs.writeFileSync(path.join(ctx.dir, 'loggedin'), '1');
-  const r = await ctx.svc.hatch({ speciesId: 'embit', name: 'E', ...opts });
+  const r = await ctx.svc.hatch({ speciesId: 'testchan', name: 'E', ...opts });
   return { ...ctx, hatchResult: r };
 }
 
@@ -243,7 +244,7 @@ test('hatching with local abilities connects the device as its own step, and sti
   fs.writeFileSync(path.join(ctx.dir, 'loggedin'), '1');
   setDevices(ctx.dir, [myDevice('dev_MAC')]);
   const steps = [];
-  const ok = await ctx.svc.hatch({ speciesId: 'bubbo', name: 'B', localAbilities: true, onStep: (s) => steps.push(s) });
+  const ok = await ctx.svc.hatch({ speciesId: 'grok', name: 'B', localAbilities: true, onStep: (s) => steps.push(s) });
   assert.deepEqual(steps, ['checking-login', 'creating-agent', 'connecting-device', 'hatching']);
   assert.equal(ok.localError, null);
   assert.equal(ctx.svc.pet.localAbilities, true);
@@ -251,7 +252,7 @@ test('hatching with local abilities connects the device as its own step, and sti
   const ctx2 = setup();
   fs.writeFileSync(path.join(ctx2.dir, 'loggedin'), '1');
   ctx2.lh.env.FAKE_LH_CONNECT_FAIL = '1';
-  const bad = await ctx2.svc.hatch({ speciesId: 'bubbo', name: 'B', localAbilities: true });
+  const bad = await ctx2.svc.hatch({ speciesId: 'grok', name: 'B', localAbilities: true });
   assert.ok(bad.localError);
   assert.equal(ctx2.svc.pet.localAbilities, false);
   assert.ok(ctx2.svc.pet.agentId);
@@ -426,7 +427,7 @@ const tick = () => new Promise((r) => setImmediate(r));
 
 test('affection, stages, unlocked topics and the 18+ settings survive a restart unchanged', async () => {
   const { svc, data, clock, mkSvc } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.answerAgeGate(true);
   svc.pet.mood = 50;
   svc.act('pat');
@@ -463,6 +464,7 @@ test('an old xp/stage save is backed up once and migrated on start, keeping the 
   assert.equal(v.pet.agentId, 'agt_OLD');
   assert.equal(v.pet.topicId, 'tpc_OLD');
   assert.equal(v.pet.name, '小蓝');
+  assert.equal(v.pet.speciesId, 'dafeiyu', 'the retired whale 泡鲸 is taken over by the DeepSeek whale');
   assert.equal(v.pet.affection, 25);
   assert.equal(v.affection.stageName, '熟悉');
   assert.equal(v.settings.needsAgeGate, true); // old users are asked the 18+ question first
@@ -489,15 +491,79 @@ test('the migrated agent gets the v5 system role (adult + red lines) on its next
   await svc.chat('你好呀');
   const edit = readLog(dir, 'edits.log').find((e) => e.systemRole);
   assert.match(edit.systemRole, /你是成年人/);
+  assert.match(edit.systemRole, /大肥鱼/, 'the persona of the character that took over');
   assert.match(edit.systemRole, /内容红线/);
   const run = readLog(dir, 'runs.log').pop();
   assert.match(run.prompt, /\[状态\] 关系=亲近/);
   assert.match(run.prompt, /\[关系\] 阶段=亲近；成人向=关/);
 });
 
+test('a save whose character was retired opens with a current character, never crashes, and says who took over', async () => {
+  const { data, mkSvc, clock, dir } = setupAff();
+  fs.mkdirSync(data, { recursive: true });
+  const saved = { schemaVersion: 2, speciesId: 'embit', name: '小火', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: clock.t - 1e6, affection: 40, hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, equippedOutfit: 'maid', lastSafeOutfit: 'yukata', personaVersion: 6 };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(saved));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true, appearance: { embit: 'embit-illustrated', bubbo: 'bubbo-pixel', grok: 'grok-pixel' } }));
+  const svc = mkSvc();
+  const said = [];
+  svc.on('say', (m) => said.push(m));
+  const v = svc.init();
+  assert.equal(v.pet.speciesId, 'claude', '焰团 → Claude 娘');
+  assert.equal(v.species.nameZh, '克洛蒂');
+  assert.equal(v.pet.affection, 40, 'affection kept');
+  assert.equal(v.pet.agentId, 'agt_OLD');
+  assert.equal(v.outfit, 'daily', 'an outfit the new character has no art for falls back to daily');
+  assert.deepEqual(v.outfits.map((o) => o.id), ['daily']);
+  assert.deepEqual(v.pet.retiredFrom, { speciesId: 'embit', at: clock.t });
+  assert.equal(v.look.packId, 'claude-pixel');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, { grok: 'grok-pixel' }, 'looks of retired characters are dropped');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')), saved, 'the old save is backed up');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')).speciesId, 'claude', 'and the new one written');
+  await svc.warmup();
+  assert.match(said[0].text, /原来的角色已经下线.*克洛蒂/);
+  assert.match(readLog(dir, 'edits.log').pop().systemRole, /克洛蒂/, 'the agent gets the new persona');
+  // a second start: nothing to remap or announce
+  const svc2 = mkSvc();
+  const said2 = [];
+  svc2.on('say', (m) => said2.push(m));
+  svc2.init();
+  await svc2.warmup();
+  assert.equal(said2.length, 0);
+});
+
+test('an unknown character id falls back to the default character (DeepSeek)', () => {
+  const { data, mkSvc, clock } = setupAff();
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify({ schemaVersion: 2, speciesId: 'gone-forever', name: 'X', agentId: 'agt_X', affection: 5, hunger: 10, mood: 50, energy: 80, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t }));
+  const v = mkSvc().init();
+  assert.equal(v.pet.speciesId, 'dafeiyu');
+  assert.equal(v.look, null, 'DeepSeek in daily plays her clips');
+});
+
+test('switching character keeps the agent and affection, changes the persona on the next turn, and greets', async () => {
+  const { svc, said, dir } = setupAff();
+  await svc.hatch({ speciesId: 'dafeiyu', name: '小鱼' });
+  svc.debugSet({ affection: 50 });
+  assert.equal(svc.equipOutfit('scarf').ok, true);
+  const agent = svc.pet.agentId;
+  const r = svc.switchCharacter('grok');
+  assert.equal(r.ok, true);
+  assert.equal(r.from, 'dafeiyu');
+  assert.equal(r.view.pet.speciesId, 'grok');
+  assert.equal(r.view.pet.agentId, agent);
+  assert.equal(r.view.pet.affection, 50);
+  assert.equal(r.view.outfit, 'daily', 'Grok has no scarf art');
+  assert.equal(r.view.look.packId, 'grok-pixel');
+  assert.equal(r.view.characters.find((c) => c.current).id, 'grok');
+  assert.equal(said.pop().text, '哈！你可算来了。');
+  await svc.chat('你是谁');
+  assert.match(readLog(dir, 'edits.log').pop().systemRole, /格萝可/);
+  assert.deepEqual(svc.switchCharacter('embit'), { ok: false, reason: 'unknown' }, 'a retired character cannot be chosen');
+});
+
 test('crossing a threshold emits a stage-up with the new unlocks and the pet speaks about it', async () => {
   const { svc, events, said } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.pet.mood = 50;
   svc.pet.affection = 14;
   svc.pet.dailyCounts = { greet: 1 };
@@ -514,7 +580,7 @@ test('crossing a threshold emits a stage-up with the new unlocks and the pet spe
 
 test('topics: locked ones are refused with a condition, unlocked ones run with a [话题] prompt and score once a day', async () => {
   const { svc, dir } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   const locked = await svc.talkTopic('whine');
   assert.equal(locked.ok, false);
   assert.equal(locked.reason, 'locked');
@@ -530,7 +596,7 @@ test('topics: locked ones are refused with a condition, unlocked ones run with a
 
 test('the adult switch changes the next prompt and hides adult topics; it needs an 18+ answer to turn on', async () => {
   const { svc, dir } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.debugSet({ affection: 70 });
   assert.equal(svc.setAdultContent(true).reason, 'age-not-confirmed');
   svc.answerAgeGate(true);
@@ -556,7 +622,7 @@ test('the adult switch changes the next prompt and hides adult topics; it needs 
 
 test('releasing the pet keeps settings.json', async () => {
   const { svc, data, mkSvc } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.answerAgeGate(false);
   await svc.release();
   assert.equal(fs.existsSync(path.join(data, 'pet.json')), false);
@@ -567,7 +633,7 @@ test('releasing the pet keeps settings.json', async () => {
 
 test('the agent system role is updated once when the stage or the adult switch changes, and carries the new scope', async () => {
   const { svc, dir } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   await svc.chat('hi');
   assert.equal(readLog(dir, 'edits.log').filter((e) => e.systemRole).length, 0); // created with the current scope
   svc.debugSet({ affection: 40 });
@@ -596,7 +662,7 @@ test('the agent system role is updated once when the stage or the adult switch c
 
 test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be worn, and the outfit survives a restart', async () => {
   const { svc, events, mkSvc } = setupAff();
-  await svc.hatch({ speciesId: 'bubbo', name: 'B' });
+  await svc.hatch({ speciesId: 'testchan', name: 'B' });
   svc.answerAgeGate(true);
   svc.pet.mood = 50;
   svc.pet.affection = 14;
@@ -620,7 +686,7 @@ test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be
 
 test('turning adult content off swaps an adult outfit for the last all-ages one, also after a restart', async () => {
   const { svc, mkSvc } = setupAff();
-  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.answerAgeGate(true);
   svc.debugSet({ affection: 70 });
   assert.equal(svc.equipOutfit('yukata').ok, true);
@@ -656,7 +722,7 @@ test('by default the agent is created in the personal space, even when the app w
   try {
     const { svc, dir } = setup();
     fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-    await svc.hatch({ speciesId: 'sprig' });
+    await svc.hatch({ speciesId: 'claude' });
     assert.equal(lastCall(dir, 'agent', 'create').env.workspace, null);
     assert.equal(svc.pet.space.workspaceId, null);
     assert.equal(svc.view().space.personal, true);
@@ -669,7 +735,7 @@ test('by default the agent is created in the personal space, even when the app w
 test('a chosen workspace scopes the create and every later call, also after a restart', async () => {
   const { svc, dir, lh, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'bubbo', space: { workspaceId: 'ws_TEAM', name: 'Team' } });
+  await svc.hatch({ speciesId: 'grok', space: { workspaceId: 'ws_TEAM', name: 'Team' } });
   assert.equal(lastCall(dir, 'agent', 'create').env.workspace, 'ws_TEAM');
   assert.deepEqual(svc.view().space, { personal: false, name: 'Team' });
   lh.setWorkspace(null); // a fresh process starts unscoped
@@ -686,10 +752,10 @@ test('personal with a pinned lh scope needs consent, then switches lh back to pe
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   fs.writeFileSync(path.join(dir, 'pinned-workspace'), 'ws_TEAM');
-  await assert.rejects(svc.hatch({ speciesId: 'embit', space: { workspaceId: null } }), /个人空间/);
+  await assert.rejects(svc.hatch({ speciesId: 'testchan', space: { workspaceId: null } }), /个人空间/);
   assert.equal(svc.pet, null);
   assert.ok(fs.existsSync(path.join(dir, 'pinned-workspace')), 'nothing changed without consent');
-  await svc.hatch({ speciesId: 'embit', space: { workspaceId: null, switchToPersonal: true } });
+  await svc.hatch({ speciesId: 'testchan', space: { workspaceId: null, switchToPersonal: true } });
   assert.ok(!fs.existsSync(path.join(dir, 'pinned-workspace')));
   assert.equal(svc.pet.space.workspaceId, null);
 });
@@ -700,7 +766,7 @@ test('unlock all fills affection, reaches every stage and unlocks every topic an
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true });
   svc.settings = svc.settingsStore.load();
-  await svc.hatch({ speciesId: 'bubbo' });
+  await svc.hatch({ speciesId: 'testchan' });
   const ups = [];
   svc.on('affection', (e) => { if (e.type === 'stage-up') ups.push(e); });
   const r = svc.unlockAll();
@@ -726,7 +792,7 @@ test('unlock all fills affection, reaches every stage and unlocks every topic an
 test('unlock all with adult content off unlocks the all-ages content only', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'embit' });
+  await svc.hatch({ speciesId: 'testchan' });
   const r = svc.unlockAll();
   assert.equal(r.ok, true);
   assert.ok(r.view.outfits.every((o) => o.rating === 'all' && o.unlocked));
@@ -742,7 +808,7 @@ test('unlock all is refused without a pet', () => {
 test('pet scale is saved in settings, reported to the UI and survives releasing the pet', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  await svc.hatch({ speciesId: 'sprig' });
+  await svc.hatch({ speciesId: 'claude' });
   const seen = [];
   svc.on('settings', (st) => seen.push(st.petScale));
   assert.deepEqual(svc.setPetScale('big'), { ok: false, reason: 'invalid' });

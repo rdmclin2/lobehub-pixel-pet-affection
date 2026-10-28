@@ -4,6 +4,7 @@
 // Before each case the agent's system role is updated to that stage's scope (as PetService._ensureReady
 // does) and read back from LobeHub. Creates one throwaway agent with the current persona and deletes it at the end (also on failure).
 // Run: PIXELPET_CLEAR_JWT=1 node e2e/stage-reply-live.js
+require('../test/fixtures/adult-character');
 const fs = require('node:fs');
 const path = require('node:path');
 const { LhClient } = require('../src/core/lh-client');
@@ -25,17 +26,17 @@ const CASES = [
 (async () => {
   const lh = new LhClient();
   const now = Date.now();
-  const name = '验收测试焰团';
+  const name = '验收测试测试娘';
   let agentId = null;
   const out = [];
   try {
-    ({ agentId } = await lh.createAgent({ title: `${name} (Embit) [affection-live-test]`, description: 'temporary acceptance agent, deleted after the run', systemRole: persona.buildSystemRole({ speciesId: 'embit', name }) }));
+    ({ agentId } = await lh.createAgent({ title: `${name} (Embit) [affection-live-test]`, description: 'temporary acceptance agent, deleted after the run', systemRole: persona.buildSystemRole({ speciesId: 'testchan', name }) }));
     out.push(`agent created: ${agentId} (persona v${persona.PERSONA_VERSION})`);
     for (const c of CASES) {
-      const pet = st.createPet({ speciesId: 'embit', name, agentId, now });
+      const pet = st.createPet({ speciesId: 'testchan', name, agentId, now });
       st.setAffectionForTest(pet, c.affection);
       // sync the stage-specific system role to the real agent, then read it back from LobeHub
-      await lh.updateAgent({ agentId, systemRole: persona.buildSystemRole({ speciesId: 'embit', name, pet, settings: c.settings }) });
+      await lh.updateAgent({ agentId, systemRole: persona.buildSystemRole({ speciesId: 'testchan', name, pet, settings: c.settings }) });
       const stored = await lh.getAgent(agentId);
       const role = String((stored && (stored.systemRole || (stored.data && stored.data.systemRole))) || JSON.stringify(stored));
       const section = role.slice(role.indexOf('当前关系'), role.indexOf('内容红线')).trim();

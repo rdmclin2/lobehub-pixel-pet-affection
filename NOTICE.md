@@ -10,30 +10,29 @@ Everything in `src/renderer/assets/dafeiyu/` comes from https://github.com/PC200
 - the character is licensed **CC BY-NC-SA 4.0**;
 - derivative works must show the original repository address in public channels.
 
-See [src/renderer/assets/dafeiyu/NOTICE.md](src/renderer/assets/dafeiyu/NOTICE.md) for the full text and credits. Any build that includes these files is for non-commercial use only. To use this project commercially, remove that folder and the `dafeiyu` entry in `src/core/species.js` first.
+See [src/renderer/assets/dafeiyu/NOTICE.md](src/renderer/assets/dafeiyu/NOTICE.md) for the full text and credits. Any build that includes these files is for non-commercial use only. To use this project commercially, remove that folder and `src/characters/dafeiyu.json` first.
 
-## Character and outfit pictures (角色与服饰立绘): generated for this project
+## Model-chan characters (模型娘): fan art, non-commercial
 
-Every companion's look comes from a pet pack (`src/renderer/packs/`, format in [docs/pet-packs.md](docs/pet-packs.md)): the illustrated packs `<species>-illustrated` have one picture per outfit, and the pixel pack `bubbo-pixel` has one sprite sheet per outfit (8 actions × 2 frames). The same picture is used on the desktop and in the wardrobe, so changing clothes changes what you see. The app icon `build/icon.png` was made the same way.
+The companions are fan characters themed on AI model vendors. **None of them is an official DeepSeek, Anthropic or xAI image**, and the vendors' names are used only to say what each character is inspired by. Each character is a data file in `src/characters/<id>.json` (with its own credits, shown in the app under ⋯ → 素材署名) and a pet pack in `src/renderer/packs/` (format in [docs/pet-packs.md](docs/pet-packs.md)).
 
-- **How they were made.** Generated on 2026-10-28 with OpenAI `gpt-image-2.5-sunburst` through LobeHub (`lh generate image`), one prompt per character and outfit, then cut out from a flat magenta background, cropped and scaled (`scripts/art/`). The prompts are in [scripts/art/prompts.py](scripts/art/prompts.py) and, for the pixel sheets, [scripts/art/pixel_prompts.py](scripts/art/pixel_prompts.py); the sheets are turned into real pixel art (downscaled, limited palette, hard alpha) by `slice_sheet.py` and packed by `build_pixel_pack.py`.
-- **License.** The pictures and pixel sheets of the three original companions (焰团 embit, 泡鲸 bubbo, 叶芽 sprig) and the icon are released under MIT with the code. The pixel style is our own take on 16-bit sprites; no dsh-pet frames are used. Packs a user imports keep their own authors' terms. No third-party images, sprite sheets or fonts are included.
-- **大肥鱼 (Dafeiyu) pictures** (`packs/dafeiyu-illustrated/`) depict the community character above, so they are a derivative work and keep its terms: **CC BY-NC-SA 4.0, no commercial use**, credit to https://github.com/PC2005-cloud/dsh-pet. Its signature outfit is still its original animation.
+- **克洛蒂 (Claude 娘) and 格萝可 (Grok 娘)** — `packs/claude-pixel/`, `packs/grok-pixel/`. Identity anchors (hair, palette, outfit, motifs, theme colour) from [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets) `设定图/11_Claude娘_Anthropic` and `设定图/09_Grok娘_xAI` (**CC BY-NC-SA 4.0**); original designs by ZipZipPipe, 《AI娘化》 ([Pixiv 148186519](https://www.pixiv.net/artworks/148186519); the author allows use with attribution, **no commercial use**). The sprite sheets were generated from text prompts with OpenAI `gpt-image-2.5-sunburst` through LobeHub (`lh generate image`) and turned into pixel art by `scripts/art/` (prompts in `scripts/art/model_chan_prompts.py`); no image from ai-chan-sheets' unlicensed `参考原图/` folder was used. Both are drawn with adult proportions; Grok's revealing details (off-shoulder dress, sheer tights, thigh band) were replaced with a high-necked gown and opaque tights, and no X logo or lettering is drawn.
+- **大肥鱼 (Dafeiyu, DeepSeek 娘)** — besides the dsh-pet animations above, `packs/dafeiyu-illustrated/` (8 outfit pictures) and `packs/dafeiyu-pixel/` (a pixel version of the same chibi maid, redrawn from text prompts, not traced from the videos) depict the community character, so they keep its terms.
+- **License of this art.** Everything in `src/renderer/packs/` is released under **CC BY-NC-SA 4.0**: attribution to ZipZipPipe (original designs), lmy414 (character sheets) and rdmclin2 (pixel art), **non-commercial only**, adaptations under the same license. The code stays MIT. Any build that contains these packs is for non-commercial use only; to use this project commercially, replace the characters with your own (a character file plus a pet pack each) and remove `src/renderer/assets/dafeiyu/`.
+- **Retired art.** The original companions (焰团, 泡鲸, 叶芽), their packs and the procedural spirit stones were removed with the model-chan roster; old saves are taken over by a current character (see `src/core/species.js`).
+- **App icon.** `build/icon.png` shows the three model-chan in pixel style; generated on 2026-10-29 with `gpt-image-2.5-sunburst` (prompt `logo` in `scripts/art/prompts.py`). It depicts the same fan characters, so it is **CC BY-NC-SA 4.0, non-commercial** like the packs. (The earlier icon showed a retired character and was replaced.)
 
-Content notes: every picture shows an adult woman (the characters' set age is 25+, adult proportions, no chibi or childlike styling). No picture shows nudity or underwear. The adult-rated outfits differ in style only: a knee-length long-sleeved maid dress, a floor-length off-shoulder gown with a high neckline, a retro one-piece swimsuit worn with a knee-length wrap skirt, and a knee-length belted robe over long pajama pants. Adult-rated outfits are hidden unless the user confirmed 18+ and turned adult content on, and are never offered for 大肥鱼.
+Content notes: every character's set age is 25+. Claude and Grok are drawn with adult proportions; 大肥鱼 keeps the community character's chibi style and is therefore all-ages only, like the other two. No picture shows nudity or underwear. Adult-rated outfits (maid, off-shoulder gown, retro swimsuit, silk robe) exist in the app but no current character has art for them or allows adult content, so they are never shown.
 
-| id | 名称 | 解锁阶段 | 分级 | 立绘 |
+| id | 名称 | 解锁阶段 | 分级 | 美术 |
 | --- | --- | --- | --- | --- |
-| `daily` | 日常服（大肥鱼：招牌女仆装，原版动画） | 陌生 | 全年龄 | 4 位角色各一张（大肥鱼用动画） |
-| `scarf` | 针织围巾套装 | 陌生 | 全年龄 | 4 位角色各一张 |
-| `casual` | 休闲卫衣 | 熟悉 | 全年龄 | 4 位角色各一张 |
-| `beret` | 贝雷帽画家装 | 熟悉 | 全年龄 | 4 位角色各一张 |
-| `pajamas` | 毛绒睡衣 | 亲近 | 全年龄 | 4 位角色各一张 |
-| `cat_ears` | 猫耳家居服 | 亲近 | 全年龄 | 4 位角色各一张 |
-| `yukata` | 浴衣 | 暧昧 / 知己 | 全年龄 | 4 位角色各一张 |
-| `maid` | 女仆装 | 暧昧 | 成人向 | 3 位原创角色各一张 |
-| `offshoulder_gown` | 露肩晚礼服 | 暧昧 | 成人向 | 3 位原创角色各一张 |
-| `couple_hoodie` | 情侣卫衣 | 恋人 / 挚友 | 全年龄 | 4 位角色各一张 |
-| `flower_crown` | 花冠长裙 | 恋人 / 挚友 | 全年龄 | 4 位角色各一张 |
-| `retro_swimsuit` | 复古连体泳装 | 恋人 | 成人向 | 3 位原创角色各一张 |
-| `silk_robe` | 丝绸睡袍 | 恋人 | 成人向 | 3 位原创角色各一张 |
+| `daily` | 日常服（每位角色的原设服装） | 陌生 | 全年龄 | 大肥鱼：原版动画（或像素包）；克洛蒂、格萝可：像素包 |
+| `scarf` | 针织围巾套装 | 陌生 | 全年龄 | 大肥鱼立绘 |
+| `casual` | 休闲卫衣 | 熟悉 | 全年龄 | 大肥鱼立绘 |
+| `beret` | 贝雷帽画家装 | 熟悉 | 全年龄 | 大肥鱼立绘 |
+| `pajamas` | 毛绒睡衣 | 亲近 | 全年龄 | 大肥鱼立绘 |
+| `cat_ears` | 猫耳家居服 | 亲近 | 全年龄 | 大肥鱼立绘 |
+| `yukata` | 浴衣 | 暧昧 / 知己 | 全年龄 | 大肥鱼立绘 |
+| `couple_hoodie` | 情侣卫衣 | 恋人 / 挚友 | 全年龄 | 大肥鱼立绘 |
+| `flower_crown` | 花冠长裙 | 恋人 / 挚友 | 全年龄 | 大肥鱼立绘 |
+| `maid` / `offshoulder_gown` / `retro_swimsuit` / `silk_robe` | 成人向服饰 | 暧昧 / 恋人 | 成人向 | 当前角色均无（不显示） |

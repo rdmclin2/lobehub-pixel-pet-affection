@@ -1,13 +1,14 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const { nextEvent, LlmBudget, fallbackLine } = require('../src/core/proactive');
 const st = require('../src/core/pet-state');
 const { getSpecies } = require('../src/core/species');
 
 const T0 = new Date('2026-01-05T14:00:00').getTime();
 const MIN = 60000;
-const mk = () => st.createPet({ speciesId: 'embit', name: 'E', agentId: 'a', now: T0 });
+const mk = () => st.createPet({ speciesId: 'testchan', name: 'E', agentId: 'a', now: T0 });
 
 test('stays quiet while asleep or inside the cooldown', () => {
   const p = mk();
@@ -49,7 +50,7 @@ test('LLM budget caps calls per hour and recovers', () => {
 });
 
 test('every species has fallback lines for every event kind', () => {
-  for (const id of ['embit', 'bubbo', 'sprig', 'dafeiyu']) {
+  for (const id of ['testchan', 'grok', 'claude', 'dafeiyu']) {
     for (const kind of ['hungry', 'bored', 'greet_morning', 'greet_evening', 'stage_up', 'met', 'missed', 'fed', 'patted', 'played']) {
       assert.ok(fallbackLine(getSpecies(id), kind).length > 0, `${id}/${kind}`);
     }

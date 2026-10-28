@@ -1,5 +1,5 @@
-# Prompts for pixel-art pet packs (scripts/art/pixel-pack.sh). Prints [{name, prompt}] as JSON.
-# One generated sheet per outfit: 4 columns x 4 rows = 8 actions x 2 frames, in ACTIONS order.
+# Prompts for schema-1 pixel outfit sheets (one per outfit: 4 columns x 4 rows = 8 actions x 2 frames).
+# The model-chan daily packs use model_chan_prompts.py instead. Prints [{name, prompt}] as JSON.
 import json, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from prompts import CHARS, OUTFITS, ALL_AGES  # same characters and outfits as the illustrated art
@@ -25,4 +25,4 @@ def jobs(species):
     return out
 
 if __name__ == '__main__':
-    print(json.dumps(jobs(sys.argv[1] if len(sys.argv) > 1 else 'bubbo')))
+    print(json.dumps(jobs(sys.argv[1] if len(sys.argv) > 1 else 'dafeiyu')))

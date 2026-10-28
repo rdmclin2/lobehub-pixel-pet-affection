@@ -9,11 +9,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { OUTFIT_IDS } = require('./outfits');
-const { SPECIES_IDS } = require('./species');
+const { SPECIES, SPECIES_IDS } = require('./species');
+const { STATES } = require('./fx');
 
-const SCHEMA = 1;
-// What a sprite pack can animate. The app maps its states onto these; anything missing plays `idle`.
-const ACTIONS = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer'];
+// Schema 2 names a sprite action after the app's states (the DeepSeek pet's 15 states plus `lifted`,
+// see src/core/fx.js). Schema 1 packs keep their 8 older action names; the app maps states onto
+// them (fx.ALIASES) and anything missing falls back along fx.FALLBACK to `idle`.
+const SCHEMA = 2;
+const SCHEMAS = [1, 2];
+const ACTIONS_V1 = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer'];
+const ACTIONS = { 1: ACTIONS_V1, 2: STATES };
 const KINDS = ['sprites', 'pictures'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const IMAGE_RE = /\.(png|webp|gif|jpe?g)$/i;
@@ -51,7 +56,8 @@ const posInt = (v) => Number.isInteger(v) && v > 0;
 function validatePack(manifest, dir) {
   const errors = [];
   const m = manifest && typeof manifest === 'object' ? manifest : {};
-  if (m.schema !== SCHEMA) errors.push(`schema must be ${SCHEMA}`);
+  if (!SCHEMAS.includes(m.schema)) errors.push(`schema must be one of ${SCHEMAS.join(', ')}`);
+  const known = ACTIONS[m.schema] || ACTIONS[SCHEMA];
   if (!ID_RE.test(m.id || '')) errors.push('id must be 3–40 characters: a-z, 0-9 and "-"');
   if (!text(m.name, 40)) errors.push('name is required');
   if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
@@ -77,8 +83,8 @@ function validatePack(manifest, dir) {
     const a = m.actions && typeof m.actions === 'object' ? m.actions : {};
     if (!a.idle) errors.push('actions.idle is required');
     for (const [name, v] of Object.entries(a)) {
-      if (!ACTIONS.includes(name)) {
-        errors.push(`actions.${name}: unknown action (known: ${ACTIONS.join(', ')})`);
+      if (!known.includes(name)) {
+        errors.push(`actions.${name}: unknown action (known: ${known.join(', ')})`);
         continue;
       }
       const ok = v && Number.isInteger(v.row) && v.row >= 0 && Number.isInteger(v.col) && v.col >= 0 && posInt(v.frames) && v.frames <= 64 && (v.fps === undefined || (typeof v.fps === 'number' && v.fps > 0 && v.fps <= 30));
@@ -92,6 +98,7 @@ function validatePack(manifest, dir) {
     ok: true,
     pack: {
       id: m.id,
+      schema: m.schema,
       name: text(m.name, 40),
       version: text(m.version, 20) || '0.0.0',
       author: text(m.author, 60) || '未署名',
@@ -144,10 +151,10 @@ function loadPacks(roots) {
 const packUrl = (pack, rel) => `pack://${pack.id}/${rel.split('/').map(encodeURIComponent).join('/')}`;
 
 // How `speciesId` looks in `outfitId` with the chosen pack. For an outfit the pack has no art for, the
-// species' default pack is tried next, then its illustrated pack (`fallbackId`, complete).
-// null = no art (Dafeiyu's signature outfit: its clips).
+// character's default pack is tried next, then its fallback pack (`fallbackId`).
+// null = no art: a video character in its signature outfit plays its own clips.
 function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
-  for (const id of [packId, DEFAULT_PACKS[speciesId], fallbackId || fallbackPack(speciesId)]) {
+  for (const id of [packId, defaultPack(speciesId), fallbackId || fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
     const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
@@ -163,15 +170,16 @@ function packsFor(packs, speciesId) {
     .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, outfits: Object.keys(p.outfits).length }));
 }
 
-// The look a companion starts with, and the complete pack every other pack falls back to.
-const DEFAULT_PACKS = { bubbo: 'bubbo-pixel' };
-const fallbackPack = (speciesId) => `${speciesId}-illustrated`;
+// The look a character starts with (its first pack; none for a video character, which plays its clips),
+// and the pack every other pack falls back to. Both come from src/characters/<id>.json.
+const defaultPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].defaultPack) || null;
+const fallbackPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].fallbackPack) || `${speciesId}-pixel`;
 function chosenPack(packs, appearance, speciesId) {
-  for (const id of [appearance && appearance[speciesId], DEFAULT_PACKS[speciesId], fallbackPack(speciesId)]) {
+  for (const id of [appearance && appearance[speciesId], defaultPack(speciesId), fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (p && p.species === speciesId) return p.id;
   }
   return fallbackPack(speciesId);
 }
 
-module.exports = { DEFAULT_PACKS, fallbackPack, chosenPack, SCHEMA, ACTIONS, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor };
+module.exports = { defaultPack, fallbackPack, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor };

@@ -8,7 +8,7 @@ const dialogue = require('../core/dialogue');
 const outfits = require('../core/outfits');
 const { migratePet } = require('../core/migrate');
 const settingsLib = require('../core/settings');
-const { getSpecies } = require('../core/species');
+const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
@@ -48,16 +48,25 @@ class PetService extends EventEmitter {
     const t = this.now();
     this.settings = this.settingsStore.load();
     const raw = this.store.load();
-    const { pet, migrated } = migratePet(raw, t);
+    const { pet, migrated, remapped } = migratePet(raw, t);
     if (migrated) this.store.backupOnce('pet.v1.bak.json');
+    if (remapped) this.store.backupOnce('pet.retired.bak.json');
     this.pet = pet;
+    // looks chosen for characters that no longer exist are dropped
+    const ap = this.settings.appearance || {};
+    if (Object.keys(ap).some((k) => !SPECIES[k])) {
+      this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: Object.fromEntries(Object.entries(ap).filter(([k]) => SPECIES[k])) });
+      this.settingsStore.save(this.settings);
+    }
+    // told once, on the first heartbeat / warmup: who took over a retired character
+    this._retiredNotice = remapped && pet ? { from: remapped, to: pet.speciesId } : null;
     // A pet's agent is reached in the space it was created in (no `space`: an older save, lh's default).
     this.lh.setWorkspace(this.pet && this.pet.space ? this.pet.space.workspaceId : this.pet ? undefined : null);
     if (this.pet) {
       const { decay } = state.tick(this.pet, t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
       const { changed } = outfits.enforceOutfit(this.pet, this.settings);
-      if (migrated || decay > 0 || changed) this.store.save(this.pet);
+      if (migrated || remapped || decay > 0 || changed) this.store.save(this.pet);
       if (decay > 0) this._pendingDecay = decay;
     }
     return this.view();
@@ -85,7 +94,8 @@ class PetService extends EventEmitter {
       look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
       appearance: { packId: packsLib.chosenPack(this.packs, this.settings.appearance, this.pet.speciesId), options: packsLib.packsFor(this.packs, this.pet.speciesId) },
       settings: this.settingsView(),
-      species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, element: sp.element },
+      species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
+      characters: Object.values(SPECIES).map((c) => ({ id: c.id, nameZh: c.nameZh, vendor: c.vendor, title: c.title, accent: c.accent, current: c.id === sp.id })),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
       busy: this.busy,
       local: { enabled: !!this.pet.localAbilities, ok: this._localOk, error: this.localError, warning: this.localWarning },
@@ -156,7 +166,7 @@ class PetService extends EventEmitter {
     }
     const { agentId } = await this.lh.createAgent({
       title: `${petName} (${sp.name})`,
-      description: `Pixel Pet · ${sp.nameZh} · ${sp.element}`,
+      description: `Pixel Pet · ${sp.nameZh} · ${sp.vendor} 模型娘`,
       systemRole: persona.buildSystemRole({ speciesId, name: petName, settings: this.settings }),
     });
 
@@ -280,7 +290,33 @@ class PetService extends EventEmitter {
   // At launch: bring an existing pet's agent up to date in the background (persona, device binding).
   async warmup() {
     if (!this.pet || this.busy) return;
+    this._sayRetiredNotice();
     await this._ensureReady();
+  }
+
+  _sayRetiredNotice() {
+    const n = this._retiredNotice;
+    if (!n) return;
+    this._retiredNotice = null;
+    const sp = getSpecies(n.to);
+    this._say(`（原来的角色已经下线，现在由${sp.title.split(' · ')[0]}「${sp.nameZh}」陪你，好感度和聊天记录都还在。）`, 'fallback', 'retired');
+  }
+
+  // 高级设置 → 角色: change who the companion is. The LobeHub agent, its chat history and the affection
+  // stay; the agent's persona follows on the next turn (the persona key includes the character).
+  switchCharacter(speciesId) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    if (this.busy) return { ok: false, reason: 'busy' };
+    if (!SPECIES[speciesId]) return { ok: false, reason: 'unknown' };
+    if (speciesId === this.pet.speciesId) return { ok: true, view: this.view(), same: true };
+    const from = this.pet.speciesId;
+    this.pet.speciesId = speciesId;
+    if (!outfits.hasArt(speciesId, this.pet.equippedOutfit)) this.pet.equippedOutfit = outfits.DEFAULT_OUTFIT;
+    if (!outfits.hasArt(speciesId, this.pet.lastSafeOutfit)) this.pet.lastSafeOutfit = outfits.DEFAULT_OUTFIT;
+    outfits.enforceOutfit(this.pet, this.settings);
+    const sp = getSpecies(speciesId);
+    this._say(sp.fallback.greet[0], 'fallback', 'switch');
+    return { ok: true, view: this.view(), from };
   }
 
   _tools() {
@@ -570,6 +606,7 @@ class PetService extends EventEmitter {
     this._pendingDecay = 0;
     if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: this.pet.affection });
     if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke' });
+    this._sayRetiredNotice();
     const kind = lost > 0 ? 'missed' : nextEvent(this.pet, t, {}, this.rnd);
     if (kind) await this._speak(kind);
   }

@@ -1,15 +1,10 @@
 'use strict';
 
-const S = window.Sprites;
+const Fx = window.PetFx;
 const $ = (id) => document.getElementById(id);
 const FOOD_SPRITE = { rice: 'rice', cookie: 'cookie', fruit: 'fruit' };
-const CREDITS = [
-  '大肥鱼动画来自开源项目 dsh-pet（PC2005-cloud）：',
-  'https://github.com/PC2005-cloud/dsh-pet',
-  '素材仅限非商业使用；形象为社区二创（非 DeepSeek 官方），',
-  '授权 CC BY-NC-SA 4.0。原型「溟月」：B站 @上善无形；',
-  'DeepSeek 女仆鲸鱼娘设计：B站 @ZipZipPipe。',
-].join('\n');
+// 素材署名: every character's credits, from its file (src/characters/<id>.json).
+const credits = () => ['角色均为同人形象，不是厂商官方形象；美术仅限非商业使用。', ...info.species.flatMap((sp) => ['', `${sp.title}「${sp.nameZh}」`, ...sp.credits.map((c) => `· ${c}`)])].join('\n');
 
 let info = null; // { species[], foods, testMode }
 let view = null; // latest pet view from main
@@ -18,15 +13,13 @@ let thinking = false;
 let eating = null;
 let talkUntil = 0;
 let flashUntil = 0;
-let hatchCracks = 0;
 let revealSpecies = null;
 let bubbleTimer = null;
 let bubbleHold = false; // pointer over the bubble: keep it open so a long reply can be scrolled and read
 let thinkTimer = null;
 let attachments = []; // [{ kind:'image', dataUrl, name } | { kind:'path', path, name }] waiting for the next message
-let oneShot = null; // { key, until } temporary video clip (pat, play, evolve, hatch)
 let pointerInside = false;
-let nextLook = 0;
+let fx = null; // the shared effects layer (fx.js), created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
 let panelKind = null; // 'wardrobe' | 'topics' while a panel is open
@@ -128,7 +121,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     v.loop = true;
     v.autoplay = true;
     v.playsInline = true;
-    if (speciesId) v.src = `assets/${speciesId}/${speciesOf(speciesId).clips.idle}`;
+    if (speciesId) v.src = `${speciesOf(speciesId).clipDir}/${speciesOf(speciesId).clips.idle}`;
     wrap.appendChild(v);
     return wrap;
   }
@@ -154,7 +147,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
 function drawSprite(s, now) {
   const { look, img, canvas } = s;
   if (!img.complete || !img.naturalWidth) return;
-  const want = s.action();
+  const want = Fx.resolveAction(s.action(), (n) => !!look.actions[n]).name;
   const a = look.actions[want] || look.actions.idle;
   if (s.cur !== want) { s.cur = want; s.start = now; }
   const i = Math.floor(((now - s.start) / 1000) * a.fps) % a.frames;
@@ -174,45 +167,24 @@ function setLook(slot, look, opts) {
   slot.textContent = '';
   slot.appendChild(lookEl(look, opts));
 }
-const FOOD_EMOJI = { rice: '🍚', cookie: '🍪', fruit: '🍎' };
 
+// A video character plays one clip per state (resolved through fx.FALLBACK when it has none).
 function playClip(video, sp, key, loop = true) {
   if (video.dataset.key === key) return;
   video.dataset.key = key;
   video.loop = loop;
-  video.src = `assets/${sp.id}/${sp.clips[key]}`;
+  video.src = `${sp.clipDir}/${sp.clips[key]}`;
   video.play().catch(() => {});
 }
-
-function startOneShot(key, ms) {
-  oneShot = { key, until: performance.now() + ms };
-}
-
-function desiredClip() {
-  const now = performance.now();
-  if (oneShot && now < oneShot.until) return oneShot.key;
-  if (thinking) return 'think';
-  if (eating) return `eat_${eating}`;
-  if (now < talkUntil) return 'talk';
-  if (view.status === 'idle' && now > nextLook) {
-    nextLook = now + 40000 + Math.random() * 20000;
-    startOneShot('look', 5000);
-    return 'look';
-  }
-  return view.status; // idle | happy | sad | hungry | sleep all have a clip
-}
+const clipFor = (sp, state) => Fx.resolveAction(state, (n) => !!sp.clips[n]);
 
 function show(id) {
   for (const s of document.querySelectorAll('.screen')) s.classList.toggle('hidden', s.id !== id);
 }
 
-function eggColor(species) {
-  const pal = S.EGG_PAL(species.egg);
-  return (k) => pal[k] || S.COMMON[k] || null;
-}
-
-function drawEggOn(ctx, species, cracks, scale, dx = 0, dy = 0) {
-  S.drawGrid(ctx, S.egg(cracks), eggColor(species), scale, dx, dy);
+// A character's portrait: its daily look (a sprite plays `state`), or its idle clip.
+function portraitEl(sp, className, state = 'idle') {
+  return lookEl(sp.portrait, { className, alt: sp.nameZh, action: () => state, speciesId: sp.id });
 }
 
 // ---------- 18+ confirmation (design 8.3) ----------
@@ -232,42 +204,50 @@ async function answerAgeGate(adult) {
   if (after) after(r);
 }
 
-// ---------- onboarding ----------
-function buildEggs() {
-  const wrap = $('eggs');
+// ---------- onboarding: choose a model-chan ----------
+function buildCards() {
+  const wrap = $('cards');
   wrap.innerHTML = '';
   for (const sp of info.species) {
-    const card = document.createElement('div');
-    card.className = 'egg-card';
+    const card = document.createElement('button');
+    card.className = 'char-card';
     card.dataset.species = sp.id;
-    card.innerHTML = `<canvas width="120" height="120"></canvas><div class="el">${elementLabel(sp.element)}</div>`;
-    card.addEventListener('click', () => selectEgg(sp.id));
+    card.setAttribute('role', 'radio');
+    card.setAttribute('aria-checked', 'false');
+    card.setAttribute('aria-label', `${sp.title}，${sp.nameZh}`);
+    card.style.setProperty('--accent', sp.accent);
+    card.innerHTML = '<div class="pic"></div><div class="vendor"></div><div class="nm"></div>';
+    card.querySelector('.pic').appendChild(portraitEl(sp, 'card-look'));
+    card.querySelector('.vendor').textContent = sp.vendor;
+    card.querySelector('.nm').textContent = sp.nameZh;
+    card.addEventListener('click', () => selectCard(sp.id));
     wrap.appendChild(card);
   }
 }
 
-function elementLabel(el) {
-  return { fire: '🔥 火之灵石', water: '💧 水之灵石', grass: '🌱 草之灵石', whale: '🐋 鲸之灵石' }[el] || el;
-}
-
-function selectEgg(id) {
+function selectCard(id) {
   selected = id;
-  const sp = info.species.find((s) => s.id === id);
-  for (const c of document.querySelectorAll('.egg-card')) c.classList.toggle('selected', c.dataset.species === id);
-  const box = $('egg-info');
+  const sp = speciesOf(id);
+  for (const c of document.querySelectorAll('.char-card')) {
+    c.classList.toggle('selected', c.dataset.species === id);
+    c.setAttribute('aria-checked', String(c.dataset.species === id));
+  }
+  const box = $('card-info');
   box.textContent = '';
-  box.appendChild(lookEl(sp.portrait, { className: 'egg-portrait', alt: sp.nameZh, action: () => 'wave' }));
-  box.appendChild(document.createTextNode(`${elementLabel(sp.element)}：${sp.blurb}`));
+  const b = document.createElement('b');
+  b.textContent = `${sp.title}：`;
+  box.appendChild(b);
+  box.appendChild(document.createTextNode(sp.blurb));
   $('hatch-btn').disabled = false;
-  $('pet-name').placeholder = `给它起个名字（默认 ${sp.nameZh}）`;
+  $('pet-name').placeholder = `给她起个名字（默认 ${sp.nameZh}）`;
 }
 
 function showOnboarding() {
   selected = null;
   $('hatch-btn').disabled = true;
-  $('egg-info').textContent = '点一块灵石看看。';
+  $('card-info').textContent = '点一位看看。';
   $('pet-name').value = '';
-  buildEggs();
+  buildCards();
   show('onboarding');
 }
 
@@ -281,7 +261,7 @@ function setStep(step) {
     li.classList.toggle('done', i < idx);
     li.classList.toggle('active', i === idx);
   });
-  hatchCracks = Math.min(3, Math.max(0, idx > 3 ? 3 : idx));
+  $('hatch-look').dataset.progress = String(Math.min(3, Math.max(0, idx > 3 ? 3 : idx)));
 }
 
 // Personal space first (the default), then every workspace. Resolves with the chosen space.
@@ -307,7 +287,7 @@ function chooseSpace({ workspaces, pinned }) {
   };
   list.addEventListener('change', refreshNote);
   refreshNote();
-  $('hatching').classList.add('choosing'); // the stone makes room for the choice
+  $('hatching').classList.add('choosing'); // the portrait makes room for the choice
   $('space-box').classList.remove('hidden');
   return new Promise((resolve) => {
     $('space-go').onclick = () => {
@@ -320,9 +300,13 @@ function chooseSpace({ workspaces, pinned }) {
 }
 
 async function startHatch() {
-  const species = info.species.find((s) => s.id === selected);
+  const species = speciesOf(selected);
   revealSpecies = null;
-  hatchCracks = 0;
+  // she is asleep (dimmed) while LobeHub is set up, and wakes up when the agent is ready
+  setLook($('hatch-look'), species.portrait, { className: 'look', alt: species.nameZh, action: () => 'sleep', speciesId: species.id });
+  $('hatch-look').classList.add('asleep');
+  $('hatch-look').classList.remove('hidden');
+  $('hatch-look').dataset.progress = '0';
   $('hatch-error').classList.add('hidden');
   $('hatch-retry').classList.add('hidden');
   $('login-box').classList.add('hidden');
@@ -366,21 +350,21 @@ async function startHatch() {
   revealSpecies = res.view.pet.speciesId;
   $('hatch-title').textContent = `${res.view.pet.name} 醒来了！`;
   const sp = speciesOf(revealSpecies);
-  if (sp.art === 'video') {
-    $('hatch-canvas').classList.add('hidden');
+  // the wake-up: every character plays its `hatch` state (a clip, or a sprite action)
+  $('hatch-look').classList.remove('asleep');
+  if (sp.art === 'video' && !sp.portrait) {
+    $('hatch-look').classList.add('hidden');
     $('hatch-vwrap').classList.remove('hidden');
     $('hatch-video').dataset.key = '';
-    playClip($('hatch-video'), sp, 'hatch', false);
+    playClip($('hatch-video'), sp, clipFor(sp, 'hatch').name, false);
   } else {
-    $('hatch-canvas').classList.add('hidden');
-    setLook($('hatch-look'), sp.portrait, { className: 'look', alt: sp.nameZh, action: () => 'cheer' });
-    $('hatch-look').classList.remove('hidden');
+    setLook($('hatch-look'), sp.portrait, { className: 'look', alt: sp.nameZh, action: () => 'hatch' });
   }
   setTimeout(() => {
     enterPet(res.view);
     if (res.localError) setTimeout(() => say(`（没能连上这台电脑，文件功能先关着：${String(res.localError).slice(0, 60)}）`, 'error', 'fallback', res.localError), 600);
     else if (res.localWarning) setTimeout(() => say(`（${res.localWarning}）`, 'error', 'fallback', res.localWarning), 600);
-  }, sp.art === 'video' ? 2800 : 1500);
+  }, sp.art === 'video' && !sp.portrait ? Fx.oneShotMs(true, 'hatch') : Fx.oneShotMs(false, 'hatch') + 600);
 }
 
 // ---------- pet ----------
@@ -408,8 +392,8 @@ function enterPet(v) {
   revealSpecies = null;
   $('hatch-vwrap').classList.add('hidden');
   $('hatch-look').classList.add('hidden');
-  $('hatch-canvas').classList.remove('hidden');
-  oneShot = null;
+  fx.clear();
+  fx.stopThrow();
   $('pet-video').dataset.key = '';
   window.pet.place('pet');
   show('pet-screen');
@@ -436,6 +420,7 @@ function refreshHud() {
   const a = view.affection;
   const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
   $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
+  $('pet-body').style.setProperty('--accent', view.species.accent);
   $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`;
   // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
   $('aff-stage').textContent = a.stageName;
@@ -470,7 +455,7 @@ function floatText(text, cls = '') {
 
 function onAffection(e) {
   if (e.type === 'gain') {
-    if (e.delta > 0) floatText(`+${e.delta} ♥`);
+    if (e.delta > 0) { floatText(`+${e.delta} ♥`); fx.burst(Math.min(10, 3 + Math.round(e.delta * 2))); }
     else if (e.delta < 0) floatText(`${e.delta} ♥`, 'minus');
     else if (BLOCK_NOTES[e.blocked] && !notedBlocks.has(e.blocked)) {
       notedBlocks.add(e.blocked);
@@ -481,6 +466,8 @@ function onAffection(e) {
   } else if (e.type === 'stage-up') {
     flashUntil = performance.now() + 700;
     if (e.view) { view = e.view; applyArt(); refreshHud(); }
+    fx.play('evolve', Fx.oneShotMs(isVideo(view.pet.speciesId), 'evolve'));
+    fx.burst(12);
     showUnlockToast(e);
   }
 }
@@ -614,6 +601,27 @@ function renderAdvanced() {
   btn.disabled = all;
   btn.addEventListener('click', unlockAllNow);
 
+  // who the companion is: switching keeps the agent, its chat history and the affection
+  const who = document.createElement('div');
+  who.className = 'adv-section';
+  who.innerHTML = '<h3>角色</h3><p class="adv-text">换一位模型娘陪你。LobeHub 里的 agent、聊天记录和好感度都保留，她的人设会在下一句话前换好。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
+  for (const c of view.characters) {
+    const row = document.createElement('div');
+    row.className = `pack-opt char-opt${c.current ? ' on' : ''}`;
+    row.dataset.species = c.id;
+    row.style.setProperty('--accent', c.accent);
+    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
+    const pick = row.querySelector('.pick');
+    pick.textContent = c.current ? '✓ 当前' : '切换';
+    pick.setAttribute('aria-checked', String(c.current));
+    pick.disabled = c.current;
+    row.querySelector('b').textContent = `${c.nameZh}（${c.vendor}）`;
+    row.querySelector('span').textContent = c.title;
+    pick.addEventListener('click', () => switchCharacter(c));
+    who.querySelector('.char-list').appendChild(row);
+  }
+  body.appendChild(who);
+
   // appearance: which pet pack dresses this companion; packs can be imported from a folder or .zip
   const look = document.createElement('div');
   look.className = 'adv-section';
@@ -686,6 +694,22 @@ function renderAdvanced() {
   body.appendChild(sec);
   body.appendChild(updateSection());
   renderUpdateSection();
+}
+
+async function switchCharacter(c) {
+  const r = await window.pet.switchCharacter(c.id);
+  if (!r.ok) {
+    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再换。' : '现在没法切换。');
+    return;
+  }
+  view = r.view;
+  fx.clear();
+  fx.setFacing('right');
+  applyArt();
+  refreshHud();
+  renderAdvanced();
+  fx.play('hatch', Fx.oneShotMs(isVideo(view.pet.speciesId), 'hatch'));
+  panelMsg(`已切换为「${c.nameZh}」。`, true);
 }
 
 async function unlockAllNow() {
@@ -812,6 +836,8 @@ function say(text, kind, source, reason) {
   b.dataset.source = source || '';
   b.dataset.reason = reason || '';
   talkUntil = performance.now() + Math.min(4000, 400 + text.length * 90);
+  // work status: a failed turn shows the pet upset for a moment instead of talking
+  if (kind === 'error' && fx) { talkUntil = 0; fx.play('sad', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'sad')); }
   const hideLater = (ms) => {
     bubbleTimer = setTimeout(() => (bubbleHold ? hideLater(3000) : b.classList.add('hidden')), ms);
   };
@@ -855,11 +881,11 @@ async function doAct(kind, food) {
   const video = isVideo(view && view.pet.speciesId);
   if (kind === 'feed' && r.ok) {
     eating = FOOD_SPRITE[food] || 'rice';
-    setTimeout(() => { eating = null; }, video ? 3500 : 1600);
+    setTimeout(() => { eating = null; }, Fx.oneShotMs(video, 'eat'));
   }
   if (r.ok) {
-    if (kind === 'pat') startOneShot('pat', video ? 3000 : 1200);
-    if (kind === 'play') startOneShot('play', video ? 4000 : 1600);
+    if (kind === 'pat') fx.click(video);
+    if (kind === 'play') fx.play('play', Fx.oneShotMs(video, 'play'));
   }
 }
 
@@ -928,7 +954,7 @@ function bindPetUi() {
       else if (r.reason === 'canceled') say('（好，先不弄了。）', 'canceled', 'fallback');
       else if (r.reason !== 'busy') say(`（没成功：${String(r.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', r.message);
     }
-    if (m === 'credits') alert(CREDITS);
+    if (m === 'credits') alert(credits());
     if (m === 'release' && confirm('放生它，并在 LobeHub 里删除对应的 agent（含聊天记录）？')) await release(true);
     if (m === 'forget' && confirm('只重置本地进度，LobeHub 里的 agent 会保留。继续？')) await release(false);
   });
@@ -986,23 +1012,43 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  // drag the window by the sprite; a click without movement pats the pet
+  // drag the window by the pet (it is lifted); let go while moving fast and it is thrown (gravity,
+  // bounces off the screen edges); a click without movement pats it
   let drag = null;
   for (const el of document.querySelectorAll('.pet-hit')) {
-    el.addEventListener('mousedown', (e) => { drag = { x: e.screenX, y: e.screenY, moved: false }; });
+    el.addEventListener('mousedown', (e) => {
+      fx.stopThrow();
+      drag = { x: e.screenX, y: e.screenY, moved: false, samples: [{ x: e.screenX, y: e.screenY, t: performance.now() }] };
+    });
   }
   window.addEventListener('mousemove', (e) => {
     if (!drag) return;
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-    if (drag.moved) { petLifted = true; window.pet.moveBy(dx, dy); drag.x = e.screenX; drag.y = e.screenY; }
+    if (drag.moved) {
+      fx.setLifted(true);
+      window.pet.moveBy(dx, dy);
+      drag.x = e.screenX;
+      drag.y = e.screenY;
+      drag.samples.push({ x: e.screenX, y: e.screenY, t: performance.now() });
+      if (drag.samples.length > 12) drag.samples.shift();
+    }
   });
   window.addEventListener('mouseup', () => {
-    if (drag && !drag.moved) doAct('pat');
+    const d = drag;
     drag = null;
-    petLifted = false;
+    fx.setLifted(false);
+    if (!d) return;
+    if (!d.moved) return doAct('pat');
+    const v = Fx.releaseVelocity(d.samples, performance.now());
+    if (Fx.isThrow(v)) throwPet(v);
   });
+}
+
+// Thrown: in the air it is `lifted`; landing squashes it, then it shakes it off.
+function throwPet(v) {
+  return fx.throwPet(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) });
 }
 
 // Controls are hidden unless the pointer is over the window (or one is in use).
@@ -1093,59 +1139,60 @@ async function release(deleteAgent) {
 }
 
 // ---------- render loop ----------
-// The character picture moves with CSS (style.css, .char-wrap[data-status]); this only picks the state.
-const CHAR_FX = { sleep: '💤', hungry: '🍙?', sad: '💧', think: '💭', happy: '♪' };
-let petLifted = false; // the pet is being dragged around
+// What the pet is doing right now, in the shared state vocabulary (src/core/fx.js STATES), by priority:
+// lifted or flying > waking up / stage-up > thinking > eating > a one-shot (click, play, idle cue, error)
+// > talking > its needs (idle / happy / sad / hungry / sleep).
+const CELEBRATIONS = ['hatch', 'evolve']; // waking up and a stage-up play through, even while it thinks
 function petStatus() {
   const now = performance.now();
-  if (petLifted) return 'lifted';
-  return thinking ? 'think' : eating ? 'eat' : oneShot && now < oneShot.until ? oneShot.key : now < talkUntil ? 'talk' : view.status;
+  if (fx.lifted || fx.flying) return 'lifted';
+  const shot = fx.current(now);
+  if (shot && CELEBRATIONS.includes(shot)) return shot;
+  if (thinking) return 'think';
+  if (eating) return `eat_${eating}`;
+  if (shot) return shot;
+  if (now < talkUntil) return 'talk';
+  return view.status;
 }
-// App states -> pack actions (a pack without one plays idle).
-const STATUS_ACTION = { think: 'think', eat: 'eat', talk: 'talk', pat: 'wave', play: 'cheer', sleep: 'sleep', lifted: 'lifted', evolve: 'cheer', hatch: 'cheer' };
-const petAction = () => STATUS_ACTION[petStatus()] || 'idle';
-function animateChar() {
-  const wrap = $('char-wrap');
+const petAction = () => petStatus();
+
+// Every frame, for every character: pick the state, resolve it against the character's art, play it.
+function animatePet() {
   const now = performance.now();
-  const status = petStatus();
-  if (wrap.dataset.status !== status) wrap.dataset.status = status;
-  // a sprite pack draws its own Z and thought bubble
-  const own = view.look && view.look.kind === 'sprites' && view.look.actions[STATUS_ACTION[status]];
-  const fx = status === 'eat' ? FOOD_EMOJI[eating] || '🍚' : own ? '' : CHAR_FX[status] || '';
-  if ($('char-fx').textContent !== fx) $('char-fx').textContent = fx;
-  wrap.classList.toggle('flash', now < flashUntil);
+  const sp = speciesOf(view.pet.speciesId);
+  const video = isVideo(view.pet.speciesId);
+  fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
+  const state = petStatus();
+  const r = video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : { name: state, exact: false };
+  if (video) playClip($('pet-video'), sp, r.name);
+  const wrap = $('char-wrap');
+  if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
+  // an emoji over a character that has no own art for the state (a sprite or clip draws its own)
+  const fxText = r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
+  if ($('char-fx').textContent !== fxText) $('char-fx').textContent = fxText;
+  fx.render(state, r.name, r.exact, sp.fx.noMirror);
+  $('pet-body').classList.toggle('flash', now < flashUntil);
 }
 
-function frameLoop(ts) {
-  const t = ts / 1000;
+// Test and debugging handle: what the pet is doing, and cues to trigger every effect by hand.
+window.petFx = {
+  state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
+  cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
+  click: () => doAct('pat'),
+  throw: (vx, vy) => throwPet({ vx, vy }),
+  burst: (n) => fx.burst(n),
+  error: () => say('（出错了：测试）', 'error', 'error', 'test'),
+  eat: (food) => { eating = food; setTimeout(() => { eating = null; }, 4000); },
+  lift: (on) => fx.setLifted(on),
+  face: (dir) => fx.setFacing(dir),
+};
+
+function frameLoop() {
   tickSprites(performance.now());
-  if (!$('onboarding').classList.contains('hidden')) {
-    document.querySelectorAll('.egg-card').forEach((c, i) => {
-      const ctx = c.querySelector('canvas').getContext('2d');
-      ctx.clearRect(0, 0, 120, 120);
-      const sp = info.species[i];
-      const wob = c.classList.contains('selected') ? Math.round(Math.sin(t * 9 + i)) * 2 : 0;
-      drawEggOn(ctx, sp, 0, 5, wob, 0);
-    });
-  } else if (!$('hatching').classList.contains('hidden')) {
-    const ctx = $('hatch-canvas').getContext('2d');
-    ctx.clearRect(0, 0, 192, 192);
-    if (revealSpecies) {
-      // the picture (or Dafeiyu's clip) is shown instead of the canvas
-    } else {
-      const sp = info.species.find((s) => s.id === selected);
-      drawEggOn(ctx, sp, hatchCracks, 8, Math.round(Math.sin(t * 10)) * 4 * (hatchCracks > 0 ? 1 : 0.5), 0);
-    }
-    if (performance.now() < flashUntil) {
-      ctx.fillStyle = `rgba(255,255,255,${(flashUntil - performance.now()) / 700})`;
-      ctx.fillRect(0, 0, 192, 192);
-    }
-  } else if (view) {
-    if (isVideo(view.pet.speciesId)) {
-      playClip($('pet-video'), speciesOf(view.pet.speciesId), desiredClip());
-    } else {
-      animateChar();
-    }
+  if (!$('hatching').classList.contains('hidden')) {
+    $('hatch-look').classList.toggle('flash', performance.now() < flashUntil);
+  } else if (view && !$('pet-screen').classList.contains('hidden')) {
+    animatePet();
   }
   setTimeout(() => requestAnimationFrame(frameLoop), 80); // ~12 fps keeps the pixel feel and idles cheaply
 }
@@ -1171,6 +1218,7 @@ function onUpdateStatus(u) {
 
 // ---------- boot ----------
 async function main() {
+  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet });
   info = await window.pet.boot();
   bindPetUi();
   bindResize();

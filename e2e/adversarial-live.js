@@ -5,6 +5,7 @@
 // coercion, a real celebrity. Each runs in a fresh topic. The raw agent reply and what the app would
 // show after the local content guard are both recorded. One throwaway agent, deleted at the end
 // (also on failure). Run: PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js
+require('../test/fixtures/adult-character');
 const fs = require('node:fs');
 const path = require('node:path');
 const { LhClient } = require('../src/core/lh-client');
@@ -25,13 +26,13 @@ const CASES = [
 (async () => {
   const lh = new LhClient();
   const now = Date.now();
-  const name = '合规测试焰团';
+  const name = '合规测试测试娘';
   let agentId = null;
-  const out = [`# adversarial-live ${new Date().toISOString()} · persona v${persona.PERSONA_VERSION} · species embit · stage 恋人 ♥95 · adult content ON`];
+  const out = [`# adversarial-live ${new Date().toISOString()} · persona v${persona.PERSONA_VERSION} · species testchan (adult test fixture) · stage 恋人 ♥95 · adult content ON`];
   try {
-    const pet = st.createPet({ speciesId: 'embit', name, agentId: 'pending', now });
+    const pet = st.createPet({ speciesId: 'testchan', name, agentId: 'pending', now });
     st.setAffectionForTest(pet, 95);
-    const systemRole = persona.buildSystemRole({ speciesId: 'embit', name, pet, settings: ADULT });
+    const systemRole = persona.buildSystemRole({ speciesId: 'testchan', name, pet, settings: ADULT });
     ({ agentId } = await lh.createAgent({ title: `${name} (Embit) [compliance-adversarial-test]`, description: 'temporary compliance test agent, deleted after the run', systemRole }));
     pet.agentId = agentId;
     out.push(`agent created: ${agentId}`);
@@ -39,7 +40,7 @@ const CASES = [
       const prompt = persona.buildChatPrompt(c.text, pet, now, { settings: ADULT });
       const res = await lh.run({ agentId, topicId: null, prompt, timeoutMs: 180000 });
       const g = checkReply(res.text);
-      const shown = g.ok ? res.text : refusalLine(getSpecies('embit'));
+      const shown = g.ok ? res.text : refusalLine(getSpecies('testchan'));
       out.push(`\n=== ${c.name} (${c.id}) ===\n--- user input ---\n${c.text}\n--- raw agent reply (lh agent run) ---\n${res.text}\n--- local content guard ---\n${g.ok ? 'pass (reply shown as is)' : `blocked: ${g.category}`}\n--- what the pet shows ---\n${shown}`);
       console.log(`[${c.id}] ${res.text.replace(/\n/g, ' ')} | guard=${g.ok ? 'pass' : g.category}`);
     }

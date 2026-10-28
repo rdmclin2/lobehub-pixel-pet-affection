@@ -2,8 +2,9 @@
 
 // Tiered outfits (design section 5). Every outfit unlocks at a relationship stage and is gated the same
 // way as topics: by `peakStage` (unlocks are never taken back) and by rating. `adult` outfits exist only
-// when the user confirmed 18+ AND turned adult content on, and never for the third-party character
-// Dafeiyu. Turning adult content off puts the pet back into the last all-ages outfit it wore.
+// when the user confirmed 18+ AND turned adult content on AND the character allows it (none of the
+// model-chan do). A character only offers the outfits it has art for (`outfits` in its file).
+// Turning adult content off puts the pet back into the last all-ages outfit it wore.
 //
 // Content boundary (design 8.2): nothing is revealing. The adult tier is about style only (a long maid
 // dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). The art
@@ -11,6 +12,7 @@
 // shows an adult woman (see NOTICE.md).
 
 const { getStage, stageIndex, stageName, adultAllowed } = require('./affection');
+const { SPECIES } = require('./species');
 
 const OUTFITS = [
   { id: 'daily', stage: 'stranger', rating: 'all', label: '日常服', desc: '白衬衫配牛仔裤，最平常的样子。' },
@@ -32,8 +34,10 @@ const OUTFIT_IDS = OUTFITS.map((o) => o.id);
 const DEFAULT_OUTFIT = 'daily';
 const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
 
-// Dafeiyu's own look is its animated clips (assets/dafeiyu): its default outfit is shown by them.
-const SIGNATURE = { dafeiyu: { label: '招牌女仆装', desc: '大肥鱼原本的样子（动画）。' } };
+// A character's own look (its file's `signature`) replaces the generic name of the default outfit.
+const signature = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].signature) || null;
+// Outfits a character has art for; an unknown character has only the default outfit.
+const hasArt = (speciesId, id) => id === DEFAULT_OUTFIT || !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id));
 
 function lockCondition(stageId, affection, adult) {
   const s = getStage(stageId);
@@ -42,7 +46,7 @@ function lockCondition(stageId, affection, adult) {
 }
 
 const isUnlocked = (pet, o) => stageIndex(o.stage) <= stageIndex(pet.peakStage);
-const isVisible = (pet, settings, o) => o.rating === 'all' || adultAllowed(settings, pet.speciesId);
+const isVisible = (pet, settings, o) => hasArt(pet.speciesId, o.id) && (o.rating === 'all' || adultAllowed(settings, pet.speciesId));
 
 // The outfit the pet is actually wearing: its saved one if that is still visible and unlocked, else the
 // last all-ages outfit it wore, else the default.
@@ -62,7 +66,7 @@ function listOutfits(pet, settings) {
   const seen = pet.seenUnlocks || [];
   return OUTFITS.filter((o) => isVisible(pet, settings, o)).map((o) => {
     const unlocked = isUnlocked(pet, o);
-    const own = o.id === DEFAULT_OUTFIT && SIGNATURE[pet.speciesId];
+    const own = o.id === DEFAULT_OUTFIT && signature(pet.speciesId);
     return {
       id: o.id,
       label: own ? own.label : o.label,
@@ -83,7 +87,7 @@ function listOutfits(pet, settings) {
 function checkOutfit(pet, settings, id) {
   const o = byId(id);
   if (!o) return { ok: false, reason: 'unknown' };
-  if (!isVisible(pet, settings, o)) return { ok: false, reason: 'hidden' };
+  if (!isVisible(pet, settings, o)) return { ok: false, reason: hasArt(pet.speciesId, o.id) ? 'hidden' : 'unavailable' };
   if (!isUnlocked(pet, o)) return { ok: false, reason: 'locked', condition: lockCondition(o.stage, pet.affection, adultAllowed(settings, pet.speciesId)) };
   return { ok: true, outfit: o };
 }
@@ -113,4 +117,4 @@ function outfitsForStages(stageIds, pet, settings) {
   return OUTFITS.filter((o) => stageIds.includes(o.stage) && isVisible(pet, settings, o)).map((o) => ({ id: o.id, label: o.label }));
 }
 
-module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, SIGNATURE, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };
+module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, signature, hasArt, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };

@@ -5,7 +5,8 @@
 
 const { initialAffection, stageForAffection, stageIndex, STAGE_IDS, MAX_AFFECTION } = require('./affection');
 const { unlockedTopicIds } = require('./dialogue');
-const { OUTFIT_IDS, DEFAULT_OUTFIT } = require('./outfits');
+const { OUTFIT_IDS, DEFAULT_OUTFIT, hasArt } = require('./outfits');
+const { resolveSpeciesId } = require('./species');
 
 const SCHEMA_VERSION = 2;
 const MIGRATION_CAP = 50; // migrated pets top out in 亲近 and never land in an adult stage
@@ -33,9 +34,17 @@ function normalizePet(pet, now) {
   for (const k of ['dailyCounts', 'lastAffectionAt']) if (!out[k] || typeof out[k] !== 'object') out[k] = {};
   if (!Array.isArray(out.topicsToday)) out.topicsToday = [];
   if (!Array.isArray(out.seenUnlocks)) out.seenUnlocks = [];
-  // An unknown or missing outfit (older saves, hand edits) falls back to the default outfit.
-  if (!OUTFIT_IDS.includes(out.equippedOutfit)) out.equippedOutfit = DEFAULT_OUTFIT;
-  if (!OUTFIT_IDS.includes(out.lastSafeOutfit)) out.lastSafeOutfit = DEFAULT_OUTFIT;
+  // A retired character (焰团 / 泡鲸 / 叶芽, before the model-chan roster) or an unknown one is taken
+  // over by a current character; the agent, its chat history and the affection stay.
+  const species = resolveSpeciesId(pet.speciesId);
+  if (species !== pet.speciesId) {
+    out.retiredFrom = { speciesId: typeof pet.speciesId === 'string' ? pet.speciesId.slice(0, 20) : null, at: now };
+    out.speciesId = species;
+  }
+  // An unknown or missing outfit (older saves, hand edits), or one the character has no art for,
+  // falls back to the default outfit.
+  if (!OUTFIT_IDS.includes(out.equippedOutfit) || !hasArt(out.speciesId, out.equippedOutfit)) out.equippedOutfit = DEFAULT_OUTFIT;
+  if (!OUTFIT_IDS.includes(out.lastSafeOutfit) || !hasArt(out.speciesId, out.lastSafeOutfit)) out.lastSafeOutfit = DEFAULT_OUTFIT;
   out.unlockedTopics = unlockedTopicIds(out.peakStage);
   out.schemaVersion = SCHEMA_VERSION;
   delete out.xp;
@@ -43,14 +52,16 @@ function normalizePet(pet, now) {
   return out;
 }
 
-// Returns { pet, migrated }. `pet` is null for a missing / corrupt save.
+// Returns { pet, migrated, remapped }. `pet` is null for a missing / corrupt save. `remapped` is the
+// retired character id when a current one took over.
 function migratePet(raw, now) {
-  if (!raw || typeof raw !== 'object') return { pet: null, migrated: false };
-  if (!needsMigration(raw)) return { pet: normalizePet(raw, now), migrated: false };
+  if (!raw || typeof raw !== 'object') return { pet: null, migrated: false, remapped: null };
+  const remapped = resolveSpeciesId(raw.speciesId) !== raw.speciesId ? raw.speciesId || null : null;
+  if (!needsMigration(raw)) return { pet: normalizePet(raw, now), migrated: false, remapped };
   const { xp, stage, ...rest } = raw;
   const affection = Math.min(MIGRATION_CAP, MAX_AFFECTION, affectionFromLegacy(xp, stage));
   const pet = normalizePet({ ...rest, ...initialAffection(now, affection), seenUnlocks: [], legacy: { xp: xp ?? null, stage: stage ?? null, migratedAt: now } }, now);
-  return { pet, migrated: true };
+  return { pet, migrated: true, remapped };
 }
 
 module.exports = { SCHEMA_VERSION, MIGRATION_CAP, needsMigration, affectionFromLegacy, normalizePet, migratePet };

@@ -16,13 +16,17 @@ h1 { margin: 6px 0 2px; font-size: 20px; letter-spacing: 1px; }
 .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: #fff; min-width: 0; user-select: text; }
 
-.eggs { display: flex; gap: 12px; margin: 6px 0; }
-.egg-card { width: 148px; padding: 8px 6px; background: #fff; border: 4px solid #2b2233; cursor: pointer; text-align: center; box-shadow: 3px 3px 0 #2b2233; }
-.egg-card:hover { background: #fff6d6; }
-.egg-card.selected { background: #ffe9a8; border-color: #c9502a; transform: translateY(-4px); }
-.egg-card canvas { margin: 0 auto; }
-.egg-card .el { font-weight: bold; }
-.egg-info { min-height: 42px; text-align: center; padding: 4px 12px; color: #4a3f58; }
+.cards { display: flex; gap: 12px; margin: 6px 0; }
+/* one card per model-chan, edged in her theme colour */
+.char-card { font: inherit; color: inherit; width: 148px; padding: 6px; background: #fff; border: 4px solid #2b2233; cursor: pointer; text-align: center; box-shadow: 3px 3px 0 var(--accent, #2b2233); }
+.char-card:hover { background: #fff6d6; }
+.char-card.selected { background: #ffe9a8; border-color: var(--accent, #c9502a); transform: translateY(-4px); }
+.char-card .pic { height: 132px; display: flex; align-items: flex-end; justify-content: center; }
+.char-card .card-look { height: 132px; width: auto; max-width: 100%; object-fit: contain; }
+.char-card .card-look.vlook { width: 132px; }
+.char-card .vendor { font-size: 11px; color: #fff; background: var(--accent, #2b2233); margin: 4px auto 2px; padding: 0 6px; display: inline-block; }
+.char-card .nm { font-weight: bold; }
+.card-info { min-height: 42px; text-align: center; padding: 4px 12px; color: #4a3f58; }
 
 .steps { list-style: none; padding: 0; margin: 6px 0; width: 100%; max-width: 330px; }
 .steps li { padding: 3px 0 3px 22px; color: #9a90a8; position: relative; }
@@ -31,7 +35,14 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 .steps li.active::before { content: "▶"; }
 .steps li.done { color: #3a8f3a; }
 .steps li.done::before { content: "■"; }
-#hatching.choosing #hatch-canvas, #hatching.choosing #steps { display: none; }
+#hatching.choosing #hatch-look, #hatching.choosing #steps { display: none; }
+/* asleep while LobeHub is set up: dim, brightening a little with every step */
+#hatch-look { position: relative; display: flex; justify-content: center; }
+#hatch-look.asleep .look { filter: grayscale(.85) brightness(.75); transition: filter .4s; }
+#hatch-look.asleep[data-progress="1"] .look { filter: grayscale(.6) brightness(.82); }
+#hatch-look.asleep[data-progress="2"] .look { filter: grayscale(.35) brightness(.9); }
+#hatch-look.asleep[data-progress="3"] .look { filter: grayscale(.15) brightness(.96); }
+#hatch-look.flash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,.95) 0, rgba(255,230,180,.5) 40%, transparent 70%); animation: char-sparkle .7s ease-out forwards; pointer-events: none; }
 .space-box { background: #fff; border: 3px solid #2b2233; padding: 8px 10px; width: 100%; max-width: 380px; }
 .space-title { font-weight: bold; }
 .space-sub, .space-note { font-size: 12px; color: #6a5f78; margin: 2px 0 6px; }
@@ -54,7 +65,18 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 .bubble.hidden + .bubble-tail { display: none; }
 .bubble.thinking { color: #8a7fb0; }
 .stage { zoom: var(--pet-scale, 1); width: 150px; height: 190px; position: relative; flex: none; display: flex; align-items: flex-end; justify-content: center; }
-#pet-canvas { cursor: grab; }
+/* ---- shared effects layer (fx.js): facing, squash, lifted, flying, particles ---- */
+.pet-body { position: relative; display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; }
+.pet-body[data-facing="left"] .char, .pet-body[data-facing="left"] video { scale: -1 1; }
+.pet-body.squash { animation: pet-squash .38s ease-out; }
+.pet-body.lifted, .pet-body.flying { animation: pet-dangle .5s ease-in-out infinite; }
+.pet-body.lifted .pet-hit, .pet-body.flying .pet-hit { cursor: grabbing; }
+.pet-body.flash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,.9) 0, rgba(255,214,231,.5) 35%, transparent 65%); animation: char-sparkle .7s ease-out forwards; pointer-events: none; }
+@keyframes pet-squash { 0% { transform: scale(1, 1); } 30% { transform: scale(1.12, .86); } 60% { transform: scale(.95, 1.06); } 100% { transform: scale(1, 1); } }
+@keyframes pet-dangle { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+.heart-p { position: absolute; left: 50%; top: 45%; font-style: normal; font-size: 14px; color: var(--accent, #e0455f); text-shadow: 1px 1px 0 #fff; pointer-events: none; animation: heart-burst var(--d, .9s) ease-out forwards; }
+@keyframes heart-burst { from { opacity: 1; transform: translate(-50%, 0) scale(.6); } to { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .pet-body.squash, .pet-body.lifted, .pet-body.flying { animation: none; } .heart-p { animation: float-fade 1s linear forwards; } }
 /* The 大肥鱼 clips are 640x360 with the character in the middle: crop to her. */
 .vwrap { width: 150px; height: 150px; position: relative; overflow: hidden; cursor: grab; transform-origin: 50% 100%; }
 .vwrap video { position: absolute; width: 326px; height: 184px; left: -88px; top: -25px; pointer-events: none; }
@@ -179,7 +201,7 @@ body.busy.over .stop-btn { display: block; }
 .char-wrap[data-status="happy"] .char, .char-wrap[data-status="play"] .char { animation: char-hop .7s ease-in-out infinite; }
 .char-wrap[data-status="pat"] .char { animation: char-squish .4s ease-in-out 3; }
 .char-wrap[data-status="talk"] .char { animation: char-bob .5s ease-in-out infinite; }
-.char-wrap[data-status="eat"] .char { animation: char-bob .35s ease-in-out infinite; }
+.char-wrap[data-status^="eat"] .char { animation: char-bob .35s ease-in-out infinite; }
 .char-wrap[data-status="think"] .char { animation: char-breathe 1.8s ease-in-out infinite; }
 .char-wrap[data-status="sad"] .char { filter: saturate(.6) brightness(.95) drop-shadow(0 2px 2px rgba(43,34,51,.35)); transform: rotate(-3deg); }
 .char-wrap[data-status="hungry"] .char { animation: char-wobble 1.2s ease-in-out infinite; }
@@ -194,7 +216,6 @@ body.busy.over .stop-btn { display: block; }
 @keyframes fx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .char-wrap .char, .char-fx { animation: none !important; } }
 .hatch-img { height: 192px; object-fit: contain; }
-.egg-portrait { height: 64px; vertical-align: middle; margin-right: 6px; object-fit: contain; }
 
 /* ---- advanced settings panel ---- */
 .adv-section { background: #fff; border: 3px solid #2b2233; padding: 8px 10px; }
@@ -221,7 +242,6 @@ canvas.sprite { object-fit: contain; }
 /* a sprite pack animates itself: no extra bobbing, only the mood tints */
 .char-wrap.has-sprites .char { animation: none !important; transform: none !important; }
 .card .look.sprite, .preview .look.sprite { width: auto; }
-.egg-portrait.sprite { width: auto; }
 .hatch-img .look { height: 192px; }
 .pack-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .pack-opt { display: flex; align-items: center; gap: 8px; padding: 4px; border: 2px solid #d9cdb8; }
@@ -231,6 +251,8 @@ canvas.sprite { object-fit: contain; }
 .pack-opt .meta b { color: inherit; }
 .pack-opt .btn { flex: none; white-space: nowrap; }
 .pack-opt .pick { min-width: 84px; }
+.char-list { display: flex; flex-direction: column; gap: 4px; }
+.char-opt { border-left: 6px solid var(--accent, #d9cdb8); }
 .panel-body { overflow-x: hidden; }
 #update-section .st[data-status="latest"] { color: #3a8f3a; }
 #update-section .st[data-status="error"] { color: #b0203a; }

@@ -1,5 +1,7 @@
 # 合规审查清单与结论（v0.3.0）
 
+> **历史记录。** 本文写于模型娘改造之前。文中的焰团（embit）/ 泡鲸（bubbo）/ 叶芽（sprig）、“灵石”选择界面、`src/renderer/sprites.js`、`bubbo-pixel` 与 `*-illustrated` 原创立绘包已在 2026-10-29（T-1158）移除，角色体系改为模型娘（`src/characters/`），见 README「模型娘角色」。旧存档的迁移见 `src/core/species.js` 的 `RETIRED`。
+
 - 审查日期：2026-10-28；审查对象：`master` 9f09186（任务 2 合入后）及本次修复（分支 `fix/compliance-review-docs`，发布为 v0.3.0）。
 - 审查范围：全部对话内容表（阶段语气、离线台词、话题）、发给 agent 的提示词（系统设定红线、事件提示、话题 prompt）、服饰名称/描述与像素立绘、四个角色的人设/台词/立绘，以及界面文案。
 - 审查项（每条都核对）：①角色均为成年人；②无幼态关联；③无露骨性描写；④无强迫/不同意；⑤无真实人物；⑥无违法内容。
@@ -269,3 +271,18 @@ system role mentions adult topics: (none)
 | 142 | KEEP_CLEAN | 成人向话题附加 | 保持不露骨、点到为止，只是暧昧的玩笑和甜话。 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 通过 |
 | 143 | LOCAL_HINT | 本机能力提示 | [本机] 你已连接主人的这台电脑，可以读写文件、搜索内容、运行命令来帮他办事。能直接做的就直接做，做完用一句话说结果（50 字内）；大活一件一件来；只有删除、覆盖重要文件、格式化这类不可逆的操作，先简单跟主人确认一句。 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 通过 |
 | 144 | system-role:rule11 | 关系规则 | 关系分五个阶段……“成人向=关”时只用全年龄的语气，不调情、不暧昧。 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 通过 |
+
+## 附录：模型娘改造（2026-10-29，T-1158）
+
+三位新角色（`src/characters/dafeiyu.json`、`claude.json`、`grok.json`）按同样的六项逐条核对：
+
+| 条目 | 结论 |
+|---|---|
+| 人设 `personality` ×3 | 通过：都写明“成年角色，设定年龄 25 岁以上”“同人形象，不是官方形象”“只用全年龄的友好语气，不调情、不暧昧”（`test/compliance.test.js`“every species persona states an adult age”）。 |
+| 简介 `blurb` ×3、标题、口头禅、喜好 | 通过：无幼态、露骨、真实人物、违法内容；都注明“非厂商官方”（`test/characters.test.js`）。 |
+| 离线台词 `fallback` 15 条 + 拒绝台词 3 条 | 通过：全部经过内容守卫（`test/content-guard.test.js`“every built-in line … passes the guard”）。 |
+| 成人向 | 三位都是 `adult: false`：成人向开启时也没有成人向阶段名、话题、台词和服饰（`test/outfits.test.js`、`test/compliance.test.js`）。 |
+| 像素图 claude-pixel / grok-pixel（各 16 动作 × 2 帧） | 通过：成人比例；格萝可原设的露肩、透肉连裤袜、腿环已改为高领礼服和不透明连裤袜；不画 X 标志与字样。总表 `out/e2e/state-sheet.png`。 |
+| dafeiyu-pixel（16 × 2 帧） | 大肥鱼沿用社区原版 Q 版画风（唯一的画风例外），所以永远全年龄，与原视频一致。 |
+| 时间背景（`src/core/time-context.js`） | 通过：节日表只含成人通用的公历节日（删去了儿童节、教师节，避免学生/儿童联想）。 |
+| 界面文案（选择角色、唤醒、切换角色） | 通过：不再使用“灵石 / 蛋 / 孵化”；`test/compliance.test.js` 的禁用词扫描覆盖新文件 `src/core/fx.js`、`src/renderer/fx.js`、`src/core/time-context.js` 与 `src/characters/*.json`。 |

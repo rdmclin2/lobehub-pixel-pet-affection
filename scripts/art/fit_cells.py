@@ -1,0 +1,37 @@
+# Fit a sliced 4 x 4 sheet (slice_sheet.py output) into fixed cells, so every sheet of every character uses
+# the frame size of the built-in pixel packs (83 x 113): figure centred, standing on the cell's bottom, scaled down
+# (nearest neighbour, keeps hard pixels) only when a frame is larger than the cell.
+# usage: fit_cells.py <sliced.png> <out.png> [cell_w cell_h]
+import sys
+import numpy as np
+from PIL import Image
+
+src, dst = sys.argv[1], sys.argv[2]
+CW, CH = (int(sys.argv[3]), int(sys.argv[4])) if len(sys.argv) > 4 else (83, 113)
+COLS = ROWS = 4
+im = Image.open(src).convert('RGBA')
+w, h = im.width // COLS, im.height // ROWS
+s = min(1, CW / w, CH / h)
+out = Image.new('RGBA', (CW * COLS, CH * ROWS), (0, 0, 0, 0))
+for k in range(COLS * ROWS):
+    cell = im.crop(((k % COLS) * w, (k // COLS) * h, (k % COLS + 1) * w, (k // COLS + 1) * h))
+    if s < 1: cell = cell.resize((max(1, round(w * s)), max(1, round(h * s))), Image.NEAREST)
+    out.paste(cell, ((k % COLS) * CW + (CW - cell.width) // 2, (k // COLS) * CH + (CH - cell.height)))
+# The magenta key leaves a pink rim on hair edges and in enclosed gaps (between curls): drop pixels that are
+# mostly key colour, and pull tinted ones back to neutral (min(r, b) - g removed from r and b): near
+# transparency even when faint, elsewhere only when strong, so the characters' own reds stay.
+a = np.asarray(out).astype(np.int32)
+solid = a[..., 3] > 0
+near = np.zeros_like(solid)
+for dy in range(-2, 3):
+    for dx in range(-2, 3):
+        near |= ~np.roll(np.roll(solid, dy, 0), dx, 1)
+edge = solid & near
+spill = np.minimum(a[..., 0], a[..., 2]) - a[..., 1]
+a[spill > 70, 3] = 0
+fix = (edge & (spill > 12)) | (spill > 40)
+a[fix, 0] -= spill[fix]
+a[fix, 2] -= spill[fix]
+out = Image.fromarray(a.clip(0, 255).astype(np.uint8), 'RGBA')
+out.save(dst, optimize=True)
+print(dst, 'cell', CW, CH, 'sheet', out.size, 'scale', round(s, 3))

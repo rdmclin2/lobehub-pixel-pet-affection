@@ -2,12 +2,12 @@
 // Design 8.1: no growth stages / minor or infant framing in anything shown to the user or sent to the agent.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+require('./fixtures/adult-character');
 const fs = require('node:fs');
 const path = require('node:path');
-
 const ROOT = path.join(__dirname, '..', 'src');
 // Display and prompt sources. lh-client / lh-path / local-device are CLI plumbing ("child process").
-const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'core/outfits.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/sprites.js', 'renderer/style.css'];
+const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'core/outfits.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/fx.js', 'renderer/style.css', 'core/fx.js', 'core/time-context.js', ...fs.readdirSync(path.join(ROOT, 'characters')).map((f) => `characters/${f}`)];
 const BANNED = /幼崽|少年|少女|萝莉|正太|宝宝|校服|\bbaby\b|\bchild\b|成长阶段|成长进化|破壳|孵化|[一二三四火水草鲸]之?蛋|擦边/;
 
 test('no growth stage or minor framing in display or prompt sources', () => {
@@ -45,9 +45,9 @@ test('with adult content off, no adult line, topic, outfit or tone reaches the u
   const kinds = ['greet', 'fed', 'patted', 'played', 'bored', 'stage_up'];
   for (const settings of [null, { ageConfirmed: false, adultContent: false }, { ageConfirmed: true, adultContent: false }]) {
     for (const aff of [0, 20, 40, 70, 95]) {
-      const pet = st.createPet({ speciesId: 'embit', name: 'T', agentId: 'a', now: 0 });
+      const pet = st.createPet({ speciesId: 'testchan', name: 'T', agentId: 'a', now: 0 });
       st.setAffectionForTest(pet, aff);
-      const role = persona.buildSystemRole({ speciesId: 'embit', name: 'T', pet, settings });
+      const role = persona.buildSystemRole({ speciesId: 'testchan', name: 'T', pet, settings });
       const block = persona.buildStateBlock(pet, 0, settings);
       for (const tone of adultTone) assert.ok(!role.includes(tone) && !block.includes(tone), `adult tone leaked at ♥${aff}`);
       for (const t of adultTopics) assert.ok(!role.includes(t.label) && !block.includes(t.label), `adult topic ${t.label} leaked at ♥${aff}`);
