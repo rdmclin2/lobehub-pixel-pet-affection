@@ -120,14 +120,17 @@ function sheet(url) {
 // An element showing `look`; `action` (a function) picks the sprite action each frame.
 function lookEl(look, { className = 'look', alt = '', action = () => 'idle', speciesId = null } = {}) {
   if (!look) {
+    // Dafeiyu's clip is 16:9 with the character small in the middle: crop it like the desktop pet does
+    const wrap = document.createElement('div');
+    wrap.className = `${className} vlook`;
     const v = document.createElement('video');
-    v.className = className;
     v.muted = true;
     v.loop = true;
     v.autoplay = true;
     v.playsInline = true;
     if (speciesId) v.src = `assets/${speciesId}/${speciesOf(speciesId).clips.idle}`;
-    return v;
+    wrap.appendChild(v);
+    return wrap;
   }
   if (look.kind === 'sprites') {
     const c = document.createElement('canvas');
@@ -551,6 +554,47 @@ function renderPanel() {
   else if (panelKind === 'advanced') renderAdvanced();
 }
 
+// 版本与更新: the version, when it last checked, what it found, and a button to check now.
+const UPDATE_REASON = { translocated: '先把应用拖进“应用程序”文件夹再打开，以后就能自动更新。', dmg: '现在是从安装盘里直接打开的，先把应用拖进“应用程序”文件夹再打开，以后就能自动更新。', 'read-only': '应用所在的文件夹不能写入，没法替换自己，请手动下载。' };
+function updateStatusText(u) {
+  if (!u) return '';
+  return {
+    disabled: '开发版（从源码运行）不会自动更新。',
+    idle: '应用启动约 20 秒后会自动检查一次。',
+    checking: '正在检查…',
+    latest: '已经是最新版本。',
+    downloading: `发现新版本 v${u.version}，正在后台下载…`,
+    ready: `新版本 v${u.version} 已经下载好。离开电脑 10 分钟会自动重启更新，也可以现在就更新。`,
+    manual: `有新版本 v${u.version}。${UPDATE_REASON[u.error] || '这个版本没法自动替换自己，请下载安装。'}`,
+    error: `检查失败：${String(u.error || '').slice(0, 80)}。稍后会自动再试。`,
+  }[u.status] || '';
+}
+function renderUpdateSection() {
+  const sec = $('update-section');
+  if (!sec || !updateState) return;
+  const u = updateState;
+  const when = u.checkedAt ? new Date(u.checkedAt).toLocaleString('zh-CN', { hour12: false }) : '还没检查';
+  sec.querySelector('.ver').textContent = `当前版本 v${u.current} · 上次检查：${when}`;
+  const st = sec.querySelector('.st');
+  st.textContent = updateStatusText(u);
+  st.dataset.status = u.status;
+  const check = sec.querySelector('#update-check');
+  check.disabled = ['checking', 'downloading', 'disabled'].includes(u.status);
+  check.textContent = u.status === 'checking' ? '正在检查…' : '检查更新';
+  const go = sec.querySelector('#update-go');
+  go.classList.toggle('hidden', !['ready', 'manual'].includes(u.status));
+  go.textContent = u.status === 'ready' ? `立即更新到 v${u.version} 并重启` : `下载 v${u.version}`;
+}
+function updateSection() {
+  const sec = document.createElement('div');
+  sec.className = 'adv-section';
+  sec.id = 'update-section';
+  sec.innerHTML = '<h3>版本与更新</h3><p class="adv-text ver"></p><p class="adv-text st" role="status" aria-live="polite"></p><div class="size-row"><button id="update-check" class="btn">检查更新</button><button id="update-go" class="btn primary hidden"></button></div><p class="adv-note">自动更新：启动后检查一次，之后每 4 小时检查；新版本在后台下载，下载好后离开电脑 10 分钟会自动重启更新，退出应用时也会安装。</p>';
+  sec.querySelector('#update-check').addEventListener('click', () => window.pet.checkUpdate());
+  sec.querySelector('#update-go').addEventListener('click', () => window.pet.installUpdate());
+  return sec;
+}
+
 // Advanced settings: unlock everything at once (to see all the content, or to skip the grind).
 function renderAdvanced() {
   const a = view.affection;
@@ -640,6 +684,8 @@ function renderAdvanced() {
   });
   body.appendChild(size);
   body.appendChild(sec);
+  body.appendChild(updateSection());
+  renderUpdateSection();
 }
 
 async function unlockAllNow() {
@@ -850,6 +896,11 @@ function bindPetUi() {
     $('main-menu').classList.add('hidden');
     if (m === 'quit') window.pet.quit();
     if (m === 'advanced') openPanel('advanced');
+    if (m === 'check-update') {
+      await openPanel('advanced');
+      $('update-section').scrollIntoView({ block: 'nearest' });
+      window.pet.checkUpdate();
+    }
     if (m === 'update') await window.pet.installUpdate();
     if (m === 'adult') {
       const label = (v, id) => ((v.outfits.find((o) => o.id === id) || {}).label || id);
@@ -1101,7 +1152,10 @@ function frameLoop(ts) {
 
 // ---------- updates (src/main/updater.js) ----------
 let updateAnnounced = null;
+let updateState = null;
 function onUpdateStatus(u) {
+  updateState = u;
+  if (panelKind === 'advanced') renderUpdateSection();
   const b = $('menu-update');
   const label = { downloading: `正在下载新版本 v${u.version}…`, ready: `立即更新到 v${u.version} 并重启`, manual: `下载新版本 v${u.version}` }[u.status];
   b.classList.toggle('hidden', !label);

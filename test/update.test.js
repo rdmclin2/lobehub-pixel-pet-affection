@@ -111,3 +111,18 @@ test('on quit the swap happens without reopening; a failed swap keeps the old ap
   assert.equal(fs.readFileSync(path.join(keep, 'Contents', 'version'), 'utf8'), '0.4.0', 'rolled back');
   assert.deepEqual(fs.readdirSync(apps2), ['Pixel Pet Affection.app']);
 });
+
+test('a test feed replaces GitHub for both the update files and the latest-release lookup', () => {
+  const prev = process.env.PIXELPET_UPDATE_FEED;
+  try {
+    delete process.env.PIXELPET_UPDATE_FEED;
+    assert.equal(U.LATEST_URL('latest-mac.yml'), 'https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/latest/download/latest-mac.yml');
+    assert.equal(U.RELEASES_API_URL(), 'https://api.github.com/repos/rdmclin2/lobehub-pixel-pet-affection/releases/latest');
+    process.env.PIXELPET_UPDATE_FEED = 'http://127.0.0.1:9';
+    assert.equal(U.LATEST_URL('latest.yml'), 'http://127.0.0.1:9/latest.yml');
+    assert.equal(U.RELEASES_API_URL(), 'http://127.0.0.1:9/releases/latest');
+  } finally {
+    if (prev === undefined) delete process.env.PIXELPET_UPDATE_FEED;
+    else process.env.PIXELPET_UPDATE_FEED = prev;
+  }
+});

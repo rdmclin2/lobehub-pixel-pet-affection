@@ -232,3 +232,13 @@ canvas.sprite { object-fit: contain; }
 .pack-opt .btn { flex: none; white-space: nowrap; }
 .pack-opt .pick { min-width: 84px; }
 .panel-body { overflow-x: hidden; }
+#update-section .st[data-status="latest"] { color: #3a8f3a; }
+#update-section .st[data-status="error"] { color: #b0203a; }
+#update-section .st[data-status="ready"], #update-section .st[data-status="manual"] { color: #c9502a; font-weight: bold; }
+/* Dafeiyu's clip in the wardrobe: the same crop as .vwrap on the desktop (326x184 at -88,-25 in 150x150) */
+.vlook { position: relative; overflow: hidden; aspect-ratio: 1 / 1; }
+.vlook video { position: absolute; width: 217.3%; left: -58.7%; top: -16.7%; pointer-events: none; }
+.card .look.vlook { height: 108px; width: 108px; max-width: 100%; }
+.preview .look.vlook { height: auto; width: 100%; }
+/* the ⋯ menu stays usable in a small window (pet scaled down) */
+#main-menu { max-height: calc(100vh - 56px); overflow-y: auto; }

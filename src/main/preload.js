@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('pet', {
   onSettings: on('settings'),
   onUpdateStatus: on('update-status'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
+  checkUpdate: () => ipcRenderer.invoke('update-check'),
   onHatchStep: on('hatch-step'),
   onLoginPrompt: on('login-prompt'),
 });
