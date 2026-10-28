@@ -232,6 +232,7 @@ function wire() {
   });
   ipcMain.on('quit', () => app.quit());
   ipcMain.handle('update-install', () => updater.install());
+  ipcMain.handle('update-check', () => updater.checkNow());
 
   if (TEST_MODE) {
     // Test-only hooks used by the E2E suite to drive time-dependent behaviour.

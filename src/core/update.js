@@ -13,8 +13,10 @@ const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 
 const REPO = 'rdmclin2/lobehub-pixel-pet-affection';
-const LATEST_URL = (file) => `https://github.com/${REPO}/releases/latest/download/${file}`;
-const RELEASES_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+// PIXELPET_UPDATE_FEED (tests only) points both at a local server instead of GitHub.
+const FEED = () => process.env.PIXELPET_UPDATE_FEED || null;
+const LATEST_URL = (file) => (FEED() ? `${FEED()}/${file}` : `https://github.com/${REPO}/releases/latest/download/${file}`);
+const RELEASES_API_URL = () => (FEED() ? `${FEED()}/releases/latest` : `https://api.github.com/repos/${REPO}/releases/latest`);
 
 // The subset of electron-builder's update info we use:
 //   version: 0.4.1
@@ -129,4 +131,4 @@ function writeSwapScript(dir) {
   return file;
 }
 
-module.exports = { REPO, LATEST_URL, RELEASES_API, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };
+module.exports = { REPO, LATEST_URL, RELEASES_API_URL, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };

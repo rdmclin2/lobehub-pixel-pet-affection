@@ -25,14 +25,18 @@ class Updater extends EventEmitter {
     super();
     this.isBusy = isBusy;
     this.log = log;
-    this.state = { status: 'idle', version: null, url: null, error: null };
+    // status: idle | checking | latest | downloading | ready | manual | error | disabled
+    this.state = { status: 'idle', version: null, url: null, error: null, current: app.getVersion(), checkedAt: null };
     this.staged = null; // macOS: { app, newApp }
     this.installing = false;
     this.win = null; // electron-updater's autoUpdater on Windows
   }
 
+  // Only packaged builds update themselves; PIXELPET_UPDATE_TEST=1 (tests) turns it on in a dev run.
   enabled() {
-    return app.isPackaged && process.env.PIXELPET_TEST !== '1' && process.env.PIXELPET_NO_UPDATE !== '1';
+    if (process.env.PIXELPET_NO_UPDATE === '1') return false;
+    if (process.env.PIXELPET_UPDATE_TEST === '1') return true;
+    return app.isPackaged && process.env.PIXELPET_TEST !== '1';
   }
 
   _set(patch) {
@@ -41,23 +45,37 @@ class Updater extends EventEmitter {
   }
 
   start() {
-    if (!this.enabled()) return;
+    if (!this.enabled()) return this._set({ status: 'disabled' });
     if (process.platform === 'win32') this._initWindows();
     // PIXELPET_UPDATE_NOW=1 (release checks in CI): check at once and install as soon as it is ready.
     const now = process.env.PIXELPET_UPDATE_NOW === '1';
     if (now) this.on('status', (st) => { if (st.status === 'ready') this.install(); });
-    const check = () => this.check().catch((e) => { this.log(e); this._set({ status: 'error', error: e.message }); });
-    setTimeout(check, now ? 1000 : 20 * 1000);
+    const check = () => this.checkNow();
+    if (process.env.PIXELPET_UPDATE_TEST !== '1') setTimeout(check, now ? 1000 : 20 * 1000);
     setInterval(check, CHECK_EVERY_MS);
     setInterval(() => this._maybeInstallWhileIdle(), IDLE_CHECK_MS);
     app.on('before-quit', () => this._installOnQuit());
   }
 
-  async check() {
-    if (this.state.status === 'downloading' || this.state.status === 'ready' || this.installing) return;
-    if (process.platform === 'win32') return this.win.checkForUpdates();
-    if (process.platform === 'darwin') return this._checkMac();
-    return this._checkOther();
+  // Check now (at launch, every few hours, and from 高级设置 → 检查更新). Resolves with the new state:
+  // latest (nothing newer), downloading / ready (newer one on its way), manual (download page), error.
+  async checkNow() {
+    if (!this.enabled()) return this.state;
+    if (['checking', 'downloading', 'ready'].includes(this.state.status) || this.installing) return this.state;
+    this._set({ status: 'checking', error: null });
+    try {
+      if (process.platform === 'win32') {
+        const r = await this.win.checkForUpdates();
+        // update-available switches to downloading; otherwise this is the newest version
+        if (this.state.status === 'checking') this._set({ status: r && r.isUpdateAvailable ? 'downloading' : 'latest', version: r && r.isUpdateAvailable ? r.updateInfo.version : null });
+      } else if (process.platform === 'darwin') await this._checkMac();
+      else await this._checkOther();
+    } catch (e) {
+      this.log(e);
+      this._set({ status: 'error', error: e.message });
+    }
+    this._set({ checkedAt: Date.now() });
+    return this.state;
   }
 
   // ---- Windows -----------------------------------------------------------------------------------
@@ -75,7 +93,7 @@ class Updater extends EventEmitter {
   async _checkMac() {
     const where = U.macAppPath(process.execPath);
     const info = U.parseUpdateInfo(await this._text(U.LATEST_URL('latest-mac.yml')));
-    if (!U.isNewer(info.version, app.getVersion())) return this._set({ status: 'idle', version: null });
+    if (!U.isNewer(info.version, app.getVersion())) return this._set({ status: 'latest', version: null });
     const zip = U.macZip(info);
     if (!zip || !zip.sha512) throw new Error('latest-mac.yml has no mac zip');
     const page = `https://github.com/${U.REPO}/releases/tag/v${info.version}`;
@@ -109,10 +127,10 @@ class Updater extends EventEmitter {
 
   // ---- Linux and anything else: point at the download page ------------------------------------------
   async _checkOther() {
-    const rel = JSON.parse(await this._text(U.RELEASES_API));
+    const rel = JSON.parse(await this._text(U.RELEASES_API_URL()));
     const version = String(rel.tag_name || '').replace(/^v/, '');
     if (U.isNewer(version, app.getVersion())) this._set({ status: 'manual', version, url: rel.html_url });
-    else this._set({ status: 'idle', version: null });
+    else this._set({ status: 'latest', version: null });
   }
 
   // ---- installing ----------------------------------------------------------------------------------

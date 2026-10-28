@@ -637,6 +637,17 @@ async function dafeiyu() {
       assert.match(created.systemRole, /鱼片/);
       assert.match(created.title, /Mow \(Dafeiyu\)/);
     });
+    await step(S, 'in the wardrobe the signature outfit shows its animation cropped to fill the card', async () => {
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="daily"] .vlook video');
+      await page.waitForFunction(() => { const v = document.querySelector('.card[data-outfit="daily"] .vlook video'); return v && v.readyState >= 2; }, null, { timeout: 10000 });
+      const box = await page.evaluate(() => { const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; }; return { card: r('.card[data-outfit="daily"] .vlook'), video: r('.card[data-outfit="daily"] .vlook video'), preview: r('#outfit-preview .vlook') }; });
+      assert.ok(box.card[1] >= 100 && box.video[0] > box.card[0] * 2, JSON.stringify(box));
+      await page.screenshot({ path: path.join(OUT, 'dafeiyu-wardrobe-signature.png') });
+      await page.click('#panel-close');
+      return `card ${box.card.join('x')}, video ${box.video.join('x')}, preview ${box.preview.join('x')}`;
+    }, page);
   } finally {
     await app.close().catch(() => {});
   }
@@ -1186,6 +1197,12 @@ async function advanced() {
       await page.click('#panel-close');
       await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
       assert.equal(saved(), 0.6);
+      // the ⋯ menu still fits (it scrolls) in the small window
+      await clickAct(page, 'menu');
+      const fit = await page.evaluate(() => { const m = document.getElementById('main-menu').getBoundingClientRect(); return { top: Math.round(m.top), bottom: Math.round(m.bottom), h: window.innerHeight }; });
+      assert.ok(fit.top >= 0 && fit.bottom <= fit.h, JSON.stringify(fit));
+      await page.screenshot({ path: path.join(OUT, 'pet-size-small-menu.png') });
+      await page.mouse.move(1, 1);
       await app.close();
       const again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
       try {
@@ -1290,6 +1307,64 @@ async function packs() {
     }, page);
   } finally {
     await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------------ update
+// 检查更新 from the ⋯ menu against a local update feed (Linux path: GitHub's "latest release" JSON).
+async function update() {
+  const S = 'update';
+  const http = require('node:http');
+  const { version } = require('../package.json');
+  let tag = `v${version}`;
+  const server = http.createServer((req, res) => {
+    if (req.url !== '/releases/latest') { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: tag, html_url: `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/tag/${tag}` }));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const feed = `http://127.0.0.1:${server.address().port}`;
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-updfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-upd-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_UPDATE_TEST: '1', PIXELPET_UPDATE_FEED: feed });
+  const statusText = () => page.textContent('#update-section .st');
+  try {
+    await page.waitForSelector('.egg-card');
+    await page.locator('.egg-card').nth(1).click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+
+    await step(S, '⋯ → 检查更新 shows the version and says it is the newest one', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="check-update"]');
+      await page.waitForFunction(() => /已经是最新版本/.test(document.querySelector('#update-section .st').textContent), null, { timeout: 15000 });
+      const ver = await page.textContent('#update-section .ver');
+      assert.match(ver, new RegExp(`当前版本 v${version.replace(/\./g, '\\.')} · 上次检查：\\d`));
+      assert.equal(await page.locator('#update-go').isHidden(), true);
+      await page.locator('#update-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, 'update-latest.png') });
+      return `${ver} / ${await statusText()}`;
+    }, page);
+
+    await step(S, 'when a newer release exists, 检查更新 finds it and offers it', async () => {
+      tag = 'v9.9.9';
+      await page.click('#update-check');
+      await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.querySelector('#update-section .st').textContent), null, { timeout: 15000 });
+      assert.match(await page.textContent('#update-go'), /下载 v9\.9\.9/);
+      await page.locator('#update-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, 'update-found.png') });
+      await page.click('#panel-close');
+      await clickAct(page, 'menu');
+      const menu = await page.textContent('#menu-update');
+      assert.match(menu, /下载新版本 v9\.9\.9/);
+      await page.screenshot({ path: path.join(OUT, 'update-menu.png') });
+      return `${await statusText().catch(() => '')} · menu: ${menu}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
   }
 }
 
@@ -1426,6 +1501,7 @@ async function art() {
   if (which === 'space' || which === 'all') await space();
   if (which === 'advanced' || which === 'all') await advanced();
   if (which === 'packs' || which === 'all') await packs();
+  if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
