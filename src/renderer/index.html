@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack:" />
   <title>Pixel Pet</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -39,7 +39,7 @@
   <section id="hatching" class="screen hidden">
     <h1 id="hatch-title">唤醒中……</h1>
     <canvas id="hatch-canvas" width="192" height="192"></canvas>
-    <img id="hatch-img" class="hatch-img hidden" alt="" />
+    <div id="hatch-look" class="hatch-img hidden"></div>
     <div id="hatch-vwrap" class="vwrap hidden"><video id="hatch-video" muted playsinline></video></div>
     <ol id="steps" class="steps">
       <li data-step="checking-login">检查 LobeHub 登录</li>
@@ -80,7 +80,7 @@
       <!-- drag to resize the pet (also Ctrl/⌘ + wheel over the pet); only shown while hovering -->
       <div id="resize-grip" class="resize-grip" title="拖动调整大小（也可以按住 Ctrl/⌘ 滚动滚轮）" aria-label="调整宠物大小" role="slider" aria-valuemin="50" aria-valuemax="250"></div>
       <canvas id="pet-canvas" class="pet-hit hidden" width="120" height="120"></canvas>
-      <div id="char-wrap" class="char-wrap pet-hit hidden" data-status="idle"><img id="pet-img" class="char" alt="" draggable="false" /><span id="char-fx" class="char-fx"></span></div>
+      <div id="char-wrap" class="char-wrap pet-hit hidden" data-status="idle"><div id="pet-look" class="look-slot"></div><span id="char-fx" class="char-fx"></span></div>
       <div id="vwrap" class="vwrap pet-hit hidden"><video id="pet-video" muted playsinline></video></div>
       <div id="outfit-badge" class="outfit-badge"></div>
       <div id="float-layer" class="float-layer" aria-live="polite"></div>

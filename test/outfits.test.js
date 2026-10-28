@@ -5,9 +5,6 @@ const o = require('../src/core/outfits');
 const st = require('../src/core/pet-state');
 const { REL_STAGES } = require('../src/core/affection');
 const { migratePet } = require('../src/core/migrate');
-const fs = require('node:fs');
-const path = require('node:path');
-const { SPECIES_IDS } = require('../src/core/species');
 
 const T0 = new Date('2026-01-05T10:00:00').getTime();
 const ADULT = { ageConfirmed: true, adultContent: true };
@@ -25,32 +22,8 @@ test('every stage has at least one all-ages outfit; the adult stages also have a
   assert.ok(o.OUTFITS.every((x) => x.rating === 'all' || ['flirty', 'lover'].includes(x.stage)), 'adult outfits only in adult stages');
 });
 
-test('every companion has its own picture for every outfit it can wear', () => {
-  const ROOT = path.join(__dirname, '..', 'src', 'renderer');
-  for (const sp of SPECIES_IDS) {
-    const pics = new Set();
-    for (const x of o.OUTFITS) {
-      if (sp === 'dafeiyu' && x.rating === 'adult') continue; // never offered (see compliance tests)
-      const art = o.artFor(sp, x.id);
-      if (sp === 'dafeiyu' && x.id === 'daily') {
-        assert.equal(art, null, 'Dafeiyu wears its signature outfit as its animated clips');
-        continue;
-      }
-      assert.equal(art, `assets/chars/${sp}/${x.id}.webp`);
-      assert.ok(fs.statSync(path.join(ROOT, art)).size > 1000, `${art} exists`);
-      pics.add(art);
-    }
-    assert.ok(pics.size >= 8, sp);
-  }
-  assert.equal(o.artFor('embit', 'nope'), 'assets/chars/embit/daily.webp');
-});
-
-test('the wardrobe and the pet show the same picture: listOutfits carries the art', () => {
-  const p = mk(100, 'sprig');
-  const list = o.listOutfits(p, ADULT);
-  for (const x of list) assert.equal(x.art, o.artFor('sprig', x.id));
+test('Dafeiyu keeps its signature outfit name (its animated look)', () => {
   const d = o.listOutfits(mk(0, 'dafeiyu'), ADULT).find((x) => x.id === 'daily');
-  assert.equal(d.art, null);
   assert.equal(d.label, '招牌女仆装');
 });
 

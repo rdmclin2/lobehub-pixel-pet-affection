@@ -18,7 +18,7 @@ const clampScale = (v) => {
 };
 const petScale = (s) => clampScale(s && s.petScale);
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {} };
 
 // Adult content can only be on for a current, confirmed 18+ answer.
 function normalizeSettings(raw) {
@@ -29,6 +29,9 @@ function normalizeSettings(raw) {
   if (!s.ageConfirmed) s.ageConfirmedAt = null;
   s.adultContent = s.ageConfirmed && s.adultContent === true;
   s.petScale = clampScale(s.petScale);
+  // the pet pack chosen per species ({ bubbo: 'bubbo-pixel' }); unknown packs fall back when looked up
+  const ap = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
+  s.appearance = Object.fromEntries(Object.entries(ap).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(v)));
   return s;
 }
 

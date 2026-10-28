@@ -101,9 +101,76 @@ function bindResize() {
 }
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
-// Every companion is a picture per outfit (`view.art`, see core/outfits.js artFor). Dafeiyu plays its
-// animated clips while wearing its signature outfit (art: null) and shows pictures for the others.
-const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.art);
+// How a companion looks comes from its pet pack (`view.look`, see core/packs.js): a picture per outfit, or
+// a pixel sprite sheet per outfit with one row of frames per action. Dafeiyu plays its own clips while
+// wearing its signature outfit (look: null).
+const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.look);
+
+// ---------- looks: pictures and animated pixel sprites ----------
+const sprites = new Set(); // live sprite canvases: { canvas, look, img, action() }
+const sheetImages = new Map();
+function sheet(url) {
+  if (!sheetImages.has(url)) {
+    const img = new Image();
+    img.src = url;
+    sheetImages.set(url, img);
+  }
+  return sheetImages.get(url);
+}
+// An element showing `look`; `action` (a function) picks the sprite action each frame.
+function lookEl(look, { className = 'look', alt = '', action = () => 'idle', speciesId = null } = {}) {
+  if (!look) {
+    const v = document.createElement('video');
+    v.className = className;
+    v.muted = true;
+    v.loop = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    if (speciesId) v.src = `assets/${speciesId}/${speciesOf(speciesId).clips.idle}`;
+    return v;
+  }
+  if (look.kind === 'sprites') {
+    const c = document.createElement('canvas');
+    c.className = `${className} sprite${look.pixelated ? ' pixelated' : ''}`;
+    c.width = look.frame.width;
+    c.height = look.frame.height;
+    c.setAttribute('role', 'img');
+    c.setAttribute('aria-label', alt);
+    const s = { canvas: c, look, img: sheet(look.url), action, start: performance.now() };
+    sprites.add(s);
+    drawSprite(s, performance.now());
+    return c;
+  }
+  const img = document.createElement('img');
+  img.className = `${className}${look.pixelated ? ' pixelated' : ''}`;
+  img.alt = alt;
+  img.draggable = false;
+  img.src = look.url;
+  return img;
+}
+function drawSprite(s, now) {
+  const { look, img, canvas } = s;
+  if (!img.complete || !img.naturalWidth) return;
+  const want = s.action();
+  const a = look.actions[want] || look.actions.idle;
+  if (s.cur !== want) { s.cur = want; s.start = now; }
+  const i = Math.floor(((now - s.start) / 1000) * a.fps) % a.frames;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const { width: w, height: h } = look.frame;
+  ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);
+}
+function tickSprites(now) {
+  for (const s of sprites) {
+    if (!s.canvas.isConnected) { sprites.delete(s); continue; }
+    drawSprite(s, now);
+  }
+}
+function setLook(slot, look, opts) {
+  slot.textContent = '';
+  slot.appendChild(lookEl(look, opts));
+}
 const FOOD_EMOJI = { rice: '🍚', cookie: '🍪', fruit: '🍎' };
 
 function playClip(video, sp, key, loop = true) {
@@ -186,11 +253,7 @@ function selectEgg(id) {
   for (const c of document.querySelectorAll('.egg-card')) c.classList.toggle('selected', c.dataset.species === id);
   const box = $('egg-info');
   box.textContent = '';
-  const img = document.createElement('img');
-  img.className = 'egg-portrait';
-  img.alt = sp.nameZh;
-  img.src = sp.portrait;
-  box.appendChild(img);
+  box.appendChild(lookEl(sp.portrait, { className: 'egg-portrait', alt: sp.nameZh, action: () => 'wave' }));
   box.appendChild(document.createTextNode(`${elementLabel(sp.element)}：${sp.blurb}`));
   $('hatch-btn').disabled = false;
   $('pet-name').placeholder = `给它起个名字（默认 ${sp.nameZh}）`;
@@ -307,8 +370,8 @@ async function startHatch() {
     playClip($('hatch-video'), sp, 'hatch', false);
   } else {
     $('hatch-canvas').classList.add('hidden');
-    $('hatch-img').src = sp.portrait;
-    $('hatch-img').classList.remove('hidden');
+    setLook($('hatch-look'), sp.portrait, { className: 'look', alt: sp.nameZh, action: () => 'cheer' });
+    $('hatch-look').classList.remove('hidden');
   }
   setTimeout(() => {
     enterPet(res.view);
@@ -323,12 +386,12 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
-  const src = view.art;
-  const img = $('pet-img');
-  if (img.dataset.src !== src) {
-    img.dataset.src = src;
-    img.src = src;
-    img.alt = `${view.pet.name}`;
+  const key = `${view.look.packId}/${view.outfit}`;
+  const slot = $('pet-look');
+  if (slot.dataset.key !== key) {
+    slot.dataset.key = key;
+    setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
+    $('char-wrap').classList.toggle('has-sprites', view.look.kind === 'sprites');
     $('char-wrap').dataset.outfit = view.outfit;
     // a short sparkle so the change of clothes is noticed
     $('char-wrap').classList.remove('changed');
@@ -341,7 +404,7 @@ function enterPet(v) {
   view = v;
   revealSpecies = null;
   $('hatch-vwrap').classList.add('hidden');
-  $('hatch-img').classList.add('hidden');
+  $('hatch-look').classList.add('hidden');
   $('hatch-canvas').classList.remove('hidden');
   oneShot = null;
   $('pet-video').dataset.key = '';
@@ -444,25 +507,8 @@ function hideToast() {
 }
 
 // ---------- wardrobe and topics (design 9.5, 9.6) ----------
-// The same picture the pet shows when wearing the outfit (Dafeiyu's signature outfit is its idle clip).
-function outfitArt(o, speciesId) {
-  if (!o.art) {
-    const v = document.createElement('video');
-    v.className = 'look';
-    v.muted = true;
-    v.loop = true;
-    v.autoplay = true;
-    v.playsInline = true;
-    v.src = `assets/${speciesId}/${speciesOf(speciesId).clips.idle}`;
-    return v;
-  }
-  const img = document.createElement('img');
-  img.className = 'look';
-  img.alt = o.label;
-  img.draggable = false;
-  img.src = o.art;
-  return img;
-}
+// The same look the pet shows when wearing the outfit (Dafeiyu's signature outfit is its idle clip).
+const outfitArt = (o, speciesId) => lookEl(o.look, { className: 'look', alt: o.label, speciesId });
 
 function panelMsg(text, ok = false) {
   const m = $('panel-msg');
@@ -523,7 +569,51 @@ function renderAdvanced() {
   btn.textContent = all ? '已经全部解锁' : '解锁全部好感度和服饰';
   btn.disabled = all;
   btn.addEventListener('click', unlockAllNow);
-  body.appendChild(sec);
+
+  // appearance: which pet pack dresses this companion; packs can be imported from a folder or .zip
+  const look = document.createElement('div');
+  look.className = 'adv-section';
+  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择角色的画风。角色包只提供图片，解锁条件和成人向限制不受角色包影响。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
+  const list = look.querySelector('.pack-list');
+  for (const o of view.appearance.options) {
+    const row = document.createElement('div');
+    row.className = `pack-opt${o.id === view.appearance.packId ? ' on' : ''}`;
+    row.dataset.pack = o.id;
+    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
+    const pick = row.querySelector('.pick');
+    pick.textContent = o.id === view.appearance.packId ? '✓ 使用中' : '使用';
+    pick.setAttribute('aria-checked', String(o.id === view.appearance.packId));
+    pick.disabled = o.id === view.appearance.packId;
+    row.querySelector('b').textContent = o.name;
+    row.querySelector('span').textContent = `${o.kind === 'sprites' ? '像素动画' : '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    pick.addEventListener('click', async () => {
+      const r = await window.pet.setAppearance(o.id);
+      if (!r.ok) return;
+      view = r.view;
+      applyArt();
+      renderAdvanced();
+      panelMsg(`外观已换成「${o.name}」。`, true);
+    });
+    if (o.source === 'user') {
+      const del = document.createElement('button');
+      del.className = 'btn';
+      del.textContent = '移除';
+      del.addEventListener('click', async () => {
+        if (!confirm(`移除角色包「${o.name}」？`)) return;
+        await window.pet.removePack(o.id);
+      });
+      row.appendChild(del);
+    }
+    list.appendChild(row);
+  }
+  look.querySelector('#pack-import').addEventListener('click', async () => {
+    const r = await window.pet.importPack();
+    if (r.reason === 'canceled') return;
+    if (!r.ok) return panelMsg(`导入失败：${(r.errors || []).slice(0, 3).join('；')}`);
+    panelMsg(r.pack.species === view.pet.speciesId ? `已导入「${r.pack.name}」，点“使用”换上。` : `已导入「${r.pack.name}」（给 ${(speciesOf(r.pack.species) || {}).nameZh || r.pack.species} 用的）。`, true);
+  });
+  look.querySelector('#pack-folder').addEventListener('click', () => window.pet.openPacksFolder());
+  body.appendChild(look);
 
   const size = document.createElement('div');
   size.className = 'adv-section';
@@ -549,6 +639,7 @@ function renderAdvanced() {
     panelMsg('宠物大小已恢复为 100%。', true);
   });
   body.appendChild(size);
+  body.appendChild(sec);
 }
 
 async function unlockAllNow() {
@@ -854,11 +945,12 @@ function bindPetUi() {
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-    if (drag.moved) { window.pet.moveBy(dx, dy); drag.x = e.screenX; drag.y = e.screenY; }
+    if (drag.moved) { petLifted = true; window.pet.moveBy(dx, dy); drag.x = e.screenX; drag.y = e.screenY; }
   });
   window.addEventListener('mouseup', () => {
     if (drag && !drag.moved) doAct('pat');
     drag = null;
+    petLifted = false;
   });
 }
 
@@ -952,18 +1044,30 @@ async function release(deleteAgent) {
 // ---------- render loop ----------
 // The character picture moves with CSS (style.css, .char-wrap[data-status]); this only picks the state.
 const CHAR_FX = { sleep: '💤', hungry: '🍙?', sad: '💧', think: '💭', happy: '♪' };
+let petLifted = false; // the pet is being dragged around
+function petStatus() {
+  const now = performance.now();
+  if (petLifted) return 'lifted';
+  return thinking ? 'think' : eating ? 'eat' : oneShot && now < oneShot.until ? oneShot.key : now < talkUntil ? 'talk' : view.status;
+}
+// App states -> pack actions (a pack without one plays idle).
+const STATUS_ACTION = { think: 'think', eat: 'eat', talk: 'talk', pat: 'wave', play: 'cheer', sleep: 'sleep', lifted: 'lifted', evolve: 'cheer', hatch: 'cheer' };
+const petAction = () => STATUS_ACTION[petStatus()] || 'idle';
 function animateChar() {
   const wrap = $('char-wrap');
   const now = performance.now();
-  const status = thinking ? 'think' : eating ? 'eat' : oneShot && now < oneShot.until ? oneShot.key : now < talkUntil ? 'talk' : view.status;
+  const status = petStatus();
   if (wrap.dataset.status !== status) wrap.dataset.status = status;
-  const fx = status === 'eat' ? FOOD_EMOJI[eating] || '🍚' : CHAR_FX[status] || '';
+  // a sprite pack draws its own Z and thought bubble
+  const own = view.look && view.look.kind === 'sprites' && view.look.actions[STATUS_ACTION[status]];
+  const fx = status === 'eat' ? FOOD_EMOJI[eating] || '🍚' : own ? '' : CHAR_FX[status] || '';
   if ($('char-fx').textContent !== fx) $('char-fx').textContent = fx;
   wrap.classList.toggle('flash', now < flashUntil);
 }
 
 function frameLoop(ts) {
   const t = ts / 1000;
+  tickSprites(performance.now());
   if (!$('onboarding').classList.contains('hidden')) {
     document.querySelectorAll('.egg-card').forEach((c, i) => {
       const ctx = c.querySelector('canvas').getContext('2d');
@@ -1025,7 +1129,7 @@ async function main() {
   $('toast-close').addEventListener('click', hideToast);
   $('toast-open').addEventListener('click', () => openPanel('wardrobe'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
-  window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); } });
+  window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced') renderAdvanced(); } });
   window.pet.onSay((m) => say(m.text, m.kind, m.source, m.reason));
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);

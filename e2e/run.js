@@ -1127,7 +1127,7 @@ async function advanced() {
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
-      await page.waitForFunction(() => (document.getElementById('pet-img').getAttribute('src') || '').endsWith('silk_robe.webp'));
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.endsWith('/silk_robe'));
       assert.match(await page.textContent('#meta'), /恋人 ♥100 · 已满级/);
       return 'pet now wears 丝绸睡袍';
     }, page);
@@ -1204,6 +1204,95 @@ async function advanced() {
   }
 }
 
+// ------------------------------------------------------------------ packs
+// Pet packs: 泡鲸 starts in the pixel pack; the look can be switched; a pack can be imported (here from a
+// folder through the test hook, the UI opens a file dialog), used, and removed again.
+async function packs() {
+  const S = 'packs';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-packs-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-packsfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const key = () => page.evaluate(() => document.getElementById('pet-look').dataset.key);
+  const openAdvanced = async () => { await clickAct(page, 'menu'); await page.click('[data-menu="advanced"]'); await page.waitForSelector('.pack-list .pack-opt'); };
+  try {
+    await page.waitForSelector('.egg-card');
+    await page.locator('.egg-card').nth(1).click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+
+    await step(S, '泡鲸 starts as an animated pixel sprite; dragging plays the lifted action', async () => {
+      assert.equal(await key(), 'bubbo-pixel/daily');
+      assert.equal(await page.locator('#pet-look canvas.sprite.pixelated').count(), 1);
+      const box = await page.locator('#char-wrap').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 - 20, box.y + box.height / 2 - 10, { steps: 4 });
+      const during = await page.evaluate(() => document.getElementById('char-wrap').dataset.status);
+      await page.screenshot({ path: path.join(OUT, 'pack-pixel-lifted.png') });
+      await page.mouse.up();
+      assert.equal(during, 'lifted');
+      return 'status while dragging: lifted';
+    }, page);
+
+    await step(S, '高级设置 lists the packs for this companion; switching to 立绘 changes the pet', async () => {
+      await openAdvanced();
+      const names = await page.locator('.pack-opt .meta b').allTextContents();
+      assert.deepEqual(names.sort(), ['泡鲸 · 像素', '泡鲸 · 立绘'].sort());
+      await page.click('.pack-opt[data-pack="bubbo-illustrated"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="bubbo-illustrated"]');
+      await page.click('#panel-close');
+      assert.equal(await key(), 'bubbo-illustrated/daily');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance.bubbo, 'bubbo-illustrated');
+      return names.join(' / ');
+    }, page);
+
+    await step(S, 'an imported pack is listed as imported, can be used, and falls back for outfits it lacks', async () => {
+      const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-mypack-'));
+      const base = path.join(ROOT, 'src', 'renderer', 'packs', 'bubbo-pixel');
+      const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
+      fs.mkdirSync(path.join(src, 'sheets'));
+      fs.copyFileSync(path.join(base, 'sheets', 'casual.png'), path.join(src, 'sheets', 'mine.png'));
+      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-bubbo', name: '我的泡鲸', author: 'tester', outfits: { daily: 'sheets/mine.png' } }));
+      const r = await page.evaluate((d) => window.pet.debugImportPack(d), src);
+      assert.equal(r.ok, true, JSON.stringify(r));
+      assert.ok(fs.existsSync(path.join(data, 'packs', 'my-bubbo', 'pack.json')), 'copied into the user pack folder');
+      await openAdvanced();
+      assert.match(await page.textContent('.pack-opt[data-pack="my-bubbo"] .meta span'), /导入/);
+      await page.click('.pack-opt[data-pack="my-bubbo"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="my-bubbo"]');
+      await page.screenshot({ path: path.join(OUT, 'pack-advanced-list.png') });
+      await page.click('#panel-close');
+      assert.equal(await key(), 'my-bubbo/daily');
+      const v = await view(page);
+      assert.equal(v.outfits.find((o) => o.id === 'casual').look.packId, 'bubbo-pixel', 'missing outfits fall back');
+      return 'my-bubbo in use; other outfits from the default pack';
+    }, page);
+
+    await step(S, 'a broken pack is refused with its reasons', async () => {
+      const bad = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-badpack-'));
+      fs.writeFileSync(path.join(bad, 'pack.json'), JSON.stringify({ schema: 1, id: 'bad', name: 'x', species: 'bubbo', kind: 'sprites', outfits: { daily: '../x.png' } }));
+      const r = await page.evaluate((d) => window.pet.debugImportPack(d), bad);
+      assert.equal(r.ok, false);
+      assert.ok(r.errors.some((e) => /relative path|frame|idle/.test(e)), r.errors.join('; '));
+      return r.errors.slice(0, 2).join('; ');
+    });
+
+    await step(S, 'removing the pack in use puts the companion back in its default pixel pack', async () => {
+      await openAdvanced();
+      await page.click('.pack-opt[data-pack="my-bubbo"] .btn:not(.pick)');
+      await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack="my-bubbo"]'));
+      await page.click('#panel-close');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'bubbo-pixel/daily');
+      assert.equal(fs.existsSync(path.join(data, 'packs', 'my-bubbo')), false);
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ------------------------------------------------------------------ space
 // Where the pet's agent lives: the personal space is the default; a workspace can be chosen; with
 // `lh workspace use` pinned, choosing personal says that it switches lh back first.
@@ -1259,16 +1348,20 @@ async function space() {
 
 // ------------------------------------------------------------------ art
 // Contact sheet of every companion in every outfit, loaded from the same pictures the pet and the
-// wardrobe show (assets/chars/<species>/<outfit>.webp).
+// wardrobe show (the pet packs in src/renderer/packs).
 async function art() {
   const S = 'art';
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-art-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-artfake-')) });
   try {
     await page.waitForSelector('.egg-card');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 760));
-    await step(S, 'outfit sheet: every companion in every outfit she can wear', async () => {
-      const { OUTFITS, artFor } = require('../src/core/outfits');
-      const rows = ['embit', 'bubbo', 'sprig', 'dafeiyu'].map((sp) => OUTFITS.map((o) => (sp === 'dafeiyu' && o.rating === 'adult' ? null : artFor(sp, o.id))));
+    await step(S, 'outfit sheet: every companion in every outfit she can wear (illustrated packs)', async () => {
+      const { OUTFITS } = require('../src/core/outfits');
+      const P = require('../src/core/packs');
+      const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+      const look = (pk, sp, o) => P.resolveLook(packs, { packId: pk, fallbackId: pk, speciesId: sp, outfitId: o });
+      const rows = ['embit', 'bubbo', 'sprig', 'dafeiyu'].map((sp) => OUTFITS.map((o) => (sp === 'dafeiyu' && o.rating === 'adult' ? null : look(`${sp}-illustrated`, sp, o.id))));
+      rows.push(OUTFITS.map((o) => look('bubbo-pixel', 'bubbo', o.id)));
       const missing = await page.evaluate(async ({ rows, labels }) => {
         document.body.innerHTML = '';
         document.body.style.cssText = 'margin:0;background:#e9e4f5;overflow:visible';
@@ -1276,15 +1369,15 @@ async function art() {
         grid.style.cssText = `display:grid;grid-template-columns:repeat(${labels.length},80px);gap:2px;padding:4px;font:10px sans-serif;text-align:center`;
         labels.forEach((l) => { const d = document.createElement('div'); d.textContent = l; grid.appendChild(d); });
         const waits = [];
-        for (const row of rows) for (const src of row) {
+        for (const row of rows) for (const lk of row) {
           const cell = document.createElement('div');
           cell.style.cssText = 'height:170px;display:flex;align-items:flex-end;justify-content:center;background:#fff';
-          if (src) {
-            const img = document.createElement('img');
-            img.style.cssText = 'height:166px;max-width:78px;object-fit:contain';
-            img.src = src;
-            waits.push(img.decode().then(() => null, () => src));
-            cell.appendChild(img);
+          if (lk) {
+            const el = lookEl(lk, { className: 'look' }); // the app's own renderer (pictures and sprites)
+            el.style.cssText = 'height:166px;max-width:78px;object-fit:contain';
+            const img = lk.kind === 'sprites' ? sheet(lk.url) : el;
+            waits.push(img.decode().then(() => null, () => lk.url));
+            cell.appendChild(el);
           } else cell.textContent = '—';
           grid.appendChild(cell);
         }
@@ -1292,8 +1385,31 @@ async function art() {
         return (await Promise.all(waits)).filter(Boolean);
       }, { rows, labels: OUTFITS.map((o) => o.label) });
       assert.deepEqual(missing, []);
+      await page.waitForTimeout(300);
       await page.screenshot({ path: path.join(OUT, 'outfit-sheet.png'), fullPage: true });
-      return `rows: embit/bubbo/sprig/dafeiyu; columns: ${OUTFITS.map((o) => o.id).join(', ')} (— = not offered / Dafeiyu's animated signature outfit)`;
+      return `rows: embit/bubbo/sprig/dafeiyu illustrated, bubbo pixel; columns: ${OUTFITS.map((o) => o.id).join(', ')}`;
+    });
+
+    await step(S, 'pixel action sheet: 泡鲸 in every outfit doing every action, drawn by the app', async () => {
+      const { OUTFITS } = require('../src/core/outfits');
+      const P = require('../src/core/packs');
+      const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+      const looks = OUTFITS.map((o) => P.resolveLook(packs, { packId: 'bubbo-pixel', fallbackId: 'bubbo-pixel', speciesId: 'bubbo', outfitId: o.id }));
+      await page.evaluate(async ({ looks, actions }) => {
+        document.body.innerHTML = '';
+        const grid = document.createElement('div');
+        grid.style.cssText = `display:grid;grid-template-columns:repeat(${actions.length},88px);gap:2px;padding:4px;background:#2b2440`;
+        for (const lk of looks) for (const a of actions) {
+          const el = lookEl(lk, { className: 'look', action: () => a });
+          el.style.cssText = 'height:118px;width:auto';
+          grid.appendChild(el);
+        }
+        document.body.appendChild(grid);
+        await Promise.all(looks.map((l) => sheet(l.url).decode()));
+      }, { looks, actions: P.ACTIONS });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(OUT, 'pixel-action-sheet.png'), fullPage: true });
+      return `rows: ${OUTFITS.length} outfits; columns: ${P.ACTIONS.join(', ')}`;
     });
   } finally {
     await app.close().catch(() => {});
@@ -1309,6 +1425,7 @@ async function art() {
   if (which === 'live' || which === 'all') await live();
   if (which === 'space' || which === 'all') await space();
   if (which === 'advanced' || which === 'all') await advanced();
+  if (which === 'packs' || which === 'all') await packs();
   if (which === 'art' || which === 'all') await art();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
