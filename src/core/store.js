@@ -24,6 +24,15 @@ class Store {
     fs.renameSync(tmp, this.file);
   }
 
+  // Copy the current save to `name` (e.g. before a schema migration). Only once: an existing
+  // backup is never overwritten. Returns true when a backup was written.
+  backupOnce(name) {
+    const dest = path.join(path.dirname(this.file), name);
+    if (fs.existsSync(dest) || !fs.existsSync(this.file)) return false;
+    fs.copyFileSync(this.file, dest);
+    return true;
+  }
+
   clear() {
     try {
       fs.unlinkSync(this.file);

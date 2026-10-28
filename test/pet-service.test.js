@@ -29,7 +29,7 @@ test('first hatch with no login runs the login flow, creates the agent, and gree
   assert.equal(prompt.code, 'ABCD-1234');
   assert.equal(view.pet.name, '小芽');
   assert.match(view.pet.agentId, /^agt_FAKE/);
-  assert.equal(said[0].kind, 'hatched');
+  assert.equal(said[0].kind, 'met');
   assert.equal(said[0].source, 'llm');
   const created = JSON.parse(fs.readFileSync(path.join(dir, 'last-create.json')));
   assert.match(created.systemRole, /叶芽/);
@@ -401,4 +401,166 @@ test('stopping during the persona update means the message is never sent to the 
   assert.equal(r.reason, 'canceled');
   assert.equal(readLog(dir, 'runs.log').length, runsBefore);
   assert.equal(svc.busy, false);
+});
+
+// ---------------------------------------------------------------- affection: persistence, migration, topics, settings
+const { SettingsStore } = require('../src/core/settings');
+
+function setupAff(now = new Date('2026-01-05T14:00:00').getTime()) {
+  const ctx = setup(now);
+  fs.writeFileSync(path.join(ctx.dir, 'loggedin'), '1');
+  const data = path.join(ctx.dir, 'data');
+  const mkSvc = () => {
+    const s = new PetService({ lh: ctx.lh, store: new Store(data), settingsStore: new SettingsStore(data), now: () => ctx.clock.t, rnd: () => 0.5 });
+    s.on('error', () => {});
+    return s;
+  };
+  const svc = mkSvc();
+  const said = [];
+  const events = [];
+  svc.on('say', (m) => said.push(m));
+  svc.on('affection', (a) => events.push(a));
+  return { ...ctx, data, svc, said, events, mkSvc };
+}
+const tick = () => new Promise((r) => setImmediate(r));
+
+test('affection, stages, unlocked topics and the 18+ settings survive a restart unchanged', async () => {
+  const { svc, data, clock, mkSvc } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  svc.answerAgeGate(true);
+  svc.pet.mood = 50;
+  svc.act('pat');
+  clock.t += 11 * 60000;
+  svc.act('play');
+  const before = svc.view();
+  assert.equal(before.affection.value, 6); // greet 3 + pat 1 + play 2
+  const saved = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  for (const k of ['affection', 'relStage', 'peakStage', 'unlockedTopics', 'dailyCounts', 'lastAffectionAt', 'affectionToday', 'schemaVersion']) assert.ok(k in saved, k);
+  const settings = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  assert.equal(settings.ageConfirmed, true);
+  assert.equal(settings.adultContent, true);
+
+  const svc2 = mkSvc();
+  const after = svc2.init();
+  assert.equal(after.pet.affection, before.pet.affection);
+  assert.equal(after.pet.relStage, before.pet.relStage);
+  assert.equal(after.pet.peakStage, before.pet.peakStage);
+  assert.deepEqual(after.pet.unlockedTopics, before.pet.unlockedTopics);
+  assert.deepEqual(after.pet.dailyCounts, before.pet.dailyCounts);
+  assert.equal(after.settings.adultContent, true);
+  assert.equal(after.settings.needsAgeGate, false);
+  // restarting does not reset the cooldown
+  clock.t += 60000;
+  assert.equal(svc2.act('play').affection.blocked, 'cooldown');
+});
+
+test('an old xp/stage save is backed up once and migrated on start, keeping the pet, agent and topic', async () => {
+  const { data, mkSvc, clock } = setupAff();
+  fs.mkdirSync(data, { recursive: true });
+  const old = { speciesId: 'bubbo', name: '小蓝', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: clock.t - 1e6, stage: 'child', xp: 150, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, personaVersion: 3 };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old));
+  const v = mkSvc().init();
+  assert.equal(v.pet.agentId, 'agt_OLD');
+  assert.equal(v.pet.topicId, 'tpc_OLD');
+  assert.equal(v.pet.name, '小蓝');
+  assert.equal(v.pet.affection, 25);
+  assert.equal(v.affection.stageName, '熟悉');
+  assert.equal(v.settings.needsAgeGate, true); // old users are asked the 18+ question first
+  assert.equal(v.settings.adultContent, false);
+  const backup = JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8'));
+  assert.deepEqual(backup, old);
+  const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  assert.equal(disk.schemaVersion, 2);
+  assert.equal('xp' in disk, false);
+  assert.deepEqual(disk.legacy, { xp: 150, stage: 'child', migratedAt: clock.t });
+  // a second start does not migrate or overwrite the backup again
+  fs.writeFileSync(path.join(data, 'pet.v1.bak.json'), '"keep"');
+  const v2 = mkSvc().init();
+  assert.equal(v2.pet.affection, 25);
+  assert.equal(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8'), '"keep"');
+});
+
+test('the migrated agent gets the v4 system role (adult + red lines) on its next turn', async () => {
+  const { data, mkSvc, clock, dir } = setupAff();
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify({ speciesId: 'sprig', name: 'S', agentId: 'agt_OLD', topicId: null, stage: 'adult', xp: 260, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, personaVersion: 3 }));
+  const svc = mkSvc();
+  svc.init();
+  await svc.chat('你好呀');
+  const edit = readLog(dir, 'edits.log').find((e) => e.systemRole);
+  assert.match(edit.systemRole, /你是成年人/);
+  assert.match(edit.systemRole, /内容红线/);
+  const run = readLog(dir, 'runs.log').pop();
+  assert.match(run.prompt, /\[状态\] 关系=亲近/);
+  assert.match(run.prompt, /\[关系\] 阶段=亲近；成人向=关/);
+});
+
+test('crossing a threshold emits a stage-up with the new unlocks and the pet speaks about it', async () => {
+  const { svc, events, said } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  svc.pet.mood = 50;
+  svc.pet.affection = 14;
+  svc.pet.dailyCounts = { greet: 1 };
+  const r = svc.act('pat');
+  assert.equal(r.affection.stageUp, true);
+  await tick();
+  await new Promise((res) => setTimeout(res, 800));
+  const up = events.find((e) => e.type === 'stage-up');
+  assert.equal(up.stage, 'familiar');
+  assert.deepEqual(up.unlocks.topics.map((t) => t.id), ['hobby', 'gossip', 'riddle']);
+  assert.ok(said.some((m) => m.kind === 'stage_up'));
+  assert.ok(events.some((e) => e.type === 'gain' && e.delta === 1));
+});
+
+test('topics: locked ones are refused with a condition, unlocked ones run with a [话题] prompt and score once a day', async () => {
+  const { svc, dir } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  const locked = await svc.talkTopic('whine');
+  assert.equal(locked.ok, false);
+  assert.equal(locked.reason, 'locked');
+  assert.match(locked.condition, /亲近（♥35）解锁/);
+  const ok = await svc.talkTopic('intro');
+  assert.equal(ok.ok, true);
+  assert.match(readLog(dir, 'runs.log').pop().prompt, /\[话题\] 自我介绍：/);
+  assert.ok(ok.affection.delta > 0);
+  const again = await svc.talkTopic('intro');
+  assert.equal(again.affection.blocked, 'topic-today');
+  assert.equal(svc.view().topics.find((t) => t.id === 'intro').talkedToday, true);
+});
+
+test('the adult switch changes the next prompt and hides adult topics; it needs an 18+ answer to turn on', async () => {
+  const { svc, dir } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  svc.debugSet({ affection: 70 });
+  assert.equal(svc.setAdultContent(true).reason, 'age-not-confirmed');
+  svc.answerAgeGate(true);
+  assert.equal(svc.view().affection.stageName, '暧昧');
+  assert.ok(svc.view().topics.some((t) => t.id === 'tease'));
+  await svc.chat('在吗');
+  assert.match(readLog(dir, 'runs.log').pop().prompt, /\[关系\] 阶段=暧昧；成人向=开/);
+  assert.equal((await svc.talkTopic('tease')).ok, true);
+
+  const valueBefore = svc.pet.affection;
+  svc.setAdultContent(false);
+  const v = svc.view();
+  assert.equal(v.affection.stageName, '知己');
+  assert.equal(v.pet.affection, valueBefore); // nothing is taken away
+  assert.equal(v.pet.peakStage, 'flirty');
+  assert.ok(v.topics.every((t) => t.rating === 'all'));
+  assert.equal((await svc.talkTopic('tease')).reason, 'hidden');
+  await svc.chat('在吗');
+  const prompt = readLog(dir, 'runs.log').pop().prompt;
+  assert.match(prompt, /\[关系\] 阶段=知己；成人向=关，只用全年龄语气/);
+  assert.doesNotMatch(prompt, /调情|调戏一下/);
+});
+
+test('releasing the pet keeps settings.json', async () => {
+  const { svc, data, mkSvc } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  svc.answerAgeGate(false);
+  await svc.release();
+  assert.equal(fs.existsSync(path.join(data, 'pet.json')), false);
+  const s = mkSvc().getSettings();
+  assert.equal(s.needsAgeGate, false);
+  assert.equal(s.ageConfirmed, false);
 });

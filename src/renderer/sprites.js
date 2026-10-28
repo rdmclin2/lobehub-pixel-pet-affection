@@ -16,9 +16,8 @@
   };
   const COMMON = { o: OUTLINE, k: '#1d1626', e: '#ffffff', c: '#ff9eb5', r: '#e0455f', s: '#7fd3ff', h: '#ff5c7a', z: '#8a7fb0', y: '#ffd23f', m: '#f5e6c8', n: '#c98f4f' };
 
+  // Every companion is an adult: there is a single body size (no younger forms exist).
   const STAGE_DIM = {
-    baby: { rx: 6, ry: 5, cy: 16 },
-    child: { rx: 7, ry: 6.5, cy: 15 },
     adult: { rx: 8, ry: 8, cy: 14 },
   };
   const SPECIES_DIM = { embit: { rx: 0, ry: 0 }, bubbo: { rx: 0.5, ry: 0.5 }, sprig: { rx: 0.5, ry: 0 } };
@@ -60,8 +59,8 @@
     return dx * dx + dy * dy <= 1;
   }
 
-  function dims(speciesId, stage) {
-    const s = STAGE_DIM[stage] || STAGE_DIM.baby;
+  function dims(speciesId) {
+    const s = STAGE_DIM.adult;
     const sp = SPECIES_DIM[speciesId] || { rx: 0, ry: 0 };
     return { cx: N / 2, cy: s.cy, rx: s.rx + sp.rx, ry: s.ry + sp.ry };
   }
@@ -87,11 +86,11 @@
   }
 
   // Body + ornaments, no face. Returns { grid, face }.
-  function buildBody(speciesId, stage) {
+  function buildBody(speciesId) {
     const g = blank();
-    const { cx, cy, rx, ry } = dims(speciesId, stage);
+    const { cx, cy, rx, ry } = dims(speciesId);
     const top = Math.round(cy - ry);
-    const adult = stage === 'adult';
+    const adult = true;
     shadedBlob(g, cx, cy, rx, ry, speciesId === 'bubbo');
 
     if (speciesId === 'embit') {
@@ -115,7 +114,7 @@
     const eyeDx = Math.max(2, Math.round(rx * 0.45));
     return {
       grid: g,
-      face: { lx: Math.round(cx - eyeDx) - 1, rx: Math.round(cx + eyeDx) - 1, ey: Math.round(cy - ry * 0.15), my: Math.round(cy + ry * 0.38), cx: Math.round(cx), big: stage !== 'baby' },
+      face: { lx: Math.round(cx - eyeDx) - 1, rx: Math.round(cx + eyeDx) - 1, ey: Math.round(cy - ry * 0.15), my: Math.round(cy + ry * 0.38), cx: Math.round(cx), big: true },
     };
   }
 
@@ -172,8 +171,8 @@
   };
 
   // Compose one animation frame. Returns { grid, dy, effects:[{name,x,y}] }.
-  function frame({ speciesId, stage, status, t = 0, talking = false, eating = null }) {
-    const { grid, face } = buildBody(speciesId, stage);
+  function frame({ speciesId, status, t = 0, talking = false, eating = null }) {
+    const { grid, face } = buildBody(speciesId);
     const m = motion(status, t);
     drawEyes(grid, face, status, m.blink);
     drawMouth(grid, face, status, talking && Math.floor(t * 8) % 2 === 0);
@@ -205,13 +204,13 @@
 
   function validate() {
     const problems = [];
-    for (const sp of Object.keys(PALETTES)) for (const stage of Object.keys(STAGE_DIM)) {
+    for (const sp of Object.keys(PALETTES)) {
       for (const status of ['idle', 'happy', 'sad', 'hungry', 'sleep']) {
-        const f = frame({ speciesId: sp, stage, status, t: 0 });
-        if (f.grid.length !== N || f.grid.some((r) => r.length !== N)) problems.push(`${sp}/${stage}/${status}: bad dimensions`);
+        const f = frame({ speciesId: sp, status, t: 0 });
+        if (f.grid.length !== N || f.grid.some((r) => r.length !== N)) problems.push(`${sp}/${status}: bad dimensions`);
         const unknown = new Set();
         f.grid.forEach((r) => r.forEach((c) => { if (c !== '.' && !PALETTES[sp][c] && !COMMON[c]) unknown.add(c); }));
-        if (unknown.size) problems.push(`${sp}/${stage}/${status}: unknown palette keys ${[...unknown].join('')}`);
+        if (unknown.size) problems.push(`${sp}/${status}: unknown palette keys ${[...unknown].join('')}`);
       }
     }
     return problems;
@@ -233,5 +232,5 @@
     }
   }
 
-  return { N, PALETTES, COMMON, EFFECTS, EGG_PAL, frame, egg, validate, colorFor, drawGrid, buildBody };
+  return { N, PALETTES, COMMON, STAGE_DIM, EFFECTS, EGG_PAL, frame, egg, validate, colorFor, drawGrid, buildBody };
 });

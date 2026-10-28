@@ -90,6 +90,7 @@ async function fresh() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-fake-'));
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_LOGIN_MS: '2500' };
   let { app, page } = await launch(env);
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
     await step(S, 'first launch shows four eggs', async () => {
       await page.waitForSelector('.egg-card');
@@ -113,7 +114,7 @@ async function fresh() {
 
     await step(S, 'after login the agent is created and the pet appears', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸 · 幼崽/);
+      assert.match(await page.textContent('#meta'), /小蓝 · 泡鲸 · 陌生 ♥\d+ · 距「熟悉」\d+/);
       const text = await waitReply(page, 15000);
       assert.match(text, /echo:/);
       return `greeting: ${text.slice(0, 40)}`;
@@ -165,16 +166,55 @@ async function fresh() {
       return `hunger 80 -> ${Math.round(v.pet.hunger)}`;
     }, () => page);
 
-    await step(S, 'enough xp evolves the pet (baby -> child) and the sprite changes', async () => {
-      const before = await page.locator('#pet-canvas').screenshot();
-      fs.writeFileSync(path.join(OUT, 'evolve-before.png'), before);
-      await page.evaluate(() => window.pet.debugSet({ xp: 59 }));
+    await step(S, 'affection crossing 15 by a pat moves the stage from 陌生 to 熟悉 and unlocks topics', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
+      await hover(page);
+      assert.match(await page.textContent('#meta'), /陌生 ♥14 · 距「熟悉」1/);
+      fs.writeFileSync(path.join(OUT, 'stage-before.png'), await page.screenshot());
+      const events = [];
+      await page.exposeFunction('__affLog', (e) => events.push(e));
+      await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
       await page.locator('#pet-canvas').click();
-      await page.waitForTimeout(1500);
+      await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
+      await page.waitForTimeout(800);
       const v = await view(page);
-      assert.equal(v.pet.stage, 'child');
-      assert.match(await page.textContent('#meta'), /少年/);
-      assert.notDeepEqual(before, await page.locator('#pet-canvas').screenshot());
+      assert.equal(v.pet.relStage, 'familiar');
+      assert.equal(v.affection.stageName, '熟悉');
+      assert.ok(v.topics.find((t) => t.id === 'riddle').unlocked);
+      const up = events.find((e) => e.type === 'stage-up');
+      assert.ok(up, JSON.stringify(events));
+      assert.deepEqual(up.unlocks.topics.map((t) => t.id), ['hobby', 'gossip', 'riddle']);
+      await hover(page);
+      return `meta: ${await page.textContent('#meta')}; stage-up event unlocks: ${up.unlocks.topics.map((t) => t.label).join('、')}`;
+    }, () => page);
+
+    await step(S, 'topics: a locked topic returns its unlock condition, an unlocked one is sent to the agent with [话题]', async () => {
+      await idle();
+      const locked = await page.evaluate(() => window.pet.talkTopic('whine'));
+      assert.equal(locked.reason, 'locked');
+      assert.match(locked.condition, /亲近（♥35）解锁，还差 20/);
+      const ok = await page.evaluate(() => window.pet.talkTopic('riddle'));
+      assert.equal(ok.ok, true);
+      const run = fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+      assert.match(run.prompt, /\[关系\] 阶段=熟悉；成人向=关，只用全年龄语气/);
+      assert.match(run.prompt, /\[话题\] 脑筋急转弯：/);
+      fs.writeFileSync(path.join(OUT, 'topic-prompt.txt'), `locked: ${JSON.stringify(locked)}\n\nprompt sent for riddle:\n${run.prompt}\n`);
+      await hover(page);
+      return `locked whine -> ${locked.condition}; riddle +${ok.affection.delta}`;
+    }, () => page);
+
+    await step(S, 'restart keeps affection, stage and unlocked topics', async () => {
+      const before = await view(page);
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      const v = await view(page);
+      assert.equal(v.pet.affection, before.pet.affection);
+      assert.equal(v.pet.relStage, 'familiar');
+      assert.deepEqual(v.pet.unlockedTopics, before.pet.unlockedTopics);
+      await hover(page);
+      assert.match(await page.textContent('#meta'), /熟悉 ♥\d+/);
+      return `after restart: ${await page.textContent('#meta')}`;
     }, () => page);
 
     await step(S, 'release deletes the agent through lh and returns to egg selection', async () => {
@@ -186,6 +226,39 @@ async function fresh() {
       assert.ok(del && del[2].startsWith('agt_FAKE') && del.includes('--yes'), 'lh agent delete <id> --yes was not called');
       fs.writeFileSync(path.join(OUT, 'release-check.txt'), `$ ${del.length ? 'lh ' + del.join(' ') : ''}\n(recorded by the fake lh CLI used in this scenario; the app asked for the agent to be deleted, then returned to egg selection)\n`);
     }, () => page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------- migrate
+// A save from the growth-system version (xp / stage) is migrated on start: same pet, agent and topic.
+async function migrate() {
+  const S = 'migrate';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-mig-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-migfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const now = Date.now();
+  const old = { speciesId: 'bubbo', name: '小蓝', agentId: 'agt_LEGACY', topicId: 'tpc_LEGACY', createdAt: now - 86400000, stage: 'child', xp: 150, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, owner: 'me', personaVersion: 3 };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old, null, 2));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  try {
+    await step(S, 'an old xp=150 / child save opens as 熟悉 ♥25 with the same agent and topic', async () => {
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await hover(page);
+      const meta = await page.textContent('#meta');
+      assert.match(meta, /小蓝 · 泡鲸 · 熟悉 ♥25 · 距「亲近」10/);
+      const v = await view(page);
+      assert.equal(v.pet.agentId, 'agt_LEGACY');
+      assert.equal(v.pet.topicId, 'tpc_LEGACY');
+      const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+      assert.equal(disk.schemaVersion, 2);
+      assert.equal('xp' in disk, false);
+      assert.equal('stage' in disk, false);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8')), old);
+      fs.writeFileSync(path.join(OUT, 'migrate-files.txt'), `--- pet.v1.bak.json (before) ---\n${JSON.stringify(old, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify(disk, null, 2)}\n`);
+      return `meta: ${meta}; legacy=${JSON.stringify(disk.legacy)}`;
+    }, page);
   } finally {
     await app.close().catch(() => {});
   }
@@ -647,21 +720,17 @@ async function live() {
       return b.slice(0, 60);
     }, page);
 
-    await step(S, 'enough xp evolves the pet (baby -> child) and the sprite changes', async () => {
-      const before = await page.locator('#pet-canvas').screenshot();
-      fs.writeFileSync(path.join(OUT, 'evolve-before-live.png'), before);
-      await page.evaluate(() => window.pet.debugSet({ xp: 59 }));
+    await step(S, 'affection crossing 15 moves the stage from 陌生 to 熟悉', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await page.locator('#pet-canvas').click();
       await page.waitForTimeout(1200);
       const v = await view(page);
-      assert.equal(v.pet.stage, 'child');
-      assert.match(await page.textContent('#meta'), /少年/);
-      const after = await page.locator('#pet-canvas').screenshot();
-      assert.notDeepEqual(before, after);
+      assert.equal(v.pet.relStage, 'familiar');
+      assert.match(await page.textContent('#meta'), /熟悉 ♥15/);
     }, page);
 
     await step(S, 'release deletes the real agent and returns to egg selection', async () => {
-      await idle(); // evolving makes the pet speak; controls stay hidden until it is done
+      await idle(); // a stage-up makes the pet speak; controls stay hidden until it is done
       await clickAct(page, 'menu');
       await page.click('[data-menu="release"]');
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 30000 });
@@ -679,34 +748,34 @@ async function live() {
 }
 
 // ------------------------------------------------------------------ art
-// Contact sheet of every species x growth stage x mood, rendered by the app's own sprite code.
+// Contact sheet of every species x mood (adult body only), rendered by the app's own sprite code.
 async function art() {
   const S = 'art';
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-art-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-artfake-')) });
   try {
     await page.waitForSelector('.egg-card');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(820, 1000));
-    await step(S, 'sprite sheet: 3 species x 3 stages x 5 moods', async () => {
+    await step(S, 'sprite sheet: 3 species x 5 moods (adult body only)', async () => {
       await page.evaluate(() => {
         const Sp = window.Sprites;
         document.body.innerHTML = '';
         const c = document.createElement('canvas');
         const sc = 4, cell = 24 * sc + 8, sts = ['idle', 'happy', 'sad', 'hungry', 'sleep'];
         const rows = [];
-        for (const sp of ['embit', 'bubbo', 'sprig']) for (const st of ['baby', 'child', 'adult']) rows.push([sp, st]);
+        for (const sp of ['embit', 'bubbo', 'sprig']) rows.push([sp]);
         c.width = sts.length * cell; c.height = rows.length * cell;
         c.style.cssText = 'position:fixed;left:0;top:0;background:#e9e4f5;image-rendering:pixelated';
         document.body.style.overflow = 'visible';
         document.body.appendChild(c);
         const ctx = c.getContext('2d');
-        rows.forEach(([sp, st], r) => sts.forEach((status, i) => {
-          const f = Sp.frame({ speciesId: sp, stage: st, status, t: 0.3 });
+        rows.forEach(([sp], r) => sts.forEach((status, i) => {
+          const f = Sp.frame({ speciesId: sp, status, t: 0.3 });
           Sp.drawGrid(ctx, f.grid, (k) => Sp.colorFor(sp, k), sc, i * cell + 4, r * cell + 4 + f.dy * sc);
           for (const fx of f.effects) Sp.drawGrid(ctx, Sp.EFFECTS[fx.name], (k) => Sp.colorFor(sp, k), sc, i * cell + 4 + fx.x * sc, r * cell + 4 + fx.y * sc);
         }));
       });
-      await page.screenshot({ path: path.join(OUT, 'sprite-sheet.png'), clip: { x: 0, y: 0, width: 5 * 104, height: 9 * 104 } });
-      return 'rows: embit/bubbo/sprig x baby/child/adult; columns: idle, happy, sad, hungry, sleep';
+      await page.screenshot({ path: path.join(OUT, 'sprite-sheet.png'), clip: { x: 0, y: 0, width: 5 * 104, height: 3 * 104 } });
+      return 'rows: embit/bubbo/sprig (adult); columns: idle, happy, sad, hungry, sleep';
     });
   } finally {
     await app.close().catch(() => {});
@@ -715,6 +784,7 @@ async function art() {
 
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
+  if (which === 'migrate' || which === 'all') await migrate();
   if (which === 'dafeiyu' || which === 'all') await dafeiyu();
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }
   if (which === 'live' || which === 'all') await live();

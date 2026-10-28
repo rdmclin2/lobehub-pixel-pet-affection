@@ -7,9 +7,14 @@ const T0 = new Date('2026-01-05T10:00:00').getTime();
 const MIN = 60000;
 const mk = () => st.createPet({ speciesId: 'bubbo', name: 'B', agentId: 'agt_x', now: T0 });
 
-test('new pet starts as a baby with sane needs', () => {
+test('new companion starts as a stranger with 0 affection and sane needs', () => {
   const p = mk();
-  assert.equal(p.stage, 'baby');
+  assert.equal(p.affection, 0);
+  assert.equal(p.relStage, 'stranger');
+  assert.equal(p.peakStage, 'stranger');
+  assert.equal(p.schemaVersion, 2);
+  assert.equal('xp' in p, false);
+  assert.equal('stage' in p, false);
   assert.ok(p.hunger < 50 && p.mood > 50);
 });
 
@@ -27,28 +32,37 @@ test('offline time is capped so the pet does not starve overnight', () => {
   assert.ok(p.mood >= 0);
 });
 
-test('feeding lowers hunger, raises xp, and refuses when full', () => {
+test('feeding lowers hunger, raises affection, does not score again while cooling down, and refuses when full', () => {
   const p = mk();
+  p.mood = 50;
   p.hunger = 60;
   const r = st.feed(p, 'rice', T0);
   assert.equal(r.ok, true);
   assert.equal(p.hunger, 25);
+  assert.equal(r.affection.delta, 5); // +3 first interaction of the day, +2 feed
+  p.hunger = 60;
+  const again = st.feed(p, 'rice', T0 + MIN);
+  assert.equal(again.ok, true);
+  assert.equal(p.hunger, 25); // the action still happens...
+  assert.equal(again.affection.delta, 0); // ...but scores nothing
+  assert.equal(again.affection.blocked, 'cooldown');
   p.hunger = 2;
-  const full = st.feed(p, 'rice', T0);
+  const full = st.feed(p, 'rice', T0 + 20 * MIN);
   assert.equal(full.reason, 'full');
+  assert.equal(full.affection.delta, -1);
 });
 
-test('xp evolves baby -> child -> adult', () => {
+test('crossing a threshold through a care action reports a stage-up', () => {
   const p = mk();
-  assert.equal(st.stageForXp(59), 'baby');
-  assert.equal(st.stageForXp(60), 'child');
-  assert.equal(st.stageForXp(240), 'adult');
-  p.xp = 58;
-  const evolved = st.pat(p, T0);
-  assert.equal(evolved.evolved, false);
-  p.xp = 59;
-  assert.equal(st.pat(p, T0).evolved, true);
-  assert.equal(p.stage, 'child');
+  p.mood = 50;
+  p.affection = 14;
+  p.dailyCounts = { greet: 1 };
+  const r = st.pat(p, T0);
+  assert.equal(r.affection.stageUp, true);
+  assert.equal(r.affection.from, 'stranger');
+  assert.equal(r.affection.to, 'familiar');
+  assert.deepEqual(r.affection.unlockedStages, ['familiar']);
+  assert.ok(p.unlockedTopics.includes('riddle'));
 });
 
 test('pet falls asleep at night and is grumpy when woken', () => {
@@ -61,9 +75,12 @@ test('pet falls asleep at night and is grumpy when woken', () => {
   assert.ok(events.includes('slept'));
   assert.equal(st.currentStatus(p), 'sleep');
   const moodBefore = p.mood;
-  st.pat(p, night);
+  p.affection = 10;
+  const r = st.pat(p, night);
   assert.equal(p.sleeping, false);
   assert.ok(p.mood < moodBefore + 8);
+  assert.equal(r.affection.parts[0].source, 'woken');
+  assert.equal(r.affection.parts[0].delta, -2);
 });
 
 test('playing is refused when exhausted', () => {

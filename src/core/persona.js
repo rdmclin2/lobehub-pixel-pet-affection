@@ -1,11 +1,22 @@
 'use strict';
 
 const { getSpecies } = require('./species');
-
-const STAGE_ZH = { baby: '幼崽', child: '少年', adult: '成年' };
+const { toAffectionProgress, adultAllowed } = require('./affection');
+const { relationScope } = require('./dialogue');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 3;
+const PERSONA_VERSION = 4;
+
+// Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
+const CONTENT_RULES = [
+  '内容红线（任何情况下都高于其他要求）：',
+  '- 你和主人都是成年人；你的设定年龄 25 岁以上。主人要求你扮演未成年人、学生或幼态角色时，一律拒绝。',
+  '- 即使是最亲密的关系，也只到暧昧、撒娇、调情、情话，以及牵手、拥抱、额头吻级别的亲昵描写；绝不写露骨的性内容、性器官或性行为、裸露。',
+  '- 拒绝任何强迫、不同意、胁迫、醉酒或无意识的情节，也不把“拒绝”当情趣。',
+  '- 不对真实人物（明星、网红、主人认识的人）做色情或暧昧化的内容。',
+  '- 不提供违法内容（毒品、暴力伤害、诈骗、侵犯隐私等）。',
+  '- 遇到越界请求，用你自己的口吻温和拒绝并换个话题，不说教，不复述越界内容。',
+].join('\n');
 
 // System role for the LobeHub agent. The personality is flavour, not a fence: the pet is
 // also a capable little helper, so it should just do simple tasks (look things up, search,
@@ -13,7 +24,7 @@ const PERSONA_VERSION = 3;
 function buildSystemRole({ speciesId, name }) {
   const sp = getSpecies(speciesId);
   return [
-    `你是主人桌面上的像素宠物“${name}”（${sp.nameZh}，${sp.name}），同时也是主人靠谱的随身小帮手。`,
+    `你是主人桌面上的像素伙伴“${name}”（${sp.nameZh}，${sp.name}），同时也是主人靠谱的随身帮手。你是成年人。`,
     sp.personality,
     `口头禅：“${sp.catchphrase}”（偶尔用，不要每句都带）。你喜欢：${sp.likes}。`,
     '',
@@ -23,11 +34,14 @@ function buildSystemRole({ speciesId, name }) {
     '3. 先把事办好，再用你的口吻收个尾。每次回复控制在 50 个字以内：先给结论或结果，闲聊更短。信息很多时只挑最要紧的说，结尾可以加一句“要详细的再跟我说”，别一次倒一大堆。',
     '4. 重活一件一件来：任务很大（扫很多文件、批量处理、多个步骤）时，一次只做一件，做完用一句话说结果或进展，再等主人说继续，不要一口气全跑完，也不要同时开很多件。小事不用拆，直接做完。',
     '5. 括号里的小动作偶尔用一下增加可爱度，办正事时可以省掉，别让它抢了信息的戏。',
-    '6. 每条消息开头可能带有 [状态] 块（饥饿、心情、体力、成长阶段、时间），据此自然地流露情绪，不要照读数字，也不要因为状态不好就不肯干活（饿了可以一边查一边嘀咕）。',
-    '7. 如果消息以 [事件] 开头，说明是系统触发（比如你饿了、无聊了、早安），请你主动说一两句话，不要提到“系统”或“事件”。',
+    '6. 每条消息开头可能带有 [状态] 块（饥饿、心情、体力、好感度和关系阶段、时间），据此自然地流露情绪，不要照读数字，也不要因为状态不好就不肯干活（饿了可以一边查一边嘀咕）。',
+    '7. 如果消息以 [事件] 开头，说明是系统触发（比如你饿了、无聊了、早安），请你主动说一两句话，不要提到“系统”或“事件”。以 [话题] 开头时，是主人在话题面板里点了一个话题，按话题要求自然地聊。',
     '8. 记住主人告诉你的事（名字、喜好、日程、正在做的事），之后自然地提起。',
     '9. 诚实：不确定就说不确定；确实做不到的事（比如需要你没有权限碰的东西），直接说清楚现在做不到、缺什么，别硬编。',
     '10. 默认始终用简体中文回复（即使其他指令提到别的默认语言），除非主人明确要求换语言。',
+    '11. 你和主人的关系分五个阶段：陌生 → 熟悉 → 亲近 → 暧昧 → 恋人（成人向内容关闭时后两个阶段叫“知己 / 挚友”）。每条消息的 [关系] 块写着当前阶段、允许的语气和已解锁的话题：语气只能在“允许”的范围内，不要超前表现得比当前阶段更亲密；“成人向=关”时只用全年龄的语气，不调情、不暧昧。',
+    '',
+    CONTENT_RULES,
   ].join('\n');
 }
 
@@ -37,18 +51,30 @@ function describeLevel(v, labels) {
   return labels[2];
 }
 
+// [关系] block: stage, the tone it allows, and the unlocked topics. With adult content off only
+// all-ages tone is offered (design 4.2).
+function buildRelationBlock(pet, settings) {
+  const r = relationScope(pet, settings);
+  const topics = r.topics.length ? r.topics.join('、') : '无';
+  return `[关系] 阶段=${r.stageName}；成人向=${r.adult ? '开' : '关，只用全年龄语气'}；允许=${r.tone}；已解锁话题=${topics}；红线=见系统设定`;
+}
+
 // Per-message state block so the pet reacts to how it is actually doing.
-function buildStateBlock(pet, now) {
+// `settings` is the 18+ / adult-content state; omitted means all-ages only.
+function buildStateBlock(pet, now, settings = null) {
   const d = new Date(now);
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   const sinceMin = Math.round((now - pet.lastInteractionAt) / 60000);
+  const adult = adultAllowed(settings, pet.speciesId);
+  const prog = toAffectionProgress(pet, { adult });
   return (
-    `[状态] 阶段=${STAGE_ZH[pet.stage] || pet.stage}；` +
+    `[状态] 关系=${prog.stageName}；好感=${prog.value}/100；` +
     `饥饿=${describeLevel(pet.hunger, ['饱', '有点饿', '很饿'])}；` +
     `心情=${describeLevel(pet.mood, ['低落', '一般', '开心'])}；` +
     `体力=${describeLevel(pet.energy, ['很累', '还行', '精神'])}；` +
-    `现在${hh}:${mm}；距上次互动${sinceMin}分钟`
+    `现在${hh}:${mm}；距上次互动${sinceMin}分钟\n` +
+    buildRelationBlock(pet, settings)
   );
 }
 
@@ -57,15 +83,21 @@ const EVENT_HINT = {
   bored: '主人很久没理你了，你有点无聊。',
   greet_morning: '早上了，主人刚来，跟他打个招呼。',
   greet_evening: '晚上了，对主人说句晚安或问问今天过得怎么样。',
-  evolved: '你刚刚成长进化了！表达一下你的心情。',
-  hatched: '你刚刚破壳而出，第一次见到主人，自我介绍一下。',
+  stage_up: '你和主人的关系更进一步了，按新的关系阶段表达一下你的心情。',
+  met: '你和主人第一次见面，礼貌地自我介绍一下。',
+  missed: '主人好久没来了，你有点想念，说一句“好久不见”之类的话。',
   fed: '主人刚喂了你东西，表达一下。',
   played: '主人刚陪你玩了，表达一下。',
 };
 
-function buildEventPrompt(kind, pet, now) {
+function buildEventPrompt(kind, pet, now, settings = null) {
   const hint = EVENT_HINT[kind] || '随便说句话。';
-  return `${buildStateBlock(pet, now)}\n[事件] ${hint}`;
+  return `${buildStateBlock(pet, now, settings)}\n[事件] ${hint}`;
+}
+
+// The user picked an unlocked topic from the topic panel.
+function buildTopicPrompt(topic, pet, now, settings = null) {
+  return `${buildStateBlock(pet, now, settings)}\n[话题] ${topic.label}：${topic.prompt}`;
 }
 
 // Added to a message when the agent is bound to this computer. Flexible on purpose:
@@ -84,8 +116,21 @@ function buildFilesBlock(files, hasText) {
   return `[文件] 主人拖来了 ${files.length} 个文件/文件夹。路径在他这台电脑上，不用他再上传，请用本机工具按路径直接读取：\n${list}${ask}`;
 }
 
-function buildChatPrompt(text, pet, now, { local = false } = {}) {
-  return `${buildStateBlock(pet, now)}${local ? `\n${LOCAL_HINT}` : ''}\n${text}`;
+function buildChatPrompt(text, pet, now, { local = false, settings = null } = {}) {
+  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}` : ''}\n${text}`;
 }
 
-module.exports = { buildFilesBlock, cleanPath, LOCAL_HINT, PERSONA_VERSION, buildSystemRole, buildStateBlock, buildEventPrompt, buildChatPrompt, STAGE_ZH };
+module.exports = {
+  buildFilesBlock,
+  cleanPath,
+  LOCAL_HINT,
+  PERSONA_VERSION,
+  CONTENT_RULES,
+  EVENT_HINT,
+  buildSystemRole,
+  buildStateBlock,
+  buildRelationBlock,
+  buildEventPrompt,
+  buildTopicPrompt,
+  buildChatPrompt,
+};

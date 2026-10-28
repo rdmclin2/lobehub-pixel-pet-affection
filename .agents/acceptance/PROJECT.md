@@ -30,7 +30,7 @@ CLI behaviour is exercised indirectly through the app.
 ## 5. Project probes & quick navigation
 
 Test-only IPC (enabled by `PIXELPET_TEST=1`): `window.pet.debugSet(patch)` forces pet
-fields (hunger, xp, ...), `window.pet.debugHeartbeat()` runs one proactive tick.
+fields (hunger, affection, ...; forcing `affection` re-derives the stage), `window.pet.debugHeartbeat()` runs one proactive tick.
 `#bubble[data-source]` is `llm` or `fallback`, and `data-reason` says why a canned line was used.
 
 ## 6. Known constraints

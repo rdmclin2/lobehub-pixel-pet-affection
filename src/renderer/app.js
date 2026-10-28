@@ -173,7 +173,6 @@ function applyArt() {
   const video = isVideo(view && view.pet.speciesId);
   $('pet-canvas').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
-  if (video) $('vwrap').dataset.stage = view.pet.stage;
 }
 
 function enterPet(v) {
@@ -205,9 +204,10 @@ function refreshHud() {
   set('bar-hunger', p.hunger, true);
   set('bar-mood', p.mood, false);
   set('bar-energy', p.energy, false);
-  const stage = { baby: '幼崽', child: '少年', adult: '成年' }[p.stage];
-  const prog = view.progress.next ? ` · 成长 ${view.progress.pct}%` : ' · 已完全成长';
-  $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${stage}${prog}`;
+  const a = view.affection;
+  const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
+  $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
+  $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）`;
   const loc = view.local && view.local.enabled;
   $('menu-local').textContent = `本机能力：${loc ? '开（点此关闭）' : '关（点此开启）'}`;
 }
@@ -481,7 +481,7 @@ async function release(deleteAgent) {
 function drawPet(ctx, t) {
   const p = view.pet;
   const status = thinking ? 'idle' : view.status;
-  const f = S.frame({ speciesId: p.speciesId, stage: p.stage, status, t, talking: performance.now() < talkUntil, eating });
+  const f = S.frame({ speciesId: p.speciesId, status, t, talking: performance.now() < talkUntil, eating });
   const colorOf = (k) => S.colorFor(p.speciesId, k);
   const scale = 5;
   S.drawGrid(ctx, f.grid, colorOf, scale, 0, f.dy * scale);
@@ -507,7 +507,7 @@ function frameLoop(ts) {
     ctx.clearRect(0, 0, 192, 192);
     if (revealSpecies) {
       const p = { speciesId: revealSpecies };
-      const f = S.frame({ speciesId: revealSpecies, stage: 'baby', status: 'happy', t });
+      const f = S.frame({ speciesId: revealSpecies, status: 'happy', t });
       S.drawGrid(ctx, f.grid, (k) => S.colorFor(p.speciesId, k), 8, 0, f.dy * 8);
       for (const fx of f.effects) S.drawGrid(ctx, S.EFFECTS[fx.name], (k) => S.colorFor(p.speciesId, k), 8, fx.x * 8, fx.y * 8);
     } else {
@@ -540,7 +540,11 @@ async function main() {
   window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); } });
   window.pet.onSay((m) => say(m.text, m.kind, m.source, m.reason));
   window.pet.onThinking(setThinking);
-  window.pet.onEvolved(() => { flashUntil = performance.now() + 700; });
+  window.pet.onAffection((a) => {
+    if (a.type !== 'stage-up') return;
+    flashUntil = performance.now() + 700;
+    if (a.view) { view = a.view; refreshHud(); }
+  });
   if (info.view) enterPet(info.view);
   else showOnboarding();
   requestAnimationFrame(frameLoop);
