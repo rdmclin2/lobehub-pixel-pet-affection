@@ -2,14 +2,14 @@
 
 // Pure pet-state logic: every function takes `now` (ms) explicitly so it is
 // trivially testable. Needs run 0..100: hunger 0 = full, mood 100 = joyful,
-// energy 100 = rested.
+// energy 100 = rested. Affection (好感度) lives in ./affection.js; care actions here
+// report what they scored as `affection`.
+
+const aff = require('./affection');
+const { unlockedTopicIds } = require('./dialogue');
+const { SCHEMA_VERSION } = require('./migrate');
 
 const MIN = 60 * 1000;
-const STAGES = [
-  { id: 'baby', minXp: 0 },
-  { id: 'child', minXp: 60 },
-  { id: 'adult', minXp: 240 },
-];
 const MAX_OFFLINE_MIN = 8 * 60; // do not punish the owner for being away
 
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
@@ -26,8 +26,10 @@ function createPet({ speciesId, name, agentId, topicId = null, now }) {
     agentId,
     topicId,
     createdAt: now,
-    stage: 'baby',
-    xp: 0,
+    schemaVersion: SCHEMA_VERSION,
+    ...aff.initialAffection(now),
+    unlockedTopics: unlockedTopicIds('stranger'),
+    seenUnlocks: [],
     hunger: 30,
     mood: 70,
     energy: 90,
@@ -39,26 +41,48 @@ function createPet({ speciesId, name, agentId, topicId = null, now }) {
   };
 }
 
-function stageForXp(xp) {
-  let cur = STAGES[0].id;
-  for (const s of STAGES) if (xp >= s.minXp) cur = s.id;
-  return cur;
+// Score an interaction and keep `unlockedTopics` in step with the peak stage.
+function score(pet, source, now, opts) {
+  const r = aff.gainAffection(pet, source, now, opts);
+  if (r.unlockedStages.length) pet.unlockedTopics = unlockedTopicIds(pet.peakStage);
+  return r;
 }
 
-function gainXp(pet, amount) {
-  pet.xp += amount;
-  const next = stageForXp(pet.xp);
-  const evolved = next !== pet.stage;
-  pet.stage = next;
-  return evolved;
+// Merge two scoring results (e.g. "woken" then "pat") into one report for the caller.
+function combine(a, b) {
+  if (!a) return b;
+  const idx = aff.stageIndex;
+  return {
+    ...b,
+    delta: Math.round((a.delta + b.delta) * 10) / 10,
+    parts: [...a.parts, ...b.parts],
+    from: a.from,
+    stageUp: idx(b.to) > idx(a.from),
+    stageDown: idx(b.to) < idx(a.from),
+    unlockedStages: [...a.unlockedStages, ...b.unlockedStages],
+  };
 }
 
-// Advance simulated time. Mutates and returns { pet, events }.
+// Force a value (test hooks only) while keeping stages and unlocks consistent.
+function setAffectionForTest(pet, value) {
+  const fromPeak = pet.peakStage;
+  const from = pet.relStage;
+  pet.affection = Math.max(0, Math.min(aff.MAX_AFFECTION, value));
+  pet.relStage = aff.stageForAffection(pet.affection);
+  if (aff.stageIndex(pet.relStage) > aff.stageIndex(pet.peakStage)) pet.peakStage = pet.relStage;
+  pet.unlockedTopics = unlockedTopicIds(pet.peakStage);
+  return { from, to: pet.relStage, stageUp: aff.stageIndex(pet.relStage) > aff.stageIndex(from), unlockedStages: aff.STAGE_IDS.slice(aff.stageIndex(fromPeak) + 1, aff.stageIndex(pet.peakStage) + 1) };
+}
+
+// Advance simulated time. Mutates and returns { pet, events, decay }.
+// `decay` is the affection lost to a long absence (design 2.4), 0 most of the time.
 function tick(pet, now) {
   const events = [];
+  const lost = aff.decay(pet, now);
+  if (lost > 0) events.push('missed');
   const dtMin = Math.min(Math.max(0, now - pet.lastTickAt) / MIN, MAX_OFFLINE_MIN);
   pet.lastTickAt = now;
-  if (dtMin <= 0) return { pet, events };
+  if (dtMin <= 0) return { pet, events, decay: lost };
 
   if (pet.sleeping) {
     pet.energy = clamp(pet.energy + dtMin * 1.2);
@@ -78,7 +102,7 @@ function tick(pet, now) {
       events.push('slept');
     }
   }
-  return { pet, events };
+  return { pet, events, decay: lost };
 }
 
 function touch(pet, now) {
@@ -92,51 +116,67 @@ function touch(pet, now) {
   return null;
 }
 
+// Waking a sleeping pet costs affection (design 2.2, `woken`).
+function wake(pet, now) {
+  const woken = touch(pet, now);
+  return { woken, penalty: woken ? score(pet, 'woken', now) : null };
+}
+
 const FOODS = {
-  rice: { label: '白饭', hunger: -35, mood: 6, xp: 3 },
-  cookie: { label: '饼干', hunger: -15, mood: 15, xp: 2 },
-  fruit: { label: '水果', hunger: -25, mood: 8, xp: 3 },
+  rice: { label: '白饭', hunger: -35, mood: 6 },
+  cookie: { label: '饼干', hunger: -15, mood: 15 },
+  fruit: { label: '水果', hunger: -25, mood: 8 },
 };
 
 function feed(pet, foodId, now) {
   const food = FOODS[foodId] || FOODS.rice;
-  const woken = touch(pet, now);
+  const { woken, penalty } = wake(pet, now);
   if (pet.hunger < 8) {
-    // Overfed: tummy ache, small mood loss.
+    // Overfed: tummy ache, small mood loss, and a little affection.
     pet.mood = clamp(pet.mood - 5);
-    return { ok: false, reason: 'full', woken };
+    return { ok: false, reason: 'full', woken, affection: combine(penalty, score(pet, 'feed_full', now)) };
   }
   pet.hunger = clamp(pet.hunger + food.hunger);
   pet.mood = clamp(pet.mood + food.mood);
   pet.lastFedAt = now;
-  const evolved = gainXp(pet, food.xp);
-  return { ok: true, food: food.label, evolved, woken };
+  return { ok: true, food: food.label, woken, affection: combine(penalty, score(pet, 'feed', now)) };
 }
 
 function pat(pet, now) {
-  const woken = touch(pet, now);
+  const { woken, penalty } = wake(pet, now);
   pet.mood = clamp(pet.mood + 8);
-  return { ok: true, evolved: gainXp(pet, 1), woken };
+  return { ok: true, woken, affection: combine(penalty, score(pet, 'pat', now)) };
 }
 
 function play(pet, now) {
-  const woken = touch(pet, now);
-  if (pet.energy < 15) return { ok: false, reason: 'tired', woken };
+  const { woken, penalty } = wake(pet, now);
+  if (pet.energy < 15) return { ok: false, reason: 'tired', woken, affection: penalty };
   pet.mood = clamp(pet.mood + 12);
   pet.energy = clamp(pet.energy - 10);
   pet.hunger = clamp(pet.hunger + 5);
-  return { ok: true, evolved: gainXp(pet, 4), woken };
+  return { ok: true, woken, affection: combine(penalty, score(pet, 'play', now)) };
 }
 
-function chatted(pet, now) {
-  touch(pet, now);
+// The agent answered a chat. Only a real message (2+ characters) scores (design 2.2).
+function chatted(pet, now, { textLength = 2 } = {}) {
+  const { penalty } = wake(pet, now);
   pet.mood = clamp(pet.mood + 3);
-  return { evolved: gainXp(pet, 2) };
+  if (textLength < 2) return { affection: penalty };
+  return { affection: combine(penalty, score(pet, 'chat', now)) };
 }
 
+// The agent answered a topic from the topic panel; each topic scores once a day.
+function talkedTopic(pet, topicId, now) {
+  const { penalty } = wake(pet, now);
+  pet.mood = clamp(pet.mood + 4);
+  return { affection: combine(penalty, score(pet, 'topic', now, { topicId })) };
+}
+
+// Tucking the pet in between 22:00 and 02:00 earns a little affection once a day.
 function putToSleep(pet, now) {
   pet.lastInteractionAt = now;
   pet.sleeping = true;
+  return { ok: true, affection: score(pet, 'sleep', now) };
 }
 
 // Which animation / mood face should the sprite show right now?
@@ -148,28 +188,20 @@ function currentStatus(pet) {
   return 'idle';
 }
 
-function toStageProgress(pet) {
-  const idx = STAGES.findIndex((s) => s.id === pet.stage);
-  const next = STAGES[idx + 1];
-  if (!next) return { next: null, pct: 100 };
-  const cur = STAGES[idx];
-  return { next: next.id, pct: Math.round(((pet.xp - cur.minXp) / (next.minXp - cur.minXp)) * 100) };
-}
-
 module.exports = {
-  STAGES,
   FOODS,
   clamp,
   isNight,
   createPet,
-  stageForXp,
   tick,
   feed,
   pat,
   play,
   chatted,
+  talkedTopic,
   putToSleep,
+  setAffectionForTest,
   touch,
   currentStatus,
-  toStageProgress,
+  toAffectionProgress: aff.toAffectionProgress,
 };

@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const { Store } = require('../core/store');
+const { SettingsStore } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
@@ -89,7 +90,7 @@ function wire() {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined })), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
   ipcMain.handle('hatch', async (_e, { speciesId, name, localAbilities }) => {
@@ -112,6 +113,10 @@ function wire() {
     }
   });
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
+  ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
+  ipcMain.handle('get-settings', () => service.getSettings());
+  ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
+  ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.
@@ -149,11 +154,7 @@ function wire() {
 
   if (TEST_MODE) {
     // Test-only hooks used by the E2E suite to drive time-dependent behaviour.
-    ipcMain.handle('debug-set', (_e, patch) => {
-      Object.assign(service.pet, patch);
-      service._save();
-      return service.view();
-    });
+    ipcMain.handle('debug-set', (_e, patch) => service.debugSet(patch));
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
@@ -163,14 +164,15 @@ function wire() {
   service.on('update', (v) => send('update', v));
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
-  service.on('evolved', (s) => send('evolved', s));
+  service.on('affection', (a) => send('affection', a));
+  service.on('settings', (st) => send('settings', st));
   service.on('error', logError);
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
 }
 
 app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
-  service = new PetService({ lh: new LhClient(), store });
+  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')) });
   wire();
   createWindow();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);

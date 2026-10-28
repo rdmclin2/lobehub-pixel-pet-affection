@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('pet', {
   whoami: () => ipcRenderer.invoke('whoami'),
   hatch: (speciesId, name, localAbilities) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
+  talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  confirmAge: (adult) => ipcRenderer.invoke('confirm-age', { adult }),
+  setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
   chat: (text, images, files) => ipcRenderer.invoke('chat', { text, images, files }),
   // Absolute path of a dropped/pasted File (empty for in-memory data such as screenshots).
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
@@ -29,7 +33,8 @@ contextBridge.exposeInMainWorld('pet', {
   onUpdate: on('update'),
   onSay: on('say'),
   onThinking: on('thinking'),
-  onEvolved: on('evolved'),
+  onAffection: on('affection'),
+  onSettings: on('settings'),
   onHatchStep: on('hatch-step'),
   onLoginPrompt: on('login-prompt'),
 });

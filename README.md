@@ -12,7 +12,7 @@ A pixel-art desktop pet whose brain is a [LobeHub](https://lobehub.com) agent. I
 
 1. First launch: four eggs (fire / water / grass / whale). Pick one.
 2. The app calls the LobeHub CLI: `lh login` (device-code login in your browser, skipped if you are already logged in), then `lh agent create` to make **your** pet's agent, with the species personality baked into its system role.
-3. The pet lives on your desktop: it gets hungry, tired and bored, evolves (baby → child → adult), remembers what you tell it, and speaks up on its own.
+3. The pet lives on your desktop: it gets hungry, tired and bored, grows closer to you through an affection system (陌生 → 熟悉 → 亲近 → 暧昧 / 知己 → 恋人 / 挚友, see `docs/affection-design.md`), remembers what you tell it, and speaks up on its own.
 
 The fire, water and grass pets are pixel art generated in code (`src/renderer/sprites.js`), with no third-party assets. The fourth, **大肥鱼 (Dafeiyu)**, uses animations from a community project; see [Credits](#credits). The pet window is small and shows only the pet; the bars, buttons and chat box appear while the pointer is over it.
 
