@@ -1,0 +1,7 @@
+
+> pixel-pet-affection@0.6.0 start
+> electron . --no-sandbox
+
+Downloading Electron binary...
+[32735:1029/031251.084377:ERROR:ui/gfx/x/connection.cc:64] X connection error received.
+[32735:1029/031251.084367:ERROR:ui/gfx/x/connection.cc:64] X connection error received.

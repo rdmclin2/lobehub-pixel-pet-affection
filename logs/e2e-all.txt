@@ -1,0 +1,188 @@
+PASS  [fresh] first launch shows the four model-chan
+PASS  [fresh] choosing a character enables waking her and shows who she is
+PASS  [fresh] hatching invokes lh login and shows the device code
+PASS  [fresh] after login the agent is created and the pet appears — greeting: echo: [事件] 你和主人第一次见面，礼貌地自我介绍一下。
+PASS  [fresh] CLI call order was whoami -> login -> workspaces -> agent create -> connect device -> bind -> agent run
+PASS  [fresh] restart goes straight to the pet (state persisted, no onboarding)
+PASS  [fresh] at rest only the pet is shown, with no buttons, bars or text box — window 230x340
+PASS  [fresh] hovering the pet reveals the controls and moving away hides them again
+PASS  [fresh] feeding lowers hunger and shows food — hunger 80 -> 45
+PASS  [fresh] affection crossing 15 by a pat moves the stage from 陌生 to 熟悉 and unlocks topics — meta: 小蓝 · 格萝可 · 熟悉 ♥15 · 距「亲近」20; stage-up event unlocks: 聊聊爱好、奇怪的冷知识、脑筋急转弯
+PASS  [fresh] topics: a locked topic returns its unlock condition, an unlocked one is sent to the agent with [话题] — locked whine -> 亲近（♥35）解锁，还差 20; riddle +2
+PASS  [fresh] restart keeps affection, stage and unlocked topics — after restart: 小蓝 · 格萝可 · 熟悉 ♥17 · 距「亲近」18
+PASS  [fresh] without an 18+ answer the adult switch is off and only reopens the same 18+ confirmation
+PASS  [fresh] release deletes the agent through lh and returns to character selection
+PASS  [wardrobe] first launch asks for 18+ before anything else — 01-age-gate-first-launch.png
+PASS  [wardrobe] answering 18+ goes on to companion selection and saves the answer — 01b-new-pet-choose-companion.png, 01c-new-pet-created.png · settings.json: {"ageGateVersion":1,"ageConfirmed":true,"ageConfirmedAt":1793214062827,"adultContent":true,"answered":true,"petScale":1,"appearance":{}}
+PASS  [wardrobe] initial state: affection bar, number, stage name and distance to the next stage — 02-initial-state.png · meta: 小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15
+PASS  [wardrobe] a pat raises affection: the number goes up and +♥ floats over the pet — 03-affection-up.png · float "+4.8 ♥" · meta: 小蓝 · 大肥鱼 · 陌生 ♥4 · 距「熟悉」11
+PASS  [wardrobe] crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics and outfits — 04-stage-up-unlock-notice.png · × 🎉 关系升级：熟悉（♥15） 解锁话题：「聊聊爱好」、「奇怪的冷知识」、「脑筋急转弯」解锁服饰：「休闲卫衣」、「贝雷帽画家装」 去衣柜看看
+PASS  [wardrobe] the wardrobe lists every outfit she has; locked ones are greyed with a lock and their condition — 05-wardrobe-with-locked-items.png
+PASS  [wardrobe] a locked outfit cannot be put on: the wardrobe says what unlocks it — 06-locked-outfit-refused.png
+PASS  [wardrobe] putting on an unlocked outfit changes the figure and marks it worn — 07-wardrobe-casual-equipped.png, 08-pet-wearing-casual.png · pet.json equippedOutfit=casual
+PASS  [wardrobe] the topic panel marks locked topics with their unlock condition — 09-topics-with-locked-items.png
+PASS  [wardrobe] a topic unlocked at 熟悉 can be started: the agent gets it and the pet answers — 10-unlocked-topic-started.png · bubble: echo: [话题] 脑筋急转弯：出一道脑筋急转弯让主人猜，先别公布答案。
+PASS  [wardrobe] crossing 35 by a pat moves 熟悉 -> 亲近 and unlocks the next topics and outfits — 11-stage-up-close.png · × 🎉 关系升级：亲近（♥35） 解锁话题：「求安慰 / 打气」、「给彼此起昵称」、「撒娇模式」、「说说昨晚的怪梦」解锁服饰：「毛绒睡衣」、「猫耳家居服」 去衣柜看看
+PASS  [wardrobe] crossing 60 by a pat moves 亲近 -> 知己: an all-ages character unlocks no adult topics or outfits, even with 18+ on — 12-stage-up-flirty.png · × 🎉 关系升级：知己（♥60） 解锁话题：「交换小秘密」、「深夜谈心」解锁服饰：「浴衣」 去衣柜看看
+PASS  [wardrobe] the topic panel now offers the 知己 topics; 挚友 topics stay locked — 13-topics-flirty-unlocked.png
+PASS  [wardrobe] the yukata unlocked at 知己 can be worn — 14-wardrobe-yukata-equipped.png, 15-pet-wearing-yukata.png
+PASS  [wardrobe] restart: the app is closed and relaunched; affection, stage, unlocks and the outfit are kept — 16-after-restart-pet.png, 17-after-restart-wardrobe.png, 18-after-restart-topics.png · pid 63546 -> 64599
+PASS  [wardrobe] adult switch off: nothing adult was shown, so the all-ages character keeps her outfit and stage — 19-menu-adult-switch-on.png, 20-adult-off-pet-unchanged.png, 21-menu-adult-switch-off.png, 22-wardrobe-adult-off-no-adult-items.png, 23-topics-adult-off-all-ages-only.png · stage shown as 知己 · bubble: （成人向内容已关闭。）
+PASS  [migrate] an old 泡鲸 xp=150 / child save opens as 大肥鱼 熟悉 ♥25 with the same agent and topic, and says who took over — bubble: （原来的角色已经下线，现在由DeepSeek 娘「大肥鱼」陪你，好感度和聊天记录都还在。）; meta: 小蓝 · 大肥鱼 · 熟悉 ♥25 · 距「亲近」10; retiredFrom={"speciesId":"bubbo","at":1793214078506}
+PASS  [migrate] a current save of the retired 焰团 wearing an adult outfit opens as 克洛蒂 in her own outfit, without a crash — meta: 小火 · 克洛蒂 · 知己 ♥70 · 距「挚友」15; outfit maid → daily
+PASS  [dafeiyu] the character screen offers DeepSeek first
+PASS  [dafeiyu] hatching plays the 大肥鱼 hatch animation
+PASS  [dafeiyu] the pet appears as a transparent video in a small window with no controls showing — window 230x340, clip idle
+PASS  [dafeiyu] hovering shows the controls; feeding rice plays the eating animation
+PASS  [dafeiyu] the agent was created with the 大肥鱼 persona
+PASS  [dafeiyu] in the wardrobe the signature outfit shows its animation cropped to fill the card — card 108x108, video 235x132, preview 90x90
+PASS  [busy] the computer-access option was on by default and the agent got bound to this computer
+PASS  [busy] with the chat box open, moving the pointer away hides everything; the draft returns on the next hover
+PASS  [busy] while the pet works the controls stay hidden even under the pointer, and actions are refused
+PASS  [busy] when the reply arrives the controls come back on hover
+PASS  [busy] Escape stops a running task and the pet says so
+PASS  [busy] hovering while the pet works shows only a Stop button, and clicking it interrupts the task
+PASS  [busy] a pasted picture is attached, uploaded, and answered
+PASS  [busy] turning computer access off from the menu unbinds the agent, and on binds it again
+PASS  [busy] dropping files hands their paths to the pet without uploading anything
+PASS  [busy] dropping a file while computer access is off asks to turn it on, then goes ahead
+PASS  [longreply] a very long reply scrolls inside the bubble and stays within the window — bubble 41px, scrollable
+PASS  [daemon] claiming a pet starts lh connect --daemon
+PASS  [daemon] relaunching the app starts the daemon again if it is gone
+PASS  [daemon] relaunching while the daemon is already running does not start a second one
+PASS  [oldlh] an lh that cannot write the binding still works, and the pet says to upgrade lh
+PASS  [live] real lh is logged in, so login is skipped and a real agent is created — agent agt_mLD7wJyKKmXi in the personal space (space choice asked, 3 options)
+PASS  [live] the LobeHub agent exists and carries the pet persona — agent view shows name + species persona
+PASS  [live] first greeting comes from the real model, not a canned line — greeting: 你好，我是芽芽，你的桌面助手。查资料、算数、翻译、整理思路都可以找我。
+PASS  [live] feeding lowers hunger and shows food — hunger 80 -> 45
+PASS  [live] chat: the pet answers and remembers what it was told (same LobeHub topic) — reply: 你叫小李，喜欢吃面条。
+PASS  [live] proactive: a hungry pet speaks up on its own via the agent — unprompted: （肚子咕咕叫了一下）小李，我有点饿了……能给我来碗面吗？
+PASS  [live] asked to look something up, the pet helps instead of deflecting to other assistants — 49 chars: 纳指（10/27收盘）26,477.81，涨1.18%（+308点），近一周偏强。要详细走势再说。
+PASS  [live] a pasted picture is recognised by the real model — 三个人。从左到右：蓝发、橘红卷发、金色浅发。
+PASS  [live] affection crossing 15 moves the stage from 陌生 to 熟悉
+PASS  [live] release deletes the real agent and returns to character selection
+PASS  [space] after login it asks where to put the pet: personal first and selected, then each workspace — 个人空间 / Team Space / Lab
+PASS  [space] keeping the default puts the agent in the personal space (lh switched back to personal)
+PASS  [space] choosing a workspace creates the agent there
+PASS  [advanced] the ⋯ menu has 高级设置, which explains one-click unlock — 陌生 ♥0/100 · 距「熟悉」还差 15 · 话题 2/13 · 服饰 2/9
+PASS  [advanced] one click unlocks every stage, topic and outfit (18+ on; 大肥鱼 is all-ages, so all-ages content only) — 已解锁：11 个话题、7 套服饰。去衣柜换上看看吧。
+PASS  [advanced] the wardrobe shows everything unlocked and the last-stage outfit can be put on — pet now wears 花冠长裙
+PASS  [advanced] dragging the corner handle up-left resizes the pet freely; the window follows, bottom-right corner stays put — scale 2.49: window 230x340 -> 454x623; stage 190 -> 473px
+PASS  [advanced] Ctrl + wheel over the pet makes it smaller, step by step — 2.49 -> 2.05
+PASS  [advanced] the slider in 高级设置 sets any size, and the size is kept across a restart — after restart: 60%, window 230x264
+PASS  [packs] 格萝可 is an animated pixel sprite from grok-pixel; dragging plays the lifted action — action while dragging: lifted
+PASS  [packs] an imported pack is listed as imported, can be used, and the advanced list names it — 我的格萝可 / 格萝可 · 像素
+PASS  [packs] a broken pack is refused with its reasons — outfits.daily: "../x.png" must be a relative path to a png / webp / gif / jpg inside the pack; frame.width and frame.height must be whole numbers of pixels (at most 1024) | retired character: species must be one of dafeiyu, claude, grok, gemini
+PASS  [packs] removing the pack in use puts the companion back in her default pixel pack
+PASS  [packs] 大肥鱼 switches between her animated clips and her pixel pack — 大肥鱼 · 像素 / 大肥鱼 · 立绘; clips → dafeiyu-pixel → clips
+PASS  [update] ⋯ → 检查更新 shows the version and says it is the newest one — 当前版本 v0.6.0 · 上次检查：2026/10/29 03:05:57 / 已经是最新版本。
+PASS  [update] when a newer release exists, 检查更新 finds it and offers it — 有新版本 v9.9.9。这个版本没法自动替换自己，请下载安装。 · menu: 下载新版本 v9.9.9
+PASS  [art] outfit sheet: every character in every outfit she offers — rows: dafeiyu, claude, grok, gemini; columns: daily, scarf, casual, beret, pajamas, cat_ears, yukata, couple_hoodie, flower_crown (— = no art, not offered)
+PASS  [art] state sheet: every character in every state of the shared effects layer, drawn by the app — 80 cells: rows dafeiyu clips + dafeiyu/claude/grok/gemini pixel; columns: idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve, lifted (↪ = DeepSeek clip borrowed through the fallback chain)
+PASS  [roster-dafeiyu] onboarding offers the four model-chan, no spirit stones — DeepSeek / Anthropic / xAI / Google
+PASS  [roster-dafeiyu] choose 大肥鱼 (DeepSeek) — DeepSeek 娘 · 鲸鱼女仆（Q 版）：DeepSeek 社区的蓝色鲸鱼娘，Q 版女仆装，爱吃白饭，叫你“鱼片”。
+PASS  [roster-dafeiyu] E1 wake-up plays her hatch state — hatch.webm
+PASS  [roster-dafeiyu] E2 on the desktop she idles — state=idle clip=idle.webm
+PASS  [roster-dafeiyu] E3a the idle chain starts a cue on its own (no input) — idle chain played "look" by itself (facing right)
+PASS  [roster-dafeiyu] E3b look around — state=look clip=look.webm
+PASS  [roster-dafeiyu] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-dafeiyu] E3d turn back — facing right
+PASS  [roster-dafeiyu] E4 a click: a reaction with a squash and hearts — state=pat clip=pat.webm, squash, 10 hearts
+PASS  [roster-dafeiyu] E4b the next click picks the other reaction — pat → happy
+PASS  [roster-dafeiyu] E5 dragged: she is lifted (dangling) — lifted → clip pat.webm + ❗ overlay
+PASS  [roster-dafeiyu] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 185,684; 9 bounces (wall, floor)
+PASS  [roster-dafeiyu] E7 fed rice — state=eat_rice clip=eat_rice.webm
+PASS  [roster-dafeiyu] E7 fed cookie — state=eat_cookie clip=eat_cookie.webm
+PASS  [roster-dafeiyu] E7 fed fruit — state=eat_fruit clip=eat_fruit.webm
+PASS  [roster-dafeiyu] E8 play — state=play clip=play.webm
+PASS  [roster-dafeiyu] E9 sleep — state=sleep clip=sleep.webm
+PASS  [roster-dafeiyu] E10a hungry — state=hungry clip=hungry.webm
+PASS  [roster-dafeiyu] E10b sad — state=sad clip=sad.webm
+PASS  [roster-dafeiyu] E10c happy — state=happy clip=happy.webm
+PASS  [roster-dafeiyu] E11a work status: thinking while the agent works — state=think clip=think.webm
+PASS  [roster-dafeiyu] E11b work status: talking when the reply arrives — state=talk clip=talk.webm; bubble: echo: 帮我想想今天吃什么
+PASS  [roster-dafeiyu] E11c work status: an error makes her upset — state=sad clip=sad.webm
+PASS  [roster-dafeiyu] E11d the time background is in every message to the agent — 现在03:06（凌晨，星期四，工作日）
+PASS  [roster-dafeiyu] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve clip=evolve.webm; toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-dafeiyu] E13 a wardrobe with her own outfits — 9 outfit(s); daily = 招牌女仆装
+PASS  [roster-dafeiyu] E14 switch character from the advanced settings, keeping the agent and affection — dafeiyu → claude; agent agt_FAKE1793214362079 kept, ♥16
+PASS  [roster-claude] choose 克洛蒂 (Anthropic) — Claude 娘 · 橘发菊纹：以 Claude 为灵感的橘发书卷气姑娘：安静、认真，爱读书和写笔记。（同人形象，非 A
+PASS  [roster-claude] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-claude] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-claude] E3a the idle chain starts a cue on its own (no input) — idle chain played "look" by itself (facing right)
+PASS  [roster-claude] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-claude] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-claude] E3d turn back — facing right
+PASS  [roster-claude] E4 a click: a reaction with a squash and hearts — state=pat action=pat (own sprite row), squash, 10 hearts
+PASS  [roster-claude] E4b the next click picks the other reaction — pat → happy
+PASS  [roster-claude] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-claude] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 188,684; 10 bounces (wall, floor)
+PASS  [roster-claude] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-claude] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-claude] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-claude] E8 play — state=play action=play (own sprite row)
+PASS  [roster-claude] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-claude] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-claude] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-claude] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-claude] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-claude] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-claude] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-claude] E11d the time background is in every message to the agent — 现在03:07（凌晨，星期四，工作日）
+PASS  [roster-claude] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-claude] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 橘白哥特长裙
+PASS  [roster-claude] E14 switch character from the advanced settings, keeping the agent and affection — claude → grok; agent agt_FAKE1793214418497 kept, ♥16
+PASS  [roster-grok] choose 格萝可 (xAI) — Grok 娘 · 黑金吸血鬼：以 Grok 为灵感的黑金吸血鬼：嘴快爱吐槽，夜里最精神。（同人形象，非 xAI 官方）
+PASS  [roster-grok] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-grok] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-grok] E3a the idle chain starts a cue on its own (no input) — idle chain played "look" by itself (facing right)
+PASS  [roster-grok] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-grok] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-grok] E3d turn back — facing right
+PASS  [roster-grok] E4 a click: a reaction with a squash and hearts — state=happy action=happy (own sprite row), squash, 10 hearts
+PASS  [roster-grok] E4b the next click picks the other reaction — happy → pat
+PASS  [roster-grok] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-grok] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 185,684; 9 bounces (wall, floor)
+PASS  [roster-grok] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-grok] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-grok] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-grok] E8 play — state=play action=play (own sprite row)
+PASS  [roster-grok] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-grok] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-grok] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-grok] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-grok] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-grok] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-grok] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-grok] E11d the time background is in every message to the agent — 现在03:08（凌晨，星期四，工作日）
+PASS  [roster-grok] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-grok] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 黑金哥特礼服
+PASS  [roster-grok] E14 switch character from the advanced settings, keeping the agent and affection — grok → gemini; agent agt_FAKE1793214475836 kept, ♥16
+PASS  [roster-gemini] choose 杰米 (Google) — Gemini 娘 · 四角星猫耳：以 Gemini 为灵感的紫发猫耳姑娘：好奇心旺盛，什么都想看一眼、试一下。（同人形象
+PASS  [roster-gemini] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-gemini] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-gemini] E3a the idle chain starts a cue on its own (no input) — idle chain played "look" by itself (facing right)
+PASS  [roster-gemini] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-gemini] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-gemini] E3d turn back — facing right
+PASS  [roster-gemini] E4 a click: a reaction with a squash and hearts — state=happy action=happy (own sprite row), squash, 10 hearts
+PASS  [roster-gemini] E4b the next click picks the other reaction — happy → pat
+PASS  [roster-gemini] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-gemini] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 182,684; 9 bounces (wall, floor)
+PASS  [roster-gemini] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-gemini] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-gemini] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-gemini] E8 play — state=play action=play (own sprite row)
+PASS  [roster-gemini] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-gemini] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-gemini] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-gemini] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-gemini] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-gemini] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-gemini] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-gemini] E11d the time background is in every message to the agent — 现在03:09（凌晨，星期四，工作日）
+PASS  [roster-gemini] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-gemini] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 星纹宽袖外披
+PASS  [roster-gemini] E14 switch character from the advanced settings, keeping the agent and affection — gemini → dafeiyu; agent agt_FAKE1793214537529 kept, ♥16
+
+186/186 passed

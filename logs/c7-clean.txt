@@ -1,0 +1,6 @@
+553e318 Merge pull request #19 from rdmclin2/feat/gemini-chan
+npm warn install-scripts
+npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
+ℹ tests 195
+ℹ pass 195
+ℹ fail 0

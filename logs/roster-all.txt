@@ -1,0 +1,107 @@
+PASS  [roster-dafeiyu] onboarding offers the four model-chan, no spirit stones — DeepSeek / Anthropic / xAI / Google
+PASS  [roster-dafeiyu] choose 大肥鱼 (DeepSeek) — DeepSeek 娘 · 鲸鱼女仆（Q 版）：DeepSeek 社区的蓝色鲸鱼娘，Q 版女仆装，爱吃白饭，叫你“鱼片”。
+PASS  [roster-dafeiyu] E1 wake-up plays her hatch state — hatch.webm
+PASS  [roster-dafeiyu] E2 on the desktop she idles — state=idle clip=idle.webm
+PASS  [roster-dafeiyu] E3a the idle chain starts a cue on its own (no input) — idle chain played "play" by itself (facing right)
+PASS  [roster-dafeiyu] E3b look around — state=look clip=look.webm
+PASS  [roster-dafeiyu] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-dafeiyu] E3d turn back — facing right
+PASS  [roster-dafeiyu] E4 a click: a reaction with a squash and hearts — state=happy clip=happy.webm, squash, 10 hearts
+PASS  [roster-dafeiyu] E4b the next click picks the other reaction — happy → pat
+PASS  [roster-dafeiyu] E5 dragged: she is lifted (dangling) — lifted → clip pat.webm + ❗ overlay
+PASS  [roster-dafeiyu] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 189,684; 10 bounces (wall, floor)
+PASS  [roster-dafeiyu] E7 fed rice — state=eat_rice clip=eat_rice.webm
+PASS  [roster-dafeiyu] E7 fed cookie — state=eat_cookie clip=eat_cookie.webm
+PASS  [roster-dafeiyu] E7 fed fruit — state=eat_fruit clip=eat_fruit.webm
+PASS  [roster-dafeiyu] E8 play — state=play clip=play.webm
+PASS  [roster-dafeiyu] E9 sleep — state=sleep clip=sleep.webm
+PASS  [roster-dafeiyu] E10a hungry — state=hungry clip=hungry.webm
+PASS  [roster-dafeiyu] E10b sad — state=sad clip=sad.webm
+PASS  [roster-dafeiyu] E10c happy — state=happy clip=happy.webm
+PASS  [roster-dafeiyu] E11a work status: thinking while the agent works — state=think clip=think.webm
+PASS  [roster-dafeiyu] E11b work status: talking when the reply arrives — state=talk clip=talk.webm; bubble: echo: 帮我想想今天吃什么
+PASS  [roster-dafeiyu] E11c work status: an error makes her upset — state=sad clip=sad.webm
+PASS  [roster-dafeiyu] E11d the time background is in every message to the agent — 现在02:57（凌晨，星期四，工作日）
+PASS  [roster-dafeiyu] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve clip=evolve.webm; toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-dafeiyu] E13 a wardrobe with her own outfits — 9 outfit(s); daily = 招牌女仆装
+PASS  [roster-dafeiyu] E14 switch character from the advanced settings, keeping the agent and affection — dafeiyu → claude; agent agt_FAKE1793213806355 kept, ♥16
+PASS  [roster-claude] choose 克洛蒂 (Anthropic) — Claude 娘 · 橘发菊纹：以 Claude 为灵感的橘发书卷气姑娘：安静、认真，爱读书和写笔记。（同人形象，非 A
+PASS  [roster-claude] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-claude] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-claude] E3a the idle chain starts a cue on its own (no input) — idle chain played "look" by itself (facing right)
+PASS  [roster-claude] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-claude] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-claude] E3d turn back — facing right
+PASS  [roster-claude] E4 a click: a reaction with a squash and hearts — state=happy action=happy (own sprite row), squash, 10 hearts
+PASS  [roster-claude] E4b the next click picks the other reaction — happy → pat
+PASS  [roster-claude] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-claude] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 367,684; 9 bounces (wall, floor)
+PASS  [roster-claude] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-claude] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-claude] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-claude] E8 play — state=play action=play (own sprite row)
+PASS  [roster-claude] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-claude] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-claude] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-claude] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-claude] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-claude] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-claude] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-claude] E11d the time background is in every message to the agent — 现在02:58（凌晨，星期四，工作日）
+PASS  [roster-claude] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-claude] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 橘白哥特长裙
+PASS  [roster-claude] E14 switch character from the advanced settings, keeping the agent and affection — claude → grok; agent agt_FAKE1793213867814 kept, ♥16
+PASS  [roster-grok] choose 格萝可 (xAI) — Grok 娘 · 黑金吸血鬼：以 Grok 为灵感的黑金吸血鬼：嘴快爱吐槽，夜里最精神。（同人形象，非 xAI 官方）
+PASS  [roster-grok] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-grok] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-grok] E3a the idle chain starts a cue on its own (no input) — idle chain played "turn" by itself (facing left)
+PASS  [roster-grok] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-grok] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-grok] E3d turn back — facing right
+PASS  [roster-grok] E4 a click: a reaction with a squash and hearts — state=pat action=pat (own sprite row), squash, 10 hearts
+PASS  [roster-grok] E4b the next click picks the other reaction — pat → happy
+PASS  [roster-grok] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-grok] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 188,684; 10 bounces (wall, floor)
+PASS  [roster-grok] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-grok] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-grok] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-grok] E8 play — state=play action=play (own sprite row)
+PASS  [roster-grok] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-grok] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-grok] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-grok] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-grok] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-grok] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-grok] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-grok] E11d the time background is in every message to the agent — 现在02:59（凌晨，星期四，工作日）
+PASS  [roster-grok] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-grok] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 黑金哥特礼服
+PASS  [roster-grok] E14 switch character from the advanced settings, keeping the agent and affection — grok → gemini; agent agt_FAKE1793213926862 kept, ♥16
+PASS  [roster-gemini] choose 杰米 (Google) — Gemini 娘 · 四角星猫耳：以 Gemini 为灵感的紫发猫耳姑娘：好奇心旺盛，什么都想看一眼、试一下。（同人形象
+PASS  [roster-gemini] E1 wake-up plays her hatch state — sprite hatch action
+PASS  [roster-gemini] E2 on the desktop she idles — state=idle action=idle (own sprite row)
+PASS  [roster-gemini] E3a the idle chain starts a cue on its own (no input) — idle chain played "turn" by itself (facing left)
+PASS  [roster-gemini] E3b look around — state=look action=look (own sprite row)
+PASS  [roster-gemini] E3c turn: the character is mirrored — facing right → left, CSS scale -1 1
+PASS  [roster-gemini] E3d turn back — facing right
+PASS  [roster-gemini] E4 a click: a reaction with a squash and hearts — state=pat action=pat (own sprite row), squash, 10 hearts
+PASS  [roster-gemini] E4b the next click picks the other reaction — pat → happy
+PASS  [roster-gemini] E5 dragged: she is lifted (dangling) — state=lifted action=lifted (own sprite row)
+PASS  [roster-gemini] E6 thrown: flies, bounces off the screen edges and lands — window 1056,640 → 182,684; 9 bounces (wall, floor)
+PASS  [roster-gemini] E7 fed rice — state=eat_rice action=eat_rice (own sprite row)
+PASS  [roster-gemini] E7 fed cookie — state=eat_cookie action=eat_cookie (own sprite row)
+PASS  [roster-gemini] E7 fed fruit — state=eat_fruit action=eat_fruit (own sprite row)
+PASS  [roster-gemini] E8 play — state=play action=play (own sprite row)
+PASS  [roster-gemini] E9 sleep — state=sleep action=sleep (own sprite row)
+PASS  [roster-gemini] E10a hungry — state=hungry action=hungry (own sprite row)
+PASS  [roster-gemini] E10b sad — state=sad action=sad (own sprite row)
+PASS  [roster-gemini] E10c happy — state=happy action=happy (own sprite row)
+PASS  [roster-gemini] E11a work status: thinking while the agent works — state=think action=think (own sprite row)
+PASS  [roster-gemini] E11b work status: talking when the reply arrives — state=talk action=talk (own sprite row); bubble: echo: 帮我想想今天吃什么
+PASS  [roster-gemini] E11c work status: an error makes her upset — state=sad action=sad (own sprite row)
+PASS  [roster-gemini] E11d the time background is in every message to the agent — 现在03:00（凌晨，星期四，工作日）
+PASS  [roster-gemini] E12 relationship stage-up: evolve, sparkle and hearts — state=evolve action=evolve (own sprite row); toast: 🎉 关系升级：熟悉（♥16）
+PASS  [roster-gemini] E13 a wardrobe with her own outfits — 1 outfit(s); daily = 星纹宽袖外披
+PASS  [roster-gemini] E14 switch character from the advanced settings, keeping the agent and affection — gemini → dafeiyu; agent agt_FAKE1793213988701 kept, ♥16
+
+105/105 passed
