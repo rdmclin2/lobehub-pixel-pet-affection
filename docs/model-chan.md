@@ -144,9 +144,13 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
    ```
 
    字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`。
-3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。
+3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 25 岁以上”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
 4. **运行确认**：`npm start`，选择模型娘界面会多出一张 Gemini 卡片，唤醒后所有效果自动可用。
-5. **更新测试**：`test/characters.test.js`、`test/dafeiyu.test.js`、`test/packs.test.js` 固定了现有角色列表，`e2e/run.js` 的 `ROSTER` 列出逐角色验收的角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster gemini`。
+5. **更新测试**：下面几处固定了现有角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster gemini`：
+   - `test/characters.test.js`：角色 id 列表和厂商列表；
+   - `test/dafeiyu.test.js`：角色 id 列表；
+   - `test/packs.test.js`：内置角色包 id 列表（加 `gemini-pixel`）和逐角色检查的 id 列表；
+   - `e2e/run.js` 的 `ROSTER`：加一行 `{ id: 'gemini', idx: 3, zh: '杰米', vendor: 'Google' }`（`idx` 是角色卡的位置，从 0 开始）。
 6. 在本文档的角色清单里加一行。
 
 ## 四、验证
