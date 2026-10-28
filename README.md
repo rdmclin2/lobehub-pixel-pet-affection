@@ -13,6 +13,8 @@
 
 ## 模型娘角色
 
+> 完整的角色清单（形象、素材来源与许可、支持的效果）、使用说明（安装、运行、切换角色、各效果怎么触发）和“新增一个厂商角色”的步骤见 **[docs/model-chan.md](docs/model-chan.md)**。
+
 | 角色 | 厂商 | 主题色 | 美术 | 服饰 |
 |---|---|---|---|---|
 | 大肥鱼（DeepSeek 娘 · Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 原版 15 段透明视频（dsh-pet）；可在“外观”里换成像素包 `dafeiyu-pixel` | 招牌女仆装（动画）+ 8 套全年龄立绘 |
@@ -93,6 +95,8 @@ cd lobehub-pixel-pet-affection
 npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
+
+- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [docs/model-chan.md](docs/model-chan.md#运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
 
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
 - **高级设置 · 一键解锁**（⋯ 菜单 → 高级设置）：直接把好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
