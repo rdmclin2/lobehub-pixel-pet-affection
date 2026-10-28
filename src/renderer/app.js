@@ -37,7 +37,67 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 // Every settings update also carries the pet size: the character area scales with it (style.css .stage).
 function setSettings(st) {
   settings = st;
-  if (st && st.petScale) document.documentElement.style.setProperty('--pet-scale', String(st.petScale));
+  if (st && st.petScale) showScale(st.petScale);
+}
+
+function showScale(k) {
+  document.documentElement.style.setProperty('--pet-scale', String(k));
+  $('resize-grip').setAttribute('aria-valuenow', String(Math.round(k * 100)));
+}
+
+// ---------- resizing the pet: corner handle, Ctrl/⌘ + wheel ----------
+// The window follows (main resizes it around its bottom-right corner); the size is saved on release.
+let resizing = null;
+let scaleFrame = 0;
+function previewScale(k) {
+  const r = settings.petScaleRange;
+  k = Math.round(Math.min(r.max, Math.max(r.min, k)) * 100) / 100;
+  showScale(k);
+  if (!scaleFrame) scaleFrame = requestAnimationFrame(async () => {
+    scaleFrame = 0;
+    const used = await window.pet.previewPetScale(Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')));
+    showScale(used);
+  });
+  return k;
+}
+async function commitScale(k) {
+  const r = await window.pet.setPetScale(k);
+  if (r && r.ok) setSettings(r.settings);
+}
+function bindResize() {
+  const grip = $('resize-grip');
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    grip.setPointerCapture(e.pointerId);
+    resizing = { x: e.screenX, y: e.screenY, k: settings.petScale, cur: settings.petScale };
+    document.body.classList.add('resizing');
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!resizing) return;
+    // up and to the left grows the pet; 190 px of drag (the character's height) doubles it
+    const d = (resizing.y - e.screenY + (resizing.x - e.screenX)) / 2;
+    resizing.cur = previewScale(resizing.k * (1 + d / 190));
+  });
+  const end = async () => {
+    if (!resizing) return;
+    const k = resizing.cur;
+    resizing = null;
+    document.body.classList.remove('resizing');
+    await commitScale(k);
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+  grip.addEventListener('mousedown', (e) => e.stopPropagation()); // not a window drag
+  let wheelTimer = null;
+  let wheelK = null;
+  $('stage').addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    wheelK = previewScale((wheelK || settings.petScale) * (e.deltaY < 0 ? 1.05 : 1 / 1.05));
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { const k = wheelK; wheelK = null; commitScale(k); }, 400);
+  }, { passive: false });
 }
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
@@ -467,25 +527,27 @@ function renderAdvanced() {
 
   const size = document.createElement('div');
   size.className = 'adv-section';
-  size.innerHTML = '<h3>宠物大小</h3><p class="adv-text">桌面上的角色有多大。窗口会跟着变，右下角保持不动。</p><div class="size-row" role="radiogroup" aria-label="宠物大小"></div>';
-  const row = size.querySelector('.size-row');
-  for (const o of settings.petSizes || []) {
-    const b = document.createElement('button');
-    const on = o.id === settings.petSize;
-    b.className = `btn size-opt${on ? ' on' : ''}`;
-    b.dataset.size = o.id;
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(on));
-    b.textContent = o.label;
-    b.addEventListener('click', async () => {
-      const r = await window.pet.setPetSize(o.id);
-      if (!r.ok) return;
-      setSettings(r.settings);
-      renderAdvanced();
-      panelMsg(`宠物大小：${o.label}。关掉这个面板就能看到效果。`, true);
-    });
-    row.appendChild(b);
-  }
+  size.innerHTML = '<h3>宠物大小 <span class="size-val"></span></h3><p class="adv-text">拖动滑块调整桌面上角色的大小（50%–250%），窗口跟着变，右下角保持不动。在桌面上也能直接调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 滚动滚轮。</p><div class="size-row"><input id="size-range" type="range" aria-label="宠物大小" /><button id="size-reset" class="btn">恢复 100%</button></div>';
+  const range = size.querySelector('#size-range');
+  const r = settings.petScaleRange;
+  range.min = String(r.min * 100);
+  range.max = String(r.max * 100);
+  range.step = '5';
+  range.value = String(Math.round(settings.petScale * 100));
+  const label = () => { size.querySelector('.size-val').textContent = `${range.value}%`; };
+  label();
+  range.addEventListener('input', label);
+  range.addEventListener('change', async () => {
+    await commitScale(Number(range.value) / 100);
+    range.value = String(Math.round(settings.petScale * 100));
+    label();
+    panelMsg(`宠物大小：${range.value}%。关掉这个面板就能看到效果。`, true);
+  });
+  size.querySelector('#size-reset').addEventListener('click', async () => {
+    await commitScale(1);
+    renderAdvanced();
+    panelMsg('宠物大小已恢复为 100%。', true);
+  });
   body.appendChild(size);
 }
 
@@ -953,6 +1015,7 @@ function onUpdateStatus(u) {
 async function main() {
   info = await window.pet.boot();
   bindPetUi();
+  bindResize();
   bindHover();
   $('hatch-btn').addEventListener('click', startHatch);
   $('hatch-retry').addEventListener('click', showOnboarding);
