@@ -6,13 +6,11 @@
 // Dafeiyu. Turning adult content off puts the pet back into the last all-ages outfit it wore.
 //
 // Content boundary (design 8.2): nothing is revealing. The adult tier is about style only (a long maid
-// dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). The art is
-// drawn procedurally in `src/renderer/sprites.js` (made for this project, MIT); `art` names the entry
-// that draws it. Every figure is an adult (about 6.5 heads tall).
+// dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). Every
+// companion has one generated picture per outfit it can wear (`artFor`, made for this project with
+// gpt-image-2.5 through LobeHub, see NOTICE.md); every picture shows an adult woman.
 
 const { getStage, stageIndex, stageName, adultAllowed } = require('./affection');
-
-const ART = 'src/renderer/sprites.js#OUTFIT_ART';
 
 const OUTFITS = [
   { id: 'daily', stage: 'stranger', rating: 'all', label: '日常服', desc: '白衬衫配牛仔裤，最平常的样子。' },
@@ -27,12 +25,21 @@ const OUTFITS = [
   { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着爱心的粉色情侣卫衣。' },
   { id: 'flower_crown', stage: 'lover', rating: 'all', label: '花冠长裙', desc: '白色长裙和一顶花冠。' },
   { id: 'retro_swimsuit', stage: 'lover', rating: 'adult', label: '复古连体泳装', desc: '海军蓝复古连体泳装、遮阳帽和凉鞋（保守款）。' },
-  { id: 'silk_robe', stage: 'lover', rating: 'adult', label: '丝绸睡袍', desc: '香槟色及膝丝绸睡袍，系好腰带。' },
-].map((o) => ({ ...o, art: `${ART}.${o.id}` }));
+  { id: 'silk_robe', stage: 'lover', rating: 'adult', label: '丝绸睡袍', desc: '香槟色及膝丝绸睡袍，系好腰带，内搭长睡裤。' },
+];
 
 const OUTFIT_IDS = OUTFITS.map((o) => o.id);
 const DEFAULT_OUTFIT = 'daily';
 const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
+
+// Dafeiyu's own look is its animated clips (assets/dafeiyu): its default outfit shows them.
+const SIGNATURE = { dafeiyu: { label: '招牌女仆装', desc: '大肥鱼原本的样子（动画）。' } };
+
+// The picture of `speciesId` wearing `outfitId`, relative to the renderer page; null = the species' clips.
+function artFor(speciesId, outfitId) {
+  if (SIGNATURE[speciesId] && outfitId === DEFAULT_OUTFIT) return null;
+  return `assets/chars/${speciesId}/${byId(outfitId) ? outfitId : DEFAULT_OUTFIT}.webp`;
+}
 
 function lockCondition(stageId, affection, adult) {
   const s = getStage(stageId);
@@ -61,10 +68,12 @@ function listOutfits(pet, settings) {
   const seen = pet.seenUnlocks || [];
   return OUTFITS.filter((o) => isVisible(pet, settings, o)).map((o) => {
     const unlocked = isUnlocked(pet, o);
+    const own = o.id === DEFAULT_OUTFIT && SIGNATURE[pet.speciesId];
     return {
       id: o.id,
-      label: o.label,
-      desc: o.desc,
+      label: own ? own.label : o.label,
+      desc: own ? own.desc : o.desc,
+      art: artFor(pet.speciesId, o.id),
       stage: o.stage,
       stageName: stageName(o.stage, adult),
       rating: o.rating,
@@ -111,4 +120,4 @@ function outfitsForStages(stageIds, pet, settings) {
   return OUTFITS.filter((o) => stageIds.includes(o.stage) && isVisible(pet, settings, o)).map((o) => ({ id: o.id, label: o.label }));
 }
 
-module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };
+module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, artFor, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };

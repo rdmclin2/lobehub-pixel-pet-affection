@@ -6,7 +6,8 @@ const dir = process.env.FAKE_LH_DIR;
 const flag = path.join(dir, 'loggedin');
 const log = (o) => fs.appendFileSync(path.join(dir, 'calls.log'), JSON.stringify(o) + '\n');
 const args = process.argv.slice(2);
-log({ args, env: { topic: process.env.LOBEHUB_TOPIC_ID || null } });
+log({ args, env: { topic: process.env.LOBEHUB_TOPIC_ID || null, workspace: process.env.LOBEHUB_WORKSPACE_ID || null } });
+const pinFile = path.join(dir, 'pinned-workspace');
 
 if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
@@ -19,6 +20,16 @@ if (args[0] === 'whoami') {
   setTimeout(() => console.log(`  Enter code: ${process.env.FAKE_LH_CODE || 'ABCD-1234'}`), 200);
   if (process.env.FAKE_LH_NO_BROWSER) setTimeout(() => console.log('Could not open browser automatically.'), 400);
   setTimeout(() => { fs.writeFileSync(flag, '1'); process.exit(0); }, Number(process.env.FAKE_LH_LOGIN_MS || 300));
+} else if (args[0] === 'workspace' && args[1] === 'list') {
+  const f = path.join(dir, 'workspaces.json');
+  console.log(fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '[]');
+} else if (args[0] === 'workspace' && args[1] === 'current') {
+  if (process.env.LOBEHUB_WORKSPACE_ID) console.log(JSON.stringify({ source: 'env', workspaceId: process.env.LOBEHUB_WORKSPACE_ID }));
+  else if (fs.existsSync(pinFile)) console.log(JSON.stringify({ source: 'settings', workspaceId: fs.readFileSync(pinFile, 'utf8') }));
+  else console.log(JSON.stringify({ source: 'personal' }));
+} else if (args[0] === 'workspace' && args[1] === 'use' && args.includes('--personal')) {
+  fs.rmSync(pinFile, { force: true });
+  console.log('✓ Switched to personal');
 } else if (args[0] === 'agent' && args[1] === 'create') {
   const id = 'agt_FAKE' + Date.now();
   fs.writeFileSync(path.join(dir, 'last-create.json'), JSON.stringify({ title: args[args.indexOf('-t') + 1], systemRole: args[args.indexOf('-s') + 1] }));

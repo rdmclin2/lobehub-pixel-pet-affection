@@ -10,10 +10,11 @@ const { SettingsStore } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
+const { artFor } = require('../core/outfits');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
-const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 300 }, panel: { w: 460, h: 540 } };
+const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
@@ -91,21 +92,30 @@ function wire() {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, portrait: artFor(id, 'daily') || artFor(id, 'scarf') })), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
-  ipcMain.handle('hatch', async (_e, { speciesId, name, localAbilities }) => {
+  const onLoginPrompt = (p) => {
+    send('login-prompt', p);
+    // The CLI opens the browser itself; only step in if it could not.
+    if (p.browserFailed && p.url && /^https:\/\//.test(p.url)) shell.openExternal(p.url);
+  };
+  ipcMain.handle('spaces', async () => {
+    try {
+      return { ok: true, ...(await service.spaces({ onStep: (s) => send('hatch-step', s), onLoginPrompt })) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+  ipcMain.handle('hatch', async (_e, { speciesId, name, localAbilities, space }) => {
     try {
       const { view, localError, localWarning } = await service.hatch({
         speciesId,
         name,
         localAbilities: !!localAbilities,
+        space: space && typeof space === 'object' ? { workspaceId: typeof space.workspaceId === 'string' ? space.workspaceId : null, name: String(space.name || ''), switchToPersonal: !!space.switchToPersonal } : null,
         onStep: (s) => send('hatch-step', s),
-        onLoginPrompt: (p) => {
-          send('login-prompt', p);
-          // The CLI opens the browser itself; only step in if it could not.
-          if (p.browserFailed && p.url && /^https:\/\//.test(p.url)) shell.openExternal(p.url);
-        },
+        onLoginPrompt,
       });
       // the window shrinks to pet size when the renderer enters the pet screen (see 'place')
       return { ok: true, view, localError, localWarning };

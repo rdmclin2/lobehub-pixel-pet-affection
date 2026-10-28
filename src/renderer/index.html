@@ -39,10 +39,12 @@
   <section id="hatching" class="screen hidden">
     <h1 id="hatch-title">唤醒中……</h1>
     <canvas id="hatch-canvas" width="192" height="192"></canvas>
+    <img id="hatch-img" class="hatch-img hidden" alt="" />
     <div id="hatch-vwrap" class="vwrap hidden"><video id="hatch-video" muted playsinline></video></div>
     <ol id="steps" class="steps">
       <li data-step="checking-login">检查 LobeHub 登录</li>
       <li data-step="login">在浏览器里登录 LobeHub</li>
+      <li data-step="choose-space" id="step-space">选择放在哪里</li>
       <li data-step="creating-agent">创建你的小精灵（lh agent）</li>
       <li data-step="connecting-device" id="step-device">连接这台电脑（让它能读写文件）</li>
       <li data-step="hatching">醒来</li>
@@ -51,6 +53,14 @@
       <div id="login-msg">浏览器已打开登录页，请确认验证码：</div>
       <div id="login-code" class="code">----</div>
       <div id="login-url" class="url"></div>
+    </div>
+    <!-- where the agent lives: personal by default, or one of the user's workspaces -->
+    <div id="space-box" class="space-box hidden" role="radiogroup" aria-labelledby="space-title">
+      <div id="space-title" class="space-title">把它放在哪里？</div>
+      <div class="space-sub">它是你的私人伙伴，默认放在个人空间；放进 workspace 后，那里的成员可能看得到它。</div>
+      <div id="space-list" class="space-list"></div>
+      <div id="space-note" class="space-note hidden"></div>
+      <button id="space-go" class="btn primary">就放这里</button>
     </div>
     <div id="hatch-error" class="error hidden"></div>
     <button id="hatch-retry" class="btn hidden">返回重试</button>
@@ -67,7 +77,8 @@
       <button id="toast-open" class="btn toast-btn">去衣柜看看</button>
     </div>
     <div id="stage" class="stage">
-      <canvas id="pet-canvas" class="pet-hit" width="120" height="120"></canvas>
+      <canvas id="pet-canvas" class="pet-hit hidden" width="120" height="120"></canvas>
+      <div id="char-wrap" class="char-wrap pet-hit hidden" data-status="idle"><img id="pet-img" class="char" alt="" draggable="false" /><span id="char-fx" class="char-fx"></span></div>
       <div id="vwrap" class="vwrap pet-hit hidden"><video id="pet-video" muted playsinline></video></div>
       <div id="outfit-badge" class="outfit-badge"></div>
       <div id="float-layer" class="float-layer" aria-live="polite"></div>

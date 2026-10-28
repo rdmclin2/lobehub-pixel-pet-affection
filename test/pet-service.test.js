@@ -636,3 +636,60 @@ test('turning adult content off swaps an adult outfit for the last all-ages one,
   const on = svc.setAdultContent(true);
   assert.equal(on.view.outfits.find((x) => x.id === 'maid').unlocked, true);
 });
+
+// ---- where the agent lives (personal space by default, or a workspace) ----
+const calls = (dir) => fs.readFileSync(path.join(dir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+const lastCall = (dir, a, b) => calls(dir).filter((c) => c.args[0] === a && c.args[1] === b).pop();
+
+test('spaces lists the personal space first and every workspace, and notices a pinned scope', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(dir, 'workspaces.json'), JSON.stringify([{ id: 'ws_TEAM', slug: 'team', name: 'Team' }]));
+  assert.deepEqual(await svc.spaces(), { workspaces: [{ id: 'ws_TEAM', slug: 'team', name: 'Team' }], pinned: null });
+  fs.writeFileSync(path.join(dir, 'pinned-workspace'), 'ws_TEAM');
+  assert.deepEqual((await svc.spaces()).pinned, { id: 'ws_TEAM', slug: 'team', name: 'Team' });
+});
+
+test('by default the agent is created in the personal space, even when the app was started inside a workspace', async () => {
+  const prev = process.env.LOBEHUB_WORKSPACE_ID;
+  process.env.LOBEHUB_WORKSPACE_ID = 'ws_INHERITED';
+  try {
+    const { svc, dir } = setup();
+    fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+    await svc.hatch({ speciesId: 'sprig' });
+    assert.equal(lastCall(dir, 'agent', 'create').env.workspace, null);
+    assert.equal(svc.pet.space.workspaceId, null);
+    assert.equal(svc.view().space.personal, true);
+  } finally {
+    if (prev === undefined) delete process.env.LOBEHUB_WORKSPACE_ID;
+    else process.env.LOBEHUB_WORKSPACE_ID = prev;
+  }
+});
+
+test('a chosen workspace scopes the create and every later call, also after a restart', async () => {
+  const { svc, dir, lh, clock } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  await svc.hatch({ speciesId: 'bubbo', space: { workspaceId: 'ws_TEAM', name: 'Team' } });
+  assert.equal(lastCall(dir, 'agent', 'create').env.workspace, 'ws_TEAM');
+  assert.deepEqual(svc.view().space, { personal: false, name: 'Team' });
+  lh.setWorkspace(null); // a fresh process starts unscoped
+  const svc2 = new PetService({ lh, store: new Store(path.join(dir, 'data')), now: () => clock.t, rnd: () => 0.5 });
+  svc2.on('error', () => {});
+  svc2.init();
+  await svc2.chat('hi');
+  assert.equal(lastCall(dir, 'agent', 'run').env.workspace, 'ws_TEAM');
+  await svc2.release({ deleteAgent: true });
+  assert.equal(lastCall(dir, 'agent', 'delete').env.workspace, 'ws_TEAM');
+});
+
+test('personal with a pinned lh scope needs consent, then switches lh back to personal', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(dir, 'pinned-workspace'), 'ws_TEAM');
+  await assert.rejects(svc.hatch({ speciesId: 'embit', space: { workspaceId: null } }), /个人空间/);
+  assert.equal(svc.pet, null);
+  assert.ok(fs.existsSync(path.join(dir, 'pinned-workspace')), 'nothing changed without consent');
+  await svc.hatch({ speciesId: 'embit', space: { workspaceId: null, switchToPersonal: true } });
+  assert.ok(!fs.existsSync(path.join(dir, 'pinned-workspace')));
+  assert.equal(svc.pet.space.workspaceId, null);
+});

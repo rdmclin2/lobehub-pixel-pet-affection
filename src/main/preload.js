@@ -11,7 +11,8 @@ const on = (channel) => (cb) => {
 contextBridge.exposeInMainWorld('pet', {
   boot: () => ipcRenderer.invoke('boot'),
   whoami: () => ipcRenderer.invoke('whoami'),
-  hatch: (speciesId, name, localAbilities) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities }),
+  spaces: () => ipcRenderer.invoke('spaces'),
+  hatch: (speciesId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities, space }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
   getSettings: () => ipcRenderer.invoke('get-settings'),
