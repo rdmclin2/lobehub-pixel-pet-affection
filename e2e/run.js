@@ -99,9 +99,9 @@ async function fresh() {
   let { app, page } = await launch(env);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await step(S, 'first launch shows the three model-chan', async () => {
+    await step(S, 'first launch shows the four model-chan', async () => {
       await page.waitForSelector('.char-card');
-      assert.equal(await page.locator('.char-card').count(), 3);
+      assert.equal(await page.locator('.char-card').count(), 4);
       assert.equal(await page.locator('#hatch-btn').isDisabled(), true);
     }, page);
 
@@ -629,7 +629,7 @@ async function dafeiyu() {
   try {
     await step(S, 'the character screen offers DeepSeek first', async () => {
       await page.waitForSelector('.char-card');
-      assert.equal(await page.locator('.char-card').count(), 3);
+      assert.equal(await page.locator('.char-card').count(), 4);
       assert.match(await page.locator('.char-card').nth(0).textContent(), /DeepSeek/);
       await page.locator('.char-card').nth(0).click();
       assert.match(await page.locator('#card-info').textContent(), /大肥鱼|鱼片/);
@@ -1324,7 +1324,7 @@ async function packs() {
       fs.writeFileSync(path.join(old, 'pack.json'), JSON.stringify({ schema: 1, id: 'old-bubbo', name: 'x', species: 'bubbo', kind: 'pictures', outfits: { daily: 'a.png' } }));
       const r2 = await page.evaluate((d) => window.pet.debugImportPack(d), old);
       assert.equal(r2.ok, false);
-      assert.ok(r2.errors.some((e) => /species must be one of dafeiyu, claude, grok/.test(e)), r2.errors.join('; '));
+      assert.ok(r2.errors.some((e) => /species must be one of dafeiyu, claude, grok, gemini/.test(e)), r2.errors.join('; '));
       return `${r.errors.slice(0, 2).join('; ')} | retired character: ${r2.errors.find((e) => /species/.test(e))}`;
     });
 
@@ -1533,7 +1533,7 @@ async function art() {
       // 大肥鱼's clips (a frame from each), then every pixel pack
       const sp = SPECIES.dafeiyu;
       rows.push({ name: 'dafeiyu (clips)', cells: STATES.map((st) => ({ clip: `${sp.clipDir}/${sp.clips[Fx.resolveAction(st, (n) => !!sp.clips[n]).name]}`, exact: Fx.resolveAction(st, (n) => !!sp.clips[n]).exact })) });
-      for (const id of ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel']) {
+      for (const id of ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel']) {
         const pk = packs.get(id);
         const look = P.resolveLook(packs, { packId: id, fallbackId: id, speciesId: pk.species, outfitId: 'daily' });
         rows.push({ name: id, cells: STATES.map((st) => ({ look, state: st })) });
@@ -1580,7 +1580,7 @@ async function art() {
       }, { rows, states: STATES });
       await page.waitForTimeout(600);
       await page.screenshot({ path: path.join(OUT, 'state-sheet.png'), fullPage: true });
-      return `${n} cells: rows dafeiyu clips + dafeiyu/claude/grok pixel; columns: ${STATES.join(', ')} (↪ = DeepSeek clip borrowed through the fallback chain)`;
+      return `${n} cells: rows dafeiyu clips + dafeiyu/claude/grok/gemini pixel; columns: ${STATES.join(', ')} (↪ = DeepSeek clip borrowed through the fallback chain)`;
     });
   } finally {
     await app.close().catch(() => {});
@@ -1595,6 +1595,7 @@ const ROSTER = [
   { id: 'dafeiyu', idx: 0, zh: '大肥鱼', vendor: 'DeepSeek' },
   { id: 'claude', idx: 1, zh: '克洛蒂', vendor: 'Anthropic' },
   { id: 'grok', idx: 2, zh: '格萝可', vendor: 'xAI' },
+  { id: 'gemini', idx: 3, zh: '杰米', vendor: 'Google' },
 ];
 async function roster() {
   const only = process.argv[3];
@@ -1629,11 +1630,11 @@ async function rosterOne(ch) {
   const settle = async () => { await page.evaluate(() => window.petFx.cue('idle')); await page.waitForTimeout(150); };
   try {
     if (ch.idx === 0) {
-      await step(S, 'onboarding offers the three model-chan, no spirit stones', async () => {
+      await step(S, 'onboarding offers the four model-chan, no spirit stones', async () => {
         await page.waitForSelector('.char-card');
-        assert.equal(await page.locator('.char-card').count(), 3);
+        assert.equal(await page.locator('.char-card').count(), 4);
         const vendors = await page.locator('.char-card .vendor').allTextContents();
-        assert.deepEqual(vendors, ['DeepSeek', 'Anthropic', 'xAI']);
+        assert.deepEqual(vendors, ['DeepSeek', 'Anthropic', 'xAI', 'Google']);
         assert.doesNotMatch(await page.textContent('#onboarding'), /灵石|蛋/);
         return vendors.join(' / ');
       }, page);
