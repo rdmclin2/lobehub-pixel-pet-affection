@@ -53,7 +53,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build an "old" installer (version 0.0.1)
-        run: npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=0.0.1
+        shell: bash
+        run: npx electron-builder --win nsis --x64 --publish never --config.extraMetadata.version=0.0.1
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Install it, start it and wait for it to update itself
