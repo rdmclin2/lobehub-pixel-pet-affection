@@ -106,12 +106,14 @@ class PetService extends EventEmitter {
     const { agentId } = await this.lh.createAgent({
       title: `${petName} (${sp.name})`,
       description: `Pixel Pet · ${sp.nameZh} · ${sp.element}`,
-      systemRole: persona.buildSystemRole({ speciesId, name: petName }),
+      systemRole: persona.buildSystemRole({ speciesId, name: petName, settings: this.settings }),
     });
 
     this.pet = state.createPet({ speciesId, name: petName, agentId, now: this.now() });
     this.pet.owner = user.name;
-    this.pet.personaVersion = persona.PERSONA_VERSION; // the agent was just created with the current role
+    // the agent was just created with the current role
+    this.pet.personaVersion = persona.PERSONA_VERSION;
+    this.pet.personaKey = persona.personaKey(this.pet, this.settings);
     this._save();
 
     let localError = null;
@@ -133,13 +135,16 @@ class PetService extends EventEmitter {
   }
 
   // ---- keeping an existing agent up to date ---------------------------------------------
-  // Older pets were created with an older system role; update the LobeHub agent once.
+  // The system role carries the persona version and the current relationship scope; update the
+  // LobeHub agent once whenever either changed (older pet, stage up/down, adult toggle).
   async _ensureReady() {
     const p = this.pet;
-    if (p.personaVersion !== persona.PERSONA_VERSION) {
+    const key = persona.personaKey(p, this.settings);
+    if (p.personaVersion !== persona.PERSONA_VERSION || p.personaKey !== key) {
       try {
-        await this.lh.updateAgent({ agentId: p.agentId, systemRole: persona.buildSystemRole({ speciesId: p.speciesId, name: p.name }) });
+        await this.lh.updateAgent({ agentId: p.agentId, systemRole: persona.buildSystemRole({ speciesId: p.speciesId, name: p.name, pet: p, settings: this.settings }) });
         p.personaVersion = persona.PERSONA_VERSION;
+        p.personaKey = key;
         this._save();
       } catch (e) {
         this.emit('error', e); // carry on with the old prompt; retried on the next turn

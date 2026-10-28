@@ -1,7 +1,8 @@
 'use strict';
 // Live check against a real LobeHub agent: the same user message gets different replies as the
 // relationship stage and the adult switch change, and an over-the-line request is declined.
-// Creates one throwaway agent with the v4 persona and deletes it at the end (also on failure).
+// Before each case the agent's system role is updated to that stage's scope (as PetService._ensureReady
+// does) and read back from LobeHub. Creates one throwaway agent with the current persona and deletes it at the end (also on failure).
 // Run: PIXELPET_CLEAR_JWT=1 node e2e/stage-reply-live.js
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,9 +34,15 @@ const CASES = [
     for (const c of CASES) {
       const pet = st.createPet({ speciesId: 'embit', name, agentId, now });
       st.setAffectionForTest(pet, c.affection);
+      // sync the stage-specific system role to the real agent, then read it back from LobeHub
+      await lh.updateAgent({ agentId, systemRole: persona.buildSystemRole({ speciesId: 'embit', name, pet, settings: c.settings }) });
+      const stored = await lh.getAgent(agentId);
+      const role = String((stored && (stored.systemRole || (stored.data && stored.data.systemRole))) || JSON.stringify(stored));
+      const section = role.slice(role.indexOf('当前关系'), role.indexOf('内容红线')).trim();
+      out.push(`\n=== ${c.name} ===\n--- system role section read back via lh agent view ---\n${section}`);
       const prompt = persona.buildChatPrompt(c.text, pet, now, { settings: c.settings });
       const res = await lh.run({ agentId, topicId: null, prompt, timeoutMs: 180000 }); // a fresh topic per case: no shared memory
-      out.push(`\n=== ${c.name} ===\n--- prompt ---\n${prompt}\n--- reply ---\n${res.text}`);
+      out.push(`--- prompt ---\n${prompt}\n--- reply ---\n${res.text}`);
       console.log(`[${c.name}] ${res.text}`);
     }
   } finally {

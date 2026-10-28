@@ -52,8 +52,8 @@ const at = (affection, speciesId = 'embit') => {
   return { p, now };
 };
 
-test('persona v4: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
-  assert.equal(PERSONA_VERSION, 4);
+test('persona v5: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
+  assert.equal(PERSONA_VERSION, 5);
   for (const id of ['embit', 'bubbo', 'sprig', 'dafeiyu']) {
     const r = buildSystemRole({ speciesId: id, name: 'X' });
     assert.match(r, /你是成年人/);
@@ -107,4 +107,49 @@ test('topic prompts use the [话题] marker and keep adult topics clean', () => 
   assert.match(prompt, /\n\[话题\] 调戏一下：/);
   assert.match(prompt, /不露骨/);
   assert.match(buildChatPrompt('hi', p, now, { settings: ADULT }), /\[关系\]/);
+});
+
+const { personaKey } = require('../src/core/persona');
+const role = (affection, settings, speciesId = 'embit') => {
+  const { p } = at(affection, speciesId);
+  return buildSystemRole({ speciesId, name: 'E', pet: p, settings });
+};
+
+test('the system role itself carries the current stage, its tone and the unlocked topics, and differs by stage', () => {
+  const low = role(0, OFF);
+  const mid = role(40, OFF);
+  const high = role(90, ADULT);
+  assert.notEqual(low, mid);
+  assert.notEqual(mid, high);
+  assert.match(low, /当前关系（随好感度变化，以此为准）：阶段=陌生（第 1\/5 阶段）/);
+  assert.match(low, /允许的语气：礼貌、有分寸/);
+  assert.match(low, /已解锁话题：自我介绍、今天天气怎么样。/);
+  assert.match(low, /还没解锁：[^。]*撒娇模式/);
+  assert.match(low, /下一阶段：熟悉（好感 15）/);
+  assert.match(mid, /阶段=亲近（第 3\/5 阶段）/);
+  assert.match(mid, /已解锁话题：[^。]*撒娇模式/);
+  assert.match(high, /阶段=恋人（第 5\/5 阶段）；成人向=开/);
+  assert.match(high, /情侣称呼/);
+  assert.match(high, /已是最高阶段/);
+  for (const r of [low, mid, high]) assert.ok(r.includes(CONTENT_RULES));
+  // with no pet (agent creation) it is the first stage
+  assert.match(buildSystemRole({ speciesId: 'embit', name: 'E' }), /阶段=陌生（第 1\/5 阶段）/);
+});
+
+test('adult content off: the system role offers only all-ages tone and never names adult topics, even locked', () => {
+  for (const r of [role(90, OFF), role(90, null), role(90, ADULT, 'dafeiyu')]) {
+    assert.match(r, /阶段=挚友（第 5\/5 阶段）；成人向=关，只用全年龄语气/);
+    const section = r.slice(r.indexOf('当前关系'), r.indexOf('内容红线'));
+    assert.doesNotMatch(section, /调戏一下|吃醋模式|情侣称呼|调情/);
+  }
+  assert.match(role(70, ADULT), /调戏一下/);
+});
+
+test('personaKey changes with the stage and the adult switch, not with needs', () => {
+  const a = at(10).p;
+  const k = personaKey(a, OFF);
+  a.hunger = 99;
+  assert.equal(personaKey(a, OFF), k);
+  assert.notEqual(personaKey(at(40).p, OFF), k);
+  assert.notEqual(personaKey(at(70).p, OFF), personaKey(at(70).p, ADULT));
 });

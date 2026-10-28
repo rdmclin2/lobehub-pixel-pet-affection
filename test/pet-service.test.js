@@ -480,7 +480,7 @@ test('an old xp/stage save is backed up once and migrated on start, keeping the 
   assert.equal(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8'), '"keep"');
 });
 
-test('the migrated agent gets the v4 system role (adult + red lines) on its next turn', async () => {
+test('the migrated agent gets the v5 system role (adult + red lines) on its next turn', async () => {
   const { data, mkSvc, clock, dir } = setupAff();
   fs.mkdirSync(data, { recursive: true });
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify({ speciesId: 'sprig', name: 'S', agentId: 'agt_OLD', topicId: null, stage: 'adult', xp: 260, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, personaVersion: 3 }));
@@ -563,4 +563,33 @@ test('releasing the pet keeps settings.json', async () => {
   const s = mkSvc().getSettings();
   assert.equal(s.needsAgeGate, false);
   assert.equal(s.ageConfirmed, false);
+});
+
+test('the agent system role is updated once when the stage or the adult switch changes, and carries the new scope', async () => {
+  const { svc, dir } = setupAff();
+  await svc.hatch({ speciesId: 'embit', name: 'E' });
+  await svc.chat('hi');
+  assert.equal(readLog(dir, 'edits.log').filter((e) => e.systemRole).length, 0); // created with the current scope
+  svc.debugSet({ affection: 40 });
+  await svc.chat('hi');
+  await svc.chat('again');
+  let roles = readLog(dir, 'edits.log').filter((e) => e.systemRole).map((e) => e.systemRole);
+  assert.equal(roles.length, 1);
+  assert.match(roles[0], /阶段=亲近（第 3\/5 阶段）/);
+  assert.match(roles[0], /已解锁话题：[^。]*撒娇模式/);
+
+  svc.debugSet({ affection: 70 });
+  svc.answerAgeGate(true);
+  await svc.chat('在吗');
+  roles = readLog(dir, 'edits.log').filter((e) => e.systemRole).map((e) => e.systemRole);
+  assert.equal(roles.length, 2);
+  assert.match(roles[1], /阶段=暧昧（第 4\/5 阶段）；成人向=开/);
+  assert.match(roles[1], /调戏一下/);
+
+  svc.setAdultContent(false);
+  await svc.chat('在吗');
+  roles = readLog(dir, 'edits.log').filter((e) => e.systemRole).map((e) => e.systemRole);
+  assert.equal(roles.length, 3);
+  assert.match(roles[2], /阶段=知己（第 4\/5 阶段）；成人向=关/);
+  assert.doesNotMatch(roles[2], /调戏一下/);
 });
