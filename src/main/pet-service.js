@@ -240,7 +240,7 @@ class PetService extends EventEmitter {
     if (p.localAbilities) await this._verifyLocal();
   }
 
-  // ---- the model (高级设置 → 模型) ----------------------------------------------------------
+  // ---- the model (⋯ → 切换角色 → 模型) ----------------------------------------------------------
   // The user's enabled chat models, from the hosted provider and the roster's vendor providers. Cached for
   // MODELS_TTL_MS; `force` reloads (the panel's 刷新). A failure (an older lh, offline) keeps the previous
   // list, or none, and is not retried before the TTL either; the agent then keeps the model it has.
@@ -288,7 +288,7 @@ class PetService extends EventEmitter {
     this._save();
   }
 
-  // 高级设置 → 模型: choose one of the current character's models. Applied right away in the background
+  // ⋯ → 切换角色 → 模型: choose one of the current character's models. Applied right away in the background
   // (and again before the next turn if that failed).
   setModel(key) {
     if (!this.pet) return { ok: false, reason: 'empty' };
@@ -388,7 +388,7 @@ class PetService extends EventEmitter {
     this._say(`（原来的角色已经下线，现在由${sp.title.split(' · ')[0]}「${sp.nameZh}」陪你，好感度和聊天记录都还在。）`, 'fallback', 'retired');
   }
 
-  // 高级设置 → 角色: change who the companion is. The LobeHub agent, its chat history and the affection
+  // ⋯ → 切换角色: change who the companion is. The LobeHub agent, its chat history and the affection
   // stay; the agent's persona follows on the next turn (the persona key includes the character).
   switchCharacter(speciesId) {
     if (!this.pet) return { ok: false, reason: 'empty' };

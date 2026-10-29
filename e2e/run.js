@@ -1319,9 +1319,14 @@ async function packs() {
     }, page);
 
     await step(S, '大肥鱼 starts in her pixel pack and can switch to her original clips and back', async () => {
-      await openAdvanced();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="characters"]');
       await page.click('.char-opt[data-species="dafeiyu"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await openAdvanced();
+      assert.equal(await page.locator('.char-opt').count(), 0, 'the character list is no longer in 高级设置');
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
       assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 原版动画']);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
@@ -1362,9 +1367,9 @@ async function models() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model).map((e) => `${e.provider}:${e.model}`) : []);
   const options = () => page.$$eval('#model-select option', (os) => os.map((o) => ({ key: o.value, label: o.textContent, selected: o.selected })));
-  const openAdvanced = async () => {
+  const openCharacters = async () => {
     await clickAct(page, 'menu');
-    await page.click('[data-menu="advanced"]');
+    await page.click('[data-menu="characters"]');
     await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
     await page.locator('#model-select').scrollIntoViewIfNeeded();
   };
@@ -1382,8 +1387,9 @@ async function models() {
       return modelEdits().join(', ');
     }, page);
 
-    await step(S, '高级设置 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
-      await openAdvanced();
+    await step(S, '⋯ → 切换角色 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
+      await openCharacters();
+      assert.equal(await page.textContent('#panel-title'), '切换角色');
       const os = await options();
       assert.deepEqual(os.map((o) => o.label), ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
       assert.equal(os.find((o) => o.selected).key, 'lobehub:claude-sonnet-5-5');
@@ -1423,7 +1429,7 @@ async function models() {
       await page.evaluate(() => window.pet.chat('你好'));
       await idle();
       assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
-      await openAdvanced();
+      await openCharacters();
       await page.click('.char-opt[data-species="claude"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="claude"]');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
@@ -2143,13 +2149,13 @@ async function rosterOne(ch) {
       fs.writeFileSync(path.join(OUT, `${S}-api.txt`), lines.join('\n') + '\n');
       return lines.join('; ');
     }, page);
-    await step(S, 'E14 switch character from the advanced settings, keeping the agent and affection', async () => {
+    await step(S, 'E14 switch character from ⋯ → 切换角色, keeping the agent and affection', async () => {
       if (await page.isVisible('#panel-close')) await page.click('#panel-close');
       await still();
       const next = ROSTER[(ch.idx + 1) % ROSTER.length];
       const before = await view(page);
       await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
+      await page.click('[data-menu="characters"]');
       await page.waitForSelector(`.char-opt[data-species="${next.id}"] .pick`);
       await page.click(`.char-opt[data-species="${next.id}"] .pick`);
       await page.waitForSelector(`.char-opt.on[data-species="${next.id}"]`);
