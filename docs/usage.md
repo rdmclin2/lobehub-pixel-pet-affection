@@ -2,6 +2,12 @@
 
 本文说明怎么安装、运行、选角和切换角色，每项效果怎么触发，怎么连接 LobeHub、打包、测试，以及怎么新增一位厂商角色。角色本身（厂商、形象、素材来源与许可、已下线角色）见 [形象 / 角色清单](characters.md)。
 
+相关项目与素材来源：
+
+- 本项目： <https://github.com/rdmclin2/lobehub-pixel-pet-affection>
+- 效果来源 dsh-pet（DeepSeek 桌宠）： <https://github.com/PC2005-cloud/dsh-pet>
+- 形象设定参考：用户收集的 AI 娘素材 <https://app.lobehub.com/f/file_5SAeAA60gpeZ> 、开源设定集 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets)。两者只取发型、配色、服饰、标志物等文字层面的身份锚点，图片由 GPT Image 2.5 重新生成（第八节）。
+
 ## 一、安装
 
 需要 Node.js 20+、桌面环境（Linux 无显示器时用 `xvfb-run`），以及 [LobeHub CLI](https://www.npmjs.com/package/@lobehub/cli)（`lh`）。
