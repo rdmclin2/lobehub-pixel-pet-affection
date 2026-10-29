@@ -1750,6 +1750,7 @@ async function rosterOne(ch) {
       assert.equal(held.bubble, null, 'no speech bubble over the lifted screenshot');
       await page.screenshot({ path: path.join(OUT, `${S}-lifted.png`) });
       fs.writeFileSync(path.join(OUT, `${S}-lifted.json`), JSON.stringify(held, null, 2));
+      await page.waitForTimeout(250); // hold still before letting go: a drop, not a throw
       await page.mouse.up();
       assert.equal((await fxState()).flying, false, 'a slow release does not throw');
       return out;
