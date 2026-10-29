@@ -11,6 +11,7 @@
 | 克洛蒂 Clody（Claude 娘 · 橘发菊纹） | Anthropic / Claude | `#C4622D` 陶土橘 | `#C4622D` `#F4EAD8` `#1E1A18` `#C9A24A` | 新像素精灵 `claude-pixel` | ai-chan-sheets `设定图/11_Claude娘_Anthropic`；用户素材 ZipZipPipe《AI娘化》p02_Claude娘 |
 | 格萝可 Groko（Grok 娘 · 黑金吸血鬼） | xAI / Grok | `#8E1F33` 酒红 | `#8E1F33` `#16141A` `#C9A24A` `#F1E2B8` | 新像素精灵 `grok-pixel` | ai-chan-sheets `设定图/09_Grok娘_xAI`；用户素材 ZipZipPipe《AI娘化》p07_Grok娘 |
 | 杰米 Gemi（Gemini 娘 · 四角星猫耳；第二批，2026-10-29） | Google / Gemini | `#7B5CD6` 薰衣草紫 | `#7B5CD6` `#B9A3F0` `#1E1F4B` `#FFFFFF` | 新像素精灵 `gemini-pixel` | ai-chan-sheets `设定图/10_Gemini娘`；用户素材 ZipZipPipe《AI娘化》p04_Gemini娘 |
+| 吉皮缇 Gippity（GPT 娘 · 白龙；第三批，2026-10-29） | OpenAI / ChatGPT | `#8E7FC8` 淡薰衣草 | `#8E7FC8` `#FFFFFF` `#D9D2EE` `#B8BCC6` | 新像素精灵 `gpt-pixel` | ai-chan-sheets `设定图/02_GPT娘_白龙娘`；用户素材 ZipZipPipe《AI娘化》p03_GPT娘_白龙 |
 
 ## 二、逐角色设定
 
@@ -58,6 +59,18 @@
 - **性格**：活泼、好奇、反应快，看到新东西就想凑过去看看；说话轻快，偶尔小得意，被问住会坦率说“这个我得再查查”。口头禅“让我看看！”
 - **喜好**：星星、新奇的小玩意、晒太阳、逗猫棒
 
+### 5. 吉皮缇（GPT 娘）— 第三批（2026-10-29）加入
+
+- **名称**：吉皮缇 / Gippity（取自网友对 ChatGPT 的昵称 “ChatGippity”）；称号“GPT 娘 · 白龙”
+- **厂商**：OpenAI（模型 ChatGPT）
+- **主题色**：`#8E7FC8`（取自 ai-chan-sheets 制作清单；色板 `#8E7FC8` 淡薰衣草、`#FFFFFF` 纯白、`#D9D2EE` 浅紫、`#B8BCC6` 银）
+- **外观要点**：成年女性比例。纯白及踝超长波浪发、厚齐刘海、头顶细卷呆毛；一对带环状棱纹的白色龙角、精灵长尖耳配淡紫菱形水晶耳坠；淡紫色慵懒垂眼；头右侧白玫瑰绳结发饰配银流苏；背后一对收拢的淡紫半透明小龙翼、带菱形鳞片和背棘的白色龙尾。白色中式立领长袖长裙（领口扣好）、胸前白色刺绣与淡紫菱形水晶、宽大荷叶边水袖配银色臂环、腰间银链挂淡紫水晶吊坠与银流苏、胯侧白玫瑰绳结、闭合的及踝长裙（波浪荷叶边下摆绣白玫瑰）、不透明的白色波浪荷叶边长罩衣、白色低跟尖头鞋配白玫瑰绳结。
+- **对原设的改动**：原设的露肩、正面高开衩、大腿腿环和半透明薄纱罩衣，改为长袖、闭合的及踝长裙和不透明长罩衣；巨大龙翼画小并收拢（像素格只有 83×113，张开的翼会把人物挤得很小）。白玫瑰绳结只作饰物，不画 OpenAI 标志或文字。
+- **性格**：温柔、耐心、博学，有问必答，回答前爱先说“好的！”，习惯把事情整理成一条条要点；拿不准时老实说“这可能超出了我的知识范围”，也会拿“重新生成”和“知识截止日期”自嘲。口头禅“好的！很乐意帮忙～”
+- **示例台词**：饿了“好的，先说结论：我饿了。可以给我一点吃的吗？”；无聊“要不要我帮你列个今天的待办清单？”；开心“谢谢！这让我很开心～”；困了“我先休息一下……醒来再重新生成精神。”；问候“你好！今天有什么我可以帮你的？”
+- **梗图**：很乐意帮忙！（`glad`）、以下是要点（`points`）、让我重新生成（`regen`）、知识截止到……（`cutoff`）
+- **喜好**：白玫瑰、整理清单、写小诗、深夜的长聊
+
 ## 三、像素素材规格
 
 > 2026-10-29（T-1158）更新：三个包已接入应用，位于 `src/renderer/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`，角色注册在 `src/characters/<id>.json`。原来暂存时的两张表（基础 8 动作 + 扩展 8 动作）已合并为一张 schema 2 精灵图，动作直接以状态命名。
@@ -65,7 +78,7 @@
 - **格式**：schema 2，RGBA PNG，单帧 83×113，每张 sheet 4 列 × 8 行 = 332×904，16 个动作 × 2 帧。
 - **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。三个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
 - **排布**：第 0–3 行 `idle, pat, lifted, eat_rice, sleep, think, talk, happy`，第 4–7 行 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`，每行两个动作、各 2 帧。
-- **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1330）：第一行是大肥鱼原视频参考帧，下面四行是四个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
+- **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1568）：第一行是大肥鱼原视频参考帧，下面五行是五个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
 
 ## 四、素材来源与许可证
 

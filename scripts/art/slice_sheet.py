@@ -1,5 +1,8 @@
 # Part of scripts/art/pixel-pack.sh.
-# usage: slice.py <sheet.png> <out.png> <cols> <rows> <figure_height_px>
+# usage: slice.py <sheet.png> <out.png> <cols> <rows> <figure_height_px> [--octree]
+#   --octree: build the palette with fast octree instead of median cut, for a near-white character (GPT):
+#   median cut spends every colour on her whites and lavenders and maps small props (watermelon, cookie)
+#   and skin to a magenta tone that fit_cells.py then deletes as background.
 # Cut a generated sprite sheet (flat magenta background, equal grid) into frames, make them real pixel
 # art (downscale + limited palette + hard alpha) and write a normalized sheet: every cell the same size,
 # figures keep their placement within the cell (one shared crop box), so frames line up when animated.
@@ -8,7 +11,9 @@ from collections import deque
 import numpy as np
 from PIL import Image
 
-src, dst, cols, rows, fig_h = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+octree = '--octree' in sys.argv
+argv = [x for x in sys.argv if x != '--octree']
+src, dst, cols, rows, fig_h = argv[1], argv[2], int(argv[3]), int(argv[4]), int(argv[5])
 im = Image.open(src).convert('RGB')
 W, H = im.size
 cw, ch = W / cols, H / rows
@@ -79,7 +84,7 @@ for c, fg in cells:
 # one palette for the whole sheet keeps colours steady between frames
 strip = Image.new('RGB', (out_w * len(frames), out_h))
 for k, (rgb, _) in enumerate(frames): strip.paste(rgb, (k * out_w, 0))
-pal = strip.quantize(colors=40, method=Image.MEDIANCUT, dither=Image.Dither.NONE)
+pal = strip.quantize(colors=40, method=Image.Quantize.FASTOCTREE if octree else Image.MEDIANCUT, dither=Image.Dither.NONE)
 sheet = Image.new('RGBA', (out_w * cols, out_h * rows), (0, 0, 0, 0))
 for k, (rgb, a) in enumerate(frames):
     q = rgb.quantize(palette=pal, dither=Image.Dither.NONE).convert('RGBA')

@@ -175,7 +175,7 @@ function service() {
   return { svc, said, dir };
 }
 
-for (const id of ['dafeiyu', 'claude', 'grok', 'gemini']) {
+for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
   test(`${id}: a reply tagged with one of her memes shows the picture, never the tag; offline murmurs get one too`, async () => {
     const { svc, said } = service();
     await svc.hatch({ speciesId: id, name: 'T' });

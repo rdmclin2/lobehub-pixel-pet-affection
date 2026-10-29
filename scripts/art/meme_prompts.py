@@ -18,6 +18,10 @@ STICKERS = {
             ("好奇心爆棚", "sparkling star-shaped eyes, both fists up in excitement, tail fluffed"),
             ("多模态全开", "holding a camera in one hand and a music note and a picture card floating around her"),
             ("喵？", "head tilted in confusion, a question mark above her head, cat ears tilted")],
+  "gpt":   [("很乐意帮忙！", "a bright warm smile, one hand raised in a cheerful wave, small sparkles around her"),
+            ("以下是要点", "holding a long paper scroll with a neat numbered checklist, pointing at it with a pen"),
+            ("让我重新生成", "sheepish smile, spinning a big circular refresh arrow above her head with one finger"),
+            ("知识截止到……", "looking at a small desk calendar with a puzzled face and one sweat drop, tail curled in a question shape")],
 }
 out = []
 for cid, items in STICKERS.items():

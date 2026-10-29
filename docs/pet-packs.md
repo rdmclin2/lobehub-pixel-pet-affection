@@ -26,7 +26,7 @@ my-grok/
   "author": "你的名字",
   "license": "CC BY-NC-SA 4.0",      // 显示在外观列表里；第三方素材请写清授权
   "description": "可选，最多 200 字",
-  "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini（src/characters/ 里的 id）
+  "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）

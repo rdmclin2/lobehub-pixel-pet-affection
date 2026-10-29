@@ -3,7 +3,7 @@
 > **历史记录。** 本文写于模型娘改造之前。文中的焰团（embit）/ 泡鲸（bubbo）/ 叶芽（sprig）、“灵石”选择界面、`src/renderer/sprites.js`、`bubbo-pixel` 与 `*-illustrated` 原创立绘包已在 2026-10-29（T-1158）移除，角色体系改为模型娘（`src/characters/`），见 README「模型娘角色」。旧存档的迁移见 `src/core/species.js` 的 `RETIRED`。
 
 - 审查日期：2026-10-28；审查对象：`master` 9f09186（任务 2 合入后）及本次修复（分支 `fix/compliance-review-docs`，发布为 v0.3.0）。
-- 审查范围：全部对话内容表（阶段语气、离线台词、话题）、发给 agent 的提示词（系统设定红线、事件提示、话题 prompt）、服饰名称/描述与像素立绘、四个角色的人设/台词/立绘，以及界面文案。
+- 审查范围：全部对话内容表（阶段语气、离线台词、话题）、发给 agent 的提示词（系统设定红线、事件提示、话题 prompt）、服饰名称/描述与像素立绘、各角色的人设/台词/立绘，以及界面文案。
 - 审查项（每条都核对）：①角色均为成年人；②无幼态关联；③无露骨性描写；④无强迫/不同意；⑤无真实人物；⑥无违法内容。
 - 条目清单由 `node e2e/content-sets.js` 和本文附表直接从代码导出，条目数与仓库一致。
 
@@ -284,6 +284,7 @@ system role mentions adult topics: (none)
 | 成人向 | 三位都是 `adult: false`：成人向开启时也没有成人向阶段名、话题、台词和服饰（`test/outfits.test.js`、`test/compliance.test.js`）。 |
 | 像素图 claude-pixel / grok-pixel（各 16 动作 × 2 帧） | 通过：成人比例；格萝可原设的露肩、透肉连裤袜、腿环已改为高领礼服和不透明连裤袜；不画 X 标志与字样。总表 `out/e2e/state-sheet.png`。 |
 | 杰米（`gemini.json` + gemini-pixel，2026-10-29 加入） | 通过：人设写明成年 25 岁以上、同人非官方、全年龄语气，`adult: false`；像素图成人比例，原设的露脐上衣、短裤、腿环改为高领上衣、及踝长裙和不透明连裤袜；不画 Google 标志与文字（`test/compliance.test.js`、`test/characters.test.js` 覆盖）。 |
+| 吉皮缇（`gpt.json` + gpt-pixel，2026-10-29 加入） | 通过：人设写明成年 25 岁以上、同人非官方、全年龄语气，`adult: false`；像素图成人比例，原设的露肩、高开衩、腿环和半透明罩衣改为长袖、闭合及踝长裙和不透明长罩衣；白玫瑰绳结只作饰物，不画 OpenAI 标志与文字（`test/compliance.test.js`、`test/characters.test.js` 覆盖）。 |
 | dafeiyu-pixel（16 × 2 帧） | 大肥鱼沿用社区原版 Q 版画风（唯一的画风例外），所以永远全年龄，与原视频一致。 |
 | 时间背景（`src/core/time-context.js`） | 通过：节日表只含成人通用的公历节日（删去了儿童节、教师节，避免学生/儿童联想）。 |
 | 界面文案（选择角色、唤醒、切换角色） | 通过：不再使用“灵石 / 蛋 / 孵化”；`test/compliance.test.js` 的禁用词扫描覆盖新文件 `src/core/fx.js`、`src/renderer/fx.js`、`src/core/time-context.js` 与 `src/characters/*.json`。 |

@@ -9,7 +9,7 @@ const DIR = path.join(__dirname, '..', 'src', 'renderer', 'assets', 'dafeiyu');
 const REQUIRED_CLIPS = ['idle', 'happy', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'pat', 'hatch', 'evolve', 'lifted', 'walk'];
 
 test('the roster is the model-chan: DeepSeek 大肥鱼 (kept, video), Claude and Grok', () => {
-  assert.deepEqual(SPECIES_IDS, ['dafeiyu', 'claude', 'grok', 'gemini']);
+  assert.deepEqual(SPECIES_IDS, ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
   assert.equal(SPECIES.dafeiyu.nameZh, '大肥鱼');
   assert.equal(SPECIES.dafeiyu.vendor, 'DeepSeek');
   assert.equal(SPECIES.dafeiyu.art, 'video');
@@ -31,7 +31,7 @@ test('every status and reaction has a clip, and each clip is a real WebM file', 
 });
 
 test('pack characters do not carry video fields, so the renderer draws them from their pack', () => {
-  for (const id of ['grok', 'claude', 'gemini']) {
+  for (const id of ['grok', 'claude', 'gemini', 'gpt']) {
     assert.equal(SPECIES[id].art, 'pack');
     assert.equal(SPECIES[id].clips, null);
     assert.equal(SPECIES[id].defaultPack, `${id}-pixel`);

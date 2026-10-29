@@ -81,10 +81,10 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
-  for (const id of ['claude', 'grok', 'gemini']) {
+  for (const id of ['claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
     assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), ['daily']);
-    assert.equal(o.listOutfits(p, ADULT)[0].label, { claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披' }[id], 'its signature outfit name');
+    assert.equal(o.listOutfits(p, ADULT)[0].label, { claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披', gpt: '白玫瑰立领长裙' }[id], 'its signature outfit name');
     assert.equal(o.equipOutfit(p, ADULT, 'scarf').reason, 'unavailable');
     assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'yukata' }, ADULT), 'daily');
   }
