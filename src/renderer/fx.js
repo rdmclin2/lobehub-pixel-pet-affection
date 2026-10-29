@@ -176,6 +176,7 @@
       stopWalk();
       const wa = await api.workArea();
       if (!wa) return false;
+      v = Fx.capSpeed(v); // a knock or an API call never launches faster than a throw
       const run = { body: { x: wa.bounds.x, y: wa.bounds.y, w: wa.bounds.width, h: wa.bounds.height, vx: v.vx, vy: v.vy }, area: wa.area, bounces: 0, hits: [], collisions: 0, maxImpact: 0 };
       flight = run;
       body.classList.add('flying');

@@ -119,6 +119,30 @@ test('a flying pet knocks into another: momentum is kept, the one hit flies off,
   assert.ok(heavy.hit.vx < c.hit.vx);
 });
 
+test('a chain of knocks between several visitors never speeds a pet past a throw', () => {
+  // a big pet hitting a small one nearly doubles its speed; four visitors knocking each other in turn
+  // used to grow the speed without bound
+  let v = { vx: Fx.PHYSICS.maxSpeed, vy: 0 };
+  for (let i = 0; i < 20; i++) {
+    const c = Fx.collidePets({ x: 0, y: 0, w: 200, h: 240, ...v }, { x: 150, y: 0, w: 60, h: 80, vx: 0, vy: 0 });
+    v = c.hit;
+    assert.ok(Math.hypot(v.vx, v.vy) <= Fx.PHYSICS.maxSpeed + 1e-6, `knock ${i}: ${Math.hypot(v.vx, v.vy)}`);
+  }
+  assert.deepEqual(Fx.capSpeed({ vx: Infinity, vy: 0 }), { vx: 0, vy: 0 });
+});
+
+test('window positions are always ones Electron accepts (int32, never -0)', () => {
+  // setPosition(-0, y) throws "conversion failure" in the main process (seen on Windows with visitors)
+  assert.ok(Object.is(Math.round(-0.4), -0), 'the trap');
+  assert.ok(Object.is(Fx.screenPx(-0.4), 0));
+  assert.ok(Object.is(Fx.screenPx(-0), 0));
+  assert.equal(Fx.screenPx(12.6), 13);
+  assert.equal(Fx.screenPx(-1440.5), -1440);
+  assert.equal(Fx.screenPx(2 ** 40), 1e6);
+  assert.equal(Fx.screenPx(-(2 ** 40)), -1e6);
+  for (const bad of [NaN, Infinity, -Infinity, undefined, '5']) assert.equal(Fx.screenPx(bad), null);
+});
+
 // ---- clip variants ---------------------------------------------------------------------------------
 test('a state with several clips plays a different one each time', () => {
   const pat = SPECIES.dafeiyu.clips.pat;
