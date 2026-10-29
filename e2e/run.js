@@ -1163,26 +1163,28 @@ async function advanced() {
     await step(S, 'dragging the corner handle up-left resizes the pet freely; the window follows, bottom-right corner stays put', async () => {
       const before = await bounds();
       const stage0 = await stageBox();
+      const k0 = await scaleVar();
       await hover(page);
       const g = await page.locator('#resize-grip').boundingBox();
       await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
       await page.mouse.down();
-      for (let i = 1; i <= 8; i++) await page.mouse.move(g.x + g.width / 2 - i * 10, g.y + g.height / 2 - i * 10);
+      for (let i = 1; i <= 4; i++) await page.mouse.move(g.x + g.width / 2 - i * 10, g.y + g.height / 2 - i * 10);
       await page.mouse.up();
       await page.waitForFunction(() => !document.body.classList.contains('resizing'));
       await page.waitForTimeout(300);
       const k = await scaleVar();
       const after = await bounds();
       const stage1 = await stageBox();
-      assert.ok(k > 1.2 && k < 2.5, `scale ${k}`);
+      assert.equal(k0, 1.25, 'starts at the default size');
+      assert.ok(k > 1.4 && k < 2.5, `scale ${k}`);
       assert.equal(saved(), k, 'saved on release');
       assert.ok(after.height > before.height && after.width >= before.width);
       assert.equal(after.x + after.width, before.x + before.width, 'right edge kept');
       assert.equal(after.y + after.height, before.y + before.height, 'bottom edge kept');
-      assert.ok(Math.abs(stage1.h - stage0.h * k) <= 2, `stage ${stage1.h} vs ${stage0.h} x ${k}`);
+      assert.ok(Math.abs(stage1.h - (stage0.h * k) / k0) <= 2, `stage ${stage1.h} vs ${stage0.h} x ${k}/${k0}`);
       await page.mouse.move(1, 1);
       await page.screenshot({ path: path.join(OUT, 'pet-size-dragged.png') });
-      return `scale ${k}: window ${before.width}x${before.height} -> ${after.width}x${after.height}; stage ${stage0.h} -> ${stage1.h}px`;
+      return `scale ${k0} -> ${k}: window ${before.width}x${before.height} -> ${after.width}x${after.height}; stage ${stage0.h} -> ${stage1.h}px`;
     }, page);
 
     await step(S, 'Ctrl + wheel over the pet makes it smaller, step by step', async () => {
@@ -1206,6 +1208,8 @@ async function advanced() {
       await page.evaluate(() => { const r = document.getElementById('size-range'); r.value = '60'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); });
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
       assert.match(await page.textContent('.size-val'), /60%/);
+      assert.equal(await page.textContent('#size-reset'), '恢复默认 125%');
+      await page.locator('#size-reset').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, 'pet-size-slider.png') });
       await page.click('#panel-close');
       await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
