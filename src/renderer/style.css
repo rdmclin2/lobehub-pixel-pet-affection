@@ -141,7 +141,6 @@ body.busy.over .stop-btn { display: block; }
 @keyframes float-up { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -28px); } }
 @media (prefers-reduced-motion: reduce) { .float { animation: float-fade 1.4s linear forwards; } }
 @keyframes float-fade { from { opacity: 1; } to { opacity: 0; } }
-.outfit-badge { position: absolute; top: 2px; right: 0; font-size: 10px; background: rgba(255,255,255,.9); border: 2px solid #2b2233; padding: 0 4px; white-space: nowrap; pointer-events: none; }
 
 /* stage-up / unlock notice: visible without hovering */
 .unlock-toast { position: absolute; left: 3px; right: 3px; top: 3px; z-index: 9; background: #fff6d6; border: 3px solid #2b2233; box-shadow: 3px 3px 0 #2b2233; padding: 4px 6px; font-size: 11px; line-height: 1.45; }
@@ -235,7 +234,7 @@ body.hover .resize-grip, body.resizing .resize-grip { opacity: .85; pointer-even
 body.busy .resize-grip { opacity: 0 !important; pointer-events: none !important; }
 body.resizing, body.resizing * { cursor: nwse-resize !important; }
 /* labels inside the zoomed stage keep their normal size */
-.outfit-badge, .float-layer { zoom: calc(1 / var(--pet-scale, 1)); }
+.float-layer { zoom: calc(1 / var(--pet-scale, 1)); }
 
 /* pixel art keeps hard pixels at any size */
 .pixelated { image-rendering: pixelated; }
@@ -287,7 +286,7 @@ canvas.sprite { object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .char-wrap[data-status="walk"] .char, .score-pop { animation: none; } }
 /* a visitor window: only the character; hovering shows her name and the × that sends her home */
 body.visitor #pet-screen { justify-content: flex-end; }
-body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #outfit-badge, body.visitor #panel, body.visitor #unlock-toast { display: none !important; }
+body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #panel, body.visitor #unlock-toast { display: none !important; }
 body.visitor .visitor-bar { display: flex; position: absolute; top: 2px; left: 2px; right: 2px; gap: 4px; align-items: center; justify-content: space-between; font-size: 10px; background: rgba(255,255,255,.88); border: 2px solid #2b2233; padding: 1px 4px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.visitor.hover .visitor-bar { opacity: 1; pointer-events: auto; }
 body.visitor .visitor-bar .btn { padding: 0 6px; font-size: 11px; border-width: 2px; min-width: 24px; min-height: 22px; }

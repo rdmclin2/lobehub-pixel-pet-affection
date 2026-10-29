@@ -467,7 +467,7 @@ async function wardrobe() {
       assert.deepEqual(v.topics.map((t) => [t.id, t.unlocked]), before.topics.map((t) => [t.id, t.unlocked]));
       assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
-      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 招牌女仆装');
+      assert.equal(await page.locator('#outfit-badge').count(), 0, 'no outfit tag over the pet');
       assert.match(await page.textContent('#meta'), /知己 ♥60/);
       const a = await shot('16-after-restart-pet');
       await openWardrobe();
