@@ -1719,6 +1719,8 @@ async function rosterOne(ch) {
     }, page);
     await step(S, 'E5 dragged: she is lifted (dangling)', async () => {
       await settle();
+      // let the E4 click line ("突然被摸头…") fade first, so the lifted screenshot is not mistaken for a pat
+      await page.waitForFunction(() => document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 15000 });
       await page.waitForTimeout(350); // not within 300 ms of the last click: that would be the slingshot
       const box = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -1730,8 +1732,24 @@ async function rosterOne(ch) {
       const out = await shows('lifted');
       assert.equal((await fxState()).exact, true, 'own lifted art');
       assert.equal(await page.textContent('#char-fx'), '', 'no emoji stand-in');
+      // capture a frame that reads as lifted: near the peak of the dangle swing, and for the video, 2 s into
+      // dsh-pet's drag clip, where she has risen with her arms out (its first second still looks like idle)
+      await page.waitForFunction(() => {
+        const v = document.getElementById('pet-video'), m = new DOMMatrix(getComputedStyle(document.getElementById('pet-body')).transform);
+        return (!v || !v.dataset.key || v.currentTime >= 2) && Math.abs(Math.atan2(m.b, m.a) * 180 / Math.PI) >= 3;
+      }, null, { timeout: 6000, polling: 16 });
+      const held = await page.evaluate(() => {
+        const b = document.getElementById('pet-body'), v = document.getElementById('pet-video'), bubble = document.getElementById('bubble');
+        const m = new DOMMatrix(getComputedStyle(b).transform);
+        return { fx: window.petFx.state(), bodyClass: b.className, action: b.dataset.action || null, rotateDeg: +(Math.atan2(m.b, m.a) * 180 / Math.PI).toFixed(2),
+          video: v && v.dataset.key ? { key: v.dataset.key, currentTime: +v.currentTime.toFixed(2), paused: v.paused } : null,
+          bubble: bubble.classList.contains('hidden') ? null : bubble.textContent };
+      });
+      assert.equal(held.fx.state, 'lifted', 'still lifted at the screenshot');
+      assert.ok(held.bodyClass.split(' ').includes('lifted'), 'dangling class at the screenshot');
+      assert.equal(held.bubble, null, 'no speech bubble over the lifted screenshot');
       await page.screenshot({ path: path.join(OUT, `${S}-lifted.png`) });
-      await page.waitForTimeout(250); // hold still before letting go: a drop, not a throw
+      fs.writeFileSync(path.join(OUT, `${S}-lifted.json`), JSON.stringify(held, null, 2));
       await page.mouse.up();
       assert.equal((await fxState()).flying, false, 'a slow release does not throw');
       return out;
