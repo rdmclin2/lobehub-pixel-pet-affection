@@ -605,7 +605,7 @@ class PetService extends EventEmitter {
   // Pet size (any scale in PET_SCALE). Kept in settings.json, so it also applies to the next pet.
   setPetScale(value) {
     if (!Number.isFinite(Number(value))) return { ok: false, reason: 'invalid' };
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, petScale: settingsLib.clampScale(value) });
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, petScale: settingsLib.clampScale(value), petScaleSet: true });
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };

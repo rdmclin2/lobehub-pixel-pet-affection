@@ -720,13 +720,15 @@ function renderAdvanced() {
 
   const size = document.createElement('div');
   size.className = 'adv-section';
-  size.innerHTML = '<h3>宠物大小 <span class="size-val"></span></h3><p class="adv-text">拖动滑块调整桌面上角色的大小（50%–250%），窗口跟着变，右下角保持不动。在桌面上也能直接调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 滚动滚轮。</p><div class="size-row"><input id="size-range" type="range" aria-label="宠物大小" /><button id="size-reset" class="btn">恢复 100%</button></div>';
+  size.innerHTML = '<h3>宠物大小 <span class="size-val"></span></h3><p class="adv-text">拖动滑块调整桌面上角色的大小（50%–250%），窗口跟着变，右下角保持不动。在桌面上也能直接调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 滚动滚轮。</p><div class="size-row"><input id="size-range" type="range" aria-label="宠物大小" /><button id="size-reset" class="btn"></button></div>';
   const range = size.querySelector('#size-range');
   const r = settings.petScaleRange;
   range.min = String(r.min * 100);
   range.max = String(r.max * 100);
   range.step = '5';
   range.value = String(Math.round(settings.petScale * 100));
+  const defaultPct = `${Math.round(r.default * 100)}%`;
+  size.querySelector('#size-reset').textContent = `恢复默认 ${defaultPct}`;
   const label = () => { size.querySelector('.size-val').textContent = `${range.value}%`; };
   label();
   range.addEventListener('input', label);
@@ -737,9 +739,9 @@ function renderAdvanced() {
     panelMsg(`宠物大小：${range.value}%。关掉这个面板就能看到效果。`, true);
   });
   size.querySelector('#size-reset').addEventListener('click', async () => {
-    await commitScale(1);
+    await commitScale(r.default);
     renderAdvanced();
-    panelMsg('宠物大小已恢复为 100%。', true);
+    panelMsg(`宠物大小已恢复为默认的 ${defaultPct}。`, true);
   });
   body.appendChild(size);
   for (const el of behaviorSections()) body.appendChild(el);

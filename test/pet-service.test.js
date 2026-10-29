@@ -815,7 +815,8 @@ test('pet scale is saved in settings, reported to the UI and survives releasing 
   const r = svc.setPetScale(1.42);
   assert.equal(r.ok, true);
   assert.equal(r.settings.petScale, 1.42);
-  assert.deepEqual(r.settings.petScaleRange, { min: 0.5, max: 2.5, default: 1 });
+  assert.equal(r.settings.petScaleSet, true);
+  assert.deepEqual(r.settings.petScaleRange, { min: 0.5, max: 2.5, default: 1.25 });
   assert.equal(svc.setPetScale(7).settings.petScale, 2.5);
   assert.deepEqual(seen, [1.42, 2.5]);
   await svc.release({ deleteAgent: true });

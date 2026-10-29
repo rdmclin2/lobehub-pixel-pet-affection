@@ -156,7 +156,7 @@ async function fresh() {
       assert.equal(await hudOpacity(page), '0');
       assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), false);
       const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-      assert.ok(b.width <= 240 && b.height <= 340, `window is ${b.width}x${b.height}`);
+      assert.deepEqual([b.width, b.height], [268, 388], 'default 125%: window 268x388');
       return `window ${b.width}x${b.height}`;
     }, () => page);
 
@@ -630,7 +630,7 @@ async function dafeiyu() {
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
       await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
       const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
-      assert.ok(b.width <= 240 && b.height <= 340, `window is ${b.width}x${b.height}`);
+      assert.deepEqual([b.width, b.height], [268, 388], 'default 125%: window 268x388');
       return `window ${b.width}x${b.height}, clip idle`;
     }, page);
 
