@@ -6,7 +6,7 @@ const path = require('node:path');
 const { SPECIES, SPECIES_IDS } = require('../src/core/species');
 
 const DIR = path.join(__dirname, '..', 'src', 'renderer', 'assets', 'dafeiyu');
-const REQUIRED_CLIPS = ['idle', 'happy', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'pat', 'hatch', 'evolve'];
+const REQUIRED_CLIPS = ['idle', 'happy', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'pat', 'hatch', 'evolve', 'lifted', 'walk'];
 
 test('the roster is the model-chan: DeepSeek 大肥鱼 (kept, video), Claude and Grok', () => {
   assert.deepEqual(SPECIES_IDS, ['dafeiyu', 'claude', 'grok', 'gemini']);
@@ -17,11 +17,17 @@ test('the roster is the model-chan: DeepSeek 大肥鱼 (kept, video), Claude and
 
 test('every status and reaction has a clip, and each clip is a real WebM file', () => {
   for (const key of REQUIRED_CLIPS) {
-    const file = SPECIES.dafeiyu.clips[key];
-    assert.ok(file, `missing clip mapping: ${key}`);
-    const buf = fs.readFileSync(path.join(DIR, file));
-    assert.deepEqual([...buf.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3], `${file} is not WebM`);
+    const files = [].concat(SPECIES.dafeiyu.clips[key] || []);
+    assert.ok(files.length, `missing clip mapping: ${key}`);
+    for (const file of files) {
+      const buf = fs.readFileSync(path.join(DIR, file));
+      assert.deepEqual([...buf.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3], `${file} is not WebM`);
+    }
   }
+  // dsh-pet's own click reactions play in turn; lifted is its drag clip, not the click clip
+  assert.equal(SPECIES.dafeiyu.clips.pat.length, 4);
+  assert.equal(SPECIES.dafeiyu.clips.lifted, 'lifted.webm');
+  assert.notDeepEqual(fs.readFileSync(path.join(DIR, 'lifted.webm')), fs.readFileSync(path.join(DIR, 'pat.webm')));
 });
 
 test('pack characters do not carry video fields, so the renderer draws them from their pack', () => {

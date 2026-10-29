@@ -13,10 +13,13 @@ const packsLib = require('../core/packs');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
+const memes = require('../core/memes');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
 const LOCAL_RETRY_MS = 5 * 60 * 1000; // after a failure, do not hammer `lh` on every message
+// Offline lines that may come with a random meme picture (the pet's own murmurs, not app notes).
+const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 class PetService extends EventEmitter {
@@ -117,9 +120,17 @@ class PetService extends EventEmitter {
     return contentGuard.refusalLine(getSpecies(this.pet.speciesId));
   }
 
+  // A line for the bubble. The agent may have tagged a meme picture ([梗图:id], core/memes.js): the tag
+  // never reaches the bubble; with memes on, the picture goes with the line (an offline murmur gets a
+  // random one now and then).
   _say(text, source, kind, reason = null) {
     if (this.pet) this.pet.lastSpokeAt = this.now();
-    this.emit('say', { text, source, kind, reason });
+    const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
+    const ex = memes.extractMeme(text, sp);
+    let meme = null;
+    if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
+    const m = meme && sp.memes.find((x) => x.id === meme);
+    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null });
     if (this.pet) this._save();
   }
 
@@ -315,6 +326,8 @@ class PetService extends EventEmitter {
     if (!outfits.hasArt(speciesId, this.pet.lastSafeOutfit)) this.pet.lastSafeOutfit = outfits.DEFAULT_OUTFIT;
     outfits.enforceOutfit(this.pet, this.settings);
     const sp = getSpecies(speciesId);
+    // she cannot visit herself: the new companion leaves the visitors (同屏伙伴)
+    if (this.settings.visitors.includes(speciesId)) this.setVisitors(this.settings.visitors.filter((v) => v !== speciesId));
     this._say(sp.fallback.greet[0], 'fallback', 'switch');
     return { ok: true, view: this.view(), from };
   }
@@ -520,6 +533,45 @@ class PetService extends EventEmitter {
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };
+  }
+
+  // 高级设置 → 桌宠行为: roaming, click sound, voice, memes, collisions (settings.PREFS).
+  setPrefs(patch) {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    const next = { ...this.settings.prefs };
+    for (const k of Object.keys(settingsLib.PREFS)) if (typeof p[k] === 'boolean') next[k] = p[k];
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, prefs: next });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, settings: this.settingsView() };
+  }
+
+  // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play).
+  setVisitors(ids) {
+    const own = this.pet ? this.pet.speciesId : null;
+    const list = (Array.isArray(ids) ? ids : []).filter((id) => SPECIES[id] && id !== own);
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, visitors: list });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, settings: this.settingsView() };
+  }
+
+  // 对外接口 (local HTTP API): off by default; switching it on creates a random token if there is none.
+  setApi({ enabled, port, newToken = false } = {}, makeToken = () => require('node:crypto').randomBytes(24).toString('base64url')) {
+    const cur = this.settings.api;
+    const token = newToken || !cur.token ? makeToken() : cur.token;
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, api: { enabled: enabled === undefined ? cur.enabled : !!enabled, port: port === undefined ? cur.port : Number(port), token } });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, settings: this.settingsView() };
+  }
+
+  // A line sent through the local API (no LLM call): shown, and read aloud with voice on.
+  sayExternal(text) {
+    const t = String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 300);
+    if (!this.pet || !t) return { ok: false, reason: this.pet ? 'empty' : 'no-pet' };
+    this._say(t, 'api', 'api');
+    return { ok: true };
   }
 
   answerAgeGate(isAdult) {

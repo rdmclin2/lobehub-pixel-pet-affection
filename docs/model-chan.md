@@ -36,7 +36,7 @@
 | E2 | 待机呼吸 | `idle` | ✅ | ✅ | ✅ | ✅ |
 | E3 | 自播链：东张西望 / 转身（左右镜像）/ 小动作 / 开心 | `look`、`happy`、`play` + 镜像 | ✅ | ✅ | ✅ | ✅ |
 | E4 | 点击回应：摸摸 / 开心交替，Q 弹挤压和爱心粒子 | `pat`、`happy` | ✅ | ✅ | ✅ | ✅ |
-| E5 | 被拎起（悬空摇晃） | `lifted` | ✅ 用 `pat` 视频 + ❗ | ✅ | ✅ | ✅ |
+| E5 | 被拎起（悬空摇晃） | `lifted` | ✅ 视频（dsh-pet 拖拽片段） | ✅ | ✅ | ✅ |
 | E6 | 甩出：重力、撞屏幕边缘反弹、落到屏幕底部 | `lifted` → `pat` | ✅ | ✅ | ✅ | ✅ |
 | E7 | 吃白饭 / 吃零食 / 吃水果 | `eat_rice`、`eat_cookie`、`eat_fruit` | ✅ | ✅ | ✅ | ✅ |
 | E8 | 玩耍 | `play` | ✅ | ✅ | ✅ | ✅ |
@@ -46,6 +46,21 @@
 | E12 | 关系升级演出：进化、闪光、爱心 | `evolve` | ✅ | ✅ | ✅ | ✅ |
 | E13 | 角色专属衣柜 | — | 9 套 | 1 套 | 1 套 | 1 套 |
 | E14 | 切换角色（保留 agent、聊天记录和好感度） | `hatch` | ✅ | ✅ | ✅ | ✅ |
+| E15 | 自己走动（漫游，可关） | `walk` | ✅ 视频（螃蟹走路） | ✅ 待机帧颠步 + 👣 | ✅ 同左 | ✅ 同左 |
+| E16 | 触屏长按 / 右键打开菜单 | — | ✅ | ✅ | ✅ | ✅ |
+| E17 | 动作点播、回到右下角 | 任意状态 | ✅ | ✅ | ✅ | ✅ |
+| E18 | 弹弓 | `lifted` → `pat` | ✅ | ✅ | ✅ | ✅ |
+| E19 | 空中接住得分 | `happy` | ✅ | ✅ | ✅ | ✅ |
+| E20 | 落地挤压随冲击加深 | — | ✅ | ✅ | ✅ | ✅ |
+| E21 | 点击音效（默认关） | — | ✅ | ✅ | ✅ | ✅ |
+| E22 | 梗图贴纸 | — | 9 张（dsh-pet） | 4 张 | 4 张 | 4 张 |
+| E23 | 朗读回复（默认关） | — | 音调 1.35 | 音调 1.0、语速 0.92 | 音调 1.15、语速 1.12 | 音调 1.25、语速 1.08 |
+| E24 | 同屏伙伴（最多 3 位） | 全部 | ✅ | ✅ | ✅ | ✅ |
+| E25 | 互相碰撞 | `lifted` | ✅ | ✅ | ✅ | ✅ |
+| E26 | 本机 HTTP 接口（默认关） | 任意状态 | ✅ | ✅ | ✅ | ✅ |
+| — | 点击回应变体 | `pat`、`happy` | 4 + 2 段视频轮换 | 1 | 1 | 1 |
+
+E15–E26 来自与 dsh-pet 的逐项对照，见 [dsh-pet-gap.md](dsh-pet-gap.md)（含不移植的效果和理由）。
 
 ## 二、使用说明
 
@@ -113,6 +128,18 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 | E12 | 关系升级 | 好感度跨过阶段（15 / 35 / 60 / 85）；⋯ → 高级设置 → **一键解锁** 可以直接加满 |
 | E13 | 衣柜 | 悬停 → **衣柜** |
 | E14 | 切换角色 | 见上一节 |
+| E15 | 自己走动 | 鼠标离开宠物后由自播链按权重触发；高级设置 → **桌宠行为** →“自己走动”关掉后只在原地活动 |
+| E16 | 长按 / 右键 | 触屏上按住她 0.5 秒不动；鼠标右键她 |
+| E17 | 动作点播 | ⋯ → **动作…**（东张西望、转身、走两步、开心、害羞、玩耍、想事情、难过、闪亮登场）；⋯ → **回到右下角** |
+| E18 | 弹弓 | 0.3 秒内连按两下，第二下按住往反方向拉，松手 |
+| E19 | 空中接住 | 甩出后在她飞行时点中她（速度 ≥ 400 px/s 才计分） |
+| E20 | 落地挤压 | 甩得越猛，落地压得越扁 |
+| E21 | 点击音效 | 高级设置 → 桌宠行为 → 点击音效 |
+| E22 | 梗图 | 默认开；agent 回复时自己挑一张（每条消息附带她的梗图清单），饿了 / 无聊 / 问候等离线台词约三分之一概率随机配图 |
+| E23 | 朗读回复 | 高级设置 → 桌宠行为 → 朗读回复；只念 agent 的回复、话题和对外接口发来的话。用系统自带语音（macOS / Windows 自带中文语音；Linux 需要装 speech-dispatcher 和中文语音包） |
+| E24 | 同屏伙伴 | 高级设置 → **同屏伙伴** 勾选角色；悬停伙伴点 × 送她回去 |
+| E25 | 互相碰撞 | 有同屏伙伴时把她甩向伙伴；高级设置 → 桌宠行为 → 互相碰撞 |
+| E26 | 本机 HTTP 接口 | 高级设置 → **对外接口** 勾选开启，复制令牌后：`curl -H "Authorization: Bearer <令牌>" http://127.0.0.1:7340/pixel-pet/state`；`POST /pixel-pet/say {"text":"…"}`、`/anim {"state":"walk"}`、`/throw {"angle":60,"power":1.2}`、`/chat {"text":"…"}` |
 
 ## 三、新增一个厂商角色
 
@@ -141,11 +168,13 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
      "signature": { "label": "…", "desc": "…" },
      "art": { "kind": "pack", "packs": ["kimi-pixel"], "fallbackPack": "kimi-pixel" },
      "fx": { "noMirror": [] },       // 画了文字、镜像会反字的状态列在这里
+     "voice": { "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao"] }, // 朗读用：音调、语速、优先的系统语音名
+     "memes": [{ "id": "hello", "label": "你好呀", "desc": "挥手打招呼时" }],          // 梗图：图片放 src/renderer/assets/memes/kimi/<id>.webp
      "credits": ["设定：…（许可）", "像素图：…（许可）"]
    }
    ```
 
-   字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`。
+   字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`；一个状态可以给一组片段（`"pat": ["a.webm", "b.webm"]`），每次轮换播放。`memes` 和 `voice` 可省略（没有梗图 / 用默认音色）；梗图文件缺失时启动会报错。
 3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 25 岁以上”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
 4. **运行确认**：`npm start`，选择模型娘界面会多出一张 Kimi 卡片，唤醒后所有效果自动可用。
 5. **更新测试**：下面几处固定了现有角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster kimi`：
@@ -161,5 +190,5 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 ## 四、验证
 
 - `npm test`：单元测试（假 `lh`，不联网），包括角色文件和角色包的校验。
-- `xvfb-run -a node e2e/run.js roster`：逐个角色选择、唤醒，逐项触发 E1–E14，截图在 `out/e2e/`，录屏在 `out/e2e/roster-video/<角色>/`；`... roster claude` 只跑一个角色。
+- `xvfb-run -a node e2e/run.js roster`：逐个角色选择、唤醒，逐项触发 E1–E14 和 N1–N14（E15–E26），截图在 `out/e2e/`，录屏在 `out/e2e/roster-video/<角色>/`；`... roster claude` 只跑一个角色。
 - `xvfb-run -a node e2e/run.js art`：输出“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`。

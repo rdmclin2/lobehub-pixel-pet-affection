@@ -2,7 +2,11 @@
 
 The animations in this folder are taken **unchanged** from the open-source project
 **dsh-pet** by PC2005-cloud: <https://github.com/PC2005-cloud/dsh-pet>
-(file names were changed to ASCII keys; 15 of its clips are included).
+(file names were changed to ASCII keys; 21 of its clips are included: the 15 state clips, its drag clip
+`被鼠标拖拽悬空反馈` as `lifted.webm`, its crab walk `螃蟹走路` as `walk.webm`, and four click reactions
+`点击回应-*` as `happy_jump.webm`, `pat_shy.webm`, `pat_pout.webm`, `pat_tickle.webm`).
+Nine of its meme pictures (`assets/memes/`, converted to WebP) are in `src/renderer/assets/memes/dafeiyu/`
+under the same terms.
 
 Terms stated by the original author (README, "许可"):
 

@@ -41,8 +41,11 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     const px = packs.get(id);
     assert.equal(px.schema, 2);
     assert.equal(px.kind, 'sprites');
-    assert.deepEqual(Object.keys(px.actions).sort(), [...STATES].sort(), `${id} animates every state`);
-    for (const st of STATES) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
+    // every state but `walk`: a sprite character walks with her idle frames hopping along (style.css)
+    const own = STATES.filter((st) => st !== 'walk');
+    assert.deepEqual(Object.keys(px.actions).sort(), [...own].sort(), `${id} animates every state`);
+    for (const st of own) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
+    assert.deepEqual(resolveAction('walk', (n) => !!px.actions[n]), { name: 'idle', exact: false });
     assert.deepEqual(px.frame, { width: 83, height: 113 });
   }
 });

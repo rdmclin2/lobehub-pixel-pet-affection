@@ -21,6 +21,10 @@ const RETIRED = { bubbo: 'dafeiyu', embit: 'claude', sprig: 'dafeiyu' };
 const DEFAULT_SPECIES = 'dafeiyu';
 
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
+const MEME_ID_RE = /^[a-z0-9_-]{1,40}$/;
+const ASSETS = path.join(__dirname, '..', 'renderer');
+// A clip is a file name, or a list of variants played in turn (e.g. several click reactions).
+const clipOk = (v) => str(v) || (Array.isArray(v) && v.length > 0 && v.every(str));
 
 // Check one character file. Returns a list of problems (empty = valid).
 function validateCharacter(c) {
@@ -35,6 +39,19 @@ function validateCharacter(c) {
   const art = c.art || {};
   if (!ART_KINDS.includes(art.kind)) errors.push(`art.kind must be one of ${ART_KINDS.join(', ')}`);
   if (art.kind === 'video' && (!art.clips || !str(art.clips.idle) || !str(art.dir))) errors.push('a video character needs art.dir and art.clips.idle');
+  if (art.kind === 'video' && art.clips) for (const [k, v] of Object.entries(art.clips)) if (!clipOk(v)) errors.push(`art.clips.${k} must be a file name or a list of them`);
+  if (c.memes !== undefined) {
+    if (!Array.isArray(c.memes)) errors.push('memes must be a list');
+    else {
+      const ids = new Set();
+      c.memes.forEach((m, i) => {
+        if (!m || !MEME_ID_RE.test(m.id || '') || !str(m.label) || !str(m.desc)) errors.push(`memes[${i}] needs an id (a-z0-9_-), a label and a desc`);
+        else if (ids.has(m.id)) errors.push(`memes[${i}]: duplicate id ${m.id}`);
+        else ids.add(m.id);
+      });
+    }
+  }
+  if (c.voice !== undefined && (!c.voice || typeof c.voice !== 'object' || (c.voice.lang !== undefined && !str(c.voice.lang)))) errors.push('voice must be an object ({ lang, pitch, rate, prefer })');
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
   if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
   if (RETIRED[c.id]) errors.push(`${c.id} is a retired character id`);
@@ -55,7 +72,18 @@ function toSpecies(c) {
     fallbackPack: art.fallbackPack || art.packs[0] || null,
     fx: { noMirror: [], ...(c.fx || {}) },
     signature: c.signature || null,
+    memes: Array.isArray(c.memes) ? c.memes.map((m) => ({ id: m.id, label: m.label, desc: m.desc })) : [],
+    voice: c.voice || null,
   };
+}
+
+// Files a character file points at that are missing on disk (clips and meme pictures).
+function missingFiles(c, root = ASSETS) {
+  const out = [];
+  const art = c.art || {};
+  if (art.kind === 'video' && art.clips) for (const v of Object.values(art.clips)) for (const f of [].concat(v)) if (!fs.existsSync(path.join(root, art.dir, f))) out.push(`${art.dir}/${f}`);
+  for (const m of c.memes || []) if (!fs.existsSync(path.join(root, 'assets', 'memes', c.id, `${m.id}.webp`))) out.push(`assets/memes/${c.id}/${m.id}.webp`);
+  return out;
 }
 
 function loadCharacters(dir = DIR) {
@@ -65,6 +93,7 @@ function loadCharacters(dir = DIR) {
     const c = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
     const errors = validateCharacter(c);
     if (`${c.id}.json` !== f) errors.push(`file name must be ${c.id}.json`);
+    if (!errors.length) for (const m of missingFiles(c)) errors.push(`missing file ${m}`);
     if (errors.length) throw new Error(`character ${f}: ${errors.join('; ')}`);
     out[c.id] = toSpecies(c);
   }
@@ -101,4 +130,4 @@ function unregisterCharacter(id) {
   if (i >= 0) SPECIES_IDS.splice(i, 1);
 }
 
-module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, loadCharacters, registerCharacter, unregisterCharacter };
+module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, missingFiles, loadCharacters, registerCharacter, unregisterCharacter };
