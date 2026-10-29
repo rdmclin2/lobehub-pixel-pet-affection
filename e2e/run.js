@@ -1534,7 +1534,11 @@ async function art() {
       const rows = [];
       // 大肥鱼's clips (a frame from each), then every pixel pack
       const sp = SPECIES.dafeiyu;
-      rows.push({ name: 'dafeiyu (clips)', cells: STATES.map((st) => ({ clip: `${sp.clipDir}/${sp.clips[Fx.resolveAction(st, (n) => !!sp.clips[n]).name]}`, exact: Fx.resolveAction(st, (n) => !!sp.clips[n]).exact })) });
+      rows.push({ name: 'dafeiyu (clips)', cells: STATES.map((st) => {
+        const a = Fx.resolveAction(st, (n) => !!sp.clips[n]);
+        const clip = [].concat(sp.clips[a.name])[0]; // a state with several clips (pat, happy) shows its first one
+        return { clip: `${sp.clipDir}/${clip}`, exact: a.exact };
+      }) });
       for (const id of ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']) {
         const pk = packs.get(id);
         const look = P.resolveLook(packs, { packId: id, fallbackId: id, speciesId: pk.species, outfitId: 'daily' });
