@@ -1,5 +1,5 @@
 # Contact sheet of every model-chan character and state: one column per DeepSeek state plus `lifted`; one row
-# per pixel pack showing both frames of the mapped action (2x nearest-neighbour), plus a reference row for
+# per pixel pack showing both frames of the mapped action (1:1), plus a reference row for
 # DeepSeek's original video clips (one frame each; `lifted` is dsh-pet's drag clip `lifted.webm`). Needs ffmpeg with libvpx-vp9 for the alpha video frames.
 # usage: model_chan_preview.py <out.png> [repo root]
 import json, os, subprocess, sys, tempfile
@@ -13,7 +13,7 @@ STATES = chars[0]['art']['states'] + ['lifted']
 rows = [(c, 'video') for c in chars if c['art']['kind'] == 'video'] + [(c, 'pixel') for c in chars if c['art'].get('pack')]
 FONT = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
 font = lambda size: ImageFont.truetype(FONT, size) if os.path.exists(FONT) else ImageFont.load_default()
-SCALE, FW, FH = 2, 83, 113
+SCALE, FW, FH = 1, 166, 226
 CW, CH = FW * SCALE * 2 + 12, FH * SCALE + 12  # a column holds both frames side by side
 LEFT, TOP, BG = 260, 120, (44, 44, 52, 255)
 
@@ -28,7 +28,7 @@ def video_frame(path):
 
 img = Image.new('RGBA', (LEFT + CW * len(STATES), TOP + CH * len(rows) + 20), BG)
 d = ImageDraw.Draw(img)
-d.text((20, 20), '模型娘首批角色 · 全部动画状态预览（每格：该状态的帧；像素角色为 2 帧，83×113，放大 2 倍）', fill='white', font=font(30))
+d.text((20, 20), '模型娘首批角色 · 全部动画状态预览（每格：该状态的帧；像素角色为 2 帧，166×226，原尺寸）', fill='white', font=font(30))
 for i, s in enumerate(STATES):
     d.text((LEFT + i * CW + 8, TOP - 40), s, fill=(220, 220, 230), font=font(22))
 for r, (c, kind) in enumerate(rows):

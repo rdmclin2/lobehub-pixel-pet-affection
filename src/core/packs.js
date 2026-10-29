@@ -152,8 +152,10 @@ const packUrl = (pack, rel) => `pack://${pack.id}/${rel.split('/').map(encodeURI
 
 // How `speciesId` looks in `outfitId` with the chosen pack. For an outfit the pack has no art for, the
 // character's default pack is tried next, then its fallback pack (`fallbackId`).
-// null = no art: a video character in its signature outfit plays its own clips.
+// null = no art: a video character in its signature outfit plays its own clips (chosen under 外观, or
+// when it has no pack at all).
 function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
+  if (packId && packId === clipsId(speciesId) && outfitId === 'daily') return null;
   for (const id of [packId, defaultPack(speciesId), fallbackId || fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
@@ -163,23 +165,30 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
   return null;
 }
 
-// Packs for one species, as the appearance picker lists them.
+// Packs for one species, as the appearance picker lists them; a video character's own clips come last.
 function packsFor(packs, speciesId) {
-  return [...packs.values()]
+  const out = [...packs.values()]
     .filter((p) => p.species === speciesId)
     .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, outfits: Object.keys(p.outfits).length }));
+  const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
+  if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
+  return out;
 }
 
-// The look a character starts with (its first pack; none for a video character, which plays its clips),
-// and the pack every other pack falls back to. Both come from src/characters/<id>.json.
+// The look a character starts with (its first pack; none for a video character without packs, which
+// plays its clips), and the pack every other pack falls back to. Both come from src/characters/<id>.json.
 const defaultPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].defaultPack) || null;
 const fallbackPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].fallbackPack) || `${speciesId}-pixel`;
+// The appearance id that stands for a video character's own clips (null for a pack character).
+const clipsId = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].clipsLook ? `${speciesId}-clips` : null);
 function chosenPack(packs, appearance, speciesId) {
-  for (const id of [appearance && appearance[speciesId], defaultPack(speciesId), fallbackPack(speciesId)]) {
+  const want = appearance && appearance[speciesId];
+  if (want && want === clipsId(speciesId)) return want;
+  for (const id of [want, defaultPack(speciesId), fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (p && p.species === speciesId) return p.id;
   }
   return fallbackPack(speciesId);
 }
 
-module.exports = { defaultPack, fallbackPack, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor };
+module.exports = { defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor };

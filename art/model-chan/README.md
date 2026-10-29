@@ -4,7 +4,7 @@
 
 | 角色 | 厂商 | 主题色 | 美术 | 素材位置 |
 | --- | --- | --- | --- | --- |
-| 大肥鱼（DeepSeek 娘，Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 保留原有透明视频（现为 21 段：15 个基础状态 + 拎起、走路和 4 段点击回应变体）；另出同一 Q 版女仆形象的像素版 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
+| 大肥鱼（DeepSeek 娘，Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 默认是同一 Q 版女仆形象的像素版；原有透明视频（21 段：15 个基础状态 + 拎起、走路和 4 段点击回应变体）保留为可选外观 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
 | 克洛蒂（Claude 娘，橘发菊纹） | Anthropic | `#C4622D` | 像素精灵图 | `src/renderer/packs/claude-pixel/` |
 | 格萝可（Grok 娘，黑金吸血鬼） | xAI | `#8E1F33` | 像素精灵图 | `src/renderer/packs/grok-pixel/` |
 | 杰米（Gemini 娘，四角星猫耳；第二批，2026-10-29） | Google | `#7B5CD6` | 像素精灵图 | `src/renderer/packs/gemini-pixel/` |
@@ -14,21 +14,23 @@
 
 ## 像素包格式
 
-schema 2（见 `docs/pet-packs.md`）：RGBA PNG，单帧 83×113，一张 4 列 × 8 行（332×904），16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）。
+schema 2（见 `docs/pet-packs.md`）：RGBA PNG，单帧 166×226，一张 4 列 × 8 行（664×1808），16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）。
 
 ## 重新生成
 
 需要已登录的 `lh`、带 Pillow 和 numpy 的 python3、带 libvpx-vp9 的 ffmpeg。
 
 ```bash
-python3 scripts/art/model_chan_prompts.py > jobs.json          # 每个角色 2 条提示词：<id>_base、<id>_extra
-lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条生成一张 4×4 宫格
-python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 4 96   # 抠图、像素化、限制调色板（吉皮缇这类白色角色加 --octree，否则西瓜、饼干和肤色会被并进品红色调后删掉）
-python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png           # 放进 83×113 的格子，去品红边（杰米这类紫色发色加 --keep-violet）
-python3 scripts/art/build_model_chan_pack.py fit/<id>_base.png fit/<id>_extra.png <id> src/renderer/packs/<id>-pixel
+python3 scripts/art/model_chan_prompts.py --halves > jobs.json # 每个角色 4 条提示词：<id>_base_a/_b、<id>_extra_a/_b（4×2 宫格）
+lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条一张，默认画布约 1024×1536（--width/--height 会报 ServerError）
+python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 180 --max 162x222   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
+python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png --rows 2  # 放进 166×226 的格子，去品红边（绿底生成的加 --key green）
+python3 scripts/art/build_model_chan_pack.py fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
 python3 scripts/art/check_model_chan.py                       # 校验尺寸、格式、每个动作的每一帧都有内容
 python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-preview.png
 ```
+
+2026-10-29 起的 166×226 版本按上面的步骤生成：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
 
 ## 来源与授权
 

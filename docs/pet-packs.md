@@ -63,7 +63,7 @@ my-grok/
 | `lifted` | 被拖着走、被甩出去的空中 | `pat` |
 
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
-- **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 8 行（332×904），每个状态 2 帧。
+- **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 8 行（664×1808，每帧 166×226），每个状态 2 帧。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
 - **schema 1**：旧格式的 8 个动作名 `idle / wave / lifted / eat / sleep / think / talk / cheer` 仍然可用，应用把 `pat` 映射到 `wave`，`happy`、`play`、`hatch`、`evolve` 映射到 `cheer`，三种吃饭映射到 `eat`。schema 1 包里不能写 schema 2 的新动作名。
 
@@ -75,9 +75,9 @@ my-grok/
 
 本仓库用 `scripts/art/` 生成内置的模型娘像素包（schema 2），可以照着做：
 
-1. `python3 scripts/art/model_chan_prompts.py` 输出每个角色两条提示词（`<id>_base`、`<id>_extra`，各是 4×4 宫格：8 个状态各 2 帧，纯品红背景）。
-2. 用 `lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` 生成，每条一张。
-3. `scripts/art/slice_sheet.py <生成图> <输出.png> 4 4 96`：抠掉背景、去掉相邻格子带过来的碎像素，缩成真正的像素画；`scripts/art/fit_cells.py` 把每格放进 83×113。
-4. `scripts/art/build_model_chan_pack.py <base.png> <extra.png> <角色 id> src/renderer/packs/<角色 id>-pixel`：两张拼成一张 332×904，写出 schema 2 的 `pack.json`；`scripts/art/check_model_chan.py` 检查尺寸和每一帧都有内容。
+1. `python3 scripts/art/model_chan_prompts.py` 输出每个角色两条提示词（`<id>_base`、`<id>_extra`，各是 4×4 宫格：8 个状态各 2 帧，纯品红背景）。为了分辨率，每条再按行拆成两半（`_a` 是第 1–2 行，`_b` 是第 3–4 行），每半是 4×2 宫格，详见 [art/model-chan/README.md](../art/model-chan/README.md)。
+2. 用 `lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` 生成，每条一张（模型默认画布约 1024×1536，指定尺寸会报错）。
+3. `scripts/art/slice_sheet.py <生成图> <输出.png> 4 2 180 --max 162x222`：抠掉背景（品红底或透明底都行）、去掉相邻格子带过来的碎像素，缩成真正的像素画；`scripts/art/fit_cells.py <输入> <输出> --rows 2` 把每格放进 166×226。
+4. `scripts/art/build_model_chan_pack.py <base_a> <base_b> <extra_a> <extra_b> <角色 id> src/renderer/packs/<角色 id>-pixel`：四张拼成一张 664×1808，写出 schema 2 的 `pack.json`；`scripts/art/check_model_chan.py` 检查尺寸和每一帧都有内容。
 
 新角色还需要一份 `src/characters/<id>.json`（字段见现有三个文件；`npm test` 会校验）。然后在应用里导入这个目录，或者打成 `.zip` 发给别人。

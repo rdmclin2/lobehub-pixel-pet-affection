@@ -70,7 +70,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 - **首次**：在“选择你的模型娘”界面点角色卡，再点“唤醒”。
 - **之后切换**：悬停宠物 → ⋯ → **高级设置** →“角色”一栏，点想要的角色旁边的 **切换**（当前角色显示“✓ 当前”）。LobeHub agent、聊天记录和好感度保留，她的人设在下一句话前更新；身上的服饰新角色没有时换回日常服。切换后播放唤醒演出。
-- **换画风**：高级设置 → **外观（角色包）**。大肥鱼可以在原版动画和像素包之间切换；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
+- **换画风**：高级设置 → **外观（角色包）**。大肥鱼默认是像素包，可以换成原版动画（dsh-pet 透明视频）再换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
 - **请别的模型娘来串门**：高级设置 → **同屏伙伴**，见下面的 E24。
 
 ## 五、各效果的触发方式
@@ -91,7 +91,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 | E10 | 饿了 / 难过 / 开心 | `hungry`、`sad`、`happy` | 随饥饿、心情自动变化（久不喂食会饿，冷落会难过） | 无，始终可用 |
 | E11 | 工作状态：思考中 → 说话，出错时难过；每条消息带时间背景 | `think`、`talk`、`sad` | 悬停 → **聊天** 发一句话，或点 **话题**：等回复时“思考中”，回复到达时说话；agent 出错时难过。工作中悬停只显示 **■ 停止**，按 Esc 也能中断 | 无，始终可用 |
 | E12 | 关系升级演出：进化、闪光、爱心 | `evolve` | 好感度跨过阶段（15 / 35 / 60 / 85）；高级设置 → **一键解锁** 直接加满 | 无，始终可用 |
-| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（大肥鱼 9 套，其他角色各 1 套） | 无，始终可用 |
+| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（每位角色 1 套原设服装） | 无，始终可用 |
 | E14 | 切换角色（保留 agent、聊天记录和好感度） | `hatch` | 见第四节 | 无，始终可用 |
 | E15 | 自己走动（漫游） | `walk` | 鼠标离开、她不忙、没开面板时偶尔朝面向的方向走 60–240 像素，到屏幕边掉头。大肥鱼播 dsh-pet 的螃蟹走路，像素角色用待机帧颠步 + 👣。开关：桌宠行为 →“自己走动” | 桌宠行为 →“自己走动”（默认开） |
 | E16 | 触屏长按 / 右键打开菜单 | — | 触屏上按住她 0.5 秒不动；或鼠标右键她 | 无，始终可用 |
@@ -127,7 +127,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 版本与更新 | 当前版本、上次检查时间、“检查更新” | 启动后检查一次，之后每 4 小时 |
 | 一键解锁 | 好感度直接加满（♥100），所有阶段、话题和服饰解锁，不能撤销 | — |
 | 角色 | 五位角色，点“切换”（E14） | — |
-| 外观（角色包） | 选画风、导入角色包、打开角色包文件夹 | 大肥鱼：原版动画 |
+| 外观（角色包） | 选画风、导入角色包、打开角色包文件夹 | 每位角色：像素包 |
 | 桌宠行为 | 自己走动（E15）、点击音效（E21）、朗读回复（E23）、梗图（E22）、互相碰撞（E25） | 开、关、关、开、开 |
 | 同屏伙伴 | 勾选最多 3 位来串门（E24） | 无 |
 | 对外接口（本机 HTTP） | 开关、端口、令牌（E26） | 关，端口 7340 |
@@ -150,7 +150,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 
 1. **准备美术（角色包）**：新建 `src/renderer/packs/kimi-pixel/`，内含 `pack.json` 和 `sheets/daily.png`。
    - 最快的做法是复制一个现有像素包，改 `pack.json` 的 `id`（`kimi-pixel`）、`name`、`author`、`license`、`description`，并把 `species` 改成 `kimi`。
-   - 自己画：按 [pet-packs.md](pet-packs.md) 的 schema 2，精灵图 332×904（4 列 × 8 行，每帧 83×113），动作名就是状态名，只有 `idle` 必填，缺的状态按回落链降级。本仓库用 GPT Image 2.5 生成：`python3 scripts/art/model_chan_prompts.py` 出提示词 → `lh gen image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` → `scripts/art/slice_sheet.py` → `scripts/art/fit_cells.py`（紫色系发色加 `--keep-violet`，否则发色会被去品红边洗成灰色；白色系角色在 `slice_sheet.py` 加 `--octree`，否则西瓜、饼干和肤色会被并进品红色调后删掉）→ `scripts/art/build_model_chan_pack.py` → `scripts/art/check_model_chan.py` 校验（参数见 [art/model-chan/README.md](../art/model-chan/README.md)）。
+   - 自己画：按 [pet-packs.md](pet-packs.md) 的 schema 2，精灵图 664×1808（4 列 × 8 行，每帧 166×226），动作名就是状态名，只有 `idle` 必填，缺的状态按回落链降级。本仓库用 GPT Image 2.5 生成：`python3 scripts/art/model_chan_prompts.py --halves` 出提示词 → `lh gen image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` → `scripts/art/slice_sheet.py` → `scripts/art/fit_cells.py`（紫粉色系角色改用绿底生成，两个脚本都加 `--key green`；白色系角色在 `slice_sheet.py` 加 `--octree`，否则西瓜、饼干和肤色会被并进品红色调后删掉）→ `scripts/art/build_model_chan_pack.py` → `scripts/art/check_model_chan.py` 校验（参数见 [art/model-chan/README.md](../art/model-chan/README.md)）。
 2. **写数据文件** `src/characters/kimi.json`，照着 `src/characters/claude.json` 填：
 
    ```jsonc

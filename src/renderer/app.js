@@ -98,8 +98,8 @@ function bindResize() {
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
 // How a companion looks comes from its pet pack (`view.look`, see core/packs.js): a picture per outfit, or
-// a pixel sprite sheet per outfit with one row of frames per action. Dafeiyu plays its own clips while
-// wearing its signature outfit (look: null).
+// a pixel sprite sheet per outfit with one row of frames per action. Dafeiyu plays her own clips when
+// they are picked under 外观 (look: null).
 const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.look);
 
 // ---------- looks: pictures and animated pixel sprites ----------
@@ -479,20 +479,25 @@ function onAffection(e) {
   }
 }
 
-// A stage-up names everything it unlocked, and stays until closed (or for half a minute).
+// A stage-up names everything it unlocked, and stays until closed (or for half a minute). A kind with
+// nothing new (e.g. outfits, for a character with only her signature one) is left out.
 function showUnlockToast(e) {
   const a = (e.view || view).affection;
-  const names = (list) => (list && list.length ? list.map((x) => `「${x.label}」`).join('、') : '无');
+  const names = (list) => list.map((x) => `「${x.label}」`).join('、');
   $('toast-title').textContent = `🎉 关系升级：${a.stageName}（♥${a.value}）`;
   const body = $('toast-body');
   body.innerHTML = '';
   for (const [k, list] of [['解锁话题', e.unlocks && e.unlocks.topics], ['解锁服饰', e.unlocks && e.unlocks.outfits]]) {
+    if (!list || !list.length) continue;
     const line = document.createElement('div');
     line.innerHTML = '<b></b>';
     line.querySelector('b').textContent = `${k}：`;
     line.appendChild(document.createTextNode(names(list)));
     body.appendChild(line);
   }
+  const outfits = !!(e.unlocks && e.unlocks.outfits && e.unlocks.outfits.length);
+  $('toast-open').dataset.panel = outfits ? 'wardrobe' : 'topics';
+  $('toast-open').textContent = outfits ? '去衣柜看看' : '去聊聊新话题';
   $('unlock-toast').classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, 30000);
@@ -644,7 +649,7 @@ function renderAdvanced() {
     pick.setAttribute('aria-checked', String(o.id === view.appearance.packId));
     pick.disabled = o.id === view.appearance.packId;
     row.querySelector('b').textContent = o.name;
-    row.querySelector('span').textContent = `${o.kind === 'sprites' ? '像素动画' : '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    row.querySelector('span').textContent = `${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
     pick.addEventListener('click', async () => {
       const r = await window.pet.setAppearance(o.id);
       if (!r.ok) return;
@@ -1460,7 +1465,7 @@ async function main() {
   $('age-no').addEventListener('click', () => answerAgeGate(false));
   $('panel-close').addEventListener('click', closePanel);
   $('toast-close').addEventListener('click', hideToast);
-  $('toast-open').addEventListener('click', () => openPanel('wardrobe'));
+  $('toast-open').addEventListener('click', () => openPanel($('toast-open').dataset.panel || 'wardrobe'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
   window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced') renderAdvanced(); } });
   window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme); speak(m); });

@@ -336,7 +336,7 @@ async function wardrobe() {
       return `${f} · float "${float}" · meta: ${await page.textContent('#meta')}`;
     });
 
-    await step(S, 'crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics and outfits', async () => {
+    await step(S, 'crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics (she has no other outfits to unlock)', async () => {
       // Test hook: 14 points (a day's cap is 12, so reaching 15 by hand takes two days); the pat that crosses is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
@@ -348,42 +348,26 @@ async function wardrobe() {
       const toast = await page.textContent('#unlock-toast');
       assert.match(toast, /关系升级：熟悉（♥15）/);
       assert.match(toast, /解锁话题：「聊聊爱好」、「奇怪的冷知识」、「脑筋急转弯」/);
-      assert.match(toast, /解锁服饰：「休闲卫衣」、「贝雷帽画家装」/);
-      assert.equal(await page.locator('#btn-wardrobe .new-dot').isVisible(), true);
+      assert.doesNotMatch(toast, /解锁服饰/);
+      assert.equal((await page.textContent('#toast-open')).trim(), '去聊聊新话题');
+      assert.equal(await page.locator('#btn-wardrobe .new-dot').isVisible(), false);
       return `${await shot('04-stage-up-unlock-notice')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
-    await step(S, 'the wardrobe lists every outfit she has; locked ones are greyed with a lock and their condition', async () => {
+    await step(S, 'the notice leads to the topics; the wardrobe holds only her signature maid outfit, in pixels', async () => {
       await page.click('#toast-open');
-      await page.waitForSelector('#panel:not(.hidden) .card');
-      await page.waitForFunction(() => window.innerWidth >= 440, null, { timeout: 5000 });
-      assert.equal(await page.locator('.card').count(), 9, 'DeepSeek has 9 all-ages outfits');
-      assert.equal(await page.locator('.card.locked').count(), 5);
+      await page.waitForSelector('#panel:not(.hidden) .topic');
+      await closePanel();
+      await openWardrobe();
+      assert.equal(await page.locator('.card').count(), 1, 'DeepSeek keeps only her signature outfit');
+      assert.equal(await page.locator('.card.locked').count(), 0);
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
       assert.equal(await page.textContent('.card[data-outfit="daily"] .nm'), '招牌女仆装');
-      assert.equal(await cardStatus('pajamas'), '🔒 亲近（♥35）解锁，还差 20');
+      assert.equal(await page.locator('.card[data-outfit="daily"] canvas.sprite').count(), 1, 'drawn from her pixel pack');
       assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0, 'no adult outfit, even with 18+ on: model-chan are all-ages');
-      return await shot('05-wardrobe-with-locked-items');
-    });
-
-    await step(S, 'a locked outfit cannot be put on: the wardrobe says what unlocks it', async () => {
-      await page.click('.card[data-outfit="pajamas"]');
-      await page.waitForSelector('#panel-msg:not(.hidden)');
-      assert.match(await page.textContent('#panel-msg'), /「毛绒睡衣」还没解锁：亲近（♥35）解锁，还差 20/);
-      assert.equal(petJson().equippedOutfit, 'daily');
-      return await shot('06-locked-outfit-refused');
-    });
-
-    await step(S, 'putting on an unlocked outfit changes the figure and marks it worn', async () => {
-      await page.click('.card[data-outfit="casual"]');
-      await page.waitForSelector('.card.equipped[data-outfit="casual"]');
-      assert.equal(await page.getAttribute('#outfit-preview', 'data-outfit'), 'casual');
-      assert.equal(await cardStatus('casual'), '✓ 穿着中');
-      assert.equal(petJson().equippedOutfit, 'casual');
-      const a = await shot('07-wardrobe-casual-equipped');
+      const a = await shot('05-wardrobe-signature-only');
       await closePanel();
-      await hover(page);
-      return `${a}, ${await shot('08-pet-wearing-casual')} · pet.json equippedOutfit=casual`;
+      return a;
     });
 
     await step(S, 'the topic panel marks locked topics with their unlock condition', async () => {
@@ -422,7 +406,7 @@ async function wardrobe() {
       const toast = await page.textContent('#unlock-toast');
       assert.match(toast, /关系升级：亲近（♥35）/);
       assert.match(toast, /解锁话题：「求安慰 \/ 打气」、「给彼此起昵称」、「撒娇模式」、「说说昨晚的怪梦」/);
-      assert.match(toast, /解锁服饰：「毛绒睡衣」、「猫耳家居服」/);
+      assert.doesNotMatch(toast, /解锁服饰/);
       const f = await shot('11-stage-up-close');
       await page.click('#toast-close');
       return `${f} · ${toast.replace(/\s+/g, ' ').trim()}`;
@@ -438,7 +422,7 @@ async function wardrobe() {
       await hover(page);
       const toast = await page.textContent('#unlock-toast');
       assert.match(toast, /关系升级：知己（♥60）/);
-      assert.equal((await page.textContent('#toast-body')).trim(), '解锁话题：「交换小秘密」、「深夜谈心」解锁服饰：「浴衣」');
+      assert.equal((await page.textContent('#toast-body')).trim(), '解锁话题：「交换小秘密」、「深夜谈心」');
       return `${await shot('12-stage-up-flirty')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
@@ -453,18 +437,6 @@ async function wardrobe() {
       const f = await shot('13-topics-flirty-unlocked');
       await closePanel();
       return f;
-    });
-
-    await step(S, 'the yukata unlocked at 知己 can be worn', async () => {
-      await openWardrobe();
-      await page.click('.card[data-outfit="yukata"]');
-      await page.waitForSelector('.card.equipped[data-outfit="yukata"]');
-      assert.equal(petJson().equippedOutfit, 'yukata');
-      assert.equal(await page.locator('.card.locked').count(), 2);
-      const a = await shot('14-wardrobe-yukata-equipped');
-      await closePanel();
-      await hover(page);
-      return `${a}, ${await shot('15-pet-wearing-yukata')}`;
     });
 
     await step(S, 'restart: the app is closed and relaunched; affection, stage, unlocks and the outfit are kept', async () => {
@@ -487,18 +459,18 @@ async function wardrobe() {
       restartLog.push(`[${new Date().toISOString()}] view after restart: stage=${v.affection.stageName} ♥${v.affection.value}; outfit=${v.outfit}; unlocked topics ${v.topics.filter((t) => t.unlocked).length}/${v.topics.length}; unlocked outfits ${v.outfits.filter((o) => o.unlocked).length}/${v.outfits.length}`);
       assert.notEqual(pid1, pid0);
       assert.equal(alive, false);
-      assert.equal(v.outfit, 'yukata');
+      assert.equal(v.outfit, 'daily');
       assert.equal(v.affection.value, before.affection.value);
       assert.equal(v.affection.stageName, '知己');
       assert.deepEqual(v.topics.map((t) => [t.id, t.unlocked]), before.topics.map((t) => [t.id, t.unlocked]));
       assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
-      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 浴衣');
+      assert.equal((await page.textContent('#outfit-badge')).trim(), '👗 招牌女仆装');
       assert.match(await page.textContent('#meta'), /知己 ♥60/);
       const a = await shot('16-after-restart-pet');
       await openWardrobe();
-      assert.equal(await cardStatus('yukata'), '✓ 穿着中');
-      assert.equal(await page.locator('.card.locked').count(), 2);
+      assert.equal(await cardStatus('daily'), '✓ 穿着中');
+      assert.equal(await page.locator('.card.locked').count(), 0);
       const b = await shot('17-after-restart-wardrobe');
       await closePanel();
       await clickAct(page, 'topics');
@@ -518,9 +490,9 @@ async function wardrobe() {
       await page.click('#menu-adult');
       await page.waitForFunction(() => /成人向内容已关闭/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const v = await view(page);
-      assert.equal(v.outfit, 'yukata');
+      assert.equal(v.outfit, 'daily');
       assert.equal(v.affection.stageName, '知己');
-      assert.equal(petJson().equippedOutfit, 'yukata');
+      assert.equal(petJson().equippedOutfit, 'daily');
       assert.deepEqual(v.topics.filter((t) => t.rating === 'adult'), []);
       assert.deepEqual(v.outfits.filter((o) => o.rating === 'adult'), []);
       await hover(page);
@@ -530,9 +502,9 @@ async function wardrobe() {
       const b = await shot('21-menu-adult-switch-off');
       await page.locator('#main-menu').evaluate((el) => el.classList.add('hidden'));
       await openWardrobe();
-      assert.equal(await page.locator('.card').count(), 9);
+      assert.equal(await page.locator('.card').count(), 1);
       assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0);
-      assert.equal(await cardStatus('yukata'), '✓ 穿着中');
+      assert.equal(await cardStatus('daily'), '✓ 穿着中');
       assert.doesNotMatch(await page.textContent('#panel'), /成人向|暧昧|恋人/);
       const c = await shot('22-wardrobe-adult-off-no-adult-items');
       await closePanel();
@@ -624,6 +596,8 @@ async function dafeiyu() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-dfy-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-dfyfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // She starts in pixels like everyone else; this scenario covers her original dsh-pet clips, picked under 外观.
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-clips' } }));
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const clip = () => page.evaluate(() => document.getElementById('pet-video').dataset.key);
   try {
@@ -1160,25 +1134,24 @@ async function advanced() {
       await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
       const msg = await page.textContent('#panel-msg');
       assert.match(msg, /已解锁：\d+ 个话题、\d+ 套服饰/);
-      assert.match(await page.textContent('#panel-sub'), /挚友 ♥100\/100 · 已满级 · 话题 13\/13 · 服饰 9\/9/);
+      assert.match(await page.textContent('#panel-sub'), /挚友 ♥100\/100 · 已满级 · 话题 13\/13 · 服饰 1\/1/);
       assert.equal(await page.locator('#unlock-all').isDisabled(), true);
       return msg;
     }, page);
 
-    await step(S, 'the wardrobe shows everything unlocked and the last-stage outfit can be put on', async () => {
+    await step(S, 'the wardrobe shows everything unlocked: 大肥鱼 has only her signature maid outfit, worn in pixels', async () => {
       await idle();
       await page.click('#panel-close');
       await clickAct(page, 'wardrobe');
-      await page.waitForSelector('.card[data-outfit="flower_crown"]');
+      await page.waitForSelector('.card[data-outfit="daily"]');
       assert.equal(await page.locator('.card.locked').count(), 0);
-      assert.equal(await page.locator('.card').count(), 9);
-      await page.click('.card[data-outfit="flower_crown"]');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.equal(await page.locator('.card').count(), 1);
+      assert.equal(await page.textContent('.card[data-outfit="daily"] .st'), '✓ 穿着中');
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
-      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.endsWith('/flower_crown'));
+      assert.equal(await page.evaluate(() => document.getElementById('pet-look').dataset.key), 'dafeiyu-pixel/daily');
       assert.match(await page.textContent('#meta'), /挚友 ♥100 · 已满级/);
-      return 'pet now wears 花冠长裙';
+      return 'pet wears 招牌女仆装 (dafeiyu-pixel)';
     }, page);
 
     const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
@@ -1339,27 +1312,30 @@ async function packs() {
       assert.equal(fs.existsSync(path.join(data, 'packs', 'my-grok')), false);
     }, page);
 
-    await step(S, '大肥鱼 switches between her animated clips and her pixel pack', async () => {
+    await step(S, '大肥鱼 starts in her pixel pack and can switch to her original clips and back', async () => {
       await openAdvanced();
       await page.click('.char-opt[data-species="dafeiyu"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names.sort(), ['大肥鱼 · 像素', '大肥鱼 · 立绘'].sort());
-      await page.click('#panel-close');
-      await page.waitForSelector('#vwrap:not(.hidden)');
-      await page.waitForFunction(() => /dafeiyu\/(idle|hatch)\.webm$/.test(document.getElementById('pet-video').src), null, { timeout: 5000 });
-      await openAdvanced();
-      await page.click('.pack-opt[data-pack="dafeiyu-pixel"] .pick');
-      await page.waitForSelector('.pack-opt.on[data-pack="dafeiyu-pixel"]');
+      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 原版动画']);
+      assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
+      assert.match(await page.textContent('.pack-opt[data-pack="dafeiyu-clips"] .meta span'), /透明视频 · 1 套服饰 · PC2005-cloud\/dsh-pet/);
       await page.click('#panel-close');
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
       assert.equal(await page.locator('#vwrap').isHidden(), true);
       await page.screenshot({ path: path.join(OUT, 'pack-dafeiyu-pixel.png') });
       await openAdvanced();
-      await page.click('.pack-opt[data-pack="dafeiyu-illustrated"] .pick');
+      await page.click('.pack-opt[data-pack="dafeiyu-clips"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="dafeiyu-clips"]');
       await page.click('#panel-close');
       await page.waitForSelector('#vwrap:not(.hidden)');
-      return `${names.join(' / ')}; clips → dafeiyu-pixel → clips`;
+      await page.waitForFunction(() => /dafeiyu\/[a-z_]+\.webm$/.test(document.getElementById('pet-video').src), null, { timeout: 5000 });
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance.dafeiyu, 'dafeiyu-clips');
+      await openAdvanced();
+      await page.click('.pack-opt[data-pack="dafeiyu-pixel"] .pick');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
+      return `${names.join(' / ')}; pixel → clips → pixel`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -1659,11 +1635,7 @@ async function rosterOne(ch) {
       await page.click('#hatch-btn');
       await page.waitForSelector('#hatch-title:has-text("醒来了")', { timeout: 20000 });
       await page.waitForTimeout(400);
-      if (ch.id === 'dafeiyu') {
-        assert.match(await page.evaluate(() => document.getElementById('hatch-video').src), /dafeiyu\/hatch\.webm$/);
-        return 'hatch.webm';
-      }
-      assert.equal(await page.locator('#hatch-look canvas.sprite').count(), 1);
+      assert.equal(await page.locator('#hatch-look canvas.sprite').count(), 1, 'every character, 大肥鱼 included, starts in pixels');
       return 'sprite hatch action';
     }, page);
     await step(S, 'E2 on the desktop she idles', async () => {
@@ -1833,15 +1805,14 @@ async function rosterOne(ch) {
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       return `${await shows('evolve')}; toast: ${(await page.textContent('#toast-title')).trim()}`;
     }, page);
-    await step(S, 'E13 a wardrobe with her own outfits', async () => {
+    await step(S, 'E13 a wardrobe with her signature outfit', async () => {
       await idle();
       await page.click('#toast-close');
       await clickAct(page, 'wardrobe');
       await page.waitForSelector('#panel:not(.hidden) .card');
       const ids = await page.$$eval('.card', (els) => els.map((e) => e.dataset.outfit));
       const label = await page.textContent('.card[data-outfit="daily"] .nm');
-      if (ch.id === 'dafeiyu') assert.equal(ids.length, 9);
-      else assert.deepEqual(ids, ['daily']);
+      assert.deepEqual(ids, ['daily']);
       return `${ids.length} outfit(s); daily = ${label}`;
     }, page);
     // ---- the dsh-pet effects added in T-1163 (docs/dsh-pet-gap.md), for every character --------------

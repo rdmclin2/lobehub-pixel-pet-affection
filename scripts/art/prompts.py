@@ -1,4 +1,5 @@
-# Prompts for the illustrated outfit pictures (scripts/art/generate.sh) of 大肥鱼 (dafeiyu-illustrated).
+# Prompts for the illustrated outfit pictures (scripts/art/generate.sh) of 大肥鱼 (dafeiyu-illustrated, retired
+# 2026-10-29) and the app icon ("logo"). pixel_prompts.py reuses CHARS and OUTFITS.
 # The model-chan pixel packs have their own prompts: model_chan_prompts.py. Prints [{name, prompt}] as JSON.
 import json
 STYLE = ("Style: high-quality 2D anime illustration, clean dark lineart, soft cel shading, vibrant pastel colors. "

@@ -1,4 +1,6 @@
 # Prompts for the model-chan (模型娘) pixel sheets (scripts/art/model-chan.sh). Prints [{name, prompt}] as JSON.
+# --halves: each sheet as two 4 x 2 halves (<id>_<sheet>_a = rows 1-2, _b = rows 3-4), so a figure gets about
+#   twice the pixels of the 1024 x 1536 canvas; this is how the 166 x 226 packs were made.
 # Two generated sheets per character, both 4 columns x 4 rows = 8 actions x 2 frames:
 #   <id>_base  -> the 8 actions every sprite pack has (same order as pixel_prompts.py / build_pixel_pack.py)
 #   <id>_extra -> the 8 states only DeepSeek's video clips had (look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve)
@@ -7,7 +9,7 @@
 # original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
 # shorts and thigh band become a covered top, a long skirt and opaque tights; GPT's bare shoulders, thigh slit,
 # thigh band and sheer overcoat become long sleeves, a closed skirt and an opaque overcoat).
-import json, sys
+import json, re, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
 
@@ -53,13 +55,22 @@ EXTRA_ROWS = [
 SD_STYLE = STYLE.replace("full body from head to feet", "full body from head to feet in chibi proportions")
 SD_SAFE = "Fully covered and modest maid outfit with a high neckline and long skirt, nothing revealing."
 
-def jobs():
+GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
+HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
+
+def jobs(halves=False):
     out = []
     for cid, desc in CHARS.items():
         style, safe = (SD_STYLE, SD_SAFE) if cid == "dafeiyu" else (STYLE, SAFE)
+        assert GRID in style
         for sheet, rows in (("base", BASE_ROWS), ("extra", EXTRA_ROWS)):
-            out.append({"name": f"{cid}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
+            if not halves:
+                out.append({"name": f"{cid}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
+                continue
+            for half, part in (("a", rows[:2]), ("b", rows[2:])):
+                part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
+                out.append({"name": f"{cid}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, BG])})
     return out
 
 if __name__ == '__main__':
-    print(json.dumps(jobs(), ensure_ascii=False))
+    print(json.dumps(jobs('--halves' in sys.argv), ensure_ascii=False))

@@ -23,7 +23,7 @@ test('every stage has at least one all-ages outfit; the adult stages also have a
   assert.ok(o.OUTFITS.every((x) => x.rating === 'all' || ['flirty', 'lover'].includes(x.stage)), 'adult outfits only in adult stages');
 });
 
-test('Dafeiyu keeps its signature outfit name (its animated look)', () => {
+test('Dafeiyu keeps its signature outfit name (her chibi maid look)', () => {
   const d = o.listOutfits(mk(0, 'dafeiyu'), ADULT).find((x) => x.id === 'daily');
   assert.equal(d.label, '招牌女仆装');
 });
@@ -81,14 +81,13 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
-  for (const id of ['claude', 'grok', 'gemini', 'gpt']) {
+  for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
     assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), ['daily']);
-    assert.equal(o.listOutfits(p, ADULT)[0].label, { claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披', gpt: '白玫瑰立领长裙' }[id], 'its signature outfit name');
+    assert.equal(o.listOutfits(p, ADULT)[0].label, { dafeiyu: '招牌女仆装', claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披', gpt: '白玫瑰立领长裙' }[id], 'its signature outfit name');
     assert.equal(o.equipOutfit(p, ADULT, 'scarf').reason, 'unavailable');
     assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'yukata' }, ADULT), 'daily');
   }
-  assert.equal(o.listOutfits(mk(95, 'dafeiyu'), ADULT).length, 9, 'DeepSeek: 9 all-ages outfits');
 });
 
 test('stage-up unlock lists name the outfits the user can see', () => {

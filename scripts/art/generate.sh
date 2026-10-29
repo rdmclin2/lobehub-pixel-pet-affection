@@ -1,5 +1,7 @@
 #!/bin/bash
 # Regenerate 大肥鱼's illustrated outfit pictures (see NOTICE.md). Needs a logged-in `lh`, python3 with Pillow + numpy.
+# Those pictures (the dafeiyu-illustrated pack) were retired on 2026-10-29: they did not suit her chibi look.
+# The script is kept for the app icon prompt ("logo"); recreate the pack folder before generating outfits.
 #   scripts/art/generate.sh <work-dir> [name ...]     e.g. scripts/art/generate.sh /tmp/art dafeiyu_yukata
 # Each picture: `lh generate image` -> <work-dir>/raw/<species>_<outfit>.png -> cut out (cutout.py)
 # -> src/renderer/packs/<species>-illustrated/<outfit>.webp (listed in that pack.json). "logo" becomes build/icon.png by hand.

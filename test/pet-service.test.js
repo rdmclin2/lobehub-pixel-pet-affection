@@ -537,18 +537,18 @@ test('an unknown character id falls back to the default character (DeepSeek)', (
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify({ schemaVersion: 2, speciesId: 'gone-forever', name: 'X', agentId: 'agt_X', affection: 5, hunger: 10, mood: 50, energy: 80, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t }));
   const v = mkSvc().init();
   assert.equal(v.pet.speciesId, 'dafeiyu');
-  assert.equal(v.look, null, 'DeepSeek in daily plays her clips');
+  assert.equal(v.look.packId, 'dafeiyu-pixel', 'DeepSeek starts in her pixel pack');
 });
 
 test('switching character keeps the agent and affection, changes the persona on the next turn, and greets', async () => {
   const { svc, said, dir } = setupAff();
-  await svc.hatch({ speciesId: 'dafeiyu', name: '小鱼' });
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
   svc.debugSet({ affection: 50 });
   assert.equal(svc.equipOutfit('scarf').ok, true);
   const agent = svc.pet.agentId;
   const r = svc.switchCharacter('grok');
   assert.equal(r.ok, true);
-  assert.equal(r.from, 'dafeiyu');
+  assert.equal(r.from, 'testchan');
   assert.equal(r.view.pet.speciesId, 'grok');
   assert.equal(r.view.pet.agentId, agent);
   assert.equal(r.view.pet.affection, 50);

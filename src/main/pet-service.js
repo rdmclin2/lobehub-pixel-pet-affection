@@ -513,8 +513,9 @@ class PetService extends EventEmitter {
   setAppearance(packId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
     const p = this.packs.get(packId);
-    if (!p || p.species !== this.pet.speciesId) return { ok: false, reason: 'unknown' };
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [this.pet.speciesId]: p.id } });
+    const clips = packId === packsLib.clipsId(this.pet.speciesId);
+    if (!clips && (!p || p.species !== this.pet.speciesId)) return { ok: false, reason: 'unknown' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [this.pet.speciesId]: packId } });
     this.settingsStore.save(this.settings);
     this._save();
     return { ok: true, view: this.view() };
