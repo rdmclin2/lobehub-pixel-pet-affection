@@ -818,7 +818,8 @@ async function unlockAllNow() {
   refreshHud();
   renderAdvanced();
   const n = (l) => (l ? l.length : 0);
-  panelMsg(r.already ? '好感度已加满，内容之前就已全部解锁。' : `已解锁：${n(r.unlocks.topics)} 个话题、${n(r.unlocks.outfits)} 套服饰。去衣柜换上看看吧。`, true);
+  const outfits = n(r.unlocks.outfits);
+  panelMsg(r.already ? '好感度已加满，内容之前就已全部解锁。' : `已解锁：${n(r.unlocks.topics)} 个话题${outfits ? `、${outfits} 套服饰。去衣柜换上看看吧。` : '。'}`, true);
 }
 
 function renderWardrobe() {

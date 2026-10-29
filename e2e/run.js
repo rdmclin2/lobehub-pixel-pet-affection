@@ -1133,7 +1133,7 @@ async function advanced() {
       await page.click('#unlock-all');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
       const msg = await page.textContent('#panel-msg');
-      assert.match(msg, /已解锁：\d+ 个话题、\d+ 套服饰/);
+      assert.match(msg.trim(), /^已解锁：\d+ 个话题。$/, '大肥鱼 has no outfit to unlock, so none is mentioned');
       assert.match(await page.textContent('#panel-sub'), /挚友 ♥100\/100 · 已满级 · 话题 13\/13 · 服饰 1\/1/);
       assert.equal(await page.locator('#unlock-all').isDisabled(), true);
       return msg;
