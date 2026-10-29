@@ -286,7 +286,7 @@ async function wardrobe() {
   };
   const closePanel = async () => {
     await page.click('#panel-close');
-    await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+    await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
   };
   const cardStatus = (id) => page.textContent(`.card[data-outfit="${id}"] .st`);
   try {
@@ -385,7 +385,7 @@ async function wardrobe() {
 
     await step(S, 'a topic unlocked at 熟悉 can be started: the agent gets it and the pet answers', async () => {
       await page.click('.topic[data-topic="riddle"]');
-      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
       const b = await waitReply(page, 15000);
       await idle();
       const runs = fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -1326,7 +1326,7 @@ async function packs() {
       await page.click('.char-opt[data-species="dafeiyu"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
       await page.click('#panel-close');
-      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
       await openAdvanced();
       assert.equal(await page.locator('.char-opt').count(), 0, 'the character list is no longer in 高级设置');
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
@@ -1361,7 +1361,7 @@ async function packs() {
           await page.waitForSelector(`.char-opt.on[data-species="${id}"]`);
         }
         await page.click('#panel-close');
-        await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+        await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
         await openAdvanced();
         assert.match(await page.textContent(`.pack-opt[data-pack="${id}-classic"] .meta span`), /像素动画 · 1 套服饰/);
         await page.click(`.pack-opt[data-pack="${id}-classic"] .pick`);
@@ -1456,7 +1456,7 @@ async function models() {
 
     await step(S, 'her next words run on GPT-6 Luna; back on 克洛蒂 her Opus pick returns', async () => {
       await page.click('#panel-close');
-      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
       await page.evaluate(() => window.pet.chat('你好'));
       await idle();
       assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
