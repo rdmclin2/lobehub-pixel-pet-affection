@@ -1,6 +1,6 @@
-# Contact sheet of every model-chan character and state: one column per DeepSeek state (plus the sprite-only
-# `lifted`); one row per pixel pack showing both frames of the mapped action (2x nearest-neighbour), plus a
-# reference row for DeepSeek's original video clips (one frame each). Needs ffmpeg with libvpx-vp9 for the alpha video frames.
+# Contact sheet of every model-chan character and state: one column per DeepSeek state plus `lifted`; one row
+# per pixel pack showing both frames of the mapped action (2x nearest-neighbour), plus a reference row for
+# DeepSeek's original video clips (one frame each; `lifted` is dsh-pet's drag clip `lifted.webm`). Needs ffmpeg with libvpx-vp9 for the alpha video frames.
 # usage: model_chan_preview.py <out.png> [repo root]
 import json, os, subprocess, sys, tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -41,9 +41,6 @@ for r, (c, kind) in enumerate(rows):
         clip_dir = os.path.join(root, c['art']['dir'])
         for i, s in enumerate(STATES):
             x = LEFT + i * CW
-            if s not in c['art']['states']:
-                d.text((x + 20, y + CH // 2 - 14), '（视频无此状态）', fill=(150, 150, 160), font=font(18))
-                continue
             f = video_frame(os.path.join(clip_dir, f'{s}.webm'))
             img.alpha_composite(f, (x + (CW - f.width) // 2, y + CH - 6 - f.height))
         continue

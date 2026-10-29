@@ -76,7 +76,7 @@
 > 2026-10-29（T-1158）更新：三个包已接入应用，位于 `src/renderer/packs/{dafeiyu-pixel,claude-pixel,grok-pixel}`，角色注册在 `src/characters/<id>.json`。原来暂存时的两张表（基础 8 动作 + 扩展 8 动作）已合并为一张 schema 2 精灵图，动作直接以状态命名。
 
 - **格式**：schema 2，RGBA PNG，单帧 83×113，每张 sheet 4 列 × 8 行 = 332×904，16 个动作 × 2 帧。
-- **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。三个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
+- **必需动画状态**：DeepSeek（大肥鱼）现有 15 个视频状态 `idle, look, happy, pat, sad, hungry, sleep, eat_rice, eat_cookie, eat_fruit, think, talk, play, hatch, evolve`，加上 `lifted`（被拎起），共 16 个，即共享效果层 `src/core/fx.js` 的 `STATES`。五个像素包每个状态都有自己的动作（`test/packs.test.js` 校验）。
 - **排布**：第 0–3 行 `idle, pat, lifted, eat_rice, sleep, think, talk, happy`，第 4–7 行 `look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve`，每行两个动作、各 2 帧。
 - **预览拼图**：`art/model-chan/preview/model-chan-preview.png`（5764×1568）：第一行是大肥鱼原视频参考帧，下面五行是五个像素包，每列一个状态、每格该状态的 2 帧（放大 2 倍）。
 
