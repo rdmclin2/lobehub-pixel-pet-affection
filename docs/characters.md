@@ -26,7 +26,7 @@
 
 ## 二、逐角色
 
-每位角色下面的“桌面截图”是 `xvfb-run -a node e2e/run.js roster` 在真实 Electron 应用里唤醒她之后截的待机画面（e2e 用假 `lh`，所以气泡里是 `echo: …`；右上角是当前服饰名）。
+每位角色下面的“桌面截图”是 `xvfb-run -a node e2e/run.js roster` 在真实 Electron 应用里唤醒她之后截的待机画面（e2e 用假 `lh`，所以气泡里是 `echo: …`）。
 
 ### 1. 大肥鱼（DeepSeek 娘）— 鲸鱼女仆
 

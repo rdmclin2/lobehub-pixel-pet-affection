@@ -441,9 +441,6 @@ function refreshHud() {
   $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
   setSettings(view.settings);
   $('menu-adult').textContent = !settings.ageConfirmed ? '成人向内容：关（需年满 18 岁）' : `成人向内容：${settings.adultContent ? '开（点此关闭）' : '关（点此开启）'}`;
-  const worn = view.outfits.find((o) => o.id === view.outfit);
-  $('outfit-badge').textContent = `👗 ${worn ? worn.label : ''}`;
-  $('outfit-badge').title = `当前服饰：${worn ? worn.label : ''}`;
   const loc = view.local && view.local.enabled;
   $('menu-local').textContent = `本机能力：${loc ? '开（点此关闭）' : '关（点此开启）'}`;
   if (panelKind) renderPanel();
