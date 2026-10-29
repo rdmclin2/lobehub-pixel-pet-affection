@@ -1071,6 +1071,8 @@ async function live() {
       await record('lookup question (nasdaq)');
       transcript.splice(transcript.length - 1, 0, '[lookup sent] 帮我查一下今天纳斯达克指数大概是多少，最近是涨还是跌？');
       assert.ok(b.length > 4, 'empty reply');
+      // a timeout or error shows a canned line, which would otherwise pass the deflection check
+      assert.equal(await bubbleSource(page), 'llm', `the lookup got no model reply: ${b}`);
       assert.doesNotMatch(b, /去问|找.{0,8}(专家|助手)|只会看|看不懂/, `deflected: ${b}`);
       return `${b.length} chars: ${b.slice(0, 50)}`;
     }, page);
