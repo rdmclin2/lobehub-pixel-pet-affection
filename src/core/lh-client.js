@@ -36,7 +36,9 @@ class LhError extends Error {
   }
 }
 
-function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal } = {}) {
+// `settleOn(stdout)`: for commands whose output is complete before the process exits. Once it returns an exit
+// code the call resolves with it and the (idle) process is stopped, instead of waiting for it to exit.
+function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal, settleOn } = {}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -49,6 +51,7 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal 
     let stderr = '';
     let timedOut = false;
     let aborted = false;
+    let settled = false;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
@@ -64,6 +67,13 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal 
     child.stdout.on('data', (d) => {
       stdout += d;
       if (onStdout) onStdout(String(d));
+      const code = !settled && settleOn ? settleOn(stdout) : undefined;
+      if (code === undefined) return;
+      settled = true;
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+      child.kill('SIGTERM');
+      resolve({ code, stdout, stderr });
     });
     child.stderr.on('data', (d) => {
       stderr += d;
@@ -71,10 +81,12 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal 
     });
     child.on('error', (e) => {
       clearTimeout(timer);
+      if (settled) return;
       reject(new LhError(e.code === 'ENOENT' ? `\`${bin}\` not found. Install the LobeHub CLI first: npm install -g @lobehub/cli` : e.message, { code: e.code }));
     });
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (settled) return;
       if (signal) signal.removeEventListener('abort', onAbort);
       if (aborted) return reject(new LhError('Canceled', { code: 'ECANCELED', stderr }));
       if (timedOut) return reject(new LhError(`lh ${args[0]} timed out after ${timeoutMs}ms`, { code: 'ETIMEDOUT', stderr }));
@@ -368,7 +380,9 @@ class LhClient {
 
   async _runAgent(args, timeoutMs) {
     // No --timeout flag: newer lh releases reject it. We enforce the limit ourselves (see runLh).
-    const r = await this._run(args, { timeoutMs });
+    // lh prints the events as soon as the run ends but then idles on a keep-alive socket for ~15s before it
+    // exits; the reply must not wait for that.
+    const r = await this._run(args, { timeoutMs, settleOn: runEndCode });
     const parsed = parseRunEvents(r.stdout);
     if (parsed.text) return parsed;
     const detail = (r.stderr || r.stdout).trim().slice(0, 300);
@@ -381,6 +395,23 @@ class LhClient {
     if (r.code !== 0) throw new LhError(`Agent run failed (exit ${r.code}): ${detail}`, { code: r.code, stderr: r.stderr });
     throw new LhError('Agent produced no reply', { code: 'ENOREPLY', stderr: r.stderr });
   }
+}
+
+// The exit code `lh agent run --json` will end with, once its stdout holds the whole event array up to the
+// terminal event (`agent_runtime_end`, or `error`); undefined while the run is still going.
+function runEndCode(stdout) {
+  const out = stdout.trim();
+  if (!out.endsWith(']')) return undefined;
+  let events;
+  try {
+    events = JSON.parse(out.slice(out.indexOf('[')));
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(events)) return undefined;
+  const end = events.find((e) => e && (e.type === 'agent_runtime_end' || e.type === 'error'));
+  if (!end) return undefined;
+  return end.type === 'agent_runtime_end' && !(end.data && end.data.reason) ? 0 : 1;
 }
 
 // Extract the final reply from `lh agent run --json` output (a JSON array of events).
@@ -412,4 +443,4 @@ function parseRunEvents(stdout) {
   return { text, topicId, cost };
 }
 
-module.exports = { LhClient, LhError, runLh, cleanEnv, parseRunEvents, RUN_CONTEXT_VARS };
+module.exports = { LhClient, LhError, runLh, cleanEnv, parseRunEvents, runEndCode, RUN_CONTEXT_VARS };

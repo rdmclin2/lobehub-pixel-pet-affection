@@ -102,8 +102,11 @@ if (args[0] === 'whoami') {
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
     { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
+    { type: 'agent_runtime_end', data: {} },
   ]);
   const delay = Number(process.env.FAKE_LH_RUN_DELAY_MS || 0);
   if (delay) setTimeout(() => console.log(out), delay);
   else console.log(out);
+  // like the real CLI: after printing the events it idles on a keep-alive socket before exiting
+  if (process.env.FAKE_LH_LINGER_MS) setTimeout(() => {}, delay + Number(process.env.FAKE_LH_LINGER_MS));
 } else { console.error('unknown'); process.exit(2); }

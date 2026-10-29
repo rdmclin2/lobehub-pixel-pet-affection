@@ -198,6 +198,18 @@ test('enabling local abilities starts the daemon, binds the agent to this comput
   assert.match(run.prompt, /\[本机\]/);
 });
 
+test('a message sent while the launch warmup is still checking the device does not check it again', async () => {
+  const { svc, dir, clock } = await hatched();
+  setDevices(dir, [myDevice('dev_MAC')]);
+  await svc.setLocalAbilities(true);
+  clock.t += 7 * 60 * 60 * 1000; // the binding is due for its recheck
+  const lists = () => fs.readFileSync(path.join(dir, 'calls.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((c) => c.args[0] === 'device' && c.args[1] === 'list').length;
+  const before = lists();
+  await Promise.all([svc.warmup(), svc.chat('在吗')]);
+  assert.equal(lists() - before, 1);
+  assert.match(readLog(dir, 'runs.log').pop().prompt, /在吗/);
+});
+
 test('turning it on twice does not start a second daemon', async () => {
   const { svc, dir } = await hatched();
   await svc.setLocalAbilities(true);
