@@ -10,6 +10,7 @@ const { migratePet } = require('../core/migrate');
 const settingsLib = require('../core/settings');
 const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
+const modelsLib = require('../core/models');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
@@ -18,6 +19,7 @@ const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('..
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
 const LOCAL_RETRY_MS = 5 * 60 * 1000; // after a failure, do not hammer `lh` on every message
+const MODELS_TTL_MS = 10 * 60 * 1000; // how long the list of the user's models is reused
 // Offline lines that may come with a random meme picture (the pet's own murmurs, not app notes).
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
@@ -44,6 +46,10 @@ class PetService extends EventEmitter {
     this._deviceId = null;
     this._cancelRequested = false;
     this._pendingDecay = 0; // affection lost while the app was closed, reported on the first heartbeat
+    this._catalog = null; // the user's enabled chat models (see refreshModels), null until first loaded
+    this._catalogAt = 0;
+    this._catalogError = null;
+    this._catalogLoading = null;
   }
 
   // Load the save; a growth-system save (xp / stage) is backed up once and migrated (design 6).
@@ -96,6 +102,7 @@ class PetService extends EventEmitter {
       outfit: outfits.wornOutfit(this.pet, this.settings),
       look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
       appearance: { packId: packsLib.chosenPack(this.packs, this.settings.appearance, this.pet.speciesId), options: packsLib.packsFor(this.packs, this.pet.speciesId) },
+      model: this.modelView(),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
       characters: Object.values(SPECIES).map((c) => ({ id: c.id, nameZh: c.nameZh, vendor: c.vendor, title: c.title, accent: c.accent, current: c.id === sp.id })),
@@ -223,7 +230,75 @@ class PetService extends EventEmitter {
         this.emit('error', e); // carry on with the old prompt; retried on the next turn
       }
     }
+    // the model follows the character: her pick or default among her own vendor's models
+    try {
+      await this.refreshModels();
+      await this._applyModel();
+    } catch (e) {
+      this.emit('error', e); // keep the agent's current model; retried on the next turn
+    }
     if (p.localAbilities) await this._verifyLocal();
+  }
+
+  // ---- the model (高级设置 → 模型) ----------------------------------------------------------
+  // The user's enabled chat models, from the hosted provider and the roster's vendor providers. Cached for
+  // MODELS_TTL_MS; `force` reloads (the panel's 刷新). A failure (an older lh, offline) keeps the previous
+  // list, or none, and is not retried before the TTL either; the agent then keeps the model it has.
+  async refreshModels({ force = false } = {}) {
+    if (!force && this._catalogAt && this.now() - this._catalogAt < MODELS_TTL_MS) return this._catalog;
+    if (this._catalogLoading) return this._catalogLoading;
+    this._catalogLoading = (async () => {
+      try {
+        const enabled = await this.lh.listEnabledProviders();
+        const lists = await Promise.all(modelsLib.providersToQuery(enabled).map((p) => this.lh.listChatModels(p)));
+        this._catalog = lists.flat();
+        this._catalogAt = this.now();
+        this._catalogError = null;
+      } catch (e) {
+        this._catalogError = e.message;
+        this._catalogAt = this.now();
+      } finally {
+        this._catalogLoading = null;
+      }
+      if (this.pet) this.emit('update', this.view());
+      return this._catalog;
+    })();
+    return this._catalogLoading;
+  }
+
+  _modelOptions(speciesId) {
+    return this._catalog ? modelsLib.optionsFor(speciesId, this._catalog) : [];
+  }
+
+  // What 高级设置 shows for the current character.
+  modelView() {
+    const id = this.pet.speciesId;
+    const options = this._modelOptions(id);
+    const current = modelsLib.pick(id, options, this.settings.models[id]);
+    return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: this.pet.modelApplied || null, chosen: !!(current && current.key === this.settings.models[id]) };
+  }
+
+  // Point the agent at the model the current character should run on, once per change.
+  async _applyModel() {
+    if (!this.pet || !this._catalog) return;
+    const target = modelsLib.pick(this.pet.speciesId, this._modelOptions(this.pet.speciesId), this.settings.models[this.pet.speciesId]);
+    if (!target || this.pet.modelApplied === target.key) return;
+    await this.lh.updateAgent({ agentId: this.pet.agentId, model: target.id, provider: target.providerId });
+    this.pet.modelApplied = target.key;
+    this._save();
+  }
+
+  // 高级设置 → 模型: choose one of the current character's models. Applied right away in the background
+  // (and again before the next turn if that failed).
+  setModel(key) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this.pet.speciesId;
+    if (!this._modelOptions(id).some((o) => o.key === key)) return { ok: false, reason: 'unknown' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, models: { ...this.settings.models, [id]: key } });
+    this.settingsStore.save(this.settings);
+    if (!this.busy) this._applyModel().catch((e) => this.emit('error', e));
+    this._save();
+    return { ok: true, view: this.view() };
   }
 
   // Find this computer's online device (starting `lh connect --daemon` if none) and bind the agent to it.

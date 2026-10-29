@@ -127,14 +127,16 @@ async function fresh() {
       return `greeting: ${text.slice(0, 40)}`;
     }, page);
 
-    await step(S, 'CLI call order was whoami -> login -> workspaces -> agent create -> connect device -> bind -> agent run', async () => {
+    await step(S, 'CLI call order was whoami -> login -> workspaces -> agent create -> connect device -> bind -> models -> set model -> agent run', async () => {
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
       const all = calls.map((a) => (a[0] === 'agent' || a[0] === 'workspace' ? `${a[0]} ${a[1]}` : a[0]));
       // where to put the agent is asked right after login (workspace list + the pinned-scope check)
       const create = all.indexOf('agent create');
       assert.ok(all.slice(0, create).includes('workspace list') && all.slice(0, create).includes('workspace current'), all.join(', '));
       const seq = all.filter((c) => !c.startsWith('workspace '));
-      const want = ['whoami', 'login', 'whoami', 'whoami', 'agent create', 'connect', 'connect', 'device', 'agent edit', 'agent run']; // connect = status check, then `connect --daemon`; device = `device list`
+      // connect = status check, then `connect --daemon`; device = `device list`; provider + model = the user's models
+      // (hosted + own OpenAI), then `agent edit -m -p` puts 格萝可 on her Grok default before her first words
+      const want = ['whoami', 'login', 'whoami', 'whoami', 'agent create', 'connect', 'connect', 'device', 'agent edit', 'provider', 'model', 'model', 'agent edit', 'agent run'];
       assert.deepEqual(seq.slice(0, want.length), want);
       const created = JSON.parse(fs.readFileSync(path.join(fakeDir, 'last-create.json'), 'utf8'));
       assert.match(created.systemRole, /格萝可/);
@@ -1342,6 +1344,94 @@ async function packs() {
   }
 }
 
+// ------------------------------------------------------------------ models
+// 高级设置 → 模型: each character offers only her own vendor's models; the agent follows the pick, and
+// switching character switches the list (and the model) to the new character's.
+async function models() {
+  const S = 'models';
+  const SHOTS = path.join(OUT, 'models');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-models-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-modelsfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model).map((e) => `${e.provider}:${e.model}`) : []);
+  const options = () => page.$$eval('#model-select option', (os) => os.map((o) => ({ key: o.value, label: o.textContent, selected: o.selected })));
+  const openAdvanced = async () => {
+    await clickAct(page, 'menu');
+    await page.click('[data-menu="advanced"]');
+    await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
+    await page.locator('#model-select').scrollIntoViewIfNeeded();
+  };
+  try {
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+
+    await step(S, '克洛蒂 is woken on her default Claude model before her first words', async () => {
+      assert.equal((await view(page)).species.id, 'claude');
+      assert.deepEqual(modelEdits(), ['lobehub:claude-sonnet-5-5']);
+      return modelEdits().join(', ');
+    }, page);
+
+    await step(S, '高级设置 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
+      await openAdvanced();
+      const os = await options();
+      assert.deepEqual(os.map((o) => o.label), ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
+      assert.equal(os.find((o) => o.selected).key, 'lobehub:claude-sonnet-5-5');
+      assert.match(await page.textContent('.model-status'), /正在用：Claude Sonnet 5\.5（默认）/);
+      assert.match(await page.textContent('#panel'), /克洛蒂只能用 Anthropic 的模型/);
+      await page.screenshot({ path: path.join(SHOTS, '01-claude-models.png') });
+      return os.map((o) => o.label).join(' / ');
+    }, page);
+
+    await step(S, 'picking Claude Opus 5.5 points her agent at it', async () => {
+      await page.selectOption('#model-select', 'lobehub:claude-opus-5-5');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.match(await page.textContent('#panel-msg'), /模型已换成「Claude Opus 5\.5」/);
+      await page.waitForFunction(() => /正在用：Claude Opus 5\.5$/.test(document.querySelector('.model-status').textContent), null, { timeout: 10000 });
+      assert.deepEqual(modelEdits(), ['lobehub:claude-sonnet-5-5', 'lobehub:claude-opus-5-5']);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).models.claude, 'lobehub:claude-opus-5-5');
+      await page.screenshot({ path: path.join(SHOTS, '02-claude-opus-picked.png') });
+      return `${await page.textContent('.model-status')} · settings.json models.claude=lobehub:claude-opus-5-5`;
+    }, page);
+
+    await step(S, 'switching to 吉皮缇 switches the list to GPT models, her own OpenAI key marked', async () => {
+      await page.click('.char-opt[data-species="gpt"] .pick');
+      await page.waitForSelector('.char-opt.on[data-species="gpt"]');
+      await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
+      const os = await options();
+      assert.ok(os.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), JSON.stringify(os));
+      assert.deepEqual(os.map((o) => o.label), ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）']);
+      assert.equal(os.find((o) => o.selected).key, 'lobehub:gpt-6-luna');
+      assert.match(await page.textContent('.model-status'), /下一句话起用：GPT-6 Luna（默认）/);
+      await page.screenshot({ path: path.join(SHOTS, '03-gpt-models.png') });
+      return os.map((o) => o.label).join(' / ');
+    }, page);
+
+    await step(S, 'her next words run on GPT-6 Luna; back on 克洛蒂 her Opus pick returns', async () => {
+      await page.click('#panel-close');
+      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.evaluate(() => window.pet.chat('你好'));
+      await idle();
+      assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
+      await openAdvanced();
+      await page.click('.char-opt[data-species="claude"] .pick');
+      await page.waitForSelector('.char-opt.on[data-species="claude"]');
+      await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
+      assert.equal((await options()).find((o) => o.selected).key, 'lobehub:claude-opus-5-5');
+      await page.screenshot({ path: path.join(SHOTS, '04-back-to-claude.png') });
+      return modelEdits().join(' → ');
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ------------------------------------------------------------------ update
 // 检查更新 from the ⋯ menu against a local update feed (Linux path: GitHub's "latest release" JSON).
 async function update() {
@@ -2083,6 +2173,7 @@ async function rosterOne(ch) {
   if (which === 'space' || which === 'all') await space();
   if (which === 'advanced' || which === 'all') await advanced();
   if (which === 'packs' || which === 'all') await packs();
+  if (which === 'models' || which === 'all') await models();
   if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();

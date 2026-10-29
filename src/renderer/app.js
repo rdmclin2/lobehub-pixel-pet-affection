@@ -595,6 +595,7 @@ function updateSection() {
 }
 
 // Advanced settings: unlock everything at once (to see all the content, or to skip the grind).
+let modelsRequested = false; // the model list is loaded once when 高级设置 first needs it
 function renderAdvanced() {
   const a = view.affection;
   const unlocked = (l) => `${l.filter((x) => x.unlocked).length}/${l.length}`;
@@ -633,6 +634,44 @@ function renderAdvanced() {
     who.querySelector('.char-list').appendChild(row);
   }
   body.appendChild(who);
+
+  // the model her agent runs on: only her own vendor's models (src/characters/<id>.json `models`)
+  const mod = document.createElement('div');
+  mod.className = 'adv-section';
+  const m = view.model;
+  mod.innerHTML = '<h3>模型</h3><p class="adv-text"></p><div class="size-row"><select id="model-select" aria-label="模型"></select><button id="model-refresh" class="btn">刷新</button></div><p class="adv-text model-status"></p>';
+  mod.querySelector('.adv-text').textContent = `${view.species.nameZh}只能用 ${view.species.vendor} 的模型，换角色后会换成新角色的模型。列表来自你在 LobeHub 里启用的模型。`;
+  const sel = mod.querySelector('#model-select');
+  for (const o of m.options) {
+    const opt = document.createElement('option');
+    opt.value = o.key;
+    opt.textContent = o.hosted ? o.label : `${o.label}（自己的 ${view.species.vendor} Key）`;
+    opt.selected = o.key === m.current;
+    sel.appendChild(opt);
+  }
+  sel.disabled = !m.options.length;
+  const now = m.options.find((o) => o.key === m.current);
+  mod.querySelector('.model-status').textContent = !m.loaded
+    ? (m.error ? `读不到模型列表（${m.error.slice(0, 60)}），她先用原来的模型。` : '正在读取模型列表…')
+    : !now ? `你没有启用任何 ${view.species.vendor} 模型，她先用原来的模型。`
+      : `${m.applied === m.current ? '正在用' : '下一句话起用'}：${now.label}${m.chosen ? '' : '（默认）'}`;
+  sel.addEventListener('change', async () => {
+    const r = await window.pet.setModel(sel.value);
+    if (!r.ok) return panelMsg('这个模型现在不能选，点“刷新”再试试。');
+    view = r.view;
+    renderAdvanced();
+    panelMsg(`模型已换成「${(view.model.options.find((o) => o.key === view.model.current) || {}).label}」。`, true);
+  });
+  mod.querySelector('#model-refresh').addEventListener('click', async () => {
+    const r = await window.pet.refreshModels();
+    view = r.view;
+    renderAdvanced();
+  });
+  if (!m.loaded && !m.error && !modelsRequested) {
+    modelsRequested = true;
+    window.pet.refreshModels().then((r) => { view = r.view; if (panelKind === 'advanced') renderAdvanced(); });
+  }
+  body.appendChild(mod);
 
   // appearance: which pet pack dresses this companion; packs can be imported from a folder or .zip
   const look = document.createElement('div');

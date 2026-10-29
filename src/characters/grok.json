@@ -3,6 +3,7 @@
   "order": 3,
   "vendor": "xAI",
   "model": "Grok",
+  "models": { "match": "^grok-", "providers": ["xai"], "prefer": ["grok-4.7", "grok-4.6"] },
   "name": "Groko",
   "nameZh": "格萝可",
   "title": "Grok 娘 · 黑金吸血鬼",

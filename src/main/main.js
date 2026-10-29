@@ -212,6 +212,12 @@ function wire() {
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
   ipcMain.handle('unlock-all', () => service.unlockAll());
+  // the model (高级设置 → 模型): only the current character's vendor's models are offered
+  ipcMain.handle('set-model', (_e, { key }) => service.setModel(String(key || '')));
+  ipcMain.handle('refresh-models', async () => {
+    await service.refreshModels({ force: true });
+    return { ok: true, view: service.view() };
+  });
   // pet packs (高级设置 → 外观)
   ipcMain.handle('set-appearance', (_e, { id }) => service.setAppearance(String(id || '')));
   ipcMain.handle('import-pack', async () => {
