@@ -133,6 +133,18 @@ for (c, fg), box in zip(cells, cell_box):
     full_rgb, full_a = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
     full_rgb.paste(rgb, at); full_a.paste(a, at)
     frames.append((full_rgb, full_a))
+# measure the floor on the final pixels: specks that only existed at full size (a faint mark under the feet)
+# no longer hold an action above the bottom of its cell
+if not shared_box:
+    for g in range(0, len(frames), 2):
+        bottoms = [a.getbbox()[3] for _, a in frames[g:g + 2] if a.getbbox()]
+        dy = out_h - max(bottoms) if bottoms else 0
+        if dy > 0:
+            for k in range(g, min(g + 2, len(frames))):
+                rgb, a = frames[k]
+                r2, a2 = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
+                r2.paste(rgb, (0, dy)); a2.paste(a, (0, dy))
+                frames[k] = (r2, a2)
 # one palette for the whole sheet keeps colours steady between frames (64: a 166 x 226 frame has room for
 # small accents such as gold trim and two-coloured eyes, which 40 colours merged away)
 strip = Image.new('RGB', (out_w * len(frames), out_h))
