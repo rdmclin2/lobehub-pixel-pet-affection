@@ -216,7 +216,23 @@
     const v2n = hit.vx * nx + hit.vy * ny;
     const v1n2 = ((m1 - PET_BOUNCE * m2) * v1n + (1 + PET_BOUNCE) * m2 * v2n) / (m1 + m2);
     const v2n2 = ((m2 - PET_BOUNCE * m1) * v2n + (1 + PET_BOUNCE) * m1 * v1n) / (m1 + m2);
-    return { fly: { vx: fly.vx + (v1n2 - v1n) * nx, vy: fly.vy + (v1n2 - v1n) * ny }, hit: { vx: hit.vx + (v2n2 - v2n) * nx, vy: hit.vy + (v2n2 - v2n) * ny } };
+    return { fly: capSpeed({ vx: fly.vx + (v1n2 - v1n) * nx, vy: fly.vy + (v1n2 - v1n) * ny }), hit: capSpeed({ vx: hit.vx + (v2n2 - v2n) * nx, vy: hit.vy + (v2n2 - v2n) * ny }) };
+  }
+
+  // A window position Electron accepts: setPosition / setBounds only take values V8 holds as int32, so
+  // -0 (Math.round of -0.4, e.g. on a display left of the primary one), fractions, NaN and anything past
+  // ±2^31 throw "conversion failure" in the main process. null when there is no sensible position.
+  const SCREEN_LIMIT = 1e6;
+  function screenPx(v) {
+    if (!Number.isFinite(v)) return null;
+    return Math.max(-SCREEN_LIMIT, Math.min(SCREEN_LIMIT, Math.round(v))) + 0; // + 0 turns -0 into 0
+  }
+  // A knock never sends a pet faster than a throw can: a chain of knocks between several visitors would
+  // otherwise add up speed without bound.
+  function capSpeed(v) {
+    const sp = Math.hypot(v.vx, v.vy);
+    if (!Number.isFinite(sp)) return { vx: 0, vy: 0 };
+    return sp > PHYSICS.maxSpeed ? { vx: (v.vx * PHYSICS.maxSpeed) / sp, vy: (v.vy * PHYSICS.maxSpeed) / sp } : v;
   }
 
   // One physics step for a window-sized body { x, y, w, h, vx, vy } inside `area` { x, y, width, height }
@@ -267,6 +283,6 @@
   return {
     STATES, ALIASES, FALLBACK, chain, resolveAction, OVERLAY, FOOD_OVERLAY, IDLE_CUES, IDLE_GAP, idleDelay, pickWeighted, nextIdleCue, pickVariant,
     WALK, planWalk, walkX, CLICK_REACTIONS, pickClickReaction, ONE_SHOT_MS, oneShotMs, facingFor, PHYSICS, releaseVelocity, isThrow, stepThrow, simulateThrow,
-    SLING, isSlingshot, slingshotVelocity, SCORE, clickScore, SQUASH, landingSquash, LONG_PRESS, isLongPress, rectsOverlap, PET_BOUNCE, collidePets,
+    SLING, isSlingshot, slingshotVelocity, SCORE, clickScore, SQUASH, landingSquash, LONG_PRESS, isLongPress, rectsOverlap, PET_BOUNCE, collidePets, screenPx, capSpeed,
   };
 });

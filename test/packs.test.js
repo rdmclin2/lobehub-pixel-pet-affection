@@ -23,14 +23,13 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-pixel', 'dafeiyu-illustrated', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
+  assert.deepEqual([...packs.keys()].sort(), ['claude-pixel', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
     for (const outfit of sp.outfits) {
       const look = P.resolveLook(packs, { packId: P.chosenPack(packs, {}, id), fallbackId: P.fallbackPack(id), speciesId: id, outfitId: outfit });
-      if (sp.art === 'video' && outfit === 'daily') assert.equal(look, null, 'the video character plays its clips in its signature outfit');
-      else assert.ok(look, `${id}/${outfit}`);
+      assert.ok(look, `${id}/${outfit}`);
     }
   }
 });
@@ -46,25 +45,29 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     assert.deepEqual(Object.keys(px.actions).sort(), [...own].sort(), `${id} animates every state`);
     for (const st of own) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
     assert.deepEqual(resolveAction('walk', (n) => !!px.actions[n]), { name: 'idle', exact: false });
-    assert.deepEqual(px.frame, { width: 83, height: 113 });
+    assert.deepEqual(px.frame, { width: 166, height: 226 }, 'high-resolution frames');
   }
 });
 
-test('looks: the chosen pack, the character default, then its fallback pack; the video character in daily = clips', () => {
+test('looks: the chosen pack, the character default, then its fallback pack; the video character picks its clips', () => {
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.equal(P.chosenPack(packs, {}, 'grok'), 'grok-pixel');
   assert.equal(P.chosenPack(packs, { grok: 'claude-pixel' }, 'grok'), 'grok-pixel', "another character's pack is ignored");
   assert.equal(P.chosenPack(packs, { grok: 'gone' }, 'grok'), 'grok-pixel');
-  assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-illustrated');
-  assert.equal(P.chosenPack(packs, { dafeiyu: 'dafeiyu-pixel' }, 'dafeiyu'), 'dafeiyu-pixel');
+  assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel', 'DeepSeek starts in pixels like everyone else');
+  assert.equal(P.chosenPack(packs, { dafeiyu: 'dafeiyu-illustrated' }, 'dafeiyu'), 'dafeiyu-pixel', 'the retired outfit pack falls back');
+  assert.equal(P.chosenPack(packs, { dafeiyu: 'dafeiyu-clips' }, 'dafeiyu'), 'dafeiyu-clips');
+  assert.equal(P.chosenPack(packs, { grok: 'grok-clips' }, 'grok'), 'grok-pixel', 'a pack character has no clips');
   const l = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'daily' });
   assert.equal(l.kind, 'sprites');
   assert.equal(l.url, 'pack://claude-pixel/sheets/daily.png');
   assert.ok(l.actions.idle && l.actions.evolve && l.frame.width > 0);
-  assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-illustrated', fallbackId: 'dafeiyu-illustrated', speciesId: 'dafeiyu', outfitId: 'daily' }), null);
-  // the pixel DeepSeek wears its pixel daily look, and its illustrated pictures for the rest
-  assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-illustrated', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');
-  assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-illustrated', speciesId: 'dafeiyu', outfitId: 'yukata' }).packId, 'dafeiyu-illustrated');
+  assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-clips', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'her clips');
+  assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');
+  const opts = P.packsFor(packs, 'dafeiyu');
+  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels and her clips');
+  assert.equal(opts[1].author, 'PC2005-cloud/dsh-pet');
+  assert.deepEqual(P.packsFor(packs, 'grok').map((x) => x.id), ['grok-pixel']);
 });
 
 test('a pack with art for some outfits falls back to the character default pack for the rest', () => {

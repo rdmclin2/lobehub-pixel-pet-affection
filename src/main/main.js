@@ -13,6 +13,7 @@ const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { ApiServer } = require('./api-server');
+const { screenPx } = require('../core/fx');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -267,7 +268,9 @@ function wire() {
     const w = windowOf(e);
     if (!w) return;
     const [x, y] = w.getPosition();
-    w.setPosition(Math.round(x + dx), Math.round(y + dy));
+    const nx = screenPx(x + dx);
+    const ny = screenPx(y + dy);
+    if (nx !== null && ny !== null) w.setPosition(nx, ny);
   });
   // Throwing the pet (src/core/fx.js stepThrow): the renderer runs the physics against the work area of
   // the screen the window is on and moves the window frame by frame.
@@ -279,8 +282,10 @@ function wire() {
   });
   ipcMain.on('move-to', (e, { x, y }) => {
     const w = windowOf(e);
-    if (!w || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    w.setPosition(Math.round(x), Math.round(y));
+    const nx = screenPx(x);
+    const ny = screenPx(y);
+    if (!w || nx === null || ny === null) return;
+    w.setPosition(nx, ny);
   });
   // Pets knocking into each other: each window reports its character box (in the window) and, while
   // flying, its speed; a flying pet asks for the others' boxes and kicks the one it hits.

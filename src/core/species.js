@@ -40,6 +40,7 @@ function validateCharacter(c) {
   if (!ART_KINDS.includes(art.kind)) errors.push(`art.kind must be one of ${ART_KINDS.join(', ')}`);
   if (art.kind === 'video' && (!art.clips || !str(art.clips.idle) || !str(art.dir))) errors.push('a video character needs art.dir and art.clips.idle');
   if (art.kind === 'video' && art.clips) for (const [k, v] of Object.entries(art.clips)) if (!clipOk(v)) errors.push(`art.clips.${k} must be a file name or a list of them`);
+  if (art.clipsLook !== undefined && (!art.clipsLook || !['name', 'author', 'license'].every((k) => str(art.clipsLook[k])))) errors.push('art.clipsLook needs a name, an author and a license');
   if (c.memes !== undefined) {
     if (!Array.isArray(c.memes)) errors.push('memes must be a list');
     else {
@@ -68,7 +69,9 @@ function toSpecies(c) {
     clips: art.kind === 'video' ? { ...art.clips } : null,
     clipDir: art.kind === 'video' ? art.dir : null,
     packs: [...art.packs],
-    defaultPack: art.kind === 'pack' ? art.packs[0] : null,
+    // a video character with a pack starts in that pack; its clips are picked under 外观 (clipsLook)
+    defaultPack: art.packs[0] || null,
+    clipsLook: art.kind === 'video' ? { name: `${c.nameZh} · 视频`, author: '', license: '', description: '', ...(art.clipsLook || {}) } : null,
     fallbackPack: art.fallbackPack || art.packs[0] || null,
     fx: { noMirror: [], ...(c.fx || {}) },
     signature: c.signature || null,
