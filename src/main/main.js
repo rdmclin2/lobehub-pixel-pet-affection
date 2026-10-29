@@ -206,6 +206,7 @@ function wire() {
     }
   });
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
+  ipcMain.handle('touch', (_e, target) => service.touch(target));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));

@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('pet', {
   spaces: () => ipcRenderer.invoke('spaces'),
   hatch: (speciesId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities, space }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
+  // Touch a body part: a zone id ('head', 'chest', …) or { x, y } in the sprite's visible box (0..1).
+  touch: (target) => ipcRenderer.invoke('touch', target === undefined ? null : target),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   confirmAge: (adult) => ipcRenderer.invoke('confirm-age', { adult }),

@@ -62,6 +62,7 @@ function validateCharacter(c) {
   if (c.voice !== undefined && (!c.voice || typeof c.voice !== 'object' || (c.voice.lang !== undefined && !str(c.voice.lang)))) errors.push('voice must be an object ({ lang, pitch, rate, prefer })');
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
   if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
+  if (c.touch !== undefined) errors.push(...require('./touch-zones').validateTouch(c.touch));
   if (RETIRED[c.id]) errors.push(`${c.id} is a retired character id`);
   return errors;
 }

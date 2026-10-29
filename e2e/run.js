@@ -2204,6 +2204,136 @@ async function rosterOne(ch) {
   }
 }
 
+// ----------------------------------------------------------------- touch
+// Touching body parts through the real IPC (window.pet.touch): every zone, a click point resolved with
+// the character's zone table, stage-dependent reactions on the chest, the streak, and the old pat.
+async function touch() {
+  const S = 'touch';
+  const SHOTS = path.join(OUT, 'touch');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-touch-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-touchfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  // a forced stage-up shows its card over the bubble; close it before looking at the reaction
+  const dismissToast = () => page.evaluate(() => { const t = document.getElementById('unlock-toast'); if (t && !t.classList.contains('hidden')) document.getElementById('toast-close').click(); });
+  const touchAndShow = async (target) => {
+    const r = await page.evaluate((t) => window.pet.touch(t), target);
+    if (r.ok) await page.waitForFunction((l) => document.getElementById('bubble').textContent.includes(l), r.line, { timeout: 5000 });
+    return r;
+  };
+  const fmt = (r) => `${r.zone}:${r.reaction.mood}${r.reaction.streak ? '/' + r.reaction.streak : ''} Δ${r.affection.delta} ♥${r.affection.value} 「${r.line}」`;
+  const log = [];
+  try {
+    await step(S, 'hatch 克洛蒂 (Claude) with the fake lh', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="claude"]');
+      await page.fill('#pet-name', 'Touchy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.equal(await page.evaluate(() => typeof window.pet.touch), 'function');
+      await page.evaluate(() => window.pet.debugSet({ mood: 50, hunger: 20, energy: 90, sleeping: false }));
+    }, page);
+
+    for (const zone of ['head', 'chest', 'butt', 'feet', 'hands', 'face', 'belly', 'legs']) {
+      await step(S, `stranger touches ${zone}`, async () => {
+        const r = await touchAndShow(zone);
+        assert.equal(r.ok, true);
+        assert.equal(r.zone, zone);
+        assert.equal(r.reaction.anim, `touch-${zone}`);
+        if (zone === 'chest' || zone === 'butt') { assert.equal(r.reaction.mood, 'angry'); assert.ok(r.affection.delta <= 0); }
+        log.push(fmt(r));
+        await shot(`stranger-${zone}`);
+        await page.waitForTimeout(8200); // let the streak window lapse between parts
+        return fmt(r);
+      }, page);
+    }
+
+    await step(S, 'a click point in the visible box is resolved to a zone; a miss returns null', async () => {
+      const pts = [[0.5, 0.03], [0.5, 0.26], [0.5, 0.41], [0.5, 0.53], [0.5, 0.94]];
+      const zones = [];
+      for (const [x, y] of pts) { zones.push((await touchAndShow({ x, y })).zone); await page.waitForTimeout(8200); }
+      assert.deepEqual(zones, ['head', 'chest', 'hands', 'butt', 'feet']);
+      const miss = await page.evaluate(() => window.pet.touch({ x: 0.02, y: 0.02 }));
+      assert.deepEqual(miss, { ok: false, reason: 'miss', zone: null });
+      return `points → ${zones.join(', ')}; (0.02,0.02) → ${JSON.stringify(miss)}`;
+    }, page);
+
+    await step(S, 'poking the head repeatedly escalates to annoyed (3rd) and angry (6th)', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 20, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const seq = [];
+      for (let i = 0; i < 6; i++) { const r = await touchAndShow('head'); seq.push(fmt(r)); if (i === 2) await shot('streak-annoyed'); }
+      assert.match(seq[2], /annoyed\/annoyed/);
+      assert.match(seq[5], /angry\/angry Δ-1/);
+      log.push(...seq);
+      await shot('streak-angry');
+      return seq.join(' | ');
+    }, page);
+
+    await step(S, 'close friends: chest touch is flustered, no penalty', async () => {
+      await page.waitForTimeout(8200);
+      await page.evaluate(() => window.pet.debugSet({ affection: 40, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const r = await touchAndShow('chest');
+      assert.equal(r.reaction.mood, 'shy');
+      assert.equal(r.affection.delta, 0);
+      log.push(fmt(r));
+      await shot('close-chest');
+      return fmt(r);
+    }, page);
+
+    await step(S, 'top stage: chest touch is shy and slightly positive', async () => {
+      await page.waitForTimeout(8200);
+      await page.evaluate(() => window.pet.debugSet({ affection: 90, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const r = await touchAndShow('chest');
+      assert.equal(r.reaction.mood, 'shy');
+      assert.equal(r.reaction.tier, 'high');
+      assert.ok(r.affection.delta > 0);
+      log.push(fmt(r));
+      await shot('high-chest');
+      return fmt(r);
+    }, page);
+
+    await step(S, 'every character answers each of the five parts in her own words', async () => {
+      const out = [];
+      for (const id of ['gemini', 'gpt', 'grok', 'dafeiyu', 'claude']) {
+        await page.evaluate((c) => window.pet.switchCharacter(c), id);
+        await page.waitForTimeout(1500);
+        await dismissToast();
+        for (const zone of ['head', 'chest', 'butt', 'feet', 'hands']) {
+          const r = await touchAndShow(zone);
+          assert.equal(r.ok, true);
+          out.push(`${id}.${zone}: ${r.line}`);
+        }
+        await shot(`char-${id}`);
+        await page.waitForTimeout(8200);
+      }
+      log.push(...out);
+      return `${out.length} lines`;
+    }, page);
+
+    await step(S, 'the old click (pat) still works', async () => {
+      const before = (await view(page)).pet.affection;
+      const r = await page.evaluate(() => window.pet.act('pat'));
+      assert.equal(r.ok, true);
+      assert.equal(r.affection.source, 'pat');
+      return `pat ok, ♥${before} → ${(await view(page)).pet.affection}`;
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'touch-log.txt'), log.join('\n') + '\n');
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -2218,6 +2348,7 @@ async function rosterOne(ch) {
   if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
+  if (which === 'touch' || which === 'all') await touch();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
