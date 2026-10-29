@@ -193,7 +193,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `npm test` | 单元测试（`node --test test/*.test.js`，假 `lh`，不联网），包括角色文件、角色包、效果、合规词表的校验 |
 | `xvfb-run -a node e2e/run.js roster` | 逐个角色选择、唤醒，逐项触发 E1–E14 和 N1–N14（即 E15–E26 及其开关）；截图在 `out/e2e/`，录屏在 `out/e2e/roster-video/<角色>/`。`... roster claude` 只跑一个角色 |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
-| `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`all` 全部跑，`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent） |
+| `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 30 分钟 |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
 
