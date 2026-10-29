@@ -52,6 +52,13 @@ function validateCharacter(c) {
       });
     }
   }
+  if (c.models !== undefined) {
+    const m = c.models;
+    let reOk = false;
+    try { reOk = str(m && m.match) && !!new RegExp(m.match); } catch { reOk = false; }
+    if (!m || typeof m !== 'object' || !reOk) errors.push('models.match must be a regular expression for the model ids she may use');
+    else for (const k of ['providers', 'prefer']) if (m[k] !== undefined && (!Array.isArray(m[k]) || !m[k].every(str))) errors.push(`models.${k} must be a list of ids`);
+  }
   if (c.voice !== undefined && (!c.voice || typeof c.voice !== 'object' || (c.voice.lang !== undefined && !str(c.voice.lang)))) errors.push('voice must be an object ({ lang, pitch, rate, prefer })');
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
   if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
@@ -77,6 +84,7 @@ function toSpecies(c) {
     signature: c.signature || null,
     memes: Array.isArray(c.memes) ? c.memes.map((m) => ({ id: m.id, label: m.label, desc: m.desc })) : [],
     voice: c.voice || null,
+    models: c.models ? { match: c.models.match, providers: [...(c.models.providers || [])], prefer: [...(c.models.prefer || [])] } : null,
   };
 }
 

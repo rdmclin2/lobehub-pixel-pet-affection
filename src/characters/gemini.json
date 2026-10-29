@@ -3,6 +3,7 @@
   "order": 4,
   "vendor": "Google",
   "model": "Gemini",
+  "models": { "match": "^gemini-", "providers": ["google"], "prefer": ["gemini-3.8-flash", "gemini-3.7-flash"] },
   "name": "Gemi",
   "nameZh": "杰米",
   "title": "Gemini 娘 · 四角星猫耳",

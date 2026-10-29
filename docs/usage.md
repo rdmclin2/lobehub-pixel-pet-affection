@@ -71,6 +71,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 - **首次**：在“选择你的模型娘”界面点角色卡，再点“唤醒”。
 - **之后切换**：悬停宠物 → ⋯ → **高级设置** →“角色”一栏，点想要的角色旁边的 **切换**（当前角色显示“✓ 当前”）。LobeHub agent、聊天记录和好感度保留，她的人设在下一句话前更新；身上的服饰新角色没有时换回日常服。切换后播放唤醒演出。
 - **换画风**：高级设置 → **外观（角色包）**。大肥鱼默认是像素包，可以换成原版动画（dsh-pet 透明视频）再换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
+- **换模型**：高级设置 → **模型**。下拉框里只有当前角色自家厂商的模型：大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT（含 o 系列）。列表来自你在 LobeHub 里启用的模型：LobeHub 托管的排在前面；如果你还启用了该厂商自己的服务商（填了自己的 Key），那些模型也会列出，标“（自己的 … Key）”。只能出图的模型（如 Nano Banana）不列。没选过时用角色的默认模型（标“默认”）：大肥鱼 DeepSeek V4.1 Flash、克洛蒂 Claude Sonnet 5.5、格萝可 Grok 4.7、杰米 Gemini 3.8 Flash、吉皮缇 GPT-6 Luna；默认模型没启用时用列表第一个。选好后立即改 agent 的模型；换角色后，下一句话起换成新角色的模型，每位角色各自记住你的选择（存在 `settings.json` 的 `models`）。模型列表 10 分钟内复用，点“刷新”立即重读；`lh` 读不到列表（版本太旧或离线）时她继续用原来的模型。
 - **请别的模型娘来串门**：高级设置 → **同屏伙伴**，见下面的 E24。
 
 ## 五、各效果的触发方式
@@ -127,6 +128,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 版本与更新 | 当前版本、上次检查时间、“检查更新” | 启动后检查一次，之后每 4 小时 |
 | 一键解锁 | 好感度直接加满（♥100），所有阶段、话题和服饰解锁，不能撤销 | — |
 | 角色 | 五位角色，点“切换”（E14） | — |
+| 模型 | 只列当前角色自家厂商的模型，选一个；“刷新”重读列表 | 每位角色的默认模型（见上文“换模型”） |
 | 外观（角色包） | 选画风、导入角色包、打开角色包文件夹 | 每位角色：像素包 |
 | 桌宠行为 | 自己走动（E15）、点击音效（E21）、朗读回复（E23）、梗图（E22）、互相碰撞（E25） | 开、关、关、开、开 |
 | 同屏伙伴 | 勾选最多 3 位来串门（E24） | 无 |
@@ -171,13 +173,14 @@ npm run dist:win       # Windows x64 安装包 + zip
      "signature": { "label": "…", "desc": "…" },
      "art": { "kind": "pack", "packs": ["kimi-pixel"], "fallbackPack": "kimi-pixel" },
      "fx": { "noMirror": [] },       // 画了文字、镜像会反字的状态列在这里
+     "models": { "match": "^kimi-", "providers": ["moonshot"], "prefer": ["kimi-k3"] }, // 她能用的模型：id 匹配 match，来自 LobeHub 托管或这些服务商；prefer 是默认模型的候选
      "voice": { "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao"] }, // 朗读用：音调、语速、优先的系统语音名
      "memes": [{ "id": "hello", "label": "你好呀", "desc": "挥手打招呼时" }],          // 梗图：图片放 src/renderer/assets/memes/kimi/<id>.webp
      "credits": ["设定：…（许可）", "像素图：…（许可）"]
    }
    ```
 
-   字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因；旧角色 id（`embit`、`bubbo`、`sprig`）不能再用。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`；一个状态可以给一组片段（`"pat": ["a.webm", "b.webm"]`），每次轮换播放。`memes` 和 `voice` 可省略（没有梗图 / 用默认音色）；梗图文件缺失时启动会报错。
+   字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因；旧角色 id（`embit`、`bubbo`、`sprig`）不能再用。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`；一个状态可以给一组片段（`"pat": ["a.webm", "b.webm"]`），每次轮换播放。`memes`、`voice` 和 `models` 可省略（没有梗图 / 用默认音色 / 不限定模型，agent 用账号默认模型）；梗图文件缺失时启动会报错。
 3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 25 岁以上”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
 4. **运行确认**：`npm start`，选择模型娘界面会多出一张 Kimi 卡片，唤醒后所有效果自动可用。角色卡会按窗口宽度自动收窄。
 5. **更新测试**：下面几处固定了现有角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster kimi`：

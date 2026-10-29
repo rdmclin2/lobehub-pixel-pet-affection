@@ -54,10 +54,27 @@ if (args[0] === 'whoami') {
   const editDelay = Number(process.env.FAKE_LH_EDIT_DELAY_MS || 0);
   if (editDelay) { setTimeout(() => { fs.appendFileSync(path.join(dir, 'edits.log'), JSON.stringify({ agentId: args[2], systemRole: 'late' }) + '\n'); console.log('updated'); }, editDelay); return; }
   const rec = { agentId: args[2], systemRole: args.includes('-s') ? args[args.indexOf('-s') + 1] : null };
+  if (args.includes('-m')) { rec.model = args[args.indexOf('-m') + 1]; rec.provider = args[args.indexOf('-p') + 1]; }
   const i = args.indexOf('--agency-config-file');
   if (i >= 0) rec.agencyConfig = JSON.parse(fs.readFileSync(args[i + 1], 'utf8'));
   fs.appendFileSync(path.join(dir, 'edits.log'), JSON.stringify(rec) + '\n');
   console.log('updated');
+} else if ((args[0] === 'provider' || args[0] === 'model') && process.env.FAKE_LH_NO_MODELS) {
+  console.error(`error: unknown command '${args[0]}'`);
+  process.exit(1);
+} else if (args[0] === 'provider' && args[1] === 'list') {
+  // like a LobeHub account: the hosted provider plus the user's own OpenAI key; Anthropic off
+  console.log(JSON.stringify([{ id: 'lobehub', enabled: true }, { id: 'openai', enabled: true }, { id: 'anthropic', enabled: false }, { id: 'glmcodingplan', enabled: true }]));
+} else if (args[0] === 'model' && args[1] === 'list') {
+  fs.appendFileSync(path.join(dir, 'model-lists.log'), args[2] + '\n');
+  const chat = (id, displayName, extra = {}) => ({ id, displayName, enabled: true, type: 'chat', abilities: { functionCall: true }, ...extra });
+  const catalogs = {
+    lobehub: [chat('deepseek-flash', 'DeepSeek V4.1 Flash'), chat('claude-opus-5-5', 'Claude Opus 5.5'), chat('claude-sonnet-5-5', 'Claude Sonnet 5.5'), chat('claude-haiku-5-5', 'Claude Haiku 5.5'),
+      chat('grok-4.7', 'Grok 4.7'), chat('gemini-3.8-flash', 'Gemini 3.8 Flash'), chat('gemini-3.1-flash-image', 'Nano Banana 2', { abilities: { imageOutput: true } }),
+      chat('gpt-6-sol', 'GPT-6 Sol'), chat('gpt-6-luna', 'GPT-6 Luna'), chat('glm-5.3', 'GLM-5.3')],
+    openai: [chat('gpt-6-luna', 'GPT-6 Luna'), chat('o3', 'o3')],
+  };
+  console.log(JSON.stringify((catalogs[args[2]] || []).map((m) => ({ ...m, providerId: args[2] }))));
 } else if (args[0] === 'agent' && args[1] === 'view') {
   console.log(JSON.stringify({ id: args[2], systemRole: 'x', agencyConfig: {} }));
 } else if (args[0] === 'file' && args[1] === 'upload') {

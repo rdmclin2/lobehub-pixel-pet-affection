@@ -163,10 +163,12 @@ class LhClient {
   }
 
   // ---- agent configuration -------------------------------------------------
-  // Update the system role and/or agencyConfig (deep-merged server-side; `null` clears a key).
-  async updateAgent({ agentId, systemRole, agencyConfig }) {
+  // Update the system role, the model (`model` + `provider`) and/or agencyConfig (deep-merged
+  // server-side; `null` clears a key).
+  async updateAgent({ agentId, systemRole, agencyConfig, model, provider }) {
     const args = ['agent', 'edit', agentId];
     if (systemRole) args.push('-s', systemRole);
+    if (model) args.push('-m', model, '-p', provider);
     let tmp = null;
     if (agencyConfig) {
       tmp = path.join(os.tmpdir(), `pixelpet-agency-${process.pid}-${Date.now()}.json`);
@@ -179,6 +181,23 @@ class LhClient {
     } finally {
       if (tmp) fs.rmSync(tmp, { force: true });
     }
+  }
+
+  // ---- models ----------------------------------------------------------------
+  // Ids of the providers the user has enabled (LobeHub's hosted `lobehub` is on by default).
+  async listEnabledProviders() {
+    const r = await this._run(['provider', 'list', '--json'], { timeoutMs: 30000 });
+    if (r.code !== 0) throw new LhError(`Could not list providers: ${(r.stderr || r.stdout).trim().slice(0, 200)}`, { code: r.code, stderr: r.stderr });
+    const list = JSON.parse(r.stdout);
+    return (Array.isArray(list) ? list : list.data || []).filter((p) => p && p.enabled).map((p) => p.id);
+  }
+
+  // The enabled chat models of one provider: [{ id, displayName, providerId, enabled, type, abilities }].
+  async listChatModels(providerId) {
+    const r = await this._run(['model', 'list', providerId, '--type', 'chat', '--enabled', '-L', '200', '--json'], { timeoutMs: 30000 });
+    if (r.code !== 0) throw new LhError(`Could not list models of ${providerId}: ${(r.stderr || r.stdout).trim().slice(0, 200)}`, { code: r.code, stderr: r.stderr });
+    const list = JSON.parse(r.stdout);
+    return (Array.isArray(list) ? list : list.data || []).map((m) => ({ id: m.id, displayName: m.displayName, providerId: m.providerId || providerId, enabled: m.enabled !== false, type: m.type, abilities: m.abilities || {} }));
   }
 
   async getAgent(agentId) {

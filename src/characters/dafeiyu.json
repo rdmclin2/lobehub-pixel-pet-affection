@@ -3,6 +3,7 @@
   "order": 1,
   "vendor": "DeepSeek",
   "model": "DeepSeek",
+  "models": { "match": "^deepseek-", "providers": ["deepseek"], "prefer": ["deepseek-flash"] },
   "name": "Dafeiyu",
   "nameZh": "大肥鱼",
   "title": "DeepSeek 娘 · 鲸鱼女仆",

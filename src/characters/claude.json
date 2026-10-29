@@ -3,6 +3,7 @@
   "order": 2,
   "vendor": "Anthropic",
   "model": "Claude",
+  "models": { "match": "^claude-", "providers": ["anthropic"], "prefer": ["claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"] },
   "name": "Clody",
   "nameZh": "克洛蒂",
   "title": "Claude 娘 · 橘发菊纹",

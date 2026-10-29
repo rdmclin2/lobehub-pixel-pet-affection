@@ -26,7 +26,7 @@ const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collid
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' } };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -52,6 +52,9 @@ function normalizeSettings(raw) {
   // the pet pack chosen per character ({ dafeiyu: 'dafeiyu-pixel' }); unknown packs fall back when looked up
   const ap = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
   s.appearance = Object.fromEntries(Object.entries(ap).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(v)));
+  // the model chosen per character ({ claude: 'lobehub:claude-sonnet-5-5' }); one she may not use falls back when looked up
+  const md = s.models && typeof s.models === 'object' ? s.models : {};
+  s.models = Object.fromEntries(Object.entries(md).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9-]{2,40}:[A-Za-z0-9._-]{1,80}$/.test(v)));
   s.prefs = normalizePrefs(s.prefs);
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);

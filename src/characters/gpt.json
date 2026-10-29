@@ -3,6 +3,7 @@
   "order": 5,
   "vendor": "OpenAI",
   "model": "ChatGPT",
+  "models": { "match": "^(gpt-|o[0-9])", "providers": ["openai"], "prefer": ["gpt-6-luna", "gpt-5.6-terra"] },
   "name": "Gippity",
   "nameZh": "吉皮缇",
   "title": "GPT 娘 · 白龙",

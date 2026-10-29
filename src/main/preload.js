@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('pet', {
   markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
   unlockAll: () => ipcRenderer.invoke('unlock-all'),
   setAppearance: (id) => ipcRenderer.invoke('set-appearance', { id }),
+  setModel: (key) => ipcRenderer.invoke('set-model', { key }),
+  refreshModels: () => ipcRenderer.invoke('refresh-models'),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),

@@ -521,7 +521,7 @@ test('a save whose character was retired opens with a current character, never c
   assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')).speciesId, 'claude', 'and the new one written');
   await svc.warmup();
   assert.match(said[0].text, /原来的角色已经下线.*克洛蒂/);
-  assert.match(readLog(dir, 'edits.log').pop().systemRole, /克洛蒂/, 'the agent gets the new persona');
+  assert.match(readLog(dir, 'edits.log').filter((e) => e.systemRole).pop().systemRole, /克洛蒂/, 'the agent gets the new persona');
   // a second start: nothing to remap or announce
   const svc2 = mkSvc();
   const said2 = [];
@@ -557,7 +557,7 @@ test('switching character keeps the agent and affection, changes the persona on 
   assert.equal(r.view.characters.find((c) => c.current).id, 'grok');
   assert.equal(said.pop().text, '哈！你可算来了。');
   await svc.chat('你是谁');
-  assert.match(readLog(dir, 'edits.log').pop().systemRole, /格萝可/);
+  assert.match(readLog(dir, 'edits.log').filter((e) => e.systemRole).pop().systemRole, /格萝可/);
   assert.deepEqual(svc.switchCharacter('embit'), { ok: false, reason: 'unknown' }, 'a retired character cannot be chosen');
 });
 
