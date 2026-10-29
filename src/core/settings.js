@@ -9,8 +9,11 @@ const path = require('node:path');
 const AGE_GATE_VERSION = 1; // bump when the confirmation wording changes: everyone is asked again
 
 // How big the pet is drawn on the desktop: any scale from 50% to 250% (drag the corner handle, Ctrl/⌘ +
-// wheel over the pet, or the slider in 高级设置). The window grows with it.
-const PET_SCALE = { min: 0.5, max: 2.5, default: 1 };
+// wheel over the pet, or the slider in 高级设置). The window grows with it. A size nobody picked follows
+// the default (petScaleSet is false); files from before that flag saved the old default 100% for everyone,
+// so there only a size other than 100% counts as picked.
+const PET_SCALE = { min: 0.5, max: 2.5, default: 1.25 };
+const OLD_DEFAULT_SCALE = 1;
 const clampScale = (v) => {
   const n = Number(v);
   if (!Number.isFinite(n)) return PET_SCALE.default;
@@ -42,13 +45,15 @@ function normalizeApi(raw) {
 
 // Adult content can only be on for a current, confirmed 18+ answer.
 function normalizeSettings(raw) {
-  const s = { ...DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const s = { ...DEFAULTS, ...r };
   const current = s.ageGateVersion === AGE_GATE_VERSION;
   s.ageConfirmed = current && s.ageConfirmed === true;
   s.answered = current && s.answered === true;
   if (!s.ageConfirmed) s.ageConfirmedAt = null;
   s.adultContent = s.ageConfirmed && s.adultContent === true;
-  s.petScale = clampScale(s.petScale);
+  s.petScaleSet = typeof r.petScaleSet === 'boolean' ? r.petScaleSet : typeof r.petScale === 'number' && clampScale(r.petScale) !== OLD_DEFAULT_SCALE;
+  s.petScale = s.petScaleSet ? clampScale(s.petScale) : PET_SCALE.default;
   // the pet pack chosen per character ({ dafeiyu: 'dafeiyu-pixel' }); unknown packs fall back when looked up
   const ap = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
   s.appearance = Object.fromEntries(Object.entries(ap).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(v)));
