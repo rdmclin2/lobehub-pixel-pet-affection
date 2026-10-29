@@ -93,7 +93,7 @@
 | D42 | 显示位置（web / desktop / both / none）、浏览器 overlay | `display` | 不适用 | 本应用只有桌面窗口 |
 | D43 | 系统托盘 | `trayEnabled` | 不移植 | 托盘在 dsh-pet 里用来把“不在桌面上”的宠物叫回来；本应用的伙伴始终在桌面，⋯ 菜单 / 右键已有设置和退出 |
 | D44 | 字体选择 | `font` | 不移植 | 像素字体是本应用视觉的一部分 |
-| D45 | 自定义宠物种类（pet pack） | `pet/<名>-config.json` | 已实现 | 角色包（`docs/pet-packs.md`）和角色文件（`docs/model-chan.md` 第三节） |
+| D45 | 自定义宠物种类（pet pack） | `pet/<名>-config.json` | 已实现 | 角色包（`docs/pet-packs.md`）和角色文件（[usage.md](usage.md#八新增一个厂商角色) 第八节） |
 | D46 | 素材生成链（提示词 → 透明视频） | `prompts/`、`scripts/` | 已实现（对应物） | `scripts/art/`：gpt-image-2.5 生成 → 像素化 → 角色包 |
 
 ## 六、T-1158 列为未移植的七项：结论

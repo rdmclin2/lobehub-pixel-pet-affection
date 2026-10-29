@@ -4,7 +4,7 @@
 
 | 角色 | 厂商 | 主题色 | 美术 | 素材位置 |
 | --- | --- | --- | --- | --- |
-| 大肥鱼（DeepSeek 娘，Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 保留原有 15 段透明视频；另出同一 Q 版女仆形象的像素版 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
+| 大肥鱼（DeepSeek 娘，Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 保留原有透明视频（现为 21 段：15 个基础状态 + 拎起、走路和 4 段点击回应变体）；另出同一 Q 版女仆形象的像素版 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
 | 克洛蒂（Claude 娘，橘发菊纹） | Anthropic | `#C4622D` | 像素精灵图 | `src/renderer/packs/claude-pixel/` |
 | 格萝可（Grok 娘，黑金吸血鬼） | xAI | `#8E1F33` | 像素精灵图 | `src/renderer/packs/grok-pixel/` |
 | 杰米（Gemini 娘，四角星猫耳；第二批，2026-10-29） | Google | `#7B5CD6` | 像素精灵图 | `src/renderer/packs/gemini-pixel/` |

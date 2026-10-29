@@ -2,18 +2,19 @@
 
 > **⚠️ 成人向（18+）应用。** 本应用包含面向成年人的暧昧互动内容（调情、情话、约会幻想等），**不含露骨内容**。首次启动会询问是否年满 18 周岁；未满 18 岁或选择“只看全年龄”时，所有成人向内容都不会出现。成人向内容可随时在 ⋯ 菜单中关闭。
 
-一位住在桌面上的**模型娘**伙伴：以 AI 模型厂商为主题的同人角色（DeepSeek 大肥鱼、Claude 娘克洛蒂、Grok 娘格萝可，都不是厂商官方形象），大脑是你自己的 [LobeHub](https://lobehub.com) agent。本派生版把上游的“成长系统”改造成**好感度系统**：和它互动（摸摸、喂食、玩耍、聊天、话题）会提升好感度，好感度到达新阶段就会解锁新的对话话题和服饰。
+一位住在桌面上的**模型娘**伙伴：以 AI 模型厂商为主题的同人角色（DeepSeek 大肥鱼、Claude 娘克洛蒂、Grok 娘格萝可、Gemini 娘杰米、GPT 娘吉皮缇，都不是厂商官方形象），大脑是你自己的 [LobeHub](https://lobehub.com) agent。本派生版把上游的“成长系统”改造成**好感度系统**：和它互动（摸摸、喂食、玩耍、聊天、话题）会提升好感度，好感度到达新阶段就会解锁新的对话话题和服饰。
 
 - **好感度反馈**：悬停时显示 💗 好感条、数值（♥42/100）、阶段名和“距「下一阶段」还差 N”；每次加分在宠物头顶飘出 `+N ♥`，冷却或当日上限时会说明原因。
 - **升级提示**：跨过阈值时弹出“🎉 关系升级”，逐一列出本次解锁的话题和服饰。
 - **话题面板**：按阶段分组，锁定话题显示 🔒 和解锁条件；点已解锁话题，agent 按该话题和当前阶段的语气回应。
-- **衣柜**：每位角色只列出她有美术的服饰（大肥鱼 9 套全年龄服饰，克洛蒂、格萝可各自的原设服装）；衣柜里看到的就是她换上后桌面上的样子，锁定项显示 🔒 和解锁条件，换装立即生效。
+- **衣柜**：每位角色只列出她有美术的服饰（大肥鱼 9 套全年龄服饰，克洛蒂、格萝可、杰米、吉皮缇各自的原设服装）；衣柜里看到的就是她换上后桌面上的样子，锁定项显示 🔒 和解锁条件，换装立即生效。
 - **放在哪里由你选**：唤醒时会问把 agent 建在哪里，默认是**个人空间**；也可以选你加入的某个 workspace（那里的成员可能看得到它）。之后所有调用都固定在这个空间。
 - **状态保持**：好感度、阶段、已解锁内容和当前服饰保存在本机 `pet.json`，退出重启后不变；18+ 回答和成人向开关保存在 `settings.json`。
 
 ## 模型娘角色
 
-> 完整的角色清单（形象、素材来源与许可、支持的效果）、使用说明（安装、运行、切换角色、各效果怎么触发）和“新增一个厂商角色”的步骤见 **[docs/model-chan.md](docs/model-chan.md)**。
+> - **[形象 / 角色清单](docs/characters.md)**：每位模型娘的厂商、形象设定、主题色、服饰、素材来源与许可、截图，以及已下线角色和存档迁移。
+> - **[使用说明](docs/usage.md)**：安装、运行（含 Linux chrome-sandbox）、选角与切换、每项效果怎么触发、高级设置、连接 LobeHub、打包、测试，以及新增一个厂商角色。
 
 | 角色 | 厂商 | 主题色 | 美术 | 服饰 |
 |---|---|---|---|---|
@@ -113,25 +114,25 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
-- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [docs/model-chan.md](docs/model-chan.md#运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
+- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
 
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
 - **高级设置 · 一键解锁**（⋯ 菜单 → 高级设置）：直接把好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
-- **像素风与角色包**：克洛蒂、格萝可是 16 位像素风，每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⋯ 菜单 → 高级设置 → 外观里可以切换（大肥鱼：原版动画 / 像素），也能导入别人做的角色包（文件夹或 `.zip`）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
+- **像素风与角色包**：克洛蒂、格萝可、杰米、吉皮缇是 16 位像素风，每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⋯ 菜单 → 高级设置 → 外观里可以切换（大肥鱼：原版动画 / 像素），也能导入别人做的角色包（文件夹或 `.zip`）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
 - **宠物大小随意调**：悬停时拖宠物左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 在宠物上滚动滚轮，也可以在 ⋯ 菜单 → 高级设置里拖滑块。范围 50%–250%，窗口跟着变，右下角位置不变，最大不会超出屏幕；大小会保存，重启和换宠物后都保留。
 - **自动更新**（v0.4.1 起）：⋯ 菜单 → “检查更新”（或高级设置 → 版本与更新）可以随时手动检查，那里也显示当前版本和上次检查时间。平时应用启动后和之后每 4 小时自动检查一次 GitHub Releases，发现新版本就在后台下载（macOS 会校验 sha512）。下载好后宠物会提示一句；你离开电脑 10 分钟后它会自己重启更新，大约两秒，状态都保存在本地，不会丢。你也可以在 ⋯ 菜单里点“立即更新”，或者等下次退出时自动安装。
   - macOS：应用要放在“应用程序”（或任意可写的文件夹）里才能自己更新。直接从 DMG 或“下载”文件夹打开时没法替换自己，会提示你先挪过去。
   - Windows：用安装包（`-setup.exe`）装的版本可以自动更新；zip 版和 Linux 的 tar.gz 只会提示有新版本，并在菜单里给出下载页。
   - 不想自动更新的话，设置环境变量 `PIXELPET_NO_UPDATE=1`。
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
-- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E13 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
+- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和 LobeHub agent。
 
 ## 上游署名与许可
 
 - 本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。好感度系统、服饰立绘、合规守卫等派生部分同样以 MIT 发布。
-- **模型娘形象**是同人作品，不是厂商官方形象：克洛蒂、格萝可的设定来自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets)（CC BY-NC-SA 4.0）与 ZipZipPipe《AI娘化》（署名、不可商用），像素图由 gpt-image-2.5 生成后像素化，以 **CC BY-NC-SA 4.0、禁止商用** 发布，详见 [NOTICE.md](NOTICE.md)。
+- **模型娘形象**是同人作品，不是厂商官方形象：克洛蒂、格萝可、杰米、吉皮缇的设定来自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets)（CC BY-NC-SA 4.0）与 ZipZipPipe《AI娘化》（署名、不可商用），像素图由 gpt-image-2.5 生成后像素化，以 **CC BY-NC-SA 4.0、禁止商用** 发布，详见 [NOTICE.md](NOTICE.md)。
 - **大肥鱼**动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（PC2005-cloud），角色为 DeepSeek 吉祥物的社区二创（原型“溟月”：B站 @上善无形；女仆鲸鱼娘设计：B站 @ZipZipPipe），许可 **CC BY-NC-SA 4.0，禁止商用**。包含这些素材的构建仅限非商业用途，详见 `src/renderer/assets/dafeiyu/NOTICE.md`。
 - 本项目是基于 LobeHub 的社区项目，不是 LobeHub 官方产品。
 
