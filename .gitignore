@@ -2,6 +2,5 @@ node_modules/
 out/
 *.log
 .DS_Store
-.agents/skills/
 .acceptances/
 dist/

@@ -13,7 +13,7 @@ agent is the pet's brain. Layout: `src/core` (pure logic + the `lh` wrapper),
 - **Start the app:** `npm start` on a desktop; on a headless box `xvfb-run -a node e2e/run.js <scenario>`. Scenarios: fresh, wardrobe, migrate, dafeiyu, busy, space (where the agent lives), advanced (unlock all, free resize), packs (pixel sprites, switch/import/remove packs), art (outfit sheet and the character × state sheet), roster (every character × every effect of the shared effects layer, with screenshots and one recording per character in `out/e2e/roster-video/`; `roster <id>` runs one), live (real lh, costs tokens).
 - **Stop:** the E2E harness closes the app itself; the `live` scenario deletes the agent it created (also on failure).
 - **Required services:** none besides the LobeHub CLI (`lh`) with a logged-in profile for `live`.
-- **Skill:** the generic acceptance skill is not committed (`.agents/skills/` is git-ignored); install it per machine with `lh acceptance install` (writes `.agents/skills/acceptance`, update with `lh acceptance update`). This file and its neighbours are the committed project layer.
+- **Skill:** the generic acceptance skill is committed at `.agents/skills/acceptance` (`.claude/skills` links to it for Claude Code). Refresh it with `lh acceptance update` and commit the result; the version is in its `SKILL.md`. This file and its neighbours are the project layer.
 - **Already-running detection:** none needed; each run uses a fresh temp data dir (`PIXELPET_DATA_DIR`).
 - **Env resolution:** `PIXELPET_TEST=1` (opaque window + debug IPC hooks), `PIXELPET_CLEAR_JWT=1` (dev only: clear an injected narrow `LOBEHUB_JWT`), `LH_BIN` (override the CLI, used for the fake CLI).
 
