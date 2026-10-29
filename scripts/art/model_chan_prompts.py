@@ -4,7 +4,9 @@
 # Two generated sheets per character, both 4 columns x 4 rows = 8 actions x 2 frames:
 #   <id>_base  -> the 8 actions every sprite pack has (same order as pixel_prompts.py / build_pixel_pack.py)
 #   <id>_extra -> the 8 states only DeepSeek's video clips had (look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve)
-# Dafeiyu (DeepSeek) is the pixel version of her existing chibi maid look from dsh-pet.
+# Dafeiyu (DeepSeek): her chibi (Q) look stays with the dsh-pet clips; her pixel pack is drawn at the same
+# adult proportions as the other model-chan (2026-10-29: the chibi pixel version did not match them), from
+# ai-chan-sheets 设定图/03_DeepSeek娘_鲸鱼娘 with covered shoulders.
 # Identity anchors are condensed from lmy414/ai-chan-sheets 设定图/<char>/提示词/A01 (CC BY-NC-SA 4.0), after the
 # original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
 # shorts and thigh band become a covered top, a long skirt and opaque tights; GPT's bare shoulders, thigh slit,
@@ -14,10 +16,13 @@ sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
 
 CHARS = {
- "dafeiyu": ("Dafeiyu, the DeepSeek whale-girl maid, kept in her original chibi (Q-version, super-deformed, about 3 heads tall) look from the dsh-pet desktop pet; "
-             "she is an adult character drawn in cute SD style: long deep-blue hair fading to light blue at the tips with a ring-shaped ahoge, big blue eyes, small blue whale-fin ears and a small chubby blue whale tail behind her, "
-             "a white maid headdress, a long-sleeved deep navy maid dress with a white apron embroidered with a tiny blue whale at the lower right, white tights and black Mary Jane shoes. "
-             "Colours: deep navy, white, light blue and a touch of pale gold only"),
+ "dafeiyu": ("Dafeiyu, an adult woman personifying DeepSeek as a gentle whale-girl maid: very long, voluminous, wavy deep-blue hair reaching her thighs, fading to light blue at the tips with light blue streaks, "
+             "one thin ring-shaped ahoge curling up on top, big soft blue eyes, a calm sweet smile, and on each side of her head a deep-blue whale-fin ear with a pale blue sheen, white feathery fin edges and a small blue ribbon bow at its root. "
+             "A white frilled maid headdress with white lace ribbons. She wears a long-sleeved white blouse with covered shoulders and puffed upper sleeves, lace cuffs, a small black bow tie with a blue gem at the throat, "
+             "a deep navy fitted bodice with gold buttons and gold piping, a white frilled apron with a tiny blue whale embroidered at its lower right, "
+             "and an ankle-length layered skirt: a deep navy outer skirt with pale gold vine embroidery and small dark bows, a blue-and-white pinstriped middle layer and a white ruffled petticoat hem. "
+             "A deep-blue whale tail with a forked fluke behind her. Opaque white tights and deep navy Mary Jane shoes with a strap and small gold buckle. "
+             "Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
  "claude": ("Claude-chan, an adult woman personifying the Claude AI: very long bright orange hair reaching her knees with soft spiral curls at the tips, "
             "a large orange many-petalled chrysanthemum flower ornament with a small black ribbon on the right side of her head, calm sleepy amber-gold drooping eyes, gentle quiet expression. "
             "She wears a cream-white high-collared blouse with a ruffled stand-up collar, a wide black satin bow tie with an orange flower brooch, a short cream-white shoulder capelet with thin gold trim, "
@@ -50,18 +55,13 @@ EXTRA_ROWS = [
     "Row 4: making her entrance, rising from a crouch inside a burst of sparkles (frame 1 crouching, frame 2 standing with arms open); then a light swaying happy dance, leaning left then right (2 frames).",
 ]
 
-# Dafeiyu keeps her chibi maid look (the one exception to "adult proportions"), so her style lines drop
-# the adult-proportion clause and keep the modesty one.
-SD_STYLE = STYLE.replace("full body from head to feet", "full body from head to feet in chibi proportions")
-SD_SAFE = "Fully covered and modest maid outfit with a high neckline and long skirt, nothing revealing."
-
 GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
 def jobs(halves=False):
     out = []
     for cid, desc in CHARS.items():
-        style, safe = (SD_STYLE, SD_SAFE) if cid == "dafeiyu" else (STYLE, SAFE)
+        style, safe = STYLE, SAFE
         assert GRID in style
         for sheet, rows in (("base", BASE_ROWS), ("extra", EXTRA_ROWS)):
             if not halves:

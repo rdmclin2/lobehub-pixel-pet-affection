@@ -34,6 +34,9 @@ manifest = {
     'species': cid, 'kind': 'sprites', 'pixelated': True, 'frame': {'width': FW, 'height': FH},
     'actions': actions, 'outfits': {'daily': 'sheets/daily.png'},
 }
+# a description written by hand in an existing pack.json is kept
+old = os.path.join(dst, 'pack.json')
+if os.path.exists(old): manifest['description'] = json.load(open(old)).get('description') or manifest['description']
 with open(os.path.join(dst, 'pack.json'), 'w') as f:
     json.dump(manifest, f, ensure_ascii=False, indent=2); f.write('\n')
 print(dst, 'ok')

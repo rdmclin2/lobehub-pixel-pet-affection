@@ -2,6 +2,9 @@
 # usage: slice.py <sheet.png> <out.png> <cols> <rows> <figure_height_px> [--octree] [--max WxH]
 #   --key green: the sheet was generated on pure green (#00FF00) instead of magenta, for a character whose
 #   colours are close to magenta (Gemini's pink-violet hair tips get keyed out on magenta)
+#   --shared-box: crop every cell with one box for the whole sheet (the old behaviour). By default each action
+#   (two neighbouring cells, the model-chan layout) gets its own box and stands on the bottom of its cell, so a
+#   figure drawn lower in one cell does not leave the standing frames floating above the floor.
 #   --max WxH: scale down further when needed so a frame fits a W x H cell (fit_cells.py then only centres it)
 #   --octree: build the palette with fast octree instead of median cut, for a near-white character (GPT):
 #   median cut spends every colour on her whites and lavenders and maps small props (watermelon, cookie)
@@ -15,7 +18,8 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 octree = '--octree' in sys.argv
-argv = [x for x in sys.argv if x != '--octree']
+shared_box = '--shared-box' in sys.argv
+argv = [x for x in sys.argv if x not in ('--octree', '--shared-box')]
 green = False
 if '--key' in argv:
     i = argv.index('--key')
@@ -95,24 +99,40 @@ for j in range(rows):
         cells.append((c, fg))
         boxes.append((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1) if len(xs) else None)
 valid = [b for b in boxes if b]
-box = (min(b[0] for b in valid), min(b[1] for b in valid), max(b[2] for b in valid), max(b[3] for b in valid))
+union = lambda bs: (min(b[0] for b in bs), min(b[1] for b in bs), max(b[2] for b in bs), max(b[3] for b in bs))
+# the crop box of every cell: one for the sheet, or one per action (its two frames keep their relative motion)
+group = len(boxes) if shared_box else 2
+cell_box = []
+for g in range(0, len(boxes), group):
+    bs = [b for b in boxes[g:g + group] if b]
+    cell_box += [union(bs) if bs else None] * len(boxes[g:g + group])
 # scale so a typical standing figure (median height) becomes fig_h pixels tall
 med_h = sorted(b[3] - b[1] for b in valid)[len(valid) // 2]
 s = fig_h / med_h
-if max_wh: s = min(s, max_wh[0] / (box[2] - box[0]), max_wh[1] / (box[3] - box[1]))
-out_w, out_h = max(1, round((box[2] - box[0]) * s)), max(1, round((box[3] - box[1]) * s))
+big_w = max(b[2] - b[0] for b in cell_box if b)
+big_h = max(b[3] - b[1] for b in cell_box if b)
+if max_wh: s = min(s, max_wh[0] / big_w, max_wh[1] / big_h)
+out_w, out_h = max(1, round(big_w * s)), max(1, round(big_h * s))
 frames = []
-for c, fg in cells:
+for (c, fg), box in zip(cells, cell_box):
+    if box is None:
+        frames.append((Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)))
+        continue
+    w, h = max(1, round((box[2] - box[0]) * s)), max(1, round((box[3] - box[1]) * s))
     px = np.asarray(c)
     # green-screen spill: nothing on a green-keyed character is green, so green never exceeds red or blue
     if green: px = np.dstack([px[..., 0], np.minimum(px[..., 1], np.maximum(px[..., 0], px[..., 2])), px[..., 2]])
     rgba = np.dstack([px, (fg * 255).astype(np.uint8)])
     f = Image.fromarray(rgba, 'RGBA').crop(box)
-    rgb = f.convert('RGB').resize((out_w, out_h), Image.BOX)
-    a = f.getchannel('A').resize((out_w, out_h), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
+    rgb = f.convert('RGB').resize((w, h), Image.BOX)
+    a = f.getchannel('A').resize((w, h), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
     # strand-thin hair breaks up into specks and pinholes at this size: a 3 x 3 majority smooths the outline
     a = a.filter(ImageFilter.MedianFilter(3))
-    frames.append((rgb, a))
+    # centred, standing on the bottom of the cell
+    at = ((out_w - w) // 2, out_h - h)
+    full_rgb, full_a = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
+    full_rgb.paste(rgb, at); full_a.paste(a, at)
+    frames.append((full_rgb, full_a))
 # one palette for the whole sheet keeps colours steady between frames (64: a 166 x 226 frame has room for
 # small accents such as gold trim and two-coloured eyes, which 40 colours merged away)
 strip = Image.new('RGB', (out_w * len(frames), out_h))

@@ -4,7 +4,7 @@
 
 | 角色 | 厂商 | 主题色 | 美术 | 素材位置 |
 | --- | --- | --- | --- | --- |
-| 大肥鱼（DeepSeek 娘，Q 版鲸鱼女仆） | DeepSeek | `#2C4A8A` | 默认是同一 Q 版女仆形象的像素版；原有透明视频（21 段：15 个基础状态 + 拎起、走路和 4 段点击回应变体）保留为可选外观 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
+| 大肥鱼（DeepSeek 娘，鲸鱼女仆） | DeepSeek | `#2C4A8A` | 默认是和其他四位同样成人比例的像素版（依 ai-chan-sheets `03_DeepSeek娘_鲸鱼娘` 重画）；Q 版只保留在原有透明视频（21 段：15 个基础状态 + 拎起、走路和 4 段点击回应变体）保留为可选外观 | `src/renderer/assets/dafeiyu/`、`src/renderer/packs/dafeiyu-pixel/` |
 | 克洛蒂（Claude 娘，橘发菊纹） | Anthropic | `#C4622D` | 像素精灵图 | `src/renderer/packs/claude-pixel/` |
 | 格萝可（Grok 娘，黑金吸血鬼） | xAI | `#8E1F33` | 像素精灵图 | `src/renderer/packs/grok-pixel/` |
 | 杰米（Gemini 娘，四角星猫耳；第二批，2026-10-29） | Google | `#7B5CD6` | 像素精灵图 | `src/renderer/packs/gemini-pixel/` |
@@ -36,5 +36,5 @@ python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-prev
 
 - 克洛蒂、格萝可的身份锚点（发型、配色、服饰、标志物、主题色）取自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets) 的 `设定图/11_Claude娘_Anthropic`、`设定图/09_Grok娘_xAI`、`设定图/10_Gemini娘`、`设定图/02_GPT娘_白龙娘`（CC BY-NC-SA 4.0）；原始形象设计来自 ZipZipPipe《AI娘化》（[Pixiv 148186519](https://www.pixiv.net/artworks/148186519)，作者声明：可取用，需署名，不可商用）。像素图由 gpt-image-2.5 按文字提示词重新生成，没有使用 ai-chan-sheets `参考原图/` 下的未授权原图。
 - 为符合 `docs/pet-packs.md` 的内容要求，四人都按成年比例绘制；吉皮缇把原设的露肩、高开衩、腿环和半透明罩衣改成了长袖、闭合的及踝长裙和不透明长罩衣，龙翼画小并收拢，白玫瑰绳结只作饰物，不画 OpenAI 标志；杰米把原设的露脐上衣、短裤和腿环改成了高领上衣、及踝长裙和不透明连裤袜，四角星只作纹样，不画 Google 标志；格萝可把原设的露肩礼服、透肉连裤袜和腿环改成了高领礼服和不透明连裤袜，像素图里不画 X 战斧和 X 字样。
-- 大肥鱼沿用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的视频，授权见 `src/renderer/assets/dafeiyu/NOTICE.md`。`dafeiyu-pixel` 同样由 gpt-image-2.5 按文字提示词重画，不是从视频逐帧描摹；形象（Q 版鲸鱼女仆）沿用 dsh-pet 与 ai-chan-sheets `03_DeepSeek娘_鲸鱼娘`（基于 上善无形 原创角色「溟月」，CC BY-NC-SA 4.0）。
+- 大肥鱼沿用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的视频，授权见 `src/renderer/assets/dafeiyu/NOTICE.md`。`dafeiyu-pixel` 同样由 gpt-image-2.5 按文字提示词重画，不是从视频逐帧描摹，2026-10-29 起改为和其他四位一样的成人比例；形象（鲸鱼女仆）沿用 dsh-pet 与 ai-chan-sheets `03_DeepSeek娘_鲸鱼娘`（基于 上善无形 原创角色「溟月」，CC BY-NC-SA 4.0）。
 - 因此这些像素包以 **CC BY-NC-SA 4.0** 发布：署名 ZipZipPipe（原设）、lmy414（设定补全）、rdmclin2（像素化）；**禁止商用**；改编作品须以相同协议发布。代码仍按仓库的 MIT 授权。
