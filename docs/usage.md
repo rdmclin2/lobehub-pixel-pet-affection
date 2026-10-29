@@ -70,7 +70,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 - **首次**：在“选择你的模型娘”界面点角色卡，再点“唤醒”。
 - **之后切换**：悬停宠物 → ⋯ → **切换角色**，点想要的角色旁边的 **切换**（当前角色显示“✓ 当前”）。LobeHub agent、聊天记录和好感度保留，她的人设在下一句话前更新；身上的服饰新角色没有时换回日常服。切换后播放唤醒演出。
-- **换画风**：高级设置 → **外观（角色包）**。每位角色默认用新的像素包（166×226），也可以换成「旧版像素」（v0.7.0 及以前那套 83×113、更 Q 的像素图）；大肥鱼还能换成原版动画（dsh-pet 透明视频）。随时可以换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
+- **换画风**：高级设置 → **外观（角色包）**。每位角色默认用新的高清像素包（每帧 332×452，平滑绘制），也可以换成「旧版像素」（v0.7.0 及以前那套 83×113、更 Q 的像素图）；大肥鱼还能换成原版动画（dsh-pet 透明视频）。随时可以换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
 - **换模型**：⋯ → **切换角色** → **模型**（和角色放在一起，因为模型跟着角色走）。下拉框里只有当前角色自家厂商的模型：大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT（含 o 系列）。列表来自你在 LobeHub 里启用的模型：LobeHub 托管的排在前面；如果你还启用了该厂商自己的服务商（填了自己的 Key），那些模型也会列出，标“（自己的 … Key）”。只能出图的模型（如 Nano Banana）不列。没选过时用角色的默认模型（标“默认”）：大肥鱼 DeepSeek V4.1 Flash、克洛蒂 Claude Sonnet 5.5、格萝可 Grok 4.7、杰米 Gemini 3.8 Flash、吉皮缇 GPT-6 Luna；默认模型没启用时用列表第一个。选好后立即改 agent 的模型；换角色后，下一句话起换成新角色的模型，每位角色各自记住你的选择（存在 `settings.json` 的 `models`）。模型列表 10 分钟内复用，点“刷新”立即重读；`lh` 读不到列表（版本太旧或离线）时她继续用原来的模型。
 - **请别的模型娘来串门**：高级设置 → **同屏伙伴**，见下面的 E24。
 
@@ -152,7 +152,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 
 1. **准备美术（角色包）**：新建 `src/renderer/packs/kimi-pixel/`，内含 `pack.json` 和 `sheets/daily.png`。
    - 最快的做法是复制一个现有像素包，改 `pack.json` 的 `id`（`kimi-pixel`）、`name`、`author`、`license`、`description`，并把 `species` 改成 `kimi`。
-   - 自己画：按 [pet-packs.md](pet-packs.md) 的 schema 2，精灵图 664×1808（4 列 × 8 行，每帧 166×226），动作名就是状态名，只有 `idle` 必填，缺的状态按回落链降级。本仓库用 GPT Image 2.5 生成：`python3 scripts/art/model_chan_prompts.py --halves` 出提示词 → `lh gen image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` → `scripts/art/slice_sheet.py` → `scripts/art/fit_cells.py`（紫粉色系角色改用绿底生成，两个脚本都加 `--key green`；白色系角色在 `slice_sheet.py` 加 `--octree`，否则西瓜、饼干和肤色会被并进品红色调后删掉）→ `scripts/art/build_model_chan_pack.py` → `scripts/art/check_model_chan.py` 校验（参数见 [art/model-chan/README.md](../art/model-chan/README.md)）。
+   - 自己画：按 [pet-packs.md](pet-packs.md) 的 schema 2，精灵图 1328×3616（4 列 × 8 行，每帧 332×452；内置包是 WebP、`pixelated: false`，按平滑方式绘制），动作名就是状态名，只有 `idle` 必填，缺的状态按回落链降级。本仓库用 GPT Image 2.5 生成：`python3 scripts/art/model_chan_prompts.py --halves` 出提示词 → `lh gen image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` → `scripts/art/slice_sheet.py` → `scripts/art/fit_cells.py`（紫粉色系角色改用绿底生成，两个脚本都加 `--key green`；白色系角色在 `slice_sheet.py` 加 `--octree`，否则西瓜、饼干和肤色会被并进品红色调后删掉）→ `scripts/art/build_model_chan_pack.py` → `scripts/art/check_model_chan.py` 校验（参数见 [art/model-chan/README.md](../art/model-chan/README.md)）。
 2. **写数据文件** `src/characters/kimi.json`，照着 `src/characters/claude.json` 填：
 
    ```jsonc

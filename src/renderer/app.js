@@ -155,7 +155,8 @@ function drawSprite(s, now) {
   if (s.cur !== want) { s.cur = want; s.start = now; }
   const i = Math.floor(((now - s.start) / 1000) * a.fps) % a.frames;
   const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = !look.pixelated;
+  ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
   ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);

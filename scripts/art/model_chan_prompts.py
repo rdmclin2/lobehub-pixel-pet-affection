@@ -1,6 +1,6 @@
 # Prompts for the model-chan (模型娘) pixel sheets (scripts/art/model-chan.sh). Prints [{name, prompt}] as JSON.
 # --halves: each sheet as two 4 x 2 halves (<id>_<sheet>_a = rows 1-2, _b = rows 3-4), so a figure gets about
-#   twice the pixels of the 1024 x 1536 canvas; this is how the 166 x 226 packs were made.
+#   twice the pixels of the 1024 x 1536 canvas; this is how the 166 x 226 and the HD 332 x 452 packs were made.
 # Two generated sheets per character, both 4 columns x 4 rows = 8 actions x 2 frames:
 #   <id>_base  -> the 8 actions every sprite pack has (same order as pixel_prompts.py / build_pixel_pack.py)
 #   <id>_extra -> the 8 states only DeepSeek's video clips had (look, sad, hungry, eat_cookie, eat_fruit, play, hatch, evolve)

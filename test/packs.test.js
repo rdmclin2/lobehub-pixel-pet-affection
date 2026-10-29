@@ -45,7 +45,9 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     assert.deepEqual(Object.keys(px.actions).sort(), [...own].sort(), `${id} animates every state`);
     for (const st of own) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
     assert.deepEqual(resolveAction('walk', (n) => !!px.actions[n]), { name: 'idle', exact: false });
-    assert.deepEqual(px.frame, { width: 166, height: 226 }, 'high-resolution frames');
+    assert.deepEqual(px.frame, { width: 332, height: 452 }, 'HD frames');
+    assert.equal(px.pixelated, false, 'drawn smoothed, not as blocks');
+    assert.match(px.outfits.daily, /\.webp$/);
   }
 });
 
@@ -60,7 +62,8 @@ test('looks: the chosen pack, the character default, then its fallback pack; the
   assert.equal(P.chosenPack(packs, { grok: 'grok-clips' }, 'grok'), 'grok-pixel', 'a pack character has no clips');
   const l = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'daily' });
   assert.equal(l.kind, 'sprites');
-  assert.equal(l.url, 'pack://claude-pixel/sheets/daily.png');
+  assert.equal(l.url, 'pack://claude-pixel/sheets/daily.webp');
+  assert.equal(l.pixelated, false);
   assert.ok(l.actions.idle && l.actions.evolve && l.frame.width > 0);
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-clips', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'her clips');
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');

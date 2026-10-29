@@ -1,5 +1,5 @@
 # Fit a sliced 4 x 4 (or 4 x 2, --rows 2) sheet (slice_sheet.py output) into fixed cells, so every sheet of
-# every character uses the frame size of the built-in pixel packs (166 x 226): figure centred, standing on the cell's bottom, scaled down
+# every character uses the frame size given (the built-in HD packs use 332 x 452; default 166 x 226): figure centred, standing on the cell's bottom, scaled down
 # (nearest neighbour, keeps hard pixels) only when a frame is larger than the cell.
 # usage: fit_cells.py <sliced.png> <out.png> [cell_w cell_h] [--keep-violet] [--rows N] [--key green]
 #   --key green: the sheet was keyed on green (slice_sheet.py --key green): clean a green rim instead

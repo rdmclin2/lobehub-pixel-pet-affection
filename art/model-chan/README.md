@@ -14,7 +14,7 @@
 
 ## 像素包格式
 
-schema 2（见 `docs/pet-packs.md`）：RGBA PNG，单帧 166×226，一张 4 列 × 8 行（664×1808），16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）。
+schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 8 行（1328×3616），16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）。
 
 ## 重新生成
 
@@ -23,14 +23,14 @@ schema 2（见 `docs/pet-packs.md`）：RGBA PNG，单帧 166×226，一张 4 �
 ```bash
 python3 scripts/art/model_chan_prompts.py --halves > jobs.json # 每个角色 4 条提示词：<id>_base_a/_b、<id>_extra_a/_b（4×2 宫格）
 lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条一张，默认画布约 1024×1536（--width/--height 会报 ServerError）
-python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 180 --max 162x222   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
-python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png --rows 2  # 放进 166×226 的格子，去品红边（绿底生成的加 --key green）
-python3 scripts/art/build_model_chan_pack.py fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
+python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 360 --max 324x444 --smooth   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
+python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png 332 452 --rows 2  # 放进 332×452 的格子，去品红边（绿底生成的加 --key green）
+python3 scripts/art/build_model_chan_pack.py --hd fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
 python3 scripts/art/check_model_chan.py                       # 校验尺寸、格式、每个动作的每一帧都有内容
 python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-preview.png
 ```
 
-2026-10-29 起的 166×226 版本按上面的步骤生成：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
+2026-10-30 起的高清版（332×452，`--smooth` / `--hd`，同一批生成图）按上面的步骤生成；之前的 166×226 版本用的是 `4 2 180 --max 162x222`、64 色调色板：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
 
 ## 来源与授权
 

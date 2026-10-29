@@ -5,6 +5,8 @@
 #   --shared-box: crop every cell with one box for the whole sheet (the old behaviour). By default each action
 #   (two neighbouring cells, the model-chan layout) gets its own box and stands on the bottom of its cell, so a
 #   figure drawn lower in one cell does not leave the standing frames floating above the floor.
+#   --smooth: keep it an illustration instead of pixel art: full colour (no palette), Lanczos resampling in
+#   premultiplied alpha and soft anti-aliased edges. For the HD packs that are drawn smoothed, not as blocks.
 #   --max WxH: scale down further when needed so a frame fits a W x H cell (fit_cells.py then only centres it)
 #   --octree: build the palette with fast octree instead of median cut, for a near-white character (GPT):
 #   median cut spends every colour on her whites and lavenders and maps small props (watermelon, cookie)
@@ -19,7 +21,8 @@ from PIL import Image, ImageFilter
 
 octree = '--octree' in sys.argv
 shared_box = '--shared-box' in sys.argv
-argv = [x for x in sys.argv if x not in ('--octree', '--shared-box')]
+smooth = '--smooth' in sys.argv
+argv = [x for x in sys.argv if x not in ('--octree', '--shared-box', '--smooth')]
 green = False
 if '--key' in argv:
     i = argv.index('--key')
@@ -124,35 +127,40 @@ for (c, fg), box in zip(cells, cell_box):
     if green: px = np.dstack([px[..., 0], np.minimum(px[..., 1], np.maximum(px[..., 0], px[..., 2])), px[..., 2]])
     rgba = np.dstack([px, (fg * 255).astype(np.uint8)])
     f = Image.fromarray(rgba, 'RGBA').crop(box)
-    rgb = f.convert('RGB').resize((w, h), Image.BOX)
-    a = f.getchannel('A').resize((w, h), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
-    # strand-thin hair breaks up into specks and pinholes at this size: a 3 x 3 majority smooths the outline
-    a = a.filter(ImageFilter.MedianFilter(3))
+    if smooth:
+        # premultiplied, so the (black, transparent) background never bleeds into the edge colours
+        g = f.convert('RGBa').resize((w, h), Image.LANCZOS).convert('RGBA')
+        rgb = g.convert('RGB')
+        a = g.getchannel('A').point(lambda v: 0 if v < 24 else v) # drop the faintest ringing, keep soft edges
+    else:
+        rgb = f.convert('RGB').resize((w, h), Image.BOX)
+        a = f.getchannel('A').resize((w, h), Image.BOX).point(lambda v: 255 if v >= 128 else 0)
+        # strand-thin hair breaks up into specks and pinholes at this size: a 3 x 3 majority smooths the outline
+        a = a.filter(ImageFilter.MedianFilter(3))
     # centred, standing on the bottom of the cell
     at = ((out_w - w) // 2, out_h - h)
     full_rgb, full_a = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
     full_rgb.paste(rgb, at); full_a.paste(a, at)
     frames.append((full_rgb, full_a))
-# measure the floor on the final pixels: specks that only existed at full size (a faint mark under the feet)
-# no longer hold an action above the bottom of its cell
+# measure the floor on the final pixels, per frame: the generator does not draw both frames of an action at
+# the same height (大肥鱼's two idle frames were 25 px apart), and no action is meant to leave the ground (being
+# lifted is shown by the window). Solid pixels only, so a faint speck of soft edge (--smooth) is not the feet.
 if not shared_box:
-    for g in range(0, len(frames), 2):
-        bottoms = [a.getbbox()[3] for _, a in frames[g:g + 2] if a.getbbox()]
-        dy = out_h - max(bottoms) if bottoms else 0
+    for k, (rgb, a) in enumerate(frames):
+        box = a.point(lambda v: 255 if v >= 128 else 0).getbbox()
+        dy = out_h - box[3] if box else 0
         if dy > 0:
-            for k in range(g, min(g + 2, len(frames))):
-                rgb, a = frames[k]
-                r2, a2 = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
-                r2.paste(rgb, (0, dy)); a2.paste(a, (0, dy))
-                frames[k] = (r2, a2)
+            r2, a2 = Image.new('RGB', (out_w, out_h)), Image.new('L', (out_w, out_h), 0)
+            r2.paste(rgb, (0, dy)); a2.paste(a, (0, dy))
+            frames[k] = (r2, a2)
 # one palette for the whole sheet keeps colours steady between frames (64: a 166 x 226 frame has room for
 # small accents such as gold trim and two-coloured eyes, which 40 colours merged away)
 strip = Image.new('RGB', (out_w * len(frames), out_h))
 for k, (rgb, _) in enumerate(frames): strip.paste(rgb, (k * out_w, 0))
-pal = strip.quantize(colors=64, method=Image.Quantize.FASTOCTREE if octree else Image.MEDIANCUT, dither=Image.Dither.NONE)
+pal = None if smooth else strip.quantize(colors=64, method=Image.Quantize.FASTOCTREE if octree else Image.MEDIANCUT, dither=Image.Dither.NONE)
 sheet = Image.new('RGBA', (out_w * cols, out_h * rows), (0, 0, 0, 0))
 for k, (rgb, a) in enumerate(frames):
-    q = rgb.quantize(palette=pal, dither=Image.Dither.NONE).convert('RGBA')
+    q = rgb.convert('RGBA') if smooth else rgb.quantize(palette=pal, dither=Image.Dither.NONE).convert('RGBA')
     q.putalpha(a)
     sheet.paste(q, ((k % cols) * out_w, (k // cols) * out_h))
 sheet.save(dst, optimize=True)

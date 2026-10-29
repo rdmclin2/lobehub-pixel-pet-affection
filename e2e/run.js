@@ -1258,9 +1258,10 @@ async function packs() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '格萝可 is an animated pixel sprite from grok-pixel; dragging plays the lifted action', async () => {
+    await step(S, '格萝可 is an animated HD sprite from grok-pixel, drawn smoothed; dragging plays the lifted action', async () => {
       assert.equal(await key(), 'grok-pixel/daily');
-      assert.equal(await page.locator('#pet-look canvas.sprite.pixelated').count(), 1);
+      assert.equal(await page.locator('#pet-look canvas.sprite:not(.pixelated)').count(), 1, 'HD packs are not drawn as blocks');
+      assert.deepEqual(await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.sprite'); return [c.width, c.height, getComputedStyle(c).imageRendering]; }), [332, 452, 'auto']);
       const box = await page.locator('#char-wrap').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
@@ -1277,8 +1278,9 @@ async function packs() {
       const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
       const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
       fs.mkdirSync(path.join(src, 'sheets'));
-      fs.copyFileSync(path.join(base, 'sheets', 'daily.png'), path.join(src, 'sheets', 'mine.png'));
-      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: 'sheets/mine.png' } }));
+      const mine = `sheets/mine${path.extname(m.outfits.daily)}`;
+      fs.copyFileSync(path.join(base, m.outfits.daily), path.join(src, mine));
+      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: mine } }));
       const r = await page.evaluate((d) => window.pet.debugImportPack(d), src);
       assert.equal(r.ok, true, JSON.stringify(r));
       assert.ok(fs.existsSync(path.join(data, 'packs', 'my-grok', 'pack.json')), 'copied into the user pack folder');
