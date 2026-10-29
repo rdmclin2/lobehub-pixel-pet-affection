@@ -22,7 +22,7 @@
   "adult": false,
   "outfits": ["daily"],
   "signature": { "label": "橘白哥特长裙", "desc": "克洛蒂的原设服装：奶油白高领衬衫、短披肩和橘红长裙。" },
-  "art": { "kind": "pack", "packs": ["claude-pixel"], "fallbackPack": "claude-pixel" },
+  "art": { "kind": "pack", "packs": ["claude-pixel", "claude-classic"], "fallbackPack": "claude-pixel" },
   "fx": { "noMirror": [] },
   "credits": [
     "设定：lmy414/ai-chan-sheets 11_Claude娘_Anthropic（CC BY-NC-SA 4.0）",

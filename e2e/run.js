@@ -286,7 +286,7 @@ async function wardrobe() {
   };
   const closePanel = async () => {
     await page.click('#panel-close');
-    await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+    await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
   };
   const cardStatus = (id) => page.textContent(`.card[data-outfit="${id}"] .st`);
   try {
@@ -385,7 +385,7 @@ async function wardrobe() {
 
     await step(S, 'a topic unlocked at 熟悉 can be started: the agent gets it and the pet answers', async () => {
       await page.click('.topic[data-topic="riddle"]');
-      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
       const b = await waitReply(page, 15000);
       await idle();
       const runs = fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
@@ -1258,9 +1258,10 @@ async function packs() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '格萝可 is an animated pixel sprite from grok-pixel; dragging plays the lifted action', async () => {
+    await step(S, '格萝可 is an animated HD sprite from grok-pixel, drawn smoothed; dragging plays the lifted action', async () => {
       assert.equal(await key(), 'grok-pixel/daily');
-      assert.equal(await page.locator('#pet-look canvas.sprite.pixelated').count(), 1);
+      assert.equal(await page.locator('#pet-look canvas.sprite:not(.pixelated)').count(), 1, 'HD packs are not drawn as blocks');
+      assert.deepEqual(await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.sprite'); return [c.width, c.height, getComputedStyle(c).imageRendering]; }), [332, 452, 'auto']);
       const box = await page.locator('#char-wrap').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
@@ -1277,14 +1278,15 @@ async function packs() {
       const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
       const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
       fs.mkdirSync(path.join(src, 'sheets'));
-      fs.copyFileSync(path.join(base, 'sheets', 'daily.png'), path.join(src, 'sheets', 'mine.png'));
-      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: 'sheets/mine.png' } }));
+      const mine = `sheets/mine${path.extname(m.outfits.daily)}`;
+      fs.copyFileSync(path.join(base, m.outfits.daily), path.join(src, mine));
+      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: mine } }));
       const r = await page.evaluate((d) => window.pet.debugImportPack(d), src);
       assert.equal(r.ok, true, JSON.stringify(r));
       assert.ok(fs.existsSync(path.join(data, 'packs', 'my-grok', 'pack.json')), 'copied into the user pack folder');
       await openAdvanced();
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names.sort(), ['我的格萝可', '格萝可 · 像素'].sort());
+      assert.deepEqual(names, ['格萝可 · 像素', '格萝可 · 旧版像素', '我的格萝可'], 'hers in order (default first), then the imported one');
       assert.match(await page.textContent('.pack-opt[data-pack="my-grok"] .meta span'), /导入/);
       await page.click('.pack-opt[data-pack="my-grok"] .pick');
       await page.waitForSelector('.pack-opt.on[data-pack="my-grok"]');
@@ -1319,11 +1321,16 @@ async function packs() {
     }, page);
 
     await step(S, '大肥鱼 starts in her pixel pack and can switch to her original clips and back', async () => {
-      await openAdvanced();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="characters"]');
       await page.click('.char-opt[data-species="dafeiyu"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
+      await openAdvanced();
+      assert.equal(await page.locator('.char-opt').count(), 0, 'the character list is no longer in 高级设置');
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 原版动画']);
+      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
       assert.match(await page.textContent('.pack-opt[data-pack="dafeiyu-clips"] .meta span'), /透明视频 · 1 套服饰 · PC2005-cloud\/dsh-pet/);
       await page.click('#panel-close');
@@ -1342,6 +1349,35 @@ async function packs() {
       await page.click('#panel-close');
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
       return `${names.join(' / ')}; pixel → clips → pixel`;
+    }, page);
+
+    await step(S, 'every character can wear her v0.7.0 pixels (旧版像素) and go back to the new ones', async () => {
+      const seen = [];
+      for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="characters"]');
+        if (!(await page.locator(`.char-opt.on[data-species="${id}"]`).count())) {
+          await page.click(`.char-opt[data-species="${id}"] .pick`);
+          await page.waitForSelector(`.char-opt.on[data-species="${id}"]`);
+        }
+        await page.click('#panel-close');
+        await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
+        await openAdvanced();
+        assert.match(await page.textContent(`.pack-opt[data-pack="${id}-classic"] .meta span`), /像素动画 · 1 套服饰/);
+        await page.click(`.pack-opt[data-pack="${id}-classic"] .pick`);
+        await page.waitForSelector(`.pack-opt.on[data-pack="${id}-classic"]`);
+        await page.click('#panel-close');
+        await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${id}-classic/daily`, { timeout: 5000 });
+        await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 }); // past the wake-up after a switch
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: path.join(OUT, `pack-${id}-classic.png`) });
+        seen.push(`${id}-classic/daily`);
+        await openAdvanced();
+        await page.click(`.pack-opt[data-pack="${id}-pixel"] .pick`);
+        await page.click('#panel-close');
+        await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${id}-pixel/daily`, { timeout: 5000 });
+      }
+      return `${seen.join(', ')}; each back on her -pixel pack`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -1362,9 +1398,9 @@ async function models() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model).map((e) => `${e.provider}:${e.model}`) : []);
   const options = () => page.$$eval('#model-select option', (os) => os.map((o) => ({ key: o.value, label: o.textContent, selected: o.selected })));
-  const openAdvanced = async () => {
+  const openCharacters = async () => {
     await clickAct(page, 'menu');
-    await page.click('[data-menu="advanced"]');
+    await page.click('[data-menu="characters"]');
     await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
     await page.locator('#model-select').scrollIntoViewIfNeeded();
   };
@@ -1382,8 +1418,9 @@ async function models() {
       return modelEdits().join(', ');
     }, page);
 
-    await step(S, '高级设置 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
-      await openAdvanced();
+    await step(S, '⋯ → 切换角色 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
+      await openCharacters();
+      assert.equal(await page.textContent('#panel-title'), '切换角色');
       const os = await options();
       assert.deepEqual(os.map((o) => o.label), ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
       assert.equal(os.find((o) => o.selected).key, 'lobehub:claude-sonnet-5-5');
@@ -1419,11 +1456,11 @@ async function models() {
 
     await step(S, 'her next words run on GPT-6 Luna; back on 克洛蒂 her Opus pick returns', async () => {
       await page.click('#panel-close');
-      await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
       await page.evaluate(() => window.pet.chat('你好'));
       await idle();
       assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
-      await openAdvanced();
+      await openCharacters();
       await page.click('.char-opt[data-species="claude"] .pick');
       await page.waitForSelector('.char-opt.on[data-species="claude"]');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
@@ -2143,13 +2180,13 @@ async function rosterOne(ch) {
       fs.writeFileSync(path.join(OUT, `${S}-api.txt`), lines.join('\n') + '\n');
       return lines.join('; ');
     }, page);
-    await step(S, 'E14 switch character from the advanced settings, keeping the agent and affection', async () => {
+    await step(S, 'E14 switch character from ⋯ → 切换角色, keeping the agent and affection', async () => {
       if (await page.isVisible('#panel-close')) await page.click('#panel-close');
       await still();
       const next = ROSTER[(ch.idx + 1) % ROSTER.length];
       const before = await view(page);
       await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
+      await page.click('[data-menu="characters"]');
       await page.waitForSelector(`.char-opt[data-species="${next.id}"] .pick`);
       await page.click(`.char-opt[data-species="${next.id}"] .pick`);
       await page.waitForSelector(`.char-opt.on[data-species="${next.id}"]`);

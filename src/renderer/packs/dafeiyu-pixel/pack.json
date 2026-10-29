@@ -2,16 +2,16 @@
   "schema": 2,
   "id": "dafeiyu-pixel",
   "name": "大肥鱼 · 像素",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "author": "rdmclin2（gpt-image-2.5 生成，脚本像素化）；原设 ZipZipPipe，设定 lmy414",
   "license": "CC BY-NC-SA 4.0",
   "description": "DeepSeek 娘 · 鲸鱼女仆的像素版，和其他模型娘同样的成人比例（同人，非 DeepSeek 官方）。16 个动作，与原版动画的 15 个状态一一对应，另加拎起。",
   "species": "dafeiyu",
   "kind": "sprites",
-  "pixelated": true,
+  "pixelated": false,
   "frame": {
-    "width": 166,
-    "height": 226
+    "width": 332,
+    "height": 452
   },
   "actions": {
     "idle": {
@@ -112,6 +112,6 @@
     }
   },
   "outfits": {
-    "daily": "sheets/daily.png"
+    "daily": "sheets/daily.webp"
   }
 }

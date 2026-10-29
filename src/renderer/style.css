@@ -2,6 +2,8 @@
 html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; }
 body { font-family: "Courier New", "PingFang SC", "Microsoft YaHei", monospace; font-size: 13px; color: #2b2233; background: transparent; }
 canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+/* HD packs (pixelated: false) are drawn smoothed: the browser scales them with filtering, not as blocks */
+canvas.sprite:not(.pixelated) { image-rendering: auto; }
 .hidden { display: none !important; }
 .screen { height: 100%; padding: 14px; display: flex; flex-direction: column; align-items: center; }
 #onboarding, #hatching { background: #f4efe6; border: 4px solid #2b2233; box-shadow: inset 0 0 0 3px #d9cdb8; }

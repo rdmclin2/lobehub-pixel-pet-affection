@@ -23,7 +23,7 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-pixel', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
+  assert.deepEqual([...packs.keys()].sort(), ['claude-classic', 'claude-pixel', 'dafeiyu-classic', 'dafeiyu-pixel', 'gemini-classic', 'gemini-pixel', 'gpt-classic', 'gpt-pixel', 'grok-classic', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
@@ -45,7 +45,9 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     assert.deepEqual(Object.keys(px.actions).sort(), [...own].sort(), `${id} animates every state`);
     for (const st of own) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
     assert.deepEqual(resolveAction('walk', (n) => !!px.actions[n]), { name: 'idle', exact: false });
-    assert.deepEqual(px.frame, { width: 166, height: 226 }, 'high-resolution frames');
+    assert.deepEqual(px.frame, { width: 332, height: 452 }, 'HD frames');
+    assert.equal(px.pixelated, false, 'drawn smoothed, not as blocks');
+    assert.match(px.outfits.daily, /\.webp$/);
   }
 });
 
@@ -60,14 +62,29 @@ test('looks: the chosen pack, the character default, then its fallback pack; the
   assert.equal(P.chosenPack(packs, { grok: 'grok-clips' }, 'grok'), 'grok-pixel', 'a pack character has no clips');
   const l = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'daily' });
   assert.equal(l.kind, 'sprites');
-  assert.equal(l.url, 'pack://claude-pixel/sheets/daily.png');
+  assert.equal(l.url, 'pack://claude-pixel/sheets/daily.webp');
+  assert.equal(l.pixelated, false);
   assert.ok(l.actions.idle && l.actions.evolve && l.frame.width > 0);
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-clips', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'her clips');
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');
   const opts = P.packsFor(packs, 'dafeiyu');
-  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels and her clips');
-  assert.equal(opts[1].author, 'PC2005-cloud/dsh-pet');
-  assert.deepEqual(P.packsFor(packs, 'grok').map((x) => x.id), ['grok-pixel']);
+  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-classic', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels, the old pixels and her clips');
+  assert.equal(opts[2].author, 'PC2005-cloud/dsh-pet');
+  assert.deepEqual(P.packsFor(packs, 'grok').map((x) => x.id), ['grok-pixel', 'grok-classic'], 'the default first');
+});
+
+test('every character keeps her v0.7.0 pixels as a 旧版像素 pack she can switch to, the new pack staying the default', () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
+    const old = packs.get(`${id}-classic`);
+    assert.equal(old.species, id);
+    assert.match(old.name, /旧版像素$/);
+    assert.deepEqual(old.frame, { width: 83, height: 113 }, 'the v0.7.0 frame size');
+    assert.equal(Object.keys(old.actions).length, 16, 'every state animated');
+    assert.equal(P.chosenPack(packs, {}, id), `${id}-pixel`, 'not the default');
+    assert.equal(P.chosenPack(packs, { [id]: `${id}-classic` }, id), `${id}-classic`);
+    assert.equal(P.resolveLook(packs, { packId: `${id}-classic`, fallbackId: `${id}-pixel`, speciesId: id, outfitId: 'daily' }).packId, `${id}-classic`);
+  }
 });
 
 test('a pack with art for some outfits falls back to the character default pack for the rest', () => {

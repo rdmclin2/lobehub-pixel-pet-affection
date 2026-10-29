@@ -25,7 +25,7 @@ let pointerInside = false;
 let fx = null; // the shared effects layer (fx.js), created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
-let panelKind = null; // 'wardrobe' | 'topics' while a panel is open
+let panelKind = null; // 'wardrobe' | 'topics' | 'characters' | 'advanced' while a panel is open
 let panelNew = new Set(); // items that were "new" when the panel opened (marked seen right after)
 let toastTimer = null;
 const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
@@ -155,7 +155,8 @@ function drawSprite(s, now) {
   if (s.cur !== want) { s.cur = want; s.start = now; }
   const i = Math.floor(((now - s.start) / 1000) * a.fps) % a.frames;
   const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = !look.pixelated;
+  ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
   ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);
@@ -529,7 +530,7 @@ async function openPanel(kind) {
   panelMsg('');
   $('panel').classList.remove('hidden');
   renderPanel();
-  if (kind !== 'advanced') await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
+  if (kind === 'wardrobe' || kind === 'topics') await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
 }
 
 function closePanel() {
@@ -548,6 +549,7 @@ function renderPanel() {
   if (panelKind === 'wardrobe') renderWardrobe();
   else if (panelKind === 'topics') renderTopics();
   else if (panelKind === 'advanced') renderAdvanced();
+  else if (panelKind === 'characters') renderCharacters();
 }
 
 // 版本与更新: the version, when it last checked, what it found, and a button to check now.
@@ -592,25 +594,14 @@ function updateSection() {
 }
 
 // Advanced settings: unlock everything at once (to see all the content, or to skip the grind).
-let modelsRequested = false; // the model list is loaded once when 高级设置 first needs it
-function renderAdvanced() {
-  const a = view.affection;
-  const unlocked = (l) => `${l.filter((x) => x.unlocked).length}/${l.length}`;
-  $('panel-title').textContent = '高级设置';
-  $('panel-sub').textContent = `${progressLine()} · 话题 ${unlocked(view.topics)} · 服饰 ${unlocked(view.outfits)}`;
+let modelsRequested = false; // the model list is loaded once when 切换角色 first needs it
+// ⋯ → 切换角色: who the companion is, and the model her agent runs on (only her own vendor's models,
+// so it changes with her).
+function renderCharacters() {
+  $('panel-title').textContent = '切换角色';
+  $('panel-sub').textContent = `现在是「${view.species.nameZh}」（${view.species.vendor}）· ${progressLine()}`;
   const body = $('panel-body');
   body.innerHTML = '';
-  const sec = document.createElement('div');
-  sec.className = 'adv-section';
-  sec.innerHTML = '<h3>一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
-  const all = !a.next && a.value >= a.max;
-  sec.querySelector('.adv-text').textContent = '直接把好感度加满（♥100），所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。解锁后不能撤销，之后的互动照常计分。';
-  sec.querySelector('.adv-note').textContent = settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
-  const btn = sec.querySelector('#unlock-all');
-  btn.textContent = all ? '已经全部解锁' : '解锁全部好感度和服饰';
-  btn.disabled = all;
-  btn.addEventListener('click', unlockAllNow);
-
   // who the companion is: switching keeps the agent, its chat history and the affection
   const who = document.createElement('div');
   who.className = 'adv-section';
@@ -656,19 +647,39 @@ function renderAdvanced() {
     const r = await window.pet.setModel(sel.value);
     if (!r.ok) return panelMsg('这个模型现在不能选，点“刷新”再试试。');
     view = r.view;
-    renderAdvanced();
+    renderPanel();
     panelMsg(`模型已换成「${(view.model.options.find((o) => o.key === view.model.current) || {}).label}」。`, true);
   });
   mod.querySelector('#model-refresh').addEventListener('click', async () => {
     const r = await window.pet.refreshModels();
     view = r.view;
-    renderAdvanced();
+    renderPanel();
   });
   if (!m.loaded && !m.error && !modelsRequested) {
     modelsRequested = true;
-    window.pet.refreshModels().then((r) => { view = r.view; if (panelKind === 'advanced') renderAdvanced(); });
+    window.pet.refreshModels().then((r) => { view = r.view; if (panelKind === 'characters') renderPanel(); });
   }
   body.appendChild(mod);
+}
+
+function renderAdvanced() {
+  const a = view.affection;
+  const unlocked = (l) => `${l.filter((x) => x.unlocked).length}/${l.length}`;
+  $('panel-title').textContent = '高级设置';
+  $('panel-sub').textContent = `${progressLine()} · 话题 ${unlocked(view.topics)} · 服饰 ${unlocked(view.outfits)}`;
+  const body = $('panel-body');
+  body.innerHTML = '';
+  const sec = document.createElement('div');
+  sec.className = 'adv-section';
+  sec.innerHTML = '<h3>一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
+  const all = !a.next && a.value >= a.max;
+  sec.querySelector('.adv-text').textContent = '直接把好感度加满（♥100），所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。解锁后不能撤销，之后的互动照常计分。';
+  sec.querySelector('.adv-note').textContent = settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
+  const btn = sec.querySelector('#unlock-all');
+  btn.textContent = all ? '已经全部解锁' : '解锁全部好感度和服饰';
+  btn.disabled = all;
+  btn.addEventListener('click', unlockAllNow);
+
 
   // appearance: which pet pack dresses this companion; packs can be imported from a folder or .zip
   const look = document.createElement('div');
@@ -839,7 +850,7 @@ async function switchCharacter(c) {
   fx.setFacing('right');
   applyArt();
   refreshHud();
-  renderAdvanced();
+  renderPanel();
   fx.play('hatch', Fx.oneShotMs(isVideo(view.pet.speciesId), 'hatch'));
   panelMsg(`已切换为「${c.nameZh}」。`, true);
 }
@@ -1100,6 +1111,7 @@ function bindPetUi() {
     if (m === 'home') { fx.stopThrow(); fx.stopWalk(); window.pet.place('pet'); return; } // dsh-pet 回到原位
     if (m === 'quit') window.pet.quit();
     if (m === 'advanced') openPanel('advanced');
+    if (m === 'characters') openPanel('characters');
     if (m === 'check-update') {
       await openPanel('advanced');
       $('update-section').scrollIntoView({ block: 'nearest' });

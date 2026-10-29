@@ -1,0 +1,117 @@
+{
+  "schema": 2,
+  "id": "grok-classic",
+  "name": "格萝可 · 旧版像素",
+  "version": "2.0.0",
+  "author": "rdmclin2（gpt-image-2.5 生成，脚本像素化）；原设 ZipZipPipe，设定 lmy414",
+  "license": "CC BY-NC-SA 4.0",
+  "description": "v0.7.0 及以前的像素版（每帧 83×113，画面更小、更 Q）。Grok 娘 · 黑金吸血鬼（同人，非 xAI 官方）。16 位像素风，16 个动作（含大肥鱼全部 15 个状态和拎起）。",
+  "species": "grok",
+  "kind": "sprites",
+  "pixelated": true,
+  "frame": {
+    "width": 83,
+    "height": 113
+  },
+  "actions": {
+    "idle": {
+      "row": 0,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "pat": {
+      "row": 0,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "lifted": {
+      "row": 1,
+      "col": 0,
+      "frames": 2,
+      "fps": 6
+    },
+    "eat_rice": {
+      "row": 1,
+      "col": 2,
+      "frames": 2,
+      "fps": 3
+    },
+    "sleep": {
+      "row": 2,
+      "col": 0,
+      "frames": 2,
+      "fps": 1.5
+    },
+    "think": {
+      "row": 2,
+      "col": 2,
+      "frames": 2,
+      "fps": 2
+    },
+    "talk": {
+      "row": 3,
+      "col": 0,
+      "frames": 2,
+      "fps": 5
+    },
+    "happy": {
+      "row": 3,
+      "col": 2,
+      "frames": 2,
+      "fps": 5
+    },
+    "look": {
+      "row": 4,
+      "col": 0,
+      "frames": 2,
+      "fps": 1.5
+    },
+    "sad": {
+      "row": 4,
+      "col": 2,
+      "frames": 2,
+      "fps": 2
+    },
+    "hungry": {
+      "row": 5,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "eat_cookie": {
+      "row": 5,
+      "col": 2,
+      "frames": 2,
+      "fps": 3
+    },
+    "eat_fruit": {
+      "row": 6,
+      "col": 0,
+      "frames": 2,
+      "fps": 3
+    },
+    "play": {
+      "row": 6,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "hatch": {
+      "row": 7,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "evolve": {
+      "row": 7,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    }
+  },
+  "outfits": {
+    "daily": "sheets/daily.png"
+  }
+}
