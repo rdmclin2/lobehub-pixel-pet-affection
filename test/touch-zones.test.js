@@ -319,3 +319,39 @@ test('PetService: low-stage chest touch reports the penalty, repeated pokes get 
   assert.equal(third.reaction.streak, 'annoyed');
   assert.ok(SPECIES.dafeiyu.touch.lines.streak.annoyed.includes(third.line));
 });
+
+test('the renderer loads the zone table as a <script> (window.PetTouchZones) and hit-tests with it', () => {
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  const src = fs.readFileSync(require.resolve('../src/core/touch-zones'), 'utf8');
+  const win = {};
+  vm.runInNewContext(src, { self: win });
+  assert.equal(typeof win.PetTouchZones.zoneAt, 'function');
+  assert.equal(win.PetTouchZones.zoneAt(0.5, 0.05), 'head');
+  assert.equal(win.PetTouchZones.zoneAt(0.5, 0.94, { character: SPECIES.claude }), 'feet');
+  assert.equal(win.PetTouchZones.ZONES.butt.label, '臀');
+});
+
+test("Dafeiyu's chibi clip (pose 'video') has its own zone table: the five parts and her tail", () => {
+  const sp = SPECIES.dafeiyu;
+  const at = (x, y) => tz.zoneAt(x, y, { character: sp, pose: 'video' });
+  assert.equal(at(0.5, 0.2), 'head');
+  assert.equal(at(0.5, 0.45), 'face');
+  assert.equal(at(0.5, 0.63), 'chest');
+  assert.equal(at(0.2, 0.8), 'hands');
+  assert.equal(at(0.5, 0.86), 'butt');
+  assert.equal(at(0.5, 0.96), 'feet');
+  assert.equal(at(0.93, 0.8), 'tail');
+  assert.deepEqual(tz.validateTouch({ videoBox: [0.353, 0.222, 0.659, 0.867] }), []);
+  assert.equal(tz.validateTouch({ videoBox: [0.5, 0.2, 0.3, 1] }).length, 1);
+  // the pixel pack keeps the default table: (0.5, 0.45) is her folded hands there
+  assert.equal(tz.zoneAt(0.5, 0.45, { character: sp }), 'hands');
+});
+
+test('部位触摸 and its hover hint are on by default and can be switched off', () => {
+  const settings = require('../src/core/settings');
+  assert.equal(settings.PREFS.touchZones, true);
+  assert.equal(settings.PREFS.touchHint, true);
+  assert.deepEqual(settings.normalizePrefs({ touchZones: false }).touchZones, false);
+  assert.equal(settings.normalizePrefs({ touchZones: 'no' }).touchZones, true);
+});

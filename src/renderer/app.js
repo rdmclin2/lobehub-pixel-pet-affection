@@ -108,6 +108,7 @@ const sheetImages = new Map();
 function sheet(url) {
   if (!sheetImages.has(url)) {
     const img = new Image();
+    if (url.startsWith('pack:')) img.crossOrigin = 'anonymous'; // pack:// answers with CORS: her pixels stay readable for touch hit tests
     img.src = url;
     sheetImages.set(url, img);
   }
@@ -141,6 +142,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     return c;
   }
   const img = document.createElement('img');
+  if (look.url.startsWith('pack:')) img.crossOrigin = 'anonymous';
   img.className = `${className}${look.pixelated ? ' pixelated' : ''}`;
   img.alt = alt;
   img.draggable = false;
@@ -160,6 +162,8 @@ function drawSprite(s, now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
   ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);
+  const frame = `${img.src}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
+  if (canvas.dataset.frame !== frame) canvas.dataset.frame = frame;
 }
 function tickSprites(now) {
   for (const s of sprites) {
@@ -765,6 +769,8 @@ const PREF_LABELS = [
   ['voice', '朗读回复', '用系统自带的语音把她的回复和对外接口发来的话念出来，每位角色音调和语速不同；自动的碎碎念不念。系统没有中文语音时不会出声。'],
   ['memes', '梗图', '她偶尔在气泡里配一张自己的表情包（回复由 agent 自己挑，碎碎念随机）。'],
   ['collide', '互相碰撞', '桌面上有同屏伙伴时，被甩出去的她会把撞到的伙伴弹开。'],
+  ['touchZones', '部位触摸', '点她的头、胸、手、臀、脚等不同部位，她的反应和台词都不一样；乱碰会生气、扣好感。关掉后点哪里都只是摸摸她。'],
+  ['touchHint', '触摸提示', '鼠标停在她身上时，在指针旁标出这里是哪个部位（需开着“部位触摸”）。'],
 ];
 function behaviorSections() {
   const st = settings;
@@ -1202,7 +1208,8 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  bindPetPointer({ onClick: () => doAct('pat'), onMenu: openMenuAtPet });
+  bindPetPointer({ onClick: touchAt, onMenu: openMenuAtPet });
+  bindTouchHint();
   document.addEventListener('contextmenu', (e) => {
     if (!e.target.closest || !e.target.closest('.pet-hit')) return;
     e.preventDefault();
@@ -1221,7 +1228,7 @@ function openMenuAtPet() {
 }
 
 // Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
-// - a press without moving is a click (`onClick`);
+// - a press without moving is a click (`onClick`, given the pointerup event: where it landed);
 // - drag it and it is lifted; let go while moving fast and it is thrown (gravity, bounces off the
 //   screen edges); let go slowly and it is just put down;
 // - press twice quickly, pull and let go: the slingshot launches it the opposite way of the pull;
@@ -1237,7 +1244,7 @@ function bindPetPointer({ onClick, onMenu }) {
     clearTimeout(d.press);
     fx.setLifted(false);
     if (cancel || d.menu) return;
-    if (!d.moved) return d.caught ? null : onClick();
+    if (!d.moved) return d.caught ? null : onClick(e);
     if (d.sling) {
       const box = petHitBox();
       const v = Fx.slingshotVelocity(d.x - d.x0, d.y - d.y0, box ? box.w : 150);
@@ -1299,6 +1306,175 @@ function petHitBox() {
   const r = el && el.getBoundingClientRect();
   if (!r || !r.width) return null;
   return { x: Math.round(r.left + r.width * 0.15), y: Math.round(r.top + r.height * 0.1), w: Math.round(r.width * 0.7), h: Math.round(r.height * 0.9) };
+}
+
+// ---------- touching a body part (部位触摸, src/core/touch-zones.js) ----------
+// A click is mapped onto her art as the core's hit test wants it: x, y in 0..1 of the visible box (the
+// bounding box of the opaque pixels of what is drawn right now), plus whether the pixel under the
+// pointer is opaque (sheets come over pack:// with CORS, so the page may read them). Works for the
+// sprite canvas or picture (object-fit: contain in .char) and for Dafeiyu's clip (cropped by .vwrap),
+// mirrored when she faces left, at any pet size.
+const TZ = window.PetTouchZones;
+const touchOn = () => !settings || !settings.prefs || settings.prefs.touchZones !== false;
+const ALPHA_MIN = 24; // a pixel this opaque counts as her
+const SAMPLE_W = 320; // a clip frame is read scaled down to this width
+const NEAR_PX = 6; // a click this close to her (screen px) still counts: thin parts (a tail) move
+
+// The element her art is drawn in and its source size, or null while nothing is drawn yet.
+function artSource() {
+  if (isVideo(view && view.pet.speciesId)) {
+    const v = $('pet-video');
+    return v.videoWidth ? { el: v, w: v.videoWidth, h: v.videoHeight, video: true } : null;
+  }
+  const el = $('pet-look').firstElementChild;
+  if (el && el.tagName === 'CANVAS') return { el, w: el.width, h: el.height, video: false };
+  if (el && el.tagName === 'IMG' && el.naturalWidth) return { el, w: el.naturalWidth, h: el.naturalHeight, video: false };
+  return null;
+}
+
+// The alpha of the drawn frame and its opaque bounding box (source px); null if it cannot be read.
+// Kept for the frame on screen, so hovering and clicking read the pixels once per frame.
+let alphaCache = { key: null, map: null };
+function alphaMap(a) {
+  const key = a.video ? `${a.el.currentSrc}@${a.el.currentTime}` : a.el.tagName === 'CANVAS' ? a.el.dataset.frame : a.el.src;
+  if (key && alphaCache.key === key) return alphaCache.map;
+  const map = readAlpha(a);
+  alphaCache = { key, map };
+  return map;
+}
+function readAlpha(a) {
+  const k = Math.min(1, SAMPLE_W / a.w);
+  const w = Math.max(1, Math.round(a.w * k));
+  const h = Math.max(1, Math.round(a.h * k));
+  let data;
+  try {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(a.el, 0, 0, w, h);
+    data = ctx.getImageData(0, 0, w, h).data;
+  } catch {
+    return null; // a tainted picture: treat the whole frame as her
+  }
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] < ALPHA_MIN) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  const opaqueAt = (px, py, rSrc) => {
+    const cx = Math.floor(px * k);
+    const cy = Math.floor(py * k);
+    const r = Math.max(1, Math.ceil(rSrc * k));
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) if (x >= 0 && y >= 0 && x < w && y < h && data[(y * w + x) * 4 + 3] >= ALPHA_MIN) return true;
+    return false;
+  };
+  return { box: { x0: x0 / k, y0: y0 / k, x1: (x1 + 1) / k, y1: (y1 + 1) / k }, opaqueAt };
+}
+
+// Where client point (cx, cy) lands on her art: { x, y, opaque, pose, box } with `box` the visible
+// box on screen (client px, for placing the reaction), or null when she is not drawn.
+function artPoint(cx, cy) {
+  const a = artSource();
+  if (!a) return null;
+  const r = a.el.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  const fit = Math.min(r.width / a.w, r.height / a.h); // object-fit: contain, centred
+  const ox = r.left + (r.width - a.w * fit) / 2;
+  const oy = r.top + (r.height - a.h * fit) / 2;
+  const mirrored = $('pet-body').dataset.facing === 'left';
+  const px = mirrored ? a.w - (cx - ox) / fit : (cx - ox) / fit;
+  const py = (cy - oy) / fit;
+  const m = alphaMap(a);
+  // a clip from file:// cannot be read back: her box in the frame comes from her file (touch.videoBox)
+  const vb = !m && a.video && (speciesOf(view.pet.speciesId).touch || {}).videoBox;
+  const b = m ? m.box : vb ? { x0: vb[0] * a.w, y0: vb[1] * a.h, x1: vb[2] * a.w, y1: vb[3] * a.h } : { x0: 0, y0: 0, x1: a.w, y1: a.h };
+  const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
+  const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
+  const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
+  return { x: (px - b.x0) / (b.x1 - b.x0), y: (py - b.y0) / (b.y1 - b.y0), opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
+}
+
+// The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
+function zoneAtClient(cx, cy) {
+  const pt = artPoint(cx, cy);
+  if (!pt) return { zone: null, pt: null };
+  return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
+}
+
+// A click on her: touch the part it landed on. With 部位触摸 off, or between parts (a transparent
+// pixel, a spot no zone covers), it is the old single pat.
+async function touchAt(e) {
+  if (thinking || !view) return;
+  if (!touchOn() || !e || !Number.isFinite(e.clientX)) return doAct('pat');
+  const { zone, pt } = zoneAtClient(e.clientX, e.clientY);
+  if (!zone) return doAct('pat');
+  const r = await window.pet.touch(zone);
+  if (r.ok) showTouch(r, pt, { x: e.clientX, y: e.clientY });
+  return r;
+}
+
+// Her reaction: the zone's own clip (touch-<zone>) if her art has one, else the pat clip; and that
+// part's marks over her (fx.js touchFx: a hand patting her head, a blush, an anger mark, …).
+function showTouch(r, pt, at) {
+  const video = isVideo(view.pet.speciesId);
+  const sp = speciesOf(view.pet.speciesId);
+  const has = (n) => (video ? !!sp.clips[n] : !!(view.look && view.look.kind === 'sprites' && view.look.actions[n]));
+  const clip = has(r.reaction.anim) ? r.reaction.anim : 'pat';
+  // client px → px inside #pet-body (the stage is zoomed by the pet size)
+  const pb = $('pet-body');
+  const pr = pb.getBoundingClientRect();
+  const k = pr.width / (pb.offsetWidth || pr.width) || 1;
+  const lx = (x) => (x - pr.left) / k;
+  const ly = (y) => (y - pr.top) / k;
+  const box = { left: lx(pt.box.left), top: ly(pt.box.top), width: (pt.box.right - pt.box.left) / k, height: (pt.box.bottom - pt.box.top) / k, mirrored: pt.mirrored };
+  // her face in the box (0..1), for the blush: from her zone table (a chibi's face sits much lower)
+  const fz = TZ.zonesFor(sp, pt.pose).find((z) => z.id === 'face');
+  if (fz) box.face = fz.rects[0];
+  lastTouch = { n: (lastTouch ? lastTouch.n : 0) + 1, zone: r.zone, mood: r.reaction.mood, clip, line: r.line };
+  fx.touch({ zone: r.zone, mood: r.reaction.mood, clip, ms: video ? 3000 : 1600, box, at: { x: lx(at.x), y: ly(at.y) } });
+}
+let lastTouch = null;
+
+// Hovering over her with 触摸提示 on: the part under the pointer, named beside it.
+function bindTouchHint() {
+  const hint = $('zone-hint');
+  let pending = null; // the latest pointermove, looked at once per frame
+  const clear = () => {
+    pending = null;
+    hint.classList.add('hidden');
+    if ($('pet-body').dataset.hoverZone) $('pet-body').dataset.hoverZone = '';
+  };
+  const look = () => {
+    const e = pending;
+    pending = null;
+    if (!e) return;
+    if (!view || thinking || e.buttons || fx.lifted || fx.flying || !touchOn() || !(settings && settings.prefs && settings.prefs.touchHint)) return clear();
+    const { zone } = zoneAtClient(e.clientX, e.clientY);
+    if (!zone) return clear();
+    $('pet-body').dataset.hoverZone = zone;
+    hint.textContent = `👆 ${TZ.ZONES[zone].label}`;
+    hint.style.left = `${e.clientX + 12}px`;
+    hint.style.top = `${e.clientY + 10}px`;
+    hint.classList.remove('hidden');
+  };
+  for (const el of document.querySelectorAll('.pet-hit')) {
+    el.addEventListener('pointermove', (e) => {
+      if (!pending) requestAnimationFrame(look);
+      pending = { clientX: e.clientX, clientY: e.clientY, buttons: e.buttons };
+    });
+    el.addEventListener('pointerleave', clear);
+    el.addEventListener('pointerdown', clear);
+  }
 }
 
 // Thrown: in the air it is `lifted`; landing squashes it, then it shakes it off.
@@ -1419,7 +1595,7 @@ function animatePet() {
   const video = isVideo(view.pet.speciesId);
   fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
   const state = petStatus();
-  const r = video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : { name: state, exact: false };
+  const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : { name: state, exact: false };
   if (video) playClip($('pet-video'), sp, r.name);
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
@@ -1437,6 +1613,9 @@ window.petFx = {
   state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
+  // 部位触摸: what a client point maps to, and the last reaction shown
+  touchPoint: (cx, cy) => { const { zone, pt } = zoneAtClient(cx, cy); return pt ? { zone, x: pt.x, y: pt.y, opaque: pt.opaque, pose: pt.pose, mirrored: pt.mirrored, box: pt.box } : null; },
+  lastTouch: () => lastTouch,
   throw: (vx, vy) => throwPet({ vx, vy }),
   burst: (n) => fx.burst(n),
   error: () => say('（出错了：测试）', 'error', 'error', 'test'),
@@ -1503,7 +1682,7 @@ function onUpdateStatus(u) {
 
 // ---------- boot ----------
 async function main() {
-  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet, prefs: petPrefs, hitBox: petHitBox });
+  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), touchLayer: $('touch-fx'), api: window.pet, prefs: petPrefs, hitBox: petHitBox });
   window.pet.onKicked((v) => fx.kicked(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) }));
   if (VISITOR) return visitorMain();
   info = await window.pet.boot();
