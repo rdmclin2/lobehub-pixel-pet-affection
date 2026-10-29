@@ -65,7 +65,7 @@
   const IDLE_CUES = [
     { cue: 'look', weight: 4 }, // look around
     { cue: 'turn', weight: 3 }, // turn to face the other way (mirrors the character)
-    { cue: 'walk', weight: 3 }, // walk a few steps the way it faces (only with roaming on)
+    { cue: 'walk', weight: 2 }, // walk a few steps the way it faces (only with roaming on): about 1 cue in 6
     { cue: 'play', weight: 1 }, // a small action of its own
     { cue: 'happy', weight: 1 },
   ];
