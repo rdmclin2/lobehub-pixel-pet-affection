@@ -1597,6 +1597,7 @@ const ROSTER = [
   { id: 'grok', idx: 2, zh: '格萝可', vendor: 'xAI' },
   { id: 'gemini', idx: 3, zh: '杰米', vendor: 'Google' },
 ];
+const SPECIES_MEMES = { dafeiyu: 'onebowl', claude: 'think', grok: 'interesting', gemini: 'peek' };
 async function roster() {
   const only = process.argv[3];
   for (const ch of ROSTER) if (!only || only === ch.id) await rosterOne(ch);
@@ -1711,14 +1712,17 @@ async function rosterOne(ch) {
     }, page);
     await step(S, 'E5 dragged: she is lifted (dangling)', async () => {
       await settle();
+      await page.waitForTimeout(350); // not within 300 ms of the last click: that would be the slingshot
       const box = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
       await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2 - 8, { steps: 4 });
       await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 });
       await page.waitForFunction(() => document.getElementById('pet-body').classList.contains('lifted'), null, { timeout: 2000 }); // set on the next frame
-      const st = await fxState();
-      const out = st.video ? `lifted → clip ${await clip()}.webm + ❗ overlay` : await shows('lifted');
+      // every character has her own lifted art now (Dafeiyu: dsh-pet's drag clip, no ❗ stand-in)
+      const out = await shows('lifted');
+      assert.equal((await fxState()).exact, true, 'own lifted art');
+      assert.equal(await page.textContent('#char-fx'), '', 'no emoji stand-in');
       await page.screenshot({ path: path.join(OUT, `${S}-lifted.png`) });
       await page.waitForTimeout(250); // hold still before letting go: a drop, not a throw
       await page.mouse.up();
@@ -1814,8 +1818,243 @@ async function rosterOne(ch) {
       else assert.deepEqual(ids, ['daily']);
       return `${ids.length} outfit(s); daily = ${label}`;
     }, page);
-    await step(S, 'E14 switch character from the advanced settings, keeping the agent and affection', async () => {
+    // ---- the dsh-pet effects added in T-1163 (docs/dsh-pet-gap.md), for every character --------------
+    if (await page.isVisible('#panel-close')) await page.click('#panel-close');
+    const winOf = (pg) => app.evaluate(({ BrowserWindow }, t) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getTitle() === t || x.webContents.getURL().includes(t)); return w ? w.getBounds() : null; }, pg);
+    const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
+    const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x == null ? b.x : x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+    const waitLanded = () => page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
+    await step(S, 'N1 roaming: she walks a few steps the way she faces, and the window moves', async () => {
+      await idle();
+      await leave();
+      await page.waitForTimeout(300);
+      await toFloor(200);
+      await page.evaluate(() => window.petFx.face('right'));
+      const before = await mainBounds();
+      const walking = page.evaluate(() => window.petFx.walk());
+      await page.waitForFunction(() => window.petFx.state().state === 'walk' && document.getElementById('pet-body').dataset.state === 'walk', null, { timeout: 3000 });
+      await page.waitForTimeout(200); // the next frame draws it
+      const ws = await fxState();
+      const st = ws.video ? `state=walk clip=${await clip()}.webm` : `state=walk action=${ws.action} exact=${ws.exact} overlay ${await page.textContent('#char-fx')}`;
+      if (ws.video) assert.equal(await clip(), 'walk');
+      else assert.equal(await page.textContent('#char-fx'), '👣');
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: path.join(OUT, `${S}-walk.png`) });
+      await walking;
+      const after = await mainBounds();
+      const w = (await page.evaluate(() => window.petFx.stats())).lastWalk;
+      assert.notEqual(after.x, before.x, 'the window moved');
+      assert.equal(after.x, w.to);
+      assert.ok(Math.abs(after.x - before.x) >= 60 && Math.abs(after.x - before.x) <= 240 * 2);
+      return `${st}; window x ${before.x} → ${after.x} (facing ${w.facing})${(await fxState()).video ? '' : ', idle frames hop + 👣'}`;
+    }, page);
+    await step(S, 'N2 touch: a long press on her opens the menu', async () => {
+      await idle();
+      await leave();
+      await page.evaluate(() => {
+        const el = document.querySelector('#pet-body .pet-hit:not(.hidden)');
+        const r = el.getBoundingClientRect();
+        const o = { bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, screenX: window.screenX + r.left + r.width / 2, screenY: window.screenY + r.top + r.height / 2 };
+        el.dispatchEvent(new PointerEvent('pointerdown', o));
+      });
+      await page.waitForSelector('#main-menu:not(.hidden)', { timeout: 2000 });
+      const ms = await page.evaluate(() => performance.now());
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, pointerType: 'touch' })));
+      assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true);
+      return `menu open after a 500 ms hold (no mouse); items: ${(await page.locator('#main-menu .btn:not(.hidden)').allTextContents()).slice(0, 4).join(' / ')}…`;
+    }, page);
+    await step(S, 'N3 right click on her opens the same menu', async () => {
+      await page.evaluate(() => document.getElementById('main-menu').classList.add('hidden'));
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click({ button: 'right' });
+      await page.waitForSelector('#main-menu:not(.hidden)', { timeout: 2000 });
+      await toFloor(0);
+      await page.click('[data-menu="home"]');
+      await page.waitForTimeout(300);
+      const home = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); return { b: w.getBounds(), wa: screen.getPrimaryDisplay().workArea }; });
+      assert.equal(home.b.x, home.wa.x + home.wa.width - home.b.width - 24, 'back in the bottom-right corner');
+      return `contextmenu → ⋯ menu; 回到右下角 → window at ${home.b.x},${home.b.y}`;
+    });
+    await step(S, 'N4 动作 menu: play any effect on request', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="actions"]');
+      await page.waitForSelector('#action-menu:not(.hidden)');
+      await page.screenshot({ path: path.join(OUT, `${S}-action-menu.png`) });
+      await page.click('#action-menu [data-cue="look"]');
+      return `${(await page.locator('#action-menu .btn').allTextContents()).join(' ')} → ${await shows('look')}`;
+    }, page);
+    await step(S, 'N5 slingshot: press twice, pull left and hold still, let go — she flies right', async () => {
+      await settle();
+      await toFloor(200);
+      const box = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.up(); // first press (a pat)
+      await page.mouse.down(); // second press within 300 ms: the slingshot
+      await page.mouse.move(cx - 70, cy + 10, { steps: 6 });
+      await page.waitForTimeout(400); // held still: a plain drag would just be put down
+      const pulled = await mainBounds();
+      await page.mouse.up();
+      await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+      await page.screenshot({ path: path.join(OUT, `${S}-slingshot.png`) });
+      await waitLanded();
+      const after = await mainBounds();
+      assert.ok(after.x > pulled.x + 50, `launched right: ${pulled.x} → ${after.x}`);
+      return `pulled to x=${pulled.x}, launched opposite → landed x=${after.x}`;
+    }, page);
+    await step(S, 'N6 catch her while she flies: a score pops up', async () => {
+      await toFloor(380);
+      const flying = page.evaluate(() => window.petFx.throw(-900, -1500));
+      await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+      await page.waitForTimeout(120);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').dispatchEvent('pointerdown', { button: 0, pointerId: 3, pointerType: 'mouse', isPrimary: true });
+      await page.waitForSelector('.score-pop', { timeout: 2000 });
+      const txt = await page.textContent('.score-pop');
+      await page.screenshot({ path: path.join(OUT, `${S}-score.png`) });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, pointerType: 'mouse' })));
+      await flying;
+      const stt = await page.evaluate(() => window.petFx.stats());
+      assert.ok(stt.lastScore > 0);
+      return `caught mid-air: "${txt}" (${stt.lastScore} points), sparks`;
+    }, page);
+    await step(S, 'N7 a hard landing squashes her flatter', async () => {
+      await toFloor(300);
+      await page.evaluate(() => window.petFx.throw(0, -1800));
+      await waitLanded();
+      const stt = await page.evaluate(() => window.petFx.stats());
+      const sq = await page.evaluate(() => document.getElementById('pet-body').style.getPropertyValue('--sq'));
+      assert.ok(stt.lastSquash < 0.8, `squash ${stt.lastSquash}`);
+      return `landing squash scaleY ${stt.lastSquash} (CSS --sq ${sq})`;
+    });
+    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, memes and collisions on by default)', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#behavior-section');
+      const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
+      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on']);
+      await page.locator('#behavior-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
+      await page.check('#behavior-section input[data-pref="clickSound"]');
+      await page.check('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复'));
+      return prefs.join(', ') + ' → switched on: click sound, voice';
+    }, page);
+    await step(S, 'N9 click sound when she is clicked (setting on)', async () => {
       await page.click('#panel-close');
+      await settle();
+      const before = (await page.evaluate(() => window.petFx.stats())).sounds;
+      await hover(page);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await page.waitForFunction((b) => window.petFx.stats().sounds > b, before, { timeout: 3000 });
+      return `pop played (${before} → ${(await page.evaluate(() => window.petFx.stats())).sounds})`;
+    });
+    const meme = SPECIES_MEMES[ch.id];
+    await step(S, 'N10 memes: a reply tagged with one of her memes shows the picture in the bubble', async () => {
+      await page.waitForTimeout(3200);
+      await idle();
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', `看这个 [梗图:${meme}]`);
+      await page.press('#chat-input', 'Enter');
+      await leave();
+      await page.waitForSelector(`#bubble[data-meme="${meme}"]`, { timeout: 15000 });
+      await page.waitForFunction(() => { const i = document.getElementById('meme-sticker'); return !i.classList.contains('hidden') && i.complete && i.naturalWidth > 0; });
+      const text = await bubbleText(page);
+      assert.doesNotMatch(text, /梗图/);
+      await page.screenshot({ path: path.join(OUT, `${S}-meme.png`) });
+      return `bubble "${text.trim()}" + sticker ${await page.getAttribute('#meme-sticker', 'src')}`;
+    }, page);
+    await step(S, 'N11 voice: her reply is read aloud with her own pitch and pace', async () => {
+      const sp = await page.evaluate(() => window.petFx.lastSpeech());
+      assert.ok(sp, 'an utterance was queued');
+      assert.equal(sp.species, ch.id);
+      assert.equal(sp.text, 'echo: 看这个');
+      return `speechSynthesis.speak("${sp.text}") lang ${sp.lang}, pitch ${sp.pitch}, rate ${sp.rate}; system voices here: ${sp.systemVoices} (${sp.voice || 'none — this Linux box has no speech engine'}), status ${sp.status}`;
+    });
+    const guest = ROSTER[(ch.idx + 1) % ROSTER.length];
+    let guestPage = null;
+    // a knocked pet can knock the other one back: wait until both are on the ground
+    const still = async () => {
+      for (const pg of [page, guestPage]) if (pg && !pg.isClosed()) await pg.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 20000 });
+      await page.waitForTimeout(300);
+    };
+    await step(S, `N12 同屏伙伴: ${guest.zh} visits in her own window`, async () => {
+      await idle();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector(`#visitor-section input[data-visitor="${guest.id}"]`);
+      const opened = app.waitForEvent('window', { timeout: 10000 });
+      await page.check(`#visitor-section input[data-visitor="${guest.id}"]`);
+      guestPage = await opened;
+      await guestPage.waitForFunction(() => window.petFx && window.petFx.state() && window.petFx.state().species, null, { timeout: 10000 });
+      const gs = await guestPage.evaluate(() => window.petFx.state());
+      assert.equal(gs.species, guest.id);
+      await page.locator('#visitor-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, `${S}-visitor-settings.png`) });
+      await page.click('#panel-close');
+      await guestPage.waitForTimeout(600);
+      await guestPage.screenshot({ path: path.join(OUT, `${S}-visitor-${guest.id}.png`) });
+      return `visitor window ${guestPage.url().split('?')[1]} shows ${gs.species} (${gs.state})`;
+    }, page);
+    await step(S, `N13 knock into ${guest.zh}: the thrown pet hits her and she flies off`, async () => {
+      await settle();
+      const gb = await app.evaluate(({ BrowserWindow, screen }) => { const v = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(v.getBounds()).workArea; v.setPosition(wa.x + 20, wa.y + wa.height - v.getBounds().height); return v.getBounds(); });
+      await page.waitForTimeout(1300); // the visitor reports where she is
+      await toFloor(gb.x + gb.width + 60);
+      const res = await page.evaluate(() => window.petFx.throw(-1700, -150));
+      const gstats = await guestPage.evaluate(() => window.petFx.stats());
+      await guestPage.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
+      const ga = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('visitor=')).getBounds());
+      await guestPage.screenshot({ path: path.join(OUT, `${S}-visitor-after-hit.png`) });
+      assert.ok(res.collisions >= 1, JSON.stringify(res));
+      assert.ok(gstats.kicked >= 1, 'the visitor was kicked');
+      return `${res.collisions} collision(s), hits ${[...new Set(res.hits)].join(', ')}; ${guest.id} window ${gb.x},${gb.y} → ${ga.x},${ga.y}`;
+    }, page);
+    await step(S, 'N14 local HTTP API: switched on in settings, then driven with curl-like calls', async () => {
+      await still();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#api-on');
+      await page.fill('#api-port', String(17400 + ch.idx));
+      await page.dispatchEvent('#api-port', 'change');
+      await page.check('#api-on');
+      await page.waitForFunction(() => /正在监听/.test(document.getElementById('api-st').textContent), null, { timeout: 5000 });
+      await page.locator('#api-section').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, `${S}-api-settings.png`) });
+      const st = await view(page);
+      const token = st.settings.api.token;
+      const port = st.settings.api.port;
+      const call = async (method, p, body, tok = token) => {
+        const r = await fetch(`http://127.0.0.1:${port}/pixel-pet${p}`, { method, headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+        return { status: r.status, json: await r.json() };
+      };
+      await page.click('#panel-close');
+      const lines = [];
+      const no = await call('GET', '/state', null, 'wrong-token');
+      assert.equal(no.status, 401);
+      lines.push(`GET /state (bad token) → ${no.status}`);
+      const s1 = await call('GET', '/state');
+      assert.equal(s1.json.pet.species, ch.id);
+      lines.push(`GET /state → ${s1.status} ${s1.json.pet.species} ${s1.json.fx.state}`);
+      const sy = await call('POST', '/say', { text: `来自脚本的问候（${ch.zh}）` });
+      await page.waitForFunction((t) => document.getElementById('bubble').textContent.includes(t), `来自脚本的问候`, { timeout: 5000 });
+      lines.push(`POST /say → ${sy.status}`);
+      await still();
+      const an = await call('POST', '/anim', { state: 'happy' });
+      assert.equal(an.status, 200, JSON.stringify(an.json));
+      await page.waitForFunction(() => window.petFx.state().state === 'happy', null, { timeout: 3000 });
+      lines.push(`POST /anim happy → ${an.status}`);
+      await page.screenshot({ path: path.join(OUT, `${S}-api-say.png`) });
+      const th = await call('POST', '/throw', { angle: 60, power: 1 });
+      assert.equal(th.status, 200);
+      await still();
+      lines.push(`POST /throw → ${th.status} ${th.json.bounces} bounces`);
+      fs.writeFileSync(path.join(OUT, `${S}-api.txt`), lines.join('\n') + '\n');
+      return lines.join('; ');
+    }, page);
+    await step(S, 'E14 switch character from the advanced settings, keeping the agent and affection', async () => {
+      if (await page.isVisible('#panel-close')) await page.click('#panel-close');
+      await still();
       const next = ROSTER[(ch.idx + 1) % ROSTER.length];
       const before = await view(page);
       await clickAct(page, 'menu');

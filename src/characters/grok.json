@@ -26,6 +26,14 @@
   "credits": [
     "设定：lmy414/ai-chan-sheets 09_Grok娘_xAI（CC BY-NC-SA 4.0）",
     "原设：ZipZipPipe《AI娘化》（Pixiv 148186519，署名、不可商用）",
-    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）"
+    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
+    "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
+  ],
+  "voice": { "lang": "zh-CN", "pitch": 1.15, "rate": 1.12, "prefer": ["Xiaoyi", "Tingting"] },
+  "memes": [
+    { "id": "interesting", "label": "哈！有意思", "desc": "露小尖牙指着前方大笑，觉得有趣、来劲时" },
+    { "id": "thatsit", "label": "就这？", "desc": "抱臂挑眉的得意脸，吐槽、不以为然时" },
+    { "id": "nightowl", "label": "夜猫子上线", "desc": "月亮和小蝙蝠前挥手，晚上、熬夜时" },
+    { "id": "roast", "label": "吐槽模式启动", "desc": "拿麦克风开喷（玩笑），要吐槽时" }
   ]
 }

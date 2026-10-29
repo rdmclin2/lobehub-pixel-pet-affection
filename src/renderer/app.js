@@ -1,7 +1,10 @@
 'use strict';
 
 const Fx = window.PetFx;
+const Voice = window.PetVoice;
 const $ = (id) => document.getElementById(id);
+// A visiting model-chan (同屏伙伴) runs this same page in its own small window: index.html?visitor=<id>.
+const VISITOR = new URLSearchParams(location.search).get('visitor');
 const FOOD_SPRITE = { rice: 'rice', cookie: 'cookie', fruit: 'fruit' };
 // 素材署名: every character's credits, from its file (src/characters/<id>.json).
 const credits = () => ['角色均为同人形象，不是厂商官方形象；美术仅限非商业使用。', ...info.species.flatMap((sp) => ['', `${sp.title}「${sp.nameZh}」`, ...sp.credits.map((c) => `· ${c}`)])].join('\n');
@@ -30,7 +33,7 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 // Every settings update also carries the pet size: the character area scales with it (style.css .stage).
 function setSettings(st) {
   settings = st;
-  if (st && st.petScale) showScale(st.petScale);
+  if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
 }
 
 function showScale(k) {
@@ -121,7 +124,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     v.loop = true;
     v.autoplay = true;
     v.playsInline = true;
-    if (speciesId) v.src = `${speciesOf(speciesId).clipDir}/${speciesOf(speciesId).clips.idle}`;
+    if (speciesId) v.src = `${speciesOf(speciesId).clipDir}/${[].concat(speciesOf(speciesId).clips.idle)[0]}`;
     wrap.appendChild(v);
     return wrap;
   }
@@ -169,11 +172,15 @@ function setLook(slot, look, opts) {
 }
 
 // A video character plays one clip per state (resolved through fx.FALLBACK when it has none).
+// A state may have several clips (variants, e.g. Dafeiyu's click reactions): each time it starts, one
+// is picked that did not play last time.
 function playClip(video, sp, key, loop = true) {
   if (video.dataset.key === key) return;
   video.dataset.key = key;
   video.loop = loop;
-  video.src = `${sp.clipDir}/${sp.clips[key]}`;
+  const file = Fx.pickVariant(sp.clips[key], video.dataset.file || null);
+  video.dataset.file = file;
+  video.src = `${sp.clipDir}/${file}`;
   video.play().catch(() => {});
 }
 const clipFor = (sp, state) => Fx.resolveAction(state, (n) => !!sp.clips[n]);
@@ -691,9 +698,91 @@ function renderAdvanced() {
     panelMsg('宠物大小已恢复为 100%。', true);
   });
   body.appendChild(size);
+  for (const el of behaviorSections()) body.appendChild(el);
   body.appendChild(sec);
   body.appendChild(updateSection());
   renderUpdateSection();
+}
+
+// 高级设置 → 桌宠行为 / 同屏伙伴 / 对外接口: the desktop effects ported from dsh-pet.
+const PREF_LABELS = [
+  ['roam', '自己走动', '空闲时偶尔朝面向的方向走几步（每次 60–240 像素，到屏幕边会掉头）。鼠标停在她身上、她在忙或开着面板时不走。关掉后她只在原地待机和做小动作。'],
+  ['clickSound', '点击音效', '点她时“啵”一声（100 毫秒内连点只响一次）。'],
+  ['voice', '朗读回复', '用系统自带的语音把她的回复和对外接口发来的话念出来，每位角色音调和语速不同；自动的碎碎念不念。系统没有中文语音时不会出声。'],
+  ['memes', '梗图', '她偶尔在气泡里配一张自己的表情包（回复由 agent 自己挑，碎碎念随机）。'],
+  ['collide', '互相碰撞', '桌面上有同屏伙伴时，被甩出去的她会把撞到的伙伴弹开。'],
+];
+function behaviorSections() {
+  const st = settings;
+  const beh = document.createElement('div');
+  beh.className = 'adv-section';
+  beh.id = 'behavior-section';
+  beh.innerHTML = '<h3>桌宠行为</h3><p class="adv-note">这些效果所有角色都有，只是素材和声音不同。也能拖着她甩出去、双击后拉开当弹弓、在她飞的时候点中她得分；触屏上长按她打开菜单。</p>';
+  for (const [k, label, desc] of PREF_LABELS) {
+    const row = document.createElement('label');
+    row.className = 'pref-row';
+    row.innerHTML = '<input type="checkbox" /><span><b></b><small></small></span>';
+    const box = row.querySelector('input');
+    box.dataset.pref = k;
+    box.checked = !!st.prefs[k];
+    row.querySelector('b').textContent = label;
+    row.querySelector('small').textContent = desc;
+    box.addEventListener('change', async () => {
+      const r = await window.pet.setPrefs({ [k]: box.checked });
+      setSettings(r.settings);
+      panelMsg(`${label}：${box.checked ? '开' : '关'}。`, true);
+    });
+    beh.appendChild(row);
+  }
+
+  const vis = document.createElement('div');
+  vis.className = 'adv-section';
+  vis.id = 'visitor-section';
+  vis.innerHTML = `<h3>同屏伙伴</h3><p class="adv-text">请其他模型娘来桌面上串门（最多 ${3} 位）。她们没有自己的 agent，不聊天、不计好感，只陪着走动、被点、被甩，打开“互相碰撞”还会被撞开。悬停在她身上点 × 送她回去。</p><div class="char-list"></div>`;
+  for (const c of view.characters.filter((x) => !x.current)) {
+    const row = document.createElement('label');
+    row.className = 'pref-row';
+    row.style.setProperty('--accent', c.accent);
+    row.innerHTML = '<input type="checkbox" /><span><b></b><small></small></span>';
+    const box = row.querySelector('input');
+    box.dataset.visitor = c.id;
+    box.checked = st.visitors.includes(c.id);
+    row.querySelector('b').textContent = `${c.nameZh}（${c.vendor}）`;
+    row.querySelector('small').textContent = c.title;
+    box.addEventListener('change', async () => {
+      const next = box.checked ? [...settings.visitors, c.id] : settings.visitors.filter((v) => v !== c.id);
+      const r = await window.pet.setVisitors(next);
+      setSettings(r.settings);
+      if (box.checked && !r.settings.visitors.includes(c.id)) { box.checked = false; panelMsg('同屏伙伴最多 3 位。'); return; }
+      panelMsg(box.checked ? `${c.nameZh}来串门了。` : `${c.nameZh}回去了。`, true);
+    });
+    vis.querySelector('.char-list').appendChild(row);
+  }
+
+  const api = document.createElement('div');
+  api.className = 'adv-section';
+  api.id = 'api-section';
+  api.innerHTML = '<h3>对外接口（本机 HTTP）</h3><p class="adv-text">让本机的脚本或其他程序驱动她：说话、播动作、抛出去、和 agent 聊一句、读状态。只监听 127.0.0.1，每次调用都要带令牌（<code>Authorization: Bearer &lt;令牌&gt;</code>）。默认关闭。</p><label class="pref-row"><input type="checkbox" id="api-on" /><span><b>开启对外接口</b><small id="api-st"></small></span></label><div class="size-row"><span>端口</span><input id="api-port" type="number" min="1024" max="65535" /><button id="api-token-new" class="btn">换一个令牌</button></div><code id="api-token" class="api-token"></code><pre id="api-routes" class="api-routes"></pre>';
+  const on = api.querySelector('#api-on');
+  const port = api.querySelector('#api-port');
+  on.checked = st.api.enabled;
+  port.value = String(st.api.port);
+  const paint = (status) => {
+    api.querySelector('#api-token').textContent = settings.api.token ? `令牌：${settings.api.token}` : '开启时生成令牌';
+    api.querySelector('#api-st').textContent = status && status.listening ? `正在监听 http://127.0.0.1:${status.port}/pixel-pet/` : status && status.error ? `没能开启：${status.error}` : '未开启';
+    api.querySelector('#api-routes').textContent = ['GET  /pixel-pet/state', 'POST /pixel-pet/say    {"text":"…"}', 'POST /pixel-pet/anim   {"state":"walk"}', 'POST /pixel-pet/throw  {"angle":60,"power":1.2}', 'POST /pixel-pet/chat   {"text":"…"}'].join('\n');
+  };
+  const apply = async (opts) => {
+    const r = await window.pet.setApi(opts);
+    setSettings(r.settings);
+    on.checked = r.settings.api.enabled;
+    paint(r.status);
+  };
+  on.addEventListener('change', () => apply({ enabled: on.checked }));
+  port.addEventListener('change', () => apply({ port: Number(port.value) }));
+  api.querySelector('#api-token-new').addEventListener('click', () => apply({ newToken: true }));
+  window.pet.apiStatus().then(paint);
+  return [beh, vis, api];
 }
 
 async function switchCharacter(c) {
@@ -825,12 +914,21 @@ async function startTopic(t) {
   if (!r.ok && r.reason === 'canceled') say('（好吧，不聊了。）', 'canceled', 'fallback');
 }
 
-function say(text, kind, source, reason) {
+function say(text, kind, source, reason, meme = null) {
   const b = $('bubble');
   clearTimeout(bubbleTimer);
   b.classList.remove('thinking');
   b.classList.remove('hidden');
   b.textContent = text;
+  // a meme picture (core/memes.js): a sticker beside her while the line is shown
+  b.dataset.meme = meme ? meme.id : '';
+  const st = $('meme-sticker');
+  st.classList.toggle('hidden', !meme);
+  if (meme) {
+    st.src = meme.url;
+    st.alt = meme.label;
+    st.title = meme.label;
+  }
   b.scrollTop = 0;
   b.dataset.kind = kind || '';
   b.dataset.source = source || '';
@@ -839,9 +937,33 @@ function say(text, kind, source, reason) {
   // work status: a failed turn shows the pet upset for a moment instead of talking
   if (kind === 'error' && fx) { talkUntil = 0; fx.play('sad', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'sad')); }
   const hideLater = (ms) => {
-    bubbleTimer = setTimeout(() => (bubbleHold ? hideLater(3000) : b.classList.add('hidden')), ms);
+    bubbleTimer = setTimeout(() => (bubbleHold ? hideLater(3000) : (b.classList.add('hidden'), $('meme-sticker').classList.add('hidden'))), ms);
   };
-  hideLater(Math.min(45000, 6000 + text.length * 150));
+  hideLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
+}
+
+// Read a line aloud with a system voice (core/voice.js), when 朗读 is on: the agent's replies and lines
+// sent through the local API, never automatic murmurs. Each character has her own pitch and pace.
+let lastSpeech = null;
+function speak(m) {
+  if (!settings || !settings.prefs || !settings.prefs.voice || !Voice.shouldSpeak(m) || !view) return;
+  const text = Voice.speakable(m.text);
+  if (!text || !window.speechSynthesis) return;
+  const v = Voice.voiceOf(speciesOf(view.pet.speciesId));
+  const u = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  const sys = Voice.pickVoice(voices, v);
+  u.lang = v.lang;
+  u.pitch = v.pitch;
+  u.rate = v.rate;
+  if (sys) u.voice = sys;
+  lastSpeech = { text, lang: v.lang, pitch: v.pitch, rate: v.rate, voice: sys ? sys.name : null, systemVoices: voices.length, species: view.pet.speciesId, status: 'queued' };
+  const rec = lastSpeech;
+  u.onstart = () => { rec.status = 'speaking'; };
+  u.onend = () => { rec.status = 'done'; };
+  u.onerror = (e) => { rec.status = `error: ${e.error}`; };
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
 }
 
 function setThinking(on) {
@@ -855,6 +977,7 @@ function setThinking(on) {
     $('food-menu').classList.add('hidden');
     $('main-menu').classList.add('hidden');
     clearTimeout(bubbleTimer);
+    $('meme-sticker').classList.add('hidden');
     b.classList.remove('hidden');
     b.classList.add('thinking');
     let n = 0;
@@ -908,6 +1031,7 @@ function bindPetUi() {
     if (!act) return;
     $('food-menu').classList.add('hidden');
     $('main-menu').classList.add('hidden');
+    $('action-menu').classList.add('hidden');
     if (act === 'feed') $('food-menu').classList.toggle('hidden');
     else if (act === 'play' || act === 'sleep') doAct(act);
     else if (act === 'wardrobe' || act === 'topics') openPanel(act);
@@ -916,10 +1040,20 @@ function bindPetUi() {
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
     } else if (act === 'menu') $('main-menu').classList.toggle('hidden');
   });
+  // 动作: play any effect on request (dsh-pet's right-click "动作" menu)
+  $('action-menu').addEventListener('click', (e) => {
+    const a = e.target.dataset && e.target.dataset.cue;
+    if (!a) return;
+    $('action-menu').classList.add('hidden');
+    if (thinking) return;
+    fx.cue(a, isVideo(view && view.pet.speciesId));
+  });
   $('main-menu').addEventListener('click', async (e) => {
     const m = e.target.dataset && e.target.dataset.menu;
     if (!m) return;
     $('main-menu').classList.add('hidden');
+    if (m === 'actions') { $('action-menu').classList.remove('hidden'); return; }
+    if (m === 'home') { fx.stopThrow(); fx.stopWalk(); window.pet.place('pet'); return; } // dsh-pet 回到原位
     if (m === 'quit') window.pet.quit();
     if (m === 'advanced') openPanel('advanced');
     if (m === 'check-update') {
@@ -1012,21 +1146,79 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  // drag the window by the pet (it is lifted); let go while moving fast and it is thrown (gravity,
-  // bounces off the screen edges); a click without movement pats it
+  bindPetPointer({ onClick: () => doAct('pat'), onMenu: openMenuAtPet });
+  document.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest || !e.target.closest('.pet-hit')) return;
+    e.preventDefault();
+    openMenuAtPet();
+  });
+}
+
+// The menu from a right click, or a long press on a touch screen.
+function openMenuAtPet() {
+  if (thinking) return;
+  pointerInside = true;
+  syncHover();
+  $('food-menu').classList.add('hidden');
+  $('action-menu').classList.add('hidden');
+  $('main-menu').classList.remove('hidden');
+}
+
+// Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
+// - a press without moving is a click (`onClick`);
+// - drag it and it is lifted; let go while moving fast and it is thrown (gravity, bounces off the
+//   screen edges); let go slowly and it is just put down;
+// - press twice quickly, pull and let go: the slingshot launches it the opposite way of the pull;
+// - press it while it flies: caught, with a score for a fast one;
+// - touch: a long press held still opens the menu (`onMenu`), like a right click.
+function bindPetPointer({ onClick, onMenu }) {
   let drag = null;
+  let lastPressAt = null;
+  const end = (e, cancel) => {
+    const d = drag;
+    if (!d || (e && e.pointerId !== d.id)) return;
+    drag = null;
+    clearTimeout(d.press);
+    fx.setLifted(false);
+    if (cancel || d.menu) return;
+    if (!d.moved) return d.caught ? null : onClick();
+    if (d.sling) {
+      const box = petHitBox();
+      const v = Fx.slingshotVelocity(d.x - d.x0, d.y - d.y0, box ? box.w : 150);
+      if (Fx.isThrow(v)) throwPet(v);
+      return;
+    }
+    const v = Fx.releaseVelocity(d.samples, performance.now());
+    if (Fx.isThrow(v)) throwPet(v);
+  };
   for (const el of document.querySelectorAll('.pet-hit')) {
-    el.addEventListener('mousedown', (e) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const now = performance.now();
+      const caught = fx.flying ? fx.catchScore() : 0;
       fx.stopThrow();
-      drag = { x: e.screenX, y: e.screenY, moved: false, samples: [{ x: e.screenX, y: e.screenY, t: performance.now() }] };
+      fx.stopWalk();
+      const sling = !caught && Fx.isSlingshot(lastPressAt, now);
+      lastPressAt = now;
+      drag = { id: e.pointerId, type: e.pointerType, x0: e.screenX, y0: e.screenY, x: e.screenX, y: e.screenY, moved: false, caught, sling, travel: 0, samples: [{ x: e.screenX, y: e.screenY, t: now }] };
+      if (caught) fx.play('happy', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'happy'));
+      try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
+      if (e.pointerType === 'touch') {
+        const d = drag;
+        d.press = setTimeout(() => {
+          if (drag === d && Fx.isLongPress(performance.now() - now, d.travel)) { d.menu = true; drag = null; onMenu(); }
+        }, Fx.LONG_PRESS.ms);
+      }
     });
   }
-  window.addEventListener('mousemove', (e) => {
-    if (!drag) return;
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    drag.travel += Math.abs(dx) + Math.abs(dy);
+    if (drag.travel > (drag.type === 'touch' ? Fx.LONG_PRESS.slop : 3)) drag.moved = true;
     if (drag.moved) {
+      clearTimeout(drag.press);
       fx.setLifted(true);
       window.pet.moveBy(dx, dy);
       drag.x = e.screenX;
@@ -1035,15 +1227,16 @@ function bindPetUi() {
       if (drag.samples.length > 12) drag.samples.shift();
     }
   });
-  window.addEventListener('mouseup', () => {
-    const d = drag;
-    drag = null;
-    fx.setLifted(false);
-    if (!d) return;
-    if (!d.moved) return doAct('pat');
-    const v = Fx.releaseVelocity(d.samples, performance.now());
-    if (Fx.isThrow(v)) throwPet(v);
-  });
+  window.addEventListener('pointerup', (e) => end(e, false));
+  window.addEventListener('pointercancel', (e) => end(e, true));
+}
+
+// Where the character is drawn in the window (for knocking into other pets): its art, not the whole window.
+function petHitBox() {
+  const el = isVideo(view && view.pet.speciesId) ? $('vwrap') : $('char-wrap');
+  const r = el && el.getBoundingClientRect();
+  if (!r || !r.width) return null;
+  return { x: Math.round(r.left + r.width * 0.15), y: Math.round(r.top + r.height * 0.1), w: Math.round(r.width * 0.7), h: Math.round(r.height * 0.9) };
 }
 
 // Thrown: in the air it is `lifted`; landing squashes it, then it shakes it off.
@@ -1151,6 +1344,7 @@ function petStatus() {
   if (thinking) return 'think';
   if (eating) return `eat_${eating}`;
   if (shot) return shot;
+  if (fx.walking) return 'walk';
   if (now < talkUntil) return 'talk';
   return view.status;
 }
@@ -1172,7 +1366,9 @@ function animatePet() {
   if ($('char-fx').textContent !== fxText) $('char-fx').textContent = fxText;
   fx.render(state, r.name, r.exact, sp.fx.noMirror);
   $('pet-body').classList.toggle('flash', now < flashUntil);
+  if (now - lastPose > 1000 && !fx.flying) { lastPose = now; fx.report(0, 0); } // where it is, for the others' collisions
 }
+let lastPose = 0;
 
 // Test and debugging handle: what the pet is doing, and cues to trigger every effect by hand.
 window.petFx = {
@@ -1185,7 +1381,34 @@ window.petFx = {
   eat: (food) => { eating = food; setTimeout(() => { eating = null; }, 4000); },
   lift: (on) => fx.setLifted(on),
   face: (dir) => fx.setFacing(dir),
+  walk: () => fx.walkPet(),
+  stats: () => ({ ...fx.stats, walking: fx.walking }),
+  hitBox: () => petHitBox(),
+  lastSpeech: () => lastSpeech,
+  speak: (text) => speak({ text, source: 'api', kind: 'api' }),
 };
+
+// The local HTTP API (src/core/api.js) asks the window to play, throw or report what it is doing.
+async function onApiCmd({ id, cmd, args }) {
+  let result = { ok: false, reason: 'no-pet' };
+  if (view && !$('pet-screen').classList.contains('hidden')) {
+    const video = isVideo(view.pet.speciesId);
+    if (cmd === 'state') result = { ok: true, fx: window.petFx.state(), bubble: $('bubble').classList.contains('hidden') ? null : $('bubble').textContent };
+    if (cmd === 'anim') {
+      if (thinking) result = { ok: false, reason: 'busy' };
+      else {
+        if (args.facing) fx.setFacing(args.facing);
+        fx.cue(args.state, video);
+        result = { ok: true };
+      }
+    }
+    if (cmd === 'throw') {
+      const r = await throwPet({ vx: args.vx, vy: args.vy });
+      result = r ? { ok: true, bounces: r.bounces } : { ok: false, reason: 'flying' };
+    }
+  }
+  window.pet.apiReply(id, result);
+}
 
 function frameLoop() {
   tickSprites(performance.now());
@@ -1218,7 +1441,9 @@ function onUpdateStatus(u) {
 
 // ---------- boot ----------
 async function main() {
-  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet });
+  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet, prefs: () => (settings && settings.prefs) || {}, hitBox: petHitBox });
+  window.pet.onKicked((v) => fx.kicked(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) }));
+  if (VISITOR) return visitorMain();
   info = await window.pet.boot();
   bindPetUi();
   bindResize();
@@ -1232,7 +1457,8 @@ async function main() {
   $('toast-open').addEventListener('click', () => openPanel('wardrobe'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
   window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced') renderAdvanced(); } });
-  window.pet.onSay((m) => say(m.text, m.kind, m.source, m.reason));
+  window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme); speak(m); });
+  window.pet.onApiCmd(onApiCmd);
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);
   window.pet.onSettings((st) => { setSettings(st); });
@@ -1242,6 +1468,27 @@ async function main() {
   if (settings.needsAgeGate) showAgeGate((r) => start(r.view));
   else start(info.view);
   if (info.update) onUpdateStatus(info.update);
+  requestAnimationFrame(frameLoop);
+}
+
+// A visiting model-chan (同屏伙伴): only the character, with every desktop effect (idle chain, walking,
+// clicks, dragging, throwing, knocking into the others) and no agent, needs or controls. Hovering shows
+// one button that sends her home.
+async function visitorMain() {
+  document.body.classList.add('visitor');
+  const b = await window.pet.visitorBoot();
+  if (!b) return;
+  info = { species: b.species, testMode: b.testMode };
+  setSettings(b.settings);
+  const sp = speciesOf(b.speciesId);
+  view = { pet: { speciesId: sp.id, name: sp.nameZh }, look: b.look, outfit: 'daily', status: 'idle' };
+  window.pet.onSettings((st) => setSettings(st));
+  bindHover();
+  bindPetPointer({ onClick: () => { fx.click(isVideo(sp.id)); fx.burst(3); }, onMenu: () => { pointerInside = true; syncHover(); } });
+  $('visitor-name').textContent = `${sp.nameZh}（${sp.vendor}）来串门`;
+  $('visitor-close').addEventListener('click', () => window.pet.setVisitors(settings.visitors.filter((v) => v !== sp.id)));
+  show('pet-screen');
+  applyArt();
   requestAnimationFrame(frameLoop);
 }
 

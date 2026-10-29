@@ -85,6 +85,7 @@
         <span id="char-fx" class="char-fx"></span>
       </div>
       <div id="outfit-badge" class="outfit-badge"></div>
+      <img id="meme-sticker" class="meme-sticker hidden" alt="" draggable="false" />
       <div id="float-layer" class="float-layer" aria-live="polite"></div>
     </div>
     <!-- while the pet is working, hovering shows only this button (everything else stays hidden) -->
@@ -109,7 +110,7 @@
         <button class="btn" data-act="chat">聊天</button>
         <button class="btn" data-act="topics" id="btn-topics" title="话题：按好感度阶段解锁" aria-label="话题">话题<b class="new-dot hidden">新</b></button>
         <button class="btn" data-act="wardrobe" id="btn-wardrobe" title="衣柜：按好感度阶段解锁服饰" aria-label="衣柜">衣柜<b class="new-dot hidden">新</b></button>
-        <button class="btn" data-act="menu" title="更多" aria-label="更多">⋯</button>
+        <button class="btn" data-act="menu" title="更多（也可以右键或在触屏上长按她）" aria-label="更多">⋯</button>
       </div>
       <div id="attach-row" class="attach-row hidden"></div>
       <div id="chat-row" class="row chat-row hidden">
@@ -118,10 +119,23 @@
         <button id="chat-send" class="btn primary">发送</button>
       </div>
       <div id="food-menu" class="popup hidden"></div>
+      <div id="action-menu" class="popup hidden" aria-label="动作">
+        <button class="btn" data-cue="look">东张西望</button>
+        <button class="btn" data-cue="turn">转身</button>
+        <button class="btn" data-cue="walk">走两步</button>
+        <button class="btn" data-cue="happy">开心</button>
+        <button class="btn" data-cue="pat">害羞</button>
+        <button class="btn" data-cue="play">玩耍</button>
+        <button class="btn" data-cue="think">想事情</button>
+        <button class="btn" data-cue="sad">难过</button>
+        <button class="btn" data-cue="evolve">闪亮登场</button>
+      </div>
       <div id="main-menu" class="popup hidden">
         <button class="btn hidden" id="menu-update" data-menu="update">新版本</button>
         <button class="btn" id="menu-adult" data-menu="adult">成人向内容：…</button>
         <button class="btn" id="menu-local" data-menu="local">本机能力：…</button>
+        <button class="btn" data-menu="actions" id="menu-actions">动作…</button>
+        <button class="btn" data-menu="home" id="menu-home">回到右下角</button>
         <button class="btn" data-menu="advanced" id="menu-advanced">高级设置</button>
         <button class="btn" data-menu="check-update" id="menu-check-update">检查更新</button>
         <button class="btn" data-menu="release">放生并删除 agent</button>
@@ -131,6 +145,9 @@
         <button class="btn" data-menu="quit">退出</button>
       </div>
     </div>
+
+    <!-- a visiting model-chan (index.html?visitor=<id>): her name and a button to send her home -->
+    <div id="visitor-bar" class="visitor-bar"><span id="visitor-name"></span><button id="visitor-close" class="btn" title="送她回去" aria-label="送她回去">×</button></div>
 
     <!-- wardrobe / topics: the window grows while one is open -->
     <div id="panel" class="panel hidden" role="dialog" aria-labelledby="panel-title">
@@ -147,6 +164,7 @@
   </section>
 
   <script src="../core/fx.js"></script>
+  <script src="../core/voice.js"></script>
   <script src="fx.js"></script>
   <script src="app.js"></script>
 </body>

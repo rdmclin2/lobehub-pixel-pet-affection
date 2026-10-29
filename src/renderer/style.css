@@ -72,7 +72,8 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 .pet-body.lifted, .pet-body.flying { animation: pet-dangle .5s ease-in-out infinite; }
 .pet-body.lifted .pet-hit, .pet-body.flying .pet-hit { cursor: grabbing; }
 .pet-body.flash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,.9) 0, rgba(255,214,231,.5) 35%, transparent 65%); animation: char-sparkle .7s ease-out forwards; pointer-events: none; }
-@keyframes pet-squash { 0% { transform: scale(1, 1); } 30% { transform: scale(1.12, .86); } 60% { transform: scale(.95, 1.06); } 100% { transform: scale(1, 1); } }
+/* --sq: how flat it squashes (a hard landing squashes flatter, src/core/fx.js landingSquash) */
+@keyframes pet-squash { 0% { transform: scale(1, 1); } 30% { transform: scale(calc(1 + (1 - var(--sq, .86)) * .85), var(--sq, .86)); } 60% { transform: scale(.95, 1.06); } 100% { transform: scale(1, 1); } }
 @keyframes pet-dangle { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
 .heart-p { position: absolute; left: 50%; top: 45%; font-style: normal; font-size: 14px; color: var(--accent, #e0455f); text-shadow: 1px 1px 0 #fff; pointer-events: none; animation: heart-burst var(--d, .9s) ease-out forwards; }
 @keyframes heart-burst { from { opacity: 1; transform: translate(-50%, 0) scale(.6); } to { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) scale(1.2); } }
@@ -264,3 +265,28 @@ canvas.sprite { object-fit: contain; }
 .preview .look.vlook { height: auto; width: 100%; }
 /* the ⋯ menu stays usable in a small window (pet scaled down) */
 #main-menu { max-height: calc(100vh - 56px); overflow-y: auto; }
+
+/* ---- dsh-pet effects: walking, catching a flying pet, memes, behaviour settings, visitors ---- */
+.char-wrap[data-status="walk"] .char { animation: char-walk .36s steps(2) infinite; }
+@keyframes char-walk { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
+.score-pop { position: absolute; left: 50%; top: 12%; z-index: 4; transform: translateX(-50%); font-size: 22px; font-weight: bold; line-height: 1; color: #ffd23f; -webkit-text-stroke: 1.5px #2b2233; text-shadow: 2px 2px 0 #2b2233; pointer-events: none; animation: score-up 1.5s ease-out forwards; }
+@keyframes score-up { from { opacity: 1; transform: translate(-50%, 0) scale(.7); } 20% { transform: translate(-50%, -8px) scale(1.25); } to { opacity: 0; transform: translate(-50%, -46px) scale(1); } }
+.spark-p { position: absolute; left: 50%; top: 45%; font-style: normal; font-size: 13px; color: #ffd23f; text-shadow: 1px 1px 0 #2b2233; pointer-events: none; animation: heart-burst var(--d, .9s) ease-out forwards; }
+.meme-sticker { position: absolute; left: -36px; top: 6px; width: 70px; height: auto; max-height: 90px; object-fit: contain; border: 2px solid #2b2233; background: #fff; box-shadow: 2px 2px 0 #2b2233; transform: rotate(-6deg); pointer-events: none; z-index: 3; animation: meme-in .25s ease-out; }
+.meme-sticker.hidden { display: none; }
+@keyframes meme-in { from { transform: rotate(-6deg) scale(.4); opacity: 0; } to { transform: rotate(-6deg) scale(1); opacity: 1; } }
+.pref-row { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; cursor: pointer; }
+.pref-row input { margin-top: 2px; width: 16px; height: 16px; accent-color: #c9502a; flex: none; }
+.pref-row span { display: flex; flex-direction: column; gap: 1px; }
+.pref-row small { color: #6b5f7a; font-size: 11px; line-height: 1.45; }
+#api-port { width: 80px; }
+.api-token { display: block; margin: 6px 0 0; font-size: 10px; word-break: break-all; user-select: text; }
+.api-routes { margin: 6px 0 0; padding: 4px 6px; background: #f4efe6; font-size: 10px; white-space: pre; overflow-x: auto; user-select: text; }
+.visitor-bar { display: none; }
+@media (prefers-reduced-motion: reduce) { .char-wrap[data-status="walk"] .char, .score-pop { animation: none; } }
+/* a visitor window: only the character; hovering shows her name and the × that sends her home */
+body.visitor #pet-screen { justify-content: flex-end; }
+body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #outfit-badge, body.visitor #panel, body.visitor #unlock-toast { display: none !important; }
+body.visitor .visitor-bar { display: flex; position: absolute; top: 2px; left: 2px; right: 2px; gap: 4px; align-items: center; justify-content: space-between; font-size: 10px; background: rgba(255,255,255,.88); border: 2px solid #2b2233; padding: 1px 4px; opacity: 0; pointer-events: none; transition: opacity .12s; }
+body.visitor.hover .visitor-bar { opacity: 1; pointer-events: auto; }
+body.visitor .visitor-bar .btn { padding: 0 6px; font-size: 11px; border-width: 2px; min-width: 24px; min-height: 22px; }

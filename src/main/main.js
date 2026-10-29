@@ -12,6 +12,7 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const { ApiServer } = require('./api-server');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -26,6 +27,13 @@ let service = null;
 let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
+let apiServer = null;
+// Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
+// Each reports its character box and speed while flying, so a thrown pet can knock into the others.
+const pets = new Map(); // id -> { win, speciesId, hit: { x, y, w, h } (in the window), vx, vy }
+const VISITOR_SIZE = { w: 190, h: 250 };
+const windowOf = (e) => BrowserWindow.fromWebContents(e.sender);
+const petIdOf = (w) => { for (const [id, p] of pets) if (p.win === w) return id; return null; };
 
 // The pet window follows the pet's scale: the character area is 150x190 at 1, plus room for the bubble
 // and the controls. The scale is capped so the window still fits the screen.
@@ -90,6 +98,53 @@ function saveImages(images) {
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+function sendAll(channel, payload) {
+  for (const p of pets.values()) if (!p.win.isDestroyed()) p.win.webContents.send(channel, payload);
+}
+
+// ---- visitors (同屏伙伴): other model-chan on the desktop, each in its own small window -------------
+function syncVisitors() {
+  const want = service && service.pet ? service.settings.visitors.filter((id) => SPECIES[id] && id !== service.pet.speciesId) : [];
+  for (const [id, p] of pets) {
+    if (id === 'main') continue;
+    if (!want.includes(p.speciesId)) { pets.delete(id); if (!p.win.isDestroyed()) p.win.destroy(); }
+  }
+  want.forEach((speciesId, i) => {
+    const id = `visitor:${speciesId}`;
+    if (pets.has(id)) return;
+    const wa = screen.getDisplayMatching(win.getBounds()).workArea;
+    const mb = win.getBounds();
+    const x = Math.max(wa.x, mb.x - (i + 1) * (VISITOR_SIZE.w + 10));
+    const v = new BrowserWindow({
+      x, y: wa.y + wa.height - VISITOR_SIZE.h, width: VISITOR_SIZE.w, height: VISITOR_SIZE.h,
+      frame: false, transparent: !TEST_MODE, backgroundColor: TEST_MODE ? '#e9e4f5' : '#00000000', resizable: false, hasShadow: false, alwaysOnTop: true, skipTaskbar: true, focusable: true,
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    });
+    v.setMenuBarVisibility(false);
+    v.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { visitor: speciesId } });
+    pets.set(id, { win: v, speciesId, hit: null, vx: 0, vy: 0 });
+    v.on('closed', () => { if (pets.get(id) && pets.get(id).win === v) pets.delete(id); });
+  });
+}
+
+// ---- the local HTTP API (src/core/api.js): commands the renderer carries out ------------------
+let apiSeq = 0;
+const apiWaits = new Map();
+function askRenderer(cmd, args, timeoutMs = 8000) {
+  if (!win || win.isDestroyed()) return Promise.resolve({ ok: false, reason: 'no-window' });
+  const id = ++apiSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { apiWaits.delete(id); resolve({ ok: false, reason: 'timeout' }); }, timeoutMs);
+    apiWaits.set(id, (r) => { clearTimeout(t); resolve(r); });
+    win.webContents.send('api-cmd', { id, cmd, args });
+  });
+}
+async function applyApi() {
+  if (!apiServer) return;
+  const a = service.settings.api;
+  const st = await apiServer.apply({ enabled: a.enabled, port: a.port });
+  sendAll('api-status', st);
 }
 
 function createWindow() {
@@ -208,21 +263,65 @@ function wire() {
     place('onboarding');
     return r;
   });
-  ipcMain.on('move-by', (_e, { dx, dy }) => {
-    if (!win) return;
-    const [x, y] = win.getPosition();
-    win.setPosition(Math.round(x + dx), Math.round(y + dy));
+  ipcMain.on('move-by', (e, { dx, dy }) => {
+    const w = windowOf(e);
+    if (!w) return;
+    const [x, y] = w.getPosition();
+    w.setPosition(Math.round(x + dx), Math.round(y + dy));
   });
   // Throwing the pet (src/core/fx.js stepThrow): the renderer runs the physics against the work area of
   // the screen the window is on and moves the window frame by frame.
-  ipcMain.handle('work-area', () => {
-    if (!win) return null;
-    const b = win.getBounds();
+  ipcMain.handle('work-area', (e) => {
+    const w = windowOf(e);
+    if (!w) return null;
+    const b = w.getBounds();
     return { bounds: b, area: screen.getDisplayMatching(b).workArea };
   });
-  ipcMain.on('move-to', (_e, { x, y }) => {
-    if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    win.setPosition(Math.round(x), Math.round(y));
+  ipcMain.on('move-to', (e, { x, y }) => {
+    const w = windowOf(e);
+    if (!w || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    w.setPosition(Math.round(x), Math.round(y));
+  });
+  // Pets knocking into each other: each window reports its character box (in the window) and, while
+  // flying, its speed; a flying pet asks for the others' boxes and kicks the one it hits.
+  ipcMain.on('pose', (e, { hit, vx, vy }) => {
+    const p = pets.get(petIdOf(windowOf(e)));
+    if (!p) return;
+    if (hit && [hit.x, hit.y, hit.w, hit.h].every(Number.isFinite)) p.hit = hit;
+    p.vx = Number.isFinite(vx) ? vx : 0;
+    p.vy = Number.isFinite(vy) ? vy : 0;
+  });
+  ipcMain.handle('peers', (e) => {
+    const me = petIdOf(windowOf(e));
+    const out = [];
+    for (const [id, p] of pets) {
+      if (id === me || !p.hit || p.win.isDestroyed() || !p.win.isVisible()) continue;
+      const b = p.win.getBounds();
+      out.push({ id, x: b.x + p.hit.x, y: b.y + p.hit.y, w: p.hit.w, h: p.hit.h, vx: p.vx, vy: p.vy });
+    }
+    return out;
+  });
+  ipcMain.on('kick', (_e, { id, vx, vy }) => {
+    const p = pets.get(String(id));
+    if (p && !p.win.isDestroyed() && Number.isFinite(vx) && Number.isFinite(vy)) p.win.webContents.send('kicked', { vx, vy });
+  });
+  ipcMain.handle('visitor-boot', (e) => {
+    const p = pets.get(petIdOf(windowOf(e)));
+    if (!p) return null;
+    const sp = SPECIES[p.speciesId];
+    return { speciesId: p.speciesId, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), look: service.lookFor(sp.id, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
+  });
+  ipcMain.handle('set-prefs', (_e, patch) => service.setPrefs(patch));
+  ipcMain.handle('set-visitors', (_e, { ids }) => service.setVisitors(ids));
+  ipcMain.handle('set-api', async (_e, opts) => {
+    const r = service.setApi(opts || {});
+    await applyApi();
+    return { ...r, status: apiServer.status() };
+  });
+  ipcMain.handle('api-status', () => apiServer.status());
+  ipcMain.on('api-reply', (_e, { id, result }) => {
+    const done = apiWaits.get(id);
+    if (done) { apiWaits.delete(id); done(result); }
   });
   ipcMain.handle('switch-character', (_e, { id }) => service.switchCharacter(String(id || '')));
   ipcMain.on('place', (_e, mode) => { if (mode in SIZES) { petBounds = null; place(mode); } });
@@ -264,7 +363,9 @@ function wire() {
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
   service.on('affection', (a) => send('affection', a));
-  service.on('settings', (st) => send('settings', st));
+  service.on('settings', (st) => { sendAll('settings', st); syncVisitors(); });
+  // the companion appeared, changed or left: visitors follow (none without a companion)
+  service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
   updater.on('status', (st) => send('update-status', st));
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
@@ -277,8 +378,22 @@ app.whenReady().then(() => {
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
+  apiServer = new ApiServer({
+    token: () => service.settings.api.token,
+    state: async () => {
+      const r = await askRenderer('state');
+      const v = service.view();
+      return { pet: v ? { name: v.pet.name, species: v.pet.speciesId, affection: v.pet.affection, hunger: v.pet.hunger, mood: v.pet.mood, energy: v.pet.energy, sleeping: v.pet.sleeping, busy: v.busy } : null, fx: r && r.ok ? r.fx : null, bubble: r && r.ok ? r.bubble : null };
+    },
+    say: async (text) => service.sayExternal(text),
+    anim: (state, facing) => askRenderer('anim', { state, facing }),
+    throw: (v) => askRenderer('throw', v, 20000),
+    chat: (text) => service.chat(text, [], []),
+  }, logError);
   wire();
   createWindow();
+  pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
+  applyApi();
   updater.start();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);
 });

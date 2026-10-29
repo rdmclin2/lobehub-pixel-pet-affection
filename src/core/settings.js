@@ -18,7 +18,27 @@ const clampScale = (v) => {
 };
 const petScale = (s) => clampScale(s && s.petScale);
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {} };
+// Desktop behaviour ported from dsh-pet (高级设置 → 桌宠行为). Defaults follow dsh-pet: the pet walks
+// about on its own (short steps; never while the pointer is on it or it is busy; off = dsh-pet's
+// "fixed"), memes are on, sound and voice are off (a pet should not start making noise unasked), pets
+// on screen together knock into each other, and the local HTTP API is off until switched on.
+const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collide: true };
+const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
+const API = { port: 7340, minPort: 1024, maxPort: 65535 };
+
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' } };
+
+function normalizePrefs(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  return Object.fromEntries(Object.entries(PREFS).map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
+}
+
+function normalizeApi(raw) {
+  const a = raw && typeof raw === 'object' ? raw : {};
+  const port = Number.isInteger(a.port) && a.port >= API.minPort && a.port <= API.maxPort ? a.port : API.port;
+  const token = typeof a.token === 'string' && /^[A-Za-z0-9_-]{24,64}$/.test(a.token) ? a.token : '';
+  return { enabled: a.enabled === true && !!token, port, token };
+}
 
 // Adult content can only be on for a current, confirmed 18+ answer.
 function normalizeSettings(raw) {
@@ -32,6 +52,10 @@ function normalizeSettings(raw) {
   // the pet pack chosen per character ({ dafeiyu: 'dafeiyu-pixel' }); unknown packs fall back when looked up
   const ap = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
   s.appearance = Object.fromEntries(Object.entries(ap).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(v)));
+  s.prefs = normalizePrefs(s.prefs);
+  // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
+  s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
+  s.api = normalizeApi(s.api);
   return s;
 }
 
@@ -84,4 +108,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

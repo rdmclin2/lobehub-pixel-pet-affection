@@ -7,8 +7,8 @@ const { SPECIES } = require('../src/core/species');
 
 const seq = (...xs) => { let i = 0; return () => xs[i++ % xs.length]; };
 
-test('the state vocabulary is the DeepSeek pet’s 15 clips plus lifted, and every character can play all of them', () => {
-  assert.deepEqual([...Fx.STATES].sort(), [...Object.keys(SPECIES.dafeiyu.clips), 'lifted'].sort());
+test('the state vocabulary is the DeepSeek pet’s 15 clips plus lifted and walk, and every character can play all of them', () => {
+  assert.deepEqual([...Fx.STATES].sort(), Object.keys(SPECIES.dafeiyu.clips).sort(), 'Dafeiyu has a clip for every state, lifted and walk included');
   for (const st of Fx.STATES) for (const sp of Object.values(SPECIES)) {
     const has = sp.clips ? (n) => !!sp.clips[n] : () => false;
     assert.ok(Fx.resolveAction(st, has).name, `${sp.id}/${st}`);
@@ -22,8 +22,12 @@ test('a state without art falls back along the chain, and ends at idle', () => {
   for (const st of Fx.STATES) assert.equal(Fx.resolveAction(st, onlyIdle).name, 'idle', st);
   assert.deepEqual(Fx.resolveAction('idle', onlyIdle), { name: 'idle', exact: true });
   assert.deepEqual(Fx.resolveAction('lifted', onlyIdle), { name: 'idle', exact: false }, 'not exact: an emoji overlay is drawn');
-  // the DeepSeek clips have no `lifted`: she waves (pat) while dangling
-  assert.deepEqual(Fx.resolveAction('lifted', (n) => !!SPECIES.dafeiyu.clips[n]), { name: 'pat', exact: false });
+  // Dafeiyu dangles with dsh-pet's own drag clip (it used to borrow the click clip); she walks with its crab walk
+  assert.deepEqual(Fx.resolveAction('lifted', (n) => !!SPECIES.dafeiyu.clips[n]), { name: 'lifted', exact: true });
+  assert.deepEqual(Fx.resolveAction('walk', (n) => !!SPECIES.dafeiyu.clips[n]), { name: 'walk', exact: true });
+  // a character without its own `lifted` still waves (pat) while dangling; without `walk` the idle art hops along
+  assert.deepEqual(Fx.resolveAction('lifted', (n) => n !== 'lifted'), { name: 'pat', exact: false });
+  assert.deepEqual(Fx.resolveAction('walk', (n) => n !== 'walk'), { name: 'idle', exact: false });
   assert.equal(Fx.resolveAction('nonsense', onlyIdle).name, 'idle');
   for (const st of Fx.STATES) if (st !== 'idle') assert.ok(Fx.OVERLAY[st] || Fx.FOOD_OVERLAY[st], `${st} has a fallback overlay`);
 });
@@ -32,7 +36,7 @@ test('the idle chain picks by weight and never repeats a cue back to back', () =
   assert.equal(Fx.nextIdleCue(() => 0), 'look');
   assert.equal(Fx.nextIdleCue(() => 0.999), 'happy');
   assert.equal(Fx.nextIdleCue(() => 0, 'look'), 'turn');
-  const rnd = seq(0.1, 0.5, 0.7, 0.95, 0.3, 0.05, 0.6);
+  const rnd = seq(0.1, 0.5, 0.7, 0.95, 0.3, 0.05, 0.6, 0.83, 0.88);
   let prev = null;
   const seen = new Set();
   for (let i = 0; i < 50; i++) {
@@ -41,7 +45,9 @@ test('the idle chain picks by weight and never repeats a cue back to back', () =
     seen.add(c);
     prev = c;
   }
-  assert.deepEqual([...seen].sort(), ['happy', 'look', 'play', 'turn']);
+  assert.deepEqual([...seen].sort(), ['happy', 'look', 'play', 'turn', 'walk']);
+  // roaming off (高级设置 → 自己走动): the chain never walks
+  for (let i = 0; i < 200; i++) assert.notEqual(Fx.nextIdleCue(Math.random, null, { roam: false }), 'walk');
   for (const r of [0, 0.5, 0.9999]) {
     const d = Fx.idleDelay(() => r);
     assert.ok(d >= Fx.IDLE_GAP.min && d < Fx.IDLE_GAP.max);

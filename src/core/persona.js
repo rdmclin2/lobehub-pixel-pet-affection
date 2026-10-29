@@ -4,6 +4,7 @@ const { getSpecies } = require('./species');
 const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./affection');
 const { relationScope, listTopics } = require('./dialogue');
 const { describeTime } = require('./time-context');
+const { memeHint } = require('./memes');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
 const PERSONA_VERSION = 7;
@@ -102,7 +103,8 @@ function buildStateBlock(pet, now, settings = null) {
     `心情=${describeLevel(pet.mood, ['低落', '一般', '开心'])}；` +
     `体力=${describeLevel(pet.energy, ['很累', '还行', '精神'])}；` +
     `现在${hh}:${mm}（${describeTime(d)}）；距上次互动${sinceMin}分钟\n` +
-    buildRelationBlock(pet, settings)
+    buildRelationBlock(pet, settings) +
+    (settings && settings.prefs && settings.prefs.memes ? `\n${memeHint(getSpecies(pet.speciesId))}` : '')
   );
 }
 

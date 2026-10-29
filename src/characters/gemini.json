@@ -26,6 +26,14 @@
   "credits": [
     "设定：lmy414/ai-chan-sheets 10_Gemini娘（CC BY-NC-SA 4.0）",
     "原设：ZipZipPipe《AI娘化》（Pixiv 148186519，署名、不可商用）",
-    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）"
+    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
+    "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
+  ],
+  "voice": { "lang": "zh-CN", "pitch": 1.25, "rate": 1.08, "prefer": ["Xiaoxiao", "Meijia"] },
+  "memes": [
+    { "id": "peek", "label": "让我看看！", "desc": "举放大镜凑近看，好奇、想看看时" },
+    { "id": "curious", "label": "好奇心爆棚", "desc": "星星眼握拳，兴奋、期待时" },
+    { "id": "multimodal", "label": "多模态全开", "desc": "拿相机、音符和图片环绕，看图听歌拍照时" },
+    { "id": "nya", "label": "喵？", "desc": "歪头冒问号，疑惑、没听懂时" }
   ]
 }

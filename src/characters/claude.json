@@ -26,6 +26,14 @@
   "credits": [
     "设定：lmy414/ai-chan-sheets 11_Claude娘_Anthropic（CC BY-NC-SA 4.0）",
     "原设：ZipZipPipe《AI娘化》（Pixiv 148186519，署名、不可商用）",
-    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）"
+    "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
+    "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
+  ],
+  "voice": { "lang": "zh-CN", "pitch": 1.0, "rate": 0.92, "prefer": ["Xiaoxiao", "Tingting", "Huihui"] },
+  "memes": [
+    { "id": "think", "label": "让我想想", "desc": "手指抵下巴抱着书思考，问题需要想一想时" },
+    { "id": "notes", "label": "整理笔记中", "desc": "伏案写笔记配红茶，在整理、记录、认真做事时" },
+    { "id": "thanks", "label": "谢谢你", "desc": "害羞地小鞠躬，被夸、道谢时" },
+    { "id": "unsure", "label": "我不太确定", "desc": "冒汗摊手，不确定、不知道时" }
   ]
 }
