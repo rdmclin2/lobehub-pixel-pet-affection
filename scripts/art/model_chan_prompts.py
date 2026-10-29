@@ -5,7 +5,8 @@
 # Dafeiyu (DeepSeek) is the pixel version of her existing chibi maid look from dsh-pet.
 # Identity anchors are condensed from lmy414/ai-chan-sheets 设定图/<char>/提示词/A01 (CC BY-NC-SA 4.0), after the
 # original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
-# shorts and thigh band become a covered top, a long skirt and opaque tights).
+# shorts and thigh band become a covered top, a long skirt and opaque tights; GPT's bare shoulders, thigh slit,
+# thigh band and sheer overcoat become long sleeves, a closed skirt and an opaque overcoat).
 import json, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
@@ -30,6 +31,14 @@ CHARS = {
             "She wears a long-sleeved deep navy high-necked fitted top covering her midriff with a big four-pointed star emblem on the chest, a violet satin waist sash with gold trim and a thin gold waist chain with a star charm, "
             "a white-and-navy wide-sleeved open overcoat with gold edging and two long ribbon tails with star charms, an ankle-length deep navy skirt with a white ruffled underskirt hem, "
             "opaque white tights and deep violet platform shoes with iridescent soles. Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
+ "gpt": ("GPT-chan, an adult woman personifying ChatGPT as a gentle white dragon girl: extremely long, voluminous, wavy pure white hair reaching her ankles, a thick blunt fringe, one thin curled ahoge on top, "
+         "a pair of white dragon horns with ring-shaped ridges curving up and back from the top of her head, long pointed elf ears with a small lavender diamond-shaped crystal earring, "
+         "calm sleepy drooping pale lavender eyes, a soft gentle smile, and on the right side of her head a white rosette knot ornament (a round flower woven from looped cord) with a short silver tassel. "
+         "Behind her a pair of SMALL folded dragon wings with pale translucent lavender membranes (kept close to her back, not spread wide), and a white dragon tail with diamond scales and a row of small spikes curling beside her feet. "
+         "She wears a long-sleeved white Chinese-style dress with a small mandarin stand-up collar buttoned at the throat, covered shoulders, delicate white embroidery and small lavender diamond crystals down the front, "
+         "wide flowing white water sleeves with ruffled cuffs and a thin silver arm ring, a thin silver chain at the waist with lavender diamond crystal pendants and silver tassels, a white rosette knot on each hip, "
+         "a closed ankle-length white skirt (no slit) with a wavy ruffled hem embroidered with white roses, an opaque white floor-length overcoat with wide wavy ruffled edges, "
+         "and low-heeled white pointed shoes with a white rosette knot. Draw her with clean dark grey-violet outlines so the white figure reads clearly. Colours: pure white, pale lavender and silver only, no gold, red, blue or green"),
 }
 
 EXTRA_ROWS = [

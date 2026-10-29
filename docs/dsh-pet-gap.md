@@ -2,7 +2,7 @@
 
 对照对象：[PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) `main` 分支 commit `8963384`（`fix(notify): 补齐回复正文缓存的清理与文档`），读的是 `README.md`、`FEATURES.md`、`CONFIG.md`、`API.md`、`dsh-pet/assets/config.jsonc`，以及 `dsh-pet/src/shared/`（`pickers.ts`、`motion.ts`、`physics/*`、`score.ts`）、`dsh-pet/src/client/pet/`（`motion/walk.ts`、`motion/drag.ts`、`motion/drag-release.ts`、`motion/touch-press.ts`、`click-sound.ts`、`multi.ts`、`menu-actions.ts`）、`dsh-pet/src/host/`（`memes.ts`、`voice/*`、`balance*`、`notify-events.ts`、`whisper*.ts`、`work-status.ts`）。
 
-本仓库的效果层是 `src/core/fx.js`（纯逻辑）和 `src/renderer/fx.js`（渲染端控制器），四位角色（大肥鱼、克洛蒂、格萝可、杰米）共用；角色之间只差 `src/characters/<id>.json`、素材和台词。E1–E14 是 T-1158 已交付的效果，E15–E26 是本次（T-1163）新增的。
+本仓库的效果层是 `src/core/fx.js`（纯逻辑）和 `src/renderer/fx.js`（渲染端控制器），五位角色（大肥鱼、克洛蒂、格萝可、杰米、吉皮缇）共用；角色之间只差 `src/characters/<id>.json`、素材和台词。E1–E14 是 T-1158 已交付的效果，E15–E26 是本次（T-1163）新增的。
 
 状态：**已实现**（之前就有）、**本次实现**、**不移植**（附理由）。
 
@@ -36,7 +36,7 @@
 | D5 | 宠物固定 `fixedEnabled`（随机链不再转向、不走） | `pets[].fixedEnabled` | **本次实现** | “自己走动”关掉即等价 |
 | D6 | 点击回应池（5 段随机，不连抽） | `animations.clicks` | 已实现，本次补素材 | E4；本次通用层支持“一个状态多段片段”（`Fx.pickVariant`），大肥鱼的 `pat` 4 段、`happy` 2 段直接用 dsh-pet 的 `点击回应-*` |
 | D7 | 点击 Q 弹挤压 | `physics/squash.ts` | 已实现 | E4 |
-| D8 | 拖拽悬空（drag 池） | `animations.drag` | 已实现，本次修大肥鱼 | E5；大肥鱼原来借用 `pat` 视频并叠 ❗，本次换成 dsh-pet 自己的拖拽片段 `被鼠标拖拽悬空反馈.webm`（→ `lifted.webm`），四位角色都有专属拎起美术 |
+| D8 | 拖拽悬空（drag 池） | `animations.drag` | 已实现，本次修大肥鱼 | E5；大肥鱼原来借用 `pat` 视频并叠 ❗，本次换成 dsh-pet 自己的拖拽片段 `被鼠标拖拽悬空反馈.webm`（→ `lifted.webm`），每位角色都有专属拎起美术 |
 | D9 | 100+ 段分类动作（小动作 18、玩耍 27、吃什么 12、时节 21、文字 2）和碎碎念 / 工作状态 / 余额事件动画 | `animations.categories`、`events` | 部分 | 通用层已能给任意状态挂多段片段；本次引入了大肥鱼的拖拽、走路和 4 段点击回应。**其余约 80 段不移植**：它们是大肥鱼专属的 640×360 透明视频（共 53 MB），另外三位没有对应美术，为每位重画 80 段动作不在本任务范围；“时节”类还依赖节日素材 |
 
 ## 二、交互与物理
@@ -98,7 +98,7 @@
 
 ## 六、T-1158 列为未移植的七项：结论
 
-所有“本次实现”的代码都在共享层，对四位角色一视同仁；角色之间只差 `src/characters/<id>.json` 的 `art.clips`（大肥鱼的 `walk` / `lifted` / 点击片段）、`memes`、`voice`，以及 `src/renderer/assets/memes/<id>/` 的图片。四位角色都在 e2e roster 里逐项触发（N1–N14）。
+所有“本次实现”的代码都在共享层，对所有角色一视同仁；角色之间只差 `src/characters/<id>.json` 的 `art.clips`（大肥鱼的 `walk` / `lifted` / 点击片段）、`memes`、`voice`，以及 `src/renderer/assets/memes/<id>/` 的图片。所有角色都在 e2e roster 里逐项触发（N1–N14）。
 
 | 效果 | 决策 | 执行层（文件 / 函数） | 开关与默认值 |
 | --- | --- | --- | --- |
@@ -112,5 +112,5 @@
 
 ## 七、验证
 
-- `npm test`：`test/dsh-effects.test.js` 覆盖走位规划、弹弓、积分、落地挤压、长按、碰撞、片段轮换、梗图（四位角色各一遍）、语音参数与选音色、同屏伙伴与接口设置、HTTP 路由与真实监听。
+- `npm test`：`test/dsh-effects.test.js` 覆盖走位规划、弹弓、积分、落地挤压、长按、碰撞、片段轮换、梗图（每位角色各一遍）、语音参数与选音色、同屏伙伴与接口设置、HTTP 路由与真实监听。
 - `xvfb-run -a node e2e/run.js roster`：每位角色在真实 Electron 窗口里逐项触发 N1–N14（走动、长按菜单、右键与回到右下角、动作点播、弹弓、空中接住、落地挤压、行为设置、点击音效、梗图、朗读、同屏伙伴、互撞、HTTP 接口），截图在 `out/e2e/roster-<角色>-*.png`，录屏在 `out/e2e/roster-video/<角色>/`。

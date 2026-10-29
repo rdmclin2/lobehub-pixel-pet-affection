@@ -21,9 +21,10 @@
 | 克洛蒂（Claude 娘 · 橘发菊纹） | Anthropic | `#C4622D` | 像素包 `claude-pixel`（16 个动作） | 橘白哥特长裙 |
 | 格萝可（Grok 娘 · 黑金吸血鬼） | xAI | `#8E1F33` | 像素包 `grok-pixel`（16 个动作） | 黑金哥特礼服 |
 | 杰米（Gemini 娘 · 四角星猫耳） | Google | `#7B5CD6` | 像素包 `gemini-pixel`（16 个动作） | 星纹宽袖外披 |
+| 吉皮缇（GPT 娘 · 白龙） | OpenAI | `#8E7FC8` | 像素包 `gpt-pixel`（16 个动作） | 白玫瑰立领长裙 |
 
 - 每个角色是一份数据文件 `src/characters/<id>.json`（厂商、人设、口头禅、离线台词、主题色、可用服饰、署名），美术是一个角色包（`src/renderer/packs/<id>-pixel`）或一组视频；**效果全部共用**，角色之间只差配置、素材和台词。新增角色：放一份 character.json 和一个角色包即可，不用改代码。设定与素材来源见 [art/model-chan/](art/model-chan/README.md)。
-- 四位都是全年龄角色（`adult: false`）：即使确认 18+ 并开启成人向内容，她们也只用全年龄的语气、话题和服饰。成人向机制仍保留，只对 character.json 里写明 `adult: true` 的角色生效。
+- 五位都是全年龄角色（`adult: false`）：即使确认 18+ 并开启成人向内容，她们也只用全年龄的语气、话题和服饰。成人向机制仍保留，只对 character.json 里写明 `adult: true` 的角色生效。
 - **旧角色已下线**：焰团、泡鲸、叶芽和“灵石”选择界面已移除。老存档打开时自动由新角色接替（泡鲸、叶芽 → 大肥鱼，焰团 → 克洛蒂），LobeHub agent、聊天记录和好感度都保留，她的人设在下一句话前更新；身上的服饰如果新角色没有，就换回日常服。旧存档会备份为 `pet.retired.bak.json`。
 - **换角色**：⋯ 菜单 → 高级设置 → 角色，点“切换”。agent、聊天记录和好感度保留。
 
@@ -95,7 +96,7 @@
 - **不写强迫**：拒绝任何强迫、不同意、胁迫、醉酒或无意识情节，也不把“拒绝”当情趣。
 - **不涉及真实人物**：不对明星、网红或用户认识的人做色情或暧昧化内容。
 - **不提供违法内容**：毒品、暴力伤害、诈骗、侵犯隐私等。
-- **同人角色不做成人向改编**：四位模型娘（大肥鱼、克洛蒂、格萝可、杰米）永远只有全年龄内容。
+- **同人角色不做成人向改编**：五位模型娘（大肥鱼、克洛蒂、格萝可、杰米、吉皮缇）永远只有全年龄内容。
 - 遇到越界请求，角色用自己的口吻拒绝并换个话题；本地守卫命中时不显示原文，只显示拒绝台词，日志只记录类别。
 
 逐条审查清单、修复记录和对抗性测试结果见 [docs/compliance-review.md](docs/compliance-review.md)。
@@ -142,7 +143,7 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 
 A pixel-art desktop pet whose brain is a [LobeHub](https://lobehub.com) agent. It needs a LobeHub account and the LobeHub CLI (`lh`). This is a community project that builds on LobeHub, not an official LobeHub product.
 
-1. First launch: pick one of the model-chan characters (DeepSeek / Claude / Grok; this fork replaced upstream's four eggs).
+1. First launch: pick one of the model-chan characters (DeepSeek / Claude / Grok / Gemini / GPT; this fork replaced upstream's four eggs).
 2. The app calls the LobeHub CLI: `lh login` (device-code login in your browser, skipped if you are already logged in), then `lh agent create` to make **your** pet's agent, with the species personality baked into its system role.
 3. The pet lives on your desktop: it gets hungry, tired and bored, grows closer to you through an affection system (陌生 → 熟悉 → 亲近 → 暧昧 / 知己 → 恋人 / 挚友, see `docs/affection-design.md`), remembers what you tell it, and speaks up on its own.
 
