@@ -165,10 +165,14 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
   return null;
 }
 
-// Packs for one species, as the appearance picker lists them; a video character's own clips come last.
+// Packs for one species, as the appearance picker lists them: hers in the order of her character file
+// (the default first), then imported ones; a video character's own clips come last.
 function packsFor(packs, speciesId) {
+  const own = (SPECIES[speciesId] && SPECIES[speciesId].packs) || [];
+  const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
   const out = [...packs.values()]
     .filter((p) => p.species === speciesId)
+    .sort((a, b) => rank(a) - rank(b))
     .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, outfits: Object.keys(p.outfits).length }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
   if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });

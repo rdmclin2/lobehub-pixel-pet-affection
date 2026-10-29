@@ -1284,7 +1284,7 @@ async function packs() {
       assert.ok(fs.existsSync(path.join(data, 'packs', 'my-grok', 'pack.json')), 'copied into the user pack folder');
       await openAdvanced();
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names.sort(), ['我的格萝可', '格萝可 · 像素'].sort());
+      assert.deepEqual(names, ['格萝可 · 像素', '格萝可 · 旧版像素', '我的格萝可'], 'hers in order (default first), then the imported one');
       assert.match(await page.textContent('.pack-opt[data-pack="my-grok"] .meta span'), /导入/);
       await page.click('.pack-opt[data-pack="my-grok"] .pick');
       await page.waitForSelector('.pack-opt.on[data-pack="my-grok"]');
@@ -1328,7 +1328,7 @@ async function packs() {
       await openAdvanced();
       assert.equal(await page.locator('.char-opt').count(), 0, 'the character list is no longer in 高级设置');
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 原版动画']);
+      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
       assert.match(await page.textContent('.pack-opt[data-pack="dafeiyu-clips"] .meta span'), /透明视频 · 1 套服饰 · PC2005-cloud\/dsh-pet/);
       await page.click('#panel-close');
@@ -1347,6 +1347,35 @@ async function packs() {
       await page.click('#panel-close');
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
       return `${names.join(' / ')}; pixel → clips → pixel`;
+    }, page);
+
+    await step(S, 'every character can wear her v0.7.0 pixels (旧版像素) and go back to the new ones', async () => {
+      const seen = [];
+      for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="characters"]');
+        if (!(await page.locator(`.char-opt.on[data-species="${id}"]`).count())) {
+          await page.click(`.char-opt[data-species="${id}"] .pick`);
+          await page.waitForSelector(`.char-opt.on[data-species="${id}"]`);
+        }
+        await page.click('#panel-close');
+        await page.waitForFunction(() => window.innerWidth <= 240, null, { timeout: 5000 });
+        await openAdvanced();
+        assert.match(await page.textContent(`.pack-opt[data-pack="${id}-classic"] .meta span`), /像素动画 · 1 套服饰/);
+        await page.click(`.pack-opt[data-pack="${id}-classic"] .pick`);
+        await page.waitForSelector(`.pack-opt.on[data-pack="${id}-classic"]`);
+        await page.click('#panel-close');
+        await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${id}-classic/daily`, { timeout: 5000 });
+        await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 }); // past the wake-up after a switch
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: path.join(OUT, `pack-${id}-classic.png`) });
+        seen.push(`${id}-classic/daily`);
+        await openAdvanced();
+        await page.click(`.pack-opt[data-pack="${id}-pixel"] .pick`);
+        await page.click('#panel-close');
+        await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${id}-pixel/daily`, { timeout: 5000 });
+      }
+      return `${seen.join(', ')}; each back on her -pixel pack`;
     }, page);
   } finally {
     await app.close().catch(() => {});
