@@ -1231,6 +1231,12 @@ function bindPetPointer({ onClick, onMenu }) {
   window.addEventListener('pointercancel', (e) => end(e, true));
 }
 
+// Behaviour switches for the effects layer; she never walks off while a panel has the window enlarged.
+function petPrefs() {
+  const p = (settings && settings.prefs) || {};
+  return panelKind ? { ...p, roam: false } : p;
+}
+
 // Where the character is drawn in the window (for knocking into other pets): its art, not the whole window.
 function petHitBox() {
   const el = isVideo(view && view.pet.speciesId) ? $('vwrap') : $('char-wrap');
@@ -1441,7 +1447,7 @@ function onUpdateStatus(u) {
 
 // ---------- boot ----------
 async function main() {
-  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet, prefs: () => (settings && settings.prefs) || {}, hitBox: petHitBox });
+  fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), api: window.pet, prefs: petPrefs, hitBox: petHitBox });
   window.pet.onKicked((v) => fx.kicked(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) }));
   if (VISITOR) return visitorMain();
   info = await window.pet.boot();
