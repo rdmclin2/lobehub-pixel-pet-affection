@@ -102,3 +102,45 @@ xvfb-run -a node e2e/run.js history        # 真实 Electron：入口、空状�
 没有主动发起过聊天时的空状态（e2e `history` H1，此时已有一条“初次见面”问候）：
 
 ![空状态](img/t-1230/5-empty-state.png)
+
+## 七、端到端验收（从干净 clone 开始，T-1232）
+
+下面的步骤在一台没有显示器的 Linux（Ubuntu，Node 24.21.0，npm 11.19.0）上实际跑过，截图都来自这次运行。用的是测试用的假 `lh`（`test/fixtures/fake-lh.js`，离线，不需要登录、不花 token），它把收到的内容原样回显成 `echo: …`，所以系统台词在气泡里是 `echo: [事件] …`。
+
+### 1. 安装与启动
+
+```bash
+git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
+cd lobehub-pixel-pet-affection
+npm install                 # Node 20+；npm 11 会提示 electron-winstaller 的 install script 未放行，可忽略（只在打 Windows 包时用）
+npm run demo -- --fresh     # 离线演示：假 lh，直接是一只已唤醒的克洛蒂；Linux 无显示器时前面加 xvfb-run -a
+npm start                   # 正式运行：需要 npm install -g @lobehub/cli 并登录
+```
+
+第一次启动时 Electron 才下载自己的二进制（终端里打印 `Downloading Electron binary...`），之后不再下载。
+
+一键复现下面全部场景（截图、录屏、运行日志）：
+
+```bash
+xvfb-run -a node .agents/acceptance/scripts/chat-history-acceptance.js "$PWD" /tmp/chat-history-acceptance
+```
+
+脚本从首次启动开始（选角色 → 唤醒），用 `PIXELPET_TEST=1` 打开测试钩子（窗口不透明，`window.pet.debugSet` / `debugHeartbeat` 可用），输出 `*.png`、`e2e-run.webm`、`run-log.txt`（每一步的气泡文字和 `chat-log.json` 内容）和 `chat-log.json`。
+
+### 2. 复现步骤与结果
+
+| 场景 | 怎么操作 | 看到什么 | 截图 |
+| --- | --- | --- | --- |
+| 1 启动 | 首次启动 → 选克洛蒂 → 唤醒 | 角色选择页；唤醒后桌宠窗口出现，头顶是“初次见面”问候（`greeting`） | ![](img/t-1232/1a-first-launch-picker.png) ![](img/t-1232/1b-pet-window.png) |
+| 5 空状态 | 唤醒后立刻 悬停 → **⋯** → **聊天记录** | “还没有你主动发起的聊天”，0 条；此时记录里已有 1 条问候（`historyList()` 返回 `hidden: { greeting: 1 }`） | ![](img/t-1232/5b-empty-state.png) |
+| 2 系统主动消息 | 点她的身体（触摸）；再把饥饿调到 90 并跑一次心跳：`window.pet.debugSet({ hunger: 90, lastSpokeAt: 0 })`、`window.pet.debugHeartbeat()`。不用测试钩子时，等 30 秒一次的心跳（她饿了 / 无聊时会主动说话） | 触摸台词气泡（`touch`），然后“你肚子很饿了”主动搭话气泡（`proactive`） | ![](img/t-1232/2a-touch-bubble.png) ![](img/t-1232/2b-proactive-bubble.png) |
+| 3 用户发消息 | 悬停 → **聊天**，发“你好呀克洛蒂，今天过得怎么样？”，再发“晚上一起看电影吧，你想看什么？” | 两次都有回复气泡 | ![](img/t-1232/3b-reply-1.png) ![](img/t-1232/3c-reply-2.png) |
+| 4 聊天记录 | 悬停 → **⋯** → **聊天记录**，点开那一段 | 列表只有 1 段：克洛蒂 · 4 条 · “你好呀克洛蒂，今天过得怎么样？”。问候、触摸、主动搭话都不在。详情依次是你的两句话和她的两句回复，← 返回列表 | ![](img/t-1232/4a-menu-entry.png) ![](img/t-1232/4b-history-list.png) ![](img/t-1232/4c-history-detail.png) |
+
+这次运行结束时 `chat-log.json` 有 7 条：`greeting` 1、`touch` 1、`proactive` 1、`user` 4（两轮，每轮你一句、她一句）。界面拿到的数据：
+
+```json
+{"sessions":[{"id":"m4","speciesId":"claude","preview":"你好呀克洛蒂，今天过得怎么样？","count":4,"userCount":2,"name":"克洛蒂"}],"hidden":{"greeting":1,"touch":1,"proactive":1},"total":7}
+```
+
+过滤规则见第二、三节：只显示 `origin: 'user'` 的轮次，过滤在主进程 `userSessions()`（`src/core/chat-log.js:76`）里完成，渲染进程（`src/renderer/history.js`）只拿到过滤后的会话。验收报告链接在 PR 描述里。
