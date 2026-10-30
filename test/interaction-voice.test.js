@@ -224,6 +224,19 @@ test('stopAll (朗读 switched off) aborts the prewarm and the live line at once
   assert.equal(engine.status().fish.lastError, null, 'stopping is not a failure');
 });
 
+test('endPrewarm (engine, key or endpoint changed) ends the running prewarm before its next request', async () => {
+  const pending = [];
+  const fetch = fakeFetch((_u, init) => new Promise((res, rej) => { pending.push(res); init.signal.addEventListener('abort', () => rej(new Error('aborted'))); }));
+  const engine = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), cache: new TtsCache(tmp()), fetch });
+  const warm = engine.prewarm([{ text: '一' }, { text: '二' }, { text: '三' }], dfy, FISH);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(fetch.calls.length, 1);
+  engine.endPrewarm();
+  assert.equal((await warm).skipped, 'stopped');
+  assert.equal(fetch.calls.length, 1, 'nothing more goes to the old engine');
+  assert.equal(engine.status().fish.lastError, null, 'ending it is not a failure');
+});
+
 test('a newer prewarm supersedes the running one (another character, a new key)', async () => {
   let release;
   const fetch = fakeFetch(() => new Promise((res) => { release = () => res(audioRes()); }));

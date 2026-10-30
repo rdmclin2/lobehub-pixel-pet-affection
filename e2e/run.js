@@ -2617,6 +2617,15 @@ function ttsMock() {
   return new Promise((resolve) => m.server.listen(0, '127.0.0.1', () => { m.url = `http://127.0.0.1:${m.server.address().port}`; resolve(m); }));
 }
 
+// 互动语音 synthesises her common lines ahead (petFx.lastPrewarm) once an engine has a key: wait for it
+// to settle before counting engine requests.
+async function prewarmed(page) {
+  const settled = () => page.waitForFunction(() => { const p = window.petFx.lastPrewarm && window.petFx.lastPrewarm(); return !p || p.status === 'done'; }, null, { timeout: 30000 });
+  await settled();
+  await page.waitForTimeout(800); // a prewarm is scheduled 400 ms after what it depends on changes
+  await settled();
+}
+
 async function voice() {
   const S = 'voice';
   const SHOTS = path.join(OUT, 'voice');
@@ -2718,6 +2727,7 @@ async function voice() {
     });
 
     await step(S, 'V3 engine choice: 大肥鱼 speaks through Fish Audio with the 蓝色大肥鱼 voice', async () => {
+      await prewarmed(page); // 互动语音's prewarm sends its own Fish requests; count only this line's
       const before = reqs();
       const sp = await speakLine('今天也要好好吃饭哦');
       assert.equal(sp.provider, 'fish');
@@ -2736,6 +2746,7 @@ async function voice() {
     }, page);
 
     await step(S, 'V4 cache: the same line again is played from the local cache, no request', async () => {
+      await prewarmed(page); // 互动语音's prewarm sends its own Fish requests; count only this line's
       const before = reqs();
       const sp = await speakLine('今天也要好好吃饭哦');
       assert.equal(sp.provider, 'fish');
@@ -3296,9 +3307,7 @@ async function chatvoice() {
     await step(S, 'C1 a four-sentence chat reply is read whole, sentence by sentence in order, filtered, through Fish', async () => {
       chapter('C1 发一条消息：四句回复按句、按顺序完整朗读');
       // 互动语音 synthesises her common lines ahead once Fish has a key; let that finish so the mock log holds only the reply
-      await page.waitForFunction(() => { const p = window.petFx.lastPrewarm && window.petFx.lastPrewarm(); return !p || p.status === 'done'; }, null, { timeout: 30000 });
-      await page.waitForTimeout(800);
-      await page.waitForFunction(() => { const p = window.petFx.lastPrewarm && window.petFx.lastPrewarm(); return !p || p.status === 'done'; }, null, { timeout: 30000 });
+      await prewarmed(page);
       const before = mock.log.length;
       await sampleSync();
       await send(MSG1);
