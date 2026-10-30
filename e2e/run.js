@@ -2566,7 +2566,7 @@ async function rosterOne(ch) {
       assert.ok(stt.lastSquash < 0.8, `squash ${stt.lastSquash}`);
       return `landing squash scaleY ${stt.lastSquash} (CSS --sq ${sq})`;
     });
-    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, memes and collisions on by default)', async () => {
+    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, 互动语音 on, 朗读碎碎念 off, memes and collisions on by default)', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#behavior-section');
@@ -4119,6 +4119,117 @@ async function chatvoice() {
   }
 }
 
+// ------------------------------------------------------------------ history
+// ⋯ → 聊天记录: after a greeting, a proactive line, a stage-up, a touch and a feed, plus one message the
+// owner sends from the chat box, the history lists only the owner's conversation (filtered in main).
+async function history() {
+  const S = 'history';
+  const SHOTS = path.join(OUT, 'history');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-history-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-historyfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  const video = process.env.PIXELPET_E2E_VIDEO ? path.join(SHOTS, 'video') : null;
+  let { app, page } = await launch(env, { video });
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+  const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
+  const openHistory = async () => {
+    await clickAct(page, 'menu');
+    await page.click('[data-menu="history"]');
+    await page.waitForSelector('#panel:not(.hidden)');
+    await page.waitForFunction(() => document.getElementById('panel-title').textContent.startsWith('聊天记录') && document.querySelector('.history-empty, .history-item'));
+  };
+  try {
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card[data-species="claude"]').click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+
+    await step(S, 'H1 ⋯ → 聊天记录 opens; with only her greeting so far it shows the empty state', async () => {
+      await openHistory();
+      assert.match(await page.textContent('.history-empty'), /还没有你主动发起的聊天/);
+      assert.equal(await page.locator('.history-item').count(), 0);
+      assert.ok(logged().some((m) => m.origin === 'greeting' && m.kind === 'met'), 'the greeting was logged (origin greeting)');
+      await shot('h1-empty');
+      await page.click('#panel-close');
+      return `empty state: 「${(await page.textContent('.history-empty')).trim().slice(0, 40)}」 while chat-log.json holds ${logged().length} system message(s)`;
+    }, page);
+
+    await step(S, 'H2 system lines happen: touch, feed, a proactive "hungry" line and a stage-up', async () => {
+      await page.evaluate(() => window.pet.touch('head'));
+      await page.evaluate(() => window.pet.act('feed', 'rice'));
+      await page.evaluate(() => window.pet.debugSet({ hunger: 90, lastSpokeAt: 0 }));
+      await page.evaluate(() => window.pet.debugHeartbeat());
+      await idle();
+      await page.waitForFunction(() => /\[事件\]/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      const proactive = await bubbleText(page);
+      await shot('h2-proactive-bubble');
+      await page.evaluate(() => window.pet.debugSet({ affection: 20 }));
+      await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 }).catch(() => {});
+      await idle();
+      const origins = logged().map((m) => m.origin);
+      for (const o of ['greeting', 'touch', 'care', 'proactive', 'emotion']) assert.ok(origins.includes(o), `${o} logged: ${origins.join(',')}`);
+      assert.ok(!origins.includes('user'));
+      return `bubble 「${proactive.slice(0, 50)}」; chat-log origins: ${origins.join(', ')}`;
+    }, page);
+
+    await step(S, 'H3 the owner sends one message from the chat box and gets a reply', async () => {
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
+      await page.press('#chat-input', 'Enter');
+      await page.waitForFunction(() => /echo: 今天也辛苦啦/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
+      await idle();
+      await shot('h3-chat-reply');
+      const u = logged().filter((m) => m.origin === 'user');
+      assert.deepEqual(u.map((m) => m.role), ['user', 'pet']);
+      assert.equal(u[0].turnId, u[1].turnId);
+      return `logged: ${u.map((m) => `${m.role}「${m.text}」`).join(' → ')}`;
+    }, page);
+
+    await step(S, 'H4 聊天记录 lists only that conversation: time, first message, 2 条; no greeting / proactive / stage-up text', async () => {
+      await openHistory();
+      const items = await page.$$eval('.history-item', (bs) => bs.map((b) => ({ time: b.querySelector('.history-time').textContent, who: b.querySelector('.history-who').textContent, count: b.querySelector('.history-count').textContent, preview: b.querySelector('.history-preview').textContent })));
+      assert.equal(items.length, 1, JSON.stringify(items));
+      assert.equal(items[0].preview, '今天也辛苦啦，晚上想吃什么？');
+      assert.equal(items[0].count, '2 条');
+      assert.match(items[0].time, /\d{2}:\d{2}/);
+      const panel = await page.textContent('#panel');
+      assert.ok(!/\[事件\]|echo: \[/.test(panel), 'no system text in the list');
+      const hidden = await page.evaluate(() => window.pet.historyList().then((r) => r.hidden));
+      await shot('h4-list');
+      return `${items.map((i) => `${i.time} · ${i.who} · ${i.count} · 「${i.preview}」`).join(' | ')}; left out by origin: ${JSON.stringify(hidden)}`;
+    }, page);
+
+    await step(S, 'H5 opening it shows the owner\'s message and her reply in full; ← 返回列表 goes back', async () => {
+      await page.click('.history-item');
+      await page.waitForSelector('.history-thread');
+      const msgs = await page.$$eval('.history-msg', (ms) => ms.map((m) => ({ role: m.dataset.role, text: m.querySelector('.history-msg-text').textContent })));
+      assert.deepEqual(msgs, [{ role: 'user', text: '今天也辛苦啦，晚上想吃什么？' }, { role: 'pet', text: 'echo: 今天也辛苦啦，晚上想吃什么？' }]);
+      await shot('h5-detail');
+      await page.click('.history-back');
+      await page.waitForSelector('.history-item');
+      return msgs.map((m) => `${m.role}「${m.text}」`).join(' → ');
+    }, page);
+
+    await step(S, 'H6 after a restart the history is still there (chat-log.json)', async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openHistory();
+      const previews = await page.$$eval('.history-preview', (ps) => ps.map((p) => p.textContent));
+      assert.deepEqual(previews, ['今天也辛苦啦，晚上想吃什么？']);
+      await shot('h6-after-restart');
+      return `previews after restart: ${previews.join(', ')}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -4139,6 +4250,7 @@ async function chatvoice() {
   if (which === 'voice' || which === 'all') await voice();
   if (which === 'ivoice' || which === 'all') await ivoice();
   if (which === 'chatvoice' || which === 'all') await chatvoice();
+  if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

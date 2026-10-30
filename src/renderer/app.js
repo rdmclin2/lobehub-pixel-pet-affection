@@ -28,7 +28,7 @@ let pointerInside = false;
 let fx = null; // the shared effects layer (fx.js), created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
-let panelKind = null; // 'wardrobe' | 'topics' | 'characters' | 'advanced' while a panel is open
+let panelKind = null; // 'wardrobe' | 'topics' | 'characters' | 'advanced' | 'history' while a panel is open
 let panelNew = new Set(); // items that were "new" when the panel opened (marked seen right after)
 let toastTimer = null;
 const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
@@ -567,6 +567,7 @@ function renderPanel() {
   else if (panelKind === 'topics') renderTopics();
   else if (panelKind === 'advanced') renderAdvanced();
   else if (panelKind === 'characters') renderCharacters();
+  else if (panelKind === 'history') window.PetHistory.render({ $, api: window.pet, panelMsg, isOpen: () => panelKind === 'history' });
 }
 
 // 版本与更新: the version, when it last checked, what it found, and a button to check now.
@@ -1569,6 +1570,7 @@ function bindPetUi() {
     if (m === 'quit') window.pet.quit();
     if (m === 'advanced') openPanel('advanced');
     if (m === 'characters') openPanel('characters');
+    if (m === 'history') { window.PetHistory.reset(); openPanel('history'); }
     if (m === 'check-update') {
       await openPanel('advanced');
       $('update-section').scrollIntoView({ block: 'nearest' });

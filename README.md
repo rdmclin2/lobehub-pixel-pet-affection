@@ -61,6 +61,7 @@
 | E24 | 同屏伙伴：请其他模型娘来桌面串门（最多 3 位，无 agent），一起走动、被点、被甩 | 高级设置 → 同屏伙伴 |
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 高级设置 → 对外接口 |
+| E27 | 聊天记录：只列出你在聊天框主动发起的会话（时间、首句摘要、条数），点开看完整的你说的话和她的回复；问候、主动搭话、关系升级、触摸 / 喂食台词、HTTP 接口的内容都不显示。只存在本机，放生时清除。规则见 [docs/chat-history.md](docs/chat-history.md) | ⋯ → 聊天记录 |
 
 与 dsh-pet 的逐项对照（已实现 / 本次实现 / 不移植及理由）见 [docs/dsh-pet-gap.md](docs/dsh-pet-gap.md)。
 
@@ -304,7 +305,8 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
-- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
+- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
+- 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
 - **一键解锁**（⋯ 菜单 → 角色列表 → 角色页面）：直接把这位角色的好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
