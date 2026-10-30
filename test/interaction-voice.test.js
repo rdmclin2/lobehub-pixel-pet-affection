@@ -130,6 +130,26 @@ test('every character has her own short lift / throw / catch lines, and they are
   assert.deepEqual(IV.localLines({ voice: 'Xiaoxiao' }, 'catch'), IV.DEFAULT_LINES.catch);
 });
 
+test('喂食 / 摸摸 / 玩耍: every character has her own lines, mixed with the stage lines', () => {
+  const { fallbackPool } = require('../src/core/proactive');
+  const { stageLines } = require('../src/core/dialogue');
+  const seen = new Set();
+  for (const id of SPECIES_IDS) {
+    const sp = SPECIES[id];
+    const pet = { speciesId: id, relStage: 'close' };
+    for (const kind of ['fed', 'patted', 'played']) {
+      assert.ok(sp.fallback[kind] && sp.fallback[kind].length >= 2, `${id} fallback.${kind}`);
+      const pool = fallbackPool(sp, kind, pet, settingsLib.normalizeSettings({}));
+      for (const l of sp.fallback[kind]) { assert.ok(pool.includes(l), `${id} ${kind} 「${l}」 in the pool`); seen.add(l); }
+      for (const l of stageLines(pet, null, kind)) assert.ok(pool.includes(l), `${id} ${kind} keeps the stage line 「${l}」`);
+    }
+  }
+  assert.equal(seen.size, SPECIES_IDS.length * 6, 'no two characters share a line');
+  const bare = { fallback: { happy: ['好'], sleepy: ['困'], greet: ['嗨'], hungry: ['饿'], bored: ['闲'] } };
+  assert.deepEqual(fallbackPool(bare, 'fed'), ['好'], 'a file without them keeps fallback.happy');
+  assert.match(validateCharacter({ ...JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'characters', 'grok.json'), 'utf8')), fallback: { ...SPECIES.grok.fallback, fed: [] } }).join(), /fallback.fed must be a list of lines/);
+});
+
 test('voice.lines is checked in a character file', () => {
   assert.deepEqual(tts.validateVoice({ lines: { lift: ['好'] } }), []);
   assert.match(tts.validateVoice({ lines: { wave: ['好'] } }).join(), /unknown interaction/);

@@ -213,15 +213,15 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ### 互动语音
 
-开着 **朗读回复** 时，下面每种互动都会把她气泡里的那句台词用她的音色念出来（**互动语音** 开关，默认开）。台词复用各自已有的离线台词与人设；拖拽 / 甩出 / 接住原来没有台词，新加在角色文件的 `voice.lines` 里（每位两句，短句为主）。分类逻辑在 `src/core/interaction-voice.js`。
+开着 **朗读回复** 时，下面每种互动都会把她气泡里的那句台词用她的音色念出来（**互动语音** 开关，默认开）。台词复用各自已有的离线台词与人设；喂食 / 摸摸 / 玩耍原来只有各阶段共用的台词，现在每位角色在 `fallback.fed / patted / played` 里各有两句自己的（和阶段台词一起抽）；拖拽 / 甩出 / 接住原来没有台词，新加在角色文件的 `voice.lines` 里（每位两句，短句为主）。分类逻辑在 `src/core/interaction-voice.js`。
 
 | 互动 | 触发（代码位置） | 气泡 `kind` | 台词来源 | 读法（mood） |
 |---|---|---|---|---|
 | 初次见面 | 唤醒她（`pet-service.js hatch` → `_speak('met')`） | `met` | agent 回复，失败时 `fallback.greet` + 阶段台词 | happy |
-| 摸摸 | 点她（部位触摸关着或点在部位之间，`app.js touchAt` → `act('pat')`） | `pat` | 阶段台词 `patted` / `fallback.happy` | happy |
+| 摸摸 | 点她（部位触摸关着或点在部位之间，`app.js touchAt` → `act('pat')`） | `pat` | 她自己的 `fallback.patted` + 阶段台词 `patted` | happy |
 | 部位触摸 | 点头、脸、胸、手、肚子、臀、腿、脚、尾巴（`touch(zone)`） | `touch:<部位>` | `touch.lines` 按部位和阶段 | 按反应：开心/怕痒/害羞 happy，烦 sad，生气 无标签 |
-| 喂食 | 喂食 → 选食物（`act('feed')`） | `feed` | 阶段台词 `fed`；吃撑了“肚子圆滚滚的” | happy |
-| 玩耍 | 玩耍（`act('play')`） | `play` | 阶段台词 `played`；累了“好累……” | happy |
+| 喂食 | 喂食 → 选食物（`act('feed')`） | `feed` | 她自己的 `fallback.fed` + 阶段台词 `fed`；吃撑了“肚子圆滚滚的” | happy |
+| 玩耍 | 玩耍（`act('play')`） | `play` | 她自己的 `fallback.played` + 阶段台词 `played`；累了“好累……” | happy |
 | 哄睡 | 睡觉（`act('sleep')`） | `sleep` | `fallback.sleepy` | sleep |
 | 拖拽 | 按住她拖动（`app.js bindPetPointer`） | `lift` | `voice.lines.lift` | happy |
 | 甩出 | 拖着快速松手 / 弹弓（`throwPet`） | `throw` | `voice.lines.throw` | happy |
