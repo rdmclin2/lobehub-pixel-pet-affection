@@ -1,0 +1,44 @@
+{
+  "ageGateVersion": 1,
+  "ageConfirmed": false,
+  "ageConfirmedAt": null,
+  "adultContent": false,
+  "answered": true,
+  "petScale": 1.6,
+  "appearance": {
+    "grok": "grok-classic",
+    "claude": "claude-classic"
+  },
+  "models": {
+    "claude": "lobehub:claude-opus-5-5",
+    "gpt": "openai:o3",
+    "grok": "lobehub:grok-4.7"
+  },
+  "prefs": {
+    "roam": false,
+    "clickSound": true,
+    "voice": true,
+    "voiceInteractions": false,
+    "voiceMurmurs": true,
+    "memes": false,
+    "collide": true,
+    "touchZones": true,
+    "touchHint": false
+  },
+  "visitors": ["gemini"],
+  "api": {
+    "enabled": true,
+    "port": 7444,
+    "token": "abcdefghijklmnopqrstuvwxyz012345"
+  },
+  "tts": {
+    "provider": "minimax",
+    "providerSet": true,
+    "fallback": "silent",
+    "endpoints": {
+      "fish": "https://fish.example.com",
+      "minimax": ""
+    }
+  },
+  "petScaleSet": true
+}

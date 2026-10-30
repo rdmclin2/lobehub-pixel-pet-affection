@@ -258,6 +258,22 @@ canvas.sprite { object-fit: contain; }
 .char-opt { border-left: 6px solid var(--accent, #d9cdb8); }
 .char-opt .char-rel { font-style: normal; color: #8a5a2b; }
 .char-opt.new .char-rel { color: #9a8fa8; }
+/* ⋯ → 角色列表: a picture per character; a row opens her page */
+.char-list .char-opt { cursor: pointer; }
+.char-list .char-opt:hover { background: #fffaf0; }
+.char-list .char-opt.on:hover { background: #fff6d6; }
+.char-thumb { flex: none; width: 44px; height: 56px; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+.char-thumb .look { display: block; max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+.char-thumb canvas.look { width: auto; height: 100%; }
+.char-thumb .look.vlook { width: 56px; height: 56px; max-width: none; max-height: none; }
+.char-thumb.lg { width: 84px; height: 108px; }
+.char-thumb.lg .look.vlook { width: 108px; height: 108px; }
+.char-opt.new .char-thumb .look { filter: grayscale(.6) brightness(.9); }
+.char-head .char-opt { border-color: #d9cdb8; background: transparent; }
+.char-head .char-opt.on { border-color: #c9502a; background: #fff6d6; }
+.char-head .meta small { margin-top: 2px; white-space: normal; }
+.char-back-row { margin-bottom: 4px; }
+.char-open { min-width: 0; }
 .char-name-form { margin: 2px 0 6px 6px; }
 .char-name-form input { flex: 1; }
 .panel-body { overflow-x: hidden; }

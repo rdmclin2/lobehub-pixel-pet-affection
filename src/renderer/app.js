@@ -539,6 +539,7 @@ async function openPanel(kind) {
   $('chat-row').classList.add('hidden');
   hideToast();
   panelKind = kind;
+  charDetail = null; // 角色列表 opens on the list
   const list = kind === 'wardrobe' ? view.outfits : kind === 'topics' ? view.topics : [];
   panelNew = new Set(list.filter((x) => x.isNew).map((x) => x.id));
   window.pet.panel(true);
@@ -609,64 +610,134 @@ function updateSection() {
   return sec;
 }
 
-// Advanced settings: unlock everything at once (to see all the content, or to skip the grind).
-let modelsRequested = false; // the model list is loaded once when 切换角色 first needs it
-// ⋯ → 切换角色: who the companion is, the model her agent runs on (only her own vendor's models, so it
-// changes with her) and how she looks (her pet packs).
+let modelsRequested = false; // the model list is loaded once when a character's page first needs it
+let charDetail = null; // ⋯ → 角色列表: the character whose page is open (null: the list)
+const charName = (c) => (c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`);
+const charRel = (c) => (c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过');
+// Her picture in the list and on her page: her chosen pack in the outfit she wears (daily if not met);
+// `data-look` names the pack ('clips' for Dafeiyu's own clips).
+function charThumb(c, large = false) {
+  const box = document.createElement('div');
+  box.className = `char-thumb${large ? ' lg' : ''}`;
+  box.dataset.look = c.look ? c.look.packId : 'clips';
+  box.appendChild(lookEl(c.look, { className: 'look', alt: c.nameZh, speciesId: c.id }));
+  return box;
+}
+// Switch to her, or meet her for the first time (name her first).
+function charPick(c, row) {
+  const pick = document.createElement('button');
+  pick.className = 'btn pick';
+  pick.setAttribute('role', 'radio');
+  pick.textContent = c.current ? '✓ 当前' : c.met ? '切换' : '初次见面';
+  pick.setAttribute('aria-checked', String(c.current));
+  pick.disabled = c.current;
+  pick.addEventListener('click', (e) => { e.stopPropagation(); if (c.met) switchCharacter(c); else askName(row, c); });
+  return pick;
+}
+
+// ⋯ → 角色列表: every character with her picture, name, title and how well you know her. A click opens her
+// page (renderCharacter), where her own settings live; 切换 / 初次见面 work right here as well.
 function renderCharacters() {
-  $('panel-title').textContent = '切换角色';
+  const c = charDetail && view.characters.find((x) => x.id === charDetail);
+  if (c) return renderCharacter(c);
+  charDetail = null;
+  $('panel-title').textContent = '角色列表';
   $('panel-sub').textContent = `现在是「${view.species.nameZh}」（${view.species.vendor}）· ${progressLine()}`;
   const body = $('panel-body');
   body.innerHTML = '';
   // who the companion is: every character has her own agent, chat history, name and affection
   const who = document.createElement('div');
   who.className = 'adv-section';
-  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
-  for (const c of view.characters) {
+  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的设置：模型、外观和好感度。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
+  for (const ch of view.characters) {
     const row = document.createElement('div');
-    row.className = `pack-opt char-opt${c.current ? ' on' : ''}${c.met ? ' met' : ' new'}`;
-    row.dataset.species = c.id;
-    row.style.setProperty('--accent', c.accent);
-    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span><em class="char-rel"></em></div>';
-    const pick = row.querySelector('.pick');
-    pick.textContent = c.current ? '✓ 当前' : c.met ? '切换' : '初次见面';
-    pick.setAttribute('aria-checked', String(c.current));
-    pick.disabled = c.current;
-    row.querySelector('b').textContent = c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`;
-    row.querySelector('span').textContent = c.title;
-    row.querySelector('.char-rel').textContent = c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过';
-    pick.addEventListener('click', () => (c.met ? switchCharacter(c) : askName(row, c)));
+    row.className = `pack-opt char-opt${ch.current ? ' on' : ''}${ch.met ? ' met' : ' new'}`;
+    row.dataset.species = ch.id;
+    row.style.setProperty('--accent', ch.accent);
+    row.innerHTML = '<div class="meta"><b></b><span></span><em class="char-rel"></em></div><button class="btn char-open" aria-label="角色设置">设置 ›</button>';
+    row.prepend(charThumb(ch));
+    row.querySelector('b').textContent = charName(ch);
+    row.querySelector('span').textContent = ch.title;
+    row.querySelector('.char-rel').textContent = charRel(ch);
+    row.insertBefore(charPick(ch, row), row.querySelector('.char-open'));
+    row.addEventListener('click', (e) => { if (!e.target.closest('.pick')) openCharacter(ch.id); });
     who.querySelector('.char-list').appendChild(row);
-    if (naming && naming.id === c.id && !c.met) askName(row, c, naming.value);
+    if (naming && naming.id === ch.id && !ch.met) askName(row, ch, naming.value);
   }
   body.appendChild(who);
+}
+
+function openCharacter(id) {
+  charDetail = id;
+  if (naming && naming.id !== id) naming = null;
+  panelMsg('');
+  renderPanel();
+  $('panel-body').scrollTop = 0;
+}
+
+// A character's page: who she is, and the settings that are hers alone (kept per character in
+// settings.json / pet.json): the model her agent runs on, how she looks, and her affection.
+function renderCharacter(c) {
+  const sp = speciesOf(c.id) || {};
+  $('panel-title').textContent = c.met ? c.met.name : c.nameZh;
+  $('panel-sub').textContent = `${c.nameZh}（${c.vendor}）· ${c.current ? '当前陪伴' : c.met ? '已认识' : '未见过'}${c.met ? ` · ${c.met.stage} ♥${Math.round(c.met.affection)}` : ''}`;
+  const body = $('panel-body');
+  body.innerHTML = '';
+
+  const back = document.createElement('div');
+  back.className = 'size-row char-back-row';
+  back.innerHTML = '<button id="char-back" class="btn">‹ 角色列表</button>';
+  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; panelMsg(''); renderPanel(); });
+  body.appendChild(back);
+
+  // who she is, and 切换 / 初次见面
+  const head = document.createElement('div');
+  head.className = 'adv-section char-head';
+  head.id = 'char-head';
+  head.style.setProperty('--accent', c.accent);
+  head.innerHTML = '<div class="pack-opt char-opt"><div class="meta"><b></b><span></span><em class="char-rel"></em><small class="adv-note"></small></div></div>';
+  const row = head.querySelector('.char-opt');
+  row.classList.toggle('on', c.current);
+  row.classList.add(c.met ? 'met' : 'new');
+  row.dataset.species = c.id;
+  row.prepend(charThumb(c, true));
+  row.querySelector('b').textContent = charName(c);
+  row.querySelector('span').textContent = c.title;
+  row.querySelector('.char-rel').textContent = charRel(c);
+  row.querySelector('small').textContent = sp.blurb || '';
+  row.appendChild(charPick(c, row));
+  body.appendChild(head);
+  if (naming && naming.id === c.id && !c.met) askName(row, c, naming.value);
 
   // the model her agent runs on: only her own vendor's models (src/characters/<id>.json `models`)
   const mod = document.createElement('div');
   mod.className = 'adv-section';
-  const m = view.model;
+  mod.id = 'model-section';
+  const m = c.model;
   mod.innerHTML = '<h3>模型</h3><p class="adv-text"></p><div class="size-row"><select id="model-select" aria-label="模型"></select><button id="model-refresh" class="btn">刷新</button></div><p class="adv-text model-status"></p>';
-  mod.querySelector('.adv-text').textContent = `${view.species.nameZh}只能用 ${view.species.vendor} 的模型，换角色后会换成新角色的模型。列表来自你在 LobeHub 里启用的模型。`;
+  mod.querySelector('.adv-text').textContent = `${c.nameZh}只能用 ${c.vendor} 的模型，每位角色各记各的。列表来自你在 LobeHub 里启用的模型。`;
   const sel = mod.querySelector('#model-select');
   for (const o of m.options) {
     const opt = document.createElement('option');
     opt.value = o.key;
-    opt.textContent = o.hosted ? o.label : `${o.label}（自己的 ${view.species.vendor} Key）`;
+    opt.textContent = o.hosted ? o.label : `${o.label}（自己的 ${c.vendor} Key）`;
     opt.selected = o.key === m.current;
     sel.appendChild(opt);
   }
   sel.disabled = !m.options.length;
   const now = m.options.find((o) => o.key === m.current);
+  const pending = c.current ? '下一句话起用' : c.met ? '她下次陪你时起用' : '见面后起用';
   mod.querySelector('.model-status').textContent = !m.loaded
     ? (m.error ? `读不到模型列表（${m.error.slice(0, 60)}），她先用原来的模型。` : '正在读取模型列表…')
-    : !now ? `你没有启用任何 ${view.species.vendor} 模型，她先用原来的模型。`
-      : `${m.applied === m.current ? '正在用' : '下一句话起用'}：${now.label}${m.chosen ? '' : '（默认）'}`;
+    : !now ? `你没有启用任何 ${c.vendor} 模型，她先用原来的模型。`
+      : `${m.applied === m.current ? '正在用' : pending}：${now.label}${m.chosen ? '' : '（默认）'}`;
   sel.addEventListener('change', async () => {
-    const r = await window.pet.setModel(sel.value);
+    const r = await window.pet.setModel(sel.value, c.id);
     if (!r.ok) return panelMsg('这个模型现在不能选，点“刷新”再试试。');
     view = r.view;
     renderPanel();
-    panelMsg(`模型已换成「${(view.model.options.find((o) => o.key === view.model.current) || {}).label}」。`, true);
+    const nc = view.characters.find((x) => x.id === c.id);
+    panelMsg(`${c.nameZh}的模型已换成「${(nc.model.options.find((o) => o.key === nc.model.current) || {}).label}」。`, true);
   });
   mod.querySelector('#model-refresh').addEventListener('click', async () => {
     const r = await window.pet.refreshModels();
@@ -679,29 +750,31 @@ function renderCharacters() {
   }
   body.appendChild(mod);
 
-  // appearance: which pet pack dresses this companion; packs can be imported from a folder or .zip
+  // appearance: which pet pack dresses her; packs can be imported from a folder or .zip
   const look = document.createElement('div');
   look.className = 'adv-section';
-  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择角色的画风。角色包只提供图片，解锁条件和成人向限制不受角色包影响。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
+  look.id = 'look-section';
+  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件和成人向限制不受角色包影响。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
   const list = look.querySelector('.pack-list');
-  for (const o of view.appearance.options) {
-    const row = document.createElement('div');
-    row.className = `pack-opt${o.id === view.appearance.packId ? ' on' : ''}`;
-    row.dataset.pack = o.id;
-    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
-    const pick = row.querySelector('.pick');
-    pick.textContent = o.id === view.appearance.packId ? '✓ 使用中' : '使用';
-    pick.setAttribute('aria-checked', String(o.id === view.appearance.packId));
-    pick.disabled = o.id === view.appearance.packId;
-    row.querySelector('b').textContent = o.name;
-    row.querySelector('span').textContent = `${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+  for (const o of c.appearance.options) {
+    const on = o.id === c.appearance.packId;
+    const prow = document.createElement('div');
+    prow.className = `pack-opt${on ? ' on' : ''}`;
+    prow.dataset.pack = o.id;
+    prow.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
+    const pick = prow.querySelector('.pick');
+    pick.textContent = on ? '✓ 使用中' : '使用';
+    pick.setAttribute('aria-checked', String(on));
+    pick.disabled = on;
+    prow.querySelector('b').textContent = o.name;
+    prow.querySelector('span').textContent = `${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
     pick.addEventListener('click', async () => {
-      const r = await window.pet.setAppearance(o.id);
+      const r = await window.pet.setAppearance(o.id, c.id);
       if (!r.ok) return;
       view = r.view;
       applyArt();
       renderPanel();
-      panelMsg(`外观已换成「${o.name}」。`, true);
+      panelMsg(`${c.nameZh}的外观已换成「${o.name}」。`, true);
     });
     if (o.source === 'user') {
       const del = document.createElement('button');
@@ -711,40 +784,42 @@ function renderCharacters() {
         if (!confirm(`移除角色包「${o.name}」？`)) return;
         await window.pet.removePack(o.id);
       });
-      row.appendChild(del);
+      prow.appendChild(del);
     }
-    list.appendChild(row);
+    list.appendChild(prow);
   }
   look.querySelector('#pack-import').addEventListener('click', async () => {
     const r = await window.pet.importPack();
     if (r.reason === 'canceled') return;
     if (!r.ok) return panelMsg(`导入失败：${(r.errors || []).slice(0, 3).join('；')}`);
-    panelMsg(r.pack.species === view.pet.speciesId ? `已导入「${r.pack.name}」，点“使用”换上。` : `已导入「${r.pack.name}」（给 ${(speciesOf(r.pack.species) || {}).nameZh || r.pack.species} 用的）。`, true);
+    panelMsg(r.pack.species === c.id ? `已导入「${r.pack.name}」，点“使用”换上。` : `已导入「${r.pack.name}」（给 ${(speciesOf(r.pack.species) || {}).nameZh || r.pack.species} 用的）。`, true);
   });
   look.querySelector('#pack-folder').addEventListener('click', () => window.pet.openPacksFolder());
   body.appendChild(look);
-}
 
-function renderAdvanced() {
-  const a = view.affection;
-  const unlocked = (l) => `${l.filter((x) => x.unlocked).length}/${l.length}`;
-  $('panel-title').textContent = '高级设置';
-  $('panel-sub').textContent = `${progressLine()} · 话题 ${unlocked(view.topics)} · 服饰 ${unlocked(view.outfits)}`;
-  const body = $('panel-body');
-  body.innerHTML = '';
+  // affection: unlock everything at once (to see all the content, or to skip the grind) — hers only
   const sec = document.createElement('div');
   sec.className = 'adv-section';
-  sec.innerHTML = '<h3>一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
-  const all = !a.next && a.value >= a.max;
-  sec.querySelector('.adv-text').textContent = '直接把好感度加满（♥100），所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。解锁后不能撤销，之后的互动照常计分。';
-  sec.querySelector('.adv-note').textContent = settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
+  sec.id = 'unlock-section';
+  sec.innerHTML = '<h3>好感度 · 一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
+  const a = c.met && c.met.progress;
+  const all = !!a && !a.next && a.value >= a.max;
+  sec.querySelector('.adv-text').textContent = `直接把${c.nameZh}的好感度加满（♥100），她的所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。只作用于她，不影响其他角色。解锁后不能撤销，之后的互动照常计分。`;
+  sec.querySelector('.adv-note').textContent = !c.met ? `还没认识${c.nameZh}：先点上面的“初次见面”请她来，才有好感度可以解锁。` : settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
   const btn = sec.querySelector('#unlock-all');
-  btn.textContent = all ? '已经全部解锁' : '解锁全部好感度和服饰';
-  btn.disabled = all;
-  btn.addEventListener('click', unlockAllNow);
+  btn.textContent = !c.met ? '还没认识她' : all ? '已经全部解锁' : `解锁${c.nameZh}的全部好感度和服饰`;
+  btn.disabled = !c.met || all;
+  btn.addEventListener('click', () => unlockAllNow(c));
+  body.appendChild(sec);
+}
 
-
-
+// ⋯ → 高级设置: what applies to the whole app, whoever the companion is (size, behaviour, voice engines,
+// visitors, local API, updates). Per-character settings (model, look, affection) are on her page in 角色列表.
+function renderAdvanced() {
+  $('panel-title').textContent = '高级设置';
+  $('panel-sub').textContent = '对所有角色生效。模型、外观和好感度在 ⋯ → 角色列表里按角色设置。';
+  const body = $('panel-body');
+  body.innerHTML = '';
   const size = document.createElement('div');
   size.className = 'adv-section';
   size.innerHTML = '<h3>宠物大小 <span class="size-val"></span></h3><p class="adv-text">拖动滑块调整桌面上角色的大小（50%–250%），窗口跟着变，右下角保持不动。在桌面上也能直接调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 滚动滚轮。</p><div class="size-row"><input id="size-range" type="range" aria-label="宠物大小" /><button id="size-reset" class="btn"></button></div>';
@@ -772,7 +847,6 @@ function renderAdvanced() {
   });
   body.appendChild(size);
   for (const el of behaviorSections()) body.appendChild(el);
-  body.appendChild(sec);
   body.appendChild(updateSection());
   renderUpdateSection();
 }
@@ -1039,20 +1113,20 @@ async function switchCharacter(c, name) {
   panelMsg(r.created ? `「${view.pet.name}」来了！这是她自己的 agent，从陌生开始。` : `已切换为「${view.pet.name}」。`, true);
 }
 
-async function unlockAllNow() {
-  if (!confirm('把好感度直接加满，解锁全部阶段、话题和服饰？这一步不能撤销。')) return;
-  const r = await window.pet.unlockAll();
+async function unlockAllNow(c) {
+  if (!confirm(`把${c.nameZh}的好感度直接加满，解锁她的全部阶段、话题和服饰？这一步不能撤销。`)) return;
+  const r = await window.pet.unlockAll(c.id);
   if (!r.ok) {
-    panelMsg(r.reason === 'busy' ? '它正在忙，等它说完再试。' : '现在没法解锁。');
+    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再试。' : r.reason === 'not-met' ? `还没认识${c.nameZh}。` : '现在没法解锁。');
     return;
   }
   view = r.view;
   applyArt();
   refreshHud();
-  renderAdvanced();
+  renderPanel();
   const n = (l) => (l ? l.length : 0);
   const outfits = n(r.unlocks.outfits);
-  panelMsg(r.already ? '好感度已加满，内容之前就已全部解锁。' : `已解锁：${n(r.unlocks.topics)} 个话题${outfits ? `、${outfits} 套服饰。去衣柜换上看看吧。` : '。'}`, true);
+  panelMsg(r.already ? `${c.nameZh}的好感度已加满，内容之前就已全部解锁。` : `已为${c.nameZh}解锁：${n(r.unlocks.topics)} 个话题${outfits ? `、${outfits} 套服饰。${c.current ? '去衣柜换上看看吧。' : '换成她之后去衣柜换上看看吧。'}` : '。'}`, true);
 }
 
 function renderWardrobe() {

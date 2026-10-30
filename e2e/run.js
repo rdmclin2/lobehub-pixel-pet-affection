@@ -63,7 +63,24 @@ async function launch(env, { gate = false, video = null } = {}) {
 // The controls only exist visually while the pointer is over the window.
 const hover = async (page) => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
 const clickAct = async (page, act) => { await hover(page); await page.click(`[data-act="${act}"]`); };
-// ⋯ → 切换角色 → pick a character. One not met yet is named first (`name`; null keeps her own) and gets her own agent.
+// ⋯ → 角色列表, optionally opening `id`'s page (her model, look and affection), as a user clicks it.
+const openCharPage = async (page, id) => {
+  await page.click(`.char-list .char-opt[data-species="${id}"] .char-open`);
+  await page.waitForSelector(`#char-head .char-opt[data-species="${id}"]`);
+};
+const openCharacters = async (page, id = null) => {
+  await clickAct(page, 'menu');
+  await page.click('[data-menu="characters"]');
+  await page.waitForSelector('.char-list .char-opt');
+  await page.waitForFunction(() => window.innerWidth >= 400, null, { timeout: 5000 }); // the window grows to the 460 px panel
+  if (id) await openCharPage(page, id);
+};
+// The current character's page in 角色列表.
+const openCurrentPage = async (page) => {
+  await openCharacters(page);
+  await openCharPage(page, await page.getAttribute('.char-list .char-opt.on', 'data-species'));
+};
+// ⋯ → 角色列表 → pick a character (in the list or on her page). One not met yet is named first (`name`; null keeps her own) and gets her own agent.
 const pickCharacter = async (page, id, name = null) => {
   await page.click(`.char-opt[data-species="${id}"] .pick`);
   if (await page.locator(`.char-opt.new[data-species="${id}"]`).count()) {
@@ -678,7 +695,7 @@ async function characters() {
       return `characters=${Object.keys(d.characters)}; grok agent=${d.characters.grok.agentId} topic=${d.characters.grok.topicId} ♥${d.characters.grok.affection}`;
     }, page);
 
-    await step(S, '切换角色 shows who has been met: 格萝可 已认识 ♥40, the others 未见过', async () => {
+    await step(S, '角色列表 shows who has been met: 格萝可 已认识 ♥40, the others 未见过', async () => {
       await openChars();
       assert.match(await rel('grok'), /已认识 · 亲近 · 好感 40/);
       for (const id of ['claude', 'gemini', 'gpt', 'dafeiyu']) assert.equal(await rel(id), '未见过', id);
@@ -1328,26 +1345,33 @@ async function advanced() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'the ⋯ menu has 高级设置, which explains one-click unlock', async () => {
+    await step(S, 'the ⋯ menu has 高级设置 with system-wide settings only (no model, look or unlock)', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#panel:not(.hidden) #unlock-all');
+      await page.waitForSelector('#panel:not(.hidden) #size-range');
       assert.equal(await page.textContent('#panel-title'), '高级设置');
       assert.equal(await page.evaluate(() => document.getElementById('panel-body').scrollTop), 0, 'opens at its top');
-      const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim()));
-      assert.ok(!sections.some((t) => /^(角色|模型|外观)/.test(t)), `who she is and how she looks live in 切换角色: ${sections.join(' / ')}`);
-      assert.match(await page.textContent('#panel-sub'), /陌生 ♥\d+/);
-      assert.equal(await page.locator('#unlock-all').isDisabled(), false);
-      return await page.textContent('#panel-sub');
+      const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
+      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
+      assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list').count(), 0, 'per-character settings live on her page in 角色列表');
+      return sections.join(' / ');
     }, page);
 
-    await step(S, 'one click unlocks every stage, topic and outfit (18+ on; 大肥鱼 is all-ages, so all-ages content only)', async () => {
+    await step(S, 'one click on her page in 角色列表 unlocks every stage, topic and outfit (18+ on; 大肥鱼 is all-ages, so all-ages content only)', async () => {
+      await page.click('#panel-close');
+      await openCurrentPage(page);
+      assert.equal(await page.locator('#unlock-all').isDisabled(), false);
+      await page.locator('#unlock-all').scrollIntoViewIfNeeded();
       await page.click('#unlock-all');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
       const msg = await page.textContent('#panel-msg');
-      assert.match(msg.trim(), /^已解锁：\d+ 个话题。$/, '大肥鱼 has no outfit to unlock, so none is mentioned');
-      assert.match(await page.textContent('#panel-sub'), /挚友 ♥100\/100 · 已满级 · 话题 13\/13 · 服饰 1\/1/);
+      assert.match(msg.trim(), /^已为大肥鱼解锁：\d+ 个话题。$/, '大肥鱼 has no outfit to unlock, so none is mentioned');
+      assert.match(await page.textContent('#panel-sub'), /挚友 ♥100/);
       assert.equal(await page.locator('#unlock-all').isDisabled(), true);
+      assert.equal(await page.textContent('#unlock-all'), '已经全部解锁');
+      const v = await view(page);
+      assert.equal(v.affection.value, 100);
+      assert.ok(v.topics.every((t) => t.unlocked), 'every topic');
       return msg;
     }, page);
 
@@ -1459,8 +1483,8 @@ async function packs() {
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const key = () => page.evaluate(() => document.getElementById('pet-look').dataset.key);
-  // the pack list (外观) lives in ⋯ → 切换角色, with the character list and her model
-  const openLooks = async () => { await clickAct(page, 'menu'); await page.click('[data-menu="characters"]'); await page.waitForSelector('.pack-list .pack-opt'); };
+  // the pack list (外观) lives on her page in ⋯ → 角色列表, with her model and affection
+  const openLooks = async () => { await openCurrentPage(page); await page.waitForSelector('.pack-list .pack-opt'); };
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card').nth(2).click();
@@ -1484,7 +1508,7 @@ async function packs() {
       return 'action while dragging: lifted';
     }, page);
 
-    await step(S, 'an imported pack is listed as imported, can be used, and 切换角色 → 外观 names it', async () => {
+    await step(S, 'an imported pack is listed as imported, can be used, and 角色列表 → 格萝可 → 外观 names it', async () => {
       const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-mypack-'));
       const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
       const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
@@ -1532,11 +1556,11 @@ async function packs() {
     }, page);
 
     await step(S, '大肥鱼 starts in her pixel pack and can switch to her original clips and back', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="characters"]');
+      await openCharacters(page);
       await pickCharacter(page, 'dafeiyu');
-      await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // the same panel now lists her looks
-      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['角色', '模型', '外观（角色包）']);
+      await openCharPage(page, 'dafeiyu');
+      await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // her page lists her looks
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '外观（角色包）', '好感度 · 一键解锁']);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
       assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
@@ -1592,7 +1616,7 @@ async function packs() {
 }
 
 // ------------------------------------------------------------------ models
-// 高级设置 → 模型: each character offers only her own vendor's models; the agent follows the pick, and
+// 角色列表 → her page → 模型: each character offers only her own vendor's models; the agent follows the pick, and
 // switching character switches the list (and the model) to the new character's.
 async function models() {
   const S = 'models';
@@ -1605,9 +1629,8 @@ async function models() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model).map((e) => `${e.provider}:${e.model}`) : []);
   const options = () => page.$$eval('#model-select option', (os) => os.map((o) => ({ key: o.value, label: o.textContent, selected: o.selected })));
-  const openCharacters = async () => {
-    await clickAct(page, 'menu');
-    await page.click('[data-menu="characters"]');
+  const openModels = async () => {
+    await openCurrentPage(page);
     await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
     await page.locator('#model-select').scrollIntoViewIfNeeded();
   };
@@ -1625,9 +1648,9 @@ async function models() {
       return modelEdits().join(', ');
     }, page);
 
-    await step(S, '⋯ → 切换角色 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
-      await openCharacters();
-      assert.equal(await page.textContent('#panel-title'), '切换角色');
+    await step(S, '⋯ → 角色列表 → 克洛蒂 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
+      await openModels();
+      assert.match(await page.textContent('#panel-sub'), /^克洛蒂（Anthropic）· 当前陪伴/);
       const os = await options();
       assert.deepEqual(os.map((o) => o.label), ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
       assert.equal(os.find((o) => o.selected).key, 'lobehub:claude-sonnet-5-5');
@@ -1640,7 +1663,7 @@ async function models() {
     await step(S, 'picking Claude Opus 5.5 points her agent at it', async () => {
       await page.selectOption('#model-select', 'lobehub:claude-opus-5-5');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.match(await page.textContent('#panel-msg'), /模型已换成「Claude Opus 5\.5」/);
+      assert.match(await page.textContent('#panel-msg'), /克洛蒂的模型已换成「Claude Opus 5\.5」/);
       await page.waitForFunction(() => /正在用：Claude Opus 5\.5$/.test(document.querySelector('.model-status').textContent), null, { timeout: 10000 });
       assert.deepEqual(modelEdits(), ['lobehub:claude-sonnet-5-5', 'lobehub:claude-opus-5-5']);
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).models.claude, 'lobehub:claude-opus-5-5');
@@ -1649,7 +1672,9 @@ async function models() {
     }, page);
 
     await step(S, 'switching to 吉皮缇 switches the list to GPT models, her own OpenAI key marked', async () => {
+      await page.click('#char-back');
       await pickCharacter(page, 'gpt');
+      await openCharPage(page, 'gpt');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
       const os = await options();
       assert.ok(os.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), JSON.stringify(os));
@@ -1667,8 +1692,9 @@ async function models() {
       await page.evaluate(() => window.pet.chat('你好'));
       await idle();
       assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
-      await openCharacters();
+      await openCharacters(page);
       await pickCharacter(page, 'claude');
+      await openCharPage(page, 'claude');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
       assert.equal((await options()).find((o) => o.selected).key, 'lobehub:claude-opus-5-5');
       await page.screenshot({ path: path.join(SHOTS, '04-back-to-claude.png') });
@@ -1676,6 +1702,246 @@ async function models() {
     }, page);
   } finally {
     await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------------ charpage
+// ⋯ → 角色列表 → a character's page: the list shows every character (picture, name, title, relation); a
+// click opens her page, where her model and look are set for her (not for the companion on the desktop),
+// kept across a restart; she arrives with them; her affection can be unlocked there. 高级设置 keeps only
+// the system-wide settings, which still save.
+async function charpage() {
+  const S = 'charpage';
+  const SHOTS = path.join(OUT, 'charpage');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-charpage-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-charpagefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  // one recording per app run (before / after the restart), with chapters logged while driving
+  const VIDEO = path.join(SHOTS, 'video');
+  fs.rmSync(VIDEO, { recursive: true, force: true });
+  let seg = 0;
+  let rec = null;
+  const start = async () => {
+    const t0 = Date.now(); // the recording starts with the app, before its first window
+    const r = await launch(env, { video: VIDEO });
+    rec = { n: ++seg, t0, chapters: [] };
+    return r;
+  };
+  const mark = (kind, text) => rec.chapters.push({ kind, t: Math.round((Date.now() - rec.t0) / 100) / 10, [kind === 'step' ? 'label' : 'note']: text });
+  // a check stays on screen for a second so the frame at its chapter shows it
+  const check = async (text) => { mark('check', text); await page.waitForTimeout(1000); };
+  const stop = async () => {
+    const v = page.video && page.video();
+    await app.close().catch(() => {});
+    const file = v ? await v.path().catch(() => null) : null;
+    if (file && fs.existsSync(file)) fs.renameSync(file, path.join(VIDEO, `charpage-${rec.n}.webm`));
+    fs.writeFileSync(path.join(VIDEO, `charpage-${rec.n}.chapters.json`), JSON.stringify(rec.chapters, null, 2) + '\n');
+  };
+  let { app, page } = await start();
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const settingsJson = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  // what the verifier needs from disk: per-character models / looks and every character's affection
+  const dumpFiles = (name) => {
+    const st = settingsJson();
+    const pet = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+    const chars = Object.fromEntries(Object.entries(pet.characters).map(([id, c]) => [id, { name: c.name, agentId: c.agentId, affection: c.affection, relStage: c.relStage, peakStage: c.peakStage, unlockedAllAt: c.unlockedAllAt || null, modelApplied: c.modelApplied || null }]));
+    const txt = `--- settings.json (models / appearance / petScale / prefs / tts / visitors) ---\n${JSON.stringify({ models: st.models, appearance: st.appearance, petScale: st.petScale, prefs: st.prefs, tts: st.tts, visitors: st.visitors }, null, 2)}\n\n--- pet.json (speciesId + characters) ---\n${JSON.stringify({ speciesId: pet.speciesId, characters: chars }, null, 2)}\n`;
+    fs.writeFileSync(path.join(SHOTS, `${name}.txt`), txt);
+    return txt;
+  };
+  const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model) : []);
+  const selected = () => page.$eval('#model-select', (s) => s.value);
+  const shot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+  try {
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+
+    await step(S, 'C1 ⋯ → 角色列表 lists every character with her picture, name, title and relation', async () => {
+      mark('step', '⋯ → 角色列表');
+      await openCharacters(page);
+      assert.equal((await page.textContent('#menu-characters')).trim(), '角色列表', 'the ⋯ menu entry');
+      assert.equal(await page.textContent('#panel-title'), '角色列表');
+      const rows = await page.$$eval('.char-list .char-opt', (rs) => rs.map((r) => ({ id: r.dataset.species, look: r.querySelector('.char-thumb').dataset.look, pic: !!r.querySelector('.char-thumb canvas, .char-thumb img, .char-thumb video'), name: r.querySelector('.meta b').textContent, title: r.querySelector('.meta span').textContent, rel: r.querySelector('.char-rel').textContent, pick: r.querySelector('.pick').textContent, on: r.classList.contains('on') })));
+      assert.deepEqual(rows.map((r) => r.id).sort(), ['claude', 'dafeiyu', 'gemini', 'gpt', 'grok']);
+      for (const r of rows) {
+        assert.ok(r.pic, `${r.id} has a picture`);
+        assert.equal(r.look, `${r.id}-pixel`, `${r.id}: her default pack`);
+        assert.ok(r.title.length > 0, `${r.id} title`);
+      }
+      const c = rows.find((r) => r.id === 'claude');
+      assert.deepEqual([c.on, c.pick, c.name], [true, '✓ 当前', '克洛蒂（Anthropic）']);
+      assert.match(c.rel, /^已认识 · 陌生 · 好感 \d+$/);
+      assert.equal(rows.find((r) => r.id === 'gpt').rel, '未见过');
+      assert.equal(rows.find((r) => r.id === 'gpt').pick, '初次见面');
+      await shot('01-list');
+      await check('角色列表：5 位角色，每行有缩略图、名字、称号、关系；克洛蒂为当前');
+      return rows.map((r) => `${r.name} ${r.title} [${r.rel}] ${r.look}`).join(' | ');
+    }, page);
+
+    await step(S, 'C2 clicking 吉皮缇 (not met) opens her page: model, look and affection are hers; back returns to the list', async () => {
+      mark('step', '点吉皮缇（未见过）那一行');
+      await page.click('.char-list .char-opt[data-species="gpt"] .meta');
+      await page.waitForSelector('#char-head .char-opt[data-species="gpt"]');
+      assert.equal(await page.textContent('#panel-title'), '吉皮缇');
+      assert.match(await page.textContent('#panel-sub'), /吉皮缇（OpenAI）· 未见过/);
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.equal(await page.textContent('#char-head .pick'), '初次见面');
+      assert.equal(await page.locator('#unlock-all').isDisabled(), true, 'nothing to unlock before meeting her');
+      assert.equal(await page.textContent('#unlock-all'), '还没认识她');
+      await page.waitForSelector('#model-select option', { state: 'attached' });
+      const opts = await page.$$eval('#model-select option', (os) => os.map((o) => o.textContent));
+      assert.deepEqual(opts, ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）'], 'only her vendor\'s models');
+      assert.deepEqual(await page.locator('.pack-opt[data-pack] .meta b').allTextContents(), ['吉皮缇 · 像素', '吉皮缇 · 旧版像素']);
+      await shot('02-gpt-page');
+      await check('吉皮缇详情页：‹ 角色列表、初次见面、模型 / 外观 / 好感度三个区块');
+      await page.waitForTimeout(800);
+      mark('step', '点 ‹ 角色列表 返回');
+      await page.click('#char-back');
+      await page.waitForSelector('.char-list .char-opt[data-species="gpt"]');
+      assert.equal(await page.textContent('#panel-title'), '角色列表');
+      await check('回到角色列表');
+      await page.waitForTimeout(800);
+      mark('step', '再点吉皮缇的“设置 ›”');
+      await openCharPage(page, 'gpt');
+      return opts.join(' / ');
+    }, page);
+
+    await step(S, 'C3 on her page: model o3 and look 旧版像素 are saved for 吉皮缇, not for 克洛蒂 on the desktop', async () => {
+      const edits0 = modelEdits().length;
+      mark('step', '模型选 o3');
+      await page.selectOption('#model-select', 'openai:o3');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.match(await page.textContent('#panel-msg'), /吉皮缇的模型已换成「o3」/);
+      assert.match(await page.textContent('.model-status'), /见面后起用：o3$/);
+      await shot('03a-gpt-model-saved');
+      await check('提示“吉皮缇的模型已换成「o3」”，状态行“见面后起用：o3”');
+      await page.locator('#look-section').scrollIntoViewIfNeeded();
+      mark('step', '外观选「吉皮缇 · 旧版像素」');
+      await page.click('.pack-opt[data-pack="gpt-classic"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="gpt-classic"]');
+      assert.equal(await page.getAttribute('#char-head .char-thumb', 'data-look'), 'gpt-classic', 'her picture follows');
+      assert.match(await page.textContent('#panel-msg'), /吉皮缇的外观已换成「吉皮缇 · 旧版像素」/);
+      const st = settingsJson();
+      assert.deepEqual(st.models, { gpt: 'openai:o3' });
+      assert.deepEqual(st.appearance, { gpt: 'gpt-classic' });
+      await page.waitForTimeout(400);
+      assert.equal(modelEdits().length, edits0, '克洛蒂\'s agent is not touched');
+      assert.equal(await page.evaluate(() => document.getElementById('pet-look').dataset.key), 'claude-pixel/daily', 'the companion keeps her look');
+      await page.locator('#look-section').scrollIntoViewIfNeeded();
+      await shot('03-gpt-configured');
+      await check('提示“吉皮缇的外观已换成「吉皮缇 · 旧版像素」”，旧版像素为使用中');
+      dumpFiles('files-after-c3');
+      await page.click('#char-back');
+      assert.equal(await page.getAttribute('.char-list .char-opt[data-species="gpt"] .char-thumb', 'data-look'), 'gpt-classic');
+      assert.equal(await page.getAttribute('.char-list .char-opt[data-species="claude"] .char-thumb', 'data-look'), 'claude-pixel');
+      await shot('04-list-after');
+      await check('列表里吉皮缇的缩略图换成旧版像素，克洛蒂不变');
+      return `settings.json models=${JSON.stringify(st.models)} appearance=${JSON.stringify(st.appearance)}`;
+    }, page);
+
+    await step(S, 'C4 after a restart her page still shows o3 and 旧版像素', async () => {
+      mark('step', '关闭应用（重启）');
+      await stop();
+      ({ app, page } = await start());
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await idle();
+      mark('step', '重启后：⋯ → 角色列表 → 吉皮缇');
+      await openCharacters(page, 'gpt');
+      await page.waitForFunction(() => document.getElementById('model-select').value === 'openai:o3', null, { timeout: 10000 });
+      assert.equal(await page.locator('.pack-opt.on[data-pack="gpt-classic"]').count(), 1);
+      assert.equal(await page.getAttribute('#char-head .char-thumb', 'data-look'), 'gpt-classic');
+      assert.equal(await selected(), 'openai:o3');
+      await page.locator('#model-section').scrollIntoViewIfNeeded();
+      await shot('05-after-restart');
+      await check('重启后吉皮缇的模型仍是 o3');
+      await page.locator('#look-section').scrollIntoViewIfNeeded();
+      await shot('05b-after-restart-look');
+      await check('重启后吉皮缇的外观仍是旧版像素（使用中）');
+      return `model ${await selected()}, look gpt-classic; settings.json ${JSON.stringify({ models: settingsJson().models, appearance: settingsJson().appearance })}`;
+    }, page);
+
+    await step(S, 'C5 初次见面 from her page: she arrives in 旧版像素 and her own agent runs on o3', async () => {
+      await page.evaluate(() => { document.getElementById('panel-body').scrollTop = 0; });
+      mark('step', '在她的详情页点“初次见面”，起名“小吉”');
+      await page.click('#char-head .pick');
+      await page.waitForSelector('.char-name-form input');
+      await page.fill('.char-name-form input', '小吉');
+      await page.click('.char-name-form button[type="submit"]');
+      await page.waitForSelector('#char-head .char-opt.on[data-species="gpt"]', { timeout: 20000 });
+      await idle();
+      assert.equal(await page.textContent('#panel-title'), '小吉');
+      await shot('06-gpt-met');
+      await check('小吉来了：详情页显示 ✓ 当前');
+      await page.click('#panel-close');
+      const v = await view(page);
+      assert.equal(v.pet.speciesId, 'gpt');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'gpt-classic/daily', null, { timeout: 5000 });
+      const last = modelEdits().pop();
+      assert.deepEqual([`${last.provider}:${last.model}`, last.agentId], ['openai:o3', v.pet.agentId]);
+      await check('桌面上是穿旧版像素的吉皮缇');
+      await page.waitForTimeout(800);
+      return `agent ${v.pet.agentId} on ${last.provider}:${last.model}; look gpt-classic/daily`;
+    }, page);
+
+    await step(S, 'C6 克洛蒂\'s page (met, not on the desktop): one-click unlock fills her affection only', async () => {
+      mark('step', '⋯ → 角色列表 → 克洛蒂（已认识、不在桌面）→ 一键解锁');
+      await openCharacters(page, 'claude');
+      assert.match(await page.textContent('#panel-sub'), /已认识/);
+      await page.locator('#unlock-all').scrollIntoViewIfNeeded();
+      await page.click('#unlock-all');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
+      assert.match(await page.textContent('#panel-msg'), /^已为克洛蒂解锁：\d+ 个话题/);
+      assert.equal(await page.textContent('#unlock-all'), '已经全部解锁');
+      await page.locator('#unlock-section').scrollIntoViewIfNeeded();
+      await shot('07-claude-unlocked');
+      await check('提示“已为克洛蒂解锁”，按钮变为“已经全部解锁”');
+      await page.click('#panel-close');
+      const v = await view(page); // boot re-places the window: read the panel first
+      const claude = v.characters.find((c) => c.id === 'claude');
+      assert.equal(claude.met.affection, 100);
+      assert.equal(v.pet.speciesId, 'gpt');
+      assert.ok(v.pet.affection < 100, 'the companion (小吉) is untouched');
+      const files = dumpFiles('files-after-c6');
+      assert.match(files, /"claude": \{[^}]*"affection": 100/);
+      return `克洛蒂 ♥${claude.met.affection}; 小吉 ♥${v.pet.affection}`;
+    }, page);
+
+    await step(S, 'C7 高级设置 has no per-character section; its system settings still save', async () => {
+      mark('step', '⋯ → 高级设置');
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#size-range');
+      const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
+      await shot('08a-advanced-top');
+      await check('高级设置：宠物大小、桌宠行为……没有模型 / 外观 / 一键解锁');
+      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
+      assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list, #panel-body .char-opt').count(), 0);
+      await page.uncheck('#behavior-section input[data-pref="memes"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await page.selectOption('#tts-fallback', 'silent');
+      await page.evaluate(() => { const r = document.getElementById('size-range'); r.value = '150'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); });
+      await page.waitForFunction(() => /宠物大小：150%/.test(document.getElementById('panel-msg').textContent));
+      const st = settingsJson();
+      assert.equal(st.prefs.memes, false);
+      assert.equal(st.tts.fallback, 'silent');
+      assert.equal(st.petScale, 1.5);
+      assert.deepEqual([st.models, st.appearance], [{ gpt: 'openai:o3' }, { gpt: 'gpt-classic' }], 'per-character settings untouched');
+      await check('改宠物大小为 150%：提示已保存');
+      await page.evaluate(() => { document.getElementById('panel-body').scrollTop = 0; });
+      await shot('08-advanced');
+      const secs = await page.$$('#panel-body .adv-section');
+      for (const [i, el] of secs.entries()) await el.screenshot({ path: path.join(SHOTS, `08-advanced-section-${i + 1}.png`) });
+      dumpFiles('files-after-c7');
+      return `${sections.join(' / ')}; prefs.memes=false tts.fallback=silent petScale=1.5`;
+    }, page);
+  } finally {
+    await stop();
   }
 }
 
@@ -2305,7 +2571,7 @@ async function rosterOne(ch) {
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#behavior-section');
       const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
-      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
+      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'voiceInteractions=on', 'voiceMurmurs=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
       await page.locator('#behavior-section').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
       await page.check('#behavior-section input[data-pref="clickSound"]');
@@ -2425,7 +2691,7 @@ async function rosterOne(ch) {
       fs.writeFileSync(path.join(OUT, `${S}-api.txt`), lines.join('\n') + '\n');
       return lines.join('; ');
     }, page);
-    await step(S, 'E14 switch character from ⋯ → 切换角色: a new one gets her own agent and starts as a stranger', async () => {
+    await step(S, 'E14 switch character from ⋯ → 角色列表: a new one gets her own agent and starts as a stranger', async () => {
       if (await page.isVisible('#panel-close')) await page.click('#panel-close');
       await still();
       const next = ROSTER[(ch.idx + 1) % ROSTER.length];
@@ -2739,8 +3005,7 @@ async function touch() {
 
     await step(S, 'parts are found on the 旧版像素 pack too (83×113, drawn as blocks): head and feet', async () => {
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="characters"]');
+      await openCharacters(page, 'claude');
       await page.click('.pack-opt[data-pack="claude-classic"] .pick');
       await page.waitForSelector('.pack-opt.on[data-pack="claude-classic"]');
       await page.click('#panel-close');
@@ -3496,7 +3761,7 @@ async function ivoice() {
 
     // Every character has her own agent (#51): meeting 克洛蒂 the first time is her hello (met); going back to
     // one met before is 切换角色 (switch). Both are read in her own Fish voice.
-    await step(S, 'I11 切换角色: ⋯ → 切换角色 → 克洛蒂 — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
+    await step(S, 'I11 切换角色: ⋯ → 角色列表 → 克洛蒂 — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
       const toClaude = async () => {
         await clickAct(page, 'menu');
         await page.click('[data-menu="characters"]');
@@ -3866,6 +4131,7 @@ async function chatvoice() {
   if (which === 'advanced' || which === 'all') await advanced();
   if (which === 'packs' || which === 'all') await packs();
   if (which === 'models' || which === 'all') await models();
+  if (which === 'charpage' || which === 'all') await charpage();
   if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
