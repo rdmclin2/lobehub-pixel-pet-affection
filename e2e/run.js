@@ -2300,12 +2300,12 @@ async function rosterOne(ch) {
       assert.ok(stt.lastSquash < 0.8, `squash ${stt.lastSquash}`);
       return `landing squash scaleY ${stt.lastSquash} (CSS --sq ${sq})`;
     });
-    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, memes and collisions on by default)', async () => {
+    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, 互动语音 on, 朗读碎碎念 off, memes and collisions on by default)', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#behavior-section');
       const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
-      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
+      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'voiceInteractions=on', 'voiceMurmurs=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
       await page.locator('#behavior-section').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
       await page.check('#behavior-section input[data-pref="clickSound"]');
