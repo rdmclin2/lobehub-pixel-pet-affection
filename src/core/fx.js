@@ -34,7 +34,7 @@
     hatch: 'happy',
     evolve: 'happy',
     lifted: 'pat',
-    walk: 'idle', // no walking art: the idle art hops along (style.css [data-status="walk"])
+    walk: 'idle', // no walking art (the built-in packs have a step cycle): the idle art hops along (style.css [data-status="walk"])
   };
 
   // The chain of names tried for `state`, best first; always ends with idle.

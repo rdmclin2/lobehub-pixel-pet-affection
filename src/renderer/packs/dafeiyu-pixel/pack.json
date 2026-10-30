@@ -109,6 +109,12 @@
       "col": 2,
       "frames": 2,
       "fps": 4
+    },
+    "walk": {
+      "row": 8,
+      "col": 0,
+      "frames": 4,
+      "fps": 8
     }
   },
   "outfits": {

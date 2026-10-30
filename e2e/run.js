@@ -2004,9 +2004,19 @@ async function rosterOne(ch) {
       await page.waitForTimeout(200); // the next frame draws it
       const ws = await fxState();
       const st = ws.video ? `state=walk clip=${await clip()}.webm` : `state=walk action=${ws.action} exact=${ws.exact} overlay ${await page.textContent('#char-fx')}`;
+      let steps = '';
       if (ws.video) assert.equal(await clip(), 'walk');
-      else assert.equal(await page.textContent('#char-fx'), '👣');
-      await page.waitForTimeout(900);
+      else {
+        // her own step cycle (scripts/art/add_walk_frames.py), not the idle art sliding along
+        assert.equal(ws.action, 'walk');
+        assert.equal(ws.exact, true);
+        assert.equal(await page.textContent('#char-fx'), '');
+        const seen = new Set();
+        for (let i = 0; i < 8; i++) { seen.add(await page.$eval('#pet-look canvas', (c) => c.dataset.frame.split('#')[1])); await page.waitForTimeout(70); }
+        assert.ok(seen.size >= 3, `the walk frames play: ${[...seen]}`);
+        steps = `, frames ${[...seen].sort().join(' ')}`;
+      }
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(OUT, `${S}-walk.png`) });
       await walking;
       const after = await mainBounds();
@@ -2014,7 +2024,7 @@ async function rosterOne(ch) {
       assert.notEqual(after.x, before.x, 'the window moved');
       assert.equal(after.x, w.to);
       assert.ok(Math.abs(after.x - before.x) >= 60 && Math.abs(after.x - before.x) <= 240 * 2);
-      return `${st}; window x ${before.x} → ${after.x} (facing ${w.facing})${(await fxState()).video ? '' : ', idle frames hop + 👣'}`;
+      return `${st}; window x ${before.x} → ${after.x} (facing ${w.facing})${steps}`;
     }, page);
     await step(S, 'N2 touch: a long press on her opens the menu', async () => {
       await idle();

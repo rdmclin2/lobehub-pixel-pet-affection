@@ -269,7 +269,8 @@ canvas.sprite { object-fit: contain; }
 #main-menu { max-height: calc(100vh - 56px); overflow-y: auto; }
 
 /* ---- dsh-pet effects: walking, catching a flying pet, memes, behaviour settings, visitors ---- */
-.char-wrap[data-status="walk"] .char { animation: char-walk .36s steps(2) infinite; }
+/* a look without its own walk frames (a pictures pack, an older user pack) hops its idle art along */
+.pet-body[data-exact="no"] .char-wrap[data-status="walk"] .char { animation: char-walk .36s steps(2) infinite; }
 @keyframes char-walk { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
 .score-pop { position: absolute; left: 50%; top: 12%; z-index: 4; transform: translateX(-50%); font-size: 22px; font-weight: bold; line-height: 1; color: #ffd23f; -webkit-text-stroke: 1.5px #2b2233; text-shadow: 2px 2px 0 #2b2233; pointer-events: none; animation: score-up 1.5s ease-out forwards; }
 @keyframes score-up { from { opacity: 1; transform: translate(-50%, 0) scale(.7); } 20% { transform: translate(-50%, -8px) scale(1.25); } to { opacity: 0; transform: translate(-50%, -46px) scale(1); } }

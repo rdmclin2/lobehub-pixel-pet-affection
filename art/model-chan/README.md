@@ -14,7 +14,7 @@
 
 ## 像素包格式
 
-schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 8 行（1328×3616），16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）。
+schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（1328×4068），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧步行循环（左脚抬、落、右脚抬、落），由 `add_walk_frames.py` 用第一张待机帧做出来：找到裙摆下两腿之间的透明缝，把抬起的那条腿往裙子里压短，让脚离地，落地的两帧整个人略微抬高。旧版像素包（`*-classic`，83×113）也加了同样的一行。
 
 ## 重新生成
 
@@ -26,6 +26,7 @@ lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条�
 python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 360 --max 324x444 --smooth   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
 python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png 332 452 --rows 2  # 放进 332×452 的格子，去品红边（绿底生成的加 --key green）
 python3 scripts/art/build_model_chan_pack.py --hd fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
+python3 scripts/art/add_walk_frames.py src/renderer/packs/<id>-pixel   # 用待机帧做出走路的 4 帧，加在第 9 行（重建图集后要再跑一次）
 python3 scripts/art/check_model_chan.py                       # 校验尺寸、格式、每个动作的每一帧都有内容
 python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-preview.png
 ```
