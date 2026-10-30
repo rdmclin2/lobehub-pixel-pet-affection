@@ -2532,6 +2532,36 @@ async function touch() {
       assert.equal(r.affection.source, 'pat');
       return `pat ok, ♥${before} → ${(await view(page)).pet.affection}`;
     }, page);
+
+    await step(S, 'parts are found on the 旧版像素 pack too (83×113, drawn as blocks): head and feet', async () => {
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="characters"]');
+      await page.click('.pack-opt[data-pack="claude-classic"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="claude-classic"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'claude-classic/daily', null, { timeout: 5000 });
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 });
+      await page.evaluate(() => window.pet.debugSet({ affection: 90, mood: 60, sleeping: false }));
+      await settle();
+      const got = [];
+      for (const zone of ['head', 'feet']) {
+        let pts = null;
+        for (let i = 0; i < 20 && !(pts && pts[zone]); i++) { if (i) await page.waitForTimeout(250); pts = await zonePoints(page); }
+        const p = pts[zone];
+        assert.ok(p, `no ${zone} point on the 旧版像素 sprite`);
+        const before = await page.evaluate(() => window.petFx.lastTouch());
+        await page.mouse.move(p.x, p.y);
+        await page.mouse.click(p.x, p.y);
+        await page.waitForFunction((n) => { const t = window.petFx.lastTouch(); return t && t.n > n; }, before ? before.n : 0, { timeout: 5000 });
+        const t = await page.evaluate(() => window.petFx.lastTouch());
+        assert.equal(t.zone, zone, `clicked (${p.x}, ${p.y}) on the 旧版像素 sprite for ${zone}, got ${t.zone}`);
+        got.push(`${zone} @(${p.x}, ${p.y}) → ${t.zone}「${t.line}」`);
+        await shot(`classic-${zone}`);
+        await settle();
+      }
+      return got.join('; ');
+    }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'touch-log.txt'), log.join('\n') + '\n');
     await app.close().catch(() => {});
