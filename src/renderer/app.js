@@ -865,8 +865,9 @@ function behaviorSections() {
 // 高级设置 → 语音 (core/tts.js): which engine reads, its API key and endpoint, what happens when it cannot.
 // Keys are sent once to main and never shown again; only "已设置" comes back.
 const TTS_ENGINES = [
-  ['fish', 'Fish Audio（推荐）', 'https://api.fish.audio', '在 fish.audio 注册后创建 API Key；开发可先用免费模型。'],
-  ['minimax', 'MiniMax（备选）', 'https://api.minimax.cn', '在 platform.minimax.cn 开通后创建接口密钥。'],
+  ['auto', '按角色（推荐）', '', ''],
+  ['fish', 'Fish Audio', 'https://api.fish.audio', '在 fish.audio 注册后创建 API Key；开发可先用免费模型。'],
+  ['minimax', 'MiniMax', 'https://api.minimax.cn', '在 platform.minimaxi.com（国内站）开通后创建接口密钥，不用 GroupId；国际站（minimax.io）的 Key 把端点改成 https://api.minimax.io。'],
   ['system', '系统语音（离线、免费）', '', ''],
 ];
 const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', empty: '没有返回音频', offline: '离线' };
@@ -875,7 +876,7 @@ function voiceSection() {
   const sec = document.createElement('div');
   sec.className = 'adv-section';
   sec.id = 'voice-section';
-  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、4 秒没响应或出错时，这句改用下面选的方式。合成过的句子缓存在本机，再说同一句不再请求。</p>'
+  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、4 秒没响应或出错时，这句改用下面选的方式。合成过的句子缓存在本机，再说同一句不再请求。</p>'
     + '<div class="size-row"><span>引擎</span><select id="tts-provider"></select></div>'
     + '<div class="size-row"><span>用不了时</span><select id="tts-fallback"><option value="system">改用系统语音</option><option value="silent">不出声</option></select></div>'
     + '<div id="tts-engines"></div><p class="adv-note" id="tts-status"></p>'
@@ -925,14 +926,24 @@ function voiceSection() {
     speak({ text: sp.catchphrase || `我是${sp.nameZh}。`, source: 'api', kind: 'api' });
     panelMsg('正在试听……', true);
   });
-  const sp = speciesOf(view.pet.speciesId);
-  const credit = sp.voice && sp.voice.tts && sp.voice.tts.fish && sp.voice.tts.fish.credit;
-  sec.querySelector('#tts-credit').textContent = `语音由 AI 合成，不是真人录音。${credit ? `${sp.nameZh}的音色：${credit}。` : ''}`;
   setTimeout(paintVoiceStatus);
   return sec;
 }
+// Under 语音: AI voice notice, and her voice's credit on the engine she reads with (the chosen one, or
+// under 按角色 her own default).
+function paintVoiceCredit() {
+  const el = $('tts-credit');
+  if (!el) return;
+  const sp = speciesOf(view.pet.speciesId);
+  const t = (sp.voice && sp.voice.tts) || {};
+  const mine = t.default === 'minimax' ? 'minimax' : 'fish';
+  const eng = ['fish', 'minimax'].includes(settings.tts.provider) ? settings.tts.provider : mine;
+  const credit = (t[eng] && t[eng].credit) || (t.fish && t.fish.credit);
+  el.textContent = `语音由 AI 合成，不是真人录音。${settings.tts.provider === 'auto' ? `${sp.nameZh}默认用 ${mine === 'minimax' ? 'MiniMax' : 'Fish Audio'}。` : ''}${credit ? `${sp.nameZh}的音色：${credit}。` : ''}`;
+}
 // The status line under 语音: per engine whether a key is set and its last problem, and the cache.
 function paintVoiceStatus() {
+  paintVoiceCredit();
   const el = $('tts-status');
   const st = settings && settings.ttsStatus;
   if (!el || !st) return;

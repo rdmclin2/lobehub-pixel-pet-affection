@@ -713,12 +713,13 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
-  // 高级设置 → 语音: the engine that reads (fish / minimax / system), the fallback (system / silent) and
+  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / system), the fallback (system / silent) and
   // the endpoints. API keys go through main.js into tts-keys.json, never into settings.json.
   setTts(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const cur = this.settings.tts;
-    const next = { provider: p.provider === undefined ? cur.provider : p.provider, fallback: p.fallback === undefined ? cur.fallback : p.fallback, endpoints: { ...cur.endpoints } };
+    const picked = p.provider !== undefined;
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, endpoints: { ...cur.endpoints } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;
