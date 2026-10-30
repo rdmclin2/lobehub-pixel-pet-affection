@@ -1655,8 +1655,8 @@ async function models() {
       assert.ok(os.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), JSON.stringify(os));
       assert.deepEqual(os.map((o) => o.label), ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）']);
       assert.equal(os.find((o) => o.selected).key, 'lobehub:gpt-6-luna');
-      // her own new agent said hello on it already
-      assert.match(await page.textContent('.model-status'), /正在用：GPT-6 Luna（默认）/);
+      // her own new agent is on it already if her hello went through the agent (not when the hourly budget made it an offline line)
+      assert.match(await page.textContent('.model-status'), /(正在用|下一句话起用)：GPT-6 Luna（默认）/);
       await page.screenshot({ path: path.join(SHOTS, '03-gpt-models.png') });
       return os.map((o) => o.label).join(' / ');
     }, page);
