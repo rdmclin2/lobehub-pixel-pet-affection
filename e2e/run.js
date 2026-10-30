@@ -3102,6 +3102,12 @@ async function voice() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const mock = await ttsMock();
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voice-'));
+  // 语音包 (V15): a pack the owner added for 克洛蒂 with one recorded line (a tone), loaded at start
+  const PACK_LINE = '这一句是录好的。';
+  const packDir = path.join(data, 'voicepacks', 'test-claude');
+  fs.mkdirSync(packDir, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'test', 'fixtures', 'voicepack', 'tone.mp3'), path.join(packDir, 'tone.mp3'));
+  fs.writeFileSync(path.join(packDir, 'manifest.json'), JSON.stringify({ format: 1, id: 'test-claude', name: '测试录音', character: 'claude', engine: 'minimax', lines: { [PACK_LINE]: 'tone.mp3' } }));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicefake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
@@ -3124,7 +3130,7 @@ async function voice() {
   };
   const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
   const openVoice = async () => {
-    if (!(await page.$('#voice-section'))) {
+    if (!(await page.isVisible('#voice-section'))) { // a closed panel can leave the section in the page, hidden
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#voice-section');
@@ -3142,7 +3148,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3264,7 +3270,7 @@ async function voice() {
       return note(`line 1 #${first.n} "${first.text}" synthesizing → interrupted (mock: aborted=${slow.aborted}); line 2 ${fmt(sp)}; petFx.state() answered in ${uiMs} ms while synthesising (${st.state}); requests ${before} → ${reqs()}; one audio element: ${JSON.stringify(audios)}`);
     });
 
-    await step(S, 'V6 fallback on an HTTP error: the line goes to the system voice, Fish is paused for 5 minutes', async () => {
+    await step(S, 'V6 fallback on an HTTP error: the line goes to the system voice, Fish is paused for 20 s', async () => {
       mock.mode = '500';
       const sp = await speakLine('服务器出错的时候');
       assert.equal(sp.provider, 'system');
@@ -3281,7 +3287,7 @@ async function voice() {
       return note(`${fmt(sp)} (system voice lang ${sp.lang} pitch ${sp.pitch} rate ${sp.rate}, ${sp.systemVoices} system voices); next: ${fmt(sp2)}; status line: ${status}`);
     }, page);
 
-    await step(S, 'V7 fallback on a timeout: no answer in 4 s → system voice; the pet stays responsive', async () => {
+    await step(S, 'V7 fallback on a timeout: no answer in 5 s (a little more for a longer line) → system voice; the pet stays responsive', async () => {
       mock.mode = 'hang';
       await page.click('.tts-engine[data-engine="fish"] .tts-ep-save'); // saving resets the pause
       await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点'));
@@ -3295,7 +3301,7 @@ async function voice() {
       const ms = Date.now() - t0;
       assert.equal(sp.provider, 'system');
       assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'timeout' }]);
-      assert.ok(ms >= 3800 && ms < 7000, `fell back after ${ms} ms`);
+      assert.ok(ms >= 4800 && ms < 8000, `fell back after ${ms} ms`);
       const rq = mock.log[mock.log.length - 1];
       await page.waitForTimeout(300);
       return note(`${fmt(sp)}; fell back after ${ms} ms; request aborted=${rq.aborted}; UI probes while waiting: ${probes.join('/')} ms`);
@@ -3388,10 +3394,174 @@ async function voice() {
       assert.equal(log.includes(mock.KEY) || log.includes(mock.MM_KEY), false, 'no key in the log');
       return note(`${fmt(sp)}; mock reference_id=${rq.voice} prosody=${JSON.stringify(rq.prosody)}; pixel-pet.log TTS lines (no keys): ${log.split('\n').filter((l) => l.includes('tts ')).map((l) => l.slice(25)).join(' | ')}`);
     }, page);
+
+    // The owner's case (2026-10-30): MiniMax answers 1002 past 10 requests a minute, and with 用不了时 = 不出声
+    // every line during the old 5-minute pause was silent. Now the pet keeps under the limit itself.
+    await step(S, 'V14 MiniMax: never more than 10 requests a minute; past that a line falls back at once (no 1002, no pause)', async () => {
+      await openVoice(); // 克洛蒂 (V13) has a MiniMax voice too
+      await page.selectOption('#tts-provider', 'minimax');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('MiniMax'));
+      await page.click('#panel-close');
+      const mm = () => mock.log.filter((r) => r.path === '/v1/t2a_v2');
+      const lines = [];
+      let over = null;
+      for (let i = 0; i < 14 && !over; i++) {
+        const sp = await speakLine(`第${i + 1}句不一样的话`);
+        lines.push(`${i + 1}:${sp.provider}${sp.fellBackFrom.length ? `(${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')})` : ''}`);
+        if (sp.fellBackFrom.some((f) => f.provider === 'minimax' && f.reason === 'rate-limit')) over = sp;
+      }
+      assert.ok(over, `a line fell back on the rate limit: ${lines.join(' ')}`);
+      assert.ok(['fish', 'system'].includes(over.provider), `the next engine in the chain took it (${over.provider})`);
+      const times = mm().map((r) => r.at);
+      const most = Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 60000).length));
+      assert.ok(most <= 10, `at most 10 MiniMax requests in any minute (saw ${most})`);
+      await openVoice();
+      await page.waitForFunction(() => /MiniMax：Key 已设置，每分钟最多 10 次，这一分钟还剩 0/.test(document.getElementById('tts-status').textContent));
+      const status = await page.textContent('#tts-status');
+      assert.equal(/MiniMax[^；]*上次/.test(status), false, 'MiniMax is not paused or failed');
+      await shot('v14-minimax-budget');
+      return note(`lines: ${lines.join(' ')}; MiniMax requests ${times.length}, most in one minute ${most}; status: ${status}`);
+    }, page);
+
+    await step(S, 'V15 语音包: a recorded line plays from the pack with no request; with 语音包 off it goes to an engine', async () => {
+      await openVoice();
+      await page.waitForFunction(() => /你加的语音包「测试录音」，录好 1 句/.test(document.getElementById('tts-packs-st').textContent));
+      assert.equal(await page.isChecked('#tts-packs'), true, 'on by default');
+      await shot('v15-voice-pack-status');
+      const packText = await page.textContent('#tts-packs-st');
+      await page.click('#panel-close');
+      const before = reqs();
+      const sp = await speakLine(PACK_LINE);
+      assert.equal(sp.provider, 'pack');
+      assert.equal(sp.cached, true);
+      assert.deepEqual(sp.fellBackFrom, []);
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 5000 }); // the tone plays to its end
+      assert.equal(reqs(), before, 'no request for a recorded line');
+      const other = await speakLine('这一句没有录过');
+      assert.notEqual(other.provider, 'pack', 'a line not in the pack goes to an engine');
+      await openVoice();
+      await page.uncheck('#tts-packs');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('语音包已关闭'));
+      await page.click('#panel-close');
+      const off = await speakLine(PACK_LINE);
+      assert.notEqual(off.provider, 'pack', '语音包 off');
+      await openVoice();
+      await page.check('#tts-packs');
+      return note(`pack: ${packText}; recorded: ${fmt(sp)}; not recorded: ${fmt(other)}; 语音包 off: ${fmt(off)}; requests ${before} → ${reqs()}`);
+    }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
     mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- vpack
+// 语音包 (core/voice-pack.js): with 朗读 on and no API key at all, her fixed lines (摸摸, 喂食, 部位触摸…)
+// play from the built-in pack (src/voicepacks/dafeiyu, MiniMax 俏皮萌妹) — no request, no system voice;
+// with 系统语音 chosen the pack is not used.
+async function vpack() {
+  const S = 'vpack';
+  const SHOTS = path.join(OUT, 'vpack');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpack-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpackfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const stats = async () => (await page.evaluate(() => window.pet.getSettings())).ttsStatus.stats;
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600); // past the 1.5 s gate
+  };
+  // one interaction: the line it offers to the voice, and how it was said (waits until it is read to the end)
+  const said = async (kindRe, fn) => {
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await fn();
+    const dump = async (why) => { throw new Error(`${why}: offers ${JSON.stringify((await page.evaluate(() => window.petFx.offerLog())).slice(n0))} last ${JSON.stringify(await page.evaluate(() => window.petFx.lastSpeech()))}`); };
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind) && e.n), [n0, kindRe.source], { timeout: 20000 }).catch(() => dump(`no ${kindRe} line offered`));
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => kindRe.test(e.kind));
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp.n !== n || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 }).catch(() => dump('not read to the end'));
+    return { entry, sp: await page.evaluate(() => window.petFx.lastSpeech()) };
+  };
+  const petBox = async () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+  const fmt = ({ entry, sp }) => `${entry.kind} 「${entry.text}」 → provider=${sp.provider} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}`;
+  try {
+    await step(S, 'P0 hatch 大肥鱼 with 朗读 on and no API key at all', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await page.evaluate(() => window.pet.getSettings());
+      assert.equal(st.tts.provider, 'auto');
+      assert.equal(st.tts.packs, true);
+      assert.deepEqual(Object.values(st.ttsStatus.engines).map((e) => e.hasKey), [false, false]);
+      const pack = st.ttsStatus.packs.find((p) => p.character === 'dafeiyu');
+      assert.ok(pack && pack.builtIn && pack.lines > 150, `built-in pack: ${JSON.stringify(pack)}`);
+      return note(`no keys; built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
+    }, page);
+
+    const rows = [];
+    await step(S, 'P1 摸摸 / 喂食 / 部位触摸: each line plays from her pack, read to the end, no engine asked', async () => {
+      const s0 = await stats();
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      for (let i = 0; i < 2; i++) {
+        const b = await petBox();
+        rows.push(await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4)));
+      }
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+      rows.push(await said(/^feed$/, async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); }));
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await page.waitForTimeout(300);
+      // hover first so her pose settles, then click where her head is drawn now (as ivoice I2 does)
+      const b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.waitForTimeout(600);
+      const pts = await zonePoints(page);
+      const z = pts.head || pts.hands || pts.face;
+      rows.push(await said(/^touch:/, () => page.mouse.click(z.x, z.y)));
+      await shot('p1-touch');
+      const s1 = await stats();
+      for (const r of rows) {
+        assert.equal(r.sp.provider, 'pack', fmt(r));
+        assert.equal(r.sp.status, 'done', fmt(r));
+      }
+      assert.equal((s1.requests || 0) - (s0.requests || 0), 0, 'no engine request');
+      assert.ok((s1.packHits || 0) - (s0.packHits || 0) >= rows.length);
+      return note(rows.map(fmt).join('\n') + `\nengine requests +${(s1.requests || 0) - (s0.requests || 0)}, pack hits +${(s1.packHits || 0) - (s0.packHits || 0)}`);
+    }, page);
+
+    await step(S, 'P2 高级设置 → 语音 shows her built-in pack', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+      await page.locator('#tts-packs').scrollIntoViewIfNeeded();
+      const t = await page.textContent('#tts-packs-st');
+      assert.match(t, /大肥鱼：内置语音包「大肥鱼（MiniMax 「俏皮萌妹」\(qiaopi_mengmei\)）」，录好 \d+ 句/);
+      await shot('p2-voice-pack');
+      return note(t);
+    }, page);
+
+    await step(S, 'P3 with 系统语音 chosen the pack is not used', async () => {
+      await page.selectOption('#tts-provider', 'system');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('系统语音'));
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      const b = await petBox();
+      const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+      assert.notEqual(r.sp.provider, 'pack', fmt(r));
+      return note(fmt(r));
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'vpack-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
   }
 }
 
@@ -3969,6 +4139,7 @@ async function chatvoice() {
   if (which === 'voice' || which === 'all') await voice();
   if (which === 'ivoice' || which === 'all') await ivoice();
   if (which === 'chatvoice' || which === 'all') await chatvoice();
+  if (which === 'vpack' || which === 'all') await vpack();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

@@ -178,5 +178,6 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   assert.deepEqual(after.models, { ...old.models, gemini: 'lobehub:gemini-3.8-flash' });
   const { models: _m, ...restAfter } = after;
   const { models: _o, ...restOld } = old;
-  assert.deepEqual(restAfter, restOld, 'same keys and values otherwise');
+  // 语音包 (v0.11) is new: an old file gets its default (on), everything else stays as it was
+  assert.deepEqual(restAfter, { ...restOld, tts: { ...restOld.tts, packs: true } }, 'same keys and values otherwise');
 });
