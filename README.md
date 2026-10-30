@@ -359,7 +359,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a macO
    ```
 4. Install the LobeHub CLI once, because the pet's brain runs through it: `npm install -g @lobehub/cli`. The app finds `lh` itself even when launched from Finder (Homebrew, nvm, fnm, volta and similar locations are searched).
 
-To cut a release: `git tag v0.1.1 && git push origin v0.1.1`. To build without releasing, run the workflow manually from the Actions tab; the files are kept as a run artifact. Locally on a Mac: `npm run dist:mac`.
+Day-to-day PRs go to `canary`; a PR merged into `main` releases automatically (a `🚀 release: vX.Y.Z` PR releases that version, a feat / fix PR the next patch), see [使用说明 · 分支与自动发版](docs/usage.md#分支与自动发版同-lobehub-oss). To build without releasing, run the Release workflow manually from the Actions tab; the files are kept as a run artifact. Locally on a Mac: `npm run dist:mac`.
 
 ## Download (Windows 10/11, x64)
 

@@ -168,7 +168,17 @@ npm run dist:mac       # 只能在 macOS 上：universal dmg + zip
 npm run dist:win       # Windows x64 安装包 + zip
 ```
 
-正式发布由 GitHub Actions 构建：推送 `v*` 标签触发 `.github/workflows/release.yml`，在 macOS 和 Windows runner 上打包并上传到 Releases；在 Actions 页手动运行（workflow_dispatch）只构建不发布，文件留作 run artifact。发布后可在 Actions 页手动运行 `.github/workflows/update-e2e.yml`：装一个自称旧版本的构建，检查它能下载最新 Release 并替换自己。
+### 分支与自动发版（同 LobeHub OSS）
+
+- **canary**（默认分支）：日常 PR 都合到这里，每个 PR 和每次合并跑 `npm test`（`.github/workflows/test.yml`），不打包。
+- **main**：只放要发布的代码。PR 合进 main 就由 `.github/workflows/release.yml` 自动发版：
+  - 标题 `🚀 release: vX.Y.Z` 的 PR（通常是 canary → main）发布 vX.Y.Z；PR 描述就是这一版的发布说明。
+  - 标题以 feat / fix / style / refactor / perf / hotfix / build 开头（前面可带 gitmoji），或来自 `hotfix/*`、`release/*` 分支的 PR：在最新正式 tag 上 patch + 1 发版。
+  - 其他（docs、chore、test、ci…）不发版。规则与测试见 `scripts/release-version.js`。
+- 发版时依次：`npm test` → 在 macOS / Windows / Linux runner 上用该版本号打包（mac / win 跑自更新文件检查，Linux 启动打好的包 15 秒确认不崩）→ 打 tag、创建 GitHub Release（附 `.github/release-notes.md` 的安装说明）→ 把版本号提交回 main 的 `package.json` → main 同步回 canary（`.github/workflows/sync-main-to-canary.yml`；冲突时自动开一个 `sync/main-to-canary-*` PR）。
+- 也可以手动：推 `vX.Y.Z` tag 发布该 tag；在 Actions 页运行 Release 并填版本号，发布所选分支；不填版本号只构建，文件留作 run artifact。
+
+发布后可在 Actions 页手动运行 `.github/workflows/update-e2e.yml`：装一个自称旧版本的构建，检查它能下载最新 Release 并替换自己。
 
 ## 八、新增一个厂商角色
 

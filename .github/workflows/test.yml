@@ -1,0 +1,27 @@
+name: Test
+
+# Unit tests on every PR into canary or main, and on every push to canary (where day-to-day PRs land).
+# Releases run their own tests (release.yml).
+on:
+  pull_request:
+    branches: [canary, main]
+  push:
+    branches: [canary]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # unit tests do not start Electron
+      - run: npm test

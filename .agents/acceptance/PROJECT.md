@@ -48,16 +48,19 @@ Art: `art/model-chan/README.md` (pipeline, `scripts/art/check_model_chan.py`, `m
 
 ## 7. Release gate
 
-Every release gets an acceptance round **before** the tag is pushed: run the scenarios the release
-touches, publish with `lh acceptance run ingest <round dir> --acceptance 6aeb64e4-6c8b-40c1-919a-c1b189bd95be`
+Every release gets an acceptance round **before** it reaches `main`: run the scenarios the release
+touches on `canary`, publish with `lh acceptance run ingest <round dir> --acceptance 6aeb64e4-6c8b-40c1-919a-c1b189bd95be`
 (report language zh-CN; the CLI may lack `preflight` / `--dry-run`: check auth with `lh acceptance run list --json`
 and validate `result.json` locally), and send the owner the acceptance link. A 验证报告 request means this round, not
-an agent document. Follow-up rounds re-check only affected items under their stable plan ids. Tag `v*` only after the owner has
-looked at it (or asks to release).
+an agent document. Follow-up rounds re-check only affected items under their stable plan ids. Merge into `main` only
+after the owner has looked at it (or asks to release): **merging into main publishes**.
 
-Release: merge to master (PR, `gh … --repo rdmclin2/lobehub-pixel-pet-affection`: the `upstream` remote makes gh pick the
-wrong base) → PR `🔖 chore(release): vX.Y.Z` (`npm version X.Y.Z --no-git-tag-version`) → `git tag -a vX.Y.Z` + push
-(`release.yml` tests, builds mac/win and creates the release with the standard install notes) → `npm run dist:linux`
-locally, smoke the packaged `dist/linux-unpacked/pixel-pet-affection`, `gh release upload` the tar.gz → prepend the
-version's notes to the release body. Auto-update is verified after publishing with the `Self-update check` workflow
+Branches (as LobeHub OSS): day-to-day PRs target `canary` (the default branch; always pass `--repo
+rdmclin2/lobehub-pixel-pet-affection` to gh: the `upstream` remote makes gh pick the wrong base). Release: PR
+`canary → main` titled `🚀 release: vX.Y.Z`, its description = the version's notes (it becomes the release body) →
+merge → `release.yml` tests, builds mac / win / linux with that version (Linux package started under xvfb), creates
+the tag and the release with the standard install notes, commits the version to main's `package.json`, and syncs main
+back into canary. A feat / fix / hotfix PR merged straight into main releases the next patch the same way; docs / chore /
+test PRs into main release nothing (rules: `scripts/release-version.js`). Watch the run (`gh run watch`) and check the
+release assets. Auto-update is verified after publishing with the `Self-update check` workflow
 (`.github/workflows/update-e2e.yml`), which installs a 0.0.1 build and waits for it to update itself.

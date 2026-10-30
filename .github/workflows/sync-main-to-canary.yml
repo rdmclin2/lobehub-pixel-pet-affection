@@ -1,0 +1,59 @@
+name: Sync main to canary
+
+# Keeps canary (where day-to-day PRs land) up to date with main: after every push to main, and after a release
+# commits its version to main (release.yml calls this, because its own push starts no workflow).
+#   canary behind main      → fast-forward canary
+#   both moved              → merge main into canary
+#   the merge conflicts     → open a PR sync/main-to-canary-<sha> for a person to resolve
+# Commits that change .github/workflows need a token with the `workflows` scope: set the RELEASE_TOKEN secret
+# (a fine-grained PAT with contents + workflows + pull requests) if such a sync is refused.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-main-to-canary
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - name: Sync
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main canary
+          main=$(git rev-parse origin/main); canary=$(git rev-parse origin/canary)
+          if git merge-base --is-ancestor "$main" "$canary"; then echo "canary already has main"; exit 0; fi
+          if git merge-base --is-ancestor "$canary" "$main"; then
+            git push origin "$main:refs/heads/canary"
+            echo "canary fast-forwarded to ${main:0:7}" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          git checkout -B canary origin/canary
+          if git merge --no-ff -m "🔀 chore(sync): merge main (${main:0:7}) into canary" origin/main; then
+            git push origin canary
+            echo "main merged into canary" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          git merge --abort
+          branch="sync/main-to-canary-${main:0:7}"
+          git push -f origin "$main:refs/heads/$branch"
+          if [ -z "$(gh pr list --base canary --head "$branch" --json number --jq '.[0].number // empty')" ]; then
+            gh pr create --base canary --head "$branch" \
+              --title "🔀 chore(sync): merge main into canary (${main:0:7})" \
+              --body "main 合入 canary 时有冲突，自动同步没有完成。请在这个 PR 里解决冲突后合并。"
+          fi
+          echo "::warning::main and canary conflict; opened a sync PR from $branch"
