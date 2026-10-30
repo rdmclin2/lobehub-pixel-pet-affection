@@ -2933,7 +2933,7 @@ async function chatvoice() {
       const sp = window.petFx.lastSpeech();
       const b = document.getElementById('bubble');
       const mark = b.querySelector('.sentence.reading');
-      if (sp && /^(playing|speaking)$/.test(sp.status)) window.__sync.push({ n: sp.n, i: sp.current, reading: sp.sentences[sp.current].text, marked: mark ? Number(mark.dataset.i) : null, markedText: mark ? mark.textContent : null, bubbleShown: !b.classList.contains('hidden') });
+      if (sp && /^(playing|speaking)$/.test(sp.status)) window.__sync.push({ at: Math.round(performance.now()), audioAt: window.petFx.audioState() ? Math.round(window.petFx.audioState().currentTime * 1000) : null, n: sp.n, i: sp.current, reading: sp.sentences[sp.current].text, marked: mark ? Number(mark.dataset.i) : null, markedText: mark ? mark.textContent : null, bubbleShown: !b.classList.contains('hidden') });
     }, 100);
   });
   const stopSample = () => page.evaluate(() => { clearInterval(window.__syncTimer); return window.__sync; });
@@ -2985,6 +2985,8 @@ async function chatvoice() {
       const es = await log(first.n);
       const reqs = mock.log.slice(before);
       const seen = [...new Set(sync.filter((x) => x.n === first.n).map((x) => `${x.i}:${x.marked}`))];
+      // every sample while she read: renderer time, position in the sentence's audio, the sentence read, the one the bubble marks
+      fs.writeFileSync(path.join(SHOTS, 'c1-bubble-sync.txt'), `# bubble text\n${await page.textContent('#bubble')}\n\n# every 100 ms while reading #${first.n}: time | audio position | sentence read → sentence marked in the bubble\n${sync.filter((x) => x.n === first.n).map((x) => `${String(x.at).padStart(7)}ms  audio ${String(x.audioAt).padStart(5)}ms  read [${x.i}]「${x.reading}」 → marked [${x.marked}]「${x.markedText}」 bubble ${x.bubbleShown ? 'shown' : 'HIDDEN'}`).join('\n')}\n`);
       const bubble = await page.textContent('#bubble');
       fs.writeFileSync(path.join(SHOTS, 'c1-speech-log.txt'), `# reply in the bubble\n${bubble}\n\n# sentences read (petFx.lastSpeech().sentences)\n${first.sentences.map((s) => `[${s.i}] ${s.status} ${s.provider} 「${s.text}」`).join('\n')}\n\n# speech log (renderer clock)\n${fmtLog(es)}\n\n# mock Fish requests\n${reqs.map((r) => JSON.stringify({ text: r.text, voice: r.voice, status: r.status, aborted: r.aborted, audioMs: r.audioMs, at: r.at - t0 })).join('\n')}\n\n# bubble sync samples (sentence read → sentence marked)\n${seen.join(', ')} over ${sync.length} samples\n`);
       assert.deepEqual(first.sentences.map((s) => s.text), WANT1, 'sentences, with emoji / stage direction / meme tag / link removed');
