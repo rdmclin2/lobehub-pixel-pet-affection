@@ -36,12 +36,15 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, log = new chatLog.MemoryChatLog() }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, log = new chatLog.MemoryChatLog() }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
     this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
+    // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
+    this.responses = responses;
+    this._responsesFailedAt = 0;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     this.store = store;
     this.settingsStore = settingsStore;
@@ -110,7 +113,8 @@ class PetService extends EventEmitter {
   }
 
   // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
-  // `characters` lists the roster with who has been met, under which name, and her affection.
+  // `characters` lists the roster with who has been met, under which name, and her affection, plus what
+  // ⋯ → 角色列表 → her page configures for her: her look (thumbnail), pack, model and affection progress.
   view() {
     if (!this.pet) return null;
     const c = this._c();
@@ -125,14 +129,20 @@ class PetService extends EventEmitter {
       outfits: outfits.listOutfits(c, this.settings).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
       outfit: outfits.wornOutfit(c, this.settings),
       look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings)),
-      appearance: { packId: packsLib.chosenPack(this.packs, this.settings.appearance, this.pet.speciesId), options: packsLib.packsFor(this.packs, this.pet.speciesId) },
+      appearance: this.appearanceView(this.pet.speciesId),
       model: this.modelView(),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
       characters: Object.values(SPECIES).map((x) => {
         const e = characters[x.id];
-        const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, adultAllowed(this.settings, x.id)) } : null;
-        return { id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met };
+        const ad = adultAllowed(this.settings, x.id);
+        const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, ad), progress: state.toAffectionProgress(e, { adult: ad }) } : null;
+        return {
+          id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met,
+          look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings) : outfits.DEFAULT_OUTFIT),
+          appearance: this.appearanceView(x.id),
+          model: this.modelView(x.id),
+        };
       }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
       busy: this.busy,
@@ -334,7 +344,7 @@ class PetService extends EventEmitter {
     if (this.pet.localAbilities) await this._verifyLocal();
   }
 
-  // ---- the model (⋯ → 切换角色 → 模型) ----------------------------------------------------------
+  // ---- the model (⋯ → 角色列表 → her page → 模型) ----------------------------------------------------------
   // The user's enabled chat models, from the hosted provider and the roster's vendor providers. Cached for
   // MODELS_TTL_MS; `force` reloads (the panel's 刷新). A failure (an older lh, offline) keeps the previous
   // list, or none, and is not retried before the TTL either; the agent then keeps the model it has.
@@ -364,12 +374,25 @@ class PetService extends EventEmitter {
     return this._catalog ? modelsLib.optionsFor(speciesId, this._catalog) : [];
   }
 
-  // What 高级设置 shows for the current character.
-  modelView() {
-    const id = this.pet.speciesId;
+  // What a character's page shows under 模型 (default: the current character). `applied`: the model her
+  // agent last ran on (null for one not met yet, who has no agent).
+  modelView(speciesId = this.pet.speciesId) {
+    const id = speciesId;
     const options = this._modelOptions(id);
     const current = modelsLib.pick(id, options, this.settings.models[id]);
-    return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: this._c().modelApplied || null, chosen: !!(current && current.key === this.settings.models[id]) };
+    const e = this.pet.characters[id];
+    return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: (e && e.modelApplied) || null, chosen: !!(current && current.key === this.settings.models[id]) };
+  }
+
+  // The packs a character can wear and the one she wears (settings.appearance[id], or her default).
+  appearanceView(speciesId) {
+    return { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId), options: packsLib.packsFor(this.packs, speciesId) };
+  }
+
+  // The character a per-character setting is for: `speciesId` when given, else the current one.
+  _target(speciesId) {
+    if (speciesId === undefined || speciesId === null || speciesId === '') return this.pet.speciesId;
+    return typeof speciesId === 'string' && Object.hasOwn(SPECIES, speciesId) ? speciesId : null;
   }
 
   // Point the agent at the model the current character should run on, once per change.
@@ -383,24 +406,44 @@ class PetService extends EventEmitter {
     this._save();
   }
 
-  // ⋯ → 切换角色 → 模型: choose one of the current character's models. Applied right away in the background
-  // (and again before the next turn if that failed).
-  setModel(key) {
+  // ⋯ → 角色列表 → her page → 模型: choose one of `speciesId`'s models (default: the current character's),
+  // kept in settings.models[speciesId]. For the current character it is applied right away in the
+  // background (and again before the next turn if that failed); another one's agent switches to it when
+  // she is the companion again (_applyModel before her next turn).
+  setModel(key, speciesId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const id = this.pet.speciesId;
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
     if (!this._modelOptions(id).some((o) => o.key === key)) return { ok: false, reason: 'unknown' };
     this.settings = settingsLib.normalizeSettings({ ...this.settings, models: { ...this.settings.models, [id]: key } });
     this.settingsStore.save(this.settings);
-    if (!this.busy) this._applyModel().catch((e) => this.emit('error', e));
+    if (id === this.pet.speciesId && !this.busy) this._applyModel().catch((e) => this.emit('error', e));
     this._save();
     return { ok: true, view: this.view() };
   }
 
-  // Find this computer's online device (starting `lh connect --daemon` if none) and bind the current
-  // character's agent to it (each agent records its own `boundDeviceId`).
+  // Make this computer usable by the current character. Directly (via 'direct') when the Responses API can
+  // be reached with the CLI's login: her tools then run inside the app and no device is needed. Otherwise,
+  // or for a while after the direct path failed, find this computer's online device (starting
+  // `lh connect --daemon` if none) and bind her agent to it (each agent records its own `boundDeviceId`).
   async _verifyLocal({ force = false } = {}) {
     const t = this.now();
     const c = this._c();
+    if (this.responses && t - this._responsesFailedAt >= LOCAL_RETRY_MS) {
+      if (!force && this._localOk && this.localVia === 'direct' && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
+      if (this.responses.available()) {
+        this._localOk = true;
+        this._localAgent = c.agentId;
+        this._localCheckedAt = t;
+        this._localFailedAt = 0;
+        this._deviceId = null;
+        this.localError = null;
+        this.localWarning = null;
+        this.localVia = 'direct';
+        return;
+      }
+    }
+    if (this.localVia === 'direct') this._localOk = false; // the device has not been checked yet
     if (!force) {
       if (this._localOk && this._localAgent === c.agentId && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
       if (!this._localOk && this._localFailedAt && t - this._localFailedAt < LOCAL_RETRY_MS) return;
@@ -490,7 +533,7 @@ class PetService extends EventEmitter {
     this._say(`（原来的角色已经下线，现在由${sp.title.split(' · ')[0]}「${sp.nameZh}」陪你，好感度和聊天记录都还在。）`, 'fallback', 'retired');
   }
 
-  // ⋯ → 切换角色: change who the companion is. Every character has her own LobeHub agent, chat history,
+  // ⋯ → 角色列表 → 切换 / 初次见面: change who the companion is. Every character has her own LobeHub agent, chat history,
   // name, affection and needs. One met before is back right away (her needs stood still while she was away);
   // a new one gets her own agent first (`name`: what the owner calls her, default her nameZh, as at hatch),
   // then says hello. If that fails, the current character stays and nothing is stored.
@@ -552,6 +595,7 @@ class PetService extends EventEmitter {
     if (!this.busy) return;
     this._cancelRequested = true;
     this.lh.cancel();
+    if (this.responses) this.responses.cancel();
   }
 
   // Steps that swallow errors (device lookup, persona update) must not let a cancelled turn carry on.
@@ -561,6 +605,25 @@ class PetService extends EventEmitter {
 
   _device() {
     return this.pet.localAbilities && this._localOk ? this._deviceId : null;
+  }
+
+  // One agent turn. A turn that may use this computer goes the direct way when it is up; if that fails before
+  // any of her tools ran, the same turn is sent again through `lh connect` (a tool that already ran must not
+  // run twice, so then the error stands).
+  async _runTurn(args) {
+    const tools = this._tools();
+    if (!tools.length || this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+    try {
+      return await this.responses.run({ ...args, tools });
+    } catch (e) {
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+      this.emit('error', e);
+      this._responsesFailedAt = this.now();
+      await this._verifyLocal({ force: true });
+      this._throwIfCanceled();
+      if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
+      return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+    }
   }
 
   // Ask the agent to say something for a system-triggered event.
@@ -579,13 +642,7 @@ class PetService extends EventEmitter {
       this.budget.spend(t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this.lh.run({
-        agentId: c.agentId,
-        topicId: c.topicId,
-        prompt: persona.buildEventPrompt(kind, c, t, this.settings),
-        tools: this._tools(),
-        device: this._device(),
-      });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this.settings) });
       if (res.topicId) c.topicId = res.topicId;
       if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
       this._say(this._guard(res.text), 'llm', kind);
@@ -604,8 +661,8 @@ class PetService extends EventEmitter {
   }
 
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
-  // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them through
-  // the bound device, so local abilities must be on.
+  // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them with her local
+  // tools (run here, or through the bound device), so local abilities must be on.
   // `origin`: 'user' for the chat box; the local HTTP API passes 'api' (an outside script, not the owner).
   async chat(text, images = [], files = [], { origin = 'user' } = {}) {
     const clean = String(text || '').trim();
@@ -641,7 +698,7 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
-      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt, tools: this._tools(), device: this._device() });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt });
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
@@ -699,7 +756,7 @@ class PetService extends EventEmitter {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings), tools: this._tools(), device: this._device() });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings) });
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);
@@ -732,13 +789,16 @@ class PetService extends EventEmitter {
     return packsLib.resolveLook(this.packs, { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId), fallbackId: packsLib.fallbackPack(speciesId), speciesId, outfitId });
   }
 
-  // 高级设置 → 外观: dress the current companion in another pack of its species.
-  setAppearance(packId) {
+  // ⋯ → 角色列表 → her page → 外观: dress `speciesId` (default: the current companion) in another pack of
+  // her species, kept in settings.appearance[speciesId].
+  setAppearance(packId, speciesId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
     const p = this.packs.get(packId);
-    const clips = packId === packsLib.clipsId(this.pet.speciesId);
-    if (!clips && (!p || p.species !== this.pet.speciesId)) return { ok: false, reason: 'unknown' };
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [this.pet.speciesId]: packId } });
+    const clips = packId === packsLib.clipsId(id);
+    if (!clips && (!p || p.species !== id)) return { ok: false, reason: 'unknown' };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [id]: packId } });
     this.settingsStore.save(this.settings);
     this._save();
     return { ok: true, view: this.view() };
@@ -983,20 +1043,26 @@ class PetService extends EventEmitter {
     return this.view();
   }
 
-  // Advanced settings: unlock every stage, topic and outfit at once (for impatient players and for
-  // checking the content). Returns what became available, as the user may see it.
-  unlockAll() {
+  // ⋯ → 角色列表 → her page → 好感度: unlock every stage, topic and outfit of `speciesId` (default: the
+  // current character) at once (for impatient players and for checking the content). Only a character met
+  // before has affection to fill. Returns what became available, as the user may see it; only the current
+  // companion announces her stage-up (another one is not on the desktop to say it).
+  unlockAll(speciesId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    if (this.busy) return { ok: false, reason: 'busy' };
-    const c = this._c();
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    const c = Object.hasOwn(this.pet.characters, id) ? this.pet.characters[id] : null;
+    if (!c) return { ok: false, reason: 'not-met' };
+    const isCurrent = id === this.pet.speciesId;
+    if (isCurrent && this.busy) return { ok: false, reason: 'busy' };
     const r = state.unlockAll(c, this.now());
     const unlocks = {
       topics: dialogue.topicsForStages(r.unlockedStages, c, this.settings),
       outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings),
     };
     this._save();
-    if (r.unlockedStages.length) setImmediate(() => this._onStageUp(r));
-    return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0 };
+    if (isCurrent && r.unlockedStages.length) setImmediate(() => this._onStageUp(r));
+    return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0, speciesId: id };
   }
 
   // Release the pet: optionally delete every character's LobeHub agent as well. `deleted`: how many were.

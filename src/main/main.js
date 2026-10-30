@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
@@ -217,15 +218,17 @@ function wire() {
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
-  ipcMain.handle('unlock-all', () => service.unlockAll());
-  // the model (高级设置 → 模型): only the current character's vendor's models are offered
-  ipcMain.handle('set-model', (_e, { key }) => service.setModel(String(key || '')));
+  // per-character settings (⋯ → 角色列表 → her page): `species` says whose; none = the current character
+  const whose = (v) => (typeof v === 'string' && v ? v : undefined);
+  ipcMain.handle('unlock-all', (_e, p) => service.unlockAll(whose(p && p.species)));
+  // the model (her page → 模型): only her own vendor's models are offered
+  ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
   ipcMain.handle('refresh-models', async () => {
     await service.refreshModels({ force: true });
     return { ok: true, view: service.view() };
   });
-  // pet packs (高级设置 → 外观)
-  ipcMain.handle('set-appearance', (_e, { id }) => service.setAppearance(String(id || '')));
+  // pet packs (her page → 外观)
+  ipcMain.handle('set-appearance', (_e, { id, species }) => service.setAppearance(String(id || ''), whose(species)));
   ipcMain.handle('import-pack', async () => {
     const r = await dialog.showOpenDialog(win, { title: '导入角色包', properties: ['openFile', 'openDirectory'], filters: [{ name: '角色包', extensions: ['zip', 'json'] }] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
@@ -435,7 +438,10 @@ app.whenReady().then(() => {
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   tts = { keys, cache, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats } });
-  service = new PetService({ lh: new LhClient(), store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  const lh = new LhClient();
+  // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
+  const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
+  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

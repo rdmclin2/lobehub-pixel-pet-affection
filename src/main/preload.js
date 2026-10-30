@@ -25,9 +25,10 @@ contextBridge.exposeInMainWorld('pet', {
   // 聊天记录: conversations the owner started, already filtered in main (list: summaries; get: one with its messages)
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
-  unlockAll: () => ipcRenderer.invoke('unlock-all'),
-  setAppearance: (id) => ipcRenderer.invoke('set-appearance', { id }),
-  setModel: (key) => ipcRenderer.invoke('set-model', { key }),
+  // per-character settings: `species` is whose (⋯ → 角色列表 → her page); left out = the current character
+  unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
+  setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
+  setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),

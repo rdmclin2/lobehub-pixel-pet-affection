@@ -1,17 +1,90 @@
 name: Release
 
-# Push a tag like v0.1.0 to build the macOS app and attach it to a GitHub Release.
-# "Run workflow" (workflow_dispatch) builds without releasing and keeps the files as a run artifact.
+# Day-to-day PRs merge into canary (test.yml). Merging into main releases, the LobeHub OSS way:
+#   - PR titled "🚀 release: vX.Y.Z" (usually canary → main)  → releases vX.Y.Z
+#   - PR titled feat / fix / style / refactor / perf / hotfix / build, or from a hotfix/* or release/* branch
+#                                                               → releases the latest stable tag with patch + 1
+#   - anything else (docs, chore, test, ci…)                    → no release
+# (rules and tests: scripts/release-version.js). A release tests, builds mac / win / linux with that version, creates
+# the tag and the GitHub Release with the install notes (.github/release-notes.md), commits the version to main's
+# package.json, and syncs main back into canary (sync-main-to-canary.yml).
+# Also: pushing a tag vX.Y.Z by hand releases that tag; "Run workflow" with a version releases it from the chosen
+# branch, without one it only builds and keeps the files as a run artifact.
+# Tags and commits made here with GITHUB_TOKEN start no further workflow runs, so nothing loops.
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.10.0); empty = build only'
+        required: false
+        type: string
 
 permissions:
   contents: write
+  pull-requests: write # the sync job may open a PR
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cut a release off halfway
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+      build: ${{ steps.v.outputs.build }}
+      pr: ${{ steps.v.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide the version
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"; release=true
+            echo "Tag pushed: v$version"
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version="${INPUT_VERSION#v}"
+            if [ -n "$version" ]; then release=true; else version="$pkg"; release=false; fi
+            echo "Manual run: version $version, release $release"
+          else
+            # The PR this push merged (falls back to the commit subject for a direct push).
+            pr_json=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)][0] // {}' || echo '{}')
+            title=$(jq -r '.title // empty' <<< "$pr_json")
+            head=$(jq -r '.head.ref // empty' <<< "$pr_json")
+            pr=$(jq -r '.number // empty' <<< "$pr_json")
+            [ -n "$title" ] || title=$(git log -1 --pretty=%s "$GITHUB_SHA")
+            echo "PR #${pr:-none} from ${head:-?}: $title"
+            res=$(git tag --list 'v*' | node scripts/release-version.js --title "$title" --head "$head" --tags -)
+            echo "$res"
+            version=$(jq -r '.version // empty' <<< "$res"); release=$(jq -r '.release' <<< "$res")
+            out pr "$pr"
+          fi
+          if [ "$release" = true ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then echo "::error::Bad version '$version'"; exit 1; fi
+            # A tag pushed by hand is released as it is; anything else must not reuse an existing tag.
+            if [ "$GITHUB_REF_TYPE" != tag ] && git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::Tag v$version already exists. Title the release PR with a new version."; exit 1
+            fi
+          fi
+          out version "$version"; out release "$release"
+          out build "$([ "$release" = true ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && echo true || echo false)"
+          echo "### Version: ${version:-none} · release: $release" >> "$GITHUB_STEP_SUMMARY"
+
   test:
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +98,7 @@ jobs:
       - run: npm test
 
   build-mac:
-    needs: test
+    needs: [version, test]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +107,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Set the version
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
       - name: Build universal macOS app (Intel + Apple Silicon)
         run: npm run dist:mac
         env:
@@ -57,7 +132,7 @@ jobs:
           if-no-files-found: error
 
   build-win:
-    needs: test
+    needs: [version, test]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +141,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Set the version
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
       - name: Build Windows app (x64 installer + zip)
         run: npm run dist:win
         env:
@@ -87,54 +164,113 @@ jobs:
             dist/latest.yml
           if-no-files-found: error
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-mac, build-win]
+  build-linux:
+    needs: [version, test]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Set the version
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
+      - name: Build Linux app (x64 tar.gz)
+        run: npm run dist:linux
+      - name: Start the packaged app
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+          ls -la dist
+          # List to a file first: `tar | grep -q` fails under pipefail when grep stops reading early.
+          tar -tzf dist/PixelPetAffection-*-linux-x64.tar.gz > tar-list.txt
+          grep -q '/pixel-pet-affection$' tar-list.txt
+          # It must still be running after 15 s (a missing module or a bad package crashes it at once).
+          # Own process group (setsid), so stopping it also stops the app under xvfb-run.
+          HOME=$(mktemp -d) setsid xvfb-run -a dist/linux-unpacked/pixel-pet-affection --no-sandbox > app.log 2>&1 &
+          pid=$!
+          sleep 15
+          if ! kill -0 "$pid" 2>/dev/null; then cat app.log; echo "::error::The packaged app exited"; exit 1; fi
+          kill -- -"$pid" || true
+          tail -20 app.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixel-pet-linux
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [version, build-mac, build-win, build-linux]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: pixel-pet-*
           merge-multiple: true
           path: dist
       - name: Publish GitHub Release
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PR: ${{ needs.version.outputs.pr }}
         run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           ls -la dist
-          cat > notes.md <<'NOTES'
-          > **成人向（18+）应用**：包含面向成年人的暧昧互动内容（不含露骨内容）。首次启动会确认是否年满 18 周岁，成人向内容可随时在“⋯”菜单关闭。内容边界与合规审查见 README 和 `docs/compliance-review.md`。
-
-          ## 安装（macOS，Intel 与 Apple 芯片通用）
-
-          1. 下载 `.dmg`（或 `.zip`），把 **Pixel Pet Affection** 拖进“应用程序”。
-          2. 应用没有苹果开发者签名，首次打开会被拦截：右键点应用选“打开”，或执行 `xattr -cr "/Applications/Pixel Pet Affection.app"`。
-          3. 先装 LobeHub CLI：`npm install -g @lobehub/cli`，宠物的大脑通过它运行。
-
-          ## 安装（Windows 10/11，x64）
-
-          1. 下载 `-win-x64-setup.exe` 运行安装（或下载 `-win-x64.zip` 解压后直接运行 `Pixel Pet Affection.exe`）。
-          2. 应用没有代码签名，Windows SmartScreen 会拦：点“更多信息” → “仍要运行”。
-          3. 先装 Node.js 和 LobeHub CLI：`npm install -g @lobehub/cli`（装好后在终端能执行 `lh --version`）。
-          4. Windows 版目前只做了构建，没有在真机上完整验证，遇到问题请开 issue。
-
-          ## 使用这台电脑（默认勾选，注意权限）
-
-          唤醒页的“使用这台电脑”默认开启：应用会在认领和每次启动时确保 `lh connect --daemon` 在后台运行，并把宠物绑定到你的这台电脑。绑定后宠物能读写文件、搜索内容、运行命令，**权限等同你的账号，不是沙盒**；把文件拖给它时只传路径、不上传。不想要的话，唤醒时取消勾选，或在“⋯”菜单里随时关闭。
-
-          ## 素材说明
-
-          “大肥鱼”的动画来自开源项目 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)：素材仅限非商业使用，形象为社区二创（非 DeepSeek 官方），授权 CC BY-NC-SA 4.0。详见 README 的 Credits。请勿商用。
-
-          ---
-          NOTES
-          # A release may already exist (for example with a locally built Linux package): add the files to it.
-          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
+          {
+            # A release PR's description is the version's notes.
+            if [ -n "$PR" ]; then
+              gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""'
+              echo; echo "---"; echo
+            fi
+            cat .github/release-notes.md
+          } > notes.md
+          prerelease=$([[ "$VERSION" == *-* ]] && echo --prerelease || true)
+          # A release may already exist (e.g. created by hand for this tag): add the files to it.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "${{ github.ref_name }}" dist/* \
-              --repo "${{ github.repository }}" \
-              --title "Pixel Pet Affection ${{ github.ref_name }}" \
+            gh release create "$tag" dist/* $prerelease \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Pixel Pet Affection $tag" \
               --notes-file notes.md \
               --generate-notes
           fi
+          echo "### Released [$tag](https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag)" >> "$GITHUB_STEP_SUMMARY"
+
+  # main's package.json follows the released version, so the next canary build and `npm start` report it.
+  bump:
+    needs: [version, release]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+      - name: Commit the version to main
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ "$(node -p "require('./package.json').version")" = "$VERSION" ] && { echo "package.json already at $VERSION"; exit 0; }
+          npm version "$VERSION" --no-git-tag-version
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "🔖 chore(release): v$VERSION"
+          for i in 1 2 3; do git push origin HEAD:main && exit 0; git pull --rebase origin main; done
+          exit 1
+
+  sync:
+    needs: [release, bump]
+    if: always() && needs.release.result == 'success' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/sync-main-to-canary.yml
+    secrets: inherit

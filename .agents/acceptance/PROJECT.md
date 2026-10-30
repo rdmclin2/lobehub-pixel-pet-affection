@@ -10,7 +10,7 @@ agent is the pet's brain. Layout: `src/core` (pure logic + the `lh` wrapper),
 
 ## 2. Environment
 
-- **Start the app:** `npm start` on a desktop; on a headless box `xvfb-run -a node e2e/run.js <scenario>`. Scenarios: fresh, wardrobe, migrate, dafeiyu, busy, space (where the agent lives), advanced (unlock all, free resize), packs (pixel sprites, switch/import/remove packs), models (⋯ → 切换角色 → 模型: each character only offers her vendor's models; the fake lh lists them and records `agent edit -m/-p` in `edits.log`), art (outfit sheet and the character × state sheet), roster (every character × every effect of the shared effects layer, with screenshots and one recording per character in `out/e2e/roster-video/`; `roster <id>` runs one), touch (部位触摸: real clicks on head / chest / butt / feet / hands and more, per-part line, reaction class, marks and affection; drag is not a touch; the 部位触摸 switch falls back to the old pat; screenshots, `*.dom.json`, a recording and `touch-log.txt` in `out/e2e/touch/`), live (real lh, costs tokens).
+- **Start the app:** `npm start` on a desktop; on a headless box `xvfb-run -a node e2e/run.js <scenario>`. Scenarios: fresh, wardrobe, migrate, dafeiyu, busy, space (where the agent lives), advanced (高级设置 holds system-wide settings only; unlock all on the character's page, free resize), packs (pixel sprites, switch/import/remove packs on the character's page), models (⋯ → 角色列表 → character → 模型: each character only offers her vendor's models; the fake lh lists them and records `agent edit -m/-p` in `edits.log`), charpage (⋯ → 角色列表 → a character's page: model/look saved for that character and kept across a restart, unlock on a non-current character, 高级设置 without per-character sections; screenshots in `out/e2e/charpage/`), art (outfit sheet and the character × state sheet), roster (every character × every effect of the shared effects layer, with screenshots and one recording per character in `out/e2e/roster-video/`; `roster <id>` runs one), touch (部位触摸: real clicks on head / chest / butt / feet / hands and more, per-part line, reaction class, marks and affection; drag is not a touch; the 部位触摸 switch falls back to the old pat; screenshots, `*.dom.json`, a recording and `touch-log.txt` in `out/e2e/touch/`), live (real lh, costs tokens).
 - **Stop:** the E2E harness closes the app itself; the `live` scenario deletes the agent it created (also on failure).
 - **Required services:** none besides the LobeHub CLI (`lh`) with a logged-in profile for `live`.
 - **Skill:** the generic acceptance skill is committed at `.agents/skills/acceptance` (`.claude/skills` links to it for Claude Code). Refresh it with `lh acceptance update` and commit the result; the version is in its `SKILL.md`. This file and its neighbours are the project layer.
@@ -48,16 +48,20 @@ Art: `art/model-chan/README.md` (pipeline, `scripts/art/check_model_chan.py`, `m
 
 ## 7. Release gate
 
-Every release gets an acceptance round **before** the tag is pushed: run the scenarios the release
-touches, publish with `lh acceptance run ingest <round dir> --acceptance 6aeb64e4-6c8b-40c1-919a-c1b189bd95be`
-(report language zh-CN; the CLI may lack `preflight` / `--dry-run`: check auth with `lh acceptance run list --json`
-and validate `result.json` locally), and send the owner the acceptance link. A 验证报告 request means this round, not
-an agent document. Follow-up rounds re-check only affected items under their stable plan ids. Tag `v*` only after the owner has
-looked at it (or asks to release).
+Acceptance happens per PR into `canary`, not per release: a PR that changes what the user sees gets its acceptance
+round before it merges into canary (publish with `lh acceptance run ingest <round dir> --acceptance
+6aeb64e4-6c8b-40c1-919a-c1b189bd95be`, report language zh-CN; the CLI may lack `preflight` / `--dry-run`: check auth
+with `lh acceptance run list --json` and validate `result.json` locally) and the owner reviews it there. A 验证报告
+request means such a round, not an agent document. Follow-up rounds re-check only affected items under their stable
+plan ids. A release needs **no** separate acceptance round: the owner merging into `main` is the release decision
+(owner, 2026-10-30). **Merging into main publishes.**
 
-Release: merge to master (PR, `gh … --repo rdmclin2/lobehub-pixel-pet-affection`: the `upstream` remote makes gh pick the
-wrong base) → PR `🔖 chore(release): vX.Y.Z` (`npm version X.Y.Z --no-git-tag-version`) → `git tag -a vX.Y.Z` + push
-(`release.yml` tests, builds mac/win and creates the release with the standard install notes) → `npm run dist:linux`
-locally, smoke the packaged `dist/linux-unpacked/pixel-pet-affection`, `gh release upload` the tar.gz → prepend the
-version's notes to the release body. Auto-update is verified after publishing with the `Self-update check` workflow
+Branches (as LobeHub OSS): day-to-day PRs target `canary` (the default branch; always pass `--repo
+rdmclin2/lobehub-pixel-pet-affection` to gh: the `upstream` remote makes gh pick the wrong base). Release: PR
+`canary → main` titled `🚀 release: vX.Y.Z`, its description = the version's notes (it becomes the release body) →
+merge → `release.yml` tests, builds mac / win / linux with that version (Linux package started under xvfb), creates
+the tag and the release with the standard install notes, commits the version to main's `package.json`, and syncs main
+back into canary. A feat / fix / hotfix PR merged straight into main releases the next patch the same way; docs / chore /
+test PRs into main release nothing (rules: `scripts/release-version.js`). Watch the run (`gh run watch`) and check the
+release assets. Auto-update is verified after publishing with the `Self-update check` workflow
 (`.github/workflows/update-e2e.yml`), which installs a 0.0.1 build and waits for it to update itself.
