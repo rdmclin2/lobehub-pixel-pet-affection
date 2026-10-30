@@ -530,6 +530,7 @@ async function openPanel(kind) {
   panelMsg('');
   $('panel').classList.remove('hidden');
   renderPanel();
+  $('panel-body').scrollTop = 0; // every panel opens at its top, not where the previous one was scrolled to
   if (kind === 'wardrobe' || kind === 'topics') await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
 }
 
