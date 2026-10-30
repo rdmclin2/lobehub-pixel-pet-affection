@@ -7,7 +7,7 @@
 
 const aff = require('./affection');
 const { unlockedTopicIds } = require('./dialogue');
-const { SCHEMA_VERSION } = require('./migrate');
+const { SCHEMA_VERSION, cur } = require('./migrate');
 const { DEFAULT_OUTFIT } = require('./outfits');
 const touchZones = require('./touch-zones');
 
@@ -21,6 +21,7 @@ function isNight(now) {
   return h >= 23 || h < 7;
 }
 
+// One character's state (`pet.characters[speciesId]`), the day she is met: her agent, needs and affection.
 function createPet({ speciesId, name, agentId, topicId = null, now }) {
   return {
     speciesId,
@@ -28,7 +29,6 @@ function createPet({ speciesId, name, agentId, topicId = null, now }) {
     agentId,
     topicId,
     createdAt: now,
-    schemaVersion: SCHEMA_VERSION,
     ...aff.initialAffection(now),
     unlockedTopics: unlockedTopicIds('stranger'),
     seenUnlocks: [],
@@ -43,6 +43,24 @@ function createPet({ speciesId, name, agentId, topicId = null, now }) {
     lastFedAt: now,
     lastSpokeAt: 0,
   };
+}
+
+// A new save (schema 3) whose first character is `first` (a createPet entry).
+function createSave(first, now) {
+  return { schemaVersion: SCHEMA_VERSION, speciesId: first.speciesId, createdAt: now, characters: { [first.speciesId]: first } };
+}
+
+// A character who was not on screen comes back: only the current one is ticked, so her needs stood still
+// while she was away (`lastTickAt` is when she left). The time away does not count as ignoring her either:
+// `lastInteractionAt` moves forward by it, and the affection decay keeps the steps it already took.
+function resume(pet, now) {
+  const away = Math.max(0, now - (pet.lastTickAt || now));
+  pet.lastTickAt = now;
+  if (!away || typeof pet.lastInteractionAt !== 'number') return pet;
+  const anchored = pet.decayAnchor === pet.lastInteractionAt;
+  pet.lastInteractionAt = Math.min(now, pet.lastInteractionAt + away);
+  if (anchored) pet.decayAnchor = pet.lastInteractionAt;
+  return pet;
 }
 
 // Score an interaction and keep `unlockedTopics` in step with the peak stage.
@@ -219,6 +237,9 @@ module.exports = {
   clamp,
   isNight,
   createPet,
+  createSave,
+  cur,
+  resume,
   tick,
   feed,
   pat,

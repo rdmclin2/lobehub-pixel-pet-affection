@@ -249,6 +249,15 @@
 8. 老用户没有 `settings.json`：启动时先显示 18+ 确认屏（第 8.3 节），在确认之前 `adultContent = false`。
 9. `pet.json` 损坏时 `Store.load()` 返回 `null`，按无宠物处理；备份文件不受影响。
 
+### 6.1 schema 2 → 3：每位角色一份
+
+schema 3 起每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和需求值。`pet.json` 顶层只放主人级字段（`SHARED_KEYS`：`schemaVersion, speciesId, space, owner, localAbilities, createdAt, legacy, retiredFrom, retiredCharacters`），其余字段都在 `characters[speciesId]` 里；`speciesId` 是当前角色，`cur(pet)` 取她的条目（条目自带 `speciesId`，`pet-state` / `persona` / `dialogue` / `outfits` 直接拿它当“宠物”）。
+
+1. schema 2 存档：原来的 agent、topic、名字、好感度、需求值、服饰等整体归到当前角色（下线角色先换成接替者），`createdAt` 顶层和条目各一份；迁移前备份一次为 `pet.v2.bak.json`。旧 agent 的历史里可能混着几位角色的对话，归当前角色。
+2. schema 1 存档直接迁到 3（先按上文换算好感度），备份仍是 `pet.v1.bak.json`。
+3. 其他角色没有条目，第一次切过去时建（`switchCharacter(id, { name })`）。
+4. 只有当前角色随时间推进需求值和离线衰减；切回某位角色时 `resume()` 把她的 `lastTickAt` 置为现在，`lastInteractionAt` 顺延离开的时长（已扣过的衰减不重扣）。
+
 ---
 
 ## 7. 持久化字段
@@ -257,7 +266,7 @@
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |
-| `schemaVersion` | `number` | 存档版本，好感度版为 `2` |
+| `schemaVersion` | `number` | 存档版本：好感度版为 `2`，每位角色一份为 `3`（见 6.1；下表除 `schemaVersion`、`legacy` 外都在 `characters[speciesId]` 里） |
 | `affection` | `number`（0–100，一位小数） | 当前好感度 |
 | `relStage` | `'stranger'\|'familiar'\|'close'\|'flirty'\|'lover'` | 当前阶段（派生值，缓存便于调试） |
 | `peakStage` | 同上 | 历史最高阶段，决定解锁 |
@@ -274,7 +283,7 @@
 | `legacy` | `{ xp, stage, migratedAt } \| undefined` | 从 v1 迁移来的原始值 |
 | 删除 | `stage`、`xp` | 不再写入 |
 
-上游原有字段继续保留：`speciesId, name, agentId, topicId, createdAt, hunger, mood, energy, sleeping, lastTickAt, lastInteractionAt, lastFedAt, lastSpokeAt, lastGreetDay, owner, personaVersion, localAbilities`。
+上游原有字段继续保留：顶层 `speciesId, createdAt, owner, space, localAbilities`；每位角色的条目里 `speciesId, name, agentId, topicId, createdAt, hunger, mood, energy, sleeping, lastTickAt, lastInteractionAt, lastFedAt, lastSpokeAt, lastGreetDay, personaVersion, personaKey, modelApplied, boundDeviceId`。
 
 ### 7.2 `settings.json`（`userData/settings.json`，放生或重置时保留）
 

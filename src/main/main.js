@@ -372,7 +372,7 @@ function wire() {
     const done = apiWaits.get(id);
     if (done) { apiWaits.delete(id); done(result); }
   });
-  ipcMain.handle('switch-character', (_e, { id }) => service.switchCharacter(String(id || '')));
+  ipcMain.handle('switch-character', (_e, { id, name }) => service.switchCharacter(String(id || ''), { name: typeof name === 'string' ? name : '' }));
   ipcMain.on('place', (_e, mode) => { if (mode in SIZES) { petBounds = null; place(mode); } });
   // Wardrobe / topic panel: grow the pet window up and to the left (its bottom-right corner stays put),
   // then give the pet its old bounds back when the panel closes.

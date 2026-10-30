@@ -31,9 +31,12 @@ if (args[0] === 'whoami') {
   fs.rmSync(pinFile, { force: true });
   console.log('✓ Switched to personal');
 } else if (args[0] === 'agent' && args[1] === 'create') {
-  const id = 'agt_FAKE' + Date.now();
+  if (process.env.FAKE_LH_FAIL_CREATE || fs.existsSync(path.join(dir, 'fail-create'))) { console.error('create failed'); process.exit(1); }
+  const id = 'agt_FAKE' + Date.now() + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
   fs.writeFileSync(path.join(dir, 'last-create.json'), JSON.stringify({ title: args[args.indexOf('-t') + 1], systemRole: args[args.indexOf('-s') + 1] }));
-  console.log(`✓ Created agent ${id}`);
+  const createDelay = Number(process.env.FAKE_LH_CREATE_DELAY_MS || 0);
+  if (createDelay) setTimeout(() => console.log(`✓ Created agent ${id}`), createDelay);
+  else console.log(`✓ Created agent ${id}`);
 } else if (args[0] === 'device' && args[1] === 'list') {
   const f = path.join(dir, 'devices.json');
   console.log(fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '[]');
@@ -94,11 +97,13 @@ if (args[0] === 'whoami') {
   if (process.env.FAKE_LH_FAIL_RUN === 'empty') { console.log('[]'); process.exit(0); }
   if (process.env.FAKE_LH_FAIL_RUN) { console.error('boom'); process.exit(1); }
   const prompt = args[args.indexOf('-p') + 1];
-  const topic = args.includes('-t') ? args[args.indexOf('-t') + 1] : 'tpc_FAKE1';
+  // a new topic per agent the fake created, so tests can tell the characters' chats apart
+  const agent = args[args.indexOf('-a') + 1];
+  const topic = args.includes('-t') ? args[args.indexOf('-t') + 1] : /^agt_FAKE\d/.test(agent) ? `tpc_FOR_${agent}` : 'tpc_FAKE1';
   if (process.env.FAKE_LH_NO_DEVICE_FLAG && args.includes('--device')) { console.error("error: unknown option '--device'"); process.exit(1); }
   const tools = args.map((a, i) => (a === '--tool' ? args[i + 1] : null)).filter(Boolean);
   const device = args.includes('--device') ? args[args.indexOf('--device') + 1] : null;
-  fs.appendFileSync(path.join(dir, 'runs.log'), JSON.stringify({ prompt, tools, device }) + '\n');
+  fs.appendFileSync(path.join(dir, 'runs.log'), JSON.stringify({ prompt, tools, device, agent, topic }) + '\n');
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
     { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
