@@ -97,9 +97,17 @@ if (args[0] === 'whoami') {
   if (process.env.FAKE_LH_FAIL_RUN === 'empty') { console.log('[]'); process.exit(0); }
   if (process.env.FAKE_LH_FAIL_RUN || fs.existsSync(path.join(dir, 'fail-run'))) { console.error('boom'); process.exit(1); }
   const prompt = args[args.indexOf('-p') + 1];
-  // a new topic per agent the fake created, so tests can tell the characters' chats apart
+  // a new topic per agent the fake created, so tests can tell the characters' chats apart; like LobeHub,
+  // every run without -t opens another one (tpc_FOR_<agent>, then tpc_FOR_<agent>_2, …)
   const agent = args[args.indexOf('-a') + 1];
-  const topic = args.includes('-t') ? args[args.indexOf('-t') + 1] : /^agt_FAKE\d/.test(agent) ? `tpc_FOR_${agent}` : 'tpc_FAKE1';
+  let topic = args.includes('-t') ? args[args.indexOf('-t') + 1] : null;
+  if (!topic && /^agt_FAKE\d/.test(agent)) {
+    const opened = path.join(dir, `topics-${agent}`);
+    const n = (fs.existsSync(opened) ? Number(fs.readFileSync(opened, 'utf8')) : 0) + 1;
+    fs.writeFileSync(opened, String(n));
+    topic = n === 1 ? `tpc_FOR_${agent}` : `tpc_FOR_${agent}_${n}`;
+  }
+  if (!topic) topic = 'tpc_FAKE1';
   if (process.env.FAKE_LH_NO_DEVICE_FLAG && args.includes('--device')) { console.error("error: unknown option '--device'"); process.exit(1); }
   const tools = args.map((a, i) => (a === '--tool' ? args[i + 1] : null)).filter(Boolean);
   const device = args.includes('--device') ? args[args.indexOf('--device') + 1] : null;

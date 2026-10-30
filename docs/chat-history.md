@@ -12,18 +12,18 @@
 
 | origin | 含义 | 写入位置（`src/main/pet-service.js`） |
 | --- | --- | --- |
-| `user` | 你在聊天框里发送的消息，以及她对这条消息的回复 | `chat()` :610，用户消息 `_logUser` :621；回复 `_say(…, turn)` :648；没回复（出错 / 打断）`_logPet(…, 'error' \| 'canceled')` :627、:653 |
-| `topic` | 你在话题面板点了预设话题（正文是预设 prompt，不是你输入的） | `talkTopic()`：`_logUser` :697；回复 :706 / :717；打断 :711 |
-| `api` | 本机 HTTP 接口：`POST /pixel-pet/chat`（外部脚本，`src/main/main.js:450` 传 `origin: 'api'`）和 `POST /pixel-pet/say`（:817） | `chat(…, { origin: 'api' })`、`sayExternal()` |
-| `greeting` | 初次见面 `met`（:279、:541）、切回见过的角色 `switch`（:542）、早晚问候 `greet_morning` / `greet_evening`（心跳 :962–963） | `_speak()` :572 / :591 / :598 → `_say` |
-| `proactive` | 主动搭话：`hungry`、`bored`（`src/core/proactive.js` `nextEvent`）、离开后回来 `missed` | 心跳 :962–963 → `_speak()` |
-| `emotion` | 好感度跨阶段的 `stage_up` | `_onStageUp()` :680 → `_speak()` |
-| `touch` | 触摸身体部位的反应台词 `touch:<部位>` | `touch()` :920 |
-| `care` | 喂食 / 摸摸 / 玩耍 / 哄睡按钮的台词 | `act()` :892 |
-| `system` | 睡醒 `woke`（:960）、角色下线 `retired`（:490），以及将来新增但没登记的 kind | |
+| `user` | 你在聊天框里发送的消息，以及她对这条消息的回复 | `chat()` :616，用户消息 `_logUser` :627；回复 `_say(…, turn)` :654；没回复（出错 / 打断）`_logPet(…, 'error' \| 'canceled')` :633、:659 |
+| `topic` | 你在话题面板点了预设话题（正文是预设 prompt，不是你输入的） | `talkTopic()`：`_logUser` :703；回复 :712 / :723；打断 :717 |
+| `api` | 本机 HTTP 接口：`POST /pixel-pet/chat`（外部脚本，`src/main/main.js:451` 传 `origin: 'api'`）和 `POST /pixel-pet/say`（:823） | `chat(…, { origin: 'api' })`、`sayExternal()` |
+| `greeting` | 初次见面 `met`（:285、:547）、切回见过的角色 `switch`（:548）、早晚问候 `greet_morning` / `greet_evening`（心跳 :968–969） | `_speak()` :578 / :597 / :604 → `_say` |
+| `proactive` | 主动搭话：`hungry`、`bored`（`src/core/proactive.js` `nextEvent`）、离开后回来 `missed` | 心跳 :968–969 → `_speak()` |
+| `emotion` | 好感度跨阶段的 `stage_up` | `_onStageUp()` :686 → `_speak()` |
+| `touch` | 触摸身体部位的反应台词 `touch:<部位>` | `touch()` :926 |
+| `care` | 喂食 / 摸摸 / 玩耍 / 哄睡按钮的台词 | `act()` :898 |
+| `system` | 睡醒 `woke`（:966）、角色下线 `retired`（:496），以及将来新增但没登记的 kind | |
 | `unknown` | 旧数据：没有 `origin` 或值不认识 | 读取时由 `normalize()` 补上 |
 
-所有宠物台词都经过 `_say()`（:163）。`_say` 没拿到 `turn` 时，用 `originOfKind(kind)`（`src/core/chat-log.js:44`）从 kind 推出来源；没登记的 kind 一律归 `system`，**永远不会推成 `user`**。`user` 只能来自 `chat()` 开启的那一轮（`turn`），所以新加一种系统台词不会意外进入聊天记录。`say` 事件也带上了 `origin`（:171），渲染进程可以知道一句话的来源。
+所有宠物台词都经过 `_say()`（:163）。`_say` 没拿到 `turn` 时，用 `originOfKind(kind)`（`src/core/chat-log.js:45`）从 kind 推出来源；没登记的 kind 一律归 `system`，**永远不会推成 `user`**。`user` 只能来自 `chat()` 开启的那一轮（`turn`），所以新加一种系统台词不会意外进入聊天记录。`say` 事件也带上了 `origin`（:171），渲染进程可以知道一句话的来源。
 
 单条消息的格式：
 
@@ -40,11 +40,12 @@
 3. **系统起头、你来回复**：系统那句（例如“我好饿”）不计入；你回的那句和她对它的回复计入，作为一轮（和前面的会话相隔不超过 30 分钟就并进去，否则开新会话）。会话的摘要是你说的第一句。
 4. **你说完之后她又自己说话**（例如回复触发了关系升级 `stage_up`，或几分钟后主动搭话）：这些是系统台词，不计入。
 5. **防伪造**：一条宠物消息即使标了 `user`，如果同一 `turnId` 里没有你的消息，也会被丢掉。
+6. **重新开始话题**：⋯ → 重新开始话题之后的轮次带新的 `topicEpoch`，即使和上一轮相隔不到 30 分钟也开新会话（见第八节）。没有 `topicEpoch` 的旧记录算作 0。
 
 ## 三、过滤在数据层
 
-- 过滤函数：`userSessions(messages)`，`src/core/chat-log.js:76`。只保留 `origin === 'user'` 且属于某条用户消息那一轮的记录，按规则二分组，最新的在前；另外返回按来源统计的被过滤条数（只有数字，不含正文）。
-- 查询接口：`PetService.history()`（`src/main/pet-service.js:201`，只返回会话摘要）和 `PetService.historySession(id)`（:206，返回一段会话的消息）。两者都只调用 `userSessions`。
+- 过滤函数：`userSessions(messages)`，`src/core/chat-log.js:78`。只保留 `origin === 'user'` 且属于某条用户消息那一轮的记录，按规则二分组，最新的在前；另外返回按来源统计的被过滤条数（只有数字，不含正文）。
+- 查询接口：`PetService.history()`（`src/main/pet-service.js:207`，只返回会话摘要）和 `PetService.historySession(id)`（:212，返回一段会话的消息）。两者都只调用 `userSessions`。
 - IPC：`ipcMain.handle('history-list')` / `ipcMain.handle('history-get')`，`src/main/main.js:253-254`；preload 暴露为 `window.pet.historyList()` / `window.pet.historyGet(id)`（`src/main/preload.js:26-27`）。
 - 视图层只画拿到的数据，没有任何过滤逻辑，也拿不到原始记录：`src/renderer/history.js`。
 
@@ -143,4 +144,23 @@ xvfb-run -a node .agents/acceptance/scripts/chat-history-acceptance.js "$PWD" /t
 {"sessions":[{"id":"m4","speciesId":"claude","preview":"你好呀克洛蒂，今天过得怎么样？","count":4,"userCount":2,"name":"克洛蒂"}],"hidden":{"greeting":1,"touch":1,"proactive":1},"total":7}
 ```
 
-过滤规则见第二、三节：只显示 `origin: 'user'` 的轮次，过滤在主进程 `userSessions()`（`src/core/chat-log.js:76`）里完成，渲染进程（`src/renderer/history.js`）只拿到过滤后的会话。验收报告链接在 PR 描述里。
+过滤规则见第二、三节：只显示 `origin: 'user'` 的轮次，过滤在主进程 `userSessions()`（`src/core/chat-log.js:78`）里完成，渲染进程（`src/renderer/history.js`）只拿到过滤后的会话。验收报告链接在 PR 描述里。
+
+## 八、重新开始话题
+
+⋯ 菜单 →「重新开始话题」：当前角色以后的对话进入 LobeHub 里一个**新的 topic**，不再带着之前的上下文。
+
+- **不删除任何东西**：旧 topic 仍留在 LobeHub（可在网页里查看），它的 id 记在存档 `pastTopicIds`（最多 50 个）。agent、好感度、需求值和本地聊天记录都不变。
+- **怎么开新 topic**：把当前角色的 `topicId` 清空。下一次 `lh agent run` 不带 `-t`，LobeHub 自己新建 topic，返回的 id 存回存档，之后一直复用。下一句如果是图片，先用 `lh topic create` 建好。
+- **只影响当前角色**：其他角色各有自己的 topic，不受影响。
+- **聊天记录**：每条记录带上 `topicEpoch`（这个角色重新开始过几次），新话题的第一轮总是开一段新会话。
+- 宠物正在说话时会拒绝（`busy`），等她说完再试。
+
+| 部分 | 位置 |
+| --- | --- |
+| 菜单项 | `src/renderer/index.html` `data-menu="new-topic"`；确认与提示 `src/renderer/app.js` `m === 'new-topic'` |
+| IPC / preload | `ipcMain.handle('new-topic')`（`src/main/main.js`）；`window.pet.newTopic()`（`src/main/preload.js`） |
+| 数据层 | `PetService.newTopic()` 与 `_epoch()`（`src/main/pet-service.js`）；会话切分 `epochOf()`（`src/core/chat-log.js`） |
+| 测试 | `test/pet-service.test.js`「重新开始话题」两条；`test/chat-log.test.js` topicEpoch 切分；e2e `node e2e/run.js history` H7 |
+
+验证：`npm test`；`xvfb-run -a node e2e/run.js history`，H7 截图在 `out/e2e/history/h7-*.png`（菜单项、确认后的气泡、两段会话的聊天记录）。

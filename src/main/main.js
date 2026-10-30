@@ -278,6 +278,7 @@ function wire() {
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
   ipcMain.on('cancel', () => service.cancel());
+  ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {
     const r = await service.release(opts);
     place('onboarding');
