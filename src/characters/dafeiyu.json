@@ -40,7 +40,7 @@
     }
   },
   "adult": false,
-  "outfits": ["daily"],
+  "outfits": ["daily", "swimsuit"],
   "signature": { "label": "招牌女仆装", "desc": "深藏青女仆装、白围裙，鲸鱼鳍耳和尾鳍。" },
   "art": {
     "kind": "video",

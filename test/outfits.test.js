@@ -81,7 +81,7 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
-  const has = { claude: ['daily', 'swimsuit'], grok: ['daily', 'swimsuit'], gemini: ['daily', 'swimsuit'], gpt: ['daily', 'swimsuit'] };
+  const has = { dafeiyu: ['daily', 'swimsuit'], claude: ['daily', 'swimsuit'], grok: ['daily', 'swimsuit'], gemini: ['daily', 'swimsuit'], gpt: ['daily', 'swimsuit'] };
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
     assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), has[id] || ['daily']);

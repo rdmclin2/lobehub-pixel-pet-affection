@@ -118,6 +118,7 @@
     }
   },
   "outfits": {
-    "daily": "sheets/daily.webp"
+    "daily": "sheets/daily.webp",
+    "swimsuit": "sheets/swimsuit.webp"
   }
 }

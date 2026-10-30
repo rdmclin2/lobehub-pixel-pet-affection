@@ -56,6 +56,11 @@ CHARS = {
 # scaled by its height (slice_sheet.py), so a hat would make her smaller than in her daily sheet.
 OUTFIT_LOOKS = {
  "swimsuit": {
+  "dafeiyu": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with blue side panels, thin white frilled trim and a small black bow with a blue gem at the throat, "
+              "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose blue-and-white pinstriped knee-length board shorts with a white ruffled hem, "
+              "an open long-sleeved white sun-protection jacket reaching her hips with deep navy cuffs, pale gold piping and a tiny blue whale embroidered at its lower right, its hood down, "
+              "and deep navy beach sandals with a small gold buckle. A deep-blue whale tail with a forked fluke behind her. "
+              "Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
   "claude": ("She wears modest sporty beachwear: a black one-piece athletic swimsuit with orange-red side panels and a thin cream-white trim, "
              "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose orange-red knee-length board shorts, "
              "an open long-sleeved cream-white hooded sun-protection jacket reaching her hips with thin gold trim and an orange flower brooch, "

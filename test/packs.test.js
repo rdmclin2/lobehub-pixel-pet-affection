@@ -109,6 +109,23 @@ test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout a
   assert.equal(P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'daily' }).packId, 'claude-classic', 'daily stays classic');
 });
 
+test("大肥鱼's swimsuit: with 原版动画 chosen she wears her pixel pack's swimsuit sheet, and daily goes back to her clips", () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  assert.equal(packs.get('dafeiyu-pixel').outfits.swimsuit, 'sheets/swimsuit.webp');
+  const pixel = P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'swimsuit' });
+  const clipsId = P.chosenPack(packs, { dafeiyu: 'dafeiyu-clips' }, 'dafeiyu');
+  assert.equal(clipsId, 'dafeiyu-clips');
+  const swim = P.resolveLook(packs, { packId: clipsId, fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'swimsuit' });
+  assert.ok(swim, 'the clips only show daily: the swimsuit is not left without art');
+  assert.equal(swim.packId, 'dafeiyu-pixel');
+  assert.equal(swim.kind, 'sprites');
+  assert.equal(swim.url, 'pack://dafeiyu-pixel/sheets/swimsuit.webp');
+  assert.deepEqual(swim, pixel);
+  assert.equal(P.resolveLook(packs, { packId: clipsId, fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'daily plays her clips');
+  const classic = P.resolveLook(packs, { packId: 'dafeiyu-classic', fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'swimsuit' });
+  assert.equal(classic.url, swim.url, 'with 旧版像素 it also comes from her default pack');
+});
+
 test('a pack with art for some outfits falls back to the character default pack for the rest', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'packs-'));
   writePack(root, sprites({ outfits: { scarf: 'a.png' } }), ['a.png']);
