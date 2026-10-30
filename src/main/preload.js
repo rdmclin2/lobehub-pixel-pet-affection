@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('pet', {
   switchCharacter: (id) => ipcRenderer.invoke('switch-character', { id }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
+  // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines
+  ttsSynthesize: (text, mood) => ipcRenderer.invoke('tts-synthesize', { text, mood }),
+  ttsCancel: () => ipcRenderer.send('tts-cancel'),
+  ttsPrewarm: () => ipcRenderer.invoke('tts-prewarm'),
+  setTts: (patch) => ipcRenderer.invoke('set-tts', patch),
+  ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),
   apiStatus: () => ipcRenderer.invoke('api-status'),

@@ -56,14 +56,18 @@ class LlmBudget {
 // Offline line for an event. With `pet` given, lines from the pet's relationship stage
 // (src/core/dialogue.js) join the species' own lines; adult lines only when `settings` allow them.
 function fallbackLine(species, kind, rnd = Math.random, pet = null, settings = null) {
+  return pick(fallbackPool(species, kind, pet, settings), rnd);
+}
+
+// Every line fallbackLine() may pick for `kind` (互动语音 synthesises these ahead, pet-service.js voiceLines).
+function fallbackPool(species, kind, pet = null, settings = null) {
   const map = { hungry: 'hungry', bored: 'bored', greet_morning: 'greet', greet_evening: 'sleepy', stage_up: 'happy', met: 'greet', missed: 'greet', fed: 'happy', patted: 'happy', played: 'happy' };
   const lines = species.fallback[map[kind] || 'happy'] || species.fallback.happy;
-  if (!pet) return pick(lines, rnd);
+  if (!pet) return [...lines];
   const stageKind = { greet_morning: 'greet', met: 'greet', missed: 'greet' }[kind] || kind;
   const staged = stageLines(pet, settings, stageKind);
   // Stage-up and interaction feedback speak for the new relationship; other events mix in the species' voice.
-  const pool = staged.length && ['stage_up', 'fed', 'patted', 'played'].includes(kind) ? staged : [...lines, ...staged];
-  return pick(pool, rnd);
+  return staged.length && ['stage_up', 'fed', 'patted', 'played'].includes(kind) ? staged : [...lines, ...staged];
 }
 
-module.exports = { nextEvent, LlmBudget, fallbackLine, DEFAULTS, pick };
+module.exports = { nextEvent, LlmBudget, fallbackLine, fallbackPool, DEFAULTS, pick };

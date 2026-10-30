@@ -4,3 +4,5 @@ out/
 .DS_Store
 .acceptances/
 dist/
+tts-keys.json
+tts-cache/

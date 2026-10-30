@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
@@ -27,11 +28,13 @@ const petScale = (s) => clampScale(s && s.petScale);
 // on screen together knock into each other, and the local HTTP API is off until switched on.
 // 部位触摸 (core/touch-zones.js): a click lands on a body part and she reacts to that part (off = the
 // old single pat), with a hint of the part under the pointer while hovering.
-const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collide: true, touchZones: true, touchHint: true };
+// 互动语音 (core/interaction-voice.js): with 朗读 on she also says her interaction lines (pat, feed, drag…);
+// automatic murmurs are read only when 朗读碎碎念 is switched on as well.
+const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -66,6 +69,8 @@ function normalizeSettings(raw) {
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
   s.api = normalizeApi(s.api);
+  // 语音: the engine that reads (core/tts.js), the fallback and the endpoints; the keys are in tts-keys.json
+  s.tts = normalizeTts(s.tts);
   return s;
 }
 

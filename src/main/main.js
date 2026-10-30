@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -14,6 +14,9 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { ApiServer } = require('./api-server');
 const { screenPx } = require('../core/fx');
+const { TtsEngine, NEURAL } = require('../core/tts');
+const { TtsCache } = require('../core/tts-cache');
+const { TtsKeyStore } = require('../core/tts-keys');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -29,6 +32,7 @@ let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
+let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
 const pets = new Map(); // id -> { win, speciesId, hit: { x, y, w, h } (in the window), vx, vy }
@@ -323,7 +327,40 @@ function wire() {
     const sp = SPECIES[p.speciesId];
     return { speciesId: p.speciesId, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), look: service.lookFor(sp.id, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
-  ipcMain.handle('set-prefs', (_e, patch) => service.setPrefs(patch));
+  ipcMain.handle('set-prefs', (_e, patch) => {
+    const r = service.setPrefs(patch);
+    if (!service.settings.prefs.voice) tts.engine.stopAll(); // 朗读 off: nothing more goes to an engine
+    return r;
+  });
+  // 语音: synthesise one line with the chosen engine for the current character; the renderer plays it
+  // (or falls back to the system voice). A new line aborts the one still being fetched.
+  ipcMain.handle('tts-synthesize', async (_e, { text, mood }) => {
+    const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
+    if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
+    if (!service.settings.prefs.voice) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
+    const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
+    if (r.fellBackFrom.length) service.emit('settings', service.settingsView()); // the 语音 section shows the last error
+    return r;
+  });
+  ipcMain.on('tts-cancel', () => tts.engine.cancel());
+  // 互动语音: synthesise her common short lines ahead (pet-service.js voiceLines) so they play at once.
+  // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
+  ipcMain.handle('tts-prewarm', async () => {
+    const p = service.settings.prefs;
+    if (!service.pet || !p.voice || p.voiceInteractions === false) return { skipped: 'off' };
+    const lines = service.voiceLines();
+    const r = await tts.engine.prewarm(lines, SPECIES[service.pet.speciesId], service.settings.tts);
+    return { ...r, lines: lines.length };
+  });
+  ipcMain.handle('set-tts', (_e, patch) => {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    let keyOk = true;
+    if (p.key && NEURAL.includes(p.key.id)) keyOk = tts.keys.set(p.key.id, p.key.value);
+    tts.engine.reset(); // a new key, endpoint or engine: try every engine again
+    const r = service.setTts(p);
+    return keyOk ? r : { ...r, ok: false, reason: 'bad-key' };
+  });
+  ipcMain.handle('tts-clear-cache', () => { tts.cache.clear(); return service.getSettings(); });
   ipcMain.handle('set-visitors', (_e, { ids }) => service.setVisitors(ids));
   ipcMain.handle('set-api', async (_e, opts) => {
     const r = service.setApi(opts || {});
@@ -388,7 +425,11 @@ app.whenReady().then(() => {
   packStore = new PackStore();
   packStore.serve();
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
-  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs });
+  const keys = new TtsKeyStore(app.getPath('userData'), { available: () => safeStorage.isEncryptionAvailable(), encrypt: (t) => safeStorage.encryptString(t), decrypt: (b) => safeStorage.decryptString(b) });
+  const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
+  tts = { keys, cache, engine: new TtsEngine({ keys, cache, log: logError }) };
+  const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats } });
+  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

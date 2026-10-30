@@ -69,7 +69,15 @@
     "动画：PC2005-cloud/dsh-pet（https://github.com/PC2005-cloud/dsh-pet），素材禁止商用；梗图同样出自 dsh-pet",
     "形象：B站 @ZipZipPipe（DeepSeek 女仆鲸鱼娘），原型「溟月」B站 @上善无形，CC BY-NC-SA 4.0"
   ],
-  "voice": { "lang": "zh-CN", "pitch": 1.35, "rate": 1.0, "prefer": ["Xiaoyi", "Xiaoxiao", "Tingting", "Meijia"] },
+  "voice": {
+    "lang": "zh-CN", "pitch": 1.35, "rate": 1.0, "prefer": ["Xiaoyi", "Xiaoxiao", "Tingting", "Meijia"],
+    "tts": {
+      "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
+                "moodTags": { "happy": "开心地", "hungry": "可怜巴巴地", "sleep": "打着哈欠，懒洋洋地", "sad": "撒娇地" },
+                "credit": "Fish Audio 社区音色「蓝色大肥鱼」by 大大大肥鱼" },
+      "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" }
+    }
+  },
   "memes": [
     { "id": "rice", "label": "因为我是吃白饭的蓝色大肥鱼", "desc": "躺平扒白饭，被吐槽、偷懒、吃白饭自嘲时" },
     { "id": "bignews", "label": "大的要来啦", "desc": "举喇叭大喊，有大事、大更新要来时" },

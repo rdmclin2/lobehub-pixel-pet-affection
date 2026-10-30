@@ -33,6 +33,7 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 // Every settings update also carries the pet size: the character area scales with it (style.css .stage).
 function setSettings(st) {
   settings = st;
+  if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
 }
 
@@ -768,7 +769,7 @@ function renderAdvanced() {
 const PREF_LABELS = [
   ['roam', '自己走动', '空闲时偶尔朝面向的方向走几步（平均约 100 秒一次，每次 60–240 像素，到屏幕边会掉头）。鼠标停在她身上、她在忙或开着面板时不走。关掉后她只在原地待机和做小动作。'],
   ['clickSound', '点击音效', '点她时“啵”一声（100 毫秒内连点只响一次）。'],
-  ['voice', '朗读回复', '用系统自带的语音把她的回复和对外接口发来的话念出来，每位角色音调和语速不同；自动的碎碎念不念。系统没有中文语音时不会出声。'],
+  ['voice', '朗读回复', '把她的回复和对外接口发来的话念出来，用下面“语音”里选的引擎和她自己的音色；自动的碎碎念不念。引擎用不了时改用系统语音（系统没有中文语音时不出声）。'],
   ['memes', '梗图', '她偶尔在气泡里配一张自己的表情包（回复由 agent 自己挑，碎碎念随机）。'],
   ['collide', '互相碰撞', '桌面上有同屏伙伴时，被甩出去的她会把撞到的伙伴弹开。'],
   ['touchZones', '部位触摸', '点她的头、胸、手、臀、脚等不同部位，她的反应和台词都不一样；乱碰会生气、扣好感。关掉后点哪里都只是摸摸她。'],
@@ -844,7 +845,90 @@ function behaviorSections() {
   port.addEventListener('change', () => apply({ port: Number(port.value) }));
   api.querySelector('#api-token-new').addEventListener('click', () => apply({ newToken: true }));
   window.pet.apiStatus().then(paint);
-  return [beh, vis, api];
+  return [beh, voiceSection(), vis, api];
+}
+
+// 高级设置 → 语音 (core/tts.js): which engine reads, its API key and endpoint, what happens when it cannot.
+// Keys are sent once to main and never shown again; only "已设置" comes back.
+const TTS_ENGINES = [
+  ['fish', 'Fish Audio（推荐）', 'https://api.fish.audio', '在 fish.audio 注册后创建 API Key；开发可先用免费模型。'],
+  ['minimax', 'MiniMax（备选）', 'https://api.minimax.cn', '在 platform.minimax.cn 开通后创建接口密钥。'],
+  ['system', '系统语音（离线、免费）', '', ''],
+];
+const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', empty: '没有返回音频', offline: '离线' };
+const ttsReason = (r) => (r.startsWith('paused:') ? `暂停 5 分钟（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r));
+function voiceSection() {
+  const sec = document.createElement('div');
+  sec.className = 'adv-section';
+  sec.id = 'voice-section';
+  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、4 秒没响应或出错时，这句改用下面选的方式。合成过的句子缓存在本机，再说同一句不再请求。</p>'
+    + '<div class="size-row"><span>引擎</span><select id="tts-provider"></select></div>'
+    + '<div class="size-row"><span>用不了时</span><select id="tts-fallback"><option value="system">改用系统语音</option><option value="silent">不出声</option></select></div>'
+    + '<div id="tts-engines"></div><p class="adv-note" id="tts-status"></p>'
+    + '<div class="size-row"><button id="tts-clear" class="btn">清空语音缓存</button><button id="tts-test" class="btn">试听一句</button></div>'
+    + '<p class="adv-note" id="tts-credit"></p>';
+  const sel = sec.querySelector('#tts-provider');
+  for (const [id, label] of TTS_ENGINES) sel.insertAdjacentHTML('beforeend', `<option value="${id}">${label}</option>`);
+  sel.value = settings.tts.provider;
+  const fb = sec.querySelector('#tts-fallback');
+  fb.value = settings.tts.fallback;
+  const apply = async (patch, msg) => {
+    const r = await window.pet.setTts(patch);
+    setSettings(r.settings);
+    paintVoiceStatus();
+    panelMsg(r.ok ? msg : r.reason === 'bad-key' ? '这不像一个 API Key（不能有空格，8–256 个字符）。' : '端点要是 https:// 地址（本机调试可用 http://127.0.0.1）。', r.ok);
+    return r.ok;
+  };
+  sel.addEventListener('change', () => apply({ provider: sel.value }, `语音引擎：${sel.selectedOptions[0].textContent}。`));
+  fb.addEventListener('change', () => apply({ fallback: fb.value }, `引擎用不了时：${fb.selectedOptions[0].textContent}。`));
+  for (const [id, label, def, how] of TTS_ENGINES.filter((e) => e[2])) {
+    const box = document.createElement('div');
+    box.className = 'tts-engine';
+    box.dataset.engine = id;
+    box.innerHTML = '<b></b><small class="adv-note"></small><div class="size-row"><input type="password" class="tts-key" autocomplete="off" spellcheck="false" /><button class="btn tts-key-save">保存</button><button class="btn tts-key-del">清除</button></div><div class="size-row"><input type="text" class="tts-endpoint" spellcheck="false" /><button class="btn tts-ep-save">保存端点</button></div>';
+    box.querySelector('b').textContent = label.replace(/（.*）/, '');
+    box.querySelector('small').textContent = how;
+    const key = box.querySelector('.tts-key');
+    const ep = box.querySelector('.tts-endpoint');
+    ep.placeholder = `端点（默认 ${def}）`;
+    ep.value = settings.tts.endpoints[id] || '';
+    box.querySelector('.tts-key-save').addEventListener('click', async () => {
+      if (!key.value.trim()) return panelMsg('先在框里粘贴 API Key。');
+      if (await apply({ key: { id, value: key.value } }, `${label.replace(/（.*）/, '')} 的 API Key 已保存。`)) key.value = '';
+    });
+    box.querySelector('.tts-key-del').addEventListener('click', () => apply({ key: { id, value: '' } }, `${label.replace(/（.*）/, '')} 的 API Key 已清除。`));
+    box.querySelector('.tts-ep-save').addEventListener('click', () => apply({ endpoints: { [id]: ep.value } }, ep.value.trim() ? `端点已改为 ${ep.value.trim()}。` : '端点已恢复默认。'));
+    sec.querySelector('#tts-engines').appendChild(box);
+  }
+  sec.querySelector('#tts-clear').addEventListener('click', async () => {
+    setSettings(await window.pet.ttsClearCache());
+    paintVoiceStatus();
+    panelMsg('语音缓存已清空。', true);
+  });
+  sec.querySelector('#tts-test').addEventListener('click', () => {
+    if (!settings.prefs.voice) return panelMsg('先打开上面的“朗读回复”。');
+    const sp = speciesOf(view.pet.speciesId);
+    speak({ text: sp.catchphrase || `我是${sp.nameZh}。`, source: 'api', kind: 'api' });
+    panelMsg('正在试听……', true);
+  });
+  const sp = speciesOf(view.pet.speciesId);
+  const credit = sp.voice && sp.voice.tts && sp.voice.tts.fish && sp.voice.tts.fish.credit;
+  sec.querySelector('#tts-credit').textContent = `语音由 AI 合成，不是真人录音。${credit ? `${sp.nameZh}的音色：${credit}。` : ''}`;
+  setTimeout(paintVoiceStatus);
+  return sec;
+}
+// The status line under 语音: per engine whether a key is set and its last problem, and the cache.
+function paintVoiceStatus() {
+  const el = $('tts-status');
+  const st = settings && settings.ttsStatus;
+  if (!el || !st) return;
+  const parts = TTS_ENGINES.filter((e) => e[2]).map(([id, label]) => {
+    const e = st.engines[id];
+    const box = document.querySelector(`.tts-engine[data-engine="${id}"] .tts-key`);
+    if (box) box.placeholder = e.hasKey ? 'API Key：已设置（不显示）' : 'API Key：未设置';
+    return `${label.replace(/（.*）/, '')}：${e.hasKey ? 'Key 已设置' : '没有 Key'}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${Math.ceil(e.pausedFor / 60)} 分钟内跳过` : ''}` : ''}`;
+  });
+  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
 }
 
 async function switchCharacter(c) {
@@ -1005,28 +1089,60 @@ function say(text, kind, source, reason, meme = null) {
   hideLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
 }
 
-// Read a line aloud with a system voice (core/voice.js), when 朗读 is on: the agent's replies and lines
-// sent through the local API, never automatic murmurs. Each character has her own pitch and pace.
+// Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, never
+// automatic murmurs. The engine chosen under 高级设置 → 语音 synthesises it in main (core/tts.js) in her
+// own voice; without a key, offline, on a timeout or an error the line goes to the system voice
+// (core/voice.js, her own pitch and pace) or stays silent. One line at a time: a new one stops the old.
 let lastSpeech = null;
-function speak(m) {
+let speechSeq = 0;
+let speechAudio = null;
+function stopSpeech() {
+  if (speechAudio) { speechAudio.pause(); URL.revokeObjectURL(speechAudio.src); speechAudio = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
+async function speak(m) {
   if (!settings || !settings.prefs || !settings.prefs.voice || !Voice.shouldSpeak(m) || !view) return;
   const text = Voice.speakable(m.text);
-  if (!text || !window.speechSynthesis) return;
-  const v = Voice.voiceOf(speciesOf(view.pet.speciesId));
-  const u = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  const sys = Voice.pickVoice(voices, v);
-  u.lang = v.lang;
-  u.pitch = v.pitch;
-  u.rate = v.rate;
-  if (sys) u.voice = sys;
-  lastSpeech = { text, lang: v.lang, pitch: v.pitch, rate: v.rate, voice: sys ? sys.name : null, systemVoices: voices.length, species: view.pet.speciesId, status: 'queued' };
-  const rec = lastSpeech;
-  u.onstart = () => { rec.status = 'speaking'; };
-  u.onend = () => { rec.status = 'done'; };
-  u.onerror = (e) => { rec.status = `error: ${e.error}`; };
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
+  if (!text) return;
+  const seq = ++speechSeq;
+  stopSpeech();
+  if (lastSpeech && /^(queued|synthesizing|speaking|playing)$/.test(lastSpeech.status)) lastSpeech.status = 'interrupted';
+  const tts = settings.tts || { provider: 'system', fallback: 'system' };
+  const rec = { n: seq, text, species: view.pet.speciesId, engine: tts.provider, provider: null, cached: false, latencyMs: 0, fellBackFrom: [], status: 'queued' };
+  lastSpeech = rec;
+  if (tts.provider !== 'system') {
+    rec.status = 'synthesizing';
+    const r = navigator.onLine === false
+      ? { ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: 'offline' }] }
+      : await window.pet.ttsSynthesize(text, view.status).catch((e) => ({ ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: `ipc: ${e.message}` }] }));
+    if (seq !== speechSeq || r.reason === 'interrupted') { if (rec.status === 'synthesizing') rec.status = 'interrupted'; return; }
+    Object.assign(rec, { fellBackFrom: r.fellBackFrom || [], latencyMs: r.latencyMs || 0 });
+    if (r.ok) return playAudio(rec, r);
+    if (r.next !== 'system' && r.fallback === 'silent') { rec.status = 'silent'; return; }
+  } else window.pet.ttsCancel();
+  speakSystem(rec);
+}
+function playAudio(rec, r) {
+  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
+  const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
+  speechAudio = a;
+  a.onplaying = () => { rec.started = true; };
+  a.onended = () => { rec.status = 'done'; if (speechAudio === a) stopSpeech(); };
+  a.onerror = () => { rec.status = `error: ${a.error ? a.error.code : '?'}`; };
+  a.play().catch((e) => { if (rec.status === 'playing') rec.status = `error: ${e.name}`; });
+}
+// The last provider of the chain: Web Speech (core/voice.js webSpeech) with her own pitch and pace.
+function speakSystem(rec) {
+  rec.provider = 'system';
+  const env = { speechSynthesis: window.speechSynthesis, SpeechSynthesisUtterance: window.SpeechSynthesisUtterance };
+  if (!Voice.webSpeech.available(env)) { rec.status = 'silent'; return; }
+  const v = Voice.webSpeech.config(speciesOf(rec.species).voice);
+  Object.assign(rec, { lang: v.lang, pitch: v.pitch, rate: v.rate, status: 'queued' });
+  Object.assign(rec, Voice.webSpeech.speak(rec.text, v, env, {
+    start: () => { rec.status = 'speaking'; },
+    end: () => { rec.status = 'done'; },
+    error: (e) => { rec.status = `error: ${e}`; },
+  }));
 }
 
 function setThinking(on) {
@@ -1627,7 +1743,8 @@ window.petFx = {
   walk: () => fx.walkPet(),
   stats: () => ({ ...fx.stats, walking: fx.walking }),
   hitBox: () => petHitBox(),
-  lastSpeech: () => lastSpeech,
+  lastSpeech: () => lastSpeech && { ...lastSpeech, fellBackFrom: [...lastSpeech.fellBackFrom] },
+  audioState: () => (speechAudio ? { paused: speechAudio.paused, currentTime: speechAudio.currentTime, duration: speechAudio.duration, src: speechAudio.src.slice(0, 5) } : null),
   speak: (text) => speak({ text, source: 'api', kind: 'api' }),
 };
 

@@ -2568,6 +2568,325 @@ async function touch() {
   }
 }
 
+// ---------------------------------------------------------------- voice
+// 语音 engines (core/tts.js) against a local stand-in for Fish Audio and MiniMax (no real key, no cost):
+// engine choice, the cache, one line at a time, and every fallback (HTTP error, pause, timeout, no key,
+// offline, silent), configured through 高级设置 → 语音 like a user would.
+function ttsMock() {
+  const http = require('node:http');
+  const KEY = 'e2e-fake-fish-key-7f3a9c';
+  const MM_KEY = 'e2e-fake-minimax-key-41b2';
+  // 0.5 s of a 440 Hz tone: a real WAV the page can decode and play
+  const rate = 8000;
+  const n = rate / 2;
+  const wav = Buffer.alloc(44 + n * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 8000), 44 + i * 2);
+  const m = { KEY, MM_KEY, wav, mode: 'ok', slow: {}, log: [] };
+  m.server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      let j = {};
+      try { j = JSON.parse(body); } catch { /* ignore */ }
+      const fish = req.url === '/v1/tts';
+      const auth = req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
+      const rec = { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
+      m.log.push(rec);
+      req.on('close', () => { if (!res.writableEnded) rec.aborted = true; });
+      res.on('close', () => { if (!res.writableFinished) rec.aborted = true; });
+      const send = () => {
+        if (res.destroyed) return;
+        if (!auth) { rec.status = 401; return res.writeHead(401).end('{"message":"unauthorized"}'); }
+        if (m.mode === '500') { rec.status = 500; return res.writeHead(500).end('{"message":"boom"}'); }
+        rec.status = 200;
+        if (fish) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav);
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: wav.toString('hex') } }));
+      };
+      if (m.mode === 'hang') return setTimeout(send, 8000);
+      setTimeout(send, m.slow[j.text] || 30);
+    });
+  });
+  return new Promise((resolve) => m.server.listen(0, '127.0.0.1', () => { m.url = `http://127.0.0.1:${m.server.address().port}`; resolve(m); }));
+}
+
+async function voice() {
+  const S = 'voice';
+  const SHOTS = path.join(OUT, 'voice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const reqs = () => mock.log.length;
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  // speak a line through the same path as a reply, wait until it has an outcome
+  let spoken = 0;
+  const speakLine = async (text, timeout = 15000) => {
+    await page.evaluate((t) => { window.petFx.speak(t); }, text);
+    const t0 = Date.now();
+    for (;;) {
+      const sp = await last();
+      if (sp && sp.n > spoken && sp.text === text && !/^(queued|synthesizing)$/.test(sp.status)) { spoken = sp.n; return sp; }
+      if (Date.now() - t0 > timeout) throw new Error(`no outcome for 「${text}」: ${JSON.stringify(sp)}`);
+      await page.waitForTimeout(50);
+    }
+  };
+  const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
+  const openVoice = async () => {
+    if (!(await page.$('#voice-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+    }
+    await page.locator('#voice-section').scrollIntoViewIfNeeded();
+  };
+  const ttsSet = () => page.evaluate(async () => (await window.pet.getSettings()));
+  try {
+    await step(S, 'V0 hatch 大肥鱼 with the fake lh', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await ttsSet();
+      assert.deepEqual(st.tts, { provider: 'fish', fallback: 'system', endpoints: { fish: '', minimax: '' } });
+      return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
+    }, page);
+
+    await step(S, 'V1 高级设置 → 语音: switch 朗读 on, enter the Fish endpoint and API key', async () => {
+      await openVoice();
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      await shot('v1-voice-toggle-off');
+      await page.check('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：开'));
+      await shot('v1-voice-toggle-on');
+      assert.equal((await ttsSet()).prefs.voice, true);
+      await page.locator('#voice-section').scrollIntoViewIfNeeded();
+      await shot('v1-voice-section-empty');
+      const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
+      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['fish', 'minimax', 'system']);
+      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点已改为'));
+      assert.equal(await page.getAttribute('.tts-engine[data-engine="fish"] .tts-key', 'type'), 'password');
+      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
+      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('API Key 已保存'));
+      assert.equal(await page.inputValue('.tts-engine[data-engine="fish"] .tts-key'), '', 'the key is not kept in the page');
+      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：Key 已设置'));
+      const status = await page.textContent('#tts-status');
+      await shot('v1-voice-section-configured');
+      // the controls as the DOM has them: the 朗读 switch, the engine and fallback selects, key / endpoint fields
+      const dom = await page.evaluate(() => {
+        const d = (el) => `<${el.tagName.toLowerCase()}${[...el.attributes].filter((a) => a.name !== 'style').map((a) => ` ${a.name}="${a.value}"`).join('')}>${el.tagName === 'INPUT' ? ` value=${JSON.stringify(el.type === 'checkbox' ? el.checked : el.type === 'password' ? (el.value ? '(non-empty)' : '') : el.value)}` : ''}${el.tagName === 'SELECT' ? ` selected=${el.value} options=[${[...el.options].map((o) => `${o.value}:${o.textContent}`).join(' | ')}]` : ''}${el.tagName === 'BUTTON' ? ` "${el.textContent}"` : ''}`;
+        const row = document.querySelector('#behavior-section input[data-pref="voice"]').closest('.pref-row');
+        return ['# 高级设置 → 桌宠行为 → 朗读回复', d(row.querySelector('input')) + '  ' + row.querySelector('b').textContent, '', '# 高级设置 → 语音 (#voice-section)', ...[...document.querySelectorAll('#voice-section h3, #voice-section select, #voice-section input, #voice-section button, #voice-section .tts-engine > b, #tts-status, #tts-credit')].map((el) => (['SELECT', 'INPUT', 'BUTTON'].includes(el.tagName) ? d(el) : `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}: ${el.textContent}`))].join('\n');
+      });
+      fs.writeFileSync(path.join(SHOTS, 'v1-settings-dom.txt'), dom + '\n');
+      assert.equal(dom.includes(mock.KEY), false);
+      return note(`engines offered: ${opts.join(' / ')}; status line: ${status}`);
+    }, page);
+
+    await step(S, 'V2 the key stays out of settings.json, the log and the page; stored in tts-keys.json', async () => {
+      const settingsRaw = fs.readFileSync(path.join(data, 'settings.json'), 'utf8');
+      const keysRaw = fs.readFileSync(path.join(data, 'tts-keys.json'), 'utf8');
+      const log = fs.existsSync(path.join(data, 'pixel-pet.log')) ? fs.readFileSync(path.join(data, 'pixel-pet.log'), 'utf8') : '';
+      const pageSt = JSON.stringify(await ttsSet());
+      assert.equal(settingsRaw.includes(mock.KEY), false, 'settings.json');
+      assert.equal(log.includes(mock.KEY), false, 'log');
+      assert.equal(pageSt.includes(mock.KEY), false, 'renderer settings');
+      assert.equal(app.stderrBuf.includes(mock.KEY), false, 'stderr');
+      const st = await ttsSet();
+      const mode = (fs.statSync(path.join(data, 'tts-keys.json')).mode & 0o777).toString(8);
+      if (st.ttsStatus.encrypted) assert.equal(keysRaw.includes(mock.KEY), false, 'encrypted file');
+      return note(`settings.json has key: no; log has key: no; renderer settings have key: no; tts-keys.json ${st.ttsStatus.encrypted ? 'encrypted (safeStorage)' : 'plain, mode 0' + mode} = ${keysRaw.replace(mock.KEY, '<key>').slice(0, 120)}; settings.tts = ${JSON.stringify(JSON.parse(settingsRaw).tts)}`);
+    });
+
+    await step(S, 'V3 engine choice: 大肥鱼 speaks through Fish Audio with the 蓝色大肥鱼 voice', async () => {
+      const before = reqs();
+      const sp = await speakLine('今天也要好好吃饭哦');
+      assert.equal(sp.provider, 'fish');
+      assert.equal(sp.voiceId, 'fe50cdf3040449298470d58ff0991e1d');
+      assert.equal(sp.cached, false);
+      assert.equal(reqs(), before + 1);
+      const rq = mock.log[mock.log.length - 1];
+      assert.equal(rq.path, '/v1/tts');
+      assert.equal(rq.auth, true);
+      assert.equal(rq.model, 's2.1-pro');
+      assert.equal(rq.voice, 'fe50cdf3040449298470d58ff0991e1d');
+      await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return sp.started || sp.status === 'done'; }, null, { timeout: 5000 }).catch(() => {});
+      const after = await last();
+      await shot('v3-fish-speaking');
+      return note(`${fmt(after)} bytes=${after.bytes} mime=${after.mime} played=${!!after.started}; mock saw POST ${rq.path} model=${rq.model} reference_id=${rq.voice} auth=Bearer✓ text="${rq.text}" prosody=${JSON.stringify(rq.prosody)}`);
+    }, page);
+
+    await step(S, 'V4 cache: the same line again is played from the local cache, no request', async () => {
+      const before = reqs();
+      const sp = await speakLine('今天也要好好吃饭哦');
+      assert.equal(sp.provider, 'fish');
+      assert.equal(sp.cached, true);
+      assert.equal(reqs(), before, 'no new request');
+      const files = fs.readdirSync(path.join(data, 'tts-cache')).filter((f) => f !== 'index.json');
+      const st = await ttsSet();
+      return note(`${fmt(sp)}; mock requests ${before} → ${reqs()}; tts-cache/: ${files.join(', ')} (${st.ttsStatus.cache.count} line(s), ${st.ttsStatus.cache.bytes} bytes)`);
+    });
+
+    await step(S, 'V5 one line at a time: a new line interrupts the one still being synthesised; the UI keeps responding', async () => {
+      mock.slow['这句话很长很长要等一会儿'] = 2500;
+      const before = reqs();
+      await page.evaluate(() => { window.petFx.speak('这句话很长很长要等一会儿'); });
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'synthesizing');
+      const first = await last();
+      const t0 = Date.now();
+      const st = await page.evaluate(() => window.petFx.state());
+      const uiMs = Date.now() - t0;
+      await page.waitForTimeout(300);
+      const sp = await speakLine('新的一句插进来');
+      await page.waitForTimeout(500);
+      const slow = mock.log.find((r) => r.text === '这句话很长很长要等一会儿');
+      assert.equal(sp.provider, 'fish');
+      assert.equal(sp.text, '新的一句插进来');
+      assert.ok(slow && slow.aborted, 'the slow request was aborted');
+      assert.ok(uiMs < 1000, `UI answered in ${uiMs} ms`);
+      const audios = await page.evaluate(() => window.petFx.audioState());
+      return note(`line 1 #${first.n} "${first.text}" synthesizing → interrupted (mock: aborted=${slow.aborted}); line 2 ${fmt(sp)}; petFx.state() answered in ${uiMs} ms while synthesising (${st.state}); requests ${before} → ${reqs()}; one audio element: ${JSON.stringify(audios)}`);
+    });
+
+    await step(S, 'V6 fallback on an HTTP error: the line goes to the system voice, Fish is paused for 5 minutes', async () => {
+      mock.mode = '500';
+      const sp = await speakLine('服务器出错的时候');
+      assert.equal(sp.provider, 'system');
+      assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'http-500' }]);
+      const before = reqs();
+      const sp2 = await speakLine('暂停期间的下一句');
+      assert.equal(sp2.provider, 'system');
+      assert.deepEqual(sp2.fellBackFrom, [{ provider: 'fish', reason: 'paused:http-500' }]);
+      assert.equal(reqs(), before, 'no request while paused');
+      await openVoice();
+      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('服务出错 500'));
+      const status = await page.textContent('#tts-status');
+      await shot('v6-fallback-http-500');
+      return note(`${fmt(sp)} (system voice lang ${sp.lang} pitch ${sp.pitch} rate ${sp.rate}, ${sp.systemVoices} system voices); next: ${fmt(sp2)}; status line: ${status}`);
+    }, page);
+
+    await step(S, 'V7 fallback on a timeout: no answer in 4 s → system voice; the pet stays responsive', async () => {
+      mock.mode = 'hang';
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save'); // saving resets the pause
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点'));
+      const t0 = Date.now();
+      await page.evaluate(() => { window.petFx.speak('网络很慢的时候'); });
+      const probes = [];
+      for (let i = 0; i < 3; i++) { await page.waitForTimeout(800); const p0 = Date.now(); await page.evaluate(() => window.petFx.state()); probes.push(Date.now() - p0); }
+      await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return sp.text === '网络很慢的时候' && sp.status !== 'synthesizing'; }, null, { timeout: 10000 });
+      const sp = await last();
+      spoken = sp.n;
+      const ms = Date.now() - t0;
+      assert.equal(sp.provider, 'system');
+      assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'timeout' }]);
+      assert.ok(ms >= 3800 && ms < 7000, `fell back after ${ms} ms`);
+      const rq = mock.log[mock.log.length - 1];
+      await page.waitForTimeout(300);
+      return note(`${fmt(sp)}; fell back after ${ms} ms; request aborted=${rq.aborted}; UI probes while waiting: ${probes.join('/')} ms`);
+    });
+
+    await step(S, 'V8 fallback offline: navigator.onLine false → system voice without a request', async () => {
+      mock.mode = 'ok';
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }));
+      const before = reqs();
+      const sp = await speakLine('断网的时候');
+      await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }));
+      assert.equal(sp.provider, 'system');
+      assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'offline' }]);
+      assert.equal(reqs(), before);
+      return note(fmt(sp));
+    });
+
+    await step(S, 'V9 fallback without a key: cleared in 语音 → system voice, no request', async () => {
+      await openVoice();
+      await page.click('.tts-engine[data-engine="fish"] .tts-key-del');
+      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：没有 Key'));
+      const before = reqs();
+      const sp = await speakLine('没有钥匙的时候');
+      assert.equal(sp.provider, 'system');
+      assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'no-key' }]);
+      assert.equal(reqs(), before);
+      await shot('v9-no-key');
+      return note(`${fmt(sp)}; status: ${await page.textContent('#tts-status')}`);
+    }, page);
+
+    await step(S, 'V10 fallback set to 不出声: the line stays silent', async () => {
+      await page.selectOption('#tts-fallback', 'silent');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('不出声'));
+      const sp = await speakLine('安静一点');
+      assert.equal(sp.status, 'silent');
+      assert.equal(sp.provider, null);
+      await page.selectOption('#tts-fallback', 'system');
+      return note(fmt(sp));
+    }, page);
+
+    await step(S, 'V11 engine choice: MiniMax with 大肥鱼\'s MiniMax voice', async () => {
+      await page.fill('.tts-engine[data-engine="minimax"] .tts-endpoint', mock.url);
+      await page.click('.tts-engine[data-engine="minimax"] .tts-ep-save');
+      await page.fill('.tts-engine[data-engine="minimax"] .tts-key', mock.MM_KEY);
+      await page.click('.tts-engine[data-engine="minimax"] .tts-key-save');
+      await page.selectOption('#tts-provider', 'minimax');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('MiniMax'));
+      await shot('v11-minimax-selected');
+      const sp = await speakLine('换一个引擎试试');
+      const rq = mock.log[mock.log.length - 1];
+      assert.equal(sp.provider, 'minimax');
+      assert.equal(sp.voiceId, 'qiaopi_mengmei');
+      assert.equal(rq.path, '/v1/t2a_v2');
+      assert.equal(rq.auth, true);
+      return note(`${fmt(sp)}; mock saw POST ${rq.path} model=${rq.model} voice_id=${rq.voice} voice_setting=${JSON.stringify(rq.prosody)}`);
+    }, page);
+
+    await step(S, 'V12 engine choice: 系统语音 sends nothing to any engine', async () => {
+      await page.selectOption('#tts-provider', 'system');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('系统语音'));
+      const before = reqs();
+      const sp = await speakLine('用系统的声音');
+      assert.equal(sp.provider, 'system');
+      assert.deepEqual(sp.fellBackFrom, []);
+      assert.equal(reqs(), before);
+      return note(fmt(sp));
+    });
+
+    await step(S, 'V13 other characters have their own default voice: 克洛蒂 on Fish', async () => {
+      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
+      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
+      await page.selectOption('#tts-provider', 'fish');
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.switchCharacter('claude'));
+      await page.waitForTimeout(800);
+      const sp = await speakLine('我是克洛蒂');
+      const rq = mock.log[mock.log.length - 1];
+      assert.equal(sp.species, 'claude');
+      assert.equal(sp.provider, 'fish');
+      assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
+      assert.equal(rq.voice, 'faccba1a8ac54016bcfc02761285e67f');
+      await shot('v13-claude-fish');
+      const log = fs.existsSync(path.join(data, 'pixel-pet.log')) ? fs.readFileSync(path.join(data, 'pixel-pet.log'), 'utf8') : '';
+      assert.equal(log.includes(mock.KEY) || log.includes(mock.MM_KEY), false, 'no key in the log');
+      return note(`${fmt(sp)}; mock reference_id=${rq.voice} prosody=${JSON.stringify(rq.prosody)}; pixel-pet.log TTS lines (no keys): ${log.split('\n').filter((l) => l.includes('tts ')).map((l) => l.slice(25)).join(' | ')}`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -2583,6 +2902,7 @@ async function touch() {
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
   if (which === 'touch' || which === 'all') await touch();
+  if (which === 'voice' || which === 'all') await voice();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

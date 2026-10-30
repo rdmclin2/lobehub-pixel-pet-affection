@@ -13,24 +13,31 @@ const packsLib = require('../core/packs');
 const modelsLib = require('../core/models');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
-const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
+const { nextEvent, LlmBudget, fallbackLine, fallbackPool } = require('../core/proactive');
 const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
+const { endpointOk } = require('../core/tts');
+const Voice = require('../core/voice');
+const InteractionVoice = require('../core/interaction-voice');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
 const LOCAL_RETRY_MS = 5 * 60 * 1000; // after a failure, do not hammer `lh` on every message
 const MODELS_TTL_MS = 10 * 60 * 1000; // how long the list of the user's models is reused
 // Offline lines that may come with a random meme picture (the pet's own murmurs, not app notes).
+const FULL_LINE = '呃……肚子圆滚滚的，吃不下了。';
+const TIRED_LINE = '好累……让我睡一会儿。';
+const PREWARM_MAX = 60; // lines synthesised ahead per character (互动语音)
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null }) {
+  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
     super();
     // pet packs (how the companions look); by default only the built-in ones
     this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
+    this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     this.store = store;
     this.settingsStore = settingsStore;
     this.settings = settingsStore.load();
@@ -88,7 +95,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
   }
 
   view() {
@@ -131,14 +138,14 @@ class PetService extends EventEmitter {
   // A line for the bubble. The agent may have tagged a meme picture ([梗图:id], core/memes.js): the tag
   // never reaches the bubble; with memes on, the picture goes with the line (an offline murmur gets a
   // random one now and then).
-  _say(text, source, kind, reason = null) {
+  _say(text, source, kind, reason = null, voiceMood = null) {
     if (this.pet) this.pet.lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
-    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null });
+    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, ...(voiceMood !== null ? { voiceMood } : {}) });
     if (this.pet) this._save();
   }
 
@@ -635,6 +642,25 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
+  // 高级设置 → 语音: the engine that reads (fish / minimax / system), the fallback (system / silent) and
+  // the endpoints. API keys go through main.js into tts-keys.json, never into settings.json.
+  setTts(patch) {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    const cur = this.settings.tts;
+    const next = { provider: p.provider === undefined ? cur.provider : p.provider, fallback: p.fallback === undefined ? cur.fallback : p.fallback, endpoints: { ...cur.endpoints } };
+    let ok = true;
+    for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
+      if (!(id in next.endpoints)) continue;
+      const v = String(u || '').trim();
+      if (v && !endpointOk(v)) ok = false;
+      else next.endpoints[id] = v;
+    }
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, tts: next });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok, reason: ok ? undefined : 'bad-endpoint', settings: this.settingsView() };
+  }
+
   // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play).
   setVisitors(ids) {
     const own = this.pet ? this.pet.speciesId : null;
@@ -729,8 +755,8 @@ class PetService extends EventEmitter {
 
     let line = null;
     if (kind === 'sleep') line = sp.fallback.sleepy[0];
-    else if (r.reason === 'full') line = '呃……肚子圆滚滚的，吃不下了。';
-    else if (r.reason === 'tired') line = '好累……让我睡一会儿。';
+    else if (r.reason === 'full') line = FULL_LINE;
+    else if (r.reason === 'tired') line = TIRED_LINE;
     else if (r.ok) line = this._fallback(sp, { feed: 'fed', pat: 'patted', play: 'played' }[kind]);
     if (line) this._say(line, 'fallback', kind);
     else this._save();
@@ -759,11 +785,34 @@ class PetService extends EventEmitter {
     const r = state.touchBody(this.pet, zone, t);
     const line = touchZones.touchLine(sp, r.reaction, { settings: this.settings, rnd: this.rnd, last: this._lastTouchLine });
     this._lastTouchLine = line;
-    this._say(line, 'fallback', `touch:${zone}`);
+    this._say(line, 'fallback', `touch:${zone}`, null, InteractionVoice.touchMood(r.reaction.mood));
     this._reportAffection(r.affection);
     const a = r.affection;
     const affection = { source: a ? a.source : null, delta: a ? a.delta : 0, blocked: a ? a.blocked : null, value: this.pet.affection, stage: this.pet.relStage };
     return { ok: true, zone, reaction: r.reaction, line, affection, woken: r.woken };
+  }
+
+  // 互动语音: the short lines her interactions may say right now (her stage, her character), each with
+  // the mood it is read in, for main.js to synthesise ahead into the voice cache. Touch lines are the
+  // first touch of each part; a streak or an LLM line (met, stage_up) is synthesised when it happens.
+  voiceLines() {
+    if (!this.pet) return [];
+    const sp = getSpecies(this.pet.speciesId);
+    const out = [];
+    const add = (text, mood) => { const t = Voice.speakable(text); if (t && !out.some((x) => x.text === t && x.mood === mood)) out.push({ text: t, mood }); };
+    const M = InteractionVoice.MOOD;
+    // the most common first: the care actions and the drag lines, then every part she has
+    for (const [act, kind] of [['pat', 'patted'], ['feed', 'fed'], ['play', 'played']]) for (const l of fallbackPool(sp, kind, this.pet, this.settings)) add(l, M[act]);
+    add(sp.fallback.sleepy[0], M.sleep);
+    add(FULL_LINE, M.feed);
+    add(TIRED_LINE, M.play);
+    for (const k of InteractionVoice.LOCAL) for (const l of InteractionVoice.localLines(sp, k)) add(l, M[k]);
+    const zones = this.settings.prefs.touchZones === false ? [] : touchZones.zonesFor(sp, null).map((z) => z.id);
+    for (const zone of zones.filter((z) => touchZones.ZONES[z])) {
+      const reaction = touchZones.reactionFor(zone, this.pet.relStage, 1);
+      for (const l of touchZones.touchLines(sp, reaction, this.settings)) add(l, InteractionVoice.touchMood(reaction.mood));
+    }
+    return out.slice(0, PREWARM_MAX);
   }
 
   // Called on a timer. Advances needs and maybe lets the pet speak up.
