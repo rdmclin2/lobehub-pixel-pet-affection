@@ -12,18 +12,18 @@
 
 | origin | 含义 | 写入位置（`src/main/pet-service.js`） |
 | --- | --- | --- |
-| `user` | 你在聊天框里发送的消息，以及她对这条消息的回复 | `chat()` :616，用户消息 `_logUser` :627；回复 `_say(…, turn)` :654；没回复（出错 / 打断）`_logPet(…, 'error' \| 'canceled')` :633、:659 |
-| `topic` | 你在话题面板点了预设话题（正文是预设 prompt，不是你输入的） | `talkTopic()`：`_logUser` :703；回复 :712 / :723；打断 :717 |
-| `api` | 本机 HTTP 接口：`POST /pixel-pet/chat`（外部脚本，`src/main/main.js:451` 传 `origin: 'api'`）和 `POST /pixel-pet/say`（:823） | `chat(…, { origin: 'api' })`、`sayExternal()` |
-| `greeting` | 初次见面 `met`（:285、:547）、切回见过的角色 `switch`（:548）、早晚问候 `greet_morning` / `greet_evening`（心跳 :968–969） | `_speak()` :578 / :597 / :604 → `_say` |
-| `proactive` | 主动搭话：`hungry`、`bored`（`src/core/proactive.js` `nextEvent`）、离开后回来 `missed` | 心跳 :968–969 → `_speak()` |
-| `emotion` | 好感度跨阶段的 `stage_up` | `_onStageUp()` :686 → `_speak()` |
-| `touch` | 触摸身体部位的反应台词 `touch:<部位>` | `touch()` :926 |
-| `care` | 喂食 / 摸摸 / 玩耍 / 哄睡按钮的台词 | `act()` :898 |
-| `system` | 睡醒 `woke`（:966）、角色下线 `retired`（:496），以及将来新增但没登记的 kind | |
+| `user` | 你在聊天框里发送的消息，以及她对这条消息的回复 | `chat()` :673，用户消息 `_logUser` :684；回复 `_say(…, turn)` :711；没回复（出错 / 打断）`_logPet(…, 'error' \| 'canceled')` :690、:716 |
+| `topic` | 你在话题面板点了预设话题（正文是预设 prompt，不是你输入的） | `talkTopic()`：`_logUser` :760；回复 :769 / :780；打断 :774 |
+| `api` | 本机 HTTP 接口：`POST /pixel-pet/chat`（外部脚本，`src/main/main.js:457` 传 `origin: 'api'`）和 `POST /pixel-pet/say`（:883） | `chat(…, { origin: 'api' })`、`sayExternal()` |
+| `greeting` | 初次见面 `met`（:295、:590）、切回见过的角色 `switch`（:591）、早晚问候 `greet_morning` / `greet_evening`（心跳 :1028–1029） | `_speak()` :641 / :654 / :661 → `_say` |
+| `proactive` | 主动搭话：`hungry`、`bored`（`src/core/proactive.js` `nextEvent`）、离开后回来 `missed` | 心跳 :1028–1029 → `_speak()` |
+| `emotion` | 好感度跨阶段的 `stage_up` | `_onStageUp()` :743 → `_speak()` |
+| `touch` | 触摸身体部位的反应台词 `touch:<部位>` | `touch()` :986 |
+| `care` | 喂食 / 摸摸 / 玩耍 / 哄睡按钮的台词 | `act()` :958 |
+| `system` | 睡醒 `woke`（:1026）、角色下线 `retired`（:539），以及将来新增但没登记的 kind | |
 | `unknown` | 旧数据：没有 `origin` 或值不认识 | 读取时由 `normalize()` 补上 |
 
-所有宠物台词都经过 `_say()`（:163）。`_say` 没拿到 `turn` 时，用 `originOfKind(kind)`（`src/core/chat-log.js:45`）从 kind 推出来源；没登记的 kind 一律归 `system`，**永远不会推成 `user`**。`user` 只能来自 `chat()` 开启的那一轮（`turn`），所以新加一种系统台词不会意外进入聊天记录。`say` 事件也带上了 `origin`（:171），渲染进程可以知道一句话的来源。
+所有宠物台词都经过 `_say()`（:173）。`_say` 没拿到 `turn` 时，用 `originOfKind(kind)`（`src/core/chat-log.js:45`）从 kind 推出来源；没登记的 kind 一律归 `system`，**永远不会推成 `user`**。`user` 只能来自 `chat()` 开启的那一轮（`turn`），所以新加一种系统台词不会意外进入聊天记录。`say` 事件也带上了 `origin`（:181），渲染进程可以知道一句话的来源。
 
 单条消息的格式：
 
@@ -45,16 +45,16 @@
 ## 三、过滤在数据层
 
 - 过滤函数：`userSessions(messages)`，`src/core/chat-log.js:78`。只保留 `origin === 'user'` 且属于某条用户消息那一轮的记录，按规则二分组，最新的在前；另外返回按来源统计的被过滤条数（只有数字，不含正文）。
-- 查询接口：`PetService.history()`（`src/main/pet-service.js:207`，只返回会话摘要）和 `PetService.historySession(id)`（:212，返回一段会话的消息）。两者都只调用 `userSessions`。
-- IPC：`ipcMain.handle('history-list')` / `ipcMain.handle('history-get')`，`src/main/main.js:253-254`；preload 暴露为 `window.pet.historyList()` / `window.pet.historyGet(id)`（`src/main/preload.js:26-27`）。
+- 查询接口：`PetService.history()`（`src/main/pet-service.js:217`，只返回会话摘要）和 `PetService.historySession(id)`（:222，返回一段会话的消息）。两者都只调用 `userSessions`。
+- IPC：`ipcMain.handle('history-list')` / `ipcMain.handle('history-get')`，`src/main/main.js:256-257`；preload 暴露为 `window.pet.historyList()` / `window.pet.historyGet(id)`（`src/main/preload.js:26-27`）。
 - 视图层只画拿到的数据，没有任何过滤逻辑，也拿不到原始记录：`src/renderer/history.js`。
 
 ## 四、界面
 
 | 部分 | 位置 |
 | --- | --- |
-| ⋯ 菜单里的“聊天记录” | `src/renderer/index.html:138`；点击处理 `src/renderer/app.js:1473` |
-| 面板挂接（复用衣柜 / 话题的面板） | `src/renderer/app.js:569` |
+| ⋯ 菜单里的“聊天记录” | `src/renderer/index.html:138`；点击处理 `src/renderer/app.js:1547` |
+| 面板挂接（复用衣柜 / 话题的面板） | `src/renderer/app.js:570` |
 | 列表视图（时间、角色、条数、首句摘要）与空状态 | `src/renderer/history.js` `renderList()` :37 |
 | 详情视图（你和她的每句话、时间、附件、没回复的说明，← 返回列表） | `src/renderer/history.js` `renderDetail()` :62 |
 | 样式 | `src/renderer/style.css` 末尾 `.history-*` |
