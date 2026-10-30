@@ -56,7 +56,7 @@
 | E20 | 落地挤压：落得越重压得越扁 | 甩出、弹弓 |
 | E21 | 点击音效（默认关） | 高级设置 → 桌宠行为 |
 | E22 | 梗图：回复可配一张她自己的表情包贴纸（agent 自选），碎碎念偶尔随机配一张 | 默认开，可关 |
-| E23 | 语音（TTS）：开启后对话回复按句完整朗读、互动（摸摸 / 部位触摸 / 喂食 / 玩耍 / 拖拽 / 甩出…）念出她的台词，用她自己的音色（Fish Audio 默认 / MiniMax 备选，用不了时降级到系统语音或不出声），默认关；配置见下方“语音（TTS）” | 高级设置 → 桌宠行为（朗读回复 / 互动语音 / 朗读碎碎念）/ 语音 |
+| E23 | 语音（TTS）：开启后对话回复按句完整朗读、互动（摸摸 / 部位触摸 / 喂食 / 玩耍 / 拖拽 / 甩出…）念出她的台词，用她自己的引擎和音色（默认“按角色”：大肥鱼 MiniMax「俏皮萌妹」，其他角色 Fish Audio；用不了时换另一个有 Key 的引擎，再降级到系统语音或不出声），默认关；配置见下方“语音（TTS）” | 高级设置 → 桌宠行为（朗读回复 / 互动语音 / 朗读碎碎念）/ 语音 |
 | E24 | 同屏伙伴：请其他模型娘来桌面串门（最多 3 位，无 agent），一起走动、被点、被甩 | 高级设置 → 同屏伙伴 |
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 高级设置 → 对外接口 |
@@ -183,13 +183,14 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 | 引擎 | 需要什么 | 说明 |
 |---|---|---|
-| **Fish Audio**（默认） | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
-| **MiniMax**（备选） | MiniMax 接口密钥（[platform.minimax.cn](https://platform.minimax.cn)） | `speech-2.8-turbo` + 系统音色（大肥鱼 `qiaopi_mengmei`） |
+| **按角色**（默认） | 她的引擎的 Key | 每位角色用自己文件里 `voice.tts.default` 的引擎：**大肥鱼用 MiniMax**（`qiaopi_mengmei`「俏皮萌妹」），克洛蒂 / 格萝可 / 杰米 / 吉皮缇用 Fish Audio。她的引擎没填 Key 或出错时，这一句换另一个填了 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」），再按“用不了时”降级 |
+| **Fish Audio** | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 所有角色都用 Fish：大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
+| **MiniMax** | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色（大肥鱼 `qiaopi_mengmei`）。默认端点 `https://api.minimax.cn`（国内站）；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
 | **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面两个的最后一道降级 |
 
 配置步骤：
 
-1. 高级设置 → 语音 → “引擎”选 Fish Audio（或 MiniMax）。
+1. 高级设置 → 语音 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。
 2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（有系统钥匙串时用 Electron `safeStorage` 加密，否则是只有当前用户可读的 0600 文件），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、4 秒没响应、返回 4xx/5xx 时，这一句立即降级，并把出错的引擎暂停 5 分钟（改 Key / 端点 / 引擎会立刻重试）；请求在主进程异步进行，不会卡住界面。
@@ -205,13 +206,16 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 "voice": {
   "lang": "zh-CN", "pitch": 1.35, "rate": 1.0, "prefer": ["Xiaoyi", "Xiaoxiao"],
   "tts": {
+    "default": "minimax",
     "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
     "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" }
   }
 }
 ```
 
-`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+`default` 是“按角色”时她用的引擎（`fish` / `minimax`，省略为 `fish`）。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
+
+> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 高级设置 → 语音 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
 ### 互动语音
 
@@ -242,13 +246,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 每位角色在 Fish Audio 和 MiniMax 上各有一个默认音色（写在 `src/characters/<id>.json` 的 `voice.tts`，系统语音用同一文件里的 `lang / pitch / rate / prefer`）：
 
-| 角色 | Fish Audio 音色（`referenceId`） | MiniMax 音色（`voiceId`） | 语速 |
-|---|---|---|---|
-| 大肥鱼 | 「蓝色大肥鱼」by 大大大肥鱼 `fe50cdf3040449298470d58ff0991e1d` | `qiaopi_mengmei` | 1.0 |
-| 克洛蒂 | 「温柔动听女声」`faccba1a8ac54016bcfc02761285e67f` | `Chinese (Mandarin)_Soft_Girl` | 0.92 |
-| 格萝可 | 「御姐」`8a88ef7d77d748e59879d8994e216e01` | `female-shaonv` | 1.12 |
-| 杰米 | 「可爱小猫娘」`dcad479645e444af89338546b8c75b23` | `Chinese (Mandarin)_Crisp_Girl` | 1.08 |
-| 吉皮缇 | 「温柔叙事女声」`23632847285a487d8e0c6ae5bc593c71` | `Chinese (Mandarin)_Warm_Girl` | 1.0 |
+| 角色 | 默认引擎（按角色） | Fish Audio 音色（`referenceId`） | MiniMax 音色（`voiceId`） | 语速 |
+|---|---|---|---|---|
+| 大肥鱼 | **MiniMax** | 「蓝色大肥鱼」by 大大大肥鱼 `fe50cdf3040449298470d58ff0991e1d` | `qiaopi_mengmei`「俏皮萌妹」 | 1.0 |
+| 克洛蒂 | Fish Audio | 「温柔动听女声」`faccba1a8ac54016bcfc02761285e67f` | `Chinese (Mandarin)_Soft_Girl` | 0.92 |
+| 格萝可 | Fish Audio | 「御姐」`8a88ef7d77d748e59879d8994e216e01` | `female-shaonv` | 1.12 |
+| 杰米 | Fish Audio | 「可爱小猫娘」`dcad479645e444af89338546b8c75b23` | `Chinese (Mandarin)_Crisp_Girl` | 1.08 |
+| 吉皮缇 | Fish Audio | 「温柔叙事女声」`23632847285a487d8e0c6ae5bc593c71` | `Chinese (Mandarin)_Warm_Girl` | 1.0 |
 
 大肥鱼的音色按 B 站参考视频（UP 主 星落落_oi 的“ssr大肥鱼音色”，谱乐 AI 生成）选的最接近的公开音色，选型过程见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。`moodTags` 让同一句话按她当时的状态换读法（饿了“可怜巴巴地”、困了“打着哈欠”）。
 

@@ -8,18 +8,19 @@
 //   neural: + defaultEndpoint, text(cfg, line, mood), synthesize(cfg, text, ctx) -> { audio: Buffer, mime }
 //           (or throws a TtsError: http-401, timeout, network…); runs here, in main
 //   system: + speak(text, cfg, env, on) — Web Speech (core/voice.js webSpeech); runs in the renderer
-// providerChain() picks the providers for one line from settings: the chosen engine, the other engines
-// with a key, then the system voice (unless the fallback is silence).
+// providerChain() picks the providers for one line from settings: the chosen engine (or, with 'auto', the
+// character's own default engine), the other engines with a key, then the system voice (unless the
+// fallback is silence).
 //
-// A character sets her engines in her file under `voice.tts` (fish / minimax), next to the
-// lang / pitch / rate / prefer the system voice uses. Older files without `tts` stay valid: the engines
+// A character sets her engines in her file under `voice.tts` (fish / minimax, and `default`: the engine
+// she reads with under 'auto', fish when missing), next to the lang / pitch / rate / prefer the system voice uses. Older files without `tts` stay valid: the engines
 // then use DEFAULT_TTS (or nothing for a provider without a default) and she falls back to the system voice.
 
 const crypto = require('node:crypto');
 const Voice = require('./voice');
 const InteractionVoice = require('./interaction-voice');
 
-const ENGINES = ['fish', 'minimax', 'system'];
+const ENGINES = ['auto', 'fish', 'minimax', 'system'];
 const NEURAL = ['fish', 'minimax'];
 const FALLBACKS = ['system', 'silent'];
 const TIMEOUT_MS = 4000; // no response headers in this time: give up and fall back (doc §8)
@@ -144,6 +145,7 @@ function validateVoice(v) {
   if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax })'];
   for (const [id, c] of Object.entries(v.tts)) {
     const at = `voice.tts.${id}`;
+    if (id === 'default') { if (!NEURAL.includes(c)) errors.push(`${at} must be one of ${NEURAL.join(', ')}`); continue; }
     if (!NEURAL.includes(id)) { errors.push(`${at}: unknown engine (one of ${NEURAL.join(', ')})`); continue; }
     if (!c || typeof c !== 'object') { errors.push(`${at} must be an object`); continue; }
     if (id === 'fish' && !/^[0-9a-f]{32}$/.test(c.referenceId || '')) errors.push(`${at}.referenceId must be a Fish Audio model id (32 hex characters)`);
@@ -162,10 +164,18 @@ function voiceFor(species, providerId) {
   return p ? p.config(species && species.voice) : null;
 }
 
+// The engine she reads with when the setting is 'auto' (按角色): her file's `voice.tts.default`, else Fish.
+function defaultEngine(species) {
+  const t = ttsOf(species && species.voice);
+  return t && NEURAL.includes(t.default) ? t.default : 'fish';
+}
+
 // ---- settings ---------------------------------------------------------------------------------------
-// settings.tts: which engine reads, what happens when it cannot (system voice or silence) and an endpoint
-// per engine ('' = the official one). API keys are not here: they live encrypted in tts-keys.json.
-const TTS_DEFAULTS = { provider: 'fish', fallback: 'system', endpoints: { fish: '', minimax: '' } };
+// settings.tts: which engine reads ('auto' = each character's own default), what happens when it cannot
+// (system voice or silence) and an endpoint per engine ('' = the official one). API keys are not here:
+// they live encrypted in tts-keys.json. providerSet: the user picked the engine in 语音 (settings.js moves
+// saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } };
 
 const endpointOk = (u) => {
   if (!str(u)) return false;
@@ -180,17 +190,19 @@ function normalizeTts(raw) {
   const ep = r.endpoints && typeof r.endpoints === 'object' ? r.endpoints : {};
   return {
     provider: ENGINES.includes(r.provider) ? r.provider : TTS_DEFAULTS.provider,
+    providerSet: r.providerSet === true,
     fallback: FALLBACKS.includes(r.fallback) ? r.fallback : TTS_DEFAULTS.fallback,
     endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOk(ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
   };
 }
 
-// The providers tried for one line, in order: the chosen engine, then any other engine with a key, then
-// the system voice; with the fallback set to silence the chain just ends. 'system' chosen = only it.
-function providerChain(tts, hasKey) {
+// The providers tried for one line, in order: the chosen engine ('auto': hers), then any other engine
+// with a key, then the system voice; with the fallback set to silence the chain just ends. 'system' chosen = only it.
+function providerChain(tts, hasKey, species) {
   const t = normalizeTts(tts);
   if (t.provider === 'system') return ['system'];
-  return [t.provider, ...NEURAL.filter((id) => id !== t.provider && hasKey(id)), ...(t.fallback === 'system' ? ['system'] : [])];
+  const first = t.provider === 'auto' ? defaultEngine(species) : t.provider;
+  return [first, ...NEURAL.filter((id) => id !== first && hasKey(id)), ...(t.fallback === 'system' ? ['system'] : [])];
 }
 
 // Same engine + voice + parameters + text = same audio. Changing any of them makes a new key.
@@ -245,7 +257,7 @@ class TtsEngine {
     const fellBackFrom = [];
     const done = (r) => { if (this.current === ctl) this.current = null; return { ...r, fallback: set.fallback, fellBackFrom, latencyMs: this.now() - t0 }; };
     if (!line) return done({ ok: false, reason: 'empty' });
-    for (const id of providerChain(set, (p) => this.keys.has(p))) {
+    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') return done({ ok: false, reason: set.provider === 'system' ? 'system' : 'fallback', next: 'system' });
       const cfg = p.config(species && species.voice);
@@ -290,7 +302,7 @@ class TtsEngine {
     const out = { provider: null, warmed: 0, cached: 0, skipped: null, failed: null };
     if (!this.cache) return { ...out, skipped: 'no-cache' };
     let pick = null;
-    for (const id of providerChain(set, (p) => this.keys.has(p))) {
+    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') break;
       const cfg = p.config(species && species.voice);
@@ -358,4 +370,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { ENGINES, NEURAL, FALLBACKS, TIMEOUT_MS, BREAKER_MS, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { ENGINES, NEURAL, FALLBACKS, TIMEOUT_MS, BREAKER_MS, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };

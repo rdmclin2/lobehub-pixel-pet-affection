@@ -70,7 +70,8 @@ function normalizeSettings(raw) {
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
   s.api = normalizeApi(s.api);
   // 语音: the engine that reads (core/tts.js), the fallback and the endpoints; the keys are in tts-keys.json
-  s.tts = normalizeTts(s.tts);
+  // an engine nobody picked follows the character ('auto'): settings from before 'auto' saved 'fish' regardless
+  s.tts = normalizeTts(s.tts && s.tts.providerSet === true ? s.tts : { ...s.tts, provider: 'auto' });
   return s;
 }
 

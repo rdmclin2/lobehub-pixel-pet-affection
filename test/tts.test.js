@@ -83,6 +83,8 @@ test('validateCharacter rejects a broken voice.tts', () => {
   assert.match(bad({ pitch: 'high' }), /voice\.pitch/);
   assert.match(bad({ tts: [] }), /voice\.tts must be an object/);
   assert.match(bad({ tts: { azure: {} } }), /unknown engine/);
+  assert.match(bad({ tts: { default: 'azure' } }), /voice\.tts\.default must be one of fish, minimax/);
+  assert.deepEqual(tts.validateVoice({ tts: { default: 'minimax', minimax: { voiceId: 'qiaopi_mengmei' } } }), []);
   assert.match(bad({ tts: { fish: { referenceId: 'nope' } } }), /referenceId/);
   assert.match(bad({ tts: { fish: { referenceId: 'fe50cdf3040449298470d58ff0991e1d', speed: 9 } } }), /speed must be a number from 0.5 to 2/);
   assert.match(bad({ tts: { minimax: { voiceId: 'x' } } }), /voiceId/);
@@ -91,10 +93,14 @@ test('validateCharacter rejects a broken voice.tts', () => {
 });
 
 // ---- settings ----------------------------------------------------------------------------------------
-test('settings.tts: Fish by default with the system voice as fallback; bad values are dropped', () => {
-  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'fish', fallback: 'system', endpoints: { fish: '', minimax: '' } });
-  const s = settingsLib.normalizeSettings({ tts: { provider: 'azure', fallback: 'loud', endpoints: { fish: 'http://evil.example.com', minimax: 'https://mm.example.com/' } } });
-  assert.deepEqual(s.tts, { provider: 'fish', fallback: 'system', endpoints: { fish: '', minimax: 'https://mm.example.com' } });
+test('settings.tts: each character\'s own engine (auto) by default with the system voice as fallback; bad values are dropped', () => {
+  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } });
+  const s = settingsLib.normalizeSettings({ tts: { provider: 'azure', providerSet: true, fallback: 'loud', endpoints: { fish: 'http://evil.example.com', minimax: 'https://mm.example.com/' } } });
+  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', endpoints: { fish: '', minimax: 'https://mm.example.com' } });
+  // saved before 'auto': provider 'fish' was the default, never a choice → auto; a picked engine stays
+  assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.provider, 'auto');
+  assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.fallback, 'silent');
+  assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', providerSet: true } }).tts.provider, 'fish');
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'system', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:9 ' } } }).tts.endpoints.fish, 'http://127.0.0.1:9');
   assert.equal(tts.endpointOk('https://user:pw@api.fish.audio'), false, 'no credentials in an endpoint');
   assert.equal(JSON.stringify(settingsLib.normalizeSettings({ tts: { key: KEY } })).includes(KEY), false, 'a key never lands in settings.json');
@@ -107,6 +113,33 @@ test('the chain: the chosen engine, other engines with a key, then Web Speech (u
   assert.deepEqual(tts.providerChain({ provider: 'minimax' }, has('fish', 'minimax')), ['minimax', 'fish', 'system']);
   assert.deepEqual(tts.providerChain({ provider: 'fish', fallback: 'silent' }, has()), ['fish']);
   assert.deepEqual(tts.providerChain({ provider: 'system' }, has('fish')), ['system']);
+});
+
+test('auto: 大肥鱼 reads with MiniMax (qiaopi_mengmei), Fish next when it has a key; the others keep Fish', () => {
+  const has = (...ids) => (id) => ids.includes(id);
+  const dafeiyu = SPECIES.dafeiyu;
+  assert.equal(tts.defaultEngine(dafeiyu), 'minimax');
+  assert.equal(tts.voiceFor(dafeiyu, 'minimax').voiceId, 'qiaopi_mengmei');
+  assert.equal(tts.voiceFor(dafeiyu, 'minimax').model, 'speech-2.8-turbo');
+  assert.deepEqual(tts.providerChain({ provider: 'auto' }, has('fish'), dafeiyu), ['minimax', 'fish', 'system']);
+  assert.deepEqual(tts.providerChain({}, has(), dafeiyu), ['minimax', 'system']);
+  assert.deepEqual(tts.providerChain({ provider: 'fish' }, has('minimax'), dafeiyu), ['fish', 'minimax', 'system'], 'a picked engine wins over hers');
+  for (const id of ['claude', 'gemini', 'gpt', 'grok']) {
+    assert.equal(tts.defaultEngine(SPECIES[id]), 'fish', id);
+    assert.deepEqual(tts.providerChain({ provider: 'auto' }, has('minimax'), SPECIES[id]), ['fish', 'minimax', 'system'], id);
+  }
+  assert.equal(tts.defaultEngine(null), 'fish');
+});
+
+test('auto, 大肥鱼 without a MiniMax key: straight to Fish, no MiniMax request', async () => {
+  const f = fakeFetch(() => audioRes());
+  const eng = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch: f });
+  const r = await eng.synthesize({ text: '摸摸头', species: SPECIES.dafeiyu }, { provider: 'auto' });
+  assert.equal(r.ok, true);
+  assert.equal(r.provider, 'fish');
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'minimax', reason: 'no-key' }]);
+  assert.equal(f.calls.length, 1);
+  assert.match(f.calls[0].url, /\/v1\/tts$/);
 });
 
 test('every provider has the same shape; Web Speech is the system provider', () => {
@@ -337,7 +370,7 @@ test('PetService.setTts saves engine, fallback and endpoints; the settings view 
   const svc = new PetService({ lh: null, store: null, settingsStore: store, ttsStatus: () => ({ engines: { fish: { hasKey: keys.has('fish') }, minimax: { hasKey: keys.has('minimax') } } }) });
   let r = svc.setTts({ provider: 'minimax', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777' } });
   assert.equal(r.ok, true);
-  assert.deepEqual(store.load().tts, { provider: 'minimax', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777', minimax: '' } });
+  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777', minimax: '' } });
   r = svc.setTts({ endpoints: { fish: 'ftp://nope' } });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'bad-endpoint');

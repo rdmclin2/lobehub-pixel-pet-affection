@@ -2847,7 +2847,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'fish', fallback: 'system', endpoints: { fish: '', minimax: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -2862,7 +2862,9 @@ async function voice() {
       await page.locator('#voice-section').scrollIntoViewIfNeeded();
       await shot('v1-voice-section-empty');
       const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
-      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['fish', 'minimax', 'system']);
+      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'system']);
+      assert.equal(await page.inputValue('#tts-provider'), 'auto');
+      assert.match(await page.textContent('#tts-credit'), /默认用 MiniMax.*俏皮萌妹/);
       await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
       await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
       await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点已改为'));
@@ -2882,7 +2884,22 @@ async function voice() {
       });
       fs.writeFileSync(path.join(SHOTS, 'v1-settings-dom.txt'), dom + '\n');
       assert.equal(dom.includes(mock.KEY), false);
-      return note(`engines offered: ${opts.join(' / ')}; status line: ${status}`);
+      const credit = await page.textContent('#tts-credit');
+      await page.locator('#tts-credit').scrollIntoViewIfNeeded();
+      await shot('v1-default-auto-credit');
+      // 大肥鱼 reads with MiniMax by default; with only a Fish key she goes to Fish without a MiniMax request
+      await prewarmed(page);
+      const before = reqs();
+      const sp = await speakLine('先用俏皮萌妹试试');
+      assert.equal(sp.engine, 'auto');
+      assert.equal(sp.provider, 'fish');
+      assert.deepEqual(sp.fellBackFrom, [{ provider: 'minimax', reason: 'no-key' }]);
+      assert.equal(reqs(), before + 1);
+      assert.equal(mock.log[mock.log.length - 1].path, '/v1/tts');
+      // V3–V10 test Fish on its own: pick it
+      await page.selectOption('#tts-provider', 'fish');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('Fish Audio'));
+      return note(`engines offered: ${opts.join(' / ')}; credit: ${credit}; status line: ${status}; 按角色 without a MiniMax key: ${fmt(sp)}`);
     }, page);
 
     await step(S, 'V2 the key stays out of settings.json, the log and the page; stored in tts-keys.json', async () => {
@@ -3025,18 +3042,23 @@ async function voice() {
       return note(fmt(sp));
     }, page);
 
-    await step(S, 'V11 engine choice: MiniMax with 大肥鱼\'s MiniMax voice', async () => {
+    await step(S, 'V11 按角色 (the default): 大肥鱼 reads with MiniMax, voice qiaopi_mengmei', async () => {
       await page.fill('.tts-engine[data-engine="minimax"] .tts-endpoint', mock.url);
       await page.click('.tts-engine[data-engine="minimax"] .tts-ep-save');
       await page.fill('.tts-engine[data-engine="minimax"] .tts-key', mock.MM_KEY);
       await page.click('.tts-engine[data-engine="minimax"] .tts-key-save');
-      await page.selectOption('#tts-provider', 'minimax');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('MiniMax'));
+      await page.selectOption('#tts-provider', 'auto');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('按角色'));
+      assert.match(await page.textContent('#tts-credit'), /大肥鱼默认用 MiniMax。大肥鱼的音色：MiniMax 系统音色「俏皮萌妹」/);
+      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('MiniMax：Key 已设置'));
       await shot('v11-minimax-selected');
       const sp = await speakLine('换一个引擎试试');
       const rq = mock.log[mock.log.length - 1];
+      assert.equal(sp.engine, 'auto');
       assert.equal(sp.provider, 'minimax');
       assert.equal(sp.voiceId, 'qiaopi_mengmei');
+      assert.deepEqual(sp.fellBackFrom, []);
+      assert.equal(rq.model, 'speech-2.8-turbo');
       assert.equal(rq.path, '/v1/t2a_v2');
       assert.equal(rq.auth, true);
       return note(`${fmt(sp)}; mock saw POST ${rq.path} model=${rq.model} voice_id=${rq.voice} voice_setting=${JSON.stringify(rq.prosody)}`);
@@ -3053,10 +3075,10 @@ async function voice() {
       return note(fmt(sp));
     });
 
-    await step(S, 'V13 other characters have their own default voice: 克洛蒂 on Fish', async () => {
+    await step(S, 'V13 other characters keep their own default: 按角色 with both keys, 克洛蒂 on Fish', async () => {
       await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
       await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
-      await page.selectOption('#tts-provider', 'fish');
+      await page.selectOption('#tts-provider', 'auto');
       await page.click('#panel-close');
       await page.evaluate(() => window.pet.switchCharacter('claude'));
       await page.waitForTimeout(800);
@@ -3483,7 +3505,7 @@ async function chatvoice() {
       await page.click('#panel-close');
       const st = await page.evaluate(async () => (await window.pet.getSettings()));
       assert.equal(st.prefs.voice, true);
-      assert.equal(st.tts.provider, 'fish');
+      assert.equal(st.tts.provider, 'auto'); // 大肥鱼's MiniMax has no key here: her lines go to Fish
       return note(`prefs.voice=${st.prefs.voice} tts=${JSON.stringify(st.tts)}`);
     }, page);
 
