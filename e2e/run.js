@@ -2664,7 +2664,12 @@ async function voice() {
 
     await step(S, 'V1 高级设置 → 语音: switch 朗读 on, enter the Fish endpoint and API key', async () => {
       await openVoice();
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      await shot('v1-voice-toggle-off');
       await page.check('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：开'));
+      await shot('v1-voice-toggle-on');
+      assert.equal((await ttsSet()).prefs.voice, true);
       await page.locator('#voice-section').scrollIntoViewIfNeeded();
       await shot('v1-voice-section-empty');
       const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
@@ -2680,6 +2685,14 @@ async function voice() {
       await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：Key 已设置'));
       const status = await page.textContent('#tts-status');
       await shot('v1-voice-section-configured');
+      // the controls as the DOM has them: the 朗读 switch, the engine and fallback selects, key / endpoint fields
+      const dom = await page.evaluate(() => {
+        const d = (el) => `<${el.tagName.toLowerCase()}${[...el.attributes].filter((a) => a.name !== 'style').map((a) => ` ${a.name}="${a.value}"`).join('')}>${el.tagName === 'INPUT' ? ` value=${JSON.stringify(el.type === 'checkbox' ? el.checked : el.type === 'password' ? (el.value ? '(non-empty)' : '') : el.value)}` : ''}${el.tagName === 'SELECT' ? ` selected=${el.value} options=[${[...el.options].map((o) => `${o.value}:${o.textContent}`).join(' | ')}]` : ''}${el.tagName === 'BUTTON' ? ` "${el.textContent}"` : ''}`;
+        const row = document.querySelector('#behavior-section input[data-pref="voice"]').closest('.pref-row');
+        return ['# 高级设置 → 桌宠行为 → 朗读回复', d(row.querySelector('input')) + '  ' + row.querySelector('b').textContent, '', '# 高级设置 → 语音 (#voice-section)', ...[...document.querySelectorAll('#voice-section h3, #voice-section select, #voice-section input, #voice-section button, #voice-section .tts-engine > b, #tts-status, #tts-credit')].map((el) => (['SELECT', 'INPUT', 'BUTTON'].includes(el.tagName) ? d(el) : `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}: ${el.textContent}`))].join('\n');
+      });
+      fs.writeFileSync(path.join(SHOTS, 'v1-settings-dom.txt'), dom + '\n');
+      assert.equal(dom.includes(mock.KEY), false);
       return note(`engines offered: ${opts.join(' / ')}; status line: ${status}`);
     }, page);
 
