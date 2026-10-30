@@ -19,6 +19,7 @@ const touchZones = require('../core/touch-zones');
 const { endpointOk } = require('../core/tts');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
+const chatLog = require('../core/chat-log');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -35,8 +36,9 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
+  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, log = new chatLog.MemoryChatLog() }) {
     super();
+    this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
     this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
@@ -156,15 +158,61 @@ class PetService extends EventEmitter {
   // A line for the bubble. The agent may have tagged a meme picture ([梗图:id], core/memes.js): the tag
   // never reaches the bubble; with memes on, the picture goes with the line (an offline murmur gets a
   // random one now and then).
-  _say(text, source, kind, reason = null, voiceMood = null) {
+  // `turn`: the owner's round this line answers ({ origin, turnId }, from _logUser); without one the
+  // line is the pet's own and its origin comes from `kind` (greeting, proactive, touch, …).
+  _say(text, source, kind, reason = null, voiceMood = null, turn = null) {
     if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
+    const origin = this._logPet(ex.text || text, kind, turn);
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
-    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, ...(voiceMood !== null ? { voiceMood } : {}) });
+    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}) });
     if (this.pet) this._save();
+  }
+
+  // ---- 聊天记录 (core/chat-log.js) ----------------------------------------------------------------
+  // The owner's message opens a round; her reply (or the note that none came) closes it with the same turnId.
+  _logUser(text, origin, kind, attachments = null) {
+    const turnId = `t${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`;
+    const a = attachments && (attachments.images || (attachments.files && attachments.files.length)) ? { attachments } : {};
+    try {
+      this.log.append({ speciesId: this.pet.speciesId, role: 'user', origin, kind, turnId, text, ...a }, this.now());
+    } catch (e) {
+      this.emit('error', e);
+    }
+    return { origin, turnId };
+  }
+
+  _logPet(text, kind, turn = null, status = null) {
+    const origin = turn ? turn.origin : chatLog.originOfKind(kind);
+    if (!this.pet) return origin;
+    try {
+      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...(status ? { status } : {}) }, this.now());
+    } catch (e) {
+      this.emit('error', e); // a full disk must not silence the pet
+    }
+    return origin;
+  }
+
+  // ⋯ → 聊天记录: only the conversations the owner started (chatLog.userSessions is the one filter).
+  // The list carries summaries; the messages of one conversation come from historySession(id).
+  history() {
+    const r = chatLog.userSessions(this.log.list());
+    return { sessions: r.sessions.map(({ messages, ...s }) => ({ ...s, name: this._nameOf(s.speciesId) })), hidden: r.hidden, total: r.total };
+  }
+
+  historySession(id) {
+    const s = chatLog.userSessions(this.log.list()).sessions.find((x) => x.id === String(id || ''));
+    if (!s) return { ok: false, reason: 'not-found' };
+    const pick = ({ id: mid, at, role, text, attachments, status }) => ({ id: mid, at, role, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
+    return { ok: true, session: { ...s, name: this._nameOf(s.speciesId), messages: s.messages.map(pick) } };
+  }
+
+  _nameOf(speciesId) {
+    const c = this.pet && this.pet.characters[speciesId];
+    return c ? c.name : SPECIES[speciesId] ? getSpecies(speciesId).nameZh : '';
   }
 
   async _login(onStep, onLoginPrompt) {
@@ -558,7 +606,8 @@ class PetService extends EventEmitter {
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
   // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them through
   // the bound device, so local abilities must be on.
-  async chat(text, images = [], files = []) {
+  // `origin`: 'user' for the chat box; the local HTTP API passes 'api' (an outside script, not the owner).
+  async chat(text, images = [], files = [], { origin = 'user' } = {}) {
     const clean = String(text || '').trim();
     const paths = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && f).slice(0, 10);
     if (!this.pet || (!clean && images.length === 0 && paths.length === 0)) return { ok: false, reason: 'empty' };
@@ -569,11 +618,15 @@ class PetService extends EventEmitter {
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
+    const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
     try {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      if (paths.length && !this._localOk) return { ok: false, reason: 'local-error', message: this.localError };
+      if (paths.length && !this._localOk) {
+        this._logPet('', 'chat', turn, 'error');
+        return { ok: false, reason: 'local-error', message: this.localError };
+      }
       const local = this._tools().length > 0;
       let body;
       if (images.length) {
@@ -592,11 +645,12 @@ class PetService extends EventEmitter {
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
-      this._say(text, 'llm', 'chat');
+      this._say(text, 'llm', 'chat', null, null, turn);
       this._reportAffection(affection);
       return { ok: true, text, cost: res.cost, affection };
     } catch (e) {
       if (e.code !== 'ECANCELED') this.emit('error', e);
+      this._logPet('', 'chat', turn, e.code === 'ECANCELED' ? 'canceled' : 'error');
       this._save(); // touch() above may have woken the pet; keep the sprite in sync
       if (e.code === 'ECANCELED') return { ok: false, reason: 'canceled' };
       return { ok: false, reason: 'error', code: e.code || null, message: e.message };
@@ -639,6 +693,8 @@ class PetService extends EventEmitter {
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
+    // a preset prompt picked from the panel: kept with origin 'topic', not shown in 聊天记录
+    const turn = this._logUser(`[话题] ${topic.label}`, 'topic', `topic:${topic.id}`);
     try {
       state.touch(c, t);
       await this._ensureReady();
@@ -647,17 +703,18 @@ class PetService extends EventEmitter {
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);
-      this._say(text, 'llm', `topic:${topic.id}`);
+      this._say(text, 'llm', `topic:${topic.id}`, null, null, turn);
       this._reportAffection(affection);
       return { ok: true, text, affection };
     } catch (e) {
       if (e.code === 'ECANCELED') {
+        this._logPet('', `topic:${topic.id}`, turn, 'canceled');
         this._save();
         return { ok: false, reason: 'canceled' };
       }
       this.emit('error', e);
       // An offline line keeps the panel responsive, but it does not score: only a real reply does.
-      this._say(topic.fallback[0], 'fallback', `topic:${topic.id}`, e.message);
+      this._say(topic.fallback[0], 'fallback', `topic:${topic.id}`, e.message, null, turn);
       return { ok: false, reason: 'error', message: e.message };
     } finally {
       this.busy = false;
@@ -900,7 +957,7 @@ class PetService extends EventEmitter {
     const lost = decay + (this._pendingDecay || 0);
     this._pendingDecay = 0;
     if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: c.affection });
-    if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke' });
+    if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke', origin: this._logPet('哈——睡饱啦。', 'woke') });
     this._sayRetiredNotice();
     const kind = lost > 0 ? 'missed' : nextEvent(c, t, {}, this.rnd);
     if (kind) await this._speak(kind);
@@ -953,6 +1010,7 @@ class PetService extends EventEmitter {
     this.pet = null;
     this.lh.setWorkspace(null);
     this.store.clear();
+    this.log.clear(); // 聊天记录 goes with the pet
     this.emit('update', null);
     return { ok: true, deleted };
   }

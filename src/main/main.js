@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const { Store } = require('../core/store');
+const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { Updater } = require('./updater');
@@ -247,6 +248,10 @@ function wire() {
   // While the user drags the resize handle: resize the window only. On release: save.
   ipcMain.handle('preview-pet-scale', (_e, { scale }) => resizePet(clampScale(scale)));
   ipcMain.handle('set-pet-scale', (_e, { scale }) => service.setPetScale(resizePet(clampScale(scale))));
+  // ⋯ → 聊天记录: the filter runs here, in the data layer (PetService.history → chat-log.userSessions);
+  // the window only ever receives the conversations the owner started.
+  ipcMain.handle('history-list', () => service.history());
+  ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
   ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
@@ -430,7 +435,7 @@ app.whenReady().then(() => {
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   tts = { keys, cache, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats } });
-  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  service = new PetService({ lh: new LhClient(), store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -442,7 +447,7 @@ app.whenReady().then(() => {
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
-    chat: (text) => service.chat(text, [], []),
+    chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
   }, logError);
   wire();
   createWindow();

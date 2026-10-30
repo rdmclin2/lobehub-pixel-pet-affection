@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('pet', {
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
   equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
   markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  // 聊天记录: conversations the owner started, already filtered in main (list: summaries; get: one with its messages)
+  historyList: () => ipcRenderer.invoke('history-list'),
+  historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   unlockAll: () => ipcRenderer.invoke('unlock-all'),
   setAppearance: (id) => ipcRenderer.invoke('set-appearance', { id }),
   setModel: (key) => ipcRenderer.invoke('set-model', { key }),
