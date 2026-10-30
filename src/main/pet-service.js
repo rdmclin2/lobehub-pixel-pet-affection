@@ -344,7 +344,7 @@ class PetService extends EventEmitter {
   // The character a per-character setting is for: `speciesId` when given, else the current one.
   _target(speciesId) {
     if (speciesId === undefined || speciesId === null || speciesId === '') return this.pet.speciesId;
-    return SPECIES[speciesId] ? speciesId : null;
+    return typeof speciesId === 'string' && Object.hasOwn(SPECIES, speciesId) ? speciesId : null;
   }
 
   // Point the agent at the model the current character should run on, once per change.
@@ -994,7 +994,7 @@ class PetService extends EventEmitter {
     if (!this.pet) return { ok: false, reason: 'empty' };
     const id = this._target(speciesId);
     if (!id) return { ok: false, reason: 'unknown-character' };
-    const c = this.pet.characters[id];
+    const c = Object.hasOwn(this.pet.characters, id) ? this.pet.characters[id] : null;
     if (!c) return { ok: false, reason: 'not-met' };
     const isCurrent = id === this.pet.speciesId;
     if (isCurrent && this.busy) return { ok: false, reason: 'busy' };

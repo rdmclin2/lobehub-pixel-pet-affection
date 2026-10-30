@@ -114,6 +114,11 @@ test('unlockAll(id) fills that character\'s affection only; one not met has none
   svc.on('affection', (e) => { if (e.type === 'stage-up') ups.push(e); });
   assert.deepEqual(svc.unlockAll('gemini'), { ok: false, reason: 'not-met' });
   assert.equal(svc.unlockAll('nobody').reason, 'unknown-character');
+  for (const k of ['toString', '__proto__', 'constructor']) {
+    assert.equal(svc.unlockAll(k).reason, 'unknown-character', k);
+    assert.equal(svc.setModel('lobehub:grok-4.7', k).reason, 'unknown-character', k);
+    assert.equal(svc.setAppearance('grok-classic', k).reason, 'unknown-character', k);
+  }
   const r = svc.unlockAll('grok');
   assert.equal(r.ok, true);
   assert.equal(r.already, false);
