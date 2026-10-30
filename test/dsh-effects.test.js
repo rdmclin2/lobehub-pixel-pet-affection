@@ -245,7 +245,7 @@ test('visitors: other model-chan only, at most three, never the companion hersel
   await svc.hatch({ speciesId: 'claude', name: 'T' });
   assert.deepEqual(svc.setVisitors(['grok', 'claude', 'nobody', 'gemini']).settings.visitors, ['grok', 'gemini']);
   // switching to a visitor sends her home from the visitors
-  svc.switchCharacter('grok');
+  await svc.switchCharacter('grok');
   assert.deepEqual(svc.settings.visitors, ['gemini']);
   assert.deepEqual(settingsLib.normalizeSettings({ visitors: ['a1', 'b1', 'c1', 'd1'] }).visitors, ['a1', 'b1', 'c1']);
 });

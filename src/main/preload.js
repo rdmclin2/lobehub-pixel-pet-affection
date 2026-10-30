@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('pet', {
   moveBy: (dx, dy) => ipcRenderer.send('move-by', { dx, dy }),
   moveTo: (x, y) => ipcRenderer.send('move-to', { x, y }),
   workArea: () => ipcRenderer.invoke('work-area'),
-  switchCharacter: (id) => ipcRenderer.invoke('switch-character', { id }),
+  switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
   // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines

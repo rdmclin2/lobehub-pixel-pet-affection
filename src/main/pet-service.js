@@ -3,10 +3,10 @@
 const { EventEmitter } = require('node:events');
 const state = require('../core/pet-state');
 const persona = require('../core/persona');
-const { adultAllowed } = require('../core/affection');
+const { adultAllowed, stageName } = require('../core/affection');
 const dialogue = require('../core/dialogue');
 const outfits = require('../core/outfits');
-const { migratePet } = require('../core/migrate');
+const { migratePet, SHARED_KEYS } = require('../core/migrate');
 const settingsLib = require('../core/settings');
 const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
@@ -19,6 +19,7 @@ const touchZones = require('../core/touch-zones');
 const { endpointOk } = require('../core/tts');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
+const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
@@ -31,6 +32,8 @@ const PREWARM_MAX = 60; // lines synthesised ahead per character (互动语音)
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
+// `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
+// (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
   constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
     super();
@@ -58,6 +61,11 @@ class PetService extends EventEmitter {
     this._catalogAt = 0;
     this._catalogError = null;
     this._catalogLoading = null;
+    this._localAgent = null; // the agent the last device check bound
+  }
+
+  _c() {
+    return cur(this.pet);
   }
 
   // Load the save; a growth-system save (xp / stage) is backed up once and migrated (design 6).
@@ -65,8 +73,8 @@ class PetService extends EventEmitter {
     const t = this.now();
     this.settings = this.settingsStore.load();
     const raw = this.store.load();
-    const { pet, migrated, remapped } = migratePet(raw, t);
-    if (migrated) this.store.backupOnce('pet.v1.bak.json');
+    const { pet, migrated, from, remapped } = migratePet(raw, t);
+    if (migrated) this.store.backupOnce(`pet.v${from}.bak.json`);
     if (remapped) this.store.backupOnce('pet.retired.bak.json');
     this.pet = pet;
     // looks chosen for characters that no longer exist are dropped
@@ -80,9 +88,10 @@ class PetService extends EventEmitter {
     // A pet's agent is reached in the space it was created in (no `space`: an older save, lh's default).
     this.lh.setWorkspace(this.pet && this.pet.space ? this.pet.space.workspaceId : this.pet ? undefined : null);
     if (this.pet) {
-      const { decay } = state.tick(this.pet, t);
+      // only the current character lives on while the app is closed; the others stay where they were
+      const { decay } = state.tick(this._c(), t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
-      const { changed } = outfits.enforceOutfit(this.pet, this.settings);
+      const { changed } = outfits.enforceOutfit(this._c(), this.settings);
       if (migrated || remapped || decay > 0 || changed) this.store.save(this.pet);
       if (decay > 0) this._pendingDecay = decay;
     }
@@ -98,22 +107,31 @@ class PetService extends EventEmitter {
     return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
   }
 
+  // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
+  // `characters` lists the roster with who has been met, under which name, and her affection.
   view() {
     if (!this.pet) return null;
+    const c = this._c();
     const sp = getSpecies(this.pet.speciesId);
+    const { characters, retiredCharacters, ...shared } = this.pet;
+    const adult = this._adult();
     return {
-      pet: { ...this.pet },
-      status: state.currentStatus(this.pet),
-      affection: state.toAffectionProgress(this.pet, { adult: this._adult() }),
-      topics: dialogue.listTopics(this.pet, this.settings),
-      outfits: outfits.listOutfits(this.pet, this.settings).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
-      outfit: outfits.wornOutfit(this.pet, this.settings),
-      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(this.pet, this.settings)),
+      pet: { ...shared, ...c },
+      status: state.currentStatus(c),
+      affection: state.toAffectionProgress(c, { adult }),
+      topics: dialogue.listTopics(c, this.settings),
+      outfits: outfits.listOutfits(c, this.settings).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
+      outfit: outfits.wornOutfit(c, this.settings),
+      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings)),
       appearance: { packId: packsLib.chosenPack(this.packs, this.settings.appearance, this.pet.speciesId), options: packsLib.packsFor(this.packs, this.pet.speciesId) },
       model: this.modelView(),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
-      characters: Object.values(SPECIES).map((c) => ({ id: c.id, nameZh: c.nameZh, vendor: c.vendor, title: c.title, accent: c.accent, current: c.id === sp.id })),
+      characters: Object.values(SPECIES).map((x) => {
+        const e = characters[x.id];
+        const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, adultAllowed(this.settings, x.id)) } : null;
+        return { id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met };
+      }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
       busy: this.busy,
       local: { enabled: !!this.pet.localAbilities, ok: this._localOk, error: this.localError, warning: this.localWarning },
@@ -139,7 +157,7 @@ class PetService extends EventEmitter {
   // never reaches the bubble; with memes on, the picture goes with the line (an offline murmur gets a
   // random one now and then).
   _say(text, source, kind, reason = null, voiceMood = null) {
-    if (this.pet) this.pet.lastSpokeAt = this.now();
+    if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
     let meme = null;
@@ -190,18 +208,10 @@ class PetService extends EventEmitter {
         await this.lh.usePersonal();
       }
     }
-    const { agentId } = await this.lh.createAgent({
-      title: `${petName} (${sp.name})`,
-      description: `Pixel Pet · ${sp.nameZh} · ${sp.vendor} 模型娘`,
-      systemRole: persona.buildSystemRole({ speciesId, name: petName, settings: this.settings }),
-    });
-
-    this.pet = state.createPet({ speciesId, name: petName, agentId, now: this.now() });
+    const first = await this._createCharacter(speciesId, petName);
+    this.pet = state.createSave(first, this.now());
     this.pet.space = { workspaceId, name: workspaceId ? String((space && space.name) || workspaceId).slice(0, 60) : '个人空间' };
     this.pet.owner = user.name;
-    // the agent was just created with the current role
-    this.pet.personaVersion = persona.PERSONA_VERSION;
-    this.pet.personaKey = persona.personaKey(this.pet, this.settings);
     this._save();
 
     let localError = null;
@@ -222,6 +232,22 @@ class PetService extends EventEmitter {
     return { view: this.view(), localError, localWarning };
   }
 
+  // Create `speciesId`'s own LobeHub agent (in the lh workspace already selected) and her fresh entry.
+  // The entry is not stored here: a failure leaves nothing behind.
+  async _createCharacter(speciesId, name) {
+    const sp = getSpecies(speciesId);
+    const { agentId } = await this.lh.createAgent({
+      title: `${name} (${sp.name})`,
+      description: `Pixel Pet · ${sp.nameZh} · ${sp.vendor} 模型娘`,
+      systemRole: persona.buildSystemRole({ speciesId, name, settings: this.settings }),
+    });
+    const c = state.createPet({ speciesId, name, agentId, now: this.now() });
+    // the agent was just created with the current role
+    c.personaVersion = persona.PERSONA_VERSION;
+    c.personaKey = persona.personaKey(c, this.settings);
+    return c;
+  }
+
   // ---- keeping an existing agent up to date ---------------------------------------------
   // The system role carries the persona version and the current relationship scope; update the
   // LobeHub agent once whenever either changed (older pet, stage up/down, adult toggle).
@@ -238,7 +264,7 @@ class PetService extends EventEmitter {
   }
 
   async _doEnsureReady() {
-    const p = this.pet;
+    const p = this._c();
     const key = persona.personaKey(p, this.settings);
     if (p.personaVersion !== persona.PERSONA_VERSION || p.personaKey !== key) {
       try {
@@ -257,7 +283,7 @@ class PetService extends EventEmitter {
     } catch (e) {
       this.emit('error', e); // keep the agent's current model; retried on the next turn
     }
-    if (p.localAbilities) await this._verifyLocal();
+    if (this.pet.localAbilities) await this._verifyLocal();
   }
 
   // ---- the model (⋯ → 切换角色 → 模型) ----------------------------------------------------------
@@ -295,16 +321,17 @@ class PetService extends EventEmitter {
     const id = this.pet.speciesId;
     const options = this._modelOptions(id);
     const current = modelsLib.pick(id, options, this.settings.models[id]);
-    return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: this.pet.modelApplied || null, chosen: !!(current && current.key === this.settings.models[id]) };
+    return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: this._c().modelApplied || null, chosen: !!(current && current.key === this.settings.models[id]) };
   }
 
   // Point the agent at the model the current character should run on, once per change.
   async _applyModel() {
     if (!this.pet || !this._catalog) return;
-    const target = modelsLib.pick(this.pet.speciesId, this._modelOptions(this.pet.speciesId), this.settings.models[this.pet.speciesId]);
-    if (!target || this.pet.modelApplied === target.key) return;
-    await this.lh.updateAgent({ agentId: this.pet.agentId, model: target.id, provider: target.providerId });
-    this.pet.modelApplied = target.key;
+    const c = this._c();
+    const target = modelsLib.pick(c.speciesId, this._modelOptions(c.speciesId), this.settings.models[c.speciesId]);
+    if (!target || c.modelApplied === target.key) return;
+    await this.lh.updateAgent({ agentId: c.agentId, model: target.id, provider: target.providerId });
+    c.modelApplied = target.key;
     this._save();
   }
 
@@ -321,21 +348,23 @@ class PetService extends EventEmitter {
     return { ok: true, view: this.view() };
   }
 
-  // Find this computer's online device (starting `lh connect --daemon` if none) and bind the agent to it.
+  // Find this computer's online device (starting `lh connect --daemon` if none) and bind the current
+  // character's agent to it (each agent records its own `boundDeviceId`).
   async _verifyLocal({ force = false } = {}) {
     const t = this.now();
+    const c = this._c();
     if (!force) {
-      if (this._localOk && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
+      if (this._localOk && this._localAgent === c.agentId && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
       if (!this._localOk && this._localFailedAt && t - this._localFailedAt < LOCAL_RETRY_MS) return;
     }
     try {
       const { deviceId, via, daemon } = await ensureLocalDevice(this.lh);
       this._deviceId = deviceId;
       let bindWarning = null;
-      if (this.pet.boundDeviceId !== deviceId) {
+      if (c.boundDeviceId !== deviceId) {
         try {
-          await this.lh.updateAgent({ agentId: this.pet.agentId, agencyConfig: bindConfig(deviceId) });
-          this.pet.boundDeviceId = deviceId;
+          await this.lh.updateAgent({ agentId: c.agentId, agencyConfig: bindConfig(deviceId) });
+          c.boundDeviceId = deviceId;
         } catch (e) {
           // An old lh has no `agent edit --agency-config-file`. The agent then cannot be bound, but every run can
           // still name the device (`--device <id>`), so local tools keep working; just tell the user to update lh.
@@ -344,6 +373,7 @@ class PetService extends EventEmitter {
         }
       }
       this._localOk = true;
+      this._localAgent = c.agentId;
       this._localCheckedAt = t;
       this._localFailedAt = 0;
       this.localError = null;
@@ -378,10 +408,14 @@ class PetService extends EventEmitter {
         }
         return { ok: true, via: this.localVia };
       }
-      await this.lh.updateAgent({ agentId: this.pet.agentId, agencyConfig: unbindConfig() });
+      // every character's agent was bound when she was current: unbind them all
+      for (const c of Object.values(this.pet.characters)) {
+        await this.lh.updateAgent({ agentId: c.agentId, agencyConfig: unbindConfig() });
+        c.boundDeviceId = null;
+      }
       this.pet.localAbilities = false;
-      this.pet.boundDeviceId = null;
       this._localOk = false;
+      this._localAgent = null;
       return { ok: true };
     } catch (e) {
       this.emit('error', e);
@@ -408,23 +442,57 @@ class PetService extends EventEmitter {
     this._say(`（原来的角色已经下线，现在由${sp.title.split(' · ')[0]}「${sp.nameZh}」陪你，好感度和聊天记录都还在。）`, 'fallback', 'retired');
   }
 
-  // ⋯ → 切换角色: change who the companion is. The LobeHub agent, its chat history and the affection
-  // stay; the agent's persona follows on the next turn (the persona key includes the character).
-  switchCharacter(speciesId) {
+  // ⋯ → 切换角色: change who the companion is. Every character has her own LobeHub agent, chat history,
+  // name, affection and needs. One met before is back right away (her needs stood still while she was away);
+  // a new one gets her own agent first (`name`: what the owner calls her, default her nameZh, as at hatch),
+  // then says hello. If that fails, the current character stays and nothing is stored.
+  async switchCharacter(speciesId, { name } = {}) {
     if (!this.pet) return { ok: false, reason: 'empty' };
     if (this.busy) return { ok: false, reason: 'busy' };
     if (!SPECIES[speciesId]) return { ok: false, reason: 'unknown' };
     if (speciesId === this.pet.speciesId) return { ok: true, view: this.view(), same: true };
     const from = this.pet.speciesId;
-    this.pet.speciesId = speciesId;
-    if (!outfits.hasArt(speciesId, this.pet.equippedOutfit)) this.pet.equippedOutfit = outfits.DEFAULT_OUTFIT;
-    if (!outfits.hasArt(speciesId, this.pet.lastSafeOutfit)) this.pet.lastSafeOutfit = outfits.DEFAULT_OUTFIT;
-    outfits.enforceOutfit(this.pet, this.settings);
     const sp = getSpecies(speciesId);
+    let next = this.pet.characters[speciesId];
+    const created = !next;
+    if (created) {
+      this.busy = true;
+      this._cancelRequested = false;
+      this.emit('thinking', true);
+      try {
+        const ws = this.pet.space ? this.pet.space.workspaceId : null;
+        // her agent goes where the first one lives; a pin set since then would send it elsewhere
+        if (!ws && this.pet.space) {
+          const pinned = await this.lh.pinnedWorkspace();
+          if (pinned) throw new Error(`lh 目前固定在 workspace（${pinned}），她的 agent 没法建到个人空间。请先运行 lh workspace use --personal。`);
+        }
+        next = await this._createCharacter(speciesId, (name || '').trim().slice(0, 12) || sp.nameZh);
+        if (this._cancelRequested) {
+          await this.lh.deleteAgent(next.agentId).catch(() => {});
+          return { ok: false, reason: 'canceled' };
+        }
+      } catch (e) {
+        if (this._cancelRequested) return { ok: false, reason: 'canceled' };
+        this.emit('error', e);
+        return { ok: false, reason: 'error', message: e.message };
+      } finally {
+        this.busy = false;
+        this.emit('thinking', false);
+      }
+      this.pet.characters[speciesId] = next;
+    } else state.resume(next, this.now());
+    // the one leaving stops here; her needs wait for her return
+    state.tick(this._c(), this.now());
+    this.pet.speciesId = speciesId;
+    outfits.enforceOutfit(next, this.settings);
     // she cannot visit herself: the new companion leaves the visitors (同屏伙伴)
     if (this.settings.visitors.includes(speciesId)) this.setVisitors(this.settings.visitors.filter((v) => v !== speciesId));
-    this._say(sp.fallback.greet[0], 'fallback', 'switch');
-    return { ok: true, view: this.view(), from };
+    if (created) {
+      this._save();
+      if (this.pet.localAbilities) await this._verifyLocal({ force: true });
+      await this._speak('met');
+    } else this._say(sp.fallback.greet[0], 'fallback', 'switch');
+    return { ok: true, view: this.view(), from, created };
   }
 
   _tools() {
@@ -450,7 +518,8 @@ class PetService extends EventEmitter {
   // Ask the agent to say something for a system-triggered event.
   async _speak(kind) {
     const t = this.now();
-    const sp = getSpecies(this.pet.speciesId);
+    const c = this._c();
+    const sp = getSpecies(c.speciesId);
     if (this.busy || !this.budget.canSpend(t)) {
       this._say(this._fallback(sp, kind), 'fallback', kind, this.busy ? 'agent busy' : 'hourly LLM budget spent');
       return;
@@ -463,21 +532,21 @@ class PetService extends EventEmitter {
       await this._ensureReady();
       this._throwIfCanceled();
       const res = await this.lh.run({
-        agentId: this.pet.agentId,
-        topicId: this.pet.topicId,
-        prompt: persona.buildEventPrompt(kind, this.pet, t, this.settings),
+        agentId: c.agentId,
+        topicId: c.topicId,
+        prompt: persona.buildEventPrompt(kind, c, t, this.settings),
         tools: this._tools(),
         device: this._device(),
       });
-      if (res.topicId) this.pet.topicId = res.topicId;
-      if (kind === 'greet_morning' || kind === 'greet_evening') this.pet.lastGreetDay = new Date(t).toDateString();
+      if (res.topicId) c.topicId = res.topicId;
+      if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
       this._say(this._guard(res.text), 'llm', kind);
     } catch (e) {
       if (e.code === 'ECANCELED') {
         this._save();
         return;
       }
-      if (kind === 'greet_morning' || kind === 'greet_evening') this.pet.lastGreetDay = new Date(t).toDateString();
+      if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
       this._say(this._fallback(sp, kind), 'fallback', kind, e.message);
       this.emit('error', e);
     } finally {
@@ -496,11 +565,12 @@ class PetService extends EventEmitter {
     if (this.busy) return { ok: false, reason: 'busy' };
     if (paths.length && !this.pet.localAbilities) return { ok: false, reason: 'local-off' };
     const t = this.now();
+    const c = this._c();
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
     try {
-      state.touch(this.pet, t);
+      state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
       if (paths.length && !this._localOk) return { ok: false, reason: 'local-error', message: this.localError };
@@ -509,18 +579,18 @@ class PetService extends EventEmitter {
       if (images.length) {
         const fileIds = [];
         for (const img of images) fileIds.push(await this.lh.uploadFile(img));
-        if (!this.pet.topicId) this.pet.topicId = await this.lh.createTopic(this.pet.agentId, this.pet.name);
-        const mid = await this.lh.createUserMessage({ agentId: this.pet.agentId, topicId: this.pet.topicId, content: clean || '（发了一张图片）' });
+        if (!c.topicId) c.topicId = await this.lh.createTopic(c.agentId, c.name);
+        const mid = await this.lh.createUserMessage({ agentId: c.agentId, topicId: c.topicId, content: clean || '（发了一张图片）' });
         await this.lh.addFilesToMessage(mid, fileIds);
         body = `[图片] 主人刚发来 ${images.length} 张图片${clean ? '和上面那句话' : ''}（就在上一条消息里），请先看图，再直接回应。`;
         if (paths.length) body += `\n${persona.buildFilesBlock(paths, true)}`;
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
-      const prompt = persona.buildChatPrompt(body, this.pet, t, { local, settings: this.settings });
-      const res = await this.lh.run({ agentId: this.pet.agentId, topicId: this.pet.topicId, prompt, tools: this._tools(), device: this._device() });
-      if (res.topicId) this.pet.topicId = res.topicId;
-      const { affection } = state.chatted(this.pet, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
+      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt, tools: this._tools(), device: this._device() });
+      if (res.topicId) c.topicId = res.topicId;
+      const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
       this._say(text, 'llm', 'chat');
       this._reportAffection(affection);
@@ -537,7 +607,7 @@ class PetService extends EventEmitter {
   }
 
   _fallback(sp, kind) {
-    return fallbackLine(sp, kind, this.rnd, this.pet, this.settings);
+    return fallbackLine(sp, kind, this.rnd, this._c(), this.settings);
   }
 
   // Tell the UI what an interaction scored, and celebrate a stage-up (design 9.3, 9.4).
@@ -549,8 +619,8 @@ class PetService extends EventEmitter {
 
   async _onStageUp(r) {
     const unlocks = {
-      topics: dialogue.topicsForStages(r.unlockedStages, this.pet, this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, this.pet, this.settings),
+      topics: dialogue.topicsForStages(r.unlockedStages, this._c(), this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, this._c(), this.settings),
     };
     this.emit('affection', { type: 'stage-up', stage: r.to, view: this.view(), unlocks });
     await this._speak('stage_up');
@@ -560,7 +630,8 @@ class PetService extends EventEmitter {
   // here as well, not only greyed out in the UI.
   async talkTopic(id) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const check = dialogue.getTopic(this.pet, this.settings, id);
+    const c = this._c();
+    const check = dialogue.getTopic(c, this.settings, id);
     if (!check.ok) return check;
     if (this.busy) return { ok: false, reason: 'busy' };
     const topic = check.topic;
@@ -569,12 +640,12 @@ class PetService extends EventEmitter {
     this._cancelRequested = false;
     this.emit('thinking', true);
     try {
-      state.touch(this.pet, t);
+      state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this.lh.run({ agentId: this.pet.agentId, topicId: this.pet.topicId, prompt: persona.buildTopicPrompt(topic, this.pet, t, this.settings), tools: this._tools(), device: this._device() });
-      if (res.topicId) this.pet.topicId = res.topicId;
-      const { affection } = state.talkedTopic(this.pet, topic.id, this.now());
+      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings), tools: this._tools(), device: this._device() });
+      if (res.topicId) c.topicId = res.topicId;
+      const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);
       this._say(text, 'llm', `topic:${topic.id}`);
       this._reportAffection(affection);
@@ -703,7 +774,7 @@ class PetService extends EventEmitter {
       this.emit('settings', this.settingsView());
       return null;
     }
-    const r = outfits.enforceOutfit(this.pet, this.settings);
+    const r = outfits.enforceOutfit(this._c(), this.settings);
     this._save();
     return r.changed ? { from: r.from, to: r.to } : null;
   }
@@ -721,7 +792,7 @@ class PetService extends EventEmitter {
   // Only an unlocked outfit the user may see can be put on; the choice is saved with the pet.
   equipOutfit(id) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const r = outfits.equipOutfit(this.pet, this.settings, String(id || ''));
+    const r = outfits.equipOutfit(this._c(), this.settings, String(id || ''));
     if (!r.ok) return r;
     this._save();
     return { ok: true, outfit: r.outfit, view: this.view() };
@@ -730,10 +801,11 @@ class PetService extends EventEmitter {
   // The user opened the wardrobe or topic panel: its unlocked items are no longer "new".
   markSeen(kind) {
     if (!this.pet || !['outfit', 'topic'].includes(kind)) return { ok: false };
-    const list = kind === 'outfit' ? outfits.listOutfits(this.pet, this.settings) : dialogue.listTopics(this.pet, this.settings);
+    const c = this._c();
+    const list = kind === 'outfit' ? outfits.listOutfits(c, this.settings) : dialogue.listTopics(c, this.settings);
     const ids = list.filter((x) => x.isNew).map((x) => `${kind}:${x.id}`);
     if (ids.length) {
-      this.pet.seenUnlocks = [...(this.pet.seenUnlocks || []), ...ids];
+      c.seenUnlocks = [...(c.seenUnlocks || []), ...ids];
       this._save();
     }
     return { ok: true, marked: ids.length };
@@ -744,12 +816,13 @@ class PetService extends EventEmitter {
     if (!this.pet) return { ok: false };
     if (this.busy) return { ok: false, reason: 'busy' }; // no side actions while the pet is working
     const t = this.now();
-    const sp = getSpecies(this.pet.speciesId);
+    const c = this._c();
+    const sp = getSpecies(c.speciesId);
     let r;
-    if (kind === 'feed') r = state.feed(this.pet, food, t);
-    else if (kind === 'pat') r = state.pat(this.pet, t);
-    else if (kind === 'play') r = state.play(this.pet, t);
-    else if (kind === 'sleep') r = state.putToSleep(this.pet, t);
+    if (kind === 'feed') r = state.feed(c, food, t);
+    else if (kind === 'pat') r = state.pat(c, t);
+    else if (kind === 'play') r = state.play(c, t);
+    else if (kind === 'sleep') r = state.putToSleep(c, t);
     else if (kind === 'touch') return this.touch(food); // act('touch', zone | { x, y })
     else return { ok: false };
 
@@ -782,13 +855,14 @@ class PetService extends EventEmitter {
     }
     if (!touchZones.ZONE_IDS.includes(zone)) return { ok: false, reason: 'unknown-zone', zone };
     const t = this.now();
-    const r = state.touchBody(this.pet, zone, t);
+    const c = this._c();
+    const r = state.touchBody(c, zone, t);
     const line = touchZones.touchLine(sp, r.reaction, { settings: this.settings, rnd: this.rnd, last: this._lastTouchLine });
     this._lastTouchLine = line;
     this._say(line, 'fallback', `touch:${zone}`, null, InteractionVoice.touchMood(r.reaction.mood));
     this._reportAffection(r.affection);
     const a = r.affection;
-    const affection = { source: a ? a.source : null, delta: a ? a.delta : 0, blocked: a ? a.blocked : null, value: this.pet.affection, stage: this.pet.relStage };
+    const affection = { source: a ? a.source : null, delta: a ? a.delta : 0, blocked: a ? a.blocked : null, value: c.affection, stage: c.relStage };
     return { ok: true, zone, reaction: r.reaction, line, affection, woken: r.woken };
   }
 
@@ -802,14 +876,14 @@ class PetService extends EventEmitter {
     const add = (text, mood) => { const t = Voice.speakable(text); if (t && !out.some((x) => x.text === t && x.mood === mood)) out.push({ text: t, mood }); };
     const M = InteractionVoice.MOOD;
     // the most common first: the care actions and the drag lines, then every part she has
-    for (const [act, kind] of [['pat', 'patted'], ['feed', 'fed'], ['play', 'played']]) for (const l of fallbackPool(sp, kind, this.pet, this.settings)) add(l, M[act]);
+    for (const [act, kind] of [['pat', 'patted'], ['feed', 'fed'], ['play', 'played']]) for (const l of fallbackPool(sp, kind, this._c(), this.settings)) add(l, M[act]);
     add(sp.fallback.sleepy[0], M.sleep);
     add(FULL_LINE, M.feed);
     add(TIRED_LINE, M.play);
     for (const k of InteractionVoice.LOCAL) for (const l of InteractionVoice.localLines(sp, k)) add(l, M[k]);
     const zones = this.settings.prefs.touchZones === false ? [] : touchZones.zonesFor(sp, null).map((z) => z.id);
     for (const zone of zones.filter((z) => touchZones.ZONES[z])) {
-      const reaction = touchZones.reactionFor(zone, this.pet.relStage, 1);
+      const reaction = touchZones.reactionFor(zone, this._c().relStage, 1);
       for (const l of touchZones.touchLines(sp, reaction, this.settings)) add(l, InteractionVoice.touchMood(reaction.mood));
     }
     return out.slice(0, PREWARM_MAX);
@@ -819,25 +893,32 @@ class PetService extends EventEmitter {
   async heartbeat() {
     if (!this.pet) return;
     const t = this.now();
-    const { events, decay } = state.tick(this.pet, t);
+    const c = this._c();
+    const { events, decay } = state.tick(c, t);
     this._save();
     const lost = decay + (this._pendingDecay || 0);
     this._pendingDecay = 0;
-    if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: this.pet.affection });
+    if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: c.affection });
     if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke' });
     this._sayRetiredNotice();
-    const kind = lost > 0 ? 'missed' : nextEvent(this.pet, t, {}, this.rnd);
+    const kind = lost > 0 ? 'missed' : nextEvent(c, t, {}, this.rnd);
     if (kind) await this._speak(kind);
   }
 
-  // Test hook (PIXELPET_TEST only): force pet fields. Forcing `affection` re-derives the stages
-  // the same way real scoring would, including the stage-up event.
+  // Test hook (PIXELPET_TEST only): force pet fields (owner-level ones on the save, the rest on the current
+  // character). Forcing `affection` re-derives the stages the same way real scoring would, including the
+  // stage-up event.
   debugSet(patch) {
     if (!this.pet) return null;
     const { affection, ...rest } = patch || {};
-    Object.assign(this.pet, rest);
+    const c = this._c();
+    for (const [k, v] of Object.entries(rest)) {
+      if (k === 'speciesId' || k === 'characters') continue;
+      if (SHARED_KEYS.includes(k) && k !== 'createdAt') this.pet[k] = v;
+      else c[k] = v;
+    }
     if (typeof affection === 'number') {
-      const r = state.setAffectionForTest(this.pet, affection);
+      const r = state.setAffectionForTest(c, affection);
       if (r.stageUp) setImmediate(() => this._onStageUp(r));
     }
     this._save();
@@ -849,21 +930,25 @@ class PetService extends EventEmitter {
   unlockAll() {
     if (!this.pet) return { ok: false, reason: 'empty' };
     if (this.busy) return { ok: false, reason: 'busy' };
-    const r = state.unlockAll(this.pet, this.now());
+    const c = this._c();
+    const r = state.unlockAll(c, this.now());
     const unlocks = {
-      topics: dialogue.topicsForStages(r.unlockedStages, this.pet, this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, this.pet, this.settings),
+      topics: dialogue.topicsForStages(r.unlockedStages, c, this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings),
     };
     this._save();
     if (r.unlockedStages.length) setImmediate(() => this._onStageUp(r));
     return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0 };
   }
 
-  // Release the pet: optionally delete the LobeHub agent as well.
+  // Release the pet: optionally delete every character's LobeHub agent as well. `deleted`: how many were.
   async release({ deleteAgent = false } = {}) {
     if (!this.pet) return { ok: true };
-    let deleted = false;
-    if (deleteAgent) deleted = await this.lh.deleteAgent(this.pet.agentId);
+    let deleted = 0;
+    if (deleteAgent) {
+      const ids = [...Object.values(this.pet.characters), ...Object.values(this.pet.retiredCharacters || {})].map((c) => c && c.agentId).filter(Boolean);
+      for (const id of new Set(ids)) if (await this.lh.deleteAgent(id)) deleted += 1;
+    }
     this.pet = null;
     this.lh.setWorkspace(null);
     this.store.clear();

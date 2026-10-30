@@ -43,18 +43,18 @@ test('already logged in skips login entirely', async () => {
   const steps = [];
   await svc.hatch({ speciesId: 'testchan', onStep: (s) => steps.push(s) });
   assert.deepEqual(steps, ['checking-login', 'creating-agent', 'hatching']);
-  assert.equal(svc.pet.name, '测试娘'); // default name comes from the species
+  assert.equal(svc._c().name, '测试娘'); // default name comes from the species
 });
 
 test('pet persists across restarts and keeps its LobeHub topic', async () => {
   const { svc, dir, lh, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'grok', name: 'B' });
-  const topic = svc.pet.topicId;
+  const topic = svc._c().topicId;
   assert.ok(topic);
   const svc2 = new PetService({ lh, store: new Store(path.join(dir, 'data')), now: () => clock.t });
   const v = svc2.init();
-  assert.equal(v.pet.agentId, svc.pet.agentId);
+  assert.equal(v.pet.agentId, svc._c().agentId);
   assert.equal(v.pet.topicId, topic);
 });
 
@@ -76,8 +76,8 @@ test('when the agent call fails the pet degrades to canned lines instead of goin
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'testchan', name: 'E' });
   lh.env.FAKE_LH_FAIL_RUN = '1';
-  svc.pet.hunger = 95;
-  svc.pet.lastSpokeAt = 0;
+  svc._c().hunger = 95;
+  svc._c().lastSpokeAt = 0;
   said.length = 0;
   await svc.heartbeat();
   assert.equal(said.at(-1).kind, 'hungry');
@@ -90,14 +90,14 @@ test('heartbeat makes a hungry pet ask for food via the agent, then stays quiet 
   await svc.hatch({ speciesId: 'grok', name: 'B' });
   said.length = 0;
   clock.t += 13 * 60000; // past the post-hatch speaking cooldown
-  svc.pet.hunger = 95;
-  svc.pet.lastTickAt = clock.t;
+  svc._c().hunger = 95;
+  svc._c().lastTickAt = clock.t;
   await svc.heartbeat();
   assert.equal(said.length, 1);
   assert.equal(said[0].kind, 'hungry');
   clock.t += 60000;
-  svc.pet.hunger = 95;
-  svc.pet.lastTickAt = clock.t;
+  svc._c().hunger = 95;
+  svc._c().lastTickAt = clock.t;
   await svc.heartbeat();
   assert.equal(said.length, 1);
 });
@@ -116,7 +116,7 @@ test('release deletes the agent when asked and clears local state', async () => 
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'testchan', name: 'E' });
   const r = await svc.release({ deleteAgent: true });
-  assert.equal(r.deleted, true);
+  assert.equal(r.deleted, 1);
   assert.equal(svc.pet, null);
   assert.equal(new Store(path.join(dir, 'data')).load(), null);
   const calls = fs.readFileSync(path.join(dir, 'calls.log'), 'utf8');
@@ -134,10 +134,10 @@ test('care actions change needs and say something', async () => {
   const { svc, dir, said } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'testchan', name: 'E' });
-  svc.pet.hunger = 70;
+  svc._c().hunger = 70;
   const r = svc.act('feed', 'rice');
   assert.equal(r.ok, true);
-  assert.equal(svc.pet.hunger, 35);
+  assert.equal(svc._c().hunger, 35);
   assert.equal(said.at(-1).kind, 'feed');
   assert.equal(svc.act('play').ok, true);
 });
@@ -146,12 +146,12 @@ test('a failed chat reports the error code and leaves a consistent, awake pet', 
   const { svc, dir, lh } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'grok', name: 'B' });
-  svc.pet.sleeping = true;
+  svc._c().sleeping = true;
   lh.env.FAKE_LH_FAIL_RUN = 'auth';
   const r = await svc.chat('hi');
   assert.equal(r.ok, false);
   assert.equal(r.code, 'EAUTH');
-  assert.equal(svc.pet.sleeping, false);
+  assert.equal(svc._c().sleeping, false);
 });
 
 // ---------------------------------------------------------------- v0.2: persona updates, local device, images, busy
@@ -168,14 +168,14 @@ async function hatched(opts = {}) {
 
 test('an older pet gets its LobeHub agent system role updated once, with the flexible persona', async () => {
   const { svc, dir } = await hatched();
-  svc.pet.personaVersion = 1;
+  svc._c().personaVersion = 1;
   await svc.chat('hi');
   await svc.chat('again');
   const edits = readLog(dir, 'edits.log').filter((e) => e.systemRole);
   assert.equal(edits.length, 1);
   assert.match(edits[0].systemRole, /联网搜索/);
   assert.doesNotMatch(edits[0].systemRole, /你是宠物，不是助手/);
-  assert.equal(svc.pet.personaVersion, require('../src/core/persona').PERSONA_VERSION);
+  assert.equal(svc._c().personaVersion, require('../src/core/persona').PERSONA_VERSION);
 });
 
 test('a new pet already has the current persona, so nothing is edited', async () => {
@@ -267,7 +267,24 @@ test('hatching with local abilities connects the device as its own step, and sti
   const bad = await ctx2.svc.hatch({ speciesId: 'grok', name: 'B', localAbilities: true });
   assert.ok(bad.localError);
   assert.equal(ctx2.svc.pet.localAbilities, false);
-  assert.ok(ctx2.svc.pet.agentId);
+  assert.ok(ctx2.svc._c().agentId);
+});
+
+test('with local abilities on, a newly met character\'s agent is bound too; turning them off unbinds every agent', async () => {
+  const ctx = setup();
+  fs.writeFileSync(path.join(ctx.dir, 'loggedin'), '1');
+  setDevices(ctx.dir, [myDevice('dev_MAC')]);
+  await ctx.svc.hatch({ speciesId: 'grok', name: 'B', localAbilities: true });
+  await ctx.svc.switchCharacter('claude');
+  const ids = [ctx.svc.pet.characters.grok.agentId, ctx.svc.pet.characters.claude.agentId];
+  const binds = () => readLog(ctx.dir, 'edits.log').filter((e) => e.agencyConfig);
+  assert.deepEqual(binds().map((e) => e.agentId), ids);
+  assert.equal(ctx.svc.pet.characters.claude.boundDeviceId, 'dev_MAC');
+  await ctx.svc.chat('在吗');
+  assert.deepEqual(readLog(ctx.dir, 'runs.log').pop().tools, ['lobe-local-system']);
+  assert.equal((await ctx.svc.setLocalAbilities(false)).ok, true);
+  assert.deepEqual(binds().slice(2).map((e) => e.agentId).sort(), [...ids].sort());
+  assert.ok(Object.values(ctx.svc.pet.characters).every((c) => c.boundDeviceId === null));
 });
 
 test('a picture is uploaded, attached to a user message in the topic, then the run answers it', async () => {
@@ -284,7 +301,7 @@ test('a picture is uploaded, attached to a user message in the topic, then the r
 
 test('a picture without a topic yet creates the topic first; a picture alone (no text) is allowed', async () => {
   const { svc, dir } = await hatched();
-  svc.pet.topicId = null;
+  svc._c().topicId = null;
   const img = path.join(dir, 'a.png');
   fs.writeFileSync(img, 'png');
   const r = await svc.chat('', [img]);
@@ -404,7 +421,7 @@ test('stopping while the device is being connected cancels the setting and leave
 
 test('stopping during the persona update means the message is never sent to the agent', async () => {
   const { svc, dir, lh } = await hatched();
-  svc.pet.personaVersion = 1;
+  svc._c().personaVersion = 1;
   lh.env.FAKE_LH_EDIT_DELAY_MS = '8000';
   const runsBefore = readLog(dir, 'runs.log').length;
   const pending = svc.chat('hello');
@@ -441,14 +458,15 @@ test('affection, stages, unlocked topics and the 18+ settings survive a restart 
   const { svc, data, clock, mkSvc } = setupAff();
   await svc.hatch({ speciesId: 'testchan', name: 'E' });
   svc.answerAgeGate(true);
-  svc.pet.mood = 50;
+  svc._c().mood = 50;
   svc.act('pat');
   clock.t += 11 * 60000;
   svc.act('play');
   const before = svc.view();
   assert.equal(before.affection.value, 6); // greet 3 + pat 1 + play 2
   const saved = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
-  for (const k of ['affection', 'relStage', 'peakStage', 'unlockedTopics', 'dailyCounts', 'lastAffectionAt', 'affectionToday', 'schemaVersion']) assert.ok(k in saved, k);
+  assert.equal(saved.schemaVersion, 3);
+  for (const k of ['affection', 'relStage', 'peakStage', 'unlockedTopics', 'dailyCounts', 'lastAffectionAt', 'affectionToday']) assert.ok(k in saved.characters.testchan, k);
   const settings = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
   assert.equal(settings.ageConfirmed, true);
   assert.equal(settings.adultContent, true);
@@ -484,8 +502,8 @@ test('an old xp/stage save is backed up once and migrated on start, keeping the 
   const backup = JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8'));
   assert.deepEqual(backup, old);
   const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
-  assert.equal(disk.schemaVersion, 2);
-  assert.equal('xp' in disk, false);
+  assert.equal(disk.schemaVersion, 3);
+  assert.equal('xp' in disk.characters.dafeiyu, false);
   assert.deepEqual(disk.legacy, { xp: 150, stage: 'child', migratedAt: clock.t });
   // a second start does not migrate or overwrite the backup again
   fs.writeFileSync(path.join(data, 'pet.v1.bak.json'), '"keep"');
@@ -552,33 +570,150 @@ test('an unknown character id falls back to the default character (DeepSeek)', (
   assert.equal(v.look.packId, 'dafeiyu-pixel', 'DeepSeek starts in her pixel pack');
 });
 
-test('switching character keeps the agent and affection, changes the persona on the next turn, and greets', async () => {
+test('switching to a new character creates her own agent, name and affection, and she says hello', async () => {
   const { svc, said, dir } = setupAff();
   await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
   svc.debugSet({ affection: 50 });
   assert.equal(svc.equipOutfit('scarf').ok, true);
-  const agent = svc.pet.agentId;
-  const r = svc.switchCharacter('grok');
+  await svc.chat('你好');
+  const first = { ...svc._c() };
+  const r = await svc.switchCharacter('grok', { name: '  小格格格格格格格格格格格格  ' });
   assert.equal(r.ok, true);
+  assert.equal(r.created, true);
   assert.equal(r.from, 'testchan');
   assert.equal(r.view.pet.speciesId, 'grok');
-  assert.equal(r.view.pet.agentId, agent);
-  assert.equal(r.view.pet.affection, 50);
-  assert.equal(r.view.outfit, 'daily', 'Grok has no scarf art');
+  assert.notEqual(r.view.pet.agentId, first.agentId, 'her own agent');
+  assert.equal(r.view.pet.name, '小格格格格格格格格格格格', 'trimmed to 12 characters, like at hatch');
+  assert.equal(r.view.pet.affection, 0, 'her own affection: a stranger');
+  assert.equal(r.view.pet.relStage, 'stranger');
+  assert.equal(r.view.outfit, 'daily');
   assert.equal(r.view.look.packId, 'grok-pixel');
-  assert.equal(r.view.characters.find((c) => c.current).id, 'grok');
-  assert.equal(said.pop().text, '哈！你可算来了。');
+  const create = JSON.parse(fs.readFileSync(path.join(dir, 'last-create.json'), 'utf8'));
+  assert.equal(create.title, '小格格格格格格格格格格格 (Groko)');
+  assert.match(create.systemRole, /格萝可/);
+  assert.equal(said.pop().kind, 'met');
+  const met = Object.fromEntries(r.view.characters.filter((c) => c.met).map((c) => [c.id, [c.met.name, c.met.affection]]));
+  assert.deepEqual(met, { testchan: ['小鱼', first.affection], grok: ['小格格格格格格格格格格格', 0] });
+  assert.equal(r.view.characters.find((c) => c.id === 'claude').met, null, 'not met yet');
+  // the first one is untouched
+  assert.equal(svc.pet.characters.testchan.agentId, first.agentId);
+  assert.equal(svc.pet.characters.testchan.affection, first.affection);
+  assert.equal(svc.pet.characters.testchan.equippedOutfit, 'scarf');
   await svc.chat('你是谁');
-  assert.match(readLog(dir, 'edits.log').filter((e) => e.systemRole).pop().systemRole, /格萝可/);
-  assert.deepEqual(svc.switchCharacter('embit'), { ok: false, reason: 'unknown' }, 'a retired character cannot be chosen');
+  const run = readLog(dir, 'runs.log').pop();
+  assert.equal(run.agent, r.view.pet.agentId);
+  assert.notEqual(svc._c().topicId, first.topicId, 'her own chat');
+  assert.deepEqual(await svc.switchCharacter('embit'), { ok: false, reason: 'unknown' }, 'a retired character cannot be chosen');
+});
+
+test('switching back and forth keeps each character\'s agent, topic, affection and outfit, and survives a restart', async () => {
+  const { svc, said, dir, clock, mkSvc } = setupAff();
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
+  svc.debugSet({ affection: 50 });
+  svc.equipOutfit('scarf');
+  await svc.chat('一');
+  const a = { agentId: svc._c().agentId, topicId: svc._c().topicId };
+  await svc.switchCharacter('grok');
+  await svc.chat('二');
+  const g = { agentId: svc._c().agentId, topicId: svc._c().topicId };
+  const creates = () => readLog(dir, 'calls.log').filter((c) => c.args[0] === 'agent' && c.args[1] === 'create').length;
+  assert.equal(creates(), 2);
+  const back = await svc.switchCharacter('testchan');
+  assert.equal(back.created, false);
+  assert.equal(said.pop().kind, 'switch', 'an old friend just greets (offline line)');
+  assert.equal(back.view.pet.agentId, a.agentId);
+  assert.equal(back.view.pet.topicId, a.topicId);
+  assert.equal(back.view.pet.affection, 50);
+  assert.equal(back.view.pet.name, '小鱼');
+  assert.equal(back.view.outfit, 'scarf');
+  await svc.chat('三');
+  assert.deepEqual(readLog(dir, 'runs.log').slice(-1).map((x) => [x.agent, x.topic]), [[a.agentId, a.topicId]]);
+  await svc.switchCharacter('grok');
+  assert.equal(creates(), 2, 'no new agent the second time');
+  const restarted = mkSvc().init();
+  assert.equal(restarted.pet.speciesId, 'grok');
+  assert.equal(restarted.pet.agentId, g.agentId);
+  assert.equal(restarted.pet.topicId, g.topicId);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(svc.store.file), 'utf8')).characters.testchan.affection, 50);
+  clock.t += 1000;
+});
+
+test('an absent character\'s needs stand still: she is not starving or missing you when she comes back', async () => {
+  const { svc, clock } = setupAff();
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
+  svc.debugSet({ affection: 40 });
+  const before = { ...svc._c() };
+  await svc.switchCharacter('grok');
+  clock.t += 5 * 24 * 3600 * 1000; // five days with Grok
+  await svc.heartbeat();
+  assert.ok(svc._c().hunger > before.hunger, 'the one on screen gets hungry');
+  const back = await svc.switchCharacter('testchan');
+  assert.equal(back.view.pet.hunger, before.hunger);
+  assert.equal(back.view.pet.mood, before.mood);
+  assert.equal(back.view.pet.energy, before.energy);
+  await svc.heartbeat();
+  assert.equal(svc._c().affection, 40, 'no decay for the time she was away');
+});
+
+test('a failed agent creation keeps the current character and stores nothing', async () => {
+  const { svc, dir } = setupAff();
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
+  fs.writeFileSync(path.join(dir, 'fail-create'), '1');
+  const r = await svc.switchCharacter('grok', { name: '格' });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'error');
+  assert.equal(svc.pet.speciesId, 'testchan');
+  assert.deepEqual(Object.keys(svc.pet.characters), ['testchan']);
+  assert.equal(svc.busy, false);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(svc.store.file, 'utf8')).characters), ['testchan']);
+  fs.rmSync(path.join(dir, 'fail-create'));
+  assert.equal((await svc.switchCharacter('grok')).view.pet.name, '格萝可', 'no name given: her own name');
+});
+
+test('switching is refused while she is busy', async () => {
+  const { svc } = setupAff();
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
+  svc.busy = true;
+  assert.deepEqual(await svc.switchCharacter('grok'), { ok: false, reason: 'busy' });
+  svc.busy = false;
+  assert.equal((await svc.switchCharacter('testchan')).same, true);
+});
+
+test('release deletes every character\'s agent', async () => {
+  const { svc, dir } = setupAff();
+  await svc.hatch({ speciesId: 'testchan', name: '小鱼' });
+  await svc.switchCharacter('grok');
+  const ids = Object.values(svc.pet.characters).map((c) => c.agentId);
+  const r = await svc.release({ deleteAgent: true });
+  assert.equal(r.deleted, 2);
+  const deleted = readLog(dir, 'calls.log').filter((c) => c.args[0] === 'agent' && c.args[1] === 'delete').map((c) => c.args[2]);
+  assert.deepEqual(deleted.sort(), ids.sort());
+});
+
+test('a schema-2 save starts as one character with her agent, topic and affection; the save is backed up', async () => {
+  const { data, mkSvc, clock } = setupAff();
+  fs.mkdirSync(data, { recursive: true });
+  const saved = { schemaVersion: 2, speciesId: 'grok', name: '小格', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: clock.t - 1e6, affection: 40, hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, owner: 'me', localAbilities: false, space: { workspaceId: null, name: '个人空间' }, personaVersion: 6 };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(saved));
+  const v = mkSvc().init();
+  assert.equal(v.pet.agentId, 'agt_OLD');
+  assert.equal(v.pet.topicId, 'tpc_OLD');
+  assert.equal(v.pet.affection, 40);
+  assert.equal(v.pet.owner, 'me');
+  assert.deepEqual(v.characters.filter((c) => c.met).map((c) => c.id), ['grok']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v2.bak.json'), 'utf8')), saved);
+  const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  assert.equal(disk.schemaVersion, 3);
+  assert.equal(disk.characters.grok.agentId, 'agt_OLD');
+  assert.equal('agentId' in disk, false);
 });
 
 test('crossing a threshold emits a stage-up with the new unlocks and the pet speaks about it', async () => {
   const { svc, events, said } = setupAff();
   await svc.hatch({ speciesId: 'testchan', name: 'E' });
-  svc.pet.mood = 50;
-  svc.pet.affection = 14;
-  svc.pet.dailyCounts = { greet: 1 };
+  svc._c().mood = 50;
+  svc._c().affection = 14;
+  svc._c().dailyCounts = { greet: 1 };
   const r = svc.act('pat');
   assert.equal(r.affection.stageUp, true);
   await tick();
@@ -618,7 +753,7 @@ test('the adult switch changes the next prompt and hides adult topics; it needs 
   assert.match(readLog(dir, 'runs.log').pop().prompt, /\[关系\] 阶段=暧昧；成人向=开/);
   assert.equal((await svc.talkTopic('tease')).ok, true);
 
-  const valueBefore = svc.pet.affection;
+  const valueBefore = svc._c().affection;
   svc.setAdultContent(false);
   const v = svc.view();
   assert.equal(v.affection.stageName, '知己');
@@ -676,9 +811,9 @@ test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be
   const { svc, events, mkSvc } = setupAff();
   await svc.hatch({ speciesId: 'testchan', name: 'B' });
   svc.answerAgeGate(true);
-  svc.pet.mood = 50;
-  svc.pet.affection = 14;
-  svc.pet.dailyCounts = { greet: 1 };
+  svc._c().mood = 50;
+  svc._c().affection = 14;
+  svc._c().dailyCounts = { greet: 1 };
   svc.act('pat');
   await tick();
   const up = events.find((e) => e.type === 'stage-up');

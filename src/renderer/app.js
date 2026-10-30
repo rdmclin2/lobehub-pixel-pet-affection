@@ -14,6 +14,8 @@ let info = null; // { species[], foods, testMode }
 let view = null; // latest pet view from main
 let selected = null;
 let thinking = false;
+let naming = null; // { id, value }: the first-meeting name form that is open (kept across panel re-renders)
+let arriving = null; // nameZh of a character on her way (her agent is being created), shown instead of 思考中
 let eating = null;
 let talkUntil = 0;
 let flashUntil = 0;
@@ -616,24 +618,26 @@ function renderCharacters() {
   $('panel-sub').textContent = `现在是「${view.species.nameZh}」（${view.species.vendor}）· ${progressLine()}`;
   const body = $('panel-body');
   body.innerHTML = '';
-  // who the companion is: switching keeps the agent, its chat history and the affection
+  // who the companion is: every character has her own agent, chat history, name and affection
   const who = document.createElement('div');
   who.className = 'adv-section';
-  who.innerHTML = '<h3>角色</h3><p class="adv-text">换一位模型娘陪你。LobeHub 里的 agent、聊天记录和好感度都保留，她的人设会在下一句话前换好。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
+  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
   for (const c of view.characters) {
     const row = document.createElement('div');
-    row.className = `pack-opt char-opt${c.current ? ' on' : ''}`;
+    row.className = `pack-opt char-opt${c.current ? ' on' : ''}${c.met ? ' met' : ' new'}`;
     row.dataset.species = c.id;
     row.style.setProperty('--accent', c.accent);
-    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
+    row.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span><em class="char-rel"></em></div>';
     const pick = row.querySelector('.pick');
-    pick.textContent = c.current ? '✓ 当前' : '切换';
+    pick.textContent = c.current ? '✓ 当前' : c.met ? '切换' : '初次见面';
     pick.setAttribute('aria-checked', String(c.current));
     pick.disabled = c.current;
-    row.querySelector('b').textContent = `${c.nameZh}（${c.vendor}）`;
+    row.querySelector('b').textContent = c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`;
     row.querySelector('span').textContent = c.title;
-    pick.addEventListener('click', () => switchCharacter(c));
+    row.querySelector('.char-rel').textContent = c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过';
+    pick.addEventListener('click', () => (c.met ? switchCharacter(c) : askName(row, c)));
     who.querySelector('.char-list').appendChild(row);
+    if (naming && naming.id === c.id && !c.met) askName(row, c, naming.value);
   }
   body.appendChild(who);
 
@@ -941,10 +945,50 @@ function paintVoiceStatus() {
   el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
 }
 
-async function switchCharacter(c) {
-  const r = await window.pet.switchCharacter(c.id);
+// First meeting: name her (like at hatch: optional, 12 characters, her own name by default), then she comes.
+function askName(row, c, value = c.nameZh) {
+  const open = document.querySelector('.char-name-form');
+  if (open) open.remove();
+  naming = { id: c.id, value };
+  const form = document.createElement('form');
+  form.className = 'size-row char-name-form';
+  form.innerHTML = '<input maxlength="12" autocomplete="off" aria-label="名字" /><button class="btn primary" type="submit">请她来</button><button class="btn" type="button">取消</button>';
+  const input = form.querySelector('input');
+  input.value = value;
+  input.placeholder = `给她起个名字（默认「${c.nameZh}」）`;
+  input.addEventListener('input', () => { naming.value = input.value; });
+  form.querySelector('button[type="button"]').addEventListener('click', () => { naming = null; form.remove(); });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    naming = null;
+    for (const el of form.elements) el.disabled = true;
+    switchCharacter(c, input.value);
+  });
+  row.after(form);
+  // on a re-render the panel body is attached only after this row: focus once it is on screen
+  setTimeout(() => {
+    input.focus();
+    if (value === c.nameZh) input.select();
+  });
+}
+
+async function switchCharacter(c, name) {
+  if (!c.met) {
+    arriving = c.nameZh;
+    panelMsg(`${c.nameZh}正在赶来…（在 LobeHub 里为她新建 agent）`, true);
+  }
+  let r;
+  try {
+    r = await window.pet.switchCharacter(c.id, name);
+  } finally {
+    arriving = null;
+  }
   if (!r.ok) {
-    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再换。' : '现在没法切换。');
+    // she did not come: the name form is usable again, for another try
+    const form = document.querySelector('.char-name-form');
+    if (form) for (const el of form.elements) el.disabled = false;
+    if (r.reason === 'canceled') return panelMsg(`没有请${c.nameZh}来，还是原来的她陪你。`);
+    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再换。' : r.reason === 'error' ? `${c.nameZh}没能来（${String(r.message || '').slice(0, 80)}），还是原来的她陪你。` : '现在没法切换。');
     return;
   }
   view = r.view;
@@ -955,7 +999,7 @@ async function switchCharacter(c) {
   refreshHud();
   renderPanel();
   fx.play('hatch', Fx.oneShotMs(isVideo(view.pet.speciesId), 'hatch'));
-  panelMsg(`已切换为「${c.nameZh}」。`, true);
+  panelMsg(r.created ? `「${view.pet.name}」来了！这是她自己的 agent，从陌生开始。` : `已切换为「${view.pet.name}」。`, true);
 }
 
 async function unlockAllNow() {
@@ -1338,7 +1382,7 @@ function setThinking(on) {
     b.classList.remove('hidden');
     b.classList.add('thinking');
     let n = 0;
-    const tick = () => { b.textContent = `思考中${'.'.repeat((n++ % 3) + 1)}`; };
+    const tick = () => { b.textContent = `${arriving ? `${arriving}正在赶来` : '思考中'}${'.'.repeat((n++ % 3) + 1)}`; };
     tick();
     thinkTimer = setInterval(tick, 450);
   }
@@ -1447,7 +1491,7 @@ function bindPetUi() {
       else if (r.reason !== 'busy') say(`（没成功：${String(r.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', r.message);
     }
     if (m === 'credits') alert(credits());
-    if (m === 'release' && confirm('放生它，并在 LobeHub 里删除对应的 agent（含聊天记录）？')) await release(true);
+    if (m === 'release' && confirm('放生它，并在 LobeHub 里删除每位角色的 agent（含聊天记录）？')) await release(true);
     if (m === 'forget' && confirm('只重置本地进度，LobeHub 里的 agent 会保留。继续？')) await release(false);
   });
   const send = async () => {

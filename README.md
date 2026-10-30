@@ -27,7 +27,7 @@
 - 每个角色是一份数据文件 `src/characters/<id>.json`（厂商、人设、口头禅、离线台词、主题色、可用服饰、署名），美术是一个角色包（`src/renderer/packs/<id>-pixel`）或一组视频；**效果全部共用**，角色之间只差配置、素材和台词。新增角色：放一份 character.json 和一个角色包即可，不用改代码。设定与素材来源见 [art/model-chan/](art/model-chan/README.md)。
 - 五位都是全年龄角色（`adult: false`）：即使确认 18+ 并开启成人向内容，她们也只用全年龄的语气、话题和服饰。成人向机制仍保留，只对 character.json 里写明 `adult: true` 的角色生效。
 - **旧角色已下线**：焰团、泡鲸、叶芽和“灵石”选择界面已移除。老存档打开时自动由新角色接替（泡鲸、叶芽 → 大肥鱼，焰团 → 克洛蒂），LobeHub agent、聊天记录和好感度都保留，她的人设在下一句话前更新；身上的服饰如果新角色没有，就换回日常服。旧存档会备份为 `pet.retired.bak.json`。
-- **换角色**：⋯ 菜单 → **切换角色**，点“切换”。agent、聊天记录和好感度保留。
+- **换角色**：⋯ 菜单 → **切换角色**。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
 - **换模型**：⋯ 菜单 → **切换角色** → 模型。每位角色只能选自家厂商的模型（大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT），列表来自你在 LobeHub 里启用的模型；换角色时模型跟着换成新角色的（每位角色各自记住你的选择）。
 
 ### 每个角色都有的效果（移植自 dsh-pet）
@@ -47,7 +47,7 @@
 | E11 | 工作状态：思考中 → 说话；出错时难过；每条消息带时间背景（时段、星期、节日） | 聊天、话题、主动说话 |
 | E12 | 关系升级：进化动画、闪光和爱心 | 好感跨过阶段 |
 | E13 | 角色专属衣柜 | “衣柜” |
-| E14 | 换角色：agent、聊天记录、好感度都保留 | ⋯ → 切换角色 |
+| E14 | 换角色：每位角色各自的 agent、聊天记录、名字和好感度 | ⋯ → 切换角色 |
 | E15 | 自己走动：空闲时朝面向的方向走 60–240 像素，到屏幕边掉头（大肥鱼播 dsh-pet 的螃蟹走路，像素角色待机帧颠步） | 自动；高级设置 → 桌宠行为 →“自己走动”可关 |
 | E16 | 触屏长按 / 右键打开菜单 | 在宠物身上长按（触屏）或右键 |
 | E17 | 动作点播、回到右下角 | ⋯ → 动作… / 回到右下角 |
@@ -309,7 +309,7 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
 - 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
-- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和 LobeHub agent。
+- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和每位角色的 LobeHub agent。
 
 ## 上游署名与许可
 

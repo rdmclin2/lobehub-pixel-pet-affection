@@ -258,7 +258,7 @@ function service(affection = 0, speciesId = 'grok') {
   const scored = [];
   let t = T0;
   const svc = new PetService({ lh: { setWorkspace() {} }, store: { save() {}, load: () => null }, now: () => t, rnd: () => 0 });
-  svc.pet = petAt(affection, speciesId);
+  svc.pet = { schemaVersion: 3, speciesId, characters: { [speciesId]: petAt(affection, speciesId) } };
   svc.on('say', (s) => said.push(s));
   svc.on('affection', (a) => scored.push(a));
   return { svc, said, scored, advance: (ms) => { t += ms; } };
@@ -282,11 +282,11 @@ test('PetService.touch resolves a click point with the character table; a miss c
   const { svc, said } = service(20, 'gemini');
   assert.equal(svc.touch({ x: 0.5, y: 0.26 }).zone, 'chest');
   assert.equal(svc.touch({ x: 0.92, y: 0.2 }).zone, 'tail');
-  const before = svc.pet.affection;
+  const before = svc._c().affection;
   const n = said.length;
   assert.deepEqual(svc.touch({ x: 0.02, y: 0.02 }), { ok: false, reason: 'miss', zone: null });
   assert.deepEqual(svc.touch({ x: 0.5, y: 0.5, opaque: false }), { ok: false, reason: 'miss', zone: null });
-  assert.equal(svc.pet.affection, before);
+  assert.equal(svc._c().affection, before);
   assert.equal(said.length, n);
   assert.equal(svc.touch('wing').reason, 'unknown-zone');
 });

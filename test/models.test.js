@@ -80,7 +80,7 @@ test('switching character moves the agent to the new character\'s models, and ea
   await new Promise((r) => setTimeout(r, 300)); // applied in the background
   assert.equal(svc.setModel('lobehub:gpt-6-sol').reason, 'unknown', 'Claude cannot pick a GPT model');
 
-  const sw = svc.switchCharacter('gpt');
+  const sw = await svc.switchCharacter('gpt');
   assert.equal(sw.view.model.current, 'lobehub:gpt-6-luna', 'GPT 娘\'s default, shown right away');
   assert.ok(sw.view.model.options.every((o) => /^(gpt-|o\d)/.test(o.id)));
   assert.ok(sw.view.model.options.some((o) => o.key === 'openai:gpt-6-luna' && !o.hosted), 'her own OpenAI key is offered too');
@@ -88,10 +88,13 @@ test('switching character moves the agent to the new character\'s models, and ea
   assert.equal(svc.setModel('openai:o3').ok, true);
   await new Promise((r) => setTimeout(r, 300));
 
-  svc.switchCharacter('claude');
+  await svc.switchCharacter('claude');
   assert.equal(svc.view().model.current, 'lobehub:claude-opus-5-5', 'Claude\'s own pick comes back');
   await svc.chat('回来啦');
-  assert.deepEqual(edits().map((e) => `${e.provider}:${e.model}`), ['lobehub:claude-sonnet-5-5', 'lobehub:claude-opus-5-5', 'lobehub:gpt-6-luna', 'openai:o3', 'lobehub:claude-opus-5-5']);
+  // each has her own agent, so Claude's agent still runs on Opus: nothing to re-apply
+  assert.deepEqual(edits().map((e) => `${e.provider}:${e.model}`), ['lobehub:claude-sonnet-5-5', 'lobehub:claude-opus-5-5', 'lobehub:gpt-6-luna', 'openai:o3']);
+  const [claudeAgent, gptAgent] = [svc.pet.characters.claude.agentId, svc.pet.characters.gpt.agentId];
+  assert.deepEqual(edits().map((e) => e.agentId), [claudeAgent, claudeAgent, gptAgent, gptAgent]);
 });
 
 test('the pick survives a restart and is not re-applied when nothing changed', async () => {
