@@ -2571,7 +2571,7 @@ async function rosterOne(ch) {
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#behavior-section');
       const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
-      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
+      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'voiceInteractions=on', 'voiceMurmurs=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
       await page.locator('#behavior-section').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
       await page.check('#behavior-section input[data-pref="clickSound"]');
