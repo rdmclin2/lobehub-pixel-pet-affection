@@ -68,6 +68,11 @@ OUTFIT_LOOKS = {
            "with a high pointed stand-up collar lined in wine red, short cap sleeves and a fully covered back and midriff; over it loose black knee-length board shorts with a wine-red side stripe, "
            "an open long-sleeved black hooded sun-protection jacket reaching her hips with white lace cuffs, gold trim and a small gold ring emblem, "
            "and black beach sandals with gold buckles. Colours: black, wine red, gold and champagne blonde only"),
+ "gpt": ("She wears modest sporty beachwear: a pale lavender one-piece athletic swimsuit of smooth thick opaque fabric (no navel or body lines drawn on it) with white side panels and a thin silver trim, "
+          "with a small white mandarin stand-up collar at the throat, short sleeves covering her shoulders and a fully covered back and midriff, a small lavender diamond crystal at the collar; "
+          "over it loose white knee-length board shorts with a lavender wave pattern at the hems, "
+          "an open long-sleeved white hooded sun-protection jacket reaching her hips with wavy ruffled cuffs, thin silver trim and a white rosette knot pinned on its chest, "
+          "and white beach sandals with lavender straps. Colours: white, pale lavender and silver only"),
  },
 }
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
