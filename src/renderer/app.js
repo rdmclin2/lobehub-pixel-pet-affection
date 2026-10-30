@@ -870,8 +870,9 @@ const TTS_ENGINES = [
   ['minimax', 'MiniMax', 'https://api.minimax.cn', '在 platform.minimaxi.com（国内站）开通后创建接口密钥，不用 GroupId；国际站（minimax.io）的 Key 把端点改成 https://api.minimax.io。'],
   ['system', '系统语音（离线、免费）', '', ''],
 ];
-const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', empty: '没有返回音频', offline: '离线' };
-const ttsReason = (r) => (r.startsWith('paused:') ? `暂停 5 分钟（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r));
+const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', 'api-1002': '被限流（请求太频繁）', 'api-1039': '被限流（请求太频繁）', 'api-1008': '余额不足', 'api-2013': '请求参数有误', 'rate-limit': '这一分钟的次数用完了', empty: '没有返回音频', offline: '离线' };
+const ttsReason = (r) => (r.startsWith('paused:') ? `暂停中（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r.startsWith('api-') ? `接口错误 ${r.slice(4)}` : r));
+const ttsWait = (sec) => (sec < 60 ? `${sec} 秒` : `${Math.ceil(sec / 60)} 分钟`);
 function voiceSection() {
   const sec = document.createElement('div');
   sec.className = 'adv-section';
@@ -951,7 +952,8 @@ function paintVoiceStatus() {
     const e = st.engines[id];
     const box = document.querySelector(`.tts-engine[data-engine="${id}"] .tts-key`);
     if (box) box.placeholder = e.hasKey ? 'API Key：已设置（不显示）' : 'API Key：未设置';
-    return `${label.replace(/（.*）/, '')}：${e.hasKey ? 'Key 已设置' : '没有 Key'}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${Math.ceil(e.pausedFor / 60)} 分钟内跳过` : ''}` : ''}`;
+    const budget = e.hasKey && e.rpm ? `，每分钟最多 ${e.rpm} 次，这一分钟还剩 ${e.budget}` : '';
+    return `${label.replace(/（.*）/, '')}：${e.hasKey ? 'Key 已设置' : '没有 Key'}${budget}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${ttsWait(e.pausedFor)}内跳过` : ''}` : ''}`;
   });
   el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
 }

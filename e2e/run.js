@@ -2859,7 +2859,7 @@ async function voice() {
   };
   const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
   const openVoice = async () => {
-    if (!(await page.$('#voice-section'))) {
+    if (!(await page.isVisible('#voice-section'))) { // a closed panel can leave the section in the page, hidden
       await clickAct(page, 'menu');
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#voice-section');
@@ -2999,7 +2999,7 @@ async function voice() {
       return note(`line 1 #${first.n} "${first.text}" synthesizing → interrupted (mock: aborted=${slow.aborted}); line 2 ${fmt(sp)}; petFx.state() answered in ${uiMs} ms while synthesising (${st.state}); requests ${before} → ${reqs()}; one audio element: ${JSON.stringify(audios)}`);
     });
 
-    await step(S, 'V6 fallback on an HTTP error: the line goes to the system voice, Fish is paused for 5 minutes', async () => {
+    await step(S, 'V6 fallback on an HTTP error: the line goes to the system voice, Fish is paused for 20 s', async () => {
       mock.mode = '500';
       const sp = await speakLine('服务器出错的时候');
       assert.equal(sp.provider, 'system');
@@ -3016,7 +3016,7 @@ async function voice() {
       return note(`${fmt(sp)} (system voice lang ${sp.lang} pitch ${sp.pitch} rate ${sp.rate}, ${sp.systemVoices} system voices); next: ${fmt(sp2)}; status line: ${status}`);
     }, page);
 
-    await step(S, 'V7 fallback on a timeout: no answer in 4 s → system voice; the pet stays responsive', async () => {
+    await step(S, 'V7 fallback on a timeout: no answer in 5 s (a little more for a longer line) → system voice; the pet stays responsive', async () => {
       mock.mode = 'hang';
       await page.click('.tts-engine[data-engine="fish"] .tts-ep-save'); // saving resets the pause
       await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点'));
@@ -3030,7 +3030,7 @@ async function voice() {
       const ms = Date.now() - t0;
       assert.equal(sp.provider, 'system');
       assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'timeout' }]);
-      assert.ok(ms >= 3800 && ms < 7000, `fell back after ${ms} ms`);
+      assert.ok(ms >= 4800 && ms < 8000, `fell back after ${ms} ms`);
       const rq = mock.log[mock.log.length - 1];
       await page.waitForTimeout(300);
       return note(`${fmt(sp)}; fell back after ${ms} ms; request aborted=${rq.aborted}; UI probes while waiting: ${probes.join('/')} ms`);
@@ -3122,6 +3122,34 @@ async function voice() {
       const log = fs.existsSync(path.join(data, 'pixel-pet.log')) ? fs.readFileSync(path.join(data, 'pixel-pet.log'), 'utf8') : '';
       assert.equal(log.includes(mock.KEY) || log.includes(mock.MM_KEY), false, 'no key in the log');
       return note(`${fmt(sp)}; mock reference_id=${rq.voice} prosody=${JSON.stringify(rq.prosody)}; pixel-pet.log TTS lines (no keys): ${log.split('\n').filter((l) => l.includes('tts ')).map((l) => l.slice(25)).join(' | ')}`);
+    }, page);
+
+    // The owner's case (2026-10-30): MiniMax answers 1002 past 10 requests a minute, and with 用不了时 = 不出声
+    // every line during the old 5-minute pause was silent. Now the pet keeps under the limit itself.
+    await step(S, 'V14 MiniMax: never more than 10 requests a minute; past that a line falls back at once (no 1002, no pause)', async () => {
+      await openVoice(); // 克洛蒂 (V13) has a MiniMax voice too
+      await page.selectOption('#tts-provider', 'minimax');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('MiniMax'));
+      await page.click('#panel-close');
+      const mm = () => mock.log.filter((r) => r.path === '/v1/t2a_v2');
+      const lines = [];
+      let over = null;
+      for (let i = 0; i < 14 && !over; i++) {
+        const sp = await speakLine(`第${i + 1}句不一样的话`);
+        lines.push(`${i + 1}:${sp.provider}${sp.fellBackFrom.length ? `(${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')})` : ''}`);
+        if (sp.fellBackFrom.some((f) => f.provider === 'minimax' && f.reason === 'rate-limit')) over = sp;
+      }
+      assert.ok(over, `a line fell back on the rate limit: ${lines.join(' ')}`);
+      assert.ok(['fish', 'system'].includes(over.provider), `the next engine in the chain took it (${over.provider})`);
+      const times = mm().map((r) => r.at);
+      const most = Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 60000).length));
+      assert.ok(most <= 10, `at most 10 MiniMax requests in any minute (saw ${most})`);
+      await openVoice();
+      await page.waitForFunction(() => /MiniMax：Key 已设置，每分钟最多 10 次，这一分钟还剩 0/.test(document.getElementById('tts-status').textContent));
+      const status = await page.textContent('#tts-status');
+      assert.equal(/MiniMax[^；]*上次/.test(status), false, 'MiniMax is not paused or failed');
+      await shot('v14-minimax-budget');
+      return note(`lines: ${lines.join(' ')}; MiniMax requests ${times.length}, most in one minute ${most}; status: ${status}`);
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');

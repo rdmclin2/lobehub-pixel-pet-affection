@@ -23,13 +23,32 @@ const InteractionVoice = require('./interaction-voice');
 const ENGINES = ['auto', 'fish', 'minimax', 'system'];
 const NEURAL = ['fish', 'minimax'];
 const FALLBACKS = ['system', 'silent'];
-const TIMEOUT_MS = 4000; // no response headers in this time: give up and fall back (doc §8)
+const TIMEOUT_MS = 5000; // no response headers in this time (plus PER_CHAR_MS a character): give up and fall back (doc §8)
+const PER_CHAR_MS = 50; // a non-streaming engine answers once the whole line is synthesised: longer lines take longer
+const MAX_TIMEOUT_MS = 10000;
 const BODY_TIMEOUT_MS = 15000;
-const BREAKER_MS = 5 * 60 * 1000; // a failing engine is skipped for 5 minutes, so not every line waits for a timeout
+const BREAKER_MS = 5 * 60 * 1000; // an engine that refuses (bad key, no balance, bad request) is skipped for 5 minutes
+const RATE_PAUSE_MS = 20 * 1000; // rate limited all the same (another app on the same key): a short pause, then try again
+const LIVE_WAIT_MS = 8000; // a line she says now waits this long for the minute to have room, rather than going silent
+const TRANSIENT_PAUSE_MS = 20 * 1000; // a timeout, network or server error: try again soon, not after 5 minutes
+const WINDOW_MS = 60 * 1000;
+const PREWARM_RESERVE = 3; // prewarm leaves this many requests of the minute for the lines she says now
 const MAX_TEXT = 300;
 
 const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
+
+// How long an engine is skipped after a failure: a rate limit until its window has room, a passing
+// failure briefly, a refusal (key, balance, request) for 5 minutes.
+const RATE_LIMITED = /^(http-429|api-1002|api-1039)$/;
+const TRANSIENT = /^(timeout|network|empty|http-5\d\d|api-1000|api-1001|api-1024)$/;
+function pauseFor(reason, breakerMs = BREAKER_MS) {
+  if (RATE_LIMITED.test(reason)) return Math.min(RATE_PAUSE_MS, breakerMs);
+  if (TRANSIENT.test(reason)) return Math.min(TRANSIENT_PAUSE_MS, breakerMs);
+  return breakerMs;
+}
+// The header timeout for one line: a little longer for a longer line, never past MAX_TIMEOUT_MS.
+const timeoutFor = (base, text) => Math.min(Math.max(base, MAX_TIMEOUT_MS), base + [...String(text || '')].length * PER_CHAR_MS);
 
 class TtsError extends Error {
   constructor(reason, message) {
@@ -48,6 +67,7 @@ const FISH = {
   kind: 'neural',
   needsKey: true,
   defaultEndpoint: 'https://api.fish.audio',
+  rpm: 0, // no published per-minute limit for the TTS API
   available: neuralAvailable,
   // the engine's settings for one character (her `voice`); null = she has no voice on this engine
   config(voice) {
@@ -91,6 +111,9 @@ const MINIMAX = {
   kind: 'neural',
   needsKey: true,
   defaultEndpoint: 'https://api.minimax.cn',
+  // T2A v2 on the China site allows 10 requests a minute (free accounts; 20 with balance):
+  // https://platform.minimaxi.com/docs/guides/rate-limits — past it every line answers 1002
+  rpm: 10,
   available: neuralAvailable,
   config(voice) {
     const t = ttsOf(voice);
@@ -218,8 +241,9 @@ const redact = (msg, keys) => keys.filter((k) => str(k) && k.length >= 6).reduce
 // ---- engine -----------------------------------------------------------------------------------------
 // One line at a time: a new synthesize() aborts the request still running (the renderer stops the audio).
 class TtsEngine {
-  constructor({ keys, cache = null, fetch = globalThis.fetch, now = Date.now, timeoutMs = TIMEOUT_MS, bodyTimeoutMs = BODY_TIMEOUT_MS, breakerMs = BREAKER_MS, log = () => {} }) {
-    Object.assign(this, { keys, cache, fetch, now, timeoutMs, bodyTimeoutMs, breakerMs, log });
+  constructor({ keys, cache = null, fetch = globalThis.fetch, now = Date.now, timeoutMs = TIMEOUT_MS, bodyTimeoutMs = BODY_TIMEOUT_MS, breakerMs = BREAKER_MS, log = () => {}, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+    Object.assign(this, { keys, cache, fetch, now, timeoutMs, bodyTimeoutMs, breakerMs, log, sleep });
+    this.sent = {}; // provider -> times of its requests in the last minute (its rpm budget)
     this.current = null;
     this.health = {}; // provider -> { until, reason, at }
     this.stats = { requests: 0, hits: 0, prewarmed: 0 };
@@ -232,11 +256,36 @@ class TtsEngine {
     else this.health = {};
   }
 
+  // Requests this engine may still send in the current minute (Infinity: no limit).
+  budget(providerId) {
+    const rpm = PROVIDERS[providerId] && PROVIDERS[providerId].rpm;
+    if (!rpm) return Infinity;
+    const since = this.now() - WINDOW_MS;
+    const list = (this.sent[providerId] || []).filter((t) => t > since);
+    this.sent[providerId] = list;
+    return rpm - list.length;
+  }
+
+  // When the oldest request of the minute leaves the window (ms from now).
+  _slotIn(providerId) {
+    const list = this.sent[providerId] || [];
+    return list.length ? Math.max(0, list[0] + WINDOW_MS - this.now()) : 0;
+  }
+
+  _spend(providerId) {
+    (this.sent[providerId] = this.sent[providerId] || []).push(this.now());
+  }
+
+  _fail(id, reason) {
+    this.health[id] = { until: this.now() + pauseFor(reason, this.breakerMs), reason, at: this.now() };
+  }
+
   status() {
     const t = this.now();
     return Object.fromEntries(NEURAL.map((id) => {
       const h = this.health[id];
-      return [id, { hasKey: !!this.keys.has(id), lastError: h ? h.reason : null, pausedFor: h && h.until > t ? Math.ceil((h.until - t) / 1000) : 0 }];
+      const left = this.budget(id);
+      return [id, { hasKey: !!this.keys.has(id), lastError: h ? h.reason : null, pausedFor: h && h.until > t ? Math.ceil((h.until - t) / 1000) : 0, rpm: PROVIDERS[id].rpm || null, budget: Number.isFinite(left) ? left : null }];
     }));
   }
 
@@ -273,9 +322,19 @@ class TtsEngine {
         this.stats.hits++;
         return done({ ok: true, audio: hit.audio, mime: hit.mime, provider: id, voiceId: cfg.voiceId, model: cfg.model, cached: true });
       }
+      // its requests for this minute are used up: asking anyway only earns a rate-limit error. Wait a few
+      // seconds for room (her own voice a little late beats silence or another voice); longer: fall back (no pause: it refills)
+      if (this.budget(id) <= 0) {
+        const waitMs = this._slotIn(id) + 50;
+        if (waitMs > LIVE_WAIT_MS) { this.stats.overBudget = (this.stats.overBudget || 0) + 1; fellBackFrom.push({ provider: id, reason: 'rate-limit' }); continue; }
+        try { await this._within(this.sleep(waitMs), ctl, waitMs + 1000); } catch { return done({ ok: false, reason: 'interrupted' }); }
+        if (this.current !== ctl) return done({ ok: false, reason: 'interrupted' });
+        this.stats.waited = (this.stats.waited || 0) + 1;
+      }
       try {
         this.stats.requests++;
-        const ask = p.synthesize(cfg, said, { key, endpoint: set.endpoints[id] || p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, this.timeoutMs) });
+        this._spend(id);
+        const ask = p.synthesize(cfg, said, { key, endpoint: set.endpoints[id] || p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, timeoutFor(this.timeoutMs, said)) });
         const { audio, mime } = await this._within(ask, ctl, this.bodyTimeoutMs);
         if (this.cache) this.cache.put(ck, audio, mime);
         delete this.health[id];
@@ -283,7 +342,7 @@ class TtsEngine {
       } catch (e) {
         if (ctl.signal.aborted && ctl.signal.reason === 'interrupted') return done({ ok: false, reason: 'interrupted' });
         const reason = e instanceof TtsError ? e.reason : ctl.signal.aborted ? 'timeout' : 'network';
-        this.health[id] = { until: this.now() + this.breakerMs, reason, at: this.now() };
+        this._fail(id, reason);
         fellBackFrom.push({ provider: id, reason });
         this.log(new Error(`tts ${id}: ${redact(reason === 'network' ? `network (${e.message})` : reason, this.keys.all())} — falling back`));
       }
@@ -322,11 +381,22 @@ class TtsEngine {
       if (seen.has(ck)) continue;
       seen.add(ck);
       if (this.cache.has(ck)) { out.cached++; continue; }
+      // only the minute's spare requests: wait until the engine has more than PREWARM_RESERVE left (or is no longer paused)
+      for (;;) {
+        if (gen !== this.warmGen) return { ...out, skipped: 'superseded' };
+        const h = this.health[pick.id];
+        const pausedMs = h && h.until > this.now() ? h.until - this.now() : 0;
+        const waitMs = pausedMs || (this.budget(pick.id) > PREWARM_RESERVE ? 0 : this._slotIn(pick.id) + 50);
+        if (!waitMs) break;
+        out.waitedMs = (out.waitedMs || 0) + waitMs;
+        await this.sleep(Math.min(waitMs, 5000));
+      }
       const ctl = new AbortController();
       this.warming = ctl;
       try {
         this.stats.requests++;
-        const ask = pick.p.synthesize(pick.cfg, said, { key: pick.key, endpoint: set.endpoints[pick.id] || pick.p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, this.timeoutMs) });
+        this._spend(pick.id);
+        const ask = pick.p.synthesize(pick.cfg, said, { key: pick.key, endpoint: set.endpoints[pick.id] || pick.p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, timeoutFor(this.timeoutMs, said)) });
         const { audio, mime } = await this._within(ask, ctl, this.bodyTimeoutMs);
         if (gen !== this.warmGen) return { ...out, skipped: 'superseded' };
         this.cache.put(ck, audio, mime);
@@ -335,7 +405,7 @@ class TtsEngine {
       } catch (e) {
         if (ctl.signal.aborted && ctl.signal.reason === 'interrupted') return { ...out, skipped: 'stopped' };
         const reason = e instanceof TtsError ? e.reason : ctl.signal.aborted ? 'timeout' : 'network';
-        this.health[pick.id] = { until: this.now() + this.breakerMs, reason, at: this.now() };
+        this._fail(pick.id, reason);
         this.log(new Error(`tts ${pick.id} prewarm: ${redact(reason === 'network' ? `network (${e.message})` : reason, this.keys.all())}`));
         return { ...out, failed: reason };
       } finally {
@@ -370,4 +440,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { ENGINES, NEURAL, FALLBACKS, TIMEOUT_MS, BREAKER_MS, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { ENGINES, NEURAL, FALLBACKS, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };

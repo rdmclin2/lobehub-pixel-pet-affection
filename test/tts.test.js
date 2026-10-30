@@ -264,17 +264,17 @@ test('a character without a voice on the engine falls back', async () => {
   assert.equal(fetch.calls.length, 0);
 });
 
-test('HTTP errors and network failures fall back, then the engine is skipped for 5 minutes', async () => {
+test('a refused request (bad key, no balance) falls back, then the engine is skipped for 5 minutes', async () => {
   let now = 1000;
-  let answer = () => errRes(500);
+  let answer = () => errRes(401);
   const fetch = fakeFetch((...a) => answer(...a));
   const logs = [];
   const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch, now: () => now, log: (err) => logs.push(err.message) });
   const r = await e.synthesize({ text: '一', species: dfy }, FISH);
   assert.equal(r.ok, false);
-  assert.deepEqual(r.fellBackFrom, [{ provider: 'fish', reason: 'http-500' }]);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'fish', reason: 'http-401' }]);
   const r2 = await e.synthesize({ text: '二', species: dfy }, FISH);
-  assert.deepEqual(r2.fellBackFrom, [{ provider: 'fish', reason: 'paused:http-500' }]);
+  assert.deepEqual(r2.fellBackFrom, [{ provider: 'fish', reason: 'paused:http-401' }]);
   assert.equal(fetch.calls.length, 1, 'no request while paused');
   assert.equal(e.status().fish.pausedFor, 300);
   now += tts.BREAKER_MS + 1;
@@ -288,6 +288,23 @@ test('HTTP errors and network failures fall back, then the engine is skipped for
   assert.equal((await e.synthesize({ text: '四', species: dfy }, FISH)).ok, true, 'reset after a new key or endpoint');
 });
 
+test('a passing failure (timeout, network, 5xx) pauses briefly; a rate limit until the minute has room', async () => {
+  assert.equal(tts.pauseFor('http-401'), tts.BREAKER_MS);
+  assert.equal(tts.pauseFor('http-402'), tts.BREAKER_MS);
+  assert.equal(tts.pauseFor('api-2013'), tts.BREAKER_MS, 'a bad request does not fix itself');
+  for (const r of ['timeout', 'network', 'http-500', 'http-503', 'api-1000', 'empty']) assert.equal(tts.pauseFor(r), tts.TRANSIENT_PAUSE_MS, r);
+  for (const r of ['http-429', 'api-1002', 'api-1039']) assert.equal(tts.pauseFor(r), tts.RATE_PAUSE_MS, r);
+  let now = 1000;
+  let answer = () => errRes(500);
+  const fetch = fakeFetch((...a) => answer(...a));
+  const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch, now: () => now });
+  await e.synthesize({ text: '一', species: dfy }, FISH);
+  assert.equal(e.status().fish.pausedFor, tts.TRANSIENT_PAUSE_MS / 1000);
+  now += tts.TRANSIENT_PAUSE_MS + 1;
+  answer = () => audioRes();
+  assert.equal((await e.synthesize({ text: '二', species: dfy }, FISH)).ok, true, 'back after 20 s, not 5 minutes');
+});
+
 test('the backup engine takes over when the chosen one fails', async () => {
   const fetch = fakeFetch((url) => (url.includes('/v1/tts') ? errRes(503) : { ok: true, status: 200, headers: { get: () => '' }, json: async () => ({ base_resp: { status_code: 0 }, data: { audio: 'abcd' } }) }));
   const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY, minimax: 'mm-secret-key-0000' }), fetch });
@@ -297,7 +314,7 @@ test('the backup engine takes over when the chosen one fails', async () => {
   assert.deepEqual(r.fellBackFrom, [{ provider: 'fish', reason: 'http-503' }]);
 });
 
-test('timeout: no answer within 4 s aborts the request and falls back', async () => {
+test('timeout: no answer within 5 s (longer for a longer line, at most 10 s) aborts the request and falls back', async () => {
   const fetch = fakeFetch(hang);
   const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch, timeoutMs: 50 });
   const t0 = Date.now();
@@ -306,8 +323,87 @@ test('timeout: no answer within 4 s aborts the request and falls back', async ()
   assert.equal(r.ok, false);
   assert.deepEqual(r.fellBackFrom, [{ provider: 'fish', reason: 'timeout' }]);
   assert.equal(fetch.calls[0].init.signal.aborted, true);
-  assert.equal(tts.TIMEOUT_MS, 4000);
+  assert.equal(tts.TIMEOUT_MS, 5000);
+  assert.equal(tts.timeoutFor(5000, '你好'), 5100);
+  assert.equal(tts.timeoutFor(5000, '好'.repeat(40)), 7000);
+  assert.equal(tts.timeoutFor(5000, '好'.repeat(300)), 10000);
 });
+
+const MM = { provider: 'minimax', fallback: 'system', endpoints: {} };
+const mmRes = (code = 0) => ({ ok: true, status: 200, headers: { get: () => '' }, json: async () => ({ base_resp: { status_code: code }, data: { audio: 'abcd' } }) });
+
+test('MiniMax: at most 10 requests a minute; past that a line falls back at once, without a request or a pause', async () => {
+  let now = 0;
+  const fetch = fakeFetch(() => mmRes());
+  const e = new tts.TtsEngine({ keys: keysWith({ minimax: 'mm-secret-key-0000' }), fetch, now: () => now });
+  for (let i = 0; i < 10; i++) { now += 1000; assert.equal((await e.synthesize({ text: `第${i}句`, species: dfy }, MM)).ok, true, `line ${i}`); }
+  assert.equal(e.status().minimax.budget, 0);
+  const r = await e.synthesize({ text: '第十一句', species: dfy }, MM);
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'minimax', reason: 'rate-limit' }]);
+  assert.equal(fetch.calls.length, 10, 'no request past the budget');
+  assert.equal(e.status().minimax.lastError, null, 'not paused: the budget refills');
+  assert.equal((await e.synthesize({ text: '第一句', species: dfy }, MM)).ok, false, 'a new line is no exception');
+  now = 1000 + 60 * 1000 + 1; // the first request (at 1 s) leaves the minute window
+  assert.equal((await e.synthesize({ text: '第十二句', species: dfy }, MM)).ok, true);
+  assert.equal(tts.PROVIDERS.fish.rpm, 0, 'Fish publishes no per-minute limit');
+});
+
+test('MiniMax rate limit (1002) pauses it for 20 s, not five minutes', async () => {
+  let now = 0;
+  const fetch = fakeFetch(() => mmRes(1002));
+  const e = new tts.TtsEngine({ keys: keysWith({ minimax: 'mm-secret-key-0000' }), fetch, now: () => now });
+  const r = await e.synthesize({ text: '你好', species: dfy }, MM);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'minimax', reason: 'api-1002' }]);
+  assert.equal(e.status().minimax.pausedFor, 20);
+});
+
+test('a line she says now waits a few seconds for room in the minute instead of going silent', async () => {
+  let now = 0;
+  const sent = [];
+  const fetch = fakeFetch(() => { sent.push(now); return mmRes(); });
+  const sleeps = [];
+  const e = new tts.TtsEngine({ keys: keysWith({ minimax: 'mm-secret-key-0000' }), fetch, now: () => now, sleep: async (ms) => { sleeps.push(ms); now += ms; } });
+  for (let i = 0; i < 10; i++) { now = i * 100; await e.synthesize({ text: `第${i}句`, species: dfy }, MM); }
+  now = 55 * 1000; // the first request leaves the window in 5 s
+  const r = await e.synthesize({ text: '摸摸头', species: dfy }, { ...MM, fallback: 'silent' });
+  assert.equal(r.ok, true, 'said in her voice after waiting');
+  assert.deepEqual(sleeps, [5050]);
+  assert.equal(sent.length, 11);
+  assert.ok(sent[10] >= 60 * 1000, 'not before the minute had room');
+});
+
+test('waiting for room is cut short by a new line', async () => {
+  let now = 0;
+  const fetch = fakeFetch(() => mmRes());
+  let release;
+  const e = new tts.TtsEngine({ keys: keysWith({ minimax: 'mm-secret-key-0000' }), fetch, now: () => now, sleep: () => new Promise((r) => { release = r; }) });
+  for (let i = 0; i < 10; i++) { now = i * 100; await e.synthesize({ text: `第${i}句`, species: dfy }, MM); }
+  now = 55 * 1000;
+  const waiting = e.synthesize({ text: '第一句', species: dfy }, MM);
+  await new Promise((r) => setImmediate(r));
+  e.cancel();
+  const r = await waiting;
+  assert.equal(r.reason, 'interrupted');
+  assert.equal(fetch.calls.length, 10, 'no request after it was cut short');
+  release();
+});
+
+test('prewarm only spends the spare requests of the minute and waits for more, keeping some for live lines', async () => {
+  let now = 0;
+  const sent = [];
+  const fetch = fakeFetch(() => { sent.push(now); return mmRes(); });
+  const sleeps = [];
+  const e = new tts.TtsEngine({ keys: keysWith({ minimax: 'mm-secret-key-0000' }), cache: new TtsCache(tmp()), fetch, now: () => now, sleep: async (ms) => { sleeps.push(ms); now += ms; } });
+  const items = Array.from({ length: 12 }, (_, i) => ({ text: `预合成第${i}句` }));
+  const out = await e.prewarm(items, dfy, MM);
+  assert.equal(out.warmed, 12);
+  assert.ok(sleeps.length > 0, 'it waited for the window instead of asking past the limit');
+  const most = Math.max(...sent.map((t) => sent.filter((u) => u >= t && u < t + 60 * 1000).length));
+  assert.ok(most <= tts.PROVIDERS.minimax.rpm - tts.PREWARM_RESERVE, `at most rpm - reserve requests in any minute (saw ${most})`);
+  assert.ok(e.budget('minimax') >= tts.PREWARM_RESERVE, 'live lines still have requests left');
+});
+
 
 test('one line at a time: a new line interrupts the one still being fetched (no pause, no fallback)', async () => {
   let first = true;
