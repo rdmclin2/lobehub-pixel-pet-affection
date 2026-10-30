@@ -28,7 +28,9 @@ const petScale = (s) => clampScale(s && s.petScale);
 // on screen together knock into each other, and the local HTTP API is off until switched on.
 // 部位触摸 (core/touch-zones.js): a click lands on a body part and she reacts to that part (off = the
 // old single pat), with a hint of the part under the pointer while hovering.
-const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collide: true, touchZones: true, touchHint: true };
+// 互动语音 (core/interaction-voice.js): with 朗读 on she also says her interaction lines (pat, feed, drag…);
+// automatic murmurs are read only when 朗读碎碎念 is switched on as well.
+const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 

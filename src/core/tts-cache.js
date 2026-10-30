@@ -48,6 +48,11 @@ class TtsCache {
     }
   }
 
+  // Whether a line is cached, without touching its place in the LRU order (prewarming asks this a lot).
+  has(key) {
+    return !!(KEY_RE.test(key) && this.index[key]);
+  }
+
   put(key, audio, mime) {
     if (!KEY_RE.test(key) || !audio || !audio.length || audio.length > this.maxBytes) return;
     const file = `${key}.${EXT[mime] || 'bin'}`;

@@ -59,7 +59,7 @@ test('a walk stands still at the start and the end and moves at a steady pace in
 
 test('roaming is on by default and can be switched off; it is a saved preference', () => {
   const s = settingsLib.normalizeSettings(null);
-  assert.deepEqual(s.prefs, { roam: true, clickSound: false, voice: false, memes: true, collide: true, touchZones: true, touchHint: true });
+  assert.deepEqual(s.prefs, { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true });
   assert.equal(settingsLib.normalizeSettings({ prefs: { roam: false, voice: 'yes' } }).prefs.roam, false);
   assert.equal(settingsLib.normalizeSettings({ prefs: { voice: 'yes' } }).prefs.voice, false, 'only booleans count');
 });

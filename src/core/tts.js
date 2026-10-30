@@ -17,6 +17,7 @@
 
 const crypto = require('node:crypto');
 const Voice = require('./voice');
+const InteractionVoice = require('./interaction-voice');
 
 const ENGINES = ['fish', 'minimax', 'system'];
 const NEURAL = ['fish', 'minimax'];
@@ -138,6 +139,7 @@ function validateVoice(v) {
   if (v.lang !== undefined && !str(v.lang)) errors.push('voice.lang must be a language tag such as zh-CN');
   for (const k of ['pitch', 'rate']) if (v[k] !== undefined && !Number.isFinite(v[k])) errors.push(`voice.${k} must be a number`);
   if (v.prefer !== undefined && (!Array.isArray(v.prefer) || !v.prefer.every(str))) errors.push('voice.prefer must be a list of system voice names');
+  errors.push(...InteractionVoice.validateLines(v.lines)); // 拖拽 / 甩出 / 接住 lines (core/interaction-voice.js)
   if (v.tts === undefined) return errors;
   if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax })'];
   for (const [id, c] of Object.entries(v.tts)) {
@@ -208,7 +210,8 @@ class TtsEngine {
     Object.assign(this, { keys, cache, fetch, now, timeoutMs, bodyTimeoutMs, breakerMs, log });
     this.current = null;
     this.health = {}; // provider -> { until, reason, at }
-    this.stats = { requests: 0, hits: 0 };
+    this.stats = { requests: 0, hits: 0, prewarmed: 0 };
+    this.warmGen = 0; // a newer prewarm() (or stopAll) ends the one running
   }
 
   // A key or endpoint was changed: give every engine another chance.
@@ -274,6 +277,68 @@ class TtsEngine {
       }
     }
     return done({ ok: false, reason: 'fallback', next: null }); // silent
+  }
+
+  // 互动语音: synthesise her common short lines ahead into the cache, so a pat or a feed plays at once.
+  // items: [{ text, mood }] (text already speakable). One request at a time, with its own abort
+  // controller so a live line is never interrupted by it; only the engine the next line would use, and
+  // only lines not cached yet. The first failure ends the prewarm (and pauses that engine like a live
+  // line would). Returns { provider, warmed, cached, skipped, failed }.
+  async prewarm(items, species, tts) {
+    const gen = ++this.warmGen;
+    const set = normalizeTts(tts);
+    const out = { provider: null, warmed: 0, cached: 0, skipped: null, failed: null };
+    if (!this.cache) return { ...out, skipped: 'no-cache' };
+    let pick = null;
+    for (const id of providerChain(set, (p) => this.keys.has(p))) {
+      const p = PROVIDERS[id];
+      if (p.kind === 'system') break;
+      const cfg = p.config(species && species.voice);
+      const key = this.keys.get(id);
+      const h = this.health[id];
+      if (cfg && key && !(h && h.until > this.now())) { pick = { id, p, cfg, key }; break; }
+    }
+    if (!pick) return { ...out, skipped: 'no-engine' };
+    out.provider = pick.id;
+    const seen = new Set();
+    for (const it of Array.isArray(items) ? items : []) {
+      if (gen !== this.warmGen) return { ...out, skipped: 'superseded' };
+      const line = String((it && it.text) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, MAX_TEXT);
+      if (!line) continue;
+      const said = pick.p.text(pick.cfg, line, it.mood || '');
+      const ck = cacheKey(pick.id, pick.cfg, said);
+      if (seen.has(ck)) continue;
+      seen.add(ck);
+      if (this.cache.has(ck)) { out.cached++; continue; }
+      const ctl = new AbortController();
+      this.warming = ctl;
+      try {
+        this.stats.requests++;
+        const ask = pick.p.synthesize(pick.cfg, said, { key: pick.key, endpoint: set.endpoints[pick.id] || pick.p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, this.timeoutMs) });
+        const { audio, mime } = await this._within(ask, ctl, this.bodyTimeoutMs);
+        if (gen !== this.warmGen) return { ...out, skipped: 'superseded' };
+        this.cache.put(ck, audio, mime);
+        this.stats.prewarmed++;
+        out.warmed++;
+      } catch (e) {
+        if (ctl.signal.aborted && ctl.signal.reason === 'interrupted') return { ...out, skipped: 'stopped' };
+        const reason = e instanceof TtsError ? e.reason : ctl.signal.aborted ? 'timeout' : 'network';
+        this.health[pick.id] = { until: this.now() + this.breakerMs, reason, at: this.now() };
+        this.log(new Error(`tts ${pick.id} prewarm: ${redact(reason === 'network' ? `network (${e.message})` : reason, this.keys.all())}`));
+        return { ...out, failed: reason };
+      } finally {
+        if (this.warming === ctl) this.warming = null;
+      }
+    }
+    return out;
+  }
+
+  // 朗读 switched off: stop the line being fetched and any prewarm, at once.
+  stopAll() {
+    this.cancel();
+    this.warmGen++;
+    if (this.warming) this.warming.abort('interrupted');
+    this.warming = null;
   }
 
   // Resolve `pr` unless the line is interrupted or `ms` passes first (then the request is aborted).

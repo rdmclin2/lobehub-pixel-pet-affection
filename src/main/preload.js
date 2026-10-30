@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('pet', {
   // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines
   ttsSynthesize: (text, mood) => ipcRenderer.invoke('tts-synthesize', { text, mood }),
   ttsCancel: () => ipcRenderer.send('tts-cancel'),
+  ttsPrewarm: () => ipcRenderer.invoke('tts-prewarm'),
   setTts: (patch) => ipcRenderer.invoke('set-tts', patch),
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),

@@ -327,17 +327,31 @@ function wire() {
     const sp = SPECIES[p.speciesId];
     return { speciesId: p.speciesId, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), look: service.lookFor(sp.id, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
-  ipcMain.handle('set-prefs', (_e, patch) => service.setPrefs(patch));
+  ipcMain.handle('set-prefs', (_e, patch) => {
+    const r = service.setPrefs(patch);
+    if (!service.settings.prefs.voice) tts.engine.stopAll(); // 朗读 off: nothing more goes to an engine
+    return r;
+  });
   // 语音: synthesise one line with the chosen engine for the current character; the renderer plays it
   // (or falls back to the system voice). A new line aborts the one still being fetched.
   ipcMain.handle('tts-synthesize', async (_e, { text, mood }) => {
     const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
     if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
+    if (!service.settings.prefs.voice) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
     const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
     if (r.fellBackFrom.length) service.emit('settings', service.settingsView()); // the 语音 section shows the last error
     return r;
   });
   ipcMain.on('tts-cancel', () => tts.engine.cancel());
+  // 互动语音: synthesise her common short lines ahead (pet-service.js voiceLines) so they play at once.
+  // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
+  ipcMain.handle('tts-prewarm', async () => {
+    const p = service.settings.prefs;
+    if (!service.pet || !p.voice || p.voiceInteractions === false) return { skipped: 'off' };
+    const lines = service.voiceLines();
+    const r = await tts.engine.prewarm(lines, SPECIES[service.pet.speciesId], service.settings.tts);
+    return { ...r, lines: lines.length };
+  });
   ipcMain.handle('set-tts', (_e, patch) => {
     const p = patch && typeof patch === 'object' ? patch : {};
     let keyOk = true;
