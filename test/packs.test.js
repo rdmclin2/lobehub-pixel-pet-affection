@@ -86,6 +86,29 @@ test('every character keeps her v0.7.0 pixels as a 旧版像素 pack she can swi
   }
 });
 
+test('every outfit a character offers has its own sheet in her default pack (not only through a fallback)', () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
+    const own = packs.get(SPECIES[id].packs[0]);
+    for (const outfit of SPECIES[id].outfits) assert.ok(own.outfits[outfit] && fs.existsSync(path.join(BUILTIN, own.id, own.outfits[outfit])), `${own.id} has ${outfit}`);
+  }
+});
+
+test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout as daily; with 旧版像素 chosen it comes from the default pack", () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const px = packs.get('claude-pixel');
+  assert.equal(px.outfits.swimsuit, 'sheets/swimsuit.webp');
+  const daily = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'daily' });
+  const swim = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'swimsuit' });
+  assert.equal(swim.url, 'pack://claude-pixel/sheets/swimsuit.webp');
+  assert.deepEqual({ frame: swim.frame, actions: swim.actions }, { frame: daily.frame, actions: daily.actions });
+  assert.equal(packs.get('claude-classic').outfits.swimsuit, undefined, 'no classic swimsuit art');
+  const classic = P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'swimsuit' });
+  assert.equal(classic.packId, 'claude-pixel');
+  assert.equal(classic.url, swim.url);
+  assert.equal(P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'daily' }).packId, 'claude-classic', 'daily stays classic');
+});
+
 test('a pack with art for some outfits falls back to the character default pack for the rest', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'packs-'));
   writePack(root, sprites({ outfits: { scarf: 'a.png' } }), ['a.png']);

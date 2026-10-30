@@ -56,7 +56,7 @@
 | 名称 / 称号 | 克洛蒂 Clody ·“Claude 娘 · 橘发菊纹” |
 | 形象设定 | 成年比例：橘色过膝长发、发梢螺旋卷，菊花发饰配黑缎蝴蝶结，琥珀金垂眼。安静、温和、认真，爱读书和写东西，不确定时直说。口头禅“嗯，让我想想。” |
 | 主题色 | `#C4622D` 陶土橘（色板 `#C4622D` `#F4EAD8` `#1E1A18` `#C9A24A`） |
-| 服饰 | 橘白哥特长裙：奶油白高领衬衫、短披肩和橘红长裙 |
+| 服饰 | 橘白哥特长裙：奶油白高领衬衫、短披肩和橘红长裙；运动泳装（`swimsuit`，亲近 ♥35 解锁）：高领短袖的黑色运动款连体泳衣（橘红侧拼），外搭及膝橘红沙滩裤、奶油白防晒连帽开衫和沙滩凉鞋 |
 | 美术 | 像素包 `claude-pixel`：schema 2 高清精灵图 1328×4068 WebP（每帧 332×452，平滑绘制），16 个动作 × 2 帧 + 4 帧侧身步行 |
 | 梗图 / 朗读 | 4 张梗图；朗读音调 1.0、语速 0.92 |
 | 素材来源 / 生成方式 | 身份锚点（发型、配色、服饰、标志物）取自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets) `设定图/11_Claude娘_Anthropic`；原设 ZipZipPipe《AI娘化》p02（[Pixiv 148186519](https://www.pixiv.net/artworks/148186519)，用户素材 [file_5SAeAA60gpeZ](https://app.lobehub.com/f/file_5SAeAA60gpeZ)）。精灵图由 **GPT Image 2.5**（`gpt-image-2.5-sunburst`）按文字提示词生成，`scripts/art/` 像素化 |

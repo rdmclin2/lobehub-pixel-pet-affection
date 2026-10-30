@@ -42,7 +42,7 @@ my-grok/
 }
 ```
 
-- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`pajamas`、`cat_ears`、`yukata`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`。角色只会穿她的 character.json 里 `outfits` 列出的服饰；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
+- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`。角色只会穿她的 character.json 里 `outfits` 列出的服饰；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
 - **动作（schema 2）**：动作名就是应用的状态名（大肥鱼原版动画的 15 个状态 + `lifted`）。只有 `idle` 必填；缺的状态按回落链降级并叠加一个表情符号（例如 `eat_fruit` → `eat_rice` → `happy` → `idle`）。
 
 | 动作 | 什么时候播放 | 缺了用 |

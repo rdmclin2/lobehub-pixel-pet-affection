@@ -4230,6 +4230,242 @@ async function history() {
   }
 }
 
+// ---------------------------------------------------------------- outfit
+// A character's second outfit on the real app: unlocked by a stage-up, listed and put on in the wardrobe,
+// drawn on the desktop in idle / walk / lifted at the same spot and size as her daily sheet, kept over a
+// restart, and shown from her default pack when her 旧版像素 look (which has no art for it) is picked.
+// usage: node e2e/run.js outfit [character id, default claude] [outfit id, default swimsuit]
+// Screenshots in out/e2e/outfit-<character>-<outfit>/.
+async function outfitScenario() {
+  const ch = ROSTER.find((r) => r.id === (process.argv[3] || 'claude'));
+  const OID = process.argv[4] || 'swimsuit';
+  const O = require('../src/core/outfits').OUTFITS.find((o) => o.id === OID);
+  const S = `outfit-${ch.id}-${OID}`;
+  const SHOTS = path.join(OUT, S);
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-outfit-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-outfitfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  const errors = [];
+  const watch = (pg) => {
+    pg.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+    pg.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+    pg.on('requestfailed', (r) => errors.push(`requestfailed: ${r.url()} ${r.failure() && r.failure().errorText}`));
+  };
+  watch(page);
+  const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${S}/${name}.png`; };
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const leave = () => page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+  const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')); return p.characters[p.speciesId]; };
+  const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
+  const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+  // what the desktop pet draws right now: the sheet and frame up, the canvas box on screen, and the box of
+  // her opaque pixels inside the frame (read back from the canvas, so a missing or broken sheet shows as 0 px)
+  const drawn = () => page.evaluate(() => {
+    const c = document.querySelector('#pet-look canvas');
+    const r = c.getBoundingClientRect();
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0, x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] >= 128) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return { key: document.getElementById('pet-look').dataset.key, frame: c.dataset.frame.replace(/^pack:\/\//, ''), canvas: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)], opaque: n, box: [x0, y0, x1, y1], action: document.getElementById('pet-body').dataset.action };
+  });
+  const fmt = (d) => `${d.key} frame ${d.frame} action ${d.action} canvas ${d.canvas.join(',')} opaque ${d.opaque} px box ${d.box.join(',')}`;
+  // idle, walk (side view, frames cycle) and lifted (a real drag), each captured and measured
+  const poses = async (tag) => {
+    const out = {};
+    await idle();
+    await leave();
+    await page.evaluate(() => window.pet.debugSet({ hunger: 30, mood: 55, energy: 90, sleeping: false }));
+    await page.evaluate(() => window.petFx.cue('idle'));
+    await page.waitForFunction(() => window.petFx.state().state === 'idle' && document.getElementById('pet-body').dataset.action === 'idle', null, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    out.idle = await drawn();
+    out.idle.shot = await shot(`${tag}-idle`);
+    await toFloor(200);
+    await page.evaluate(() => window.petFx.face('right'));
+    const walking = page.evaluate(() => window.petFx.walk());
+    await page.waitForFunction(() => window.petFx.state().state === 'walk' && document.getElementById('pet-body').dataset.action === 'walk', null, { timeout: 3000 });
+    await page.waitForTimeout(150); // the next frame draws it
+    out.walk = await drawn();
+    out.walk.shot = await shot(`${tag}-walk`);
+    // every walk frame that comes up while she walks has her in it
+    const frames = new Set([out.walk.frame.split('#')[1]]);
+    for (let i = 0; i < 12 && (await page.evaluate(() => window.petFx.state().state)) === 'walk'; i++) {
+      const d = await drawn();
+      if (d.action !== 'walk') break;
+      frames.add(d.frame.split('#')[1]);
+      assert.ok(d.opaque > 6000, `walk frame ${d.frame} drawn (${d.opaque} px)`);
+      await page.waitForTimeout(80);
+    }
+    out.walk.frames = [...frames].sort();
+    await walking;
+    await page.waitForFunction(() => document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const box = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2 - 8, { steps: 4 });
+    await page.waitForFunction(() => window.petFx.state().state === 'lifted' && document.getElementById('pet-body').dataset.action === 'lifted', null, { timeout: 3000 });
+    await page.waitForTimeout(300);
+    out.lifted = await drawn();
+    out.lifted.shot = await shot(`${tag}-lifted`);
+    await page.mouse.up();
+    await idle();
+    for (const k of ['idle', 'walk', 'lifted']) assert.ok(out[k].opaque > 6000, `${tag} ${k} drawn`);
+    assert.equal(out.walk.action, 'walk');
+    assert.ok(out.walk.frames.length >= 3 && out.walk.frames.every((f) => f.startsWith('8:')), `the side-view walk row cycles: ${out.walk.frames}`);
+    return out;
+  };
+  const report = [];
+  let daily;
+  try {
+    await step(S, `choose ${ch.zh}, wake her: she wears daily`, async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator(`.char-card[data-species="${ch.id}"]`).click();
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      assert.equal(await page.evaluate(() => document.getElementById('pet-look').dataset.key), `${ch.id}-pixel/daily`);
+      return `pet-look ${ch.id}-pixel/daily`;
+    }, page);
+
+    await step(S, 'daily: idle / walk / lifted drawn', async () => {
+      daily = await poses('1-daily');
+      for (const k of ['idle', 'walk', 'lifted']) report.push(`daily ${k}: ${fmt(daily[k])}`);
+      assert.match(daily.idle.frame, /sheets\/daily\.webp#0:/);
+      return `walk frames ${daily.walk.frames.join(' ')}; ${daily.idle.shot}, ${daily.walk.shot}, ${daily.lifted.shot}`;
+    }, page);
+
+    await step(S, `before ${O.stage}: the wardrobe lists ${O.label} locked with its condition`, async () => {
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector(`#panel:not(.hidden) .card[data-outfit="${OID}"]`);
+      const st = await page.textContent(`.card[data-outfit="${OID}"] .st`);
+      assert.match(st, /^🔒 /);
+      assert.equal(await page.locator(`.card[data-outfit="${OID}"].locked`).count(), 1);
+      const cards = await page.$$eval('.card', (cs) => cs.map((c) => `${c.dataset.outfit}「${c.querySelector('.nm').textContent}」${c.querySelector('.st').textContent}`));
+      report.push(`wardrobe before unlock: ${cards.join(' | ')}`);
+      const f = await shot('2-wardrobe-locked');
+      await page.click('#panel-close');
+      return `${cards.join(' | ')} · ${f}`;
+    }, page);
+
+    await step(S, `a real pat crossing into ${O.stage} unlocks ${O.label}: the notice names it`, async () => {
+      const { getStage } = require('../src/core/affection');
+      const min = getStage(O.stage).min;
+      await page.evaluate((a) => window.pet.debugSet({ affection: a, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }), min - 1);
+      await hover(page);
+      await clickHead(page);
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 8000 });
+      await idle();
+      await page.waitForTimeout(800);
+      await hover(page);
+      const toast = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ').trim();
+      assert.match(toast, new RegExp(`解锁服饰：.*「${O.label}」`));
+      report.push(`stage-up notice: ${toast}`);
+      const f = await shot('3-unlock-notice');
+      await page.click('#toast-close');
+      return `${toast} · ${f}`;
+    }, page);
+
+    await step(S, `the wardrobe shows ${O.label} unlocked (新) with her art; clicking it puts it on`, async () => {
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector(`#panel:not(.hidden) .card[data-outfit="${OID}"]`);
+      await page.waitForTimeout(500);
+      assert.equal(await page.textContent(`.card[data-outfit="${OID}"] .st`), '点击穿上');
+      assert.equal(await page.textContent(`.card[data-outfit="${OID}"] .nm`), O.label);
+      assert.equal(await page.locator(`.card[data-outfit="${OID}"] .tag.new`).count(), 1);
+      assert.equal(await page.locator(`.card[data-outfit="${OID}"] canvas.sprite`).count(), 1);
+      const before = await shot('4-wardrobe-unlocked');
+      await page.click(`.card[data-outfit="${OID}"]`);
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      const msg = await page.textContent('#panel-msg');
+      assert.equal(msg, `换好了：「${O.label}」`);
+      await page.waitForFunction((id) => document.querySelector(`.card[data-outfit="${id}"] .st`).textContent === '✓ 穿着中', OID, { timeout: 5000 });
+      assert.equal(await page.getAttribute('#outfit-preview', 'data-outfit'), OID);
+      await page.waitForTimeout(500);
+      const after = await shot('5-wardrobe-equipped');
+      assert.equal(petJson().equippedOutfit, OID);
+      report.push(`equip: ${msg}; pet.json equippedOutfit=${petJson().equippedOutfit} lastSafeOutfit=${petJson().lastSafeOutfit}`);
+      await page.click('#panel-close');
+      return `${msg} · pet.json equippedOutfit=${petJson().equippedOutfit} · ${before}, ${after}`;
+    }, page);
+
+    let worn;
+    await step(S, `${O.label}: idle / walk / lifted drawn from sheets/${OID}.webp, at daily's spot and size`, async () => {
+      worn = await poses(`6-${OID}`);
+      for (const k of ['idle', 'walk', 'lifted']) report.push(`${OID} ${k}: ${fmt(worn[k])}`);
+      assert.equal(worn.idle.key, `${ch.id}-pixel/${OID}`);
+      for (const k of ['idle', 'walk', 'lifted']) {
+        assert.match(worn[k].frame, new RegExp(`sheets/${OID}\\.webp#`));
+        assert.ok(Math.abs(worn[k].box[3] - daily[k].box[3]) <= 6, `${k}: feet at the same height (${worn[k].box[3]} vs ${daily[k].box[3]})`);
+        const cx = (b) => (b[0] + b[2]) / 2;
+        assert.ok(Math.abs(cx(worn[k].box) - cx(daily[k].box)) <= 48, `${k}: centred alike`);
+      }
+      assert.deepEqual(worn.idle.canvas, daily.idle.canvas, 'idle: the canvas does not move when she changes');
+      const h = (b) => b[3] - b[1];
+      return `idle height ${h(daily.idle.box)} → ${h(worn.idle.box)} px, feet ${daily.idle.box[3]} → ${worn.idle.box[3]}; walk frames ${worn.walk.frames.join(' ')}; ${worn.idle.shot}, ${worn.walk.shot}, ${worn.lifted.shot}`;
+    }, page);
+
+    await step(S, `after a restart she still wears ${O.label}`, async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      watch(page);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${ch.id}-pixel/${OID}`, { timeout: 10000 });
+      await page.waitForTimeout(500);
+      const d = await drawn();
+      assert.ok(d.opaque > 6000);
+      report.push(`after restart: ${fmt(d)}`);
+      return `${fmt(d)} · ${await shot('7-after-restart')}`;
+    }, page);
+
+    await step(S, `with 旧版像素 (${ch.id}-classic) picked, ${O.label} comes from ${ch.id}-pixel; daily goes back to the classic art`, async () => {
+      await openCurrentPage(page);
+      await page.waitForSelector(`.pack-opt[data-pack="${ch.id}-classic"]`);
+      await page.click(`.pack-opt[data-pack="${ch.id}-classic"] .pick`);
+      await page.waitForSelector(`.pack-opt.on[data-pack="${ch.id}-classic"]`);
+      await page.click('#panel-close');
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 });
+      await idle();
+      await leave();
+      await page.waitForTimeout(600);
+      const swim = await drawn();
+      assert.equal(swim.key, `${ch.id}-pixel/${OID}`, 'falls back to the default pack');
+      assert.ok(swim.opaque > 6000);
+      const f1 = await shot(`8-classic-picked-${OID}-fallback`);
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="daily"]');
+      await page.click('.card[data-outfit="daily"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 });
+      await page.waitForFunction((k) => document.getElementById('pet-look').dataset.key === k, `${ch.id}-classic/daily`, { timeout: 5000 });
+      await leave();
+      await page.waitForTimeout(600);
+      const old = await drawn();
+      assert.ok(old.opaque > 500);
+      const f2 = await shot('9-classic-daily');
+      report.push(`classic picked, ${OID}: ${fmt(swim)}`, `classic picked, daily: ${fmt(old)}`);
+      return `${swim.key} (${swim.opaque} px) · ${old.key} (${old.opaque} px) · ${f1}, ${f2}`;
+    }, page);
+
+    await step(S, 'no console errors, page errors or failed requests', async () => {
+      const packErr = /pack:|\.webp|sheet|Failed to load/i;
+      report.push(`errors: ${errors.length ? errors.join(' | ') : '(none)'}`);
+      assert.deepEqual(errors.filter((e) => packErr.test(e)), [], 'no art failed to load');
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'report.txt'), report.join('\n') + '\n');
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -4252,6 +4488,7 @@ async function history() {
   if (which === 'chatvoice' || which === 'all') await chatvoice();
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
+  if (which === 'outfit' || which === 'all') await outfitScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

@@ -37,6 +37,33 @@ python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-prev
 
 2026-10-30 起的高清版（332×452，`--smooth` / `--hd`，同一批生成图）按上面的步骤生成；之前的 166×226 版本用的是 `4 2 180 --max 162x222`、64 色调色板：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
 
+## 其他服饰（以运动泳装 `swimsuit` 为例）
+
+一套服饰对应角色包里的一张图集（`sheets/<outfit>.webp`），排布和 daily 完全一样（4×9，每帧 332×452，第 9 行是 4 帧朝右的侧身 walk）。服饰本身（解锁阶段、分级、中文名）定义在 `src/core/outfits.js`；角色要在 `src/characters/<id>.json` 的 `outfits` 里列出它，衣柜才会显示。提示词由 `model_chan_prompts.py` 的 `OUTFIT_LOOKS[<outfit>][<id>]` 给出：角色身份取 `CHARS[<id>]` 中 “ She wears ” 之前的部分，后面接这套衣服的描述；`OUTFIT_SAFE` 是附加的内容约束，`OUTFIT_WALK` 把走路提示词里的 “skirt” 换成这套衣服里会摆动的东西。不要画帽子：图会按身高缩放，加了帽子她会比 daily 小一圈。不加 `--outfit` 时，daily 的提示词和流程保持不变。
+
+克洛蒂的做法如下。其余四位先在 `OUTFIT_LOOKS["swimsuit"]` 里加上自己的描述，然后把 `claude` 换成自己的 id（杰米照旧用绿底，加 `--key green`；吉皮缇加 `--octree`）：
+
+```bash
+W=/tmp/swim; mkdir -p $W/raw $W/sliced $W/fit
+python3 scripts/art/model_chan_prompts.py --halves --outfit swimsuit --char claude > $W/jobs.json   # claude_swimsuit_base_a/_b、_extra_a/_b
+python3 scripts/art/model_chan_prompts.py --walk --outfit swimsuit --char claude > $W/walk_jobs.json # claude_swimsuit_walk
+lh generate image -m gpt-image-2.5-sunburst -p lobehub --json "<提示词>"    # 异步：记下 generations[0].id / asyncTaskId
+lh generate download <generationId> <asyncTaskId> -o $W/raw/<name>.png --timeout 900   # 偶尔会一直 pending，重新提交一次即可
+for n in base_a base_b extra_a extra_b; do
+  python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_$n.png $W/sliced/claude_swimsuit_$n.png 4 2 360 --max 324x444 --smooth
+  python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_$n.png $W/fit/claude_swimsuit_$n.png 332 452 --rows 2
+done
+python3 scripts/art/build_model_chan_pack.py --hd --outfit swimsuit $W/fit/claude_swimsuit_base_a.png $W/fit/claude_swimsuit_base_b.png $W/fit/claude_swimsuit_extra_a.png $W/fit/claude_swimsuit_extra_b.png claude src/renderer/packs/claude-pixel   # 写 sheets/swimsuit.webp，并把它加进 pack.json 的 outfits
+python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_walk.png $W/sliced/claude_swimsuit_walk.png 4 2 360 --max 324x444 --smooth --shared-box
+python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_walk.png art/model-chan/walk/claude_swimsuit_walk.png 332 452 --rows 2
+python3 scripts/art/add_walk_frames.py --from art/model-chan/walk/claude_swimsuit_walk.png --outfit swimsuit src/renderer/packs/claude-pixel   # 只写泳装图集的第 9 行
+# 在 src/characters/claude.json 的 outfits 里加上 "swimsuit"
+python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸、逐帧内容、品红残留、格子边缘，以及与 daily 逐帧对齐（脚底 ≤6px、身高差 ≤12%、中心 ≤48px）；每个角色声明的服饰在默认包里都有图
+xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
+```
+
+`build_model_chan_pack.py` 重建 daily 时会保留 pack.json 里其他服饰和 walk 动作；`add_walk_frames.py --from` 不写 `--outfit` 时只改 daily 的图集，所以每套服饰各自保留自己的走路帧。旧版像素包（`*-classic`）不需要新图：缺的服饰会回落到默认包。
+
 ## 来源与授权
 
 - 克洛蒂、格萝可的身份锚点（发型、配色、服饰、标志物、主题色）取自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets) 的 `设定图/11_Claude娘_Anthropic`、`设定图/09_Grok娘_xAI`、`设定图/10_Gemini娘`、`设定图/02_GPT娘_白龙娘`（CC BY-NC-SA 4.0）；原始形象设计来自 ZipZipPipe《AI娘化》（[Pixiv 148186519](https://www.pixiv.net/artworks/148186519)，作者声明：可取用，需署名，不可商用）。像素图由 gpt-image-2.5 按文字提示词重新生成，没有使用 ai-chan-sheets `参考原图/` 下的未授权原图。

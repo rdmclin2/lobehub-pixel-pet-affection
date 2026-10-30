@@ -36,7 +36,7 @@
     }
   },
   "adult": false,
-  "outfits": ["daily"],
+  "outfits": ["daily", "swimsuit"],
   "signature": { "label": "橘白哥特长裙", "desc": "克洛蒂的原设服装：奶油白高领衬衫、短披肩和橘红长裙。" },
   "art": { "kind": "pack", "packs": ["claude-pixel", "claude-classic"], "fallbackPack": "claude-pixel" },
   "fx": { "noMirror": [] },
