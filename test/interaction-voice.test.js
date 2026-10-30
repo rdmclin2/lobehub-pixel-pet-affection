@@ -274,7 +274,9 @@ test('every interaction PetService says is an interaction or milestone line, rea
   svc.act('play');
   clock.t += 20000;
   svc.touch('head');
-  svc.switchCharacter('claude');
+  // a new character says hello (met) once her agent exists; going back to one met before is 切换角色 (switch)
+  await svc.switchCharacter('claude');
+  await svc.switchCharacter('dafeiyu');
   svc.act('sleep');
   svc.debugSet({ affection: 400 });
   await new Promise((r) => setTimeout(r, 300));

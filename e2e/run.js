@@ -3272,18 +3272,30 @@ async function ivoice() {
       return r;
     }, page);
 
-    await step(S, 'I11 切换角色: ⋯ → 切换角色 → 克洛蒂 — her greeting is read in her own Fish voice', async () => {
-      const r = await interact('切换角色 switch', /^switch$/, async () => {
+    // Every character has her own agent (#51): meeting 克洛蒂 the first time is her hello (met); going back to
+    // one met before is 切换角色 (switch). Both are read in her own Fish voice.
+    await step(S, 'I11 切换角色: ⋯ → 切换角色 → 克洛蒂 — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
+      const toClaude = async () => {
         await clickAct(page, 'menu');
         await page.click('[data-menu="characters"]');
-        await page.click('.char-opt[data-species="claude"] .pick');
-      });
-      const sp = await last();
+        await pickCharacter(page, 'claude');
+      };
+      const r1 = await interact('初次见面 克洛蒂 met', /^met$/, toClaude);
+      let sp = await last();
+      assert.equal(sp.species, 'claude');
+      assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
+      await shot('i11-met');
+      await page.click('#panel-close');
+      await idle();
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
+      await page.waitForTimeout(800);
+      const r2 = await interact('切换角色 switch', /^switch$/, toClaude);
+      sp = await last();
       assert.equal(sp.species, 'claude');
       assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
       await shot('i11-switch');
       await page.click('#panel-close');
-      return r;
+      return `${r1} || ${r2}`;
     }, page);
 
     await step(S, 'I12 rapid clicks: 8 clicks in 0.8 s — the bubble follows every one, the voice says one line, nothing piles up', async () => {
