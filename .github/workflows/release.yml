@@ -183,12 +183,16 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
           ls -la dist
-          tar -tzf dist/PixelPetAffection-*-linux-x64.tar.gz | grep -q '/pixel-pet-affection$'
+          # List to a file first: `tar | grep -q` fails under pipefail when grep stops reading early.
+          tar -tzf dist/PixelPetAffection-*-linux-x64.tar.gz > tar-list.txt
+          grep -q '/pixel-pet-affection$' tar-list.txt
           # It must still be running after 15 s (a missing module or a bad package crashes it at once).
-          HOME=$(mktemp -d) xvfb-run -a dist/linux-unpacked/pixel-pet-affection --no-sandbox > app.log 2>&1 &
+          # Own process group (setsid), so stopping it also stops the app under xvfb-run.
+          HOME=$(mktemp -d) setsid xvfb-run -a dist/linux-unpacked/pixel-pet-affection --no-sandbox > app.log 2>&1 &
+          pid=$!
           sleep 15
-          if ! pgrep -f linux-unpacked/pixel-pet-affection >/dev/null; then cat app.log; echo "::error::The packaged app exited"; exit 1; fi
-          pkill -f linux-unpacked/pixel-pet-affection || true
+          if ! kill -0 "$pid" 2>/dev/null; then cat app.log; echo "::error::The packaged app exited"; exit 1; fi
+          kill -- -"$pid" || true
           tail -20 app.log
       - uses: actions/upload-artifact@v4
         with:
