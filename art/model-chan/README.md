@@ -14,7 +14,7 @@
 
 ## 像素包格式
 
-schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（1328×4068），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧步行循环（左脚抬、落、右脚抬、落），由 `add_walk_frames.py` 用第一张待机帧做出来：找到裙摆下两腿之间的透明缝，把抬起的那条腿往裙子里压短，让脚离地，落地的两帧整个人略微抬高。旧版像素包（`*-classic`，83×113）也加了同样的一行。
+schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（1328×4068），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧**侧身**步行循环（朝右走：左脚迈出、交叉、右脚迈出、交叉，5fps）。她在屏幕上是左右走的，所以走路画成侧面，朝左走时应用把它镜像；源图在 [`walk/`](walk/)（`model_chan_prompts.py --walk` 生成、抠好放进 332×452 格子的 4×2 宫格，两行是同一个循环画了两遍），`add_walk_frames.py --from` 取其中一行放进图集：每帧脚踩格子底边，头和上身居中，走起来身子平稳、只有腿、头发和裙子在动。5fps 时一步约 0.4 秒，在 100% 大小下约 44 px，和窗口的移动速度（`fx.js` `WALK.speed` 110 px/s）对上，脚不打滑。旧版像素包（`*-classic`，83×113）是另一套画（大肥鱼还是 Q 版），没有侧面图，仍用 `add_walk_frames.py` 从待机帧做的原地踏步。
 
 ## 重新生成
 
@@ -26,7 +26,11 @@ lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条�
 python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 360 --max 324x444 --smooth   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
 python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png 332 452 --rows 2  # 放进 332×452 的格子，去品红边（绿底生成的加 --key green）
 python3 scripts/art/build_model_chan_pack.py --hd fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
-python3 scripts/art/add_walk_frames.py src/renderer/packs/<id>-pixel   # 用待机帧做出走路的 4 帧，加在第 9 行（重建图集后要再跑一次）
+python3 scripts/art/model_chan_prompts.py --walk > walk_jobs.json  # 每个角色 1 条：<id>_walk，侧身朝右的 4 帧步行循环 × 2 行（杰米绿底）
+python3 scripts/art/slice_sheet.py raw/<id>_walk.png sliced/<id>_walk.png 4 2 360 --max 324x444 --smooth --shared-box   # 一个裁剪框，8 帧大小一致
+python3 scripts/art/fit_cells.py sliced/<id>_walk.png art/model-chan/walk/<id>_walk.png 332 452 --rows 2
+python3 scripts/art/add_walk_frames.py --from art/model-chan/walk/<id>_walk.png [--take 1] src/renderer/packs/<id>-pixel   # 侧面走路放进第 9 行（重建图集后要再跑一次）
+python3 scripts/art/add_walk_frames.py src/renderer/packs/<id>-classic   # 旧版像素包：用待机帧做原地踏步
 python3 scripts/art/check_model_chan.py                       # 校验尺寸、格式、每个动作的每一帧都有内容
 python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-preview.png
 ```

@@ -40,10 +40,10 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     const px = packs.get(id);
     assert.equal(px.schema, 2);
     assert.equal(px.kind, 'sprites');
-    // `walk` included: a 4-frame step cycle made from her idle art (scripts/art/add_walk_frames.py)
+    // `walk` included: a 4-frame side-view walk cycle facing right (art/model-chan/walk, scripts/art/add_walk_frames.py --from)
     assert.deepEqual(Object.keys(px.actions).sort(), [...STATES].sort(), `${id} animates every state`);
     for (const st of STATES) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
-    assert.deepEqual(px.actions.walk, { row: 8, col: 0, frames: 4, fps: 8 }, 'a step cycle, not the idle art sliding along');
+    assert.deepEqual(px.actions.walk, { row: 8, col: 0, frames: 4, fps: 5 }, 'a side-view walk cycle, not the idle art sliding along');
     assert.deepEqual(px.frame, { width: 332, height: 452 }, 'HD frames');
     assert.equal(px.pixelated, false, 'drawn smoothed, not as blocks');
     assert.match(px.outfits.daily, /\.webp$/);

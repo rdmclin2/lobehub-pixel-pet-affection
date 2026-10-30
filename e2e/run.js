@@ -2007,12 +2007,12 @@ async function rosterOne(ch) {
       let steps = '';
       if (ws.video) assert.equal(await clip(), 'walk');
       else {
-        // her own step cycle (scripts/art/add_walk_frames.py), not the idle art sliding along
+        // her own walk cycle (side view on the HD packs, scripts/art/add_walk_frames.py), not the idle art sliding along
         assert.equal(ws.action, 'walk');
         assert.equal(ws.exact, true);
         assert.equal(await page.textContent('#char-fx'), '');
         const seen = new Set();
-        for (let i = 0; i < 8; i++) { seen.add(await page.$eval('#pet-look canvas', (c) => c.dataset.frame.split('#')[1])); await page.waitForTimeout(70); }
+        for (let i = 0; i < 10; i++) { seen.add(await page.$eval('#pet-look canvas', (c) => c.dataset.frame.split('#')[1])); await page.waitForTimeout(100); }
         assert.ok(seen.size >= 3, `the walk frames play: ${[...seen]}`);
         steps = `, frames ${[...seen].sort().join(' ')}`;
       }
@@ -2025,6 +2025,26 @@ async function rosterOne(ch) {
       assert.equal(after.x, w.to);
       assert.ok(Math.abs(after.x - before.x) >= 60 && Math.abs(after.x - before.x) <= 240 * 2);
       return `${st}; window x ${before.x} → ${after.x} (facing ${w.facing})${steps}`;
+    }, page);
+    await step(S, 'N1b walking left: the same side view, mirrored, and the window moves left', async () => {
+      await idle();
+      await leave();
+      await page.evaluate(() => window.petFx.face('left'));
+      const before = await mainBounds();
+      const walking = page.evaluate(() => window.petFx.walk());
+      await page.waitForFunction(() => window.petFx.state().state === 'walk', null, { timeout: 3000 });
+      await page.waitForTimeout(500);
+      const ws = await fxState();
+      assert.equal(ws.facing, 'left');
+      const scale = await page.$eval(ws.video ? '#pet-body video' : '#pet-look canvas', (el) => getComputedStyle(el).scale);
+      assert.equal(scale, '-1 1', 'mirrored');
+      await page.screenshot({ path: path.join(OUT, `${S}-walk-left.png`) });
+      await walking;
+      const after = await mainBounds();
+      const w = (await page.evaluate(() => window.petFx.stats())).lastWalk;
+      assert.equal(w.facing, 'left');
+      assert.ok(after.x < before.x, `moved left: ${before.x} → ${after.x}`);
+      return `facing left, scale ${scale}${ws.video ? '' : `, action=${ws.action}`}; window x ${before.x} → ${after.x}`;
     }, page);
     await step(S, 'N2 touch: a long press on her opens the menu', async () => {
       await idle();

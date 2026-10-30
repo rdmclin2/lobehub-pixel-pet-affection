@@ -1,16 +1,26 @@
-# Give a model-chan sprite pack a `walk` action: a 4-frame step cycle made from its idle art, so walking
-# is more than the window sliding the standing pose along. The legs under the hem are found in the first
+# Give a model-chan sprite pack a `walk` action, so walking is more than the window sliding the standing pose
+# along. She walks left and right across the screen, so the HD packs take a side-view walk cycle drawn for it
+# (--from, below); without one, a 4-frame step cycle in place is made from the idle art (the classic packs).
+#
+# --from <fit sheet> [--take N]: a model_chan_prompts.py --walk sheet put through slice_sheet.py --shared-box and
+# fit_cells.py --rows 2 (4 frames per row, facing right; take N = row N, default 0). Each frame stands on the
+# cell's bottom with her head and body (the top 40 % of the figure) centred, so the body glides and only the legs,
+# hair and skirt move; facing left mirrors it.
+#
+# Without --from: The legs under the hem are found in the first
 # idle frame (the transparent gap between them), and each frame lifts one leg (squashed up under the skirt,
 # so the foot leaves the ground) or brings both down with the whole figure a little higher:
 #   left foot up · both down (up a bit) · right foot up · both down (up a bit)
 # The frames go in a new row under the sheet (every outfit sheet of the pack) and pack.json gets
 # "walk": {row, col 0, frames 4, fps 8}. Running it again rebuilds that row.
 # usage: add_walk_frames.py <pack dir> [<pack dir> ...]
+#        add_walk_frames.py --from <fit sheet> [--take N] <pack dir>
 import json, os, sys
 import numpy as np
 from PIL import Image
 
 FPS = 8
+SIDE_FPS = 5  # one step (2 frames, 0.4 s) is about 44 px on screen at 100 %, the window's pace (fx.js WALK.speed 110), so the feet do not skate
 
 
 def find_legs(a):
@@ -87,7 +97,24 @@ def walk_frames(frame, smooth):
     return [compose(True, False, 0), compose(False, False, bob), compose(False, True, 0), compose(False, False, bob)], (hem, bottom, lift)
 
 
-def add_walk(pack_dir):
+def side_frames(path, take, FW, FH):
+    sheet = Image.open(path).convert('RGBA')
+    cw, ch = sheet.width // 4, sheet.height // 2
+    out = []
+    for c in range(4):
+        f = np.array(sheet.crop((c * cw, take * ch, (c + 1) * cw, (take + 1) * ch)))
+        a = f[:, :, 3] > 40
+        ys = np.where(a.any(axis=1))[0]
+        top, bottom = int(ys[0]), int(ys[-1])
+        upper = a[top:top + int((bottom - top) * 0.4)]
+        cx = np.where(upper)[1].mean()
+        frame = Image.new('RGBA', (FW, FH), (0, 0, 0, 0))
+        frame.paste(Image.fromarray(f), (int(round(FW / 2 - cx)), FH - 1 - bottom))
+        out.append(frame)
+    return out
+
+
+def add_walk(pack_dir, side=None, take=0):
     pf = os.path.join(pack_dir, 'pack.json')
     pack = json.load(open(pf))
     FW, FH = pack['frame']['width'], pack['frame']['height']
@@ -98,18 +125,27 @@ def add_walk(pack_dir):
         sheet = Image.open(path).convert('RGBA')
         rows = old['row'] if old else sheet.height // FH
         frame = sheet.crop((idle['col'] * FW, idle['row'] * FH, (idle['col'] + 1) * FW, (idle['row'] + 1) * FH))
-        frames, info = walk_frames(frame, not pack.get('pixelated'))
+        if side:
+            frames, info = side_frames(side, take, FW, FH), ('side view', os.path.basename(side), f'take {take}')
+        else:
+            frames, info = walk_frames(frame, not pack.get('pixelated'))
         out = Image.new('RGBA', (max(sheet.width, FW * 4), FH * (rows + 1)), (0, 0, 0, 0))
         out.paste(sheet.crop((0, 0, sheet.width, FH * rows)), (0, 0))
         for i, f in enumerate(frames): out.paste(f, (i * FW, rows * FH))
         if path.endswith('.webp'): out.save(path, 'WEBP', quality=92, method=6, alpha_quality=100)
         else: out.save(path, optimize=True)
-        print(f'{path}: walk row {rows}, legs rows {info[0]}-{info[1]}, lift {info[2]} px')
-    pack['actions']['walk'] = {'row': rows, 'col': 0, 'frames': 4, 'fps': FPS}
+        print(f'{path}: walk row {rows}, ' + (' '.join(info) if side else f'legs rows {info[0]}-{info[1]}, lift {info[2]} px'))
+    pack['actions']['walk'] = {'row': rows, 'col': 0, 'frames': 4, 'fps': SIDE_FPS if side else FPS}
     with open(pf, 'w') as f:
         json.dump(pack, f, ensure_ascii=False, indent=2); f.write('\n')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2: raise SystemExit(__doc__ or 'usage: add_walk_frames.py <pack dir> [...]')
-    for d in sys.argv[1:]: add_walk(d)
+    argv = sys.argv[1:]
+    side, take = None, 0
+    if '--from' in argv:
+        i = argv.index('--from'); side = argv[i + 1]; del argv[i:i + 2]
+    if '--take' in argv:
+        i = argv.index('--take'); take = int(argv[i + 1]); del argv[i:i + 2]
+    if not argv: raise SystemExit('usage: add_walk_frames.py <pack dir> [...] | add_walk_frames.py --from <fit sheet> [--take N] <pack dir>')
+    for d in argv: add_walk(d, side, take)

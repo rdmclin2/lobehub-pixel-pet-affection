@@ -99,7 +99,7 @@
   // ---- roaming (dsh-pet motion.ts planMove, walk.ts) ------------------------------------------
   // A walk goes 60–240 px (at 100% size) the way the pet faces, turning round when that way runs off
   // the screen; the window moves at a steady pace with a short still start and end (lead / tail).
-  const WALK = { minDist: 60, maxDist: 240, margin: 8, speed: 70, leadMs: 400, tailMs: 400 };
+  const WALK = { minDist: 60, maxDist: 240, margin: 8, speed: 110, leadMs: 400, tailMs: 400 };
   function planWalk({ x, w, area, facing = 'right', scale = 1 }, rnd = Math.random) {
     const dist = Math.round((WALK.minDist + rnd() * (WALK.maxDist - WALK.minDist)) * Math.max(0.5, scale));
     const lo = area.x + WALK.margin;
