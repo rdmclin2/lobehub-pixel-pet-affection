@@ -1,7 +1,8 @@
 # Build a model-chan sprite pack (schema 2) from its fitted sheets (fit_cells.py output, e.g. 332 x 452 cells,
 # 4 columns): the base sheet (8 states) on top of the extra sheet (8 more), one 664 x 1808 image, with every
 # action named after a state of the shared effects layer (src/core/fx.js STATES). Each sheet may come as
-# two 4 x 2 halves (one per generated image), stacked in order.
+# two 4 x 2 halves (one per generated image), stacked in order. Walking
+# (`walk`, a 9th row) is added afterwards by add_walk_frames.py.
 # usage: build_model_chan_pack.py <base.png | base_a.png base_b.png> <extra.png | extra_a.png extra_b.png> <character id> <pack dir>
 import json, os, sys
 from PIL import Image

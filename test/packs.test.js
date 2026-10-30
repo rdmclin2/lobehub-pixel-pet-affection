@@ -40,11 +40,10 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     const px = packs.get(id);
     assert.equal(px.schema, 2);
     assert.equal(px.kind, 'sprites');
-    // every state but `walk`: a sprite character walks with her idle frames hopping along (style.css)
-    const own = STATES.filter((st) => st !== 'walk');
-    assert.deepEqual(Object.keys(px.actions).sort(), [...own].sort(), `${id} animates every state`);
-    for (const st of own) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
-    assert.deepEqual(resolveAction('walk', (n) => !!px.actions[n]), { name: 'idle', exact: false });
+    // `walk` included: a 4-frame side-view walk cycle facing right (art/model-chan/walk, scripts/art/add_walk_frames.py --from)
+    assert.deepEqual(Object.keys(px.actions).sort(), [...STATES].sort(), `${id} animates every state`);
+    for (const st of STATES) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
+    assert.deepEqual(px.actions.walk, { row: 8, col: 0, frames: 4, fps: 5 }, 'a side-view walk cycle, not the idle art sliding along');
     assert.deepEqual(px.frame, { width: 332, height: 452 }, 'HD frames');
     assert.equal(px.pixelated, false, 'drawn smoothed, not as blocks');
     assert.match(px.outfits.daily, /\.webp$/);
@@ -80,7 +79,7 @@ test('every character keeps her v0.7.0 pixels as a 旧版像素 pack she can swi
     assert.equal(old.species, id);
     assert.match(old.name, /旧版像素$/);
     assert.deepEqual(old.frame, { width: 83, height: 113 }, 'the v0.7.0 frame size');
-    assert.equal(Object.keys(old.actions).length, 16, 'every state animated');
+    assert.equal(Object.keys(old.actions).length, 17, 'every state animated, walking included');
     assert.equal(P.chosenPack(packs, {}, id), `${id}-pixel`, 'not the default');
     assert.equal(P.chosenPack(packs, { [id]: `${id}-classic` }, id), `${id}-classic`);
     assert.equal(P.resolveLook(packs, { packId: `${id}-classic`, fallbackId: `${id}-pixel`, speciesId: id, outfitId: 'daily' }).packId, `${id}-classic`);

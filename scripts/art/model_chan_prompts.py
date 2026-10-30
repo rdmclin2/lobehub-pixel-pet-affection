@@ -55,8 +55,29 @@ EXTRA_ROWS = [
     "Row 4: making her entrance, rising from a crouch inside a burst of sparkles (frame 1 crouching, frame 2 standing with arms open); then a light swaying happy dance, leaning left then right (2 frames).",
 ]
 
+# --walk: one 4 x 2 sheet per character, <id>_walk: a side-view walk cycle facing right (she walks left and
+#   right across the screen; facing left mirrors it), 4 frames per row, the row drawn twice so the better take
+#   can be picked. add_walk_frames.py --from puts the 4 frames in the pack's walk row.
+WALK_ROWS = [
+    "Row 1: a side-view walk cycle in 4 frames, walking to the right: frame 1 left foot forward with the heel touching the ground, frame 2 passing pose with the right leg lifted under the skirt, "
+    "frame 3 right foot forward, frame 4 passing pose with the left leg lifted; arms swinging opposite to the legs, skirt and hair swaying with each step, body and head in profile looking to the right.",
+    "Row 2: the same 4-frame side-view walk cycle to the right again (same order, same size and position).",
+]
+SIDE = ("seen from the side in profile, facing and walking toward the RIGHT edge of the picture.")
+WALK_BG = ("IMPORTANT background: every cell and all the space around them is ONE perfectly flat solid pure {name} ({hex}) colour, "
+           "the same flat {name} everywhere: no gradient, no dark backdrop, no glow, no vignette, no floor, no shadows, no grid lines, no text, no labels.")
+
 GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
+
+def walk_jobs():
+    out = []
+    for cid, desc in CHARS.items():
+        key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
+        style = STYLE.replace(GRID, HALF_GRID).replace("facing the viewer.", SIDE)
+        bg = WALK_BG.format(name=key[0], hex=key[1])
+        out.append({"name": f"{cid}_walk", "prompt": " ".join([bg, style, f"The character: {desc}.", SAFE, *WALK_ROWS, bg])})
+    return out
 
 def jobs(halves=False):
     out = []
@@ -73,4 +94,4 @@ def jobs(halves=False):
     return out
 
 if __name__ == '__main__':
-    print(json.dumps(jobs('--halves' in sys.argv), ensure_ascii=False))
+    print(json.dumps(walk_jobs() if '--walk' in sys.argv else jobs('--halves' in sys.argv), ensure_ascii=False))

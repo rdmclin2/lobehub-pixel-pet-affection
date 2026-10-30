@@ -1,12 +1,12 @@
 # Check the model-chan pixel packs (src/renderer/packs/*-pixel, schema 2) and print one line per action.
-# Passes when every sheet is an RGBA PNG or WebP of 4 x 8 cells of 332 x 452 (the HD packs), every state of the shared effects
-# layer (16) has an action, and every frame of every action has a visible figure.
+# Passes when every sheet is an RGBA PNG or WebP of 4 x 9 cells of 332 x 452 (the HD packs), every state of the shared effects
+# layer (17, `walk` from add_walk_frames.py in the 9th row) has an action, and every frame of every action has a visible figure.
 # usage: check_model_chan.py [repo root]
 import json, os, sys
 from PIL import Image
 
 root = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
-STATES = ['idle', 'look', 'happy', 'pat', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'hatch', 'evolve', 'lifted']
+STATES = ['idle', 'look', 'happy', 'pat', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'hatch', 'evolve', 'lifted', 'walk']
 FW, FH = 332, 452
 packs_dir = os.path.join(root, 'src/renderer/packs')
 bad = 0
@@ -14,7 +14,7 @@ for pid in sorted(p for p in os.listdir(packs_dir) if p.endswith('-pixel')):
     d = os.path.join(packs_dir, pid)
     pack = json.load(open(os.path.join(d, 'pack.json')))
     im = Image.open(os.path.join(d, pack['outfits']['daily']))
-    ok = pack['schema'] == 2 and im.format in ('PNG', 'WEBP') and im.mode == 'RGBA' and im.size == (FW * 4, FH * 8) and (pack['frame']['width'], pack['frame']['height']) == (FW, FH)
+    ok = pack['schema'] == 2 and im.format in ('PNG', 'WEBP') and im.mode == 'RGBA' and im.size == (FW * 4, FH * 9) and (pack['frame']['width'], pack['frame']['height']) == (FW, FH)
     bad += not ok
     print(f"{pid}: schema {pack['schema']} {im.format} {im.mode} {im.size} {'OK' if ok else 'MISMATCH'}")
     a = im.getchannel('A')
