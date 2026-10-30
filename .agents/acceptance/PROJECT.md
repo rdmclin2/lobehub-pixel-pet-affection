@@ -48,12 +48,13 @@ Art: `art/model-chan/README.md` (pipeline, `scripts/art/check_model_chan.py`, `m
 
 ## 7. Release gate
 
-Every release gets an acceptance round **before** it reaches `main`: run the scenarios the release
-touches on `canary`, publish with `lh acceptance run ingest <round dir> --acceptance 6aeb64e4-6c8b-40c1-919a-c1b189bd95be`
-(report language zh-CN; the CLI may lack `preflight` / `--dry-run`: check auth with `lh acceptance run list --json`
-and validate `result.json` locally), and send the owner the acceptance link. A 验证报告 request means this round, not
-an agent document. Follow-up rounds re-check only affected items under their stable plan ids. Merge into `main` only
-after the owner has looked at it (or asks to release): **merging into main publishes**.
+Acceptance happens per PR into `canary`, not per release: a PR that changes what the user sees gets its acceptance
+round before it merges into canary (publish with `lh acceptance run ingest <round dir> --acceptance
+6aeb64e4-6c8b-40c1-919a-c1b189bd95be`, report language zh-CN; the CLI may lack `preflight` / `--dry-run`: check auth
+with `lh acceptance run list --json` and validate `result.json` locally) and the owner reviews it there. A 验证报告
+request means such a round, not an agent document. Follow-up rounds re-check only affected items under their stable
+plan ids. A release needs **no** separate acceptance round: the owner merging into `main` is the release decision
+(owner, 2026-10-30). **Merging into main publishes.**
 
 Branches (as LobeHub OSS): day-to-day PRs target `canary` (the default branch; always pass `--repo
 rdmclin2/lobehub-pixel-pet-affection` to gh: the `upstream` remote makes gh pick the wrong base). Release: PR
