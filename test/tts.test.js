@@ -94,9 +94,9 @@ test('validateCharacter rejects a broken voice.tts', () => {
 
 // ---- settings ----------------------------------------------------------------------------------------
 test('settings.tts: each character\'s own engine (auto) by default with the system voice as fallback; bad values are dropped', () => {
-  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } });
+  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
   const s = settingsLib.normalizeSettings({ tts: { provider: 'azure', providerSet: true, fallback: 'loud', endpoints: { fish: 'http://evil.example.com', minimax: 'https://mm.example.com/' } } });
-  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', endpoints: { fish: '', minimax: 'https://mm.example.com' } });
+  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', packs: true, endpoints: { fish: '', minimax: 'https://mm.example.com' } });
   // saved before 'auto': provider 'fish' was the default, never a choice → auto; a picked engine stays
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.provider, 'auto');
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.fallback, 'silent');
@@ -466,7 +466,7 @@ test('PetService.setTts saves engine, fallback and endpoints; the settings view 
   const svc = new PetService({ lh: null, store: null, settingsStore: store, ttsStatus: () => ({ engines: { fish: { hasKey: keys.has('fish') }, minimax: { hasKey: keys.has('minimax') } } }) });
   let r = svc.setTts({ provider: 'minimax', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777' } });
   assert.equal(r.ok, true);
-  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777', minimax: '' } });
+  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', packs: true, endpoints: { fish: 'http://127.0.0.1:7777', minimax: '' } });
   r = svc.setTts({ endpoints: { fish: 'ftp://nope' } });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'bad-endpoint');

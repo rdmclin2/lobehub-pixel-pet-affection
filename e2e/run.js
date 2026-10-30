@@ -2837,6 +2837,12 @@ async function voice() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const mock = await ttsMock();
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voice-'));
+  // 语音包 (V15): a pack the owner added for 克洛蒂 with one recorded line (a tone), loaded at start
+  const PACK_LINE = '这一句是录好的。';
+  const packDir = path.join(data, 'voicepacks', 'test-claude');
+  fs.mkdirSync(packDir, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'test', 'fixtures', 'voicepack', 'tone.mp3'), path.join(packDir, 'tone.mp3'));
+  fs.writeFileSync(path.join(packDir, 'manifest.json'), JSON.stringify({ format: 1, id: 'test-claude', name: '测试录音', character: 'claude', engine: 'minimax', lines: { [PACK_LINE]: 'tone.mp3' } }));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicefake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
@@ -2877,7 +2883,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3150,6 +3156,33 @@ async function voice() {
       assert.equal(/MiniMax[^；]*上次/.test(status), false, 'MiniMax is not paused or failed');
       await shot('v14-minimax-budget');
       return note(`lines: ${lines.join(' ')}; MiniMax requests ${times.length}, most in one minute ${most}; status: ${status}`);
+    }, page);
+
+    await step(S, 'V15 语音包: a recorded line plays from the pack with no request; with 语音包 off it goes to an engine', async () => {
+      await openVoice();
+      await page.waitForFunction(() => /你加的语音包「测试录音」，录好 1 句/.test(document.getElementById('tts-packs-st').textContent));
+      assert.equal(await page.isChecked('#tts-packs'), true, 'on by default');
+      await shot('v15-voice-pack-status');
+      const packText = await page.textContent('#tts-packs-st');
+      await page.click('#panel-close');
+      const before = reqs();
+      const sp = await speakLine(PACK_LINE);
+      assert.equal(sp.provider, 'pack');
+      assert.equal(sp.cached, true);
+      assert.deepEqual(sp.fellBackFrom, []);
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 5000 }); // the tone plays to its end
+      assert.equal(reqs(), before, 'no request for a recorded line');
+      const other = await speakLine('这一句没有录过');
+      assert.notEqual(other.provider, 'pack', 'a line not in the pack goes to an engine');
+      await openVoice();
+      await page.uncheck('#tts-packs');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('语音包已关闭'));
+      await page.click('#panel-close');
+      const off = await speakLine(PACK_LINE);
+      assert.notEqual(off.provider, 'pack', '语音包 off');
+      await openVoice();
+      await page.check('#tts-packs');
+      return note(`pack: ${packText}; recorded: ${fmt(sp)}; not recorded: ${fmt(other)}; 语音包 off: ${fmt(off)}; requests ${before} → ${reqs()}`);
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');

@@ -753,7 +753,7 @@ class PetService extends EventEmitter {
     const p = patch && typeof patch === 'object' ? patch : {};
     const cur = this.settings.tts;
     const picked = p.provider !== undefined;
-    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, endpoints: { ...cur.endpoints } };
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;

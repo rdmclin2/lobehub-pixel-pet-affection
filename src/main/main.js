@@ -18,6 +18,7 @@ const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
+const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -339,19 +340,31 @@ function wire() {
     const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
     if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
     if (!service.settings.prefs.voice) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
+    const hit = recordedLine(sp, text);
+    if (hit) { tts.engine.cancel(); tts.engine.stats.packHits = (tts.engine.stats.packHits || 0) + 1; return { ok: true, ...hit, cached: true, fellBackFrom: [], fallback: service.settings.tts.fallback, latencyMs: 0 }; }
     const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
     if (r.fellBackFrom.length) service.emit('settings', service.settingsView()); // the 语音 section shows the last error
     return r;
   });
   ipcMain.on('tts-cancel', () => tts.engine.cancel());
+  // 语音包: her recorded line for this text, when packs are on and the engine that would read it is the
+  // one the pack was recorded with (or none can): played from disk, no request (core/voice-pack.js).
+  function recordedLine(sp, text, probe = false) {
+    const pack = tts.packs.packFor(sp.id);
+    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(sp, service.settings.tts))) return null;
+    if (probe) return pack.lines.has(packNorm(text));
+    return tts.packs.lookup(sp.id, text);
+  }
   // 互动语音: synthesise her common short lines ahead (pet-service.js voiceLines) so they play at once.
   // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
   ipcMain.handle('tts-prewarm', async () => {
     const p = service.settings.prefs;
     if (!service.pet || !p.voice || p.voiceInteractions === false) return { skipped: 'off' };
-    const lines = service.voiceLines();
-    const r = await tts.engine.prewarm(lines, SPECIES[service.pet.speciesId], service.settings.tts);
-    return { ...r, lines: lines.length };
+    const sp = SPECIES[service.pet.speciesId];
+    const all = service.voiceLines();
+    const lines = all.filter((l) => !recordedLine(sp, l.text, true)); // the 语音包 already has these
+    const r = await tts.engine.prewarm(lines, sp, service.settings.tts);
+    return { ...r, lines: all.length, recorded: all.length - lines.length };
   });
   ipcMain.handle('set-tts', (_e, patch) => {
     const p = patch && typeof patch === 'object' ? patch : {};
@@ -363,6 +376,9 @@ function wire() {
     return keyOk ? r : { ...r, ok: false, reason: 'bad-key' };
   });
   ipcMain.handle('tts-clear-cache', () => { tts.cache.clear(); return service.getSettings(); });
+  // 语音包: the owner's own packs go in userData/voicepacks/<id>/ (core/voice-pack.js); read again on request
+  ipcMain.on('open-voicepacks-folder', () => { const d = tts.packs.dirs[1]; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); });
+  ipcMain.handle('voicepacks-reload', () => { tts.packs.reload(); return { settings: service.getSettings(), errors: tts.packs.errors.map((e) => `${path.basename(e.dir)}：${e.errors.join('；')}`) }; });
   ipcMain.handle('set-visitors', (_e, { ids }) => service.setVisitors(ids));
   ipcMain.handle('set-api', async (_e, opts) => {
     const r = service.setApi(opts || {});
@@ -429,8 +445,9 @@ app.whenReady().then(() => {
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   const keys = new TtsKeyStore(app.getPath('userData'), { available: () => safeStorage.isEncryptionAvailable(), encrypt: (t) => safeStorage.encryptString(t), decrypt: (b) => safeStorage.decryptString(b) });
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
-  tts = { keys, cache, engine: new TtsEngine({ keys, cache, log: logError }) };
-  const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats } });
+  const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
+  tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
+  const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient();
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });

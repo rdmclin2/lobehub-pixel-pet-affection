@@ -198,7 +198,7 @@ function defaultEngine(species) {
 // (system voice or silence) and an endpoint per engine ('' = the official one). API keys are not here:
 // they live encrypted in tts-keys.json. providerSet: the user picked the engine in 语音 (settings.js moves
 // saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
-const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', endpoints: { fish: '', minimax: '' } };
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } };
 
 const endpointOk = (u) => {
   if (!str(u)) return false;
@@ -215,6 +215,7 @@ function normalizeTts(raw) {
     provider: ENGINES.includes(r.provider) ? r.provider : TTS_DEFAULTS.provider,
     providerSet: r.providerSet === true,
     fallback: FALLBACKS.includes(r.fallback) ? r.fallback : TTS_DEFAULTS.fallback,
+    packs: r.packs !== false, // 语音包: her recorded fixed lines first (core/voice-pack.js)
     endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOk(ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
   };
 }
@@ -287,6 +288,19 @@ class TtsEngine {
       const left = this.budget(id);
       return [id, { hasKey: !!this.keys.has(id), lastError: h ? h.reason : null, pausedFor: h && h.until > t ? Math.ceil((h.until - t) / 1000) : 0, rpm: PROVIDERS[id].rpm || null, budget: Number.isFinite(left) ? left : null }];
     }));
+  }
+
+  // The engine that would read her next line (the first in the chain with her voice, a key and not
+  // paused), or null when none can: then a recorded line (语音包) beats the system voice.
+  firstUsable(species, tts) {
+    const set = normalizeTts(tts);
+    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
+      const p = PROVIDERS[id];
+      if (p.kind === 'system') return null;
+      const h = this.health[id];
+      if (p.config(species && species.voice) && this.keys.get(id) && !(h && h.until > this.now())) return id;
+    }
+    return null;
   }
 
   cancel() {
