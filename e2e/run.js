@@ -63,6 +63,16 @@ async function launch(env, { gate = false, video = null } = {}) {
 // The controls only exist visually while the pointer is over the window.
 const hover = async (page) => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
 const clickAct = async (page, act) => { await hover(page); await page.click(`[data-act="${act}"]`); };
+// ⋯ → 切换角色 → pick a character. One not met yet is named first (`name`; null keeps her own) and gets her own agent.
+const pickCharacter = async (page, id, name = null) => {
+  await page.click(`.char-opt[data-species="${id}"] .pick`);
+  if (await page.locator(`.char-opt.new[data-species="${id}"]`).count()) {
+    await page.waitForSelector('.char-name-form input');
+    if (name !== null) await page.fill('.char-name-form input', name);
+    await page.click('.char-name-form button[type="submit"]');
+  }
+  await page.waitForSelector(`.char-opt.on[data-species="${id}"]`, { timeout: 20000 });
+};
 const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
@@ -306,7 +316,8 @@ async function wardrobe() {
   let { app, page } = await launch(env, { gate: true, video: VIDEO });
   const shot = async (name) => { await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-  const petJson = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  // the current character's entry in pet.json (schema 3: `characters[speciesId]`)
+  const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')); return p.characters[p.speciesId]; };
   const restartLog = [];
   const openWardrobe = async () => {
     await clickAct(page, 'wardrobe');
@@ -582,11 +593,13 @@ async function migrate() {
       assert.equal(v.pet.agentId, 'agt_LEGACY');
       assert.equal(v.pet.topicId, 'tpc_LEGACY');
       const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
-      assert.equal(disk.schemaVersion, 2);
+      assert.equal(disk.schemaVersion, 3);
       assert.equal(disk.speciesId, 'dafeiyu');
       assert.equal(disk.retiredFrom.speciesId, 'bubbo');
-      assert.equal('xp' in disk, false);
-      assert.equal('stage' in disk, false);
+      assert.deepEqual(Object.keys(disk.characters), ['dafeiyu'], 'one character, the one who took over');
+      assert.equal(disk.characters.dafeiyu.agentId, 'agt_LEGACY');
+      assert.equal('xp' in disk.characters.dafeiyu, false);
+      assert.equal('stage' in disk.characters.dafeiyu, false);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8')), old);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, {}, 'the retired look is dropped');
       // the agent gets the new persona before its next turn
@@ -615,6 +628,171 @@ async function migrate() {
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')).speciesId, 'bubbo', 'the backup is written once and never overwritten');
       assert.doesNotMatch(app.stderrBuf, /Unknown species|TypeError/);
       return `meta: ${await page.textContent('#meta')}; outfit maid → ${v.outfit}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------- characters
+// Every character has her own agent, topic, name and affection (schema 3). Starts from a schema-2 save.
+async function characters() {
+  const S = 'characters';
+  const SHOTS = path.join(OUT, 'characters');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-chars-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-charsfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const now = Date.now();
+  const old = { schemaVersion: 2, speciesId: 'grok', name: '小蓝', agentId: 'agt_GROK_OLD', topicId: 'tpc_GROK_OLD', createdAt: now - 86400000, affection: 40, relStage: 'close', peakStage: 'close', hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, equippedOutfit: 'daily', lastSafeOutfit: 'daily', owner: 'Test Owner', space: { workspaceId: null, name: '个人空间' }, personaVersion: 6 };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old, null, 2));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, adultContent: false }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_CREATE_DELAY_MS: '1500' };
+  let { app, page } = await launch(env);
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const runs = () => fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const disk = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  const openChars = async () => {
+    await clickAct(page, 'menu');
+    await page.click('[data-menu="characters"]');
+    await page.waitForSelector('.char-opt[data-species="grok"]');
+  };
+  const rel = (id) => page.textContent(`.char-opt[data-species="${id}"] .char-rel`);
+  let claude = null;
+  try {
+    await step(S, 'a schema-2 save opens as schema 3: 小蓝 keeps her agent, topic and ♥40; the old file is backed up', async () => {
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await idle();
+      const d = disk();
+      assert.equal(d.schemaVersion, 3);
+      assert.deepEqual(Object.keys(d.characters), ['grok']);
+      assert.equal(d.characters.grok.agentId, 'agt_GROK_OLD');
+      assert.equal(d.characters.grok.topicId, 'tpc_GROK_OLD');
+      assert.equal(d.characters.grok.affection, 40);
+      assert.equal(d.owner, 'Test Owner');
+      assert.equal('agentId' in d, false);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v2.bak.json'), 'utf8')), old);
+      await hover(page);
+      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 亲近 ♥40/);
+      fs.writeFileSync(path.join(SHOTS, 'migrate-files.txt'), `--- pet.v2.bak.json (before) ---\n${JSON.stringify(old, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify(d, null, 2)}\n`);
+      return `characters=${Object.keys(d.characters)}; grok agent=${d.characters.grok.agentId} topic=${d.characters.grok.topicId} ♥${d.characters.grok.affection}`;
+    }, page);
+
+    await step(S, '切换角色 shows who has been met: 格萝可 已认识 ♥40, the others 未见过', async () => {
+      await openChars();
+      assert.match(await rel('grok'), /已认识 · 亲近 · 好感 40/);
+      for (const id of ['claude', 'gemini', 'gpt', 'dafeiyu']) assert.equal(await rel(id), '未见过', id);
+      assert.equal(await page.textContent('.char-opt[data-species="claude"] .pick'), '初次见面');
+      await page.screenshot({ path: path.join(SHOTS, '01-roster.png') });
+    }, page);
+
+    await step(S, 'meeting 克洛蒂 asks for her name first (default 克洛蒂), then a second agent is created while she is on her way', async () => {
+      await page.click('.char-opt[data-species="claude"] .pick');
+      await page.waitForSelector('.char-name-form input');
+      assert.equal(await page.inputValue('.char-name-form input'), '克洛蒂');
+      await page.screenshot({ path: path.join(SHOTS, '02-name-form.png') });
+      await page.fill('.char-name-form input', '小克');
+      await page.click('.char-name-form button[type="submit"]');
+      await page.waitForFunction(() => /克洛蒂正在赶来/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
+      assert.match(await page.textContent('#panel-msg'), /克洛蒂正在赶来/);
+      await page.screenshot({ path: path.join(SHOTS, '03-arriving.png') });
+      await page.waitForSelector('.char-opt.on[data-species="claude"]', { timeout: 20000 });
+      await idle();
+      await page.screenshot({ path: path.join(SHOTS, '04-claude-met.png') });
+      const panelMsgText = await page.textContent('#panel-msg');
+      const relClaude = await rel('claude');
+      const relGrok = await rel('grok');
+      await page.click('#panel-close');
+      const v = await view(page); // boot re-places the window: read the panel first
+      claude = { agentId: v.pet.agentId };
+      assert.equal(v.pet.speciesId, 'claude');
+      assert.equal(v.pet.name, '小克');
+      assert.notEqual(v.pet.agentId, 'agt_GROK_OLD');
+      assert.equal(v.pet.affection, 0);
+      assert.match(panelMsgText, /「小克」来了/);
+      assert.match(relClaude, /已认识 · 陌生 · 好感 0/);
+      assert.match(relGrok, /好感 40/);
+      const creates = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args).filter((a) => a[0] === 'agent' && a[1] === 'create');
+      assert.equal(creates.length, 1);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(fakeDir, 'last-create.json'), 'utf8')).title, '小克 (Clody)');
+      assert.equal(runs().pop().agent, claude.agentId, 'her hello comes from her own agent');
+      return `new agent ${claude.agentId} "小克 (Clody)"; ♥0`;
+    }, page);
+
+    await step(S, '克洛蒂 chats in her own topic; back on 格萝可 her agent, topic and ♥40 are untouched', async () => {
+      await page.evaluate(() => window.pet.chat('你好，小克'));
+      await idle();
+      const r1 = runs().pop();
+      assert.equal(r1.agent, claude.agentId);
+      claude.topicId = (await view(page)).pet.topicId;
+      assert.equal(r1.topic, claude.topicId);
+      assert.notEqual(claude.topicId, 'tpc_GROK_OLD');
+      await openChars();
+      await page.click('.char-opt[data-species="grok"] .pick');
+      await page.waitForSelector('.char-opt.on[data-species="grok"]');
+      await page.screenshot({ path: path.join(SHOTS, '05-back-to-grok-panel.png') });
+      await page.click('#panel-close');
+      const v = await view(page);
+      assert.equal(v.pet.agentId, 'agt_GROK_OLD');
+      assert.equal(v.pet.topicId, 'tpc_GROK_OLD');
+      assert.equal(v.pet.name, '小蓝');
+      assert.equal(v.pet.affection, 40);
+      await page.evaluate(() => window.pet.chat('我回来了'));
+      await idle();
+      const r2 = runs().pop();
+      assert.deepEqual([r2.agent, r2.topic], ['agt_GROK_OLD', 'tpc_GROK_OLD']);
+      await hover(page);
+      await page.screenshot({ path: path.join(SHOTS, '05-back-to-grok.png') });
+      return `claude ${r1.agent}/${r1.topic}; grok ${r2.agent}/${r2.topic}`;
+    }, page);
+
+    await step(S, 'back on 克洛蒂 a second time: no new agent, her topic and name are kept', async () => {
+      await openChars();
+      await page.click('.char-opt[data-species="claude"] .pick');
+      await page.waitForSelector('.char-opt.on[data-species="claude"]');
+      await page.click('#panel-close');
+      const v = await view(page);
+      assert.equal(v.pet.agentId, claude.agentId);
+      assert.equal(v.pet.topicId, claude.topicId);
+      assert.equal(v.pet.name, '小克');
+      const creates = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args).filter((a) => a[0] === 'agent' && a[1] === 'create');
+      assert.equal(creates.length, 1);
+    }, page);
+
+    await step(S, 'a failed agent creation (meeting 杰米) keeps 克洛蒂 and stores nothing', async () => {
+      fs.writeFileSync(path.join(fakeDir, 'fail-create'), '1');
+      await openChars();
+      await page.click('.char-opt[data-species="gemini"] .pick');
+      await page.waitForSelector('.char-name-form input');
+      await page.click('.char-name-form button[type="submit"]');
+      await page.waitForFunction(() => /没能来/.test(document.getElementById('panel-msg').textContent), null, { timeout: 20000 });
+      const msg = await page.textContent('#panel-msg');
+      assert.equal(await rel('gemini'), '未见过');
+      assert.equal(await page.locator('.char-name-form button[type="submit"]').isEnabled(), true, 'she can be asked again');
+      await page.screenshot({ path: path.join(SHOTS, '06-create-failed.png') });
+      await page.click('#panel-close');
+      assert.equal((await view(page)).pet.speciesId, 'claude');
+      assert.deepEqual(Object.keys(disk().characters).sort(), ['claude', 'grok']);
+      fs.rmSync(path.join(fakeDir, 'fail-create'));
+      return msg;
+    }, page);
+
+    await step(S, 'after a restart both characters are there, each with her own agent, topic and affection', async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await idle();
+      const v = await view(page);
+      assert.equal(v.pet.speciesId, 'claude');
+      assert.equal(v.pet.agentId, claude.agentId);
+      const d = disk();
+      assert.equal(d.characters.grok.agentId, 'agt_GROK_OLD');
+      assert.equal(d.characters.grok.topicId, 'tpc_GROK_OLD');
+      assert.ok(d.characters.grok.affection >= 40);
+      assert.equal(d.characters.claude.topicId, claude.topicId);
+      const met = v.characters.filter((c) => c.met).map((c) => `${c.id}:${c.met.name}♥${c.met.affection}`);
+      fs.writeFileSync(path.join(SHOTS, 'pet-after.json'), JSON.stringify(d, null, 2) + '\n');
+      return met.join(', ');
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -1356,8 +1534,7 @@ async function packs() {
     await step(S, '大肥鱼 starts in her pixel pack and can switch to her original clips and back', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="characters"]');
-      await page.click('.char-opt[data-species="dafeiyu"] .pick');
-      await page.waitForSelector('.char-opt.on[data-species="dafeiyu"]');
+      await pickCharacter(page, 'dafeiyu');
       await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // the same panel now lists her looks
       assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['角色', '模型', '外观（角色包）']);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
@@ -1388,8 +1565,7 @@ async function packs() {
         await clickAct(page, 'menu');
         await page.click('[data-menu="characters"]');
         if (!(await page.locator(`.char-opt.on[data-species="${id}"]`).count())) {
-          await page.click(`.char-opt[data-species="${id}"] .pick`);
-          await page.waitForSelector(`.char-opt.on[data-species="${id}"]`);
+          await pickCharacter(page, id);
         }
         await page.click('#panel-close');
         await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); // back from the 460 px panel to the pet window (its width follows the pet size)
@@ -1473,14 +1649,14 @@ async function models() {
     }, page);
 
     await step(S, 'switching to 吉皮缇 switches the list to GPT models, her own OpenAI key marked', async () => {
-      await page.click('.char-opt[data-species="gpt"] .pick');
-      await page.waitForSelector('.char-opt.on[data-species="gpt"]');
+      await pickCharacter(page, 'gpt');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
       const os = await options();
       assert.ok(os.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), JSON.stringify(os));
       assert.deepEqual(os.map((o) => o.label), ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）']);
       assert.equal(os.find((o) => o.selected).key, 'lobehub:gpt-6-luna');
-      assert.match(await page.textContent('.model-status'), /下一句话起用：GPT-6 Luna（默认）/);
+      // her own new agent said hello on it already
+      assert.match(await page.textContent('.model-status'), /正在用：GPT-6 Luna（默认）/);
       await page.screenshot({ path: path.join(SHOTS, '03-gpt-models.png') });
       return os.map((o) => o.label).join(' / ');
     }, page);
@@ -1492,8 +1668,7 @@ async function models() {
       await idle();
       assert.equal(modelEdits().pop(), 'lobehub:gpt-6-luna');
       await openCharacters();
-      await page.click('.char-opt[data-species="claude"] .pick');
-      await page.waitForSelector('.char-opt.on[data-species="claude"]');
+      await pickCharacter(page, 'claude');
       await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
       assert.equal((await options()).find((o) => o.selected).key, 'lobehub:claude-opus-5-5');
       await page.screenshot({ path: path.join(SHOTS, '04-back-to-claude.png') });
@@ -2220,7 +2395,7 @@ async function rosterOne(ch) {
       fs.writeFileSync(path.join(OUT, `${S}-api.txt`), lines.join('\n') + '\n');
       return lines.join('; ');
     }, page);
-    await step(S, 'E14 switch character from ⋯ → 切换角色, keeping the agent and affection', async () => {
+    await step(S, 'E14 switch character from ⋯ → 切换角色: a new one gets her own agent and starts as a stranger', async () => {
       if (await page.isVisible('#panel-close')) await page.click('#panel-close');
       await still();
       const next = ROSTER[(ch.idx + 1) % ROSTER.length];
@@ -2228,16 +2403,15 @@ async function rosterOne(ch) {
       await clickAct(page, 'menu');
       await page.click('[data-menu="characters"]');
       await page.waitForSelector(`.char-opt[data-species="${next.id}"] .pick`);
-      await page.click(`.char-opt[data-species="${next.id}"] .pick`);
-      await page.waitForSelector(`.char-opt.on[data-species="${next.id}"]`);
+      await pickCharacter(page, next.id);
       await page.screenshot({ path: path.join(OUT, `${S}-switch-panel.png`) });
       await page.click('#panel-close');
       const after = await view(page);
       assert.equal(after.pet.speciesId, next.id);
-      assert.equal(after.pet.agentId, before.pet.agentId);
-      assert.equal(after.pet.affection, before.pet.affection);
+      assert.notEqual(after.pet.agentId, before.pet.agentId, 'her own agent');
+      assert.equal(after.characters.find((c) => c.id === ch.id).met.affection, before.pet.affection, 'the first one keeps her affection');
       await page.waitForFunction(() => window.petFx.state().state === 'hatch', null, { timeout: 4000 });
-      return `${ch.id} → ${next.id}; agent ${after.pet.agentId} kept, ♥${after.pet.affection}`;
+      return `${ch.id} → ${next.id}; new agent ${after.pet.agentId} ♥${after.pet.affection}; ${ch.id} keeps ♥${before.pet.affection}`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -2891,6 +3065,7 @@ async function voice() {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
   if (which === 'migrate' || which === 'all') await migrate();
+  if (which === 'characters' || which === 'all') await characters();
   if (which === 'dafeiyu' || which === 'all') await dafeiyu();
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }
   if (which === 'live' || which === 'all') await live();

@@ -143,7 +143,7 @@
 映射写在 `src/core/species.js` 的 `RETIRED = { bubbo: 'dafeiyu', embit: 'claude', sprig: 'dafeiyu' }`；不认识的 id 落到默认角色。旧存档打开时（`src/core/migrate.js`）：
 
 - 角色换成接替者，`pet.json` 记下 `retiredFrom: { speciesId, at }`；迁移前的存档备份一次为 `pet.retired.bak.json`（`src/main/pet-service.js`）。
-- LobeHub agent、聊天记录和好感度保留，她的人设在下一句话前更新。
+- 原来的 LobeHub agent、聊天记录和好感度归接替者，她的人设在下一句话前更新（存档 schema 3 里，接替者的条目已有自己的 agent 时，旧条目放在 `retiredCharacters`，放生时一并删除它的 agent）。
 - 身上的服饰接替者没有美术时换回日常服（`daily`）。
 - 新角色文件不能用这三个旧 id（`validateCharacter` 会报 `is a retired character id`）。
 

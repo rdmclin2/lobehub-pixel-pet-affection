@@ -12,7 +12,7 @@ test('new companion starts as a stranger with 0 affection and sane needs', () =>
   assert.equal(p.affection, 0);
   assert.equal(p.relStage, 'stranger');
   assert.equal(p.peakStage, 'stranger');
-  assert.equal(p.schemaVersion, 2);
+  assert.equal('schemaVersion' in p, false, 'the version belongs to the whole save (createSave)');
   assert.equal('xp' in p, false);
   assert.equal('stage' in p, false);
   assert.ok(p.hunger < 50 && p.mood > 50);
@@ -87,4 +87,30 @@ test('playing is refused when exhausted', () => {
   const p = mk();
   p.energy = 5;
   assert.equal(st.play(p, T0).reason, 'tired');
+});
+
+test('a new save holds its first character; cur() is her entry', () => {
+  const c = mk();
+  const save = st.createSave(c, T0);
+  assert.equal(save.schemaVersion, 3);
+  assert.equal(save.speciesId, 'grok');
+  assert.equal(st.cur(save), c);
+  assert.equal(st.cur(null), null);
+});
+
+test('resume: a character back on screen picks up where she left, without counting the time away as neglect', () => {
+  const p = mk();
+  p.hunger = 40;
+  p.lastInteractionAt = T0 - 3600000;
+  p.decayAnchor = p.lastInteractionAt;
+  p.decaySteps = 1;
+  const later = T0 + 3 * 86400000;
+  st.resume(p, later);
+  assert.equal(p.lastTickAt, later);
+  assert.equal(p.lastInteractionAt, later - 3600000, 'still an hour since she was last touched');
+  assert.equal(p.decayAnchor, p.lastInteractionAt);
+  assert.equal(p.decaySteps, 1, 'decay already taken is not taken again');
+  const { decay } = st.tick(p, later);
+  assert.equal(decay, 0);
+  assert.equal(p.hunger, 40);
 });

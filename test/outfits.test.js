@@ -105,7 +105,7 @@ test('"new" marks unlocked outfits beyond the first stage until they are seen', 
 
 test('saves without an outfit (older or hand-edited) open in the daily outfit', () => {
   const { pet } = migratePet({ speciesId: 'testchan', name: 'E', agentId: 'a', xp: 300, stage: 'adult' }, T0);
-  assert.equal(pet.equippedOutfit, 'daily');
-  const { pet: odd } = migratePet({ ...pet, equippedOutfit: 'bikini' }, T0);
-  assert.equal(odd.equippedOutfit, 'daily');
+  assert.equal(pet.characters.testchan.equippedOutfit, 'daily');
+  const { pet: odd } = migratePet({ ...pet, characters: { testchan: { ...pet.characters.testchan, equippedOutfit: 'bikini' } } }, T0);
+  assert.equal(odd.characters.testchan.equippedOutfit, 'daily');
 });
