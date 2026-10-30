@@ -4325,7 +4325,16 @@ async function outfitScenario() {
     out.lifted.shot = await shot(`${tag}-lifted`);
     await page.mouse.up();
     await idle();
-    for (const k of ['idle', 'walk', 'lifted']) assert.ok(out[k].opaque > 6000, `${tag} ${k} drawn`);
+    // one more action from the sheet's middle rows: happy (row 3), cued the way a click reaction plays it
+    await page.waitForFunction(() => document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => window.petFx.cue('happy'));
+    await page.waitForFunction(() => document.getElementById('pet-body').dataset.action === 'happy', null, { timeout: 5000 });
+    await page.waitForTimeout(250);
+    out.happy = await drawn();
+    out.happy.shot = await shot(`${tag}-happy`);
+    await page.evaluate(() => window.petFx.cue('idle'));
+    for (const k of ['idle', 'walk', 'lifted', 'happy']) assert.ok(out[k].opaque > 6000, `${tag} ${k} drawn`);
+    assert.match(out.happy.frame, /#3:/, 'happy plays row 3');
     assert.equal(out.walk.action, 'walk');
     assert.ok(out.walk.frames.length >= 3 && out.walk.frames.every((f) => f.startsWith('8:')), `the side-view walk row cycles: ${out.walk.frames}`);
     return out;
@@ -4343,11 +4352,11 @@ async function outfitScenario() {
       return `pet-look ${ch.id}-pixel/daily`;
     }, page);
 
-    await step(S, 'daily: idle / walk / lifted drawn', async () => {
+    await step(S, 'daily: idle / walk / lifted / happy drawn', async () => {
       daily = await poses('1-daily');
-      for (const k of ['idle', 'walk', 'lifted']) report.push(`daily ${k}: ${fmt(daily[k])}`);
+      for (const k of ['idle', 'walk', 'lifted', 'happy']) report.push(`daily ${k}: ${fmt(daily[k])}`);
       assert.match(daily.idle.frame, /sheets\/daily\.webp#0:/);
-      return `walk frames ${daily.walk.frames.join(' ')}; ${daily.idle.shot}, ${daily.walk.shot}, ${daily.lifted.shot}`;
+      return `walk frames ${daily.walk.frames.join(' ')}; ${daily.idle.shot}, ${daily.walk.shot}, ${daily.lifted.shot}, ${daily.happy.shot}`;
     }, page);
 
     await step(S, `before ${O.stage}: the wardrobe lists ${O.label} locked with its condition`, async () => {
@@ -4405,11 +4414,11 @@ async function outfitScenario() {
     }, page);
 
     let worn;
-    await step(S, `${O.label}: idle / walk / lifted drawn from sheets/${OID}.webp, at daily's spot and size`, async () => {
+    await step(S, `${O.label}: idle / walk / lifted / happy drawn from sheets/${OID}.webp, at daily's spot and size`, async () => {
       worn = await poses(`6-${OID}`);
-      for (const k of ['idle', 'walk', 'lifted']) report.push(`${OID} ${k}: ${fmt(worn[k])}`);
+      for (const k of ['idle', 'walk', 'lifted', 'happy']) report.push(`${OID} ${k}: ${fmt(worn[k])}`);
       assert.equal(worn.idle.key, `${ch.id}-pixel/${OID}`);
-      for (const k of ['idle', 'walk', 'lifted']) {
+      for (const k of ['idle', 'walk', 'lifted', 'happy']) {
         assert.match(worn[k].frame, new RegExp(`sheets/${OID}\\.webp#`));
         assert.ok(Math.abs(worn[k].box[3] - daily[k].box[3]) <= 6, `${k}: feet at the same height (${worn[k].box[3]} vs ${daily[k].box[3]})`);
         const cx = (b) => (b[0] + b[2]) / 2;
@@ -4417,7 +4426,7 @@ async function outfitScenario() {
       }
       assert.deepEqual(worn.idle.canvas, daily.idle.canvas, 'idle: the canvas does not move when she changes');
       const h = (b) => b[3] - b[1];
-      return `idle height ${h(daily.idle.box)} → ${h(worn.idle.box)} px, feet ${daily.idle.box[3]} → ${worn.idle.box[3]}; walk frames ${worn.walk.frames.join(' ')}; ${worn.idle.shot}, ${worn.walk.shot}, ${worn.lifted.shot}`;
+      return `idle height ${h(daily.idle.box)} → ${h(worn.idle.box)} px, feet ${daily.idle.box[3]} → ${worn.idle.box[3]}; walk frames ${worn.walk.frames.join(' ')}; ${worn.idle.shot}, ${worn.walk.shot}, ${worn.lifted.shot}, ${worn.happy.shot}`;
     }, page);
 
     await step(S, `after a restart she still wears ${O.label}`, async () => {
