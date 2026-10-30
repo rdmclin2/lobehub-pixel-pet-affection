@@ -877,7 +877,7 @@ function voiceSection() {
   const sec = document.createElement('div');
   sec.className = 'adv-section';
   sec.id = 'voice-section';
-  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、4 秒没响应或出错时，这句改用下面选的方式。合成过的句子缓存在本机，再说同一句不再请求。</p>'
+  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、5 秒没响应（长句最多 10 秒）或出错时，这句改用下面选的方式。MiniMax 国内站每分钟只能合成 10 次，用完了就稍等或改用下面的方式，不会被限流卡住。合成过的句子缓存在本机，再说同一句不再请求。</p>'
     + '<div class="size-row"><span>引擎</span><select id="tts-provider"></select></div>'
     + '<div class="size-row"><span>用不了时</span><select id="tts-fallback"><option value="system">改用系统语音</option><option value="silent">不出声</option></select></div>'
     + '<div id="tts-engines"></div><p class="adv-note" id="tts-status"></p>'
