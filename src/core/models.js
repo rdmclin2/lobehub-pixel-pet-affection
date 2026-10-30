@@ -2,8 +2,8 @@
 
 // Which LLM a companion's LobeHub agent runs on. Each character may only use models of her own vendor
 // (`models` in src/characters/<id>.json): ids matching `match`, offered by LobeHub's hosted provider or by
-// the vendor's own provider when the user enabled it. The user picks one per character (⋯ → 切换角色 → 模型,
-// kept in settings.models); without a pick, the first available id of `prefer` is used, else the first
+// the vendor's own provider when the user enabled it. The user picks one per character (⋯ → 角色列表 → her page →
+// 模型, kept in settings.models); without a pick, the first available id of `prefer` is used, else the first
 // match. Models that only make images (Nano Banana) are left out. Electron-free so it can be tested.
 
 const { SPECIES } = require('./species');
