@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('pet', {
   setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
+  setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),

@@ -33,8 +33,10 @@ const petScale = (s) => clampScale(s && s.petScale);
 const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
+// 个性化设定 (her page → System Role): the owner's own words added to a character's system role
+const SYSTEM_ROLE_MAX = 1000;
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -46,6 +48,11 @@ function normalizeApi(raw) {
   const port = Number.isInteger(a.port) && a.port >= API.minPort && a.port <= API.maxPort ? a.port : API.port;
   const token = typeof a.token === 'string' && /^[A-Za-z0-9_-]{24,64}$/.test(a.token) ? a.token : '';
   return { enabled: a.enabled === true && !!token, port, token };
+}
+
+// Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
+function cleanSystemRole(v) {
+  return String(v || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, SYSTEM_ROLE_MAX).trim();
 }
 
 // Adult content can only be on for a current, confirmed 18+ answer.
@@ -65,6 +72,9 @@ function normalizeSettings(raw) {
   // the model chosen per character ({ claude: 'lobehub:claude-sonnet-5-5' }); one she may not use falls back when looked up
   const md = s.models && typeof s.models === 'object' ? s.models : {};
   s.models = Object.fromEntries(Object.entries(md).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9-]{2,40}:[A-Za-z0-9._-]{1,80}$/.test(v)));
+  // the 个性化设定 per character ({ claude: '叫我老板' }); empty ones are dropped
+  const sr = s.systemRoles && typeof s.systemRoles === 'object' ? s.systemRoles : {};
+  s.systemRoles = Object.fromEntries(Object.entries(sr).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string').map(([k, v]) => [k, cleanSystemRole(v)]).filter(([, v]) => v));
   s.prefs = normalizePrefs(s.prefs);
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
@@ -124,4 +134,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

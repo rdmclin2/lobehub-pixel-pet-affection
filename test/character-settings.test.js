@@ -178,6 +178,50 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   assert.deepEqual(after.models, { ...old.models, gemini: 'lobehub:gemini-3.8-flash' });
   const { models: _m, ...restAfter } = after;
   const { models: _o, ...restOld } = old;
-  // 语音包 (v0.11) is new: an old file gets its default (on), everything else stays as it was
-  assert.deepEqual(restAfter, { ...restOld, tts: { ...restOld.tts, packs: true } }, 'same keys and values otherwise');
+  // 语音包 (v0.11) and 个性化设定 are new: an old file gets their defaults, everything else stays as it was
+  assert.deepEqual(restAfter, { ...restOld, systemRoles: {}, tts: { ...restOld.tts, packs: true } }, 'same keys and values otherwise');
+});
+
+const roleEdits = (dir) => (fs.existsSync(path.join(dir, 'edits.log')) ? fs.readFileSync(path.join(dir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.systemRole) : []);
+
+test('setSystemRole(text, id) saves her 个性化设定, puts it in her agent\'s system role and leaves the others alone', async () => {
+  const { svc, dir, mk, settingsFile } = setup();
+  await svc.hatch({ speciesId: 'claude', name: '小克' });
+  await idle(svc);
+  assert.equal(ch(svc.view(), 'claude').systemRole, '', 'none by default');
+  const before = roleEdits(dir).length;
+
+  // another character: saved under her id, nobody's agent is edited
+  assert.equal(svc.setSystemRole('叫我老板', 'nobody').reason, 'unknown-character');
+  assert.equal(svc.setSystemRole('x'.repeat(1001), 'gpt').reason, 'too-long');
+  const r = svc.setSystemRole('  叫我老板\r\n说话简短\u0007  ', 'gpt');
+  assert.equal(r.ok, true);
+  assert.equal(ch(r.view, 'gpt').systemRole, '叫我老板\n说话简短', 'trimmed, line breaks kept, control characters dropped');
+  assert.deepEqual(settingsFile().systemRoles, { gpt: '叫我老板\n说话简短' });
+  await new Promise((res) => setTimeout(res, 300));
+  assert.equal(roleEdits(dir).length, before, 'Claude\'s agent is not touched');
+
+  // the current character (no id): applied to her agent right away
+  assert.equal(svc.setSystemRole('你是我的前端搭子，叫我阿明。').ok, true);
+  await idle(svc);
+  await new Promise((res) => setTimeout(res, 300));
+  const last = roleEdits(dir).at(-1).systemRole;
+  assert.equal(roleEdits(dir).length, before + 1);
+  assert.match(last, /主人给你的个性化设定[^\n]*\n你是我的前端搭子，叫我阿明。\n/);
+  assert.ok(last.indexOf('个性化设定') < last.lastIndexOf('内容红线'), 'the content rules still come last');
+  assert.doesNotMatch(last, /叫我老板/, 'only her own text');
+
+  // kept across a restart, and not re-applied when nothing changed
+  const s2 = mk();
+  s2.init();
+  assert.equal(ch(s2.view(), 'claude').systemRole, '你是我的前端搭子，叫我阿明。');
+  await s2._ensureReady();
+  assert.equal(roleEdits(dir).length, before + 1);
+
+  // clearing removes it from settings and from her role
+  assert.equal(s2.setSystemRole('').ok, true);
+  await idle(s2);
+  await new Promise((res) => setTimeout(res, 300));
+  assert.deepEqual(settingsFile().systemRoles, { gpt: '叫我老板\n说话简短' });
+  assert.doesNotMatch(roleEdits(dir).at(-1).systemRole, /个性化设定/);
 });
