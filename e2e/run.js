@@ -4225,6 +4225,33 @@ async function history() {
       await shot('h6-after-restart');
       return `previews after restart: ${previews.join(', ')}`;
     }, page);
+
+    await step(S, 'H7 ⋯ → 重新开始话题: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, history keeps both', async () => {
+      const runs = () => fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+      const oldTopic = runs().pop().topic;
+      await page.click('#panel-close');
+      await clickAct(page, 'menu');
+      await page.waitForSelector('[data-menu="new-topic"]');
+      await shot('h7-menu-new-topic');
+      await page.click('[data-menu="new-topic"]');
+      await page.waitForFunction(() => /换个新话题/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      assert.match(page.lastDialog || '', /旧话题不会删除/);
+      await shot('h7-new-topic-bubble');
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '我们聊点新的吧');
+      await page.press('#chat-input', 'Enter');
+      await page.waitForFunction(() => /echo: 我们聊点新的吧/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
+      await idle();
+      const newTopic = runs().pop().topic;
+      assert.ok(newTopic && newTopic !== oldTopic, `${oldTopic} → ${newTopic}`);
+      const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8');
+      assert.doesNotMatch(calls, /"topic","delete"|"agent","delete"/);
+      await openHistory();
+      const previews = await page.$$eval('.history-preview', (ps) => ps.map((p) => p.textContent));
+      assert.equal(previews.length, 2, previews.join(' | '));
+      await shot('h7-history-after-new-topic');
+      return `topic ${oldTopic} → ${newTopic}; nothing deleted; history: ${previews.join(' | ')}`;
+    }, page);
   } finally {
     await app.close().catch(() => {});
   }

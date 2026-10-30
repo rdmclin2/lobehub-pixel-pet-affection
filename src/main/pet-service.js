@@ -188,18 +188,24 @@ class PetService extends EventEmitter {
     const turnId = `t${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`;
     const a = attachments && (attachments.images || (attachments.files && attachments.files.length)) ? { attachments } : {};
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'user', origin, kind, turnId, text, ...a }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'user', origin, kind, turnId, text, ...this._epoch(), ...a }, this.now());
     } catch (e) {
       this.emit('error', e);
     }
     return { origin, turnId };
   }
 
+  // 重新开始话题 also starts a new conversation in 聊天记录 (chat-log.userSessions splits on it)
+  _epoch() {
+    const n = this._c().topicEpoch || 0;
+    return n ? { topicEpoch: n } : {};
+  }
+
   _logPet(text, kind, turn = null, status = null) {
     const origin = turn ? turn.origin : chatLog.originOfKind(kind);
     if (!this.pet) return origin;
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...(status ? { status } : {}) }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}) }, this.now());
     } catch (e) {
       this.emit('error', e); // a full disk must not silence the pet
     }
@@ -1063,6 +1069,21 @@ class PetService extends EventEmitter {
     this._save();
     if (isCurrent && r.unlockedStages.length) setImmediate(() => this._onStageUp(r));
     return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0, speciesId: id };
+  }
+
+  // ⋯ → 重新开始: the current character continues in a fresh LobeHub topic. Nothing is deleted: the old
+  // topic stays in LobeHub (its id is kept in `pastTopicIds`), and her agent, affection and 聊天记录 stay
+  // as they are. The next run goes without `-t`, so LobeHub opens the new topic itself.
+  newTopic() {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    if (this.busy) return { ok: false, reason: 'busy' };
+    const c = this._c();
+    const previous = c.topicId || null;
+    if (previous) c.pastTopicIds = [...(Array.isArray(c.pastTopicIds) ? c.pastTopicIds : []), previous].slice(-50);
+    c.topicId = null;
+    c.topicEpoch = (c.topicEpoch || 0) + 1;
+    this._save();
+    return { ok: true, previous, view: this.view() };
   }
 
   // Release the pet: optionally delete every character's LobeHub agent as well. `deleted`: how many were.
