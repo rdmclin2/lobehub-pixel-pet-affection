@@ -38,7 +38,7 @@
 | 形象设定 | 鲸鱼娘女仆：深蓝渐变浅蓝的及腿长发、环状呆毛、蓝色大眼、带蓝色小蝴蝶结的鲸鱼鳍耳、身后分叉的鲸鱼尾鳍。懒洋洋、嘴硬、爱吃白饭，叫主人“鱼片”，口头禅“咕噜~”。像素包和其他四位一样是成人比例；社区原版的 Q 版（约 3 头身）只保留在可选的原版动画里。只有全年龄内容 |
 | 主题色 | `#2C4A8A` 深海蓝（色板 `#2C4A8A` `#FFFFFF` `#6FA8E8` `#E8D6A0`） |
 | 服饰 | 招牌女仆装：白色泡泡袖衬衫（遮肩）、蓝宝石小领结、金扣深藏青束腰、右下角绣小鲸鱼的白围裙、深藏青外层 + 蓝白竖条纹中层 + 白荷叶边的及踝长裙、白色连裤袜、深藏青玛丽珍鞋。原先的 8 套服饰立绘（针织围巾套装、休闲卫衣等）和她的形象不搭，已经移除；旧存档里穿着这些服饰的会换回招牌女仆装 |
-| 美术 | 21 段透明 webm（`src/renderer/assets/dafeiyu/`：15 个基础状态 + 被拎起 `lifted`、走路 `walk`，以及点击回应变体 `pat_shy`、`pat_pout`、`pat_tickle`、`happy_jump`），在外观里选「大肥鱼 · 原版动画」时播放；默认是像素包 `dafeiyu-pixel`（高清，每帧 332×452，16 个动作 × 2 帧）；外观里还可以选 v0.7.0 的「旧版像素」`dafeiyu-classic` |
+| 美术 | 21 段透明 webm（`src/renderer/assets/dafeiyu/`：15 个基础状态 + 被拎起 `lifted`、走路 `walk`，以及点击回应变体 `pat_shy`、`pat_pout`、`pat_tickle`、`happy_jump`），在外观里选「大肥鱼 · 原版动画」时播放；默认是像素包 `dafeiyu-pixel`（高清，每帧 332×452，16 个动作 × 2 帧）；「切换角色 → 外观」里还可以选 v0.7.0 的「旧版像素」`dafeiyu-classic` |
 | 梗图 / 朗读 | 9 张梗图（dsh-pet）；朗读音调 1.35、语速 1.0 |
 | 素材来源 / 生成方式 | 动画来自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)；形象是 DeepSeek 吉祥物的社区二创：原型「溟月」B站 @上善无形，女仆鲸鱼娘设计 B站 @ZipZipPipe，设定参考 ai-chan-sheets `03_DeepSeek娘_鲸鱼娘`。像素版由 **GPT Image 2.5**（`gpt-image-2.5-sunburst`，经 LobeHub）按文字提示词重画，没有逐帧描摹视频 |
 | 许可 | 动画：dsh-pet 素材可开源使用、**禁止商用**；形象 **CC BY-NC-SA 4.0**（`src/renderer/assets/dafeiyu/NOTICE.md`）。像素包同样 **CC BY-NC-SA 4.0** |
