@@ -45,7 +45,14 @@
     "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
     "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
   ],
-  "voice": { "lang": "zh-CN", "pitch": 1.25, "rate": 1.08, "prefer": ["Xiaoxiao", "Meijia"] },
+  "voice": {
+    "lang": "zh-CN", "pitch": 1.25, "rate": 1.08, "prefer": ["Xiaoxiao", "Meijia"],
+    "tts": {
+      "fish": { "referenceId": "dcad479645e444af89338546b8c75b23", "model": "s2.1-pro", "speed": 1.08, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
+                "moodTags": { "happy": "兴奋地", "idle": "有点得意地" }, "credit": "Fish Audio 社区音色「可爱小猫娘」" },
+      "minimax": { "voiceId": "Chinese (Mandarin)_Crisp_Girl", "model": "speech-2.8-turbo", "speed": 1.08, "pitch": 1, "vol": 1, "emotion": "happy" }
+    }
+  },
   "memes": [
     { "id": "peek", "label": "让我看看！", "desc": "举放大镜凑近看，好奇、想看看时" },
     { "id": "curious", "label": "好奇心爆棚", "desc": "星星眼握拳，兴奋、期待时" },

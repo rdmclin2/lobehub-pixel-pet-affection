@@ -334,3 +334,6 @@ body.visitor .visitor-bar .btn { padding: 0 6px; font-size: 11px; border-width: 
 .pet-body[data-hover-zone]:not([data-hover-zone=""]) .pet-hit { cursor: pointer; }
 .zone-hint { position: fixed; z-index: 20; padding: 1px 5px; font-size: 11px; background: #fff; border: 2px solid #2b2233; box-shadow: 2px 2px 0 #2b2233; pointer-events: none; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .pet-body.touched .pet-hit, .tmark { animation: none !important; } }
+.tts-engine { border-top: 2px dashed #d8cfe0; margin-top: 6px; padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.tts-engine input[type="password"], .tts-engine input[type="text"] { flex: 1; min-width: 0; min-height: 26px; font: inherit; font-size: 11px; border: 3px solid #2b2233; padding: 2px 4px; }
+#voice-section .size-row + .size-row { margin-top: 4px; }

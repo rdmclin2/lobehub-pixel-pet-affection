@@ -43,7 +43,14 @@
     "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
     "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
   ],
-  "voice": { "lang": "zh-CN", "pitch": 1.15, "rate": 1.12, "prefer": ["Xiaoyi", "Tingting"] },
+  "voice": {
+    "lang": "zh-CN", "pitch": 1.15, "rate": 1.12, "prefer": ["Xiaoyi", "Tingting"],
+    "tts": {
+      "fish": { "referenceId": "8a88ef7d77d748e59879d8994e216e01", "model": "s2.1-pro", "speed": 1.12, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
+                "moodTags": { "idle": "坏笑着", "happy": "精神十足地" }, "credit": "Fish Audio 社区音色「御姐」" },
+      "minimax": { "voiceId": "female-shaonv", "model": "speech-2.8-turbo", "speed": 1.12, "pitch": -1, "vol": 1, "emotion": "happy" }
+    }
+  },
   "memes": [
     { "id": "interesting", "label": "哈！有意思", "desc": "露小尖牙指着前方大笑，觉得有趣、来劲时" },
     { "id": "thatsit", "label": "就这？", "desc": "抱臂挑眉的得意脸，吐槽、不以为然时" },

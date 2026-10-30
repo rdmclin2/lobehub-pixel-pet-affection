@@ -45,7 +45,14 @@
     "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
     "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
   ],
-  "voice": { "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao", "Tingting"] },
+  "voice": {
+    "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao", "Tingting"],
+    "tts": {
+      "fish": { "referenceId": "23632847285a487d8e0c6ae5bc593c71", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
+                "moodTags": { "idle": "温柔地", "happy": "温柔地" }, "credit": "Fish Audio 社区音色「温柔叙事女声」" },
+      "minimax": { "voiceId": "Chinese (Mandarin)_Warm_Girl", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 0, "vol": 1, "emotion": "calm" }
+    }
+  },
   "memes": [
     { "id": "glad", "label": "很乐意帮忙！", "desc": "笑着挥手，答应帮忙、打招呼时" },
     { "id": "points", "label": "以下是要点", "desc": "拿着清单卷轴，总结、列要点时" },

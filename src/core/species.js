@@ -59,7 +59,8 @@ function validateCharacter(c) {
     if (!m || typeof m !== 'object' || !reOk) errors.push('models.match must be a regular expression for the model ids she may use');
     else for (const k of ['providers', 'prefer']) if (m[k] !== undefined && (!Array.isArray(m[k]) || !m[k].every(str))) errors.push(`models.${k} must be a list of ids`);
   }
-  if (c.voice !== undefined && (!c.voice || typeof c.voice !== 'object' || (c.voice.lang !== undefined && !str(c.voice.lang)))) errors.push('voice must be an object ({ lang, pitch, rate, prefer })');
+  // voice: { lang, pitch, rate, prefer } for the system voice, plus optional engines in voice.tts (core/tts.js)
+  if (c.voice !== undefined) errors.push(...require('./tts').validateVoice(c.voice));
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
   if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
   if (c.touch !== undefined) errors.push(...require('./touch-zones').validateTouch(c.touch));
@@ -84,7 +85,7 @@ function toSpecies(c) {
     fx: { noMirror: [], ...(c.fx || {}) },
     signature: c.signature || null,
     memes: Array.isArray(c.memes) ? c.memes.map((m) => ({ id: m.id, label: m.label, desc: m.desc })) : [],
-    voice: c.voice || null,
+    voice: typeof c.voice === 'string' ? { prefer: [c.voice] } : c.voice || null,
     models: c.models ? { match: c.models.match, providers: [...(c.models.providers || [])], prefer: [...(c.models.prefer || [])] } : null,
   };
 }
@@ -142,4 +143,4 @@ function unregisterCharacter(id) {
   if (i >= 0) SPECIES_IDS.splice(i, 1);
 }
 
-module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, missingFiles, loadCharacters, registerCharacter, unregisterCharacter };
+module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, toSpecies, missingFiles, loadCharacters, registerCharacter, unregisterCharacter };

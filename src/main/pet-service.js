@@ -16,6 +16,7 @@ const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
 const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
+const { endpointOk } = require('../core/tts');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
@@ -26,11 +27,12 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null }) {
+  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
     super();
     // pet packs (how the companions look); by default only the built-in ones
     this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
+    this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     this.store = store;
     this.settingsStore = settingsStore;
     this.settings = settingsStore.load();
@@ -88,7 +90,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
   }
 
   view() {
@@ -633,6 +635,25 @@ class PetService extends EventEmitter {
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };
+  }
+
+  // 高级设置 → 语音: the engine that reads (fish / minimax / system), the fallback (system / silent) and
+  // the endpoints. API keys go through main.js into tts-keys.json, never into settings.json.
+  setTts(patch) {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    const cur = this.settings.tts;
+    const next = { provider: p.provider === undefined ? cur.provider : p.provider, fallback: p.fallback === undefined ? cur.fallback : p.fallback, endpoints: { ...cur.endpoints } };
+    let ok = true;
+    for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
+      if (!(id in next.endpoints)) continue;
+      const v = String(u || '').trim();
+      if (v && !endpointOk(v)) ok = false;
+      else next.endpoints[id] = v;
+    }
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, tts: next });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok, reason: ok ? undefined : 'bad-endpoint', settings: this.settingsView() };
   }
 
   // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play).

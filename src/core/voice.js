@@ -13,8 +13,10 @@
 
   const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
 
+  // A plain string is the oldest shape: just a system voice name to prefer ("voice": "Xiaoxiao").
   function voiceOf(species) {
-    const v = (species && species.voice) || {};
+    const raw = species && species.voice;
+    const v = typeof raw === 'string' ? { prefer: [raw] } : raw || {};
     return {
       lang: typeof v.lang === 'string' && v.lang ? v.lang : DEFAULT_VOICE.lang,
       pitch: clamp(v.pitch, 0.1, 2, DEFAULT_VOICE.pitch),
@@ -56,5 +58,32 @@
     return list.find((x) => (x.lang || '').toLowerCase() === lang) || list.find((x) => (x.lang || '').toLowerCase().split(/[-_]/)[0] === lang.split('-')[0]) || null;
   }
 
-  return { DEFAULT_VOICE, MAX_CHARS, voiceOf, speakable, shouldSpeak, pickVoice };
+  // The system voice as a TTS provider (core/tts.js PROVIDERS.system): the last fallback of the chain,
+  // run in the renderer because speechSynthesis lives there. env = { speechSynthesis, SpeechSynthesisUtterance }.
+  const webSpeech = {
+    id: 'system',
+    kind: 'system',
+    needsKey: false,
+    available: (env) => !!(env && env.speechSynthesis && env.SpeechSynthesisUtterance),
+    config: (voice) => voiceOf({ voice }),
+    // Speak `text` now (cancelling whatever the system was saying). on: { start, end, error }
+    speak(text, v, env, on = {}) {
+      const u = new env.SpeechSynthesisUtterance(text);
+      const voices = env.speechSynthesis.getVoices();
+      const sys = pickVoice(voices, v);
+      u.lang = v.lang;
+      u.pitch = v.pitch;
+      u.rate = v.rate;
+      if (sys) u.voice = sys;
+      u.onstart = () => on.start && on.start();
+      u.onend = () => on.end && on.end();
+      u.onerror = (e) => on.error && on.error(e.error);
+      env.speechSynthesis.cancel();
+      env.speechSynthesis.speak(u);
+      return { voice: sys ? sys.name : null, systemVoices: voices.length };
+    },
+    cancel: (env) => env && env.speechSynthesis && env.speechSynthesis.cancel(),
+  };
+
+  return { DEFAULT_VOICE, MAX_CHARS, voiceOf, speakable, shouldSpeak, pickVoice, webSpeech };
 });

@@ -43,7 +43,14 @@
     "像素图：gpt-image-2.5 生成、脚本像素化（CC BY-NC-SA 4.0）",
     "梗图：gpt-image-2.5 生成（CC BY-NC-SA 4.0）"
   ],
-  "voice": { "lang": "zh-CN", "pitch": 1.0, "rate": 0.92, "prefer": ["Xiaoxiao", "Tingting", "Huihui"] },
+  "voice": {
+    "lang": "zh-CN", "pitch": 1.0, "rate": 0.92, "prefer": ["Xiaoxiao", "Tingting", "Huihui"],
+    "tts": {
+      "fish": { "referenceId": "faccba1a8ac54016bcfc02761285e67f", "model": "s2.1-pro", "speed": 0.92, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
+                "moodTags": { "idle": "轻声地", "happy": "小声害羞地" }, "credit": "Fish Audio 社区音色「温柔动听女声」" },
+      "minimax": { "voiceId": "Chinese (Mandarin)_Soft_Girl", "model": "speech-2.8-turbo", "speed": 0.92, "pitch": 0, "vol": 1, "emotion": "calm" }
+    }
+  },
   "memes": [
     { "id": "think", "label": "让我想想", "desc": "手指抵下巴抱着书思考，问题需要想一想时" },
     { "id": "notes", "label": "整理笔记中", "desc": "伏案写笔记配红茶，在整理、记录、认真做事时" },

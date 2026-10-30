@@ -56,7 +56,7 @@
 | E20 | 落地挤压：落得越重压得越扁 | 甩出、弹弓 |
 | E21 | 点击音效（默认关） | 高级设置 → 桌宠行为 |
 | E22 | 梗图：回复可配一张她自己的表情包贴纸（agent 自选），碎碎念偶尔随机配一张 | 默认开，可关 |
-| E23 | 朗读回复：系统语音念出回复，每位角色音调、语速不同（默认关） | 高级设置 → 桌宠行为 |
+| E23 | 朗读回复：用她自己的音色念出回复（Fish Audio / MiniMax 神经语音，用不了时降级到系统语音），默认关；配置见下方“语音（TTS）” | 高级设置 → 桌宠行为 / 语音 |
 | E24 | 同屏伙伴：请其他模型娘来桌面串门（最多 3 位，无 agent），一起走动、被点、被甩 | 高级设置 → 同屏伙伴 |
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 高级设置 → 对外接口 |
@@ -176,6 +176,40 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 - **调整某个角色的分区**：在她的 `touch.zones` 里写 `{"<部位>": [[x0, y0, x1, y1], ...]}`（0–1，相对可见框），会替换默认表里的同名部位；只对某个姿态生效的写在 `touch.poses.<姿态>`（例如大肥鱼的 `video`）。现有例子：杰米、吉皮缇、大肥鱼的 `tail`。
 - **新增一个部位**（例如“耳朵”）：在 `touch-zones.js` 里把 id 加进 `ZONE_IDS`，在 `ZONES` 写中文名、敏感度（0 随便碰 / 1 有点私人 / 2 边界）和默认心情，在 `DEFAULT_ZONES`（或角色文件的 `touch.zones`）给出矩形、放进 `ZONE_ORDER`，在 `DEFAULT_LINES` 写三档台词；在 `src/core/affection.js` 的规则表加 `touch:<部位>` 的分值、冷却和每日上限；在 `src/renderer/fx.js` 的 `TOUCH_MARKS` 配标记。可选：角色包里加名为 `touch-<部位>` 的动作，就会代替“摸摸”播放。
 - 改完跑 `npm test`：角色文件的 `touch` 块会被校验（部位名、矩形范围、每档台词非空），所有台词会过内容守卫和合规词表。
+
+## 语音（TTS）
+
+打开 **高级设置 → 桌宠行为 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来（自动碎碎念不念）。用哪个引擎在 **高级设置 → 语音** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。
+
+| 引擎 | 需要什么 | 说明 |
+|---|---|---|
+| **Fish Audio**（默认） | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
+| **MiniMax**（备选） | MiniMax 接口密钥（[platform.minimax.cn](https://platform.minimax.cn)） | `speech-2.8-turbo` + 系统音色（大肥鱼 `qiaopi_mengmei`） |
+| **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面两个的最后一道降级 |
+
+配置步骤：
+
+1. 高级设置 → 语音 → “引擎”选 Fish Audio（或 MiniMax）。
+2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（有系统钥匙串时用 Electron `safeStorage` 加密，否则是只有当前用户可读的 0600 文件），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
+3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
+4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、4 秒没响应、返回 4xx/5xx 时，这一句立即降级，并把出错的引擎暂停 5 分钟（改 Key / 端点 / 引擎会立刻重试）；请求在主进程异步进行，不会卡住界面。
+5. 点 **试听一句** 听当前角色的口头禅。
+
+合成过的句子按“引擎 + 模型 + 音色 + 参数 + 文本”的哈希缓存在 `userData/tts-cache/`（LRU，上限 50MB），再说同一句直接播放、不再请求；**清空语音缓存** 按钮可以清掉。同一时间只播一段：新的一句会停掉正在播放或正在合成的上一句。
+
+角色文件里的音色写在 `voice.tts`（旧的 `lang / pitch / rate / prefer`，以及更早的纯字符串写法，继续给系统语音用，仍然有效）：
+
+```json
+"voice": {
+  "lang": "zh-CN", "pitch": 1.35, "rate": 1.0, "prefer": ["Xiaoyi", "Xiaoxiao"],
+  "tts": {
+    "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
+    "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" }
+  }
+}
+```
+
+`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
 ## 内容边界声明
 
