@@ -145,7 +145,7 @@ class PetService extends EventEmitter {
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
-    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, ...(voiceMood !== null ? { voiceMood } : {}) });
+    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, ...(voiceMood !== null ? { voiceMood } : {}) });
     if (this.pet) this._save();
   }
 

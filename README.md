@@ -179,7 +179,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ## 语音（TTS）
 
-打开 **高级设置 → 桌宠行为 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来（自动碎碎念不念）。用哪个引擎在 **高级设置 → 语音** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。
+打开 **高级设置 → 桌宠行为 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来；她的互动台词也念（见下方“互动语音”），自动碎碎念默认不念。用哪个引擎在 **高级设置 → 语音** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。
 
 | 引擎 | 需要什么 | 说明 |
 |---|---|---|
@@ -210,6 +210,31 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 ```
 
 `src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+
+### 互动语音
+
+开着 **朗读回复** 时，下面每种互动都会把她气泡里的那句台词用她的音色念出来（**互动语音** 开关，默认开）。台词复用各自已有的离线台词与人设；拖拽 / 甩出 / 接住原来没有台词，新加在角色文件的 `voice.lines` 里（每位两句，短句为主）。分类逻辑在 `src/core/interaction-voice.js`。
+
+| 互动 | 触发（代码位置） | 气泡 `kind` | 台词来源 | 读法（mood） |
+|---|---|---|---|---|
+| 初次见面 | 唤醒她（`pet-service.js hatch` → `_speak('met')`） | `met` | agent 回复，失败时 `fallback.greet` + 阶段台词 | happy |
+| 摸摸 | 点她（部位触摸关着或点在部位之间，`app.js touchAt` → `act('pat')`） | `pat` | 阶段台词 `patted` / `fallback.happy` | happy |
+| 部位触摸 | 点头、脸、胸、手、肚子、臀、腿、脚、尾巴（`touch(zone)`） | `touch:<部位>` | `touch.lines` 按部位和阶段 | 按反应：开心/怕痒/害羞 happy，烦 sad，生气 无标签 |
+| 喂食 | 喂食 → 选食物（`act('feed')`） | `feed` | 阶段台词 `fed`；吃撑了“肚子圆滚滚的” | happy |
+| 玩耍 | 玩耍（`act('play')`） | `play` | 阶段台词 `played`；累了“好累……” | happy |
+| 哄睡 | 睡觉（`act('sleep')`） | `sleep` | `fallback.sleepy` | sleep |
+| 拖拽 | 按住她拖动（`app.js bindPetPointer`） | `lift` | `voice.lines.lift` | happy |
+| 甩出 | 拖着快速松手 / 弹弓（`throwPet`） | `throw` | `voice.lines.throw` | happy |
+| 接住 | 她在空中时按住她 | `catch` | `voice.lines.catch` | happy |
+| 关系升级 | 好感度进入新阶段（`_onStageUp` → `_speak('stage_up')`） | `stage_up` | agent 回复，失败时阶段台词 | happy |
+| 切换角色 | ⋯ → 切换角色（`switchCharacter`） | `switch` | 新角色 `fallback.greet[0]` | happy |
+
+- **预合成缓存**：开着朗读和互动语音时，她当前阶段会说到的常用短句（摸摸 / 喂食 / 玩耍 / 哄睡 / 拖拽 / 甩出 / 接住，以及每个部位第一次被碰的台词，最多 60 句）会在后台提前合成进语音缓存，点了直接播放。换角色、升级、换引擎或 Key 时重新补齐，已缓存的句子不再请求；预合成用自己的请求，不会打断正在说的话，第一次出错就停下。
+- **连点节流**：互动台词在上一句还没说完时直接丢掉（不排队），1.5 秒内也只说一句；气泡照常每次更新。回复和初次见面 / 升级 / 切换角色总能说出来，互动台词不会打断回复。拖拽 / 甩出 / 接住每种 4 秒内最多说一次。
+- **碎碎念**：她自己冒出来的话（饿了、无聊、早晚问候、想你了、睡醒）默认不念；打开 **朗读碎碎念** 才念。
+- **关掉朗读回复**：立即停掉正在播放和正在合成的句子以及预合成，此后不再请求任何引擎（主进程也会拒绝合成请求），拖拽 / 甩出 / 接住也不出台词。
+
+验证：`npm test`（`test/interaction-voice.test.js`），以及 `xvfb-run -a node e2e/run.js ivoice`（本机假 Fish 服务：每种互动各触发一次语音请求、预合成、连点、碎碎念开关、关掉后零请求；证据在 `out/e2e/ivoice/`）。
 
 ## 内容边界声明
 

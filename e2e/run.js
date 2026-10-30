@@ -2887,6 +2887,328 @@ async function voice() {
   }
 }
 
+// ---------------------------------------------------------------- ivoice
+// 互动语音 (core/interaction-voice.js): with 朗读 on, every interaction — 初次见面, 摸摸, 部位触摸, 喂食,
+// 玩耍, 哄睡, 拖拽, 甩出, 接住, 关系升级, 切换角色 — asks the engine (the local Fish stand-in) for her line;
+// her common lines are synthesised ahead; rapid clicks do not pile up; murmurs only with 朗读碎碎念; and
+// with 朗读 off nothing is requested at all.
+async function ivoice() {
+  const S = 'ivoice';
+  const SHOTS = path.join(OUT, 'ivoice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ivoice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ivoicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // 朗读 is on before she hatches (so 初次见面 is read), with the Fish stand-in and its key as 语音 saves them
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true }, tts: { provider: 'fish', fallback: 'system', endpoints: { fish: mock.url, minimax: '' } } }));
+  fs.writeFileSync(path.join(data, 'tts-keys.json'), JSON.stringify({ fish: { plain: mock.KEY } }), { mode: 0o600 });
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const table = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const slog = () => page.evaluate(() => window.petFx.speechLog());
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  const engineStats = async () => (await page.evaluate(() => window.pet.getSettings())).ttsStatus.stats;
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600); // past the 1.5 s gate
+  };
+  // run one interaction; it must offer exactly one line of `kind` to the voice, which is said through Fish
+  const interact = async (label, kindRe, fn, from = null) => {
+    if (!from) await idle();
+    const n0 = from ? from.n0 : (await slog()).length;
+    const m0 = from ? from.m0 : mock.log.length;
+    const s0 = from ? from.s0 : await engineStats();
+    await fn();
+    await page.waitForFunction(([n, re]) => window.petFx.speechLog().slice(n).some((e) => new RegExp(re).test(e.kind)), [n0, kindRe.source], { timeout: 20000 });
+    const entry = (await slog()).slice(n0).find((e) => kindRe.test(e.kind));
+    assert.equal(entry.said, true, `${label}: dropped (${entry.dropped})`);
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp.n !== n || !/^(queued|synthesizing)$/.test(sp.status); }, entry.n, { timeout: 15000 });
+    const sp = await last();
+    const s1 = await engineStats();
+    const live = mock.log.slice(m0).filter((r) => r.text && r.text.endsWith(entry.text));
+    const warmed = mock.log.slice(0, m0).filter((r) => r.text && r.text.endsWith(entry.text));
+    assert.equal(sp.n, entry.n);
+    assert.equal(sp.provider, 'fish', `${label}: ${JSON.stringify(sp)}`);
+    assert.ok(live.length || (sp.cached && warmed.length), `${label}: the engine was asked for 「${entry.text}」`);
+    const bubble = await bubbleText(page);
+    const row = { interaction: label, kind: entry.kind, cls: entry.cls, text: entry.text, bubble, mood: sp.mood, provider: sp.provider, voiceId: sp.voiceId, cached: sp.cached, latencyMs: sp.latencyMs, status: sp.status, ipcRequests: s1.requests - (s1.prewarmed || 0) + s1.hits - s0.requests + (s0.prewarmed || 0) - s0.hits, httpLive: live.length, httpPrewarmed: warmed.length };
+    table.push(row);
+    return note(`${label}: kind=${row.kind} 「${row.text}」 mood=${row.mood} → fish voice=${row.voiceId} cached=${row.cached} ${row.latencyMs}ms status=${row.status}; engine asked ${row.ipcRequests}× (HTTP now ${row.httpLive}, synthesised ahead ${row.httpPrewarmed}); bubble 「${bubble}」`);
+  };
+  const petBox = async () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+  const openAdvanced = async () => {
+    if (!(await page.isVisible('#behavior-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#behavior-section');
+    }
+  };
+  try {
+    await step(S, 'I0 hatch 大肥鱼 with 朗读 on: 初次见面 (met) is read through Fish', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => window.petFx.speechLog().some((e) => e.kind === 'met'), null, { timeout: 20000 });
+      const st = await page.evaluate(() => window.pet.getSettings());
+      assert.equal(st.prefs.voice, true);
+      assert.equal(st.prefs.voiceInteractions, true);
+      assert.equal(st.prefs.voiceMurmurs, false);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      return await interact('初次见面 met', /^met$/, async () => {}, { n0: 0, m0: 0, s0: { requests: 0, hits: 0 } });
+    }, page);
+    await shot('i0-met');
+
+    await step(S, 'I1 her common lines are synthesised ahead (prewarm) into the cache', async () => {
+      await page.waitForFunction(() => { const p = window.petFx.lastPrewarm(); return p && p.status === 'done'; }, null, { timeout: 60000 });
+      const p = await page.evaluate(() => window.petFx.lastPrewarm());
+      assert.equal(p.provider, 'fish');
+      assert.ok(p.warmed >= 15, `warmed ${p.warmed}`);
+      assert.equal(p.failed, null);
+      const files = fs.readdirSync(path.join(data, 'tts-cache')).filter((f) => f !== 'index.json');
+      return note(`prewarm: ${p.lines} lines → ${p.warmed} synthesised, ${p.cached} already cached, provider ${p.provider}, ${p.ms} ms; tts-cache/ has ${files.length} files; mock requests so far ${mock.log.length}`);
+    });
+
+    await step(S, 'I2 部位触摸: real clicks aimed at her head, hands and face — each reads that part\'s touch line', async () => {
+      const out = [];
+      for (const zone of ['head', 'hands', 'face']) {
+        // hover first: the pose under the pointer settles, then the part is found where it is drawn now
+        const b = await petBox();
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+        await page.waitForTimeout(600);
+        const pts = await zonePoints(page);
+        if (!pts[zone]) continue;
+        // 大肥鱼's clip moves between frames: the part actually hit is the one her reaction names
+        out.push(await interact(`部位触摸 (aimed at ${zone})`, /^touch:[a-z]+$/, () => page.mouse.click(pts[zone].x, pts[zone].y)));
+        await shot(`i2-touch-${zone}`);
+      }
+      assert.ok(out.length >= 2);
+      return out.join(' | ');
+    }, page);
+
+    await step(S, 'I3 摸摸 (pat): with 部位触摸 off a click on her is the old pat', async () => {
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      await page.waitForFunction(() => window.petFx.speechLog && true);
+      await page.waitForTimeout(300);
+      const b = await petBox();
+      const r = await interact('摸摸 pat', /^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+      await shot('i3-pat');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      return r;
+    }, page);
+
+    await step(S, 'I4 喂食: 喂食 → a food from the menu', async () => {
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+      const r = await interact('喂食 feed', /^feed$/, async () => {
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+      });
+      await shot('i4-feed');
+      return r;
+    }, page);
+
+    await step(S, 'I5 玩耍: the 玩耍 button', async () => {
+      await page.evaluate(() => window.pet.debugSet({ energy: 80 }));
+      const r = await interact('玩耍 play', /^play$/, () => clickAct(page, 'play'));
+      await shot('i5-play');
+      return r;
+    }, page);
+
+    await step(S, 'I6 拖拽: dragging her lifts her and she says her lift line', async () => {
+      await page.mouse.move(300, 300);
+      await page.waitForTimeout(400);
+      const b = await petBox();
+      const cx = b.x + b.width / 2;
+      const cy = b.y + b.height / 2;
+      const r = await interact('拖拽 lift', /^lift$/, async () => {
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        await page.mouse.move(cx + 12, cy - 8, { steps: 4 });
+        await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 });
+      });
+      await shot('i6-lift');
+      await page.waitForTimeout(300);
+      await page.mouse.up();
+      return r;
+    }, page);
+
+    await step(S, 'I7 甩出: a fast drag and let go throws her; she says her throw line', async () => {
+      await page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 10000 });
+      const r = await interact('甩出 throw', /^throw$/, async () => {
+        await page.waitForTimeout(400);
+        const b = await petBox();
+        const cx = b.x + b.width / 2;
+        const cy = b.y + b.height / 2;
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) await page.mouse.move(cx - i * 25, cy - i * 18);
+        await page.mouse.up();
+        await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+      });
+      await shot('i7-throw');
+      await page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
+      return r;
+    }, page);
+
+    await step(S, 'I8 接住: pressing her while she flies catches her; she says her catch line', async () => {
+      const r = await interact('接住 catch', /^catch$/, async () => {
+        page.evaluate(() => window.petFx.throw(-900, -1500));
+        await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+        await page.waitForTimeout(120);
+        await page.locator('#pet-body .pet-hit:not(.hidden)').dispatchEvent('pointerdown', { button: 0, pointerId: 3, pointerType: 'mouse', isPrimary: true });
+      });
+      await shot('i8-catch');
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, pointerType: 'mouse' })));
+      return r;
+    }, page);
+
+    await step(S, 'I9 关系升级 stage_up: enough affection for the next stage — her stage-up line is read', async () => {
+      const v = await view(page);
+      const r = await interact('关系升级 stage_up', /^stage_up$/, () => page.evaluate(() => window.pet.debugSet({ affection: 40 })));
+      const v2 = await view(page);
+      await shot('i9-stage-up');
+      return `${v.pet.relStage} → ${v2.pet.relStage}; ${r}`;
+    }, page);
+
+    await step(S, 'I10 哄睡: the 睡觉 button', async () => {
+      const r = await interact('哄睡 sleep', /^sleep$/, () => clickAct(page, 'sleep'));
+      await shot('i10-sleep');
+      return r;
+    }, page);
+
+    await step(S, 'I11 切换角色: ⋯ → 切换角色 → 克洛蒂 — her greeting is read in her own Fish voice', async () => {
+      const r = await interact('切换角色 switch', /^switch$/, async () => {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="characters"]');
+        await page.click('.char-opt[data-species="claude"] .pick');
+      });
+      const sp = await last();
+      assert.equal(sp.species, 'claude');
+      assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
+      await shot('i11-switch');
+      await page.click('#panel-close');
+      return r;
+    }, page);
+
+    await step(S, 'I12 rapid clicks: 8 clicks in 0.8 s — the bubble follows every one, the voice says one line, nothing piles up', async () => {
+      await idle();
+      const pts = await zonePoints(page);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const s0 = await engineStats();
+      const bubbles = [];
+      for (let i = 0; i < 8; i++) {
+        const z = ['head', 'hands'][i % 2];
+        await page.mouse.click(pts[z].x, pts[z].y);
+        await page.waitForTimeout(100);
+        bubbles.push(await bubbleText(page));
+      }
+      await page.waitForTimeout(1500);
+      const got = (await slog()).slice(n0);
+      const said = got.filter((e) => e.said);
+      const s1 = await engineStats();
+      const gate = await page.evaluate(() => window.petFx.speechGate());
+      await shot('i12-rapid');
+      assert.equal(got.length, 8, 'every click offered its line');
+      assert.equal(said.length, 1, `said: ${said.map((e) => e.text).join(', ')}`);
+      assert.equal(s1.requests + s1.hits - s0.requests - s0.hits, 1, 'one request to the engine');
+      return note(`8 clicks → ${got.length} lines offered, ${said.length} said (「${said[0].text}」), dropped: ${got.filter((e) => !e.said).map((e) => e.dropped).join(',')}; engine asked ${s1.requests + s1.hits - s0.requests - s0.hits}×, HTTP ${mock.log.length - m0}; gate ${JSON.stringify(gate)}; bubbles changed ${new Set(bubbles).size}×`);
+    }, page);
+
+    await step(S, 'I13 碎碎念: not read by default; read after switching on 朗读碎碎念 in 高级设置', async () => {
+      await idle();
+      const murmur = async () => {
+        const n0 = (await slog()).length;
+        await page.evaluate(async () => { await window.pet.debugSet({ hunger: 95, lastSpokeAt: 0, sleeping: false }); await window.pet.debugHeartbeat(); });
+        await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'hungry', null, { timeout: 15000 });
+        await page.waitForTimeout(500);
+        return (await slog()).slice(n0);
+      };
+      const before = await murmur();
+      assert.equal(before.length, 0, 'a murmur is not offered to the voice by default');
+      await openAdvanced();
+      await page.locator('#behavior-section input[data-pref="voiceMurmurs"]').scrollIntoViewIfNeeded();
+      await shot('i13-murmur-switch-off');
+      await page.check('#behavior-section input[data-pref="voiceMurmurs"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读碎碎念：开'));
+      await shot('i13-murmur-switch-on');
+      await page.click('#panel-close');
+      await page.waitForTimeout(1700);
+      const after = await murmur();
+      assert.equal(after.length, 1);
+      assert.equal(after[0].said, true);
+      await page.waitForFunction(() => !/^(queued|synthesizing)$/.test(window.petFx.lastSpeech().status), null, { timeout: 15000 });
+      const sp = await last();
+      assert.equal(sp.kind, 'hungry');
+      assert.equal(sp.provider, 'fish');
+      return note(`murmur with 朗读碎碎念 off: offered ${before.length}; on: 「${after[0].text}」 said via ${sp.provider} (${sp.status})`);
+    }, page);
+
+    await step(S, 'I14 关掉 朗读回复: every interaction again — no line offered, no request to any engine', async () => {
+      await idle();
+      await openAdvanced();
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      await page.uncheck('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：关'));
+      await shot('i14-voice-off');
+      await page.click('#panel-close');
+      await page.waitForTimeout(500);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const s0 = await engineStats();
+      const kinds = [];
+      const sawLine = async (k) => { await page.waitForFunction((kk) => document.getElementById('bubble').dataset.kind.startsWith(kk), k, { timeout: 15000 }); kinds.push(await page.evaluate(() => document.getElementById('bubble').dataset.kind)); await page.waitForTimeout(600); };
+      let b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(600);
+      const pts = await zonePoints(page);
+      await page.mouse.click(pts.head.x, pts.head.y); await sawLine('touch:');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false })); await page.waitForTimeout(300);
+      b = await petBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4); await sawLine('pat');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60, energy: 80 }));
+      await clickAct(page, 'feed'); await page.click('#food-menu button'); await sawLine('feed');
+      await clickAct(page, 'play'); await sawLine('play');
+      await page.mouse.move(300, 300); await page.waitForTimeout(400);
+      b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + 12, b.y + b.height / 2 - 8, { steps: 4 });
+      await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 }); kinds.push('lift(dragged)');
+      await page.waitForTimeout(300); await page.mouse.up();
+      page.evaluate(() => window.petFx.throw(-900, -1500)); await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 }); kinds.push('throw(flying)');
+      await page.waitForTimeout(120);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').dispatchEvent('pointerdown', { button: 0, pointerId: 4, pointerType: 'mouse', isPrimary: true });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, pointerType: 'mouse' }))); kinds.push('catch(caught)');
+      await page.waitForTimeout(800);
+      await page.evaluate(() => window.pet.debugSet({ affection: 90 })); await sawLine('stage_up');
+      await clickAct(page, 'sleep'); await sawLine('sleep');
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu')); await sawLine('switch');
+      await page.evaluate(async () => { await window.pet.debugSet({ hunger: 95, lastSpokeAt: 0, sleeping: false }); await window.pet.debugHeartbeat(); }); await sawLine('hungry');
+      await page.evaluate(() => window.petFx.speak('一句回复'));
+      await page.waitForTimeout(2500);
+      const got = (await slog()).slice(n0);
+      const s1 = await engineStats();
+      const audio = await page.evaluate(() => window.petFx.audioState());
+      const pw = await page.evaluate(() => window.petFx.lastPrewarm());
+      await shot('i14-silent-after');
+      assert.equal(got.length, 0, `offered: ${JSON.stringify(got)}`);
+      assert.equal(mock.log.length, m0, 'no HTTP request');
+      assert.equal(s1.requests + s1.hits, s0.requests + s0.hits, 'no engine call');
+      assert.equal(audio, null, 'nothing playing');
+      return note(`朗读 off; interactions run: ${kinds.join(', ')}, + a reply; lines offered to the voice ${got.length}; HTTP requests ${m0} → ${mock.log.length}; engine calls ${s0.requests + s0.hits} → ${s1.requests + s1.hits}; audio element ${JSON.stringify(audio)}; last prewarm still ${pw && pw.sig.split('|')[4]} (no new prewarm)`);
+    }, page);
+  } finally {
+    const md = ['| 互动 | kind | 台词 | 气泡 | mood | 引擎 | 音色 | 缓存 | 延迟 ms | 状态 | 引擎调用 | HTTP 现场 | HTTP 预合成 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|', ...table.map((r) => `| ${r.interaction} | ${r.kind} | ${r.text} | ${r.bubble} | ${r.mood} | ${r.provider} | ${r.voiceId} | ${r.cached} | ${r.latencyMs} | ${r.status} | ${r.ipcRequests} | ${r.httpLive} | ${r.httpPrewarmed} |`)].join('\n');
+    fs.writeFileSync(path.join(SHOTS, 'ivoice-table.md'), md + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'ivoice-log.txt'), evidence.join('\n') + '\n\nspeech log (renderer):\n' + (await slog().catch(() => [])).map((e) => JSON.stringify(e)).join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -2903,6 +3225,7 @@ async function voice() {
   if (which === 'roster' || which === 'all') await roster();
   if (which === 'touch' || which === 'all') await touch();
   if (which === 'voice' || which === 'all') await voice();
+  if (which === 'ivoice' || which === 'all') await ivoice();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

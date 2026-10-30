@@ -45,6 +45,11 @@
   ],
   "voice": {
     "lang": "zh-CN", "pitch": 1.0, "rate": 0.92, "prefer": ["Xiaoxiao", "Tingting", "Huihui"],
+    "lines": {
+      "lift": ["诶？……请轻一点，书要掉了。", "被拎起来了，视野倒是不错。"],
+      "throw": ["呀——！书签飞走了！", "这、这不在我的计划里——！"],
+      "catch": ["……谢谢你接住我。", "呼，心跳有点快。"]
+    },
     "tts": {
       "fish": { "referenceId": "faccba1a8ac54016bcfc02761285e67f", "model": "s2.1-pro", "speed": 0.92, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
                 "moodTags": { "idle": "轻声地", "happy": "小声害羞地" }, "credit": "Fish Audio 社区音色「温柔动听女声」" },

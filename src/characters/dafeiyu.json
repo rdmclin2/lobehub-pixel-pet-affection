@@ -71,6 +71,11 @@
   ],
   "voice": {
     "lang": "zh-CN", "pitch": 1.35, "rate": 1.0, "prefer": ["Xiaoyi", "Xiaoxiao", "Tingting", "Meijia"],
+    "lines": {
+      "lift": ["咕噜？鱼片要带我去哪？", "放我下来嘛，饭还没吃完。"],
+      "throw": ["咕噜噜——飞起来啦！", "哇啊——鱼也会飞吗——"],
+      "catch": ["接住啦，鱼片真靠谱。", "咕噜，吓死鱼了。"]
+    },
     "tts": {
       "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "temperature": 0.7, "topP": 0.7, "latency": "balanced",
                 "moodTags": { "happy": "开心地", "hungry": "可怜巴巴地", "sleep": "打着哈欠，懒洋洋地", "sad": "撒娇地" },
