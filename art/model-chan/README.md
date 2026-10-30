@@ -41,7 +41,7 @@ python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-prev
 
 一套服饰对应角色包里的一张图集（`sheets/<outfit>.webp`），排布和 daily 完全一样（4×9，每帧 332×452，第 9 行是 4 帧朝右的侧身 walk）。服饰本身（解锁阶段、分级、中文名）定义在 `src/core/outfits.js`；角色要在 `src/characters/<id>.json` 的 `outfits` 里列出它，衣柜才会显示。提示词由 `model_chan_prompts.py` 的 `OUTFIT_LOOKS[<outfit>][<id>]` 给出：角色身份取 `CHARS[<id>]` 中 “ She wears ” 之前的部分，后面接这套衣服的描述；`OUTFIT_SAFE` 是附加的内容约束，`OUTFIT_WALK` 把走路提示词里的 “skirt” 换成这套衣服里会摆动的东西。不要画帽子：图会按身高缩放，加了帽子她会比 daily 小一圈。不加 `--outfit` 时，daily 的提示词和流程保持不变。
 
-克洛蒂的做法如下。其余四位先在 `OUTFIT_LOOKS["swimsuit"]` 里加上自己的描述，然后把 `claude` 换成自己的 id（杰米照旧用绿底，加 `--key green`；吉皮缇加 `--octree`）：
+五位角色（`dafeiyu`、`claude`、`grok`、`gemini`、`gpt`）的泳装都已在 `OUTFIT_LOOKS["swimsuit"]` 里有描述，默认包里都有 `sheets/swimsuit.webp`。下面以克洛蒂为例；重画别的角色时把 `claude` 换成她的 id（杰米照旧用绿底，加 `--key green`；吉皮缇加 `--octree`），新服饰则先在 `OUTFIT_LOOKS` 里加一个键：
 
 ```bash
 W=/tmp/swim; mkdir -p $W/raw $W/sliced $W/fit
