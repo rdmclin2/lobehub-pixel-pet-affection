@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { LhClient, parseRunEvents, cleanEnv } = require('../src/core/lh-client');
+const { LhClient, parseRunEvents, runEndCode, cleanEnv } = require('../src/core/lh-client');
 
 const FAKE = path.join(__dirname, 'fixtures', 'fake-lh.js');
 function setup() {
@@ -43,6 +43,26 @@ test('run returns the reply and reuses the topic', async () => {
   await lh.run({ agentId: 'agt_1', prompt: 'again', topicId: 'tpc_ZZ' });
   const last = calls().filter((c) => c.args[1] === 'run').pop();
   assert.ok(last.args.includes('-t') && last.args.includes('tpc_ZZ'));
+});
+
+test('run returns as soon as the events are printed, without waiting for lh to exit', async () => {
+  const { lh } = setup();
+  lh.env.FAKE_LH_LINGER_MS = '15000';
+  const t0 = Date.now();
+  const r = await lh.run({ agentId: 'agt_1', prompt: 'hi' });
+  assert.equal(r.text, 'echo: hi');
+  assert.ok(Date.now() - t0 < 5000, `took ${Date.now() - t0}ms`);
+});
+
+test('runEndCode: the exit code once the event array is complete, undefined before', () => {
+  const end = (data) => JSON.stringify([{ type: 'stream_end', data: { finalContent: 'x' } }, { type: 'agent_runtime_end', data }], null, 2);
+  assert.equal(runEndCode(end({})), 0);
+  assert.equal(runEndCode(end({ reason: 'interrupted' })), 1);
+  assert.equal(runEndCode(JSON.stringify([{ type: 'error', data: { message: 'boom' } }])), 1);
+  const full = end({});
+  assert.equal(runEndCode(full.slice(0, full.length - 10)), undefined, 'half-written');
+  assert.equal(runEndCode('[]'), undefined, 'no terminal event: wait for the exit code');
+  assert.equal(runEndCode(''), undefined);
 });
 
 test('run surfaces CLI failures as errors', async () => {

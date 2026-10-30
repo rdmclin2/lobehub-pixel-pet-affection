@@ -218,7 +218,19 @@ class PetService extends EventEmitter {
   // ---- keeping an existing agent up to date ---------------------------------------------
   // The system role carries the persona version and the current relationship scope; update the
   // LobeHub agent once whenever either changed (older pet, stage up/down, adult toggle).
+  // A turn that starts while the launch warmup is still at it waits for that pass instead of running the same
+  // lh calls next to it; its own pass then finds everything cached and only catches what changed meanwhile.
   async _ensureReady() {
+    while (this._readying) await this._readying.catch(() => {});
+    this._readying = this._doEnsureReady();
+    try {
+      await this._readying;
+    } finally {
+      this._readying = null;
+    }
+  }
+
+  async _doEnsureReady() {
     const p = this.pet;
     const key = persona.personaKey(p, this.settings);
     if (p.personaVersion !== persona.PERSONA_VERSION || p.personaKey !== key) {
