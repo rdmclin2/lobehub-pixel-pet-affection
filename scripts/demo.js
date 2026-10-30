@@ -28,9 +28,10 @@ async function seed({ dataDir, fakeDir, speciesId, name }) {
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { LhClient, cleanEnv } = require('../src/core/lh-client');
   const { Store } = require('../src/core/store');
+  const { ChatLog } = require('../src/core/chat-log');
   const { SettingsStore } = require('../src/core/settings');
   const { PetService } = require('../src/main/pet-service');
-  const svc = new PetService({ lh: new LhClient({ bin: FAKE_LH, env: { ...cleanEnv(), FAKE_LH_DIR: fakeDir } }), store: new Store(dataDir), settingsStore: new SettingsStore(dataDir) });
+  const svc = new PetService({ lh: new LhClient({ bin: FAKE_LH, env: { ...cleanEnv(), FAKE_LH_DIR: fakeDir } }), store: new Store(dataDir), log: new ChatLog(dataDir), settingsStore: new SettingsStore(dataDir) });
   svc.on('error', () => {});
   await svc.hatch({ speciesId, name });
   return true;
