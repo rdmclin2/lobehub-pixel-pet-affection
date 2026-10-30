@@ -300,7 +300,8 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
-- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm start -- --no-sandbox`）。
+- Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
+- 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
 - **高级设置 · 一键解锁**（⋯ 菜单 → 高级设置）：直接把好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。

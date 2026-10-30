@@ -34,8 +34,10 @@ npm start
 ```bash
 sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 # 或者
-npm start -- --no-sandbox
+npm run start:no-sandbox          # 等同于 npm start -- --no-sandbox
 ```
+
+没有显示器的 Linux（服务器、CI）用 `xvfb-run` 包一层：`xvfb-run -a npm run start:no-sandbox`。
 
 **不连 LobeHub 试玩**：单元测试用的假 `lh` 可以直接给应用用，全部效果都能玩：
 
@@ -45,6 +47,17 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 ```
 
 假 `lh` 不联网、不创建真实 agent，聊天回复是 `echo: …`；`PIXELPET_DATA_DIR` 让试玩存档和正式存档分开。Linux 上同样可以在末尾加 `-- --no-sandbox`。
+
+**一条命令直接看到桌宠**：`npm run demo` 用同一个假 `lh` 在 `<系统临时目录>/pixel-pet-demo` 里准备好试玩存档（18+ 已按“只看全年龄”回答、已唤醒克洛蒂），然后启动应用，宠物直接出现在屏幕右下角，不用走首次启动流程。唤醒走的是应用自己的 `PetService.hatch`，和点“唤醒”按钮是同一段代码。
+
+```bash
+npm run demo                                   # 有桌面时
+xvfb-run -a npm run demo                       # Linux 无显示器
+npm run demo -- --character gpt --name 小杰    # 换角色 / 起名（claude、gpt、grok、gemini、dafeiyu）
+npm run demo -- --fresh                        # 清掉试玩存档重新唤醒
+```
+
+Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start` 不变。代码：`scripts/demo.js`。
 
 其他环境变量：`PIXELPET_NO_UPDATE=1` 关闭自动更新；`PIXELPET_NO_CONNECT=1` 禁止启动 `lh connect`。
 
