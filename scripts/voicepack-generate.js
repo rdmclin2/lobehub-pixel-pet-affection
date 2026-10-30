@@ -1,7 +1,9 @@
 'use strict';
 // Record the built-in voice packs (语音包, core/voice-pack.js): every fixed line of each character in
 // her MiniMax voice, into src/voicepacks/<character>/ (manifest.json + one mp3 per line).
-// Usage: node scripts/voicepack-generate.js [--only dafeiyu,claude] [--rpm 10] [--limit N]
+// Usage: node scripts/voicepack-generate.js [--only dafeiyu,claude] [--rpm 10] [--limit N] [--transcode-only]
+// MiniMax returns 128 kbps mp3 (~50 KB a line); with ffmpeg on the PATH every recorded line is turned
+// into 32 kbps Opus (.ogg, ~12 KB, plenty for a voice) once her lines are done, so a pack is ~3 MB.
 // The key: $MINIMAX_API_KEY or an `export MINIMAX_API_KEY=…` line (scripts/minimax-key.js); never printed.
 // Resumable: lines already on disk are skipped, the manifest is written after every line. MiniMax allows
 // 10 requests a minute on the China site (free accounts), so ~220 lines a character take ~25 minutes.
@@ -17,13 +19,33 @@ const arg = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] :
 const only = arg('--only', '') ? arg('--only').split(',') : SPECIES_IDS;
 const rpm = Number(arg('--rpm', 10));
 const limit = Number(arg('--limit', Infinity));
+const transcodeOnly = args.includes('--transcode-only');
 const ROOT = path.join(__dirname, '..', 'src', 'voicepacks');
+const { execFileSync } = require('node:child_process');
+const hasFfmpeg = (() => { try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+
+// Every .mp3 line of the pack in `dir` to 32 kbps mono Opus; the manifest follows file by file.
+function transcode(dir, m, save) {
+  if (!hasFfmpeg) { log(`${m.character}: no ffmpeg, lines stay mp3`); return; }
+  let n = 0;
+  for (const [text, file] of Object.entries(m.lines)) {
+    if (!file.endsWith('.mp3')) continue;
+    const src = path.join(dir, file);
+    const out = VP.fileFor(text, 'ogg');
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-ac', '1', '-ar', '24000', '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', path.join(dir, out)]);
+    m.lines[text] = out;
+    save();
+    fs.unlinkSync(src);
+    n++;
+  }
+  log(`${m.character}: ${n} lines to Opus`);
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 async function main() {
   const { value: key } = K.key();
-  if (!key) throw new Error('no MINIMAX_API_KEY (env, ~/.config/pixel-pet/minimax.env or an export line in ~/.zshrc)');
+  if (!key && !transcodeOnly) throw new Error('no MINIMAX_API_KEY (env, ~/.config/pixel-pet/minimax.env or an export line in ~/.zshrc)');
   const endpoint = K.endpoint();
   const gap = Math.ceil(60000 / rpm) + 200;
   let last = 0;
@@ -33,6 +55,7 @@ async function main() {
     const cfg = tts.PROVIDERS.minimax.config(sp && sp.voice);
     if (!cfg) { log(`${id}: no MiniMax voice in her file, skipped`); continue; }
     const dir = path.join(ROOT, id);
+    if (transcodeOnly && !fs.existsSync(path.join(dir, 'manifest.json'))) continue;
     fs.mkdirSync(dir, { recursive: true });
     const mfile = path.join(dir, 'manifest.json');
     let m = {};
@@ -40,6 +63,7 @@ async function main() {
     const credit = (sp.voice.tts.minimax && sp.voice.tts.minimax.credit) || `MiniMax ${cfg.voiceId}`;
     m = { format: VP.FORMAT, id: `${id}-minimax`, name: `${sp.nameZh}（${credit.replace(/^MiniMax 系统音色/, 'MiniMax ')}）`, character: id, engine: 'minimax', voiceId: cfg.voiceId, model: cfg.model, params: { speed: cfg.speed, pitch: cfg.pitch, vol: cfg.vol, emotion: cfg.emotion }, credit: `语音由 AI 合成：${credit}`, lines: m.lines || {} };
     const save = () => { const tmp = `${mfile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(m, null, 1) + '\n'); fs.renameSync(tmp, mfile); };
+    if (transcodeOnly) { if (Object.keys(m.lines).length) transcode(dir, m, save); continue; }
     const lines = VP.packLines(sp);
     // lines no longer in her file leave the pack
     for (const t of Object.keys(m.lines)) if (!lines.includes(t)) { try { fs.unlinkSync(path.join(dir, m.lines[t])); } catch { /* gone */ } delete m.lines[t]; }
@@ -72,6 +96,7 @@ async function main() {
       }
     }
     log(`${id}: done, ${Object.keys(m.lines).length}/${lines.length} recorded`);
+    if (made < limit) transcode(dir, m, save);
   }
 }
 

@@ -21,7 +21,7 @@ const FORMAT = 1;
 const MIME = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/opus' };
 // what main.js does to a line before it reaches an engine (core/tts.js synthesize)
 const norm = (text) => String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-const fileFor = (text) => `${crypto.createHash('sha1').update(norm(text)).digest('hex').slice(0, 16)}.mp3`;
+const fileFor = (text, ext = 'mp3') => `${crypto.createHash('sha1').update(norm(text)).digest('hex').slice(0, 16)}.${ext}`;
 
 // Lines the app itself says outside the character files (pet-service.js).
 const APP_LINES = ['呃……肚子圆滚滚的，吃不下了。', '好累……让我睡一会儿。', '哈——睡饱啦。'];

@@ -3191,6 +3191,115 @@ async function voice() {
   }
 }
 
+// ---------------------------------------------------------------- vpack
+// 语音包 (core/voice-pack.js): with 朗读 on and no API key at all, her fixed lines (摸摸, 喂食, 部位触摸…)
+// play from the built-in pack (src/voicepacks/dafeiyu, MiniMax 俏皮萌妹) — no request, no system voice;
+// with 系统语音 chosen the pack is not used.
+async function vpack() {
+  const S = 'vpack';
+  const SHOTS = path.join(OUT, 'vpack');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpack-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpackfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const stats = async () => (await page.evaluate(() => window.pet.getSettings())).ttsStatus.stats;
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600); // past the 1.5 s gate
+  };
+  // one interaction: the line it offers to the voice, and how it was said (waits until it is read to the end)
+  const said = async (kindRe, fn) => {
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await fn();
+    const dump = async (why) => { throw new Error(`${why}: offers ${JSON.stringify((await page.evaluate(() => window.petFx.offerLog())).slice(n0))} last ${JSON.stringify(await page.evaluate(() => window.petFx.lastSpeech()))}`); };
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind) && e.n), [n0, kindRe.source], { timeout: 20000 }).catch(() => dump(`no ${kindRe} line offered`));
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => kindRe.test(e.kind));
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp.n !== n || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 }).catch(() => dump('not read to the end'));
+    return { entry, sp: await page.evaluate(() => window.petFx.lastSpeech()) };
+  };
+  const petBox = async () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+  const fmt = ({ entry, sp }) => `${entry.kind} 「${entry.text}」 → provider=${sp.provider} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}`;
+  try {
+    await step(S, 'P0 hatch 大肥鱼 with 朗读 on and no API key at all', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await page.evaluate(() => window.pet.getSettings());
+      assert.equal(st.tts.provider, 'auto');
+      assert.equal(st.tts.packs, true);
+      assert.deepEqual(Object.values(st.ttsStatus.engines).map((e) => e.hasKey), [false, false]);
+      const pack = st.ttsStatus.packs.find((p) => p.character === 'dafeiyu');
+      assert.ok(pack && pack.builtIn && pack.lines > 150, `built-in pack: ${JSON.stringify(pack)}`);
+      return note(`no keys; built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
+    }, page);
+
+    const rows = [];
+    await step(S, 'P1 摸摸 / 喂食 / 部位触摸: each line plays from her pack, read to the end, no engine asked', async () => {
+      const s0 = await stats();
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      for (let i = 0; i < 2; i++) {
+        const b = await petBox();
+        rows.push(await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4)));
+      }
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+      rows.push(await said(/^feed$/, async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); }));
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await page.waitForTimeout(300);
+      // hover first so her pose settles, then click where her head is drawn now (as ivoice I2 does)
+      const b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.waitForTimeout(600);
+      const pts = await zonePoints(page);
+      const z = pts.head || pts.hands || pts.face;
+      rows.push(await said(/^touch:/, () => page.mouse.click(z.x, z.y)));
+      await shot('p1-touch');
+      const s1 = await stats();
+      for (const r of rows) {
+        assert.equal(r.sp.provider, 'pack', fmt(r));
+        assert.equal(r.sp.status, 'done', fmt(r));
+      }
+      assert.equal((s1.requests || 0) - (s0.requests || 0), 0, 'no engine request');
+      assert.ok((s1.packHits || 0) - (s0.packHits || 0) >= rows.length);
+      return note(rows.map(fmt).join('\n') + `\nengine requests +${(s1.requests || 0) - (s0.requests || 0)}, pack hits +${(s1.packHits || 0) - (s0.packHits || 0)}`);
+    }, page);
+
+    await step(S, 'P2 高级设置 → 语音 shows her built-in pack', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+      await page.locator('#tts-packs').scrollIntoViewIfNeeded();
+      const t = await page.textContent('#tts-packs-st');
+      assert.match(t, /大肥鱼：内置语音包「大肥鱼（MiniMax 「俏皮萌妹」\(qiaopi_mengmei\)）」，录好 \d+ 句/);
+      await shot('p2-voice-pack');
+      return note(t);
+    }, page);
+
+    await step(S, 'P3 with 系统语音 chosen the pack is not used', async () => {
+      await page.selectOption('#tts-provider', 'system');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('系统语音'));
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      const b = await petBox();
+      const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+      assert.notEqual(r.sp.provider, 'pack', fmt(r));
+      return note(fmt(r));
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'vpack-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------- ivoice
 // 互动语音 (core/interaction-voice.js): with 朗读 on, every interaction — 初次见面, 摸摸, 部位触摸, 喂食,
 // 玩耍, 哄睡, 拖拽, 甩出, 接住, 关系升级, 切换角色 — asks the engine (the local Fish stand-in) for her line;
@@ -3764,6 +3873,7 @@ async function chatvoice() {
   if (which === 'voice' || which === 'all') await voice();
   if (which === 'ivoice' || which === 'all') await ivoice();
   if (which === 'chatvoice' || which === 'all') await chatvoice();
+  if (which === 'vpack' || which === 'all') await vpack();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
