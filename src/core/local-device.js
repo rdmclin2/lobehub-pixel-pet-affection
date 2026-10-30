@@ -2,7 +2,9 @@
 
 // Lets the pet's LobeHub agent use THIS computer (read/write files, search, run commands).
 // LobeHub routes an agent's local tools to a "device" the account has online: either the
-// LobeHub desktop app or `lh connect`. The agent is bound to a device through
+// LobeHub desktop app or `lh connect`. (When the Responses API is reachable the app runs the
+// tools itself instead, see core/responses-client.js; a device is the fallback.)
+// The agent is bound to a device through
 // agencyConfig.boundDeviceId, so the app (a) finds this machine's online device, starting
 // `lh connect --daemon` only if none is online, and (b) binds the pet's agent to it.
 

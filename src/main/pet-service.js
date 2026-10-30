@@ -35,11 +35,14 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null }) {
     super();
     // pet packs (how the companions look); by default only the built-in ones
     this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
     this.lh = lh;
+    // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
+    this.responses = responses;
+    this._responsesFailedAt = 0;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     this.store = store;
     this.settingsStore = settingsStore;
@@ -348,11 +351,28 @@ class PetService extends EventEmitter {
     return { ok: true, view: this.view() };
   }
 
-  // Find this computer's online device (starting `lh connect --daemon` if none) and bind the current
-  // character's agent to it (each agent records its own `boundDeviceId`).
+  // Make this computer usable by the current character. Directly (via 'direct') when the Responses API can
+  // be reached with the CLI's login: her tools then run inside the app and no device is needed. Otherwise,
+  // or for a while after the direct path failed, find this computer's online device (starting
+  // `lh connect --daemon` if none) and bind her agent to it (each agent records its own `boundDeviceId`).
   async _verifyLocal({ force = false } = {}) {
     const t = this.now();
     const c = this._c();
+    if (this.responses && t - this._responsesFailedAt >= LOCAL_RETRY_MS) {
+      if (!force && this._localOk && this.localVia === 'direct' && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
+      if (this.responses.available()) {
+        this._localOk = true;
+        this._localAgent = c.agentId;
+        this._localCheckedAt = t;
+        this._localFailedAt = 0;
+        this._deviceId = null;
+        this.localError = null;
+        this.localWarning = null;
+        this.localVia = 'direct';
+        return;
+      }
+    }
+    if (this.localVia === 'direct') this._localOk = false; // the device has not been checked yet
     if (!force) {
       if (this._localOk && this._localAgent === c.agentId && t - this._localCheckedAt < LOCAL_RECHECK_MS) return;
       if (!this._localOk && this._localFailedAt && t - this._localFailedAt < LOCAL_RETRY_MS) return;
@@ -504,6 +524,7 @@ class PetService extends EventEmitter {
     if (!this.busy) return;
     this._cancelRequested = true;
     this.lh.cancel();
+    if (this.responses) this.responses.cancel();
   }
 
   // Steps that swallow errors (device lookup, persona update) must not let a cancelled turn carry on.
@@ -513,6 +534,25 @@ class PetService extends EventEmitter {
 
   _device() {
     return this.pet.localAbilities && this._localOk ? this._deviceId : null;
+  }
+
+  // One agent turn. A turn that may use this computer goes the direct way when it is up; if that fails before
+  // any of her tools ran, the same turn is sent again through `lh connect` (a tool that already ran must not
+  // run twice, so then the error stands).
+  async _runTurn(args) {
+    const tools = this._tools();
+    if (!tools.length || this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+    try {
+      return await this.responses.run({ ...args, tools });
+    } catch (e) {
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+      this.emit('error', e);
+      this._responsesFailedAt = this.now();
+      await this._verifyLocal({ force: true });
+      this._throwIfCanceled();
+      if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
+      return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+    }
   }
 
   // Ask the agent to say something for a system-triggered event.
@@ -531,13 +571,7 @@ class PetService extends EventEmitter {
       this.budget.spend(t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this.lh.run({
-        agentId: c.agentId,
-        topicId: c.topicId,
-        prompt: persona.buildEventPrompt(kind, c, t, this.settings),
-        tools: this._tools(),
-        device: this._device(),
-      });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this.settings) });
       if (res.topicId) c.topicId = res.topicId;
       if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
       this._say(this._guard(res.text), 'llm', kind);
@@ -556,8 +590,8 @@ class PetService extends EventEmitter {
   }
 
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
-  // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them through
-  // the bound device, so local abilities must be on.
+  // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them with her local
+  // tools (run here, or through the bound device), so local abilities must be on.
   async chat(text, images = [], files = []) {
     const clean = String(text || '').trim();
     const paths = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && f).slice(0, 10);
@@ -588,7 +622,7 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
-      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt, tools: this._tools(), device: this._device() });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt });
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
@@ -643,7 +677,7 @@ class PetService extends EventEmitter {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this.lh.run({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings), tools: this._tools(), device: this._device() });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings) });
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);
