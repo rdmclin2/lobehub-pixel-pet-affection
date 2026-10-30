@@ -31,6 +31,21 @@ const AFFECTION_RULES = {
   topic: { label: '话题', delta: 2, cooldownMs: 0, dailyMax: 3 }, // plus: each topic scores once a day
   woken: { label: '吵醒', delta: -2, cooldownMs: 0, dailyMax: null },
   sleep: { label: '哄睡（22:00–02:00）', delta: 1, cooldownMs: 'day', dailyMax: 1 },
+  // Touching a body part (core/touch-zones.js). Chest and hips only score at the top two stages,
+  // and only a little; strangers who touch them lose affection (`touch_rude:*`, with a cooldown so
+  // a burst of clicks costs one penalty). Poking one spot over and over is `touch_rude:spam`.
+  'touch:head': { label: '摸头', delta: 1, cooldownMs: 2 * MIN, dailyMax: 6 },
+  'touch:face': { label: '捏脸', delta: 1, cooldownMs: 3 * MIN, dailyMax: 4 },
+  'touch:hands': { label: '牵手', delta: 1, cooldownMs: 2 * MIN, dailyMax: 6 },
+  'touch:belly': { label: '戳肚子', delta: 0.5, cooldownMs: 5 * MIN, dailyMax: 3 },
+  'touch:feet': { label: '挠脚', delta: 0.5, cooldownMs: 5 * MIN, dailyMax: 3 },
+  'touch:legs': { label: '碰腿', delta: 0.5, cooldownMs: 10 * MIN, dailyMax: 2 },
+  'touch:tail': { label: '摸尾巴', delta: 0.5, cooldownMs: 5 * MIN, dailyMax: 3 },
+  'touch:chest': { label: '碰胸口（亲密）', delta: 0.5, cooldownMs: 30 * MIN, dailyMax: 1 },
+  'touch:butt': { label: '碰臀部（亲密）', delta: 0.5, cooldownMs: 30 * MIN, dailyMax: 1 },
+  'touch_rude:chest': { label: '冒犯（胸口）', delta: -2, cooldownMs: 1 * MIN, dailyMax: null },
+  'touch_rude:butt': { label: '冒犯（臀部）', delta: -2, cooldownMs: 1 * MIN, dailyMax: null },
+  'touch_rude:spam': { label: '戳个不停', delta: -1, cooldownMs: 2 * MIN, dailyMax: null },
 };
 const DAILY_CAP = 12; // positive gain per affection day, all sources together
 const DAY_ROLLOVER_HOUR = 4; // the affection day starts at 04:00 local time
@@ -92,7 +107,7 @@ function modifier(pet, source) {
   let m = 1;
   if (pet.mood < 25) m *= 0.5;
   else if (pet.mood >= 75) m *= 1.2;
-  if (pet.hunger >= 75 && (source === 'pat' || source === 'play')) m *= 0.5;
+  if (pet.hunger >= 75 && (source === 'pat' || source === 'play' || source.startsWith('touch:'))) m *= 0.5;
   return m;
 }
 
@@ -130,6 +145,9 @@ function setAffection(pet, value) {
 function applyOne(pet, source, now, opts) {
   const rule = AFFECTION_RULES[source];
   if (rule.delta < 0) {
+    // A penalty with a cooldown (touch_rude:*) is charged once per cooldown window.
+    const last = pet.lastAffectionAt[source];
+    if (rule.cooldownMs > 0 && last != null && now >= last && now - last < rule.cooldownMs) return { source, delta: 0, blocked: 'cooldown' };
     const before = pet.affection;
     setAffection(pet, pet.affection + rule.delta);
     pet.lastAffectionAt[source] = now;

@@ -25,7 +25,9 @@ const petScale = (s) => clampScale(s && s.petScale);
 // about on its own (short steps; never while the pointer is on it or it is busy; off = dsh-pet's
 // "fixed"), memes are on, sound and voice are off (a pet should not start making noise unasked), pets
 // on screen together knock into each other, and the local HTTP API is off until switched on.
-const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collide: true };
+// 部位触摸 (core/touch-zones.js): a click lands on a body part and she reacts to that part (off = the
+// old single pat), with a hint of the part under the pointer while hovering.
+const PREFS = { roam: true, clickSound: false, voice: false, memes: true, collide: true, touchZones: true, touchHint: true };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 

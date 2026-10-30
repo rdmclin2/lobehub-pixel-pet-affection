@@ -33,7 +33,30 @@
     return true;
   }
 
-  function createEffects({ body, floatLayer, api, prefs = () => ({}), hitBox = () => null }) {
+  // Marks drawn over her when a body part is touched (部位触摸), placed in her visible box: [text, class,
+  // u, v] with u, v in 0..1 of the box, 'at' for where the click landed, or 'cheek' with v across her
+  // face (box.face, from her zone table). The body also gets the
+  // classes touched / touch-<zone> / touch-mood-<mood>, which style.css animates per part.
+  const TOUCH_MARKS = {
+    head: [['🤚', 'pat-hand', 0.5, -0.04]],
+    face: [['✦', 'poke', 'at'], ['', 'blush', 'cheek', 0.3], ['', 'blush', 'cheek', 0.7]],
+    chest: [['', 'blush', 'cheek', 0.3], ['', 'blush', 'cheek', 0.7], ['💦', 'drop', 0.86, 0.04]],
+    hands: [['🤝', 'shake-hand', 'at'], ['👋', 'wave', 0.94, 0.22]],
+    belly: [['🪶', 'tickle', 'at'], ['≈', 'giggle', 0.88, 0.3]],
+    butt: [['💢', 'anger', 0.86, 0.02], ['❗', 'startle', 0.14, 0.02]],
+    legs: [['💦', 'drop', 0.84, 0.06]],
+    feet: [['🪶', 'tickle', 'at'], ['≈', 'giggle', 0.1, 0.8], ['≈', 'giggle', 0.9, 0.8]],
+    tail: [['〰', 'giggle', 'at']],
+  };
+  const MOOD_MARKS = {
+    angry: [['💢', 'anger', 0.86, 0.02]],
+    annoyed: [['💢', 'anger small', 0.86, 0.02]],
+    shy: [['', 'blush', 'cheek', 0.3], ['', 'blush', 'cheek', 0.7]],
+    happy: [['♪', 'note', 0.12, 0.06]],
+    ticklish: [['♪', 'note', 0.12, 0.06]],
+  };
+
+  function createEffects({ body, floatLayer, touchLayer = null, api, prefs = () => ({}), hitBox = () => null }) {
     let oneShot = null; // { key, until }
     let facing = 'right';
     let nextIdleAt = performance.now() + Fx.idleDelay();
@@ -132,6 +155,53 @@
       squash();
       clickSound();
       return lastClick;
+    }
+
+    // A body part touched: play `clip` once with a squash, mark the body with the part and mood
+    // (style.css animates it: a hop for the hips, a recoil for the chest, a ticklish shake for the
+    // feet, …) and draw the part's marks in her visible `box` (px in the body; `at` = the click).
+    let touchTimer = null;
+    let lastTouchFx = null;
+    function touch({ zone, mood, clip, ms, box, at }) {
+      stopWalk();
+      lastCueName = clip;
+      play(clip, ms);
+      squash(0.92);
+      clickSound();
+      for (const c of [...body.classList]) if (c.startsWith('touch-')) body.classList.remove(c);
+      void body.offsetWidth; // restart the part's animation on a second touch
+      body.classList.add('touched', `touch-${zone}`, `touch-mood-${mood}`);
+      body.dataset.touch = zone;
+      const marks = [...(TOUCH_MARKS[zone] || []), ...(MOOD_MARKS[mood] || [])];
+      const seen = new Set();
+      if (touchLayer) {
+        touchLayer.textContent = '';
+        for (const [text, cls, u, v] of marks) {
+          const key = `${cls}|${u}|${v}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const el = document.createElement('i');
+          el.className = `tmark ${cls}`;
+          el.textContent = text;
+          let [bu, bv] = [u, v];
+          if (u === 'cheek') [bu, bv] = box && box.face ? [box.face[0] + (box.face[2] - box.face[0]) * v, box.face[1] + (box.face[3] - box.face[1]) * 0.78] : [v, 0.13];
+          if (box && box.mirrored && u !== 'at') bu = 1 - bu;
+          const x = u === 'at' || !box ? at.x : box.left + bu * box.width;
+          const y = u === 'at' || !box ? at.y : box.top + bv * box.height;
+          el.style.left = `${Math.round(x)}px`;
+          el.style.top = `${Math.round(y)}px`;
+          touchLayer.appendChild(el);
+        }
+      }
+      if (zone === 'head' || mood === 'happy') burst(4);
+      lastTouchFx = { zone, mood, clip, marks: [...seen].map((k) => k.split('|')[0]) };
+      clearTimeout(touchTimer);
+      touchTimer = setTimeout(() => {
+        for (const c of [...body.classList]) if (c === 'touched' || c.startsWith('touch-')) body.classList.remove(c);
+        body.dataset.touch = '';
+        if (touchLayer) touchLayer.textContent = '';
+      }, Math.max(1600, Math.min(ms, 2400)));
+      return lastTouchFx;
     }
 
     // Small hearts bursting from the pet (affection gained).
@@ -260,6 +330,8 @@
       cue,
       tickIdle,
       click,
+      touch,
+      get lastTouch() { return lastTouchFx; },
       clickSound,
       squash,
       burst,

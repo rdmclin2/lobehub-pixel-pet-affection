@@ -85,6 +85,35 @@ async function waitReply(page, timeout = 90000) {
   return bubbleText(page);
 }
 const view = (page) => page.evaluate(async () => (await window.pet.boot()).view);
+// 部位触摸: a click point on every body part she shows, found by asking the page's own click mapping
+// (window.petFx.touchPoint) over a grid on her art: per part, the hit closest to the middle of its hits.
+const zonePoints = (page) => page.evaluate(() => {
+  const el = document.querySelector('#pet-body .pet-hit:not(.hidden)');
+  const r = el.getBoundingClientRect();
+  const hits = {};
+  for (let y = r.top + 1; y < r.bottom; y += 3) {
+    for (let x = r.left + 1; x < r.right; x += 3) {
+      const p = window.petFx.touchPoint(x, y);
+      if (p && p.zone) (hits[p.zone] = hits[p.zone] || []).push([x, y]);
+    }
+  }
+  const out = {};
+  for (const [zone, pts] of Object.entries(hits)) {
+    const mx = pts.reduce((n, p) => n + p[0], 0) / pts.length;
+    const my = pts.reduce((n, p) => n + p[1], 0) / pts.length;
+    const best = pts.reduce((b, p) => (Math.hypot(p[0] - mx, p[1] - my) < Math.hypot(b[0] - mx, b[1] - my) ? p : b));
+    out[zone] = { x: Math.round(best[0]), y: Math.round(best[1]), n: pts.length };
+  }
+  return out;
+});
+// "Click her" from before body parts: a friendly touch worth the same +1 a pat gave, on her head and
+// her hands in turn (poking one spot three times within 8 s annoys her and scores nothing).
+let friendlyPart = 'hands';
+const clickHead = async (page) => {
+  friendlyPart = friendlyPart === 'head' ? 'hands' : 'head';
+  const p = (await zonePoints(page))[friendlyPart];
+  await page.mouse.click(p.x, p.y);
+};
 const lhEnv = { ...process.env };
 for (const k of ['LOBEHUB_TOPIC_ID', 'LOBEHUB_OPERATION_ID', 'LOBEHUB_AGENT_ID', 'LOBEHUB_ASSISTANT_MESSAGE_ID', 'LOBEHUB_WORKSPACE_ID']) delete lhEnv[k]; // the live pet lives in the personal space
 lhEnv.LOBEHUB_JWT = '';
@@ -187,7 +216,7 @@ async function fresh() {
       const events = [];
       await page.exposeFunction('__affLog', (e) => events.push(e));
       await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
       await page.waitForTimeout(800);
       const v = await view(page);
@@ -327,7 +356,7 @@ async function wardrobe() {
     });
 
     await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForSelector('.float');
       const float = await page.textContent('.float');
       await hover(page);
@@ -342,7 +371,7 @@ async function wardrobe() {
       // Test hook: 14 points (a day's cap is 12, so reaching 15 by hand takes two days); the pat that crosses is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800); // let the stage-up flash fade
@@ -400,7 +429,7 @@ async function wardrobe() {
       // Test hook: 34 points with today's counters reset; the pat that crosses 35 is real.
       await page.evaluate(() => window.pet.debugSet({ affection: 34, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
@@ -417,7 +446,7 @@ async function wardrobe() {
     await step(S, 'crossing 60 by a pat moves 亲近 -> 知己: an all-ages character unlocks no adult topics or outfits, even with 18+ on', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 59, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 5000 });
       await idle();
       await page.waitForTimeout(800);
@@ -1078,7 +1107,7 @@ async function live() {
 
     await step(S, 'affection crossing 15 moves the stage from 陌生 to 熟悉', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForTimeout(1200);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
@@ -1805,7 +1834,7 @@ async function rosterOne(ch) {
     await step(S, 'E4 a click: a reaction with a squash and hearts', async () => {
       await settle();
       await hover(page);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForFunction(() => ['pat', 'happy'].includes(window.petFx.state().state), null, { timeout: 4000 });
       const squash = await page.evaluate(() => document.getElementById('pet-body').classList.contains('squash'));
       assert.equal(squash, true, 'squash');
@@ -1815,12 +1844,21 @@ async function rosterOne(ch) {
       assert.ok(hearts > 0, 'heart particles');
       return `${await shows(st.state, st.video ? st.state : st.state)}, squash, ${hearts} hearts`;
     }, page);
-    await step(S, 'E4b the next click picks the other reaction', async () => {
-      const first = (await fxState()).state;
-      await page.waitForTimeout(3200);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
-      await page.waitForFunction((f) => ['pat', 'happy'].includes(window.petFx.state().state) && window.petFx.state().state !== f, first, { timeout: 4000 });
-      return `${first} → ${(await fxState()).state}`;
+    await step(S, 'E4b with 部位触摸 off, the next click picks the other reaction', async () => {
+      // a touched part always plays its own clip (or pat); the old click alternates pat / happy
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      try {
+        await page.waitForTimeout(3200);
+        await clickHead(page);
+        await page.waitForFunction(() => ['pat', 'happy'].includes(window.petFx.state().state), null, { timeout: 4000 });
+        const first = (await fxState()).state;
+        await page.waitForTimeout(3200);
+        await clickHead(page);
+        await page.waitForFunction((f) => ['pat', 'happy'].includes(window.petFx.state().state) && window.petFx.state().state !== f, first, { timeout: 4000 });
+        return `${first} → ${(await fxState()).state}`;
+      } finally {
+        await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      }
     }, page);
     await step(S, 'E5 dragged: she is lifted (dangling)', async () => {
       await settle();
@@ -2062,7 +2100,7 @@ async function rosterOne(ch) {
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#behavior-section');
       const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
-      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on']);
+      assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
       await page.locator('#behavior-section').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
       await page.check('#behavior-section input[data-pref="clickSound"]');
@@ -2075,7 +2113,7 @@ async function rosterOne(ch) {
       await settle();
       const before = (await page.evaluate(() => window.petFx.stats())).sounds;
       await hover(page);
-      await page.locator('#pet-body .pet-hit:not(.hidden)').click();
+      await clickHead(page);
       await page.waitForFunction((b) => window.petFx.stats().sounds > b, before, { timeout: 3000 });
       return `pop played (${before} → ${(await page.evaluate(() => window.petFx.stats())).sounds})`;
     });
@@ -2206,6 +2244,300 @@ async function rosterOne(ch) {
   }
 }
 
+// ----------------------------------------------------------------- touch
+// Touching body parts: real mouse clicks on her art (sprite and Dafeiyu's clip, facing either way) are
+// mapped to a part, each with its own reaction class, marks and line; dragging is not a touch; the
+// 部位触摸 switch brings the old single pat back. Then the IPC (window.pet.touch): every zone,
+// stage-dependent reactions on the chest, the streak, every character's lines, and the old pat.
+async function touch() {
+  const S = 'touch';
+  const SHOTS = path.join(OUT, 'touch');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-touch-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-touchfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  // a forced stage-up shows its card over the bubble; close it before looking at the reaction
+  const dismissToast = () => page.evaluate(() => { const t = document.getElementById('unlock-toast'); if (t && !t.classList.contains('hidden')) document.getElementById('toast-close').click(); });
+  const touchAndShow = async (target) => {
+    const r = await page.evaluate((t) => window.pet.touch(t), target);
+    if (r.ok) await page.waitForFunction((l) => document.getElementById('bubble').textContent.includes(l), r.line, { timeout: 5000 });
+    return r;
+  };
+  const fmt = (r) => `${r.zone}:${r.reaction.mood}${r.reaction.streak ? '/' + r.reaction.streak : ''} Δ${r.affection.delta} ♥${r.affection.value} 「${r.line}」`;
+  const log = [];
+  try {
+    await step(S, 'hatch 克洛蒂 (Claude) with the fake lh', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="claude"]');
+      await page.fill('#pet-name', 'Touchy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.equal(await page.evaluate(() => typeof window.pet.touch), 'function');
+      await page.evaluate(() => window.pet.debugSet({ mood: 50, hunger: 20, energy: 90, sleeping: false }));
+    }, page);
+
+    // what each part shows: the reaction class on #pet-body and a mark drawn over her (fx.js TOUCH_MARKS)
+    const MARK = { head: 'pat-hand', chest: 'blush', butt: 'anger', feet: 'tickle', hands: 'shake-hand', tail: 'giggle' };
+    const settle = async () => {
+      await page.waitForFunction(() => !document.getElementById('pet-body').classList.contains('touched'), null, { timeout: 6000 });
+      await page.waitForTimeout(300);
+    };
+    // Click `zone` with the real mouse; assert the part main resolved, the line in the bubble, the reaction.
+    // `pts` null: find the spot right before the click (a clip keeps moving)
+    const clickZone = async (zone, pts, name) => {
+      let seen = pts;
+      for (let i = 0; !pts && i < 20 && !(seen && seen[zone]); i++) { if (i) await page.waitForTimeout(250); seen = await zonePoints(page); }
+      const p = seen[zone];
+      assert.ok(p, `no click point for ${zone}: ${Object.keys(seen).join(',')}`);
+      const before = await page.evaluate(() => window.petFx.lastTouch());
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.click(p.x, p.y);
+      await page.waitForFunction((n) => { const t = window.petFx.lastTouch(); return t && t.n > n; }, before ? before.n : 0, { timeout: 5000 }).catch(() => {});
+      const t = await page.evaluate(() => window.petFx.lastTouch());
+      assert.ok(t && t.n > (before ? before.n : 0), `a touch was shown for the click on ${zone}`);
+      assert.equal(t.zone, zone, `clicked (${p.x}, ${p.y}) for ${zone}, got ${t.zone}`);
+      await page.waitForFunction((z) => document.getElementById('bubble').dataset.kind === `touch:${z}`, zone, { timeout: 5000 });
+      const ui = await page.evaluate(() => {
+        const b = document.getElementById('pet-body');
+        return { cls: [...b.classList].filter((c) => c.startsWith('touch')).join(' '), marks: [...document.querySelectorAll('#touch-fx .tmark')].map((m) => m.className.replace('tmark ', '')), bubble: document.getElementById('bubble').textContent, kind: document.getElementById('bubble').dataset.kind };
+      });
+      assert.equal(ui.bubble, t.line, 'the touch line is in the bubble');
+      assert.ok(ui.cls.split(' ').includes(`touch-${zone}`), `reaction class: ${ui.cls}`);
+      assert.ok(ui.cls.split(' ').includes(`touch-mood-${t.mood}`), `mood class: ${ui.cls}`);
+      if (MARK[zone]) assert.ok(ui.marks.some((m) => m.split(' ').includes(MARK[zone])), `mark ${MARK[zone]} in ${ui.marks}`);
+      await page.waitForTimeout(450); // mid-reaction
+      await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+      // the DOM at that moment: the reaction classes, the marks layer and the bubble
+      const dom = await page.evaluate(() => {
+        const b = document.getElementById('pet-body');
+        const bub = document.getElementById('bubble');
+        return { petBody: { className: b.className, dataset: { ...b.dataset } }, touchFx: document.getElementById('touch-fx').outerHTML, bubble: { text: bub.textContent, dataset: { ...bub.dataset }, hidden: bub.classList.contains('hidden') }, lastTouch: window.petFx.lastTouch() };
+      });
+      fs.writeFileSync(path.join(SHOTS, `${name}.dom.json`), JSON.stringify({ click: p, ...dom }, null, 2) + '\n');
+      log.push(`click ${name} @(${p.x},${p.y}) → zone=${t.zone} mood=${t.mood} clip=${t.clip} class="${ui.cls}" marks=[${ui.marks.join(', ')}] bubble=${ui.kind} 「${t.line}」`);
+      return `(${p.x},${p.y}) → ${t.zone}, ${ui.cls}, [${ui.marks.join(', ')}] 「${t.line}」 → ${name}.png`;
+    };
+
+    let pts = null;
+    await step(S, 'click points: each of the five parts maps to a spot on her art, top to bottom', async () => {
+      await page.waitForTimeout(500);
+      pts = await zonePoints(page);
+      for (const z of ['head', 'chest', 'hands', 'butt', 'feet']) assert.ok(pts[z], `${z} reachable`);
+      assert.ok(pts.head.y < pts.chest.y && pts.chest.y < pts.butt.y && pts.butt.y < pts.feet.y, JSON.stringify(pts));
+      return Object.entries(pts).map(([z, p]) => `${z}(${p.x},${p.y})`).join(' ');
+    }, page);
+
+    for (const zone of ['head', 'chest', 'butt', 'feet', 'hands']) {
+      await step(S, `real click on her ${zone}: that part's line, reaction class and marks`, async () => {
+        await settle();
+        return clickZone(zone, pts, `click-${zone}`);
+      }, page);
+    }
+
+    await step(S, 'hovering names the part under the pointer (触摸提示)', async () => {
+      await settle();
+      await page.mouse.move(pts.head.x + 1, pts.head.y);
+      await page.mouse.move(pts.head.x, pts.head.y);
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.hoverZone === 'head' && !document.getElementById('zone-hint').classList.contains('hidden'), null, { timeout: 3000 });
+      const hint = await page.textContent('#zone-hint');
+      assert.match(hint, /头/);
+      const cursor = await page.evaluate(() => getComputedStyle(document.querySelector('#pet-body .pet-hit:not(.hidden)')).cursor);
+      assert.equal(cursor, 'pointer');
+      await page.mouse.move(pts.feet.x, pts.feet.y + 1);
+      await page.mouse.move(pts.feet.x, pts.feet.y);
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.hoverZone === 'feet', null, { timeout: 3000 });
+      await page.screenshot({ path: path.join(SHOTS, 'hover-hint.png') });
+      return `head → "${hint}", cursor ${cursor}; feet → "${await page.textContent('#zone-hint')}"`;
+    }, page);
+
+    await step(S, 'facing left (mirrored) the same parts are still hit', async () => {
+      await page.evaluate(() => window.petFx.face('left'));
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.facing === 'left', null, { timeout: 3000 });
+      await settle();
+      const m = await zonePoints(page);
+      const r = await clickZone('hands', m, 'mirrored-hands');
+      await page.evaluate(() => window.petFx.face('right'));
+      return `mirrored: ${Object.entries(m).map(([z, p]) => `${z}(${p.x},${p.y})`).join(' ')}; ${r}`;
+    }, page);
+
+    await step(S, 'dragging her by the chest is a drag, not a touch', async () => {
+      await settle();
+      await page.waitForTimeout(400); // not a double press (slingshot)
+      const before = await page.evaluate(() => window.petFx.lastTouch());
+      await page.mouse.move(pts.chest.x, pts.chest.y);
+      await page.mouse.down();
+      await page.mouse.move(pts.chest.x + 20, pts.chest.y + 6, { steps: 5 });
+      await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 });
+      await page.mouse.up();
+      await page.waitForTimeout(600);
+      const after = await page.evaluate(() => window.petFx.lastTouch());
+      assert.deepEqual(after, before, 'no touch on a drag');
+      assert.equal(await page.evaluate(() => document.getElementById('pet-body').classList.contains('touched')), false);
+      return 'lifted while dragged, no touch reaction';
+    }, page);
+
+    await step(S, 'settings: 部位触摸 off — a click is the old single pat again', async () => {
+      await settle();
+      await page.waitForTimeout(400);
+      await hover(page);
+      await page.click('[data-act="menu"]');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#behavior-section input[data-pref="touchZones"]');
+      assert.equal(await page.isChecked('#behavior-section input[data-pref="touchZones"]'), true, 'on by default');
+      await page.locator('#behavior-section input[data-pref="touchZones"]').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(SHOTS, 'settings-touch-switch.png') });
+      await page.uncheck('#behavior-section input[data-pref="touchZones"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('部位触摸：关'));
+      const saved = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).prefs;
+      assert.equal(saved.touchZones, false, 'saved to settings.json');
+      log.push(`settings.json prefs after switching off: ${JSON.stringify(saved)}`);
+      await page.click('#panel-close');
+      await page.waitForTimeout(800);
+      const before = await page.evaluate(() => window.petFx.lastTouch());
+      await page.mouse.click(pts.chest.x, pts.chest.y);
+      await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'pat', null, { timeout: 5000 });
+      await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => document.getElementById('pet-body').dataset.hoverZone || ''), '', 'no hint while off');
+      assert.deepEqual(await page.evaluate(() => window.petFx.lastTouch()), before, 'no touch');
+      assert.equal(await page.evaluate(() => document.getElementById('pet-body').classList.contains('touched')), false);
+      const cue = (await page.evaluate(() => window.petFx.state())).lastCue;
+      await page.screenshot({ path: path.join(SHOTS, 'touch-off-pat.png') });
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await page.waitForTimeout(300);
+      fs.writeFileSync(path.join(SHOTS, 'touch-off-pat.dom.json'), JSON.stringify({ settingsJsonPrefs: saved, petBody: await page.evaluate(() => document.getElementById('pet-body').className), bubble: await page.evaluate(() => ({ text: document.getElementById('bubble').textContent, ...document.getElementById('bubble').dataset })), lastTouchUnchanged: before }, null, 2) + '\n');
+      return `off: settings.json touchZones=${saved.touchZones}; a click on the chest is a pat (bubble kind "pat", cue "${cue}"), no part reaction; switched back on`;
+    }, page);
+
+    await step(S, "Dafeiyu's clip (video art): the five parts and her tail, facing either way", async () => {
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      await page.evaluate(() => window.pet.setAppearance('dafeiyu-clips'));
+      await page.waitForFunction(() => window.petFx.state().video && document.getElementById('pet-video').videoWidth > 0, null, { timeout: 8000 });
+      await page.waitForTimeout(8200); // the streak window
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await page.waitForTimeout(1500);
+      const v = await zonePoints(page);
+      const out = [];
+      for (const zone of ['head', 'chest', 'butt', 'feet', 'hands', 'tail']) {
+        await settle();
+        out.push(await clickZone(zone, null, `video-${zone}`));
+      }
+      const tailRight = v.tail.x;
+      await page.evaluate(() => window.petFx.face('left'));
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.facing === 'left', null, { timeout: 3000 });
+      await page.waitForTimeout(300);
+      const vl = await zonePoints(page);
+      assert.ok(vl.tail && vl.tail.x < tailRight, `mirrored tail moves to the other side: ${tailRight} → ${vl.tail && vl.tail.x}`);
+      await settle();
+      out.push(await clickZone('tail', null, 'video-mirrored-tail'));
+      await page.evaluate(() => window.petFx.face('right'));
+      await page.evaluate(() => window.pet.switchCharacter('claude'));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      return out.join(' | ');
+    }, page);
+
+    for (const zone of ['head', 'chest', 'butt', 'feet', 'hands', 'face', 'belly', 'legs']) {
+      await step(S, `stranger touches ${zone}`, async () => {
+        const r = await touchAndShow(zone);
+        assert.equal(r.ok, true);
+        assert.equal(r.zone, zone);
+        assert.equal(r.reaction.anim, `touch-${zone}`);
+        if (zone === 'chest' || zone === 'butt') { assert.equal(r.reaction.mood, 'angry'); assert.ok(r.affection.delta <= 0); }
+        log.push(fmt(r));
+        await shot(`stranger-${zone}`);
+        await page.waitForTimeout(8200); // let the streak window lapse between parts
+        return fmt(r);
+      }, page);
+    }
+
+    await step(S, 'a click point in the visible box is resolved to a zone; a miss returns null', async () => {
+      const pts = [[0.5, 0.03], [0.5, 0.26], [0.5, 0.41], [0.5, 0.53], [0.5, 0.94]];
+      const zones = [];
+      for (const [x, y] of pts) { zones.push((await touchAndShow({ x, y })).zone); await page.waitForTimeout(8200); }
+      assert.deepEqual(zones, ['head', 'chest', 'hands', 'butt', 'feet']);
+      const miss = await page.evaluate(() => window.pet.touch({ x: 0.02, y: 0.02 }));
+      assert.deepEqual(miss, { ok: false, reason: 'miss', zone: null });
+      return `points → ${zones.join(', ')}; (0.02,0.02) → ${JSON.stringify(miss)}`;
+    }, page);
+
+    await step(S, 'poking the head repeatedly escalates to annoyed (3rd) and angry (6th)', async () => {
+      await page.evaluate(() => window.pet.debugSet({ affection: 20, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const seq = [];
+      for (let i = 0; i < 6; i++) { const r = await touchAndShow('head'); seq.push(fmt(r)); if (i === 2) await shot('streak-annoyed'); }
+      assert.match(seq[2], /annoyed\/annoyed/);
+      assert.match(seq[5], /angry\/angry Δ-1/);
+      log.push(...seq);
+      await shot('streak-angry');
+      return seq.join(' | ');
+    }, page);
+
+    await step(S, 'close friends: chest touch is flustered, no penalty', async () => {
+      await page.waitForTimeout(8200);
+      await page.evaluate(() => window.pet.debugSet({ affection: 40, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const r = await touchAndShow('chest');
+      assert.equal(r.reaction.mood, 'shy');
+      assert.equal(r.affection.delta, 0);
+      log.push(fmt(r));
+      await shot('close-chest');
+      return fmt(r);
+    }, page);
+
+    await step(S, 'top stage: chest touch is shy and slightly positive', async () => {
+      await page.waitForTimeout(8200);
+      await page.evaluate(() => window.pet.debugSet({ affection: 90, mood: 50 }));
+      await page.waitForTimeout(1500);
+      await dismissToast();
+      const r = await touchAndShow('chest');
+      assert.equal(r.reaction.mood, 'shy');
+      assert.equal(r.reaction.tier, 'high');
+      assert.ok(r.affection.delta > 0);
+      log.push(fmt(r));
+      await shot('high-chest');
+      return fmt(r);
+    }, page);
+
+    await step(S, 'every character answers each of the five parts in her own words', async () => {
+      const out = [];
+      for (const id of ['gemini', 'gpt', 'grok', 'dafeiyu', 'claude']) {
+        await page.evaluate((c) => window.pet.switchCharacter(c), id);
+        await page.waitForTimeout(1500);
+        await dismissToast();
+        for (const zone of ['head', 'chest', 'butt', 'feet', 'hands']) {
+          const r = await touchAndShow(zone);
+          assert.equal(r.ok, true);
+          out.push(`${id}.${zone}: ${r.line}`);
+        }
+        await shot(`char-${id}`);
+        await page.waitForTimeout(8200);
+      }
+      log.push(...out);
+      return `${out.length} lines`;
+    }, page);
+
+    await step(S, 'the old click (pat) still works', async () => {
+      const before = (await view(page)).pet.affection;
+      const r = await page.evaluate(() => window.pet.act('pat'));
+      assert.equal(r.ok, true);
+      assert.equal(r.affection.source, 'pat');
+      return `pat ok, ♥${before} → ${(await view(page)).pet.affection}`;
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'touch-log.txt'), log.join('\n') + '\n');
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -2220,6 +2552,7 @@ async function rosterOne(ch) {
   if (which === 'update' || which === 'all') await update();
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
+  if (which === 'touch' || which === 'all') await touch();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

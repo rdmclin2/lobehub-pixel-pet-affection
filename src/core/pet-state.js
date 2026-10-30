@@ -9,6 +9,7 @@ const aff = require('./affection');
 const { unlockedTopicIds } = require('./dialogue');
 const { SCHEMA_VERSION } = require('./migrate');
 const { DEFAULT_OUTFIT } = require('./outfits');
+const touchZones = require('./touch-zones');
 
 const MIN = 60 * 1000;
 const MAX_OFFLINE_MIN = 8 * 60; // do not punish the owner for being away
@@ -160,6 +161,19 @@ function pat(pet, now) {
   return { ok: true, woken, affection: combine(penalty, score(pet, 'pat', now)) };
 }
 
+// Touching one body part (core/touch-zones.js). Mutates the pet: mood, the streak of pokes on one
+// spot (`touchStreak`) and affection. Returns { ok, zone, woken, reaction, affection }; `affection` is
+// null when the reaction scores nothing (e.g. a friend flustered by a hand on her chest).
+function touchBody(pet, zone, now) {
+  const { woken, penalty } = wake(pet, now);
+  const streak = touchZones.nextStreak(pet.touchStreak, zone, now);
+  pet.touchStreak = streak;
+  const reaction = { ...touchZones.reactionFor(zone, pet.relStage, streak.count), count: streak.count };
+  pet.mood = clamp(pet.mood + reaction.moodDelta);
+  const scored = reaction.source ? score(pet, reaction.source, now) : null;
+  return { ok: true, zone, woken, reaction, affection: scored ? combine(penalty, scored) : penalty };
+}
+
 function play(pet, now) {
   const { woken, penalty } = wake(pet, now);
   if (pet.energy < 15) return { ok: false, reason: 'tired', woken, affection: penalty };
@@ -208,6 +222,7 @@ module.exports = {
   tick,
   feed,
   pat,
+  touchBody,
   play,
   chatted,
   talkedTopic,

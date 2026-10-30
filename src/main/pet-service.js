@@ -15,6 +15,7 @@ const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine } = require('../core/proactive');
 const memes = require('../core/memes');
+const touchZones = require('../core/touch-zones');
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
 const LOCAL_RECHECK_MS = 6 * 60 * 60 * 1000; // re-confirm the device binding a few times a day
@@ -711,6 +712,7 @@ class PetService extends EventEmitter {
     else if (kind === 'pat') r = state.pat(this.pet, t);
     else if (kind === 'play') r = state.play(this.pet, t);
     else if (kind === 'sleep') r = state.putToSleep(this.pet, t);
+    else if (kind === 'touch') return this.touch(food); // act('touch', zone | { x, y })
     else return { ok: false };
 
     let line = null;
@@ -722,6 +724,34 @@ class PetService extends EventEmitter {
     else this._save();
     this._reportAffection(r.affection);
     return r;
+  }
+
+  // Touch one body part: instant, offline, no LLM cost. `target` is a zone id ('head', 'chest', …) or
+  // the click point in the sprite's visible box, { x, y } in 0..1 (+ `pose`, and `opaque: false` for a
+  // transparent pixel), resolved with the character's zone table. No target = the head, like a pat.
+  // Returns { ok, zone, reaction, line, affection, woken }; a point on no body part is
+  // { ok: false, reason: 'miss', zone: null } and changes nothing.
+  touch(target) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    if (this.busy) return { ok: false, reason: 'busy' };
+    const sp = getSpecies(this.pet.speciesId);
+    let zone = 'head';
+    if (typeof target === 'string' && target) zone = target;
+    else if (target && typeof target === 'object' && typeof target.zone === 'string') zone = target.zone;
+    else if (target && typeof target === 'object' && ('x' in target || 'y' in target)) {
+      zone = touchZones.zoneAt(Number(target.x), Number(target.y), { character: sp, pose: target.pose || null, opaque: target.opaque !== false });
+      if (!zone) return { ok: false, reason: 'miss', zone: null };
+    }
+    if (!touchZones.ZONE_IDS.includes(zone)) return { ok: false, reason: 'unknown-zone', zone };
+    const t = this.now();
+    const r = state.touchBody(this.pet, zone, t);
+    const line = touchZones.touchLine(sp, r.reaction, { settings: this.settings, rnd: this.rnd, last: this._lastTouchLine });
+    this._lastTouchLine = line;
+    this._say(line, 'fallback', `touch:${zone}`);
+    this._reportAffection(r.affection);
+    const a = r.affection;
+    const affection = { source: a ? a.source : null, delta: a ? a.delta : 0, blocked: a ? a.blocked : null, value: this.pet.affection, stage: this.pet.relStage };
+    return { ok: true, zone, reaction: r.reaction, line, affection, woken: r.woken };
   }
 
   // Called on a timer. Advances needs and maybe lets the pet speak up.

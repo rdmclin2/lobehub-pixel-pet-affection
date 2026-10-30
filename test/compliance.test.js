@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ROOT = path.join(__dirname, '..', 'src');
 // Display and prompt sources. lh-client / lh-path / local-device are CLI plumbing ("child process").
-const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'core/outfits.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/fx.js', 'renderer/style.css', 'core/fx.js', 'core/time-context.js', ...fs.readdirSync(path.join(ROOT, 'characters')).map((f) => `characters/${f}`)];
+const FILES = ['core/persona.js', 'core/species.js', 'core/dialogue.js', 'core/affection.js', 'core/proactive.js', 'core/pet-state.js', 'core/migrate.js', 'core/outfits.js', 'main/pet-service.js', 'renderer/app.js', 'renderer/index.html', 'renderer/fx.js', 'renderer/style.css', 'core/fx.js', 'core/time-context.js', 'core/touch-zones.js', ...fs.readdirSync(path.join(ROOT, 'characters')).map((f) => `characters/${f}`)];
 const BANNED = /幼崽|少年|少女|萝莉|正太|宝宝|校服|\bbaby\b|\bchild\b|成长阶段|成长进化|破壳|孵化|[一二三四火水草鲸]之?蛋|擦边/;
 
 test('no growth stage or minor framing in display or prompt sources', () => {

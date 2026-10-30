@@ -12,9 +12,10 @@ const { pathToFileURL } = require('node:url');
 const { app, protocol, net } = require('electron');
 const P = require('../core/packs');
 
-// Must run before the app is ready.
+// Must run before the app is ready. CORS-enabled so the page can read a sheet's pixels (部位触摸 hit-tests
+// clicks against her opaque pixels); the files are pictures only, see serve().
 function registerPackScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 }
 
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, (e, _o, stderr) => (e ? reject(new Error(String(stderr || e.message).trim().slice(0, 200))) : resolve())));
@@ -48,7 +49,11 @@ class PackStore {
       const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
       const file = pack && path.resolve(pack.dir, rel);
       if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g)$/i.test(file)) return new Response('not found', { status: 404 });
-      return net.fetch(pathToFileURL(file).toString());
+      return net.fetch(pathToFileURL(file).toString()).then((res) => {
+        const headers = new Headers(res.headers);
+        headers.set('access-control-allow-origin', '*');
+        return new Response(res.body, { status: res.status, headers });
+      });
     });
   }
 
