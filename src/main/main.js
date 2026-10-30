@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
@@ -430,7 +431,10 @@ app.whenReady().then(() => {
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   tts = { keys, cache, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats } });
-  service = new PetService({ lh: new LhClient(), store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  const lh = new LhClient();
+  // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
+  const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
+  service = new PetService({ lh, responses, store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
