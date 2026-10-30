@@ -60,6 +60,10 @@ OUTFIT_LOOKS = {
              "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose orange-red knee-length board shorts, "
              "an open long-sleeved cream-white hooded sun-protection jacket reaching her hips with thin gold trim and an orange flower brooch, "
              "and cream-white beach sandals with black straps. Colours: orange, amber, cream white, black and gold only"),
+  "gemini": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with violet side panels and a white four-pointed star emblem on the chest, "
+             "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose violet knee-length board shorts with a thin gold trim, "
+             "an open long-sleeved white-and-navy sun-protection jacket reaching her hips with gold edging, its hood down, and two short ribbon tails with star charms, "
+             "and deep violet beach sandals. Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
  },
 }
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
@@ -107,6 +111,11 @@ HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall 
 def safe_for(outfit):
     return " ".join([SAFE, OUTFIT_SAFE[outfit]]) if outfit in OUTFIT_SAFE else SAFE
 
+def bg_for(cid, outfit=None):
+    # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);
+    # her daily prompts keep BG as written
+    return BG.replace("magenta (#FF00FF)", "green (#00FF00)") if cid == "gemini" and outfit not in (None, "daily") else BG
+
 def walk_jobs(outfit=None, only=None):
     out = []
     rows = WALK_ROWS
@@ -129,7 +138,7 @@ def jobs(halves=False, outfit=None, only=None):
                 continue
             for half, part in (("a", rows[:2]), ("b", rows[2:])):
                 part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
-                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, BG])})
+                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg_for(cid, outfit)])})
     return out
 
 def arg(flag):
