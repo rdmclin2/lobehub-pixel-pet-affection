@@ -945,15 +945,18 @@ const TTS_ENGINES = [
   ['minimax', 'MiniMax', 'https://api.minimax.cn', '在 platform.minimaxi.com（国内站）开通后创建接口密钥，不用 GroupId；国际站（minimax.io）的 Key 把端点改成 https://api.minimax.io。'],
   ['system', '系统语音（离线、免费）', '', ''],
 ];
-const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', empty: '没有返回音频', offline: '离线' };
-const ttsReason = (r) => (r.startsWith('paused:') ? `暂停 5 分钟（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r));
+const TTS_REASON = { 'no-key': '没填 Key', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', 'api-1002': '被限流（请求太频繁）', 'api-1039': '被限流（请求太频繁）', 'api-1008': '余额不足', 'api-2013': '请求参数有误', 'rate-limit': '这一分钟的次数用完了', empty: '没有返回音频', offline: '离线' };
+const ttsReason = (r) => (r.startsWith('paused:') ? `暂停中（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r.startsWith('api-') ? `接口错误 ${r.slice(4)}` : r));
+const ttsWait = (sec) => (sec < 60 ? `${sec} 秒` : `${Math.ceil(sec / 60)} 分钟`);
 function voiceSection() {
   const sec = document.createElement('div');
   sec.className = 'adv-section';
   sec.id = 'voice-section';
-  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、4 秒没响应或出错时，这句改用下面选的方式。合成过的句子缓存在本机，再说同一句不再请求。</p>'
+  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、5 秒没响应（长句最多 10 秒）或出错时，这句改用下面选的方式。MiniMax 国内站每分钟只能合成 10 次，用完了就稍等或改用下面的方式，不会被限流卡住。合成过的句子缓存在本机，再说同一句不再请求。</p>'
     + '<div class="size-row"><span>引擎</span><select id="tts-provider"></select></div>'
     + '<div class="size-row"><span>用不了时</span><select id="tts-fallback"><option value="system">改用系统语音</option><option value="silent">不出声</option></select></div>'
+    + '<label class="pref-row"><input type="checkbox" id="tts-packs" /><span><b>语音包</b><small id="tts-packs-st"></small></span></label>'
+    + '<div class="size-row"><button id="tts-pack-folder" class="btn">打开语音包文件夹</button><button id="tts-pack-reload" class="btn">重新读取</button></div>'
     + '<div id="tts-engines"></div><p class="adv-note" id="tts-status"></p>'
     + '<div class="size-row"><button id="tts-clear" class="btn">清空语音缓存</button><button id="tts-test" class="btn">试听一句</button></div>'
     + '<p class="adv-note" id="tts-credit"></p>';
@@ -971,6 +974,16 @@ function voiceSection() {
   };
   sel.addEventListener('change', () => apply({ provider: sel.value }, `语音引擎：${sel.selectedOptions[0].textContent}。`));
   fb.addEventListener('change', () => apply({ fallback: fb.value }, `引擎用不了时：${fb.selectedOptions[0].textContent}。`));
+  const packsBox = sec.querySelector('#tts-packs');
+  packsBox.checked = settings.tts.packs !== false;
+  sec.querySelector('#tts-pack-folder').addEventListener('click', () => { window.pet.openVoicePacksFolder(); panelMsg('把语音包文件夹（manifest.json + 音频）放进去，再点“重新读取”。格式见使用说明。', true); });
+  sec.querySelector('#tts-pack-reload').addEventListener('click', async () => {
+    const r = await window.pet.reloadVoicePacks();
+    setSettings(r.settings);
+    paintVoiceStatus();
+    panelMsg(r.errors.length ? `有语音包没读进来：${r.errors.join(' / ')}` : '语音包已重新读取。', !r.errors.length);
+  });
+  packsBox.addEventListener('change', () => apply({ packs: packsBox.checked }, packsBox.checked ? '语音包已打开：固定台词直接播放录好的语音。' : '语音包已关闭：每句都交给引擎合成。'));
   for (const [id, label, def, how] of TTS_ENGINES.filter((e) => e[2])) {
     const box = document.createElement('div');
     box.className = 'tts-engine';
@@ -1017,8 +1030,20 @@ function paintVoiceCredit() {
   el.textContent = `语音由 AI 合成，不是真人录音。${settings.tts.provider === 'auto' ? `${sp.nameZh}默认用 ${mine === 'minimax' ? 'MiniMax' : 'Fish Audio'}。` : ''}${credit ? `${sp.nameZh}的音色：${credit}。` : ''}`;
 }
 // The status line under 语音: per engine whether a key is set and its last problem, and the cache.
+// 语音包: whether her lines are recorded, by whom, and when they are used (core/voice-pack.js packApplies).
+function paintVoicePacks() {
+  const el = $('tts-packs-st');
+  const st = settings && settings.ttsStatus;
+  if (!el || !st || !view) return;
+  const sp = speciesOf(view.pet.speciesId);
+  const pack = (st.packs || []).find((p) => p.character === sp.id);
+  if (!pack) { el.textContent = `${sp.nameZh}还没有语音包。`; return; }
+  const engine = pack.engine === 'minimax' ? 'MiniMax' : pack.engine === 'fish' ? 'Fish Audio' : null;
+  el.textContent = `${sp.nameZh}：${pack.builtIn ? '内置' : '你加的'}语音包「${pack.name}」，录好 ${pack.lines} 句。摸头、喂食、部位触摸、碎碎念这些固定台词直接播放，不联网、不用 Key、不占每分钟次数；她的回复仍由引擎合成。${engine ? `引擎选了别家并且能用时（比如 Fish Audio），为了声音一致不用这个 ${engine} 语音包；选“系统语音”时也不用。` : ''}`;
+}
 function paintVoiceStatus() {
   paintVoiceCredit();
+  paintVoicePacks();
   const el = $('tts-status');
   const st = settings && settings.ttsStatus;
   if (!el || !st) return;
@@ -1026,7 +1051,8 @@ function paintVoiceStatus() {
     const e = st.engines[id];
     const box = document.querySelector(`.tts-engine[data-engine="${id}"] .tts-key`);
     if (box) box.placeholder = e.hasKey ? 'API Key：已设置（不显示）' : 'API Key：未设置';
-    return `${label.replace(/（.*）/, '')}：${e.hasKey ? 'Key 已设置' : '没有 Key'}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${Math.ceil(e.pausedFor / 60)} 分钟内跳过` : ''}` : ''}`;
+    const budget = e.hasKey && e.rpm ? `，每分钟最多 ${e.rpm} 次，这一分钟还剩 ${e.budget}` : '';
+    return `${label.replace(/（.*）/, '')}：${e.hasKey ? 'Key 已设置' : '没有 Key'}${budget}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${ttsWait(e.pausedFor)}内跳过` : ''}` : ''}`;
   });
   el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
 }

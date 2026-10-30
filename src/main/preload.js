@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld('pet', {
   ttsPrewarm: () => ipcRenderer.invoke('tts-prewarm'),
   setTts: (patch) => ipcRenderer.invoke('set-tts', patch),
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
+  openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
+  reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),
   apiStatus: () => ipcRenderer.invoke('api-status'),
