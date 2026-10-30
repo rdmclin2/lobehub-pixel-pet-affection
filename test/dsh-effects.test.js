@@ -231,7 +231,7 @@ test('every character sounds different, and only replies and API lines are read 
   assert.equal(Voice.shouldSpeak({ source: 'llm', kind: 'hungry' }), false, 'automatic murmurs are not read');
   assert.equal(Voice.shouldSpeak({ source: 'fallback', kind: 'chat' }), false);
   assert.equal(Voice.speakable('哈！😀（得意）[梗图:roast] 看 https://x.y 这个'), '哈！ 看 这个');
-  assert.ok([...Voice.speakable('很长的一句话。'.repeat(40))].length <= Voice.MAX_CHARS);
+  assert.equal(Voice.speakable('很长的一句话。'.repeat(40)), '很长的一句话。'.repeat(40), 'no cut: a long reply is read sentence by sentence (test/chat-voice.test.js)');
   const voices = [{ name: 'Microsoft Huihui', lang: 'zh-CN' }, { name: 'Google 普通话', lang: 'zh-CN' }, { name: 'Samantha', lang: 'en-US' }, { name: 'Mei-Jia', lang: 'zh-TW' }];
   assert.equal(Voice.pickVoice(voices, Voice.voiceOf(SPECIES.claude)).name, 'Microsoft Huihui', 'preferred name');
   assert.equal(Voice.pickVoice(voices, Voice.voiceOf(SPECIES.grok)).name, 'Microsoft Huihui', 'same language');

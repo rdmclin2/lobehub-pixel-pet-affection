@@ -337,3 +337,4 @@ body.visitor .visitor-bar .btn { padding: 0 6px; font-size: 11px; border-width: 
 .tts-engine { border-top: 2px dashed #d8cfe0; margin-top: 6px; padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
 .tts-engine input[type="password"], .tts-engine input[type="text"] { flex: 1; min-width: 0; min-height: 26px; font: inherit; font-size: 11px; border: 3px solid #2b2233; padding: 2px 4px; }
 #voice-section .size-row + .size-row { margin-top: 4px; }
+.bubble .sentence.reading { background: #ffe9a8; box-shadow: 0 0 0 1px #ffe9a8; }

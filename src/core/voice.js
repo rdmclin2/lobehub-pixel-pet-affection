@@ -9,9 +9,13 @@
   else root.PetVoice = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const DEFAULT_VOICE = { lang: 'zh-CN', pitch: 1, rate: 1, prefer: [] };
-  const MAX_CHARS = 160; // a long reply is read up to here, at a sentence end where possible
+  // A reply is read sentence by sentence (sentences()), all of it: no cut in the middle of a sentence.
+  const MAX_SENTENCE = 120; // a longer sentence is read in pieces, cut at a comma where possible
+  const MIN_SENTENCE = 6; // a shorter one ("嗯。") is read together with the next
+  const MAX_SENTENCES = 30; // past this many, the rest of a very long reply stays on screen only
 
   const clamp = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : d);
+  const len = (s) => [...s].length;
 
   // A plain string is the oldest shape: just a system voice name to prefer ("voice": "Xiaoxiao").
   function voiceOf(species) {
@@ -27,20 +31,81 @@
 
   // What is worth reading: no emoji, no stage directions or notes in brackets, no meme tags, no URLs.
   function speakable(text) {
-    let t = String(text || '')
-      .replace(/\[[^\]]*\]/g, ' ')
+    return String(text || '')
+      .replace(/\[[^\]]*\]|【[^】]*】/g, ' ')
       .replace(/（[^）]*）|\([^)]*\)/g, ' ')
       .replace(/https?:\/\/\S+/g, ' ')
       .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
       .replace(/[*_`#>~]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if ([...t].length > MAX_CHARS) {
-      const cut = [...t].slice(0, MAX_CHARS).join('');
-      const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'), cut.lastIndexOf('.'));
-      t = end > 20 ? cut.slice(0, end + 1) : cut;
+  }
+  // Something a voice can say, not just punctuation left over from a stage direction.
+  const sayable = (t) => /[\p{L}\p{N}]/u.test(t);
+
+  const OPEN = '（([【';
+  const CLOSE = '）)]】';
+  const TAIL = '。！？!?；;…~～”’"」』'; // stays with the sentence it ends
+  const hardEnd = (c, next) => '。！？!?；;…\n'.includes(c) || (c === '.' && (next === undefined || /\s/.test(next)));
+  const softEnd = (c, next) => '，,、：:'.includes(c) || hardEnd(c, next);
+  // Cut `text` after every end mark outside brackets (a stage direction is never split); the pieces
+  // put together are exactly `text`.
+  function cut(text, isEnd) {
+    const cs = [...text];
+    const out = [];
+    let cur = '';
+    let depth = 0;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      cur += c;
+      if (OPEN.includes(c)) depth++;
+      else if (CLOSE.includes(c)) depth = Math.max(0, depth - 1);
+      if (c === '\n') depth = 0; // an unclosed bracket ends with its line
+      if (depth === 0 && isEnd(c, cs[i + 1])) {
+        while (i + 1 < cs.length && TAIL.includes(cs[i + 1])) cur += cs[++i];
+        out.push(cur);
+        cur = '';
+      }
     }
-    return t;
+    if (cur) out.push(cur);
+    return out;
+  }
+  // A sentence longer than MAX_SENTENCE: comma-separated pieces packed up to it, a hard cut as a last resort.
+  function pack(sentence) {
+    const out = [];
+    let cur = '';
+    for (const piece of cut(sentence, softEnd)) {
+      if (cur && len(speakable(cur + piece)) > MAX_SENTENCE) { out.push(cur); cur = ''; }
+      cur += piece;
+      while (len(speakable(cur)) > MAX_SENTENCE) {
+        const cs = [...cur];
+        out.push(cs.slice(0, MAX_SENTENCE).join(''));
+        cur = cs.slice(MAX_SENTENCE).join('');
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  // A reply as the sentences to read, in order: [{ raw, say }]. `raw` is the piece of the reply as shown
+  // (all the raws together are the reply, so the bubble can mark the one being read); `say` is what is
+  // read (speakable(raw)), or '' for a piece with nothing to say (a lone stage direction, past MAX_SENTENCES).
+  function sentences(text) {
+    const parts = [];
+    for (const raw of cut(String(text || ''), hardEnd).flatMap((s) => (len(speakable(s)) > MAX_SENTENCE ? pack(s) : [s]))) {
+      const prev = parts[parts.length - 1];
+      const say = speakable(raw);
+      if (prev && (!sayable(say) || (sayable(prev.say) && len(prev.say) < MIN_SENTENCE && len(speakable(prev.raw + raw)) <= MAX_SENTENCE))) {
+        prev.raw += raw; // nothing to read on its own, or the previous one is too short: read them together
+        prev.say = speakable(prev.raw);
+      } else parts.push({ raw, say });
+    }
+    let n = 0;
+    for (const p of parts) {
+      if (!sayable(p.say)) p.say = '';
+      else if (++n > MAX_SENTENCES) p.say = '';
+    }
+    return parts;
   }
 
   // Which lines are read: the agent's replies and topics, and lines sent through the local API (a
@@ -85,5 +150,5 @@
     cancel: (env) => env && env.speechSynthesis && env.speechSynthesis.cancel(),
   };
 
-  return { DEFAULT_VOICE, MAX_CHARS, voiceOf, speakable, shouldSpeak, pickVoice, webSpeech };
+  return { DEFAULT_VOICE, MAX_SENTENCE, MIN_SENTENCE, MAX_SENTENCES, voiceOf, speakable, sentences, shouldSpeak, pickVoice, webSpeech };
 });
