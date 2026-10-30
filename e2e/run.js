@@ -2750,14 +2750,18 @@ function ttsMock() {
   const http = require('node:http');
   const KEY = 'e2e-fake-fish-key-7f3a9c';
   const MM_KEY = 'e2e-fake-minimax-key-41b2';
-  // 0.5 s of a 440 Hz tone: a real WAV the page can decode and play
-  const rate = 8000;
-  const n = rate / 2;
-  const wav = Buffer.alloc(44 + n * 2);
-  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 8000), 44 + i * 2);
-  const m = { KEY, MM_KEY, wav, mode: 'ok', slow: {}, log: [] };
+  // a 440 Hz tone: a real WAV the page can decode and play (0.5 s, or `perCharMs` per character of the line)
+  const tone = (sec) => {
+    const rate = 8000;
+    const n = Math.round(rate * sec);
+    const w = Buffer.alloc(44 + n * 2);
+    w.write('RIFF', 0); w.writeUInt32LE(36 + n * 2, 4); w.write('WAVEfmt ', 8); w.writeUInt32LE(16, 16); w.writeUInt16LE(1, 20); w.writeUInt16LE(1, 22);
+    w.writeUInt32LE(rate, 24); w.writeUInt32LE(rate * 2, 28); w.writeUInt16LE(2, 32); w.writeUInt16LE(16, 34); w.write('data', 36); w.writeUInt32LE(n * 2, 40);
+    for (let i = 0; i < n; i++) w.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 8000), 44 + i * 2);
+    return w;
+  };
+  const wav = tone(0.5);
+  const m = { KEY, MM_KEY, wav, mode: 'ok', slow: {}, perCharMs: 0, log: [] };
   m.server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; });
@@ -2768,21 +2772,32 @@ function ttsMock() {
       const auth = req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
       const rec = { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
       m.log.push(rec);
-      req.on('close', () => { if (!res.writableEnded) rec.aborted = true; });
+      // the client gave up: the response closed before it was sent (the request's own `close` fires once its body is read)
       res.on('close', () => { if (!res.writableFinished) rec.aborted = true; });
       const send = () => {
         if (res.destroyed) return;
         if (!auth) { rec.status = 401; return res.writeHead(401).end('{"message":"unauthorized"}'); }
         if (m.mode === '500') { rec.status = 500; return res.writeHead(500).end('{"message":"boom"}'); }
         rec.status = 200;
-        if (fish) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav);
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: wav.toString('hex') } }));
+        const audio = m.perCharMs ? tone(Math.min(6, Math.max(0.4, ([...(j.text || '')].length * m.perCharMs) / 1000))) : wav;
+        rec.audioMs = Math.round(((audio.length - 44) / 2 / 8000) * 1000);
+        if (fish) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: audio.toString('hex') } }));
       };
       if (m.mode === 'hang') return setTimeout(send, 8000);
       setTimeout(send, m.slow[j.text] || 30);
     });
   });
   return new Promise((resolve) => m.server.listen(0, '127.0.0.1', () => { m.url = `http://127.0.0.1:${m.server.address().port}`; resolve(m); }));
+}
+
+// 互动语音 synthesises her common lines ahead (petFx.lastPrewarm) once an engine has a key: wait for it
+// to settle before counting engine requests.
+async function prewarmed(page) {
+  const settled = () => page.waitForFunction(() => { const p = window.petFx.lastPrewarm && window.petFx.lastPrewarm(); return !p || p.status === 'done'; }, null, { timeout: 30000 });
+  await settled();
+  await page.waitForTimeout(800); // a prewarm is scheduled 400 ms after what it depends on changes
+  await settled();
 }
 
 async function voice() {
@@ -2886,6 +2901,7 @@ async function voice() {
     });
 
     await step(S, 'V3 engine choice: 大肥鱼 speaks through Fish Audio with the 蓝色大肥鱼 voice', async () => {
+      await prewarmed(page); // 互动语音's prewarm sends its own Fish requests; count only this line's
       const before = reqs();
       const sp = await speakLine('今天也要好好吃饭哦');
       assert.equal(sp.provider, 'fish');
@@ -2904,6 +2920,7 @@ async function voice() {
     }, page);
 
     await step(S, 'V4 cache: the same line again is played from the local cache, no request', async () => {
+      await prewarmed(page); // 互动语音's prewarm sends its own Fish requests; count only this line's
       const before = reqs();
       const sp = await speakLine('今天也要好好吃饭哦');
       assert.equal(sp.provider, 'fish');
@@ -3061,6 +3078,560 @@ async function voice() {
   }
 }
 
+// ---------------------------------------------------------------- ivoice
+// 互动语音 (core/interaction-voice.js): with 朗读 on, every interaction — 初次见面, 摸摸, 部位触摸, 喂食,
+// 玩耍, 哄睡, 拖拽, 甩出, 接住, 关系升级, 切换角色 — asks the engine (the local Fish stand-in) for her line;
+// her common lines are synthesised ahead; rapid clicks do not pile up; murmurs only with 朗读碎碎念; and
+// with 朗读 off nothing is requested at all.
+async function ivoice() {
+  const S = 'ivoice';
+  const SHOTS = path.join(OUT, 'ivoice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ivoice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ivoicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // 朗读 is on before she hatches (so 初次见面 is read), with the Fish stand-in and its key as 语音 saves them
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true }, tts: { provider: 'fish', fallback: 'system', endpoints: { fish: mock.url, minimax: '' } } }));
+  fs.writeFileSync(path.join(data, 'tts-keys.json'), JSON.stringify({ fish: { plain: mock.KEY } }), { mode: 0o600 });
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const table = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const slog = () => page.evaluate(() => window.petFx.offerLog());
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  const engineStats = async () => (await page.evaluate(() => window.pet.getSettings())).ttsStatus.stats;
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600); // past the 1.5 s gate
+  };
+  // run one interaction; it must offer exactly one line of `kind` to the voice, which is said through Fish
+  const interact = async (label, kindRe, fn, from = null) => {
+    if (!from) await idle();
+    const n0 = from ? from.n0 : (await slog()).length;
+    const m0 = from ? from.m0 : mock.log.length;
+    const s0 = from ? from.s0 : await engineStats();
+    await fn();
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind)), [n0, kindRe.source], { timeout: 20000 });
+    const entry = (await slog()).slice(n0).find((e) => kindRe.test(e.kind));
+    assert.equal(entry.said, true, `${label}: dropped (${entry.dropped})`);
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp.n !== n || !/^(queued|synthesizing)$/.test(sp.status); }, entry.n, { timeout: 15000 });
+    const sp = await last();
+    const s1 = await engineStats();
+    const live = mock.log.slice(m0).filter((r) => r.text && r.text.endsWith(entry.text));
+    const warmed = mock.log.slice(0, m0).filter((r) => r.text && r.text.endsWith(entry.text));
+    assert.equal(sp.n, entry.n);
+    assert.equal(sp.provider, 'fish', `${label}: ${JSON.stringify(sp)}`);
+    assert.ok(live.length || (sp.cached && warmed.length), `${label}: the engine was asked for 「${entry.text}」`);
+    const bubble = await bubbleText(page);
+    const row = { interaction: label, kind: entry.kind, cls: entry.cls, text: entry.text, bubble, mood: sp.mood, provider: sp.provider, voiceId: sp.voiceId, cached: sp.cached, latencyMs: sp.latencyMs, status: sp.status, ipcRequests: s1.requests - (s1.prewarmed || 0) + s1.hits - s0.requests + (s0.prewarmed || 0) - s0.hits, httpLive: live.length, httpPrewarmed: warmed.length };
+    table.push(row);
+    return note(`${label}: kind=${row.kind} 「${row.text}」 mood=${row.mood} → fish voice=${row.voiceId} cached=${row.cached} ${row.latencyMs}ms status=${row.status}; engine asked ${row.ipcRequests}× (HTTP now ${row.httpLive}, synthesised ahead ${row.httpPrewarmed}); bubble 「${bubble}」`);
+  };
+  const petBox = async () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+  const openAdvanced = async () => {
+    if (!(await page.isVisible('#behavior-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#behavior-section');
+    }
+  };
+  try {
+    await step(S, 'I0 hatch 大肥鱼 with 朗读 on: 初次见面 (met) is read through Fish', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => window.petFx.offerLog().some((e) => e.kind === 'met'), null, { timeout: 20000 });
+      const st = await page.evaluate(() => window.pet.getSettings());
+      assert.equal(st.prefs.voice, true);
+      assert.equal(st.prefs.voiceInteractions, true);
+      assert.equal(st.prefs.voiceMurmurs, false);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      return await interact('初次见面 met', /^met$/, async () => {}, { n0: 0, m0: 0, s0: { requests: 0, hits: 0 } });
+    }, page);
+    await shot('i0-met');
+
+    await step(S, 'I1 her common lines are synthesised ahead (prewarm) into the cache', async () => {
+      await page.waitForFunction(() => { const p = window.petFx.lastPrewarm(); return p && p.status === 'done'; }, null, { timeout: 60000 });
+      const p = await page.evaluate(() => window.petFx.lastPrewarm());
+      assert.equal(p.provider, 'fish');
+      assert.ok(p.warmed >= 15, `warmed ${p.warmed}`);
+      assert.equal(p.failed, null);
+      const files = fs.readdirSync(path.join(data, 'tts-cache')).filter((f) => f !== 'index.json');
+      return note(`prewarm: ${p.lines} lines → ${p.warmed} synthesised, ${p.cached} already cached, provider ${p.provider}, ${p.ms} ms; tts-cache/ has ${files.length} files; mock requests so far ${mock.log.length}`);
+    });
+
+    await step(S, 'I2 部位触摸: real clicks aimed at her head, hands and face — each reads that part\'s touch line', async () => {
+      const out = [];
+      for (const zone of ['head', 'hands', 'face']) {
+        // hover first: the pose under the pointer settles, then the part is found where it is drawn now
+        const b = await petBox();
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+        await page.waitForTimeout(600);
+        const pts = await zonePoints(page);
+        if (!pts[zone]) continue;
+        // 大肥鱼's clip moves between frames: the part actually hit is the one her reaction names
+        out.push(await interact(`部位触摸 (aimed at ${zone})`, /^touch:[a-z]+$/, () => page.mouse.click(pts[zone].x, pts[zone].y)));
+        await shot(`i2-touch-${zone}`);
+      }
+      assert.ok(out.length >= 2);
+      return out.join(' | ');
+    }, page);
+
+    await step(S, 'I3 摸摸 (pat): with 部位触摸 off a click on her is the old pat', async () => {
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+      await page.waitForFunction(() => window.petFx.speechLog && true);
+      await page.waitForTimeout(300);
+      const b = await petBox();
+      const r = await interact('摸摸 pat', /^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+      await shot('i3-pat');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      return r;
+    }, page);
+
+    await step(S, 'I4 喂食: 喂食 → a food from the menu', async () => {
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+      const r = await interact('喂食 feed', /^feed$/, async () => {
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+      });
+      await shot('i4-feed');
+      return r;
+    }, page);
+
+    await step(S, 'I5 玩耍: the 玩耍 button', async () => {
+      await page.evaluate(() => window.pet.debugSet({ energy: 80 }));
+      const r = await interact('玩耍 play', /^play$/, () => clickAct(page, 'play'));
+      await shot('i5-play');
+      return r;
+    }, page);
+
+    await step(S, 'I6 拖拽: dragging her lifts her and she says her lift line', async () => {
+      await page.mouse.move(300, 300);
+      await page.waitForTimeout(400);
+      const b = await petBox();
+      const cx = b.x + b.width / 2;
+      const cy = b.y + b.height / 2;
+      const r = await interact('拖拽 lift', /^lift$/, async () => {
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        await page.mouse.move(cx + 12, cy - 8, { steps: 4 });
+        await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 });
+      });
+      await shot('i6-lift');
+      await page.waitForTimeout(300);
+      await page.mouse.up();
+      return r;
+    }, page);
+
+    await step(S, 'I7 甩出: a fast drag and let go throws her; she says her throw line', async () => {
+      await page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 10000 });
+      const r = await interact('甩出 throw', /^throw$/, async () => {
+        await page.waitForTimeout(400);
+        const b = await petBox();
+        const cx = b.x + b.width / 2;
+        const cy = b.y + b.height / 2;
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) await page.mouse.move(cx - i * 25, cy - i * 18);
+        await page.mouse.up();
+        await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+      });
+      await shot('i7-throw');
+      await page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
+      return r;
+    }, page);
+
+    await step(S, 'I8 接住: pressing her while she flies catches her; she says her catch line', async () => {
+      const r = await interact('接住 catch', /^catch$/, async () => {
+        page.evaluate(() => window.petFx.throw(-900, -1500));
+        await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 });
+        await page.waitForTimeout(120);
+        await page.locator('#pet-body .pet-hit:not(.hidden)').dispatchEvent('pointerdown', { button: 0, pointerId: 3, pointerType: 'mouse', isPrimary: true });
+      });
+      await shot('i8-catch');
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, pointerType: 'mouse' })));
+      return r;
+    }, page);
+
+    await step(S, 'I9 关系升级 stage_up: enough affection for the next stage — her stage-up line is read', async () => {
+      const v = await view(page);
+      const r = await interact('关系升级 stage_up', /^stage_up$/, () => page.evaluate(() => window.pet.debugSet({ affection: 40 })));
+      const v2 = await view(page);
+      await shot('i9-stage-up');
+      return `${v.pet.relStage} → ${v2.pet.relStage}; ${r}`;
+    }, page);
+
+    await step(S, 'I10 哄睡: the 睡觉 button', async () => {
+      const r = await interact('哄睡 sleep', /^sleep$/, () => clickAct(page, 'sleep'));
+      await shot('i10-sleep');
+      return r;
+    }, page);
+
+    // Every character has her own agent (#51): meeting 克洛蒂 the first time is her hello (met); going back to
+    // one met before is 切换角色 (switch). Both are read in her own Fish voice.
+    await step(S, 'I11 切换角色: ⋯ → 切换角色 → 克洛蒂 — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
+      const toClaude = async () => {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="characters"]');
+        await pickCharacter(page, 'claude');
+      };
+      const r1 = await interact('初次见面 克洛蒂 met', /^met$/, toClaude);
+      let sp = await last();
+      assert.equal(sp.species, 'claude');
+      assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
+      await shot('i11-met');
+      await page.click('#panel-close');
+      await idle();
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
+      await page.waitForTimeout(800);
+      const r2 = await interact('切换角色 switch', /^switch$/, toClaude);
+      sp = await last();
+      assert.equal(sp.species, 'claude');
+      assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
+      await shot('i11-switch');
+      await page.click('#panel-close');
+      return `${r1} || ${r2}`;
+    }, page);
+
+    await step(S, 'I12 rapid clicks: 8 clicks in 0.8 s — the bubble follows every one, the voice says one line, nothing piles up', async () => {
+      await idle();
+      const pts = await zonePoints(page);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const s0 = await engineStats();
+      const bubbles = [];
+      for (let i = 0; i < 8; i++) {
+        const z = ['head', 'hands'][i % 2];
+        await page.mouse.click(pts[z].x, pts[z].y);
+        await page.waitForTimeout(100);
+        bubbles.push(await bubbleText(page));
+      }
+      await page.waitForTimeout(1500);
+      const got = (await slog()).slice(n0);
+      const said = got.filter((e) => e.said);
+      const s1 = await engineStats();
+      const gate = await page.evaluate(() => window.petFx.speechGate());
+      await shot('i12-rapid');
+      assert.equal(got.length, 8, 'every click offered its line');
+      assert.equal(said.length, 1, `said: ${said.map((e) => e.text).join(', ')}`);
+      assert.equal(s1.requests + s1.hits - s0.requests - s0.hits, 1, 'one request to the engine');
+      return note(`8 clicks → ${got.length} lines offered, ${said.length} said (「${said[0].text}」), dropped: ${got.filter((e) => !e.said).map((e) => e.dropped).join(',')}; engine asked ${s1.requests + s1.hits - s0.requests - s0.hits}×, HTTP ${mock.log.length - m0}; gate ${JSON.stringify(gate)}; bubbles changed ${new Set(bubbles).size}×`);
+    }, page);
+
+    await step(S, 'I13 碎碎念: not read by default; read after switching on 朗读碎碎念 in 高级设置', async () => {
+      await idle();
+      const murmur = async () => {
+        const n0 = (await slog()).length;
+        await page.evaluate(async () => { await window.pet.debugSet({ hunger: 95, lastSpokeAt: 0, sleeping: false }); await window.pet.debugHeartbeat(); });
+        await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'hungry', null, { timeout: 15000 });
+        await page.waitForTimeout(500);
+        return (await slog()).slice(n0);
+      };
+      const before = await murmur();
+      assert.equal(before.length, 0, 'a murmur is not offered to the voice by default');
+      await openAdvanced();
+      await page.locator('#behavior-section input[data-pref="voiceMurmurs"]').scrollIntoViewIfNeeded();
+      await shot('i13-murmur-switch-off');
+      await page.check('#behavior-section input[data-pref="voiceMurmurs"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读碎碎念：开'));
+      await shot('i13-murmur-switch-on');
+      await page.click('#panel-close');
+      await page.waitForTimeout(1700);
+      const after = await murmur();
+      assert.equal(after.length, 1);
+      assert.equal(after[0].said, true);
+      await page.waitForFunction(() => !/^(queued|synthesizing)$/.test(window.petFx.lastSpeech().status), null, { timeout: 15000 });
+      const sp = await last();
+      assert.equal(sp.kind, 'hungry');
+      assert.equal(sp.provider, 'fish');
+      return note(`murmur with 朗读碎碎念 off: offered ${before.length}; on: 「${after[0].text}」 said via ${sp.provider} (${sp.status})`);
+    }, page);
+
+    await step(S, 'I14 关掉 朗读回复: every interaction again — no line offered, no request to any engine', async () => {
+      await idle();
+      await openAdvanced();
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      await page.uncheck('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：关'));
+      await shot('i14-voice-off');
+      await page.click('#panel-close');
+      await page.waitForTimeout(500);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const s0 = await engineStats();
+      const kinds = [];
+      const sawLine = async (k) => { await page.waitForFunction((kk) => document.getElementById('bubble').dataset.kind.startsWith(kk), k, { timeout: 15000 }); kinds.push(await page.evaluate(() => document.getElementById('bubble').dataset.kind)); await page.waitForTimeout(600); };
+      let b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(600);
+      const pts = await zonePoints(page);
+      await page.mouse.click(pts.head.x, pts.head.y); await sawLine('touch:');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: false })); await page.waitForTimeout(300);
+      b = await petBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4); await sawLine('pat');
+      await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+      await page.evaluate(() => window.pet.debugSet({ hunger: 60, energy: 80 }));
+      await clickAct(page, 'feed'); await page.click('#food-menu button'); await sawLine('feed');
+      await clickAct(page, 'play'); await sawLine('play');
+      await page.mouse.move(300, 300); await page.waitForTimeout(400);
+      b = await petBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + 12, b.y + b.height / 2 - 8, { steps: 4 });
+      await page.waitForFunction(() => window.petFx.state().state === 'lifted', null, { timeout: 3000 }); kinds.push('lift(dragged)');
+      await page.waitForTimeout(300); await page.mouse.up();
+      page.evaluate(() => window.petFx.throw(-900, -1500)); await page.waitForFunction(() => window.petFx.state().flying, null, { timeout: 2000 }); kinds.push('throw(flying)');
+      await page.waitForTimeout(120);
+      await page.locator('#pet-body .pet-hit:not(.hidden)').dispatchEvent('pointerdown', { button: 0, pointerId: 4, pointerType: 'mouse', isPrimary: true });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, pointerType: 'mouse' }))); kinds.push('catch(caught)');
+      await page.waitForTimeout(800);
+      await page.evaluate(() => window.pet.debugSet({ affection: 90 })); await sawLine('stage_up');
+      await clickAct(page, 'sleep'); await sawLine('sleep');
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu')); await sawLine('switch');
+      await page.evaluate(async () => { await window.pet.debugSet({ hunger: 95, lastSpokeAt: 0, sleeping: false }); await window.pet.debugHeartbeat(); }); await sawLine('hungry');
+      await page.evaluate(() => window.petFx.speak('一句回复'));
+      await page.waitForTimeout(2500);
+      const got = (await slog()).slice(n0);
+      const s1 = await engineStats();
+      const audio = await page.evaluate(() => window.petFx.audioState());
+      const pw = await page.evaluate(() => window.petFx.lastPrewarm());
+      await shot('i14-silent-after');
+      assert.equal(got.length, 0, `offered: ${JSON.stringify(got)}`);
+      assert.equal(mock.log.length, m0, 'no HTTP request');
+      assert.equal(s1.requests + s1.hits, s0.requests + s0.hits, 'no engine call');
+      assert.equal(audio, null, 'nothing playing');
+      return note(`朗读 off; interactions run: ${kinds.join(', ')}, + a reply; lines offered to the voice ${got.length}; HTTP requests ${m0} → ${mock.log.length}; engine calls ${s0.requests + s0.hits} → ${s1.requests + s1.hits}; audio element ${JSON.stringify(audio)}; last prewarm still ${pw && pw.sig.split('|')[4]} (no new prewarm)`);
+    }, page);
+  } finally {
+    const md = ['| 互动 | kind | 台词 | 气泡 | mood | 引擎 | 音色 | 缓存 | 延迟 ms | 状态 | 引擎调用 | HTTP 现场 | HTTP 预合成 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|', ...table.map((r) => `| ${r.interaction} | ${r.kind} | ${r.text} | ${r.bubble} | ${r.mood} | ${r.provider} | ${r.voiceId} | ${r.cached} | ${r.latencyMs} | ${r.status} | ${r.ipcRequests} | ${r.httpLive} | ${r.httpPrewarmed} |`)].join('\n');
+    fs.writeFileSync(path.join(SHOTS, 'ivoice-table.md'), md + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'ivoice-log.txt'), evidence.join('\n') + '\n\nspeech log (renderer):\n' + (await slog().catch(() => [])).map((e) => JSON.stringify(e)).join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ------------------------------------------------------------ chatvoice
+// 对话语音: her chat replies (fake lh echoes the message) read aloud through the TTS engine (the local
+// Fish stand-in, audio as long as the line): a multi-sentence reply is read whole and in order with the
+// filtering kept, the bubble marks the sentence being read, and a new message or 朗读 off stops it at once.
+async function chatvoice() {
+  const S = 'chatvoice';
+  const SHOTS = path.join(OUT, 'chatvoice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  mock.perCharMs = 160;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-chatvoice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-chatvoicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const t0 = Date.now();
+  const chapters = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  const log = (n) => page.evaluate((k) => window.petFx.speechLog().filter((e) => e.n === k), n);
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  // type a message in the chat box and send it, as the owner would
+  const send = async (text) => {
+    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    await page.fill('#chat-input', text);
+    await page.press('#chat-input', 'Enter');
+  };
+  // the reading that starts after `prev`, once it has started its sentence `i`
+  const readingAt = (prev, i) => page.waitForFunction(([p, k]) => { const sp = window.petFx.lastSpeech(); return sp && sp.n > p && sp.current >= k && /^(playing|speaking)$/.test(sp.status); }, [prev, i], { timeout: 20000 }).then(last);
+  const fmtLog = (es) => es.map((e) => `${String(e.at).padStart(7)}ms #${e.n} ${e.event}${e.i == null ? '' : ` [${e.i}] 「${e.text}」`}${e.status ? ` ${e.status}` : ''}${e.why ? ` why=${e.why}` : ''}${e.provider !== undefined ? ` provider=${e.provider}` : ''}`).join('\n');
+  // sample, every 100 ms, which sentence is read and which one the bubble marks
+  const sampleSync = () => page.evaluate(() => {
+    window.__sync = [];
+    window.__syncTimer = setInterval(() => {
+      const sp = window.petFx.lastSpeech();
+      const b = document.getElementById('bubble');
+      const mark = b.querySelector('.sentence.reading');
+      if (sp && /^(playing|speaking)$/.test(sp.status)) window.__sync.push({ at: Math.round(performance.now()), audioAt: window.petFx.audioState() ? Math.round(window.petFx.audioState().currentTime * 1000) : null, n: sp.n, i: sp.current, reading: sp.sentences[sp.current].text, marked: mark ? Number(mark.dataset.i) : null, markedText: mark ? mark.textContent : null, bubbleShown: !b.classList.contains('hidden') });
+    }, 100);
+  });
+  const stopSample = () => page.evaluate(() => { clearInterval(window.__syncTimer); return window.__sync; });
+  try {
+    await step(S, 'C0 hatch 大肥鱼, switch 朗读 on and give Fish Audio its endpoint and key in 高级设置 → 语音', async () => {
+      chapter('孵化大肥鱼，打开朗读并配置 Fish Audio');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await idle();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      await page.check('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：开'));
+      await page.locator('#voice-section').scrollIntoViewIfNeeded();
+      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点已改为'));
+      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
+      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
+      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：Key 已设置'));
+      await shot('c0-voice-on-fish-configured');
+      await page.click('#panel-close');
+      const st = await page.evaluate(async () => (await window.pet.getSettings()));
+      assert.equal(st.prefs.voice, true);
+      assert.equal(st.tts.provider, 'fish');
+      return note(`prefs.voice=${st.prefs.voice} tts=${JSON.stringify(st.tts)}`);
+    }, page);
+
+    const MSG1 = '第一句，我们先打个招呼。第二句（笑着眨眨眼。）说说今天的天气真好！第三句😀你想不想去公园散步？第四句[梗图:cheer]那就这么说定了 https://example.com/park 。';
+    const WANT1 = ['echo: 第一句，我们先打个招呼。', '第二句 说说今天的天气真好！', '第三句你想不想去公园散步？', '第四句那就这么说定了 。']; // the meme tag never reaches the bubble (core/memes.js), the link is not read
+    let first = null;
+    await step(S, 'C1 a four-sentence chat reply is read whole, sentence by sentence in order, filtered, through Fish', async () => {
+      chapter('C1 发一条消息：四句回复按句、按顺序完整朗读');
+      // 互动语音 synthesises her common lines ahead once Fish has a key; let that finish so the mock log holds only the reply
+      await prewarmed(page);
+      const before = mock.log.length;
+      await sampleSync();
+      await send(MSG1);
+      const sp = await readingAt(0, 1);
+      await page.waitForTimeout(400);
+      await shot('c1-reading-sentence-2');
+      await page.waitForFunction((n) => { const r = window.petFx.lastSpeech(); return r.n === n && r.status === 'done'; }, sp.n, { timeout: 30000 });
+      const sync = await stopSample();
+      first = await last();
+      const es = await log(first.n);
+      const reqs = mock.log.slice(before);
+      const seen = [...new Set(sync.filter((x) => x.n === first.n).map((x) => `${x.i}:${x.marked}`))];
+      // every sample while she read: renderer time, position in the sentence's audio, the sentence read, the one the bubble marks
+      fs.writeFileSync(path.join(SHOTS, 'c1-bubble-sync.txt'), `# bubble text\n${await page.textContent('#bubble')}\n\n# every 100 ms while reading #${first.n}: time | audio position | sentence read → sentence marked in the bubble\n${sync.filter((x) => x.n === first.n).map((x) => `${String(x.at).padStart(7)}ms  audio ${String(x.audioAt).padStart(5)}ms  read [${x.i}]「${x.reading}」 → marked [${x.marked}]「${x.markedText}」 bubble ${x.bubbleShown ? 'shown' : 'HIDDEN'}`).join('\n')}\n`);
+      const bubble = await page.textContent('#bubble');
+      fs.writeFileSync(path.join(SHOTS, 'c1-speech-log.txt'), `# reply in the bubble\n${bubble}\n\n# sentences read (petFx.lastSpeech().sentences)\n${first.sentences.map((s) => `[${s.i}] ${s.status} ${s.provider} 「${s.text}」`).join('\n')}\n\n# speech log (renderer clock)\n${fmtLog(es)}\n\n# mock Fish requests\n${reqs.map((r) => JSON.stringify({ text: r.text, voice: r.voice, status: r.status, aborted: r.aborted, audioMs: r.audioMs, at: r.at - t0 })).join('\n')}\n\n# bubble sync samples (sentence read → sentence marked)\n${seen.join(', ')} over ${sync.length} samples\n`);
+      assert.deepEqual(first.sentences.map((s) => s.text), WANT1, 'sentences, with emoji / stage direction / meme tag / link removed');
+      assert.deepEqual(first.sentences.map((s) => s.status), ['done', 'done', 'done', 'done']);
+      assert.deepEqual(first.sentences.map((s) => s.provider), ['fish', 'fish', 'fish', 'fish']);
+      assert.deepEqual(es.filter((e) => e.event === 'start').map((e) => e.i), [0, 1, 2, 3], 'read in order');
+      assert.deepEqual(es.map((e) => `${e.event}${e.i == null ? '' : e.i}`), ['begin', 'start0', 'done0', 'start1', 'done1', 'start2', 'done2', 'start3', 'done3', 'end'], 'one sentence at a time, each to its end');
+      assert.deepEqual(reqs.map((r) => r.text.replace(/^\[[^\]]*\]/, '')), WANT1, 'one request per sentence, in order (after her mood tag, core/tts.js)');
+      assert.ok(reqs.every((r) => !r.aborted && r.status === 200));
+      for (let i = 0; i < 4; i++) {
+        const st = es.find((e) => e.event === 'start' && e.i === i).at;
+        const dn = es.find((e) => e.event === 'done' && e.i === i).at;
+        assert.ok(dn - st >= reqs[i].audioMs - 150, `sentence ${i} played ${dn - st} ms of ${reqs[i].audioMs} ms`);
+      }
+      // the bubble marked the sentence being read, all the way through, and stayed up while she read
+      assert.deepEqual(seen, ['0:0', '1:1', '2:2', '3:3']);
+      assert.ok(sync.filter((x) => x.n === first.n).every((x) => x.bubbleShown));
+      assert.equal(bubble, `echo: ${MSG1.replace('[梗图:cheer]', '')}`, 'the bubble still shows the whole reply as written');
+      return note(`#${first.n}: ${first.sentences.map((s) => `[${s.i}]「${s.text}」${s.status}`).join(' → ')}; Fish requests in order: ${reqs.map((r) => `「${r.text}」${r.audioMs}ms`).join(', ')}; bubble marks ${seen.join(' ')}`);
+    }, page);
+
+    await step(S, 'C2 a new message stops the reply still being read at once; the new reply is read instead', async () => {
+      await idle();
+      chapter('C2 朗读中途发新消息：旧朗读立即停止');
+      const MSG2 = '这是一段很长的回复的第一句话。这是第二句话，还没读完就会被打断。这是第三句话，它不应该被读出来。这是第四句话，同样不该读出来。';
+      await send(MSG2);
+      const old = await readingAt(first.n, 1);
+      await page.waitForTimeout(500);
+      await shot('c2-old-reply-reading-sentence-2');
+      const audioBefore = await page.evaluate(() => window.petFx.audioState());
+      const tSend = await page.evaluate(() => Math.round(performance.now()));
+      await send('换个话题吧。新的回复只有两句。');
+      const after = await page.evaluate((n) => { const sp = window.petFx.lastSpeech(); return { audio: window.petFx.audioState(), stop: window.petFx.speechLog().find((e) => e.n === n && e.event === 'stop') }; }, old.n);
+      await page.waitForTimeout(150);
+      await shot('c2-new-reply-reading');
+      const fresh = await readingAt(old.n, 0);
+      await page.waitForFunction((n) => { const r = window.petFx.lastSpeech(); return r.n === n && r.status === 'done'; }, fresh.n, { timeout: 30000 });
+      const done = await last();
+      const es = await log(old.n);
+      const oldStarts = es.filter((e) => e.event === 'start').map((e) => e.i);
+      assert.ok(after.stop, 'the old reading was stopped');
+      assert.equal(after.stop.why, 'new-message');
+      assert.ok(after.stop.at - tSend < 300, `stopped ${after.stop.at - tSend} ms after the send`);
+      assert.equal(after.audio, null, 'no audio element left playing');
+      assert.deepEqual(oldStarts, [0, 1], 'sentences 3 and 4 of the old reply were never read');
+      assert.equal(es.find((e) => e.event === 'stop').i, 1);
+      assert.equal(es.some((e) => e.event === 'end'), false);
+      assert.deepEqual(done.sentences.map((s) => s.text), ['echo: 换个话题吧。', '新的回复只有两句。']);
+      assert.deepEqual(done.sentences.map((s) => s.status), ['done', 'done']);
+      const bare = (r) => (r.text || '').replace(/^\[[^\]]*\]/, '');
+      const third = mock.log.find((r) => bare(r) === '这是第三句话，它不应该被读出来。');
+      const fourth = mock.log.find((r) => bare(r) === '这是第四句话，同样不该读出来。');
+      assert.equal(fourth, undefined, 'the fourth sentence was never even requested');
+      const all = await page.evaluate((n) => window.petFx.speechLog().filter((e) => e.n >= n), old.n);
+      fs.writeFileSync(path.join(SHOTS, 'c2-speech-log.txt'), `# owner sent a new message at ${tSend}ms while sentence [1] of #${old.n} was playing (audio ${JSON.stringify(audioBefore)})\n# right after: audio=${JSON.stringify(after.audio)} stop=${JSON.stringify(after.stop)}\n\n${fmtLog(all)}\n\n# mock Fish requests for the old reply\n${mock.log.filter((r) => /这是/.test(r.text || '')).map((r) => JSON.stringify({ text: r.text, status: r.status, aborted: r.aborted })).join('\n')}\n`);
+      return note(`old #${old.n} read [${oldStarts.join(',')}] then stop why=${after.stop.why} ${after.stop.at - tSend} ms after Enter, audio after=${JSON.stringify(after.audio)}; sentence 3 ${third ? `prefetched (aborted=${third.aborted}), never played` : 'never requested'}; sentence 4 never requested; new #${done.n}: ${done.sentences.map((s) => `「${s.text}」${s.status}`).join(' → ')}`);
+    }, page);
+
+    // 对话语音 × 互动语音 (#50 + #52): a click on her while a reply is read changes the bubble but does not
+    // cut the reply short — the gate drops her interaction line (busy) and the reply is read to its end.
+    await step(S, 'C4 touching her while a reply is read: the interaction line is dropped (busy), the reply is read to its end', async () => {
+      await idle();
+      chapter('C4 朗读回复时摸她：互动台词不插队，回复读完');
+      const prevN = (await last()).n;
+      await send('边读边摸的第一句话。边读边摸的第二句话。边读边摸的第三句话。');
+      const sp = await readingAt(prevN, 0);
+      const o0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+      const b = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+      await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4);
+      await page.waitForFunction((n) => window.petFx.offerLog().length > n, o0, { timeout: 5000 });
+      await page.waitForTimeout(300);
+      await shot('c4-touched-while-reading');
+      const offer = (await page.evaluate(() => window.petFx.offerLog())).slice(o0).find((e) => e.cls === 'interaction');
+      const mid = await last();
+      const bubble = await page.textContent('#bubble');
+      await page.waitForFunction((n) => { const r = window.petFx.lastSpeech(); return r.n !== n || !/^(queued|synthesizing|playing|speaking)$/.test(r.status); }, sp.n, { timeout: 30000 });
+      const done = await last();
+      const es = await log(sp.n);
+      fs.writeFileSync(path.join(SHOTS, 'c4-speech-log.txt'), `# clicked her while #${sp.n} was reading sentence [${mid.current}]\n# offered: ${JSON.stringify(offer)}\n# bubble after the click: ${bubble}\n\n${fmtLog(es)}\n`);
+      assert.ok(offer, 'the click offered an interaction line to the voice');
+      assert.equal(offer.said, false, 'the interaction line was not said over the reply');
+      assert.equal(offer.dropped, 'busy');
+      assert.equal(mid.n, sp.n, 'the reply is still the line being read');
+      assert.equal(done.n, sp.n);
+      assert.equal(done.status, 'done', `reply ended ${done.status} (${done.stoppedBy || ''})`);
+      assert.deepEqual(done.sentences.map((s) => s.status), ['done', 'done', 'done']);
+      return note(`#${sp.n} reading [${mid.current}] when clicked → offered ${offer.kind} 「${offer.text}」 said=${offer.said} dropped=${offer.dropped}; bubble 「${bubble}」; reply ${done.sentences.map((s) => `[${s.i}]${s.status}`).join(' ')} status=${done.status}`);
+    }, page);
+
+    await step(S, 'C3 switching 朗读 off while she reads stops the voice at once', async () => {
+      await idle();
+      chapter('C3 朗读中关闭“朗读回复”：立即停止');
+      const prevN = (await last()).n;
+      await send('关掉之前的第一句话。关掉之前的第二句话。关掉之前的第三句话。');
+      const sp = await readingAt(prevN, 0);
+      await page.waitForTimeout(300);
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      const reading = await last();
+      assert.ok(/^(playing|speaking)$/.test(reading.status), `still reading while the panel opens: ${reading.status}`);
+      await page.uncheck('#behavior-section input[data-pref="voice"]');
+      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：关'));
+      const r = await last();
+      const es = await log(sp.n);
+      await shot('c3-voice-off-stopped');
+      assert.equal(r.status, 'interrupted');
+      assert.equal(r.stoppedBy, 'voice-off');
+      assert.equal(await page.evaluate(() => window.petFx.audioState()), null);
+      await page.waitForTimeout(1500);
+      assert.equal((await log(sp.n)).length, es.length, 'nothing more was read after');
+      await page.click('#panel-close');
+      fs.writeFileSync(path.join(SHOTS, 'c3-speech-log.txt'), fmtLog(es) + '\n');
+      return note(`#${sp.n} read [${es.filter((e) => e.event === 'start').map((e) => e.i).join(',')}] of ${sp.sentences.length}, then 朗读 off → status=${r.status} stoppedBy=${r.stoppedBy}, audio=null, nothing more read in 1.5 s`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'chatvoice-log.txt'), evidence.join('\n\n') + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -3078,6 +3649,8 @@ async function voice() {
   if (which === 'roster' || which === 'all') await roster();
   if (which === 'touch' || which === 'all') await touch();
   if (which === 'voice' || which === 'all') await voice();
+  if (which === 'ivoice' || which === 'all') await ivoice();
+  if (which === 'chatvoice' || which === 'all') await chatvoice();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

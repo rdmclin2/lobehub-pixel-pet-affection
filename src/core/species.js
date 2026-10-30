@@ -34,6 +34,8 @@ function validateCharacter(c) {
   for (const k of ['vendor', 'name', 'nameZh', 'title', 'blurb', 'personality', 'catchphrase', 'likes']) if (!str(c[k])) errors.push(`${k} is required`);
   if (!/^#[0-9a-fA-F]{6}$/.test(c.accent || '')) errors.push('accent must be a #rrggbb colour');
   for (const k of FALLBACK_KINDS) if (!c.fallback || !Array.isArray(c.fallback[k]) || !c.fallback[k].length || !c.fallback[k].every(str)) errors.push(`fallback.${k} needs at least one line`);
+  // optional: her own lines for 喂食 / 摸摸 / 玩耍 (core/proactive.js fallbackPool)
+  for (const k of ['fed', 'patted', 'played']) if (c.fallback && c.fallback[k] !== undefined && (!Array.isArray(c.fallback[k]) || !c.fallback[k].length || !c.fallback[k].every(str))) errors.push(`fallback.${k} must be a list of lines`);
   if (typeof c.adult !== 'boolean') errors.push('adult must be true or false');
   if (!Array.isArray(c.outfits) || !c.outfits.includes('daily')) errors.push('outfits must list the outfits it has art for, including daily');
   const art = c.art || {};

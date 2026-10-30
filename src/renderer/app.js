@@ -2,6 +2,7 @@
 
 const Fx = window.PetFx;
 const Voice = window.PetVoice;
+const IVoice = window.PetInteractionVoice;
 const $ = (id) => document.getElementById(id);
 // A visiting model-chan (同屏伙伴) runs this same page in its own small window: index.html?visitor=<id>.
 const VISITOR = new URLSearchParams(location.search).get('visitor');
@@ -34,7 +35,10 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 
 // Every settings update also carries the pet size: the character area scales with it (style.css .stage).
 function setSettings(st) {
+  const wasOn = !!(settings && settings.prefs && settings.prefs.voice);
   settings = st;
+  if (wasOn && !(st && st.prefs && st.prefs.voice)) stopSpeech('voice-off'); // 朗读 off: quiet at once, nothing pending
+  syncPrewarm();
   if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
 }
@@ -404,6 +408,10 @@ function applyArt() {
 
 function enterPet(v) {
   view = v;
+  syncPrewarm();
+  const p = pendingSpeech;
+  pendingSpeech = null;
+  if (p && performance.now() - p.at < 15000) speak(p.m);
   revealSpecies = null;
   $('hatch-vwrap').classList.add('hidden');
   $('hatch-look').classList.add('hidden');
@@ -773,7 +781,9 @@ function renderAdvanced() {
 const PREF_LABELS = [
   ['roam', '自己走动', '空闲时偶尔朝面向的方向走几步（平均约 100 秒一次，每次 60–240 像素，到屏幕边会掉头）。鼠标停在她身上、她在忙或开着面板时不走。关掉后她只在原地待机和做小动作。'],
   ['clickSound', '点击音效', '点她时“啵”一声（100 毫秒内连点只响一次）。'],
-  ['voice', '朗读回复', '把她的回复和对外接口发来的话念出来，用下面“语音”里选的引擎和她自己的音色；自动的碎碎念不念。引擎用不了时改用系统语音（系统没有中文语音时不出声）。'],
+  ['voice', '朗读回复', '把她的回复和对外接口发来的话念出来，用下面“语音”里选的引擎和她自己的音色。引擎用不了时改用系统语音（系统没有中文语音时不出声）。关掉后完全不出声，也不再请求任何语音。'],
+  ['voiceInteractions', '互动语音', '开着“朗读回复”时，摸头、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、初次见面、关系升级和切换角色也念出她的台词。常用短句会提前合成好缓存起来，点了马上就响；连点时上一句没说完不会插新的一句，1.5 秒内也只说一句。'],
+  ['voiceMurmurs', '朗读碎碎念', '开着“朗读回复”时，她自己冒出来的话（饿了、无聊、早晚问候、想你了、睡醒）也念出来。默认不念。'],
   ['memes', '梗图', '她偶尔在气泡里配一张自己的表情包（回复由 agent 自己挑，碎碎念随机）。'],
   ['collide', '互相碰撞', '桌面上有同屏伙伴时，被甩出去的她会把撞到的伙伴弹开。'],
   ['touchZones', '部位触摸', '点她的头、胸、手、臀、脚等不同部位，她的反应和台词都不一样；乱碰会生气、扣好感。关掉后点哪里都只是摸摸她。'],
@@ -982,6 +992,7 @@ async function switchCharacter(c, name) {
     return;
   }
   view = r.view;
+  syncPrewarm();
   fx.clear();
   fx.setFacing('right');
   applyArt();
@@ -1100,6 +1111,7 @@ async function startTopic(t) {
     return;
   }
   closePanel();
+  stopSpeech('new-message');
   const r = await window.pet.talkTopic(t.id);
   if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
   if (!r.ok && r.reason === 'canceled') say('（好吧，不聊了。）', 'canceled', 'fallback');
@@ -1107,6 +1119,7 @@ async function startTopic(t) {
 
 function say(text, kind, source, reason, meme = null) {
   const b = $('bubble');
+  if (bubbleEndsReading({ text, kind, source })) stopSpeech('bubble'); // the voice follows the bubble: another line there ends the reading
   clearTimeout(bubbleTimer);
   b.classList.remove('thinking');
   b.classList.remove('hidden');
@@ -1124,69 +1137,234 @@ function say(text, kind, source, reason, meme = null) {
   b.dataset.kind = kind || '';
   b.dataset.source = source || '';
   b.dataset.reason = reason || '';
+  delete b.dataset.speech;
   talkUntil = performance.now() + Math.min(4000, 400 + text.length * 90);
   // work status: a failed turn shows the pet upset for a moment instead of talking
   if (kind === 'error' && fx) { talkUntil = 0; fx.play('sad', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'sad')); }
   const hideLater = (ms) => {
-    bubbleTimer = setTimeout(() => (bubbleHold ? hideLater(3000) : (b.classList.add('hidden'), $('meme-sticker').classList.add('hidden'))), ms);
+    bubbleTimer = setTimeout(() => (bubbleHold || (speaking() && b.dataset.speech === String(lastSpeech.n)) ? hideLater(3000) : (b.classList.add('hidden'), $('meme-sticker').classList.add('hidden'))), ms);
   };
   hideLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
 }
 
-// Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, never
-// automatic murmurs. The engine chosen under 高级设置 → 语音 synthesises it in main (core/tts.js) in her
-// own voice; without a key, offline, on a timeout or an error the line goes to the system voice
-// (core/voice.js, her own pitch and pace) or stays silent. One line at a time: a new one stops the old.
+// Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, and with
+// 互动语音 her interaction lines too (core/interaction-voice.js; automatic murmurs only with 朗读碎碎念).
+// The engine chosen under 高级设置 → 语音 synthesises it in main (core/tts.js) in her own voice; without a
+// key, offline, on a timeout or an error the line goes to the system voice (core/voice.js, her own pitch
+// and pace) or stays silent. A line is read whole, sentence by sentence in order (Voice.sentences): the
+// next sentence is fetched while this one plays, and the bubble marks the one being read. One reading at
+// a time: a new line, a new message from the owner, 朗读 switched off or another line in the bubble stops
+// it at once — but an interaction line is dropped instead while another line is still being said, or
+// within 1.5 s of the last (SpeechGate), so rapid clicks never pile up and never cut a reply short.
+const SPEAKING = /^(queued|synthesizing|speaking|playing)$/;
 let lastSpeech = null;
 let speechSeq = 0;
 let speechAudio = null;
-function stopSpeech() {
+let speechWake = null; // ends the sentence being read (a stopped reading never gets its `ended`)
+const speechLog = []; // what was read when, for the e2e runs (window.petFx.speechLog)
+const speechGate = new IVoice.SpeechGate({ now: () => performance.now() });
+const offerLog = []; // every line offered to the voice (said or dropped by the gate), for the e2e runs
+const speaking = () => !!(lastSpeech && SPEAKING.test(lastSpeech.status));
+// The tier of the line still being synthesised or read (-1: none), for the gate.
+const speakingTier = () => (speaking() ? lastSpeech.tier : -1);
+// Whether a new line in the bubble ends the reading: not an interaction line the gate would drop anyway.
+function bubbleEndsReading(m) {
+  if (!speaking()) return false;
+  const c = IVoice.classify(m);
+  return !(c && c.tier === 0 && settings && IVoice.shouldSpeak(m, settings.prefs));
+}
+function speechEvent(rec, i, event, extra = {}) {
+  speechLog.push({ n: rec.n, i, event, text: i == null ? null : rec.sentences[i].text, at: Math.round(performance.now()), ...extra });
+  if (speechLog.length > 300) speechLog.shift();
+}
+function haltAudio() {
   if (speechAudio) { speechAudio.pause(); URL.revokeObjectURL(speechAudio.src); speechAudio = null; }
   if (window.speechSynthesis) speechSynthesis.cancel();
 }
-async function speak(m) {
-  if (!settings || !settings.prefs || !settings.prefs.voice || !Voice.shouldSpeak(m) || !view) return;
-  const text = Voice.speakable(m.text);
-  if (!text) return;
-  const seq = ++speechSeq;
-  stopSpeech();
-  if (lastSpeech && /^(queued|synthesizing|speaking|playing)$/.test(lastSpeech.status)) lastSpeech.status = 'interrupted';
-  const tts = settings.tts || { provider: 'system', fallback: 'system' };
-  const rec = { n: seq, text, species: view.pet.speciesId, engine: tts.provider, provider: null, cached: false, latencyMs: 0, fellBackFrom: [], status: 'queued' };
-  lastSpeech = rec;
-  if (tts.provider !== 'system') {
-    rec.status = 'synthesizing';
-    const r = navigator.onLine === false
-      ? { ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: 'offline' }] }
-      : await window.pet.ttsSynthesize(text, view.status).catch((e) => ({ ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: `ipc: ${e.message}` }] }));
-    if (seq !== speechSeq || r.reason === 'interrupted') { if (rec.status === 'synthesizing') rec.status = 'interrupted'; return; }
-    Object.assign(rec, { fellBackFrom: r.fellBackFrom || [], latencyMs: r.latencyMs || 0 });
-    if (r.ok) return playAudio(rec, r);
-    if (r.next !== 'system' && r.fallback === 'silent') { rec.status = 'silent'; return; }
-  } else window.pet.ttsCancel();
-  speakSystem(rec);
+function stopSpeech(why = 'interrupted') {
+  speechSeq++;
+  const rec = lastSpeech;
+  if (rec && SPEAKING.test(rec.status)) {
+    rec.status = 'interrupted';
+    rec.stoppedBy = why;
+    const s = rec.sentences[rec.current];
+    if (s && SPEAKING.test(s.status)) s.status = 'interrupted';
+    speechEvent(rec, rec.current, 'stop', { why });
+  }
+  haltAudio();
+  window.pet.ttsCancel();
+  if (speechWake) { const w = speechWake; speechWake = null; w(); }
+  markReading(null);
 }
-function playAudio(rec, r) {
+// A line that arrives before her screen is up (初次见面, said while hatching) waits for enterPet().
+let pendingSpeech = null;
+async function speak(m) {
+  if (!settings || !settings.prefs || !IVoice.shouldSpeak(m, settings.prefs)) return;
+  if (!view) { pendingSpeech = { m, at: performance.now() }; return; }
+  const c = IVoice.classify(m);
+  // replies and milestones are read sentence by sentence; an interaction line or a murmur is short and
+  // read whole, as it was synthesised ahead (prewarm caches whole lines)
+  const parts = c.tier === 0 ? [{ raw: m.text, say: Voice.speakable(m.text) }] : Voice.sentences(m.text);
+  const said = parts.filter((p) => p.say);
+  if (!said.length) return;
+  const g = speechGate.admit(c, speakingTier());
+  const offer = { at: Math.round(performance.now()), kind: m.kind, cls: c.cls, interaction: c.interaction, text: said.map((p) => p.say).join(' '), said: g.ok, dropped: g.ok ? null : g.reason, n: null };
+  offerLog.push(offer);
+  if (offerLog.length > 200) offerLog.shift();
+  if (!g.ok) return;
+  stopSpeech('new-line');
+  const seq = speechSeq;
+  offer.n = seq;
+  const tts = settings.tts || { provider: 'system', fallback: 'system' };
+  const mood = IVoice.moodFor(m);
+  const rec = {
+    n: seq, at: performance.now(), text: offer.text, sentences: said.map((p, i) => ({ i, text: p.say, status: 'queued', provider: null })), current: 0,
+    kind: m.kind, interaction: c.interaction, tier: c.tier, mood: mood === null ? view.status : mood,
+    species: m.speciesId || view.pet.speciesId, engine: tts.provider, provider: null, cached: false, latencyMs: 0, fellBackFrom: [], status: 'queued',
+  };
+  lastSpeech = rec;
+  speechEvent(rec, null, 'begin', { sentences: said.length });
+  showSentences(rec, m.text, parts);
+  let next = synthesize(rec, 0, tts);
+  for (let i = 0; i < said.length; i++) {
+    if (tts.provider !== 'system' && !/^(playing|speaking)$/.test(rec.status)) rec.status = 'synthesizing';
+    const r = await next;
+    if (seq !== speechSeq) return;
+    if (r.reason === 'interrupted') { rec.status = 'interrupted'; markReading(null); return; } // another window took the engine
+    next = i + 1 < said.length ? synthesize(rec, i + 1, tts) : null; // the next sentence is fetched while this one is read
+    await readSentence(rec, i, r);
+    if (seq !== speechSeq) return;
+  }
+  rec.status = rec.sentences.every((s) => s.status === 'silent') ? 'silent' : 'done';
+  speechEvent(rec, null, 'end', { status: rec.status });
+  markReading(null);
+}
+// The audio for sentence i (or what to do instead: the system voice, silence).
+async function synthesize(rec, i, tts) {
+  const s = rec.sentences[i];
+  if (tts.provider === 'system') return { ok: false, next: 'system', fellBackFrom: [] };
+  s.status = 'synthesizing';
+  const r = navigator.onLine === false
+    ? { ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: 'offline' }] }
+    : await window.pet.ttsSynthesize(s.text, rec.mood).catch((e) => ({ ok: false, fallback: tts.fallback, fellBackFrom: [{ provider: tts.provider, reason: `ipc: ${e.message}` }] }));
+  if (!r.ok && r.reason !== 'interrupted' && r.next !== 'system' && r.fallback === 'silent') r.silent = true;
+  Object.assign(s, { fellBackFrom: r.fellBackFrom || [], latencyMs: r.latencyMs || 0, status: 'queued' });
+  return r;
+}
+// Read one sentence; resolves when it has been read, failed, or the reading was stopped.
+function readSentence(rec, i, r) {
+  const s = rec.sentences[i];
+  rec.current = i;
+  Object.assign(rec, { fellBackFrom: r.fellBackFrom || [], latencyMs: r.latencyMs || 0 });
+  return new Promise((resolve) => {
+    let guard = null;
+    const end = (status) => {
+      if (speechWake !== resolve) return;
+      speechWake = null;
+      clearTimeout(guard);
+      s.status = status;
+      speechEvent(rec, i, 'done', { status });
+      resolve();
+    };
+    speechWake = resolve;
+    speechEvent(rec, i, 'start', { provider: r.ok ? r.provider : r.silent ? null : 'system', cached: !!r.cached });
+    markReading(rec, i);
+    if (r.silent) { Object.assign(rec, { provider: null, status: 'silent' }); s.provider = null; return end('silent'); }
+    // a voice that never reports its end (no system voice on this box, a stuck player) does not hold the rest up
+    guard = setTimeout(() => end('timeout'), 4000 + [...s.text].length * 600);
+    if (r.ok) playAudio(rec, s, r, end);
+    else speakSystem(rec, s, end);
+  });
+}
+// 拖拽 / 甩出 / 接住 have no line from main: she says one of hers (voice.lines in her file), in the
+// bubble and aloud, only with 朗读 and 互动语音 on, and at most once every few seconds per kind.
+const LOCAL_LINE_GAP_MS = 4000;
+const localLineAt = {};
+function localLine(kind) {
+  const p = settings && settings.prefs;
+  if (VISITOR || !p || !p.voice || p.voiceInteractions === false || !view || thinking) return;
+  const now = performance.now();
+  if (now - (localLineAt[kind] || -Infinity) < LOCAL_LINE_GAP_MS) return;
+  localLineAt[kind] = now;
+  const pool = IVoice.localLines(speciesOf(view.pet.speciesId), kind);
+  if (!pool.length) return;
+  const text = pool[Math.floor(Math.random() * pool.length)];
+  say(text, kind, 'fallback');
+  speak({ text, source: 'fallback', kind });
+}
+// Her common short lines are synthesised ahead (main.js tts-prewarm) whenever what they depend on
+// changes: 朗读 / 互动语音 switched on, the engine or its key, her character or relationship stage.
+let prewarmSig = null;
+let prewarmTimer = null;
+let lastPrewarm = null;
+function syncPrewarm() {
+  const p = settings && settings.prefs;
+  if (!p || !p.voice || p.voiceInteractions === false || !view || !view.pet || VISITOR) { prewarmSig = null; return; }
+  const t = settings.tts || {};
+  const keys = settings.ttsStatus ? Object.entries(settings.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`).join(',') : '';
+  const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), keys, view.pet.speciesId, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
+  if (sig === prewarmSig) return;
+  prewarmSig = sig;
+  clearTimeout(prewarmTimer);
+  prewarmTimer = setTimeout(async () => {
+    const t0 = performance.now();
+    lastPrewarm = { sig, status: 'running' };
+    const r = await window.pet.ttsPrewarm().catch((e) => ({ failed: `ipc: ${e.message}` }));
+    if (lastPrewarm && lastPrewarm.sig === sig) lastPrewarm = { sig, status: 'done', ms: Math.round(performance.now() - t0), ...r };
+  }, 400);
+}
+function playAudio(rec, s, r, end) {
+  Object.assign(s, { provider: r.provider, cached: r.cached, status: 'playing' });
   Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
-  a.onplaying = () => { rec.started = true; };
-  a.onended = () => { rec.status = 'done'; if (speechAudio === a) stopSpeech(); };
-  a.onerror = () => { rec.status = `error: ${a.error ? a.error.code : '?'}`; };
-  a.play().catch((e) => { if (rec.status === 'playing') rec.status = `error: ${e.name}`; });
+  a.onplaying = () => { rec.started = s.started = true; talkFor(Number.isFinite(a.duration) ? a.duration * 1000 : 0, s.text); };
+  a.onended = () => { if (speechAudio === a) haltAudio(); end('done'); };
+  a.onerror = () => end(`error: ${a.error ? a.error.code : '?'}`);
+  a.play().catch((e) => end(`error: ${e.name}`));
 }
 // The last provider of the chain: Web Speech (core/voice.js webSpeech) with her own pitch and pace.
-function speakSystem(rec) {
-  rec.provider = 'system';
+function speakSystem(rec, s, end) {
+  rec.provider = s.provider = 'system';
   const env = { speechSynthesis: window.speechSynthesis, SpeechSynthesisUtterance: window.SpeechSynthesisUtterance };
-  if (!Voice.webSpeech.available(env)) { rec.status = 'silent'; return; }
+  if (!Voice.webSpeech.available(env)) { rec.status = 'silent'; return end('silent'); }
   const v = Voice.webSpeech.config(speciesOf(rec.species).voice);
   Object.assign(rec, { lang: v.lang, pitch: v.pitch, rate: v.rate, status: 'queued' });
-  Object.assign(rec, Voice.webSpeech.speak(rec.text, v, env, {
-    start: () => { rec.status = 'speaking'; },
-    end: () => { rec.status = 'done'; },
-    error: (e) => { rec.status = `error: ${e}`; },
+  Object.assign(rec, Voice.webSpeech.speak(s.text, v, env, {
+    start: () => { rec.status = s.status = 'speaking'; talkFor(0, s.text); },
+    end: () => end('done'),
+    error: (e) => end(`error: ${e}`),
   }));
+}
+// Her mouth moves while a sentence is read.
+function talkFor(ms, text) { talkUntil = Math.max(talkUntil, performance.now() + Math.min(30000, ms || [...text].length * 220)); }
+// The bubble as sentences while it is read: the reply is still shown whole, the sentence being read is
+// marked and scrolled into view. Only when the bubble still shows this reply (say() put it there).
+function showSentences(rec, text, parts) {
+  const b = $('bubble');
+  if (b.classList.contains('hidden') || b.textContent !== text) return;
+  b.textContent = '';
+  let i = 0;
+  for (const p of parts) {
+    if (!p.say) { b.appendChild(document.createTextNode(p.raw)); continue; }
+    const el = document.createElement('span');
+    el.className = 'sentence';
+    el.dataset.i = i++;
+    el.textContent = p.raw;
+    b.appendChild(el);
+  }
+  b.dataset.speech = rec.n;
+}
+function markReading(rec, i) {
+  const b = $('bubble');
+  for (const el of b.querySelectorAll('.sentence.reading')) el.classList.remove('reading');
+  if (!rec || b.dataset.speech !== String(rec.n)) return;
+  const el = b.querySelector(`.sentence[data-i="${i}"]`);
+  if (!el) return;
+  el.classList.add('reading');
+  const br = b.getBoundingClientRect();
+  const er = el.getBoundingClientRect();
+  if (er.top < br.top || er.bottom > br.bottom) b.scrollTop += er.top - br.top - 4;
 }
 
 function setThinking(on) {
@@ -1327,6 +1505,7 @@ function bindPetUi() {
       const on = await window.pet.setLocal(true);
       if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
+    stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
     attachments = [];
     renderAttachments();
     input.value = '';
@@ -1410,11 +1589,11 @@ function bindPetPointer({ onClick, onMenu }) {
     if (d.sling) {
       const box = petHitBox();
       const v = Fx.slingshotVelocity(d.x - d.x0, d.y - d.y0, box ? box.w : 150);
-      if (Fx.isThrow(v)) throwPet(v);
+      if (Fx.isThrow(v)) { throwPet(v); localLine('throw'); }
       return;
     }
     const v = Fx.releaseVelocity(d.samples, performance.now());
-    if (Fx.isThrow(v)) throwPet(v);
+    if (Fx.isThrow(v)) { throwPet(v); localLine('throw'); }
   };
   for (const el of document.querySelectorAll('.pet-hit')) {
     el.addEventListener('pointerdown', (e) => {
@@ -1426,7 +1605,7 @@ function bindPetPointer({ onClick, onMenu }) {
       const sling = !caught && Fx.isSlingshot(lastPressAt, now);
       lastPressAt = now;
       drag = { id: e.pointerId, type: e.pointerType, x0: e.screenX, y0: e.screenY, x: e.screenX, y: e.screenY, moved: false, caught, sling, travel: 0, samples: [{ x: e.screenX, y: e.screenY, t: now }] };
-      if (caught) fx.play('happy', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'happy'));
+      if (caught) { fx.play('happy', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'happy')); localLine('catch'); }
       try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
       if (e.pointerType === 'touch') {
         const d = drag;
@@ -1441,7 +1620,7 @@ function bindPetPointer({ onClick, onMenu }) {
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
     drag.travel += Math.abs(dx) + Math.abs(dy);
-    if (drag.travel > (drag.type === 'touch' ? Fx.LONG_PRESS.slop : 3)) drag.moved = true;
+    if (!drag.moved && drag.travel > (drag.type === 'touch' ? Fx.LONG_PRESS.slop : 3)) { drag.moved = true; localLine('lift'); }
     if (drag.moved) {
       clearTimeout(drag.press);
       fx.setLifted(true);
@@ -1787,9 +1966,14 @@ window.petFx = {
   walk: () => fx.walkPet(),
   stats: () => ({ ...fx.stats, walking: fx.walking }),
   hitBox: () => petHitBox(),
-  lastSpeech: () => lastSpeech && { ...lastSpeech, fellBackFrom: [...lastSpeech.fellBackFrom] },
+  lastSpeech: () => lastSpeech && { ...lastSpeech, fellBackFrom: [...lastSpeech.fellBackFrom], sentences: lastSpeech.sentences.map((s) => ({ ...s })) },
+  speechLog: () => speechLog.map((e) => ({ ...e })),
   audioState: () => (speechAudio ? { paused: speechAudio.paused, currentTime: speechAudio.currentTime, duration: speechAudio.duration, src: speechAudio.src.slice(0, 5) } : null),
   speak: (text) => speak({ text, source: 'api', kind: 'api' }),
+  // 互动语音: every line offered to the voice (said or dropped by the gate), and the last prewarm
+  offerLog: () => offerLog.map((e) => ({ ...e })),
+  speechGate: () => ({ ...speechGate.stats }),
+  lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
 };
 
 // The local HTTP API (src/core/api.js) asks the window to play, throw or report what it is doing.
@@ -1860,7 +2044,7 @@ async function main() {
   $('toast-close').addEventListener('click', hideToast);
   $('toast-open').addEventListener('click', () => openPanel($('toast-open').dataset.panel || 'wardrobe'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
-  window.pet.onUpdate((v) => { view = v; if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced' || panelKind === 'characters') renderPanel(); } });
+  window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced' || panelKind === 'characters') renderPanel(); } });
   window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme); speak(m); });
   window.pet.onApiCmd(onApiCmd);
   window.pet.onThinking(setThinking);

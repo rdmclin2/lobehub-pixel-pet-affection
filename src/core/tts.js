@@ -333,12 +333,17 @@ class TtsEngine {
     return out;
   }
 
-  // 朗读 switched off: stop the line being fetched and any prewarm, at once.
-  stopAll() {
-    this.cancel();
+  // End the running prewarm at once (the engine, key or endpoint changed: it would keep asking the old one).
+  endPrewarm() {
     this.warmGen++;
     if (this.warming) this.warming.abort('interrupted');
     this.warming = null;
+  }
+
+  // 朗读 switched off: stop the line being fetched and any prewarm, at once.
+  stopAll() {
+    this.cancel();
+    this.endPrewarm();
   }
 
   // Resolve `pr` unless the line is interrupted or `ms` passes first (then the request is aborted).

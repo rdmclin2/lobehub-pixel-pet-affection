@@ -356,6 +356,7 @@ function wire() {
     const p = patch && typeof patch === 'object' ? patch : {};
     let keyOk = true;
     if (p.key && NEURAL.includes(p.key.id)) keyOk = tts.keys.set(p.key.id, p.key.value);
+    tts.engine.endPrewarm(); // the running prewarm was for the old engine / key: nothing more goes to it
     tts.engine.reset(); // a new key, endpoint or engine: try every engine again
     const r = service.setTts(p);
     return keyOk ? r : { ...r, ok: false, reason: 'bad-key' };

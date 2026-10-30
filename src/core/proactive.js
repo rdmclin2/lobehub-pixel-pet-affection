@@ -62,11 +62,15 @@ function fallbackLine(species, kind, rnd = Math.random, pet = null, settings = n
 // Every line fallbackLine() may pick for `kind` (互动语音 synthesises these ahead, pet-service.js voiceLines).
 function fallbackPool(species, kind, pet = null, settings = null) {
   const map = { hungry: 'hungry', bored: 'bored', greet_morning: 'greet', greet_evening: 'sleepy', stage_up: 'happy', met: 'greet', missed: 'greet', fed: 'happy', patted: 'happy', played: 'happy' };
-  const lines = species.fallback[map[kind] || 'happy'] || species.fallback.happy;
+  // fed / patted / played: her own lines when her file has them (互动语音 reads them in her voice)
+  const own = ['fed', 'patted', 'played'].includes(kind) && Array.isArray(species.fallback[kind]) && species.fallback[kind].length ? species.fallback[kind] : null;
+  const lines = own || species.fallback[map[kind] || 'happy'] || species.fallback.happy;
   if (!pet) return [...lines];
   const stageKind = { greet_morning: 'greet', met: 'greet', missed: 'greet' }[kind] || kind;
   const staged = stageLines(pet, settings, stageKind);
   // Stage-up and interaction feedback speak for the new relationship; other events mix in the species' voice.
+  // (her own fed / patted / played lines stay in the pool next to the stage's)
+  if (own) return [...own, ...staged];
   return staged.length && ['stage_up', 'fed', 'patted', 'played'].includes(kind) ? staged : [...lines, ...staged];
 }
 
