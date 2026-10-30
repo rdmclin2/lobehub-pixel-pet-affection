@@ -1126,6 +1126,7 @@ async function advanced() {
       await page.click('[data-menu="advanced"]');
       await page.waitForSelector('#panel:not(.hidden) #unlock-all');
       assert.equal(await page.textContent('#panel-title'), '高级设置');
+      assert.equal(await page.evaluate(() => document.getElementById('panel-body').scrollTop), 0, 'opens at its top');
       const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim()));
       assert.ok(!sections.some((t) => /^(角色|模型|外观)/.test(t)), `who she is and how she looks live in 切换角色: ${sections.join(' / ')}`);
       assert.match(await page.textContent('#panel-sub'), /陌生 ♥\d+/);
