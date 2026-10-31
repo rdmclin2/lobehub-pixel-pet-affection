@@ -543,7 +543,7 @@ test('a save whose character was retired opens with a current character, never c
   assert.equal(v.pet.affection, 40, 'affection kept');
   assert.equal(v.pet.agentId, 'agt_OLD');
   assert.equal(v.outfit, 'daily', 'an outfit the new character has no art for falls back to daily');
-  assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'swimsuit', 'bikini'], "克洛蒂's own outfits");
+  assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'scarf', 'casual', 'beret', 'idol', 'pajamas', 'cat_ears', 'swimsuit', 'yukata', 'bikini', 'qipao', 'couple_hoodie', 'flower_crown'], "克洛蒂's own outfits");
   assert.deepEqual(v.pet.retiredFrom, { speciesId: 'embit', at: clock.t });
   assert.equal(v.look.packId, 'claude-pixel');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, { grok: 'grok-pixel' }, 'looks of retired characters are dropped');
@@ -817,12 +817,12 @@ test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be
   svc.act('pat');
   await tick();
   const up = events.find((e) => e.type === 'stage-up');
-  assert.deepEqual(up.unlocks.outfits.map((x) => x.label), ['休闲卫衣', '贝雷帽画家装']);
+  assert.deepEqual(up.unlocks.outfits.map((x) => x.label), ['休闲卫衣', '贝雷帽画家装', '偶像演出服']);
   assert.equal(svc.equipOutfit('pajamas').reason, 'locked');
   const r = svc.equipOutfit('casual');
   assert.equal(r.ok, true);
   assert.equal(r.view.outfit, 'casual');
-  assert.equal(svc.markSeen('outfit').marked, 2);
+  assert.equal(svc.markSeen('outfit').marked, 3);
   await new Promise((res) => setTimeout(res, 300));
 
   const v = mkSvc().init();

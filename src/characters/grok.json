@@ -36,7 +36,7 @@
     }
   },
   "adult": false,
-  "outfits": ["daily", "swimsuit", "bikini"],
+  "outfits": ["daily", "scarf", "casual", "beret", "idol", "pajamas", "cat_ears", "swimsuit", "yukata", "bikini", "qipao", "couple_hoodie", "flower_crown"],
   "signature": { "label": "黑金哥特礼服", "desc": "格萝可的原设服装：高领黑色礼服、酒红内衬立领和小尖冠。" },
   "art": { "kind": "pack", "packs": ["grok-pixel", "grok-classic"], "fallbackPack": "grok-pixel" },
   "fx": { "noMirror": [] },

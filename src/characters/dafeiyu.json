@@ -40,7 +40,7 @@
     }
   },
   "adult": false,
-  "outfits": ["daily", "swimsuit", "bikini"],
+  "outfits": ["daily", "scarf", "casual", "beret", "idol", "pajamas", "cat_ears", "swimsuit", "yukata", "bikini", "qipao", "couple_hoodie", "flower_crown"],
   "signature": { "label": "招牌女仆装", "desc": "深藏青女仆装、白围裙，鲸鱼鳍耳和尾鳍。" },
   "art": {
     "kind": "video",

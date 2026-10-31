@@ -62,6 +62,8 @@ python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸�
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
 ```
 
+10 套全年龄衣柜服饰（`WARDROBE`）也按这个流程生成。它们的提示词开头多一句 “Chroma-key sprite sheet … like a green screen”：只写平常的背景句时，gpt-image 常常画成深色渐变背景，抠不出来。生成后用 `scripts/art/align_outfit.py src/renderer/packs/<id>-pixel <outfit>` 把和 daily 对应帧身高差超过 11.5% 的格子以脚底为基准缩放对齐（多半是蹲着的唤醒帧），再跑 `check_model_chan.py`。
+
 五位的沙滩比基尼 `bikini` 按同样的流程生成（`--outfit bikini`），图集是默认包里的 `sheets/bikini.webp`。gpt-image 偶尔把同一张宫格里的几格画得大一圈或小一圈，`check_model_chan.py` 会报“vs daily height”超限；这时按 daily 对应帧的身高，以脚底为基准把那几格在 fit 后的图里缩放对齐，再重建图集（2026-10-31：大肥鱼的待机、饿了、吃饼干和拎起第 2 帧，吉皮缇的唤醒第 1 帧）。
 
 大肥鱼的提示词描述到 “ She wears ” 为止不含尾鳍，所以她的 `OUTFIT_LOOKS` 描述里另外写了尾鳍。她的原版动画（`art.kind: 'video'`）只对应 daily：外观选「原版动画」时，其他服饰用默认包 `dafeiyu-pixel` 的图集（`src/core/packs.js` `resolveLook` 跳过 clips 后按默认包、回落包查找），换回 daily 再播放视频；`xvfb-run -a node e2e/run.js outfit dafeiyu swimsuit` 会把这条路径也走一遍。她的泳装 hatch 第 1 帧（蹲姿）头顶上方有两颗离散的闪光，让身高和 daily 相差 19%，所以在 fit 后的格子里清掉了 y < 204 的这两颗闪光再建图集。
