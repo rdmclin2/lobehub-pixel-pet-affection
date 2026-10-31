@@ -81,9 +81,10 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
+  const has = { dafeiyu: ['daily', 'swimsuit'], claude: ['daily', 'swimsuit'], grok: ['daily', 'swimsuit'], gemini: ['daily', 'swimsuit'], gpt: ['daily', 'swimsuit'] };
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
-    assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), ['daily']);
+    assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), has[id] || ['daily']);
     assert.equal(o.listOutfits(p, ADULT)[0].label, { dafeiyu: '招牌女仆装', claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披', gpt: '白玫瑰立领长裙' }[id], 'its signature outfit name');
     assert.equal(o.equipOutfit(p, ADULT, 'scarf').reason, 'unavailable');
     assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'yukata' }, ADULT), 'daily');
@@ -108,4 +109,43 @@ test('saves without an outfit (older or hand-edited) open in the daily outfit', 
   assert.equal(pet.characters.testchan.equippedOutfit, 'daily');
   const { pet: odd } = migratePet({ ...pet, characters: { testchan: { ...pet.characters.testchan, equippedOutfit: 'bikini' } } }, T0);
   assert.equal(odd.characters.testchan.equippedOutfit, 'daily');
+});
+
+test('the swimsuit is an all-ages 亲近 outfit, separate from the adult retro swimsuit', () => {
+  const sw = o.OUTFITS.find((x) => x.id === 'swimsuit');
+  assert.deepEqual({ stage: sw.stage, rating: sw.rating, label: sw.label }, { stage: 'close', rating: 'all', label: '运动泳装' });
+  assert.match(sw.desc, /连体泳衣.*沙滩裤.*防晒开衫/);
+  const retro = o.OUTFITS.find((x) => x.id === 'retro_swimsuit');
+  assert.deepEqual({ stage: retro.stage, rating: retro.rating }, { stage: 'lover', rating: 'adult' });
+});
+
+test('克洛蒂 sees the swimsuit locked until 亲近, then can put it on', () => {
+  const p = mk(20, 'claude');
+  const locked = o.listOutfits(p, OFF).find((x) => x.id === 'swimsuit');
+  assert.deepEqual({ locked: locked.locked, condition: locked.condition }, { locked: true, condition: '亲近（♥35）解锁，还差 15' });
+  assert.deepEqual(o.equipOutfit(p, OFF, 'swimsuit'), { ok: false, reason: 'locked', condition: '亲近（♥35）解锁，还差 15' });
+  assert.equal(p.equippedOutfit, 'daily');
+  st.setAffectionForTest(p, 40);
+  assert.deepEqual(o.outfitsForStages(['close'], p, OFF).map((x) => x.id), ['swimsuit'], 'named in the 亲近 stage-up notice');
+  assert.equal(o.listOutfits(p, OFF).find((x) => x.id === 'swimsuit').isNew, true);
+  assert.deepEqual(o.equipOutfit(p, OFF, 'swimsuit'), { ok: true, outfit: { id: 'swimsuit', label: '运动泳装' } });
+  assert.equal(p.equippedOutfit, 'swimsuit');
+  assert.equal(p.lastSafeOutfit, 'swimsuit', 'all-ages: the fallback when adult content goes off');
+  assert.equal(o.listOutfits(p, OFF).find((x) => x.id === 'swimsuit').equipped, true);
+  assert.equal(o.wornOutfit(p, OFF), 'swimsuit');
+});
+
+test('switching adult content off leaves the swimsuit on, and it is where the retro swimsuit falls back to', () => {
+  const c = mk(90, 'claude');
+  o.equipOutfit(c, OFF, 'swimsuit');
+  for (const settings of [ADULT, OFF, { ageConfirmed: false, adultContent: true }]) {
+    assert.ok(o.listOutfits(c, settings).some((x) => x.id === 'swimsuit'));
+    assert.deepEqual(o.enforceOutfit(c, settings), { changed: false, from: 'swimsuit', to: 'swimsuit' });
+  }
+  const p = mk(90);
+  o.equipOutfit(p, ADULT, 'swimsuit');
+  o.equipOutfit(p, ADULT, 'retro_swimsuit');
+  assert.equal(o.equipOutfit(p, OFF, 'retro_swimsuit').reason, 'hidden');
+  assert.deepEqual(o.enforceOutfit(p, OFF), { changed: true, from: 'retro_swimsuit', to: 'swimsuit' });
+  assert.ok(o.listOutfits(p, OFF).some((x) => x.id === 'swimsuit'));
 });

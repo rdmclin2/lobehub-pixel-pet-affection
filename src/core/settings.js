@@ -7,7 +7,7 @@ const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
 
-const AGE_GATE_VERSION = 1; // bump when the confirmation wording changes: everyone is asked again
+const AGE_GATE_VERSION = 2; // bump when the confirmation wording changes: everyone is asked again
 
 // How big the pet is drawn on the desktop: any scale from 50% to 250% (drag the corner handle, Ctrl/⌘ +
 // wheel over the pet, or the slider in 高级设置). The window grows with it. A size nobody picked follows
