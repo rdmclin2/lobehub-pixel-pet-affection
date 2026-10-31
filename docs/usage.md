@@ -109,7 +109,7 @@ Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start
 | E10 | 饿了 / 难过 / 开心 | `hungry`、`sad`、`happy` | 随饥饿、心情自动变化（久不喂食会饿，冷落会难过） | 无，始终可用 |
 | E11 | 工作状态：思考中 → 说话，出错时难过；每条消息带时间背景 | `think`、`talk`、`sad` | 悬停 → **聊天** 发一句话，或点 **话题**：等回复时“思考中”，回复到达时说话；agent 出错时难过。工作中悬停只显示 **■ 停止**，按 Esc 也能中断 | 无，始终可用 |
 | E12 | 关系升级演出：进化、闪光、爱心 | `evolve` | 好感度跨过阶段（15 / 35 / 60 / 85）；角色列表 → 当前角色 → **一键解锁** 直接加满 | 无，始终可用 |
-| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（每位角色 1 套原设服装 + 亲近 ♥35 解锁的运动泳装） | 无，始终可用 |
+| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（每位角色 1 套原设服装 + 亲近 ♥35 解锁的运动泳装 + 暧昧（知己）♥60 解锁的沙滩比基尼） | 无，始终可用 |
 | E14 | 切换角色（每位角色各自的 agent、聊天记录、名字和好感度） | `hatch` | 见第四节 | 无，始终可用 |
 | E15 | 自己走动（漫游） | `walk` | 鼠标离开、她不忙、没开面板时偶尔朝面向的方向走 60–240 像素，到屏幕边掉头。大肥鱼播 dsh-pet 的螃蟹走路，像素角色用待机帧颠步 + 👣。开关：桌宠行为 →“自己走动” | 桌宠行为 →“自己走动”（默认开） |
 | E16 | 触屏长按 / 右键打开菜单 | — | 触屏上按住她 0.5 秒不动；或鼠标右键她 | 无，始终可用 |
@@ -226,7 +226,7 @@ npm run dist:win       # Windows x64 安装包 + zip
      "catchphrase": "……", "likes": "……",
      "fallback": { "hungry": ["…"], "bored": ["…"], "happy": ["…"], "sleepy": ["…"], "greet": ["…"], "fed": ["…"], "patted": ["…"], "played": ["…"] }, // fed / patted / played 可省略：喂食 / 摸摸 / 玩耍时她自己的台词
      "adult": false,
-     "outfits": ["daily"],           // 只列有美术的服饰，必须含 daily；内置五位是 ["daily", "swimsuit"]，加服饰的方法见 art/model-chan/README.md「其他服饰」
+     "outfits": ["daily"],           // 只列有美术的服饰，必须含 daily；内置五位是 ["daily", "swimsuit", "bikini"]，加服饰的方法见 art/model-chan/README.md「其他服饰」
      "signature": { "label": "…", "desc": "…" },
      "art": { "kind": "pack", "packs": ["kimi-pixel"], "fallbackPack": "kimi-pixel" },
      "fx": { "noMirror": [] },       // 画了文字、镜像会反字的状态列在这里
@@ -254,7 +254,7 @@ npm run dist:win       # Windows x64 安装包 + zip
    - `test/packs.test.js`：内置角色包 id 列表（加 `kimi-pixel`）和逐角色检查的 id 列表；
    - `e2e/run.js` 的 `ROSTER`：加一行 `{ id: 'kimi', idx: 5, zh: '琪米', vendor: 'Moonshot' }`（`idx` 是角色卡的位置，从 0 开始），`SPECIES_MEMES` 加她的一张梗图 id；
    - `test/dsh-effects.test.js`：逐角色梗图检查的 id 列表；
-   - `test/outfits.test.js`：逐角色衣柜检查的 id 列表和招牌服饰名（内置五位的衣柜都是 daily + swimsuit；新角色没有泳装图时不要在 `outfits` 里列 `swimsuit`）；
+   - `test/outfits.test.js`：逐角色衣柜检查的 id 列表和招牌服饰名（内置五位的衣柜都是 daily + swimsuit + bikini；新角色没有泳装图时不要在 `outfits` 里列 `swimsuit`）；
    - `e2e/run.js` 里角色卡数量（`.char-card` 的 `count()`，三处）、厂商列表（`vendors`）、`art` 总表的像素包列表，以及导入非法角色包时报错信息里的角色 id 列表；
    - `docs/pet-packs.md` 的 `species` 注释；
    - `art/model-chan/characters.json`（设计记录，预览拼图从这里读角色）、`art/model-chan/CHARACTERS.md`、`art/model-chan/README.md`、`README.md`、`NOTICE.md` 和 `docs/compliance-review.md` 的角色表。

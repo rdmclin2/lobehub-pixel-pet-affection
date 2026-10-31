@@ -90,51 +90,53 @@ OUTFIT_LOOKS = {
  # dafeiyu-classic never wear it). The owner wants it sweet and innocent with a modest bust (2026-10-31): loose
  # two-layer flounce tops that hide the chest's shape, skirted bottoms and a short cardigan. See OUTFIT_SAFE.
  "bikini": {
-  "dafeiyu": ("She wears a sweet sailor-style beach bikini in her maid colours: a white flounce bikini top made of two layers of loose wide white frills that cover her whole chest from just below her collarbones, "
+  "dafeiyu": ("She wears a sweet sailor-style beach bikini in her maid colours: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
               "edged with a thin navy line, with a small navy sailor-collar ribbon bow and a tiny blue gem at the centre and wide white shoulder straps; "
-              "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching mid-thigh with a white ruffled hem and a small white bow at the waist; "
-              "a short open white cropped cardigan of thick opaque cotton with puffed short sleeves, a lace edge and a tiny blue whale embroidered on its hem, covering her shoulders; "
-              "a thin white lace wrist cuff on each wrist and white flat beach sandals with navy straps. Only a narrow strip of her waist, her arms and her lower legs are bare. "
+              "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a white ruffled hem and a small white bow at the waist; "
+              "a short white cropped cardigan of thick opaque cotton with puffed short sleeves, a lace edge and a tiny blue whale embroidered on its hem, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+              "a thin white lace wrist cuff on each wrist and white flat beach sandals with navy straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
               "A deep-blue whale tail with a forked fluke behind her. Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
-  "claude": ("She wears a sweet beach bikini in her blouse colours: a cream-white flounce bikini top made of two layers of loose wide cream frills that cover her whole chest from just below her collarbones, "
+  "claude": ("She wears a sweet beach bikini in her blouse colours: a cream-white flounce bikini top made of two layers of loose wide cream frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
              "edged with thin orange-red trim, with a small orange flower and a tiny black bow at the centre and wide cream shoulder straps; "
-             "an orange-and-cream gingham skirted bikini bottom: a two-tiered frilled swim skirt reaching mid-thigh with a cream ruffled hem and a small black bow at the waist; "
-             "a short open cream-white cropped cardigan of thick opaque cotton with puffed short sleeves and thin gold trim, covering her shoulders; "
-             "and cream-white flat beach sandals with orange straps. Only a narrow strip of her waist, her arms and her lower legs are bare. Colours: orange, amber, cream white, black and gold only"),
-  "grok": ("She wears a sweet gothic-lolita beach bikini: a black flounce bikini top made of two layers of loose wide black frills edged in white lace that cover her whole chest from just below her collarbones, "
-           "a small wine-red bow with a gold ring emblem at the centre and wide black shoulder straps; a black skirted bikini bottom: a three-tiered black frilled swim skirt reaching mid-thigh "
+             "an orange-and-cream gingham skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a cream ruffled hem and a small black bow at the waist; "
+             "a short cream-white cropped cardigan of thick opaque cotton with puffed short sleeves and thin gold trim, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and cream-white flat beach sandals with orange straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: orange, amber, cream white, black and gold only"),
+  "grok": ("She wears a sweet gothic-lolita beach bikini: a black flounce bikini top made of two layers of loose wide black frills edged in white lace that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+           "a small wine-red bow with a gold ring emblem at the centre and wide black shoulder straps; a black skirted bikini bottom: a three-tiered black frilled swim skirt reaching just above her knees "
            "with white lace edges, a wine-red underlayer and small wine-red bows at her hips; "
-           "a short open black cropped bolero of thick opaque cotton with a wine-red lined pointed stand-up collar, short puffed sleeves and white lace cuffs, covering her shoulders, "
-           "a black lace ribbon choker with a tiny gold ring, and black flat beach sandals with gold buckles. Only a narrow strip of her waist, her arms and her lower legs are bare. "
+           "a short black cropped bolero of thick opaque cotton with a wine-red lined pointed stand-up collar, short puffed sleeves and white lace cuffs, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+           "a black lace ribbon choker with a tiny gold ring, and black flat beach sandals with gold buckles. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
            "Colours: black, wine red, gold and champagne blonde only"),
-  "gemini": ("She wears a sweet starry beach bikini: a lavender flounce bikini top made of two layers of loose wide lavender frills dotted with tiny white stars that cover her whole chest from just below her collarbones, "
+  "gemini": ("She wears a sweet starry beach bikini: a lavender flounce bikini top made of two layers of loose wide lavender frills dotted with tiny white stars that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
              "edged with thin white trim, with a big deep navy ribbon bow and a small white four-pointed star charm at the centre and wide lavender shoulder straps; "
-             "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching mid-thigh with a lavender ruffled hem and tiny white star prints; "
-             "a short open white cropped hoodie-cardigan of thick opaque cotton with small cat ears on its lowered hood, wide short sleeves and violet edging, covering her shoulders; "
-             "and lavender flat beach sandals. Only a narrow strip of her waist, her arms and her lower legs are bare. A fluffy lavender cat tail behind her. "
+             "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a lavender ruffled hem and tiny white star prints; "
+             "a short white cropped hoodie-cardigan of thick opaque cotton with small cat ears on its lowered hood, wide short sleeves and violet edging, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and lavender flat beach sandals. Only a narrow strip of her waist, her forearms and her lower legs are bare. A fluffy lavender cat tail behind her. "
              "Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
-  "gpt": ("She wears a sweet, pure beach bikini: a white flounce bikini top made of two layers of loose wide white frills that cover her whole chest from just below her collarbones, "
+  "gpt": ("She wears a sweet, pure beach bikini: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
           "edged with thin pale lavender trim, with a small white rosette knot and a tiny lavender crystal at the centre and wide white shoulder straps; "
-          "a pale lavender skirted bikini bottom: a two-tiered frilled swim skirt reaching mid-thigh with a wavy white ruffled hem embroidered with small white roses; "
-          "a short open white cropped cardigan of thick opaque cotton with wavy ruffled short sleeves and thin silver trim, covering her shoulders, "
-          "and white flat beach sandals with lavender straps. Only a narrow strip of her waist, her arms and her lower legs are bare. Colours: white, pale lavender and silver only, no gold, red, blue or green"),
+          "a pale lavender skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a wavy white ruffled hem embroidered with small white roses; "
+          "a short white cropped cardigan of thick opaque cotton with wavy ruffled short sleeves and thin silver trim, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+          "and white flat beach sandals with lavender straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: white, pale lavender and silver only, no gold, red, blue or green"),
  },
 }
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
 OUTFIT_SAFE = {
  "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
               "no bikini, no cleavage, no bare midriff, no high-cut legs, nothing see-through, nothing that looks like underwear."),
- "bikini": ("It is sweet, innocent all-ages beachwear like a cute summer swimsuit for a family beach: she has a slim adult figure with a small, modest bust, "
-            "and the loose two-layer frills of the top hide the shape of her chest completely: no cleavage, no visible bust line, no emphasis on her chest or hips; "
-            "the frilled swim skirt reaches mid-thigh and stays over her hips; nothing see-through, no lingerie or underwear look, no straps slipping, no wardrobe malfunction, "
-            "no sexy or suggestive pose, arms never squeezing her chest; a fresh, pure, cheerful beach mood with a gentle, sweet smile."),
+ "bikini": ("It is sweet, innocent all-ages beachwear like a cute summer swimsuit for a family beach, the same in every cell: she has a slim adult figure; "
+            "the top has a closed, high round neckline right at her collarbones with no neckline opening, and its loose frills fall straight down like a little cape, "
+            "so the chest is drawn as plain flat layered frills: no cleavage, no bust shading, no bust shape, no emphasis on her chest or hips; "
+            "the short cardigan is always on and buttoned at the top of her chest; the frilled swim skirt reaches just above her knees and stays over her hips; "
+            "nothing see-through, no lingerie or underwear look, no straps slipping, no wardrobe malfunction, no sexy or suggestive pose, arms never squeezing her chest; "
+            "a fresh, pure, cheerful beach mood with a gentle, sweet smile."),
 }
 # Outfits whose clothes contradict SAFE's "fully covered" sentence keep only its adult-body sentence.
 OUTFIT_SAFE_ONLY = {"bikini"}
 # The walk rows name the skirt; an outfit without one says what sways instead.
 OUTFIT_WALK = {
  "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
- "bikini": ((" under the skirt", ""), ("skirt and hair swaying", "the sarong, cardigan and hair swaying")),
+ "bikini": ((" under the skirt", " under the swim skirt"), ("skirt and hair swaying", "frilled swim skirt, cardigan and hair swaying")),
 }
 
 def identity(cid):

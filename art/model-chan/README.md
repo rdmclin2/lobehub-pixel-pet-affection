@@ -62,6 +62,8 @@ python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸�
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
 ```
 
+五位的沙滩比基尼 `bikini` 按同样的流程生成（`--outfit bikini`），图集是默认包里的 `sheets/bikini.webp`。gpt-image 偶尔把同一张宫格里的几格画得大一圈或小一圈，`check_model_chan.py` 会报“vs daily height”超限；这时按 daily 对应帧的身高，以脚底为基准把那几格在 fit 后的图里缩放对齐，再重建图集（2026-10-31：大肥鱼的待机、饿了、吃饼干和拎起第 2 帧，吉皮缇的唤醒第 1 帧）。
+
 大肥鱼的提示词描述到 “ She wears ” 为止不含尾鳍，所以她的 `OUTFIT_LOOKS` 描述里另外写了尾鳍。她的原版动画（`art.kind: 'video'`）只对应 daily：外观选「原版动画」时，其他服饰用默认包 `dafeiyu-pixel` 的图集（`src/core/packs.js` `resolveLook` 跳过 clips 后按默认包、回落包查找），换回 daily 再播放视频；`xvfb-run -a node e2e/run.js outfit dafeiyu swimsuit` 会把这条路径也走一遍。她的泳装 hatch 第 1 帧（蹲姿）头顶上方有两颗离散的闪光，让身高和 daily 相差 19%，所以在 fit 后的格子里清掉了 y < 204 的这两颗闪光再建图集。
 
 `build_model_chan_pack.py` 重建 daily 时会保留 pack.json 里其他服饰和 walk 动作；`add_walk_frames.py --from` 不写 `--outfit` 时只改 daily 的图集，所以每套服饰各自保留自己的走路帧。旧版像素包（`*-classic`）不需要新图：缺的服饰会回落到默认包。

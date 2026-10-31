@@ -31,5 +31,6 @@ Content notes: every character's set age is 18. Claude, Grok, Gemini, GPT and �
 | id | 名称 | 解锁阶段 | 分级 | 美术 |
 | --- | --- | --- | --- | --- |
 | `daily` | 日常服（每位角色的原设服装） | 陌生 | 全年龄 | 每位角色的像素包；大肥鱼也可换成原版动画 |
+| `bikini` | 沙滩比基尼（荷叶边上衣盖住整个胸口、及大腿中部的荷叶边泳裙、短开衫） | 暧昧 | 全年龄 | 五位角色的默认像素包 `sheets/bikini.webp`；原版动画、旧版像素包没有，回落到默认像素包 |
 | `scarf` / `casual` / `beret` / `pajamas` / `cat_ears` / `yukata` / `couple_hoodie` / `flower_crown` | 全年龄服饰 | 陌生 – 恋人 | 全年龄 | 当前角色均无（不显示）；大肥鱼原先的 8 套立绘已移除 |
 | `maid` / `offshoulder_gown` / `retro_swimsuit` / `silk_robe` | 成人向服饰 | 暧昧 / 恋人 | 成人向 | 当前角色均无（不显示） |

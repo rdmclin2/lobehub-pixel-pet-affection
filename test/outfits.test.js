@@ -81,7 +81,7 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
-  const has = { dafeiyu: ['daily', 'swimsuit'], claude: ['daily', 'swimsuit'], grok: ['daily', 'swimsuit'], gemini: ['daily', 'swimsuit'], gpt: ['daily', 'swimsuit'] };
+  const has = { dafeiyu: ['daily', 'swimsuit', 'bikini'], claude: ['daily', 'swimsuit', 'bikini'], grok: ['daily', 'swimsuit', 'bikini'], gemini: ['daily', 'swimsuit', 'bikini'], gpt: ['daily', 'swimsuit', 'bikini'] };
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
     assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), has[id] || ['daily']);
@@ -93,8 +93,8 @@ test('a character only offers the outfits it has art for', () => {
 
 test('stage-up unlock lists name the outfits the user can see', () => {
   const p = mk(70);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'maid', 'offshoulder_gown']);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'maid', 'offshoulder_gown']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata', 'bikini']);
 });
 
 test('"new" marks unlocked outfits beyond the first stage until they are seen', () => {
@@ -107,7 +107,7 @@ test('"new" marks unlocked outfits beyond the first stage until they are seen', 
 test('saves without an outfit (older or hand-edited) open in the daily outfit', () => {
   const { pet } = migratePet({ speciesId: 'testchan', name: 'E', agentId: 'a', xp: 300, stage: 'adult' }, T0);
   assert.equal(pet.characters.testchan.equippedOutfit, 'daily');
-  const { pet: odd } = migratePet({ ...pet, characters: { testchan: { ...pet.characters.testchan, equippedOutfit: 'bikini' } } }, T0);
+  const { pet: odd } = migratePet({ ...pet, characters: { testchan: { ...pet.characters.testchan, equippedOutfit: 'space_suit' } } }, T0);
   assert.equal(odd.characters.testchan.equippedOutfit, 'daily');
 });
 

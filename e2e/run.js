@@ -413,14 +413,15 @@ async function wardrobe() {
       return `${await shot('04-stage-up-unlock-notice')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
-    await step(S, 'the notice leads to the topics; the wardrobe holds her signature maid outfit, in pixels, and 运动泳装 locked until 亲近', async () => {
+    await step(S, 'the notice leads to the topics; the wardrobe holds her signature maid outfit, in pixels, 运动泳装 locked until 亲近 and 沙滩比基尼 until 知己', async () => {
       await page.click('#toast-open');
       await page.waitForSelector('#panel:not(.hidden) .topic');
       await closePanel();
       await openWardrobe();
-      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit'], 'DeepSeek: her signature outfit and the all-ages swimsuit');
-      assert.equal(await page.locator('.card.locked').count(), 1);
+      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit', 'bikini'], 'DeepSeek: her signature outfit and the all-ages swimsuit and bikini');
+      assert.equal(await page.locator('.card.locked').count(), 2);
       assert.match(await cardStatus('swimsuit'), /^🔒 亲近（♥35）解锁/);
+      assert.match(await cardStatus('bikini'), /^🔒 知己（♥60）解锁/);
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
       assert.equal(await page.textContent('.card[data-outfit="daily"] .nm'), '招牌女仆装');
       assert.equal(await page.locator('.card[data-outfit="daily"] canvas.sprite').count(), 1, 'drawn from her pixel pack');
@@ -482,7 +483,7 @@ async function wardrobe() {
       await hover(page);
       const toast = await page.textContent('#unlock-toast');
       assert.match(toast, /关系升级：知己（♥60）/);
-      assert.equal((await page.textContent('#toast-body')).trim(), '解锁话题：「交换小秘密」、「深夜谈心」');
+      assert.equal((await page.textContent('#toast-body')).trim(), '解锁话题：「交换小秘密」、「深夜谈心」解锁服饰：「沙滩比基尼」', 'only the all-ages 沙滩比基尼, no adult outfit');
       return `${await shot('12-stage-up-flirty')} · ${toast.replace(/\s+/g, ' ').trim()}`;
     });
 
@@ -562,7 +563,7 @@ async function wardrobe() {
       const b = await shot('21-menu-adult-switch-off');
       await page.locator('#main-menu').evaluate((el) => el.classList.add('hidden'));
       await openWardrobe();
-      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit'], 'her all-ages outfits stay');
+      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit', 'bikini'], 'her all-ages outfits stay');
       assert.equal(await page.locator('.card[data-outfit="maid"]').count(), 0);
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
       assert.doesNotMatch(await page.textContent('#panel'), /成人向|暧昧|恋人/);
@@ -1366,7 +1367,7 @@ async function advanced() {
       await page.click('#unlock-all');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
       const msg = await page.textContent('#panel-msg');
-      assert.match(msg.trim(), /^已为大肥鱼解锁：\d+ 个话题、1 套服饰。去衣柜换上看看吧。$/, '大肥鱼 has one all-ages outfit to unlock: 运动泳装');
+      assert.match(msg.trim(), /^已为大肥鱼解锁：\d+ 个话题、2 套服饰。去衣柜换上看看吧。$/, '大肥鱼 has two all-ages outfits to unlock: 运动泳装 and 沙滩比基尼');
       assert.match(await page.textContent('#panel-sub'), /挚友 ♥100/);
       assert.equal(await page.locator('#unlock-all').isDisabled(), true);
       assert.equal(await page.textContent('#unlock-all'), '已经全部解锁');
@@ -1376,13 +1377,13 @@ async function advanced() {
       return msg;
     }, page);
 
-    await step(S, 'the wardrobe shows everything unlocked: 大肥鱼 has her signature maid outfit, worn in pixels, and 运动泳装', async () => {
+    await step(S, 'the wardrobe shows everything unlocked: 大肥鱼 has her signature maid outfit, worn in pixels, 运动泳装 and 沙滩比基尼', async () => {
       await idle();
       await page.click('#panel-close');
       await clickAct(page, 'wardrobe');
       await page.waitForSelector('.card[data-outfit="daily"]');
       assert.equal(await page.locator('.card.locked').count(), 0);
-      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit']);
+      assert.deepEqual(await page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)), ['daily', 'swimsuit', 'bikini']);
       assert.equal(await page.textContent('.card[data-outfit="daily"] .st'), '✓ 穿着中');
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
@@ -4376,6 +4377,13 @@ async function outfitScenario() {
       const { getStage } = require('../src/core/affection');
       const min = getStage(O.stage).min;
       await page.evaluate((a) => window.pet.debugSet({ affection: a, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }), min - 1);
+      // Jumping past an earlier stage (e.g. straight to ♥59) raises its own notice: dismiss it before the pat.
+      await page.waitForTimeout(1500);
+      if (await page.locator('#unlock-toast:not(.hidden)').count()) {
+        await hover(page);
+        await page.click('#toast-close');
+        await page.waitForSelector('#unlock-toast.hidden', { state: 'attached' });
+      }
       await hover(page);
       await clickHead(page);
       await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 8000 });
