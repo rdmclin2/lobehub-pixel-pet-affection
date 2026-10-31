@@ -338,10 +338,12 @@ void main() {
       hair: spring(40, 6, 2.2), hairY: spring(45, 7, 1.5), skirt: spring(80, 8, 1.8), tail: spring(30, 4, 40),
       fins: spring(90, 9, 35), ahoge: spring(140, 6, 40), head: spring(70, 10, 18), lean: spring(60, 9, 14),
     };
-    const cur = { fins: 0, wag: 0.3, blush: 0, hop: 0, sway: 0, tilt: 0, duck: 0, tear: 0, tailLow: 0, wobble: 0, flap: 0, dangle: 0, stride: 0, turn: 0, slow: 0, nod: 0, lean: 0, pop: 0, gazeUp: 0, shake: 0 };
+    const cur = { fins: 0, wag: 0.3, blush: 0, hop: 0, sway: 0, tilt: 0, duck: 0, tear: 0, tailLow: 0, wobble: 0, flap: 0, dangle: 0, stride: 0, turn: 0, slow: 0, nod: 0, lean: 0, gazeUp: 0, shake: 0 };
     let tint = [1, 1, 1, 0];
     let lastT = null;
     let stateNow = null;
+    let popAt = -Infinity;
+    let popState = null;
     let stateAt = 0;
     let blinkK = 0;
     let lastWin = null;
@@ -555,8 +557,11 @@ void main() {
       const hopPh = (t * 1.6) % 1;
       const hop = cur.hop * Math.max(0, Math.sin(hopPh * Math.PI));
       const land = cur.hop > 0.5 ? smooth(0.85, 1, hopPh) * (1 - smooth(0, 0.12, hopPh)) : 0;
-      // hatch: she pops in from small with an overshoot
-      const pop = cur.pop > 0.05 ? 1 - Math.exp(-st * 6) * Math.cos(st * 12) * 0.5 : 1;
+      // hatch: she pops in from small with an overshoot, timed from when it began (not from whatever state follows)
+      if (L.pop && state !== popState) popAt = t;
+      popState = L.pop ? state : null;
+      const pt = t - popAt;
+      const pop = pt < 1.2 ? 1 - Math.exp(-pt * 6) * Math.cos(pt * 12) * 0.5 : 1;
       // walking: two steps a second
       const strideK = cur.stride;
       const stepPh = t * Math.PI * 2 * 2;

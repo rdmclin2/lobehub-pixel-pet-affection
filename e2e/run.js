@@ -4858,6 +4858,21 @@ async function rigScenario() {
       }, page);
     }
 
+    await step(S, 'waking up pops her in, and the next state starts at her full size', async () => {
+      const full = (await look()).opaque;
+      await page.evaluate(() => window.petFx.cue('hatch'));
+      await page.waitForTimeout(80);
+      const popping = (await look()).opaque;
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => window.petFx.lift(true));
+      await page.waitForTimeout(80);
+      const after = (await look()).opaque;
+      await page.evaluate(() => window.petFx.lift(false));
+      assert.ok(popping < full * 0.85, `the pop starts small: ${popping} vs ${full}`);
+      assert.ok(after > full * 0.85, `lifted right after waking up: ${after} vs ${full}`);
+      return `share of the frame: ${(full * 100).toFixed(1)}% standing, ${(popping * 100).toFixed(1)}% popping in, ${(after * 100).toFixed(1)}% lifted after`;
+    }, page);
+
     await step(S, 'lifted and swung about: her hair, skirt and tail trail the motion', async () => {
       await page.evaluate(() => window.petFx.lift(true));
       const b0 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
