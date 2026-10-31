@@ -533,7 +533,7 @@ test('a save whose character was retired opens with a current character, never c
   fs.mkdirSync(data, { recursive: true });
   const saved = { schemaVersion: 2, speciesId: 'embit', name: '小火', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: clock.t - 1e6, affection: 40, hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, equippedOutfit: 'maid', lastSafeOutfit: 'yukata', personaVersion: 6 };
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(saved));
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true, appearance: { embit: 'embit-illustrated', bubbo: 'bubbo-pixel', grok: 'grok-pixel' } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: true, adultContent: true, appearance: { embit: 'embit-illustrated', bubbo: 'bubbo-pixel', grok: 'grok-pixel' } }));
   const svc = mkSvc();
   const said = [];
   svc.on('say', (m) => said.push(m));
@@ -911,7 +911,7 @@ test('personal with a pinned lh scope needs consent, then switches lh back to pe
 test('unlock all fills affection, reaches every stage and unlocks every topic and outfit, and survives a restart', async () => {
   const { svc, dir, lh, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true });
+  svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 2, answered: true, ageConfirmed: true, adultContent: true });
   svc.settings = svc.settingsStore.load();
   await svc.hatch({ speciesId: 'testchan' });
   const ups = [];

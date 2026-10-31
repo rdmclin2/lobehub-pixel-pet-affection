@@ -50,7 +50,7 @@ async function launch(env, { gate = false, video = null } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   }
   const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
   app.stderrBuf = '';
@@ -595,7 +595,7 @@ async function migrate() {
   // a growth-system save of the retired whale 泡鲸 (bubbo)
   const old = { speciesId: 'bubbo', name: '小蓝', agentId: 'agt_LEGACY', topicId: 'tpc_LEGACY', createdAt: now - 86400000, stage: 'child', xp: 150, hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, owner: 'me', personaVersion: 3 };
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old, null, 2));
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, adultContent: false, appearance: { bubbo: 'bubbo-pixel' } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, adultContent: false, appearance: { bubbo: 'bubbo-pixel' } }));
   let { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   try {
     await step(S, 'an old 泡鲸 xp=150 / child save opens as 大肥鱼 熟悉 ♥25 with the same agent and topic, and says who took over', async () => {
@@ -664,7 +664,7 @@ async function characters() {
   const now = Date.now();
   const old = { schemaVersion: 2, speciesId: 'grok', name: '小蓝', agentId: 'agt_GROK_OLD', topicId: 'tpc_GROK_OLD', createdAt: now - 86400000, affection: 40, relStage: 'close', peakStage: 'close', hunger: 30, mood: 70, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, equippedOutfit: 'daily', lastSafeOutfit: 'daily', owner: 'Test Owner', space: { workspaceId: null, name: '个人空间' }, personaVersion: 6 };
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(old, null, 2));
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, adultContent: false }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, adultContent: false }));
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_CREATE_DELAY_MS: '1500' };
   let { app, page } = await launch(env);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -824,7 +824,7 @@ async function dafeiyu() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-dfyfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   // She starts in pixels like everyone else; this scenario covers her original dsh-pet clips, picked under 外观.
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-clips' } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-clips' } }));
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const clip = () => page.evaluate(() => document.getElementById('pet-video').dataset.key);
   try {
@@ -1335,7 +1335,7 @@ async function advanced() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adv-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-advfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: true, ageConfirmedAt: Date.now(), adultContent: true }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: true, ageConfirmedAt: Date.now(), adultContent: true }));
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
@@ -3469,7 +3469,7 @@ async function vpack() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpack-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpackfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
   const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   const evidence = [];
@@ -3581,7 +3581,7 @@ async function ivoice() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ivoicefake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   // 朗读 is on before she hatches (so 初次见面 is read), with the Fish stand-in and its key as 语音 saves them
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true }, tts: { provider: 'fish', fallback: 'system', endpoints: { fish: mock.url, minimax: '' } } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true }, tts: { provider: 'fish', fallback: 'system', endpoints: { fish: mock.url, minimax: '' } } }));
   fs.writeFileSync(path.join(data, 'tts-keys.json'), JSON.stringify({ fish: { plain: mock.KEY } }), { mode: 0o600 });
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
   const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
