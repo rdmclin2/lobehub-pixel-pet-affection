@@ -1,7 +1,7 @@
 {
   "name": "pixel-pet-affection",
   "productName": "Pixel Pet Affection",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Adult (18+) affection edition of a pixel-art desktop pet powered by a LobeHub agent",
   "main": "src/main/main.js",
   "license": "MIT",
