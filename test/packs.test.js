@@ -23,7 +23,7 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
+  assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
@@ -67,8 +67,8 @@ test('looks: the chosen pack, the character default, then its fallback pack; the
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-clips', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'her clips');
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');
   const opts = P.packsFor(packs, 'dafeiyu');
-  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-classic', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels, the old pixels and her clips');
-  assert.equal(opts[2].author, 'PC2005-cloud/dsh-pet');
+  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-live', 'rig'], ['dafeiyu-classic', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels, the live rig, the old pixels and her clips');
+  assert.equal(opts[3].author, 'PC2005-cloud/dsh-pet');
   assert.deepEqual(P.packsFor(packs, 'grok').map((x) => x.id), ['grok-pixel', 'grok-classic'], 'the default first');
 });
 
@@ -199,4 +199,50 @@ test('every character has an 18+ 成年版 pack: her daily look and the adult ou
     assert.equal(P.chosenPack(packs, { [id]: a.id }, id), `${id}-pixel`, 'falls back to her default look');
     assert.equal(P.chosenPack(packs, { [id]: a.id }, id, true), a.id);
   }
+});
+
+// 全动态 rig packs: a model.json of layers and the skeleton they hang from, every outfit a folder of layers
+test('rig packs: the model is checked and goes to the renderer with the look; other outfits fall back', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-'));
+  const model = {
+    size: [100, 200],
+    parts: [{ id: 'body', deformer: 'skirt', z: 1, box: [10, 50, 80, 150], grid: [4, 8] }, { id: 'head', deformer: 'head', z: 2, box: [20, 0, 60, 60] }],
+    pivots: { body: [50, 200], head: [50, 60] },
+    legs: { hem: 170, feet: 200, split: 50 },
+    face: { box: [30, 20, 40, 30], eyes: [[35, 25, 45, 32], [55, 25, 65, 32]], mouth: [50, 42] },
+  };
+  const rig = (over = {}) => ({ schema: 2, id: 'my-rig', name: 'Live', species: 'grok', kind: 'rig', model: 'model.json', outfits: { daily: 'daily/preview.png' }, ...over });
+  const dir = writePack(root, rig(), ['daily/preview.png', 'daily/body.png', 'daily/head.png']);
+  fs.writeFileSync(path.join(dir, 'model.json'), JSON.stringify(model));
+  const r = P.readPack(dir);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.pack.model.parts.map((p) => [p.id, p.deformer, p.grid]), [['body', 'skirt', [4, 8]], ['head', 'head', [4, 4]]]);
+  const packs = new Map([[r.pack.id, r.pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const look = P.resolveLook(packs, { packId: 'my-rig', speciesId: 'grok', outfitId: 'daily' });
+  assert.equal(look.kind, 'rig');
+  assert.equal(look.base, 'pack://my-rig/daily', 'the layers are read next to the preview');
+  assert.equal(look.url, 'pack://my-rig/daily/preview.png');
+  assert.deepEqual(look.model.face.mouth, [50, 42]);
+  assert.equal(P.resolveLook(packs, { packId: 'my-rig', speciesId: 'grok', outfitId: 'beret' }).packId, 'grok-pixel', 'an outfit without layers wears the default pack');
+
+  // a missing layer, an unknown deformer, a reserved part id, a model outside the pack
+  fs.rmSync(path.join(dir, 'daily', 'head.png'));
+  assert.match(P.readPack(dir).errors.join(), /outfit daily has no layer daily\/head\.png/);
+  fs.writeFileSync(path.join(dir, 'daily', 'head.png'), PNG);
+  const bad = (m) => { fs.writeFileSync(path.join(dir, 'model.json'), JSON.stringify(m)); return P.readPack(dir).errors.join(); };
+  assert.match(bad({ ...model, parts: [{ ...model.parts[0], deformer: 'wings' }] }), /deformer must be one of/);
+  assert.match(bad({ ...model, parts: [{ ...model.parts[0], id: 'face' }] }), /reserved/);
+  assert.match(bad({ ...model, face: { box: [0, 0, 1, 1] } }), /face must be/);
+  assert.match(bad({ ...model, size: [0, 10] }), /size/);
+  fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(rig({ model: '../model.json' })));
+  assert.match(P.readPack(dir).errors.join(), /model: must be a relative path/);
+});
+
+test('大肥鱼 · 全动态: every layer of the built-in rig is in the model, with her face and skeleton', () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const live = packs.get('dafeiyu-live');
+  assert.equal(live.kind, 'rig');
+  assert.deepEqual(live.model.parts.map((p) => p.id).sort(), ['ahoge', 'body', 'fin_l', 'fin_r', 'hair', 'head', 'tail']);
+  assert.ok(live.model.face && live.model.legs && live.model.pivots.head, 'eyes and mouth, legs, the neck');
+  assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel', 'the pixels stay her default');
 });
