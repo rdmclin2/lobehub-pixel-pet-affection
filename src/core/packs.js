@@ -19,7 +19,7 @@ const SCHEMA = 2;
 const SCHEMAS = [1, 2];
 const ACTIONS_V1 = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer'];
 const ACTIONS = { 1: ACTIONS_V1, 2: STATES };
-const KINDS = ['sprites', 'pictures'];
+const KINDS = ['sprites', 'pictures', 'rig'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const IMAGE_RE = /\.(png|webp|gif|jpe?g)$/i;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -51,6 +51,70 @@ function packFile(dir, rel, errors, label) {
 
 const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const posInt = (v) => Number.isInteger(v) && v > 0;
+
+// A rig pack (全动态): `model` is a JSON file in the pack (see docs/pet-packs.md) and every outfit's
+// image is its preview, with the outfit's layers (<part id>.png) in the same folder. The model goes to
+// the renderer with the look (src/renderer/rig.js draws it), so it is checked here.
+const RIG_DEFORMERS = ['body', 'skirt', 'hair', 'tail', 'head', 'finL', 'finR', 'ahoge'];
+const RIG_PIVOTS = ['body', 'head', 'neck', 'tail', 'finL', 'finR', 'ahoge'];
+const num = (v) => typeof v === 'number' && Number.isFinite(v);
+const nums = (v, n) => Array.isArray(v) && v.length === n && v.every(num);
+function readRigModel(dir, rel, outfits, errors) {
+  if (typeof rel !== 'string' || !/\.json$/i.test(rel) || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) {
+    errors.push('model: must be a relative path to a .json file inside the pack');
+    return null;
+  }
+  let m;
+  try {
+    m = JSON.parse(fs.readFileSync(path.resolve(dir, rel), 'utf8'));
+  } catch (e) {
+    errors.push(`model: ${rel} is ${e.code === 'ENOENT' ? 'missing' : 'not valid JSON'}`);
+    return null;
+  }
+  const bad = (msg) => { errors.push(`model: ${msg}`); return null; };
+  if (!nums(m.size, 2) || m.size.some((v) => v <= 0 || v > 4096)) return bad('size must be [width, height] in pixels');
+  if (!Array.isArray(m.parts) || !m.parts.length || m.parts.length > 64) return bad('parts must list 1–64 layers');
+  const parts = [];
+  for (const p of m.parts) {
+    if (!p || !/^[a-z0-9_]{1,32}$/.test(p.id || '')) return bad(`part id "${p && p.id}" must be 1–32 characters a-z, 0-9, _`);
+    if (p.id === 'face' || parts.some((q) => q.id === p.id)) return bad(`part id ${p.id} is reserved or used twice`);
+    if (!RIG_DEFORMERS.includes(p.deformer)) return bad(`part ${p.id}: deformer must be one of ${RIG_DEFORMERS.join(', ')}`);
+    if (!nums(p.box, 4) || p.box[2] <= 0 || p.box[3] <= 0) return bad(`part ${p.id}: box must be [x, y, width, height]`);
+    if (!num(p.z)) return bad(`part ${p.id}: z must be a number`);
+    const grid = p.grid === undefined ? [4, 4] : p.grid;
+    if (!nums(grid, 2) || grid.some((g) => !Number.isInteger(g) || g < 1 || g > 32)) return bad(`part ${p.id}: grid must be [columns, rows], 1–32 each`);
+    parts.push({ id: p.id, deformer: p.deformer, box: p.box, z: p.z, grid });
+  }
+  const pivots = {};
+  for (const [k, v] of Object.entries(m.pivots || {})) {
+    if (!RIG_PIVOTS.includes(k) || !nums(v, 2)) return bad(`pivots.${k} must be one of ${RIG_PIVOTS.join(', ')} with [x, y]`);
+    pivots[k] = v;
+  }
+  let legs = null;
+  if (m.legs !== undefined) {
+    if (!m.legs || !num(m.legs.hem) || !num(m.legs.feet) || !num(m.legs.split)) return bad('legs must be { hem, feet, split }');
+    legs = { hem: m.legs.hem, feet: m.legs.feet, split: m.legs.split };
+  }
+  let face = null;
+  if (m.face !== undefined) {
+    const f = m.face || {};
+    const rgb = (v) => v === undefined || (nums(v, 3) && v.every((c) => c >= 0 && c <= 255));
+    if (!nums(f.box, 4) || !Array.isArray(f.eyes) || f.eyes.length !== 2 || !f.eyes.every((e) => nums(e, 4)) || !nums(f.mouth, 2)
+      || !rgb(f.skin) || !rgb(f.ink) || (f.blush !== undefined && !(Array.isArray(f.blush) && f.blush.every((b) => nums(b, 2))))) {
+      return bad('face must be { box, eyes: [[x0, y0, x1, y1] × 2], mouth: [x, y] } with optional skin, ink and blush');
+    }
+    face = { box: f.box, eyes: f.eyes, mouth: f.mouth, skin: f.skin, ink: f.ink, blush: f.blush };
+  }
+  // every outfit needs every layer, next to its preview
+  for (const [id, preview] of Object.entries(outfits)) {
+    const folder = path.posix.dirname(preview);
+    for (const p of parts) {
+      const rel2 = folder === '.' ? `${p.id}.png` : `${folder}/${p.id}.png`;
+      if (!fs.existsSync(path.resolve(dir, rel2))) return bad(`outfit ${id} has no layer ${rel2}`);
+    }
+  }
+  return { size: m.size, parts, pivots, legs, face };
+}
 
 // Validate a manifest read from `dir`. Returns { ok: true, pack } or { ok: false, errors }.
 function validatePack(manifest, dir) {
@@ -93,6 +157,8 @@ function validatePack(manifest, dir) {
     }
   }
 
+  const model = m.kind === 'rig' ? readRigModel(dir, m.model, outfits, errors) : null;
+
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,
@@ -111,6 +177,7 @@ function validatePack(manifest, dir) {
       adult: m.adult === true,
       frame,
       actions,
+      model,
       outfits,
       dir: path.resolve(dir),
     },
@@ -162,7 +229,12 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
     const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
-    return p.kind === 'sprites' ? { ...base, frame: p.frame, actions: p.actions } : base;
+    if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
+    if (p.kind === 'rig') {
+      const folder = path.posix.dirname(p.outfits[outfitId]);
+      return { ...base, model: p.model, base: packUrl(p, folder === '.' ? '' : folder).replace(/\/$/, '') };
+    }
+    return base;
   }
   return null;
 }

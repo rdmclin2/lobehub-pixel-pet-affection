@@ -109,8 +109,9 @@ const speciesOf = (id) => info.species.find((s) => s.id === id);
 // they are picked under 外观 (look: null).
 const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.look);
 
-// ---------- looks: pictures and animated pixel sprites ----------
+// ---------- looks: pictures, animated pixel sprites and rigs ----------
 const sprites = new Set(); // live sprite canvases: { canvas, look, img, action() }
+const rigs = new Set(); // live 全动态 figures (rig.js): { canvas, figure, action() }
 const sheetImages = new Map();
 function sheet(url) {
   if (!sheetImages.has(url)) {
@@ -135,6 +136,23 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     if (speciesId) v.src = `${speciesOf(speciesId).clipDir}/${[].concat(speciesOf(speciesId).clips.idle)[0]}`;
     wrap.appendChild(v);
     return wrap;
+  }
+  if (look.kind === 'rig' && className === 'char' && window.PetRig) {
+    // the desktop pet is drawn live; anywhere else (cards, the wardrobe) her picture stands in
+    const c = document.createElement('canvas');
+    c.className = `${className} sprite rig`;
+    c.width = look.model.size[0];
+    c.height = look.model.size[1];
+    c.setAttribute('role', 'img');
+    c.setAttribute('aria-label', alt);
+    try {
+      const figure = window.PetRig.createFigure(c, look);
+      const r = { canvas: c, figure, action, ok: false };
+      figure.ready.then(() => { r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
+    } catch (e) {
+      setTimeout(() => rigFailed(c, look, alt, className, e));
+    }
+    return c;
   }
   if (look.kind === 'sprites') {
     const c = document.createElement('canvas');
@@ -171,6 +189,26 @@ function drawSprite(s, now) {
   ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);
   const frame = `${img.src}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
   if (canvas.dataset.frame !== frame) canvas.dataset.frame = frame;
+}
+// No WebGL (or a layer that would not load): show her picture instead of an empty canvas.
+function rigFailed(canvas, look, alt, className, e) {
+  console.warn('[rig] falling back to the picture:', e && e.message);
+  if (!canvas.isConnected) return;
+  const img = document.createElement('img');
+  img.crossOrigin = 'anonymous';
+  img.className = className;
+  img.alt = alt;
+  img.draggable = false;
+  img.src = look.url;
+  canvas.replaceWith(img);
+}
+function tickRigs(now) {
+  for (const r of rigs) {
+    if (!r.canvas.isConnected) { r.figure.dispose(); rigs.delete(r); continue; }
+    const state = r.action();
+    const mood = state.startsWith('touch-') && lastTouch ? lastTouch.mood : null;
+    r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', win: [window.screenX, window.screenY] });
+  }
 }
 function tickSprites(now) {
   for (const s of sprites) {
@@ -397,7 +435,7 @@ function applyArt() {
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
     setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
-    $('char-wrap').classList.toggle('has-sprites', view.look.kind === 'sprites');
+    $('char-wrap').classList.toggle('has-sprites', view.look.kind === 'sprites' || view.look.kind === 'rig');
     $('char-wrap').dataset.outfit = view.outfit;
     // a short sparkle so the change of clothes is noticed
     $('char-wrap').classList.remove('changed');
@@ -808,7 +846,7 @@ function renderCharacter(c) {
     pick.setAttribute('aria-checked', String(on));
     pick.disabled = on;
     prow.querySelector('b').textContent = o.name;
-    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频', rig: '全动态' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
     pick.addEventListener('click', async () => {
       const r = await window.pet.setAppearance(o.id, c.id);
       if (!r.ok) return;
@@ -1923,7 +1961,7 @@ async function touchAt(e) {
 function showTouch(r, pt, at) {
   const video = isVideo(view.pet.speciesId);
   const sp = speciesOf(view.pet.speciesId);
-  const has = (n) => (video ? !!sp.clips[n] : !!(view.look && view.look.kind === 'sprites' && view.look.actions[n]));
+  const has = (n) => (video ? !!sp.clips[n] : !!(view.look && ((view.look.kind === 'sprites' && view.look.actions[n]) || (view.look.kind === 'rig' && n.startsWith('touch-')))));
   const clip = has(r.reaction.anim) ? r.reaction.anim : 'pat';
   // client px → px inside #pet-body (the stage is zoomed by the pet size)
   const pb = $('pet-body');
@@ -2068,7 +2106,9 @@ async function release(deleteAgent) {
 // What the pet is doing right now, in the shared state vocabulary (src/core/fx.js STATES), by priority:
 // lifted or flying > waking up / stage-up > thinking > eating > a one-shot (click, play, idle cue, error)
 // > talking > its needs (idle / happy / sad / hungry / sleep).
-const CELEBRATIONS = ['hatch', 'evolve']; // waking up and a stage-up play through, even while it thinks
+const CELEBRATIONS = ['hatch', 'evolve'];
+// a rig acts every state out itself, but has no food, thought bubble or z's to draw: those keep their emoji
+const RIG_OVERLAY = new Set(['eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'sleep', 'hungry']); // waking up and a stage-up play through, even while it thinks
 function petStatus() {
   const now = performance.now();
   if (fx.lifted || fx.flying) return 'lifted';
@@ -2090,7 +2130,7 @@ function animatePet() {
   const video = isVideo(view.pet.speciesId);
   fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
   const state = petStatus();
-  const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : { name: state, exact: false };
+  const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : view.look && view.look.kind === 'rig' ? { name: state, exact: !RIG_OVERLAY.has(state) } : { name: state, exact: false };
   if (video) playClip($('pet-video'), sp, r.name);
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
@@ -2154,12 +2194,15 @@ async function onApiCmd({ id, cmd, args }) {
 
 function frameLoop() {
   tickSprites(performance.now());
+  tickRigs(performance.now());
   if (!$('hatching').classList.contains('hidden')) {
     $('hatch-look').classList.toggle('flash', performance.now() < flashUntil);
   } else if (view && !$('pet-screen').classList.contains('hidden')) {
     animatePet();
   }
-  setTimeout(() => requestAnimationFrame(frameLoop), 80); // ~12 fps keeps the pixel feel and idles cheaply
+  // ~12 fps keeps the pixel feel and idles cheaply; a rig's springs want every frame
+  if (rigs.size) requestAnimationFrame(frameLoop);
+  else setTimeout(() => requestAnimationFrame(frameLoop), 80);
 }
 
 // ---------- updates (src/main/updater.js) ----------

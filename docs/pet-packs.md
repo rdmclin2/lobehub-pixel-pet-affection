@@ -27,7 +27,7 @@ my-grok/
   "license": "CC BY-NC-SA 4.0",      // 显示在外观列表里；第三方素材请写清授权
   "description": "可选，最多 200 字",
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
-  "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图
+  "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
@@ -70,6 +70,44 @@ my-grok/
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
 - **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（1328×4068，每帧 332×452，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
+- `rig` 类型（全动态）见下一节。
+
+## 全动态角色包（`"kind": "rig"`）
+
+角色被拆成几张图层，每层是一张贴在网格上的图，挂在一副所有角色共用的骨架上，由 `src/renderer/rig.js` 用 WebGL 逐帧弯折，效果类似 Live2D：头发、裙摆、尾巴、鳍和呆毛靠弹簧跟着动作和拖拽摆动，眼睛会眨，说话有口型，各个状态有自己的表情。所有状态都由程序演出来，所以不需要 `frame` 和 `actions`。
+
+```
+my-rig/
+├── pack.json          // "kind": "rig", "model": "model.json", "outfits": { "daily": "daily/preview.png" }
+├── model.json
+└── daily/
+    ├── preview.png    // 整张图：列表、衣柜和没有 WebGL 时显示它
+    ├── body.png       // model.json 里每个 part 一张，和 preview 放在同一个文件夹
+    └── head.png …
+```
+
+`model.json`（坐标都是原图的像素）：
+
+```jsonc
+{
+  "size": [332, 452],
+  "parts": [                                   // 1–64 层；z 小的先画
+    { "id": "hair", "deformer": "hair", "z": 2, "box": [96, 120, 129, 150], "grid": [8, 12] },
+    { "id": "body", "deformer": "skirt", "z": 4, "box": [96, 162, 127, 290], "grid": [8, 16] },
+    { "id": "head", "deformer": "head", "z": 6, "box": [120, 102, 86, 79], "grid": [8, 8] }
+  ],
+  "pivots": { "body": [163, 451], "head": [160, 178], "tail": [207, 292], "finL": [132, 146], "finR": [198, 146], "ahoge": [163, 111] },
+  "legs": { "hem": 392, "feet": 451, "split": 163 },   // 裙摆下沿、鞋底、两腿之间：走路时腿在裙摆下迈步
+  "face": { "box": [138, 142, 46, 34], "eyes": [[144, 149, 153, 159], [165, 149, 174, 159]], "mouth": [158, 166],
+            "skin": [252, 232, 224], "ink": [70, 40, 70], "blush": [[146, 163], [176, 163]] }
+}
+```
+
+- **deformer**（图层挂在哪根骨头上）：`body`（绕鞋底转动、呼吸、跳）、`skirt`（身体下半截：裙摆跟着摆，腿在下面迈步）、`hair`（长发：发根跟头转，发梢靠弹簧甩）、`tail`、`head`（绕脖子歪头，五官会稍微往看的方向滑）、`finL` / `finR` / `ahoge`（挂在头上单独扑动）。没有的部位不画就行，比如没有尾巴的角色就不放 `tail` 层。
+- **face**：眼睛和嘴的位置。眨眼、闭眼（^ ^ / 睡着）、半睁、wink、生气、各种嘴型、腮红和眼泪，都是按这些位置实时画上去的，所以原图画一张睁眼闭嘴的脸就够了。
+- **图层要多画一点被挡住的部分**：头发在头后面的部分、身体在头下面的部分，各自补上颜色，这样一层动起来时不会露出空洞。
+- 只有部分服饰做了图层也可以：其他服饰穿这个角色的默认角色包。
+- 本仓库的 `scripts/art/rig_cut.py` 按 `art/rig/<id>.json` 里的多边形，把一张图拆成这些图层，并写出 `model.json`（大肥鱼的拆法就在 `art/rig/dafeiyu.json`）。
 - **schema 1**：旧格式的 8 个动作名 `idle / wave / lifted / eat / sleep / think / talk / cheer` 仍然可用，应用把 `pat` 映射到 `wave`，`happy`、`play`、`hatch`、`evolve` 映射到 `cheer`，三种吃饭映射到 `eat`。schema 1 包里不能写 schema 2 的新动作名。
 
 ## 内容要求
