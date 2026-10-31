@@ -79,3 +79,12 @@ test('a size saved before the default went up to 125% is kept only if the user p
   store.save({ ...store.load(), petScale: 1, petScaleSet: true });
   assert.equal(store.load().petScale, 1);
 });
+
+test('systemRoles keeps per-character text only: trimmed, capped, control characters dropped, empty removed', () => {
+  const n = s.normalizeSettings({ systemRoles: { claude: '  叫我老板\r\n\t好的 ', gpt: '   ', grok: 3, 'Bad Id': 'x', gemini: 'a'.repeat(s.SYSTEM_ROLE_MAX + 50) } });
+  assert.deepEqual(Object.keys(n.systemRoles).sort(), ['claude', 'gemini']);
+  assert.equal(n.systemRoles.claude, '叫我老板\n 好的');
+  assert.equal(n.systemRoles.gemini.length, s.SYSTEM_ROLE_MAX);
+  assert.deepEqual(s.normalizeSettings(null).systemRoles, {});
+  assert.deepEqual(s.normalizeSettings({ systemRoles: 'x' }).systemRoles, {});
+});

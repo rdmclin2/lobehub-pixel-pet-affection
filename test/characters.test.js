@@ -17,7 +17,7 @@ test('every shipped character is a model-chan with a vendor, theme colour, lines
     assert.deepEqual(S.validateCharacter({ ...JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'characters', `${sp.id}.json`), 'utf8')) }), []);
     assert.equal(sp.adult, false, `${sp.id} is all-ages`);
     assert.match(sp.blurb, /非.*官方/, `${sp.id} says it is not official`);
-    assert.match(sp.personality, /成年.*25 岁以上/);
+    assert.match(sp.personality, /成年.*设定年龄 18 岁/);
     assert.ok(sp.credits.length > 0);
   }
 });

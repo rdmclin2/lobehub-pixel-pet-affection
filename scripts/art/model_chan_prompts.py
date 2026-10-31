@@ -11,6 +11,9 @@
 # original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
 # shorts and thigh band become a covered top, a long skirt and opaque tights; GPT's bare shoulders, thigh slit,
 # thigh band and sheer overcoat become long sleeves, a closed skirt and an opaque overcoat).
+# --outfit <id> [--char <id>]: the same sheets (and --walk) for another outfit of src/core/outfits.js, for the
+#   characters OUTFIT_LOOKS dresses in it: her identity (CHARS up to " She wears ") with that outfit's clothes,
+#   named <id>_<outfit>_base_a ... and <id>_<outfit>_walk. Without --outfit the daily prompts are unchanged.
 import json, re, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
@@ -48,6 +51,148 @@ CHARS = {
          "and low-heeled white pointed shoes with a white rosette knot. Draw her with clean dark grey-violet outlines so the white figure reads clearly. Colours: pure white, pale lavender and silver only, no gold, red, blue or green"),
 }
 
+# Body notes for every outfit other than daily (the daily gowns hide the figure; beachwear shows it). Groko is
+# drawn as a petite gothic-lolita style adult: the owner found her first bikini design too curvy (2026-10-31).
+BODY = {
+ "grok": ("She has a petite, very slim adult figure like a slender fashion model: narrow shoulders, a small flat-ish modest bust with no cleavage, "
+          "a slender waist, narrow hips and thin straight legs with slim thighs, clearly an adult woman with an adult face."),
+}
+
+# Other outfits: the clothes each character wears in them (everything after her identity). Every look keeps
+# docs/pet-packs.md "内容要求": an adult woman, nothing revealing, no underwear look. No hats: the figure is
+# scaled by its height (slice_sheet.py), so a hat would make her smaller than in her daily sheet.
+OUTFIT_LOOKS = {
+ "swimsuit": {
+  "dafeiyu": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with blue side panels, thin white frilled trim and a small black bow with a blue gem at the throat, "
+              "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose blue-and-white pinstriped knee-length board shorts with a white ruffled hem, "
+              "an open long-sleeved white sun-protection jacket reaching her hips with deep navy cuffs, pale gold piping and a tiny blue whale embroidered at its lower right, its hood down, "
+              "and deep navy beach sandals with a small gold buckle. A deep-blue whale tail with a forked fluke behind her. "
+              "Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
+  "claude": ("She wears modest sporty beachwear: a black one-piece athletic swimsuit with orange-red side panels and a thin cream-white trim, "
+             "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose orange-red knee-length board shorts, "
+             "an open long-sleeved cream-white hooded sun-protection jacket reaching her hips with thin gold trim and an orange flower brooch, "
+             "and cream-white beach sandals with black straps. Colours: orange, amber, cream white, black and gold only"),
+  "gemini": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with violet side panels and a white four-pointed star emblem on the chest, "
+             "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose violet knee-length board shorts with a thin gold trim, "
+             "an open long-sleeved white-and-navy sun-protection jacket reaching her hips with gold edging, its hood down, and two short ribbon tails with star charms, "
+             "and deep violet beach sandals. Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
+  "grok": ("She wears modest sporty beachwear: a black one-piece athletic swimsuit with wine-red side panels and thin gold trim, "
+           "with a high pointed stand-up collar lined in wine red, short cap sleeves and a fully covered back and midriff; over it loose black knee-length board shorts with a wine-red side stripe, "
+           "an open long-sleeved black hooded sun-protection jacket reaching her hips with white lace cuffs, gold trim and a small gold ring emblem, "
+           "and black beach sandals with gold buckles. Colours: black, wine red, gold and champagne blonde only"),
+ "gpt": ("She wears modest sporty beachwear: a pale lavender one-piece athletic swimsuit of smooth thick opaque fabric (no navel or body lines drawn on it) with white side panels and a thin silver trim, "
+          "with a small white mandarin stand-up collar at the throat, short sleeves covering her shoulders and a fully covered back and midriff, a small lavender diamond crystal at the collar; "
+          "over it loose white knee-length board shorts with a lavender wave pattern at the hems, "
+          "an open long-sleeved white hooded sun-protection jacket reaching her hips with wavy ruffled cuffs, thin silver trim and a white rosette knot pinned on its chest, "
+          "and white beach sandals with lavender straps. Colours: white, pale lavender and silver only"),
+ },
+ # All-ages beach bikini, dafeiyu-pixel and the other four (adult proportions; dafeiyu's chibi dsh-pet clips and
+ # dafeiyu-classic never wear it). The owner wants it sweet and innocent with a modest bust (2026-10-31): loose
+ # two-layer flounce tops that hide the chest's shape, skirted bottoms and a short cardigan. See OUTFIT_SAFE.
+ "bikini": {
+  "dafeiyu": ("She wears a sweet sailor-style beach bikini in her maid colours: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+              "edged with a thin navy line, with a small navy sailor-collar ribbon bow and a tiny blue gem at the centre and wide white shoulder straps; "
+              "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a white ruffled hem and a small white bow at the waist; "
+              "a short white cropped cardigan of thick opaque cotton with puffed short sleeves, a lace edge and a tiny blue whale embroidered on its hem, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+              "a thin white lace wrist cuff on each wrist and white flat beach sandals with navy straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
+              "A deep-blue whale tail with a forked fluke behind her. Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
+  "claude": ("She wears a sweet beach bikini in her blouse colours: a cream-white flounce bikini top made of two layers of loose wide cream frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+             "edged with thin orange-red trim, with a small orange flower and a tiny black bow at the centre and wide cream shoulder straps; "
+             "an orange-and-cream gingham skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a cream ruffled hem and a small black bow at the waist; "
+             "a short cream-white cropped cardigan of thick opaque cotton with puffed short sleeves and thin gold trim, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and cream-white flat beach sandals with orange straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: orange, amber, cream white, black and gold only"),
+  "grok": ("She wears a sweet gothic-lolita beach bikini: a black flounce bikini top made of two layers of loose wide black frills edged in white lace that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+           "a small wine-red bow with a gold ring emblem at the centre and wide black shoulder straps; a black skirted bikini bottom: a three-tiered black frilled swim skirt reaching just above her knees "
+           "with white lace edges, a wine-red underlayer and small wine-red bows at her hips; "
+           "a short black cropped bolero of thick opaque cotton with a wine-red lined pointed stand-up collar, short puffed sleeves and white lace cuffs, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+           "a black lace ribbon choker with a tiny gold ring, and black flat beach sandals with gold buckles. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
+           "Colours: black, wine red, gold and champagne blonde only"),
+  "gemini": ("She wears a sweet starry beach bikini: a lavender flounce bikini top made of two layers of loose wide lavender frills dotted with tiny white stars that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+             "edged with thin white trim, with a big deep navy ribbon bow and a small white four-pointed star charm at the centre and wide lavender shoulder straps; "
+             "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a lavender ruffled hem and tiny white star prints; "
+             "a short white cropped hoodie-cardigan of thick opaque cotton with small cat ears on its lowered hood, wide short sleeves and violet edging, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and lavender flat beach sandals. Only a narrow strip of her waist, her forearms and her lower legs are bare. A fluffy lavender cat tail behind her. "
+             "Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
+  "gpt": ("She wears a sweet, pure beach bikini: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+          "edged with thin pale lavender trim, with a small white rosette knot and a tiny lavender crystal at the centre and wide white shoulder straps; "
+          "a pale lavender skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a wavy white ruffled hem embroidered with small white roses; "
+          "a short white cropped cardigan of thick opaque cotton with wavy ruffled short sleeves and thin silver trim, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+          "and white flat beach sandals with lavender straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: white, pale lavender and silver only, no gold, red, blue or green"),
+ },
+}
+# The rest of the all-ages wardrobe (T-1261, 2026-10-31): one look for all five, in each character's own palette
+# (the colours of her daily outfit) unless a colour is named. Kept sweet and modest like the bikini: skirts at
+# least knee-length, loose cuts, no hats except the beret and the flower crown (both small, so her height stays
+# within check_model_chan.py's 12% of daily).
+WARDROBE = {
+ "scarf": "an oversized cream-beige cable-knit sweater with long sleeves, a long knitted {a} scarf with {b} stripes at the ends wrapped once around her neck, a knee-length pleated {b} skirt, opaque dark brown tights and brown ankle boots",
+ "casual": "a loose oversized {a} hoodie with {b} drawstrings and the hood down, comfy light grey jogger pants and chunky white sneakers",
+ "beret": "a {a}-and-white striped long-sleeved shirt, loose light-blue denim overall dungarees with long legs and a few small paint splashes, a small flat {b} beret worn tilted on the side of her head, a paintbrush tucked in the bib pocket and white canvas shoes",
+ "pajamas": "fluffy long-sleeved button-up pajamas in pastel {a} with white polka dots and a round white collar, long loose matching pastel {a} trousers and fluffy white slippers, no nightcap",
+ "cat_ears": "a soft pastel {a} zip-up lounge hoodie with long sleeves zipped up to her collarbones, matching long loose pastel {a} lounge pants, a {b} cat-ear headband and fluffy white slippers",
+ "yukata": "a long {a} summer yukata reaching her ankles with a {b} flower pattern, closed neatly at the neck, a wide {b} obi sash tied in a bow at the back, and wooden geta sandals",
+ "couple_hoodie": "a pink oversized hoodie with a big red heart print on the front, a knee-length pleated {a} skirt over opaque black tights and white sneakers",
+ "flower_crown": "a flowing ankle-length white sundress with a modest square neckline at her collarbones and short puff sleeves, a crown of small {a} and white flowers resting on her hair, and white strappy flat sandals",
+ "qipao": "a sweet, loose A-line ankle-length {a} qipao dress (cheongsam style) that falls straight and wide from her shoulders like a loose tunic dress, hiding her figure, with a high mandarin collar, short cap sleeves, {b} embroidered flowers and {b} frog buttons, no side slits, and {b} low flat shoes; the chest is drawn as plain flat fabric with no bust shading or bust shape, the dress never clings to her body",
+ "idol": "a sparkly knee-length idol stage dress in {a} and {b} with a high frilled collar, puff sleeves, layered frills, ribbons and a big {b} bow, opaque white tights, a small wrist microphone charm and shiny {b} ankle boots",
+}
+# Garment colours per character ({a} main, {b} second), from her daily palette: every sheet of an outfit is drawn
+# separately, so "her palette" alone gave a different skirt colour from sheet to sheet.
+WARDROBE_COLOURS = {
+ "dafeiyu": {"a": "deep navy", "b": "light blue"},
+ "claude": {"a": "orange", "b": "cream white"},
+ "grok": {"a": "black", "b": "wine red"},
+ "gemini": {"a": "lavender violet", "b": "deep navy"},
+ "gpt": {"a": "pale lavender", "b": "white"},
+}
+# Per-character replacements: Gemini already has cat ears, so her lounge set has a cat-ear hood (worn down).
+WARDROBE_FIX = {("cat_ears", "gemini"): ("a {b} cat-ear headband", "a hood with little cat ears worn down on her back")}
+WARDROBE_KEEP = {"dafeiyu": "A deep-blue whale tail with a forked fluke behind her."}
+
+def _wardrobe_look(oid, c):
+    desc = WARDROBE[oid]
+    if (oid, c) in WARDROBE_FIX: desc = desc.replace(*WARDROBE_FIX[(oid, c)])
+    desc = desc.format(**WARDROBE_COLOURS[c])
+    return " ".join(filter(None, [f"She wears {desc}.", WARDROBE_KEEP.get(c), "She wears exactly the same outfit in exactly the same colours in every cell"]))
+
+for _oid in WARDROBE:
+    OUTFIT_LOOKS[_oid] = {c: _wardrobe_look(_oid, c) for c in CHARS}
+
+# What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
+OUTFIT_SAFE = {
+ "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
+              "no bikini, no cleavage, no bare midriff, no high-cut legs, nothing see-through, nothing that looks like underwear."),
+ "bikini": ("It is sweet, innocent all-ages beachwear like a cute summer swimsuit for a family beach, the same in every cell: she has a slim adult figure; "
+            "the top has a closed, high round neckline right at her collarbones with no neckline opening, and its loose frills fall straight down like a little cape, "
+            "so the chest is drawn as plain flat layered frills: no cleavage, no bust shading, no bust shape, no emphasis on her chest or hips; "
+            "the short cardigan is always on and buttoned at the top of her chest; the frilled swim skirt reaches just above her knees and stays over her hips; "
+            "nothing see-through, no lingerie or underwear look, no straps slipping, no wardrobe malfunction, no sexy or suggestive pose, arms never squeezing her chest; "
+            "a fresh, pure, cheerful beach mood with a gentle, sweet smile."),
+}
+# Outfits whose clothes contradict SAFE's "fully covered" sentence keep only its adult-body sentence.
+OUTFIT_SAFE_ONLY = {"bikini"}
+# The walk rows name the skirt; an outfit without one says what sways instead.
+OUTFIT_WALK = {
+ "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
+ "bikini": ((" under the skirt", " under the swim skirt"), ("skirt and hair swaying", "frilled swim skirt, cardigan and hair swaying")),
+ "casual": ((" under the skirt", ""), ("skirt and hair swaying", "the loose hoodie, jogger pants and hair swaying")),
+ "beret": ((" under the skirt", ""), ("skirt and hair swaying", "the loose dungarees and hair swaying")),
+ "pajamas": ((" under the skirt", ""), ("skirt and hair swaying", "the loose pajama trousers and hair swaying")),
+ "cat_ears": ((" under the skirt", ""), ("skirt and hair swaying", "the loose lounge pants and hair swaying")),
+ "yukata": ((" under the skirt", " under the yukata"), ("skirt and hair swaying", "yukata hem, obi bow and hair swaying")),
+ "qipao": ((" under the skirt", " under the qipao"), ("skirt and hair swaying", "qipao hem and hair swaying")),
+}
+
+def identity(cid):
+    return CHARS[cid].split(" She wears ")[0]
+
+def looks(outfit=None, only=None):
+    # (character id, description, name prefix) for daily (CHARS as written) or for another outfit
+    if outfit in (None, "daily"):
+        return [(c, d, c) for c, d in CHARS.items() if not only or c in only]
+    if outfit not in OUTFIT_LOOKS: raise SystemExit(f"no looks for outfit {outfit!r} (OUTFIT_LOOKS has {', '.join(OUTFIT_LOOKS)})")
+    return [(c, " ".join(filter(None, [identity(c), BODY.get(c), clothes])), f"{c}_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
+
 EXTRA_ROWS = [
     "Row 1: looking around curiously, head turned to her left (frame 1) then to her right (frame 2); then sad, head drooping and sighing with a small blue sweat drop (2 frames).",
     "Row 2: hungry, both hands on her stomach looking at an empty bowl (2 frames); then eating a round cookie held in both hands, crumbs flying (2 frames).",
@@ -70,28 +215,58 @@ WALK_BG = ("IMPORTANT background: every cell and all the space around them is ON
 GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
-def walk_jobs():
+def safe_for(outfit):
+    if outfit not in OUTFIT_SAFE: return SAFE
+    base = SAFE.split(" Fully covered")[0] if outfit in OUTFIT_SAFE_ONLY else SAFE
+    return " ".join([base, OUTFIT_SAFE[outfit]])
+
+def chroma(cid):
+    hexkey = "pure bright green #00FF00" if cid == "gemini" else "pure bright magenta #FF00FF"
+    return f"Chroma-key sprite sheet: the whole picture background is {hexkey} like a green screen, used only to cut the sprites out later."
+
+def bg_for(cid, outfit=None):
+    # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);
+    # her daily prompts keep BG as written
+    return BG.replace("magenta (#FF00FF)", "green (#00FF00)") if cid == "gemini" and outfit not in (None, "daily") else BG
+
+def walk_jobs(outfit=None, only=None):
     out = []
-    for cid, desc in CHARS.items():
+    rows = WALK_ROWS
+    for old, new in OUTFIT_WALK.get(outfit, ()): rows = [r.replace(old, new) for r in rows]
+    for cid, desc, name in looks(outfit, only):
         key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
         style = STYLE.replace(GRID, HALF_GRID).replace("facing the viewer.", SIDE)
         bg = WALK_BG.format(name=key[0], hex=key[1])
-        out.append({"name": f"{cid}_walk", "prompt": " ".join([bg, style, f"The character: {desc}.", SAFE, *WALK_ROWS, bg])})
+        out.append({"name": f"{name}_walk", "prompt": " ".join(([chroma(cid)] if outfit in WARDROBE else []) + [bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
     return out
 
-def jobs(halves=False):
+def jobs(halves=False, outfit=None, only=None):
     out = []
-    for cid, desc in CHARS.items():
-        style, safe = STYLE, SAFE
+    for cid, desc, name in looks(outfit, only):
+        style, safe = STYLE, safe_for(outfit)
         assert GRID in style
         for sheet, rows in (("base", BASE_ROWS), ("extra", EXTRA_ROWS)):
             if not halves:
-                out.append({"name": f"{cid}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
+                out.append({"name": f"{name}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
                 continue
             for half, part in (("a", rows[:2]), ("b", rows[2:])):
                 part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
-                out.append({"name": f"{cid}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, BG])})
+                bg = bg_for(cid, outfit)
+                if outfit in WARDROBE:
+                    # These sheets came back on dark gradient backdrops even with WALK_BG said first and last;
+                    # naming the colour as a chroma key ("like a green screen") keeps it flat (2026-10-31).
+                    key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
+                    bg = WALK_BG.format(name=key[0], hex=key[1])
+                    part = [chroma(cid), bg, style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg]
+                else:
+                    part = [style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg]
+                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join(part)})
     return out
 
+def arg(flag):
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else None
+
 if __name__ == '__main__':
-    print(json.dumps(walk_jobs() if '--walk' in sys.argv else jobs('--halves' in sys.argv), ensure_ascii=False))
+    outfit, only = arg('--outfit'), arg('--char')
+    only = only.split(',') if only else None
+    print(json.dumps(walk_jobs(outfit, only) if '--walk' in sys.argv else jobs('--halves' in sys.argv, outfit, only), ensure_ascii=False))

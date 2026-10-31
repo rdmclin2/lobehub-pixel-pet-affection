@@ -3,7 +3,7 @@
 # The model-chan pixel packs have their own prompts: model_chan_prompts.py. Prints [{name, prompt}] as JSON.
 import json
 STYLE = ("Style: high-quality 2D anime illustration, clean dark lineart, soft cel shading, vibrant pastel colors. "
- "She is clearly an adult woman in her mid-20s with mature adult proportions (about 7 heads tall), adult face, not chibi, not childlike. "
+ "She is clearly an adult young woman, set age 18 with mature adult proportions (about 7 heads tall), adult face, not chibi, not childlike. "
  "Tasteful and fully covered, non-revealing, modest buttoned-up neckline, no cleavage. Pose: standing facing the viewer in a relaxed cute pose with a gentle smile, "
  "whole body visible from head to feet, centered, with some empty margin around her. "
  "Background: perfectly flat solid pure magenta (#FF00FF) chroma-key color, no gradient, no floor, no shadow, no other objects, no text, no watermark.")

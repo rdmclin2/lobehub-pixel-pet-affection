@@ -16,16 +16,28 @@ const { SPECIES } = require('./species');
 
 const OUTFITS = [
   { id: 'daily', stage: 'stranger', rating: 'all', label: '日常服', desc: '白衬衫配牛仔裤，最平常的样子。' },
-  { id: 'scarf', stage: 'stranger', rating: 'all', label: '针织围巾套装', desc: '米色毛衣加一条红色针织围巾。' },
-  { id: 'casual', stage: 'familiar', rating: 'all', label: '休闲卫衣', desc: '宽松灰色连帽卫衣和运动裤。' },
-  { id: 'beret', stage: 'familiar', rating: 'all', label: '贝雷帽画家装', desc: '条纹衫、背带裤和一顶贝雷帽。' },
-  { id: 'pajamas', stage: 'close', rating: 'all', label: '毛绒睡衣', desc: '长袖长裤的波点睡衣，配睡帽。' },
-  { id: 'cat_ears', stage: 'close', rating: 'all', label: '猫耳家居服', desc: '粉色家居服和猫耳发箍。' },
-  { id: 'yukata', stage: 'flirty', rating: 'all', label: '浴衣', desc: '藏青色长款浴衣，红色腰带。' },
+  { id: 'scarf', stage: 'stranger', rating: 'all', label: '针织围巾套装', desc: '米色宽松麻花毛衣、她主题色的长围巾、及膝百褶裙和短靴。' },
+  { id: 'casual', stage: 'familiar', rating: 'all', label: '休闲卫衣', desc: '她主题色的宽松连帽卫衣、浅灰运动裤和白色厚底鞋。' },
+  { id: 'beret', stage: 'familiar', rating: 'all', label: '贝雷帽画家装', desc: '条纹长袖衫、沾着颜料的牛仔背带裤和一顶歪戴的小贝雷帽。' },
+  // A stage dress for a little show: knee-length frills, high frilled collar, opaque tights (T-1261).
+  { id: 'idol', stage: 'familiar', rating: 'all', label: '偶像演出服', desc: '高荷叶领、泡泡袖的及膝闪亮演出裙，配蝴蝶结和白色连裤袜。' },
+  { id: 'pajamas', stage: 'close', rating: 'all', label: '毛绒睡衣', desc: '长袖长裤的毛绒波点睡衣和毛绒拖鞋。' },
+  { id: 'cat_ears', stage: 'close', rating: 'all', label: '猫耳家居服', desc: '拉链拉到锁骨的柔软家居卫衣、长家居裤和猫耳发箍。' },
+  // All-ages beachwear, unlike retro_swimsuit (adult): a high-necked sporty one-piece under knee-length shorts
+  // and an open sun jacket. 亲近 like the other off-duty looks (pajamas, cat ears): she would go to the beach
+  // with you once you are close, before the 知己 yukata.
+  { id: 'swimsuit', stage: 'close', rating: 'all', label: '运动泳装', desc: '高领短袖的运动款连体泳衣，外搭及膝沙滩裤和防晒开衫。' },
+  { id: 'yukata', stage: 'flirty', rating: 'all', label: '浴衣', desc: '印花及踝长浴衣、宽腰带在背后系成蝴蝶结，配木屐。' },
+  // All-ages too, a step lighter than the swimsuit: a loose two-layer flounce top that hides the chest, a
+  // frilled swim skirt to just above the knees and a short cardigan; only a strip of waist, the arms and lower legs show.
+  // 暧昧 like the yukata, since it shows more than the 亲近 swimsuit (docs/compliance-review.md 3d).
+  { id: 'bikini', stage: 'flirty', rating: 'all', label: '沙滩比基尼', desc: '高圆领两层荷叶边上衣、到膝盖上方的荷叶边泳裙，外搭系扣短开衫。' },
+  // A loose straight-cut ankle-length qipao with a mandarin collar; slits only at the ankles (T-1261).
+  { id: 'qipao', stage: 'flirty', rating: 'all', label: '长旗袍', desc: '宽松直筒的及踝长旗袍，立领、短盖袖、绣花，只在脚踝处开小衩。' },
   { id: 'maid', stage: 'flirty', rating: 'adult', label: '女仆装', desc: '长袖及膝女仆裙、白围裙和发带（不暴露）。' },
   { id: 'offshoulder_gown', stage: 'flirty', rating: 'adult', label: '露肩晚礼服', desc: '酒红色及地晚礼服，只露出肩膀。' },
-  { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着爱心的粉色情侣卫衣。' },
-  { id: 'flower_crown', stage: 'lover', rating: 'all', label: '花冠长裙', desc: '白色长裙和一顶花冠。' },
+  { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着大红心的粉色宽松卫衣、及膝百褶裙和不透明黑色连裤袜。' },
+  { id: 'flower_crown', stage: 'lover', rating: 'all', label: '花冠长裙', desc: '白色及踝连衣长裙和一顶小花冠。' },
   { id: 'retro_swimsuit', stage: 'lover', rating: 'adult', label: '复古连体泳装', desc: '海军蓝复古连体泳装、遮阳帽和凉鞋（保守款）。' },
   { id: 'silk_robe', stage: 'lover', rating: 'adult', label: '丝绸睡袍', desc: '香槟色及膝丝绸睡袍，系好腰带，内搭长睡裤。' },
 ];

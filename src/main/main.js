@@ -7,6 +7,7 @@ const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
+const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { Updater } = require('./updater');
@@ -223,6 +224,8 @@ function wire() {
   ipcMain.handle('unlock-all', (_e, p) => service.unlockAll(whose(p && p.species)));
   // the model (her page → 模型): only her own vendor's models are offered
   ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
+  // 个性化设定 (her page → System Role): her own words added to her agent's system role
+  ipcMain.handle('set-system-role', (_e, { text, species }) => service.setSystemRole(String(text || ''), whose(species)));
   ipcMain.handle('refresh-models', async () => {
     await service.refreshModels({ force: true });
     return { ok: true, view: service.view() };
@@ -251,6 +254,10 @@ function wire() {
   // While the user drags the resize handle: resize the window only. On release: save.
   ipcMain.handle('preview-pet-scale', (_e, { scale }) => resizePet(clampScale(scale)));
   ipcMain.handle('set-pet-scale', (_e, { scale }) => service.setPetScale(resizePet(clampScale(scale))));
+  // ⋯ → 聊天记录: the filter runs here, in the data layer (PetService.history → chat-log.userSessions);
+  // the window only ever receives the conversations the owner started.
+  ipcMain.handle('history-list', () => service.history());
+  ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
   ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
@@ -453,7 +460,7 @@ app.whenReady().then(() => {
   const lh = new LhClient();
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -465,7 +472,7 @@ app.whenReady().then(() => {
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
-    chat: (text) => service.chat(text, [], []),
+    chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
   }, logError);
   wire();
   createWindow();

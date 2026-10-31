@@ -533,7 +533,7 @@ test('a save whose character was retired opens with a current character, never c
   fs.mkdirSync(data, { recursive: true });
   const saved = { schemaVersion: 2, speciesId: 'embit', name: '小火', agentId: 'agt_OLD', topicId: 'tpc_OLD', createdAt: clock.t - 1e6, affection: 40, hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: clock.t, lastInteractionAt: clock.t, lastFedAt: clock.t, lastSpokeAt: 0, equippedOutfit: 'maid', lastSafeOutfit: 'yukata', personaVersion: 6 };
   fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(saved));
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true, appearance: { embit: 'embit-illustrated', bubbo: 'bubbo-pixel', grok: 'grok-pixel' } }));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: true, adultContent: true, appearance: { embit: 'embit-illustrated', bubbo: 'bubbo-pixel', grok: 'grok-pixel' } }));
   const svc = mkSvc();
   const said = [];
   svc.on('say', (m) => said.push(m));
@@ -543,7 +543,7 @@ test('a save whose character was retired opens with a current character, never c
   assert.equal(v.pet.affection, 40, 'affection kept');
   assert.equal(v.pet.agentId, 'agt_OLD');
   assert.equal(v.outfit, 'daily', 'an outfit the new character has no art for falls back to daily');
-  assert.deepEqual(v.outfits.map((o) => o.id), ['daily']);
+  assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'scarf', 'casual', 'beret', 'idol', 'pajamas', 'cat_ears', 'swimsuit', 'yukata', 'bikini', 'qipao', 'couple_hoodie', 'flower_crown'], "克洛蒂's own outfits");
   assert.deepEqual(v.pet.retiredFrom, { speciesId: 'embit', at: clock.t });
   assert.equal(v.look.packId, 'claude-pixel');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, { grok: 'grok-pixel' }, 'looks of retired characters are dropped');
@@ -817,12 +817,12 @@ test('wardrobe: a stage-up names the unlocked outfits, only unlocked ones can be
   svc.act('pat');
   await tick();
   const up = events.find((e) => e.type === 'stage-up');
-  assert.deepEqual(up.unlocks.outfits.map((x) => x.label), ['休闲卫衣', '贝雷帽画家装']);
+  assert.deepEqual(up.unlocks.outfits.map((x) => x.label), ['休闲卫衣', '贝雷帽画家装', '偶像演出服']);
   assert.equal(svc.equipOutfit('pajamas').reason, 'locked');
   const r = svc.equipOutfit('casual');
   assert.equal(r.ok, true);
   assert.equal(r.view.outfit, 'casual');
-  assert.equal(svc.markSeen('outfit').marked, 2);
+  assert.equal(svc.markSeen('outfit').marked, 3);
   await new Promise((res) => setTimeout(res, 300));
 
   const v = mkSvc().init();
@@ -911,7 +911,7 @@ test('personal with a pinned lh scope needs consent, then switches lh back to pe
 test('unlock all fills affection, reaches every stage and unlocks every topic and outfit, and survives a restart', async () => {
   const { svc, dir, lh, clock } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
-  svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 1, answered: true, ageConfirmed: true, adultContent: true });
+  svc.settingsStore.save({ ...svc.settingsStore.load(), ageGateVersion: 2, answered: true, ageConfirmed: true, adultContent: true });
   svc.settings = svc.settingsStore.load();
   await svc.hatch({ speciesId: 'testchan' });
   const ups = [];

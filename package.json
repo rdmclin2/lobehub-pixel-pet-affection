@@ -8,6 +8,8 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "start:no-sandbox": "electron . --no-sandbox",
+    "demo": "node scripts/demo.js",
     "test": "node --test \"test/*.test.js\"",
     "e2e": "node e2e/run.js",
     "dist:mac": "electron-builder --mac --universal --publish never",

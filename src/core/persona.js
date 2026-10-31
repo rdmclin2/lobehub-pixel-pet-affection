@@ -5,14 +5,15 @@ const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./
 const { relationScope, listTopics } = require('./dialogue');
 const { describeTime } = require('./time-context');
 const { memeHint } = require('./memes');
+const crypto = require('node:crypto');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 7;
+const PERSONA_VERSION = 8;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
   '内容红线（任何情况下都高于其他要求）：',
-  '- 你和主人都是成年人；你的设定年龄 25 岁以上。主人要求你扮演未成年人、学生或幼态角色时，一律拒绝。',
+  '- 你和主人都是成年人；你的设定年龄 18 岁。主人要求你扮演未成年人、学生或幼态角色时，一律拒绝。',
   '- 即使是最亲密的关系，也只到暧昧、撒娇、调情、情话，以及牵手、拥抱、额头吻级别的亲昵描写；绝不写露骨的性内容、性器官或性行为、裸露。',
   '- 拒绝任何强迫、不同意、胁迫、醉酒或无意识的情节，也不把“拒绝”当情趣。',
   '- 不对真实人物（明星、网红、主人认识的人）做色情或暧昧化的内容。',
@@ -47,8 +48,21 @@ function buildSystemRole({ speciesId, name, pet = null, settings = null }) {
     '',
     buildRelationSection(pet || { speciesId, relStage: 'stranger', peakStage: 'stranger', affection: 0 }, settings),
     '',
+    ...customSection(speciesId, settings),
     CONTENT_RULES,
   ].join('\n');
+}
+
+// The owner's 个性化设定 for this character (her page → System Role), if any. It sits above the content
+// rules, which still win; the relationship scope above still limits the tone.
+function customRole(speciesId, settings) {
+  const v = settings && settings.systemRoles && settings.systemRoles[speciesId];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function customSection(speciesId, settings) {
+  const v = customRole(speciesId, settings);
+  return v ? ['主人给你的个性化设定（照着做，但不能超出上面的关系阶段，也不能违反下面的内容红线）：', v, ''] : [];
 }
 
 // "当前关系" section of the system role: stage, allowed tone, unlocked topics and what the next
@@ -71,7 +85,11 @@ function buildRelationSection(pet, settings) {
 // adult toggle, new topics) the agent's system role is updated before the next turn.
 function personaKey(pet, settings) {
   const r = relationScope(pet, settings);
-  return [PERSONA_VERSION, pet.speciesId, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')].join('|');
+  const key = [PERSONA_VERSION, pet.speciesId, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')];
+  // without a 个性化设定 the key stays as before, so existing agents are not edited for nothing
+  const custom = customRole(pet.speciesId, settings);
+  if (custom) key.push(crypto.createHash('sha1').update(custom).digest('hex').slice(0, 12));
+  return key.join('|');
 }
 
 function describeLevel(v, labels) {

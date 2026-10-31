@@ -34,8 +34,10 @@ npm start
 ```bash
 sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 # 或者
-npm start -- --no-sandbox
+npm run start:no-sandbox          # 等同于 npm start -- --no-sandbox
 ```
+
+没有显示器的 Linux（服务器、CI）用 `xvfb-run` 包一层：`xvfb-run -a npm run start:no-sandbox`。
 
 **不连 LobeHub 试玩**：单元测试用的假 `lh` 可以直接给应用用，全部效果都能玩：
 
@@ -45,6 +47,17 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 ```
 
 假 `lh` 不联网、不创建真实 agent，聊天回复是 `echo: …`；`PIXELPET_DATA_DIR` 让试玩存档和正式存档分开。Linux 上同样可以在末尾加 `-- --no-sandbox`。
+
+**一条命令直接看到桌宠**：`npm run demo` 用同一个假 `lh` 在 `<系统临时目录>/pixel-pet-demo` 里准备好试玩存档（18+ 已按“只看全年龄”回答、已唤醒克洛蒂），然后启动应用，宠物直接出现在屏幕右下角，不用走首次启动流程。唤醒走的是应用自己的 `PetService.hatch`，和点“唤醒”按钮是同一段代码。
+
+```bash
+npm run demo                                   # 有桌面时
+xvfb-run -a npm run demo                       # Linux 无显示器
+npm run demo -- --character gpt --name 小杰    # 换角色 / 起名（claude、gpt、grok、gemini、dafeiyu）
+npm run demo -- --fresh                        # 清掉试玩存档重新唤醒
+```
+
+Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start` 不变。代码：`scripts/demo.js`。
 
 其他环境变量：`PIXELPET_NO_UPDATE=1` 关闭自动更新；`PIXELPET_NO_CONNECT=1` 禁止启动 `lh connect`。
 
@@ -70,11 +83,12 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 - **首次**：在“选择你的模型娘”界面点角色卡，再点“唤醒”。
 - **之后切换**：悬停宠物 → ⋯ → **角色列表**。每位角色都有自己的 LobeHub agent（自己的人设、模型、聊天记录）、名字、好感度和需求值（饥饿 / 心情 / 精力 / 睡眠），列表里每行有她的缩略图（当前角色包、穿着的服饰）、名字（你起的名字 + 中文名 + 厂商）、称号，以及“已认识 · 阶段 · 好感 X”或“未见过”。
-  - **角色详情**：点列表里的一行（或“设置 ›”）打开她的页面，没见过的角色也能打开；页面顶部“‹ 角色列表”返回。她自己的设置都在这里：**模型**、**外观（角色包）**、**好感度 · 一键解锁**，只作用于她，不影响当前陪伴的角色。“切换 / 初次见面”在列表和她的页面里都能点。
+  - **角色详情**：点列表里的一行（或“设置 ›”）打开她的页面，没见过的角色也能打开；页面顶部“‹ 角色列表”返回。她自己的设置都在这里：**模型**、**个性化设定（System Role）**、**外观（角色包）**、**好感度 · 一键解锁**，只作用于她，不影响当前陪伴的角色。“切换 / 初次见面”在列表和她的页面里都能点。
   - **初次见面**：点没见过的角色旁边的 **初次见面**，给她起个名字（可选，最多 12 个字，默认用她自己的名字）→ **请她来**。应用在你唤醒时选的空间里为她新建 agent（标题 `名字 (英文名)`），这时气泡和面板显示“她正在赶来…”；她从陌生开始，跟你打招呼。新建失败（网络、登录过期、`lh` 被固定在别的 workspace）时留在原角色，什么都不保存，可以再试。
   - **见过的角色**：点 **切换**，她的 agent、聊天记录、名字、好感度和服饰都还在，用一句离线台词打招呼。不在屏幕上的角色需求值暂停，离开的时间也不算冷落她（不掉好感）。
   - 切换后播放唤醒演出。开着“使用本机”时，新角色的 agent 也会绑定到这台电脑；关掉时解绑所有角色的 agent。
 - **换画风**：⋯ → **角色列表** → 她 → **外观（角色包）**（每位角色各自选，存在 `settings.json` 的 `appearance`）。每位角色默认用新的高清像素包（每帧 332×452，平滑绘制），也可以换成「旧版像素」（v0.7.0 及以前那套 83×113、更 Q 的像素图）；大肥鱼还能换成原版动画（dsh-pet 透明视频）。随时可以换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
+- **个性化设定**：⋯ → **角色列表** → 她 → **个性化设定（System Role）**。写几句给她的额外设定（怎么称呼你、说话风格、要记住的事，最多 1000 字），点“保存”；它会加进她 agent 的 system role（“主人给你的个性化设定”一段），只对她生效，关系阶段和内容红线仍然优先。给当前角色保存后立即更新她的 agent；给别的角色写的，等她下次陪你时（或初次见面新建 agent 时）用上。“清空”确认后删掉，她回到默认性格。存在 `settings.json` 的 `systemRoles`。
 - **换模型**：⋯ → **角色列表** → 她 → **模型**（模型跟着角色走）。下拉框里只有她自家厂商的模型：大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT（含 o 系列）。列表来自你在 LobeHub 里启用的模型：LobeHub 托管的排在前面；如果你还启用了该厂商自己的服务商（填了自己的 Key），那些模型也会列出，标“（自己的 … Key）”。只能出图的模型（如 Nano Banana）不列。没选过时用角色的默认模型（标“默认”）：大肥鱼 DeepSeek V4.1 Flash、克洛蒂 Claude Sonnet 5.5、格萝可 Grok 4.7、杰米 Gemini 3.8 Flash、吉皮缇 GPT-6 Luna；默认模型没启用时用列表第一个。给当前角色选好后立即改 agent 的模型；给别的角色选的，等她下次陪你时（下一句话起）换上；换角色后，下一句话起换成新角色的模型，每位角色各自记住你的选择（存在 `settings.json` 的 `models`）。模型列表 10 分钟内复用，点“刷新”立即重读；`lh` 读不到列表（版本太旧或离线）时她继续用原来的模型。
 - **请别的模型娘来串门**：高级设置 → **同屏伙伴**，见下面的 E24。
 
@@ -96,7 +110,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 | E10 | 饿了 / 难过 / 开心 | `hungry`、`sad`、`happy` | 随饥饿、心情自动变化（久不喂食会饿，冷落会难过） | 无，始终可用 |
 | E11 | 工作状态：思考中 → 说话，出错时难过；每条消息带时间背景 | `think`、`talk`、`sad` | 悬停 → **聊天** 发一句话，或点 **话题**：等回复时“思考中”，回复到达时说话；agent 出错时难过。工作中悬停只显示 **■ 停止**，按 Esc 也能中断 | 无，始终可用 |
 | E12 | 关系升级演出：进化、闪光、爱心 | `evolve` | 好感度跨过阶段（15 / 35 / 60 / 85）；角色列表 → 当前角色 → **一键解锁** 直接加满 | 无，始终可用 |
-| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（每位角色 1 套原设服装） | 无，始终可用 |
+| E13 | 角色专属衣柜 | — | 悬停 → **衣柜**（每位角色 1 套原设服装 + 12 套按好感阶段解锁的全年龄服饰） | 无，始终可用 |
 | E14 | 切换角色（每位角色各自的 agent、聊天记录、名字和好感度） | `hatch` | 见第四节 | 无，始终可用 |
 | E15 | 自己走动（漫游） | `walk` | 鼠标离开、她不忙、没开面板时偶尔朝面向的方向走 60–240 像素，到屏幕边掉头。大肥鱼播 dsh-pet 的螃蟹走路，像素角色用待机帧颠步 + 👣。开关：桌宠行为 →“自己走动” | 桌宠行为 →“自己走动”（默认开） |
 | E16 | 触屏长按 / 右键打开菜单 | — | 触屏上按住她 0.5 秒不动；或鼠标右键她 | 无，始终可用 |
@@ -158,7 +172,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 悬停宠物 → ⋯ → **高级设置**：
 
-高级设置只放对所有角色生效的系统设置。按角色区分的设置（模型、外观（角色包）、好感度一键解锁）和切换角色不在这里，在 ⋯ 菜单的 **角色列表** → 角色页面（见第四节）。
+高级设置只放对所有角色生效的系统设置。按角色区分的设置（模型、个性化设定、外观（角色包）、好感度一键解锁）和切换角色不在这里，在 ⋯ 菜单的 **角色列表** → 角色页面（见第四节）。
 
 | 分组 | 内容 | 默认 |
 | --- | --- | --- |
@@ -209,11 +223,11 @@ npm run dist:win       # Windows x64 安装包 + zip
      "title": "Kimi 娘 · 月之暗面",
      "accent": "#1F2A44",            // #rrggbb 主题色
      "blurb": "……（同人形象，非 Moonshot 官方）",
-     "personality": "你是 Kimi 娘“琪米”（成年角色，设定年龄 25 岁以上）……",
+     "personality": "你是 Kimi 娘“琪米”（成年角色，设定年龄 18 岁）……",
      "catchphrase": "……", "likes": "……",
      "fallback": { "hungry": ["…"], "bored": ["…"], "happy": ["…"], "sleepy": ["…"], "greet": ["…"], "fed": ["…"], "patted": ["…"], "played": ["…"] }, // fed / patted / played 可省略：喂食 / 摸摸 / 玩耍时她自己的台词
      "adult": false,
-     "outfits": ["daily"],           // 只列有美术的服饰，必须含 daily
+     "outfits": ["daily"],           // 只列有美术的服饰，必须含 daily；内置五位列出全部 13 套全年龄服饰，加服饰的方法见 art/model-chan/README.md「其他服饰」
      "signature": { "label": "…", "desc": "…" },
      "art": { "kind": "pack", "packs": ["kimi-pixel"], "fallbackPack": "kimi-pixel" },
      "fx": { "noMirror": [] },       // 画了文字、镜像会反字的状态列在这里
@@ -233,7 +247,7 @@ npm run dist:win       # Windows x64 安装包 + zip
    ```
 
    字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因；旧角色 id（`embit`、`bubbo`、`sprig`）不能再用。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`；一个状态可以给一组片段（`"pat": ["a.webm", "b.webm"]`），每次轮换播放。`memes`、`voice` 和 `models` 可省略（没有梗图 / 用默认音色 / 不限定模型，agent 用账号默认模型）；梗图文件缺失时启动会报错。
-3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 25 岁以上”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
+3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 18 岁”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
 4. **运行确认**：`npm start`，选择模型娘界面会多出一张 Kimi 卡片，唤醒后所有效果自动可用。角色卡会按窗口宽度自动收窄。
 5. **更新测试**：下面几处固定了现有角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster kimi`：
    - `test/characters.test.js`：角色 id 列表和厂商列表；
@@ -241,7 +255,7 @@ npm run dist:win       # Windows x64 安装包 + zip
    - `test/packs.test.js`：内置角色包 id 列表（加 `kimi-pixel`）和逐角色检查的 id 列表；
    - `e2e/run.js` 的 `ROSTER`：加一行 `{ id: 'kimi', idx: 5, zh: '琪米', vendor: 'Moonshot' }`（`idx` 是角色卡的位置，从 0 开始），`SPECIES_MEMES` 加她的一张梗图 id；
    - `test/dsh-effects.test.js`：逐角色梗图检查的 id 列表；
-   - `test/outfits.test.js`：逐角色衣柜检查的 id 列表和招牌服饰名；
+   - `test/outfits.test.js`：逐角色衣柜检查的 id 列表和招牌服饰名（内置五位的衣柜都是 13 套全年龄服饰；新角色没有某套服饰的图时不要在 `outfits` 里列它）；
    - `e2e/run.js` 里角色卡数量（`.char-card` 的 `count()`，三处）、厂商列表（`vendors`）、`art` 总表的像素包列表，以及导入非法角色包时报错信息里的角色 id 列表；
    - `docs/pet-packs.md` 的 `species` 注释；
    - `art/model-chan/characters.json`（设计记录，预览拼图从这里读角色）、`art/model-chan/CHARACTERS.md`、`art/model-chan/README.md`、`README.md`、`NOTICE.md` 和 `docs/compliance-review.md` 的角色表。
@@ -253,6 +267,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | --- | --- |
 | `npm test` | 单元测试（`node --test test/*.test.js`，假 `lh`，不联网），包括角色文件、角色包、效果、合规词表的校验 |
 | `xvfb-run -a node e2e/run.js roster` | 逐个角色选择、唤醒，逐项触发 E1–E14 和 N1–N14（即 E15–E26 及其开关）；截图在 `out/e2e/`，录屏在 `out/e2e/roster-video/<角色>/`。`... roster claude` 只跑一个角色 |
+| `xvfb-run -a node e2e/run.js outfit [角色] [服饰]` | 第二套服饰的真机检查（默认 `claude swimsuit`）：真实升级解锁 → 衣柜换上 → idle / walk / lifted 与 daily 对齐 → 重启保留 → 选「旧版像素」时回落到默认包 → 无控制台报错；截图和 `report.txt` 在 `out/e2e/outfit-<角色>-<服饰>/` |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |

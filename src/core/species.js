@@ -4,7 +4,7 @@
 // code: `src/characters/<id>.json` holds its vendor, persona, lines, theme colour, which outfits it has
 // art for, whether adult content may ever apply to it, its art (video clips or pet packs) and credits.
 // Every effect (src/core/fx.js, src/renderer/fx.js) is shared; a character only differs in this file,
-// its art and its lines. Every character is an adult (set age 25+); see docs/affection-design.md 8.1.
+// its art and its lines. Every character is an adult (set age 18); see docs/affection-design.md 8.1.
 // None of them is an official vendor mascot.
 
 const fs = require('node:fs');

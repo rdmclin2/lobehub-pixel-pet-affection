@@ -53,12 +53,12 @@ const at = (affection, speciesId = 'testchan') => {
   return { p, now };
 };
 
-test('persona v7: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
-  assert.equal(PERSONA_VERSION, 7);
+test('persona v8: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
+  assert.equal(PERSONA_VERSION, 8);
   for (const id of ['testchan', 'grok', 'claude', 'dafeiyu']) {
     const r = buildSystemRole({ speciesId: id, name: 'X' });
     assert.match(r, /你是成年人/);
-    assert.match(r, /25 岁以上/);
+    assert.match(r, /设定年龄 18 岁/);
     assert.match(r, /陌生 → 熟悉 → 亲近 → 暧昧 → 恋人/);
     assert.ok(r.includes(CONTENT_RULES));
     for (const rule of [/露骨/, /强迫/, /未成年人/, /真实人物/, /违法/]) assert.match(r, rule);
@@ -153,4 +153,21 @@ test('personaKey changes with the stage and the adult switch, not with needs', (
   assert.equal(personaKey(a, OFF), k);
   assert.notEqual(personaKey(at(40).p, OFF), k);
   assert.notEqual(personaKey(at(70).p, OFF), personaKey(at(70).p, ADULT));
+});
+
+test('个性化设定: the owner\'s text for this character goes above the content rules and changes personaKey only when set', () => {
+  const { p } = at(10);
+  const plain = role(10, OFF);
+  assert.doesNotMatch(plain, /个性化设定/);
+  const withRole = { ...OFF, systemRoles: { testchan: '叫我老板', other: '别人的' } };
+  const r = role(10, withRole);
+  assert.match(r, /主人给你的个性化设定（[^）]*）：\n叫我老板\n/);
+  assert.doesNotMatch(r, /别人的/);
+  assert.ok(r.indexOf('叫我老板') > r.indexOf('当前关系') && r.indexOf('叫我老板') < r.indexOf(CONTENT_RULES));
+  assert.ok(r.endsWith(CONTENT_RULES));
+  // no text: the key is the same as before the feature, so existing agents are not edited
+  assert.equal(personaKey(p, { ...OFF, systemRoles: {} }), personaKey(p, OFF));
+  assert.equal(personaKey(p, { ...OFF, systemRoles: { other: 'x' } }), personaKey(p, OFF));
+  assert.notEqual(personaKey(p, withRole), personaKey(p, OFF));
+  assert.notEqual(personaKey(p, withRole), personaKey(p, { ...OFF, systemRoles: { testchan: '叫我主人' } }));
 });

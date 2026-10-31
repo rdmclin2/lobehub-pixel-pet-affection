@@ -22,11 +22,15 @@ contextBridge.exposeInMainWorld('pet', {
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
   equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
   markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  // 聊天记录: conversations the owner started, already filtered in main (list: summaries; get: one with its messages)
+  historyList: () => ipcRenderer.invoke('history-list'),
+  historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // per-character settings: `species` is whose (⋯ → 角色列表 → her page); left out = the current character
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
   setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
+  setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
