@@ -23,7 +23,7 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
+  assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
@@ -67,8 +67,8 @@ test('looks: the chosen pack, the character default, then its fallback pack; the
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-clips', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'her clips');
   assert.equal(P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'daily' }).packId, 'dafeiyu-pixel');
   const opts = P.packsFor(packs, 'dafeiyu');
-  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-live', 'rig'], ['dafeiyu-classic', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels, the live rig, the old pixels and her clips');
-  assert.equal(opts[3].author, 'PC2005-cloud/dsh-pet');
+  assert.deepEqual(opts.map((x) => [x.id, x.kind]), [['dafeiyu-pixel', 'sprites'], ['dafeiyu-live2d', 'live2d'], ['dafeiyu-live', 'rig'], ['dafeiyu-classic', 'sprites'], ['dafeiyu-clips', 'video']], 'the picker offers pixels, Live2D, the live rig, the old pixels and her clips');
+  assert.equal(opts[4].author, 'PC2005-cloud/dsh-pet');
   assert.deepEqual(P.packsFor(packs, 'grok').map((x) => x.id), ['grok-pixel', 'grok-classic'], 'the default first');
 });
 
@@ -245,4 +245,47 @@ test('大肥鱼 · 全动态: every layer of the built-in rig is in the model, w
   assert.deepEqual(live.model.parts.map((p) => p.id).sort(), ['ahoge', 'body', 'fin_l', 'fin_r', 'hair', 'head', 'tail']);
   assert.ok(live.model.face && live.model.legs && live.model.pivots.head, 'eyes and mouth, legs, the neck');
   assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel', 'the pixels stay her default');
+});
+
+// Live2D packs: a Cubism 4 model in the pack and the map from the app's moves onto its parameters
+test('live2d packs: the model and its files are checked, the parameter map goes to the renderer with the look', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2d-'));
+  const l2d = (over = {}) => ({ schema: 2, id: 'my-l2d', name: 'L2D', species: 'grok', kind: 'live2d', model: 'm/a.model3.json', live2d: { height: 0.75, params: { armL: 'ParamArmL', tail: 'ParamTail', armOut: -20 }, faces: { blush: { ParamCheek: 1 } }, pinned: { ParamWatermark: 1 } }, outfits: { daily: 'preview.png' }, ...over });
+  const dir = writePack(root, l2d(), ['preview.png', 'm/tex/t0.png']);
+  fs.writeFileSync(path.join(dir, 'm', 'a.moc3'), 'moc');
+  fs.writeFileSync(path.join(dir, 'm', 'a.physics3.json'), '{}');
+  fs.writeFileSync(path.join(dir, 'm', 'a.model3.json'), JSON.stringify({ Version: 3, FileReferences: { Moc: 'a.moc3', Textures: ['tex/t0.png'], Physics: 'a.physics3.json' } }));
+  const r = P.readPack(dir);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.deepEqual(r.pack.live2d, { height: 0.75, params: { armL: 'ParamArmL', tail: 'ParamTail', armOut: -20 }, faces: { blush: { ParamCheek: 1 } }, pinned: { ParamWatermark: 1 } });
+  const packs = new Map([[r.pack.id, r.pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const look = P.resolveLook(packs, { packId: 'my-l2d', speciesId: 'grok', outfitId: 'daily' });
+  assert.equal(look.kind, 'live2d');
+  assert.equal(look.model, 'pack://my-l2d/m/a.model3.json');
+  assert.equal(look.url, 'pack://my-l2d/preview.png', 'the picture for lists and the wardrobe');
+  assert.equal(look.live2d.params.tail, 'ParamTail');
+  assert.equal(P.resolveLook(packs, { packId: 'my-l2d', speciesId: 'grok', outfitId: 'beret' }).packId, 'grok-pixel', 'other outfits wear the default pack');
+
+  const errs = (over) => { fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(l2d(over))); return P.readPack(dir).errors.join(); };
+  assert.match(errs({ model: '../a.model3.json' }), /relative path to a \.model3\.json/);
+  assert.match(errs({ live2d: { params: { wings: 'ParamWings' } } }), /live2d\.params\.wings/);
+  assert.match(errs({ live2d: { faces: { blush: { 'bad id': 1 } } } }), /live2d\.faces\.blush/);
+  assert.match(errs({ live2d: { height: 3 } }), /live2d\.height/);
+  fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(l2d()));
+  fs.rmSync(path.join(dir, 'm', 'a.moc3'));
+  assert.match(P.readPack(dir).errors.join(), /a\.moc3 is missing/);
+  fs.writeFileSync(path.join(dir, 'm', 'a.model3.json'), JSON.stringify({ FileReferences: { Moc: '../../outside.moc3', Textures: ['tex/t0.png'] } }));
+  assert.match(P.readPack(dir).errors.join(), /outside\.moc3 is missing/, 'a file outside the pack does not count');
+});
+
+test('大肥鱼 · Live2D: the built-in model is complete, its watermark and chest physics are pinned, pixels stay her default', () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const p = packs.get('dafeiyu-live2d');
+  assert.equal(p.kind, 'live2d');
+  assert.equal(p.live2d.pinned.Paramcol_3, 1, 'the model\'s own watermark switch is off');
+  for (const id of ['ParamYFWL_21', 'ParamYFWL_22', 'ParamYFWL_23', 'ParamYFWL_24']) assert.equal(p.live2d.pinned[id], 0, `${id}: no chest physics (all-ages)`);
+  assert.ok(p.live2d.faces.blush && p.live2d.faces.wide && p.live2d.params.tail);
+  assert.match(p.author, /Mao绒绒家园/);
+  assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel');
+  for (const f of ['live2dcubismcore.min.js', 'pixi.min.js', 'unsafe-eval.min.js', 'cubism4.min.js']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'src', 'renderer', 'vendor', 'live2d', f)), `runtime ${f}`);
 });

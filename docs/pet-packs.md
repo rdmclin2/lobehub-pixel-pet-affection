@@ -70,7 +70,34 @@ my-grok/
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
 - **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（1328×4068，每帧 332×452，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
-- `rig` 类型（全动态）见下一节。
+- `rig` 类型（全动态）和 `live2d` 类型见下面两节。
+
+## Live2D 角色包（`"kind": "live2d"`）
+
+直接用一个 Cubism 4 的 Live2D 模型（`.model3.json` + `.moc3` + 贴图 + 物理）。头发、衣服、手臂等的摆动交给模型自己的物理；应用每帧按她的状态设置头部和身体角度、眼睛、眉毛、嘴和表情开关，再叠加窗口移动带来的惯性。运行时（Cubism Core、PixiJS、pixi-live2d-display）在 `src/renderer/vendor/live2d/`，第一次显示 Live2D 外观时才加载。
+
+```jsonc
+{
+  "schema": 2, "id": "my-live2d", "name": "…", "species": "dafeiyu",
+  "kind": "live2d",
+  "model": "model/xxx.model3.json",            // 包内路径；它引用的 Moc、Textures、Physics 都要在包里
+  "live2d": {
+    "height": 0.8,                             // 她占画面高度的比例（脚贴底）
+    "params": {                                // 模型自己的参数名（标准参数 ParamAngleX、ParamEyeLOpen、ParamMouthOpenY… 直接用）
+      "armL": "Param_arm_L1", "armR": "Param_arm_R1", "elbowR": "Param_arm_R2",
+      "tail": "…", "earL": "…", "earR": "…",
+      "armOut": -22, "armWave": -30, "elbowWave": 25   // 手臂张开 / 挥动时加的角度（方向按模型而定）
+    },
+    "faces": { "blush": { "PARAM_EXP4": 1 }, "wide": { "PARAM_EXP5": 1 }, "squint": { "PARAM_EXP5": -1 } },  // 表情开关
+    "pinned": { "Paramcol_3": 1 }              // 每帧在物理之后固定的值（水印开关、要关掉的物理等）
+  },
+  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；有图的服饰才用 Live2D，其他服饰穿默认角色包
+}
+```
+
+- 应用用到的表情名：`blush`（脸红）、`wide`（O_O 惊讶）、`squint`（>_<）、`gloom`（脸黑）、`drool`（流口水）、`dizzy`、`o`。模型没有的就不写。
+- 手臂、尾巴、耳朵如果是模型物理的输出，应用的动作会叠加在物理结果上。
+- 没有 WebGL 的电脑上显示 `outfits` 里的图。
 
 ## 全动态角色包（`"kind": "rig"`）
 
