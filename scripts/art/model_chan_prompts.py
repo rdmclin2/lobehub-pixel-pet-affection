@@ -125,25 +125,38 @@ OUTFIT_LOOKS = {
 # least knee-length, loose cuts, no hats except the beret and the flower crown (both small, so her height stays
 # within check_model_chan.py's 12% of daily).
 WARDROBE = {
- "scarf": "a cosy oversized beige cable-knit sweater with long sleeves, a long knitted scarf in her main accent colour wrapped once around her neck with the ends hanging down, a knee-length pleated skirt, opaque tights and brown ankle boots",
- "casual": "a loose oversized hoodie in her main accent colour with the hood down and the sleeves pushed to her wrists, comfy grey jogger pants and chunky white sneakers",
- "beret": "a striped long-sleeved shirt, loose paint-splashed denim overall dungarees with long legs, a small flat beret worn tilted on the side of her head, a paintbrush tucked in the bib pocket and canvas shoes",
- "pajamas": "fluffy long-sleeved button-up polka-dot pajamas with a round collar and long loose trousers in soft pastel tones of her colours, and fluffy slippers, no nightcap",
- "cat_ears": "a soft pastel zip-up lounge hoodie with long sleeves zipped up to her collarbones, matching long loose lounge pants, a cat-ear headband and fluffy slippers",
- "yukata": "a long summer yukata reaching her ankles with a flower pattern in her colours, closed neatly at the neck, a wide obi sash tied in a bow at the back, and wooden geta sandals",
- "couple_hoodie": "a pink oversized hoodie with a big heart print on the front, a knee-length pleated skirt over opaque black tights and white sneakers",
- "flower_crown": "a flowing ankle-length white sundress with a modest square neckline at her collarbones and short puff sleeves, a crown of small flowers in her colours resting on her hair, and strappy flat sandals",
- "qipao": "an elegant loose straight-cut ankle-length qipao (cheongsam) in her main accent colour with a high mandarin collar, short cap sleeves, embroidered flowers, short side slits only at the ankles, and low flat shoes",
- "idol": "a sparkly knee-length idol stage dress with a high frilled collar, puff sleeves, layered frills, ribbons and a big bow in her colours, opaque white tights, a small wrist microphone charm and shiny ankle boots",
+ "scarf": "an oversized cream-beige cable-knit sweater with long sleeves, a long knitted {a} scarf with {b} stripes at the ends wrapped once around her neck, a knee-length pleated {b} skirt, opaque dark brown tights and brown ankle boots",
+ "casual": "a loose oversized {a} hoodie with {b} drawstrings and the hood down, comfy light grey jogger pants and chunky white sneakers",
+ "beret": "a {a}-and-white striped long-sleeved shirt, loose light-blue denim overall dungarees with long legs and a few small paint splashes, a small flat {b} beret worn tilted on the side of her head, a paintbrush tucked in the bib pocket and white canvas shoes",
+ "pajamas": "fluffy long-sleeved button-up pajamas in pastel {a} with white polka dots and a round white collar, long loose matching pastel {a} trousers and fluffy white slippers, no nightcap",
+ "cat_ears": "a soft pastel {a} zip-up lounge hoodie with long sleeves zipped up to her collarbones, matching long loose pastel {a} lounge pants, a {b} cat-ear headband and fluffy white slippers",
+ "yukata": "a long {a} summer yukata reaching her ankles with a {b} flower pattern, closed neatly at the neck, a wide {b} obi sash tied in a bow at the back, and wooden geta sandals",
+ "couple_hoodie": "a pink oversized hoodie with a big red heart print on the front, a knee-length pleated {a} skirt over opaque black tights and white sneakers",
+ "flower_crown": "a flowing ankle-length white sundress with a modest square neckline at her collarbones and short puff sleeves, a crown of small {a} and white flowers resting on her hair, and white strappy flat sandals",
+ "qipao": "an elegant loose straight-cut ankle-length {a} qipao (cheongsam) with a high mandarin collar, short cap sleeves, {b} embroidered flowers, short side slits only at the ankles, and {b} low flat shoes",
+ "idol": "a sparkly knee-length idol stage dress in {a} and {b} with a high frilled collar, puff sleeves, layered frills, ribbons and a big {b} bow, opaque white tights, a small wrist microphone charm and shiny {b} ankle boots",
 }
+# Garment colours per character ({a} main, {b} second), from her daily palette: every sheet of an outfit is drawn
+# separately, so "her palette" alone gave a different skirt colour from sheet to sheet.
+WARDROBE_COLOURS = {
+ "dafeiyu": {"a": "deep navy", "b": "light blue"},
+ "claude": {"a": "orange", "b": "cream white"},
+ "grok": {"a": "black", "b": "wine red"},
+ "gemini": {"a": "lavender violet", "b": "deep navy"},
+ "gpt": {"a": "pale lavender", "b": "white"},
+}
+# Per-character replacements: Gemini already has cat ears, so her lounge set has a cat-ear hood (worn down).
+WARDROBE_FIX = {("cat_ears", "gemini"): ("a {b} cat-ear headband", "a hood with little cat ears worn down on her back")}
 WARDROBE_KEEP = {"dafeiyu": "A deep-blue whale tail with a forked fluke behind her."}
 
-def _palette(cid):
-    return CHARS[cid].rsplit("Colours: ", 1)[1]
+def _wardrobe_look(oid, c):
+    desc = WARDROBE[oid]
+    if (oid, c) in WARDROBE_FIX: desc = desc.replace(*WARDROBE_FIX[(oid, c)])
+    desc = desc.format(**WARDROBE_COLOURS[c])
+    return " ".join(filter(None, [f"She wears {desc}.", WARDROBE_KEEP.get(c), "She wears exactly the same outfit in exactly the same colours in every cell"]))
 
-for _oid, _desc in WARDROBE.items():
-    OUTFIT_LOOKS[_oid] = {c: " ".join(filter(None, [f"She wears {_desc}.", WARDROBE_KEEP.get(c), f"Colours: her own palette ({_palette(c)}) unless a colour is named above"]))
-                          for c in CHARS}
+for _oid in WARDROBE:
+    OUTFIT_LOOKS[_oid] = {c: _wardrobe_look(_oid, c) for c in CHARS}
 
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
 OUTFIT_SAFE = {
@@ -207,6 +220,10 @@ def safe_for(outfit):
     base = SAFE.split(" Fully covered")[0] if outfit in OUTFIT_SAFE_ONLY else SAFE
     return " ".join([base, OUTFIT_SAFE[outfit]])
 
+def chroma(cid):
+    hexkey = "pure bright green #00FF00" if cid == "gemini" else "pure bright magenta #FF00FF"
+    return f"Chroma-key sprite sheet: the whole picture background is {hexkey} like a green screen, used only to cut the sprites out later."
+
 def bg_for(cid, outfit=None):
     # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);
     # her daily prompts keep BG as written
@@ -220,7 +237,7 @@ def walk_jobs(outfit=None, only=None):
         key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
         style = STYLE.replace(GRID, HALF_GRID).replace("facing the viewer.", SIDE)
         bg = WALK_BG.format(name=key[0], hex=key[1])
-        out.append({"name": f"{name}_walk", "prompt": " ".join([bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
+        out.append({"name": f"{name}_walk", "prompt": " ".join(([chroma(cid)] if outfit in WARDROBE else []) + [bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
     return out
 
 def jobs(halves=False, outfit=None, only=None):
@@ -234,7 +251,16 @@ def jobs(halves=False, outfit=None, only=None):
                 continue
             for half, part in (("a", rows[:2]), ("b", rows[2:])):
                 part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
-                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg_for(cid, outfit)])})
+                bg = bg_for(cid, outfit)
+                if outfit in WARDROBE:
+                    # These sheets came back on dark gradient backdrops even with WALK_BG said first and last;
+                    # naming the colour as a chroma key ("like a green screen") keeps it flat (2026-10-31).
+                    key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
+                    bg = WALK_BG.format(name=key[0], hex=key[1])
+                    part = [chroma(cid), bg, style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg]
+                else:
+                    part = [style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg]
+                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join(part)})
     return out
 
 def arg(flag):
