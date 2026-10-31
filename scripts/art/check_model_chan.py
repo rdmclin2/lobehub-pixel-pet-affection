@@ -1,4 +1,4 @@
-# Check the model-chan pixel packs (src/renderer/packs/*-pixel, schema 2) and print one line per action.
+# Check the model-chan sprite packs (src/renderer/packs/*-pixel and the 18+ *-adult, schema 2) and print one line per action.
 # Passes when every outfit sheet of every pack is an RGBA PNG or WebP of 4 x 9 cells of 332 x 452 (the HD packs), every state of the shared effects
 # layer (17, `walk` from add_walk_frames.py in the 9th row) has an action, and every frame of every action has a visible figure.
 # Also, per character (src/characters/<id>.json): every outfit it offers has a sheet in its default pack (art.packs[0]);
@@ -37,7 +37,7 @@ def box(a, x, y):
     if not len(ys): return None
     return int(ys.max()), int(ys.max() - ys.min() + 1), float(xs.mean())
 
-for pid in sorted(p for p in os.listdir(packs_dir) if p.endswith('-pixel')):
+for pid in sorted(p for p in os.listdir(packs_dir) if p.endswith(('-pixel', '-adult'))):
     d = os.path.join(packs_dir, pid)
     pack = json.load(open(os.path.join(d, 'pack.json')))
     daily_boxes = None

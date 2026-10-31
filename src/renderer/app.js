@@ -795,7 +795,7 @@ function renderCharacter(c) {
   const look = document.createElement('div');
   look.className = 'adv-section';
   look.id = 'look-section';
-  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件和成人向限制不受角色包影响。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
+  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
   const list = look.querySelector('.pack-list');
   for (const o of c.appearance.options) {
     const on = o.id === c.appearance.packId;
@@ -808,7 +808,7 @@ function renderCharacter(c) {
     pick.setAttribute('aria-checked', String(on));
     pick.disabled = on;
     prow.querySelector('b').textContent = o.name;
-    prow.querySelector('span').textContent = `${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
     pick.addEventListener('click', async () => {
       const r = await window.pet.setAppearance(o.id, c.id);
       if (!r.ok) return;
@@ -1183,7 +1183,8 @@ function renderWardrobe() {
   pv.className = 'preview';
   pv.id = 'outfit-preview';
   pv.dataset.outfit = worn.id;
-  pv.innerHTML = '<div class="nm"></div><div class="adult-note">当前穿着 · 成年（18 岁）</div>';
+  const grownUp = !!(view.appearance && (view.appearance.options.find((x) => x.id === view.appearance.packId) || {}).adult);
+  pv.innerHTML = `<div class="nm"></div><div class="adult-note">当前穿着 · ${grownUp ? '成年版（20 岁）' : '成年（18 岁）'}</div>`;
   pv.prepend(outfitArt(worn, view.pet.speciesId));
   pv.querySelector('.nm').textContent = worn.label;
   wrap.appendChild(pv);

@@ -6,14 +6,17 @@
 # --outfit <id> (default daily): the sheet is that outfit's (sheets/<id>.webp, an outfit of src/core/outfits.js).
 # Every outfit of a pack shares one layout, so another outfit is added to the existing pack.json (built from
 # daily first) and its frame size must match; rebuilding daily keeps the other outfits and the walk action.
-# usage: build_model_chan_pack.py [--hd] [--outfit <id>] <base.png | base_a.png base_b.png> <extra.png | extra_a.png extra_b.png> <character id> <pack dir>
+# --adult: the 18+ 成年版 pack <id>-adult (T-1261): the 20-year-old look (model_chan_prompts.py --mature) with
+# the adult wardrobe, marked `adult: true` so the app lists and wears it only with adult content on.
+# usage: build_model_chan_pack.py [--hd] [--adult] [--outfit <id>] <base.png | base_a.png base_b.png> <extra.png | extra_a.png extra_b.png> <character id> <pack dir>
 import json, os, sys
 from PIL import Image
 
 # --hd: the sheets came from slice_sheet.py --smooth: write a lossy WebP (lossless alpha) and mark the pack
 # as not pixelated, so the app draws it smoothed instead of as blocks
 hd = '--hd' in sys.argv
-argv = [a for a in sys.argv[1:] if a != '--hd']
+adult = '--adult' in sys.argv
+argv = [a for a in sys.argv[1:] if a not in ('--hd', '--adult')]
 outfit = 'daily'
 if '--outfit' in argv:
     i = argv.index('--outfit'); outfit = argv[i + 1]; del argv[i:i + 2]
@@ -49,12 +52,14 @@ for old_sheet in (f'{outfit}.png', f'{outfit}.webp'):
 if hd: sheet.save(os.path.join(dst, 'sheets', sheet_name), 'WEBP', quality=92, method=6, alpha_quality=100)
 else: sheet.save(os.path.join(dst, 'sheets', sheet_name), optimize=True)
 manifest = {
-    'schema': 2, 'id': f'{cid}-pixel', 'name': f"{c['nameZh']} · 像素", 'version': '4.0.0' if hd else '3.0.0',
+    'schema': 2, 'id': f'{cid}-adult' if adult else f'{cid}-pixel', 'name': f"{c['nameZh']} · 成年版（18+）" if adult else f"{c['nameZh']} · 像素", 'version': '1.0.0' if adult else '4.0.0' if hd else '3.0.0',
     'author': 'rdmclin2（gpt-image-2.5 生成，脚本像素化）；原设 ZipZipPipe，设定 lmy414', 'license': 'CC BY-NC-SA 4.0',
-    'description': f"{c['title']}（同人，非 {c['vendor']} 官方）。16 位像素风，16 个动作（含大肥鱼全部 15 个状态和拎起）。",
+    'description': (f"{c['title']}（同人，非 {c['vendor']} 官方）的 20 岁成年版，带成人向衣柜；只在确认年满 18 岁并开启成人向内容后可选。16 位像素风，16 个动作和侧身走路。" if adult
+                    else f"{c['title']}（同人，非 {c['vendor']} 官方）。16 位像素风，16 个动作（含大肥鱼全部 15 个状态和拎起）。"),
     'species': cid, 'kind': 'sprites', 'pixelated': not hd, 'frame': {'width': FW, 'height': FH},
     'actions': actions, 'outfits': {'daily': f'sheets/{sheet_name}'},
 }
+if adult: manifest['adult'] = True
 if prev and outfit != 'daily':
     manifest = prev
     manifest['outfits'][outfit] = f'sheets/{sheet_name}'

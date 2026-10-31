@@ -62,6 +62,8 @@ python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸�
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
 ```
 
+**18+ 成年版**（`<id>-adult`，T-1261）：同样的流程，提示词加 `--mature`（20 岁成年形象，名字带 `_mature`），组包用 `build_model_chan_pack.py --hd --adult [--outfit <id>] … <id> src/renderer/packs/<id>-adult`，走路帧和对齐同上。成人向服饰的描述在 `ADULT_WARDROBE`，只能和 `--mature` 一起用。目前画了日常服和 `maid`；其余成人向款式生成时被图像服务的安全暂停拦下，没有图。
+
 10 套全年龄衣柜服饰（`WARDROBE`）也按这个流程生成。它们的提示词开头多一句 “Chroma-key sprite sheet … like a green screen”：只写平常的背景句时，gpt-image 常常画成深色渐变背景，抠不出来。生成后用 `scripts/art/align_outfit.py src/renderer/packs/<id>-pixel <outfit>` 把和 daily 对应帧身高差超过 11.5% 的格子以脚底为基准缩放对齐（多半是蹲着的唤醒帧），再跑 `check_model_chan.py`。
 
 五位的沙滩比基尼 `bikini` 按同样的流程生成（`--outfit bikini`），图集是默认包里的 `sheets/bikini.webp`。gpt-image 偶尔把同一张宫格里的几格画得大一圈或小一圈，`check_model_chan.py` 会报“vs daily height”超限；这时按 daily 对应帧的身高，以脚底为基准把那几格在 fit 后的图里缩放对齐，再重建图集（2026-10-31：大肥鱼的待机、饿了、吃饼干和拎起第 2 帧，吉皮缇的唤醒第 1 帧）。
