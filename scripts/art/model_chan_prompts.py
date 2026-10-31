@@ -79,15 +79,31 @@ OUTFIT_LOOKS = {
           "an open long-sleeved white hooded sun-protection jacket reaching her hips with wavy ruffled cuffs, thin silver trim and a white rosette knot pinned on its chest, "
           "and white beach sandals with lavender straps. Colours: white, pale lavender and silver only"),
  },
+ # All-ages beach bikini, dafeiyu-pixel only (adult proportions since 2026-10-29; her chibi dsh-pet clips and
+ # dafeiyu-classic never wear it). Breezier than the sporty swimsuit but still ordinary beachwear: see OUTFIT_SAFE.
+ "bikini": {
+  "dafeiyu": ("She wears a cute summer beach bikini in her maid colours: a deep navy halter-neck bikini top with full-coverage triangle cups, thin white frilled trim along its edges "
+              "and a small black bow with a blue gem at the centre, tied behind her neck with a navy ribbon; matching deep navy mid-rise bikini bottoms with white frilled trim and small white side bows; "
+              "a knee-length blue-and-white pinstriped sarong of thick opaque fabric wrapped low around her hips and knotted at her left hip with a short ruffled white hem, "
+              "a short open white cropped beach cardigan of thick opaque cotton with puffed short sleeves, a thin lace edge and a tiny blue whale embroidered on its hem, worn loosely off her upper arms but covering her shoulders, "
+              "a thin white lace wrist cuff on each wrist and deep navy flat beach sandals with a small gold buckle. Her midriff, arms and lower legs are bare. "
+              "A deep-blue whale tail with a forked fluke behind her. Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
+ },
 }
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
 OUTFIT_SAFE = {
  "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
               "no bikini, no cleavage, no bare midriff, no high-cut legs, nothing see-through, nothing that looks like underwear."),
+ "bikini": ("It is ordinary all-ages beachwear like at a family beach: the bikini top fully covers her chest with opaque fabric and only a little gentle cleavage, "
+            "the bottoms are mid-rise with regular coverage (not high-cut, not a thong, not tiny), the sarong stays tied over her hips; "
+            "nothing see-through, no lingerie or underwear look, no lace bra, no straps slipping, no wardrobe malfunction, no suggestive or sexy pose, arms never squeezing her chest, a cheerful innocent beach mood."),
 }
+# Outfits whose clothes contradict SAFE's "fully covered" sentence keep only its adult-body sentence.
+OUTFIT_SAFE_ONLY = {"bikini"}
 # The walk rows name the skirt; an outfit without one says what sways instead.
 OUTFIT_WALK = {
  "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
+ "bikini": ((" under the skirt", ""), ("skirt and hair swaying", "the sarong, cardigan and hair swaying")),
 }
 
 def identity(cid):
@@ -123,7 +139,9 @@ GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
 def safe_for(outfit):
-    return " ".join([SAFE, OUTFIT_SAFE[outfit]]) if outfit in OUTFIT_SAFE else SAFE
+    if outfit not in OUTFIT_SAFE: return SAFE
+    base = SAFE.split(" Fully covered")[0] if outfit in OUTFIT_SAFE_ONLY else SAFE
+    return " ".join([base, OUTFIT_SAFE[outfit]])
 
 def bg_for(cid, outfit=None):
     # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);
