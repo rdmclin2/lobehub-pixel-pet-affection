@@ -41,6 +41,9 @@ const OUTFITS = [
   { id: 'office', stage: 'flirty', rating: 'adult', label: '职场 OL', desc: '解开领口的白衬衫、紧身包臀裙、黑丝和细跟鞋，戴细框眼镜。' },
   { id: 'nurse', stage: 'flirty', rating: 'adult', label: '护士服', desc: '拉链款短护士裙、护士帽、白色吊带长筒袜。' },
   { id: 'stewardess', stage: 'flirty', rating: 'adult', label: '空姐制服', desc: '收腰短外套、丝巾、紧身短裙和黑丝。' },
+  // The first (owner-approved) bikini designs, drawn at adult proportions before the all-ages `bikini` was toned
+  // down: halter / triangle tops with a sarong. Only in the 18+ "<id>-adult" packs (T-1261).
+  { id: 'sexy_bikini', stage: 'flirty', rating: 'adult', label: '性感比基尼', desc: '三角或挂脖比基尼，系在胯上的纱笼，外搭薄开衫。' },
   { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着大红心的粉色宽松卫衣、及膝百褶裙和不透明黑色连裤袜。' },
   { id: 'flower_crown', stage: 'lover', rating: 'all', label: '花冠长裙', desc: '白色及踝连衣长裙和一顶小花冠。' },
   { id: 'retro_swimsuit', stage: 'lover', rating: 'adult', label: '高开衩连体泳衣', desc: '深 V 高开衩亮面连体泳衣，配细金腰链。' },

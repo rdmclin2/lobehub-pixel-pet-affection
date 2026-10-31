@@ -16,6 +16,10 @@ FW, FH = 332, 452
 MIN_PX = 6400      # opaque pixels a frame needs to count as drawn
 MAGENTA_MAX = 50   # pure magenta pixels (the key colour) allowed on a whole sheet
 FLOOR_DY, HEIGHT_RATIO, CENTRE_DX = 6, 0.12, 48  # largest per-frame differences from daily
+# Frames that stand in for a pose the sheet was not drawn with may keep their own height (the floor and centre
+# are still checked): the 18+ sexy_bikini sheets come from 8-state design drafts, so their crouching hatch#0
+# is a standing frame (T-1261).
+HEIGHT_FREE = {('sexy_bikini', 'hatch', 0)}
 packs_dir = os.path.join(root, 'src/renderer/packs')
 bad = 0
 
@@ -79,6 +83,7 @@ for pid in sorted(p for p in os.listdir(packs_dir) if p.endswith(('-pixel', '-ad
             base = daily_boxes.get(key)
             if not b or not base: continue
             dy, dh, dx = abs(b[0] - base[0]), abs(b[1] / base[1] - 1), abs(b[2] - base[2])
+            if (outfit, *key) in HEIGHT_FREE: dh = 0.0
             worst = {'floor': max(worst['floor'], dy), 'height': max(worst['height'], dh), 'centre': max(worst['centre'], dx)}
             if dy > FLOOR_DY or dh > HEIGHT_RATIO or dx > CENTRE_DX: off.append(f"{key[0]}#{key[1]} floor Δ{dy} height Δ{dh:.0%} centre Δ{dx:.0f}")
         aligned = not off

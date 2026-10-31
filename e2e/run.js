@@ -4364,7 +4364,7 @@ async function adultLook() {
       const l = await looks();
       assert.ok(l.includes(adultId), `外观: ${l.join(', ')}`);
       const meta = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta span`);
-      assert.match(meta, /^18\+ · 像素动画 · 2 套服饰/);
+      assert.match(meta, /^18\+ · 像素动画 · 3 套服饰/);
       const name = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta b`);
       return `${name} — ${meta} · ${await shot('2-looks-18plus')}`;
     }, page);
@@ -4379,7 +4379,7 @@ async function adultLook() {
       await closePanel();
       const a = await shot('3-desktop-adult-daily');
       const w = await wardrobe();
-      assert.deepEqual(w, ['daily', 'maid'], "the 成年版's own outfits");
+      assert.deepEqual(w, ['daily', 'maid', 'sexy_bikini'], "the 成年版's own outfits");
       assert.equal(await page.textContent('.card[data-outfit="maid"] .nm'), '性感女仆装');
       await cardsDrawn();
       assert.match(await page.textContent('#outfit-preview .adult-note'), /成年版（20 岁）/);
@@ -4387,7 +4387,7 @@ async function adultLook() {
       return `wardrobe ${w.join(', ')} · ${a}, ${b}`;
     }, page);
 
-    await step(S, 'she puts on the adult maid outfit: idle, walk and lifted come from its sheet', async () => {
+    await step(S, 'she puts on the adult maid outfit (idle, walk, happy from its sheet), then the 性感比基尼', async () => {
       await page.click('.card[data-outfit="maid"]');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
       await cardsDrawn();
@@ -4410,7 +4410,19 @@ async function adultLook() {
       await page.evaluate(() => window.petFx.cue('happy'));
       await page.waitForTimeout(300);
       const h = await shot('8-desktop-maid-happy');
-      return `${await frame()} · ${b}, ${i}, ${wk}, ${h}`;
+      // the 性感比基尼 too (the early bikini drafts): put on from the wardrobe, drawn from its own sheet
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card[data-outfit="sexy_bikini"]');
+      await page.click('.card[data-outfit="sexy_bikini"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await closePanel();
+      await idle();
+      assert.equal(await key(), `${adultId}/sexy_bikini`);
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await page.waitForTimeout(400);
+      assert.match(await frame(), new RegExp(`${adultId}/sheets/sexy_bikini\\.webp#0:`));
+      const bk = await shot('8b-desktop-bikini-idle');
+      return `${await frame()} · ${b}, ${i}, ${wk}, ${h}, ${bk}`;
     }, page);
 
     await step(S, 'turning adult content off: back to her usual look in an all-ages outfit, and the 成年版 leaves 外观', async () => {
@@ -4425,7 +4437,7 @@ async function adultLook() {
       assert.ok(!l.includes(adultId));
       await closePanel();
       const w = await wardrobe();
-      assert.ok(!w.includes('maid') && w.includes('swimsuit'), `wardrobe ${w.join(', ')}`);
+      assert.ok(!w.includes('maid') && !w.includes('sexy_bikini') && w.includes('swimsuit'), `wardrobe ${w.join(', ')}`);
       await cardsDrawn();
       assert.match(await page.textContent('#outfit-preview .adult-note'), /成年（18 岁）/);
       const b = await shot('10-wardrobe-adult-off');

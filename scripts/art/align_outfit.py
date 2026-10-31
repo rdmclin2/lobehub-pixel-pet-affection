@@ -2,7 +2,7 @@
 # bigger or smaller (often the crouching hatch frame), which check_model_chan.py reports as a height jump.
 # Every frame whose figure height differs from the same daily frame by more than --tol (default 11.5%, just inside check_model_chan.py's 12%) is
 # scaled about its feet to the daily height, staying inside its cell. Writes the sheet in place.
-# usage: align_outfit.py <pack dir> <outfit> [--tol 0.115]
+# usage: align_outfit.py <pack dir> <outfit> [--tol 0.115] [--keep hatch#0]
 import json, os, sys
 import numpy as np
 from PIL import Image
@@ -10,6 +10,8 @@ from PIL import Image
 FW, FH = 332, 452
 d, outfit = sys.argv[1], sys.argv[2]
 tol = float(sys.argv[sys.argv.index('--tol') + 1]) if '--tol' in sys.argv else 0.115
+# --keep <action#frame,...>: frames left at their own height (a stand-in for a pose not drawn, e.g. hatch#0)
+keep = set(sys.argv[sys.argv.index('--keep') + 1].split(',')) if '--keep' in sys.argv else set()
 pack = json.load(open(os.path.join(d, 'pack.json')))
 daily = np.asarray(Image.open(os.path.join(d, pack['outfits']['daily'])).convert('RGBA'))[..., 3]
 path = os.path.join(d, pack['outfits'][outfit])
@@ -27,7 +29,7 @@ for name, v in pack['actions'].items():
         b, bd = bbox(np.asarray(cell)[..., 3]), bbox(daily[y:y + FH, x:x + FW])
         if not b or not bd: continue
         h, hd = b[3] - b[1], bd[3] - bd[1]
-        if abs(h / hd - 1) <= tol: continue
+        if abs(h / hd - 1) <= tol or f'{name}#{k}' in keep: continue
         full = cell.getbbox()  # include the soft edge, not only the solid part
         fig = cell.crop(full)
         s = hd / h
