@@ -26,10 +26,11 @@ The companions are fan characters themed on AI model vendors. **None of them is 
 - **Retired art.** The original companions (焰团, 泡鲸, 叶芽), their packs and the procedural spirit stones were removed with the model-chan roster; old saves are taken over by a current character (see `src/core/species.js`).
 - **App icon.** `build/icon.png` shows the three model-chan in pixel style; generated on 2026-10-29 with `gpt-image-2.5-sunburst` (prompt `logo` in `scripts/art/prompts.py`). It depicts the same fan characters, so it is **CC BY-NC-SA 4.0, non-commercial** like the packs. (The earlier icon showed a retired character and was replaced.)
 
-Content notes: every character's set age is 25+. Claude, Grok, Gemini, GPT and 大肥鱼's pixel pack are drawn with adult proportions; 大肥鱼's pixel pack uses the same adult proportions; only her optional dsh-pet clips keep the community character's chibi style. All of them are all-ages only. No picture shows nudity or underwear. Adult-rated outfits (maid, off-shoulder gown, retro swimsuit, silk robe) exist in the app but no current character has art for them or allows adult content, so they are never shown.
+Content notes: every character's set age is 18. Claude, Grok, Gemini, GPT and 大肥鱼's pixel pack are drawn with adult proportions; 大肥鱼's pixel pack uses the same adult proportions; only her optional dsh-pet clips keep the community character's chibi style. All of them are all-ages only. No picture shows nudity or underwear. Adult-rated outfits (maid, off-shoulder gown, retro swimsuit, silk robe) exist in the app but no current character has art for them or allows adult content, so they are never shown.
 
 | id | 名称 | 解锁阶段 | 分级 | 美术 |
 | --- | --- | --- | --- | --- |
 | `daily` | 日常服（每位角色的原设服装） | 陌生 | 全年龄 | 每位角色的像素包；大肥鱼也可换成原版动画 |
+| `bikini` | 沙滩比基尼（荷叶边上衣盖住整个胸口、及大腿中部的荷叶边泳裙、短开衫） | 暧昧 | 全年龄 | 五位角色的默认像素包 `sheets/bikini.webp`；原版动画、旧版像素包没有，回落到默认像素包 |
 | `scarf` / `casual` / `beret` / `pajamas` / `cat_ears` / `yukata` / `couple_hoodie` / `flower_crown` | 全年龄服饰 | 陌生 – 恋人 | 全年龄 | 当前角色均无（不显示）；大肥鱼原先的 8 套立绘已移除 |
 | `maid` / `offshoulder_gown` / `retro_swimsuit` / `silk_robe` | 成人向服饰 | 暧昧 / 恋人 | 成人向 | 当前角色均无（不显示） |

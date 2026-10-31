@@ -543,7 +543,7 @@ test('a save whose character was retired opens with a current character, never c
   assert.equal(v.pet.affection, 40, 'affection kept');
   assert.equal(v.pet.agentId, 'agt_OLD');
   assert.equal(v.outfit, 'daily', 'an outfit the new character has no art for falls back to daily');
-  assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'swimsuit'], "克洛蒂's own outfits");
+  assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'swimsuit', 'bikini'], "克洛蒂's own outfits");
   assert.deepEqual(v.pet.retiredFrom, { speciesId: 'embit', at: clock.t });
   assert.equal(v.look.packId, 'claude-pixel');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, { grok: 'grok-pixel' }, 'looks of retired characters are dropped');

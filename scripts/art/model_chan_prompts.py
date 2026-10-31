@@ -51,6 +51,13 @@ CHARS = {
          "and low-heeled white pointed shoes with a white rosette knot. Draw her with clean dark grey-violet outlines so the white figure reads clearly. Colours: pure white, pale lavender and silver only, no gold, red, blue or green"),
 }
 
+# Body notes for every outfit other than daily (the daily gowns hide the figure; beachwear shows it). Groko is
+# drawn as a petite gothic-lolita style adult: the owner found her first bikini design too curvy (2026-10-31).
+BODY = {
+ "grok": ("She has a petite, very slim adult figure like a slender fashion model: narrow shoulders, a small flat-ish modest bust with no cleavage, "
+          "a slender waist, narrow hips and thin straight legs with slim thighs, clearly an adult woman with an adult face."),
+}
+
 # Other outfits: the clothes each character wears in them (everything after her identity). Every look keeps
 # docs/pet-packs.md "内容要求": an adult woman, nothing revealing, no underwear look. No hats: the figure is
 # scaled by its height (slice_sheet.py), so a hat would make her smaller than in her daily sheet.
@@ -79,15 +86,57 @@ OUTFIT_LOOKS = {
           "an open long-sleeved white hooded sun-protection jacket reaching her hips with wavy ruffled cuffs, thin silver trim and a white rosette knot pinned on its chest, "
           "and white beach sandals with lavender straps. Colours: white, pale lavender and silver only"),
  },
+ # All-ages beach bikini, dafeiyu-pixel and the other four (adult proportions; dafeiyu's chibi dsh-pet clips and
+ # dafeiyu-classic never wear it). The owner wants it sweet and innocent with a modest bust (2026-10-31): loose
+ # two-layer flounce tops that hide the chest's shape, skirted bottoms and a short cardigan. See OUTFIT_SAFE.
+ "bikini": {
+  "dafeiyu": ("She wears a sweet sailor-style beach bikini in her maid colours: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+              "edged with a thin navy line, with a small navy sailor-collar ribbon bow and a tiny blue gem at the centre and wide white shoulder straps; "
+              "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a white ruffled hem and a small white bow at the waist; "
+              "a short white cropped cardigan of thick opaque cotton with puffed short sleeves, a lace edge and a tiny blue whale embroidered on its hem, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+              "a thin white lace wrist cuff on each wrist and white flat beach sandals with navy straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
+              "A deep-blue whale tail with a forked fluke behind her. Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
+  "claude": ("She wears a sweet beach bikini in her blouse colours: a cream-white flounce bikini top made of two layers of loose wide cream frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+             "edged with thin orange-red trim, with a small orange flower and a tiny black bow at the centre and wide cream shoulder straps; "
+             "an orange-and-cream gingham skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a cream ruffled hem and a small black bow at the waist; "
+             "a short cream-white cropped cardigan of thick opaque cotton with puffed short sleeves and thin gold trim, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and cream-white flat beach sandals with orange straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: orange, amber, cream white, black and gold only"),
+  "grok": ("She wears a sweet gothic-lolita beach bikini: a black flounce bikini top made of two layers of loose wide black frills edged in white lace that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+           "a small wine-red bow with a gold ring emblem at the centre and wide black shoulder straps; a black skirted bikini bottom: a three-tiered black frilled swim skirt reaching just above her knees "
+           "with white lace edges, a wine-red underlayer and small wine-red bows at her hips; "
+           "a short black cropped bolero of thick opaque cotton with a wine-red lined pointed stand-up collar, short puffed sleeves and white lace cuffs, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+           "a black lace ribbon choker with a tiny gold ring, and black flat beach sandals with gold buckles. Only a narrow strip of her waist, her forearms and her lower legs are bare. "
+           "Colours: black, wine red, gold and champagne blonde only"),
+  "gemini": ("She wears a sweet starry beach bikini: a lavender flounce bikini top made of two layers of loose wide lavender frills dotted with tiny white stars that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+             "edged with thin white trim, with a big deep navy ribbon bow and a small white four-pointed star charm at the centre and wide lavender shoulder straps; "
+             "a deep navy skirted bikini bottom: a two-tiered frilled navy swim skirt reaching just above her knees with a lavender ruffled hem and tiny white star prints; "
+             "a short white cropped hoodie-cardigan of thick opaque cotton with small cat ears on its lowered hood, wide short sleeves and violet edging, fastened with one button at the top of her chest, covering her shoulders and upper chest; "
+             "and lavender flat beach sandals. Only a narrow strip of her waist, her forearms and her lower legs are bare. A fluffy lavender cat tail behind her. "
+             "Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
+  "gpt": ("She wears a sweet, pure beach bikini: a white flounce bikini top made of two layers of loose wide white frills that start at a closed, high round neckline right at her collarbones and cover her whole chest, "
+          "edged with thin pale lavender trim, with a small white rosette knot and a tiny lavender crystal at the centre and wide white shoulder straps; "
+          "a pale lavender skirted bikini bottom: a two-tiered frilled swim skirt reaching just above her knees with a wavy white ruffled hem embroidered with small white roses; "
+          "a short white cropped cardigan of thick opaque cotton with wavy ruffled short sleeves and thin silver trim, fastened with one button at the top of her chest, covering her shoulders and upper chest, "
+          "and white flat beach sandals with lavender straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: white, pale lavender and silver only, no gold, red, blue or green"),
+ },
 }
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
 OUTFIT_SAFE = {
  "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
               "no bikini, no cleavage, no bare midriff, no high-cut legs, nothing see-through, nothing that looks like underwear."),
+ "bikini": ("It is sweet, innocent all-ages beachwear like a cute summer swimsuit for a family beach, the same in every cell: she has a slim adult figure; "
+            "the top has a closed, high round neckline right at her collarbones with no neckline opening, and its loose frills fall straight down like a little cape, "
+            "so the chest is drawn as plain flat layered frills: no cleavage, no bust shading, no bust shape, no emphasis on her chest or hips; "
+            "the short cardigan is always on and buttoned at the top of her chest; the frilled swim skirt reaches just above her knees and stays over her hips; "
+            "nothing see-through, no lingerie or underwear look, no straps slipping, no wardrobe malfunction, no sexy or suggestive pose, arms never squeezing her chest; "
+            "a fresh, pure, cheerful beach mood with a gentle, sweet smile."),
 }
+# Outfits whose clothes contradict SAFE's "fully covered" sentence keep only its adult-body sentence.
+OUTFIT_SAFE_ONLY = {"bikini"}
 # The walk rows name the skirt; an outfit without one says what sways instead.
 OUTFIT_WALK = {
  "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
+ "bikini": ((" under the skirt", " under the swim skirt"), ("skirt and hair swaying", "frilled swim skirt, cardigan and hair swaying")),
 }
 
 def identity(cid):
@@ -98,7 +147,7 @@ def looks(outfit=None, only=None):
     if outfit in (None, "daily"):
         return [(c, d, c) for c, d in CHARS.items() if not only or c in only]
     if outfit not in OUTFIT_LOOKS: raise SystemExit(f"no looks for outfit {outfit!r} (OUTFIT_LOOKS has {', '.join(OUTFIT_LOOKS)})")
-    return [(c, f"{identity(c)} {clothes}", f"{c}_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
+    return [(c, " ".join(filter(None, [identity(c), BODY.get(c), clothes])), f"{c}_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
 
 EXTRA_ROWS = [
     "Row 1: looking around curiously, head turned to her left (frame 1) then to her right (frame 2); then sad, head drooping and sighing with a small blue sweat drop (2 frames).",
@@ -123,7 +172,9 @@ GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
 def safe_for(outfit):
-    return " ".join([SAFE, OUTFIT_SAFE[outfit]]) if outfit in OUTFIT_SAFE else SAFE
+    if outfit not in OUTFIT_SAFE: return SAFE
+    base = SAFE.split(" Fully covered")[0] if outfit in OUTFIT_SAFE_ONLY else SAFE
+    return " ".join([base, OUTFIT_SAFE[outfit]])
 
 def bg_for(cid, outfit=None):
     # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);

@@ -14,7 +14,7 @@ if (!SPECIES[ID]) {
     title: '测试娘 · 成人向夹具',
     accent: '#336699',
     blurb: '只在测试里出现。',
-    personality: '你是测试用的成年角色（设定年龄 25 岁以上），热情、急性子。',
+    personality: '你是测试用的成年角色（设定年龄 18 岁），热情、急性子。',
     catchphrase: '噼啪！',
     likes: '测试用例',
     fallback: { hungry: ['饿了。'], bored: ['好无聊。'], happy: ['开心！'], sleepy: ['困了……'], greet: ['你来啦！'] },

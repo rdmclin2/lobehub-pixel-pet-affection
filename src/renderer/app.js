@@ -1183,7 +1183,7 @@ function renderWardrobe() {
   pv.className = 'preview';
   pv.id = 'outfit-preview';
   pv.dataset.outfit = worn.id;
-  pv.innerHTML = '<div class="nm"></div><div class="adult-note">当前穿着 · 成年（25+）</div>';
+  pv.innerHTML = '<div class="nm"></div><div class="adult-note">当前穿着 · 成年（18 岁）</div>';
   pv.prepend(outfitArt(worn, view.pet.speciesId));
   pv.querySelector('.nm').textContent = worn.label;
   wrap.appendChild(pv);

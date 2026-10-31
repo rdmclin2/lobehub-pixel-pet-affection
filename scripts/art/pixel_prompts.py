@@ -13,7 +13,7 @@ ROWS = [
 STYLE = ("Pixel art sprite sheet for a desktop pet game, 16-bit SNES-era style, crisp hard-edged pixels, limited palette, "
          "no anti-aliasing, no blur. A grid of exactly 4 columns and 4 rows (16 cells), every cell the same size, with empty space between cells. "
          "Every cell shows the SAME character, full body from head to feet, the same size and standing at the same spot in her cell, facing the viewer.")
-SAFE = ("She is clearly an adult woman in her mid-20s: slender adult body, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
+SAFE = ("She is clearly an adult young woman, set age 18: slender adult body, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
         "Fully covered and modest: tops buttoned up to the collar or with a high neckline, no cleavage at all, nothing revealing.")
 BG = "Background: perfectly flat solid pure magenta (#FF00FF) everywhere, no grid lines, no text, no labels, no shadows."
 

@@ -26,6 +26,10 @@ const OUTFITS = [
   // with you once you are close, before the 知己 yukata.
   { id: 'swimsuit', stage: 'close', rating: 'all', label: '运动泳装', desc: '高领短袖的运动款连体泳衣，外搭及膝沙滩裤和防晒开衫。' },
   { id: 'yukata', stage: 'flirty', rating: 'all', label: '浴衣', desc: '藏青色长款浴衣，红色腰带。' },
+  // All-ages too, a step lighter than the swimsuit: a loose two-layer flounce top that hides the chest, a
+  // mid-thigh frilled swim skirt and a short cardigan; only a strip of waist, the arms and lower legs show.
+  // 暧昧 like the yukata, since it shows more than the 亲近 swimsuit (docs/compliance-review.md 3d).
+  { id: 'bikini', stage: 'flirty', rating: 'all', label: '沙滩比基尼', desc: '两层荷叶边的比基尼上衣、到大腿中部的荷叶边泳裙，外搭短开衫。' },
   { id: 'maid', stage: 'flirty', rating: 'adult', label: '女仆装', desc: '长袖及膝女仆裙、白围裙和发带（不暴露）。' },
   { id: 'offshoulder_gown', stage: 'flirty', rating: 'adult', label: '露肩晚礼服', desc: '酒红色及地晚礼服，只露出肩膀。' },
   { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着爱心的粉色情侣卫衣。' },
