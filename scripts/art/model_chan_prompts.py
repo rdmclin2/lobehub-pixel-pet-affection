@@ -120,6 +120,31 @@ OUTFIT_LOOKS = {
           "and white flat beach sandals with lavender straps. Only a narrow strip of her waist, her forearms and her lower legs are bare. Colours: white, pale lavender and silver only, no gold, red, blue or green"),
  },
 }
+# The rest of the all-ages wardrobe (T-1261, 2026-10-31): one look for all five, in each character's own palette
+# (the colours of her daily outfit) unless a colour is named. Kept sweet and modest like the bikini: skirts at
+# least knee-length, loose cuts, no hats except the beret and the flower crown (both small, so her height stays
+# within check_model_chan.py's 12% of daily).
+WARDROBE = {
+ "scarf": "a cosy oversized beige cable-knit sweater with long sleeves, a long knitted scarf in her main accent colour wrapped once around her neck with the ends hanging down, a knee-length pleated skirt, opaque tights and brown ankle boots",
+ "casual": "a loose oversized hoodie in her main accent colour with the hood down and the sleeves pushed to her wrists, comfy grey jogger pants and chunky white sneakers",
+ "beret": "a striped long-sleeved shirt, loose paint-splashed denim overall dungarees with long legs, a small flat beret worn tilted on the side of her head, a paintbrush tucked in the bib pocket and canvas shoes",
+ "pajamas": "fluffy long-sleeved button-up polka-dot pajamas with a round collar and long loose trousers in soft pastel tones of her colours, and fluffy slippers, no nightcap",
+ "cat_ears": "a soft pastel zip-up lounge hoodie with long sleeves zipped up to her collarbones, matching long loose lounge pants, a cat-ear headband and fluffy slippers",
+ "yukata": "a long summer yukata reaching her ankles with a flower pattern in her colours, closed neatly at the neck, a wide obi sash tied in a bow at the back, and wooden geta sandals",
+ "couple_hoodie": "a pink oversized hoodie with a big heart print on the front, a knee-length pleated skirt over opaque black tights and white sneakers",
+ "flower_crown": "a flowing ankle-length white sundress with a modest square neckline at her collarbones and short puff sleeves, a crown of small flowers in her colours resting on her hair, and strappy flat sandals",
+ "qipao": "an elegant loose straight-cut ankle-length qipao (cheongsam) in her main accent colour with a high mandarin collar, short cap sleeves, embroidered flowers, short side slits only at the ankles, and low flat shoes",
+ "idol": "a sparkly knee-length idol stage dress with a high frilled collar, puff sleeves, layered frills, ribbons and a big bow in her colours, opaque white tights, a small wrist microphone charm and shiny ankle boots",
+}
+WARDROBE_KEEP = {"dafeiyu": "A deep-blue whale tail with a forked fluke behind her."}
+
+def _palette(cid):
+    return CHARS[cid].rsplit("Colours: ", 1)[1]
+
+for _oid, _desc in WARDROBE.items():
+    OUTFIT_LOOKS[_oid] = {c: " ".join(filter(None, [f"She wears {_desc}.", WARDROBE_KEEP.get(c), f"Colours: her own palette ({_palette(c)}) unless a colour is named above"]))
+                          for c in CHARS}
+
 # What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
 OUTFIT_SAFE = {
  "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
@@ -137,6 +162,12 @@ OUTFIT_SAFE_ONLY = {"bikini"}
 OUTFIT_WALK = {
  "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
  "bikini": ((" under the skirt", " under the swim skirt"), ("skirt and hair swaying", "frilled swim skirt, cardigan and hair swaying")),
+ "casual": ((" under the skirt", ""), ("skirt and hair swaying", "the loose hoodie, jogger pants and hair swaying")),
+ "beret": ((" under the skirt", ""), ("skirt and hair swaying", "the loose dungarees and hair swaying")),
+ "pajamas": ((" under the skirt", ""), ("skirt and hair swaying", "the loose pajama trousers and hair swaying")),
+ "cat_ears": ((" under the skirt", ""), ("skirt and hair swaying", "the loose lounge pants and hair swaying")),
+ "yukata": ((" under the skirt", " under the yukata"), ("skirt and hair swaying", "yukata hem, obi bow and hair swaying")),
+ "qipao": ((" under the skirt", " under the qipao"), ("skirt and hair swaying", "qipao hem and hair swaying")),
 }
 
 def identity(cid):
