@@ -37,7 +37,8 @@ GROUPS = {"all1": ALL[:5], "all2": ALL[5:], "adult1": ADULT[:5], "adult2": ADULT
 
 # In the 18+ groups Groko keeps her slim build, but is described as a grown woman first: a petite figure in
 # glamour clothes must never read as childlike (docs/compliance-review.md item ③).
-ADULT_BODY = {"grok": "She is a slim, slender grown woman of about 25 with a modest bust, an adult face and adult proportions."}
+ADULT_BODY = {"grok": ("She has a tall, slim fashion-model figure: long slender legs with thin thighs, narrow hips, a slim waist and a small bust with little cleavage, "
+                      "clearly a grown woman of about 25 with a mature adult face, not curvy, not voluptuous.")}
 
 # What stays from her own look in every outfit (her identity already keeps hair, ears, horns and wings).
 KEEP = {"dafeiyu": "Keep her deep-blue whale tail with a forked fluke behind her and her whale-fin ears in every outfit."}
