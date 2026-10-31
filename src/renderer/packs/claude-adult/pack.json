@@ -119,7 +119,8 @@
   },
   "outfits": {
     "daily": "sheets/daily.webp",
-    "maid": "sheets/maid.webp"
+    "maid": "sheets/maid.webp",
+    "sexy_bikini": "sheets/sexy_bikini.webp"
   },
   "adult": true
 }

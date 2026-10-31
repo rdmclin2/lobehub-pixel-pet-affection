@@ -1563,7 +1563,8 @@ async function packs() {
       await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // her page lists her looks
       assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 全动态', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
+      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · Live2D', '大肥鱼 · 全动态', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
+      assert.match(await page.locator('.pack-opt[data-pack="dafeiyu-live2d"] .meta span').textContent(), /^Live2D · 1 套服饰 · Live2D：Mao绒绒家园/);
       assert.match(await page.locator('.pack-opt[data-pack="dafeiyu-live"] .meta span').textContent(), /^全动态 · 1 套服饰/);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
       assert.match(await page.textContent('.pack-opt[data-pack="dafeiyu-clips"] .meta span'), /透明视频 · 1 套服饰 · PC2005-cloud\/dsh-pet/);
@@ -3139,8 +3140,12 @@ function ttsMock() {
       let j = {};
       try { j = JSON.parse(body); } catch { /* ignore */ }
       const fish = req.url === '/v1/tts';
-      const auth = req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
-      const rec = { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
+      // a local voice server (本地语音服务): the OpenAI speech API or whale-voice's /tts; no key
+      const local = req.url === '/v1/audio/speech' || req.url === '/tts';
+      const auth = local || req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
+      const rec = local
+        ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
+        : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
       m.log.push(rec);
       // the client gave up: the response closed before it was sent (the request's own `close` fires once its body is read)
       res.on('close', () => { if (!res.writableFinished) rec.aborted = true; });
@@ -3148,10 +3153,11 @@ function ttsMock() {
         if (res.destroyed) return;
         if (!auth) { rec.status = 401; return res.writeHead(401).end('{"message":"unauthorized"}'); }
         if (m.mode === '500') { rec.status = 500; return res.writeHead(500).end('{"message":"boom"}'); }
+        if (m.mode === 'notaudio' && local) { rec.status = 200; return res.writeHead(200, { 'content-type': 'application/json' }).end('{"error":"model not ready"}'); }
         rec.status = 200;
         const audio = m.perCharMs ? tone(Math.min(6, Math.max(0.4, ([...(j.text || '')].length * m.perCharMs) / 1000))) : wav;
         rec.audioMs = Math.round(((audio.length - 44) / 2 / 8000) * 1000);
-        if (fish) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
+        if (fish || local) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: audio.toString('hex') } }));
       };
       if (m.mode === 'hang') return setTimeout(send, 8000);
@@ -3223,7 +3229,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3238,7 +3244,7 @@ async function voice() {
       await page.locator('#voice-section').scrollIntoViewIfNeeded();
       await shot('v1-voice-section-empty');
       const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
-      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'system']);
+      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'local', 'system']);
       assert.equal(await page.inputValue('#tts-provider'), 'auto');
       assert.match(await page.textContent('#tts-credit'), /默认用 MiniMax.*俏皮萌妹/);
       await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
@@ -3526,6 +3532,186 @@ async function voice() {
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- localvoice
+// 本地语音服务 (core/tts.js LOCAL): a voice server the user runs (IndexTTS2 / whale-voice…), here a local
+// stand-in. Picked under 高级设置 → 语音 like a user would: no address → falls back; the OpenAI speech API
+// with a model and voice name; whale-voice's /tts with her mood as emo; a non-audio answer falls back; http
+// to the home network is accepted for it and refused for the internet.
+async function localvoice() {
+  const S = 'localvoice';
+  const SHOTS = path.join(OUT, 'localvoice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-localvoice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-localvoicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  let spoken = 0;
+  const speakLine = async (text, timeout = 30000) => {
+    await page.evaluate((t) => { window.petFx.speak(t); }, text);
+    const t0 = Date.now();
+    for (;;) {
+      const sp = await last();
+      if (sp && sp.n > spoken && sp.text === text && !/^(queued|synthesizing)$/.test(sp.status)) { spoken = sp.n; return sp; }
+      if (Date.now() - t0 > timeout) throw new Error(`no outcome for 「${text}」: ${JSON.stringify(sp)}`);
+      await page.waitForTimeout(50);
+    }
+  };
+  const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
+  const openVoice = async () => {
+    if (!(await page.isVisible('#voice-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+    }
+    await page.locator('#voice-section').scrollIntoViewIfNeeded();
+  };
+  const msg = (re) => page.waitForFunction((src) => new RegExp(src).test(document.getElementById('panel-msg').textContent), re.source, { timeout: 5000 });
+  const ttsSet = () => page.evaluate(async () => (await window.pet.getSettings()));
+  const LB = '.tts-engine[data-engine="local"]';
+  const reqFor = (text) => mock.log.filter((r) => r.text === text);
+  try {
+    await step(S, 'L0 hatch 大肥鱼; settings.tts has the local engine, empty', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await ttsSet();
+      assert.deepEqual(st.tts.local, { api: 'openai', model: '', voice: '' });
+      assert.equal(st.tts.endpoints.local, '');
+      assert.equal(st.ttsStatus.engines.local.ready, false);
+      return note(`settings.tts ${JSON.stringify(st.tts)}; local status ${JSON.stringify(st.ttsStatus.engines.local)}`);
+    }, page);
+
+    await step(S, 'L1 pick 本地语音服务 without an address: the line falls back to the system voice', async () => {
+      await openVoice();
+      await page.check('#behavior-section input[data-pref="voice"]');
+      await openVoice();
+      const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => e.value));
+      assert.deepEqual(opts, ['auto', 'fish', 'minimax', 'local', 'system']);
+      await page.selectOption('#tts-provider', 'local');
+      await msg(/语音引擎：本地语音服务/);
+      await page.waitForFunction(() => /本地语音服务：没填地址/.test(document.getElementById('tts-status').textContent));
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await shot('l1-local-box-empty');
+      await page.click('#panel-close');
+      const before = mock.log.length;
+      const sp = await speakLine('没有地址的时候念这句');
+      assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:no-endpoint']);
+      assert.notEqual(sp.provider, 'local');
+      assert.equal(mock.log.length, before, 'no request anywhere');
+      return note(`no address: ${fmt(sp)}; status: ${await page.evaluate(() => document.getElementById('tts-status') && document.getElementById('tts-status').textContent)}`);
+    }, page);
+
+    await step(S, 'L2 OpenAI-compatible: address + model + voice → POST /v1/audio/speech, her line plays from it', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      assert.equal(await page.inputValue(`${LB} .tts-local-api`), 'openai');
+      await page.fill(`${LB} .tts-endpoint`, `${mock.url}/v1`);
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为/);
+      await page.fill(`${LB} .tts-local-model`, 'IndexTTS-2');
+      await page.fill(`${LB} .tts-local-voice`, 'whale');
+      await page.click(`${LB} .tts-local-save`);
+      await msg(/模型 IndexTTS-2，音色 whale/);
+      await page.waitForFunction(() => /本地语音服务：地址 http:\/\/127\.0\.0\.1/.test(document.getElementById('tts-status').textContent));
+      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（音色 whale）/);
+      assert.match(await page.getAttribute(`${LB} .tts-key`, 'placeholder'), /可不填/);
+      await shot('l2-local-openai-configured');
+      const st = await ttsSet();
+      assert.deepEqual(st.tts.local, { api: 'openai', model: 'IndexTTS-2', voice: 'whale' });
+      await page.click('#panel-close');
+      await prewarmed(page);
+      const pre = await page.evaluate(() => window.petFx.lastPrewarm());
+      const LINE = '鱼片，今天也要好好吃饭哦。';
+      const sp = await speakLine(LINE);
+      assert.equal(sp.provider, 'local');
+      assert.equal(sp.voiceId, 'whale');
+      const rq = reqFor(LINE)[0];
+      assert.equal(rq.path, '/v1/audio/speech');
+      assert.deepEqual(rq.body, { model: 'IndexTTS-2', input: LINE, voice: 'whale', response_format: 'mp3', speed: 1 });
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 10000 });
+      await shot('l2-local-openai-spoken');
+      return note(`settings.tts.local ${JSON.stringify(st.tts.local)} endpoint ${st.tts.endpoints.local}; prewarm ${JSON.stringify(pre)}; ${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; credit: ${await page.evaluate(() => document.getElementById('tts-credit') && document.getElementById('tts-credit').textContent)}`);
+    }, page);
+
+    await step(S, 'L3 whale-voice: POST /tts { text, emo } with her mood as the emotion', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await page.fill(`${LB} .tts-endpoint`, mock.url);
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为/);
+      await page.selectOption(`${LB} .tts-local-api`, 'whale');
+      await msg(/whale-voice/);
+      assert.equal(await page.isVisible(`${LB} .tts-local-names`), false, 'no model / voice for whale-voice');
+      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（whale-voice）/);
+      await shot('l3-local-whale-configured');
+      await page.click('#panel-close');
+      await prewarmed(page);
+      const LINE = '咕噜，这句用鲸鱼的声音念。';
+      const sp = await speakLine(LINE);
+      assert.equal(sp.provider, 'local');
+      assert.equal(sp.voiceId, 'whale-voice');
+      const rq = reqFor(LINE)[0];
+      assert.equal(rq.path, '/tts');
+      assert.deepEqual(Object.keys(rq.body).sort(), ['emo', 'text']);
+      assert.ok(['happy', 'sleepy', 'wronged', 'tender'].includes(rq.body.emo), rq.body.emo);
+      const warm = mock.log.filter((r) => r.path === '/tts' && r.text !== LINE);
+      assert.ok(warm.length > 0, 'her common lines were prewarmed on the local server');
+      const emos = [...new Set(warm.map((r) => r.emo))];
+      return note(`${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; prewarmed ${warm.length} lines through /tts, emo used: ${emos.join(', ')}`);
+    }, page);
+
+    await step(S, 'L4 the server answers with no audio (model not loaded): falls back, status says why', async () => {
+      mock.mode = 'notaudio';
+      const LINE = '模型还没加载好时念这句';
+      const sp = await speakLine(LINE);
+      mock.mode = 'ok';
+      assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:not-audio']);
+      assert.notEqual(sp.provider, 'local');
+      await openVoice();
+      await page.waitForFunction(() => /本地语音服务：.*上次返回的不是音频，\d+ 秒内跳过/.test(document.getElementById('tts-status').textContent));
+      await page.locator('#tts-status').scrollIntoViewIfNeeded();
+      await shot('l4-local-not-audio-status');
+      return note(`${fmt(sp)}; status: ${await page.textContent('#tts-status')}`);
+    }, page);
+
+    await step(S, 'L5 address rules: home-network http accepted, internet http refused', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await page.fill(`${LB} .tts-endpoint`, 'http://example.com:7864');
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/局域网地址/);
+      const refused = await page.textContent('#panel-msg');
+      assert.equal((await ttsSet()).tts.endpoints.local, mock.url, 'kept the old address');
+      await page.fill(`${LB} .tts-endpoint`, 'http://192.168.1.20:7864');
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为 http:\/\/192\.168\.1\.20:7864/);
+      const lan = (await ttsSet()).tts.endpoints.local;
+      assert.equal(lan, 'http://192.168.1.20:7864');
+      await shot('l5-local-lan-address');
+      // the cloud engines still refuse plain http off this machine
+      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', 'http://192.168.1.20:7864');
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      await msg(/https:\/\//);
+      assert.equal((await ttsSet()).tts.endpoints.fish, '');
+      return note(`internet http: “${refused}”; LAN saved: ${lan}; Fish with LAN http refused`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'localvoice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
     mock.server.close();
   }
@@ -4364,7 +4550,7 @@ async function adultLook() {
       const l = await looks();
       assert.ok(l.includes(adultId), `外观: ${l.join(', ')}`);
       const meta = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta span`);
-      assert.match(meta, /^18\+ · 像素动画 · 2 套服饰/);
+      assert.match(meta, /^18\+ · 像素动画 · 3 套服饰/);
       const name = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta b`);
       return `${name} — ${meta} · ${await shot('2-looks-18plus')}`;
     }, page);
@@ -4379,7 +4565,7 @@ async function adultLook() {
       await closePanel();
       const a = await shot('3-desktop-adult-daily');
       const w = await wardrobe();
-      assert.deepEqual(w, ['daily', 'maid'], "the 成年版's own outfits");
+      assert.deepEqual(w, ['daily', 'maid', 'sexy_bikini'], "the 成年版's own outfits");
       assert.equal(await page.textContent('.card[data-outfit="maid"] .nm'), '性感女仆装');
       await cardsDrawn();
       assert.match(await page.textContent('#outfit-preview .adult-note'), /成年版（20 岁）/);
@@ -4387,7 +4573,7 @@ async function adultLook() {
       return `wardrobe ${w.join(', ')} · ${a}, ${b}`;
     }, page);
 
-    await step(S, 'she puts on the adult maid outfit: idle, walk and lifted come from its sheet', async () => {
+    await step(S, 'she puts on the adult maid outfit (idle, walk, happy from its sheet), then the 性感比基尼', async () => {
       await page.click('.card[data-outfit="maid"]');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
       await cardsDrawn();
@@ -4410,7 +4596,19 @@ async function adultLook() {
       await page.evaluate(() => window.petFx.cue('happy'));
       await page.waitForTimeout(300);
       const h = await shot('8-desktop-maid-happy');
-      return `${await frame()} · ${b}, ${i}, ${wk}, ${h}`;
+      // the 性感比基尼 too (the early bikini drafts): put on from the wardrobe, drawn from its own sheet
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card[data-outfit="sexy_bikini"]');
+      await page.click('.card[data-outfit="sexy_bikini"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await closePanel();
+      await idle();
+      assert.equal(await key(), `${adultId}/sexy_bikini`);
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await page.waitForTimeout(400);
+      assert.match(await frame(), new RegExp(`${adultId}/sheets/sexy_bikini\\.webp#0:`));
+      const bk = await shot('8b-desktop-bikini-idle');
+      return `${await frame()} · ${b}, ${i}, ${wk}, ${h}, ${bk}`;
     }, page);
 
     await step(S, 'turning adult content off: back to her usual look in an all-ages outfit, and the 成年版 leaves 外观', async () => {
@@ -4425,7 +4623,7 @@ async function adultLook() {
       assert.ok(!l.includes(adultId));
       await closePanel();
       const w = await wardrobe();
-      assert.ok(!w.includes('maid') && w.includes('swimsuit'), `wardrobe ${w.join(', ')}`);
+      assert.ok(!w.includes('maid') && !w.includes('sexy_bikini') && w.includes('swimsuit'), `wardrobe ${w.join(', ')}`);
       await cardsDrawn();
       assert.match(await page.textContent('#outfit-preview .adult-note'), /成年（18 岁）/);
       const b = await shot('10-wardrobe-adult-off');
@@ -4922,6 +5120,135 @@ async function rigScenario() {
   }
 }
 
+// ------------------------------------------------------------------ live2d
+// 大肥鱼 · Live2D (kind "live2d", src/renderer/live2d.js): a Cubism model, its physics and our moves.
+async function live2dScenario() {
+  const S = 'live2d';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2d-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-live2d' } }));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  // what the rig canvas shows: share of opaque pixels and a fingerprint of the frame
+  const look = () => page.evaluate(() => {
+    const c = document.querySelector('#pet-look canvas.live2d');
+    if (!c) return null;
+    const k = document.createElement('canvas');
+    k.width = 83; k.height = 113;
+    const g = k.getContext('2d');
+    g.drawImage(c, 0, 0, 83, 113);
+    const d = g.getImageData(0, 0, 83, 113).data;
+    let n = 0;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 24) n++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 3] * 7) % 1000003; }
+    return { opaque: n / (83 * 113), hash: h, size: [c.width, c.height], frame: c.dataset.frame };
+  });
+  try {
+    await step(S, 'hatching 大肥鱼 in her Live2D look', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').nth(0).click();
+      await page.fill('#pet-name', 'Mow');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+    }, page);
+
+    await step(S, 'she is drawn by Live2D: the runtime loads on demand, a WebGL canvas with her whole figure', async () => {
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 10000 });
+      assert.equal(await page.evaluate(() => document.getElementById('char-wrap').classList.contains('has-sprites')), true);
+      assert.equal(await page.evaluate(() => !!(window.PIXI && window.PIXI.live2d && window.Live2DCubismCore)), true, 'Cubism Core, PixiJS and pixi-live2d-display loaded');
+      const a = await look();
+      assert.ok(a.opaque > 0.12 && a.opaque < 0.5, JSON.stringify(a));
+      return `canvas ${a.size.join('x')}, ${(a.opaque * 100).toFixed(1)}% of the frame is her`;
+    }, page);
+
+    await step(S, 'standing still she still moves: breathing, blinking, the model physics', async () => {
+      await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 });
+      const seen = new Set();
+      for (let i = 0; i < 6; i++) { seen.add((await look()).hash); await page.waitForTimeout(250); }
+      assert.ok(seen.size >= 4, `${seen.size} different frames in 1.5 s`);
+      return `${seen.size} different frames in 1.5 s`;
+    }, page);
+
+    for (const cue of ['happy', 'pat', 'sad', 'play']) {
+      await step(S, `cue ${cue}: acted out by the Live2D figure`, async () => {
+        await page.evaluate((c) => window.petFx.cue(c), cue);
+        await page.waitForTimeout(700);
+        const st = await page.evaluate(() => window.petFx.state());
+        assert.equal(st.state, cue);
+        assert.equal(st.exact, true, 'no emoji stand-in');
+        assert.match((await look()).frame, new RegExp(`^${cue}#`));
+        return `state ${st.state}, exact`;
+      }, page);
+    }
+
+    await step(S, 'waking up pops her in, and the next state starts at her full size', async () => {
+      const full = (await look()).opaque;
+      await page.evaluate(() => window.petFx.cue('hatch'));
+      await page.waitForTimeout(80);
+      const popping = (await look()).opaque;
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => window.petFx.lift(true));
+      await page.waitForTimeout(80);
+      const after = (await look()).opaque;
+      await page.evaluate(() => window.petFx.lift(false));
+      assert.ok(popping < full * 0.85, `the pop starts small: ${popping} vs ${full}`);
+      assert.ok(after > full * 0.85, `lifted right after waking up: ${after} vs ${full}`);
+      return `share of the frame: ${(full * 100).toFixed(1)}% standing, ${(popping * 100).toFixed(1)}% popping in, ${(after * 100).toFixed(1)}% lifted after`;
+    }, page);
+
+    await step(S, 'lifted and swung about: her hair, skirt and tail trail the motion', async () => {
+      await page.evaluate(() => window.petFx.lift(true));
+      const b0 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+      const hashes = new Set();
+      for (let i = 0; i < 12; i++) {
+        await app.evaluate(({ BrowserWindow }, [x, y]) => BrowserWindow.getAllWindows()[0].setPosition(x, y), [b0.x + Math.round(Math.sin(i * 0.9) * 120), b0.y]);
+        await page.waitForTimeout(60);
+        if (i % 3 === 2) hashes.add((await look()).hash);
+      }
+      const st = await page.evaluate(() => window.petFx.state());
+      assert.equal(st.state, 'lifted');
+      await page.screenshot({ path: path.join(OUT, 'live2d-lifted.png') });
+      await page.evaluate(() => window.petFx.lift(false));
+      await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setPosition(b.x, b.y), b0);
+      assert.ok(hashes.size >= 3);
+      return `${hashes.size} different swinging frames`;
+    }, page);
+
+    await step(S, 'thrown: she flies, lands and keeps drawing', async () => {
+      const r = await page.evaluate(() => window.petFx.throw(500, -500));
+      assert.ok(r && r.bounces >= 1, JSON.stringify(r));
+      await page.waitForTimeout(500);
+      assert.ok((await look()).opaque > 0.12);
+      return `${r.bounces} bounces`;
+    }, page);
+
+    await step(S, 'touching her parts maps onto the model: head, face, feet', async () => {
+      const r = await page.evaluate(() => {
+        const c = document.querySelector('#pet-look canvas.live2d').getBoundingClientRect();
+        const at = (u, v) => window.petFx.touchPoint(c.left + c.width * u, c.top + c.height * v);
+        return { head: at(0.49, 0.245), face: at(0.49, 0.3), feet: at(0.49, 0.9), off: at(0.05, 0.05) };
+      });
+      assert.equal(r.head && r.head.zone, 'head');
+      assert.equal(r.face && r.face.zone, 'face');
+      assert.equal(r.feet && r.feet.zone, 'feet');
+      assert.equal(r.off ? r.off.zone : null, null, 'the empty corner is not her');
+      await page.evaluate(() => window.petFx.click());
+      return Object.entries(r).map(([k, v]) => `${k}→${v ? v.zone : 'null'}`).join(', ');
+    }, page);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -4941,12 +5268,14 @@ async function rigScenario() {
   if (which === 'touch' || which === 'all') await touch();
   if (which === 'voice' || which === 'all') await voice();
   if (which === 'ivoice' || which === 'all') await ivoice();
+  if (which === 'localvoice' || which === 'all') await localvoice();
   if (which === 'chatvoice' || which === 'all') await chatvoice();
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
   if (which === 'outfit' || which === 'all') await outfitScenario();
   if (which === 'adultlook' || which === 'all') await adultLook();
   if (which === 'rig' || which === 'all') await rigScenario();
+  if (which === 'live2d' || which === 'all') await live2dScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

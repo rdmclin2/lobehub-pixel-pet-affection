@@ -94,7 +94,7 @@ test('a character only offers the outfits it has art for', () => {
 
 test('stage-up unlock lists name the outfits the user can see', () => {
   const p = mk(70);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'qipao', 'maid', 'offshoulder_gown', 'office', 'nurse', 'stewardess']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'qipao', 'maid', 'offshoulder_gown', 'office', 'nurse', 'stewardess', 'sexy_bikini']);
   assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata', 'bikini', 'qipao']);
 });
 

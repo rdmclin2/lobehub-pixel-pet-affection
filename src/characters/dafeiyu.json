@@ -64,7 +64,7 @@
       "lifted": "lifted.webm",
       "walk": "walk.webm"
     },
-    "packs": ["dafeiyu-pixel", "dafeiyu-live", "dafeiyu-classic", "dafeiyu-adult"],
+    "packs": ["dafeiyu-pixel", "dafeiyu-live2d", "dafeiyu-live", "dafeiyu-classic", "dafeiyu-adult"],
     "clipsLook": { "name": "大肥鱼 · 原版动画", "author": "PC2005-cloud/dsh-pet", "license": "CC BY-NC-SA 4.0（禁止商用）", "description": "dsh-pet 的 21 段透明视频，含拖拽、走路和点击回应。" }
   },
   "fx": { "noMirror": [] },

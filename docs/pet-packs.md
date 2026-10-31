@@ -43,9 +43,9 @@ my-grok/
 }
 ```
 
-- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。角色平时只会穿她的 character.json 里 `outfits` 列出的服饰；穿 18+ 角色包（`"adult": true`）时，衣柜改为这个包里有图的服饰，成人向的也算；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
+- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`sexy_bikini`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。角色平时只会穿她的 character.json 里 `outfits` 列出的服饰；穿 18+ 角色包（`"adult": true`）时，衣柜改为这个包里有图的服饰，成人向的也算；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
 - **`swimsuit` 与 `retro_swimsuit` 的区别**：`swimsuit`（运动泳装，亲近 ♥35，**全年龄**）是高领短袖的运动款连体泳衣，外面穿及膝沙滩裤和长袖防晒开衫，胸口、腰腹和臀部都遮住；五位内置角色的默认包都带这张图（`sheets/swimsuit.webp`）。`retro_swimsuit`（高开衩连体泳衣，恋人 ♥85，**成人向**）只在确认 18+ 并打开成人向内容后显示，而且只在 `adult: true` 的角色或 18+ 角色包上出现；内置角色只有成年版角色包（`<id>-adult`）带它的图。导入包给 `swimsuit` 提供的图也要符合同样的全年龄标准（不是比基尼、不露腰、不高开衩）。
-- **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，目前有日常服和性感女仆装（暧昧 ♥60）两套（另外 9 套成人向服饰已经定义，提示词也写好了，但 2026-10-31 生图时被服务的安全暂停拦下，还没有图，所以不显示）。只有确认年满 18 岁并打开“成人向内容”后，它才出现在“外观”里；选了它，衣柜换成这个包里有图的服饰。关掉成人向内容时她换回默认外观，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
+- **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，目前有日常服、性感女仆装和性感比基尼（都在暧昧 ♥60 解锁）三套（另外 9 套成人向服饰已经定义，提示词也写好了，但 2026-10-31 生图时被服务的安全暂停拦下，还没有图，所以不显示）。只有确认年满 18 岁并打开“成人向内容”后，它才出现在“外观”里；选了它，衣柜换成这个包里有图的服饰。关掉成人向内容时她换回默认外观，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
 - **`bikini`**（沙滩比基尼，暧昧 ♥60，**全年龄**）：比运动泳装清凉，但仍是全年龄标准：上衣从锁骨下方盖住整个胸口、不显胸型和乳沟，泳裙到膝盖上方、盖住臀部，外搭盖住肩膀的短开衫；只露出一窄条腰、手臂和小腿，布料不透明，没有内衣感和性暗示的姿势。五位内置角色的默认包都带这张图（`sheets/bikini.webp`）。导入包给 `bikini` 提供的图也要符合这个标准。
 - **动作（schema 2）**：动作名就是应用的状态名（大肥鱼原版动画的 15 个状态 + `lifted`）。只有 `idle` 必填；缺的状态按回落链降级并叠加一个表情符号（例如 `eat_fruit` → `eat_rice` → `happy` → `idle`）。
 
@@ -70,7 +70,34 @@ my-grok/
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
 - **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（1328×4068，每帧 332×452，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
-- `rig` 类型（全动态）见下一节。
+- `rig` 类型（全动态）和 `live2d` 类型见下面两节。
+
+## Live2D 角色包（`"kind": "live2d"`）
+
+直接用一个 Cubism 4 的 Live2D 模型（`.model3.json` + `.moc3` + 贴图 + 物理）。头发、衣服、手臂等的摆动交给模型自己的物理；应用每帧按她的状态设置头部和身体角度、眼睛、眉毛、嘴和表情开关，再叠加窗口移动带来的惯性。运行时（Cubism Core、PixiJS、pixi-live2d-display）在 `src/renderer/vendor/live2d/`，第一次显示 Live2D 外观时才加载。
+
+```jsonc
+{
+  "schema": 2, "id": "my-live2d", "name": "…", "species": "dafeiyu",
+  "kind": "live2d",
+  "model": "model/xxx.model3.json",            // 包内路径；它引用的 Moc、Textures、Physics 都要在包里
+  "live2d": {
+    "height": 0.8,                             // 她占画面高度的比例（脚贴底）
+    "params": {                                // 模型自己的参数名（标准参数 ParamAngleX、ParamEyeLOpen、ParamMouthOpenY… 直接用）
+      "armL": "Param_arm_L1", "armR": "Param_arm_R1", "elbowR": "Param_arm_R2",
+      "tail": "…", "earL": "…", "earR": "…",
+      "armOut": -22, "armWave": -30, "elbowWave": 25   // 手臂张开 / 挥动时加的角度（方向按模型而定）
+    },
+    "faces": { "blush": { "PARAM_EXP4": 1 }, "wide": { "PARAM_EXP5": 1 }, "squint": { "PARAM_EXP5": -1 } },  // 表情开关
+    "pinned": { "Paramcol_3": 1 }              // 每帧在物理之后固定的值（水印开关、要关掉的物理等）
+  },
+  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；有图的服饰才用 Live2D，其他服饰穿默认角色包
+}
+```
+
+- 应用用到的表情名：`blush`（脸红）、`wide`（O_O 惊讶）、`squint`（>_<）、`gloom`（脸黑）、`drool`（流口水）、`dizzy`、`o`。模型没有的就不写。
+- 手臂、尾巴、耳朵如果是模型物理的输出，应用的动作会叠加在物理结果上。
+- 没有 WebGL 的电脑上显示 `outfits` 里的图。
 
 ## 全动态角色包（`"kind": "rig"`）
 

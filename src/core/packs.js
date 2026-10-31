@@ -19,7 +19,7 @@ const SCHEMA = 2;
 const SCHEMAS = [1, 2];
 const ACTIONS_V1 = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer'];
 const ACTIONS = { 1: ACTIONS_V1, 2: STATES };
-const KINDS = ['sprites', 'pictures', 'rig'];
+const KINDS = ['sprites', 'pictures', 'rig', 'live2d'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const IMAGE_RE = /\.(png|webp|gif|jpe?g)$/i;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -116,6 +116,50 @@ function readRigModel(dir, rel, outfits, errors) {
   return { size: m.size, parts, pivots, legs, face };
 }
 
+// A Live2D pack: `model` is a Cubism 4 .model3.json in the pack (with the .moc3, textures and physics it
+// names), drawn by src/renderer/live2d.js for every outfit it lists; `live2d` maps the app's moves onto the
+// model's own parameters (docs/pet-packs.md). Outfit images are the pictures shown in lists and the wardrobe.
+const PARAM_RE = /^[A-Za-z0-9_]{1,64}$/;
+const LIVE2D_PARAMS = ['armL', 'armR', 'elbowR', 'tail', 'earL', 'earR'];
+const LIVE2D_NUMBERS = ['armOut', 'armWave', 'elbowWave'];
+function readLive2d(dir, rel, cfg, errors) {
+  const bad = (msg) => { errors.push(msg); return null; };
+  if (typeof rel !== 'string' || !/\.model3\.json$/i.test(rel) || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return bad('model: must be a relative path to a .model3.json file inside the pack');
+  let m;
+  try {
+    m = JSON.parse(fs.readFileSync(path.resolve(dir, rel), 'utf8'));
+  } catch (e) {
+    return bad(`model: ${rel} is ${e.code === 'ENOENT' ? 'missing' : 'not valid JSON'}`);
+  }
+  const refs = (m && m.FileReferences) || {};
+  const folder = path.dirname(path.resolve(dir, rel));
+  const files = [refs.Moc, ...(Array.isArray(refs.Textures) ? refs.Textures : []), refs.Physics].filter((f) => f !== undefined);
+  if (typeof refs.Moc !== 'string' || !Array.isArray(refs.Textures) || !refs.Textures.length) return bad('model: the .model3.json must name its Moc and Textures');
+  for (const f of files) {
+    const abs = typeof f === 'string' && path.resolve(folder, f);
+    if (!abs || !abs.startsWith(path.resolve(dir) + path.sep) || !fs.existsSync(abs)) return bad(`model: ${f} is missing from the pack`);
+  }
+  const c = cfg && typeof cfg === 'object' ? cfg : {};
+  const out = { height: 0.8, params: {}, faces: {}, pinned: {} };
+  if (c.height !== undefined) {
+    if (typeof c.height !== 'number' || c.height < 0.3 || c.height > 1) return bad('live2d.height must be between 0.3 and 1 (her share of the frame height)');
+    out.height = c.height;
+  }
+  for (const [k, v] of Object.entries(c.params || {})) {
+    if (LIVE2D_PARAMS.includes(k) && typeof v === 'string' && PARAM_RE.test(v)) out.params[k] = v;
+    else if (LIVE2D_NUMBERS.includes(k) && typeof v === 'number' && Math.abs(v) <= 90) out.params[k] = v;
+    else return bad(`live2d.params.${k}: one of ${[...LIVE2D_PARAMS, ...LIVE2D_NUMBERS].join(', ')}, a parameter id or a number`);
+  }
+  const values = (v) => v && typeof v === 'object' && Object.entries(v).every(([id, x]) => PARAM_RE.test(id) && typeof x === 'number' && Math.abs(x) <= 100);
+  for (const [k, v] of Object.entries(c.faces || {})) {
+    if (!/^[a-z]{1,16}$/.test(k) || !values(v)) return bad(`live2d.faces.${k}: { parameter id: value }`);
+    out.faces[k] = v;
+  }
+  if (c.pinned !== undefined && !values(c.pinned)) return bad('live2d.pinned: { parameter id: value }');
+  out.pinned = c.pinned || {};
+  return out;
+}
+
 // Validate a manifest read from `dir`. Returns { ok: true, pack } or { ok: false, errors }.
 function validatePack(manifest, dir) {
   const errors = [];
@@ -158,6 +202,7 @@ function validatePack(manifest, dir) {
   }
 
   const model = m.kind === 'rig' ? readRigModel(dir, m.model, outfits, errors) : null;
+  const live2d = m.kind === 'live2d' ? readLive2d(dir, m.model, m.live2d, errors) : null;
 
   if (errors.length) return { ok: false, errors };
   return {
@@ -177,7 +222,8 @@ function validatePack(manifest, dir) {
       adult: m.adult === true,
       frame,
       actions,
-      model,
+      model: live2d ? m.model : model,
+      live2d,
       outfits,
       dir: path.resolve(dir),
     },
@@ -230,6 +276,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
     const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
     if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
+    if (p.kind === 'live2d') return { ...base, model: packUrl(p, p.model), live2d: p.live2d };
     if (p.kind === 'rig') {
       const folder = path.posix.dirname(p.outfits[outfitId]);
       return { ...base, model: p.model, base: packUrl(p, folder === '.' ? '' : folder).replace(/\/$/, '') };
