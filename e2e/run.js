@@ -52,7 +52,8 @@ async function launch(env, { gate = false, video = null } = {}) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   }
-  const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
+  // software WebGL: xvfb has no GPU, and 全动态 looks (rig.js) need WebGL (without it they show a still picture)
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
@@ -1562,7 +1563,8 @@ async function packs() {
       await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // her page lists her looks
       assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
-      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
+      assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 全动态', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
+      assert.match(await page.locator('.pack-opt[data-pack="dafeiyu-live"] .meta span').textContent(), /^全动态 · 1 套服饰/);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
       assert.match(await page.textContent('.pack-opt[data-pack="dafeiyu-clips"] .meta span'), /透明视频 · 1 套服饰 · PC2005-cloud\/dsh-pet/);
       await page.click('#panel-close');
@@ -4792,6 +4794,119 @@ async function outfitScenario() {
   }
 }
 
+// ------------------------------------------------------------------ rig
+// 大肥鱼 · 全动态 (kind "rig", src/renderer/rig.js): layers bent live in WebGL, not frames.
+async function rigScenario() {
+  const S = 'rig';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-rig-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-rigfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-live' } }));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  // what the rig canvas shows: share of opaque pixels and a fingerprint of the frame
+  const look = () => page.evaluate(() => {
+    const c = document.querySelector('#pet-look canvas.rig');
+    if (!c) return null;
+    const k = document.createElement('canvas');
+    k.width = 83; k.height = 113;
+    const g = k.getContext('2d');
+    g.drawImage(c, 0, 0, 83, 113);
+    const d = g.getImageData(0, 0, 83, 113).data;
+    let n = 0;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 24) n++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 3] * 7) % 1000003; }
+    return { opaque: n / (83 * 113), hash: h, size: [c.width, c.height], frame: c.dataset.frame };
+  });
+  try {
+    await step(S, 'hatching 大肥鱼 in her 全动态 look', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').nth(0).click();
+      await page.fill('#pet-name', 'Mow');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+    }, page);
+
+    await step(S, 'she is drawn by the rig: a WebGL canvas with her whole figure, never an empty frame', async () => {
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.rig'); return c && c.dataset.frame; }, null, { timeout: 10000 });
+      assert.equal(await page.evaluate(() => document.getElementById('char-wrap').classList.contains('has-sprites')), true);
+      const a = await look();
+      assert.ok(a.opaque > 0.12 && a.opaque < 0.5, JSON.stringify(a));
+      return `canvas ${a.size.join('x')}, ${(a.opaque * 100).toFixed(1)}% of the frame is her`;
+    }, page);
+
+    await step(S, 'standing still she still moves: breathing, blinking, hair and tail drift', async () => {
+      await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 });
+      const seen = new Set();
+      for (let i = 0; i < 6; i++) { seen.add((await look()).hash); await page.waitForTimeout(250); }
+      assert.ok(seen.size >= 4, `${seen.size} different frames in 1.5 s`);
+      return `${seen.size} different frames in 1.5 s`;
+    }, page);
+
+    for (const cue of ['happy', 'pat', 'sad', 'play']) {
+      await step(S, `cue ${cue}: acted out by the rig itself`, async () => {
+        await page.evaluate((c) => window.petFx.cue(c), cue);
+        await page.waitForTimeout(700);
+        const st = await page.evaluate(() => window.petFx.state());
+        assert.equal(st.state, cue);
+        assert.equal(st.exact, true, 'no emoji stand-in');
+        assert.match((await look()).frame, new RegExp(`^${cue}#`));
+        return `state ${st.state}, exact`;
+      }, page);
+    }
+
+    await step(S, 'lifted and swung about: her hair, skirt and tail trail the motion', async () => {
+      await page.evaluate(() => window.petFx.lift(true));
+      const b0 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+      const hashes = new Set();
+      for (let i = 0; i < 12; i++) {
+        await app.evaluate(({ BrowserWindow }, [x, y]) => BrowserWindow.getAllWindows()[0].setPosition(x, y), [b0.x + Math.round(Math.sin(i * 0.9) * 120), b0.y]);
+        await page.waitForTimeout(60);
+        if (i % 3 === 2) hashes.add((await look()).hash);
+      }
+      const st = await page.evaluate(() => window.petFx.state());
+      assert.equal(st.state, 'lifted');
+      await page.screenshot({ path: path.join(OUT, 'rig-lifted.png') });
+      await page.evaluate(() => window.petFx.lift(false));
+      await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setPosition(b.x, b.y), b0);
+      assert.ok(hashes.size >= 3);
+      return `${hashes.size} different swinging frames`;
+    }, page);
+
+    await step(S, 'thrown: she flies, lands and keeps drawing', async () => {
+      const r = await page.evaluate(() => window.petFx.throw(500, -500));
+      assert.ok(r && r.bounces >= 1, JSON.stringify(r));
+      await page.waitForTimeout(500);
+      assert.ok((await look()).opaque > 0.12);
+      return `${r.bounces} bounces`;
+    }, page);
+
+    await step(S, 'touching her parts maps onto the rig: head, face, feet', async () => {
+      const r = await page.evaluate(() => {
+        const c = document.querySelector('#pet-look canvas.rig').getBoundingClientRect();
+        const at = (u, v) => window.petFx.touchPoint(c.left + c.width * u, c.top + c.height * v);
+        return { head: at(0.49, 0.245), face: at(0.49, 0.32), feet: at(0.49, 0.95), off: at(0.05, 0.05) };
+      });
+      assert.equal(r.head && r.head.zone, 'head');
+      assert.equal(r.face && r.face.zone, 'face');
+      assert.equal(r.feet && r.feet.zone, 'feet');
+      assert.equal(r.off ? r.off.zone : null, null, 'the empty corner is not her');
+      await page.evaluate(() => window.petFx.click());
+      return Object.entries(r).map(([k, v]) => `${k}→${v ? v.zone : 'null'}`).join(', ');
+    }, page);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -4816,6 +4931,7 @@ async function outfitScenario() {
   if (which === 'vpack' || which === 'all') await vpack();
   if (which === 'outfit' || which === 'all') await outfitScenario();
   if (which === 'adultlook' || which === 'all') await adultLook();
+  if (which === 'rig' || which === 'all') await rigScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

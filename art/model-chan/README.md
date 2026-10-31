@@ -12,6 +12,16 @@
 
 预览拼图：[`preview/model-chan-preview.png`](preview/model-chan-preview.png)。第一行是大肥鱼原视频的参考帧，下面五行是五个像素包，每列一个状态、每格该状态的 2 帧。
 
+## 全动态（大肥鱼 · 全动态，`dafeiyu-live`）
+
+大肥鱼另有一个全动态外观（`kind: "rig"`，格式见 `docs/pet-packs.md`）：把 `dafeiyu-pixel` 日常服的待机帧按 `art/rig/dafeiyu.json` 拆成 7 层（后发、尾巴、身体、头、左右鳍、呆毛），由 `src/renderer/rig.js` 实时弯折，眼睛和嘴也是实时画的。重新拆：
+
+```bash
+python3 scripts/art/rig_cut.py art/rig/dafeiyu.json daily <待机帧.png> src/renderer/packs/dafeiyu-live
+```
+
+待机帧取自 `dafeiyu-pixel/sheets/daily.webp` 左上角那一格（332×452）。分辨率和像素包相同；之后用参考图编辑生成更高清的分层原图时，换掉这张图、调整多边形即可。
+
 ## 像素包格式
 
 schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（1328×4068），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧**侧身**步行循环（朝右走：左脚迈出、交叉、右脚迈出、交叉，5fps）。她在屏幕上是左右走的，所以走路画成侧面，朝左走时应用把它镜像；源图在 [`walk/`](walk/)（`model_chan_prompts.py --walk` 生成、抠好放进 332×452 格子的 4×2 宫格，两行是同一个循环画了两遍），`add_walk_frames.py --from` 取其中一行放进图集：每帧脚踩格子底边，头和上身居中，走起来身子平稳、只有腿、头发和裙子在动。5fps 时一步约 0.4 秒，在 100% 大小下约 44 px，和窗口的移动速度（`fx.js` `WALK.speed` 110 px/s）对上，脚不打滑。旧版像素包（`*-classic`，83×113）是另一套画（大肥鱼还是 Q 版），没有侧面图，仍用 `add_walk_frames.py` 从待机帧做的原地踏步。

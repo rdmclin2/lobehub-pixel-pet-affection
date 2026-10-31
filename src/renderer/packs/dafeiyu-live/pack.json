@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "id": "dafeiyu-live",
+  "name": "大肥鱼 · 全动态",
+  "version": "1.0.0",
+  "author": "rdmclin2（从像素版待机帧拆件）；原设 ZipZipPipe，设定 lmy414",
+  "license": "CC BY-NC-SA 4.0",
+  "description": "分层网格形象：头发、裙摆、尾巴、鳍和呆毛随动作和拖拽实时摆动，会眨眼、说话口型和表情。目前只有日常服，其他服饰用像素版。",
+  "species": "dafeiyu",
+  "kind": "rig",
+  "pixelated": false,
+  "model": "model.json",
+  "outfits": {
+    "daily": "daily/preview.png"
+  }
+}
