@@ -226,3 +226,32 @@ test('setSystemRole(text, id) saves her 个性化设定, puts it in her agent\'s
   assert.deepEqual(settingsFile().systemRoles, { gpt: '叫我老板\n说话简短' });
   assert.doesNotMatch(roleEdits(dir).at(-1).systemRole, /个性化设定/);
 });
+
+test('the 18+ 成年版 look: refused without adult content; with it her wardrobe is that pack\'s, and turning adult content off takes it off', async () => {
+  const { svc } = setup();
+  await svc.hatch({ speciesId: 'claude', name: '小克' });
+  svc.answerAgeGate(false);
+  assert.ok(!svc.view().appearance.options.some((o) => o.id === 'claude-adult'), 'not listed for all-ages');
+  assert.equal(svc.setAppearance('claude-adult').reason, 'adult');
+  svc.answerAgeGate(true);
+  assert.ok(svc.view().appearance.options.some((o) => o.id === 'claude-adult' && o.adult), 'listed, marked 18+');
+  assert.equal(svc.setAppearance('claude-adult').ok, true);
+  svc.unlockAll('claude');
+  const v = svc.view();
+  assert.equal(v.look.packId, 'claude-adult');
+  assert.ok(v.outfits.some((o) => o.id === 'maid'), 'adult outfits in her wardrobe');
+  assert.ok(!v.outfits.some((o) => o.id === 'swimsuit'), "her all-ages outfits belong to her usual look");
+  assert.equal(svc.view().settings.adultContent, true);
+  assert.deepEqual(v.topics.filter((t) => t.rating === 'adult'), [], 'the look changes no topic or tone: she is still all-ages');
+  assert.equal(svc.equipOutfit('maid').ok, true);
+  assert.equal(svc.view().look.packId, 'claude-adult');
+  const r = svc.setAdultContent(false);
+  assert.deepEqual(r.outfitChanged, { from: 'maid', to: 'daily' });
+  assert.equal(r.view.look.packId, 'claude-pixel', 'back to her usual look');
+  assert.ok(!r.view.outfits.some((o) => o.rating === 'adult'));
+  // switching to her usual look while adult content is on also takes the adult outfit off
+  svc.setAdultContent(true);
+  svc.equipOutfit('maid');
+  svc.setAppearance('claude-pixel');
+  assert.equal(svc.view().outfit, 'daily');
+});

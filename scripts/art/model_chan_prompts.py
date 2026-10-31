@@ -181,16 +181,65 @@ OUTFIT_WALK = {
  "cat_ears": ((" under the skirt", ""), ("skirt and hair swaying", "the loose lounge pants and hair swaying")),
  "yukata": ((" under the skirt", " under the yukata"), ("skirt and hair swaying", "yukata hem, obi bow and hair swaying")),
  "qipao": ((" under the skirt", " under the qipao"), ("skirt and hair swaying", "qipao hem and hair swaying")),
+ "office": ((" under the skirt", ""), ("skirt and hair swaying", "hair swaying")),
+ "nurse": ((" under the skirt", ""), ("skirt and hair swaying", "hair swaying")),
+ "stewardess": ((" under the skirt", ""), ("skirt and hair swaying", "neck scarf and hair swaying")),
+ "bunny": ((" under the skirt", ""), ("skirt and hair swaying", "hair and bunny ears swaying")),
+ "retro_swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "hair swaying")),
+ "knit_dress": ((" under the skirt", ""), ("skirt and hair swaying", "sweater dress hem and hair swaying")),
 }
 
 def identity(cid):
     return CHARS[cid].split(" She wears ")[0]
 
+# Grown-up version (T-1261, 2026-10-31): a separate 18+ look of each character, a young adult woman of 20 (the owner
+# found a 25+ glamorous version too mature), drawn
+# for the adult wardrobe. It must read as a grown woman in every cell, so it replaces SAFE's "young woman,
+# set age 18" sentence and is added right after her identity (--mature; sheet names get a _mature suffix).
+MATURE = ("She is a young adult woman of about 20, clearly a grown woman and not a teenager: adult height about 7 heads tall with a small head, "
+          "long legs, an adult waist, adult hips and a medium adult bust; a young adult face in the same cute anime style as her usual look, "
+          "soft and friendly but clearly an adult. Not a schoolgirl, not girlish, not petite, not childlike, not chibi; not an older, glamorous mature woman either.")
+MATURE_SAFE_AGE = "She is clearly an adult woman, set age 20, with adult proportions and an adult face, not childlike."
+mature = '--mature' in sys.argv
+
+# The adult wardrobe (T-1261, 2026-10-31): only for the 20-year-old grown-up look (--mature), in the 18+
+# "<id>-adult" packs; the design drafts the owner picked are in art/model-chan/preview/adult/. Sexy but never
+# nude: opaque fabric over the chest and crotch in every cell (ADULT_SAFE); the silk nightdress is opaque satin,
+# not the sheer one of the drafts.
+ADULT_WARDROBE = {
+ "maid": "a sexy short black maid dress with a low sweetheart neckline, puffed short sleeves, a frilled white mini apron, a short flared skirt, a frilled white headband, black thigh-high stockings with garter straps and black Mary Jane heels",
+ "offshoulder_gown": "a glamorous off-shoulder {a} satin evening gown with a plunging neckline, a thigh-high leg slit, long {a} satin gloves and strappy heels",
+ "retro_swimsuit": "a glossy high-cut one-piece {a} swimsuit with a deep V neckline, a thin gold waist chain and strappy heeled sandals",
+ "silk_robe": "a short opaque {a} satin slip nightdress with lace trim and thin straps (thick, fully opaque satin, nothing see-through), a short open silk kimono robe in {b} worn over her shoulders, and fluffy mule slippers",
+ "office": "an office-lady outfit: a fitted white blouse with the top two buttons open, a tight black pencil skirt above the knee, sheer black pantyhose, black stiletto heels, thin glasses and a lanyard badge",
+ "nurse": "a tight short white nurse dress with a zip front and {a} trim, a small white nurse cap with a {a} heart, white thigh-high stockings with garter straps and white heels",
+ "stewardess": "a {a} flight attendant uniform: a fitted cropped jacket over a white blouse, a {b} silk neck scarf, a short tight pencil skirt, sheer black pantyhose, heels and a small {a} pillbox cap, no airline logo or text",
+ "bunny": "a bunny girl costume: a strapless glossy black satin bunny leotard, a tall black bunny-ears headband, a white collar with a black bow tie, white wrist cuffs, a fluffy white tail, black fishnet pantyhose and black stiletto heels",
+ "knit_dress": "a short off-shoulder ribbed knit sweater dress in {a}, black thigh-high stockings with lace tops and short ankle boots",
+ "devil_cos": "a little-devil cosplay: a black lace-up corset top, a short black ruffled skirt, small red devil-horns headband, a thin black devil tail with a heart tip, small black bat wings, black garter stockings and black platform boots",
+}
+ADULT_SAFE = ("Adult glamour fashion that is sexy but never nude: thick opaque fabric always covers her chest and crotch, nothing see-through, "
+              "no nipples, no underwear showing, no nudity, no sexual acts; a confident, playful but not lewd pose.")
+
+def _adult_look(oid, c):
+    desc = ADULT_WARDROBE[oid].format(**WARDROBE_COLOURS[c])
+    return " ".join(filter(None, [f"She wears {desc}.", WARDROBE_KEEP.get(c), "She wears exactly the same outfit in exactly the same colours in every cell"]))
+
+for _oid in ADULT_WARDROBE:
+    OUTFIT_LOOKS[_oid] = {c: _adult_look(_oid, c) for c in CHARS}
+
+def _mature_desc(desc, cid):
+    # insert MATURE after her identity, before what she wears
+    head, sep, rest = desc.partition(" She wears ")
+    return f"{head} {MATURE}{sep}{rest}" if sep else f"{desc} {MATURE}"
+
 def looks(outfit=None, only=None):
     # (character id, description, name prefix) for daily (CHARS as written) or for another outfit
     if outfit in (None, "daily"):
+        if mature: return [(c, _mature_desc(d, c), f"{c}_mature") for c, d in CHARS.items() if not only or c in only]
         return [(c, d, c) for c, d in CHARS.items() if not only or c in only]
     if outfit not in OUTFIT_LOOKS: raise SystemExit(f"no looks for outfit {outfit!r} (OUTFIT_LOOKS has {', '.join(OUTFIT_LOOKS)})")
+    if mature: return [(c, " ".join([identity(c), MATURE, clothes]), f"{c}_mature_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
     return [(c, " ".join(filter(None, [identity(c), BODY.get(c), clothes])), f"{c}_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
 
 EXTRA_ROWS = [
@@ -216,6 +265,13 @@ GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
 def safe_for(outfit):
+    if outfit in ADULT_WARDROBE:
+        if not mature: raise SystemExit(f"{outfit} is an adult outfit: only for the grown-up look (--mature)")
+        return " ".join([MATURE_SAFE_AGE, ADULT_SAFE])
+    if mature:
+        rest = SAFE.split(". ", 1)[1]  # drop the "young woman, set age 18" sentence
+        base = " ".join([MATURE_SAFE_AGE, rest])
+        return " ".join([base, OUTFIT_SAFE[outfit]]) if outfit in OUTFIT_SAFE else base
     if outfit not in OUTFIT_SAFE: return SAFE
     base = SAFE.split(" Fully covered")[0] if outfit in OUTFIT_SAFE_ONLY else SAFE
     return " ".join([base, OUTFIT_SAFE[outfit]])
@@ -237,7 +293,7 @@ def walk_jobs(outfit=None, only=None):
         key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
         style = STYLE.replace(GRID, HALF_GRID).replace("facing the viewer.", SIDE)
         bg = WALK_BG.format(name=key[0], hex=key[1])
-        out.append({"name": f"{name}_walk", "prompt": " ".join(([chroma(cid)] if outfit in WARDROBE else []) + [bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
+        out.append({"name": f"{name}_walk", "prompt": " ".join(([chroma(cid)] if outfit in WARDROBE or mature else []) + [bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
     return out
 
 def jobs(halves=False, outfit=None, only=None):
@@ -252,7 +308,7 @@ def jobs(halves=False, outfit=None, only=None):
             for half, part in (("a", rows[:2]), ("b", rows[2:])):
                 part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
                 bg = bg_for(cid, outfit)
-                if outfit in WARDROBE:
+                if outfit in WARDROBE or mature:
                     # These sheets came back on dark gradient backdrops even with WALK_BG said first and last;
                     # naming the colour as a chroma key ("like a green screen") keeps it flat (2026-10-31).
                     key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")

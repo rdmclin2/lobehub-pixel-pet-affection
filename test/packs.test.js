@@ -23,7 +23,7 @@ const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', specie
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
   const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.deepEqual(problems, []);
-  assert.deepEqual([...packs.keys()].sort(), ['claude-classic', 'claude-pixel', 'dafeiyu-classic', 'dafeiyu-pixel', 'gemini-classic', 'gemini-pixel', 'gpt-classic', 'gpt-pixel', 'grok-classic', 'grok-pixel']);
+  assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const sp = SPECIES[id];
     for (const p of sp.packs) assert.equal(packs.get(p).species, id, `${id} lists ${p}`);
@@ -176,4 +176,27 @@ test('a pictures pack needs no frames or actions', () => {
   assert.equal(r.ok, true);
   assert.equal(r.pack.frame, null);
   assert.equal(r.pack.author, '未署名');
+});
+
+test('every character has an 18+ 成年版 pack: her daily look and the adult outfits drawn so far, listed and worn only with adult content on', () => {
+  const { OUTFITS } = require('../src/core/outfits');
+  const adultIds = OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id);
+  // 2026-10-31: only the sexy maid outfit is drawn; the other nine were stopped by the image service's safety pause
+  const drawn = ['maid'];
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
+    const a = packs.get(`${id}-adult`);
+    assert.equal(a.species, id);
+    assert.equal(a.adult, true, `${a.id} is marked 18+`);
+    assert.deepEqual(Object.keys(a.outfits).sort(), ['daily', ...drawn].sort(), 'daily and the drawn adult outfits only');
+    for (const o of Object.keys(a.outfits)) assert.ok(o === 'daily' || adultIds.includes(o), `${o} is adult-rated`);
+    assert.equal(Object.keys(a.actions).length, 17, 'every state animated, walking included');
+    for (const p of [`${id}-pixel`, `${id}-classic`]) assert.ok(!packs.get(p).adult, `${p} is all-ages`);
+    for (const o of adultIds) assert.equal(packs.get(`${id}-pixel`).outfits[o], undefined, `no ${o} in her all-ages pack`);
+    // hidden and never worn without adult content
+    assert.ok(!P.packsFor(packs, id).some((o) => o.id === a.id));
+    assert.ok(P.packsFor(packs, id, true).some((o) => o.id === a.id && o.adult));
+    assert.equal(P.chosenPack(packs, { [id]: a.id }, id), `${id}-pixel`, 'falls back to her default look');
+    assert.equal(P.chosenPack(packs, { [id]: a.id }, id, true), a.id);
+  }
 });

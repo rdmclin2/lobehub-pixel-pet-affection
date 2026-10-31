@@ -96,7 +96,7 @@ class PetService extends EventEmitter {
       // only the current character lives on while the app is closed; the others stay where they were
       const { decay } = state.tick(this._c(), t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
-      const { changed } = outfits.enforceOutfit(this._c(), this.settings);
+      const { changed } = outfits.enforceOutfit(this._c(), this.settings, this._look(this.pet.speciesId));
       if (migrated || remapped || decay > 0 || changed) this.store.save(this.pet);
       if (decay > 0) this._pendingDecay = decay;
     }
@@ -105,6 +105,19 @@ class PetService extends EventEmitter {
 
   _adult() {
     return !!this.pet && adultAllowed(this.settings, this.pet.speciesId);
+  }
+
+  // 18+ looks (T-1261): an adult pet pack is listed and worn only after the 18+ confirmation with adult
+  // content on. This is about the look and its wardrobe only; her persona and tone stay as her file says.
+  _adultOk() {
+    return !!(this.settings.ageConfirmed && this.settings.adultContent);
+  }
+
+  // The wardrobe context of the look `speciesId` wears: { adult, outfits } when it is an 18+ pack (its
+  // outfits, adult ones included, replace her file's list), else null.
+  _look(speciesId) {
+    const p = this.packs.get(packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()));
+    return p && p.adult ? { adult: true, outfits: Object.keys(p.outfits) } : null;
   }
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
@@ -126,9 +139,9 @@ class PetService extends EventEmitter {
       status: state.currentStatus(c),
       affection: state.toAffectionProgress(c, { adult }),
       topics: dialogue.listTopics(c, this.settings),
-      outfits: outfits.listOutfits(c, this.settings).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
-      outfit: outfits.wornOutfit(c, this.settings),
-      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings)),
+      outfits: outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
+      outfit: outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId)),
+      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId))),
       appearance: this.appearanceView(this.pet.speciesId),
       model: this.modelView(),
       settings: this.settingsView(),
@@ -139,7 +152,7 @@ class PetService extends EventEmitter {
         const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, ad), progress: state.toAffectionProgress(e, { adult: ad }) } : null;
         return {
           id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met,
-          look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings) : outfits.DEFAULT_OUTFIT),
+          look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings, this._look(x.id)) : outfits.DEFAULT_OUTFIT),
           appearance: this.appearanceView(x.id),
           model: this.modelView(x.id),
           systemRole: this.settings.systemRoles[x.id] || '',
@@ -387,7 +400,7 @@ class PetService extends EventEmitter {
 
   // The packs a character can wear and the one she wears (settings.appearance[id], or her default).
   appearanceView(speciesId) {
-    return { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId), options: packsLib.packsFor(this.packs, speciesId) };
+    return { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()), options: packsLib.packsFor(this.packs, speciesId, this._adultOk()) };
   }
 
   // The character a per-character setting is for: `speciesId` when given, else the current one.
@@ -594,7 +607,7 @@ class PetService extends EventEmitter {
     // the one leaving stops here; her needs wait for her return
     state.tick(this._c(), this.now());
     this.pet.speciesId = speciesId;
-    outfits.enforceOutfit(next, this.settings);
+    outfits.enforceOutfit(next, this.settings, this._look(speciesId));
     // she cannot visit herself: the new companion leaves the visitors (同屏伙伴)
     if (this.settings.visitors.includes(speciesId)) this.setVisitors(this.settings.visitors.filter((v) => v !== speciesId));
     if (created) {
@@ -750,7 +763,7 @@ class PetService extends EventEmitter {
   async _onStageUp(r) {
     const unlocks = {
       topics: dialogue.topicsForStages(r.unlockedStages, this._c(), this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, this._c(), this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, this._c(), this.settings, this._look(this.pet.speciesId)),
     };
     this.emit('affection', { type: 'stage-up', stage: r.to, view: this.view(), unlocks });
     await this._speak('stage_up');
@@ -805,7 +818,7 @@ class PetService extends EventEmitter {
 
   // How `speciesId` looks in `outfitId` with its chosen pack (null: Dafeiyu's signature clips).
   lookFor(speciesId, outfitId) {
-    return packsLib.resolveLook(this.packs, { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId), fallbackId: packsLib.fallbackPack(speciesId), speciesId, outfitId });
+    return packsLib.resolveLook(this.packs, { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()), fallbackId: packsLib.fallbackPack(speciesId), speciesId, outfitId });
   }
 
   // ⋯ → 角色列表 → her page → 外观: dress `speciesId` (default: the current companion) in another pack of
@@ -817,8 +830,12 @@ class PetService extends EventEmitter {
     const p = this.packs.get(packId);
     const clips = packId === packsLib.clipsId(id);
     if (!clips && (!p || p.species !== id)) return { ok: false, reason: 'unknown' };
+    if (p && p.adult && !this._adultOk()) return { ok: false, reason: 'adult' };
     this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [id]: packId } });
     this.settingsStore.save(this.settings);
+    // leaving an 18+ look takes its adult outfit off (back to the last all-ages one)
+    const e = this.pet.characters[id];
+    if (e) outfits.enforceOutfit(e, this.settings, this._look(id));
     this._save();
     return { ok: true, view: this.view() };
   }
@@ -911,7 +928,7 @@ class PetService extends EventEmitter {
       this.emit('settings', this.settingsView());
       return null;
     }
-    const r = outfits.enforceOutfit(this._c(), this.settings);
+    const r = outfits.enforceOutfit(this._c(), this.settings, this._look(this.pet.speciesId));
     this._save();
     return r.changed ? { from: r.from, to: r.to } : null;
   }
@@ -929,7 +946,7 @@ class PetService extends EventEmitter {
   // Only an unlocked outfit the user may see can be put on; the choice is saved with the pet.
   equipOutfit(id) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const r = outfits.equipOutfit(this._c(), this.settings, String(id || ''));
+    const r = outfits.equipOutfit(this._c(), this.settings, String(id || ''), this._look(this.pet.speciesId));
     if (!r.ok) return r;
     this._save();
     return { ok: true, outfit: r.outfit, view: this.view() };
@@ -939,7 +956,7 @@ class PetService extends EventEmitter {
   markSeen(kind) {
     if (!this.pet || !['outfit', 'topic'].includes(kind)) return { ok: false };
     const c = this._c();
-    const list = kind === 'outfit' ? outfits.listOutfits(c, this.settings) : dialogue.listTopics(c, this.settings);
+    const list = kind === 'outfit' ? outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)) : dialogue.listTopics(c, this.settings);
     const ids = list.filter((x) => x.isNew).map((x) => `${kind}:${x.id}`);
     if (ids.length) {
       c.seenUnlocks = [...(c.seenUnlocks || []), ...ids];
@@ -1077,7 +1094,7 @@ class PetService extends EventEmitter {
     const r = state.unlockAll(c, this.now());
     const unlocks = {
       topics: dialogue.topicsForStages(r.unlockedStages, c, this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings),
+      outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings, this._look(id)),
     };
     this._save();
     if (isCurrent && r.unlockedStages.length) setImmediate(() => this._onStageUp(r));

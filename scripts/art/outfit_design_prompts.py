@@ -7,7 +7,7 @@
 # Ids that src/core/outfits.js already has keep their id; the others are new.
 import json, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
-from model_chan_prompts import CHARS, BODY, identity, arg
+from model_chan_prompts import CHARS, BODY, MATURE, MATURE_SAFE_AGE, chroma, identity, arg
 
 ALL = [
  ("scarf", "针织围巾套装", "a cosy oversized beige knit sweater, a long knitted scarf in her main accent colour, a knee-length pleated skirt, opaque tights and ankle boots"),
@@ -69,10 +69,15 @@ def jobs(only=None, groups=None):
             if groups and g not in groups: continue
             rating = "adult" if g.startswith("adult") else "all"
             cells = [f"Column {i + 1}: {desc}." for i, (_, _, desc) in enumerate(items)]
-            parts = [STYLE, f"The character: {identity(cid).rstrip('.')}.", (ADULT_BODY if rating == "adult" else BODY).get(cid), KEEP.get(cid), colours(cid), "No hats except where named.",
-                     SAFE[rating], *cells, bg(cid)]
-            out.append({"name": f"{cid}_design_{g}", "outfits": [o for o, _, _ in items], "prompt": " ".join(p for p in parts if p)})
+            body = MATURE if mature else (ADULT_BODY if rating == "adult" else BODY).get(cid)
+            safe = " ".join([MATURE_SAFE_AGE, SAFE[rating].split(". ", 1)[1]]) if mature else SAFE[rating]
+            parts = [chroma(cid) if mature else None, STYLE, f"The character: {identity(cid).rstrip('.')}.", body, KEEP.get(cid), colours(cid), "No hats except where named.",
+                     safe, *cells, bg(cid)]
+            out.append({"name": f"{cid}_{'mature_' if mature else ''}design_{g}", "outfits": [o for o, _, _ in items], "prompt": " ".join(p for p in parts if p)})
     return out
+
+# --mature: the 25+ mature version (model_chan_prompts.MATURE) for the adult wardrobe (T-1261).
+mature = '--mature' in sys.argv
 
 if __name__ == '__main__':
     only, groups = arg('--char'), arg('--group')

@@ -4309,6 +4309,137 @@ async function history() {
 // restart, and shown from her default pack when her 旧版像素 look (which has no art for it) is picked.
 // usage: node e2e/run.js outfit [character id, default claude] [outfit id, default swimsuit]
 // Screenshots in out/e2e/outfit-<character>-<outfit>/.
+// The 18+ 成年版 look (T-1261): hidden while all-ages; after the 18+ answer it is listed under 外观, and
+// wearing it swaps the wardrobe to that pack's outfits (her adult maid outfit); the adult switch off puts
+// her back into her usual look and an all-ages outfit.
+// usage: node e2e/run.js adultlook [character id, default claude]. Screenshots in out/e2e/adultlook-<id>/.
+async function adultLook() {
+  const ch = ROSTER.find((r) => r.id === (process.argv[3] || 'claude'));
+  const S = `adultlook-${ch.id}`;
+  const SHOTS = path.join(OUT, S);
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adultlook-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adultlookfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  const shot = async (name) => { await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${S}/${name}.png`; };
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const key = () => page.evaluate(() => document.getElementById('pet-look').dataset.key);
+  const closePanel = async () => { await page.click('#panel-close'); await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 }); };
+  const looks = async () => { await openCurrentPage(page); await page.waitForSelector('.pack-list .pack-opt'); await page.locator('#look-section').scrollIntoViewIfNeeded(); return page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack)); };
+  // every card picture in the wardrobe has been drawn (a sprite canvas with pixels, or a loaded image)
+  const cardsDrawn = () => page.waitForFunction(() => [...document.querySelectorAll('.card')].every((c) => { const cv = c.querySelector('canvas'); if (cv) { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 16) if (d[i]) return true; return false; } const im = c.querySelector('img'); return !im || (im.complete && im.naturalWidth > 0); }), null, { timeout: 5000 });
+  const wardrobe = async () => { await clickAct(page, 'wardrobe'); await page.waitForSelector('#panel:not(.hidden) .card'); return page.$$eval('.card', (cs) => cs.map((c) => c.dataset.outfit)); };
+  const adultId = `${ch.id}-adult`;
+  try {
+    await step(S, `wake ${ch.zh} with all-ages content: 外观 has no 成年版 and her wardrobe no adult outfit`, async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator(`.char-card[data-species="${ch.id}"]`).click();
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      const l = await looks();
+      assert.ok(!l.includes(adultId), `外观: ${l.join(', ')}`);
+      const a = await shot('1-looks-all-ages');
+      await closePanel();
+      const w = await wardrobe();
+      assert.ok(!w.includes('maid'));
+      await closePanel();
+      return `外观 ${l.join(', ')} · ${a}`;
+    }, page);
+
+    await step(S, 'the adult switch asks the 18+ question; after "我已年满 18 岁" 外观 lists the 成年版 marked 18+', async () => {
+      await clickAct(page, 'menu');
+      await page.click('#menu-adult');
+      await page.waitForSelector('#age-gate:not(.hidden)');
+      await page.click('#age-yes');
+      await page.waitForSelector('#pet-screen:not(.hidden)');
+      await idle();
+      const l = await looks();
+      assert.ok(l.includes(adultId), `外观: ${l.join(', ')}`);
+      const meta = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta span`);
+      assert.match(meta, /^18\+ · 像素动画 · 2 套服饰/);
+      const name = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta b`);
+      return `${name} — ${meta} · ${await shot('2-looks-18plus')}`;
+    }, page);
+
+    await step(S, `wearing the 成年版: the desktop draws ${adultId}, and unlocking every stage brings her adult maid outfit into the wardrobe`, async () => {
+      await page.click(`.pack-opt[data-pack="${adultId}"] .pick`);
+      await page.waitForSelector(`.pack-opt.on[data-pack="${adultId}"]`);
+      assert.equal(await key(), `${adultId}/daily`);
+      await page.locator('#unlock-all').scrollIntoViewIfNeeded();
+      await page.click('#unlock-all');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)', { timeout: 10000 });
+      await closePanel();
+      const a = await shot('3-desktop-adult-daily');
+      const w = await wardrobe();
+      assert.deepEqual(w, ['daily', 'maid'], "the 成年版's own outfits");
+      assert.equal(await page.textContent('.card[data-outfit="maid"] .nm'), '性感女仆装');
+      await cardsDrawn();
+      assert.match(await page.textContent('#outfit-preview .adult-note'), /成年版（20 岁）/);
+      const b = await shot('4-wardrobe-adult');
+      return `wardrobe ${w.join(', ')} · ${a}, ${b}`;
+    }, page);
+
+    await step(S, 'she puts on the adult maid outfit: idle, walk and lifted come from its sheet', async () => {
+      await page.click('.card[data-outfit="maid"]');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      await cardsDrawn();
+      const b = await shot('5-wardrobe-maid-on');
+      await closePanel();
+      await idle();
+      assert.equal(await key(), `${adultId}/maid`);
+      const frame = () => page.evaluate(() => document.querySelector('#pet-look canvas').dataset.frame);
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await page.waitForTimeout(400);
+      assert.match(await frame(), new RegExp(`${adultId}/sheets/maid\\.webp#0:`));
+      const i = await shot('6-desktop-maid-idle');
+      await page.evaluate(() => window.petFx.face('right'));
+      const walking = page.evaluate(() => window.petFx.walk());
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.action === 'walk', null, { timeout: 3000 });
+      await page.waitForTimeout(150);
+      assert.match(await frame(), /maid\.webp#8:/);
+      const wk = await shot('7-desktop-maid-walk');
+      await walking;
+      await page.evaluate(() => window.petFx.cue('happy'));
+      await page.waitForTimeout(300);
+      const h = await shot('8-desktop-maid-happy');
+      return `${await frame()} · ${b}, ${i}, ${wk}, ${h}`;
+    }, page);
+
+    await step(S, 'turning adult content off: back to her usual look in an all-ages outfit, and the 成年版 leaves 外观', async () => {
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await clickAct(page, 'menu');
+      await page.click('#menu-adult');
+      await page.waitForFunction(() => /成人向内容已关闭/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
+      await idle();
+      assert.equal(await key(), `${ch.id}-pixel/daily`);
+      const a = await shot('9-desktop-adult-off');
+      const l = await looks();
+      assert.ok(!l.includes(adultId));
+      await closePanel();
+      const w = await wardrobe();
+      assert.ok(!w.includes('maid') && w.includes('swimsuit'), `wardrobe ${w.join(', ')}`);
+      await cardsDrawn();
+      assert.match(await page.textContent('#outfit-preview .adult-note'), /成年（18 岁）/);
+      const b = await shot('10-wardrobe-adult-off');
+      await closePanel();
+      return `${await key()} · ${a}, ${b}`;
+    }, page);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return '0 errors';
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function outfitScenario() {
   const ch = ROSTER.find((r) => r.id === (process.argv[3] || 'claude'));
   const OID = process.argv[4] || 'swimsuit';
@@ -4684,6 +4815,7 @@ async function outfitScenario() {
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
   if (which === 'outfit' || which === 'all') await outfitScenario();
+  if (which === 'adultlook' || which === 'all') await adultLook();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

@@ -40,7 +40,7 @@
   "adult": false,
   "outfits": ["daily", "scarf", "casual", "beret", "idol", "pajamas", "cat_ears", "swimsuit", "yukata", "bikini", "qipao", "couple_hoodie", "flower_crown"],
   "signature": { "label": "白玫瑰立领长裙", "desc": "吉皮缇的原设服装：白色中式立领长袖长裙、宽大水袖、银链淡紫水晶腰饰、白玫瑰绳结和波浪荷叶边长罩衣。" },
-  "art": { "kind": "pack", "packs": ["gpt-pixel", "gpt-classic"], "fallbackPack": "gpt-pixel" },
+  "art": { "kind": "pack", "packs": ["gpt-pixel", "gpt-classic", "gpt-adult"], "fallbackPack": "gpt-pixel" },
   "fx": { "noMirror": [] },
   "credits": [
     "设定：lmy414/ai-chan-sheets 02_GPT娘_白龙娘（CC BY-NC-SA 4.0）",

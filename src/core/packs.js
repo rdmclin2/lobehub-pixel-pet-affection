@@ -107,6 +107,8 @@ function validatePack(manifest, dir) {
       species: m.species,
       kind: m.kind,
       pixelated: m.pixelated === true,
+      // 18+ look (T-1261): listed and worn only after the 18+ confirmation with adult content on
+      adult: m.adult === true,
       frame,
       actions,
       outfits,
@@ -166,14 +168,15 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
 }
 
 // Packs for one species, as the appearance picker lists them: hers in the order of her character file
-// (the default first), then imported ones; a video character's own clips come last.
-function packsFor(packs, speciesId) {
+// (the default first), then imported ones; a video character's own clips come last. 18+ packs only
+// when `adultOk` (the user confirmed 18+ and turned adult content on).
+function packsFor(packs, speciesId, adultOk = false) {
   const own = (SPECIES[speciesId] && SPECIES[speciesId].packs) || [];
   const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
   const out = [...packs.values()]
-    .filter((p) => p.species === speciesId)
+    .filter((p) => p.species === speciesId && (adultOk || !p.adult))
     .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, outfits: Object.keys(p.outfits).length }));
+    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
   if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
   return out;
@@ -185,12 +188,14 @@ const defaultPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].def
 const fallbackPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].fallbackPack) || `${speciesId}-pixel`;
 // The appearance id that stands for a video character's own clips (null for a pack character).
 const clipsId = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].clipsLook ? `${speciesId}-clips` : null);
-function chosenPack(packs, appearance, speciesId) {
+// The pack she wears: her chosen one, else her default. An 18+ pack counts only when `adultOk`; without
+// it she falls back to her default look (the choice is kept for when adult content is on again).
+function chosenPack(packs, appearance, speciesId, adultOk = false) {
   const want = appearance && appearance[speciesId];
   if (want && want === clipsId(speciesId)) return want;
   for (const id of [want, defaultPack(speciesId), fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
-    if (p && p.species === speciesId) return p.id;
+    if (p && p.species === speciesId && (adultOk || !p.adult)) return p.id;
   }
   return fallbackPack(speciesId);
 }
