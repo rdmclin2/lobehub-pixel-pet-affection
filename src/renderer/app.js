@@ -613,6 +613,7 @@ function updateSection() {
 
 let modelsRequested = false; // the model list is loaded once when a character's page first needs it
 let charDetail = null; // ⋯ → 角色列表: the character whose page is open (null: the list)
+let roleDraft = null; // { id, value }: unsaved 个性化设定 text (kept across panel re-renders)
 const charName = (c) => (c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`);
 const charRel = (c) => (c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过');
 // Her picture in the list and on her page: her chosen pack in the outfit she wears (daily if not met);
@@ -649,7 +650,7 @@ function renderCharacters() {
   // who the companion is: every character has her own agent, chat history, name and affection
   const who = document.createElement('div');
   who.className = 'adv-section';
-  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的设置：模型、外观和好感度。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
+  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的设置：模型、个性化设定、外观和好感度。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
   for (const ch of view.characters) {
     const row = document.createElement('div');
     row.className = `pack-opt char-opt${ch.current ? ' on' : ''}${ch.met ? ' met' : ' new'}`;
@@ -688,7 +689,7 @@ function renderCharacter(c) {
   const back = document.createElement('div');
   back.className = 'size-row char-back-row';
   back.innerHTML = '<button id="char-back" class="btn">‹ 角色列表</button>';
-  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; panelMsg(''); renderPanel(); });
+  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; roleDraft = null; panelMsg(''); renderPanel(); });
   body.appendChild(back);
 
   // who she is, and 切换 / 初次见面
@@ -750,6 +751,45 @@ function renderCharacter(c) {
     window.pet.refreshModels().then((r) => { view = r.view; if (panelKind === 'characters') renderPanel(); });
   }
   body.appendChild(mod);
+
+  // 个性化设定: the owner's own words added to her agent's system role (settings.systemRoles[id])
+  const role = document.createElement('div');
+  role.className = 'adv-section';
+  role.id = 'role-section';
+  const max = (settings && settings.systemRoleMax) || 1000;
+  role.innerHTML = '<h3>个性化设定（System Role）</h3><p class="adv-text"></p><textarea id="role-input" rows="5" aria-label="个性化设定"></textarea><div class="size-row role-row"><span class="adv-note role-count"></span><button id="role-clear" class="btn">清空</button><button id="role-save" class="btn primary">保存</button></div><p class="adv-text role-status"></p>';
+  role.querySelector('.adv-text').textContent = `写给${c.nameZh}的额外设定，比如怎么称呼你、说话风格、要记住的事。会加进她的 agent 设定里，只对她生效；关系阶段和内容红线仍然优先。`;
+  const input = role.querySelector('#role-input');
+  input.maxLength = max;
+  input.placeholder = `例如：叫我“老板”；说话多用比喻；我是前端工程师，聊技术时可以说得专业一点。`;
+  input.value = roleDraft && roleDraft.id === c.id ? roleDraft.value : c.systemRole || '';
+  const count = role.querySelector('.role-count');
+  const save = role.querySelector('#role-save');
+  const clear = role.querySelector('#role-clear');
+  const sync = () => {
+    count.textContent = `${input.value.length}/${max}`;
+    save.disabled = input.value.trim() === (c.systemRole || '');
+    clear.disabled = !input.value;
+  };
+  sync();
+  input.addEventListener('input', () => { roleDraft = { id: c.id, value: input.value }; sync(); });
+  role.querySelector('.role-status').textContent = c.systemRole
+    ? `已保存${c.current ? '，下一句话起用' : c.met ? '，她下次陪你时起用' : '，见面后起用'}。`
+    : '还没写，她按默认性格来。';
+  const apply = async (text) => {
+    const r = await window.pet.setSystemRole(text, c.id);
+    if (!r.ok) return panelMsg(r.reason === 'too-long' ? `最多 ${max} 个字。` : '现在保存不了，稍后再试。');
+    roleDraft = null;
+    view = r.view;
+    renderPanel();
+    panelMsg(text.trim() ? `${c.nameZh}的个性化设定已保存。` : `${c.nameZh}的个性化设定已清空。`, true);
+  };
+  save.addEventListener('click', () => apply(input.value));
+  clear.addEventListener('click', () => {
+    if (!c.systemRole) { input.value = ''; roleDraft = null; return sync(); }
+    if (confirm(`清空${c.nameZh}的个性化设定？`)) apply('');
+  });
+  body.appendChild(role);
 
   // appearance: which pet pack dresses her; packs can be imported from a folder or .zip
   const look = document.createElement('div');
@@ -818,7 +858,7 @@ function renderCharacter(c) {
 // visitors, local API, updates). Per-character settings (model, look, affection) are on her page in 角色列表.
 function renderAdvanced() {
   $('panel-title').textContent = '高级设置';
-  $('panel-sub').textContent = '对所有角色生效。模型、外观和好感度在 ⋯ → 角色列表里按角色设置。';
+  $('panel-sub').textContent = '对所有角色生效。模型、个性化设定、外观和好感度在 ⋯ → 角色列表里按角色设置。';
   const body = $('panel-body');
   body.innerHTML = '';
   const size = document.createElement('div');

@@ -154,3 +154,20 @@ test('personaKey changes with the stage and the adult switch, not with needs', (
   assert.notEqual(personaKey(at(40).p, OFF), k);
   assert.notEqual(personaKey(at(70).p, OFF), personaKey(at(70).p, ADULT));
 });
+
+test('个性化设定: the owner\'s text for this character goes above the content rules and changes personaKey only when set', () => {
+  const { p } = at(10);
+  const plain = role(10, OFF);
+  assert.doesNotMatch(plain, /个性化设定/);
+  const withRole = { ...OFF, systemRoles: { testchan: '叫我老板', other: '别人的' } };
+  const r = role(10, withRole);
+  assert.match(r, /主人给你的个性化设定（[^）]*）：\n叫我老板\n/);
+  assert.doesNotMatch(r, /别人的/);
+  assert.ok(r.indexOf('叫我老板') > r.indexOf('当前关系') && r.indexOf('叫我老板') < r.indexOf(CONTENT_RULES));
+  assert.ok(r.endsWith(CONTENT_RULES));
+  // no text: the key is the same as before the feature, so existing agents are not edited
+  assert.equal(personaKey(p, { ...OFF, systemRoles: {} }), personaKey(p, OFF));
+  assert.equal(personaKey(p, { ...OFF, systemRoles: { other: 'x' } }), personaKey(p, OFF));
+  assert.notEqual(personaKey(p, withRole), personaKey(p, OFF));
+  assert.notEqual(personaKey(p, withRole), personaKey(p, { ...OFF, systemRoles: { testchan: '叫我主人' } }));
+});

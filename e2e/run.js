@@ -1561,7 +1561,7 @@ async function packs() {
       await pickCharacter(page, 'dafeiyu');
       await openCharPage(page, 'dafeiyu');
       await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // her page lists her looks
-      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
       assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
       assert.equal(await page.locator('.pack-opt.on[data-pack="dafeiyu-pixel"]').count(), 1, 'pixels by default');
@@ -1748,7 +1748,7 @@ async function charpage() {
     const st = settingsJson();
     const pet = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
     const chars = Object.fromEntries(Object.entries(pet.characters).map(([id, c]) => [id, { name: c.name, agentId: c.agentId, affection: c.affection, relStage: c.relStage, peakStage: c.peakStage, unlockedAllAt: c.unlockedAllAt || null, modelApplied: c.modelApplied || null }]));
-    const txt = `--- settings.json (models / appearance / petScale / prefs / tts / visitors) ---\n${JSON.stringify({ models: st.models, appearance: st.appearance, petScale: st.petScale, prefs: st.prefs, tts: st.tts, visitors: st.visitors }, null, 2)}\n\n--- pet.json (speciesId + characters) ---\n${JSON.stringify({ speciesId: pet.speciesId, characters: chars }, null, 2)}\n`;
+    const txt = `--- settings.json (models / appearance / systemRoles / petScale / prefs / tts / visitors) ---\n${JSON.stringify({ models: st.models, appearance: st.appearance, systemRoles: st.systemRoles, petScale: st.petScale, prefs: st.prefs, tts: st.tts, visitors: st.visitors }, null, 2)}\n\n--- pet.json (speciesId + characters) ---\n${JSON.stringify({ speciesId: pet.speciesId, characters: chars }, null, 2)}\n`;
     fs.writeFileSync(path.join(SHOTS, `${name}.txt`), txt);
     return txt;
   };
@@ -1791,7 +1791,7 @@ async function charpage() {
       await page.waitForSelector('#char-head .char-opt[data-species="gpt"]');
       assert.equal(await page.textContent('#panel-title'), '吉皮缇');
       assert.match(await page.textContent('#panel-sub'), /吉皮缇（OpenAI）· 未见过/);
-      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
       assert.equal(await page.textContent('#char-head .pick'), '初次见面');
       assert.equal(await page.locator('#unlock-all').isDisabled(), true, 'nothing to unlock before meeting her');
       assert.equal(await page.textContent('#unlock-all'), '还没认识她');
@@ -1800,7 +1800,7 @@ async function charpage() {
       assert.deepEqual(opts, ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）'], 'only her vendor\'s models');
       assert.deepEqual(await page.locator('.pack-opt[data-pack] .meta b').allTextContents(), ['吉皮缇 · 像素', '吉皮缇 · 旧版像素']);
       await shot('02-gpt-page');
-      await check('吉皮缇详情页：‹ 角色列表、初次见面、模型 / 外观 / 好感度三个区块');
+      await check('吉皮缇详情页：‹ 角色列表、初次见面、模型 / 个性化设定 / 外观 / 好感度四个区块');
       await page.waitForTimeout(800);
       mark('step', '点 ‹ 角色列表 返回');
       await page.click('#char-back');
@@ -1846,6 +1846,40 @@ async function charpage() {
       return `settings.json models=${JSON.stringify(st.models)} appearance=${JSON.stringify(st.appearance)}`;
     }, page);
 
+    const GPT_ROLE = '叫我“老板”。说话多用比喻，聊技术时专业一点。';
+    const roleEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.systemRole) : []);
+    await step(S, 'C3b 个性化设定 on 吉皮缇\'s page is saved for her, kept while the panel re-renders, and leaves 克洛蒂\'s agent alone', async () => {
+      const edits0 = roleEdits().length;
+      mark('step', '角色列表 → 吉皮缇 → 个性化设定');
+      await openCharPage(page, 'gpt');
+      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      assert.equal(await page.inputValue('#role-input'), '', 'empty by default');
+      assert.equal(await page.textContent('#role-section .role-status'), '还没写，她按默认性格来。');
+      assert.equal(await page.locator('#role-save').isDisabled(), true, 'nothing to save yet');
+      await shot('03c-gpt-role-empty');
+      await check('个性化设定（System Role）：空的输入框、0/1000、保存不可点');
+      mark('step', '输入个性化设定（未保存时面板重绘，草稿还在）');
+      await page.fill('#role-input', GPT_ROLE);
+      assert.equal(await page.textContent('#role-section .role-count'), `${GPT_ROLE.length}/1000`);
+      await page.evaluate(() => window.pet.debugSet({ hunger: 40 })); // an update re-renders the panel
+      await page.waitForTimeout(400);
+      assert.equal(await page.inputValue('#role-input'), GPT_ROLE, 'the draft survives a re-render');
+      mark('step', '点“保存”');
+      await page.click('#role-save');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.equal(await page.textContent('#panel-msg'), '吉皮缇的个性化设定已保存。');
+      assert.equal(await page.textContent('#role-section .role-status'), '已保存，见面后起用。');
+      assert.equal(await page.locator('#role-save').isDisabled(), true);
+      assert.deepEqual(settingsJson().systemRoles, { gpt: GPT_ROLE });
+      await page.waitForTimeout(400);
+      assert.equal(roleEdits().length, edits0, '克洛蒂\'s agent is not touched');
+      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      await shot('03d-gpt-role-saved');
+      await check('提示“吉皮缇的个性化设定已保存。”，状态“已保存，见面后起用。”');
+      await page.click('#char-back');
+      return `settings.json systemRoles=${JSON.stringify(settingsJson().systemRoles)}`;
+    }, page);
+
     await step(S, 'C4 after a restart her page still shows o3 and 旧版像素', async () => {
       mark('step', '关闭应用（重启）');
       await stop();
@@ -1858,9 +1892,10 @@ async function charpage() {
       assert.equal(await page.locator('.pack-opt.on[data-pack="gpt-classic"]').count(), 1);
       assert.equal(await page.getAttribute('#char-head .char-thumb', 'data-look'), 'gpt-classic');
       assert.equal(await selected(), 'openai:o3');
+      assert.equal(await page.inputValue('#role-input'), GPT_ROLE, 'her 个性化设定 too');
       await page.locator('#model-section').scrollIntoViewIfNeeded();
       await shot('05-after-restart');
-      await check('重启后吉皮缇的模型仍是 o3');
+      await check('重启后吉皮缇的模型仍是 o3，个性化设定仍在');
       await page.locator('#look-section').scrollIntoViewIfNeeded();
       await shot('05b-after-restart-look');
       await check('重启后吉皮缇的外观仍是旧版像素（使用中）');
@@ -1885,9 +1920,47 @@ async function charpage() {
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'gpt-classic/daily', null, { timeout: 5000 });
       const last = modelEdits().pop();
       assert.deepEqual([`${last.provider}:${last.model}`, last.agentId], ['openai:o3', v.pet.agentId]);
+      const created = JSON.parse(fs.readFileSync(path.join(fakeDir, 'last-create.json'), 'utf8'));
+      assert.ok(created.systemRole.includes(`主人给你的个性化设定`) && created.systemRole.includes(GPT_ROLE), 'her new agent starts with her 个性化设定');
       await check('桌面上是穿旧版像素的吉皮缇');
       await page.waitForTimeout(800);
       return `agent ${v.pet.agentId} on ${last.provider}:${last.model}; look gpt-classic/daily`;
+    }, page);
+
+    await step(S, 'C5b changing the companion\'s 个性化设定 updates her agent right away; 清空 asks first and removes it', async () => {
+      const v0 = await view(page);
+      const edits0 = roleEdits().length;
+      mark('step', '⋯ → 角色列表 → 小吉（当前）→ 改个性化设定');
+      await openCharacters(page, 'gpt');
+      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      const next = `${GPT_ROLE}\n我是前端工程师。`;
+      await page.fill('#role-input', next);
+      await page.click('#role-save');
+      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
+      assert.equal(await page.textContent('#role-section .role-status'), '已保存，下一句话起用。');
+      const t0 = Date.now();
+      while (roleEdits().length === edits0 && Date.now() - t0 < 10000) await page.waitForTimeout(200);
+      const e = roleEdits().at(-1);
+      assert.equal(e.agentId, v0.pet.agentId);
+      assert.ok(e.systemRole.includes(next), 'the agent\'s system role carries the new text');
+      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      await shot('06b-current-role-saved');
+      await check('当前角色：保存后状态“已保存，下一句话起用。”，agent 的 system role 已更新');
+      mark('step', '点“清空”并确认');
+      page.lastDialog = null;
+      await page.click('#role-clear'); // the harness accepts the confirm
+      await page.waitForFunction(() => /个性化设定已清空/.test(document.getElementById('panel-msg').textContent));
+      assert.equal(page.lastDialog, '清空吉皮缇的个性化设定？', 'asked first');
+      assert.equal(await page.inputValue('#role-input'), '');
+      assert.deepEqual(settingsJson().systemRoles, {});
+      const t1 = Date.now();
+      while (roleEdits().length === edits0 + 1 && Date.now() - t1 < 10000) await page.waitForTimeout(200);
+      assert.doesNotMatch(roleEdits().at(-1).systemRole, /个性化设定/, 'removed from her agent');
+      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      await shot('06c-current-role-cleared');
+      await check('清空后输入框为空、提示“吉皮缇的个性化设定已清空。”，agent 的 system role 里不再有它');
+      await page.click('#panel-close');
+      return `edit 1 for ${e.agentId}: …${e.systemRole.slice(e.systemRole.indexOf('主人给你的'), e.systemRole.indexOf('主人给你的') + 80).replace(/\n/g, '⏎')}…; after 清空 systemRoles=${JSON.stringify(settingsJson().systemRoles)}`;
     }, page);
 
     await step(S, 'C6 克洛蒂\'s page (met, not on the desktop): one-click unlock fills her affection only', async () => {
@@ -1932,7 +2005,7 @@ async function charpage() {
       assert.equal(st.prefs.memes, false);
       assert.equal(st.tts.fallback, 'silent');
       assert.equal(st.petScale, 1.5);
-      assert.deepEqual([st.models, st.appearance], [{ gpt: 'openai:o3' }, { gpt: 'gpt-classic' }], 'per-character settings untouched');
+      assert.deepEqual([st.models, st.appearance, st.systemRoles], [{ gpt: 'openai:o3' }, { gpt: 'gpt-classic' }, {}], 'per-character settings untouched');
       await check('改宠物大小为 150%：提示已保存');
       await page.evaluate(() => { document.getElementById('panel-body').scrollTop = 0; });
       await shot('08-advanced');

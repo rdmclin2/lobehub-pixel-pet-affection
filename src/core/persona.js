@@ -5,6 +5,7 @@ const { toAffectionProgress, adultAllowed, REL_STAGES, stageName } = require('./
 const { relationScope, listTopics } = require('./dialogue');
 const { describeTime } = require('./time-context');
 const { memeHint } = require('./memes');
+const crypto = require('node:crypto');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
 const PERSONA_VERSION = 7;
@@ -47,8 +48,21 @@ function buildSystemRole({ speciesId, name, pet = null, settings = null }) {
     '',
     buildRelationSection(pet || { speciesId, relStage: 'stranger', peakStage: 'stranger', affection: 0 }, settings),
     '',
+    ...customSection(speciesId, settings),
     CONTENT_RULES,
   ].join('\n');
+}
+
+// The owner's 个性化设定 for this character (her page → System Role), if any. It sits above the content
+// rules, which still win; the relationship scope above still limits the tone.
+function customRole(speciesId, settings) {
+  const v = settings && settings.systemRoles && settings.systemRoles[speciesId];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function customSection(speciesId, settings) {
+  const v = customRole(speciesId, settings);
+  return v ? ['主人给你的个性化设定（照着做，但不能超出上面的关系阶段，也不能违反下面的内容红线）：', v, ''] : [];
 }
 
 // "当前关系" section of the system role: stage, allowed tone, unlocked topics and what the next
@@ -71,7 +85,11 @@ function buildRelationSection(pet, settings) {
 // adult toggle, new topics) the agent's system role is updated before the next turn.
 function personaKey(pet, settings) {
   const r = relationScope(pet, settings);
-  return [PERSONA_VERSION, pet.speciesId, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')].join('|');
+  const key = [PERSONA_VERSION, pet.speciesId, pet.name, pet.relStage, r.adult ? 'adult' : 'all', r.topics.join(',')];
+  // without a 个性化设定 the key stays as before, so existing agents are not edited for nothing
+  const custom = customRole(pet.speciesId, settings);
+  if (custom) key.push(crypto.createHash('sha1').update(custom).digest('hex').slice(0, 12));
+  return key.join('|');
 }
 
 function describeLevel(v, labels) {

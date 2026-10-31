@@ -227,6 +227,8 @@ body.busy.over .stop-btn { display: block; }
 .adv-section + .adv-section { margin-top: 8px; }
 .size-row { display: flex; gap: 8px; align-items: center; }
 .size-row input[type="range"] { flex: 1; min-height: 28px; accent-color: #c9502a; }
+#role-input { display: block; box-sizing: border-box; width: 100%; resize: vertical; min-height: 84px; font: inherit; font-size: 12px; line-height: 1.5; color: #2b2233; border: 3px solid #2b2233; background: #fff; padding: 4px 6px; user-select: text; }
+.role-row .role-count { flex: 1; }
 .size-row select { flex: 1; min-width: 0; min-height: 30px; font: inherit; font-size: 12px; color: #2b2233; border: 3px solid #2b2233; background: #fff; padding: 2px 4px; }
 .size-val { font-weight: normal; color: #c9502a; }
 /* resize handle: top-left of the pet (the window grows up and to the left) */

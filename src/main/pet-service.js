@@ -109,7 +109,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
   }
 
   // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
@@ -142,6 +142,7 @@ class PetService extends EventEmitter {
           look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings) : outfits.DEFAULT_OUTFIT),
           appearance: this.appearanceView(x.id),
           model: this.modelView(x.id),
+          systemRole: this.settings.systemRoles[x.id] || '',
         };
       }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
@@ -418,6 +419,24 @@ class PetService extends EventEmitter {
     this.settings = settingsLib.normalizeSettings({ ...this.settings, models: { ...this.settings.models, [id]: key } });
     this.settingsStore.save(this.settings);
     if (id === this.pet.speciesId && !this.busy) this._applyModel().catch((e) => this.emit('error', e));
+    this._save();
+    return { ok: true, view: this.view() };
+  }
+
+  // ⋯ → 角色列表 → her page → 个性化设定: the owner's own words added to `speciesId`'s system role (default:
+  // the current character's), kept in settings.systemRoles[speciesId]; empty text removes them. It changes
+  // her personaKey, so her agent is updated right away in the background when she is the companion (and
+  // again before the next turn if that failed), otherwise before her next turn.
+  setSystemRole(text, speciesId) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    if (String(text || '').trim().length > settingsLib.SYSTEM_ROLE_MAX) return { ok: false, reason: 'too-long' };
+    const { [id]: _old, ...rest } = this.settings.systemRoles;
+    const clean = settingsLib.cleanSystemRole(text);
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, systemRoles: clean ? { ...rest, [id]: clean } : rest });
+    this.settingsStore.save(this.settings);
+    if (id === this.pet.speciesId && !this.busy) this._ensureReady().catch((e) => this.emit('error', e));
     this._save();
     return { ok: true, view: this.view() };
   }
