@@ -378,17 +378,33 @@ void main() {
 
     // ---- the face, painted in drawing pixels relative to face.box ----
     const ink = `rgb(${(face && face.ink ? face.ink : [60, 40, 70]).join(',')})`;
-    const skin = `rgb(${(face && face.skin ? face.skin : [252, 232, 224]).join(',')})`;
+    const skinRgb = face && face.skin ? face.skin : [247, 220, 212];
+    const skin = `rgb(${skinRgb.join(',')})`;
+    const lidShade = `rgb(${skinRgb.map((c, i) => Math.round(c * [0.93, 0.88, 0.92][i])).join(',')})`;
     const F = (x, y) => [(x - face.box[0]) * FACE_RES, (y - face.box[1]) * FACE_RES];
     function cover([x0, y0, x1, y1], share = 1) {
       // skin over the eye from its top down: a closing lid
       // (from just under the lashes: the fringe over the eyes must stay as drawn)
-      const [ax, ay] = F(x0 - 0.4, y0 + 0.2);
-      const [bx, by] = F(x1 + 0.4, y0 + 0.2 + (y1 - y0 + 0.3) * share);
-      fg.fillStyle = skin;
+      const [ax, ay] = F(x0 + 0.2, y0 + 0.4);
+      const [bx, by] = F(x1 - 0.2, y0 + 0.4 + (y1 - y0 + 0.1) * share);
+      // shaped like the lid: the top follows the eye's arch, the edge sags a little as it comes down
+      const cx = (ax + bx) / 2;
+      const arch = (bx - ax) * 0.18;
+      // a lid is skin with a little shade toward the brow
+      const g = fg.createLinearGradient(0, ay - arch, 0, Math.max(ay + arch, by));
+      g.addColorStop(0, lidShade);
+      g.addColorStop(1, skin);
+      fg.fillStyle = g;
       fg.beginPath();
-      fg.ellipse((ax + bx) / 2, ay, (bx - ax) / 2, Math.max(1, by - ay), 0, 0, Math.PI);
+      fg.moveTo(ax, ay + arch);
+      fg.quadraticCurveTo(cx, ay - arch, bx, ay + arch);
+      fg.lineTo(bx, Math.max(ay + arch, by));
+      fg.quadraticCurveTo(cx, Math.max(ay + arch, by) + arch * share, ax, Math.max(ay + arch, by));
+      fg.closePath();
+      // a soft edge, so the lid melts into the face around it
+      fg.filter = `blur(${FACE_RES * 0.35}px)`;
       fg.fill();
+      fg.filter = 'none';
       return [ax, by, bx];
     }
     function stroke(w = 1.1) { fg.strokeStyle = ink; fg.lineWidth = w * FACE_RES; fg.lineCap = 'round'; fg.lineJoin = 'round'; fg.stroke(); }
@@ -399,7 +415,7 @@ void main() {
       if (kind === 'open' || kind === 'wide') {
         if (blinkK > 0.02) {
           const [ax, by, bx] = cover(box, blinkK);
-          fg.beginPath(); fg.moveTo(ax + 1, by); fg.quadraticCurveTo((ax + bx) / 2, by + FACE_RES * 0.8 * blinkK, bx - 1, by); stroke(1);
+          fg.beginPath(); fg.moveTo(ax + 1, by); fg.quadraticCurveTo((ax + bx) / 2, by + FACE_RES * 0.8 * blinkK, bx - 1, by); stroke(0.8 + 0.6 * blinkK);
         }
         if (kind === 'wide') {
           // a startled glint in each eye
@@ -432,7 +448,7 @@ void main() {
       fg.beginPath();
       if (kind === 'closed') { fg.moveTo(ax + wpx * 0.12, mid); fg.quadraticCurveTo(cx, mid + FACE_RES * 2.2, bx - wpx * 0.12, mid); }
       else { fg.moveTo(ax + wpx * 0.12, mid + FACE_RES); fg.quadraticCurveTo(cx, mid - FACE_RES * 2.6, bx - wpx * 0.12, mid + FACE_RES); }
-      stroke(1.15);
+      stroke(1.4);
     }
     function mouth(kind, t, open) {
       const [mx, my] = F(face.mouth[0], face.mouth[1]);
@@ -519,7 +535,8 @@ void main() {
     }
 
     let frameN = 0;
-    function draw({ t, state, mood = null, talking = false, win = null }) {
+    // `blink` (0..1) holds the lids there instead of blinking on their own (for tests and stills)
+    function draw({ t, state, mood = null, talking = false, win = null, blink: hold = null }) {
       if (!mesh) return false;
       if (frameN++ % 30 === 0) fit();
       const dt = lastT == null ? 1 / 60 : clamp(t - lastT, 0, 0.05);
@@ -545,7 +562,7 @@ void main() {
       tint = tint.map((v, i) => lerp(v, (L.tint || [1, 1, 1, 0])[i], kk));
 
       blink.step(t);
-      blinkK = blink.k;
+      blinkK = hold == null ? blink.k : hold;
 
       // talking: the mouth opens and closes in syllables
       if (talking) talkPhase += dt * (7 + 3 * Math.sin(t * 1.3));
