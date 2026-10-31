@@ -34,4 +34,4 @@ Content notes: every character's set age is 18. Claude, Grok, Gemini, GPT and �
 | `daily` | 日常服（每位角色的原设服装） | 陌生 | 全年龄 | 每位角色的像素包；大肥鱼也可换成原版动画 |
 | `bikini` | 沙滩比基尼（荷叶边上衣盖住整个胸口、到膝盖上方的荷叶边泳裙、系扣短开衫） | 暧昧 | 全年龄 | 五位角色的默认像素包 `sheets/bikini.webp`；原版动画、旧版像素包没有，回落到默认像素包 |
 | `scarf` / `casual` / `beret` / `idol` / `pajamas` / `cat_ears` / `swimsuit` / `yukata` / `qipao` / `couple_hoodie` / `flower_crown` | 全年龄服饰 | 陌生 – 恋人 | 全年龄 | 五位角色的默认像素包 `sheets/<id>.webp`（gpt-image-2.5 生成，2026-10-31）；原版动画、旧版像素包没有，回落到默认像素包 |
-| `maid` / `offshoulder_gown` / `office` / `nurse` / `stewardess` / `retro_swimsuit` / `silk_robe` / `bunny` / `knit_dress` / `devil_cos` | 成人向服饰（性感，不裸露） | 暧昧 / 恋人 | 成人向 | `maid` 只画在 18+ 成年版角色包 `packs/<id>-adult/`（20 岁成年形象，gpt-image-2.5 生成，2026-10-31）里，确认年满 18 岁并开启成人向内容后才能选；其余成人向服饰还没有图（不显示） |
+| `maid` / `sexy_bikini` / `offshoulder_gown` / `office` / `nurse` / `stewardess` / `retro_swimsuit` / `silk_robe` / `bunny` / `knit_dress` / `devil_cos` | 成人向服饰（性感，不裸露） | 暧昧 / 恋人 | 成人向 | `maid`、`sexy_bikini` 只画在 18+ 成年版角色包 `packs/<id>-adult/`（20 岁成年形象，gpt-image-2.5 生成，2026-10-31）里，确认年满 18 岁并开启成人向内容后才能选；其余成人向服饰还没有图（不显示） |
