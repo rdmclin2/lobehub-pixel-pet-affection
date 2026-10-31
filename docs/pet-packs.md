@@ -29,6 +29,7 @@ my-grok/
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
+  "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
   "actions": {                       // sprites 必填：每个状态在精灵图里的位置（行、起始列都从 0 开始）
     "idle":   { "row": 0, "col": 0, "frames": 2, "fps": 2 },
@@ -42,8 +43,9 @@ my-grok/
 }
 ```
 
-- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`。角色只会穿她的 character.json 里 `outfits` 列出的服饰；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
-- **`swimsuit` 与 `retro_swimsuit` 的区别**：`swimsuit`（运动泳装，亲近 ♥35，**全年龄**）是高领短袖的运动款连体泳衣，外面穿及膝沙滩裤和长袖防晒开衫，胸口、腰腹和臀部都遮住；五位内置角色的默认包都带这张图（`sheets/swimsuit.webp`）。`retro_swimsuit`（复古连体泳装，恋人 ♥85，**成人向**）只在确认 18+ 并打开成人向内容后对 `adult: true` 的角色显示，内置角色都不提供它的图。导入包给 `swimsuit` 提供的图也要符合同样的全年龄标准（不是比基尼、不露腰、不高开衩）。
+- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。角色平时只会穿她的 character.json 里 `outfits` 列出的服饰；穿 18+ 角色包（`"adult": true`）时，衣柜改为这个包里有图的服饰，成人向的也算；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
+- **`swimsuit` 与 `retro_swimsuit` 的区别**：`swimsuit`（运动泳装，亲近 ♥35，**全年龄**）是高领短袖的运动款连体泳衣，外面穿及膝沙滩裤和长袖防晒开衫，胸口、腰腹和臀部都遮住；五位内置角色的默认包都带这张图（`sheets/swimsuit.webp`）。`retro_swimsuit`（高开衩连体泳衣，恋人 ♥85，**成人向**）只在确认 18+ 并打开成人向内容后显示，而且只在 `adult: true` 的角色或 18+ 角色包上出现；内置角色只有成年版角色包（`<id>-adult`）带它的图。导入包给 `swimsuit` 提供的图也要符合同样的全年龄标准（不是比基尼、不露腰、不高开衩）。
+- **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，目前有日常服和性感女仆装（暧昧 ♥60）两套（另外 9 套成人向服饰已经定义，提示词也写好了，但 2026-10-31 生图时被服务的安全暂停拦下，还没有图，所以不显示）。只有确认年满 18 岁并打开“成人向内容”后，它才出现在“外观”里；选了它，衣柜换成这个包里有图的服饰。关掉成人向内容时她换回默认外观，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
 - **`bikini`**（沙滩比基尼，暧昧 ♥60，**全年龄**）：比运动泳装清凉，但仍是全年龄标准：上衣从锁骨下方盖住整个胸口、不显胸型和乳沟，泳裙到膝盖上方、盖住臀部，外搭盖住肩膀的短开衫；只露出一窄条腰、手臂和小腿，布料不透明，没有内衣感和性暗示的姿势。五位内置角色的默认包都带这张图（`sheets/bikini.webp`）。导入包给 `bikini` 提供的图也要符合这个标准。
 - **动作（schema 2）**：动作名就是应用的状态名（大肥鱼原版动画的 15 个状态 + `lifted`）。只有 `idle` 必填；缺的状态按回落链降级并叠加一个表情符号（例如 `eat_fruit` → `eat_rice` → `happy` → `idle`）。
 

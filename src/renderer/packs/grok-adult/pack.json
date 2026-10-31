@@ -1,0 +1,125 @@
+{
+  "schema": 2,
+  "id": "grok-adult",
+  "name": "格萝可 · 成年版（18+）",
+  "version": "1.0.0",
+  "author": "rdmclin2（gpt-image-2.5 生成，脚本像素化）；原设 ZipZipPipe，设定 lmy414",
+  "license": "CC BY-NC-SA 4.0",
+  "description": "Grok 娘 · 黑金吸血鬼（同人，非 xAI 官方）的 20 岁成年版，带成人向衣柜；只在确认年满 18 岁并开启成人向内容后可选。16 位像素风，16 个动作和侧身走路。",
+  "species": "grok",
+  "kind": "sprites",
+  "pixelated": false,
+  "frame": {
+    "width": 332,
+    "height": 452
+  },
+  "actions": {
+    "idle": {
+      "row": 0,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "pat": {
+      "row": 0,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "lifted": {
+      "row": 1,
+      "col": 0,
+      "frames": 2,
+      "fps": 6
+    },
+    "eat_rice": {
+      "row": 1,
+      "col": 2,
+      "frames": 2,
+      "fps": 3
+    },
+    "sleep": {
+      "row": 2,
+      "col": 0,
+      "frames": 2,
+      "fps": 1.5
+    },
+    "think": {
+      "row": 2,
+      "col": 2,
+      "frames": 2,
+      "fps": 2
+    },
+    "talk": {
+      "row": 3,
+      "col": 0,
+      "frames": 2,
+      "fps": 5
+    },
+    "happy": {
+      "row": 3,
+      "col": 2,
+      "frames": 2,
+      "fps": 5
+    },
+    "look": {
+      "row": 4,
+      "col": 0,
+      "frames": 2,
+      "fps": 1.5
+    },
+    "sad": {
+      "row": 4,
+      "col": 2,
+      "frames": 2,
+      "fps": 2
+    },
+    "hungry": {
+      "row": 5,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "eat_cookie": {
+      "row": 5,
+      "col": 2,
+      "frames": 2,
+      "fps": 3
+    },
+    "eat_fruit": {
+      "row": 6,
+      "col": 0,
+      "frames": 2,
+      "fps": 3
+    },
+    "play": {
+      "row": 6,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "hatch": {
+      "row": 7,
+      "col": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "evolve": {
+      "row": 7,
+      "col": 2,
+      "frames": 2,
+      "fps": 4
+    },
+    "walk": {
+      "row": 8,
+      "col": 0,
+      "frames": 4,
+      "fps": 5
+    }
+  },
+  "outfits": {
+    "daily": "sheets/daily.webp",
+    "maid": "sheets/maid.webp"
+  },
+  "adult": true
+}

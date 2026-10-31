@@ -2,14 +2,15 @@
 
 // Tiered outfits (design section 5). Every outfit unlocks at a relationship stage and is gated the same
 // way as topics: by `peakStage` (unlocks are never taken back) and by rating. `adult` outfits exist only
-// when the user confirmed 18+ AND turned adult content on AND the character allows it (none of the
-// model-chan do). A character only offers the outfits it has art for (`outfits` in its file).
-// Turning adult content off puts the pet back into the last all-ages outfit it wore.
+// when the user confirmed 18+ AND turned adult content on AND either the character allows it (none of the
+// model-chan do) or she wears an 18+ look (`look.adult`: an adult pet pack, e.g. the 20-year-old
+// "<id>-adult" packs, T-1261). A character only offers the outfits it has art for: in an adult look the
+// outfits of that pack, otherwise `outfits` in its file. Turning adult content off (or leaving the adult
+// look) puts the pet back into the last all-ages outfit it wore.
 //
-// Content boundary (design 8.2): nothing is revealing. The adult tier is about style only (a long maid
-// dress, an off-shoulder evening gown, a retro one-piece swimsuit, a knee-length silk robe). The art
-// for each outfit comes from the companion's pet pack (src/core/packs.js); every built-in picture
-// shows an adult woman (see NOTICE.md).
+// Content boundary (design 8.2, docs/compliance-review.md 3f): never nude. The adult tier is sexy glamour
+// fashion with opaque fabric over the chest and crotch. The art for each outfit comes from the
+// companion's pet pack (src/core/packs.js); every built-in picture shows an adult woman (see NOTICE.md).
 
 const { getStage, stageIndex, stageName, adultAllowed } = require('./affection');
 const { SPECIES } = require('./species');
@@ -34,12 +35,19 @@ const OUTFITS = [
   { id: 'bikini', stage: 'flirty', rating: 'all', label: '沙滩比基尼', desc: '高圆领两层荷叶边上衣、到膝盖上方的荷叶边泳裙，外搭系扣短开衫。' },
   // A loose straight-cut ankle-length qipao with a mandarin collar; slits only at the ankles (T-1261).
   { id: 'qipao', stage: 'flirty', rating: 'all', label: '长旗袍', desc: '宽松直筒的及踝长旗袍，立领、短盖袖、绣花，只在脚踝处开小衩。' },
-  { id: 'maid', stage: 'flirty', rating: 'adult', label: '女仆装', desc: '长袖及膝女仆裙、白围裙和发带（不暴露）。' },
-  { id: 'offshoulder_gown', stage: 'flirty', rating: 'adult', label: '露肩晚礼服', desc: '酒红色及地晚礼服，只露出肩膀。' },
+  // The adult tier (T-1261): art only in the 18+ "<id>-adult" packs; sexy, never nude.
+  { id: 'maid', stage: 'flirty', rating: 'adult', label: '性感女仆装', desc: '低胸短款女仆裙、白色迷你围裙、吊带长筒袜。' },
+  { id: 'offshoulder_gown', stage: 'flirty', rating: 'adult', label: '露肩晚礼服', desc: '低胸露肩缎面长礼服，高开衩，配长手套。' },
+  { id: 'office', stage: 'flirty', rating: 'adult', label: '职场 OL', desc: '解开领口的白衬衫、紧身包臀裙、黑丝和细跟鞋，戴细框眼镜。' },
+  { id: 'nurse', stage: 'flirty', rating: 'adult', label: '护士服', desc: '拉链款短护士裙、护士帽、白色吊带长筒袜。' },
+  { id: 'stewardess', stage: 'flirty', rating: 'adult', label: '空姐制服', desc: '收腰短外套、丝巾、紧身短裙和黑丝。' },
   { id: 'couple_hoodie', stage: 'lover', rating: 'all', label: '情侣卫衣', desc: '印着大红心的粉色宽松卫衣、及膝百褶裙和不透明黑色连裤袜。' },
   { id: 'flower_crown', stage: 'lover', rating: 'all', label: '花冠长裙', desc: '白色及踝连衣长裙和一顶小花冠。' },
-  { id: 'retro_swimsuit', stage: 'lover', rating: 'adult', label: '复古连体泳装', desc: '海军蓝复古连体泳装、遮阳帽和凉鞋（保守款）。' },
-  { id: 'silk_robe', stage: 'lover', rating: 'adult', label: '丝绸睡袍', desc: '香槟色及膝丝绸睡袍，系好腰带，内搭长睡裤。' },
+  { id: 'retro_swimsuit', stage: 'lover', rating: 'adult', label: '高开衩连体泳衣', desc: '深 V 高开衩亮面连体泳衣，配细金腰链。' },
+  { id: 'silk_robe', stage: 'lover', rating: 'adult', label: '丝绸睡裙', desc: '不透明缎面吊带短睡裙，外披短款丝绸和服。' },
+  { id: 'bunny', stage: 'lover', rating: 'adult', label: '兔女郎', desc: '无肩带亮面兔女郎连体衣、兔耳发箍、领结和渔网袜。' },
+  { id: 'knit_dress', stage: 'lover', rating: 'adult', label: '黑丝毛衣裙', desc: '露肩短款针织毛衣裙、蕾丝边长筒袜。' },
+  { id: 'devil_cos', stage: 'lover', rating: 'adult', label: '小恶魔 COS', desc: '系带束腰上衣、荷叶短裙、恶魔角、尾巴和小翅膀。' },
 ];
 
 const OUTFIT_IDS = OUTFITS.map((o) => o.id);
@@ -49,7 +57,11 @@ const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
 // A character's own look (its file's `signature`) replaces the generic name of the default outfit.
 const signature = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].signature) || null;
 // Outfits a character has art for; an unknown character has only the default outfit.
-const hasArt = (speciesId, id) => id === DEFAULT_OUTFIT || !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id));
+const hasArt = (speciesId, id, look = null) => id === DEFAULT_OUTFIT || (adultLookOn(look) ? look.outfits.includes(id) : !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id)));
+// `look`: { adult, outfits } of the pack she wears, given only when that pack is an 18+ one and allowed
+// (src/main/pet-service.js _look); null otherwise.
+const adultLookOn = (look) => !!(look && look.adult && Array.isArray(look.outfits));
+const adultOutfitsAllowed = (pet, settings, look) => adultAllowed(settings, pet.speciesId) || (adultLookOn(look) && !!(settings && settings.ageConfirmed && settings.adultContent));
 
 function lockCondition(stageId, affection, adult) {
   const s = getStage(stageId);
@@ -58,25 +70,25 @@ function lockCondition(stageId, affection, adult) {
 }
 
 const isUnlocked = (pet, o) => stageIndex(o.stage) <= stageIndex(pet.peakStage);
-const isVisible = (pet, settings, o) => hasArt(pet.speciesId, o.id) && (o.rating === 'all' || adultAllowed(settings, pet.speciesId));
+const isVisible = (pet, settings, o, look = null) => hasArt(pet.speciesId, o.id, look) && (o.rating === 'all' || adultOutfitsAllowed(pet, settings, look));
 
 // The outfit the pet is actually wearing: its saved one if that is still visible and unlocked, else the
 // last all-ages outfit it wore, else the default.
-function wornOutfit(pet, settings) {
+function wornOutfit(pet, settings, look = null) {
   for (const id of [pet.equippedOutfit, pet.lastSafeOutfit, DEFAULT_OUTFIT]) {
     const o = byId(id);
-    if (o && isUnlocked(pet, o) && isVisible(pet, settings, o)) return o.id;
+    if (o && isUnlocked(pet, o) && isVisible(pet, settings, o, look)) return o.id;
   }
   return DEFAULT_OUTFIT;
 }
 
 // Every outfit for the wardrobe. Adult outfits are hidden entirely (not shown as locked) when adult
 // content is not allowed; every other outfit is listed, locked ones with their unlock condition.
-function listOutfits(pet, settings) {
+function listOutfits(pet, settings, look = null) {
   const adult = adultAllowed(settings, pet.speciesId);
-  const worn = wornOutfit(pet, settings);
+  const worn = wornOutfit(pet, settings, look);
   const seen = pet.seenUnlocks || [];
-  return OUTFITS.filter((o) => isVisible(pet, settings, o)).map((o) => {
+  return OUTFITS.filter((o) => isVisible(pet, settings, o, look)).map((o) => {
     const unlocked = isUnlocked(pet, o);
     const own = o.id === DEFAULT_OUTFIT && signature(pet.speciesId);
     return {
@@ -96,18 +108,18 @@ function listOutfits(pet, settings) {
 }
 
 // Validate an equip request. { ok: true, outfit } or { ok: false, reason: 'unknown'|'hidden'|'locked', condition }.
-function checkOutfit(pet, settings, id) {
+function checkOutfit(pet, settings, id, look = null) {
   const o = byId(id);
   if (!o) return { ok: false, reason: 'unknown' };
-  if (!isVisible(pet, settings, o)) return { ok: false, reason: hasArt(pet.speciesId, o.id) ? 'hidden' : 'unavailable' };
+  if (!isVisible(pet, settings, o, look)) return { ok: false, reason: hasArt(pet.speciesId, o.id, look) ? 'hidden' : 'unavailable' };
   if (!isUnlocked(pet, o)) return { ok: false, reason: 'locked', condition: lockCondition(o.stage, pet.affection, adultAllowed(settings, pet.speciesId)) };
   return { ok: true, outfit: o };
 }
 
 // Put an outfit on (mutates `pet`). All-ages outfits are remembered as the fallback for when adult
 // content is switched off.
-function equipOutfit(pet, settings, id) {
-  const r = checkOutfit(pet, settings, id);
+function equipOutfit(pet, settings, id, look = null) {
+  const r = checkOutfit(pet, settings, id, look);
   if (!r.ok) return r;
   pet.equippedOutfit = r.outfit.id;
   if (r.outfit.rating === 'all') pet.lastSafeOutfit = r.outfit.id;
@@ -116,17 +128,17 @@ function equipOutfit(pet, settings, id) {
 
 // After the adult switch or the age answer changed: if the saved outfit may no longer be shown, change
 // into the fallback and save that. Returns { changed, from, to }.
-function enforceOutfit(pet, settings) {
+function enforceOutfit(pet, settings, look = null) {
   const from = pet.equippedOutfit;
-  const to = wornOutfit(pet, settings);
+  const to = wornOutfit(pet, settings, look);
   if (from === to) return { changed: false, from, to };
   pet.equippedOutfit = to;
   return { changed: true, from, to };
 }
 
 // Outfits that a stage-up just unlocked, as the user may see them.
-function outfitsForStages(stageIds, pet, settings) {
-  return OUTFITS.filter((o) => stageIds.includes(o.stage) && isVisible(pet, settings, o)).map((o) => ({ id: o.id, label: o.label }));
+function outfitsForStages(stageIds, pet, settings, look = null) {
+  return OUTFITS.filter((o) => stageIds.includes(o.stage) && isVisible(pet, settings, o, look)).map((o) => ({ id: o.id, label: o.label }));
 }
 
-module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, signature, hasArt, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };
+module.exports = { OUTFITS, OUTFIT_IDS, DEFAULT_OUTFIT, signature, hasArt, adultLookOn, listOutfits, checkOutfit, equipOutfit, enforceOutfit, wornOutfit, outfitsForStages };

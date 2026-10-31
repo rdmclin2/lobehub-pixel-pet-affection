@@ -94,7 +94,7 @@ test('a character only offers the outfits it has art for', () => {
 
 test('stage-up unlock lists name the outfits the user can see', () => {
   const p = mk(70);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'qipao', 'maid', 'offshoulder_gown']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'qipao', 'maid', 'offshoulder_gown', 'office', 'nurse', 'stewardess']);
   assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata', 'bikini', 'qipao']);
 });
 
@@ -149,4 +149,19 @@ test('switching adult content off leaves the swimsuit on, and it is where the re
   assert.equal(o.equipOutfit(p, OFF, 'retro_swimsuit').reason, 'hidden');
   assert.deepEqual(o.enforceOutfit(p, OFF), { changed: true, from: 'retro_swimsuit', to: 'swimsuit' });
   assert.ok(o.listOutfits(p, OFF).some((x) => x.id === 'swimsuit'));
+});
+
+test('an 18+ look (adult pack) brings its own wardrobe, adult outfits included, only with adult content on', () => {
+  const look = { adult: true, outfits: ['daily', 'maid', 'bunny', 'office'] };
+  const p = mk(95, 'claude');
+  assert.deepEqual(o.listOutfits(p, ADULT, look).map((x) => x.id), ['daily', 'maid', 'office', 'bunny'], "the look's outfits, not her all-ages ones");
+  assert.deepEqual(o.equipOutfit(p, ADULT, 'bunny', look), { ok: true, outfit: { id: 'bunny', label: '兔女郎' } });
+  assert.equal(p.lastSafeOutfit, 'daily', 'an adult outfit is never the all-ages fallback');
+  for (const settings of [OFF, { ageConfirmed: false, adultContent: false }]) {
+    assert.deepEqual(o.listOutfits(p, settings, look).filter((x) => x.rating === 'adult'), [], 'adult content off: none listed');
+    assert.equal(o.wornOutfit(p, settings, look), 'daily');
+  }
+  // her usual look (no 18+ pack) never shows the adult outfits, even with adult content on
+  assert.deepEqual(o.listOutfits(p, ADULT).filter((x) => x.rating === 'adult'), []);
+  assert.deepEqual(o.enforceOutfit(p, ADULT), { changed: true, from: 'bunny', to: 'daily' });
 });
