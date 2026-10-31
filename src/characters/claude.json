@@ -38,7 +38,7 @@
   "adult": false,
   "outfits": ["daily", "scarf", "casual", "beret", "idol", "pajamas", "cat_ears", "swimsuit", "yukata", "bikini", "qipao", "couple_hoodie", "flower_crown"],
   "signature": { "label": "橘白哥特长裙", "desc": "克洛蒂的原设服装：奶油白高领衬衫、短披肩和橘红长裙。" },
-  "art": { "kind": "pack", "packs": ["claude-pixel", "claude-classic", "claude-adult"], "fallbackPack": "claude-pixel" },
+  "art": {"kind": "video", "dir": "assets/claude", "clips": {"idle": "idle.webm", "look": "look.webm", "happy": "happy.webm", "pat": "pat.webm", "sad": "sad.webm", "hungry": "hungry.webm", "sleep": "sleep.webm", "eat_rice": "eat_rice.webm", "eat_cookie": "eat_cookie.webm", "eat_fruit": "eat_fruit.webm", "think": "think.webm", "talk": "talk.webm", "play": "play.webm", "hatch": "hatch.webm", "evolve": "evolve.webm", "lifted": "lifted.webm", "walk": "walk.webm"}, "packs": ["claude-pixel", "claude-classic", "claude-adult"], "fallbackPack": "claude-pixel", "frame": {"crop": [0, 0.03, 1, 0.985], "aspect": 0.5625, "height": 226}, "clipsLook": {"name": "克洛蒂 · 原设立绘动画", "author": "原设 ZipZipPipe，设定图 lmy414（ai-chan-sheets），视频 Seedance 2.5 生成", "license": "CC BY-NC-SA 4.0（禁止商用）", "description": "按 ai-chan-sheets 设定图的原设立绘生成的 17 段透明视频（720×1280），含走路和拎起。"}},
   "fx": { "noMirror": [] },
   "credits": [
     "设定：lmy414/ai-chan-sheets 11_Claude娘_Anthropic（CC BY-NC-SA 4.0）",

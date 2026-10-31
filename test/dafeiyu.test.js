@@ -47,3 +47,19 @@ test('the required credit and non-commercial terms ship with the assets and the 
   const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
   assert.match(readme, /github\.com\/PC2005-cloud\/dsh-pet/);
 });
+
+test('克洛蒂 has her own 原设立绘 clips (T-1270): every state is a portrait WebM, cropped by art.frame, her pixel pack still the default', () => {
+  const sp = SPECIES.claude;
+  assert.equal(sp.art, 'video');
+  assert.equal(sp.defaultPack, 'claude-pixel', 'she starts in her pixel pack; the clips are a 外观 choice');
+  assert.deepEqual(Object.keys(sp.clips).sort(), [...require('../src/core/fx').STATES].sort(), 'a clip for every state, lifted and walk included');
+  const dir = path.join(__dirname, '..', 'src', 'renderer', sp.clipDir);
+  for (const file of Object.values(sp.clips).flat()) {
+    const buf = fs.readFileSync(path.join(dir, file));
+    assert.deepEqual([...buf.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3], `${file} is not WebM`);
+  }
+  assert.deepEqual(sp.clipFrame, { crop: [0, 0.03, 1, 0.985], aspect: 0.5625, height: 226 });
+  assert.match(sp.clipsLook.license, /CC BY-NC-SA/);
+  // 大肥鱼 keeps her landscape crop
+  assert.deepEqual(SPECIES.dafeiyu.clipFrame, { crop: [0.27, 0.136, 0.73, 0.951], aspect: 16 / 9, height: 150 });
+});

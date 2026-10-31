@@ -43,6 +43,13 @@ function validateCharacter(c) {
   if (art.kind === 'video' && (!art.clips || !str(art.clips.idle) || !str(art.dir))) errors.push('a video character needs art.dir and art.clips.idle');
   if (art.kind === 'video' && art.clips) for (const [k, v] of Object.entries(art.clips)) if (!clipOk(v)) errors.push(`art.clips.${k} must be a file name or a list of them`);
   if (art.clipsLook !== undefined && (!art.clipsLook || !['name', 'author', 'license'].every((k) => str(art.clipsLook[k])))) errors.push('art.clipsLook needs a name, an author and a license');
+  // how her clips are cropped (T-1270): `crop` [x0, y0, x1, y1] in 0..1 of the clip frame is what fills a box
+  // `height` px tall on the desktop (its width follows the crop's shape; `aspect` is the clip's width / height)
+  if (art.frame !== undefined) {
+    const f = art.frame;
+    const okCrop = f && Array.isArray(f.crop) && f.crop.length === 4 && f.crop.every((n) => typeof n === 'number' && n >= 0 && n <= 1) && f.crop[0] < f.crop[2] && f.crop[1] < f.crop[3];
+    if (!okCrop || !(f.aspect > 0) || !(f.height >= 60 && f.height <= 400)) errors.push('art.frame needs crop [x0, y0, x1, y1] in 0..1, aspect (clip width / height) and height (60–400 px)');
+  }
   if (c.memes !== undefined) {
     if (!Array.isArray(c.memes)) errors.push('memes must be a list');
     else {
@@ -79,6 +86,8 @@ function toSpecies(c) {
     art: art.kind === 'video' ? 'video' : 'pack',
     clips: art.kind === 'video' ? { ...art.clips } : null,
     clipDir: art.kind === 'video' ? art.dir : null,
+    // the 大肥鱼 clips (640x360, her in the middle) fill a 150 px square; other video characters say how
+    clipFrame: art.kind === 'video' ? { crop: [0.27, 0.136, 0.73, 0.951], aspect: 16 / 9, height: 150, ...(art.frame || {}) } : null,
     packs: [...art.packs],
     // a video character with a pack starts in that pack; its clips are picked under 外观 (clipsLook)
     defaultPack: art.packs[0] || null,

@@ -81,10 +81,9 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 @keyframes heart-burst { from { opacity: 1; transform: translate(-50%, 0) scale(.6); } to { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .pet-body.squash, .pet-body.lifted, .pet-body.flying { animation: none; } .heart-p { animation: float-fade 1s linear forwards; } }
 /* The 大肥鱼 clips are 640x360 with the character in the middle: crop to her. */
-.vwrap { width: 150px; height: 150px; position: relative; overflow: hidden; cursor: grab; transform-origin: 50% 100%; }
-.vwrap video { position: absolute; width: 326px; height: 184px; left: -88px; top: -25px; pointer-events: none; }
-#hatch-vwrap { width: 192px; height: 192px; }
-#hatch-vwrap video { width: 418px; height: 235px; left: -113px; top: -32px; }
+.vwrap { width: var(--clip-box-w, 150px); height: var(--clip-box-h, 150px); position: relative; overflow: hidden; cursor: grab; transform-origin: 50% 100%; }
+.vwrap video { position: absolute; width: var(--clip-w, 217.3%); height: auto; left: var(--clip-l, -58.7%); top: var(--clip-t, -16.7%); pointer-events: none; }
+#hatch-vwrap { width: var(--clip-box-w, 192px); height: var(--clip-box-h, 192px); }
 
 .hud { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.hover .hud { opacity: 1; pointer-events: auto; }
@@ -267,9 +266,9 @@ canvas.sprite { object-fit: contain; }
 .char-thumb { flex: none; width: 44px; height: 56px; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
 .char-thumb .look { display: block; max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
 .char-thumb canvas.look { width: auto; height: 100%; }
-.char-thumb .look.vlook { width: 56px; height: 56px; max-width: none; max-height: none; }
+.char-thumb .look.vlook { width: auto; height: 56px; max-width: none; max-height: none; }
 .char-thumb.lg { width: 84px; height: 108px; }
-.char-thumb.lg .look.vlook { width: 108px; height: 108px; }
+.char-thumb.lg .look.vlook { width: auto; height: 108px; }
 .char-opt.new .char-thumb .look { filter: grayscale(.6) brightness(.9); }
 .char-head .char-opt { border-color: #d9cdb8; background: transparent; }
 .char-head .char-opt.on { border-color: #c9502a; background: #fff6d6; }
@@ -282,10 +281,10 @@ canvas.sprite { object-fit: contain; }
 #update-section .st[data-status="latest"] { color: #3a8f3a; }
 #update-section .st[data-status="error"] { color: #b0203a; }
 #update-section .st[data-status="ready"], #update-section .st[data-status="manual"] { color: #c9502a; font-weight: bold; }
-/* Dafeiyu's clip in the wardrobe: the same crop as .vwrap on the desktop (326x184 at -88,-25 in 150x150) */
-.vlook { position: relative; overflow: hidden; aspect-ratio: 1 / 1; }
-.vlook video { position: absolute; width: 217.3%; left: -58.7%; top: -16.7%; pointer-events: none; }
-.card .look.vlook { height: 108px; width: 108px; max-width: 100%; }
+/* A clip in the wardrobe and lists: the same crop as .vwrap on the desktop (clipVars in app.js; the defaults are 大肥鱼's) */
+.vlook { position: relative; overflow: hidden; aspect-ratio: var(--clip-ar, 1); }
+.vlook video { position: absolute; width: var(--clip-w, 217.3%); left: var(--clip-l, -58.7%); top: var(--clip-t, -16.7%); pointer-events: none; }
+.card .look.vlook { height: 108px; width: auto; max-width: 100%; }
 .preview .look.vlook { height: auto; width: 100%; }
 /* the ⋯ menu stays usable in a small window (pet scaled down) */
 #main-menu { max-height: calc(100vh - 56px); overflow-y: auto; }

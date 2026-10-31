@@ -121,6 +121,22 @@ function sheet(url) {
   }
   return sheetImages.get(url);
 }
+// How a character's clip is cropped (species clipFrame, T-1270), as CSS variables on its .vwrap / .vlook:
+// the box's size and shape, and the video's width and offset in % of the box.
+function clipVars(el, speciesId, scale = 1) {
+  const f = speciesId && speciesOf(speciesId) && speciesOf(speciesId).clipFrame;
+  if (!f) return el;
+  const [x0, y0, x1, y1] = f.crop;
+  const ar = ((x1 - x0) * f.aspect) / (y1 - y0); // the box's width / height
+  el.style.setProperty('--clip-ar', String(ar));
+  el.style.setProperty('--clip-w', `${100 / (x1 - x0)}%`);
+  el.style.setProperty('--clip-l', `${(-x0 / (x1 - x0)) * 100}%`);
+  el.style.setProperty('--clip-t', `${(-y0 / (y1 - y0)) * 100}%`);
+  el.style.setProperty('--clip-box-h', `${Math.round(f.height * scale)}px`);
+  el.style.setProperty('--clip-box-w', `${Math.round(f.height * scale * ar)}px`);
+  return el;
+}
+
 // An element showing `look`; `action` (a function) picks the sprite action each frame.
 function lookEl(look, { className = 'look', alt = '', action = () => 'idle', speciesId = null } = {}) {
   if (!look) {
@@ -134,7 +150,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     v.playsInline = true;
     if (speciesId) v.src = `${speciesOf(speciesId).clipDir}/${[].concat(speciesOf(speciesId).clips.idle)[0]}`;
     wrap.appendChild(v);
-    return wrap;
+    return clipVars(wrap, speciesId);
   }
   if (look.kind === 'sprites') {
     const c = document.createElement('canvas');
@@ -373,6 +389,7 @@ async function startHatch() {
   $('hatch-look').classList.remove('asleep');
   if (sp.art === 'video' && !sp.portrait) {
     $('hatch-look').classList.add('hidden');
+    clipVars($('hatch-vwrap'), sp.id, 1.28);
     $('hatch-vwrap').classList.remove('hidden');
     $('hatch-video').dataset.key = '';
     playClip($('hatch-video'), sp, clipFor(sp, 'hatch').name, false);
@@ -391,7 +408,10 @@ function applyArt() {
   const video = isVideo(view && view.pet.speciesId);
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
-  if (video) return;
+  if (video) {
+    clipVars($('vwrap'), view.pet.speciesId);
+    return;
+  }
   const key = `${view.look.packId}/${view.outfit}`;
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
