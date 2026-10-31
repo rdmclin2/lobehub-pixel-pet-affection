@@ -16,7 +16,7 @@ const contentGuard = require('../core/content-guard');
 const { nextEvent, LlmBudget, fallbackLine, fallbackPool } = require('../core/proactive');
 const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
-const { endpointOk } = require('../core/tts');
+const { endpointOkFor } = require('../core/tts');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
@@ -866,18 +866,18 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
-  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / system), the fallback (system / silent) and
-  // the endpoints. API keys go through main.js into tts-keys.json, never into settings.json.
+  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / local / system), the fallback (system / silent),
+  // the endpoints and the local server's API / model / voice. API keys go through main.js into tts-keys.json, never into settings.json.
   setTts(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const cur = this.settings.tts;
     const picked = p.provider !== undefined;
-    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints } };
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;
       const v = String(u || '').trim();
-      if (v && !endpointOk(v)) ok = false;
+      if (v && !endpointOkFor(id, v)) ok = false;
       else next.endpoints[id] = v;
     }
     this.settings = settingsLib.normalizeSettings({ ...this.settings, tts: next });

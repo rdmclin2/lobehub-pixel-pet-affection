@@ -188,7 +188,8 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | **按角色**（默认） | 她的引擎的 Key | 每位角色用自己文件里 `voice.tts.default` 的引擎：**大肥鱼用 MiniMax**（`qiaopi_mengmei`「俏皮萌妹」），克洛蒂 / 格萝可 / 杰米 / 吉皮缇用 Fish Audio。她的引擎没填 Key 或出错时，这一句换另一个填了 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」），再按“用不了时”降级 |
 | **Fish Audio** | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 所有角色都用 Fish：大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
 | **MiniMax** | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色（大肥鱼 `qiaopi_mengmei`）。默认端点 `https://api.minimax.cn`（国内站）；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
-| **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面两个的最后一道降级 |
+| **本地语音服务** | 你自己部署的语音服务的地址（Key 可不填） | 你在本机或家里有显卡的电脑上跑的服务（IndexTTS2、GPT-SoVITS、[whale-voice](https://github.com/2177302423qqcom-byte/whale-voice) 等），音色由你的服务决定。只在选它时使用，不当云端引擎的备用。见下方“本地语音服务” |
+| **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面几个的最后一道降级 |
 
 配置步骤：
 
@@ -197,6 +198,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、5 秒没响应（长句最多 10 秒）、返回错误时，这一句立即降级，出错的引擎暂停一会儿：超时 / 断网 / 服务端出错 20 秒，被限流 20 秒，Key 无效 / 余额不足 5 分钟（改 Key / 端点 / 引擎会立刻重试）。MiniMax 国内站每分钟只能合成 10 次（免费账户），桌宠按这个数控制请求，预合成只用多出来的次数；请求在主进程异步进行，不会卡住界面。
 5. 点 **试听一句** 听当前角色的口头禅。
+
+**本地语音服务**（自己部署）：桌宠不自带本地大模型（IndexTTS2 要 NVIDIA 显卡和几 GB 权重，第一次加载要几分钟），而是像 [AIRI](https://github.com/moeru-ai/airi) 一样，由你把服务跑起来，桌宠只请求它的地址。高级设置 → 语音 → 引擎选 **本地语音服务（自己部署）**，然后：
+
+1. **接口**：**OpenAI 兼容** 请求 `POST {地址}/v1/audio/speech`，请求体 `{ model, input, voice, response_format: "mp3", speed }`，适用于 index-tts-vllm 和大多数自部署服务；**whale-voice** 请求 `POST {地址}/tts`，请求体 `{ text, emo }`（它的 `scripts/tts_daemon.py`），情绪按她的心情选：开心 `happy`、困 `sleepy`、难过 / 饿 `wronged`，其他 `tender`。
+2. **地址**：本机填 `http://127.0.0.1:端口`；放在局域网另一台电脑上可以填 `http://192.168.x.x:端口`（也允许 `10.x`、`172.16–31.x` 和 `xxx.local`），公网地址要 `https://`。只有要念的那句文字发给这个地址。
+3. **模型 / 音色名**（OpenAI 兼容才要）：按你的服务填，不填时发 `tts-1` / `default`。角色文件也可以在 `voice.tts.local.voice` 里写她自己的音色名。服务要 Key 时再填 Key，以 `Authorization: Bearer` 发送。
+4. 本地合成慢，等待时间是云端的 4 倍：20 秒没响应（长句最多 40 秒）才降级；返回的不是音频（比如模型还没加载好时返回的 JSON 错误）也算失败。常说的短句会在后台预先合成缓存，点了马上响。音色要用自己的声音或已取得授权的声音。
 
 **语音包**（默认开）：5 位角色都自带用 MiniMax 系统音色录好的语音包，收录她所有固定台词（每位约 220 句）。摸头、喂食、部位触摸、碎碎念这些台词直接播放录音，不联网、不用 Key、不占每分钟次数。她的回复仍由引擎合成；引擎选了别家并且能用时（比如 Fish Audio），为了声音一致不用语音包。也可以放自己的语音包，格式和重新生成方法见 [使用说明](docs/usage.md)。
 
@@ -212,7 +220,8 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
   "tts": {
     "default": "minimax",
     "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
-    "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" }
+    "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" },
+    "local": { "voice": "whale" }
   }
 }
 ```
