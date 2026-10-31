@@ -11,6 +11,9 @@
 # original designs by ZipZipPipe; outfits are made modest per docs/pet-packs.md "内容要求" (Gemini's crop top,
 # shorts and thigh band become a covered top, a long skirt and opaque tights; GPT's bare shoulders, thigh slit,
 # thigh band and sheer overcoat become long sleeves, a closed skirt and an opaque overcoat).
+# --outfit <id> [--char <id>]: the same sheets (and --walk) for another outfit of src/core/outfits.js, for the
+#   characters OUTFIT_LOOKS dresses in it: her identity (CHARS up to " She wears ") with that outfit's clothes,
+#   named <id>_<outfit>_base_a ... and <id>_<outfit>_walk. Without --outfit the daily prompts are unchanged.
 import json, re, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from pixel_prompts import STYLE, SAFE, BG, ROWS as BASE_ROWS
@@ -48,6 +51,55 @@ CHARS = {
          "and low-heeled white pointed shoes with a white rosette knot. Draw her with clean dark grey-violet outlines so the white figure reads clearly. Colours: pure white, pale lavender and silver only, no gold, red, blue or green"),
 }
 
+# Other outfits: the clothes each character wears in them (everything after her identity). Every look keeps
+# docs/pet-packs.md "内容要求": an adult woman, nothing revealing, no underwear look. No hats: the figure is
+# scaled by its height (slice_sheet.py), so a hat would make her smaller than in her daily sheet.
+OUTFIT_LOOKS = {
+ "swimsuit": {
+  "dafeiyu": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with blue side panels, thin white frilled trim and a small black bow with a blue gem at the throat, "
+              "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose blue-and-white pinstriped knee-length board shorts with a white ruffled hem, "
+              "an open long-sleeved white sun-protection jacket reaching her hips with deep navy cuffs, pale gold piping and a tiny blue whale embroidered at its lower right, its hood down, "
+              "and deep navy beach sandals with a small gold buckle. A deep-blue whale tail with a forked fluke behind her. "
+              "Colours: deep navy, blue, light blue, white and a touch of pale gold only"),
+  "claude": ("She wears modest sporty beachwear: a black one-piece athletic swimsuit with orange-red side panels and a thin cream-white trim, "
+             "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose orange-red knee-length board shorts, "
+             "an open long-sleeved cream-white hooded sun-protection jacket reaching her hips with thin gold trim and an orange flower brooch, "
+             "and cream-white beach sandals with black straps. Colours: orange, amber, cream white, black and gold only"),
+  "gemini": ("She wears modest sporty beachwear: a deep navy one-piece athletic swimsuit with violet side panels and a white four-pointed star emblem on the chest, "
+             "with a high round neckline up to the collarbone, short cap sleeves and a fully covered back and midriff; over it loose violet knee-length board shorts with a thin gold trim, "
+             "an open long-sleeved white-and-navy sun-protection jacket reaching her hips with gold edging, its hood down, and two short ribbon tails with star charms, "
+             "and deep violet beach sandals. Colours: lavender violet, pink violet, deep navy, white and a touch of gold only"),
+  "grok": ("She wears modest sporty beachwear: a black one-piece athletic swimsuit with wine-red side panels and thin gold trim, "
+           "with a high pointed stand-up collar lined in wine red, short cap sleeves and a fully covered back and midriff; over it loose black knee-length board shorts with a wine-red side stripe, "
+           "an open long-sleeved black hooded sun-protection jacket reaching her hips with white lace cuffs, gold trim and a small gold ring emblem, "
+           "and black beach sandals with gold buckles. Colours: black, wine red, gold and champagne blonde only"),
+ "gpt": ("She wears modest sporty beachwear: a pale lavender one-piece athletic swimsuit of smooth thick opaque fabric (no navel or body lines drawn on it) with white side panels and a thin silver trim, "
+          "with a small white mandarin stand-up collar at the throat, short sleeves covering her shoulders and a fully covered back and midriff, a small lavender diamond crystal at the collar; "
+          "over it loose white knee-length board shorts with a lavender wave pattern at the hems, "
+          "an open long-sleeved white hooded sun-protection jacket reaching her hips with wavy ruffled cuffs, thin silver trim and a white rosette knot pinned on its chest, "
+          "and white beach sandals with lavender straps. Colours: white, pale lavender and silver only"),
+ },
+}
+# What every outfit other than daily adds to SAFE (beachwear has no buttoned-up collar to point at).
+OUTFIT_SAFE = {
+ "swimsuit": ("The swimsuit is a sporty, modest one-piece: it covers her chest, midriff and hips completely, with knee-length shorts over it; "
+              "no bikini, no cleavage, no bare midriff, no high-cut legs, nothing see-through, nothing that looks like underwear."),
+}
+# The walk rows name the skirt; an outfit without one says what sways instead.
+OUTFIT_WALK = {
+ "swimsuit": ((" under the skirt", ""), ("skirt and hair swaying", "the open jacket, shorts and hair swaying")),
+}
+
+def identity(cid):
+    return CHARS[cid].split(" She wears ")[0]
+
+def looks(outfit=None, only=None):
+    # (character id, description, name prefix) for daily (CHARS as written) or for another outfit
+    if outfit in (None, "daily"):
+        return [(c, d, c) for c, d in CHARS.items() if not only or c in only]
+    if outfit not in OUTFIT_LOOKS: raise SystemExit(f"no looks for outfit {outfit!r} (OUTFIT_LOOKS has {', '.join(OUTFIT_LOOKS)})")
+    return [(c, f"{identity(c)} {clothes}", f"{c}_{outfit}") for c, clothes in OUTFIT_LOOKS[outfit].items() if not only or c in only]
+
 EXTRA_ROWS = [
     "Row 1: looking around curiously, head turned to her left (frame 1) then to her right (frame 2); then sad, head drooping and sighing with a small blue sweat drop (2 frames).",
     "Row 2: hungry, both hands on her stomach looking at an empty bowl (2 frames); then eating a round cookie held in both hands, crumbs flying (2 frames).",
@@ -70,28 +122,43 @@ WALK_BG = ("IMPORTANT background: every cell and all the space around them is ON
 GRID = "A grid of exactly 4 columns and 4 rows (16 cells)"
 HALF_GRID = "A grid of exactly 4 columns and 2 rows (8 cells), each cell a tall portrait-shaped box"
 
-def walk_jobs():
+def safe_for(outfit):
+    return " ".join([SAFE, OUTFIT_SAFE[outfit]]) if outfit in OUTFIT_SAFE else SAFE
+
+def bg_for(cid, outfit=None):
+    # Gemini's pink-violet hair tips key out on magenta, so her outfit sheets ask for green (slice/fit --key green);
+    # her daily prompts keep BG as written
+    return BG.replace("magenta (#FF00FF)", "green (#00FF00)") if cid == "gemini" and outfit not in (None, "daily") else BG
+
+def walk_jobs(outfit=None, only=None):
     out = []
-    for cid, desc in CHARS.items():
+    rows = WALK_ROWS
+    for old, new in OUTFIT_WALK.get(outfit, ()): rows = [r.replace(old, new) for r in rows]
+    for cid, desc, name in looks(outfit, only):
         key = ("green", "#00FF00") if cid == "gemini" else ("magenta", "#FF00FF")
         style = STYLE.replace(GRID, HALF_GRID).replace("facing the viewer.", SIDE)
         bg = WALK_BG.format(name=key[0], hex=key[1])
-        out.append({"name": f"{cid}_walk", "prompt": " ".join([bg, style, f"The character: {desc}.", SAFE, *WALK_ROWS, bg])})
+        out.append({"name": f"{name}_walk", "prompt": " ".join([bg, style, f"The character: {desc}.", safe_for(outfit), *rows, bg])})
     return out
 
-def jobs(halves=False):
+def jobs(halves=False, outfit=None, only=None):
     out = []
-    for cid, desc in CHARS.items():
-        style, safe = STYLE, SAFE
+    for cid, desc, name in looks(outfit, only):
+        style, safe = STYLE, safe_for(outfit)
         assert GRID in style
         for sheet, rows in (("base", BASE_ROWS), ("extra", EXTRA_ROWS)):
             if not halves:
-                out.append({"name": f"{cid}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
+                out.append({"name": f"{name}_{sheet}", "prompt": " ".join([style, f"The character: {desc}.", safe, *rows, BG])})
                 continue
             for half, part in (("a", rows[:2]), ("b", rows[2:])):
                 part = [re.sub(r"^Row \d:", f"Row {i + 1}:", r) for i, r in enumerate(part)]
-                out.append({"name": f"{cid}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, BG])})
+                out.append({"name": f"{name}_{sheet}_{half}", "prompt": " ".join([style.replace(GRID, HALF_GRID), f"The character: {desc}.", safe, *part, bg_for(cid, outfit)])})
     return out
 
+def arg(flag):
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else None
+
 if __name__ == '__main__':
-    print(json.dumps(walk_jobs() if '--walk' in sys.argv else jobs('--halves' in sys.argv), ensure_ascii=False))
+    outfit, only = arg('--outfit'), arg('--char')
+    only = only.split(',') if only else None
+    print(json.dumps(walk_jobs(outfit, only) if '--walk' in sys.argv else jobs('--halves' in sys.argv, outfit, only), ensure_ascii=False))

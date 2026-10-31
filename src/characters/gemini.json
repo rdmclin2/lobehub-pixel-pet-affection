@@ -38,7 +38,7 @@
     }
   },
   "adult": false,
-  "outfits": ["daily"],
+  "outfits": ["daily", "swimsuit"],
   "signature": { "label": "星纹宽袖外披", "desc": "杰米的原设服装：深藏青高领上衣、白底宽袖外披、四角星吊坠飘带和白色荷叶边长裙。" },
   "art": { "kind": "pack", "packs": ["gemini-pixel", "gemini-classic"], "fallbackPack": "gemini-pixel" },
   "fx": { "noMirror": [] },

@@ -13,8 +13,10 @@
 #   left foot up · both down (up a bit) · right foot up · both down (up a bit)
 # The frames go in a new row under the sheet (every outfit sheet of the pack) and pack.json gets
 # "walk": {row, col 0, frames 4, fps 8}. Running it again rebuilds that row.
-# usage: add_walk_frames.py <pack dir> [<pack dir> ...]
-#        add_walk_frames.py --from <fit sheet> [--take N] <pack dir>
+# --outfit <id>: only that outfit's sheet. A side-view walk sheet is drawn for one outfit, so --from goes into
+# the daily sheet unless --outfit names another one; every outfit sheet keeps its own walk row.
+# usage: add_walk_frames.py [--outfit <id>] <pack dir> [<pack dir> ...]
+#        add_walk_frames.py --from <fit sheet> [--take N] [--outfit <id>] <pack dir>
 import json, os, sys
 import numpy as np
 from PIL import Image
@@ -114,13 +116,16 @@ def side_frames(path, take, FW, FH):
     return out
 
 
-def add_walk(pack_dir, side=None, take=0):
+def add_walk(pack_dir, side=None, take=0, outfit=None):
     pf = os.path.join(pack_dir, 'pack.json')
     pack = json.load(open(pf))
     FW, FH = pack['frame']['width'], pack['frame']['height']
     idle = pack['actions']['idle']
     old = pack['actions'].get('walk')
-    for rel in sorted(set(pack['outfits'].values())):
+    if side and not outfit: outfit = 'daily'
+    if outfit and outfit not in pack['outfits']: raise SystemExit(f'{pack_dir}: no {outfit} sheet in pack.json')
+    sheets = [pack['outfits'][outfit]] if outfit else sorted(set(pack['outfits'].values()))
+    for rel in sheets:
         path = os.path.join(pack_dir, rel)
         sheet = Image.open(path).convert('RGBA')
         rows = old['row'] if old else sheet.height // FH
@@ -142,10 +147,12 @@ def add_walk(pack_dir, side=None, take=0):
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    side, take = None, 0
+    side, take, outfit = None, 0, None
+    if '--outfit' in argv:
+        i = argv.index('--outfit'); outfit = argv[i + 1]; del argv[i:i + 2]
     if '--from' in argv:
         i = argv.index('--from'); side = argv[i + 1]; del argv[i:i + 2]
     if '--take' in argv:
         i = argv.index('--take'); take = int(argv[i + 1]); del argv[i:i + 2]
     if not argv: raise SystemExit('usage: add_walk_frames.py <pack dir> [...] | add_walk_frames.py --from <fit sheet> [--take N] <pack dir>')
-    for d in argv: add_walk(d, side, take)
+    for d in argv: add_walk(d, side, take, outfit)

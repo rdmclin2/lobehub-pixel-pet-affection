@@ -21,6 +21,10 @@ const OUTFITS = [
   { id: 'beret', stage: 'familiar', rating: 'all', label: '贝雷帽画家装', desc: '条纹衫、背带裤和一顶贝雷帽。' },
   { id: 'pajamas', stage: 'close', rating: 'all', label: '毛绒睡衣', desc: '长袖长裤的波点睡衣，配睡帽。' },
   { id: 'cat_ears', stage: 'close', rating: 'all', label: '猫耳家居服', desc: '粉色家居服和猫耳发箍。' },
+  // All-ages beachwear, unlike retro_swimsuit (adult): a high-necked sporty one-piece under knee-length shorts
+  // and an open sun jacket. 亲近 like the other off-duty looks (pajamas, cat ears): she would go to the beach
+  // with you once you are close, before the 知己 yukata.
+  { id: 'swimsuit', stage: 'close', rating: 'all', label: '运动泳装', desc: '高领短袖的运动款连体泳衣，外搭及膝沙滩裤和防晒开衫。' },
   { id: 'yukata', stage: 'flirty', rating: 'all', label: '浴衣', desc: '藏青色长款浴衣，红色腰带。' },
   { id: 'maid', stage: 'flirty', rating: 'adult', label: '女仆装', desc: '长袖及膝女仆裙、白围裙和发带（不暴露）。' },
   { id: 'offshoulder_gown', stage: 'flirty', rating: 'adult', label: '露肩晚礼服', desc: '酒红色及地晚礼服，只露出肩膀。' },
