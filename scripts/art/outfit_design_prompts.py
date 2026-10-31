@@ -47,9 +47,9 @@ STYLE = ("Pixel art character outfit design sheet for a desktop pet game, 16-bit
          "Every cell shows the SAME character, full body from head to feet, the same height, facing the viewer. Each COLUMN is one outfit: "
          "the top row shows her standing relaxed in it, the bottom row shows her in the same outfit waving hello with a smile.")
 SAFE = {
- "all": ("She is clearly an adult woman in her mid-20s: adult body, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
+ "all": ("She is clearly an adult young woman, set age 18: adult body, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
          "All-ages fashion: nothing revealing, no cleavage, no lingerie look, cheerful friendly pose."),
- "adult": ("She is clearly an adult woman in her mid-20s: adult body proportions, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
+ "adult": ("She is clearly an adult young woman, set age 18: adult body proportions, small head, about 6.5 heads tall, adult face, not chibi, not childlike. "
            "Adult glamour fashion that is sexy but never nude: opaque fabric always covers her nipples and crotch, nothing see-through over them, "
            "no nudity, no sexual acts; a confident playful pose."),
 }

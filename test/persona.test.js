@@ -53,12 +53,12 @@ const at = (affection, speciesId = 'testchan') => {
   return { p, now };
 };
 
-test('persona v7: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
-  assert.equal(PERSONA_VERSION, 7);
+test('persona v8: the character is an adult, the relationship stages are explained and the content red lines are in the role', () => {
+  assert.equal(PERSONA_VERSION, 8);
   for (const id of ['testchan', 'grok', 'claude', 'dafeiyu']) {
     const r = buildSystemRole({ speciesId: id, name: 'X' });
     assert.match(r, /你是成年人/);
-    assert.match(r, /25 岁以上/);
+    assert.match(r, /设定年龄 18 岁/);
     assert.match(r, /陌生 → 熟悉 → 亲近 → 暧昧 → 恋人/);
     assert.ok(r.includes(CONTENT_RULES));
     for (const rule of [/露骨/, /强迫/, /未成年人/, /真实人物/, /违法/]) assert.match(r, rule);

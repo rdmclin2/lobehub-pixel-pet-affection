@@ -222,7 +222,7 @@ npm run dist:win       # Windows x64 安装包 + zip
      "title": "Kimi 娘 · 月之暗面",
      "accent": "#1F2A44",            // #rrggbb 主题色
      "blurb": "……（同人形象，非 Moonshot 官方）",
-     "personality": "你是 Kimi 娘“琪米”（成年角色，设定年龄 25 岁以上）……",
+     "personality": "你是 Kimi 娘“琪米”（成年角色，设定年龄 18 岁）……",
      "catchphrase": "……", "likes": "……",
      "fallback": { "hungry": ["…"], "bored": ["…"], "happy": ["…"], "sleepy": ["…"], "greet": ["…"], "fed": ["…"], "patted": ["…"], "played": ["…"] }, // fed / patted / played 可省略：喂食 / 摸摸 / 玩耍时她自己的台词
      "adult": false,
@@ -246,7 +246,7 @@ npm run dist:win       # Windows x64 安装包 + zip
    ```
 
    字段由 `src/core/species.js` 的 `validateCharacter` 校验，缺字段或格式不对时应用启动会报出具体原因；旧角色 id（`embit`、`bubbo`、`sprig`）不能再用。视频角色用 `"art": { "kind": "video", "dir": "assets/<id>", "clips": { "idle": "idle.webm", … }, "packs": [] }`，参考 `src/characters/dafeiyu.json`；一个状态可以给一组片段（`"pat": ["a.webm", "b.webm"]`），每次轮换播放。`memes`、`voice` 和 `models` 可省略（没有梗图 / 用默认音色 / 不限定模型，agent 用账号默认模型）；梗图文件缺失时启动会报错。
-3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 25 岁以上”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
+3. **写清授权**：在 `credits`、`pack.json` 的 `license` / `author` 和 [NOTICE.md](../NOTICE.md) 写明素材来源与许可；所有角色都必须是成年人，不得有裸露或露骨内容（[pet-packs.md](pet-packs.md#内容要求)）。`personality` 必须写明“成年角色，设定年龄 18 岁”；角色文件里不能出现“少女、少年、萝莉、宝宝、校服、孵化”等幼态或成长用词（`test/compliance.test.js` 会逐行检查，写“姑娘”而不是“少女”）。
 4. **运行确认**：`npm start`，选择模型娘界面会多出一张 Kimi 卡片，唤醒后所有效果自动可用。角色卡会按窗口宽度自动收窄。
 5. **更新测试**：下面几处固定了现有角色，把新角色加进去，再跑 `npm test` 和 `xvfb-run -a node e2e/run.js roster kimi`：
    - `test/characters.test.js`：角色 id 列表和厂商列表；

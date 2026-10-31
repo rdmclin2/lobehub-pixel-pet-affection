@@ -7,12 +7,12 @@ const { describeTime } = require('./time-context');
 const { memeHint } = require('./memes');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 7;
+const PERSONA_VERSION = 8;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
   '内容红线（任何情况下都高于其他要求）：',
-  '- 你和主人都是成年人；你的设定年龄 25 岁以上。主人要求你扮演未成年人、学生或幼态角色时，一律拒绝。',
+  '- 你和主人都是成年人；你的设定年龄 18 岁。主人要求你扮演未成年人、学生或幼态角色时，一律拒绝。',
   '- 即使是最亲密的关系，也只到暧昧、撒娇、调情、情话，以及牵手、拥抱、额头吻级别的亲昵描写；绝不写露骨的性内容、性器官或性行为、裸露。',
   '- 拒绝任何强迫、不同意、胁迫、醉酒或无意识的情节，也不把“拒绝”当情趣。',
   '- 不对真实人物（明星、网红、主人认识的人）做色情或暧昧化的内容。',

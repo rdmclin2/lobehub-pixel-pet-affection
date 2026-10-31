@@ -26,7 +26,7 @@ The companions are fan characters themed on AI model vendors. **None of them is 
 - **Retired art.** The original companions (焰团, 泡鲸, 叶芽), their packs and the procedural spirit stones were removed with the model-chan roster; old saves are taken over by a current character (see `src/core/species.js`).
 - **App icon.** `build/icon.png` shows the three model-chan in pixel style; generated on 2026-10-29 with `gpt-image-2.5-sunburst` (prompt `logo` in `scripts/art/prompts.py`). It depicts the same fan characters, so it is **CC BY-NC-SA 4.0, non-commercial** like the packs. (The earlier icon showed a retired character and was replaced.)
 
-Content notes: every character's set age is 25+. Claude, Grok, Gemini, GPT and 大肥鱼's pixel pack are drawn with adult proportions; 大肥鱼's pixel pack uses the same adult proportions; only her optional dsh-pet clips keep the community character's chibi style. All of them are all-ages only. No picture shows nudity or underwear. Adult-rated outfits (maid, off-shoulder gown, retro swimsuit, silk robe) exist in the app but no current character has art for them or allows adult content, so they are never shown.
+Content notes: every character's set age is 18. Claude, Grok, Gemini, GPT and 大肥鱼's pixel pack are drawn with adult proportions; 大肥鱼's pixel pack uses the same adult proportions; only her optional dsh-pet clips keep the community character's chibi style. All of them are all-ages only. No picture shows nudity or underwear. Adult-rated outfits (maid, off-shoulder gown, retro swimsuit, silk robe) exist in the app but no current character has art for them or allows adult content, so they are never shown.
 
 | id | 名称 | 解锁阶段 | 分级 | 美术 |
 | --- | --- | --- | --- | --- |

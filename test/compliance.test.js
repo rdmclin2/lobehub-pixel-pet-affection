@@ -31,7 +31,7 @@ test('"未成年" and "学生" only appear inside the refusal rules of the syste
 
 test('every species persona states an adult age', () => {
   const { SPECIES } = require('../src/core/species');
-  for (const sp of Object.values(SPECIES)) assert.match(sp.personality, /成年.*设定年龄 25 岁以上/, sp.id);
+  for (const sp of Object.values(SPECIES)) assert.match(sp.personality, /成年.*设定年龄 18 岁/, sp.id);
 });
 
 test('with adult content off, no adult line, topic, outfit or tone reaches the user or the agent', () => {
