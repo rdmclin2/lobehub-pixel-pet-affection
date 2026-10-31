@@ -12,7 +12,10 @@
 // character's own default engine), the other engines with a key, then the system voice (unless the
 // fallback is silence).
 //
-// A character sets her engines in her file under `voice.tts` (fish / minimax, and `default`: the engine
+// The local engine is a voice server the user runs on their own machine (IndexTTS2, GPT-SoVITS… on a GPU):
+// no key, slower, configured in settings (endpoint, API shape, voice) rather than per character.
+//
+// A character sets her engines in her file under `voice.tts` (fish / minimax / local, and `default`: the engine
 // she reads with under 'auto', fish when missing), next to the lang / pitch / rate / prefer the system voice uses. Older files without `tts` stay valid: the engines
 // then use DEFAULT_TTS (or nothing for a provider without a default) and she falls back to the system voice.
 
@@ -20,8 +23,8 @@ const crypto = require('node:crypto');
 const Voice = require('./voice');
 const InteractionVoice = require('./interaction-voice');
 
-const ENGINES = ['auto', 'fish', 'minimax', 'system'];
-const NEURAL = ['fish', 'minimax'];
+const ENGINES = ['auto', 'fish', 'minimax', 'local', 'system'];
+const NEURAL = ['fish', 'minimax', 'local'];
 const FALLBACKS = ['system', 'silent'];
 const TIMEOUT_MS = 5000; // no response headers in this time (plus PER_CHAR_MS a character): give up and fall back (doc §8)
 const PER_CHAR_MS = 50; // a non-streaming engine answers once the whole line is synthesised: longer lines take longer
@@ -41,14 +44,14 @@ const str = (v) => typeof v === 'string' && v.trim().length > 0;
 // How long an engine is skipped after a failure: a rate limit until its window has room, a passing
 // failure briefly, a refusal (key, balance, request) for 5 minutes.
 const RATE_LIMITED = /^(http-429|api-1002|api-1039)$/;
-const TRANSIENT = /^(timeout|network|empty|http-5\d\d|api-1000|api-1001|api-1024)$/;
+const TRANSIENT = /^(timeout|network|empty|not-audio|http-5\d\d|api-1000|api-1001|api-1024)$/; // not-audio: a local server still loading its model
 function pauseFor(reason, breakerMs = BREAKER_MS) {
   if (RATE_LIMITED.test(reason)) return Math.min(RATE_PAUSE_MS, breakerMs);
   if (TRANSIENT.test(reason)) return Math.min(TRANSIENT_PAUSE_MS, breakerMs);
   return breakerMs;
 }
-// The header timeout for one line: a little longer for a longer line, never past MAX_TIMEOUT_MS.
-const timeoutFor = (base, text) => Math.min(Math.max(base, MAX_TIMEOUT_MS), base + [...String(text || '')].length * PER_CHAR_MS);
+// The header timeout for one line: a little longer for a longer line, never past `max`.
+const timeoutFor = (base, text, max = MAX_TIMEOUT_MS) => Math.min(Math.max(base, max), base + [...String(text || '')].length * PER_CHAR_MS);
 
 class TtsError extends Error {
   constructor(reason, message) {
@@ -148,10 +151,63 @@ const MINIMAX = {
   },
 };
 
+// A voice server the user runs (IndexTTS2, GPT-SoVITS, CosyVoice… on their own GPU, often over a minute to
+// load and seconds a line): the OpenAI speech API (POST {endpoint}/v1/audio/speech — index-tts-vllm and most
+// self-hosted servers) or whale-voice's tts_daemon (POST {endpoint}/tts { text, emo } -> wav). Its voice is
+// whatever the server was set up with, so the voice name comes from settings.tts.local; a character file may
+// name her own under voice.tts.local. A key is optional (sent as a Bearer token when set).
+const LOCAL_APIS = ['openai', 'whale'];
+// whale-voice's emotion presets for the pet's moods (its scripts/speak.py EMOTIONS); anything else: tender
+const WHALE_EMO = { happy: 'happy', sleep: 'sleepy', sad: 'wronged', hungry: 'wronged' };
+const LOCAL = {
+  id: 'local',
+  label: '本地语音服务',
+  kind: 'neural',
+  needsKey: false,
+  defaultEndpoint: '',
+  rpm: 0,
+  slow: 4, // synthesised on the user's own machine, the whole line before the first byte: 4× every timeout (20 s, up to 40 s)
+  available: (ctx) => !!(ctx && ctx.endpoint),
+  config(voice, set) {
+    const l = (set && set.local) || TTS_DEFAULTS.local;
+    const t = ttsOf(voice);
+    const own = (t && t.local) || {};
+    const api = LOCAL_APIS.includes(l.api) ? l.api : 'openai';
+    return {
+      api,
+      voiceId: api === 'whale' ? 'whale-voice' : str(own.voice) ? own.voice.trim() : l.voice, // whale-voice: the one voice its server was started with
+      model: str(own.model) ? own.model.trim() : l.model,
+      speed: clamp(own.speed, 0.5, 2, 1),
+    };
+  },
+  text: (_cfg, text) => text,
+  // the mood is a request field here, not a tag in the text: it goes into cfg, and so into the cache key
+  withMood: (cfg, mood) => (cfg.api === 'whale' ? { ...cfg, emo: WHALE_EMO[mood] || 'tender' } : cfg),
+  async synthesize(cfg, text, { key, endpoint, fetch, signal, wait }) {
+    const whale = cfg.api === 'whale';
+    const url = whale ? `${endpoint}/tts` : `${endpoint.replace(/\/v1$/, '')}/v1/audio/speech`;
+    const body = whale
+      ? { text, emo: cfg.emo || 'tender' }
+      : { model: cfg.model || 'tts-1', input: text, voice: cfg.voiceId || 'default', response_format: 'mp3', speed: cfg.speed };
+    const res = await wait(fetch(url, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+      body: JSON.stringify(body),
+    }));
+    if (!res.ok) throw new TtsError(`http-${res.status}`);
+    const mime = (res.headers.get('content-type') || '').split(';')[0].trim();
+    if (!/^audio\//.test(mime)) throw new TtsError('not-audio'); // a JSON error page with 200, or the wrong server
+    const audio = Buffer.from(await res.arrayBuffer());
+    if (!audio.length) throw new TtsError('empty');
+    return { audio, mime };
+  },
+};
+
 // Web Speech: the system's own voices, free and offline (core/voice.js; spoken by the renderer).
 const SYSTEM = { ...Voice.webSpeech, label: '系统语音（Web Speech）' };
 
-const PROVIDERS = { fish: FISH, minimax: MINIMAX, system: SYSTEM };
+const PROVIDERS = { fish: FISH, minimax: MINIMAX, local: LOCAL, system: SYSTEM };
 
 // ---- character files --------------------------------------------------------------------------------
 // Problems with a character's `voice` (empty = valid). The old shape { lang, pitch, rate, prefer } is valid as is.
@@ -165,7 +221,7 @@ function validateVoice(v) {
   if (v.prefer !== undefined && (!Array.isArray(v.prefer) || !v.prefer.every(str))) errors.push('voice.prefer must be a list of system voice names');
   errors.push(...InteractionVoice.validateLines(v.lines)); // 拖拽 / 甩出 / 接住 lines (core/interaction-voice.js)
   if (v.tts === undefined) return errors;
-  if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax })'];
+  if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax, local })'];
   for (const [id, c] of Object.entries(v.tts)) {
     const at = `voice.tts.${id}`;
     if (id === 'default') { if (!NEURAL.includes(c)) errors.push(`${at} must be one of ${NEURAL.join(', ')}`); continue; }
@@ -173,8 +229,9 @@ function validateVoice(v) {
     if (!c || typeof c !== 'object') { errors.push(`${at} must be an object`); continue; }
     if (id === 'fish' && !/^[0-9a-f]{32}$/.test(c.referenceId || '')) errors.push(`${at}.referenceId must be a Fish Audio model id (32 hex characters)`);
     if (id === 'minimax' && !/^[A-Za-z0-9_() -]{2,80}$/.test(c.voiceId || '')) errors.push(`${at}.voiceId must be a MiniMax voice id`);
+    if (id === 'local' && c.voice !== undefined && !str(c.voice)) errors.push(`${at}.voice must be a voice name on the local server`);
     if (c.model !== undefined && !str(c.model)) errors.push(`${at}.model must be a model name`);
-    const ranges = id === 'fish' ? { speed: [0.5, 2], volume: [-20, 20], temperature: [0, 1], topP: [0, 1] } : { speed: [0.5, 2], pitch: [-12, 12], vol: [0.1, 10] };
+    const ranges = id === 'fish' ? { speed: [0.5, 2], volume: [-20, 20], temperature: [0, 1], topP: [0, 1] } : id === 'local' ? { speed: [0.5, 2] } : { speed: [0.5, 2], pitch: [-12, 12], vol: [0.1, 10] };
     for (const [k, [lo, hi]] of Object.entries(ranges)) if (c[k] !== undefined && !(Number.isFinite(c[k]) && c[k] >= lo && c[k] <= hi)) errors.push(`${at}.${k} must be a number from ${lo} to ${hi}`);
     if (c.moodTags !== undefined && (!c.moodTags || typeof c.moodTags !== 'object' || !Object.values(c.moodTags).every(str))) errors.push(`${at}.moodTags must map moods to tags`);
   }
@@ -182,9 +239,9 @@ function validateVoice(v) {
 }
 
 // What a character sounds like on one engine (null: she has none there).
-function voiceFor(species, providerId) {
+function voiceFor(species, providerId, tts) {
   const p = PROVIDERS[providerId];
-  return p ? p.config(species && species.voice) : null;
+  return p ? p.config(species && species.voice, normalizeTts(tts)) : null;
 }
 
 // The engine she reads with when the setting is 'auto' (按角色): her file's `voice.tts.default`, else Fish.
@@ -198,36 +255,50 @@ function defaultEngine(species) {
 // (system voice or silence) and an endpoint per engine ('' = the official one). API keys are not here:
 // they live encrypted in tts-keys.json. providerSet: the user picked the engine in 语音 (settings.js moves
 // saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
-const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } };
+// local: the user's own voice server — its API shape (openai / whale), model and voice name.
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } };
 
-const endpointOk = (u) => {
+// https anywhere; plain http only to this machine — or, for the local engine (`lan`), to a machine on the
+// home network (a GPU box next to the Mac): only the text of her lines goes there.
+const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]'];
+const privateHost = (h) => /^(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(h) || /^[a-z0-9-]+\.local$/i.test(h);
+const endpointOk = (u, { lan = false } = {}) => {
   if (!str(u)) return false;
   try {
     const x = new URL(u);
-    return (x.protocol === 'https:' || (x.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(x.hostname))) && !x.username && !x.password;
+    return (x.protocol === 'https:' || (x.protocol === 'http:' && (LOOPBACK.includes(x.hostname) || (lan && privateHost(x.hostname))))) && !x.username && !x.password;
   } catch { return false; }
 };
+const endpointOkFor = (id, u) => endpointOk(u, { lan: id === 'local' });
+const name80 = (v) => (str(v) ? String(v).trim().slice(0, 80) : '');
 
 function normalizeTts(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const ep = r.endpoints && typeof r.endpoints === 'object' ? r.endpoints : {};
+  const lo = r.local && typeof r.local === 'object' ? r.local : {};
   return {
     provider: ENGINES.includes(r.provider) ? r.provider : TTS_DEFAULTS.provider,
     providerSet: r.providerSet === true,
     fallback: FALLBACKS.includes(r.fallback) ? r.fallback : TTS_DEFAULTS.fallback,
     packs: r.packs !== false, // 语音包: her recorded fixed lines first (core/voice-pack.js)
-    endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOk(ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
+    endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOkFor(id, ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
+    local: { api: LOCAL_APIS.includes(lo.api) ? lo.api : 'openai', model: name80(lo.model), voice: name80(lo.voice) },
   };
 }
 
-// The providers tried for one line, in order: the chosen engine ('auto': hers), then any other engine
+// The providers tried for one line, in order: the chosen engine ('auto': hers), then any other cloud engine
 // with a key, then the system voice; with the fallback set to silence the chain just ends. 'system' chosen = only it.
+// The local engine is only tried when chosen (or her default): a slow server the user starts by hand is not a
+// fallback for a cloud engine that failed.
 function providerChain(tts, hasKey, species) {
   const t = normalizeTts(tts);
   if (t.provider === 'system') return ['system'];
   const first = t.provider === 'auto' ? defaultEngine(species) : t.provider;
-  return [first, ...NEURAL.filter((id) => id !== first && hasKey(id)), ...(t.fallback === 'system' ? ['system'] : [])];
+  return [first, ...NEURAL.filter((id) => id !== first && id !== 'local' && hasKey(id)), ...(t.fallback === 'system' ? ['system'] : [])];
 }
+
+// Whether an engine can be asked at all: a key for a cloud engine, an endpoint for the local one.
+const ready = (id, set, keys) => (PROVIDERS[id] && PROVIDERS[id].needsKey === false ? !!set.endpoints[id] : keys.has(id));
 
 // Same engine + voice + parameters + text = same audio. Changing any of them makes a new key.
 function cacheKey(providerId, cfg, text) {
@@ -281,24 +352,38 @@ class TtsEngine {
     this.health[id] = { until: this.now() + pauseFor(reason, this.breakerMs), reason, at: this.now() };
   }
 
-  status() {
+  // hasKey: a key is set; ready: the engine can be asked (a key, or for the local engine an endpoint in `tts`)
+  status(tts) {
     const t = this.now();
+    const set = normalizeTts(tts);
     return Object.fromEntries(NEURAL.map((id) => {
       const h = this.health[id];
       const left = this.budget(id);
-      return [id, { hasKey: !!this.keys.has(id), lastError: h ? h.reason : null, pausedFor: h && h.until > t ? Math.ceil((h.until - t) / 1000) : 0, rpm: PROVIDERS[id].rpm || null, budget: Number.isFinite(left) ? left : null }];
+      return [id, { hasKey: !!this.keys.has(id), ready: ready(id, set, this.keys), lastError: h ? h.reason : null, pausedFor: h && h.until > t ? Math.ceil((h.until - t) / 1000) : 0, rpm: PROVIDERS[id].rpm || null, budget: Number.isFinite(left) ? left : null }];
     }));
+  }
+
+  // The timeouts for one engine: a slow (local) engine gets `slow` times each.
+  _timeouts(p, said) {
+    const k = p.slow || 1;
+    return { header: timeoutFor(this.timeoutMs * k, said, MAX_TIMEOUT_MS * k), body: this.bodyTimeoutMs * k };
+  }
+
+  // The engine's settings for her line: her voice on it (null: none), with the mood where it is a request field.
+  _cfg(p, species, set, mood) {
+    const cfg = p.config(species && species.voice, set);
+    return cfg && p.withMood ? p.withMood(cfg, mood) : cfg;
   }
 
   // The engine that would read her next line (the first in the chain with her voice, a key and not
   // paused), or null when none can: then a recorded line (语音包) beats the system voice.
   firstUsable(species, tts) {
     const set = normalizeTts(tts);
-    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
+    for (const id of providerChain(set, (p) => ready(p, set, this.keys), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') return null;
       const h = this.health[id];
-      if (p.config(species && species.voice) && this.keys.get(id) && !(h && h.until > this.now())) return id;
+      if (p.config(species && species.voice, set) && ready(id, set, this.keys) && !(h && h.until > this.now())) return id;
     }
     return null;
   }
@@ -320,13 +405,13 @@ class TtsEngine {
     const fellBackFrom = [];
     const done = (r) => { if (this.current === ctl) this.current = null; return { ...r, fallback: set.fallback, fellBackFrom, latencyMs: this.now() - t0 }; };
     if (!line) return done({ ok: false, reason: 'empty' });
-    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
+    for (const id of providerChain(set, (p) => ready(p, set, this.keys), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') return done({ ok: false, reason: set.provider === 'system' ? 'system' : 'fallback', next: 'system' });
-      const cfg = p.config(species && species.voice);
+      const cfg = this._cfg(p, species, set, mood);
       if (!cfg) { fellBackFrom.push({ provider: id, reason: 'no-voice' }); continue; }
       const key = this.keys.get(id);
-      if (!p.available({ hasKey: !!key })) { fellBackFrom.push({ provider: id, reason: 'no-key' }); continue; }
+      if (!ready(id, set, this.keys)) { fellBackFrom.push({ provider: id, reason: p.needsKey === false ? 'no-endpoint' : 'no-key' }); continue; }
       const h = this.health[id];
       if (h && h.until > this.now()) { fellBackFrom.push({ provider: id, reason: `paused:${h.reason}` }); continue; }
       const said = p.text(cfg, line, mood);
@@ -348,8 +433,9 @@ class TtsEngine {
       try {
         this.stats.requests++;
         this._spend(id);
-        const ask = p.synthesize(cfg, said, { key, endpoint: set.endpoints[id] || p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, timeoutFor(this.timeoutMs, said)) });
-        const { audio, mime } = await this._within(ask, ctl, this.bodyTimeoutMs);
+        const tm = this._timeouts(p, said);
+        const ask = p.synthesize(cfg, said, { key, endpoint: set.endpoints[id] || p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, tm.header) });
+        const { audio, mime } = await this._within(ask, ctl, tm.body);
         if (this.cache) this.cache.put(ck, audio, mime);
         delete this.health[id];
         return done({ ok: true, audio, mime, provider: id, voiceId: cfg.voiceId, model: cfg.model, cached: false });
@@ -375,13 +461,12 @@ class TtsEngine {
     const out = { provider: null, warmed: 0, cached: 0, skipped: null, failed: null };
     if (!this.cache) return { ...out, skipped: 'no-cache' };
     let pick = null;
-    for (const id of providerChain(set, (p) => this.keys.has(p), species)) {
+    for (const id of providerChain(set, (p) => ready(p, set, this.keys), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') break;
-      const cfg = p.config(species && species.voice);
-      const key = this.keys.get(id);
+      const cfg = p.config(species && species.voice, set);
       const h = this.health[id];
-      if (cfg && key && !(h && h.until > this.now())) { pick = { id, p, cfg, key }; break; }
+      if (cfg && ready(id, set, this.keys) && !(h && h.until > this.now())) { pick = { id, p, cfg, key: this.keys.get(id) }; break; }
     }
     if (!pick) return { ...out, skipped: 'no-engine' };
     out.provider = pick.id;
@@ -391,7 +476,8 @@ class TtsEngine {
       const line = String((it && it.text) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, MAX_TEXT);
       if (!line) continue;
       const said = pick.p.text(pick.cfg, line, it.mood || '');
-      const ck = cacheKey(pick.id, pick.cfg, said);
+      const cfg = pick.p.withMood ? pick.p.withMood(pick.cfg, it.mood || '') : pick.cfg;
+      const ck = cacheKey(pick.id, cfg, said);
       if (seen.has(ck)) continue;
       seen.add(ck);
       if (this.cache.has(ck)) { out.cached++; continue; }
@@ -410,8 +496,9 @@ class TtsEngine {
       try {
         this.stats.requests++;
         this._spend(pick.id);
-        const ask = pick.p.synthesize(pick.cfg, said, { key: pick.key, endpoint: set.endpoints[pick.id] || pick.p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, timeoutFor(this.timeoutMs, said)) });
-        const { audio, mime } = await this._within(ask, ctl, this.bodyTimeoutMs);
+        const tm = this._timeouts(pick.p, said);
+        const ask = pick.p.synthesize(cfg, said, { key: pick.key, endpoint: set.endpoints[pick.id] || pick.p.defaultEndpoint, fetch: this.fetch, signal: ctl.signal, wait: (pr) => this._within(pr, ctl, tm.header) });
+        const { audio, mime } = await this._within(ask, ctl, tm.body);
         if (gen !== this.warmGen) return { ...out, skipped: 'superseded' };
         this.cache.put(ck, audio, mime);
         this.stats.prewarmed++;
@@ -454,4 +541,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { ENGINES, NEURAL, FALLBACKS, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { ENGINES, NEURAL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };

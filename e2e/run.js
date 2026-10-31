@@ -3139,8 +3139,12 @@ function ttsMock() {
       let j = {};
       try { j = JSON.parse(body); } catch { /* ignore */ }
       const fish = req.url === '/v1/tts';
-      const auth = req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
-      const rec = { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
+      // a local voice server (本地语音服务): the OpenAI speech API or whale-voice's /tts; no key
+      const local = req.url === '/v1/audio/speech' || req.url === '/tts';
+      const auth = local || req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
+      const rec = local
+        ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
+        : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
       m.log.push(rec);
       // the client gave up: the response closed before it was sent (the request's own `close` fires once its body is read)
       res.on('close', () => { if (!res.writableFinished) rec.aborted = true; });
@@ -3148,10 +3152,11 @@ function ttsMock() {
         if (res.destroyed) return;
         if (!auth) { rec.status = 401; return res.writeHead(401).end('{"message":"unauthorized"}'); }
         if (m.mode === '500') { rec.status = 500; return res.writeHead(500).end('{"message":"boom"}'); }
+        if (m.mode === 'notaudio' && local) { rec.status = 200; return res.writeHead(200, { 'content-type': 'application/json' }).end('{"error":"model not ready"}'); }
         rec.status = 200;
         const audio = m.perCharMs ? tone(Math.min(6, Math.max(0.4, ([...(j.text || '')].length * m.perCharMs) / 1000))) : wav;
         rec.audioMs = Math.round(((audio.length - 44) / 2 / 8000) * 1000);
-        if (fish) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
+        if (fish || local) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: audio.toString('hex') } }));
       };
       if (m.mode === 'hang') return setTimeout(send, 8000);
@@ -3223,7 +3228,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3238,7 +3243,7 @@ async function voice() {
       await page.locator('#voice-section').scrollIntoViewIfNeeded();
       await shot('v1-voice-section-empty');
       const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
-      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'system']);
+      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'local', 'system']);
       assert.equal(await page.inputValue('#tts-provider'), 'auto');
       assert.match(await page.textContent('#tts-credit'), /默认用 MiniMax.*俏皮萌妹/);
       await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
@@ -3526,6 +3531,186 @@ async function voice() {
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- localvoice
+// 本地语音服务 (core/tts.js LOCAL): a voice server the user runs (IndexTTS2 / whale-voice…), here a local
+// stand-in. Picked under 高级设置 → 语音 like a user would: no address → falls back; the OpenAI speech API
+// with a model and voice name; whale-voice's /tts with her mood as emo; a non-audio answer falls back; http
+// to the home network is accepted for it and refused for the internet.
+async function localvoice() {
+  const S = 'localvoice';
+  const SHOTS = path.join(OUT, 'localvoice');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-localvoice-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-localvoicefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const last = () => page.evaluate(() => window.petFx.lastSpeech());
+  let spoken = 0;
+  const speakLine = async (text, timeout = 30000) => {
+    await page.evaluate((t) => { window.petFx.speak(t); }, text);
+    const t0 = Date.now();
+    for (;;) {
+      const sp = await last();
+      if (sp && sp.n > spoken && sp.text === text && !/^(queued|synthesizing)$/.test(sp.status)) { spoken = sp.n; return sp; }
+      if (Date.now() - t0 > timeout) throw new Error(`no outcome for 「${text}」: ${JSON.stringify(sp)}`);
+      await page.waitForTimeout(50);
+    }
+  };
+  const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
+  const openVoice = async () => {
+    if (!(await page.isVisible('#voice-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#voice-section');
+    }
+    await page.locator('#voice-section').scrollIntoViewIfNeeded();
+  };
+  const msg = (re) => page.waitForFunction((src) => new RegExp(src).test(document.getElementById('panel-msg').textContent), re.source, { timeout: 5000 });
+  const ttsSet = () => page.evaluate(async () => (await window.pet.getSettings()));
+  const LB = '.tts-engine[data-engine="local"]';
+  const reqFor = (text) => mock.log.filter((r) => r.text === text);
+  try {
+    await step(S, 'L0 hatch 大肥鱼; settings.tts has the local engine, empty', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await ttsSet();
+      assert.deepEqual(st.tts.local, { api: 'openai', model: '', voice: '' });
+      assert.equal(st.tts.endpoints.local, '');
+      assert.equal(st.ttsStatus.engines.local.ready, false);
+      return note(`settings.tts ${JSON.stringify(st.tts)}; local status ${JSON.stringify(st.ttsStatus.engines.local)}`);
+    }, page);
+
+    await step(S, 'L1 pick 本地语音服务 without an address: the line falls back to the system voice', async () => {
+      await openVoice();
+      await page.check('#behavior-section input[data-pref="voice"]');
+      await openVoice();
+      const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => e.value));
+      assert.deepEqual(opts, ['auto', 'fish', 'minimax', 'local', 'system']);
+      await page.selectOption('#tts-provider', 'local');
+      await msg(/语音引擎：本地语音服务/);
+      await page.waitForFunction(() => /本地语音服务：没填地址/.test(document.getElementById('tts-status').textContent));
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await shot('l1-local-box-empty');
+      await page.click('#panel-close');
+      const before = mock.log.length;
+      const sp = await speakLine('没有地址的时候念这句');
+      assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:no-endpoint']);
+      assert.notEqual(sp.provider, 'local');
+      assert.equal(mock.log.length, before, 'no request anywhere');
+      return note(`no address: ${fmt(sp)}; status: ${await page.evaluate(() => document.getElementById('tts-status') && document.getElementById('tts-status').textContent)}`);
+    }, page);
+
+    await step(S, 'L2 OpenAI-compatible: address + model + voice → POST /v1/audio/speech, her line plays from it', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      assert.equal(await page.inputValue(`${LB} .tts-local-api`), 'openai');
+      await page.fill(`${LB} .tts-endpoint`, `${mock.url}/v1`);
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为/);
+      await page.fill(`${LB} .tts-local-model`, 'IndexTTS-2');
+      await page.fill(`${LB} .tts-local-voice`, 'whale');
+      await page.click(`${LB} .tts-local-save`);
+      await msg(/模型 IndexTTS-2，音色 whale/);
+      await page.waitForFunction(() => /本地语音服务：地址 http:\/\/127\.0\.0\.1/.test(document.getElementById('tts-status').textContent));
+      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（音色 whale）/);
+      assert.match(await page.getAttribute(`${LB} .tts-key`, 'placeholder'), /可不填/);
+      await shot('l2-local-openai-configured');
+      const st = await ttsSet();
+      assert.deepEqual(st.tts.local, { api: 'openai', model: 'IndexTTS-2', voice: 'whale' });
+      await page.click('#panel-close');
+      await prewarmed(page);
+      const pre = await page.evaluate(() => window.petFx.lastPrewarm());
+      const LINE = '鱼片，今天也要好好吃饭哦。';
+      const sp = await speakLine(LINE);
+      assert.equal(sp.provider, 'local');
+      assert.equal(sp.voiceId, 'whale');
+      const rq = reqFor(LINE)[0];
+      assert.equal(rq.path, '/v1/audio/speech');
+      assert.deepEqual(rq.body, { model: 'IndexTTS-2', input: LINE, voice: 'whale', response_format: 'mp3', speed: 1 });
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 10000 });
+      await shot('l2-local-openai-spoken');
+      return note(`settings.tts.local ${JSON.stringify(st.tts.local)} endpoint ${st.tts.endpoints.local}; prewarm ${JSON.stringify(pre)}; ${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; credit: ${await page.evaluate(() => document.getElementById('tts-credit') && document.getElementById('tts-credit').textContent)}`);
+    }, page);
+
+    await step(S, 'L3 whale-voice: POST /tts { text, emo } with her mood as the emotion', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await page.fill(`${LB} .tts-endpoint`, mock.url);
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为/);
+      await page.selectOption(`${LB} .tts-local-api`, 'whale');
+      await msg(/whale-voice/);
+      assert.equal(await page.isVisible(`${LB} .tts-local-names`), false, 'no model / voice for whale-voice');
+      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（whale-voice）/);
+      await shot('l3-local-whale-configured');
+      await page.click('#panel-close');
+      await prewarmed(page);
+      const LINE = '咕噜，这句用鲸鱼的声音念。';
+      const sp = await speakLine(LINE);
+      assert.equal(sp.provider, 'local');
+      assert.equal(sp.voiceId, 'whale-voice');
+      const rq = reqFor(LINE)[0];
+      assert.equal(rq.path, '/tts');
+      assert.deepEqual(Object.keys(rq.body).sort(), ['emo', 'text']);
+      assert.ok(['happy', 'sleepy', 'wronged', 'tender'].includes(rq.body.emo), rq.body.emo);
+      const warm = mock.log.filter((r) => r.path === '/tts' && r.text !== LINE);
+      assert.ok(warm.length > 0, 'her common lines were prewarmed on the local server');
+      const emos = [...new Set(warm.map((r) => r.emo))];
+      return note(`${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; prewarmed ${warm.length} lines through /tts, emo used: ${emos.join(', ')}`);
+    }, page);
+
+    await step(S, 'L4 the server answers with no audio (model not loaded): falls back, status says why', async () => {
+      mock.mode = 'notaudio';
+      const LINE = '模型还没加载好时念这句';
+      const sp = await speakLine(LINE);
+      mock.mode = 'ok';
+      assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:not-audio']);
+      assert.notEqual(sp.provider, 'local');
+      await openVoice();
+      await page.waitForFunction(() => /本地语音服务：.*上次返回的不是音频，\d+ 秒内跳过/.test(document.getElementById('tts-status').textContent));
+      await page.locator('#tts-status').scrollIntoViewIfNeeded();
+      await shot('l4-local-not-audio-status');
+      return note(`${fmt(sp)}; status: ${await page.textContent('#tts-status')}`);
+    }, page);
+
+    await step(S, 'L5 address rules: home-network http accepted, internet http refused', async () => {
+      await openVoice();
+      await page.locator(LB).scrollIntoViewIfNeeded();
+      await page.fill(`${LB} .tts-endpoint`, 'http://example.com:7864');
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/局域网地址/);
+      const refused = await page.textContent('#panel-msg');
+      assert.equal((await ttsSet()).tts.endpoints.local, mock.url, 'kept the old address');
+      await page.fill(`${LB} .tts-endpoint`, 'http://192.168.1.20:7864');
+      await page.click(`${LB} .tts-ep-save`);
+      await msg(/端点已改为 http:\/\/192\.168\.1\.20:7864/);
+      const lan = (await ttsSet()).tts.endpoints.local;
+      assert.equal(lan, 'http://192.168.1.20:7864');
+      await shot('l5-local-lan-address');
+      // the cloud engines still refuse plain http off this machine
+      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', 'http://192.168.1.20:7864');
+      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      await msg(/https:\/\//);
+      assert.equal((await ttsSet()).tts.endpoints.fish, '');
+      return note(`internet http: “${refused}”; LAN saved: ${lan}; Fish with LAN http refused`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'localvoice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
     mock.server.close();
   }
@@ -4941,6 +5126,7 @@ async function rigScenario() {
   if (which === 'touch' || which === 'all') await touch();
   if (which === 'voice' || which === 'all') await voice();
   if (which === 'ivoice' || which === 'all') await ivoice();
+  if (which === 'localvoice' || which === 'all') await localvoice();
   if (which === 'chatvoice' || which === 'all') await chatvoice();
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
