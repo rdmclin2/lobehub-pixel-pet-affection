@@ -111,7 +111,10 @@ const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video'
 
 // ---------- looks: pictures, animated pixel sprites and rigs ----------
 const sprites = new Set(); // live sprite canvases: { canvas, look, img, action() }
-const rigs = new Set(); // live 全动态 figures (rig.js): { canvas, figure, action() }
+const rigs = new Set(); // live figures, 全动态 (rig.js) or Live2D (live2d.js): { canvas, figure, action() }
+// a look drawn live every frame instead of from frames: which script draws it
+const LIVE_KINDS = { rig: () => window.PetRig, live2d: () => window.PetLive2D };
+const isLive = (look) => !!look && !!LIVE_KINDS[look.kind];
 const sheetImages = new Map();
 function sheet(url) {
   if (!sheetImages.has(url)) {
@@ -137,18 +140,18 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     wrap.appendChild(v);
     return wrap;
   }
-  if (look.kind === 'rig' && className === 'char' && window.PetRig) {
+  if (isLive(look) && className === 'char' && LIVE_KINDS[look.kind]()) {
     // the desktop pet is drawn live; anywhere else (cards, the wardrobe) her picture stands in
     const c = document.createElement('canvas');
-    c.className = `${className} sprite rig`;
-    c.width = look.model.size[0];
-    c.height = look.model.size[1];
+    c.className = `${className} sprite rig ${look.kind}`;
+    c.width = look.kind === 'rig' ? look.model.size[0] : 332;
+    c.height = look.kind === 'rig' ? look.model.size[1] : 452;
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
     try {
-      const figure = window.PetRig.createFigure(c, look);
+      const figure = LIVE_KINDS[look.kind]().createFigure(c, look);
       const r = { canvas: c, figure, action, ok: false };
-      figure.ready.then(() => { r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
+      figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
     }
@@ -435,7 +438,7 @@ function applyArt() {
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
     setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
-    $('char-wrap').classList.toggle('has-sprites', view.look.kind === 'sprites' || view.look.kind === 'rig');
+    $('char-wrap').classList.toggle('has-sprites', view.look.kind === 'sprites' || isLive(view.look));
     $('char-wrap').dataset.outfit = view.outfit;
     // a short sparkle so the change of clothes is noticed
     $('char-wrap').classList.remove('changed');
@@ -846,7 +849,7 @@ function renderCharacter(c) {
     pick.setAttribute('aria-checked', String(on));
     pick.disabled = on;
     prow.querySelector('b').textContent = o.name;
-    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频', rig: '全动态' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频', rig: '全动态', live2d: 'Live2D' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
     pick.addEventListener('click', async () => {
       const r = await window.pet.setAppearance(o.id, c.id);
       if (!r.ok) return;
@@ -1983,7 +1986,7 @@ async function touchAt(e) {
 function showTouch(r, pt, at) {
   const video = isVideo(view.pet.speciesId);
   const sp = speciesOf(view.pet.speciesId);
-  const has = (n) => (video ? !!sp.clips[n] : !!(view.look && ((view.look.kind === 'sprites' && view.look.actions[n]) || (view.look.kind === 'rig' && n.startsWith('touch-')))));
+  const has = (n) => (video ? !!sp.clips[n] : !!(view.look && ((view.look.kind === 'sprites' && view.look.actions[n]) || (isLive(view.look) && n.startsWith('touch-')))));
   const clip = has(r.reaction.anim) ? r.reaction.anim : 'pat';
   // client px → px inside #pet-body (the stage is zoomed by the pet size)
   const pb = $('pet-body');
@@ -2152,7 +2155,7 @@ function animatePet() {
   const video = isVideo(view.pet.speciesId);
   fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
   const state = petStatus();
-  const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : view.look && view.look.kind === 'rig' ? { name: state, exact: !RIG_OVERLAY.has(state) } : { name: state, exact: false };
+  const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : isLive(view.look) ? { name: state, exact: !RIG_OVERLAY.has(state) } : { name: state, exact: false };
   if (video) playClip($('pet-video'), sp, r.name);
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)

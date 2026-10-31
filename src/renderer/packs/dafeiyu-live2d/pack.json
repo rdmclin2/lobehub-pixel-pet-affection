@@ -1,0 +1,60 @@
+{
+  "schema": 2,
+  "id": "dafeiyu-live2d",
+  "name": "大肥鱼 · Live2D",
+  "version": "1.0.0",
+  "author": "Live2D：Mao绒绒家园 发布，香甜小兔子（艾露可Eruko）建模；原设 上善无形 / ZipZipPipe",
+  "license": "免费使用、禁止贩卖（模型作者条款）",
+  "description": "中肥鱼 Live2D 模型：头发、裙子、蝴蝶结、手臂、耳鳍和尾巴都有物理，眨眼、口型和表情由应用实时驱动。目前只有日常服，其他服饰用像素版。",
+  "species": "dafeiyu",
+  "kind": "live2d",
+  "pixelated": false,
+  "model": "model/medium.model3.json",
+  "live2d": {
+    "height": 0.8,
+    "params": {
+      "armL": "Param_arm_L1",
+      "armR": "Param_arm_R1",
+      "elbowR": "Param_arm_R2",
+      "tail": "Param_Angle_Rotation_2_ArtMesh367",
+      "earL": "ParamTWL25",
+      "earR": "ParamTWL30",
+      "armOut": -22,
+      "armWave": -30,
+      "elbowWave": 25
+    },
+    "faces": {
+      "blush": {
+        "PARAM_EXP4": 1
+      },
+      "squint": {
+        "PARAM_EXP5": -1
+      },
+      "wide": {
+        "PARAM_EXP5": 1
+      },
+      "dizzy": {
+        "PARAM_EXP6": 1
+      },
+      "gloom": {
+        "PARAM_EXP3": 1
+      },
+      "o": {
+        "PARAM_EXP8": 1
+      },
+      "drool": {
+        "PARAM_EXP7": 1
+      }
+    },
+    "pinned": {
+      "Paramcol_3": 1,
+      "ParamYFWL_21": 0,
+      "ParamYFWL_22": 0,
+      "ParamYFWL_23": 0,
+      "ParamYFWL_24": 0
+    }
+  },
+  "outfits": {
+    "daily": "preview.png"
+  }
+}
