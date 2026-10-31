@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('pet', {
   pickImages: () => ipcRenderer.invoke('pick-images'),
   setLocal: (on) => ipcRenderer.invoke('set-local', { on }),
   cancel: () => ipcRenderer.send('cancel'),
+  // ⋯ → 重新开始: her next line opens a new LobeHub topic; the old one is kept, not deleted
+  newTopic: () => ipcRenderer.invoke('new-topic'),
   release: (opts) => ipcRenderer.invoke('release', opts),
   moveBy: (dx, dy) => ipcRenderer.send('move-by', { dx, dy }),
   moveTo: (x, y) => ipcRenderer.send('move-to', { x, y }),

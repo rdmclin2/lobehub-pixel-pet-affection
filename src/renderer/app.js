@@ -1611,6 +1611,14 @@ function bindPetUi() {
     if (m === 'advanced') openPanel('advanced');
     if (m === 'characters') openPanel('characters');
     if (m === 'history') { window.PetHistory.reset(); openPanel('history'); }
+    if (m === 'new-topic') {
+      if (!confirm('和她开一个新话题？\n她会从头聊起，不再带着之前的对话上下文。旧话题不会删除，仍保留在 LobeHub 里；好感度和聊天记录也都保留。')) return;
+      const r = await window.pet.newTopic();
+      if (r.ok) {
+        view = r.view;
+        say('（好，我们换个新话题，从头聊起吧。）', 'settings', 'fallback');
+      } else say(r.reason === 'busy' ? '等等，我还在想上一句……' : '（现在没法重新开始。）', r.reason === 'busy' ? 'busy' : 'error', 'fallback');
+    }
     if (m === 'check-update') {
       await openPanel('advanced');
       $('update-section').scrollIntoView({ block: 'nearest' });
