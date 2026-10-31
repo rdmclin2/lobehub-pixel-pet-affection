@@ -120,6 +120,7 @@
   "outfits": {
     "daily": "sheets/daily.webp",
     "swimsuit": "sheets/swimsuit.webp",
-    "bikini": "sheets/bikini.webp"
+    "bikini": "sheets/bikini.webp",
+    "scarf": "sheets/scarf.webp"
   }
 }
