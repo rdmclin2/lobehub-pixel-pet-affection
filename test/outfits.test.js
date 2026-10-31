@@ -81,26 +81,27 @@ test('Dafeiyu never gets adult outfits', () => {
 });
 
 test('a character only offers the outfits it has art for', () => {
-  const has = { dafeiyu: ['daily', 'swimsuit', 'bikini'], claude: ['daily', 'swimsuit', 'bikini'], grok: ['daily', 'swimsuit', 'bikini'], gemini: ['daily', 'swimsuit', 'bikini'], gpt: ['daily', 'swimsuit', 'bikini'] };
+  const all = ['daily', 'scarf', 'casual', 'beret', 'idol', 'pajamas', 'cat_ears', 'swimsuit', 'yukata', 'bikini', 'qipao', 'couple_hoodie', 'flower_crown']; // every all-ages outfit, none of the adult ones
+  const has = { dafeiyu: all, claude: all, grok: all, gemini: all, gpt: all };
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const p = mk(95, id);
     assert.deepEqual(o.listOutfits(p, ADULT).map((x) => x.id), has[id] || ['daily']);
     assert.equal(o.listOutfits(p, ADULT)[0].label, { dafeiyu: '招牌女仆装', claude: '橘白哥特长裙', grok: '黑金哥特礼服', gemini: '星纹宽袖外披', gpt: '白玫瑰立领长裙' }[id], 'its signature outfit name');
-    assert.equal(o.equipOutfit(p, ADULT, 'scarf').reason, 'unavailable');
-    assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'yukata' }, ADULT), 'daily');
+    assert.equal(o.equipOutfit(p, ADULT, 'maid').reason, 'unavailable');
+    assert.equal(o.wornOutfit({ ...p, equippedOutfit: 'silk_robe' }, ADULT), 'daily');
   }
 });
 
 test('stage-up unlock lists name the outfits the user can see', () => {
   const p = mk(70);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'maid', 'offshoulder_gown']);
-  assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata', 'bikini']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, ADULT).map((x) => x.id), ['yukata', 'bikini', 'qipao', 'maid', 'offshoulder_gown']);
+  assert.deepEqual(o.outfitsForStages(['flirty'], p, OFF).map((x) => x.id), ['yukata', 'bikini', 'qipao']);
 });
 
 test('"new" marks unlocked outfits beyond the first stage until they are seen', () => {
   const p = mk(20);
-  assert.deepEqual(o.listOutfits(p, OFF).filter((x) => x.isNew).map((x) => x.id), ['casual', 'beret']);
-  p.seenUnlocks.push('outfit:casual', 'outfit:beret');
+  assert.deepEqual(o.listOutfits(p, OFF).filter((x) => x.isNew).map((x) => x.id), ['casual', 'beret', 'idol']);
+  p.seenUnlocks.push('outfit:casual', 'outfit:beret', 'outfit:idol');
   assert.equal(o.listOutfits(p, OFF).some((x) => x.isNew), false);
 });
 
@@ -126,7 +127,7 @@ test('克洛蒂 sees the swimsuit locked until 亲近, then can put it on', () =
   assert.deepEqual(o.equipOutfit(p, OFF, 'swimsuit'), { ok: false, reason: 'locked', condition: '亲近（♥35）解锁，还差 15' });
   assert.equal(p.equippedOutfit, 'daily');
   st.setAffectionForTest(p, 40);
-  assert.deepEqual(o.outfitsForStages(['close'], p, OFF).map((x) => x.id), ['swimsuit'], 'named in the 亲近 stage-up notice');
+  assert.deepEqual(o.outfitsForStages(['close'], p, OFF).map((x) => x.id), ['pajamas', 'cat_ears', 'swimsuit'], 'named in the 亲近 stage-up notice');
   assert.equal(o.listOutfits(p, OFF).find((x) => x.id === 'swimsuit').isNew, true);
   assert.deepEqual(o.equipOutfit(p, OFF, 'swimsuit'), { ok: true, outfit: { id: 'swimsuit', label: '运动泳装' } });
   assert.equal(p.equippedOutfit, 'swimsuit');
