@@ -147,6 +147,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
    | 按角色（默认） | 她的引擎的 Key | 大肥鱼用 MiniMax「俏皮萌妹」（`qiaopi_mengmei`），其他角色用 Fish Audio；她的引擎没 Key 或出错时换另一个有 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」） |
    | Fish Audio | API Key（[fish.audio](https://fish.audio) → API Keys） | 所有角色都用 Fish：模型 `s2.1-pro`，每位角色一个社区音色；免费账号限个人非商业使用 |
    | MiniMax | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色。默认端点是国内站 `https://api.minimax.cn`；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+   | 本地语音服务（自己部署） | 你自己跑的语音服务的地址（Key 可不填） | IndexTTS2 / GPT-SoVITS / whale-voice 等跑在本机或局域网电脑上，音色由你的服务决定；接口选 OpenAI 兼容（`/v1/audio/speech`）或 whale-voice（`/tts`）。只在选它时用，不当云端引擎的备用；等待时间是云端的 4 倍（20 秒，长句最多 40 秒）。详见 [README](../README.md#语音tts) “本地语音服务” |
    | 系统语音 | 无 | 操作系统自带语音，离线免费；Linux 需装 speech-dispatcher 和中文语音包 |
 
    LobeHub 账号**不能**代为合成 MiniMax 语音（`lh gen tts` 只走 OpenAI 接口、云端返回 404；LobeHub 的 MiniMax provider 没有语音模型），大肥鱼的 MiniMax 音色要填你自己的 MiniMax Key。
@@ -178,7 +179,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | --- | --- | --- |
 | 版本与更新 | 当前版本、上次检查时间、“检查更新” | 启动后检查一次，之后每 4 小时 |
 | 桌宠行为 | 自己走动（E15）、点击音效（E21）、朗读回复 / 互动语音 / 朗读碎碎念（E23）、梗图（E22）、互相碰撞（E25） | 开、关、关 / 开 / 关、开、开 |
-| 语音 | 引擎（按角色 / Fish Audio / MiniMax / 系统语音）、各引擎的 API Key 与端点、“用不了时”（改用系统语音 / 不出声）、试听一句、清空语音缓存、状态行（Key 是否已设置、缓存大小、上次出错） | 按角色（大肥鱼 MiniMax，其他 Fish），没有 Key，用不了时改用系统语音 |
+| 语音 | 引擎（按角色 / Fish Audio / MiniMax / 本地语音服务 / 系统语音）、各引擎的 API Key 与端点、本地语音服务的接口 / 模型 / 音色名、“用不了时”（改用系统语音 / 不出声）、试听一句、清空语音缓存、状态行（Key 是否已设置、缓存大小、上次出错） | 按角色（大肥鱼 MiniMax，其他 Fish），没有 Key，用不了时改用系统语音 |
 | 同屏伙伴 | 勾选最多 3 位来串门（E24） | 无 |
 | 对外接口（本机 HTTP） | 开关、端口、令牌（E26） | 关，端口 7340 |
 
@@ -235,9 +236,10 @@ npm run dist:win       # Windows x64 安装包 + zip
      "voice": {                      // 语音（可省略）
        "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao"], // 系统语音：语言、音调、语速、优先的系统语音名
        "tts": {                      // 云端引擎的音色，每个引擎可省略
-         "default": "fish",           // “按角色”时用的引擎：fish / minimax（省略为 fish；大肥鱼是 minimax）
+         "default": "fish",           // “按角色”时用的引擎：fish / minimax / local（省略为 fish；大肥鱼是 minimax）
          "fish": { "referenceId": "<32 位 Fish 音色 id>", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "happy": "开心地" }, "credit": "Fish Audio 社区音色「…」by …" },
-         "minimax": { "voiceId": "Chinese (Mandarin)_Soft_Girl", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 0, "vol": 1, "emotion": "happy" }
+         "minimax": { "voiceId": "Chinese (Mandarin)_Soft_Girl", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 0, "vol": 1, "emotion": "happy" },
+         "local": { "voice": "whale" }  // 可省略：她在本地语音服务上的音色名（不写就用设置里填的）
        },
        "lines": { "lift": ["…", "…"], "throw": ["…", "…"], "catch": ["…", "…"] } // 拖拽 / 甩出 / 接住时说的台词（互动语音）
      },

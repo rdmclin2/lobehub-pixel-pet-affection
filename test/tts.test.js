@@ -94,9 +94,9 @@ test('validateCharacter rejects a broken voice.tts', () => {
 
 // ---- settings ----------------------------------------------------------------------------------------
 test('settings.tts: each character\'s own engine (auto) by default with the system voice as fallback; bad values are dropped', () => {
-  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '' } });
+  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
   const s = settingsLib.normalizeSettings({ tts: { provider: 'azure', providerSet: true, fallback: 'loud', endpoints: { fish: 'http://evil.example.com', minimax: 'https://mm.example.com/' } } });
-  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', packs: true, endpoints: { fish: '', minimax: 'https://mm.example.com' } });
+  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', packs: true, endpoints: { fish: '', minimax: 'https://mm.example.com', local: '' }, local: { api: 'openai', model: '', voice: '' } });
   // saved before 'auto': provider 'fish' was the default, never a choice → auto; a picked engine stays
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.provider, 'auto');
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.fallback, 'silent');
@@ -143,7 +143,7 @@ test('auto, 大肥鱼 without a MiniMax key: straight to Fish, no MiniMax reques
 });
 
 test('every provider has the same shape; Web Speech is the system provider', () => {
-  assert.deepEqual(Object.keys(tts.PROVIDERS), ['fish', 'minimax', 'system']);
+  assert.deepEqual(Object.keys(tts.PROVIDERS), ['fish', 'minimax', 'local', 'system']);
   for (const p of Object.values(tts.PROVIDERS)) {
     for (const k of ['id', 'label', 'kind', 'needsKey']) assert.ok(p[k] !== undefined, `${p.id}.${k}`);
     for (const k of ['available', 'config']) assert.equal(typeof p[k], 'function', `${p.id}.${k}`);
@@ -466,7 +466,7 @@ test('PetService.setTts saves engine, fallback and endpoints; the settings view 
   const svc = new PetService({ lh: null, store: null, settingsStore: store, ttsStatus: () => ({ engines: { fish: { hasKey: keys.has('fish') }, minimax: { hasKey: keys.has('minimax') } } }) });
   let r = svc.setTts({ provider: 'minimax', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777' } });
   assert.equal(r.ok, true);
-  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', packs: true, endpoints: { fish: 'http://127.0.0.1:7777', minimax: '' } });
+  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', packs: true, endpoints: { fish: 'http://127.0.0.1:7777', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
   r = svc.setTts({ endpoints: { fish: 'ftp://nope' } });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'bad-endpoint');
@@ -474,4 +474,85 @@ test('PetService.setTts saves engine, fallback and endpoints; the settings view 
   assert.equal(svc.getSettings().ttsStatus.engines.fish.hasKey, true);
   assert.equal(JSON.stringify(svc.getSettings()).includes(KEY), false);
   assert.equal(JSON.stringify(store.data).includes(KEY), false);
+});
+
+// ---- local voice server (本地语音服务) ------------------------------------------------------------------
+const LOCAL = (local = {}, endpoint = 'http://127.0.0.1:7864') => ({ provider: 'local', fallback: 'system', endpoints: { local: endpoint }, local });
+
+test('local engine, OpenAI shape: POST /v1/audio/speech with the voice from settings, no key needed', async () => {
+  const fetch = fakeFetch(() => audioRes(Buffer.from('RIFFwav'), 'audio/wav'));
+  const e = new tts.TtsEngine({ keys: keysWith({}), fetch });
+  const r = await e.synthesize({ text: '鱼片，饭呢？', species: dfy, mood: 'hungry' }, LOCAL({ api: 'openai', model: 'IndexTTS-2', voice: 'whale' }, 'http://127.0.0.1:11996/v1/'));
+  assert.equal(r.ok, true);
+  assert.equal(r.provider, 'local');
+  assert.equal(r.voiceId, 'whale');
+  assert.equal(r.mime, 'audio/wav');
+  const c = fetch.calls[0];
+  assert.equal(c.url, 'http://127.0.0.1:11996/v1/audio/speech', 'a trailing /v1 is not doubled');
+  assert.deepEqual(c.body, { model: 'IndexTTS-2', input: '鱼片，饭呢？', voice: 'whale', response_format: 'mp3', speed: 1 });
+  assert.equal(c.init.headers.Authorization, undefined, 'no key: no Authorization header');
+  // a key, when the server wants one, goes as a Bearer token
+  const f2 = fakeFetch(() => audioRes());
+  await new tts.TtsEngine({ keys: keysWith({ local: 'local-token-1234' }), fetch: f2 }).synthesize({ text: '你好', species: dfy }, LOCAL());
+  assert.equal(f2.calls[0].init.headers.Authorization, 'Bearer local-token-1234');
+  assert.deepEqual(f2.calls[0].body, { model: 'tts-1', input: '你好', voice: 'default', response_format: 'mp3', speed: 1 }, 'defaults when nothing is filled in');
+});
+
+test('local engine, whale-voice shape: POST /tts { text, emo }; her mood picks the emotion and is part of the cache key', async () => {
+  const fetch = fakeFetch(() => audioRes(Buffer.from('RIFFwav'), 'audio/wav'));
+  const e = new tts.TtsEngine({ keys: keysWith({}), fetch, cache: new TtsCache(tmp()) });
+  const set = LOCAL({ api: 'whale' });
+  await e.synthesize({ text: '好困', species: dfy, mood: 'sleep' }, set);
+  await e.synthesize({ text: '好困', species: dfy, mood: 'happy' }, set);
+  const again = await e.synthesize({ text: '好困', species: dfy, mood: 'sleep' }, set);
+  await e.synthesize({ text: '在吗', species: dfy, mood: 'idle' }, set);
+  assert.deepEqual(fetch.calls.map((c) => [c.url, c.body]), [
+    ['http://127.0.0.1:7864/tts', { text: '好困', emo: 'sleepy' }],
+    ['http://127.0.0.1:7864/tts', { text: '好困', emo: 'happy' }],
+    ['http://127.0.0.1:7864/tts', { text: '在吗', emo: 'tender' }],
+  ]);
+  assert.equal(again.cached, true, 'same line, same mood: from the cache');
+});
+
+test('local engine: without an endpoint it is skipped; it is never a fallback for a cloud engine', async () => {
+  const fetch = fakeFetch(() => errRes(500));
+  const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch });
+  const r = await e.synthesize({ text: '你好', species: dfy }, LOCAL({}, ''));
+  assert.deepEqual(r.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:no-endpoint', 'fish:http-500'], 'chosen without an address: on to the cloud engine with a key');
+  assert.deepEqual(tts.providerChain({ provider: 'fish', endpoints: { local: 'http://127.0.0.1:7864' } }, () => true, dfy), ['fish', 'minimax', 'system']);
+  assert.deepEqual(tts.providerChain(LOCAL(), () => true, dfy), ['local', 'fish', 'minimax', 'system']);
+  assert.equal(e.status(LOCAL()).local.ready, true);
+  assert.equal(e.status(LOCAL()).local.hasKey, false);
+  assert.equal(e.status().local.ready, false);
+  assert.equal(e.firstUsable(dfy, LOCAL()), 'local');
+});
+
+test('local engine: four times the timeouts (20 s, up to 40 s) before falling back; a non-audio answer is a failure', async () => {
+  const fetch = fakeFetch(hang);
+  const e = new tts.TtsEngine({ keys: keysWith({}), fetch, timeoutMs: 30 });
+  const t0 = Date.now();
+  const r = await e.synthesize({ text: '你好', species: dfy }, LOCAL());
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'local', reason: 'timeout' }]);
+  assert.ok(Date.now() - t0 >= 110, `waited ${Date.now() - t0} ms (4 × 30)`);
+  assert.equal(tts.PROVIDERS.local.slow, 4);
+  const page = fakeFetch(() => audioRes(Buffer.from('{"detail":"model not loaded"}'), 'application/json'));
+  const r2 = await new tts.TtsEngine({ keys: keysWith({}), fetch: page }).synthesize({ text: '你好', species: dfy }, LOCAL());
+  assert.deepEqual(r2.fellBackFrom, [{ provider: 'local', reason: 'not-audio' }]);
+  assert.equal(tts.pauseFor('not-audio'), tts.TRANSIENT_PAUSE_MS, 'a server still loading: try again soon');
+});
+
+test('local engine settings: API shape, model and voice are kept; http to the home network only for it', () => {
+  const s = settingsLib.normalizeSettings({ tts: { provider: 'local', providerSet: true, endpoints: { local: 'http://192.168.1.20:7864/', fish: 'http://192.168.1.20:7864' }, local: { api: 'whale', model: ' IndexTTS-2 ', voice: 'x'.repeat(200) } } }).tts;
+  assert.equal(s.provider, 'local');
+  assert.equal(s.endpoints.local, 'http://192.168.1.20:7864');
+  assert.equal(s.endpoints.fish, '', 'a cloud engine still needs https');
+  assert.deepEqual(s.local, { api: 'whale', model: 'IndexTTS-2', voice: 'x'.repeat(80) });
+  assert.equal(settingsLib.normalizeSettings({ tts: { local: { api: 'grpc' } } }).tts.local.api, 'openai');
+  for (const ok of ['http://127.0.0.1:7864', 'http://10.0.0.5:9880', 'http://172.20.1.1', 'http://gpu-box.local:7864', 'https://tts.example.com']) assert.equal(tts.endpointOkFor('local', ok), true, ok);
+  for (const bad of ['http://example.com:7864', 'http://8.8.8.8', 'http://172.32.0.1', 'http://u:p@127.0.0.1', 'ftp://127.0.0.1']) assert.equal(tts.endpointOkFor('local', bad), false, bad);
+  // a character may name her own voice on the local server
+  assert.deepEqual(validateCharacter({ ...dfy, voice: { ...dfy.voice, tts: { ...dfy.voice.tts, local: { voice: 'whale', speed: 3 } } } }).filter((x) => /local/.test(x)), ['voice.tts.local.speed must be a number from 0.5 to 2']);
+  assert.equal(tts.voiceFor({ voice: { tts: { local: { voice: 'whale' } } } }, 'local', LOCAL({ voice: 'other' })).voiceId, 'whale');
+  assert.equal(tts.voiceFor(dfy, 'local', LOCAL({ voice: 'other' })).voiceId, 'other');
 });
