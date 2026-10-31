@@ -121,6 +121,15 @@
     "daily": "sheets/daily.webp",
     "swimsuit": "sheets/swimsuit.webp",
     "bikini": "sheets/bikini.webp",
-    "scarf": "sheets/scarf.webp"
+    "scarf": "sheets/scarf.webp",
+    "beret": "sheets/beret.webp",
+    "casual": "sheets/casual.webp",
+    "pajamas": "sheets/pajamas.webp",
+    "cat_ears": "sheets/cat_ears.webp",
+    "yukata": "sheets/yukata.webp",
+    "couple_hoodie": "sheets/couple_hoodie.webp",
+    "flower_crown": "sheets/flower_crown.webp",
+    "idol": "sheets/idol.webp",
+    "qipao": "sheets/qipao.webp"
   }
 }

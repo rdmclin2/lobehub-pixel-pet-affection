@@ -1,15 +1,15 @@
 # Align an outfit sheet to the pack's daily sheet: gpt-image sometimes draws a few cells of a grid a size
 # bigger or smaller (often the crouching hatch frame), which check_model_chan.py reports as a height jump.
-# Every frame whose figure height differs from the same daily frame by more than --tol (default 10%) is
+# Every frame whose figure height differs from the same daily frame by more than --tol (default 11.5%, just inside check_model_chan.py's 12%) is
 # scaled about its feet to the daily height, staying inside its cell. Writes the sheet in place.
-# usage: align_outfit.py <pack dir> <outfit> [--tol 0.10]
+# usage: align_outfit.py <pack dir> <outfit> [--tol 0.115]
 import json, os, sys
 import numpy as np
 from PIL import Image
 
 FW, FH = 332, 452
 d, outfit = sys.argv[1], sys.argv[2]
-tol = float(sys.argv[sys.argv.index('--tol') + 1]) if '--tol' in sys.argv else 0.10
+tol = float(sys.argv[sys.argv.index('--tol') + 1]) if '--tol' in sys.argv else 0.115
 pack = json.load(open(os.path.join(d, 'pack.json')))
 daily = np.asarray(Image.open(os.path.join(d, pack['outfits']['daily'])).convert('RGBA'))[..., 3]
 path = os.path.join(d, pack['outfits'][outfit])

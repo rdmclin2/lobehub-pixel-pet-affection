@@ -133,7 +133,7 @@ WARDROBE = {
  "yukata": "a long {a} summer yukata reaching her ankles with a {b} flower pattern, closed neatly at the neck, a wide {b} obi sash tied in a bow at the back, and wooden geta sandals",
  "couple_hoodie": "a pink oversized hoodie with a big red heart print on the front, a knee-length pleated {a} skirt over opaque black tights and white sneakers",
  "flower_crown": "a flowing ankle-length white sundress with a modest square neckline at her collarbones and short puff sleeves, a crown of small {a} and white flowers resting on her hair, and white strappy flat sandals",
- "qipao": "an elegant loose straight-cut ankle-length {a} qipao (cheongsam) with a high mandarin collar, short cap sleeves, {b} embroidered flowers, short side slits only at the ankles, and {b} low flat shoes",
+ "qipao": "a sweet, loose A-line ankle-length {a} qipao dress (cheongsam style) that falls straight and wide from her shoulders like a loose tunic dress, hiding her figure, with a high mandarin collar, short cap sleeves, {b} embroidered flowers and {b} frog buttons, no side slits, and {b} low flat shoes; the chest is drawn as plain flat fabric with no bust shading or bust shape, the dress never clings to her body",
  "idol": "a sparkly knee-length idol stage dress in {a} and {b} with a high frilled collar, puff sleeves, layered frills, ribbons and a big {b} bow, opaque white tights, a small wrist microphone charm and shiny {b} ankle boots",
 }
 # Garment colours per character ({a} main, {b} second), from her daily palette: every sheet of an outfit is drawn
