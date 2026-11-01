@@ -56,7 +56,10 @@
       "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "artifactName": "PixelPetAffection-${version}-mac-${arch}.${ext}"
+      "artifactName": "PixelPetAffection-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "语音输入：点一下或按住聊天框旁的 🎤 时，桌宠用麦克风录下你的话并转成文字。不点按钮时不会录音。"
+      }
     },
     "dmg": {
       "title": "Pixel Pet Affection ${version}"

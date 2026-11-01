@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('pet', {
     cancel: () => ipcRenderer.send('asr-cancel'),
     test: (provider) => ipcRenderer.invoke('asr-test', { provider }),
     set: (patch) => ipcRenderer.invoke('set-asr', patch),
+    micAccess: () => ipcRenderer.invoke('asr-mic-access'), // 'granted' | 'denied' | 'restricted' (macOS asks once)
   },
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),

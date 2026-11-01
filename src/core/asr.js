@@ -75,6 +75,7 @@ const ASR_DEFAULTS = {
   fallback: false, // when the engine fails, try the other provider once
   language: 'auto', // auto | an ISO-639-1 code (zh, en, ja…)
   maxSeconds: SECONDS.default,
+  autoSend: false, // 识别后直接发送 (renderer): the text goes to the chat at once instead of waiting in the box
   lobehub: { model: LOBEHUB_MODELS[0] },
   local: { endpoint: DEFAULT_ENDPOINT, api: 'openai', model: 'whisper-1', timeoutSec: LOCAL_TIMEOUT.default },
 };
@@ -119,6 +120,7 @@ function normalizeAsr(raw) {
     fallback: fallback === true,
     language: typeof r.language === 'string' && LANG_RE.test(r.language.trim().toLowerCase()) ? r.language.trim().toLowerCase() : ASR_DEFAULTS.language,
     maxSeconds: int(r.maxSeconds, SECONDS),
+    autoSend: r.autoSend === true,
     lobehub: { model: typeof lob.model === 'string' && MODEL_RE.test(lob.model.trim()) ? lob.model.trim() : ASR_DEFAULTS.lobehub.model },
     local: {
       endpoint: endpointOk(loc.endpoint) ? cleanEndpoint(loc.endpoint) : DEFAULT_ENDPOINT,
@@ -141,6 +143,7 @@ function applyAsrPatch(cur, patch) {
   if (typeof p.fallback === 'boolean') next.fallback = p.fallback;
   if (p.language !== undefined) { if (typeof p.language === 'string' && LANG_RE.test(p.language.trim().toLowerCase())) next.language = p.language.trim().toLowerCase(); else errors.push('bad-language'); }
   if (p.maxSeconds !== undefined) next.maxSeconds = int(p.maxSeconds, SECONDS);
+  if (typeof p.autoSend === 'boolean') next.autoSend = p.autoSend;
   const lob = p.lobehub && typeof p.lobehub === 'object' ? p.lobehub : {};
   if (lob.model !== undefined) { if (typeof lob.model === 'string' && MODEL_RE.test(lob.model.trim())) next.lobehub.model = lob.model.trim(); else errors.push('bad-model'); }
   const loc = p.local && typeof p.local === 'object' ? p.local : {};
@@ -157,6 +160,16 @@ function applyAsrPatch(cur, patch) {
 
 // ASR is on when it is switched on and an engine is picked.
 const asrActive = (set) => { const s = normalizeAsr(set); return s.enabled && s.engine !== 'off'; };
+
+// Electron permission requests (main.js session handlers). Only the microphone is decided here: audio, asked
+// by this app's own page (file://), with 语音输入 switched on. Never the camera, never a web page. Anything
+// else is not ours to change and keeps Electron's default (granted). -> true | false | null (= not media).
+function mediaAllowed({ permission, url, mediaTypes, settings } = {}) {
+  if (permission !== 'media') return null;
+  const ours = typeof url === 'string' && url.startsWith('file://');
+  const types = Array.isArray(mediaTypes) ? mediaTypes : [];
+  return ours && asrActive(settings) && types.every((t) => t === 'audio');
+}
 
 // The providers to try for one clip, in order.
 function providerChain(set) {
@@ -456,4 +469,4 @@ class AsrEngine {
   }
 }
 
-module.exports = { ENGINES, PROVIDER_IDS, LOCAL_APIS, LOCAL_PORT, DEFAULT_ENDPOINT, LOBEHUB_MODELS, KEY_ID, MAX_BYTES, BREAKER_MS, TRANSIENT_PAUSE_MS, ASR_DEFAULTS, AsrError, pauseFor, endpointOk, normalizeAsr, applyAsrPatch, asrActive, providerChain, toAudio, silentWav, cleanText, normLang, lhReason, extFor, PROVIDERS, AsrEngine };
+module.exports = { ENGINES, PROVIDER_IDS, LOCAL_APIS, LOCAL_PORT, DEFAULT_ENDPOINT, LOBEHUB_MODELS, KEY_ID, MAX_BYTES, BREAKER_MS, TRANSIENT_PAUSE_MS, ASR_DEFAULTS, AsrError, pauseFor, endpointOk, normalizeAsr, applyAsrPatch, asrActive, mediaAllowed, providerChain, toAudio, silentWav, cleanText, normLang, lhReason, extFor, PROVIDERS, AsrEngine };

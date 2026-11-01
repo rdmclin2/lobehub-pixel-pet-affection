@@ -477,3 +477,33 @@ test('PetService: setAsr saves, validates and resets the breaker; asrTranscribe 
   svc.setAsr({ enabled: false });
   assert.equal((await svc.asrTranscribe(CLIP, 'audio/webm')).reason, 'not-configured');
 });
+
+// ---- 语音输入 in the renderer (T-2412) ----------------------------------------------------------------
+test('settings.asr.autoSend (识别后直接发送): off by default, only a boolean switches it', () => {
+  assert.equal(asr.normalizeAsr(undefined).autoSend, false);
+  assert.equal(asr.normalizeAsr({ autoSend: 'yes' }).autoSend, false);
+  assert.equal(asr.normalizeAsr({ autoSend: true }).autoSend, true);
+  const on = asr.applyAsrPatch(asr.ASR_DEFAULTS, { autoSend: true });
+  assert.equal(on.ok, true);
+  assert.equal(on.asr.autoSend, true);
+  assert.equal(asr.applyAsrPatch(on.asr, { autoSend: 1 }).asr.autoSend, true, 'not a boolean: unchanged');
+  assert.equal(asr.applyAsrPatch(on.asr, { autoSend: false }).asr.autoSend, false);
+});
+
+test('mediaAllowed: the microphone only for our own page, audio only, only while 语音输入 is on', () => {
+  const on = { enabled: true, engine: 'local' };
+  const page = 'file:///Applications/Pixel%20Pet.app/Contents/Resources/app.asar/src/renderer/index.html';
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['audio'], settings: on }), true);
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['video'], settings: on }), false, 'never the camera');
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['audio', 'video'], settings: on }), false);
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: 'https://example.com/', mediaTypes: ['audio'], settings: on }), false, 'never a web page');
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['audio'], settings: { enabled: false, engine: 'local' } }), false, 'switched off');
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['audio'], settings: { enabled: true, engine: 'off' } }), false, 'engine 关闭');
+  assert.equal(asr.mediaAllowed({ permission: 'media', url: page, mediaTypes: ['audio'], settings: undefined }), false, 'defaults: off');
+  assert.equal(asr.mediaAllowed({ permission: 'notifications', url: page, settings: on }), null, 'not ours to decide');
+});
+
+test('package.json: macOS is told why the microphone is used (NSMicrophoneUsageDescription)', () => {
+  const pkg = require('../package.json');
+  assert.match(pkg.build.mac.extendInfo.NSMicrophoneUsageDescription, /麦克风/);
+});

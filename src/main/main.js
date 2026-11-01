@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,7 +19,7 @@ const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
-const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES } = require('../core/asr');
+const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
@@ -426,6 +426,14 @@ function wire() {
     return service.asrTranscribe(bytes, mime, { ms: Number(ms) || null });
   });
   ipcMain.on('asr-cancel', () => service.asrCancel());
+  // 🎤 before the first recording: macOS asks the owner once (Info.plist NSMicrophoneUsageDescription);
+  // elsewhere the OS has no per-app prompt and getUserMedia reports a refusal itself.
+  ipcMain.handle('asr-mic-access', async () => {
+    if (process.platform !== 'darwin' || !systemPreferences.getMediaAccessStatus) return 'granted';
+    const st = systemPreferences.getMediaAccessStatus('microphone');
+    if (st === 'not-determined') return (await systemPreferences.askForMediaAccess('microphone')) ? 'granted' : 'denied';
+    return st; // granted | denied | restricted
+  });
   ipcMain.handle('asr-test', (_e, p) => service.asrTest({ provider: p && p.provider }));
   ipcMain.handle('set-asr', (_e, patch) => {
     const p = patch && typeof patch === 'object' ? patch : {};
@@ -524,6 +532,16 @@ app.whenReady().then(() => {
     throw: (v) => askRenderer('throw', v, 20000),
     chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
   }, logError);
+  // 语音输入: the microphone only for our own page, audio only, and only while 语音输入 is on
+  // (core/asr.js mediaAllowed). Other permissions keep Electron's default.
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    const a = mediaAllowed({ permission, url: (details && details.requestingUrl) || wc.getURL(), mediaTypes: details && details.mediaTypes, settings: service.settings.asr });
+    cb(a === null ? true : a);
+  });
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin, details) => {
+    const a = mediaAllowed({ permission, url: (wc && wc.getURL()) || origin, mediaTypes: [details && details.mediaType === 'video' ? 'video' : 'audio'], settings: service.settings.asr });
+    return a === null ? true : a;
+  });
   wire();
   createWindow();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });

@@ -399,3 +399,13 @@ normalize 规则：
 - **连通性测试**：`test()` 发送内置生成的 0.6 秒静音 WAV（`silentWav()`），返回空文本也算通过，因此不需要随包附带音频资源。
 - **IPC**（preload）：`window.pet.asr = { transcribe(bytes, mime, ms), cancel(), test(provider?), set(patch) }`。`set` 的 `patch.key` 是本地服务的可选 Key，存进 tts-keys.json（id `asrlocal`），设为 `''` 即删除。设置视图里的 `asrStatus` 只包含是否熔断、熔断原因和 `hasKey`。
 - **命令行验证**：`node scripts/asr-transcribe.js <file> --engine local|lobehub [--endpoint …] [--api whispercpp] [--language zh] [--fallback] [--test]` 与 IPC 走同一套代码。在 agent 环境里运行时需要加 `PIXELPET_CLEAR_JWT=1`。
+
+## 11. 实现记录（渲染层语音输入，T-2412）
+
+- **🎤 按钮** `#chat-mic`：在聊天行里，位于输入框和「发送」之间，只在 `asr.enabled && engine !== 'off'` 时显示。快速点一下开始录音，再点一下结束；按住超过 350 ms 视为「按住说话」，松开即结束。Esc 取消录音并丢弃。录满 `maxSeconds` 自动结束，不足 0.4 秒提示「太短了」。录音时按钮变红并显示 `■ Ns`，输入框上方的 `#mic-status` 显示「🔴 正在听 Ns / 60s」；识别中按钮显示转圈，状态行显示「⏳ 识别中…（引擎名）」。开始录音时调用 `stopSpeech('listening')`，停掉她的朗读，避免录进去。录音期间即使鼠标移出窗口，控件也保持显示。
+- **录音**：`getUserMedia({ audio })` → `MediaRecorder('audio/webm;codecs=opus', 32 kbps)` → `window.pet.asr.transcribe(arrayBuffer, mime, ms)`。录音结束后立刻释放麦克风轨道。录音前先调用 `window.pet.asr.micAccess()`：macOS 下 `systemPreferences.askForMediaAccess('microphone')` 只会询问一次，其他平台直接返回 `granted`。
+- **结果**：识别出的文字追加到 `#chat-input`（已有内容时先补一个空格）。打开 `asr.autoSend`（识别后直接发送）时，直接点击「发送」；如果她还在回上一句，就只填进输入框并给出提示。
+- **失败提示**：复用 `#unlock-toast`（加 `.notice` 样式），标题为「🎤 语音输入没成功」，正文按 reason 给出原因。与配置有关的失败会附带「去设置」按钮，点击后打开 高级设置 并滚动到「语音输入」。输入框里原有的文字保持不变。
+- **设置**：高级设置 →「语音输入」（`#asr-section`）包含：开关、引擎（LobeHub 云端识别 / 本地识别服务（whisper）/ 关闭）、语言、识别后直接发送、失败时换另一个引擎、LobeHub 模型、本地服务的地址 / 接口 / 模型 / Key、「测试连接」（发送 0.6 秒静音，结果逐个 provider 显示）。`settings.asr` 新增 `autoSend: false`。
+- **权限**：`session.setPermissionRequestHandler` / `setPermissionCheckHandler` 统一交给 `core/asr.js` 的 `mediaAllowed()` 判断。只有本应用的 `file://` 页面、只请求音频、并且语音输入已开启时才放行；摄像头一律拒绝。其他权限沿用 Electron 默认（放行），行为和改动前一致。`package.json` 的 `build.mac.extendInfo.NSMicrophoneUsageDescription` 已补上。目前 `hardenedRuntime: false`，所以不需要 entitlements。
+- **e2e**：`xvfb-run -a node e2e/run.js asr`。用 `--use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<wav>` 模拟麦克风，配合一个 mock 的 OpenAI 形 whisper 服务，不消耗 token。mock 会校验收到的是 MediaRecorder 产出的 WebM（EBML 头 `1a45dfa3`），以及 model 和 language 字段。如果设置了 `PIXELPET_E2E_WHISPER=<url> PIXELPET_E2E_ASR_WAV=<语音 wav> [PIXELPET_E2E_ASR_EXPECT=<正则>]`，会额外跑一步，把录音发给真实的 whisper-server。
