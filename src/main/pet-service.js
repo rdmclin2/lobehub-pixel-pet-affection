@@ -750,8 +750,11 @@ class PetService extends EventEmitter {
     const t = this.now();
     const c = this._c();
     const sp = getSpecies(c.speciesId);
-    if (this.busy || !this.budget.canSpend(t)) {
-      this._say(this._fallback(sp, kind), 'fallback', kind, this.busy ? 'agent busy' : 'hourly LLM budget spent');
+    // While she is busy (a reply may be streaming into the bubble) a system line would cut into that reply and
+    // land in 聊天记录 between the owner's message and her answer, so it is dropped; the next heartbeat asks again.
+    if (this.busy) return;
+    if (!this.budget.canSpend(t)) {
+      this._say(this._fallback(sp, kind), 'fallback', kind, 'hourly LLM budget spent');
       return;
     }
     this.busy = true;

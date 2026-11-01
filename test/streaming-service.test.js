@@ -141,6 +141,23 @@ test('every turn has its own stream id; a proactive line streams too, without a 
   assert.equal(of(events, 'say')[2].streamId, done[2].id);
 });
 
+test('a proactive line due while a reply is streaming is dropped: nothing cuts into the bubble or into 聊天记录', async () => {
+  const { svc, events, reply } = await hatched();
+  reply({ pieces: ['第一段，', '第二段，', '第三段。'], gapMs: 150 });
+  const turn = svc.chat('讲个长的');
+  await new Promise((r) => setTimeout(r, 200)); // the reply is being written
+  assert.equal(svc.busy, true);
+  await svc._speak('hungry');
+  const r = await turn;
+  assert.equal(r.ok, true);
+  const says = of(events, 'say');
+  assert.equal(says.length, 1, `says: ${JSON.stringify(says.map((s) => s.text))}`);
+  assert.equal(says[0].text, '第一段，第二段，第三段。');
+  const rounds = svc.log.list().filter((m) => m.role === 'pet');
+  assert.deepEqual(rounds.slice(-1).map((m) => m.text), ['第一段，第二段，第三段。']);
+  assert.ok(!rounds.some((m) => m.kind === 'hungry'), 'no hungry line logged');
+});
+
 test('an lh that prints the whole reply at once still gives one delta and the same final line', async () => {
   const { svc, events } = await hatched();
   const r = await svc.chat('今天好累');
