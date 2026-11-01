@@ -14,13 +14,17 @@
 
 ## 全动态（大肥鱼 · 全动态，`dafeiyu-live`）
 
-大肥鱼另有一个全动态外观（`kind: "rig"`，格式见 `docs/pet-packs.md`）：把 `dafeiyu-pixel` 日常服的待机帧按 `art/rig/dafeiyu.json` 拆成 7 层（后发、尾巴、身体、头、左右鳍、呆毛），由 `src/renderer/rig.js` 实时弯折，眼睛和嘴也是实时画的。重新拆：
+大肥鱼另有一个全动态外观（`kind: "rig"`，格式见 `docs/pet-packs.md`），v2（2026-11-01）的做法：
+
+1. 用 gpt-image-2.5 以像素版待机帧为参考，生成一张 1075×1463 的高清主图（正面、手臂微张、两脚分开、绿幕），提示词在 `art/rig/dafeiyu-v2/master_a.txt`。
+2. 以主图为参考做编辑（`lh` CLI 不带参考图参数，需要给 `image.createImage` 传 `params.imageUrls`）：去掉手臂、去掉鳍、只留头发，以及 10 种表情（开心、满足、惊讶、难过、生气、害羞、睡觉、wink、闭眼、张嘴）。编辑图和主图构图几乎逐像素一致，只有改动的部位不同。提示词在 `art/rig/dafeiyu-v2/*.txt`，原图（webp）在同一目录。
+3. 拆件：
 
 ```bash
-python3 scripts/art/rig_cut.py art/rig/dafeiyu.json daily <待机帧.png> src/renderer/packs/dafeiyu-live --scale 2
+python3 scripts/art/rig_build.py art/rig/dafeiyu-v2.json art/rig/dafeiyu-v2 src/renderer/packs/dafeiyu-live
 ```
 
-待机帧取自 `dafeiyu-pixel/sheets/daily.webp` 左上角那一格（664×904）。多边形是在 332×452 上画的，所以加 `--scale 2`：按 2 倍切图，各层保留 664×904 的分辨率，`model.json` 的坐标仍是 332×452。之后用参考图编辑生成更高清的分层原图时，换掉这张图、调整多边形即可。
+得到 11 个身体图层（后发、尾巴、左右腿、身体、左右手臂、头、左右鳍、呆毛）和 10 个表情贴片，由 `src/renderer/rig.js` 实时弯折。
 
 ## 像素包格式
 
