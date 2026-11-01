@@ -33,7 +33,7 @@
   - `response.output_text.delta` → `onText`；
   - `response.output_item.done` → 按 `output_index` 收集输出项（**工具调用从这里取**：实测 `response.incomplete` 的 `response.output` 是空数组）；
   - `response.completed` / `response.incomplete` / `response.failed` → 结束（读到就停止读取并 `cancel()` 连接）；
-  - SSE `error` 事件 → `status: 'failed'` → `EAPI`；
+  - SSE `error` 事件 → `status: 'failed'` → `EAPI`；`data: [DONE]`（OpenAI 风格结束标记）→ 停止读取，若此前没有终止事件按提前断流处理；
   - 流在终止事件前断开 → `EAPI`（"stream ended before the response was complete"）；网络异常 → `ENET`；取消 / 超时 → `ECANCELED` / `ETIMEDOUT`（与原来相同）；`toolsRan` 照常标注。
   - body 支持 `ReadableStream`（`getReader`，真实 `fetch`）和异步可迭代对象。
 - 工具轮次：`function_call` → 本机执行 → 带 `strict_tool_resume` 续一轮，续轮同样 `stream: true`；最多 12 步不变。
@@ -41,7 +41,7 @@
 
 ## 测试
 
-`npm test`：465 / 465 通过（改动前 445，新增 20）。新增用例：
+`npm test`：466 / 466 通过（改动前 445，新增 21）。新增用例：
 
 | 文件 | 用例 | 驱动方式 |
 | --- | --- | --- |
@@ -61,7 +61,8 @@
 | | 真实样本 `responses-sse-tool.json`（每 3 字节切）→ "我看看" → 本机执行 `list_directory {path:/tmp}` → 第二轮 `stream:true` + `strict_tool_resume` → `\n\n` + 答案；费用来自 `response.completed` | 样本 + 伪造续轮 |
 | | 服务器回 JSON → 老路径、`onDelta` 一次 | 伪造 |
 | | 不传 `onDelta` 仍 `stream:false`、无 `Accept` | 伪造（保持性用例，改动前也通过） |
-| | 中途 `response.failed` / `error` 事件 / 提前断流 → `EAPI`；body 抛错 → `ENET`；已交出的"你好"保留 | 伪造 |
+| | `[DONE]` 跟在 `response.completed` 后 → 正常结束 | 伪造 |
+| | 中途 `response.failed` / `error` 事件 / 提前断流 / 无终止事件的 `[DONE]` → `EAPI`；body 抛错 → `ENET`；已交出的"你好"保留 | 伪造 |
 | | 流还在来时 `cancel()` → `ECANCELED` | 伪造 |
 | | `createSseParser`：CRLF、注释、多行 data、非 JSON 块，在每个字节切点切两半都一致 | 单元 |
 | | 回调抛异常不影响回合 | 伪造 |

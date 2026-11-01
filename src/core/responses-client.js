@@ -150,7 +150,9 @@ function createSseParser(onEvent) {
   let data = [];
   const line = (l) => {
     if (l === '') {
-      if (data.length) {
+      if (data.length === 1 && data[0].trim() === '[DONE]') {
+        onEvent('[DONE]', {}); // OpenAI-style end marker
+      } else if (data.length) {
         let parsed = null;
         try {
           parsed = JSON.parse(data.join('\n'));
@@ -223,6 +225,7 @@ async function readResponseStream(body, onText) {
   let response = null; // the latest full response object (created → completed / incomplete / failed)
   let terminal = null;
   let error = null;
+  let done = false; // `data: [DONE]`: nothing more comes, terminal event or not
   const items = []; // finished output items by output_index (the terminal response may list none)
   const texts = new Map(); // item_id → text so far, for messages that never send output_item.done
   const parser = createSseParser((type, data) => {
@@ -236,13 +239,15 @@ async function readResponseStream(body, onText) {
       terminal = type;
     } else if (type === 'error') {
       error = data.error || data;
+    } else if (type === '[DONE]') {
+      done = true;
     }
   });
   for await (const chunk of chunksOf(body)) {
     parser.push(chunk);
-    if (terminal || error) break;
+    if (terminal || error || done) break;
   }
-  if (!terminal && !error) parser.end();
+  if (!terminal && !error && !done) parser.end();
   if (error) return { id: response && response.id, status: 'failed', error, output: [] };
   if (!terminal) throw new ResponsesError('Responses API stream ended before the response was complete', { code: 'EAPI' });
   const output = items.filter(Boolean);

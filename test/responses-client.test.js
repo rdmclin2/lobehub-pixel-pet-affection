@@ -234,6 +234,7 @@ test('stream: errors in the middle of a stream fail the turn with a code, after 
     ['response.failed', head + sseBlock('response.failed', { response: { id: 'tpc_1', status: 'failed', error: { message: 'model overloaded' } } }), (e) => e.code === 'EAPI' && /model overloaded/.test(e.message)],
     ['error event', head + sseBlock('error', { message: 'rate limited' }), (e) => e.code === 'EAPI' && /rate limited/.test(e.message)],
     ['cut short', head, (e) => e.code === 'EAPI' && /ended before/.test(e.message)],
+    ['[DONE] before a terminal event', head + 'data: [DONE]\n\n', (e) => e.code === 'EAPI' && /ended before/.test(e.message)],
   ];
   for (const [name, text, check] of cases) {
     const { c } = client({ answers: [sse(text)] });
@@ -267,6 +268,13 @@ test('createSseParser: CRLF, comments, multi-line data and any byte cut through 
     p.end();
     assert.deepEqual(got, [['response.output_text.delta', '秋天🍁来了'], ['response.completed', 't']], `cut at ${cut}`);
   }
+});
+
+test('stream: a [DONE] marker after the terminal event ends the stream normally', async () => {
+  const { c } = client({ answers: [sse(completed('tpc_1', '好的呀') + 'data: [DONE]\n\n')] });
+  const { deltas, onDelta } = collect();
+  assert.equal((await c.run({ agentId: 'a', prompt: 'p', onDelta })).text, '好的呀');
+  assert.equal(deltas.at(-1).full, '好的呀');
 });
 
 test('stream: a throwing onDelta does not cost the turn', async () => {
