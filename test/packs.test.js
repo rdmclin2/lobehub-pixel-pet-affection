@@ -234,6 +234,8 @@ test('rig packs: the model is checked and goes to the renderer with the look; ot
   assert.match(bad({ ...model, parts: [{ ...model.parts[0], id: 'face' }] }), /reserved/);
   assert.match(bad({ ...model, face: { box: [0, 0, 1, 1] } }), /face must be/);
   assert.match(bad({ ...model, size: [0, 10] }), /size/);
+  assert.match(bad({ ...model, expressions: { grin: 'head' } }), /expressions\.grin/);
+  assert.match(bad({ ...model, expressions: { happy: 'nope' } }), /no part nope/);
   fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(rig({ model: '../model.json' })));
   assert.match(P.readPack(dir).errors.join(), /model: must be a relative path/);
 });
@@ -242,8 +244,10 @@ test('大肥鱼 · 全动态: every layer of the built-in rig is in the model, w
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   const live = packs.get('dafeiyu-live');
   assert.equal(live.kind, 'rig');
-  assert.deepEqual(live.model.parts.map((p) => p.id).sort(), ['ahoge', 'body', 'fin_l', 'fin_r', 'hair', 'head', 'tail']);
-  assert.ok(live.model.face && live.model.legs && live.model.pivots.head, 'eyes and mouth, legs, the neck');
+  assert.deepEqual(live.model.parts.filter((p) => !p.id.startsWith('face_')).map((p) => p.id).sort(), ['ahoge', 'arm_l', 'arm_r', 'body', 'fin_l', 'fin_r', 'hair', 'head', 'leg_l', 'leg_r', 'tail']);
+  assert.deepEqual(Object.keys(live.model.expressions).sort(), ['angry', 'blink', 'content', 'happy', 'sad', 'shy', 'sleep', 'surprised', 'talk', 'wink'], 'drawn faces, the eyes shut and the mouth open');
+  for (const id of ['head', 'armL', 'armR', 'elbowL', 'elbowR', 'legL', 'legR', 'tail']) assert.ok(live.model.pivots[id], `pivot ${id}`);
+  assert.equal(live.model.size.join('x'), '664x904', 'twice the pixel frame: sharp at 250%');
   assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel', 'the pixels stay her default');
 });
 

@@ -55,8 +55,10 @@ const posInt = (v) => Number.isInteger(v) && v > 0;
 // A rig pack (全动态): `model` is a JSON file in the pack (see docs/pet-packs.md) and every outfit's
 // image is its preview, with the outfit's layers (<part id>.png) in the same folder. The model goes to
 // the renderer with the look (src/renderer/rig.js draws it), so it is checked here.
-const RIG_DEFORMERS = ['body', 'skirt', 'hair', 'tail', 'head', 'finL', 'finR', 'ahoge'];
-const RIG_PIVOTS = ['body', 'head', 'neck', 'tail', 'finL', 'finR', 'ahoge'];
+const RIG_DEFORMERS = ['body', 'skirt', 'hair', 'tail', 'head', 'finL', 'finR', 'ahoge', 'armL', 'armR', 'legL', 'legR'];
+const RIG_PIVOTS = ['body', 'head', 'neck', 'tail', 'finL', 'finR', 'ahoge', 'armL', 'armR', 'elbowL', 'elbowR', 'legL', 'legR'];
+// drawn faces the app knows how to use (src/renderer/rig.js LOOKS `expr`), plus the eyes shut and the mouth open
+const RIG_EXPRESSIONS = ['happy', 'content', 'surprised', 'sad', 'angry', 'shy', 'sleep', 'wink', 'blink', 'talk'];
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const nums = (v, n) => Array.isArray(v) && v.length === n && v.every(num);
 function readRigModel(dir, rel, outfits, errors) {
@@ -105,6 +107,16 @@ function readRigModel(dir, rel, outfits, errors) {
     }
     face = { box: f.box, eyes: f.eyes, mouth: f.mouth, skin: f.skin, ink: f.ink, blush: f.blush };
   }
+  let expressions = null;
+  if (m.expressions !== undefined) {
+    if (!m.expressions || typeof m.expressions !== 'object') return bad('expressions must map face names to part ids');
+    expressions = {};
+    for (const [k, v] of Object.entries(m.expressions)) {
+      if (!RIG_EXPRESSIONS.includes(k)) return bad(`expressions.${k}: one of ${RIG_EXPRESSIONS.join(', ')}`);
+      if (!parts.some((p) => p.id === v)) return bad(`expressions.${k}: no part ${v}`);
+      expressions[k] = v;
+    }
+  }
   // every outfit needs every layer, next to its preview
   for (const [id, preview] of Object.entries(outfits)) {
     const folder = path.posix.dirname(preview);
@@ -113,7 +125,7 @@ function readRigModel(dir, rel, outfits, errors) {
       if (!fs.existsSync(path.resolve(dir, rel2))) return bad(`outfit ${id} has no layer ${rel2}`);
     }
   }
-  return { size: m.size, parts, pivots, legs, face };
+  return { size: m.size, parts, pivots, legs, face, expressions };
 }
 
 // A Live2D pack: `model` is a Cubism 4 .model3.json in the pack (with the .moc3, textures and physics it

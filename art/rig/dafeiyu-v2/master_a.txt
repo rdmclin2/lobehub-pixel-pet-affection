@@ -1,0 +1,13 @@
+Chroma-key character sheet: the background is one perfectly flat solid pure green (#00FF00) like a green screen, no gradient, no floor, no shadow.
+
+Redraw the attached character as ONE single clean high-resolution anime illustration (crisp line art, soft cel shading), full body, front view, standing straight and relaxed, centred, the whole figure from the top of the ahoge to the soles of the shoes inside the frame with a small margin.
+
+She is 大肥鱼, an adult (20-year-old) whale-girl maid, adult proportions (about 6.5 heads tall), slim, modest:
+- long wavy dark-blue hair fading to light sky-blue toward the tips, reaching her hips, a small ahoge on top, short side bangs
+- two blue-and-white whale-fin ears on the sides of her head, a white frilled maid headdress with small blue ribbons
+- big blue eyes, gentle neutral expression, eyes open, mouth closed
+- navy-blue long-sleeved maid dress with a white blouse front and a dark navy bow tie at the collar, a white frilled apron with a small blue whale emblem, the skirt ends at mid-calf with a white lace hem
+- white stockings, navy mary-jane shoes
+- a dark-blue whale tail coming out from behind her skirt on her left side (viewer's right), fluke pointing up
+
+Pose for rigging: arms hanging down slightly away from her body (a small A-pose, about 15 degrees), hands open and relaxed, not touching the dress or apron; legs straight and slightly apart so both feet are clearly separate; the hair falls behind her shoulders and does not cover the arms.
