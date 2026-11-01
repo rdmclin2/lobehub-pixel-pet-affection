@@ -212,7 +212,13 @@ my-grok/
 
 - **不在本仓库里，也不会打进安装包**。想用的话请自己从发布页下载，再用“导入 VRM 模型…”导入到本机；它只存在于你的用户数据目录。
 - 不要把它提交到仓库、放进 `src/`、附在 issue / PR 里，或打包分享给别人。仓库的 `.gitignore` 忽略 `*.vrm`，`package.json` 的 `build.files` 排除 `**/*.vrm`，`npm test` 会检查 `src/` 下和 git 里都没有 `.vrm`。
-- 测试只用测试代码里即时构造的最小 GLB（`test/vrm.test.js`），不含任何第三方模型。
+- 导入步骤：
+  1. 从发布页下载 `deepseek-whale-v1.0.0.zip`，解压到**仓库以外**的目录（例如 `~/art-archive/vrm-test/`），里面的 `model.vrm` 就是模型（约 18 MB）。
+  2. ⋯ → 角色列表 → 大肥鱼 → 外观 → **导入 VRM 模型…**，选 `model.vrm`（也可以直接选下载的 `.zip`）。
+  3. 导入确认里会列出模型名、作者（模型文件里写的是简体“木子恶魔”，界面按文件原样显示）和全部授权限制；点“使用这个模型”后她就换成 3D 外观，所有全年龄服饰都穿这个模型。外观页的卡片常驻署名，“导出…”被禁用，“授权信息”可随时展开。
+  4. 想换回 2D：在外观里选 `dafeiyu-pixel` / `dafeiyu-classic` 等即可，VRM 包保留在列表里，随时再选；不要了就点“移除”。
+- 这个模型的 meta `version` 是占位的 `"undefined"`，界面按“没有版本”处理；它的贴图嵌在 GLB 里，渲染时通过 `blob:` 地址加载（页面 CSP 的 `img-src` / `connect-src` 允许 `blob:`，否则会画成没有贴图的白模）。
+- 测试只用测试代码里即时构造的最小 GLB（`test/vrm.test.js`），不含任何第三方模型；需要真实模型的验收用 `.agents/acceptance/scripts/vrm-real-model-acceptance.js <仓库> <输出目录> <仓库外的 model.vrm>`，模型路径在仓库内会被拒绝。
 - 可以再分发的替代来源：azwosile/DeepSeek-whale-girl-3D（Blender 工程，CC BY-NC-SA 4.0），需要自己导出成 VRM（补骨骼与表情），导出的文件同样只放在用户数据目录。
 
 ## 全动态角色包（`"kind": "rig"`）
