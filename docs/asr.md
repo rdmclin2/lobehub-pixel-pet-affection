@@ -37,6 +37,27 @@
 
 设置保存在 `settings.json` 的 `asr` 段（Linux `~/.config/Pixel Pet Affection/`，macOS `~/Library/Application Support/Pixel Pet Affection/`，Windows `%APPDATA%\Pixel Pet Affection\`），重启后保留。界面上没有的两项可以在应用退出后直接改文件：`asr.maxSeconds`（单次最长录音秒数，5–120，默认 60）、`asr.local.timeoutSec`（本地服务超时秒数，5–120，默认 30）。
 
+### 2.1 配置项一览（必填 / 默认值）
+
+设置界面里的每一项都对应 `settings.json` 的 `asr` 段（默认值见 `src/core/asr.js` 的 `ASR_DEFAULTS`）：
+
+| 适用 | 设置项（`settings.json` 键） | 必填 | 默认值 | 取值 |
+|---|---|---|---|---|
+| 通用 | 开启语音输入（`asr.enabled`） | 是（要用就得打开） | `false`（关闭） | `true` / `false` |
+| 通用 | 引擎（`asr.engine`） | 是 | `lobehub` | `lobehub` 云端识别 / `local` 本地识别服务 / `off` |
+| 通用 | 语言（`asr.language`） | 否 | `auto` | `auto` 或 `zh`、`en`、`ja` 等语言代码 |
+| 通用 | 用不了时换另一个引擎（`asr.fallback`） | 否 | `false` | 打开后一种失败自动换另一种 |
+| 通用 | 识别后直接发送（`asr.autoSend`） | 否 | `false` | 关闭时只填进输入框 |
+| 通用 | 单次最长录音秒数（`asr.maxSeconds`，仅文件） | 否 | `60` | 5–120 |
+| 方式一 LobeHub | 本机 `lh` 已登录（`lh login`） | **是** | — | 和聊天同一账号，不需要另外的 Key |
+| 方式一 LobeHub | 模型（`asr.lobehub.model`） | 否 | `gpt-4o-mini-transcribe` | `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`；provider 固定 `lobehub` |
+| 方式二 本地 | 本地 whisper 服务在运行 | **是** | — | whisper.cpp `whisper-server` / speaches / 其他 OpenAI 兼容服务（第 4 节） |
+| 方式二 本地 | 地址（`asr.local.endpoint`） | **是**（与服务端口一致） | `http://127.0.0.1:8179` | 本机 / 局域网 `http://`，公网必须 `https://`；清空恢复默认 |
+| 方式二 本地 | 接口（`asr.local.api`） | 是 | `openai`（OpenAI 兼容 `/v1/audio/transcriptions`） | `openai` / `whispercpp`（`/inference`） |
+| 方式二 本地 | 模型（`asr.local.model`） | 否 | `whisper-1` | whisper.cpp 忽略；speaches 填已下载的模型 id |
+| 方式二 本地 | Key | 否 | 空 | 服务要求鉴权时才填，存本机 `tts-keys.json` |
+| 方式二 本地 | 超时秒数（`asr.local.timeoutSec`，仅文件） | 否 | `30` | 5–120 |
+
 ## 3. 方式一：复用 LobeHub 语音识别
 
 ### 3.1 前置条件

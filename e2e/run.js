@@ -5690,6 +5690,65 @@ async function asrScenario() {
       return note(`toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」; lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, message: r.message })}; 去设置 → 语音输入 at ${top}px`);
     }, page);
 
+    await step(S, 'A6b the local host is not running: 连不上 toast with the address; with 换另一个引擎 the clip goes to LobeHub', async () => {
+      chapter('A6b 本地服务没开：提示“连不上本地识别服务”；勾选换另一个引擎后改走 LobeHub');
+      const http = require('node:http');
+      const dead = await new Promise((resolve) => { const sv = http.createServer(); sv.listen(0, '127.0.0.1', () => { const port = sv.address().port; sv.close(() => resolve(`http://127.0.0.1:${port}`)); }); });
+      await openAsr();
+      await page.fill('#asr-endpoint', dead);
+      await page.click('#asr-local-save');
+      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '草稿还在');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1000);
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /语音输入没成功/);
+      assert.match(t, /连不上本地识别服务/);
+      assert.ok(t.includes(dead), 'the toast names the address');
+      assert.equal(await page.inputValue('#chat-input'), '草稿还在');
+      const r = await lastAsr();
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'network');
+      await shot('a6b-local-unreachable-toast');
+      await page.click('#toast-close');
+      // 用不了时换另一个引擎: the same dead host, the clip is recognised by LobeHub (the fake lh) instead
+      await openAsr();
+      await page.check('#asr-fallback');
+      await msg(/换另一个再试一次/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1000);
+      await page.click('#chat-mic');
+      await settled();
+      const f = await lastAsr();
+      assert.equal(f.ok, true);
+      assert.equal(f.provider, 'lobehub');
+      assert.deepEqual(f.fellBackFrom.map((x) => x.id), ['local']);
+      const box = await page.inputValue('#chat-input');
+      assert.match(box, /^heard gpt-4o-mini-transcribe zh/);
+      await shot('a6b-fallback-lobehub-text');
+      // back to the mock host, fallback off, for the steps after this one
+      await openAsr();
+      await page.uncheck('#asr-fallback');
+      await msg(/只用选的引擎/);
+      await page.fill('#asr-endpoint', mock.url);
+      await page.click('#asr-local-save');
+      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      return note(`dead host ${dead} → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, tried: r.tried })}; fallback on → provider ${f.provider}, fellBackFrom ${JSON.stringify(f.fellBackFrom)}, box 「${box}」`);
+    }, page);
+
     await step(S, 'A7 识别后直接发送: the recognised text goes to her at once and she answers', async () => {
       chapter('A7 打开“识别后直接发送”：识别后直接发给她');
       await openAsr();
@@ -5811,6 +5870,54 @@ async function asrScenario() {
       assert.equal(await page.isVisible('#chat-mic'), false);
       await shot('a9-engine-off-no-mic');
       return note(`getUserMedia(video) → ${cam}; engine off → 🎤 hidden`);
+    }, page);
+
+    await step(S, 'A9b the microphone is refused by the system: 没有麦克风权限 toast, no request, nothing breaks', async () => {
+      chapter('A9b 系统拒绝麦克风：提示“没有麦克风权限”，不发请求，界面正常');
+      // what main answers on macOS when 隐私与安全性 → 麦克风 is off (systemPreferences 'denied')
+      await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('asr-mic-access'); ipcMain.handle('asr-mic-access', () => 'denied'); });
+      await openAsr();
+      await page.selectOption('#asr-engine', 'local');
+      await msg(/语音识别引擎：本地识别服务/);
+      await page.click('#panel-close');
+      const before = mock.log.length;
+      await openChatBox();
+      await page.fill('#chat-input', '打字还能用');
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /语音输入没成功/);
+      assert.match(t, /没有麦克风权限/);
+      assert.equal(mock.log.length, before, 'nothing is sent');
+      assert.equal(await micState(), 'idle');
+      assert.equal(await page.inputValue('#chat-input'), '打字还能用');
+      const r = await lastAsr();
+      assert.equal(r.reason, 'mic-denied');
+      await shot('a9b-mic-denied-toast');
+      await page.click('#toast-close');
+      // Chromium's own refusal (getUserMedia NotAllowedError) maps to the same reason
+      await app.evaluate(({ ipcMain, session }) => {
+        ipcMain.removeHandler('asr-mic-access'); ipcMain.handle('asr-mic-access', () => 'granted');
+        session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(false));
+        session.defaultSession.setPermissionCheckHandler(() => false);
+      });
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t2 = await page.textContent('#unlock-toast');
+      const r2 = await lastAsr();
+      assert.match(t2, /没有麦克风权限/);
+      assert.equal(r2.reason, 'mic-denied');
+      assert.equal(mock.log.length, before);
+      await page.click('#toast-close');
+      await page.fill('#chat-input', '');
+      // A10 expects the engine 关闭 as A9 left it
+      await openAsr();
+      await page.selectOption('#asr-engine', 'off');
+      await msg(/语音识别引擎：关闭/);
+      await page.click('#panel-close');
+      return note(`system denied → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason })}; Chromium denied → ${JSON.stringify({ reason: r2.reason, message: r2.message })}; requests sent: ${mock.log.length - before}`);
     }, page);
 
     await step(S, 'no console errors or page errors', async () => {

@@ -297,6 +297,8 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
 
+**完成状态**：相对原仓库，本项目已完成语音输入（ASR）支持——新增 🎤 录音输入、LobeHub 云端识别与本地 whisper 识别服务两种可切换的识别方式（可互为回退）、高级设置 → 语音输入 的配置与「测试连接」、错误提示与隐私说明；两种方式都已在真实服务上实测识别通过。快速开始：按下方 [安装与运行](#安装与运行) `git clone` → `npm install` → `npm start`，再到 高级设置 → 语音输入 打开并选引擎；各配置项的必填项和默认值见 [docs/asr.md §2.1](docs/asr.md#21-配置项一览必填--默认值)。
+
 ## 内容边界声明
 
 以下规则写入每只宠物的 agent 系统设定（“内容红线”），在任何设置下都高于其他要求，并由本地内容守卫（`src/core/content-guard.js`）对 agent 回复做兜底检查：
