@@ -62,6 +62,7 @@
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 高级设置 → 对外接口 |
 | E27 | 聊天记录：只列出你在聊天框主动发起的会话（时间、首句摘要、条数），点开看完整的你说的话和她的回复；问候、主动搭话、关系升级、触摸 / 喂食台词、HTTP 接口的内容都不显示。只存在本机，放生时清除。规则见 [docs/chat-history.md](docs/chat-history.md) | ⋯ → 聊天记录 |
+| E28 | 重新开始话题：当前角色的下一句进入 LobeHub 里新的 topic，不带之前的上下文；旧 topic 保留不删，agent、好感度和聊天记录都不变。规则见 [docs/chat-history.md](docs/chat-history.md) 第八节 | ⋯ → 重新开始话题 |
 
 与 dsh-pet 的逐项对照（已实现 / 本次实现 / 不移植及理由）见 [docs/dsh-pet-gap.md](docs/dsh-pet-gap.md)。
 
@@ -416,7 +417,7 @@ Electron renderer (canvas sprites, UI)  ⇄ preload IPC ⇄  PetService  ⇄  Lh
 ```
 
 - **Harness boundary** — `src/core/lh-client.js` is the only file that knows about LobeHub. It uses `lh whoami`, `lh login`, `lh agent create`, `lh agent run --json` and `lh agent delete`. Replacing the harness means replacing this file (`whoami/login/createAgent/run/deleteAgent`).
-- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub.
+- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub. ⋯ → 重新开始话题 clears the current character's `topicId`, so her next run opens a new topic; the old one is kept in LobeHub, not deleted.
 - **Pet feel** (borrowed from the "大肥鱼" community pets): a persona prompt, a state block injected in every message so the pet reacts to how it actually feels, and proactive lines (hungry / bored / morning / evening greetings) with a cooldown and an hourly LLM-call budget. When the agent is unreachable or the budget is spent, the pet falls back to canned in-character lines, so it never goes silent.
 - Care actions (feed / play / sleep / pat) are local and free; only chat and proactive lines call the agent.
 

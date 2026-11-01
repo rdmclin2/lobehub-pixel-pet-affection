@@ -299,6 +299,48 @@ test('a picture is uploaded, attached to a user message in the topic, then the r
   assert.match(readLog(dir, 'runs.log').pop().prompt, /\[图片\]/);
 });
 
+test('重新开始话题: the next line opens a new LobeHub topic; the old one is kept (not deleted), and agent, affection and 聊天记录 stay', async () => {
+  const { svc, dir, clock } = await hatched();
+  assert.equal((await svc.chat('第一句')).ok, true);
+  clock.t += 60000; // a minute later: well inside one conversation's gap
+  const c = svc._c();
+  const before = { agentId: c.agentId, affection: c.affection, topicId: c.topicId };
+  assert.ok(before.topicId);
+  const r = svc.newTopic();
+  assert.equal(r.ok, true);
+  assert.equal(r.previous, before.topicId);
+  assert.equal(r.view.pet.topicId, null);
+  assert.deepEqual(svc._c().pastTopicIds, [before.topicId]);
+  assert.equal(svc._c().topicEpoch, 1);
+  assert.equal((await svc.chat('新话题第一句')).ok, true);
+  const runs = readLog(dir, 'runs.log');
+  const callArgs = readLog(dir, 'calls.log').filter((x) => x.args[0] === 'agent' && x.args[1] === 'run').pop().args;
+  assert.equal(callArgs.includes('-t'), false); // no -t: LobeHub opens the topic
+  assert.notEqual(runs.pop().topic, before.topicId);
+  assert.notEqual(svc._c().topicId, before.topicId);
+  assert.ok(svc._c().topicId);
+  assert.equal(svc._c().agentId, before.agentId);
+  assert.ok(svc._c().affection >= before.affection);
+  assert.equal(readLog(dir, 'calls.log').some((x) => x.args[0] === 'topic' && x.args[1] === 'delete'), false);
+  assert.equal(readLog(dir, 'calls.log').some((x) => x.args[0] === 'agent' && x.args[1] === 'delete'), false);
+  // 聊天记录 keeps both, as two conversations (newest first), though they were a minute apart
+  assert.deepEqual(svc.history().sessions.map((x) => x.preview), ['新话题第一句', '第一句']);
+  // the next line after that reuses the new topic
+  const fresh = svc._c().topicId;
+  clock.t += 60000;
+  await svc.chat('再来一句');
+  assert.equal(readLog(dir, 'runs.log').pop().topic, fresh);
+});
+
+test('重新开始话题 is refused while she is working, and without a pet', async () => {
+  const { svc } = await hatched();
+  svc.busy = true;
+  assert.deepEqual(svc.newTopic(), { ok: false, reason: 'busy' });
+  svc.busy = false;
+  await svc.release({ deleteAgent: false });
+  assert.deepEqual(svc.newTopic(), { ok: false, reason: 'empty' });
+});
+
 test('a picture without a topic yet creates the topic first; a picture alone (no text) is allowed', async () => {
   const { svc, dir } = await hatched();
   svc._c().topicId = null;
