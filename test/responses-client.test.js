@@ -137,3 +137,139 @@ test('reads the CLI login in its encrypted format and in the old plain JSON; the
   fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ serverUrl: 'https://self.host/' }));
   assert.equal(serverUrl(env), 'https://self.host');
 });
+
+// ---- streaming (stream: true, onDelta) ----------------------------------------------------------------
+const { createSseParser } = require('../src/core/responses-client');
+const sample = (n) => require(path.join(__dirname, 'fixtures', 'streaming', n));
+const rawSse = (n) => sample(n).reads.map((r) => r.text).join('');
+const sseBlock = (event, data) => `event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`;
+// A streamed answer cut every `slice` bytes, so cuts land inside SSE lines, JSON and UTF-8 characters.
+// `real`: a real fetch Response over a ReadableStream (reader path); otherwise an async iterable body.
+function sse(text, { slice = 5, real = false, tail = null } = {}) {
+  const bytes = Buffer.from(text, 'utf8');
+  const parts = [];
+  for (let i = 0; i < bytes.length; i += slice) parts.push(new Uint8Array(bytes.subarray(i, i + slice)));
+  if (real) {
+    const body = new ReadableStream({ start(c) { for (const p of parts) c.enqueue(p); c.close(); } });
+    return () => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
+  }
+  return (init) => ({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: (async function* () {
+      for (const p of parts) {
+        await new Promise((r) => setImmediate(r));
+        yield p;
+      }
+      if (tail) await tail(init);
+    })(),
+  });
+}
+const completed = (id, text, usage) => [
+  sseBlock('response.created', { response: { id, status: 'in_progress', output: [] } }),
+  ...[...text].reduce((acc, ch, i) => (i % 3 ? acc.with(-1, acc.at(-1) + ch) : [...acc, ch]), []).map((d) => sseBlock('response.output_text.delta', { item_id: `msg_${id}`, output_index: 0, delta: d })),
+  sseBlock('response.output_text.done', { item_id: `msg_${id}`, output_index: 0, text }),
+  sseBlock('response.output_item.done', { output_index: 0, item: { type: 'message', id: `msg_${id}`, content: [{ type: 'output_text', text }] } }),
+  sseBlock('response.completed', { response: { id, status: 'completed', output: [{ type: 'message', id: `msg_${id}`, content: [{ type: 'output_text', text }] }], usage } }),
+].join('');
+const collect = () => {
+  const deltas = [];
+  return { deltas, onDelta: (chunk, full) => deltas.push({ chunk, full }) };
+};
+
+test('stream: the recorded long SSE answer, cut every 5 bytes, streams its 12 deltas and returns the same result', async () => {
+  const rec = sample('responses-sse-long.json');
+  const expected = rec.events.filter((e) => e.event === 'response.output_text.delta').map((e) => e.data.delta);
+  for (const real of [false, true]) {
+    const { c, sent } = client({ answers: [sse(rawSse('responses-sse-long.json'), { real })] });
+    const { deltas, onDelta } = collect();
+    const r = await c.run({ agentId: 'agt_1', topicId: 'tpc_REDACTED1', prompt: '写秋天', onDelta });
+    assert.equal(sent[0].body.stream, true);
+    assert.equal(sent[0].headers.Accept, 'text/event-stream');
+    assert.equal(deltas.length, 12);
+    assert.deepEqual(deltas.map((d) => d.chunk), expected, 'multi-byte characters cut between reads stay whole');
+    assert.ok(deltas.every((d) => !d.chunk.includes('�')));
+    const done = rec.events.find((e) => e.event === 'response.output_text.done').data.text;
+    assert.equal(deltas.at(-1).full, done);
+    assert.deepEqual(r, { text: done.trim(), topicId: 'tpc_REDACTED1', cost: null });
+  }
+});
+
+test('stream: a parked tool call (recorded sample) streams its preamble, runs the tool here, and the resumed round streams on', async () => {
+  const { c, sent, ran } = client({ answers: [sse(rawSse('responses-sse-tool.json'), { slice: 3 }), sse(completed('tpc_REDACTED1', '/tmp 里有 a 和 b 两个文件夹。', { cost: 0.01 }))] });
+  const { deltas, onDelta } = collect();
+  const r = await c.run({ agentId: 'agt_1', prompt: '先说我看看，再列 /tmp', tools: ['lobe-local-system'], onDelta });
+  assert.deepEqual(ran, [{ name: 'list_directory', args: { path: '/tmp' } }], 'the call is taken from output_item.done: response.incomplete lists no output');
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].body.stream, true);
+  assert.equal(sent[1].body.strict_tool_resume, true);
+  assert.equal(sent[1].body.previous_response_id, 'tpc_REDACTED1');
+  assert.deepEqual(sent[1].body.input, [{ type: 'function_call_output', call_id: 'call_REDACTED1', output: 'ok:list_directory' }]);
+  assert.equal(deltas[0].chunk, '我看看');
+  assert.ok(deltas[1].chunk.startsWith('\n\n'), 'the next round starts after a paragraph break');
+  assert.equal(deltas.at(-1).full, '我看看\n\n/tmp 里有 a 和 b 两个文件夹。');
+  assert.deepEqual(r, { text: '/tmp 里有 a 和 b 两个文件夹。', topicId: 'tpc_REDACTED1', cost: 0.01 });
+});
+
+test('stream: a server that answers plain JSON anyway is read the old way, onDelta gets the reply once', async () => {
+  const { c, sent } = client({ answers: [json(reply('tpc_1', ' 在呢～ '))] });
+  const { deltas, onDelta } = collect();
+  const r = await c.run({ agentId: 'agt_1', topicId: 'tpc_1', prompt: 'hi', onDelta });
+  assert.equal(sent[0].body.stream, true);
+  assert.deepEqual(r, { text: '在呢～', topicId: 'tpc_1', cost: null });
+  assert.deepEqual(deltas, [{ chunk: ' 在呢～ ', full: ' 在呢～ ' }]);
+});
+
+test('without onDelta the request stays stream:false', async () => {
+  const { c, sent } = client({ answers: [json(reply('tpc_1', 'ok'))] });
+  await c.run({ agentId: 'a', prompt: 'p' });
+  assert.equal(sent[0].body.stream, false);
+  assert.equal(sent[0].headers.Accept, undefined);
+});
+
+test('stream: errors in the middle of a stream fail the turn with a code, after the text already shown', async () => {
+  const head = sseBlock('response.created', { response: { id: 'tpc_1', status: 'in_progress' } }) + sseBlock('response.output_text.delta', { item_id: 'm', delta: '你好' });
+  const cases = [
+    ['response.failed', head + sseBlock('response.failed', { response: { id: 'tpc_1', status: 'failed', error: { message: 'model overloaded' } } }), (e) => e.code === 'EAPI' && /model overloaded/.test(e.message)],
+    ['error event', head + sseBlock('error', { message: 'rate limited' }), (e) => e.code === 'EAPI' && /rate limited/.test(e.message)],
+    ['cut short', head, (e) => e.code === 'EAPI' && /ended before/.test(e.message)],
+  ];
+  for (const [name, text, check] of cases) {
+    const { c } = client({ answers: [sse(text)] });
+    const { deltas, onDelta } = collect();
+    await assert.rejects(c.run({ agentId: 'a', prompt: 'p', onDelta }), check, name);
+    assert.deepEqual(deltas.map((d) => d.chunk), ['你好'], name);
+  }
+  const dropped = client({ answers: [sse(head, { tail: async () => { throw new TypeError('terminated'); } })] });
+  await assert.rejects(dropped.c.run({ agentId: 'a', prompt: 'p', onDelta: () => {} }), { code: 'ENET' });
+});
+
+test('stream: cancel() stops reading a stream that is still coming', async () => {
+  const head = sseBlock('response.created', { response: { id: 'tpc_1', status: 'in_progress' } }) + sseBlock('response.output_text.delta', { item_id: 'm', delta: '想一' });
+  const waitAbort = (init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+  const { c } = client({ answers: [sse(head, { tail: waitAbort })] });
+  const { deltas, onDelta } = collect();
+  const p = c.run({ agentId: 'a', prompt: 'p', onDelta });
+  setTimeout(() => c.cancel(), 50);
+  await assert.rejects(p, { code: 'ECANCELED' });
+  assert.deepEqual(deltas.map((d) => d.chunk), ['想一']);
+});
+
+test('createSseParser: CRLF, comments, multi-line data and any byte cut through a Chinese payload', () => {
+  const text = ': keep-alive\r\nevent: response.output_text.delta\r\ndata: {"delta":\r\ndata: "秋天🍁来了"}\r\n\r\nevent: x\ndata: not json\n\ndata: {"type":"response.completed","response":{"id":"t"}}';
+  const bytes = Buffer.from(text, 'utf8');
+  for (let cut = 1; cut < bytes.length; cut++) {
+    const got = [];
+    const p = createSseParser((type, data) => got.push([type, data.delta || data.response.id]));
+    p.push(new Uint8Array(bytes.subarray(0, cut)));
+    p.push(new Uint8Array(bytes.subarray(cut)));
+    p.end();
+    assert.deepEqual(got, [['response.output_text.delta', '秋天🍁来了'], ['response.completed', 't']], `cut at ${cut}`);
+  }
+});
+
+test('stream: a throwing onDelta does not cost the turn', async () => {
+  const { c } = client({ answers: [sse(completed('tpc_1', '好的'))] });
+  assert.equal((await c.run({ agentId: 'a', prompt: 'p', onDelta: () => { throw new Error('ui'); } })).text, '好的');
+});
