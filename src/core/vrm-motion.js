@@ -230,6 +230,28 @@
     return out;
   }
 
+  // One frame of an idle clip under the app's moves: the bones the app moves (`names`) get the clip's own pose
+  // back (`memo`, kept from the last frame; rest = identity before the first), then the mixer runs and the
+  // clip's pose is kept again, before the caller lays its offsets on top. Putting back identity instead is not
+  // enough: three's AnimationMixer writes a bone only when the clip's value changed since its last write, so on a
+  // held key (a flat stretch of the clip — idle_loop.vrma holds its last 0.46 s — or dt 0) the bone stayed at
+  // identity, the T-pose. `nodeOf(name)` is the normalized bone node (or null); nodes have a three Quaternion.
+  function overClip(memo, nodeOf, names, mixer, dt) {
+    for (const name of names) {
+      const n = nodeOf(name);
+      if (!n) continue;
+      const q = memo.get(name);
+      if (q) n.quaternion.copy(q); else n.quaternion.identity();
+    }
+    mixer.update(dt);
+    for (const name of names) {
+      const n = nodeOf(name);
+      if (!n) continue;
+      const q = memo.get(name);
+      if (q) q.copy(n.quaternion); else memo.set(name, n.quaternion.clone());
+    }
+  }
+
   // The mouth a motion adds (chewing, held open), as aa weight.
   function motionMouth(m, t) {
     const chew = (m.chew || 0) * Math.max(0, Math.sin(t * 9)) * 0.7;
@@ -322,7 +344,7 @@
   }
 
   return {
-    NO_BREATH, poseOffsets, PRESETS, EMOTIONS, VISEMES, STATE_LOOKS, TOUCH_LOOKS, MOOD_LOOKS, MOTIONS, FACE_FALLBACK, RESTING, isResting, REPEATING, calm, lookFor, expressionFor, resolveFace,
+    NO_BREATH, poseOffsets, overClip, PRESETS, EMOTIONS, VISEMES, STATE_LOOKS, TOUCH_LOOKS, MOOD_LOOKS, MOTIONS, FACE_FALLBACK, RESTING, isResting, REPEATING, calm, lookFor, expressionFor, resolveFace,
     BLINK_MS, nextBlinkIn, blinkWeight, breath, screenToClient, gazeNdc, ARM_DOWN, pose, motionMouth,
     zeroVisemes, band, visemesFromSpectrum, syntheticVisemes, smoothVisemes, BUDGET, frameMode, shouldRender, FpsMeter,
   };

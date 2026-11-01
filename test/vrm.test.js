@@ -497,3 +497,51 @@ test('moves over an idle clip: offsets from the rest pose (resting is no offset,
   const up = M.poseOffsets(M.pose({ armsUp: 1 }, 0, 0, { breathK: M.NO_BREATH }).bones);
   assert.ok(up.leftUpperArm.z > 60 && up.rightUpperArm.z < -60);
 });
+
+test('idle clip with a held key (a flat stretch, like idle_loop.vrma\'s last 0.46 s): the moved bones keep the clip\'s pose, not the T-pose', async () => {
+  const M = require('../src/core/vrm-motion');
+  const vm = require('node:vm');
+  // the vendored runtime the renderer uses (three r187 + three-vrm-animation), in this realm
+  const R = vm.runInThisContext(`(() => {${fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'vendor', 'vrm', 'three-vrm.min.js'), 'utf8')}; return PetVrmRuntime; })()`);
+  const T = R.THREE;
+  // a .vrma whose left upper arm hangs at −72° about z, moves to −70° at 1 s and then holds until 2 s
+  const q = (deg) => [0, 0, Math.sin((deg * Math.PI) / 360), Math.cos((deg * Math.PI) / 360)];
+  const bin = Buffer.from(new Float32Array([0, 1, 2, ...q(-72), ...q(-70), ...q(-70)]).buffer);
+  const file = glb({
+    asset: { version: '2.0' }, extensionsUsed: ['VRMC_vrm_animation'],
+    extensions: { VRMC_vrm_animation: { specVersion: '1.0', humanoid: { humanBones: { hips: { node: 0 }, leftUpperArm: { node: 1 } } } } },
+    scenes: [{ nodes: [0] }], scene: 0, nodes: [{ name: 'hips', children: [1], translation: [0, 1, 0] }, { name: 'arm' }],
+    buffers: [{ byteLength: bin.length }], bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 12 }, { buffer: 0, byteOffset: 12, byteLength: 48 }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'SCALAR', min: [0], max: [2] }, { bufferView: 1, componentType: 5126, count: 3, type: 'VEC4' }],
+    animations: [{ channels: [{ sampler: 0, target: { node: 1, path: 'rotation' } }], samplers: [{ input: 0, output: 1, interpolation: 'LINEAR' }] }],
+  }, bin);
+  const loader = new R.GLTFLoader();
+  loader.register((parser) => new R.VRMAnimationLoaderPlugin(parser));
+  const gltf = await loader.parseAsync(file.buffer.slice(file.byteOffset, file.byteOffset + file.length), '');
+  const root = new T.Object3D();
+  const arm = new T.Object3D();
+  arm.name = 'leftUpperArm';
+  root.add(arm);
+  const nodeOf = (n) => (n === 'leftUpperArm' ? arm : null);
+  const vrm = { scene: root, meta: { metaVersion: '1' }, humanoid: { getNormalizedBoneNode: nodeOf, normalizedRestPose: { hips: { position: [0, 1, 0] } } }, expressionManager: null, lookAt: null };
+  const clip = R.createVRMAnimationClip(gltf.userData.vrmAnimations[0], vrm);
+  const angle = () => (2 * Math.acos(Math.min(1, Math.abs(arm.quaternion.w))) * 180) / Math.PI;
+  const run = (step) => {
+    arm.quaternion.identity();
+    const mixer = new T.AnimationMixer(root);
+    const action = mixer.clipAction(clip);
+    action.setLoop(T.LoopRepeat, Infinity);
+    action.play();
+    const seen = [];
+    for (let i = 0; i < 90; i++) { step(mixer, i === 20 ? 0 : 1 / 30); seen.push(angle()); } // 3 s, one dt 0 frame
+    return seen;
+  };
+  // the precondition: put back to identity and updated, the arm sits in the T-pose through the held stretch
+  const old = run((mixer, dt) => { arm.quaternion.identity(); mixer.update(dt); });
+  assert.ok(old.some((a) => a < 1), `three.js skips unchanged writes (min ${Math.min(...old).toFixed(1)}°)`);
+  // overClip: she keeps the clip's arm all the way through, with the app's offset laid on top each frame
+  const memo = new Map();
+  const off = new T.Quaternion().setFromEuler(new T.Euler(0, 0, (15 * Math.PI) / 180));
+  const now = run((mixer, dt) => { M.overClip(memo, nodeOf, ['leftUpperArm', 'head'], mixer, dt); arm.quaternion.multiply(off); });
+  for (const a of now) assert.ok(a > 54 && a < 58, `arm ${a.toFixed(1)}° from the T-pose (clip −70…−72° plus a 15° offset)`);
+});

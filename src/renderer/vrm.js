@@ -237,14 +237,14 @@
       }
     }
 
-    // the clip sets the bones it animates each update; the ones it leaves alone go back to rest here, so the
-    // app's offsets never pile up from frame to frame
+    // the bones the app moves start each frame from the clip's own pose (the ones it leaves alone from rest), so
+    // the app's offsets never pile up from frame to frame and a held key of the clip is not a T-pose (M.overClip)
     const qTmp = {};
+    const clipPose = new Map();
     function applyOverClip(bones, dt) {
       const h = vrm.humanoid;
       if (!h) return;
-      for (const name of Object.keys(bones)) { const n = h.getNormalizedBoneNode(name); if (n) n.quaternion.identity(); }
-      mixer.update(dt);
+      M.overClip(clipPose, (name) => h.getNormalizedBoneNode(name), Object.keys(bones), mixer, dt);
       const T = R.THREE;
       qTmp.e = qTmp.e || new T.Euler();
       qTmp.q = qTmp.q || new T.Quaternion();
