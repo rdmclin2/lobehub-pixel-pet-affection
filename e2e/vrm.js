@@ -321,7 +321,7 @@ module.exports = function vrmScenarios(ctx) {
         // a click reacts with pat or happy, never the same twice in a row (fx.pickClickReaction): click until pat
         const tried = [];
         let s = null;
-        for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) {
+        for (let i = 0; i < 6 && !(s && s.state === 'pat'); i++) { // a happy left over from before can be caught first: allow a few more clicks
           if (i) await rest();
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
@@ -495,13 +495,16 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.pet.setAdult(false));
         await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
         const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
-        // back on the single imported model: no wardrobe again, maid refused
-        await page.waitForFunction(() => document.getElementById('btn-wardrobe').classList.contains('hidden'), null, { timeout: 8000 });
-        const off2 = (await page.evaluate(async () => (await window.pet.boot()).view)).outfits;
-        assert.ok(!off2.some((c) => c.id === 'maid'), JSON.stringify(off2));
+        // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 is back, without maid
+        await clickAct(page, 'wardrobe');
+        await page.waitForSelector('#panel:not(.hidden) .card');
+        const off2 = await cardsOf();
+        assert.ok(off2.length > 1, 'her 2D look has a wardrobe');
+        assert.ok(!off2.some((c) => c.id === 'maid' || c.adultTag), JSON.stringify(off2));
         const eq2 = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq2.ok, false);
-        await H.shot('10e-adult-off-again-no-wardrobe');
+        await H.shot('10e-adult-off-again-wardrobe');
+        await page.click('#panel-close');
         const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
         return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 hidden, outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
