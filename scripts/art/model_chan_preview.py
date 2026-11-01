@@ -13,7 +13,7 @@ STATES = chars[0]['art']['states'] + ['lifted']
 rows = [(c, 'video') for c in chars if c['art']['kind'] == 'video'] + [(c, 'pixel') for c in chars if c['art'].get('pack')]
 FONT = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
 font = lambda size: ImageFont.truetype(FONT, size) if os.path.exists(FONT) else ImageFont.load_default()
-SCALE, FW, FH = 0.5, 332, 452  # HD frames shown at half size
+SCALE, FW, FH = 0.25, 664, 904  # HD frames shown at a quarter size
 CW, CH = int(FW * SCALE * 2 + 12), int(FH * SCALE + 12)  # a column holds both frames side by side
 LEFT, TOP, BG = 260, 120, (44, 44, 52, 255)
 
@@ -28,7 +28,7 @@ def video_frame(path):
 
 img = Image.new('RGBA', (LEFT + CW * len(STATES), TOP + CH * len(rows) + 20), BG)
 d = ImageDraw.Draw(img)
-d.text((20, 20), '模型娘首批角色 · 全部动画状态预览（每格：该状态的帧；像素角色为 2 帧，332×452，缩小一半）', fill='white', font=font(30))
+d.text((20, 20), '模型娘首批角色 · 全部动画状态预览（每格：该状态的帧；像素角色为 2 帧，664×904，缩小到 1/4）', fill='white', font=font(30))
 for i, s in enumerate(STATES):
     d.text((LEFT + i * CW + 8, TOP - 40), s, fill=(220, 220, 230), font=font(22))
 for r, (c, kind) in enumerate(rows):

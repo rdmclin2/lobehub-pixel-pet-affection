@@ -7,12 +7,12 @@ import json, os, sys
 import numpy as np
 from PIL import Image
 
-FW, FH = 332, 452
 d, outfit = sys.argv[1], sys.argv[2]
 tol = float(sys.argv[sys.argv.index('--tol') + 1]) if '--tol' in sys.argv else 0.115
 # --keep <action#frame,...>: frames left at their own height (a stand-in for a pose not drawn, e.g. hatch#0)
 keep = set(sys.argv[sys.argv.index('--keep') + 1].split(',')) if '--keep' in sys.argv else set()
 pack = json.load(open(os.path.join(d, 'pack.json')))
+FW, FH = pack['frame']['width'], pack['frame']['height']
 daily = np.asarray(Image.open(os.path.join(d, pack['outfits']['daily'])).convert('RGBA'))[..., 3]
 path = os.path.join(d, pack['outfits'][outfit])
 sheet = Image.open(path).convert('RGBA')

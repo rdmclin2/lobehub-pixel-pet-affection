@@ -1497,7 +1497,7 @@ async function packs() {
     await step(S, '格萝可 is an animated HD sprite from grok-pixel, drawn smoothed; dragging plays the lifted action', async () => {
       assert.equal(await key(), 'grok-pixel/daily');
       assert.equal(await page.locator('#pet-look canvas.sprite:not(.pixelated)').count(), 1, 'HD packs are not drawn as blocks');
-      assert.deepEqual(await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.sprite'); return [c.width, c.height, getComputedStyle(c).imageRendering]; }), [332, 452, 'auto']);
+      assert.deepEqual(await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.sprite'); return [c.width, c.height, getComputedStyle(c).imageRendering]; }), [664, 904, 'auto']);
       const box = await page.locator('#char-wrap').boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
@@ -2167,7 +2167,7 @@ async function art() {
             if (c) {
               const el = lookEl(c.look, { className: 'look', speciesId: row.id }); // pictures, sprites, or her clips
               el.style.cssText = c.look ? 'height:146px;max-width:82px;object-fit:contain' : 'height:84px;width:84px';
-              if (c.look) waits.push((c.look.kind === 'sprites' ? sheet(c.look.url) : el).decode().then(() => null, () => c.look.url));
+              if (c.look) waits.push((c.look.kind === 'sprites' ? sheetReady(c.look.url) : el.decode()).then(() => null, () => c.look.url));
               cell.appendChild(el);
             } else cell.textContent = '—';
             grid.appendChild(cell);
@@ -2228,7 +2228,7 @@ async function art() {
             } else {
               const el = lookEl(c.look, { className: 'look', action: () => c.state });
               el.style.cssText = 'height:113px;width:auto';
-              waits.push(sheet(c.look.url).decode());
+              waits.push(sheetReady(c.look.url));
               cell.appendChild(el);
             }
             grid.appendChild(cell);
