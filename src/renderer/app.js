@@ -1258,7 +1258,7 @@ function paintVoiceStatus() {
     const has = local ? (e.ready ? `地址 ${settings.tts.endpoints.local}` : '没填地址') : e.hasKey ? 'Key 已设置' : '没有 Key';
     return `${label.replace(/（.*）/, '')}：${has}${budget}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${ttsWait(e.pausedFor)}内跳过` : ''}` : ''}`;
   });
-  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
+  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : 'Key 以只有你能读的文件保存在本机。'}`;
 }
 
 // First meeting: name her (like at hatch: optional, 12 characters, her own name by default), then she comes.

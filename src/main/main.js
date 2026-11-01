@@ -483,7 +483,11 @@ app.whenReady().then(() => {
   packStore = new PackStore();
   packStore.serve();
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
-  const keys = new TtsKeyStore(app.getPath('userData'), { available: () => safeStorage.isEncryptionAvailable(), encrypt: (t) => safeStorage.encryptString(t), decrypt: (b) => safeStorage.decryptString(b) });
+  // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
+  // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.
+  const keys = process.platform === 'darwin'
+    ? new TtsKeyStore(app.getPath('userData'), null, { legacyDecrypt: (b) => safeStorage.decryptString(b) })
+    : new TtsKeyStore(app.getPath('userData'), { available: () => safeStorage.isEncryptionAvailable(), encrypt: (t) => safeStorage.encryptString(t), decrypt: (b) => safeStorage.decryptString(b) });
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
