@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld('pet', {
   moveBy: (dx, dy) => ipcRenderer.send('move-by', { dx, dy }),
   moveTo: (x, y) => ipcRenderer.send('move-to', { x, y }),
   workArea: () => ipcRenderer.invoke('work-area'),
+  // the screen cursor (DIP), for a VRM figure's gaze while the cursor is outside her window
+  cursorPoint: () => ipcRenderer.invoke('cursor-point'),
   switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
@@ -96,6 +98,7 @@ contextBridge.exposeInMainWorld('pet', {
   debugOpenedLinks: () => ipcRenderer.invoke('debug-opened-links'),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
   onUpdate: on('update'),
+  onWindowShown: on('window-shown'),
   onSay: on('say'),
   onThinking: on('thinking'),
   onAffection: on('affection'),

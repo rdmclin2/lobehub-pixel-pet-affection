@@ -371,6 +371,15 @@ function wire() {
   });
   // Throwing the pet (src/core/fx.js stepThrow): the renderer runs the physics against the work area of
   // the screen the window is on and moves the window frame by frame.
+  ipcMain.handle('cursor-point', () => screen.getCursorScreenPoint());
+  // every pet window hears when it is hidden / minimised and shown again (a VRM figure stops drawing meanwhile)
+  app.on('browser-window-created', (_e, w) => {
+    const tell = (shown) => () => { if (!w.isDestroyed()) w.webContents.send('window-shown', shown); };
+    w.on('hide', tell(false));
+    w.on('minimize', tell(false));
+    w.on('show', tell(true));
+    w.on('restore', tell(true));
+  });
   ipcMain.handle('work-area', (e) => {
     const w = windowOf(e);
     if (!w) return null;

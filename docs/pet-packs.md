@@ -177,6 +177,35 @@ my-grok/
 - **衣柜**：VRM 包的服饰照常按好感锁定（🔒 + 解锁条件），锁定的服饰只给图片、不给模型；没有预览图时显示“VRM”占位。
 - **切换**：从 VRM 包切回 `dafeiyu-pixel` / `dafeiyu-classic` 等 2D 包时，VRM 画布离开页面，渲染器的 figure 随即 `dispose()`；再切回 VRM 会重新创建。渲染器以 `window.PetVRM.createFigure(canvas, look)` 接入（与 Live2D / 全动态相同的接口）；未加载时显示占位图。
 
+### VRM 怎么画出来：表情、动作、口型
+
+桌宠窗口里的 VRM 由 `src/renderer/vrm.js` 用 three.js + [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) 画在透明的 WebGL 画布上（`src/renderer/vendor/vrm/`：three r187 + three-vrm 3.5.5，MIT，版本与来源见该目录的 README；只在第一次显示 VRM 外观时加载）。渲染层只画应用已经决定好的外观和服饰（18+、好感解锁、服饰规则都在应用里），模型只能从它自己的角色包里读（`pack://<包 id>/…`），模型引用包外的文件一律拒绝。
+
+- **待机**：呼吸（脊柱、胸口微动）、2–6 秒一次的随机眨眼（`blink`）、视线跟随鼠标（VRM lookAt；鼠标在窗口外时按屏幕坐标换算）、SpringBone 每帧更新；拖动窗口时她会被甩一下再弹回来，头发、尾巴跟着晃。
+- **状态 → 表情和动作**（`src/core/vrm-motion.js`，有单测）：
+
+| 状态 | 表情 | 动作 |
+| --- | --- | --- |
+| idle / look | 无 / 无 | 呼吸；look 时左右张望 |
+| happy | happy | 跳、张开手 |
+| pat（摸头） | relaxed + happy | 低头、歪头 |
+| sad / hungry | sad | 低头、塌背；hungry 还微张嘴、晃 |
+| sleep | blink（闭眼）+ relaxed | 低头、慢呼吸 |
+| eat_rice / eat_cookie / eat_fruit（喂食） | happy | 嚼（aa 张合）、点头 |
+| think | neutral，视线向上 | 歪头 |
+| talk | happy（淡） | 点头 |
+| play（玩耍） | happy | 跳、转一圈、左右晃 |
+| hatch / evolve | surprised / happy + surprised | 挥手 / 举手大跳 |
+| lifted（被提起） | surprised | 手脚下垂乱摆、身体像钟摆 |
+| walk | happy（淡） | 迈步、摆臂 |
+| touch-head / face / hands / belly / feet | relaxed、happy、眨单眼… | 低头、挥手、扭… |
+| touch-chest / butt / legs / tail | surprised（+ angry）… | 往后缩、跳… |
+| 触摸后生气 / 不耐烦 | angry / angry + sad | 发抖 / 歪头 |
+
+  `vrm.expressions` 可以把某个状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
+- **口型**：念 TTS 语音（包括摸头、喂食这类互动语音）时，用 WebAudio AnalyserNode 分析正在播放的声音，按频谱驱动 aa / ih / ou / ee / oh 五个口型，平滑开合，念完归零；系统语音（Web Speech）没有音频流，按音节节奏开合。不说话时口型为 0。
+- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼）时最多 30 fps；6 秒没动静降到 12 fps，此时只保留表情和姿势、不再蹦跳；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+
 ### 关于木子惡魔《蓝色小肥鱼Deepseek》
 
 大肥鱼的首个 VRM 样例是木子惡魔的《蓝色小肥鱼Deepseek》（VRM 1.0，18 个标准表情 + SpringBone，[发布页](https://github.com/sunfish1728/deepcoin-avatars/releases/tag/deepseek-whale-v1.0.0)）。它的授权是 **个人非商业 / 禁止修改 / 不可再分发 / 需署名**，所以：

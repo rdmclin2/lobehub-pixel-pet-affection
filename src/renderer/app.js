@@ -507,7 +507,7 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
-  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}`; // a Live2D model's size is redrawn too
+  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
@@ -1813,6 +1813,7 @@ function playAudio(rec, s, r, end) {
   Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
+  if (window.PetVRM && window.PetVRM.active()) window.PetVRM.lip.attach(a); // a VRM figure's mouth follows the voice
   a.onplaying = () => { rec.started = s.started = true; talkFor(Number.isFinite(a.duration) ? a.duration * 1000 : 0, s.text); };
   a.onended = () => { if (speechAudio === a) haltAudio(); end('done'); };
   a.onerror = () => end(`error: ${a.error ? a.error.code : '?'}`);
@@ -2780,7 +2781,37 @@ window.petFx = {
   lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
   lastAsr: () => lastAsr && { ...lastAsr },
   micState: () => mic.state,
+  // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
+  vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
+  // without a TTS engine; resolves with how the clip ended
+  testVoice: (seconds = 2) => new Promise((resolve) => {
+    const rec = { sentences: [], fellBackFrom: [] };
+    const s = { text: '测试口型', status: 'queued' };
+    playAudio(rec, s, { ok: true, provider: 'test', audio: vowelWav(seconds), mime: 'audio/wav', cached: false }, (status) => resolve(status));
+  }),
 };
+// A WAV of `seconds` of vowel-like tones (a voice pitch plus two formant partials, a new vowel every 250 ms
+// with a short pause between), for petFx.testVoice.
+function vowelWav(seconds) {
+  const rate = 22050;
+  const n = Math.round(rate * seconds);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  const VOWELS = [[850, 1600], [300, 2600], [350, 800], [500, 2200], [550, 900]]; // a i u e o (F1, F2)
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    const [f1, f2] = VOWELS[Math.floor(t / 0.25) % VOWELS.length];
+    const ph = (t % 0.25) / 0.25;
+    const env = ph < 0.8 ? Math.sin((ph / 0.8) * Math.PI) : 0;
+    const x = 0.3 * Math.sin(2 * Math.PI * 180 * t) + 0.35 * Math.sin(2 * Math.PI * f1 * t) + 0.25 * Math.sin(2 * Math.PI * f2 * t);
+    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x * env)) * 32767 * 0.8, true);
+  }
+  return buf;
+}
 
 // The local HTTP API (src/core/api.js) asks the window to play, throw or report what it is doing.
 async function onApiCmd({ id, cmd, args }) {
