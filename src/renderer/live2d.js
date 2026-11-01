@@ -93,6 +93,15 @@
     if (state.startsWith('touch-')) return (mood && MOOD_LOOKS[mood]) || TOUCH_LOOKS[state.slice(6)] || LOOKS.pat;
     return LOOKS[state] || LOOKS.idle;
   }
+  // Standard parameter ids as models converted from Cubism 2 still name them
+  const CUBISM2_IDS = {
+    ParamAngleX: 'PARAM_ANGLE_X', ParamAngleY: 'PARAM_ANGLE_Y', ParamAngleZ: 'PARAM_ANGLE_Z',
+    ParamBodyAngleX: 'PARAM_BODY_ANGLE_X', ParamBodyAngleY: 'PARAM_BODY_ANGLE_Y', ParamBodyAngleZ: 'PARAM_BODY_ANGLE_Z',
+    ParamEyeBallX: 'PARAM_EYE_BALL_X', ParamEyeBallY: 'PARAM_EYE_BALL_Y', ParamEyeLOpen: 'PARAM_EYE_L_OPEN', ParamEyeROpen: 'PARAM_EYE_R_OPEN',
+    ParamEyeLSmile: 'PARAM_EYE_L_SMILE', ParamEyeRSmile: 'PARAM_EYE_R_SMILE', ParamBrowLY: 'PARAM_BROW_L_Y', ParamBrowRY: 'PARAM_BROW_R_Y',
+    ParamBrowLAngle: 'PARAM_BROW_L_ANGLE', ParamBrowRAngle: 'PARAM_BROW_R_ANGLE', ParamMouthForm: 'PARAM_MOUTH_FORM', ParamMouthOpenY: 'PARAM_MOUTH_OPEN_Y',
+    ParamCheek: 'PARAM_CHEEK',
+  };
   const SCALARS = ['eyes', 'smile', 'anger', 'brow', 'browTilt', 'mouth', 'open', 'tilt', 'nodDown', 'turn', 'gazeUp', 'arms', 'wave', 'hop', 'sway', 'wobble', 'ears', 'wag', 'lean', 'slow', 'nod', 'chew', 'stride', 'dangle', 'shake', 'wink', 'pop'];
   const REST = { eyes: 1 };
 
@@ -102,7 +111,7 @@
   function createFigure(canvas, look) {
     const cfg = look.live2d || {};
     const P = cfg.params || {};
-    const faces = cfg.faces || {};
+    const faces = { ...(cfg.faces || {}) };
     let app = null;
     let model = null;
     let disposed = false;
@@ -121,6 +130,9 @@
     // what the frame decided, written into the model around its physics (see `bind`)
     const before = new Map();
     const after = new Map();
+    // the id each standard parameter has in this model (its own, the Cubism 2 name, or none: not written)
+    const ids = new Map();
+    let has = () => true;
 
     const ready = loadRuntime().then(async () => {
       if (disposed) return false;
@@ -133,6 +145,15 @@
       if (disposed) { model.destroy(); return false; }
       const im = model.internalModel;
       im.eyeBlink = undefined; // she blinks on her own clock below (closed-eye faces must stay closed)
+      // a model with its own idle motions starts one once its file has loaded; if the figure was disposed by
+      // then (her look changed, the import preview) pixi-live2d-display would touch the released motion queue
+      const mm = im.motionManager;
+      const startMotion = mm && mm._startMotion;
+      if (startMotion) mm._startMotion = function (...a) { return this.destroyed ? -1 : startMotion.apply(this, a); };
+      const own = new Set(((im.coreModel.getModel && im.coreModel.getModel().parameters) || {}).ids || []);
+      if (own.size) has = (id) => own.has(id);
+      // a model without a blush expression blushes with its ParamCheek
+      if (!faces.blush && (has('ParamCheek') || has('PARAM_CHEEK'))) { faces.blush = { [has('ParamCheek') ? 'ParamCheek' : 'PARAM_CHEEK']: 1 }; faceNow.blush = 0; }
       app.stage.addChild(model);
       bind(im);
       fit();
@@ -151,7 +172,11 @@
         }
       });
     }
-    const set = (id, v) => { if (id) before.set(id, v); };
+    function resolve(id) {
+      if (!ids.has(id)) ids.set(id, has(id) ? id : CUBISM2_IDS[id] && has(CUBISM2_IDS[id]) ? CUBISM2_IDS[id] : null);
+      return ids.get(id);
+    }
+    const set = (id, v) => { const r = id && resolve(id); if (r) before.set(r, v); };
     const add = (id, v) => { if (id) after.set(id, { add: true, value: v }); };
     const pin = (id, v) => { if (id) after.set(id, { add: false, value: v }); };
 
@@ -256,7 +281,12 @@
       const open = clamp(cur.eyes * (1 - blinkK), 0, 1);
       set('ParamEyeLOpen', open);
       set('ParamEyeROpen', clamp(open * (1 - cur.wink), 0, 1));
-      set('ParamEyeSmile', clamp(cur.smile, -1, 1));
+      // one ParamEyeSmile (−1 sad .. 1 happy), else the standard pair (0 .. 1)
+      if (has('ParamEyeSmile')) set('ParamEyeSmile', clamp(cur.smile, -1, 1));
+      else {
+        set('ParamEyeLSmile', clamp(cur.smile, 0, 1));
+        set('ParamEyeRSmile', clamp(cur.smile, 0, 1));
+      }
       set('ParamEyeAnger', clamp(cur.anger, -1, 1));
       set('ParamBrowLY', clamp(cur.brow, -1, 1));
       set('ParamBrowRY', clamp(cur.brow, -1, 1));

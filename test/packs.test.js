@@ -278,6 +278,54 @@ test('live2d packs: the model and its files are checked, the parameter map goes 
   assert.match(P.readPack(dir).errors.join(), /outside\.moc3 is missing/, 'a file outside the pack does not count');
 });
 
+// 外观 → 导入 Live2D 模型…: a plain model folder (no pack.json) becomes a live2d pack for one character
+test('importing a Live2D model: it is found in its folder, its expressions become faces, the pack it makes is valid', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2d-import-'));
+  fs.mkdirSync(path.join(root, 'Hiyori', 'tex'), { recursive: true });
+  fs.mkdirSync(path.join(root, '__MACOSX', 'Hiyori'), { recursive: true });
+  fs.writeFileSync(path.join(root, '__MACOSX', 'Hiyori', 'x.model3.json'), '{}');
+  fs.writeFileSync(path.join(root, 'Hiyori', 'hiyori.model3.json'), '{}');
+  assert.deepEqual(P.findLive2dModels(root), { models: ['Hiyori/hiyori.model3.json'], cubism2: false }, 'macOS zip debris is skipped');
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'l2d-c2-'));
+  fs.writeFileSync(path.join(old, 'shizuku.model.json'), '{}');
+  assert.deepEqual(P.findLive2dModels(old), { models: [], cubism2: true }, 'a Cubism 2 model is told apart');
+
+  assert.equal(P.live2dPackId('grok', 'Hiyori Pro'), 'l2d-grok-hiyori-pro');
+  assert.match(P.live2dPackId('claude', '小鱼'), /^l2d-claude-[0-9a-f]{8}$/, 'a name without latin letters gets a hash');
+  assert.equal(P.live2dPackId('claude', '小鱼'), P.live2dPackId('claude', '小鱼'), 'the same model imports to the same pack');
+  assert.ok(P.live2dPackId('dafeiyu', 'a'.repeat(80)).length <= 40);
+
+  const faces = P.facesFromExpressions([
+    { name: 'F01', file: 'exp/smile.exp3.json', json: { Parameters: [{ Id: 'ParamEyeLSmile', Value: 1, Blend: 'Add' }] } },
+    { name: '照れ', file: 'exp/f02.exp3.json', json: { Parameters: [{ Id: 'ParamCheek', Value: 1, Blend: 'Add' }, { Id: 'ParamEyeLOpen', Value: 0.8, Blend: 'Multiply' }] } },
+    { name: 'Surprised', file: 'exp/f03.exp3.json', json: { Parameters: [{ Id: 'ParamEyeLOpen', Value: 1.5, Blend: 'Overwrite' }, { Id: 'PARAM_BROW_L_Y', Value: 1 }, { Id: 'bad id', Value: 1 }] } },
+    { name: '惊讶 2', file: 'exp/f04.exp3.json', json: { Parameters: [{ Id: 'ParamWideEyes', Value: 1 }, { Id: 'ParamMouthForm', Value: -1 }] } },
+    { name: '惊讶 3', file: 'exp/f05.exp3.json', json: { Parameters: [{ Id: 'ParamOther', Value: 1 }] } },
+    { name: 'sad', file: 'exp/broken.exp3.json', json: null },
+  ]);
+  assert.deepEqual(faces, { blush: { ParamCheek: 1 }, wide: { ParamWideEyes: 1 } }, 'Multiply values, bad ids, broken files and what her own face drives (eyes, brows, mouth) are left out; the first match with something left wins');
+
+  const m = P.live2dManifest({ speciesId: 'grok', modelRel: 'hiyori.model3.json', name: 'Hiyori', expressions: [{ name: 'shy', file: 'a.exp3.json', json: { Parameters: [{ Id: 'ParamCheek', Value: 1 }] } }] });
+  const dir = path.join(root, 'pack');
+  fs.mkdirSync(path.join(dir, 'model', 'tex'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'model', 'hiyori.model3.json'), JSON.stringify({ Version: 3, FileReferences: { Moc: 'h.moc3', Textures: ['tex/t.png'] } }));
+  fs.writeFileSync(path.join(dir, 'model', 'h.moc3'), 'moc');
+  fs.writeFileSync(path.join(dir, 'model', 'tex', 't.png'), PNG);
+  fs.writeFileSync(path.join(dir, 'preview.png'), PNG);
+  fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(m));
+  const r = P.readPack(dir);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.pack.id, 'l2d-grok-hiyori');
+  assert.equal(r.pack.model, 'model/hiyori.model3.json');
+  assert.deepEqual(r.pack.live2d.faces, { blush: { ParamCheek: 1 } });
+  assert.equal(r.pack.adult, false);
+  const { OUTFITS } = require('../src/core/outfits');
+  assert.deepEqual(Object.keys(r.pack.outfits).sort(), OUTFITS.filter((o) => o.rating !== 'adult').map((o) => o.id).sort(), 'she wears it in every all-ages outfit, never an adult one');
+  const packs = new Map([[r.pack.id, { ...r.pack, source: 'user' }], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  assert.equal(P.resolveLook(packs, { packId: r.pack.id, speciesId: 'grok', outfitId: 'beret' }).kind, 'live2d');
+  assert.deepEqual(P.packsFor(packs, 'grok').find((o) => o.id === r.pack.id), { id: 'l2d-grok-hiyori', name: 'Hiyori', author: '本地导入', license: '模型作者的条款', version: '1.0.0', description: '从本地导入的 Live2D 模型。', kind: 'live2d', source: 'user', adult: false, outfits: Object.keys(r.pack.outfits).length, height: 0.8 });
+});
+
 test('大肥鱼 · Live2D: the built-in model is complete, its watermark and chest physics are pinned, pixels stay her default', () => {
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   const p = packs.get('dafeiyu-live2d');

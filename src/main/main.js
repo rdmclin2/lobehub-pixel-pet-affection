@@ -35,6 +35,7 @@ let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
+let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… picks
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -245,6 +246,34 @@ function wire() {
       return { ok: false, errors: [e.message] };
     }
   });
+  // her own Live2D model (外观 → 导入 Live2D 模型…): a .model3.json or a .zip (and on macOS a folder too —
+  // elsewhere a dialog cannot pick both files and folders, and the .model3.json stands for its folder)
+  ipcMain.handle('import-live2d', async (_e, { species } = {}) => {
+    const v = service.view();
+    const sp = whose(species) || (v && v.pet.speciesId);
+    if (!sp) return { ok: false, errors: ['先请一位角色来'] };
+    const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
+    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(win, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
+    nextOpenPath = null;
+    if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
+    try {
+      return await packStore.importLive2d(r.filePaths[0], sp);
+    } catch (e) {
+      logError(e);
+      return { ok: false, errors: [e.message] };
+    }
+  });
+  // after the renderer drew the imported model (or found it would not load): its picture, then the list
+  ipcMain.handle('save-pack-preview', (_e, { id, dataUrl }) => {
+    const r = packStore.savePreview(String(id || ''), dataUrl);
+    if (r.ok) service.setPacks(packStore.packs);
+    return r;
+  });
+  ipcMain.handle('set-live2d-height', (_e, { id, height }) => {
+    const r = packStore.setLive2dHeight(String(id || ''), height);
+    if (r.ok) service.setPacks(packStore.packs);
+    return r;
+  });
   ipcMain.handle('remove-pack', (_e, { id }) => {
     const r = packStore.remove(String(id || ''));
     if (r.ok) service.setPacks(packStore.packs);
@@ -429,6 +458,8 @@ function wire() {
       if (r.ok) service.setPacks(packStore.packs);
       return r;
     });
+    // the next 导入 Live2D 模型… picks this path instead of opening the file dialog
+    ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
