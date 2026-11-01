@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,6 +19,7 @@ const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
+const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
@@ -417,6 +418,30 @@ function wire() {
   // 语音包: the owner's own packs go in userData/voicepacks/<id>/ (core/voice-pack.js); read again on request
   ipcMain.on('open-voicepacks-folder', () => { const d = tts.packs.dirs[1]; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); });
   ipcMain.handle('voicepacks-reload', () => { tts.packs.reload(); return { settings: service.getSettings(), errors: tts.packs.errors.map((e) => `${path.basename(e.dir)}：${e.errors.join('；')}`) }; });
+  // 语音输入 (core/asr.js). The bytes are checked here before anything is written or sent anywhere.
+  ipcMain.handle('asr-transcribe', (_e, p) => {
+    const { bytes, mime, ms } = p && typeof p === 'object' ? p : {};
+    const size = bytes && typeof bytes.byteLength === 'number' ? bytes.byteLength : 0;
+    if (!size || size > ASR_MAX_BYTES || typeof mime !== 'string' || !/^audio\//i.test(mime)) return { ok: false, reason: 'bad-audio', message: 'not an audio clip', provider: null, tried: [] };
+    return service.asrTranscribe(bytes, mime, { ms: Number(ms) || null });
+  });
+  ipcMain.on('asr-cancel', () => service.asrCancel());
+  // 🎤 before the first recording: macOS asks the owner once (Info.plist NSMicrophoneUsageDescription);
+  // elsewhere the OS has no per-app prompt and getUserMedia reports a refusal itself.
+  ipcMain.handle('asr-mic-access', async () => {
+    if (process.platform !== 'darwin' || !systemPreferences.getMediaAccessStatus) return 'granted';
+    const st = systemPreferences.getMediaAccessStatus('microphone');
+    if (st === 'not-determined') return (await systemPreferences.askForMediaAccess('microphone')) ? 'granted' : 'denied';
+    return st; // granted | denied | restricted
+  });
+  ipcMain.handle('asr-test', (_e, p) => service.asrTest({ provider: p && p.provider }));
+  ipcMain.handle('set-asr', (_e, patch) => {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    let keyOk = true;
+    if (p.key !== undefined) keyOk = tts.keys.set(ASR_KEY_ID, typeof p.key === 'string' ? p.key : ''); // '' removes it
+    const r = service.setAsr(p);
+    return keyOk ? r : { ...r, ok: false, reason: 'bad-key' };
+  });
   ipcMain.handle('set-visitors', (_e, { ids }) => service.setVisitors(ids));
   ipcMain.handle('set-api', async (_e, opts) => {
     const r = service.setApi(opts || {});
@@ -493,9 +518,11 @@ app.whenReady().then(() => {
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient();
+  // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text
+  const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -509,6 +536,16 @@ app.whenReady().then(() => {
     throw: (v) => askRenderer('throw', v, 20000),
     chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
   }, logError);
+  // 语音输入: the microphone only for our own page, audio only, and only while 语音输入 is on
+  // (core/asr.js mediaAllowed). Other permissions keep Electron's default.
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    const a = mediaAllowed({ permission, url: (details && details.requestingUrl) || wc.getURL(), mediaTypes: details && details.mediaTypes, settings: service.settings.asr });
+    cb(a === null ? true : a);
+  });
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin, details) => {
+    const a = mediaAllowed({ permission, url: (wc && wc.getURL()) || origin, mediaTypes: [details && details.mediaType === 'video' ? 'video' : 'audio'], settings: service.settings.asr });
+    return a === null ? true : a;
+  });
   wire();
   createWindow();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });

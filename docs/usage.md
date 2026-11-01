@@ -137,6 +137,10 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 # POST /pixel-pet/chat  {"text":"…"}                       和她的 agent 聊一句并等回复（会调用模型）
 ```
 
+### 语音输入（ASR）
+
+高级设置 → **语音输入** 打开后，聊天框旁的 🎤 把你说的话转成文字填进输入框。两种识别方式（复用 LobeHub 云端识别，或本机跑 whisper.cpp / speaches 等本地服务）的安装、配置、测试连接和故障排查见 [asr.md](asr.md)。
+
 ### 语音（TTS）
 
 1. **打开**：悬停 → ⋯ → 高级设置 → 桌宠行为 → 打开 **朗读回复**。关着时什么都不念，也不请求任何语音服务。
@@ -180,6 +184,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 版本与更新 | 当前版本、上次检查时间、“检查更新” | 启动后检查一次，之后每 4 小时 |
 | 桌宠行为 | 自己走动（E15）、点击音效（E21）、朗读回复 / 互动语音 / 朗读碎碎念（E23）、梗图（E22）、互相碰撞（E25） | 开、关、关 / 开 / 关、开、开 |
 | 语音 | 引擎（按角色 / Fish Audio / MiniMax / 本地语音服务 / 系统语音）、各引擎的 API Key 与端点、本地语音服务的接口 / 模型 / 音色名、“用不了时”（改用系统语音 / 不出声）、试听一句、清空语音缓存、状态行（Key 是否已设置、缓存大小、上次出错） | 按角色（大肥鱼 MiniMax，其他 Fish），没有 Key，用不了时改用系统语音 |
+| 语音输入 | 开关、引擎（LobeHub 云端识别 / 本地识别服务（whisper）/ 关闭）、语言、识别后直接发送、用不了时换另一个引擎、LobeHub 模型、本地服务的地址 / 接口 / 模型 / Key、测试连接；详见 [asr.md](asr.md) | 关；开启后默认 LobeHub、`gpt-4o-mini-transcribe`，本地地址 `http://127.0.0.1:8179` |
 | 同屏伙伴 | 勾选最多 3 位来串门（E24） | 无 |
 | 对外接口（本机 HTTP） | 开关、端口、令牌（E26） | 关，端口 7340 |
 
@@ -272,6 +277,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js outfit [角色] [服饰]` | 第二套服饰的真机检查（默认 `claude swimsuit`）：真实升级解锁 → 衣柜换上 → idle / walk / lifted 与 daily 对齐 → 重启保留 → 选「旧版像素」时回落到默认包 → 无控制台报错；截图和 `report.txt` 在 `out/e2e/outfit-<角色>-<服饰>/` |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
+| `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
 

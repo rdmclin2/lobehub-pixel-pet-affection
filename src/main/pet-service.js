@@ -17,6 +17,7 @@ const { nextEvent, LlmBudget, fallbackLine, fallbackPool } = require('../core/pr
 const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
 const { endpointOkFor } = require('../core/tts');
+const asrLib = require('../core/asr');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
@@ -36,7 +37,7 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, log = new chatLog.MemoryChatLog() }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, log = new chatLog.MemoryChatLog() }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -46,6 +47,7 @@ class PetService extends EventEmitter {
     this.responses = responses;
     this._responsesFailedAt = 0;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
+    this.asr = asr; // 语音输入 (core/asr.js AsrEngine): recognition runs in main; null = not available (tests)
     this.store = store;
     this.settingsStore = settingsStore;
     this.settings = settingsStore.load();
@@ -122,7 +124,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null };
   }
 
   // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
@@ -884,6 +886,40 @@ class PetService extends EventEmitter {
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok, reason: ok ? undefined : 'bad-endpoint', settings: this.settingsView() };
+  }
+
+  // 高级设置 → 语音输入 (core/asr.js): on/off, the engine (lobehub / local / off), falling back to the other one,
+  // the language, LobeHub's model and the local server (endpoint, API shape, model, timeout). Its optional key
+  // goes through main.js into tts-keys.json, never into settings.json.
+  setAsr(patch) {
+    const r = asrLib.applyAsrPatch(this.settings.asr, patch);
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, asr: r.asr });
+    this.settingsStore.save(this.settings);
+    if (this.asr) {
+      this.asr.reset(); // a new engine, endpoint or model: try every provider again
+      if (!asrLib.asrActive(this.settings.asr)) this.asr.cancel();
+    }
+    this.emit('settings', this.settingsView());
+    return { ok: r.ok, reason: r.ok ? undefined : r.errors[0], errors: r.errors, settings: this.settingsView() };
+  }
+
+  // What the owner said (the recorder's bytes and mime type) -> text, with the providers of settings.asr.
+  // -> { ok: true, text, lang, provider, ms, fellBackFrom } | { ok: false, reason, message, provider, tried }
+  async asrTranscribe(bytes, mime, { ms } = {}) {
+    if (!this.asr) return { ok: false, reason: 'not-configured', message: 'ASR is not available', provider: null, tried: [] };
+    return this.asr.transcribe(bytes, mime, this.settings.asr, { ms });
+  }
+
+  asrCancel() {
+    if (this.asr) this.asr.cancel();
+  }
+
+  // 测试连接: a short silent clip to the configured provider(s), or only `provider`; works with ASR switched off too.
+  async asrTest({ provider } = {}) {
+    if (!this.asr) return { ok: false, reason: 'not-configured', results: [] };
+    const only = asrLib.PROVIDER_IDS.includes(provider) ? provider : undefined;
+    const set = this.settings.asr.engine === 'off' && !only ? { ...this.settings.asr, engine: 'lobehub' } : this.settings.asr;
+    return this.asr.test(set, { only });
   }
 
   // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play).

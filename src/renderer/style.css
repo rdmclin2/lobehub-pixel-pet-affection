@@ -102,7 +102,7 @@ body.hover .hud { opacity: 1; pointer-events: auto; }
 .popup .btn { text-align: left; font-size: 11px; padding: 1px 6px; border-width: 2px; }
 
 /* While the pet is working nothing else can be done: hide every control, even on hover. */
-body.busy .hud, body.busy .popup, body.busy .chat-row { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; transition: none !important; }
+body.busy .hud, body.busy .popup, body.busy .chat-row, body.busy .mic-status { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; transition: none !important; }
 body.busy .pet-hit { cursor: progress; }
 
 /* attach / paste images */
@@ -110,6 +110,21 @@ body.busy .pet-hit { cursor: progress; }
 .attach-chip { position: relative; width: 38px; height: 38px; border: 2px solid #2b2233; background: #fff center/cover no-repeat; }
 .attach-chip button { position: absolute; top: -7px; right: -7px; width: 14px; height: 14px; padding: 0; line-height: 10px; font-size: 10px; border: 2px solid #2b2233; background: #ffd23f; cursor: pointer; }
 .chat-row .attach-btn { padding: 1px 5px; }
+/* 语音输入: 🎤 next to the box; red while it listens, a spinner while it is being recognised */
+.chat-row .mic-btn { padding: 1px 5px; min-width: 26px; touch-action: none; user-select: none; }
+.chat-row .mic-btn[data-state="recording"] { background: #e2463c; color: #fff; animation: mic-pulse 1s ease-in-out infinite; }
+.chat-row .mic-btn[data-state="starting"], .chat-row .mic-btn[data-state="stopping"], .chat-row .mic-btn[data-state="transcribing"] { cursor: progress; }
+.chat-row .mic-btn .spin { display: inline-block; width: 9px; height: 9px; border: 2px solid #2b2233; border-right-color: transparent; border-radius: 50%; animation: mic-spin .7s linear infinite; vertical-align: -1px; }
+.chat-row input.listening { background: #fff0ee; }
+.chat-row input.recognizing { background: #f3f0ff; color: #8a8199; }
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 3px rgba(226,70,60,.35); } }
+@keyframes mic-spin { to { transform: rotate(360deg); } }
+.mic-status { position: absolute; left: 4px; right: 4px; bottom: 90px; z-index: 6; background: #2b2233; color: #fff6d6; font-size: 11px; padding: 2px 6px; border: 2px solid #2b2233; pointer-events: none; }
+.mic-status[data-state="recording"] { background: #e2463c; border-color: #2b2233; color: #fff; }
+.unlock-toast.notice .toast-title { color: #b8322a; }
+#asr-section .tts-engine.dim { opacity: .55; }
+#asr-test-result[data-ok="true"] { color: #2f7a35; }
+#asr-test-result[data-ok="false"] { color: #b8322a; }
 body.dragging-file #pet-screen { outline: 3px dashed #c9502a; outline-offset: -4px; }
 .opt { display: flex; gap: 6px; align-items: flex-start; max-width: 520px; margin-top: 6px; font-size: 12px; line-height: 1.4; color: #4a3f58; text-align: left; }
 .opt input { margin-top: 2px; }

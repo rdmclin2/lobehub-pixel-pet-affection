@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { TTS_DEFAULTS, normalizeTts } = require('./tts');
+const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
 
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
@@ -36,7 +37,7 @@ const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
 const SYSTEM_ROLE_MAX = 1000;
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -82,6 +83,8 @@ function normalizeSettings(raw) {
   // 语音: the engine that reads (core/tts.js), the fallback and the endpoints; the keys are in tts-keys.json
   // an engine nobody picked follows the character ('auto'): settings from before 'auto' saved 'fish' regardless
   s.tts = normalizeTts(s.tts && s.tts.providerSet === true ? s.tts : { ...s.tts, provider: 'auto' });
+  // 语音输入 (core/asr.js): off by default; engine, fallback, language and the local server. Its optional key is in tts-keys.json
+  s.asr = normalizeAsr(s.asr);
   return s;
 }
 
