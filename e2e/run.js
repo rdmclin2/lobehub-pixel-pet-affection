@@ -5761,6 +5761,33 @@ async function asrScenario() {
       assert.deepEqual(errors, []);
       return `${errors.length} errors`;
     }, null);
+
+    let again = null;
+    await step(S, 'A10 after a restart 高级设置 → 语音输入 shows what was saved', async () => {
+      chapter('A10 重启后：语音输入设置仍是之前保存的');
+      await app.close();
+      again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`] });
+      const p = again.page;
+      await p.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await p.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(p, 'menu');
+      await p.click('[data-menu="advanced"]');
+      await p.waitForSelector('#asr-section');
+      await p.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
+      const ui = await p.evaluate(() => ({ on: document.getElementById('asr-on').checked, engine: document.getElementById('asr-engine').value, language: document.getElementById('asr-language').value, autoSend: document.getElementById('asr-autosend').checked, endpoint: document.getElementById('asr-endpoint').value, model: document.getElementById('asr-local-model').value }));
+      assert.deepEqual(ui, { on: true, engine: 'off', language: 'zh', autoSend: true, endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
+      await p.waitForTimeout(150);
+      await p.screenshot({ path: path.join(SHOTS, 'a10-after-restart-settings.png') });
+      // the engine back to 本地: 🎤 is there again in the restarted app
+      await p.selectOption('#asr-engine', 'local');
+      await p.waitForFunction(() => /语音识别引擎：本地识别服务/.test(document.getElementById('panel-msg').textContent));
+      await p.click('#panel-close');
+      await hover(p);
+      await clickAct(p, 'chat');
+      assert.equal(await p.isVisible('#chat-mic'), true);
+      return note(`relaunched with the same data dir → 语音输入 controls ${JSON.stringify(ui)}; engine → local shows 🎤 again`);
+    }, () => again && again.page);
+    if (again) await again.app.close().catch(() => {});
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'asr-log.txt'), evidence.join('\n\n') + '\n');
     fs.writeFileSync(path.join(SHOTS, 'asr-requests.json'), JSON.stringify(mock.log, null, 2) + '\n');
