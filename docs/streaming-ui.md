@@ -19,7 +19,7 @@ preload:  window.pet.onChatDelta(cb) / window.pet.onChatDone(cb)  （返回取�
 
 | 事件 | 载荷 | 说明 |
 | --- | --- | --- |
-| `chat-delta` | `{ id, n, kind, turnId, text, withheld? }` | `text` 是**到目前为止可显示的全文**（不是单个碎片）：去掉了已完成的 `[梗图:id]` 和可能正在写的标签尾巴（`[梗`、`[梗图:th`）。`n` 每条递增。内容守卫命中后只再发一次 `{ text: '', withheld: true }`，此后不再发 |
+| `chat-delta` | `{ id, n, kind, turnId, text, withheld?, restart? }` | `text` 是**到目前为止可显示的全文**（不是单个碎片）：去掉了已完成的 `[梗图:id]` 和可能正在写的标签尾巴（`[梗`、`[梗图:th`）。`n` 每条递增。内容守卫命中后只再发一次 `{ text: '', withheld: true }`，此后不再发（直连失败改走 `lh` 时例外：先发 `{ text: '', restart: true }` 清空，再按回退路径重新开始，见 [streaming.md 第六节](streaming.md#六回退行为)） |
 | `say` | 原有字段 + `streamId` | 最终台词（守卫后、去标签），`streamId` = 该流的 `id` |
 | `chat-done` | `{ id, ok, reason, text, kind, turnId, deltas, withheld }` | 每个流**恰好一次**；成功时在 `say` 之后、`text` = 最终台词；失败 `reason: 'error'`，取消 `reason: 'canceled'` |
 

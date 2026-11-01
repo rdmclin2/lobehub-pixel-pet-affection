@@ -6199,6 +6199,121 @@ async function streamScenario() {
     } catch { /* window gone */ }
     await app.close().catch(() => {});
   }
+  await streamDirectScenario();
+}
+
+// 流式回复 with local abilities OFF on the direct way (docs/streaming.md §1): the app reads the reply from a local
+// stand-in for LobeHub's Responses API (test/fixtures/fake-responses-server.js, SSE, no tokens). The fake lh
+// prints its whole answer at once (like lh 0.0.62–0.0.73), so a bubble that grows can only come from the SSE.
+async function streamDirectScenario() {
+  const S = 'stream';
+  const SHOTS = path.join(OUT, 'stream');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const { startFakeResponses } = require('../test/fixtures/fake-responses-server');
+  const PIECES = ['本机能力关着，', '我也能', '一点一点', '把话说出来：', '先是这一句，', '再接下一句，', '最后说完～'];
+  const FULL = PIECES.join('');
+  let failNext = false;
+  const srv = await startFakeResponses((body) => (failNext ? { status: 502, body: 'bad gateway' } : { pieces: body.input && /本机关闭测试/.test(String(body.input)) ? PIECES : ['你好呀，', '我来了～'], gapMs: 450, id: body.previous_response_id || 'tpc_E2E_DIRECT' }));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-streamdirect-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-streamdirectfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir) };
+  const { app, page } = await launch(env);
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s.length > 280 ? `${s.slice(0, 277)}…` : s; };
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+  const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
+  const runs = () => (fs.existsSync(path.join(fakeDir, 'runs.log')) ? fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
+  const sample = () => page.evaluate(() => {
+    clearInterval(window.__sampler);
+    window.__samples = [];
+    const t0 = performance.now();
+    window.__sampler = setInterval(() => {
+      const b = document.getElementById('bubble');
+      window.__samples.push({ t: Math.round(performance.now() - t0), text: b.classList.contains('hidden') ? '' : b.textContent, streaming: b.classList.contains('streaming'), busy: document.body.classList.contains('busy') });
+    }, 40);
+  });
+  const stopSampler = () => page.evaluate(() => { clearInterval(window.__sampler); return window.__samples; });
+  const sendText = async (text) => {
+    await hover(page);
+    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    await page.fill('#chat-input', text);
+    await page.click('#chat-send');
+  };
+  try {
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card[data-species="claude"]').click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+    await page.waitForTimeout(300);
+
+    await step(S, 'S7 本机能力关闭：回复走直连 Responses SSE（tools:[]），气泡逐步变长，同一 topic，lh agent run 未被调用', async () => {
+      assert.equal((await view(page)).local.enabled, false);
+      const greetReq = srv.requests[0];
+      assert.ok(greetReq, 'her hello went to the Responses API');
+      const before = logged().length;
+      const runsBefore = runs().length;
+      await sample();
+      await sendText('本机关闭测试：慢慢说');
+      await page.waitForFunction(() => document.getElementById('bubble').classList.contains('streaming') && document.body.classList.contains('busy') && document.getElementById('bubble').textContent.length > 0, null, { timeout: 10000 });
+      await page.screenshot({ path: path.join(SHOTS, 's7-direct-first-piece.png') });
+      await page.waitForFunction((n) => [...document.getElementById('bubble').textContent].length >= n, [...PIECES.slice(0, 4).join('')].length, { timeout: 10000 });
+      await page.screenshot({ path: path.join(SHOTS, 's7-direct-midway.png') });
+      await idle();
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: path.join(SHOTS, 's7-direct-final.png') });
+      const samples = await stopSampler();
+      const partial = samples.filter((s) => s.streaming && s.text);
+      const distinct = [...new Set(partial.map((s) => s.text))];
+      assert.ok(distinct.length >= 5, `only ${distinct.length} distinct partial texts: ${JSON.stringify(distinct)}`);
+      for (const t of distinct) assert.ok(FULL.startsWith(t), `partial 「${t}」 is not a prefix`);
+      for (let i = 1; i < partial.length; i++) assert.ok(partial[i].text.length >= partial[i - 1].text.length, 'the text shrank while streaming');
+      const firstAt = partial[0].t;
+      const doneAt = samples.find((s, i) => i > 0 && !s.busy && samples[i - 1].busy).t;
+      assert.ok(doneAt - firstAt >= 2000, `first piece ${firstAt} ms, done ${doneAt} ms`);
+      assert.equal(await bubbleText(page), FULL);
+      const req = srv.requests[srv.requests.length - 1].body;
+      assert.equal(req.stream, true);
+      assert.deepEqual(req.tools, []);
+      assert.equal(req.previous_response_id, 'tpc_E2E_DIRECT'); // her hello opened the topic; this turn continues it
+      assert.equal(runs().length, runsBefore, 'lh agent run was not used');
+      assert.deepEqual(logged().slice(before).map((m) => [m.role, m.text]), [['user', '本机关闭测试：慢慢说'], ['pet', FULL]]);
+      const offers = (await page.evaluate(() => window.petFx.offerLog())).filter((o) => o.kind === 'chat');
+      assert.equal(offers.length, 1);
+      const timeline = distinct.map((t) => `${partial.find((s) => s.text === t).t}ms「${t}」`).join(' → ');
+      return note(`local off, direct SSE: ${timeline} → done ${doneAt}ms; request tools=[] stream=true previous_response_id=${req.previous_response_id}; lh agent run calls +0; chat-log +2; TTS offered once`);
+    }, page);
+
+    await step(S, 'S8 直连报错（502）时同一回合自动回退到 lh agent run：回复不丢、气泡与聊天记录各一次', async () => {
+      failNext = true;
+      const before = logged().length;
+      const runsBefore = runs().length;
+      await sendText('回退测试');
+      await idle();
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: path.join(SHOTS, 's8-fallback-final.png') });
+      const text = await bubbleText(page);
+      assert.match(text, /^echo: /);
+      assert.match(text, /回退测试/);
+      const r = runs().slice(runsBefore);
+      assert.equal(r.length, 1, 'one lh agent run');
+      assert.equal(r[0].topic, 'tpc_E2E_DIRECT');
+      assert.deepEqual(r[0].tools, []);
+      const added = logged().slice(before);
+      assert.deepEqual(added.map((m) => m.role), ['user', 'pet']);
+      assert.equal(added[1].text, text);
+      failNext = false;
+      return note(`502 → lh agent run -t ${r[0].topic} once; bubble 「${text}」; chat-log +2 (user, pet)`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'stream-direct-log.txt'), evidence.join('\n\n') + '\n');
+    try { fs.writeFileSync(path.join(SHOTS, 'stream-direct-requests.json'), JSON.stringify(srv.requests.map((q) => ({ at: q.at, body: q.body })), null, 2) + '\n'); } catch { /* ignore */ }
+    await app.close().catch(() => {});
+    await srv.close();
+  }
 }
 
 (async () => {

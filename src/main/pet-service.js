@@ -227,6 +227,15 @@ class PetService extends EventEmitter {
       st.shown = text;
       this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text });
     };
+    // The turn is sent again another way (_runTurn's fallback): what the first try showed goes, the bubble
+    // starts over with the new reply (same id, so it stays one bubble and one 聊天记录 line).
+    st.restart = () => {
+      if (st.closed) return;
+      const had = st.shown || st.withheld;
+      st.shown = '';
+      st.withheld = false;
+      if (had) this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text: '', restart: true });
+    };
     return st;
   }
 
@@ -686,24 +695,53 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? this._deviceId : null;
   }
 
-  // One agent turn. A turn that may use this computer goes the direct way when it is up; if that fails before
-  // any of her tools ran, the same turn is sent again through `lh connect` (a tool that already ran must not
-  // run twice, so then the error stands).
+  // Can a turn go straight to the Responses API right now? The CLI's login is readable (or an API key is set)
+  // and the direct way has not failed in the last LOCAL_RETRY_MS. Only looks at local files.
+  _directUp() {
+    return !!this.responses && this.now() - this._responsesFailedAt >= LOCAL_RETRY_MS && this.responses.available();
+  }
+
+  // One agent turn (docs/streaming.md §1). Every turn goes the direct way (Responses API, SSE) when it is up,
+  // because that is the way her reply arrives as it is written; `lh agent run --json` (lh 0.0.62–0.0.73) only
+  // prints its events when the run is over.
+  // - Local abilities on and checked the direct way: her tools are function tools run here. If that fails before
+  //   any of them ran, the same turn is sent again through `lh connect` (a tool that already ran must not run
+  //   twice, so then the error stands).
+  // - Local abilities on through a device (`lh connect`): `lh agent run --tool … --device …` as before.
+  // - Everything else (local abilities off, a greeting, a proactive line, a topic): direct with no tools, same
+  //   agent and topic (a response id is the topic id). Not up (no login, a recent failure) → `lh agent run`.
+  //   If the direct turn fails in any way but Esc / the time limit, the same turn goes through `lh agent run`
+  //   once: the reply is not lost, the bubble starts over with that one (no doubled text), and the line is said
+  //   and saved to 聊天记录 once, by the caller, after this returns.
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
   async _runTurn(args, stream = null) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
     const tools = this._tools();
-    if (!tools.length || this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+    if (tools.length) {
+      if (this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+      try {
+        return await this.responses.run({ ...args, tools });
+      } catch (e) {
+        if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+        this.emit('error', e);
+        this._responsesFailedAt = this.now();
+        await this._verifyLocal({ force: true });
+        this._throwIfCanceled();
+        if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
+        if (stream) stream.restart();
+        return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+      }
+    }
+    if (!this._directUp()) return this.lh.run({ ...args, tools: [], device: null });
     try {
-      return await this.responses.run({ ...args, tools });
+      return await this.responses.run({ ...args, tools: [] });
     } catch (e) {
-      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
-      this.emit('error', e);
-      this._responsesFailedAt = this.now();
-      await this._verifyLocal({ force: true });
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT') throw e;
       this._throwIfCanceled();
-      if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
-      return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+      this.emit('error', Object.assign(new Error(`直连流式失败，这次改用 lh agent run：${e.message}`), { code: e.code, cause: e }));
+      this._responsesFailedAt = this.now();
+      if (stream) stream.restart();
+      return this.lh.run({ ...args, tools: [], device: null });
     }
   }
 

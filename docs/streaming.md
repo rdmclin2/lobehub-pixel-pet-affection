@@ -16,12 +16,26 @@ LobeHub ──(SSE / lh --json 事件)──► 核心层客户端 onDelta(chunk
 
 ## 一、数据源与事件格式
 
-桌宠的一回合（聊天、话题、问候 / 主动搭话等系统台词）由 `PetService._runTurn`（`src/main/pet-service.js`）发往两条路径之一：
+桌宠的一回合（聊天、话题、问候 / 主动搭话等系统台词）由 `PetService._runTurn`（`src/main/pet-service.js`）选择路径。**原则：只要直连可用，所有回合都走直连 Responses 流式**——因为当前 `lh agent run --json` 要到运行结束才输出事件，只有直连能让气泡逐步变长。
 
-| 路径 | 什么时候走 | 增量来源 | 实时性 |
+| 回合 | 首选路径 | 请求 | 不可用 / 失败时 |
 | --- | --- | --- | --- |
-| **直连 Responses**（`src/core/responses-client.js`） | 本机能力开启且直连可用（`localVia === 'direct'`：能读到 `lh` 的登录凭据） | `POST {server}/api/v1/responses`，请求体 `stream: true`、请求头 `Accept: text/event-stream`，返回标准 SSE | **真正实时**：实测第一段字在发送后约 5 s 出现，之后每 0.3–0.5 s 一段 |
-| **`lh agent run --json`**（`src/core/lh-client.js`） | 本机能力关闭，或直连失败后的回退 | `lh` 子进程 stdout 中的 JSON 事件 | 当前 `lh`（0.0.62–0.0.73 均已实测）在 `--json` 下**运行结束时才一次性打印**整个事件数组，所以各块在结束那一刻连续交出，界面上表现为整段一次出现（与改动前一样快，不会更慢）。将来 `lh` 若逐个事件输出，同一套代码无需改动即可实时流出 |
+| 本机能力**开**，直连已验证（`localVia === 'direct'`） | 直连 Responses | `tools` = 4 个本机函数工具（`read_file` 等，在应用内执行） | 还没有工具执行过：同一回合改走 `lh connect` 设备（`lh agent run --tool lobe-local-system --device …`）；已有工具执行过：报错，不重跑 |
+| 本机能力**开**，经 `lh connect` 设备（直连不可用时才会这样） | `lh agent run --tool … --device …` | — | — |
+| 本机能力**关**、问候、主动搭话、话题、初次见面等**不带本机工具的回合** | 直连 Responses（`_directUp()` 为真时） | `tools: []`（`tools_mode: 'exclusive'`，模型拿不到任何工具）、`stream: true`、同一个 `model: agentId`、`previous_response_id: topicId` | 同一回合自动回退 `lh agent run -a <agent> -t <topic> --json`（不带 `--tool` / `--device`），见第六节 |
+
+`_directUp()`：有 `ResponsesClient`，能读到 `lh` 的登录（`LOBEHUB_CLI_API_KEY` 或 `~/.lobehub/credentials.json`），并且最近 5 分钟（`LOCAL_RETRY_MS`）内直连没有失败过。它只看本地文件，不发网络请求。
+
+两条路径的数据源：
+
+| 路径 | 增量来源 | 实时性 |
+| --- | --- | --- |
+| **直连 Responses**（`src/core/responses-client.js`） | `POST {server}/api/v1/responses`，请求体 `stream: true`、请求头 `Accept: text/event-stream`，返回标准 SSE | **真正实时**：2026-11-01 实测本机能力开 / 关两种情况，第一段字分别在发送后约 6.1 s / 3.5 s 出现，之后每 0.4 s 左右一段 |
+| **`lh agent run --json`**（`src/core/lh-client.js`，回退） | `lh` 子进程 stdout 中的 JSON 事件 | 当前 `lh`（0.0.62–0.0.73 均已实测）在 `--json` 下**运行结束时才一次性打印**整个事件数组，所以回退时整段一次出现。将来 `lh` 若逐个事件输出，同一套代码无需改动即可实时流出 |
+
+**同一 topic / 上下文**：Responses 的 response id 就是 LobeHub 的 topic id（`tpc_…`）。直连回合用 `previous_response_id = c.topicId` 继续同一个 topic，返回的 `id` 写回 `c.topicId`；`lh agent run` 用 `-t c.topicId`。所以两条路径交替（例如回退后又回到直连）时一直在同一段聊天历史里：实测本机能力关闭后第 3 回合问"我刚才先后让你描写了哪两个季节的什么时候"，回答"你先让我写了秋天的傍晚，后来又让我写了冬天的清晨。"（第 1 回合是本机能力开时的直连回合）。`lh message list --topic-id` 也能看到三回合都在同一个 topic 里。人格（system role）、模型都在 agent 上，两条路径相同。
+
+**鉴权**：直连用 `lh login` 存下的 token（或 `LOBEHUB_CLI_API_KEY`），过期时先调一次 `lh whoami` 让 CLI 刷新再读。读不到 → `_directUp()` 为假 → 直接走 `lh agent run`，行为与改动前一致。
 
 ### 1.1 Responses SSE（主路径）
 
@@ -73,7 +87,7 @@ stdout 是一个 JSON 数组（将来也可能是每行一个事件），每个�
 
 | 事件 | 载荷 | 说明 |
 | --- | --- | --- |
-| `chat-delta` | `{ id, n, kind, turnId, text, withheld? }` | `text` 是**到目前为止可显示的全文**（不是碎片），已去掉完整的 `[梗图:id]` 和正在写的半截标签；`n` 每条递增；内容相同则不发。守卫命中后只再发一次 `{ text: '', withheld: true }` |
+| `chat-delta` | `{ id, n, kind, turnId, text, withheld?, restart? }` | `text` 是**到目前为止可显示的全文**（不是碎片），已去掉完整的 `[梗图:id]` 和正在写的半截标签；`n` 每条递增；内容相同则不发。守卫命中后只再发一次 `{ text: '', withheld: true }`。直连失败、同一回合改走 `lh` 时，如果已显示过内容，发一次 `{ text: '', restart: true }`（同一 id）清空气泡，之后的 `text` 是回退路径的全文 |
 | `say` | 原有字段 + `streamId` | 最终台词（守卫后、去标签），`streamId` = 该流的 `id` |
 | `chat-done` | `{ id, ok, reason, text, kind, turnId, deltas, withheld }` | 每条流**恰好一次**：成功时在 `say` 之后；失败 `reason:'error'`，Esc / 停止 `reason:'canceled'`（此时没有 `say`） |
 
@@ -111,13 +125,17 @@ stdout 是一个 JSON 数组（将来也可能是每行一个事件），每个�
 
 | 情况 | 结果 |
 | --- | --- |
-| 走 `lh --json` 路径（本机能力关闭；当前 `lh` 结束时一次性输出） | 各块在结束时连续交出，气泡**整段一次出现**（与改动前相同） |
+| 直连不可用（未登录 / 读不到凭据 / 5 分钟内直连失败过 / `responses` 未启用） | 不带工具的回合直接走 `lh agent run`；当前 `lh` 结束时一次性输出，气泡**整段一次出现**（与改动前相同） |
+| 不带工具的直连回合失败（HTTP 4xx/5xx、`EAUTH`、网络错误、流提前断开、`ENOREPLY`、服务端要求调用工具等不兼容） | **同一回合**立刻改走 `lh agent run -t <同一 topic>`（无 `--tool`/`--device`）：回复不丢；如果直连已经显示了一部分，先发一条 `chat-delta { text:'', restart:true }`（同一 stream id）把气泡清空，再显示 `lh` 的回复，不会出现两段拼接；`say` / 聊天记录 / 好感 / 朗读仍只在 `_runTurn` 返回后由调用方执行一次。记一条 `error` 日志（"直连流式失败，这次改用 lh agent run"），5 分钟内后续回合直接走 `lh`，之后再试直连 |
+| Esc / 超时（`ECANCELED` / `ETIMEDOUT`） | 不回退（与改动前相同）：取消显示"（好吧，不想了。）"，超时显示错误台词 |
 | `lh` 输出里没有任何 `stream_chunk` 正文（老版本 `lh`）但有最终回复 | `onDelta(text, text)` 调用一次 → 一条 `chat-delta` → 整段显示 |
 | 服务端收到 `stream:true` 仍回 JSON（老服务端 / 代理，按 `content-type` 判断） | 走原来的 `res.json()`，该轮正文用 `onDelta` 一次交出 → 整段显示 |
-| 直连 Responses 失败且还没有工具执行过 | 同一回合改走 `lh agent run`（`_runTurn` 回退），提示"直连 LobeHub 失败，这次改用 lh connect"；之后按 `lh` 路径显示 |
-| 流中途 `response.failed` / `error` 事件 / 提前断流 / 无终止事件的 `[DONE]` | `EAPI`；已显示的部分保留、光标去掉，随后显示错误台词；聊天记录写 `status:error`，不计好感 |
-| 网络异常 / 超时 / Esc 取消 | `ENET` / `ETIMEDOUT` / `ECANCELED`，同上；取消时显示"（好吧，不想了。）" |
+| 本机能力开的直连回合失败且还没有工具执行过 | 同一回合改走 `lh connect` 设备（`_runTurn` 回退，气泡同样先 restart），提示"直连 LobeHub 失败，这次改用 lh connect" |
+| 本机能力开的直连回合失败且已有工具执行过 | 不重跑（避免同一工具执行两次）；已显示的部分保留、光标去掉，随后显示错误台词；聊天记录写 `status:error`，不计好感 |
+| 回退的 `lh agent run` 也失败 | 与改动前相同：错误台词，聊天记录写 `status:error` |
 | 不传 `onDelta`（例如本机 HTTP 接口等不需要气泡的调用方） | 与改动前逐字节一致：`stream:false`，整段返回 |
+
+**已知边界（LobeHub 侧 topic 里的重复）**：直连请求如果在服务端已经写入用户消息之后才失败（例如流中途断开），回退的 `lh agent run` 会在同一 topic 里再写一条同样的用户消息和它的回复。应用自己的聊天记录（`chat-log.json`）、气泡和朗读只记 / 显示一次；HTTP 错误（服务端在开始生成前拒绝）时不会出现这种情况。
 
 ## 七、验证方式
 
@@ -127,7 +145,19 @@ stdout 是一个 JSON 数组（将来也可能是每行一个事件），每个�
 npm test
 ```
 
-流式相关的测试文件：`test/lh-client.test.js`、`test/responses-client.test.js`（核心层：逐行 / 逐字节切分的伪造 `lh`、真实 SSE 样本按 3–5 字节切分回放、工具续轮、JSON 回退、各类错误）、`test/streaming-service.test.js`（主进程：增量按时间到达且 id 一致、`say` 带 `streamId`、`chat-done` 恰好一次、梗图标签、守卫撤回、取消 / 出错、每回合独立 id、一次性 `lh` 回退）、`test/streaming-fixtures.test.js`（锁定真实样本的结论）。2026-11-01 在 `3181e67` 上：**475 / 475 通过**。
+流式相关的测试文件：`test/lh-client.test.js`、`test/responses-client.test.js`（核心层：逐行 / 逐字节切分的伪造 `lh`、真实 SSE 样本按 3–5 字节切分回放、工具续轮、JSON 回退、各类错误）、`test/streaming-service.test.js`（主进程：增量按时间到达且 id 一致、`say` 带 `streamId`、`chat-done` 恰好一次、梗图标签、守卫撤回、取消 / 出错、每回合独立 id、一次性 `lh` 回退）、`test/streaming-fixtures.test.js`（锁定真实样本的结论）、**`test/streaming-direct-turns.test.js`**（路径选择与回退：真实 `ResponsesClient` 对本地伪造 SSE 服务 `test/fixtures/fake-responses-server.js` + 伪造 `lh`）、`test/direct-local.test.js`（本机能力开时的直连 / `lh connect`）。
+
+`streaming-direct-turns.test.js` 覆盖：
+- 本机能力关：孵化问候和聊天都发到 Responses（`stream:true`、`tools:[]`、`model` = 她的 agent），第二回合 `previous_response_id` = 第一回合返回的 topic，`lh agent run` 调用 0 次，增量逐段到达，聊天记录各一条，好感照常增加；
+- 主动搭话（`_speak('hungry')`）和话题也走直连、同一 topic；
+- 读不到登录：走 `lh agent run`（无 `--tool` / `--device`），直连 0 请求；
+- 直连 HTTP 502：同一回合改走 `lh agent run -t <直连 topic>`，只有一次 `say`、一次 `chat-done(ok)`、聊天记录一条；5 分钟内不再试直连，之后恢复直连并沿用同一 topic；
+- 直连流中途断开：增量序列 `写到 → 写到一半 → ''(restart) → 完整 → 完整的回复`，同一 stream id，最终 `say` 与聊天记录只有 `lh` 的完整回复一次；
+- `lh` 打开的 topic 之后由直连用 `previous_response_id` 续用；
+- 直连回合中 Esc：取消，不回退；
+- 本机能力经设备（无直连登录）：仍是 `lh agent run --tool lobe-local-system --device dev_MAC`。
+
+2026-11-01 在本分支上：**483 / 483 通过**（新增 8 个；`direct-local.test.js` 中"本机能力关时走 lh"一条按新行为改为"走直连、`tools:[]`、同一 topic"）。
 
 ### 7.2 e2e：`stream` 场景（不耗 token）
 
@@ -138,13 +168,13 @@ node e2e/run.js stream                      # 桌面
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js stream
 ```
 
-伪造 `lh` 读 `$FAKE_LH_DIR/stream-reply.json`，每个碎片一行事件、间隔 `gapMs` 输出；页面里每 40 ms 采样一次气泡。覆盖 S1（气泡在完成前出现部分文本并逐段增长，每个采样都是最终回复的前缀、长度不减，有光标，最终等于完整回复，聊天记录只多一条，朗读只在结束后一次）、S2 梗图标签跨块不显示、S3 守卫撤回、S4 Esc 中断、S5 主动搭话也流式且独立 id、S6 聊天记录面板逐步填充。证据在 `out/e2e/stream/`（截图、`stream-log.txt`、`chat-log.json`、`renderer-logs.json`）和 `out/e2e/results.json`。
+伪造 `lh` 读 `$FAKE_LH_DIR/stream-reply.json`，每个碎片一行事件、间隔 `gapMs` 输出；页面里每 40 ms 采样一次气泡。覆盖 S1（气泡在完成前出现部分文本并逐段增长，每个采样都是最终回复的前缀、长度不减，有光标，最终等于完整回复，聊天记录只多一条，朗读只在结束后一次）、S2 梗图标签跨块不显示、S3 守卫撤回、S4 Esc 中断、S5 主动搭话也流式且独立 id、S6 聊天记录面板逐步填充；**S7 本机能力关闭也逐步增长**：应用以 `PIXELPET_DIRECT=1`、`LOBEHUB_SERVER=<本地伪造 SSE 服务>`、`LOBEHUB_CLI_API_KEY=<假 key>` 启动（不耗 token），伪造 `lh` 只会一次性输出，所以气泡逐步变长只可能来自直连 SSE；断言 ≥5 个不同的部分文本、每个都是最终回复的前缀、长度不减、首段到完成 ≥2 s，请求体 `stream:true`、`tools:[]`、`previous_response_id` = 问候时打开的 topic，`lh agent run` 调用 0 次，聊天记录 +2、朗读 1 次；**S8 直连 502 回退**：同一回合 `lh agent run -t <同一 topic>` 一次，气泡是 `lh` 的回复，聊天记录 +2（user, pet）。证据在 `out/e2e/stream/`（截图 `s1-*`…`s8-*`、`stream-log.txt`、`stream-direct-log.txt`、`stream-direct-requests.json`、`chat-log.json`、`renderer-logs.json`）和 `out/e2e/results.json`。
 
 ### 7.3 真实 `lh` 手动验证
 
 前提：已安装 `@lobehub/cli` 并 `lh login`（`lh whoami` 能显示用户）。会消耗少量 token。
 
-1. `npm start` 启动。首次启动选一位角色，**勾选"让它能使用这台电脑"（本机能力）**，起名后唤醒。已有桌宠的话：⋯ 菜单 → “本机能力：…”按钮打开。这一步决定走直连 Responses（实时流式）；不勾选则走 `lh --json`（整段一次出现，见第六节）。
+1. `npm start` 启动。首次启动选一位角色，**勾选"让它能使用这台电脑"（本机能力）**，起名后唤醒。已有桌宠的话：⋯ 菜单 → “本机能力：…”按钮打开。勾不勾都一样走直连 Responses 流式（只要 `lh` 已登录）；区别只是模型能不能用本机工具。
 2. 等她的问候说完（问候本身也是流式的）。
 3. 鼠标移到她身上 → 💬 → 输入一个需要较长回答的问题，例如"不要使用任何工具，直接用大约200字描写一下秋天的傍晚。"→ 发送。
 4. **预期现象**：
@@ -152,15 +182,17 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js stream
    - 然后同一个气泡里出现第一句（实测约 5 s 时出现 20 多个字），末尾有闪烁的 `▍` 光标，气泡自动滚到最新一行；
    - 之后每 0.3–0.5 s 追加一段，字数持续增加、前面的字不变，嘴巴在动；期间输入框等控件隐藏，"停止"按钮可用（按 Esc 或点停止会立刻停住，保留已显示的部分）；
    - 写完后光标消失，气泡滚回开头显示完整回复（若有梗图此时贴出），开启了朗读的话此时开始按句朗读，好感飘心（如 “+1.5 ♥”，当天首次互动另有加成）也在此时出现；⋯ → 聊天记录里只有这一条完整回复。
-5. 对照：⋯ 菜单 → “本机能力：…”关闭后再问一个问题，回复会在"思考中…"之后**整段一次出现**（`lh --json` 回退路径）。
+5. 再关闭本机能力（⋯ 菜单 → “本机能力：…”）问一个长问题：现象与第 4 步相同，同一气泡逐步变长。
+6. 回退对照：`lh logout` 后（或临时把 `~/.lobehub/credentials.json` 改名）再问，回复会在“思考中…”之后**整段一次出现**（`lh agent run` 路径）。
 
 ### 7.4 2026-11-01 真实环境实测结果
 
-用真实 `lh`（0.0.73，app.lobehub.com 登录）在 Xvfb 下驱动应用（测试模式 `PIXELPET_TEST=1` + `PIXELPET_DIRECT=1` 打开直连，`PIXELPET_NO_CONNECT=1`），创建临时 agent、问"用大约200字描写一下秋天的傍晚"，每 40 ms 采样气泡并在每次变化时截图，结束后删除 agent：
+用真实 `lh`（0.0.73，app.lobehub.com 登录）在 Xvfb 下驱动应用（`PIXELPET_TEST=1` + `PIXELPET_DIRECT=1` 打开直连，`PIXELPET_NO_CONNECT=1`），`LH_BIN` 指向一个记录每次 `lh` 调用（毫秒时间戳 + 参数）再转给真实 `lh` 的包装脚本。创建临时 agent，本机能力**开**问一回合 → 用 `window.pet.setLocal(false)`（与菜单开关同一 IPC）**关闭**本机能力 → 再问两回合；每 40 ms 采样气泡、每次变化截图，录屏，结束后删除 agent。
 
-| 回合 | 发送后第一段字 | 逐步显示 | 最终 |
-| --- | --- | --- | --- |
-| 本机能力开（直连 Responses） | +5.3 s，24 字 | 同一气泡（同一 stream id）9 个递增阶段：24 → 60 → 107 → 138 → 159 → 179 → 202 → 257 → 284 字，+5.3 s 到 +9.1 s；每个阶段都是最终回复的前缀，长度从不减少 | 284 字，与最终台词一致 |
-| 本机能力关（`lh --json`） | 无中间态 | 0 个流式采样，整段一次出现 | 35 字 |
+| 回合 | 发送后第一段字 | 逐步显示（同一气泡、同一 stream id） | 该回合 `lh agent run` 调用 | 最终 |
+| --- | --- | --- | --- | --- |
+| 1. 本机能力开（直连，带本机工具） | +6.1 s，114 字 | 6 个递增阶段 114 → 141 → 151 → 186 → 230 字（+6.1 s → +7.7 s），全部是最终回复的前缀，长度不减 | 0 | 230 字 |
+| 2. 本机能力**关**（直连，`tools:[]`） | +3.5 s，2 字 | 11 个递增阶段 2 → 34 → 63 → 96 → 119 → 149 → 174 → 195 → 220 → 269 字（+3.5 s → +7.0 s），全部是前缀，长度不减 | 0 | 269 字 |
+| 3. 本机能力关，问前两回合内容 | +4.4 s，3 字 | 3 → 25 字 | 0 | “你先让我写了秋天的傍晚，后来又让我写了冬天的清晨。”——历史连续 |
 
-同时实测 `lh agent run --json` 的 stdout：12.5 s 时一次写出全部 7 个 `stream_chunk` 事件，确认当前 `lh` 不逐个输出事件。
+整个会话的 `lh` 调用记录里没有任何 `agent run`（问候也走了直连）；三回合都在同一个 topic（`lh message list --topic-id` 列出 4 组 user/assistant）。改动前（`b496f9b`），本机能力关时走 `lh --json`：0 个流式采样，35 字回复在 +12.5 s 整段一次出现；`lh agent run --json` 的 stdout 在 12.5 s 时一次写出全部 7 个 `stream_chunk` 事件，确认当前 `lh` 不逐个输出事件——这就是本次把不带工具的回合也改走直连的原因。
