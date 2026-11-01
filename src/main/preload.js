@@ -62,6 +62,14 @@ contextBridge.exposeInMainWorld('pet', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 语音输入 (core/asr.js): recognition runs in main (keys and lh never come here). transcribe takes the recorder's
+  // bytes (ArrayBuffer / Uint8Array) and its mime type; ms = how long the clip is.
+  asr: {
+    transcribe: (bytes, mime, ms) => ipcRenderer.invoke('asr-transcribe', { bytes, mime, ms }),
+    cancel: () => ipcRenderer.send('asr-cancel'),
+    test: (provider) => ipcRenderer.invoke('asr-test', { provider }),
+    set: (patch) => ipcRenderer.invoke('set-asr', patch),
+  },
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),
   apiStatus: () => ipcRenderer.invoke('api-status'),

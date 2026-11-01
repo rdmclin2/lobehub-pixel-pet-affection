@@ -19,6 +19,7 @@ const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
+const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
@@ -417,6 +418,22 @@ function wire() {
   // 语音包: the owner's own packs go in userData/voicepacks/<id>/ (core/voice-pack.js); read again on request
   ipcMain.on('open-voicepacks-folder', () => { const d = tts.packs.dirs[1]; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); });
   ipcMain.handle('voicepacks-reload', () => { tts.packs.reload(); return { settings: service.getSettings(), errors: tts.packs.errors.map((e) => `${path.basename(e.dir)}：${e.errors.join('；')}`) }; });
+  // 语音输入 (core/asr.js). The bytes are checked here before anything is written or sent anywhere.
+  ipcMain.handle('asr-transcribe', (_e, p) => {
+    const { bytes, mime, ms } = p && typeof p === 'object' ? p : {};
+    const size = bytes && typeof bytes.byteLength === 'number' ? bytes.byteLength : 0;
+    if (!size || size > ASR_MAX_BYTES || typeof mime !== 'string' || !/^audio\//i.test(mime)) return { ok: false, reason: 'bad-audio', message: 'not an audio clip', provider: null, tried: [] };
+    return service.asrTranscribe(bytes, mime, { ms: Number(ms) || null });
+  });
+  ipcMain.on('asr-cancel', () => service.asrCancel());
+  ipcMain.handle('asr-test', (_e, p) => service.asrTest({ provider: p && p.provider }));
+  ipcMain.handle('set-asr', (_e, patch) => {
+    const p = patch && typeof patch === 'object' ? patch : {};
+    let keyOk = true;
+    if (p.key !== undefined) keyOk = tts.keys.set(ASR_KEY_ID, typeof p.key === 'string' ? p.key : ''); // '' removes it
+    const r = service.setAsr(p);
+    return keyOk ? r : { ...r, ok: false, reason: 'bad-key' };
+  });
   ipcMain.handle('set-visitors', (_e, { ids }) => service.setVisitors(ids));
   ipcMain.handle('set-api', async (_e, opts) => {
     const r = service.setApi(opts || {});
@@ -489,9 +506,11 @@ app.whenReady().then(() => {
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient();
+  // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text
+  const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus });
+  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
   updater = new Updater({ isBusy: () => service.busy, log: logError });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

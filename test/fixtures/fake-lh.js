@@ -9,7 +9,19 @@ const args = process.argv.slice(2);
 log({ args, env: { topic: process.env.LOBEHUB_TOPIC_ID || null, workspace: process.env.LOBEHUB_WORKSPACE_ID || null } });
 const pinFile = path.join(dir, 'pinned-workspace');
 
-if (args[0] === 'whoami') {
+if (args[0] === 'generate' && args[1] === 'asr') {
+  // FAKE_LH_ASR: ok (default) | empty | unauth | model | fail | hang. Mirrors the real CLI's output (docs/asr-design.md §1.4).
+  const file = args[2];
+  const mode = process.env.FAKE_LH_ASR || 'ok';
+  if (!fs.existsSync(file)) { console.error(`12:00:00 [ERROR] File not found: ${file}`); process.exit(1); }
+  fs.writeFileSync(path.join(dir, 'asr-file.json'), JSON.stringify({ file, mode: (fs.statSync(file).mode & 0o777).toString(8), bytes: fs.readFileSync(file).toString('base64') }));
+  if (mode === 'hang') setInterval(() => {}, 1000);
+  else if (mode === 'empty') console.log(JSON.stringify({ text: '' }, null, 2));
+  else if (mode === 'unauth') { console.error('12:00:00 [ERROR] ASR failed: UNAUTHORIZED'); process.exit(1); }
+  else if (mode === 'model') { console.error('12:00:00 [ERROR] ASR failed: LobeHubModelDeprecated'); process.exit(1); }
+  else if (mode === 'fail') { console.error('12:00:00 [ERROR] ASR failed:'); process.exit(1); }
+  else console.log(JSON.stringify({ text: `heard ${args[args.indexOf('--model') + 1]} ${args.includes('--language') ? args[args.indexOf('--language') + 1] : 'auto'}` }, null, 2));
+} else if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
   console.log(JSON.stringify({ fullName: 'Test Owner', username: 'tester', email: 't@example.com' }));
 } else if (args[0] === 'login') {

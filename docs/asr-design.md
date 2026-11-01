@@ -388,3 +388,14 @@ normalize 规则：
   - `/tmp/asr-scripts/`：`spawn-probe.js`、`fetch-probe.js`
 - 复现 LobeHub 路径：`LOBEHUB_JWT= lh generate asr <file> --provider lobehub --model gpt-4o-mini-transcribe --language zh --json`（在桌面版里直接 `lh …` 就行，不需要 `LOBEHUB_JWT=`）。
 - 复现本地路径：按 §2.1 启动后执行 `curl -s http://127.0.0.1:8179/v1/audio/transcriptions -F file=@clip.webm -F model=whisper-1 -F response_format=json`。
+
+## 10. 实现记录（主进程 ASR 核心）
+
+已落地：`src/core/asr.js`、`LhClient#asr`、`settings.asr`、IPC、`test/asr.test.js`、`scripts/asr-transcribe.js`。与 §3–§5 草案的差异：
+
+- **设置形态**：`provider: lobehub|local|auto` 改为 `engine: lobehub|local|off` + `fallback: boolean`（失败时再试另一个 provider 一次）。旧形态自动迁移（`auto` → `engine: local, fallback: true`）。`local.endpoint` 默认 `http://127.0.0.1:8179`（§2.1 的 OpenAI 兼容启动方式），不再为空；只接受 https，或者指向本机 / 局域网的 http。`mode`、`autoSend` 属于渲染层，留给下游任务。
+- **reason**：本地 HTTP 错误统一记为 `http-<status>`（400、404、500 等），不再映射成 `bad-audio` / `server`。新增 `not-configured`（ASR 关闭，或 engine 为 off）。熔断规则：`empty`、`bad-audio`、`canceled`、`http-400/413/415/422` 不熔断；`timeout`、`network`、`server`、`http-5xx/408/429` 暂停 20 秒；其他 reason 暂停 5 分钟。**链路中的最后一个 provider 即使处于熔断期也会尝试**（用户在等结果）。`empty` / `bad-audio` 不会回退到另一个 provider。
+- **超时**：lobehub 为 30 s + 每秒录音 0.1 s，上限 60 s（应用内实测一次 3.5 s 的短句用了 18 s，所以基数从 20 s 提高到 30 s）。local 为 `local.timeoutSec`，默认 30 s，可设 5–120 s。
+- **连通性测试**：`test()` 发送内置生成的 0.6 秒静音 WAV（`silentWav()`），返回空文本也算通过，因此不需要随包附带音频资源。
+- **IPC**（preload）：`window.pet.asr = { transcribe(bytes, mime, ms), cancel(), test(provider?), set(patch) }`。`set` 的 `patch.key` 是本地服务的可选 Key，存进 tts-keys.json（id `asrlocal`），设为 `''` 即删除。设置视图里的 `asrStatus` 只包含是否熔断、熔断原因和 `hasKey`。
+- **命令行验证**：`node scripts/asr-transcribe.js <file> --engine local|lobehub [--endpoint …] [--api whispercpp] [--language zh] [--fallback] [--test]` 与 IPC 走同一套代码。在 agent 环境里运行时需要加 `PIXELPET_CLEAR_JWT=1`。
