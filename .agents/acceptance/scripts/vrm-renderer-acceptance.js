@@ -14,7 +14,8 @@ const { _electron } = require(path.join(ROOT, 'node_modules', 'playwright'));
 const { makeTestVrm } = require(path.join(ROOT, 'scripts', 'make-test-vrm.js'));
 fs.mkdirSync(OUT, { recursive: true });
 const log = [];
-const note = (s) => { log.push(s); console.log(s); };
+let T0 = null; // when the window (and its recording) started
+const note = (s) => { const t = T0 == null ? '' : `[${((Date.now() - T0) / 1000).toFixed(1)}s] `; log.push(t + s); console.log(t + s); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
@@ -28,12 +29,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   note(`revision ${execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim()} (worktree ${ROOT})`);
   note(`model ${model} (${fs.statSync(model).size} bytes, generated), userData ${data}`);
   const app = await _electron.launch({
-    args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
+    args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--js-flags=--expose-gc'],
     cwd: ROOT,
     env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_DATA_DIR: data, LH_BIN: path.join(ROOT, 'test', 'fixtures', 'fake-lh.js'), FAKE_LH_DIR: fakeLh },
     recordVideo: { dir: path.join(OUT, 'video'), size: { width: 460, height: 540 } },
   });
   const page = await app.firstWindow();
+  T0 = Date.now();
   const consoleErrors = [];
   page.on('console', (m) => { if (m.type() === 'error' || /\[vrm\]/.test(m.text())) consoleErrors.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
@@ -64,9 +66,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 2; }, null, { timeout: 30000 });
     const rt = await page.evaluate(() => ({ versions: window.PetVrmRuntime && window.PetVrmRuntime.versions, script: [...document.scripts].some((s) => s.getAttribute('src') === 'vendor/vrm/three-vrm.min.js') }));
     check(rt.script && rt.versions && rt.versions.three === '0.187.0', `runtime loaded on first VRM look: ${JSON.stringify(rt.versions)}`);
-    const f1 = Number((await ds()).frame);
+    const d0 = await ds();
+    note(`      sample A: ${JSON.stringify({ frame: d0.frame, fps: d0.fps, mode: d0.mode, state: d0.state, vrm: d0.vrm, springs: d0.springs })}`);
+    const f1 = Number(d0.frame);
     await sleep(1000);
     const d1 = await ds();
+    note(`      sample B (+1 s): ${JSON.stringify({ frame: d1.frame, fps: d1.fps, mode: d1.mode, state: d1.state, vrm: d1.vrm, springs: d1.springs })}`);
     check(Number(d1.frame) > f1, `canvas.dataset.frame climbs: ${f1} → ${d1.frame} in 1 s (fps ${d1.fps}, mode ${d1.mode}, vrm ${d1.vrm}, springs ${d1.springs})`);
     evidence.dataset = d1;
     const g = await dbg();
@@ -155,6 +160,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const end = await voice;
     await sleep(600);
     const after = await ds();
+    const silent = [];
+    for (let i = 0; i < 5; i++) { silent.push((await ds()).mouth); await sleep(200); }
+    note(`      after the voice, 5 samples over 1 s: ${silent.join(' | ')}`);
     const shapes = new Set();
     let maxOpen = 0;
     for (const m of mouths) {
@@ -163,6 +171,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       if (top[1] > 0.15) shapes.add(top[0]);
       maxOpen = Math.max(maxOpen, top[1]);
     }
+    note(`      mouth samples every 50 ms while the voice plays: ${mouths.map((m) => `${m.lip}{${m.mouth}}`).join(' ')}`);
     const lipModes = [...new Set(mouths.map((m) => m.lip))];
     check(lipModes.includes('audio') && maxOpen > 0.3 && shapes.size >= 2, `lip sync while the voice plays: lip modes ${lipModes.join('/')}, shapes ${[...shapes].join(',')}, max ${maxOpen.toFixed(2)} (clip ended: ${end})`);
     check(after.mouth === 'aa:0.00,ih:0.00,ou:0.00,ee:0.00,oh:0.00' && after.lip === 'off', `after the voice: mouth ${after.mouth}, lip ${after.lip}`);
@@ -175,10 +184,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.mode === 'idle'; }, null, { timeout: 20000 });
     await sleep(2200);
     const idle = await ds();
+    note(`      idle sample: ${JSON.stringify({ frame: idle.frame, fps: idle.fps, mode: idle.mode, state: idle.state })}`);
     check(idle.mode === 'idle' && Number(idle.fps) >= 8 && Number(idle.fps) <= 18, `idle: mode ${idle.mode}, fps ${idle.fps}`);
     await page.evaluate(() => window.petFx.cue('pat'));
     await sleep(1200);
     const act = await ds();
+    note(`      active sample: ${JSON.stringify({ frame: act.frame, fps: act.fps, mode: act.mode, state: act.state })}`);
     check(act.mode === 'active' && Number(act.fps) >= 20 && Number(act.fps) <= 61, `active (a pat): mode ${act.mode}, fps ${act.fps}`);
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
     await sleep(800);
@@ -212,6 +223,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const st2 = await page.evaluate(() => window.PetVRM.stats);
     check(st2.live === 1 && st2.created === st2.disposed + 1, `VRM again: created ${st2.created}, disposed ${st2.disposed}, live ${st2.live}`);
     await shot('06-vrm-again.png');
+
+    // a hand-written pack: a model without surprised / relaxed (fallbacks) and pack.json vrm.expressions { pat: "sad" }
+    const pdir = path.join(src, 'override-pack');
+    fs.mkdirSync(path.join(pdir, 'models'), { recursive: true });
+    fs.writeFileSync(path.join(pdir, 'models', 'lean.vrm'), makeTestVrm({ name: 'Lean fish (no surprised/relaxed)', omit: ['surprised', 'relaxed'] }));
+    fs.writeFileSync(path.join(pdir, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-override-test', name: 'Override test fish', species: 'dafeiyu', kind: 'vrm', vrm: { outfits: { daily: 'models/lean.vrm' }, height: 0.8, expressions: { pat: 'sad' } } }, null, 2));
+    note(`      pack.json: ${fs.readFileSync(path.join(pdir, 'pack.json'), 'utf8').replace(/\s+/g, ' ')}`);
+    const ip = await page.evaluate((d) => window.pet.debugImportPack(d), pdir);
+    note(`      debugImportPack → ${JSON.stringify(ip).slice(0, 200)}`);
+    await page.evaluate(() => window.pet.setAppearance('vrm-override-test', 'dafeiyu'));
+    await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 2; }, null, { timeout: 20000 });
+    const exprs = (await dbg()).figures[0].expressions;
+    await page.evaluate(() => window.petFx.cue('pat'));
+    await sleep(700);
+    const ov = await ds();
+    await shot('08-override-pat-sad.png');
+    check(ov.state === 'pat' && /sad:/.test(ov.expr) && !/relaxed/.test(ov.expr), `pack.json vrm.expressions.pat="sad" overrides: pat → ${ov.expr}`);
+    await sleep(2500);
+    await page.evaluate(() => window.petFx.lift(true));
+    await sleep(800);
+    const fb = await ds();
+    await shot('09-fallback-lifted-no-surprised.png');
+    await page.evaluate(() => window.petFx.lift(false));
+    check(!exprs.includes('surprised') && !exprs.includes('relaxed') && fb.state === 'lifted' && /oh:/.test(fb.expr), `model without surprised/relaxed (has ${exprs.length}: ${exprs.join(',')}): lifted → ${fb.expr} (surprised → oh), still drawing frame ${fb.frame}`);
+
+    // repeated switching VRM ↔ 2D: no growth in live figures, GL resources or JS heap
+    const heap = [];
+    for (let i = 0; i < 6; i++) {
+      await page.evaluate((id) => window.pet.setAppearance(id, 'dafeiyu'), i % 2 ? 'dafeiyu-pixel' : imp.pack.id);
+      await sleep(1500);
+      const m = await page.evaluate(() => { if (window.gc) window.gc(); const f = window.petFx.vrm().figures[0]; return { live: window.PetVRM.stats.live, created: window.PetVRM.stats.created, disposed: window.PetVRM.stats.disposed, gl: f ? f.memory : null, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null }; });
+      heap.push(m);
+      note(`      switch ${i + 1} → ${i % 2 ? '2D' : 'VRM'}: ${JSON.stringify(m)}`);
+    }
+    const vrmHeaps = heap.filter((_, i) => i % 2 === 0).map((m) => m.heapMB);
+    check(heap.every((m, i) => m.live === (i % 2 ? 0 : 1)) && heap.filter((_, i) => i % 2 === 0).every((m) => m.gl && m.gl.geometries === 24 && m.gl.textures === 2) && vrmHeaps[2] - vrmHeaps[0] < 15, `6 switches: live figures alternate 1/0, GL memory per figure stays ${JSON.stringify(heap[0].gl)}, JS heap on VRM ${vrmHeaps.join(' → ')} MB`);
 
     // a VRM that cannot be drawn (meta only, no humanoid / mesh): the picture tile stands in, the figure lets go
     const metaOnly = path.join(src, 'meta-only.vrm');
