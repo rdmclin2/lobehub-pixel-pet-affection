@@ -10,8 +10,8 @@
   "kind": "sprites",
   "pixelated": false,
   "frame": {
-    "width": 332,
-    "height": 452
+    "width": 664,
+    "height": 904
   },
   "actions": {
     "idle": {

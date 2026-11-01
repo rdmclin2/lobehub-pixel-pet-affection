@@ -110,20 +110,61 @@ const speciesOf = (id) => info.species.find((s) => s.id === id);
 const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video' && !(view && view.pet.speciesId === id && view.look);
 
 // ---------- looks: pictures, animated pixel sprites and rigs ----------
-const sprites = new Set(); // live sprite canvases: { canvas, look, img, action() }
+const sprites = new Set(); // live sprite canvases: { canvas, look, sheet, k, action() }
 const rigs = new Set(); // live figures, 全动态 (rig.js) or Live2D (live2d.js): { canvas, figure, action() }
 // a look drawn live every frame instead of from frames: which script draws it
 const LIVE_KINDS = { rig: () => window.PetRig, live2d: () => window.PetLive2D };
 const isLive = (look) => !!look && !!LIVE_KINDS[look.kind];
-const sheetImages = new Map();
-function sheet(url) {
-  if (!sheetImages.has(url)) {
-    const img = new Image();
-    if (url.startsWith('pack:')) img.crossOrigin = 'anonymous'; // pack:// answers with CORS: her pixels stay readable for touch hit tests
-    img.src = url;
-    sheetImages.set(url, img);
+// A whole HD sheet decodes to about 86 MB (2656×8136), so only the desktop pet draws from the full sheet.
+// Smaller looks (cards, the wardrobe, the hatch screen) draw from a half-size copy, and a sheet nothing
+// shows any more is let go after a while: the wardrobe would otherwise keep every outfit's sheet decoded.
+const sheets = new Map(); // `${k}|${url}` -> { src (ImageBitmap at 1/k, or the Image if that failed), users, timer }
+const SHEET_KEEP_MS = 10000; // a sheet shown again soon (the same look redrawn) is not loaded twice
+// Decoded as ImageBitmaps, which close() frees at once: an <img> keeps its decoded pixels in Blink's cache.
+function loadSheet(url, k) {
+  return fetch(url)
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${r.status}`))))
+    .then((blob) => createImageBitmap(blob))
+    .then((full) => {
+      if (k === 1) return full;
+      const small = createImageBitmap(full, { resizeWidth: Math.round(full.width / k), resizeHeight: Math.round(full.height / k), resizeQuality: 'high' });
+      return small.finally(() => full.close());
+    });
+}
+function useSheet(url, k) {
+  const key = `${k}|${url}`;
+  let e = sheets.get(key);
+  if (!e) {
+    e = { src: null, users: 0, timer: 0, ready: null };
+    const entry = e;
+    e.ready = loadSheet(url, k).then((bmp) => {
+      if (sheets.get(key) === entry) entry.src = bmp;
+      else bmp.close();
+    }, () => {
+      const img = new Image(); // cannot be fetched: drawn from the picture itself
+      if (url.startsWith('pack:')) img.crossOrigin = 'anonymous'; // pack:// answers with CORS: her pixels stay readable for touch hit tests
+      img.src = url;
+      entry.src = img;
+      return img.decode();
+    });
+    sheets.set(key, e);
   }
-  return sheetImages.get(url);
+  clearTimeout(e.timer);
+  e.users++;
+  return e;
+}
+// Settles when every sheet of `url` in use can be drawn (rejects if one cannot be loaded at all).
+const sheetReady = (url) => Promise.all([...sheets].filter(([key]) => key.endsWith(`|${url}`)).map(([, e]) => e.ready));
+function dropSheet(url, k) {
+  const key = `${k}|${url}`;
+  const e = sheets.get(key);
+  if (!e || --e.users > 0) return;
+  e.timer = setTimeout(() => {
+    if (e.users > 0) return;
+    sheets.delete(key);
+    if (e.src && e.src.close) e.src.close();
+    e.src = null;
+  }, SHEET_KEEP_MS);
 }
 // An element showing `look`; `action` (a function) picks the sprite action each frame.
 function lookEl(look, { className = 'look', alt = '', action = () => 'idle', speciesId = null } = {}) {
@@ -160,11 +201,13 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
   if (look.kind === 'sprites') {
     const c = document.createElement('canvas');
     c.className = `${className} sprite${look.pixelated ? ' pixelated' : ''}`;
-    c.width = look.frame.width;
-    c.height = look.frame.height;
+    // the half-size copy for small looks, only for big smooth frames: pixel art stays block for block
+    const k = className !== 'char' && !look.pixelated && look.frame.width >= 400 ? 2 : 1;
+    c.width = Math.round(look.frame.width / k);
+    c.height = Math.round(look.frame.height / k);
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
-    const s = { canvas: c, look, img: sheet(look.url), action, start: performance.now() };
+    const s = { canvas: c, look, k, sheet: useSheet(look.url, k), action, start: performance.now() };
     sprites.add(s);
     drawSprite(s, performance.now());
     return c;
@@ -178,8 +221,9 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
   return img;
 }
 function drawSprite(s, now) {
-  const { look, img, canvas } = s;
-  if (!img.complete || !img.naturalWidth) return;
+  const { look, canvas, k } = s;
+  const img = s.sheet.src;
+  if (!img || (img instanceof HTMLImageElement && (!img.complete || !img.naturalWidth))) return;
   const want = Fx.resolveAction(s.action(), (n) => !!look.actions[n]).name;
   const a = look.actions[want] || look.actions.idle;
   if (s.cur !== want) { s.cur = want; s.start = now; }
@@ -189,8 +233,8 @@ function drawSprite(s, now) {
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
-  ctx.drawImage(img, (a.col + i) * w, a.row * h, w, h, 0, 0, w, h);
-  const frame = `${img.src}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
+  ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
+  const frame = `${look.url}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
   if (canvas.dataset.frame !== frame) canvas.dataset.frame = frame;
 }
 // No WebGL (or a layer that would not load): show her picture instead of an empty canvas.
@@ -215,7 +259,7 @@ function tickRigs(now) {
 }
 function tickSprites(now) {
   for (const s of sprites) {
-    if (!s.canvas.isConnected) { sprites.delete(s); continue; }
+    if (!s.canvas.isConnected) { sprites.delete(s); dropSheet(s.look.url, s.k); continue; }
     drawSprite(s, now);
   }
 }

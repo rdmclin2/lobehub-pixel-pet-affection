@@ -28,7 +28,7 @@ python3 scripts/art/rig_build.py art/rig/dafeiyu-v2.json art/rig/dafeiyu-v2 src/
 
 ## 像素包格式
 
-schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（1328×4068），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧**侧身**步行循环（朝右走：左脚迈出、交叉、右脚迈出、交叉，5fps）。她在屏幕上是左右走的，所以走路画成侧面，朝左走时应用把它镜像；源图在 [`walk/`](walk/)（`model_chan_prompts.py --walk` 生成、抠好放进 332×452 格子的 4×2 宫格，两行是同一个循环画了两遍），`add_walk_frames.py --from` 取其中一行放进图集：每帧脚踩格子底边，头和上身居中，走起来身子平稳、只有腿、头发和裙子在动。5fps 时一步约 0.4 秒，在 100% 大小下约 44 px，和窗口的移动速度（`fx.js` `WALK.speed` 110 px/s）对上，脚不打滑。旧版像素包（`*-classic`，83×113）是另一套画（大肥鱼还是 Q 版），没有侧面图，仍用 `add_walk_frames.py` 从待机帧做的原地踏步。
+schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 664×904（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（2656×8136），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧**侧身**步行循环（朝右走：左脚迈出、交叉、右脚迈出、交叉，5fps）。她在屏幕上是左右走的，所以走路画成侧面，朝左走时应用把它镜像；源图在 [`walk/`](walk/)（`model_chan_prompts.py --walk` 生成、抠好放进 332×452 格子的 4×2 宫格，两行是同一个循环画了两遍），`add_walk_frames.py --from` 取其中一行放进图集：每帧脚踩格子底边，头和上身居中，走起来身子平稳、只有腿、头发和裙子在动。5fps 时一步约 0.4 秒，在 100% 大小下约 44 px，和窗口的移动速度（`fx.js` `WALK.speed` 110 px/s）对上，脚不打滑。旧版像素包（`*-classic`，83×113）是另一套画（大肥鱼还是 Q 版），没有侧面图，仍用 `add_walk_frames.py` 从待机帧做的原地踏步。
 
 ## 重新生成
 
@@ -37,23 +37,23 @@ schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 332×452（全彩、�
 ```bash
 python3 scripts/art/model_chan_prompts.py --halves > jobs.json # 每个角色 4 条提示词：<id>_base_a/_b、<id>_extra_a/_b（4×2 宫格）
 lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"  # 每条一张，默认画布约 1024×1536（--width/--height 会报 ServerError）
-python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 360 --max 324x444 --smooth   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
-python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png 332 452 --rows 2  # 放进 332×452 的格子，去品红边（绿底生成的加 --key green）
+python3 scripts/art/slice_sheet.py raw/<name>.png sliced/<name>.png 4 2 720 --max 648x888 --smooth   # 抠图（品红底或透明底；绿底加 --key green）、像素化、限制调色板（吉皮缇这类白色角色加 --octree）
+python3 scripts/art/fit_cells.py sliced/<name>.png fit/<name>.png 664 904 --rows 2  # 放进 664×904 的格子，去品红边（绿底生成的加 --key green）
 python3 scripts/art/build_model_chan_pack.py --hd fit/<id>_base_a.png fit/<id>_base_b.png fit/<id>_extra_a.png fit/<id>_extra_b.png <id> src/renderer/packs/<id>-pixel
 python3 scripts/art/model_chan_prompts.py --walk > walk_jobs.json  # 每个角色 1 条：<id>_walk，侧身朝右的 4 帧步行循环 × 2 行（杰米绿底）
-python3 scripts/art/slice_sheet.py raw/<id>_walk.png sliced/<id>_walk.png 4 2 360 --max 324x444 --smooth --shared-box   # 一个裁剪框，8 帧大小一致
-python3 scripts/art/fit_cells.py sliced/<id>_walk.png art/model-chan/walk/<id>_walk.png 332 452 --rows 2
-python3 scripts/art/add_walk_frames.py --from art/model-chan/walk/<id>_walk.png [--take 1] src/renderer/packs/<id>-pixel   # 侧面走路放进第 9 行（重建图集后要再跑一次）
+python3 scripts/art/slice_sheet.py raw/<id>_walk.png sliced/<id>_walk.png 4 2 720 --max 648x888 --smooth --shared-box   # 一个裁剪框，8 帧大小一致
+python3 scripts/art/fit_cells.py sliced/<id>_walk.png walk/<id>_walk.png 664 904 --rows 2
+python3 scripts/art/add_walk_frames.py --from walk/<id>_walk.png [--take 1] src/renderer/packs/<id>-pixel   # 侧面走路放进第 9 行（重建图集后要再跑一次）
 python3 scripts/art/add_walk_frames.py src/renderer/packs/<id>-classic   # 旧版像素包：用待机帧做原地踏步
 python3 scripts/art/check_model_chan.py                       # 校验尺寸、格式、每个动作的每一帧都有内容
 python3 scripts/art/model_chan_preview.py art/model-chan/preview/model-chan-preview.png
 ```
 
-2026-10-30 起的高清版（332×452，`--smooth` / `--hd`，同一批生成图）按上面的步骤生成；之前的 166×226 版本用的是 `4 2 180 --max 162x222`、64 色调色板：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
+2026-10-31 起（T-1283）高清包是 664×904：生成图里人物约 700 px 高，之前切到 360 px 高、放进 332×452，等于扔掉一半细节，宠物放大到 2 倍左右时被浏览器拉伸，看起来发糊。全部 80 张图集用同一批生成图按上面的参数重切，再把每一格按旧图集里人物的位置和大小（×2）对齐，之前手工做过的对齐（`align_outfit.py`、比基尼那几格的缩放、走路帧取哪一行和整体缩放）都原样保留，画面内容没变。18+ 的 `sexy_bikini` 是从设计稿里挑帧拼的，就逐格去最早那批设计稿里找对应的那一格，走路行在 2× 上用 `add_walk_frames.py` 重新做原地踏步、再按旧图的位置摆好。[`walk/`](walk/) 里存的还是 332×452 的步行 fit 图（记录当时取的帧）；往 664×904 的包里加走路帧，要先按上面的参数把步行生成图 fit 成 664×904。2026-10-30 的高清版（332×452，`--smooth` / `--hd`，同一批生成图）用的是 `4 2 360 --max 324x444` 和 `332 452`；之前的 166×226 版本用的是 `4 2 180 --max 162x222`、64 色调色板：模型有时按要求给品红底，有时直接给透明底，`slice_sheet.py` 两种都能处理。杰米的紫粉发梢和品红太接近，抠图会吃掉发丝，所以她的 4 张提示词把背景改成纯绿 “perfectly flat solid pure green (#00FF00)”，`slice_sheet.py` 和 `fit_cells.py` 都加 `--key green`（要求透明底时模型会画出假的灰白棋盘格，不能用）。
 
 ## 其他服饰（以运动泳装 `swimsuit` 为例）
 
-一套服饰对应角色包里的一张图集（`sheets/<outfit>.webp`），排布和 daily 完全一样（4×9，每帧 332×452，第 9 行是 4 帧朝右的侧身 walk）。服饰本身（解锁阶段、分级、中文名）定义在 `src/core/outfits.js`；角色要在 `src/characters/<id>.json` 的 `outfits` 里列出它，衣柜才会显示。提示词由 `model_chan_prompts.py` 的 `OUTFIT_LOOKS[<outfit>][<id>]` 给出：角色身份取 `CHARS[<id>]` 中 “ She wears ” 之前的部分，后面接这套衣服的描述；`OUTFIT_SAFE` 是附加的内容约束，`OUTFIT_WALK` 把走路提示词里的 “skirt” 换成这套衣服里会摆动的东西。不要画帽子：图会按身高缩放，加了帽子她会比 daily 小一圈。不加 `--outfit` 时，daily 的提示词和流程保持不变。
+一套服饰对应角色包里的一张图集（`sheets/<outfit>.webp`），排布和 daily 完全一样（4×9，每帧 664×904，第 9 行是 4 帧朝右的侧身 walk）。服饰本身（解锁阶段、分级、中文名）定义在 `src/core/outfits.js`；角色要在 `src/characters/<id>.json` 的 `outfits` 里列出它，衣柜才会显示。提示词由 `model_chan_prompts.py` 的 `OUTFIT_LOOKS[<outfit>][<id>]` 给出：角色身份取 `CHARS[<id>]` 中 “ She wears ” 之前的部分，后面接这套衣服的描述；`OUTFIT_SAFE` 是附加的内容约束，`OUTFIT_WALK` 把走路提示词里的 “skirt” 换成这套衣服里会摆动的东西。不要画帽子：图会按身高缩放，加了帽子她会比 daily 小一圈。不加 `--outfit` 时，daily 的提示词和流程保持不变。
 
 五位角色（`dafeiyu`、`claude`、`grok`、`gemini`、`gpt`）的泳装都已在 `OUTFIT_LOOKS["swimsuit"]` 里有描述，默认包里都有 `sheets/swimsuit.webp`。下面以克洛蒂为例；重画别的角色时把 `claude` 换成她的 id（杰米照旧用绿底，加 `--key green`；吉皮缇加 `--octree`），新服饰则先在 `OUTFIT_LOOKS` 里加一个键：
 
@@ -64,13 +64,13 @@ python3 scripts/art/model_chan_prompts.py --walk --outfit swimsuit --char claude
 lh generate image -m gpt-image-2.5-sunburst -p lobehub --json "<提示词>"    # 异步：记下 generations[0].id / asyncTaskId
 lh generate download <generationId> <asyncTaskId> -o $W/raw/<name>.png --timeout 900   # 偶尔会一直 pending，重新提交一次即可
 for n in base_a base_b extra_a extra_b; do
-  python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_$n.png $W/sliced/claude_swimsuit_$n.png 4 2 360 --max 324x444 --smooth
-  python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_$n.png $W/fit/claude_swimsuit_$n.png 332 452 --rows 2
+  python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_$n.png $W/sliced/claude_swimsuit_$n.png 4 2 720 --max 648x888 --smooth
+  python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_$n.png $W/fit/claude_swimsuit_$n.png 664 904 --rows 2
 done
 python3 scripts/art/build_model_chan_pack.py --hd --outfit swimsuit $W/fit/claude_swimsuit_base_a.png $W/fit/claude_swimsuit_base_b.png $W/fit/claude_swimsuit_extra_a.png $W/fit/claude_swimsuit_extra_b.png claude src/renderer/packs/claude-pixel   # 写 sheets/swimsuit.webp，并把它加进 pack.json 的 outfits
-python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_walk.png $W/sliced/claude_swimsuit_walk.png 4 2 360 --max 324x444 --smooth --shared-box
-python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_walk.png art/model-chan/walk/claude_swimsuit_walk.png 332 452 --rows 2
-python3 scripts/art/add_walk_frames.py --from art/model-chan/walk/claude_swimsuit_walk.png --outfit swimsuit src/renderer/packs/claude-pixel   # 只写泳装图集的第 9 行
+python3 scripts/art/slice_sheet.py $W/raw/claude_swimsuit_walk.png $W/sliced/claude_swimsuit_walk.png 4 2 720 --max 648x888 --smooth --shared-box
+python3 scripts/art/fit_cells.py $W/sliced/claude_swimsuit_walk.png $W/fit/claude_swimsuit_walk.png 664 904 --rows 2
+python3 scripts/art/add_walk_frames.py --from $W/fit/claude_swimsuit_walk.png --outfit swimsuit src/renderer/packs/claude-pixel   # 只写泳装图集的第 9 行
 # 在 src/characters/claude.json 的 outfits 里加上 "swimsuit"
 python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸、逐帧内容、品红残留、格子边缘，以及与 daily 逐帧对齐（脚底 ≤6px、身高差 ≤12%、中心 ≤48px）；每个角色声明的服饰在默认包里都有图
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/

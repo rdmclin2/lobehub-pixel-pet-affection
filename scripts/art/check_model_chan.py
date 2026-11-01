@@ -1,5 +1,5 @@
 # Check the model-chan sprite packs (src/renderer/packs/*-pixel and the 18+ *-adult, schema 2) and print one line per action.
-# Passes when every outfit sheet of every pack is an RGBA PNG or WebP of 4 x 9 cells of 332 x 452 (the HD packs), every state of the shared effects
+# Passes when every outfit sheet of every pack is an RGBA PNG or WebP of 4 x 9 cells of 664 x 904 (the HD packs), every state of the shared effects
 # layer (17, `walk` from add_walk_frames.py in the 9th row) has an action, and every frame of every action has a visible figure.
 # Also, per character (src/characters/<id>.json): every outfit it offers has a sheet in its default pack (art.packs[0]);
 # per outfit sheet: no magenta key left on the figure and nothing touching a cell's edge (a clean transparent background);
@@ -12,10 +12,12 @@ from PIL import Image
 
 root = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 STATES = ['idle', 'look', 'happy', 'pat', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'hatch', 'evolve', 'lifted', 'walk']
-FW, FH = 332, 452
-MIN_PX = 6400      # opaque pixels a frame needs to count as drawn
+FW, FH = 664, 904
+MIN_PX = 25600     # opaque pixels a frame needs to count as drawn
 MAGENTA_MAX = 50   # pure magenta pixels (the key colour) allowed on a whole sheet
-FLOOR_DY, HEIGHT_RATIO, CENTRE_DX = 6, 0.12, 48  # largest per-frame differences from daily
+# largest per-frame differences from daily; at 664 px a thin strand of hair on top stays solid where it faded out
+# at 332, so heights read up to about 1 % taller than they did when 12 % was set
+FLOOR_DY, HEIGHT_RATIO, CENTRE_DX = 12, 0.125, 96
 # Frames that stand in for a pose the sheet was not drawn with may keep their own height (the floor and centre
 # are still checked): the 18+ sexy_bikini sheets come from 8-state design drafts, so their crouching hatch#0
 # is a standing frame (T-1261).
