@@ -66,6 +66,9 @@ input { font: inherit; padding: 5px 8px; border: 3px solid #2b2233; background: 
 .bubble-tail { flex: none; position: relative; z-index: 1; width: 9px; height: 9px; margin: -9px auto 8px; background: #fff; border-right: 3px solid #2b2233; border-bottom: 3px solid #2b2233; transform: rotate(45deg); }
 .bubble.hidden + .bubble-tail { display: none; }
 .bubble.thinking { color: #8a7fb0; }
+/* 流式回复: a blinking caret after the words while she is still writing */
+.bubble.streaming::after { content: '▍'; display: inline-block; margin-left: 1px; color: #8a7fb0; animation: caret-blink 0.9s steps(1) infinite; }
+@keyframes caret-blink { 50% { opacity: 0; } }
 .stage { zoom: var(--pet-scale, 1); width: 150px; height: 190px; position: relative; flex: none; display: flex; align-items: flex-end; justify-content: center; }
 /* ---- shared effects layer (fx.js): facing, squash, lifted, flying, particles ---- */
 .pet-body { position: relative; display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; }

@@ -6,6 +6,8 @@
 (function () {
   let openId = null; // the conversation shown in detail, null for the list
   let seq = 0; // a newer render wins over a slower one still waiting for main
+  let lastCtx = null;
+  let redrawnFor = null; // the round live() last redrew the conversation for
 
   const fmt = (t) => new Date(t).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   const el = (tag, cls, text) => {
@@ -21,6 +23,7 @@
   }
 
   async function render(ctx) {
+    lastCtx = ctx;
     const my = ++seq;
     const body = ctx.$('panel-body');
     if (openId) {
@@ -71,6 +74,7 @@
     for (const m of s.messages) {
       const row = el('div', `history-msg ${m.role}`);
       row.dataset.role = m.role;
+      if (m.turnId) row.dataset.turn = m.turnId;
       const head = el('div', 'history-msg-head', `${m.role === 'user' ? '我' : s.name} · ${fmt(m.at)}`);
       const text = m.status ? (m.status === 'canceled' ? '（这句被打断了，她没有回复）' : '（出错了，她没有回复）') : m.text || '';
       const t = el('div', `history-msg-text${m.status ? ' missing' : ''}`, text);
@@ -83,5 +87,29 @@
     body.scrollTop = 0;
   }
 
-  window.PetHistory = { render, reset };
+  // 流式回复: her reply to a message shown in the open conversation fills in as it is written (a row marked
+  // .streaming under the owner's message of that round); when it ends the conversation is drawn again from
+  // 聊天记录, so what stays is exactly what was saved.
+  function live({ $, turnId, text, done }) {
+    if (!openId || !turnId) return;
+    const thread = $('panel-body').querySelector('.history-thread');
+    const mine = thread && thread.querySelector(`.history-msg.user[data-turn="${CSS.escape(turnId)}"]`);
+    if (done) { if (lastCtx && (mine || redrawnFor === turnId)) render(lastCtx); return; }
+    if (!mine) {
+      // a round started after this conversation was drawn: draw it again once (main has her message by now)
+      if (redrawnFor !== turnId && lastCtx) { redrawnFor = turnId; render(lastCtx); }
+      return;
+    }
+    let row = thread.querySelector(`.history-msg.pet.streaming[data-turn="${CSS.escape(turnId)}"]`);
+    if (!row) {
+      row = el('div', 'history-msg pet streaming');
+      row.dataset.role = 'pet';
+      row.dataset.turn = turnId;
+      row.append(el('div', 'history-msg-head', '正在输入…'), el('div', 'history-msg-text'));
+      mine.after(row);
+    }
+    row.querySelector('.history-msg-text').textContent = text;
+  }
+
+  window.PetHistory = { render, reset, live };
 })();

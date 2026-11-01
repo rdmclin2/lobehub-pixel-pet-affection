@@ -31,6 +31,14 @@ function extractMeme(text, species) {
   return { text: clean, meme };
 }
 
+// What of a reply still being written may be shown (流式回复, pet-service onDelta): every finished meme tag is
+// taken out, and so is a tail that may still become one (`[梗`, `[梗图:ca`, `[mem`) — a tag cut between two
+// pieces never flashes in the bubble. The picture itself comes with the final reply (extractMeme).
+const OPEN_TAG_RE = /\[(?:梗(?:图(?:[:：]\s*[a-z0-9_-]{0,40}\s*)?)?|m(?:e(?:m(?:e(?:[:：]\s*[a-z0-9_-]{0,40}\s*)?)?)?)?)?$/i;
+function streamingText(soFar) {
+  return String(soFar || '').replace(TAG_RE, '').replace(OPEN_TAG_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // A random picture for an offline line, or null (most of the time, or when the character has none).
 function randomMeme(species, rnd = Math.random) {
   const list = memesOf(species);
@@ -40,4 +48,4 @@ function randomMeme(species, rnd = Math.random) {
 
 const memeUrl = (speciesId, id) => `assets/memes/${speciesId}/${id}.webp`;
 
-module.exports = { TAG_RE, RANDOM_CHANCE, memeHint, extractMeme, randomMeme, memeUrl, memesOf };
+module.exports = { TAG_RE, RANDOM_CHANCE, memeHint, extractMeme, streamingText, randomMeme, memeUrl, memesOf };

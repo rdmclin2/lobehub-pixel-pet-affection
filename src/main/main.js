@@ -495,6 +495,9 @@ function wire() {
   service.on('update', (v) => send('update', v));
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
+  // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
+  service.on('chat-delta', (d) => send('chat-delta', d));
+  service.on('chat-done', (d) => send('chat-done', d));
   service.on('affection', (a) => send('affection', a));
   service.on('settings', (st) => { sendAll('settings', st); syncVisitors(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)

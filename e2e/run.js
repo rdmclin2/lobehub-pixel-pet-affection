@@ -2,6 +2,7 @@
 // End-to-end suite: drives the real Electron app with Playwright.
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
+//   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -4398,6 +4399,8 @@ async function history() {
   const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
   const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
   const openHistory = async () => {
+    // the stage-up toast from H2 stays up to 30 s over the top of the window (and the ⋯ menu): close it like the owner would
+    if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
     await clickAct(page, 'menu');
     await page.click('[data-menu="history"]');
     await page.waitForSelector('#panel:not(.hidden)');
@@ -5988,6 +5991,216 @@ async function asrScenario() {
   }
 }
 
+// ----------------------------------------------------------------- stream
+// 流式回复 (docs/streaming-ui.md), no tokens: the fake lh prints one stream_chunk event per line, gapMs apart
+// ($FAKE_LH_DIR/stream-reply.json), the way a line-by-line lh would. A sampler in the page records the
+// bubble every 40 ms, so the steps can show the reply was on screen in part, grew, and ended as the full text.
+async function streamScenario() {
+  const S = 'stream';
+  const SHOTS = path.join(OUT, 'stream');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-stream-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-streamfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.mkdirSync(data, { recursive: true });
+  // 朗读 on (system voice): the reading must start once, with the final text
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  const { app, page } = await launch(env);
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s.length > 280 ? `${s.slice(0, 277)}…` : s; };
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+  const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+  const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
+  const reply = (r) => fs.writeFileSync(path.join(fakeDir, 'stream-reply.json'), JSON.stringify(r));
+  const startSampler = () => page.evaluate(() => {
+    clearInterval(window.__sampler);
+    window.__samples = [];
+    const t0 = performance.now();
+    window.__sampler = setInterval(() => {
+      const b = document.getElementById('bubble');
+      window.__samples.push({ t: Math.round(performance.now() - t0), text: b.classList.contains('hidden') ? '' : b.textContent, streaming: b.classList.contains('streaming'), thinking: b.classList.contains('thinking'), busy: document.body.classList.contains('busy'), caret: getComputedStyle(b, '::after').content });
+    }, 40);
+  });
+  const stopSampler = () => page.evaluate(() => { clearInterval(window.__sampler); return window.__samples; });
+  const sendText = async (text) => {
+    await hover(page);
+    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    await page.fill('#chat-input', text);
+    await page.click('#chat-send');
+  };
+  try {
+    await page.waitForSelector('.char-card');
+    await page.locator('.char-card[data-species="claude"]').click();
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+    await page.waitForTimeout(300);
+
+    const PIECES = ['好呀，', '我给你讲讲', '今天的天气：', '早上有点凉，', '中午出太阳，', '晚上记得', '加件外套哦～'];
+    const FULL = PIECES.join('');
+    await step(S, 'S1 the reply shows in part before it is done, grows piece by piece, and ends as the whole reply', async () => {
+      reply({ pieces: PIECES, gapMs: 550 });
+      const greetIds = new Set((await page.evaluate(() => window.petFx.streamLog())).map((e) => e.id)); // her greeting at hatch
+      const before = logged().length;
+      await startSampler();
+      await sendText('今天天气怎么样');
+      // part of the reply is on screen while she is still busy writing
+      await page.waitForFunction(() => document.getElementById('bubble').classList.contains('streaming') && document.body.classList.contains('busy') && document.getElementById('bubble').textContent.length > 0, null, { timeout: 10000 });
+      await shot('s1-first-piece');
+      await page.waitForFunction((n) => document.getElementById('bubble').classList.contains('streaming') && [...document.getElementById('bubble').textContent].length >= n, [...PIECES.slice(0, 4).join('')].length, { timeout: 10000 });
+      await shot('s1-midway');
+      await idle();
+      await page.waitForTimeout(200);
+      await shot('s1-final');
+      const samples = await stopSampler();
+      const partial = samples.filter((s) => s.streaming);
+      assert.ok(partial.length > 0, 'no sample while streaming');
+      const distinct = [...new Set(partial.map((s) => s.text))];
+      assert.ok(distinct.length >= 5, `only ${distinct.length} distinct partial texts`);
+      for (const t of distinct) assert.ok(FULL.startsWith(t) && t.length < FULL.length || t === FULL, `partial 「${t}」 is not a prefix of the reply`);
+      for (let i = 1; i < partial.length; i++) assert.ok(partial[i].text.length >= partial[i - 1].text.length, 'the text shrank while streaming');
+      assert.ok(partial.every((s) => s.busy), 'controls came back before the reply was done');
+      assert.ok(partial.some((s) => s.caret.includes('▍')), 'no typing caret');
+      const firstPartialAt = partial.find((s) => s.text.length).t;
+      const doneAt = samples.find((s, i) => i > 0 && !s.busy && samples[i - 1].busy).t;
+      assert.ok(doneAt - firstPartialAt >= 2000, `first piece ${firstPartialAt} ms, done ${doneAt} ms`);
+      const end = samples[samples.length - 1];
+      assert.equal(end.text, FULL);
+      assert.equal(end.streaming, false);
+      assert.equal(await bubbleText(page), FULL);
+      // 聊天记录: her reply once, the final text
+      const added = logged().slice(before);
+      assert.deepEqual(added.map((m) => [m.role, m.text]), [['user', '今天天气怎么样'], ['pet', FULL]]);
+      // stream log: one id, growing pieces, one end
+      const sl = (await page.evaluate(() => window.petFx.streamLog())).filter((e) => !greetIds.has(e.id));
+      const ids = new Set(sl.map((e) => e.id));
+      assert.equal(ids.size, 1, 'one stream for this reply');
+      assert.deepEqual(sl.filter((e) => e.ev === 'end').map((e) => e.ok), [true]);
+      assert.deepEqual(sl.filter((e) => e.ev === 'delta').map((e) => e.text), PIECES.map((_, i) => PIECES.slice(0, i + 1).join('')));
+      // reading aloud: offered once, after the reply, with the whole text
+      const offers = (await page.evaluate(() => window.petFx.offerLog())).filter((o) => o.kind === 'chat');
+      assert.equal(offers.length, 1);
+      assert.equal(offers[0].text.replace(/\s+/g, ''), FULL.replace(/\s+/g, ''));
+      const timeline = distinct.map((t) => `${partial.find((s) => s.text === t).t}ms「${t}」`).join(' → ');
+      return note(`bubble timeline: ${timeline} → done ${doneAt}ms「${end.text}」; chat-log +${added.length} (user, pet=final); TTS offered once: 「${offers[0].text}」`);
+    }, page);
+
+    await step(S, 'S2 a meme tag cut between pieces never shows; the picture comes with the final line', async () => {
+      reply({ pieces: ['让我想想', '……嗯，', '先读题再画图。', '\n[梗', '图:th', 'ink]'], gapMs: 400 });
+      await startSampler();
+      await sendText('这道题怎么做');
+      await idle();
+      await page.waitForTimeout(150);
+      await shot('s2-meme-final');
+      const samples = await stopSampler();
+      const seen = [...new Set(samples.filter((s) => s.streaming).map((s) => s.text))];
+      assert.ok(seen.length >= 2, `partial texts: ${JSON.stringify(seen)}`);
+      assert.ok(samples.every((s) => !s.text.includes('[') && !s.text.includes('梗图')), 'a tag piece reached the bubble');
+      assert.equal(await bubbleText(page), '让我想想……嗯，先读题再画图。');
+      assert.equal(await page.evaluate(() => document.getElementById('bubble').dataset.meme), 'think');
+      assert.equal(await page.isVisible('#meme-sticker'), true);
+      const pet = logged().filter((m) => m.role === 'pet').pop();
+      assert.equal(pet.text, '让我想想……嗯，先读题再画图。');
+      return note(`shown while writing: ${seen.map((t) => `「${t}」`).join(' → ')}; final 「${await bubbleText(page)}」 + sticker think`);
+    }, page);
+
+    await step(S, 'S3 a reply that crosses the content line is withheld from the first hit; the final line is her refusal', async () => {
+      reply({ pieces: ['我们周末', '可以去', '做爱做的', '事'], gapMs: 400 });
+      await startSampler();
+      await sendText('周末做什么');
+      await idle();
+      await page.waitForTimeout(150);
+      await shot('s3-guard-final');
+      const samples = await stopSampler();
+      assert.ok(samples.every((s) => !/做爱/.test(s.text)), 'the blocked word reached the bubble');
+      const seen = [...new Set(samples.filter((s) => s.streaming).map((s) => s.text))];
+      assert.ok(seen.includes('……'), `withheld placeholder not shown: ${JSON.stringify(seen)}`);
+      const final = await bubbleText(page);
+      assert.match(final, /这个我不聊啦/);
+      const pet = logged().filter((m) => m.role === 'pet').pop();
+      assert.equal(pet.text, final);
+      return note(`shown while writing: ${seen.map((t) => `「${t}」`).join(' → ')}; final 「${final}」 (chat-log has the refusal)`);
+    }, page);
+
+    await step(S, 'S4 Esc while she is writing stops it: no more pieces, the caret goes, she says she stopped; 聊天记录 notes it once', async () => {
+      reply({ pieces: ['从前', '有一座山，', '山里有座庙，', '庙里有个', '老和尚'], gapMs: 600, hang: true });
+      const before = logged().length;
+      await startSampler();
+      await sendText('讲个故事');
+      await page.waitForFunction(() => document.getElementById('bubble').textContent.includes('有一座山'), null, { timeout: 10000 });
+      await shot('s4-before-esc');
+      await page.keyboard.press('Escape');
+      await idle();
+      await page.waitForTimeout(1500); // a piece that was still coming would land in this time
+      await shot('s4-after-esc');
+      const samples = await stopSampler();
+      const final = await bubbleText(page);
+      assert.equal(final, '（好吧，不想了。）');
+      assert.ok(samples.every((s) => !s.text.includes('老和尚')), 'pieces kept coming after Esc');
+      assert.equal(await page.evaluate(() => document.getElementById('bubble').classList.contains('streaming')), false);
+      const added = logged().slice(before);
+      assert.deepEqual(added.map((m) => [m.role, m.status || null]), [['user', null], ['pet', 'canceled']]);
+      const sl = await page.evaluate(() => window.petFx.streamLog());
+      const last = sl[sl.length - 1];
+      assert.deepEqual([last.ev, last.ok, last.reason], ['end', false, 'canceled']);
+      return note(`before Esc 「${samples.filter((s) => s.streaming).pop().text}」; after: 「${final}」; chat-log pet status canceled`);
+    }, page);
+
+    await step(S, 'S5 a proactive line streams the same way, under its own id', async () => {
+      reply({ pieces: ['主人～', '我有点饿了，', '能给我点吃的吗？'], gapMs: 400 });
+      const idsBefore = new Set((await page.evaluate(() => window.petFx.streamLog())).map((e) => e.id));
+      await startSampler();
+      await page.evaluate(() => window.pet.debugSet({ hunger: 90, lastSpokeAt: 0 }));
+      await page.evaluate(() => { window.pet.debugHeartbeat(); }); // not awaited: it resolves when her line is done
+      await page.waitForFunction(() => document.getElementById('bubble').classList.contains('streaming'), null, { timeout: 10000 })
+        .catch(async (e) => { throw new Error(`${e.message} bubble=${await bubbleText(page)} log=${JSON.stringify((await page.evaluate(() => window.petFx.streamLog())).slice(-3))}`); });
+      await shot('s5-proactive-streaming');
+      await idle();
+      await page.waitForTimeout(150);
+      const samples = await stopSampler();
+      const seen = [...new Set(samples.filter((s) => s.streaming).map((s) => s.text))];
+      assert.ok(seen.length >= 2, JSON.stringify(seen));
+      assert.equal(await bubbleText(page), '主人～我有点饿了，能给我点吃的吗？');
+      const sl = (await page.evaluate(() => window.petFx.streamLog())).filter((e) => !idsBefore.has(e.id));
+      assert.equal(new Set(sl.map((e) => e.id)).size, 1);
+      return note(`proactive (hungry): ${seen.map((t) => `「${t}」`).join(' → ')}; new stream id ${sl[0].id}`);
+    }, page);
+
+    await step(S, 'S6 an open 聊天记录 conversation fills in her reply as it is written, then shows what was saved', async () => {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="history"]');
+      await page.waitForSelector('.history-item');
+      await page.locator('.history-item').first().click();
+      await page.waitForSelector('.history-thread');
+      reply({ pieces: ['记录里', '也能', '看到我', '一点点写出来。'], gapMs: 500 });
+      // the chat box is behind the panel; the same chat IPC the box uses
+      const done = page.evaluate(() => window.pet.chat('历史面板测试', [], []));
+      // the conversation was drawn before this round: it is drawn again with the new message, then her reply fills in
+      await page.waitForFunction(() => { const r = document.querySelector('.history-msg.pet.streaming .history-msg-text'); return r && r.textContent.length > 0; }, null, { timeout: 10000 });
+      const live1 = await page.evaluate(() => document.querySelector('.history-msg.pet.streaming .history-msg-text').textContent);
+      assert.ok('记录里也能看到我一点点写出来。'.startsWith(live1) && live1.length < 15, `live row 「${live1}」`);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('busy')), true);
+      await shot('s6-history-live');
+      await done;
+      await page.waitForFunction(() => !document.querySelector('.history-msg.pet.streaming') && [...document.querySelectorAll('.history-msg.pet .history-msg-text')].some((e) => e.textContent === '记录里也能看到我一点点写出来。'), null, { timeout: 10000 });
+      await shot('s6-history-final');
+      await page.click('#panel-close');
+      return note(`history row while writing: 「${live1}」; after: the saved reply`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'stream-log.txt'), evidence.join('\n\n') + '\n');
+    // run evidence: what was saved, what the window showed piece by piece, and what was read aloud
+    try { fs.copyFileSync(path.join(data, 'chat-log.json'), path.join(SHOTS, 'chat-log.json')); } catch { /* not written */ }
+    try {
+      const w = await page.evaluate(() => ({ streamLog: window.petFx.streamLog(), offerLog: window.petFx.offerLog(), speechLog: window.petFx.speechLog() }));
+      fs.writeFileSync(path.join(SHOTS, 'renderer-logs.json'), JSON.stringify(w, null, 2) + '\n');
+    } catch { /* window gone */ }
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -6017,6 +6230,7 @@ async function asrScenario() {
   if (which === 'live2d' || which === 'all') await live2dScenario();
   if (which === 'l2dimport' || which === 'all') await live2dImport();
   if (which === 'asr' || which === 'all') await asrScenario();
+  if (which === 'stream' || which === 'all') await streamScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

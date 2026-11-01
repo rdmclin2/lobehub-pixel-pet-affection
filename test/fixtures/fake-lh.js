@@ -135,6 +135,11 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   const device = args.includes('--device') ? args[args.indexOf('--device') + 1] : null;
   fs.appendFileSync(path.join(dir, 'runs.log'), JSON.stringify({ prompt, tools, device, agent, topic }) + '\n');
   if (process.env.FAKE_LH_STREAM) return streamRun(process.env.FAKE_LH_STREAM, topic);
+  // e2e 流式回复: $FAKE_LH_DIR/stream-reply.json { pieces: [..], gapMs, final?, hang? } — one stream_chunk event
+  // per piece, one line each, `gapMs` apart (the way a line-by-line lh would print them); final defaults to
+  // the pieces joined; hang: stop after the pieces and never end (Esc / timeout ends it). Read per run.
+  const replyFile = path.join(dir, 'stream-reply.json');
+  if (fs.existsSync(replyFile)) return slowStreamRun(JSON.parse(fs.readFileSync(replyFile, 'utf8')), topic);
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
     { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
@@ -201,4 +206,24 @@ function streamRun(mode, topic) {
     i += slice;
   };
   next();
+}
+
+function slowStreamRun({ pieces = [], gapMs = 300, final = null, hang = false }, topic) {
+  const lines = [
+    { type: 'agent_runtime_init', data: {} },
+    { type: 'stream_start', data: { assistantMessage: { topicId: topic } } },
+    ...pieces.map((content) => ({ type: 'stream_chunk', data: { chunkType: 'text', content } })),
+  ];
+  const tail = hang ? [] : [
+    { type: 'stream_end', data: { finalContent: final == null ? pieces.join('') : final, usage: { cost: 0.001 } } },
+    { type: 'agent_runtime_end', data: {} },
+  ];
+  let i = 0;
+  const next = () => {
+    if (i < 2) { process.stdout.write(JSON.stringify(lines[i++]) + '\n'); return next(); }
+    if (i < lines.length) { process.stdout.write(JSON.stringify(lines[i++]) + '\n', () => setTimeout(next, gapMs)); return; }
+    if (hang) { setTimeout(() => {}, 120000); return; }
+    for (const e of tail) process.stdout.write(JSON.stringify(e) + '\n');
+  };
+  setTimeout(next, gapMs);
 }
