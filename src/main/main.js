@@ -36,7 +36,9 @@ let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
-let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… picks
+let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
+let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
+const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -264,6 +266,25 @@ function wire() {
       return { ok: false, errors: [e.message] };
     }
   });
+  // her own VRM model (外观 → 导入 VRM 模型…): a .vrm, a .zip, or (macOS) a folder holding .vrm files; copied
+  // into userData/packs only, with its license read from the model (core/vrm.js, core/vrm-import.js)
+  ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
+    const v = service.view();
+    const sp = whose(species) || (v && v.pet.speciesId);
+    if (!sp) return { ok: false, errors: ['先请一位角色来'] };
+    const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
+    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(win, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
+    nextOpenPath = null;
+    if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
+    try {
+      const out = await packStore.importVrm(r.filePaths[0], sp);
+      if (out.ok) service.setPacks(packStore.packs);
+      return out;
+    } catch (e) {
+      logError(e);
+      return { ok: false, errors: [e.message] };
+    }
+  });
   // after the renderer drew the imported model (or found it would not load): its picture, then the list
   ipcMain.handle('save-pack-preview', (_e, { id, dataUrl }) => {
     const r = packStore.savePreview(String(id || ''), dataUrl);
@@ -281,6 +302,30 @@ function wire() {
     return r;
   });
   ipcMain.on('open-packs-folder', () => shell.openPath(packStore.userDir));
+  // 外观 → 导出…: a user pack as a .zip. A VRM pack whose license forbids redistribution is refused here too,
+  // whatever the window asks (core/packs.js packShareable).
+  ipcMain.handle('export-pack', async (_e, { id } = {}) => {
+    const pid = String(id || '');
+    const ok = packStore.shareable(pid);
+    if (!ok.ok) return ok;
+    const r = nextSavePath ? { filePath: nextSavePath } : await dialog.showSaveDialog(win, { title: '导出角色包', defaultPath: `${pid}.zip`, filters: [{ name: '角色包（.zip）', extensions: ['zip'] }] });
+    nextSavePath = null;
+    if (r.canceled || !r.filePath) return { ok: false, reason: 'canceled' };
+    try {
+      return await packStore.exportPack(pid, r.filePath);
+    } catch (e) {
+      logError(e);
+      return { ok: false, reason: 'failed', text: e.message };
+    }
+  });
+  // a link from a model's license (授权条款, 参考, 联系方式): web links only, in the system browser
+  ipcMain.handle('open-link', (_e, { url } = {}) => {
+    const u = String(url || '');
+    if (!/^https?:\/\/[^\s"'<>]+$/i.test(u)) return { ok: false };
+    if (TEST_MODE) { openedLinks.push(u); return { ok: true, test: true }; }
+    shell.openExternal(u);
+    return { ok: true };
+  });
   // While the user drags the resize handle: resize the window only. On release: save.
   ipcMain.handle('preview-pet-scale', (_e, { scale }) => resizePet(clampScale(scale)));
   ipcMain.handle('set-pet-scale', (_e, { scale }) => service.setPetScale(resizePet(clampScale(scale))));
@@ -311,6 +356,7 @@ function wire() {
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
   ipcMain.on('cancel', () => service.cancel());
+  ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {
     const r = await service.release(opts);
     place('onboarding');
@@ -326,6 +372,15 @@ function wire() {
   });
   // Throwing the pet (src/core/fx.js stepThrow): the renderer runs the physics against the work area of
   // the screen the window is on and moves the window frame by frame.
+  ipcMain.handle('cursor-point', () => screen.getCursorScreenPoint());
+  // every pet window hears when it is hidden / minimised and shown again (a VRM figure stops drawing meanwhile)
+  app.on('browser-window-created', (_e, w) => {
+    const tell = (shown) => () => { if (!w.isDestroyed()) w.webContents.send('window-shown', shown); };
+    w.on('hide', tell(false));
+    w.on('minimize', tell(false));
+    w.on('show', tell(true));
+    w.on('restore', tell(true));
+  });
   ipcMain.handle('work-area', (e) => {
     const w = windowOf(e);
     if (!w) return null;
@@ -485,6 +540,8 @@ function wire() {
     });
     // the next 导入 Live2D 模型… picks this path instead of opening the file dialog
     ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
+    ipcMain.handle('debug-next-save', (_e, p) => { nextSavePath = String(p || '') || null; return true; });
+    ipcMain.handle('debug-opened-links', () => openedLinks.slice());
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();

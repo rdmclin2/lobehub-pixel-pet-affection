@@ -60,9 +60,11 @@ const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
 // A character's own look (its file's `signature`) replaces the generic name of the default outfit.
 const signature = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].signature) || null;
 // Outfits a character has art for; an unknown character has only the default outfit.
-const hasArt = (speciesId, id, look = null) => id === DEFAULT_OUTFIT || (adultLookOn(look) ? look.outfits.includes(id) : !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id)));
-// `look`: { adult, outfits } of the pack she wears, given only when that pack is an 18+ one and allowed
-// (src/main/pet-service.js _look); null otherwise.
+const ownList = (look) => !!(look && Array.isArray(look.outfits) && (look.adult || look.only));
+const hasArt = (speciesId, id, look = null) => id === DEFAULT_OUTFIT || (ownList(look) ? look.outfits.includes(id) : !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id)));
+// `look`: { adult, outfits, only? } of the pack she wears (src/main/pet-service.js _look, core/packs.js
+// lookContext): an allowed 18+ pack, or a VRM pack (`only`: its own wardrobe, one entry per model); null
+// otherwise.
 const adultLookOn = (look) => !!(look && look.adult && Array.isArray(look.outfits));
 const adultOutfitsAllowed = (pet, settings, look) => adultAllowed(settings, pet.speciesId) || (adultLookOn(look) && !!(settings && settings.ageConfirmed && settings.adultContent));
 

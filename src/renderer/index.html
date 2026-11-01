@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack:; connect-src 'self' pack:; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack: blob:; connect-src 'self' pack: blob:; media-src 'self' blob:" />
   <title>Pixel Pet</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -139,6 +139,7 @@
         <button class="btn hidden" id="menu-update" data-menu="update">新版本</button>
         <button class="btn" data-menu="characters" id="menu-characters">角色列表</button>
         <button class="btn" data-menu="history" id="menu-history">聊天记录</button>
+        <button class="btn" data-menu="new-topic" id="menu-new-topic">重新开始话题</button>
         <button class="btn" id="menu-adult" data-menu="adult">成人向内容：…</button>
         <button class="btn" id="menu-local" data-menu="local">本机能力：…</button>
         <button class="btn" data-menu="actions" id="menu-actions">动作…</button>
@@ -174,9 +175,12 @@
   <script src="../core/voice.js"></script>
   <script src="../core/interaction-voice.js"></script>
   <script src="../core/touch-zones.js"></script>
+  <script src="../core/vrm-ui.js"></script>
   <script src="fx.js"></script>
   <script src="rig.js"></script>
   <script src="live2d.js"></script>
+  <script src="../core/vrm-motion.js"></script>
+  <script src="vrm.js"></script>
   <script src="history.js"></script>
   <script src="app.js"></script>
 </body>

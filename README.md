@@ -18,7 +18,7 @@
 
 | 角色 | 厂商 | 主题色 | 美术 | 服饰 |
 |---|---|---|---|---|
-| 大肥鱼（DeepSeek 娘 · 鲸鱼女仆） | DeepSeek | `#2C4A8A` | 像素包 `dafeiyu-pixel`（默认，和其他角色同一画风和比例）；可在“外观”里换成 **Live2D** `dafeiyu-live2d`（中肥鱼 Live2D 模型，作者 Mao绒绒家园 / 香甜小兔子：头发、裙子、手臂、耳鳍和尾巴都有物理，眨眼、口型和表情随状态变化；目前只有日常服），**全动态** `dafeiyu-live`（一张高清原画拆成头、身体、手臂、腿、头发、尾巴等图层实时弯折：手臂会摆会挥手，腿会迈步，头发、裙摆、尾巴随动作和拖拽甩动；表情是原画，会眨眼、说话；目前只有日常服），或原版 Q 版 21 段透明视频（dsh-pet，含拖拽、走路和 5 种点击回应） | 招牌女仆装 + 12 套全年龄服饰；原版动画下其他服饰都用像素图 |
+| 大肥鱼（DeepSeek 娘 · 鲸鱼女仆） | DeepSeek | `#2C4A8A` | 像素包 `dafeiyu-pixel`（默认，和其他角色同一画风和比例）；可在“外观”里换成 **Live2D** `dafeiyu-live2d`（中肥鱼 Live2D 模型，作者 Mao绒绒家园 / 香甜小兔子：头发、裙子、手臂、耳鳍和尾巴都有物理，眨眼、口型和表情随状态变化；目前只有日常服），**全动态** `dafeiyu-live`（一张高清原画拆成头、身体、手臂、腿、头发、尾巴等图层实时弯折：手臂会摆会挥手，腿会迈步，头发、裙摆、尾巴随动作和拖拽甩动；表情是原画，会眨眼、说话；目前只有日常服），或原版 Q 版 21 段透明视频（dsh-pet，含拖拽、走路和 5 种点击回应）；也可以在“外观”里**导入你自己的 VRM 3D 模型**（例如木子惡魔《蓝色小肥鱼Deepseek》：授权不可再分发，需自行下载导入，不随应用分发，作者与授权显示在外观页，见 [docs/pet-packs.md](docs/pet-packs.md#vrm-角色包kind-vrm)） | 招牌女仆装 + 12 套全年龄服饰；原版动画下其他服饰都用像素图 |
 | 克洛蒂（Claude 娘 · 橘发菊纹） | Anthropic | `#C4622D` | 像素包 `claude-pixel`（16 个动作） | 橘白哥特长裙 + 12 套全年龄服饰 |
 | 格萝可（Grok 娘 · 黑金吸血鬼） | xAI | `#8E1F33` | 像素包 `grok-pixel`（16 个动作） | 黑金哥特礼服 + 12 套全年龄服饰 |
 | 杰米（Gemini 娘 · 四角星猫耳） | Google | `#7B5CD6` | 像素包 `gemini-pixel`（16 个动作） | 星纹宽袖外披 + 12 套全年龄服饰 |
@@ -62,6 +62,7 @@
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 高级设置 → 对外接口 |
 | E27 | 聊天记录：只列出你在聊天框主动发起的会话（时间、首句摘要、条数），点开看完整的你说的话和她的回复；问候、主动搭话、关系升级、触摸 / 喂食台词、HTTP 接口的内容都不显示。只存在本机，放生时清除。规则见 [docs/chat-history.md](docs/chat-history.md) | ⋯ → 聊天记录 |
+| E28 | 重新开始话题：当前角色的下一句进入 LobeHub 里新的 topic，不带之前的上下文；旧 topic 保留不删，agent、好感度和聊天记录都不变。规则见 [docs/chat-history.md](docs/chat-history.md) 第八节 | ⋯ → 重新开始话题 |
 
 与 dsh-pet 的逐项对照（已实现 / 本次实现 / 不移植及理由）见 [docs/dsh-pet-gap.md](docs/dsh-pet-gap.md)。
 
@@ -416,7 +417,7 @@ Electron renderer (canvas sprites, UI)  ⇄ preload IPC ⇄  PetService  ⇄  Lh
 ```
 
 - **Harness boundary** — `src/core/lh-client.js` is the only file that knows about LobeHub. It uses `lh whoami`, `lh login`, `lh agent create`, `lh agent run --json` and `lh agent delete`. Replacing the harness means replacing this file (`whoami/login/createAgent/run/deleteAgent`).
-- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub.
+- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub. ⋯ → 重新开始话题 clears the current character's `topicId`, so her next run opens a new topic; the old one is kept in LobeHub, not deleted.
 - **Pet feel** (borrowed from the "大肥鱼" community pets): a persona prompt, a state block injected in every message so the pet reacts to how it actually feels, and proactive lines (hungry / bored / morning / evening greetings) with a cooldown and an hourly LLM-call budget. When the agent is unreachable or the budget is spent, the pet falls back to canned in-character lines, so it never goes silent.
 - Care actions (feed / play / sleep / pat) are local and free; only chat and proactive lines call the agent.
 

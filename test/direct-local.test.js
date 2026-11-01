@@ -118,3 +118,23 @@ test('Stop cancels the direct request too', async () => {
   svc.cancel();
   assert.deepEqual(await p, { ok: false, reason: 'canceled' });
 });
+
+test('重新开始话题 on the direct path: the next Responses turn goes without previous_response_id (a new topic), then continues it', async () => {
+  const responses = fakeResponses();
+  const { svc } = await hatched(responses);
+  await svc.setLocalAbilities(true);
+  await svc.chat('第一句');
+  const old = svc._c().topicId;
+  assert.ok(old);
+  assert.equal(svc.newTopic().ok, true);
+  responses.run = async (args) => {
+    responses.runs.push(args);
+    return { text: '好呀', topicId: args.topicId || 'tpc_DIRECT_NEW', cost: null };
+  };
+  await svc.chat('新话题');
+  assert.equal(responses.runs.pop().topicId, null);
+  assert.equal(svc._c().topicId, 'tpc_DIRECT_NEW');
+  assert.deepEqual(svc._c().pastTopicIds, [old]);
+  await svc.chat('接着聊');
+  assert.equal(responses.runs.pop().topicId, 'tpc_DIRECT_NEW');
+});

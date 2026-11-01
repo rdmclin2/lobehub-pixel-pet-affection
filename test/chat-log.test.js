@@ -238,3 +238,16 @@ test('PetService: the owner answering her proactive line is listed from the owne
   assert.equal(d.messages[0].text, '好啦好啦，给你吃');
   assert.ok(d.messages.every((m) => !/\[事件\]/.test(m.text)));
 });
+
+test('userSessions: 重新开始话题 (a new topicEpoch) starts a new conversation even within the gap; old records without it count as epoch 0', () => {
+  const T = 1_000_000;
+  const msgs = [
+    { id: 'm1', at: T, speciesId: 'claude', role: 'user', origin: 'user', turnId: 't1', text: '旧话题' },
+    { id: 'm2', at: T + 1, speciesId: 'claude', role: 'pet', origin: 'user', turnId: 't1', text: '回复1' },
+    { id: 'm3', at: T + 60000, speciesId: 'claude', role: 'user', origin: 'user', turnId: 't2', text: '还是旧话题', topicEpoch: 0 },
+    { id: 'm4', at: T + 120000, speciesId: 'claude', role: 'user', origin: 'user', turnId: 't3', text: '新话题', topicEpoch: 1 },
+    { id: 'm5', at: T + 120001, speciesId: 'claude', role: 'pet', origin: 'user', turnId: 't3', text: '回复3', topicEpoch: 1 },
+  ];
+  const r = userSessions(msgs);
+  assert.deepEqual(r.sessions.map((x) => [x.preview, x.count]), [['新话题', 2], ['旧话题', 3]]);
+});

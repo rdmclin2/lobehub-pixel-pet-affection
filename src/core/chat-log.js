@@ -11,6 +11,7 @@ const path = require('node:path');
 // A message: { id, at, speciesId, role: 'user' | 'pet', origin, kind, turnId, text, attachments?, status? }
 //   turnId  — one round: the owner's message and her reply to it share it; a system line has its own.
 //   status  — only on a reply that never came: 'error' | 'canceled' (text is empty then).
+//   topicEpoch — how many times the owner chose 重新开始话题 for this character before it (absent = 0).
 
 const SCHEMA = 1;
 const MAX_MESSAGES = 3000; // the oldest go first; a few months of chatting
@@ -72,7 +73,8 @@ const preview = (text) => {
 // The history filter. Keeps only rounds the owner started (her own message in the chat box, origin
 // 'user') and her reply to each of them; drops every other origin, including a pet line that claims
 // 'user' without the owner's message of the same round. Rounds of one character less than
-// SESSION_GAP_MS apart form one conversation. Newest conversation first.
+// SESSION_GAP_MS apart form one conversation, unless 重新开始话题 came between them (a new
+// topicEpoch). Newest conversation first.
 function userSessions(messages, { gapMs = SESSION_GAP_MS } = {}) {
   const all = (Array.isArray(messages) ? messages : []).map(normalize).filter(Boolean);
   const userTurns = new Set(all.filter((m) => m.role === 'user' && m.origin === USER_ORIGIN && m.turnId).map((m) => m.turnId));
@@ -83,8 +85,8 @@ function userSessions(messages, { gapMs = SESSION_GAP_MS } = {}) {
   for (const m of kept) {
     const last = cur && cur.messages[cur.messages.length - 1];
     const sameRound = last && last.turnId === m.turnId;
-    if (!cur || (!sameRound && (m.speciesId !== cur.speciesId || m.at - last.at > gapMs))) {
-      cur = { id: m.id, speciesId: m.speciesId || null, messages: [] };
+    if (!cur || (!sameRound && (m.speciesId !== cur.speciesId || epochOf(m) !== cur.epoch || m.at - last.at > gapMs))) {
+      cur = { id: m.id, speciesId: m.speciesId || null, epoch: epochOf(m), messages: [] };
       sessions.push(cur);
     }
     cur.messages.push(m);
@@ -107,6 +109,11 @@ function userSessions(messages, { gapMs = SESSION_GAP_MS } = {}) {
     hidden: all.filter((m) => !keptSet.has(m)).reduce((o, m) => ({ ...o, [m.origin]: (o[m.origin] || 0) + 1 }), {}),
     total: all.length,
   };
+}
+
+function epochOf(m) {
+  const n = Number(m.topicEpoch);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function attachmentLabel(m) {

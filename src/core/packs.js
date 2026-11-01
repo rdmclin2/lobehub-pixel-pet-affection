@@ -12,6 +12,7 @@ const path = require('node:path');
 const { OUTFITS, OUTFIT_IDS } = require('./outfits');
 const { SPECIES, SPECIES_IDS } = require('./species');
 const { STATES } = require('./fx');
+const V = require('./vrm');
 
 // Schema 2 names a sprite action after the app's states (the DeepSeek pet's 15 states plus `lifted`,
 // see src/core/fx.js). Schema 1 packs keep their 8 older action names; the app maps states onto
@@ -20,7 +21,7 @@ const SCHEMA = 2;
 const SCHEMAS = [1, 2];
 const ACTIONS_V1 = ['idle', 'wave', 'lifted', 'eat', 'sleep', 'think', 'talk', 'cheer'];
 const ACTIONS = { 1: ACTIONS_V1, 2: STATES };
-const KINDS = ['sprites', 'pictures', 'rig', 'live2d'];
+const KINDS = ['sprites', 'pictures', 'rig', 'live2d', 'vrm'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const IMAGE_RE = /\.(png|webp|gif|jpe?g)$/i;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -173,6 +174,182 @@ function readLive2d(dir, rel, cfg, errors) {
   return out;
 }
 
+// A VRM pack (3D, docs/pet-packs.md "VRM 角色包"): `vrm.outfits` maps the app's outfits onto .vrm files in the
+// pack. Each file must be a glTF binary with a VRM 1.0 / 0.x extension; its meta (author, license) is read
+// from the file itself, so pack.json cannot change what the license allows. The rules that follow from it
+// are enforced here and in vrmLookContext / packShareable: a model whose license forbids sexual use never
+// dresses an adult outfit or makes an 18+ look, and a model that may not be redistributed is never shared.
+const VRM_RE = /\.vrm$/i;
+const MAX_VRM_BYTES = 256 * 1024 * 1024;
+const VRMA_RE = /\.vrma$/i;
+const MAX_VRMA_BYTES = 32 * 1024 * 1024;
+// vrm.idle: an optional VRM animation (.vrma) looped under the app's own moves
+const vrmaFile = (dir, rel, errors, label) => vrmFile(dir, rel, errors, label, { re: VRMA_RE, ext: '.vrma', max: MAX_VRMA_BYTES, inspect: V.inspectVrmaFile });
+const VRM_HEIGHT = { min: 0.3, max: 1, dflt: 0.9 };
+const ADULT_OUTFITS = new Set(OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id));
+function vrmFile(dir, rel, errors, label, { re = VRM_RE, ext = '.vrm', max = MAX_VRM_BYTES, inspect = V.inspectVrmFile } = {}) {
+  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..') || !re.test(rel)) {
+    errors.push(`${label}: "${rel}" must be a relative path to a ${ext} file inside the pack`);
+    return null;
+  }
+  const root = path.resolve(dir);
+  const abs = path.resolve(root, rel);
+  let real;
+  try {
+    real = fs.realpathSync(abs);
+  } catch {
+    errors.push(`${label}: ${rel} is missing`);
+    return null;
+  }
+  // also through symlinks: the file itself must live inside the pack
+  if (!abs.startsWith(root + path.sep) || !real.startsWith(fs.realpathSync(root) + path.sep)) {
+    errors.push(`${label}: "${rel}" points outside the pack`);
+    return null;
+  }
+  const st = fs.statSync(real);
+  if (!st.isFile() || st.size > max) {
+    errors.push(`${label}: ${rel} is not a file under ${max / 1024 / 1024} MB`);
+    return null;
+  }
+  const info = inspect(real);
+  if (!info.ok) {
+    errors.push(`${label}: ${rel} ${info.errors.join('; ')}`);
+    return null;
+  }
+  return { rel: rel.split(path.sep).join('/'), ...info };
+}
+
+// The pack-level license: every model's restrictions (each once), and the switches only when every model allows them.
+function combineVrmLicense(models) {
+  const lics = models.map((m) => ({ ...V.vrmLicense(m.meta), name: m.meta.name }));
+  const restrictions = [];
+  for (const l of lics) for (const r of l.restrictions) if (!restrictions.some((x) => x.id === r.id)) restrictions.push(r);
+  const authors = [...new Set(models.flatMap((m) => m.meta.authors))];
+  return {
+    summary: lics[0].summary,
+    author: authors.length ? authors.join('、') : '未署名',
+    licenseUrl: lics[0].licenseUrl,
+    otherLicenseUrl: lics[0].otherLicenseUrl,
+    redistributable: lics.every((l) => l.redistributable),
+    adultOk: lics.every((l) => l.adultOk),
+    creditRequired: lics.some((l) => l.creditRequired),
+    restrictions,
+  };
+}
+
+function readVrm(dir, cfg, adult, errors) {
+  const c = cfg && typeof cfg === 'object' ? cfg : {};
+  const before = errors.length;
+  const src = c.outfits && typeof c.outfits === 'object' ? c.outfits : {};
+  if (!Object.keys(src).length) errors.push('vrm.outfits must map at least one outfit to a .vrm file');
+  const outfits = {};
+  const models = {};
+  for (const [id, rel] of Object.entries(src)) {
+    if (!OUTFIT_IDS.includes(id)) { errors.push(`vrm.outfits.${id}: unknown outfit (known: ${OUTFIT_IDS.join(', ')})`); continue; }
+    const f = models[rel] || vrmFile(dir, rel, errors, `vrm.outfits.${id}`);
+    if (!f) continue;
+    models[f.rel] = f;
+    if (ADULT_OUTFITS.has(id)) {
+      if (!adult) { errors.push(`vrm.outfits.${id}: an adult outfit needs an 18+ pack ("adult": true)`); continue; }
+      if (!f.meta.allowExcessivelySexualUsage) { errors.push(`vrm.outfits.${id}: the license of ${f.rel} does not allow sexual usage (allowExcessivelySexualUsage), so it cannot dress an adult outfit`); continue; }
+    }
+    outfits[id] = f.rel;
+  }
+  const list = Object.values(models);
+  if (adult && list.some((m) => !m.meta.allowExcessivelySexualUsage)) errors.push('adult: a model whose license does not allow sexual usage cannot be an 18+ pack');
+  let height = VRM_HEIGHT.dflt;
+  if (c.height !== undefined) {
+    if (typeof c.height !== 'number' || c.height < VRM_HEIGHT.min || c.height > VRM_HEIGHT.max) errors.push(`vrm.height must be between ${VRM_HEIGHT.min} and ${VRM_HEIGHT.max} (her share of the frame height)`);
+    else height = c.height;
+  }
+  const known = [...new Set(list.flatMap((m) => m.expressions))];
+  const expressions = {};
+  for (const [state, name] of Object.entries(c.expressions && typeof c.expressions === 'object' ? c.expressions : {})) {
+    if (!STATES.includes(state)) errors.push(`vrm.expressions.${state}: unknown state (known: ${STATES.join(', ')})`);
+    else if (typeof name !== 'string' || !known.includes(name)) errors.push(`vrm.expressions.${state}: "${name}" is not an expression of the model (it has: ${known.join(', ') || 'none'})`);
+    else expressions[state] = name;
+  }
+  const idle = c.idle === undefined ? null : vrmaFile(dir, c.idle, errors, 'vrm.idle');
+  if (errors.length > before) return null;
+  return {
+    outfits,
+    idle: idle ? idle.rel : null,
+    height,
+    expressions,
+    models: Object.fromEntries(list.map((m) => [m.rel, { meta: m.meta, license: V.vrmLicense(m.meta), expressions: m.expressions, springBone: m.springBone }])),
+    license: combineVrmLicense(list),
+  };
+}
+
+// The pack.json the importer writes for .vrm files (`outfits`: { outfit id: 'models/<file>.vrm' }), worn by
+// `speciesId`. Never an 18+ pack: adult outfits need a hand-written pack.json with "adult": true and a model
+// whose license allows it.
+function vrmPackId(speciesId, name) {
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const hash = crypto.createHash('sha1').update(String(name)).digest('hex').slice(0, 8);
+  return `vrm-${speciesId}-${slug.length >= 3 ? slug : hash}`.slice(0, 40).replace(/-+$/, '');
+}
+function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_FILE, idle = null }) {
+  const safe = Object.fromEntries(Object.entries(outfits).filter(([id]) => OUTFIT_IDS.includes(id) && !ADULT_OUTFITS.has(id)));
+  return {
+    schema: SCHEMA,
+    id: vrmPackId(speciesId, name),
+    name: text((meta && meta.name) || name, 40) || 'VRM 模型',
+    version: text(meta && meta.version, 20) || '1.0.0',
+    author: text(meta && meta.authors.join('、'), 60) || '本地导入',
+    license: '见模型授权',
+    description: '从本地导入的 VRM 模型（授权信息读自模型文件）。',
+    species: speciesId,
+    kind: 'vrm',
+    vrm: { outfits: safe, height: VRM_HEIGHT.dflt, ...(idle ? { idle } : {}) },
+    ...(preview ? { outfits: Object.fromEntries(Object.keys(safe).map((id) => [id, preview])) } : {}),
+  };
+}
+
+// The wardrobe context (src/core/outfits.js `look`) of a pack: { adult, outfits } for an 18+ pack, else null.
+// A VRM pack counts as 18+ only when every model's license allows sexual usage, whatever pack.json says.
+// A VRM pack's wardrobe is its own: one entry per distinct model (a model cannot change clothes, so the
+// same .vrm under several outfits would only be identical cards). `only` tells src/core/outfits.js that
+// this list replaces her file's outfits. Packs imported before v0.17 mapped one model to every outfit:
+// they collapse to `daily` here.
+function vrmWardrobe(pack, adultOk) {
+  const src = pack.outfits || {}; // a VRM pack's outfits are its model files
+  const seen = new Set();
+  const out = [];
+  for (const id of ['daily', ...Object.keys(src).filter((k) => k !== 'daily')]) {
+    const rel = src[id];
+    if (!rel || seen.has(rel) || (ADULT_OUTFITS.has(id) && !adultOk)) continue;
+    seen.add(rel);
+    out.push(id);
+  }
+  return out;
+}
+
+function lookContext(pack) {
+  if (!pack) return null;
+  if (pack.kind === 'vrm') {
+    const adult = !!(pack.adult && pack.vrm && pack.vrm.license.adultOk);
+    return { adult, only: true, outfits: vrmWardrobe(pack, adult) };
+  }
+  if (!pack.adult) return null;
+  return { adult: true, outfits: Object.keys(pack.outfits) };
+}
+
+// The look of a wardrobe entry: a locked outfit keeps only the picture of a VRM look, not its model.
+function lockedLook(look, locked) {
+  if (!look || !locked || look.kind !== 'vrm') return look;
+  const { model, vrm, ...rest } = look;
+  return { ...rest, locked: true };
+}
+
+// May this pack leave the machine (share / export / bundle)? A VRM pack whose model may not be
+// redistributed never may. { ok: true } or { ok: false, reason, text }.
+function packShareable(pack) {
+  if (!pack) return { ok: false, reason: 'unknown' };
+  if (pack.kind === 'vrm' && !(pack.vrm && pack.vrm.license.redistributable)) return { ok: false, reason: 'no-redistribution', text: '这个 VRM 模型的授权不允许再分发：仅限本机使用，不能打包、分享或导出' };
+  return { ok: true };
+}
+
 // ---------- the user's own Live2D model (外观 → 导入 Live2D 模型…) ----------
 // A plain Cubism 3–5 model folder (a .model3.json and the files it names, no pack.json) becomes a live2d
 // pack for one character: the model goes into `model/`, its expressions become the app's named faces, and
@@ -278,6 +455,7 @@ function validatePack(manifest, dir) {
 
   const outfits = {};
   const src = m.outfits && typeof m.outfits === 'object' ? m.outfits : {};
+  const vrm = m.kind === 'vrm' ? readVrm(dir, m.vrm, m.adult === true, errors) : null;
   for (const [id, rel] of Object.entries(src)) {
     if (!OUTFIT_IDS.includes(id)) {
       errors.push(`outfits.${id}: unknown outfit (known: ${OUTFIT_IDS.join(', ')})`);
@@ -286,7 +464,10 @@ function validatePack(manifest, dir) {
     const f = packFile(dir, rel, errors, `outfits.${id}`);
     if (f) outfits[id] = f;
   }
-  if (!Object.keys(src).length) errors.push('outfits must give art for at least one outfit');
+  // a VRM pack's own art is its models (vrm.outfits); `outfits` pictures are optional previews for them
+  if (m.kind === 'vrm') {
+    for (const id of Object.keys(outfits)) if (!vrm || !vrm.outfits[id]) delete outfits[id];
+  } else if (!Object.keys(src).length) errors.push('outfits must give art for at least one outfit');
 
   let frame = null;
   const actions = {};
@@ -310,6 +491,8 @@ function validatePack(manifest, dir) {
   const live2d = m.kind === 'live2d' ? readLive2d(dir, m.model, m.live2d, errors) : null;
 
   if (errors.length) return { ok: false, errors };
+  // VRM: author and license come from the model files, not from pack.json
+  const vrmPack = vrm && { height: vrm.height, idle: vrm.idle, expressions: vrm.expressions, models: vrm.models, license: vrm.license, previews: outfits };
   return {
     ok: true,
     pack: {
@@ -317,8 +500,8 @@ function validatePack(manifest, dir) {
       schema: m.schema,
       name: text(m.name, 40),
       version: text(m.version, 20) || '0.0.0',
-      author: text(m.author, 60) || '未署名',
-      license: text(m.license, 40) || '未注明',
+      author: vrm ? text(vrm.license.author, 60) : text(m.author, 60) || '未署名',
+      license: vrm ? text(vrm.license.summary, 80) : text(m.license, 40) || '未注明',
       description: text(m.description, 200),
       species: m.species,
       kind: m.kind,
@@ -329,7 +512,8 @@ function validatePack(manifest, dir) {
       actions,
       model: live2d ? m.model : model,
       live2d,
-      outfits,
+      vrm: vrmPack,
+      outfits: vrm ? { ...vrm.outfits } : outfits,
       dir: path.resolve(dir),
     },
   };
@@ -382,6 +566,14 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
     const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
     if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
     if (p.kind === 'live2d') return { ...base, model: packUrl(p, p.model), live2d: p.live2d };
+    if (p.kind === 'vrm') {
+      // defence in depth: never an adult outfit from a model whose license forbids it
+      if (ADULT_OUTFITS.has(outfitId) && !p.vrm.license.adultOk) continue;
+      const rel = p.outfits[outfitId];
+      const preview = p.vrm.previews[outfitId];
+      const lic = p.vrm.license;
+      return { ...base, url: preview ? packUrl(p, preview) : null, model: packUrl(p, rel), vrm: { height: p.vrm.height, idle: p.vrm.idle ? packUrl(p, p.vrm.idle) : null, expressions: p.vrm.expressions, modelExpressions: p.vrm.models[rel].expressions, springBone: p.vrm.models[rel].springBone, meta: p.vrm.models[rel].meta, license: lic } };
+    }
     if (p.kind === 'rig') {
       const folder = path.posix.dirname(p.outfits[outfitId]);
       return { ...base, model: p.model, base: packUrl(p, folder === '.' ? '' : folder).replace(/\/$/, '') };
@@ -400,10 +592,20 @@ function packsFor(packs, speciesId, adultOk = false) {
   const out = [...packs.values()]
     .filter((p) => p.species === speciesId && (adultOk || !p.adult))
     .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, ...(p.live2d ? { height: p.live2d.height } : {}) }));
+    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
   if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
   return out;
+}
+
+// What the UI shows for a VRM pack (外观 list, credits): per model its meta and license, and the pack's restrictions.
+function vrmView(p) {
+  const l = p.vrm.license;
+  return {
+    author: l.author, summary: l.summary, licenseUrl: l.licenseUrl, otherLicenseUrl: l.otherLicenseUrl,
+    redistributable: l.redistributable, adultOk: l.adultOk, creditRequired: l.creditRequired, restrictions: l.restrictions,
+    models: Object.entries(p.vrm.models).map(([file, m]) => ({ file, meta: m.meta, restrictions: m.license.restrictions })),
+  };
 }
 
 // The look a character starts with (its first pack; none for a video character without packs, which
@@ -424,4 +626,4 @@ function chosenPack(packs, appearance, speciesId, adultOk = false) {
   return fallbackPack(speciesId);
 }
 
-module.exports = { defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor, LIVE2D_DIR, PREVIEW_FILE, findLive2dModels, live2dPackId, facesFromExpressions, live2dManifest };
+module.exports = { MAX_VRM_BYTES, VRM_HEIGHT, vrmPackId, vrmManifest, vrmView, lookContext, lockedLook, packShareable, defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor, LIVE2D_DIR, PREVIEW_FILE, findLive2dModels, live2dPackId, facesFromExpressions, live2dManifest };

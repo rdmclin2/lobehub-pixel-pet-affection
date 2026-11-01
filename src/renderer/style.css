@@ -398,3 +398,31 @@ body.visitor .visitor-bar .btn { padding: 0 6px; font-size: 11px; border-width: 
 .history-msg-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; user-select: text; }
 .history-msg-text.missing { color: #6b5f7a; font-style: italic; }
 .history-msg-attach { font-size: 10px; color: #6b5f7a; margin-top: 2px; }
+
+/* ---- VRM packs: the license (导入确认 / 授权信息), the credit on the card, the placeholder look ---- */
+#look-section .vrm-text { margin-top: 12px; }
+.pack-opt.vrm { flex-wrap: wrap; }
+.pack-opt.vrm .meta { flex-basis: 0; }
+.pack-opt .pack-actions { flex-basis: 100%; display: flex; gap: 6px; justify-content: flex-end; }
+.pack-opt .pack-actions:empty { display: none; }
+.pack-opt .vrm-credit { color: #8a5a2b; font-size: 11px; white-space: normal; }
+.vrm-noexport { margin: -2px 0 2px 6px; color: #8a3a2b; }
+.vrm-license { border: 2px dashed #d9cdb8; background: #fffdf6; padding: 6px 8px; font-size: 11px; line-height: 1.5; }
+.vrm-summary { font-weight: bold; margin-bottom: 4px; word-break: break-all; }
+.vrm-restrictions { margin: 0 0 6px; padding-left: 16px; }
+.vrm-restrictions li.tone-block { color: #a0302a; }
+.vrm-restrictions li.tone-info { color: #4a3f58; }
+.vrm-meta { display: grid; grid-template-columns: max-content 1fr; gap: 1px 8px; margin: 0; }
+.vrm-meta + .vrm-meta { margin-top: 6px; border-top: 1px solid #eadfcb; padding-top: 6px; }
+.vrm-meta dt { color: #6b5f7a; }
+.vrm-meta dd { margin: 0; word-break: break-all; }
+.vrm-meta a { color: #2b5fb0; text-decoration: underline; cursor: pointer; }
+.vrm-confirm { position: fixed; inset: 0; z-index: 50; background: rgba(43, 34, 51, .55); display: flex; align-items: center; justify-content: center; padding: 8px; }
+.vrm-confirm-card { background: #fff; border: 3px solid #2b2233; padding: 8px 10px; max-height: 100%; width: 100%; overflow-y: auto; box-sizing: border-box; }
+.vrm-confirm-card h3 { margin: 0 0 4px; font-size: 13px; }
+.vrm-confirm-actions { justify-content: flex-end; margin-top: 8px; }
+.vrm-look { position: relative; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #e6f0ff, #d7e3f7); border: 2px solid #b9c8e3; box-sizing: border-box; min-width: 40px; min-height: 52px; }
+.vrm-look img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.vrm-look .vrm-badge { font-weight: bold; color: #3a5a9a; font-size: 12px; letter-spacing: 1px; }
+.vrm-look.locked { filter: grayscale(.7); }
+.char-wrap .vrm-look.char { width: 60%; height: 80%; margin: auto; }

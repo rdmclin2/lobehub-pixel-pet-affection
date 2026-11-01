@@ -30,6 +30,7 @@ async function step(scenario, name, fn, page) {
   } catch (e) {
     rec.status = 'fail';
     rec.note = String(e.message).split('\n').filter(Boolean).slice(0, 4).join(' ').slice(0, 300);
+    if (process.env.PIXELPET_E2E_VERBOSE) console.error(e);
   }
   rec.ms = Date.now() - t0;
   const pg = typeof page === 'function' ? page() : page;
@@ -1550,7 +1551,7 @@ async function packs() {
 
     await step(S, 'removing the pack in use puts the companion back in her default pixel pack', async () => {
       await openLooks();
-      await page.click('.pack-opt[data-pack="my-grok"] .btn:not(.pick)');
+      await page.click('.pack-opt[data-pack="my-grok"] .pack-remove');
       await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack="my-grok"]'));
       await page.click('#panel-close');
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'grok-pixel/daily');
@@ -4487,6 +4488,33 @@ async function history() {
       await shot('h6-after-restart');
       return `previews after restart: ${previews.join(', ')}`;
     }, page);
+
+    await step(S, 'H7 ⋯ → 重新开始话题: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, history keeps both', async () => {
+      const runs = () => fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+      const oldTopic = runs().pop().topic;
+      await page.click('#panel-close');
+      await clickAct(page, 'menu');
+      await page.waitForSelector('[data-menu="new-topic"]');
+      await shot('h7-menu-new-topic');
+      await page.click('[data-menu="new-topic"]');
+      await page.waitForFunction(() => /换个新话题/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      assert.match(page.lastDialog || '', /旧话题不会删除/);
+      await shot('h7-new-topic-bubble');
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '我们聊点新的吧');
+      await page.press('#chat-input', 'Enter');
+      await page.waitForFunction(() => /echo: 我们聊点新的吧/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
+      await idle();
+      const newTopic = runs().pop().topic;
+      assert.ok(newTopic && newTopic !== oldTopic, `${oldTopic} → ${newTopic}`);
+      const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8');
+      assert.doesNotMatch(calls, /"topic","delete"|"agent","delete"/);
+      await openHistory();
+      const previews = await page.$$eval('.history-preview', (ps) => ps.map((p) => p.textContent));
+      assert.equal(previews.length, 2, previews.join(' | '));
+      await shot('h7-history-after-new-topic');
+      return `topic ${oldTopic} → ${newTopic}; nothing deleted; history: ${previews.join(' | ')}`;
+    }, page);
   } finally {
     await app.close().catch(() => {});
   }
@@ -5397,7 +5425,7 @@ async function live2dImport() {
     }, page);
 
     await step(S, 'removing it puts her back in her default look', async () => {
-      await page.click(`.pack-opt[data-pack="${ID}"] button:not(.pick)`);
+      await page.click(`.pack-opt[data-pack="${ID}"] .pack-remove`);
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 5000 });
       assert.equal(fs.existsSync(path.join(data, 'packs', ID)), false);
     }, page);
@@ -5410,6 +5438,331 @@ async function live2dImport() {
     await app.close().catch(() => {});
   }
 }
+
+// ------------------------------------------------------------------ vrmui
+// 外观 → 导入 VRM 模型… (T-2649): the import entry, errors in plain words, 导入确认 with the model's meta and
+// license, the card (VRM · N 套服饰 · 作者, credit kept visible), 授权信息 with a link for the system browser,
+// 导出… refused for a model that may not be redistributed, outfits still locked by the app's rules, and
+// switching between the VRM pack and the 2D packs (the live VRM figure released and made again). Models are
+// synthetic GLBs carrying only meta (the whale's license, no third-party mesh). The 3D renderer is another
+// task: a stand-in window.PetVRM records the figure's life cycle.
+function vrmGlb(json) {
+  let j = Buffer.from(JSON.stringify(json), 'utf8');
+  if (j.length % 4) j = Buffer.concat([j, Buffer.alloc(4 - (j.length % 4), 0x20)]);
+  const out = Buffer.alloc(20 + j.length);
+  out.writeUInt32LE(0x46546c67, 0); out.writeUInt32LE(2, 4); out.writeUInt32LE(out.length, 8);
+  out.writeUInt32LE(j.length, 12); out.writeUInt32LE(0x4e4f534a, 16); j.copy(out, 20);
+  return out;
+}
+async function vrmUi() {
+  const S = 'vrmui';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmui-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmuifake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // 18+ confirmed but adult content off: the switch is the app's, not the pack's
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: true, ageConfirmedAt: Date.now(), adultContent: false }));
+  const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmmodels-'));
+  const PRESETS = Object.fromEntries(['happy', 'angry', 'sad', 'relaxed', 'surprised', 'aa', 'ih', 'ou', 'ee', 'oh', 'blink', 'neutral'].map((n) => [n, {}]));
+  const WHALE = { name: '蓝色小肥鱼Deepseek', version: '1.0.0', authors: ['木子惡魔'], copyrightInformation: '© 木子惡魔', contactInformation: 'https://github.com/sunfish1728', references: ['https://github.com/sunfish1728/deepcoin-avatars'], licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'onlyAuthor', allowExcessivelyViolentUsage: false, allowExcessivelySexualUsage: false, commercialUsage: 'personalNonProfit', allowPoliticalOrReligiousUsage: false, allowAntisocialOrHateUsage: false, creditNotation: 'required', allowRedistribution: false, modification: 'prohibited' };
+  const OPEN = { name: 'Open Fish', version: '0.1', authors: ['Maker'], licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/', avatarPermission: 'everyone', allowExcessivelyViolentUsage: true, allowExcessivelySexualUsage: true, commercialUsage: 'corporation', allowPoliticalOrReligiousUsage: true, allowAntisocialOrHateUsage: true, creditNotation: 'unnecessary', allowRedistribution: true, modification: 'allowModificationRedistribution' };
+  const vrm1 = (meta) => vrmGlb({ asset: { version: '2.0' }, extensions: { VRMC_vrm: { specVersion: '1.0', meta, humanoid: { humanBones: {} }, expressions: { preset: PRESETS } } } });
+  const whale = path.join(fix, 'whale-meta-only.vrm');
+  fs.writeFileSync(whale, vrm1(WHALE));
+  const open = path.join(fix, 'open-fish.vrm');
+  fs.writeFileSync(open, vrm1(OPEN));
+  const notVrm = path.join(fix, 'renamed.vrm');
+  fs.writeFileSync(notVrm, 'PK\u0003\u0004 a zip renamed to .vrm');
+  const plain = path.join(fix, 'plain.vrm');
+  fs.writeFileSync(plain, vrmGlb({ asset: { version: '2.0' }, meshes: [] }));
+  const broken = path.join(fix, 'broken.vrm');
+  fs.writeFileSync(broken, vrm1(WHALE).subarray(0, 60));
+  const gone = path.join(fix, 'moved-away', 'gone.vrm');
+  // hand-written 18+ VRM packs: one dressing an adult outfit in the whale model (license forbids), one allowed
+  const adultBad = path.join(fix, 'adult-bad');
+  fs.mkdirSync(path.join(adultBad, 'models'), { recursive: true });
+  fs.copyFileSync(whale, path.join(adultBad, 'models', 'w.vrm'));
+  fs.writeFileSync(path.join(adultBad, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-adult-bad', name: 'Adult Whale', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/w.vrm', maid: 'models/w.vrm' } } }));
+  const adultOk = path.join(fix, 'adult-ok');
+  fs.mkdirSync(path.join(adultOk, 'models'), { recursive: true });
+  fs.copyFileSync(open, path.join(adultOk, 'models', 'o.vrm'));
+  fs.writeFileSync(path.join(adultOk, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-adult-open', name: 'Adult Open Fish', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/o.vrm', maid: 'models/o.vrm' } } }));
+
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  const msg = () => page.textContent('#panel-msg');
+  const importFrom = async (p) => {
+    await page.evaluate(() => { document.getElementById('panel-msg').textContent = ''; });
+    await page.evaluate((x) => window.pet.debugNextOpen(x), p);
+    await page.click('#vrm-import');
+    await page.waitForFunction(() => document.getElementById('vrm-confirm') || /导入失败|已导入/.test(document.getElementById('panel-msg').textContent), null, { timeout: 15000 });
+  };
+  const WID = 'vrm-dafeiyu-deepseek';
+  const OID = 'vrm-dafeiyu-open-fish';
+  const packDirs = () => (fs.existsSync(path.join(data, 'packs')) ? fs.readdirSync(path.join(data, 'packs')).sort() : []);
+  const look = async () => { await page.locator('#look-section').scrollIntoViewIfNeeded(); };
+  try {
+    await step(S, 'hatching 大肥鱼 in her default pixel look', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Mow');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
+    }, page);
+
+    await step(S, 'her page offers 导入 VRM 模型… under 外观, next to 导入 Live2D 模型…', async () => {
+      await openCurrentPage(page);
+      await look();
+      assert.equal(await page.locator('#vrm-import').textContent(), '导入 VRM 模型…');
+      assert.match(await page.textContent('#look-section .vrm-text'), /VRM 1\.0 \/ 0\.x 的 \.vrm 文件/);
+      await page.locator('#vrm-import').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, 'vrmui-section.png') });
+    }, page);
+
+    await step(S, 'not a VRM / plain glTF / broken / moved file: each refused with a clear reason, nothing copied', async () => {
+      const out = [];
+      for (const [p, re, tag] of [[notVrm, /这不是 VRM 文件：内容不是 glTF 二进制格式/, 'not-vrm'], [plain, /普通的 glTF\/GLB 模型，没有 VRM 信息/, 'plain-gltf'], [broken, /文件已损坏或不完整/, 'broken'], [gone, /找不到这个文件/, 'missing']]) {
+        await importFrom(p);
+        const m = await msg();
+        assert.match(m, re, m);
+        out.push(m.trim());
+        await page.screenshot({ path: path.join(OUT, `vrmui-error-${tag}.png`) });
+      }
+      assert.deepEqual(packDirs(), []);
+      await page.screenshot({ path: path.join(OUT, 'vrmui-error.png') });
+      return out.join(' | ');
+    }, page);
+
+    await step(S, '导入确认 shows the model name, author, copyright, contact, references, license and its restrictions', async () => {
+      await importFrom(whale);
+      await page.waitForSelector('#vrm-confirm');
+      const t = await page.textContent('#vrm-confirm');
+      for (const s of ['导入 VRM 模型「蓝色小肥鱼Deepseek」', '模型名蓝色小肥鱼Deepseek（1.0.0）', '作者木子惡魔', '版权© 木子惡魔', '联系方式https://github.com/sunfish1728', '参考https://github.com/sunfish1728/deepcoin-avatars', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/']) assert.ok(t.includes(s), `missing: ${s}`);
+      const rs = await page.$$eval('#vrm-confirm .vrm-restrictions li', (ls) => ls.map((l) => l.dataset.id));
+      assert.deepEqual(rs.slice(0, 5), ['no-redistribution', 'no-modification', 'credit-required', 'personal-non-profit', 'no-sexual']);
+      assert.match(t, /不可再分发：仅限本机使用/);
+      assert.match(t, /禁止性表现：该模型在 18\+ 内容\/成人服饰下不可用/);
+      await page.screenshot({ path: path.join(OUT, 'vrmui-confirm.png') });
+      return rs.join(', ');
+    }, page);
+
+    await step(S, '取消导入 removes the pack again', async () => {
+      await page.click('#vrm-confirm [data-act="cancel"]');
+      await page.waitForFunction(() => /已取消导入/.test(document.getElementById('panel-msg').textContent));
+      await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack^="vrm-"]'));
+      assert.deepEqual(packDirs(), []);
+      return (await msg()).trim();
+    }, page);
+
+    await step(S, '使用这个模型: the pack is made and worn; the card reads VRM · N 套服饰 · 作者, credit stays visible', async () => {
+      await importFrom(whale);
+      await page.waitForSelector('#vrm-confirm');
+      await page.click('#vrm-confirm [data-act="use"]');
+      await page.waitForSelector(`.pack-opt.on[data-pack="${WID}"]`);
+      assert.match(await msg(), /已导入 VRM 模型「蓝色小肥鱼Deepseek」并换上（作者：木子惡魔）/);
+      const line = await page.textContent(`.pack-opt[data-pack="${WID}"] .meta span`);
+      assert.match(line, /^VRM · \d+ 套服饰 · 木子惡魔 · 本地导入$/);
+      assert.equal(await page.textContent(`.pack-opt[data-pack="${WID}"] .vrm-credit`), '署名：木子惡魔（模型授权要求署名）');
+      assert.deepEqual(packDirs(), [WID]);
+      await page.locator(`.pack-opt[data-pack="${WID}"]`).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, 'vrmui-card.png') });
+      return line;
+    }, page);
+
+    await step(S, '导出… is disabled for the non-redistributable model, with the reason; main refuses it too', async () => {
+      const ex = page.locator(`.pack-opt[data-pack="${WID}"] .pack-export`);
+      assert.equal(await ex.isDisabled(), true);
+      assert.match(await ex.getAttribute('title'), /不允许再分发/);
+      const why = await page.textContent(`.vrm-noexport[data-pack="${WID}"]`);
+      assert.match(why, /导出已禁用：这个 VRM 模型的授权不允许再分发/);
+      await page.evaluate((p) => window.pet.debugNextSave(p), path.join(fix, 'should-not-exist.zip'));
+      const r = await page.evaluate((id) => window.pet.exportPack(id), WID);
+      await page.evaluate(() => window.pet.debugNextSave(''));
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'no-redistribution');
+      assert.equal(fs.existsSync(path.join(fix, 'should-not-exist.zip')), false);
+      return `${why.trim()} · IPC: ${r.reason}`;
+    }, page);
+
+    await step(S, '授权信息 on the card opens the license details; the license link goes to the system browser', async () => {
+      await page.click(`.pack-opt[data-pack="${WID}"] .vrm-info`);
+      await page.waitForSelector(`.pack-list .vrm-license[data-pack="${WID}"]`);
+      const t = await page.textContent(`.pack-list .vrm-license[data-pack="${WID}"]`);
+      assert.match(t, /VRM 1\.0 授权：仅限个人非商业使用 \/ 不可再分发 \/ 禁止修改 \/ 需署名/);
+      assert.match(t, /作者木子惡魔/);
+      await page.locator(`.pack-list .vrm-license[data-pack="${WID}"]`).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, 'vrmui-license.png') });
+      await page.click(`.pack-list .vrm-license[data-pack="${WID}"] a[href="https://vrm.dev/licenses/1.0/"]`);
+      await page.waitForFunction(async () => (await window.pet.debugOpenedLinks()).length > 0);
+      const links = await page.evaluate(() => window.pet.debugOpenedLinks());
+      assert.deepEqual(links, ['https://vrm.dev/licenses/1.0/']);
+      fs.writeFileSync(path.join(OUT, 'vrmui-opened-links.json'), JSON.stringify({ clicked: 'a[href="https://vrm.dev/licenses/1.0/"] in 授权信息', mainProcessOpenLinkLog: links, note: 'PIXELPET_TEST=1: main records the URL instead of shell.openExternal; outside tests open-link calls shell.openExternal (system browser)' }, null, 2));
+      assert.equal((await page.evaluate(() => window.pet.openLink('javascript:alert(1)'))).ok, false);
+      return `opened ${links.join(', ')}`;
+    }, page);
+
+    await step(S, 'a redistributable model can be exported as a .zip that imports back', async () => {
+      await importFrom(open);
+      await page.waitForSelector('#vrm-confirm');
+      assert.equal(await page.locator('#vrm-confirm .vrm-restrictions').count(), 0, 'a fully open model lists no restriction');
+      await page.click('#vrm-confirm [data-act="use"]');
+      await page.waitForSelector(`.pack-opt.on[data-pack="${OID}"]`);
+      assert.equal(await page.locator(`.pack-opt[data-pack="${OID}"] .vrm-credit`).count(), 0, 'no credit required: no credit line');
+      const zip = path.join(fix, 'open-fish-export.zip');
+      await page.evaluate((p) => window.pet.debugNextSave(p), zip);
+      await page.click(`.pack-opt[data-pack="${OID}"] .pack-export`);
+      await page.waitForFunction(() => /已导出/.test(document.getElementById('panel-msg').textContent));
+      const listing = execFileSync('python3', ['-m', 'zipfile', '-l', zip], { encoding: 'utf8' });
+      assert.match(listing, /pack\.json/);
+      assert.match(listing, /open-fish\.vrm/);
+      return (await msg()).trim();
+    }, page);
+
+    await step(S, 'an 18+ VRM pack cannot be made from a model whose license forbids sexual usage', async () => {
+      const r = await page.evaluate((d) => window.pet.debugImportPack(d), adultBad);
+      assert.equal(r.ok, false);
+      assert.ok(r.errors.some((e) => /does not allow sexual usage/.test(e)), r.errors.join(' / '));
+      assert.equal(packDirs().includes('vrm-adult-bad'), false);
+      return r.errors[0];
+    }, page);
+
+    await step(S, 'with adult content off, an allowed 18+ VRM pack is not offered, and adult outfits stay hidden', async () => {
+      const r = await page.evaluate((d) => window.pet.debugImportPack(d), adultOk);
+      assert.equal(r.ok, true, JSON.stringify(r.errors));
+      await page.click('#panel-close');
+      await openCurrentPage(page);
+      const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
+      assert.ok(!listed.includes('vrm-adult-open'), listed.join(', '));
+      await page.click('#panel-close');
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card');
+      const cards = await page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, locked: c.classList.contains('locked'), adult: !!c.querySelector('.tag.adult') })));
+      assert.equal(cards.filter((c) => c.adult).length, 0);
+      return `外观: ${listed.join(', ')}`;
+    }, page);
+
+    await step(S, 'the VRM pack outfits stay locked by affection in the wardrobe, and a locked one cannot be worn', async () => {
+      const cards = await page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, locked: c.classList.contains('locked'), vrm: !!c.querySelector('.vrm-look'), st: c.querySelector('.st').textContent })));
+      const locked = cards.filter((c) => c.locked);
+      assert.ok(locked.length > 0, 'a new companion has locked outfits');
+      assert.ok(locked.every((c) => c.vrm && /🔒/.test(c.st)), JSON.stringify(locked));
+      // the importer's 1×1 stand-in picture is not shown: the VRM tile is
+      await page.waitForFunction(() => [...document.querySelectorAll('.card .vrm-look img')].every((i) => i.complete && i.hidden));
+      await page.click(`.card[data-outfit="${locked[0].id}"]`);
+      await page.waitForFunction(() => /还没解锁/.test(document.getElementById('panel-msg').textContent));
+      await page.screenshot({ path: path.join(OUT, 'vrmui-wardrobe.png') });
+      return `${locked.length}/${cards.length} locked: ${locked.map((c) => c.id).join(', ')}`;
+    }, page);
+
+    await step(S, 'with 18+ on but affection low, the 18+ VRM pack\'s adult outfit shows locked and cannot be worn', async () => {
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.setAdult(true));
+      await openCurrentPage(page);
+      await page.waitForSelector('.pack-opt[data-pack="vrm-adult-open"]');
+      await page.click('.pack-opt[data-pack="vrm-adult-open"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="vrm-adult-open"]');
+      assert.match(await page.textContent('.pack-opt[data-pack="vrm-adult-open"] .meta span'), /^18\+ · VRM · \d+ 套服饰 · Maker/);
+      await page.click('#panel-close');
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="maid"]');
+      assert.equal(await page.locator('.card[data-outfit="maid"]').getAttribute('class'), 'card locked');
+      const r = await page.evaluate(() => window.pet.equipOutfit('maid'));
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'locked');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-adult-locked.png') });
+      await page.click('#panel-close');
+      return `maid: ${r.reason}`;
+    }, page);
+
+    await step(S, 'with 18+ on and affection full, the allowed 18+ VRM pack unlocks maid; switching 18+ off takes it away again', async () => {
+      await page.evaluate(() => window.pet.unlockAll('dafeiyu'));
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="maid"]:not(.locked)');
+      await page.click('.card[data-outfit="maid"]');
+      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-adult-unlocked.png') });
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.setAdult(false));
+      await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid'));
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card');
+      const adult = await page.locator('.card .tag.adult').count();
+      assert.equal(adult, 0);
+      const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
+      await page.screenshot({ path: path.join(OUT, 'vrmui-adult-off-again.png') });
+      await page.click('#panel-close');
+      return `maid worn with 18+ on; 18+ off → look ${key}, ${adult} adult cards`;
+    }, page);
+
+    await step(S, 'without a 3D renderer loaded, the worn VRM pack shows its VRM tile on the desk', async () => {
+      await openCurrentPage(page);
+      await page.click(`.pack-opt[data-pack="${WID}"] .pick`);
+      await page.waitForSelector(`.pack-opt.on[data-pack="${WID}"]`);
+      await page.click('#panel-close');
+      await page.waitForSelector('#pet-look .vrm-look .vrm-badge');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-desk-no-renderer.png') });
+      return `PetVRM loaded: ${await page.evaluate(() => !!window.PetVRM)}`;
+    }, page);
+
+    await step(S, 'switching VRM → dafeiyu-pixel → dafeiyu-classic → VRM: the live figure is released and made again', async () => {
+      // stand-in for the 3D renderer (another task): records creates / disposes and draws a mark
+      await page.evaluate(() => {
+        window.__vrm = { created: 0, disposed: 0, live: 0 };
+        window.PetVRM = { createFigure(canvas) {
+          window.__vrm.created++; window.__vrm.live++;
+          const g = canvas.getContext('2d');
+          let gone = false;
+          return { ready: Promise.resolve(true), draw() { if (!gone) { g.clearRect(0, 0, canvas.width, canvas.height); g.fillStyle = '#4a7bd0'; g.fillRect(100, 120, 130, 300); canvas.dataset.frame = 'vrm'; } }, dispose() { gone = true; window.__vrm.disposed++; window.__vrm.live--; } };
+        } };
+      });
+      const pick = async (id) => {
+        await openCurrentPage(page);
+        // already worn: the look is redrawn so the stand-in renderer draws it
+        if (await page.locator(`.pack-opt.on[data-pack="${id}"]`).count()) await page.click('.pack-opt[data-pack="dafeiyu-pixel"] .pick');
+        await page.waitForSelector('.pack-opt.on[data-pack="dafeiyu-pixel"], .pack-opt:not(.on)[data-pack="' + id + '"]');
+        if (!(await page.locator(`.pack-opt.on[data-pack="${id}"]`).count())) await page.click(`.pack-opt[data-pack="${id}"] .pick`);
+        await page.waitForSelector(`.pack-opt.on[data-pack="${id}"]`);
+        await page.click('#panel-close');
+        await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id);
+      };
+      const stat = () => page.evaluate(() => ({ ...window.__vrm, canvas: !!document.querySelector('#pet-look canvas.vrm'), sprite: !!document.querySelector('#pet-look canvas.sprite:not(.vrm), #pet-look img') }));
+      const trail = [];
+      await pick(WID);
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && c.dataset.frame === 'vrm'; });
+      let s = await stat();
+      assert.deepEqual([s.created, s.live, s.canvas], [1, 1, true]);
+      trail.push(`VRM ${JSON.stringify(s)}`);
+      await page.screenshot({ path: path.join(OUT, 'vrmui-desk-vrm.png') });
+      for (const id of ['dafeiyu-pixel', 'dafeiyu-classic']) {
+        await pick(id);
+        await page.waitForFunction(() => window.__vrm.live === 0, null, { timeout: 5000 });
+        s = await stat();
+        assert.equal(s.canvas, false);
+        assert.equal(s.sprite, true, `${id} drawn`);
+        trail.push(`${id} ${JSON.stringify(s)}`);
+        await page.screenshot({ path: path.join(OUT, `vrmui-desk-${id}.png`) });
+      }
+      await pick(WID);
+      await page.waitForFunction(() => window.__vrm.live === 1 && document.querySelector('#pet-look canvas.vrm'));
+      s = await stat();
+      assert.deepEqual([s.created, s.disposed, s.live], [2, 1, 1]);
+      trail.push(`VRM again ${JSON.stringify(s)}`);
+      return trail.join(' → ');
+    }, page);
+
+    await step(S, 'no renderer error on the page', async () => {
+      assert.deepEqual(errors.filter((e) => !/Autofill|net::ERR_FILE_NOT_FOUND/.test(e)), []);
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ------------------------------------------------------------------ vrm / vrmimport
+// The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
+const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct });
 
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
@@ -5989,6 +6342,9 @@ async function asrScenario() {
   if (which === 'rig' || which === 'all') await rigScenario();
   if (which === 'live2d' || which === 'all') await live2dScenario();
   if (which === 'l2dimport' || which === 'all') await live2dImport();
+  if (which === 'vrmui' || which === 'all') await vrmUi();
+  if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
+  if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'asr' || which === 'all') await asrScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
