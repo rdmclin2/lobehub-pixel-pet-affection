@@ -12,7 +12,17 @@ const pinFile = path.join(dir, 'pinned-workspace');
 if (args[0] === 'generate' && args[1] === 'asr') {
   // FAKE_LH_ASR: ok (default) | empty | unauth | model | fail | hang. Mirrors the real CLI's output (docs/asr-design.md §1.4).
   const file = args[2];
-  const mode = process.env.FAKE_LH_ASR || 'ok';
+  // FAKE_LH_ASR=real (or an `asr-real` file in FAKE_LH_DIR): hand the call to the real CLI (FAKE_LH_REAL_BIN, default
+  // `lh` on PATH) with the machine's own login, so e2e can drive LobeHub's real recognition (e2e asr A8b).
+  const mode = fs.existsSync(path.join(dir, 'asr-real')) ? 'real' : process.env.FAKE_LH_ASR || 'ok';
+  if (mode === 'real') {
+    const env = { ...process.env };
+    delete env.LOBEHUB_JWT;
+    const r = require('node:child_process').spawnSync(process.env.FAKE_LH_REAL_BIN || 'lh', args, { env, encoding: 'utf8', timeout: 90000 });
+    process.stdout.write(r.stdout || '');
+    process.stderr.write(r.stderr || (r.error ? `12:00:00 [ERROR] ASR failed: ${r.error.message}\n` : ''));
+    process.exit(r.status == null ? 1 : r.status);
+  }
   if (!fs.existsSync(file)) { console.error(`12:00:00 [ERROR] File not found: ${file}`); process.exit(1); }
   fs.writeFileSync(path.join(dir, 'asr-file.json'), JSON.stringify({ file, mode: (fs.statSync(file).mode & 0o777).toString(8), bytes: fs.readFileSync(file).toString('base64') }));
   if (mode === 'hang') setInterval(() => {}, 1000);

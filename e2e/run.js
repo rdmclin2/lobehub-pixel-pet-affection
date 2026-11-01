@@ -5416,7 +5416,8 @@ async function live2dImport() {
 // records it with MediaRecorder, main sends it to a local whisper-shaped server (a mock here: no tokens), and
 // the text lands in the chat box. Also 高级设置 → 语音输入, 测试连接, 按住说话, Esc, the failure toast,
 // 识别后直接发送 and the microphone permission. With PIXELPET_E2E_WHISPER=<url> (a real whisper-server) and
-// PIXELPET_E2E_ASR_WAV=<speech.wav> one more step sends the recording to it (PIXELPET_E2E_ASR_EXPECT: a regex).
+// PIXELPET_E2E_ASR_WAV=<speech.wav> one more step sends the recording to it (PIXELPET_E2E_ASR_EXPECT: a regex);
+// with PIXELPET_E2E_ASR_LOBEHUB=1 another sends it to LobeHub's real recognition (the machine's lh login).
 function asrMock() {
   const http = require('node:http');
   const TEXT = '你好，今天我想喂我的宠物吃饼干。';
@@ -5726,6 +5727,14 @@ async function asrScenario() {
         await page.fill('#asr-local-model', 'whisper-1');
         await page.click('#asr-local-save');
         await msg(/本地识别服务/);
+        // 测试连接 against the real host, as docs/asr.md §4.1 tells the owner to
+        await page.click('#asr-test');
+        await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 60000 });
+        const tested = (await page.textContent('#asr-test-result')).trim();
+        assert.match(tested, /✅/);
+        await page.locator('#asr-section').scrollIntoViewIfNeeded();
+        await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
+        await shot('a8-real-whisper-settings-test');
         await page.click('#panel-close');
         await openChatBox();
         await page.fill('#chat-input', '');
@@ -5739,7 +5748,54 @@ async function asrScenario() {
         const v = await page.inputValue('#chat-input');
         if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
         await shot('a8-real-whisper-text');
-        return note(`real whisper ${process.env.PIXELPET_E2E_WHISPER}: clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
+        return note(`测试连接 → 「${tested}」; real whisper ${process.env.PIXELPET_E2E_WHISPER}: clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
+      }, page);
+    }
+
+    if (process.env.PIXELPET_E2E_ASR_LOBEHUB) {
+      // LobeHub's real recognition (lh generate asr, the machine's own lh login; costs a few Credits): the fake lh
+      // hands `generate asr` to the real CLI while FAKE_LH_DIR/asr-real exists. Needs a speech WAV (PIXELPET_E2E_ASR_WAV).
+      await step(S, 'A8b LobeHub 云端识别 for real: the fake microphone\'s speech is recognised by lh generate asr', async () => {
+        chapter('A8b 真实 LobeHub 云端识别：引擎切到 LobeHub，识别假麦克风播放的语音');
+        fs.writeFileSync(path.join(fakeDir, 'asr-real'), '1');
+        try {
+          await openAsr();
+          await page.uncheck('#asr-autosend');
+          await page.selectOption('#asr-engine', 'lobehub');
+          await msg(/语音识别引擎：LobeHub/);
+          await page.selectOption('#asr-lobehub-model', process.env.PIXELPET_E2E_ASR_LOBEHUB_MODEL || 'gpt-4o-mini-transcribe');
+          await page.click('#asr-test');
+          await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 90000 });
+          const tested = (await page.textContent('#asr-test-result')).trim();
+          assert.match(tested, /✅ LobeHub/);
+          await page.locator('#asr-lobehub').scrollIntoViewIfNeeded();
+          await shot('a8b-lobehub-settings');
+          await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
+          await shot('a8b-lobehub-test-ok');
+          await page.click('#panel-close');
+          await openChatBox();
+          await page.fill('#chat-input', '');
+          await page.click('#chat-mic');
+          await waitMic('recording');
+          await page.waitForTimeout(Number(process.env.PIXELPET_E2E_ASR_MS || 4500));
+          await page.click('#chat-mic');
+          await waitMic('transcribing');
+          await shot('a8b-lobehub-transcribing');
+          await page.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 90000 });
+          const r = await lastAsr();
+          assert.equal(r.ok, true, JSON.stringify(r));
+          assert.equal(r.provider, 'lobehub');
+          const v = await page.inputValue('#chat-input');
+          if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
+          await shot('a8b-lobehub-text');
+          return note(`测试连接 → 「${tested}」; real LobeHub (${(await getSet()).lobehub.model}): clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
+        } finally {
+          fs.rmSync(path.join(fakeDir, 'asr-real'), { force: true });
+          await openAsr();
+          await page.selectOption('#asr-engine', 'local');
+          await msg(/语音识别引擎：本地识别服务/);
+          await page.click('#panel-close');
+        }
       }, page);
     }
 
@@ -5775,7 +5831,8 @@ async function asrScenario() {
       await p.waitForSelector('#asr-section');
       await p.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
       const ui = await p.evaluate(() => ({ on: document.getElementById('asr-on').checked, engine: document.getElementById('asr-engine').value, language: document.getElementById('asr-language').value, autoSend: document.getElementById('asr-autosend').checked, endpoint: document.getElementById('asr-endpoint').value, model: document.getElementById('asr-local-model').value }));
-      assert.deepEqual(ui, { on: true, engine: 'off', language: 'zh', autoSend: true, endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
+      // A8 / A8b (real hosts) switch 识别后直接发送 off again
+      assert.deepEqual(ui, { on: true, engine: 'off', language: 'zh', autoSend: !(process.env.PIXELPET_E2E_WHISPER || process.env.PIXELPET_E2E_ASR_LOBEHUB), endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
       await p.waitForTimeout(150);
       await p.screenshot({ path: path.join(SHOTS, 'a10-after-restart-settings.png') });
       // the engine back to 本地: 🎤 is there again in the restarted app
