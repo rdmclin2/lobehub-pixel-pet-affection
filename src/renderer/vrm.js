@@ -370,6 +370,23 @@
       return true;
     }
 
+    // the model's textures and how many actually have their image (a blocked blob: fetch leaves them empty)
+    function textureMaps() {
+      const seen = new Set();
+      let loaded = 0;
+      if (vrm) vrm.scene.traverse((o) => {
+        for (const m of [].concat(o.material || [])) {
+          for (const v of [...Object.values(m), ...Object.values(m.uniforms || {}).map((u) => u && u.value)]) {
+            if (!v || !v.isTexture || seen.has(v)) continue;
+            seen.add(v);
+            const img = v.image || (v.source && v.source.data);
+            if (img && (img.width || img.naturalWidth) > 0) loaded++;
+          }
+        }
+      });
+      return { total: seen.size, loaded };
+    }
+
     function fig() {
       return {
         canvas,
@@ -381,6 +398,7 @@
           springJoints: vrm && vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0,
           root: vrm ? { x: vrm.scene.position.x, y: vrm.scene.position.y, yaw: vrm.scene.rotation.y / DEG, roll: vrm.scene.rotation.z / DEG } : null,
           memory: renderer ? { ...renderer.info.memory } : null, packId: look.packId,
+          maps: textureMaps(),
         }),
       };
     }

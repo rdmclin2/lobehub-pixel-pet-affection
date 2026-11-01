@@ -375,3 +375,13 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   assert.equal(v.outfit, 'daily');
   assert.equal(v.outfits.some((x) => x.id === 'maid'), false);
 });
+
+// T-2654: 木子惡魔's real model carries meta.version "undefined" (an exporter placeholder); the license panel
+// showed 「蓝色小肥鱼Deepseek（undefined）」. A placeholder version is no version.
+test('a placeholder meta.version ("undefined", "null", "-") is read as empty and not shown next to the name', () => {
+  for (const v of ['undefined', 'null', ' - ', 'N/A', '']) assert.equal(V.inspectVrm(vrm1({ ...FREE_META, version: v })).meta.version, '', v);
+  assert.equal(V.inspectVrm(vrm1({ ...FREE_META, version: '1.2' })).meta.version, '1.2');
+  const U = require('../src/core/vrm-ui');
+  const rows = U.licenseRows(V.inspectVrm(vrm1({ ...FREE_META, name: '蓝色小肥鱼Deepseek', version: 'undefined' })).meta);
+  assert.equal(rows.find((r) => r.label === '模型名').text, '蓝色小肥鱼Deepseek');
+});

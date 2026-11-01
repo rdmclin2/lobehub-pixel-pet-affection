@@ -261,10 +261,12 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(rt.script && rt.versions && rt.versions.three && rt.versions['three-vrm'], JSON.stringify(rt));
         const f = await H.fig();
         assert.ok(f.loaded && f.springJoints >= 4, `springs ${f.springJoints}`);
-        samples.start = { a, b, runtime: rt.versions };
+        // the embedded texture (loaded through a blob: URL, as a real model's are) has its image: T-2654
+        assert.ok(f.maps.total >= 1 && f.maps.loaded === f.maps.total, `texture maps ${JSON.stringify(f.maps)}`);
+        samples.start = { a, b, runtime: rt.versions, maps: f.maps };
         box = await page.locator('#pet-look canvas.vrm').boundingBox();
         await H.shot('1-drawn');
-        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}`);
+        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}; texture maps ${f.maps.loaded}/${f.maps.total} loaded`);
       }, page);
 
       await step(S, 'idle: after a while with nothing happening the frame budget drops (data-mode idle, lower fps)', async () => {

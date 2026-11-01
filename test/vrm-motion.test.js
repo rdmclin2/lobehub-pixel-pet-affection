@@ -221,3 +221,20 @@ test('the homemade test model is a full VRM 1.0 (18 expressions, SpringBone, hum
   const json = V.readGlbJson(buf);
   for (const b of ['hips', 'spine', 'head', 'leftUpperArm', 'rightUpperLeg', 'leftFoot']) assert.ok(json.extensions.VRMC_vrm.humanoid.humanBones[b], b);
 });
+
+// T-2654: a real model (木子惡魔's 《蓝色小肥鱼Deepseek》) drew untextured, white: its textures are images inside the
+// GLB, which GLTFLoader fetches through blob: URLs, and the page CSP blocked blob: in connect-src. The test model
+// carries an embedded texture the same way (the e2e `vrm` scenario checks it loads), and the CSP allows blob:.
+test('the test model embeds a PNG texture like a real model, and the renderer page lets GLTFLoader load it (blob:)', () => {
+  const json = V.readGlbJson(makeTestVrm());
+  assert.equal(json.images.length, 1);
+  assert.equal(json.images[0].mimeType, 'image/png');
+  assert.equal(typeof json.images[0].bufferView, 'number');
+  assert.ok(json.materials.some((m) => m.pbrMetallicRoughness.baseColorTexture), 'a material uses it');
+  assert.equal(V.readGlbJson(makeTestVrm({ texture: false })).images, undefined);
+  const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
+  const csp = html.match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  const dir = (name) => (csp.split(';').map((d) => d.trim().split(/\s+/)).find((d) => d[0] === name) || []).slice(1);
+  assert.ok(dir('connect-src').includes('blob:'), `connect-src ${dir('connect-src')}`);
+  assert.ok(dir('img-src').includes('blob:'), `img-src ${dir('img-src')}`);
+});

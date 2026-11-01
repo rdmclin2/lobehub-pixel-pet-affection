@@ -8,7 +8,7 @@
 // (no .vrm is ever committed: test/vrm.test.js checks).
 //
 //   node scripts/make-test-vrm.js [out.vrm]        (default: <tmp>/pixelpet-test-fish.vrm)
-//   const { makeTestVrm } = require('./scripts/make-test-vrm');  → Buffer  ({ name, omit: ['surprised', …], meta: { allowRedistribution: false, … } })
+//   const { makeTestVrm } = require('./scripts/make-test-vrm');  → Buffer  ({ name, omit: ['surprised', …], meta: { allowRedistribution: false, … }, texture: false })
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -48,8 +48,28 @@ function boxesMesh(boxes, morphs = {}) {
   return { pos, nor, idx, targets };
 }
 
+// ---------- an embedded texture ----------
+// A tiny solid PNG (node:zlib, no dependencies). Real models carry their textures as images in the GLB's buffer;
+// GLTFLoader loads those through blob: URLs, which the renderer page's CSP has to allow (T-2654: a real model
+// drew untextured, white, while the texture-less test model looked fine).
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+  const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+  return Buffer.concat([len, td, crc]);
+}
+function solidPng(w, h, rgba) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6; // 8-bit RGBA
+  const row = Buffer.concat([Buffer.from([0]), Buffer.concat(Array.from({ length: w }, () => Buffer.from(rgba)))]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk('IHDR', ihdr), pngChunk('IDAT', require('node:zlib').deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))]);
+}
+
 // ---------- the glTF ----------
-function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [], meta = {} } = {}) {
+function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [], meta = {}, texture = true } = {}) {
   const json = { asset: { version: '2.0', generator: 'pixel-pet scripts/make-test-vrm.js' }, extensionsUsed: ['VRMC_vrm', 'VRMC_springBone'], scene: 0, scenes: [{ nodes: [0] }], nodes: [], meshes: [], materials: [], accessors: [], bufferViews: [], buffers: [] };
   const chunks = [];
   let offset = 0;
@@ -105,6 +125,13 @@ function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [], meta 
   const PINK = [0.9, 0.35, 0.45];
   const mBlue = material(BLUE, 'body');
   const mLight = material(LIGHT, 'belly');
+  if (texture) {
+    // a white texture on the belly (white × its colour = the same look), embedded like a real model's
+    json.images = [{ name: 'belly', mimeType: 'image/png', bufferView: view(solidPng(4, 4, [255, 255, 255, 255])) }];
+    json.samplers = [{ magFilter: 9729, minFilter: 9729 }];
+    json.textures = [{ source: 0, sampler: 0 }];
+    json.materials[mLight].pbrMetallicRoughness.baseColorTexture = { index: 0 };
+  }
   const mDark = material(DARK, 'eyes');
   const mPink = material(PINK, 'mouth');
 

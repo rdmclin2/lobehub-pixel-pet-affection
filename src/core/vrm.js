@@ -57,6 +57,8 @@ function readGlbJsonFile(file) {
 const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const strs = (v, max = 200) => (Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? [v] : []).map((x) => str(x, max)).filter(Boolean).slice(0, 16);
 const pick = (v, allowed, dflt) => (allowed.includes(v) ? v : dflt);
+// a version some exporters fill with a placeholder ("undefined" in 木子惡魔's model) is no version
+const ver = (v) => { const x = str(v, 40); return /^(undefined|null|none|n\/a|-)?$/i.test(x) ? '' : x; };
 const bool = (v, dflt) => (typeof v === 'boolean' ? v : dflt);
 
 const AVATAR_PERMISSIONS = ['onlyAuthor', 'onlySeparatelyLicensedPerson', 'everyone'];
@@ -70,7 +72,7 @@ function meta10(m, specVersion) {
     vrmVersion: '1.0',
     specVersion: str(specVersion, 20) || '1.0',
     name: str(m.name, 100),
-    version: str(m.version, 40),
+    version: ver(m.version),
     authors: strs(m.authors, 100),
     copyrightInformation: str(m.copyrightInformation, 300),
     contactInformation: str(m.contactInformation, 300),
@@ -115,7 +117,7 @@ function meta0x(m, specVersion) {
     vrmVersion: '0.x',
     specVersion: str(specVersion, 20) || '0.0',
     name: str(m.title, 100),
-    version: str(m.version, 40),
+    version: ver(m.version),
     authors: strs(m.author, 100),
     copyrightInformation: '',
     contactInformation: str(m.contactInformation, 300),
