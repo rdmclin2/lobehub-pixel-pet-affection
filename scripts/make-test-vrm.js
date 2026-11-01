@@ -8,7 +8,7 @@
 // (no .vrm is ever committed: test/vrm.test.js checks).
 //
 //   node scripts/make-test-vrm.js [out.vrm]        (default: <tmp>/pixelpet-test-fish.vrm)
-//   const { makeTestVrm } = require('./scripts/make-test-vrm');  → Buffer  ({ name, omit: ['surprised', …] })
+//   const { makeTestVrm } = require('./scripts/make-test-vrm');  → Buffer  ({ name, omit: ['surprised', …], meta: { allowRedistribution: false, … } })
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -49,7 +49,7 @@ function boxesMesh(boxes, morphs = {}) {
 }
 
 // ---------- the glTF ----------
-function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [] } = {}) {
+function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [], meta = {} } = {}) {
   const json = { asset: { version: '2.0', generator: 'pixel-pet scripts/make-test-vrm.js' }, extensionsUsed: ['VRMC_vrm', 'VRMC_springBone'], scene: 0, scenes: [{ nodes: [0] }], nodes: [], meshes: [], materials: [], accessors: [], bufferViews: [], buffers: [] };
   const chunks = [];
   let offset = 0;
@@ -222,6 +222,8 @@ function makeTestVrm({ name = 'Pixel Pet test fish (homemade)', omit = [] } = {}
         licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'everyone', allowExcessivelyViolentUsage: false, allowExcessivelySexualUsage: false,
         commercialUsage: 'corporation', allowPoliticalOrReligiousUsage: false, allowAntisocialOrHateUsage: false, creditNotation: 'unnecessary',
         allowRedistribution: true, modification: 'allowModificationRedistribution', otherLicenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
+        // `meta`: fields overridden, e.g. a restrictive license to exercise the app's limits (the mesh stays ours)
+        ...meta,
       },
       humanoid: { humanBones: Object.fromEntries(HUMAN.map((b) => [b, { node: nodes[b] }])) },
       lookAt: { type: 'expression', offsetFromHeadBone: [0, 0.12, 0.1], rangeMapHorizontalInner: range, rangeMapHorizontalOuter: range, rangeMapVerticalDown: range, rangeMapVerticalUp: range },

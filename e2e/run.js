@@ -30,6 +30,7 @@ async function step(scenario, name, fn, page) {
   } catch (e) {
     rec.status = 'fail';
     rec.note = String(e.message).split('\n').filter(Boolean).slice(0, 4).join(' ').slice(0, 300);
+    if (process.env.PIXELPET_E2E_VERBOSE) console.error(e);
   }
   rec.ms = Date.now() - t0;
   const pg = typeof page === 'function' ? page() : page;
@@ -5732,6 +5733,10 @@ async function vrmUi() {
   }
 }
 
+// ------------------------------------------------------------------ vrm / vrmimport
+// The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
+const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct });
+
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
 // records it with MediaRecorder, main sends it to a local whisper-shaped server (a mock here: no tokens), and
@@ -6311,6 +6316,8 @@ async function asrScenario() {
   if (which === 'live2d' || which === 'all') await live2dScenario();
   if (which === 'l2dimport' || which === 'all') await live2dImport();
   if (which === 'vrmui' || which === 'all') await vrmUi();
+  if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
+  if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'asr' || which === 'all') await asrScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
