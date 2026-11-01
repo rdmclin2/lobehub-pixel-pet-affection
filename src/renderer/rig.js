@@ -14,9 +14,12 @@
 //   tail   swings about its root and bends toward its tip
 //   head   tilts about the neck; headWarp turns the face a little (the features slide, the outline stays)
 //   finL, finR, ahoge   hinge on the head and flap on their own springs
-// Missing parts are fine (a character with no tail has no tail part). The face's eyes and mouth are
-// painted live into one more part (`face`) over the head: lids for blinks and closed eyes, mouths for
-// talking and moods, blush.
+//   armL, armR   turn about the shoulders (swing when she walks, open when she is happy, wave)
+//   legL, legR   turn about the hips under the skirt (steps, dangling when she is lifted)
+// Missing parts are fine (a character with no tail has no tail part). Expressions come one of two ways:
+// drawn ones (`expressions` in the model: a part per face, cut from edits of the same drawing, laid
+// over the head and crossfaded; `blink` and `talk` are the eyes shut and the mouth open), or, for a
+// model without them, eyes and mouth painted live into one more part (`face`): lids, mouths, blush.
 //
 // `draw(frame)` takes what the app knows each frame: the state (src/core/fx.js STATES, or a touch-<zone>
 // reaction), whether she is talking, and how fast the window moves (being dragged, thrown, walking),
@@ -28,6 +31,25 @@
   const smooth = (a, b, x) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
   const bump = (u) => Math.sin(Math.PI * clamp(u, 0, 1)); // 0 at the edges, 1 in the middle
   const rad = (d) => (d * Math.PI) / 180;
+  // A warp that bends a limb at a joint: points past the joint (along shoulder → joint) turn about it by
+  // `a` degrees, fading in over a short stretch so the sleeve folds instead of breaking.
+  function bend(root, joint, a) {
+    if (!root || !joint || Math.abs(a) < 0.01) return () => [0, 0];
+    const ax = joint[0] - root[0];
+    const ay = joint[1] - root[1];
+    const len = Math.hypot(ax, ay) || 1;
+    const c = Math.cos(rad(a));
+    const sn = Math.sin(rad(a));
+    return (x, y) => {
+      const along = ((x - root[0]) * ax + (y - root[1]) * ay) / len;
+      const w = clamp((along - len * 0.85) / (len * 0.3), 0, 1);
+      const k = w * w * (3 - 2 * w);
+      if (!k) return [0, 0];
+      const dx = x - joint[0];
+      const dy = y - joint[1];
+      return [(dx * c - dy * sn - dx) * k, (dx * sn + dy * c - dy) * k];
+    };
+  }
 
   // ---------- the mesh renderer ----------
 
@@ -244,40 +266,42 @@ void main() {
   // eyes: open | happy (^ ^) | closed (asleep) | half | wink | wide | angry
   // mouth: none (as drawn) | smile | grin | open | o | frown | chew | cat | wavy
   // fins: up (+) or drooping (−); wag: how much the tail wags; hop: bounce height; sway: side to side
+  // expr: the drawn face this state wears (a model's `expressions`); arms: how far both arms open (deg),
+  // wave: one arm raised and waving
   const LOOKS = {
-    idle: { eyes: 'open', mouth: 'none', fins: 0, wag: 0.3 },
+    idle: { eyes: 'open', mouth: 'none', fins: 0, wag: 0.3, arms: 0 },
     look: { eyes: 'open', mouth: 'none', fins: 0.2, wag: 0.3, turn: 1 },
-    happy: { eyes: 'happy', mouth: 'grin', fins: 0.8, wag: 1, hop: 7, blush: 0.4 },
-    pat: { eyes: 'happy', mouth: 'cat', fins: 0.4, wag: 0.8, blush: 0.8, tilt: 7, duck: 3, flap: 0.6 },
-    sad: { eyes: 'half', mouth: 'frown', fins: -1, wag: 0, tilt: -3, duck: 3, tear: 1, tailLow: 1, tint: [0.85, 0.88, 1, 0.35] },
-    hungry: { eyes: 'half', mouth: 'o', fins: -0.5, wag: 0.1, wobble: 3 },
-    sleep: { eyes: 'closed', mouth: 'none', fins: -0.8, wag: 0, tilt: 9, duck: 3, slow: 1, tailLow: 0.6 },
-    eat_rice: { eyes: 'happy', mouth: 'chew', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
-    eat_cookie: { eyes: 'happy', mouth: 'chew', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
-    eat_fruit: { eyes: 'happy', mouth: 'chew', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
-    think: { eyes: 'open', mouth: 'wavy', fins: 0.1, wag: 0.15, tilt: -8, gazeUp: 1 },
+    happy: { eyes: 'happy', mouth: 'grin', expr: 'happy', fins: 0.8, wag: 1, hop: 7, blush: 0.4, arms: 28 },
+    pat: { eyes: 'happy', mouth: 'cat', expr: 'content', fins: 0.4, wag: 0.8, blush: 0.8, tilt: 7, duck: 3, flap: 0.6, arms: -4 },
+    sad: { eyes: 'half', mouth: 'frown', expr: 'sad', fins: -1, wag: 0, tilt: -3, duck: 3, tear: 1, tailLow: 1, tint: [0.85, 0.88, 1, 0.35], arms: -6 },
+    hungry: { eyes: 'half', mouth: 'o', expr: 'sad', fins: -0.5, wag: 0.1, wobble: 3 },
+    sleep: { eyes: 'closed', mouth: 'none', expr: 'sleep', fins: -0.8, wag: 0, tilt: 9, duck: 3, slow: 1, tailLow: 0.6, arms: -5 },
+    eat_rice: { eyes: 'happy', mouth: 'chew', expr: 'content', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
+    eat_cookie: { eyes: 'happy', mouth: 'chew', expr: 'content', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
+    eat_fruit: { eyes: 'happy', mouth: 'chew', expr: 'content', fins: 0.5, wag: 0.8, blush: 0.3, nod: 1 },
+    think: { eyes: 'open', mouth: 'wavy', expr: 'shy', fins: 0.1, wag: 0.15, tilt: -8, gazeUp: 1 },
     talk: { eyes: 'open', mouth: 'none', fins: 0.3, wag: 0.4, nod: 0.4 },
-    play: { eyes: 'happy', mouth: 'grin', fins: 0.9, wag: 1, hop: 5, sway: 7, blush: 0.3 },
-    hatch: { eyes: 'open', mouth: 'smile', fins: 0.6, wag: 0.8, pop: 1 },
-    evolve: { eyes: 'happy', mouth: 'grin', fins: 1, wag: 1, hop: 14, blush: 0.5, flap: 1 },
-    lifted: { eyes: 'wide', mouth: 'open', fins: 0.6, wag: 0.6, flap: 1, dangle: 1 },
+    play: { eyes: 'happy', mouth: 'grin', expr: 'happy', fins: 0.9, wag: 1, hop: 5, sway: 7, blush: 0.3, arms: 35 },
+    hatch: { eyes: 'open', mouth: 'smile', expr: 'wink', fins: 0.6, wag: 0.8, pop: 1, wave: 1 },
+    evolve: { eyes: 'happy', mouth: 'grin', expr: 'happy', fins: 1, wag: 1, hop: 14, blush: 0.5, flap: 1, arms: 60 },
+    lifted: { eyes: 'wide', mouth: 'open', expr: 'surprised', fins: 0.6, wag: 0.6, flap: 1, dangle: 1, arms: 22 },
     walk: { eyes: 'open', mouth: 'smile', fins: 0.2, wag: 0.5, stride: 1 },
   };
   // a touch on a body part (src/core/touch-zones.js), then the mood it put her in
   const TOUCH_LOOKS = {
-    head: { eyes: 'happy', mouth: 'cat', fins: 0.3, wag: 0.9, blush: 0.7, tilt: 6, duck: 4 },
-    face: { eyes: 'wink', mouth: 'cat', fins: 0.5, wag: 0.6, blush: 1, tilt: -5 },
-    chest: { eyes: 'wide', mouth: 'o', fins: 1, wag: 0, blush: 1, lean: -6, flap: 0.8 },
-    hands: { eyes: 'happy', mouth: 'smile', fins: 0.6, wag: 0.8, blush: 0.4, hop: 3 },
-    belly: { eyes: 'happy', mouth: 'grin', fins: 0.6, wag: 1, wobble: 4, blush: 0.4 },
-    butt: { eyes: 'wide', mouth: 'o', fins: 1, wag: 0, blush: 0.9, hop: 8, flap: 1 },
-    legs: { eyes: 'half', mouth: 'wavy', fins: 0.2, wag: 0.3, blush: 0.5 },
-    feet: { eyes: 'happy', mouth: 'grin', fins: 0.6, wag: 1, wobble: 4, hop: 3 },
-    tail: { eyes: 'wide', mouth: 'o', fins: 0.8, wag: 2.2, blush: 0.3 },
+    head: { eyes: 'happy', mouth: 'cat', expr: 'content', fins: 0.3, wag: 0.9, blush: 0.7, tilt: 6, duck: 4 },
+    face: { eyes: 'wink', mouth: 'cat', expr: 'wink', fins: 0.5, wag: 0.6, blush: 1, tilt: -5 },
+    chest: { eyes: 'wide', mouth: 'o', expr: 'shy', fins: 1, wag: 0, blush: 1, lean: -6, flap: 0.8, arms: -8 },
+    hands: { eyes: 'happy', mouth: 'smile', expr: 'happy', fins: 0.6, wag: 0.8, blush: 0.4, hop: 3, wave: 1 },
+    belly: { eyes: 'happy', mouth: 'grin', expr: 'happy', fins: 0.6, wag: 1, wobble: 4, blush: 0.4, arms: 15 },
+    butt: { eyes: 'wide', mouth: 'o', expr: 'surprised', fins: 1, wag: 0, blush: 0.9, hop: 8, flap: 1, arms: 30 },
+    legs: { eyes: 'half', mouth: 'wavy', expr: 'shy', fins: 0.2, wag: 0.3, blush: 0.5, arms: -6 },
+    feet: { eyes: 'happy', mouth: 'grin', expr: 'happy', fins: 0.6, wag: 1, wobble: 4, hop: 3, arms: 20 },
+    tail: { eyes: 'wide', mouth: 'o', expr: 'surprised', fins: 0.8, wag: 2.2, blush: 0.3 },
   };
   const MOOD_LOOKS = {
-    angry: { eyes: 'angry', mouth: 'frown', fins: 1, wag: 0, blush: 0.2, shake: 1 },
-    annoyed: { eyes: 'half', mouth: 'frown', fins: -0.3, wag: 0 },
+    angry: { eyes: 'angry', mouth: 'frown', expr: 'angry', fins: 1, wag: 0, blush: 0.2, shake: 1, arms: 10 },
+    annoyed: { eyes: 'half', mouth: 'frown', expr: 'angry', fins: -0.3, wag: 0 },
   };
   function lookFor(state, mood) {
     if (state.startsWith('touch-')) return (mood && MOOD_LOOKS[mood]) || TOUCH_LOOKS[state.slice(6)] || LOOKS.pat;
@@ -322,23 +346,40 @@ void main() {
       finL: { kind: 'rot', parent: 'head', pivot: PV.finL || [0, 0] },
       finR: { kind: 'rot', parent: 'head', pivot: PV.finR || [0, 0] },
       ahoge: { kind: 'rot', parent: 'head', pivot: PV.ahoge || [0, 0] },
+      armL: { kind: 'rot', parent: 'body', pivot: PV.armL || [W * 0.4, H * 0.3] },
+      armR: { kind: 'rot', parent: 'body', pivot: PV.armR || [W * 0.6, H * 0.3] },
+      // the forearm bends at the elbow (a warp over the arm, below the elbow turned about it)
+      elbowL: { kind: 'warp', parent: 'armL', rect: rectOf((p) => p.deformer === 'armL') },
+      elbowR: { kind: 'warp', parent: 'armR', rect: rectOf((p) => p.deformer === 'armR') },
+      legL: { kind: 'rot', parent: 'body', pivot: PV.legL || [W * 0.45, H * 0.75] },
+      legR: { kind: 'rot', parent: 'body', pivot: PV.legR || [W * 0.55, H * 0.75] },
     };
+    // drawing pixels per pixel of the 332×452 frame the motions were tuned on
+    const u = H / 452;
+    // drawn expressions: part id per face, shown over the head; all start hidden
+    const EXPR = model.expressions || {};
+    const exprParts = new Set(Object.values(EXPR));
+    const exprNow = Object.fromEntries(Object.keys(EXPR).map((k) => [k, 0]));
     // the face's eyes and mouth hang on the turning face; the head's own drawing does too, so the
     // features slide over the outline when she looks aside
-    const parts = model.parts.map((p) => ({ ...p, deformer: p.deformer === 'head' ? 'headWarp' : p.deformer === 'tail' ? 'tailBend' : p.deformer }));
+    const SUB = { head: 'headWarp', tail: 'tailBend', armL: 'elbowL', armR: 'elbowR' };
+    const parts = model.parts.map((p) => ({ ...p, deformer: SUB[p.deformer] || p.deformer }));
     const FACE_RES = 4; // face canvas pixels per drawing pixel: lids and mouths are drawn finer than the art
-    if (face) parts.push({ id: 'face', deformer: 'headWarp', z: (Math.max(...model.parts.filter((p) => p.deformer === 'head').map((p) => p.z), 0) || 6) + 0.5, box: face.box, grid: [4, 4] });
+    if (face && !Object.keys(EXPR).length) parts.push({ id: 'face', deformer: 'headWarp', z: (Math.max(...model.parts.filter((p) => p.deformer === 'head').map((p) => p.z), 0) || 6) + 0.5, box: face.box, grid: [4, 4] });
 
     let mesh = null;
     const faceCv = document.createElement('canvas');
-    if (face) { faceCv.width = face.box[2] * FACE_RES; faceCv.height = face.box[3] * FACE_RES; }
+    if (face && !Object.keys(EXPR).length) { faceCv.width = face.box[2] * FACE_RES; faceCv.height = face.box[3] * FACE_RES; }
     const fg = faceCv.getContext('2d');
 
     const sp = {
       hair: spring(40, 6, 2.2), hairY: spring(45, 7, 1.5), skirt: spring(80, 8, 1.8), tail: spring(30, 4, 40),
       fins: spring(90, 9, 35), ahoge: spring(140, 6, 40), head: spring(70, 10, 18), lean: spring(60, 9, 14),
+      arms: spring(50, 8, 80),
     };
-    const cur = { fins: 0, wag: 0.3, blush: 0, hop: 0, sway: 0, tilt: 0, duck: 0, tear: 0, tailLow: 0, wobble: 0, flap: 0, dangle: 0, stride: 0, turn: 0, slow: 0, nod: 0, lean: 0, gazeUp: 0, shake: 0 };
+    // a model with legs of their own steps with them; one without bends the skirt's bottom instead
+    const limbs = has('legL') || has('legR');
+    const cur = { fins: 0, wag: 0.3, blush: 0, hop: 0, sway: 0, tilt: 0, duck: 0, tear: 0, tailLow: 0, wobble: 0, flap: 0, dangle: 0, stride: 0, turn: 0, slow: 0, nod: 0, lean: 0, gazeUp: 0, shake: 0, arms: 0, wave: 0 };
     let tint = [1, 1, 1, 0];
     let lastT = null;
     let stateNow = null;
@@ -578,11 +619,11 @@ void main() {
       if (L.pop && state !== popState) popAt = t;
       popState = L.pop ? state : null;
       const pt = t - popAt;
-      const pop = pt < 1.2 ? 1 - Math.exp(-pt * 6) * Math.cos(pt * 12) * 0.5 : 1;
+      const pop = pt < 1.2 ? 1 - Math.exp(-pt * 7) * Math.cos(pt * 12) * 0.35 : 1;
       // walking: two steps a second
       const strideK = cur.stride;
       const stepPh = t * Math.PI * 2 * 2;
-      const bob = strideK * Math.abs(Math.sin(stepPh)) * 2.2;
+      const bob = strideK * Math.abs(Math.sin(stepPh)) * 2.2 * u;
 
       // body
       const wobble = cur.wobble * Math.sin(t * 7);
@@ -591,8 +632,8 @@ void main() {
       const lean = sp.lean.step(cur.lean - swing * 6, dt);
       pose.body = {
         a: wobble + sway + lean * 0.5 + shake,
-        tx: shake * 0.6,
-        ty: -hop - bob + cur.duck * 0.2,
+        tx: shake * 0.6 * u,
+        ty: (-hop + cur.duck * 0.2) * u - bob,
         sx: (1 + 0.006 * breath * (1 + cur.slow) + 0.05 * land) * pop,
         sy: (1 - 0.01 * breath * (1 + cur.slow) - 0.07 * land) * pop,
       };
@@ -603,10 +644,10 @@ void main() {
       let tiltT = Math.sin(t * 0.8) * 1.5 + cur.tilt + turn * 4 + cur.flap * Math.sin(t * 9) * 2;
       if (state === 'lifted') tiltT += swing * 10;
       const tilt = sp.head.step(tiltT, dt);
-      pose.head = { a: tilt, ty: cur.duck * 0.6 + nod * 0.5 + (cur.slow > 0.5 ? Math.max(0, breath) * 0.6 : 0) };
+      pose.head = { a: tilt, ty: (cur.duck * 0.6 + nod * 0.5 + (cur.slow > 0.5 ? Math.max(0, breath) * 0.6 : 0)) * u };
       // the face turns: features slide toward the side she looks at, gaze up for thinking
-      const fx = turn * 2.4 + (talking ? Math.sin(t * 1.7) * 0.4 : 0);
-      const fy = -cur.gazeUp * 1.2 + cur.duck * 0.15;
+      const fx = (turn * 2.4 + (talking ? Math.sin(t * 1.7) * 0.4 : 0)) * u;
+      const fy = (-cur.gazeUp * 1.2 + cur.duck * 0.15) * u;
       pose.headWarp = { fn: (x, y, u, v) => [fx * bump(u) * (0.4 + 0.6 * bump(v)), fy * bump(v) * (0.4 + 0.6 * bump(u))] };
 
       // springs: hair, skirt and tail trail the motion; fins and ahoge flap
@@ -626,8 +667,8 @@ void main() {
           const dy = y - neck[1];
           const wv = Math.pow(v, 1.5);
           return [
-            dx * Math.cos(a) - dy * Math.sin(a) - dx + hair * 7 * wv + Math.sin(t * 1.5 + v * 3) * 0.8 * wv,
-            dx * Math.sin(a) + dy * Math.cos(a) - dy + hairY * 10 * wv * wv + (pose.head.ty || 0) * w,
+            dx * Math.cos(a) - dy * Math.sin(a) - dx + (hair * 7 * wv + Math.sin(t * 1.5 + v * 3) * 0.8 * wv) * u,
+            dx * Math.sin(a) + dy * Math.cos(a) - dy + hairY * 10 * wv * wv * u + (pose.head.ty || 0) * w,
           ];
         },
       };
@@ -640,13 +681,13 @@ void main() {
         fn: (x, y) => {
           // the hem swings; under it each leg steps forward and back (opposite legs), or dangles
           const k = smooth(skirtTop, hem, y);
-          let dx = skirt * 5 * k * k + Math.sin(t * 2 + x * 0.05) * 0.3 * k;
-          let dy = -hairY * 2 * k * k;
-          if (y > hem - 2) {
+          let dx = (skirt * 5 * k * k + Math.sin(t * 2 + x * 0.05 / u) * 0.3 * k) * u;
+          let dy = -hairY * 2 * k * k * u;
+          if (!limbs && y > hem - 2) {
             const lk = clamp((y - hem) / (feet - hem), 0, 1);
             const side = x < legs.split ? 1 : -1;
-            dx += side * stepK * 4 * lk + dangle * Math.sin(t * 6 + side) * 2.5 * lk;
-            dy += -Math.max(0, side * stepK) * 3 * lk * lk;
+            dx += (side * stepK * 4 * lk + dangle * Math.sin(t * 6 + side) * 2.5 * lk) * u;
+            dy += -Math.max(0, side * stepK) * 3 * lk * lk * u;
           }
           return [dx, dy];
         },
@@ -660,10 +701,42 @@ void main() {
       const wagF = 3 + 4 * Math.min(cur.wag, 1.4);
       const tail = sp.tail.step(swing * 16 - cur.tailLow * 14, dt) + cur.wag * 10 * Math.sin(t * wagF) + Math.sin(t * 1.2) * 2;
       pose.tail = { a: tail };
-      pose.tailBend = { fn: (x, y, u) => [0, -tail * 0.25 * u * u] };
+      pose.tailBend = { fn: (x, y, k) => [0, -tail * 0.25 * k * k * u] };
+
+      // arms: open per state, swing against the steps, flail when lifted; one arm up waving
+      const armOpen = sp.arms.step(cur.arms + Math.min(Math.abs(swing), 1) * 8 + (state === 'lifted' ? Math.sin(t * 11) * 6 : 0), dt);
+      const armSwing = strideK * Math.sin(stepPh) * 14;
+      const waveA = cur.wave * 95;
+      pose.armL = { a: armOpen + armSwing + Math.sin(t * 1.1) * 1.2 };
+      pose.armR = { a: -armOpen + armSwing - waveA - Math.sin(t * 1.1 + 1) * 1.2 };
+      // elbows: a little bend that follows the swing (arms are not sticks), the forearm up beside her head to wave
+      const relax = 6 + armOpen * 0.15;
+      pose.elbowL = { fn: bend(PV.armL, PV.elbowL, relax + armSwing * 0.4) };
+      pose.elbowR = { fn: bend(PV.armR, PV.elbowR, -relax + armSwing * 0.4 - cur.wave * (55 + 25 * Math.sin(t * 8))) };
+      // legs: steps (opposite to the arms), a little kick when dangling
+      const legA = strideK * Math.sin(stepPh) * 9;
+      pose.legL = { a: -legA + dangle * Math.sin(t * 6) * 7, ty: -Math.max(0, -Math.sin(stepPh)) * strideK * 4 * u };
+      pose.legR = { a: legA + dangle * Math.sin(t * 6 + 1.8) * 7, ty: -Math.max(0, Math.sin(stepPh)) * strideK * 4 * u };
+
+      // drawn expressions: the state's face fades in, the others out; blink and talk over them
+      if (exprParts.size) {
+        const want = L.expr || null;
+        const kx = approach(12, dt);
+        for (const name of Object.keys(exprNow)) {
+          if (name === 'blink' || name === 'talk') continue;
+          exprNow[name] = lerp(exprNow[name], name === want ? 1 : 0, kx);
+          pose.alpha[EXPR[name]] = exprNow[name];
+        }
+        // eyes already shut or squinting do not blink; a mouth of its own is not covered while talking
+        const openEyes = !want || ['surprised', 'sad', 'shy', 'angry'].includes(want);
+        if (EXPR.blink) pose.alpha[EXPR.blink] = openEyes ? blinkK : 0;
+        // talking opens the drawn mouth in syllables, eating chews with it
+        const chew = L.mouth === 'chew' ? Math.max(0, Math.sin(t * 9)) : 0;
+        if (EXPR.talk) pose.alpha[EXPR.talk] = want === 'happy' || want === 'surprised' ? 0 : clamp(Math.max(talkOpen * 1.6, chew), 0, 1);
+      }
 
       pose.tintAll = tint[3] > 0.01 ? tint : null;
-      if (face) {
+      if (face && !exprParts.size) {
         paintFace(L, t, mouthOpen);
         mesh.upload('face', faceCv);
       }

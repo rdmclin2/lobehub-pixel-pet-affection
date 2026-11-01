@@ -14,13 +14,17 @@
 
 ## 全动态（大肥鱼 · 全动态，`dafeiyu-live`）
 
-大肥鱼另有一个全动态外观（`kind: "rig"`，格式见 `docs/pet-packs.md`）：把 `dafeiyu-pixel` 日常服的待机帧按 `art/rig/dafeiyu.json` 拆成 7 层（后发、尾巴、身体、头、左右鳍、呆毛），由 `src/renderer/rig.js` 实时弯折，眼睛和嘴也是实时画的。重新拆：
+大肥鱼另有一个全动态外观（`kind: "rig"`，格式见 `docs/pet-packs.md`），v2（2026-11-01）的做法：
+
+1. 用 gpt-image-2.5 以像素版待机帧为参考，生成一张 1075×1463 的高清主图（正面、手臂微张、两脚分开、绿幕），提示词在 `art/rig/dafeiyu-v2/master_a.txt`。
+2. 以主图为参考做编辑（`lh` CLI 不带参考图参数，需要给 `image.createImage` 传 `params.imageUrls`）：去掉手臂、去掉鳍、只留头发，以及 10 种表情（开心、满足、惊讶、难过、生气、害羞、睡觉、wink、闭眼、张嘴）。编辑图和主图构图几乎逐像素一致，只有改动的部位不同。提示词在 `art/rig/dafeiyu-v2/*.txt`，原图（webp）在同一目录。
+3. 拆件：
 
 ```bash
-python3 scripts/art/rig_cut.py art/rig/dafeiyu.json daily <待机帧.png> src/renderer/packs/dafeiyu-live --scale 2
+python3 scripts/art/rig_build.py art/rig/dafeiyu-v2.json art/rig/dafeiyu-v2 src/renderer/packs/dafeiyu-live
 ```
 
-待机帧取自 `dafeiyu-pixel/sheets/daily.webp` 左上角那一格（664×904）。多边形是在 332×452 上画的，所以加 `--scale 2`：按 2 倍切图，各层保留 664×904 的分辨率，`model.json` 的坐标仍是 332×452。之后用参考图编辑生成更高清的分层原图时，换掉这张图、调整多边形即可。
+得到 11 个身体图层（后发、尾巴、左右腿、身体、左右手臂、头、左右鳍、呆毛）和 10 个表情贴片，由 `src/renderer/rig.js` 实时弯折。
 
 ## 像素包格式
 
@@ -72,7 +76,7 @@ python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸�
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
 ```
 
-**18+ 成年版**（`<id>-adult`，T-1261）：`sexy_bikini` 不是新生成的，而是复用最早那批比基尼设计稿（成人比例、三角或挂脖比基尼加纱笼，只有 8 个状态）：缺的 8 个状态用相近的帧补（东张西望←待机，难过、饿了←思考，吃饼干、吃水果←吃饭，玩耍、唤醒、升级←开心），走路是用待机帧做的原地踏步，唤醒第 1 帧保留站姿高度（`align_outfit.py --keep hatch#0`、`check_model_chan.py` 的 `HEIGHT_FREE`）。格萝可用的是第一版（纱笼款），不是后来改成娇小体型的那版。同样的流程，提示词加 `--mature`（20 岁成年形象，名字带 `_mature`），组包用 `build_model_chan_pack.py --hd --adult [--outfit <id>] … <id> src/renderer/packs/<id>-adult`，走路帧和对齐同上。成人向服饰的描述在 `ADULT_WARDROBE`，只能和 `--mature` 一起用。目前画了日常服和 `maid`；其余成人向款式生成时被图像服务的安全暂停拦下，没有图。
+**18+ 成年版**（`<id>-adult`，T-1261）：`sexy_bikini` 不是新生成的，而是复用最早那批比基尼设计稿（成人比例、三角或挂脖比基尼加纱笼，只有 8 个状态）：缺的 8 个状态用相近的帧补（东张西望←待机，难过、饿了←思考，吃饼干、吃水果←吃饭，玩耍、唤醒、升级←开心），走路是用待机帧做的原地踏步，唤醒第 1 帧保留站姿高度（`align_outfit.py --keep hatch#0`、`check_model_chan.py` 的 `HEIGHT_FREE`）。格萝可用的是第一版（纱笼款），不是后来改成娇小体型的那版。同样的流程，提示词加 `--mature`（20 岁成年形象，名字带 `_mature`），组包用 `build_model_chan_pack.py --hd --adult [--outfit <id>] … <id> src/renderer/packs/<id>-adult`，走路帧和对齐同上。成人向服饰的描述在 `ADULT_WARDROBE`，只能和 `--mature` 一起用。日常服和 10 套 `ADULT_WARDROBE` 都已生成（2026-11-01 用 `one.sh` 式的单张串行提交：一次一张、张与张之间停 20 秒、第一次被拒就整批停，没有被拒）。之前 8 路并行一次提交 200 多张，触发过“repeated safety rejections”的账号暂停。
 
 10 套全年龄衣柜服饰（`WARDROBE`）也按这个流程生成。它们的提示词开头多一句 “Chroma-key sprite sheet … like a green screen”：只写平常的背景句时，gpt-image 常常画成深色渐变背景，抠不出来。生成后用 `scripts/art/align_outfit.py src/renderer/packs/<id>-pixel <outfit>` 把和 daily 对应帧身高差超过 11.5% 的格子以脚底为基准缩放对齐（多半是蹲着的唤醒帧），再跑 `check_model_chan.py`。
 

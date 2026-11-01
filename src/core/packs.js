@@ -6,9 +6,10 @@
 // with the app (src/core/outfits.js), so an imported pack cannot change what is shown to whom.
 // Format: docs/pet-packs.md. Electron-free so it can be tested.
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { OUTFIT_IDS } = require('./outfits');
+const { OUTFITS, OUTFIT_IDS } = require('./outfits');
 const { SPECIES, SPECIES_IDS } = require('./species');
 const { STATES } = require('./fx');
 
@@ -55,8 +56,10 @@ const posInt = (v) => Number.isInteger(v) && v > 0;
 // A rig pack (全动态): `model` is a JSON file in the pack (see docs/pet-packs.md) and every outfit's
 // image is its preview, with the outfit's layers (<part id>.png) in the same folder. The model goes to
 // the renderer with the look (src/renderer/rig.js draws it), so it is checked here.
-const RIG_DEFORMERS = ['body', 'skirt', 'hair', 'tail', 'head', 'finL', 'finR', 'ahoge'];
-const RIG_PIVOTS = ['body', 'head', 'neck', 'tail', 'finL', 'finR', 'ahoge'];
+const RIG_DEFORMERS = ['body', 'skirt', 'hair', 'tail', 'head', 'finL', 'finR', 'ahoge', 'armL', 'armR', 'legL', 'legR'];
+const RIG_PIVOTS = ['body', 'head', 'neck', 'tail', 'finL', 'finR', 'ahoge', 'armL', 'armR', 'elbowL', 'elbowR', 'legL', 'legR'];
+// drawn faces the app knows how to use (src/renderer/rig.js LOOKS `expr`), plus the eyes shut and the mouth open
+const RIG_EXPRESSIONS = ['happy', 'content', 'surprised', 'sad', 'angry', 'shy', 'sleep', 'wink', 'blink', 'talk'];
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const nums = (v, n) => Array.isArray(v) && v.length === n && v.every(num);
 function readRigModel(dir, rel, outfits, errors) {
@@ -105,6 +108,16 @@ function readRigModel(dir, rel, outfits, errors) {
     }
     face = { box: f.box, eyes: f.eyes, mouth: f.mouth, skin: f.skin, ink: f.ink, blush: f.blush };
   }
+  let expressions = null;
+  if (m.expressions !== undefined) {
+    if (!m.expressions || typeof m.expressions !== 'object') return bad('expressions must map face names to part ids');
+    expressions = {};
+    for (const [k, v] of Object.entries(m.expressions)) {
+      if (!RIG_EXPRESSIONS.includes(k)) return bad(`expressions.${k}: one of ${RIG_EXPRESSIONS.join(', ')}`);
+      if (!parts.some((p) => p.id === v)) return bad(`expressions.${k}: no part ${v}`);
+      expressions[k] = v;
+    }
+  }
   // every outfit needs every layer, next to its preview
   for (const [id, preview] of Object.entries(outfits)) {
     const folder = path.posix.dirname(preview);
@@ -113,7 +126,7 @@ function readRigModel(dir, rel, outfits, errors) {
       if (!fs.existsSync(path.resolve(dir, rel2))) return bad(`outfit ${id} has no layer ${rel2}`);
     }
   }
-  return { size: m.size, parts, pivots, legs, face };
+  return { size: m.size, parts, pivots, legs, face, expressions };
 }
 
 // A Live2D pack: `model` is a Cubism 4 .model3.json in the pack (with the .moc3, textures and physics it
@@ -158,6 +171,98 @@ function readLive2d(dir, rel, cfg, errors) {
   if (c.pinned !== undefined && !values(c.pinned)) return bad('live2d.pinned: { parameter id: value }');
   out.pinned = c.pinned || {};
   return out;
+}
+
+// ---------- the user's own Live2D model (外观 → 导入 Live2D 模型…) ----------
+// A plain Cubism 3–5 model folder (a .model3.json and the files it names, no pack.json) becomes a live2d
+// pack for one character: the model goes into `model/`, its expressions become the app's named faces, and
+// it dresses her in every all-ages outfit (adult outfits still need an 18+ pack). The preview picture is
+// drawn by the renderer from the model itself after the import (PREVIEW_FILE starts as a blank).
+const LIVE2D_DIR = 'model';
+const PREVIEW_FILE = 'preview.png';
+const SKIP_DIRS = new Set(['__MACOSX', 'node_modules', '.git']);
+
+// The .model3.json files under `dir` (relative, '/'-separated, shallowest first), and whether only
+// Cubism 2 models (.model.json) were found there.
+function findLive2dModels(dir, maxDepth = 4) {
+  const found = [];
+  let cubism2 = false;
+  const walk = (rel, depth) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory() && depth < maxDepth && !SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) walk(r, depth + 1);
+      else if (e.isFile() && /\.model3\.json$/i.test(e.name)) found.push(r);
+      else if (e.isFile() && /\.model\.json$/i.test(e.name)) cubism2 = true;
+    }
+  };
+  walk('', 0);
+  found.sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+  return { models: found, cubism2: cubism2 && !found.length };
+}
+
+// Its id: one per character and model name, so importing the same model again replaces it.
+function live2dPackId(speciesId, name) {
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const hash = crypto.createHash('sha1').update(String(name)).digest('hex').slice(0, 8);
+  const tail = slug.length >= 3 ? slug : hash;
+  return `l2d-${speciesId}-${tail}`.slice(0, 40).replace(/-+$/, '');
+}
+
+// The app's named faces (src/renderer/live2d.js) recognised from expression names and file names, in
+// English, Japanese and Chinese; the first expression that matches a face wins.
+const FACE_HINTS = {
+  blush: /blush|shy|embarrass|照れ|赤面|ほほ|脸红|臉紅|害羞|羞/i,
+  wide: /surpris|shock|astonish|驚|びっくり|吃惊|惊讶|驚訝|惊/i,
+  squint: /squint|><|＞＜|xx|笑い目|眯|闭眼笑/i,
+  gloom: /gloom|depress|dark|落ち込|暗|阴沉|陰沉|黑脸|sad|悲|哀|难过|難過/i,
+  dizzy: /dizzy|confus|目回|ぐるぐる|晕|暈|眩/i,
+  drool: /drool|よだれ|口水/i,
+};
+// Parameters the renderer drives itself every frame (head, gaze, eyes, brows, mouth; with their Cubism 2
+// names): an expression's values for them would fight her own face, so a face keeps only the rest.
+const LIVE2D_DRIVEN = new Set(['AngleX', 'AngleY', 'AngleZ', 'BodyAngleX', 'BodyAngleZ', 'EyeBallX', 'EyeBallY', 'EyeLOpen', 'EyeROpen', 'EyeSmile', 'EyeLSmile', 'EyeRSmile', 'EyeAnger', 'BrowLY', 'BrowRY', 'BrowLAngle', 'BrowRAngle', 'MouthForm', 'MouthOpenY']
+  .flatMap((k) => [`Param${k}`, `PARAM_${k.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z])/g, '$1_$2').toUpperCase()}`]));
+// `expressions`: [{ name, file, json }] from the .model3.json and its .exp3.json files. A face sets the
+// expression's Add / Overwrite values (Multiply ones scale what is there and are left out).
+function facesFromExpressions(expressions) {
+  const faces = {};
+  for (const [face, re] of Object.entries(FACE_HINTS)) {
+    for (const ex of expressions) {
+      if (!re.test(`${ex.name || ''} ${path.basename(ex.file || '')}`)) continue;
+      const params = {};
+      for (const p of (ex.json && Array.isArray(ex.json.Parameters) ? ex.json.Parameters : [])) {
+        if (!p || !PARAM_RE.test(p.Id || '') || LIVE2D_DRIVEN.has(p.Id) || typeof p.Value !== 'number' || Math.abs(p.Value) > 100 || p.Blend === 'Multiply') continue;
+        params[p.Id] = p.Value;
+      }
+      if (Object.keys(params).length) { faces[face] = params; break; }
+    }
+  }
+  return faces;
+}
+
+// The pack.json for a model at `${LIVE2D_DIR}/<modelRel>` worn by `speciesId`.
+function live2dManifest({ speciesId, modelRel, name, expressions = [] }) {
+  const all = OUTFITS.filter((o) => o.rating !== 'adult').map((o) => o.id);
+  return {
+    schema: SCHEMA,
+    id: live2dPackId(speciesId, name),
+    name: text(name, 40) || 'Live2D 模型',
+    version: '1.0.0',
+    author: '本地导入',
+    license: '模型作者的条款',
+    description: '从本地导入的 Live2D 模型。',
+    species: speciesId,
+    kind: 'live2d',
+    model: `${LIVE2D_DIR}/${modelRel}`,
+    live2d: { height: 0.8, faces: facesFromExpressions(expressions) },
+    outfits: Object.fromEntries(all.map((id) => [id, PREVIEW_FILE])),
+  };
 }
 
 // Validate a manifest read from `dir`. Returns { ok: true, pack } or { ok: false, errors }.
@@ -295,7 +400,7 @@ function packsFor(packs, speciesId, adultOk = false) {
   const out = [...packs.values()]
     .filter((p) => p.species === speciesId && (adultOk || !p.adult))
     .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length }));
+    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, ...(p.live2d ? { height: p.live2d.height } : {}) }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
   if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
   return out;
@@ -319,4 +424,4 @@ function chosenPack(packs, appearance, speciesId, adultOk = false) {
   return fallbackPack(speciesId);
 }
 
-module.exports = { defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor };
+module.exports = { defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor, LIVE2D_DIR, PREVIEW_FILE, findLive2dModels, live2dPackId, facesFromExpressions, live2dManifest };

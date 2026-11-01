@@ -1,0 +1,42 @@
+{
+ "about": "大肥鱼 全动态 v2: one gpt-image master drawing (1075×1463, green screen) and its edits; outlines and pivots in master pixels. See scripts/art/rig_build.py.",
+ "images": {"master": "master_a.webp", "haironly": "edit_haironly.webp", "noarms": "edit_noarms.webp", "nofins": "edit_nofins.webp",
+  "face_happy": "face_happy.webp", "face_content": "face_content.webp", "face_blink": "face_blink.webp", "face_talk": "face_talk.webp",
+  "face_surprised": "face_surprised.webp", "face_sad": "face_sad.webp", "face_angry": "face_angry.webp", "face_shy": "face_shy.webp",
+  "face_sleep": "face_sleep.webp", "face_wink": "face_wink.webp"},
+ "faces": ["happy", "content", "surprised", "sad", "angry", "shy", "sleep", "wink", "blink", "talk"],
+ "frame": [664, 904], "height": 0.785, "figureHeight": 1430, "feetY": 1442, "centerX": 527, "hemY": 1140,
+ "faceBox": [452, 170, 602, 272],
+ "outlines": {
+  "ahoge": [[[478, 0], [592, 0], [592, 52], [515, 64], [478, 60]]],
+  "head": [[[400, 55], [650, 55], [660, 150], [655, 270], [600, 275], [575, 262], [527, 272], [478, 262], [455, 275], [398, 270], [392, 150]]],
+  "face": [[[452, 170], [602, 170], [600, 250], [560, 274], [495, 274], [455, 250]]],
+  "fins": [[[318, 155], [448, 155], [448, 245], [318, 245]], [[598, 150], [735, 150], [735, 245], [598, 245]]],
+  "finL": [[[300, 140], [527, 140], [527, 260], [300, 260]]],
+  "finR": [[[527, 140], [760, 140], [760, 260], [527, 260]]],
+  "arms": [[[372, 295], [458, 295], [458, 460], [440, 520], [400, 610], [352, 700], [335, 790], [245, 790], [250, 690], [300, 640], [330, 520], [360, 420]],
+           [[682, 295], [596, 295], [596, 460], [614, 520], [654, 610], [702, 700], [719, 790], [809, 790], [804, 690], [754, 640], [724, 520], [694, 420]]],
+  "armL": [[[0, 0], [527, 0], [527, 1463], [0, 1463]]],
+  "armR": [[[527, 0], [1075, 0], [1075, 1463], [527, 1463]]],
+  "legs": [[[390, 1150], [670, 1150], [670, 1463], [390, 1463]]],
+  "legL": [[[0, 0], [527, 0], [527, 1463], [0, 1463]]],
+  "legR": [[[527, 0], [1075, 0], [1075, 1463], [527, 1463]]],
+  "tail": [[[748, 585], [955, 585], [955, 845], [800, 845], [780, 800], [760, 720], [748, 650]]],
+  "tailRoot": [[[720, 690], [800, 690], [810, 850], [720, 850]]],
+  "body": [[[470, 262], [585, 262], [620, 295], [610, 450], [615, 520], [700, 600], [760, 720], [800, 860], [815, 1100], [700, 1160], [527, 1165], [350, 1160], [240, 1100], [255, 860], [300, 720], [355, 600], [440, 520], [445, 450], [435, 295]]]
+ },
+ "pivots": {"body": [527, 1442], "head": [527, 282], "neck": [527, 282], "armL": [425, 335], "armR": [630, 335], "elbowL": [362, 505], "elbowR": [692, 505], "legL": [465, 1065], "legR": [592, 1065], "tail": [775, 790], "finL": [432, 198], "finR": [618, 196], "ahoge": [520, 62]},
+ "layers": [
+  {"id": "hair", "deformer": "hair", "z": 1, "grid": [10, 16]},
+  {"id": "tail", "deformer": "tail", "z": 1.5, "grid": [8, 5]},
+  {"id": "leg_l", "deformer": "legL", "z": 2, "grid": [3, 10]},
+  {"id": "leg_r", "deformer": "legR", "z": 2, "grid": [3, 10]},
+  {"id": "body", "deformer": "skirt", "z": 4, "grid": [10, 18]},
+  {"id": "arm_l", "deformer": "armL", "z": 5, "grid": [4, 8]},
+  {"id": "arm_r", "deformer": "armR", "z": 5, "grid": [4, 8]},
+  {"id": "head", "deformer": "head", "z": 6, "grid": [8, 8]},
+  {"id": "fin_l", "deformer": "finL", "z": 7, "grid": [4, 3]},
+  {"id": "fin_r", "deformer": "finR", "z": 7, "grid": [4, 3]},
+  {"id": "ahoge", "deformer": "ahoge", "z": 7.5, "grid": [4, 4]}
+ ]
+}
