@@ -1,0 +1,562 @@
+{
+  "url": "https://app.lobehub.com/api/v1/responses",
+  "status": 200,
+  "contentType": "text/event-stream",
+  "headersMs": 1889,
+  "reads": [
+    {
+      "ms": 1896,
+      "bytes": 1364,
+      "text": "event: response.created\ndata: {\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1793546563,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"in_progress\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":0,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":0},\"user\":null},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1793546563,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":nul"
+    },
+    {
+      "ms": 1897,
+      "bytes": 438,
+      "text": "l,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"in_progress\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":0,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":0},\"user\":null},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n"
+    },
+    {
+      "ms": 3329,
+      "bytes": 532,
+      "text": "event: response.output_item.added\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"\",\"type\":\"output_text\"}],\"id\":\"msg_tpc_REDACTED1_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"logprobs\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\n"
+    },
+    {
+      "ms": 3654,
+      "bytes": 328,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 3967,
+      "bytes": 302,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":5,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 4276,
+      "bytes": 357,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":6,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 4577,
+      "bytes": 350,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":7,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 4891,
+      "bytes": 330,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":8,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 5205,
+      "bytes": 357,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":9,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 5516,
+      "bytes": 327,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":10,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 5834,
+      "bytes": 361,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":11,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 6136,
+      "bytes": 366,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":12,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 6441,
+      "bytes": 349,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":13,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 6748,
+      "bytes": 345,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":14,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 6969,
+      "bytes": 291,
+      "text": "event: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":15,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 11022,
+      "bytes": 1363,
+      "text": "event: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":16,\"text\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈"
+    },
+    {
+      "ms": 11022,
+      "bytes": 1369,
+      "text": "，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"logprobs\":[],\"text\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅"
+    },
+    {
+      "ms": 11022,
+      "bytes": 1369,
+      "text": "一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"type\":\"output_text\"},\"sequence_number\":17,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是"
+    },
+    {
+      "ms": 11022,
+      "bytes": 1369,
+      "text": "带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没什么大事发生。它只是提醒你，天凉了，记"
+    },
+    {
+      "ms": 11022,
+      "bytes": 1369,
+      "text": "得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"type\":\"output_text\"}],\"id\":\"msg_tpc_REDACTED1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":18,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"background\":false,\"completed_at\":1793546574,\"created_at\":1793546563,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不"
+    },
+    {
+      "ms": 11023,
+      "bytes": 1369,
+      "text": "想做，只想让时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"type\":\"output_text\"}],\"id\":\"msg_tpc_REDACTED1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"output_text\":\"**秋日贴地飞行**\\n\\n晨起推开窗，风换了"
+    },
+    {
+      "ms": 11023,
+      "bytes": 1369,
+      "text": "张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\\n\\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\\n\\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\\n\\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\\n\\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\\n\\n其实秋天没"
+    },
+    {
+      "ms": 11023,
+      "bytes": 866,
+      "text": "什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"completed\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":1618,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":448,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":2066},\"user\":null},\"sequence_number\":19,\"type\":\"response.completed\"}\n\n"
+    }
+  ],
+  "events": [
+    {
+      "ms": 1896,
+      "event": "response.created",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546563,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 0,
+        "type": "response.created"
+      }
+    },
+    {
+      "ms": 1897,
+      "event": "response.in_progress",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546563,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 1,
+        "type": "response.in_progress"
+      }
+    },
+    {
+      "ms": 3329,
+      "event": "response.output_item.added",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "in_progress",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 2,
+        "type": "response.output_item.added"
+      }
+    },
+    {
+      "ms": 3329,
+      "event": "response.content_part.added",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "",
+          "type": "output_text"
+        },
+        "sequence_number": 3,
+        "type": "response.content_part.added"
+      }
+    },
+    {
+      "ms": 3654,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 4,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 3967,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 5,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 4276,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 6,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 4577,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 7,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 4891,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 8,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 5205,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 9,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 5516,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 10,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 5834,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 11,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 6136,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 12,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 6441,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 13,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 6748,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 14,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 6969,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 15,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 11022,
+      "event": "response.output_text.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 16,
+        "text": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+        "type": "response.output_text.done"
+      }
+    },
+    {
+      "ms": 11022,
+      "event": "response.content_part.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+          "type": "output_text"
+        },
+        "sequence_number": 17,
+        "type": "response.content_part.done"
+      }
+    },
+    {
+      "ms": 11022,
+      "event": "response.output_item.done",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 18,
+        "type": "response.output_item.done"
+      }
+    },
+    {
+      "ms": 11023,
+      "event": "response.completed",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": 1793546574,
+          "created_at": 1793546563,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+                  "type": "output_text"
+                }
+              ],
+              "id": "msg_tpc_REDACTED1_0",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "output_text": "**秋日贴地飞行**\n\n晨起推开窗，风换了张脸。它不再是盛夏那种黏人的热风，而是带着凉意的、干净的风，像谁在夜里洗过一遍天空，剩下的水汽全晾在了早上。院子里的梧桐先知道，叶子边缘开始泛黄，一圈一圈往里烧。\n\n午后的阳光变矮了。它不再直直地砸下来，而是斜斜地切进屋子，在地板上拉出很长的光柱，柱子里浮着细小的尘埃，慢悠悠地翻滚，像一群不急着去哪儿的鱼。人坐在其中，什么也不想做，只想让时间也慢下来，跟着浮一浮。\n\n街角卖糖炒栗子的摊子出来了。铁锅一转，砂子和栗子哗啦啦地响，甜香顺着风跑出去老远。骑车的人经过会下意识捏一下刹车，买一小袋，揣在兜里，热乎乎的，像揣了一小块自己的秋天。\n\n傍晚的云最好看。天蓝得发深，云被风扯成薄薄的丝，一层金一层橘，最后化成一整片淡淡的紫。楼下的老人搬出凳子坐着，不说话，就看着西边暗下去。鸟成群地飞过去，翅膀拍得很响，一会儿就没了影。\n\n夜里要盖薄被子了。窗没关严，风钻进来在屋里绕一圈，把窗帘吹得鼓起来又落下去。人在半梦半醒之间听见远处有虫叫，一声一声，越来越稀，最后只剩风声。秋天就是这样，把所有热闹都慢慢收走。\n\n其实秋天没什么大事发生。它只是提醒你，天凉了，记得添件衣服；果子熟了，记得尝一口；叶子落了，别难过，它明年还会回来。人这一生要过很多个秋天，但每一个都值得慢一点走，低头看看地上那些刚被风吹落的、还带着一点绿的叶子。",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "completed",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 1618,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 448,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 2066
+          },
+          "user": null
+        },
+        "sequence_number": 19,
+        "type": "response.completed"
+      }
+    }
+  ],
+  "totalMs": 11024,
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

@@ -1,0 +1,332 @@
+{
+  "url": "https://app.lobehub.com/api/v1/responses",
+  "status": 200,
+  "contentType": "text/event-stream",
+  "headersMs": 1572,
+  "reads": [
+    {
+      "ms": 1580,
+      "bytes": 1364
+    },
+    {
+      "ms": 1580,
+      "bytes": 438
+    },
+    {
+      "ms": 2962,
+      "bytes": 532
+    },
+    {
+      "ms": 4216,
+      "bytes": 507
+    },
+    {
+      "ms": 8407,
+      "bytes": 1364
+    },
+    {
+      "ms": 8407,
+      "bytes": 1369
+    },
+    {
+      "ms": 8407,
+      "bytes": 626
+    }
+  ],
+  "events": [
+    {
+      "ms": 1580,
+      "event": "response.created",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546444,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 0,
+        "type": "response.created"
+      }
+    },
+    {
+      "ms": 1580,
+      "event": "response.in_progress",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546444,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 1,
+        "type": "response.in_progress"
+      }
+    },
+    {
+      "ms": 2962,
+      "event": "response.output_item.added",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "in_progress",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 2,
+        "type": "response.output_item.added"
+      }
+    },
+    {
+      "ms": 2962,
+      "event": "response.content_part.added",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "",
+          "type": "output_text"
+        },
+        "sequence_number": 3,
+        "type": "response.content_part.added"
+      }
+    },
+    {
+      "ms": 4216,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 4,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 8407,
+      "event": "response.output_text.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 5,
+        "text": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+        "type": "response.output_text.done"
+      }
+    },
+    {
+      "ms": 8407,
+      "event": "response.content_part.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+          "type": "output_text"
+        },
+        "sequence_number": 6,
+        "type": "response.content_part.done"
+      }
+    },
+    {
+      "ms": 8407,
+      "event": "response.output_item.done",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 7,
+        "type": "response.output_item.done"
+      }
+    },
+    {
+      "ms": 8407,
+      "event": "response.completed",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": 1793546452,
+          "created_at": 1793546444,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+                  "type": "output_text"
+                }
+              ],
+              "id": "msg_tpc_REDACTED1_0",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "output_text": "秋风掠过稻田，金浪翻滚，空气里满是谷物香。\n\n枫叶由绿转红，铺满小路，踩上去沙沙作响。\n\n清晨的薄雾还未散去，屋檐下挂着微凉的露珠。\n\n柿子熟透压弯枝头，麻雀在墙头叽叽喳喳。\n\n天高云淡，一行雁影慢慢掠过远方山峦。",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "completed",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 1619,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 262,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 1881
+          },
+          "user": null
+        },
+        "sequence_number": 8,
+        "type": "response.completed"
+      }
+    }
+  ],
+  "totalMs": 8408,
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}
