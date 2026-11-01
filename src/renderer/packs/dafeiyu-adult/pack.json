@@ -120,7 +120,16 @@
   "outfits": {
     "daily": "sheets/daily.webp",
     "maid": "sheets/maid.webp",
-    "sexy_bikini": "sheets/sexy_bikini.webp"
+    "sexy_bikini": "sheets/sexy_bikini.webp",
+    "office": "sheets/office.webp",
+    "stewardess": "sheets/stewardess.webp",
+    "nurse": "sheets/nurse.webp",
+    "knit_dress": "sheets/knit_dress.webp",
+    "offshoulder_gown": "sheets/offshoulder_gown.webp",
+    "silk_robe": "sheets/silk_robe.webp",
+    "retro_swimsuit": "sheets/retro_swimsuit.webp",
+    "bunny": "sheets/bunny.webp",
+    "devil_cos": "sheets/devil_cos.webp"
   },
   "adult": true
 }
