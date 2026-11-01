@@ -450,6 +450,38 @@ test('keys: encrypted on disk when the system can, 0600 otherwise; never in sett
   assert.equal(tts.redact(`bad ${KEY}!`, [KEY]), 'bad ***!');
 });
 
+test('keys: macOS mode reads old encrypted keys once, rewrites them 0600, keeps what the keychain refuses', () => {
+  const enc = (t) => Buffer.from(`enc:${Buffer.from(t).toString('hex')}`).toString('base64');
+  const dec = (b) => Buffer.from(b.toString().slice(4), 'hex').toString();
+  const dir = tmp();
+  const file = path.join(dir, 'tts-keys.json');
+  fs.writeFileSync(file, JSON.stringify({ fish: { enc: enc(KEY) }, minimax: { plain: 'mm-secret-key-0000' } }));
+  let calls = 0;
+  const ks = new TtsKeyStore(dir, null, { legacyDecrypt: (b) => { calls++; return dec(b); } });
+  assert.equal(ks.get('fish'), KEY);
+  assert.equal(ks.get('minimax'), 'mm-secret-key-0000');
+  assert.equal(ks.encrypted(), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { fish: { plain: KEY }, minimax: { plain: 'mm-secret-key-0000' } });
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  // next launch: plain already, the keychain is never touched again
+  const again = new TtsKeyStore(dir, null, { legacyDecrypt: () => { calls++; throw new Error('keychain'); } });
+  assert.equal(again.get('fish'), KEY);
+  assert.equal(calls, 1);
+  // Deny on the one prompt: the encrypted entry stays on disk (retried next launch), other keys still save
+  const denied = tmp();
+  const dfile = path.join(denied, 'tts-keys.json');
+  fs.writeFileSync(dfile, JSON.stringify({ fish: { enc: enc(KEY) } }));
+  const ds = new TtsKeyStore(denied, null, { legacyDecrypt: () => { throw new Error('User denied'); } });
+  assert.equal(ds.has('fish'), false);
+  assert.equal(fs.readFileSync(dfile, 'utf8').includes(KEY), false);
+  ds.set('minimax', 'mm-secret-key-0000');
+  assert.deepEqual(JSON.parse(fs.readFileSync(dfile, 'utf8')), { fish: { enc: enc(KEY) }, minimax: { plain: 'mm-secret-key-0000' } });
+  assert.equal(new TtsKeyStore(denied, null, { legacyDecrypt: dec }).get('fish'), KEY);
+  // typing a new fish key replaces the unreadable one
+  ds.set('fish', KEY);
+  assert.deepEqual(JSON.parse(fs.readFileSync(dfile, 'utf8')).fish, { plain: KEY });
+});
+
 test('the repository holds no API key', () => {
   const root = path.join(__dirname, '..', 'src');
   const files = [];
