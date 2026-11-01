@@ -340,3 +340,30 @@ test('大肥鱼 · Live2D: the built-in model is complete, its watermark and che
   assert.equal(P.chosenPack(packs, {}, 'dafeiyu'), 'dafeiyu-pixel');
   for (const f of ['live2dcubismcore.min.js', 'pixi.min.js', 'unsafe-eval.min.js', 'cubism4.min.js']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'src', 'renderer', 'vendor', 'live2d', f)), `runtime ${f}`);
 });
+
+// Image size from the file header (PNG IHDR, WebP VP8 / VP8L / VP8X), without decoding it.
+function imageSize(file) {
+  const b = fs.readFileSync(file);
+  if (b.readUInt32BE(0) === 0x89504e47) return [b.readUInt32BE(16), b.readUInt32BE(20)];
+  if (b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') {
+    const kind = b.toString('ascii', 12, 16);
+    if (kind === 'VP8X') return [1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3)];
+    if (kind === 'VP8L') { const n = b.readUInt32LE(21); return [(n & 0x3fff) + 1, ((n >> 14) & 0x3fff) + 1]; }
+    if (kind === 'VP8 ') return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+  }
+  return null;
+}
+
+test('every outfit sheet of every built-in sprite pack is exactly its frame size times the grid it is cut from', () => {
+  // a sheet at the wrong scale (e.g. a 332x452-cell sheet in a 664x904 pack after a merge) cuts empty frames
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  for (const p of packs.values()) {
+    if (p.kind !== 'sprites') continue;
+    const cols = Math.max(...Object.values(p.actions).map((a) => a.col + a.frames));
+    const rows = Math.max(...Object.values(p.actions).map((a) => a.row + 1));
+    for (const [outfit, rel] of Object.entries(p.outfits)) {
+      const [w, h] = imageSize(path.join(BUILTIN, p.id, rel));
+      assert.ok(w >= p.frame.width * cols && h >= p.frame.height * rows && w % p.frame.width === 0 && h % p.frame.height === 0, `${p.id} ${outfit}: ${w}x${h} for ${p.frame.width}x${p.frame.height} frames, ${cols}x${rows}`);
+    }
+  }
+});
