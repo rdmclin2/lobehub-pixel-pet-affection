@@ -11,6 +11,7 @@ const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { app, protocol, net } = require('electron');
 const P = require('../core/packs');
+const { importVrm } = require('../core/vrm-import');
 
 // Must run before the app is ready. CORS-enabled so the page can read a sheet's pixels (部位触摸 hit-tests
 // clicks against her opaque pixels); the files are pictures only, see serve().
@@ -24,6 +25,13 @@ function unzip(zip, dest) {
   if (process.platform === 'darwin') return run('/usr/bin/ditto', ['-x', '-k', zip, dest]);
   if (process.platform === 'win32') return run('tar', ['-xf', zip, '-C', dest]); // bsdtar ships with Windows 10+
   return run('unzip', ['-q', zip, '-d', dest]);
+}
+
+// Zip the contents of `dir` into `zip` (the folder's files at the zip's top level, as 导入角色包… reads them).
+function zipDir(dir, zip) {
+  if (process.platform === 'darwin') return run('/usr/bin/ditto', ['-c', '-k', dir, zip]);
+  if (process.platform === 'win32') return run('tar', ['-a', '-cf', zip, '-C', dir, '.']);
+  return run('python3', ['-m', 'zipfile', '-c', zip, ...fs.readdirSync(dir).map((f) => path.join(dir, f))]);
 }
 
 const NO_CUBISM2 = '这是 Cubism 2 的模型（.model.json），目前只支持 Cubism 3 / 4 / 5（.model3.json）';
@@ -64,7 +72,7 @@ class PackStore {
       const pack = this.packs.get(u.hostname);
       const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
       const file = pack && path.resolve(pack.dir, rel);
-      if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g|json|moc3)$/i.test(file)) return new Response('not found', { status: 404 });
+      if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g|json|moc3|vrma?)$/i.test(file)) return new Response('not found', { status: 404 });
       return net.fetch(pathToFileURL(file).toString()).then((res) => {
         const headers = new Headers(res.headers);
         headers.set('access-control-allow-origin', '*');
@@ -167,10 +175,20 @@ class PackStore {
     }
   }
 
+  // Import the user's own VRM model for `speciesId` (外观 → 导入 VRM 模型…): a .vrm, a folder or a .zip. Only
+  // <userData>/packs is written (core/vrm-import.js); the license read from the model goes with the pack.
+  async importVrm(src, speciesId) {
+    const r = await importVrm({ src, speciesId, userDir: this.userDir, packs: this.packs, unzipFn: unzip });
+    if (!r.ok) return r;
+    this.reload();
+    const pack = this.packs.get(r.pack.id);
+    return { ...r, pack: { id: pack.id, name: pack.name, species: pack.species }, model: P.packUrl(pack, pack.outfits.daily || Object.values(pack.outfits)[0]) };
+  }
+
   // The picture an imported Live2D model shows in lists and the wardrobe, drawn by the renderer (PNG data URL).
   savePreview(id, dataUrl) {
     const p = this.packs.get(id);
-    if (!p || p.source !== 'user' || p.kind !== 'live2d') return { ok: false, reason: 'not-user-live2d' };
+    if (!p || p.source !== 'user' || (p.kind !== 'live2d' && p.kind !== 'vrm')) return { ok: false, reason: 'not-user-live2d' };
     const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
     const buf = m && Buffer.from(m[1], 'base64');
     if (!buf || buf.length < 8 || buf.length > 8 * 1024 * 1024 || !buf.subarray(0, 8).equals(BLANK_PNG.subarray(0, 8))) return { ok: false, reason: 'bad-png' };
@@ -190,6 +208,25 @@ class PackStore {
     fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
     this.reload();
     return { ok: true, height: h };
+  }
+
+  // May this pack leave the machine (导出…)? A VRM pack whose model may not be redistributed never may
+  // (core/packs.js packShareable); built-in packs ship with the app and are not exported.
+  shareable(id) {
+    const p = this.packs.get(id);
+    if (!p) return { ok: false, reason: 'unknown', text: '没有这个角色包' };
+    if (p.source !== 'user') return { ok: false, reason: 'builtin', text: '内置角色包随应用提供，不需要导出' };
+    return P.packShareable(p);
+  }
+
+  // Export a user pack as a .zip that 导入角色包… reads back. Refused (nothing written) when not shareable.
+  async exportPack(id, zip) {
+    const ok = this.shareable(id);
+    if (!ok.ok) return ok;
+    const p = this.packs.get(id);
+    fs.rmSync(zip, { force: true });
+    await zipDir(p.dir, zip);
+    return { ok: true, file: zip };
   }
 
   remove(id) {

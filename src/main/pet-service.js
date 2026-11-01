@@ -119,7 +119,8 @@ class PetService extends EventEmitter {
   // outfits, adult ones included, replace her file's list), else null.
   _look(speciesId) {
     const p = this.packs.get(packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()));
-    return p && p.adult ? { adult: true, outfits: Object.keys(p.outfits) } : null;
+    // a VRM pack whose model license forbids sexual usage is never an 18+ look (core/packs.js lookContext)
+    return packsLib.lookContext(p);
   }
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
@@ -141,7 +142,8 @@ class PetService extends EventEmitter {
       status: state.currentStatus(c),
       affection: state.toAffectionProgress(c, { adult }),
       topics: dialogue.listTopics(c, this.settings),
-      outfits: outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)).map((o) => ({ ...o, look: this.lookFor(this.pet.speciesId, o.id) })),
+      // a locked outfit's VRM model is not handed out (only its picture): nothing to load before it unlocks
+      outfits: outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)).map((o) => ({ ...o, look: packsLib.lockedLook(this.lookFor(this.pet.speciesId, o.id), o.locked) })),
       outfit: outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId)),
       look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId))),
       appearance: this.appearanceView(this.pet.speciesId),

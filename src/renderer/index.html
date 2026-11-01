@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack:; connect-src 'self' pack:; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack: blob:; connect-src 'self' pack: blob:; media-src 'self' blob:" />
   <title>Pixel Pet</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -175,9 +175,12 @@
   <script src="../core/voice.js"></script>
   <script src="../core/interaction-voice.js"></script>
   <script src="../core/touch-zones.js"></script>
+  <script src="../core/vrm-ui.js"></script>
   <script src="fx.js"></script>
   <script src="rig.js"></script>
   <script src="live2d.js"></script>
+  <script src="../core/vrm-motion.js"></script>
+  <script src="vrm.js"></script>
   <script src="history.js"></script>
   <script src="app.js"></script>
 </body>

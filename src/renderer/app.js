@@ -114,8 +114,9 @@ const isVideo = (id) => !!id && !!speciesOf(id) && speciesOf(id).art === 'video'
 const sprites = new Set(); // live sprite canvases: { canvas, look, sheet, k, action() }
 const rigs = new Set(); // live figures, 全动态 (rig.js) or Live2D (live2d.js): { canvas, figure, action() }
 // a look drawn live every frame instead of from frames: which script draws it
-const LIVE_KINDS = { rig: () => window.PetRig, live2d: () => window.PetLive2D };
-const isLive = (look) => !!look && !!LIVE_KINDS[look.kind];
+// (VRM: window.PetVRM, the three-vrm renderer; until it is loaded a VRM look shows its picture / placeholder)
+const LIVE_KINDS = { rig: () => window.PetRig, live2d: () => window.PetLive2D, vrm: () => window.PetVRM };
+const isLive = (look) => !!look && !!LIVE_KINDS[look.kind] && !!LIVE_KINDS[look.kind]();
 // A whole HD sheet decodes to about 86 MB (2656×8136), so only the desktop pet draws from the full sheet.
 // Smaller looks (cards, the wardrobe, the hatch screen) draw from a half-size copy, and a sheet nothing
 // shows any more is let go after a while: the wardrobe would otherwise keep every outfit's sheet decoded.
@@ -182,7 +183,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     wrap.appendChild(v);
     return wrap;
   }
-  if (isLive(look) && className === 'char' && LIVE_KINDS[look.kind]()) {
+  if (isLive(look) && className === 'char') {
     // the desktop pet is drawn live; anywhere else (cards, the wardrobe) her picture stands in
     const c = document.createElement('canvas');
     c.className = `${className} sprite rig ${look.kind}`;
@@ -213,6 +214,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     drawSprite(s, performance.now());
     return c;
   }
+  if (look.kind === 'vrm') return vrmPictureEl(look, className, alt);
   const img = document.createElement('img');
   if (look.url.startsWith('pack:')) img.crossOrigin = 'anonymous';
   img.className = `${className}${look.pixelated ? ' pixelated' : ''}`;
@@ -220,6 +222,26 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
   img.draggable = false;
   img.src = look.url;
   return img;
+}
+// A VRM look not drawn live (lists, the wardrobe, or before the 3D renderer is there): the picture the
+// renderer saved for the pack over a "VRM" tile, so a model without a picture yet is still recognisable.
+function vrmPictureEl(look, className, alt) {
+  const wrap = document.createElement('div');
+  wrap.className = `${className} vrm-look${look.locked ? ' locked' : ''}`;
+  wrap.setAttribute('role', 'img');
+  wrap.setAttribute('aria-label', alt);
+  wrap.innerHTML = '<span class="vrm-badge">VRM</span>';
+  if (look.url) {
+    const img = document.createElement('img');
+    img.crossOrigin = 'anonymous';
+    img.alt = '';
+    img.draggable = false;
+    img.hidden = true; // shown once it is a real picture: the importer's 1×1 stand-in is not one
+    img.addEventListener('load', () => { img.hidden = img.naturalWidth <= 1; });
+    img.src = look.url;
+    wrap.appendChild(img);
+  }
+  return wrap;
 }
 function drawSprite(s, now) {
   const { look, canvas, k } = s;
@@ -248,14 +270,21 @@ function rigFailed(canvas, look, alt, className, e) {
   img.alt = alt;
   img.draggable = false;
   img.src = look.url;
-  canvas.replaceWith(img);
+  canvas.replaceWith(look.kind === 'vrm' ? vrmPictureEl(look, className, alt) : img);
+}
+// What her voice is doing right now: 'audio' (a TTS clip playing), 'system' (Web Speech) or null. A VRM
+// figure moves her mouth with it (lip sync), whatever state she is in (an interaction line is read during pat).
+function voiceNow() {
+  if (speechAudio && !speechAudio.paused && !speechAudio.ended) return 'audio';
+  if (window.speechSynthesis && speechSynthesis.speaking) return 'system';
+  return null;
 }
 function tickRigs(now) {
   for (const r of rigs) {
     if (!r.canvas.isConnected) { r.figure.dispose(); rigs.delete(r); continue; }
     const state = r.action();
     const mood = state.startsWith('touch-') && lastTouch ? lastTouch.mood : null;
-    r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', win: [window.screenX, window.screenY] });
+    r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', voice: voiceNow(), win: [window.screenX, window.screenY] });
   }
 }
 function tickSprites(now) {
@@ -478,7 +507,7 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
-  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}`; // a Live2D model's size is redrawn too
+  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
@@ -539,6 +568,10 @@ function refreshHud() {
   $('aff-num').textContent = `♥${a.value}/${a.max}`;
   $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
   $('aff-row').setAttribute('aria-label', $('aff-row').title);
+  // one look and nothing to change into (a single VRM model): no wardrobe to open
+  const oneLook = view.outfits.length <= 1;
+  $('btn-wardrobe').classList.toggle('hidden', oneLook);
+  if (oneLook && panelKind === 'wardrobe') closePanel();
   $('btn-wardrobe').querySelector('.new-dot').classList.toggle('hidden', !view.outfits.some((o) => o.isNew));
   $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
   setSettings(view.settings);
@@ -884,7 +917,7 @@ function renderCharacter(c) {
   const look = document.createElement('div');
   look.className = 'adv-section';
   look.id = 'look-section';
-  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div><p class="adv-text l2d-text">也可以直接用你自己的 Live2D 模型（Cubism 3 / 4 / 5，选它的 .model3.json 或打包好的 .zip）：她会用模型自己的物理，表情、眨眼、口型和动作由应用驱动，所有全年龄服饰下都穿这个模型。</p><div class="size-row"><button id="l2d-import" class="btn">导入 Live2D 模型…</button></div>';
+  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div><p class="adv-text l2d-text">也可以直接用你自己的 Live2D 模型（Cubism 3 / 4 / 5，选它的 .model3.json 或打包好的 .zip）：她会用模型自己的物理，表情、眨眼、口型和动作由应用驱动，所有全年龄服饰下都穿这个模型。</p><div class="size-row"><button id="l2d-import" class="btn">导入 Live2D 模型…</button></div><p class="adv-text vrm-text">或者导入 VRM 3D 模型（VRM 1.0 / 0.x 的 .vrm 文件）：作者和授权从模型文件里读出并显示在这里，应用按授权限制使用（不可再分发的模型不能导出，不允许性表现的模型不能用于 18+ 内容）。模型只复制到本机的用户数据目录。</p><div class="size-row"><button id="vrm-import" class="btn">导入 VRM 模型…</button></div>';
   const list = look.querySelector('.pack-list');
   for (const o of c.appearance.options) {
     const on = o.id === c.appearance.packId;
@@ -892,12 +925,21 @@ function renderCharacter(c) {
     prow.className = `pack-opt${on ? ' on' : ''}`;
     prow.dataset.pack = o.id;
     prow.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
+    if (o.kind === 'vrm') prow.classList.add('vrm');
     const pick = prow.querySelector('.pick');
     pick.textContent = on ? '✓ 使用中' : '使用';
     pick.setAttribute('aria-checked', String(on));
     pick.disabled = on;
     prow.querySelector('b').textContent = o.name;
-    prow.querySelector('span').textContent = `${o.adult ? '18+ · ' : ''}${{ sprites: '像素动画', video: '透明视频', rig: '全动态', live2d: 'Live2D' }[o.kind] || '立绘'} · ${o.outfits} 套服饰 · ${o.author} · ${o.license}${o.source === 'user' ? ' · 导入（内容由作者负责）' : ''}`;
+    prow.querySelector('span').textContent = window.PetVrmUi.packMetaLine(o);
+    const credit = o.kind === 'vrm' && window.PetVrmUi.creditLine(o.vrm);
+    if (credit) {
+      // the license asks for credit: the author stays on the card, not only in the details
+      const cr = document.createElement('small');
+      cr.className = 'vrm-credit';
+      cr.textContent = credit;
+      prow.querySelector('.meta').appendChild(cr);
+    }
     pick.addEventListener('click', async () => {
       const r = await window.pet.setAppearance(o.id, c.id);
       if (!r.ok) return;
@@ -906,17 +948,60 @@ function renderCharacter(c) {
       renderPanel();
       panelMsg(`${c.nameZh}的外观已换成「${o.name}」。`, true);
     });
+    // a VRM card has more to offer (授权信息, 导出…): its buttons get a row of their own under the meta
+    const actions = o.kind === 'vrm' ? document.createElement('div') : prow;
+    if (o.kind === 'vrm') { actions.className = 'pack-actions'; prow.appendChild(actions); }
+    if (o.kind === 'vrm' && o.vrm) {
+      const info = document.createElement('button');
+      info.className = 'btn vrm-info';
+      info.textContent = '授权信息';
+      info.setAttribute('aria-expanded', String(vrmOpen.has(o.id)));
+      info.addEventListener('click', () => {
+        if (vrmOpen.has(o.id)) vrmOpen.delete(o.id); else vrmOpen.add(o.id);
+        renderPanel();
+      });
+      actions.appendChild(info);
+    }
+    if (o.source === 'user') {
+      // 导出…: a .zip of the pack; refused (and the reason shown) when the model may not be redistributed
+      const ex = document.createElement('button');
+      ex.className = 'btn pack-export';
+      ex.textContent = '导出…';
+      const can = window.PetVrmUi.exportState(o);
+      if (!can.ok) {
+        ex.disabled = true;
+        ex.title = can.text;
+        ex.setAttribute('aria-description', can.text);
+      }
+      ex.addEventListener('click', async () => {
+        const r = await window.pet.exportPack(o.id);
+        if (r.reason === 'canceled') return;
+        panelMsg(r.ok ? `已导出「${o.name}」到 ${r.file}` : `不能导出：${r.text || r.reason}`, !!r.ok);
+      });
+      actions.appendChild(ex);
+    }
     if (o.source === 'user') {
       const del = document.createElement('button');
-      del.className = 'btn';
+      del.className = 'btn pack-remove';
       del.textContent = '移除';
       del.addEventListener('click', async () => {
         if (!confirm(`移除角色包「${o.name}」？`)) return;
         await window.pet.removePack(o.id);
       });
-      prow.appendChild(del);
+      actions.appendChild(del);
     }
     list.appendChild(prow);
+    if (o.kind === 'vrm' && o.vrm) {
+      const can = window.PetVrmUi.exportState(o);
+      if (o.source === 'user' && !can.ok) {
+        const why = document.createElement('p');
+        why.className = 'adv-note vrm-noexport';
+        why.dataset.pack = o.id;
+        why.textContent = `🚫 导出已禁用：${can.text}`;
+        list.appendChild(why);
+      }
+      if (vrmOpen.has(o.id)) list.appendChild(vrmLicenseBox(o.vrm, o.id));
+    }
   }
   look.querySelector('#pack-import').addEventListener('click', async () => {
     const r = await window.pet.importPack();
@@ -926,6 +1011,7 @@ function renderCharacter(c) {
   });
   look.querySelector('#pack-folder').addEventListener('click', () => window.pet.openPacksFolder());
   look.querySelector('#l2d-import').addEventListener('click', () => importLive2d(c));
+  look.querySelector('#vrm-import').addEventListener('click', () => importVrm(c));
   // an imported Live2D model in use: how much of the window she fills
   const mine = c.appearance.options.find((o) => o.id === c.appearance.packId && o.kind === 'live2d' && o.source === 'user');
   if (mine) {
@@ -985,6 +1071,98 @@ async function importLive2d(c) {
   }
   const faces = (r.faces || []).map((f) => FACE_NAMES[f] || f);
   panelMsg(`已导入 Live2D 模型「${r.pack.name}」并换上${faces.length ? `，用上了它的表情：${faces.join('、')}` : ''}。`, true);
+}
+// 外观 → 导入 VRM 模型…: main checks the file (glTF + VRM extension), reads its meta and license from the
+// model and copies it into a new user pack. Before she wears it, 导入确认 shows who made the model and what
+// its license allows; 取消导入 removes the pack again. The license details stay one click away on the card.
+const vrmOpen = new Set(); // VRM pack ids whose 授权信息 is open in the list
+async function importVrm(c) {
+  const r = await window.pet.importVrm(c.id);
+  if (r.reason === 'canceled') return;
+  if (!r.ok) return panelMsg(window.PetVrmUi.importErrorText(r.errors));
+  panelMsg(`已导入「${r.pack.name}」，请确认授权信息。`, true);
+  // the picture for lists and the wardrobe, when the 3D renderer is there to draw one
+  if (window.PetVRM && window.PetVRM.picture) {
+    try { await window.pet.savePackPreview(r.pack.id, await window.PetVRM.picture(r.model)); } catch (e) { console.warn('[vrm] no picture:', e && e.message); }
+  }
+  const use = await vrmConfirm(r);
+  if (!use) {
+    await window.pet.removePack(r.pack.id);
+    return panelMsg(`已取消导入「${r.pack.name}」，模型没有留在本机的角色包里。`, true);
+  }
+  const s = await window.pet.setAppearance(r.pack.id, c.id);
+  if (s.ok) {
+    view = s.view;
+    applyArt();
+    renderPanel();
+  }
+  panelMsg(`已导入 VRM 模型「${r.pack.name}」并换上（作者：${r.license.author}）。`, true);
+}
+// 导入确认: the model's meta and the restrictions of its license; resolves true for 使用这个模型.
+function vrmConfirm(r) {
+  return new Promise((resolve) => {
+    const box = document.createElement('div');
+    box.className = 'vrm-confirm';
+    box.id = 'vrm-confirm';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'vrm-confirm-title');
+    box.innerHTML = '<div class="vrm-confirm-card"><h3 id="vrm-confirm-title"></h3><p class="adv-note"></p><div class="vrm-confirm-body"></div><div class="size-row vrm-confirm-actions"><button class="btn" data-act="cancel">取消导入</button><button class="btn primary" data-act="use">使用这个模型</button></div></div>';
+    box.querySelector('h3').textContent = `导入 VRM 模型「${r.pack.name}」`;
+    box.querySelector('.adv-note').textContent = `${r.outfits.length} 套全年龄服饰都会穿这个模型。以下信息读自模型文件，应用会按授权限制使用；点“使用这个模型”即表示你确认有权在本机使用它。`;
+    box.querySelector('.vrm-confirm-body').appendChild(vrmLicenseBox({ ...r.license, models: [{ file: '', meta: r.meta, restrictions: r.license.restrictions }] }, r.pack.id, true));
+    const done = (v) => { box.remove(); resolve(v); };
+    box.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
+    box.querySelector('[data-act="use"]').addEventListener('click', () => done(true));
+    document.body.appendChild(box);
+    box.querySelector('[data-act="use"]').focus();
+  });
+}
+// The license of a VRM pack: the restrictions (what the app enforces first), then per model its meta.
+function vrmLicenseBox(vrm, packId, inDialog = false) {
+  const U = window.PetVrmUi;
+  const box = document.createElement('div');
+  box.className = 'vrm-license';
+  box.dataset.pack = packId;
+  const h = document.createElement('div');
+  h.className = 'vrm-summary';
+  h.textContent = vrm.summary || '';
+  box.appendChild(h);
+  const rs = U.restrictionList(vrm.restrictions);
+  if (rs.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'vrm-restrictions';
+    ul.setAttribute('aria-label', '授权限制');
+    for (const x of rs) {
+      const li = document.createElement('li');
+      li.className = `tone-${x.tone}`;
+      li.dataset.id = x.id;
+      li.textContent = x.text;
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+  }
+  for (const m of vrm.models || []) {
+    const dl = document.createElement('dl');
+    dl.className = 'vrm-meta';
+    if (!inDialog && (vrm.models || []).length > 1) dl.dataset.file = m.file;
+    for (const row of U.licenseRows(m.meta)) {
+      const dt = document.createElement('dt');
+      dt.textContent = row.label;
+      const dd = document.createElement('dd');
+      if (row.href) {
+        const a = document.createElement('a');
+        a.href = row.href;
+        a.textContent = row.text;
+        a.title = '在浏览器中打开';
+        a.addEventListener('click', (e) => { e.preventDefault(); window.pet.openLink(row.href); });
+        dd.appendChild(a);
+      } else dd.textContent = row.text;
+      dl.append(dt, dd);
+    }
+    box.appendChild(dl);
+  }
+  return box;
 }
 async function live2dPicture(model) {
   const c = document.createElement('canvas');
@@ -1639,6 +1817,7 @@ function playAudio(rec, s, r, end) {
   Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
+  if (window.PetVRM && window.PetVRM.active()) window.PetVRM.lip.attach(a); // a VRM figure's mouth follows the voice
   a.onplaying = () => { rec.started = s.started = true; talkFor(Number.isFinite(a.duration) ? a.duration * 1000 : 0, s.text); };
   a.onended = () => { if (speechAudio === a) haltAudio(); end('done'); };
   a.onerror = () => end(`error: ${a.error ? a.error.code : '?'}`);
@@ -2614,7 +2793,37 @@ window.petFx = {
   lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
   lastAsr: () => lastAsr && { ...lastAsr },
   micState: () => mic.state,
+  // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
+  vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
+  // without a TTS engine; resolves with how the clip ended
+  testVoice: (seconds = 2) => new Promise((resolve) => {
+    const rec = { sentences: [], fellBackFrom: [] };
+    const s = { text: '测试口型', status: 'queued' };
+    playAudio(rec, s, { ok: true, provider: 'test', audio: vowelWav(seconds), mime: 'audio/wav', cached: false }, (status) => resolve(status));
+  }),
 };
+// A WAV of `seconds` of vowel-like tones (a voice pitch plus two formant partials, a new vowel every 250 ms
+// with a short pause between), for petFx.testVoice.
+function vowelWav(seconds) {
+  const rate = 22050;
+  const n = Math.round(rate * seconds);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  const VOWELS = [[850, 1600], [300, 2600], [350, 800], [500, 2200], [550, 900]]; // a i u e o (F1, F2)
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    const [f1, f2] = VOWELS[Math.floor(t / 0.25) % VOWELS.length];
+    const ph = (t % 0.25) / 0.25;
+    const env = ph < 0.8 ? Math.sin((ph / 0.8) * Math.PI) : 0;
+    const x = 0.3 * Math.sin(2 * Math.PI * 180 * t) + 0.35 * Math.sin(2 * Math.PI * f1 * t) + 0.25 * Math.sin(2 * Math.PI * f2 * t);
+    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x * env)) * 32767 * 0.8, true);
+  }
+  return buf;
+}
 
 // The local HTTP API (src/core/api.js) asks the window to play, throw or report what it is doing.
 async function onApiCmd({ id, cmd, args }) {

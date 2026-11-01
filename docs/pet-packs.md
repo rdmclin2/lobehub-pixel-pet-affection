@@ -27,7 +27,7 @@ my-grok/
   "license": "CC BY-NC-SA 4.0",      // 显示在外观列表里；第三方素材请写清授权
   "description": "可选，最多 200 字",
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
-  "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态（见下文）
+  "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态；live2d；vrm：3D（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
@@ -70,7 +70,7 @@ my-grok/
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
 - **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（2656×8136，每帧 664×904，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
-- `rig` 类型（全动态）和 `live2d` 类型见下面两节。
+- `rig` 类型（全动态）、`live2d` 类型和 `vrm` 类型（3D）见下面几节。
 
 ## Live2D 角色包（`"kind": "live2d"`）
 
@@ -111,6 +111,117 @@ my-grok/
 导入后在同一个位置可以调**模型大小**（`live2d.height`，30%–100%）。手臂、尾巴、耳朵的参数映射和 `pinned`（例如关掉模型自带的水印）需要手动加：打开角色包文件夹，编辑 `pack.json` 的 `live2d` 部分，格式和上面一样，重启应用后生效。
 
 应用驱动的是 Cubism 的标准参数（`ParamAngleX`、`ParamEyeLOpen`、`ParamEyeLSmile`、`ParamMouthOpenY`……）；从 Cubism 2 转过来、仍用 `PARAM_ANGLE_X` 这类名字的模型也认得。模型里没有的参数直接跳过。
+
+## VRM 角色包（`"kind": "vrm"`）
+
+直接用 [VRM](https://vrm.dev/) 3D 模型（`.vrm`，VRM 1.0 或 0.x）。每套服饰对应一个 `.vrm` 文件；动作、表情、口型由应用在运行时驱动，模型文件本身从不被改写。
+
+```jsonc
+{
+  "schema": 2, "id": "my-vrm", "name": "…", "species": "dafeiyu",
+  "kind": "vrm",
+  "vrm": {
+    "outfits": {                      // 必填：服饰 id → 包内的 .vrm（相对路径，不能用 ".." 或绝对路径跳出包目录，符号链接也不行）
+      "daily": "models/daily.vrm",
+      "pajamas": "models/pajamas.vrm"
+    },
+    "height": 0.9,                    // 可选：她占画面高度的比例，0.3–1，默认 0.9
+    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma），循环播放，应用的动作叠加在上面
+    "expressions": {                  // 可选：应用状态 → 模型里的表情名（覆盖默认映射；表情名必须是模型里有的）
+      "pat": "happy", "sleep": "relaxed"
+    }
+  },
+  "outfits": { "daily": "preview.png" }   // 可选：列表、衣柜里显示的预览图（只认 vrm.outfits 里有的服饰）
+}
+```
+
+- **校验**：每个 `.vrm` 必须在包目录内、存在、不超过 256 MB，是 glTF 二进制（文件头 magic `glTF`、版本 2，第一个 chunk 是 JSON），并带 `VRMC_vrm`（1.0）或 `VRM`（0.x）扩展。任何一项不符合，整个包被拒绝并说明原因。
+- **作者和授权读自模型文件**：`pack.json` 里写的 `author` / `license` 对 VRM 包不起作用，显示的作者和授权摘要来自模型的 VRM meta，所以包作者无法放宽模型本身的授权。VRM 1.0 读 `extensions.VRMC_vrm.meta` 的全部字段（name、version、authors、copyrightInformation、contactInformation、references、licenseUrl、avatarPermission、allowExcessivelyViolentUsage、allowExcessivelySexualUsage、commercialUsage、allowPoliticalOrReligiousUsage、allowAntisocialOrHateUsage、creditNotation、allowRedistribution、modification、otherLicenseUrl）；VRM 0.x 读 `extensions.VRM.meta`（title、author、allowedUserName、violentUssageName、sexualUssageName、commercialUssageName、licenseName、otherPermissionUrl、otherLicenseUrl…），由 `licenseName` 推出是否可再分发、可修改、需署名。缺失或不认识的字段一律按最严格的理解（VRM 1.0 规范的默认值）：不可再分发、禁止修改、需署名、仅限个人非商业、不允许性/暴力表现。
+- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。有它时，她站着的姿态（重心、手臂、呼吸）由这段动画循环驱动，应用的动作（点头、拖起摆动、玩耍转圈…）作为相对静止姿态的偏移叠加在上面；表情、眨眼、视线和口型照旧由应用决定。没有它时用应用自己的程序化待机。动画加载失败时退回程序化待机，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
+- **衣柜只列有模型的服饰**：VRM 包的衣柜就是它自己的服饰，每个不同的 `.vrm` 一项（同一个模型写在几套服饰下只算一项，因为一个模型换不了衣服）。只有一个模型时她就只有这一个样子，衣柜按钮隐藏，好感升级也不再提示新服饰。
+
+### 授权提示与应用的强制规则
+
+导入或加载时，应用把模型的授权整理成一组提示（存进角色包清单，外观列表和署名界面会显示）：
+
+| 模型授权 | 提示 | 应用怎么做 |
+| --- | --- | --- |
+| `allowRedistribution: false`（0.x：`Redistribution_Prohibited` / `Other`） | 不可再分发：仅限本机使用，不会被打包/分享/导出 | 这个包拒绝任何分享/导出；`.vrm` 永远不进安装包和仓库 |
+| `modification: prohibited`（0.x：`*_ND`、`Redistribution_Prohibited`） | 禁止修改：应用只做运行时表情/姿态驱动，不改写模型文件 | 导入时按字节原样复制，运行时只驱动表情和姿态 |
+| `creditNotation: required` | 需署名：界面会显示作者 | 外观和署名处显示作者 |
+| `commercialUsage: personalNonProfit` | 仅限个人非商业 | 提示 |
+| `allowExcessivelySexualUsage: false` | 禁止性表现：该模型在 18+ 内容/成人服饰下不可用（由应用强制） | 不能给成人向服饰、不能做 18+ 角色包（`"adult": true`），见下 |
+| 暴力 / 政治宗教 / 反社会仇恨不允许、`avatarPermission` 不是 `everyone`、有 `otherLicenseUrl` | 对应提示 | 提示 |
+
+**18+、好感和服饰规则仍由应用决定，VRM 包绕不过去：**
+
+- 成人向服饰（`maid`、`bunny`… 见上文）只能出现在 `"adult": true` 的 VRM 包里，而且这个包里**每个**模型的授权都必须允许性表现（`allowExcessivelySexualUsage: true`），否则整个包被拒绝；导入器生成的包永远不是 18+ 包，也不映射成人向服饰。
+- 即使是合格的 18+ VRM 包，也只在确认年满 18 岁并打开“成人向内容”后才列出和使用；成人向服饰照常要到 暧昧（♥60）/ 恋人（♥85）才解锁，关掉成人向内容时换回最近穿过的全年龄服饰。全年龄服饰也照常按好感阶段解锁。
+- `pack.json` 里的其他字段（例如自己写的 `rating`、`stage`、`unlock`、`ageConfirmed`）一律忽略；校验只取上面列出的字段。
+
+### 直接导入自己的 VRM 模型
+
+⋯ 菜单 → 角色列表 → 角色 → 外观 → **导入 VRM 模型…**，选一个 `.vrm`，或者包含 `.vrm` 的 `.zip`（macOS 上也可以直接选文件夹），不用写 `pack.json`。导入时应用会：
+
+1. 先读每个模型的 VRM meta；不是 glTF 二进制、不是 VRM、超过 256 MB 的，什么都不复制，直接说明原因；
+2. 只有一个 `.vrm`：它就是她的默认服饰（`daily`），没有衣柜；旧版本导入时把一个模型铺到所有服饰的包，现在同样只显示这一项；有多个：按文件名对应服饰（`daily.vrm`、`pajamas.vrm`…，必须有 `daily.vrm`），成人向服饰名的文件被跳过；
+3. 把模型原样复制进用户数据目录的 `packs/vrm-<角色>-<模型名>/models/`，写一份 `pack.json`（同一个模型再导入一次会替换旧的；内置包的 id 不会被占用）。**只写用户数据目录**，从不写进应用目录、`src/` 或仓库；
+4. 返回模型的作者与授权提示，供界面展示。
+
+导入失败时的提示（`src/core/vrm-ui.js` 的 `importErrorText`）：改了扩展名的非 glTF 文件 →“这不是 VRM 文件”；普通 glTF/GLB →“没有 VRM 信息，请先导出为 VRM”；截断或 JSON 损坏 →“文件已损坏或不完整”；文件被移走 →“找不到这个文件”；没有读权限 →“没有权限读取”。
+
+### 界面里的作者与授权
+
+- **导入确认**：复制完成后先弹出确认框，列出模型名（版本）、作者、版权、联系方式、参考链接、谁可以扮演、商用、再分发、修改、署名、性/暴力表现、授权条款链接，以及按授权生成的限制提示（不可再分发、禁止修改、需署名、个人非商业、禁止性表现 → 18+ 下不可用 …，会被应用强制执行的标红）。点“使用这个模型”换上；点“取消导入”删除刚复制的包。
+- **包卡片**：meta 行是 `VRM · N 套服饰 · 作者 · 本地导入`（作者读自模型）；授权要求署名时，卡片上常驻一行“署名：作者（模型授权要求署名）”。“授权信息”按钮展开同样的授权详情。
+- **链接**：`licenseUrl`、`otherLicenseUrl`、参考和联系方式里的 http(s) 链接可点击，在系统浏览器里打开（主进程 `open-link` 只放行 http/https）；其他内容（如 `mailto:`）只显示文字。
+- **导出**：导入的角色包有“导出…”（打成 `.zip`，可再用“导入角色包…”读回）。`allowRedistribution: false` 的 VRM 包按钮禁用，卡片下方写明“导出已禁用：这个 VRM 模型的授权不允许再分发…”；主进程 `export-pack` 也会再拒绝一次（`packShareable`）。
+- **衣柜**：只有一个模型时不显示衣柜按钮；有多个模型时，VRM 包的服饰照常按好感锁定（🔒 + 解锁条件），锁定的服饰只给图片、不给模型；没有预览图时显示“VRM”占位。
+- **切换**：从 VRM 包切回 `dafeiyu-pixel` / `dafeiyu-classic` 等 2D 包时，VRM 画布离开页面，渲染器的 figure 随即 `dispose()`；再切回 VRM 会重新创建。渲染器以 `window.PetVRM.createFigure(canvas, look)` 接入（与 Live2D / 全动态相同的接口）；未加载时显示占位图。
+
+### VRM 怎么画出来：表情、动作、口型
+
+桌宠窗口里的 VRM 由 `src/renderer/vrm.js` 用 three.js + [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) 画在透明的 WebGL 画布上（`src/renderer/vendor/vrm/`：three r187 + three-vrm 3.5.5，MIT，版本与来源见该目录的 README；只在第一次显示 VRM 外观时加载）。渲染层只画应用已经决定好的外观和服饰（18+、好感解锁、服饰规则都在应用里），模型只能从它自己的角色包里读（`pack://<包 id>/…`），模型引用包外的文件一律拒绝。
+
+- **待机**：呼吸（脊柱、胸口微动）、2–6 秒一次的随机眨眼（`blink`）、视线跟随鼠标（VRM lookAt；鼠标在窗口外时按屏幕坐标换算）、SpringBone 每帧更新；拖动窗口时她会被甩一下再弹回来，头发、尾巴跟着晃。
+- **状态 → 表情和动作**（`src/core/vrm-motion.js`，有单测）：
+
+| 状态 | 表情 | 动作 |
+| --- | --- | --- |
+| idle / look | 无 / 无 | 呼吸；look 时左右张望 |
+| happy | happy | 跳、张开手 |
+| pat（摸头） | relaxed + happy | 低头、歪头 |
+| sad / hungry | sad | 低头、塌背；hungry 还微张嘴、晃 |
+| sleep | blink（闭眼）+ relaxed | 低头、慢呼吸 |
+| eat_rice / eat_cookie / eat_fruit（喂食） | happy | 嚼（aa 张合）、点头 |
+| think | neutral，视线向上 | 歪头 |
+| talk | happy（淡） | 点头 |
+| play（玩耍） | happy | 跳、转一圈、左右晃 |
+| hatch / evolve | surprised / happy + surprised | 挥手 / 举手大跳 |
+| lifted（被提起） | surprised | 手脚下垂乱摆、身体像钟摆 |
+| walk | happy（淡） | 迈步、摆臂 |
+| touch-head / face / hands / belly / feet | relaxed、happy、眨单眼… | 低头、挥手、扭… |
+| touch-chest / butt / legs / tail | surprised（+ angry）… | 往后缩、跳… |
+| 触摸后生气 / 不耐烦 | angry / angry + sad | 发抖 / 歪头 |
+
+  `vrm.expressions` 可以把某个状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
+- **口型**：念 TTS 语音（包括摸头、喂食这类互动语音）时，用 WebAudio AnalyserNode 分析正在播放的声音，按频谱驱动 aa / ih / ou / ee / oh 五个口型，平滑开合，念完归零；系统语音（Web Speech）没有音频流，按音节节奏开合。不说话时口型为 0。
+- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼）时最多 30 fps；6 秒没动静降到 12 fps，此时只保留表情和姿势、不再蹦跳；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+
+### 关于木子惡魔《蓝色小肥鱼Deepseek》
+
+大肥鱼的首个 VRM 样例是木子惡魔的《蓝色小肥鱼Deepseek》（VRM 1.0，18 个标准表情 + SpringBone，[发布页](https://github.com/sunfish1728/deepcoin-avatars/releases/tag/deepseek-whale-v1.0.0)）。它的授权是 **个人非商业 / 禁止修改 / 不可再分发 / 需署名**，所以：
+
+- **不在本仓库里，也不会打进安装包**。想用的话请自己从发布页下载，再用“导入 VRM 模型…”导入到本机；它只存在于你的用户数据目录。
+- 不要把它提交到仓库、放进 `src/`、附在 issue / PR 里，或打包分享给别人。仓库的 `.gitignore` 忽略 `*.vrm`，`package.json` 的 `build.files` 排除 `**/*.vrm`，`npm test` 会检查 `src/` 下和 git 里都没有 `.vrm`。
+- 导入步骤：
+  1. 从发布页下载 `deepseek-whale-v1.0.0.zip`，解压到**仓库以外**的目录（例如 `~/art-archive/vrm-test/`），里面的 `model.vrm` 就是模型（约 18 MB）。
+  2. ⋯ → 角色列表 → 大肥鱼 → 外观 → **导入 VRM 模型…**，选 `model.vrm`（也可以直接选下载的 `.zip`）。
+  3. 导入确认里会列出模型名、作者（模型文件里写的是简体“木子恶魔”，界面按文件原样显示）和全部授权限制；点“使用这个模型”后她就换成 3D 外观，所有全年龄服饰都穿这个模型。外观页的卡片常驻署名，“导出…”被禁用，“授权信息”可随时展开。
+  4. 想换回 2D：在外观里选 `dafeiyu-pixel` / `dafeiyu-classic` 等即可，VRM 包保留在列表里，随时再选；不要了就点“移除”。
+- 这个模型的 meta `version` 是占位的 `"undefined"`，界面按“没有版本”处理；它的贴图嵌在 GLB 里，渲染时通过 `blob:` 地址加载（页面 CSP 的 `img-src` / `connect-src` 允许 `blob:`，否则会画成没有贴图的白模）。
+- 测试只用测试代码里即时构造的最小 GLB（`test/vrm.test.js`），不含任何第三方模型；需要真实模型的验收用 `.agents/acceptance/scripts/vrm-real-model-acceptance.js <仓库> <输出目录> <仓库外的 model.vrm>`，模型路径在仓库内会被拒绝。
+- 可以再分发的替代来源：azwosile/DeepSeek-whale-girl-3D（Blender 工程，CC BY-NC-SA 4.0），需要自己导出成 VRM（补骨骼与表情），导出的文件同样只放在用户数据目录。
 
 ## 全动态角色包（`"kind": "rig"`）
 

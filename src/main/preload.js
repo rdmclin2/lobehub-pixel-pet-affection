@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('pet', {
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
+  importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
+  // 导出… (refused in main for a VRM model that may not be redistributed); a license link in the system browser
+  exportPack: (id) => ipcRenderer.invoke('export-pack', { id }),
+  openLink: (url) => ipcRenderer.invoke('open-link', { url }),
   savePackPreview: (id, dataUrl) => ipcRenderer.invoke('save-pack-preview', { id, dataUrl }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
@@ -53,6 +57,8 @@ contextBridge.exposeInMainWorld('pet', {
   moveBy: (dx, dy) => ipcRenderer.send('move-by', { dx, dy }),
   moveTo: (x, y) => ipcRenderer.send('move-to', { x, y }),
   workArea: () => ipcRenderer.invoke('work-area'),
+  // the screen cursor (DIP), for a VRM figure's gaze while the cursor is outside her window
+  cursorPoint: () => ipcRenderer.invoke('cursor-point'),
   switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
@@ -90,8 +96,11 @@ contextBridge.exposeInMainWorld('pet', {
   debugSet: (patch) => ipcRenderer.invoke('debug-set', patch),
   debugImportPack: (dir) => ipcRenderer.invoke('debug-import-pack', dir),
   debugNextOpen: (p) => ipcRenderer.invoke('debug-next-open', p),
+  debugNextSave: (p) => ipcRenderer.invoke('debug-next-save', p),
+  debugOpenedLinks: () => ipcRenderer.invoke('debug-opened-links'),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
   onUpdate: on('update'),
+  onWindowShown: on('window-shown'),
   onSay: on('say'),
   onThinking: on('thinking'),
   onAffection: on('affection'),
