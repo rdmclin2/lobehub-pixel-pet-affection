@@ -38,6 +38,8 @@
       "src/**/*",
       "!**/*.vrm",
       "!**/*.VRM",
+      "!**/*.vrma",
+      "!**/*.VRMA",
       "package.json"
     ],
     "directories": {

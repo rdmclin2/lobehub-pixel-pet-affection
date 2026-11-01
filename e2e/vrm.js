@@ -534,19 +534,19 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`VRM again: frame ${a.frame} → ${b.frame}; stats created ${st.created}, disposed ${st.disposed}, live ${st.live}`);
       }, page);
 
-      await step(S, 'packaging guard: no .vrm in git ls-files nor in the files package.json build.files ships', async () => {
-        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.vrm$/i.test(f));
+      await step(S, 'packaging guard: no .vrm / .vrma in git ls-files nor in the files package.json build.files ships', async () => {
+        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.vrma?$/i.test(f));
         assert.deepEqual(tracked, []);
         const build = require('../package.json').build.files;
-        assert.ok(build.includes('!**/*.vrm') && build.includes('!**/*.VRM'), JSON.stringify(build));
+        assert.ok(build.includes('!**/*.vrm') && build.includes('!**/*.VRM') && build.includes('!**/*.vrma') && build.includes('!**/*.VRMA'), JSON.stringify(build));
         // what build.files matches on disk (src/**/*, package.json), before the exclusions
         const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
         const shipped = [...walk(path.join(ROOT, 'src')), path.join(ROOT, 'package.json')];
-        const vrms = shipped.filter((f) => /\.vrm$/i.test(f));
+        const vrms = shipped.filter((f) => /\.vrma?$/i.test(f));
         assert.deepEqual(vrms, []);
         const models = [model.file];
         assert.ok(models.every((f) => path.relative(ROOT, f).startsWith('..')));
-        return H.note(`git ls-files: ${tracked.length} .vrm; build.files ${JSON.stringify(build)}; ${shipped.length} files under the build globs, ${vrms.length} .vrm; the test model was at ${model.file} (outside the repo)`);
+        return H.note(`git ls-files: ${tracked.length} .vrm/.vrma; build.files ${JSON.stringify(build)}; ${shipped.length} files under the build globs, ${vrms.length} .vrm/.vrma; the test model was at ${model.file} (outside the repo)`);
       });
 
       await step(S, 'no renderer error on the page', async () => {

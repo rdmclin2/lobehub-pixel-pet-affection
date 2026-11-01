@@ -9,3 +9,5 @@ tts-cache/
 # VRM models are user-imported only (licenses usually forbid redistribution): never in the repo
 *.vrm
 *.VRM
+*.vrma
+*.VRMA
