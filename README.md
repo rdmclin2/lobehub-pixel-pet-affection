@@ -288,6 +288,15 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 - **音色授权**：Fish 社区音色由上传者负责来源，仓库只写 Fish 音色 id 和署名（`credit`），不分发 Fish 合成的音频；Fish 免费账号限个人非商业使用，商用要付费订阅。MiniMax 用的是平台系统音色，没有复刻真人声音；内置语音包（`src/voicepacks/`）就是用这些 MiniMax 系统音色合成的音频。参考视频里的“ssr大肥鱼音色”音源属于 UP 主 星落落_oi（页面注明“未经作者授权，禁止转载”），本项目**没有复刻也没有收录**它；想 1:1 复刻要先取得 UP 主许可，并只在自己电脑上用。
 - **AI 合成声明**：所有语音都是 AI 合成，不是真人录音；录屏公开发布或商用时请标注 AI 生成，并分别取得音色作者和平台的授权。
 
+## 语音输入（ASR）
+
+打开 高级设置 → **语音输入** 后，聊天框旁边出现 🎤：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
+
+- **LobeHub 云端识别**：复用 LobeHub 的语音识别（`lh generate asr --provider lobehub`，模型 `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`），用本机 `lh login` 的账号，按 Credits 计费，录音上传到 LobeHub 云端。
+- **本地识别服务（whisper）**：你自己跑的 whisper 服务，例如 whisper.cpp `whisper-server`、speaches（faster-whisper），或任何 OpenAI 兼容的 `/v1/audio/transcriptions`；录音只发到你填的本机 / 局域网地址，不经过云端，免费。
+
+安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
+
 ## 内容边界声明
 
 以下规则写入每只宠物的 agent 系统设定（“内容红线”），在任何设置下都高于其他要求，并由本地内容守卫（`src/core/content-guard.js`）对 agent 回复做兜底检查：
