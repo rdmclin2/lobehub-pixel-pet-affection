@@ -5249,6 +5249,167 @@ async function live2dScenario() {
   }
 }
 
+// ------------------------------------------------------------------ l2dimport
+// 外观 → 导入 Live2D 模型…: the user's own Cubism model (a plain folder, no pack.json) becomes her look.
+async function live2dImport() {
+  const S = 'l2dimport';
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2di-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2difake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
+  // "her own" model: the 中肥鱼 model files as a user has them, plus an expression named in Japanese
+  const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dmodel-'));
+  const own = path.join(fix, 'Whale');
+  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
+  fs.renameSync(path.join(own, 'medium.model3.json'), path.join(own, 'Whale.model3.json'));
+  fs.writeFileSync(path.join(own, '照れ.exp3.json'), JSON.stringify({ Type: 'Live2D Expression', Parameters: [{ Id: 'PARAM_EXP4', Value: 1, Blend: 'Add' }] }));
+  const m3 = JSON.parse(fs.readFileSync(path.join(own, 'Whale.model3.json'), 'utf8'));
+  m3.FileReferences.Expressions = [{ Name: '照れ', File: '照れ.exp3.json' }];
+  fs.writeFileSync(path.join(own, 'Whale.model3.json'), JSON.stringify(m3));
+  const zip = path.join(fix, 'Whale.zip');
+  execFileSync('python3', ['-m', 'zipfile', '-c', zip, own]);
+  const empty = path.join(fix, 'empty');
+  fs.mkdirSync(empty);
+  const c2 = path.join(fix, 'old');
+  fs.mkdirSync(c2);
+  fs.writeFileSync(path.join(c2, 'shizuku.model.json'), '{}');
+  const broken = path.join(fix, 'Broken');
+  fs.cpSync(own, broken, { recursive: true });
+  fs.writeFileSync(path.join(broken, 'medium.moc3'), 'not a moc');
+
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  const share = () => page.evaluate(() => {
+    const c = document.querySelector('#pet-look canvas.live2d');
+    if (!c) return null;
+    const k = document.createElement('canvas');
+    k.width = 83; k.height = 113;
+    const g = k.getContext('2d');
+    g.drawImage(c, 0, 0, 83, 113);
+    const d = g.getImageData(0, 0, 83, 113).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 24) n++;
+    return n / (83 * 113);
+  });
+  const importFrom = async (p) => {
+    await page.evaluate((x) => window.pet.debugNextOpen(x), p);
+    await page.click('#l2d-import');
+    await page.waitForFunction(() => { const m = document.getElementById('panel-msg'); return !m.classList.contains('hidden') && !/正在加载/.test(m.textContent); }, null, { timeout: 30000 });
+    return page.textContent('#panel-msg');
+  };
+  const ID = 'l2d-dafeiyu-whale';
+  try {
+    await step(S, 'hatching 大肥鱼 in her default pixel look', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').nth(0).click();
+      await page.fill('#pet-name', 'Mow');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily');
+    }, page);
+
+    await step(S, 'her page offers 导入 Live2D 模型… under 外观', async () => {
+      await openCurrentPage(page);
+      await page.locator('#look-section').scrollIntoViewIfNeeded();
+      assert.equal(await page.locator('#l2d-import').textContent(), '导入 Live2D 模型…');
+      assert.match(await page.textContent('#look-section'), /Cubism 3 \/ 4 \/ 5/);
+      await page.screenshot({ path: path.join(OUT, 'l2dimport-section.png') });
+    }, page);
+
+    await step(S, 'a Cubism 2 model or a folder without a model is refused with the reason', async () => {
+      const a = await importFrom(path.join(c2, 'shizuku.model.json'));
+      assert.match(a, /导入失败：这是 Cubism 2 的模型/);
+      const b = await importFrom(empty);
+      assert.match(b, /导入失败/);
+      assert.equal(fs.existsSync(path.join(data, 'packs', ID)), false);
+      return `${a.trim()} / ${b.trim()}`;
+    }, page);
+
+    await step(S, 'a model that will not load is removed again', async () => {
+      const before = errors.length;
+      const msg = await importFrom(path.join(broken, 'Whale.model3.json'));
+      assert.match(msg, /导入失败：这个模型在这台电脑上加载不了/);
+      await page.waitForFunction(() => !document.querySelector('.pack-opt[data-pack^="l2d-"]'), null, { timeout: 5000 });
+      assert.deepEqual(fs.readdirSync(path.join(data, 'packs')), [], 'nothing left in the packs folder');
+      errors.splice(before); // the broken model's own load error
+      return msg.trim();
+    }, page);
+
+    await step(S, 'importing her .model3.json: the pack is made, the model drawn, its picture saved and worn', async () => {
+      const msg = await importFrom(path.join(own, 'Whale.model3.json'));
+      assert.match(msg, /已导入 Live2D 模型「Whale」并换上，用上了它的表情：脸红/);
+      await page.waitForSelector(`.pack-opt.on[data-pack="${ID}"]`);
+      assert.match(await page.textContent(`.pack-opt[data-pack="${ID}"] .meta span`), /^Live2D · \d+ 套服饰 · 本地导入 · 模型作者的条款 · 导入（内容由作者负责）/);
+      const manifest = JSON.parse(fs.readFileSync(path.join(data, 'packs', ID, 'pack.json'), 'utf8'));
+      assert.equal(manifest.model, 'model/Whale.model3.json');
+      assert.deepEqual(manifest.live2d.faces, { blush: { PARAM_EXP4: 1 } });
+      const png = fs.readFileSync(path.join(data, 'packs', ID, 'preview.png'));
+      const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+      assert.ok(w >= 300 && h >= 400 && png.length > 20000, `preview ${w}x${h}, ${png.length} bytes`);
+      await page.screenshot({ path: path.join(OUT, 'l2dimport-imported.png') });
+      return `${msg.trim()} · preview ${w}x${h}`;
+    }, page);
+
+    await step(S, 'she is drawn by her own model on the desktop', async () => {
+      await page.click('#panel-close');
+      await page.waitForFunction((id) => document.getElementById('pet-look').dataset.key.startsWith(`${id}/daily`), ID);
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 15000 });
+      const a = await share();
+      assert.ok(a > 0.12 && a < 0.5, `${a}`);
+      await page.evaluate(() => window.petFx.cue('pat'));
+      await page.waitForTimeout(700);
+      assert.equal((await page.evaluate(() => window.petFx.state())).state, 'pat');
+      await page.screenshot({ path: path.join(OUT, 'l2dimport-desk.png') });
+      return `${(a * 100).toFixed(1)}% of the frame is her`;
+    }, page);
+
+    await step(S, '模型大小 makes her smaller in the window, and is kept', async () => {
+      const big = await share();
+      await openCurrentPage(page);
+      await page.locator('.l2d-size').scrollIntoViewIfNeeded();
+      assert.equal(await page.inputValue('.l2d-size input'), '80');
+      await page.locator('.l2d-size input').fill('50');
+      await page.locator('.l2d-size input').dispatchEvent('change');
+      await page.waitForFunction((id) => document.getElementById('pet-look').dataset.key === `${id}/daily@0.5`, ID, { timeout: 5000 });
+      await page.waitForSelector('.l2d-size b');
+      assert.equal(await page.textContent('.l2d-size b'), '50%');
+      await page.screenshot({ path: path.join(OUT, 'l2dimport-size.png') });
+      await page.click('#panel-close');
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 15000 });
+      await page.waitForTimeout(500);
+      const small = await share();
+      assert.ok(small < big * 0.6, `${small} vs ${big}`);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'packs', ID, 'pack.json'), 'utf8')).live2d.height, 0.5);
+      await page.screenshot({ path: path.join(OUT, 'l2dimport-small.png') });
+      return `share of the frame ${(big * 100).toFixed(1)}% → ${(small * 100).toFixed(1)}%`;
+    }, page);
+
+    await step(S, 'the same model as a .zip replaces it (one pack per model), at the default size again', async () => {
+      await openCurrentPage(page);
+      const msg = await importFrom(zip);
+      assert.match(msg, /已导入 Live2D 模型「Whale」/);
+      assert.deepEqual(fs.readdirSync(path.join(data, 'packs')), [ID]);
+      assert.equal(await page.inputValue('.l2d-size input'), '80');
+      return msg.trim();
+    }, page);
+
+    await step(S, 'removing it puts her back in her default look', async () => {
+      await page.click(`.pack-opt[data-pack="${ID}"] button:not(.pick)`);
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 5000 });
+      assert.equal(fs.existsSync(path.join(data, 'packs', ID)), false);
+    }, page);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -5276,6 +5437,7 @@ async function live2dScenario() {
   if (which === 'adultlook' || which === 'all') await adultLook();
   if (which === 'rig' || which === 'all') await rigScenario();
   if (which === 'live2d' || which === 'all') await live2dScenario();
+  if (which === 'l2dimport' || which === 'all') await live2dImport();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

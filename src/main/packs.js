@@ -26,6 +26,22 @@ function unzip(zip, dest) {
   return run('unzip', ['-q', zip, '-d', dest]);
 }
 
+const NO_CUBISM2 = '这是 Cubism 2 的模型（.model.json），目前只支持 Cubism 3 / 4 / 5（.model3.json）';
+const MAX_LIVE2D_BYTES = 300 * 1024 * 1024;
+// a 1×1 transparent PNG: an imported model's picture until the renderer has drawn the real one
+const BLANK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+
+function dirSize(dir) {
+  let n = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) n += dirSize(f);
+    else if (e.isFile()) n += fs.statSync(f).size;
+    if (n > MAX_LIVE2D_BYTES) break;
+  }
+  return n;
+}
+
 class PackStore {
   constructor() {
     this.builtinDir = path.join(__dirname, '..', 'renderer', 'packs');
@@ -81,6 +97,99 @@ class PackStore {
     } finally {
       if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     }
+  }
+
+  // Import the user's own Live2D model for `speciesId` (外观 → 导入 Live2D 模型…): a .model3.json, the folder
+  // holding one, or a .zip of it. The model's folder is copied into a new pack (core/packs.js live2dManifest);
+  // the renderer then draws its preview (savePreview), or removes it when the model will not load.
+  async importLive2d(src, speciesId) {
+    let tmp = null;
+    try {
+      let root = src;
+      let pick = null;
+      if (/\.zip$/i.test(src)) {
+        tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pixelpet-l2d-'));
+        await unzip(src, tmp);
+        root = tmp;
+      } else if (/\.json$/i.test(src)) {
+        if (!/\.model3\.json$/i.test(src)) return { ok: false, errors: [/\.model\.json$/i.test(src) ? NO_CUBISM2 : '请选择模型的 .model3.json 文件，或包含它的文件夹 / .zip'] };
+        root = path.dirname(src);
+        pick = path.basename(src);
+      }
+      const { models, cubism2 } = P.findLive2dModels(root);
+      if (!pick) {
+        if (!models.length) return { ok: false, errors: [cubism2 ? NO_CUBISM2 : '没有找到 .model3.json（支持 Cubism 3 / 4 / 5 的模型）'] };
+        if (models.length > 1) return { ok: false, errors: [`找到 ${models.length} 个模型（${models.slice(0, 3).map((m) => path.basename(m)).join('、')}…），请直接选择其中一个 .model3.json`] };
+        pick = models[0];
+      }
+      const modelFile = path.join(root, pick);
+      const modelDir = path.dirname(modelFile);
+      let model3;
+      try {
+        model3 = JSON.parse(fs.readFileSync(modelFile, 'utf8'));
+      } catch {
+        return { ok: false, errors: [`${path.basename(modelFile)} 不是有效的 JSON`] };
+      }
+      const size = dirSize(modelDir);
+      if (size > MAX_LIVE2D_BYTES) return { ok: false, errors: [`模型文件夹太大（${Math.round(size / 1048576)} MB，最多 ${MAX_LIVE2D_BYTES / 1048576} MB）`] };
+      // the expressions it names, read for the app's faces (blush, surprise, …)
+      const refs = (model3 && model3.FileReferences) || {};
+      const expressions = (Array.isArray(refs.Expressions) ? refs.Expressions : []).slice(0, 64).map((e) => {
+        const file = e && typeof e.File === 'string' ? e.File : '';
+        const abs = path.resolve(modelDir, file);
+        let json = null;
+        if (file && abs.startsWith(modelDir + path.sep)) {
+          try { json = JSON.parse(fs.readFileSync(abs, 'utf8')); } catch { /* a broken expression is left out */ }
+        }
+        return { name: e && e.Name, file, json };
+      });
+      const baseName = path.basename(modelFile).replace(/\.model3\.json$/i, '');
+      const name = baseName === 'model' || !baseName ? path.basename(modelDir) : baseName;
+      const manifest = P.live2dManifest({ speciesId, modelRel: path.basename(modelFile), name, expressions });
+      const existing = this.packs.get(manifest.id);
+      if (existing && existing.source === 'builtin') return { ok: false, errors: ['这个名字已被内置角色包占用'] };
+      const dest = path.join(this.userDir, manifest.id);
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.mkdirSync(dest, { recursive: true });
+      fs.cpSync(modelDir, path.join(dest, P.LIVE2D_DIR), { recursive: true, dereference: true });
+      fs.writeFileSync(path.join(dest, P.PREVIEW_FILE), BLANK_PNG);
+      fs.writeFileSync(path.join(dest, 'pack.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+      const r = P.readPack(dest);
+      if (!r.ok) {
+        fs.rmSync(dest, { recursive: true, force: true });
+        return { ok: false, errors: r.errors };
+      }
+      this.reload();
+      const pack = this.packs.get(manifest.id);
+      return { ok: true, pack: { id: pack.id, name: pack.name, species: pack.species }, model: P.packUrl(pack, pack.model), faces: Object.keys(pack.live2d.faces), replaced: !!existing };
+    } finally {
+      if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  // The picture an imported Live2D model shows in lists and the wardrobe, drawn by the renderer (PNG data URL).
+  savePreview(id, dataUrl) {
+    const p = this.packs.get(id);
+    if (!p || p.source !== 'user' || p.kind !== 'live2d') return { ok: false, reason: 'not-user-live2d' };
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+    const buf = m && Buffer.from(m[1], 'base64');
+    if (!buf || buf.length < 8 || buf.length > 8 * 1024 * 1024 || !buf.subarray(0, 8).equals(BLANK_PNG.subarray(0, 8))) return { ok: false, reason: 'bad-png' };
+    fs.writeFileSync(path.join(p.dir, P.PREVIEW_FILE), buf);
+    this.reload();
+    return { ok: true };
+  }
+
+  // Her size in the window for an imported Live2D model (live2d.height in its pack.json, 0.3–1).
+  setLive2dHeight(id, height) {
+    const p = this.packs.get(id);
+    if (!p || p.source !== 'user' || p.kind !== 'live2d') return { ok: false, reason: 'not-user-live2d' };
+    const h = Math.round(Math.min(1, Math.max(0.3, Number(height) || 0.8)) * 100) / 100;
+    const file = path.join(p.dir, 'pack.json');
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    manifest.live2d = { ...(manifest.live2d || {}), height: h };
+    fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+    this.reload();
+    return { ok: true, height: h };
   }
 
   remove(id) {

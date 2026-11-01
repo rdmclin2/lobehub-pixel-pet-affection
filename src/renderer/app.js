@@ -477,7 +477,7 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
-  const key = `${view.look.packId}/${view.outfit}`;
+  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}`; // a Live2D model's size is redrawn too
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
@@ -880,7 +880,7 @@ function renderCharacter(c) {
   const look = document.createElement('div');
   look.className = 'adv-section';
   look.id = 'look-section';
-  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div>';
+  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div><p class="adv-text l2d-text">也可以直接用你自己的 Live2D 模型（Cubism 3 / 4 / 5，选它的 .model3.json 或打包好的 .zip）：她会用模型自己的物理，表情、眨眼、口型和动作由应用驱动，所有全年龄服饰下都穿这个模型。</p><div class="size-row"><button id="l2d-import" class="btn">导入 Live2D 模型…</button></div>';
   const list = look.querySelector('.pack-list');
   for (const o of c.appearance.options) {
     const on = o.id === c.appearance.packId;
@@ -921,6 +921,24 @@ function renderCharacter(c) {
     panelMsg(r.pack.species === c.id ? `已导入「${r.pack.name}」，点“使用”换上。` : `已导入「${r.pack.name}」（给 ${(speciesOf(r.pack.species) || {}).nameZh || r.pack.species} 用的）。`, true);
   });
   look.querySelector('#pack-folder').addEventListener('click', () => window.pet.openPacksFolder());
+  look.querySelector('#l2d-import').addEventListener('click', () => importLive2d(c));
+  // an imported Live2D model in use: how much of the window she fills
+  const mine = c.appearance.options.find((o) => o.id === c.appearance.packId && o.kind === 'live2d' && o.source === 'user');
+  if (mine) {
+    const row = document.createElement('div');
+    row.className = 'size-row l2d-size';
+    row.innerHTML = '<span>模型大小</span><input type="range" min="30" max="100" step="5" aria-label="Live2D 模型大小"><b></b>';
+    const range = row.querySelector('input');
+    const label = row.querySelector('b');
+    range.value = String(Math.round(mine.height * 100));
+    label.textContent = `${range.value}%`;
+    range.addEventListener('input', () => { label.textContent = `${range.value}%`; });
+    range.addEventListener('change', async () => {
+      const r = await window.pet.setLive2dHeight(mine.id, Number(range.value) / 100);
+      if (!r.ok) panelMsg('没能保存模型大小。');
+    });
+    look.appendChild(row);
+  }
   body.appendChild(look);
 
   // affection: unlock everything at once (to see all the content, or to skip the grind) — hers only
@@ -937,6 +955,45 @@ function renderCharacter(c) {
   btn.disabled = !c.met || all;
   btn.addEventListener('click', () => unlockAllNow(c));
   body.appendChild(sec);
+}
+
+// 外观 → 导入 Live2D 模型…: main copies the model into a new pack; here it is drawn once off-screen for its
+// picture (lists, the wardrobe) and then worn. A model that will not load here is removed again.
+const FACE_NAMES = { blush: '脸红', wide: '惊讶', squint: '眯眼', gloom: '阴沉', dizzy: '晕', drool: '口水' };
+async function importLive2d(c) {
+  const r = await window.pet.importLive2d(c.id);
+  if (r.reason === 'canceled') return;
+  if (!r.ok) return panelMsg(`导入失败：${(r.errors || []).slice(0, 3).join('；')}`);
+  panelMsg(`正在加载「${r.pack.name}」…`, true);
+  let png;
+  try {
+    png = await live2dPicture(r.model);
+  } catch (e) {
+    await window.pet.removePack(r.pack.id);
+    return panelMsg(`导入失败：这个模型在这台电脑上加载不了（${(e && e.message) || e}）。`);
+  }
+  await window.pet.savePackPreview(r.pack.id, png);
+  const s = await window.pet.setAppearance(r.pack.id, c.id);
+  if (s.ok) {
+    view = s.view;
+    applyArt();
+    renderPanel();
+  }
+  const faces = (r.faces || []).map((f) => FACE_NAMES[f] || f);
+  panelMsg(`已导入 Live2D 模型「${r.pack.name}」并换上${faces.length ? `，用上了它的表情：${faces.join('、')}` : ''}。`, true);
+}
+async function live2dPicture(model) {
+  const c = document.createElement('canvas');
+  c.width = 332;
+  c.height = 452;
+  const figure = window.PetLive2D.createFigure(c, { kind: 'live2d', model, live2d: { height: 0.8 } });
+  try {
+    if ((await figure.ready) !== true) throw new Error('模型没有加载出来');
+    for (let i = 0; i < 30; i++) figure.draw({ t: i / 30, state: 'idle', blink: 0 }); // let the physics settle
+    return c.toDataURL('image/png');
+  } finally {
+    figure.dispose();
+  }
 }
 
 // ⋯ → 高级设置: what applies to the whole app, whoever the companion is (size, behaviour, voice engines,
