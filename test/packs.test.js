@@ -181,8 +181,7 @@ test('a pictures pack needs no frames or actions', () => {
 test('every character has an 18+ 成年版 pack: her daily look and the adult outfits drawn so far, listed and worn only with adult content on', () => {
   const { OUTFITS } = require('../src/core/outfits');
   const adultIds = OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id);
-  // 2026-10-31: only the sexy maid outfit is drawn; the other nine were stopped by the image service's safety pause
-  const drawn = ['maid', 'sexy_bikini'];
+  const drawn = adultIds; // every adult outfit is drawn (2026-11-01)
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const a = packs.get(`${id}-adult`);

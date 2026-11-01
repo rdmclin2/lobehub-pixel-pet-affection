@@ -72,7 +72,7 @@ python3 scripts/art/check_model_chan.py          # 每张服饰图集的尺寸�
 xvfb-run -a node e2e/run.js outfit claude swimsuit   # 真机：升级解锁 → 衣柜换上 → idle/walk/lifted 与 daily 对齐 → 重启保留 → 旧版像素回落；截图在 out/e2e/outfit-claude-swimsuit/
 ```
 
-**18+ 成年版**（`<id>-adult`，T-1261）：`sexy_bikini` 不是新生成的，而是复用最早那批比基尼设计稿（成人比例、三角或挂脖比基尼加纱笼，只有 8 个状态）：缺的 8 个状态用相近的帧补（东张西望←待机，难过、饿了←思考，吃饼干、吃水果←吃饭，玩耍、唤醒、升级←开心），走路是用待机帧做的原地踏步，唤醒第 1 帧保留站姿高度（`align_outfit.py --keep hatch#0`、`check_model_chan.py` 的 `HEIGHT_FREE`）。格萝可用的是第一版（纱笼款），不是后来改成娇小体型的那版。同样的流程，提示词加 `--mature`（20 岁成年形象，名字带 `_mature`），组包用 `build_model_chan_pack.py --hd --adult [--outfit <id>] … <id> src/renderer/packs/<id>-adult`，走路帧和对齐同上。成人向服饰的描述在 `ADULT_WARDROBE`，只能和 `--mature` 一起用。目前画了日常服和 `maid`；其余成人向款式生成时被图像服务的安全暂停拦下，没有图。
+**18+ 成年版**（`<id>-adult`，T-1261）：`sexy_bikini` 不是新生成的，而是复用最早那批比基尼设计稿（成人比例、三角或挂脖比基尼加纱笼，只有 8 个状态）：缺的 8 个状态用相近的帧补（东张西望←待机，难过、饿了←思考，吃饼干、吃水果←吃饭，玩耍、唤醒、升级←开心），走路是用待机帧做的原地踏步，唤醒第 1 帧保留站姿高度（`align_outfit.py --keep hatch#0`、`check_model_chan.py` 的 `HEIGHT_FREE`）。格萝可用的是第一版（纱笼款），不是后来改成娇小体型的那版。同样的流程，提示词加 `--mature`（20 岁成年形象，名字带 `_mature`），组包用 `build_model_chan_pack.py --hd --adult [--outfit <id>] … <id> src/renderer/packs/<id>-adult`，走路帧和对齐同上。成人向服饰的描述在 `ADULT_WARDROBE`，只能和 `--mature` 一起用。日常服和 10 套 `ADULT_WARDROBE` 都已生成（2026-11-01 用 `one.sh` 式的单张串行提交：一次一张、张与张之间停 20 秒、第一次被拒就整批停，没有被拒）。之前 8 路并行一次提交 200 多张，触发过“repeated safety rejections”的账号暂停。
 
 10 套全年龄衣柜服饰（`WARDROBE`）也按这个流程生成。它们的提示词开头多一句 “Chroma-key sprite sheet … like a green screen”：只写平常的背景句时，gpt-image 常常画成深色渐变背景，抠不出来。生成后用 `scripts/art/align_outfit.py src/renderer/packs/<id>-pixel <outfit>` 把和 daily 对应帧身高差超过 11.5% 的格子以脚底为基准缩放对齐（多半是蹲着的唤醒帧），再跑 `check_model_chan.py`。
 

@@ -4550,7 +4550,7 @@ async function adultLook() {
       const l = await looks();
       assert.ok(l.includes(adultId), `外观: ${l.join(', ')}`);
       const meta = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta span`);
-      assert.match(meta, /^18\+ · 像素动画 · 3 套服饰/);
+      assert.match(meta, /^18\+ · 像素动画 · 12 套服饰/);
       const name = await page.textContent(`.pack-opt[data-pack="${adultId}"] .meta b`);
       return `${name} — ${meta} · ${await shot('2-looks-18plus')}`;
     }, page);
@@ -4565,7 +4565,7 @@ async function adultLook() {
       await closePanel();
       const a = await shot('3-desktop-adult-daily');
       const w = await wardrobe();
-      assert.deepEqual(w, ['daily', 'maid', 'sexy_bikini'], "the 成年版's own outfits");
+      assert.deepEqual(w, ['daily', 'maid', 'offshoulder_gown', 'office', 'nurse', 'stewardess', 'sexy_bikini', 'retro_swimsuit', 'silk_robe', 'bunny', 'knit_dress', 'devil_cos'], "the 成年版's own outfits");
       assert.equal(await page.textContent('.card[data-outfit="maid"] .nm'), '性感女仆装');
       await cardsDrawn();
       assert.match(await page.textContent('#outfit-preview .adult-note'), /成年版（20 岁）/);
