@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('pet', {
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
+  // 导出… (refused in main for a VRM model that may not be redistributed); a license link in the system browser
+  exportPack: (id) => ipcRenderer.invoke('export-pack', { id }),
+  openLink: (url) => ipcRenderer.invoke('open-link', { url }),
   savePackPreview: (id, dataUrl) => ipcRenderer.invoke('save-pack-preview', { id, dataUrl }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
@@ -89,6 +92,8 @@ contextBridge.exposeInMainWorld('pet', {
   debugSet: (patch) => ipcRenderer.invoke('debug-set', patch),
   debugImportPack: (dir) => ipcRenderer.invoke('debug-import-pack', dir),
   debugNextOpen: (p) => ipcRenderer.invoke('debug-next-open', p),
+  debugNextSave: (p) => ipcRenderer.invoke('debug-next-save', p),
+  debugOpenedLinks: () => ipcRenderer.invoke('debug-opened-links'),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
   onUpdate: on('update'),
   onSay: on('say'),

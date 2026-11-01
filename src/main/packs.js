@@ -27,6 +27,13 @@ function unzip(zip, dest) {
   return run('unzip', ['-q', zip, '-d', dest]);
 }
 
+// Zip the contents of `dir` into `zip` (the folder's files at the zip's top level, as 导入角色包… reads them).
+function zipDir(dir, zip) {
+  if (process.platform === 'darwin') return run('/usr/bin/ditto', ['-c', '-k', dir, zip]);
+  if (process.platform === 'win32') return run('tar', ['-a', '-cf', zip, '-C', dir, '.']);
+  return run('python3', ['-m', 'zipfile', '-c', zip, ...fs.readdirSync(dir).map((f) => path.join(dir, f))]);
+}
+
 const NO_CUBISM2 = '这是 Cubism 2 的模型（.model.json），目前只支持 Cubism 3 / 4 / 5（.model3.json）';
 const MAX_LIVE2D_BYTES = 300 * 1024 * 1024;
 // a 1×1 transparent PNG: an imported model's picture until the renderer has drawn the real one
@@ -201,6 +208,25 @@ class PackStore {
     fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
     this.reload();
     return { ok: true, height: h };
+  }
+
+  // May this pack leave the machine (导出…)? A VRM pack whose model may not be redistributed never may
+  // (core/packs.js packShareable); built-in packs ship with the app and are not exported.
+  shareable(id) {
+    const p = this.packs.get(id);
+    if (!p) return { ok: false, reason: 'unknown', text: '没有这个角色包' };
+    if (p.source !== 'user') return { ok: false, reason: 'builtin', text: '内置角色包随应用提供，不需要导出' };
+    return P.packShareable(p);
+  }
+
+  // Export a user pack as a .zip that 导入角色包… reads back. Refused (nothing written) when not shareable.
+  async exportPack(id, zip) {
+    const ok = this.shareable(id);
+    if (!ok.ok) return ok;
+    const p = this.packs.get(id);
+    fs.rmSync(zip, { force: true });
+    await zipDir(p.dir, zip);
+    return { ok: true, file: zip };
   }
 
   remove(id) {

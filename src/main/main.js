@@ -37,6 +37,8 @@ let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
+let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
+const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -300,6 +302,30 @@ function wire() {
     return r;
   });
   ipcMain.on('open-packs-folder', () => shell.openPath(packStore.userDir));
+  // 外观 → 导出…: a user pack as a .zip. A VRM pack whose license forbids redistribution is refused here too,
+  // whatever the window asks (core/packs.js packShareable).
+  ipcMain.handle('export-pack', async (_e, { id } = {}) => {
+    const pid = String(id || '');
+    const ok = packStore.shareable(pid);
+    if (!ok.ok) return ok;
+    const r = nextSavePath ? { filePath: nextSavePath } : await dialog.showSaveDialog(win, { title: '导出角色包', defaultPath: `${pid}.zip`, filters: [{ name: '角色包（.zip）', extensions: ['zip'] }] });
+    nextSavePath = null;
+    if (r.canceled || !r.filePath) return { ok: false, reason: 'canceled' };
+    try {
+      return await packStore.exportPack(pid, r.filePath);
+    } catch (e) {
+      logError(e);
+      return { ok: false, reason: 'failed', text: e.message };
+    }
+  });
+  // a link from a model's license (授权条款, 参考, 联系方式): web links only, in the system browser
+  ipcMain.handle('open-link', (_e, { url } = {}) => {
+    const u = String(url || '');
+    if (!/^https?:\/\/[^\s"'<>]+$/i.test(u)) return { ok: false };
+    if (TEST_MODE) { openedLinks.push(u); return { ok: true, test: true }; }
+    shell.openExternal(u);
+    return { ok: true };
+  });
   // While the user drags the resize handle: resize the window only. On release: save.
   ipcMain.handle('preview-pet-scale', (_e, { scale }) => resizePet(clampScale(scale)));
   ipcMain.handle('set-pet-scale', (_e, { scale }) => service.setPetScale(resizePet(clampScale(scale))));
@@ -504,6 +530,8 @@ function wire() {
     });
     // the next 导入 Live2D 模型… picks this path instead of opening the file dialog
     ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
+    ipcMain.handle('debug-next-save', (_e, p) => { nextSavePath = String(p || '') || null; return true; });
+    ipcMain.handle('debug-opened-links', () => openedLinks.slice());
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
