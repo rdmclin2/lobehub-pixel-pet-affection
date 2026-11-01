@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('pet', {
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
+  importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
   savePackPreview: (id, dataUrl) => ipcRenderer.invoke('save-pack-preview', { id, dataUrl }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),

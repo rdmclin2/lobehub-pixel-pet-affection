@@ -36,6 +36,8 @@
     "copyright": "Copyright © LiJian, rdmclin2",
     "files": [
       "src/**/*",
+      "!**/*.vrm",
+      "!**/*.VRM",
       "package.json"
     ],
     "directories": {

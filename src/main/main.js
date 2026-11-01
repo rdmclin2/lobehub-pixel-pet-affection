@@ -36,7 +36,7 @@ let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
-let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… picks
+let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -259,6 +259,25 @@ function wire() {
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     try {
       return await packStore.importLive2d(r.filePaths[0], sp);
+    } catch (e) {
+      logError(e);
+      return { ok: false, errors: [e.message] };
+    }
+  });
+  // her own VRM model (外观 → 导入 VRM 模型…): a .vrm, a .zip, or (macOS) a folder holding .vrm files; copied
+  // into userData/packs only, with its license read from the model (core/vrm.js, core/vrm-import.js)
+  ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
+    const v = service.view();
+    const sp = whose(species) || (v && v.pet.speciesId);
+    if (!sp) return { ok: false, errors: ['先请一位角色来'] };
+    const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
+    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(win, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
+    nextOpenPath = null;
+    if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
+    try {
+      const out = await packStore.importVrm(r.filePaths[0], sp);
+      if (out.ok) service.setPacks(packStore.packs);
+      return out;
     } catch (e) {
       logError(e);
       return { ok: false, errors: [e.message] };
