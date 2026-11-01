@@ -507,7 +507,7 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
-  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}` : ''}`; // a Live2D / VRM model's size is redrawn too
+  const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;

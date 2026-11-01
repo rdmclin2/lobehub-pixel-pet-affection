@@ -191,6 +191,20 @@ function inspectVrmFile(file) {
   try { return inspectVrmJson(readGlbJsonFile(file)); } catch (e) { return { ok: false, errors: [e.code === 'ENOENT' ? 'missing' : e.message] }; }
 }
 
+// A VRM animation (.vrma: a glTF binary with VRMC_vrm_animation), e.g. an idle loop played under the app's
+// own moves. { ok, specVersion, humanoid (bones it moves), expressions, errors }.
+function inspectVrmaJson(json) {
+  const ext = json && json.extensions && json.extensions.VRMC_vrm_animation;
+  if (!ext) return { ok: false, errors: ['not a VRM animation (no VRMC_vrm_animation extension)'] };
+  if (!Array.isArray(json.animations) || !json.animations.length) return { ok: false, errors: ['the VRM animation has no animation in it'] };
+  const bones = Object.keys((ext.humanoid && ext.humanoid.humanBones) || {});
+  const preset = Object.keys((ext.expressions && ext.expressions.preset) || {});
+  return { ok: true, specVersion: str(ext.specVersion, 20) || '1.0', humanoid: bones, expressions: preset, errors: [] };
+}
+function inspectVrmaFile(file) {
+  try { return inspectVrmaJson(readGlbJsonFile(file)); } catch (e) { return { ok: false, errors: [e.code === 'ENOENT' ? 'missing' : e.message] }; }
+}
+
 // The restrictions a model's license puts on the app, as shown to the user (zh-CN) and enforced by it.
 // Each: { id, text, enforced } — `enforced` names what the app does about it.
 const COMMERCIAL_LABEL = { personalNonProfit: '仅限个人非商业使用', personalProfit: '个人可商用，法人/企业不可', corporation: '个人与企业均可商用' };
@@ -235,5 +249,5 @@ function vrmLicense(meta) {
 module.exports = {
   GLB_MAGIC, VRM_PRESET_EXPRESSIONS, AVATAR_PERMISSIONS, COMMERCIAL_USAGES, CREDIT_NOTATIONS, MODIFICATIONS,
   isGlb, readGlbJson, readGlbJsonFile, vrmMetaFromJson, vrmExpressionsFromJson, vrmHasSpringBone,
-  inspectVrm, inspectVrmFile, inspectVrmJson, vrmRestrictions, vrmLicense,
+  inspectVrm, inspectVrmFile, inspectVrmJson, inspectVrmaJson, inspectVrmaFile, vrmRestrictions, vrmLicense,
 };

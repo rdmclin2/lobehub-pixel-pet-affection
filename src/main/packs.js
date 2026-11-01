@@ -72,7 +72,7 @@ class PackStore {
       const pack = this.packs.get(u.hostname);
       const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
       const file = pack && path.resolve(pack.dir, rel);
-      if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g|json|moc3|vrm)$/i.test(file)) return new Response('not found', { status: 404 });
+      if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g|json|moc3|vrma?)$/i.test(file)) return new Response('not found', { status: 404 });
       return net.fetch(pathToFileURL(file).toString()).then((res) => {
         const headers = new Headers(res.headers);
         headers.set('access-control-allow-origin', '*');

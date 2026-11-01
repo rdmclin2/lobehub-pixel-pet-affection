@@ -216,6 +216,20 @@
     return { bones: R, root };
   }
 
+  // With an idle animation (pack vrm.idle, a .vrma) the clip owns her standing pose: the app's moves are laid
+  // on top as offsets from the rest pose (arms down, nothing moving), so a nod is still a nod and the arms are
+  // not lowered twice. Breathing is the clip's then (pass breathK zero to pose()).
+  const NO_BREATH = { spine: 0, chest: 0, shoulder: 0 };
+  const REST = pose({}, 0, 0, { breathK: NO_BREATH }).bones;
+  function poseOffsets(bones) {
+    const out = {};
+    for (const [name, r] of Object.entries(bones)) {
+      const z = REST[name] || { x: 0, y: 0, z: 0 };
+      out[name] = { x: r.x - z.x, y: r.y - z.y, z: r.z - z.z };
+    }
+    return out;
+  }
+
   // The mouth a motion adds (chewing, held open), as aa weight.
   function motionMouth(m, t) {
     const chew = (m.chew || 0) * Math.max(0, Math.sin(t * 9)) * 0.7;
@@ -308,7 +322,7 @@
   }
 
   return {
-    PRESETS, EMOTIONS, VISEMES, STATE_LOOKS, TOUCH_LOOKS, MOOD_LOOKS, MOTIONS, FACE_FALLBACK, RESTING, isResting, REPEATING, calm, lookFor, expressionFor, resolveFace,
+    NO_BREATH, poseOffsets, PRESETS, EMOTIONS, VISEMES, STATE_LOOKS, TOUCH_LOOKS, MOOD_LOOKS, MOTIONS, FACE_FALLBACK, RESTING, isResting, REPEATING, calm, lookFor, expressionFor, resolveFace,
     BLINK_MS, nextBlinkIn, blinkWeight, breath, screenToClient, gazeNdc, ARM_DOWN, pose, motionMouth,
     zeroVisemes, band, visemesFromSpectrum, syntheticVisemes, smoothVisemes, BUDGET, frameMode, shouldRender, FpsMeter,
   };

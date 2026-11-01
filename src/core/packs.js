@@ -181,11 +181,15 @@ function readLive2d(dir, rel, cfg, errors) {
 // dresses an adult outfit or makes an 18+ look, and a model that may not be redistributed is never shared.
 const VRM_RE = /\.vrm$/i;
 const MAX_VRM_BYTES = 256 * 1024 * 1024;
+const VRMA_RE = /\.vrma$/i;
+const MAX_VRMA_BYTES = 32 * 1024 * 1024;
+// vrm.idle: an optional VRM animation (.vrma) looped under the app's own moves
+const vrmaFile = (dir, rel, errors, label) => vrmFile(dir, rel, errors, label, { re: VRMA_RE, ext: '.vrma', max: MAX_VRMA_BYTES, inspect: V.inspectVrmaFile });
 const VRM_HEIGHT = { min: 0.3, max: 1, dflt: 0.9 };
 const ADULT_OUTFITS = new Set(OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id));
-function vrmFile(dir, rel, errors, label) {
-  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..') || !VRM_RE.test(rel)) {
-    errors.push(`${label}: "${rel}" must be a relative path to a .vrm file inside the pack`);
+function vrmFile(dir, rel, errors, label, { re = VRM_RE, ext = '.vrm', max = MAX_VRM_BYTES, inspect = V.inspectVrmFile } = {}) {
+  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..') || !re.test(rel)) {
+    errors.push(`${label}: "${rel}" must be a relative path to a ${ext} file inside the pack`);
     return null;
   }
   const root = path.resolve(dir);
@@ -203,11 +207,11 @@ function vrmFile(dir, rel, errors, label) {
     return null;
   }
   const st = fs.statSync(real);
-  if (!st.isFile() || st.size > MAX_VRM_BYTES) {
-    errors.push(`${label}: ${rel} is not a file under ${MAX_VRM_BYTES / 1024 / 1024} MB`);
+  if (!st.isFile() || st.size > max) {
+    errors.push(`${label}: ${rel} is not a file under ${max / 1024 / 1024} MB`);
     return null;
   }
-  const info = V.inspectVrmFile(real);
+  const info = inspect(real);
   if (!info.ok) {
     errors.push(`${label}: ${rel} ${info.errors.join('; ')}`);
     return null;
@@ -265,9 +269,11 @@ function readVrm(dir, cfg, adult, errors) {
     else if (typeof name !== 'string' || !known.includes(name)) errors.push(`vrm.expressions.${state}: "${name}" is not an expression of the model (it has: ${known.join(', ') || 'none'})`);
     else expressions[state] = name;
   }
+  const idle = c.idle === undefined ? null : vrmaFile(dir, c.idle, errors, 'vrm.idle');
   if (errors.length > before) return null;
   return {
     outfits,
+    idle: idle ? idle.rel : null,
     height,
     expressions,
     models: Object.fromEntries(list.map((m) => [m.rel, { meta: m.meta, license: V.vrmLicense(m.meta), expressions: m.expressions, springBone: m.springBone }])),
@@ -283,7 +289,7 @@ function vrmPackId(speciesId, name) {
   const hash = crypto.createHash('sha1').update(String(name)).digest('hex').slice(0, 8);
   return `vrm-${speciesId}-${slug.length >= 3 ? slug : hash}`.slice(0, 40).replace(/-+$/, '');
 }
-function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_FILE }) {
+function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_FILE, idle = null }) {
   const safe = Object.fromEntries(Object.entries(outfits).filter(([id]) => OUTFIT_IDS.includes(id) && !ADULT_OUTFITS.has(id)));
   return {
     schema: SCHEMA,
@@ -295,7 +301,7 @@ function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_
     description: '从本地导入的 VRM 模型（授权信息读自模型文件）。',
     species: speciesId,
     kind: 'vrm',
-    vrm: { outfits: safe, height: VRM_HEIGHT.dflt },
+    vrm: { outfits: safe, height: VRM_HEIGHT.dflt, ...(idle ? { idle } : {}) },
     ...(preview ? { outfits: Object.fromEntries(Object.keys(safe).map((id) => [id, preview])) } : {}),
   };
 }
@@ -486,7 +492,7 @@ function validatePack(manifest, dir) {
 
   if (errors.length) return { ok: false, errors };
   // VRM: author and license come from the model files, not from pack.json
-  const vrmPack = vrm && { height: vrm.height, expressions: vrm.expressions, models: vrm.models, license: vrm.license, previews: outfits };
+  const vrmPack = vrm && { height: vrm.height, idle: vrm.idle, expressions: vrm.expressions, models: vrm.models, license: vrm.license, previews: outfits };
   return {
     ok: true,
     pack: {
@@ -566,7 +572,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
       const rel = p.outfits[outfitId];
       const preview = p.vrm.previews[outfitId];
       const lic = p.vrm.license;
-      return { ...base, url: preview ? packUrl(p, preview) : null, model: packUrl(p, rel), vrm: { height: p.vrm.height, expressions: p.vrm.expressions, modelExpressions: p.vrm.models[rel].expressions, springBone: p.vrm.models[rel].springBone, meta: p.vrm.models[rel].meta, license: lic } };
+      return { ...base, url: preview ? packUrl(p, preview) : null, model: packUrl(p, rel), vrm: { height: p.vrm.height, idle: p.vrm.idle ? packUrl(p, p.vrm.idle) : null, expressions: p.vrm.expressions, modelExpressions: p.vrm.models[rel].expressions, springBone: p.vrm.models[rel].springBone, meta: p.vrm.models[rel].meta, license: lic } };
     }
     if (p.kind === 'rig') {
       const folder = path.posix.dirname(p.outfits[outfitId]);

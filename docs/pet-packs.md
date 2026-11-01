@@ -126,6 +126,7 @@ my-grok/
       "pajamas": "models/pajamas.vrm"
     },
     "height": 0.9,                    // 可选：她占画面高度的比例，0.3–1，默认 0.9
+    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma），循环播放，应用的动作叠加在上面
     "expressions": {                  // 可选：应用状态 → 模型里的表情名（覆盖默认映射；表情名必须是模型里有的）
       "pat": "happy", "sleep": "relaxed"
     }
@@ -136,6 +137,7 @@ my-grok/
 
 - **校验**：每个 `.vrm` 必须在包目录内、存在、不超过 256 MB，是 glTF 二进制（文件头 magic `glTF`、版本 2，第一个 chunk 是 JSON），并带 `VRMC_vrm`（1.0）或 `VRM`（0.x）扩展。任何一项不符合，整个包被拒绝并说明原因。
 - **作者和授权读自模型文件**：`pack.json` 里写的 `author` / `license` 对 VRM 包不起作用，显示的作者和授权摘要来自模型的 VRM meta，所以包作者无法放宽模型本身的授权。VRM 1.0 读 `extensions.VRMC_vrm.meta` 的全部字段（name、version、authors、copyrightInformation、contactInformation、references、licenseUrl、avatarPermission、allowExcessivelyViolentUsage、allowExcessivelySexualUsage、commercialUsage、allowPoliticalOrReligiousUsage、allowAntisocialOrHateUsage、creditNotation、allowRedistribution、modification、otherLicenseUrl）；VRM 0.x 读 `extensions.VRM.meta`（title、author、allowedUserName、violentUssageName、sexualUssageName、commercialUssageName、licenseName、otherPermissionUrl、otherLicenseUrl…），由 `licenseName` 推出是否可再分发、可修改、需署名。缺失或不认识的字段一律按最严格的理解（VRM 1.0 规范的默认值）：不可再分发、禁止修改、需署名、仅限个人非商业、不允许性/暴力表现。
+- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。有它时，她站着的姿态（重心、手臂、呼吸）由这段动画循环驱动，应用的动作（点头、拖起摆动、玩耍转圈…）作为相对静止姿态的偏移叠加在上面；表情、眨眼、视线和口型照旧由应用决定。没有它时用应用自己的程序化待机。动画加载失败时退回程序化待机，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
 - **衣柜只列有模型的服饰**：VRM 包的衣柜就是它自己的服饰，每个不同的 `.vrm` 一项（同一个模型写在几套服饰下只算一项，因为一个模型换不了衣服）。只有一个模型时她就只有这一个样子，衣柜按钮隐藏，好感升级也不再提示新服饰。
 
 ### 授权提示与应用的强制规则

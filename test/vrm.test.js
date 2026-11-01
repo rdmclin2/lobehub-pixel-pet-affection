@@ -416,3 +416,70 @@ test('one VRM model is one look: no wardrobe of identical cards (packs imported 
   // 2D packs keep her own wardrobe
   assert.equal(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), null);
 });
+
+// An idle loop (.vrma) under the app's moves (pack vrm.idle; a folder / .zip import brings it along).
+const vrma = (over = {}) => glb({ asset: { version: '2.0' }, extensionsUsed: ['VRMC_vrm_animation'], extensions: { VRMC_vrm_animation: { specVersion: '1.0', humanoid: { humanBones: { hips: { node: 0 }, head: { node: 1 } } } } }, animations: [{ channels: [], samplers: [] }], ...over });
+
+test('VRM animation: a .vrma is recognised; a model or a plain glTF is not one', () => {
+  const dir = tmp('vrma-');
+  fs.writeFileSync(path.join(dir, 'idle.vrma'), vrma());
+  fs.writeFileSync(path.join(dir, 'model.vrma'), vrm1());
+  fs.writeFileSync(path.join(dir, 'empty.vrma'), vrma({ animations: [] }));
+  assert.deepEqual(V.inspectVrmaFile(path.join(dir, 'idle.vrma')), { ok: true, specVersion: '1.0', humanoid: ['hips', 'head'], expressions: [], errors: [] });
+  assert.match(V.inspectVrmaFile(path.join(dir, 'model.vrma')).errors[0], /not a VRM animation/);
+  assert.match(V.inspectVrmaFile(path.join(dir, 'empty.vrma')).errors[0], /no animation/);
+  assert.match(V.inspectVrmaFile(path.join(dir, 'nope.vrma')).errors[0], /missing/);
+});
+
+test('pack vrm.idle: a .vrma inside the pack is handed to the renderer; outside the pack or not an animation is refused', () => {
+  const root = tmp('vrm-idle-');
+  const ok = P.readPack(writeVrmPack(root, vrmPack({ id: 'idle-ok', vrm: { outfits: { daily: 'model.vrm' }, idle: 'anim/idle.vrma' } }), { 'model.vrm': vrm1(), 'anim/idle.vrma': vrma() }));
+  assert.equal(ok.ok, true, JSON.stringify(ok.errors));
+  assert.equal(ok.pack.vrm.idle, 'anim/idle.vrma');
+  const packs = new Map([[ok.pack.id, { ...ok.pack, source: 'user' }]]);
+  assert.equal(P.resolveLook(packs, { packId: 'idle-ok', speciesId: 'dafeiyu', outfitId: 'daily' }).vrm.idle, 'pack://idle-ok/anim/idle.vrma');
+  const none = P.readPack(writeVrmPack(root, vrmPack({ id: 'idle-none' }), { 'model.vrm': vrm1() }));
+  assert.equal(none.pack.vrm.idle, null);
+  assert.equal(P.resolveLook(new Map([['idle-none', none.pack]]), { packId: 'idle-none', speciesId: 'dafeiyu', outfitId: 'daily' }).vrm.idle, null);
+  const bad = (idle, files) => P.readPack(writeVrmPack(root, vrmPack({ id: `idle-bad-${Math.random().toString(36).slice(2, 8)}`, vrm: { outfits: { daily: 'model.vrm' }, idle } }), { 'model.vrm': vrm1(), ...files })).errors.join(' / ');
+  assert.match(bad('../idle.vrma'), /must be a relative path to a \.vrma file inside the pack/);
+  assert.match(bad('idle.vrm', { 'idle.vrm': vrm1() }), /\.vrma file/);
+  assert.match(bad('idle.vrma', { 'idle.vrma': vrm1() }), /not a VRM animation/);
+  assert.match(bad('gone.vrma'), /missing/);
+});
+
+test('import: a folder / .zip brings its idle animation along (the only .vrma, or idle*); a single picked .vrm does not', async () => {
+  const user = tmp('vrm-idle-user-');
+  const src = tmp('vrm-idle-src-');
+  fs.writeFileSync(path.join(src, 'Fish.vrm'), vrm1(FREE_META));
+  fs.writeFileSync(path.join(src, 'idle_loop.vrma'), vrma());
+  fs.writeFileSync(path.join(src, 'wave.vrma'), vrma());
+  fs.writeFileSync(path.join(src, 'broken.vrma'), PNG);
+  assert.equal(I.pickIdleVrma(src), 'idle_loop.vrma');
+  const r = await I.importVrm({ src, speciesId: 'dafeiyu', userDir: user });
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.equal(r.idle, 'animations/idle_loop.vrma');
+  assert.ok(fs.readFileSync(path.join(r.pack.dir, 'animations', 'idle_loop.vrma')).equals(vrma()));
+  // only one .vrma, whatever its name
+  const one = tmp('vrm-idle-one-');
+  fs.writeFileSync(path.join(one, 'breathe.vrma'), vrma());
+  assert.equal(I.pickIdleVrma(one), 'breathe.vrma');
+  // several, none named idle: none is guessed
+  const two = tmp('vrm-idle-two-');
+  for (const n of ['a.vrma', 'b.vrma']) fs.writeFileSync(path.join(two, n), vrma());
+  assert.equal(I.pickIdleVrma(two), null);
+  // a single .vrm never scans the folder it sits in (e.g. Downloads)
+  const single = await I.importVrm({ src: path.join(src, 'Fish.vrm'), speciesId: 'dafeiyu', userDir: tmp('vrm-idle-user2-') });
+  assert.equal(single.idle, null);
+});
+
+test('moves over an idle clip: offsets from the rest pose (resting is no offset, a nod still nods, arms are not lowered twice)', () => {
+  const M = require('../src/core/vrm-motion');
+  const rest = M.poseOffsets(M.pose({}, 0, 0, { breathK: M.NO_BREATH }).bones);
+  for (const r of Object.values(rest)) assert.deepEqual([r.x, r.y, r.z].map((v) => Math.abs(v) < 1e-9), [true, true, true]);
+  const nod = M.poseOffsets(M.pose({ nodDown: 9 }, 0, 0, { breathK: M.NO_BREATH }).bones);
+  assert.ok(nod.head.x > 5 && nod.neck.x > 3);
+  assert.ok(Math.abs(nod.leftUpperArm.z) < 1e-9, 'the arm-down rest is the clip\'s job');
+  const up = M.poseOffsets(M.pose({ armsUp: 1 }, 0, 0, { breathK: M.NO_BREATH }).bones);
+  assert.ok(up.leftUpperArm.z > 60 && up.rightUpperArm.z < -60);
+});

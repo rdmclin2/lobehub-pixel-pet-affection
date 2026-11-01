@@ -14,6 +14,15 @@ const V = require('./vrm');
 const { OUTFITS } = require('./outfits');
 
 const VRM_DIR = 'models';
+const VRMA_DIR = 'animations';
+
+// The idle loop that comes with a folder / .zip: the only .vrma in it, or the one named idle*. Null when
+// there is none (or several with no idle among them); a .vrma that is not a VRM animation is skipped.
+function pickIdleVrma(root) {
+  const all = findVrmFiles(root, 4, /\.vrma$/i).filter((f) => V.inspectVrmaFile(path.join(root, f)).ok);
+  const idle = all.filter((f) => /^idle/i.test(path.basename(f)));
+  return idle[0] || (all.length === 1 ? all[0] : null);
+}
 const SKIP_DIRS = new Set(['__MACOSX', 'node_modules', '.git']);
 // The app's own folder (the repository in development, the app bundle when installed): never written to.
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -27,8 +36,9 @@ function unzip(zip, dest) {
   return run('unzip', ['-q', zip, '-d', dest]);
 }
 
-// The .vrm files under `dir` (relative, '/'-separated, shallowest first), skipping zip debris.
-function findVrmFiles(dir, maxDepth = 4) {
+// The .vrm files (or with `re`, others: .vrma) under `dir` (relative, '/'-separated, shallowest first),
+// skipping zip debris.
+function findVrmFiles(dir, maxDepth = 4, re = /\.vrm$/i) {
   const found = [];
   const walk = (rel, depth) => {
     let entries = [];
@@ -36,7 +46,7 @@ function findVrmFiles(dir, maxDepth = 4) {
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const r = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory() && depth < maxDepth && !SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) walk(r, depth + 1);
-      else if (e.isFile() && /\.vrm$/i.test(e.name) && !e.name.startsWith('._')) found.push(r);
+      else if (e.isFile() && re.test(e.name) && !e.name.startsWith('._')) found.push(r);
     }
   };
   walk('', 0);
@@ -119,7 +129,10 @@ async function importVrm({ src, speciesId, userDir, packs = new Map(), unzipFn =
       target[f] = `${VRM_DIR}/${base}`;
     }
     const outfits = Object.fromEntries(Object.entries(map.outfits).map(([id, f]) => [id, target[f]]));
-    const manifest = P.vrmManifest({ speciesId, name, outfits, meta });
+    // a folder / .zip may bring its idle animation along; a single picked .vrm never scans its folder
+    const idleSrc = /\.vrm$/i.test(src) ? null : pickIdleVrma(root);
+    const idle = idleSrc ? `${VRMA_DIR}/${path.basename(idleSrc).replace(/[^\w.\-]+/g, '_')}` : null;
+    const manifest = P.vrmManifest({ speciesId, name, outfits, meta, idle });
     const existing = packs.get(manifest.id);
     if (existing && existing.source === 'builtin') return { ok: false, errors: ['这个名字已被内置角色包占用'] };
     const dest = path.join(dest0, manifest.id);
@@ -127,6 +140,10 @@ async function importVrm({ src, speciesId, userDir, packs = new Map(), unzipFn =
     fs.rmSync(dest, { recursive: true, force: true });
     fs.mkdirSync(path.join(dest, VRM_DIR), { recursive: true });
     for (const [f, rel] of Object.entries(target)) fs.copyFileSync(path.join(root, f), path.join(dest, rel));
+    if (idle) {
+      fs.mkdirSync(path.join(dest, VRMA_DIR), { recursive: true });
+      fs.copyFileSync(path.join(root, idleSrc), path.join(dest, idle));
+    }
     fs.writeFileSync(path.join(dest, P.PREVIEW_FILE), BLANK_PNG);
     fs.writeFileSync(path.join(dest, 'pack.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     const r = P.readPack(dest);
@@ -138,6 +155,7 @@ async function importVrm({ src, speciesId, userDir, packs = new Map(), unzipFn =
       ok: true,
       pack: { id: r.pack.id, name: r.pack.name, species: r.pack.species, dir: r.pack.dir },
       outfits: Object.keys(r.pack.outfits),
+      idle: r.pack.vrm.idle,
       license: r.pack.vrm.license,
       meta: r.pack.vrm.models[outfits.daily || Object.values(outfits)[0]].meta,
       replaced: !!existing,
@@ -147,4 +165,4 @@ async function importVrm({ src, speciesId, userDir, packs = new Map(), unzipFn =
   }
 }
 
-module.exports = { VRM_DIR, APP_ROOT, findVrmFiles, mapVrmOutfits, importVrm, unzip };
+module.exports = { VRM_DIR, VRMA_DIR, APP_ROOT, findVrmFiles, pickIdleVrma, mapVrmOutfits, importVrm, unzip };

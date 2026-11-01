@@ -15,7 +15,8 @@
 // Debug fields on the canvas (read by e2e): data-frame (frames drawn, counting up), data-fps (drawn in
 // the last second), data-mode (active | idle | paused), data-state, data-expr (expression weights),
 // data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y), data-springs (joints),
-// data-vrm (1.0 | 0.x). window.PetVRM.debug() has the same and more.
+// data-vrm (1.0 | 0.x), data-anim (vrma when the pack's idle animation plays, none, failed).
+// window.PetVRM.debug() has the same and more.
 (function () {
   const M = window.PetVrmMotion;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -132,6 +133,8 @@
     let scene = null;
     let camera = null;
     let vrm = null;
+    let mixer = null; // the idle animation (pack vrm.idle), when there is one
+    let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
     let disposed = false;
     let size = { h: 1, minY: 0, cx: 0, cz: 0 };
@@ -199,11 +202,59 @@
       vrm.update(0);
       measure();
       fit(true);
+      await loadIdle(T, own);
+      if (disposed) return false;
+      canvas.dataset.anim = animState;
       canvas.dataset.vrm = vrm.meta && vrm.meta.metaVersion === '0' ? '0.x' : '1.0';
       canvas.dataset.springs = String(vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0);
       canvas.dataset.frame = '0';
       return true;
     });
+
+    // the pack's idle loop (.vrma, from its own pack only): the clip owns her standing pose, the app's moves
+    // go on top (draw). A clip that does not load just leaves her on the procedural pose.
+    async function loadIdle(T, own) {
+      if (!cfg.idle) return;
+      try {
+        if (typeof cfg.idle !== 'string' || !cfg.idle.startsWith(own)) throw new Error('an idle animation is loaded from its own pack only');
+        const al = new R.GLTFLoader();
+        al.manager.setURLModifier((u) => (u.startsWith(own) || u.startsWith('data:') || u.startsWith('blob:') ? u : 'data:application/octet-stream,'));
+        al.register((parser) => new R.VRMAnimationLoaderPlugin(parser));
+        const g = await al.loadAsync(cfg.idle);
+        const anim = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
+        if (!anim) throw new Error('not a VRM animation');
+        if (disposed || !vrm) return;
+        const clip = R.createVRMAnimationClip(anim, vrm);
+        mixer = new T.AnimationMixer(vrm.scene);
+        const action = mixer.clipAction(clip);
+        action.setLoop(T.LoopRepeat, Infinity);
+        action.play();
+        animState = 'vrma';
+      } catch (e) {
+        console.warn('[vrm] idle animation off:', e && e.message);
+        mixer = null;
+        animState = 'failed';
+      }
+    }
+
+    // the clip sets the bones it animates each update; the ones it leaves alone go back to rest here, so the
+    // app's offsets never pile up from frame to frame
+    const qTmp = {};
+    function applyOverClip(bones, dt) {
+      const h = vrm.humanoid;
+      if (!h) return;
+      for (const name of Object.keys(bones)) { const n = h.getNormalizedBoneNode(name); if (n) n.quaternion.identity(); }
+      mixer.update(dt);
+      const T = R.THREE;
+      qTmp.e = qTmp.e || new T.Euler();
+      qTmp.q = qTmp.q || new T.Quaternion();
+      for (const [name, r] of Object.entries(M.poseOffsets(bones))) {
+        const n = h.getNormalizedBoneNode(name);
+        if (!n || (!r.x && !r.y && !r.z)) continue;
+        qTmp.e.set(r.x * DEG, r.y * DEG, r.z * DEG);
+        n.quaternion.multiply(qTmp.q.setFromEuler(qTmp.e));
+      }
+    }
 
     // arms down from the T-pose before measuring, so the box is her standing height
     function restPose() {
@@ -315,8 +366,9 @@
       for (const key of M.MOTIONS) cur[key] = lerp(cur[key], L.motion[key] || 0, kk);
 
       // body
-      const p = M.pose(cur, t, st, { swing, talking: talking || !!voice });
-      applyBones(p.bones);
+      const p = M.pose(cur, t, st, { swing, talking: talking || !!voice, ...(mixer ? { breathK: M.NO_BREATH } : {}) });
+      if (mixer) applyOverClip(p.bones, dt);
+      else applyBones(p.bones);
       const roll = sp.roll.step(p.root.roll, dt);
       // window inertia: she lags behind the window and springs back, so her hair and tail (SpringBone) swing
       const lag = sp.x.step(clamp((-vel[0] * mirror()) / 2500, -0.6, 0.6), dt);
@@ -392,7 +444,7 @@
         canvas,
         pause: () => { lastRender = null; },
         debug: () => ({
-          loaded: !!vrm, mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: stateNow, lip: lipMode,
+          loaded: !!vrm, anim: animState, mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: stateNow, lip: lipMode,
           face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze }, motion: Object.fromEntries(Object.entries(cur).filter(([, v]) => Math.abs(v) > 0.01)),
           expressions: vrm && vrm.expressionManager ? Object.keys(vrm.expressionManager.expressionMap) : [],
           springJoints: vrm && vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0,
@@ -416,6 +468,8 @@
         stats.disposed++;
         const memory = renderer ? { ...renderer.info.memory } : null;
         try {
+          if (mixer && vrm) { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); }
+          mixer = null;
           if (vrm) { scene.remove(vrm.scene); R.VRMUtils.deepDispose(vrm.scene); }
           if (renderer) { renderer.renderLists.dispose(); renderer.dispose(); renderer.forceContextLoss(); }
         } catch (e) { console.warn('[vrm] dispose:', e && e.message); }
