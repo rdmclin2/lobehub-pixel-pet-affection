@@ -568,6 +568,10 @@ function refreshHud() {
   $('aff-num').textContent = `♥${a.value}/${a.max}`;
   $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
   $('aff-row').setAttribute('aria-label', $('aff-row').title);
+  // one look and nothing to change into (a single VRM model): no wardrobe to open
+  const oneLook = view.outfits.length <= 1;
+  $('btn-wardrobe').classList.toggle('hidden', oneLook);
+  if (oneLook && panelKind === 'wardrobe') closePanel();
   $('btn-wardrobe').querySelector('.new-dot').classList.toggle('hidden', !view.outfits.some((o) => o.isNew));
   $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
   setSettings(view.settings);

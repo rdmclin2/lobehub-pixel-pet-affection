@@ -191,15 +191,15 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   assert.match(P.readPack(writeVrmPack(root, vrmPack({ id: 'f-maid', vrm: { outfits: { daily: 'model.vrm', maid: 'model.vrm' } } }), { 'model.vrm': vrm1(FREE_META) })).errors.join(), /needs an 18\+ pack/);
 
   // fields that try to set the app's rules are ignored: stage, rating, unlock, ageConfirmed …
-  const tricky = vrmPack({ id: 'f-adult', adult: true, rating: 'all', unlockAll: true, ageConfirmed: true, adultContent: true, stage: 'stranger', outfitRules: { maid: { stage: 'stranger', rating: 'all' } }, vrm: { outfits: { daily: 'model.vrm', maid: 'model.vrm', pajamas: 'model.vrm' }, stages: { maid: 'stranger' }, rating: { maid: 'all' } } });
-  const r = P.readPack(writeVrmPack(root, tricky, { 'model.vrm': vrm1(FREE_META) }));
+  const tricky = vrmPack({ id: 'f-adult', adult: true, rating: 'all', unlockAll: true, ageConfirmed: true, adultContent: true, stage: 'stranger', outfitRules: { maid: { stage: 'stranger', rating: 'all' } }, vrm: { outfits: { daily: 'model.vrm', maid: 'maid.vrm', pajamas: 'pajamas.vrm' }, stages: { maid: 'stranger' }, rating: { maid: 'all' } } });
+  const r = P.readPack(writeVrmPack(root, tricky, { 'model.vrm': vrm1(FREE_META), 'maid.vrm': vrm1(FREE_META), 'pajamas.vrm': vrm1(FREE_META) }));
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   for (const k of ['rating', 'unlockAll', 'ageConfirmed', 'adultContent', 'stage', 'outfitRules']) assert.equal(k in r.pack, false, k);
   assert.equal('stages' in r.pack.vrm || 'rating' in r.pack.vrm, false);
   const pack = { ...r.pack, source: 'user' };
   const packs = new Map([[pack.id, pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
   const look = P.lookContext(pack);
-  assert.deepEqual(look, { adult: true, outfits: ['daily', 'maid', 'pajamas'] });
+  assert.deepEqual(look, { adult: true, only: true, outfits: ['daily', 'maid', 'pajamas'] });
 
   // 18+ not confirmed / adult content off: the pack is not even chosen, adult outfits do not exist
   for (const s of [ADULT_OFF, NOT_CONFIRMED]) {
@@ -225,7 +225,7 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
 
   // defence in depth: a VRM pack object marked 18+ whose license forbids it is never an 18+ look and never dresses an adult outfit
   const forged = { ...pack, id: 'forged', vrm: { ...pack.vrm, license: { ...pack.vrm.license, adultOk: false } } };
-  assert.equal(P.lookContext(forged), null);
+  assert.deepEqual(P.lookContext(forged), { adult: false, only: true, outfits: ['daily', 'pajamas'] });
   const fp = new Map([['forged', forged], ...packs]);
   const lk = P.resolveLook(fp, { packId: 'forged', speciesId: 'dafeiyu', outfitId: 'maid' });
   assert.ok(!lk || lk.kind !== 'vrm' || lk.packId !== 'forged');
@@ -254,7 +254,7 @@ test('importing a VRM: a .vrm file, a folder or a .zip becomes a user pack in th
   assert.equal(r.pack.id, 'vrm-dafeiyu-deepseek', 'the id comes from the model name in its meta');
   assert.match(P.vrmPackId('dafeiyu', '小肥鱼'), /^vrm-dafeiyu-[0-9a-f]{8}$/, 'a name without latin letters gets a hash');
   assert.ok(r.pack.dir.startsWith(user + path.sep));
-  assert.deepEqual(r.outfits.sort(), o.OUTFITS.filter((x) => x.rating === 'all').map((x) => x.id).sort());
+  assert.deepEqual(r.outfits, ['daily'], 'one model is one look: it dresses only her default outfit, not all 13');
   assert.equal(r.license.redistributable, false);
   assert.equal(r.meta.authors[0], '木子惡魔');
   const manifest = JSON.parse(fs.readFileSync(path.join(r.pack.dir, 'pack.json'), 'utf8'));
@@ -338,7 +338,7 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   const root = path.join(dir, 'packs');
   const whale = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-whale', outfits: { daily: 'preview.png' } }), { 'model.vrm': vrm1(), 'preview.png': PNG })).pack;
-  const adultPack = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-free-adult', adult: true, vrm: { outfits: { daily: 'model.vrm', maid: 'model.vrm' } } }), { 'model.vrm': vrm1(FREE_META) })).pack;
+  const adultPack = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-free-adult', adult: true, vrm: { outfits: { daily: 'model.vrm', maid: 'maid.vrm' } } }), { 'model.vrm': vrm1(FREE_META), 'maid.vrm': vrm1(FREE_META) })).pack;
   const packs = new Map([...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs, [whale.id, { ...whale, source: 'user' }], [adultPack.id, { ...adultPack, source: 'user' }]]);
   const data = path.join(dir, 'data');
   const lh = new LhClient({ bin: path.join(__dirname, 'fixtures', 'fake-lh.js'), env: { ...cleanEnv(), FAKE_LH_DIR: dir } });
@@ -367,7 +367,7 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   assert.equal(svc.equipOutfit('maid').ok, false);
   svc.debugSet({ affection: 70 });
   assert.equal(svc.equipOutfit('maid').ok, true);
-  assert.equal(svc.view().look.model, 'pack://vrm-free-adult/model.vrm');
+  assert.equal(svc.view().look.model, 'pack://vrm-free-adult/maid.vrm');
   // adult content off: her look leaves the 18+ pack and the adult outfit comes off
   svc.setAdultContent(false);
   v = svc.view();
@@ -384,4 +384,35 @@ test('a placeholder meta.version ("undefined", "null", "-") is read as empty and
   const U = require('../src/core/vrm-ui');
   const rows = U.licenseRows(V.inspectVrm(vrm1({ ...FREE_META, name: '蓝色小肥鱼Deepseek', version: 'undefined' })).meta);
   assert.equal(rows.find((r) => r.label === '模型名').text, '蓝色小肥鱼Deepseek');
+});
+
+test('one VRM model is one look: no wardrobe of identical cards (packs imported with the old fan-out collapse too)', async () => {
+  const root = tmp('vrm-onelook-');
+  const ALL_AGES = o.OUTFITS.filter((x) => x.rating === 'all').map((x) => x.id);
+  // a pack from before the fix: one model under every all-ages outfit
+  const fanned = vrmPack({ id: 'fanned', vrm: { outfits: Object.fromEntries(ALL_AGES.map((id) => [id, 'model.vrm'])) } });
+  const r = P.readPack(writeVrmPack(root, fanned, { 'model.vrm': vrm1() }));
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  const look = P.lookContext(r.pack);
+  assert.deepEqual(look, { adult: false, only: true, outfits: ['daily'] });
+  const p = pet(100);
+  for (const s of [ADULT_OFF, ADULT_ON]) {
+    assert.deepEqual(o.listOutfits(p, s, look).map((x) => x.id), ['daily'], 'the wardrobe has one entry, so the UI hides 衣柜');
+    assert.equal(o.equipOutfit(p, s, 'pajamas', look).reason, 'unavailable');
+    assert.equal(o.equipOutfit(p, s, 'maid', look).ok, false);
+    assert.deepEqual(o.outfitsForStages(['familiar', 'close', 'flirty', 'lover'], p, s, look), [], 'a stage-up never announces outfits she cannot wear');
+  }
+  // she was wearing pajamas from the fanned-out wardrobe: back into daily
+  p.equippedOutfit = 'pajamas';
+  assert.equal(o.wornOutfit(p, ADULT_OFF, look), 'daily');
+  assert.deepEqual(o.enforceOutfit(p, ADULT_OFF, look), { changed: true, from: 'pajamas', to: 'daily' });
+
+  // several distinct models: one entry each, daily first; a model repeated under another outfit is not a second card
+  const multi = vrmPack({ id: 'multi', vrm: { outfits: { pajamas: 'b.vrm', daily: 'a.vrm', casual: 'a.vrm' } } });
+  const m = P.readPack(writeVrmPack(root, multi, { 'a.vrm': vrm1(), 'b.vrm': vrm1() }));
+  assert.equal(m.ok, true, JSON.stringify(m.errors));
+  assert.deepEqual(P.lookContext(m.pack).outfits, ['daily', 'pajamas']);
+
+  // 2D packs keep her own wardrobe
+  assert.equal(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), null);
 });

@@ -302,9 +302,30 @@ function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_
 
 // The wardrobe context (src/core/outfits.js `look`) of a pack: { adult, outfits } for an 18+ pack, else null.
 // A VRM pack counts as 18+ only when every model's license allows sexual usage, whatever pack.json says.
+// A VRM pack's wardrobe is its own: one entry per distinct model (a model cannot change clothes, so the
+// same .vrm under several outfits would only be identical cards). `only` tells src/core/outfits.js that
+// this list replaces her file's outfits. Packs imported before v0.17 mapped one model to every outfit:
+// they collapse to `daily` here.
+function vrmWardrobe(pack, adultOk) {
+  const src = pack.outfits || {}; // a VRM pack's outfits are its model files
+  const seen = new Set();
+  const out = [];
+  for (const id of ['daily', ...Object.keys(src).filter((k) => k !== 'daily')]) {
+    const rel = src[id];
+    if (!rel || seen.has(rel) || (ADULT_OUTFITS.has(id) && !adultOk)) continue;
+    seen.add(rel);
+    out.push(id);
+  }
+  return out;
+}
+
 function lookContext(pack) {
-  if (!pack || !pack.adult) return null;
-  if (pack.kind === 'vrm' && !(pack.vrm && pack.vrm.license.adultOk)) return null;
+  if (!pack) return null;
+  if (pack.kind === 'vrm') {
+    const adult = !!(pack.adult && pack.vrm && pack.vrm.license.adultOk);
+    return { adult, only: true, outfits: vrmWardrobe(pack, adult) };
+  }
+  if (!pack.adult) return null;
   return { adult: true, outfits: Object.keys(pack.outfits) };
 }
 

@@ -46,12 +46,13 @@ function findVrmFiles(dir, maxDepth = 4) {
 const ALL_AGES = OUTFITS.filter((o) => o.rating === 'all').map((o) => o.id);
 const ADULT = new Set(OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id));
 
-// Which model dresses which outfit. One model: every all-ages outfit. Several: each file named after an
+// Which model dresses which outfit. One model: her default outfit only (one model is one look, so the
+// wardrobe has nothing to change into). Several: each file named after an
 // outfit id (daily.vrm, pajamas.vrm, …) dresses that outfit, and a `daily` one is required. Adult outfits
 // are never mapped by the importer. Returns { outfits: { id: file } } or { error }.
 function mapVrmOutfits(files) {
   if (!files.length) return { error: '没有找到 .vrm 文件' };
-  if (files.length === 1) return { outfits: Object.fromEntries(ALL_AGES.map((id) => [id, files[0]])) };
+  if (files.length === 1) return { outfits: { daily: files[0] } };
   const byName = {};
   for (const f of files) {
     const id = path.basename(f).replace(/\.vrm$/i, '');

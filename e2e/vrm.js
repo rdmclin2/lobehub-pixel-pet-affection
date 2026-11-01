@@ -429,7 +429,9 @@ module.exports = function vrmScenarios(ctx) {
         const dir = path.join(open.dir, 'adult-pack');
         fs.mkdirSync(path.join(dir, 'models'), { recursive: true });
         fs.copyFileSync(open.file, path.join(dir, 'models', 'a.vrm'));
-        fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-e2e-adult', name: 'E2E Adult Fish', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/a.vrm', maid: 'models/a.vrm' } } }));
+        // one model per outfit: the same .vrm under two outfits would be one wardrobe entry
+        fs.copyFileSync(open.file, path.join(dir, 'models', 'maid.vrm'));
+        fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-e2e-adult', name: 'E2E Adult Fish', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/a.vrm', maid: 'models/maid.vrm' } } }));
         // and an all-ages pack that tries to dress maid: refused at import
         const sneaky = path.join(open.dir, 'sneaky-pack');
         fs.mkdirSync(path.join(sneaky, 'models'), { recursive: true });
@@ -445,27 +447,26 @@ module.exports = function vrmScenarios(ctx) {
         } else assert.ok(r2.errors.some((e) => /adult outfit needs an 18\+ pack/.test(e)), r2.errors.join(' / '));
         const st = await page.evaluate(() => window.pet.getSettings());
         assert.equal(st.adultContent, false);
-        // affection is not what holds it back: everything unlocked; the stage-up notice leads to the wardrobe
+        // affection is not what holds it back: everything unlocked. The imported single model is one look, so
+        // there is no wardrobe (衣柜 hidden) and the stage-up notice does not lead to one.
         await page.evaluate(() => window.pet.unlockAll('dafeiyu'));
         await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 8000 });
         const toast = (await page.textContent('#toast-title')).trim();
         await H.shot('10a-unlock-toast');
-        await page.click('#toast-open');
-        await page.waitForSelector('#panel:not(.hidden) .card');
+        assert.notEqual(await page.evaluate(() => document.getElementById('toast-open').dataset.panel), 'wardrobe');
+        await page.click('#toast-close');
         const cardsOf = () => page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, label: c.querySelector('.nm').textContent, locked: c.classList.contains('locked'), adultTag: !!c.querySelector('.tag.adult') })));
-        const cards = await cardsOf();
-        assert.ok(!cards.some((c) => c.id === 'maid' || c.label === '性感女仆装'), cards.map((c) => c.id).join(','));
-        assert.equal(await page.locator('.card .tag.adult').count(), 0);
-        // 招牌女仆装 is her all-ages signature outfit (id daily, src/characters/dafeiyu.json `signature`), not the adult maid (性感女仆装)
-        const daily = cards.find((c) => c.id === 'daily');
-        assert.ok(daily && daily.label === '招牌女仆装' && !daily.adultTag, JSON.stringify(daily));
-        assert.equal(require('../src/core/outfits').OUTFITS.find((o) => o.id === 'daily').rating !== 'adult', true);
+        const wardrobeHidden = () => page.evaluate(() => document.getElementById('btn-wardrobe').classList.contains('hidden'));
+        assert.equal(await wardrobeHidden(), true, 'one VRM model: no 衣柜');
+        const view0 = await page.evaluate(async () => (await window.pet.boot()).view);
+        assert.deepEqual(view0.outfits.map((x) => x.id), ['daily']);
+        assert.equal(view0.outfits[0].label, '招牌女仆装');
+        const cards = view0.outfits;
         const eq = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq.ok, false);
-        await H.shot('10b-adult-off-wardrobe');
-        await page.locator('.card').last().scrollIntoViewIfNeeded();
-        await H.shot('10b2-adult-off-wardrobe-end');
-        await page.click('#panel-close');
+        const eqP = await page.evaluate(() => window.pet.equipOutfit('pajamas'));
+        assert.equal(eqP.ok, false, 'no other outfit to change into');
+        await H.shot('10b-single-look-no-wardrobe');
         await openCurrentPage(page);
         const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
         assert.ok(!listed.includes('vrm-e2e-adult'), listed.join(', '));
@@ -494,18 +495,15 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.pet.setAdult(false));
         await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
         const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('#panel:not(.hidden) .card');
-        const off2 = await cardsOf();
-        assert.ok(!off2.some((c) => c.id === 'maid' || c.adultTag), JSON.stringify(off2));
+        // back on the single imported model: no wardrobe again, maid refused
+        await page.waitForFunction(() => document.getElementById('btn-wardrobe').classList.contains('hidden'), null, { timeout: 8000 });
+        const off2 = (await page.evaluate(async () => (await window.pet.boot()).view)).outfits;
+        assert.ok(!off2.some((c) => c.id === 'maid'), JSON.stringify(off2));
         const eq2 = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq2.ok, false);
-        await H.shot('10e-adult-off-again-wardrobe');
-        await page.locator('.card').last().scrollIntoViewIfNeeded();
-        await H.shot('10e2-adult-off-again-wardrobe-end');
-        await page.click('#panel-close');
+        await H.shot('10e-adult-off-again-no-wardrobe');
         const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
-        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 → 去衣柜看看: ${cards.length} cards (${unlocked} unlocked), no maid / 18+ tag (labels: ${cards.map((c) => c.label).join('、')}; 招牌女仆装 = all-ages daily); equipOutfit(maid) → ${eq.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
+        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 hidden, outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
 
       await step(S, 'back to dafeiyu-pixel: the 2D look draws, the VRM canvas is removed and the figure disposed', async () => {

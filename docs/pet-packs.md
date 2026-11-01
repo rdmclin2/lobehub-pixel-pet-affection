@@ -136,7 +136,7 @@ my-grok/
 
 - **校验**：每个 `.vrm` 必须在包目录内、存在、不超过 256 MB，是 glTF 二进制（文件头 magic `glTF`、版本 2，第一个 chunk 是 JSON），并带 `VRMC_vrm`（1.0）或 `VRM`（0.x）扩展。任何一项不符合，整个包被拒绝并说明原因。
 - **作者和授权读自模型文件**：`pack.json` 里写的 `author` / `license` 对 VRM 包不起作用，显示的作者和授权摘要来自模型的 VRM meta，所以包作者无法放宽模型本身的授权。VRM 1.0 读 `extensions.VRMC_vrm.meta` 的全部字段（name、version、authors、copyrightInformation、contactInformation、references、licenseUrl、avatarPermission、allowExcessivelyViolentUsage、allowExcessivelySexualUsage、commercialUsage、allowPoliticalOrReligiousUsage、allowAntisocialOrHateUsage、creditNotation、allowRedistribution、modification、otherLicenseUrl）；VRM 0.x 读 `extensions.VRM.meta`（title、author、allowedUserName、violentUssageName、sexualUssageName、commercialUssageName、licenseName、otherPermissionUrl、otherLicenseUrl…），由 `licenseName` 推出是否可再分发、可修改、需署名。缺失或不认识的字段一律按最严格的理解（VRM 1.0 规范的默认值）：不可再分发、禁止修改、需署名、仅限个人非商业、不允许性/暴力表现。
-- **只有部分服饰有模型**也可以：其他服饰穿这个角色的默认角色包。
+- **衣柜只列有模型的服饰**：VRM 包的衣柜就是它自己的服饰，每个不同的 `.vrm` 一项（同一个模型写在几套服饰下只算一项，因为一个模型换不了衣服）。只有一个模型时她就只有这一个样子，衣柜按钮隐藏，好感升级也不再提示新服饰。
 
 ### 授权提示与应用的强制规则
 
@@ -162,7 +162,7 @@ my-grok/
 ⋯ 菜单 → 角色列表 → 角色 → 外观 → **导入 VRM 模型…**，选一个 `.vrm`，或者包含 `.vrm` 的 `.zip`（macOS 上也可以直接选文件夹），不用写 `pack.json`。导入时应用会：
 
 1. 先读每个模型的 VRM meta；不是 glTF 二进制、不是 VRM、超过 256 MB 的，什么都不复制，直接说明原因；
-2. 只有一个 `.vrm`：她在所有全年龄服饰下都用这个模型；有多个：按文件名对应服饰（`daily.vrm`、`pajamas.vrm`…，必须有 `daily.vrm`），成人向服饰名的文件被跳过；
+2. 只有一个 `.vrm`：它就是她的默认服饰（`daily`），没有衣柜；旧版本导入时把一个模型铺到所有服饰的包，现在同样只显示这一项；有多个：按文件名对应服饰（`daily.vrm`、`pajamas.vrm`…，必须有 `daily.vrm`），成人向服饰名的文件被跳过；
 3. 把模型原样复制进用户数据目录的 `packs/vrm-<角色>-<模型名>/models/`，写一份 `pack.json`（同一个模型再导入一次会替换旧的；内置包的 id 不会被占用）。**只写用户数据目录**，从不写进应用目录、`src/` 或仓库；
 4. 返回模型的作者与授权提示，供界面展示。
 
@@ -174,7 +174,7 @@ my-grok/
 - **包卡片**：meta 行是 `VRM · N 套服饰 · 作者 · 本地导入`（作者读自模型）；授权要求署名时，卡片上常驻一行“署名：作者（模型授权要求署名）”。“授权信息”按钮展开同样的授权详情。
 - **链接**：`licenseUrl`、`otherLicenseUrl`、参考和联系方式里的 http(s) 链接可点击，在系统浏览器里打开（主进程 `open-link` 只放行 http/https）；其他内容（如 `mailto:`）只显示文字。
 - **导出**：导入的角色包有“导出…”（打成 `.zip`，可再用“导入角色包…”读回）。`allowRedistribution: false` 的 VRM 包按钮禁用，卡片下方写明“导出已禁用：这个 VRM 模型的授权不允许再分发…”；主进程 `export-pack` 也会再拒绝一次（`packShareable`）。
-- **衣柜**：VRM 包的服饰照常按好感锁定（🔒 + 解锁条件），锁定的服饰只给图片、不给模型；没有预览图时显示“VRM”占位。
+- **衣柜**：只有一个模型时不显示衣柜按钮；有多个模型时，VRM 包的服饰照常按好感锁定（🔒 + 解锁条件），锁定的服饰只给图片、不给模型；没有预览图时显示“VRM”占位。
 - **切换**：从 VRM 包切回 `dafeiyu-pixel` / `dafeiyu-classic` 等 2D 包时，VRM 画布离开页面，渲染器的 figure 随即 `dispose()`；再切回 VRM 会重新创建。渲染器以 `window.PetVRM.createFigure(canvas, look)` 接入（与 Live2D / 全动态相同的接口）；未加载时显示占位图。
 
 ### VRM 怎么画出来：表情、动作、口型
