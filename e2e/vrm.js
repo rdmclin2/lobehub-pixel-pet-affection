@@ -450,12 +450,19 @@ module.exports = function vrmScenarios(ctx) {
         await H.shot('10a-unlock-toast');
         await page.click('#toast-open');
         await page.waitForSelector('#panel:not(.hidden) .card');
-        const cards = await page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, locked: c.classList.contains('locked') })));
-        assert.ok(!cards.some((c) => c.id === 'maid'), cards.map((c) => c.id).join(','));
+        const cardsOf = () => page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, label: c.querySelector('.nm').textContent, locked: c.classList.contains('locked'), adultTag: !!c.querySelector('.tag.adult') })));
+        const cards = await cardsOf();
+        assert.ok(!cards.some((c) => c.id === 'maid' || c.label === '性感女仆装'), cards.map((c) => c.id).join(','));
         assert.equal(await page.locator('.card .tag.adult').count(), 0);
+        // 招牌女仆装 is her all-ages signature outfit (id daily, src/characters/dafeiyu.json `signature`), not the adult maid (性感女仆装)
+        const daily = cards.find((c) => c.id === 'daily');
+        assert.ok(daily && daily.label === '招牌女仆装' && !daily.adultTag, JSON.stringify(daily));
+        assert.equal(require('../src/core/outfits').OUTFITS.find((o) => o.id === 'daily').rating !== 'adult', true);
         const eq = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq.ok, false);
         await H.shot('10b-adult-off-wardrobe');
+        await page.locator('.card').last().scrollIntoViewIfNeeded();
+        await H.shot('10b2-adult-off-wardrobe-end');
         await page.click('#panel-close');
         await openCurrentPage(page);
         const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
@@ -469,7 +476,34 @@ module.exports = function vrmScenarios(ctx) {
         const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
         assert.ok(!key.startsWith('vrm-e2e-adult/'), `look ${key}`);
         const unlocked = cards.filter((c) => !c.locked).length;
-        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 → 去衣柜看看: ${cards.length} cards (${unlocked} unlocked), no maid / 18+ tag; equipOutfit(maid) → ${eq.reason}; all-ages pack with maid → ${sneakyNote}`);
+        // contrast: 18+ on → the 18+ VRM pack is offered and its adult outfit 性感女仆装 (成人向) can be worn; off again → gone
+        await page.evaluate(() => window.pet.setAdult(true));
+        await H.pickPack('vrm-e2e-adult');
+        await clickAct(page, 'wardrobe');
+        await page.waitForSelector('.card[data-outfit="maid"]:not(.locked)');
+        const on = await cardsOf();
+        const maidOn = on.find((c) => c.id === 'maid');
+        assert.ok(maidOn && maidOn.label === '性感女仆装' && maidOn.adultTag, JSON.stringify(on));
+        await page.click('.card[data-outfit="maid"]');
+        await page.waitForSelector('.card.equipped[data-outfit="maid"]');
+        await page.locator('.card[data-outfit="maid"]').scrollIntoViewIfNeeded();
+        await H.shot('10d-adult-on-wardrobe-maid');
+        await page.click('#panel-close');
+        await page.evaluate(() => window.pet.setAdult(false));
+        await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
+        const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
+        await clickAct(page, 'wardrobe');
+        await page.waitForSelector('#panel:not(.hidden) .card');
+        const off2 = await cardsOf();
+        assert.ok(!off2.some((c) => c.id === 'maid' || c.adultTag), JSON.stringify(off2));
+        const eq2 = await page.evaluate(() => window.pet.equipOutfit('maid'));
+        assert.equal(eq2.ok, false);
+        await H.shot('10e-adult-off-again-wardrobe');
+        await page.locator('.card').last().scrollIntoViewIfNeeded();
+        await H.shot('10e2-adult-off-again-wardrobe-end');
+        await page.click('#panel-close');
+        const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
+        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 → 去衣柜看看: ${cards.length} cards (${unlocked} unlocked), no maid / 18+ tag (labels: ${cards.map((c) => c.label).join('、')}; 招牌女仆装 = all-ages daily); equipOutfit(maid) → ${eq.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
 
       await step(S, 'back to dafeiyu-pixel: the 2D look draws, the VRM canvas is removed and the figure disposed', async () => {
