@@ -351,3 +351,22 @@ system role mentions adult topics: (none)
 **其余 9 套（2026-11-01）**：暂停解除后，用同样的提示词按从保守到大胆的顺序一张一张生成：职场 OL、空姐制服、护士服、黑丝毛衣裙、露肩晚礼服、丝绸睡裙、高开衩连体泳衣、兔女郎、小恶魔 COS。每张之间停 20 秒，第一次被拒就整批停；225 张一张都没被拒。逐套看了原尺寸的宫格，并放大检查了蹲姿、侧身走路和最暴露的几套（高开衩连体泳衣、兔女郎、丝绸睡裙）：都是成年比例，性感，但胸部和裆部始终被不透明布料盖住，丝绸睡裙不透，没有裸露、走光或内衣外露。高开衩连体泳衣是最暴露的一套（深 V、开衩到胯骨）。**结论：通过，仅限 18+ 成年版外观**。
 
 **性感比基尼（`sexy_bikini`，2026-11-01）**：项目负责人要求把最早那批比基尼设计稿（3d 第一版：三角或挂脖比基尼、纱笼、能看到乳沟，后来因为全年龄改成了清纯款）放进成人向衣柜。这批图按成人比例画（当时的提示词要求“mid-20s adult”），布料不透明，三点都盖住，姿势没有性暗示。只放在 18+ 成年版角色包里，`rating: 'adult'`。格萝可用第一版（纱笼款）；后来那版“娇小纤细的哥特洛丽塔体型”没有用，因为它显得年幼。设计稿只有 8 个状态，其余 8 个状态复用相近的帧，走路是原地踏步。**结论：通过，仅限 18+ 成年版外观**。
+
+## 6. 麦克风与音频数据（语音输入，2026-11-01）
+
+v0.9 之后新增语音输入（ASR），应用第一次会用到麦克风、把用户的声音发出去。逐项审查如下（使用说明见 [asr.md](asr.md)，实现见 `src/core/asr.js`、`src/main/main.js`、`src/renderer/app.js`）。
+
+| 审查项 | 结论 | 依据 |
+|---|---|---|
+| 是否默认录音 | 否。`settings.asr.enabled` 默认 `false`；只有用户点 / 按住 🎤 时才录，无常驻监听、无唤醒词 | `ASR_DEFAULTS`；e2e `asr` A0（关闭时 🎤 不显示，`getUserMedia(audio)` → `NotAllowedError`） |
+| 麦克风权限范围 | 只放行本应用 `file://` 页面、只放行音频、且语音输入已开启；摄像头一律拒绝 | `mediaAllowed()` + `session.setPermissionRequestHandler/CheckHandler`；e2e A9（摄像头 → `NotAllowedError`） |
+| 系统授权说明 | macOS `Info.plist` 带 `NSMicrophoneUsageDescription`（说明只在按 🎤 时录音）；首次录音前 `askForMediaAccess('microphone')` | `package.json` `build.mac.extendInfo` |
+| 录音何时结束 | 再点 / 松开 / Esc / 达到最长秒数（默认 60，最多 120）即停，随即释放麦克风轨道 | `app.js` 录音逻辑；e2e A2–A5 |
+| 音频去向（LobeHub） | 写入系统临时目录的临时文件（目录 0700、文件 0600），由 `lh generate asr` 上传 LobeHub 云端转写，`finally` 中删除；按用户账号 Credits 计费，开关旁和设置说明里写明 | `PROVIDERS.lobehub`；`test/asr.test.js`（临时文件权限与删除） |
+| 音频去向（本地） | 只在内存里，直接 POST 到用户填写的地址；地址只允许 https 或本机 / 局域网的 http，防止误发公网明文 | `endpointOk()`；e2e A1（填 `http://evil.example.com:8179` 被拒） |
+| 日志 / 落盘 | 不记录音频、不记录识别文字；日志只有引擎、原因、耗时、字节数。识别文字只有用户发送后才和打字一样进聊天记录 | `AsrEngine` 的 `log` 调用；`test/asr.test.js` |
+| 凭据 | 本地服务的可选 Key 存 `tts-keys.json`（有钥匙串时加密），不进 `settings.json`、不回传渲染层 | `KEY_ID = 'asrlocal'` |
+| 内容边界 | 识别出的文字与键盘输入走同一条聊天路径，受同样的人设红线与 `content-guard` 约束，语音输入不绕过任何过滤 | `send()` 复用 |
+
+**结论：通过。** 无新增阻塞项。观察项：用户若把地址填成他人的 https 服务，音频会发到那里，这在设置说明和 [asr.md](asr.md#6-隐私说明音频去哪里) 中已写明。
+

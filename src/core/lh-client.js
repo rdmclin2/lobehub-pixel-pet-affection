@@ -253,6 +253,16 @@ class LhClient {
     if (r.code !== 0 && !/already running/i.test(out)) throw new LhError(`lh connect failed: ${out.trim().slice(0, 300)}`, { code: r.code, stderr: r.stderr });
   }
 
+  // ---- speech recognition (core/asr.js) ----------------------------------------
+  // `lh generate asr <file> --provider lobehub --model <m> [--language <l>] --json` -> { code, stdout, stderr }.
+  // Same environment as every other call (cleanEnv, tool PATH), but not stopped by cancel(): pressing Stop on
+  // a chat turn must not drop what the owner just said. The caller's `signal` stops it instead.
+  asr(file, { model, language, provider = 'lobehub', timeoutMs = 30000, signal } = {}) {
+    const args = ['generate', 'asr', file, '--provider', provider, '--model', model, '--json'];
+    if (language) args.push('--language', language);
+    return runLh(this.bin, args, { env: this._env(), timeoutMs, signal });
+  }
+
   // ---- images ---------------------------------------------------------------
   // upload -> user message with the picture(s) in the topic; the next agent run sees it as context.
   async uploadFile(filePath) {

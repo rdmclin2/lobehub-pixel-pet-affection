@@ -194,7 +194,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 配置步骤：
 
 1. 高级设置 → 语音 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。
-2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（有系统钥匙串时用 Electron `safeStorage` 加密，否则是只有当前用户可读的 0600 文件），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
+2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（macOS 上是只有当前用户可读的 0600 文件——不用钥匙串，因为 ad-hoc 签名每次自动更新后都会重新弹「输入登录密码」；Windows / Linux 有系统密钥服务时用 Electron `safeStorage` 加密，否则同样是 0600 文件。旧版本在 macOS 上加密存的 Key 会在升级后读一次（最后弹一次钥匙串）并改存为 0600），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、5 秒没响应（长句最多 10 秒）、返回错误时，这一句立即降级，出错的引擎暂停一会儿：超时 / 断网 / 服务端出错 20 秒，被限流 20 秒，Key 无效 / 余额不足 5 分钟（改 Key / 端点 / 引擎会立刻重试）。MiniMax 国内站每分钟只能合成 10 次（免费账户），桌宠按这个数控制请求，预合成只用多出来的次数；请求在主进程异步进行，不会卡住界面。
 5. 点 **试听一句** 听当前角色的口头禅。
@@ -284,9 +284,20 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 ### 隐私与音色授权
 
 - **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio 或 MiniMax 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
-- **Key 只在本机**：存在 `userData/tts-keys.json`（有系统钥匙串时加密），不写进 `settings.json`、不进日志、不回传到页面。合成的音频缓存在 `userData/tts-cache/`，可在 高级设置 → 语音 清空。
+- **Key 只在本机**：存在 `userData/tts-keys.json`（只有当前用户可读；Windows / Linux 有系统密钥服务时另加密），不写进 `settings.json`、不进日志、不回传到页面。合成的音频缓存在 `userData/tts-cache/`，可在 高级设置 → 语音 清空。
 - **音色授权**：Fish 社区音色由上传者负责来源，仓库只写 Fish 音色 id 和署名（`credit`），不分发 Fish 合成的音频；Fish 免费账号限个人非商业使用，商用要付费订阅。MiniMax 用的是平台系统音色，没有复刻真人声音；内置语音包（`src/voicepacks/`）就是用这些 MiniMax 系统音色合成的音频。参考视频里的“ssr大肥鱼音色”音源属于 UP 主 星落落_oi（页面注明“未经作者授权，禁止转载”），本项目**没有复刻也没有收录**它；想 1:1 复刻要先取得 UP 主许可，并只在自己电脑上用。
 - **AI 合成声明**：所有语音都是 AI 合成，不是真人录音；录屏公开发布或商用时请标注 AI 生成，并分别取得音色作者和平台的授权。
+
+## 语音输入（ASR）
+
+打开 高级设置 → **语音输入** 后，聊天框旁边出现 🎤：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
+
+- **LobeHub 云端识别**：复用 LobeHub 的语音识别（`lh generate asr --provider lobehub`，模型 `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`），用本机 `lh login` 的账号，按 Credits 计费，录音上传到 LobeHub 云端。
+- **本地识别服务（whisper）**：你自己跑的 whisper 服务，例如 whisper.cpp `whisper-server`、speaches（faster-whisper），或任何 OpenAI 兼容的 `/v1/audio/transcriptions`；录音只发到你填的本机 / 局域网地址，不经过云端，免费。
+
+安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
+
+**完成状态**：相对原仓库，本项目已完成语音输入（ASR）支持——新增 🎤 录音输入、LobeHub 云端识别与本地 whisper 识别服务两种可切换的识别方式（可互为回退）、高级设置 → 语音输入 的配置与「测试连接」、错误提示与隐私说明；两种方式都已在真实服务上实测识别通过。快速开始：按下方 [安装与运行](#安装与运行) `git clone` → `npm install` → `npm start`，再到 高级设置 → 语音输入 打开并选引擎；各配置项的必填项和默认值见 [docs/asr.md §2.1](docs/asr.md#21-配置项一览必填--默认值)。
 
 ## 内容边界声明
 

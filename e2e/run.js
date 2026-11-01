@@ -2,6 +2,7 @@
 // End-to-end suite: drives the real Electron app with Playwright.
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
+//   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
 const fs = require('node:fs');
@@ -46,14 +47,14 @@ async function step(scenario, name, fn, page) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
-async function launch(env, { gate = false, video = null } = {}) {
+async function launch(env, { gate = false, video = null, args = [] } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   }
   // software WebGL: xvfb has no GPU, and 全动态 looks (rig.js) need WebGL (without it they show a still picture)
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
@@ -1353,7 +1354,7 @@ async function advanced() {
       assert.equal(await page.textContent('#panel-title'), '高级设置');
       assert.equal(await page.evaluate(() => document.getElementById('panel-body').scrollTop), 0, 'opens at its top');
       const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
-      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
+      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '语音输入', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
       assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list').count(), 0, 'per-character settings live on her page in 角色列表');
       return sections.join(' / ');
     }, page);
@@ -1996,7 +1997,7 @@ async function charpage() {
       const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
       await shot('08a-advanced-top');
       await check('高级设置：宠物大小、桌宠行为……没有模型 / 外观 / 一键解锁');
-      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
+      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '语音输入', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
       assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list, #panel-body .char-opt').count(), 0);
       await page.uncheck('#behavior-section input[data-pref="memes"]');
       await page.waitForSelector('#panel-msg.ok:not(.hidden)');
@@ -5410,6 +5411,556 @@ async function live2dImport() {
   }
 }
 
+// ------------------------------------------------------------------ asr (语音输入)
+// 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
+// records it with MediaRecorder, main sends it to a local whisper-shaped server (a mock here: no tokens), and
+// the text lands in the chat box. Also 高级设置 → 语音输入, 测试连接, 按住说话, Esc, the failure toast,
+// 识别后直接发送 and the microphone permission. With PIXELPET_E2E_WHISPER=<url> (a real whisper-server) and
+// PIXELPET_E2E_ASR_WAV=<speech.wav> one more step sends the recording to it (PIXELPET_E2E_ASR_EXPECT: a regex);
+// with PIXELPET_E2E_ASR_LOBEHUB=1 another sends it to LobeHub's real recognition (the machine's lh login).
+function asrMock() {
+  const http = require('node:http');
+  const TEXT = '你好，今天我想喂我的宠物吃饼干。';
+  const m = { TEXT, mode: 'ok', log: [] };
+  const field = (body, name) => { const r = new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)\\r\\n`).exec(body.toString('latin1')); return r ? Buffer.from(r[1], 'latin1').toString('utf8') : null; };
+  m.server = http.createServer((req, res) => {
+    const parts = [];
+    req.on('data', (d) => parts.push(d));
+    req.on('end', () => {
+      const body = Buffer.concat(parts);
+      const s = body.toString('latin1');
+      const fn = /filename="([^"]+)"\r\nContent-Type: ([^\r]+)\r\n\r\n/.exec(s);
+      const start = fn ? fn.index + fn[0].length : -1;
+      const end = start >= 0 ? s.indexOf('\r\n--', start) : -1;
+      const audio = start >= 0 && end > start ? body.subarray(start, end) : Buffer.alloc(0);
+      const rec = { at: Date.now(), path: req.url, auth: req.headers.authorization || null, filename: fn && fn[1], type: fn && fn[2], bytes: audio.length, magic: audio.subarray(0, 4).toString('hex'), model: field(body, 'model'), language: field(body, 'language'), format: field(body, 'response_format'), mode: m.mode, status: 0 };
+      m.log.push(rec);
+      const send = (status, j) => { rec.status = status; res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(j)); };
+      if (req.url !== '/v1/audio/transcriptions') return send(404, { error: 'not found' });
+      if (m.mode === '500') return send(500, { error: { message: 'model not loaded' } });
+      // the connection test sends a silent WAV: no words in it
+      if (rec.type === 'audio/wav') return setTimeout(() => send(200, { text: '' }), 50);
+      setTimeout(() => send(200, { text: ` ${TEXT} ` }), 600); // the spinner shows for a moment
+    });
+  });
+  return new Promise((resolve) => m.server.listen(0, '127.0.0.1', () => { m.url = `http://127.0.0.1:${m.server.address().port}`; resolve(m); }));
+}
+// 3 s of a gliding tone, 16 kHz mono: what the fake microphone "hears" (looped)
+function toneWav(file, sec = 3, rate = 16000) {
+  const n = rate * sec;
+  const w = Buffer.alloc(44 + n * 2);
+  w.write('RIFF', 0); w.writeUInt32LE(36 + n * 2, 4); w.write('WAVEfmt ', 8); w.writeUInt32LE(16, 16); w.writeUInt16LE(1, 20); w.writeUInt16LE(1, 22);
+  w.writeUInt32LE(rate, 24); w.writeUInt32LE(rate * 2, 28); w.writeUInt16LE(2, 32); w.writeUInt16LE(16, 34); w.write('data', 36); w.writeUInt32LE(n * 2, 40);
+  let ph = 0;
+  for (let i = 0; i < n; i++) { ph += (2 * Math.PI * (300 + 200 * Math.sin(i / rate))) / rate; w.writeInt16LE(Math.round(Math.sin(ph) * 9000), 44 + i * 2); }
+  fs.writeFileSync(file, w);
+  return file;
+}
+
+async function asrScenario() {
+  const S = 'asr';
+  const SHOTS = path.join(OUT, 'asr');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await asrMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-asr-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-asrfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const wav = process.env.PIXELPET_E2E_ASR_WAV || toneWav(path.join(data, 'fake-mic.wav'));
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video'), args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`] });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  const t0 = Date.now();
+  const chapters = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `asr/${name}.png`; };
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const msg = (re) => page.waitForFunction((src) => new RegExp(src).test(document.getElementById('panel-msg').textContent), re.source, { timeout: 5000 });
+  const getSet = () => page.evaluate(async () => (await window.pet.getSettings()).asr);
+  const lastAsr = () => page.evaluate(() => window.petFx.lastAsr());
+  const micState = () => page.evaluate(() => window.petFx.micState());
+  const openAsr = async () => {
+    if (!(await page.isVisible('#asr-section'))) {
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="advanced"]');
+      await page.waitForSelector('#asr-section');
+    }
+    await page.locator('#asr-section').scrollIntoViewIfNeeded();
+  };
+  const openChatBox = async () => {
+    await hover(page);
+    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    await page.waitForSelector('#chat-input', { state: 'visible' });
+  };
+  const waitMic = (st, timeout = 10000) => page.waitForFunction((s) => window.petFx.micState() === s, st, { timeout });
+  // the outcome after `n` recognitions have been asked of the server
+  const settled = () => page.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 30000 });
+  try {
+    await step(S, 'A0 hatch 大肥鱼; 语音输入 is off by default and 🎤 is not shown', async () => {
+      chapter('A0 孵化大肥鱼：语音输入默认关闭，聊天行没有 🎤');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const a = await getSet();
+      assert.equal(a.enabled, false);
+      assert.equal(a.autoSend, false);
+      await openChatBox();
+      assert.equal(await page.isVisible('#chat-mic'), false, '🎤 hidden while 语音输入 is off');
+      // the microphone is refused while 语音输入 is off (main.js permission handler)
+      const denied = await page.evaluate(() => navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; }, (e) => e.name));
+      assert.equal(denied, 'NotAllowedError');
+      await shot('a0-chat-row-no-mic');
+      await clickAct(page, 'chat');
+      return note(`settings.asr defaults ${JSON.stringify(a)}; 🎤 hidden; getUserMedia(audio) with ASR off → ${denied}`);
+    }, page);
+
+    await step(S, 'A1 高级设置 → 语音输入: switch on, 本地 whisper host, endpoint + model + 中文, 测试连接 ✅', async () => {
+      chapter('A1 高级设置 → 语音输入：开启、选本地 whisper、填地址/模型/语言、测试连接');
+      await openAsr();
+      const engines = await page.$$eval('#asr-engine option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
+      assert.deepEqual(engines, ['lobehub:LobeHub 云端识别', 'local:本地识别服务（whisper）', 'off:关闭']);
+      await page.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
+      await shot('a1-asr-section-default');
+      await page.check('#asr-on');
+      await msg(/语音输入已开启/);
+      await page.selectOption('#asr-engine', 'local');
+      await msg(/语音识别引擎：本地识别服务/);
+      await page.selectOption('#asr-language', 'zh');
+      await msg(/识别语言：中文/);
+      await page.fill('#asr-endpoint', 'http://evil.example.com:8179');
+      await page.click('#asr-local-save');
+      await msg(/地址要是 https/);
+      await page.fill('#asr-endpoint', mock.url);
+      await page.fill('#asr-local-model', 'ggml-base');
+      await page.click('#asr-local-save');
+      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      const before = mock.log.length;
+      await page.click('#asr-test');
+      await page.waitForFunction(() => /能用/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 15000 });
+      const test = await page.textContent('#asr-test-result');
+      const req = mock.log[before];
+      assert.equal(req.type, 'audio/wav', 'the test sends a silent wav');
+      assert.equal(req.model, 'ggml-base');
+      assert.equal(req.language, 'zh');
+      await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
+      await shot('a1-asr-configured-test-ok'); // before anything calls view(): the panel at its own size
+      const a = await getSet();
+      assert.equal(a.enabled, true);
+      assert.equal(a.engine, 'local');
+      assert.equal(a.language, 'zh');
+      assert.equal(a.local.endpoint, mock.url);
+      assert.equal(a.local.model, 'ggml-base');
+      const onDisk = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).asr;
+      assert.equal(onDisk.local.endpoint, mock.url);
+      await page.click('#panel-close');
+      return note(`测试连接 → 「${test.trim()}」; request ${JSON.stringify(req)}; settings.asr ${JSON.stringify(a)}`);
+    }, page);
+
+    await step(S, 'A2 click 🎤, speak, click again: recording → 识别中 → the text is in the chat box', async () => {
+      chapter('A2 点一下 🎤 开始、再点一下结束：录音中 → 识别中 → 文字出现在输入框');
+      await openChatBox();
+      assert.equal(await page.isVisible('#chat-mic'), true, '🎤 shown');
+      await page.fill('#chat-input', '');
+      const before = mock.log.length;
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1600);
+      const recBtn = await page.textContent('#chat-mic');
+      const recLine = await page.textContent('#mic-status');
+      assert.match(recLine, /正在听 \d+s/);
+      assert.equal(await page.getAttribute('#chat-input', 'placeholder'), '正在听…');
+      await shot('a2-recording');
+      await page.click('#chat-mic');
+      await waitMic('transcribing');
+      const busyLine = await page.textContent('#mic-status');
+      assert.match(busyLine, /识别中/);
+      await shot('a2-transcribing');
+      await settled();
+      await page.waitForFunction((t) => document.getElementById('chat-input').value === t, mock.TEXT, { timeout: 5000 });
+      const r = await lastAsr();
+      const req = mock.log[before];
+      assert.equal(mock.log.length, before + 1);
+      assert.equal(req.path, '/v1/audio/transcriptions');
+      assert.equal(req.filename, 'clip.webm');
+      assert.equal(req.type, 'audio/webm');
+      assert.equal(req.magic, '1a45dfa3', 'a real WebM (EBML) clip from MediaRecorder');
+      assert.ok(req.bytes > 2000, `${req.bytes} bytes`);
+      assert.equal(req.language, 'zh');
+      assert.equal(r.ok, true);
+      assert.equal(r.provider, 'local');
+      assert.equal(await page.isVisible('#mic-status'), false);
+      // the microphone is released once the clip is taken
+      const live = await page.evaluate(() => window.petFx.micState());
+      assert.equal(live, 'idle');
+      await shot('a2-text-in-chat-input');
+      return note(`button while recording 「${recBtn.trim()}」, status 「${recLine.trim()}」 → 「${busyLine.trim()}」; server got ${req.filename} ${req.type} ${req.bytes} bytes magic=${req.magic} model=${req.model} language=${req.language}; clip ${r.clipMs} ms, ${r.ms} ms to text; #chat-input = 「${await page.inputValue('#chat-input')}」`);
+    }, page);
+
+    await step(S, 'A3 按住说话: hold 🎤 for 1.5 s and let go; the text is added after what is typed', async () => {
+      chapter('A3 按住 🎤 说话、松开结束：文字接在已输入内容后面');
+      await openChatBox();
+      await page.fill('#chat-input', '我说：');
+      const before = mock.log.length;
+      const box = await page.locator('#chat-mic').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await waitMic('recording');
+      await page.waitForTimeout(1500);
+      assert.equal(await micState(), 'recording', 'still listening while held');
+      await shot('a3-holding');
+      await page.mouse.up();
+      await settled();
+      assert.equal(mock.log.length, before + 1);
+      const v = await page.inputValue('#chat-input');
+      assert.equal(v, `我说： ${mock.TEXT}`);
+      const r = await lastAsr();
+      assert.ok(r.clipMs >= 1400, `clip ${r.clipMs} ms`);
+      await shot('a3-hold-text-appended');
+      return note(`held ${r.clipMs} ms → #chat-input = 「${v}」`);
+    }, page);
+
+    await step(S, 'A4 Esc while listening throws the recording away; nothing is sent', async () => {
+      chapter('A4 录音中按 Esc：丢弃，不发送');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      const before = mock.log.length;
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(800);
+      await page.keyboard.press('Escape');
+      await waitMic('idle');
+      await page.waitForTimeout(700);
+      assert.equal(mock.log.length, before, 'no request');
+      assert.equal(await page.inputValue('#chat-input'), '');
+      assert.equal((await lastAsr()).reason, 'canceled');
+      return note('Esc → micState idle, lastAsr.reason=canceled, 0 requests');
+    }, page);
+
+    await step(S, 'A5 a quick tap is too short: toast, no request', async () => {
+      chapter('A5 太短的点按：提示，不请求');
+      await openChatBox();
+      const before = mock.log.length;
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.click('#chat-mic');
+      await waitMic('idle');
+      await page.waitForSelector('#unlock-toast:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /太短了/);
+      assert.equal(mock.log.length, before);
+      await shot('a5-too-short-toast');
+      await page.click('#toast-close');
+      return note(`toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」`);
+    }, page);
+
+    await step(S, 'A6 the server fails (HTTP 500): a failure toast with 去设置; the box keeps what was typed', async () => {
+      chapter('A6 识别服务出错：失败 toast，输入框内容保留');
+      mock.mode = '500';
+      await openChatBox();
+      await page.fill('#chat-input', '原来的草稿');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1000);
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /语音输入没成功/);
+      assert.match(t, /识别服务返回了错误 500/);
+      assert.equal(await page.isVisible('#toast-open'), true);
+      assert.equal(await page.inputValue('#chat-input'), '原来的草稿');
+      const r = await lastAsr();
+      assert.equal(r.reason, 'http-500');
+      await shot('a6-failure-toast');
+      mock.mode = 'ok';
+      // 去设置 opens 高级设置 at 语音输入
+      await page.click('#toast-open');
+      await page.waitForSelector('#asr-section');
+      await page.waitForTimeout(300);
+      const top = await page.evaluate(() => { const s = document.getElementById('asr-section').getBoundingClientRect(); const b = document.getElementById('panel-body').getBoundingClientRect(); return Math.round(s.top - b.top); });
+      assert.ok(top >= -2 && top < 60, `语音输入 at the top of the panel (${top}px)`);
+      await shot('a6-toast-goes-to-settings');
+      await page.click('#panel-close');
+      return note(`toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」; lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, message: r.message })}; 去设置 → 语音输入 at ${top}px`);
+    }, page);
+
+    await step(S, 'A6b the local host is not running: 连不上 toast with the address; with 换另一个引擎 the clip goes to LobeHub', async () => {
+      chapter('A6b 本地服务没开：提示“连不上本地识别服务”；勾选换另一个引擎后改走 LobeHub');
+      const http = require('node:http');
+      const dead = await new Promise((resolve) => { const sv = http.createServer(); sv.listen(0, '127.0.0.1', () => { const port = sv.address().port; sv.close(() => resolve(`http://127.0.0.1:${port}`)); }); });
+      await openAsr();
+      await page.fill('#asr-endpoint', dead);
+      await page.click('#asr-local-save');
+      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '草稿还在');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1000);
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /语音输入没成功/);
+      assert.match(t, /连不上本地识别服务/);
+      assert.ok(t.includes(dead), 'the toast names the address');
+      assert.equal(await page.inputValue('#chat-input'), '草稿还在');
+      const r = await lastAsr();
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'network');
+      await shot('a6b-local-unreachable-toast');
+      await page.click('#toast-close');
+      // 用不了时换另一个引擎: the same dead host, the clip is recognised by LobeHub (the fake lh) instead
+      await openAsr();
+      await page.check('#asr-fallback');
+      await msg(/换另一个再试一次/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1000);
+      await page.click('#chat-mic');
+      await settled();
+      const f = await lastAsr();
+      assert.equal(f.ok, true);
+      assert.equal(f.provider, 'lobehub');
+      assert.deepEqual(f.fellBackFrom.map((x) => x.id), ['local']);
+      const box = await page.inputValue('#chat-input');
+      assert.match(box, /^heard gpt-4o-mini-transcribe zh/);
+      await shot('a6b-fallback-lobehub-text');
+      // back to the mock host, fallback off, for the steps after this one
+      await openAsr();
+      await page.uncheck('#asr-fallback');
+      await msg(/只用选的引擎/);
+      await page.fill('#asr-endpoint', mock.url);
+      await page.click('#asr-local-save');
+      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      return note(`dead host ${dead} → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, tried: r.tried })}; fallback on → provider ${f.provider}, fellBackFrom ${JSON.stringify(f.fellBackFrom)}, box 「${box}」`);
+    }, page);
+
+    await step(S, 'A7 识别后直接发送: the recognised text goes to her at once and she answers', async () => {
+      chapter('A7 打开“识别后直接发送”：识别后直接发给她');
+      await openAsr();
+      await page.check('#asr-autosend');
+      await msg(/识别后直接发送/);
+      assert.equal((await getSet()).autoSend, true);
+      await page.click('#panel-close');
+      await openChatBox();
+      await page.fill('#chat-input', '');
+      await page.click('#chat-mic');
+      await waitMic('recording');
+      await page.waitForTimeout(1200);
+      await page.click('#chat-mic');
+      await settled();
+      const r = await lastAsr();
+      assert.equal(r.sent, true);
+      const reply = await waitReply(page, 30000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+      assert.equal(await page.inputValue('#chat-input'), '');
+      await shot('a7-autosend-reply');
+      // 聊天记录 (core/chat-log.js) on disk has it as the owner's message
+      const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+      const logs = walk(data).filter((f) => !/settings\.json$|\.wav$/.test(f) && fs.statSync(f).size < 5e6 && fs.readFileSync(f, 'utf8').includes(mock.TEXT));
+      const said = logs.length > 0;
+      assert.ok(said, 'the recognised text is in 聊天记录');
+      return note(`sent 「${mock.TEXT}」 → her reply 「${reply.trim().slice(0, 80)}」; in 聊天记录: ${logs.map((f) => path.relative(data, f)).join(', ')}`);
+    }, page);
+
+    if (process.env.PIXELPET_E2E_WHISPER) {
+      await step(S, 'A8 a real whisper host: the fake microphone\'s speech is recognised', async () => {
+        chapter('A8 真实 whisper.cpp 服务：识别假麦克风播放的语音');
+        await openAsr();
+        await page.uncheck('#asr-autosend');
+        await page.fill('#asr-endpoint', process.env.PIXELPET_E2E_WHISPER);
+        await page.fill('#asr-local-model', 'whisper-1');
+        await page.click('#asr-local-save');
+        await msg(/本地识别服务/);
+        // 测试连接 against the real host, as docs/asr.md §4.1 tells the owner to
+        await page.click('#asr-test');
+        await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 60000 });
+        const tested = (await page.textContent('#asr-test-result')).trim();
+        assert.match(tested, /✅/);
+        await page.locator('#asr-section').scrollIntoViewIfNeeded();
+        await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
+        await shot('a8-real-whisper-settings-test');
+        await page.click('#panel-close');
+        await openChatBox();
+        await page.fill('#chat-input', '');
+        await page.click('#chat-mic');
+        await waitMic('recording');
+        await page.waitForTimeout(Number(process.env.PIXELPET_E2E_ASR_MS || 4500));
+        await page.click('#chat-mic');
+        await settled();
+        const r = await lastAsr();
+        assert.equal(r.ok, true, JSON.stringify(r));
+        const v = await page.inputValue('#chat-input');
+        if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
+        await shot('a8-real-whisper-text');
+        return note(`测试连接 → 「${tested}」; real whisper ${process.env.PIXELPET_E2E_WHISPER}: clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
+      }, page);
+    }
+
+    if (process.env.PIXELPET_E2E_ASR_LOBEHUB) {
+      // LobeHub's real recognition (lh generate asr, the machine's own lh login; costs a few Credits): the fake lh
+      // hands `generate asr` to the real CLI while FAKE_LH_DIR/asr-real exists. Needs a speech WAV (PIXELPET_E2E_ASR_WAV).
+      await step(S, 'A8b LobeHub 云端识别 for real: the fake microphone\'s speech is recognised by lh generate asr', async () => {
+        chapter('A8b 真实 LobeHub 云端识别：引擎切到 LobeHub，识别假麦克风播放的语音');
+        fs.writeFileSync(path.join(fakeDir, 'asr-real'), '1');
+        try {
+          await openAsr();
+          await page.uncheck('#asr-autosend');
+          await page.selectOption('#asr-engine', 'lobehub');
+          await msg(/语音识别引擎：LobeHub/);
+          await page.selectOption('#asr-lobehub-model', process.env.PIXELPET_E2E_ASR_LOBEHUB_MODEL || 'gpt-4o-mini-transcribe');
+          await page.click('#asr-test');
+          await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 90000 });
+          const tested = (await page.textContent('#asr-test-result')).trim();
+          assert.match(tested, /✅ LobeHub/);
+          await page.locator('#asr-lobehub').scrollIntoViewIfNeeded();
+          await shot('a8b-lobehub-settings');
+          await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
+          await shot('a8b-lobehub-test-ok');
+          await page.click('#panel-close');
+          await openChatBox();
+          await page.fill('#chat-input', '');
+          await page.click('#chat-mic');
+          await waitMic('recording');
+          await page.waitForTimeout(Number(process.env.PIXELPET_E2E_ASR_MS || 4500));
+          await page.click('#chat-mic');
+          await waitMic('transcribing');
+          await shot('a8b-lobehub-transcribing');
+          await page.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 90000 });
+          const r = await lastAsr();
+          assert.equal(r.ok, true, JSON.stringify(r));
+          assert.equal(r.provider, 'lobehub');
+          const v = await page.inputValue('#chat-input');
+          if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
+          await shot('a8b-lobehub-text');
+          return note(`测试连接 → 「${tested}」; real LobeHub (${(await getSet()).lobehub.model}): clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
+        } finally {
+          fs.rmSync(path.join(fakeDir, 'asr-real'), { force: true });
+          await openAsr();
+          await page.selectOption('#asr-engine', 'local');
+          await msg(/语音识别引擎：本地识别服务/);
+          await page.click('#panel-close');
+        }
+      }, page);
+    }
+
+    await step(S, 'A9 the camera is never granted; engine 关闭 hides 🎤', async () => {
+      chapter('A9 摄像头不放行；引擎选“关闭”后 🎤 消失');
+      const cam = await page.evaluate(() => navigator.mediaDevices.getUserMedia({ video: true }).then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; }, (e) => e.name));
+      assert.equal(cam, 'NotAllowedError');
+      await openAsr();
+      await page.selectOption('#asr-engine', 'off');
+      await msg(/语音识别引擎：关闭/);
+      await page.click('#panel-close');
+      await openChatBox();
+      assert.equal(await page.isVisible('#chat-mic'), false);
+      await shot('a9-engine-off-no-mic');
+      return note(`getUserMedia(video) → ${cam}; engine off → 🎤 hidden`);
+    }, page);
+
+    await step(S, 'A9b the microphone is refused by the system: 没有麦克风权限 toast, no request, nothing breaks', async () => {
+      chapter('A9b 系统拒绝麦克风：提示“没有麦克风权限”，不发请求，界面正常');
+      // what main answers on macOS when 隐私与安全性 → 麦克风 is off (systemPreferences 'denied')
+      await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('asr-mic-access'); ipcMain.handle('asr-mic-access', () => 'denied'); });
+      await openAsr();
+      await page.selectOption('#asr-engine', 'local');
+      await msg(/语音识别引擎：本地识别服务/);
+      await page.click('#panel-close');
+      const before = mock.log.length;
+      await openChatBox();
+      await page.fill('#chat-input', '打字还能用');
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t = await page.textContent('#unlock-toast');
+      assert.match(t, /语音输入没成功/);
+      assert.match(t, /没有麦克风权限/);
+      assert.equal(mock.log.length, before, 'nothing is sent');
+      assert.equal(await micState(), 'idle');
+      assert.equal(await page.inputValue('#chat-input'), '打字还能用');
+      const r = await lastAsr();
+      assert.equal(r.reason, 'mic-denied');
+      await shot('a9b-mic-denied-toast');
+      await page.click('#toast-close');
+      // Chromium's own refusal (getUserMedia NotAllowedError) maps to the same reason
+      await app.evaluate(({ ipcMain, session }) => {
+        ipcMain.removeHandler('asr-mic-access'); ipcMain.handle('asr-mic-access', () => 'granted');
+        session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(false));
+        session.defaultSession.setPermissionCheckHandler(() => false);
+      });
+      await page.click('#chat-mic');
+      await settled();
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
+      const t2 = await page.textContent('#unlock-toast');
+      const r2 = await lastAsr();
+      assert.match(t2, /没有麦克风权限/);
+      assert.equal(r2.reason, 'mic-denied');
+      assert.equal(mock.log.length, before);
+      await page.click('#toast-close');
+      await page.fill('#chat-input', '');
+      // A10 expects the engine 关闭 as A9 left it
+      await openAsr();
+      await page.selectOption('#asr-engine', 'off');
+      await msg(/语音识别引擎：关闭/);
+      await page.click('#panel-close');
+      return note(`system denied → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason })}; Chromium denied → ${JSON.stringify({ reason: r2.reason, message: r2.message })}; requests sent: ${mock.log.length - before}`);
+    }, page);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+
+    let again = null;
+    await step(S, 'A10 after a restart 高级设置 → 语音输入 shows what was saved', async () => {
+      chapter('A10 重启后：语音输入设置仍是之前保存的');
+      await app.close();
+      again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`] });
+      const p = again.page;
+      await p.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await p.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(p, 'menu');
+      await p.click('[data-menu="advanced"]');
+      await p.waitForSelector('#asr-section');
+      await p.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
+      const ui = await p.evaluate(() => ({ on: document.getElementById('asr-on').checked, engine: document.getElementById('asr-engine').value, language: document.getElementById('asr-language').value, autoSend: document.getElementById('asr-autosend').checked, endpoint: document.getElementById('asr-endpoint').value, model: document.getElementById('asr-local-model').value }));
+      // A8 / A8b (real hosts) switch 识别后直接发送 off again
+      assert.deepEqual(ui, { on: true, engine: 'off', language: 'zh', autoSend: !(process.env.PIXELPET_E2E_WHISPER || process.env.PIXELPET_E2E_ASR_LOBEHUB), endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
+      await p.waitForTimeout(150);
+      await p.screenshot({ path: path.join(SHOTS, 'a10-after-restart-settings.png') });
+      // the engine back to 本地: 🎤 is there again in the restarted app
+      await p.selectOption('#asr-engine', 'local');
+      await p.waitForFunction(() => /语音识别引擎：本地识别服务/.test(document.getElementById('panel-msg').textContent));
+      await p.click('#panel-close');
+      await hover(p);
+      await clickAct(p, 'chat');
+      assert.equal(await p.isVisible('#chat-mic'), true);
+      return note(`relaunched with the same data dir → 语音输入 controls ${JSON.stringify(ui)}; engine → local shows 🎤 again`);
+    }, () => again && again.page);
+    if (again) await again.app.close().catch(() => {});
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'asr-log.txt'), evidence.join('\n\n') + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'asr-requests.json'), JSON.stringify(mock.log, null, 2) + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -5438,6 +5989,7 @@ async function live2dImport() {
   if (which === 'rig' || which === 'all') await rigScenario();
   if (which === 'live2d' || which === 'all') await live2dScenario();
   if (which === 'l2dimport' || which === 'all') await live2dImport();
+  if (which === 'asr' || which === 'all') await asrScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

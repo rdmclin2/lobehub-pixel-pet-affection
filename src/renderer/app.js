@@ -40,6 +40,7 @@ function setSettings(st) {
   if (wasOn && !(st && st.prefs && st.prefs.voice)) stopSpeech('voice-off'); // 朗读 off: quiet at once, nothing pending
   syncPrewarm();
   if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
+  syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
 }
 
@@ -582,6 +583,9 @@ function onAffection(e) {
 function showUnlockToast(e) {
   const a = (e.view || view).affection;
   const names = (list) => list.map((x) => `「${x.label}」`).join('、');
+  $('unlock-toast').classList.remove('notice');
+  $('toast-open').classList.remove('hidden');
+  $('toast-open').dataset.scroll = '';
   $('toast-title').textContent = `🎉 关系升级：${a.stageName}（♥${a.value}）`;
   const body = $('toast-body');
   body.innerHTML = '';
@@ -1116,7 +1120,7 @@ function behaviorSections() {
   port.addEventListener('change', () => apply({ port: Number(port.value) }));
   api.querySelector('#api-token-new').addEventListener('click', () => apply({ newToken: true }));
   window.pet.apiStatus().then(paint);
-  return [beh, voiceSection(), vis, api];
+  return [beh, voiceSection(), asrSection(), vis, api];
 }
 
 // 高级设置 → 语音 (core/tts.js): which engine reads, its API key and endpoint, what happens when it cannot.
@@ -1258,7 +1262,7 @@ function paintVoiceStatus() {
     const has = local ? (e.ready ? `地址 ${settings.tts.endpoints.local}` : '没填地址') : e.hasKey ? 'Key 已设置' : '没有 Key';
     return `${label.replace(/（.*）/, '')}：${has}${budget}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${ttsWait(e.pausedFor)}内跳过` : ''}` : ''}`;
   });
-  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : '这台机器没有系统钥匙串，Key 以只有你能读的文件保存在本机。'}`;
+  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : 'Key 以只有你能读的文件保存在本机。'}`;
 }
 
 // First meeting: name her (like at hatch: optional, 12 characters, her own name by default), then she comes.
@@ -1862,6 +1866,7 @@ function bindPetUi() {
     const picked = await window.pet.pickImages();
     for (const img of picked) pushAttachment({ kind: 'image', ...img });
   });
+  bindMic();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
@@ -2147,8 +2152,8 @@ function throwPet(v) {
 // files are kept and come back with the next hover.
 function syncHover() {
   document.body.classList.toggle('over', pointerInside); // pointer over the window (used by the stop button)
-  document.body.classList.toggle('hover', !thinking && pointerInside);
-  if (!pointerInside) {
+  document.body.classList.toggle('hover', !thinking && (pointerInside || micActive())); // listening keeps 🎤 in reach
+  if (!pointerInside && !micActive()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
     $('food-menu').classList.add('hidden');
     $('main-menu').classList.add('hidden');
@@ -2270,6 +2275,311 @@ function animatePet() {
 let lastPose = 0;
 
 // Test and debugging handle: what the pet is doing, and cues to trigger every effect by hand.
+// ---------- 语音输入 (recognition runs in main: core/asr.js; docs/asr-design.md §5–7) ----------
+// 🎤 next to the chat box, shown while 语音输入 is on. A quick click starts and a second click stops; holding
+// it down records until it is let go (按住说话). Esc cancels. MediaRecorder's webm/opus goes to main over IPC
+// (window.pet.asr.transcribe); the text lands in the chat box, or is sent at once (识别后直接发送).
+const MIC_MIN_MS = 400; // shorter than this is a slip of the finger, not something said
+const MIC_HOLD_MS = 350; // held longer than this: 按住说话 (letting go stops); shorter: a click that toggles
+const CHAT_PLACEHOLDER = '说点什么，可粘贴图片、拖入文件…';
+const ASR_NAME = { lobehub: 'LobeHub 云端识别', local: '本地识别服务（whisper）' };
+const ASR_REASON = {
+  'too-short': '太短了，没录到。点一下 🎤 开始、说完再点一下；或者按住 🎤 说话。',
+  empty: '没听清，再说一遍？',
+  unauthorized: '语音识别要先登录 LobeHub。',
+  model: '识别模型用不了，去 高级设置 → 语音输入 换一个。',
+  'no-lh': '没找到能识别语音的 lh（需要较新的 LobeHub CLI）。',
+  network: '连不上本地识别服务',
+  timeout: '识别超时了。',
+  server: '识别服务出错了。',
+  'bad-audio': '这段录音没法识别。',
+  'not-configured': '语音输入没开，或者没选识别引擎。',
+  'mic-denied': '没有麦克风权限。macOS：系统设置 → 隐私与安全性 → 麦克风，允许本应用；Windows：设置 → 隐私 → 麦克风。',
+  'no-mic': '没找到麦克风。',
+  'mic-error': '麦克风打不开',
+  canceled: '已取消。',
+};
+let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, timer: null, tick: null, pressAt: 0, cancel: false };
+let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
+const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
+const micActive = () => mic.state !== 'idle';
+
+function asrReasonText(r) {
+  const base = ASR_REASON[r.reason] || (String(r.reason || '').startsWith('http-') ? `识别服务返回了错误 ${r.reason.slice(5)}。` : `识别失败（${r.reason || '未知原因'}）。`);
+  if (r.reason === 'network') return `${base}：${(settings && settings.asr && settings.asr.local.endpoint) || ''}。它开着吗？`;
+  if (r.reason === 'mic-error') return `${base}（${String(r.message || '').slice(0, 60)}）。`;
+  return base;
+}
+
+// The 🎤 button, the status line above the box and the box itself follow mic.state.
+function paintMic() {
+  const b = $('chat-mic');
+  if (!b) return;
+  const input = $('chat-input');
+  const st = $('mic-status');
+  const s = mic.state;
+  b.dataset.state = s;
+  b.setAttribute('aria-pressed', String(s === 'recording'));
+  const sec = s === 'recording' ? Math.floor((performance.now() - mic.t0) / 1000) : 0;
+  const max = (settings && settings.asr && settings.asr.maxSeconds) || 60;
+  if (s === 'recording') b.textContent = `■ ${sec}s`;
+  else if (s === 'idle') b.textContent = '🎤';
+  else b.innerHTML = '<span class="spin" aria-hidden="true"></span>';
+  b.title = s === 'recording' ? '再点一下（或松开）结束，Esc 取消' : s === 'idle' ? '语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束' : '识别中…';
+  input.classList.toggle('listening', s === 'recording');
+  input.classList.toggle('recognizing', s === 'transcribing' || s === 'stopping');
+  input.placeholder = s === 'recording' ? '正在听…' : s === 'transcribing' || s === 'stopping' ? '识别中…' : CHAT_PLACEHOLDER;
+  const engine = settings && settings.asr ? ASR_NAME[settings.asr.engine] || '' : '';
+  const line = s === 'recording' ? `🔴 正在听 ${sec}s / ${max}s · 再点或松开结束，Esc 取消`
+    : s === 'starting' ? '🎤 正在打开麦克风…'
+      : s === 'stopping' || s === 'transcribing' ? `⏳ 识别中…（${engine}）` : '';
+  st.textContent = line;
+  st.dataset.state = s;
+  st.classList.toggle('hidden', !line);
+}
+
+// Shown or hidden with 语音输入; switching it off mid-recording drops the recording.
+function syncMic() {
+  const b = $('chat-mic');
+  if (!b) return;
+  const on = asrOn() && !VISITOR;
+  b.classList.toggle('hidden', !on);
+  if (!on && micActive()) micStop(true);
+}
+
+function micRelease() {
+  clearTimeout(mic.timer);
+  clearInterval(mic.tick);
+  if (mic.stream) for (const t of mic.stream.getTracks()) t.stop(); // the OS's microphone light goes off
+  mic.stream = null;
+  mic.rec = null;
+  mic.chunks = [];
+}
+
+async function micStart() {
+  if (mic.state !== 'idle' || !asrOn() || thinking) return;
+  mic.state = 'starting';
+  paintMic();
+  syncHover();
+  try {
+    const access = await window.pet.asr.micAccess();
+    if (access !== 'granted') throw Object.assign(new Error(access), { name: 'NotAllowedError' });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    if (mic.state !== 'starting') { for (const t of stream.getTracks()) t.stop(); return; } // let go / Esc while it opened
+    const type = window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+    const rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32000 } : {});
+    mic.stream = stream;
+    mic.rec = rec;
+    mic.chunks = [];
+    mic.cancel = false;
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) mic.chunks.push(e.data); };
+    rec.onstop = () => { micDone(rec); };
+    rec.start(250);
+    mic.t0 = performance.now();
+    mic.state = 'recording';
+    stopSpeech('listening'); // her own voice must not end up in the recording
+    mic.tick = setInterval(paintMic, 250);
+    mic.timer = setTimeout(() => micStop(), ((settings.asr && settings.asr.maxSeconds) || 60) * 1000);
+    paintMic();
+  } catch (e) {
+    micRelease();
+    mic.state = 'idle';
+    paintMic();
+    syncHover();
+    const n = e && e.name;
+    asrFail({ ok: false, reason: n === 'NotAllowedError' || n === 'SecurityError' ? 'mic-denied' : n === 'NotFoundError' || n === 'OverconstrainedError' ? 'no-mic' : 'mic-error', message: String((e && e.message) || e) });
+  }
+}
+
+// Stop listening: the clip goes to be recognised, or (cancel) is thrown away.
+function micStop(cancel = false) {
+  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); return; }
+  if (mic.state !== 'recording') {
+    if (cancel && mic.state === 'transcribing') window.pet.asr.cancel();
+    return;
+  }
+  mic.cancel = cancel;
+  mic.ms = performance.now() - mic.t0;
+  clearTimeout(mic.timer);
+  clearInterval(mic.tick);
+  mic.state = 'stopping';
+  paintMic();
+  try { mic.rec.stop(); } catch { micDone(mic.rec); }
+}
+
+async function micDone(rec) {
+  if (rec && mic.rec !== rec) return;
+  const chunks = mic.chunks;
+  const mime = (rec && rec.mimeType) || 'audio/webm';
+  const ms = Math.round(mic.ms || 0);
+  const cancel = mic.cancel;
+  micRelease();
+  if (cancel) { mic.state = 'idle'; paintMic(); syncHover(); lastAsr = { ok: false, reason: 'canceled', clipMs: ms }; return; }
+  if (ms < MIC_MIN_MS || !chunks.length) { mic.state = 'idle'; paintMic(); syncHover(); asrFail({ ok: false, reason: 'too-short', clipMs: ms }); return; }
+  const blob = new Blob(chunks, { type: mime });
+  mic.state = 'transcribing';
+  paintMic();
+  let r;
+  try {
+    r = await window.pet.asr.transcribe(await blob.arrayBuffer(), mime, ms);
+  } catch (e) {
+    r = { ok: false, reason: 'server', message: String((e && e.message) || e) };
+  }
+  mic.state = 'idle';
+  paintMic();
+  syncHover();
+  lastAsr = { ...r, bytes: blob.size, mime, clipMs: ms, at: Date.now() };
+  if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); return; }
+  const input = $('chat-input');
+  const cur = input.value.trimEnd();
+  input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 400);
+  if (!$('chat-row').classList.contains('hidden')) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  if (settings.asr.autoSend) {
+    if (thinking) showNotice('🎤 已填进输入框', '她还在回上一句，等她说完再点“发送”。');
+    else { lastAsr.sent = true; $('chat-send').click(); }
+  }
+}
+
+// What went wrong goes in a toast; what is in the box stays.
+function asrFail(r) {
+  lastAsr = { ...(lastAsr && lastAsr.at === r.at ? lastAsr : {}), ...r };
+  const settingsFix = !/^(too-short|empty|canceled|mic-denied|no-mic)$/.test(r.reason);
+  showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', panel: 'advanced', scroll: 'asr-section' } : null);
+}
+
+// A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a panel.
+function showNotice(title, text, action = null, ms = 8000) {
+  $('unlock-toast').classList.add('notice');
+  $('toast-title').textContent = title;
+  $('toast-body').textContent = text;
+  const open = $('toast-open');
+  open.classList.toggle('hidden', !action);
+  open.textContent = action ? action.label : '';
+  open.dataset.panel = action ? action.panel : '';
+  open.dataset.scroll = action ? action.scroll || '' : '';
+  $('unlock-toast').classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+function bindMic() {
+  const b = $('chat-mic');
+  b.addEventListener('mousedown', (e) => e.preventDefault()); // the chat box keeps the focus
+  b.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (mic.state === 'recording') { mic.pressAt = 0; micStop(); return; } // the second click
+    if (mic.state !== 'idle') return;
+    try { b.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    mic.pressAt = performance.now();
+    micStart();
+  });
+  const release = () => {
+    const held = mic.pressAt && performance.now() - mic.pressAt > MIC_HOLD_MS;
+    mic.pressAt = 0;
+    if (held) micStop(); // 按住说话: letting go ends it. A quick click keeps listening until the next one.
+  };
+  b.addEventListener('pointerup', release);
+  b.addEventListener('pointercancel', release);
+  // Enter / Space on the focused button: start, and stop
+  b.addEventListener('click', (e) => { if (e.detail !== 0) return; if (mic.state === 'recording') micStop(); else micStart(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && micActive()) { e.stopImmediatePropagation(); micStop(true); } }, true);
+  syncMic();
+  paintMic();
+}
+
+// 高级设置 → 语音输入 (core/asr.js settings.asr): on/off, the engine, LobeHub's model, the local whisper
+// server (address, API shape, model, its optional key), language, falling back, 识别后直接发送, and 测试连接.
+const ASR_LANGS = [['auto', '自动识别'], ['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch'], ['es', 'Español'], ['ru', 'Русский']];
+const ASR_ERR = { 'bad-endpoint': '地址要是 https://，或者本机 / 局域网的 http://（如 http://127.0.0.1:8179、http://192.168.1.5:8179）。', 'bad-model': '模型名只能有字母、数字和 . _ : / -（最多 80 个字符）。', 'bad-language': '语言要是两个字母的代码，比如 zh、en。', 'bad-engine': '没有这个引擎。', 'bad-key': '这不像一个 API Key（不能有空格，8–256 个字符）。' };
+function asrSection() {
+  const a = settings.asr;
+  const sec = document.createElement('div');
+  sec.className = 'adv-section';
+  sec.id = 'asr-section';
+  sec.innerHTML = '<h3>语音输入</h3><p class="adv-text">打开后聊天框旁边出现 🎤：点一下开始说、再点一下结束，或者按住说话、松开结束（Esc 取消，最长 <span class="asr-max"></span> 秒）。只在你按 🎤 的时候录音，不常驻监听。“LobeHub 云端识别”把录音发到 LobeHub 转成文字（用你登录的账号，按 Credits 计费）；“本地识别服务”只把录音发到你填的地址（比如本机跑的 whisper.cpp <code>whisper-server</code>），不经过云端。录音不写进日志，用完就删。</p>'
+    + '<label class="pref-row"><input type="checkbox" id="asr-on" /><span><b>开启语音输入</b><small>第一次录音时系统会问一次麦克风权限。</small></span></label>'
+    + '<div class="size-row"><span>引擎</span><select id="asr-engine"><option value="lobehub">LobeHub 云端识别</option><option value="local">本地识别服务（whisper）</option><option value="off">关闭</option></select></div>'
+    + '<div class="size-row"><span>语言</span><select id="asr-language"></select></div>'
+    + '<label class="pref-row"><input type="checkbox" id="asr-autosend" /><span><b>识别后直接发送</b><small>不勾时文字先填进输入框，改好再按“发送”。</small></span></label>'
+    + '<label class="pref-row"><input type="checkbox" id="asr-fallback" /><span><b>用不了时换另一个引擎</b><small>选的引擎出错、超时或连不上时，这一句改用另一个再试一次。</small></span></label>'
+    + '<div class="tts-engine" id="asr-lobehub"><b>LobeHub 云端识别</b><small class="adv-note">用这台电脑上登录的 lh 账号。gpt-4o-mini-transcribe 快、便宜；gpt-4o-transcribe 更准。</small><div class="size-row"><span>模型</span><select id="asr-lobehub-model"><option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option><option value="gpt-4o-transcribe">gpt-4o-transcribe</option></select></div></div>'
+    + '<div class="tts-engine" id="asr-local"><b>本地识别服务（whisper）</b><small class="adv-note">你自己在本机或局域网电脑上跑的语音识别服务。whisper.cpp：<code>whisper-server -m models/ggml-base.bin --port 8179 --convert --inference-path /v1/audio/transcriptions</code>（--convert 需要 ffmpeg），接口选“OpenAI 兼容”；用默认 /inference 启动时选“whisper.cpp”。faster-whisper-server / speaches 等 OpenAI 兼容的服务也可以。</small>'
+    + '<div class="size-row"><span>地址</span><input type="text" id="asr-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8179" /></div>'
+    + '<div class="size-row"><span>接口</span><select id="asr-local-api"><option value="openai">OpenAI 兼容（/v1/audio/transcriptions）</option><option value="whispercpp">whisper.cpp（/inference）</option></select></div>'
+    + '<div class="size-row"><span>模型</span><input type="text" id="asr-local-model" spellcheck="false" placeholder="whisper-1" /><button id="asr-local-save" class="btn">保存</button></div>'
+    + '<div class="size-row"><input type="password" id="asr-key" autocomplete="off" spellcheck="false" placeholder="Key（服务不要就不填）" /><button id="asr-key-save" class="btn">保存</button><button id="asr-key-del" class="btn">清除</button></div></div>'
+    + '<div class="size-row"><button id="asr-test" class="btn">测试连接</button></div><p class="adv-note" id="asr-test-result"></p><p class="adv-note" id="asr-status"></p>';
+  const $s = (id) => sec.querySelector(`#${id}`);
+  const lang = $s('asr-language');
+  for (const [v, l] of ASR_LANGS) lang.insertAdjacentHTML('beforeend', `<option value="${v}">${l}</option>`);
+  const paint = () => {
+    const s = settings.asr;
+    $s('asr-on').checked = s.enabled;
+    $s('asr-engine').value = s.engine;
+    lang.value = ASR_LANGS.some((x) => x[0] === s.language) ? s.language : 'auto';
+    $s('asr-autosend').checked = s.autoSend;
+    $s('asr-fallback').checked = s.fallback;
+    $s('asr-lobehub-model').value = s.lobehub.model;
+    $s('asr-local-api').value = s.local.api;
+    sec.querySelector('.asr-max').textContent = String(s.maxSeconds);
+    // the box of the engine in use first; the other one stays reachable when falling back is on
+    $s('asr-lobehub').classList.toggle('dim', s.engine !== 'lobehub' && !s.fallback);
+    $s('asr-local').classList.toggle('dim', s.engine !== 'local' && !s.fallback);
+    const st = settings.asrStatus || {};
+    const parts = [s.enabled && s.engine !== 'off' ? `正在用：${ASR_NAME[s.engine]}${s.fallback ? '（用不了时换另一个）' : ''}` : '语音输入关着'];
+    for (const id of ['lobehub', 'local']) if (st[id] && st[id].paused) parts.push(`${ASR_NAME[id]}暂停中（${st[id].reason}），点“测试连接”马上恢复`);
+    if (st.local && st.local.hasKey) parts.push('本地服务的 Key 已设置');
+    $s('asr-status').textContent = parts.join('；') + '。';
+  };
+  const apply = async (patch, msg) => {
+    const r = await window.pet.asr.set(patch);
+    setSettings(r.settings);
+    paint();
+    panelMsg(r.ok ? msg : ASR_ERR[r.reason] || `没能保存（${r.reason}）。`, r.ok);
+    return r.ok;
+  };
+  const ep = $s('asr-endpoint');
+  const model = $s('asr-local-model');
+  ep.value = a.local.endpoint;
+  model.value = a.local.model;
+  $s('asr-on').addEventListener('change', (e) => apply({ enabled: e.target.checked }, e.target.checked ? `语音输入已开启（${ASR_NAME[settings.asr.engine] || '引擎关闭'}）。聊天框旁边的 🎤 就是。` : '语音输入已关闭。'));
+  $s('asr-engine').addEventListener('change', (e) => apply({ engine: e.target.value }, `语音识别引擎：${e.target.selectedOptions[0].textContent}。`));
+  lang.addEventListener('change', () => apply({ language: lang.value }, `识别语言：${lang.selectedOptions[0].textContent}。`));
+  $s('asr-autosend').addEventListener('change', (e) => apply({ autoSend: e.target.checked }, e.target.checked ? '识别后直接发送。' : '识别后先填进输入框。'));
+  $s('asr-fallback').addEventListener('change', (e) => apply({ fallback: e.target.checked }, e.target.checked ? '选的引擎用不了时，换另一个再试一次。' : '只用选的引擎。'));
+  $s('asr-lobehub-model').addEventListener('change', (e) => apply({ lobehub: { model: e.target.value } }, `LobeHub 识别模型：${e.target.value}。`));
+  $s('asr-local-api').addEventListener('change', (e) => apply({ local: { api: e.target.value } }, `本地识别服务接口：${e.target.selectedOptions[0].textContent}。`));
+  $s('asr-local-save').addEventListener('click', async () => {
+    if (await apply({ local: { endpoint: ep.value, model: model.value } }, `本地识别服务：${ep.value.trim() || '默认地址'}，模型 ${model.value.trim() || settings.asr.local.model}。`)) { ep.value = settings.asr.local.endpoint; model.value = settings.asr.local.model; }
+  });
+  const key = $s('asr-key');
+  $s('asr-key-save').addEventListener('click', async () => {
+    if (!key.value.trim()) return panelMsg('先在框里粘贴 Key。');
+    if (await apply({ key: key.value }, '本地识别服务的 Key 已保存。')) key.value = '';
+  });
+  $s('asr-key-del').addEventListener('click', () => apply({ key: '' }, '本地识别服务的 Key 已清除。'));
+  $s('asr-test').addEventListener('click', async () => {
+    const out = $s('asr-test-result');
+    const btn = $s('asr-test');
+    // what is in the boxes counts, saved or not: save first so the test goes where the owner is looking
+    if (ep.value.trim() !== settings.asr.local.endpoint || (model.value.trim() || settings.asr.local.model) !== settings.asr.local.model) {
+      if (!(await apply({ local: { endpoint: ep.value, model: model.value } }, '已保存本地识别服务的地址和模型。'))) return;
+    }
+    btn.disabled = true;
+    out.textContent = '⏳ 正在测试…（发一段 0.6 秒的静音）';
+    const r = await window.pet.asr.test();
+    btn.disabled = false;
+    out.textContent = r.results && r.results.length
+      ? r.results.map((x) => `${x.ok ? '✅' : '❌'} ${ASR_NAME[x.provider]}：${x.ok ? `能用（${x.ms} ms）` : asrReasonText({ reason: x.reason, message: x.message })}`).join('　')
+      : `❌ ${asrReasonText({ reason: r.reason || 'not-configured' })}`;
+    out.dataset.ok = String(!!r.ok);
+    setSettings(await window.pet.getSettings());
+    paint();
+  });
+  paint();
+  return sec;
+}
+
 window.petFx = {
   state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
@@ -2294,6 +2604,8 @@ window.petFx = {
   offerLog: () => offerLog.map((e) => ({ ...e })),
   speechGate: () => ({ ...speechGate.stats }),
   lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
+  lastAsr: () => lastAsr && { ...lastAsr },
+  micState: () => mic.state,
 };
 
 // The local HTTP API (src/core/api.js) asks the window to play, throw or report what it is doing.
@@ -2365,7 +2677,13 @@ async function main() {
   $('age-no').addEventListener('click', () => answerAgeGate(false));
   $('panel-close').addEventListener('click', closePanel);
   $('toast-close').addEventListener('click', hideToast);
-  $('toast-open').addEventListener('click', () => openPanel($('toast-open').dataset.panel || 'wardrobe'));
+  $('toast-open').addEventListener('click', async () => {
+    const { panel, scroll } = $('toast-open').dataset;
+    hideToast();
+    await openPanel(panel || 'wardrobe');
+    const el = scroll && document.getElementById(scroll);
+    if (el) el.scrollIntoView({ block: 'start' });
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
   window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced' || panelKind === 'characters') renderPanel(); } });
   window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme); speak(m); });
