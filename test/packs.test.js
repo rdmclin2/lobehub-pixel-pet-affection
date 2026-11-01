@@ -44,7 +44,7 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
     assert.deepEqual(Object.keys(px.actions).sort(), [...STATES].sort(), `${id} animates every state`);
     for (const st of STATES) assert.equal(resolveAction(st, (n) => !!px.actions[n]).exact, true, `${id}/${st}`);
     assert.deepEqual(px.actions.walk, { row: 8, col: 0, frames: 4, fps: 5 }, 'a side-view walk cycle, not the idle art sliding along');
-    assert.deepEqual(px.frame, { width: 332, height: 452 }, 'HD frames');
+    assert.deepEqual(px.frame, { width: 664, height: 904 }, 'HD frames');
     assert.equal(px.pixelated, false, 'drawn smoothed, not as blocks');
     assert.match(px.outfits.daily, /\.webp$/);
   }

@@ -68,7 +68,7 @@ my-grok/
 | `walk` | 自己走动（窗口沿屏幕左右平移的同时播放；画成朝右的侧面，朝左走时应用会镜像） | `idle`，再加轻微的跳动 |
 
 - **转身**（自播链里的左右镜像）由应用用 CSS 做，不需要单独的图；画了文字或标志、镜像会反字的状态，在角色的 character.json 里列进 `fx.noMirror`。
-- **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（1328×4068，每帧 332×452，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
+- **精灵图排布**：每一帧大小相同（`frame`），第 `row` 行、从第 `col` 列起连续 `frames` 帧。所有服饰的精灵图必须使用同一种排布。内置像素包是 4 列 × 9 行（2656×8136，每帧 664×904，WebP，平滑绘制），每个状态 2 帧，第 9 行是 4 帧的 `walk` 侧身步行循环（朝右，5fps）。
 - `pictures` 类型不需要 `frame` 和 `actions`，动作用轻微的摆动表现。
 - `rig` 类型（全动态）和 `live2d` 类型见下面两节。
 
@@ -135,6 +135,7 @@ my-rig/
 - **图层要多画一点被挡住的部分**：头发在头后面的部分、身体在头下面的部分，各自补上颜色，这样一层动起来时不会露出空洞。
 - 只有部分服饰做了图层也可以：其他服饰穿这个角色的默认角色包。
 - 本仓库的 `scripts/art/rig_cut.py` 按 `art/rig/<id>.json` 里的多边形，把一张图拆成这些图层，并写出 `model.json`（大肥鱼的拆法就在 `art/rig/dafeiyu.json`）。
+- **图层图片可以比 `box` 更清晰**：图片按 `box` 拉伸贴上，所以 `box` 宽 32、图片宽 64 也行，画出来更清楚。内置的大肥鱼全动态就是这样：坐标按 332×452，图层从 664×904 的原图切出来（`rig_cut.py --scale 2`）。
 - **schema 1**：旧格式的 8 个动作名 `idle / wave / lifted / eat / sleep / think / talk / cheer` 仍然可用，应用把 `pat` 映射到 `wave`，`happy`、`play`、`hatch`、`evolve` 映射到 `cheer`，三种吃饭映射到 `eat`。schema 1 包里不能写 schema 2 的新动作名。
 
 ## 内容要求
@@ -152,7 +153,7 @@ my-rig/
 
 1. `python3 scripts/art/model_chan_prompts.py` 输出每个角色两条提示词（`<id>_base`、`<id>_extra`，各是 4×4 宫格：8 个状态各 2 帧，纯品红背景）。为了分辨率，每条再按行拆成两半（`_a` 是第 1–2 行，`_b` 是第 3–4 行），每半是 4×2 宫格，详见 [art/model-chan/README.md](../art/model-chan/README.md)。
 2. 用 `lh generate image -m gpt-image-2.5-sunburst -p lobehub "<提示词>"` 生成，每条一张（模型默认画布约 1024×1536，指定尺寸会报错）。
-3. `scripts/art/slice_sheet.py <生成图> <输出.png> 4 2 360 --max 324x444 --smooth`：抠掉背景（品红底或透明底都行）、去掉相邻格子带过来的碎像素，缩成真正的像素画；`scripts/art/fit_cells.py <输入> <输出> --rows 2` 把每格放进 332×452（参数 `332 452`）。
-4. `scripts/art/build_model_chan_pack.py <base_a> <base_b> <extra_a> <extra_b> <角色 id> src/renderer/packs/<角色 id>-pixel --hd`：四张拼成一张 1328×3616 的 WebP（`--hd`：全彩、`pixelated: false`），写出 schema 2 的 `pack.json`；`scripts/art/add_walk_frames.py --from art/model-chan/walk/<角色 id>_walk.png src/renderer/packs/<角色 id>-pixel` 把侧面步行循环（`model_chan_prompts.py --walk` 生成）加在第 9 行；`scripts/art/check_model_chan.py` 检查尺寸和每一帧都有内容。
+3. `scripts/art/slice_sheet.py <生成图> <输出.png> 4 2 720 --max 648x888 --smooth`：抠掉背景（品红底或透明底都行）、去掉相邻格子带过来的碎像素，缩成真正的像素画；`scripts/art/fit_cells.py <输入> <输出> --rows 2` 把每格放进 664×904（参数 `664 904`）。
+4. `scripts/art/build_model_chan_pack.py <base_a> <base_b> <extra_a> <extra_b> <角色 id> src/renderer/packs/<角色 id>-pixel --hd`：四张拼成一张 2656×7232 的 WebP（`--hd`：全彩、`pixelated: false`），写出 schema 2 的 `pack.json`；`scripts/art/add_walk_frames.py --from <步行 fit 图> src/renderer/packs/<角色 id>-pixel` 把侧面步行循环（`model_chan_prompts.py --walk` 生成）加在第 9 行；`scripts/art/check_model_chan.py` 检查尺寸和每一帧都有内容。
 
 新角色还需要一份 `src/characters/<id>.json`（字段见现有三个文件；`npm test` 会校验）。然后在应用里导入这个目录，或者打成 `.zip` 发给别人。
