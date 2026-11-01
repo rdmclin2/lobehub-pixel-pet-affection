@@ -109,6 +109,7 @@
       mine.after(row);
     }
     row.querySelector('.history-msg-text').textContent = text;
+    row.scrollIntoView({ block: 'nearest' }); // the reply being written stays in view
   }
 
   window.PetHistory = { render, reset, live };
