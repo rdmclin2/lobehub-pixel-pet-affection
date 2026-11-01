@@ -5495,11 +5495,12 @@ async function vrmUi() {
 
     await step(S, 'not a VRM / plain glTF / broken / moved file: each refused with a clear reason, nothing copied', async () => {
       const out = [];
-      for (const [p, re] of [[notVrm, /这不是 VRM 文件：内容不是 glTF 二进制格式/], [plain, /普通的 glTF\/GLB 模型，没有 VRM 信息/], [broken, /文件已损坏或不完整/], [gone, /找不到这个文件/]]) {
+      for (const [p, re, tag] of [[notVrm, /这不是 VRM 文件：内容不是 glTF 二进制格式/, 'not-vrm'], [plain, /普通的 glTF\/GLB 模型，没有 VRM 信息/, 'plain-gltf'], [broken, /文件已损坏或不完整/, 'broken'], [gone, /找不到这个文件/, 'missing']]) {
         await importFrom(p);
         const m = await msg();
         assert.match(m, re, m);
         out.push(m.trim());
+        await page.screenshot({ path: path.join(OUT, `vrmui-error-${tag}.png`) });
       }
       assert.deepEqual(packDirs(), []);
       await page.screenshot({ path: path.join(OUT, 'vrmui-error.png') });
@@ -5569,6 +5570,7 @@ async function vrmUi() {
       await page.waitForFunction(async () => (await window.pet.debugOpenedLinks()).length > 0);
       const links = await page.evaluate(() => window.pet.debugOpenedLinks());
       assert.deepEqual(links, ['https://vrm.dev/licenses/1.0/']);
+      fs.writeFileSync(path.join(OUT, 'vrmui-opened-links.json'), JSON.stringify({ clicked: 'a[href="https://vrm.dev/licenses/1.0/"] in 授权信息', mainProcessOpenLinkLog: links, note: 'PIXELPET_TEST=1: main records the URL instead of shell.openExternal; outside tests open-link calls shell.openExternal (system browser)' }, null, 2));
       assert.equal((await page.evaluate(() => window.pet.openLink('javascript:alert(1)'))).ok, false);
       return `opened ${links.join(', ')}`;
     }, page);
@@ -5643,8 +5645,37 @@ async function vrmUi() {
       assert.equal(r.reason, 'locked');
       await page.screenshot({ path: path.join(OUT, 'vrmui-adult-locked.png') });
       await page.click('#panel-close');
-      await page.evaluate(() => window.pet.setAdult(false));
       return `maid: ${r.reason}`;
+    }, page);
+
+    await step(S, 'with 18+ on and affection full, the allowed 18+ VRM pack unlocks maid; switching 18+ off takes it away again', async () => {
+      await page.evaluate(() => window.pet.unlockAll('dafeiyu'));
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('.card[data-outfit="maid"]:not(.locked)');
+      await page.click('.card[data-outfit="maid"]');
+      await page.waitForSelector('.card.equipped[data-outfit="maid"]');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-adult-unlocked.png') });
+      await page.click('#panel-close');
+      await page.evaluate(() => window.pet.setAdult(false));
+      await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid'));
+      await clickAct(page, 'wardrobe');
+      await page.waitForSelector('#panel:not(.hidden) .card');
+      const adult = await page.locator('.card .tag.adult').count();
+      assert.equal(adult, 0);
+      const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
+      await page.screenshot({ path: path.join(OUT, 'vrmui-adult-off-again.png') });
+      await page.click('#panel-close');
+      return `maid worn with 18+ on; 18+ off → look ${key}, ${adult} adult cards`;
+    }, page);
+
+    await step(S, 'without a 3D renderer loaded, the worn VRM pack shows its VRM tile on the desk', async () => {
+      await openCurrentPage(page);
+      await page.click(`.pack-opt[data-pack="${WID}"] .pick`);
+      await page.waitForSelector(`.pack-opt.on[data-pack="${WID}"]`);
+      await page.click('#panel-close');
+      await page.waitForSelector('#pet-look .vrm-look .vrm-badge');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-desk-no-renderer.png') });
+      return `PetVRM loaded: ${await page.evaluate(() => !!window.PetVRM)}`;
     }, page);
 
     await step(S, 'switching VRM → dafeiyu-pixel → dafeiyu-classic → VRM: the live figure is released and made again', async () => {
@@ -5660,7 +5691,10 @@ async function vrmUi() {
       });
       const pick = async (id) => {
         await openCurrentPage(page);
-        await page.click(`.pack-opt[data-pack="${id}"] .pick`);
+        // already worn: the look is redrawn so the stand-in renderer draws it
+        if (await page.locator(`.pack-opt.on[data-pack="${id}"]`).count()) await page.click('.pack-opt[data-pack="dafeiyu-pixel"] .pick');
+        await page.waitForSelector('.pack-opt.on[data-pack="dafeiyu-pixel"], .pack-opt:not(.on)[data-pack="' + id + '"]');
+        if (!(await page.locator(`.pack-opt.on[data-pack="${id}"]`).count())) await page.click(`.pack-opt[data-pack="${id}"] .pick`);
         await page.waitForSelector(`.pack-opt.on[data-pack="${id}"]`);
         await page.click('#panel-close');
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id);
