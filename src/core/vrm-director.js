@@ -56,7 +56,8 @@
   const TALK = { xfade: 0.6, nodHz: 0.9 };
 
   // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
-  // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle
+  // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle (think and talk at once — a reply
+  // streaming in — is talk)
   const PRIORITY = { lift: 6, drop: 5, touch: 5, celebrate: 4, cue: 0 };
   const DEBOUNCE = 0.6; // the same reaction is not started again within this (no twitching on fast clicks)
   const CUT = 0.2; // an interrupted reaction fades out this fast under the new one
@@ -308,11 +309,12 @@
     function stepFacing(dt, target) {
       if (S.yaw === null) S.yaw = target; // the first frame: no turn from nowhere
       const err = target - S.yaw;
-      const want = clamp(err * WALK.gain, -WALK.turnRate, WALK.turnRate);
+      // the fastest speed that can still slow down in time (√(2·accel·|err|)), so a turn never overshoots
+      const want = Math.sign(err) * Math.min(WALK.turnRate, Math.abs(err) * WALK.gain, Math.sqrt(2 * WALK.accel * Math.abs(err)) * 0.85);
       const dv = clamp(want - S.yawVel, -WALK.accel * dt, WALK.accel * dt);
       S.yawVel += dv;
       S.yaw += S.yawVel * dt;
-      if (Math.abs(target - S.yaw) < 0.05 && Math.abs(S.yawVel) < 1) { S.yaw = target; S.yawVel = 0; }
+      if ((target - S.yaw) * err < 0 || (Math.abs(target - S.yaw) < 0.05 && Math.abs(S.yawVel) < 1)) { S.yaw = target; S.yawVel = 0; }
       return { target, turning: Math.abs(target - S.yaw) > WALK.turning };
     }
 
@@ -329,7 +331,7 @@
       const on = !!(clip && holds.walk && (moving || turn.turning));
       const target = on ? Math.max(G.wanted, turn.turning ? WALK.turnStep : 0) : 0;
       // the pace follows quickly while she walks; when she stops it winds down with the fade-out (no freeze)
-      G.rate += (target - G.rate) * (1 - Math.exp(-(on ? 8 : 5) * dt));
+      G.rate += (target - G.rate) * (1 - Math.exp(-(on ? 12 : 5) * dt));
       if (on && !G.on) G.steps++;
       G.on = on;
       G.phase += dt * G.rate;
@@ -409,7 +411,8 @@
       const walkOn = stepGait(dt, holds, turn);
 
       // the activity she holds, by priority
-      const hold = holds.lift ? 'lift' : holds.think ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      // (a reply streaming in keeps the app "thinking" while its words appear: then she talks — T-2711)
+      const hold = holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
       stepHolds(dt, hold);
 
       // the reaction: over → gone (a queued celebration next); interrupted ones finish fading

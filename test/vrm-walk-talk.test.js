@@ -128,6 +128,8 @@ test('talk: bigger gestures than before, a different kind of move than thinking,
     assert.equal(frozen, 0, `${style}: the gesture never stops on one frame`);
     const total = plans.map((p) => holdW(p, /^hold\.talk/));
     assert.ok(total.slice(15).every((x) => x > 0.5), `${style}: the gestures stay on through the switches`);
+    // a reply streaming in: the app still "thinks" while its words appear — she talks
+    assert.equal(run(d, 0.5, holdsOf({ talk: true, think: true })).pop().hold, 'talk');
     // nods with the words while talking (the alive layer), none while thinking
     assert.ok(plans[plans.length - 1].life.talk > 0.9);
     assert.equal(run(d, 2, holdsOf({ think: true })).pop().life.talk, 0);

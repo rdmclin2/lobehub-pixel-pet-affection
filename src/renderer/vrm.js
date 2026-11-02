@@ -177,6 +177,11 @@
     let lastWin = null;
     let vel = [0, 0];
     let lastWinAt = null; // when lastWin was read (ms): the window's speed is over its own interval
+    // the walk pace (T-2711): the window's x when it last stood still, and where / when this stretch of motion
+    // began. A walk moves the window at one steady speed, but the OS moves it in uneven steps (now 0 px, then
+    // twice as far): the pace is the distance since the motion began over the time since, not frame by frame.
+    const pace = { stillX: null, stillAt: 0, x0: null, t0: 0, lastMove: -Infinity };
+    const PACE_STOP = 250; // ms without a move: the window has stopped
     let frameN = 0;
     let lipMode = 'off';
     let gaze = { x: 0, y: 0 };
@@ -516,6 +521,10 @@
           const k = approach(14, wdt);
           vel = [lerp(vel[0], (win[0] - lastWin[0]) / wdt, k), lerp(vel[1], (win[1] - lastWin[1]) / wdt, k)];
         }
+        if (lastWin && win[0] !== lastWin[0]) {
+          if (pace.x0 === null || now - pace.lastMove > PACE_STOP) { pace.x0 = pace.stillX === null ? lastWin[0] : pace.stillX; pace.t0 = pace.stillX === null ? lastWinAt : pace.stillAt; }
+          pace.lastMove = now;
+        } else if (!lastWin || now - pace.lastMove > PACE_STOP) { pace.stillX = win[0]; pace.stillAt = now; }
         if (!lastWin || now > lastWinAt) { lastWin = win; lastWinAt = now; }
       }
       // walking about: how fast the window carries her across the screen, in her own hip heights per second
@@ -523,7 +532,10 @@
       if (intent.holds.walk) {
         const rect = canvas.getBoundingClientRect();
         const pxPerM = (rect.height || 452) / ((size.h / share) || 1);
-        intent.holds.walkSpeed = Math.abs(vel[0]) / pxPerM / Math.max(0.1, rest.hipsY);
+        const moving = win && pace.x0 !== null && now - pace.lastMove <= PACE_STOP;
+        const span = moving ? (now - pace.t0) / 1000 : 0;
+        const px = span >= 0.08 ? Math.abs(win[0] - pace.x0) / span : 0;
+        intent.holds.walkSpeed = px / pxPerM / Math.max(0.1, rest.hipsY);
       }
       const ddt = dirT === null ? 0 : clamp(t - dirT, 0, 0.25);
       dirT = t;
@@ -732,6 +744,7 @@
         zoneAt,
         zoneCenters,
         inject: (e) => { injected.push(e); },
+        pose: () => (vrm ? poseSample() : null),
         debug: () => ({
           loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
@@ -781,7 +794,12 @@
         const mid = up.clone().add(an).multiplyScalar(0.5);
         if (kn.clone().sub(mid).dot(fwd) < -0.003) ang = -ang;
         const to = w(`${s}Toes`);
-        legs[s] = { knee: +ang.toFixed(1), ankleBelowHips: +(hipsP.y - an.y).toFixed(4), ankleY: +an.y.toFixed(4), kneeY: +kn.y.toFixed(4), toeDrop: to ? +(an.y - to.y).toFixed(4) : null };
+        // the ankle along her facing (m, + = ahead of the hips: a stride alternates the two) and where it is
+        // on screen (client px: with the window's position, how far a planted foot slides, T-2711)
+        const face = new T.Vector3(Math.sin(vrm.scene.rotation.y - base.yaw), 0, Math.cos(vrm.scene.rotation.y - base.yaw));
+        const sp = an.clone().project(camera);
+        const rect = canvas.getBoundingClientRect();
+        legs[s] = { knee: +ang.toFixed(1), ankleBelowHips: +(hipsP.y - an.y).toFixed(4), ankleY: +an.y.toFixed(4), kneeY: +kn.y.toFixed(4), toeDrop: to ? +(an.y - to.y).toFixed(4) : null, ankleFwd: +an.clone().sub(hipsP).dot(face).toFixed(4), ankleClientX: +(rect.left + ((sp.x + 1) / 2) * rect.width).toFixed(2) };
       }
       legs.hipsY = +hipsP.y.toFixed(4);
       // head yaw against the body's facing (the scene's turn)
@@ -868,6 +886,8 @@
     inject: (e) => { for (const f of figures) f.inject(e); return true; },
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
+    // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)
+    pose: () => { const f = [...figures][0]; return f ? f.pose() : null; },
   };
 
   window.__pet = Object.assign(window.__pet || {}, { vrmDirector: director }); // the name docs §7 gives it
