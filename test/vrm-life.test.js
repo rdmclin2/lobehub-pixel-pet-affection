@@ -98,3 +98,33 @@ test('T-2691 male weight shifts come more often than female ones', () => {
   const count = (style) => { const { frames } = runLife({}, 120, 1 / 30, style, 7); let n = 0; for (let i = 1; i < frames.length; i++) if (Math.sign(frames[i].bones.hips.z - frames[i - 1].bones.hips.z) !== Math.sign(frames[i - 1].bones.hips.z - (frames[i - 2] || frames[i - 1]).bones.hips.z)) n++; return n; };
   assert.ok(count(S.PROFILES.male) > count(S.PROFILES.female), `male ${count(S.PROFILES.male)} vs female ${count(S.PROFILES.female)} turning points`);
 });
+
+test('T-2729 glances wait for a still cursor: none while it moves, a move ends one at once, they come back once it rests', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    for (const style of [S.PROFILES.female, S.PROFILES.male]) {
+      // the cursor moving all the time (cursorStill stays under a frame): never a glance in 5 minutes
+      assert.ok(!runLife({ cursorStill: 0 }, 300, 1 / 30, style, seed).frames.some((f) => f.away), `seed ${seed} ${style.set}: glance while the cursor moves`);
+      // still for 1 s, then moved again, over and over (the e2e sweep is 0.9 s per side): never a glance
+      const l = Life.createLife({ rand: D.seeded(seed), style });
+      let still = 0;
+      for (let t = 0; t < 300; t += 1 / 30) {
+        still = (t % 0.9) < 1 / 30 ? 0 : still + 1 / 30;
+        assert.equal(l.step(1 / 30, { style, standing: true, idle: true, cursorStill: still }).away, false, `seed ${seed} ${style.set} t ${t.toFixed(2)}`);
+      }
+    }
+    // resting cursor: glances still happen (she is alive); and the first move after one ends it on that frame
+    const l = Life.createLife({ rand: D.seeded(seed), style: S.PROFILES.female });
+    let seen = 0;
+    for (let t = 0, still = 10; t < 300; t += 1 / 30, still += 1 / 30) {
+      const f = l.step(1 / 30, { style: S.PROFILES.female, standing: true, idle: true, cursorStill: still });
+      if (f.away) {
+        seen++;
+        const moved = l.step(1 / 30, { style: S.PROFILES.female, standing: true, idle: true, cursorStill: 0 });
+        assert.equal(moved.away, false, 'a cursor move ends the glance');
+        still = 0;
+      }
+    }
+    assert.ok(seen >= 3, `seed ${seed}: glances with a resting cursor: ${seen}`);
+  }
+  assert.ok(Life.GLANCE_AFTER >= 2 && Life.GLANCE_AFTER <= 4, `GLANCE_AFTER ${Life.GLANCE_AFTER}`);
+});

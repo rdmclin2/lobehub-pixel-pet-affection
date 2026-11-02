@@ -372,19 +372,24 @@ module.exports = function vrmScenarios(ctx) {
       await step(S, 'gaze: moving the cursor left / right moves the lookAt target', async () => {
         await page.mouse.move(box.x + 2, box.y + box.height * 0.2);
         await sleep(900);
-        const gl = (await H.ds()).gaze;
+        const dl = await H.ds();
+        const gl = dl.gaze;
         const tl = (await H.fig()).gaze;
         await H.shot('4-gaze-left');
         await page.mouse.move(box.x + box.width - 2, box.y + box.height * 0.2);
         await sleep(900);
-        const gr = (await H.ds()).gaze;
+        const dr = await H.ds();
+        const gr = dr.gaze;
         const tr = (await H.fig()).gaze;
         await H.shot('4-gaze-right');
         const x = (g) => Number(g.split(',')[0]);
+        // T-2729: a moving cursor is what her eyes follow — never a glance away (走神) in the middle of it
+        assert.equal(dl.gazeSrc, 'cursor', `left: eyes on ${dl.gazeSrc}`);
+        assert.equal(dr.gazeSrc, 'cursor', `right: eyes on ${dr.gazeSrc}`);
         assert.ok(x(gl) < -0.3 && x(gr) > 0.3 && gl !== gr, `left ${gl} right ${gr}`);
         samples.gaze = { left: gl, right: gr, debugLeft: tl, debugRight: tr };
         await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.25);
-        return H.note(`data-gaze cursor left ${gl} → right ${gr}; lookAt target left ${JSON.stringify(tl)} → right ${JSON.stringify(tr)}`);
+        return H.note(`data-gaze cursor left ${gl} (${dl.gazeSrc}) → right ${gr} (${dr.gazeSrc}); lookAt target left ${JSON.stringify(tl)} → right ${JSON.stringify(tr)}`);
       }, page);
 
       await step(S, '摸摸 (a click on her): pat → relaxed face; no pixel nod / hop, no CSS animation on the VRM', async () => {

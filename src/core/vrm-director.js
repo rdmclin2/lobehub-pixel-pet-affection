@@ -446,11 +446,11 @@
       // the hold's (lifted: down at the ground), else the cursor
       let gaze = { mode: 'cursor' };
       const holdGaze = hold && ((hc && hc.clip && hc.clip.gaze) || (HOLD_LOOK[hold] || {}).gaze);
-      if (R && R.gaze && S.t < (R.gazeFor ? R.start + R.gazeFor : R.end - R.fadeOut * 0.5)) gaze = { mode: 'fixed', x: R.gaze.x, y: R.gaze.y };
-      else if (hold === 'think' && holdGaze) gaze = { mode: 'fixed', x: holdGaze.x, y: holdGaze.y };
-      else if (holds.mood === 'sleep') gaze = { mode: 'fixed', x: 0, y: -0.6 };
-      else if (S.t < S.scanUntil) gaze = { mode: 'fixed', x: Math.sin((S.scanUntil - S.t) * 2.4) * 1.4, y: 0.15 };
-      else if (holdGaze) gaze = { mode: 'fixed', x: holdGaze.x, y: holdGaze.y };
+      if (R && R.gaze && S.t < (R.gazeFor ? R.start + R.gazeFor : R.end - R.fadeOut * 0.5)) gaze = { mode: 'fixed', kind: 'reaction', x: R.gaze.x, y: R.gaze.y };
+      else if (hold === 'think' && holdGaze) gaze = { mode: 'fixed', kind: 'think', x: holdGaze.x, y: holdGaze.y };
+      else if (holds.mood === 'sleep') gaze = { mode: 'fixed', kind: 'sleep', x: 0, y: -0.6 };
+      else if (S.t < S.scanUntil) gaze = { mode: 'fixed', kind: 'scan', x: Math.sin((S.scanUntil - S.t) * 2.4) * 1.4, y: 0.15 };
+      else if (holdGaze) gaze = { mode: 'fixed', kind: 'hold', x: holdGaze.x, y: holdGaze.y };
 
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
       const standing = !(S.base && S.base.sit) && holds.mood !== 'sleep';

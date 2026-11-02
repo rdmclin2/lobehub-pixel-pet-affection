@@ -58,15 +58,21 @@
   // A pointer event inside the window is fresher than the last poll, so it wins for POINTER_FRESH_MS.
   const POINTER_FRESH_MS = 1500;
   const cursor = {
-    pointer: null, movedAt: -Infinity, screen: null,
+    pointer: null, movedAt: -Infinity, screen: null, screenRaw: null, screenMovedAt: -Infinity,
     get client() { return performance.now() - this.movedAt < POINTER_FRESH_MS || !this.screen ? this.pointer : this.screen; },
+    // when the cursor last moved, inside the window or anywhere on the screen (her own window moving does not count)
+    get lastMove() { return Math.max(this.movedAt, this.screenMovedAt); },
   };
   window.addEventListener('pointermove', (e) => { cursor.pointer = { x: e.clientX, y: e.clientY }; cursor.movedAt = performance.now(); }, { passive: true });
   let cursorTimer = 0;
   function pollCursor() {
     if (!window.pet || !window.pet.cursorPoint || document.hidden) return;
     window.pet.cursorPoint().then((pt) => {
-      if (pt && Number.isFinite(pt.x)) cursor.screen = M.screenToClient(pt, { x: window.screenX, y: window.screenY });
+      if (!pt || !Number.isFinite(pt.x)) return;
+      const was = cursor.screenRaw;
+      if (was && Math.hypot(pt.x - was.x, pt.y - was.y) > 2) cursor.screenMovedAt = performance.now();
+      cursor.screenRaw = { x: pt.x, y: pt.y };
+      cursor.screen = M.screenToClient(pt, { x: window.screenX, y: window.screenY });
     }, () => {});
   }
   // hidden or minimised (the page's visibility, or main telling the window it was hidden / minimised): no
@@ -195,6 +201,7 @@
     let frameN = 0;
     let lipMode = 'off';
     let gaze = { x: 0, y: 0 };
+    let gazeSrc = 'none'; // what the eyes follow this frame: cursor | away (a glance) | fixed (the director's) | none
     let ground = 0;
     let seatLift = 0; // how far a seated pose is raised to stay inside the frame (groundOffset)
     let floorLift = 0; // seatLift as the floor follows it (eased like the ground)
@@ -562,15 +569,18 @@
     // where she looks: the cursor (as a point between her and the screen) with the alive layer's saccades and
     // glances, or the director's fixed target (thinking up, asleep down, a shy look aside…)
     const tmp = {};
-    function aim(dt, lifeOut) {
+    function aim(dt, lifeOut, cursorStill = Infinity) {
       const T = R.THREE;
       tmp.v = tmp.v || new T.Vector3();
       tmp.d = tmp.d || new T.Vector3();
       const rect = canvas.getBoundingClientRect();
       let g;
-      if (plan.gaze.mode === 'fixed') g = { x: plan.gaze.x, y: plan.gaze.y };
-      else if (lifeOut.away) g = lifeOut.gaze;
-      else { g = cursor.client ? M.gazeNdc(cursor.client, rect) : { x: 0, y: 0.1 }; g = { x: g.x + lifeOut.gaze.x, y: g.y + lifeOut.gaze.y }; }
+      // the director's look-about (a 'look' cue) is a glance too: a moving cursor wins over it; a reaction's,
+      // a hold's (think, lifted) and sleep's gaze are part of what she does and stay
+      const scanYields = plan.gaze.kind === 'scan' && cursorStill < Life.GLANCE_AFTER;
+      if (plan.gaze.mode === 'fixed' && !scanYields) { g = { x: plan.gaze.x, y: plan.gaze.y }; gazeSrc = `fixed${plan.gaze.kind ? `:${plan.gaze.kind}` : ''}`; }
+      else if (lifeOut.away) { g = lifeOut.gaze; gazeSrc = 'away'; }
+      else { g = cursor.client ? M.gazeNdc(cursor.client, rect) : { x: 0, y: 0.1 }; g = { x: g.x + lifeOut.gaze.x, y: g.y + lifeOut.gaze.y }; gazeSrc = cursor.client ? 'cursor' : 'none'; }
       const k = approach(8, dt);
       const before = gaze;
       gaze = { x: lerp(gaze.x, g.x, k), y: lerp(gaze.y, g.y, k) };
@@ -654,7 +664,9 @@
       if (!clips) restPose(); // no clip: arms down, absolute every frame (nothing accumulates)
 
       // L4: alive
-      const lifeOut = life.step(dt, { ...plan.life, style, velX: vel[0], fingers: clips ? anim.fingers() : false });
+      // 走神 / 瞥视 wait for a still cursor (vrm-life GLANCE_AFTER): while it moves near her she follows it
+      const cursorStill = Math.max(0, (now - cursor.lastMove) / 1000);
+      const lifeOut = life.step(dt, { ...plan.life, style, velX: vel[0], fingers: clips ? anim.fingers() : false, cursorStill });
       // turning: her head and chest turn ahead of her hips (the director's turnLead, deg)
       const lead = plan.turnLead || 0;
       if (Math.abs(lead) > 0.05) for (const [b, k] of TURN_LEAD) { const o = lifeOut.bones[b] || (lifeOut.bones[b] = { x: 0, y: 0, z: 0 }); o.y += lead * k; }
@@ -678,7 +690,7 @@
 
       // face: the director's (pack overrides, fallbacks), blinking, the mouth
       const target = M.resolveFace(plan.face, has, overrides[input.state] || null);
-      const jump = aim(dt, lifeOut);
+      const jump = aim(dt, lifeOut, cursorStill);
       if (lifeOut.blink || (jump > 0.5 && Math.random() < 0.3)) blink.next = Math.min(blink.next, t);
       const eyesShut = (plan.face.blink || 0) > 0.8 || (plan.face.happy || 0) > 0.8;
       if (t >= blink.next && blink.start < 0 && !plan.noBlink && !eyesShut) blink.start = t;
@@ -723,6 +735,7 @@
       d.mouth = M.VISEMES.map((k) => `${k}:${mouth[k].toFixed(2)}`).join(',');
       d.expr = Object.entries(face).filter(([, w]) => w > 0.01).map(([n, w]) => `${n}:${w.toFixed(2)}`).join(',');
       d.gaze = `${gaze.x.toFixed(2)},${gaze.y.toFixed(2)}`;
+      if (d.gazeSrc !== gazeSrc) d.gazeSrc = gazeSrc;
       d.posture = plan.posture || '';
       d.idle = plan.idle || '';
       d.reaction = plan.reaction || '';

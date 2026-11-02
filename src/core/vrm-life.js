@@ -19,6 +19,9 @@
   const BREATH = { awake: [14, 18], sleep: 10 };
   const SHIFT_EVERY = [6, 14]; // the default; a style may set its own (shiftEvery)
   const SACCADE_EVERY = [0.8, 3];
+  // a glance away (走神) only once the cursor has been still this long (s): while it moves near her she
+  // follows it, and a move ends a glance at once (T-2729)
+  const GLANCE_AFTER = 2.5;
   const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
   const SEG = { Thumb: ['Proximal', 'Distal'], Index: ['Proximal', 'Intermediate', 'Distal'], Middle: ['Proximal', 'Intermediate', 'Distal'], Ring: ['Proximal', 'Intermediate', 'Distal'], Little: ['Proximal', 'Intermediate', 'Distal'] };
   // The names of every bone the layer may touch (the renderer keeps their clip pose between frames, overClip).
@@ -42,7 +45,7 @@
     // ctx: { style (profile), sleep, sad (0..1), standing, lifted, velX (window px/s), fingers (the clip has
     //        finger keys), idle (nothing else going on: glances allowed), landKey (goes up when she is put
     //        down: a short knee dip), nod (0..1: small chewing nods while she eats), talk (0..1: nods while
-    //        she talks) }
+    //        she talks), cursorStill (seconds since the cursor last moved; left out = still) }
     // → { bones: { name: { x, y, z } deg }, gaze: { x, y } (NDC offset), away: bool, blink: bool, breath: -1..1 }
     function step(dt, ctx = {}) {
       const P = ctx.style || style || { hipSway: 0.75, headTilt: 3, handPose: 0.38, stanceWidth: 0, breath: { chest: 1, upperChest: 0.5, spine: 0.7, shoulder: 0.45 }, lookAway: 0.09 };
@@ -103,7 +106,9 @@
       if (t >= sc.next) { sc.x = between(-0.05, 0.05); sc.y = between(-0.04, 0.04); sc.next = t + between(SACCADE_EVERY[0], SACCADE_EVERY[1]); }
       const aw = st.away;
       let away = false;
-      if (ctx.idle && t >= aw.next && aw.until < t) {
+      const attending = (ctx.cursorStill === undefined ? Infinity : ctx.cursorStill) < GLANCE_AFTER;
+      if (attending) aw.until = -1; // the cursor is moving: her eyes are on it, a glance in progress ends
+      if (ctx.idle && !attending && t >= aw.next && aw.until < t) {
         if (rand() < (P.lookAway || 0.09) * 4) { aw.until = t + between(1, 2); aw.x = between(0.6, 1.4) * (rand() < 0.5 ? -1 : 1); aw.y = between(-0.5, 0.3); if (rand() < 0.3) blink = true; }
         aw.next = t + between(3, 7);
       }
@@ -171,5 +176,5 @@
     return { step, state: st };
   }
 
-  return { LIMITS, LAND, BREATH, SHIFT_EVERY, BONES, createLife };
+  return { LIMITS, LAND, BREATH, SHIFT_EVERY, GLANCE_AFTER, BONES, createLife };
 });
