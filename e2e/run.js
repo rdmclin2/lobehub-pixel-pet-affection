@@ -7465,6 +7465,31 @@ async function adminCoverageScenario() {
       return out.join(', ');
     }, () => admin);
 
+    await step(S, 'B12 every user-configurable schema field is rendered as a control on its page (DOM export), and the roster data is real', async () => {
+      // fields that depend on a switch (dependsOn) only show while it is on: switch the parents on first
+      for (const [k, v] of [['proactive.enabled', true], ['prefs.voice', true], ['asr.enabled', true], ['api.enabled', true]]) assert.equal((await call('set', k, v)).ok, true, k);
+      const boot = await admin.evaluate(() => window.petAdmin.boot());
+      const fields = boot.schema.fields.filter((f) => !f.internal && f.page !== 'character');
+      const pages = [...new Set(fields.map((f) => f.page))];
+      const dom = {};
+      const missing = [];
+      for (const pg of pages) {
+        await go(`/${pg}`);
+        const want = fields.filter((f) => f.page === pg).map((f) => f.key);
+        const got = await admin.evaluate(() => [...document.querySelectorAll('[data-key]')].map((el) => ({ key: el.getAttribute('data-key'), tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), checked: el.getAttribute('aria-checked'), label: (el.closest('[class*="item"], [class*="row"], div')?.textContent || '').trim().slice(0, 80) })));
+        const keys = new Set(got.map((g) => g.key));
+        for (const k of want) if (!keys.has(k)) missing.push(`${pg}:${k}`);
+        dom[pg] = { schemaKeys: want, controls: got, restartKeys: boot.schema.fields.filter((f) => f.page === pg && f.restart).map((f) => f.key), restartBadge: await admin.evaluate(() => document.body.textContent.includes('重启后生效')) };
+      }
+      fs.writeFileSync(path.join(SHOTS, 'b12-admin-dom-fields.json'), JSON.stringify({ pages: dom, missing }, null, 2));
+      const st = await admin.evaluate(() => window.petAdmin.state());
+      const roster = st.roster.map((r) => ({ id: r.id, displayName: r.displayName, current: r.current, kind: r.kind, pack: r.pack && { id: r.pack.id, kind: r.pack.kind, source: r.pack.source }, packKinds: r.packKinds, met: r.met && { name: r.met.name, affection: r.met.affection, stage: r.met.stage }, model: r.model && { current: r.model.current, options: (r.model.options || []).length }, personality: (r.personality || '').slice(0, 60), systemRole: r.systemRole, outfits: r.outfits && r.outfits.map((o) => `${o.id}${o.equipped ? '*' : ''}${o.locked ? '(锁)' : ''}`) }));
+      const packs = st.packs.map((p) => ({ id: p.id, species: p.species, kind: p.kind, source: p.source }));
+      fs.writeFileSync(path.join(SHOTS, 'b12-roster-data.json'), JSON.stringify({ source: 'window.petAdmin.state() → main adminState() → core/roster.js buildRoster(PetService.view()) + packRows(PackStore: src/renderer/packs [builtin] + <data>/packs [user])', dataDir: data, userPacksOnDisk: fs.readdirSync(path.join(data, 'packs')), roster, packs }, null, 2));
+      assert.deepEqual(missing, []);
+      return `${fields.length} fields on ${pages.length} pages all rendered; b12-admin-dom-fields.json, b12-roster-data.json`;
+    }, () => admin);
+
     await step(S, 'B11 no console errors in the settings window', async () => {
       const real = errors.filter((e) => !/favicon|DevTools/.test(e));
       assert.deepEqual(real, []);
