@@ -1105,6 +1105,9 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
         await stand();
         const idleGif = await gif('half-idle', 16, 200, null, 5); // 待机: breathing, blinking, in 半身
+        // the app's state (pat / happy / lifted) is petFx.state(); the VRM canvas's data-state lists the director's
+        // semantic events since the VRM motion system (docs/vrm-motion-system.md), data-reaction / data-hold what she plays
+        const appDs = async () => ({ ...(await H.ds()), state: await page.evaluate(() => window.petFx.state().state) });
         let s = null;
         const tried = [];
         for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) {
@@ -1112,7 +1115,7 @@ module.exports = function vrmScenarios(ctx) {
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
           const t0 = Date.now();
-          while (Date.now() - t0 < 2500) { s = await H.ds(); if (s.state === 'pat' || s.state === 'happy') break; await sleep(60); }
+          while (Date.now() - t0 < 2500) { s = await appDs(); if (s.state === 'pat' || s.state === 'happy') break; await sleep(60); }
           tried.push(s.state);
         }
         await H.shot('5-half-pat');
@@ -1128,15 +1131,16 @@ module.exports = function vrmScenarios(ctx) {
         const dragGif = await gif('half-drag', 8, 60, null, 8); // lifted: dangling while held, 半身
         let l = null;
         const t0 = Date.now();
-        while (Date.now() - t0 < 2500) { l = await H.ds(); if (l.state === 'lifted') break; await sleep(60); }
+        while (Date.now() - t0 < 2500) { l = await appDs(); if (l.state === 'lifted' && l.hold === 'lift') break; await sleep(60); }
         const shot = await H.shot('6-half-lifted');
         await page.mouse.up();
         assert.equal(l.state, 'lifted');
+        assert.equal(l.hold, 'lift', 'the VRM plays her lifted hold (legs hang)');
         assert.equal(l.framing, 'half', 'still 半身 while dragged');
         await sleep(800);
         await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
         const w1 = await petBounds(app);
-        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state} (expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
+        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state}, hold ${l.hold} (${l.overlays}; expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
       }, page);
 
       await step(S, '半身: 口型 — her pat line (voice pack audio) opens the mouth, back to 0 after', async () => {

@@ -626,7 +626,7 @@
       // (the director matches the walk cycle's pace to it, T-2711)
       if (intent.holds.walk) {
         const rect = canvas.getBoundingClientRect();
-        const pxPerM = (rect.height || 452) / ((size.h / share) || 1);
+        const pxPerM = pxPerMetre(rect.height || 452);
         const moving = win && pace.x0 !== null && now - pace.lastMove <= PACE_STOP;
         const span = moving ? (now - pace.t0) / 1000 : 0;
         const px = span >= 0.08 ? Math.abs(win[0] - pace.x0) / span : 0;
@@ -747,6 +747,13 @@
       return true;
     }
 
+    // world metres → canvas px at her depth, from the camera that draws her now (半身 frames her closer than
+    // 全身: the same window travel is fewer of her steps, a hit shape is more px)
+    function pxPerMetre(canvasH) {
+      const visH = camNow && camNow.visible ? camNow.visible : size.h / share; // the world height the canvas shows
+      return canvasH / (visH || 1);
+    }
+
     // The touch zone under client point (cx, cy): the camera ray through it against spheres and capsules on
     // this frame's skeleton (core/vrm-hit.js). → { zone, pt } like app.js zoneAtClient: pt.x / pt.y in her
     // on-screen box (0..1), pt.box (client px), pt.faceRect (the face in the box, for the blush). A miss: nulls.
@@ -769,7 +776,7 @@
       if (!h.zone) return { zone: null, pt: null, miss: !h.shape };
       // her box on screen: the shapes projected (centres ± radius)
       const toClient = (w) => { v.fromArray(w).project(camera); return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height }; };
-      const pxPerM = rect.height / ((size.h / share) || 1);
+      const pxPerM = pxPerMetre(rect.height);
       let box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
       for (const sh of list) for (const c of sh.kind === 'sphere' ? [sh.c] : [sh.a, sh.b]) {
         const q = toClient(c);
@@ -785,7 +792,7 @@
         const r = head.r * pxPerM;
         faceRect = [(c.x - r * 0.6 - box.left) / bw, (c.y - r * 0.1 - box.top) / bh, (c.x + r * 0.6 - box.left) / bw, (c.y + r * 0.9 - box.top) / bh].map((k) => clamp(k, 0, 1));
       }
-      return { zone: h.zone, pt: { x: clamp((cx - box.left) / bw, 0, 1), y: clamp((cy - box.top) / bh, 0, 1), opaque: true, pose: 'vrm', box, mirrored: false, faceRect, world: h.point } };
+      return { zone: h.zone, pt: { x: clamp((cx - box.left) / bw, 0, 1), y: clamp((cy - box.top) / bh, 0, 1), opaque: true, pose: 'vrm', box, mirrored: false, faceRect, world: h.point, framing } };
     }
 
     // where each zone's shapes are on screen (client px, the first shape's centre) — for tests and the hint
