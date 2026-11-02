@@ -209,6 +209,8 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 - 需要重启才生效的项（目前只有「硬件加速」）会标「重启后生效」，改了以后每页顶部都提示，并有「立即重启」按钮。
 - 设置保存在 `settings.json`（Key 在 `tts-keys.json`），重启和换角色后都保留。在桌宠窗口里改的（拖大小手柄、在角色列表里切换角色）会立刻同步到设置窗口，反过来也一样。
 
+**角色列表的数据从哪来、怎么扩展**：列表不存自己的数据，每一行都由主进程 `src/core/roster.js`（`buildRoster` / `packRows`）从 `PetService.view()` 派生——角色文件 `src/characters/<id>.json`（名称、称号、厂商）、`pet.json` 里的关系与进度、角色包 `src/renderer/packs/<id>-*/pack.json` 与导入的包（类型、来源、预览图）、`settings.json` 里按角色的外观 / 模型 / 设定，以及语音包列表；`src/main/main.js` 的 `adminState()` 在每次变化后把它推给设置窗口（IPC `admin-state`）。新增一位角色只要加一份 `src/characters/<id>.json` 和一个角色包（见[第八节](#八新增一个厂商角色)），不用改后台代码，重启后她就出现在列表里；导入的角色包在「外观资源」页导入后立即出现。
+
 桌宠窗口里仍保留：⋯ → **角色列表**（快速切换、初次见面；她的页里有外观和好感度，模型和个性化设定点「在设置窗口中编辑 ›」）、衣柜、话题、聊天记录。宠物大小也可以直接在桌面上调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 在宠物上滚动。
 
 ### 设计系统位置与维护
