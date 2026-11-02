@@ -8,6 +8,7 @@ const dialogue = require('../core/dialogue');
 const outfits = require('../core/outfits');
 const { migratePet, SHARED_KEYS } = require('../core/migrate');
 const settingsLib = require('../core/settings');
+const framingLib = require('../core/framing');
 const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
 const modelsLib = require('../core/models');
@@ -176,6 +177,7 @@ class PetService extends EventEmitter {
           appearance: this.appearanceView(x.id),
           model: this.modelView(x.id),
           systemRole: this.settings.systemRoles[x.id] || '',
+          framing: this.settings.framings[x.id] || 'auto',
         };
       }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
@@ -508,6 +510,22 @@ class PetService extends EventEmitter {
     if (id === this.pet.speciesId && !this.busy) this._applyModel().catch((e) => this.emit('error', e));
     this._save();
     return { ok: true, view: this.view() };
+  }
+
+  // her page in the settings window → 外观 → 取景: `speciesId`'s own framing ('full' | 'half'), or 'auto' to follow
+  // her pack's default and then the global prefs.framing (core/framing.js resolveFraming); kept in settings.framings.
+  // Every pet window gets the new settings at once and re-frames her live (renderer/vrm.js setFraming).
+  setFraming(mode, speciesId) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    if (mode !== 'auto' && !framingLib.isFraming(mode)) return { ok: false, reason: 'invalid' };
+    const { [id]: _old, ...rest } = this.settings.framings;
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, framings: mode === 'auto' ? rest : { ...rest, [id]: mode } });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    this._save();
+    return { ok: true, view: this.view(), settings: this.settingsView() };
   }
 
   // ⋯ → 角色列表 → her page → 个性化设定: the owner's own words added to `speciesId`'s system role (default:
@@ -974,7 +992,7 @@ class PetService extends EventEmitter {
   setPrefs(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const next = { ...this.settings.prefs };
-    for (const k of Object.keys(settingsLib.PREFS)) if (typeof p[k] === 'boolean') next[k] = p[k];
+    for (const k of Object.keys(settingsLib.PREFS)) if (typeof p[k] === typeof settingsLib.PREFS[k]) next[k] = p[k]; // framing: a string, checked by normalizeSettings
     this.settings = settingsLib.normalizeSettings({ ...this.settings, prefs: next });
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
@@ -1049,7 +1067,7 @@ class PetService extends EventEmitter {
   // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'affectionRules', 'ui', 'system'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
     this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: { ...this.settings[name], ...p } });
     this.settingsStore.save(this.settings);

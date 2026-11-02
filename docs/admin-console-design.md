@@ -63,6 +63,7 @@
 | key | 类型 | 默认值 | 取值范围 / 校验 | 当前编辑入口 · IPC | 生效 |
 | --- | --- | --- | --- | --- | --- |
 | `appearance.<id>` | `{[characterId]: packId}` | `{}`（取角色的默认包 `art.packs[0]`，再退到 `fallbackPack`） | 包 id `^[a-z0-9][a-z0-9-]{2,39}$`；包必须属于这个角色；18+ 的包要求 `ageConfirmed && adultContent`；大肥鱼可以选 `dafeiyu-clips`（视频） | ⋯ → 角色列表 → 她的页 → 外观（角色包） · `set-appearance` | 即时，离开 18+ 外观时会换下成人服饰 · 仅回调用方 |
+| `framings.<id>` | `{[characterId]: 'full' \| 'half'}` | `{}`（没有这一项 = 跟随形象包 `pack.json` 的 `framing`，再跟随全局 `prefs.framing`） | 只收 `full` / `half`；`auto` 删除这一项（`normalizeFramings`） | 设置窗口 → 角色 → 她的页 → 形象包 → 取景（跟随 / 全身 / 半身） · `set-framing` | 即时：桌宠窗口的 VRM 原地换取景（相机滑过去，不重载模型），见 `docs/half-body-mode.md` |
 | `systemRoles.<id>` | `{[characterId]: string}` | `{}` | 经过 `cleanSystemRole`：去掉控制字符，最多 `SYSTEM_ROLE_MAX` = 1000 字；空串会删除这一项 | ⋯ → 角色列表 → 她的页 → 个性化设定（System Role） · `set-system-role` | 当前角色在后台更新 agent 的 system role（personaKey 变了）；其他角色在下次说话前更新 · 仅回调用方 |
 | `petScale` | number | `1.25` | `PET_SCALE` 0.5–2.5，两位小数；窗口会按屏幕大小再收一次（`fitScale`） | ⋯ → 高级设置 → 宠物大小（滑块 50–250%，步长 5）；桌面上拖左上角手柄；Ctrl/⌘+滚轮 · `set-pet-scale`（拖动中用 `preview-pet-scale`） | 即时（`resizePet`） |
 | `petScaleSet` | boolean | `false` | 内部标记，表示主人是否手动选过大小（选过就不再跟随默认值）。由 `set-pet-scale` 置为 true，「恢复默认」不会清它 | 不直接编辑 | — |
@@ -130,6 +131,7 @@
 | `prefs.collide` | boolean | `true` | 只在有同屏伙伴时有意义 | 同上 → 互相碰撞 · `set-prefs` | 即时 |
 | `prefs.touchZones` | boolean | `true` | 关闭后点哪里都是普通的摸摸 | 同上 → 部位触摸 · `set-prefs` | 即时 |
 | `prefs.touchHint` | boolean | `true` | 要 `prefs.touchZones` 开着才起作用 | 同上 → 触摸提示 · `set-prefs` | 即时 |
+| `prefs.framing` | `'full' \| 'half'` | `'full'` | 其它值（含旧文件里没有这一项）都按 `full` 读（`normalizePrefs`）；角色自己的 `framings.<id>` 和形象包的 `framing` 优先 | 设置窗口 → 玩法 → 桌宠行为 → 大小与取景 → 取景 · `admin-set` → `set-prefs` | 即时（目前只对 VRM 生效，见 `docs/half-body-mode.md`） |
 
 `prefs.voice*` 归在 §2.3。主动行为（`core/proactive.js`）和好感度（`core/affection.js`）**目前都没有用户配置项**，参数都是写死的常量，列在这里作为候选（本期不做，见 §8 T10）：
 
@@ -369,7 +371,7 @@ adminWin.on('closed', () => { adminWin = null; });
 | 角色 | 角色详情 `#/characters/:id` | `PageTabs`：概况（关系、服饰解锁、署名）· 模型（`models.<id>`）· 个性化设定（`systemRoles.<id>`）· 外观（`appearance.<id>`、导入、Live2D 高度）· 语音（音色只读、语音包）· 好感度（一键解锁） | P-03 + P-04 |
 | 角色 | 外观资源 `#/packs` | 所有角色包的表格，列有名称、角色、类型、来源、18+、授权；操作有导入角色包 / Live2D / VRM、导出、删除（只限导入的）、打开文件夹 | P-02 |
 | 角色 | 同屏伙伴 `#/visitors` | `visitors`（最多 3 位，不能选当前角色），加 `prefs.collide` | P-05 |
-| 偏好 | 桌宠行为 `#/behavior` | `petScale`（`SliderWithInput` 50–250%，恢复默认），`prefs.roam / clickSound / memes / touchZones / touchHint` | P-05 |
+| 偏好 | 桌宠行为 `#/behavior` | `petScale`（`SliderWithInput` 50–250%，恢复默认），`prefs.framing`（大小与取景卡片，全身 / 半身），`prefs.roam / clickSound / memes / touchZones / touchHint` | P-05 |
 | 偏好 | 外观 `#/appearance` | 后台主题 `ui.theme`（新），以后放桌宠窗口的令牌开关（T8） | P-05 |
 | 语音 | 朗读 `#/tts` | `prefs.voice`（功能总开关，关闭时下面的配置收起），`prefs.voiceInteractions / voiceMurmurs`，`tts.provider / fallback / packs`；每个引擎一张卡片（Fish、MiniMax、本地），包含 Key（`InputPassword`，只写不显示）、端点、`tts.local.*`；状态（是否设了 Key、最近一次错误、缓存大小），清空缓存，试听 | P-05 |
 | 语音 | 语音输入 `#/asr` | `asr.enabled`（总开关），`engine / language / autoSend / fallback`，LobeHub 卡片（`lobehub.model`），本地卡片（`local.endpoint / api / model / timeoutSec`、Key），`maxSeconds`（补上入口），测试连接 | P-05 |
@@ -492,3 +494,199 @@ node scripts/check-admin-console-doc.js   # 0 = 全部覆盖；1 = 打印 MISS �
 lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴向、`admin/src/console/stage/**` 的动效时长放行）和 `.agents/ux/lobe-design-rules.md` R-05。
 
 验证：`xvfb-run -a node e2e/run.js admin`（新增 A3b 层级导航、A3c 点她与桌宠联动、A13 试穿再穿上），截图在 `out/e2e/admin/`。
+
+## 12. 覆盖矩阵（自动生成）
+
+目的：确认「配置后台」是完整的——用户能配置的每一项、桌宠运行时的每一种行为控制、桌宠窗口和菜单里能改的每一样东西，在设置窗口里都有地方管，并且写明即时生效还是需要重启。
+
+**怎么核对（不手写清单）**：`src/core/admin-coverage.js` 的 `collect()` 从代码里读出四份清单，`audit()` 逐项对照，`renderMatrix()` 生成下面的表。
+
+1. `settings.json` 的叶子键：`normalizeSettings(null)` 展开（`settingsLeaves()`），每个键必须在 `settings-schema.js` 的 F 列表里有字段；内部标记（`petScaleSet`、`tts.providerSet`、年龄确认的 4 个只读事实）必须同时被 schema 标为 `internal` 并在 `INTERNAL_SETTINGS` 写明原因；`token` / `adult` / `perCharacter` 这类不走通用表单的键必须在 `SPECIAL_SETTINGS` 写明由哪个控件修改；每个可写键要么即时生效、要么在 `RESTART_KEYS` 里（重启生效）。
+2. 桌宠窗口的通道：`src/main/preload.js` 里每个 `invoke` / `send` 的通道，要么设置窗口（`src/main/admin-preload.js`）有同一通道，要么在 `VIA` 写明设置窗口用哪个通道做同一件事，要么在 `PET_ONLY` 写明它不是配置（聊天、拖动、首次唤醒、测试钩子……）。
+3. 菜单：桌宠窗口 ⋯ 菜单（`index.html` 的 `data-menu`）、托盘菜单和应用菜单（`main.js` 的模板）的每一项，在 `MENU` 写明后台的位置，或者为什么不需要。
+4. 运行时行为控制（`RUNTIME`）：走动、大小、触摸、主动搭话、好感、同屏伙伴、朗读、语音包、语音输入、对外接口、更新、安全、角色、角色包、数据目录、窗口主题，每项列出控制它的 schema 键和 `window.petAdmin` 通道，键和通道都必须真实存在。
+5. 另外，`window.petAdmin` 的每个方法都必须被某个页面调用（`admin/src` 里的 `api().x`），否则就是「桥接了但没有控件」。不需要调用的写在 `UNUSED_OK`。
+
+任何一项对不上，`node scripts/check-admin-console-doc.js` 打印 `MISS …` 并以 1 退出；下面这一节和 `audit()` 的结果不一致（代码改了、文档没重新生成）也会 FAIL。`test/admin-coverage.test.js` 跑同一个审计，并用「删掉一个字段 / 多一个通道 / 多一个菜单项」验证它真能抓到缺口，所以 `npm test` 就守着这张表。更新本节：`node scripts/check-admin-console-doc.js --write`。
+
+**本次审计发现并补齐的缺口**（canary `5e815e3` 上跑新审计会报出的项）：
+
+| 缺口 | 之前只能在 | 现在在后台 | 生效 |
+| --- | --- | --- | --- |
+| 服饰（衣柜，`equip-outfit`） | 桌宠窗口 → 衣柜 | 角色详情 → 服饰（当前角色；未解锁的显示解锁条件） | 即时，桌宠窗口立即换装 |
+| Live2D 模型大小（`set-live2d-height`，桥接了但没有控件） | 桌宠窗口 → 外观 | 角色详情 → 形象包 → Live2D 模型大小（穿着导入的 Live2D 时出现） | 即时，桌宠窗口重绘 |
+| 回到右下角（`place`） | ⋯ → 回到右下角、托盘 → 显示桌宠 | 桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） | 即时 |
+| 自动检查更新 | 只有环境变量 `PIXELPET_NO_UPDATE=1` | 版本与更新 → 自动检查更新（新键 `update.autoCheck`，默认开） | 即时：下一次定时检查就按新值 |
+| 数据目录位置 | 看不到路径 | 数据与关于 → 数据目录：显示路径、打开数据目录（`open-data-folder`） | — |
+| 角色的设定（角色文件里的 persona） | 看不到 | 角色详情 → 设定 → 她的设定（只读）+ 个性化设定 | — |
+| 按形象类型看角色 | — | 角色图鉴 → 按形象类型（像素 / 图片 / 全动态 / Live2D / VRM / 有导入包），卡片和详情 → 资料列出每类内置 / 导入包数 | — |
+
+<!-- coverage-matrix:start (generated by `node scripts/check-admin-console-doc.js --write`; do not edit by hand) -->
+
+### 12.1 settings.json：56 个叶子键
+
+| 键 | 页面 | 名称 | 生效 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ageGateVersion` | safety（内部） | 确认文案版本 | — | 确认文案版本（文案改了就重新询问，只读） |
+| `ageConfirmed` | safety（内部） | 已确认满 18 周岁 | — | 是否确认满 18 周岁（同上，只读） |
+| `ageConfirmedAt` | safety（内部） | 确认时间 | — | 确认时间（同上，只读） |
+| `adultContent` | safety | 成人向内容 | 即时生效 | 内容与安全 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`） |
+| `answered` | safety（内部） | 已回答年龄确认 | — | 年龄确认的答案（由 18+ 确认对话写入，内容与安全页只读显示） |
+| `petScale` | behavior | 宠物大小 | 即时生效 |  |
+| `appearance.<id>` | character | 形象包 | 即时生效 | 角色详情 → 形象包（`set-appearance`） |
+| `models.<id>` | character | 模型 | 即时生效 | 角色详情 → 模型（`set-model` / `refresh-models`） |
+| `systemRoles.<id>` | character | 个性化设定 | 即时生效 | 角色详情 → 设定 → 个性化设定（`set-system-role`） |
+| `framings.<id>` | character | 取景 | 即时生效 | 角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`） |
+| `prefs.roam` | behavior | 自己走动 | 即时生效 |  |
+| `prefs.clickSound` | behavior | 点击音效 | 即时生效 |  |
+| `prefs.voice` | tts | 朗读回复 | 即时生效 |  |
+| `prefs.voiceInteractions` | tts | 互动语音 | 即时生效 |  |
+| `prefs.voiceMurmurs` | tts | 朗读碎碎念 | 即时生效 |  |
+| `prefs.memes` | behavior | 梗图 | 即时生效 |  |
+| `prefs.collide` | behavior | 互相碰撞 | 即时生效 |  |
+| `prefs.touchZones` | behavior | 部位触摸 | 即时生效 |  |
+| `prefs.touchHint` | behavior | 触摸提示 | 即时生效 |  |
+| `prefs.framing` | behavior | 取景 | 即时生效 |  |
+| `visitors` | visitors | 一起待在桌面上的角色 | 即时生效 |  |
+| `api.enabled` | api | 开启对外接口 | 即时生效 |  |
+| `api.port` | api | 端口 | 即时生效 |  |
+| `api.token` | api | 令牌 | 即时生效 | 对外接口 → 令牌（遮罩显示、复制、「换一个」：`set-api` newToken） |
+| `tts.provider` | tts | 朗读引擎 | 即时生效 |  |
+| `tts.providerSet` | tts（内部） | 手动选过引擎 | — | 内部标记：选过朗读引擎后不再迁移成「自动」（由 `tts.provider` 的修改写入） |
+| `tts.fallback` | tts | 引擎用不了时 | 即时生效 |  |
+| `tts.packs` | tts | 使用语音包 | 即时生效 |  |
+| `tts.endpoints.fish` | tts | 端点 | 即时生效 |  |
+| `tts.endpoints.minimax` | tts | 端点 | 即时生效 |  |
+| `tts.endpoints.local` | tts | 地址 | 即时生效 |  |
+| `tts.local.api` | tts | 接口 | 即时生效 |  |
+| `tts.local.model` | tts | 模型 | 即时生效 |  |
+| `tts.local.voice` | tts | 音色名 | 即时生效 |  |
+| `asr.enabled` | asr | 开启语音输入 | 即时生效 |  |
+| `asr.engine` | asr | 识别引擎 | 即时生效 |  |
+| `asr.fallback` | asr | 用不了时换另一个引擎 | 即时生效 |  |
+| `asr.language` | asr | 语言 | 即时生效 |  |
+| `asr.maxSeconds` | asr | 单次最长录音 | 即时生效 |  |
+| `asr.autoSend` | asr | 识别后直接发送 | 即时生效 |  |
+| `asr.lobehub.model` | asr | 模型 | 即时生效 |  |
+| `asr.local.endpoint` | asr | 地址 | 即时生效 |  |
+| `asr.local.api` | asr | 接口 | 即时生效 |  |
+| `asr.local.model` | asr | 模型 | 即时生效 |  |
+| `asr.local.timeoutSec` | asr | 超时 | 即时生效 |  |
+| `proactive.enabled` | proactive | 主动说话 | 即时生效 |  |
+| `proactive.speakCooldownMin` | proactive | 主动说话间隔 | 即时生效 |  |
+| `proactive.boredAfterMin` | proactive | 多久没理她算无聊 | 即时生效 |  |
+| `proactive.hungryAt` | proactive | 饥饿提醒阈值 | 即时生效 |  |
+| `proactive.maxLlmPerHour` | proactive | 每小时最多调用模型 | 即时生效 |  |
+| `affectionRules.decay` | proactive | 久未见面时好感衰减 | 即时生效 |  |
+| `affectionRules.dailyCap` | proactive | 每日好感上限 | 即时生效 |  |
+| `ui.theme` | appearance | 主题 | 即时生效 |  |
+| `system.hardwareAcceleration` | about | 硬件加速 | 重启后生效 |  |
+| `update.autoCheck` | update | 自动检查更新 | 即时生效 |  |
+| `petScaleSet` | behavior（内部） | 手动选过大小 | — | 内部标记：动过「宠物大小」后不再跟随默认大小（由 `petScale` 的修改写入） |
+
+### 12.2 运行时行为控制：16 项
+
+| 行为 | 后台位置 | 设置项 | 操作（admin-preload 通道） | 生效 |
+| --- | --- | --- | --- | --- |
+| 走动 | 玩法 → 桌宠行为 | `prefs.roam` | `admin-place-pet` | 即时生效 |
+| 大小 | 玩法 → 桌宠行为 | `petScale` | — | 即时生效 |
+| 触摸与音效 | 玩法 → 桌宠行为 | `prefs.touchZones` `prefs.touchHint` `prefs.clickSound` `prefs.memes` `prefs.collide` | — | 即时生效 |
+| 主动搭话 | 玩法 → 主动搭话与好感 | `proactive.enabled` `proactive.speakCooldownMin` `proactive.boredAfterMin` `proactive.hungryAt` `proactive.maxLlmPerHour` | — | 即时生效 |
+| 好感 | 玩法 → 主动搭话与好感；角色详情 → 好感 | `affectionRules.dailyCap` `affectionRules.decay` | `unlock-all` | 即时生效 |
+| 同屏伙伴 | 玩法 → 同屏伙伴 | `visitors` `prefs.collide` | — | 即时生效 |
+| 语音（朗读 / TTS） | 设置 → 朗读 | `prefs.voice` `prefs.voiceInteractions` `prefs.voiceMurmurs` `tts.provider` `tts.fallback` `tts.packs` `tts.endpoints.fish` `tts.endpoints.minimax` `tts.endpoints.local` `tts.local.api` `tts.local.model` `tts.local.voice` `keys.fish` `keys.minimax` `keys.local` | `tts-clear-cache` | 即时生效 |
+| 语音包 | 设置 → 语音包 | `tts.packs` | `voicepacks-reload` `open-voicepacks-folder` | 即时生效 |
+| 语音输入（ASR） | 设置 → 语音输入 | `asr.enabled` `asr.engine` `asr.fallback` `asr.language` `asr.autoSend` `asr.maxSeconds` `asr.lobehub.model` `asr.local.endpoint` `asr.local.api` `asr.local.model` `asr.local.timeoutSec` `keys.asrlocal` | `asr-test` | 即时生效 |
+| 对外接口 | 设置 → 对外接口 | `api.enabled` `api.port` `api.token` | `set-api` `api-status` | 即时生效 |
+| 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
+| 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
+| 角色（形象包 / 服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `appearance.<id>` `models.<id>` `systemRoles.<id>` `framings.<id>` | `switch-character` `set-appearance` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` | 即时生效 |
+| 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 形象包 | — | `import-pack` `import-live2d` `import-vrm` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
+| 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
+| 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
+
+### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：24 项
+
+桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
+
+| 菜单项 | 后台对应 |
+| --- | --- |
+| `menu:update` | 版本与更新 → 状态 / 立即重启更新（有新版本时 ⚙ 出现红点直达） |
+| `menu:settings` | 桌宠窗口的 ⚙ 设置 / 右键她 / Ctrl+⌘ + , → 打开设置窗口 |
+| `menu:characters` | 角色图鉴（列表 + 详情） |
+| `menu:history` | 玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`） |
+| `menu:new-topic` | LobeHub 与本机 → 话题 → 重新开始话题 |
+| `menu:adult` | 内容与安全 → 成人向内容 |
+| `menu:local` | LobeHub 与本机 → 本机能力 |
+| `menu:actions` | 玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
+| `menu:home` | 玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
+| `menu:check-update` | 版本与更新 → 检查更新 |
+| `menu:release` | 数据与关于 → 危险操作 → 放生并删除 agent |
+| `menu:forget` | 数据与关于 → 危险操作 → 仅重置本地 |
+| `menu:log` | 数据与关于 → 数据目录 → 打开错误日志 |
+| `menu:credits` | 数据与关于 → 素材署名；角色详情 → 资料 |
+| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有 |
+| `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
+| `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
+| `tray:打开设置…` | 打开设置窗口 |
+| `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
+| `tray:检查更新` | 版本与更新 → 检查更新 |
+| `tray:退出` | 不需要：退出程序 |
+| `app:关于 Pixel Pet` | 不需要：系统「关于」面板；版本也在 版本与更新 |
+| `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
+| `app:退出` | 不需要：退出程序 |
+
+### 12.4 桌宠窗口通道（src/main/preload.js）：79 个
+
+- 设置窗口有同一通道（34）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口用别的通道做同一件事（10）：
+  - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
+  - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
+  - `set-pet-scale` → `admin-set` petScale（桌宠行为 → 宠物大小）
+  - `set-local` → `admin-set` localAbilities（LobeHub 与本机 → 本机能力）
+  - `set-prefs` → `admin-set` prefs.*（桌宠行为 / 朗读）
+  - `set-tts` → `admin-set` tts.* 与 keys.*（朗读）
+  - `set-asr` → `admin-set` asr.* 与 keys.asrlocal（语音输入）
+  - `set-visitors` → `admin-set` visitors（同屏伙伴）
+  - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
+  - `open-admin` → 这就是打开设置窗口本身
+- 不是配置，只在桌宠窗口（35）：
+  - `boot`：桌宠窗口启动
+  - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
+  - `hatch`：首次唤醒（领养）流程
+  - `act`：互动：喂食 / 玩耍 / 睡觉
+  - `touch`：互动：摸摸（部位触摸）
+  - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
+  - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
+  - `chat`：聊天
+  - `pick-images`：聊天：选图片
+  - `cancel`：聊天：停止生成
+  - `move-by`：拖动她
+  - `move-to`：走动时移动窗口
+  - `work-area`：走动时读屏幕边界
+  - `cursor-point`：VRM 视线跟随鼠标
+  - `tts-synthesize`：朗读一句（播放，不是配置）
+  - `tts-cancel`：停止朗读
+  - `tts-prewarm`：互动语音预合成
+  - `asr-transcribe`：一次语音输入
+  - `asr-cancel`：取消语音输入
+  - `asr-mic-access`：麦克风权限请求
+  - `visitor-boot`：同屏伙伴窗口启动
+  - `pose`：扔出去时的碰撞
+  - `peers`：同屏伙伴的位置（碰撞）
+  - `kick`：碰撞把别人撞开
+  - `api-reply`：对外接口请求的回执
+  - `quit`：退出程序（托盘 / 应用菜单）
+  - `debug-set`：测试钩子（只在 PIXELPET_TEST=1）
+  - `debug-import-pack`：测试钩子
+  - `debug-next-open`：测试钩子
+  - `debug-next-save`：测试钩子
+  - `debug-opened-links`：测试钩子
+  - `debug-admin`：测试钩子
+  - `debug-tray`：测试钩子
+  - `debug-tray-click`：测试钩子
+  - `debug-heartbeat`：测试钩子
+
+缺失：无
+
+<!-- coverage-matrix:end -->

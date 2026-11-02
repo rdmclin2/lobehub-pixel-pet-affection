@@ -2,12 +2,12 @@
  * 角色列表 (P-02) · 角色详情 (P-03 + P-04) · 外观资源 (P-02). Data: core/roster.js rows, rebuilt in main on
  * every change, so a switch made here shows in the pet window and the other way round.
  */
-import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
+import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -175,6 +175,10 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
   const { roster, view } = useStore();
   const sw = useSwitch();
   const met = roster.filter((c) => c.met).length;
+  const [kind, setKind] = useState('all');
+  // 按形象类型: every kind any character can wear, plus 有导入包 (a character with an imported pack of any kind)
+  const kinds = [...new Map(roster.flatMap((c) => c.packKinds ?? []).map((k) => [k.kind, k.label])).entries()];
+  const shown = roster.filter((c) => kind === 'all' || (kind === 'user' ? (c.packKinds ?? []).some((k) => k.user > 0) : (c.packKinds ?? []).some((k) => k.kind === kind)));
   return (
     <>
       <PageHeader
@@ -187,8 +191,19 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         title="角色图鉴"
       />
       {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
-      <div className={gstyles.grid} data-roster>
-        {roster.map((c) => (
+      <Flexbox align="center" data-kind-filter gap={8} horizontal wrap="wrap">
+        <Text fontSize={12} type="secondary">
+          按形象类型
+        </Text>
+        <Segmented
+          onChange={(v) => setKind(String(v))}
+          options={[{ label: `全部 ${roster.length}`, value: 'all' }, ...kinds.map(([value, label]) => ({ label: `${label} ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.kind === value)).length}`, value })), { label: `有导入包 ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.user > 0)).length}`, value: 'user' }]}
+          size="small"
+          value={kind}
+        />
+      </Flexbox>
+      <div className={gstyles.grid} data-roster data-roster-filter={kind}>
+        {shown.map((c) => (
           <article className={gstyles.card} data-current={c.current} data-row={c.id} key={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
             <a aria-label={`查看 ${c.nameZh}`} className={gstyles.art} href={`#/characters/${c.id}`}>
               <SpriteStage animate height={184} name={c.nameZh} preview={c.preview} silhouette={!c.met && !c.current} />
@@ -221,6 +236,14 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
                 </Text>
               </Flexbox>
               <HeartMeter c={c} compact />
+              <Flexbox data-pack-kinds={c.id} gap={4} horizontal wrap="wrap">
+                {(c.packKinds ?? []).map((k) => (
+                  <Tag color={KIND_COLOR[k.kind]} key={k.kind} size="small">
+                    {k.label}
+                    {k.user ? ` · 导入 ${k.user}` : ''}
+                  </Tag>
+                ))}
+              </Flexbox>
               <Text ellipsis fontSize={12} type="secondary">
                 {c.pack ? c.pack.name : c.kindLabel} · {c.sourceLabel}
                 {c.voicePack ? ` · 语音包 ${c.voicePack.lines} 句` : ''}
@@ -316,6 +339,14 @@ const RoleTab = ({ c }: { c: RosterRow }) => {
   useEffect(() => setText(c.systemRole), [c.systemRole]);
   const len = [...text].length;
   return (
+    <Flexbox gap={16}>
+    {c.personality && (
+      <Surface description="写在她的角色文件里，是她 system role 的底子（只读）。下面的个性化设定会加在它后面。" title="她的设定">
+        <Text data-personality={c.id} style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {c.personality}
+        </Text>
+      </Surface>
+    )}
     <Surface description="加在她 system role 里的你自己的话（比如称呼、口癖）。留空即删除。" title="个性化设定">
       <Flexbox gap={8}>
         <TextArea aria-label="个性化设定" data-system-role={c.id} onChange={(e) => setText(e.target.value)} placeholder="例如：叫我老板，回答简短一点。" rows={6} aria-invalid={len > max} value={text} />
@@ -361,6 +392,7 @@ const RoleTab = ({ c }: { c: RosterRow }) => {
         </Flexbox>
       </Flexbox>
     </Surface>
+    </Flexbox>
   );
 };
 
@@ -423,16 +455,6 @@ const wstyles = createStaticStyles(({ css }) => ({
 const KIND_NAME: Record<string, string> = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
 
 /** One outfit of the current character's wardrobe (view.outfits, as the pet window's 衣柜 lists it). */
-interface OutfitRow {
-  condition?: string | null;
-  desc?: string;
-  equipped: boolean;
-  id: string;
-  isNew?: boolean;
-  label: string;
-  locked: boolean;
-}
-
 /**
  * 衣柜: the outfits of the pack she wears, as chips. Only the character with you now can change (it is saved
  * with the pet); her stage on the left shows the new one the moment main confirms it. Chips, not pictures:
@@ -501,6 +523,52 @@ const OutfitRack = ({ c }: { c: RosterRow }) => {
 };
 
 /**
+ * 取景 (docs/half-body-mode.md): her own framing on the desktop — 跟随 (her pack's default, else the global
+ * 桌宠行为 → 取景), 全身 or 半身. Saved at once; the pet window re-frames her without reloading the model.
+ */
+const FramingRow = ({ c }: { c: RosterRow }) => {
+  const { view, settings, merge } = useStore();
+  const ch = view?.characters?.find((x: any) => x.id === c.id);
+  const [busy, setBusy] = useState(false);
+  const own: string = ch?.framing ?? 'auto';
+  const global = settings?.prefs?.framing === 'half' ? '半身' : '全身';
+  const packDefault = ch?.look?.framing === 'half' ? '半身' : ch?.look?.framing === 'full' ? '全身' : null;
+  const follow = packDefault ? `跟随形象包（${packDefault}）` : `跟随全局（${global}）`;
+  const camera = ch?.look?.kind === 'vrm' || ch?.look?.kind === 'live2d';
+  return (
+    <Flexbox align="center" data-framing-row={c.id} gap={12} horizontal wrap="wrap">
+      <Text strong>取景</Text>
+      <div aria-label="取景" data-key={`framings.${c.id}`} role="group">
+        <Segmented
+          disabled={busy}
+          onChange={async (v) => {
+            setBusy(true);
+            try {
+              const r = await api().setFraming(v as 'auto' | 'full' | 'half', c.id);
+              if (r && r.view) merge({ view: r.view });
+              if (r && r.settings) merge({ settings: r.settings });
+              if (r && r.ok) toast.success(`${c.nameZh} 的取景已改为「${v === 'auto' ? follow : v === 'half' ? '半身' : '全身'}」`);
+              else toast.error(reasonText(r));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          options={[
+            { label: follow, value: 'auto' },
+            { label: '全身', value: 'full' },
+            { label: '半身', value: 'half' },
+          ]}
+          value={own}
+        />
+      </div>
+      <Text fontSize={12} type="secondary">
+        {camera ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '目前只有 VRM 和 Live2D 形象包能半身取景；她现在穿的形象包保持全身。'}
+      </Text>
+    </Flexbox>
+  );
+};
+
+/**
  * 装扮: her wardrobe. The outfits of the pack she wears, then every pack she can wear as a card with its
  * picture; 试穿 shows it on her stage on the left, 穿上 dresses her (in the pet window too).
  */
@@ -563,6 +631,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
         {licenseOf && <VrmLicense packId={licenseOf.id} vrm={licenseOf.vrm} />}
       </Modal>
       <OutfitRack c={c} />
+      <FramingRow c={c} />
       <Surface description="她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。" title="形象包">
         <div className={wstyles.grid} data-wardrobe={c.id}>
           {options.map((p) => (
@@ -634,7 +703,36 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
           </div>
         </div>
       </Surface>
+      <Live2dSize c={c} options={options} />
     </Flexbox>
+  );
+};
+
+/** 模型大小: how much of the pet window an imported Live2D model she wears fills (the pet window's slider, saved in the pack). */
+const Live2dSize = ({ c, options }: { c: RosterRow; options: PackOption[] }) => {
+  const mine = options.find((o) => o.id === c.pack?.id && o.kind === 'live2d' && o.source === 'user');
+  const [v, setV] = useState<number>(Math.round((mine?.height ?? 1) * 100));
+  useEffect(() => setV(Math.round((mine?.height ?? 1) * 100)), [mine?.id, mine?.height]);
+  if (!mine) return null;
+  return (
+    <Surface description="她穿的是导入的 Live2D 模型：调整模型占桌宠窗口的高度。松手后保存，桌宠窗口立即重绘。" title="Live2D 模型大小">
+      <Flexbox align="center" data-live2d-size={mine.id} gap={12} horizontal>
+        <Slider
+          max={100}
+          min={30}
+          onChange={(x) => setV(Number(x))}
+          onChangeComplete={async (x) => {
+            const r = await api().setLive2dHeight(mine.id, Number(x) / 100);
+            if (r && r.ok) toast.success(`模型大小 → ${x}%`);
+            else toast.error(reasonText(r));
+          }}
+          step={5}
+          style={{ flex: 1 }}
+          value={v}
+        />
+        <Text code>{v}%</Text>
+      </Flexbox>
+    </Surface>
   );
 };
 
@@ -762,7 +860,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-type DetailTab = 'looks' | 'affection' | 'model' | 'role' | 'voice' | 'about';
+type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'about';
 
 const STAGE_MIN = 320;
 const STAGE_MAX = 640;
@@ -901,6 +999,11 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
                   <Surface title="资料">
                     <Flexbox gap={12}>
                       <Info label="厂商">{c.vendor}</Info>
+                      <Info label="可穿的形象">
+                        <Flexbox gap={4} horizontal wrap="wrap">
+                          {(c.packKinds ?? []).length ? c.packKinds.map((k) => <Tag color={KIND_COLOR[k.kind]} key={k.kind}>{`${k.label} · 内置 ${k.builtin} · 导入 ${k.user}`}</Tag>) : '--'}
+                        </Flexbox>
+                      </Info>
                       <Info label="当前外观">{c.pack ? `${c.pack.name}（${c.sourceLabel}）` : c.kind === 'video' ? '原版动画' : '--'}</Info>
                       <Info label="模型">{c.model?.current ? modelLabel(c, c.model.current) : '--'}</Info>
                       <Info label="素材署名">
