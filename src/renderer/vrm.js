@@ -180,6 +180,7 @@
     let lipMode = 'off';
     let gaze = { x: 0, y: 0 };
     let ground = 0;
+    let seatLift = 0; // how far a seated pose is raised to stay inside the frame (groundOffset)
     let shiftX = 0;
     let yaw = 0;
     let prevSnap = null;
@@ -347,6 +348,8 @@
       camera.lookAt(0, camera.position.y, size.cz);
     }
 
+    // the bones a seated pose may push below the frame, and how far (× hips height) her mesh hangs below each
+    const SEAT_PADS = [['hips', 0.2], ['leftUpperLeg', 0.12], ['rightUpperLeg', 0.12], ['leftLowerLeg', 0.09], ['rightLowerLeg', 0.09], ['leftFoot', 0.08], ['rightFoot', 0.08], ['leftToes', 0.05], ['rightToes', 0.05]];
     // feet on the floor whatever the clip does with the hips (sitting on the floor: the seat on it), and a
     // sitting pose centred on its own width — a reclined sit reaches far to one side (§3.6)
     function groundOffset(sit) {
@@ -361,7 +364,27 @@
       const low = Math.min(...pts.filter((p, i) => i < 6).map((p) => p.y), hips ? hips.y - rest.hipsY * 0.09 : Infinity) - sp.y;
       const xs = pts.map((p) => p.x - sp.x);
       const x = sit && xs.length ? -(Math.min(...xs) + Math.max(...xs)) / 2 : 0;
-      return { y: Number.isFinite(low) ? rest.feetY - low : 0, x: Number.isFinite(x) ? x : 0 };
+      let y = Number.isFinite(low) ? rest.feetY - low : 0;
+      // sitting, the knees and feet come towards the camera and the seat, thighs and skirt hang below their
+      // bones: on the floor line they fell out of the bottom of the canvas (liliya's sit.rest was cut at the
+      // waist, T-2684). Lift the seated body until each part's mesh (bone − pad) is above the bottom edge of
+      // the view at that part's own depth; a standing figure is framed as before.
+      seatLift = 0;
+      if (sit && camera) {
+        const tan = Math.tan((camera.fov * DEG) / 2);
+        const margin = (size.h / share) * 0.012;
+        let need = -Infinity;
+        for (const [n, pad] of SEAT_PADS) {
+          const p = at(n);
+          if (!p) continue;
+          const d = camera.position.z - p.z;
+          if (d <= 0) continue;
+          const bottom = camera.position.y - d * tan;
+          need = Math.max(need, bottom + margin - (p.y - sp.y - pad * rest.hipsY));
+        }
+        if (Number.isFinite(need) && need > y) { seatLift = need - y; y = need; }
+      }
+      return { y, x: Number.isFinite(x) ? x : 0 };
     }
 
     // the alive layer's offsets (deg) on the clip's pose
@@ -629,7 +652,7 @@
           idleHistory: director ? director.history() : [],
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',
-          layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground,
+          layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground, seatLift: +seatLift.toFixed(4),
           face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze },
           // the pixel vocabulary is gone: no procedural hop / spin / dangle on a VRM (docs §2.3)
           motion: {},

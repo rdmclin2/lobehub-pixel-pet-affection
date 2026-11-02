@@ -182,6 +182,12 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 - **新增一个部位**（例如“耳朵”）：在 `touch-zones.js` 里把 id 加进 `ZONE_IDS`，在 `ZONES` 写中文名、敏感度（0 随便碰 / 1 有点私人 / 2 边界）和默认心情，在 `DEFAULT_ZONES`（或角色文件的 `touch.zones`）给出矩形、放进 `ZONE_ORDER`，在 `DEFAULT_LINES` 写三档台词；在 `src/core/affection.js` 的规则表加 `touch:<部位>` 的分值、冷却和每日上限；在 `src/renderer/fx.js` 的 `TOUCH_MARKS` 配标记。可选：角色包里加名为 `touch-<部位>` 的动作，就会代替“摸摸”播放。
 - 改完跑 `npm test`：角色文件的 `touch` 块会被校验（部位名、矩形范围、每档台词非空），所有台词会过内容守卫和合规词表。
 
+## VRM 3D 模型（独立的姿势 / idle / 交互反应）
+
+导入的 VRM 模型有一套独立于像素角色的动作体系：6 种姿势（站 4 种、坐 2 种，可在外观里选择或交给「自动」调度）、带呼吸/重心/视线/眨眼微动的 idle 待机，以及触摸头/脸/手/肚子/胸、拖起与放下、思考、说话、吃东西、庆祝等反应，并按模型体型分 female / male 两套风格。像素角色的原有交互不受影响。
+
+动作来自素材包（Mixamo 姿势与动作），需要在本机下载并烘焙；模型通过「导入 VRM 模型…」导入。**模型和素材仅限个人使用，不进仓库、不随安装包分发。** 步骤（放置素材、烘焙、导入莉莉雅 liliya、授权说明）见 [docs/vrm-liliya.md](docs/vrm-liliya.md)，设计见 [docs/vrm-motion-system.md](docs/vrm-motion-system.md)。
+
 ## 语音（TTS）
 
 打开 **高级设置 → 桌宠行为 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来；她的互动台词也念（见下方“互动语音”），自动碎碎念默认不念。用哪个引擎在 **高级设置 → 语音** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。

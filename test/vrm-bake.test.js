@@ -86,6 +86,28 @@ test('bake parameters: trim, hold, loop, mirror, amplitude, in place, centring',
   assert.ok(idle.bones.rightUpperArm && Math.abs(idle.hips.values.reduce((s, p) => s + p[0], 0)) < 1e-9);
 });
 
+test('loop seam: the end eases into the start slowly enough for the gap (no 40° head snap every loop, T-2684)', () => {
+  const times = Array.from({ length: 211 }, (_, i) => i / 30); // 7 s at 30 fps
+  const turn = (t) => qz(-20 + (40 * t) / 7); // drifts 40° over the clip: the end is 40° from the start
+  const c = clip(times.map(turn), { times });
+  assert.ok(Math.abs(B.seamAngle(c) - 40) < 0.5, `seam ${B.seamAngle(c)}`);
+  assert.ok(Math.abs(B.seamBlend(c) - 40 / B.SEAM_SPEED) < 0.02, 'blend = gap / speed');
+  assert.equal(B.seamBlend(clip(times.map(() => qz(-70)), { times })), 0.25, 'a matching seam keeps the short blend');
+  assert.ok(Math.abs(B.seamBlend(clip([qz(0), qz(170)], { times: [0, 1.5] })) - 0.5) < 1e-9, 'at most a third of the clip');
+  const l = B.bakeParams(c, { kind: 'idle', loop: true, center: false });
+  const v = l.bones.leftUpperArm.values;
+  assert.ok(near(v[v.length - 1], v[0]), 'the end meets the start');
+  let fastest = 0;
+  for (let i = 1; i < v.length; i++) fastest = Math.max(fastest, B.qangle(v[i], v[i - 1]) * 30);
+  // smoothstep peaks at 1.5× its mean slope: the blend never turns a bone faster than 1.5 × SEAM_SPEED
+  assert.ok(fastest <= B.SEAM_SPEED * 1.5 + 1, `fastest turn ${fastest.toFixed(1)}°/s`);
+  // the old fixed 0.25 s blend turned it at ~240°/s
+  const old = B.loopClip(c, 0.25).bones.leftUpperArm.values;
+  let oldFast = 0;
+  for (let i = 1; i < old.length; i++) oldFast = Math.max(oldFast, B.qangle(old[i], old[i - 1]) * 30);
+  assert.ok(oldFast > 200, `fixed 0.25 s blend: ${oldFast.toFixed(0)}°/s`);
+});
+
 test('the .vrma: a glTF the app accepts (inspectVrmaJson) and three-vrm-animation plays as written', async () => {
   const c = clip([qz(-72), qz(-40), qz(-72)], { times: [0, 0.5, 1] });
   const buf = B.writeVrma(c, { name: 't' });

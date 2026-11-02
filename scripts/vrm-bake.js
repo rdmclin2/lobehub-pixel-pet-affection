@@ -137,7 +137,9 @@ async function main() {
       fs.mkdirSync(path.join(out, style), { recursive: true });
       fs.writeFileSync(path.join(out, file), buf);
       index.clips[id] = { ...meta, file, duration: +clip.duration.toFixed(3), bones: Object.keys(clip.bones).length, src: e.src };
-      report.push(`${id}: ${e.src} → ${file} (${clip.duration.toFixed(2)} s, ${Object.keys(clip.bones).length} bones, ${buf.length} B)`);
+      let seam = '';
+      if (e.loop && e.kind !== 'posture') { const pre = B.bakeParams(raw, { ...e, loop: false }); seam = `, loop seam ${B.seamAngle(pre).toFixed(1)}° → blend ${(typeof e.loopBlend === 'number' ? e.loopBlend : B.seamBlend(pre)).toFixed(2)} s`; }
+      report.push(`${id}: ${e.src} → ${file} (${clip.duration.toFixed(2)} s, ${Object.keys(clip.bones).length} bones, ${buf.length} B${seam})`);
     } catch (err) {
       report.push(`${id}: FAILED ${e.src}: ${err.message}`);
     }

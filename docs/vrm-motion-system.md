@@ -417,7 +417,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 
 ### 8.3 真实素材验收（本机，非 CI）
 
-`.agents/acceptance/scripts/vrm-motion-real-acceptance.js <仓库> <输出目录> --assets ~/vrm-assets --model ~/vrm-assets/models/模型文件/莉莉雅/liliya.vrm --male ~/vrm-assets/models/模型文件/vroid.vrm`：
+`.agents/acceptance/scripts/vrm-motion-real-acceptance.js <仓库> <输出目录> --motions ~/vrm-assets/baked --model ~/vrm-assets/models/模型文件/莉莉雅/liliya.vrm --male ~/vrm-assets/models/模型文件/vroid.vrm`：
 
 - 拒绝位于仓库内的素材/模型路径；
 - 烘焙 → 导入 liliya（female 推断）与 vroid.vrm（male 推断）→ 逐个触发 §5 的每个姿势/idle/反应，各截图，并录屏对比男女差异（liliya 的戳脸/害羞 vs vroid 的同一事件）；
@@ -583,3 +583,21 @@ L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 �
 - 单测 `test/vrm-reactions.test.js`（15 项）：清单（每套 ≥ 6 反应、男女不同）、触摸 → 反应映射（男女）、生命周期（淡入 → 片段 → 保持 → 淡出、回到同一 idle、无跳变）、打断（旧反应从当前权重淡出、overlays 顺序、lift 打断触摸）、防抖与连摸延长、用真实 `touch-zones.reactionFor/nextStreak` 驱动的情绪升级（happy → annoyed → angry 及后效）、害羞后姿势、拖拽/落地、talk/think/eat 与反应叠加、庆祝排队与 cue 概率、男女幅度/表情、无素材库降级、intent 携带 streak、3D 命中（各部位、跟随身体、遮挡、背面、缩放、转身模型）、落地膝盖上限。
 - e2e `xvfb-run -a node e2e/run.js vrm`：新增 3D 命中步骤与每种反应的真实点击/拖拽/聊天/喂食步骤；每帧校验「左臂角度 = overlays 按权重叠加的结果」（自制片段每个反应把左臂抬到不同角度）且右臂始终不是 T-pose。
 - 真实素材：`.agents/acceptance/scripts/vrm-reactions-real-acceptance.js <repo> ~/vrm-motion-evidence/reactions --model …/liliya.vrm --male …/vroid.vrm`，每个反应输出 GIF + 峰值帧 + 逐帧日志，及男女对照图 `female-vs-male-reactions.png`。
+
+## 13. 实机验证与自然度修正（T-2684：liliya 实机、像素回归）
+
+素材放置、导入 liliya 和授权说明见 [vrm-liliya.md](vrm-liliya.md)。本节记录在运行中的应用里用 liliya.vrm（female，由模型 meta 推断）和 vroid.vrm（male）逐项评审时发现的问题，以及对应的修正。
+
+### 13.1 修正
+
+| 动作 | 问题（实机所见） | 原因 | 修正 | 复验 |
+|---|---|---|---|---|
+| `sit.rest` / `sit.doze`（男女） | 坐下后身体掉出画布底边：liliya 的 `sit.rest` 从腰部被切掉，`sit.doze` 的裙子和臀部被切；vroid 两种坐姿的脚被切 | `groundOffset` 只把最低骨骼放到地面线（画布底边）。坐姿时膝盖和脚朝相机伸出（透视下比地面线更低），臀部、大腿、裙子的网格又挂在骨骼下方 | `src/renderer/vrm.js` `groundOffset(sit)`：坐姿时按每个部位所在深度计算画面底边（`camera.y − d·tan(fov/2)`），把「骨骼 − 网格垫 `SEAT_PADS`（臀 0.20、大腿 0.12、小腿 0.09、脚 0.08、脚尖 0.05，× 臀高）」整体抬到底边以上，并留 1.2% 画高余量；站姿取景不变。调试字段 `figures[].seatLift` 输出抬高量 | liliya `seatLift` 0.116 / 0.103 m，vroid 0.180 / 0.210 m；vroid 画布最底 2 行不透明像素从 102 / 236 降到 0 / 0；liliya 剩余像素来自拖地长发，落在地面线上属正常 |
+| `idle.variant2@female`（换边待机） | 约每 7 秒头部在 0.25 秒内跳约 40°（逐帧日志：头 `[-8,-7,-20]° → [-31,13,19]°`），看起来像抽一下 | 片段截取 1.5–8.5 s，首尾姿势相差 56°；`loopClip` 固定只用 0.25 s 把尾巴融回开头 | `scripts/lib/vrm-bake-core.js`：循环融合时长改为自适应 `seamBlend = clamp(接缝角 / 40°/s, 0.25 s, 时长/3)`，该片段为 1.40 s；烘焙日志打印每个循环片段的接缝角和融合时长；单测覆盖 | 复验时逐帧的头部最大变化见验收报告。其他循环片段接缝 ≤ 0.4°，仍用 0.25 s |
+
+### 13.2 评审后保留（已知问题）
+
+- `hold.eat`（吃东西）：只有表情、看向下方、咀嚼口型和点头，手不会送到嘴边。素材包里没有进食或拿东西吃的动作，现用片段是放松站姿上半身（权重 0.5），叠加后手臂角度与底层几乎相同。需要 P1 用 VMD 或自制片段补上。
+- liliya `sit.rest` 交叉的腿有一部分被毛衣下摆和长发遮住，没有可见的穿插，但轮廓不够清楚。
+- `react.touch-hands@female`（牵手）伸手幅度较小，峰值只有约 1 s。
+- e2e `vrmui` 13/17：4 个衣柜步骤失败。单模型 VRM 外观会隐藏衣柜按钮，这个问题在本分支之前就存在，与动作系统无关。

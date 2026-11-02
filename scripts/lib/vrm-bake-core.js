@@ -153,6 +153,21 @@ function centerClip(clip) {
   return { ...clip, hips: { times: clip.hips.times.slice(), values: clip.hips.values.map((p) => [p[0] - mx, p[1], p[2] - mz]) } };
 }
 
+// How far apart a clip's last and first frames are: the largest bone turn (deg) across the loop seam.
+function seamAngle(clip) {
+  let m = 0;
+  for (const tr of Object.values(clip.bones)) if (tr.values.length > 1) m = Math.max(m, qangle(tr.values[tr.values.length - 1], tr.values[0]));
+  return m;
+}
+
+// The loop blend a clip needs: long enough that no bone turns faster than SEAM_SPEED deg/s while the end
+// eases into the start (at least 0.25 s, at most a third of the clip). A fixed 0.25 s turned liliya's head
+// 40° in a quarter second every time the trimmed 7 s "Standing Happily" idle looped (T-2684).
+const SEAM_SPEED = 40;
+function seamBlend(clip) {
+  return Math.max(0.25, Math.min(clip.duration / 3, seamAngle(clip) / SEAM_SPEED));
+}
+
 // The parameters of a library entry, in the order they apply.
 function bakeParams(clip, e = {}) {
   let c = clip;
@@ -161,7 +176,7 @@ function bakeParams(clip, e = {}) {
   if (e.inPlace) c = inPlaceClip(c);
   if (typeof e.amplitude === 'number') c = amplitudeClip(c, e.amplitude);
   if (e.mirror) c = mirrorClip(c);
-  if (e.loop && e.kind !== 'posture') c = loopClip(c, typeof e.loopBlend === 'number' ? e.loopBlend : 0.25);
+  if (e.loop && e.kind !== 'posture') c = loopClip(c, typeof e.loopBlend === 'number' ? e.loopBlend : seamBlend(c));
   if (e.kind === 'idle' && e.center !== false) c = centerClip(c); // last: the loop blend moves the hips too
   return c;
 }
@@ -293,6 +308,6 @@ function readVrma(buf) {
 module.exports = {
   MIXAMO_TO_VRM, VRM_REQUIRED, VRM_PARENT, stripMixamo, vrmBoneOf, mirrorBone,
   qmul, qinv, qnorm, qslerp, qangle, retargetQ, mirrorQ,
-  sampleTrack, trimClip, holdClip, loopClip, mirrorClip, amplitudeClip, inPlaceClip, centerClip, bakeParams,
+  sampleTrack, trimClip, holdClip, loopClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, centerClip, bakeParams,
   writeVrma, readVrma, glb,
 };

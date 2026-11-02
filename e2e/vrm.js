@@ -584,7 +584,9 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate((id) => window.PetVRM.director.setPosture(id, 'stand.relaxed'), ID);
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.posture === 'stand.relaxed', null, { timeout: 10000 });
         await sleep(2000);
-        assert.ok(sc.head.y > c.head.y + 20, `the head moved down sitting: ${c.head.y} → ${sc.head.y}`);
+        // seated she is raised so her seat, legs and feet stay inside the frame (T-2684), so the head comes down
+        // less than on the floor line; what matters is that the zones follow her (the next two asserts)
+        assert.ok(sc.head.y > c.head.y + 10, `the head moved down sitting: ${c.head.y} → ${sc.head.y}`);
         assert.notEqual(oldHead && oldHead.zone, 'head');
         assert.equal(newHead.zone, 'head');
         return H.note(`standing zone centres → touchPoint: ${JSON.stringify(got)}\nzones on screen ${JSON.stringify(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, [Math.round(v.x), Math.round(v.y)]])))}\nsit.rest: head ${Math.round(c.head.y)} → ${Math.round(sc.head.y)} px; the old head spot is now ${oldHead && oldHead.zone}, the new one ${newHead.zone}`);

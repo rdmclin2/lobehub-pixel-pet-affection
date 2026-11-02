@@ -121,11 +121,21 @@ async function runModel(tag, MODEL, { full }) {
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
     await openCurrentPage();
     await page.locator('#vrm-import').scrollIntoViewIfNeeded();
-    await page.evaluate((x) => window.pet.debugNextOpen(x), MODEL);
+    // the import flow, step by step: the button on the character page, the confirmation card (name, author,
+    // licence of the picked file), the new look selected
+    await page.screenshot({ path: path.join(dir, 'import-1-button.png') });
+    await page.evaluate((x) => window.pet.debugNextOpen(x), MODEL); // answers the native file dialog with this path
     await page.click('#vrm-import');
     await page.waitForSelector('#vrm-confirm', { timeout: 90000 });
+    await sleep(800);
+    await page.screenshot({ path: path.join(dir, 'import-2-confirm.png') });
+    R.importConfirm = await page.evaluate(() => document.getElementById('vrm-confirm').innerText);
     await page.click('#vrm-confirm [data-act="use"]');
     await page.waitForSelector('.pack-opt.on[data-pack^="vrm-"]', { timeout: 90000 });
+    await sleep(500);
+    await page.screenshot({ path: path.join(dir, 'import-3-done.png') });
+    R.importMsg = await page.evaluate(() => document.getElementById('panel-msg').textContent);
+    note(`[${tag}] 导入确认卡: ${JSON.stringify(R.importConfirm).slice(0, 300)}; 提示: ${R.importMsg}`);
     ID = await page.getAttribute('.pack-opt.on[data-pack^="vrm-"]', 'data-pack');
     await page.click('#panel-close');
     await drawing();
@@ -171,7 +181,12 @@ async function runModel(tag, MODEL, { full }) {
       const f = await fig();
       const shot = await canvasShot(`posture-${p}`);
       const saved = await page.evaluate(async (id) => (await window.pet.getSettings()).vrmPostures[id], ID);
-      R.postures[p] = { shot, layers: d.layers, posture: d.posture, source: f.plan.postureSource, saved, weightSums: sums, bones: f.bones, ground: f.ground };
+      R.postures[p] = { shot, layers: d.layers, posture: d.posture, source: f.plan.postureSource, saved, weightSums: sums, bones: f.bones, ground: f.ground, seatLift: f.seatLift };
+      // the whole figure inside the canvas: the bottom pixel row must stay empty (a seated pose once hung out of it)
+      const edge = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const g = document.createElement('canvas'); g.width = c.width; g.height = c.height; const x = g.getContext('2d'); x.drawImage(c, 0, 0); const row = x.getImageData(0, c.height - 2, c.width, 2).data; let n = 0; for (let i = 3; i < row.length; i += 4) if (row[i] > 8) n++; return n; });
+      R.postures[p].bottomRowPixels = edge;
+      if (p.startsWith("sit.")) check(f.seatLift > 0, `[${tag}] 姿势 ${p}: 坐姿整体上抬 seatLift=${f.seatLift} m 以免臀/腿/脚落出画布底边；画布最底 2 行剩余 ${edge} 个不透明像素（拖地长发落在地面线上属正常，见截图）`);
+      else note(`[${tag}] 姿势 ${p}: 画布最底 2 行 ${edge} 个不透明像素（脚底贴地面线）`);
       check(d.posture === p && saved === p && sums.every((s) => Math.abs(s - 1) < 0.01), `[${tag}] 姿势 ${p}: data-posture=${d.posture}, layers ${d.layers}, settings.vrmPostures=${saved}, weight sums during fade ${[...new Set(sums)].join('/')}`);
     }
 
