@@ -63,6 +63,7 @@
 | key | 类型 | 默认值 | 取值范围 / 校验 | 当前编辑入口 · IPC | 生效 |
 | --- | --- | --- | --- | --- | --- |
 | `appearance.<id>` | `{[characterId]: packId}` | `{}`（取角色的默认包 `art.packs[0]`，再退到 `fallbackPack`） | 包 id `^[a-z0-9][a-z0-9-]{2,39}$`；包必须属于这个角色；18+ 的包要求 `ageConfirmed && adultContent`；大肥鱼可以选 `dafeiyu-clips`（视频） | ⋯ → 角色列表 → 她的页 → 外观（角色包） · `set-appearance` | 即时，离开 18+ 外观时会换下成人服饰 · 仅回调用方 |
+| `framings.<id>` | `{[characterId]: 'full' \| 'half'}` | `{}`（没有这一项 = 跟随形象包 `pack.json` 的 `framing`，再跟随全局 `prefs.framing`） | 只收 `full` / `half`；`auto` 删除这一项（`normalizeFramings`） | 设置窗口 → 角色 → 她的页 → 形象包 → 取景（跟随 / 全身 / 半身） · `set-framing` | 即时：桌宠窗口的 VRM 原地换取景（相机滑过去，不重载模型），见 `docs/half-body-mode.md` |
 | `systemRoles.<id>` | `{[characterId]: string}` | `{}` | 经过 `cleanSystemRole`：去掉控制字符，最多 `SYSTEM_ROLE_MAX` = 1000 字；空串会删除这一项 | ⋯ → 角色列表 → 她的页 → 个性化设定（System Role） · `set-system-role` | 当前角色在后台更新 agent 的 system role（personaKey 变了）；其他角色在下次说话前更新 · 仅回调用方 |
 | `petScale` | number | `1.25` | `PET_SCALE` 0.5–2.5，两位小数；窗口会按屏幕大小再收一次（`fitScale`） | ⋯ → 高级设置 → 宠物大小（滑块 50–250%，步长 5）；桌面上拖左上角手柄；Ctrl/⌘+滚轮 · `set-pet-scale`（拖动中用 `preview-pet-scale`） | 即时（`resizePet`） |
 | `petScaleSet` | boolean | `false` | 内部标记，表示主人是否手动选过大小（选过就不再跟随默认值）。由 `set-pet-scale` 置为 true，「恢复默认」不会清它 | 不直接编辑 | — |
@@ -130,6 +131,7 @@
 | `prefs.collide` | boolean | `true` | 只在有同屏伙伴时有意义 | 同上 → 互相碰撞 · `set-prefs` | 即时 |
 | `prefs.touchZones` | boolean | `true` | 关闭后点哪里都是普通的摸摸 | 同上 → 部位触摸 · `set-prefs` | 即时 |
 | `prefs.touchHint` | boolean | `true` | 要 `prefs.touchZones` 开着才起作用 | 同上 → 触摸提示 · `set-prefs` | 即时 |
+| `prefs.framing` | `'full' \| 'half'` | `'full'` | 其它值（含旧文件里没有这一项）都按 `full` 读（`normalizePrefs`）；角色自己的 `framings.<id>` 和形象包的 `framing` 优先 | 设置窗口 → 玩法 → 桌宠行为 → 大小与取景 → 取景 · `admin-set` → `set-prefs` | 即时（目前只对 VRM 生效，见 `docs/half-body-mode.md`） |
 
 `prefs.voice*` 归在 §2.3。主动行为（`core/proactive.js`）和好感度（`core/affection.js`）**目前都没有用户配置项**，参数都是写死的常量，列在这里作为候选（本期不做，见 §8 T10）：
 
@@ -369,7 +371,7 @@ adminWin.on('closed', () => { adminWin = null; });
 | 角色 | 角色详情 `#/characters/:id` | `PageTabs`：概况（关系、服饰解锁、署名）· 模型（`models.<id>`）· 个性化设定（`systemRoles.<id>`）· 外观（`appearance.<id>`、导入、Live2D 高度）· 语音（音色只读、语音包）· 好感度（一键解锁） | P-03 + P-04 |
 | 角色 | 外观资源 `#/packs` | 所有角色包的表格，列有名称、角色、类型、来源、18+、授权；操作有导入角色包 / Live2D / VRM、导出、删除（只限导入的）、打开文件夹 | P-02 |
 | 角色 | 同屏伙伴 `#/visitors` | `visitors`（最多 3 位，不能选当前角色），加 `prefs.collide` | P-05 |
-| 偏好 | 桌宠行为 `#/behavior` | `petScale`（`SliderWithInput` 50–250%，恢复默认），`prefs.roam / clickSound / memes / touchZones / touchHint` | P-05 |
+| 偏好 | 桌宠行为 `#/behavior` | `petScale`（`SliderWithInput` 50–250%，恢复默认），`prefs.framing`（大小与取景卡片，全身 / 半身），`prefs.roam / clickSound / memes / touchZones / touchHint` | P-05 |
 | 偏好 | 外观 `#/appearance` | 后台主题 `ui.theme`（新），以后放桌宠窗口的令牌开关（T8） | P-05 |
 | 语音 | 朗读 `#/tts` | `prefs.voice`（功能总开关，关闭时下面的配置收起），`prefs.voiceInteractions / voiceMurmurs`，`tts.provider / fallback / packs`；每个引擎一张卡片（Fish、MiniMax、本地），包含 Key（`InputPassword`，只写不显示）、端点、`tts.local.*`；状态（是否设了 Key、最近一次错误、缓存大小），清空缓存，试听 | P-05 |
 | 语音 | 语音输入 `#/asr` | `asr.enabled`（总开关），`engine / language / autoSend / fallback`，LobeHub 卡片（`lobehub.model`），本地卡片（`local.endpoint / api / model / timeoutSec`、Key），`maxSeconds`（补上入口），测试连接 | P-05 |

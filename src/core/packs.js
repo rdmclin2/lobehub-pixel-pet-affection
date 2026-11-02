@@ -13,6 +13,7 @@ const { OUTFITS, OUTFIT_IDS } = require('./outfits');
 const { SPECIES, SPECIES_IDS } = require('./species');
 const { STATES } = require('./fx');
 const V = require('./vrm');
+const { FRAMINGS } = require('./framing');
 
 // Schema 2 names a sprite action after the app's states (the DeepSeek pet's 15 states plus `lifted`,
 // see src/core/fx.js). Schema 1 packs keep their 8 older action names; the app maps states onto
@@ -452,6 +453,8 @@ function validatePack(manifest, dir) {
   if (!text(m.name, 40)) errors.push('name is required');
   if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
+  // 取景 default for whoever wears this pack (core/framing.js): 'full' | 'half'; a character's own choice goes first
+  if (m.framing !== undefined && !FRAMINGS.includes(m.framing)) errors.push(`framing must be one of ${FRAMINGS.join(', ')}`);
 
   const outfits = {};
   const src = m.outfits && typeof m.outfits === 'object' ? m.outfits : {};
@@ -513,6 +516,7 @@ function validatePack(manifest, dir) {
       model: live2d ? m.model : model,
       live2d,
       vrm: vrmPack,
+      ...(FRAMINGS.includes(m.framing) ? { framing: m.framing } : {}),
       outfits: vrm ? { ...vrm.outfits } : outfits,
       dir: path.resolve(dir),
     },
@@ -563,7 +567,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
   for (const id of [packId, defaultPack(speciesId), fallbackId || fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
-    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
+    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated, ...(p.framing ? { framing: p.framing } : {}) };
     if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
     if (p.kind === 'live2d') return { ...base, model: packUrl(p, p.model), live2d: p.live2d };
     if (p.kind === 'vrm') {

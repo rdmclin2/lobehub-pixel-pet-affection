@@ -29,6 +29,7 @@ my-grok/
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态；live2d；vrm：3D（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
+  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，目前只对 vrm 生效）；角色页的选择优先，见 docs/half-body-mode.md
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
   "actions": {                       // sprites 必填：每个状态在精灵图里的位置（行、起始列都从 0 开始）
