@@ -1,0 +1,70 @@
+{
+  "command": [
+    "lh",
+    "agent",
+    "run",
+    "-a",
+    "agt_REDACTED1",
+    "-p",
+    "用四句话介绍一下你自己，每句二十字左右。",
+    "--sse"
+  ],
+  "exitCode": 0,
+  "totalMs": 13159,
+  "stdoutChunks": 10,
+  "firstStdoutMs": 2275,
+  "lastStdoutMs": 13111,
+  "chunks": [
+    {
+      "ms": 2275,
+      "stream": "stdout",
+      "text": "23:19:32 [INFO] Operation: op_REDACTED1 · Topic: tpc_REDACTED1\n"
+    },
+    {
+      "ms": 2730,
+      "stream": "stdout",
+      "text": "23:19:32 [INFO] Agent started\n"
+    },
+    {
+      "ms": 4555,
+      "stream": "stdout",
+      "text": "── Step 1 ──\n"
+    },
+    {
+      "ms": 7809,
+      "stream": "stdout",
+      "text": "用户要求四句话介绍自己，每句约二十字。简短中文。\n\n我是\"pixel-pet streaming probe (temp)\"，一个临时桌面宠物探针。用DeepSeek V4.1 Flash模型。\n\n四句，每句约20字。"
+    },
+    {
+      "ms": 7809,
+      "stream": "stdout",
+      "text": "我是桌面宠物探针，暂名 pixel-pet，只是个临时的小试用身份。\n\n平时守在桌面角落，用中文短句回话，不啰嗦也不长篇。\n\n我能看图片、查网页，还能调用本机命令替你跑腿。\n\n有什么想试的，尽管说一声，我立刻上手。"
+    },
+    {
+      "ms": 7809,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 12065,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 12066,
+      "stream": "stdout",
+      "text": "── Step 2 ──\n"
+    },
+    {
+      "ms": 13111,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 13111,
+      "stream": "stdout",
+      "text": "✓ Agent finished · 1 step · $0.0003\n"
+    }
+  ],
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

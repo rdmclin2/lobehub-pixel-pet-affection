@@ -139,6 +139,124 @@ async function runLocalTool(name, args, signal) {
   throw new Error(`unknown tool ${name}`);
 }
 
+// ---- streaming (SSE) -------------------------------------------------------------------------------------
+// `stream: true` answers as Server-Sent Events (docs/streaming-audit.md §4.2): `event: <type>` + `data: <json>`
+// blocks separated by a blank line. Bytes are decoded as one UTF-8 stream, so a character split between two
+// network reads stays whole, and a block split anywhere waits for the rest. `onEvent(type, data)`.
+function createSseParser(onEvent) {
+  const decoder = new TextDecoder('utf-8');
+  let buf = '';
+  let type = '';
+  let data = [];
+  const line = (l) => {
+    if (l === '') {
+      if (data.length === 1 && data[0].trim() === '[DONE]') {
+        onEvent('[DONE]', {}); // OpenAI-style end marker
+      } else if (data.length) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(data.join('\n'));
+        } catch { /* not JSON: ignore the block */ }
+        if (parsed && typeof parsed === 'object') onEvent(type || parsed.type || 'message', parsed);
+      }
+      type = '';
+      data = [];
+      return;
+    }
+    if (l.startsWith(':')) return; // comment / keep-alive
+    const i = l.indexOf(':');
+    const field = i < 0 ? l : l.slice(0, i);
+    let value = i < 0 ? '' : l.slice(i + 1);
+    if (value.startsWith(' ')) value = value.slice(1);
+    if (field === 'event') type = value;
+    else if (field === 'data') data.push(value);
+  };
+  const lines = (final) => {
+    let nl;
+    while ((nl = buf.search(/\r\n|\r|\n/)) >= 0) {
+      // a lone \r at the very end may be the first half of \r\n
+      if (!final && buf[nl] === '\r' && nl === buf.length - 1) break;
+      const len = buf[nl] === '\r' && buf[nl + 1] === '\n' ? 2 : 1;
+      line(buf.slice(0, nl));
+      buf = buf.slice(nl + len);
+    }
+  };
+  return {
+    push(bytes) {
+      buf += typeof bytes === 'string' ? bytes : decoder.decode(bytes, { stream: true });
+      lines(false);
+    },
+    end() {
+      buf += decoder.decode();
+      lines(true);
+      if (buf) line(buf);
+      buf = '';
+      line(''); // a last block without its blank line still counts
+    },
+  };
+}
+
+const isEventStream = (res) => /text\/event-stream/i.test((res.headers && typeof res.headers.get === 'function' && res.headers.get('content-type')) || '');
+
+async function* chunksOf(body) {
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    let finished = false;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          finished = true;
+          return;
+        }
+        yield value;
+      }
+    } finally {
+      // stopped reading early (the terminal event is in): let the connection go
+      if (!finished) reader.cancel().catch(() => {});
+    }
+  }
+  yield* body;
+}
+
+// One streamed response, read to its end, as the same object a `stream: false` request returns:
+// { id, status, output, output_text, usage, error }. Reply text is handed to `onText` as it arrives.
+async function readResponseStream(body, onText) {
+  let response = null; // the latest full response object (created → completed / incomplete / failed)
+  let terminal = null;
+  let error = null;
+  let done = false; // `data: [DONE]`: nothing more comes, terminal event or not
+  const items = []; // finished output items by output_index (the terminal response may list none)
+  const texts = new Map(); // item_id → text so far, for messages that never send output_item.done
+  const parser = createSseParser((type, data) => {
+    if (data.response && typeof data.response === 'object') response = data.response;
+    if (type === 'response.output_text.delta' && typeof data.delta === 'string' && data.delta) {
+      texts.set(data.item_id, (texts.get(data.item_id) || '') + data.delta);
+      onText(data.delta);
+    } else if (type === 'response.output_item.done' && data.item) {
+      items[typeof data.output_index === 'number' ? data.output_index : items.length] = data.item;
+    } else if (type === 'response.completed' || type === 'response.incomplete' || type === 'response.failed') {
+      terminal = type;
+    } else if (type === 'error') {
+      error = data.error || data;
+    } else if (type === '[DONE]') {
+      done = true;
+    }
+  });
+  for await (const chunk of chunksOf(body)) {
+    parser.push(chunk);
+    if (terminal || error || done) break;
+  }
+  if (!terminal && !error && !done) parser.end();
+  if (error) return { id: response && response.id, status: 'failed', error, output: [] };
+  if (!terminal) throw new ResponsesError('Responses API stream ended before the response was complete', { code: 'EAPI' });
+  const output = items.filter(Boolean);
+  for (const [id, text] of texts) {
+    if (!output.some((o) => o.type === 'message' && o.id === id)) output.push({ type: 'message', id, content: [{ type: 'output_text', text }] });
+  }
+  return { ...response, output: output.length ? output : response.output || [], output_text: output.length ? undefined : response.output_text };
+}
+
 // ---- the client ----------------------------------------------------------------------------------------
 class ResponsesClient {
   // `lh`: the LhClient, for the pet's workspace scope and to let the CLI refresh an expired login.
@@ -184,33 +302,60 @@ class ResponsesClient {
   }
 
   // Same contract as LhClient#run: { text, topicId, cost }. With `tools` empty the model gets no tools.
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [] }) {
+  // `onDelta(textChunk, fullSoFar)` asks for the reply as it is written (`stream: true`): every piece of text,
+  // tool-step preambles included (a later step's first piece starts with a paragraph break). `fullSoFar` is all
+  // pieces so far joined; the returned `text` stays the final reply. A server that answers with plain JSON
+  // anyway is read the old way and `onDelta` gets the whole reply once. Without `onDelta`: `stream: false`.
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], onDelta = null }) {
     const ac = new AbortController();
     this._active.add(ac);
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs);
     let toolsRan = false;
+    let full = '';
+    let newStep = false;
+    const emit = (chunk) => {
+      if (!onDelta || !chunk) return;
+      if (newStep && full) chunk = `\n\n${chunk}`;
+      newStep = false;
+      full += chunk;
+      try {
+        onDelta(chunk, full);
+      } catch { /* a display callback must not cost the turn */ }
+    };
     try {
       const headers = { Authorization: `Bearer ${await this._token()}`, 'Content-Type': 'application/json' };
       const ws = await this._workspaceId();
       if (ws) headers['X-Workspace-Id'] = ws;
       const url = `${serverUrl(this.env)}/api/v1/responses`;
       const functionTools = tools.length ? LOCAL_FUNCTION_TOOLS : [];
+      const stream = !!onDelta;
       let body = { model: agentId, input: prompt, previous_response_id: topicId || undefined };
       let cost = null;
       for (let step = 0; step < MAX_STEPS; step++) {
         if (ac.signal.aborted) break;
-        const res = await this.fetch(url, { method: 'POST', headers, body: JSON.stringify({ ...body, stream: false, tools: functionTools, tools_mode: 'exclusive' }), signal: ac.signal });
+        newStep = true;
+        const res = await this.fetch(url, { method: 'POST', headers: stream ? { ...headers, Accept: 'text/event-stream' } : headers, body: JSON.stringify({ ...body, stream, tools: functionTools, tools_mode: 'exclusive' }), signal: ac.signal });
         if (!res.ok) {
           const detail = await res.text().catch(() => '');
           throw new ResponsesError(`Responses API HTTP ${res.status}: ${detail.slice(0, 200)}`, { code: res.status === 401 || res.status === 403 ? 'EAUTH' : 'EAPI', status: res.status, toolsRan });
         }
-        const r = await res.json();
+        const streamed = stream && res.body && isEventStream(res);
+        let r;
+        try {
+          r = streamed ? await readResponseStream(res.body, emit) : await res.json();
+        } catch (e) {
+          if (e instanceof ResponsesError) e.toolsRan = toolsRan;
+          throw e;
+        }
         if (r.status === 'failed') throw new ResponsesError(`Responses API: ${(r.error && r.error.message) || 'failed'}`, { code: 'EAPI', toolsRan });
         if (r.usage && typeof r.usage.cost === 'number') cost = (cost || 0) + r.usage.cost;
         const calls = (r.output || []).filter((o) => o && o.type === 'function_call');
+        const stepText = (r.output_text || (r.output || []).flatMap((o) => (o && o.type === 'message' && o.content) || []).filter((p) => p.type === 'output_text').map((p) => p.text).join(''));
+        // not streamed after all (an older server, a proxy): this step's text in one piece
+        if (stream && !streamed) emit(stepText);
         if (!calls.length) {
-          const text = (r.output_text || (r.output || []).flatMap((o) => (o && o.type === 'message' && o.content) || []).filter((p) => p.type === 'output_text').map((p) => p.text).join('')).trim();
+          const text = stepText.trim();
           if (!text) throw new ResponsesError('Agent produced no reply', { code: 'ENOREPLY', toolsRan });
           return { text, topicId: r.id || topicId || null, cost };
         }
@@ -244,4 +389,4 @@ class ResponsesClient {
   }
 }
 
-module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, runLocalTool, readCliCredentials, serverUrl };
+module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, runLocalTool, readCliCredentials, serverUrl, createSseParser, readResponseStream };

@@ -1616,11 +1616,16 @@ async function startTopic(t) {
   if (!r.ok && r.reason === 'canceled') say('（好吧，不聊了。）', 'canceled', 'fallback');
 }
 
-function say(text, kind, source, reason, meme = null) {
+// `streamId`: this line is the final text of the reply that was being written into the bubble (流式回复):
+// the bubble is corrected to it and the stream ends here.
+function say(text, kind, source, reason, meme = null, streamId = null) {
   const b = $('bubble');
+  if (streamId) endStream(streamId, true);
   if (bubbleEndsReading({ text, kind, source })) stopSpeech('bubble'); // the voice follows the bubble: another line there ends the reading
   clearTimeout(bubbleTimer);
-  b.classList.remove('thinking');
+  b.classList.remove('thinking', 'streaming');
+  delete b.dataset.stream;
+  delete b.dataset.streamEnd;
   b.classList.remove('hidden');
   b.textContent = text;
   // a meme picture (core/memes.js): a sticker beside her while the line is shown
@@ -1640,10 +1645,82 @@ function say(text, kind, source, reason, meme = null) {
   talkUntil = performance.now() + Math.min(4000, 400 + text.length * 90);
   // work status: a failed turn shows the pet upset for a moment instead of talking
   if (kind === 'error' && fx) { talkUntil = 0; fx.play('sad', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'sad')); }
-  const hideLater = (ms) => {
-    bubbleTimer = setTimeout(() => (bubbleHold || (speaking() && b.dataset.speech === String(lastSpeech.n)) ? hideLater(3000) : (b.classList.add('hidden'), $('meme-sticker').classList.add('hidden'))), ms);
-  };
-  hideLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
+  hideBubbleLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
+}
+function hideBubbleLater(ms) {
+  const b = $('bubble');
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => (bubbleHold || (speaking() && b.dataset.speech === String(lastSpeech.n)) ? hideBubbleLater(3000) : (b.classList.add('hidden'), $('meme-sticker').classList.add('hidden'))), ms);
+}
+
+// 流式回复 (docs/streaming-ui.md): main sends the reply while it is written ('chat-delta': the text shown so
+// far, guard-checked and with meme tags taken out, pet-service _openStream) and then the final line ('say'
+// with streamId) and the end of the stream ('chat-done'). The bubble fills as pieces arrive, with a typing
+// caret (.streaming) while she is still writing; the controls stay hidden and Esc / 停止 still work (busy).
+// Only the newest stream is shown: pieces of a stream that already ended, or older than the last piece
+// seen, are ignored. Reading aloud, the meme picture and 聊天记录 wait for the final line.
+let stream = null; // { id, n, kind, turnId, text, withheld, at }
+const endedStreams = new Set();
+const streamLog = []; // every piece shown and every end, for the e2e runs (window.petFx.streamLog)
+function logStream(e) {
+  streamLog.push({ ...e, at: Math.round(performance.now()) });
+  if (streamLog.length > 500) streamLog.shift();
+}
+function onChatDelta(d) {
+  if (!d || !d.id || endedStreams.has(d.id)) return;
+  if (!stream || stream.id !== d.id) {
+    stream = { id: d.id, n: 0, kind: d.kind, turnId: d.turnId || null, text: '', withheld: false, at: performance.now() };
+    if (bubbleEndsReading({ text: d.text, kind: d.kind, source: 'llm' })) stopSpeech('bubble');
+  }
+  if (d.n <= stream.n) return;
+  Object.assign(stream, { n: d.n, text: d.withheld ? '' : String(d.text || ''), withheld: !!d.withheld });
+  logStream({ ev: 'delta', id: d.id, n: d.n, len: [...stream.text].length, text: stream.text, withheld: stream.withheld });
+  showStream();
+  if (window.PetHistory && panelKind === 'history') window.PetHistory.live({ $, turnId: stream.turnId, text: stream.withheld ? '……' : stream.text, done: false });
+}
+function showStream() {
+  const b = $('bubble');
+  clearInterval(thinkTimer); // 思考中… gives way to her words
+  clearTimeout(bubbleTimer);
+  const atEnd = b.dataset.stream !== stream.id || b.scrollHeight - b.scrollTop - b.clientHeight < 8;
+  b.classList.remove('thinking', 'hidden');
+  b.classList.add('streaming');
+  b.textContent = stream.withheld ? '……' : stream.text;
+  b.dataset.stream = stream.id;
+  delete b.dataset.streamEnd;
+  b.dataset.kind = stream.kind || '';
+  b.dataset.source = 'llm';
+  b.dataset.reason = '';
+  b.dataset.meme = '';
+  delete b.dataset.speech;
+  $('meme-sticker').classList.add('hidden');
+  if (atEnd) b.scrollTop = b.scrollHeight; // follow the newest line unless the owner scrolled back to read
+  talkUntil = performance.now() + 700; // her mouth moves while words keep coming
+}
+// The stream `id` ended: with its final line (ok) or without one (canceled, failed). Without one the
+// bubble keeps what was shown, no longer typing, and hides like any line; the chat box's own answer
+// ((好吧，不想了。), the error line) then takes the bubble as before.
+function endStream(id, ok, reason = null) {
+  if (!id || endedStreams.has(id)) return;
+  endedStreams.add(id);
+  if (endedStreams.size > 50) endedStreams.delete(endedStreams.values().next().value);
+  const s = stream && stream.id === id ? stream : null;
+  logStream({ ev: 'end', id, ok, reason, len: s ? [...s.text].length : 0 });
+  if (s) stream = null;
+  const b = $('bubble');
+  if (b.dataset.stream !== id) return;
+  b.classList.remove('streaming');
+  delete b.dataset.stream;
+  if (!ok) {
+    b.dataset.streamEnd = reason || 'error';
+    hideBubbleLater(Math.min(20000, 4000 + b.textContent.length * 100));
+  }
+}
+function onChatDone(d) {
+  if (!d || !d.id) return;
+  const turnId = stream && stream.id === d.id ? stream.turnId : d.turnId;
+  endStream(d.id, d.ok, d.reason);
+  if (window.PetHistory && panelKind === 'history' && turnId) window.PetHistory.live({ $, turnId, done: true, ok: d.ok });
 }
 
 // Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, and with
@@ -2785,6 +2862,9 @@ window.petFx = {
   hitBox: () => petHitBox(),
   lastSpeech: () => lastSpeech && { ...lastSpeech, fellBackFrom: [...lastSpeech.fellBackFrom], sentences: lastSpeech.sentences.map((s) => ({ ...s })) },
   speechLog: () => speechLog.map((e) => ({ ...e })),
+  // 流式回复: the pieces shown and the ends of streams, and the stream being written now
+  streamLog: () => streamLog.map((e) => ({ ...e })),
+  stream: () => stream && { ...stream },
   audioState: () => (speechAudio ? { paused: speechAudio.paused, currentTime: speechAudio.currentTime, duration: speechAudio.duration, src: speechAudio.src.slice(0, 5) } : null),
   speak: (text) => speak({ text, source: 'api', kind: 'api' }),
   // 互动语音: every line offered to the voice (said or dropped by the gate), and the last prewarm
@@ -2903,7 +2983,9 @@ async function main() {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
   window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced' || panelKind === 'characters') renderPanel(); } });
-  window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme); speak(m); });
+  window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme, m.streamId || null); speak(m); });
+  window.pet.onChatDelta(onChatDelta);
+  window.pet.onChatDone(onChatDone);
   window.pet.onApiCmd(onApiCmd);
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);

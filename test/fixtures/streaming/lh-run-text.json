@@ -1,0 +1,64 @@
+{
+  "command": [
+    "lh",
+    "agent",
+    "run",
+    "-a",
+    "agt_REDACTED1",
+    "-p",
+    "用四句话介绍一下你自己，每句二十字左右。"
+  ],
+  "exitCode": 0,
+  "totalMs": 21504,
+  "stdoutChunks": 9,
+  "firstStdoutMs": 2005,
+  "lastStdoutMs": 6548,
+  "chunks": [
+    {
+      "ms": 2005,
+      "stream": "stdout",
+      "text": "23:18:47 [INFO] Operation: op_REDACTED1 · Topic: tpc_REDACTED1\n"
+    },
+    {
+      "ms": 3198,
+      "stream": "stdout",
+      "text": "── Step 1 ──\n"
+    },
+    {
+      "ms": 3419,
+      "stream": "stdout",
+      "text": "23:18:48 [INFO] Agent started\n"
+    },
+    {
+      "ms": 3420,
+      "stream": "stdout",
+      "text": "── Step 1 ──\n"
+    },
+    {
+      "ms": 5280,
+      "stream": "stdout",
+      "text": "我是 pixel-pet streaming probe，临时桌面宠物探针。平时只在桌面上小打小闹地陪着你。我不做重活，只负责把回复流式吐出来。有需要就"
+    },
+    {
+      "ms": 5477,
+      "stream": "stdout",
+      "text": "喊我，我随时在线等你。\n\n（四句都在 20 字上下，多余的标点算闲聊 😸）"
+    },
+    {
+      "ms": 5537,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 6243,
+      "stream": "stdout",
+      "text": "\n── Step 2 ──\n"
+    },
+    {
+      "ms": 6548,
+      "stream": "stdout",
+      "text": "\n✓ Agent finished · 1 step · $0.0058\n"
+    }
+  ],
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

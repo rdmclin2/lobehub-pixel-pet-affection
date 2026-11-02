@@ -1,0 +1,64 @@
+{
+  "command": [
+    "lh",
+    "agent",
+    "run",
+    "-a",
+    "agt_REDACTED1",
+    "-p",
+    "先想一想再回答：一年有哪四个季节？一句话回答。"
+  ],
+  "exitCode": 0,
+  "totalMs": 22168,
+  "stdoutChunks": 9,
+  "firstStdoutMs": 2317,
+  "lastStdoutMs": 7207,
+  "chunks": [
+    {
+      "ms": 2317,
+      "stream": "stdout",
+      "text": "\u001b[2m23:22:02\u001b[22m \u001b[34m[INFO]\u001b[39m Operation: \u001b[2mop_REDACTED1\u001b[22m · Topic: \u001b[2mtpc_REDACTED1\u001b[22m\n"
+    },
+    {
+      "ms": 3527,
+      "stream": "stdout",
+      "text": "\u001b[2m23:22:04\u001b[22m \u001b[34m[INFO]\u001b[39m Agent started\n"
+    },
+    {
+      "ms": 4118,
+      "stream": "stdout",
+      "text": "\u001b[1m\u001b[36m── Step 1 ──\u001b[39m\u001b[22m\n"
+    },
+    {
+      "ms": 6081,
+      "stream": "stdout",
+      "text": "春、夏、秋、冬，一年四季就这么轮着来。"
+    },
+    {
+      "ms": 6105,
+      "stream": "stdout",
+      "text": "\u001b[2m用户问：一年有哪四个季节？一句话回答。简短。\u001b[22m"
+    },
+    {
+      "ms": 6165,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 6873,
+      "stream": "stdout",
+      "text": "\n\u001b[1m\u001b[36m── Step 2 ──\u001b[39m\u001b[22m\n"
+    },
+    {
+      "ms": 7207,
+      "stream": "stdout",
+      "text": "\n"
+    },
+    {
+      "ms": 7207,
+      "stream": "stdout",
+      "text": "\u001b[32m✓\u001b[39m Agent finished\u001b[2m · \u001b[22m1 step\u001b[2m · \u001b[22m$0.0002\n"
+    }
+  ],
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

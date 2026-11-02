@@ -1,0 +1,36 @@
+{
+  "command": [
+    "lh",
+    "agent",
+    "run",
+    "-a",
+    "agt_REDACTED1",
+    "-p",
+    "用四句话介绍一下你自己，每句二十字左右。",
+    "--sse",
+    "--json"
+  ],
+  "exitCode": 0,
+  "totalMs": 6131,
+  "stdoutChunks": 2,
+  "firstStdoutMs": 6081,
+  "lastStdoutMs": 6081,
+  "chunks": [
+    {
+      "ms": 6081,
+      "stream": "stdout",
+      "text": "[\n  {\n    \"lastEventId\": \"0\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546385914,\n    \"type\": \"connected\"\n  },\n  {\n    \"type\": \"agent_runtime_init\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"agentConfig\": \"[redacted: 1117 bytes]\",\n      \"createdAt\": \"2026-11-01T15:19:44.622Z\",\n      \"lastActiveAt\": \"2026-11-01T15:19:44.622Z\",\n      \"modelRuntimeConfig\": {\n        \"mediaCapabilities\": {\n          \"vision\": true\n        },\n        \"model\": \"deepseek-flash\",\n        \"provider\": \"lobehub\"\n      },\n      \"status\": \"idle\",\n      \"totalCost\": 0,\n      \"totalSteps\": 0,\n      \"userId\": \"user_REDACTED1\",\n      \"agentId\": \"agt_REDACTED1\",\n      \"topicId\": \"tpc_REDACTED1\"\n    },\n    \"timestamp\": 1793546384624,\n    \"id\": \"1793546384623-0\"\n  },\n  {\n    \"type\": \"step_start\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"uiMessages\": \"[redacted: 1776 bytes]\",\n      \"llmCalls\": \"[redacted: 1 bytes]\"\n    },\n    \"timestamp\": 1793546386282,\n    \"id\": \"1793546386280-0\"\n  },\n  {\n    \"type\": \"stream_start\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"assistantMessage\": {\n        \"id\": \"msg_REDACTED1\",\n        \"agentId\": \"agt_REDACTED1\",\n        \"groupId\": null,\n        \"model\": \"deepseek-flash\",\n        \"parentId\": \"msg_REDACTED2\",\n        \"provider\": \"lobehub\",\n        \"role\": \"assistant\",\n        \"threadId\": null,\n        \"topicId\": \"tpc_REDACTED1\"\n      },\n      \"model\": \"deepseek-flash\",\n      \"provider\": \"lobehub\"\n    },\n    \"timestamp\": 1793546386458,\n    \"id\": \"1793546386456-0\"\n  },\n  {\n    \"type\": \"stream_chunk\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"chunkType\": \"reasoning\",\n      \"reasoning\": \"简单自我介绍，四句话，每句约二十字。不用工具。\"\n    },\n    \"timestamp\": 1793546387881,\n    \"id\": \"1793546387878-0\"\n  },\n  {\n    \"type\": \"stream_chunk\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"chunkType\": \"text\",\n      \"content\": \"我是你的像素桌宠小助手，临时试验版。  \\n我说话简短、不绕弯子，随叫随到。  \\n遇到问题我会直接动手解决，不太啰嗦。  \\n想聊天、干活、查东西\"\n    },\n    \"timestamp\": 1793546388062,\n    \"id\": \"1793546388060-0\"\n  },\n  {\n    \"type\": \"stream_chunk\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"chunkType\": \"text\",\n      \"content\": \"，我都能搭把手。\"\n    },\n    \"timestamp\": 1793546388078,\n    \"id\": \"1793546388076-0\"\n  },\n  {\n    \"type\": \"stream_end\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"finalContent\": \"我是你的像素桌宠小助手，临时试验版。  \\n我说话简短、不绕弯子，随叫随到。  \\n遇到问题我会直接动手解决，不太啰嗦。  \\n想聊天、干活、查东西，我都能搭把手。\",\n      \"grounding\": null,\n      \"reasoning\": \"简单自我介绍，四句话，每句约二十字。不用工具。\",\n      \"toolsCalling\": [],\n      \"usage\": {\n        \"inputCacheMissTokens\": 134,\n        \"inputCachedTokens\": 18939,\n        \"totalInputTokens\": 19073,\n        \"totalOutputTokens\": 69,\n        \"totalTokens\": 19142,\n        \"cost\": 0.000238\n      }\n    },\n    \"timestamp\": 1793546388085,\n    \"id\": \"1793546388083-0\"\n  },\n  {\n    \"type\": \"visible_output_end\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"reason\": \"final_answer\"\n    },\n    \"timestamp\": 1793546388094,\n    \"id\": \"1793546388091-0\"\n  },\n  {\n    \"type\": \"step_complete\",\n    \"stepIndex\": 0,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"llmCalls\": \"[redacted: 1 bytes]\",\n      \"nextStepScheduled\": false,\n      \"stepIndex\": 0\n    },\n    \"timestamp\": 1793546388258,\n    \"id\": \"1793546388256-0\"\n  },\n  {\n    \"type\": \"step_start\",\n    \"stepIndex\": 1,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"uiMessages\": \"[redacted: 2652 bytes]\",\n      \"llmCalls\": \"[redacted: 1 bytes]\"\n    },\n    \"timestamp\": 1793546388814,\n    \"id\": \"1793546388812-0\"\n  },\n  {\n    \"type\": \"step_complete\",\n    \"stepIndex\": 1,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"phase\": \"execution_complete\",\n      \"reason\": \"completed\",\n      \"reasonDetail\": \"LLM response completed without tool calls\"\n    },\n    \"timestamp\": 1793546388876,\n    \"id\": \"1793546388873-0\"\n  },\n  {\n    \"type\": \"agent_runtime_end\",\n    \"stepIndex\": 1,\n    \"operationId\": \"op_REDACTED1\",\n    \"data\": {\n      \"finalState\": \"[redacted: 58230 bytes]\",\n      \"operationId\": \"op_REDACTED1\",\n      \"phase\": \"execution_complete\",\n      \"reason\": \"done\",\n      \"reasonDetail\": \"Agent runtime completed successfully\",\n      \"uiMessages\": \"[redacted: 2652 bytes]\"\n    },\n    \"timestamp\": 1793546389059,\n    \"id\": \"1793546389057-0\"\n  }\n]\n",
+      "mergedWrites": [
+        {
+          "ms": 6081,
+          "bytes": 65536
+        },
+        {
+          "ms": 6081,
+          "bytes": 34490
+        }
+      ]
+    }
+  ],
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

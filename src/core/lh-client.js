@@ -47,6 +47,10 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal,
     } catch (e) {
       return reject(new LhError(`Cannot start ${bin}: ${e.message}`));
     }
+    // Decode as UTF-8 across chunk boundaries: a Chinese character split between two pipe reads must not
+    // turn into two U+FFFD halves (it would, if every Buffer were stringified on its own).
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -66,7 +70,7 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal,
     }
     child.stdout.on('data', (d) => {
       stdout += d;
-      if (onStdout) onStdout(String(d));
+      if (onStdout) onStdout(d);
       const code = !settled && settleOn ? settleOn(stdout) : undefined;
       if (code === undefined) return;
       settled = true;
@@ -77,7 +81,7 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal,
     });
     child.stderr.on('data', (d) => {
       stderr += d;
-      if (onStderr) onStderr(String(d));
+      if (onStderr) onStderr(d);
     });
     child.on('error', (e) => {
       clearTimeout(timer);
@@ -369,7 +373,10 @@ class LhClient {
 
   // One conversational turn. Reusing `topicId` keeps the pet's long-term
   // history inside LobeHub. Returns { text, topicId, cost }.
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], device = null }) {
+  // `onDelta(textChunk, fullSoFar)`: called with each piece of reply text as `lh` prints it (see
+  // createRunStream). `fullSoFar` is always every chunk so far joined; the returned `text` stays the
+  // authoritative final reply. An lh that prints nothing incremental still calls it once, with the whole reply.
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], device = null, onDelta = null }) {
     const base = ['agent', 'run', '-a', agentId, '-p', prompt, '--json'];
     if (topicId) base.push('-t', topicId);
     // Optional flags (a specific tool, a specific device). An lh that does not know one of them must not
@@ -379,7 +386,7 @@ class LhClient {
     if (device) optional.push({ flag: '--device', args: ['--device', device] });
     for (;;) {
       try {
-        return await this._runAgent([...base, ...optional.flatMap((o) => o.args)], timeoutMs);
+        return await this._runAgent([...base, ...optional.flatMap((o) => o.args)], timeoutMs, onDelta);
       } catch (e) {
         const bad = e.code === 'ECLI' && optional.find((o) => e.message.includes(o.flag));
         if (!bad) throw e;
@@ -388,13 +395,25 @@ class LhClient {
     }
   }
 
-  async _runAgent(args, timeoutMs) {
+  async _runAgent(args, timeoutMs, onDelta = null) {
     // No --timeout flag: newer lh releases reject it. We enforce the limit ourselves (see runLh).
     // lh prints the events as soon as the run ends but then idles on a keep-alive socket for ~15s before it
     // exits; the reply must not wait for that.
-    const r = await this._run(args, { timeoutMs, settleOn: runEndCode });
-    const parsed = parseRunEvents(r.stdout);
-    if (parsed.text) return parsed;
+    const stream = createRunStream(onDelta);
+    const settleOn = (stdout) => {
+      const code = runEndCode(stdout);
+      if (code !== undefined) return code;
+      // one event per line (no enclosing array): the terminal event is the end
+      return stream.terminal && !ARRAY_START.test(stdout) ? terminalCode(stream.terminal) : undefined;
+    };
+    const r = await this._run(args, { timeoutMs, settleOn, onStdout: stream.push });
+    let parsed = parseRunEvents(r.stdout);
+    if (!parsed.text && stream.events.length) parsed = summarizeRunEvents(stream.events);
+    if (parsed.text) {
+      // nothing came through incrementally (an lh without stream_chunk events): the whole reply, once
+      if (!stream.full) stream.emit(parsed.text);
+      return parsed;
+    }
     const detail = (r.stderr || r.stdout).trim().slice(0, 300);
     if (/unknown option|unknown command|too many arguments|missing required argument/i.test(detail)) {
       throw new LhError(`This lh version is not compatible with the app: ${detail}`, { code: 'ECLI', stderr: r.stderr });
@@ -405,6 +424,84 @@ class LhClient {
     if (r.code !== 0) throw new LhError(`Agent run failed (exit ${r.code}): ${detail}`, { code: r.code, stderr: r.stderr });
     throw new LhError('Agent produced no reply', { code: 'ENOREPLY', stderr: r.stderr });
   }
+}
+
+// ---- incremental output of `lh agent run --json` ---------------------------------------------------------
+// The CLI's events are JSON objects: today (lh 0.0.62–0.0.72) one pretty-printed array written in a single
+// burst when the run ends, possibly one object per line in a later CLI (docs/streaming-audit.md §4.1). The
+// scanner below does not care which: it hands over every complete top-level `{…}` as soon as its closing brace
+// has arrived, whatever the chunk boundaries, and ignores what sits between objects (`[`, `,`, `]`, blank
+// lines). Text that is not JSON (a log line with a brace in it) just fails to parse and is dropped.
+function createEventScanner(onEvent) {
+  let pending = ''; // the object being read, from its `{`
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  return (text) => {
+    const from = pending.length;
+    pending += text;
+    let start = depth ? 0 : -1;
+    for (let i = from; i < pending.length; i++) {
+      const ch = pending[i];
+      if (!depth) {
+        if (ch === '{') { depth = 1; start = i; }
+        continue;
+      }
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) {
+        let event;
+        try {
+          event = JSON.parse(pending.slice(start, i + 1));
+        } catch { /* not an event */ }
+        if (event && typeof event === 'object') onEvent(event);
+        start = -1;
+      }
+    }
+    // keep only the unfinished object
+    pending = depth ? pending.slice(start) : '';
+  };
+}
+
+// Reply text out of the event stream: every `stream_chunk` of type text (reasoning is not part of the reply).
+// When a later step starts speaking after an earlier one did (a preamble like "我看看" before a tool call), its
+// first chunk is prefixed with a paragraph break so the pieces do not run together.
+const STEP_SEPARATOR = '\n\n';
+function createRunStream(onDelta) {
+  const s = { events: [], full: '', terminal: null };
+  let newStep = false;
+  s.emit = (chunk) => {
+    s.full += chunk;
+    if (!onDelta) return;
+    try {
+      onDelta(chunk, s.full);
+    } catch { /* a display callback must not cost the turn */ }
+  };
+  s.push = createEventScanner((e) => {
+    s.events.push(e);
+    if (e.type === 'stream_start' && s.full) newStep = true;
+    if (e.type === 'stream_chunk' && e.data && e.data.chunkType === 'text' && typeof e.data.content === 'string' && e.data.content) {
+      s.emit((newStep ? STEP_SEPARATOR : '') + e.data.content);
+      newStep = false;
+    }
+    if (!s.terminal && (e.type === 'agent_runtime_end' || e.type === 'error')) s.terminal = e;
+  });
+  return s;
+}
+
+const ARRAY_START = /^\s*\[\s*[{\]]/;
+
+// The exit code a terminal event (`agent_runtime_end` / `error`) stands for. Unchanged from before streaming:
+// any `reason` counts as a failure (a successful run's is "done"; see docs/streaming-audit.md §4.4). Only used
+// when no reply text was found, where it decides between "Agent run failed" and "no reply".
+function terminalCode(end) {
+  return end.type === 'agent_runtime_end' && !(end.data && end.data.reason) ? 0 : 1;
 }
 
 // The exit code `lh agent run --json` will end with, once its stdout holds the whole event array up to the
@@ -421,10 +518,10 @@ function runEndCode(stdout) {
   if (!Array.isArray(events)) return undefined;
   const end = events.find((e) => e && (e.type === 'agent_runtime_end' || e.type === 'error'));
   if (!end) return undefined;
-  return end.type === 'agent_runtime_end' && !(end.data && end.data.reason) ? 0 : 1;
+  return terminalCode(end);
 }
 
-// Extract the final reply from `lh agent run --json` output (a JSON array of events).
+// Extract the final reply from `lh agent run --json` output: a JSON array of events, or one event per line.
 function parseRunEvents(stdout) {
   let events;
   try {
@@ -434,14 +531,20 @@ function parseRunEvents(stdout) {
     try {
       events = JSON.parse(stdout.slice(start));
     } catch {
-      return { text: '', topicId: null, cost: null };
+      events = [];
+      createEventScanner((e) => events.push(e))(stdout);
     }
   }
+  return summarizeRunEvents(events);
+}
+
+function summarizeRunEvents(events) {
   if (!Array.isArray(events)) return { text: '', topicId: null, cost: null };
   let text = '';
   let topicId = null;
   let cost = null;
   for (const e of events) {
+    if (!e || typeof e !== 'object') continue;
     if (e.type === 'agent_runtime_init' && e.data && e.data.topicId) topicId = e.data.topicId;
     // Newer CLI versions no longer put the topic on the init event; it rides on the assistant message.
     if (!topicId && e.type === 'stream_start' && e.data && e.data.assistantMessage && e.data.assistantMessage.topicId) topicId = e.data.assistantMessage.topicId;
@@ -453,4 +556,4 @@ function parseRunEvents(stdout) {
   return { text, topicId, cost };
 }
 
-module.exports = { LhClient, LhError, runLh, cleanEnv, parseRunEvents, runEndCode, RUN_CONTEXT_VARS };
+module.exports = { LhClient, LhError, runLh, cleanEnv, parseRunEvents, runEndCode, createEventScanner, createRunStream, RUN_CONTEXT_VARS };

@@ -1,0 +1,387 @@
+{
+  "url": "https://app.lobehub.com/api/v1/responses",
+  "status": 200,
+  "contentType": "text/event-stream",
+  "headersMs": 1582,
+  "reads": [
+    {
+      "ms": 1584,
+      "bytes": 1363,
+      "text": "event: response.created\ndata: {\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1793546583,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"in_progress\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[{\"description\":\"Read a UTF-8 text file on the owner's computer (up to 1 MB). Use an absolute path.\",\"name\":\"read_file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"List a folder on the owner's computer (names, \\\"/\\\" marks a folder). Use an absolute path.\",\"name\":\"list_directory\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Create or overwrite a UTF-8 text file on the owner's computer. Ask the owner first before overwriting anything important.\",\"name\":\"write_file\",\"parameters\":{\"t"
+    },
+    {
+      "ms": 1584,
+      "bytes": 1369,
+      "text": "ype\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Run a shell command on the owner's computer (linux) and get its exit code and output. Stops after 60s.\",\"name\":\"run_command\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"cwd\":{\"type\":\"string\"}},\"required\":[\"command\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null}],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":0,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":0},\"user\":null},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1793546583,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"in_progress\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},"
+    },
+    {
+      "ms": 1589,
+      "bytes": 1369,
+      "text": "\"tool_choice\":\"auto\",\"tools\":[{\"description\":\"Read a UTF-8 text file on the owner's computer (up to 1 MB). Use an absolute path.\",\"name\":\"read_file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"List a folder on the owner's computer (names, \\\"/\\\" marks a folder). Use an absolute path.\",\"name\":\"list_directory\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Create or overwrite a UTF-8 text file on the owner's computer. Ask the owner first before overwriting anything important.\",\"name\":\"write_file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Run a shell command on the owner's computer (linux) and get its exit code and output. Stops after 60s.\",\"name\":\"run_command\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"cwd\":{\"type\":\"string\"}},\"required\":[\"command\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null}],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":0,\"input_tokens_details\":{\"cache"
+    },
+    {
+      "ms": 1589,
+      "bytes": 161,
+      "text": "d_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":0},\"user\":null},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\n"
+    },
+    {
+      "ms": 3047,
+      "bytes": 735,
+      "text": "event: response.output_item.added\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"\",\"type\":\"output_text\"}],\"id\":\"msg_tpc_REDACTED1_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"logprobs\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"我看看\",\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\n"
+    },
+    {
+      "ms": 3116,
+      "bytes": 1233,
+      "text": "event: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":5,\"text\":\"我看看\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_tpc_REDACTED1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"logprobs\":[],\"text\":\"我看看\",\"type\":\"output_text\"},\"sequence_number\":6,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"logprobs\":[],\"text\":\"我看看\",\"type\":\"output_text\"}],\"id\":\"msg_tpc_REDACTED1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":7,\"type\":\"response.output_item.done\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"arguments\":\"\",\"call_id\":\"call_REDACTED1\",\"id\":\"fc_tpc_REDACTED1_1\",\"name\":\"list_directory\",\"status\":\"in_progress\",\"type\":\"function_call\"},\"output_index\":1,\"sequence_number\":8,\"type\":\"response.output_item.added\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"delta\":\"{\\n  \\\"path\\\": \\\"/tmp\\\"\\n}\",\"item_id\":\"fc_tpc_REDACTED1_1\",\"output_index\":1,\"sequence_number\":9,\"type\":\"response.function_call_arguments.delta\"}\n\n"
+    },
+    {
+      "ms": 7520,
+      "bytes": 1364,
+      "text": "event: response.function_call_arguments.done\ndata: {\"arguments\":\"{\\n  \\\"path\\\": \\\"/tmp\\\"\\n}\",\"item_id\":\"fc_tpc_REDACTED1_1\",\"output_index\":1,\"sequence_number\":10,\"type\":\"response.function_call_arguments.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"arguments\":\"{\\n  \\\"path\\\": \\\"/tmp\\\"\\n}\",\"call_id\":\"call_REDACTED1\",\"id\":\"fc_tpc_REDACTED1_1\",\"name\":\"list_directory\",\"status\":\"completed\",\"type\":\"function_call\"},\"output_index\":1,\"sequence_number\":11,\"type\":\"response.output_item.done\"}\n\nevent: response.incomplete\ndata: {\"response\":{\"background\":false,\"completed_at\":null,\"created_at\":1793546583,\"error\":null,\"frequency_penalty\":0,\"id\":\"tpc_REDACTED1\",\"incomplete_details\":{\"reason\":\"client_tool_execution\"},\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"agt_REDACTED1\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":true,\"presence_penalty\":0,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reasoning\":null,\"safety_identifier\":null,\"service_tier\":\"default\",\"status\":\"incomplete\",\"store\":true,\"temperature\":1,\"text\":{\"format\":{\"type\":\"text\"}},\"tool_choice\":\"auto\",\"tools\":[{\"description\":\"Read a UTF-8 text file on the owner's computer (up to 1 MB). Use an absolute path.\",\"name\":\"read_file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"re"
+    },
+    {
+      "ms": 7520,
+      "bytes": 1315,
+      "text": "quired\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"List a folder on the owner's computer (names, \\\"/\\\" marks a folder). Use an absolute path.\",\"name\":\"list_directory\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Create or overwrite a UTF-8 text file on the owner's computer. Ask the owner first before overwriting anything important.\",\"name\":\"write_file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null},{\"description\":\"Run a shell command on the owner's computer (linux) and get its exit code and output. Stops after 60s.\",\"name\":\"run_command\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"cwd\":{\"type\":\"string\"}},\"required\":[\"command\"],\"additionalProperties\":false},\"type\":\"function\",\"strict\":null}],\"top_logprobs\":0,\"top_p\":1,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":2186,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":87,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":2273},\"user\":null},\"sequence_number\":12,\"type\":\"response.incomplete\"}\n\n"
+    }
+  ],
+  "events": [
+    {
+      "ms": 1584,
+      "event": "response.created",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546583,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": "[redacted: 1232 bytes]",
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 0,
+        "type": "response.created"
+      }
+    },
+    {
+      "ms": 1589,
+      "event": "response.in_progress",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546583,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "in_progress",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": "[redacted: 1232 bytes]",
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "user": null
+        },
+        "sequence_number": 1,
+        "type": "response.in_progress"
+      }
+    },
+    {
+      "ms": 3047,
+      "event": "response.output_item.added",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "in_progress",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 2,
+        "type": "response.output_item.added"
+      }
+    },
+    {
+      "ms": 3047,
+      "event": "response.content_part.added",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "",
+          "type": "output_text"
+        },
+        "sequence_number": 3,
+        "type": "response.content_part.added"
+      }
+    },
+    {
+      "ms": 3047,
+      "event": "response.output_text.delta",
+      "data": {
+        "content_index": 0,
+        "delta": "我看看",
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 4,
+        "type": "response.output_text.delta"
+      }
+    },
+    {
+      "ms": 3116,
+      "event": "response.output_text.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "logprobs": [],
+        "output_index": 0,
+        "sequence_number": 5,
+        "text": "我看看",
+        "type": "response.output_text.done"
+      }
+    },
+    {
+      "ms": 3116,
+      "event": "response.content_part.done",
+      "data": {
+        "content_index": 0,
+        "item_id": "msg_tpc_REDACTED1_0",
+        "output_index": 0,
+        "part": {
+          "annotations": [],
+          "logprobs": [],
+          "text": "我看看",
+          "type": "output_text"
+        },
+        "sequence_number": 6,
+        "type": "response.content_part.done"
+      }
+    },
+    {
+      "ms": 3116,
+      "event": "response.output_item.done",
+      "data": {
+        "item": {
+          "content": [
+            {
+              "annotations": [],
+              "logprobs": [],
+              "text": "我看看",
+              "type": "output_text"
+            }
+          ],
+          "id": "msg_tpc_REDACTED1_0",
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        },
+        "output_index": 0,
+        "sequence_number": 7,
+        "type": "response.output_item.done"
+      }
+    },
+    {
+      "ms": 3116,
+      "event": "response.output_item.added",
+      "data": {
+        "item": {
+          "arguments": "",
+          "call_id": "call_REDACTED1",
+          "id": "fc_tpc_REDACTED1_1",
+          "name": "list_directory",
+          "status": "in_progress",
+          "type": "function_call"
+        },
+        "output_index": 1,
+        "sequence_number": 8,
+        "type": "response.output_item.added"
+      }
+    },
+    {
+      "ms": 3116,
+      "event": "response.function_call_arguments.delta",
+      "data": {
+        "delta": "{\n  \"path\": \"/tmp\"\n}",
+        "item_id": "fc_tpc_REDACTED1_1",
+        "output_index": 1,
+        "sequence_number": 9,
+        "type": "response.function_call_arguments.delta"
+      }
+    },
+    {
+      "ms": 7520,
+      "event": "response.function_call_arguments.done",
+      "data": {
+        "arguments": "{\n  \"path\": \"/tmp\"\n}",
+        "item_id": "fc_tpc_REDACTED1_1",
+        "output_index": 1,
+        "sequence_number": 10,
+        "type": "response.function_call_arguments.done"
+      }
+    },
+    {
+      "ms": 7520,
+      "event": "response.output_item.done",
+      "data": {
+        "item": {
+          "arguments": "{\n  \"path\": \"/tmp\"\n}",
+          "call_id": "call_REDACTED1",
+          "id": "fc_tpc_REDACTED1_1",
+          "name": "list_directory",
+          "status": "completed",
+          "type": "function_call"
+        },
+        "output_index": 1,
+        "sequence_number": 11,
+        "type": "response.output_item.done"
+      }
+    },
+    {
+      "ms": 7520,
+      "event": "response.incomplete",
+      "data": {
+        "response": {
+          "background": false,
+          "completed_at": null,
+          "created_at": 1793546583,
+          "error": null,
+          "frequency_penalty": 0,
+          "id": "tpc_REDACTED1",
+          "incomplete_details": {
+            "reason": "client_tool_execution"
+          },
+          "instructions": null,
+          "max_output_tokens": null,
+          "max_tool_calls": null,
+          "metadata": {},
+          "model": "agt_REDACTED1",
+          "object": "response",
+          "output": [],
+          "output_text": "",
+          "parallel_tool_calls": true,
+          "presence_penalty": 0,
+          "previous_response_id": null,
+          "prompt_cache_key": null,
+          "reasoning": null,
+          "safety_identifier": null,
+          "service_tier": "default",
+          "status": "incomplete",
+          "store": true,
+          "temperature": 1,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": "[redacted: 1232 bytes]",
+          "top_logprobs": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 2186,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 87,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 2273
+          },
+          "user": null
+        },
+        "sequence_number": 12,
+        "type": "response.incomplete"
+      }
+    }
+  ],
+  "totalMs": 7521,
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}
