@@ -3,6 +3,7 @@
 > 状态：设计稿（勘察结论 + 实施方案），尚未实现。
 > 基线：`main` = `canary` @ `7bae23a`（v0.19.0）。所有行号、默认值都按这个版本的源码读出，没有凭记忆写。
 > 范围：只写调研结论和方案。实现拆成后面的任务（§8），本稿不改任何应用代码。
+> 实施进度：T1（lobe-design 初始化）与设计系统已落地，见 [design-system.md](design-system.md)。与本稿的差异：`@lobehub/ui` 6.x 已没有 `ThemeProvider`，明暗改用 `setLobeTheme` + `data-theme`；`ConfigProvider` 需设 `enableCustomFonts={false}` 才不会去 CDN 拉字体。
 > 核对：`node scripts/check-admin-console-doc.js` 检查本文是否覆盖 `settings.json` 的全部 key 和设置类 IPC 通道（§9）。
 
 ## 0. 结论速览

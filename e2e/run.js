@@ -3,6 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -6642,6 +6643,79 @@ async function streamDirectScenario() {
   }
 }
 
+// --- design: the design-system preview (admin bundle, @lobehub/ui) in a real Electron window ----------------
+// Builds src/admin-ui, opens it through scripts/design-preview.js (sandboxed, CSP, offline), then drives the
+// grouped nav, a switch, a select, a toast and a confirm modal in light and dark. No request may leave file://.
+async function designScenario() {
+  const S = 'design';
+  const SHOTS = path.join(OUT, 'design');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  for (const theme of ['light', 'dark']) {
+    const app = await _electron.launch({ args: ['scripts/design-preview.js', '--no-sandbox', `--theme=${theme}`], cwd: ROOT, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+    const page = await app.firstWindow();
+    const remote = [];
+    const errors = [];
+    page.on('request', (r) => { if (!/^(file|data|blob|devtools):/.test(r.url())) remote.push(r.url()); });
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const shot = (name) => page.screenshot({ path: path.join(SHOTS, `${theme}-${name}.png`) });
+    try {
+      await step(S, `${theme}: 预览页加载，data-theme=${theme}，底色取 --lobe-color-bg-layout`, async () => {
+        await page.waitForSelector('[data-design-page="/design/colors"]', { timeout: 20000 });
+        const f = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, bg: getComputedStyle(document.body).backgroundColor, layout: getComputedStyle(document.documentElement).getPropertyValue('--lobe-color-bg-layout').trim(), csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]').content, url: location.href }));
+        assert.equal(f.theme, theme);
+        assert.equal(f.layout, theme === 'dark' ? '#000' : '#f8f8f8');
+        assert.ok(f.url.startsWith('file://'), f.url);
+        await shot('01-colors');
+        return `data-theme=${f.theme} body bg=${f.bg} --lobe-color-bg-layout=${f.layout} url=${f.url.replace(/^.*\/src\//, 'src/')}`;
+      }, page);
+      await step(S, `${theme}: 分组导航切到「按钮与输入」，开关、下拉可操作`, async () => {
+        await page.click('nav a[href="#/design/controls"]');
+        await page.waitForSelector('[data-design-page="/design/controls"]');
+        await page.getByText('回复时自动朗读：开').waitFor();
+        await page.locator('button[role="switch"]').first().click();
+        await page.getByText('回复时自动朗读：关').waitFor();
+        await page.getByRole('combobox').first().click();
+        await page.getByRole('option', { name: '本机 TTS 服务' }).click();
+        await page.getByText('本机 TTS 服务').first().waitFor();
+        await shot('02-controls');
+        return 'switch 开→关; select → 本机 TTS 服务';
+      }, page);
+      await step(S, `${theme}: 表单分组（Form itemsType=group variant=filled）`, async () => {
+        await page.click('nav a[href="#/design/form"]');
+        await page.waitForSelector('[data-design-page="/design/form"] form');
+        const labels = await page.locator('[data-design-page="/design/form"] form').innerText();
+        for (const l of ['桌宠行为', '自由漫步', '语音朗读', '朗读引擎', 'API Key']) assert.ok(labels.includes(l), l);
+        await shot('03-form');
+        return 'groups 桌宠行为 / 语音朗读 rendered';
+      }, page);
+      await step(S, `${theme}: Toast 与确认弹窗`, async () => {
+        await page.click('nav a[href="#/design/feedback"]');
+        await page.waitForSelector('[data-design-page="/design/feedback"]');
+        await page.getByRole('button', { name: '成功' }).click();
+        await page.getByText('设置已保存').waitFor({ timeout: 5000 });
+        await shot('04-toast');
+        await page.getByRole('button', { name: '删除角色包' }).click();
+        await page.getByText('删除角色包「像素小猫」？').waitFor({ timeout: 5000 });
+        await page.getByRole('dialog').getByRole('button', { name: '取消' }).waitFor();
+        await page.waitForTimeout(500); // let the open transition finish
+        await shot('05-confirm');
+        await page.getByRole('dialog').getByRole('button', { name: '删除角色包' }).click();
+        await page.getByText('已删除角色包「像素小猫」').waitFor({ timeout: 5000 });
+        return 'toast 设置已保存; confirm → toast 已删除角色包「像素小猫」';
+      }, page);
+      await step(S, `${theme}: 零外网请求、零控制台错误（CSP 下离线）`, async () => {
+        assert.deepEqual(remote, []);
+        assert.deepEqual(errors, []);
+        return 'remote requests 0, console errors 0';
+      });
+    } finally {
+      await app.close().catch(() => {});
+    }
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -6675,6 +6749,7 @@ async function streamDirectScenario() {
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'asr' || which === 'all') await asrScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
+  if (which === 'design' || which === 'all') await designScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
