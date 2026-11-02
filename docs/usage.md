@@ -181,7 +181,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 - 桌宠窗口获得焦点时按 **Ctrl+,**（macOS 为 **⌘,**）；macOS 应用菜单 → **偏好设置…**
 - 托盘图标 → **打开设置…**（托盘菜单里还有「显示桌宠」「检查更新」「退出」，宠物被盖住或拖出屏幕时用）
 
-设置窗口只有一个：再次打开时会把已有的窗口提到前面。关掉它不会退出桌宠。
+设置窗口只有一个：再次打开时会把已有的窗口提到前面。关掉它不会退出桌宠。从干净克隆开始安装、启动、打开设置窗口和查看角色列表的完整命令见[第十节](#十配置后台从干净克隆跑起来)；VRM / Live2D 的半身模式见[第十一节](#十一半身模式vrm--live2d)。
 
 | 入口 | 下一层 | 内容 | 默认 |
 | --- | --- | --- | --- |
@@ -321,9 +321,92 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
+| `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类形象包、详情各标签页，改动出现在桌宠窗口 |
+| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
 | `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
 | `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
 
 e2e 通过 Playwright 启动真实 Electron 应用（自动带 `--no-sandbox`，用假 `lh`）。
+
+## 十、配置后台：从干净克隆跑起来
+
+这一节按顺序给出从一台干净的机器到打开**配置后台（设置窗口）**、查看角色列表的全部命令。设置窗口各页的内容见[第六节](#六设置窗口配置后台)，设计与覆盖矩阵见 [admin-console-design.md](admin-console-design.md)。
+
+**前置条件**：Node.js 20+（含 npm）、git；Linux 需要桌面会话，没有显示器时装 `xvfb`（Debian / Ubuntu：`sudo apt-get install -y xvfb`）。试玩不需要 LobeHub 账号（下面用测试里的假 `lh`）；要和真实的 agent 聊天再装 `npm install -g @lobehub/cli`。
+
+```bash
+# 1. 克隆（默认分支 canary）
+git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
+cd lobehub-pixel-pet-affection
+
+# 2. 按 package-lock.json 安装依赖（包括 Electron、Vite、@lobehub/ui）
+npm ci
+#    Electron 的二进制在第一次启动时下载（终端显示 Downloading Electron binary...）。
+#    如果启动报 "Electron failed to install correctly"，手动补一次：node node_modules/electron/install.js
+
+# 3. 启动桌宠。prestart 会先执行 npm run build:admin，把设置窗口构建到 src/admin-ui/
+npm start                              # macOS / Windows / 配好 chrome-sandbox 的 Linux
+npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 没有 setuid 时）
+xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux
+```
+
+**不登录 LobeHub 试玩**：在启动命令前加假 `lh` 的环境变量，单独的数据目录不会碰到正式存档：
+
+```bash
+mkdir -p /tmp/fake-lh && touch /tmp/fake-lh/loggedin
+LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DIR=/tmp/pp-demo npm run start:no-sandbox
+```
+
+第一次启动依次是 18+ 确认 → 选模型娘 → 唤醒（第三节）；之后宠物出现在屏幕右下角。也可以用 `npm run demo`（第二节）直接启动到一只已唤醒的桌宠，它同样会先执行 `npm run build:admin`（`predemo`）。
+
+**打开设置窗口**（三种方式任选，窗口只有一个，再次打开会提到前面）：
+
+1. 鼠标悬停宠物 → 点 **⋯**（或在宠物上右键）→ **设置…**
+2. 桌宠窗口获得焦点时按 **Ctrl+,**（macOS **⌘,**）
+3. 托盘图标 → **打开设置…**
+
+左侧四个入口：**小屋**（当前角色、关系、今天的陪伴开关）、**角色**（角色图鉴 → 角色详情）、**玩法**（桌宠行为、主动搭话与好感、同屏伙伴）、**设置**（声音、资源与外观、连接、系统）。开关、下拉和滑块改了立即保存并在桌宠上生效（例如 玩法 → 桌宠行为 → 宠物大小，桌宠窗口跟着变大），右下角提示「已保存」；设置写进数据目录的 `settings.json`，重启后保留。
+
+**查看角色列表**：设置窗口左侧 → **角色**，就是**角色图鉴**：每位角色一张卡片（立绘、形象包类型、关系、来源、语音包），没遇见的显示剪影；上方的筛选按形象包类型（像素 / Live2D / VRM …）过滤。点一张卡片进入**角色详情**：大舞台、简介、好感进度，下面的标签页是**形象包**（含**取景**）、**服饰**、**好感**、**模型**、**设定**（个性化设定）、**语音**、**资料**。桌宠窗口里 ⋯ → **角色列表** 是同一份数据的快速切换版。
+
+**开发设置窗口本身**：`npm run dev:admin` 启动 Vite 开发服务器（默认 <http://localhost:5173/>），用于在浏览器里改样式、热更新；浏览器里没有桌宠的 IPC 桥（`window.petAdmin`），所以页面只显示「设置窗口没有加载成功 · 设置窗口没有连上桌宠（window.petAdmin 不存在）」、不加载数据。要看带数据的真实设置窗口，用上面的 `npm start` / `npm run start:no-sandbox`（每次启动都会重新构建），或改完后 `npm run build:admin` 再重开设置窗口。提交前跑 `npm run typecheck:admin` 和 `npm run lint:design`。
+
+## 十一、半身模式（VRM / Live2D）
+
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。只对 **VRM** 和 **Live2D** 形象包生效，像素 / 图片 / 全动态包保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
+
+**1. 让角色穿上 Live2D 或 VRM 形象包**（设置窗口 → **角色** → 点一位角色 → 详情 → **形象包** 标签）：
+
+- **Live2D（内置）**：大肥鱼自带「大肥鱼 · Live2D」。角色图鉴里点**大肥鱼**（没见过时先在卡片上点「初次见面」或在桌宠里 ⋯ → 角色列表切换过去）→ 形象包 → 点「大肥鱼 · Live2D」的图片可以先在上面舞台**试穿**，再点 **穿上**。
+- **Live2D（自己的模型）**：同一页最后一张「添加形象包」卡片 → **导入 Live2D…** → 选 `.model3.json` 或 `.zip`（Cubism 3 / 4 / 5）。导入的包出现在这一排卡片里，点它的 **穿上**；穿上后可以在下面「Live2D 模型大小」调高度。
+- **VRM**：仓库里没有可再分发的 VRM 模型，用你自己的 `.vrm`（VRM 0.x / 1.0），或者生成一个测试用的 CC0 小模型：
+
+  ```bash
+  node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm
+  ```
+
+  然后在「添加形象包」卡片 → **导入 VRM…** → 选这个 `.vrm`（右下角提示「VRM 模型已导入」），新卡片「Pixel Pet test fish」（类型 VRM）出现在这一排里，点它的 **穿上**。导入只是加进她的形象包，不会自动换上。没有 GPU 的 Linux（虚拟机、xvfb）要让 Chromium 用软件 WebGL 画 3D：`npm run start:no-sandbox -- --enable-unsafe-swiftshader --ignore-gpu-blocklist`。
+
+**2. 切换半身 / 全身**（改完立即生效，不重新加载模型，相机 / 缩放在 0.35 s 内平滑过去）：
+
+| 范围 | 在哪里改 | 存在哪里 |
+| --- | --- | --- |
+| 所有角色（全局） | 设置窗口 → **玩法** → **桌宠行为** → 「大小与取景」→ **取景**：全身 / 半身 | `settings.json` → `prefs.framing` |
+| 只这一位角色 | 设置窗口 → **角色** → 她的详情 → **形象包** 标签 → **取景**：跟随 / 全身 / 半身 | `settings.json` → `framings.<角色 id>` |
+| 形象包自带默认 | `pack.json` 的 `"framing": "half"`，腰线 `"halfBody": { "waist": 0.52 }` | 包里（格式见 [pet-packs.md](pet-packs.md)） |
+
+优先级：角色自己的选择 > 形象包默认 > 全局。半身下视线跟随、口型、点击反应、拖起、走动照常；触摸区映射回全身比例，所以腿和脚点不到。重启后取景保留。
+
+**3. 跑相关测试**（`all` 会额外跑消耗 token 的 `live`，不要用）：
+
+```bash
+npm test                                   # 单元测试：含 test/framing.test.js、test/framing-live2d.test.js、test/admin-console.test.js
+xvfb-run -a node e2e/run.js admin          # 设置窗口：打开方式、各页、编辑保存、角色图鉴与详情、行为同步、亮 / 暗 → out/e2e/admin/
+xvfb-run -a node e2e/run.js admincov       # 配置覆盖度：每个配置项在设置窗口里都有控件，改动出现在桌宠窗口
+xvfb-run -a node e2e/run.js vrmframe       # VRM 半身 / 全身（现做测试 VRM）→ out/e2e/vrm/frame-*.png
+xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身 / 全身（内置大肥鱼 Live2D + 导入的模型）→ out/e2e/live2d-frame/
+```
+
+e2e 用 Playwright 启动真实 Electron（自动带 `--no-sandbox` 和软件 WebGL、假 `lh`），每个场景最后打印 `N/N passed`，结果追加在 `out/e2e/results.json`。`vrmframe` 会额外拿本机的真实 VRM 拍一组（`PIXELPET_E2E_REAL_VRM=/a.vrm:/b.vrm`，必须在仓库外），没有就跳过这一步。
