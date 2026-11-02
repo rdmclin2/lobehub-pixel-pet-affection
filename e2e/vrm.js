@@ -604,6 +604,8 @@ module.exports = function vrmScenarios(ctx) {
     const canvasBox = () => page.locator('#pet-look canvas.vrm').boundingBox();
     const settled = (mode) => page.waitForFunction((m) => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.petFx.vrm(); return c && c.dataset.framing === m && f && f.figures[0] && !f.figures[0].gliding; }, mode, { timeout: 15000 });
     const rest = async () => { await page.waitForFunction(() => { const s = window.petFx.state(); return s && /^(idle|walk|sit|bored)$/.test(s.state); }, null, { timeout: 15000 }).catch(() => {}); await sleep(400); };
+    // composition shots: standing at rest (not sitting / bored), pointer off her
+    const stand = async () => { await page.mouse.move(5, 5); await page.waitForFunction(() => { const s = window.petFx.state(); return s && s.state === 'idle'; }, null, { timeout: 30000 }).catch(() => {}); await sleep(500); };
     const adminToast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
     const adminShot = async (name) => { await sleep(200); await admin.screenshot({ path: path.join(SHOTS, `frame-${name}.png`) }); return `vrm/frame-${name}.png`; };
     // 设置窗口 → 桌宠行为 → 大小与取景 → 取景: click 全身 / 半身 as the owner does
@@ -624,6 +626,20 @@ module.exports = function vrmScenarios(ctx) {
       }
       return out;
     };
+    // a GIF from rapid screenshots of the pet window (frames kept next to it): `grab(i)` runs before frame i
+    const gif = async (name, n, gapMs, grab = null, fps = 8) => {
+      const dir = path.join(SHOTS, `frame-${name}`);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(dir, { recursive: true });
+      for (let i = 0; i < n; i++) {
+        if (grab) await grab(i);
+        await page.screenshot({ path: path.join(dir, `${String(i).padStart(3, '0')}.png`) });
+        if (gapMs) await sleep(gapMs);
+      }
+      const out = path.join(SHOTS, `frame-${name}.gif`);
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(dir, '%03d.png'), '-vf', 'split[a][b];[a]palettegen=reserve_transparent=0[p];[b][p]paletteuse', out]);
+      return `vrm/frame-${name}.gif (${n} frames)`;
+    };
     const monotonic = (xs) => xs.every((v, i) => i === 0 || (v - xs[i - 1]) * Math.sign(xs[xs.length - 1] - xs[0]) >= -1e-6);
     try {
       await step(S, 'hatching 大肥鱼; the homemade VRM (outside the repo) is imported and worn; 取景 default 全身', async () => {
@@ -642,8 +658,7 @@ module.exports = function vrmScenarios(ctx) {
       }, page);
 
       await step(S, '全身 (homemade model): head to feet, feet on the floor, centred — screenshot', async () => {
-        await rest();
-        await page.mouse.move(5, 5);
+        await stand();
         const f = await H.fig();
         const c = await composition(page);
         fullCam.test = f.camera;
@@ -667,11 +682,12 @@ module.exports = function vrmScenarios(ctx) {
 
       await step(S, '后台切到 半身: the pet window re-frames at once — head to waist, centred, bigger, same window (right-bottom anchor)', async () => {
         const before = await page.evaluate(() => window.petFx.vrm().stats);
+        const burst = gif('glide-to-half', 14, 0, null, 12); // the switch frame by frame: a glide, no T-pose, no blank
         await pickGlobal('半身');
         const glide = await glideSamples(600);
+        const glideGif = await burst;
         await settled('half');
-        await rest();
-        await page.mouse.move(5, 5);
+        await stand();
         const f = await H.fig();
         const c = await composition(page);
         const b = await petBounds(app);
@@ -690,7 +706,7 @@ module.exports = function vrmScenarios(ctx) {
         const zs = glide.map((g) => g.z);
         assert.ok(monotonic(zs), `the camera glides one way: ${zs.map((z) => z.toFixed(2)).join(' ')}`);
         assert.ok(glide.every((g) => g.loaded), 'the model stays loaded during the glide');
-        return H.note(`${shot}: data-framing=half, data-cut=${(await H.ds()).cut}, band ${JSON.stringify(f.band)}; opaque box ${JSON.stringify(c)} (full: ${JSON.stringify(fullCam.comp)}); camera z ${fullCam.test.z.toFixed(3)} → ${f.camera.z.toFixed(3)}, y ${fullCam.test.y.toFixed(3)} → ${f.camera.y.toFixed(3)}; window ${JSON.stringify(b)} (unchanged); figures created ${before.created} → ${after.created}; glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
+        return H.note(`${shot} + ${glideGif}: data-framing=half, data-cut=${(await H.ds()).cut}, band ${JSON.stringify(f.band)}; opaque box ${JSON.stringify(c)} (full: ${JSON.stringify(fullCam.comp)}); camera z ${fullCam.test.z.toFixed(3)} → ${f.camera.z.toFixed(3)}, y ${fullCam.test.y.toFixed(3)} → ${f.camera.y.toFixed(3)}; window ${JSON.stringify(b)} (unchanged); figures created ${before.created} → ${after.created}; glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
       }, page);
 
       await step(S, '半身: gaze still follows the cursor left / right', async () => {
@@ -704,7 +720,10 @@ module.exports = function vrmScenarios(ctx) {
         const shot = await H.shot('4-half-gaze-right');
         const x = (g) => Number(g.split(',')[0]);
         assert.ok(x(gl) < -0.3 && x(gr) > 0.3, `left ${gl} right ${gr}`);
-        return H.note(`${shot}: data-gaze left ${gl} → right ${gr}`);
+        // the cursor sweeps right → left → right across the window while she watches it (and idles, blinks)
+        const xs = [1, 0.75, 0.5, 0.25, 0, 0, 0.25, 0.5, 0.75, 1, 1];
+        const sweep = await gif('half-gaze', xs.length * 2, 120, async (i) => { const k = xs[Math.floor(i / 2)]; await page.mouse.move(box.x + 2 + (box.width - 4) * k, box.y + box.height * 0.2); }, 6);
+        return H.note(`${shot} + ${sweep}: data-gaze left ${gl} → right ${gr}`);
       }, page);
 
       await step(S, '半身: touch zones map onto her upper body — head / chest / belly reachable, the bottom of the picture is not legs / feet', async () => {
@@ -727,7 +746,8 @@ module.exports = function vrmScenarios(ctx) {
 
       await step(S, '半身: 摸摸 (a click) → pat / happy reaction; 拖起 (press and drag) → lifted, she dangles; released back', async () => {
         await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
-        await rest();
+        await stand();
+        const idleGif = await gif('half-idle', 16, 200, null, 5); // 待机: breathing, blinking, in 半身
         let s = null;
         const tried = [];
         for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) {
@@ -748,6 +768,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.mouse.move(x0, y0);
         await page.mouse.down();
         for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
+        const dragGif = await gif('half-drag', 8, 60, null, 8); // lifted: dangling while held, 半身
         let l = null;
         const t0 = Date.now();
         while (Date.now() - t0 < 2500) { l = await H.ds(); if (l.state === 'lifted') break; await sleep(60); }
@@ -758,7 +779,7 @@ module.exports = function vrmScenarios(ctx) {
         await sleep(800);
         await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
         const w1 = await petBounds(app);
-        return H.note(`${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state} (expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
+        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state} (expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
       }, page);
 
       await step(S, '半身: 口型 — her pat line (voice pack audio) opens the mouth, back to 0 after', async () => {
@@ -778,7 +799,12 @@ module.exports = function vrmScenarios(ctx) {
         let maxOpen = 0;
         let shot = null;
         const lips = new Set();
+        const lipDir = path.join(SHOTS, 'frame-half-lipsync');
+        fs.rmSync(lipDir, { recursive: true, force: true });
+        fs.mkdirSync(lipDir, { recursive: true });
+        let lipN = 0;
         for (let i = 0; i < 120; i++) {
+          if (lipN < 40) await page.screenshot({ path: path.join(lipDir, `${String(lipN++).padStart(3, '0')}.png`) });
           const d = await H.ds();
           lips.add(d.lip);
           const open = Math.max(...d.mouth.split(',').map((p) => Number(p.split(':')[1])));
@@ -791,18 +817,20 @@ module.exports = function vrmScenarios(ctx) {
         await sleep(700);
         const after = (await H.ds()).mouth;
         await page.evaluate(() => window.pet.setPrefs({ voice: false }));
+        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', '8', '-i', path.join(lipDir, '%03d.png'), '-vf', 'split[a][b];[a]palettegen=reserve_transparent=0[p];[b][p]paletteuse', path.join(SHOTS, 'frame-half-lipsync.gif')]);
         assert.ok(lips.has('audio') && maxOpen > 0.2, `lip ${[...lips]} max ${maxOpen}`);
         assert.equal(after, 'aa:0.00,ih:0.00,ou:0.00,ee:0.00,oh:0.00');
-        return H.note(`${shot}: lip modes ${[...lips].join(',')}, max mouth ${maxOpen.toFixed(2)}; after: ${after}`);
+        return H.note(`${shot} + vrm/frame-half-lipsync.gif (${lipN} frames): lip modes ${[...lips].join(',')}, max mouth ${maxOpen.toFixed(2)}; after: ${after}`);
       }, page);
 
       await step(S, '后台切回 全身: the first camera and composition again, the window unchanged', async () => {
         const b0 = await petBounds(app); // (the drag moved the window)
+        const burst = gif('glide-to-full', 14, 0, null, 12);
         await pickGlobal('全身');
         const glide = await glideSamples(600);
+        const glideGif = await burst;
         await settled('full');
-        await rest();
-        await page.mouse.move(5, 5);
+        await stand();
         const f = await H.fig();
         const c = await composition(page);
         const b = await petBounds(app);
@@ -813,7 +841,7 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(saved().prefs.framing, 'full');
         const zs = glide.map((g) => g.z);
         assert.ok(monotonic(zs), zs.join(' '));
-        return H.note(`${shot}: data-framing=full; camera ${JSON.stringify(f.camera)} = the first one; opaque box ${JSON.stringify(c)} (first: ${JSON.stringify(fullCam.comp)}); glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
+        return H.note(`${shot} + ${glideGif}: data-framing=full; camera ${JSON.stringify(f.camera)} = the first one; opaque box ${JSON.stringify(c)} (first: ${JSON.stringify(fullCam.comp)}); glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
       }, page);
 
       await step(S, '她的页 → 形象包 → 取景: her own 半身 wins over the global 全身; 跟随全局 goes back', async () => {
@@ -845,15 +873,13 @@ module.exports = function vrmScenarios(ctx) {
           await H.pickPack(realId);
           await H.drawing(5, 60000);
           await settled('full');
-          await rest();
-          await page.mouse.move(5, 5);
+          await stand();
           const cf = await composition(page);
           const ff = await H.fig();
           const shotF = await H.shot(`10-real${ri + 1}-full`);
           await pickGlobal('半身');
           await settled('half');
-          await rest();
-          await page.mouse.move(5, 5);
+          await stand();
           const ch = await composition(page);
           const fh = await H.fig();
           const shotH = await H.shot(`11-real${ri + 1}-half`);
@@ -877,8 +903,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
         await H.drawing(5, 60000);
         await settled('half');
-        await rest();
-        await page.mouse.move(5, 5);
+        await stand();
         const c = await composition(page);
         const st = await page.evaluate(() => window.pet.getSettings());
         const shot = await H.shot('12-after-restart-half');
