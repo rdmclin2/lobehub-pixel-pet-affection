@@ -72,6 +72,7 @@ async function runModel(tag, MODEL, { full }) {
   // a sequence of canvas frames → a GIF on a plain backdrop (ffmpeg); returns the GIF's path relative to OUT
   const frames = async (name, ms, every, during = null) => {
     const fdir = path.join(dir, `${name}-frames`);
+    fs.rmSync(fdir, { recursive: true, force: true }); // frames of an earlier run must not end up in this GIF
     fs.mkdirSync(fdir, { recursive: true });
     const t1 = Date.now();
     let i = 0;
@@ -87,8 +88,9 @@ async function runModel(tag, MODEL, { full }) {
     }
     const fps = Math.max(1, Math.round(1000 / every));
     const gif = path.join(dir, `${name}.gif`);
-    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(fdir, '%04d.png'), '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=1024x1024',
-      '-filter_complex', `[0]scale=-2:420[f];[1][f]scale2ref=iw:ih[bg][f2];[bg][f2]overlay=format=auto,split[a][b];[a]palettegen=max_colors=160[p];[b][p]paletteuse=dither=bayer`, '-shortest', gif]);
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(fdir, '%04d.png'), '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=64x64',
+      // the backdrop is endless: the overlay ends with the frames (shortest=1), or palettegen waits forever
+      '-filter_complex', '[1][0]scale2ref[bg][fg];[bg][fg]overlay=shortest=1:format=auto,scale=-2:420,split[a][b];[a]palettegen=max_colors=160[p];[b][p]paletteuse=dither=bayer', gif]);
     fs.writeFileSync(path.join(dir, `${name}-frames.json`), `${JSON.stringify(log, null, 1)}\n`);
     note(`[${tag}] gif ${path.relative(OUT, gif)} (${i} frames, ${(fs.statSync(gif).size / 1024).toFixed(0)} KB)`);
     return { gif: path.relative(OUT, gif), log, n: i };
@@ -220,7 +222,7 @@ async function runModel(tag, MODEL, { full }) {
     const heads = live.log.map((x) => x.head);
     const spread = (a) => Math.max(...a) - Math.min(...a);
     R.idleRealtime = { gif: live.gif, frames: live.n, gazeX: [Math.min(...xs), Math.max(...xs)], blinkFrames: blinks, idles: [...new Set(live.log.map((x) => x.idle))], postures: [...new Set(live.log.map((x) => x.posture))], modes: [...new Set(live.log.map((x) => x.mode))], rootXSpread: spread(rootX), rootYSpread: spread(rootY), headPitchSpread: spread(heads.map((h) => h[0])), headRollSpread: spread(heads.map((h) => h[2])) };
-    check(spread(xs) > 1 && blinks >= 3, `[${tag}] 实时 idle GIF ${live.gif}: ${live.n} 帧/45 s；视线 x ${Math.min(...xs).toFixed(2)}…${Math.max(...xs).toFixed(2)} 跟随光标；${blinks} 帧在眨眼；头部俯仰微动范围 ${spread(heads.map((h) => h[0])).toFixed(2)}°；变体 ${R.idleRealtime.idles.join(', ')}`);
+    check(spread(xs) > 1 && blinks >= 3, `[${tag}] 实时 idle GIF ${live.gif}: ${live.n} 帧/45 s；视线 x ${Math.min(...xs).toFixed(2)}…${Math.max(...xs).toFixed(2)} 跟随光标；${blinks} 帧在眨眼；头部俯仰变化范围 ${spread(heads.map((h) => h[0])).toFixed(2)}°（含 idle 片段自身动作）；变体 ${R.idleRealtime.idles.join(', ')}`);
 
     mark(`[${tag}] idle 待机：自动姿势，导演时钟 ×8，≥3 段变体随机调度`);
     await page.evaluate(() => { window.PetVRM.director.seed(7); window.PetVRM.director.speed(8); });
@@ -258,6 +260,7 @@ async function runModel(tag, MODEL, { full }) {
     mark(`[${tag}] 长时间运行：降帧到 idle 12fps，无漂移`);
     await page.evaluate((id) => window.pet.setVrmPosture(id, 'stand.relaxed'), ID);
     await settled('stand.relaxed');
+    await sleep(3000); // the feet-on-the-floor offset eases in over ~1 s after a change of clip
     const a = await fig();
     await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.mode === 'idle', null, { timeout: 30000 });
     const i0 = await ds();
