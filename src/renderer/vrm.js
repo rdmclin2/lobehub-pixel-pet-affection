@@ -203,6 +203,11 @@
     let gaze = { x: 0, y: 0 };
     let gazeSrc = 'none'; // what the eyes follow this frame: cursor | away (a glance) | fixed (the director's) | none
     let ground = 0;
+    // 半身 and sitting: her head comes down with the seat and the seated pose is centred on its whole width
+    // (legs out front), so the half-body camera follows her head–hips line (world m; eased; 0 standing)
+    let camDy = 0;
+    let camDx = 0;
+    let restHeadY = null; // the head bone's height in the rest pose (measure())
     let seatLift = 0; // how far a seated pose is raised to stay inside the frame (groundOffset)
     let floorLift = 0; // seatLift as the floor follows it (eased like the ground)
     let liftK = 0; // 0..1: how far she is held up in the air while lifted
@@ -348,7 +353,7 @@
       const box = new T.Box3().setFromObject(vrm.scene);
       const head = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('head');
       let top = box.max.y;
-      if (head) { const hp = head.getWorldPosition(new T.Vector3()); top = Math.min(box.max.y, hp.y + (hp.y - box.min.y) * 0.35); }
+      if (head) { const hp = head.getWorldPosition(new T.Vector3()); top = Math.min(box.max.y, hp.y + (hp.y - box.min.y) * 0.35); restHeadY = hp.y - vrm.scene.position.y; }
       size = { h: Math.max(0.1, top - box.min.y, box.max.y - box.min.y), minY: box.min.y, cx: (box.min.x + box.max.x) / 2, cz: (box.min.z + box.max.z) / 2 };
       base = { y: 0, x: -size.cx, yaw: vrm.scene.rotation.y };
       // 半身: the band from the humanoid bones (head, neck, upperChest / chest / spine, hips) in this rest pose,
@@ -441,11 +446,13 @@
         else cam = FR.blendCamera(glide.from, cam, t);
       }
       camNow = cam;
-      camera.position.set(cam.x, cam.y, size.cz + cam.dist);
+      const dy = framing === 'half' ? camDy : 0;
+      const dx = framing === 'half' ? camDx : 0;
+      camera.position.set(cam.x + dx, cam.y + dy, size.cz + cam.dist);
       camera.near = Math.max(0.01, cam.dist / 20);
       camera.far = cam.dist * 4;
       camera.updateProjectionMatrix();
-      camera.lookAt(cam.x, cam.y, size.cz);
+      camera.lookAt(cam.x + dx, cam.y + dy, size.cz);
       const d = canvas.dataset;
       if (d.framing !== framing) d.framing = framing;
       const cut = framing === 'half' && band ? band.cut.toFixed(3) : '1';
@@ -474,16 +481,20 @@
       // waist, T-2684). Lift the seated body until each part's mesh (bone − pad) is above the bottom edge of
       // the view at that part's own depth; a standing figure is framed as before.
       seatLift = 0;
+      // Measured against the 全身 camera whatever the framing: in 半身 the bottom edge is her waist, and lifting
+      // the seat over it pushed her head out of the top of the frame (T-2729); 半身 follows her head instead (camDy).
       if (sit && camera) {
         const tan = Math.tan((camera.fov * DEG) / 2);
         const margin = (size.h / share) * 0.012;
+        const full = cameraFor('full');
+        const camZ = size.cz + full.dist;
         let need = -Infinity;
         for (const [n, pad] of SEAT_PADS) {
           const p = at(n);
           if (!p) continue;
-          const d = camera.position.z - p.z;
+          const d = camZ - p.z;
           if (d <= 0) continue;
-          const bottom = camera.position.y - d * tan;
+          const bottom = full.y - d * tan;
           need = Math.max(need, bottom + margin - (p.y - sp.y - pad * rest.hipsY));
         }
         if (Number.isFinite(need) && need > y) { seatLift = need - y; y = need; }
@@ -687,6 +698,33 @@
       vrm.scene.position.set(base.x + shiftX, base.y + ground + air, 0);
       vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
       placeProps(dt, !!(plan.base && plan.base.sit));
+      // 半身: a seated pose brings her head down; the camera follows it (eased like the ground), standing it is 0
+      const sitting = !!(plan.base && plan.base.sit) && !plan.life.lifted;
+      let dyTarget = 0;
+      let dxTarget = 0;
+      if (framing === 'half' && sitting && restHeadY !== null && band) {
+        const hb = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('head');
+        const pb = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('hips');
+        if (hb && pb) {
+          vrm.scene.updateMatrixWorld(true);
+          tmp.h = tmp.h || new R.THREE.Vector3();
+          const hp = hb.getWorldPosition(tmp.h);
+          const hx = hp.x;
+          dyTarget = Math.min(0, hp.y - restHeadY);
+          const px = pb.getWorldPosition(tmp.h).x;
+          dxTarget = (hx + px) / 2 - (band.cx - size.cx); // her upper body now − where the half camera looks standing
+        }
+      }
+      const ck = frameN === 0 ? 1 : approach(4, dt);
+      const nextDy = lerp(camDy, dyTarget, ck);
+      const nextDx = lerp(camDx, dxTarget, ck);
+      const moved = Math.abs(nextDy - camDy) > 1e-5 || Math.abs(nextDx - camDx) > 1e-5;
+      camDy = nextDy;
+      camDx = nextDx;
+      if (moved && camNow && framing === 'half' && !glide) {
+        camera.position.set(camNow.x + camDx, camNow.y + camDy, camera.position.z);
+        camera.lookAt(camNow.x + camDx, camNow.y + camDy, size.cz);
+      }
 
       // face: the director's (pack overrides, fallbacks), blinking, the mouth
       const target = M.resolveFace(plan.face, has, overrides[input.state] || null);
@@ -858,7 +896,7 @@
           idleHistory: director ? director.history() : [],
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',
-          layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground, seatLift: +seatLift.toFixed(4),
+          layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground, seatLift: +seatLift.toFixed(4), camDy: +camDy.toFixed(4), camDx: +camDx.toFixed(4),
           face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze },
           // the pixel vocabulary is gone: no procedural hop / spin / dangle on a VRM (docs §2.3)
           motion: {},
