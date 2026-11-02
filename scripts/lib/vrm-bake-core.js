@@ -168,6 +168,49 @@ function seamBlend(clip) {
   return Math.max(0.25, Math.min(clip.duration / 3, seamAngle(clip) / SEAM_SPEED));
 }
 
+// Euler degrees (three's default XYZ order) → a quaternion.
+function qEuler(x = 0, y = 0, z = 0) {
+  const r = Math.PI / 360;
+  const [c1, c2, c3] = [Math.cos(x * r), Math.cos(y * r), Math.cos(z * r)];
+  const [s1, s2, s3] = [Math.sin(x * r), Math.sin(y * r), Math.sin(z * r)];
+  return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3, c1 * c2 * s3 + s1 * s2 * c3, c1 * c2 * c3 - s1 * s2 * s3];
+}
+
+// Bones set to a fixed rotation for the whole clip: { bone: [x, y, z] deg } (a procedural layer baked in, e.g.
+// the legs hanging while she is lifted). A bone the clip lacks gets a track.
+function poseClip(clip, pose) {
+  const bones = { ...clip.bones };
+  for (const [b, e] of Object.entries(pose || {})) {
+    const q = qEuler(...e);
+    const tr = bones[b] || { times: [0, clip.duration] };
+    bones[b] = { times: tr.times.slice(), values: tr.times.map(() => q.slice()) };
+  }
+  return { ...clip, bones };
+}
+
+// Every key of the listed bones turned a little more in the bone's own axes: { bone: [x, y, z] deg }
+// (elbows bent, shoulders up…). Applied on the clip's own rotation (q · offset).
+function offsetClip(clip, offset) {
+  const bones = { ...clip.bones };
+  for (const [b, e] of Object.entries(offset || {})) {
+    const tr = bones[b];
+    if (!tr) continue;
+    const q = qEuler(...e);
+    bones[b] = { times: tr.times.slice(), values: tr.values.map((v) => qnorm(qmul(v, q))) };
+  }
+  return { ...clip, bones };
+}
+
+// Hips upright and at standing height (the source kneels or crouches; the clip keeps its upper body): the hips
+// rotation becomes the identity and the hips position the rest position.
+function uprightClip(clip) {
+  const bones = { ...clip.bones };
+  if (bones.hips) bones.hips = { times: bones.hips.times.slice(), values: bones.hips.times.map(() => [0, 0, 0, 1]) };
+  const rp = (clip.rest && clip.rest.hips) || [0, clip.restHipsY || 1, 0];
+  const hips = clip.hips ? { times: clip.hips.times.slice(), values: clip.hips.times.map(() => rp.slice()) } : null;
+  return { ...clip, bones, hips };
+}
+
 // The parameters of a library entry, in the order they apply.
 function bakeParams(clip, e = {}) {
   let c = clip;
@@ -175,6 +218,9 @@ function bakeParams(clip, e = {}) {
   if (e.kind === 'posture' || e.hold === true || e.still) c = holdClip(c, 1); // a 2-frame pose: one held second
   if (e.inPlace) c = inPlaceClip(c);
   if (typeof e.amplitude === 'number') c = amplitudeClip(c, e.amplitude);
+  if (e.upright) c = uprightClip(c);
+  if (e.offset) c = offsetClip(c, e.offset);
+  if (e.pose) c = poseClip(c, e.pose);
   if (e.mirror) c = mirrorClip(c);
   if (e.loop && e.kind !== 'posture') c = loopClip(c, typeof e.loopBlend === 'number' ? e.loopBlend : seamBlend(c));
   if (e.kind === 'idle' && e.center !== false) c = centerClip(c); // last: the loop blend moves the hips too
@@ -308,6 +354,6 @@ function readVrma(buf) {
 module.exports = {
   MIXAMO_TO_VRM, VRM_REQUIRED, VRM_PARENT, stripMixamo, vrmBoneOf, mirrorBone,
   qmul, qinv, qnorm, qslerp, qangle, retargetQ, mirrorQ,
-  sampleTrack, trimClip, holdClip, loopClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, centerClip, bakeParams,
+  sampleTrack, trimClip, holdClip, loopClip, qEuler, poseClip, offsetClip, uprightClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, centerClip, bakeParams,
   writeVrma, readVrma, glb,
 };

@@ -200,3 +200,24 @@ test('a held pose with the alive layer on top: the offset does not pile up over 
   for (let i = 0; i < 12 * 600; i++) { layers.update(1 / 12); arm.quaternion.multiply(off); }
   assert.ok(Math.abs(armAngle(arm) - 69) < 0.01, `after 10 min at 12 fps: ${armAngle(arm).toFixed(2)}° (clip 72° − offset 3°)`);
 });
+
+test('T-2691 bake layers: pose sets a bone for the whole clip, offset turns every key, upright stands the hips up', () => {
+  const clip = {
+    duration: 1, restHipsY: 0.9, rest: { hips: [0, 0.9, 0] },
+    bones: { hips: { times: [0, 1], values: [B.qEuler(30, 0, 0), B.qEuler(40, 0, 0)] }, leftLowerArm: { times: [0, 1], values: [B.qEuler(0, 0, 10), B.qEuler(0, 0, 20)] } },
+    hips: { times: [0, 1], values: [[0, 0.4, 0.1], [0, 0.5, 0.1]] },
+  };
+  const p = B.poseClip(clip, { leftLowerLeg: [10, 0, 0] });
+  assert.equal(p.bones.leftLowerLeg.values.length, 2);
+  assert.ok(p.bones.leftLowerLeg.values.every((q) => near(q, B.qEuler(10, 0, 0))));
+  const o = B.offsetClip(clip, { leftLowerArm: [0, -40, 0] });
+  assert.ok(near(o.bones.leftLowerArm.values[1], B.qmul(B.qEuler(0, 0, 20), B.qEuler(0, -40, 0))));
+  const u = B.uprightClip(clip);
+  assert.ok(u.bones.hips.values.every((q) => near(q, [0, 0, 0, 1])));
+  assert.ok(u.hips.values.every((v) => v[1] === 0.9), 'hips at the standing height');
+  // the order in bakeParams: a still pose, upright, then the offsets and the fixed pose
+  const b = B.bakeParams(clip, { kind: 'hold', still: true, upright: true, pose: { leftFoot: [35, 0, 0] } });
+  assert.equal(b.duration, 1);
+  assert.ok(near(b.bones.leftFoot.values[0], B.qEuler(35, 0, 0)));
+  assert.ok(near(b.bones.hips.values[0], [0, 0, 0, 1]));
+});

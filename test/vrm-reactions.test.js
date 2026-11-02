@@ -302,7 +302,7 @@ test('celebrations and cues: hatch greets, evolve cheers, one waits for a touch 
   assert.equal(run(t, 0.2, holdsOf({ talk: true }), { 0: [{ type: 'cue', name: 'happy' }] }).pop().reaction, null);
 });
 
-test('female and male: the same touch plays different clips; male smaller and calmer (weight, face ×0.8)', () => {
+test('female and male: the same touch plays different clips; male calmer in the face (×0.8) but not a faint body (T-2691)', () => {
   const f = make('female');
   const m = make('male');
   run(f, 1);
@@ -315,7 +315,8 @@ test('female and male: the same touch plays different clips; male smaller and ca
   const sf = run(make('female'), 0.05, holdsOf(), { 0: [touch('head', 'happy')] });
   const fd = make('female'); run(fd, 1); const wf = Math.max(...run(fd, 1.5, holdsOf(), { 0: [touch('head', 'happy')] }).map((p) => (ov(p, 'reaction')[0] || { weight: 0 }).weight));
   const md = make('male'); run(md, 1); const wm = Math.max(...run(md, 1.5, holdsOf(), { 0: [touch('head', 'happy')] }).map((p) => (ov(p, 'reaction')[0] || { weight: 0 }).weight));
-  assert.ok(sf.length && wm < wf, `male ${wm} < female ${wf}`);
+  // the male way is a different motion, not a smaller one: his overlay weight stays ≥ 60% of hers (T-2691)
+  assert.ok(sf.length && wm >= 0.6 * wf, `male ${wm} ≥ 0.6 × female ${wf}`);
 });
 
 test('no library: a touch still shows its face and gaze for a while, no overlay, then back; nothing throws', () => {

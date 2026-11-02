@@ -10,14 +10,14 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PetVrmLife = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const LIMITS = { bone: 4, liftUpperLeg: 8, liftLowerLeg: 12, landUpperLeg: 4, landLowerLeg: 8, stance: 8, root: 0.02 };
+  const LIMITS = { bone: 4, liftUpperLeg: 14, liftLowerLeg: 16, liftHips: 6, landUpperLeg: 4, landLowerLeg: 8, stance: 8, root: 0.02 };
   const LAND = 0.5; // seconds of the knee dip when she is put down
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smooth = (k) => { const x = clamp(k, 0, 1); return x * x * (3 - 2 * x); };
   const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
   // breaths per minute: awake 14–18, asleep 10
   const BREATH = { awake: [14, 18], sleep: 10 };
-  const SHIFT_EVERY = [6, 14];
+  const SHIFT_EVERY = [6, 14]; // the default; a style may set its own (shiftEvery)
   const SACCADE_EVERY = [0.8, 3];
   const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
   const SEG = { Thumb: ['Proximal', 'Distal'], Index: ['Proximal', 'Intermediate', 'Distal'], Middle: ['Proximal', 'Intermediate', 'Distal'], Ring: ['Proximal', 'Intermediate', 'Distal'], Little: ['Proximal', 'Intermediate', 'Distal'] };
@@ -31,7 +31,7 @@
       t: 0,
       breathPh: 0,
       bpm: between(BREATH.awake[0], BREATH.awake[1]),
-      shift: { from: 0, to: 0, at: -10, next: between(SHIFT_EVERY[0], SHIFT_EVERY[1]) },
+      shift: { from: 0, to: 0, at: -10, next: between(...((style && style.shiftEvery) || SHIFT_EVERY)) },
       saccade: { x: 0, y: 0, next: between(SACCADE_EVERY[0], SACCADE_EVERY[1]) },
       away: { until: -1, x: 0, y: 0, next: 4 + rand() * 8 },
       lift: { k: 0, swing: 0, v: 0 },
@@ -65,14 +65,14 @@
       add('leftShoulder', 0, 0, Math.max(0, b) * (br.shoulder || 0) * amp);
       add('rightShoulder', 0, 0, -Math.max(0, b) * (br.shoulder || 0) * amp);
 
-      // weight from one leg to the other every 6–14 s (standing only): hips roll, the spine leans back the
+      // weight from one leg to the other every 6–14 s (the style's shiftEvery; standing only): hips roll, the spine leans back the
       // other way, the legs stay under her
       const sh = st.shift;
       if (t >= sh.at + sh.next) {
         sh.from = sh.from + (sh.to - sh.from) * smooth((t - sh.at) / 1.5);
         sh.to = ctx.standing === false ? 0 : (rand() < 0.5 ? -1 : 1) * between(0.5, 1);
         sh.at = t;
-        sh.next = between(SHIFT_EVERY[0], SHIFT_EVERY[1]);
+        sh.next = between(...(P.shiftEvery || SHIFT_EVERY));
       }
       const side = (sh.from + (sh.to - sh.from) * smooth((t - sh.at) / 1.5)) * (ctx.standing === false ? 0 : 1);
       const roll = 2 * P.hipSway * side;
@@ -115,21 +115,33 @@
         add('rightUpperLeg', 0, 0, -w);
       }
 
-      // lifted: the legs hang (thighs forward, knees bent) and swing behind the window's motion like a damped
-      // pendulum, never a shake
+      // lifted: the hanging pose itself is baked into hold.lift (legs straight down, toes pointing down,
+      // scripts/vrm-bake.js `pose`); here the legs and the body swing behind the window's motion like a damped
+      // pendulum (sideways with a horizontal drag, a little forward / back), and while the window is still the
+      // feet dangle slowly, one after the other. Knees only ever bend forward (lower leg x ≥ 0), never back.
       const L = st.lift;
       L.k += ((ctx.lifted ? 1 : 0) - L.k) * approach(6, dt);
-      const push = clamp(-(ctx.velX || 0) / 1500, -1, 1);
-      L.v += ((push - L.swing) * 40 - L.v * 7) * dt;
+      // the window moving right (+velX, screen right = her left, +X) leaves the feet behind to the left: −z
+      const push = clamp((ctx.velX || 0) / 700, -1, 1);
+      L.v += ((push - L.swing) * 40 - L.v * 6) * dt;
       L.swing = clamp(L.swing + L.v * dt, -1, 1);
       if (L.k > 0.001) {
-        const up = clamp(-5 * L.k - 3 * L.swing * L.k, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
-        const low = clamp(9 * L.k + 3 * Math.abs(L.swing) * L.k, 0, LIMITS.liftLowerLeg);
+        const k = L.k;
+        const sw = L.swing * k;
+        const still = 1 - Math.min(1, Math.abs(L.swing) * 2);
+        const dangle = Math.sin(t * 2 * Math.PI * 0.55) * 4 * k * (0.4 + 0.6 * still);
+        const hz = clamp(-LIMITS.liftHips * sw, -LIMITS.liftHips, LIMITS.liftHips);
+        const hips = out.hips || (out.hips = { x: 0, y: 0, z: 0 });
+        hips.z = hips.z * (1 - k) + hz; // the weight shift gives way to the swing
+        const sp = out.spine || (out.spine = { x: 0, y: 0, z: 0 });
+        sp.z = sp.z * (1 - k) - hz * 0.4;
         for (const s of ['left', 'right']) {
+          const ph = s === 'left' ? 1 : -1;
           const o = out[`${s}UpperLeg`] || (out[`${s}UpperLeg`] = { x: 0, y: 0, z: 0 });
-          o.x = clamp(o.x * (1 - L.k) + up, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
+          o.x = clamp(o.x * (1 - k) - 5 * sw * (s === 'left' ? 1 : 0.8) + dangle * ph, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
+          o.z = clamp(o.z * (1 - k) - 9 * sw, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
           const l = out[`${s}LowerLeg`] || (out[`${s}LowerLeg`] = { x: 0, y: 0, z: 0 });
-          l.x = clamp(l.x + low * (s === 'left' ? 1 : 0.85), 0, LIMITS.liftLowerLeg);
+          l.x = clamp(l.x + (2 + 6 * Math.abs(L.swing)) * k * (s === 'left' ? 1 : 0.85) + Math.max(0, dangle * ph), 0, LIMITS.liftLowerLeg);
         }
       }
 

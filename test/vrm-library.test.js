@@ -93,3 +93,27 @@ test('motions and models stay out of git and the package: ignored, excluded from
   const tracked = require('node:child_process').execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n');
   assert.deepEqual(tracked.filter((f) => /\.(fbx|vmd|bvh|pmx|vroid|vrma?)$/i.test(f)), []);
 });
+
+test('T-2691: idle variants come from different motion files; lift is a full-body hold with hanging legs', () => {
+  for (const style of ['female', 'male']) {
+    const a = manifest.clips[`idle.happy@${style}`];
+    const b = manifest.clips[`idle.variant2@${style}`];
+    assert.ok(a.src && b.src && a.src !== b.src, `${style}: ${a.src} vs ${b.src}`);
+    const lift = manifest.clips[`hold.lift@${style}`];
+    assert.equal(lift.mask, 'full', `${style}: the legs are part of the lift`);
+    assert.equal(lift.upright, true);
+    for (const s of ['left', 'right']) {
+      const up = lift.pose[`${s}UpperLeg`];
+      const low = lift.pose[`${s}LowerLeg`];
+      const foot = lift.pose[`${s}Foot`];
+      assert.ok(up && Math.abs(up[0]) <= 15, `${style} ${s} thigh nearly straight down: ${up}`);
+      assert.ok(low && low[0] >= 0 && low[0] <= 30, `${style} ${s} knee soft, never bent backwards: ${low}`);
+      assert.ok(foot && foot[0] >= 20, `${style} ${s} toes point down: ${foot}`);
+    }
+  }
+  // the old male lift (arms spread in an A) is gone
+  assert.notEqual(manifest.clips['hold.lift@male'].src, 'mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx');
+  // liliya's idle posture cycle leaves out the 47°-turned playful stand and does not tick every 12 s
+  const pc = manifest.clips['idle.posture-cycle@female'];
+  assert.ok(!pc.cycle.includes('stand.playful') && pc.every >= 15, JSON.stringify(pc));
+});

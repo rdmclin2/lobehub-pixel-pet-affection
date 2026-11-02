@@ -74,3 +74,27 @@ test('long run: nothing accumulates — the offsets after an hour are as small a
   for (const r of Object.values(last.bones)) for (const v of [r.x, r.y, r.z]) assert.ok(Math.abs(v) <= Life.LIMITS.bone);
   assert.ok(Number.isFinite(l.state.breathPh));
 });
+
+test('T-2691 lifted: the legs swing sideways after the window and dangle when it stops; knees never bend backwards', () => {
+  const l = Life.createLife({ rand: D.seeded(5), style: S.PROFILES.male });
+  const z = [];
+  const knees = [];
+  const x = [];
+  for (let i = 0; i < 360; i++) {
+    const o = l.step(1 / 60, { standing: true, lifted: true, velX: i < 90 ? 900 : 0 });
+    z.push(o.bones.leftUpperLeg.z);
+    x.push(o.bones.leftUpperLeg.x);
+    knees.push(o.bones.leftLowerLeg.x, o.bones.rightLowerLeg.x);
+  }
+  assert.ok(Math.min(...z.slice(30, 90)) < -3, `window moving right: the feet lag to the left (${Math.min(...z.slice(30, 90)).toFixed(1)}°)`);
+  assert.ok(Math.min(...knees) >= 0, 'knees bend forward only');
+  const still = x.slice(240);
+  assert.ok(Math.max(...still) - Math.min(...still) > 1.5, 'the feet keep dangling while the window is still');
+  assert.ok(Math.abs(z[z.length - 1]) < 1.5, 'the sideways swing settles');
+});
+
+test('T-2691 male weight shifts come more often than female ones', () => {
+  assert.ok(S.PROFILES.male.shiftEvery[1] < S.PROFILES.female.shiftEvery[0] + 2);
+  const count = (style) => { const { frames } = runLife({}, 120, 1 / 30, style, 7); let n = 0; for (let i = 1; i < frames.length; i++) if (Math.sign(frames[i].bones.hips.z - frames[i - 1].bones.hips.z) !== Math.sign(frames[i - 1].bones.hips.z - (frames[i - 2] || frames[i - 1]).bones.hips.z)) n++; return n; };
+  assert.ok(count(S.PROFILES.male) > count(S.PROFILES.female), `male ${count(S.PROFILES.male)} vs female ${count(S.PROFILES.female)} turning points`);
+});

@@ -11,11 +11,12 @@
   // set: which library set; amplitude: gestures; hipSway: weight shifts; stanceWidth: deg the upper legs open;
   // handPose: finger curl 0..1; headTilt: deg; breath: { chest, upperChest, spine, shoulder } deg at full breath;
   // emotion: expression strength; idleEvery: seconds per idle (a base, scheduled 8–20 s); lookAway: share of
-  // idle time she looks elsewhere.
+  // idle time she looks elsewhere; shiftEvery: [min, max] seconds between weight shifts (the male set shifts
+  // more often: a still male idle read as wooden, T-2691).
   const PROFILES = {
-    female: { set: 'female', amplitude: 1.0, hipSway: 1.0, stanceWidth: 0, handPose: 0.3, headTilt: 4, breath: { chest: 1.2, upperChest: 0.8, spine: 0.4, shoulder: 0.6 }, emotion: 1.0, idleEvery: 12, lookAway: 0.12 },
-    male: { set: 'male', amplitude: 0.8, hipSway: 0.5, stanceWidth: 4, handPose: 0.45, headTilt: 1.5, breath: { chest: 0.8, upperChest: 0.3, spine: 1.0, shoulder: 0.3 }, emotion: 0.8, idleEvery: 18, lookAway: 0.06 },
-    neutral: { set: 'neutral', amplitude: 0.9, hipSway: 0.75, stanceWidth: 2, handPose: 0.38, headTilt: 3, breath: { chest: 1.0, upperChest: 0.55, spine: 0.7, shoulder: 0.45 }, emotion: 0.9, idleEvery: 15, lookAway: 0.09 },
+    female: { set: 'female', amplitude: 1.0, hipSway: 1.0, stanceWidth: 0, handPose: 0.3, headTilt: 4, breath: { chest: 1.2, upperChest: 0.8, spine: 0.4, shoulder: 0.6 }, emotion: 1.0, idleEvery: 12, lookAway: 0.12, shiftEvery: [8, 16] },
+    male: { set: 'male', amplitude: 0.8, hipSway: 0.9, stanceWidth: 4, handPose: 0.45, headTilt: 1.5, breath: { chest: 0.8, upperChest: 0.3, spine: 1.0, shoulder: 0.3 }, emotion: 0.8, idleEvery: 16, lookAway: 0.08, shiftEvery: [4, 9] },
+    neutral: { set: 'neutral', amplitude: 0.9, hipSway: 0.75, stanceWidth: 2, handPose: 0.38, headTilt: 3, breath: { chest: 1.0, upperChest: 0.55, spine: 0.7, shoulder: 0.45 }, emotion: 0.9, idleEvery: 15, lookAway: 0.09, shiftEvery: [6, 14] },
   };
   const NAMES = Object.keys(PROFILES);
   const VRM_STYLE_LIMITS = { amplitude: [0.3, 1.3], hipSway: [0, 1.5], stanceWidth: [-2, 8], handPose: [0, 0.8], headTilt: [0, 8], emotion: [0.3, 1.2], idleEvery: [8, 20], lookAway: [0, 0.3] };
@@ -92,7 +93,7 @@
     else if (body) { base = inferFromBody(body); source = 'meta'; }
     if (!base) base = 'neutral';
     const p = PROFILES[base];
-    return { ...p, ...overrides, breath: { ...p.breath }, name: base, set: p.set, source };
+    return { ...p, ...overrides, breath: { ...p.breath }, shiftEvery: p.shiftEvery.slice(), name: base, set: p.set, source };
   }
 
   return { PROFILES, NAMES, VRM_STYLE_LIMITS, parsePackStyle, bodyFromJson, inferFromBody, resolveStyle };

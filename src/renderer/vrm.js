@@ -181,6 +181,10 @@
     let gaze = { x: 0, y: 0 };
     let ground = 0;
     let seatLift = 0; // how far a seated pose is raised to stay inside the frame (groundOffset)
+    let floorLift = 0; // seatLift as the floor follows it (eased like the ground)
+    let liftK = 0; // 0..1: how far she is held up in the air while lifted
+    let seatK = 0; // 0..1: how much of the seat shows (sitting)
+    let props = null; // { shadow, seat } — a soft shadow on the floor and the seat under a sitting pose
     let shiftX = 0;
     let yaw = 0;
     let prevSnap = null;
@@ -231,6 +235,8 @@
       v.scene.traverse((o) => { o.frustumCulled = false; });
       vrm = v;
       scene.add(vrm.scene);
+      props = makeProps(T);
+      scene.add(props.shadow, props.seat);
       if (vrm.lookAt) { vrm.lookAt.target = lookTarget; vrm.lookAt.autoUpdate = true; }
       measureRest();
       restPose();
@@ -387,16 +393,75 @@
       return { y, x: Number.isFinite(x) ? x : 0 };
     }
 
+    // ---------- props: the floor shadow and the seat (T-2691) ----------
+    // A soft round shadow on the floor under her (it stays on the floor when she is lifted, smaller and
+    // fainter: she hangs above it), and a seat under a sitting pose — a low round pouf from the floor up to
+    // under her hips, a flat cushion for a floor sit — so a seated pose never sits on thin air.
+    const LIFT_UP = 0.05; // of the canvas height
+    function makeProps(T) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+      grad.addColorStop(0, 'rgba(40,36,60,0.55)');
+      grad.addColorStop(0.6, 'rgba(40,36,60,0.22)');
+      grad.addColorStop(1, 'rgba(40,36,60,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+      const tex = new T.CanvasTexture(c);
+      const shadow = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.8 }));
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.renderOrder = -1;
+      shadow.name = 'vrm-shadow';
+      const seat = new T.Mesh(new T.CylinderGeometry(1, 1.06, 1, 40, 1), new T.MeshLambertMaterial({ color: 0xd9b3a3, transparent: true, opacity: 0 }));
+      seat.name = 'vrm-seat';
+      seat.visible = false;
+      return { shadow, seat };
+    }
+    function placeProps(dt, sit) {
+      if (!props || !vrm.humanoid) return;
+      const T = R.THREE;
+      const h = rest.hipsY;
+      vrm.scene.updateMatrixWorld(true);
+      tmp.p = tmp.p || new T.Vector3();
+      const hips = vrm.humanoid.getNormalizedBoneNode('hips').getWorldPosition(tmp.p).clone();
+      const floor = size.minY + floorLift;
+      // the shadow: under her hips, on the floor; lifted, smaller and fainter
+      const sh = props.shadow;
+      const k = 1 - 0.45 * liftK;
+      sh.scale.set(h * 0.62 * k, h * 0.34 * k, 1);
+      sh.position.set(hips.x, floor + 0.002, hips.z);
+      sh.material.opacity = 0.8 * (1 - 0.5 * liftK);
+      // the seat: fades in with the sitting pose, from the floor up to just under the hips
+      seatK = lerp(seatK, sit ? 1 : 0, approach(sit ? 3 : 6, dt));
+      const seat = props.seat;
+      seat.visible = seatK > 0.01;
+      if (seat.visible) {
+        const top = hips.y - h * 0.1;
+        const bottom = Math.min(floor, top - h * 0.04);
+        const r = h * 0.26;
+        seat.scale.set(r, Math.max(0.01, top - bottom), r * 0.85);
+        seat.position.set(hips.x, (top + bottom) / 2, hips.z - h * 0.04);
+        seat.material.opacity = seatK;
+      }
+      seatInfo = { visible: seat.visible, k: +seatK.toFixed(2), top: +(hips.y - h * 0.1).toFixed(3), floor: +floor.toFixed(3), hipsY: +hips.y.toFixed(3), height: seat.visible ? +seat.scale.y.toFixed(3) : 0 };
+    }
+    let seatInfo = null;
+
     // the alive layer's offsets (deg) on the clip's pose
     function applyLife(bones) {
       const T = R.THREE;
       const h = vrm.humanoid;
       tmp.e = tmp.e || new T.Euler();
       tmp.q = tmp.q || new T.Quaternion();
+      // the layer is written in VRM 1.0 / VRMA terms (she faces +Z); a 0.x model's normalized bones face −Z
+      // (rotateVRM0 turns the whole scene), so x and z turn the other way there — without this a lifted 0.x
+      // model bent its knees backwards (T-2691)
+      const v0 = vrm.meta && vrm.meta.metaVersion === '0' ? -1 : 1;
       for (const [name, r] of Object.entries(bones)) {
         const n = h.getNormalizedBoneNode(name);
         if (!n || (!r.x && !r.y && !r.z)) continue;
-        tmp.e.set(r.x * DEG, r.y * DEG, r.z * DEG);
+        tmp.e.set(r.x * DEG * v0, r.y * DEG, r.z * DEG * v0);
         n.quaternion.multiply(tmp.q.setFromEuler(tmp.e));
       }
     }
@@ -471,7 +536,10 @@
 
       // L0/L1: the director's base clip, cross-faded
       if (plan.base && plan.base.key !== lastBaseKey) {
-        if (plan.base.id && anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade);
+        // an idle clip starts somewhere in its loop at a slightly different pace each time: the same idle
+        // never beats on the same clock twice (T-2691)
+        const idleClip = plan.idleKind === 'clip' && plan.posture === null;
+        if (plan.base.id && anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade, idleClip ? { phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
         lastBaseKey = plan.base.key;
       }
       const clips = anim.update(dt, plan.overlays); // the base, then the holds (L2) and reactions (L3) over it
@@ -489,8 +557,13 @@
       ground = lerp(ground, g.y, gk);
       shiftX = lerp(shiftX, g.x, gk);
       yaw = lerp(yaw, plan.facingYaw, approach(4, dt));
-      vrm.scene.position.set(base.x + shiftX, base.y + ground, 0);
+      floorLift = lerp(floorLift, seatLift, gk);
+      // lifted: held up off the floor (her shadow stays down there), she sinks back when put down
+      liftK = lerp(liftK, plan.life.lifted ? 1 : 0, approach(plan.life.lifted ? 5 : 7, dt));
+      const air = liftK * LIFT_UP * (size.h / share);
+      vrm.scene.position.set(base.x + shiftX, base.y + ground + air, 0);
       vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
+      placeProps(dt, !!(plan.base && plan.base.sit));
 
       // face: the director's (pack overrides, fallbacks), blinking, the mouth
       const target = M.resolveFace(plan.face, has, overrides[input.state] || null);
@@ -660,11 +733,53 @@
           springJoints: vrm && vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0,
           root: vrm ? { x: vrm.scene.position.x, y: vrm.scene.position.y, yaw: vrm.scene.rotation.y / DEG, roll: vrm.scene.rotation.z / DEG } : null,
           bones: vrm ? boneSample() : null,
+          pose: vrm ? poseSample() : null,
+          props: { seat: seatInfo, lift: +liftK.toFixed(3), floorLift: +floorLift.toFixed(4) },
           memory: renderer ? { ...renderer.info.memory } : null, packId: look.packId,
           maps: textureMaps(),
         }),
       };
     }
+    // the pose in numbers for the acceptance checks (T-2691): every main bone's normalized rotation (quaternion,
+    // to measure how far a reaction moves her from the idle), the legs (hips / knee / ankle heights, the knee
+    // angle — 0 straight, positive bent forward, negative a knee bent backwards), and how far the head is
+    // turned from where her body faces (deg, + = to her left)
+    const POSE_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'];
+    function poseSample() {
+      const T = R.THREE;
+      const hm = vrm.humanoid;
+      vrm.scene.updateMatrixWorld(true);
+      const q = {};
+      for (const n of POSE_BONES) { const b = hm.getNormalizedBoneNode(n); if (b) q[n] = b.quaternion.toArray().map((v) => +v.toFixed(4)); }
+      const w = (n) => { const b = hm.getNormalizedBoneNode(n); return b ? b.getWorldPosition(new T.Vector3()) : null; };
+      const legs = {};
+      const hipsP = w('hips');
+      for (const s of ['left', 'right']) {
+        const up = w(`${s}UpperLeg`), kn = w(`${s}LowerLeg`), an = w(`${s}Foot`);
+        if (!up || !kn || !an) continue;
+        const a = kn.clone().sub(up), b2 = an.clone().sub(kn);
+        let ang = a.angleTo(b2) / DEG;
+        // which way the knee bends: a knee in front of the hip–ankle line bends the right way (+); behind it,
+        // backwards (−). Her front is where the hips face.
+        const fwd = new T.Vector3(0, 0, 1).applyQuaternion(hm.getNormalizedBoneNode('hips').getWorldQuaternion(new T.Quaternion()));
+        if (vrm.meta && vrm.meta.metaVersion === '0') fwd.negate(); // 0.x normalized bones face −Z
+        const mid = up.clone().add(an).multiplyScalar(0.5);
+        if (kn.clone().sub(mid).dot(fwd) < -0.003) ang = -ang;
+        const to = w(`${s}Toes`);
+        legs[s] = { knee: +ang.toFixed(1), ankleBelowHips: +(hipsP.y - an.y).toFixed(4), ankleY: +an.y.toFixed(4), kneeY: +kn.y.toFixed(4), toeDrop: to ? +(an.y - to.y).toFixed(4) : null };
+      }
+      legs.hipsY = +hipsP.y.toFixed(4);
+      // head yaw against the body's facing (the scene's turn)
+      const hq = hm.getNormalizedBoneNode('head').getWorldQuaternion(new T.Quaternion());
+      const f = new T.Vector3(0, 0, 1).applyQuaternion(hq);
+      const headYaw = Math.atan2(f.x, f.z) / DEG - vrm.scene.rotation.y / DEG;
+      const hipq = hm.getNormalizedBoneNode('hips').getWorldQuaternion(new T.Quaternion());
+      const fh = new T.Vector3(0, 0, 1).applyQuaternion(hipq);
+      const hipsYaw = Math.atan2(fh.x, fh.z) / DEG - vrm.scene.rotation.y / DEG;
+      const wrap = (x) => ((((x + 180) % 360) + 360) % 360) - 180;
+      return { q, legs, headYaw: +wrap(headYaw).toFixed(2), hipsYaw: +wrap(hipsYaw).toFixed(2), rootY: +vrm.scene.position.y.toFixed(4) };
+    }
+
     // a few bones (deg, normalized) for the e2e's drift / T-pose checks
     function boneSample() {
       const T = R.THREE;
@@ -694,6 +809,7 @@
           if (anim) anim.dispose();
           anim = null;
           if (vrm) { scene.remove(vrm.scene); R.VRMUtils.deepDispose(vrm.scene); }
+          if (props) { for (const m of [props.shadow, props.seat]) { scene.remove(m); m.geometry.dispose(); if (m.material.map) m.material.map.dispose(); m.material.dispose(); } props = null; }
           if (renderer) { renderer.renderLists.dispose(); renderer.dispose(); renderer.forceContextLoss(); }
         } catch (e) { console.warn('[vrm] dispose:', e && e.message); }
         stats.lastDispose = { packId: look.packId, before: memory, after: renderer ? { ...renderer.info.memory } : null };

@@ -80,9 +80,9 @@ async function runModel(tag, MODEL, { full }) {
     while (Date.now() - t1 < ms) {
       const at = Date.now();
       if (during) await during((at - t1) / 1000);
-      const r = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.petFx.vrm().figures[0]; return { url: c.toDataURL('image/png'), d: { ...c.dataset }, w: f.weightSum, root: f.root, bones: f.bones, ground: f.ground }; });
+      const r = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.petFx.vrm().figures[0]; return { url: c.toDataURL('image/png'), d: { ...c.dataset }, w: f.weightSum, root: f.root, bones: f.bones, ground: f.ground, pose: f.pose }; });
       fs.writeFileSync(path.join(fdir, `${String(i++).padStart(4, '0')}.png`), Buffer.from(r.url.split(',')[1], 'base64'));
-      log.push({ t: +((at - t1) / 1000).toFixed(2), posture: r.d.posture, idle: r.d.idle, layers: r.d.layers, weightSum: +r.w.toFixed(4), mode: r.d.mode, expr: r.d.expr, gaze: r.d.gaze, root: r.root, hips: r.bones.hips, head: r.bones.head, ground: +r.ground.toFixed(4) });
+      log.push({ t: +((at - t1) / 1000).toFixed(2), posture: r.d.posture, idle: r.d.idle, layers: r.d.layers, weightSum: +r.w.toFixed(4), mode: r.d.mode, expr: r.d.expr, gaze: r.d.gaze, root: r.root, hips: r.bones.hips, head: r.bones.head, ground: +r.ground.toFixed(4), headYaw: r.pose ? r.pose.headYaw : null, q: r.pose ? r.pose.q : null });
       const wait = every - (Date.now() - at);
       if (wait > 0) await sleep(wait);
     }
@@ -185,6 +185,8 @@ async function runModel(tag, MODEL, { full }) {
       // the whole figure inside the canvas: the bottom pixel row must stay empty (a seated pose once hung out of it)
       const edge = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const g = document.createElement('canvas'); g.width = c.width; g.height = c.height; const x = g.getContext('2d'); x.drawImage(c, 0, 0); const row = x.getImageData(0, c.height - 2, c.width, 2).data; let n = 0; for (let i = 3; i < row.length; i += 4) if (row[i] > 8) n++; return n; });
       R.postures[p].bottomRowPixels = edge;
+      // T-2691: a seated pose sits on something (the renderer's pouf / cushion), not on thin air
+      if (p.startsWith('sit.')) { const st = f.props && f.props.seat; R.postures[p].seat = st; check(!!(st && st.visible && st.k > 0.9 && st.height >= 0.03 && st.top < st.hipsY && st.hipsY - st.top < 0.15 && st.top > st.floor), `[${tag}] 姿势 ${p}: 坐具 ${st ? `可见 (k=${st.k})，从地面 y=${st.floor} 到臀下 y=${st.top}（臀部骨骼 y=${st.hipsY}），高 ${st.height} m` : '无'} → 不悬空`); }
       if (p.startsWith("sit.")) check(f.seatLift > 0, `[${tag}] 姿势 ${p}: 坐姿整体上抬 seatLift=${f.seatLift} m 以免臀/腿/脚落出画布底边；画布最底 2 行剩余 ${edge} 个不透明像素（拖地长发落在地面线上属正常，见截图）`);
       else note(`[${tag}] 姿势 ${p}: 画布最底 2 行 ${edge} 个不透明像素（脚底贴地面线）`);
       check(d.posture === p && saved === p && sums.every((s) => Math.abs(s - 1) < 0.01), `[${tag}] 姿势 ${p}: data-posture=${d.posture}, layers ${d.layers}, settings.vrmPostures=${saved}, weight sums during fade ${[...new Set(sums)].join('/')}`);
@@ -238,6 +240,21 @@ async function runModel(tag, MODEL, { full }) {
     const heads = live.log.map((x) => x.head);
     const spread = (a) => Math.max(...a) - Math.min(...a);
     R.idleRealtime = { gif: live.gif, frames: live.n, gazeX: [Math.min(...xs), Math.max(...xs)], blinkFrames: blinks, idles: [...new Set(live.log.map((x) => x.idle))], postures: [...new Set(live.log.map((x) => x.posture))], modes: [...new Set(live.log.map((x) => x.mode))], rootXSpread: spread(rootX), rootYSpread: spread(rootY), headPitchSpread: spread(heads.map((h) => h[0])), headRollSpread: spread(heads.map((h) => h[2])) };
+    // T-2691: liliya's idle must not sweep her head about (every head turn within ±12° of where her body
+    // faces); the male idle must not stand like a post (≥ 2 clear but small changes in 35 s: a main bone
+    // turning > 12° within 2 s, counted at most once per 3 s)
+    const yaws = live.log.map((x) => x.headYaw).filter((v) => v !== null);
+    const qang = (a, b) => (2 * Math.acos(Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]))) * 180) / Math.PI;
+    const MAINB = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm'];
+    const in35 = live.log.filter((x) => x.t <= 35 && x.q);
+    const moves = [];
+    for (const x of in35) { const ref = in35.find((y) => y.t >= x.t - 2); const d = Math.max(...MAINB.filter((b) => x.q[b] && ref.q[b]).map((b) => qang(x.q[b], ref.q[b]))); if (d > 12 && (!moves.length || x.t - moves[moves.length - 1].t > 3)) moves.push({ t: x.t, deg: +d.toFixed(1), idle: x.idle, posture: x.posture }); }
+    R.idleRealtime.headYaw = [Math.min(...yaws), Math.max(...yaws)];
+    R.idleRealtime.changes35s = moves;
+    if (tag === 'female') check(yaws.length > 100 && yaws.every((v) => Math.abs(v) <= 12), `[${tag}] idle 转头幅度：${yaws.length} 帧头部相对身体朝向 ${Math.min(...yaws).toFixed(1)}…${Math.max(...yaws).toFixed(1)}°（要求每帧 ≤ ±12°）`);
+    else note(`[${tag}] idle 转头幅度：头部相对身体朝向 ${Math.min(...yaws).toFixed(1)}…${Math.max(...yaws).toFixed(1)}°`);
+    if (tag === 'male') check(moves.length >= 2, `[${tag}] idle 前 35 s 有 ${moves.length} 次明显变化（2 s 内主要骨骼转动 > 12°）：${moves.map((m) => `${m.t}s ${m.deg}° ${m.idle}${m.posture ? `/${m.posture}` : ''}`).join('；')}`);
+    else note(`[${tag}] idle 前 35 s 明显变化 ${moves.length} 次：${moves.map((m) => `${m.t}s ${m.deg}°`).join('；')}`);
     check(spread(xs) > 1 && blinks >= 3, `[${tag}] 实时 idle GIF ${live.gif}: ${live.n} 帧/45 s；视线 x ${Math.min(...xs).toFixed(2)}…${Math.max(...xs).toFixed(2)} 跟随光标；${blinks} 帧在眨眼；头部俯仰变化范围 ${spread(heads.map((h) => h[0])).toFixed(2)}°（含 idle 片段自身动作）；变体 ${R.idleRealtime.idles.join(', ')}`);
 
     mark(`[${tag}] idle 待机：自动姿势，导演时钟 ×8，≥3 段变体随机调度`);

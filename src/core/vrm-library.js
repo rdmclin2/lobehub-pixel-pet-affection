@@ -50,6 +50,9 @@
       if (e.amplitude !== undefined && !(e.amplitude > 0 && e.amplitude <= 1.5)) out.push(`${id}: amplitude 0..1.5`);
       if (e.face !== undefined && (typeof e.face !== 'object' || Object.entries(e.face).some(([n, w]) => !FACE_NAMES.includes(n) || !(w >= 0 && w <= 1)))) out.push(`${id}: face is { ${FACE_NAMES.join('|')}: 0..1 }`);
       if (e.weight !== undefined && !(e.weight > 0 && e.weight <= 1)) out.push(`${id}: weight 0..1`);
+      // baked procedural layers (scripts/lib/vrm-bake-core.js poseClip / offsetClip): { bone: [x, y, z] deg }
+      for (const k of ['pose', 'offset']) if (e[k] !== undefined && !(e[k] && typeof e[k] === 'object' && !Array.isArray(e[k]) && Object.entries(e[k]).every(([b, v]) => /^[a-zA-Z]+$/.test(b) && Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x) && Math.abs(x) <= 180)))) out.push(`${id}: ${k} is { bone: [x, y, z] } in degrees (|v| ≤ 180)`);
+      if (e.upright !== undefined && typeof e.upright !== 'boolean') out.push(`${id}: upright is true / false`);
       for (const k of ['hold', 'fadeIn', 'fadeOut']) if (e[k] !== undefined && typeof e[k] === 'number' && !(e[k] >= 0 && e[k] <= 5)) out.push(`${id}: ${k} 0..5 s`);
       if (e.gaze !== undefined && !(e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y) && Math.abs(e.gaze.x) <= 2 && Math.abs(e.gaze.y) <= 2)) out.push(`${id}: gaze { x, y } in -2..2`);
       if ((e.kind === 'reaction' || e.kind === 'hold') && !(e.kind === 'reaction' ? REACTIONS : HOLDS).includes(p.slot)) out.push(`${id}: unknown ${e.kind} slot (known: ${(e.kind === 'reaction' ? REACTIONS : HOLDS).join(', ')})`);

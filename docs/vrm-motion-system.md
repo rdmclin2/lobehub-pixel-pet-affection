@@ -601,3 +601,17 @@ L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 �
 - liliya `sit.rest` 交叉的腿有一部分被毛衣下摆和长发遮住，没有可见的穿插，但轮廓不够清楚。
 - `react.touch-hands@female`（牵手）伸手幅度较小，峰值只有约 1 s。
 - e2e `vrmui` 13/17：4 个衣柜步骤失败。单模型 VRM 外观会隐藏衣柜按钮，这个问题在本分支之前就存在，与动作系统无关。
+
+## T-2691 动作自然度修正（拎起悬腿、男性反应幅度、idle 节奏、坐姿）
+
+架构不变（director / intent / life 三层），只调素材、烘焙参数、幅度与风格配置，另加两处渲染器小件（地面阴影、坐具）。
+
+- **烘焙新参数**（`scripts/lib/vrm-bake-core.js`，`vrm-library.js` 校验）：`pose`（整段把某骨骼设为固定欧拉角，用于烘焙程序化的腿部下垂层）、`offset`（每个关键帧在骨骼本地轴上再转一点：手肘弯、耸肩、头回正）、`upright`（胯摆正、放回站立高度）。顺序：trim → hold → inPlace → amplitude → upright → offset → pose → mirror → loop → center。
+- **拎起**：`hold.lift@female/male` 改为 `mask: full`、`upright`、腿部 `pose`（大腿几乎垂直、膝盖 3–6° 微屈、脚尖下垂 30–40°）。女性改为放松站 + 双手缩到胸前（"被拎起的小猫"），男性放松站 + 耸肩、双臂自然下垂微屈、低头看脚（无奈），替代原来的双臂外张 A 字。life 层随窗口水平速度做侧向阻尼摆（大腿 z、胯 z）、静止时双脚交替轻晃；膝盖只向前弯（下腿 x ≥ 0）。渲染器拎起时把身体抬高画布高度的 5%，地面阴影留在原地并变小变淡。
+- **修正 VRM 0.x 的 life 层方向**：0.x 模型的归一化骨骼朝 −Z（`rotateVRM0` 转的是整个场景），life 层的 x/z 偏移在 0.x 上方向相反——此前拎起时 liliya/vroid 的膝盖会向后弯。`applyLife` 对 0.x 取反 x、z。
+- **男性反应**：风格差异体现为“方式不同”，不是缩小幅度——摸头=挠后脑、戳脸=偏头连肩躲开、生气=指着你（0.5 s 出手后保持）、不耐烦=抱臂、害羞=背手低头别过脸、怕痒=笑着护住脸、思考=托下巴、说话=完整幅度手势、欢呼=双拳举起、打招呼=抬手。每个男性反应峰值相对 idle 的主要骨骼偏转 ≥ 女性对应反应的 60%（实测 73%–267%）。
+- **liliya idle**：两个变体换成两个不同文件（`c9c80e28` 轻松单腿重心 8.8 s、`c9c79c65` 换脚 16.6 s ×0.8），头/颈回正；`stand.confident@female` 头颈回正 25°；姿势轮换去掉胯部扭 47° 的 `stand.playful`，改 16 s 一换；idle 片段每次从随机相位、0.9–1.1 倍速开始，没有固定节拍。实测 45 s idle 头部相对身体朝向 −7.2…+9.0°。
+- **男性 idle**：`c9c9fb33`（看手、换重心 18.5 s）与 `c9ca03ec` 抱臂片段（5.5–25.25 s，接缝 14°）；style `hipSway 0.9`、`shiftEvery [4, 9]` s；姿势轮换 14 s。实测 35 s 内 ≥ 5 次明显变化。
+- **坐姿**：女性改为椅坐素材（跷腿坐 `51846e47`、后撑坐 `abe202be`），渲染器在坐姿下淡入一个圆墩坐具（从地面到臀下 10% 胯高处；席地坐时是 4 cm 的坐垫），不再悬空。
+- **验收脚本**：`vrm-reactions-real-acceptance.js` 的 legs hang 改为真检查（脚踝低于臀部距离大于站立、脚尖下垂 > 3 cm、膝角 0…45°、身体抬起 > 5 cm、腿随窗口摆动 ≥ 2°），新增 10 项男性/女性反应幅度比 ≥ 60% 断言；`vrm-motion-real-acceptance.js` 新增 liliya idle 每帧转头 ≤ ±12°、男性 idle 35 s 内 ≥ 2 次明显变化、坐具可见且在臀下的断言。调试接口 `figures[0].pose`（各主骨骼四元数、腿部高度与膝角、头/胯相对身体朝向的偏航）与 `figures[0].props`（坐具、抬起量）供验收读取。
+- vendor `three-vrm.min.js` 用 `scripts/build-vrm-vendor.js` 重新打包，多导出 `Mesh / PlaneGeometry / CylinderGeometry / MeshBasicMaterial / MeshLambertMaterial / CanvasTexture`（阴影与坐具用），版本不变。

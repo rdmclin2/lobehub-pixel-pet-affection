@@ -123,10 +123,10 @@ test('postures: the user\'s choice holds (all six), switches cross-fade 1.0 s (1
   assert.equal(d.posture, 'auto', 'an unknown posture is auto');
 });
 
-test('posture-cycle goes through its standing postures every `every` s (female 12 s)', () => {
+test('posture-cycle goes through its standing postures every `every` s (female 16 s, relaxed ↔ confident)', () => {
   const index = bakedIndex((id) => /^idle\.(happy|variant2)@/.test(id)); // only the cycle left
   const d = make({ index, seed: 3 });
-  const plans = run(d, 40);
+  const plans = run(d, 50);
   const seq = [];
   for (const p of plans) if (seq[seq.length - 1] !== p.posture) seq.push(p.posture);
   assert.ok(seq.length >= 3, seq.join(' → '));

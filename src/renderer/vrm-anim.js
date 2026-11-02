@@ -96,8 +96,10 @@
       clips.set(id, { clip, fingers: !!(finger && names.has(finger.name)) });
     }
 
-    // Cross-fade the base to clip `id` over `dur` seconds (0: at once). Unknown id → false.
-    function setBase(id, dur = 1) {
+    // Cross-fade the base to clip `id` over `dur` seconds (0: at once). Unknown id → false. opts: { phase (0..1:
+    // where in the clip a newly started action begins), speed (its time scale) } — idles use them so a loop
+    // never keeps the same beat.
+    function setBase(id, dur = 1, opts = null) {
       const c = clips.get(id);
       if (!c) return false;
       if (fade.to && fade.to.id === id) return true;
@@ -106,6 +108,8 @@
         const action = mixer.clipAction(c.clip);
         action.setLoop(T.LoopRepeat, Infinity);
         action.reset().play();
+        if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
+        if (opts && opts.speed > 0) action.timeScale = opts.speed;
         L = { id, action, w: 0 };
         layers.push(L);
       }
