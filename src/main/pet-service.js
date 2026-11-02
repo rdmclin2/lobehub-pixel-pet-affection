@@ -3,11 +3,12 @@
 const { EventEmitter } = require('node:events');
 const state = require('../core/pet-state');
 const persona = require('../core/persona');
-const { adultAllowed, stageName } = require('../core/affection');
+const { adultAllowed, stageName, setRules: setAffectionRules } = require('../core/affection');
 const dialogue = require('../core/dialogue');
 const outfits = require('../core/outfits');
 const { migratePet, SHARED_KEYS } = require('../core/migrate');
 const settingsLib = require('../core/settings');
+const framingLib = require('../core/framing');
 const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
 const modelsLib = require('../core/models');
@@ -54,6 +55,9 @@ class PetService extends EventEmitter {
     this.now = now;
     this.rnd = rnd;
     this.budget = budget;
+    this._applyRules();
+    // what the restart-only settings were when this process started (settingsView().pendingRestart)
+    this._bootSettings = this.settings;
     this.pet = null;
     this.busy = false;
     this._localOk = false;
@@ -75,10 +79,17 @@ class PetService extends EventEmitter {
     return cur(this.pet);
   }
 
+  // The runtime rules that come from settings: 好感度 (daily cap, decay) and 主动行为's hourly LLM budget.
+  _applyRules() {
+    setAffectionRules(this.settings.affectionRules);
+    if (this.budget) this.budget.max = this.settings.proactive.maxLlmPerHour;
+  }
+
   // Load the save; a growth-system save (xp / stage) is backed up once and migrated (design 6).
   init() {
     const t = this.now();
     this.settings = this.settingsStore.load();
+    this._applyRules();
     const raw = this.store.load();
     const { pet, migrated, from, remapped } = migratePet(raw, t);
     if (migrated) this.store.backupOnce(`pet.v${from}.bak.json`);
@@ -125,7 +136,13 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, pendingRestart: this.pendingRestart() };
+  }
+
+  // Restart-only settings (settings.RESTART_KEYS) changed since this process started: they apply after a restart.
+  pendingRestart() {
+    const at = (o, k) => k.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
+    return settingsLib.RESTART_KEYS.filter((k) => at(this._bootSettings, k) !== at(this.settings, k));
   }
 
   // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
@@ -160,6 +177,7 @@ class PetService extends EventEmitter {
           appearance: this.appearanceView(x.id),
           model: this.modelView(x.id),
           systemRole: this.settings.systemRoles[x.id] || '',
+          framing: this.settings.framings[x.id] || 'auto',
         };
       }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
@@ -492,6 +510,22 @@ class PetService extends EventEmitter {
     if (id === this.pet.speciesId && !this.busy) this._applyModel().catch((e) => this.emit('error', e));
     this._save();
     return { ok: true, view: this.view() };
+  }
+
+  // her page in the settings window → 外观 → 取景: `speciesId`'s own framing ('full' | 'half'), or 'auto' to follow
+  // her pack's default and then the global prefs.framing (core/framing.js resolveFraming); kept in settings.framings.
+  // Every pet window gets the new settings at once and re-frames her live (renderer/vrm.js setFraming).
+  setFraming(mode, speciesId) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    if (mode !== 'auto' && !framingLib.isFraming(mode)) return { ok: false, reason: 'invalid' };
+    const { [id]: _old, ...rest } = this.settings.framings;
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, framings: mode === 'auto' ? rest : { ...rest, [id]: mode } });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    this._save();
+    return { ok: true, view: this.view(), settings: this.settingsView() };
   }
 
   // ⋯ → 角色列表 → her page → 个性化设定: the owner's own words added to `speciesId`'s system role (default:
@@ -969,7 +1003,7 @@ class PetService extends EventEmitter {
   setPrefs(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const next = { ...this.settings.prefs };
-    for (const k of Object.keys(settingsLib.PREFS)) if (typeof p[k] === 'boolean') next[k] = p[k];
+    for (const k of Object.keys(settingsLib.PREFS)) if (typeof p[k] === typeof settingsLib.PREFS[k]) next[k] = p[k]; // framing: a string, checked by normalizeSettings
     this.settings = settingsLib.normalizeSettings({ ...this.settings, prefs: next });
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
@@ -1036,6 +1070,19 @@ class PetService extends EventEmitter {
     const list = (Array.isArray(ids) ? ids : []).filter((id) => SPECIES[id] && id !== own);
     this.settings = settingsLib.normalizeSettings({ ...this.settings, visitors: list });
     this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, settings: this.settingsView() };
+  }
+
+  // 后台 (admin console) sections without a setter of their own: 主动行为 (proactive), 好感度 (affectionRules),
+  // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
+  // settings.js like everything else; out-of-range values fall back to the default there.
+  setSection(name, patch) {
+    if (!['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    const p = patch && typeof patch === 'object' ? patch : {};
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: { ...this.settings[name], ...p } });
+    this.settingsStore.save(this.settings);
+    this._applyRules();
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };
   }
@@ -1199,7 +1246,10 @@ class PetService extends EventEmitter {
     if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: c.affection });
     if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke', origin: this._logPet('哈——睡饱啦。', 'woke') });
     this._sayRetiredNotice();
-    const kind = lost > 0 ? 'missed' : nextEvent(c, t, {}, this.rnd);
+    // 主动行为 off: she still lives (needs, decay, waking up) but never speaks up on her own
+    const pro = this.settings.proactive;
+    if (!pro.enabled) return;
+    const kind = lost > 0 ? 'missed' : nextEvent(c, t, pro, this.rnd);
     if (kind) await this._speak(kind);
   }
 

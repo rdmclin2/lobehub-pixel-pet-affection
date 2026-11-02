@@ -66,6 +66,17 @@ test('pixel characters are untouched: the shared layer is what it was before VRM
   try { execFileSync('git', ['cat-file', '-e', `${BASE}^{commit}`], { cwd: ROOT, stdio: 'ignore' }); } catch { has = false; }
   if (!has) return;
   const frozen = ['src/core/fx.js', 'src/core/touch-zones.js', 'src/core/pet-state.js', 'src/renderer/rig.js', 'src/renderer/live2d.js', 'src/renderer/fx.js'];
-  const diff = execFileSync('git', ['diff', '--stat', BASE, '--', ...frozen], { cwd: ROOT, encoding: 'utf8' }).trim();
-  assert.equal(diff, '', diff);
+  const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
+  // canary moves on under this branch (Live2D 半身 changed live2d.js there): what counts is what *this* branch
+  // did. Its own commits (first-parent, not merges) never touch the files, and a merge of canary takes them
+  // as they were on one side, unchanged.
+  const own = git('log', '--first-parent', '--no-merges', '--format=%h %s', `${BASE}..HEAD`, '--', ...frozen);
+  assert.equal(own, '', `this branch changed a frozen file:\n${own}`);
+  for (const m of git('log', '--first-parent', '--merges', '--format=%H', `${BASE}..HEAD`).split('\n').filter(Boolean)) {
+    for (const f of frozen) {
+      const at = (rev) => { try { return git('rev-parse', `${rev}:${f}`); } catch { return null; } };
+      const mine = at(m);
+      assert.ok(mine === at(`${m}^1`) || mine === at(`${m}^2`), `merge ${m.slice(0, 7)} made a new ${f}`);
+    }
+  }
 });

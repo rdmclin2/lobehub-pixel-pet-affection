@@ -1,10 +1,11 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
@@ -22,6 +23,11 @@ const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
+const { AdminWindow } = require('./admin-window');
+const { createAdminSettings } = require('./admin-settings');
+const { createBroadcast } = require('./broadcast');
+const settingsSchema = require('../core/settings-schema');
+const { buildRoster, packRows } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -30,6 +36,9 @@ const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
 registerPackScheme();
+// 系统 → 硬件加速 (settings.system.hardwareAcceleration): only possible before the app is ready, so a change
+// applies after a restart (the settings window says so and offers 立即重启).
+try { if (new SettingsStore(app.getPath('userData')).load().system.hardwareAcceleration === false) app.disableHardwareAcceleration(); } catch { /* defaults */ }
 
 let win = null;
 let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
@@ -38,6 +47,10 @@ let updater = null;
 let packStore = null;
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
+let admin = null; // the settings window (admin-window.js), single instance
+let adminSettings = null; // admin-set / admin-reset (admin-settings.js)
+let tray = null;
+let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
@@ -116,6 +129,60 @@ function send(channel, payload) {
 function sendAll(channel, payload) {
   for (const p of pets.values()) if (!p.win.isDestroyed()) p.win.webContents.send(channel, payload);
 }
+// Every window that shows settings: the pet windows and the settings window (docs §5.4). The settings
+// window is not in `pets`, so it never takes part in collisions or `peers`.
+const broadcast = createBroadcast({ pets, admin: () => admin });
+
+// ---- the settings window (配置后台) ----------------------------------------------------------------------
+// Everything the console shows, derived again on every change: one source (PetService), no copies.
+function adminState() {
+  const view = service.view();
+  const settings = service.getSettings();
+  return { view, settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+}
+let adminPush = null;
+function pushAdmin() {
+  if (!admin || !admin.alive || adminPush) return;
+  adminPush = setImmediate(() => { adminPush = null; admin.send('admin-state', adminState()); });
+}
+function openAdmin(section) {
+  return admin.open(section);
+}
+function showPet() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+// 托盘 (§5.3): the way back to the settings and to the pet when she is covered or off screen.
+function createTray() {
+  if (TEST_MODE && process.env.PIXELPET_TRAY !== '1') return;
+  try {
+    const icon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', 'icon.png')).resize({ width: 16, height: 16 });
+    if (process.platform === 'darwin') icon.setTemplateImage(true);
+    tray = new Tray(icon);
+    tray.setToolTip('Pixel Pet');
+    trayMenu = Menu.buildFromTemplate([
+      { label: '打开设置…', click: () => openAdmin() },
+      { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
+      { type: 'separator' },
+      { label: '检查更新', click: () => updater.checkNow() },
+      { label: '退出', click: () => app.quit() },
+    ]);
+    tray.setContextMenu(trayMenu);
+    tray.on('click', () => openAdmin());
+  } catch (e) {
+    logError(e); // no tray on this desktop: the ⋯ menu and Ctrl+, still open the settings
+  }
+}
+// macOS application menu: 偏好设置… ⌘, and 退出 ⌘Q (there was no app menu before)
+function createAppMenu() {
+  if (process.platform !== 'darwin') return;
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: app.name, submenu: [{ role: 'about', label: '关于 Pixel Pet' }, { type: 'separator' }, { label: '偏好设置…', accelerator: 'CmdOrCtrl+,', click: () => openAdmin() }, { type: 'separator' }, { role: 'quit', label: '退出' }] },
+    { role: 'editMenu' },
+  ]));
+}
 
 // ---- visitors (同屏伙伴): other model-chan on the desktop, each in its own small window -------------
 function syncVisitors() {
@@ -158,7 +225,8 @@ async function applyApi() {
   if (!apiServer) return;
   const a = service.settings.api;
   const st = await apiServer.apply({ enabled: a.enabled, port: a.port });
-  sendAll('api-status', st);
+  broadcast('api-status', st);
+  pushAdmin();
 }
 
 function createWindow() {
@@ -176,6 +244,13 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // CmdOrCtrl+, while the pet window has focus opens the settings (no global shortcut: no clash with other apps)
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.key === ',' && (process.platform === 'darwin' ? input.meta : input.control) && !input.alt && !input.shift) {
+      e.preventDefault();
+      openAdmin();
+    }
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -231,6 +306,7 @@ function wire() {
   // the model (her page → 模型): only her own vendor's models are offered
   ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
   // 个性化设定 (her page → System Role): her own words added to her agent's system role
+  ipcMain.handle('set-framing', (_e, { mode, species }) => service.setFraming(String(mode || ''), whose(species)));
   ipcMain.handle('set-system-role', (_e, { text, species }) => service.setSystemRole(String(text || ''), whose(species)));
   ipcMain.handle('refresh-models', async () => {
     await service.refreshModels({ force: true });
@@ -238,8 +314,8 @@ function wire() {
   });
   // pet packs (her page → 外观)
   ipcMain.handle('set-appearance', (_e, { id, species }) => service.setAppearance(String(id || ''), whose(species)));
-  ipcMain.handle('import-pack', async () => {
-    const r = await dialog.showOpenDialog(win, { title: '导入角色包', properties: ['openFile', 'openDirectory'], filters: [{ name: '角色包', extensions: ['zip', 'json'] }] });
+  ipcMain.handle('import-pack', async (e) => {
+    const r = await dialog.showOpenDialog(windowOf(e) || win, { title: '导入角色包', properties: ['openFile', 'openDirectory'], filters: [{ name: '角色包', extensions: ['zip', 'json'] }] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     const src = /pack\.json$/i.test(r.filePaths[0]) ? path.dirname(r.filePaths[0]) : r.filePaths[0];
     try {
@@ -254,11 +330,12 @@ function wire() {
   // her own Live2D model (外观 → 导入 Live2D 模型…): a .model3.json or a .zip (and on macOS a folder too —
   // elsewhere a dialog cannot pick both files and folders, and the .model3.json stands for its folder)
   ipcMain.handle('import-live2d', async (_e, { species } = {}) => {
+    const parent = windowOf(_e) || win;
     const v = service.view();
     const sp = whose(species) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
-    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(win, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
+    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
     nextOpenPath = null;
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     try {
@@ -271,11 +348,12 @@ function wire() {
   // her own VRM model (外观 → 导入 VRM 模型…): a .vrm, a .zip, or (macOS) a folder holding .vrm files; copied
   // into userData/packs only, with its license read from the model (core/vrm.js, core/vrm-import.js)
   ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
+    const parent = windowOf(_e) || win;
     const v = service.view();
     const sp = whose(species) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
-    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(win, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
+    const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
     nextOpenPath = null;
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     try {
@@ -307,10 +385,11 @@ function wire() {
   // 外观 → 导出…: a user pack as a .zip. A VRM pack whose license forbids redistribution is refused here too,
   // whatever the window asks (core/packs.js packShareable).
   ipcMain.handle('export-pack', async (_e, { id } = {}) => {
+    const parent = windowOf(_e) || win;
     const pid = String(id || '');
     const ok = packStore.shareable(pid);
     if (!ok.ok) return ok;
-    const r = nextSavePath ? { filePath: nextSavePath } : await dialog.showSaveDialog(win, { title: '导出角色包', defaultPath: `${pid}.zip`, filters: [{ name: '角色包（.zip）', extensions: ['zip'] }] });
+    const r = nextSavePath ? { filePath: nextSavePath } : await dialog.showSaveDialog(parent, { title: '导出角色包', defaultPath: `${pid}.zip`, filters: [{ name: '角色包（.zip）', extensions: ['zip'] }] });
     nextSavePath = null;
     if (r.canceled || !r.filePath) return { ok: false, reason: 'canceled' };
     try {
@@ -531,6 +610,36 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
+  // 配置后台: ⋯ → 设置… / 高级设置 / her page → 在设置窗口中编辑 open it (at a section); single instance
+  ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
+  // the settings window's own channels answer that window only (docs §5.2)
+  const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...adminState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  ipcMain.handle('admin-state', adminOnly(() => adminState()));
+  ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
+  ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
+  ipcMain.handle('admin-relaunch', adminOnly(() => {
+    if (TEST_MODE) return { ok: true, test: true };
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
+  }));
+  ipcMain.on('admin-show-pet', () => showPet());
+  // 桌宠行为 → 找回桌宠: the same as ⋯ → 回到右下角 (and the tray's 显示桌宠): shown, back in the bottom-right corner
+  ipcMain.handle('admin-place-pet', adminOnly(() => {
+    if (!win || win.isDestroyed()) return { ok: false, reason: 'no-pet' };
+    showPet();
+    if (service && service.pet) { petBounds = null; place('pet'); }
+    return { ok: true, bounds: win.getBounds() };
+  }));
+  // 数据与关于 → 数据目录: where settings.json, pet.json, the packs and the log live
+  ipcMain.handle('open-data-folder', adminOnly(() => {
+    if (TEST_MODE) return { ok: true, test: true, path: app.getPath('userData') };
+    shell.openPath(app.getPath('userData'));
+    return { ok: true, path: app.getPath('userData') };
+  }));
+  // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
+  ipcMain.handle('admin-cue', adminOnly(({ state }) => (CUE_STATES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 
@@ -546,24 +655,33 @@ function wire() {
     ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
     ipcMain.handle('debug-next-save', (_e, p) => { nextSavePath = String(p || '') || null; return true; });
     ipcMain.handle('debug-opened-links', () => openedLinks.slice());
+    // the tray (PIXELPET_TRAY=1 in tests): its menu items, and a click on one of them as the user would
+    ipcMain.handle('debug-tray', () => ({ created: !!tray, items: trayMenu ? trayMenu.items.map((i) => i.label).filter(Boolean) : [] }));
+    ipcMain.handle('debug-tray-click', (_e, { label } = {}) => {
+      const item = trayMenu && trayMenu.items.find((i) => i.label === label);
+      if (!item) return false;
+      item.click();
+      return true;
+    });
+    ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
     });
   }
 
-  service.on('update', (v) => send('update', v));
+  service.on('update', (v) => { send('update', v); pushAdmin(); });
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
   service.on('chat-delta', (d) => send('chat-delta', d));
   service.on('chat-done', (d) => send('chat-done', d));
   service.on('affection', (a) => send('affection', a));
-  service.on('settings', (st) => { sendAll('settings', st); syncVisitors(); });
+  service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
-  updater.on('status', (st) => send('update-status', st));
+  updater.on('status', (st) => { send('update-status', st); if (admin) admin.send('update-status', st); });
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
 }
 
@@ -588,7 +706,7 @@ app.whenReady().then(() => {
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
   service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
-  updater = new Updater({ isBusy: () => service.busy, log: logError });
+  updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
     state: async () => {
@@ -611,8 +729,21 @@ app.whenReady().then(() => {
     const a = mediaAllowed({ permission, url: (wc && wc.getURL()) || origin, mediaTypes: [details && details.mediaType === 'video' ? 'video' : 'audio'], settings: service.settings.asr });
     return a === null ? true : a;
   });
+  admin = new AdminWindow({ testMode: TEST_MODE });
+  adminSettings = createAdminSettings({
+    service,
+    hooks: {
+      resizePet: (k) => resizePet(clampScale(k)),
+      afterPrefs: (prefs) => { if (!prefs.voice) tts.engine.stopAll(); },
+      beforeTts: () => { tts.engine.endPrewarm(); tts.engine.reset(); },
+      afterApi: () => applyApi(),
+      setKey: (id, value) => tts.keys.set(id, value),
+    },
+  });
   wire();
   createWindow();
+  createTray();
+  createAppMenu();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
   applyApi();
   updater.start();

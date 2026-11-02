@@ -19,3 +19,5 @@ tts-cache/
 *.bvh
 *.pmx
 *.vroid
+# admin console build output (npm run build:admin; rebuilt by prestart / predist:*)
+src/admin-ui/

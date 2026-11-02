@@ -17,6 +17,7 @@ const VrmStyle = require('./vrm-style');
 // the motion library's bake list (ids only matter here: pack.json vrm.motions names them)
 let libManifest = null;
 const vrmLibraryManifest = () => libManifest || (libManifest = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, 'vrm-library.json'), 'utf8')));
+const { FRAMINGS, WAIST_RANGE, isWaist } = require('./framing');
 
 // Schema 2 names a sprite action after the app's states (the DeepSeek pet's 15 states plus `lifted`,
 // see src/core/fx.js). Schema 1 packs keep their 8 older action names; the app maps states onto
@@ -476,6 +477,12 @@ function validatePack(manifest, dir) {
   if (!text(m.name, 40)) errors.push('name is required');
   if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
+  // 取景 default for whoever wears this pack (core/framing.js): 'full' | 'half'; a character's own choice goes first
+  if (m.framing !== undefined && !FRAMINGS.includes(m.framing)) errors.push(`framing must be one of ${FRAMINGS.join(', ')}`);
+  // 半身 cut for this pack's model (Live2D / VRM): halfBody.waist = share of her height from the top of her head (0)
+  // to her soles (1); without it the renderer measures (VRM bones) or infers (Live2D hit area / eyes)
+  const halfBody = m.halfBody === undefined ? null : m.halfBody && typeof m.halfBody === 'object' && !Array.isArray(m.halfBody) && Object.keys(m.halfBody).every((k) => k === 'waist') && isWaist(m.halfBody.waist) ? { waist: m.halfBody.waist } : null;
+  if (m.halfBody !== undefined && !halfBody) errors.push(`halfBody must be { "waist": a number from ${WAIST_RANGE[0]} to ${WAIST_RANGE[1]} } (share of her height from the top of her head)`);
 
   const outfits = {};
   const src = m.outfits && typeof m.outfits === 'object' ? m.outfits : {};
@@ -537,6 +544,8 @@ function validatePack(manifest, dir) {
       model: live2d ? m.model : model,
       live2d,
       vrm: vrmPack,
+      ...(FRAMINGS.includes(m.framing) ? { framing: m.framing } : {}),
+      ...(halfBody ? { halfBody } : {}),
       outfits: vrm ? { ...vrm.outfits } : outfits,
       dir: path.resolve(dir),
     },
@@ -587,7 +596,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
   for (const id of [packId, defaultPack(speciesId), fallbackId || fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
-    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
+    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated, ...(p.framing ? { framing: p.framing } : {}), ...(p.halfBody ? { halfBody: { ...p.halfBody } } : {}) };
     if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
     if (p.kind === 'live2d') return { ...base, model: packUrl(p, p.model), live2d: p.live2d };
     if (p.kind === 'vrm') {
@@ -610,15 +619,32 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
 // Packs for one species, as the appearance picker lists them: hers in the order of her character file
 // (the default first), then imported ones; a video character's own clips come last. 18+ packs only
 // when `adultOk` (the user confirmed 18+ and turned adult content on).
+// A picture of a pack for lists and the wardrobe (settings window): its daily outfit — a sprite sheet with its
+// actions (so it can be played), an outfit picture, or a VRM model's saved preview. null = nothing to show.
+function packCover(p) {
+  const rel = p.outfits.daily || Object.values(p.outfits)[0];
+  if (p.kind === 'vrm') {
+    const pv = p.vrm && p.vrm.previews && (p.vrm.previews.daily || Object.values(p.vrm.previews)[0]);
+    return pv ? { type: 'image', url: packUrl(p, pv), pixelated: !!p.pixelated } : null;
+  }
+  if (!rel) return null;
+  if (p.kind === 'sprites') return { type: 'sprite', url: packUrl(p, rel), frame: p.frame, actions: p.actions, pixelated: !!p.pixelated };
+  return { type: 'image', url: packUrl(p, rel), pixelated: !!p.pixelated };
+}
+
 function packsFor(packs, speciesId, adultOk = false) {
   const own = (SPECIES[speciesId] && SPECIES[speciesId].packs) || [];
   const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
   const out = [...packs.values()]
     .filter((p) => p.species === speciesId && (adultOk || !p.adult))
     .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
+    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, cover: packCover(p), ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
-  if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
+  if (c) {
+    const sp = SPECIES[speciesId];
+    const idle = sp.clips ? [].concat(sp.clips.idle)[0] : null;
+    out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1, cover: idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null });
+  }
   return out;
 }
 

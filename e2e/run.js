@@ -3,6 +3,10 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 服饰 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
+//   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
+//   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
+//   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, menus, toast, #panel) in light + dark (LobeHub tokens)
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -94,6 +98,24 @@ const pickCharacter = async (page, id, name = null) => {
   }
   await page.waitForSelector(`.char-opt.on[data-species="${id}"]`, { timeout: 20000 });
 };
+// 配置后台 (the settings window): opened the way ⋯ → 设置… / Ctrl+, open it, at `route` ('tts', 'characters/grok' …).
+// Single instance: a second call brings the same window to `route`. Its page is told apart by the admin-ui URL.
+async function openAdminWindow(app, page, route = 'overview') {
+  await page.evaluate((r) => window.pet.openAdmin(r), route);
+  let admin = null;
+  for (let i = 0; i < 300 && !admin; i++) { // up to 30 s: a cold start under load (parallel runs) takes a while
+    admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+    if (!admin) await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!admin) throw new Error('the settings window did not open');
+  await admin.waitForSelector(`[data-path="/${route}"]`, { timeout: 15000 });
+  return admin;
+}
+// One setting through the settings window's bridge: the same admin-set its forms call (checked in main, saved by
+// core/settings.js, broadcast to every window). -> { ok, reason?, message?, value, settings }
+const adminSet = (admin, key, value) => admin.evaluate(([k, v]) => window.petAdmin.set(k, v), [key, value]);
+// The pet window (BrowserWindow.getAllWindows() also lists the settings window once it is open)
+const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
 const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
@@ -1349,21 +1371,41 @@ async function advanced() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'the ⋯ menu has 高级设置 with system-wide settings only (no model, look or unlock)', async () => {
+    await step(S, 'the ⋯ menu has 设置… (first): the settings window holds the system-wide pages, no per-character controls on them', async () => {
       await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#panel:not(.hidden) #size-range');
-      assert.equal(await page.textContent('#panel-title'), '高级设置');
-      assert.equal(await page.evaluate(() => document.getElementById('panel-body').scrollTop), 0, 'opens at its top');
-      const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
-      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '语音输入', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
-      assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list').count(), 0, 'per-character settings live on her page in 角色列表');
-      return sections.join(' / ');
+      const items = await page.$$eval('#main-menu [data-menu]', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.textContent.trim()));
+      assert.equal(items[0], '设置…', 'first item');
+      assert.ok(!items.includes('高级设置'), 'the in-pet 高级设置 panel is gone');
+      await page.click('[data-menu="settings"]');
+      let admin = null;
+      for (let i = 0; i < 100 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      await admin.waitForSelector('[data-path="/overview"]', { timeout: 15000 });
+      // the old panel's sections: 宠物大小 + 桌宠行为 → 桌宠行为, 语音 → 朗读, 语音输入, 同屏伙伴, 对外接口, 版本与更新 —
+      // tiles on the 玩法 / 设置 hubs (the rail itself holds only 小屋 / 角色 / 玩法 / 设置)
+      const nav = [];
+      for (const hub of ['/play', '/settings']) {
+        await admin.evaluate((h) => { location.hash = h; }, hub);
+        await admin.waitForSelector(`[data-path="${hub}"] [data-tile]`);
+        nav.push(...(await admin.$$eval('[data-tile] [data-tile-title]', (ts) => ts.map((t) => t.textContent.trim()))));
+      }
+      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(nav.includes(want), `a hub has ${want}: ${nav.join(',')}`);
+      await admin.evaluate(() => { location.hash = '/behavior'; });
+      await admin.waitForSelector('[data-path="/behavior"] [data-key="petScale"]');
+      assert.equal(await admin.locator('[data-path="/behavior"] :is([data-unlock], [data-save-role], [data-use-pack], [data-system-role])').count(), 0, 'per-character settings live on her page (角色列表)');
+      await admin.screenshot({ path: path.join(OUT, 'advanced-settings-window.png') });
+      await admin.close();
+      return `menu: ${items.slice(0, 3).join(' / ')}…; settings nav: ${nav.join(' / ')}`;
     }, page);
 
     await step(S, 'one click on her page in 角色列表 unlocks every stage, topic and outfit (18+ on; 大肥鱼 is all-ages, so all-ages content only)', async () => {
-      await page.click('#panel-close');
+      await page.mouse.move(1, 1);
       await openCurrentPage(page);
+      assert.match(await page.textContent('#char-config .cfg-model'), /^模型：/, 'her page sums up her model and 个性化设定 (edited in the settings window)');
+      assert.equal(await page.textContent('#char-config .cfg-role'), '个性化设定：还没写');
       assert.equal(await page.locator('#unlock-all').isDisabled(), false);
       await page.locator('#unlock-all').scrollIntoViewIfNeeded();
       await page.click('#unlock-all');
@@ -1394,7 +1436,7 @@ async function advanced() {
       return 'pet wears 招牌女仆装 (dafeiyu-pixel)';
     }, page);
 
-    const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+    const bounds = () => petBounds(app);
     const stageBox = () => page.evaluate(() => { const r = document.getElementById('stage').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
     const scaleVar = () => page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')));
     const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).petScale;
@@ -1439,17 +1481,25 @@ async function advanced() {
       return `${k0} -> ${k1}`;
     }, page);
 
-    await step(S, 'the slider in 高级设置 sets any size, and the size is kept across a restart', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#size-range');
-      await page.evaluate(() => { const r = document.getElementById('size-range'); r.value = '60'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); });
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.match(await page.textContent('.size-val'), /60%/);
-      assert.equal(await page.textContent('#size-reset'), '恢复默认 125%');
-      await page.locator('#size-reset').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, 'pet-size-slider.png') });
-      await page.click('#panel-close');
+    await step(S, 'the 宠物大小 slider in the settings window (桌宠行为) sets any size, and the size is kept across a restart', async () => {
+      const admin = await openAdminWindow(app, page, 'behavior');
+      const slider = admin.locator('[data-key="petScale"]');
+      const thumb = slider.locator('input[type="range"]').first();
+      // Home → 50% (the minimum), then two steps of 5% up; each key-up saves
+      await thumb.focus();
+      await admin.keyboard.press('Home');
+      await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+      for (const want of [0.55, 0.6]) {
+        await thumb.focus();
+        await admin.keyboard.press('ArrowRight');
+        await page.waitForFunction((w) => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === w, want, { timeout: 8000 });
+      }
+      await admin.waitForFunction(() => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && /已保存：宠物大小 → 60%/.test(el.textContent || '')), null, { timeout: 8000 });
+      assert.match(await slider.textContent(), /60%/);
+      await admin.hover('[data-reset="petScale"]'); // 恢复默认 shows the default in its tooltip
+      await admin.getByText('恢复默认：125%', { exact: true }).waitFor({ timeout: 5000 });
+      await admin.screenshot({ path: path.join(OUT, 'pet-size-slider.png') });
+      await admin.close();
       await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
       assert.equal(saved(), 0.6);
       // the ⋯ menu still fits (it scrolls) in the small window
@@ -1463,7 +1513,7 @@ async function advanced() {
       try {
         await again.page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
         await again.page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.6);
-        const b = await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
+        const b = await petBounds(again.app);
         assert.deepEqual([b.width, b.height], [230, 264]);
         await again.page.screenshot({ path: path.join(OUT, 'pet-size-small-after-restart.png') });
         return `after restart: 60%, window ${b.width}x${b.height}`;
@@ -1564,7 +1614,9 @@ async function packs() {
       await pickCharacter(page, 'dafeiyu');
       await openCharPage(page, 'dafeiyu');
       await page.waitForSelector('.pack-opt[data-pack="dafeiyu-pixel"]'); // her page lists her looks
-      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
+      // 模型 and 个性化设定 moved to the settings window: her page keeps a summary and a link there
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型与个性化设定', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.match(await page.textContent('#char-admin'), /在设置窗口中编辑/);
       const names = await page.locator('.pack-opt[data-pack] .meta b').allTextContents();
       assert.deepEqual(names, ['大肥鱼 · 像素', '大肥鱼 · Live2D', '大肥鱼 · 全动态', '大肥鱼 · 旧版像素', '大肥鱼 · 原版动画']);
       assert.match(await page.locator('.pack-opt[data-pack="dafeiyu-live2d"] .meta span').textContent(), /^Live2D · 1 套服饰 · Live2D：Mao绒绒家园/);
@@ -1622,8 +1674,9 @@ async function packs() {
 }
 
 // ------------------------------------------------------------------ models
-// 角色列表 → her page → 模型: each character offers only her own vendor's models; the agent follows the pick, and
-// switching character switches the list (and the model) to the new character's.
+// 角色列表 → her page (sums up her model) → 在设置窗口中编辑 › → the settings window's 模型 tab: each character offers
+// only her own vendor's models; the agent follows the pick, and switching character switches the list (and the model)
+// to the new character's.
 async function models() {
   const S = 'models';
   const SHOTS = path.join(OUT, 'models');
@@ -1634,12 +1687,33 @@ async function models() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model).map((e) => `${e.provider}:${e.model}`) : []);
-  const options = () => page.$$eval('#model-select option', (os) => os.map((o) => ({ key: o.value, label: o.textContent, selected: o.selected })));
-  const openModels = async () => {
-    await openCurrentPage(page);
-    await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
-    await page.locator('#model-select').scrollIntoViewIfNeeded();
+  // 模型 is edited in the settings window: 角色列表 → her page → 模型 tab (a lobe Select: a combobox whose value sits
+  // in its hidden input; its data-model-select attribute does not reach the DOM, so it is found by role)
+  let admin = null;
+  const modelTab = async (id) => {
+    if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, `characters/${id}`);
+    else {
+      await admin.evaluate((r) => { location.hash = r; }, `/characters/${id}`);
+      await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    }
+    await admin.getByRole('tab', { name: '模型' }).click();
+    // while the tabs switch the old panel stays a moment (inert): wait for the one live panel
+    await admin.waitForFunction((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, '模型', { timeout: 5000 });
+    const box = admin.locator('[role="tabpanel"]:not([inert])').getByRole('combobox');
+    await box.waitFor();
+    await admin.waitForFunction(() => document.querySelector('[role="tabpanel"]:not([inert]) [role="combobox"]') && !document.querySelector('[role="tabpanel"]:not([inert]) [role="combobox"]').disabled, null, { timeout: 15000 }); // the catalogue is loaded
+    return box;
   };
+  const current = () => admin.locator('[role="tabpanel"]:not([inert]) input[id$="-hidden-input"]').first().inputValue();
+  const options = async () => {
+    await admin.locator('[role="tabpanel"]:not([inert])').getByRole('combobox').click();
+    await admin.getByRole('option').first().waitFor();
+    const labels = await admin.getByRole('option').allTextContents();
+    await admin.keyboard.press('Escape');
+    await admin.getByRole('option').first().waitFor({ state: 'detached' });
+    return labels.map((l) => l.trim());
+  };
+  const summary = () => page.textContent('#char-config .cfg-model');
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
@@ -1654,43 +1728,60 @@ async function models() {
       return modelEdits().join(', ');
     }, page);
 
-    await step(S, '⋯ → 角色列表 → 克洛蒂 → 模型 lists only Claude models (no GPT, GLM, image models), the default selected', async () => {
-      await openModels();
+    await step(S, '⋯ → 角色列表 → 克洛蒂 shows her model; 在设置窗口中编辑 › opens her 模型 tab: only Claude models (no GPT, GLM, image models), the default selected', async () => {
+      await openCurrentPage(page);
       assert.match(await page.textContent('#panel-sub'), /^克洛蒂（Anthropic）· 当前陪伴/);
-      const os = await options();
-      assert.deepEqual(os.map((o) => o.label), ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
-      assert.equal(os.find((o) => o.selected).key, 'lobehub:claude-sonnet-5-5');
-      assert.match(await page.textContent('.model-status'), /正在用：Claude Sonnet 5\.5（默认）/);
-      assert.match(await page.textContent('#panel'), /克洛蒂只能用 Anthropic 的模型/);
-      await page.screenshot({ path: path.join(SHOTS, '01-claude-models.png') });
-      return os.map((o) => o.label).join(' / ');
-    }, page);
+      await page.waitForFunction(() => document.querySelector('#char-config .cfg-model').textContent === '模型：Claude Sonnet 5.5', null, { timeout: 10000 });
+      await page.screenshot({ path: path.join(SHOTS, '01a-claude-page-summary.png') });
+      await page.click('#char-admin');
+      admin = app.windows().find((p) => p.url().includes('admin-ui'));
+      for (let i = 0; i < 100 && !admin; i++) { await page.waitForTimeout(100); admin = app.windows().find((p) => p.url().includes('admin-ui')); }
+      await admin.waitForSelector('[data-path="/characters/claude"]', { timeout: 15000 });
+      await modelTab('claude');
+      const labels = await options();
+      assert.deepEqual(labels, ['Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5']);
+      const keys = (await view(page)).characters.find((c) => c.id === 'claude').model.options.map((o) => o.key);
+      assert.ok(keys.every((k) => /^(lobehub|anthropic):claude-/.test(k)), keys.join(','));
+      assert.equal(await current(), 'lobehub:claude-sonnet-5-5');
+      assert.match(await admin.locator('[role="tabpanel"]:not([inert])').textContent(), /只列她所属厂商的模型/);
+      await admin.screenshot({ path: path.join(SHOTS, '01-claude-models.png') });
+      return labels.join(' / ');
+    }, () => admin || page);
 
-    await step(S, 'picking Claude Opus 5.5 points her agent at it', async () => {
-      await page.selectOption('#model-select', 'lobehub:claude-opus-5-5');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.match(await page.textContent('#panel-msg'), /克洛蒂的模型已换成「Claude Opus 5\.5」/);
-      await page.waitForFunction(() => /正在用：Claude Opus 5\.5$/.test(document.querySelector('.model-status').textContent), null, { timeout: 10000 });
+    await step(S, 'picking Claude Opus 5.5 in the settings window points her agent at it', async () => {
+      await admin.locator('[role="tabpanel"]:not([inert])').getByRole('combobox').click();
+      await admin.getByRole('option', { name: 'Claude Opus 5.5', exact: true }).click();
+      await admin.waitForFunction(() => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && /克洛蒂 的模型/.test(el.textContent || '')), null, { timeout: 8000 });
+      const t0 = Date.now();
+      while (modelEdits().length < 2 && Date.now() - t0 < 10000) await page.waitForTimeout(200);
       assert.deepEqual(modelEdits(), ['lobehub:claude-sonnet-5-5', 'lobehub:claude-opus-5-5']);
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).models.claude, 'lobehub:claude-opus-5-5');
-      await page.screenshot({ path: path.join(SHOTS, '02-claude-opus-picked.png') });
-      return `${await page.textContent('.model-status')} · settings.json models.claude=lobehub:claude-opus-5-5`;
-    }, page);
+      assert.equal(await current(), 'lobehub:claude-opus-5-5');
+      assert.equal(await admin.locator('[role="tabpanel"]:not([inert])').getByRole('combobox').textContent(), 'Claude Opus 5.5');
+      await admin.waitForFunction(() => !/待应用/.test(document.querySelector('[role="tabpanel"]:not([inert])').textContent), null, { timeout: 10000 }); // applied: no 待应用 notice
+      await page.waitForFunction(() => document.querySelector('#char-config .cfg-model').textContent === '模型：Claude Opus 5.5', null, { timeout: 10000 });
+      await admin.screenshot({ path: path.join(SHOTS, '02-claude-opus-picked.png') });
+      await page.screenshot({ path: path.join(SHOTS, '02b-claude-page-summary.png') });
+      return `${await summary()} (pet window) · settings.json models.claude=lobehub:claude-opus-5-5`;
+    }, () => admin);
 
     await step(S, 'switching to 吉皮缇 switches the list to GPT models, her own OpenAI key marked', async () => {
       await page.click('#char-back');
       await pickCharacter(page, 'gpt');
       await openCharPage(page, 'gpt');
-      await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
-      const os = await options();
-      assert.ok(os.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), JSON.stringify(os));
-      assert.deepEqual(os.map((o) => o.label), ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）']);
-      assert.equal(os.find((o) => o.selected).key, 'lobehub:gpt-6-luna');
       // her own new agent is on it already if her hello went through the agent (not when the hourly budget made it an offline line)
-      assert.match(await page.textContent('.model-status'), /(正在用|下一句话起用)：GPT-6 Luna（默认）/);
-      await page.screenshot({ path: path.join(SHOTS, '03-gpt-models.png') });
-      return os.map((o) => o.label).join(' / ');
-    }, page);
+      assert.equal(await summary(), '模型：GPT-6 Luna');
+      await modelTab('gpt');
+      const labels = await options();
+      const opts = (await view(page)).characters.find((c) => c.id === 'gpt').model.options;
+      assert.ok(opts.every((o) => /^(lobehub|openai):(gpt-|o\d)/.test(o.key)), opts.map((o) => o.key).join(','));
+      assert.deepEqual(opts.map((o) => [o.key, !!o.hosted]), [['lobehub:gpt-6-sol', true], ['lobehub:gpt-6-luna', true], ['openai:gpt-6-luna', false], ['openai:o3', false]]);
+      // the models on her own OpenAI key are told apart from the hosted ones (as the pet window's list did)
+      assert.deepEqual(labels, ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）'], `settings window lists ${JSON.stringify(labels)}`);
+      assert.equal(await current(), 'lobehub:gpt-6-luna');
+      await admin.screenshot({ path: path.join(SHOTS, '03-gpt-models.png') });
+      return labels.join(' / ');
+    }, () => admin);
 
     await step(S, 'her next words run on GPT-6 Luna; back on 克洛蒂 her Opus pick returns', async () => {
       await page.click('#panel-close');
@@ -1701,11 +1792,12 @@ async function models() {
       await openCharacters(page);
       await pickCharacter(page, 'claude');
       await openCharPage(page, 'claude');
-      await page.waitForSelector('#model-select option', { state: 'attached' }); // options are never "visible"
-      assert.equal((await options()).find((o) => o.selected).key, 'lobehub:claude-opus-5-5');
-      await page.screenshot({ path: path.join(SHOTS, '04-back-to-claude.png') });
+      assert.equal(await summary(), '模型：Claude Opus 5.5');
+      await modelTab('claude');
+      assert.equal(await current(), 'lobehub:claude-opus-5-5');
+      await admin.screenshot({ path: path.join(SHOTS, '04-back-to-claude.png') });
       return modelEdits().join(' → ');
-    }, page);
+    }, () => admin);
   } finally {
     await app.close().catch(() => {});
   }
@@ -1713,9 +1805,10 @@ async function models() {
 
 // ------------------------------------------------------------------ charpage
 // ⋯ → 角色列表 → a character's page: the list shows every character (picture, name, title, relation); a
-// click opens her page, where her model and look are set for her (not for the companion on the desktop),
-// kept across a restart; she arrives with them; her affection can be unlocked there. 高级设置 keeps only
-// the system-wide settings, which still save.
+// click opens her page, where her look is set for her (not for the companion on the desktop) and her model and
+// 个性化设定 are summed up, with a jump to the settings window where they are edited; all kept across a restart;
+// she arrives with them; her affection can be unlocked there. The settings window's system pages hold no
+// per-character controls, and their settings still save.
 async function charpage() {
   const S = 'charpage';
   const SHOTS = path.join(OUT, 'charpage');
@@ -1758,8 +1851,33 @@ async function charpage() {
     return txt;
   };
   const modelEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.model) : []);
-  const selected = () => page.$eval('#model-select', (s) => s.value);
   const shot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+  // 模型 and 个性化设定 are edited in the settings window (角色列表 → her page); the pet window's her page sums them up
+  // (#char-config) and jumps there (#char-admin). Its model Select is a combobox (its value in a hidden input).
+  let admin = null;
+  const adminShot = (name) => admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+  const adminTab = async (id, tab) => {
+    if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, `characters/${id}`);
+    else if (!(await admin.locator(`[data-path="/characters/${id}"]`).count())) {
+      await admin.evaluate((r) => { location.hash = r; }, `/characters/${id}`);
+      await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    }
+    await admin.getByRole('tab', { name: tab }).click();
+    // while the tabs switch the old panel stays a moment (inert): wait for the one live panel
+    await admin.waitForFunction((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, tab, { timeout: 5000 });
+    await admin.locator('[role="tabpanel"]:not([inert])').waitFor();
+  };
+  const jumpToAdmin = async (id) => {
+    await page.click('#char-admin');
+    for (let i = 0; i < 100 && !(admin && !admin.isClosed()); i++) {
+      admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+      if (!admin) await page.waitForTimeout(100);
+    }
+    await admin.waitForSelector(`[data-path="/characters/${id}"]`, { timeout: 15000 });
+  };
+  const selected = () => admin.locator('[role="tabpanel"]:not([inert]) input[id$="-hidden-input"]').first().inputValue();
+  const adminToast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  const cfg = () => page.evaluate(() => ({ model: document.querySelector('#char-config .cfg-model').textContent, role: document.querySelector('#char-config .cfg-role').textContent }));
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
@@ -1790,22 +1908,26 @@ async function charpage() {
       return rows.map((r) => `${r.name} ${r.title} [${r.rel}] ${r.look}`).join(' | ');
     }, page);
 
-    await step(S, 'C2 clicking 吉皮缇 (not met) opens her page: model, look and affection are hers; back returns to the list', async () => {
+    await step(S, 'C2 clicking 吉皮缇 (not met) opens her page: her model / 个性化设定 summary, look and affection; back returns to the list', async () => {
       mark('step', '点吉皮缇（未见过）那一行');
       await page.click('.char-list .char-opt[data-species="gpt"] .meta');
       await page.waitForSelector('#char-head .char-opt[data-species="gpt"]');
       assert.equal(await page.textContent('#panel-title'), '吉皮缇');
       assert.match(await page.textContent('#panel-sub'), /吉皮缇（OpenAI）· 未见过/);
-      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型', '个性化设定（System Role）', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.deepEqual(await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim())), ['模型与个性化设定', '外观（角色包）', '好感度 · 一键解锁']);
+      assert.equal(await page.locator('#model-select, #role-input').count(), 0, 'edited in the settings window, no second copy here');
+      const sum = await cfg();
+      assert.match(sum.model, /^模型：/);
+      assert.equal(sum.role, '个性化设定：还没写');
+      assert.equal(await page.textContent('#char-admin'), '在设置窗口中编辑 ›');
       assert.equal(await page.textContent('#char-head .pick'), '初次见面');
       assert.equal(await page.locator('#unlock-all').isDisabled(), true, 'nothing to unlock before meeting her');
       assert.equal(await page.textContent('#unlock-all'), '还没认识她');
-      await page.waitForSelector('#model-select option', { state: 'attached' });
-      const opts = await page.$$eval('#model-select option', (os) => os.map((o) => o.textContent));
-      assert.deepEqual(opts, ['GPT-6 Sol', 'GPT-6 Luna', 'GPT-6 Luna（自己的 OpenAI Key）', 'o3（自己的 OpenAI Key）'], 'only her vendor\'s models');
+      const opts = (await view(page)).characters.find((c) => c.id === 'gpt').model.options.map((o) => o.key);
+      assert.deepEqual(opts, ['lobehub:gpt-6-sol', 'lobehub:gpt-6-luna', 'openai:gpt-6-luna', 'openai:o3'], 'only her vendor\'s models');
       assert.deepEqual(await page.locator('.pack-opt[data-pack] .meta b').allTextContents(), ['吉皮缇 · 像素', '吉皮缇 · 旧版像素']);
       await shot('02-gpt-page');
-      await check('吉皮缇详情页：‹ 角色列表、初次见面、模型 / 个性化设定 / 外观 / 好感度四个区块');
+      await check('吉皮缇详情页：‹ 角色列表、初次见面、模型与个性化设定（摘要 + 在设置窗口中编辑）/ 外观 / 好感度');
       await page.waitForTimeout(800);
       mark('step', '点 ‹ 角色列表 返回');
       await page.click('#char-back');
@@ -1815,18 +1937,28 @@ async function charpage() {
       await page.waitForTimeout(800);
       mark('step', '再点吉皮缇的“设置 ›”');
       await openCharPage(page, 'gpt');
-      return opts.join(' / ');
+      return `${sum.model} · ${sum.role}; models ${opts.join(' / ')}`;
     }, page);
 
-    await step(S, 'C3 on her page: model o3 and look 旧版像素 are saved for 吉皮缇, not for 克洛蒂 on the desktop', async () => {
+    await step(S, 'C3 model o3 (settings window, reached from her page) and look 旧版像素 (her page) are saved for 吉皮缇, not for 克洛蒂 on the desktop', async () => {
       const edits0 = modelEdits().length;
+      mark('step', '点“在设置窗口中编辑 ›”→ 设置窗口 · 吉皮缇 · 模型');
+      await jumpToAdmin('gpt');
+      await adminTab('gpt', '模型');
+      const box = admin.locator('[role="tabpanel"]:not([inert])').getByRole('combobox');
+      await admin.waitForFunction(() => { const b = document.querySelector('[role="tabpanel"]:not([inert]) [role="combobox"]'); return b && !b.disabled; }, null, { timeout: 15000 });
+      await box.click();
+      await admin.getByRole('option').first().waitFor();
+      const labels = (await admin.getByRole('option').allTextContents()).map((l) => l.trim());
+      assert.equal(labels.length, 4, `only her vendor's models: ${labels.join(' / ')}`);
       mark('step', '模型选 o3');
-      await page.selectOption('#model-select', 'openai:o3');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.match(await page.textContent('#panel-msg'), /吉皮缇的模型已换成「o3」/);
-      assert.match(await page.textContent('.model-status'), /见面后起用：o3$/);
-      await shot('03a-gpt-model-saved');
-      await check('提示“吉皮缇的模型已换成「o3」”，状态行“见面后起用：o3”');
+      await admin.getByRole('option', { name: /^o3/ }).click();
+      await adminToast(/吉皮缇 的模型/);
+      assert.equal(await selected(), 'openai:o3');
+      await adminShot('03a-gpt-model-saved');
+      await page.waitForFunction(() => /^模型：o3/.test(document.querySelector('#char-config .cfg-model').textContent), null, { timeout: 10000 });
+      await shot('03a-gpt-model-summary');
+      await check('设置窗口里吉皮缇的模型选为 o3；桌宠里她的页显示“模型：o3”');
       await page.locator('#look-section').scrollIntoViewIfNeeded();
       mark('step', '外观选「吉皮缇 · 旧版像素」');
       await page.click('.pack-opt[data-pack="gpt-classic"] .pick');
@@ -1853,58 +1985,67 @@ async function charpage() {
 
     const GPT_ROLE = '叫我“老板”。说话多用比喻，聊技术时专业一点。';
     const roleEdits = () => (fs.existsSync(path.join(fakeDir, 'edits.log')) ? fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.systemRole) : []);
-    await step(S, 'C3b 个性化设定 on 吉皮缇\'s page is saved for her, kept while the panel re-renders, and leaves 克洛蒂\'s agent alone', async () => {
+    await step(S, 'C3b 个性化设定 for 吉皮缇 (settings window) is saved for her, kept while the window re-renders, and leaves 克洛蒂\'s agent alone', async () => {
       const edits0 = roleEdits().length;
-      mark('step', '角色列表 → 吉皮缇 → 个性化设定');
+      mark('step', '角色列表 → 吉皮缇 → 在设置窗口中编辑 › → 个性化设定');
       await openCharPage(page, 'gpt');
-      await page.locator('#role-section').scrollIntoViewIfNeeded();
-      assert.equal(await page.inputValue('#role-input'), '', 'empty by default');
-      assert.equal(await page.textContent('#role-section .role-status'), '还没写，她按默认性格来。');
-      assert.equal(await page.locator('#role-save').isDisabled(), true, 'nothing to save yet');
-      await shot('03c-gpt-role-empty');
-      await check('个性化设定（System Role）：空的输入框、0/1000、保存不可点');
-      mark('step', '输入个性化设定（未保存时面板重绘，草稿还在）');
-      await page.fill('#role-input', GPT_ROLE);
-      assert.equal(await page.textContent('#role-section .role-count'), `${GPT_ROLE.length}/1000`);
-      await page.evaluate(() => window.pet.debugSet({ hunger: 40 })); // an update re-renders the panel
+      await jumpToAdmin('gpt');
+      await adminTab('gpt', '个性化设定');
+      const input = admin.locator('[data-system-role="gpt"]');
+      const save = admin.locator('[data-save-role="gpt"]');
+      assert.equal(await input.inputValue(), '', 'empty by default');
+      assert.match(await admin.locator('[role="tabpanel"]:not([inert])').textContent(), /0 \/ 1000/);
+      assert.equal(await save.isDisabled(), true, 'nothing to save yet');
+      await adminShot('03c-gpt-role-empty');
+      await check('个性化设定：空的输入框、0 / 1000、保存不可点');
+      mark('step', '输入个性化设定（未保存时窗口重绘，草稿还在）');
+      await input.fill(GPT_ROLE);
+      assert.match(await admin.locator('[role="tabpanel"]:not([inert])').textContent(), new RegExp(`${[...GPT_ROLE].length} / 1000`));
+      await page.evaluate(() => window.pet.debugSet({ hunger: 40 })); // an update is broadcast and re-renders both windows
       await page.waitForTimeout(400);
-      assert.equal(await page.inputValue('#role-input'), GPT_ROLE, 'the draft survives a re-render');
+      assert.equal(await input.inputValue(), GPT_ROLE, 'the draft survives a re-render');
       mark('step', '点“保存”');
-      await page.click('#role-save');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.equal(await page.textContent('#panel-msg'), '吉皮缇的个性化设定已保存。');
-      assert.equal(await page.textContent('#role-section .role-status'), '已保存，见面后起用。');
-      assert.equal(await page.locator('#role-save').isDisabled(), true);
+      await save.click();
+      await adminToast(/个性化设定已保存/);
+      await admin.waitForFunction(() => document.querySelector('[data-save-role="gpt"]').disabled, null, { timeout: 5000 });
       assert.deepEqual(settingsJson().systemRoles, { gpt: GPT_ROLE });
       await page.waitForTimeout(400);
       assert.equal(roleEdits().length, edits0, '克洛蒂\'s agent is not touched');
-      await page.locator('#role-section').scrollIntoViewIfNeeded();
-      await shot('03d-gpt-role-saved');
-      await check('提示“吉皮缇的个性化设定已保存。”，状态“已保存，见面后起用。”');
+      await adminShot('03d-gpt-role-saved');
+      await page.waitForFunction((n) => document.querySelector('#char-config .cfg-role').textContent === `个性化设定：已写 ${n} 字`, [...GPT_ROLE].length, { timeout: 10000 });
+      await shot('03d-gpt-role-summary');
+      await check('设置窗口提示“个性化设定已保存”；桌宠里她的页显示“个性化设定：已写 N 字”');
       await page.click('#char-back');
       return `settings.json systemRoles=${JSON.stringify(settingsJson().systemRoles)}`;
-    }, page);
+    }, () => admin || page);
 
-    await step(S, 'C4 after a restart her page still shows o3 and 旧版像素', async () => {
+    await step(S, 'C4 after a restart she still has o3 (settings window and her page), 旧版像素 and her 个性化设定', async () => {
       mark('step', '关闭应用（重启）');
       await stop();
+      admin = null;
       ({ app, page } = await start());
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
       await idle();
       mark('step', '重启后：⋯ → 角色列表 → 吉皮缇');
       await openCharacters(page, 'gpt');
-      await page.waitForFunction(() => document.getElementById('model-select').value === 'openai:o3', null, { timeout: 10000 });
+      await page.waitForFunction(() => /^模型：o3/.test(document.querySelector('#char-config .cfg-model').textContent), null, { timeout: 10000 });
       assert.equal(await page.locator('.pack-opt.on[data-pack="gpt-classic"]').count(), 1);
       assert.equal(await page.getAttribute('#char-head .char-thumb', 'data-look'), 'gpt-classic');
-      assert.equal(await selected(), 'openai:o3');
-      assert.equal(await page.inputValue('#role-input'), GPT_ROLE, 'her 个性化设定 too');
-      await page.locator('#model-section').scrollIntoViewIfNeeded();
+      assert.equal((await cfg()).role, `个性化设定：已写 ${[...GPT_ROLE].length} 字`);
       await shot('05-after-restart');
-      await check('重启后吉皮缇的模型仍是 o3，个性化设定仍在');
+      await check('重启后吉皮缇的页：模型 o3，个性化设定已写');
       await page.locator('#look-section').scrollIntoViewIfNeeded();
       await shot('05b-after-restart-look');
       await check('重启后吉皮缇的外观仍是旧版像素（使用中）');
-      return `model ${await selected()}, look gpt-classic; settings.json ${JSON.stringify({ models: settingsJson().models, appearance: settingsJson().appearance })}`;
+      await adminTab('gpt', '模型');
+      assert.equal(await selected(), 'openai:o3');
+      await adminShot('05c-after-restart-admin-model');
+      await adminTab('gpt', '个性化设定');
+      assert.equal(await admin.locator('[data-system-role="gpt"]').inputValue(), GPT_ROLE, 'her 个性化设定 too');
+      await adminShot('05d-after-restart-admin-role');
+      await admin.close();
+      admin = null;
+      return `model openai:o3, look gpt-classic, role kept; settings.json ${JSON.stringify({ models: settingsJson().models, appearance: settingsJson().appearance })}`;
     }, page);
 
     await step(S, 'C5 初次见面 from her page: she arrives in 旧版像素 and her own agent runs on o3', async () => {
@@ -1932,42 +2073,47 @@ async function charpage() {
       return `agent ${v.pet.agentId} on ${last.provider}:${last.model}; look gpt-classic/daily`;
     }, page);
 
-    await step(S, 'C5b changing the companion\'s 个性化设定 updates her agent right away; 清空 asks first and removes it', async () => {
+    await step(S, 'C5b changing the companion\'s 个性化设定 (settings window) updates her agent right away; saving it empty removes it', async () => {
       const v0 = await view(page);
       const edits0 = roleEdits().length;
-      mark('step', '⋯ → 角色列表 → 小吉（当前）→ 改个性化设定');
+      mark('step', '⋯ → 角色列表 → 小吉（当前）→ 在设置窗口中编辑 › → 改个性化设定');
       await openCharacters(page, 'gpt');
-      await page.locator('#role-section').scrollIntoViewIfNeeded();
+      await jumpToAdmin('gpt');
+      await adminTab('gpt', '个性化设定');
+      const input = admin.locator('[data-system-role="gpt"]');
+      const save = admin.locator('[data-save-role="gpt"]');
+      await admin.waitForFunction((t) => document.querySelector('[data-system-role="gpt"]').value === t, GPT_ROLE);
       const next = `${GPT_ROLE}\n我是前端工程师。`;
-      await page.fill('#role-input', next);
-      await page.click('#role-save');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      assert.equal(await page.textContent('#role-section .role-status'), '已保存，下一句话起用。');
+      await input.fill(next);
+      await save.click();
+      await adminToast(/个性化设定已保存/);
       const t0 = Date.now();
       while (roleEdits().length === edits0 && Date.now() - t0 < 10000) await page.waitForTimeout(200);
       const e = roleEdits().at(-1);
       assert.equal(e.agentId, v0.pet.agentId);
       assert.ok(e.systemRole.includes(next), 'the agent\'s system role carries the new text');
-      await page.locator('#role-section').scrollIntoViewIfNeeded();
-      await shot('06b-current-role-saved');
-      await check('当前角色：保存后状态“已保存，下一句话起用。”，agent 的 system role 已更新');
-      mark('step', '点“清空”并确认');
-      page.lastDialog = null;
-      await page.click('#role-clear'); // the harness accepts the confirm
-      await page.waitForFunction(() => /个性化设定已清空/.test(document.getElementById('panel-msg').textContent));
-      assert.equal(page.lastDialog, '清空吉皮缇的个性化设定？', 'asked first');
-      assert.equal(await page.inputValue('#role-input'), '');
-      assert.deepEqual(settingsJson().systemRoles, {});
+      await page.waitForFunction((n) => document.querySelector('#char-config .cfg-role').textContent === `个性化设定：已写 ${n} 字`, [...next].length, { timeout: 10000 });
+      await adminShot('06b-current-role-saved');
+      await check('当前角色：保存后 agent 的 system role 已更新');
+      mark('step', '清空输入框并保存（留空即删除）');
+      await input.fill('');
+      await save.click();
+      await admin.waitForFunction(() => document.querySelector('[data-save-role="gpt"]').disabled, null, { timeout: 5000 });
+      assert.equal(await input.inputValue(), '');
       const t1 = Date.now();
+      while (Object.keys(settingsJson().systemRoles || {}).length && Date.now() - t1 < 5000) await page.waitForTimeout(100);
+      assert.deepEqual(settingsJson().systemRoles, {});
       while (roleEdits().length === edits0 + 1 && Date.now() - t1 < 10000) await page.waitForTimeout(200);
       assert.doesNotMatch(roleEdits().at(-1).systemRole, /个性化设定/, 'removed from her agent');
-      await page.locator('#role-section').scrollIntoViewIfNeeded();
-      await shot('06c-current-role-cleared');
-      await check('清空后输入框为空、提示“吉皮缇的个性化设定已清空。”，agent 的 system role 里不再有它');
+      await page.waitForFunction(() => document.querySelector('#char-config .cfg-role').textContent === '个性化设定：还没写', null, { timeout: 10000 });
+      await adminShot('06c-current-role-cleared');
+      await shot('06c-current-role-cleared-summary');
+      await check('清空后输入框为空，agent 的 system role 里不再有它；桌宠里她的页显示“个性化设定：还没写”');
+      await admin.close();
+      admin = null;
       await page.click('#panel-close');
       return `edit 1 for ${e.agentId}: …${e.systemRole.slice(e.systemRole.indexOf('主人给你的'), e.systemRole.indexOf('主人给你的') + 80).replace(/\n/g, '⏎')}…; after 清空 systemRoles=${JSON.stringify(settingsJson().systemRoles)}`;
     }, page);
-
     await step(S, 'C6 克洛蒂\'s page (met, not on the desktop): one-click unlock fills her affection only', async () => {
       mark('step', '⋯ → 角色列表 → 克洛蒂（已认识、不在桌面）→ 一键解锁');
       await openCharacters(page, 'claude');
@@ -1991,34 +2137,62 @@ async function charpage() {
       return `克洛蒂 ♥${claude.met.affection}; 小吉 ♥${v.pet.affection}`;
     }, page);
 
-    await step(S, 'C7 高级设置 has no per-character section; its system settings still save', async () => {
-      mark('step', '⋯ → 高级设置');
+    await step(S, 'C7 the settings window\'s system pages have no per-character controls; their settings still save', async () => {
+      mark('step', '⋯ → 设置… → 桌宠行为');
       await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#size-range');
-      const sections = await page.$$eval('#panel-body .adv-section h3', (hs) => hs.map((h) => h.textContent.trim().replace(/\s+\d+%$/, '')));
-      await shot('08a-advanced-top');
-      await check('高级设置：宠物大小、桌宠行为……没有模型 / 外观 / 一键解锁');
-      assert.deepEqual(sections, ['宠物大小', '桌宠行为', '语音', '语音输入', '同屏伙伴', '对外接口（本机 HTTP）', '版本与更新']);
-      assert.equal(await page.locator('#panel-body #unlock-all, #panel-body #model-select, #panel-body .pack-list, #panel-body .char-opt').count(), 0);
-      await page.uncheck('#behavior-section input[data-pref="memes"]');
-      await page.waitForSelector('#panel-msg.ok:not(.hidden)');
-      await page.selectOption('#tts-fallback', 'silent');
-      await page.evaluate(() => { const r = document.getElementById('size-range'); r.value = '150'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); });
-      await page.waitForFunction(() => /宠物大小：150%/.test(document.getElementById('panel-msg').textContent));
+      await page.click('[data-menu="settings"]');
+      for (let i = 0; i < 100 && !(admin && !admin.isClosed()); i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      await admin.waitForSelector('[data-admin-page]', { timeout: 15000 });
+      const go = async (route) => {
+        await admin.evaluate((r) => { location.hash = r; }, route);
+        await admin.waitForSelector(`[data-path="${route}"]`, { timeout: 10000 });
+      };
+      // the system pages sit one level down: tiles on the 玩法 and 设置 hubs
+      const tiles = [];
+      for (const hub of ['/play', '/settings']) {
+        await go(hub);
+        tiles.push(...(await admin.$$eval('[data-tile] [data-tile-title]', (ts) => ts.map((t) => t.textContent.trim()))));
+      }
+      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(tiles.includes(want), `a hub has ${want}: ${tiles.join(',')}`);
+      await go('/behavior');
+      await adminShot('08a-settings-behavior');
+      await check('设置窗口 · 桌宠行为：宠物大小、动作、触摸……没有模型 / 外观 / 一键解锁');
+      for (const r of ['/behavior', '/tts', '/visitors', '/api']) {
+        if (r !== '/behavior') await go(r);
+        assert.equal(await admin.locator(':is([data-unlock], [data-use-pack], [data-system-role], [data-save-role], [data-switch])').count(), 0, `${r}: no per-character controls`);
+      }
+      await go('/behavior');
+      mark('step', '关掉“梗图”');
+      await admin.click('[data-key="prefs.memes"]');
+      await adminToast(/已保存：梗图 → 关/);
+      mark('step', '宠物大小拖到 150%');
+      const thumb = admin.locator('[data-key="petScale"] input[type="range"]').first();
+      for (const want of [1.3, 1.35, 1.4, 1.45, 1.5]) {
+        await thumb.focus();
+        await admin.keyboard.press('ArrowRight');
+        await page.waitForFunction((w) => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === w, want, { timeout: 8000 });
+      }
+      await adminToast(/已保存：宠物大小 → 150%/);
+      await adminShot('08-settings-behavior-saved');
+      await check('改宠物大小为 150%：提示已保存');
+      mark('step', '朗读 → 引擎用不了时：不出声');
+      await go('/tts');
+      await admin.getByText('不出声', { exact: true }).click();
+      await adminToast(/已保存：引擎用不了时 → 不出声/);
+      await adminShot('08b-settings-tts');
       const st = settingsJson();
       assert.equal(st.prefs.memes, false);
       assert.equal(st.tts.fallback, 'silent');
       assert.equal(st.petScale, 1.5);
       assert.deepEqual([st.models, st.appearance, st.systemRoles], [{ gpt: 'openai:o3' }, { gpt: 'gpt-classic' }, {}], 'per-character settings untouched');
-      await check('改宠物大小为 150%：提示已保存');
-      await page.evaluate(() => { document.getElementById('panel-body').scrollTop = 0; });
-      await shot('08-advanced');
-      const secs = await page.$$('#panel-body .adv-section');
-      for (const [i, el] of secs.entries()) await el.screenshot({ path: path.join(SHOTS, `08-advanced-section-${i + 1}.png`) });
+      const pet = await page.evaluate(async () => (await window.pet.getSettings()).prefs.memes);
+      assert.equal(pet, false, 'the pet window has the new setting');
       dumpFiles('files-after-c7');
-      return `${sections.join(' / ')}; prefs.memes=false tts.fallback=silent petScale=1.5`;
-    }, page);
+      return `hub tiles ${tiles.join(' / ')}; prefs.memes=false tts.fallback=silent petScale=1.5`;
+    }, () => admin || page);
   } finally {
     await stop();
   }
@@ -2041,7 +2215,19 @@ async function update() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-updfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { app, page } = await launch({ PIXELPET_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pp-upd-')), LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_UPDATE_TEST: '1', PIXELPET_UPDATE_FEED: feed });
-  const statusText = () => page.textContent('#update-section .st');
+  // 版本与更新 lives in the settings window now: ⋯ → 检查更新 opens it at #/update and starts a check
+  let admin = null;
+  const adminWin = async () => {
+    for (let i = 0; i < 100; i++) {
+      const w = app.windows().find((p) => p.url().includes('admin-ui'));
+      if (w) return w;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('the settings window did not open');
+  };
+  // the 版本 card's rows (当前版本 / 状态 / 上次检查) as one line
+  const updateText = () => admin.evaluate(() => document.querySelector('[data-path="/update"]').innerText.replace(/\s+/g, ' ').trim());
+  const waitStatus = (re) => admin.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-path="/update"]').innerText.replace(/\s+/g, ' ')), re.source, { timeout: 15000 });
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card').nth(2).click();
@@ -2050,31 +2236,36 @@ async function update() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '⋯ → 检查更新 shows the version and says it is the newest one', async () => {
+    await step(S, '⋯ → 检查更新 opens 设置 → 版本与更新, shows the version and says it is the newest one', async () => {
       await clickAct(page, 'menu');
       await page.click('[data-menu="check-update"]');
-      await page.waitForFunction(() => /已经是最新版本/.test(document.querySelector('#update-section .st').textContent), null, { timeout: 15000 });
-      const ver = await page.textContent('#update-section .ver');
-      assert.match(ver, new RegExp(`当前版本 v${version.replace(/\./g, '\\.')} · 上次检查：\\d`));
-      assert.equal(await page.locator('#update-go').isHidden(), true);
-      await page.locator('#update-section').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, 'update-latest.png') });
-      return `${ver} / ${await statusText()}`;
-    }, page);
+      admin = await adminWin();
+      await admin.waitForSelector('[data-path="/update"]', { timeout: 15000 });
+      await waitStatus(/状态 已是最新版本/);
+      const text = await updateText();
+      assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
+      assert.match(text, /上次检查 \d/, 'the time of the check is shown');
+      assert.equal(await admin.getByRole('button', { name: '立即更新' }).count(), 0, 'nothing to install');
+      assert.equal(await page.isVisible('#menu-update'), false, 'no download item in ⋯ either');
+      await admin.screenshot({ path: path.join(OUT, 'update-latest.png') });
+      return text.slice(text.indexOf('当前版本'), text.lastIndexOf('检查更新')).trim();
+    }, () => admin || page);
 
-    await step(S, 'when a newer release exists, 检查更新 finds it and offers it', async () => {
+    await step(S, 'when a newer release exists, 检查更新 in the settings window finds it; the pet says so and ⋯ offers the download', async () => {
       tag = 'v9.9.9';
-      await page.click('#update-check');
-      await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.querySelector('#update-section .st').textContent), null, { timeout: 15000 });
-      assert.match(await page.textContent('#update-go'), /下载 v9\.9\.9/);
-      await page.locator('#update-section').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, 'update-found.png') });
-      await page.click('#panel-close');
+      await admin.getByRole('button', { name: '检查更新' }).click();
+      await waitStatus(/状态 需要手动下载新版本 · v?9\.9\.9/);
+      const text = await updateText();
+      await admin.screenshot({ path: path.join(OUT, 'update-found.png') });
+      // the pet window hears it too: she says it in her bubble, ⋯ gets 下载新版本 (which opens the release page)
+      await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
+      const said = await bubbleText(page);
+      await page.bringToFront();
       await clickAct(page, 'menu');
       const menu = await page.textContent('#menu-update');
       assert.match(menu, /下载新版本 v9\.9\.9/);
       await page.screenshot({ path: path.join(OUT, 'update-menu.png') });
-      return `${await statusText().catch(() => '')} · menu: ${menu}`;
+      return `${text.slice(text.indexOf('状态'), text.indexOf('上次检查')).trim()} · bubble 「${said}」 · menu: ${menu}`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -2645,21 +2836,34 @@ async function rosterOne(ch) {
       assert.ok(stt.lastSquash < 0.8, `squash ${stt.lastSquash}`);
       return `landing squash scaleY ${stt.lastSquash} (CSS --sq ${sq})`;
     });
-    await step(S, 'N8 settings: 桌宠行为 switches (roam on, sound / voice off, 互动语音 on, 朗读碎碎念 off, memes and collisions on by default)', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#behavior-section');
-      const prefs = await page.$$eval('#behavior-section input[data-pref]', (els) => els.map((e) => `${e.dataset.pref}=${e.checked ? 'on' : 'off'}`));
+    // the settings window (⋯ → 设置…): its switches save on click with a toast "已保存：<label> → <value>"
+    const adminToast = (admin, re) => admin.waitForFunction((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+    const switchState = (admin, key) => admin.getAttribute(`[data-key="${key}"]`, 'aria-checked');
+    await step(S, 'N8 settings window: 桌宠行为 / 朗读 switches (roam on, sound / voice off, 互动语音 on, 朗读碎碎念 off, memes and collisions on by default)', async () => {
+      const admin = await openAdminWindow(app, page, 'behavior');
+      const shown = [];
+      for (const k of ['roam', 'clickSound', 'memes', 'collide', 'touchZones', 'touchHint']) shown.push(`${k}=${(await switchState(admin, `prefs.${k}`)) === 'true' ? 'on' : 'off'}`);
+      assert.deepEqual(shown, ['roam=on', 'clickSound=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
+      const p0 = (await page.evaluate(() => window.pet.getSettings())).prefs;
+      const prefs = ['roam', 'clickSound', 'voice', 'voiceInteractions', 'voiceMurmurs', 'memes', 'collide', 'touchZones', 'touchHint'].map((k) => `${k}=${p0[k] ? 'on' : 'off'}`);
       assert.deepEqual(prefs, ['roam=on', 'clickSound=off', 'voice=off', 'voiceInteractions=on', 'voiceMurmurs=off', 'memes=on', 'collide=on', 'touchZones=on', 'touchHint=on']);
-      await page.locator('#behavior-section').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
-      await page.check('#behavior-section input[data-pref="clickSound"]');
-      await page.check('#behavior-section input[data-pref="voice"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复'));
+      await admin.screenshot({ path: path.join(OUT, `${S}-behavior-settings.png`) });
+      await admin.click('[data-key="prefs.clickSound"]');
+      await adminToast(admin, /已保存：点击音效 → 开/);
+      await admin.evaluate(() => { location.hash = '/tts'; });
+      await admin.waitForSelector('[data-path="/tts"] [data-key="prefs.voice"]');
+      assert.equal(await switchState(admin, 'prefs.voice'), 'false');
+      await admin.click('[data-key="prefs.voice"]');
+      await adminToast(admin, /已保存：朗读回复 → 开/);
+      // 互动语音 / 朗读碎碎念 unfold under the master switch, with their defaults
+      assert.deepEqual([await switchState(admin, 'prefs.voiceInteractions'), await switchState(admin, 'prefs.voiceMurmurs')], ['true', 'false']);
+      await admin.screenshot({ path: path.join(OUT, `${S}-voice-settings.png`) });
+      const p1 = (await page.evaluate(() => window.pet.getSettings())).prefs;
+      assert.deepEqual([p1.clickSound, p1.voice], [true, true], 'the pet window has them');
+      await admin.close();
       return prefs.join(', ') + ' → switched on: click sound, voice';
     }, page);
     await step(S, 'N9 click sound when she is clicked (setting on)', async () => {
-      await page.click('#panel-close');
       await settle();
       const before = (await page.evaluate(() => window.petFx.stats())).sounds;
       await hover(page);
@@ -2698,18 +2902,22 @@ async function rosterOne(ch) {
     };
     await step(S, `N12 同屏伙伴: ${guest.zh} visits in her own window`, async () => {
       await idle();
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector(`#visitor-section input[data-visitor="${guest.id}"]`);
+      const admin = await openAdminWindow(app, page, 'visitors');
+      // the multi Select (its data-key does not reach the DOM: the page's only combobox); the current character is not offered
+      await admin.locator('[data-path="/visitors"] [role="combobox"]').click();
+      const offered = (await admin.getByRole('option').allTextContents()).map((t) => t.trim());
+      assert.ok(!offered.some((t) => t.startsWith(ch.zh)), `not ${ch.zh} herself: ${offered.join(', ')}`);
       const opened = app.waitForEvent('window', { timeout: 10000 });
-      await page.check(`#visitor-section input[data-visitor="${guest.id}"]`);
+      await admin.getByRole('option', { name: `${guest.zh}（${guest.vendor}）` }).click();
       guestPage = await opened;
+      await adminToast(admin, new RegExp(`同屏伙伴：${guest.zh}`));
+      await admin.keyboard.press('Escape');
       await guestPage.waitForFunction(() => window.petFx && window.petFx.state() && window.petFx.state().species, null, { timeout: 10000 });
       const gs = await guestPage.evaluate(() => window.petFx.state());
       assert.equal(gs.species, guest.id);
-      await page.locator('#visitor-section').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, `${S}-visitor-settings.png`) });
-      await page.click('#panel-close');
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).visitors, [guest.id]);
+      await admin.screenshot({ path: path.join(OUT, `${S}-visitor-settings.png`) });
+      await admin.close();
       await guestPage.waitForTimeout(600);
       await guestPage.screenshot({ path: path.join(OUT, `${S}-visitor-${guest.id}.png`) });
       return `visitor window ${guestPage.url().split('?')[1]} shows ${gs.species} (${gs.state})`;
@@ -2728,17 +2936,17 @@ async function rosterOne(ch) {
       assert.ok(gstats.kicked >= 1, 'the visitor was kicked');
       return `${res.collisions} collision(s), hits ${[...new Set(res.hits)].join(', ')}; ${guest.id} window ${gb.x},${gb.y} → ${ga.x},${ga.y}`;
     }, page);
-    await step(S, 'N14 local HTTP API: switched on in settings, then driven with curl-like calls', async () => {
+    await step(S, 'N14 local HTTP API: switched on in the settings window (对外接口), then driven with curl-like calls', async () => {
       await still();
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#api-on');
-      await page.fill('#api-port', String(17400 + ch.idx));
-      await page.dispatchEvent('#api-port', 'change');
-      await page.check('#api-on');
-      await page.waitForFunction(() => /正在监听/.test(document.getElementById('api-st').textContent), null, { timeout: 5000 });
-      await page.locator('#api-section').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(OUT, `${S}-api-settings.png`) });
+      const admin = await openAdminWindow(app, page, 'api');
+      await admin.fill('[data-key="api.port"] input', String(17400 + ch.idx));
+      await admin.click('[data-save="api.port"]');
+      await adminToast(admin, new RegExp(`已保存：端口 → ${17400 + ch.idx}`));
+      await admin.click('[data-key="api.enabled"]');
+      await adminToast(admin, /已保存：开启对外接口 → 开/);
+      await admin.getByText(`监听中 127.0.0.1:${17400 + ch.idx}`).waitFor({ timeout: 5000 });
+      await admin.screenshot({ path: path.join(OUT, `${S}-api-settings.png`) });
+      await admin.close();
       const st = await view(page);
       const token = st.settings.api.token;
       const port = st.settings.api.port;
@@ -2746,7 +2954,7 @@ async function rosterOne(ch) {
         const r = await fetch(`http://127.0.0.1:${port}/pixel-pet${p}`, { method, headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
         return { status: r.status, json: await r.json() };
       };
-      await page.click('#panel-close');
+      assert.equal(port, 17400 + ch.idx);
       const lines = [];
       const no = await call('GET', '/state', null, 'wrong-token');
       assert.equal(no.status, 401);
@@ -2930,22 +3138,26 @@ async function touch() {
       return 'lifted while dragged, no touch reaction';
     }, page);
 
-    await step(S, 'settings: 部位触摸 off — a click is the old single pat again', async () => {
+    await step(S, 'settings window → 桌宠行为 → 部位触摸 off — a click is the old single pat again', async () => {
       await settle();
       await page.waitForTimeout(400);
-      await hover(page);
-      await page.click('[data-act="menu"]');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#behavior-section input[data-pref="touchZones"]');
-      assert.equal(await page.isChecked('#behavior-section input[data-pref="touchZones"]'), true, 'on by default');
-      await page.locator('#behavior-section input[data-pref="touchZones"]').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(SHOTS, 'settings-touch-switch.png') });
-      await page.uncheck('#behavior-section input[data-pref="touchZones"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('部位触摸：关'));
+      const admin = await openAdminWindow(app, page, 'behavior');
+      const sw = admin.locator('[data-key="prefs.touchZones"]');
+      await sw.scrollIntoViewIfNeeded();
+      assert.equal(await sw.getAttribute('aria-checked'), 'true', 'on by default');
+      assert.equal(await admin.locator('[data-key="prefs.touchHint"]').count(), 1, '触摸提示 shown under it');
+      await admin.screenshot({ path: path.join(SHOTS, 'settings-touch-switch.png') });
+      await sw.click();
+      await admin.waitForFunction(() => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && /已保存：部位触摸 → 关/.test(el.textContent || '')), null, { timeout: 8000 });
+      assert.equal(await sw.getAttribute('aria-checked'), 'false');
+      await admin.waitForSelector('[data-key="prefs.touchHint"]', { state: 'detached' }); // 触摸提示 folds away with it
       const saved = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).prefs;
       assert.equal(saved.touchZones, false, 'saved to settings.json');
+      assert.equal(await page.evaluate(async () => (await window.pet.getSettings()).prefs.touchZones), false, 'the pet window has it');
       log.push(`settings.json prefs after switching off: ${JSON.stringify(saved)}`);
-      await page.click('#panel-close');
+      await admin.screenshot({ path: path.join(SHOTS, 'settings-touch-switch-off.png') });
+      await admin.close();
+      await page.bringToFront();
       await page.waitForTimeout(800);
       const before = await page.evaluate(() => window.petFx.lastTouch());
       await page.mouse.click(pts.chest.x, pts.chest.y);
@@ -3213,15 +3425,22 @@ async function voice() {
     }
   };
   const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
-  const openVoice = async () => {
-    if (!(await page.isVisible('#voice-section'))) { // a closed panel can leave the section in the page, hidden
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#voice-section');
-    }
-    await page.locator('#voice-section').scrollIntoViewIfNeeded();
-  };
   const ttsSet = () => page.evaluate(async () => (await window.pet.getSettings()));
+  // 设置窗口 → 朗读 (#/tts): opened the way ⋯ → 设置… opens it. Controls by their schema key; the engine select and
+  // the fallback segmented by their field label (those two controls carry no data-key).
+  let admin = null;
+  const openTts = async (route = 'tts') => { admin = await openAdminWindow(app, page, route); await admin.waitForTimeout(250); return admin; };
+  const rx = (s) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+  const field = (label) => admin.locator('.lobe-form-form__field', { has: admin.locator('.lobe-form-form__title-text', { hasText: rx(label) }) });
+  const pick = async (label, option) => { await field(label).locator('[role="combobox"]').click(); await admin.locator('[role="option"]', { hasText: rx(option) }).click(); };
+  const seg = (label, option) => field(label).locator(`[data-segmented-item][aria-label="${option}"]`).click();
+  const engineTags = (card) => admin.locator('.lobe-form-form__group-header', { has: admin.locator('.lobe-form-form__group-title', { hasText: rx(card) }) }).locator('.lobe-tag').allTextContents();
+  const waitTags = async (card, re) => { for (let i = 0; i < 80; i++) { const t = await engineTags(card); if (t.some((x) => re.test(x))) return t.join(' / '); await admin.waitForTimeout(100); } throw new Error(`${card} card tags never matched ${re}: ${(await engineTags(card)).join(' / ')}`); };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  const saveDraft = async (key, value) => { await admin.fill(`[data-key="${key}"]`, value); await admin.click(`[data-save="${key}"]`); };
+  const saveKey = async (key, value) => { await admin.fill(`[data-key="${key}"]`, value); await admin.click(`[data-save="${key}"]`); await admin.waitForFunction((k) => document.querySelector(`[data-has-key="${k}"]`).textContent.includes('已设置'), key); };
+  const waitSet = async (pred, what) => { for (let i = 0; i < 80; i++) { const st = await ttsSet(); if (pred(st)) return st; await page.waitForTimeout(100); } throw new Error(`settings never got ${what}`); };
+  const ashot = async (name) => { await admin.waitForTimeout(200); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   try {
     await step(S, 'V0 hatch 大肥鱼 with the fake lh', async () => {
       await page.waitForSelector('.char-card');
@@ -3236,42 +3455,52 @@ async function voice() {
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
-    await step(S, 'V1 高级设置 → 语音: switch 朗读 on, enter the Fish endpoint and API key', async () => {
-      await openVoice();
-      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
-      await shot('v1-voice-toggle-off');
-      await page.check('#behavior-section input[data-pref="voice"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：开'));
-      await shot('v1-voice-toggle-on');
+    await step(S, 'V1 设置窗口 → 朗读: switch 朗读 on, enter the Fish endpoint and API key', async () => {
+      await openTts();
+      await ashot('v1-voice-toggle-off');
+      assert.equal(await admin.getAttribute('[data-key="prefs.voice"]', 'aria-checked'), 'false');
+      await admin.click('[data-key="prefs.voice"]');
+      await toast(/已保存：朗读回复 → 开/);
+      await admin.waitForSelector('[data-key="prefs.voice"][aria-checked="true"]');
+      await ashot('v1-voice-toggle-on');
       assert.equal((await ttsSet()).prefs.voice, true);
-      await page.locator('#voice-section').scrollIntoViewIfNeeded();
-      await shot('v1-voice-section-empty');
-      const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
-      assert.deepEqual(opts.map((o) => o.split(':')[0]), ['auto', 'fish', 'minimax', 'local', 'system']);
-      assert.equal(await page.inputValue('#tts-provider'), 'auto');
-      assert.match(await page.textContent('#tts-credit'), /默认用 MiniMax.*俏皮萌妹/);
-      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
-      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点已改为'));
-      assert.equal(await page.getAttribute('.tts-engine[data-engine="fish"] .tts-key', 'type'), 'password');
-      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
-      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('API Key 已保存'));
-      assert.equal(await page.inputValue('.tts-engine[data-engine="fish"] .tts-key'), '', 'the key is not kept in the page');
-      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：Key 已设置'));
-      const status = await page.textContent('#tts-status');
-      await shot('v1-voice-section-configured');
-      // the controls as the DOM has them: the 朗读 switch, the engine and fallback selects, key / endpoint fields
-      const dom = await page.evaluate(() => {
-        const d = (el) => `<${el.tagName.toLowerCase()}${[...el.attributes].filter((a) => a.name !== 'style').map((a) => ` ${a.name}="${a.value}"`).join('')}>${el.tagName === 'INPUT' ? ` value=${JSON.stringify(el.type === 'checkbox' ? el.checked : el.type === 'password' ? (el.value ? '(non-empty)' : '') : el.value)}` : ''}${el.tagName === 'SELECT' ? ` selected=${el.value} options=[${[...el.options].map((o) => `${o.value}:${o.textContent}`).join(' | ')}]` : ''}${el.tagName === 'BUTTON' ? ` "${el.textContent}"` : ''}`;
-        const row = document.querySelector('#behavior-section input[data-pref="voice"]').closest('.pref-row');
-        return ['# 高级设置 → 桌宠行为 → 朗读回复', d(row.querySelector('input')) + '  ' + row.querySelector('b').textContent, '', '# 高级设置 → 语音 (#voice-section)', ...[...document.querySelectorAll('#voice-section h3, #voice-section select, #voice-section input, #voice-section button, #voice-section .tts-engine > b, #tts-status, #tts-credit')].map((el) => (['SELECT', 'INPUT', 'BUTTON'].includes(el.tagName) ? d(el) : `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}: ${el.textContent}`))].join('\n');
+      await field('朗读引擎').locator('[role="combobox"]').click();
+      await admin.waitForSelector('[role="option"]');
+      const opts = await admin.locator('[role="option"]').allTextContents();
+      await ashot('v1-engine-options');
+      await admin.keyboard.press('Escape');
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      assert.equal(await field('朗读引擎').locator('[role="combobox"]').textContent(), '自动（跟随角色）');
+      assert.match(await waitTags('Fish Audio', /未就绪/), /未就绪/);
+      await ashot('v1-voice-section-empty');
+      await saveDraft('tts.endpoints.fish', mock.url);
+      await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
+      await waitSet((st) => st.tts.endpoints.fish === mock.url, 'the Fish endpoint');
+      assert.equal(await admin.getAttribute('[data-key="keys.fish"]', 'type'), 'password');
+      assert.equal(await admin.textContent('[data-has-key="keys.fish"]'), '未设置');
+      await saveKey('keys.fish', mock.KEY);
+      await toast(/API Key 已保存（不会回显）/);
+      assert.equal(await admin.inputValue('[data-key="keys.fish"]'), '', 'the key is not kept in the page');
+      const status = `Fish Audio: ${await waitTags('Fish Audio', /^可用$/)}, key ${await admin.textContent('[data-has-key="keys.fish"]')}; MiniMax: ${(await engineTags('MiniMax')).join(' / ')}, key ${await admin.textContent('[data-has-key="keys.minimax"]')}`;
+      assert.equal((await ttsSet()).ttsStatus.engines.fish.hasKey, true);
+      await ashot('v1-voice-section-configured');
+      // the controls as the DOM has them: the 朗读 switch, the engine select and fallback segmented, key / endpoint fields
+      const dom = await admin.evaluate(() => {
+        const d = (el) => `<${el.tagName.toLowerCase()}${[...el.attributes].filter((a) => !['style', 'class', 'id'].includes(a.name)).map((a) => ` ${a.name}="${a.value}"`).join('')}>${el.tagName === 'INPUT' ? ` value=${JSON.stringify(el.type === 'password' ? (el.value ? '(non-empty)' : '') : el.value)}` : ` "${el.textContent}"`}`;
+        const root = document.querySelector('[data-path="/tts"]');
+        return ['# 设置窗口 → 朗读 (#/tts)', ...[...root.querySelectorAll('.lobe-form-form__group-title, .lobe-form-form__group-header .lobe-tag, .lobe-form-form__title-text, [data-key], [data-save], [data-has-key], [role="combobox"], [data-segmented-item]')].map((el) => (el.matches('.lobe-form-form__group-title') ? `\n## ${el.textContent}` : el.matches('.lobe-form-form__title-text') ? `- ${el.textContent}` : `    ${d(el)}`))].join('\n');
       });
       fs.writeFileSync(path.join(SHOTS, 'v1-settings-dom.txt'), dom + '\n');
       assert.equal(dom.includes(mock.KEY), false);
-      const credit = await page.textContent('#tts-credit');
-      await page.locator('#tts-credit').scrollIntoViewIfNeeded();
-      await shot('v1-default-auto-credit');
+      assert.equal((await admin.content()).includes(mock.KEY), false, 'the key is nowhere in the settings window');
+      // 大肥鱼's own voice (was the 语音 credit line): 语音包 lists her built-in MiniMax 俏皮萌妹 pack
+      await openTts('voicepacks');
+      const row = admin.locator('tr', { hasText: '大肥鱼' }).first();
+      await row.waitFor();
+      const credit = (await row.innerText()).replace(/\s+/g, ' ');
+      assert.match(credit, /大肥鱼.*MiniMax.*俏皮萌妹.*minimax.*内置/);
+      await ashot('v1-default-auto-credit');
+      await openTts();
       // 大肥鱼 reads with MiniMax by default; with only a Fish key she goes to Fish without a MiniMax request
       await prewarmed(page);
       const before = reqs();
@@ -3282,10 +3511,11 @@ async function voice() {
       assert.equal(reqs(), before + 1);
       assert.equal(mock.log[mock.log.length - 1].path, '/v1/tts');
       // V3–V10 test Fish on its own: pick it
-      await page.selectOption('#tts-provider', 'fish');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('Fish Audio'));
-      return note(`engines offered: ${opts.join(' / ')}; credit: ${credit}; status line: ${status}; 按角色 without a MiniMax key: ${fmt(sp)}`);
-    }, page);
+      await pick('朗读引擎', 'Fish Audio');
+      await toast(/已保存：朗读引擎 → Fish Audio/);
+      await waitSet((st) => st.tts.provider === 'fish', 'provider fish');
+      return note(`engines offered: ${opts.join(' / ')}; 语音包 row: ${credit}; status: ${status}; 按角色 without a MiniMax key: ${fmt(sp)}`);
+    }, () => admin || page);
 
     await step(S, 'V2 the key stays out of settings.json, the log and the page; stored in tts-keys.json', async () => {
       const settingsRaw = fs.readFileSync(path.join(data, 'settings.json'), 'utf8');
@@ -3364,17 +3594,21 @@ async function voice() {
       assert.equal(sp2.provider, 'system');
       assert.deepEqual(sp2.fellBackFrom, [{ provider: 'fish', reason: 'paused:http-500' }]);
       assert.equal(reqs(), before, 'no request while paused');
-      await openVoice();
-      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('服务出错 500'));
-      const status = await page.textContent('#tts-status');
-      await shot('v6-fallback-http-500');
-      return note(`${fmt(sp)} (system voice lang ${sp.lang} pitch ${sp.pitch} rate ${sp.rate}, ${sp.systemVoices} system voices); next: ${fmt(sp2)}; status line: ${status}`);
-    }, page);
+      const fishSt = (await ttsSet()).ttsStatus.engines.fish;
+      assert.equal(fishSt.lastError, 'http-500');
+      assert.ok(fishSt.pausedFor > 0 && fishSt.pausedFor <= 20, `paused for ${fishSt.pausedFor} s`);
+      await openTts();
+      const status = await waitTags('Fish Audio', /^上次失败：http-500$/);
+      await ashot('v6-fallback-http-500');
+      return note(`${fmt(sp)} (system voice lang ${sp.lang} pitch ${sp.pitch} rate ${sp.rate}, ${sp.systemVoices} system voices); next: ${fmt(sp2)}; Fish card: ${status}; ttsStatus.engines.fish ${JSON.stringify(fishSt)}`);
+    }, () => admin || page);
 
     await step(S, 'V7 fallback on a timeout: no answer in 5 s (a little more for a longer line) → system voice; the pet stays responsive', async () => {
       mock.mode = 'hang';
-      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save'); // saving resets the pause
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点'));
+      // saving the endpoint again resets the pause (the settings window's 保存 is off while the field is unchanged:
+      // the same admin-set through its bridge)
+      assert.equal((await adminSet(admin, 'tts.endpoints.fish', mock.url)).ok, true);
+      assert.equal((await ttsSet()).ttsStatus.engines.fish.pausedFor, 0, 'the pause was reset');
       const t0 = Date.now();
       await page.evaluate(() => { window.petFx.speak('网络很慢的时候'); });
       const probes = [];
@@ -3393,7 +3627,7 @@ async function voice() {
 
     await step(S, 'V8 fallback offline: navigator.onLine false → system voice without a request', async () => {
       mock.mode = 'ok';
-      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
+      assert.equal((await adminSet(admin, 'tts.endpoints.fish', mock.url)).ok, true); // resets the timeout pause
       await page.evaluate(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }));
       const before = reqs();
       const sp = await speakLine('断网的时候');
@@ -3404,39 +3638,44 @@ async function voice() {
       return note(fmt(sp));
     });
 
-    await step(S, 'V9 fallback without a key: cleared in 语音 → system voice, no request', async () => {
-      await openVoice();
-      await page.click('.tts-engine[data-engine="fish"] .tts-key-del');
-      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：没有 Key'));
+    await step(S, 'V9 fallback without a key: cleared in 设置窗口 → 朗读 → system voice, no request', async () => {
+      await openTts();
+      await admin.locator('[data-has-key="keys.fish"]').locator('xpath=..').locator('button', { hasText: /^清除$/ }).click();
+      await admin.locator('button', { hasText: /^清除API Key$/ }).click(); // the confirmation
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fish"]').textContent === '未设置');
+      await toast(/API Key 已清除/);
+      const tags = await waitTags('Fish Audio', /^未就绪$/);
+      assert.equal((await ttsSet()).ttsStatus.engines.fish.hasKey, false);
       const before = reqs();
       const sp = await speakLine('没有钥匙的时候');
       assert.equal(sp.provider, 'system');
       assert.deepEqual(sp.fellBackFrom, [{ provider: 'fish', reason: 'no-key' }]);
       assert.equal(reqs(), before);
-      await shot('v9-no-key');
-      return note(`${fmt(sp)}; status: ${await page.textContent('#tts-status')}`);
-    }, page);
+      await ashot('v9-no-key');
+      return note(`${fmt(sp)}; Fish card: ${tags}, key ${await admin.textContent('[data-has-key="keys.fish"]')}`);
+    }, () => admin || page);
 
     await step(S, 'V10 fallback set to 不出声: the line stays silent', async () => {
-      await page.selectOption('#tts-fallback', 'silent');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('不出声'));
+      await seg('引擎用不了时', '不出声');
+      await toast(/已保存：引擎用不了时 → 不出声/);
+      await waitSet((st) => st.tts.fallback === 'silent', 'fallback silent');
       const sp = await speakLine('安静一点');
       assert.equal(sp.status, 'silent');
       assert.equal(sp.provider, null);
-      await page.selectOption('#tts-fallback', 'system');
+      await seg('引擎用不了时', '改用系统语音');
+      await waitSet((st) => st.tts.fallback === 'system', 'fallback system');
       return note(fmt(sp));
-    }, page);
+    }, () => admin || page);
 
     await step(S, 'V11 按角色 (the default): 大肥鱼 reads with MiniMax, voice qiaopi_mengmei', async () => {
-      await page.fill('.tts-engine[data-engine="minimax"] .tts-endpoint', mock.url);
-      await page.click('.tts-engine[data-engine="minimax"] .tts-ep-save');
-      await page.fill('.tts-engine[data-engine="minimax"] .tts-key', mock.MM_KEY);
-      await page.click('.tts-engine[data-engine="minimax"] .tts-key-save');
-      await page.selectOption('#tts-provider', 'auto');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('按角色'));
-      assert.match(await page.textContent('#tts-credit'), /大肥鱼默认用 MiniMax。大肥鱼的音色：MiniMax 系统音色「俏皮萌妹」/);
-      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('MiniMax：Key 已设置'));
-      await shot('v11-minimax-selected');
+      await saveDraft('tts.endpoints.minimax', mock.url);
+      await waitSet((st) => st.tts.endpoints.minimax === mock.url, 'the MiniMax endpoint');
+      await saveKey('keys.minimax', mock.MM_KEY);
+      await pick('朗读引擎', '自动（跟随角色）');
+      await toast(/已保存：朗读引擎 → 自动（跟随角色）/);
+      await waitSet((st) => st.tts.provider === 'auto' && st.ttsStatus.engines.minimax.hasKey, 'auto with a MiniMax key');
+      await waitTags('MiniMax', /^可用$/);
+      await ashot('v11-minimax-selected');
       const sp = await speakLine('换一个引擎试试');
       const rq = mock.log[mock.log.length - 1];
       assert.equal(sp.engine, 'auto');
@@ -3450,8 +3689,9 @@ async function voice() {
     }, page);
 
     await step(S, 'V12 engine choice: 系统语音 sends nothing to any engine', async () => {
-      await page.selectOption('#tts-provider', 'system');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('系统语音'));
+      await pick('朗读引擎', '系统语音');
+      await toast(/已保存：朗读引擎 → 系统语音/);
+      await waitSet((st) => st.tts.provider === 'system', 'provider system');
       const before = reqs();
       const sp = await speakLine('用系统的声音');
       assert.equal(sp.provider, 'system');
@@ -3461,10 +3701,9 @@ async function voice() {
     });
 
     await step(S, 'V13 other characters keep their own default: 按角色 with both keys, 克洛蒂 on Fish', async () => {
-      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
-      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
-      await page.selectOption('#tts-provider', 'auto');
-      await page.click('#panel-close');
+      await saveKey('keys.fish', mock.KEY);
+      await pick('朗读引擎', '自动（跟随角色）');
+      await waitSet((st) => st.tts.provider === 'auto' && st.ttsStatus.engines.fish.hasKey && st.ttsStatus.engines.minimax.hasKey, 'auto with both keys');
       await page.evaluate(() => window.pet.switchCharacter('claude'));
       await page.waitForTimeout(800);
       const sp = await speakLine('我是克洛蒂');
@@ -3482,10 +3721,10 @@ async function voice() {
     // The owner's case (2026-10-30): MiniMax answers 1002 past 10 requests a minute, and with 用不了时 = 不出声
     // every line during the old 5-minute pause was silent. Now the pet keeps under the limit itself.
     await step(S, 'V14 MiniMax: never more than 10 requests a minute; past that a line falls back at once (no 1002, no pause)', async () => {
-      await openVoice(); // 克洛蒂 (V13) has a MiniMax voice too
-      await page.selectOption('#tts-provider', 'minimax');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('MiniMax'));
-      await page.click('#panel-close');
+      await openTts(); // 克洛蒂 (V13) has a MiniMax voice too
+      await pick('朗读引擎', 'MiniMax');
+      await toast(/已保存：朗读引擎 → MiniMax/);
+      await waitSet((st) => st.tts.provider === 'minimax', 'provider minimax');
       const mm = () => mock.log.filter((r) => r.path === '/v1/t2a_v2');
       const lines = [];
       let over = null;
@@ -3499,21 +3738,28 @@ async function voice() {
       const times = mm().map((r) => r.at);
       const most = Math.max(...times.map((t) => times.filter((u) => u >= t && u < t + 60000).length));
       assert.ok(most <= 10, `at most 10 MiniMax requests in any minute (saw ${most})`);
-      await openVoice();
-      await page.waitForFunction(() => /MiniMax：Key 已设置，每分钟最多 10 次，这一分钟还剩 0/.test(document.getElementById('tts-status').textContent));
-      const status = await page.textContent('#tts-status');
-      assert.equal(/MiniMax[^；]*上次/.test(status), false, 'MiniMax is not paused or failed');
-      await shot('v14-minimax-budget');
-      return note(`lines: ${lines.join(' ')}; MiniMax requests ${times.length}, most in one minute ${most}; status: ${status}`);
-    }, page);
+      // was the 语音 status line "MiniMax：Key 已设置，每分钟最多 10 次，这一分钟还剩 0": the same status the settings window gets
+      const mmSt = (await ttsSet()).ttsStatus.engines.minimax;
+      assert.equal(mmSt.hasKey, true);
+      assert.equal(mmSt.rpm, 10);
+      assert.equal(mmSt.budget, 0, 'none left this minute');
+      assert.equal(mmSt.lastError, null, 'MiniMax is not failed');
+      assert.equal(mmSt.pausedFor, 0, 'MiniMax is not paused');
+      const tags = (await engineTags('MiniMax')).join(' / ');
+      assert.equal(/上次失败/.test(tags), false, `the MiniMax card shows no failure: ${tags}`);
+      await ashot('v14-minimax-budget');
+      return note(`lines: ${lines.join(' ')}; MiniMax requests ${times.length}, most in one minute ${most}; ttsStatus.engines.minimax ${JSON.stringify(mmSt)}; MiniMax card: ${tags}`);
+    }, () => admin || page);
 
     await step(S, 'V15 语音包: a recorded line plays from the pack with no request; with 语音包 off it goes to an engine', async () => {
-      await openVoice();
-      await page.waitForFunction(() => /你加的语音包「测试录音」，录好 1 句/.test(document.getElementById('tts-packs-st').textContent));
-      assert.equal(await page.isChecked('#tts-packs'), true, 'on by default');
-      await shot('v15-voice-pack-status');
-      const packText = await page.textContent('#tts-packs-st');
-      await page.click('#panel-close');
+      await openTts('voicepacks');
+      const row = admin.locator('tr', { hasText: '测试录音' }).first();
+      await row.waitFor();
+      const packText = (await row.innerText()).replace(/\s+/g, ' ');
+      assert.match(packText, /克洛蒂.*测试录音.*minimax.*1 句.*自定义/);
+      await ashot('v15-voice-pack-status');
+      await openTts();
+      assert.equal(await admin.getAttribute('[data-key="tts.packs"]', 'aria-checked'), 'true', 'on by default');
       const before = reqs();
       const sp = await speakLine(PACK_LINE);
       assert.equal(sp.provider, 'pack');
@@ -3523,16 +3769,15 @@ async function voice() {
       assert.equal(reqs(), before, 'no request for a recorded line');
       const other = await speakLine('这一句没有录过');
       assert.notEqual(other.provider, 'pack', 'a line not in the pack goes to an engine');
-      await openVoice();
-      await page.uncheck('#tts-packs');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('语音包已关闭'));
-      await page.click('#panel-close');
+      await admin.click('[data-key="tts.packs"]');
+      await toast(/已保存：使用语音包 → 关/);
+      await waitSet((st) => st.tts.packs === false, '语音包 off');
       const off = await speakLine(PACK_LINE);
       assert.notEqual(off.provider, 'pack', '语音包 off');
-      await openVoice();
-      await page.check('#tts-packs');
+      await admin.click('[data-key="tts.packs"]');
+      await waitSet((st) => st.tts.packs === true, '语音包 on');
       return note(`pack: ${packText}; recorded: ${fmt(sp)}; not recorded: ${fmt(other)}; 语音包 off: ${fmt(off)}; requests ${before} → ${reqs()}`);
-    }, page);
+    }, () => admin || page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
@@ -3542,7 +3787,7 @@ async function voice() {
 
 // ---------------------------------------------------------------- localvoice
 // 本地语音服务 (core/tts.js LOCAL): a voice server the user runs (IndexTTS2 / whale-voice…), here a local
-// stand-in. Picked under 高级设置 → 语音 like a user would: no address → falls back; the OpenAI speech API
+// stand-in. Picked in the settings window (设置… → 朗读) like a user would: no address → falls back; the OpenAI speech API
 // with a model and voice name; whale-voice's /tts with her mood as emo; a non-audio answer falls back; http
 // to the home network is accepted for it and refused for the internet.
 async function localvoice() {
@@ -3571,18 +3816,22 @@ async function localvoice() {
     }
   };
   const fmt = (sp) => `「${sp.text}」 engine=${sp.engine} → provider=${sp.provider}${sp.voiceId ? ` voice=${sp.voiceId}` : ''} cached=${sp.cached} ${sp.latencyMs}ms status=${sp.status}${sp.fellBackFrom.length ? ` fellBackFrom=${sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`).join(',')}` : ''}`;
-  const openVoice = async () => {
-    if (!(await page.isVisible('#voice-section'))) {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#voice-section');
-    }
-    await page.locator('#voice-section').scrollIntoViewIfNeeded();
-  };
-  const msg = (re) => page.waitForFunction((src) => new RegExp(src).test(document.getElementById('panel-msg').textContent), re.source, { timeout: 5000 });
   const ttsSet = () => page.evaluate(async () => (await window.pet.getSettings()));
-  const LB = '.tts-engine[data-engine="local"]';
   const reqFor = (text) => mock.log.filter((r) => r.text === text);
+  // 设置窗口 → 朗读 (#/tts) → 本地语音服务 card: controls by their schema key; the engine select and the 接口
+  // segmented by their field label (those two controls carry no data-key)
+  let admin = null;
+  const openTts = async () => { admin = await openAdminWindow(app, page, 'tts'); await admin.waitForTimeout(250); return admin; };
+  const rx = (s) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+  const field = (label) => admin.locator('.lobe-form-form__field', { has: admin.locator('.lobe-form-form__title-text', { hasText: rx(label) }) });
+  const pick = async (label, option) => { await field(label).locator('[role="combobox"]').click(); await admin.locator('[role="option"]', { hasText: rx(option) }).click(); };
+  const seg = (label, option) => field(label).locator(`[data-segmented-item][aria-label="${option}"]`).click();
+  const engineTags = (card) => admin.locator('.lobe-form-form__group-header', { has: admin.locator('.lobe-form-form__group-title', { hasText: rx(card) }) }).locator('.lobe-tag').allTextContents();
+  const waitTags = async (card, re) => { for (let i = 0; i < 80; i++) { const t = await engineTags(card); if (t.some((x) => re.test(x))) return t.join(' / '); await admin.waitForTimeout(100); } throw new Error(`${card} card tags never matched ${re}: ${(await engineTags(card)).join(' / ')}`); };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  const saveDraft = async (key, value) => { await admin.fill(`[data-key="${key}"]`, value); await admin.click(`[data-save="${key}"]`); };
+  const waitSet = async (pred, what) => { for (let i = 0; i < 80; i++) { const st = await ttsSet(); if (pred(st)) return st; await page.waitForTimeout(100); } throw new Error(`settings never got ${what}`); };
+  const ashot = async (name) => { await admin.waitForTimeout(200); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   try {
     await step(S, 'L0 hatch 大肥鱼; settings.tts has the local engine, empty', async () => {
       await page.waitForSelector('.char-card');
@@ -3600,43 +3849,46 @@ async function localvoice() {
     }, page);
 
     await step(S, 'L1 pick 本地语音服务 without an address: the line falls back to the system voice', async () => {
-      await openVoice();
-      await page.check('#behavior-section input[data-pref="voice"]');
-      await openVoice();
-      const opts = await page.$$eval('#tts-provider option', (els) => els.map((e) => e.value));
-      assert.deepEqual(opts, ['auto', 'fish', 'minimax', 'local', 'system']);
-      await page.selectOption('#tts-provider', 'local');
-      await msg(/语音引擎：本地语音服务/);
-      await page.waitForFunction(() => /本地语音服务：没填地址/.test(document.getElementById('tts-status').textContent));
-      await page.locator(LB).scrollIntoViewIfNeeded();
-      await shot('l1-local-box-empty');
-      await page.click('#panel-close');
+      await openTts();
+      await admin.click('[data-key="prefs.voice"]');
+      await toast(/已保存：朗读回复 → 开/);
+      await waitSet((st) => st.prefs.voice === true, '朗读 on');
+      await field('朗读引擎').locator('[role="combobox"]').click();
+      await admin.waitForSelector('[role="option"]');
+      const opts = await admin.locator('[role="option"]').allTextContents();
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      await admin.locator('[role="option"]', { hasText: rx('本地语音服务') }).click();
+      await toast(/已保存：朗读引擎 → 本地语音服务/);
+      await waitSet((st) => st.tts.provider === 'local', 'provider local');
+      // was "本地语音服务：没填地址": the card is 未就绪 and its 地址 empty
+      const tags = await waitTags('本地语音服务', /^未就绪$/);
+      assert.equal(await admin.inputValue('[data-key="tts.endpoints.local"]'), '');
+      await admin.locator('[data-key="tts.endpoints.local"]').scrollIntoViewIfNeeded();
+      await ashot('l1-local-box-empty');
       const before = mock.log.length;
       const sp = await speakLine('没有地址的时候念这句');
       assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:no-endpoint']);
       assert.notEqual(sp.provider, 'local');
       assert.equal(mock.log.length, before, 'no request anywhere');
-      return note(`no address: ${fmt(sp)}; status: ${await page.evaluate(() => document.getElementById('tts-status') && document.getElementById('tts-status').textContent)}`);
-    }, page);
+      return note(`no address: ${fmt(sp)}; 本地语音服务 card: ${tags}; ttsStatus.engines.local ${JSON.stringify((await ttsSet()).ttsStatus.engines.local)}`);
+    }, () => admin || page);
 
     await step(S, 'L2 OpenAI-compatible: address + model + voice → POST /v1/audio/speech, her line plays from it', async () => {
-      await openVoice();
-      await page.locator(LB).scrollIntoViewIfNeeded();
-      assert.equal(await page.inputValue(`${LB} .tts-local-api`), 'openai');
-      await page.fill(`${LB} .tts-endpoint`, `${mock.url}/v1`);
-      await page.click(`${LB} .tts-ep-save`);
-      await msg(/端点已改为/);
-      await page.fill(`${LB} .tts-local-model`, 'IndexTTS-2');
-      await page.fill(`${LB} .tts-local-voice`, 'whale');
-      await page.click(`${LB} .tts-local-save`);
-      await msg(/模型 IndexTTS-2，音色 whale/);
-      await page.waitForFunction(() => /本地语音服务：地址 http:\/\/127\.0\.0\.1/.test(document.getElementById('tts-status').textContent));
-      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（音色 whale）/);
-      assert.match(await page.getAttribute(`${LB} .tts-key`, 'placeholder'), /可不填/);
-      await shot('l2-local-openai-configured');
-      const st = await ttsSet();
+      await openTts();
+      await admin.locator('[data-key="tts.endpoints.local"]').scrollIntoViewIfNeeded();
+      assert.equal(await field('接口').locator('[data-segmented-item][aria-pressed="true"]').getAttribute('aria-label'), 'OpenAI 兼容');
+      await saveDraft('tts.endpoints.local', `${mock.url}/v1`);
+      await toast(/已保存：地址 → http:\/\/127\.0\.0\.1/);
+      await saveDraft('tts.local.model', 'IndexTTS-2');
+      await toast(/已保存：模型 → IndexTTS-2/);
+      await saveDraft('tts.local.voice', 'whale');
+      await toast(/已保存：音色名 → whale/);
+      const st = await waitSet((s) => s.tts.local.voice === 'whale' && s.tts.local.model === 'IndexTTS-2' && s.tts.endpoints.local === `${mock.url}/v1`, 'the local server');
       assert.deepEqual(st.tts.local, { api: 'openai', model: 'IndexTTS-2', voice: 'whale' });
-      await page.click('#panel-close');
+      const tags = await waitTags('本地语音服务', /^可用$/);
+      // its key is optional (was the key field's 可不填 placeholder)
+      assert.equal(await field('API Key（可选）').locator('[data-key="keys.local"]').count(), 1);
+      await ashot('l2-local-openai-configured');
       await prewarmed(page);
       const pre = await page.evaluate(() => window.petFx.lastPrewarm());
       const LINE = '鱼片，今天也要好好吃饭哦。';
@@ -3648,21 +3900,18 @@ async function localvoice() {
       assert.deepEqual(rq.body, { model: 'IndexTTS-2', input: LINE, voice: 'whale', response_format: 'mp3', speed: 1 });
       await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 10000 });
       await shot('l2-local-openai-spoken');
-      return note(`settings.tts.local ${JSON.stringify(st.tts.local)} endpoint ${st.tts.endpoints.local}; prewarm ${JSON.stringify(pre)}; ${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; credit: ${await page.evaluate(() => document.getElementById('tts-credit') && document.getElementById('tts-credit').textContent)}`);
+      return note(`settings.tts.local ${JSON.stringify(st.tts.local)} endpoint ${st.tts.endpoints.local}; card: ${tags}; prewarm ${JSON.stringify(pre)}; ${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}`);
     }, page);
 
     await step(S, 'L3 whale-voice: POST /tts { text, emo } with her mood as the emotion', async () => {
-      await openVoice();
-      await page.locator(LB).scrollIntoViewIfNeeded();
-      await page.fill(`${LB} .tts-endpoint`, mock.url);
-      await page.click(`${LB} .tts-ep-save`);
-      await msg(/端点已改为/);
-      await page.selectOption(`${LB} .tts-local-api`, 'whale');
-      await msg(/whale-voice/);
-      assert.equal(await page.isVisible(`${LB} .tts-local-names`), false, 'no model / voice for whale-voice');
-      assert.match(await page.textContent('#tts-credit'), /你的本地语音服务（whale-voice）/);
-      await shot('l3-local-whale-configured');
-      await page.click('#panel-close');
+      await openTts();
+      await admin.locator('[data-key="tts.endpoints.local"]').scrollIntoViewIfNeeded();
+      await saveDraft('tts.endpoints.local', mock.url);
+      await waitSet((s) => s.tts.endpoints.local === mock.url, 'the server root as the address');
+      await seg('接口', 'Whale');
+      await toast(/已保存：接口 → Whale/);
+      const st = await waitSet((s) => s.tts.local.api === 'whale' && s.tts.endpoints.local === mock.url, 'whale-voice');
+      await ashot('l3-local-whale-configured');
       await prewarmed(page);
       const LINE = '咕噜，这句用鲸鱼的声音念。';
       const sp = await speakLine(LINE);
@@ -3675,8 +3924,8 @@ async function localvoice() {
       const warm = mock.log.filter((r) => r.path === '/tts' && r.text !== LINE);
       assert.ok(warm.length > 0, 'her common lines were prewarmed on the local server');
       const emos = [...new Set(warm.map((r) => r.emo))];
-      return note(`${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; prewarmed ${warm.length} lines through /tts, emo used: ${emos.join(', ')}`);
-    }, page);
+      return note(`settings.tts.local ${JSON.stringify(st.tts.local)}; ${fmt(sp)}; request ${rq.path} ${JSON.stringify(rq.body)}; prewarmed ${warm.length} lines through /tts, emo used: ${emos.join(', ')}`);
+    }, () => admin || page);
 
     await step(S, 'L4 the server answers with no audio (model not loaded): falls back, status says why', async () => {
       mock.mode = 'notaudio';
@@ -3685,34 +3934,39 @@ async function localvoice() {
       mock.mode = 'ok';
       assert.deepEqual(sp.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:not-audio']);
       assert.notEqual(sp.provider, 'local');
-      await openVoice();
-      await page.waitForFunction(() => /本地语音服务：.*上次返回的不是音频，\d+ 秒内跳过/.test(document.getElementById('tts-status').textContent));
-      await page.locator('#tts-status').scrollIntoViewIfNeeded();
-      await shot('l4-local-not-audio-status');
-      return note(`${fmt(sp)}; status: ${await page.textContent('#tts-status')}`);
-    }, page);
+      // was "本地语音服务：…上次返回的不是音频，N 秒内跳过"
+      const localSt = (await ttsSet()).ttsStatus.engines.local;
+      assert.equal(localSt.lastError, 'not-audio');
+      assert.ok(localSt.pausedFor > 0, `skipped for ${localSt.pausedFor} s`);
+      await openTts();
+      const tags = await waitTags('本地语音服务', /^上次失败：not-audio$/);
+      await ashot('l4-local-not-audio-status');
+      return note(`${fmt(sp)}; ttsStatus.engines.local ${JSON.stringify(localSt)}; card: ${tags}`);
+    }, () => admin || page);
 
     await step(S, 'L5 address rules: home-network http accepted, internet http refused', async () => {
-      await openVoice();
-      await page.locator(LB).scrollIntoViewIfNeeded();
-      await page.fill(`${LB} .tts-endpoint`, 'http://example.com:7864');
-      await page.click(`${LB} .tts-ep-save`);
-      await msg(/局域网地址/);
-      const refused = await page.textContent('#panel-msg');
+      await openTts();
+      await admin.locator('[data-key="tts.endpoints.local"]').scrollIntoViewIfNeeded();
+      await saveDraft('tts.endpoints.local', 'http://example.com:7864');
+      await admin.waitForSelector('[data-error="tts.endpoints.local"]');
+      const refused = await admin.textContent('[data-error="tts.endpoints.local"]');
+      assert.match(refused, /局域网/);
+      await toast(/地址 没有保存/);
       assert.equal((await ttsSet()).tts.endpoints.local, mock.url, 'kept the old address');
-      await page.fill(`${LB} .tts-endpoint`, 'http://192.168.1.20:7864');
-      await page.click(`${LB} .tts-ep-save`);
-      await msg(/端点已改为 http:\/\/192\.168\.1\.20:7864/);
-      const lan = (await ttsSet()).tts.endpoints.local;
-      assert.equal(lan, 'http://192.168.1.20:7864');
-      await shot('l5-local-lan-address');
+      await ashot('l5-local-internet-http-refused');
+      await saveDraft('tts.endpoints.local', 'http://192.168.1.20:7864');
+      await toast(/已保存：地址 → http:\/\/192\.168\.1\.20:7864/);
+      const lan = (await waitSet((s) => s.tts.endpoints.local === 'http://192.168.1.20:7864', 'the LAN address')).tts.endpoints.local;
+      await admin.waitForSelector('[data-error="tts.endpoints.local"]', { state: 'detached' });
+      await ashot('l5-local-lan-address');
       // the cloud engines still refuse plain http off this machine
-      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', 'http://192.168.1.20:7864');
-      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
-      await msg(/https:\/\//);
+      await saveDraft('tts.endpoints.fish', 'http://192.168.1.20:7864');
+      await admin.waitForSelector('[data-error="tts.endpoints.fish"]');
+      const fishErr = await admin.textContent('[data-error="tts.endpoints.fish"]');
+      assert.match(fishErr, /https/);
       assert.equal((await ttsSet()).tts.endpoints.fish, '');
-      return note(`internet http: “${refused}”; LAN saved: ${lan}; Fish with LAN http refused`);
-    }, page);
+      return note(`internet http: “${refused}”; LAN saved: ${lan}; Fish with LAN http refused: “${fishErr}”`);
+    }, () => admin || page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'localvoice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
@@ -3766,7 +4020,7 @@ async function vpack() {
       const st = await page.evaluate(() => window.pet.getSettings());
       assert.equal(st.tts.provider, 'auto');
       assert.equal(st.tts.packs, true);
-      assert.deepEqual(Object.values(st.ttsStatus.engines).map((e) => e.hasKey), [false, false]);
+      assert.deepEqual(Object.entries(st.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`), ['fish:false', 'minimax:false', 'local:false']); // 本地语音服务 is the third engine
       const pack = st.ttsStatus.packs.find((p) => p.character === 'dafeiyu');
       assert.ok(pack && pack.builtIn && pack.lines > 150, `built-in pack: ${JSON.stringify(pack)}`);
       return note(`no keys; built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
@@ -3802,21 +4056,32 @@ async function vpack() {
       return note(rows.map(fmt).join('\n') + `\nengine requests +${(s1.requests || 0) - (s0.requests || 0)}, pack hits +${(s1.packHits || 0) - (s0.packHits || 0)}`);
     }, page);
 
-    await step(S, 'P2 高级设置 → 语音 shows her built-in pack', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#voice-section');
-      await page.locator('#tts-packs').scrollIntoViewIfNeeded();
-      const t = await page.textContent('#tts-packs-st');
-      assert.match(t, /大肥鱼：内置语音包「大肥鱼（MiniMax 「俏皮萌妹」\(qiaopi_mengmei\)）」，录好 \d+ 句/);
-      await shot('p2-voice-pack');
+    // 设置窗口 (⋯ → 设置…): 语音包 lists the packs; 朗读 → 朗读引擎 is a select found by its field label (no data-key)
+    let admin = null;
+    const ashot = async (name) => { await admin.waitForTimeout(200); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+    await step(S, 'P2 设置窗口 → 语音包 shows her built-in pack', async () => {
+      admin = await openAdminWindow(app, page, 'voicepacks');
+      const row = admin.locator('tr', { hasText: '大肥鱼' }).first();
+      await row.waitFor();
+      const t = (await row.innerText()).replace(/\s+/g, ' ');
+      assert.match(t, /^大肥鱼 大肥鱼（MiniMax 「俏皮萌妹」\(qiaopi_mengmei\)） minimax (\d+) 句 内置/);
+      const n = Number(t.match(/ (\d+) 句/)[1]);
+      const pack = (await page.evaluate(() => window.pet.getSettings())).ttsStatus.packs.find((p) => p.character === 'dafeiyu');
+      assert.equal(n, pack.lines, 'the line count is the pack\'s');
+      await ashot('p2-voice-pack');
       return note(t);
-    }, page);
+    }, () => admin || page);
 
     await step(S, 'P3 with 系统语音 chosen the pack is not used', async () => {
-      await page.selectOption('#tts-provider', 'system');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('系统语音'));
-      await page.click('#panel-close');
+      admin = await openAdminWindow(app, page, 'tts');
+      const field = admin.locator('.lobe-form-form__field', { has: admin.locator('.lobe-form-form__title-text', { hasText: /^朗读引擎$/ }) });
+      await field.locator('[role="combobox"]').click();
+      await admin.locator('[role="option"]', { hasText: /^系统语音$/ }).click();
+      await admin.waitForFunction(() => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && /已保存：朗读引擎 → 系统语音/.test(el.textContent || '')), null, { timeout: 8000 });
+      for (let i = 0; (await page.evaluate(() => window.pet.getSettings())).tts.provider !== 'system'; i++) {
+        if (i > 50) throw new Error('tts.provider was not saved as system');
+        await page.waitForTimeout(100);
+      }
       await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
       const b = await petBox();
       const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
@@ -3882,12 +4147,24 @@ async function ivoice() {
     return note(`${label}: kind=${row.kind} 「${row.text}」 mood=${row.mood} → fish voice=${row.voiceId} cached=${row.cached} ${row.latencyMs}ms status=${row.status}; engine asked ${row.ipcRequests}× (HTTP now ${row.httpLive}, synthesised ahead ${row.httpPrewarmed}); bubble 「${bubble}」`);
   };
   const petBox = async () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
-  const openAdvanced = async () => {
-    if (!(await page.isVisible('#behavior-section'))) {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#behavior-section');
-    }
+  // 设置窗口 → 朗读 (#/tts), as ⋯ → 设置… opens it: its switches carry their schema key
+  let admin = null;
+  const openTts = async () => { admin = await openAdminWindow(app, page, 'tts'); await admin.waitForTimeout(250); return admin; };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  const ashot = async (name) => { await admin.waitForTimeout(200); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const prefNow = async (k) => (await page.evaluate(() => window.pet.getSettings())).prefs[k];
+  // flip one 朗读 switch in the settings window, as a click; -> once it is saved and the pet window has it
+  const flip = async (key, on, label, shotName) => {
+    await openTts();
+    const sw = admin.locator(`[data-key="prefs.${key}"]`);
+    await sw.scrollIntoViewIfNeeded();
+    assert.equal(await sw.getAttribute('aria-checked'), String(!on), `${label} was ${on ? 'off' : 'on'}`);
+    await ashot(`${shotName}-before`);
+    await sw.click();
+    await toast(new RegExp(`已保存：${label} → ${on ? '开' : '关'}`));
+    await admin.waitForSelector(`[data-key="prefs.${key}"][aria-checked="${on}"]`);
+    for (let i = 0; (await prefNow(key)) !== on; i++) { if (i > 50) throw new Error(`prefs.${key} not saved`); await page.waitForTimeout(100); }
+    await ashot(shotName);
   };
   try {
     await step(S, 'I0 hatch 大肥鱼 with 朗读 on: 初次见面 (met) is read through Fish', async () => {
@@ -4074,7 +4351,7 @@ async function ivoice() {
       return note(`8 clicks → ${got.length} lines offered, ${said.length} said (「${said[0].text}」), dropped: ${got.filter((e) => !e.said).map((e) => e.dropped).join(',')}; engine asked ${s1.requests + s1.hits - s0.requests - s0.hits}×, HTTP ${mock.log.length - m0}; gate ${JSON.stringify(gate)}; bubbles changed ${new Set(bubbles).size}×`);
     }, page);
 
-    await step(S, 'I13 碎碎念: not read by default; read after switching on 朗读碎碎念 in 高级设置', async () => {
+    await step(S, 'I13 碎碎念: not read by default; read after switching on 朗读碎碎念 in 设置窗口 → 朗读', async () => {
       await idle();
       const murmur = async () => {
         const n0 = (await slog()).length;
@@ -4085,13 +4362,7 @@ async function ivoice() {
       };
       const before = await murmur();
       assert.equal(before.length, 0, 'a murmur is not offered to the voice by default');
-      await openAdvanced();
-      await page.locator('#behavior-section input[data-pref="voiceMurmurs"]').scrollIntoViewIfNeeded();
-      await shot('i13-murmur-switch-off');
-      await page.check('#behavior-section input[data-pref="voiceMurmurs"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读碎碎念：开'));
-      await shot('i13-murmur-switch-on');
-      await page.click('#panel-close');
+      await flip('voiceMurmurs', true, '朗读碎碎念', 'i13-murmur-switch-on');
       await page.waitForTimeout(1700);
       const after = await murmur();
       assert.equal(after.length, 1);
@@ -4105,12 +4376,7 @@ async function ivoice() {
 
     await step(S, 'I14 关掉 朗读回复: every interaction again — no line offered, no request to any engine', async () => {
       await idle();
-      await openAdvanced();
-      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
-      await page.uncheck('#behavior-section input[data-pref="voice"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：关'));
-      await shot('i14-voice-off');
-      await page.click('#panel-close');
+      await flip('voice', false, '朗读回复', 'i14-voice-off');
       await page.waitForTimeout(500);
       const n0 = (await slog()).length;
       const m0 = mock.log.length;
@@ -4207,8 +4473,11 @@ async function chatvoice() {
     }, 100);
   });
   const stopSample = () => page.evaluate(() => { clearInterval(window.__syncTimer); return window.__sync; });
+  // 设置窗口 → 朗读 (#/tts), as ⋯ → 设置… opens it: controls by their schema key
+  let admin = null;
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
   try {
-    await step(S, 'C0 hatch 大肥鱼, switch 朗读 on and give Fish Audio its endpoint and key in 高级设置 → 语音', async () => {
+    await step(S, 'C0 hatch 大肥鱼, switch 朗读 on and give Fish Audio its endpoint and key in 设置窗口 → 朗读', async () => {
       chapter('孵化大肥鱼，打开朗读并配置 Fish Audio');
       await page.waitForSelector('.char-card');
       await page.click('.char-card[data-species="dafeiyu"]');
@@ -4218,25 +4487,26 @@ async function chatvoice() {
       await waitReply(page, 15000);
       await idle();
       await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#voice-section');
-      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
-      await page.check('#behavior-section input[data-pref="voice"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：开'));
-      await page.locator('#voice-section').scrollIntoViewIfNeeded();
-      await page.fill('.tts-engine[data-engine="fish"] .tts-endpoint', mock.url);
-      await page.click('.tts-engine[data-engine="fish"] .tts-ep-save');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('端点已改为'));
-      await page.fill('.tts-engine[data-engine="fish"] .tts-key', mock.KEY);
-      await page.click('.tts-engine[data-engine="fish"] .tts-key-save');
-      await page.waitForFunction(() => document.getElementById('tts-status').textContent.includes('Fish Audio：Key 已设置'));
-      await shot('c0-voice-on-fish-configured');
-      await page.click('#panel-close');
+      await page.click('[data-menu="settings"]'); // ⋯ → 设置… opens the settings window (at 概览); then its 朗读 page
+      admin = await openAdminWindow(app, page, 'overview'); // let it load first: a route sent while it loads is lost
+      admin = await openAdminWindow(app, page, 'tts');
+      await admin.click('[data-key="prefs.voice"]');
+      await toast(/已保存：朗读回复 → 开/);
+      await admin.waitForSelector('[data-key="prefs.voice"][aria-checked="true"]');
+      await admin.fill('[data-key="tts.endpoints.fish"]', mock.url);
+      await admin.click('[data-save="tts.endpoints.fish"]');
+      await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
+      await admin.fill('[data-key="keys.fish"]', mock.KEY);
+      await admin.click('[data-save="keys.fish"]');
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fish"]').textContent.includes('已设置'));
+      await admin.screenshot({ path: path.join(SHOTS, 'c0-voice-on-fish-configured.png') });
       const st = await page.evaluate(async () => (await window.pet.getSettings()));
       assert.equal(st.prefs.voice, true);
+      assert.equal(st.tts.endpoints.fish, mock.url);
+      assert.equal(st.ttsStatus.engines.fish.hasKey, true);
       assert.equal(st.tts.provider, 'auto'); // 大肥鱼's MiniMax has no key here: her lines go to Fish
       return note(`prefs.voice=${st.prefs.voice} tts=${JSON.stringify(st.tts)}`);
-    }, page);
+    }, () => admin || page);
 
     const MSG1 = '第一句，我们先打个招呼。第二句（笑着眨眨眼。）说说今天的天气真好！第三句😀你想不想去公园散步？第四句[梗图:cheer]那就这么说定了 https://example.com/park 。';
     const WANT1 = ['echo: 第一句，我们先打个招呼。', '第二句 说说今天的天气真好！', '第三句你想不想去公园散步？', '第四句那就这么说定了 。']; // the meme tag never reaches the bubble (core/memes.js), the link is not read
@@ -4355,25 +4625,28 @@ async function chatvoice() {
       await send('关掉之前的第一句话。关掉之前的第二句话。关掉之前的第三句话。');
       const sp = await readingAt(prevN, 0);
       await page.waitForTimeout(300);
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#voice-section');
-      await page.locator('#behavior-section input[data-pref="voice"]').scrollIntoViewIfNeeded();
+      admin = await openAdminWindow(app, page, 'tts'); // the settings window (still open from C0) on 朗读
       const reading = await last();
-      assert.ok(/^(playing|speaking)$/.test(reading.status), `still reading while the panel opens: ${reading.status}`);
-      await page.uncheck('#behavior-section input[data-pref="voice"]');
-      await page.waitForFunction(() => document.getElementById('panel-msg').textContent.includes('朗读回复：关'));
+      assert.ok(/^(playing|speaking)$/.test(reading.status), `still reading while the settings window is up: ${reading.status}`);
+      assert.equal(reading.n, sp.n);
+      const tClick = Date.now();
+      await admin.click('[data-key="prefs.voice"]');
+      await page.waitForFunction((n) => { const x = window.petFx.lastSpeech(); return x.n === n && !/^(playing|speaking)$/.test(x.status); }, sp.n, { timeout: 2000 });
+      const stopMs = Date.now() - tClick;
       const r = await last();
       const es = await log(sp.n);
+      await toast(/已保存：朗读回复 → 关/);
+      await admin.waitForSelector('[data-key="prefs.voice"][aria-checked="false"]');
       await shot('c3-voice-off-stopped');
+      await admin.screenshot({ path: path.join(SHOTS, 'c3-voice-off-switch.png') });
       assert.equal(r.status, 'interrupted');
       assert.equal(r.stoppedBy, 'voice-off');
       assert.equal(await page.evaluate(() => window.petFx.audioState()), null);
+      assert.equal((await page.evaluate(() => window.pet.getSettings())).prefs.voice, false);
       await page.waitForTimeout(1500);
       assert.equal((await log(sp.n)).length, es.length, 'nothing more was read after');
-      await page.click('#panel-close');
       fs.writeFileSync(path.join(SHOTS, 'c3-speech-log.txt'), fmtLog(es) + '\n');
-      return note(`#${sp.n} read [${es.filter((e) => e.event === 'start').map((e) => e.i).join(',')}] of ${sp.sentences.length}, then 朗读 off → status=${r.status} stoppedBy=${r.stoppedBy}, audio=null, nothing more read in 1.5 s`);
+      return note(`#${sp.n} read [${es.filter((e) => e.event === 'start').map((e) => e.i).join(',')}] of ${sp.sentences.length}, then 朗读 off in the settings window → status=${r.status} stoppedBy=${r.stoppedBy} ${stopMs} ms after the click, audio=null, nothing more read in 1.5 s`);
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'chatvoice-log.txt'), evidence.join('\n\n') + '\n');
@@ -5813,7 +6086,9 @@ async function vrmUi() {
 
 // ------------------------------------------------------------------ vrm / vrmimport
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
-const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct });
+const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
+// Live2D 取景 (半身): e2e/live2d-frame.js
+const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
@@ -5881,17 +6156,44 @@ async function asrScenario() {
   const shot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `asr/${name}.png`; };
   const evidence = [];
   const note = (s) => { evidence.push(s); return s; };
-  const msg = (re) => page.waitForFunction((src) => new RegExp(src).test(document.getElementById('panel-msg').textContent), re.source, { timeout: 5000 });
   const getSet = () => page.evaluate(async () => (await window.pet.getSettings()).asr);
   const lastAsr = () => page.evaluate(() => window.petFx.lastAsr());
   const micState = () => page.evaluate(() => window.petFx.micState());
-  const openAsr = async () => {
-    if (!(await page.isVisible('#asr-section'))) {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="advanced"]');
-      await page.waitForSelector('#asr-section');
-    }
-    await page.locator('#asr-section').scrollIntoViewIfNeeded();
+  // 语音输入 is configured in the settings window (设置 → 语音输入, #/asr) now
+  let admin = null;
+  const openAsr = async () => { admin = await openAdminWindow(app, page, 'asr'); await admin.waitForTimeout(250); return admin; };
+  const closeAdmin = async () => { if (admin) await admin.close().catch(() => {}); admin = null; await page.bringToFront(); };
+  const ashot = async (name) => { await admin.waitForTimeout(150); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `asr/${name}.png`; };
+  // a success / error toast in the settings window ("已保存：<label> → <value>")
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  // Segmented / Select controls: @lobehub/ui's Segmented and Select do not pass data-key (or aria-label) on to the
+  // DOM, so they are found by their form row's label: the nearest ancestor of the label that holds such a control.
+  // Marks it data-e2e-ctl="<label>" (again on every call: a folded field comes back as a new node).
+  const ctl = async (a, label, sel) => {
+    const ok = await a.evaluate(([l, s]) => {
+      const root = document.querySelector('[data-path="/asr"]');
+      for (const el of root.querySelectorAll('*')) {
+        if (el.childElementCount || el.textContent.trim() !== l) continue;
+        let n = el;
+        while (n && n !== root && !n.querySelector(s)) n = n.parentElement;
+        if (n && n !== root) { n.querySelector(s).setAttribute('data-e2e-ctl', l); return true; }
+      }
+      return false;
+    }, [label, sel]);
+    assert.ok(ok, `no ${sel} in the row 「${label}」`);
+    return a.locator(`[data-e2e-ctl="${label}"]`);
+  };
+  const SEG = '[data-segmented-item]';
+  const segItems = async (a, label) => (await ctl(a, label, SEG)).evaluate((first) => [...first.parentElement.querySelectorAll('[data-segmented-item]')].map((b) => ({ label: b.getAttribute('aria-label'), on: b.hasAttribute('data-pressed') })));
+  const pickSeg = async (label, item) => { await (await ctl(admin, label, SEG)).evaluate(() => {}); await admin.locator(`[data-e2e-ctl="${label}"]`).locator('xpath=..').locator(`[data-segmented-item][aria-label="${item}"]`).click(); };
+  const segValue = async (a, label) => ((await segItems(a, label)).find((b) => b.on) || {}).label || null;
+  const pickSelect = async (label, option) => { await (await ctl(admin, label, '[role="combobox"]')).click(); await admin.getByRole('option', { name: option }).click(); };
+  const saveDraft = async (key, value) => { await admin.fill(`[data-key="${key}"]`, value); await admin.click(`[data-save="${key}"]`); };
+  // 测试连接 in the 语音输入 page header: an Alert with the result
+  const testConnection = async (timeout = 15000) => {
+    await admin.getByRole('button', { name: '测试连接' }).click();
+    await admin.waitForFunction(() => /连接正常|连接没有成功/.test(document.querySelector('[data-path="/asr"]').innerText), null, { timeout });
+    return admin.evaluate(() => { const a = document.querySelector('[data-path="/asr"] [role="alert"]'); return (a ? a.innerText : document.querySelector('[data-path="/asr"]').innerText.match(/连接(正常|没有成功)[^\n]*\n?[^\n]*/)[0]).replace(/\s+/g, ' ').trim(); });
   };
   const openChatBox = async () => {
     await hover(page);
@@ -5924,36 +6226,45 @@ async function asrScenario() {
       return note(`settings.asr defaults ${JSON.stringify(a)}; 🎤 hidden; getUserMedia(audio) with ASR off → ${denied}`);
     }, page);
 
-    await step(S, 'A1 高级设置 → 语音输入: switch on, 本地 whisper host, endpoint + model + 中文, 测试连接 ✅', async () => {
-      chapter('A1 高级设置 → 语音输入：开启、选本地 whisper、填地址/模型/语言、测试连接');
+    await step(S, 'A1 设置 → 语音输入: switch on, 本地 whisper host, endpoint + model + 中文, 测试连接 ✅', async () => {
+      chapter('A1 设置窗口 → 语音输入：开启、选本地 whisper、填地址/模型/语言、测试连接');
       await openAsr();
-      const engines = await page.$$eval('#asr-engine option', (els) => els.map((e) => `${e.value}:${e.textContent}`));
-      assert.deepEqual(engines, ['lobehub:LobeHub 云端识别', 'local:本地识别服务（whisper）', 'off:关闭']);
-      await page.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
-      await shot('a1-asr-section-default');
-      await page.check('#asr-on');
-      await msg(/语音输入已开启/);
-      await page.selectOption('#asr-engine', 'local');
-      await msg(/语音识别引擎：本地识别服务/);
-      await page.selectOption('#asr-language', 'zh');
-      await msg(/识别语言：中文/);
-      await page.fill('#asr-endpoint', 'http://evil.example.com:8179');
-      await page.click('#asr-local-save');
-      await msg(/地址要是 https/);
-      await page.fill('#asr-endpoint', mock.url);
-      await page.fill('#asr-local-model', 'ggml-base');
-      await page.click('#asr-local-save');
-      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
+      // 识别引擎 / 语言 / 识别后直接发送 … are folded away while 语音输入 is off
+      assert.equal(await admin.locator('[data-key="asr.autoSend"]').count(), 0);
+      assert.equal(await admin.locator(`${SEG}[aria-label="本地服务"]`).count(), 0);
+      await ashot('a1-asr-section-default');
+      await admin.click('[data-key="asr.enabled"]');
+      await toast(/已保存：开启语音输入 → 开/);
+      await admin.waitForSelector('[data-key="asr.autoSend"]');
+      const engines = await segItems(admin, '识别引擎');
+      assert.deepEqual(engines.map((b) => b.label), ['LobeHub 云端', '本地服务', '关闭']);
+      assert.equal(await segValue(admin, '识别引擎'), 'LobeHub 云端', 'LobeHub by default');
+      await pickSeg('识别引擎', '本地服务');
+      await toast(/已保存：识别引擎 → 本地服务/);
+      await pickSelect('语言', '中文');
+      await toast(/已保存：语言 → 中文/);
+      // main refuses a plain-http address that is not on this machine / the LAN (the form only checks the shape)
+      await saveDraft('asr.local.endpoint', 'http://evil.example.com:8179');
+      await admin.waitForSelector('[data-error="asr.local.endpoint"]');
+      const refused = (await admin.textContent('[data-error="asr.local.endpoint"]')).trim();
+      assert.match(refused, /https/);
+      assert.notEqual((await getSet()).local.endpoint, 'http://evil.example.com:8179');
+      await saveDraft('asr.local.endpoint', mock.url);
+      await toast(/已保存：地址 → http:\/\/127\.0\.0\.1/);
+      await admin.waitForSelector('[data-error="asr.local.endpoint"]', { state: 'detached' });
+      await saveDraft('asr.local.model', 'ggml-base');
+      await toast(/已保存：模型 → ggml-base/);
+      assert.equal((await admin.textContent('[data-has-key="keys.asrlocal"]')).trim(), '未设置', 'no API key for the local host');
       const before = mock.log.length;
-      await page.click('#asr-test');
-      await page.waitForFunction(() => /能用/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 15000 });
-      const test = await page.textContent('#asr-test-result');
+      const test = await testConnection();
+      assert.match(test, /连接正常/);
+      assert.match(test, /local：可用/);
       const req = mock.log[before];
       assert.equal(req.type, 'audio/wav', 'the test sends a silent wav');
       assert.equal(req.model, 'ggml-base');
       assert.equal(req.language, 'zh');
-      await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
-      await shot('a1-asr-configured-test-ok'); // before anything calls view(): the panel at its own size
+      assert.equal(req.auth, null, 'no key, no Authorization header');
+      await ashot('a1-asr-configured-test-ok');
       const a = await getSet();
       assert.equal(a.enabled, true);
       assert.equal(a.engine, 'local');
@@ -5962,9 +6273,9 @@ async function asrScenario() {
       assert.equal(a.local.model, 'ggml-base');
       const onDisk = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).asr;
       assert.equal(onDisk.local.endpoint, mock.url);
-      await page.click('#panel-close');
-      return note(`测试连接 → 「${test.trim()}」; request ${JSON.stringify(req)}; settings.asr ${JSON.stringify(a)}`);
-    }, page);
+      await closeAdmin();
+      return note(`http://evil.example.com:8179 → 「${refused}」; 测试连接 → 「${test}」; request ${JSON.stringify(req)}; settings.asr ${JSON.stringify(a)}`);
+    }, () => admin || page);
 
     await step(S, 'A2 click 🎤, speak, click again: recording → 识别中 → the text is in the chat box', async () => {
       chapter('A2 点一下 🎤 开始、再点一下结束：录音中 → 识别中 → 文字出现在输入框');
@@ -6083,26 +6394,32 @@ async function asrScenario() {
       assert.equal(r.reason, 'http-500');
       await shot('a6-failure-toast');
       mock.mode = 'ok';
-      // 去设置 opens 高级设置 at 语音输入
+      // 去设置 opens the settings window at 语音输入
+      assert.equal(await page.getAttribute('#toast-open', 'data-admin'), 'asr');
       await page.click('#toast-open');
-      await page.waitForSelector('#asr-section');
-      await page.waitForTimeout(300);
-      const top = await page.evaluate(() => { const s = document.getElementById('asr-section').getBoundingClientRect(); const b = document.getElementById('panel-body').getBoundingClientRect(); return Math.round(s.top - b.top); });
-      assert.ok(top >= -2 && top < 60, `语音输入 at the top of the panel (${top}px)`);
-      await shot('a6-toast-goes-to-settings');
-      await page.click('#panel-close');
-      return note(`toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」; lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, message: r.message })}; 去设置 → 语音输入 at ${top}px`);
-    }, page);
+      for (let i = 0; i < 100 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      await admin.waitForSelector('[data-path="/asr"]', { timeout: 15000 });
+      assert.equal(await admin.getAttribute('[data-key="asr.enabled"]', 'aria-checked'), 'true');
+      assert.equal(await segValue(admin, '识别引擎'), '本地服务');
+      const route = await admin.evaluate(() => location.hash);
+      await ashot('a6-toast-goes-to-settings');
+      await closeAdmin();
+      return note(`toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」; lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, message: r.message })}; 去设置 → settings window ${route}`);
+    }, () => admin || page);
 
     await step(S, 'A6b the local host is not running: 连不上 toast with the address; with 换另一个引擎 the clip goes to LobeHub', async () => {
       chapter('A6b 本地服务没开：提示“连不上本地识别服务”；勾选换另一个引擎后改走 LobeHub');
       const http = require('node:http');
       const dead = await new Promise((resolve) => { const sv = http.createServer(); sv.listen(0, '127.0.0.1', () => { const port = sv.address().port; sv.close(() => resolve(`http://127.0.0.1:${port}`)); }); });
       await openAsr();
-      await page.fill('#asr-endpoint', dead);
-      await page.click('#asr-local-save');
-      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
-      await page.click('#panel-close');
+      await saveDraft('asr.local.endpoint', dead);
+      await toast(/已保存：地址 → http:\/\/127\.0\.0\.1/);
+      assert.equal((await getSet()).local.endpoint, dead);
+      await closeAdmin();
       await openChatBox();
       await page.fill('#chat-input', '草稿还在');
       await page.click('#chat-mic');
@@ -6123,9 +6440,10 @@ async function asrScenario() {
       await page.click('#toast-close');
       // 用不了时换另一个引擎: the same dead host, the clip is recognised by LobeHub (the fake lh) instead
       await openAsr();
-      await page.check('#asr-fallback');
-      await msg(/换另一个再试一次/);
-      await page.click('#panel-close');
+      await admin.click('[data-key="asr.fallback"]');
+      await toast(/已保存：用不了时换另一个引擎 → 开/);
+      assert.equal((await getSet()).fallback, true);
+      await closeAdmin();
       await openChatBox();
       await page.fill('#chat-input', '');
       await page.click('#chat-mic');
@@ -6142,12 +6460,14 @@ async function asrScenario() {
       await shot('a6b-fallback-lobehub-text');
       // back to the mock host, fallback off, for the steps after this one
       await openAsr();
-      await page.uncheck('#asr-fallback');
-      await msg(/只用选的引擎/);
-      await page.fill('#asr-endpoint', mock.url);
-      await page.click('#asr-local-save');
-      await msg(/本地识别服务：http:\/\/127\.0\.0\.1/);
-      await page.click('#panel-close');
+      await admin.click('[data-key="asr.fallback"]');
+      await toast(/已保存：用不了时换另一个引擎 → 关/);
+      await saveDraft('asr.local.endpoint', mock.url);
+      await toast(new RegExp(`已保存：地址 → ${mock.url.replace(/[.:/]/g, '\\$&')}`));
+      const back = await getSet();
+      assert.equal(back.fallback, false);
+      assert.equal(back.local.endpoint, mock.url);
+      await closeAdmin();
       await openChatBox();
       await page.fill('#chat-input', '');
       return note(`dead host ${dead} → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, tried: r.tried })}; fallback on → provider ${f.provider}, fellBackFrom ${JSON.stringify(f.fellBackFrom)}, box 「${box}」`);
@@ -6156,10 +6476,10 @@ async function asrScenario() {
     await step(S, 'A7 识别后直接发送: the recognised text goes to her at once and she answers', async () => {
       chapter('A7 打开“识别后直接发送”：识别后直接发给她');
       await openAsr();
-      await page.check('#asr-autosend');
-      await msg(/识别后直接发送/);
+      await admin.click('[data-key="asr.autoSend"]');
+      await toast(/已保存：识别后直接发送 → 开/);
       assert.equal((await getSet()).autoSend, true);
-      await page.click('#panel-close');
+      await closeAdmin();
       await openChatBox();
       await page.fill('#chat-input', '');
       await page.click('#chat-mic');
@@ -6185,20 +6505,17 @@ async function asrScenario() {
       await step(S, 'A8 a real whisper host: the fake microphone\'s speech is recognised', async () => {
         chapter('A8 真实 whisper.cpp 服务：识别假麦克风播放的语音');
         await openAsr();
-        await page.uncheck('#asr-autosend');
-        await page.fill('#asr-endpoint', process.env.PIXELPET_E2E_WHISPER);
-        await page.fill('#asr-local-model', 'whisper-1');
-        await page.click('#asr-local-save');
-        await msg(/本地识别服务/);
+        await admin.click('[data-key="asr.autoSend"]');
+        await toast(/已保存：识别后直接发送 → 关/);
+        await saveDraft('asr.local.endpoint', process.env.PIXELPET_E2E_WHISPER);
+        await toast(/已保存：地址 → /);
+        await saveDraft('asr.local.model', 'whisper-1');
+        await toast(/已保存：模型 → whisper-1/);
         // 测试连接 against the real host, as docs/asr.md §4.1 tells the owner to
-        await page.click('#asr-test');
-        await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 60000 });
-        const tested = (await page.textContent('#asr-test-result')).trim();
-        assert.match(tested, /✅/);
-        await page.locator('#asr-section').scrollIntoViewIfNeeded();
-        await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
-        await shot('a8-real-whisper-settings-test');
-        await page.click('#panel-close');
+        const tested = await testConnection(60000);
+        assert.match(tested, /连接正常/);
+        await ashot('a8-real-whisper-settings-test');
+        await closeAdmin();
         await openChatBox();
         await page.fill('#chat-input', '');
         await page.click('#chat-mic');
@@ -6223,19 +6540,16 @@ async function asrScenario() {
         fs.writeFileSync(path.join(fakeDir, 'asr-real'), '1');
         try {
           await openAsr();
-          await page.uncheck('#asr-autosend');
-          await page.selectOption('#asr-engine', 'lobehub');
-          await msg(/语音识别引擎：LobeHub/);
-          await page.selectOption('#asr-lobehub-model', process.env.PIXELPET_E2E_ASR_LOBEHUB_MODEL || 'gpt-4o-mini-transcribe');
-          await page.click('#asr-test');
-          await page.waitForFunction(() => /[✅❌]/.test(document.getElementById('asr-test-result').textContent), null, { timeout: 90000 });
-          const tested = (await page.textContent('#asr-test-result')).trim();
-          assert.match(tested, /✅ LobeHub/);
-          await page.locator('#asr-lobehub').scrollIntoViewIfNeeded();
-          await shot('a8b-lobehub-settings');
-          await page.locator('#asr-test-result').scrollIntoViewIfNeeded();
-          await shot('a8b-lobehub-test-ok');
-          await page.click('#panel-close');
+          if ((await getSet()).autoSend) { await admin.click('[data-key="asr.autoSend"]'); await toast(/已保存：识别后直接发送 → 关/); }
+          await pickSeg('识别引擎', 'LobeHub 云端');
+          await toast(/已保存：识别引擎 → LobeHub 云端/);
+          const r0 = await adminSet(admin, 'asr.lobehub.model', process.env.PIXELPET_E2E_ASR_LOBEHUB_MODEL || 'gpt-4o-mini-transcribe');
+          assert.equal(r0.ok, true, JSON.stringify(r0));
+          await ashot('a8b-lobehub-settings');
+          const tested = await testConnection(90000);
+          assert.match(tested, /lobehub：可用/);
+          await ashot('a8b-lobehub-test-ok');
+          await closeAdmin();
           await openChatBox();
           await page.fill('#chat-input', '');
           await page.click('#chat-mic');
@@ -6255,9 +6569,8 @@ async function asrScenario() {
         } finally {
           fs.rmSync(path.join(fakeDir, 'asr-real'), { force: true });
           await openAsr();
-          await page.selectOption('#asr-engine', 'local');
-          await msg(/语音识别引擎：本地识别服务/);
-          await page.click('#panel-close');
+          assert.equal((await adminSet(admin, 'asr.engine', 'local')).ok, true);
+          await closeAdmin();
         }
       }, page);
     }
@@ -6267,9 +6580,10 @@ async function asrScenario() {
       const cam = await page.evaluate(() => navigator.mediaDevices.getUserMedia({ video: true }).then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; }, (e) => e.name));
       assert.equal(cam, 'NotAllowedError');
       await openAsr();
-      await page.selectOption('#asr-engine', 'off');
-      await msg(/语音识别引擎：关闭/);
-      await page.click('#panel-close');
+      await pickSeg('识别引擎', '关闭');
+      await toast(/已保存：识别引擎 → 关闭/);
+      assert.equal((await getSet()).engine, 'off');
+      await closeAdmin();
       await openChatBox();
       assert.equal(await page.isVisible('#chat-mic'), false);
       await shot('a9-engine-off-no-mic');
@@ -6281,9 +6595,9 @@ async function asrScenario() {
       // what main answers on macOS when 隐私与安全性 → 麦克风 is off (systemPreferences 'denied')
       await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('asr-mic-access'); ipcMain.handle('asr-mic-access', () => 'denied'); });
       await openAsr();
-      await page.selectOption('#asr-engine', 'local');
-      await msg(/语音识别引擎：本地识别服务/);
-      await page.click('#panel-close');
+      assert.equal((await adminSet(admin, 'asr.engine', 'local')).ok, true);
+      await closeAdmin();
+      assert.equal((await getSet()).engine, 'local');
       const before = mock.log.length;
       await openChatBox();
       await page.fill('#chat-input', '打字还能用');
@@ -6318,9 +6632,8 @@ async function asrScenario() {
       await page.fill('#chat-input', '');
       // A10 expects the engine 关闭 as A9 left it
       await openAsr();
-      await page.selectOption('#asr-engine', 'off');
-      await msg(/语音识别引擎：关闭/);
-      await page.click('#panel-close');
+      assert.equal((await adminSet(admin, 'asr.engine', 'off')).ok, true);
+      await closeAdmin();
       return note(`system denied → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason })}; Chromium denied → ${JSON.stringify({ reason: r2.reason, message: r2.message })}; requests sent: ${mock.log.length - before}`);
     }, page);
 
@@ -6330,26 +6643,33 @@ async function asrScenario() {
     }, null);
 
     let again = null;
-    await step(S, 'A10 after a restart 高级设置 → 语音输入 shows what was saved', async () => {
+    await step(S, 'A10 after a restart 设置 → 语音输入 shows what was saved', async () => {
       chapter('A10 重启后：语音输入设置仍是之前保存的');
       await app.close();
       again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`] });
       const p = again.page;
       await p.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await p.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-      await clickAct(p, 'menu');
-      await p.click('[data-menu="advanced"]');
-      await p.waitForSelector('#asr-section');
-      await p.evaluate(() => document.getElementById('asr-section').scrollIntoView({ block: 'start' }));
-      const ui = await p.evaluate(() => ({ on: document.getElementById('asr-on').checked, engine: document.getElementById('asr-engine').value, language: document.getElementById('asr-language').value, autoSend: document.getElementById('asr-autosend').checked, endpoint: document.getElementById('asr-endpoint').value, model: document.getElementById('asr-local-model').value }));
+      admin = await openAdminWindow(again.app, p, 'asr');
+      await admin.waitForSelector('[data-key="asr.autoSend"]');
+      const ui = {
+        on: (await admin.getAttribute('[data-key="asr.enabled"]', 'aria-checked')) === 'true',
+        engine: await segValue(admin, '识别引擎'),
+        language: (await (await ctl(admin, '语言', '[role="combobox"]')).innerText()).trim(),
+        autoSend: (await admin.getAttribute('[data-key="asr.autoSend"]', 'aria-checked')) === 'true',
+        endpoint: await admin.inputValue('[data-key="asr.local.endpoint"]'),
+        model: await admin.inputValue('[data-key="asr.local.model"]'),
+      };
       // A8 / A8b (real hosts) switch 识别后直接发送 off again
-      assert.deepEqual(ui, { on: true, engine: 'off', language: 'zh', autoSend: !(process.env.PIXELPET_E2E_WHISPER || process.env.PIXELPET_E2E_ASR_LOBEHUB), endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
-      await p.waitForTimeout(150);
-      await p.screenshot({ path: path.join(SHOTS, 'a10-after-restart-settings.png') });
+      assert.deepEqual(ui, { on: true, engine: '关闭', language: '中文', autoSend: !(process.env.PIXELPET_E2E_WHISPER || process.env.PIXELPET_E2E_ASR_LOBEHUB), endpoint: process.env.PIXELPET_E2E_WHISPER || mock.url, model: process.env.PIXELPET_E2E_WHISPER ? 'whisper-1' : 'ggml-base' });
+      await admin.waitForTimeout(150);
+      await admin.screenshot({ path: path.join(SHOTS, 'a10-after-restart-settings.png') });
       // the engine back to 本地: 🎤 is there again in the restarted app
-      await p.selectOption('#asr-engine', 'local');
-      await p.waitForFunction(() => /语音识别引擎：本地识别服务/.test(document.getElementById('panel-msg').textContent));
-      await p.click('#panel-close');
+      await pickSeg('识别引擎', '本地服务');
+      await toast(/已保存：识别引擎 → 本地服务/);
+      await admin.close().catch(() => {});
+      admin = null;
+      await p.bringToFront();
       await hover(p);
       await clickAct(p, 'chat');
       assert.equal(await p.isVisible('#chat-mic'), true);
@@ -6690,6 +7010,938 @@ async function streamDirectScenario() {
   }
 }
 
+// --- design: the design-system preview (admin bundle, @lobehub/ui) in a real Electron window ----------------
+// Builds src/admin-ui, opens it through scripts/design-preview.js (sandboxed, CSP, offline), then drives the
+// grouped nav, a switch, a select, a toast and a confirm modal in light and dark. No request may leave file://.
+async function designScenario() {
+  const S = 'design';
+  const SHOTS = path.join(OUT, 'design');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  for (const theme of ['light', 'dark']) {
+    const app = await _electron.launch({ args: ['scripts/design-preview.js', '--no-sandbox', `--theme=${theme}`], cwd: ROOT, env: { ...process.env, ELECTRON_RUN_AS_NODE: '' } });
+    const page = await app.firstWindow();
+    const remote = [];
+    const errors = [];
+    page.on('request', (r) => { if (!/^(file|data|blob|devtools):/.test(r.url())) remote.push(r.url()); });
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const shot = (name) => page.screenshot({ path: path.join(SHOTS, `${theme}-${name}.png`) });
+    try {
+      await step(S, `${theme}: 预览页加载，data-theme=${theme}，底色取 --lobe-color-bg-layout`, async () => {
+        await page.waitForSelector('[data-design-page="/design/colors"]', { timeout: 20000 });
+        const f = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, bg: getComputedStyle(document.body).backgroundColor, layout: getComputedStyle(document.documentElement).getPropertyValue('--lobe-color-bg-layout').trim(), csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]').content, url: location.href }));
+        assert.equal(f.theme, theme);
+        assert.equal(f.layout, theme === 'dark' ? '#000' : '#f8f8f8');
+        assert.ok(f.url.startsWith('file://'), f.url);
+        await shot('01-colors');
+        return `data-theme=${f.theme} body bg=${f.bg} --lobe-color-bg-layout=${f.layout} url=${f.url.replace(/^.*\/src\//, 'src/')}`;
+      }, page);
+      await step(S, `${theme}: 分组导航切到「按钮与输入」，开关、下拉可操作`, async () => {
+        await page.click('nav a[href="#/design/controls"]');
+        await page.waitForSelector('[data-design-page="/design/controls"]');
+        await page.getByText('回复时自动朗读：开').waitFor();
+        await page.locator('button[role="switch"]').first().click();
+        await page.getByText('回复时自动朗读：关').waitFor();
+        await page.getByRole('combobox').first().click();
+        await page.getByRole('option', { name: '本机 TTS 服务' }).click();
+        await page.getByText('本机 TTS 服务').first().waitFor();
+        await shot('02-controls');
+        return 'switch 开→关; select → 本机 TTS 服务';
+      }, page);
+      await step(S, `${theme}: 表单分组（Form itemsType=group variant=filled）`, async () => {
+        await page.click('nav a[href="#/design/form"]');
+        await page.waitForSelector('[data-design-page="/design/form"] form');
+        const labels = await page.locator('[data-design-page="/design/form"] form').innerText();
+        for (const l of ['桌宠行为', '自由漫步', '语音朗读', '朗读引擎', 'API Key']) assert.ok(labels.includes(l), l);
+        await shot('03-form');
+        return 'groups 桌宠行为 / 语音朗读 rendered';
+      }, page);
+      await step(S, `${theme}: Toast 与确认弹窗`, async () => {
+        await page.click('nav a[href="#/design/feedback"]');
+        await page.waitForSelector('[data-design-page="/design/feedback"]');
+        await page.getByRole('button', { name: '成功' }).click();
+        await page.getByText('设置已保存').waitFor({ timeout: 5000 });
+        await shot('04-toast');
+        await page.getByRole('button', { name: '删除角色包' }).click();
+        await page.getByText('删除角色包「像素小猫」？').waitFor({ timeout: 5000 });
+        await page.getByRole('dialog').getByRole('button', { name: '取消' }).waitFor();
+        await page.waitForTimeout(500); // let the open transition finish
+        await shot('05-confirm');
+        await page.getByRole('dialog').getByRole('button', { name: '删除角色包' }).click();
+        await page.getByText('已删除角色包「像素小猫」').waitFor({ timeout: 5000 });
+        return 'toast 设置已保存; confirm → toast 已删除角色包「像素小猫」';
+      }, page);
+      await step(S, `${theme}: 零外网请求、零控制台错误（CSP 下离线）`, async () => {
+        assert.deepEqual(remote, []);
+        assert.deepEqual(errors, []);
+        return 'remote requests 0, console errors 0';
+      });
+    } finally {
+      await app.close().catch(() => {});
+    }
+  }
+}
+
+// ---------------------------------------------------------------- petui
+// The pet window's own UI (bubble, HUD bars + 好感, toolbar, chat box, ⋯ menu, stage-up toast, #panel:
+// 衣柜 / 话题 / 聊天记录 / 角色列表 and her page, 18+ gate, onboarding) in light and dark. The OS appearance reaches the
+// renderer as prefers-color-scheme (Electron nativeTheme), exactly as for the admin window; here it is forced
+// with nativeTheme.themeSource. Asserts the window reads the LobeHub tokens (--lobe-*) and switches with the theme.
+// usage: xvfb-run -a node e2e/run.js petui. Screenshots in out/e2e/petui/<theme>/ (PIXELPET_PETUI_TAG=<dir> to rename).
+async function petuiScenario() {
+  const S = 'petui';
+  const ROOTSHOTS = path.join(OUT, process.env.PIXELPET_PETUI_TAG || 'petui');
+  for (const theme of ['light', 'dark']) {
+    const SHOTS = path.join(ROOTSHOTS, theme);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-petui-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-petuifake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+    // the 18+ question shows on a first launch: shoot it, then answer “all ages”
+    const { app, page } = await launch(env, { gate: true });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+    const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+    const closePanel = async () => { await page.click('#panel-close'); await page.waitForSelector('#panel.hidden', { state: 'attached' }); };
+    const tokens = () => page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const b = getComputedStyle(document.getElementById('age-gate'));
+      return { theme: document.documentElement.dataset.theme, dark: matchMedia('(prefers-color-scheme: dark)').matches, bgContainer: cs.getPropertyValue('--lobe-color-bg-container').trim(), text: cs.getPropertyValue('--lobe-color-text').trim(), gateBg: b.backgroundColor, font: getComputedStyle(document.body).fontFamily.split(',')[0] };
+    });
+    try {
+      // nativeTheme drives prefers-color-scheme on macOS / Windows; xvfb has no desktop theme, so pin the media too
+      await app.evaluate(({ nativeTheme }, t) => { nativeTheme.themeSource = t; }, theme);
+      await page.emulateMedia({ colorScheme: theme });
+      await step(S, `${theme}: 18+ 确认页使用 LobeHub 令牌（--lobe-*）并跟随系统主题`, async () => {
+        await page.waitForSelector('#age-gate:not(.hidden)', { timeout: 15000 });
+        await page.waitForFunction((t) => matchMedia('(prefers-color-scheme: dark)').matches === (t === 'dark') && document.documentElement.dataset.theme === t, theme);
+        const t = await tokens();
+        assert.equal(t.theme, theme);
+        // @lobehub/ui theme values (src/renderer/design/tokens.json): container #ffffff / #0d0d0d, layout #f8f8f8 / #000000
+        assert.deepEqual([t.bgContainer, t.gateBg], theme === 'dark' ? ['#0d0d0d', 'rgb(0, 0, 0)'] : ['#ffffff', 'rgb(248, 248, 248)']);
+        assert.equal(t.font, 'Geist');
+        await shot('00-age-gate');
+        return JSON.stringify(t);
+      }, page);
+      await page.click('#age-no');
+      await step(S, `${theme}: 选角页（卡片、复选、输入框、主按钮）`, async () => {
+        await page.waitForSelector('.char-card');
+        await page.locator('.char-card[data-species="claude"]').click();
+        await page.fill('#pet-name', '小克');
+        await shot('01-onboarding');
+      }, page);
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      await step(S, `${theme}: 悬停：气泡、状态条、好感度、工具栏`, async () => {
+        await page.waitForFunction(() => !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 10000 });
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        await shot('02-hover-hud-bubble');
+        return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
+      }, page);
+      await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
+        await clickAct(page, 'chat');
+        await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
+        await shot('03a-chat-row-placeholder'); // empty and focused: the placeholder
+        await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
+        await shot('03-chat-row');
+        await page.press('#chat-input', 'Enter');
+        await page.waitForFunction(() => /echo: 今天也辛苦啦/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
+        await idle();
+        await hover(page);
+        await shot('04-chat-reply');
+        await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
+        await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: ⋯ 菜单`, async () => {
+        await clickAct(page, 'menu');
+        await page.waitForSelector('#main-menu:not(.hidden)');
+        await page.waitForTimeout(400); // let the menu's open transition finish
+        await shot('05-main-menu');
+        // the menu closes when the pointer leaves the window (as in `fresh`)
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForSelector('#main-menu.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: 喂食菜单`, async () => {
+        await clickAct(page, 'feed');
+        await page.waitForSelector('#food-menu:not(.hidden)');
+        await page.waitForTimeout(400); // let the menu's open transition finish
+        await shot('06-food-menu');
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForSelector('#food-menu.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: 升阶提示 Toast`, async () => {
+        await page.evaluate(() => window.pet.debugSet({ affection: 20 }));
+        await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 10000 });
+        await idle();
+        await page.waitForTimeout(300);
+        await shot('07-unlock-toast');
+        return (await page.textContent('#toast-title')).trim();
+      }, page);
+      await step(S, `${theme}: #panel 衣柜`, async () => {
+        if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
+        await clickAct(page, 'wardrobe');
+        await page.waitForSelector('#panel:not(.hidden) .grid .card');
+        await page.waitForTimeout(300);
+        await shot('08-panel-wardrobe');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 话题`, async () => {
+        await clickAct(page, 'topics');
+        await page.waitForSelector('#panel:not(.hidden) .topic');
+        await shot('09-panel-topics');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 聊天记录（列表 / 对话）`, async () => {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="history"]');
+        await page.waitForSelector('#panel:not(.hidden) .history-item');
+        await shot('10-panel-history-list');
+        await page.click('.history-item');
+        await page.waitForSelector('.history-thread');
+        await shot('11-panel-history-thread');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 角色列表`, async () => {
+        await openCharacters(page);
+        await page.waitForTimeout(300);
+        await shot('12-panel-characters');
+        await closePanel();
+      }, page);
+      // 高级设置 moved to the settings window (配置后台, scenario `admin`): her page in 角色列表 instead
+      await step(S, `${theme}: #panel 角色列表 → 她的页（模型与个性化设定 → 在设置窗口中编辑）`, async () => {
+        await openCharacters(page);
+        await openCharPage(page, 'claude');
+        await page.waitForSelector('#panel:not(.hidden) #char-config #char-admin');
+        await page.waitForTimeout(300);
+        await shot('13-panel-char-page');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: 无页面错误`, async () => {
+        assert.deepEqual(errors, []);
+        return 'page errors 0';
+      });
+    } finally {
+      await app.close().catch(() => {});
+    }
+  }
+}
+
+// ---------------------------------------------------------------- admincov (配置后台覆盖度)
+// docs/admin-console-design.md §12: the settings window lists every character with every kind of pack
+// (built-in pixel / 全动态 / Live2D, imported 图片 / Live2D / VRM), filters by kind, shows each detail tab
+// (形象包, 服饰, 好感, 模型, 设定, 语音, 资料), and the controls that used to live only in the pet window or
+// a menu now work from here: 服饰 → 穿上, Live2D 模型大小, 找回桌宠, 自动检查更新, 数据目录. A behaviour changed
+// in the settings window shows in the pet window at once. Free: fake lh, no network.
+async function adminCoverageScenario() {
+  const S = 'admincov';
+  const SHOTS = path.join(OUT, 'admincov');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincov-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // the packs a user brings: a 图片 pack (gemini), her own Live2D model (dafeiyu) and a VRM (claude)
+  const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfix-'));
+  const pic = path.join(fix, 'gemini-photo');
+  fs.mkdirSync(pic);
+  fs.copyFileSync(path.join(ROOT, 'build', 'icon.png'), path.join(pic, 'daily.png'));
+  fs.writeFileSync(path.join(pic, 'pack.json'), JSON.stringify({ schema: 2, id: 'gemini-photo', name: '双子立绘', species: 'gemini', kind: 'pictures', author: 'e2e', license: 'CC0', outfits: { daily: 'daily.png' } }));
+  const l2d = path.join(fix, 'Whale');
+  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), l2d, { recursive: true });
+  const vrmFile = path.join(fix, 'fish.vrm');
+  fs.writeFileSync(vrmFile, require('../scripts/make-test-vrm').makeTestVrm({ name: 'Test Fish', meta: { allowRedistribution: true, licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const errors = [];
+  let admin = null;
+  const W = 1180;
+  const adminWin = `BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui'))`;
+  // a settings window behind the always-on-top pet gets no animation frames (Playwright's waits poll on them)
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  // the whole page in one image: grow the window to the page's height, capture, shrink back
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  // while the tabs switch the old panel stays a moment (inert): wait for the one live panel
+  const tab = async (name) => {
+    await admin.bringToFront();
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, name));
+    await admin.waitForTimeout(250);
+  };
+  // poll with evaluate (not on animation frames): true once `sel` is in the settings window
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  try {
+    await step(S, 'B0 hatch 格萝可, ⋯ → 设置… opens the settings window', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="grok"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="settings"]');
+      for (let i = 0; i < 200 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+      return 'settings window up';
+    }, page);
+
+    await step(S, 'B1 imported packs of every kind: 图片 (gemini), Live2D (dafeiyu, from the settings window), VRM (claude, from the settings window)', async () => {
+      const a = await page.evaluate((d) => window.pet.debugImportPack(d), pic);
+      assert.equal(a.ok, true, JSON.stringify(a));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), path.join(l2d, 'medium.model3.json'));
+      const b = await call('importLive2d', 'dafeiyu');
+      assert.equal(b.ok, true, JSON.stringify(b));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), vrmFile);
+      const c = await call('importVrm', 'claude');
+      assert.equal(c.ok, true, JSON.stringify(c));
+      await go('/packs');
+      const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-packs] tbody tr')].map((tr) => tr.textContent));
+      const packs = await admin.evaluate(async () => (await window.petAdmin.state()).packs.map((p) => `${p.id}:${p.kind}:${p.source}`));
+      for (const want of ['gemini-photo:pictures:user', `${b.pack.id}:live2d:user`, `${c.pack.id}:vrm:user`, 'dafeiyu-live2d:live2d:builtin', 'dafeiyu-live:rig:builtin', 'grok-pixel:sprites:builtin']) assert.ok(packs.includes(want), `${want} in ${packs.join(' ')}`);
+      const f = await shot('b1-packs');
+      return `${packs.length} packs (${rows.length} table rows): ${packs.join(' ')}; ${f}`;
+    }, () => admin);
+
+    let roster = [];
+    await step(S, 'B2 角色图鉴 lists every character, with the kinds of pack each can wear; 按形象类型 filters (全部 / 像素 / 全动态 / Live2D / 图片 / VRM / 有导入包)', async () => {
+      await go('/characters');
+      roster = await admin.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => ({ id: r.id, kinds: r.packKinds.map((k) => `${k.label}${k.user ? `+导入${k.user}` : ''}`) })));
+      const cards = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      assert.deepEqual(cards, roster.map((r) => r.id), 'one card per character');
+      assert.ok(cards.length >= 5, cards.join(','));
+      const filter = (await admin.textContent('[data-kind-filter]')).trim();
+      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '有导入包']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      const out = [await shot('b2-characters-all')];
+      const pick = async (label) => {
+        await admin.locator('[data-kind-filter]').getByText(new RegExp(`^${label} \\d+$`)).click();
+        await admin.waitForTimeout(300);
+        return admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      };
+      const vrm = await pick('VRM');
+      assert.deepEqual(vrm, ['claude']);
+      out.push(await shot('b2-characters-vrm'));
+      const l2dRows = await pick('Live2D');
+      assert.deepEqual(l2dRows, ['dafeiyu']);
+      const pics = await pick('图片');
+      assert.deepEqual(pics, ['gemini']);
+      const imported = await pick('有导入包');
+      assert.deepEqual([...imported].sort(), ['claude', 'dafeiyu', 'gemini']);
+      out.push(await shot('b2-characters-imported'));
+      await pick('全部');
+      return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B3 角色详情 (格萝可, current): 形象包 / 服饰 / 好感 / 模型 / 设定 / 语音 / 资料, one screenshot per tab', async () => {
+      await go('/characters/grok');
+      const out = [];
+      for (const [t, sel] of [['形象包', '[data-wardrobe="grok"]'], ['服饰', '[data-outfits="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
+        await tab(t);
+        if (sel) await attached(sel);
+        out.push(await shot(`b3-grok-${t}`));
+      }
+      const persona = await admin.textContent('[data-personality="grok"]').catch(() => '');
+      await tab('设定');
+      const p2 = await admin.textContent('[data-personality="grok"]');
+      assert.ok(p2.length > 20, 'her persona from the character file');
+      await tab('资料');
+      const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
+      assert.match(kinds, /像素 · 内置 \d+ · 导入 0/);
+      return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
+    }, () => admin);
+
+    await step(S, 'B4 服饰 → 穿上 in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
+      const u = await call('unlockAll', 'grok');
+      assert.equal(u.ok, true);
+      await go('/characters/grok');
+      await tab('服饰');
+      const before = await page.getAttribute('#char-wrap', 'data-outfit');
+      const id = await admin.getAttribute('[data-outfits="grok"] [data-equip]', 'data-equip');
+      assert.ok(id && id !== before, `${id} vs ${before}`);
+      // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
+      if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
+      await page.waitForTimeout(400);
+      const pBefore = await petShot('b4-pet-before');
+      await admin.click(`[data-equip="${id}"]`);
+      await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
+      await attached(`[data-outfit="${id}"][data-equipped="true"]`);
+      await page.waitForTimeout(500);
+      const pAfter = await petShot('b4-pet-after');
+      const a = await shot('b4-grok-outfits-after');
+      return `pet window #char-wrap data-outfit ${before} → ${id}; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B5 桌宠行为: 宠物大小 slider → the pet window grows at once; 自己走动 switch saved; 找回桌宠 puts her back bottom-right', async () => {
+      await go('/behavior');
+      const out = [await shot('b5-behavior')];
+      const b0 = await petBoundsNow();
+      const s0 = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim());
+      out.push(await petShot('b5-pet-before'));
+      const thumb = admin.locator('[data-key="petScale"] input[type="range"]').first();
+      await thumb.focus();
+      await admin.keyboard.press('Home');
+      await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+      const b1 = await petBoundsNow();
+      assert.ok(b1.width < b0.width && b1.height < b0.height, `${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+      assert.equal(saved().petScale, 0.5);
+      out.push(await petShot('b5-pet-after-50'));
+      // a switch: 自己走动 off → settings.json and the pet window's copy at once
+      await admin.click('[data-key="prefs.roam"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="prefs.roam"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().prefs.roam, false);
+      const petRoam = await page.evaluate(async () => (await window.pet.getSettings()).prefs.roam);
+      assert.equal(petRoam, false);
+      // 找回桌宠: she was dragged to the top-left corner
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
+      const moved = await petBoundsNow();
+      await admin.click('[data-place-pet]');
+      await page.waitForTimeout(500);
+      const back = await petBoundsNow();
+      const wa = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+      assert.equal(back.x, wa.x + wa.width - back.width - 24);
+      assert.equal(back.y, wa.y + wa.height - back.height - 24);
+      out.push(await shot('b5-behavior-after'));
+      return `--pet-scale ${s0} → 0.5, window ${b0.width}×${b0.height} → ${b1.width}×${b1.height}; prefs.roam → false (file and pet window); 找回桌宠 (${moved.x},${moved.y}) → (${back.x},${back.y}) = work area bottom-right; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B6 主动搭话与好感: page screenshot; 主动说话 off is saved and its thresholds grey out', async () => {
+      await go('/proactive');
+      const out = [await shot('b6-proactive')];
+      await admin.click('[data-key="proactive.enabled"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="proactive.enabled"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().proactive.enabled, false);
+      out.push(await shot('b6-proactive-off'));
+      return `proactive.enabled → ${saved().proactive.enabled}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B7 版本与更新: 自动检查更新 switch (new, was only PIXELPET_NO_UPDATE) saved at once', async () => {
+      await go('/update');
+      assert.equal(await admin.getAttribute('[data-key="update.autoCheck"]', 'aria-checked'), 'true');
+      await admin.click('[data-key="update.autoCheck"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="update.autoCheck"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().update.autoCheck, false);
+      return `update.autoCheck → false in settings.json; ${await shot('b7-update')}`;
+    }, () => admin);
+
+    await step(S, 'B8 数据与关于: the data folder\'s path is shown and 打开数据目录 answers', async () => {
+      await go('/about');
+      const shown = (await admin.textContent('[data-data-dir]')).trim();
+      assert.equal(shown, data);
+      const r = await call('openDataFolder');
+      assert.equal(r.ok, true);
+      assert.equal(r.path, data);
+      return `shows ${shown}; ${await shot('b8-about')}`;
+    }, () => admin);
+
+    let l2dId = null;
+    await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 形象包 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
+      const sw = await call('switchCharacter', 'dafeiyu', '小鱼');
+      assert.equal(sw.ok, true, JSON.stringify(sw));
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await admin.evaluate(async () => (await window.petAdmin.state()).packs.filter((p) => p.kind === 'live2d' && p.source === 'user').map((p) => p.id));
+      l2dId = st[0];
+      const ap = await call('setAppearance', l2dId, 'dafeiyu');
+      assert.equal(ap.ok, true, JSON.stringify(ap));
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 30000 });
+      await page.waitForTimeout(1500);
+      const pBefore = await petShot('b9-pet-live2d-before');
+      await go('/characters/dafeiyu');
+      await tab('形象包');
+      await attached(`[data-live2d-size="${l2dId}"]`);
+      const thumb = admin.locator(`[data-live2d-size="${l2dId}"] input[type="range"]`).first();
+      await thumb.focus();
+      await admin.keyboard.press('Home'); // 30%
+      const file = path.join(data, 'packs', l2dId, 'pack.json');
+      for (let i = 0; i < 50 && JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height !== 0.3; i++) await page.waitForTimeout(100);
+      assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height, 0.3);
+      await page.waitForTimeout(1500);
+      const pAfter = await petShot('b9-pet-live2d-after');
+      const a = await shot('b9-dafeiyu-looks');
+      return `${l2dId} live2d.height → 0.3 in pack.json; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 服饰 note for one not current', async () => {
+      const out = [];
+      await go('/characters/dafeiyu');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 1 · 导入 1/);
+      out.push(await shot('b10-dafeiyu-about'));
+      await go('/characters/claude');
+      await tab('形象包');
+      out.push(await shot('b10-claude-looks-vrm'));
+      await tab('服饰');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /只有正在陪你的角色可以换服饰/);
+      await go('/characters/gemini');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);
+      out.push(await shot('b10-gemini-about'));
+      return out.join(', ');
+    }, () => admin);
+
+    await step(S, 'B12 every user-configurable schema field is rendered as a control on its page (DOM export), and the roster data is real', async () => {
+      // fields that depend on a switch (dependsOn) only show while it is on: switch the parents on first
+      for (const [k, v] of [['proactive.enabled', true], ['prefs.voice', true], ['asr.enabled', true], ['api.enabled', true]]) assert.equal((await call('set', k, v)).ok, true, k);
+      const boot = await admin.evaluate(() => window.petAdmin.boot());
+      const fields = boot.schema.fields.filter((f) => !f.internal && f.page !== 'character');
+      const pages = [...new Set(fields.map((f) => f.page))];
+      const dom = {};
+      const missing = [];
+      for (const pg of pages) {
+        await go(`/${pg}`);
+        const want = fields.filter((f) => f.page === pg).map((f) => f.key);
+        const got = await admin.evaluate(() => [...document.querySelectorAll('[data-key]')].map((el) => ({ key: el.getAttribute('data-key'), tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), checked: el.getAttribute('aria-checked'), label: (el.closest('[class*="item"], [class*="row"], div')?.textContent || '').trim().slice(0, 80) })));
+        const keys = new Set(got.map((g) => g.key));
+        for (const k of want) if (!keys.has(k)) missing.push(`${pg}:${k}`);
+        dom[pg] = { schemaKeys: want, controls: got, restartKeys: boot.schema.fields.filter((f) => f.page === pg && f.restart).map((f) => f.key), restartBadge: await admin.evaluate(() => document.body.textContent.includes('重启后生效')) };
+      }
+      fs.writeFileSync(path.join(SHOTS, 'b12-admin-dom-fields.json'), JSON.stringify({ pages: dom, missing }, null, 2));
+      const st = await admin.evaluate(() => window.petAdmin.state());
+      const roster = st.roster.map((r) => ({ id: r.id, displayName: r.displayName, current: r.current, kind: r.kind, pack: r.pack && { id: r.pack.id, kind: r.pack.kind, source: r.pack.source }, packKinds: r.packKinds, met: r.met && { name: r.met.name, affection: r.met.affection, stage: r.met.stage }, model: r.model && { current: r.model.current, options: (r.model.options || []).length }, personality: (r.personality || '').slice(0, 60), systemRole: r.systemRole, outfits: r.outfits && r.outfits.map((o) => `${o.id}${o.equipped ? '*' : ''}${o.locked ? '(锁)' : ''}`) }));
+      const packs = st.packs.map((p) => ({ id: p.id, species: p.species, kind: p.kind, source: p.source }));
+      fs.writeFileSync(path.join(SHOTS, 'b12-roster-data.json'), JSON.stringify({ source: 'window.petAdmin.state() → main adminState() → core/roster.js buildRoster(PetService.view()) + packRows(PackStore: src/renderer/packs [builtin] + <data>/packs [user])', dataDir: data, userPacksOnDisk: fs.readdirSync(path.join(data, 'packs')), roster, packs }, null, 2));
+      assert.deepEqual(missing, []);
+      return `${fields.length} fields on ${pages.length} pages all rendered; b12-admin-dom-fields.json, b12-roster-data.json`;
+    }, () => admin);
+
+    await step(S, 'B11 no console errors in the settings window', async () => {
+      const real = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(real, []);
+      return 'none';
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------- admin (配置后台)
+// The settings window: opened from the ⋯ menu (and Ctrl+,) as a single instance, every page in light and
+// dark, a setting changed there takes effect in the pet window and lands in settings.json, typed values are
+// checked, keys are write-only, a restart-only item says so, and 角色列表 lists / switches characters.
+// Free: fake lh, no paid scenario, no network.
+async function adminScenario() {
+  const S = 'admin';
+  const SHOTS = path.join(OUT, 'admin');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admin-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adminfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  // the whole X display (pet window + settings window as two separate windows), when ffmpeg is there
+  const desktop = (name) => {
+    try {
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'x11grab', '-video_size', process.env.PIXELPET_E2E_SCREEN || '1280x1024', '-i', process.env.DISPLAY, '-frames:v', '1', path.join(SHOTS, `${name}.png`)]);
+      return `${name}.png`;
+    } catch { return 'no desktop capture'; }
+  };
+  const adminPage = async () => {
+    for (let i = 0; i < 100; i++) {
+      const w = app.windows().find((p) => p.url().includes('admin-ui'));
+      if (w) return w;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('the settings window did not open');
+  };
+  let admin = null;
+  const remote = [];
+  const errors = [];
+  const go = async (route) => {
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await admin.waitForSelector(`[data-path="${route}"]`, { timeout: 10000 });
+    await admin.waitForTimeout(250);
+  };
+  const shot = (name) => admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+  const petScaleCss = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim());
+  const adminInfo = () => page.evaluate(() => window.pet.debugAdmin ? window.pet.debugAdmin() : null);
+  try {
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+
+    await step(S, 'A1 ⋯ → 设置… opens the settings window (contextIsolation, only window.petAdmin), 高级设置 is gone from the menu', async () => {
+      await clickAct(page, 'menu');
+      const items = await page.$$eval('#main-menu [data-menu]', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.textContent.trim()));
+      assert.ok(items.includes('设置…'), items.join(','));
+      assert.ok(!items.includes('高级设置'), 'the in-pet 高级设置 panel was replaced by the settings window');
+      await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
+      await page.click('[data-menu="settings"]');
+      admin = await adminPage();
+      admin.on('request', (r) => { if (!/^(file|data|blob|devtools|pack):/.test(r.url())) remote.push(r.url()); });
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      const iso = await admin.evaluate(() => ({ require: typeof window.require, process: typeof window.process, petAdmin: typeof window.petAdmin, pet: typeof window.pet, keys: Object.keys(window.petAdmin).length }));
+      assert.deepEqual([iso.require, iso.process, iso.petAdmin, iso.pet], ['undefined', 'undefined', 'object', 'undefined']);
+      const prefs = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('admin-ui')).map((w) => { const p = w.webContents.getLastWebPreferences(); return { contextIsolation: p.contextIsolation, nodeIntegration: p.nodeIntegration, sandbox: p.sandbox, title: w.getTitle() }; }));
+      assert.equal(prefs.length, 1);
+      assert.equal(prefs[0].contextIsolation, true);
+      assert.equal(prefs[0].nodeIntegration, false);
+      return `menu: ${items.slice(0, 4).join(' / ')}…; window ${JSON.stringify(prefs[0])}; bridge has ${iso.keys} calls`;
+    }, () => admin || page);
+
+    await step(S, 'A2 single instance: tray → 打开设置…, ⋯ → 设置… again and Ctrl+, all reuse the same window', async () => {
+      const tray = await page.evaluate(() => window.pet.debugTray());
+      assert.equal(tray.created, true, 'tray created');
+      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '检查更新', '退出']);
+      const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('admin-ui')).map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^.*\/src\//, 'src/') })));
+      const seen = [];
+      await admin.evaluate(() => { location.hash = '/about'; });
+      assert.equal(await page.evaluate(() => window.pet.debugTrayClick('打开设置…')), true);
+      await page.waitForTimeout(400);
+      seen.push(['tray', (await count()).length]);
+      await page.bringToFront();
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="settings"]');
+      await page.waitForTimeout(400);
+      seen.push(['⋯ 设置…', (await count()).length]);
+      await page.focus('body');
+      await page.keyboard.press('Control+Comma');
+      await page.waitForTimeout(500);
+      const wins = await count();
+      seen.push(['Ctrl+,', wins.length]);
+      const info = await page.evaluate(() => window.pet.debugAdmin());
+      assert.deepEqual(seen.map((x) => x[1]), [1, 1, 1]);
+      assert.equal(info.opened, 1, 'created once');
+      const shot = desktop('a2-desktop-two-windows');
+      return `tray items ${tray.items.join(' / ')}; settings windows after ${seen.map((x) => `${x[0]}=${x[1]}`).join(', ')}; created ${info.opened} time(s); ${JSON.stringify(wins[0])}; total windows ${info.windows}; desktop: ${shot}`;
+    }, () => admin);
+
+    // every page, light and dark (theme pinned through 外观主题 = ui.theme, which the console applies itself)
+    const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
+    await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
+    for (const theme of ['light', 'dark']) {
+      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 4 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
+        await admin.evaluate((t) => window.petAdmin.set('ui.theme', t), theme);
+        await admin.waitForFunction((t) => document.documentElement.dataset.theme === t, theme);
+        const out = [];
+        for (const r of ROUTES) {
+          await go(r);
+          const f = await admin.evaluate(() => ({ groups: document.querySelectorAll('form [class*="group"], form > div > div').length, nav: document.querySelectorAll('nav a').length, bg: getComputedStyle(document.body).backgroundColor }));
+          // one image per whole page: grow the window to the page's height, capture, shrink back
+          const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+          await app.evaluate(({ BrowserWindow }, hh) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, Math.min(Math.max(hh, 1000), 4000)); }, h);
+          await admin.waitForTimeout(300);
+          await shot(`${theme}-${r.slice(1).replace(/\//g, '-')}`);
+          await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+          out.push(`${r}`);
+          assert.equal(f.nav, 4, `rail links ${f.nav}: 小屋 / 角色 / 玩法 / 设置, not every page`);
+        }
+        return `${out.length} pages · rail of 4 · data-theme=${theme}`;
+      }, () => admin);
+    }
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+
+    await step(S, 'A3b depth: the rail holds 4 places; 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
+      await go('/overview');
+      const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => a.textContent.trim()));
+      assert.deepEqual(rail, ['小屋', '角色', '玩法', '设置']);
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-path="/settings"]');
+      const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
+      await admin.click('[data-tile="tts"]');
+      await admin.waitForSelector('[data-path="/tts"]');
+      assert.equal(await admin.getAttribute('[data-rail="settings"]', 'aria-current'), 'page', 'a page below 设置 keeps 设置 lit');
+      await admin.click('[data-back="settings"]');
+      await admin.waitForSelector('[data-path="/settings"]');
+      await admin.click('[data-rail="play"]');
+      await admin.waitForSelector('[data-path="/play"]');
+      const play = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
+      await admin.waitForSelector('[data-pet-status] [data-stat="mood"]');
+      await shot('a3b-play-hub');
+      await admin.click('[data-rail="characters"]');
+      await admin.waitForSelector('[data-path="/characters"]');
+      await admin.click('[data-row="gemini"] a[href="#/characters/gemini"]');
+      await admin.waitForSelector('[data-character-title="gemini"]');
+      await admin.click('[data-back="characters"]');
+      await admin.waitForSelector('[data-path="/characters"]');
+      return `rail ${rail.join(' / ')}; 设置 tiles ${tiles.join(',')}; 玩法 tiles ${play.join(',')}; card → /characters/gemini → back`;
+    }, () => admin);
+
+    await step(S, 'A3c her stage: a tap sends hearts up, she answers, and the pet on the desktop plays happy too', async () => {
+      await go('/overview');
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await admin.click('[data-pat="grok"]');
+      await admin.waitForSelector('[data-reaction]');
+      const line = await admin.textContent('[data-reaction]');
+      const hearts = await admin.$$eval('[data-stage="grok"] svg', (s) => s.length);
+      await shot('a3c-pat');
+      await page.waitForFunction(() => window.petFx.state().lastCue === 'happy', null, { timeout: 5000 });
+      await admin.click('[data-action-chip="sleep"]');
+      assert.equal(await admin.getAttribute('[data-stage="grok"] [data-action]', 'data-action'), 'sleep');
+      const bad = await admin.evaluate(() => window.petAdmin.cue('rm -rf'));
+      assert.equal(bad.ok, false);
+      return `reaction "${line.trim()}", ${hearts} hearts; pet window lastCue=happy; action chip → sleep; bad cue refused (${bad.reason})`;
+    }, () => admin);
+
+    await step(S, 'A4 桌宠行为 → 宠物大小: the slider in the settings window resizes the pet window and is saved', async () => {
+      await go('/behavior');
+      const before = { css: await petScaleCss(), width: await page.evaluate(() => window.innerWidth) };
+      const thumb = admin.locator('[data-key="petScale"] input[type="range"]').first();
+      await thumb.focus();
+      for (let i = 0; i < 4; i++) await admin.keyboard.press('ArrowRight');
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '1.45', null, { timeout: 8000 });
+      const after = { css: await petScaleCss(), width: await page.evaluate(() => window.innerWidth) };
+      assert.equal(saved().petScale, 1.45);
+      assert.ok(after.width > before.width, `pet window ${before.width} → ${after.width}`);
+      await shot('a4-behavior-scale');
+      await page.screenshot({ path: path.join(SHOTS, 'pet-after-scale.png') });
+      return `pet --pet-scale ${before.css} → ${after.css}; pet window width ${before.width} → ${after.width}px; settings.json petScale=${saved().petScale}`;
+    }, () => admin);
+
+    await step(S, 'A5 桌宠行为 switches apply at once: 梗图 off → settings.json + the pet window\'s settings', async () => {
+      await admin.click('[data-key="prefs.memes"]');
+      await toast(/已保存：梗图/);
+      const pet = await page.evaluate(async () => (await window.pet.getSettings()).prefs.memes);
+      assert.equal(saved().prefs.memes, false);
+      assert.equal(pet, false);
+      await shot('a5-behavior-memes-off');
+      return 'prefs.memes: settings.json false, pet window false, toast 已保存：梗图';
+    }, () => admin);
+
+    await step(S, 'A6 主动行为与好感度: out-of-range number is refused in the form; a valid one is saved and applied', async () => {
+      await go('/proactive');
+      const input = admin.locator('input[data-key="proactive.speakCooldownMin"], [data-key="proactive.speakCooldownMin"] input').first();
+      await input.fill('999');
+      await admin.waitForSelector('[data-error="proactive.speakCooldownMin"]');
+      const err = await admin.textContent('[data-error="proactive.speakCooldownMin"]');
+      assert.equal(await admin.isDisabled('[data-save="proactive.speakCooldownMin"]'), true);
+      await shot('a6-proactive-invalid');
+      await input.fill('20');
+      await admin.click('[data-save="proactive.speakCooldownMin"]');
+      await toast(/已保存：主动说话间隔/);
+      assert.equal(saved().proactive.speakCooldownMin, 20);
+      await admin.click('[data-key="proactive.enabled"]');
+      await toast(/已保存：主动说话/);
+      assert.equal(saved().proactive.enabled, false);
+      const pet = await page.evaluate(async () => (await window.pet.getSettings()).proactive);
+      assert.equal(pet.enabled, false);
+      await admin.waitForSelector('[data-key="proactive.speakCooldownMin"]', { state: 'detached' }); // folded away with its master switch
+      await shot('a6-proactive-saved');
+      return `999 → "${err.trim()}"; 20 saved; 主动说话 off (dependent fields folded); pet settings proactive=${JSON.stringify(pet)}`;
+    }, () => admin);
+
+    await step(S, 'A7 朗读: a bad endpoint is refused by main with its reason; an API key is write-only (masked, never echoed, not in settings.json)', async () => {
+      await go('/tts');
+      await admin.fill('[data-key="tts.endpoints.fish"]', 'http://fish.example.com');
+      await admin.click('[data-save="tts.endpoints.fish"]');
+      await admin.waitForSelector('[data-error="tts.endpoints.fish"]');
+      const err = await admin.textContent('[data-error="tts.endpoints.fish"]');
+      assert.match(err, /https/);
+      assert.equal(saved().tts.endpoints.fish, '');
+      const key = 'fk_test_0123456789abcdef';
+      await admin.fill('[data-key="keys.fish"]', key);
+      assert.equal(await admin.getAttribute('[data-key="keys.fish"]', 'type'), 'password');
+      await admin.click('[data-save="keys.fish"]');
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fish"]').textContent.includes('已设置'));
+      assert.equal(await admin.inputValue('[data-key="keys.fish"]'), '', 'never filled back');
+      assert.ok(!fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes(key), 'not in settings.json');
+      assert.ok(fs.existsSync(path.join(data, 'tts-keys.json')));
+      const bridge = await admin.evaluate(async (k) => JSON.stringify(await window.petAdmin.state()).includes(k), key);
+      assert.equal(bridge, false, 'the key never comes back over IPC');
+      await shot('a7-tts-key-set');
+      return `endpoint refused: "${err.trim()}"; key → 已设置, input empty, absent from settings.json and admin state`;
+    }, () => admin);
+
+    await step(S, 'A8 对外接口: switching it on generates a token that is shown masked', async () => {
+      await go('/api');
+      await admin.click('[data-key="api.enabled"]');
+      await toast(/已保存：开启对外接口/);
+      await admin.waitForSelector('[data-key="api.token"][data-masked="true"]');
+      const shown = await admin.textContent('[data-key="api.token"]');
+      const token = saved().api.token;
+      assert.ok(token.length >= 24);
+      assert.ok(!shown.includes(token.slice(0, 8)) && shown.includes('•') && shown.endsWith(token.slice(-4)), shown);
+      await shot('a8-api-token-masked');
+      return `token masked as ${shown.slice(0, 6)}…${shown.slice(-4)} (${token.length} chars in settings.json)`;
+    }, () => admin);
+
+    await step(S, 'A9 数据与关于 → 硬件加速 (restart item): saved, tagged 重启后生效, banner offers 立即重启', async () => {
+      await go('/about');
+      await admin.click('[data-key="system.hardwareAcceleration"]');
+      await admin.waitForSelector('[data-restart-banner]');
+      const banner = await admin.textContent('[data-restart-banner]');
+      assert.match(banner, /硬件加速：重启应用后生效/);
+      assert.equal(saved().system.hardwareAcceleration, false);
+      await shot('a9-restart-banner');
+      await admin.click('[data-reset="system.hardwareAcceleration"]');
+      await admin.waitForSelector('[data-restart-banner]', { state: 'detached' });
+      return `banner: "${banner.trim()}"; 恢复默认 removes it`;
+    }, () => admin);
+
+    await step(S, 'A10 恢复本页默认 on 桌宠行为 puts petScale / memes back', async () => {
+      await go('/behavior');
+      await admin.click('[data-reset-page="behavior"]');
+      await admin.getByRole('dialog').getByRole('button', { name: '恢复默认' }).click();
+      await toast(/已恢复 \d+ 项默认设置/);
+      assert.equal(saved().prefs.memes, true);
+      assert.equal(saved().petScale, 1.25);
+      await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '1.25');
+      return 'memes on, petScale 1.25 again (pet window too)';
+    }, () => admin);
+
+    await step(S, 'A11 角色图鉴: every character with preview, name, type, source, voice pack and the current mark', async () => {
+      await go('/characters');
+      await admin.waitForSelector('[data-roster] [data-row]');
+      const rows = await admin.$$eval('[data-roster] [data-row]', (cards) => cards.map((el) => ({ id: el.dataset.row, text: el.innerText.replace(/\s+/g, ' ').trim(), preview: el.querySelector('[data-preview]') && el.querySelector('[data-preview]').dataset.preview })));
+      assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
+      const grok = rows.find((r) => r.id === 'grok');
+      assert.match(grok.text, /当前角色/);
+      assert.match(grok.text, /像素/);
+      assert.match(grok.text, /内置/);
+      assert.ok(rows.every((r) => r.preview && r.preview !== 'none'), JSON.stringify(rows.map((r) => r.preview)));
+      const sprites = await admin.$$eval('[data-roster] canvas[role="img"]', (cs) => cs.filter((c) => c.width > 0 && c.height > 0).length);
+      assert.ok(sprites >= 4, `sprite first frames drawn: ${sprites}`);
+      const voice = rows.filter((r) => /句/.test(r.text)).map((r) => r.id);
+      await shot('a11-characters');
+      return `rows ${rows.length}; grok: ${grok.text.slice(0, 80)}; previews ${rows.map((r) => r.preview).join('/')}; voice packs: ${voice.join(',')}`;
+    }, () => admin);
+
+    await step(S, 'A12 初次见面 / 切换 from the list: Claude gets a name and becomes the pet in the pet window', async () => {
+      await admin.click('[data-switch="claude"]');
+      await admin.fill('[data-meet-name]', '小克');
+      await admin.getByRole('dialog').getByRole('button', { name: '初次见面' }).click();
+      await admin.waitForSelector('[data-current="claude"]', { timeout: 30000 });
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('claude-'), null, { timeout: 15000 });
+      const key = await page.getAttribute('#pet-look', 'data-key');
+      await shot('a12-switched');
+      await admin.click('[data-switch="grok"]');
+      await admin.waitForSelector('[data-current="grok"]', { timeout: 30000 });
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-'), null, { timeout: 15000 });
+      return `pet window look → ${key}; switched back to grok`;
+    }, () => admin);
+
+    await step(S, 'A13 角色详情 → 外观: choosing 旧版像素 changes the look in the pet window', async () => {
+      await admin.click('[data-detail="grok"]');
+      await admin.waitForSelector('[data-character-title="grok"]');
+      await shot('a13-detail-overview');
+      await admin.getByRole('tab', { name: '形象包' }).click();
+      // 试穿 first: the stage above shows the pack, nothing is saved yet
+      await admin.click('[data-try-pack="grok-classic"]');
+      await admin.waitForSelector('[data-trying-tag]');
+      const tried = await admin.evaluate(() => document.querySelector('[data-stage="grok"] [data-preview]').dataset.preview);
+      assert.notEqual(saved().appearance && saved().appearance.grok, 'grok-classic', 'trying on saves nothing');
+      await shot('a13-detail-try-on');
+      await admin.click('[data-use-pack="grok-classic"]');
+      await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
+      assert.equal(saved().appearance.grok, 'grok-classic');
+      await shot('a13-detail-look');
+      await page.screenshot({ path: path.join(SHOTS, 'pet-after-look.png') });
+      return `try-on stage ${tried} (unsaved), then 穿上: pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=grok-classic`;
+    }, () => admin);
+
+    await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
+      const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adminpack-'));
+      const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
+      const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
+      fs.mkdirSync(path.join(src, 'sheets'));
+      const mine = `sheets/mine${path.extname(m.outfits.daily)}`;
+      fs.copyFileSync(path.join(base, m.outfits.daily), path.join(src, mine));
+      fs.writeFileSync(path.join(src, 'pack.json'), JSON.stringify({ ...m, id: 'my-grok', name: '我的格萝可', author: 'tester', outfits: { daily: mine } }));
+      await go('/packs');
+      const r = await page.evaluate((d) => window.pet.debugImportPack(d), src);
+      assert.equal(r.ok, true);
+      await admin.waitForSelector('[data-remove-pack="my-grok"]');
+      await shot('a14-packs-imported');
+      await admin.click('[data-remove-pack="my-grok"]');
+      await admin.getByRole('dialog').getByRole('button', { name: '删除角色包' }).click();
+      await admin.waitForSelector('[data-remove-pack="my-grok"]', { state: 'detached' });
+      assert.ok(!fs.existsSync(path.join(data, 'packs', 'my-grok')));
+      return 'my-grok listed after import, removed (folder gone)';
+    }, () => admin);
+
+    await step(S, 'A15 the pet window\'s 角色列表 → her page sends 模型与个性化设定 to the settings window', async () => {
+      await page.bringToFront();
+      await openCharacters(page, 'grok');
+      assert.equal(await page.locator('#model-select, #role-input').count(), 0, 'no second copy of the form in the pet window');
+      await page.click('#char-admin');
+      await admin.waitForSelector('[data-character-title="grok"]');
+      await page.screenshot({ path: path.join(SHOTS, 'pet-char-page-jump.png') });
+      return `pet her page → admin ${await admin.evaluate(() => location.hash)}`;
+    }, () => admin);
+
+    await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
+      assert.deepEqual(remote, []);
+      assert.deepEqual(errors, []);
+      return 'remote 0, console errors 0';
+    });
+
+    await step(S, 'A17 persisted across a restart: values read back from settings.json; 硬件加速 off takes effect only after the restart', async () => {
+      assert.equal((await admin.evaluate(() => window.petAdmin.set('system.hardwareAcceleration', false))).ok, true);
+      const before = await app.evaluate(({ app: a }) => a.isHardwareAccelerationEnabled());
+      await app.close();
+      const again = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+      try {
+        await again.page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+        const after = await again.app.evaluate(({ app: a }) => a.isHardwareAccelerationEnabled());
+        const a2 = await openAdminWindow(again.app, again.page, 'proactive');
+        const st = await a2.evaluate(async () => (await window.petAdmin.state()).settings);
+        assert.equal(await a2.inputValue('[data-key="proactive.speakCooldownMin"] input').catch(() => null), null, 'folded: 主动说话 is still off');
+        assert.equal(st.proactive.enabled, false);
+        assert.equal(st.proactive.speakCooldownMin, 20);
+        assert.equal(st.appearance.grok, 'grok-classic');
+        assert.equal(st.system.hardwareAcceleration, false);
+        assert.deepEqual(st.pendingRestart, [], 'applied by the restart');
+        assert.equal(before, true);
+        assert.equal(after, false);
+        await a2.evaluate(() => { location.hash = '/about'; });
+        await a2.waitForSelector('[data-path="/about"]');
+        await a2.screenshot({ path: path.join(SHOTS, 'a17-after-restart-about.png') });
+        // the file itself, as written by core/settings.js (SettingsStore) — evidence of what was saved
+        fs.writeFileSync(path.join(SHOTS, 'settings-after-restart.json'), fs.readFileSync(path.join(data, 'settings.json')));
+        await a2.evaluate(() => window.petAdmin.set('system.hardwareAcceleration', true));
+        return `after restart: proactive=${JSON.stringify(st.proactive)} appearance.grok=${st.appearance.grok}; hardware acceleration ${before} → ${after} (pendingRestart [])`;
+      } finally {
+        await again.app.close().catch(() => {});
+      }
+    });
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -6721,8 +7973,14 @@ async function streamDirectScenario() {
   if (which === 'vrmui' || which === 'all') await vrmUi();
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
+  if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
+  if (which === 'design' || which === 'all') await designScenario();
+  if (which === 'petui' || which === 'all') await petuiScenario();
+  if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

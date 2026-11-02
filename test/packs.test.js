@@ -326,7 +326,8 @@ test('importing a Live2D model: it is found in its folder, its expressions becom
   assert.deepEqual(Object.keys(r.pack.outfits).sort(), OUTFITS.filter((o) => o.rating !== 'adult').map((o) => o.id).sort(), 'she wears it in every all-ages outfit, never an adult one');
   const packs = new Map([[r.pack.id, { ...r.pack, source: 'user' }], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
   assert.equal(P.resolveLook(packs, { packId: r.pack.id, speciesId: 'grok', outfitId: 'beret' }).kind, 'live2d');
-  assert.deepEqual(P.packsFor(packs, 'grok').find((o) => o.id === r.pack.id), { id: 'l2d-grok-hiyori', name: 'Hiyori', author: '本地导入', license: '模型作者的条款', version: '1.0.0', description: '从本地导入的 Live2D 模型。', kind: 'live2d', source: 'user', adult: false, outfits: Object.keys(r.pack.outfits).length, height: 0.8 });
+  const opt = P.packsFor(packs, 'grok').find((o) => o.id === r.pack.id);
+  assert.deepEqual(opt, { id: 'l2d-grok-hiyori', name: 'Hiyori', author: '本地导入', license: '模型作者的条款', version: '1.0.0', description: '从本地导入的 Live2D 模型。', kind: 'live2d', source: 'user', adult: false, outfits: Object.keys(r.pack.outfits).length, cover: { type: 'image', url: P.packUrl(r.pack, r.pack.outfits.daily), pixelated: false }, height: 0.8 });
 });
 
 test('大肥鱼 · Live2D: the built-in model is complete, its watermark and chest physics are pinned, pixels stay her default', () => {
@@ -366,4 +367,18 @@ test('every outfit sheet of every built-in sprite pack is exactly its frame size
       assert.ok(w >= p.frame.width * cols && h >= p.frame.height * rows && w % p.frame.width === 0 && h % p.frame.height === 0, `${p.id} ${outfit}: ${w}x${h} for ${p.frame.width}x${p.frame.height} frames, ${cols}x${rows}`);
     }
   }
+});
+
+test('packsFor: every option carries a cover for the wardrobe — a playable sheet, a picture, or her own clip', () => {
+  const packs = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs;
+  const grok = P.packsFor(packs, 'grok');
+  const pixel = grok.find((o) => o.id === 'grok-pixel');
+  assert.equal(pixel.cover.type, 'sprite');
+  assert.match(pixel.cover.url, /^pack:\/\/grok-pixel\/sheets\/daily\./);
+  assert.deepEqual(pixel.cover.frame, packs.get('grok-pixel').frame);
+  assert.ok(pixel.cover.actions.idle && pixel.cover.actions.happy, 'the actions come along so the console can play them');
+  const fish = P.packsFor(packs, 'dafeiyu');
+  assert.equal(fish.find((o) => o.id === 'dafeiyu-live2d').cover.type, 'image');
+  const clips = fish.find((o) => o.kind === 'video');
+  if (clips) assert.equal(clips.cover.type, 'video');
 });
