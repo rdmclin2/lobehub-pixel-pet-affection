@@ -53,7 +53,6 @@ function setSettings(st) {
   appearance.set(st && st.ui && st.ui.theme);
   if (wasOn && !(st && st.prefs && st.prefs.voice)) stopSpeech('voice-off'); // 朗读 off: quiet at once, nothing pending
   syncPrewarm();
-  if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
 }
@@ -634,6 +633,7 @@ function showUnlockToast(e) {
   $('unlock-toast').classList.remove('notice');
   $('toast-open').classList.remove('hidden');
   $('toast-open').dataset.scroll = '';
+  $('toast-open').dataset.admin = '';
   $('toast-title').textContent = `🎉 关系升级：${a.stageName}（♥${a.value}）`;
   const body = $('toast-body');
   body.innerHTML = '';
@@ -702,55 +702,11 @@ function progressLine() {
 function renderPanel() {
   if (panelKind === 'wardrobe') renderWardrobe();
   else if (panelKind === 'topics') renderTopics();
-  else if (panelKind === 'advanced') renderAdvanced();
   else if (panelKind === 'characters') renderCharacters();
   else if (panelKind === 'history') window.PetHistory.render({ $, api: window.pet, panelMsg, isOpen: () => panelKind === 'history' });
 }
 
-// 版本与更新: the version, when it last checked, what it found, and a button to check now.
-const UPDATE_REASON = { translocated: '先把应用拖进“应用程序”文件夹再打开，以后就能自动更新。', dmg: '现在是从安装盘里直接打开的，先把应用拖进“应用程序”文件夹再打开，以后就能自动更新。', 'read-only': '应用所在的文件夹不能写入，没法替换自己，请手动下载。' };
-function updateStatusText(u) {
-  if (!u) return '';
-  return {
-    disabled: '开发版（从源码运行）不会自动更新。',
-    idle: '应用启动约 20 秒后会自动检查一次。',
-    checking: '正在检查…',
-    latest: '已经是最新版本。',
-    downloading: `发现新版本 v${u.version}，正在后台下载…`,
-    ready: `新版本 v${u.version} 已经下载好。离开电脑 10 分钟会自动重启更新，也可以现在就更新。`,
-    manual: `有新版本 v${u.version}。${UPDATE_REASON[u.error] || '这个版本没法自动替换自己，请下载安装。'}`,
-    error: `检查失败：${String(u.error || '').slice(0, 80)}。稍后会自动再试。`,
-  }[u.status] || '';
-}
-function renderUpdateSection() {
-  const sec = $('update-section');
-  if (!sec || !updateState) return;
-  const u = updateState;
-  const when = u.checkedAt ? new Date(u.checkedAt).toLocaleString('zh-CN', { hour12: false }) : '还没检查';
-  sec.querySelector('.ver').textContent = `当前版本 v${u.current} · 上次检查：${when}`;
-  const st = sec.querySelector('.st');
-  st.textContent = updateStatusText(u);
-  st.dataset.status = u.status;
-  const check = sec.querySelector('#update-check');
-  check.disabled = ['checking', 'downloading', 'disabled'].includes(u.status);
-  check.textContent = u.status === 'checking' ? '正在检查…' : '检查更新';
-  const go = sec.querySelector('#update-go');
-  go.classList.toggle('hidden', !['ready', 'manual'].includes(u.status));
-  go.textContent = u.status === 'ready' ? `立即更新到 v${u.version} 并重启` : `下载 v${u.version}`;
-}
-function updateSection() {
-  const sec = document.createElement('div');
-  sec.className = 'adv-section';
-  sec.id = 'update-section';
-  sec.innerHTML = '<h3>版本与更新</h3><p class="adv-text ver"></p><p class="adv-text st" role="status" aria-live="polite"></p><div class="size-row"><button id="update-check" class="btn">检查更新</button><button id="update-go" class="btn primary hidden"></button></div><p class="adv-note">自动更新：启动后检查一次，之后每 4 小时检查；新版本在后台下载，下载好后离开电脑 10 分钟会自动重启更新，退出应用时也会安装。</p>';
-  sec.querySelector('#update-check').addEventListener('click', () => window.pet.checkUpdate());
-  sec.querySelector('#update-go').addEventListener('click', () => window.pet.installUpdate());
-  return sec;
-}
-
-let modelsRequested = false; // the model list is loaded once when a character's page first needs it
 let charDetail = null; // ⋯ → 角色列表: the character whose page is open (null: the list)
-let roleDraft = null; // { id, value }: unsaved 个性化设定 text (kept across panel re-renders)
 const charName = (c) => (c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`);
 const charRel = (c) => (c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过');
 // Her picture in the list and on her page: her chosen pack in the outfit she wears (daily if not met);
@@ -787,7 +743,7 @@ function renderCharacters() {
   // who the companion is: every character has her own agent, chat history, name and affection
   const who = document.createElement('div');
   who.className = 'adv-section';
-  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的设置：模型、个性化设定、外观和好感度。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
+  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的页：外观和好感度；模型和个性化设定在设置窗口（⋯ → 设置…）里编辑。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
   for (const ch of view.characters) {
     const row = document.createElement('div');
     row.className = `pack-opt char-opt${ch.current ? ' on' : ''}${ch.met ? ' met' : ' new'}`;
@@ -826,7 +782,7 @@ function renderCharacter(c) {
   const back = document.createElement('div');
   back.className = 'size-row char-back-row';
   back.innerHTML = '<button id="char-back" class="btn">‹ 角色列表</button>';
-  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; roleDraft = null; panelMsg(''); renderPanel(); });
+  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; panelMsg(''); renderPanel(); });
   body.appendChild(back);
 
   // who she is, and 切换 / 初次见面
@@ -848,85 +804,18 @@ function renderCharacter(c) {
   body.appendChild(head);
   if (naming && naming.id === c.id && !c.met) askName(row, c, naming.value);
 
-  // the model her agent runs on: only her own vendor's models (src/characters/<id>.json `models`)
-  const mod = document.createElement('div');
-  mod.className = 'adv-section';
-  mod.id = 'model-section';
+  // 模型 and 个性化设定 are edited in the settings window (配置后台 → 角色列表 → her page); here only what
+  // they are now, and the way there (one place to configure, no second copy of the form)
+  const cfg = document.createElement('div');
+  cfg.className = 'adv-section';
+  cfg.id = 'char-config';
+  cfg.innerHTML = '<h3>模型与个性化设定</h3><p class="adv-text cfg-model"></p><p class="adv-text cfg-role"></p><div class="size-row"><button id="char-admin" class="btn primary">在设置窗口中编辑 ›</button></div>';
   const m = c.model;
-  mod.innerHTML = '<h3>模型</h3><p class="adv-text"></p><div class="size-row"><select id="model-select" aria-label="模型"></select><button id="model-refresh" class="btn">刷新</button></div><p class="adv-text model-status"></p>';
-  mod.querySelector('.adv-text').textContent = `${c.nameZh}只能用 ${c.vendor} 的模型，每位角色各记各的。列表来自你在 LobeHub 里启用的模型。`;
-  const sel = mod.querySelector('#model-select');
-  for (const o of m.options) {
-    const opt = document.createElement('option');
-    opt.value = o.key;
-    opt.textContent = o.hosted ? o.label : `${o.label}（自己的 ${c.vendor} Key）`;
-    opt.selected = o.key === m.current;
-    sel.appendChild(opt);
-  }
-  sel.disabled = !m.options.length;
-  const now = m.options.find((o) => o.key === m.current);
-  const pending = c.current ? '下一句话起用' : c.met ? '她下次陪你时起用' : '见面后起用';
-  mod.querySelector('.model-status').textContent = !m.loaded
-    ? (m.error ? `读不到模型列表（${m.error.slice(0, 60)}），她先用原来的模型。` : '正在读取模型列表…')
-    : !now ? `你没有启用任何 ${c.vendor} 模型，她先用原来的模型。`
-      : `${m.applied === m.current ? '正在用' : pending}：${now.label}${m.chosen ? '' : '（默认）'}`;
-  sel.addEventListener('change', async () => {
-    const r = await window.pet.setModel(sel.value, c.id);
-    if (!r.ok) return panelMsg('这个模型现在不能选，点“刷新”再试试。');
-    view = r.view;
-    renderPanel();
-    const nc = view.characters.find((x) => x.id === c.id);
-    panelMsg(`${c.nameZh}的模型已换成「${(nc.model.options.find((o) => o.key === nc.model.current) || {}).label}」。`, true);
-  });
-  mod.querySelector('#model-refresh').addEventListener('click', async () => {
-    const r = await window.pet.refreshModels();
-    view = r.view;
-    renderPanel();
-  });
-  if (!m.loaded && !m.error && !modelsRequested) {
-    modelsRequested = true;
-    window.pet.refreshModels().then((r) => { view = r.view; if (panelKind === 'characters') renderPanel(); });
-  }
-  body.appendChild(mod);
-
-  // 个性化设定: the owner's own words added to her agent's system role (settings.systemRoles[id])
-  const role = document.createElement('div');
-  role.className = 'adv-section';
-  role.id = 'role-section';
-  const max = (settings && settings.systemRoleMax) || 1000;
-  role.innerHTML = '<h3>个性化设定（System Role）</h3><p class="adv-text"></p><textarea id="role-input" rows="5" aria-label="个性化设定"></textarea><div class="size-row role-row"><span class="adv-note role-count"></span><button id="role-clear" class="btn">清空</button><button id="role-save" class="btn primary">保存</button></div><p class="adv-text role-status"></p>';
-  role.querySelector('.adv-text').textContent = `写给${c.nameZh}的额外设定，比如怎么称呼你、说话风格、要记住的事。会加进她的 agent 设定里，只对她生效；关系阶段和内容红线仍然优先。`;
-  const input = role.querySelector('#role-input');
-  input.maxLength = max;
-  input.placeholder = `例如：叫我“老板”；说话多用比喻；我是前端工程师，聊技术时可以说得专业一点。`;
-  input.value = roleDraft && roleDraft.id === c.id ? roleDraft.value : c.systemRole || '';
-  const count = role.querySelector('.role-count');
-  const save = role.querySelector('#role-save');
-  const clear = role.querySelector('#role-clear');
-  const sync = () => {
-    count.textContent = `${input.value.length}/${max}`;
-    save.disabled = input.value.trim() === (c.systemRole || '');
-    clear.disabled = !input.value;
-  };
-  sync();
-  input.addEventListener('input', () => { roleDraft = { id: c.id, value: input.value }; sync(); });
-  role.querySelector('.role-status').textContent = c.systemRole
-    ? `已保存${c.current ? '，下一句话起用' : c.met ? '，她下次陪你时起用' : '，见面后起用'}。`
-    : '还没写，她按默认性格来。';
-  const apply = async (text) => {
-    const r = await window.pet.setSystemRole(text, c.id);
-    if (!r.ok) return panelMsg(r.reason === 'too-long' ? `最多 ${max} 个字。` : '现在保存不了，稍后再试。');
-    roleDraft = null;
-    view = r.view;
-    renderPanel();
-    panelMsg(text.trim() ? `${c.nameZh}的个性化设定已保存。` : `${c.nameZh}的个性化设定已清空。`, true);
-  };
-  save.addEventListener('click', () => apply(input.value));
-  clear.addEventListener('click', () => {
-    if (!c.systemRole) { input.value = ''; roleDraft = null; return sync(); }
-    if (confirm(`清空${c.nameZh}的个性化设定？`)) apply('');
-  });
-  body.appendChild(role);
+  const now = m && m.options.find((o) => o.key === m.current);
+  cfg.querySelector('.cfg-model').textContent = `模型：${now ? now.label : m && m.current ? m.current : '默认'}`;
+  cfg.querySelector('.cfg-role').textContent = `个性化设定：${c.systemRole ? `已写 ${[...c.systemRole].length} 字` : '还没写'}`;
+  cfg.querySelector('#char-admin').addEventListener('click', () => window.pet.openAdmin(`characters/${c.id}`));
+  body.appendChild(cfg);
 
   // appearance: which pet pack dresses her; packs can be imported from a folder or .zip
   const look = document.createElement('div');
@@ -1191,271 +1080,6 @@ async function live2dPicture(model) {
   } finally {
     figure.dispose();
   }
-}
-
-// ⋯ → 高级设置: what applies to the whole app, whoever the companion is (size, behaviour, voice engines,
-// visitors, local API, updates). Per-character settings (model, look, affection) are on her page in 角色列表.
-function renderAdvanced() {
-  $('panel-title').textContent = '高级设置';
-  $('panel-sub').textContent = '对所有角色生效。模型、个性化设定、外观和好感度在 ⋯ → 角色列表里按角色设置。';
-  const body = $('panel-body');
-  body.innerHTML = '';
-  const size = document.createElement('div');
-  size.className = 'adv-section';
-  size.innerHTML = '<h3>宠物大小 <span class="size-val"></span></h3><p class="adv-text">拖动滑块调整桌面上角色的大小（50%–250%），窗口跟着变，右下角保持不动。在桌面上也能直接调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 滚动滚轮。</p><div class="size-row"><input id="size-range" type="range" aria-label="宠物大小" /><button id="size-reset" class="btn"></button></div>';
-  const range = size.querySelector('#size-range');
-  const r = settings.petScaleRange;
-  range.min = String(r.min * 100);
-  range.max = String(r.max * 100);
-  range.step = '5';
-  range.value = String(Math.round(settings.petScale * 100));
-  const defaultPct = `${Math.round(r.default * 100)}%`;
-  size.querySelector('#size-reset').textContent = `恢复默认 ${defaultPct}`;
-  const label = () => { size.querySelector('.size-val').textContent = `${range.value}%`; };
-  label();
-  range.addEventListener('input', label);
-  range.addEventListener('change', async () => {
-    await commitScale(Number(range.value) / 100);
-    range.value = String(Math.round(settings.petScale * 100));
-    label();
-    panelMsg(`宠物大小：${range.value}%。关掉这个面板就能看到效果。`, true);
-  });
-  size.querySelector('#size-reset').addEventListener('click', async () => {
-    await commitScale(r.default);
-    renderAdvanced();
-    panelMsg(`宠物大小已恢复为默认的 ${defaultPct}。`, true);
-  });
-  body.appendChild(size);
-  for (const el of behaviorSections()) body.appendChild(el);
-  body.appendChild(updateSection());
-  renderUpdateSection();
-}
-
-// 高级设置 → 桌宠行为 / 同屏伙伴 / 对外接口: the desktop effects ported from dsh-pet.
-const PREF_LABELS = [
-  ['roam', '自己走动', '空闲时偶尔朝面向的方向走几步（平均约 100 秒一次，每次 60–240 像素，到屏幕边会掉头）。鼠标停在她身上、她在忙或开着面板时不走。关掉后她只在原地待机和做小动作。'],
-  ['clickSound', '点击音效', '点她时“啵”一声（100 毫秒内连点只响一次）。'],
-  ['voice', '朗读回复', '把她的回复和对外接口发来的话念出来，用下面“语音”里选的引擎和她自己的音色。引擎用不了时改用系统语音（系统没有中文语音时不出声）。关掉后完全不出声，也不再请求任何语音。'],
-  ['voiceInteractions', '互动语音', '开着“朗读回复”时，摸头、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、初次见面、关系升级和切换角色也念出她的台词。常用短句会提前合成好缓存起来，点了马上就响；连点时上一句没说完不会插新的一句，1.5 秒内也只说一句。'],
-  ['voiceMurmurs', '朗读碎碎念', '开着“朗读回复”时，她自己冒出来的话（饿了、无聊、早晚问候、想你了、睡醒）也念出来。默认不念。'],
-  ['memes', '梗图', '她偶尔在气泡里配一张自己的表情包（回复由 agent 自己挑，碎碎念随机）。'],
-  ['collide', '互相碰撞', '桌面上有同屏伙伴时，被甩出去的她会把撞到的伙伴弹开。'],
-  ['touchZones', '部位触摸', '点她的头、胸、手、臀、脚等不同部位，她的反应和台词都不一样；乱碰会生气、扣好感。关掉后点哪里都只是摸摸她。'],
-  ['touchHint', '触摸提示', '鼠标停在她身上时，在指针旁标出这里是哪个部位（需开着“部位触摸”）。'],
-];
-function behaviorSections() {
-  const st = settings;
-  const beh = document.createElement('div');
-  beh.className = 'adv-section';
-  beh.id = 'behavior-section';
-  beh.innerHTML = '<h3>桌宠行为</h3><p class="adv-note">这些效果所有角色都有，只是素材和声音不同。也能拖着她甩出去、双击后拉开当弹弓、在她飞的时候点中她得分；触屏上长按她打开菜单。</p>';
-  for (const [k, label, desc] of PREF_LABELS) {
-    const row = document.createElement('label');
-    row.className = 'pref-row';
-    row.innerHTML = '<input type="checkbox" /><span><b></b><small></small></span>';
-    const box = row.querySelector('input');
-    box.dataset.pref = k;
-    box.checked = !!st.prefs[k];
-    row.querySelector('b').textContent = label;
-    row.querySelector('small').textContent = desc;
-    box.addEventListener('change', async () => {
-      const r = await window.pet.setPrefs({ [k]: box.checked });
-      setSettings(r.settings);
-      panelMsg(`${label}：${box.checked ? '开' : '关'}。`, true);
-    });
-    beh.appendChild(row);
-  }
-
-  const vis = document.createElement('div');
-  vis.className = 'adv-section';
-  vis.id = 'visitor-section';
-  vis.innerHTML = `<h3>同屏伙伴</h3><p class="adv-text">请其他模型娘来桌面上串门（最多 ${3} 位）。她们没有自己的 agent，不聊天、不计好感，只陪着走动、被点、被甩，打开“互相碰撞”还会被撞开。悬停在她身上点 × 送她回去。</p><div class="char-list"></div>`;
-  for (const c of view.characters.filter((x) => !x.current)) {
-    const row = document.createElement('label');
-    row.className = 'pref-row';
-    row.style.setProperty('--accent', c.accent);
-    row.innerHTML = '<input type="checkbox" /><span><b></b><small></small></span>';
-    const box = row.querySelector('input');
-    box.dataset.visitor = c.id;
-    box.checked = st.visitors.includes(c.id);
-    row.querySelector('b').textContent = `${c.nameZh}（${c.vendor}）`;
-    row.querySelector('small').textContent = c.title;
-    box.addEventListener('change', async () => {
-      const next = box.checked ? [...settings.visitors, c.id] : settings.visitors.filter((v) => v !== c.id);
-      const r = await window.pet.setVisitors(next);
-      setSettings(r.settings);
-      if (box.checked && !r.settings.visitors.includes(c.id)) { box.checked = false; panelMsg('同屏伙伴最多 3 位。'); return; }
-      panelMsg(box.checked ? `${c.nameZh}来串门了。` : `${c.nameZh}回去了。`, true);
-    });
-    vis.querySelector('.char-list').appendChild(row);
-  }
-
-  const api = document.createElement('div');
-  api.className = 'adv-section';
-  api.id = 'api-section';
-  api.innerHTML = '<h3>对外接口（本机 HTTP）</h3><p class="adv-text">让本机的脚本或其他程序驱动她：说话、播动作、抛出去、和 agent 聊一句、读状态。只监听 127.0.0.1，每次调用都要带令牌（<code>Authorization: Bearer &lt;令牌&gt;</code>）。默认关闭。</p><label class="pref-row"><input type="checkbox" id="api-on" /><span><b>开启对外接口</b><small id="api-st"></small></span></label><div class="size-row"><span>端口</span><input id="api-port" type="number" min="1024" max="65535" /><button id="api-token-new" class="btn">换一个令牌</button></div><code id="api-token" class="api-token"></code><pre id="api-routes" class="api-routes"></pre>';
-  const on = api.querySelector('#api-on');
-  const port = api.querySelector('#api-port');
-  on.checked = st.api.enabled;
-  port.value = String(st.api.port);
-  const paint = (status) => {
-    api.querySelector('#api-token').textContent = settings.api.token ? `令牌：${settings.api.token}` : '开启时生成令牌';
-    api.querySelector('#api-st').textContent = status && status.listening ? `正在监听 http://127.0.0.1:${status.port}/pixel-pet/` : status && status.error ? `没能开启：${status.error}` : '未开启';
-    api.querySelector('#api-routes').textContent = ['GET  /pixel-pet/state', 'POST /pixel-pet/say    {"text":"…"}', 'POST /pixel-pet/anim   {"state":"walk"}', 'POST /pixel-pet/throw  {"angle":60,"power":1.2}', 'POST /pixel-pet/chat   {"text":"…"}'].join('\n');
-  };
-  const apply = async (opts) => {
-    const r = await window.pet.setApi(opts);
-    setSettings(r.settings);
-    on.checked = r.settings.api.enabled;
-    paint(r.status);
-  };
-  on.addEventListener('change', () => apply({ enabled: on.checked }));
-  port.addEventListener('change', () => apply({ port: Number(port.value) }));
-  api.querySelector('#api-token-new').addEventListener('click', () => apply({ newToken: true }));
-  window.pet.apiStatus().then(paint);
-  return [beh, voiceSection(), asrSection(), vis, api];
-}
-
-// 高级设置 → 语音 (core/tts.js): which engine reads, its API key and endpoint, what happens when it cannot.
-// Keys are sent once to main and never shown again; only "已设置" comes back.
-const TTS_ENGINES = [
-  ['auto', '按角色（推荐）', '', ''],
-  ['fish', 'Fish Audio', 'https://api.fish.audio', '在 fish.audio 注册后创建 API Key；开发可先用免费模型。'],
-  ['minimax', 'MiniMax', 'https://api.minimax.cn', '在 platform.minimaxi.com（国内站）开通后创建接口密钥，不用 GroupId；国际站（minimax.io）的 Key 把端点改成 https://api.minimax.io。'],
-  ['local', '本地语音服务（自己部署）', '', '你自己在本机或家里有显卡的电脑上跑的语音服务（IndexTTS2、GPT-SoVITS、whale-voice 等），音色由你的服务决定。填它的地址：本机用 http://127.0.0.1:端口，局域网的电脑也可以用 http://192.168.x.x:端口。“OpenAI 兼容”请求 /v1/audio/speech，要填模型和音色名；“whale-voice”请求 /tts，按她的心情选情绪。一句最多等 20 秒（长句 40 秒）。服务不要 Key 就不用填。'],
-  ['system', '系统语音（离线、免费）', '', ''],
-];
-const TTS_NAME = { fish: 'Fish Audio', minimax: 'MiniMax', local: '本地语音服务' };
-const TTS_REASON = { 'no-key': '没填 Key', 'no-endpoint': '没填地址', 'not-audio': '返回的不是音频', 'no-voice': '她在这个引擎上没有音色', timeout: '超时', network: '连不上', 'http-401': 'Key 无效', 'http-402': '余额不足', 'http-429': '请求太频繁', 'api-1002': '被限流（请求太频繁）', 'api-1039': '被限流（请求太频繁）', 'api-1008': '余额不足', 'api-2013': '请求参数有误', 'rate-limit': '这一分钟的次数用完了', empty: '没有返回音频', offline: '离线' };
-const ttsReason = (r) => (r.startsWith('paused:') ? `暂停中（${ttsReason(r.slice(7))}）` : TTS_REASON[r] || (r.startsWith('http-') ? `服务出错 ${r.slice(5)}` : r.startsWith('api-') ? `接口错误 ${r.slice(4)}` : r));
-const ttsWait = (sec) => (sec < 60 ? `${sec} 秒` : `${Math.ceil(sec / 60)} 分钟`);
-function voiceSection() {
-  const sec = document.createElement('div');
-  sec.className = 'adv-section';
-  sec.id = 'voice-section';
-  sec.innerHTML = '<h3>语音</h3><p class="adv-text">开着“朗读回复”时用哪个引擎念。“按角色”是每个角色自己的默认引擎（大肥鱼用 MiniMax，其他角色用 Fish Audio）；她的引擎没填 Key 时，换另一个填了 Key 的引擎。云端引擎要填 API Key，Key 加密存在本机，不进日志、不会再显示；没填 Key、断网、5 秒没响应（长句最多 10 秒）或出错时，这句改用下面选的方式。MiniMax 国内站每分钟只能合成 10 次，用完了就稍等或改用下面的方式，不会被限流卡住。“本地语音服务”是你自己部署的服务，只在选它时使用，不当别的引擎的备用。合成过的句子缓存在本机，再说同一句不再请求。</p>'
-    + '<div class="size-row"><span>引擎</span><select id="tts-provider"></select></div>'
-    + '<div class="size-row"><span>用不了时</span><select id="tts-fallback"><option value="system">改用系统语音</option><option value="silent">不出声</option></select></div>'
-    + '<label class="pref-row"><input type="checkbox" id="tts-packs" /><span><b>语音包</b><small id="tts-packs-st"></small></span></label>'
-    + '<div class="size-row"><button id="tts-pack-folder" class="btn">打开语音包文件夹</button><button id="tts-pack-reload" class="btn">重新读取</button></div>'
-    + '<div id="tts-engines"></div><p class="adv-note" id="tts-status"></p>'
-    + '<div class="size-row"><button id="tts-clear" class="btn">清空语音缓存</button><button id="tts-test" class="btn">试听一句</button></div>'
-    + '<p class="adv-note" id="tts-credit"></p>';
-  const sel = sec.querySelector('#tts-provider');
-  for (const [id, label] of TTS_ENGINES) sel.insertAdjacentHTML('beforeend', `<option value="${id}">${label}</option>`);
-  sel.value = settings.tts.provider;
-  const fb = sec.querySelector('#tts-fallback');
-  fb.value = settings.tts.fallback;
-  const apply = async (patch, msg) => {
-    const r = await window.pet.setTts(patch);
-    setSettings(r.settings);
-    paintVoiceStatus();
-    panelMsg(r.ok ? msg : r.reason === 'bad-key' ? '这不像一个 API Key（不能有空格，8–256 个字符）。' : '端点要是 https:// 地址（本机调试可用 http://127.0.0.1；本地语音服务也可以用局域网地址 http://192.168.x.x）。', r.ok);
-    return r.ok;
-  };
-  sel.addEventListener('change', () => apply({ provider: sel.value }, `语音引擎：${sel.selectedOptions[0].textContent}。`));
-  fb.addEventListener('change', () => apply({ fallback: fb.value }, `引擎用不了时：${fb.selectedOptions[0].textContent}。`));
-  const packsBox = sec.querySelector('#tts-packs');
-  packsBox.checked = settings.tts.packs !== false;
-  sec.querySelector('#tts-pack-folder').addEventListener('click', () => { window.pet.openVoicePacksFolder(); panelMsg('把语音包文件夹（manifest.json + 音频）放进去，再点“重新读取”。格式见使用说明。', true); });
-  sec.querySelector('#tts-pack-reload').addEventListener('click', async () => {
-    const r = await window.pet.reloadVoicePacks();
-    setSettings(r.settings);
-    paintVoiceStatus();
-    panelMsg(r.errors.length ? `有语音包没读进来：${r.errors.join(' / ')}` : '语音包已重新读取。', !r.errors.length);
-  });
-  packsBox.addEventListener('change', () => apply({ packs: packsBox.checked }, packsBox.checked ? '语音包已打开：固定台词直接播放录好的语音。' : '语音包已关闭：每句都交给引擎合成。'));
-  for (const [id, label, def, how] of TTS_ENGINES.filter((e) => e[3])) {
-    const local = id === 'local';
-    const box = document.createElement('div');
-    box.className = 'tts-engine';
-    box.dataset.engine = id;
-    box.innerHTML = '<b></b><small class="adv-note"></small>'
-      + (local ? '<div class="size-row"><span>接口</span><select class="tts-local-api"><option value="openai">OpenAI 兼容（/v1/audio/speech）</option><option value="whale">whale-voice（/tts）</option></select></div>' : '')
-      + '<div class="size-row"><input type="password" class="tts-key" autocomplete="off" spellcheck="false" /><button class="btn tts-key-save">保存</button><button class="btn tts-key-del">清除</button></div><div class="size-row"><input type="text" class="tts-endpoint" spellcheck="false" /><button class="btn tts-ep-save">保存端点</button></div>'
-      + (local ? '<div class="size-row tts-local-names"><input type="text" class="tts-local-model" spellcheck="false" placeholder="模型（不填：tts-1）" /><input type="text" class="tts-local-voice" spellcheck="false" placeholder="音色名（不填：default）" /><button class="btn tts-local-save">保存</button></div>' : '');
-    box.querySelector('b').textContent = label.replace(/（.*）/, '');
-    box.querySelector('small').textContent = how;
-    const key = box.querySelector('.tts-key');
-    const ep = box.querySelector('.tts-endpoint');
-    ep.placeholder = local ? '地址，比如 http://127.0.0.1:7864' : `端点（默认 ${def}）`;
-    ep.value = settings.tts.endpoints[id] || '';
-    if (local) {
-      const api = box.querySelector('.tts-local-api');
-      const names = box.querySelector('.tts-local-names');
-      const model = box.querySelector('.tts-local-model');
-      const voiceName = box.querySelector('.tts-local-voice');
-      const lo = settings.tts.local || {};
-      api.value = lo.api || 'openai';
-      model.value = lo.model || '';
-      voiceName.value = lo.voice || '';
-      names.style.display = api.value === 'whale' ? 'none' : ''; // whale-voice has one voice, picked when its server starts
-      api.addEventListener('change', () => { names.style.display = api.value === 'whale' ? 'none' : ''; apply({ local: { api: api.value } }, `本地语音服务接口：${api.selectedOptions[0].textContent}。`); });
-      box.querySelector('.tts-local-save').addEventListener('click', () => apply({ local: { model: model.value, voice: voiceName.value } }, `本地语音服务：模型 ${model.value.trim() || 'tts-1'}，音色 ${voiceName.value.trim() || 'default'}。`));
-    }
-    box.querySelector('.tts-key-save').addEventListener('click', async () => {
-      if (!key.value.trim()) return panelMsg('先在框里粘贴 API Key。');
-      if (await apply({ key: { id, value: key.value } }, `${label.replace(/（.*）/, '')} 的 API Key 已保存。`)) key.value = '';
-    });
-    box.querySelector('.tts-key-del').addEventListener('click', () => apply({ key: { id, value: '' } }, `${label.replace(/（.*）/, '')} 的 API Key 已清除。`));
-    box.querySelector('.tts-ep-save').addEventListener('click', () => apply({ endpoints: { [id]: ep.value } }, ep.value.trim() ? `端点已改为 ${ep.value.trim()}。` : local ? '本地语音服务的地址已清除。' : '端点已恢复默认。'));
-    sec.querySelector('#tts-engines').appendChild(box);
-  }
-  sec.querySelector('#tts-clear').addEventListener('click', async () => {
-    setSettings(await window.pet.ttsClearCache());
-    paintVoiceStatus();
-    panelMsg('语音缓存已清空。', true);
-  });
-  sec.querySelector('#tts-test').addEventListener('click', () => {
-    if (!settings.prefs.voice) return panelMsg('先打开上面的“朗读回复”。');
-    const sp = speciesOf(view.pet.speciesId);
-    speak({ text: sp.catchphrase || `我是${sp.nameZh}。`, source: 'api', kind: 'api' });
-    panelMsg('正在试听……', true);
-  });
-  setTimeout(paintVoiceStatus);
-  return sec;
-}
-// Under 语音: AI voice notice, and her voice's credit on the engine she reads with (the chosen one, or
-// under 按角色 her own default).
-function paintVoiceCredit() {
-  const el = $('tts-credit');
-  if (!el) return;
-  const sp = speciesOf(view.pet.speciesId);
-  const t = (sp.voice && sp.voice.tts) || {};
-  const mine = ['minimax', 'local'].includes(t.default) ? t.default : 'fish';
-  const eng = ['fish', 'minimax', 'local'].includes(settings.tts.provider) ? settings.tts.provider : mine;
-  const lo = settings.tts.local || {};
-  const credit = eng === 'local' ? `你的本地语音服务${lo.api === 'whale' ? '（whale-voice）' : (t.local && t.local.voice) || lo.voice ? `（音色 ${(t.local && t.local.voice) || lo.voice}）` : ''}，用别人的声音前请先取得授权` : (t[eng] && t[eng].credit) || (t.fish && t.fish.credit);
-  el.textContent = `语音由 AI 合成，不是真人录音。${settings.tts.provider === 'auto' ? `${sp.nameZh}默认用 ${TTS_NAME[mine]}。` : ''}${credit ? `${sp.nameZh}的音色：${credit}。` : ''}`;
-}
-// The status line under 语音: per engine whether a key is set and its last problem, and the cache.
-// 语音包: whether her lines are recorded, by whom, and when they are used (core/voice-pack.js packApplies).
-function paintVoicePacks() {
-  const el = $('tts-packs-st');
-  const st = settings && settings.ttsStatus;
-  if (!el || !st || !view) return;
-  const sp = speciesOf(view.pet.speciesId);
-  const pack = (st.packs || []).find((p) => p.character === sp.id);
-  if (!pack) { el.textContent = `${sp.nameZh}还没有语音包。`; return; }
-  const engine = pack.engine === 'minimax' ? 'MiniMax' : pack.engine === 'fish' ? 'Fish Audio' : null;
-  el.textContent = `${sp.nameZh}：${pack.builtIn ? '内置' : '你加的'}语音包「${pack.name}」，录好 ${pack.lines} 句。摸头、喂食、部位触摸、碎碎念这些固定台词直接播放，不联网、不用 Key、不占每分钟次数；她的回复仍由引擎合成。${engine ? `引擎选了别家并且能用时（比如 Fish Audio），为了声音一致不用这个 ${engine} 语音包；选“系统语音”时也不用。` : ''}`;
-}
-function paintVoiceStatus() {
-  paintVoiceCredit();
-  paintVoicePacks();
-  const el = $('tts-status');
-  const st = settings && settings.ttsStatus;
-  if (!el || !st) return;
-  const parts = TTS_ENGINES.filter((e) => e[3] && st.engines[e[0]]).map(([id, label]) => {
-    const e = st.engines[id];
-    const local = id === 'local';
-    const box = document.querySelector(`.tts-engine[data-engine="${id}"] .tts-key`);
-    if (box) box.placeholder = e.hasKey ? 'API Key：已设置（不显示）' : local ? 'API Key：可不填' : 'API Key：未设置';
-    const budget = e.hasKey && e.rpm ? `，每分钟最多 ${e.rpm} 次，这一分钟还剩 ${e.budget}` : '';
-    const has = local ? (e.ready ? `地址 ${settings.tts.endpoints.local}` : '没填地址') : e.hasKey ? 'Key 已设置' : '没有 Key';
-    return `${label.replace(/（.*）/, '')}：${has}${budget}${e.lastError ? `，上次${ttsReason(e.lastError)}${e.pausedFor ? `，${ttsWait(e.pausedFor)}内跳过` : ''}` : ''}`;
-  });
-  el.textContent = `${parts.join('；')}。缓存 ${st.cache.count} 句，${(st.cache.bytes / 1024).toFixed(0)} KB。${st.encrypted ? 'Key 用系统钥匙串加密保存。' : 'Key 以只有你能读的文件保存在本机。'}`;
 }
 
 // First meeting: name her (like at hatch: optional, 12 characters, her own name by default), then she comes.
@@ -2048,7 +1672,9 @@ function bindPetUi() {
     if (m === 'actions') { $('action-menu').classList.remove('hidden'); return; }
     if (m === 'home') { fx.stopThrow(); fx.stopWalk(); window.pet.place('pet'); return; } // dsh-pet 回到原位
     if (m === 'quit') window.pet.quit();
-    if (m === 'advanced') openPanel('advanced');
+    // 设置… / 高级设置: the settings window (配置后台) holds every app-wide setting now
+    if (m === 'settings') window.pet.openAdmin();
+    if (m === 'advanced') window.pet.openAdmin('behavior');
     if (m === 'characters') openPanel('characters');
     if (m === 'history') { window.PetHistory.reset(); openPanel('history'); }
     if (m === 'new-topic') {
@@ -2060,8 +1686,7 @@ function bindPetUi() {
       } else say(r.reason === 'busy' ? '等等，我还在想上一句……' : '（现在没法重新开始。）', r.reason === 'busy' ? 'busy' : 'error', 'fallback');
     }
     if (m === 'check-update') {
-      await openPanel('advanced');
-      $('update-section').scrollIntoView({ block: 'nearest' });
+      window.pet.openAdmin('update');
       window.pet.checkUpdate();
     }
     if (m === 'update') await window.pet.installUpdate();
@@ -2723,7 +2348,7 @@ async function micDone(rec) {
 function asrFail(r) {
   lastAsr = { ...(lastAsr && lastAsr.at === r.at ? lastAsr : {}), ...r };
   const settingsFix = !/^(too-short|empty|canceled|mic-denied|no-mic)$/.test(r.reason);
-  showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', panel: 'advanced', scroll: 'asr-section' } : null);
+  showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', admin: 'asr' } : null);
 }
 
 // A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a panel.
@@ -2734,7 +2359,8 @@ function showNotice(title, text, action = null, ms = 8000) {
   const open = $('toast-open');
   open.classList.toggle('hidden', !action);
   open.textContent = action ? action.label : '';
-  open.dataset.panel = action ? action.panel : '';
+  open.dataset.panel = action ? action.panel || '' : '';
+  open.dataset.admin = action ? action.admin || '' : '';
   open.dataset.scroll = action ? action.scroll || '' : '';
   $('unlock-toast').classList.remove('hidden');
   clearTimeout(toastTimer);
@@ -2764,99 +2390,6 @@ function bindMic() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && micActive()) { e.stopImmediatePropagation(); micStop(true); } }, true);
   syncMic();
   paintMic();
-}
-
-// 高级设置 → 语音输入 (core/asr.js settings.asr): on/off, the engine, LobeHub's model, the local whisper
-// server (address, API shape, model, its optional key), language, falling back, 识别后直接发送, and 测试连接.
-const ASR_LANGS = [['auto', '自动识别'], ['zh', '中文'], ['en', 'English'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'], ['de', 'Deutsch'], ['es', 'Español'], ['ru', 'Русский']];
-const ASR_ERR = { 'bad-endpoint': '地址要是 https://，或者本机 / 局域网的 http://（如 http://127.0.0.1:8179、http://192.168.1.5:8179）。', 'bad-model': '模型名只能有字母、数字和 . _ : / -（最多 80 个字符）。', 'bad-language': '语言要是两个字母的代码，比如 zh、en。', 'bad-engine': '没有这个引擎。', 'bad-key': '这不像一个 API Key（不能有空格，8–256 个字符）。' };
-function asrSection() {
-  const a = settings.asr;
-  const sec = document.createElement('div');
-  sec.className = 'adv-section';
-  sec.id = 'asr-section';
-  sec.innerHTML = '<h3>语音输入</h3><p class="adv-text">打开后聊天框旁边出现 🎤：点一下开始说、再点一下结束，或者按住说话、松开结束（Esc 取消，最长 <span class="asr-max"></span> 秒）。只在你按 🎤 的时候录音，不常驻监听。“LobeHub 云端识别”把录音发到 LobeHub 转成文字（用你登录的账号，按 Credits 计费）；“本地识别服务”只把录音发到你填的地址（比如本机跑的 whisper.cpp <code>whisper-server</code>），不经过云端。录音不写进日志，用完就删。</p>'
-    + '<label class="pref-row"><input type="checkbox" id="asr-on" /><span><b>开启语音输入</b><small>第一次录音时系统会问一次麦克风权限。</small></span></label>'
-    + '<div class="size-row"><span>引擎</span><select id="asr-engine"><option value="lobehub">LobeHub 云端识别</option><option value="local">本地识别服务（whisper）</option><option value="off">关闭</option></select></div>'
-    + '<div class="size-row"><span>语言</span><select id="asr-language"></select></div>'
-    + '<label class="pref-row"><input type="checkbox" id="asr-autosend" /><span><b>识别后直接发送</b><small>不勾时文字先填进输入框，改好再按“发送”。</small></span></label>'
-    + '<label class="pref-row"><input type="checkbox" id="asr-fallback" /><span><b>用不了时换另一个引擎</b><small>选的引擎出错、超时或连不上时，这一句改用另一个再试一次。</small></span></label>'
-    + '<div class="tts-engine" id="asr-lobehub"><b>LobeHub 云端识别</b><small class="adv-note">用这台电脑上登录的 lh 账号。gpt-4o-mini-transcribe 快、便宜；gpt-4o-transcribe 更准。</small><div class="size-row"><span>模型</span><select id="asr-lobehub-model"><option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option><option value="gpt-4o-transcribe">gpt-4o-transcribe</option></select></div></div>'
-    + '<div class="tts-engine" id="asr-local"><b>本地识别服务（whisper）</b><small class="adv-note">你自己在本机或局域网电脑上跑的语音识别服务。whisper.cpp：<code>whisper-server -m models/ggml-base.bin --port 8179 --convert --inference-path /v1/audio/transcriptions</code>（--convert 需要 ffmpeg），接口选“OpenAI 兼容”；用默认 /inference 启动时选“whisper.cpp”。faster-whisper-server / speaches 等 OpenAI 兼容的服务也可以。</small>'
-    + '<div class="size-row"><span>地址</span><input type="text" id="asr-endpoint" spellcheck="false" placeholder="http://127.0.0.1:8179" /></div>'
-    + '<div class="size-row"><span>接口</span><select id="asr-local-api"><option value="openai">OpenAI 兼容（/v1/audio/transcriptions）</option><option value="whispercpp">whisper.cpp（/inference）</option></select></div>'
-    + '<div class="size-row"><span>模型</span><input type="text" id="asr-local-model" spellcheck="false" placeholder="whisper-1" /><button id="asr-local-save" class="btn">保存</button></div>'
-    + '<div class="size-row"><input type="password" id="asr-key" autocomplete="off" spellcheck="false" placeholder="Key（服务不要就不填）" /><button id="asr-key-save" class="btn">保存</button><button id="asr-key-del" class="btn">清除</button></div></div>'
-    + '<div class="size-row"><button id="asr-test" class="btn">测试连接</button></div><p class="adv-note" id="asr-test-result"></p><p class="adv-note" id="asr-status"></p>';
-  const $s = (id) => sec.querySelector(`#${id}`);
-  const lang = $s('asr-language');
-  for (const [v, l] of ASR_LANGS) lang.insertAdjacentHTML('beforeend', `<option value="${v}">${l}</option>`);
-  const paint = () => {
-    const s = settings.asr;
-    $s('asr-on').checked = s.enabled;
-    $s('asr-engine').value = s.engine;
-    lang.value = ASR_LANGS.some((x) => x[0] === s.language) ? s.language : 'auto';
-    $s('asr-autosend').checked = s.autoSend;
-    $s('asr-fallback').checked = s.fallback;
-    $s('asr-lobehub-model').value = s.lobehub.model;
-    $s('asr-local-api').value = s.local.api;
-    sec.querySelector('.asr-max').textContent = String(s.maxSeconds);
-    // the box of the engine in use first; the other one stays reachable when falling back is on
-    $s('asr-lobehub').classList.toggle('dim', s.engine !== 'lobehub' && !s.fallback);
-    $s('asr-local').classList.toggle('dim', s.engine !== 'local' && !s.fallback);
-    const st = settings.asrStatus || {};
-    const parts = [s.enabled && s.engine !== 'off' ? `正在用：${ASR_NAME[s.engine]}${s.fallback ? '（用不了时换另一个）' : ''}` : '语音输入关着'];
-    for (const id of ['lobehub', 'local']) if (st[id] && st[id].paused) parts.push(`${ASR_NAME[id]}暂停中（${st[id].reason}），点“测试连接”马上恢复`);
-    if (st.local && st.local.hasKey) parts.push('本地服务的 Key 已设置');
-    $s('asr-status').textContent = parts.join('；') + '。';
-  };
-  const apply = async (patch, msg) => {
-    const r = await window.pet.asr.set(patch);
-    setSettings(r.settings);
-    paint();
-    panelMsg(r.ok ? msg : ASR_ERR[r.reason] || `没能保存（${r.reason}）。`, r.ok);
-    return r.ok;
-  };
-  const ep = $s('asr-endpoint');
-  const model = $s('asr-local-model');
-  ep.value = a.local.endpoint;
-  model.value = a.local.model;
-  $s('asr-on').addEventListener('change', (e) => apply({ enabled: e.target.checked }, e.target.checked ? `语音输入已开启（${ASR_NAME[settings.asr.engine] || '引擎关闭'}）。聊天框旁边的 🎤 就是。` : '语音输入已关闭。'));
-  $s('asr-engine').addEventListener('change', (e) => apply({ engine: e.target.value }, `语音识别引擎：${e.target.selectedOptions[0].textContent}。`));
-  lang.addEventListener('change', () => apply({ language: lang.value }, `识别语言：${lang.selectedOptions[0].textContent}。`));
-  $s('asr-autosend').addEventListener('change', (e) => apply({ autoSend: e.target.checked }, e.target.checked ? '识别后直接发送。' : '识别后先填进输入框。'));
-  $s('asr-fallback').addEventListener('change', (e) => apply({ fallback: e.target.checked }, e.target.checked ? '选的引擎用不了时，换另一个再试一次。' : '只用选的引擎。'));
-  $s('asr-lobehub-model').addEventListener('change', (e) => apply({ lobehub: { model: e.target.value } }, `LobeHub 识别模型：${e.target.value}。`));
-  $s('asr-local-api').addEventListener('change', (e) => apply({ local: { api: e.target.value } }, `本地识别服务接口：${e.target.selectedOptions[0].textContent}。`));
-  $s('asr-local-save').addEventListener('click', async () => {
-    if (await apply({ local: { endpoint: ep.value, model: model.value } }, `本地识别服务：${ep.value.trim() || '默认地址'}，模型 ${model.value.trim() || settings.asr.local.model}。`)) { ep.value = settings.asr.local.endpoint; model.value = settings.asr.local.model; }
-  });
-  const key = $s('asr-key');
-  $s('asr-key-save').addEventListener('click', async () => {
-    if (!key.value.trim()) return panelMsg('先在框里粘贴 Key。');
-    if (await apply({ key: key.value }, '本地识别服务的 Key 已保存。')) key.value = '';
-  });
-  $s('asr-key-del').addEventListener('click', () => apply({ key: '' }, '本地识别服务的 Key 已清除。'));
-  $s('asr-test').addEventListener('click', async () => {
-    const out = $s('asr-test-result');
-    const btn = $s('asr-test');
-    // what is in the boxes counts, saved or not: save first so the test goes where the owner is looking
-    if (ep.value.trim() !== settings.asr.local.endpoint || (model.value.trim() || settings.asr.local.model) !== settings.asr.local.model) {
-      if (!(await apply({ local: { endpoint: ep.value, model: model.value } }, '已保存本地识别服务的地址和模型。'))) return;
-    }
-    btn.disabled = true;
-    out.textContent = '⏳ 正在测试…（发一段 0.6 秒的静音）';
-    const r = await window.pet.asr.test();
-    btn.disabled = false;
-    out.textContent = r.results && r.results.length
-      ? r.results.map((x) => `${x.ok ? '✅' : '❌'} ${ASR_NAME[x.provider]}：${x.ok ? `能用（${x.ms} ms）` : asrReasonText({ reason: x.reason, message: x.message })}`).join('　')
-      : `❌ ${asrReasonText({ reason: r.reason || 'not-configured' })}`;
-    out.dataset.ok = String(!!r.ok);
-    setSettings(await window.pet.getSettings());
-    paint();
-  });
-  paint();
-  return sec;
 }
 
 window.petFx = {
@@ -2960,7 +2493,6 @@ let updateAnnounced = null;
 let updateState = null;
 function onUpdateStatus(u) {
   updateState = u;
-  if (panelKind === 'advanced') renderUpdateSection();
   const b = $('menu-update');
   const label = { downloading: `正在下载新版本 v${u.version}…`, ready: `立即更新到 v${u.version} 并重启`, manual: `下载新版本 v${u.version}` }[u.status];
   b.classList.toggle('hidden', !label);
@@ -2990,14 +2522,15 @@ async function main() {
   $('panel-close').addEventListener('click', closePanel);
   $('toast-close').addEventListener('click', hideToast);
   $('toast-open').addEventListener('click', async () => {
-    const { panel, scroll } = $('toast-open').dataset;
+    const { panel, scroll, admin } = $('toast-open').dataset;
     hideToast();
+    if (admin) { window.pet.openAdmin(admin); return; }
     await openPanel(panel || 'wardrobe');
     const el = scroll && document.getElementById(scroll);
     if (el) el.scrollIntoView({ block: 'start' });
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
-  window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'advanced' || panelKind === 'characters') renderPanel(); } });
+  window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'characters') renderPanel(); } });
   window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme, m.streamId || null); speak(m); });
   window.pet.onChatDelta(onChatDelta);
   window.pet.onChatDone(onChatDone);

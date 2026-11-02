@@ -50,6 +50,15 @@ const AFFECTION_RULES = {
 const DAILY_CAP = 12; // positive gain per affection day, all sources together
 const DAY_ROLLOVER_HOUR = 4; // the affection day starts at 04:00 local time
 const DECAY = { graceMs: 48 * HOUR, stepMs: 12 * HOUR, perStep: 1, maxPerAbsence: 8 };
+// The owner's rules from settings.affectionRules (后台 → 桌宠行为 → 好感度): the daily cap and whether a long
+// absence decays affection. Set by PetService whenever settings change; the defaults are the constants above.
+const rules = { dailyCap: DAILY_CAP, decay: true };
+function setRules(r = {}) {
+  rules.dailyCap = Number.isInteger(r.dailyCap) && r.dailyCap > 0 ? r.dailyCap : DAILY_CAP;
+  rules.decay = r.decay !== false;
+  return { ...rules };
+}
+const getRules = () => ({ ...rules });
 
 const round1 = (v) => Math.round(v * 10) / 10;
 const clampAff = (v) => Math.max(0, Math.min(MAX_AFFECTION, round1(v)));
@@ -122,7 +131,7 @@ function blockedReason(pet, source, now, { topicId } = {}) {
   if (typeof rule.cooldownMs === 'number' && rule.cooldownMs > 0 && last != null) {
     if (now < last || now - last < rule.cooldownMs) return 'cooldown'; // a clock set back counts as cooling down
   }
-  if (pet.affectionToday >= DAILY_CAP) return 'cap';
+  if (pet.affectionToday >= rules.dailyCap) return 'cap';
   return null;
 }
 
@@ -156,7 +165,7 @@ function applyOne(pet, source, now, opts) {
   const blocked = blockedReason(pet, source, now, opts);
   if (blocked) return { source, delta: 0, blocked };
   const want = round1(rule.delta * modifier(pet, source));
-  const delta = round1(Math.min(want, DAILY_CAP - pet.affectionToday, MAX_AFFECTION - pet.affection));
+  const delta = round1(Math.min(want, rules.dailyCap - pet.affectionToday, MAX_AFFECTION - pet.affection));
   pet.dailyCounts[source] = (pet.dailyCounts[source] || 0) + 1;
   pet.lastAffectionAt[source] = now;
   if (source === 'topic' && opts.topicId) pet.topicsToday.push(opts.topicId);
@@ -201,6 +210,9 @@ function decay(pet, now) {
   const idleMs = now - anchor - DECAY.graceMs;
   if (idleMs < DECAY.stepMs) return 0;
   const steps = Math.min(DECAY.maxPerAbsence, Math.floor(idleMs / DECAY.stepMs));
+  // decay switched off: the steps of this absence are counted as taken, so switching it on later does not
+  // charge them all at once
+  if (!rules.decay) { pet.decaySteps = Math.max(pet.decaySteps || 0, steps); return 0; }
   const due = steps - pet.decaySteps;
   if (due <= 0) return 0;
   pet.decaySteps = steps;
@@ -237,7 +249,7 @@ function toAffectionProgress(pet, { adult = false } = {}) {
     peakStage: pet.peakStage,
     color: cur.color,
     today: pet.affectionToday,
-    dailyCap: DAILY_CAP,
+    dailyCap: rules.dailyCap,
   };
   if (!next) return { ...base, next: null, nextName: null, need: 0, pct: 100 };
   return {
@@ -254,6 +266,8 @@ module.exports = {
   STAGE_IDS,
   AFFECTION_RULES,
   DAILY_CAP,
+  setRules,
+  getRules,
   DECAY,
   MAX_AFFECTION,
   affectionDay,

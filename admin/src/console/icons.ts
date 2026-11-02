@@ -1,0 +1,37 @@
+import {
+  AudioLines,
+  Cloud,
+  HeartHandshake,
+  Info,
+  LayoutDashboard,
+  Mic,
+  Palette,
+  PawPrint,
+  RefreshCw,
+  ShieldCheck,
+  Shirt,
+  Users,
+  UsersRound,
+  Volume2,
+  Webhook,
+  type LucideIcon,
+} from 'lucide-react';
+
+/** Nav icons named in core/settings-schema.js NAV. */
+export const ICONS: Record<string, LucideIcon> = {
+  AudioLines,
+  Cloud,
+  HeartHandshake,
+  Info,
+  LayoutDashboard,
+  Mic,
+  Palette,
+  PawPrint,
+  RefreshCw,
+  ShieldCheck,
+  Shirt,
+  Users,
+  UsersRound,
+  Volume2,
+  Webhook,
+};

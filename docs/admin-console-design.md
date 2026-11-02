@@ -3,7 +3,7 @@
 > 状态：设计稿（勘察结论 + 实施方案），尚未实现。
 > 基线：`main` = `canary` @ `7bae23a`（v0.19.0）。所有行号、默认值都按这个版本的源码读出，没有凭记忆写。
 > 范围：只写调研结论和方案。实现拆成后面的任务（§8），本稿不改任何应用代码。
-> 实施进度：T1（lobe-design 初始化）与设计系统已落地，见 [design-system.md](design-system.md)。与本稿的差异：`@lobehub/ui` 6.x 已没有 `ThemeProvider`，明暗改用 `setLobeTheme` + `data-theme`；`ConfigProvider` 需设 `enableCustomFonts={false}` 才不会去 CDN 拉字体。
+> 实施进度：T1（lobe-design 初始化）与设计系统已落地，见 [design-system.md](design-system.md)。T3–T7 与 T9 的主动行为 / 好感参数已在配置后台落地，见 §10。与本稿的差异：`@lobehub/ui` 6.x 已没有 `ThemeProvider`，明暗改用 `setLobeTheme` + `data-theme`；`ConfigProvider` 需设 `enableCustomFonts={false}` 才不会去 CDN 拉字体。
 > 核对：`node scripts/check-admin-console-doc.js` 检查本文是否覆盖 `settings.json` 的全部 key 和设置类 IPC 通道（§9）。
 
 ## 0. 结论速览
@@ -425,3 +425,38 @@ node scripts/check-admin-console-doc.js   # 0 = 全部覆盖；1 = 打印 MISS �
 在 `7bae23a` 上运行的结果见提交说明和任务验收记录：44 个 key、35 个通道全部为 `ok`，输出 `PASS`。
 
 以后新增设置项时，`normalizeSettings` 的默认值会让脚本自动多出这个 key，文档没跟上就会 FAIL，所以本文和代码不会悄悄脱节。也可以把这个脚本加进 `npm test`（可选）。
+
+## 10. 实施结果（配置后台，T3–T7 + T9 部分）
+
+### 10.1 新增的设置项（`settings.json`，都经过 `normalizeSettings`）
+
+| key | 类型 | 默认值 | 取值范围 | 后台位置 | 生效 |
+| --- | --- | --- | --- | --- | --- |
+| `proactive.enabled` | boolean | `true` | — | 主动行为与好感度 → 主动行为 | 即时：关闭后心跳照常（饥饿、衰减、睡醒），但不再主动开口 |
+| `proactive.speakCooldownMin` | int | `12` | 3–240 | 同上 | 即时（下一次心跳的 `nextEvent`） |
+| `proactive.boredAfterMin` | int | `45` | 5–480 | 同上 | 即时 |
+| `proactive.hungryAt` | int | `75` | 50–100 | 同上 | 即时 |
+| `proactive.maxLlmPerHour` | int | `6` | 0–30（0 = 只用离线台词） | 同上 | 即时（`LlmBudget.max`） |
+| `affectionRules.dailyCap` | int | `12`（`DAILY_CAP`） | 4–40 | 主动行为与好感度 → 好感度 | 即时（`affection.setRules`） |
+| `affectionRules.decay` | boolean | `true` | — | 同上 | 即时；关闭期间这次缺席的步数记为已扣，重新打开不会一次补扣 |
+| `ui.theme` | enum | `'auto'` | `auto` \| `light` \| `dark` | 外观主题 | 即时（只影响设置窗口） |
+| `system.hardwareAcceleration` | boolean | `true` | — | 数据与关于 → 系统 | **重启后生效**（`app.disableHardwareAcceleration` 只能在 ready 前调用）；后台显示「重启后生效」标签和「立即重启」横幅（`settingsView().pendingRestart`） |
+
+这几项原来是 §2.5 列出的写死常量；常量本身保留为默认值（`proactive.DEFAULTS`、`affection.DAILY_CAP`）。
+
+### 10.2 主进程
+
+- `src/main/admin-window.js`：`AdminWindow.open(section)` 单例；`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；再次打开时 show + focus，并把页面 hash 设到目标页（窗口还在加载时等 `did-finish-load` 之后再设，不会丢）。
+- `src/main/admin-preload.js`：`window.petAdmin` 白名单（37 个调用，不含 chat / move / debug）。
+- `src/core/settings-schema.js`：全部配置项的页面、分组、控件类型、默认值、范围和校验（`validate`）、对应的 setter（`patchFor`）；`admin-boot` 把它作为纯数据发给后台。单测保证它覆盖 `normalizeSettings(null)` 的每个叶子 key。
+- `src/main/admin-settings.js`：`admin-set {key,value}` / `admin-reset {keys}`。先按 schema 校验，再调用原有的 `PetService` setter（`setPrefs` `setTts` `setAsr` `setApi` `setVisitors` `setPetScale`，以及新增的 `setSection`），所以仍然只经过 `core/settings.js` 的 `SettingsStore` 写盘。Key 走 `tts-keys.json`，只回「已设置」。
+- `src/core/roster.js`：角色列表行（预览、名称、类型、来源、语音包、模型、关系、当前标记）和外观资源行，由 `view()` 和 `settingsView()` 派生。
+- 新 IPC：`open-admin`（桌宠窗口）、`admin-boot`、`admin-state`、`admin-set`、`admin-reset`、`admin-relaunch`、`admin-show-pet`；推送 `admin-state`。后台独有的通道只接受设置窗口的 webContents（测试模式除外）。
+- 广播：`src/main/broadcast.js`，`settings` / `api-status` 发给所有桌宠窗口和设置窗口；每次 `update` / `settings` 之后给设置窗口推一份完整的 `admin-state`。导入 / 导出对话框挂在发起请求的窗口上。
+- 入口：⋯ 菜单「设置…」（第一项）、桌宠窗口获得焦点时 `CmdOrCtrl+,`、托盘菜单（打开设置… / 显示桌宠 / 检查更新 / 退出）、macOS 应用菜单「偏好设置… ⌘,」。
+
+### 10.3 桌宠窗口 `#panel` 的收敛（T7）
+
+- ⋯ 菜单的「高级设置」去掉，换成「设置…」；整个「高级设置」面板（宠物大小、桌宠行为、语音、语音输入、同屏伙伴、对外接口、版本与更新）从 `app.js` 删除，由设置窗口取代。「检查更新」打开设置窗口的「版本与更新」页；语音输入失败提示里的「去设置」打开设置窗口的「语音输入」页。
+- 「角色列表」保留在桌宠里，用来快速切换 / 初次见面；她的页里的「模型」「个性化设定」表单删除，换成当前值摘要和「在设置窗口中编辑 ›」（打开 `#/characters/<id>`）。外观和好感度仍保留：Live2D / VRM 导入后要由桌宠窗口画出预览图（`save-pack-preview`），而好感度属于玩法。
+- 衣柜、话题、聊天记录不变。
