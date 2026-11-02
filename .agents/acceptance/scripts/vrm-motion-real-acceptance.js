@@ -88,8 +88,9 @@ async function runModel(tag, MODEL, { full }) {
     }
     const fps = Math.max(1, Math.round(1000 / every));
     const gif = path.join(dir, `${name}.gif`);
-    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(fdir, '%04d.png'), '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=64x64',
-      // the backdrop is endless: the overlay ends with the frames (shortest=1), or palettegen waits forever
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(fdir, '%04d.png'), '-f', 'lavfi', '-i', `color=c=0xd8dcef:s=64x64:r=${fps}:d=${(i / fps + 1).toFixed(2)}`,
+      // the backdrop is bounded (d=) AND the overlay ends with the frames (shortest=1): an endless lavfi source
+      // feeding palettegen buffers frames forever (it once grew to 60 GB)
       '-filter_complex', '[1][0]scale2ref[bg][fg];[bg][fg]overlay=shortest=1:format=auto,scale=-2:420,split[a][b];[a]palettegen=max_colors=160[p];[b][p]paletteuse=dither=bayer', gif]);
     fs.writeFileSync(path.join(dir, `${name}-frames.json`), `${JSON.stringify(log, null, 1)}\n`);
     note(`[${tag}] gif ${path.relative(OUT, gif)} (${i} frames, ${(fs.statSync(gif).size / 1024).toFixed(0)} KB)`);
@@ -299,10 +300,10 @@ async function runModel(tag, MODEL, { full }) {
       const scale = ins.map((_, i) => `[${i + 1}]scale=-2:420[s${i}]`).join(';');
       const top = [0, 1, 2, 3, 4, 5].map((i) => `[s${i}]`).join('');
       const bot = [6, 7, 8, 9, 10, 11].map((i) => `[s${i}]`).join('');
-      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=4000x1000', ...ins.flatMap((f) => ['-i', f]), '-filter_complex', `${scale};${top}hstack=inputs=6[t];${bot}hstack=inputs=6[b];[t][b]vstack[g];[0][g]scale2ref=iw:ih[bg][g2];[bg][g2]overlay=format=auto`, '-frames:v', '1', path.join(OUT, 'female-vs-male-postures.png')]);
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=4000x1000:d=1', ...ins.flatMap((f) => ['-i', f]), '-filter_complex', `${scale};${top}hstack=inputs=6[t];${bot}hstack=inputs=6[b];[t][b]vstack[g];[0][g]scale2ref=iw:ih[bg][g2];[bg][g2]overlay=format=auto`, '-frames:v', '1', path.join(OUT, 'female-vs-male-postures.png')]);
       for (const g of ['female', 'male']) {
         const ps = row(g);
-        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=4000x1000', ...ps.flatMap((f) => ['-i', f]), '-filter_complex', `${ps.map((_, i) => `[${i + 1}]scale=-2:420[s${i}]`).join(';')};${ps.map((_, i) => `[s${i}]`).join('')}hstack=inputs=6[t];[0][t]scale2ref=iw:ih[bg][g2];[bg][g2]overlay=format=auto`, '-frames:v', '1', path.join(OUT, `${g}-postures-sheet.png`)]);
+        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0xd8dcef:s=4000x1000:d=1', ...ps.flatMap((f) => ['-i', f]), '-filter_complex', `${ps.map((_, i) => `[${i + 1}]scale=-2:420[s${i}]`).join(';')};${ps.map((_, i) => `[s${i}]`).join('')}hstack=inputs=6[t];[0][t]scale2ref=iw:ih[bg][g2];[bg][g2]overlay=format=auto`, '-frames:v', '1', path.join(OUT, `${g}-postures-sheet.png`)]);
       }
       note('sheets: female-vs-male-postures.png, female-postures-sheet.png, male-postures-sheet.png');
     } catch (e) { note(`sheet failed: ${e.message}`); }
