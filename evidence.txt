@@ -1,0 +1,27 @@
+look dafeiyu-live2d/daily@0.8; prefs.framing=full, framings={}
+
+live2d-frame/1-full.png: data-framing=full; opaque box {"left":0.301,"right":0.801,"top":0.226,"bottom":0.951,"cx":0.551,"fill":0.175,"height":0.726}; placement {"s":0.07243589743589744,"x":45.53910256410255,"y":88.13999999999999}; window {"x":988,"y":612,"width":268,"height":388}; measured band (unused in 全身) {"top":106.5052490234375,"bottom":2498.11556640625,"cx":1669,"waist":0.52,"source":"pack","cut":0.52}
+
+live2d-frame/3-half.png + live2d-frame/glide-to-half.gif (14 frames): data-framing=half, data-cut=0.520, data-band=pack; opaque box {"left":0.012,"right":1,"top":0.071,"bottom":1,"cx":0.506,"fill":0.575,"height":0.929} (全身 {"left":0.301,"right":0.801,"top":0.226,"bottom":0.951,"cx":0.551,"fill":0.175,"height":0.726}); scale 0.0724 → 0.1795; window {"x":988,"y":612,"width":268,"height":388} (unchanged); glide scale 0.0766 → 0.0884 → 0.1010 → 0.1136 → 0.1316 → 0.1455 → 0.1573 → 0.1650 → 0.1777 → 0.1791 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795 → 0.1795; card 「取景全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。默认：全身全身半身」
+
+live2d-frame/half-idle.gif (16 frames); live2d-frame/4-half-talk.png, live2d-frame/4-half-happy.png, live2d-frame/4-half-sad.png: min eye-open 0.06 (blink), max mouth 0.71 (talk), happy blush 0.50, sad gloom 0.35; still data-framing=half
+
+live2d-frame/5-half-gaze-right.png + live2d-frame/half-gaze.gif (22 frames): data-gaze at her face height: left -0.98,0.00, right 0.98,0.00; cursor above her: 0.00,0.75
+
+live2d-frame/6-half-touch-head.png: touchPoint down the middle: y=0.08: - (y_full=-0.01, half); y=0.15: head (y_full=0.03, half); y=0.22: face (y_full=0.07, half); y=0.3: face (y_full=0.12, half); y=0.4: face (y_full=0.18, half); y=0.5: chest (y_full=0.23, half); y=0.6: chest (y_full=0.29, half); y=0.7: belly (y_full=0.35, half); y=0.8: hands (y_full=0.40, half); y=0.9: hands (y_full=0.46, half); y=0.97: butt (y_full=0.50, half); click at y=0.15 → lastTouch {"zone":"head","mood":"happy"}, drawn state touch-head#152
+
+live2d-frame/half-drag.gif (8 frames), live2d-frame/7-half-lifted.png: drag → lifted#282, data-framing half; window 988,612 → 1114,549; live2d-frame/7-half-walk.png + live2d-frame/half-walk.gif (10 frames): walking, opaque box {"left":0,"right":1,"top":0.058,"bottom":1,"cx":0.5,"fill":0.581,"height":0.942}
+
+live2d-frame/8-half-bubble.png: bubble {"top":11,"bottom":45}, her eyes from y=134.5 (client px)
+
+live2d-frame/9-full-again.png + live2d-frame/glide-to-full.gif (14 frames): data-framing=full; placement {"s":0.07243589743589744,"x":45.53910256410255,"y":88.13999999999999} = the first; opaque box {"left":0.247,"right":0.825,"top":0.164,"bottom":0.889,"cx":0.536,"fill":0.175,"height":0.726} (first {"left":0.301,"right":0.801,"top":0.226,"bottom":0.951,"cx":0.551,"fill":0.175,"height":0.726}); glide scale 0.1772 → 0.1761 → 0.1631 → 0.1489 → 0.1355 → 0.1355 → 0.1055 → 0.0919 → 0.0815 → 0.0746 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724 → 0.0724
+
+live2d-frame/10-admin-character-half.png, live2d-frame/10-character-half.png: row 「取景跟随全局（全身）全身半身半身只显示腰部以上，角色画得更大，窗口不变。立即生效。」; framings {"dafeiyu":"half"} with prefs.framing full → pet half (source character); 跟随全局 → framings {} → full
+
+live2d-frame/11-thirdparty-full.png, live2d-frame/11-thirdparty-half.png: 「已导入 Live2D 模型「medium」并换上。」 pack l2d-dafeiyu-medium (pack.json without halfBody): band {"top":106.5052490234375,"bottom":2507.9004971313475,"cx":1669,"waist":0.5221275054468818,"source":"eyes","cut":0.5221275054468818} (eyes {"top":770.8767700195312,"bottom":1133.0001220703125,"minX":1379,"maxX":1959}); opaque box {"left":0,"right":1,"top":0.04,"bottom":1,"cx":0.5,"fill":0.604,"height":0.96}
+
+live2d-frame/12-vrm-half-same-setting.png (VRM: {"left":0.036,"right":0.97,"top":0.018,"bottom":1,"cx":0.503,"fill":0.444,"height":0.982}) / live2d-frame/12-live2d-half-same-setting.png (Live2D: {"left":0,"right":1,"top":0.027,"bottom":1,"cx":0.5,"fill":0.592,"height":0.973}) — prefs.framing=half for both
+
+live2d-frame/13-after-restart-half.png: after restart data-framing=half, opaque box {"left":0,"right":1,"top":0.018,"bottom":1,"cx":0.5,"fill":0.635,"height":0.982}
+
+no console errors
