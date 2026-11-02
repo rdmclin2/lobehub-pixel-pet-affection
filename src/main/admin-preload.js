@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
+  // 衣柜: put an unlocked outfit on the current character (checked in main, as the pet window's wardrobe)
+  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
   // 外观资源: import (file dialog in main), export, remove, folders
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),

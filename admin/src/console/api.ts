@@ -225,6 +225,7 @@ export interface PetAdminApi {
   switchCharacter: (id: string, name?: string) => Promise<any>;
   ttsClearCache: () => Promise<any>;
   unlockAll: (species: string) => Promise<any>;
+  equipOutfit: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
 }
 

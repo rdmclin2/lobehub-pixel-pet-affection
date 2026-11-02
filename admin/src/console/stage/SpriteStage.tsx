@@ -107,8 +107,19 @@ export const SpriteStage = memo(({ preview, name, accent, height, action = 'idle
     return () => io.disconnect();
   }, []);
 
+  // `data-drawn` = the url whose first frame is on screen (set outside React: no re-render for it). The e2e
+  // run waits on it to know a stage really shows her and not an empty box.
+  const drawn = (url: string) => {
+    if (box.current) box.current.dataset.drawn = url;
+  };
+
   useEffect(() => {
     setFailed(false);
+    // the same picture under a new preview object (a pack tried on, then worn) is still the one on screen
+    if (box.current && box.current.dataset.drawn !== preview?.url) delete box.current.dataset.drawn;
+  }, [preview]);
+
+  useEffect(() => {
     if (!preview || preview.type !== 'sprite' || !preview.frame) return;
     const c = canvas.current;
     if (!c) return;
@@ -137,6 +148,7 @@ export const SpriteStage = memo(({ preview, name, accent, height, action = 'idle
           g.drawImage(frames[i], 0, 0);
         };
         draw(0);
+        drawn(preview.url);
         if (!play) return;
         // her sheet plays at 2–8 fps: wake up only when the frame changes (a requestAnimationFrame loop
         // would run the page's whole frame lifecycle 60 times a second for it)
@@ -165,10 +177,10 @@ export const SpriteStage = memo(({ preview, name, accent, height, action = 'idle
   if (!preview || failed) inner = <Avatar avatar={name.slice(0, 1)} background={accent} shape="square" size={Math.round(height * 0.6)} />;
   else if (preview.type === 'sprite') inner = <canvas aria-label={name} className={cls} ref={canvas} role="img" style={shade} />;
   else if (preview.type === 'video')
-    inner = <video aria-label={name} autoPlay={animate && !reducedMotion()} className={cls} loop muted onError={() => setFailed(true)} playsInline preload="metadata" src={animate ? preview.url : `${preview.url}#t=0.1`} style={shade} />;
-  else inner = <img alt={name} className={cls} decoding="async" onError={() => setFailed(true)} src={preview.url} style={shade} />;
+    inner = <video aria-label={name} autoPlay={animate && !reducedMotion()} className={cls} loop muted onError={() => setFailed(true)} onLoadedData={() => drawn(preview.url)} playsInline preload="metadata" src={animate ? preview.url : `${preview.url}#t=0.1`} style={shade} />;
+  else inner = <img alt={name} className={cls} decoding="async" onError={() => setFailed(true)} onLoad={() => drawn(preview.url)} src={preview.url} style={shade} />;
   return (
-    <div className={cx(styles.root, className)} data-action={action} data-preview={preview?.type ?? 'none'} ref={box} style={{ height, width }}>
+    <div className={cx(styles.root, className)} data-action={action} data-failed={failed || undefined} data-preview={preview?.type ?? 'none'} data-src={preview?.url} ref={box} style={{ height, width }}>
       {inner}
     </div>
   );

@@ -111,7 +111,14 @@ export const useStore = (): Store => {
     return () => void box.listeners.delete(check);
   }, [box]);
   const s = box.current;
-  shown.current = s;
+  // what is on screen = what the last *committed* render read. Recorded after commit, not during render: a
+  // render React throws away (a batch it restarts, a flushSync from a toast) would otherwise mark a newer
+  // state as shown, and the push that brought it — a pack worn, an outfit changed — never redrew the page
+  useLayoutEffect(() => {
+    shown.current = s;
+    const next = box.current;
+    if (next && next !== s) for (const k of used.current) if ((next as any)[k] !== (s as any)[k]) return rerender();
+  });
   return useMemo(
     () =>
       new Proxy(s, {

@@ -7485,24 +7485,187 @@ async function adminScenario() {
       return `pet window look → ${key}; switched back to grok`;
     }, () => admin);
 
-    await step(S, 'A13 角色详情 → 外观: choosing 旧版像素 changes the look in the pet window', async () => {
-      await admin.click('[data-detail="grok"]');
+    // her stage on the character page (the showcase on the left): what it shows, and once it is really drawn
+    const stageOf = (id) => admin.evaluate((cid) => {
+      const el = document.querySelector(`[data-showcase="${cid}"] [data-stage] [data-preview]`);
+      return el ? { type: el.dataset.preview, src: el.dataset.src || null, drawn: el.dataset.drawn || null, failed: !!el.dataset.failed } : null;
+    }, id);
+    const stageDrawn = (id, notSrc) => admin.waitForFunction(([cid, prev]) => {
+      const el = document.querySelector(`[data-showcase="${cid}"] [data-stage] [data-preview]`);
+      return el && !el.dataset.failed && el.dataset.src && el.dataset.drawn === el.dataset.src && el.dataset.src !== prev;
+    }, [id, notSrc || null], { timeout: 15000 }).catch(async (e) => { const diag = await admin.evaluate(async (cid) => { const st = await window.petAdmin.state(); const r = st.roster.find((x) => x.id === cid); return { pushes: window.__pushes || null, main: r && r.preview && r.preview.url, trying: !!document.querySelector('[data-trying-tag]'), caption: (document.querySelector(`[data-worn-caption="${cid}"]`) || {}).textContent, worn: [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-worn="true"]`)].map((x) => x.dataset.pack) }; }, id); throw new Error(`stage of ${id} not drawn (not ${notSrc}): ${JSON.stringify(await stageOf(id))} ${JSON.stringify(diag)} — ${e.message.split('\n')[0]}`); });
+    const showcaseShot = (id, name) => admin.locator(`[data-showcase="${id}"]`).screenshot({ path: path.join(SHOTS, `${name}.png`) });
+
+    await step(S, 'A12b 角色详情: two columns — her stage pinned on the left (scales with the window), story and settings on the right', async () => {
+      await go('/characters/grok');
+      await admin.waitForSelector('[data-showcase="grok"]');
+      await stageDrawn('grok');
+      const box = () => admin.evaluate(() => {
+        const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), right: Math.round(b.right) }; };
+        return { show: r('[data-showcase]'), panels: r('[data-detail-layout] > div:last-child'), stage: r('[data-showcase] [data-stage]'), title: r('[data-character-title]') };
+      });
+      const a = await box();
+      assert.ok(a.show.right <= a.panels.x, `stage column ${JSON.stringify(a.show)} left of the panels ${JSON.stringify(a.panels)}`);
+      assert.ok(a.title.x >= a.panels.x, 'her name heads the right column');
+      for (const sel of ['[data-wardrobe="grok"]', '[data-outfits="grok"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
+      assert.ok(await admin.evaluate(() => { const p = document.querySelector('[data-detail-layout] > div:last-child'); return !!p.querySelector('[role="tablist"]') && !!p.querySelector('[data-character-title]'); }), 'tabs + info in the right column');
+      // the whole page, full size
+      const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+      await app.evaluate(({ BrowserWindow }, hh) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, Math.min(Math.max(hh, 1000), 4000)); }, h);
+      await admin.waitForTimeout(400);
+      await shot('a12b-detail-two-columns-full');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(400);
+      // pinned: scrolling the page moves the panels, not her (a short window, so the page has room to scroll)
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 700); });
+      await admin.waitForTimeout(400);
+      const top = await box();
+      const scrolled = await admin.evaluate(() => { const m = document.querySelector('main'); m.scrollTop = m.scrollHeight; return m.scrollTop; });
+      await admin.waitForTimeout(300);
+      const b = await box();
+      assert.ok(scrolled >= 300, `the page scrolls (${scrolled}px)`);
+      assert.ok(Math.abs(top.panels.y - scrolled - b.panels.y) <= 2, `panels scrolled with the page ${top.panels.y} → ${b.panels.y}`);
+      assert.ok(b.show.y >= 0 && b.show.y <= 40 && b.show.y + b.stage.h <= 700, `stage stays in view at the top: y=${b.show.y} h=${b.stage.h}`);
+      await shot('a12b-detail-scrolled-stage-pinned');
+      await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(400);
+      // scales with the window: a short window gives a shorter stage, a narrow one stacks the columns
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 640); });
+      await admin.waitForTimeout(500);
+      const c = await box();
+      await shot('a12b-detail-short-window');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(820, 1000); });
+      await admin.waitForTimeout(500);
+      const d = await box();
+      await shot('a12b-detail-narrow-window');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(500);
+      assert.ok(c.stage.h < a.stage.h, `stage ${a.stage.h}px in 1180×1000 → ${c.stage.h}px in 1180×640`);
+      assert.ok(d.panels.y > d.show.y + d.show.h - 1, `narrow: panels below the stage (${JSON.stringify(d)})`);
+      await stageDrawn('grok');
+      return `1180×1000: stage column x=${a.show.x} w=${a.show.w}, panels x=${a.panels.x} w=${a.panels.w}, stage ${a.stage.h}px; 1180×700 scrolled ${scrolled}px: panels y ${top.panels.y}→${b.panels.y}, stage y ${top.show.y}→${b.show.y}; 1180×640: stage ${c.stage.h}px; 820 wide: stacked (panels y=${d.panels.y} below stage bottom ${d.show.y + d.show.h})`;
+    }, () => admin);
+
+    await step(S, 'A12c 衣柜: two outfits put on from the right panel show on her stage at once (and in the pet window)', async () => {
+      await go('/characters/grok');
+      await admin.getByRole('tab', { name: '装扮' }).click();
+      const un = await admin.evaluate(() => window.petAdmin.unlockAll('grok'));
+      assert.equal(un.ok, true);
+      await admin.waitForSelector('[data-outfit="swimsuit"]:not([disabled])');
+      await admin.waitForSelector('[data-outfit="pajamas"]:not([disabled])');
+      await stageDrawn('grok');
+      const s0 = await stageOf('grok');
+      const caption0 = await admin.textContent('[data-worn-caption="grok"]');
+      await showcaseShot('grok', 'a12c-stage-0-daily');
+      const out = [`daily: ${s0.src.split('/').slice(-2).join('/')}`];
+      let prev = s0.src;
+      let i = 0;
+      for (const id of ['swimsuit', 'pajamas']) {
+        const t0 = Date.now();
+        await admin.click(`[data-outfit="${id}"]`);
+        await stageDrawn('grok', prev);
+        const ms = Date.now() - t0;
+        const st = await stageOf('grok');
+        assert.notEqual(st.src, prev, `${id}: stage source changed`);
+        assert.match(st.src, new RegExp(id), `${id}: the stage draws the ${id} sheet (${st.src})`);
+        assert.equal(await admin.getAttribute(`[data-outfit="${id}"]`, 'data-equipped'), 'true');
+        await page.waitForFunction((o) => (document.getElementById('pet-look').dataset.key || '').includes(o), id, { timeout: 10000 });
+        const caption = await admin.textContent('[data-worn-caption="grok"]');
+        await showcaseShot('grok', `a12c-stage-${++i}-${id}`);
+        out.push(`${id}: ${st.src.split('/').slice(-2).join('/')} drawn ${ms}ms after the click; caption "${caption.trim()}"; pet #pet-look ${await page.getAttribute('#pet-look', 'data-key')}`);
+        prev = st.src;
+      }
+      await shot('a12c-detail-after-outfits');
+      // back to her daily outfit (the rest of the run expects it)
+      await admin.click('[data-outfit="daily"]');
+      await stageDrawn('grok', prev);
+      return `caption before "${caption0.trim()}"; ${out.join(' | ')}`;
+    }, () => admin);
+
+    // 穿上 on a card, scrolled to the middle first: the last toast (bottom-right) may sit over a card at the bottom edge
+    const useOn = async (id) => {
+      await admin.locator(`[data-use-pack="${id}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await admin.click(`[data-use-pack="${id}"]`);
+    };
+    await step(S, 'A13 角色详情 → 装扮: trying 旧版像素 on shows it on her stage, 穿上 keeps it there and changes the pet window', async () => {
+      await go('/characters/grok');
       await admin.waitForSelector('[data-character-title="grok"]');
+      await admin.evaluate(() => { window.__pushes = []; const t0 = performance.now(); window.petAdmin.onState((st) => { const r = st.roster && st.roster.find((x) => x.id === 'grok'); window.__pushes.push(`${Math.round(performance.now() - t0)}:${r ? r.preview.url.split('/')[2] : st.roster ? '?' : 'no-roster'}`); }); });
+      await stageDrawn('grok');
+      const before = await stageOf('grok');
       await shot('a13-detail-overview');
-      await admin.getByRole('tab', { name: '形象包' }).click();
-      // 试穿 first: the stage above shows the pack, nothing is saved yet
+      await showcaseShot('grok', 'a13-stage-0-before');
+      await admin.getByRole('tab', { name: '装扮' }).click();
+      // 试穿 first: the stage shows the pack, nothing is saved yet
       await admin.click('[data-try-pack="grok-classic"]');
       await admin.waitForSelector('[data-trying-tag]');
-      const tried = await admin.evaluate(() => document.querySelector('[data-stage="grok"] [data-preview]').dataset.preview);
+      await stageDrawn('grok', before.src);
+      const tried = await stageOf('grok');
+      assert.match(tried.src, /grok-classic/, `try-on stage ${tried.src}`);
       assert.notEqual(saved().appearance && saved().appearance.grok, 'grok-classic', 'trying on saves nothing');
       await shot('a13-detail-try-on');
-      await admin.click('[data-use-pack="grok-classic"]');
+      await showcaseShot('grok', 'a13-stage-1-try-on');
+      await useOn('grok-classic');
       await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
+      await admin.waitForFunction(() => /正在穿：旧版像素|正在穿：.*classic/i.test(document.querySelector('[data-worn-caption="grok"]').textContent) || !/试穿中/.test(document.querySelector('[data-worn-caption="grok"]').textContent));
+      await stageDrawn('grok');
+      const worn = await stageOf('grok');
+      assert.match(worn.src, /grok-classic/, `after 穿上 the stage keeps the new pack: ${worn.src}`);
       assert.equal(saved().appearance.grok, 'grok-classic');
+      // the other way: back to her pixel pack, the stage follows without a reload
+      await useOn('grok-pixel');
+      for (let k = 0; k < 40 && saved().appearance.grok !== 'grok-pixel'; k++) await admin.waitForTimeout(200);
+      if (saved().appearance.grok !== 'grok-pixel') await Promise.reject(new Error('unsaved')).catch(async () => { throw new Error(`穿上 grok-pixel did not save: appearance=${JSON.stringify(saved().appearance)}; toasts=${JSON.stringify(await admin.$$eval('[data-sonner-toast]', (ts) => ts.map((t) => t.textContent)))}; button=${await admin.locator('[data-use-pack="grok-pixel"]').count()}`); });
+      await stageDrawn('grok', worn.src);
+      const back = await stageOf('grok');
+      assert.match(back.src, /grok-pixel/);
+      await showcaseShot('grok', 'a13-stage-2-pixel-again');
+      await useOn('grok-classic');
+      await stageDrawn('grok', back.src);
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
       await shot('a13-detail-look');
+      await showcaseShot('grok', 'a13-stage-3-classic-worn');
       await page.screenshot({ path: path.join(SHOTS, 'pet-after-look.png') });
-      return `try-on stage ${tried} (unsaved), then 穿上: pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=grok-classic`;
+      return `stage ${before.src.split('/').slice(-3).join('/')} → try-on ${tried.src.split('/').slice(-3).join('/')} (unsaved) → 穿上 ${worn.src.split('/').slice(-3).join('/')} → grok-pixel ${back.src.split('/').slice(-3).join('/')} → grok-classic again; pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=${saved().appearance.grok}`;
+    }, () => admin);
+
+    await step(S, 'A13b every built-in look of every character draws on her stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
+      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.map((c) => ({ id: c.id, packId: c.appearance.packId, options: c.appearance.options.filter((o) => o.source === 'builtin' && !o.adult).map((o) => ({ id: o.id, kind: o.kind })) })));
+      const rows = [];
+      const kinds = new Set();
+      for (const c of chars) {
+        await go(`/characters/${c.id}`);
+        await admin.waitForSelector(`[data-showcase="${c.id}"]`);
+        await admin.getByRole('tab', { name: '装扮' }).click();
+        for (const o of c.options) {
+          const r = await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [o.id, c.id]);
+          assert.equal(r.ok, true, `${c.id} ← ${o.id}: ${JSON.stringify(r)}`);
+          await admin.waitForFunction(([cid, pid]) => [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-pack="${pid}"]`)].some((x) => x.dataset.worn === 'true'), [c.id, o.id], { timeout: 10000 }).catch(() => {});
+          await stageDrawn(c.id);
+          const st = await stageOf(c.id);
+          assert.ok(st && st.type !== 'none' && !st.failed && st.drawn, `${c.id} in ${o.id} (${o.kind}): ${JSON.stringify(st)}`);
+          // and tried on from her wardrobe (in colour even before she is met: a silhouette is only for the worn look)
+          await admin.click(`[data-try-pack="${o.id}"]`);
+          await admin.waitForSelector('[data-trying-tag]');
+          await stageDrawn(c.id);
+          const tr = await stageOf(c.id);
+          assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying ${o.id}: ${JSON.stringify(tr)}`);
+          if (!kinds.has(o.kind)) {
+            kinds.add(o.kind);
+            await showcaseShot(c.id, `a13b-stage-${o.kind}-${o.id}`);
+          }
+          await admin.click(`[data-try-pack="${o.id}"]`);
+          await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
+          rows.push(`${c.id}/${o.id}[${o.kind}] worn→${st.type} tried→${tr.type}`);
+        }
+        // as she was
+        await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [c.packId || c.options[0].id, c.id]);
+      }
+      assert.ok(['sprites', 'rig', 'live2d', 'video'].every((k) => kinds.has(k)), [...kinds].join(','));
+      assert.equal(saved().appearance.grok, 'grok-classic');
+      return `${rows.length} looks drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
     }, () => admin);
 
     await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
