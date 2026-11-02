@@ -30,6 +30,7 @@
 - **旧角色已下线**：焰团、泡鲸、叶芽和“灵石”选择界面已移除。老存档打开时自动由新角色接替（泡鲸、叶芽 → 大肥鱼，焰团 → 克洛蒂），LobeHub agent、聊天记录和好感度都保留，她的人设在下一句话前更新；身上的服饰如果新角色没有，就换回日常服。旧存档会备份为 `pet.retired.bak.json`。
 - **换角色**：⋯ 菜单 → **角色列表**（每位角色带缩略图、名字、称号和关系）。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
 - **设置窗口（配置后台）**：⋯ 菜单 → **设置…**（或 Ctrl/⌘ + ,、托盘 → 打开设置…）打开 LobeHub 风格的设置窗口，左侧分组导航、右侧表单卡片，亮 / 暗主题；所有配置项、角色列表（预览、类型、来源、语音包、当前角色）、外观资源和主动行为 / 好感度规则都在这里，见 [usage.md 第六节](docs/usage.md#六设置窗口配置后台)。
+- **LobeHub 风格的界面与设计系统**：设置窗口和桌宠窗口（菜单、面板、对话气泡、输入框、提示）都用 LobeHub 的设计令牌（`@lobehub/ui` 主题，经 [lobe-design](https://github.com/lobehub/lobe-design-skill) 初始化），亮 / 暗主题跟随系统。设计系统在 `admin/src/design/`（后台）和 `src/renderer/design/`（桌宠窗口用的令牌导出），维护方式见 [docs/design-system.md](docs/design-system.md) 和 [usage.md 第六节](docs/usage.md#设计系统位置与维护)。
 - **角色设置**：设置窗口 → **角色列表** → 点角色进入详情，按角色设置**模型**、**个性化设定（System Role）**、**外观（角色包）**和**一键解锁**好感度（只作用于她）；桌宠里的 ⋯ → **角色列表** 仍可快速切换角色、换外观。
 - **换模型**：⋯ 菜单 → **角色列表** → 角色 → 模型。每位角色只能选自家厂商的模型（大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT），列表来自你在 LobeHub 里启用的模型；换角色时模型跟着换成新角色的（每位角色各自记住你的选择）。
 
@@ -341,7 +342,7 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
   - Windows：用安装包（`-setup.exe`）装的版本可以自动更新；zip 版和 Linux 的 tar.gz 只会提示有新版本，并在菜单里给出下载页。
   - 不想自动更新的话，设置环境变量 `PIXELPET_NO_UPDATE=1`。
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
-- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
+- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js admin` 驱动设置窗口（打开方式、每个分组、配置项编辑与保存、角色列表、行为控制、亮 / 暗主题）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和每位角色的 LobeHub agent。
 

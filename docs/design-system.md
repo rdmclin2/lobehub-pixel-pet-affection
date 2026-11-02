@@ -1,7 +1,7 @@
 # 设计系统（lobe-design · `@lobehub/ui`）
 
 > 配置后台（设置窗口）的视觉与组件基础。方案见 [admin-console-design.md](admin-console-design.md) §4（选型 B：Vite + React 19 + `@lobehub/ui`）。
-> 本文是 T1（lobe-design 初始化）+ 设计系统落地的说明；后台窗口挂载（`admin-window.js`、preload、广播）和各设置页不在本期范围内。
+> 本文是 lobe-design 初始化与设计系统落地的说明。设置窗口（`admin-window.js`、preload、广播、各设置页）的用法见 [usage.md 第六节](usage.md#六设置窗口配置后台)；桌宠窗口同样引用这里导出的令牌（见 §3）。
 
 ## 1. lobe-design 初始化（可追溯到技能仓库流程）
 
@@ -42,7 +42,7 @@ scripts/design-preview.js    Electron 预览窗口；--shots=<dir> 亮 / 暗全�
 | `design:preview` | 构建并打开预览窗口 |
 | `lint:design` | lobe-design lint（后台源码） |
 
-React、`@lobehub/ui` 等全部在 devDependencies，打包时已进 bundle：安装包的 `node_modules` 不变（运行时依赖仍只有 `electron-updater`）。CI：`release.yml` 用 `npm run dist:*`，`predist:*` 会自动构建后台，工作流不用改。建议（需要有 `workflow` 权限的人提交）：`test.yml` 在 `npm test` 后加 `npm run typecheck:admin` 与 `npm run build:admin`；`update-e2e.yml` 直接调用 `npx electron-builder`，在它之前加一步 `npm run build:admin`（后台窗口接入主进程之前不影响运行）。
+React、`@lobehub/ui` 等全部在 devDependencies，打包时已进 bundle：安装包的 `node_modules` 不变（运行时依赖仍只有 `electron-updater`）。CI：`release.yml` 用 `npm run dist:*`，`predist:*` 会自动构建后台，工作流不用改。建议（需要有 `workflow` 权限的人提交）：`test.yml` 在 `npm test` 后加 `npm run typecheck:admin` 与 `npm run build:admin`；`update-e2e.yml` 直接调用 `npx electron-builder`，在它之前加一步 `npm run build:admin`（否则 `update-e2e.yml` 打出的包里没有设置窗口页面）。
 
 ## 3. 设计令牌
 
@@ -64,7 +64,7 @@ React、`@lobehub/ui` 等全部在 devDependencies，打包时已进 bundle：�
 
 **明暗**：`initAppearance()` 用 `setLobeTheme({ appearance })` 写 `<html data-theme>`，跟随 `prefers-color-scheme`（Electron 把 `nativeTheme` 转发过来），`?theme=light|dark` 可固定。方案文档里写的 `ThemeProvider` 在 `@lobehub/ui` 6.x 已移除，这里按 v6 的写法实现。
 
-**桌宠窗口可用的导出**：`src/renderer/design/lobe-tokens.css` 是同一批 58 个 token 的纯 CSS 版（亮色 + 暗色 + `prefers-color-scheme` 兜底，外加 `--pet-space-*`），`tokens.json` 是数据版。两者都在 `build.files` 范围内。桌宠窗口本期**不引用**它（像素风格是否换成 LobeHub 风格由主人确认，见方案 T8）。
+**桌宠窗口可用的导出**：`src/renderer/design/lobe-tokens.css` 是同一批 58 个 token 的纯 CSS 版（亮色 + 暗色 + `prefers-color-scheme` 兜底，外加 `--pet-space-*`），`tokens.json` 是数据版。两者都在 `build.files` 范围内。桌宠窗口的 `index.html` 先加载 `lobe-tokens.css`，`style.css` 里的菜单、面板、气泡、输入框只用这些变量（亮 / 暗随 `prefers-color-scheme`）；角色美术本身保持像素风。
 
 ## 4. 基础组件
 

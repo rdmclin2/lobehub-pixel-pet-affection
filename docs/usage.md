@@ -211,6 +211,24 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 桌宠窗口里仍保留：⋯ → **角色列表**（快速切换、初次见面；她的页里有外观和好感度，模型和个性化设定点「在设置窗口中编辑 ›」）、衣柜、话题、聊天记录。宠物大小也可以直接在桌面上调：悬停时拖左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 在宠物上滚动。
 
+### 设计系统位置与维护
+
+设置窗口和桌宠窗口共用一套 LobeHub 设计系统（lobe-design 初始化，`@lobehub/ui` 主题），详细说明见 [design-system.md](design-system.md)：
+
+| 位置 | 内容 |
+| --- | --- |
+| `.agents/skills/lobe-design/` | lobe-design 技能（从 [lobe-design-skill](https://github.com/lobehub/lobe-design-skill) 安装）；项目层在 `.agents/ux/`（`product.md`、`components.md`、`lobe-design-rules.md`），`AGENTS.md` 末尾是它的托管块 |
+| `admin/` | 设置窗口源码（Vite + React 19 + `@lobehub/ui`）；`admin/src/design/` 是令牌（`tokens.ts`）、明暗（`theme.ts`）和根组件 `DesignProvider`；构建产物在 `src/admin-ui/`（不入库） |
+| `src/renderer/design/` | 桌宠窗口用的令牌导出 `lobe-tokens.css` / `tokens.json`（入库），由 `@lobehub/ui/theme.css` 生成；`src/renderer/style.css` 只引用这些 `--lobe-*` / `--pet-*` 变量 |
+
+维护：
+
+- 改后台：`npm run dev:admin`（Vite 开发服务器）或 `npm start`（`prestart` 会先 `npm run build:admin`）；提交前跑 `npm run typecheck:admin` 和 `npm run lint:design`（0 FAIL）。
+- 升级 `@lobehub/ui` 后跑 `npm run design:tokens` 重新导出 `src/renderer/design/*` 并提交；`npm test`（`test/design-system.test.js`）会检查导出与主题同步、lobe-design 项目层未过期。
+- 新组件优先用 `@lobehub/ui` 现有组件，不在项目里重写原子组件（规则见 `.agents/ux/components.md`）；颜色、字号、间距、圆角按角色取 token，不写死色值。
+- 看效果：`npm run design:preview`（令牌和组件预览，亮 / 暗），`xvfb-run -a node e2e/run.js design` / `petui` / `admin` 分别检查预览页、桌宠窗口和设置窗口。
+- 刷新 lobe-design 技能：在技能仓库里重新执行 `./install.sh --dir <本仓库>/.agents/skills --copy`，再跑 `node .agents/skills/lobe-design/scripts/bootstrap.mjs --check --root .` 和 `project-scan.mjs --check --root .`。
+
 ## 七、打包与发布
 
 ```bash
@@ -298,6 +316,8 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js outfit [角色] [服饰]` | 第二套服饰的真机检查（默认 `claude swimsuit`）：真实升级解锁 → 衣柜换上 → idle / walk / lifted 与 daily 对齐 → 重启保留 → 选「旧版像素」时回落到默认包 → 无控制台报错；截图和 `report.txt` 在 `out/e2e/outfit-<角色>-<服饰>/` |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
+| `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
+| `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
 | `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
