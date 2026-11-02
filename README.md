@@ -360,7 +360,7 @@ npm ci                                 # 按 lockfile 安装（Electron、Vite�
 npm start                              # prestart 先 npm run build:admin，再启动桌宠
 npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 未配置时）
 xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux
-npm run dev:admin                      # 只开发设置窗口界面：Vite 开发服务器（浏览器里没有桌宠数据）
+npm run dev:admin                      # 只开发设置窗口界面：Vite 开发服务器 http://localhost:5173/（浏览器里没有桌宠数据）
 ```
 
 - **打开设置窗口**：悬停宠物 → ⋯（或右键）→ **设置…**；或在桌宠上按 **Ctrl+,**（macOS **⌘,**）；或托盘图标 → **打开设置…**。
@@ -371,7 +371,7 @@ npm run dev:admin                      # 只开发设置窗口界面：Vite 开�
 
 **半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM 和 Live2D 形象包生效（像素 / 图片包保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
 
-1. **选 Live2D / VRM 形象**：设置窗口 → 角色 → 点一位角色 → **形象包** 标签。大肥鱼内置「大肥鱼 · Live2D」，点 **穿上**；自己的模型用同页的 **导入 Live2D…**（`.model3.json` / `.zip`）或 **导入 VRM…**（`.vrm`）。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
+1. **选 Live2D / VRM 形象**：设置窗口 → 角色 → 点一位角色 → **形象包** 标签。大肥鱼内置「大肥鱼 · Live2D」，点 **穿上**；自己的模型用同页的 **导入 Live2D…**（`.model3.json` / `.zip`）或 **导入 VRM…**（`.vrm`），导入的卡片出现后再点它的 **穿上**。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
 2. **切换半身 / 全身**：设置窗口 → 玩法 → 桌宠行为 → **取景**（全局）；或角色详情 → 形象包 → **取景**（只这位角色：跟随 / 全身 / 半身）。立即生效。
 3. **测试**（不要用 `all`，它包含消耗 token 的 `live`）：
 
