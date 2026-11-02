@@ -5488,7 +5488,16 @@ async function vrmUi() {
   const adultOk = path.join(fix, 'adult-ok');
   fs.mkdirSync(path.join(adultOk, 'models'), { recursive: true });
   fs.copyFileSync(open, path.join(adultOk, 'models', 'o.vrm'));
-  fs.writeFileSync(path.join(adultOk, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-adult-open', name: 'Adult Open Fish', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/o.vrm', maid: 'models/o.vrm' } } }));
+  // one model per outfit: a VRM pack's wardrobe has one entry per distinct model (520d86c), so the same .vrm
+  // under daily and maid would be a single look with no wardrobe at all
+  fs.copyFileSync(open, path.join(adultOk, 'models', 'maid.vrm'));
+  fs.writeFileSync(path.join(adultOk, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-adult-open', name: 'Adult Open Fish', species: 'dafeiyu', kind: 'vrm', adult: true, vrm: { outfits: { daily: 'models/o.vrm', maid: 'models/maid.vrm' } } }));
+  // an all-ages VRM pack with several looks (one model each), so it has a real wardrobe: daily (stranger),
+  // pajamas (close), yukata (flirty) — the last two locked by affection for a new companion
+  const multi = path.join(fix, 'multi-open');
+  fs.mkdirSync(path.join(multi, 'models'), { recursive: true });
+  for (const o of ['daily', 'pajamas', 'yukata']) fs.copyFileSync(open, path.join(multi, 'models', `${o}.vrm`));
+  fs.writeFileSync(path.join(multi, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-multi-open', name: 'Open Fish Looks', species: 'dafeiyu', kind: 'vrm', vrm: { outfits: { daily: 'models/daily.vrm', pajamas: 'models/pajamas.vrm', yukata: 'models/yukata.vrm' } } }));
 
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
   const errors = [];
@@ -5631,32 +5640,65 @@ async function vrmUi() {
       return r.errors[0];
     }, page);
 
-    await step(S, 'with adult content off, an allowed 18+ VRM pack is not offered, and adult outfits stay hidden', async () => {
+    const wardrobeHidden = () => page.evaluate(() => document.getElementById('btn-wardrobe').classList.contains('hidden'));
+    const lookKey = () => page.evaluate(() => document.getElementById('pet-look').dataset.key);
+    await step(S, 'a single-model VRM pack has no 衣柜; with adult content off, an allowed 18+ VRM pack is not offered, and adult outfits stay hidden', async () => {
+      // Open Fish (one .vrm) is worn since the export step: one model cannot change clothes, so 衣柜 is
+      // hidden by design (520d86c) and no other outfit can be put on
+      await page.click('#panel-close');
+      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), OID);
+      assert.equal(await wardrobeHidden(), true, 'one VRM model: no 衣柜');
+      const eqP = await page.evaluate(() => window.pet.equipOutfit('pajamas'));
+      assert.equal(eqP.ok, false, 'no other outfit to change into');
+      const eqS = await page.evaluate(() => window.pet.equipOutfit('scarf'));
+      assert.equal(eqS.ok, false, 'not even a stranger-stage outfit');
+      await page.screenshot({ path: path.join(OUT, 'vrmui-single-look-no-wardrobe.png') });
+      const single = `single model ${await lookKey()}: #btn-wardrobe hidden, equipOutfit(pajamas) → ${eqP.reason}, equipOutfit(scarf) → ${eqS.reason}`;
       const r = await page.evaluate((d) => window.pet.debugImportPack(d), adultOk);
       assert.equal(r.ok, true, JSON.stringify(r.errors));
-      await page.click('#panel-close');
+      const rm = await page.evaluate((d) => window.pet.debugImportPack(d), multi);
+      assert.equal(rm.ok, true, JSON.stringify(rm.errors));
       await openCurrentPage(page);
       const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
       assert.ok(!listed.includes('vrm-adult-open'), listed.join(', '));
+      assert.ok(listed.includes('vrm-multi-open'), listed.join(', '));
       await page.click('#panel-close');
+      // nor can it be put on another way
+      const set = await page.evaluate(() => window.pet.setAppearance('vrm-adult-open', 'dafeiyu'));
+      await page.waitForTimeout(500);
+      assert.ok(!(await lookKey()).startsWith('vrm-adult-open/'), await lookKey());
+      // the multi-look VRM pack has a wardrobe, with no adult card in it
+      await openCurrentPage(page);
+      await page.click('.pack-opt[data-pack="vrm-multi-open"] .pick');
+      await page.waitForSelector('.pack-opt.on[data-pack="vrm-multi-open"]');
+      await page.click('#panel-close');
+      await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('vrm-multi-open/'));
+      assert.equal(await wardrobeHidden(), false, 'several VRM models: 衣柜 shown');
       await clickAct(page, 'wardrobe');
       await page.waitForSelector('#panel:not(.hidden) .card');
       const cards = await page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, locked: c.classList.contains('locked'), adult: !!c.querySelector('.tag.adult') })));
+      assert.deepEqual(cards.map((c) => c.id), ['daily', 'pajamas', 'yukata']);
       assert.equal(cards.filter((c) => c.adult).length, 0);
-      return `外观: ${listed.join(', ')}`;
+      const eq = await page.evaluate(() => window.pet.equipOutfit('maid'));
+      assert.equal(eq.ok, false);
+      return `${single} | 外观: ${listed.join(', ')} (no vrm-adult-open); setAppearance(vrm-adult-open) → ok=${set.ok} ${set.reason || ''}, look ${await lookKey()}; vrm-multi-open 衣柜: ${cards.map((c) => c.id).join(', ')} (0 adult); equipOutfit(maid) → ${eq.reason}`;
     }, page);
 
     await step(S, 'the VRM pack outfits stay locked by affection in the wardrobe, and a locked one cannot be worn', async () => {
       const cards = await page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, locked: c.classList.contains('locked'), vrm: !!c.querySelector('.vrm-look'), st: c.querySelector('.st').textContent })));
       const locked = cards.filter((c) => c.locked);
-      assert.ok(locked.length > 0, 'a new companion has locked outfits');
+      assert.deepEqual(locked.map((c) => c.id), ['pajamas', 'yukata'], 'a new companion: the close / flirty looks are locked');
+      assert.equal(cards.find((c) => c.id === 'daily').locked, false);
       assert.ok(locked.every((c) => c.vrm && /🔒/.test(c.st)), JSON.stringify(locked));
       // the importer's 1×1 stand-in picture is not shown: the VRM tile is
       await page.waitForFunction(() => [...document.querySelectorAll('.card .vrm-look img')].every((i) => i.complete && i.hidden));
       await page.click(`.card[data-outfit="${locked[0].id}"]`);
       await page.waitForFunction(() => /还没解锁/.test(document.getElementById('panel-msg').textContent));
       await page.screenshot({ path: path.join(OUT, 'vrmui-wardrobe.png') });
-      return `${locked.length}/${cards.length} locked: ${locked.map((c) => c.id).join(', ')}`;
+      const r = await page.evaluate((id) => window.pet.equipOutfit(id), locked[0].id);
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'locked');
+      return `${locked.length}/${cards.length} locked: ${locked.map((c) => c.id).join(', ')}; equipOutfit(${locked[0].id}) → ${r.reason}`;
     }, page);
 
     await step(S, 'with 18+ on but affection low, the 18+ VRM pack\'s adult outfit shows locked and cannot be worn', async () => {
@@ -5694,9 +5736,15 @@ async function vrmUi() {
       const adult = await page.locator('.card .tag.adult').count();
       assert.equal(adult, 0);
       const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
+      assert.ok(!key.startsWith('vrm-adult-open/'), key);
       await page.screenshot({ path: path.join(OUT, 'vrmui-adult-off-again.png') });
       await page.click('#panel-close');
-      return `maid worn with 18+ on; 18+ off → look ${key}, ${adult} adult cards`;
+      // the 18+ pack is gone from 外观 again
+      await openCurrentPage(page);
+      const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
+      assert.ok(!listed.includes('vrm-adult-open'), listed.join(', '));
+      await page.click('#panel-close');
+      return `maid worn with 18+ on; 18+ off → look ${key}, ${adult} adult cards, 外观 without vrm-adult-open`;
     }, page);
 
     await step(S, 'without a 3D renderer loaded, the worn VRM pack shows its VRM tile on the desk', async () => {
