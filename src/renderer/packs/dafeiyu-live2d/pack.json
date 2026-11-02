@@ -10,6 +10,9 @@
   "kind": "live2d",
   "pixelated": false,
   "model": "model/medium.model3.json",
+  "halfBody": {
+    "waist": 0.52
+  },
   "live2d": {
     "height": 0.8,
     "params": {

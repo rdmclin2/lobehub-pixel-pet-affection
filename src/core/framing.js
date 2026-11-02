@@ -7,8 +7,8 @@
 //   1. her own choice on her page in the settings window (settings.framings[<character id>]),
 //   2. the pack she wears (pack.json `framing`, e.g. a bust-only model that has no legs to show),
 //   3. the global setting (settings.prefs.framing, 桌宠行为 → 大小与取景).
-// Only looks drawn by a camera can be re-framed (VRM today); the others (pixel sprites, pictures, rigs)
-// keep their full art whatever is chosen, and say so (`supported: false`).
+// Only looks drawn live from a model can be re-framed (VRM: the camera; Live2D: the model's scale and offset);
+// the others (pixel sprites, pictures, rigs) keep their full art whatever is chosen, and say so (`supported: false`).
 //
 // The half-body camera band comes from the humanoid bones (head, neck, upperChest / chest, hips), not from
 // the whole model's bounding box, so long hair, a tail or a skirt do not move the cut; a model without
@@ -23,8 +23,11 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const FRAMINGS = ['full', 'half'];
   const DEFAULT = 'full';
-  // kinds whose renderer can re-frame (a camera): others always show their full art
-  const SUPPORTED_KINDS = ['vrm'];
+  // kinds whose renderer can re-frame (VRM: a camera; Live2D: scale + offset): others always show their full art
+  const SUPPORTED_KINDS = ['vrm', 'live2d'];
+  // pack.json `halfBody.waist`: where the half-body cut sits, as a share of her height from the top of her head
+  // (0) to her soles (1). Optional, for either kind; the renderer measures / infers it otherwise.
+  const WAIST_RANGE = [0.2, 0.9];
 
   const isFraming = (v) => FRAMINGS.includes(v);
   // a stored value → a framing; anything else (missing, misspelt, an old file) → `dflt`
@@ -69,7 +72,19 @@
   // `head`: her head as measured from its own vertices, { top, minX, maxX } (optional — raised arms or a prop make
   // the box taller than her head, this does not; a big chibi head or wide hair must fit the canvas sideways).
   // -> { top, bottom, cx, source ('bones' | 'box'), cut (share of her full height shown, 0..1, from the top) }
-  function halfBodyBand(bones, box, { head: headBox = null } = {}) {
+  // `waist` (pack.json halfBody.waist, optional): the cut at that share of her height down from the top of the box,
+  // instead of the one measured from the hips bone (source then 'pack').
+  function halfBodyBand(bones, box, { head: headBox = null, waist = null } = {}) {
+    const band = boneBand(bones, box, headBox);
+    if (!isWaist(waist)) return band;
+    const fullH = Math.max(1e-6, box.maxY - box.minY);
+    const bottom = box.maxY - fullH * waist;
+    const top = band.source === 'bones' ? Math.max(band.top, bottom + fullH * 0.05) : box.maxY;
+    const drawnTop = Math.min(box.maxY, top + ((top - bottom) * HALF.margin) / (1 - HALF.margin));
+    return { ...band, top, bottom, source: 'pack', cut: clamp01((drawnTop - bottom) / fullH) };
+  }
+  const isWaist = (v) => typeof v === 'number' && v >= WAIST_RANGE[0] && v <= WAIST_RANGE[1];
+  function boneBand(bones, box, headBox) {
     const headTop = headBox && headBox.top;
     const b = bones || {};
     const ok = (p) => p && Number.isFinite(p.y) && Number.isFinite(p.x);
@@ -119,6 +134,65 @@
     return { visible: mix(a.visible, b.visible), y: mix(a.y, b.y), dist: mix(a.dist, b.dist), x: mix(a.x || 0, b.x || 0) };
   }
 
+
+  // ---- Live2D -----------------------------------------------------------------------------------------
+  // A Live2D model is a flat picture: no bones, so where her waist is comes from (most trusted first)
+  //   'pack'    pack.json halfBody.waist (share of her height, top of head 0 .. soles 1),
+  //   'hitarea' the model's own Head hit area (.model3.json HitAreas): her head's height → the waist,
+  //   'eyes'    the drawables ParamEyeLOpen moves (every Cubism model has eyes): eye line → head → waist,
+  //   'default' L2D.dflt of her height.
+  // A head of share h of her height puts the waist at about L2D.k0 + L2D.k1·h (an adult head ≈ 1/7.5 of her
+  // height → waist ≈ 0.40; a chibi head ≈ 1/3 → ≈ 0.57), within L2D.min..max. From the top of her hair the eyes
+  // are about two thirds of the way down to her chin (hair adds volume on top): head ≈ 1.5 × (eyes − top).
+  const L2D = { k0: 0.285, k1: 0.86, min: 0.3, max: 0.75, dflt: 0.55, eyesToHead: 1.5 };
+  const waistFromHead = (h) => Math.max(L2D.min, Math.min(L2D.max, L2D.k0 + L2D.k1 * h));
+
+  // `content`: her drawn extent in model pixels (y down): { top, bottom, minX, maxX } (opaque drawables at rest);
+  // `waist`: pack.json halfBody.waist; `head`: the Head hit area { top, bottom, minX, maxX }; `eyes`: the eyes'
+  // extent { top, bottom, minX, maxX } (model px).
+  // -> { top (her head's top), bottom (the cut, model px), cx (centre to frame: her head's, else the content's),
+  //      waist (share of her height), source, cut (share of her height shown — touch zones) }
+  function live2dHalfBand({ content, waist = null, head = null, eyes = null } = {}) {
+    const c = content;
+    const H = Math.max(1e-6, c.bottom - c.top);
+    const mid = (b) => (b.minX + b.maxX) / 2;
+    const fine = (b) => b && [b.top, b.bottom, b.minX, b.maxX].every(Number.isFinite) && b.bottom > b.top;
+    let share = null;
+    let source = 'default';
+    let cx = mid(c);
+    if (isWaist(waist)) { share = waist; source = 'pack'; }
+    if (fine(head) && head.bottom > c.top && head.bottom - c.top < H * 0.7) {
+      if (share == null) { share = waistFromHead((head.bottom - c.top) / H); source = 'hitarea'; }
+      cx = mid(head);
+    } else if (fine(eyes) && eyes.top > c.top) {
+      const eyeY = (eyes.top + eyes.bottom) / 2;
+      if (share == null && eyeY - c.top < H * 0.45) { share = waistFromHead((L2D.eyesToHead * (eyeY - c.top)) / H); source = 'eyes'; }
+      cx = mid(eyes);
+    }
+    if (share == null) share = L2D.dflt;
+    const bottom = c.top + H * share;
+    return { top: c.top, bottom, cx, waist: share, source, cut: clamp01(share) };
+  }
+
+  // Where the model goes in the canvas (W × H px) for a framing: { s (scale), x, y (model's top-left) }.
+  // `model`: its size at scale 1 (w, h, model px); `share`: her share of the canvas height in 全身 (pack.json
+  // live2d.height). 全身 is the old fit exactly: model height × share, feet just above the bottom, centred.
+  // 半身: the band (top of her head → the cut) fills the canvas, the cut on its bottom edge, HALF.margin of air
+  // above her head, her head centred sideways; never smaller than 全身.
+  function live2dPlacement(band, { W, H, model, share = 0.8, mode = 'full' }) {
+    const sFull = (H * share) / Math.max(1e-6, model.h);
+    const full = { s: sFull, x: (W - model.w * sFull) / 2, y: H * 0.995 - model.h * sFull };
+    if (mode !== 'half' || !band) return full;
+    const visible = Math.max(1e-6, band.bottom - band.top) / (1 - HALF.margin);
+    const s = Math.max(sFull, H / visible);
+    return { s, x: W / 2 - band.cx * s, y: H - band.bottom * s };
+  }
+  // two placements mixed (the switch glides, eased like blendCamera)
+  function blendPlacement(a, b, t) {
+    const k = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+    return { s: a.s + (b.s - a.s) * k, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+  }
+
   // A touch on the half-body picture, in her full-body proportions: the visible box of the half-body picture
   // spans the top `cut` of her, so y (0..1 down that box) is y·cut of her full height. Parts below the cut
   // (legs, feet; the hips as the cut sits at the waist) cannot be reached.
@@ -127,5 +201,5 @@
     return { ...pt, y: pt.y * Math.min(1, framing.cut) };
   }
 
-  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, HALF, HALF_BOX, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
+  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, WAIST_RANGE, HALF, HALF_BOX, L2D, isWaist, waistFromHead, live2dHalfBand, live2dPlacement, blendPlacement, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
 });

@@ -17,7 +17,7 @@
 // data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y), data-springs (joints),
 // data-vrm (1.0 | 0.x), data-anim (vrma when the pack's idle animation plays, none, failed), data-framing
 // (full | half, what the camera frames now), data-cut (half: the share of her height shown, for touch zones),
-// data-band (bones | box: what the half-body band was measured from).
+// data-band (bones | box | pack: what the half-body band was measured from).
 // window.PetVRM.debug() has the same and more.
 (function () {
   const M = window.PetVrmMotion;
@@ -287,7 +287,7 @@
         const n = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(name);
         if (n) { const p = n.getWorldPosition(new T.Vector3()); bones[name] = { x: p.x, y: p.y }; }
       }
-      band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y }, { head: headExtent(T) });
+      band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y }, { head: headExtent(T), waist: look.halfBody && look.halfBody.waist }); // pack.json halfBody.waist overrides the hips
       canvas.dataset.band = band.source;
     }
 
