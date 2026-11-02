@@ -347,6 +347,43 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和每位角色的 LobeHub agent。
 
+## 配置后台（设置窗口）
+
+桌宠的所有配置都在单独的**设置窗口**里：小屋（当前角色、关系、陪伴开关）、角色（角色图鉴 → 角色详情：形象包、好感、模型、个性化设定、语音）、玩法（桌宠行为、主动搭话与好感、同屏伙伴）、设置（声音、资源与外观、连接、系统）。改动立即保存到 `settings.json` 并在桌宠上生效，重启后保留。
+
+从干净克隆跑起来（Node.js 20+；无显示器的 Linux 先装 `xvfb`）：
+
+```bash
+git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
+cd lobehub-pixel-pet-affection
+npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）
+npm start                              # prestart 先 npm run build:admin，再启动桌宠
+npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 未配置时）
+xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux
+npm run dev:admin                      # 只开发设置窗口界面：Vite 开发服务器（浏览器里没有桌宠数据）
+```
+
+- **打开设置窗口**：悬停宠物 → ⋯（或右键）→ **设置…**；或在桌宠上按 **Ctrl+,**（macOS **⌘,**）；或托盘图标 → **打开设置…**。
+- **查看角色列表**：设置窗口左侧 → **角色**（角色图鉴，每位角色一张卡片，可按形象包类型筛选）→ 点一张卡片看**角色详情**。
+- 不登录 LobeHub 试玩、每一步的说明和常见问题：[使用说明 · 十、配置后台：从干净克隆跑起来](docs/usage.md#十配置后台从干净克隆跑起来)；设计、覆盖矩阵与维护：[docs/admin-console-design.md](docs/admin-console-design.md)。
+
+## 半身模式（VRM / Live2D）
+
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM 和 Live2D 形象包生效（像素 / 图片包保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
+
+1. **选 Live2D / VRM 形象**：设置窗口 → 角色 → 点一位角色 → **形象包** 标签。大肥鱼内置「大肥鱼 · Live2D」，点 **穿上**；自己的模型用同页的 **导入 Live2D…**（`.model3.json` / `.zip`）或 **导入 VRM…**（`.vrm`）。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
+2. **切换半身 / 全身**：设置窗口 → 玩法 → 桌宠行为 → **取景**（全局）；或角色详情 → 形象包 → **取景**（只这位角色：跟随 / 全身 / 半身）。立即生效。
+3. **测试**（不要用 `all`，它包含消耗 token 的 `live`）：
+
+   ```bash
+   npm test
+   xvfb-run -a node e2e/run.js admin        # 设置窗口
+   xvfb-run -a node e2e/run.js vrmframe     # VRM 半身 / 全身
+   xvfb-run -a node e2e/run.js live2dframe  # Live2D 半身 / 全身
+   ```
+
+详细步骤：[使用说明 · 十一、半身模式](docs/usage.md#十一半身模式vrm--live2d)；原理与每个包的腰线配置：[docs/half-body-mode.md](docs/half-body-mode.md)。
+
 ## 上游署名与许可
 
 - 本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。好感度系统、服饰立绘、合规守卫等派生部分同样以 MIT 发布。
