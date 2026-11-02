@@ -161,3 +161,11 @@ test('adult content needs both an 18+ answer and the switch, and is never allowe
   assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: true }, 'testchan'), true);
   assert.equal(aff.adultAllowed({ ageConfirmed: true, adultContent: true }, 'dafeiyu'), false);
 });
+
+test('toAffectionProgress: every stage comes along as a milestone for the heart meter (safe names when not adult)', () => {
+  const pr = aff.toAffectionProgress({ affection: 40, relStage: 'close', peakStage: 'close', affectionToday: 3 }, { adult: false });
+  assert.deepEqual(pr.stages.map((s) => s.id), aff.REL_STAGES.map((s) => s.id));
+  assert.deepEqual(pr.stages.map((s) => s.min), aff.REL_STAGES.map((s) => s.min));
+  assert.equal(pr.stages.find((s) => s.id === 'lover').name, '挚友');
+  assert.equal(aff.toAffectionProgress({ affection: 90, relStage: 'lover', peakStage: 'lover', affectionToday: 0 }, { adult: true }).stages.find((s) => s.id === 'lover').name, '恋人');
+});

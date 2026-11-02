@@ -37,7 +37,22 @@ const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
 const SYSTEM_ROLE_MAX = 1000;
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS };
+// 主动行为 (core/proactive.js nextEvent + LlmBudget): whether she speaks up on her own, and how often.
+// The defaults are proactive.DEFAULTS, which these replaced as hard-coded constants (admin console §2.5).
+const PROACTIVE = { enabled: true, speakCooldownMin: 12, boredAfterMin: 45, hungryAt: 75, maxLlmPerHour: 6 };
+const PROACTIVE_RANGE = { speakCooldownMin: [3, 240], boredAfterMin: [5, 480], hungryAt: [50, 100], maxLlmPerHour: [0, 30] };
+// 好感度 rules (core/affection.js): the offline decay switch and the daily gain cap (default DAILY_CAP 12).
+const AFFECTION_RULES = { decay: true, dailyCap: 12 };
+const DAILY_CAP_RANGE = [4, 40];
+// 设置窗口外观: the admin console's light / dark theme ('auto' follows the OS).
+const UI = { theme: 'auto' };
+const THEMES = ['auto', 'light', 'dark'];
+// 系统: GPU acceleration (app.disableHardwareAcceleration must run before the app is ready → takes a restart).
+const SYSTEM = { hardwareAcceleration: true };
+// Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
+const RESTART_KEYS = ['system.hardwareAcceleration'];
+
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM } };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -49,6 +64,30 @@ function normalizeApi(raw) {
   const port = Number.isInteger(a.port) && a.port >= API.minPort && a.port <= API.maxPort ? a.port : API.port;
   const token = typeof a.token === 'string' && /^[A-Za-z0-9_-]{24,64}$/.test(a.token) ? a.token : '';
   return { enabled: a.enabled === true && !!token, port, token };
+}
+
+const intIn = (v, [min, max], d) => (Number.isInteger(v) && v >= min && v <= max ? v : d);
+
+function normalizeProactive(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  const out = { enabled: typeof p.enabled === 'boolean' ? p.enabled : PROACTIVE.enabled };
+  for (const k of Object.keys(PROACTIVE_RANGE)) out[k] = intIn(p[k], PROACTIVE_RANGE[k], PROACTIVE[k]);
+  return out;
+}
+
+function normalizeAffectionRules(raw) {
+  const a = raw && typeof raw === 'object' ? raw : {};
+  return { decay: typeof a.decay === 'boolean' ? a.decay : AFFECTION_RULES.decay, dailyCap: intIn(a.dailyCap, DAILY_CAP_RANGE, AFFECTION_RULES.dailyCap) };
+}
+
+function normalizeUi(raw) {
+  const u = raw && typeof raw === 'object' ? raw : {};
+  return { theme: THEMES.includes(u.theme) ? u.theme : UI.theme };
+}
+
+function normalizeSystem(raw) {
+  const y = raw && typeof raw === 'object' ? raw : {};
+  return { hardwareAcceleration: typeof y.hardwareAcceleration === 'boolean' ? y.hardwareAcceleration : SYSTEM.hardwareAcceleration };
 }
 
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
@@ -85,6 +124,10 @@ function normalizeSettings(raw) {
   s.tts = normalizeTts(s.tts && s.tts.providerSet === true ? s.tts : { ...s.tts, provider: 'auto' });
   // 语音输入 (core/asr.js): off by default; engine, fallback, language and the local server. Its optional key is in tts-keys.json
   s.asr = normalizeAsr(s.asr);
+  s.proactive = normalizeProactive(s.proactive);
+  s.affectionRules = normalizeAffectionRules(s.affectionRules);
+  s.ui = normalizeUi(s.ui);
+  s.system = normalizeSystem(s.system);
   return s;
 }
 
@@ -137,4 +180,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, RESTART_KEYS, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

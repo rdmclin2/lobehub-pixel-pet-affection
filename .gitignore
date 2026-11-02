@@ -11,3 +11,5 @@ tts-cache/
 *.VRM
 *.vrma
 *.VRMA
+# admin console build output (npm run build:admin; rebuilt by prestart / predist:*)
+src/admin-ui/
