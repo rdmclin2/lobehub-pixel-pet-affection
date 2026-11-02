@@ -25,7 +25,7 @@ import {
   toast,
 } from '@lobehub/ui';
 import { Eye, EyeOff, RotateCcw } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { api, at, type FieldDef } from './api';
 import { useSave, useStore } from './store';
@@ -116,8 +116,18 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
   const save = useSave();
   const [busy, setBusy] = useState(false);
   const [local, setLocal] = useState(value);
-  useEffect(() => setLocal(value), [value]);
+  // while the owner is still moving the slider (or a save is on its way) the stored value must not snap the
+  // control back; it follows the store again once the edit is saved
+  const editing = useRef(0);
+  const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localRef = useRef(local);
+  localRef.current = local;
+  useEffect(() => {
+    if (!editing.current) setLocal(value);
+  }, [value]);
+  useEffect(() => () => { if (keyTimer.current) clearTimeout(keyTimer.current); }, []);
   const commit = async (v: unknown) => {
+    editing.current += 1;
     setBusy(true);
     setLocal(v);
     try {
@@ -128,6 +138,7 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
         toast.error({ description: r.message || r.reason, title: `${field.label} 没有保存` });
       }
     } finally {
+      editing.current -= 1;
       setBusy(false);
     }
   };
@@ -156,9 +167,16 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
           align="center"
           gap={12}
           horizontal
-          // arrow keys move the thumb; the value is saved when the key is let go (as on pointer release)
+          // arrow keys move the thumb; the value is saved once the keys rest for a moment (as on pointer release)
           onKeyUp={(e) => {
-            if (/^(Arrow|Home|End|Page)/.test(e.key) && Number(local) !== Number(value)) commit(Number(local));
+            if (!/^(Arrow|Home|End|Page)/.test(e.key)) return;
+            if (keyTimer.current) clearTimeout(keyTimer.current);
+            else editing.current += 1;
+            keyTimer.current = setTimeout(() => {
+              keyTimer.current = null;
+              editing.current -= 1;
+              commit(Number(localRef.current));
+            }, 350);
           }}
           style={{ width: 300 }}
           {...data}
