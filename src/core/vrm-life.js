@@ -41,7 +41,8 @@
 
     // ctx: { style (profile), sleep, sad (0..1), standing, lifted, velX (window px/s), fingers (the clip has
     //        finger keys), idle (nothing else going on: glances allowed), landKey (goes up when she is put
-    //        down: a short knee dip), nod (0..1: small chewing nods while she eats) }
+    //        down: a short knee dip), nod (0..1: small chewing nods while she eats), talk (0..1: nods while
+    //        she talks) }
     // → { bones: { name: { x, y, z } deg }, gaze: { x, y } (NDC offset), away: bool, blink: bool, breath: -1..1 }
     function step(dt, ctx = {}) {
       const P = ctx.style || style || { hipSway: 0.75, headTilt: 3, handPose: 0.38, stanceWidth: 0, breath: { chest: 1, upperChest: 0.5, spine: 0.7, shoulder: 0.45 }, lookAway: 0.09 };
@@ -87,6 +88,9 @@
       add('neck', 3 * (ctx.sad || 0) * 0.2);
       // eating: small nods with the chewing (the mouth chews at 1.4 Hz, core/vrm-motion.js chewMouth)
       if (ctx.nod) add('head', 2.5 * ctx.nod * Math.max(0, Math.sin(t * 2 * Math.PI * 1.4)));
+      // talking: light nods on the phrases, on two beats that never line up (the talk clips do the gestures;
+      // T-2711: 说话 = 讲解手势 + 轻点头, unlike thinking, which holds still and looks up)
+      if (ctx.talk) add('head', 2.2 * ctx.talk * Math.max(0, Math.sin(t * 2 * Math.PI * 0.9) * 0.7 + Math.sin(t * 2 * Math.PI * 0.37 + 0.8) * 0.5));
 
       // relaxed fingers when the clip does not pose them
       if (ctx.fingers === false) {
@@ -127,9 +131,11 @@
       L.swing = clamp(L.swing + L.v * dt, -1, 1);
       if (L.k > 0.001) {
         const k = L.k;
-        const sw = L.swing * k;
+        // how far the legs swing with the drag: the style's liftSwing (the male set's legs are longer and his
+        // baked hanging pose stiffer: at 1× they swung half as far as hers, T-2711)
+        const sw = L.swing * k * (P.liftSwing || 1);
         const still = 1 - Math.min(1, Math.abs(L.swing) * 2);
-        const dangle = Math.sin(t * 2 * Math.PI * 0.55) * 4 * k * (0.4 + 0.6 * still);
+        const dangle = Math.sin(t * 2 * Math.PI * 0.55) * 4 * k * (0.4 + 0.6 * still) * (P.liftSwing || 1);
         const hz = clamp(-LIMITS.liftHips * sw, -LIMITS.liftHips, LIMITS.liftHips);
         const hips = out.hips || (out.hips = { x: 0, y: 0, z: 0 });
         hips.z = hips.z * (1 - k) + hz; // the weight shift gives way to the swing

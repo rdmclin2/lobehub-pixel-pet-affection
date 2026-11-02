@@ -41,6 +41,20 @@
   const ZONE_FACE = { face: { happy: 0.5, angry: 0.25, blinkRight: 1 }, hands: { happy: 0.8 }, head: { relaxed: 0.8, happy: 0.4 } };
   const HOLD_FACE = { lift: { surprised: 0.8 }, think: { neutral: 0.3 }, eat: { happy: 0.7 }, talk: { happy: 0.2 }, walk: { happy: 0.25 } };
 
+  // ---------- walking about and turning (T-2711, docs §3.6) ----------
+  // She faces 18° towards where she looks, and turns to at most WALK.yaw (≤ 60°) while she walks — over
+  // ≥ 0.3 s, never a snap: the turn speeds up and slows down (turnRate deg/s at most, accel deg/s²), and her
+  // head and chest lead it (turnLead deg, the renderer turns them ahead of the hips). While the window
+  // moves she plays the walk cycle (hold.walk, baked in place) at the window's pace: the clip's own speed
+  // (clip.speed, hip heights / s) seen side-on (sin of her turn) matched to the window's speed, so the
+  // planted foot keeps up with the floor instead of sliding. Turning on the spot she takes small steps
+  // (turnStep × the clip's pace); when the window stops the walk fades back to the idle.
+  const WALK = { yaw: 50, idleYaw: 18, turnRate: 150, accel: 520, gain: 4, lead: 0.5, leadMax: 22, turnStep: 0.55, minSin: 0.5, maxRate: 1.8, moving: 0.12, turning: 3 };
+  // ---------- talk segments (T-2711, docs §5.3) ----------
+  // A long reply rotates through the style's talk clips (hold.talk, hold.talk-2, hold.talk-3): each plays
+  // once from its start, then the next one (never the same twice in a row) cross-fades in over xfade s.
+  const TALK = { xfade: 0.6, nodHz: 0.9 };
+
   // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
   // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle
   const PRIORITY = { lift: 6, drop: 5, touch: 5, celebrate: 4, cue: 0 };
@@ -123,6 +137,10 @@
       angryUntil: -1,
       shyUntil: -1,
       landKey: 0,
+      yaw: null, // her facing now (deg, + = to her left), eased towards the target (WALK)
+      yawVel: 0,
+      gait: { phase: 0, rate: 0, wanted: 0, on: false, steps: 0 }, // the walk cycle's clock
+      talk: { cur: null, prev: null, n: 0, last: null, segments: [] }, // the talk segment playing, the one fading out
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
@@ -284,6 +302,75 @@
       }
     }
 
+    // ---------- facing, the walk cycle, talk segments (T-2711) ----------
+    // Turn towards `target` (deg): a speed that follows the remaining angle (gain), capped at turnRate and
+    // changed at most accel deg/s² — so every turn eases in and out and takes ≥ 0.3 s for anything visible.
+    function stepFacing(dt, target) {
+      if (S.yaw === null) S.yaw = target; // the first frame: no turn from nowhere
+      const err = target - S.yaw;
+      const want = clamp(err * WALK.gain, -WALK.turnRate, WALK.turnRate);
+      const dv = clamp(want - S.yawVel, -WALK.accel * dt, WALK.accel * dt);
+      S.yawVel += dv;
+      S.yaw += S.yawVel * dt;
+      if (Math.abs(target - S.yaw) < 0.05 && Math.abs(S.yawVel) < 1) { S.yaw = target; S.yawVel = 0; }
+      return { target, turning: Math.abs(target - S.yaw) > WALK.turning };
+    }
+
+    // The walk cycle's pace: holds.walkSpeed is how fast the window carries her across the screen (hip heights
+    // per second, from the renderer); the clip covers clip.speed hip heights a second along her facing, of
+    // which sin(yaw) shows across the screen. → whether the walk plays, and its clock (phase, s of the clip).
+    function stepGait(dt, holds, turn) {
+      const G = S.gait;
+      const clip = holds.walk ? reactionClip('hold.walk') : null;
+      const pace = clip && clip.speed > 0 ? clip.speed : 1;
+      const across = Math.max(WALK.minSin, Math.abs(Math.sin((S.yaw * Math.PI) / 180)));
+      G.wanted = holds.walk ? clamp((Number(holds.walkSpeed) || 0) / (pace * across), 0, WALK.maxRate) : 0;
+      const moving = G.wanted > WALK.moving;
+      const on = !!(clip && holds.walk && (moving || turn.turning));
+      const target = on ? Math.max(G.wanted, turn.turning ? WALK.turnStep : 0) : 0;
+      // the pace follows quickly while she walks; when she stops it winds down with the fade-out (no freeze)
+      G.rate += (target - G.rate) * (1 - Math.exp(-(on ? 8 : 5) * dt));
+      if (on && !G.on) G.steps++;
+      G.on = on;
+      G.phase += dt * G.rate;
+      return on;
+    }
+
+    // the talk hold as segments: the current one (and the one it replaced, fading out) as overlays
+    function nextTalk() {
+      const T = S.talk;
+      const ids = new Set();
+      T.segments = Lib.TALK_SEGMENTS.map((s) => reactionClip(s)).filter((c) => c && !ids.has(c.id) && ids.add(c.id));
+      if (!T.segments.length) return null;
+      const pool = T.segments.length > 1 ? T.segments.filter((c) => c.id !== T.last) : T.segments;
+      const c = pool[Math.floor(rand() * pool.length) % pool.length];
+      T.last = c.id;
+      T.n++;
+      return { slot: c.slot, clip: c, start: S.t };
+    }
+    function talkOverlays(h, overlays, on) {
+      const T = S.talk;
+      if (h.w <= 0) { T.cur = null; T.prev = null; return; }
+      if (!T.cur) T.cur = nextTalk();
+      if (!T.cur) return;
+      const len = (c) => Math.max(1, c.clip.duration || 1);
+      // a segment ends: the next one comes in (only while she still talks)
+      if (on && S.t - T.cur.start >= len(T.cur) - TALK.xfade * 0.5) {
+        const n = nextTalk();
+        if (n) { T.prev = T.cur; T.cur = n; }
+      }
+      const w = h.w * h.w * (3 - 2 * h.w);
+      const k = (() => { const x = clamp((S.t - T.cur.start) / TALK.xfade, 0, 1); return T.prev ? x * x * (3 - 2 * x) : 1; })();
+      if (T.prev && k >= 1) T.prev = null;
+      // sequential slerps: prev at a, then cur at b, so prev keeps w(1−k) and cur w·k of the pose
+      const b = w * k * T.cur.clip.weight;
+      if (T.prev) {
+        const a = clamp((w * (1 - k) * T.prev.clip.weight) / Math.max(1e-3, 1 - b), 0, 1);
+        overlays.push({ layer: 'hold', slot: T.prev.slot, id: T.prev.clip.id, mask: T.prev.clip.mask, time: clamp(S.t - T.prev.start, 0, len(T.prev)), weight: +a.toFixed(4) });
+      }
+      overlays.push({ layer: 'hold', slot: T.cur.slot, id: T.cur.clip.id, mask: T.cur.clip.mask, time: clamp(S.t - T.cur.start, 0, len(T.cur)), weight: +b.toFixed(4) });
+    }
+
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
     function update(dt, { holds, events = [] }) {
       S.t += dt;
@@ -316,8 +403,13 @@
         setBase(c, FADE.posture, c ? 'stand.relaxed' : null, 'idle');
       }
 
+      // where she faces, and the walk cycle's pace (before the holds: the walk is on only while she moves)
+      const facing = holds.facing === 'left' ? -1 : 1;
+      const turn = stepFacing(dt, (holds.walk ? WALK.yaw : WALK.idleYaw) * facing);
+      const walkOn = stepGait(dt, holds, turn);
+
       // the activity she holds, by priority
-      const hold = holds.lift ? 'lift' : holds.think ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : holds.walk ? 'walk' : null;
+      const hold = holds.lift ? 'lift' : holds.think ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
       stepHolds(dt, hold);
 
       // the reaction: over → gone (a queued celebration next); interrupted ones finish fading
@@ -329,8 +421,8 @@
 
       // the clip overlays, bottom to top: the hold, the fading reactions, the reaction (time in the clip, weight)
       const overlays = [];
-      const holdClip = (h) => h.clip && overlays.push({ layer: 'hold', slot: h.slot, id: h.clip.id, mask: h.clip.mask, time: h.clip.still ? 0 : (S.t - h.start) % Math.max(0.01, h.clip.duration || 1), weight: +(h.w * h.w * (3 - 2 * h.w) * h.clip.weight).toFixed(4) });
-      for (const h of S.holds.values()) holdClip(h);
+      const holdClip = (h) => h.clip && overlays.push({ layer: 'hold', slot: h.slot, id: h.clip.id, mask: h.clip.mask, time: h.clip.still ? 0 : (h.slot === 'hold.walk' ? S.gait.phase : S.t - h.start) % Math.max(0.01, h.clip.duration || 1), weight: +(h.w * h.w * (3 - 2 * h.w) * h.clip.weight).toFixed(4) });
+      for (const h of S.holds.values()) if (h.slot === 'hold.talk') talkOverlays(h, overlays, hold === 'talk'); else holdClip(h);
       const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.clip.mask, time: r.clip.still ? 0 : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), key: r.key });
       for (const r of S.fading) reactClip(r, 'fading');
       if (R) reactClip(R, 'reaction');
@@ -354,9 +446,9 @@
       else if (S.t < S.scanUntil) gaze = { mode: 'fixed', x: Math.sin((S.scanUntil - S.t) * 2.4) * 1.4, y: 0.15 };
       else if (holdGaze) gaze = { mode: 'fixed', x: holdGaze.x, y: holdGaze.y };
 
-      const facing = holds.facing === 'left' ? -1 : 1;
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
       const standing = !(S.base && S.base.sit) && holds.mood !== 'sleep';
+      const talkOn = S.holds.get('hold.talk');
       return {
         t: S.t,
         base: S.base && { ...S.base },
@@ -374,9 +466,13 @@
         face,
         gaze,
         noBlink: S.t < S.noBlinkUntil,
-        life: { sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0 },
-        facingYaw: (holds.walk ? 60 : 18) * facing,
-        busy: !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil,
+        life: { sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
+        facingYaw: +S.yaw.toFixed(3),
+        turnLead: +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
+        walk: { on: S.gait.on, rate: +S.gait.rate.toFixed(3), wanted: +S.gait.wanted.toFixed(3), phase: +S.gait.phase.toFixed(3), target: turn.target, turning: turn.turning },
+        talkSegment: S.talk.cur ? S.talk.cur.slot : null,
+        talkSegments: S.talk.n,
+        busy: !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
       };
     }
 
@@ -392,5 +488,5 @@
     };
   }
 
-  return { IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

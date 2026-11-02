@@ -143,6 +143,47 @@ function inPlaceClip(clip) {
   return { ...clip, hips: { times: clip.hips.times.slice(), values: clip.hips.values.map((p) => [x0, p[1], z0]) } };
 }
 
+// A walk cycle walked in place (T-2711): the steady forward travel of the hips (the straight line from the
+// first key to the last) taken out of x / z, the side-to-side sway and the bob kept, then the hips put back
+// on the spot they started from. inPlaceClip would freeze the sway too and make the walk stiff.
+function detrendClip(clip) {
+  if (!clip.hips || clip.hips.values.length < 2) return clip;
+  const { times, values } = clip.hips;
+  const d = clip.duration || times[times.length - 1] || 1;
+  const p0 = values[0];
+  const pn = values[values.length - 1];
+  return { ...clip, hips: { times: times.slice(), values: values.map((p, i) => [p[0] - ((pn[0] - p0[0]) * times[i]) / d, p[1], p[2] - ((pn[2] - p0[2]) * times[i]) / d]) } };
+}
+
+// How fast a walk clip travels: the hips' floor distance from the first key to the last per second, in hip
+// heights (so it holds for any model: the runtime multiplies by the model's own hips height). 0 without hips.
+function travelSpeed(clip) {
+  if (!clip.hips || clip.hips.values.length < 2 || !(clip.duration > 0)) return 0;
+  const v = clip.hips.values;
+  const dist = Math.hypot(v[v.length - 1][0] - v[0][0], v[v.length - 1][2] - v[0][2]);
+  return dist / clip.duration / (clip.restHipsY || 1);
+}
+
+// Bigger (k > 1) or smaller turns of the listed bones: every key's rotation from the rest (the identity)
+// scaled by k around its own axis, { bone: k } (T-2711: a poke turned the head too little to read).
+function qpow(q, k) {
+  const n = qnorm(q[3] < 0 ? q.map((x) => -x) : q);
+  const ang = 2 * Math.acos(Math.min(1, n[3]));
+  const s = Math.sqrt(Math.max(0, 1 - n[3] * n[3]));
+  if (s < 1e-6) return [0, 0, 0, 1];
+  const a = (ang * k) / 2;
+  return [(n[0] / s) * Math.sin(a), (n[1] / s) * Math.sin(a), (n[2] / s) * Math.sin(a), Math.cos(a)];
+}
+function boostClip(clip, boost) {
+  const bones = { ...clip.bones };
+  for (const [b, k] of Object.entries(boost || {})) {
+    const tr = bones[b];
+    if (!tr || !(k > 0)) continue;
+    bones[b] = { times: tr.times.slice(), values: tr.values.map((v) => qpow(v, k)) };
+  }
+  return { ...clip, bones };
+}
+
 // The hips' average floor position (x / z) moved to the origin: an idle that sways about a spot off to
 // the side would otherwise stand her off-centre in the window for its whole length. The sway stays.
 function centerClip(clip) {
@@ -217,8 +258,10 @@ function bakeParams(clip, e = {}) {
   if (Array.isArray(e.trim)) c = trimClip(c, e.trim[0], e.trim[1]);
   if (e.kind === 'posture' || e.hold === true || e.still) c = holdClip(c, 1); // a 2-frame pose: one held second
   if (e.inPlace) c = inPlaceClip(c);
+  if (e.detrend) c = detrendClip(c);
   if (typeof e.amplitude === 'number') c = amplitudeClip(c, e.amplitude);
   if (e.upright) c = uprightClip(c);
+  if (e.boost) c = boostClip(c, e.boost);
   if (e.offset) c = offsetClip(c, e.offset);
   if (e.pose) c = poseClip(c, e.pose);
   if (e.mirror) c = mirrorClip(c);
@@ -354,6 +397,6 @@ function readVrma(buf) {
 module.exports = {
   MIXAMO_TO_VRM, VRM_REQUIRED, VRM_PARENT, stripMixamo, vrmBoneOf, mirrorBone,
   qmul, qinv, qnorm, qslerp, qangle, retargetQ, mirrorQ,
-  sampleTrack, trimClip, holdClip, loopClip, qEuler, poseClip, offsetClip, uprightClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, centerClip, bakeParams,
+  sampleTrack, trimClip, holdClip, loopClip, qEuler, poseClip, offsetClip, uprightClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, detrendClip, travelSpeed, qpow, boostClip, centerClip, bakeParams,
   writeVrma, readVrma, glb,
 };

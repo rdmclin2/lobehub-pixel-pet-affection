@@ -17,7 +17,10 @@
   const POSTURES = ['stand.relaxed', 'stand.confident', 'stand.shy', 'stand.playful', 'sit.rest', 'sit.doze'];
   // the reactions (L3, one-shot) and holds (L2, while it lasts) of this release (docs §5.3)
   const REACTIONS = ['react.touch-head', 'react.touch-face', 'react.touch-hands', 'react.shy', 'react.angry', 'react.annoyed', 'react.ticklish', 'react.drop', 'react.greet', 'react.cheer'];
-  const HOLDS = ['hold.lift', 'hold.talk', 'hold.think', 'hold.eat'];
+  // hold.talk-2 / -3: more talk segments the director rotates through on a long reply; hold.walk: the walk
+  // cycle, played at the window's pace (T-2711)
+  const HOLDS = ['hold.lift', 'hold.talk', 'hold.think', 'hold.eat', 'hold.walk', 'hold.talk-2', 'hold.talk-3'];
+  const TALK_SEGMENTS = ['hold.talk', 'hold.talk-2', 'hold.talk-3'];
   const FACE_NAMES = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral', 'blink', 'blinkLeft', 'blinkRight'];
   const POSTURE_LABEL = { auto: '自动', 'stand.relaxed': '放松站', 'stand.confident': '叉腰站', 'stand.shy': '害羞站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'sit.doze': '靠坐' };
 
@@ -53,6 +56,8 @@
       // baked procedural layers (scripts/lib/vrm-bake-core.js poseClip / offsetClip): { bone: [x, y, z] deg }
       for (const k of ['pose', 'offset']) if (e[k] !== undefined && !(e[k] && typeof e[k] === 'object' && !Array.isArray(e[k]) && Object.entries(e[k]).every(([b, v]) => /^[a-zA-Z]+$/.test(b) && Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x) && Math.abs(x) <= 180)))) out.push(`${id}: ${k} is { bone: [x, y, z] } in degrees (|v| ≤ 180)`);
       if (e.upright !== undefined && typeof e.upright !== 'boolean') out.push(`${id}: upright is true / false`);
+      if (e.detrend !== undefined && typeof e.detrend !== 'boolean') out.push(`${id}: detrend is true / false`);
+      if (e.boost !== undefined && !(e.boost && typeof e.boost === 'object' && !Array.isArray(e.boost) && Object.entries(e.boost).every(([b, k]) => /^[a-zA-Z]+$/.test(b) && Number.isFinite(k) && k >= 0.2 && k <= 2))) out.push(`${id}: boost is { bone: k } with k 0.2..2`);
       for (const k of ['hold', 'fadeIn', 'fadeOut']) if (e[k] !== undefined && typeof e[k] === 'number' && !(e[k] >= 0 && e[k] <= 5)) out.push(`${id}: ${k} 0..5 s`);
       if (e.gaze !== undefined && !(e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y) && Math.abs(e.gaze.x) <= 2 && Math.abs(e.gaze.y) <= 2)) out.push(`${id}: gaze { x, y } in -2..2`);
       if ((e.kind === 'reaction' || e.kind === 'hold') && !(e.kind === 'reaction' ? REACTIONS : HOLDS).includes(p.slot)) out.push(`${id}: unknown ${e.kind} slot (known: ${(e.kind === 'reaction' ? REACTIONS : HOLDS).join(', ')})`);
@@ -82,6 +87,8 @@
         c.still = !!e.still;
         if (e.face && typeof e.face === 'object') c.face = Object.fromEntries(Object.entries(e.face).filter(([n, w]) => FACE_NAMES.includes(n) && w >= 0 && w <= 1));
         if (e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y)) c.gaze = { x: num(e.gaze.x, -2, 2, 0), y: num(e.gaze.y, -2, 2, 0) };
+        // a walk's own pace in hip heights per second (scripts/vrm-bake.js), 0 = unknown
+        c.speed = num(e.speed, 0, 5, 0);
       }
       if (typeof e.file === 'string') {
         if (!/^(female|male|neutral)\/[a-z0-9.-]+\.vrma$/.test(e.file)) continue;
@@ -129,5 +136,5 @@
     return missing ? (missing === files.length ? 'none' : `partial:${missing}`) : 'loaded';
   }
 
-  return { KINDS, SETS, MASKS, POSTURES, REACTIONS, HOLDS, FACE_NAMES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
+  return { KINDS, SETS, MASKS, POSTURES, REACTIONS, HOLDS, TALK_SEGMENTS, FACE_NAMES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
 });

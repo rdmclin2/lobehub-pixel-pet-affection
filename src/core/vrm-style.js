@@ -12,11 +12,12 @@
   // handPose: finger curl 0..1; headTilt: deg; breath: { chest, upperChest, spine, shoulder } deg at full breath;
   // emotion: expression strength; idleEvery: seconds per idle (a base, scheduled 8–20 s); lookAway: share of
   // idle time she looks elsewhere; shiftEvery: [min, max] seconds between weight shifts (the male set shifts
-  // more often: a still male idle read as wooden, T-2691).
+  // more often: a still male idle read as wooden, T-2691); liftSwing: how far the legs swing while she is
+  // dragged in the air (× the alive layer's swing; T-2711: the male legs swung half as far).
   const PROFILES = {
-    female: { set: 'female', amplitude: 1.0, hipSway: 1.0, stanceWidth: 0, handPose: 0.3, headTilt: 4, breath: { chest: 1.2, upperChest: 0.8, spine: 0.4, shoulder: 0.6 }, emotion: 1.0, idleEvery: 12, lookAway: 0.12, shiftEvery: [8, 16] },
-    male: { set: 'male', amplitude: 0.8, hipSway: 0.9, stanceWidth: 4, handPose: 0.45, headTilt: 1.5, breath: { chest: 0.8, upperChest: 0.3, spine: 1.0, shoulder: 0.3 }, emotion: 0.8, idleEvery: 16, lookAway: 0.08, shiftEvery: [4, 9] },
-    neutral: { set: 'neutral', amplitude: 0.9, hipSway: 0.75, stanceWidth: 2, handPose: 0.38, headTilt: 3, breath: { chest: 1.0, upperChest: 0.55, spine: 0.7, shoulder: 0.45 }, emotion: 0.9, idleEvery: 15, lookAway: 0.09, shiftEvery: [6, 14] },
+    female: { set: 'female', amplitude: 1.0, hipSway: 1.0, stanceWidth: 0, handPose: 0.3, headTilt: 4, breath: { chest: 1.2, upperChest: 0.8, spine: 0.4, shoulder: 0.6 }, emotion: 1.0, idleEvery: 12, lookAway: 0.12, shiftEvery: [8, 16], liftSwing: 1 },
+    male: { set: 'male', amplitude: 0.8, hipSway: 0.9, stanceWidth: 4, handPose: 0.45, headTilt: 1.5, breath: { chest: 0.8, upperChest: 0.3, spine: 1.0, shoulder: 0.3 }, emotion: 0.8, idleEvery: 16, lookAway: 0.08, shiftEvery: [4, 9], liftSwing: 1.6 },
+    neutral: { set: 'neutral', amplitude: 0.9, hipSway: 0.75, stanceWidth: 2, handPose: 0.38, headTilt: 3, breath: { chest: 1.0, upperChest: 0.55, spine: 0.7, shoulder: 0.45 }, emotion: 0.9, idleEvery: 15, lookAway: 0.09, shiftEvery: [6, 14], liftSwing: 1.2 },
   };
   const NAMES = Object.keys(PROFILES);
   const VRM_STYLE_LIMITS = { amplitude: [0.3, 1.3], hipSway: [0, 1.5], stanceWidth: [-2, 8], handPose: [0, 0.8], headTilt: [0, 8], emotion: [0.3, 1.2], idleEvery: [8, 20], lookAway: [0, 0.3] };

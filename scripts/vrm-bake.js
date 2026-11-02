@@ -133,13 +133,16 @@ async function main() {
     try {
       const raw = fbxToClip(three, src);
       const clip = B.bakeParams(raw, e);
+      // a walk's own pace (hip heights per second, measured before it is walked in place): the director
+      // plays it at the window's pace with it (T-2711)
+      const speed = e.detrend ? B.travelSpeed(Array.isArray(e.trim) ? B.trimClip(raw, e.trim[0], e.trim[1]) : raw) : 0;
       const buf = B.writeVrma(clip, { name: id });
       fs.mkdirSync(path.join(out, style), { recursive: true });
       fs.writeFileSync(path.join(out, file), buf);
-      index.clips[id] = { ...meta, file, duration: +clip.duration.toFixed(3), bones: Object.keys(clip.bones).length, src: e.src };
+      index.clips[id] = { ...meta, file, duration: +clip.duration.toFixed(3), bones: Object.keys(clip.bones).length, src: e.src, ...(speed > 0 ? { speed: +speed.toFixed(4) } : {}) };
       let seam = '';
       if (e.loop && e.kind !== 'posture') { const pre = B.bakeParams(raw, { ...e, loop: false }); seam = `, loop seam ${B.seamAngle(pre).toFixed(1)}° → blend ${(typeof e.loopBlend === 'number' ? e.loopBlend : B.seamBlend(pre)).toFixed(2)} s`; }
-      report.push(`${id}: ${e.src} → ${file} (${clip.duration.toFixed(2)} s, ${Object.keys(clip.bones).length} bones, ${buf.length} B${seam})`);
+      report.push(`${id}: ${e.src} → ${file} (${clip.duration.toFixed(2)} s, ${Object.keys(clip.bones).length} bones, ${buf.length} B${seam}${speed > 0 ? `, walks ${speed.toFixed(3)} hip heights/s` : ''})`);
     } catch (err) {
       report.push(`${id}: FAILED ${e.src}: ${err.message}`);
     }

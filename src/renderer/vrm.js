@@ -176,6 +176,7 @@
     let lastActivity = performance.now();
     let lastWin = null;
     let vel = [0, 0];
+    let lastWinAt = null; // when lastWin was read (ms): the window's speed is over its own interval
     let frameN = 0;
     let lipMode = 'off';
     let gaze = { x: 0, y: 0 };
@@ -448,6 +449,8 @@
     }
     let seatInfo = null;
 
+    // how the turn lead is shared out from the chest up (deg of turnLead per bone; head + neck lead most)
+    const TURN_LEAD = [['chest', 0.15], ['upperChest', 0.2], ['neck', 0.3], ['head', 0.45]];
     // the alive layer's offsets (deg) on the clip's pose
     function applyLife(bones) {
       const T = R.THREE;
@@ -504,22 +507,30 @@
       intent = I.fromSnapshot(snap, prevSnap);
       prevSnap = snap;
       if (injected.length) { intent.events.push(...injected); injected.length = 0; } // the debug interface's events
+      // the window's motion (screen px/s), over the time since the last reading (T-2711: it was divided by the
+      // time since the last drawn frame, which under-read it whenever frames were skipped)
+      const win = snap.win;
+      if (win) {
+        if (lastWin && lastWinAt !== null && now > lastWinAt) {
+          const wdt = clamp((now - lastWinAt) / 1000, 1e-3, 0.25);
+          const k = approach(14, wdt);
+          vel = [lerp(vel[0], (win[0] - lastWin[0]) / wdt, k), lerp(vel[1], (win[1] - lastWin[1]) / wdt, k)];
+        }
+        if (!lastWin || now > lastWinAt) { lastWin = win; lastWinAt = now; }
+      }
+      // walking about: how fast the window carries her across the screen, in her own hip heights per second
+      // (the director matches the walk cycle's pace to it, T-2711)
+      if (intent.holds.walk) {
+        const rect = canvas.getBoundingClientRect();
+        const pxPerM = (rect.height || 452) / ((size.h / share) || 1);
+        intent.holds.walkSpeed = Math.abs(vel[0]) / pxPerM / Math.max(0.1, rest.hipsY);
+      }
       const ddt = dirT === null ? 0 : clamp(t - dirT, 0, 0.25);
       dirT = t;
       plan = director.update(ddt * debugCtl.speed, intent);
       const H = intent.holds;
       if (intent.events.length || plan.busy) lastActivity = now;
       if (cursor.movedAt > lastActivity) lastActivity = cursor.movedAt;
-      // the window's motion (screen px/s)
-      const win = snap.win;
-      const rdt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
-      if (win) {
-        if (lastWin) {
-          const k = approach(14, rdt);
-          vel = [lerp(vel[0], (win[0] - lastWin[0]) / Math.max(rdt, 1e-3), k), lerp(vel[1], (win[1] - lastWin[1]) / Math.max(rdt, 1e-3), k)];
-        }
-        lastWin = win;
-      }
       const moving = Math.abs(vel[0]) + Math.abs(vel[1]) > 30;
       if (moving) lastActivity = now;
       const blinking = blink.start >= 0 || t >= blink.next - 0.05;
@@ -547,6 +558,9 @@
 
       // L4: alive
       const lifeOut = life.step(dt, { ...plan.life, style, velX: vel[0], fingers: clips ? anim.fingers() : false });
+      // turning: her head and chest turn ahead of her hips (the director's turnLead, deg)
+      const lead = plan.turnLead || 0;
+      if (Math.abs(lead) > 0.05) for (const [b, k] of TURN_LEAD) { const o = lifeOut.bones[b] || (lifeOut.bones[b] = { x: 0, y: 0, z: 0 }); o.y += lead * k; }
       applyLife(lifeOut.bones);
 
       // the body: on the floor, turned (not mirrored) towards where she faces
@@ -556,7 +570,7 @@
       const gk = frameN === 0 ? 1 : approach(4, dt);
       ground = lerp(ground, g.y, gk);
       shiftX = lerp(shiftX, g.x, gk);
-      yaw = lerp(yaw, plan.facingYaw, approach(4, dt));
+      yaw = plan.facingYaw; // eased by the director (a turn takes ≥ 0.3 s, T-2711)
       floorLift = lerp(floorLift, seatLift, gk);
       // lifted: held up off the floor (her shadow stays down there), she sinks back when put down
       liftK = lerp(liftK, plan.life.lifted ? 1 : 0, approach(plan.life.lifted ? 5 : 7, dt));
@@ -721,7 +735,8 @@
         debug: () => ({
           loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
-          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw },
+          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw, turnLead: plan.turnLead, walk: plan.walk, talkSegment: plan.talkSegment, talkSegments: plan.talkSegments },
+          vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',

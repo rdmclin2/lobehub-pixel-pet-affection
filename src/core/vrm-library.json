@@ -99,8 +99,20 @@
       "style": "male",
       "src": "mixamo/4362690a-8af0-41ac-9a22-33e43a51a6ee.fbx",
       "label": "低头坐",
-      "note": "Sitting · Reaching Hands Towards Toes (a floor sit instead of the chair sit 14ee62b6, §5.1)",
-      "sit": true
+      "note": "Sitting · Reaching Hands Towards Toes (a floor sit instead of the chair sit 14ee62b6, §5.1); knees bent 14° more so the stretched legs never bend backwards (T-2711: the source knees were at −9°)",
+      "sit": true,
+      "offset": {
+        "leftLowerLeg": [
+          14,
+          0,
+          0
+        ],
+        "rightLowerLeg": [
+          14,
+          0,
+          0
+        ]
+      }
     },
     "idle.happy@female": {
       "kind": "idle",
@@ -206,7 +218,7 @@
       "src": "postures/bf65f0a2-236a-475c-a56e-687d5b07998f.fbx",
       "still": true,
       "mask": "head",
-      "weight": 0.65,
+      "weight": 0.95,
       "hold": 1.2,
       "fadeIn": 0.2,
       "fadeOut": 0.5,
@@ -216,7 +228,11 @@
         "blinkRight": 1
       },
       "label": "戳脸·鼓脸扭头",
-      "note": "Hands On Hips Looking Over Shoulder, head and neck only at 65%: she turns her face away with a pout; the source pose twists the torso ~90° away, too much for a poke (T-2681 review)"
+      "note": "Hands On Hips Looking Over Shoulder, head and neck only, the turn boosted 1.35× at 95%: she turns her face well away with a pout (T-2711: at 65% the peak was 21°, too small to read); the source pose twists the torso ~90° away, too much for a poke (T-2681 review)",
+      "boost": {
+        "head": 1.35,
+        "neck": 1.35
+      }
     },
     "react.touch-hands@female": {
       "kind": "reaction",
@@ -453,23 +469,6 @@
         ]
       }
     },
-    "hold.talk@female": {
-      "kind": "hold",
-      "style": "female",
-      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
-      "loop": true,
-      "mirror": true,
-      "amplitude": 0.5,
-      "mask": "arms",
-      "weight": 0.6,
-      "fadeIn": 0.3,
-      "fadeOut": 0.5,
-      "face": {
-        "happy": 0.2
-      },
-      "label": "说话手势",
-      "note": "Happy Forward Hand Gesture mirrored, 50% (P0 stand-in for talk/xs-talk8 VMD): small left-hand gestures, mouth from the lip layer"
-    },
     "hold.think@female": {
       "kind": "hold",
       "style": "female",
@@ -508,6 +507,79 @@
       "label": "吃东西",
       "note": "stand.relaxed upper body, chewing nods (alive layer) and the chewing mouth"
     },
+    "hold.talk@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "mixamo/c9c88301-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        1.0,
+        6.5
+      ],
+      "loop": true,
+      "mask": "upper",
+      "weight": 0.9,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·摊掌讲解",
+      "note": "Talking with both palms up and open in front of her, small nods (5.5 s of a talking clip, upper body at 90%); one of three talk segments the director rotates through (T-2711: the old mirrored hand gesture at 50% moved the upper arms only 18/9°)"
+    },
+    "hold.talk-2@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "mixamo/c9c92388-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        1.5,
+        7.5
+      ],
+      "loop": true,
+      "mask": "upper",
+      "weight": 0.9,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·交握点头",
+      "note": "Hands clasped in front, leaning in and nodding along: the soft, listening-and-answering segment (6 s, upper body at 90%)"
+    },
+    "hold.talk-3@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "mixamo/c9c8fdad-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.4,
+        2.7
+      ],
+      "loop": true,
+      "mask": "upper",
+      "weight": 0.9,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·双手递出",
+      "note": "Both hands offered forward as she presents a point (2.3 s before the source turns away, upper body at 90%)"
+    },
+    "hold.walk@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "mixamo/c9c66731-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "detrend": true,
+      "mask": "full",
+      "weight": 1,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "走路·轻盈窄步",
+      "note": "A light walk on a narrow line (feet almost in one track) with a soft, wide arm swing; 1.37 s per two steps at 1.05 m/s in the source. Baked in place (the forward travel taken out, the hip sway kept); the director plays it at the window's pace so the feet do not slide (T-2711)"
+    },
     "react.touch-head@male": {
       "kind": "reaction",
       "style": "male",
@@ -538,7 +610,7 @@
       "src": "mixamo/aaba4531-7c08-4d2c-a7a6-8eae3879611d.fbx",
       "still": true,
       "mask": "upper",
-      "weight": 0.9,
+      "weight": 1.0,
       "hold": 1.1,
       "fadeIn": 0.2,
       "fadeOut": 0.5,
@@ -548,7 +620,12 @@
         "blinkRight": 1
       },
       "label": "戳脸·偏头躲",
-      "note": "Looking Left at 90% (upper body): he pulls his head and shoulders away from the finger, short and direct (T-2691: 55% read as no reaction)"
+      "note": "Looking Left, upper body, head / neck turn boosted 1.5×: he jerks his head and shoulders away from the finger, short and direct (T-2691: 55% read as no reaction; T-2711: 25° peak still small)",
+      "boost": {
+        "head": 1.5,
+        "neck": 1.5,
+        "upperChest": 1.3
+      }
     },
     "react.touch-hands@male": {
       "kind": "reaction",
@@ -798,22 +875,6 @@
         ]
       }
     },
-    "hold.talk@male": {
-      "kind": "hold",
-      "style": "male",
-      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
-      "loop": true,
-      "amplitude": 1.0,
-      "mask": "arms",
-      "weight": 0.9,
-      "fadeIn": 0.3,
-      "fadeOut": 0.5,
-      "face": {
-        "happy": 0.2
-      },
-      "label": "说话手势",
-      "note": "Happy Forward Hand Gesture, full size, looped (T-2691: at 70% the gestures were hard to see)"
-    },
     "hold.think@male": {
       "kind": "hold",
       "style": "male",
@@ -855,6 +916,80 @@
       },
       "label": "吃东西",
       "note": "stand.relaxed upper body, chewing nods and mouth"
+    },
+    "hold.talk@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c9c6fcc0-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.6,
+        6.6
+      ],
+      "loop": true,
+      "amplitude": 0.8,
+      "mask": "upper",
+      "weight": 1,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·张臂讲解",
+      "note": "Explaining with both arms opened wide and the palms out, at 80% of the source size (6 s, upper body); one of three male talk segments (T-2711)"
+    },
+    "hold.talk-2@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c9cc660c-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.3,
+        6.3
+      ],
+      "loop": true,
+      "mask": "upper",
+      "weight": 1,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·单手比划",
+      "note": "One hand chopping and pointing as he makes his points, the other at his side: direct, energetic (6 s, upper body)"
+    },
+    "hold.talk-3@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c9c90cbb-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.4,
+        4.8
+      ],
+      "loop": true,
+      "mask": "upper",
+      "weight": 1,
+      "fadeIn": 0.35,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.25
+      },
+      "label": "说话·抬手解释",
+      "note": "One forearm across, the other hand raised to explain, then back down (4.4 s, upper body)"
+    },
+    "hold.walk@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c9c609a9-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "detrend": true,
+      "mask": "full",
+      "weight": 1,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.15
+      },
+      "label": "走路·大步摆臂",
+      "note": "A relaxed, longer stride with the feet a hip-width apart and a loose arm swing; 1.4 s per two steps at 1.12 m/s in the source. Baked in place like hold.walk@female (T-2711)"
     }
   }
 }

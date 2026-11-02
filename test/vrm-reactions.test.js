@@ -259,11 +259,11 @@ test('talk / think / eat: holds with their own clip, face and gaze; a touch play
   run(d, 1);
   const talk = run(d, 1, holdsOf({ talk: true })).pop();
   assert.equal(talk.hold, 'talk');
-  assert.equal(ov(talk, 'hold')[0].id, 'hold.talk@female');
+  assert.match(ov(talk, 'hold')[0].id, /^hold\.talk(-\d)?@female$/, 'one of her talk segments');
   assert.ok(ov(talk, 'hold')[0].time > 0, 'the gesture loop runs');
   const mid = run(d, 0.5, holdsOf({ talk: true }), { 0: [touch('head', 'happy')] }).pop();
   assert.equal(mid.reaction, 'react.touch-head');
-  assert.equal(ov(mid, 'hold')[0].id, 'hold.talk@female', 'the talk hold stays under the reaction (the mouth keeps talking)');
+  assert.match(ov(mid, 'hold')[0].id, /^hold\.talk(-\d)?@female$/, 'the talk hold stays under the reaction (the mouth keeps talking)');
   const back = run(d, 4, holdsOf({ talk: true })).pop();
   assert.equal(back.reaction, null);
   assert.equal(back.hold, 'talk');

@@ -223,7 +223,10 @@ test('holds and faces: lift > think > eat > talk; touch faces by mood; thinking 
   }
   const words = JSON.stringify(run(make(), 60));
   for (const w of ['hop', 'spin', 'dangle', 'stride', 'wobble', 'shake', 'flail']) assert.ok(!words.includes(`"${w}"`), w);
-  // facing: a turn of the body (yaw), not a mirror
-  assert.equal(d.update(0.1, { holds: idleHolds({ facing: 'left' }), events: [] }).facingYaw, -18);
-  assert.equal(d.update(0.1, { holds: idleHolds({ facing: 'right', walk: true }), events: [] }).facingYaw, 60);
+  // facing: a turn of the body (yaw), not a mirror — eased over a few frames (T-2711), within ±60° walking
+  const left = run(d, 2, idleHolds({ facing: 'left' })).pop();
+  assert.equal(left.facingYaw, -18);
+  const walking = run(d, 2, idleHolds({ facing: 'right', walk: true })).pop();
+  assert.equal(walking.facingYaw, D.WALK.yaw);
+  assert.ok(D.WALK.yaw <= 60);
 });
