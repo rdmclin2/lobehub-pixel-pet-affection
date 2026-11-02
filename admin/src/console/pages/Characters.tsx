@@ -12,6 +12,7 @@ import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
 import { SpriteStage } from '../stage/SpriteStage';
+import { VrmLicense, vrmUi } from '../stage/VrmLicense';
 import { useStore } from '../store';
 
 const KIND_COLOR: Record<string, string> = { sprites: 'geekblue', pictures: 'cyan', rig: 'purple', live2d: 'magenta', vrm: 'volcano', video: 'gold' };
@@ -514,10 +515,53 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
     else if (r && r.reason !== 'canceled') toast.error(reasonText(r));
     return r;
   };
+  // 导入 VRM…: main checks the file and copies it into a new user pack; before she wears it, 导入确认 shows who
+  // made the model and what its license allows. 取消导入 removes the pack again; 授权信息 stays on the card.
+  const [vrmImport, setVrmImport] = useState<any>(null);
+  const [licenseOf, setLicenseOf] = useState<PackOption | null>(null);
+  const importVrm = async () => {
+    const r = await api().importVrm(c.id);
+    if (!r || r.reason === 'canceled') return;
+    if (!r.ok) return void toast.error(vrmUi().importErrorText(r.errors));
+    setVrmImport(r);
+  };
+  const closeVrmImport = async (use: boolean) => {
+    const r = vrmImport;
+    setVrmImport(null);
+    if (!r) return;
+    if (!use) {
+      await api().removePack(r.pack.id);
+      toast.success(`已取消导入「${r.pack.name}」，模型没有留在本机的角色包里。`);
+      return;
+    }
+    await run(api().setAppearance(r.pack.id, c.id), `已导入 VRM 模型「${r.pack.name}」并换上（作者：${r.license?.author ?? '未署名'}）`);
+  };
   if (!view) return <Alert title="唤醒桌宠后可以给她换装扮" type="info" />;
   const worn = (p: PackOption) => p.id === c.pack?.id || (!c.pack && p.kind === 'video');
   return (
     <Flexbox gap={16}>
+      <Modal
+        cancelText="取消导入"
+        destroyOnHidden
+        maskClosable={false}
+        okText="使用这个模型"
+        onCancel={() => closeVrmImport(false)}
+        onOk={() => closeVrmImport(true)}
+        open={!!vrmImport}
+        title={vrmImport ? `导入 VRM 模型「${vrmImport.pack.name}」` : ''}
+      >
+        {vrmImport && (
+          <Flexbox data-vrm-confirm={vrmImport.pack.id} gap={12}>
+            <Text type="secondary">
+              {`${vrmImport.outfits?.length ?? 1} 套全年龄服饰都会穿这个模型。以下信息读自模型文件，应用会按授权限制使用；点“使用这个模型”即表示你确认有权在本机使用它。`}
+            </Text>
+            <VrmLicense packId={vrmImport.pack.id} vrm={{ ...vrmImport.license, models: [{ file: '', meta: vrmImport.meta, restrictions: vrmImport.license?.restrictions }] }} />
+          </Flexbox>
+        )}
+      </Modal>
+      <Modal footer={null} onCancel={() => setLicenseOf(null)} open={!!licenseOf} title={licenseOf ? `授权信息：${licenseOf.name}` : ''}>
+        {licenseOf && <VrmLicense packId={licenseOf.id} vrm={licenseOf.vrm} />}
+      </Modal>
       <OutfitRack c={c} />
       <Surface description="她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。" title="形象包">
         <div className={wstyles.grid} data-wardrobe={c.id}>
@@ -536,7 +580,17 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
                   {p.outfits && p.outfits > 1 ? ` · ${p.outfits} 套服饰` : ''}
                   {p.author ? ` · ${p.author}` : ''}
                 </Text>
-                <Flexbox horizontal style={{ marginBlockStart: 'auto' }}>
+                {p.kind === 'vrm' && p.vrm && vrmUi().creditLine(p.vrm) && (
+                  <Text data-vrm-credit={p.id} fontSize={12} type="secondary">
+                    {vrmUi().creditLine(p.vrm)}
+                  </Text>
+                )}
+                {p.kind === 'vrm' && p.source === 'user' && !vrmUi().exportState(p).ok && (
+                  <Text data-vrm-noexport={p.id} fontSize={12} type="secondary">
+                    {`导出已禁用：${vrmUi().exportState(p).text}`}
+                  </Text>
+                )}
+                <Flexbox gap={4} horizontal style={{ marginBlockStart: 'auto' }} wrap="wrap">
                   {worn(p) ? (
                     <Tag color="success" icon={<Icon icon={Check} />}>
                       正在穿
@@ -554,6 +608,11 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
                       穿上
                     </Button>
                   )}
+                  {p.kind === 'vrm' && p.vrm && (
+                    <Button data-vrm-info={p.id} onClick={() => setLicenseOf(p)} size="small" type="text">
+                      授权信息
+                    </Button>
+                  )}
                 </Flexbox>
               </Flexbox>
             </div>
@@ -569,7 +628,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
             <Button onClick={() => run(api().importLive2d(c.id), 'Live2D 模型已导入')} size="small">
               导入 Live2D…
             </Button>
-            <Button onClick={() => run(api().importVrm(c.id), 'VRM 模型已导入')} size="small">
+            <Button data-import-vrm onClick={importVrm} size="small">
               导入 VRM…
             </Button>
           </div>
@@ -903,7 +962,7 @@ export const PacksPage = () => {
               render: (_: unknown, p) =>
                 p.removable ? (
                   <Flexbox gap={4} horizontal>
-                    <Button disabled={!p.exportable} icon={Download} onClick={() => run(api().exportPack(p.id), `已导出「${p.name}」`)} size="small" type="text">
+                    <Button data-export-pack={p.id} disabled={!p.exportable} icon={Download} onClick={() => run(api().exportPack(p.id), `已导出「${p.name}」`)} size="small" type="text">
                       导出
                     </Button>
                     <Button
