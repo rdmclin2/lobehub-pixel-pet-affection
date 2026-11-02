@@ -596,7 +596,7 @@ const OutfitTab = ({ c }: { c: RosterRow }) => {
       <div className={ostyles.grid} data-outfits={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
         {list.map((o) => (
           <div className={ostyles.card} data-equipped={o.equipped} data-locked={o.locked} data-outfit={o.id} key={o.id}>
-            <SpriteStage height={140} name={o.label} preview={o.preview} silhouette={o.locked} />
+            <SpriteStage animate={o.equipped} height={140} name={o.label} preview={o.preview} silhouette={o.locked} />
             <Flexbox flex={1} gap={6} padding={12}>
               <Flexbox align="center" gap={6} horizontal>
                 <Text ellipsis strong>

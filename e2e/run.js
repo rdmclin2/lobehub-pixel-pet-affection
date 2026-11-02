@@ -3,6 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 服饰 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, menus, toast, #panel) in light + dark (LobeHub tokens)
@@ -7183,6 +7184,297 @@ async function petuiScenario() {
   }
 }
 
+// ---------------------------------------------------------------- admincov (配置后台覆盖度)
+// docs/admin-console-design.md §12: the settings window lists every character with every kind of pack
+// (built-in pixel / 全动态 / Live2D, imported 图片 / Live2D / VRM), filters by kind, shows each detail tab
+// (形象包, 服饰, 好感, 模型, 设定, 语音, 资料), and the controls that used to live only in the pet window or
+// a menu now work from here: 服饰 → 穿上, Live2D 模型大小, 找回桌宠, 自动检查更新, 数据目录. A behaviour changed
+// in the settings window shows in the pet window at once. Free: fake lh, no network.
+async function adminCoverageScenario() {
+  const S = 'admincov';
+  const SHOTS = path.join(OUT, 'admincov');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincov-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // the packs a user brings: a 图片 pack (gemini), her own Live2D model (dafeiyu) and a VRM (claude)
+  const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfix-'));
+  const pic = path.join(fix, 'gemini-photo');
+  fs.mkdirSync(pic);
+  fs.copyFileSync(path.join(ROOT, 'build', 'icon.png'), path.join(pic, 'daily.png'));
+  fs.writeFileSync(path.join(pic, 'pack.json'), JSON.stringify({ schema: 2, id: 'gemini-photo', name: '双子立绘', species: 'gemini', kind: 'pictures', author: 'e2e', license: 'CC0', outfits: { daily: 'daily.png' } }));
+  const l2d = path.join(fix, 'Whale');
+  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), l2d, { recursive: true });
+  const vrmFile = path.join(fix, 'fish.vrm');
+  fs.writeFileSync(vrmFile, require('../scripts/make-test-vrm').makeTestVrm({ name: 'Test Fish', meta: { allowRedistribution: true, licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const errors = [];
+  let admin = null;
+  const W = 1180;
+  const adminWin = `BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui'))`;
+  // a settings window behind the always-on-top pet gets no animation frames (Playwright's waits poll on them)
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  // the whole page in one image: grow the window to the page's height, capture, shrink back
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  // while the tabs switch the old panel stays a moment (inert): wait for the one live panel
+  const tab = async (name) => {
+    await admin.bringToFront();
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, name));
+    await admin.waitForTimeout(250);
+  };
+  // poll with evaluate (not on animation frames): true once `sel` is in the settings window
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  try {
+    await step(S, 'B0 hatch 格萝可, ⋯ → 设置… opens the settings window', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="grok"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'menu');
+      await page.click('[data-menu="settings"]');
+      for (let i = 0; i < 200 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+      return 'settings window up';
+    }, page);
+
+    await step(S, 'B1 imported packs of every kind: 图片 (gemini), Live2D (dafeiyu, from the settings window), VRM (claude, from the settings window)', async () => {
+      const a = await page.evaluate((d) => window.pet.debugImportPack(d), pic);
+      assert.equal(a.ok, true, JSON.stringify(a));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), path.join(l2d, 'medium.model3.json'));
+      const b = await call('importLive2d', 'dafeiyu');
+      assert.equal(b.ok, true, JSON.stringify(b));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), vrmFile);
+      const c = await call('importVrm', 'claude');
+      assert.equal(c.ok, true, JSON.stringify(c));
+      await go('/packs');
+      const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-packs] tbody tr')].map((tr) => tr.textContent));
+      const packs = await admin.evaluate(async () => (await window.petAdmin.state()).packs.map((p) => `${p.id}:${p.kind}:${p.source}`));
+      for (const want of ['gemini-photo:pictures:user', `${b.pack.id}:live2d:user`, `${c.pack.id}:vrm:user`, 'dafeiyu-live2d:live2d:builtin', 'dafeiyu-live:rig:builtin', 'grok-pixel:sprites:builtin']) assert.ok(packs.includes(want), `${want} in ${packs.join(' ')}`);
+      const f = await shot('b1-packs');
+      return `${packs.length} packs (${rows.length} table rows): ${packs.join(' ')}; ${f}`;
+    }, () => admin);
+
+    let roster = [];
+    await step(S, 'B2 角色图鉴 lists every character, with the kinds of pack each can wear; 按形象类型 filters (全部 / 像素 / 全动态 / Live2D / 图片 / VRM / 有导入包)', async () => {
+      await go('/characters');
+      roster = await admin.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => ({ id: r.id, kinds: r.packKinds.map((k) => `${k.label}${k.user ? `+导入${k.user}` : ''}`) })));
+      const cards = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      assert.deepEqual(cards, roster.map((r) => r.id), 'one card per character');
+      assert.ok(cards.length >= 5, cards.join(','));
+      const filter = (await admin.textContent('[data-kind-filter]')).trim();
+      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '有导入包']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      const out = [await shot('b2-characters-all')];
+      const pick = async (label) => {
+        await admin.locator('[data-kind-filter]').getByText(new RegExp(`^${label} \\d+$`)).click();
+        await admin.waitForTimeout(300);
+        return admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      };
+      const vrm = await pick('VRM');
+      assert.deepEqual(vrm, ['claude']);
+      out.push(await shot('b2-characters-vrm'));
+      const l2dRows = await pick('Live2D');
+      assert.deepEqual(l2dRows, ['dafeiyu']);
+      const pics = await pick('图片');
+      assert.deepEqual(pics, ['gemini']);
+      const imported = await pick('有导入包');
+      assert.deepEqual([...imported].sort(), ['claude', 'dafeiyu', 'gemini']);
+      out.push(await shot('b2-characters-imported'));
+      await pick('全部');
+      return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B3 角色详情 (格萝可, current): 形象包 / 服饰 / 好感 / 模型 / 设定 / 语音 / 资料, one screenshot per tab', async () => {
+      await go('/characters/grok');
+      const out = [];
+      for (const [t, sel] of [['形象包', '[data-wardrobe="grok"]'], ['服饰', '[data-outfits="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
+        await tab(t);
+        if (sel) await attached(sel);
+        out.push(await shot(`b3-grok-${t}`));
+      }
+      const persona = await admin.textContent('[data-personality="grok"]').catch(() => '');
+      await tab('设定');
+      const p2 = await admin.textContent('[data-personality="grok"]');
+      assert.ok(p2.length > 20, 'her persona from the character file');
+      await tab('资料');
+      const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
+      assert.match(kinds, /像素 · 内置 \d+ · 导入 0/);
+      return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
+    }, () => admin);
+
+    await step(S, 'B4 服饰 → 穿上 in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
+      const u = await call('unlockAll', 'grok');
+      assert.equal(u.ok, true);
+      await go('/characters/grok');
+      await tab('服饰');
+      const before = await page.getAttribute('#char-wrap', 'data-outfit');
+      const id = await admin.getAttribute('[data-outfits="grok"] [data-equip]', 'data-equip');
+      assert.ok(id && id !== before, `${id} vs ${before}`);
+      // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
+      if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
+      await page.waitForTimeout(400);
+      const pBefore = await petShot('b4-pet-before');
+      await admin.click(`[data-equip="${id}"]`);
+      await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
+      await attached(`[data-outfit="${id}"][data-equipped="true"]`);
+      await page.waitForTimeout(500);
+      const pAfter = await petShot('b4-pet-after');
+      const a = await shot('b4-grok-outfits-after');
+      return `pet window #char-wrap data-outfit ${before} → ${id}; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B5 桌宠行为: 宠物大小 slider → the pet window grows at once; 自己走动 switch saved; 找回桌宠 puts her back bottom-right', async () => {
+      await go('/behavior');
+      const out = [await shot('b5-behavior')];
+      const b0 = await petBoundsNow();
+      const s0 = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim());
+      out.push(await petShot('b5-pet-before'));
+      const thumb = admin.locator('[data-key="petScale"] input[type="range"]').first();
+      await thumb.focus();
+      await admin.keyboard.press('Home');
+      await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+      const b1 = await petBoundsNow();
+      assert.ok(b1.width < b0.width && b1.height < b0.height, `${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+      assert.equal(saved().petScale, 0.5);
+      out.push(await petShot('b5-pet-after-50'));
+      // a switch: 自己走动 off → settings.json and the pet window's copy at once
+      await admin.click('[data-key="prefs.roam"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="prefs.roam"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().prefs.roam, false);
+      const petRoam = await page.evaluate(async () => (await window.pet.getSettings()).prefs.roam);
+      assert.equal(petRoam, false);
+      // 找回桌宠: she was dragged to the top-left corner
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
+      const moved = await petBoundsNow();
+      await admin.click('[data-place-pet]');
+      await page.waitForTimeout(500);
+      const back = await petBoundsNow();
+      const wa = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+      assert.equal(back.x, wa.x + wa.width - back.width - 24);
+      assert.equal(back.y, wa.y + wa.height - back.height - 24);
+      out.push(await shot('b5-behavior-after'));
+      return `--pet-scale ${s0} → 0.5, window ${b0.width}×${b0.height} → ${b1.width}×${b1.height}; prefs.roam → false (file and pet window); 找回桌宠 (${moved.x},${moved.y}) → (${back.x},${back.y}) = work area bottom-right; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B6 主动搭话与好感: page screenshot; 主动说话 off is saved and its thresholds grey out', async () => {
+      await go('/proactive');
+      const out = [await shot('b6-proactive')];
+      await admin.click('[data-key="proactive.enabled"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="proactive.enabled"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().proactive.enabled, false);
+      out.push(await shot('b6-proactive-off'));
+      return `proactive.enabled → ${saved().proactive.enabled}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B7 版本与更新: 自动检查更新 switch (new, was only PIXELPET_NO_UPDATE) saved at once', async () => {
+      await go('/update');
+      assert.equal(await admin.getAttribute('[data-key="update.autoCheck"]', 'aria-checked'), 'true');
+      await admin.click('[data-key="update.autoCheck"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="update.autoCheck"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().update.autoCheck, false);
+      return `update.autoCheck → false in settings.json; ${await shot('b7-update')}`;
+    }, () => admin);
+
+    await step(S, 'B8 数据与关于: the data folder\'s path is shown and 打开数据目录 answers', async () => {
+      await go('/about');
+      const shown = (await admin.textContent('[data-data-dir]')).trim();
+      assert.equal(shown, data);
+      const r = await call('openDataFolder');
+      assert.equal(r.ok, true);
+      assert.equal(r.path, data);
+      return `shows ${shown}; ${await shot('b8-about')}`;
+    }, () => admin);
+
+    let l2dId = null;
+    await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 形象包 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
+      const sw = await call('switchCharacter', 'dafeiyu', '小鱼');
+      assert.equal(sw.ok, true, JSON.stringify(sw));
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await admin.evaluate(async () => (await window.petAdmin.state()).packs.filter((p) => p.kind === 'live2d' && p.source === 'user').map((p) => p.id));
+      l2dId = st[0];
+      const ap = await call('setAppearance', l2dId, 'dafeiyu');
+      assert.equal(ap.ok, true, JSON.stringify(ap));
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 30000 });
+      await page.waitForTimeout(1500);
+      const pBefore = await petShot('b9-pet-live2d-before');
+      await go('/characters/dafeiyu');
+      await tab('形象包');
+      await attached(`[data-live2d-size="${l2dId}"]`);
+      const thumb = admin.locator(`[data-live2d-size="${l2dId}"] input[type="range"]`).first();
+      await thumb.focus();
+      await admin.keyboard.press('Home'); // 30%
+      const file = path.join(data, 'packs', l2dId, 'pack.json');
+      for (let i = 0; i < 50 && JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height !== 0.3; i++) await page.waitForTimeout(100);
+      assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height, 0.3);
+      await page.waitForTimeout(1500);
+      const pAfter = await petShot('b9-pet-live2d-after');
+      const a = await shot('b9-dafeiyu-looks');
+      return `${l2dId} live2d.height → 0.3 in pack.json; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 服饰 note for one not current', async () => {
+      const out = [];
+      await go('/characters/dafeiyu');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 1 · 导入 1/);
+      out.push(await shot('b10-dafeiyu-about'));
+      await go('/characters/claude');
+      await tab('形象包');
+      out.push(await shot('b10-claude-looks-vrm'));
+      await tab('服饰');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /只有正在陪你的角色可以换服饰/);
+      await go('/characters/gemini');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);
+      out.push(await shot('b10-gemini-about'));
+      return out.join(', ');
+    }, () => admin);
+
+    await step(S, 'B11 no console errors in the settings window', async () => {
+      const real = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(real, []);
+      return 'none';
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------- admin (配置后台)
 // The settings window: opened from the ⋯ menu (and Ctrl+,) as a single instance, every page in light and
 // dark, a setting changed there takes effect in the pet window and lands in settings.json, typed values are
@@ -7611,6 +7903,7 @@ async function adminScenario() {
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
