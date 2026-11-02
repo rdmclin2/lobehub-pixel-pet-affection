@@ -215,7 +215,7 @@ async function runModel(tag, MODEL) {
         await settle();
         await page.evaluate((d) => window.petFx.face(d), dir0);
         // standing and facing the screen again (±18°) before the walk starts
-        await page.waitForFunction(() => { const p = window.PetVRM.director.plan(); return p && !window.petFx.stats().walking && Math.abs(Math.abs(p.facingYaw) - 18) < 0.2; }, null, { timeout: 15000 }).catch(() => {});
+        await page.waitForFunction((d) => { const p = window.PetVRM.director.plan(); return p && !window.petFx.stats().walking && Math.abs(p.facingYaw - (d === 'left' ? -18 : 18)) < 0.2; }, dir0, { timeout: 15000 }).catch(() => {});
         await sleep(600);
         // a sampler in the page every 20 ms (the capture loop samples the canvas at a few fps under load): the
         // director's facing, the turn lead, the walk cycle's pace and the window's x
