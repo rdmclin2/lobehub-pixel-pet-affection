@@ -26,7 +26,7 @@ const { AdminWindow } = require('./admin-window');
 const { createAdminSettings } = require('./admin-settings');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
-const { buildRoster, packRows } = require('../core/roster');
+const { buildRoster, packRows, adminView } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -136,12 +136,29 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view, settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
+// What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
+// half of a save, a re-emitted view) is not sent at all. admin-boot clears it (a new window has nothing yet).
+let adminSent = null;
 function pushAdmin() {
   if (!admin || !admin.alive || adminPush) return;
-  adminPush = setImmediate(() => { adminPush = null; admin.send('admin-state', adminState()); });
+  adminPush = setImmediate(() => {
+    adminPush = null;
+    if (!admin.alive) return;
+    const st = adminState();
+    const json = JSON.stringify(st);
+    if (json === adminSent) return;
+    adminSent = json;
+    admin.send('admin-state', st);
+  });
+}
+// The window's first copy: what later pushes are compared against.
+function bootState() {
+  const st = adminState();
+  adminSent = JSON.stringify(st);
+  return st;
 }
 function openAdmin(section) {
   return admin.open(section);
@@ -609,7 +626,7 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...adminState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));

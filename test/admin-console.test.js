@@ -459,3 +459,34 @@ test('roster: a sprite preview carries her sheet\'s actions, so the console can 
   assert.deepEqual(pv.actions, look.actions);
   assert.equal(previewOf({}, { ...look, actions: undefined }).actions, null);
 });
+
+// 后台点击卡顿 (T-2701): what made every click in the console freeze, kept from coming back.
+test('admin perf: the console view carries her needs as the whole numbers it shows, without the tick clock', () => {
+  const { adminView } = require('../src/core/roster');
+  const view = { pet: { hunger: 30.0412, mood: 69.987, energy: 89.97, lastTickAt: 1793625869524, sleeping: false, name: 'x' }, characters: [] };
+  const a = adminView(view);
+  assert.deepEqual(a.pet, { hunger: 30, mood: 70, energy: 90, sleeping: false, name: 'x' });
+  assert.equal(view.pet.lastTickAt, 1793625869524, 'the service view itself is not touched');
+  assert.equal(a.characters, view.characters);
+  // two heartbeats a moment apart: the same console state, so main sends nothing
+  const b = adminView({ ...view, pet: { ...view.pet, hunger: 30.0477, mood: 69.9857, energy: 89.9714, lastTickAt: 1793625870385 } });
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+  assert.equal(adminView(null), null);
+});
+
+test('admin perf: main sends the console a state only when it changed; sprite sheets are decoded off the main thread', () => {
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  assert.match(main, /if \(json === adminSent\) return;/);
+  assert.match(main, /view: adminView\(view\)/);
+  const stage = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'stage', 'SpriteStage.tsx'), 'utf8');
+  // a whole 2656 × 8136 sheet drawn onto a canvas is decoded synchronously on the main thread (1–2 s each)
+  assert.match(stage, /createImageBitmap\(b\)/);
+  assert.match(stage, /g\.drawImage\(frames\[i\], 0, 0\)/);
+  assert.doesNotMatch(stage, /new Image\(\)/);
+  assert.doesNotMatch(stage, /requestAnimationFrame\(/, 'frames advance at the sheet fps, not every vsync');
+  assert.match(fs.readFileSync(path.join(ROOT, 'admin', 'index.html'), 'utf8'), /connect-src 'self' pack:/, 'the sheets are fetched from pack://');
+  const cs = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'stage', 'CharacterStage.tsx'), 'utf8');
+  assert.doesNotMatch(cs, /infinite/, 'no endless full-stage animation');
+  const store = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'store.tsx'), 'utf8');
+  assert.match(store, /share\(d, \{ \.\.\.d, \.\.\.st \}\)/, 'a pushed state reuses what did not change');
+});
