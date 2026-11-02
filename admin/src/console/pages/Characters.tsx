@@ -437,7 +437,7 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
   const global = settings?.prefs?.framing === 'half' ? '半身' : '全身';
   const packDefault = ch?.look?.framing === 'half' ? '半身' : ch?.look?.framing === 'full' ? '全身' : null;
   const follow = packDefault ? `跟随形象包（${packDefault}）` : `跟随全局（${global}）`;
-  const camera = ch?.look?.kind === 'vrm';
+  const camera = ch?.look?.kind === 'vrm' || ch?.look?.kind === 'live2d';
   return (
     <Flexbox align="center" data-framing-row={c.id} gap={12} horizontal wrap="wrap">
       <Text strong>取景</Text>
@@ -465,7 +465,7 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
         />
       </div>
       <Text fontSize={12} type="secondary">
-        {camera ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '目前只有 VRM 形象包能半身取景；她现在穿的形象包保持全身。'}
+        {camera ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '目前只有 VRM 和 Live2D 形象包能半身取景；她现在穿的形象包保持全身。'}
       </Text>
     </Flexbox>
   );

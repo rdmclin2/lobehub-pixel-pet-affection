@@ -59,8 +59,8 @@ function setSettings(st) {
 }
 
 // 取景 (core/framing.js, docs/half-body-mode.md): 全身 / 半身 for what she wears now — her own choice (her page in
-// the settings window), her pack's default, then 桌宠行为 → 取景. A camera-drawn look (VRM) is re-framed in
-// place: the model stays loaded and the camera glides, so a change never reloads her or flashes a T-pose.
+// the settings window), her pack's default, then 桌宠行为 → 取景. A model-drawn look is re-framed in place (VRM: the
+// camera glides; Live2D: the model glides to its new scale and offset): it never reloads her or flashes a T-pose.
 const PF = window.PetFraming;
 const framingOf = (look) => PF.resolveFraming(settings, view && view.pet && view.pet.speciesId, look);
 function syncFraming() {
@@ -1987,7 +1987,7 @@ function artPoint(cx, cy) {
   const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
   const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
   const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
-  // 半身 (a VRM framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
+  // 半身 (a VRM / Live2D figure framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
   // head-to-feet art) get y in her full-body proportions; legs and feet are below the picture, out of reach
   const half = a.el.dataset && a.el.dataset.framing === 'half' ? { mode: 'half', cut: Number(a.el.dataset.cut) } : null;
   const y = (py - b.y0) / (b.y1 - b.y0);
@@ -2446,6 +2446,8 @@ window.petFx = {
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
+  live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
   // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
   // without a TTS engine; resolves with how the clip ended
   testVoice: (seconds = 2) => new Promise((resolve) => {

@@ -6038,6 +6038,8 @@ async function vrmUi() {
 // ------------------------------------------------------------------ vrm / vrmimport
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
+// Live2D 取景 (半身): e2e/live2d-frame.js
+const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
@@ -7607,6 +7609,7 @@ async function adminScenario() {
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
