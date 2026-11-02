@@ -1,34 +1,12 @@
-import { Alert, Button, Center, ErrorBoundary, Flexbox, Icon, Spin, Text } from '@lobehub/ui';
-import { ConsoleBrand, ConsoleNav, ConsoleShell, type ConsoleNavGroup } from '@lobehub/ui/dashboard';
-import { PawPrint } from 'lucide-react';
+import { Alert, Center, Flexbox, Spin, Text } from '@lobehub/ui';
 
 import { useHashPath } from '../useHashPath';
-import { api } from './api';
-import { ICONS } from './icons';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
-import { AboutPage, ApiPage, AsrPage, ConnectionPage, OverviewPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
-import { StoreProvider, useStore } from './store';
-import { styles } from './style';
-
-/** Settings that only apply after a restart were changed: say so on every page, with 立即重启. */
-const RestartBanner = () => {
-  const { pendingRestart, schema } = useStore();
-  if (!pendingRestart.length) return null;
-  const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
-  return (
-    <Alert
-      action={
-        <Button onClick={() => api().relaunch()} size="small" type="primary">
-          立即重启
-        </Button>
-      }
-      data-restart-banner
-      showIcon
-      title={`${names}：重启应用后生效`}
-      type="warning"
-    />
-  );
-};
+import { OverviewPage } from './pages/Home';
+import { HubPage } from './pages/Hub';
+import { AboutPage, ApiPage, AsrPage, ConnectionPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
+import { Shell } from './Shell';
+import { StoreProvider } from './store';
 
 const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string }) => {
   const [, page, sub] = path.split('/');
@@ -37,6 +15,10 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <OverviewPage navigate={navigate} />;
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
+    case 'play':
+      return <HubPage key="play" place="play" />;
+    case 'settings':
+      return <HubPage key="settings" place="settings" />;
     case 'packs':
       return <PacksPage />;
     case 'tts':
@@ -65,42 +47,12 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
   }
 };
 
-const Shell = () => {
-  const { schema } = useStore();
+const Console = () => {
   const [path, navigate] = useHashPath('/overview');
-  const groups: ConsoleNavGroup[] = schema.nav.map((g) => ({
-    icon: ICONS[g.items[0].icon],
-    items: g.items.map((i) => ({ href: `/${i.page}`, icon: ICONS[i.icon], label: i.label })),
-    key: g.key,
-    label: g.label,
-  }));
-  const page = path.split('/')[1] || 'overview';
   return (
-    <ConsoleShell
-      brand={<ConsoleBrand href="#/overview" logo={<Icon icon={PawPrint} size={20} />} title="Pixel Pet 设置" />}
-      navigation={
-        <ConsoleNav
-          defaultExpanded="all"
-          groups={groups}
-          label="设置"
-          onNavigate={navigate}
-          pathname={path}
-          renderLink={({ external: _external, href, ...rest }) => <a {...rest} href={`#${href}`} />}
-        />
-      }
-      storageKey="pixel-pet-admin-nav"
-    >
-      <Flexbox className={styles.page} data-admin-page={page} data-path={path} gap={16}>
-        <RestartBanner />
-        {/* a page that fails shows why, the navigation stays usable */}
-        <ErrorBoundary
-          fallbackRender={({ error }) => <Alert description={String((error as Error)?.message ?? error)} showIcon title="这一页没有显示出来" type="error" />}
-          resetKeys={[path]}
-        >
-          <Page navigate={navigate} path={path} />
-        </ErrorBoundary>
-      </Flexbox>
-    </ConsoleShell>
+    <Shell path={path}>
+      <Page navigate={navigate} path={path} />
+    </Shell>
   );
 };
 
@@ -119,6 +71,6 @@ export const ConsoleApp = () => (
       </Center>
     )}
   >
-    <Shell />
+    <Console />
   </StoreProvider>
 );

@@ -250,6 +250,8 @@ function toAffectionProgress(pet, { adult = false } = {}) {
     color: cur.color,
     today: pet.affectionToday,
     dailyCap: rules.dailyCap,
+    // every stage as a milestone on the way (the settings window draws them on her heart meter)
+    stages: REL_STAGES.map((s) => ({ id: s.id, name: stageName(s.id, adult), min: s.min, color: s.color })),
   };
   if (!next) return { ...base, next: null, nextName: null, need: 0, pct: 100 };
   return {

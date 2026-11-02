@@ -1,5 +1,8 @@
 import {
   AudioLines,
+  Gamepad2,
+  House,
+  Settings,
   Cloud,
   HeartHandshake,
   Info,
@@ -17,9 +20,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-/** Nav icons named in core/settings-schema.js NAV. */
+/** Rail and tile icons named in core/settings-schema.js RAIL / NAV. */
 export const ICONS: Record<string, LucideIcon> = {
   AudioLines,
+  Gamepad2,
+  House,
+  Settings,
   Cloud,
   HeartHandshake,
   Info,

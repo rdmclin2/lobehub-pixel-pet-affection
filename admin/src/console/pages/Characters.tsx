@@ -2,15 +2,16 @@
  * 角色列表 (P-02) · 角色详情 (P-03 + P-04) · 外观资源 (P-02). Data: core/roster.js rows, rebuilt in main on
  * every change, so a switch made here shows in the pet window and the other way round.
  */
-import { Alert, Button, Flexbox, Input, Modal, Progress, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
+import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
-import { Download, FolderOpen, Import, Trash2 } from 'lucide-react';
+import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { api, reasonText, type PackRow, type RosterRow } from '../api';
-import { CharacterPreview } from '../CharacterPreview';
+import { api, reasonText, type PackOption, type PackRow, type RosterRow } from '../api';
 import { ask } from '../fields';
-import { FORM_STYLE } from '../SettingsForm';
+import { CharacterStage } from '../stage/CharacterStage';
+import { HeartMeter } from '../stage/HeartMeter';
+import { SpriteStage } from '../stage/SpriteStage';
 import { useStore } from '../store';
 
 const KIND_COLOR: Record<string, string> = { sprites: 'geekblue', pictures: 'cyan', rig: 'purple', live2d: 'magenta', vrm: 'volcano', video: 'gold' };
@@ -30,7 +31,6 @@ export const modelLabel = (c: RosterRow, key: string | null | undefined): string
   return o.hosted ? String(o.label ?? o.key) : `${o.label ?? o.key}（自己的 ${c.vendor} Key）`;
 };
 
-const relText = (c: RosterRow) => (c.met ? `${c.met.stage} · 好感 ${c.met.affection}` : '未见过');
 
 /** 切换 / 初次见面 (meeting someone new asks her name first, then creates her agent). */
 export const useSwitch = () => {
@@ -88,9 +88,92 @@ export const SwitchButton = ({ c, sw }: { c: RosterRow; sw: ReturnType<typeof us
     </Button>
   );
 
+const gstyles = createStaticStyles(({ css }) => ({
+  grid: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+    gap: 16px;
+  `,
+  card: css`
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: ${cssVar.borderRadiusLG};
+
+    background: ${cssVar.colorBgContainer};
+
+    transition:
+      transform 200ms ease-out,
+      box-shadow 200ms ease-out;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: ${cssVar.boxShadowSecondary};
+    }
+
+    &[data-current='true'] {
+      border-color: color-mix(in srgb, var(--pet-accent) 60%, transparent);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+
+      &:hover {
+        transform: none;
+      }
+    }
+  `,
+  art: css`
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+
+    height: 200px;
+
+    background:
+      radial-gradient(70% 60% at 50% 35%, color-mix(in srgb, var(--pet-accent) 30%, transparent), transparent 75%),
+      color-mix(in srgb, var(--pet-accent) 8%, ${cssVar.colorFillQuaternary});
+
+    &:focus-visible {
+      outline: 2px solid ${cssVar.colorPrimary};
+      outline-offset: -2px;
+    }
+  `,
+  locked: css`
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+
+    color: ${cssVar.colorTextSecondary};
+  `,
+  ribbon: css`
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-start: 8px;
+  `,
+  kind: css`
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-end: 8px;
+  `,
+}));
+
+/** 角色图鉴: every character as a collectible card — met ones in colour with their hearts, the rest a shadow. */
 export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const { roster, view } = useStore();
   const sw = useSwitch();
+  const met = roster.filter((c) => c.met).length;
   return (
     <>
       <PageHeader
@@ -99,87 +182,58 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
             导入角色包…
           </Button>
         }
-        description="所有可用角色：形象包、类型、来源、语音包和关系。点一行查看详情，也可以直接切换当前角色。"
-        title="角色列表"
+        description={`已遇见 ${met} / ${roster.length} 位。点开一位，看她的故事、换形象包、调她的模型和设定。`}
+        title="角色图鉴"
       />
-      {!view && <Alert showIcon title="还没有唤醒桌宠" description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里切换和设置她们。" type="info" />}
-      <Surface bleed data-roster title={`共 ${roster.length} 位角色`}>
-        <Table<RosterRow>
-          columns={[
-            { dataIndex: 'preview', key: 'preview', render: (_: unknown, c) => <CharacterPreview accent={c.accent} name={c.nameZh} preview={c.preview} size={48} />, title: '预览', width: 72 },
-            {
-              key: 'name',
-              render: (_: unknown, c) => (
-                <Flexbox gap={2}>
-                  <Text strong>{c.displayName}</Text>
+      {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
+      <div className={gstyles.grid} data-roster>
+        {roster.map((c) => (
+          <article className={gstyles.card} data-current={c.current} data-row={c.id} key={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
+            <a aria-label={`查看 ${c.nameZh}`} className={gstyles.art} href={`#/characters/${c.id}`}>
+              <SpriteStage animate height={184} name={c.nameZh} preview={c.preview} silhouette={!c.met && !c.current} />
+              {!c.met && !c.current && (
+                <span className={gstyles.locked}>
+                  <Icon icon={Lock} size={20} />
                   <Text fontSize={12} type="secondary">
-                    {c.title}
+                    未遇见
                   </Text>
-                </Flexbox>
-              ),
-              title: '名称',
-            },
-            { key: 'kind', render: (_: unknown, c) => <KindTag adult={c.pack?.adult} kind={c.kind} label={c.kindLabel} />, title: '类型', width: 120 },
-            {
-              key: 'source',
-              render: (_: unknown, c) => (
-                <Flexbox gap={2}>
-                  <Text>{c.sourceLabel}</Text>
-                  <Text ellipsis fontSize={12} type="secondary">
-                    {c.pack ? c.pack.name : '--'}
-                  </Text>
-                </Flexbox>
-              ),
-              title: '来源 · 形象包',
-              width: 180,
-            },
-            {
-              key: 'voice',
-              render: (_: unknown, c) =>
-                c.voicePack ? (
-                  <Flexbox gap={2}>
-                    <Text>{c.voicePack.engineLabel}</Text>
-                    <Text fontSize={12} type="secondary">
-                      {c.voicePack.lines} 句 · {c.voicePack.builtIn ? '内置' : '自定义'}
-                    </Text>
-                  </Flexbox>
-                ) : (
-                  <Text type="secondary">--</Text>
-                ),
-              title: '语音包',
-              width: 130,
-            },
-            {
-              key: 'rel',
-              render: (_: unknown, c) => (
-                <Flexbox gap={4} style={{ minWidth: 120 }}>
-                  <Text fontSize={12}>{relText(c)}</Text>
-                  {c.met && <Progress percent={Math.round((c.met.affection / 100) * 100)} showInfo={false} size="small" />}
-                </Flexbox>
-              ),
-              title: '关系',
-              width: 150,
-            },
-            {
-              key: 'act',
-              render: (_: unknown, c) => (
-                <Flexbox align="center" gap={8} horizontal onClick={(e) => e.stopPropagation()}>
-                  {view && <SwitchButton c={c} sw={sw} />}
-                  <Button data-detail={c.id} onClick={() => navigate(`/characters/${c.id}`)} size="small" type="text">
-                    详情
-                  </Button>
-                </Flexbox>
-              ),
-              title: '操作',
-              width: 170,
-            },
-          ]}
-          dataSource={roster}
-          onRow={(c) => ({ 'data-row': c.id, onClick: () => navigate(`/characters/${c.id}`), style: { cursor: 'pointer' } }) as any}
-          pagination={false}
-          rowKey="id"
-        />
-      </Surface>
+                </span>
+              )}
+              {c.current && (
+                <span className={gstyles.ribbon}>
+                  <Tag color="success" data-current={c.id}>
+                    当前角色
+                  </Tag>
+                </span>
+              )}
+              <span className={gstyles.kind}>
+                <KindTag adult={c.pack?.adult} kind={c.kind} label={c.kindLabel} />
+              </span>
+            </a>
+            <Flexbox flex={1} gap={8} padding={12}>
+              <Flexbox gap={2}>
+                <Text ellipsis strong>
+                  {c.displayName}
+                </Text>
+                <Text ellipsis fontSize={12} type="secondary">
+                  {c.title}
+                </Text>
+              </Flexbox>
+              <HeartMeter c={c} compact />
+              <Text ellipsis fontSize={12} type="secondary">
+                {c.pack ? c.pack.name : c.kindLabel} · {c.sourceLabel}
+                {c.voicePack ? ` · 语音包 ${c.voicePack.lines} 句` : ''}
+              </Text>
+              <Flexbox align="center" gap={8} horizontal justify="space-between" style={{ marginBlockStart: 'auto' }}>
+                <Button data-detail={c.id} href={`#/characters/${c.id}`} size="small" type="text">
+                  详情
+                </Button>
+                {view && !c.current && <SwitchButton c={c} sw={sw} />}
+              </Flexbox>
+            </Flexbox>
+          </article>
+        ))}
+      </div>
       {sw.modal}
     </>
   );
@@ -309,23 +363,127 @@ const RoleTab = ({ c }: { c: RosterRow }) => {
   );
 };
 
-const LookTab = ({ c }: { c: RosterRow }) => {
+const wstyles = createStaticStyles(({ css }) => ({
+  grid: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+    gap: 12px;
+  `,
+  card: css`
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: ${cssVar.borderRadiusLG};
+
+    background: ${cssVar.colorBgContainer};
+
+    &[data-worn='true'] {
+      border-color: color-mix(in srgb, var(--pet-accent) 70%, transparent);
+    }
+
+    &[data-trying='true'] {
+      border-style: dashed;
+      border-color: var(--pet-accent);
+    }
+  `,
+  cover: css`
+    cursor: pointer;
+
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+
+    height: 152px;
+    padding: 0;
+    border: 0;
+
+    background: color-mix(in srgb, var(--pet-accent) 10%, ${cssVar.colorFillQuaternary});
+
+    &:focus-visible {
+      outline: 2px solid ${cssVar.colorPrimary};
+      outline-offset: -2px;
+    }
+  `,
+  add: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+
+    min-height: 240px;
+    padding: 16px;
+    border: 1px dashed ${cssVar.colorBorder};
+    border-radius: ${cssVar.borderRadiusLG};
+  `,
+}));
+
+const KIND_NAME: Record<string, string> = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
+
+/**
+ * 形象包: her wardrobe. Every pack she can wear as a card with its picture; 试穿 shows it on her stage above,
+ * 穿上 dresses her (in the pet window too). Importing new ones sits at the end of the rack.
+ */
+const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null) => void; trying: string | null }) => {
   const { view, merge } = useStore();
   const ch = view?.characters?.find((x: any) => x.id === c.id);
-  const options: any[] = ch?.appearance?.options ?? [];
+  const options: PackOption[] = ch?.appearance?.options ?? [];
   const run = async (p: Promise<any>, ok: string) => {
     const r = await p;
     if (r && r.view) merge({ view: r.view });
     if (r && r.ok) toast.success(ok);
     else if (r && r.reason !== 'canceled') toast.error(reasonText(r));
+    return r;
   };
-  if (!view) return <Alert title="唤醒桌宠后可以给她换外观" type="info" />;
+  if (!view) return <Alert title="唤醒桌宠后可以给她换形象包" type="info" />;
+  const worn = (p: PackOption) => p.id === c.pack?.id || (!c.pack && p.kind === 'video');
   return (
-    <Surface
-      bleed
-      description="她穿的角色包。18+ 包要先确认已满 18 周岁并打开成人向内容。"
-      extra={
-        <Flexbox gap={8} horizontal>
+    <Flexbox gap={12}>
+      <Text type="secondary">她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。</Text>
+      <div className={wstyles.grid} data-wardrobe={c.id}>
+        {options.map((p) => (
+          <div className={wstyles.card} data-pack={p.id} data-trying={trying === p.id} data-worn={worn(p)} key={p.id}>
+            <button aria-label={`试穿「${p.name}」`} className={wstyles.cover} data-try-pack={p.id} onClick={() => onTry(trying === p.id ? null : p.id)} type="button">
+              <SpriteStage animate={trying === p.id} height={144} name={p.name} preview={p.cover} />
+            </button>
+            <Flexbox flex={1} gap={6} padding={12}>
+              <Text ellipsis strong>
+                {p.name}
+              </Text>
+              <KindTag adult={p.adult} kind={p.kind} label={KIND_NAME[p.kind] ?? p.kind} />
+              <Text ellipsis fontSize={12} type="secondary">
+                {p.source === 'user' ? '导入' : '内置'}
+                {p.outfits && p.outfits > 1 ? ` · ${p.outfits} 套服饰` : ''}
+                {p.author ? ` · ${p.author}` : ''}
+              </Text>
+              <Flexbox horizontal style={{ marginBlockStart: 'auto' }}>
+                {worn(p) ? (
+                  <Tag color="success" icon={<Icon icon={Check} />}>
+                    正在穿
+                  </Tag>
+                ) : (
+                  <Button
+                    data-use-pack={p.id}
+                    onClick={async () => {
+                      const r = await run(api().setAppearance(p.id, c.id), `${c.nameZh} 换上了「${p.name}」`);
+                      if (r && r.ok) onTry(null);
+                    }}
+                    size="small"
+                    type={trying === p.id ? 'primary' : 'default'}
+                  >
+                    穿上
+                  </Button>
+                )}
+              </Flexbox>
+            </Flexbox>
+          </div>
+        ))}
+        <div className={wstyles.add}>
+          <Text strong>添加形象包</Text>
+          <Text fontSize={12} type="secondary">
+            导入的包会出现在这一排里。
+          </Text>
           <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入')} size="small">
             导入角色包…
           </Button>
@@ -335,55 +493,71 @@ const LookTab = ({ c }: { c: RosterRow }) => {
           <Button onClick={() => run(api().importVrm(c.id), 'VRM 模型已导入')} size="small">
             导入 VRM…
           </Button>
-        </Flexbox>
-      }
-      title="外观"
-    >
-      <Table
-        columns={[
-          { dataIndex: 'name', key: 'name', render: (_: unknown, p: any) => <Text strong={p.id === c.pack?.id}>{p.name}</Text>, title: '形象包' },
-          { key: 'kind', render: (_: unknown, p: any) => <KindTag adult={p.adult} kind={p.kind} label={({ sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' } as any)[p.kind] ?? p.kind} />, title: '类型', width: 120 },
-          { key: 'source', render: (_: unknown, p: any) => (p.source === 'user' ? '导入' : '内置'), title: '来源', width: 80 },
-          { dataIndex: 'author', key: 'author', render: (v: string) => <Text ellipsis type="secondary">{v || '--'}</Text>, title: '作者', width: 180 },
-          {
-            key: 'use',
-            render: (_: unknown, p: any) =>
-              p.id === c.pack?.id || (!c.pack && p.kind === 'video') ? (
-                <Tag color="success">正在使用</Tag>
-              ) : (
-                <Button data-use-pack={p.id} onClick={() => run(api().setAppearance(p.id, c.id), `${c.nameZh} 换上了「${p.name}」`)} size="small">
-                  使用
-                </Button>
-              ),
-            title: '',
-            width: 110,
-          },
-        ]}
-        dataSource={options}
-        pagination={false}
-        rowKey="id"
-      />
-    </Surface>
+        </div>
+      </div>
+    </Flexbox>
   );
 };
 
+const astyles = createStaticStyles(({ css }) => ({
+  road: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+  `,
+  step: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    padding: 12px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: ${cssVar.borderRadiusLG};
+
+    color: ${cssVar.colorTextTertiary};
+
+    &[data-reached='true'] {
+      border-color: color-mix(in srgb, var(--pet-accent) 40%, transparent);
+      color: ${cssVar.colorText};
+      background: color-mix(in srgb, var(--pet-accent) 8%, transparent);
+    }
+
+    &[data-here='true'] {
+      border-color: var(--pet-accent);
+    }
+  `,
+}));
+
+/** 好感: the relationship as a road — every stage a step, the reached ones lit, where she is now marked. */
 const AffectionTab = ({ c }: { c: RosterRow }) => {
   const { merge } = useStore();
-  if (!c.met) return <Alert title="还没见过她：切换到她并起个名字之后才有好感度" type="info" />;
-  const p = c.met.progress;
+  if (!c.met) return <Alert title="还没遇见她：切换到她并起个名字之后才有好感" type="info" />;
+  const p = c.met.progress ?? {};
+  const value = p.value ?? c.met.affection;
+  const stages: { id: string; min: number; name: string }[] = p.stages ?? [];
   return (
-    <Surface description="关系阶段随好感上涨解锁新的话题和服饰。" title="好感度">
-      <Flexbox gap={12}>
-        <Info label="关系">{relText(c)}</Info>
-        <Info label="进度">
-          <Progress percent={Math.round(((p?.value ?? c.met.affection) / (p?.max ?? 100)) * 100)} />
-        </Info>
-        {p?.next && (
-          <Info label="下一阶段">
-            {p.nextName}：还差 {p.need}
-          </Info>
+    <Surface description="好感随你们的互动上涨；每到一个阶段，会解锁新的话题和服饰。" title="你们的关系" style={{ ['--pet-accent' as string]: c.accent }}>
+      <Flexbox gap={16}>
+        <HeartMeter c={c} />
+        {stages.length > 0 && (
+          <div className={astyles.road} data-road={c.id}>
+            {stages.map((s) => (
+              <div className={astyles.step} data-here={p.stage === s.id} data-reached={value >= s.min} key={s.id}>
+                <Flexbox align="center" gap={6} horizontal>
+                  <Icon fill={value >= s.min ? 'currentColor' : 'none'} icon={value >= s.min ? Heart : Lock} size={14} style={value >= s.min ? { color: c.accent } : undefined} />
+                  <Text strong={p.stage === s.id}>{s.name}</Text>
+                </Flexbox>
+                <Text fontSize={12} type="secondary">
+                  {p.stage === s.id ? '现在' : value >= s.min ? '已解锁' : `好感 ${s.min} 解锁`}
+                </Text>
+              </div>
+            ))}
+          </div>
         )}
-        <Flexbox horizontal>
+        <Flexbox align="center" gap={12} horizontal justify="space-between">
+          <Text fontSize={12} type="secondary">
+            想直接看到全部内容？一键解锁会把好感拉满，不能撤销。
+          </Text>
           <Button
             danger
             data-unlock={c.id}
@@ -403,58 +577,100 @@ const AffectionTab = ({ c }: { c: RosterRow }) => {
   );
 };
 
-export const CharacterDetailPage = ({ id, navigate }: { id: string; navigate: (p: string) => void }) => {
+const dstyles = createStaticStyles(({ css }) => ({
+  hero: css`
+    display: grid;
+    grid-template-columns: minmax(260px, 5fr) 6fr;
+    gap: 32px;
+    align-items: start;
+
+    @media (width <= 900px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  quote: css`
+    margin: 0;
+    padding-block: 8px;
+    padding-inline: 16px;
+    border-radius: ${cssVar.borderRadiusLG};
+
+    line-height: 1.6;
+
+    background: color-mix(in srgb, var(--pet-accent) 10%, ${cssVar.colorFillQuaternary});
+  `,
+}));
+
+type DetailTab = 'looks' | 'affection' | 'model' | 'role' | 'voice' | 'about';
+
+/** 角色详情: her on a big stage (tap her, play her actions, try packs on), her story, and her settings below. */
+export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) => void }) => {
   const { roster, view } = useStore();
   const sw = useSwitch();
-  const [tab, setTab] = useState<'overview' | 'model' | 'role' | 'look' | 'voice' | 'affection'>('overview');
+  const [tab, setTab] = useState<DetailTab>('looks');
+  const [trying, setTrying] = useState<string | null>(null);
   const c = roster.find((x) => x.id === id);
+  const ch = view?.characters?.find((x: any) => x.id === id);
   if (!c) return <Alert title={`没有角色「${id}」`} type="error" />;
+  const tryOpt: PackOption | undefined = trying ? (ch?.appearance?.options ?? []).find((o: PackOption) => o.id === trying) : undefined;
   const tts = c.voice?.tts;
   return (
     <>
-      <PageHeader
-        action={
-          <Flexbox gap={8} horizontal>
-            <Button onClick={() => navigate('/characters')}>返回列表</Button>
-            {view && <SwitchButton c={c} sw={sw} />}
+      <div className={dstyles.hero} style={{ ['--pet-accent' as string]: c.accent }}>
+        <CharacterStage
+          actions
+          badge={c.current ? <Tag color="success">正在陪你</Tag> : !c.met ? <Tag>未遇见</Tag> : undefined}
+          c={c}
+          corner={
+            tryOpt ? (
+              <Tag closable color="processing" data-trying-tag onClose={() => setTrying(null)}>
+                试穿：{tryOpt.name}
+              </Tag>
+            ) : undefined
+          }
+          height={420}
+          preview={tryOpt ? (tryOpt.cover ?? null) : undefined}
+        />
+        <Flexbox gap={16}>
+          <Flexbox gap={4}>
+            <Flexbox align="center" gap={8} horizontal wrap="wrap">
+              <Text as="h1" data-character-title={c.id} fontSize={28} strong style={{ lineHeight: 1.25, margin: 0 }}>
+                {c.displayName}
+              </Text>
+              <KindTag adult={c.pack?.adult} kind={c.kind} label={c.kindLabel} />
+            </Flexbox>
+            <Text type="secondary">{c.title}</Text>
           </Flexbox>
-        }
-        description={c.title}
-        mark={<CharacterPreview accent={c.accent} name={c.nameZh} preview={c.preview} size={56} />}
-        title={<span data-character-title={c.id}>{c.displayName}</span>}
-      />
+          {c.catchphrase && <blockquote className={dstyles.quote}>「{c.catchphrase}」</blockquote>}
+          {c.blurb && <Text style={{ lineHeight: 1.7 }}>{c.blurb}</Text>}
+          {c.likes?.length > 0 && (
+            <Flexbox align="center" gap={6} horizontal wrap="wrap">
+              <Text fontSize={12} type="secondary">
+                喜欢
+              </Text>
+              {c.likes.map((x) => (
+                <Tag key={x} size="small">
+                  {x}
+                </Tag>
+              ))}
+            </Flexbox>
+          )}
+          <HeartMeter c={c} />
+          <Flexbox align="center" gap={8} horizontal wrap="wrap">
+            {view && <SwitchButton c={c} sw={sw} />}
+            <Button icon={Shirt} onClick={() => setTab('looks')} size="small" type="text">
+              {c.pack ? `正在穿：${c.pack.name}` : `${c.packCount} 个形象包`}
+            </Button>
+          </Flexbox>
+        </Flexbox>
+      </div>
       <PageTabs
         label="角色详情"
         onChange={setTab}
         tabs={[
-          {
-            content: (
-              <Surface title="概况">
-                <Flexbox gap={12} style={{ maxWidth: FORM_STYLE.style.maxWidth }}>
-                  <Info label="简介">{c.blurb || '--'}</Info>
-                  <Info label="口头禅">{c.catchphrase || '--'}</Info>
-                  <Info label="喜欢">{c.likes?.length ? c.likes.join('、') : '--'}</Info>
-                  <Info label="当前外观">
-                    <Flexbox align="center" gap={8} horizontal>
-                      <KindTag adult={c.pack?.adult} kind={c.kind} label={c.kindLabel} />
-                      <Text>{c.pack ? `${c.pack.name}（${c.sourceLabel}）` : c.kind === 'video' ? '原版动画' : '--'}</Text>
-                    </Flexbox>
-                  </Info>
-                  <Info label="可选外观">{c.packCount} 个</Info>
-                  <Info label="关系">{relText(c)}</Info>
-                  <Info label="模型">{c.model?.current ? modelLabel(c, c.model.current) : '--'}</Info>
-                  <Info label="素材署名">
-                    <Flexbox gap={4}>{c.credits.length ? c.credits.map((x) => <Text key={x} type="secondary">{x}</Text>) : '--'}</Flexbox>
-                  </Info>
-                </Flexbox>
-              </Surface>
-            ),
-            label: '概况',
-            value: 'overview',
-          },
+          { content: <LookTab c={c} onTry={setTrying} trying={trying} />, label: '形象包', value: 'looks' },
+          { content: <AffectionTab c={c} />, label: '好感', value: 'affection' },
           { content: <ModelTab c={c} />, label: '模型', value: 'model' },
           { content: <RoleTab c={c} />, label: '个性化设定', value: 'role' },
-          { content: <LookTab c={c} />, label: '外观', value: 'look' },
           {
             content: (
               <Surface title="语音">
@@ -467,7 +683,7 @@ export const CharacterDetailPage = ({ id, navigate }: { id: string; navigate: (p
                     </Flexbox>
                   </Info>
                   <Text fontSize={12} type="secondary">
-                    角色音色写在角色文件里，只读。语音包可以在「语音包」页重新读取或打开文件夹替换。
+                    角色音色写在角色文件里，只读。语音包可以在 设置 → 语音包 里重新读取或替换。
                   </Text>
                 </Flexbox>
               </Surface>
@@ -475,7 +691,22 @@ export const CharacterDetailPage = ({ id, navigate }: { id: string; navigate: (p
             label: '语音',
             value: 'voice',
           },
-          { content: <AffectionTab c={c} />, label: '好感度', value: 'affection' },
+          {
+            content: (
+              <Surface title="资料">
+                <Flexbox gap={12}>
+                  <Info label="厂商">{c.vendor}</Info>
+                  <Info label="当前外观">{c.pack ? `${c.pack.name}（${c.sourceLabel}）` : c.kind === 'video' ? '原版动画' : '--'}</Info>
+                  <Info label="模型">{c.model?.current ? modelLabel(c, c.model.current) : '--'}</Info>
+                  <Info label="素材署名">
+                    <Flexbox gap={4}>{c.credits.length ? c.credits.map((x) => <Text key={x} type="secondary">{x}</Text>) : '--'}</Flexbox>
+                  </Info>
+                </Flexbox>
+              </Surface>
+            ),
+            label: '资料',
+            value: 'about',
+          },
         ]}
         value={tab}
       />

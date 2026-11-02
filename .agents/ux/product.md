@@ -15,6 +15,8 @@
 
 面向个人的桌面陪伴应用（LobeHub agent 驱动的像素桌宠，成人向 18+ 版本）。配置后台是它的「设置与管理」窗口，**不是**多人使用的 SaaS 后台。
 
+2026-11-02 负责人反馈后定调（第二版）：设置窗口是**陪伴向**的——她（当前角色）是每页的主角，偏游戏化地呈现角色、关系和互动（舞台、图鉴、衣柜、好感路线图），LobeHub 设计语言做底；信息架构有纵深，侧栏只放四个入口（见 `docs/admin-console-design.md` §11、规则 R-05）。
+
 ## 用户
 
 - 单个主人，本机使用，中文为主。
@@ -37,7 +39,7 @@
 | P-05 配置 / 设置 | 强调 | 后台主体。按影响范围分组；开关只给即时生效的二值项；需保存的项用表单 + 保存；高风险项单独一区 |
 | P-02 列表 / 搜索 / 筛选 | 强调 | 角色列表、角色包、语音包 |
 | P-03 详情 / 对象页 | 强调 | 角色详情（模型、外观、设定、好感） |
-| P-01 总览看板 | 轻量 | 只做概览页，不做指标墙 |
+| P-01 总览看板 | 轻量 | 「小屋」：她的舞台 + 关系 + 今天的开关，不做指标墙 |
 | C-01 原子组件取自 `@lobehub/ui` | 强调 | 后台不自建 Button / Select / Switch / Modal；表单从 `@lobehub/ui/form` 取 |
 | D-01 / D-08 cssVar 与暗色 | 强调 | 主题跟随系统（Electron `nativeTheme` → `prefers-color-scheme` → `data-theme`），样式不分支 |
 | P-06 审批队列、P-07 监控日志、P-08 计费对账、P-09 评测对比 | 不适用 | 单用户本机应用，没有这些业务 |
@@ -52,3 +54,7 @@ copy-profile: consumer
 
 lint-allow: LOBE-FONT-FAMILY LOBE-RAW-COLOR LOBE-SPACING-OFFGRID LOBE-LETTER-SPACING LOBE-MOTION-DURATION LOBE-BOUNCE LOBE-GLOW LOBE-EMOJI-ICON LOBE-NULLISH-RENDER src/renderer/**
 lint-allow: LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/**
+
+设置窗口里的角色舞台（`admin/src/console/stage/**`）同属角色美术：爱心飘起（1.4s）和她的光晕漂移（9s，`prefers-reduced-motion` 下停止）是角色的表演，不是界面反馈动效，放行时长检查；界面部分（按钮、卡片悬停）仍按 ≤ 300ms。
+
+lint-allow: LOBE-MOTION-DURATION admin/src/console/stage/**

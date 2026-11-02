@@ -64,7 +64,10 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 15, '15 pages in 6 groups (docs §6.3, with 主动行为与好感度)');
+  assert.equal(navPages.length, 15, '15 pages under 4 rail places (docs §6.3)');
+  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings'], 'the rail holds four places, not every page');
+  assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
+  for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
   for (const f of schema.FIELDS) {
     assert.ok(pages.has(f.page), `${f.key} → ${f.page}`);
     assert.ok(f.label && f.card, f.key);
@@ -446,4 +449,13 @@ test('the pet window: ⋯ → 设置… opens the settings window; the old 高�
 test('docs/admin-console-design.md names every settings.json key and settings IPC channel (scripts/check-admin-console-doc.js)', () => {
   const out = require('node:child_process').execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'check-admin-console-doc.js')], { encoding: 'utf8' });
   assert.match(out, /PASS: every settings\.json key/);
+});
+
+test('roster: a sprite preview carries her sheet\'s actions, so the console can play idle / happy / pat', () => {
+  const { previewOf } = require('../src/core/roster');
+  const look = { kind: 'sprites', url: 'pack://grok-pixel/sheets/daily.webp', frame: { width: 664, height: 904 }, actions: { idle: { row: 0, col: 0, frames: 2, fps: 2 }, pat: { row: 0, col: 2, frames: 2, fps: 4 } }, pixelated: false };
+  const pv = previewOf({}, look);
+  assert.equal(pv.type, 'sprite');
+  assert.deepEqual(pv.actions, look.actions);
+  assert.equal(previewOf({}, { ...look, actions: undefined }).actions, null);
 });

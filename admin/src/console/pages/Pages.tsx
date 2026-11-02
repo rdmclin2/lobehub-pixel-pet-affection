@@ -1,12 +1,10 @@
-/** 总览 and every settings page (P-05): PageHeader + SettingsForm cards from the schema + page extras. */
+/** Every settings page (P-05): PageHeader + SettingsForm cards from the schema + page extras. */
 import { Alert, Button, Flexbox, Table, Tag, Text, toast } from '@lobehub/ui';
-import { MetricStrip, PageHeader, Surface } from '@lobehub/ui/dashboard';
+import { PageHeader, Surface } from '@lobehub/ui/dashboard';
 import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { api, reasonText } from '../api';
-import { CharacterPreview } from '../CharacterPreview';
-import { modelLabel } from './Characters';
 import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
@@ -48,57 +46,6 @@ const UPDATE_TEXT: Record<string, string> = {
   latest: '已是最新版本',
   manual: '需要手动下载新版本',
   ready: '新版本已下载，重启即可更新',
-};
-
-// ---- 总览 -------------------------------------------------------------------------------------------------
-export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) => {
-  const { roster, settings, view, update, apiStatus, version } = useStore();
-  const cur = roster.find((c) => c.current);
-  return (
-    <>
-      <PageHeader description="当前角色、各项功能的开关状态和常用入口。" title="总览" />
-      <Surface title="当前角色">
-        {cur ? (
-          <Flexbox align="center" gap={16} horizontal>
-            <CharacterPreview accent={cur.accent} name={cur.nameZh} preview={cur.preview} size={88} />
-            <Flexbox flex={1} gap={4}>
-              <Text fontSize={18} strong>
-                {cur.displayName}
-              </Text>
-              <Text type="secondary">{cur.title}</Text>
-              <Text>
-                {cur.met ? `${cur.met.stage} · 好感 ${cur.met.affection}` : '--'} · 外观 {cur.pack ? cur.pack.name : cur.kindLabel} · 模型 {cur.model?.current ? modelLabel(cur, cur.model.current) : '--'}
-              </Text>
-            </Flexbox>
-            <Button onClick={() => navigate(`/characters/${cur.id}`)}>查看详情</Button>
-            <Button onClick={() => navigate('/characters')} type="primary">
-              切换角色
-            </Button>
-          </Flexbox>
-        ) : (
-          <Alert description="先在桌宠窗口里选一位角色并完成唤醒。" title="还没有唤醒桌宠" type="info" />
-        )}
-      </Surface>
-      <MetricStrip
-        items={[
-          { hint: '朗读回复', label: '朗读', onClick: () => navigate('/tts'), value: settings.prefs?.voice ? '开' : '关' },
-          { hint: settings.asr?.engine === 'local' ? '本地服务' : 'LobeHub 云端', label: '语音输入', onClick: () => navigate('/asr'), value: settings.asr?.enabled ? '开' : '关' },
-          { hint: apiStatus?.listening ? `127.0.0.1:${settings.api?.port}` : '未监听', label: '对外接口', onClick: () => navigate('/api'), value: settings.api?.enabled ? '开' : '关' },
-          { hint: settings.proactive?.enabled ? `每 ${settings.proactive?.speakCooldownMin} 分钟至多一次` : '只在互动时说话', label: '主动说话', onClick: () => navigate('/proactive'), value: settings.proactive?.enabled ? '开' : '关' },
-          { hint: UPDATE_TEXT[update?.status] ?? update?.status ?? '--', label: '版本', onClick: () => navigate('/update'), value: version },
-          { hint: view?.local?.error ?? '读写文件、运行命令', label: '本机能力', onClick: () => navigate('/connection'), value: view?.local?.enabled ? '开' : '关' },
-        ]}
-      />
-      <Surface title="常用">
-        <Flexbox gap={8} horizontal wrap="wrap">
-          <Button onClick={() => navigate('/behavior')}>桌宠行为</Button>
-          <Button onClick={() => navigate('/packs')}>外观资源</Button>
-          <Button onClick={() => navigate('/visitors')}>同屏伙伴</Button>
-          <Button onClick={() => api().showPet()}>显示桌宠</Button>
-        </Flexbox>
-      </Surface>
-    </>
-  );
 };
 
 // ---- plain settings pages ---------------------------------------------------------------------------------

@@ -447,7 +447,7 @@ node scripts/check-admin-console-doc.js   # 0 = 全部覆盖；1 = 打印 MISS �
 ### 10.2 主进程
 
 - `src/main/admin-window.js`：`AdminWindow.open(section)` 单例；`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；再次打开时 show + focus，并把页面 hash 设到目标页（窗口还在加载时等 `did-finish-load` 之后再设，不会丢）。
-- `src/main/admin-preload.js`：`window.petAdmin` 白名单（37 个调用，不含 chat / move / debug）。
+- `src/main/admin-preload.js`：`window.petAdmin` 白名单（38 个调用，不含 chat / move / debug；第二版加了 `cue`，见 §11）。
 - `src/core/settings-schema.js`：全部配置项的页面、分组、控件类型、默认值、范围和校验（`validate`）、对应的 setter（`patchFor`）；`admin-boot` 把它作为纯数据发给后台。单测保证它覆盖 `normalizeSettings(null)` 的每个叶子 key。
 - `src/main/admin-settings.js`：`admin-set {key,value}` / `admin-reset {keys}`。先按 schema 校验，再调用原有的 `PetService` setter（`setPrefs` `setTts` `setAsr` `setApi` `setVisitors` `setPetScale`，以及新增的 `setSection`），所以仍然只经过 `core/settings.js` 的 `SettingsStore` 写盘。Key 走 `tts-keys.json`，只回「已设置」。
 - `src/core/roster.js`：角色列表行（预览、名称、类型、来源、语音包、模型、关系、当前标记）和外观资源行，由 `view()` 和 `settingsView()` 派生。
@@ -460,3 +460,35 @@ node scripts/check-admin-console-doc.js   # 0 = 全部覆盖；1 = 打印 MISS �
 - ⋯ 菜单的「高级设置」去掉，换成「设置…」；整个「高级设置」面板（宠物大小、桌宠行为、语音、语音输入、同屏伙伴、对外接口、版本与更新）从 `app.js` 删除，由设置窗口取代。「检查更新」打开设置窗口的「版本与更新」页；语音输入失败提示里的「去设置」打开设置窗口的「语音输入」页。
 - 「角色列表」保留在桌宠里，用来快速切换 / 初次见面；她的页里的「模型」「个性化设定」表单删除，换成当前值摘要和「在设置窗口中编辑 ›」（打开 `#/characters/<id>`）。外观和好感度仍保留：Live2D / VRM 导入后要由桌宠窗口画出预览图（`save-pack-preview`），而好感度属于玩法。
 - 衣柜、话题、聊天记录不变。
+
+## 11. 第二版：从「后台」到「她的小屋」（2026-11-02 负责人反馈）
+
+负责人看过第一版后提了两点：
+
+1. **不要把所有菜单项都放进左侧边栏，要有纵深。** 比如「角色」：先是角色列表，点进去才是角色详情，换角色包也在详情里做。
+2. **整体太像后台了。** 桌宠是偏感性的场景，需要更 fancy、偏游戏化的设计，能把角色和她的互动效果展示出来。
+
+### 11.1 信息架构：四个入口，其余都在下一层
+
+| 入口（rail） | 第一层 | 第二层 |
+| --- | --- | --- |
+| 小屋 `#/overview` | 她的舞台 + 关系 + 今天的陪伴 + 其他伙伴 | — |
+| 角色 `#/characters` | 角色图鉴（卡片墙，没遇见的是剪影） | 角色详情 `#/characters/:id`：大舞台 + 简介 + 好感；标签页 形象包（默认，试穿 / 穿上 / 导入）· 好感（关系路线图）· 模型 · 个性化设定 · 语音 · 资料 |
+| 玩法 `#/play` | 她此刻的状态（心情 / 饱腹 / 精力）+ 入口卡片 | 桌宠行为 · 主动搭话与好感 · 同屏伙伴 |
+| 设置 `#/settings` | 入口卡片，按 声音 / 资源与外观 / 连接 / 系统 分组，每张卡写当前状态 | 朗读 · 语音输入 · 语音包 · 角色包 · 外观主题 · LobeHub 与本机 · 对外接口 · 内容与安全 · 版本与更新 · 数据与关于 |
+
+- 数据：`core/settings-schema.js` 新增 `RAIL`（四个入口），`NAV` 的每组多一个 `section` 指向所属入口；页面路由不变（`#/tts` 等照旧），所以桌宠窗口跳到某页（`open-admin`）不用改。
+- 第二层页面左上角有返回路径（`设置 / 朗读`），rail 上所属入口保持高亮。
+- 侧栏从 `ConsoleShell` + `ConsoleNav` 换成 80px 的图标 rail（`admin/src/console/Shell.tsx`，原子仍是 `@lobehub/ui` 的 `Icon` / `ActionIcon` / `Button`）；rail 顶部是当前角色的小头像，底部是「把桌宠叫到前面」和明暗切换。
+
+### 11.2 视觉：LobeHub 的底，她的颜色和她的动作
+
+- **她的颜色是房间的光。** 当前角色的 `accent` 作为 `--pet-accent` 染在窗口顶部、舞台和卡片上（`color-mix` 与 `cssVar` 混合，亮 / 暗都由 lobe 令牌托底）；其余仍是 LobeHub 的中性灰阶、圆角和阴影档位。
+- **角色会动。** `stage/SpriteStage.tsx` 按角色包的 `actions`（row / col / frames / fps）在 canvas 上逐帧播放，和桌宠窗口一致；离开视口或系统要求减少动效时停在第一帧。为此 `core/roster.js` 的预览带上 `actions`，`core/packs.js` 的 `packsFor` 给每个形象包加 `cover`（衣柜卡片的图）。
+- **一个签名动作（A-06）：点她。** `stage/CharacterStage.tsx`：点舞台上的她 → 爱心飘起、她说一句（口头禅或喜欢的东西）、播「摸头 / 开心」；如果她就是桌面上的那位，桌宠窗口同时播「开心」（新 IPC `admin-cue`，白名单同对外接口的 `/anim`）。动作按钮可以预览她的每个动作。
+- **游戏化的关系。** `stage/HeartMeter.tsx`：爱心沿着染了她颜色的进度条走，关系阶段是路上的节点（`toAffectionProgress` 新增 `stages`），未到的阶段上锁；详情页的「好感」是一条关系路线图。
+- **图鉴与衣柜。** 角色图鉴的卡片是会动的立绘，没遇见的显示为剪影 +「未遇见」；形象包是一排衣柜卡片，点图片在舞台上试穿，满意再穿上。
+
+lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴向、`admin/src/console/stage/**` 的动效时长放行）和 `.agents/ux/lobe-design-rules.md` R-05。
+
+验证：`xvfb-run -a node e2e/run.js admin`（新增 A3b 层级导航、A3c 点她与桌宠联动、A13 试穿再穿上），截图在 `out/e2e/admin/`。

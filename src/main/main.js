@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
@@ -619,6 +620,8 @@ function wire() {
     return { ok: true };
   }));
   ipcMain.on('admin-show-pet', () => showPet());
+  // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
+  ipcMain.handle('admin-cue', adminOnly(({ state }) => (CUE_STATES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 

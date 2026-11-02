@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   openLog: () => ipcRenderer.send('open-log'),
   openLink: (url) => ipcRenderer.invoke('open-link', { url }),
   showPet: () => ipcRenderer.send('admin-show-pet'),
+  // the pet on the desktop plays one action (happy, pat, play …) — 和她互动 on her stage
+  cue: (state) => ipcRenderer.invoke('admin-cue', { state }),
   // pushes: the whole admin state after any change (from either window), update / API status
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),

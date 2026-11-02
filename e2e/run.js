@@ -1383,9 +1383,15 @@ async function advanced() {
       }
       assert.ok(admin, 'the settings window opened');
       await admin.waitForSelector('[data-path="/overview"]', { timeout: 15000 });
-      const nav = await admin.$$eval('nav a', (as) => as.map((a) => a.textContent.trim()));
-      // the old panel's sections: 宠物大小 + 桌宠行为 → 桌宠行为, 语音 → 朗读, 语音输入, 同屏伙伴, 对外接口, 版本与更新
-      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(nav.includes(want), `nav has ${want}: ${nav.join(',')}`);
+      // the old panel's sections: 宠物大小 + 桌宠行为 → 桌宠行为, 语音 → 朗读, 语音输入, 同屏伙伴, 对外接口, 版本与更新 —
+      // tiles on the 玩法 / 设置 hubs (the rail itself holds only 小屋 / 角色 / 玩法 / 设置)
+      const nav = [];
+      for (const hub of ['/play', '/settings']) {
+        await admin.evaluate((h) => { location.hash = h; }, hub);
+        await admin.waitForSelector(`[data-path="${hub}"] [data-tile]`);
+        nav.push(...(await admin.$$eval('[data-tile] [data-tile-title]', (ts) => ts.map((t) => t.textContent.trim()))));
+      }
+      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(nav.includes(want), `a hub has ${want}: ${nav.join(',')}`);
       await admin.evaluate(() => { location.hash = '/behavior'; });
       await admin.waitForSelector('[data-path="/behavior"] [data-key="petScale"]');
       assert.equal(await admin.locator('[data-path="/behavior"] :is([data-unlock], [data-save-role], [data-use-pack], [data-system-role])').count(), 0, 'per-character settings live on her page (角色列表)');
@@ -2143,9 +2149,14 @@ async function charpage() {
         await admin.evaluate((r) => { location.hash = r; }, route);
         await admin.waitForSelector(`[data-path="${route}"]`, { timeout: 10000 });
       };
+      // the system pages sit one level down: tiles on the 玩法 and 设置 hubs
+      const tiles = [];
+      for (const hub of ['/play', '/settings']) {
+        await go(hub);
+        tiles.push(...(await admin.$$eval('[data-tile] [data-tile-title]', (ts) => ts.map((t) => t.textContent.trim()))));
+      }
+      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(tiles.includes(want), `a hub has ${want}: ${tiles.join(',')}`);
       await go('/behavior');
-      const nav = await admin.$$eval('nav a', (as) => as.map((a) => a.textContent.trim()));
-      for (const want of ['桌宠行为', '朗读', '语音输入', '同屏伙伴', '对外接口', '版本与更新']) assert.ok(nav.includes(want), `nav has ${want}`);
       await adminShot('08a-settings-behavior');
       await check('设置窗口 · 桌宠行为：宠物大小、动作、触摸……没有模型 / 外观 / 一键解锁');
       for (const r of ['/behavior', '/tts', '/visitors', '/api']) {
@@ -2179,7 +2190,7 @@ async function charpage() {
       const pet = await page.evaluate(async () => (await window.pet.getSettings()).prefs.memes);
       assert.equal(pet, false, 'the pet window has the new setting');
       dumpFiles('files-after-c7');
-      return `nav ${nav.join(' / ')}; prefs.memes=false tts.fallback=silent petScale=1.5`;
+      return `hub tiles ${tiles.join(' / ')}; prefs.memes=false tts.fallback=silent petScale=1.5`;
     }, () => admin || page);
   } finally {
     await stop();
@@ -7271,10 +7282,10 @@ async function adminScenario() {
     }, () => admin);
 
     // every page, light and dark (theme pinned through 外观主题 = ui.theme, which the console applies itself)
-    const ROUTES = ['/overview', '/characters', '/characters/grok', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
+    const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
     for (const theme of ['light', 'dark']) {
-      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (LobeHub layout: grouped nav + form cards), data-theme=${theme}`, async () => {
+      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 4 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
         await admin.evaluate((t) => window.petAdmin.set('ui.theme', t), theme);
         await admin.waitForFunction((t) => document.documentElement.dataset.theme === t, theme);
         const out = [];
@@ -7288,12 +7299,54 @@ async function adminScenario() {
           await shot(`${theme}-${r.slice(1).replace(/\//g, '-')}`);
           await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
           out.push(`${r}`);
-          assert.ok(f.nav >= 15, `nav links ${f.nav}`);
+          assert.equal(f.nav, 4, `rail links ${f.nav}: 小屋 / 角色 / 玩法 / 设置, not every page`);
         }
-        return `${out.length} pages · nav links ok · data-theme=${theme}`;
+        return `${out.length} pages · rail of 4 · data-theme=${theme}`;
       }, () => admin);
     }
     await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+
+    await step(S, 'A3b depth: the rail holds 4 places; 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
+      await go('/overview');
+      const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => a.textContent.trim()));
+      assert.deepEqual(rail, ['小屋', '角色', '玩法', '设置']);
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-path="/settings"]');
+      const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
+      await admin.click('[data-tile="tts"]');
+      await admin.waitForSelector('[data-path="/tts"]');
+      assert.equal(await admin.getAttribute('[data-rail="settings"]', 'aria-current'), 'page', 'a page below 设置 keeps 设置 lit');
+      await admin.click('[data-back="settings"]');
+      await admin.waitForSelector('[data-path="/settings"]');
+      await admin.click('[data-rail="play"]');
+      await admin.waitForSelector('[data-path="/play"]');
+      const play = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
+      await admin.waitForSelector('[data-pet-status] [data-stat="mood"]');
+      await shot('a3b-play-hub');
+      await admin.click('[data-rail="characters"]');
+      await admin.waitForSelector('[data-path="/characters"]');
+      await admin.click('[data-row="gemini"] a[href="#/characters/gemini"]');
+      await admin.waitForSelector('[data-character-title="gemini"]');
+      await admin.click('[data-back="characters"]');
+      await admin.waitForSelector('[data-path="/characters"]');
+      return `rail ${rail.join(' / ')}; 设置 tiles ${tiles.join(',')}; 玩法 tiles ${play.join(',')}; card → /characters/gemini → back`;
+    }, () => admin);
+
+    await step(S, 'A3c her stage: a tap sends hearts up, she answers, and the pet on the desktop plays happy too', async () => {
+      await go('/overview');
+      await page.evaluate(() => window.petFx.cue('idle'));
+      await admin.click('[data-pat="grok"]');
+      await admin.waitForSelector('[data-reaction]');
+      const line = await admin.textContent('[data-reaction]');
+      const hearts = await admin.$$eval('[data-stage="grok"] svg', (s) => s.length);
+      await shot('a3c-pat');
+      await page.waitForFunction(() => window.petFx.state().lastCue === 'happy', null, { timeout: 5000 });
+      await admin.click('[data-action-chip="sleep"]');
+      assert.equal(await admin.getAttribute('[data-stage="grok"] [data-action]', 'data-action'), 'sleep');
+      const bad = await admin.evaluate(() => window.petAdmin.cue('rm -rf'));
+      assert.equal(bad.ok, false);
+      return `reaction "${line.trim()}", ${hearts} hearts; pet window lastCue=happy; action chip → sleep; bad cue refused (${bad.reason})`;
+    }, () => admin);
 
     await step(S, 'A4 桌宠行为 → 宠物大小: the slider in the settings window resizes the pet window and is saved', async () => {
       await go('/behavior');
@@ -7401,10 +7454,10 @@ async function adminScenario() {
       return 'memes on, petScale 1.25 again (pet window too)';
     }, () => admin);
 
-    await step(S, 'A11 角色列表: every character with preview, name, type, source, voice pack and the current mark', async () => {
+    await step(S, 'A11 角色图鉴: every character with preview, name, type, source, voice pack and the current mark', async () => {
       await go('/characters');
-      await admin.waitForSelector('[data-roster] tr[data-row]');
-      const rows = await admin.$$eval('[data-roster] tr[data-row]', (trs) => trs.map((tr) => ({ id: tr.dataset.row, text: tr.innerText.replace(/\s+/g, ' ').trim(), preview: tr.querySelector('[data-preview]') && tr.querySelector('[data-preview]').dataset.preview })));
+      await admin.waitForSelector('[data-roster] [data-row]');
+      const rows = await admin.$$eval('[data-roster] [data-row]', (cards) => cards.map((el) => ({ id: el.dataset.row, text: el.innerText.replace(/\s+/g, ' ').trim(), preview: el.querySelector('[data-preview]') && el.querySelector('[data-preview]').dataset.preview })));
       assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
       const grok = rows.find((r) => r.id === 'grok');
       assert.match(grok.text, /当前角色/);
@@ -7436,13 +7489,20 @@ async function adminScenario() {
       await admin.click('[data-detail="grok"]');
       await admin.waitForSelector('[data-character-title="grok"]');
       await shot('a13-detail-overview');
-      await admin.getByRole('tab', { name: '外观' }).click();
+      await admin.getByRole('tab', { name: '形象包' }).click();
+      // 试穿 first: the stage above shows the pack, nothing is saved yet
+      await admin.click('[data-try-pack="grok-classic"]');
+      await admin.waitForSelector('[data-trying-tag]');
+      const tried = await admin.evaluate(() => document.querySelector('[data-stage="grok"] [data-preview]').dataset.preview);
+      assert.notEqual(saved().appearance && saved().appearance.grok, 'grok-classic', 'trying on saves nothing');
+      await shot('a13-detail-try-on');
       await admin.click('[data-use-pack="grok-classic"]');
+      await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
       assert.equal(saved().appearance.grok, 'grok-classic');
       await shot('a13-detail-look');
       await page.screenshot({ path: path.join(SHOTS, 'pet-after-look.png') });
-      return `pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=grok-classic`;
+      return `try-on stage ${tried} (unsaved), then 穿上: pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=grok-classic`;
     }, () => admin);
 
     await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {

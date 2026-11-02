@@ -16,38 +16,47 @@ const asrLib = require('./asr');
 const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
 
-// Navigation (LobeHub /settings: grouped accordion on the left, one page per item).
+// Navigation. The window's rail has four places only (RAIL); everything else sits one level down: 角色 →
+// her page, 玩法 / 设置 → a hub of tiles → one page per tile (docs/admin-console-design.md §6.3). NAV groups
+// are those hub sections; `section` says which rail place a group belongs to.
+const RAIL = [
+  { key: 'home', label: '小屋', icon: 'House', page: 'overview' },
+  { key: 'characters', label: '角色', icon: 'Users', page: 'characters' },
+  { key: 'play', label: '玩法', icon: 'Gamepad2', page: 'play' },
+  { key: 'settings', label: '设置', icon: 'Settings', page: 'settings' },
+];
+
 const NAV = [
-  { key: 'home', label: '概览', items: [{ page: 'overview', label: '总览', icon: 'LayoutDashboard' }] },
+  { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }] },
+  { key: 'characters', section: 'characters', label: '角色', items: [{ page: 'characters', label: '角色图鉴', icon: 'Users' }] },
   {
-    key: 'characters', label: '角色', items: [
-      { page: 'characters', label: '角色列表', icon: 'Users' },
-      { page: 'packs', label: '外观资源', icon: 'Shirt' },
+    key: 'play', section: 'play', label: '陪伴方式', items: [
+      { page: 'behavior', label: '桌宠行为', icon: 'PawPrint' },
+      { page: 'proactive', label: '主动搭话与好感', icon: 'HeartHandshake' },
       { page: 'visitors', label: '同屏伙伴', icon: 'UsersRound' },
     ],
   },
   {
-    key: 'prefs', label: '偏好', items: [
-      { page: 'behavior', label: '桌宠行为', icon: 'PawPrint' },
-      { page: 'proactive', label: '主动行为与好感度', icon: 'HeartHandshake' },
-      { page: 'appearance', label: '外观主题', icon: 'Palette' },
-    ],
-  },
-  {
-    key: 'voice', label: '语音', items: [
+    key: 'voice', section: 'settings', label: '声音', items: [
       { page: 'tts', label: '朗读', icon: 'Volume2' },
       { page: 'asr', label: '语音输入', icon: 'Mic' },
       { page: 'voicepacks', label: '语音包', icon: 'AudioLines' },
     ],
   },
   {
-    key: 'connect', label: '连接', items: [
+    key: 'looks', section: 'settings', label: '资源与外观', items: [
+      { page: 'packs', label: '角色包', icon: 'Shirt' },
+      { page: 'appearance', label: '外观主题', icon: 'Palette' },
+    ],
+  },
+  {
+    key: 'connect', section: 'settings', label: '连接', items: [
       { page: 'connection', label: 'LobeHub 与本机', icon: 'Cloud' },
       { page: 'api', label: '对外接口', icon: 'Webhook' },
     ],
   },
   {
-    key: 'system', label: '系统', items: [
+    key: 'system', section: 'settings', label: '系统', items: [
       { page: 'safety', label: '内容与安全', icon: 'ShieldCheck' },
       { page: 'update', label: '版本与更新', icon: 'RefreshCw' },
       { page: 'about', label: '数据与关于', icon: 'Info' },
@@ -56,12 +65,14 @@ const NAV = [
 ];
 
 const PAGES = {
-  overview: { title: '总览', description: '当前角色、各项功能的开关状态和常用入口。' },
-  characters: { title: '角色列表', description: '所有可用角色：形象包、类型、来源、语音包和关系。点一行查看详情，也可以直接切换当前角色。' },
-  packs: { title: '外观资源', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除。' },
+  overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
+  characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、换形象包、调她的模型和设定。' },
+  play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
+  settings: { title: '设置', description: '声音、资源、连接和系统。' },
+  packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小、走动、音效、梗图和触摸。改动立即生效。' },
-  proactive: { title: '主动行为与好感度', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
+  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
   asr: { title: '语音输入', description: '按住 🎤 说话，识别成文字发给她。' },
@@ -258,7 +269,7 @@ function patchFor(key, value) {
 
 // What goes to the window: plain data only.
 function describe() {
-  return { nav: NAV, pages: PAGES, fields: FIELDS, defaults: DEFAULTS, restartKeys: settingsLib.RESTART_KEYS };
+  return { rail: RAIL, nav: NAV, pages: PAGES, fields: FIELDS, defaults: DEFAULTS, restartKeys: settingsLib.RESTART_KEYS };
 }
 
-module.exports = { NAV, PAGES, FIELDS, DEFAULTS, field: (k) => byKey.get(k) || null, settingsLeaves, validate, patchFor, describe, at, TTS_ENGINES, FALLBACKS, TTS_LOCAL_APIS };
+module.exports = { RAIL, NAV, PAGES, FIELDS, DEFAULTS, field: (k) => byKey.get(k) || null, settingsLeaves, validate, patchFor, describe, at, TTS_ENGINES, FALLBACKS, TTS_LOCAL_APIS };

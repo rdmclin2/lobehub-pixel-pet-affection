@@ -78,7 +78,7 @@ React、`@lobehub/ui` 等全部在 devDependencies，打包时已进 bundle：�
 | 卡片 | `Surface`（dashboard）、`Block`（filled / outlined / borderless） |
 | 标签 | `Tag`（状态色 + 预设色阶） |
 | 表单项与分组 | `Form` + `useForm`（`@lobehub/ui/form`），`itemsType="group"` `variant="filled"`，与 LobeHub 设置页一致 |
-| 分组导航 | `ConsoleShell` + `ConsoleNav`（`@lobehub/ui/dashboard`），hash 路由 |
+| 导航 | 80px 图标 rail（`admin/src/console/Shell.tsx`：小屋 / 角色 / 玩法 / 设置），其余页面在下一层，hash 路由（见 admin-console-design.md §11） |
 | Toast / 提示 | `toast.*`（`ToastHost`）、`Alert`、`Tooltip`、`confirmModal`（`ModalHost`） |
 
 `DesignProvider` 是后台唯一的根：`ConfigProvider`（`motion`、zh-CN 资源、`enableCustomFonts={false}`）+ `ModalHost` + `ToastHost`。关闭自定义字体的原因：默认会从 npmmirror 拉 Geist / HarmonyOS / KaTeX 样式，在 CSP 下被拦并报 10 条控制台错误（项目规则 R-01）。

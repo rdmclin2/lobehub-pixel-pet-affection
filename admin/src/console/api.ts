@@ -54,17 +54,37 @@ export interface NavGroupDef {
   items: { icon: string; label: string; page: string }[];
   key: string;
   label: string;
+  /** Which rail place the group sits under (`RailDef.key`). */
+  section: string;
+}
+
+/** The window's four places (小屋 / 角色 / 玩法 / 设置); every other page is one level below one of them. */
+export interface RailDef {
+  icon: string;
+  key: string;
+  label: string;
+  page: string;
 }
 
 export interface Schema {
   defaults: Record<string, any>;
   fields: FieldDef[];
   nav: NavGroupDef[];
+  rail: RailDef[];
   pages: Record<string, { description: string; title: string }>;
   restartKeys: string[];
 }
 
+/** One action of a sprite sheet: `frames` cells from (row, col), played at `fps`. */
+export interface SpriteAction {
+  col: number;
+  fps: number;
+  frames: number;
+  row: number;
+}
+
 export interface Preview {
+  actions?: Record<string, SpriteAction> | null;
   frame?: { height: number; width: number };
   pixelated?: boolean;
   type: 'sprite' | 'image' | 'video';
@@ -74,6 +94,8 @@ export interface Preview {
 export interface PackOption {
   adult?: boolean;
   author?: string;
+  /** Her daily outfit in this pack: a playable sheet, a picture or her clip (null: nothing to show). */
+  cover?: Preview | null;
   description?: string;
   height?: number;
   id: string;
@@ -171,6 +193,7 @@ export interface PetAdminApi {
   boot: () => Promise<BootData>;
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
+  cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
   exportPack: (id: string) => Promise<any>;
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
@@ -225,6 +248,9 @@ export const at = (obj: any, key: string): any => key.split('.').reduce((v, k) =
 export const REASON: Record<string, string> = {
   adult: '18+ 外观需要先确认已满 18 周岁并打开成人向内容',
   busy: '她正在忙（说话或切换中），稍后再试',
+  'no-pet': '桌宠还没出现在桌面上',
+  'no-window': '桌宠窗口没有打开',
+  timeout: '桌宠没有回应',
   canceled: '已取消',
   empty: '还没有唤醒桌宠，先在桌宠窗口里完成唤醒',
   'not-met': '还没见过她：先切换到她并起个名字',

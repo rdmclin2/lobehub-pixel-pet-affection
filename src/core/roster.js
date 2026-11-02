@@ -17,7 +17,7 @@ function previewOf(sp, look) {
     const idle = sp && sp.clips ? [].concat(sp.clips.idle)[0] : null;
     return idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null;
   }
-  if (look.kind === 'sprites') return { type: 'sprite', url: look.url, frame: { width: look.frame.width, height: look.frame.height }, pixelated: !!look.pixelated };
+  if (look.kind === 'sprites') return { type: 'sprite', url: look.url, frame: { width: look.frame.width, height: look.frame.height }, actions: look.actions || null, pixelated: !!look.pixelated };
   if (!look.url) return null; // a VRM model without a saved picture yet
   return { type: 'image', url: look.url, pixelated: !!look.pixelated };
 }
