@@ -586,15 +586,32 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
 // Packs for one species, as the appearance picker lists them: hers in the order of her character file
 // (the default first), then imported ones; a video character's own clips come last. 18+ packs only
 // when `adultOk` (the user confirmed 18+ and turned adult content on).
+// A picture of a pack for lists and the wardrobe (settings window): its daily outfit — a sprite sheet with its
+// actions (so it can be played), an outfit picture, or a VRM model's saved preview. null = nothing to show.
+function packCover(p) {
+  const rel = p.outfits.daily || Object.values(p.outfits)[0];
+  if (p.kind === 'vrm') {
+    const pv = p.vrm && p.vrm.previews && (p.vrm.previews.daily || Object.values(p.vrm.previews)[0]);
+    return pv ? { type: 'image', url: packUrl(p, pv), pixelated: !!p.pixelated } : null;
+  }
+  if (!rel) return null;
+  if (p.kind === 'sprites') return { type: 'sprite', url: packUrl(p, rel), frame: p.frame, actions: p.actions, pixelated: !!p.pixelated };
+  return { type: 'image', url: packUrl(p, rel), pixelated: !!p.pixelated };
+}
+
 function packsFor(packs, speciesId, adultOk = false) {
   const own = (SPECIES[speciesId] && SPECIES[speciesId].packs) || [];
   const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
   const out = [...packs.values()]
     .filter((p) => p.species === speciesId && (adultOk || !p.adult))
     .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
+    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, cover: packCover(p), ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
   const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
-  if (c) out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1 });
+  if (c) {
+    const sp = SPECIES[speciesId];
+    const idle = sp.clips ? [].concat(sp.clips.idle)[0] : null;
+    out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1, cover: idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null });
+  }
   return out;
 }
 
