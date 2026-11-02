@@ -2,7 +2,7 @@
  * 角色列表 (P-02) · 角色详情 (P-03 + P-04) · 外观资源 (P-02). Data: core/roster.js rows, rebuilt in main on
  * every change, so a switch made here shows in the pet window and the other way round.
  */
-import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
+import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Segmented, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -425,6 +425,52 @@ const KIND_NAME: Record<string, string> = { sprites: '像素', pictures: '图片
  * 形象包: her wardrobe. Every pack she can wear as a card with its picture; 试穿 shows it on her stage above,
  * 穿上 dresses her (in the pet window too). Importing new ones sits at the end of the rack.
  */
+/**
+ * 取景 (docs/half-body-mode.md): her own framing on the desktop — 跟随 (her pack's default, else the global
+ * 桌宠行为 → 取景), 全身 or 半身. Saved at once; the pet window re-frames her without reloading the model.
+ */
+const FramingRow = ({ c }: { c: RosterRow }) => {
+  const { view, settings, merge } = useStore();
+  const ch = view?.characters?.find((x: any) => x.id === c.id);
+  const [busy, setBusy] = useState(false);
+  const own: string = ch?.framing ?? 'auto';
+  const global = settings?.prefs?.framing === 'half' ? '半身' : '全身';
+  const packDefault = ch?.look?.framing === 'half' ? '半身' : ch?.look?.framing === 'full' ? '全身' : null;
+  const follow = packDefault ? `跟随形象包（${packDefault}）` : `跟随全局（${global}）`;
+  const camera = ch?.look?.kind === 'vrm' || ch?.look?.kind === 'live2d';
+  return (
+    <Flexbox align="center" data-framing-row={c.id} gap={12} horizontal wrap="wrap">
+      <Text strong>取景</Text>
+      <div aria-label="取景" data-key={`framings.${c.id}`} role="group">
+        <Segmented
+          disabled={busy}
+          onChange={async (v) => {
+            setBusy(true);
+            try {
+              const r = await api().setFraming(v as 'auto' | 'full' | 'half', c.id);
+              if (r && r.view) merge({ view: r.view });
+              if (r && r.settings) merge({ settings: r.settings });
+              if (r && r.ok) toast.success(`${c.nameZh} 的取景已改为「${v === 'auto' ? follow : v === 'half' ? '半身' : '全身'}」`);
+              else toast.error(reasonText(r));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          options={[
+            { label: follow, value: 'auto' },
+            { label: '全身', value: 'full' },
+            { label: '半身', value: 'half' },
+          ]}
+          value={own}
+        />
+      </div>
+      <Text fontSize={12} type="secondary">
+        {camera ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '目前只有 VRM 和 Live2D 形象包能半身取景；她现在穿的形象包保持全身。'}
+      </Text>
+    </Flexbox>
+  );
+};
+
 const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null) => void; trying: string | null }) => {
   const { view, merge } = useStore();
   const ch = view?.characters?.find((x: any) => x.id === c.id);
@@ -440,6 +486,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
   const worn = (p: PackOption) => p.id === c.pack?.id || (!c.pack && p.kind === 'video');
   return (
     <Flexbox gap={12}>
+      <FramingRow c={c} />
       <Text type="secondary">她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。</Text>
       <div className={wstyles.grid} data-wardrobe={c.id}>
         {options.map((p) => (
