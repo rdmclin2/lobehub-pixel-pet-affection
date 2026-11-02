@@ -57,6 +57,14 @@ contextBridge.exposeInMainWorld('petAdmin', {
   showPet: () => ipcRenderer.send('admin-show-pet'),
   // the pet on the desktop plays one action (happy, pat, play …) — 和她互动 on her stage
   cue: (state) => ipcRenderer.invoke('admin-cue', { state }),
+  // the old ⋯ menu (T-2718): 动作 (cue above, plus 'turn'), 回到右下角, 退出; 话题 and 聊天记录 (the same
+  // channels the pet window used: a topic is started by the pet, history comes filtered from main)
+  home: () => ipcRenderer.invoke('admin-home'),
+  quit: () => ipcRenderer.invoke('admin-quit'),
+  talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
+  markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  historyList: () => ipcRenderer.invoke('history-list'),
+  historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // pushes: the whole admin state after any change (from either window), update / API status
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),

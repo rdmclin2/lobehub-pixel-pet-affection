@@ -441,6 +441,12 @@ interface OutfitRow {
 const OutfitRack = ({ c }: { c: RosterRow }) => {
   const { view, merge } = useStore();
   const [busy, setBusy] = useState<string | null>(null);
+  // outfits new since she last looked keep a 新 tag while the rack is open; main forgets them right away
+  const fresh = useRef<Set<string> | null>(null);
+  if (view && c.current && fresh.current === null) fresh.current = new Set((view.outfits ?? []).filter((o: OutfitRow) => o.isNew).map((o: OutfitRow) => o.id));
+  useEffect(() => {
+    if (c.current && fresh.current?.size) api().markSeen('outfit').catch(() => {});
+  }, [c.current]);
   if (!view) return null;
   if (!c.current)
     return (
@@ -481,6 +487,11 @@ const OutfitRack = ({ c }: { c: RosterRow }) => {
             {...(o.equipped ? { color: 'primary' as const, variant: 'outlined' as const } : {})}
           >
             {o.label}
+            {fresh.current?.has(o.id) && (
+              <Tag color="error" data-new-outfit size="small" style={{ marginInlineStart: 4 }}>
+                新
+              </Tag>
+            )}
           </Button>
         ))}
       </Flexbox>

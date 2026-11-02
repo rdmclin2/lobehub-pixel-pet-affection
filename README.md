@@ -1,6 +1,6 @@
 # LobeHub Pixel Pet · 好感度版（Affection Edition）· 18+
 
-> **⚠️ 成人向（18+）应用。** 本应用包含面向成年人的暧昧互动内容（调情、情话、约会幻想等）；对话不含露骨内容，但导入的角色包可以在成人向服饰中出现裸露、露骨图片（Q 版角色除外，见 [docs/pet-packs.md](docs/pet-packs.md)）。首次启动会询问是否年满 18 周岁；未满 18 岁或选择“只看全年龄”时，所有成人向内容都不会出现。成人向内容可随时在 ⋯ 菜单中关闭。
+> **⚠️ 成人向（18+）应用。** 本应用包含面向成年人的暧昧互动内容（调情、情话、约会幻想等）；对话不含露骨内容，但导入的角色包可以在成人向服饰中出现裸露、露骨图片（Q 版角色除外，见 [docs/pet-packs.md](docs/pet-packs.md)）。首次启动会询问是否年满 18 周岁；未满 18 岁或选择“只看全年龄”时，所有成人向内容都不会出现。成人向内容可随时在 设置 → 内容与安全 中关闭。
 
 一位住在桌面上的**模型娘**伙伴：以 AI 模型厂商为主题的同人角色（DeepSeek 大肥鱼、Claude 娘克洛蒂、Grok 娘格萝可、Gemini 娘杰米、GPT 娘吉皮缇，都不是厂商官方形象），大脑是你自己的 [LobeHub](https://lobehub.com) agent。本派生版把上游的“成长系统”改造成**好感度系统**：和它互动（摸摸、喂食、玩耍、聊天、话题）会提升好感度，好感度到达新阶段就会解锁新的对话话题和服饰。
 
@@ -28,11 +28,12 @@
 - 每个角色是一份数据文件 `src/characters/<id>.json`（厂商、人设、口头禅、离线台词、主题色、可用服饰、署名），美术是一个角色包（`src/renderer/packs/<id>-pixel`）或一组视频；**效果全部共用**，角色之间只差配置、素材和台词。新增角色：放一份 character.json 和一个角色包即可，不用改代码。设定与素材来源见 [art/model-chan/](art/model-chan/README.md)。
 - 五位都是全年龄角色（`adult: false`）：即使确认 18+ 并开启成人向内容，她们也只用全年龄的语气、话题和服饰。成人向机制仍保留，只对 character.json 里写明 `adult: true` 的角色生效。
 - **旧角色已下线**：焰团、泡鲸、叶芽和“灵石”选择界面已移除。老存档打开时自动由新角色接替（泡鲸、叶芽 → 大肥鱼，焰团 → 克洛蒂），LobeHub agent、聊天记录和好感度都保留，她的人设在下一句话前更新；身上的服饰如果新角色没有，就换回日常服。旧存档会备份为 `pet.retired.bak.json`。
-- **换角色**：⋯ 菜单 → **角色列表**（每位角色带缩略图、名字、称号和关系）。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
-- **设置窗口（配置后台）**：⋯ 菜单 → **设置…**（或 Ctrl/⌘ + ,、托盘 → 打开设置…）打开。左侧只有 **小屋 / 角色 / 玩法 / 设置** 四个入口，其余页面都在下一层：小屋里她站在舞台上，点她会冒爱心、回应你（桌面上的她也一起动）；角色图鉴是一张张会动的角色卡，没遇见的是剪影，点进去是她的详情页，可以试穿、更换形象包；玩法和设置是入口卡片，再进入各项配置。亮 / 暗主题，见 [usage.md 第六节](docs/usage.md#六设置窗口配置后台)。
+- **换角色**：⚙ 设置 → **角色**（角色图鉴：每位角色带形象、名字、称号和关系）。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
+- **桌宠窗口只留互动**：悬停时工具栏只有 喂食 / 玩耍 / 睡觉 / 聊天 和一个 **⚙ 设置** 按钮；话题、衣柜、角色列表、聊天记录、动作、回到右下角、检查更新、放生、错误日志、素材署名、退出等原 ⋯ 菜单的功能都在设置窗口里（对照见 [docs/usage.md 第六节](docs/usage.md#六设置窗口配置后台)）。有新解锁的服饰 / 话题或新版本时，⚙ 上有个小红点，点它直达对应页面。
+- **设置窗口（配置后台）**：点桌宠的 **⚙ 设置**（也可以右键或在触屏上长按她、Ctrl/⌘ + ,、托盘 → 打开设置…）打开。左侧只有 **小屋 / 角色 / 玩法 / 设置** 四个入口，其余页面都在下一层：小屋里她站在舞台上，点她会冒爱心、回应你（桌面上的她也一起动）；角色图鉴是一张张会动的角色卡，没遇见的是剪影，点进去是她的详情页，可以试穿、更换形象包；玩法和设置是入口卡片，再进入各项配置。亮 / 暗主题，见 [usage.md 第六节](docs/usage.md#六设置窗口配置后台)。
 - **LobeHub 风格的界面与设计系统**：设置窗口和桌宠窗口（菜单、面板、对话气泡、输入框、提示）都用 LobeHub 的设计令牌（`@lobehub/ui` 主题，经 [lobe-design](https://github.com/lobehub/lobe-design-skill) 初始化），亮 / 暗主题跟随系统。设计系统在 `admin/src/design/`（后台）和 `src/renderer/design/`（桌宠窗口用的令牌导出），维护方式见 [docs/design-system.md](docs/design-system.md) 和 [usage.md 第六节](docs/usage.md#设计系统位置与维护)。
-- **角色设置**：设置窗口 → **角色** → 点一位角色进入详情，按角色设置**形象包**（先试穿再穿上）、**模型**、**个性化设定（System Role）**，查看**好感**路线图并可一键解锁（只作用于她）；桌宠里的 ⋯ → **角色列表** 仍可快速切换角色、换外观。
-- **换模型**：⋯ 菜单 → **角色列表** → 角色 → 模型。每位角色只能选自家厂商的模型（大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT），列表来自你在 LobeHub 里启用的模型；换角色时模型跟着换成新角色的（每位角色各自记住你的选择）。
+- **角色设置**：设置窗口 → **角色** → 点一位角色进入详情，按角色设置**形象包**（先试穿再穿上）、**模型**、**个性化设定（System Role）**，查看**好感**路线图并可一键解锁（只作用于她）。
+- **换模型**：设置窗口 → **角色** → 角色 → 模型。每位角色只能选自家厂商的模型（大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT），列表来自你在 LobeHub 里启用的模型；换角色时模型跟着换成新角色的（每位角色各自记住你的选择）。
 
 ### 每个角色都有的效果（移植自 dsh-pet）
 
@@ -51,10 +52,10 @@
 | E11 | 工作状态：思考中 → 说话；出错时难过；每条消息带时间背景（时段、星期、节日） | 聊天、话题、主动说话 |
 | E12 | 关系升级：进化动画、闪光和爱心 | 好感跨过阶段 |
 | E13 | 角色专属衣柜 | “衣柜” |
-| E14 | 换角色：每位角色各自的 agent、聊天记录、名字和好感度 | ⋯ → 角色列表 |
+| E14 | 换角色：每位角色各自的 agent、聊天记录、名字和好感度 | ⚙ 设置 → 角色 |
 | E15 | 自己走动：空闲时朝面向的方向走 60–240 像素，到屏幕边掉头（大肥鱼播 dsh-pet 的螃蟹走路，像素角色待机帧颠步） | 自动；设置窗口 → 桌宠行为 →“自己走动”可关 |
 | E16 | 触屏长按 / 右键打开菜单 | 在宠物身上长按（触屏）或右键 |
-| E17 | 动作点播、回到右下角 | ⋯ → 动作… / 回到右下角 |
+| E17 | 动作点播、回到右下角 | ⚙ 设置 → 玩法 → 桌面上的她（动作 / 回到右下角） |
 | E18 | 弹弓：连按两下后拉开再松手，朝反方向弹出，力度只看拉多远 | 300 毫秒内第二次按下并拖动 |
 | E19 | 空中接住得分：飞行中点中她，弹出“+N”和火花（越快、越小分越高） | 甩出后点她 |
 | E20 | 落地挤压：落得越重压得越扁 | 甩出、弹弓 |
@@ -64,8 +65,8 @@
 | E24 | 同屏伙伴：请其他模型娘来桌面串门（最多 3 位，无 agent），一起走动、被点、被甩 | 设置窗口 → 同屏伙伴 |
 | E25 | 互相碰撞：甩出去的她把撞到的伙伴弹开（动量守恒） | 有同屏伙伴时甩她 |
 | E26 | 本机 HTTP 接口：脚本让她说话、播动作、抛出去、聊一句、读状态（默认关，需令牌） | 设置窗口 → 对外接口 |
-| E27 | 聊天记录：只列出你在聊天框主动发起的会话（时间、首句摘要、条数），点开看完整的你说的话和她的回复；问候、主动搭话、关系升级、触摸 / 喂食台词、HTTP 接口的内容都不显示。只存在本机，放生时清除。规则见 [docs/chat-history.md](docs/chat-history.md) | ⋯ → 聊天记录 |
-| E28 | 重新开始话题：当前角色的下一句进入 LobeHub 里新的 topic，不带之前的上下文；旧 topic 保留不删，agent、好感度和聊天记录都不变。规则见 [docs/chat-history.md](docs/chat-history.md) 第八节 | ⋯ → 重新开始话题 |
+| E27 | 聊天记录：只列出你在聊天框主动发起的会话（时间、首句摘要、条数），点开看完整的你说的话和她的回复；问候、主动搭话、关系升级、触摸 / 喂食台词、HTTP 接口的内容都不显示。只存在本机，放生时清除。规则见 [docs/chat-history.md](docs/chat-history.md) | ⚙ 设置 → 玩法 → 聊天记录 |
+| E28 | 重新开始话题：当前角色的下一句进入 LobeHub 里新的 topic，不带之前的上下文；旧 topic 保留不删，agent、好感度和聊天记录都不变。规则见 [docs/chat-history.md](docs/chat-history.md) 第八节 | ⚙ 设置 → LobeHub 与本机 → 重新开始话题 |
 | E29 | 流式回复：她的回复边写边显示在气泡里（输入光标 ▍、自动跟随最新一行），写完后用完整回复校正；内容守卫、梗图、好感度、聊天记录、朗读仍只按完整回复执行一次。只要 `lh` 已登录，本机能力开或关都经直连 LobeHub（Responses SSE）实时流出；直连不可用或出错时同一回合自动回退 `lh agent run`（整段一次显示）。机制与验证见 [docs/streaming.md](docs/streaming.md) | 💬 聊天 / 问候 / 主动搭话 |
 
 与 dsh-pet 的逐项对照（已实现 / 本次实现 / 不移植及理由）见 [docs/dsh-pet-gap.md](docs/dsh-pet-gap.md)。
@@ -143,7 +144,7 @@
 
 ### 开关设置
 
-设置窗口（⋯ → 设置…）→ 桌宠行为：
+设置窗口（⚙ 设置）→ 桌宠行为：
 
 - **部位触摸**（默认开）：关掉后点哪里都只是原来的“摸摸”（好感 +1、气泡是摸摸台词），没有部位判定、标记和扣分。
 - **触摸提示**（默认开，需开着“部位触摸”）：悬停时在指针旁显示部位名。
@@ -175,7 +176,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | 按住拖动 | 她被拎起，没有触摸反应 |
 | 关掉“部位触摸”后点胸口 | 只有原来的摸摸反应和台词，不扣分 |
 
-想更快看到高阶段的反应，可在 ⋯ 菜单 → 角色列表 → 当前角色的页面里“一键解锁”（好感直接 ♥100）。
+想更快看到高阶段的反应，可在 ⚙ 设置 → 角色 → 当前角色的页面里“一键解锁”（好感直接 ♥100）。
 
 ### 扩展新部位或新台词
 
@@ -251,7 +252,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | 甩出 | 拖着快速松手 / 弹弓（`throwPet`） | `throw` | `voice.lines.throw` | happy |
 | 接住 | 她在空中时按住她 | `catch` | `voice.lines.catch` | happy |
 | 关系升级 | 好感度进入新阶段（`_onStageUp` → `_speak('stage_up')`） | `stage_up` | agent 回复，失败时阶段台词 | happy |
-| 切换角色 | ⋯ → 角色列表 → 切换（`switchCharacter`） | `switch` | 新角色 `fallback.greet[0]` | happy |
+| 切换角色 | ⚙ 设置 → 角色 → 切换（`switchCharacter`） | `switch` | 新角色 `fallback.greet[0]` | happy |
 
 - **预合成缓存**：开着朗读和互动语音时，她当前阶段会说到的常用短句（摸摸 / 喂食 / 玩耍 / 哄睡 / 拖拽 / 甩出 / 接住，以及每个部位第一次被碰的台词，最多 60 句）会在后台提前合成进语音缓存，点了直接播放。换角色、升级、换引擎或 Key 时重新补齐（换引擎 / Key / 端点时，正在进行的预合成立刻停下，不再发给旧引擎），已缓存的句子不再请求；预合成用自己的请求，不会打断正在说的话，第一次出错就停下。
 - **连点节流**：互动台词在上一句还没说完时直接丢掉（不排队），1.5 秒内也只说一句；气泡照常每次更新。回复和初次见面 / 升级 / 切换角色总能说出来，互动台词不会打断回复。拖拽 / 甩出 / 接住每种 4 秒内最多说一次。
@@ -334,17 +335,17 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
 - 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
-- **一键解锁**（⋯ 菜单 → 角色列表 → 角色页面）：直接把这位角色的好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
-- **像素风与角色包**：五位模型娘默认用高清像素画（每帧 664×904，全彩、平滑绘制，Retina 屏上放大到 2.5 倍也清楚），每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⋯ 菜单 → 角色列表 → 角色 → 外观里可以切换（每位角色：像素 / 旧版像素；大肥鱼另有 Live2D、全动态和原版动画），也能导入别人做的角色包（文件夹或 `.zip`），或者直接导入**自己的 Live2D 模型**（Cubism 3 / 4 / 5 的 `.model3.json` 或 `.zip`，不用写 `pack.json`：应用自动生成角色包、识别模型的表情、画出预览图并换上，可以调模型大小）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
+- **一键解锁**（⚙ 设置 → 角色 → 角色页面）：直接把这位角色的好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
+- **像素风与角色包**：五位模型娘默认用高清像素画（每帧 664×904，全彩、平滑绘制，Retina 屏上放大到 2.5 倍也清楚），每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⚙ 设置 → 角色 → 角色页面 → 装扮里可以切换（每位角色：像素 / 旧版像素；大肥鱼另有 Live2D、全动态和原版动画），也能导入别人做的角色包（文件夹或 `.zip`），或者直接导入**自己的 Live2D 模型**（Cubism 3 / 4 / 5 的 `.model3.json` 或 `.zip`，不用写 `pack.json`：应用自动生成角色包、识别模型的表情、画出预览图并换上，可以调模型大小）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
 - **宠物大小随意调**：悬停时拖宠物左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 在宠物上滚动滚轮，也可以在设置窗口 → 桌宠行为里拖滑块。范围 50%–250%，默认 125%，窗口跟着变，右下角位置不变，最大不会超出屏幕；大小会保存，重启和换宠物后都保留。
-- **自动更新**（v0.4.1 起）：⋯ 菜单 → “检查更新”（打开设置窗口的「版本与更新」页）可以随时手动检查，那里也显示当前版本和上次检查时间。平时应用启动后和之后每 4 小时自动检查一次 GitHub Releases，发现新版本就在后台下载（macOS 会校验 sha512）。下载好后宠物会提示一句；你离开电脑 10 分钟后它会自己重启更新，大约两秒，状态都保存在本地，不会丢。你也可以在 ⋯ 菜单里点“立即更新”，或者等下次退出时自动安装。
+- **自动更新**（v0.4.1 起）：⚙ 设置 → 版本与更新 → “检查更新”可以随时手动检查，那里也显示当前版本和上次检查时间。平时应用启动后和之后每 4 小时自动检查一次 GitHub Releases，发现新版本就在后台下载（macOS 会校验 sha512）。下载好后宠物会提示一句；你离开电脑 10 分钟后它会自己重启更新，大约两秒，状态都保存在本地，不会丢。有新版本时 ⚙ 上会出现小红点，点它直达「版本与更新」，可以点“立即更新”，或者等下次退出时自动安装。
   - macOS：应用要放在“应用程序”（或任意可写的文件夹）里才能自己更新。直接从 DMG 或“下载”文件夹打开时没法替换自己，会提示你先挪过去。
   - Windows：用安装包（`-setup.exe`）装的版本可以自动更新；zip 版和 Linux 的 tar.gz 只会提示有新版本，并在菜单里给出下载页。
   - 不想自动更新的话，设置环境变量 `PIXELPET_NO_UPDATE=1`。
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
 - 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js admin` 驱动设置窗口（打开方式、四个入口与下一层、点她的反应、试穿与更换形象包、配置项编辑与保存、角色图鉴、行为控制、亮 / 暗主题）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
-- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⋯ 菜单中的“放生”会删除宠物和每位角色的 LobeHub agent。
+- 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⚙ 设置 → 数据与关于 → “放生并删除 agent”会删除宠物和每位角色的 LobeHub agent（会再确认一次）。
 
 ## 上游署名与许可
 
@@ -373,7 +374,7 @@ In this fork every character is a model-chan fan character (see the Chinese sect
 - **Hover only.** Bars, name line, buttons and the chat box show **only while the pointer is over the pet window**. Moving away hides everything, even an open chat box: the draft and attached files are kept and come back on the next hover (the hidden box also gives up keyboard focus). To paste a picture, hover the pet first.
 - **Busy means busy.** While the pet is thinking or working, only the pet and a "思考中" bubble show; the bars, buttons and chat box stay hidden even on hover, and care actions are refused. While it works, hovering shows only a **■ 停止 (Stop)** button; click it (or press **Esc**) to interrupt, including while the device is being connected.
 - **Pictures.** Paste with Ctrl/⌘+V, drag an image onto the window, or use the 📎 button (up to 4 images, 8 MB each). The picture is uploaded with `lh file upload`, attached to a user message in the pet's topic, and the next agent run sees it.
-- **Use this computer.** The hatch screen has an option (on by default) to let the pet use your computer. When the app can read your `lh login` (or `LOBEHUB_CLI_API_KEY` is set), such turns go straight to LobeHub's Responses API (`/api/v1/responses`, the agent id as `model`, her topic as `previous_response_id`) with four function tools the app runs itself: `read_file`, `list_directory`, `write_file`, `run_command`. No device is involved, so turning it on is instant and a tool step is one HTTP round trip instead of a cloud → device dispatch. If that path fails before a tool ran, the turn is sent again the old way, and the old way is used for the next few minutes. The old way is LobeHub's device mechanism: when you claim a pet, and every time the app starts, it makes sure the `lh connect --daemon` background process is running (it checks `lh connect status` first, because the CLI refuses to start a second one), finds this machine's online device, and binds the pet's agent to it (`agencyConfig.boundDeviceId`, `executionTarget: local`). If the daemon cannot start but the LobeHub desktop app already has this computer online, the pet keeps working through that and tells you. Toggle it from the ⋯ menu; turning it off unbinds the agent but leaves the daemon running, because it may also be yours.
+- **Use this computer.** The hatch screen has an option (on by default) to let the pet use your computer. When the app can read your `lh login` (or `LOBEHUB_CLI_API_KEY` is set), such turns go straight to LobeHub's Responses API (`/api/v1/responses`, the agent id as `model`, her topic as `previous_response_id`) with four function tools the app runs itself: `read_file`, `list_directory`, `write_file`, `run_command`. No device is involved, so turning it on is instant and a tool step is one HTTP round trip instead of a cloud → device dispatch. If that path fails before a tool ran, the turn is sent again the old way, and the old way is used for the next few minutes. The old way is LobeHub's device mechanism: when you claim a pet, and every time the app starts, it makes sure the `lh connect --daemon` background process is running (it checks `lh connect status` first, because the CLI refuses to start a second one), finds this machine's online device, and binds the pet's agent to it (`agencyConfig.boundDeviceId`, `executionTarget: local`). If the daemon cannot start but the LobeHub desktop app already has this computer online, the pet keeps working through that and tells you. Toggle it in Settings (⚙) → LobeHub 与本机; turning it off unbinds the agent but leaves the daemon running, because it may also be yours.
 - **Drop files on the pet.** Any file or folder dragged onto the window (or pasted from Finder) is handed over **by path only**: nothing is uploaded, and the agent reads it through the bound device. If computer access is off, the app asks to turn it on first. Screenshots from the clipboard have no path, so they are uploaded as pictures for the model to look at.
 
 > **Security.** The direct tools and a bound device both let the agent read and write files and run commands as your user. `lh` does not sandbox this: a working directory is only the default for relative paths. Anything the pet reads (web pages, files, images) could contain instructions meant to trick the model. The device is also account-wide while connected. Turn the option off if you do not want this. For automated tests, `PIXELPET_NO_CONNECT=1` forbids starting `lh connect`.
@@ -421,7 +422,7 @@ Electron renderer (canvas sprites, UI)  ⇄ preload IPC ⇄  PetService  ⇄  Lh
 ```
 
 - **Harness boundary** — `src/core/lh-client.js` is the only file that knows about LobeHub. It uses `lh whoami`, `lh login`, `lh agent create`, `lh agent run --json` and `lh agent delete`. Replacing the harness means replacing this file (`whoami/login/createAgent/run/deleteAgent`).
-- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub. ⋯ → 重新开始话题 clears the current character's `topicId`, so her next run opens a new topic; the old one is kept in LobeHub, not deleted.
+- **Memory** — every turn reuses one LobeHub *topic* (`-t <topicId>`), so the pet's long-term history lives in LobeHub. Settings (⚙) → LobeHub 与本机 → 重新开始话题 clears the current character's `topicId`, so her next run opens a new topic; the old one is kept in LobeHub, not deleted.
 - **Pet feel** (borrowed from the "大肥鱼" community pets): a persona prompt, a state block injected in every message so the pet reacts to how it actually feels, and proactive lines (hungry / bored / morning / evening greetings) with a cooldown and an hourly LLM-call budget. When the agent is unreachable or the budget is spent, the pet falls back to canned in-character lines, so it never goes silent.
 - Care actions (feed / play / sleep / pat) are local and free; only chat and proactive lines call the agent.
 

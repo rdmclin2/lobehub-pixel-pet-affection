@@ -64,7 +64,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 15, '15 pages under 4 rail places (docs §6.3)');
+  assert.equal(navPages.length, 18, '18 pages under 4 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718)');
   assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings'], 'the rail holds four places, not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
@@ -436,14 +436,53 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   assert.match(main, /label: '偏好设置…', accelerator: 'CmdOrCtrl\+,'/);
 });
 
-test('the pet window: ⋯ → 设置… opens the settings window; the old 高级设置 panel and her model / system-role forms are gone', () => {
+test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  assert.match(html, /data-menu="settings"[^>]*>设置…</);
-  assert.doesNotMatch(html, /data-menu="advanced"/);
-  for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
-  assert.match(app, /window\.pet\.openAdmin\(`characters\/\$\{c\.id\}`\)/);
+  // the toolbar: the four interactions and ⚙
+  const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'settings']);
+  assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
+  for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
+  for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
+  assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'history.js')));
+  // ⚙, a right click and a long press all open the settings window
+  assert.match(app, /else if \(act === 'settings'\) openSettings\(\);/);
+  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(\) => openSettings\(\) \}\)/);
+  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
+  assert.match(app, /window\.pet\.openAdmin\(/);
+  // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
+  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.speciesId\}` : 'topics'/);
   assert.match(app, /\{ label: '去设置', admin: 'asr' \}/);
+  // no 高级设置 panel or her model / system-role forms either (since the console)
+  for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
+});
+
+test('every item of the old ⋯ menu has its place in the settings window (T-2718)', () => {
+  const preload = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  const read = (f) => fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', ...f.split('/')), 'utf8');
+  const pages = read('pages/Pages.tsx');
+  const together = read('pages/Together.tsx');
+  const app = read('ConsoleApp.tsx');
+  const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
+  for (const p of ['characters', 'topics', 'history', 'desk', 'connection', 'safety', 'update', 'about']) {
+    assert.ok(navPages.includes(p), `${p} is in the nav`);
+    if (!['characters'].includes(p)) assert.match(app, new RegExp(`case '${p}':`), `${p} has a page`);
+  }
+  // the bridge: each menu action has a channel
+  for (const fn of ['newTopic:', 'setAdult:', 'confirmAge:', 'checkUpdate:', 'installUpdate:', 'release:', 'openLog:', 'cue:', 'home:', 'quit:', 'talkTopic:', 'markSeen:', 'historyList:', 'historyGet:', 'switchCharacter:', 'equipOutfit:']) assert.ok(preload.includes(fn), fn);
+  assert.match(main, /ipcMain\.handle\('admin-home', adminOnly\(/);
+  assert.match(main, /ipcMain\.handle\('admin-quit', adminOnly\(/);
+  assert.match(main, /const ADMIN_CUES = \[\.\.\.CUE_STATES, 'turn'\];/);
+  // dangerous ones are asked again
+  assert.match(together, /ask\('退出桌宠？'/);
+  assert.match(pages, /ask\('和她开一个新话题？'/);
+  assert.match(pages, /deleteAgent \? '放生并删除 agent？' : '仅重置本地？'/);
+  // the 动作 list keeps the old menu's nine actions
+  assert.match(together, /const CUES = \['look', 'turn', 'walk', 'happy', 'pat', 'play', 'think', 'sad', 'evolve'\];/);
+  assert.match(pages, /素材署名/);
+  assert.match(pages, /打开错误日志/);
 });
 
 test('docs/admin-console-design.md names every settings.json key and settings IPC channel (scripts/check-admin-console-doc.js)', () => {

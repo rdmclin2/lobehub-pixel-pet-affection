@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
+// 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
+const ADMIN_CUES = [...CUE_STATES, 'turn'];
 const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
@@ -187,7 +189,7 @@ function createTray() {
     tray.setContextMenu(trayMenu);
     tray.on('click', () => openAdmin());
   } catch (e) {
-    logError(e); // no tray on this desktop: the ⋯ menu and Ctrl+, still open the settings
+    logError(e); // no tray on this desktop: the ⚙ button, a right click on her and Ctrl+, still open the settings
   }
 }
 // macOS application menu: 偏好设置… ⌘, and 退出 ⌘Q (there was no app menu before)
@@ -622,7 +624,7 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
-  // 配置后台: ⋯ → 设置… / 高级设置 / her page → 在设置窗口中编辑 open it (at a section); single instance
+  // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
@@ -638,7 +640,22 @@ function wire() {
   }));
   ipcMain.on('admin-show-pet', () => showPet());
   // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
-  ipcMain.handle('admin-cue', adminOnly(({ state }) => (CUE_STATES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
+  ipcMain.handle('admin-cue', adminOnly(({ state }) => (ADMIN_CUES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
+  // the old ⋯ menu, now in the settings window (T-2718): 回到右下角 (the pet window stops flying / walking
+  // and goes back to its corner) and 退出 (asked once more in the window first)
+  ipcMain.handle('admin-home', adminOnly(async () => {
+    if (!win || win.isDestroyed()) return { ok: false, reason: 'no-window' };
+    if (!service || !service.pet) return { ok: false, reason: 'empty' };
+    const r = await askRenderer('home', {});
+    if (r.ok === false) return r;
+    petBounds = null;
+    place('pet');
+    return { ok: true, bounds: win.getBounds() };
+  }));
+  ipcMain.handle('admin-quit', adminOnly(() => {
+    setImmediate(() => app.quit());
+    return { ok: true };
+  }));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 

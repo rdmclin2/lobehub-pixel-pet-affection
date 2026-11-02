@@ -36,6 +36,15 @@ const NAV = [
       { page: 'visitors', label: '同屏伙伴', icon: 'UsersRound' },
     ],
   },
+  // the pet window's old ⋯ menu and its 话题 panel (T-2718): what she can talk about, what you talked
+  // about, and the desktop controls (动作 / 回到右下角 / 退出)
+  {
+    key: 'together', section: 'play', label: '和她一起', items: [
+      { page: 'topics', label: '话题', icon: 'MessagesSquare' },
+      { page: 'history', label: '聊天记录', icon: 'History' },
+      { page: 'desk', label: '桌面上的她', icon: 'Monitor' },
+    ],
+  },
   {
     key: 'voice', section: 'settings', label: '声音', items: [
       { page: 'tts', label: '朗读', icon: 'Volume2' },
@@ -73,6 +82,9 @@ const PAGES = {
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小、走动、音效、梗图和触摸。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
+  topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
+  history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
+  desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
   asr: { title: '语音输入', description: '按住 🎤 说话，识别成文字发给她。' },

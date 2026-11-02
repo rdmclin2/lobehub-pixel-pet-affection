@@ -1,5 +1,5 @@
 'use strict';
-// The pet window's interface (bubble, HUD, chat box, menus, toast, #panel) uses the LobeHub tokens like the admin
+// The pet window's interface (bubble, HUD, chat box, menus, toast) uses the LobeHub tokens like the admin
 // window (.agents/ux/lobe-design-rules.md R-04); only the character art keeps raw colours.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -32,8 +32,8 @@ test('index.html loads the LobeHub tokens before the pet stylesheet', () => {
 
 test('interface pieces read --lobe-* tokens, not the old pixel palette', () => {
   const ui = ['body', '.btn', '.btn.primary', 'input, select, textarea', '.bubble', '.bubble-tail', '.chat-row', '.popup', '.popup .btn',
-    '.unlock-toast', '.toast-title', '.bars', '.aff-row', '.hud .meta', '.panel', '.panel-head', '.card', '.topic', '.adv-section',
-    '.history-item', '.history-msg', '.history-msg.user', '.stop-btn', '.zone-hint', '.mic-status', '.new-dot', '.tag', '.pack-opt', '#age-gate'];
+    '.unlock-toast', '.toast-title', '.bars', '.aff-row', '.hud .meta',
+    '.stop-btn', '.zone-hint', '.mic-status', '.new-dot', '#age-gate'];
   for (const sel of ui) {
     const body = sel.includes(',') ? rulesFor(sel.split(',')[0].trim()) : rulesFor(sel);
     assert.ok(body, `${sel} has a rule`);
@@ -67,10 +67,10 @@ test('HUD meters use semantic token colours; inline icons do not swallow toolbar
   assert.doesNotMatch(bar, /#[0-9a-f]{3,6}/i);
   // the toolbar picks its action from e.target.dataset: an <svg> inside a button must let the click through
   assert.match(rulesFor('.ico'), /pointer-events:\s*none/);
-  const menuBtn = html.match(/<button[^>]*data-act="menu"[^>]*>([\s\S]*?)<\/button>/)[1];
-  assert.match(menuBtn, /<svg class="ico"/);
+  const gear = html.match(/<button[^>]*data-act="settings"[^>]*>([\s\S]*?)<\/button>/)[1];
+  assert.match(gear, /<svg class="ico"/);
   // the selectors e2e and app.js rely on are still there
-  for (const id of ['bubble', 'chat-input', 'chat-send', 'chat-mic', 'attach-btn', 'main-menu', 'food-menu', 'unlock-toast', 'toast-close', 'panel', 'panel-close', 'stop-btn', 'aff-stage', 'bar-affection', 'bar-hunger']) {
+  for (const id of ['bubble', 'chat-input', 'chat-send', 'chat-mic', 'attach-btn', 'btn-settings', 'food-menu', 'unlock-toast', 'toast-close', 'toast-open', 'stop-btn', 'aff-stage', 'bar-affection', 'bar-hunger']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
 });

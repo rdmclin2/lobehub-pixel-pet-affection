@@ -1,4 +1,4 @@
-/* Pet window. The interface around the character (bubble, HUD, chat box, menus, toasts, #panel, onboarding)
+/* Pet window. The interface around the character (bubble, HUD, chat box, toolbar, food menu, toasts, onboarding)
  * uses the LobeHub design tokens from design/lobe-tokens.css (lobe-design, @lobehub/ui theme): colour roles,
  * type, radius, shadow and motion, light / dark following the OS exactly like the admin window. The character
  * herself (sprites, pictures, rig / live2d / VRM, hearts, touch marks, squash and hop) is art and keeps its own look. */
@@ -38,7 +38,7 @@ code, kbd { font-family: var(--lobe-font-family-code); font-size: .92em; padding
   transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), border-color var(--lobe-motion-duration-mid) var(--pet-ease), color var(--lobe-motion-duration-mid) var(--pet-ease), box-shadow var(--lobe-motion-duration-mid) var(--pet-ease); }
 .btn:hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); border-color: var(--lobe-color-fill); }
 .btn:active:not(:disabled) { background: var(--lobe-color-fill-secondary); }
-.btn:focus-visible, .char-card:focus-visible, .card:focus-visible, .topic:focus-visible, .history-item:focus-visible, .toast-x:focus-visible, .stop-btn:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: 1px; }
+.btn:focus-visible, .char-card:focus-visible, .toast-x:focus-visible, .stop-btn:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: 1px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { color: var(--lobe-color-bg-container); background: var(--lobe-color-primary); border-color: var(--lobe-color-primary); }
 .btn.primary:hover:not(:disabled) { color: var(--lobe-color-bg-container); background: var(--lobe-color-primary-hover); border-color: var(--lobe-color-primary-hover); }
@@ -226,49 +226,11 @@ body.busy.over .stop-btn { display: flex; }
 .toast-x .ico { width: 13px; height: 13px; }
 .toast-btn { margin-top: var(--pet-space-xs); font-size: 11px; padding: 1px var(--pet-space-sm); }
 
-/* toolbar wraps onto two rows; "new" badges on the panel buttons */
+/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
 .toolbar { flex-wrap: wrap; justify-content: center; max-width: 236px; }
 .toolbar .btn { position: relative; }
+.new-dot.dot { top: -3px; right: -3px; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; }
 .new-dot { position: absolute; top: -8px; right: -8px; font-size: 9px; font-weight: 500; line-height: 14px; min-width: 14px; color: var(--pet-on-solid); background: var(--lobe-color-error); border-radius: 7px; padding: 0 3px; box-shadow: 0 0 0 1.5px var(--pet-surface); }
-
-/* ---- wardrobe / topics / history panel (the window is enlarged to 460x540 while open): a LobeHub page ---- */
-.panel { position: fixed; inset: 0; z-index: 20; background: var(--lobe-color-bg-layout); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-lg); display: flex; flex-direction: column; padding: var(--pet-space-md) var(--lobe-padding); font-size: 12px; color: var(--lobe-color-text); }
-.panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--pet-space-sm); padding-bottom: var(--pet-space-sm); border-bottom: 1px solid var(--pet-line-soft); }
-.panel-title { font-size: var(--lobe-font-size-lg); line-height: var(--lobe-line-height-lg); font-weight: var(--lobe-font-weight-strong); }
-.panel-sub { color: var(--lobe-color-text-description); font-size: var(--lobe-font-size-sm); margin-top: 2px; }
-.panel-msg { margin: var(--pet-space-sm) 0 0; padding: var(--pet-space-xs) var(--pet-space-md); background: color-mix(in srgb, var(--lobe-color-error) 10%, var(--lobe-color-bg-container)); border: 1px solid color-mix(in srgb, var(--lobe-color-error) 35%, transparent); border-radius: var(--lobe-border-radius-sm); color: var(--lobe-color-error); font-weight: 500; }
-.panel-msg.ok { background: color-mix(in srgb, var(--lobe-color-success) 10%, var(--lobe-color-bg-container)); border-color: color-mix(in srgb, var(--lobe-color-success) 35%, transparent); color: var(--lobe-color-success); }
-.panel-body { flex: 1; overflow-y: auto; margin-top: var(--pet-space-sm); scrollbar-width: thin; scrollbar-color: var(--lobe-color-fill) transparent; }
-.wardrobe { display: flex; gap: var(--pet-space-sm); align-items: flex-start; }
-.preview { flex: none; width: 104px; text-align: center; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-tertiary); padding: var(--pet-space-xs); position: sticky; top: 0; }
-.preview .look { display: block; margin: 0 auto; height: 200px; max-width: 100%; object-fit: contain; }
-.preview .nm { font-weight: var(--lobe-font-weight-strong); margin-top: 2px; }
-.preview .adult-note { font-size: 10px; color: var(--lobe-color-text-tertiary); }
-.grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pet-space-sm); }
-.card { position: relative; font: inherit; color: inherit; text-align: center; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); padding: var(--pet-space-xs) 2px var(--pet-space-xs); cursor: pointer; box-shadow: var(--lobe-box-shadow-tertiary); display: flex; flex-direction: column; align-items: center; gap: 1px;
-  transition: border-color var(--lobe-motion-duration-mid) var(--pet-ease), box-shadow var(--lobe-motion-duration-mid) var(--pet-ease); }
-.card:hover { border-color: var(--lobe-color-fill); box-shadow: var(--lobe-box-shadow-secondary); }
-.card .look { display: block; margin: 0 auto; height: 108px; max-width: 100%; object-fit: contain; pointer-events: none; }
-.card .nm { font-weight: var(--lobe-font-weight-strong); font-size: 11px; }
-.card .st { font-size: 10px; color: var(--lobe-color-success); line-height: 1.3; }
-.card.equipped { border-color: var(--lobe-color-primary); box-shadow: 0 0 0 1px var(--lobe-color-primary); }
-.card.equipped .st { color: var(--lobe-color-text); font-weight: var(--lobe-font-weight-strong); }
-.card.locked { background: var(--lobe-color-fill-quaternary); border-style: dashed; box-shadow: none; cursor: not-allowed; }
-.card.locked .look { filter: grayscale(1) brightness(.75) blur(1px); opacity: .45; }
-.card.locked .st { color: var(--lobe-color-text-tertiary); }
-/* Tag (@lobehub/ui): small rounded label */
-.tag { font-size: 9px; line-height: 14px; color: var(--lobe-color-error); background: color-mix(in srgb, var(--lobe-color-error) 12%, var(--lobe-color-bg-container)); padding: 0 var(--pet-space-xs); border-radius: var(--lobe-border-radius-xs); }
-.tag.new { position: absolute; top: 4px; right: 4px; color: var(--pet-on-solid); background: var(--lobe-color-error); }
-.tag.adult { position: absolute; top: 4px; left: 4px; }
-.topic-group { margin-bottom: var(--pet-space-md); }
-.topic-group h3 { margin: 0 0 var(--pet-space-xs); font-size: var(--lobe-font-size-sm); font-weight: 500; color: var(--lobe-color-text-tertiary); }
-.topic { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: var(--pet-space-sm); font: inherit; color: var(--lobe-color-text); text-align: left; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); padding: var(--pet-space-sm) var(--pet-space-md); margin-bottom: var(--pet-space-xs); cursor: pointer; position: relative;
-  transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), border-color var(--lobe-motion-duration-mid) var(--pet-ease); }
-.topic:hover { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
-.topic .st { font-size: 10px; color: var(--lobe-color-success); white-space: nowrap; }
-.topic.locked { background: var(--lobe-color-fill-quaternary); color: var(--lobe-color-text-tertiary); border-style: dashed; cursor: not-allowed; }
-.topic.locked .st { color: var(--lobe-color-text-tertiary); }
-.topic.done .st { color: var(--lobe-color-text-tertiary); }
 
 /* ---- character pictures (assets/chars/<species>/<outfit>.webp) ---- */
 .char-wrap { position: relative; height: 186px; width: 150px; display: flex; align-items: flex-end; justify-content: center; cursor: grab; }
@@ -296,20 +258,6 @@ body.busy.over .stop-btn { display: flex; }
 @media (prefers-reduced-motion: reduce) { .char-wrap .char, .char-fx { animation: none !important; } }
 .hatch-img { height: 192px; object-fit: contain; }
 
-/* ---- advanced settings panel: LobeHub form groups (card, title, description, rows) ---- */
-.adv-section { background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-tertiary); padding: var(--pet-space-md) var(--lobe-padding); }
-.adv-section h3 { margin: 0 0 var(--pet-space-xs); font-size: 13px; font-weight: var(--lobe-font-weight-strong); }
-.adv-text { margin: 0 0 var(--pet-space-sm); line-height: 1.6; color: var(--lobe-color-text-secondary); }
-.adv-note { margin: 0 0 var(--pet-space-sm); color: var(--lobe-color-text-description); font-size: 11px; line-height: 1.6; }
-.adv-section + .adv-section { margin-top: var(--pet-space-sm); }
-.size-row { display: flex; gap: var(--pet-space-sm); align-items: center; }
-#look-section .l2d-text { margin-top: var(--pet-space-md); }
-#look-section .l2d-size { margin-top: var(--pet-space-sm); }
-.size-row input[type="range"] { flex: 1; min-height: 28px; accent-color: var(--lobe-color-primary); }
-#role-input { display: block; box-sizing: border-box; width: 100%; resize: vertical; min-height: 84px; font: inherit; font-size: 12px; line-height: 1.6; color: var(--lobe-color-text); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-bg-container); padding: var(--pet-space-xs) var(--pet-space-sm); user-select: text; }
-.role-row .role-count { flex: 1; }
-.size-row select { flex: 1; min-width: 0; min-height: 30px; font: inherit; font-size: 12px; color: var(--lobe-color-text); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-bg-container); padding: 2px var(--pet-space-xs); }
-.size-val { font-weight: normal; color: var(--lobe-color-text-tertiary); font-variant-numeric: tabular-nums; }
 /* resize handle: top-left of the pet (the window grows up and to the left) */
 .resize-grip { position: absolute; left: 0; top: 0; width: calc(22px / var(--pet-scale, 1)); height: calc(22px / var(--pet-scale, 1)); z-index: 5; cursor: nwse-resize; opacity: 0; pointer-events: none; touch-action: none;
   background: linear-gradient(135deg, var(--lobe-color-text-tertiary) 0 9%, transparent 9% 27%, var(--lobe-color-text-tertiary) 27% 36%, transparent 36% 54%, var(--lobe-color-text-tertiary) 54% 63%, transparent 63%); border-radius: var(--lobe-border-radius-xs); transition: opacity .12s; }
@@ -327,50 +275,9 @@ canvas.sprite { object-fit: contain; }
 .char-wrap.has-sprites .char { animation: none !important; transform: none !important; }
 .card .look.sprite, .preview .look.sprite { width: auto; }
 .hatch-img .look { height: 192px; }
-.pack-list { display: flex; flex-direction: column; gap: var(--pet-space-xs); margin-bottom: var(--pet-space-sm); }
-.pack-opt { display: flex; align-items: center; gap: var(--pet-space-sm); padding: var(--pet-space-xs) var(--pet-space-sm); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); background: var(--lobe-color-bg-container);
-  transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), border-color var(--lobe-motion-duration-mid) var(--pet-ease); }
-.pack-opt.on { border-color: var(--lobe-color-primary); box-shadow: 0 0 0 1px var(--lobe-color-primary); }
-.pack-opt .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 11px; line-height: 1.5; background: none; box-shadow: none; padding: 0; border-radius: 0; color: var(--lobe-color-text); }
-.pack-opt .meta span, .pack-opt .meta b { color: var(--lobe-color-text-tertiary); white-space: normal; word-break: break-all; }
-.pack-opt .meta b { color: inherit; font-weight: var(--lobe-font-weight-strong); }
-.pack-opt .btn { flex: none; white-space: nowrap; }
-.pack-opt .pick { min-width: 84px; }
-.char-list { display: flex; flex-direction: column; gap: var(--pet-space-xs); }
-/* a character row: her theme colour tints the avatar tile (as LobeHub agent avatars do), not a side stripe */
-.char-opt .char-thumb { background: color-mix(in srgb, var(--accent, var(--lobe-color-fill)) 14%, transparent); }
-.char-opt .char-rel { font-style: normal; color: var(--lobe-color-text-secondary); }
-.char-opt.new .char-rel { color: var(--lobe-color-text-quaternary); }
-/* ⋯ → 角色列表: a picture per character; a row opens her page */
-.char-list .char-opt { cursor: pointer; }
-.char-list .char-opt:hover { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
-.char-list .char-opt.on:hover { border-color: var(--lobe-color-primary); }
-.char-thumb { flex: none; width: 44px; height: 56px; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-quaternary); }
-.char-thumb .look { display: block; max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
-.char-thumb canvas.look { width: auto; height: 100%; }
-.char-thumb .look.vlook { width: 56px; height: 56px; max-width: none; max-height: none; }
-.char-thumb.lg { width: 84px; height: 108px; }
-.char-thumb.lg .look.vlook { width: 108px; height: 108px; }
-.char-opt.new .char-thumb .look { filter: grayscale(.6) brightness(.9); }
-.char-head .char-opt { border-color: var(--pet-line-soft); background: var(--lobe-color-bg-container); }
-.char-head .char-opt.on { border-color: var(--lobe-color-primary); }
-.char-head .meta small { margin-top: 2px; white-space: normal; }
-.char-back-row { margin-bottom: var(--pet-space-xs); }
-.char-open { min-width: 0; }
-.char-name-form { margin: 2px 0 var(--pet-space-sm) var(--pet-space-sm); }
-.char-name-form input { flex: 1; }
-.panel-body { overflow-x: hidden; }
-#update-section .st[data-status="latest"] { color: var(--lobe-color-success); }
-#update-section .st[data-status="error"] { color: var(--lobe-color-error); }
-#update-section .st[data-status="ready"], #update-section .st[data-status="manual"] { color: var(--lobe-color-warning); font-weight: var(--lobe-font-weight-strong); }
-/* Dafeiyu's clip in the wardrobe: the same crop as .vwrap on the desktop (326x184 at -88,-25 in 150x150) */
+/* Dafeiyu's clip as a picture (lookEl): the same crop as .vwrap on the desktop (326x184 at -88,-25 in 150x150) */
 .vlook { position: relative; overflow: hidden; aspect-ratio: 1 / 1; }
 .vlook video { position: absolute; width: 217.3%; left: -58.7%; top: -16.7%; pointer-events: none; }
-.card .look.vlook { height: 108px; width: 108px; max-width: 100%; }
-.preview .look.vlook { height: auto; width: 100%; }
-/* the ⋯ menu stays usable in a small window (pet scaled down) */
-#main-menu { max-height: calc(100vh - 56px); overflow-y: auto; scrollbar-width: thin; }
-
 /* ---- dsh-pet effects: walking, catching a flying pet, memes, behaviour settings, visitors ---- */
 /* a look without its own walk frames (a pictures pack, an older user pack) hops its idle art along */
 .pet-body[data-exact="no"] .char-wrap[data-status="walk"] .char { animation: char-walk .36s steps(2) infinite; }
@@ -393,7 +300,7 @@ canvas.sprite { object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .char-wrap[data-status="walk"] .char, .score-pop { animation: none; } }
 /* a visitor window: only the character; hovering shows her name and the × that sends her home */
 body.visitor #pet-screen { justify-content: flex-end; }
-body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #panel, body.visitor #unlock-toast { display: none !important; }
+body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #unlock-toast { display: none !important; }
 body.visitor .visitor-bar { display: flex; position: absolute; top: 2px; left: 2px; right: 2px; gap: var(--pet-space-xs); align-items: center; justify-content: space-between; font-size: 11px; color: var(--lobe-color-text); background: var(--pet-surface); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--pet-float-shadow); padding: 1px 2px 1px var(--pet-space-sm); opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.visitor.hover .visitor-bar { opacity: 1; pointer-events: auto; }
 body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px; border-color: transparent; background: transparent; min-width: 24px; min-height: 22px; }
@@ -443,28 +350,6 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .tts-engine input[type="password"], .tts-engine input[type="text"] { flex: 1; min-width: 0; min-height: 28px; font: inherit; font-size: 11px; padding: 2px var(--pet-space-sm); }
 #voice-section .size-row + .size-row { margin-top: var(--pet-space-xs); }
 .bubble .sentence.reading { background: var(--lobe-color-fill-secondary); box-shadow: 0 0 0 1px var(--lobe-color-fill-secondary); border-radius: 2px; }
-
-/* ---- ⋯ → 聊天记录 (history.js): the LobeHub topic list and chat thread ---- */
-.history-list { display: flex; flex-direction: column; gap: var(--pet-space-xs); }
-.history-item { display: flex; flex-direction: column; gap: 2px; width: 100%; font: inherit; color: var(--lobe-color-text); text-align: left; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); padding: var(--pet-space-sm) var(--pet-space-md); cursor: pointer;
-  transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), border-color var(--lobe-motion-duration-mid) var(--pet-ease); }
-.history-item:hover, .history-item:focus-visible { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
-.history-meta { display: flex; gap: var(--pet-space-sm); font-size: 10px; color: var(--lobe-color-text-tertiary); }
-.history-count { margin-left: auto; color: var(--lobe-color-text-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.history-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-empty { background: var(--lobe-color-bg-container); border: 1px dashed var(--pet-line); border-radius: var(--lobe-border-radius-lg); padding: var(--lobe-padding); text-align: center; color: var(--lobe-color-text-secondary); }
-.history-empty-title { margin: 0 0 var(--pet-space-xs); font-size: 13px; font-weight: var(--lobe-font-weight-strong); color: var(--lobe-color-text); }
-.history-foot { margin-top: var(--pet-space-sm); }
-.history-back { margin-bottom: var(--pet-space-sm); }
-.history-thread { display: flex; flex-direction: column; gap: var(--pet-space-sm); }
-/* her messages sit on a card; the owner's on a filled bubble on the right, as in LobeHub chat */
-.history-msg { max-width: 86%; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); padding: var(--pet-space-sm) var(--pet-space-md); }
-.history-msg.user { align-self: flex-end; background: var(--lobe-color-fill-secondary); border-color: transparent; }
-.history-msg.pet { align-self: flex-start; }
-.history-msg-head { font-size: 10px; color: var(--lobe-color-text-tertiary); margin-bottom: 2px; }
-.history-msg-text { white-space: pre-wrap; word-break: break-word; line-height: 1.6; user-select: text; }
-.history-msg-text.missing { color: var(--lobe-color-text-tertiary); font-style: italic; }
-.history-msg-attach { font-size: 10px; color: var(--lobe-color-text-tertiary); margin-top: 2px; }
 
 /* ---- VRM packs: the license (导入确认 / 授权信息), the credit on the card, the placeholder look ---- */
 #look-section .vrm-text { margin-top: var(--pet-space-md); }
