@@ -287,16 +287,55 @@
         const n = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(name);
         if (n) { const p = n.getWorldPosition(new T.Vector3()); bones[name] = { x: p.x, y: p.y }; }
       }
-      band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y });
+      band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y }, { head: headExtent(T) });
       canvas.dataset.band = band.source;
+    }
+
+    // Her head: the top and sides of the vertices that move with the head bone or its children (skull, hair, ears,
+    // an ahoge), skinned in the rest pose -> { top, minX, maxX } | null. Raised arms or a held prop make the box
+    // taller; this does not.
+    function headExtent(T) {
+      const head = vrm.humanoid && vrm.humanoid.getRawBoneNode('head');
+      if (!head) return null;
+      const under = (o) => { for (let p = o; p; p = p.parent) if (p === head) return true; return false; };
+      const v = new T.Vector3();
+      let top = -Infinity;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      const add = (x, y) => { if (y > top) top = y; if (x < minX) minX = x; if (x > maxX) maxX = x; };
+      vrm.scene.traverse((o) => {
+        if (!o.isMesh || !o.visible || !o.geometry || !o.geometry.attributes.position) return;
+        const g = o.geometry;
+        const pos = g.attributes.position;
+        if (o.isSkinnedMesh && o.skeleton && g.attributes.skinIndex && g.attributes.skinWeight) {
+          const inHead = o.skeleton.bones.map(under);
+          if (!inHead.some(Boolean)) return;
+          const si = g.attributes.skinIndex;
+          const sw = g.attributes.skinWeight;
+          for (let i = 0; i < pos.count; i++) {
+            let best = 0;
+            let bw = -1;
+            for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+            if (!inHead[best]) continue;
+            o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+            add(v.x, v.y);
+          }
+        } else if (under(o)) {
+          const b = new T.Box3().setFromObject(o);
+          add(b.min.x, b.max.y);
+          add(b.max.x, b.max.y);
+        }
+      });
+      return Number.isFinite(top) ? { top, minX, maxX } : null;
     }
 
     // the camera for a framing: 全身 = her whole height at `vrm.height` of the canvas, feet on the floor;
     // 半身 = the band (top of her head to the waist) filling the canvas, the cut on its bottom edge. x: where it
     // looks sideways (the model is moved so her box centre is at 0; 半身 centres on the head–hips line instead).
     function cameraFor(mode) {
-      if (mode === 'half' && band) return { ...FR.cameraFor(band, { fov: camera.fov, mode: 'half' }), x: band.cx - size.cx };
-      return { ...FR.cameraFor({ top: size.minY + size.h, bottom: size.minY }, { fov: camera.fov, share, mode: 'full' }), x: 0 };
+      const full = { ...FR.cameraFor({ top: size.minY + size.h, bottom: size.minY }, { fov: camera.fov, share, mode: 'full' }), x: 0 };
+      if (mode === 'half' && band) return { ...FR.cameraFor(band, { fov: camera.fov, mode: 'half', aspect: camera.aspect, maxVisible: full.visible }), x: band.cx - size.cx };
+      return full;
     }
     function setFraming(mode, { instant = false } = {}) {
       const next = mode === 'half' ? 'half' : 'full';

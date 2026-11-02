@@ -53,18 +53,24 @@
   }
 
   // ---- the half-body band ---------------------------------------------------------------------------
-  // Shares of her torso (head bone height − hips bone height): the top of her head is the top of the model at
-  // rest (arms down: her hair), at least `headMin` and at most `headMax` above the head bone (the bone sits at
-  // the base of the skull; a chibi head is as tall as her torso, an antenna or a raised prop is cut off);
-  // the cut is `waist` above the hips bone (the waist); `margin`: air above her head (share of the canvas).
-  const HALF = { headMin: 0.25, headMax: 1.0, waist: 0.12, margin: 0.04 };
+  // Shares of her torso (head bone height − hips bone height): the top of her head is `headTop` (the highest
+  // vertex skinned to the head bone or its children: skull, hair, ears — measured by the renderer), else the top
+  // of the model at rest; at least `headMin` and at most `headMax` above the head bone (the bone sits at the base
+  // of the skull; a chibi head is as tall as her torso, an antenna is cut off). The cut is `waist` above the hips
+  // bone (the waist); `margin`: air above her head (share of the canvas).
+  // `fitWidth`: the share of her head's width (hair, ears) that must fit sideways (the tips of wide chibi hair may
+  // leave the picture rather than shrink her).
+  const HALF = { headMin: 0.25, headMax: 3, waist: 0.12, margin: 0.05, fitWidth: 0.85 };
   // without the bones: the top HALF_BOX share of the bounding box
   const HALF_BOX = 0.5;
 
   // The world heights (y, metres) and centre to frame. `bones`: { head, neck, upperChest, chest, spine, hips }
-  // → { x, y } (world position; any may be missing); `box`: { minX, maxX, minY, maxY } of the model at rest.
+  // → { x, y } (world position; any may be missing); `box`: { minX, maxX, minY, maxY } of the model at rest;
+  // `head`: her head as measured from its own vertices, { top, minX, maxX } (optional — raised arms or a prop make
+  // the box taller than her head, this does not; a big chibi head or wide hair must fit the canvas sideways).
   // -> { top, bottom, cx, source ('bones' | 'box'), cut (share of her full height shown, 0..1, from the top) }
-  function halfBodyBand(bones, box) {
+  function halfBodyBand(bones, box, { head: headBox = null } = {}) {
+    const headTop = headBox && headBox.top;
     const b = bones || {};
     const ok = (p) => p && Number.isFinite(p.y) && Number.isFinite(p.x);
     const fullH = Math.max(1e-6, box.maxY - box.minY);
@@ -75,26 +81,31 @@
     const hips = ok(b.hips) ? b.hips : head && chest ? { x: chest.x, y: chest.y - (head.y - chest.y) * 0.8 } : null;
     if (head && hips && head.y - hips.y > fullH * 0.08) {
       const torso = head.y - hips.y;
-      const top = Math.max(head.y + torso * HALF.headMin, Math.min(box.maxY, head.y + torso * HALF.headMax));
+      const reach = Number.isFinite(headTop) && headTop > head.y ? headTop : box.maxY;
+      const top = Math.max(head.y + torso * HALF.headMin, Math.min(reach, box.maxY, head.y + torso * HALF.headMax));
       const bottom = Math.max(box.minY, hips.y + torso * HALF.waist);
       // the visible box of the half-body picture: from the cut up to her top as drawn (what pokes out above the
       // band, within the air left above her head, is drawn too)
       const drawnTop = Math.min(box.maxY, top + ((top - bottom) * HALF.margin) / (1 - HALF.margin));
-      if (top > bottom) return { top, bottom, cx: (head.x + hips.x) / 2, source: 'bones', cut: clamp01((drawnTop - bottom) / fullH) };
+      const width = headBox && Number.isFinite(headBox.minX) && Number.isFinite(headBox.maxX) ? headBox.maxX - headBox.minX : 0;
+      if (top > bottom) return { top, bottom, cx: (head.x + hips.x) / 2, width, source: 'bones', cut: clamp01((drawnTop - bottom) / fullH) };
     }
     const bottom = box.maxY - fullH * HALF_BOX;
-    return { top: box.maxY, bottom, cx: boxCx, source: 'box', cut: HALF_BOX };
+    return { top: box.maxY, bottom, cx: boxCx, width: 0, source: 'box', cut: HALF_BOX };
   }
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
   // Where the camera goes for a band of world heights [bottom, top]. `share`: her share of the canvas height
   // (pack.json vrm.height); `fov`: vertical field of view (degrees); `mode`: 'full' stands her feet on the floor
   // with a sliver of air below; 'half' puts the cut exactly at the canvas' bottom edge (she rises out of it) and
-  // leaves `HALF.margin` of air above her head.
+  // leaves `HALF.margin` of air above her head; a head wider than that picture allows (`width` of the band, the
+  // canvas `aspect` = width / height) widens the view so HALF.fitWidth of it fits (more air above then), but never
+  // beyond `maxVisible` (the 全身 view: 半身 never shows her smaller than 全身 does).
   // -> { visible (world height the canvas shows), y (camera height = where it looks), dist (from her) }
-  function cameraFor({ top, bottom }, { fov = 22, share = 0.8, mode = 'full' } = {}) {
+  function cameraFor({ top, bottom, width = 0 }, { fov = 22, share = 0.8, mode = 'full', aspect = 332 / 452, maxVisible = Infinity } = {}) {
     const h = Math.max(1e-6, top - bottom);
-    const visible = mode === 'half' ? h / (1 - HALF.margin) : h / share;
+    const tight = h / (1 - HALF.margin);
+    const visible = mode === 'half' ? Math.max(tight, Math.min(maxVisible, (width * HALF.fitWidth) / aspect)) : h / share;
     const y = mode === 'half' ? bottom + visible / 2 : bottom + visible * (0.5 - 0.005);
     const dist = visible / 2 / Math.tan((fov * Math.PI) / 360);
     return { visible, y, dist };

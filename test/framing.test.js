@@ -128,8 +128,20 @@ test('halfBodyBand: from the bones — head top to just above the hips, centred 
   // her hair is the top (within reach of the head)
   assert.ok(near(FR.halfBodyBand(TALL_BONES, TALL_BOX).top, 1.62));
   // an antenna / raised prop far above her head does not shrink her: capped at headMax torso above the head bone
-  const tall = FR.halfBodyBand(TALL_BONES, { ...TALL_BOX, maxY: 3 });
+  const tall = FR.halfBodyBand(TALL_BONES, { ...TALL_BOX, maxY: 5 });
   assert.ok(near(tall.top, 1.45 + (1.45 - 0.92) * FR.HALF.headMax));
+  // raised arms (or a prop) make the box taller than her head: the head's own top (headTop) decides
+  const armsUp = FR.halfBodyBand(TALL_BONES, { ...TALL_BOX, maxY: 2.0 }, { head: { top: 1.62, minX: -0.12, maxX: 0.12 } });
+  assert.ok(near(armsUp.top, 1.62), `top ${armsUp.top}`);
+  assert.ok(near(armsUp.cut, (Math.min(2.0, 1.62 + ((1.62 - armsUp.bottom) * FR.HALF.margin) / (1 - FR.HALF.margin)) - armsUp.bottom) / 2.0));
+  assert.ok(near(FR.halfBodyBand(TALL_BONES, TALL_BOX, { head: { top: NaN } }).top, 1.62), 'no headTop: the box');
+  // a wide head (chibi hair) widens the view instead of being cropped at the sides
+  const wide = FR.halfBodyBand(TALL_BONES, TALL_BOX, { head: { top: 1.62, minX: -0.5, maxX: 0.5 } });
+  assert.ok(near(wide.width, 1));
+  const cw = FR.cameraFor(wide, { mode: 'half', aspect: 332 / 452 });
+  assert.ok(cw.visible * (332 / 452) >= 1 * FR.HALF.fitWidth - 1e-9, 'the head fits sideways');
+  assert.ok(near(FR.cameraFor(wide, { mode: 'half', aspect: 332 / 452, maxVisible: 1.0 }).visible, Math.max(1.0, (wide.top - wide.bottom) / (1 - FR.HALF.margin))), 'never wider than the 全身 view');
+  assert.ok(near(cw.y - cw.visible / 2, wide.bottom), 'still cut at the waist');
   // the band does not depend on the box's width (wide hair, a tail, a skirt): only on bones and her top
   assert.deepEqual(FR.halfBodyBand(TALL_BONES, { ...TALL_BOX, minX: -3, maxX: 1 }).bottom, FR.halfBodyBand(TALL_BONES, TALL_BOX).bottom);
   // centred on her, not on the box (a tail to one side moves the box, not her)
