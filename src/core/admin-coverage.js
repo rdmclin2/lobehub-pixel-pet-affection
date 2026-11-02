@@ -33,6 +33,7 @@ const SPECIAL_SETTINGS = {
   'appearance.<id>': '角色详情 → 形象包（`set-appearance`）',
   'models.<id>': '角色详情 → 模型（`set-model` / `refresh-models`）',
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
+  'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -135,7 +136,7 @@ const RUNTIME = [
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
-  { id: 'character', label: '角色（形象包 / 服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['appearance.<id>', 'models.<id>', 'systemRoles.<id>'], actions: ['switch-character', 'set-appearance', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height'] },
+  { id: 'character', label: '角色（形象包 / 服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['appearance.<id>', 'models.<id>', 'systemRoles.<id>', 'framings.<id>'], actions: ['switch-character', 'set-appearance', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing'] },
   { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 形象包', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
