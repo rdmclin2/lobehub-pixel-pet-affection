@@ -10,7 +10,8 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PetVrmLife = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const LIMITS = { bone: 4, liftUpperLeg: 8, liftLowerLeg: 12, stance: 8, root: 0.02 };
+  const LIMITS = { bone: 4, liftUpperLeg: 8, liftLowerLeg: 12, landUpperLeg: 4, landLowerLeg: 8, stance: 8, root: 0.02 };
+  const LAND = 0.5; // seconds of the knee dip when she is put down
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smooth = (k) => { const x = clamp(k, 0, 1); return x * x * (3 - 2 * x); };
   const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -34,11 +35,13 @@
       saccade: { x: 0, y: 0, next: between(SACCADE_EVERY[0], SACCADE_EVERY[1]) },
       away: { until: -1, x: 0, y: 0, next: 4 + rand() * 8 },
       lift: { k: 0, swing: 0, v: 0 },
+      land: { key: 0, at: -10 },
       sad: 0,
     };
 
     // ctx: { style (profile), sleep, sad (0..1), standing, lifted, velX (window px/s), fingers (the clip has
-    //        finger keys), idle (nothing else going on: glances allowed) }
+    //        finger keys), idle (nothing else going on: glances allowed), landKey (goes up when she is put
+    //        down: a short knee dip), nod (0..1: small chewing nods while she eats) }
     // → { bones: { name: { x, y, z } deg }, gaze: { x, y } (NDC offset), away: bool, blink: bool, breath: -1..1 }
     function step(dt, ctx = {}) {
       const P = ctx.style || style || { hipSway: 0.75, headTilt: 3, handPose: 0.38, stanceWidth: 0, breath: { chest: 1, upperChest: 0.5, spine: 0.7, shoulder: 0.45 }, lookAway: 0.09 };
@@ -82,6 +85,8 @@
       const hk = P.headTilt / 4;
       add('head', Math.sin(t * 2 * Math.PI * 0.13) * hk + 3 * (ctx.sad || 0) * 0.8, Math.sin(t * 2 * Math.PI * 0.31 + 1.3) * hk, Math.sin(t * 2 * Math.PI * 0.47 + 2.1) * hk * 0.8);
       add('neck', 3 * (ctx.sad || 0) * 0.2);
+      // eating: small nods with the chewing (the mouth chews at 1.4 Hz, core/vrm-motion.js chewMouth)
+      if (ctx.nod) add('head', 2.5 * ctx.nod * Math.max(0, Math.sin(t * 2 * Math.PI * 1.4)));
 
       // relaxed fingers when the clip does not pose them
       if (ctx.fingers === false) {
@@ -128,10 +133,25 @@
         }
       }
 
+      // put down: the knees give a little and come back (≤ 4° / 8°), the feet stay on the floor (the renderer
+      // grounds them), so the body sinks a centimetre or two and rises — no hop
+      const ld = st.land;
+      if (ctx.landKey !== undefined && ctx.landKey !== ld.key) { if (ld.key || ctx.landKey) ld.at = t; ld.key = ctx.landKey; }
+      const lt = t - ld.at;
+      if (lt >= 0 && lt < LAND && !ctx.lifted) {
+        const d = Math.sin((Math.PI * lt) / LAND) * (P.hipSway >= 1 ? 1 : 0.6);
+        for (const s of ['left', 'right']) {
+          const u = out[`${s}UpperLeg`] || (out[`${s}UpperLeg`] = { x: 0, y: 0, z: 0 });
+          u.x = clamp(u.x - LIMITS.landUpperLeg * d, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
+          const l = out[`${s}LowerLeg`] || (out[`${s}LowerLeg`] = { x: 0, y: 0, z: 0 });
+          l.x = clamp(l.x + LIMITS.landLowerLeg * d, 0, LIMITS.liftLowerLeg);
+        }
+      }
+
       return { bones: out, gaze: away ? { x: aw.x, y: aw.y } : { x: sc.x, y: sc.y }, away, blink, breath: b };
     }
     return { step, state: st };
   }
 
-  return { LIMITS, BREATH, SHIFT_EVERY, BONES, createLife };
+  return { LIMITS, LAND, BREATH, SHIFT_EVERY, BONES, createLife };
 });

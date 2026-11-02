@@ -105,6 +105,10 @@ function fbxToClip({ THREE, FBXLoader }, file) {
   return clip;
 }
 
+// how a reaction / hold plays at runtime (core/vrm-library.js cleanIndex reads these back)
+const RUNTIME = ['mask', 'weight', 'hold', 'fadeIn', 'fadeOut', 'still', 'face', 'gaze'];
+const runtimeMeta = (e) => (e.kind === 'reaction' || e.kind === 'hold' ? Object.fromEntries(RUNTIME.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])) : {});
+
 async function main() {
   const a = args(process.argv.slice(2));
   const assets = path.resolve(home(a.assets || process.env.PIXELPET_VRM_ASSETS || '~/vrm-assets'));
@@ -121,7 +125,7 @@ async function main() {
   const report = [];
   for (const [id, e] of Object.entries(manifest.clips)) {
     const { slot, style } = L.parseId(id);
-    const meta = { kind: e.kind, style, label: e.label || slot, ...(e.sit ? { sit: true } : {}), ...(e.loop ? { loop: true } : {}), ...(e.cycle ? { cycle: e.cycle, every: e.every } : {}) };
+    const meta = { kind: e.kind, style, label: e.label || slot, ...(e.sit ? { sit: true } : {}), ...(e.loop ? { loop: true } : {}), ...(e.cycle ? { cycle: e.cycle, every: e.every } : {}), ...runtimeMeta(e) };
     if (!e.src) { index.clips[id] = meta; report.push(`${id}: (no file) ${e.cycle ? `cycle ${e.cycle.join(' → ')}` : ''}`); continue; }
     const file = `${style}/${slot}.vrma`;
     if (only && !only.has(id)) { if (prev && prev.clips[id]) index.clips[id] = prev.clips[id]; continue; }
@@ -145,4 +149,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { fbxToClip, loadThree, threeDir };
+module.exports = { fbxToClip, loadThree, threeDir, runtimeMeta };

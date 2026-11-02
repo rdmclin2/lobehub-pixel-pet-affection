@@ -6,8 +6,12 @@
 // the parameters of the alive layer (core/vrm-life.js). It never names a bone; the renderer
 // (renderer/vrm-anim.js + vrm.js) plays the plan. Clock and random numbers are injected, so tests drive it.
 //
-// This release (T-2678): postures, idle scheduling, male / female styles, faces and gaze for the events.
-// Reaction clips (L3) are left to the reaction layer: a touch shows its face and gaze, no clip yet.
+// Postures, idle scheduling and male / female styles (T-2678); the reaction layer (T-2681, §3.3): a touch,
+// a drop, a celebration or a cue plays a one-shot reaction (L3: clip + face + gaze) over the base, and
+// lift / think / eat / talk hold an activity clip (L2) while they last. The plan lists them as `overlays`
+// with the clip time and weight of this frame, so the renderer only samples clips; fades, interruption,
+// priority, debounce, a repeated touch extending the reaction and the after-effects of shy / angry are
+// decided here, with the injected clock.
 // UMD (window.PetVrmDirector / require()).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./vrm-library'));
@@ -36,6 +40,38 @@
   };
   const ZONE_FACE = { face: { happy: 0.5, angry: 0.25, blinkRight: 1 }, hands: { happy: 0.8 }, head: { relaxed: 0.8, happy: 0.4 } };
   const HOLD_FACE = { lift: { surprised: 0.8 }, think: { neutral: 0.3 }, eat: { happy: 0.7 }, talk: { happy: 0.2 }, walk: { happy: 0.25 } };
+
+  // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
+  // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle
+  const PRIORITY = { lift: 6, drop: 5, touch: 5, celebrate: 4, cue: 0 };
+  const DEBOUNCE = 0.6; // the same reaction is not started again within this (no twitching on fast clicks)
+  const CUT = 0.2; // an interrupted reaction fades out this fast under the new one
+  const NO_CLIP = 1.8; // a reaction without a clip (no library): its face and gaze last this long
+  const AFTER = { angry: 10, shy: 8 }; // seconds of annoyed face after angry, of the shy posture after shy
+  // the touch → the reaction: core/touch-zones.js already chose the mood (zone default, affection tier, the
+  // streak: 3 in a row annoyed, 6 angry); the zone only matters while she is happy
+  const MOOD_REACTION = { shy: 'react.shy', angry: 'react.angry', annoyed: 'react.annoyed', ticklish: 'react.ticklish' };
+  const ZONE_REACTION = { head: 'react.touch-head', pat: 'react.touch-head', face: 'react.touch-face', hands: 'react.touch-hands' };
+  // what a reaction looks like without its own face / gaze in the library (and without any clip)
+  const REACTION_LOOK = {
+    'react.touch-head': { face: { relaxed: 0.8, happy: 0.4 }, gaze: { x: 0, y: 0.9, for: 0.7 }, hold: 1.6 },
+    'react.touch-face': { face: { happy: 0.5, angry: 0.25, blinkRight: 1 }, gaze: { x: -0.5, y: 0.1, for: 0.6 }, hold: 1.2 },
+    'react.touch-hands': { face: { happy: 0.8 }, gaze: { x: 0, y: -0.5, for: 0.8 } },
+    'react.shy': { face: { surprised: 0.5, happy: 0.3, sad: 0.25 }, gaze: { x: -0.7, y: -0.7 }, hold: 1.5 },
+    'react.angry': { face: { angry: 1 }, gaze: null, noBlink: 1.5 },
+    'react.annoyed': { face: { angry: 0.5, sad: 0.2 }, gaze: { x: 0.8, y: 0 }, hold: 1.2 },
+    'react.ticklish': { face: { happy: 1 }, gaze: null },
+    'react.drop': { face: { surprised: 0.4 }, gaze: null, hold: 0.35 },
+    'react.greet': { face: { happy: 0.8 }, gaze: null },
+    'react.cheer': { face: { happy: 1 }, gaze: null },
+  };
+  const HOLD_LOOK = {
+    lift: { face: { surprised: 0.8 }, gaze: { x: 0, y: -0.4 } },
+    think: { face: { neutral: 0.3 }, gaze: { x: 0.35, y: 1.6 } },
+    eat: { face: { happy: 0.7 }, gaze: { x: 0, y: -0.5 } },
+    talk: { face: { happy: 0.2 }, gaze: null },
+    walk: { face: { happy: 0.25 }, gaze: null },
+  };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const scaleFace = (f, k) => Object.fromEntries(Object.entries(f || {}).map(([n, w]) => [n, n.startsWith('blink') ? w : clamp(w * k, 0, 1)]));
@@ -78,7 +114,17 @@
       scanUntil: -1,
       history: [], // idle slots, newest last (tests, debug)
       events: [],
+      react: null, // the reaction playing: { slot, clip, prio, start, playEnd, end, fadeIn, fadeOut, weight, face, gaze, gazeFor, noBlink, key, amp }
+      fading: [], // interrupted reactions fading out: { …react, cutAt, cutFrom }
+      queued: null, // one celebration waiting for a touch to finish
+      holds: new Map(), // hold slot → { slot, clip, start, w }
+      reactKey: 0,
+      reactions: [], // reaction slots started, newest last (tests, debug)
+      angryUntil: -1,
+      shyUntil: -1,
+      landKey: 0,
     };
+    const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
     const postureClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
     const setSetting = (p) => { setting = p === 'auto' || Lib.POSTURES.includes(p) ? p : 'auto'; S.idle = null; };
@@ -89,6 +135,7 @@
       if (holds.mood === 'sleep') return { slot: 'sit.doze', source: 'sleep' };
       if (setting !== 'auto') return { slot: setting, source: 'setting' };
       if (S.t - S.lastEvent >= boredAfter && !holds.attention) return { slot: 'sit.rest', source: 'bored' };
+      if (S.t < S.shyUntil) return { slot: 'stand.shy', source: 'shy' };
       if (holds.mood === 'sad' || holds.mood === 'hungry') return { slot: 'stand.shy', source: 'mood' };
       return null;
     }
@@ -143,24 +190,98 @@
       S.postureSource = source;
     }
 
+    // ---------- the reaction layer ----------
+    // the weight (0..1, before the clip's own weight) of reaction r at time t: its fade-in, its fade-out at
+    // the end, or the quick cut when another reaction took over
+    function reactWeight(r, t) {
+      const smoothK = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
+      let w = Math.min(smoothK((t - r.start) / r.fadeIn), smoothK((r.end - t) / r.fadeOut));
+      if (r.cutAt !== undefined) w = Math.min(w, r.cutFrom * smoothK(1 - (t - r.cutAt) / CUT));
+      return clamp(w, 0, 1);
+    }
+
+    // Start reaction `slot` now (a new one cuts the old: it fades out under the new one, no snap). opts:
+    // { prio, amp (0..1, e.g. a cue's small cheer), hold (s, overrides the clip's), why }
+    function startReaction(slot, opts = {}) {
+      const clip = reactionClip(slot);
+      const look = REACTION_LOOK[slot] || {};
+      const cur = S.react;
+      // the same reaction again: within the debounce nothing; while it plays, the same reaction keeps going
+      // (she leans into the hand, stays cross) instead of starting over; once it fades out, it starts again
+      if (cur && cur.slot === slot && S.t < cur.end) {
+        if (S.t - cur.start < DEBOUNCE) return cur;
+        if (S.t < cur.end - cur.fadeOut) {
+          cur.end = Math.max(cur.end, S.t + (cur.hold || 0.8) + cur.fadeOut);
+          cur.extended = (cur.extended || 0) + 1;
+          return cur;
+        }
+      }
+      if (cur) cutReaction();
+      const fadeIn = clip ? clip.fadeIn : 0.2;
+      const fadeOut = clip ? clip.fadeOut : 0.5;
+      const hold = opts.hold !== undefined ? opts.hold : clip ? (clip.hold || look.hold || 0) : 0;
+      const dur = clip ? (clip.still ? 0 : clip.duration || 1) : 0;
+      const playEnd = S.t + dur;
+      const end = clip ? Math.max(playEnd + hold, S.t + fadeIn) + fadeOut : S.t + NO_CLIP;
+      const r = {
+        slot, clip: clip || null, prio: opts.prio || PRIORITY.touch, start: S.t, playEnd, end, hold, fadeIn, fadeOut,
+        weight: clip ? clamp(clip.weight * (opts.amp || 1) * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
+        face: (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
+        noBlink: look.noBlink || 0, key: ++S.reactKey, why: opts.why || null,
+      };
+      S.react = r;
+      S.reactions.push(slot);
+      if (S.reactions.length > 50) S.reactions.shift();
+      if (slot === 'react.drop') S.landKey++;
+      if (slot === 'react.angry') S.angryUntil = r.end + AFTER.angry;
+      if (slot === 'react.shy' && setting === 'auto') S.shyUntil = r.end + AFTER.shy;
+      if (r.noBlink) S.noBlinkUntil = S.t + r.noBlink;
+      return r;
+    }
+    function cutReaction() {
+      const r = S.react;
+      if (!r) return;
+      S.fading.push({ ...r, cutAt: S.t, cutFrom: reactWeight(r, S.t) });
+      S.react = null;
+    }
+
     function onEvent(e, holds) {
       S.lastEvent = S.t;
       S.events.push(e);
       if (S.events.length > 20) S.events.shift();
+      const busy = S.react && S.t < S.react.end ? S.react.prio : -1;
       if (e.type === 'touch') {
-        const m = TOUCH_FACE[e.mood] || TOUCH_FACE.happy;
-        const face = e.mood === 'happy' && ZONE_FACE[e.zone] ? ZONE_FACE[e.zone] : m.face;
-        S.face = face;
-        S.faceUntil = S.t + 1.8;
-        S.gazeOverride = m.gaze;
-        S.gazeUntil = m.gaze ? S.t + 1.5 : -1;
-        S.noBlinkUntil = m.noBlink ? S.t + m.noBlink : -1;
-      } else if (e.type === 'celebrate') { S.face = { happy: 1 }; S.faceUntil = S.t + 2.5; }
-      else if (e.type === 'cue') {
+        if (holds.lift) return; // held in the air: the lift wins
+        const slot = e.mood === 'happy' || !MOOD_REACTION[e.mood] ? ZONE_REACTION[e.zone] || 'react.touch-head' : MOOD_REACTION[e.mood];
+        startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}` });
+      } else if (e.type === 'drag') {
+        if (e.what === 'lift') cutReaction(); // the lift hold takes over at once
+        else startReaction('react.drop', { prio: PRIORITY.drop, hold: e.what === 'thrown' ? 0.7 : undefined, amp: 1, why: `drag:${e.what}` });
+      } else if (e.type === 'celebrate') {
+        const slot = e.name === 'hatch' ? 'react.greet' : 'react.cheer';
+        if (busy > PRIORITY.celebrate || holds.lift) S.queued = { slot, why: `celebrate:${e.name}` }; // one waits, more are dropped
+        else startReaction(slot, { prio: PRIORITY.celebrate, why: `celebrate:${e.name}` });
+      } else if (e.type === 'cue') {
         if (e.name === 'look') S.scanUntil = S.t + 2.6;
-        else if (e.name === 'play' || e.name === 'happy') { S.face = { happy: 0.6 }; S.faceUntil = S.t + 1.6; }
-      } else if (e.type === 'drag' && e.what !== 'lift') { S.face = { surprised: 0.4 }; S.faceUntil = S.t + 0.8; }
+        else if (e.name === 'play' || e.name === 'happy') {
+          // a hint, not an order: now and then a small cheer, else a smile; never over anything else
+          if (busy < 0 && !holds.lift && !holds.think && !holds.eat && !holds.talk && rand() < 0.35) startReaction('react.cheer', { prio: PRIORITY.cue, amp: 0.6, why: `cue:${e.name}` });
+          else { S.face = { happy: 0.6 }; S.faceUntil = S.t + 1.6; }
+        }
+      }
       if (holds.attention) S.lastEvent = S.t;
+    }
+
+    // the activity held (L2): its overlay fades in / out by its own times; one at a time, by priority
+    function stepHolds(dt, hold) {
+      const slot = hold ? `hold.${hold}` : null;
+      if (slot && !S.holds.has(slot)) S.holds.set(slot, { slot, clip: reactionClip(slot), start: S.t, w: 0 });
+      for (const [k, h] of S.holds) {
+        const on = k === slot;
+        const fade = h.clip ? (on ? h.clip.fadeIn : h.clip.fadeOut) : 0.3;
+        h.w = clamp(h.w + (on ? 1 : -1) * (dt / Math.max(0.05, fade)), 0, 1);
+        if (!on && h.w <= 0) S.holds.delete(k);
+      }
     }
 
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
@@ -197,20 +318,41 @@
 
       // the activity she holds, by priority
       const hold = holds.lift ? 'lift' : holds.think ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : holds.walk ? 'walk' : null;
+      stepHolds(dt, hold);
 
-      // face: the mood's, a touch's for a while, the held activity's
+      // the reaction: over → gone (a queued celebration next); interrupted ones finish fading
+      if (S.react && S.t >= S.react.end) S.react = null;
+      if (!S.react && S.queued && !holds.lift) { const q = S.queued; S.queued = null; startReaction(q.slot, { prio: PRIORITY.celebrate, why: q.why }); }
+      S.fading = S.fading.filter((r) => reactWeight(r, S.t) > 0.001);
+      const R = S.react;
+      const rw = R ? reactWeight(R, S.t) : 0;
+
+      // the clip overlays, bottom to top: the hold, the fading reactions, the reaction (time in the clip, weight)
+      const overlays = [];
+      const holdClip = (h) => h.clip && overlays.push({ layer: 'hold', slot: h.slot, id: h.clip.id, mask: h.clip.mask, time: h.clip.still ? 0 : (S.t - h.start) % Math.max(0.01, h.clip.duration || 1), weight: +(h.w * h.w * (3 - 2 * h.w) * h.clip.weight).toFixed(4) });
+      for (const h of S.holds.values()) holdClip(h);
+      const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.clip.mask, time: r.clip.still ? 0 : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), key: r.key });
+      for (const r of S.fading) reactClip(r, 'fading');
+      if (R) reactClip(R, 'reaction');
+
+      // face: the mood's, annoyed for a while after angry, the held activity's, a cue's smile, the reaction's
       let face = { ...(MOOD_FACE[holds.mood] || {}) };
-      if (hold && HOLD_FACE[hold]) face = { ...face, ...HOLD_FACE[hold] };
+      if (S.t < S.angryUntil && !(R && R.slot === 'react.angry')) face = { ...face, angry: 0.3, sad: 0.1 };
+      const hc = hold && S.holds.get(`hold.${hold}`);
+      if (hold) face = { ...face, ...((hc && hc.clip && hc.clip.face) || (HOLD_LOOK[hold] || {}).face || HOLD_FACE[hold] || {}) };
       if (S.t < S.faceUntil) face = { ...face, ...S.face };
+      if (R && S.t < R.end - R.fadeOut * 0.5) face = { ...face, ...R.face }; // from the first frame (the renderer eases it in)
       face = scaleFace(face, style.emotion || 1);
 
-      // gaze: think → up, sleep → down, a touch's look aside, looking about on cue, else the cursor
+      // gaze: the reaction's (a look aside, at the hand), think → up, sleep → down, looking about on cue,
+      // the hold's (lifted: down at the ground), else the cursor
       let gaze = { mode: 'cursor' };
-      if (hold === 'think') gaze = { mode: 'fixed', x: 0.35, y: 1.6 };
+      const holdGaze = hold && ((hc && hc.clip && hc.clip.gaze) || (HOLD_LOOK[hold] || {}).gaze);
+      if (R && R.gaze && S.t < (R.gazeFor ? R.start + R.gazeFor : R.end - R.fadeOut * 0.5)) gaze = { mode: 'fixed', x: R.gaze.x, y: R.gaze.y };
+      else if (hold === 'think' && holdGaze) gaze = { mode: 'fixed', x: holdGaze.x, y: holdGaze.y };
       else if (holds.mood === 'sleep') gaze = { mode: 'fixed', x: 0, y: -0.6 };
-      else if (S.t < S.gazeUntil && S.gazeOverride) gaze = { mode: 'fixed', ...S.gazeOverride };
       else if (S.t < S.scanUntil) gaze = { mode: 'fixed', x: Math.sin((S.scanUntil - S.t) * 2.4) * 1.4, y: 0.15 };
-      else if (hold === 'lift') gaze = { mode: 'fixed', x: 0, y: -0.4 };
+      else if (holdGaze) gaze = { mode: 'fixed', x: holdGaze.x, y: holdGaze.y };
 
       const facing = holds.facing === 'left' ? -1 : 1;
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
@@ -225,13 +367,16 @@
         idleKind: I.kind,
         idleLeft: Math.max(0, I.until - S.t),
         hold,
-        reaction: null,
+        reaction: R ? R.slot : null,
+        reactionKey: R ? R.key : 0,
+        reactionWeight: +rw.toFixed(3),
+        overlays,
         face,
         gaze,
         noBlink: S.t < S.noBlinkUntil,
-        life: { sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && S.t >= S.faceUntil, sway: micro.sway, lookAway: micro.lookAway },
+        life: { sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0 },
         facingYaw: (holds.walk ? 60 : 18) * facing,
-        busy: !!hold || S.t < S.faceUntil || S.t < S.scanUntil,
+        busy: !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil,
       };
     }
 
@@ -243,8 +388,9 @@
       seed: (n) => { rand = seeded(n); },
       state: S,
       history: () => S.history.slice(),
+      reactions: () => S.reactions.slice(),
     };
   }
 
-  return { IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, createDirector, seeded };
+  return { IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

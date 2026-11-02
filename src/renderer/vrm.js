@@ -21,7 +21,9 @@
 // (expression weights), data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y),
 // data-springs (joints), data-vrm (1.0 | 0.x), data-anim (vrma | none | failed), data-style (female |
 // male | neutral (pack | meta | default)), data-posture, data-idle, data-reaction, data-hold, data-layers
-// (clip:weight…), data-library (loaded | partial:<n> | none). window.PetVRM.debug() has the same and more.
+// (clip:weight…), data-library (loaded | partial:<n> | none), data-overlays (layer:clip:weight of the holds and
+// reactions laid over the base). window.PetVRM.debug() has the same and more. figure.zoneAt(x, y) tells
+// which touch zone a click hits, on the 3D skeleton (core/vrm-hit.js), for app.js.
 (function () {
   const M = window.PetVrmMotion;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -131,6 +133,7 @@
   const S = window.PetVrmStyle;
   const Lib = window.PetVrmLibrary;
   const Life = window.PetVrmLife;
+  const Hit = window.PetVrmHit;
   // the posture the user chose per pack (settings.vrmPostures, set by app.js), and the debug clock / seed
   const postures = new Map();
   const debugCtl = { speed: 1, seed: null };
@@ -184,6 +187,7 @@
     let plan = null;
     let intent = null;
     let lastBaseKey = -1;
+    const injected = []; // semantic events from window.PetVRM.director.inject (tests, debugging)
     const meter = M.FpsMeter();
     const me = fig();
     figures.add(me);
@@ -411,6 +415,7 @@
       const now = t * 1000;
       intent = I.fromSnapshot(snap, prevSnap);
       prevSnap = snap;
+      if (injected.length) { intent.events.push(...injected); injected.length = 0; } // the debug interface's events
       const ddt = dirT === null ? 0 : clamp(t - dirT, 0, 0.25);
       dirT = t;
       plan = director.update(ddt * debugCtl.speed, intent);
@@ -446,7 +451,7 @@
         if (plan.base.id && anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade);
         lastBaseKey = plan.base.key;
       }
-      const clips = anim.update(dt);
+      const clips = anim.update(dt, plan.overlays); // the base, then the holds (L2) and reactions (L3) over it
       if (!clips) restPose(); // no clip: arms down, absolute every frame (nothing accumulates)
 
       // L4: alive
@@ -516,9 +521,77 @@
       d.reaction = plan.reaction || '';
       d.hold = plan.hold || '';
       d.layers = anim.summary();
+      d.overlays = anim.overlays();
       d.library = libState;
       d.anim = animState;
       return true;
+    }
+
+    // The touch zone under client point (cx, cy): the camera ray through it against spheres and capsules on
+    // this frame's skeleton (core/vrm-hit.js). → { zone, pt } like app.js zoneAtClient: pt.x / pt.y in her
+    // on-screen box (0..1), pt.box (client px), pt.faceRect (the face in the box, for the blush). A miss: nulls.
+    function zoneAt(cx, cy) {
+      if (!vrm || !camera || !vrm.humanoid || !Hit) return { zone: null, pt: null };
+      const T = R.THREE;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return { zone: null, pt: null };
+      vrm.scene.updateMatrixWorld(true);
+      const bones = {};
+      const v = new T.Vector3();
+      for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
+      const ry = vrm.scene.rotation.y;
+      const list = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]);
+      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ny = -((cy - rect.top) / rect.height) * 2 + 1;
+      const p = new T.Vector3(nx, ny, 0.5).unproject(camera);
+      const dir = p.sub(camera.position).normalize().toArray();
+      const h = Hit.hit(list, camera.position.toArray(), dir);
+      if (!h.zone) return { zone: null, pt: null, miss: !h.shape };
+      // her box on screen: the shapes projected (centres ± radius)
+      const toClient = (w) => { v.fromArray(w).project(camera); return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height }; };
+      const pxPerM = rect.height / ((size.h / share) || 1);
+      let box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+      for (const sh of list) for (const c of sh.kind === 'sphere' ? [sh.c] : [sh.a, sh.b]) {
+        const q = toClient(c);
+        const r = sh.r * pxPerM;
+        box = { left: Math.min(box.left, q.x - r), right: Math.max(box.right, q.x + r), top: Math.min(box.top, q.y - r), bottom: Math.max(box.bottom, q.y + r) };
+      }
+      const bw = box.right - box.left || 1;
+      const bh = box.bottom - box.top || 1;
+      const head = list.find((sh) => sh.zone === 'head');
+      let faceRect = null;
+      if (head) {
+        const c = toClient(head.c);
+        const r = head.r * pxPerM;
+        faceRect = [(c.x - r * 0.6 - box.left) / bw, (c.y - r * 0.1 - box.top) / bh, (c.x + r * 0.6 - box.left) / bw, (c.y + r * 0.9 - box.top) / bh].map((k) => clamp(k, 0, 1));
+      }
+      return { zone: h.zone, pt: { x: clamp((cx - box.left) / bw, 0, 1), y: clamp((cy - box.top) / bh, 0, 1), opaque: true, pose: 'vrm', box, mirrored: false, faceRect, world: h.point } };
+    }
+
+    // where each zone's shapes are on screen (client px, the first shape's centre) — for tests and the hint
+    function zoneCenters() {
+      if (!vrm || !camera || !vrm.humanoid || !Hit) return {};
+      const T = R.THREE;
+      const rect = canvas.getBoundingClientRect();
+      vrm.scene.updateMatrixWorld(true);
+      const bones = {};
+      const v = new T.Vector3();
+      for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
+      const ry = vrm.scene.rotation.y;
+      const out = {};
+      for (const sh of Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)])) {
+        if (!sh.zone || out[sh.zone]) continue;
+        let c = sh.kind === 'sphere' ? sh.c : sh.a.map((x, i) => (x + sh.b[i]) / 2);
+        if (sh.zone === 'head') c = [c[0], c[1] + sh.r * 0.8, c[2]]; // the top (the front of the sphere is the face)
+        v.fromArray(c).project(camera);
+        out[sh.zone] = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+      }
+      if (out.head) {
+        const hd = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]).find((sh) => sh.zone === 'head');
+        v.fromArray([hd.c[0] + hd.front[0] * hd.r * 0.5, hd.c[1] - hd.r * 0.35, hd.c[2] + hd.front[2] * hd.r * 0.5]).project(camera);
+        out.face = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+      }
+      return out;
     }
 
     // the model's textures and how many actually have their image (a blocked blob: fetch leaves them empty)
@@ -546,11 +619,16 @@
         director: () => director,
         plan: () => plan,
         setPosture: (p) => { if (director) director.setPosture(p); },
+        zoneAt,
+        zoneCenters,
+        inject: (e) => { injected.push(e); },
         debug: () => ({
           loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
-          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw },
+          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw },
           idleHistory: director ? director.history() : [],
+          reactions: director ? director.reactions() : [],
+          overlays: anim ? anim.overlays() : '',
           layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground,
           face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze },
           // the pixel vocabulary is gone: no procedural hop / spin / dangle on a VRM (docs §2.3)
@@ -581,6 +659,7 @@
     const api = {
       ready: ready.catch((e) => { api.dispose(); throw e; }),
       draw,
+      zoneAt,
       dispose() {
         if (disposed) return;
         disposed = true;
@@ -631,6 +710,10 @@
     history: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.history() : []; },
     setPosture: (packId, p) => { postures.set(packId, p || 'auto'); for (const f of figures) if (f.packId === packId) f.setPosture(p || 'auto'); },
     postures: () => Object.fromEntries(postures),
+    // a semantic event as if the app had sent it ({ type: 'celebrate', name: 'evolve' }…), and the zones on screen
+    inject: (e) => { for (const f of figures) f.inject(e); return true; },
+    zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
+    reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
   };
 
   window.__pet = Object.assign(window.__pet || {}, { vrmDirector: director }); // the name docs §7 gives it

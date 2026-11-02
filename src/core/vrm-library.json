@@ -2,26 +2,630 @@
   "schema": 1,
   "about": "VRM motion library bake list (docs/vrm-motion-system.md §3.7, §5). Metadata only: no model or animation is in the repository. scripts/vrm-bake.js reads each `src` from $PIXELPET_VRM_ASSETS (default ~/vrm-assets) and writes <out>/<style>/<slot>.vrma plus library.json outside the repository. All source motions are for personal use only.",
   "clips": {
-    "stand.relaxed@female": { "kind": "posture", "style": "female", "src": "postures/def6e4e1-a5b3-4ba5-b195-71f9dfaa8ab8.fbx", "label": "放松站", "note": "Standing · Arms Down (the design's alternate: faces the user; 2278ba9c turns her 60° away, §5.1)" },
-    "stand.confident@female": { "kind": "posture", "style": "female", "src": "postures/7bf2f079-7884-44dd-ad4f-2cd61f175803.fbx", "label": "叉腰站", "note": "Standing · Right Hand On Hip" },
-    "stand.shy@female": { "kind": "posture", "style": "female", "src": "postures/ba625166-2370-4260-ae47-0c49e3616309.fbx", "label": "害羞低头", "note": "Standing · Looking Down To The Right" },
-    "stand.playful@female": { "kind": "posture", "style": "female", "src": "postures/a819c6b5-4aaa-4a17-8c94-a5f70db6d68f.fbx", "label": "背手后仰", "note": "Standing · Leaning Back, Arms Behind" },
-    "sit.rest@female": { "kind": "posture", "style": "female", "src": "postures/5b8c40fa-3e5e-4419-bb08-4e1bb49c4c6a.fbx", "label": "侧坐", "note": "Laying · Legs To Side, Arms Raised (a floor sit; the design's chair sit 9649e88e floats without a chair, see §5.1)", "sit": true },
-    "sit.doze@female": { "kind": "posture", "style": "female", "src": "postures/61c51e24-3e95-4adb-9df7-4c6efb389d78.fbx", "label": "后仰坐", "note": "Laying · Legs Crossed, Arms Supporting (a floor sit instead of the chair sit 25c19dfb, §5.1)", "sit": true },
-
-    "stand.relaxed@male": { "kind": "posture", "style": "male", "src": "mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx", "label": "放松站", "note": "Standing · Looking Forward" },
-    "stand.confident@male": { "kind": "posture", "style": "male", "src": "mixamo/93695678-9ffe-4e41-b775-2f8ca5c7c15d.fbx", "label": "叉腰站", "note": "Standing · Left Hand On Hip" },
-    "stand.shy@male": { "kind": "posture", "style": "male", "src": "mixamo/08f3514a-0d3b-469d-9f27-57f97d9fcb9b.fbx", "label": "背手站", "note": "Standing · Arms Behind Back" },
-    "stand.playful@male": { "kind": "posture", "style": "male", "src": "mixamo/e6070070-bfbf-4fb2-87c9-ba85671346a1.fbx", "label": "手扶后脑", "note": "Standing · Right Hand Behind Head" },
-    "sit.rest@male": { "kind": "posture", "style": "male", "src": "mixamo/9cf58708-0b86-40ae-bcfe-d211289530f7.fbx", "label": "手搭膝坐", "note": "Sitting · Arms Resting On Knees", "sit": true },
-    "sit.doze@male": { "kind": "posture", "style": "male", "src": "mixamo/4362690a-8af0-41ac-9a22-33e43a51a6ee.fbx", "label": "低头坐", "note": "Sitting · Reaching Hands Towards Toes (a floor sit instead of the chair sit 14ee62b6, §5.1)", "sit": true },
-
-    "idle.happy@female": { "kind": "idle", "style": "female", "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx", "loop": true, "label": "开心待机", "note": "Standing Happily, 10 s" },
-    "idle.variant2@female": { "kind": "idle", "style": "female", "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx", "loop": true, "mirror": true, "amplitude": 0.8, "trim": [1.5, 8.5], "label": "换边待机", "note": "Standing Happily mirrored, 1.5–8.5 s, amplitude 0.8 (P0 stand-in for the P1 VMD idle)" },
-    "idle.posture-cycle@female": { "kind": "idle", "style": "female", "cycle": ["stand.relaxed", "stand.confident", "stand.playful"], "every": 12, "label": "换姿势待机" },
-
-    "idle.happy@male": { "kind": "idle", "style": "male", "src": "mixamo/c9ccf37e-b96c-11e4-a802-0aaa78deedf9.fbx", "loop": true, "label": "开心待机", "note": "Happy Idle Variation 1, 2.0 s" },
-    "idle.variant2@male": { "kind": "idle", "style": "male", "src": "mixamo/c9ccf445-b96c-11e4-a802-0aaa78deedf9.fbx", "loop": true, "label": "待机 2", "note": "Happy Idle Variation 2, 2.9 s" },
-    "idle.posture-cycle@male": { "kind": "idle", "style": "male", "cycle": ["stand.relaxed", "stand.confident", "stand.playful"], "every": 18, "label": "换姿势待机" }
+    "stand.relaxed@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/def6e4e1-a5b3-4ba5-b195-71f9dfaa8ab8.fbx",
+      "label": "放松站",
+      "note": "Standing · Arms Down (the design's alternate: faces the user; 2278ba9c turns her 60° away, §5.1)"
+    },
+    "stand.confident@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/7bf2f079-7884-44dd-ad4f-2cd61f175803.fbx",
+      "label": "叉腰站",
+      "note": "Standing · Right Hand On Hip"
+    },
+    "stand.shy@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/ba625166-2370-4260-ae47-0c49e3616309.fbx",
+      "label": "害羞低头",
+      "note": "Standing · Looking Down To The Right"
+    },
+    "stand.playful@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/a819c6b5-4aaa-4a17-8c94-a5f70db6d68f.fbx",
+      "label": "背手后仰",
+      "note": "Standing · Leaning Back, Arms Behind"
+    },
+    "sit.rest@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/5b8c40fa-3e5e-4419-bb08-4e1bb49c4c6a.fbx",
+      "label": "侧坐",
+      "note": "Laying · Legs To Side, Arms Raised (a floor sit; the design's chair sit 9649e88e floats without a chair, see §5.1)",
+      "sit": true
+    },
+    "sit.doze@female": {
+      "kind": "posture",
+      "style": "female",
+      "src": "postures/61c51e24-3e95-4adb-9df7-4c6efb389d78.fbx",
+      "label": "后仰坐",
+      "note": "Laying · Legs Crossed, Arms Supporting (a floor sit instead of the chair sit 25c19dfb, §5.1)",
+      "sit": true
+    },
+    "stand.relaxed@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx",
+      "label": "放松站",
+      "note": "Standing · Looking Forward"
+    },
+    "stand.confident@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/93695678-9ffe-4e41-b775-2f8ca5c7c15d.fbx",
+      "label": "叉腰站",
+      "note": "Standing · Left Hand On Hip"
+    },
+    "stand.shy@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/08f3514a-0d3b-469d-9f27-57f97d9fcb9b.fbx",
+      "label": "背手站",
+      "note": "Standing · Arms Behind Back"
+    },
+    "stand.playful@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/e6070070-bfbf-4fb2-87c9-ba85671346a1.fbx",
+      "label": "手扶后脑",
+      "note": "Standing · Right Hand Behind Head"
+    },
+    "sit.rest@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/9cf58708-0b86-40ae-bcfe-d211289530f7.fbx",
+      "label": "手搭膝坐",
+      "note": "Sitting · Arms Resting On Knees",
+      "sit": true
+    },
+    "sit.doze@male": {
+      "kind": "posture",
+      "style": "male",
+      "src": "mixamo/4362690a-8af0-41ac-9a22-33e43a51a6ee.fbx",
+      "label": "低头坐",
+      "note": "Sitting · Reaching Hands Towards Toes (a floor sit instead of the chair sit 14ee62b6, §5.1)",
+      "sit": true
+    },
+    "idle.happy@female": {
+      "kind": "idle",
+      "style": "female",
+      "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "label": "开心待机",
+      "note": "Standing Happily, 10 s"
+    },
+    "idle.variant2@female": {
+      "kind": "idle",
+      "style": "female",
+      "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "mirror": true,
+      "amplitude": 0.8,
+      "trim": [
+        1.5,
+        8.5
+      ],
+      "label": "换边待机",
+      "note": "Standing Happily mirrored, 1.5–8.5 s, amplitude 0.8 (P0 stand-in for the P1 VMD idle)"
+    },
+    "idle.posture-cycle@female": {
+      "kind": "idle",
+      "style": "female",
+      "cycle": [
+        "stand.relaxed",
+        "stand.confident",
+        "stand.playful"
+      ],
+      "every": 12,
+      "label": "换姿势待机"
+    },
+    "idle.happy@male": {
+      "kind": "idle",
+      "style": "male",
+      "src": "mixamo/c9ccf37e-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "label": "开心待机",
+      "note": "Happy Idle Variation 1, 2.0 s"
+    },
+    "idle.variant2@male": {
+      "kind": "idle",
+      "style": "male",
+      "src": "mixamo/c9ccf445-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "label": "待机 2",
+      "note": "Happy Idle Variation 2, 2.9 s"
+    },
+    "idle.posture-cycle@male": {
+      "kind": "idle",
+      "style": "male",
+      "cycle": [
+        "stand.relaxed",
+        "stand.confident",
+        "stand.playful"
+      ],
+      "every": 18,
+      "label": "换姿势待机"
+    },
+    "react.touch-head@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "postures/ba625166-2370-4260-ae47-0c49e3616309.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.55,
+      "hold": 1.6,
+      "fadeIn": 0.25,
+      "fadeOut": 0.5,
+      "face": {
+        "relaxed": 0.8,
+        "happy": 0.4
+      },
+      "label": "被摸头·低头蹭",
+      "note": "Looking Down To The Right, upper body at 55%: she lowers her head into the hand"
+    },
+    "react.touch-face@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "postures/bf65f0a2-236a-475c-a56e-687d5b07998f.fbx",
+      "still": true,
+      "mask": "head",
+      "weight": 0.65,
+      "hold": 1.2,
+      "fadeIn": 0.2,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.5,
+        "angry": 0.25,
+        "blinkRight": 1
+      },
+      "label": "戳脸·鼓脸扭头",
+      "note": "Hands On Hips Looking Over Shoulder, head and neck only at 65%: she turns her face away with a pout; the source pose twists the torso ~90° away, too much for a poke (T-2681 review)"
+    },
+    "react.touch-hands@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "mixamo/c9c9f343-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.5,
+        2.8
+      ],
+      "mask": "upper",
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.8
+      },
+      "label": "牵手",
+      "note": "Shaking Hands – Female, 0.5–2.8 s"
+    },
+    "react.shy@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "postures/ba625166-2370-4260-ae47-0c49e3616309.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.95,
+      "hold": 1.5,
+      "fadeIn": 0.2,
+      "fadeOut": 0.6,
+      "face": {
+        "surprised": 0.5,
+        "happy": 0.3,
+        "sad": 0.25
+      },
+      "gaze": {
+        "x": -0.7,
+        "y": -0.7
+      },
+      "label": "害羞低头",
+      "note": "P0 stand-in for cover_chest (VMD, P1): head down and turned away, eyes down to the side"
+    },
+    "react.angry@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "mixamo/c9c98b02-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0,
+        3.5
+      ],
+      "mask": "full",
+      "fadeIn": 0.2,
+      "fadeOut": 0.6,
+      "face": {
+        "angry": 1
+      },
+      "label": "生气跺脚",
+      "note": "Standing Angrily, 0–3.5 s"
+    },
+    "react.annoyed@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "postures/0aef00f5-ea18-4e7c-a12d-6c92a08a9033.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.45,
+      "hold": 1.2,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "angry": 0.5,
+        "sad": 0.2
+      },
+      "gaze": {
+        "x": 0.8,
+        "y": 0
+      },
+      "label": "往后躲",
+      "note": "Leaning Back, Left Hand On Hip at 45%: a lean away; at full weight the source twists her torso ~90° from the user (T-2681 review)"
+    },
+    "react.ticklish@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0,
+        2.5
+      ],
+      "amplitude": 0.6,
+      "mask": "upper",
+      "fadeIn": 0.2,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 1
+      },
+      "label": "怕痒笑",
+      "note": "Super Excited 0–2.5 s at 60% (P0 stand-in for emote/happy1.vmd)"
+    },
+    "react.drop@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "postures/def6e4e1-a5b3-4ba5-b195-71f9dfaa8ab8.fbx",
+      "still": true,
+      "mask": "full",
+      "hold": 0.35,
+      "fadeIn": 0.15,
+      "fadeOut": 0.45,
+      "face": {
+        "surprised": 0.4
+      },
+      "label": "落地站稳",
+      "note": "stand.relaxed snapped in (0.15 s) with a knee dip from the alive layer"
+    },
+    "react.greet@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "mixamo/c9c7996a-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "mask": "full",
+      "fadeIn": 0.3,
+      "fadeOut": 0.6,
+      "face": {
+        "happy": 0.8
+      },
+      "label": "打招呼",
+      "note": "Greeting While Standing, 5.1 s"
+    },
+    "react.cheer@female": {
+      "kind": "reaction",
+      "style": "female",
+      "src": "mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0,
+        3.0
+      ],
+      "mask": "full",
+      "fadeIn": 0.25,
+      "fadeOut": 0.6,
+      "face": {
+        "happy": 1
+      },
+      "label": "开心雀跃",
+      "note": "Super Excited, 0–3 s"
+    },
+    "hold.lift@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "postures/02854bce-1b74-4b36-bb3f-df58f4a0a345.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.75,
+      "fadeIn": 0.2,
+      "fadeOut": 0.4,
+      "face": {
+        "surprised": 0.8
+      },
+      "label": "被拎起·举手",
+      "note": "On Knees, Arms Raised: only the upper body (legs hang from the alive layer)"
+    },
+    "hold.talk@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "mirror": true,
+      "amplitude": 0.5,
+      "mask": "arms",
+      "weight": 0.6,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.2
+      },
+      "label": "说话手势",
+      "note": "Happy Forward Hand Gesture mirrored, 50% (P0 stand-in for talk/xs-talk8 VMD): small left-hand gestures, mouth from the lip layer"
+    },
+    "hold.think@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "postures/0aef00f5-ea18-4e7c-a12d-6c92a08a9033.fbx",
+      "still": true,
+      "mask": "arms",
+      "weight": 0.85,
+      "fadeIn": 0.4,
+      "fadeOut": 0.5,
+      "face": {
+        "neutral": 0.3
+      },
+      "gaze": {
+        "x": 0.35,
+        "y": 1.6
+      },
+      "label": "思考",
+      "note": "Leaning Back, Left Hand On Hip, arms only (hand to the hip) + eyes up right; the torso twist of the source is left out (T-2681 review)"
+    },
+    "hold.eat@female": {
+      "kind": "hold",
+      "style": "female",
+      "src": "postures/def6e4e1-a5b3-4ba5-b195-71f9dfaa8ab8.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.5,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.7
+      },
+      "gaze": {
+        "x": 0,
+        "y": -0.5
+      },
+      "label": "吃东西",
+      "note": "stand.relaxed upper body, chewing nods (alive layer) and the chewing mouth"
+    },
+    "react.touch-head@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/670efeec-dabc-492d-a713-a8a28a959249.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.5,
+      "hold": 1.4,
+      "fadeIn": 0.25,
+      "fadeOut": 0.5,
+      "face": {
+        "relaxed": 0.8,
+        "happy": 0.4
+      },
+      "label": "被摸头·别过脸",
+      "note": "Looking Right at 50%: a little embarrassed, looks aside"
+    },
+    "react.touch-face@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/aaba4531-7c08-4d2c-a7a6-8eae3879611d.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.55,
+      "hold": 1.0,
+      "fadeIn": 0.2,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.5,
+        "angry": 0.25,
+        "blinkRight": 1
+      },
+      "label": "戳脸·扭头",
+      "note": "Looking Left (upper body)"
+    },
+    "react.touch-hands@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c9c9f403-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "trim": [
+        0.5,
+        2.8
+      ],
+      "mask": "upper",
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.8
+      },
+      "label": "握手",
+      "note": "Shaking Hands – Male, 0.5–2.8 s"
+    },
+    "react.shy@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/e6070070-bfbf-4fb2-87c9-ba85671346a1.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.9,
+      "hold": 1.5,
+      "fadeIn": 0.2,
+      "fadeOut": 0.6,
+      "face": {
+        "surprised": 0.5,
+        "happy": 0.3,
+        "sad": 0.25
+      },
+      "gaze": {
+        "x": -0.7,
+        "y": -0.5
+      },
+      "label": "挠头害羞",
+      "note": "Right Hand Behind Head: scratches the back of his head"
+    },
+    "react.angry@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c9c917a2-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "mask": "full",
+      "fadeIn": 0.2,
+      "fadeOut": 0.6,
+      "face": {
+        "angry": 1
+      },
+      "label": "生气比划",
+      "note": "Angry Forward Gesture, 2.2 s"
+    },
+    "react.annoyed@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/93695678-9ffe-4e41-b775-2f8ca5c7c15d.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.8,
+      "hold": 1.2,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "angry": 0.5,
+        "sad": 0.2
+      },
+      "gaze": {
+        "x": 0.9,
+        "y": 0.1
+      },
+      "label": "叉腰不耐烦",
+      "note": "Left Hand On Hip, head turned away"
+    },
+    "react.ticklish@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "amplitude": 0.8,
+      "mask": "upper",
+      "fadeIn": 0.2,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 1
+      },
+      "label": "怕痒摆手",
+      "note": "Happy Forward Hand Gesture, 80%"
+    },
+    "react.drop@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx",
+      "still": true,
+      "mask": "full",
+      "hold": 0.35,
+      "fadeIn": 0.15,
+      "fadeOut": 0.45,
+      "face": {
+        "surprised": 0.4
+      },
+      "label": "落地站稳",
+      "note": "stand.relaxed snapped in, a smaller knee dip"
+    },
+    "react.greet@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c9c9f57a-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "mask": "full",
+      "fadeIn": 0.3,
+      "fadeOut": 0.6,
+      "face": {
+        "happy": 0.8
+      },
+      "label": "点头致意",
+      "note": "Quick Informal Bow, 2.7 s"
+    },
+    "react.cheer@male": {
+      "kind": "reaction",
+      "style": "male",
+      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "mask": "full",
+      "fadeIn": 0.25,
+      "fadeOut": 0.6,
+      "face": {
+        "happy": 1
+      },
+      "label": "开心挥手",
+      "note": "Happy Forward Hand Gesture"
+    },
+    "hold.lift@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.7,
+      "fadeIn": 0.2,
+      "fadeOut": 0.4,
+      "face": {
+        "surprised": 0.8
+      },
+      "label": "被拎起·张手",
+      "note": "Arms Spread Looking Upwards: only the upper body"
+    },
+    "hold.talk@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx",
+      "loop": true,
+      "amplitude": 0.7,
+      "mask": "arms",
+      "weight": 0.8,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.2
+      },
+      "label": "说话手势",
+      "note": "Happy Forward Hand Gesture, 70%, looped"
+    },
+    "hold.think@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/670efeec-dabc-492d-a713-a8a28a959249.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.7,
+      "fadeIn": 0.4,
+      "fadeOut": 0.5,
+      "face": {
+        "neutral": 0.3
+      },
+      "gaze": {
+        "x": 0.35,
+        "y": 1.6
+      },
+      "label": "思考",
+      "note": "Looking Right + eyes up right"
+    },
+    "hold.eat@male": {
+      "kind": "hold",
+      "style": "male",
+      "src": "mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx",
+      "still": true,
+      "mask": "upper",
+      "weight": 0.5,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5,
+      "face": {
+        "happy": 0.7
+      },
+      "gaze": {
+        "x": 0,
+        "y": -0.5
+      },
+      "label": "吃东西",
+      "note": "stand.relaxed upper body, chewing nods and mouth"
+    }
   }
 }

@@ -1,6 +1,6 @@
 # VRM 独立交互与动作体系（与像素角色解耦）设计
 
-> 状态：设计稿（T-2677）；姿势系统 + idle 待机 + 男女风格已实现（T-2678，见 §11）　分支：`feat/vrm-motion-system`（基于 `origin/canary` 7bae23a / v0.19.0）
+> 状态：设计稿（T-2677）；姿势系统 + idle 待机 + 男女风格已实现（T-2678，见 §11）；交互反应已实现（T-2681，见 §12）　分支：`feat/vrm-motion-system`（基于 `origin/canary` 7bae23a / v0.19.0）
 > 本期范围：姿势系统、idle 待机、交互反应、表情层、口型层，并按男性/女性风格区分。**舞蹈本期不做。**
 > 素材来源：`~/vrm-assets/`（素材清单 `~/vrm-assets/INVENTORY.md`，前一任务产出）。**所有模型与动作仅限个人使用，不进 git、不进安装包。**
 > 参考：[lobe-vidol](https://github.com/lobehub/lobe-vidol) 只借鉴功能思路（姿势库按性别/类别分组、触摸区域 → 按性别的「表情 + 动作 + 台词」列表），**不使用其任何实现代码**；Mixamo 重定向的数学是公开的骨骼空间换算（见 §4.3），由我们自己实现。
@@ -543,5 +543,43 @@ done
 
 ### 11.3 留给后续任务（不在 T-2678 范围）
 
+> T-2681 已完成其中的 L2/L3 反应层与 3D 触摸命中，见 §12。
+
 L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 互动反应片段与 upper/lower 拆分、`zoneRects()`、VMD 烘焙（P1）、导入确认页的风格选择。本期触摸/拖拽等事件只驱动表情、视线与活人感层（腿部重力下垂），不播放反应片段，也不再有任何像素式程序化动作。
 
+
+---
+
+## 12. 实现记录（T-2681：交互反应，男女区分）
+
+### 12.1 已实现
+
+| 设计项 | 实现 |
+|---|---|
+| §5.3 反应清单 | `src/core/vrm-library.json` 为 female / male 各加 10 个反应（`react.touch-head / touch-face / touch-hands / shy / angry / annoyed / ticklish / drop / greet / cheer`）和 4 个持续活动（`hold.lift / talk / think / eat`），素材按 §5.3 的 P0 列（Mixamo FBX）；元数据含 `mask`（full/upper/arms/head）、`weight`、`hold`（末帧保持秒数）、`fadeIn/fadeOut`、`still`（2 帧姿势定格）、`face`、`gaze`。`L.REACTIONS / L.HOLDS` 校验槽位名；烘焙脚本把这些字段写进 `library.json`，`cleanIndex` 夹值后交给导演。 |
+| §3.3 生命周期 | `src/core/vrm-director.js`：`startReaction` 计算 `start / playEnd / end`，权重 = 淡入 smoothstep × 末尾淡出 smoothstep × 条目 weight（male 再 ×0.97）；片段时间 = 开始后经过的时间，播完停在末帧保持 `hold` 秒。每帧输出 `plan.overlays = [hold…, fading…, reaction]`（片段 id、mask、片段时间、权重），渲染端只采样。反应结束后 `overlays` 为空，底层 idle 一直在播（`base.key` 不变），所以「回到 idle」是淡出而不是重新开始。 |
+| 打断 | 新反应开始时旧反应进入 `fading`，从它当时的权重在 0.2 s 内淡出（`CUT`），新反应同时淡入；`drag:lift` 直接把反应交给 lift hold。 |
+| 优先级 | `drag:lift`（拎起时触摸被忽略）> `touch` = `drop` > `celebrate`（被触摸占用时排队 1 个，播完再播）> hold（think > eat > talk > walk）> `cue`（只在空闲且没有 hold 时以 35% 概率播放 60% 幅度的 cheer，否则只笑）。 |
+| 防抖与同区连摸 | 同一反应 0.6 s 内不重新触发；还在播（未进入淡出）时再次触发同一反应 → 延长 `end`（摸头时继续蹭、生气时继续生气），不重播；进入淡出后再触发则重新开始。 |
+| 情绪升级 | 不重复计数：`app.js` 的 `lastTouch` 增加 `streak`（来自 `touch-zones.reactionFor`），`vrm-intent` 把 `mood/streak` 带进事件；导演按 mood 选反应：happy → 按部位（头/脸/手），shy → `react.shy`，ticklish → `react.ticklish`，annoyed（连摸 3–5）→ `react.annoyed`，angry（连摸 ≥ 6 或低好感碰敏感区）→ `react.angry`。后效：angry 结束后 10 s 保持轻微不高兴表情（angry 0.3）；shy 结束后 8 s 姿势偏向 `stand.shy`（仅「自动」姿势）。 |
+| 表情与视线 | 反应期间叠加条目 `face`（attack/release 仍由渲染端缓动，male ×0.8）；视线：摸头先抬眼看手 0.7 s，戳脸看旁边，牵手看手，害羞看斜下，不耐烦别开，生气盯人且 1.5 s 不眨眼；思考看右上，吃东西看下方，被拎起看地面。 |
+| hold（L2） | lift / think / eat / talk 各有片段，按自身 fadeIn/fadeOut 淡入淡出；反应叠在 hold 之上（说话时被摸，说话手势在下、口型照常）；反应结束后 hold 继续。吃东西时活人感层加咀嚼点头（≤ 2.5°）。 |
+| 落地 | `react.drop` 时 `life.landKey` 递增，`vrm-life.js` 做 0.5 s 膝盖微屈（大腿 ≤ 4°、小腿 ≤ 8°，male ×0.6），脚由贴地逻辑固定，身体自然下沉回弹；thrown 的落地保持更久。 |
+| 叠加层（渲染） | `src/renderer/vrm-anim.js`：反应/hold 不进 AnimationMixer（PropertyMixer 会把带遮罩的上半身片段与 T-pose 平均），而是用片段轨道的插值器采样后按「权重 × 遮罩骨骼权重」从底层姿势 slerp 过去（upper 遮罩：spine 0.5、chest 0.8、以上 1，腰腿 0；arms：肩 0.7、手臂手指 1；head：neck 0.6、head 1）。底层始终满权重，所以任何时刻没被覆盖的骨骼都是当前姿势，不会出现 T-pose；所有 humanoid 骨骼与 hips 位置都进 over-clip memo，叠加量不会残留或累积。 |
+| 3D 触摸命中 | `src/core/vrm-hit.js`（纯函数，单测）：用当帧骨骼世界坐标搭出球与胶囊——头（头骨上方的球，正面下部为脸）、胸、肚子、臀、手（前臂到指尖）、大腿/小腿、脚；上臂是无部位的遮挡体。相机射线取最近的命中，所以挡在肚子前的手算手，坐下后头的位置跟着变。正面方向由双肩连线 × 向上 得出（VRM 0.x 模型被 loader 转了 180° 也正确）。`renderer/vrm.js` 的 `figure.zoneAt(x, y)` 返回与 `artPoint` 相同形状的 `pt`（`pose: 'vrm'`、屏幕包围盒、脸的位置给脸红特效）；`app.js` 的 `zoneAtClient` 只在 VRM 外观下改走它，像素/图片/video/rig/live2d 仍用原来的 2D 表。 |
+| 男女差异 | 14 个槽位男女都不同：13 个用不同素材文件（例如摸头 F 低头蹭手 / M 别过脸；害羞 F 低头看斜下 / M 挠后脑勺；生气 F 跺脚 / M 比划；拎起 F 举手「哇」/ M 张开手；打招呼 F 挥手 / M 点头致意），说话手势同源但 F 镜像 + 50% 幅度 + 只动手臂、M 70%；male 运行时权重再乘 0.97、表情 ×0.8，落地膝盖 ×0.6。 |
+| 调试 | 画布新增 `data-overlays`（`layer:clip:weight`），`data-reaction` 为当前反应；`PetVRM.director.inject(event)`（注入语义事件，例如 `{type:'celebrate',name:'evolve'}`）、`zoneCenters()`、`reactions()`。 |
+
+### 12.2 与设计的偏离（及原因）
+
+1. **反应/hold 不用 base.lower/base.upper 拆分**（§3.1）：改为在 mixer 之后按骨骼遮罩采样叠加（见上表「叠加层」），效果相同（下半身不受上半身反应影响），并且从结构上排除了 PropertyMixer 权重不足 1 时混入 T-pose 的可能。
+2. **女性三个姿势类素材降权/改遮罩**（liliya 实测评审）：`react.touch-face@female`（bf65f0a2）、`react.annoyed@female` 与 `hold.think@female`（0aef00f5）的源姿势躯干相对胯部扭转约 90°，满权重时她整个上身背对用户。改为：戳脸只用头颈（head 遮罩 65%），思考只用手臂（手叉腰，arms 遮罩 85%），往后躲降到 45%。
+3. **`hold.talk@female` 的 P0 素材**：设计中 F 的 P0 只有口型 + 点头；为了「说话 = 片段 + 表情 + 视线」，F 用 Happy Forward Hand Gesture 的镜像、50% 幅度、只动手臂（M 用原向 70%）。VMD 说话手势（P1）仍按 §5.3 替换。
+4. **celebrate 的 e2e/验收触发**：孵化/进化庆祝在真实流程里分别要重新孵化或进化，e2e 与真实验收通过 `PetVRM.director.inject` 注入与 app 完全相同的语义事件；`cue:play` 的真实路径（玩耍按钮）在单测中覆盖 35% 概率。
+5. **不做 `figure.zoneRects()`**（§3.6 的 2D 矩形方案）：直接用 3D 射线命中，更贴合姿势变化。
+
+### 12.3 测试
+
+- 单测 `test/vrm-reactions.test.js`（15 项）：清单（每套 ≥ 6 反应、男女不同）、触摸 → 反应映射（男女）、生命周期（淡入 → 片段 → 保持 → 淡出、回到同一 idle、无跳变）、打断（旧反应从当前权重淡出、overlays 顺序、lift 打断触摸）、防抖与连摸延长、用真实 `touch-zones.reactionFor/nextStreak` 驱动的情绪升级（happy → annoyed → angry 及后效）、害羞后姿势、拖拽/落地、talk/think/eat 与反应叠加、庆祝排队与 cue 概率、男女幅度/表情、无素材库降级、intent 携带 streak、3D 命中（各部位、跟随身体、遮挡、背面、缩放、转身模型）、落地膝盖上限。
+- e2e `xvfb-run -a node e2e/run.js vrm`：新增 3D 命中步骤与每种反应的真实点击/拖拽/聊天/喂食步骤；每帧校验「左臂角度 = overlays 按权重叠加的结果」（自制片段每个反应把左臂抬到不同角度）且右臂始终不是 T-pose。
+- 真实素材：`.agents/acceptance/scripts/vrm-reactions-real-acceptance.js <repo> ~/vrm-motion-evidence/reactions --model …/liliya.vrm --male …/vroid.vrm`，每个反应输出 GIF + 峰值帧 + 逐帧日志，及男女对照图 `female-vs-male-reactions.png`。

@@ -15,6 +15,10 @@
   const SRC_RE = /^(postures|mixamo|motions)\/[^\0]+\.(fbx|vmd)$/i;
   // the postures of this release (P0 needs the first four; sit.* are the resting ones)
   const POSTURES = ['stand.relaxed', 'stand.confident', 'stand.shy', 'stand.playful', 'sit.rest', 'sit.doze'];
+  // the reactions (L3, one-shot) and holds (L2, while it lasts) of this release (docs §5.3)
+  const REACTIONS = ['react.touch-head', 'react.touch-face', 'react.touch-hands', 'react.shy', 'react.angry', 'react.annoyed', 'react.ticklish', 'react.drop', 'react.greet', 'react.cheer'];
+  const HOLDS = ['hold.lift', 'hold.talk', 'hold.think', 'hold.eat'];
+  const FACE_NAMES = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral', 'blink', 'blinkLeft', 'blinkRight'];
   const POSTURE_LABEL = { auto: '自动', 'stand.relaxed': '放松站', 'stand.confident': '叉腰站', 'stand.shy': '害羞站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'sit.doze': '靠坐' };
 
   function parseId(id) {
@@ -44,7 +48,12 @@
       if (e.mask !== undefined && !MASKS.includes(e.mask)) out.push(`${id}: mask "${e.mask}"`);
       if (e.trim !== undefined && !(Array.isArray(e.trim) && e.trim.length === 2 && e.trim[0] >= 0 && e.trim[1] > e.trim[0])) out.push(`${id}: trim [a, b] with 0 ≤ a < b`);
       if (e.amplitude !== undefined && !(e.amplitude > 0 && e.amplitude <= 1.5)) out.push(`${id}: amplitude 0..1.5`);
-      if (e.face !== undefined && (typeof e.face !== 'object' || Object.values(e.face).some((w) => !(w >= 0 && w <= 1)))) out.push(`${id}: face weights 0..1`);
+      if (e.face !== undefined && (typeof e.face !== 'object' || Object.entries(e.face).some(([n, w]) => !FACE_NAMES.includes(n) || !(w >= 0 && w <= 1)))) out.push(`${id}: face is { ${FACE_NAMES.join('|')}: 0..1 }`);
+      if (e.weight !== undefined && !(e.weight > 0 && e.weight <= 1)) out.push(`${id}: weight 0..1`);
+      for (const k of ['hold', 'fadeIn', 'fadeOut']) if (e[k] !== undefined && typeof e[k] === 'number' && !(e[k] >= 0 && e[k] <= 5)) out.push(`${id}: ${k} 0..5 s`);
+      if (e.gaze !== undefined && !(e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y) && Math.abs(e.gaze.x) <= 2 && Math.abs(e.gaze.y) <= 2)) out.push(`${id}: gaze { x, y } in -2..2`);
+      if ((e.kind === 'reaction' || e.kind === 'hold') && !(e.kind === 'reaction' ? REACTIONS : HOLDS).includes(p.slot)) out.push(`${id}: unknown ${e.kind} slot (known: ${(e.kind === 'reaction' ? REACTIONS : HOLDS).join(', ')})`);
+      if ((e.kind === 'reaction' || e.kind === 'hold') && !e.mask) out.push(`${id}: a ${e.kind} needs a mask (${MASKS.join(', ')})`);
     }
     return out;
   }
@@ -59,6 +68,18 @@
       try { p = parseId(id); } catch { continue; }
       if (!e || !KINDS.includes(e.kind)) continue;
       const c = { id, slot: p.slot, style: p.style, kind: e.kind, label: typeof e.label === 'string' ? e.label.slice(0, 20) : p.slot, loop: !!e.loop, sit: !!e.sit };
+      // how a reaction / hold plays (docs §3.3): mask, weight, the last frame held, fades, face, gaze
+      if (e.kind === 'reaction' || e.kind === 'hold') {
+        const num = (v, a, b, d) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.max(a, Math.min(b, Number(v))) : d);
+        c.mask = MASKS.includes(e.mask) ? e.mask : 'upper';
+        c.weight = num(e.weight, 0.05, 1, 1);
+        c.hold = num(e.hold, 0, 5, 0);
+        c.fadeIn = num(e.fadeIn, 0.05, 2, 0.25);
+        c.fadeOut = num(e.fadeOut, 0.05, 2, 0.5);
+        c.still = !!e.still;
+        if (e.face && typeof e.face === 'object') c.face = Object.fromEntries(Object.entries(e.face).filter(([n, w]) => FACE_NAMES.includes(n) && w >= 0 && w <= 1));
+        if (e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y)) c.gaze = { x: num(e.gaze.x, -2, 2, 0), y: num(e.gaze.y, -2, 2, 0) };
+      }
       if (typeof e.file === 'string') {
         if (!/^(female|male|neutral)\/[a-z0-9.-]+\.vrma$/.test(e.file)) continue;
         c.file = e.file;
@@ -105,5 +126,5 @@
     return missing ? (missing === files.length ? 'none' : `partial:${missing}`) : 'loaded';
   }
 
-  return { KINDS, SETS, MASKS, POSTURES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
+  return { KINDS, SETS, MASKS, POSTURES, REACTIONS, HOLDS, FACE_NAMES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
 });

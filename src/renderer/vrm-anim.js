@@ -9,12 +9,42 @@
 // weight at once. The alive layer's bones keep the clip's pose from frame to frame (PetVrmMotion.overClip):
 // the mixer only writes a bone whose value changed, so a held pose would otherwise keep last frame's offsets
 // and drift.
+//
+// Overlays (L2 holds, L3 reactions, docs §3.1 / §3.3): the director gives, every frame, a list of clips with
+// the time in the clip and a weight. They are not mixer actions — the PropertyMixer would average a masked
+// upper-body clip with the T-pose below — but sampled here and laid over the base pose bone by bone
+// (slerp from the base towards the clip by weight × the mask's weight for that bone). The base keeps
+// playing at full weight underneath, so whatever the overlays do, a bone they leave is the base pose, never
+// the T-pose, and an interrupted reaction simply loses weight. Every bone an overlay may move is kept in
+// the over-clip memo too (rotations, and the hips position), so nothing they write stays behind.
 (function () {
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
+  // how much of an overlay each bone takes, per mask (soft at the waist so an upper-body clip bends in)
+  const ARM_BONES = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand', 'Thumb', 'Index', 'Middle', 'Ring', 'Little'];
+  function maskWeight(mask, bone) {
+    if (mask === 'full') return 1;
+    const arm = ARM_BONES.some((a) => bone.includes(a));
+    if (mask === 'arms') return arm ? (bone.endsWith('Shoulder') ? 0.7 : 1) : 0;
+    if (mask === 'head') return bone === 'head' ? 1 : bone === 'neck' ? 0.6 : 0;
+    // upper
+    if (bone === 'hips' || /Leg$|Foot$|Toes$/.test(bone)) return 0;
+    if (bone === 'spine') return 0.5;
+    if (bone === 'chest') return 0.8;
+    return 1;
+  }
+
   // R: the runtime (window.PetVrmRuntime), vrm: the loaded VRM, keep: bone names the alive layer moves
-  function createAnimLayers(R, vrm, keep) {
+  function createAnimLayers(R, vrm, keepLife) {
     const T = R.THREE;
+    // every humanoid bone the model has: overlays may move any of them
+    const boneNames = vrm.humanoid ? Object.keys(vrm.humanoid.humanBones || {}).filter((n) => vrm.humanoid.getNormalizedBoneNode(n)) : [];
+    const keep = [...new Set([...(keepLife || []), ...boneNames])];
+    const hipsNode = vrm.humanoid ? vrm.humanoid.getNormalizedBoneNode('hips') : null;
+    let hipsMemo = null;
+    const sampled = new Map(); // clip id → [{ node, bone, q, interp }]
+    const qa = new T.Quaternion();
+    const va = new T.Vector3();
     const mixer = new T.AnimationMixer(vrm.scene);
     const clips = new Map(); // id → { clip, fingers }
     let layers = []; // { id, action, w0 (weight when the fade began), w }
@@ -23,7 +53,44 @@
     const memo = new Map();
     const nodeOf = (name) => (vrm.humanoid ? vrm.humanoid.getNormalizedBoneNode(name) : null);
 
+    // a clip's tracks as interpolants on the normalized bones (for overlays)
+    function sampler(id) {
+      if (sampled.has(id)) return sampled.get(id);
+      const c = clips.get(id);
+      if (!c) return null;
+      const byNode = new Map(boneNames.map((b) => [vrm.humanoid.getNormalizedBoneNode(b).name, b]));
+      const list = [];
+      for (const tr of c.clip.tracks) {
+        const [nodeName, prop] = tr.name.split('.');
+        const bone = byNode.get(nodeName);
+        if (!bone || (prop !== 'quaternion' && !(prop === 'position' && bone === 'hips'))) continue;
+        list.push({ node: vrm.humanoid.getNormalizedBoneNode(bone), bone, q: prop === 'quaternion', interp: tr.createInterpolant(), duration: c.clip.duration });
+      }
+      sampled.set(id, list);
+      return list;
+    }
+
+    // lay the overlays over the pose the mixer (and memo) left: [{ id, time, weight, mask }]
+    let lastOverlays = '';
+    function applyOverlays(list) {
+      const shown = [];
+      for (const o of list || []) {
+        if (!(o.weight > 0.0005)) continue;
+        const tracks = sampler(o.id);
+        if (!tracks) continue;
+        shown.push(`${o.layer || 'overlay'}:${o.id}:${o.weight.toFixed(2)}`);
+        for (const tr of tracks) {
+          const k = o.weight * maskWeight(o.mask || 'upper', tr.bone);
+          if (!(k > 0)) continue;
+          const v = tr.interp.evaluate(Math.max(0, Math.min(tr.duration, o.time || 0)));
+          if (tr.q) { qa.fromArray(v).normalize(); tr.node.quaternion.slerp(qa, Math.min(1, k)); } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
+        }
+      }
+      lastOverlays = shown.join(',');
+    }
+
     function add(id, clip) {
+      sampled.delete(id);
       const names = new Set(clip.tracks.map((tr) => tr.name.split('.')[0]));
       const finger = nodeOf('leftIndexProximal');
       clips.set(id, { clip, fingers: !!(finger && names.has(finger.name)) });
@@ -55,8 +122,9 @@
       return true;
     }
 
-    // One frame: the weights of the fade (always summing to 1), then the mixer under the kept bones' memo.
-    function update(dt) {
+    // One frame: the weights of the fade (always summing to 1), then the mixer under the kept bones' memo,
+    // then the overlays (holds, reactions) over it.
+    function update(dt, overlays) {
       t += dt;
       if (fade.to && layers.length > 1) {
         const k = fade.dur > 0 ? smooth((t - fade.from) / fade.dur) : 1;
@@ -71,8 +139,11 @@
         }
       }
       for (const l of layers) l.action.setEffectiveWeight(l.w);
-      if (!layers.length) return false;
+      if (!layers.length) { lastOverlays = ''; return false; }
+      if (hipsNode && hipsMemo) hipsNode.position.copy(hipsMemo);
       window.PetVrmMotion.overClip(memo, nodeOf, keep, mixer, dt);
+      if (hipsNode) { if (hipsMemo) hipsMemo.copy(hipsNode.position); else hipsMemo = hipsNode.position.clone(); }
+      applyOverlays(overlays);
       return true;
     }
 
@@ -86,10 +157,11 @@
       fading: () => layers.length > 1,
       // "id:weight" of every playing clip, for data-layers
       summary: () => layers.map((l) => `${l.id}:${l.w.toFixed(2)}`).join(','),
+      overlays: () => lastOverlays,
       weightSum: () => layers.reduce((s, l) => s + l.w, 0),
       dispose: () => { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); layers = []; clips.clear(); },
     };
   }
 
-  window.PetVrmAnim = { createAnimLayers };
+  window.PetVrmAnim = { createAnimLayers, maskWeight };
 })();

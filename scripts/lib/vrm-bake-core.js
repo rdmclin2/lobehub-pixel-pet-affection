@@ -157,7 +157,7 @@ function centerClip(clip) {
 function bakeParams(clip, e = {}) {
   let c = clip;
   if (Array.isArray(e.trim)) c = trimClip(c, e.trim[0], e.trim[1]);
-  if (e.kind === 'posture' || e.hold === true) c = holdClip(c, 1);
+  if (e.kind === 'posture' || e.hold === true || e.still) c = holdClip(c, 1); // a 2-frame pose: one held second
   if (e.inPlace) c = inPlaceClip(c);
   if (typeof e.amplitude === 'number') c = amplitudeClip(c, e.amplitude);
   if (e.mirror) c = mirrorClip(c);

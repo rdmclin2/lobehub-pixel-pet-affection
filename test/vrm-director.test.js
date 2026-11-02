@@ -17,7 +17,9 @@ function bakedIndex(drop = () => false) {
   for (const [id, e] of Object.entries(manifest.clips)) {
     if (drop(id)) continue;
     const { slot, style } = L.parseId(id);
-    clips[id] = e.src ? { kind: e.kind, style, label: e.label, file: `${style}/${slot}.vrma`, duration: e.kind === 'posture' ? 1 : id.startsWith('idle.happy@male') ? 2 : 10, ...(e.sit ? { sit: true } : {}), ...(e.loop ? { loop: true } : {}) } : { kind: e.kind, style, cycle: e.cycle, every: e.every };
+    const runtime = Object.fromEntries(['mask', 'weight', 'hold', 'fadeIn', 'fadeOut', 'still', 'face', 'gaze'].filter((k) => e[k] !== undefined).map((k) => [k, e[k]]));
+    const duration = e.kind === 'posture' || e.still ? 1 : e.kind === 'reaction' || e.kind === 'hold' ? (e.trim ? e.trim[1] - e.trim[0] : 2.5) : id.startsWith('idle.happy@male') ? 2 : 10;
+    clips[id] = e.src ? { kind: e.kind, style, label: e.label, file: `${style}/${slot}.vrma`, duration, ...(e.sit ? { sit: true } : {}), ...(e.loop ? { loop: true } : {}), ...runtime } : { kind: e.kind, style, cycle: e.cycle, every: e.every };
   }
   return L.cleanIndex({ clips });
 }
@@ -214,8 +216,10 @@ test('holds and faces: lift > think > eat > talk; touch faces by mood; thinking 
     assert.ok(p.face[want] > 0, `${mood} → ${want}: ${JSON.stringify(p.face)}`);
     if (mood === 'angry') assert.equal(p.noBlink, true, 'angry: a stare without blinking');
     if (mood === 'shy') assert.ok(p.gaze.mode === 'fixed' && p.gaze.y < 0, 'shy: looks down aside');
-    const after = run(e, 3).pop();
-    assert.deepEqual(after.face, {}, `${mood}: the face fades back to the mood's`);
+    const after = run(e, 6).pop();
+    assert.equal(after.reaction, null, `${mood}: the reaction is over`);
+    if (mood === 'angry') assert.ok(after.face.angry > 0 && after.face.angry < 0.5, `angry: still a little cross for a while ${JSON.stringify(after.face)}`);
+    else assert.deepEqual(after.face, {}, `${mood}: the face fades back to the mood's`);
   }
   const words = JSON.stringify(run(make(), 60));
   for (const w of ['hop', 'spin', 'dangle', 'stride', 'wobble', 'shake', 'flail']) assert.ok(!words.includes(`"${w}"`), w);
