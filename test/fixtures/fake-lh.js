@@ -134,6 +134,12 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   const tools = args.map((a, i) => (a === '--tool' ? args[i + 1] : null)).filter(Boolean);
   const device = args.includes('--device') ? args[args.indexOf('--device') + 1] : null;
   fs.appendFileSync(path.join(dir, 'runs.log'), JSON.stringify({ prompt, tools, device, agent, topic }) + '\n');
+  if (process.env.FAKE_LH_STREAM) return streamRun(process.env.FAKE_LH_STREAM, topic);
+  // e2e 流式回复: $FAKE_LH_DIR/stream-reply.json { pieces: [..], gapMs, final?, hang? } — one stream_chunk event
+  // per piece, one line each, `gapMs` apart (the way a line-by-line lh would print them); final defaults to
+  // the pieces joined; hang: stop after the pieces and never end (Esc / timeout ends it). Read per run.
+  const replyFile = path.join(dir, 'stream-reply.json');
+  if (fs.existsSync(replyFile)) return slowStreamRun(JSON.parse(fs.readFileSync(replyFile, 'utf8')), topic);
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
     { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
@@ -145,3 +151,79 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   // like the real CLI: after printing the events it idles on a keep-alive socket before exiting
   if (process.env.FAKE_LH_LINGER_MS) setTimeout(() => {}, delay + Number(process.env.FAKE_LH_LINGER_MS));
 } else { console.error('unknown'); process.exit(2); }
+
+// ---- streaming runs (test/lh-client.test.js) ------------------------------------------------------------
+// Writes stdout in small byte slices with pauses, so slices cut JSON objects, strings and UTF-8 characters
+// in half, the way pipe reads can. FAKE_LH_STREAM:
+//   ndjson         one event per line, text in stream_chunk events, then stream_end / agent_runtime_end
+//   ndjson-steps   a preamble step ("我看看") before a tool step and the final answer
+//   ndjson-error   two text chunks, then an `error` event: the run breaks off
+//   ndjson-hang    two text chunks, then nothing (the caller's timeout ends it)
+//   array          today's lh: the same events as one pretty-printed array, written at once
+//   fixture:<f>    replays the stdout of a recorded sample in test/fixtures/streaming/<f>
+function streamRun(mode, topic) {
+  const chunk = (content) => ({ type: 'stream_chunk', data: { chunkType: 'text', content } });
+  const pieces = ['你好呀～', '今天的风', '有点凉，', '要不要🍵喝杯热茶？'];
+  const answer = (parts) => [
+    { type: 'stream_start', data: { assistantMessage: { topicId: topic } } },
+    { type: 'stream_chunk', data: { chunkType: 'reasoning', reasoning: '想想怎么回答' } },
+    ...parts.map(chunk),
+    { type: 'stream_end', data: { finalContent: parts.join(''), usage: { cost: 0.002 } } },
+  ];
+  const end = [{ type: 'agent_runtime_end', data: {} }];
+  let out;
+  let slice = Number(process.env.FAKE_LH_SLICE || 7);
+  if (mode === 'ndjson' || mode === 'array') {
+    const events = [{ type: 'agent_runtime_init', data: {} }, ...answer(pieces), ...end];
+    out = mode === 'array' ? JSON.stringify(events, null, 2) + '\n' : events.map((e) => JSON.stringify(e) + '\n').join('');
+    if (mode === 'array') slice = 1 << 20; // one write
+  } else if (mode === 'ndjson-steps') {
+    out = [
+      { type: 'agent_runtime_init', data: {} },
+      ...answer(['我看', '看']),
+      { type: 'tool_start', data: { name: 'list_directory', args: '{"path":"{~}"}' } },
+      { type: 'tool_end', data: { result: 'a/\nb/' } },
+      ...answer(['桌面上有', ' a 和 b 两个文件夹。']),
+      ...end,
+    ].map((e) => JSON.stringify(e) + '\n').join('');
+  } else if (mode === 'ndjson-error' || mode === 'ndjson-hang') {
+    out = [{ type: 'stream_start', data: { assistantMessage: { topicId: topic } } }, chunk('你好呀～'), chunk('今天的风')].map((e) => JSON.stringify(e) + '\n').join('');
+    if (mode === 'ndjson-error') out += JSON.stringify({ type: 'error', data: { message: 'model overloaded' } }) + '\n';
+  } else if (mode.startsWith('fixture:')) {
+    const rec = require(path.join(__dirname, 'streaming', mode.slice('fixture:'.length)));
+    out = rec.chunks.filter((c) => c.stream === 'stdout').map((c) => c.text).join('');
+    slice = 1 << 20;
+  }
+  const bytes = Buffer.from(out, 'utf8');
+  let i = 0;
+  const next = () => {
+    if (i >= bytes.length) {
+      if (mode === 'ndjson-error') process.exitCode = 1;
+      if (mode === 'ndjson-hang') setTimeout(() => {}, 60000);
+      return;
+    }
+    process.stdout.write(bytes.subarray(i, i + slice), () => setTimeout(next, 4));
+    i += slice;
+  };
+  next();
+}
+
+function slowStreamRun({ pieces = [], gapMs = 300, final = null, hang = false }, topic) {
+  const lines = [
+    { type: 'agent_runtime_init', data: {} },
+    { type: 'stream_start', data: { assistantMessage: { topicId: topic } } },
+    ...pieces.map((content) => ({ type: 'stream_chunk', data: { chunkType: 'text', content } })),
+  ];
+  const tail = hang ? [] : [
+    { type: 'stream_end', data: { finalContent: final == null ? pieces.join('') : final, usage: { cost: 0.001 } } },
+    { type: 'agent_runtime_end', data: {} },
+  ];
+  let i = 0;
+  const next = () => {
+    if (i < 2) { process.stdout.write(JSON.stringify(lines[i++]) + '\n'); return next(); }
+    if (i < lines.length) { process.stdout.write(JSON.stringify(lines[i++]) + '\n', () => setTimeout(next, gapMs)); return; }
+    if (hang) { setTimeout(() => {}, 120000); return; }
+    for (const e of tail) process.stdout.write(JSON.stringify(e) + '\n');
+  };
+  setTimeout(next, gapMs);
+}

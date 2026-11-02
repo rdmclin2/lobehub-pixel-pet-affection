@@ -1,0 +1,35 @@
+{
+  "command": [
+    "lh",
+    "agent",
+    "run",
+    "-a",
+    "agt_REDACTED1",
+    "-p",
+    "用四句话介绍一下你自己，每句二十字左右。",
+    "--json"
+  ],
+  "exitCode": 0,
+  "totalMs": 23348,
+  "stdoutChunks": 2,
+  "firstStdoutMs": 8394,
+  "lastStdoutMs": 8395,
+  "chunks": [
+    {
+      "ms": 8395,
+      "stream": "stdout",
+      "text": "[\n  {\n    \"data\": {\n      \"status\": \"idle\"\n    },\n    \"operationId\": \"op_REDACTED1\",\n    \"stepIndex\": 0,\n    \"timestamp\": 1793546349148,\n    \"type\": \"agent_runtime_init\"\n  },\n  {\n    \"data\": {\n      \"uiMessages\": \"[redacted: 1776 bytes]\",\n      \"llmCalls\": \"[redacted: 1 bytes]\"\n    },\n    \"stepIndex\": 0,\n    \"type\": \"step_start\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546351423\n  },\n  {\n    \"data\": {\n      \"assistantMessage\": {\n        \"id\": \"msg_REDACTED1\",\n        \"agentId\": \"agt_REDACTED1\",\n        \"groupId\": null,\n        \"model\": \"deepseek-flash\",\n        \"parentId\": \"msg_REDACTED2\",\n        \"provider\": \"lobehub\",\n        \"role\": \"assistant\",\n        \"threadId\": null,\n        \"topicId\": \"tpc_REDACTED1\"\n      },\n      \"model\": \"deepseek-flash\",\n      \"provider\": \"lobehub\"\n    },\n    \"stepIndex\": 0,\n    \"type\": \"stream_start\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546351633\n  },\n  {\n    \"data\": {\n      \"chunkType\": \"reasoning\",\n      \"reasoning\": \"用户要求四句话介绍自己，每句约20字。简短中文。身份是pixel-pet streaming probe (temp)。\"\n    },\n    \"operationId\": \"op_REDACTED1\",\n    \"stepIndex\": 0,\n    \"timestamp\": 1793546353311,\n    \"type\": \"stream_chunk\"\n  },\n  {\n    \"data\": {\n      \"chunkType\": \"text\",\n      \"content\": \"我是像素宠物流式探测小分身，临时上线陪着你聊天。我眼睛能看图但听不见声音，最多流式说话不卡\"\n    },\n    \"operationId\": \"op_REDACTED1\",\n    \"stepIndex\": 0,\n    \"timestamp\": 1793546353510,\n    \"type\": \"stream_chunk\"\n  },\n  {\n    \"data\": {\n      \"chunkType\": \"text\",\n      \"content\": \"顿。平时爱蹲在桌面角落，看你敲代码写文档。有活儿尽管喊我，短平快回答不废话。\"\n    },\n    \"operationId\": \"op_REDACTED1\",\n    \"stepIndex\": 0,\n    \"timestamp\": 1793546353786,\n    \"type\": \"stream_chunk\"\n  },\n  {\n    \"data\": {\n      \"finalContent\": \"我是像素宠物流式探测小分身，临时上线陪着你聊天。我眼睛能看图但听不见声音，最多流式说话不卡顿。平时爱蹲在桌面角落，看你敲代码写文档。有活儿尽管喊我，短平快回答不废话。\"\n    },\n    \"stepIndex\": 0,\n    \"type\": \"stream_end\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546353793\n  },\n  {\n    \"data\": {\n      \"reason\": \"final_answer\"\n    },\n    \"stepIndex\": 0,\n    \"type\": \"visible_output_end\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546353800\n  },\n  {\n    \"data\": {\n      \"llmCalls\": \"[redacted: 1 bytes]\",\n      \"nextStepScheduled\": false,\n      \"stepIndex\": 0\n    },\n    \"stepIndex\": 0,\n    \"type\": \"step_complete\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546354069\n  },\n  {\n    \"data\": {\n      \"uiMessages\": \"[redacted: 2726 bytes]\",\n      \"llmCalls\": \"[redacted: 1 bytes]\"\n    },\n    \"stepIndex\": 1,\n    \"type\": \"step_start\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546354702\n  },\n  {\n    \"data\": {\n      \"phase\": \"execution_complete\",\n      \"reason\": \"completed\",\n      \"reasonDetail\": \"LLM response completed without tool calls\"\n    },\n    \"stepIndex\": 1,\n    \"type\": \"step_complete\",\n    \"operationId\": \"op_REDACTED1\",\n    \"timestamp\": 1793546354776\n  },\n  {\n    \"data\": {\n      \"finalState\": \"[redacted: 58230 bytes]\",\n      \"reason\": \"done\",\n      \"reasonDetail\": \"Agent runtime completed successfully\",\n      \"uiMessages\": \"[redacted: 2726 bytes]\"\n    },\n    \"operationId\": \"op_REDACTED1\",\n    \"stepIndex\": 1,\n    \"timestamp\": 1793546354937,\n    \"type\": \"agent_runtime_end\"\n  }\n]\n",
+      "mergedWrites": [
+        {
+          "ms": 8394,
+          "bytes": 65536
+        },
+        {
+          "ms": 8395,
+          "bytes": 31600
+        }
+      ]
+    }
+  ],
+  "redacted": "ids replaced by placeholders; private context fields replaced by their size (scripts/streaming-redact.js)"
+}

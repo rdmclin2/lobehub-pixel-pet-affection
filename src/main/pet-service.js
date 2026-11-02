@@ -188,7 +188,9 @@ class PetService extends EventEmitter {
   // random one now and then).
   // `turn`: the owner's round this line answers ({ origin, turnId }, from _logUser); without one the
   // line is the pet's own and its origin comes from `kind` (greeting, proactive, touch, …).
-  _say(text, source, kind, reason = null, voiceMood = null, turn = null) {
+  // `stream`: the reply stream (_openStream) this line ends; its id goes with the line so the window turns the
+  // bubble it has been filling into this final text instead of starting a new one.
+  _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null) {
     if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
@@ -196,8 +198,54 @@ class PetService extends EventEmitter {
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
-    this.emit('say', { text: ex.text || text, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}) });
+    const shown = ex.text || text;
+    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
     if (this.pet) this._save();
+    return shown;
+  }
+
+  // ---- 流式回复 (docs/streaming-ui.md) --------------------------------------------------------------------
+  // One agent turn's reply as it is written. `onDelta` goes to the client (lh-client / responses-client run);
+  // every new piece becomes a 'chat-delta' { id, n, kind, turnId, text } with the text shown so far (finished
+  // and half-written meme tags taken out, memes.streamingText). The guard looks at everything so far: from
+  // the first hit on, nothing more is shown ('chat-delta' with withheld: true, text ''); the final line is
+  // the refusal as before. The id is new for every turn, so a late piece of an earlier turn (or of a
+  // proactive line) never lands in another one's bubble. Each stream ends with exactly one 'chat-done'
+  // { id, ok, reason } — after the final 'say' (which carries streamId) when there was a reply.
+  // Everything that needs the whole reply (guard verdict, meme picture, 聊天记录, affection, reading aloud)
+  // still runs once, on the final text.
+  _openStream(kind, turn = null) {
+    const st = { id: `r${(this._streamSeq = (this._streamSeq || 0) + 1)}${this.now().toString(36)}`, kind, turnId: turn ? turn.turnId : null, n: 0, shown: '', withheld: false, closed: false };
+    st.onDelta = (_chunk, soFar) => {
+      if (st.closed || st.withheld || this._cancelRequested) return; // Esc / 停止: nothing more is shown
+      if (!contentGuard.checkReply(soFar).ok) {
+        st.withheld = true;
+        st.shown = '';
+        this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text: '', withheld: true });
+        return;
+      }
+      const text = memes.streamingText(soFar);
+      if (!text || text === st.shown) return;
+      st.shown = text;
+      this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text });
+    };
+    // The turn is sent again another way (_runTurn's fallback): what the first try showed goes, the bubble
+    // starts over with the new reply (same id, so it stays one bubble and one 聊天记录 line).
+    st.restart = () => {
+      if (st.closed) return;
+      const had = st.shown || st.withheld;
+      st.shown = '';
+      st.withheld = false;
+      if (had) this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text: '', restart: true });
+    };
+    return st;
+  }
+
+  // `text`: the final line as said (guarded, meme tag out); null when there was none (canceled, error).
+  _closeStream(st, ok, reason = null, text = null) {
+    if (!st || st.closed) return;
+    st.closed = true;
+    this.emit('chat-done', { id: st.id, ok: !!ok, reason, text, kind: st.kind, turnId: st.turnId, deltas: st.n, withheld: st.withheld });
   }
 
   // ---- 聊天记录 (core/chat-log.js) ----------------------------------------------------------------
@@ -240,7 +288,7 @@ class PetService extends EventEmitter {
   historySession(id) {
     const s = chatLog.userSessions(this.log.list()).sessions.find((x) => x.id === String(id || ''));
     if (!s) return { ok: false, reason: 'not-found' };
-    const pick = ({ id: mid, at, role, text, attachments, status }) => ({ id: mid, at, role, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
+    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
     return { ok: true, session: { ...s, name: this._nameOf(s.speciesId), messages: s.messages.map(pick) } };
   }
 
@@ -649,22 +697,53 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? this._deviceId : null;
   }
 
-  // One agent turn. A turn that may use this computer goes the direct way when it is up; if that fails before
-  // any of her tools ran, the same turn is sent again through `lh connect` (a tool that already ran must not
-  // run twice, so then the error stands).
-  async _runTurn(args) {
+  // Can a turn go straight to the Responses API right now? The CLI's login is readable (or an API key is set)
+  // and the direct way has not failed in the last LOCAL_RETRY_MS. Only looks at local files.
+  _directUp() {
+    return !!this.responses && this.now() - this._responsesFailedAt >= LOCAL_RETRY_MS && this.responses.available();
+  }
+
+  // One agent turn (docs/streaming.md §1). Every turn goes the direct way (Responses API, SSE) when it is up,
+  // because that is the way her reply arrives as it is written; `lh agent run --json` (lh 0.0.62–0.0.73) only
+  // prints its events when the run is over.
+  // - Local abilities on and checked the direct way: her tools are function tools run here. If that fails before
+  //   any of them ran, the same turn is sent again through `lh connect` (a tool that already ran must not run
+  //   twice, so then the error stands).
+  // - Local abilities on through a device (`lh connect`): `lh agent run --tool … --device …` as before.
+  // - Everything else (local abilities off, a greeting, a proactive line, a topic): direct with no tools, same
+  //   agent and topic (a response id is the topic id). Not up (no login, a recent failure) → `lh agent run`.
+  //   If the direct turn fails in any way but Esc / the time limit, the same turn goes through `lh agent run`
+  //   once: the reply is not lost, the bubble starts over with that one (no doubled text), and the line is said
+  //   and saved to 聊天记录 once, by the caller, after this returns.
+  // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
+  async _runTurn(args, stream = null) {
+    if (stream) args = { ...args, onDelta: stream.onDelta };
     const tools = this._tools();
-    if (!tools.length || this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+    if (tools.length) {
+      if (this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+      try {
+        return await this.responses.run({ ...args, tools });
+      } catch (e) {
+        if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+        this.emit('error', e);
+        this._responsesFailedAt = this.now();
+        await this._verifyLocal({ force: true });
+        this._throwIfCanceled();
+        if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
+        if (stream) stream.restart();
+        return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+      }
+    }
+    if (!this._directUp()) return this.lh.run({ ...args, tools: [], device: null });
     try {
-      return await this.responses.run({ ...args, tools });
+      return await this.responses.run({ ...args, tools: [] });
     } catch (e) {
-      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
-      this.emit('error', e);
-      this._responsesFailedAt = this.now();
-      await this._verifyLocal({ force: true });
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT') throw e;
       this._throwIfCanceled();
-      if (this._localOk) this.localWarning = `直连 LobeHub 失败，这次改用 lh connect（${String(e.message).slice(0, 80)}）`;
-      return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
+      this.emit('error', Object.assign(new Error(`直连流式失败，这次改用 lh agent run：${e.message}`), { code: e.code, cause: e }));
+      this._responsesFailedAt = this.now();
+      if (stream) stream.restart();
+      return this.lh.run({ ...args, tools: [], device: null });
     }
   }
 
@@ -673,22 +752,27 @@ class PetService extends EventEmitter {
     const t = this.now();
     const c = this._c();
     const sp = getSpecies(c.speciesId);
-    if (this.busy || !this.budget.canSpend(t)) {
-      this._say(this._fallback(sp, kind), 'fallback', kind, this.busy ? 'agent busy' : 'hourly LLM budget spent');
+    // While she is busy (a reply may be streaming into the bubble) a system line would cut into that reply and
+    // land in 聊天记录 between the owner's message and her answer, so it is dropped; the next heartbeat asks again.
+    if (this.busy) return;
+    if (!this.budget.canSpend(t)) {
+      this._say(this._fallback(sp, kind), 'fallback', kind, 'hourly LLM budget spent');
       return;
     }
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
+    const stream = this._openStream(kind);
     try {
       this.budget.spend(t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this.settings) });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this.settings) }, stream);
       if (res.topicId) c.topicId = res.topicId;
       if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
-      this._say(this._guard(res.text), 'llm', kind);
+      this._closeStream(stream, true, null, this._say(this._guard(res.text), 'llm', kind, null, null, null, stream));
     } catch (e) {
+      this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code === 'ECANCELED') {
         this._save();
         return;
@@ -718,11 +802,13 @@ class PetService extends EventEmitter {
     this._cancelRequested = false;
     this.emit('thinking', true);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
+    const stream = this._openStream('chat', turn);
     try {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
       if (paths.length && !this._localOk) {
+        this._closeStream(stream, false, 'error');
         this._logPet('', 'chat', turn, 'error');
         return { ok: false, reason: 'local-error', message: this.localError };
       }
@@ -740,14 +826,15 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
-      this._say(text, 'llm', 'chat', null, null, turn);
+      this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream));
       this._reportAffection(affection);
       return { ok: true, text, cost: res.cost, affection };
     } catch (e) {
+      this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code !== 'ECANCELED') this.emit('error', e);
       this._logPet('', 'chat', turn, e.code === 'ECANCELED' ? 'canceled' : 'error');
       this._save(); // touch() above may have woken the pet; keep the sprite in sync
@@ -794,18 +881,20 @@ class PetService extends EventEmitter {
     this.emit('thinking', true);
     // a preset prompt picked from the panel: kept with origin 'topic', not shown in 聊天记录
     const turn = this._logUser(`[话题] ${topic.label}`, 'topic', `topic:${topic.id}`);
+    const stream = this._openStream(`topic:${topic.id}`, turn);
     try {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings) });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings) }, stream);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);
-      this._say(text, 'llm', `topic:${topic.id}`, null, null, turn);
+      this._closeStream(stream, true, null, this._say(text, 'llm', `topic:${topic.id}`, null, null, turn, stream));
       this._reportAffection(affection);
       return { ok: true, text, affection };
     } catch (e) {
+      this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code === 'ECANCELED') {
         this._logPet('', `topic:${topic.id}`, turn, 'canceled');
         this._save();

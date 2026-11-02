@@ -15,10 +15,11 @@ const readLog = (dir, name) => (fs.existsSync(path.join(dir, name)) ? fs.readFil
 const myDevice = (id) => ({ deviceId: id, hostname: 'Mac', platform: process.platform, online: true, channels: [{ channel: 'desktop', connectedAt: new Date().toISOString() }] });
 
 function fakeResponses({ available = true, fail = null } = {}) {
-  const r = { runs: [], canceled: 0, available: () => available, cancel: () => { r.canceled++; } };
+  // `fail` applies to turns with her local tools; set r.fail later to fail every turn from then on
+  const r = { runs: [], canceled: 0, fail: null, available: () => available, cancel: () => { r.canceled++; } };
   r.run = async (args) => {
     r.runs.push(args);
-    if (fail) throw fail;
+    if (r.fail || (fail && args.tools && args.tools.length)) throw r.fail || fail;
     return { text: '找到了，在桌面', topicId: args.topicId || 'tpc_DIRECT', cost: null };
   };
   return r;
@@ -54,12 +55,16 @@ test('with the direct path up, turning local abilities on needs no device and tu
   assert.match(run.prompt, /\[本机\]/);
 });
 
-test('without local abilities turns stay on `lh agent run`', async () => {
+test('without local abilities turns also go the direct way (streamed), with no tools, on the same topic', async () => {
   const responses = fakeResponses();
   const { svc, dir } = await hatched(responses);
+  const runsBefore = readLog(dir, 'runs.log').length;
   await svc.chat('在吗');
-  assert.equal(responses.runs.length, 0);
-  assert.match(readLog(dir, 'runs.log').pop().prompt, /在吗/);
+  const run = responses.runs.pop();
+  assert.match(run.prompt, /在吗/);
+  assert.deepEqual(run.tools, []);
+  assert.equal(run.topicId, svc._c().topicId);
+  assert.equal(readLog(dir, 'runs.log').length, runsBefore); // no `lh agent run`
 });
 
 test('no readable CLI login: local abilities use `lh connect` as before', async () => {
@@ -77,9 +82,10 @@ test('a direct turn that fails before any tool ran is sent again through `lh con
   const { svc, dir, errors, clock } = await hatched(responses);
   fs.writeFileSync(path.join(dir, 'devices.json'), JSON.stringify([myDevice('dev_MAC')]));
   await svc.setLocalAbilities(true);
+  const directBefore = responses.runs.length; // her hello went the direct way (no tools)
   const res = await svc.chat('看看');
   assert.equal(res.ok, true);
-  assert.equal(responses.runs.length, 1);
+  assert.equal(responses.runs.length, directBefore + 1);
   const run = readLog(dir, 'runs.log').pop();
   assert.deepEqual(run.tools, ['lobe-local-system']);
   assert.match(run.prompt, /看看/);
@@ -87,11 +93,11 @@ test('a direct turn that fails before any tool ran is sent again through `lh con
   assert.match(svc.localWarning, /lh connect/);
   assert.ok(errors.some((e) => /502/.test(e.message)));
   await svc.chat('再看看');
-  assert.equal(responses.runs.length, 1); // not retried right away
+  assert.equal(responses.runs.length, directBefore + 1); // not retried right away
   clock.t += 6 * 60 * 1000;
   responses.run = async (args) => { responses.runs.push(args); return { text: 'ok', topicId: args.topicId }; };
   await svc.chat('现在呢');
-  assert.equal(responses.runs.length, 2); // back on the direct path
+  assert.equal(responses.runs.length, directBefore + 2); // back on the direct path
   assert.equal(svc.localVia, 'direct');
 });
 
@@ -108,10 +114,10 @@ test('once a local tool ran, a failed direct turn is not repeated another way', 
 
 test('Stop cancels the direct request too', async () => {
   const responses = fakeResponses();
+  const { svc } = await hatched(responses); // her hello goes the direct way too (no tools)
   let release;
   responses.run = (args) => new Promise((_, reject) => { release = reject; responses.runs.push(args); });
   responses.cancel = () => release(Object.assign(new Error('Canceled'), { code: 'ECANCELED' }));
-  const { svc } = await hatched(responses);
   await svc.setLocalAbilities(true);
   const p = svc.chat('慢慢找');
   await new Promise((r) => setTimeout(r, 50));

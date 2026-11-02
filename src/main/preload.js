@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld('pet', {
   onWindowShown: on('window-shown'),
   onSay: on('say'),
   onThinking: on('thinking'),
+  // 流式回复: { id, n, kind, turnId, text (shown so far), withheld?, restart? } while a reply is written; { id, ok, reason } when it ends
+  onChatDelta: on('chat-delta'),
+  onChatDone: on('chat-done'),
   onAffection: on('affection'),
   onSettings: on('settings'),
   onUpdateStatus: on('update-status'),

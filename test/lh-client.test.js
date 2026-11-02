@@ -137,3 +137,111 @@ test('a real failure to start the daemon still throws', async () => {
   lh.env.FAKE_LH_CONNECT_FAIL = '1';
   await assert.rejects(() => lh.startConnectDaemon(), /lh connect failed/);
 });
+
+// ---- streaming (onDelta) ------------------------------------------------------------------------------
+const { createEventScanner } = require('../src/core/lh-client');
+const streamed = async (mode, extra = {}) => {
+  const { lh } = setup();
+  lh.env.FAKE_LH_STREAM = mode;
+  Object.assign(lh.env, extra.env || {});
+  const deltas = [];
+  const t0 = Date.now();
+  const onDelta = (chunk, full) => deltas.push({ chunk, full, ms: Date.now() - t0 });
+  const run = lh.run({ agentId: 'agt_1', prompt: 'hi', onDelta, ...extra.run });
+  return { lh, deltas, run };
+};
+const noBrokenChars = (s) => !s.includes('�');
+
+test('onDelta: text chunks of one-event-per-line output arrive while lh is still writing, in order, whole characters only', async () => {
+  const { deltas, run } = await streamed('ndjson');
+  const r = await run;
+  assert.deepEqual(deltas.map((d) => d.chunk), ['你好呀～', '今天的风', '有点凉，', '要不要🍵喝杯热茶？']);
+  assert.ok(deltas.every((d) => noBrokenChars(d.chunk)), 'a UTF-8 character split between two pipe reads stays whole');
+  for (let i = 0; i < deltas.length; i++) assert.equal(deltas[i].full, deltas.slice(0, i + 1).map((d) => d.chunk).join(''));
+  assert.ok(deltas[deltas.length - 1].ms - deltas[0].ms > 20, 'spread over the writes, not delivered at the end');
+  // the result is the same as without streaming; reasoning never reaches onDelta
+  assert.deepEqual(r, { text: '你好呀～今天的风有点凉，要不要🍵喝杯热茶？', topicId: 'tpc_FAKE1', cost: 0.002 });
+  assert.equal(deltas.at(-1).full, r.text);
+});
+
+test('onDelta: every 1-byte cut of the stream gives the same chunks (JSON, strings and characters cut anywhere)', async () => {
+  const { deltas, run } = await streamed('ndjson', { env: { FAKE_LH_SLICE: '1' } });
+  await run;
+  assert.deepEqual(deltas.map((d) => d.chunk), ['你好呀～', '今天的风', '有点凉，', '要不要🍵喝杯热茶？']);
+});
+
+test('onDelta: a tool step\'s preamble streams too, the next step starts after a paragraph break; the final text is the last step', async () => {
+  const { deltas, run } = await streamed('ndjson-steps');
+  const r = await run;
+  assert.deepEqual(deltas.map((d) => d.chunk), ['我看', '看', '\n\n桌面上有', ' a 和 b 两个文件夹。']);
+  assert.equal(deltas.at(-1).full, '我看看\n\n桌面上有 a 和 b 两个文件夹。');
+  assert.equal(r.text, '桌面上有 a 和 b 两个文件夹。');
+  assert.equal(r.cost, 0.004);
+});
+
+test('onDelta: today\'s lh (the whole --json array at once) falls back to the one-shot result, chunks in one burst', async () => {
+  const { deltas, run } = await streamed('array');
+  const r = await run;
+  assert.equal(deltas.map((d) => d.chunk).join(''), r.text);
+  assert.equal(r.text, '你好呀～今天的风有点凉，要不要🍵喝杯热茶？');
+});
+
+test('onDelta: replaying the recorded lh 0.0.62 --json sample gives its 11 text chunks, adding up to the final reply', async () => {
+  const sample = require('./fixtures/streaming/lh-run-json-long.json');
+  const s = sample.chunks.filter((c) => c.stream === 'stdout').map((c) => c.text).join('');
+  const expected = JSON.parse(s.slice(s.indexOf('['))).filter((e) => e.type === 'stream_chunk' && e.data.chunkType === 'text').map((e) => e.data.content);
+  const { deltas, run } = await streamed('fixture:lh-run-json-long.json');
+  const r = await run;
+  assert.equal(expected.length, 11);
+  assert.deepEqual(deltas.map((d) => d.chunk), expected);
+  assert.equal(deltas.at(-1).full.trim(), r.text);
+});
+
+test('onDelta: an lh without stream_chunk events still calls it once with the whole reply', async () => {
+  const { deltas, run } = await streamed('');
+  const r = await run;
+  assert.equal(r.text, 'echo: hi');
+  assert.deepEqual(deltas.map(({ chunk, full }) => ({ chunk, full })), [{ chunk: 'echo: hi', full: 'echo: hi' }]);
+});
+
+test('onDelta: an lh that rejects an optional flag is retried without it, and the reply still streams once', async () => {
+  const { lh, deltas, run } = await streamed('', { env: { FAKE_LH_NO_DEVICE_FLAG: '1' }, run: { device: 'dev_1' } });
+  assert.equal((await run).text, 'echo: hi');
+  assert.deepEqual(deltas.map((d) => d.chunk), ['echo: hi']);
+  assert.equal(lh.env.FAKE_LH_NO_DEVICE_FLAG, '1');
+});
+
+test('onDelta: a run that breaks off with an error event keeps the shown text but fails the turn', async () => {
+  const { deltas, run } = await streamed('ndjson-error');
+  await assert.rejects(run, (e) => e.code === 1 && /Agent run failed/.test(e.message));
+  assert.deepEqual(deltas.map((d) => d.chunk), ['你好呀～', '今天的风']);
+});
+
+test('onDelta: a run that stops writing mid-reply times out (ETIMEDOUT) after the chunks it did write', async () => {
+  const { deltas, run } = await streamed('ndjson-hang', { run: { timeoutMs: 800 } });
+  await assert.rejects(run, { code: 'ETIMEDOUT' });
+  assert.deepEqual(deltas.map((d) => d.chunk), ['你好呀～', '今天的风']);
+});
+
+test('onDelta: a throwing callback does not cost the turn', async () => {
+  const { lh } = setup();
+  lh.env.FAKE_LH_STREAM = 'ndjson';
+  const r = await lh.run({ agentId: 'agt_1', prompt: 'hi', onDelta: () => { throw new Error('ui bug'); } });
+  assert.equal(r.text, '你好呀～今天的风有点凉，要不要🍵喝杯热茶？');
+});
+
+test('createEventScanner: objects split anywhere, braces and quotes inside strings, non-JSON between objects', () => {
+  const src = '[\n  {"type":"a","s":"{\\"x\\"}"},\n  {"type":"b","n":{"m":[{"k":1}]}}\n]\n[INFO] {not json}\n{"type":"c"}\n';
+  for (let cut = 1; cut < src.length; cut++) {
+    const got = [];
+    const push = createEventScanner((e) => got.push(e.type));
+    push(src.slice(0, cut));
+    push(src.slice(cut));
+    assert.deepEqual(got, ['a', 'b', 'c'], `cut at ${cut}`);
+  }
+});
+
+test('parseRunEvents also reads one event per line', () => {
+  const out = parseRunEvents([{ type: 'stream_start', data: { assistantMessage: { topicId: 'tpc_9' } } }, { type: 'stream_end', data: { finalContent: '嗨', usage: { cost: 1 } } }].map((e) => JSON.stringify(e)).join('\n'));
+  assert.deepEqual(out, { text: '嗨', topicId: 'tpc_9', cost: 1 });
+});
