@@ -1,0 +1,29 @@
+imported vrm-dafeiyu-e2e; prefs.framing=full, framings={}
+
+vrm/frame-1-test-full.png: data-framing=full; opaque box {"left":0.259,"right":0.741,"top":0.075,"bottom":1,"cx":0.5,"fill":0.224,"height":0.925}; camera {"x":0,"y":0.6975000000000001,"z":3.4556069555349382,"fov":22}; window {"x":988,"y":612,"width":268,"height":388}; band (measured, unused) {"top":1.2600000000000002,"bottom":0.492,"cx":0,"width":0.32,"source":"bones","cut":0.6144000000000001}
+
+vrm/frame-2-admin-behavior-full.png: card text 「大小与取景宠物大小桌面上角色的大小，窗口跟着变，右下角保持不动。默认：125%125%取景全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。目前对 VRM 角色生效（像素 / 图片角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。默认：全身全身半身」
+
+vrm/frame-3-test-half.png + vrm/frame-glide-to-half.gif (14 frames): data-framing=half, data-cut=0.614, band {"top":1.2600000000000002,"bottom":0.492,"cx":0,"width":0.32,"source":"bones","cut":0.6144000000000001}; opaque box {"left":0.145,"right":0.855,"top":0.013,"bottom":1,"cx":0.5,"fill":0.436,"height":0.987} (full: {"left":0.259,"right":0.741,"top":0.075,"bottom":1,"cx":0.5,"fill":0.224,"height":0.925}); camera z 3.456 → 1.962, y 0.698 → 0.896; window {"x":988,"y":612,"width":268,"height":388} (unchanged); figures created 1 → 1; glide z 3.44 → 3.36 → 3.05 → 3.05 → 2.74 → 2.43 → 2.24 → 2.10 → 1.99 → 1.99 → 1.96 → 1.96 → 1.96 → 1.96
+
+vrm/frame-4-half-gaze-right.png + vrm/frame-half-gaze.gif (22 frames): data-gaze left -0.98,0.60 → right 0.98,0.60
+
+touchPoint down the middle of the half-body picture: y=0.08: head (y_full=0.04, half); y=0.2: face (y_full=0.12, half); y=0.35: chest (y_full=0.21, half); y=0.5: chest (y_full=0.30, half); y=0.65: hands (y_full=0.40, half); y=0.8: butt (y_full=0.49, half); y=0.9: butt (y_full=0.55, half); y=0.97: butt (y_full=0.59, half)
+
+vrm/frame-half-idle.gif (16 frames); vrm/frame-half-drag.gif (8 frames); vrm/frame-6-half-lifted.png: clicks → pat; drag → state lifted (expr aa:0.23,surprised:0.90), framing half; window 988,612 → 1114,549
+
+vrm/frame-7-half-lipsync.png + vrm/frame-half-lipsync.gif (24 frames): lip modes audio,synthetic, max mouth 1.00; after: aa:0.00,ih:0.00,ou:0.00,ee:0.00,oh:0.00
+
+vrm/frame-8-test-full-again.png + vrm/frame-glide-to-full.gif (14 frames): data-framing=full; camera {"x":0,"y":0.6975000000000001,"z":3.4556069555349382,"fov":22} = the first one; opaque box {"left":0.259,"right":0.741,"top":0.075,"bottom":1,"cx":0.5,"fill":0.222,"height":0.925} (first: {"left":0.259,"right":0.741,"top":0.075,"bottom":1,"cx":0.5,"fill":0.224,"height":0.925}); glide z 1.97 → 2.03 → 2.15 → 2.32 → 2.73 → 2.94 → 2.94 → 3.22 → 3.36 → 3.45 → 3.46 → 3.46 → 3.46 → 3.46 → 3.46 → 3.46 → 3.46
+
+vrm/frame-9-admin-character-half.png: framings {"dafeiyu":"half"} with prefs.framing full → pet half (source character); 跟随全局 → framings {} → pet full
+
+vrm/frame-10-real1-full.png: full opaque box {"left":0.006,"right":1,"top":0.058,"bottom":1,"cx":0.503,"fill":0.696,"height":0.942}, camera z 2.565 (VRM 1.0)
+vrm/frame-11-real1-half.png: half opaque box {"left":0,"right":1,"top":0.018,"bottom":1,"cx":0.5,"fill":0.87,"height":0.982}, camera z 2.002, band {"top":0.972376766853707,"bottom":0.1766575338212789,"cx":3.89044164010548e-17,"width":0.743139897287211,"source":"bones","cut":0.8196223959270663} (蓝色小肥鱼Deepseek)
+
+vrm/frame-10-real2-full.png: full opaque box {"left":0.325,"right":0.675,"top":0.097,"bottom":1,"cx":0.5,"fill":0.147,"height":0.903}, camera z 5.209 (VRM 0.x)
+vrm/frame-11-real2-half.png: half opaque box {"left":0,"right":1,"top":0,"bottom":1,"cx":0.5,"fill":0.787,"height":1}, camera z 1.638, band {"top":1.5581172618207642,"bottom":0.950060927452,"cx":-1.1469213197642845e-8,"width":0.22209302516918578,"source":"bones","cut":0.3506205412218593} (AvatarSample_A)
+
+vrm/frame-12-after-restart-half.png: after restart prefs.framing=half, data-framing=half, opaque box {"left":0,"right":1,"top":0,"bottom":1,"cx":0.5,"fill":0.78,"height":1}
+
+no console errors
