@@ -56,6 +56,40 @@ export const SimpleSettingsPage = ({ page }: { page: string }) => (
   </>
 );
 
+// ---- 桌宠行为 ---------------------------------------------------------------------------------------------
+/** The schema cards plus 找回桌宠 (⋯ → 回到右下角 / the tray's 显示桌宠, for a pet covered or off screen). */
+export const BehaviorPage = () => {
+  const { view } = useStore();
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <Header page="behavior" />
+      <SettingsForm page="behavior" />
+      <Surface description="她被窗口挡住、跑到屏幕外，或者换了显示器找不到时：让她出现并回到主屏幕右下角（同桌宠窗口 ⋯ → 回到右下角）。" title="位置">
+        <Flexbox horizontal>
+          <Button
+            data-place-pet
+            disabled={!view}
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await api().placePet();
+                if (r && r.ok) toast.success('她回到右下角了');
+                else toast.error(reasonText(r));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            找回桌宠（回到右下角）
+          </Button>
+        </Flexbox>
+      </Surface>
+    </>
+  );
+};
+
 // ---- 朗读 -------------------------------------------------------------------------------------------------
 export const TtsPage = () => {
   const { settings, merge } = useStore();
@@ -269,7 +303,8 @@ export const UpdatePage = () => {
   const [busy, setBusy] = useState(false);
   return (
     <>
-      <PageHeader description="启动约 20 秒后检查一次，之后每 4 小时一次；后台下载，离开电脑 10 分钟后或退出时安装。" title="版本与更新" />
+      <Header page="update" />
+      <SettingsForm page="update" />
       <Surface title="版本">
         <Flexbox gap={12}>
           <Row label="当前版本">
@@ -311,7 +346,7 @@ export const UpdatePage = () => {
 
 // ---- 数据与关于 -------------------------------------------------------------------------------------------
 export const AboutPage = () => {
-  const { roster, merge } = useStore();
+  const { roster, merge, dataDir } = useStore();
   const release = async (deleteAgent: boolean) => {
     const ok = await ask(
       deleteAgent ? '放生并删除 agent？' : '仅重置本地？',
@@ -328,8 +363,17 @@ export const AboutPage = () => {
     <>
       <Header page="about" />
       <SettingsForm page="about" />
-      <Surface title="数据目录">
+      <Surface description="settings.json（全部设置）、pet.json（进度与好感）、导入的角色包、语音缓存和错误日志都在这里。启动时用环境变量 PIXELPET_DATA_DIR 可以换一个目录（需要重启）。" title="数据目录">
+        <Flexbox gap={12}>
+        <Row label="位置">
+          <Text code data-data-dir>
+            {dataDir ?? '--'}
+          </Text>
+        </Row>
         <Flexbox gap={8} horizontal wrap="wrap">
+          <Button data-open-data-dir icon={FolderOpen} onClick={() => api().openDataFolder()}>
+            打开数据目录
+          </Button>
           <Button icon={FolderOpen} onClick={() => api().openLog()}>
             打开错误日志
           </Button>
@@ -339,6 +383,7 @@ export const AboutPage = () => {
           <Button icon={FolderOpen} onClick={() => api().openVoicePacksFolder()}>
             语音包文件夹
           </Button>
+        </Flexbox>
         </Flexbox>
       </Surface>
       <Surface title="素材署名">

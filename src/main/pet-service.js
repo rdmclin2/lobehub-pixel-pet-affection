@@ -1067,7 +1067,7 @@ class PetService extends EventEmitter {
   // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'affectionRules', 'ui', 'system'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
     this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: { ...this.settings[name], ...p } });
     this.settingsStore.save(this.settings);
