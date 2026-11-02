@@ -55,6 +55,21 @@ function setSettings(st) {
   syncPrewarm();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
+  syncFraming();
+}
+
+// 取景 (core/framing.js, docs/half-body-mode.md): 全身 / 半身 for what she wears now — her own choice (her page in
+// the settings window), her pack's default, then 桌宠行为 → 取景. A camera-drawn look (VRM) is re-framed in
+// place: the model stays loaded and the camera glides, so a change never reloads her or flashes a T-pose.
+const PF = window.PetFraming;
+const framingOf = (look) => PF.resolveFraming(settings, view && view.pet && view.pet.speciesId, look);
+function syncFraming() {
+  const slot = document.getElementById('pet-look');
+  const el = slot && slot.firstElementChild;
+  const f = view && view.look ? framingOf(view.look) : null;
+  if (el && el.petFigure && el.petFigure.setFraming && f) el.petFigure.setFraming(f.mode);
+  const wrap = document.getElementById('char-wrap');
+  if (wrap) wrap.dataset.framing = f ? f.mode : 'full';
 }
 
 function showScale(k) {
@@ -205,7 +220,8 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
     try {
-      const figure = LIVE_KINDS[look.kind]().createFigure(c, look);
+      const figure = LIVE_KINDS[look.kind]().createFigure(c, look, { framing: framingOf(look).mode });
+      c.petFigure = figure; // syncFraming re-frames it when the settings change
       const r = { canvas: c, figure, action, ok: false };
       figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
@@ -520,6 +536,7 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
+  // (not the framing: a change of 取景 re-frames the figure in place, see syncFraming)
   const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
   if (slot.dataset.key !== key) {
@@ -532,6 +549,7 @@ function applyArt() {
     void $('char-wrap').offsetWidth;
     $('char-wrap').classList.add('changed');
   }
+  syncFraming();
 }
 
 function enterPet(v) {
@@ -1969,7 +1987,11 @@ function artPoint(cx, cy) {
   const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
   const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
   const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
-  return { x: (px - b.x0) / (b.x1 - b.x0), y: (py - b.y0) / (b.y1 - b.y0), opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
+  // 半身 (a VRM framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
+  // head-to-feet art) get y in her full-body proportions; legs and feet are below the picture, out of reach
+  const half = a.el.dataset && a.el.dataset.framing === 'half' ? { mode: 'half', cut: Number(a.el.dataset.cut) } : null;
+  const y = (py - b.y0) / (b.y1 - b.y0);
+  return { x: (px - b.x0) / (b.x1 - b.x0), y: half ? PF.toFullBody({ y }, half).y : y, framing: half ? 'half' : 'full', opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
 }
 
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
@@ -2397,7 +2419,8 @@ window.petFx = {
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
   // 部位触摸: what a client point maps to, and the last reaction shown
-  touchPoint: (cx, cy) => { const { zone, pt } = zoneAtClient(cx, cy); return pt ? { zone, x: pt.x, y: pt.y, opaque: pt.opaque, pose: pt.pose, mirrored: pt.mirrored, box: pt.box } : null; },
+  touchPoint: (cx, cy) => { const { zone, pt } = zoneAtClient(cx, cy); return pt ? { zone, x: pt.x, y: pt.y, opaque: pt.opaque, pose: pt.pose, mirrored: pt.mirrored, box: pt.box, framing: pt.framing } : null; },
+  framing: () => (view && view.look ? framingOf(view.look) : null),
   lastTouch: () => lastTouch,
   throw: (vx, vy) => throwPet({ vx, vy }),
   burst: (n) => fx.burst(n),

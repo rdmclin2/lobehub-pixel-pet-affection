@@ -71,7 +71,7 @@ const PAGES = {
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
   packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
-  behavior: { title: '桌宠行为', description: '桌面上的大小、走动、音效、梗图和触摸。改动立即生效。' },
+  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
@@ -93,14 +93,15 @@ const F = [];
 const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, card, label, type, store: 'settings', ...extra });
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
-add('petScale', 'behavior', '大小', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
+add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。目前对 VRM 角色生效（像素 / 图片角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
 add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '有同屏伙伴时，扔出去的桌宠会撞到别人。' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });
 add('prefs.touchHint', 'behavior', '触摸', '触摸提示', 'switch', { desc: '悬停时提示指针下是哪个部位。', dependsOn: { key: 'prefs.touchZones', value: true } });
-add('petScaleSet', 'behavior', '大小', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
+add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
 
 // ---- 主动行为与好感度 ------------------------------------------------------------------------------------
 add('proactive.enabled', 'proactive', '主动行为', '主动说话', 'switch', { desc: '饿了、无聊了、早晚问候时自己开口。关闭后她只在你互动时说话。' });
@@ -163,6 +164,7 @@ add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', 
 // ---- 按角色（角色详情页） ----------------------------------------------------------------------------------
 add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
 add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型。' });
+add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '她自己的取景：跟随全局（或形象包的默认）/ 全身 / 半身。' });
 add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
 
 // ---- 不在 settings.json 的：密钥、pet.json -----------------------------------------------------------------
@@ -189,7 +191,7 @@ function settingsLeaves(obj = DEFAULTS, prefix = '') {
   const out = [];
   for (const [k, v] of Object.entries(obj)) {
     const p = prefix ? `${prefix}.${k}` : k;
-    if (['appearance', 'models', 'systemRoles'].includes(p)) out.push(`${p}.<id>`);
+    if (['appearance', 'models', 'systemRoles', 'framings'].includes(p)) out.push(`${p}.<id>`);
     else if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) out.push(...settingsLeaves(v, p));
     else out.push(p);
   }

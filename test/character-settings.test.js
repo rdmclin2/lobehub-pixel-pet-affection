@@ -167,7 +167,7 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   // global settings
   const st = s.getSettings();
   assert.equal(st.petScale, 1.6);
-  assert.deepEqual(st.prefs, old.prefs);
+  assert.deepEqual(st.prefs, { ...old.prefs, framing: 'full' }); // 取景 came later: an old file shows her as before (全身)
   assert.deepEqual(st.visitors, ['gemini']);
   assert.deepEqual(st.api, old.api);
   assert.deepEqual({ provider: st.tts.provider, fallback: st.tts.fallback, endpoints: st.tts.endpoints }, { provider: 'minimax', fallback: 'silent', endpoints: { fish: 'https://fish.example.com', minimax: '', local: '' } });

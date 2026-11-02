@@ -15,10 +15,14 @@
 // Debug fields on the canvas (read by e2e): data-frame (frames drawn, counting up), data-fps (drawn in
 // the last second), data-mode (active | idle | paused), data-state, data-expr (expression weights),
 // data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y), data-springs (joints),
-// data-vrm (1.0 | 0.x), data-anim (vrma when the pack's idle animation plays, none, failed).
+// data-vrm (1.0 | 0.x), data-anim (vrma when the pack's idle animation plays, none, failed), data-framing
+// (full | half, what the camera frames now), data-cut (half: the share of her height shown, for touch zones),
+// data-band (bones | box: what the half-body band was measured from).
 // window.PetVRM.debug() has the same and more.
 (function () {
   const M = window.PetVrmMotion;
+  const FR = window.PetFraming;
+  const GLIDE_S = 0.35; // switching 全身 ⇄ 半身: the camera glides this long (no jump, the model stays loaded)
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -124,7 +128,8 @@
 
   // `look` from core/packs.js resolveLook: { packId, model (pack:// URL of the .vrm), vrm: { height,
   // expressions (state → name overrides), modelExpressions, springBone, meta, license }, url (picture) }.
-  function createFigure(canvas, look) {
+  // `framing`: 'full' | 'half' to start in (core/framing.js resolveFraming); figure.setFraming() changes it live.
+  function createFigure(canvas, look, { framing: startFraming = 'full' } = {}) {
     const cfg = look.vrm || {};
     const overrides = cfg.expressions || {};
     const share = clamp(Number(cfg.height) || 0.8, 0.3, 1);
@@ -138,6 +143,11 @@
     let lookTarget = null;
     let disposed = false;
     let size = { h: 1, minY: 0, cx: 0, cz: 0 };
+    // 取景: the half-body band (FR.halfBodyBand, measured once at rest), the mode drawn and the camera glide
+    let band = null;
+    let framing = startFraming === 'half' ? 'half' : 'full';
+    let glide = null; // { from (camera), t0 } while switching
+    let camNow = null; // the camera fit() placed last: { visible, y, dist, x }
     let base = { y: 0, x: 0, yaw: 0 };
     const has = (n) => !!(vrm && vrm.expressionManager && vrm.expressionManager.getExpression(n));
     const cur = Object.fromEntries(M.MOTIONS.map((k) => [k, 0]));
@@ -270,6 +280,33 @@
       if (head) { const hp = head.getWorldPosition(new T.Vector3()); top = Math.min(box.max.y, hp.y + (hp.y - box.min.y) * 0.35); }
       size = { h: Math.max(0.1, top - box.min.y, box.max.y - box.min.y), minY: box.min.y, cx: (box.min.x + box.max.x) / 2, cz: (box.min.z + box.max.z) / 2 };
       base = { y: 0, x: -size.cx, yaw: vrm.scene.rotation.y };
+      // 半身: the band from the humanoid bones (head, neck, upperChest / chest / spine, hips) in this rest pose,
+      // not from the box (hair, a tail or a skirt do not move the cut); a model without them: a share of the box
+      const bones = {};
+      for (const name of ['head', 'neck', 'upperChest', 'chest', 'spine', 'hips']) {
+        const n = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(name);
+        if (n) { const p = n.getWorldPosition(new T.Vector3()); bones[name] = { x: p.x, y: p.y }; }
+      }
+      band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y });
+      canvas.dataset.band = band.source;
+    }
+
+    // the camera for a framing: 全身 = her whole height at `vrm.height` of the canvas, feet on the floor;
+    // 半身 = the band (top of her head to the waist) filling the canvas, the cut on its bottom edge. x: where it
+    // looks sideways (the model is moved so her box centre is at 0; 半身 centres on the head–hips line instead).
+    function cameraFor(mode) {
+      if (mode === 'half' && band) return { ...FR.cameraFor(band, { fov: camera.fov, mode: 'half' }), x: band.cx - size.cx };
+      return { ...FR.cameraFor({ top: size.minY + size.h, bottom: size.minY }, { fov: camera.fov, share, mode: 'full' }), x: 0 };
+    }
+    function setFraming(mode, { instant = false } = {}) {
+      const next = mode === 'half' ? 'half' : 'full';
+      if (next === framing) return false;
+      framing = next;
+      if (!vrm) return true; // still loading: the first fit() uses it
+      glide = instant || !camNow ? null : { from: { ...camNow }, t0: performance.now() };
+      lastActivity = performance.now(); // draw at the full frame rate while gliding
+      fit(true);
+      return true;
     }
 
     // her size in the canvas: `vrm.height` of its height (pack.json), feet on the floor, centred; the canvas
@@ -286,13 +323,22 @@
         renderer.setSize(Math.round(W * k), Math.round(H * k), false);
       }
       camera.aspect = W / H;
-      const visible = size.h / share; // world height the canvas shows
-      const dist = visible / 2 / Math.tan((camera.fov * DEG) / 2);
-      camera.position.set(0, size.minY + visible * (0.5 - 0.005), size.cz + dist);
-      camera.near = Math.max(0.01, dist / 20);
-      camera.far = dist * 4;
+      let cam = cameraFor(framing);
+      if (glide) {
+        const t = (performance.now() - glide.t0) / 1000 / GLIDE_S;
+        if (t >= 1) glide = null;
+        else cam = FR.blendCamera(glide.from, cam, t);
+      }
+      camNow = cam;
+      camera.position.set(cam.x, cam.y, size.cz + cam.dist);
+      camera.near = Math.max(0.01, cam.dist / 20);
+      camera.far = cam.dist * 4;
       camera.updateProjectionMatrix();
-      camera.lookAt(0, camera.position.y, size.cz);
+      camera.lookAt(cam.x, cam.y, size.cz);
+      const d = canvas.dataset;
+      if (d.framing !== framing) d.framing = framing;
+      const cut = framing === 'half' && band ? band.cut.toFixed(3) : '1';
+      if (d.cut !== cut) d.cut = cut;
     }
 
     function applyBones(bones) {
@@ -346,7 +392,7 @@
       }
       const dt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
       lastRender = now;
-      if (frameN % 30 === 0) fit();
+      if (glide) { lastActivity = now; fit(); } else if (frameN % 30 === 0) fit();
       const st = t - stateAt;
       // resting at the low frame rate: her face and posture, without the bouncing
       const L = fm.mode === 'idle' ? M.calm(M.lookFor(state, mood)) : M.lookFor(state, mood);
@@ -449,6 +495,8 @@
           expressions: vrm && vrm.expressionManager ? Object.keys(vrm.expressionManager.expressionMap) : [],
           springJoints: vrm && vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0,
           root: vrm ? { x: vrm.scene.position.x, y: vrm.scene.position.y, yaw: vrm.scene.rotation.y / DEG, roll: vrm.scene.rotation.z / DEG } : null,
+          framing, band: band ? { ...band } : null, gliding: !!glide,
+          camera: camera ? { x: camera.position.x, y: camera.position.y, z: camera.position.z, fov: camera.fov } : null, size: { ...size },
           memory: renderer ? { ...renderer.info.memory } : null, packId: look.packId,
           maps: textureMaps(),
         }),
@@ -460,6 +508,8 @@
     const api = {
       ready: ready.catch((e) => { api.dispose(); throw e; }),
       draw,
+      setFraming,
+      framing: () => framing,
       dispose() {
         if (disposed) return;
         disposed = true;
