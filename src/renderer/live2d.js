@@ -11,7 +11,19 @@
 //
 // The runtime (Cubism Core, PixiJS 6, pixi-live2d-display) is in vendor/live2d and loaded the first
 // time a Live2D look is shown.
+//
+// 取景 (core/framing.js, docs/half-body-mode.md): 全身 draws her head to feet at `live2d.height` of the canvas;
+// 半身 scales her up and moves her so the top of her head to her waist fills the canvas, the cut on its bottom
+// edge. Where her waist is: pack.json halfBody.waist, else her Head hit area, else her eye line (the drawables
+// ParamEyeLOpen moves), else a default share — measured once when the model loads. figure.setFraming() glides
+// between the two in GLIDE_S without reloading her.
+//
+// Debug fields on the canvas (read by e2e): data-frame, data-framing (full | half), data-cut (half: the share of
+// her height shown, for touch zones), data-band (pack | hitarea | eyes | default), data-gaze (x,y: where she
+// looks, −1..1 each way). figure.debug() has the band, the placement and the gaze.
 (function () {
+  const FR = window.PetFraming;
+  const GLIDE_S = 0.35; // switching 全身 ⇄ 半身: the model glides this long (same as the VRM camera)
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -47,6 +59,23 @@
       },
     };
   }
+
+  // ---------- the cursor (gaze) ----------
+  // Inside the window: pointer events; outside it (she sits in a small window): the screen cursor from main,
+  // polled a few times a second while a figure is drawn. A pointer event is fresher than the poll for 1.5 s.
+  const cursor = {
+    pointer: null, movedAt: -Infinity, screen: null,
+    get client() { return performance.now() - this.movedAt < 1500 || !this.screen ? this.pointer : this.screen; },
+  };
+  window.addEventListener('pointermove', (e) => { cursor.pointer = { x: e.clientX, y: e.clientY }; cursor.movedAt = performance.now(); }, { passive: true });
+  let polledAt = 0;
+  function pollCursor(now) {
+    if (now - polledAt < 250 || !window.pet || !window.pet.cursorPoint || document.hidden) return;
+    polledAt = now;
+    window.pet.cursorPoint().then((pt) => { if (pt && Number.isFinite(pt.x)) cursor.screen = { x: pt.x - window.screenX, y: pt.y - window.screenY }; }, () => {});
+  }
+  // states that look somewhere of their own (up when thinking, about when looking, shut when asleep)
+  const OWN_GAZE = new Set(['think', 'look', 'sleep']);
 
   // ---------- how each state looks ----------
   // Face: eyes (0 shut .. 1 open), smile (−1 sad .. 1 happy eyes), anger (+ angry, − startled), brow
@@ -107,8 +136,9 @@
 
   // ---------- the figure ----------
   // `look` from core/packs.js resolveLook: { model (pack:// URL of the .model3.json), live2d (the pack's
-  // parameter map), url (the outfit's picture) }.
-  function createFigure(canvas, look) {
+  // parameter map), url (the outfit's picture), halfBody (pack.json, optional) }.
+  // `framing`: 'full' | 'half' to start in (core/framing.js resolveFraming); figure.setFraming() changes it live.
+  function createFigure(canvas, look, { framing: startFraming = 'full' } = {}) {
     const cfg = look.live2d || {};
     const P = cfg.params || {};
     const faces = { ...(cfg.faces || {}) };
@@ -133,6 +163,11 @@
     // the id each standard parameter has in this model (its own, the Cubism 2 name, or none: not written)
     const ids = new Map();
     let has = () => true;
+    // 取景: her measured extent (model px at rest, y down) and the half-body band; the mode drawn; the glide
+    let shape = null; // { content, head, eyes, face (where she looks from), band }
+    let framing = startFraming === 'half' ? 'half' : 'full';
+    let glide = null; // { from (placement), t0 } while switching
+    let gaze = { x: 0, y: 0 };
 
     const ready = loadRuntime().then(async () => {
       if (disposed) return false;
@@ -155,8 +190,9 @@
       // a model without a blush expression blushes with its ParamCheek
       if (!faces.blush && (has('ParamCheek') || has('PARAM_CHEEK'))) { faces.blush = { [has('ParamCheek') ? 'ParamCheek' : 'PARAM_CHEEK']: 1 }; faceNow.blush = 0; }
       app.stage.addChild(model);
+      try { shape = measure(im); } catch (e) { shape = null; console.warn('live2d: cannot measure the model for 半身', e); }
       bind(im);
-      fit();
+      fit(true);
       return true;
     });
 
@@ -180,10 +216,84 @@
     const add = (id, v) => { if (id) after.set(id, { add: true, value: v }); };
     const pin = (id, v) => { if (id) after.set(id, { add: false, value: v }); };
 
-    // her size in the canvas: as tall as the pixel art draws her, feet on the floor, centred
+    // Her extent at rest (model px of the .moc canvas, y down): the opaque drawables; the Head hit area if the
+    // model has one; the drawables her eye-open parameter moves (shut vs open). -> { content, head, eyes, band, face }
+    function measure(im) {
+      const core = im.coreModel;
+      for (const [id, v] of Object.entries(cfg.pinned || {})) if (has(id)) core.setParameterValueById(id, v);
+      core.update();
+      const n = core.getDrawableCount();
+      const boxOf = (v, b = { top: Infinity, bottom: -Infinity, minX: Infinity, maxX: -Infinity }) => {
+        for (let i = 0; i < v.length; i += 2) { b.minX = Math.min(b.minX, v[i]); b.maxX = Math.max(b.maxX, v[i]); b.top = Math.min(b.top, v[i + 1]); b.bottom = Math.max(b.bottom, v[i + 1]); }
+        return b;
+      };
+      const shown = (i) => core.getDrawableOpacity(i) > 0.1 && (!core.getDrawableDynamicFlagIsVisible || core.getDrawableDynamicFlagIsVisible(i));
+      const content = { top: Infinity, bottom: -Infinity, minX: Infinity, maxX: -Infinity };
+      const rest = [];
+      for (let i = 0; i < n; i++) { const v = im.getDrawableVertices(i); rest.push(v); if (shown(i)) boxOf(v, content); }
+      if (!Number.isFinite(content.top)) content.top = 0, content.bottom = im.originalHeight, content.minX = 0, content.maxX = im.originalWidth;
+      // the Head hit area (named Head / HitAreaHead / 头 …)
+      let head = null;
+      for (const [name, a] of Object.entries(im.hitAreas || {})) {
+        if (!/head|頭|头|atama/i.test(`${name} ${a.id || ''}`) || !(a.index >= 0)) continue;
+        const b = im.getDrawableBounds(a.index, {});
+        head = { top: b.y, bottom: b.y + b.height, minX: b.x, maxX: b.x + b.width };
+        break;
+      }
+      // the eyes: what moves between eyes open and shut
+      let eyes = null;
+      const eyeId = resolve('ParamEyeLOpen');
+      if (eyeId) {
+        const was = core.getParameterValueById(eyeId);
+        core.setParameterValueById(eyeId, 0);
+        core.update();
+        const tol = Math.max(im.originalHeight, 1) * 0.002;
+        for (let i = 0; i < n; i++) {
+          if (!shown(i)) continue;
+          const v = im.getDrawableVertices(i);
+          const r = rest[i];
+          let moved = false;
+          for (let j = 0; j < v.length && !moved; j++) moved = Math.abs(v[j] - r[j]) > tol;
+          if (moved) eyes = boxOf(r, eyes || undefined);
+        }
+        core.setParameterValueById(eyeId, was);
+        core.update();
+      }
+      const band = FR.live2dHalfBand({ content, waist: look.halfBody && look.halfBody.waist, head, eyes });
+      // where she looks from: her eye line, else the middle of her head (hit area), else a guess below the top
+      const face = eyes ? { x: (eyes.minX + eyes.maxX) / 2, y: (eyes.top + eyes.bottom) / 2 } : head ? { x: (head.minX + head.maxX) / 2, y: (head.top + head.bottom) / 2 } : { x: band.cx, y: content.top + (band.bottom - content.top) * 0.3 };
+      canvas.dataset.band = band.source;
+      return { content, head, eyes, band, face, original: { w: im.originalWidth, h: im.originalHeight } };
+    }
+
+    // a framing → where the model goes (core/framing.js live2dPlacement), with her measured band in model px
+    // at scale 1 (the .moc canvas mapped onto the model's own size)
+    function placementFor(mode, size) {
+      const W = canvas.width;
+      const H = canvas.height;
+      const share = cfg.height || 0.8;
+      if (mode !== 'half' || !shape) return FR.live2dPlacement(null, { W, H, model: size, share, mode: 'full' });
+      const kx = size.w / shape.original.w;
+      const ky = size.h / shape.original.h;
+      const b = shape.band;
+      return FR.live2dPlacement({ top: b.top * ky, bottom: b.bottom * ky, cx: b.cx * kx }, { W, H, model: size, share, mode: 'half' });
+    }
+    function setFraming(mode, { instant = false } = {}) {
+      const next = mode === 'half' ? 'half' : 'full';
+      if (next === framing) return false;
+      framing = next;
+      if (!model) return true; // still loading: the first fit() uses it
+      glide = instant ? null : { from: { ...base }, t0: performance.now() };
+      fit(true);
+      return true;
+    }
+
+    // her size in the canvas: 全身 as tall as the pixel art draws her, feet on the floor, centred; 半身 the top of
+    // her head to her waist filling it (placementFor). While switching, a glide from where she was.
     let res = 0;
     let base = { x: 0, y: 0, s: 1 };
-    function fit() {
+    let size = { w: 1, h: 1 };
+    function fit(force = false) {
       if (!model) return;
       const r = canvas.getBoundingClientRect();
       const [W, H] = look.frame ? [look.frame.width, look.frame.height] : [332, 452];
@@ -194,19 +304,53 @@
         canvas.height = Math.round(H * k);
         app.renderer.resize(canvas.width, canvas.height);
       }
-      model.scale.set(1);
-      const share = cfg.height || 0.8;
-      const s = (canvas.height * share) / model.height;
-      model.scale.set(s);
-      base = { x: (canvas.width - model.width) / 2, y: canvas.height * 0.995 - model.height, s };
-      model.x = base.x;
-      model.y = base.y;
+      if (force || !(size.h > 1)) {
+        model.scale.set(1);
+        size = { w: model.width, h: model.height };
+      }
+      let p = placementFor(framing, size);
+      if (glide) {
+        const t = (performance.now() - glide.t0) / 1000 / GLIDE_S;
+        if (t >= 1) glide = null;
+        else p = FR.blendPlacement(glide.from, p, t);
+      }
+      base = p;
+      model.scale.set(p.s);
+      model.x = p.x;
+      model.y = p.y;
+      const d = canvas.dataset;
+      if (d.framing !== framing) d.framing = framing;
+      const cut = framing === 'half' && shape ? shape.band.cut.toFixed(3) : '1';
+      if (d.cut !== cut) d.cut = cut;
+    }
+
+    // where she looks: toward the cursor from her own eyes (in 半身 they are lower and bigger in the window), as
+    // −1..1 of half the canvas each way; mirrored with her when she faces left
+    function aim(state, dt, mirror) {
+      let g = { x: 0, y: 0 };
+      const c = cursor.client;
+      if (c && shape && !OWN_GAZE.has(state)) {
+        const r = canvas.getBoundingClientRect();
+        if (r.width && r.height) {
+          const kx = size.w / shape.original.w;
+          const ky = size.h / shape.original.h;
+          const fx = (base.x + shape.face.x * kx * base.s) / canvas.width;
+          const fy = (base.y + shape.face.y * ky * base.s) / canvas.height;
+          const ex = mirror < 0 ? r.left + (1 - fx) * r.width : r.left + fx * r.width;
+          const ey = r.top + fy * r.height;
+          g = { x: clamp(((c.x - ex) / (r.width / 2)) * mirror, -1.5, 1.5), y: clamp((ey - c.y) / (r.height / 2), -1.5, 1.5) };
+        }
+      }
+      const k = approach(6, dt);
+      gaze = { x: lerp(gaze.x, g.x, k), y: lerp(gaze.y, g.y, k) };
+      return gaze;
     }
 
     let frameN = 0;
     function draw({ t, state, mood = null, talking = false, win = null, blink: hold = null }) {
       if (!model || disposed) return false;
-      if (frameN++ % 30 === 0) fit();
+      if (frameN++ % 30 === 0 || glide) fit();
+      pollCursor(performance.now());
       const dt = lastT == null ? 1 / 60 : clamp(t - lastT, 0, 0.05);
       lastT = t;
       if (state !== stateNow) { stateNow = state; stateAt = t; }
@@ -223,6 +367,9 @@
         lastWin = win;
       }
       const mirror = canvas.closest && canvas.closest('[data-facing="left"]') ? -1 : 1;
+      const look2 = aim(state, dt, mirror);
+      const gx = clamp(look2.x, -1, 1);
+      const gy = clamp(look2.y, -1, 1);
       const swing = clamp((vel[0] * mirror) / 600, -1.6, 1.6);
       const rise = clamp(vel[1] / 900, -1.5, 1.5);
 
@@ -266,16 +413,16 @@
       // head: idle drift, looking about, state tilt and nods; the body follows through the model's physics
       const turn = cur.turn * Math.sin(st * 1.3) * 25;
       const nod = cur.nod * Math.sin(t * (talking ? 5 : 8)) * 5;
-      const angleX = Math.sin(t * 0.6) * 4 + turn + (talking ? Math.sin(t * 1.7) * 3 : 0);
-      const angleY = -cur.nodDown * 1.2 + cur.gazeUp * 14 + nod - Math.max(0, breathe) * cur.slow * 3;
+      const angleX = Math.sin(t * 0.6) * 4 * (1 - Math.abs(gx) * 0.5) + turn + (talking ? Math.sin(t * 1.7) * 3 : 0) + gx * 18;
+      const angleY = -cur.nodDown * 1.2 + cur.gazeUp * 14 + nod - Math.max(0, breathe) * cur.slow * 3 + gy * 12;
       const angleZ = cur.tilt + Math.sin(t * 0.8) * 2 + wobble + sway + lean * 0.6 + (state === 'lifted' ? swing * 8 : 0);
       set('ParamAngleX', clamp(angleX, -30, 30));
       set('ParamAngleY', clamp(angleY, -30, 30));
       set('ParamAngleZ', clamp(angleZ, -30, 30));
       set('ParamBodyAngleX', clamp(angleX * 0.3 + turn * 0.2, -30, 30));
       set('ParamBodyAngleZ', clamp(lean + sway * 0.6 + wobble * 0.5, -30, 30));
-      set('ParamEyeBallX', clamp(turn / 25 + Math.sin(t * 0.45) * 0.15, -1, 1));
-      set('ParamEyeBallY', clamp(cur.gazeUp * 0.9 - cur.nodDown * 0.02, -1, 1));
+      set('ParamEyeBallX', clamp(turn / 25 + Math.sin(t * 0.45) * 0.15 * (1 - Math.abs(gx)) + gx * 0.8, -1, 1));
+      set('ParamEyeBallY', clamp(cur.gazeUp * 0.9 - cur.nodDown * 0.02 + gy * 0.7, -1, 1));
 
       // face
       const open = clamp(cur.eyes * (1 - blinkK), 0, 1);
@@ -320,12 +467,23 @@
       model.update(dt * 1000);
       app.render();
       canvas.dataset.frame = `${state}#${Math.floor(t * 4)}`; // touch hit tests re-read her pixels at most 4× a second
+      const gs = `${gaze.x.toFixed(2)},${gaze.y.toFixed(2)}`;
+      if (canvas.dataset.gaze !== gs) canvas.dataset.gaze = gs;
       return true;
     }
 
     return {
       ready,
       draw,
+      setFraming,
+      framing: () => framing,
+      debug: () => ({
+        packId: look.packId, loaded: !!model, framing, gliding: !!glide, gaze: { ...gaze },
+        band: shape ? { ...shape.band } : null, content: shape ? { ...shape.content } : null, head: shape && shape.head, eyes: shape && shape.eyes, face: shape && shape.face,
+        placement: { ...base }, size: { ...size }, original: shape && shape.original, canvas: { w: canvas.width, h: canvas.height },
+        params: Object.fromEntries(['ParamEyeLOpen', 'ParamMouthOpenY', 'ParamAngleX', 'ParamAngleY', 'ParamEyeBallX', 'ParamEyeBallY'].map((id) => [id, before.get(resolve(id))])),
+        faces: { ...faceNow },
+      }),
       dispose() {
         disposed = true;
         try { if (app) app.destroy(false, { children: true, texture: true, baseTexture: true }); } catch { /* already gone */ }

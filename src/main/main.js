@@ -304,6 +304,7 @@ function wire() {
   // the model (her page → 模型): only her own vendor's models are offered
   ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
   // 个性化设定 (her page → System Role): her own words added to her agent's system role
+  ipcMain.handle('set-framing', (_e, { mode, species }) => service.setFraming(String(mode || ''), whose(species)));
   ipcMain.handle('set-system-role', (_e, { text, species }) => service.setSystemRole(String(text || ''), whose(species)));
   ipcMain.handle('refresh-models', async () => {
     await service.refreshModels({ force: true });

@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('pet', {
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
+  setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window

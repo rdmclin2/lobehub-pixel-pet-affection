@@ -239,6 +239,7 @@ export interface PetAdminApi {
   setLive2dHeight: (id: string, height: number) => Promise<any>;
   setModel: (key: string, species: string) => Promise<any>;
   setSystemRole: (text: string, species: string) => Promise<any>;
+  setFraming: (mode: 'auto' | 'full' | 'half', species: string) => Promise<any>;
   placePet: () => Promise<any>;
   showPet: () => void;
   state: () => Promise<AdminState>;
