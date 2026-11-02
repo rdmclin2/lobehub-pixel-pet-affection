@@ -129,13 +129,16 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 
 .hud { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.hover .hud { opacity: 1; pointer-events: auto; }
-/* status: a small elevated pill with three progress meters (lucide icons + LobeHub semantic colours from app.js) */
-.bars { display: flex; gap: var(--pet-space-sm); font-size: 10px; line-height: 14px; color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-radius: 999px; padding: 0 var(--pet-space-sm); box-shadow: var(--pet-float-shadow); }
+/* status: three progress meters inside the status panel (lucide icons + LobeHub semantic colours from app.js) */
+/* T-2726: the three pieces (needs, affection, name line) share one panel — one surface, border, radius and shadow; rows split by hairlines */
+.status-panel { display: flex; flex-direction: column; align-items: stretch; max-width: calc(100% - 8px); min-width: 0; box-sizing: border-box; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); box-shadow: var(--pet-float-shadow); padding: 1px var(--pet-space-sm); overflow: hidden; }
+.status-panel > * + * { border-top: 1px solid var(--pet-line-soft); }
+.bars { display: flex; align-items: center; justify-content: center; min-height: 16px; gap: var(--pet-space-sm); font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); }
 .bars span { display: flex; align-items: center; gap: var(--pet-space-xs); }
 .bars .ico { width: 10px; height: 10px; }
 .bars i { display: inline-block; width: 30px; height: 5px; background: var(--lobe-color-fill-secondary); border-radius: 3px; position: relative; overflow: hidden; }
 .bars i::after { content: ""; position: absolute; inset: 0; width: var(--v, 0%); background: var(--c, var(--lobe-color-success)); border-radius: 3px; }
-.hud .meta { font-size: 10px; line-height: 14px; color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--pet-float-shadow); padding: 0 var(--pet-space-sm); white-space: nowrap; }
+.hud .meta { font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .toolbar { display: flex; gap: var(--pet-space-xs); }
 .toolbar .btn { padding: 0 var(--pet-space-sm); min-height: 21px; line-height: 19px; font-size: 12px; background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
 .toolbar .btn:hover:not(:disabled) { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
@@ -201,7 +204,7 @@ body.busy.over .stop-btn { display: flex; }
 .gate-list { text-align: left; color: var(--lobe-color-text-secondary); max-width: 520px; line-height: 1.6; margin: var(--pet-space-xs) 0 var(--pet-space-md); padding: var(--pet-space-md) var(--lobe-padding) var(--pet-space-md) 32px; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); }
 
 /* ---- affection: stage name in its colour, a thin meter and the number ---- */
-.aff-row { display: flex; align-items: center; gap: var(--pet-space-xs); font-size: 10px; line-height: 14px; color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-radius: 999px; box-shadow: var(--pet-float-shadow); padding: 0 var(--pet-space-sm); }
+.aff-row { display: flex; align-items: center; justify-content: center; gap: var(--pet-space-xs); font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); }
 .aff-stage { font-weight: var(--lobe-font-weight-strong); color: var(--sc, var(--lobe-color-text)); }
 .aff-heart { display: inline-flex; color: var(--lobe-color-error); }
 .aff-heart .ico { width: 10px; height: 10px; fill: currentColor; stroke-width: 0; }

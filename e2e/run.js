@@ -7577,6 +7577,62 @@ async function petuiScenario() {
         await shot('02-hover-hud-bubble');
         return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
       }, page);
+      // T-2726: the status bar is ONE panel — needs, affection and the name line share one surface (rows split by
+      // hairlines); values still update live, it fits the window at the smallest pet size, and it only shows on hover
+      const panelGeom = () => page.evaluate(() => {
+        const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
+        const panel = document.getElementById('status-panel');
+        const cs = getComputedStyle(panel);
+        const rows = ['bars', 'aff-row', 'meta'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, borderTop: c.borderTopWidth, ...r(el) }; });
+        const meta = document.getElementById('meta');
+        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), metaCut: meta.scrollWidth > meta.clientWidth, hudOpacity: getComputedStyle(document.getElementById('hud')).opacity };
+      });
+      await step(S, `${theme}: 状态栏是一个整体 Panel（需求 / 好感 / 信息行同一底板，分隔线分区）`, async () => {
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        const g = await panelGeom();
+        assert.equal(g.border, '1px'); assert.ok(g.shadow); assert.notEqual(g.bg, 'rgba(0, 0, 0, 0)');
+        for (const row of g.rows) {
+          assert.ok(row.in, `${row.id} inside the panel`);
+          assert.equal(row.bg, 'rgba(0, 0, 0, 0)', `${row.id} has no own background`);
+          assert.equal(row.shadow, 'none', `${row.id} has no own shadow`);
+          assert.ok(row.x >= g.panel.x && row.r <= g.panel.r && row.y >= g.panel.y && row.b <= g.panel.b, `${row.id} within the panel box`);
+        }
+        assert.deepEqual(g.rows.map((x) => x.borderTop), ['0px', '1px', '1px'], 'hairlines between the three rows');
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside the window');
+        assert.ok(g.toolbar.y >= g.panel.b, 'toolbar right under the panel');
+        await shot('02b-status-panel');
+        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y} top=${x.borderTop}`), toolbarY: g.toolbar.y });
+      }, page);
+      await step(S, `${theme}: Panel 内数值实时更新（饥饿 / 心情 / 体力 / 好感）`, async () => {
+        const vals = () => page.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), num: document.getElementById('aff-num').textContent, meta: document.getElementById('meta').textContent }));
+        const before = await vals();
+        await page.evaluate(() => window.pet.debugSet({ hunger: 90, mood: 15, energy: 50, affection: 12 }));
+        await page.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' pushes the view
+        const after = await vals();
+        assert.equal(after['bar-hunger'], '10%'); assert.equal(after['bar-mood'], '15%'); assert.equal(after['bar-energy'], '50%');
+        assert.match(after.meta, /♥12/);
+        await hover(page);
+        await shot('02c-status-panel-updated');
+        return `before ${JSON.stringify(before)} → after ${JSON.stringify(after)}`;
+      }, page);
+      await step(S, `${theme}: 最小尺寸（50%）Panel 不溢出窗口；移开指针后隐藏`, async () => {
+        const k = await page.evaluate(() => window.pet.setPetScale(0.5));
+        await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+        await page.waitForTimeout(300);
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        const g = await panelGeom();
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, `panel ${g.panel.x}..${g.panel.r} inside window ${g.win}`);
+        for (const row of g.rows) assert.ok(row.r <= g.panel.r, `${row.id} inside the panel`);
+        await shot('02d-status-panel-smallest');
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForFunction(() => !document.body.classList.contains('hover') && getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+        await page.evaluate(() => window.pet.setPetScale(1.25));
+        await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 1.25, null, { timeout: 8000 });
+        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: window ${g.win}px, panel ${g.panel.x}..${g.panel.r} (${g.panel.w}px), meta cut with … = ${g.metaCut}; hidden again off hover`;
+      }, page);
       await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
         await clickAct(page, 'chat');
         await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));

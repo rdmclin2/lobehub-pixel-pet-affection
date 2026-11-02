@@ -97,6 +97,8 @@
     <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>停止</button>
     <!-- everything below is only shown while the pointer is over the window -->
     <div id="hud" class="hud">
+      <!-- one status panel: needs (饥饿/心情/体力), affection, and the name · stage line, split by hairlines -->
+      <div id="status-panel" class="status-panel">
       <div id="bars" class="bars">
         <span title="饥饿"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg><i id="bar-hunger"></i></span>
         <span title="心情"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="12" cy="12" r="10"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg><i id="bar-mood"></i></span>
@@ -108,6 +110,7 @@
         <span id="aff-num" class="aff-num"></span>
       </div>
       <div id="meta" class="meta"></div>
+      </div>
       <div id="toolbar" class="toolbar">
         <button class="btn" data-act="feed">喂食</button>
         <button class="btn" data-act="play">玩耍</button>

@@ -32,7 +32,7 @@ test('index.html loads the LobeHub tokens before the pet stylesheet', () => {
 
 test('interface pieces read --lobe-* tokens, not the old pixel palette', () => {
   const ui = ['body', '.btn', '.btn.primary', 'input, select, textarea', '.bubble', '.bubble-tail', '.chat-row', '.popup', '.popup .btn',
-    '.unlock-toast', '.toast-title', '.bars', '.aff-row', '.hud .meta',
+    '.unlock-toast', '.toast-title', '.status-panel', '.bars', '.aff-row', '.hud .meta',
     '.stop-btn', '.zone-hint', '.mic-status', '.new-dot', '#age-gate'];
   for (const sel of ui) {
     const body = sel.includes(',') ? rulesFor(sel.split(',')[0].trim()) : rulesFor(sel);
@@ -73,4 +73,17 @@ test('HUD meters use semantic token colours; inline icons do not swallow toolbar
   for (const id of ['bubble', 'chat-input', 'chat-send', 'chat-mic', 'attach-btn', 'btn-settings', 'food-menu', 'unlock-toast', 'toast-close', 'toast-open', 'stop-btn', 'aff-stage', 'bar-affection', 'bar-hunger']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
+});
+
+test('status bar is one panel (T-2726): needs, affection and the name line share one surface, split by hairlines', () => {
+  const panel = html.match(/<div id="status-panel" class="status-panel">([\s\S]*?)<div id="toolbar"/);
+  assert.ok(panel, '#status-panel sits in the HUD, before the toolbar');
+  for (const id of ['bars', 'aff-row', 'meta']) assert.match(panel[1], new RegExp(`id="${id}"`), `#${id} is inside the panel`);
+  const p = rulesFor('.status-panel');
+  for (const prop of ['background', 'border', 'border-radius', 'box-shadow']) assert.match(p, new RegExp(`(^|;)\\s*${prop}:`), `.status-panel has its own ${prop}`);
+  assert.match(p, /max-width:\s*calc\(100% - /, 'never wider than the window');
+  assert.match(rulesFor('.status-panel > * + *'), /border-top:\s*1px solid var\(--pet-line-soft\)/, 'rows are split by a hairline');
+  // the rows no longer draw their own pill / card
+  for (const sel of ['.bars', '.aff-row', '.hud .meta']) assert.doesNotMatch(rulesFor(sel), /background:|box-shadow:|border-radius:/, `${sel} has no own surface`);
+  assert.match(rulesFor('.hud .meta'), /text-overflow:\s*ellipsis/, 'a long name line is cut, not overflowing');
 });
