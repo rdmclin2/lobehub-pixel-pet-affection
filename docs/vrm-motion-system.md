@@ -279,6 +279,8 @@ r.figure.draw(snap);                  // rig/live2d 仍是 r.figure.draw({ t, st
 ## 5. 本期动作清单（每项映射到具体素材文件）
 
 > 路径均相对 `~/vrm-assets/`。「F」= female 套，「M」= male 套；neutral 默认取 F 的姿势 + M 的幅度。Mixamo 姿势 FBX 均为 2 帧定格（0.033 s），烘焙为循环 hold。名称来自 INVENTORY.md 的 lobe-vidol 公开元数据（仅元数据）。
+>
+> **舞蹈本期不做**：本清单不含任何舞蹈条目。`dances/` 整个包（VMD×48 等）、`postures/` 中 Dance 类姿势（INVENTORY 标注为 deferred）、`mixamo/` 中 Motion/*/Dance 片段（INVENTORY 标注为“NO 本期不接入（舞蹈）”）均不引用、不烘焙；舞蹈排在 P2（§10）。
 
 ### 5.1 姿势（posture，L0）—— 6 种（P0 至少前 4 种）
 
