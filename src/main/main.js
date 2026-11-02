@@ -609,7 +609,7 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...adminState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...adminState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -620,6 +620,19 @@ function wire() {
     return { ok: true };
   }));
   ipcMain.on('admin-show-pet', () => showPet());
+  // 桌宠行为 → 找回桌宠: the same as ⋯ → 回到右下角 (and the tray's 显示桌宠): shown, back in the bottom-right corner
+  ipcMain.handle('admin-place-pet', adminOnly(() => {
+    if (!win || win.isDestroyed()) return { ok: false, reason: 'no-pet' };
+    showPet();
+    if (service && service.pet) { petBounds = null; place('pet'); }
+    return { ok: true, bounds: win.getBounds() };
+  }));
+  // 数据与关于 → 数据目录: where settings.json, pet.json, the packs and the log live
+  ipcMain.handle('open-data-folder', adminOnly(() => {
+    if (TEST_MODE) return { ok: true, test: true, path: app.getPath('userData') };
+    shell.openPath(app.getPath('userData'));
+    return { ok: true, path: app.getPath('userData') };
+  }));
   // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
   ipcMain.handle('admin-cue', adminOnly(({ state }) => (CUE_STATES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
   ipcMain.handle('update-install', () => updater.install());
@@ -687,7 +700,7 @@ app.whenReady().then(() => {
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
   service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
-  updater = new Updater({ isBusy: () => service.busy, log: logError });
+  updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
     state: async () => {

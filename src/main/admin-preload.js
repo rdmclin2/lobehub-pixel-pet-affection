@@ -12,7 +12,7 @@ const on = (channel) => (cb) => {
 };
 
 contextBridge.exposeInMainWorld('petAdmin', {
-  // { schema, settings, view, roster, packs, update, apiStatus, version, platform, testMode }
+  // { schema, settings, view, roster, packs, update, apiStatus, version, platform, testMode, dataDir }
   boot: () => ipcRenderer.invoke('admin-boot'),
   state: () => ipcRenderer.invoke('admin-state'),
   // one setting by its schema key ('prefs.roam', 'tts.endpoints.fish', 'keys.fish' …), checked in main
@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
+  // 服饰: put on one of the current character's unlocked outfits (the pet window's 衣柜 does the same)
+  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
   // 外观资源: import (file dialog in main), export, remove, folders
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
@@ -53,6 +55,9 @@ contextBridge.exposeInMainWorld('petAdmin', {
   openLog: () => ipcRenderer.send('open-log'),
   openLink: (url) => ipcRenderer.invoke('open-link', { url }),
   showPet: () => ipcRenderer.send('admin-show-pet'),
+  // 找回桌宠: show her and put her back in the bottom-right corner (⋯ → 回到右下角)
+  placePet: () => ipcRenderer.invoke('admin-place-pet'),
+  openDataFolder: () => ipcRenderer.invoke('open-data-folder'),
   // the pet on the desktop plays one action (happy, pat, play …) — 和她互动 on her stage
   cue: (state) => ipcRenderer.invoke('admin-cue', { state }),
   // pushes: the whole admin state after any change (from either window), update / API status

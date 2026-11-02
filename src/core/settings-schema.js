@@ -80,7 +80,7 @@ const PAGES = {
   connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
   api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
   safety: { title: '内容与安全', description: '18+ 确认与成人向内容。打开成人向内容必须走年龄确认。' },
-  update: { title: '版本与更新', description: '当前版本、更新状态，以及手动检查。' },
+  update: { title: '版本与更新', description: '当前版本、更新状态、自动更新开关，以及手动检查。新版本在后台下载，离开电脑 10 分钟后或退出时安装。' },
   about: { title: '数据与关于', description: '数据目录、系统选项、素材署名和危险操作。' },
 };
 
@@ -159,6 +159,9 @@ add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly'
 
 // ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
 add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', { desc: '用 GPU 绘制桌宠。透明窗口出现黑块或闪烁时可以关掉。', restart: true });
+
+// ---- 版本与更新 -------------------------------------------------------------------------------------------
+add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch', { desc: '启动约 20 秒后检查一次，之后每 4 小时一次，有新版本就在后台下载。关闭后只在你点「检查更新」时检查；已下载的新版本仍会在退出时安装。' });
 
 // ---- 按角色（角色详情页） ----------------------------------------------------------------------------------
 add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
@@ -263,7 +266,7 @@ function patchFor(key, value) {
   if (head === 'tts') return { setter: 'setTts', patch: nest(parts.slice(1), value) };
   if (head === 'asr') return { setter: 'setAsr', patch: nest(parts.slice(1), value) };
   if (head === 'api') return { setter: 'setApi', patch: { [parts[1]]: value } };
-  if (['proactive', 'affectionRules', 'ui', 'system'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
+  if (['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
   return null;
 }
 

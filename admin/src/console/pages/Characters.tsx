@@ -2,12 +2,12 @@
  * 角色列表 (P-02) · 角色详情 (P-03 + P-04) · 外观资源 (P-02). Data: core/roster.js rows, rebuilt in main on
  * every change, so a switch made here shows in the pet window and the other way round.
  */
-import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Select, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
+import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { api, reasonText, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -174,6 +174,10 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
   const { roster, view } = useStore();
   const sw = useSwitch();
   const met = roster.filter((c) => c.met).length;
+  const [kind, setKind] = useState('all');
+  // 按形象类型: every kind any character can wear, plus 有导入包 (a character with an imported pack of any kind)
+  const kinds = [...new Map(roster.flatMap((c) => c.packKinds ?? []).map((k) => [k.kind, k.label])).entries()];
+  const shown = roster.filter((c) => kind === 'all' || (kind === 'user' ? (c.packKinds ?? []).some((k) => k.user > 0) : (c.packKinds ?? []).some((k) => k.kind === kind)));
   return (
     <>
       <PageHeader
@@ -186,8 +190,19 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         title="角色图鉴"
       />
       {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
-      <div className={gstyles.grid} data-roster>
-        {roster.map((c) => (
+      <Flexbox align="center" data-kind-filter gap={8} horizontal wrap="wrap">
+        <Text fontSize={12} type="secondary">
+          按形象类型
+        </Text>
+        <Segmented
+          onChange={(v) => setKind(String(v))}
+          options={[{ label: `全部 ${roster.length}`, value: 'all' }, ...kinds.map(([value, label]) => ({ label: `${label} ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.kind === value)).length}`, value })), { label: `有导入包 ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.user > 0)).length}`, value: 'user' }]}
+          size="small"
+          value={kind}
+        />
+      </Flexbox>
+      <div className={gstyles.grid} data-roster data-roster-filter={kind}>
+        {shown.map((c) => (
           <article className={gstyles.card} data-current={c.current} data-row={c.id} key={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
             <a aria-label={`查看 ${c.nameZh}`} className={gstyles.art} href={`#/characters/${c.id}`}>
               <SpriteStage animate height={184} name={c.nameZh} preview={c.preview} silhouette={!c.met && !c.current} />
@@ -220,6 +235,14 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
                 </Text>
               </Flexbox>
               <HeartMeter c={c} compact />
+              <Flexbox data-pack-kinds={c.id} gap={4} horizontal wrap="wrap">
+                {(c.packKinds ?? []).map((k) => (
+                  <Tag color={KIND_COLOR[k.kind]} key={k.kind} size="small">
+                    {k.label}
+                    {k.user ? ` · 导入 ${k.user}` : ''}
+                  </Tag>
+                ))}
+              </Flexbox>
               <Text ellipsis fontSize={12} type="secondary">
                 {c.pack ? c.pack.name : c.kindLabel} · {c.sourceLabel}
                 {c.voicePack ? ` · 语音包 ${c.voicePack.lines} 句` : ''}
@@ -315,6 +338,14 @@ const RoleTab = ({ c }: { c: RosterRow }) => {
   useEffect(() => setText(c.systemRole), [c.systemRole]);
   const len = [...text].length;
   return (
+    <Flexbox gap={16}>
+    {c.personality && (
+      <Surface description="写在她的角色文件里，是她 system role 的底子（只读）。下面的个性化设定会加在它后面。" title="她的设定">
+        <Text data-personality={c.id} style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+          {c.personality}
+        </Text>
+      </Surface>
+    )}
     <Surface description="加在她 system role 里的你自己的话（比如称呼、口癖）。留空即删除。" title="个性化设定">
       <Flexbox gap={8}>
         <TextArea aria-label="个性化设定" data-system-role={c.id} onChange={(e) => setText(e.target.value)} placeholder="例如：叫我老板，回答简短一点。" rows={6} aria-invalid={len > max} value={text} />
@@ -360,6 +391,7 @@ const RoleTab = ({ c }: { c: RosterRow }) => {
         </Flexbox>
       </Flexbox>
     </Surface>
+    </Flexbox>
   );
 };
 
@@ -495,6 +527,112 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
           </Button>
         </div>
       </div>
+      <Live2dSize c={c} options={options} />
+    </Flexbox>
+  );
+};
+
+/** 模型大小: how much of the pet window an imported Live2D model she wears fills (the pet window's slider, saved in the pack). */
+const Live2dSize = ({ c, options }: { c: RosterRow; options: PackOption[] }) => {
+  const mine = options.find((o) => o.id === c.pack?.id && o.kind === 'live2d' && o.source === 'user');
+  const [v, setV] = useState<number>(Math.round((mine?.height ?? 1) * 100));
+  useEffect(() => setV(Math.round((mine?.height ?? 1) * 100)), [mine?.id, mine?.height]);
+  if (!mine) return null;
+  return (
+    <Surface description="她穿的是导入的 Live2D 模型：调整模型占桌宠窗口的高度。松手后保存，桌宠窗口立即重绘。" title="Live2D 模型大小">
+      <Flexbox align="center" data-live2d-size={mine.id} gap={12} horizontal>
+        <Slider
+          max={100}
+          min={30}
+          onChange={(x) => setV(Number(x))}
+          onChangeComplete={async (x) => {
+            const r = await api().setLive2dHeight(mine.id, Number(x) / 100);
+            if (r && r.ok) toast.success(`模型大小 → ${x}%`);
+            else toast.error(reasonText(r));
+          }}
+          step={5}
+          style={{ flex: 1 }}
+          value={v}
+        />
+        <Text code>{v}%</Text>
+      </Flexbox>
+    </Surface>
+  );
+};
+
+const ostyles = createStaticStyles(({ css }) => ({
+  grid: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  `,
+  card: css`
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: ${cssVar.borderRadiusLG};
+
+    background: ${cssVar.colorBgContainer};
+
+    &[data-equipped='true'] {
+      border-color: var(--pet-accent);
+    }
+  `,
+}));
+
+/**
+ * 服饰: the outfits of the pack she wears, unlocked by affection stage (the pet window's 衣柜). Only the current
+ * character's are known and can be put on; for another one this says how to get there.
+ */
+const OutfitTab = ({ c }: { c: RosterRow }) => {
+  const { merge } = useStore();
+  if (!c.current || !c.outfits) return <Alert description="服饰跟着当前角色走：先把她切换成当前角色，再来这里给她换衣服。" title="只有正在陪你的角色可以换服饰" type="info" />;
+  const list: OutfitRow[] = c.outfits;
+  return (
+    <Flexbox gap={12}>
+      <Text type="secondary">她现在这个形象包里的服饰。好感到了对应阶段就解锁；穿上后桌宠窗口立即换装（和桌宠窗口的「衣柜」是同一件事）。</Text>
+      <div className={ostyles.grid} data-outfits={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
+        {list.map((o) => (
+          <div className={ostyles.card} data-equipped={o.equipped} data-locked={o.locked} data-outfit={o.id} key={o.id}>
+            <SpriteStage height={140} name={o.label} preview={o.preview} silhouette={o.locked} />
+            <Flexbox flex={1} gap={6} padding={12}>
+              <Flexbox align="center" gap={6} horizontal>
+                <Text ellipsis strong>
+                  {o.label}
+                </Text>
+                {o.isNew && <Tag color="processing" size="small">新</Tag>}
+              </Flexbox>
+              <Text ellipsis fontSize={12} type="secondary">
+                {o.locked ? o.condition : o.stageName}
+              </Text>
+              <Flexbox horizontal style={{ marginBlockStart: 'auto' }}>
+                {o.equipped ? (
+                  <Tag color="success" icon={<Icon icon={Check} />}>
+                    正在穿
+                  </Tag>
+                ) : o.locked ? (
+                  <Tag icon={<Icon icon={Lock} />}>未解锁</Tag>
+                ) : (
+                  <Button
+                    data-equip={o.id}
+                    onClick={async () => {
+                      const r = await api().equipOutfit(o.id);
+                      if (r && r.view) merge({ view: r.view });
+                      if (r && r.ok) toast.success(`${c.nameZh} 换上了「${o.label}」`);
+                      else toast.error(reasonText(r));
+                    }}
+                    size="small"
+                  >
+                    穿上
+                  </Button>
+                )}
+              </Flexbox>
+            </Flexbox>
+          </div>
+        ))}
+      </div>
     </Flexbox>
   );
 };
@@ -600,7 +738,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-type DetailTab = 'looks' | 'affection' | 'model' | 'role' | 'voice' | 'about';
+type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'about';
 
 /** 角色详情: her on a big stage (tap her, play her actions, try packs on), her story, and her settings below. */
 export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) => void }) => {
@@ -668,9 +806,10 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
         onChange={setTab}
         tabs={[
           { content: <LookTab c={c} onTry={setTrying} trying={trying} />, label: '形象包', value: 'looks' },
+          { content: <OutfitTab c={c} />, label: '服饰', value: 'outfits' },
           { content: <AffectionTab c={c} />, label: '好感', value: 'affection' },
           { content: <ModelTab c={c} />, label: '模型', value: 'model' },
-          { content: <RoleTab c={c} />, label: '个性化设定', value: 'role' },
+          { content: <RoleTab c={c} />, label: '设定', value: 'role' },
           {
             content: (
               <Surface title="语音">
@@ -696,6 +835,11 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
               <Surface title="资料">
                 <Flexbox gap={12}>
                   <Info label="厂商">{c.vendor}</Info>
+                  <Info label="可穿的形象">
+                    <Flexbox gap={4} horizontal wrap="wrap">
+                      {(c.packKinds ?? []).length ? c.packKinds.map((k) => <Tag color={KIND_COLOR[k.kind]} key={k.kind}>{`${k.label} · 内置 ${k.builtin} · 导入 ${k.user}`}</Tag>) : '--'}
+                    </Flexbox>
+                  </Info>
                   <Info label="当前外观">{c.pack ? `${c.pack.name}（${c.sourceLabel}）` : c.kind === 'video' ? '原版动画' : '--'}</Info>
                   <Info label="模型">{c.model?.current ? modelLabel(c, c.model.current) : '--'}</Info>
                   <Info label="素材署名">
