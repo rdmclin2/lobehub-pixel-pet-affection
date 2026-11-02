@@ -243,7 +243,7 @@
       const playEnd = S.t + dur;
       const end = clip ? Math.max(playEnd + hold, S.t + fadeIn) + fadeOut : S.t + NO_CLIP;
       const r = {
-        slot, clip: clip || null, prio: opts.prio || PRIORITY.touch, start: S.t, playEnd, end, hold, fadeIn, fadeOut,
+        slot, clip: clip || null, prio: opts.prio !== undefined ? opts.prio : PRIORITY.touch, start: S.t, playEnd, end, hold, fadeIn, fadeOut,
         weight: clip ? clamp(clip.weight * (opts.amp || 1) * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
         face: (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
         noBlink: look.noBlink || 0, key: ++S.reactKey, why: opts.why || null,
@@ -414,6 +414,9 @@
       // (a reply streaming in keeps the app "thinking" while its words appear: then she talks — T-2711)
       const hold = holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
       stepHolds(dt, hold);
+      // a cue's small cheer is only for an idle moment: thinking, talking, eating or being lifted ends it (it
+      // fades out under the hold; T-2711: one ran on over the thinking pose)
+      if (hold && hold !== 'walk' && S.react && S.react.prio === PRIORITY.cue) cutReaction();
 
       // the reaction: over → gone (a queued celebration next); interrupted ones finish fading
       if (S.react && S.t >= S.react.end) S.react = null;

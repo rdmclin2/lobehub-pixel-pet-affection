@@ -128,6 +128,16 @@ test('talk: bigger gestures than before, a different kind of move than thinking,
     assert.equal(frozen, 0, `${style}: the gesture never stops on one frame`);
     const total = plans.map((p) => holdW(p, /^hold\.talk/));
     assert.ok(total.slice(15).every((x) => x > 0.5), `${style}: the gestures stay on through the switches`);
+    // a cue's small cheer does not run on over thinking
+    const c = make(style);
+    run(c, 1, holdsOf());
+    c.update(0.05, { holds: holdsOf(), events: [] });
+    c.state.react = null;
+    for (let i = 0; i < 40 && !c.state.react; i++) c.update(0.05, { holds: holdsOf(), events: [{ type: 'cue', name: 'play' }] });
+    if (c.state.react) {
+      const th = run(c, 0.6, holdsOf({ think: true })).pop();
+      assert.equal(th.reaction, null, `${style}: the cue's cheer ends when she starts thinking`);
+    }
     // a reply streaming in: the app still "thinks" while its words appear — she talks
     assert.equal(run(d, 0.5, holdsOf({ talk: true, think: true })).pop().hold, 'talk');
     // nods with the words while talking (the alive layer), none while thinking
