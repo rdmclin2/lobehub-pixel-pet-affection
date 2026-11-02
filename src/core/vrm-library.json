@@ -612,13 +612,13 @@
         "angry": 1
       },
       "label": "生气指人",
-      "note": "Quickly Pointing Angrily Forward, 0–0.5 s at 130%: the jab out to point straight at you, then held 1.3 s (T-2691: Angry Forward Gesture moved the head only; the full clip only pointed for a moment)",
+      "note": "Quickly Pointing Angrily Forward, 0–0.33 s at 130%: the jab out to the full point, held 1.4 s on that frame (T-2691: Angry Forward Gesture moved the head only; holding the 0.5 s frame held a pose past the point)",
       "trim": [
         0,
-        0.5
+        0.33
       ],
       "amplitude": 1.3,
-      "hold": 1.3
+      "hold": 1.4
     },
     "react.annoyed@male": {
       "kind": "reaction",
