@@ -30,7 +30,24 @@
 
 ## 与 lobe-ui 重复
 
-后台（`admin/`）目前没有。桌宠窗口 `src/renderer/` 里的手写控件（`#panel` 的按钮、开关、列表、toast）属于像素风格美术，按 `product.md` 的 `lint-allow` 豁免，**不**迁移成 lobe-ui；它们在后台上线后由「在设置窗口中打开」取代（方案 T7），不要在后台里复刻它们。
+后台（`admin/`）目前没有。桌宠窗口 `src/renderer/` 是原生 JS，不能直接用 React 组件；它的手写控件按下表**对照 lobe-ui 的外观**用 `--lobe-*` 令牌重写（规则 R-04），不要在后台里复刻它们：
+
+| 桌宠窗口控件（选择器） | 对照的 lobe-ui 外观 | 令牌 |
+| --- | --- | --- |
+| `.btn` / `.btn.primary` / `.icon-btn` | `Button` default / primary / 图标按钮 | `colorBgContainer` `colorBorder` `colorFillTertiary`（hover）`colorPrimary` `borderRadiusSM` `motionDurationMid` |
+| `input` `select` `textarea` | `Input` / `Select` / `TextArea` filled | `colorBorder` `borderRadiusSM`，focus 用 `colorFillSecondary` 光圈 |
+| `.bubble` `.bubble-tail` | 聊天气泡（`ChatItem` 的消息卡片） | `colorBgElevated` `borderRadiusLG` `boxShadowSecondary` |
+| `.chat-row` | `ChatInputArea`：一张卡片里放附件、输入、麦克风、发送 | `colorBgElevated` `borderRadiusLG` `boxShadowSecondary`，发送 = primary |
+| `.popup`（⋯ 菜单 / 喂食 / 动作） | `Dropdown` 菜单 | `colorBgElevated` `boxShadow` `borderRadiusLG`，危险项 `colorError` |
+| `.unlock-toast` | `toast`（标题 + 正文 + 操作 + 关闭） | `colorBgElevated` `boxShadow` |
+| `.bars` `.aff-row` `.meta` | 状态胶囊 + `Progress` 细条 | `colorFillSecondary` 轨道，`colorSuccess` / `colorWarning` / `colorError`（`app.js barColor`）；好感阶段色来自 `core/affection.js` |
+| `.panel`、`.adv-section`、`.card`、`.topic`、`.pack-opt`、`.history-*` | 设置页 `Form` 分组卡片、列表项、`Tag` | `colorBgLayout` 页面底，`colorBgContainer` 卡片，`borderRadiusLG`，选中用 `colorPrimary` 描边 |
+| `.zone-hint` / `.mic-status` | `Tooltip` | `colorText` 底 + `colorBgContainer` 字 |
+| `.stop-btn` | danger `Button`（胶囊） | `colorError` |
+| `.vrm-confirm` | `Modal`（遮罩 + 卡片） | `colorBgMask` `boxShadow` |
+| 图标（⋯、×、📎、麦克风、状态图标） | `lucide-react` | 内联 lucide 路径 `<svg class="ico">`，`currentColor` 描边 |
+
+验证：`xvfb-run -a node e2e/run.js petui`（亮 / 暗各 14 张截图，`out/e2e/petui/`）。
 
 ## 业务组件（后台页面开发时新增，按方案 §6 规划）
 

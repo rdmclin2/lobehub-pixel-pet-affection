@@ -18,3 +18,10 @@
 - 判据：调用 `confirmModal({...})` 时缺 `okText` 或 `cancelText`。
 - 原因：`@lobehub/ui@6.10.2` 的 `ConfirmBody` 把默认值写死成英文 `"OK"` / `"Cancel"`，不走 `ConfigProvider` 的 zh-CN 资源（2026-11-02 预览页实测）。`okText` 写「动词 + 对象」（W-01）。
 - 层级：lint 候选（可机械识别）；通用性待确认后回流 lobe-ui。
+
+## R-04 桌宠窗口界面只用 `--lobe-*` 令牌，裸色值只留给角色美术
+
+- 判据：`src/renderer/style.css` 里气泡、HUD、按钮、输入框、菜单、Toast、`#panel` 等界面选择器出现裸色值、`Courier New` / 等宽正文字体、3px 描边或硬投影；或在 `src/renderer/*.js` 里给界面写死颜色（`barColor` 用 `var(--lobe-color-*)`）。
+- 原因：桌宠窗口与配置后台要是同一套 LobeHub 视觉（颜色 / 字体 / 圆角 / 阴影 / 动效，亮暗跟随系统）；令牌由 `npm run design:tokens` 生成到 `src/renderer/design/lobe-tokens.css`，项目自有值用 `--pet-*`（不重定义 `--lobe-*`）。角色本身（精灵、爱心、闪光、触摸标记）仍按 `product.md` 的 `lint-allow` 放行。
+- 图标：用内联 lucide 路径 `<svg class="ico">`（`pointer-events: none`，否则工具栏按 `e.target.dataset` 取动作会失效），不用 emoji 当图标。
+- 层级：项目层；`lint-lobe.mjs` 去掉放行后，`style.css` 剩下的 FAIL 应全部是角色美术（2026-11-02：156 → 20）。

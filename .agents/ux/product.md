@@ -7,7 +7,7 @@
 平台：desktop
 
 - Electron 桌面应用，两类界面：
-  - **桌宠窗口**（`src/renderer/`，原生 JS + 像素风格）：角色本身的美术，不属于产品界面视觉体系。
+  - **桌宠窗口**（`src/renderer/`，原生 JS）：围绕角色的界面（对话气泡、状态 / 好感度、工具栏、聊天输入框、⋯ 菜单、Toast、`#panel` 弹层、18+ 确认与选角页）用 `src/renderer/design/lobe-tokens.css` 的 `--lobe-*` 令牌，与配置后台同一套颜色 / 字体 / 圆角 / 阴影 / 动效，亮 / 暗跟随系统；角色本身（像素 / 图片 / rig / Live2D / VRM、爱心与触摸特效）是美术，不属于产品界面视觉体系。
   - **设置窗口 / 配置后台**（`admin/` → 构建到 `src/admin-ui/`，Vite + React 19 + `@lobehub/ui`）：产品界面，完全按 lobe-design 的 web/desktop 规则检查。
 - 渲染进程无 Node（`sandbox` + `contextIsolation`），离线运行，CSP 禁止外网（不加载远程字体 / emoji CDN）。
 
@@ -48,7 +48,7 @@ copy-profile: consumer
 
 ## lint 放行（项目层，按路径）
 
-桌宠窗口的像素描边、等宽字体、裸色值、非网格间距、弹跳动效和 emoji 按钮是角色美术本身，不纳入产品界面的视觉体系（理由按 I-10 写明；原则层的可达性要求不放行）。第三方压缩代码同样放行。配置后台 `admin/**` 不放行任何规则。
+桌宠窗口的界面部分已改用 `--lobe-*` 令牌（规则 R-04）；仍需放行的是角色美术本身：角色特效的裸色值（爱心、闪光、得分、触摸标记、腮红）、角色弹跳 / 摇摆动效、特效 emoji，以及原生 CSS 必须写的 `font-family: var(--lobe-font-family)`。它们不纳入产品界面的视觉体系（理由按 I-10 写明；原则层的可达性要求不放行）。去掉放行后 `src/renderer/style.css` 剩余的 FAIL 都属于这一类。第三方压缩代码同样放行。配置后台 `admin/**` 不放行任何规则。
 
 lint-allow: LOBE-FONT-FAMILY LOBE-RAW-COLOR LOBE-SPACING-OFFGRID LOBE-LETTER-SPACING LOBE-MOTION-DURATION LOBE-BOUNCE LOBE-GLOW LOBE-EMOJI-ICON LOBE-NULLISH-RENDER src/renderer/**
 lint-allow: LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/**

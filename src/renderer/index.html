@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack: blob:; connect-src 'self' pack: blob:; media-src 'self' blob:" />
   <title>Pixel Pet</title>
+  <!-- LobeHub design tokens (lobe-design, @lobehub/ui theme): light / dark follow the OS like the admin window -->
+  <link rel="stylesheet" href="design/lobe-tokens.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -71,7 +73,7 @@
     <div id="bubble" class="bubble hidden"></div>
     <div class="bubble-tail"></div>
     <div id="unlock-toast" class="unlock-toast hidden" role="status" aria-live="polite">
-      <button id="toast-close" class="toast-x" title="关闭" aria-label="关闭提示">×</button>
+      <button id="toast-close" class="toast-x icon-btn" title="关闭" aria-label="关闭提示"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       <div id="toast-title" class="toast-title"></div>
       <div id="toast-body" class="toast-body"></div>
       <button id="toast-open" class="btn toast-btn">去衣柜看看</button>
@@ -92,17 +94,17 @@
       <div id="float-layer" class="float-layer" aria-live="polite"></div>
     </div>
     <!-- while the pet is working, hovering shows only this button (everything else stays hidden) -->
-    <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）">■ 停止</button>
+    <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>停止</button>
     <!-- everything below is only shown while the pointer is over the window -->
     <div id="hud" class="hud">
       <div id="bars" class="bars">
-        <span title="饥饿">🍙 <i id="bar-hunger"></i></span>
-        <span title="心情">♥ <i id="bar-mood"></i></span>
-        <span title="体力">⚡ <i id="bar-energy"></i></span>
+        <span title="饥饿"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg><i id="bar-hunger"></i></span>
+        <span title="心情"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="12" cy="12" r="10"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg><i id="bar-mood"></i></span>
+        <span title="体力"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/></svg><i id="bar-energy"></i></span>
       </div>
       <div id="aff-row" class="aff-row" title="好感度">
         <span id="aff-stage" class="aff-stage"></span>
-        <span class="aff-heart">💗</span><i id="bar-affection" class="aff-bar"></i>
+        <span class="aff-heart"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg></span><i id="bar-affection" class="aff-bar"></i>
         <span id="aff-num" class="aff-num"></span>
       </div>
       <div id="meta" class="meta"></div>
@@ -113,13 +115,13 @@
         <button class="btn" data-act="chat">聊天</button>
         <button class="btn" data-act="topics" id="btn-topics" title="话题：按好感度阶段解锁" aria-label="话题">话题<b class="new-dot hidden">新</b></button>
         <button class="btn" data-act="wardrobe" id="btn-wardrobe" title="衣柜：按好感度阶段解锁服饰" aria-label="衣柜">衣柜<b class="new-dot hidden">新</b></button>
-        <button class="btn" data-act="menu" title="更多（也可以右键或在触屏上长按她）" aria-label="更多">⋯</button>
+        <button class="btn icon-btn" data-act="menu" title="更多（也可以右键或在触屏上长按她）" aria-label="更多"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
       </div>
       <div id="attach-row" class="attach-row hidden"></div>
       <div id="chat-row" class="row chat-row hidden">
-        <button id="attach-btn" class="btn attach-btn" title="添加图片（也可以 Ctrl/⌘+V 粘贴，或把任何文件拖进来）">📎</button>
+        <button id="attach-btn" class="btn attach-btn" title="添加图片（也可以 Ctrl/⌘+V 粘贴，或把任何文件拖进来）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
         <input id="chat-input" maxlength="400" placeholder="说点什么，可粘贴图片、拖入文件…" autocomplete="off" />
-        <button id="chat-mic" class="btn mic-btn hidden" data-state="idle" title="语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束" aria-label="语音输入" aria-pressed="false">🎤</button>
+        <button id="chat-mic" class="btn mic-btn hidden" data-state="idle" title="语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束" aria-label="语音输入" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
         <button id="chat-send" class="btn primary">发送</button>
       </div>
       <div id="mic-status" class="mic-status hidden" role="status" aria-live="polite"></div>
@@ -155,7 +157,7 @@
     </div>
 
     <!-- a visiting model-chan (index.html?visitor=<id>): her name and a button to send her home -->
-    <div id="visitor-bar" class="visitor-bar"><span id="visitor-name"></span><button id="visitor-close" class="btn" title="送她回去" aria-label="送她回去">×</button></div>
+    <div id="visitor-bar" class="visitor-bar"><span id="visitor-name"></span><button id="visitor-close" class="btn" title="送她回去" aria-label="送她回去"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
 
     <!-- wardrobe / topics: the window grows while one is open -->
     <div id="panel" class="panel hidden" role="dialog" aria-labelledby="panel-title">
@@ -164,7 +166,7 @@
           <div id="panel-title" class="panel-title"></div>
           <div id="panel-sub" class="panel-sub"></div>
         </div>
-        <button id="panel-close" class="btn" title="关闭" aria-label="关闭">×</button>
+        <button id="panel-close" class="btn icon-btn" title="关闭" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div id="panel-msg" class="panel-msg hidden" role="status"></div>
       <div id="panel-body" class="panel-body"></div>

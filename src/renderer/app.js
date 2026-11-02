@@ -4,6 +4,19 @@ const Fx = window.PetFx;
 const Voice = window.PetVoice;
 const IVoice = window.PetInteractionVoice;
 const $ = (id) => document.getElementById(id);
+// Appearance follows the OS like the admin window (admin/src/design/theme.ts): Electron forwards nativeTheme to
+// prefers-color-scheme, and <html data-theme> picks the light / dark LobeHub tokens (design/lobe-tokens.css).
+// A pinned choice in settings.ui.theme ('light' | 'dark'; anything else = follow the OS) wins, as in the admin window.
+const appearance = (() => {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  let choice = 'auto';
+  const apply = () => { document.documentElement.dataset.theme = choice === 'light' || choice === 'dark' ? choice : mq.matches ? 'dark' : 'light'; };
+  apply();
+  mq.addEventListener('change', apply);
+  return { set(theme) { choice = theme || 'auto'; apply(); } };
+})();
+// lucide "mic" (the icon set LobeHub uses) for the idle 语音输入 button, drawn in currentColor by .ico (style.css)
+const MIC_ICON = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>';
 // A visiting model-chan (同屏伙伴) runs this same page in its own small window: index.html?visitor=<id>.
 const VISITOR = new URLSearchParams(location.search).get('visitor');
 const FOOD_SPRITE = { rice: 'rice', cookie: 'cookie', fruit: 'fruit' };
@@ -37,6 +50,7 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 function setSettings(st) {
   const wasOn = !!(settings && settings.prefs && settings.prefs.voice);
   settings = st;
+  appearance.set(st && st.ui && st.ui.theme);
   if (wasOn && !(st && st.prefs && st.prefs.voice)) stopSpeech('voice-off'); // 朗读 off: quiet at once, nothing pending
   syncPrewarm();
   if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
@@ -541,7 +555,8 @@ function enterPet(v) {
 
 function barColor(v, invert) {
   const good = invert ? 100 - v : v;
-  return good > 60 ? '#6cc16a' : good > 30 ? '#f2b53a' : '#e0455f';
+  // LobeHub semantic colours (design/lobe-tokens.css): they follow the light / dark theme
+  return good > 60 ? 'var(--lobe-color-success)' : good > 30 ? 'var(--lobe-color-warning)' : 'var(--lobe-color-error)';
 }
 
 function refreshHud() {
@@ -2587,7 +2602,7 @@ function paintMic() {
   const sec = s === 'recording' ? Math.floor((performance.now() - mic.t0) / 1000) : 0;
   const max = (settings && settings.asr && settings.asr.maxSeconds) || 60;
   if (s === 'recording') b.textContent = `■ ${sec}s`;
-  else if (s === 'idle') b.textContent = '🎤';
+  else if (s === 'idle') b.innerHTML = MIC_ICON;
   else b.innerHTML = '<span class="spin" aria-hidden="true"></span>';
   b.title = s === 'recording' ? '再点一下（或松开）结束，Esc 取消' : s === 'idle' ? '语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束' : '识别中…';
   input.classList.toggle('listening', s === 'recording');

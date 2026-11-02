@@ -4,6 +4,7 @@
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
+//   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, menus, toast, #panel) in light + dark (LobeHub tokens)
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -6716,6 +6717,155 @@ async function designScenario() {
   }
 }
 
+// ---------------------------------------------------------------- petui
+// The pet window's own UI (bubble, HUD bars + 好感, toolbar, chat box, ⋯ menu, stage-up toast, #panel:
+// 衣柜 / 话题 / 聊天记录 / 角色列表 / 高级设置, 18+ gate, onboarding) in light and dark. The OS appearance reaches the
+// renderer as prefers-color-scheme (Electron nativeTheme), exactly as for the admin window; here it is forced
+// with nativeTheme.themeSource. Asserts the window reads the LobeHub tokens (--lobe-*) and switches with the theme.
+// usage: xvfb-run -a node e2e/run.js petui. Screenshots in out/e2e/petui/<theme>/ (PIXELPET_PETUI_TAG=<dir> to rename).
+async function petuiScenario() {
+  const S = 'petui';
+  const ROOTSHOTS = path.join(OUT, process.env.PIXELPET_PETUI_TAG || 'petui');
+  for (const theme of ['light', 'dark']) {
+    const SHOTS = path.join(ROOTSHOTS, theme);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-petui-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-petuifake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+    // the 18+ question shows on a first launch: shoot it, then answer “all ages”
+    const { app, page } = await launch(env, { gate: true });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+    const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+    const closePanel = async () => { await page.click('#panel-close'); await page.waitForSelector('#panel.hidden', { state: 'attached' }); };
+    const tokens = () => page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const b = getComputedStyle(document.getElementById('age-gate'));
+      return { theme: document.documentElement.dataset.theme, dark: matchMedia('(prefers-color-scheme: dark)').matches, bgContainer: cs.getPropertyValue('--lobe-color-bg-container').trim(), text: cs.getPropertyValue('--lobe-color-text').trim(), gateBg: b.backgroundColor, font: getComputedStyle(document.body).fontFamily.split(',')[0] };
+    });
+    try {
+      // nativeTheme drives prefers-color-scheme on macOS / Windows; xvfb has no desktop theme, so pin the media too
+      await app.evaluate(({ nativeTheme }, t) => { nativeTheme.themeSource = t; }, theme);
+      await page.emulateMedia({ colorScheme: theme });
+      await step(S, `${theme}: 18+ 确认页使用 LobeHub 令牌（--lobe-*）并跟随系统主题`, async () => {
+        await page.waitForSelector('#age-gate:not(.hidden)', { timeout: 15000 });
+        await page.waitForFunction((t) => matchMedia('(prefers-color-scheme: dark)').matches === (t === 'dark') && document.documentElement.dataset.theme === t, theme);
+        const t = await tokens();
+        assert.equal(t.theme, theme);
+        // @lobehub/ui theme values (src/renderer/design/tokens.json): container #ffffff / #0d0d0d, layout #f8f8f8 / #000000
+        assert.deepEqual([t.bgContainer, t.gateBg], theme === 'dark' ? ['#0d0d0d', 'rgb(0, 0, 0)'] : ['#ffffff', 'rgb(248, 248, 248)']);
+        assert.equal(t.font, 'Geist');
+        await shot('00-age-gate');
+        return JSON.stringify(t);
+      }, page);
+      await page.click('#age-no');
+      await step(S, `${theme}: 选角页（卡片、复选、输入框、主按钮）`, async () => {
+        await page.waitForSelector('.char-card');
+        await page.locator('.char-card[data-species="claude"]').click();
+        await page.fill('#pet-name', '小克');
+        await shot('01-onboarding');
+      }, page);
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      await step(S, `${theme}: 悬停：气泡、状态条、好感度、工具栏`, async () => {
+        await page.waitForFunction(() => !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 10000 });
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        await shot('02-hover-hud-bubble');
+        return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
+      }, page);
+      await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
+        await clickAct(page, 'chat');
+        await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
+        await shot('03a-chat-row-placeholder'); // empty and focused: the placeholder
+        await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
+        await shot('03-chat-row');
+        await page.press('#chat-input', 'Enter');
+        await page.waitForFunction(() => /echo: 今天也辛苦啦/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
+        await idle();
+        await hover(page);
+        await shot('04-chat-reply');
+        await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
+        await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: ⋯ 菜单`, async () => {
+        await clickAct(page, 'menu');
+        await page.waitForSelector('#main-menu:not(.hidden)');
+        await page.waitForTimeout(400); // let the menu's open transition finish
+        await shot('05-main-menu');
+        // the menu closes when the pointer leaves the window (as in `fresh`)
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForSelector('#main-menu.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: 喂食菜单`, async () => {
+        await clickAct(page, 'feed');
+        await page.waitForSelector('#food-menu:not(.hidden)');
+        await page.waitForTimeout(400); // let the menu's open transition finish
+        await shot('06-food-menu');
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForSelector('#food-menu.hidden', { state: 'attached' });
+      }, page);
+      await step(S, `${theme}: 升阶提示 Toast`, async () => {
+        await page.evaluate(() => window.pet.debugSet({ affection: 20 }));
+        await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 10000 });
+        await idle();
+        await page.waitForTimeout(300);
+        await shot('07-unlock-toast');
+        return (await page.textContent('#toast-title')).trim();
+      }, page);
+      await step(S, `${theme}: #panel 衣柜`, async () => {
+        if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
+        await clickAct(page, 'wardrobe');
+        await page.waitForSelector('#panel:not(.hidden) .grid .card');
+        await page.waitForTimeout(300);
+        await shot('08-panel-wardrobe');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 话题`, async () => {
+        await clickAct(page, 'topics');
+        await page.waitForSelector('#panel:not(.hidden) .topic');
+        await shot('09-panel-topics');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 聊天记录（列表 / 对话）`, async () => {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="history"]');
+        await page.waitForSelector('#panel:not(.hidden) .history-item');
+        await shot('10-panel-history-list');
+        await page.click('.history-item');
+        await page.waitForSelector('.history-thread');
+        await shot('11-panel-history-thread');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 角色列表`, async () => {
+        await openCharacters(page);
+        await page.waitForTimeout(300);
+        await shot('12-panel-characters');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: #panel 高级设置`, async () => {
+        await clickAct(page, 'menu');
+        await page.click('[data-menu="advanced"]');
+        await page.waitForSelector('#panel:not(.hidden) .adv-section');
+        await shot('13-panel-advanced');
+        await closePanel();
+      }, page);
+      await step(S, `${theme}: 无页面错误`, async () => {
+        assert.deepEqual(errors, []);
+        return 'page errors 0';
+      });
+    } finally {
+      await app.close().catch(() => {});
+    }
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -6750,6 +6900,7 @@ async function designScenario() {
   if (which === 'asr' || which === 'all') await asrScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
+  if (which === 'petui' || which === 'all') await petuiScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
