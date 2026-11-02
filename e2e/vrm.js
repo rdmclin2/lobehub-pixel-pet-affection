@@ -10,8 +10,11 @@
 //
 //   vrmimport  外观 → 导入 VRM 模型… → 导入确认 (author, license, restrictions) → the user pack, its card and
 //              授权信息; the model copied into userData only; drawn on the desk.
-//   vrm        wearing it: the canvas draws (data-frame climbs, three / three-vrm loaded), idle frame budget,
-//              blinking, gaze following the cursor; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI; an interaction
+//   vrm        wearing it with a homemade motion library (scripts/make-test-vrma.js in <userData>/vrm-motions):
+//              the canvas draws, data-library loaded, idle frame budget, the idle schedule (≥ 3 variants, no
+//              repeat), the 姿势 menu (cross-fade, saved), blinking, gaze; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI
+//              act out VRM's own way (faces, holds; no pixel moves, no CSS animation on the canvas); male / female
+//              style; no library → still draws; an interaction
 //              line from her voice pack moving aa/ih/ou/ee/oh and back to 0; 18+ off keeps a VRM pack's adult
 //              outfit out of reach; back to dafeiyu-pixel and to the VRM again; no .vrm in git or the build.
 
@@ -22,6 +25,7 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 
 const { makeTestVrm } = require('../scripts/make-test-vrm');
+const { writeTestLibrary, ARM } = require('../scripts/make-test-vrma');
 
 // The restrictive license the e2e model carries (a homemade mesh; only the meta says "restricted").
 const RESTRICTED = {
@@ -55,8 +59,10 @@ module.exports = function vrmScenarios(ctx) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // a fresh data dir, logged in through the fake lh
-  function dataDir(tag, settings) {
+  function dataDir(tag, settings, { motions = false } = {}) {
     const data = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${tag}-`));
+    // a homemade motion library (scripts/make-test-vrma.js) where the app looks for one: <userData>/vrm-motions
+    if (motions) writeTestLibrary(path.join(data, 'vrm-motions'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${tag}fake-`));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, ...settings }));
@@ -206,7 +212,7 @@ module.exports = function vrmScenarios(ctx) {
   async function vrmScenario() {
     const S = 'vrm';
     // 18+ confirmed but adult content off: the app's switch decides (5)
-    const { data, env } = dataDir('vrm', { ageConfirmed: true, ageConfirmedAt: Date.now() });
+    const { data, env } = dataDir('vrm', { ageConfirmed: true, ageConfirmedAt: Date.now() }, { motions: true });
     const model = makeModel(ROOT, 'vrm');
     const evidence = [];
     const samples = {};
@@ -223,7 +229,8 @@ module.exports = function vrmScenarios(ctx) {
       while (Date.now() - t0 < ms) {
         const d = await H.ds();
         const f = await H.fig();
-        const s = { state: d.state, expr: d.expr, mouth: d.mouth, motion: f.motion, root: f.root, frame: d.frame, mode: d.mode, fps: d.fps };
+        const css = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const cs = getComputedStyle(c); const b = getComputedStyle(document.getElementById('pet-body')); return { animationName: cs.animationName, transform: cs.transform, scale: cs.scale, body: b.animationName }; });
+        const s = { state: await page.evaluate(() => window.petFx.state().state), events: d.state, hold: d.hold, expr: d.expr, mouth: d.mouth, motion: f.motion, root: f.root, frame: d.frame, mode: d.mode, fps: d.fps, css };
         if (want(s)) { best = s; break; }
         best = s;
         await sleep(60);
@@ -263,10 +270,15 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(f.loaded && f.springJoints >= 4, `springs ${f.springJoints}`);
         // the embedded texture (loaded through a blob: URL, as a real model's are) has its image: T-2654
         assert.ok(f.maps.total >= 1 && f.maps.loaded === f.maps.total, `texture maps ${JSON.stringify(f.maps)}`);
-        samples.start = { a, b, runtime: rt.versions, maps: f.maps };
+        // VRM's own motion: the library over vrmlib://, the style read from the model, a posture clip at full weight
+        assert.equal(b.library, 'loaded', `data-library ${b.library}`);
+        assert.equal(b.anim, 'vrma');
+        assert.match(b.style, /^(female|male|neutral) \((meta|pack)\)$/);
+        assert.match(b.layers, /@(female|male):/);
+        samples.start = { a, b, runtime: rt.versions, maps: f.maps, clips: f.clips, style: f.style };
         box = await page.locator('#pet-look canvas.vrm').boundingBox();
         await H.shot('1-drawn');
-        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}; texture maps ${f.maps.loaded}/${f.maps.total} loaded`);
+        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}; texture maps ${f.maps.loaded}/${f.maps.total} loaded\nmotion library: data-library=${b.library}, ${f.clips.length} clips (${f.clips.join(', ')}); data-style=${b.style}; data-posture=${b.posture}; data-idle=${b.idle}; data-layers=${b.layers}`);
       }, page);
 
       await step(S, 'idle: after a while with nothing happening the frame budget drops (data-mode idle, lower fps)', async () => {
@@ -287,6 +299,47 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(measured <= 18 && measured > 3, `idle frames/s measured ${measured}`);
         await H.shot('2-idle');
         return H.note(`active: mode ${act.mode} fps ${act.fps} → idle: mode ${f1.mode} fps ${f1.fps}; frames counted in 2 s idle: ${f0.frame} → ${f1.frame} (${measured}/s)`);
+      }, page);
+
+      await step(S, 'idle schedule: with the director\'s clock ×20, data-idle goes through ≥ 3 variants, never the same twice in a row', async () => {
+        await page.evaluate(() => { window.PetVRM.director.seed(11); window.PetVRM.director.speed(20); });
+        const seen = [];
+        const t0 = Date.now();
+        while (Date.now() - t0 < 9000) { const d = await H.ds(); if (seen[seen.length - 1] !== d.idle) seen.push(d.idle); await sleep(100); }
+        const hist = await page.evaluate(() => window.PetVRM.director.history());
+        await page.evaluate(() => window.PetVRM.director.speed(1));
+        assert.ok(new Set(hist).size >= 3, hist.join(' → '));
+        for (let i = 1; i < hist.length; i++) assert.notEqual(hist[i], hist[i - 1], hist.join(' → '));
+        await H.shot('2b-idle-variants');
+        samples.idle = { seen, history: hist };
+        return H.note(`data-idle seen: ${seen.join(' → ')}; director history ${hist.join(' → ')} (${new Set(hist).size} variants, no repeat)`);
+      }, page);
+
+      await step(S, '姿势 menu on the VRM card: each posture cross-fades in (weights sum to 1), is saved, and the bone shows it', async () => {
+        const got = [];
+        for (const p of ['stand.confident', 'stand.playful', 'sit.rest', 'stand.relaxed']) {
+          await openCurrentPage(page);
+          const sel = page.locator(`select.vrm-posture[data-pack="${ID}"]`);
+          await sel.scrollIntoViewIfNeeded();
+          await sel.selectOption(p);
+          await page.waitForFunction(() => /姿势已设为/.test(document.getElementById('panel-msg').textContent));
+          if (p === 'stand.confident') await H.shot('2c-posture-menu');
+          await page.click('#panel-close');
+          const sums = [];
+          for (let i = 0; i < 8; i++) { sums.push((await H.fig()).weightSum); await sleep(80); }
+          await page.waitForFunction((x) => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.posture === x && /^[^,]+:1\.00$/.test(c.dataset.layers); }, p, { timeout: 15000 });
+          await sleep(300);
+          const f = await H.fig();
+          const saved = await page.evaluate(async (id) => (await window.pet.getSettings()).vrmPostures[id], ID);
+          // the homemade clip raises the right upper arm by ARM[p]° from hanging (70° roll); the alive layer adds ≤ 4°
+          const roll = Math.abs(f.bones.rightUpperArm[2]);
+          assert.ok(Math.abs(roll - (70 - ARM[p])) < 8, `${p}: right arm roll ${roll} (want ≈ ${70 - ARM[p]})`);
+          assert.ok(sums.every((x) => Math.abs(x - 1) < 0.01), `weights ${sums}`);
+          assert.equal(saved, p);
+          got.push(`${p}: layers ${(await H.ds()).layers}, arm ${roll.toFixed(1)}°, saved ${saved}, sums ${[...new Set(sums.map((x) => x.toFixed(2)))].join('/')}`);
+          await H.shot(`2d-posture-${p}`);
+        }
+        return H.note(got.join('\n'));
       }, page);
 
       await step(S, 'blinking: the blink expression shows up on its own', async () => {
@@ -315,7 +368,7 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`data-gaze cursor left ${gl} → right ${gr}; lookAt target left ${JSON.stringify(tl)} → right ${JSON.stringify(tr)}`);
       }, page);
 
-      await step(S, '摸摸 (a click on her): pat → relaxed face, a nod', async () => {
+      await step(S, '摸摸 (a click on her): pat → relaxed face; no pixel nod / hop, no CSS animation on the VRM', async () => {
         await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
         await rest();
         // a click reacts with pat or happy, never the same twice in a row (fx.pickClickReaction): click until pat
@@ -325,17 +378,20 @@ module.exports = function vrmScenarios(ctx) {
           if (i) await rest();
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
-          s = await peak('pat', (x) => (x.state === 'pat' && /relaxed:/.test(x.expr) && x.motion.nodDown > 3) || (x.state === 'happy' && /happy:/.test(x.expr) && x.motion.hop > 0.2));
+          s = await peak('pat', (x) => (x.state === 'pat' && /relaxed:/.test(x.expr)) || (x.state === 'happy' && /happy:/.test(x.expr)));
           tried.push(`${s.state}{${s.expr}; ${fmtMotion(s.motion)}}`);
         }
         await H.shot('5-pat');
         assert.equal(s.state, 'pat');
         assert.match(s.expr, /relaxed:/);
-        assert.ok(s.motion.nodDown > 3, fmtMotion(s.motion));
+        // VRM's own: a face, no pixel moves on the bones or the canvas
+        assert.deepEqual(s.motion, {}, fmtMotion(s.motion));
+        assert.equal(s.css.animationName, 'none');
+        assert.equal(s.css.transform, 'none');
         return H.note(`clicks → ${tried.join(' → ')}; pat: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}`);
       }, page);
 
-      await step(S, '拖起 (press and drag her): lifted → surprised face, dangling', async () => {
+      await step(S, '拖起 (press and drag her): lifted → surprised face, data-hold lift, legs hang; no pixel dangle, no CSS swing', async () => {
         await rest();
         const b = await petBox();
         const x0 = b.x + b.width / 2;
@@ -343,40 +399,53 @@ module.exports = function vrmScenarios(ctx) {
         await page.mouse.move(x0, y0);
         await page.mouse.down();
         for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
-        const s = await peak('lifted', (x) => x.state === 'lifted' && /surprised:/.test(x.expr) && x.motion.dangle > 0.5);
+        const s = await peak('lifted', (x) => x.state === 'lifted' && x.hold === 'lift' && /(surprised|oh):/.test(x.expr));
         await H.shot('6-lifted');
+        const legs = (await H.fig()).bones.leftUpperLeg;
         await page.mouse.up();
         assert.equal(s.state, 'lifted');
-        assert.match(s.expr, /surprised:/);
-        assert.ok(s.motion.dangle > 0.5, fmtMotion(s.motion));
+        assert.equal(s.hold, 'lift');
+        assert.match(s.expr, /(surprised|oh):/);
+        // no pixel dangle: no CSS swing on her or the window's body, no procedural flailing
+        assert.deepEqual(s.motion, {});
+        assert.equal(s.css.animationName, 'none');
+        assert.equal(s.css.body, 'none', 'the pet-dangle CSS swing is off for VRM');
+        assert.equal(s.css.transform, 'none');
         await sleep(600);
         const after = await H.ds();
-        return H.note(`lifted: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}; released → state ${after.state}`);
+        return H.note(`lifted: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, canvas css ${JSON.stringify(s.css)}, legs ${JSON.stringify(legs)} (gravity, ≤ 8°/12°); released → ${after.state}`);
       }, page);
 
-      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing', async () => {
+      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing with the mouth (aa), not the bones', async () => {
         await rest();
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
         await clickAct(page, 'feed');
         await page.click('#food-menu button');
-        const s = await peak('feed', (x) => /^eat/.test(x.state) && /happy:/.test(x.expr) && x.motion.chew > 0.5, 3000);
+        const s = await peak('feed', (x) => /^eat/.test(x.state) && x.hold === 'eat' && /happy:/.test(x.expr) && /aa:0\.[2-9]/.test(x.mouth), 3000);
         await H.shot('7-feed');
         assert.match(s.state, /^eat/);
+        assert.equal(s.hold, 'eat');
         assert.match(s.expr, /happy:/);
-        assert.ok(s.motion.chew > 0.5, fmtMotion(s.motion));
-        return H.note(`feed: state ${s.state}, expr ${s.expr}, mouth ${s.mouth}, motion ${fmtMotion(s.motion)}`);
+        assert.match(s.mouth, /aa:0\.[2-9]/, 'chewing is the mouth (aa), not a bone');
+        assert.deepEqual(s.motion, {});
+        return H.note(`feed: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, mouth ${s.mouth}`);
       }, page);
 
-      await step(S, '玩耍: play → happy face, a spin', async () => {
+      await step(S, '玩耍: play → happy face; she does not spin round (the pixel play), body stays turned to the user', async () => {
         await page.waitForFunction(() => !/^eat/.test(window.petFx.state().state), null, { timeout: 8000 });
         await rest();
         await clickAct(page, 'play');
-        const s = await peak('play', (x) => x.state === 'play' && /happy:/.test(x.expr) && x.motion.spin > 0.3, 3000);
+        const s = await peak('play', (x) => x.state === 'play' && /happy:/.test(x.expr), 3000);
+        const yaws = [];
+        for (let i = 0; i < 12; i++) { yaws.push(Math.abs((await H.fig()).root.yaw)); await sleep(100); }
         await H.shot('8-play');
         assert.equal(s.state, 'play');
         assert.match(s.expr, /happy:/);
-        assert.ok(s.motion.spin > 0.3, fmtMotion(s.motion));
-        return H.note(`play: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}, root yaw ${s.root.yaw.toFixed(0)}°`);
+        // the pixel play spun her round every 3 s; a VRM smiles and stays turned to the user (≤ the facing yaw)
+        assert.ok(Math.max(...yaws) <= 25, `body yaw ${Math.max(...yaws).toFixed(1)}°`);
+        assert.deepEqual(s.motion, {});
+        assert.equal(s.css.animationName, 'none', 'no CSS char-hop');
+        return H.note(`play: app state ${s.state}, VRM ${s.events}, expr ${s.expr}, body yaw ≤ ${Math.max(...yaws).toFixed(1)}° over 1.2 s (no spin), canvas animation ${s.css.animationName}`);
       }, page);
 
       await step(S, '口型: her pat line (built-in voice pack audio) moves aa/ih/ou/ee/oh, back to 0 when it ends', async () => {
@@ -534,15 +603,67 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`VRM again: frame ${a.frame} → ${b.frame}; stats created ${st.created}, disposed ${st.disposed}, live ${st.live}`);
       }, page);
 
-      await step(S, 'packaging guard: no .vrm / .vrma in git ls-files nor in the files package.json build.files ships', async () => {
-        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.vrma?$/i.test(f));
+      await step(S, 'style: the homemade model is read as male (meta); a pack with vrm.style "female" plays the female set (pack), narrower stance', async () => {
+        await page.evaluate((id) => window.pet.setVrmPosture(id, 'stand.confident'), ID);
+        await page.waitForFunction(() => /^stand\.confident@male:1\.00$/.test(document.querySelector('#pet-look canvas.vrm').dataset.layers), null, { timeout: 15000 });
+        await sleep(300);
+        const male = await H.fig();
+        const md = await H.ds();
+        // the box model has broad shoulders (shoulder / hip 1.57, no bust springs) → male, from the file
+        assert.equal(md.style, 'male (meta)');
+        assert.ok(male.clips.every((c) => c.endsWith('@male')), male.clips.join(', '));
+        const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrm-female-')), 'female-pack');
+        fs.mkdirSync(path.join(dir, 'models'), { recursive: true });
+        fs.copyFileSync(model.file, path.join(dir, 'models', 'a.vrm'));
+        fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-e2e-female', name: 'E2E Female Fish', species: 'dafeiyu', kind: 'vrm', vrm: { outfits: { daily: 'models/a.vrm' }, style: 'female' } }));
+        const r = await page.evaluate((d) => window.pet.debugImportPack(d), dir);
+        assert.equal(r.ok, true, JSON.stringify(r.errors));
+        await page.evaluate(() => window.pet.setVrmPosture('vrm-e2e-female', 'stand.confident'));
+        await H.pickPack('vrm-e2e-female');
+        await H.drawing(2);
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /^stand\.confident@female:1\.00$/.test(c.dataset.layers || ''); }, null, { timeout: 15000 });
+        await sleep(400);
+        const d = await H.ds();
+        const f = await H.fig();
+        assert.equal(d.style, 'female (pack)');
+        assert.ok(f.clips.every((c) => c.endsWith('@female')), f.clips.join(', '));
+        // same model, same posture: the male set stands with the feet apart (clip 4° + male stance), the female not
+        assert.ok(male.bones.leftUpperLeg[2] > f.bones.leftUpperLeg[2] + 2, `legs: male ${male.bones.leftUpperLeg} vs female ${f.bones.leftUpperLeg}`);
+        assert.ok(f.style.amplitude > male.style.amplitude && f.style.hipSway > male.style.hipSway);
+        await H.shot('12b-female-style');
+        await H.pickPack(ID);
+        return H.note(`imported model: data-style ${md.style}, layers ${md.layers}, leftUpperLeg ${male.bones.leftUpperLeg}, amplitude ${male.style.amplitude}, hipSway ${male.style.hipSway}\npack.json vrm.style "female": data-style ${d.style}, layers ${d.layers}, clips ${f.clips.join(', ')}, leftUpperLeg ${f.bones.leftUpperLeg}, amplitude ${f.style.amplitude}, hipSway ${f.style.hipSway}`);
+      }, page);
+
+      await step(S, 'no motion library (library.json removed): data-library none, she still draws (arms down, alive layer), no error', async () => {
+        fs.renameSync(path.join(data, 'vrm-motions', 'library.json'), path.join(data, 'vrm-motions', 'library.off'));
+        await H.pickPack('dafeiyu-pixel');
+        await H.pickPack(ID);
+        await H.drawing(5);
+        await sleep(800);
+        const a = await H.ds();
+        await sleep(800);
+        const b = await H.ds();
+        const f = await H.fig();
+        assert.equal(b.library, 'none');
+        assert.ok(Number(b.frame) > Number(a.frame));
+        assert.equal(b.layers, '');
+        assert.ok(f.bones.leftUpperArm[2] < -50 && f.bones.rightUpperArm[2] > 50, `arms down, not a T-pose: ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+        await H.shot('12c-no-library');
+        fs.renameSync(path.join(data, 'vrm-motions', 'library.off'), path.join(data, 'vrm-motions', 'library.json'));
+        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+      }, page);
+
+      await step(S, 'packaging guard: no .vrm / .vrma / .fbx / .vmd in git ls-files nor in the files package.json build.files ships', async () => {
+        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx|vroid)$/i.test(f));
         assert.deepEqual(tracked, []);
         const build = require('../package.json').build.files;
         assert.ok(build.includes('!**/*.vrm') && build.includes('!**/*.VRM') && build.includes('!**/*.vrma') && build.includes('!**/*.VRMA'), JSON.stringify(build));
+        for (const ext of ['fbx', 'vmd', 'bvh', 'pmx']) assert.ok(build.includes(`!**/*.${ext}`), ext);
         // what build.files matches on disk (src/**/*, package.json), before the exclusions
         const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
         const shipped = [...walk(path.join(ROOT, 'src')), path.join(ROOT, 'package.json')];
-        const vrms = shipped.filter((f) => /\.vrma?$/i.test(f));
+        const vrms = shipped.filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx)$/i.test(f));
         assert.deepEqual(vrms, []);
         const models = [model.file];
         assert.ok(models.every((f) => path.relative(ROOT, f).startsWith('..')));

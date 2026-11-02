@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('pet', {
   switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
+  setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
+  vrmLibraryInfo: () => ipcRenderer.invoke('vrm-library-info'),
   // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines
   ttsSynthesize: (text, mood) => ipcRenderer.invoke('tts-synthesize', { text, mood }),
   ttsCancel: () => ipcRenderer.send('tts-cancel'),

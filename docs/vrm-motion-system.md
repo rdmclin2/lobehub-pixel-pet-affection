@@ -1,6 +1,6 @@
 # VRM 独立交互与动作体系（与像素角色解耦）设计
 
-> 状态：设计稿（T-2677）　分支：`feat/vrm-motion-system`（基于 `origin/canary` 7bae23a / v0.19.0）
+> 状态：设计稿（T-2677）；姿势系统 + idle 待机 + 男女风格已实现（T-2678，见 §11）　分支：`feat/vrm-motion-system`（基于 `origin/canary` 7bae23a / v0.19.0）
 > 本期范围：姿势系统、idle 待机、交互反应、表情层、口型层，并按男性/女性风格区分。**舞蹈本期不做。**
 > 素材来源：`~/vrm-assets/`（素材清单 `~/vrm-assets/INVENTORY.md`，前一任务产出）。**所有模型与动作仅限个人使用，不进 git、不进安装包。**
 > 参考：[lobe-vidol](https://github.com/lobehub/lobe-vidol) 只借鉴功能思路（姿势库按性别/类别分组、触摸区域 → 按性别的「表情 + 动作 + 台词」列表），**不使用其任何实现代码**；Mixamo 重定向的数学是公开的骨骼空间换算（见 §4.3），由我们自己实现。
@@ -507,3 +507,41 @@ while IFS= read -r p; do
   echo "$f $i $p"
 done
 ```
+
+---
+
+## 11. 实现记录（T-2678：姿势系统、idle 待机、男女风格）
+
+### 11.1 已实现
+
+| 设计项 | 实现 |
+|---|---|
+| §2.2 语义事件 | `src/core/vrm-intent.js`（`fromSnapshot`/`fromState`/`summary`）；`app.js` 的 `vrmSnapshot()` 只在 VRM 分支构造快照，rig/live2d 仍收 `state` |
+| §2.3 去掉像素式表现 | `vrm-motion.js` 删除 STATE_LOOKS/TOUCH_LOOKS/MOOD_LOOKS/MOTIONS/REPEATING/calm/lookFor/pose/poseOffsets/motionMouth/breath；新增 `REST_POSE`（无片段时双臂下垂）、`chewMouth`；`style.css` 对 `.char.vrm` 与 `.pet-body[data-kind="vrm"]` 豁免动画/变换/镜像；`#pet-body[data-kind]` |
+| §3.1 L0/L1 分层 | `src/renderer/vrm-anim.js`：base 层交叉淡化，任何时刻权重和 = 1（PropertyMixer 不再混入原始 T-pose），首个片段权重直接 1；L4 触及骨骼走 `overClip` memo（不漂移） |
+| §3.2 idle 调度 | `src/core/vrm-director.js`：每段 8–20 s（片段取整数个循环），不连续重复，happy 时 `idle.happy` 权重 ×2，sad/hungry → `stand.shy`，sleep → `sit.doze`，180 s 无人理 → `sit.rest`，光标/事件 → 站起 |
+| §3.2 活人感 L4 | `src/core/vrm-life.js`：呼吸（14–18/分，睡 10/分 ×1.6；女胸式、男腹式）、6–14 s 换重心、三正弦头部微动、眼球微跳与偶尔看别处（伴随眨眼）、无手指关键帧时放松手指、被拎起时腿受重力下垂 + 阻尼摆；单骨骼 ≤ 4°，拎起腿 ≤ 8°/12° |
+| §3.4/3.5 表情、口型 | 基线情绪 + 事件表情（attack ≈0.15 s / release ≈0.6 s），male ×0.8；说话时 happy/relaxed ≤ 0.5；吃东西由口型层咀嚼 |
+| §3.6 朝向、落地 | 身体 yaw ±18°（走路 ±60°），不镜像；每帧把最低的脚/膝/坐骨贴地，坐姿按身体横向范围居中 |
+| §3.7 烘焙 | `scripts/vrm-bake.js` + `scripts/lib/vrm-bake-core.js`：Mixamo FBX（three FBXLoader，临时目录安装 three@0.187.0）→ 重定向 `q_vrm = Q_parentWorldRest · q · Q_worldRest⁻¹` → trim/hold/mirror/amplitude/loop/center → `.vrma` + `library.json` |
+| §4 风格 | `src/core/vrm-style.js`：三套档案 + `VRM_STYLE_LIMITS`；`pack.json vrm.style`（名称或对象）、`vrm.motions` 由 `packs.js` 校验；未指定时 `inspectVrmJson().body` → `bustSpring>0 → female`、`shoulderHip≥1.5 → male`、否则 neutral（liliya → female，vroid.vrm → male，与 §4.2 实测表一致） |
+| 姿势持久化 | `settings.vrmPostures { packId: posture }`（`auto` 不存）；外观页 VRM 卡片“姿势”下拉框 → `set-vrm-posture` IPC；重启后保持 |
+| §6 素材加载 | `src/main/vrm-library.js`：`vrmlib://index/library.json`、`vrmlib://<style>/<slot>.vrma`，目录为 `$PIXELPET_VRM_MOTIONS_DIR` → `<userData>/vrm-motions` → 开发运行时 `~/vrm-assets/baked`；仓库内路径拒绝；CSP `connect-src` 加 `vrmlib:`；`.gitignore`/`build.files` 排除 fbx/vmd/bvh/pmx/vroid |
+| §7 调试字段 | `data-style/posture/idle/reaction/hold/layers/library`，`data-state` 为语义事件摘要；`window.PetVRM.director`（= `window.__pet.vrmDirector`）：`speed/seed/plan/history/setPosture` |
+| §8 测试 | `test/vrm-{intent,director,style,library,life,bake,pack-style}.test.js`；`e2e/vrm.js` 用 `scripts/make-test-vrma.js` 自制动作库；真实素材验收 `.agents/acceptance/scripts/vrm-motion-real-acceptance.js` |
+
+### 11.2 与设计的偏离（及原因）
+
+1. **坐姿素材换成“坐在地上”的姿势**（§5.1）：设计里的 `sit.rest`/`sit.doze`（女 `9649e88e`、`25c19dfb`，男 `14ee62b6`）都是坐椅子的姿势（烘焙后 hips 高度为站姿的 0.55–0.58），桌宠窗口里没有椅子，贴地后整个人悬空坐在空气里。改为：女 `sit.rest` = `postures/5b8c40fa-3e5e-4419-bb08-4e1bb49c4c6a.fbx`（Laying · Legs To Side, Arms Raised，侧坐），女 `sit.doze` = `postures/61c51e24-3e95-4adb-9df7-4c6efb389d78.fbx`（Laying · Legs Crossed, Arms Supporting，后仰坐），男 `sit.doze` = `mixamo/4362690a-8af0-41ac-9a22-33e43a51a6ee.fbx`（Sitting · Reaching Hands Towards Toes，低头坐）；男 `sit.rest`（`9cf58708`）本来就是地面坐姿，不变。
+2. **女性 `stand.relaxed` 用设计中的备选 `def6e4e1`**：首选 `2278ba9c` 的 hips 偏转约 63°，默认站姿侧身背对用户；备选正面朝向用户。
+3. **女性 `idle.variant2` 的 P0 素材**：设计的 P0 降级是复用 `idle.posture-cycle`，那样女性实际只有 2 段不同待机。改为 Standing Happily 的镜像（`mirror`）、截取 1.5–8.5 s、幅度 0.8，男女各有 3 段不同的待机片段；VMD 版（P1）仍按 §5.2 替换。
+4. **固定姿势时的 idle 变体**：全身 idle 片段会把她带离用户选的姿势（或坐姿），因此姿势被固定（用户选择、sleep、sad、无人理坐下）时，idle 调度改在三段“微动变体”`idle.breathe`/`idle.glance`/`idle.shift` 之间切换（同样 8–20 s、不重复），只改变活人感层参数（重心幅度、看别处频率）。
+5. **idle 片段居中**（烘焙参数 `center`，idle 默认开）：Mixamo idle 的 hips 平均位置偏离原点 11–14 cm，整段待机都站偏；烘焙时把 hips 的平均水平位置移到原点，摆动保留。
+6. **去掉窗口惯性的整体滞后位移**：旧实现让整个人随窗口速度横移最多身高的 7%，超出 §2.3 根位移 ≤ 2 cm 的上限；拖动时的惯性改由腿部阻尼摆与 SpringBone 体现。
+7. **`vrmlib://` 与 `pack://` 一起注册**：Electron 的 `registerSchemesAsPrivileged` 只能调用一次，所以在 `src/main/packs.js` 的 `registerPackScheme` 里一并注册，服务逻辑在 `src/main/vrm-library.js`。开发运行（未打包、非测试）时若前两个目录都没有库，回退到 `~/vrm-assets/baked`（任务要求可从 `~/vrm-assets` 读取）。
+8. **导入时写入风格**（§4.2 第 2 条）本期未做：导入器生成的 `pack.json` 不写 `style`，运行时从模型推断（`data-style` 显示 `(meta)`）；手写 `vrm.style` 优先。
+
+### 11.3 留给后续任务（不在 T-2678 范围）
+
+L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 互动反应片段与 upper/lower 拆分、`zoneRects()`、VMD 烘焙（P1）、导入确认页的风格选择。本期触摸/拖拽等事件只驱动表情、视线与活人感层（腿部重力下垂），不播放反应片段，也不再有任何像素式程序化动作。
+

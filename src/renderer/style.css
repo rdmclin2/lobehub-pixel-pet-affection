@@ -266,6 +266,11 @@ canvas.sprite { object-fit: contain; }
 .char-wrap .char.sprite { width: auto; height: 100%; }
 /* a sprite pack animates itself: no extra bobbing, only the mood tints */
 .char-wrap.has-sprites .char { animation: none !important; transform: none !important; }
+/* VRM has its own motion (docs/vrm-motion-system.md §2.3): none of the pictures' CSS hops, squishes, tilts,
+   dangling or mirroring touch the 3D canvas — she turns her body instead of being flipped. The window still
+   moves (drag, throw): that is the window, not her bones. */
+.char-wrap .char.vrm { animation: none !important; transform: none !important; scale: none !important; filter: none !important; }
+.pet-body[data-kind="vrm"].squash, .pet-body[data-kind="vrm"].lifted, .pet-body[data-kind="vrm"].flying { animation: none; }
 .card .look.sprite, .preview .look.sprite { width: auto; }
 .hatch-img .look { height: 192px; }
 .pack-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }

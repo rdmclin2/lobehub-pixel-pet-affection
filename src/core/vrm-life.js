@@ -1,0 +1,137 @@
+'use strict';
+// The "alive" layer of a VRM figure (docs/vrm-motion-system.md §3.2 L4): small procedural motion laid on top
+// of whatever the clips pose — breathing, a weight shift from leg to leg, the head never quite still, eye
+// saccades and glances away, relaxed fingers, legs hanging under gravity while she is lifted. Everything is
+// scaled by the style profile (core/vrm-style.js) and capped: a bone turns at most LIMITS.bone degrees
+// (lifted legs LIMITS.liftUpperLeg / LIMITS.liftLowerLeg), so nothing here can hop, spin or flail.
+// Stateful but pure (an object with step(dt, ctx)); random numbers injected for tests. UMD
+// (window.PetVrmLife / require()).
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.PetVrmLife = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  const LIMITS = { bone: 4, liftUpperLeg: 8, liftLowerLeg: 12, stance: 8, root: 0.02 };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const smooth = (k) => { const x = clamp(k, 0, 1); return x * x * (3 - 2 * x); };
+  const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
+  // breaths per minute: awake 14–18, asleep 10
+  const BREATH = { awake: [14, 18], sleep: 10 };
+  const SHIFT_EVERY = [6, 14];
+  const SACCADE_EVERY = [0.8, 3];
+  const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
+  const SEG = { Thumb: ['Proximal', 'Distal'], Index: ['Proximal', 'Intermediate', 'Distal'], Middle: ['Proximal', 'Intermediate', 'Distal'], Ring: ['Proximal', 'Intermediate', 'Distal'], Little: ['Proximal', 'Intermediate', 'Distal'] };
+  // The names of every bone the layer may touch (the renderer keeps their clip pose between frames, overClip).
+  const BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg',
+    ...['left', 'right'].flatMap((s) => FINGERS.flatMap((f) => SEG[f].map((g) => `${s}${f}${g}`)))];
+
+  function createLife({ rand = Math.random, style = null } = {}) {
+    const between = (a, b) => a + (b - a) * rand();
+    const st = {
+      t: 0,
+      breathPh: 0,
+      bpm: between(BREATH.awake[0], BREATH.awake[1]),
+      shift: { from: 0, to: 0, at: -10, next: between(SHIFT_EVERY[0], SHIFT_EVERY[1]) },
+      saccade: { x: 0, y: 0, next: between(SACCADE_EVERY[0], SACCADE_EVERY[1]) },
+      away: { until: -1, x: 0, y: 0, next: 4 + rand() * 8 },
+      lift: { k: 0, swing: 0, v: 0 },
+      sad: 0,
+    };
+
+    // ctx: { style (profile), sleep, sad (0..1), standing, lifted, velX (window px/s), fingers (the clip has
+    //        finger keys), idle (nothing else going on: glances allowed) }
+    // → { bones: { name: { x, y, z } deg }, gaze: { x, y } (NDC offset), away: bool, blink: bool, breath: -1..1 }
+    function step(dt, ctx = {}) {
+      const P = ctx.style || style || { hipSway: 0.75, headTilt: 3, handPose: 0.38, stanceWidth: 0, breath: { chest: 1, upperChest: 0.5, spine: 0.7, shoulder: 0.45 }, lookAway: 0.09 };
+      st.t += dt;
+      const t = st.t;
+      const out = {};
+      const add = (b, x = 0, y = 0, z = 0) => { const o = out[b] || (out[b] = { x: 0, y: 0, z: 0 }); o.x += x; o.y += y; o.z += z; };
+      let blink = false;
+
+      // breathing: the rate wanders inside its range; asleep slower and deeper; the chest opens (−x) on the
+      // in-breath, the shoulders rise a little
+      const target = ctx.sleep ? BREATH.sleep : st.bpm;
+      if (rand() < dt * 0.05) st.bpm = between(BREATH.awake[0], BREATH.awake[1]);
+      st.breathPh += (2 * Math.PI * target * dt) / 60;
+      const b = Math.sin(st.breathPh);
+      const amp = (ctx.sleep ? 1.6 : 1) * (1 - 0.15 * (ctx.sad || 0));
+      const br = P.breath || {};
+      add('chest', -b * (br.chest || 0) * amp);
+      add('upperChest', -b * (br.upperChest || 0) * amp);
+      add('spine', -b * (br.spine || 0) * amp);
+      add('leftShoulder', 0, 0, Math.max(0, b) * (br.shoulder || 0) * amp);
+      add('rightShoulder', 0, 0, -Math.max(0, b) * (br.shoulder || 0) * amp);
+
+      // weight from one leg to the other every 6–14 s (standing only): hips roll, the spine leans back the
+      // other way, the legs stay under her
+      const sh = st.shift;
+      if (t >= sh.at + sh.next) {
+        sh.from = sh.from + (sh.to - sh.from) * smooth((t - sh.at) / 1.5);
+        sh.to = ctx.standing === false ? 0 : (rand() < 0.5 ? -1 : 1) * between(0.5, 1);
+        sh.at = t;
+        sh.next = between(SHIFT_EVERY[0], SHIFT_EVERY[1]);
+      }
+      const side = (sh.from + (sh.to - sh.from) * smooth((t - sh.at) / 1.5)) * (ctx.standing === false ? 0 : 1);
+      const roll = 2 * P.hipSway * side;
+      add('hips', 0, 0, roll);
+      add('spine', 0, 0, -roll * 0.5);
+      add('leftUpperLeg', 0, 0, -roll);
+      add('rightUpperLeg', 0, 0, -roll);
+
+      // the head: three slow sines that never line up; bowed a little when sad
+      const hk = P.headTilt / 4;
+      add('head', Math.sin(t * 2 * Math.PI * 0.13) * hk + 3 * (ctx.sad || 0) * 0.8, Math.sin(t * 2 * Math.PI * 0.31 + 1.3) * hk, Math.sin(t * 2 * Math.PI * 0.47 + 2.1) * hk * 0.8);
+      add('neck', 3 * (ctx.sad || 0) * 0.2);
+
+      // relaxed fingers when the clip does not pose them
+      if (ctx.fingers === false) {
+        const c = P.handPose * 4;
+        for (const s of ['left', 'right']) for (const f of FINGERS) for (const g of SEG[f]) add(`${s}${f}${g}`, 0, 0, (s === 'left' ? -1 : 1) * c * (f === 'Thumb' ? 0.5 : 1));
+      }
+
+      // eyes: a small jump every 0.8–3 s; idle, now and then a look elsewhere for 1–2 s (a blink with it)
+      const sc = st.saccade;
+      if (t >= sc.next) { sc.x = between(-0.05, 0.05); sc.y = between(-0.04, 0.04); sc.next = t + between(SACCADE_EVERY[0], SACCADE_EVERY[1]); }
+      const aw = st.away;
+      let away = false;
+      if (ctx.idle && t >= aw.next && aw.until < t) {
+        if (rand() < (P.lookAway || 0.09) * 4) { aw.until = t + between(1, 2); aw.x = between(0.6, 1.4) * (rand() < 0.5 ? -1 : 1); aw.y = between(-0.5, 0.3); if (rand() < 0.3) blink = true; }
+        aw.next = t + between(3, 7);
+      }
+      if (aw.until >= t && ctx.idle) away = true;
+
+      // the cap on everything so far
+      for (const o of Object.values(out)) { o.x = clamp(o.x, -LIMITS.bone, LIMITS.bone); o.y = clamp(o.y, -LIMITS.bone, LIMITS.bone); o.z = clamp(o.z, -LIMITS.bone, LIMITS.bone); }
+
+      // stance: the male set stands with the feet apart (a fixed offset, not motion)
+      if (P.stanceWidth && ctx.standing !== false && !ctx.lifted) {
+        const w = clamp(P.stanceWidth, -LIMITS.stance, LIMITS.stance) * 0.5;
+        add('leftUpperLeg', 0, 0, w);
+        add('rightUpperLeg', 0, 0, -w);
+      }
+
+      // lifted: the legs hang (thighs forward, knees bent) and swing behind the window's motion like a damped
+      // pendulum, never a shake
+      const L = st.lift;
+      L.k += ((ctx.lifted ? 1 : 0) - L.k) * approach(6, dt);
+      const push = clamp(-(ctx.velX || 0) / 1500, -1, 1);
+      L.v += ((push - L.swing) * 40 - L.v * 7) * dt;
+      L.swing = clamp(L.swing + L.v * dt, -1, 1);
+      if (L.k > 0.001) {
+        const up = clamp(-5 * L.k - 3 * L.swing * L.k, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
+        const low = clamp(9 * L.k + 3 * Math.abs(L.swing) * L.k, 0, LIMITS.liftLowerLeg);
+        for (const s of ['left', 'right']) {
+          const o = out[`${s}UpperLeg`] || (out[`${s}UpperLeg`] = { x: 0, y: 0, z: 0 });
+          o.x = clamp(o.x * (1 - L.k) + up, -LIMITS.liftUpperLeg, LIMITS.liftUpperLeg);
+          const l = out[`${s}LowerLeg`] || (out[`${s}LowerLeg`] = { x: 0, y: 0, z: 0 });
+          l.x = clamp(l.x + low * (s === 'left' ? 1 : 0.85), 0, LIMITS.liftLowerLeg);
+        }
+      }
+
+      return { bones: out, gaze: away ? { x: aw.x, y: aw.y } : { x: sc.x, y: sc.y }, away, blink, breath: b };
+    }
+    return { step, state: st };
+  }
+
+  return { LIMITS, BREATH, SHIFT_EVERY, BONES, createLife };
+});

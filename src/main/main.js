@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences, protocol, net } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -14,6 +14,7 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
 const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
@@ -31,6 +32,7 @@ if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
 registerPackScheme();
 
 let win = null;
+let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
 let service = null;
 let updater = null;
 let packStore = null;
@@ -423,6 +425,8 @@ function wire() {
     const sp = SPECIES[p.speciesId];
     return { speciesId: p.speciesId, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), look: service.lookFor(sp.id, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
+  ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
+  ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
     if (!service.settings.prefs.voice) tts.engine.stopAll(); // 朗读 off: nothing more goes to an engine
@@ -567,6 +571,7 @@ app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   packStore = new PackStore();
   packStore.serve();
+  vrmLibrary = serveVrmLibrary({ protocol, net, app });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
   // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.

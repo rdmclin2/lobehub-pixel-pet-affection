@@ -487,15 +487,10 @@ test('import: a folder / .zip brings its idle animation along (the only .vrma, o
   assert.equal(single.idle, null);
 });
 
-test('moves over an idle clip: offsets from the rest pose (resting is no offset, a nod still nods, arms are not lowered twice)', () => {
+test('no clip yet (or no library): she rests with the arms down, never the T-pose; the pixel moves are gone', () => {
   const M = require('../src/core/vrm-motion');
-  const rest = M.poseOffsets(M.pose({}, 0, 0, { breathK: M.NO_BREATH }).bones);
-  for (const r of Object.values(rest)) assert.deepEqual([r.x, r.y, r.z].map((v) => Math.abs(v) < 1e-9), [true, true, true]);
-  const nod = M.poseOffsets(M.pose({ nodDown: 9 }, 0, 0, { breathK: M.NO_BREATH }).bones);
-  assert.ok(nod.head.x > 5 && nod.neck.x > 3);
-  assert.ok(Math.abs(nod.leftUpperArm.z) < 1e-9, 'the arm-down rest is the clip\'s job');
-  const up = M.poseOffsets(M.pose({ armsUp: 1 }, 0, 0, { breathK: M.NO_BREATH }).bones);
-  assert.ok(up.leftUpperArm.z > 60 && up.rightUpperArm.z < -60);
+  assert.ok(M.REST_POSE.leftUpperArm.z <= -60 && M.REST_POSE.rightUpperArm.z >= 60, 'arms down from the T-pose');
+  for (const k of ['STATE_LOOKS', 'TOUCH_LOOKS', 'MOOD_LOOKS', 'MOTIONS', 'REPEATING', 'calm', 'lookFor', 'pose', 'poseOffsets', 'motionMouth']) assert.equal(M[k], undefined, `${k} removed (docs/vrm-motion-system.md §2.3)`);
 });
 
 test('idle clip with a held key (a flat stretch, like idle_loop.vrma\'s last 0.46 s): the moved bones keep the clip\'s pose, not the T-pose', async () => {

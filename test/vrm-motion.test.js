@@ -1,6 +1,5 @@
 'use strict';
-// VRM renderer, pure part (src/core/vrm-motion.js): state → expression / motion mapping, pack overrides and
-// fallbacks, lip-sync weights, the frame budget, blinking and gaze. Plus: the renderer only draws the look
+// VRM renderer, pure part (src/core/vrm-motion.js): expression fallbacks and pack overrides, lip-sync weights, the frame budget, blinking and gaze. Plus: the renderer only draws the look
 // the app resolved, the vendored runtime is in place with its licenses, and the homemade test model is a
 // complete VRM. No third-party model is used.
 const test = require('node:test');
@@ -8,40 +7,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const M = require('../src/core/vrm-motion');
-const { STATES } = require('../src/core/fx');
-const { ZONES } = require('../src/core/touch-zones');
 const V = require('../src/core/vrm');
 const { makeTestVrm } = require('../scripts/make-test-vrm');
 
 const ROOT = path.join(__dirname, '..');
 const all = (n) => M.PRESETS.includes(n);
 const only = (...names) => (n) => names.includes(n);
-
-test('every app state and every touch zone has a VRM look made of preset expressions and known moves', () => {
-  for (const s of STATES) assert.ok(M.STATE_LOOKS[s], `state ${s} has a look`);
-  for (const z of Object.keys(ZONES)) assert.ok(M.TOUCH_LOOKS[z], `touch zone ${z} has a look`);
-  for (const L of [...Object.values(M.STATE_LOOKS), ...Object.values(M.TOUCH_LOOKS), ...Object.values(M.MOOD_LOOKS)]) {
-    for (const [n, w] of Object.entries(L.face)) { assert.ok(all(n), `${n} is a VRM preset`); assert.ok(w > 0 && w <= 1); }
-    for (const k of Object.keys(L.motion)) assert.ok(M.MOTIONS.includes(k), `${k} is a known move`);
-  }
-});
-
-test('the mapping: idle neutral, pat relaxed + bow, lifted surprised + dangling, eating chews, play spins and hops, sleep shuts the eyes', () => {
-  assert.deepEqual(M.lookFor('idle').face, {});
-  assert.deepEqual(M.lookFor('unknown-state'), M.STATE_LOOKS.idle);
-  assert.ok(M.lookFor('pat').face.relaxed > 0.5 && M.lookFor('pat').motion.nodDown > 0);
-  assert.ok(M.lookFor('lifted').face.surprised > 0.5 && M.lookFor('lifted').motion.dangle === 1);
-  for (const f of ['eat_rice', 'eat_cookie', 'eat_fruit']) assert.equal(M.lookFor(f).motion.chew, 1);
-  assert.ok(M.lookFor('play').motion.spin > 0 && M.lookFor('play').motion.hop > 0 && M.lookFor('play').face.happy === 1);
-  assert.equal(M.lookFor('sleep').face.blink, 1);
-  assert.ok(M.lookFor('sad').face.sad > 0.5);
-  assert.ok(M.lookFor('walk').motion.stride === 1);
-  // touches: the zone's look, the angry / annoyed mood wins
-  assert.equal(M.lookFor('touch-head'), M.TOUCH_LOOKS.head);
-  assert.equal(M.lookFor('touch-chest', 'angry'), M.MOOD_LOOKS.angry);
-  assert.equal(M.lookFor('touch-legs', 'annoyed'), M.MOOD_LOOKS.annoyed);
-  assert.equal(M.lookFor('touch-nowhere'), M.STATE_LOOKS.pat);
-});
 
 test('resolveFace: model names, pack overrides, safe fallbacks for missing expressions', () => {
   // a full model: the presets as they are
@@ -59,42 +30,9 @@ test('resolveFace: model names, pack overrides, safe fallbacks for missing expre
   assert.deepEqual(M.resolveFace({ blinkRight: 1 }, only('blink')), { blink: 1 });
   assert.deepEqual(M.resolveFace({ angry: 1 }, only('sad')), { sad: 1 });
   // a model with no expressions at all: nothing, no error
-  for (const L of Object.values(M.STATE_LOOKS)) assert.deepEqual(M.resolveFace(L.face, () => false), {});
+  for (const f of [{ happy: 0.85 }, { relaxed: 0.7, happy: 0.4 }, { surprised: 0.9, angry: 0.2 }, { blink: 1, relaxed: 0.3 }]) assert.deepEqual(M.resolveFace(f, () => false), {});
   assert.equal(M.expressionFor('ee', only('ih')), 'ih');
   assert.equal(M.expressionFor('ee', () => false), null);
-});
-
-test('pose: lifted dangles and swings the legs, play turns her round, walk strides, idle arms rest down', () => {
-  const at = (look, t, st = t) => {
-    const cur = Object.fromEntries(M.MOTIONS.map((k) => [k, look.motion[k] || 0]));
-    return M.pose(cur, t, st);
-  };
-  const idle = at(M.STATE_LOOKS.idle, 1);
-  assert.ok(idle.bones.leftUpperArm.z < -60 && idle.bones.rightUpperArm.z > 60, 'arms down from the T-pose');
-  assert.equal(idle.root.yaw, 0);
-  assert.equal(idle.root.lift, 0);
-  // lifted: the lower legs hang bent, the legs swing over time
-  const l1 = at(M.STATE_LOOKS.lifted, 0.1);
-  const l2 = at(M.STATE_LOOKS.lifted, 0.4);
-  assert.ok(l1.bones.leftLowerLeg.x > 0 && l2.bones.leftLowerLeg.x > 0);
-  assert.notEqual(l1.bones.leftUpperLeg.x, l2.bones.leftUpperLeg.x);
-  assert.notEqual(l1.bones.leftUpperArm.z, l2.bones.leftUpperArm.z);
-  // play: half way through the turn she faces away (≈180°), and she hops
-  const p = at(M.STATE_LOOKS.play, 0.45 / 1.6 * 1.6, 0.45);
-  assert.ok(Math.abs(p.root.yaw - 180) < 1, `yaw ${p.root.yaw}`);
-  assert.ok(at(M.STATE_LOOKS.play, 0.3).root.lift > 0);
-  // walk: the legs swing opposite
-  const w = at(M.STATE_LOOKS.walk, 0.1);
-  assert.ok(Math.sign(w.bones.leftUpperLeg.x) === -Math.sign(w.bones.rightUpperLeg.x));
-  // pat bows the head
-  assert.ok(at(M.STATE_LOOKS.pat, 0).bones.head.x > 3);
-  // eating opens and shuts the mouth
-  const chew = [0.05, 0.2, 0.35, 0.5].map((t) => M.motionMouth({ chew: 1 }, t));
-  assert.ok(Math.max(...chew) > 0.4 && Math.min(...chew) < 0.1);
-  assert.equal(M.motionMouth({}, 1), 0);
-  // breathing moves the spine and chest
-  assert.notEqual(M.breath(0.2).chest, M.breath(1.5).chest);
-  assert.ok(Math.abs(M.breath(0.7, 1).chest) > Math.abs(M.breath(0.7, 0).chest) * 0.5);
 });
 
 // a byte spectrum (AnalyserNode.getByteFrequencyData) with energy in [lo, hi] Hz
@@ -161,16 +99,14 @@ test('frame budget: active while something happens, idle after N s of nothing, p
   assert.equal(meter.fps(5000), 0);
 });
 
-test('frame budget: resting statuses (pet-state happy / sad / hungry / sleep) do not keep it active; idle calms the bouncing', () => {
+test('frame budget: resting statuses (pet-state happy / sad / hungry / sleep) do not keep it active', () => {
   for (const s of ['idle', 'look', 'happy', 'sad', 'hungry', 'sleep']) assert.equal(M.isResting(s), true, s);
   for (const s of ['pat', 'lifted', 'eat_rice', 'play', 'talk', 'walk', 'think', 'hatch', 'evolve', 'touch-head']) assert.equal(M.isResting(s), false, s);
   const now = 1e6;
   assert.equal(M.frameMode({ now, lastActivity: now - 60000, busy: !M.isResting('happy') }).mode, 'idle', 'resting happy for a minute: idle');
-  const c = M.calm(M.STATE_LOOKS.happy);
-  assert.deepEqual(c.face, M.STATE_LOOKS.happy.face, 'face kept');
-  assert.equal(c.motion.hop, undefined, 'no hopping at 12 fps');
-  assert.equal(c.motion.armsOut, M.STATE_LOOKS.happy.motion.armsOut, 'posture kept');
-  assert.equal(M.calm(M.STATE_LOOKS.sleep).motion.nodDown, M.STATE_LOOKS.sleep.motion.nodDown);
+  // chewing is the mouth's (aa 0..0.6 at ~1.4 Hz), not a bone
+  const chew = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].map((t) => M.chewMouth(t));
+  assert.ok(Math.max(...chew) > 0.45 && Math.max(...chew) <= 0.6 && Math.min(...chew) === 0);
 });
 
 test('blinking and gaze helpers', () => {

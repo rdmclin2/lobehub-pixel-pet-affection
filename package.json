@@ -40,6 +40,11 @@
       "!**/*.VRM",
       "!**/*.vrma",
       "!**/*.VRMA",
+      "!**/*.fbx",
+      "!**/*.FBX",
+      "!**/*.vmd",
+      "!**/*.bvh",
+      "!**/*.pmx",
       "package.json"
     ],
     "directories": {

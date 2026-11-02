@@ -3,20 +3,25 @@
 // in a transparent WebGL canvas, acted out by the app.
 //
 // This file only draws what the app already decided: the look (core/packs.js resolveLook — which pack,
-// which outfit, already through the 18+ / affection / outfit rules) and, every frame, the state, the touch
-// mood, whether she is talking and where the window is. It never picks an outfit or a pack itself.
-// What each state looks like (expressions, procedural moves), the mouth shapes from the voice and the
-// frame budget are pure functions in core/vrm-motion.js (window.PetVrmMotion, unit-tested).
+// which outfit, already through the 18+ / affection / outfit rules) and, every frame, a read-only snapshot of
+// the app (her needs status, the fx one-shot, lifted, thinking, eating, talking, the last touch, facing, the
+// pointer, the window). It never picks an outfit or a pack itself. VRM has its own motion pipeline, apart
+// from the pixel characters' (docs/vrm-motion-system.md): core/vrm-intent.js turns the snapshot into
+// semantic events, core/vrm-director.js decides the posture, idle, face and gaze for the model's style
+// (core/vrm-style.js) from the motion library (core/vrm-library.js, .vrma clips over vrmlib://),
+// renderer/vrm-anim.js plays the clips (AnimationMixer, cross-fades), core/vrm-life.js adds the capped alive
+// layer, and core/vrm-motion.js has the face fallbacks, lip sync and frame budget.
 //
 // The runtime (vendor/vrm/three-vrm.min.js, built by scripts/build-vrm-vendor.js) is loaded the first time
 // a VRM look is shown. The model is fetched over pack://<id>/… only (src/main/packs.js serves files inside
-// that pack's folder); any other URL the model refers to is refused.
+// that pack's folder); animations come from the pack or vrmlib://; any other URL is refused.
 //
 // Debug fields on the canvas (read by e2e): data-frame (frames drawn, counting up), data-fps (drawn in
-// the last second), data-mode (active | idle | paused), data-state, data-expr (expression weights),
-// data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y), data-springs (joints),
-// data-vrm (1.0 | 0.x), data-anim (vrma when the pack's idle animation plays, none, failed).
-// window.PetVRM.debug() has the same and more.
+// the last second), data-mode (active | idle | paused), data-state (the semantic events), data-expr
+// (expression weights), data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y),
+// data-springs (joints), data-vrm (1.0 | 0.x), data-anim (vrma | none | failed), data-style (female |
+// male | neutral (pack | meta | default)), data-posture, data-idle, data-reaction, data-hold, data-layers
+// (clip:weight…), data-library (loaded | partial:<n> | none). window.PetVRM.debug() has the same and more.
 (function () {
   const M = window.PetVrmMotion;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -121,32 +126,49 @@
   // ---------- figures ----------
   const figures = new Set();
   const stats = { created: 0, disposed: 0, live: 0, lastDispose: null };
+  const I = window.PetVrmIntent;
+  const D = window.PetVrmDirector;
+  const S = window.PetVrmStyle;
+  const Lib = window.PetVrmLibrary;
+  const Life = window.PetVrmLife;
+  // the posture the user chose per pack (settings.vrmPostures, set by app.js), and the debug clock / seed
+  const postures = new Map();
+  const debugCtl = { speed: 1, seed: null };
+
+  // the motion library (vrmlib://, src/main/vrm-library.js): its index, read for each new figure (a bake or a
+  // removed library shows on the next model drawn)
+  function loadLibraryIndex() {
+    return fetch('vrmlib://index/library.json').then((r) => (r.ok ? r.json() : null)).then((j) => Lib.cleanIndex(j), () => Lib.cleanIndex(null));
+  }
 
   // `look` from core/packs.js resolveLook: { packId, model (pack:// URL of the .vrm), vrm: { height,
-  // expressions (state → name overrides), modelExpressions, springBone, meta, license }, url (picture) }.
+  // expressions (state → name overrides), modelExpressions, springBone, meta, license, idle, style, motions }, url }.
   function createFigure(canvas, look) {
     const cfg = look.vrm || {};
     const overrides = cfg.expressions || {};
     const share = clamp(Number(cfg.height) || 0.8, 0.3, 1);
+    const style = cfg.style && cfg.style.set ? cfg.style : S.resolveStyle({});
     let R = null; // the runtime
     let renderer = null;
     let scene = null;
     let camera = null;
     let vrm = null;
-    let mixer = null; // the idle animation (pack vrm.idle), when there is one
+    let anim = null; // renderer/vrm-anim.js layers
+    let director = null;
+    let life = null;
+    let index = { clips: {} };
+    const loaded = new Set();
+    let libState = 'none';
     let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
     let disposed = false;
     let size = { h: 1, minY: 0, cx: 0, cz: 0 };
     let base = { y: 0, x: 0, yaw: 0 };
+    let rest = { hipsY: 1, feetY: 0 };
     const has = (n) => !!(vrm && vrm.expressionManager && vrm.expressionManager.getExpression(n));
-    const cur = Object.fromEntries(M.MOTIONS.map((k) => [k, 0]));
     const face = {}; // model expression name → current weight
     let mouth = M.zeroVisemes();
     const blink = { start: -1, next: 1.5 };
-    const sp = { x: spring(70, 10, 1), roll: spring(60, 9, 18) };
-    let stateNow = null;
-    let stateAt = 0;
     let lastRender = null;
     let lastActivity = performance.now();
     let lastWin = null;
@@ -154,8 +176,15 @@
     let frameN = 0;
     let lipMode = 'off';
     let gaze = { x: 0, y: 0 };
+    let ground = 0;
+    let shiftX = 0;
+    let yaw = 0;
+    let prevSnap = null;
+    let dirT = null;
+    let plan = null;
+    let intent = null;
+    let lastBaseKey = -1;
     const meter = M.FpsMeter();
-    const mirror = () => (canvas.closest && canvas.closest('[data-facing="left"]') ? -1 : 1);
     const me = fig();
     figures.add(me);
     stats.created++;
@@ -198,68 +227,86 @@
       vrm = v;
       scene.add(vrm.scene);
       if (vrm.lookAt) { vrm.lookAt.target = lookTarget; vrm.lookAt.autoUpdate = true; }
+      measureRest();
       restPose();
       vrm.update(0);
       measure();
       fit(true);
-      await loadIdle(T, own);
+      anim = window.PetVrmAnim.createAnimLayers(R, vrm, Life.BONES);
+      await loadClips(own);
       if (disposed) return false;
+      startDirector();
       canvas.dataset.anim = animState;
+      canvas.dataset.library = libState;
+      canvas.dataset.style = `${style.name} (${style.source})`;
       canvas.dataset.vrm = vrm.meta && vrm.meta.metaVersion === '0' ? '0.x' : '1.0';
       canvas.dataset.springs = String(vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0);
       canvas.dataset.frame = '0';
       return true;
     });
 
-    // the pack's idle loop (.vrma, from its own pack only): the clip owns her standing pose, the app's moves
-    // go on top (draw). A clip that does not load just leaves her on the procedural pose.
-    async function loadIdle(T, own) {
-      if (!cfg.idle) return;
-      try {
-        if (typeof cfg.idle !== 'string' || !cfg.idle.startsWith(own)) throw new Error('an idle animation is loaded from its own pack only');
-        const al = new R.GLTFLoader();
-        al.manager.setURLModifier((u) => (u.startsWith(own) || u.startsWith('data:') || u.startsWith('blob:') ? u : 'data:application/octet-stream,'));
-        al.register((parser) => new R.VRMAnimationLoaderPlugin(parser));
-        const g = await al.loadAsync(cfg.idle);
-        const anim = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
-        if (!anim) throw new Error('not a VRM animation');
-        if (disposed || !vrm) return;
-        const clip = R.createVRMAnimationClip(anim, vrm);
-        mixer = new T.AnimationMixer(vrm.scene);
-        const action = mixer.clipAction(clip);
-        action.setLoop(T.LoopRepeat, Infinity);
-        action.play();
-        animState = 'vrma';
-      } catch (e) {
-        console.warn('[vrm] idle animation off:', e && e.message);
-        mixer = null;
-        animState = 'failed';
-      }
+    // A .vrma as a clip for this model. `url` must be in the pack or the motion library.
+    async function loadVrma(url, own) {
+      const al = new R.GLTFLoader();
+      al.manager.setURLModifier((u) => (u.startsWith(own) || u.startsWith('vrmlib://') || u.startsWith('data:') || u.startsWith('blob:') ? u : 'data:application/octet-stream,'));
+      al.register((parser) => new R.VRMAnimationLoaderPlugin(parser));
+      const g = await al.loadAsync(url);
+      const a = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
+      if (!a) throw new Error('not a VRM animation');
+      return R.createVRMAnimationClip(a, vrm);
     }
 
-    // the bones the app moves start each frame from the clip's own pose (the ones it leaves alone from rest), so
-    // the app's offsets never pile up from frame to frame and a held key of the clip is not a T-pose (M.overClip)
-    const qTmp = {};
-    const clipPose = new Map();
-    function applyOverClip(bones, dt) {
+    // The library's clips for this style set (the set, female for neutral, any slot a pack override names),
+    // and the pack's own idle loop (vrm.idle) as the fallback without a library. Missing clips are skipped:
+    // the director falls back (§6.2), nothing here throws.
+    async function loadClips(own) {
+      index = await loadLibraryIndex();
+      const sets = new Set([style.set, style.set === 'neutral' ? 'female' : null].filter(Boolean));
+      const want = Object.values(index.clips).filter((c) => c.file && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
+      // fall back to any set when the style's own set is not baked
+      const list = want.length ? want : Object.values(index.clips).filter((c) => c.file);
+      await Promise.all(list.map(async (c) => {
+        try {
+          const clip = await loadVrma(`vrmlib://${c.file}`, own);
+          if (disposed || !vrm) return;
+          anim.add(c.id, clip);
+          loaded.add(c.id);
+        } catch (e) { console.warn(`[vrm] motion ${c.id} off:`, e && e.message); }
+      }));
+      libState = list.length ? (loaded.size === list.length ? 'loaded' : loaded.size ? `partial:${list.length - loaded.size}` : 'none') : 'none';
+      if (cfg.idle) {
+        try {
+          if (typeof cfg.idle !== 'string' || !cfg.idle.startsWith(own)) throw new Error('an idle animation is loaded from its own pack only');
+          anim.add('pack.idle', await loadVrma(cfg.idle, own));
+        } catch (e) { console.warn('[vrm] idle animation off:', e && e.message); animState = 'failed'; }
+      }
+      if (loaded.size || anim.has('pack.idle')) animState = 'vrma';
+    }
+
+    function startDirector() {
+      const rand = debugCtl.seed !== null ? D.seeded(debugCtl.seed) : Math.random;
+      director = D.createDirector({ style, index, loaded, overrides: cfg.motions || null, posture: postures.get(look.packId) || 'auto', packIdle: anim.has('pack.idle'), rand });
+      life = Life.createLife({ style, rand: Math.random });
+    }
+
+    // the T-pose's world heights (hips, feet) before anything moves: where the floor is
+    function measureRest() {
+      const T = R.THREE;
+      vrm.scene.updateMatrixWorld(true);
+      const y = (n) => { const b = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(n); return b ? b.getWorldPosition(new T.Vector3()).y : null; };
+      const feet = ['leftFoot', 'rightFoot', 'leftToes', 'rightToes'].map(y).filter((v) => v !== null);
+      rest = { hipsY: y('hips') || 1, feetY: feet.length ? Math.min(...feet) : 0 };
+    }
+
+    // arms down from the T-pose: what she shows before (or without) any clip
+    function restPose() {
       const h = vrm.humanoid;
       if (!h) return;
-      M.overClip(clipPose, (name) => h.getNormalizedBoneNode(name), Object.keys(bones), mixer, dt);
-      const T = R.THREE;
-      qTmp.e = qTmp.e || new T.Euler();
-      qTmp.q = qTmp.q || new T.Quaternion();
-      for (const [name, r] of Object.entries(M.poseOffsets(bones))) {
+      for (const n of Life.BONES) { const b = h.getNormalizedBoneNode(n); if (b) b.quaternion.identity(); }
+      for (const [name, r] of Object.entries(M.REST_POSE)) {
         const n = h.getNormalizedBoneNode(name);
-        if (!n || (!r.x && !r.y && !r.z)) continue;
-        qTmp.e.set(r.x * DEG, r.y * DEG, r.z * DEG);
-        n.quaternion.multiply(qTmp.q.setFromEuler(qTmp.e));
+        if (n) n.rotation.set(r.x * DEG, r.y * DEG, r.z * DEG);
       }
-    }
-
-    // arms down from the T-pose before measuring, so the box is her standing height
-    function restPose() {
-      const p = M.pose({}, 0, 0, { breathK: { spine: 0, chest: 0, shoulder: 0 } });
-      applyBones(p.bones);
     }
     function measure() {
       const T = R.THREE;
@@ -273,7 +320,8 @@
     }
 
     // her size in the canvas: `vrm.height` of its height (pack.json), feet on the floor, centred; the canvas
-    // resolution follows its size on screen (at most 2× the CSS size)
+    // resolution follows its size on screen (at most 2× the CSS size). The frame is her standing height:
+    // sitting down she is smaller in it, not zoomed (§3.6).
     let res = 0;
     function fit(force = false) {
       if (!renderer || !vrm) return;
@@ -295,27 +343,51 @@
       camera.lookAt(0, camera.position.y, size.cz);
     }
 
-    function applyBones(bones) {
+    // feet on the floor whatever the clip does with the hips (sitting on the floor: the seat on it), and a
+    // sitting pose centred on its own width — a reclined sit reaches far to one side (§3.6)
+    function groundOffset(sit) {
+      const T = R.THREE;
+      tmp.g = tmp.g || new T.Vector3();
       const h = vrm.humanoid;
-      if (!h) return;
+      const at = (n) => { const b = h.getNormalizedBoneNode(n); return b ? b.getWorldPosition(tmp.g).clone() : null; };
+      vrm.scene.updateMatrixWorld(true);
+      const sp = vrm.scene.position;
+      const pts = ['leftFoot', 'rightFoot', 'leftToes', 'rightToes', 'leftLowerLeg', 'rightLowerLeg', 'hips', 'head', 'leftHand', 'rightHand'].map(at).filter(Boolean);
+      const hips = at('hips');
+      const low = Math.min(...pts.filter((p, i) => i < 6).map((p) => p.y), hips ? hips.y - rest.hipsY * 0.09 : Infinity) - sp.y;
+      const xs = pts.map((p) => p.x - sp.x);
+      const x = sit && xs.length ? -(Math.min(...xs) + Math.max(...xs)) / 2 : 0;
+      return { y: Number.isFinite(low) ? rest.feetY - low : 0, x: Number.isFinite(x) ? x : 0 };
+    }
+
+    // the alive layer's offsets (deg) on the clip's pose
+    function applyLife(bones) {
+      const T = R.THREE;
+      const h = vrm.humanoid;
+      tmp.e = tmp.e || new T.Euler();
+      tmp.q = tmp.q || new T.Quaternion();
       for (const [name, r] of Object.entries(bones)) {
         const n = h.getNormalizedBoneNode(name);
-        if (n) n.rotation.set(r.x * DEG, r.y * DEG, r.z * DEG);
+        if (!n || (!r.x && !r.y && !r.z)) continue;
+        tmp.e.set(r.x * DEG, r.y * DEG, r.z * DEG);
+        n.quaternion.multiply(tmp.q.setFromEuler(tmp.e));
       }
     }
 
-    // where she looks: the cursor (as a point between her and the screen), up when thinking, ahead otherwise
+    // where she looks: the cursor (as a point between her and the screen) with the alive layer's saccades and
+    // glances, or the director's fixed target (thinking up, asleep down, a shy look aside…)
     const tmp = {};
-    function aim(state, dt, t) {
+    function aim(dt, lifeOut) {
       const T = R.THREE;
       tmp.v = tmp.v || new T.Vector3();
       tmp.d = tmp.d || new T.Vector3();
       const rect = canvas.getBoundingClientRect();
-      let g = cursor.client ? M.gazeNdc(cursor.client, rect, { mirror: mirror() < 0 }) : { x: 0, y: 0.1 };
-      if (state === 'think') g = { x: 0.3, y: 1.6 };
-      else if (state === 'look') g = { x: Math.sin(t * 1.3) * 1.5, y: 0.2 };
-      else if (state === 'sleep') g = { x: 0, y: -0.5 };
+      let g;
+      if (plan.gaze.mode === 'fixed') g = { x: plan.gaze.x, y: plan.gaze.y };
+      else if (lifeOut.away) g = lifeOut.gaze;
+      else { g = cursor.client ? M.gazeNdc(cursor.client, rect) : { x: 0, y: 0.1 }; g = { x: g.x + lifeOut.gaze.x, y: g.y + lifeOut.gaze.y }; }
       const k = approach(8, dt);
+      const before = gaze;
       gaze = { x: lerp(gaze.x, g.x, k), y: lerp(gaze.y, g.y, k) };
       // a ray from the camera through the canvas point, cut at halfway between her face and the camera
       tmp.v.set(clamp(gaze.x, -1, 1), clamp(gaze.y, -1, 1), 0.5).unproject(camera);
@@ -326,58 +398,79 @@
       // beyond the canvas edge: further to the side
       lookTarget.position.x += (gaze.x - clamp(gaze.x, -1, 1)) * size.h * 0.4;
       lookTarget.position.y += (gaze.y - clamp(gaze.y, -1, 1)) * size.h * 0.4;
+      return Math.hypot(gaze.x - before.x, gaze.y - before.y);
     }
 
-    function draw({ t, state, mood = null, talking = false, voice = null, win = null, still = false }) {
-      if (!vrm || disposed) return false;
+    // snap: the app's read-only snapshot (docs §2.2) — or an old-style { t, state } (the picture, the hatch
+    // screen), wrapped by core/vrm-intent.js. Every call feeds the director (events are not lost on a frame
+    // that is not drawn); drawing follows the frame budget.
+    function draw(input) {
+      if (!vrm || disposed || !director) return false;
+      const t = input.t;
+      const snap = input.status === undefined && input.state !== undefined ? { ...I.fromState(input.state, t), voice: input.voice, talking: input.talking || input.state === 'talk', win: input.win } : input;
       const now = t * 1000;
-      if (state !== stateNow) { stateNow = state; stateAt = t; lastActivity = now; }
-      const busy = !M.isResting(state);
-      if (busy || talking || voice) lastActivity = now;
+      intent = I.fromSnapshot(snap, prevSnap);
+      prevSnap = snap;
+      const ddt = dirT === null ? 0 : clamp(t - dirT, 0, 0.25);
+      dirT = t;
+      plan = director.update(ddt * debugCtl.speed, intent);
+      const H = intent.holds;
+      if (intent.events.length || plan.busy) lastActivity = now;
       if (cursor.movedAt > lastActivity) lastActivity = cursor.movedAt;
+      // the window's motion (screen px/s)
+      const win = snap.win;
+      const rdt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
+      if (win) {
+        if (lastWin) {
+          const k = approach(14, rdt);
+          vel = [lerp(vel[0], (win[0] - lastWin[0]) / Math.max(rdt, 1e-3), k), lerp(vel[1], (win[1] - lastWin[1]) / Math.max(rdt, 1e-3), k)];
+        }
+        lastWin = win;
+      }
       const moving = Math.abs(vel[0]) + Math.abs(vel[1]) > 30;
       if (moving) lastActivity = now;
       const blinking = blink.start >= 0 || t >= blink.next - 0.05;
-      const fm = M.frameMode({ now, lastActivity, hidden: isHidden(), talking: talking || !!voice, dragging: state === 'lifted' || moving, busy, blinking });
+      const fading = anim && anim.fading();
+      const fm = M.frameMode({ now, lastActivity, hidden: isHidden(), talking: H.talk, dragging: H.lift || moving, busy: plan.busy || fading, blinking });
       if (canvas.dataset.mode !== fm.mode) canvas.dataset.mode = fm.mode;
-      if (!still && !M.shouldRender(now, lastRender, fm.fps)) {
+      if (!input.still && !M.shouldRender(now, lastRender, fm.fps)) {
         if (fm.mode === 'paused') { lastRender = null; canvas.dataset.fps = '0'; }
         return true;
       }
       const dt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
       lastRender = now;
       if (frameN % 30 === 0) fit();
-      const st = t - stateAt;
-      // resting at the low frame rate: her face and posture, without the bouncing
-      const L = fm.mode === 'idle' ? M.calm(M.lookFor(state, mood)) : M.lookFor(state, mood);
 
-      // the window's motion (screen px/s), in the direction she faces
-      if (win) {
-        if (lastWin) {
-          const k = approach(14, dt);
-          vel = [lerp(vel[0], (win[0] - lastWin[0]) / Math.max(dt, 1e-3), k), lerp(vel[1], (win[1] - lastWin[1]) / Math.max(dt, 1e-3), k)];
-        }
-        lastWin = win;
+      // L0/L1: the director's base clip, cross-faded
+      if (plan.base && plan.base.key !== lastBaseKey) {
+        if (plan.base.id && anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade);
+        lastBaseKey = plan.base.key;
       }
-      const swing = clamp((vel[0] * mirror()) / 600, -1.6, 1.6);
+      const clips = anim.update(dt);
+      if (!clips) restPose(); // no clip: arms down, absolute every frame (nothing accumulates)
 
-      // moves ease towards the state's
-      const kk = approach(7, dt);
-      for (const key of M.MOTIONS) cur[key] = lerp(cur[key], L.motion[key] || 0, kk);
+      // L4: alive
+      const lifeOut = life.step(dt, { ...plan.life, style, velX: vel[0], fingers: clips ? anim.fingers() : false });
+      applyLife(lifeOut.bones);
 
-      // body
-      const p = M.pose(cur, t, st, { swing, talking: talking || !!voice, ...(mixer ? { breathK: M.NO_BREATH } : {}) });
-      if (mixer) applyOverClip(p.bones, dt);
-      else applyBones(p.bones);
-      const roll = sp.roll.step(p.root.roll, dt);
-      // window inertia: she lags behind the window and springs back, so her hair and tail (SpringBone) swing
-      const lag = sp.x.step(clamp((-vel[0] * mirror()) / 2500, -0.6, 0.6), dt);
-      vrm.scene.position.set(base.x + lag * size.h * 0.12 + p.root.x * size.h, base.y + p.root.lift * size.h, 0);
-      vrm.scene.rotation.set(0, base.yaw + p.root.yaw * DEG, roll * DEG);
+      // the body: on the floor, turned (not mirrored) towards where she faces
+      vrm.scene.position.set(base.x, 0, 0);
+      vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
+      const g = groundOffset(!!(plan.base && plan.base.sit));
+      const gk = frameN === 0 ? 1 : approach(4, dt);
+      ground = lerp(ground, g.y, gk);
+      shiftX = lerp(shiftX, g.x, gk);
+      yaw = lerp(yaw, plan.facingYaw, approach(4, dt));
+      vrm.scene.position.set(base.x + shiftX, base.y + ground, 0);
+      vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
 
-      // face: the state's expressions (pack overrides, fallbacks), blinking, the mouth
-      const target = M.resolveFace(L.face, has, overrides[state] || null);
-      if (t >= blink.next && blink.start < 0) blink.start = t;
+      // face: the director's (pack overrides, fallbacks), blinking, the mouth
+      const target = M.resolveFace(plan.face, has, overrides[input.state] || null);
+      const jump = aim(dt, lifeOut);
+      if (lifeOut.blink || (jump > 0.5 && Math.random() < 0.3)) blink.next = Math.min(blink.next, t);
+      const eyesShut = (plan.face.blink || 0) > 0.8 || (plan.face.happy || 0) > 0.8;
+      if (t >= blink.next && blink.start < 0 && !plan.noBlink && !eyesShut) blink.start = t;
+      else if (t >= blink.next && (plan.noBlink || eyesShut)) blink.next = t + 0.5;
       let lids = 0;
       if (blink.start >= 0) {
         lids = M.blinkWeight(t - blink.start);
@@ -385,28 +478,27 @@
       }
       const blinkName = M.expressionFor('blink', has);
       if (blinkName && lids > 0) target[blinkName] = Math.max(target[blinkName] || 0, lids);
-      if (cur.wink > 0.05) { const w = M.expressionFor('blinkRight', has); if (w) target[w] = Math.max(target[w] || 0, cur.wink); }
-      // the mouth: the voice (analyser, else a syllable rhythm), chewing / held open
+      // the mouth: the voice (analyser, else a syllable rhythm), chewing while she eats
       let vis = M.zeroVisemes();
       lipMode = 'off';
-      if (talking || voice) {
-        const s = voice === 'audio' ? lip.sample() : null;
+      if (H.talk) {
+        const s = snap.voice === 'audio' ? lip.sample() : null;
         if (s) { vis = M.visemesFromSpectrum(s.bins, s.sampleRate); lipMode = 'audio'; } else { vis = M.syntheticVisemes(t); lipMode = 'synthetic'; }
-      }
-      vis.aa = Math.max(vis.aa, M.motionMouth(cur, t));
+        // a mouth-heavy emotion gives way to the words (§3.5)
+        for (const n of ['happy', 'relaxed']) { const m = M.expressionFor(n, has); if (m && target[m] > 0.5) target[m] = 0.5; }
+      } else if (H.eat) vis.aa = M.chewMouth(t);
       mouth = M.smoothVisemes(mouth, vis, dt);
       for (const k of M.VISEMES) { const n = M.expressionFor(k, has); if (n) target[n] = Math.max(target[n] || 0, mouth[k]); }
-      const fk = approach(blink.start >= 0 ? 40 : 10, dt);
       for (const n of new Set([...Object.keys(face), ...Object.keys(target)])) {
         const goal = target[n] || 0;
-        // the lids and the mouth are set directly (they already move on their own clock)
-        const direct = n === blinkName || M.VISEMES.includes(n);
-        face[n] = direct ? goal : lerp(face[n] || 0, goal, fk);
+        // the lids and the mouth are set directly (they already move on their own clock); emotions come in
+        // fast (~0.15 s) and fade slowly (~0.6 s) (§3.4)
+        const direct = (n === blinkName && lids > 0) || M.VISEMES.includes(n);
+        face[n] = direct ? goal : lerp(face[n] || 0, goal, approach(goal > (face[n] || 0) ? 14 : 4, dt));
         if (face[n] < 0.003) face[n] = 0;
         vrm.expressionManager.setValue(n, face[n]);
       }
 
-      aim(state, dt, t);
       vrm.update(dt); // humanoid, look-at, expressions, SpringBone, constraints
       renderer.render(scene, camera);
       frameN++;
@@ -414,45 +506,74 @@
       const d = canvas.dataset;
       d.frame = String(frameN);
       d.fps = String(meter.fps(now));
-      d.state = state;
+      d.state = I.summary(intent);
       d.lip = lipMode;
       d.mouth = M.VISEMES.map((k) => `${k}:${mouth[k].toFixed(2)}`).join(',');
       d.expr = Object.entries(face).filter(([, w]) => w > 0.01).map(([n, w]) => `${n}:${w.toFixed(2)}`).join(',');
       d.gaze = `${gaze.x.toFixed(2)},${gaze.y.toFixed(2)}`;
+      d.posture = plan.posture || '';
+      d.idle = plan.idle || '';
+      d.reaction = plan.reaction || '';
+      d.hold = plan.hold || '';
+      d.layers = anim.summary();
+      d.library = libState;
+      d.anim = animState;
       return true;
     }
 
     // the model's textures and how many actually have their image (a blocked blob: fetch leaves them empty)
     function textureMaps() {
       const seen = new Set();
-      let loaded = 0;
+      let loadedN = 0;
       if (vrm) vrm.scene.traverse((o) => {
         for (const m of [].concat(o.material || [])) {
           for (const v of [...Object.values(m), ...Object.values(m.uniforms || {}).map((u) => u && u.value)]) {
             if (!v || !v.isTexture || seen.has(v)) continue;
             seen.add(v);
             const img = v.image || (v.source && v.source.data);
-            if (img && (img.width || img.naturalWidth) > 0) loaded++;
+            if (img && (img.width || img.naturalWidth) > 0) loadedN++;
           }
         }
       });
-      return { total: seen.size, loaded };
+      return { total: seen.size, loaded: loadedN };
     }
 
     function fig() {
       return {
         canvas,
+        packId: look.packId,
         pause: () => { lastRender = null; },
+        director: () => director,
+        plan: () => plan,
+        setPosture: (p) => { if (director) director.setPosture(p); },
         debug: () => ({
-          loaded: !!vrm, anim: animState, mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: stateNow, lip: lipMode,
-          face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze }, motion: Object.fromEntries(Object.entries(cur).filter(([, v]) => Math.abs(v) > 0.01)),
+          loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
+          style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
+          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw },
+          idleHistory: director ? director.history() : [],
+          layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground,
+          face: { ...face }, mouth: { ...mouth }, gaze: { ...gaze },
+          // the pixel vocabulary is gone: no procedural hop / spin / dangle on a VRM (docs §2.3)
+          motion: {},
           expressions: vrm && vrm.expressionManager ? Object.keys(vrm.expressionManager.expressionMap) : [],
           springJoints: vrm && vrm.springBoneManager ? vrm.springBoneManager.joints.size : 0,
           root: vrm ? { x: vrm.scene.position.x, y: vrm.scene.position.y, yaw: vrm.scene.rotation.y / DEG, roll: vrm.scene.rotation.z / DEG } : null,
+          bones: vrm ? boneSample() : null,
           memory: renderer ? { ...renderer.info.memory } : null, packId: look.packId,
           maps: textureMaps(),
         }),
       };
+    }
+    // a few bones (deg, normalized) for the e2e's drift / T-pose checks
+    function boneSample() {
+      const T = R.THREE;
+      const e = new T.Euler();
+      const out = {};
+      for (const n of ['hips', 'spine', 'head', 'leftUpperArm', 'rightUpperArm', 'leftUpperLeg']) {
+        const b = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(n);
+        if (b) { e.setFromQuaternion(b.quaternion); out[n] = [e.x / DEG, e.y / DEG, e.z / DEG].map((v) => +v.toFixed(2)); }
+      }
+      return out;
     }
 
     // a model that does not load (not a renderable VRM, no WebGL): the app shows the picture instead and never
@@ -468,8 +589,8 @@
         stats.disposed++;
         const memory = renderer ? { ...renderer.info.memory } : null;
         try {
-          if (mixer && vrm) { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); }
-          mixer = null;
+          if (anim) anim.dispose();
+          anim = null;
           if (vrm) { scene.remove(vrm.scene); R.VRMUtils.deepDispose(vrm.scene); }
           if (renderer) { renderer.renderLists.dispose(); renderer.dispose(); renderer.forceContextLoss(); }
         } catch (e) { console.warn('[vrm] dispose:', e && e.message); }
@@ -481,21 +602,6 @@
       },
     };
     return api;
-  }
-
-  // a damped spring
-  function spring(k, damp, lim = Infinity) {
-    return {
-      x: 0,
-      v: 0,
-      step(target, dt) {
-        if (!Number.isFinite(target)) return this.x;
-        this.v += ((target - this.x) * k - this.v * damp) * dt;
-        this.x += this.v * dt;
-        if (Math.abs(this.x) > lim) { this.x = Math.sign(this.x) * lim; this.v = 0; }
-        return this.x;
-      },
-    };
   }
 
   // A picture of a model (pack:// URL of the .vrm), drawn once off-screen: the preview the importer saves for
@@ -516,7 +622,20 @@
     }
   }
 
+  // the VRM director for tests and debugging (docs §7): speed up its clock, fix its random numbers, read the
+  // plan, pin a posture (app.js persists the user's choice through setPosture)
+  const director = {
+    speed: (k) => { debugCtl.speed = clamp(Number(k) || 1, 0.1, 100); return debugCtl.speed; },
+    seed: (n) => { debugCtl.seed = n == null ? null : Number(n) >>> 0; for (const f of figures) { const d = f.director(); if (d && debugCtl.seed !== null) d.seed(debugCtl.seed); } return debugCtl.seed; },
+    plan: () => { const f = [...figures][0]; return f ? f.plan() : null; },
+    history: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.history() : []; },
+    setPosture: (packId, p) => { postures.set(packId, p || 'auto'); for (const f of figures) if (f.packId === packId) f.setPosture(p || 'auto'); },
+    postures: () => Object.fromEntries(postures),
+  };
+
+  window.__pet = Object.assign(window.__pet || {}, { vrmDirector: director }); // the name docs §7 gives it
   window.PetVRM = {
+    director,
     createFigure,
     loadRuntime,
     picture,

@@ -42,6 +42,7 @@ function setSettings(st) {
   if (st && st.ttsStatus && panelKind === 'advanced') paintVoiceStatus();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
+  if (window.PetVRM && view && view.look && view.look.kind === 'vrm') window.PetVRM.director.setPosture(view.look.packId, vrmPostureOf(view.look.packId));
 }
 
 function showScale(k) {
@@ -192,8 +193,9 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
     try {
+      if (look.kind === 'vrm' && window.PetVRM) window.PetVRM.director.setPosture(look.packId, vrmPostureOf(look.packId)); // her saved posture, before she is drawn
       const figure = LIVE_KINDS[look.kind]().createFigure(c, look);
-      const r = { canvas: c, figure, action, ok: false };
+      const r = { canvas: c, figure, action, ok: false, kind: look.kind };
       figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
@@ -279,9 +281,33 @@ function voiceNow() {
   if (window.speechSynthesis && speechSynthesis.speaking) return 'system';
   return null;
 }
+// A VRM figure gets a read-only snapshot of the app instead of a state to act out (docs/vrm-motion-system.md
+// §2.2): its own director decides what she does. Rig and Live2D figures keep the state.
+function vrmSnapshot(now) {
+  return {
+    t: now / 1000,
+    state: petStatus(), // only the key of pack.json vrm.expressions overrides
+    status: view.status,
+    shot: fx.current(now),
+    lifted: fx.lifted,
+    flying: fx.flying,
+    thinking,
+    eating,
+    talking: now < talkUntil,
+    voice: voiceNow(),
+    walking: fx.walking,
+    touch: lastTouch && { n: lastTouch.n, zone: lastTouch.zone, mood: lastTouch.mood },
+    facing: $('pet-body').dataset.facing,
+    pointerInside,
+    win: [window.screenX, window.screenY],
+  };
+}
+// The posture saved for a VRM pack (settings.vrmPostures; 'auto' = her director chooses).
+const vrmPostureOf = (packId) => (settings && settings.vrmPostures && settings.vrmPostures[packId]) || 'auto';
 function tickRigs(now) {
   for (const r of rigs) {
     if (!r.canvas.isConnected) { r.figure.dispose(); rigs.delete(r); continue; }
+    if (r.kind === 'vrm' && r.action === petAction && view) { r.figure.draw(vrmSnapshot(now)); continue; }
     const state = r.action();
     const mood = state.startsWith('touch-') && lastTouch ? lastTouch.mood : null;
     r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', voice: voiceNow(), win: [window.screenX, window.screenY] });
@@ -509,6 +535,7 @@ function applyArt() {
   if (video) return;
   const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
+  $('pet-body').dataset.kind = view.look.kind; // style.css: a VRM is not squashed, dangled or mirrored by CSS
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
     setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
@@ -961,6 +988,25 @@ function renderCharacter(c) {
         renderPanel();
       });
       actions.appendChild(info);
+      // 姿势: the posture she stands (or sits) in, kept per pack; 自动 lets her change it herself
+      const L = window.PetVrmLibrary;
+      const sel = document.createElement('select');
+      sel.className = 'vrm-posture';
+      sel.dataset.pack = o.id;
+      sel.title = '姿势（自动：待机时她自己换姿势）';
+      sel.setAttribute('aria-label', `「${o.name}」的姿势`);
+      for (const p of ['auto', ...L.POSTURES]) {
+        const op = document.createElement('option');
+        op.value = p;
+        op.textContent = `姿势：${L.POSTURE_LABEL[p]}`;
+        sel.appendChild(op);
+      }
+      sel.value = vrmPostureOf(o.id);
+      sel.addEventListener('change', async () => {
+        const r = await window.pet.setVrmPosture(o.id, sel.value);
+        if (r && r.ok) { setSettings(r.settings); panelMsg(`姿势已设为「${L.POSTURE_LABEL[sel.value]}」。`, true); }
+      });
+      actions.appendChild(sel);
     }
     if (o.source === 'user') {
       // 导出…: a .zip of the pack; refused (and the reason shown) when the model may not be redistributed

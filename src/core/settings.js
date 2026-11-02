@@ -37,11 +37,17 @@ const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
 const SYSTEM_ROLE_MAX = 1000;
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS };
 
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
   return Object.fromEntries(Object.entries(PREFS).map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
+}
+
+const VRM_POSTURES = ['auto', 'stand.relaxed', 'stand.confident', 'stand.shy', 'stand.playful', 'sit.rest', 'sit.doze'];
+function normalizeVrmPostures(raw) {
+  const v = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return Object.fromEntries(Object.entries(v).filter(([k, p]) => /^[a-z0-9][a-z0-9-]{2,39}$/.test(k) && VRM_POSTURES.includes(p) && p !== 'auto').slice(0, 64));
 }
 
 function normalizeApi(raw) {
@@ -77,6 +83,8 @@ function normalizeSettings(raw) {
   const sr = s.systemRoles && typeof s.systemRoles === 'object' ? s.systemRoles : {};
   s.systemRoles = Object.fromEntries(Object.entries(sr).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string').map(([k, v]) => [k, cleanSystemRole(v)]).filter(([, v]) => v));
   s.prefs = normalizePrefs(s.prefs);
+  // a VRM pack's posture (core/vrm-library.js POSTURES, or 'auto' = the VRM director decides): { packId: posture }
+  s.vrmPostures = normalizeVrmPostures(s.vrmPostures);
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
   s.api = normalizeApi(s.api);
@@ -137,4 +145,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
