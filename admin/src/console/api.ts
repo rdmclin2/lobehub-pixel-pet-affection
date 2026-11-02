@@ -139,6 +139,22 @@ export interface RosterRow {
   vendor: string;
   voice: null | { lang?: string; tts?: any };
   voicePack: null | { builtIn: boolean; credit: string; engine: string; engineLabel: string; id: string; lines: number; name: string };
+  personality: string;
+  packKinds: { builtin: number; kind: string; label: string; user: number }[];
+  outfits: OutfitRow[] | null;
+}
+
+export interface OutfitRow {
+  condition: string | null;
+  desc: string;
+  equipped: boolean;
+  id: string;
+  isNew: boolean;
+  label: string;
+  locked: boolean;
+  preview: Preview | null;
+  rating: string | null;
+  stageName: string;
 }
 
 export interface PackRow {
@@ -169,6 +185,7 @@ export interface AdminState {
 }
 
 export interface BootData extends AdminState {
+  dataDir?: string;
   platform: string;
   schema: Schema;
   testMode: boolean;
@@ -194,6 +211,7 @@ export interface PetAdminApi {
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
   cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
+  equipOutfit: (id: string) => Promise<any>;
   exportPack: (id: string) => Promise<any>;
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
@@ -205,6 +223,7 @@ export interface PetAdminApi {
   onState: (cb: (st: AdminState) => void) => () => void;
   onUpdateStatus: (cb: (st: any) => void) => () => void;
   openLink: (url: string) => Promise<any>;
+  openDataFolder: () => Promise<any>;
   openLog: () => void;
   openPacksFolder: () => void;
   openVoicePacksFolder: () => void;
@@ -221,6 +240,7 @@ export interface PetAdminApi {
   setModel: (key: string, species: string) => Promise<any>;
   setSystemRole: (text: string, species: string) => Promise<any>;
   setFraming: (mode: 'auto' | 'full' | 'half', species: string) => Promise<any>;
+  placePet: () => Promise<any>;
   showPet: () => void;
   state: () => Promise<AdminState>;
   switchCharacter: (id: string, name?: string) => Promise<any>;
@@ -259,5 +279,8 @@ export const REASON: Record<string, string> = {
   'too-long': '太长了',
   unknown: '找不到这一项',
   'unknown-character': '没有这个角色',
+  locked: '这套服饰还没解锁',
+  hidden: '这套服饰需要先打开成人向内容',
+  unavailable: '她现在的形象包没有这套服饰',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';

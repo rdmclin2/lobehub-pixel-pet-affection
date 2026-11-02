@@ -4,7 +4,7 @@ import { useHashPath } from '../useHashPath';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
-import { AboutPage, ApiPage, AsrPage, ConnectionPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
+import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
 import { Shell } from './Shell';
 import { StoreProvider } from './store';
 
@@ -37,8 +37,9 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <UpdatePage />;
     case 'about':
       return <AboutPage />;
-    case 'visitors':
     case 'behavior':
+      return <BehaviorPage />;
+    case 'visitors':
     case 'proactive':
     case 'appearance':
       return <SimpleSettingsPage page={page} />;

@@ -52,10 +52,14 @@ const UI = { theme: 'auto' };
 const THEMES = ['auto', 'light', 'dark'];
 // 系统: GPU acceleration (app.disableHardwareAcceleration must run before the app is ready → takes a restart).
 const SYSTEM = { hardwareAcceleration: true };
+// 版本与更新: whether the app looks for a new version on its own (at launch, then every 4 hours). Off = only
+// 检查更新 (tray, ⋯ menu, settings window) checks. Before this switch it could only be turned off with
+// PIXELPET_NO_UPDATE=1; a version already downloaded is still installed on quit.
+const UPDATE = { autoCheck: true };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -94,6 +98,11 @@ function normalizeUi(raw) {
 function normalizeSystem(raw) {
   const y = raw && typeof raw === 'object' ? raw : {};
   return { hardwareAcceleration: typeof y.hardwareAcceleration === 'boolean' ? y.hardwareAcceleration : SYSTEM.hardwareAcceleration };
+}
+
+function normalizeUpdate(raw) {
+  const u = raw && typeof raw === 'object' ? raw : {};
+  return { autoCheck: typeof u.autoCheck === 'boolean' ? u.autoCheck : UPDATE.autoCheck };
 }
 
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
@@ -136,6 +145,7 @@ function normalizeSettings(raw) {
   s.affectionRules = normalizeAffectionRules(s.affectionRules);
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
+  s.update = normalizeUpdate(s.update);
   return s;
 }
 
@@ -188,4 +198,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, RESTART_KEYS, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
