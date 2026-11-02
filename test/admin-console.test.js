@@ -544,3 +544,11 @@ test('VRM import in the settings window: 导入确认 with the license before sh
   assert.match(lic, /from '\.\.\/\.\.\/\.\.\/\.\.\/src\/core\/vrm-ui\.js'/, 'the same wording as before (core/vrm-ui.js)');
   assert.match(lic, /api\(\)\.openLink\(row\.href!\)/, 'license links open in the system browser');
 });
+
+test('Live2D import from the settings window: main hands the new pack to the service at once, and the console puts it on', () => {
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
+  assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
+  assert.match(src, /data-import-live2d[\s\S]{0,600}api\(\)\.setAppearance\(r\.pack\.id, c\.id\)/);
+});

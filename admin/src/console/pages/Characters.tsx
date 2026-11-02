@@ -694,7 +694,17 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
             <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入')} size="small">
               导入角色包…
             </Button>
-            <Button onClick={() => run(api().importLive2d(c.id), 'Live2D 模型已导入')} size="small">
+            <Button
+              data-import-live2d
+              onClick={async () => {
+                // as the pet window's 导入 Live2D 模型… did: the imported model is put on at once
+                const r = await api().importLive2d(c.id);
+                if (!r || r.reason === 'canceled') return;
+                if (!r.ok) return void toast.error({ description: (r.errors ?? []).slice(0, 3).join('；') || reasonText(r), title: 'Live2D 导入失败' });
+                await run(api().setAppearance(r.pack.id, c.id), `已导入 Live2D 模型「${r.pack.name}」并换上`);
+              }}
+              size="small"
+            >
               导入 Live2D…
             </Button>
             <Button data-import-vrm onClick={importVrm} size="small">

@@ -665,7 +665,7 @@ module.exports = function vrmScenarios(ctx) {
     const evidence = [];
     let { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] });
     let errors = watchErrors(page);
-    let H = helpers(page, 'frame', evidence);
+    let H = helpers(page, 'frame', evidence, app);
     let admin = null;
     let testId = null;
     let realId = null;
@@ -970,7 +970,7 @@ module.exports = function vrmScenarios(ctx) {
         await app.close();
         ({ app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] }));
         errors = watchErrors(page);
-        H = helpers(page, 'frame', evidence);
+        H = helpers(page, 'frame', evidence, app);
         await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
         await H.drawing(5, 60000);
         await settled('half');

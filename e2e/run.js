@@ -3,7 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
-//   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 服饰 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
+//   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
@@ -7768,15 +7768,14 @@ async function adminCoverageScenario() {
   const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
   const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
   try {
-    await step(S, 'B0 hatch 格萝可, ⋯ → 设置… opens the settings window', async () => {
+    await step(S, 'B0 hatch 格萝可, ⚙ 设置 opens the settings window (the pet window has no ⋯ menu since T-2718)', async () => {
       await page.waitForSelector('.char-card');
       await page.click('.char-card[data-species="grok"]');
       await page.uncheck('#local-opt');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="settings"]');
+      await clickAct(page, 'settings');
       for (let i = 0; i < 200 && !admin; i++) {
         admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
         if (!admin) await page.waitForTimeout(100);
@@ -7836,16 +7835,17 @@ async function adminCoverageScenario() {
       return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'B3 角色详情 (格萝可, current): 形象包 / 服饰 / 好感 / 模型 / 设定 / 语音 / 资料, one screenshot per tab', async () => {
+    await step(S, 'B3 角色详情 (格萝可, current): 装扮 (衣柜 + 取景 + 形象包) / 好感 / 模型 / 个性化设定 / 语音 / 资料, one screenshot per tab', async () => {
       await go('/characters/grok');
       const out = [];
-      for (const [t, sel] of [['形象包', '[data-wardrobe="grok"]'], ['服饰', '[data-outfits="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
+      for (const [t, sel] of [['装扮', '[data-wardrobe="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['个性化设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
         await tab(t);
         if (sel) await attached(sel);
+        if (t === '装扮') { await attached('[data-outfits="grok"]'); await attached('[data-framing-row="grok"]'); }
         out.push(await shot(`b3-grok-${t}`));
       }
       const persona = await admin.textContent('[data-personality="grok"]').catch(() => '');
-      await tab('设定');
+      await tab('个性化设定');
       const p2 = await admin.textContent('[data-personality="grok"]');
       assert.ok(p2.length > 20, 'her persona from the character file');
       await tab('资料');
@@ -7854,19 +7854,20 @@ async function adminCoverageScenario() {
       return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
     }, () => admin);
 
-    await step(S, 'B4 服饰 → 穿上 in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
+    await step(S, 'B4 装扮 → 衣柜: a click in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
       const u = await call('unlockAll', 'grok');
       assert.equal(u.ok, true);
       await go('/characters/grok');
-      await tab('服饰');
+      await tab('装扮');
       const before = await page.getAttribute('#char-wrap', 'data-outfit');
-      const id = await admin.getAttribute('[data-outfits="grok"] [data-equip]', 'data-equip');
+      await attached('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])');
+      const id = await admin.getAttribute('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])', 'data-outfit');
       assert.ok(id && id !== before, `${id} vs ${before}`);
       // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
       if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
       await page.waitForTimeout(400);
       const pBefore = await petShot('b4-pet-before');
-      await admin.click(`[data-equip="${id}"]`);
+      await admin.click(`[data-outfits="grok"] [data-outfit="${id}"]`);
       await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
       await attached(`[data-outfit="${id}"][data-equipped="true"]`);
       await page.waitForTimeout(500);
@@ -7938,7 +7939,7 @@ async function adminCoverageScenario() {
     }, () => admin);
 
     let l2dId = null;
-    await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 形象包 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
+    await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 装扮 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
       const sw = await call('switchCharacter', 'dafeiyu', '小鱼');
       assert.equal(sw.ok, true, JSON.stringify(sw));
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -7950,7 +7951,7 @@ async function adminCoverageScenario() {
       await page.waitForTimeout(1500);
       const pBefore = await petShot('b9-pet-live2d-before');
       await go('/characters/dafeiyu');
-      await tab('形象包');
+      await tab('装扮');
       await attached(`[data-live2d-size="${l2dId}"]`);
       const thumb = admin.locator(`[data-live2d-size="${l2dId}"] input[type="range"]`).first();
       await thumb.focus();
@@ -7964,17 +7965,16 @@ async function adminCoverageScenario() {
       return `${l2dId} live2d.height → 0.3 in pack.json; ${pBefore}, ${pAfter}, ${a}`;
     }, () => admin);
 
-    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 服饰 note for one not current', async () => {
+    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 衣柜 note for one not current', async () => {
       const out = [];
       await go('/characters/dafeiyu');
       await tab('资料');
       assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 1 · 导入 1/);
       out.push(await shot('b10-dafeiyu-about'));
       await go('/characters/claude');
-      await tab('形象包');
+      await tab('装扮');
       out.push(await shot('b10-claude-looks-vrm'));
-      await tab('服饰');
-      assert.match(await admin.textContent('[role="tabpanel"]'), /只有正在陪你的角色可以换服饰/);
+      assert.match(await admin.textContent('[role="tabpanel"]'), /衣柜跟着当前陪你的角色走/);
       await go('/characters/gemini');
       await tab('资料');
       assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);

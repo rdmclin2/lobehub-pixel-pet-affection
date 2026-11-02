@@ -356,7 +356,11 @@ function wire() {
     nextOpenPath = null;
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     try {
-      return await packStore.importLive2d(r.filePaths[0], sp);
+      // the service learns the pack at once (it used to only after the pet window saved its picture), so 穿上
+      // from the settings window finds it
+      const out = await packStore.importLive2d(r.filePaths[0], sp);
+      if (out.ok) service.setPacks(packStore.packs);
+      return out;
     } catch (e) {
       logError(e);
       return { ok: false, errors: [e.message] };
