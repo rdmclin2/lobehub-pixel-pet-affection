@@ -27,7 +27,7 @@ const ARM = { 'stand.relaxed': 0, 'stand.confident': 20, 'stand.shy': 35, 'stand
 const LEFT_ARM = {
   'react.touch-head': 30, 'react.touch-face': 40, 'react.touch-hands': 50, 'react.shy': 60, 'react.angry': 70, 'react.annoyed': 80,
   'react.ticklish': 90, 'react.drop': 25, 'react.greet': 100, 'react.cheer': 110,
-  'hold.lift': 120, 'hold.talk': 45, 'hold.think': 55, 'hold.eat': 65,
+  'hold.lift': 120, 'hold.talk': 45, 'hold.talk-2': 45, 'hold.talk-3': 45, 'hold.think': 55, 'hold.eat': 65, 'hold.walk': 15,
 };
 
 function pose(slot, style, t = 0) {
@@ -73,7 +73,7 @@ function writeTestLibrary(dir, { styles = ['female', 'male'] } = {}) {
     const file = `${style}/${slot}.vrma`;
     fs.mkdirSync(path.join(dir, style), { recursive: true });
     fs.writeFileSync(path.join(dir, file), B.writeVrma(c, { name: id, generator: 'make-test-vrma' }));
-    index.clips[id] = { ...meta, file, duration: c.duration, bones: BONES.length };
+    index.clips[id] = { ...meta, file, duration: c.duration, bones: BONES.length, ...(e.detrend ? { speed: 1 } : {}) };
   }
   fs.writeFileSync(path.join(dir, 'library.json'), `${JSON.stringify(index, null, 2)}\n`);
   return index;

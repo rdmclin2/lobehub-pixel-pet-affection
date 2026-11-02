@@ -693,13 +693,13 @@ module.exports = function vrmScenarios(ctx) {
         const th = await frameNow();
         await H.shot('13-think');
         const g = th.d.gaze.split(',').map(Number);
-        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.hold === 'talk' && /hold:hold\.talk@\w+:(0\.[3-9]|1)/.test(c.dataset.overlays) && Math.max(...c.dataset.mouth.split(',').map((p) => Number(p.split(':')[1]))) > 0.15; }, null, { timeout: 15000 });
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.hold === 'talk' && /hold:hold\.talk(?:-\d)?@\w+:(0\.[3-9]|1)/.test(c.dataset.overlays) && Math.max(...c.dataset.mouth.split(',').map((p) => Number(p.split(':')[1]))) > 0.15; }, null, { timeout: 15000 });
         const tk = await frameNow();
         await H.shot('13-talk');
         assert.equal(th.d.hold, 'think');
         assert.ok(g[1] > 0.5, `thinking looks up: ${th.d.gaze}`);
         assert.ok(Math.abs(th.bones.leftUpperArm[2] - expectArm(th.d.overlays)) < 4);
-        assert.match(tk.d.overlays, /hold:hold\.talk@male/);
+        assert.match(tk.d.overlays, /hold:hold\.talk(?:-\d)?@male/);
         assert.notEqual(tk.d.lip, 'off');
         reactionLog.push({ want: 'hold.think / hold.talk', think: th.d.overlays, talk: tk.d.overlays, mouth: tk.d.mouth });
         return H.note(`waiting for the reply: data-hold ${th.d.hold}, overlays ${th.d.overlays}, gaze ${th.d.gaze} (up), expr ${th.d.expr}\nthe reply: data-hold ${tk.d.hold}, overlays ${tk.d.overlays}, lip ${tk.d.lip}, mouth ${tk.d.mouth} — the gesture and the mouth together`);

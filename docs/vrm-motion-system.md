@@ -187,7 +187,8 @@ r.figure.draw(snap);                  // rig/live2d 仍是 r.figure.draw({ t, st
 
 ### 3.6 朝向、落地与取景
 
-- **朝向**：VRM 不做 CSS 镜像；`facing:left/right` → 身体 yaw 偏转 ±18°（0.6 s 缓动）+ 视线同向，走路时 yaw 加大到 ±60°。
+- **朝向**：VRM 不做 CSS 镜像；`facing:left/right` → 身体 yaw 偏转 ±18° + 视线同向，走路时 yaw 加大到 ±50°（上限 ±60°，`WALK.yaw`）。转身由导演按时间最优曲线缓入缓出（最大 150°/s、加速度 520°/s²、按剩余角度提前减速，不过冲），任何可见转身 10%→90% 用时 ≥ 0.3 s（实测 0.44–0.81 s）；转身时头与胸先转（`turnLead`，最多 22°，按 head 0.45 / neck 0.3 / upperChest 0.2 / chest 0.15 分配），髋部随后跟上（T-2711）。
+- **漫游走路**（T-2711）：窗口移动时播放 `hold.walk`（素材包 Mixamo 走路循环，烘焙时去掉前进位移、保留左右摆胯与起伏，`detrend`），男女各一段。步频与位移匹配：烘焙时量出片段自身速度（`speed`，髋高/秒），渲染器量出窗口带着她横移的速度（从这段移动开始算的平均速度，抗系统移动窗口时的跳步；250 ms 不动即视为停下），导演令 `rate = 窗口速度 /（片段速度 × sin|yaw|）`，于是支撑脚在屏幕上基本不动。窗口还没动、正在转身时以 0.55 倍速原地小步；窗口停下后走路层 0.5 s 淡出回 idle，步频同步降到 0，不定格、不跳帧。
 - **落地**：切换姿势后计算最低的 foot/toes/hips 世界坐标，平移根节点使其贴地（坐姿时臀部贴地）；相机仍按站姿身高取景（不随姿势缩放，坐下就是变矮）。
 - **触摸命中**：本期沿用 `zoneAtClient`；坐/蹲姿下头的位置会变，P1 增加 `figure.zoneRects()`（把 humanoid 骨骼投影到画布得出 head/face/chest/hands/belly/butt/legs/feet 的矩形），`app.js` 的 `zoneAtClient` 在 VRM 外观下优先用它。像素角色的命中逻辑不变。
 
@@ -318,13 +319,13 @@ P2 备用（不进本期验收）：蹲 `crouch.peek` F `postures/223e0cef-b9c0-
 | `react.ticklish` 怕痒 | `touch:belly` / `touch:feet` / `touch:tail`，mood `ticklish` | `motions/_TEMP/emote/happy1.vmd`（3.0 s 开心 emote，`mask: upper`，P1）；P0 降级 `mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx`（Super Excited，trim 0–2.5 s，amplitude 0.6） | `mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Forward Hand Gesture，2.9 s） | upper；in 0.2 / out 0.5 | happy 1.0（M 0.8） |
 | `hold.lift` 拖拽提起 | `drag:lift`（持续） | `postures/02854bce-1b74-4b36-bb3f-df58f4a0a345.fbx`（On Knees, Arms Raised：只取上半身「哇」举手） | `mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx`（Arms Spread Looking Upwards：只取上半身） | upper（腿由 L4 重力下垂 + 阻尼摆动）；in 0.2 | surprised 0.8 → 1 s 后 0.4 |
 | `react.drop` 放下 / 落地 | `drag:drop`（`drag:thrown` 用更重的版本） | `motions/tsuna/tsuna_small_jump.vmd`（取落地段，P1）；P0 降级：`postures/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx`（stand.relaxed）0.35 s 快速淡入 + hips 下沉 2 cm 回弹（L4）；thrown：`motions/hit/h01_何かにぶつかる小.vmd`（P1） | `motions/tsuna/tsuna_small_jump.vmd`（amplitude 0.8，P1）；P0 降级：`mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx`（stand.relaxed）0.35 s 淡入 + hips 下沉 1.2 cm；thrown：`motions/hit/h01_何かにぶつかる小.vmd`（P1） | full（VMD 版为 upper）；out 0.4 | surprised 0.4 → 0 |
-| `hold.talk` 说话 | `talk`（持续） | `motions/talk/xs-talk8-west-negotiate.vmd`（5.0 s 说话手势，`mask: upper`，amplitude 0.6，P1）；P0：`stand.relaxed` + 口型 + 语音能量点头 | `mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Forward Hand Gesture，amplitude 0.7，循环）；P1 同 F 的 VMD（amplitude 0.9） | upper；in 0.3 / out 0.5 | 维持基线 + happy 0.2 |
+| `hold.talk` / `hold.talk-2` / `hold.talk-3` 说话（三段轮换，T-2711） | `talk`（持续；流式回复时 think 与 talk 同时为真 → 说话） | `mixamo/c9c88301-b96c-11e4-a802-0aaa78deedf9.fbx`（摊掌讲解，1.0–6.5 s）、`mixamo/c9c92388-b96c-11e4-a802-0aaa78deedf9.fbx`（双手交握点头，1.5–7.5 s）、`mixamo/c9c8fdad-b96c-11e4-a802-0aaa78deedf9.fbx`（双手递出，0.4–2.7 s） | `mixamo/c9c6fcc0-b96c-11e4-a802-0aaa78deedf9.fbx`（张臂讲解，0.6–6.6 s，amplitude 0.8）、`mixamo/c9cc660c-b96c-11e4-a802-0aaa78deedf9.fbx`（单手比划，0.3–6.3 s）、`mixamo/c9c90cbb-b96c-11e4-a802-0aaa78deedf9.fbx`（抬手解释，0.4–4.8 s） | upper，F 0.9 / M 1.0；in 0.35 / out 0.5；每段播完换下一段（不连续重复），0.6 s 交叉淡化；life 层轻点头 | 维持基线 + happy 0.25 |
 | `hold.think` 思考 | `think`（持续） | `postures/0aef00f5-ea18-4e7c-a12d-6c92a08a9033.fbx`（Leaning Back, Left Hand On Hip）+ 视线右上 + 歪头 6° | `mixamo/670efeec-dabc-492d-a713-a8a28a959249.fbx`（Looking Right）+ 视线右上 | upper；in 0.4 / out 0.5 | neutral 0.3 |
 | `react.greet` 打招呼 | `celebrate:hatch`、窗口首次显示、从 sleep 醒来 | `mixamo/c9c7996a-b96c-11e4-a802-0aaa78deedf9.fbx`（Greeting While Standing，5.1 s） | `mixamo/c9c9f57a-b96c-11e4-a802-0aaa78deedf9.fbx`（Quick Informal Bow，2.7 s）；备选 `mixamo/c9c9f4bc-b96c-11e4-a802-0aaa78deedf9.fbx`（Quick Formal Bow） | full；in 0.3 / out 0.6 | happy 0.8 |
 | `react.cheer` 开心 | `celebrate:evolve`、`cue:play`/`cue:happy`（小概率、amplitude 0.6） | `mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx`（Super Excited，trim 0–3.0 s） | `mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Forward Hand Gesture） | full；in 0.25 / out 0.6 | happy 1.0 |
 | `react.sad-sink` 失落坐下 | `mood:sad` 持续 > 60 s | `motions/casual/へなへなと座り込む_gumi.vmd`（瘫坐，3.3 s，P1，需腿部 IK）→ `sit.rest`；起身 `motions/casual/女の子座り→立ち上がる_gumi_v01.vmd`；P0：`stand.shy` → `sit.rest` 1.2 s 交叉淡化 | `stand.shy`（`mixamo/08f3514a-0d3b-469d-9f27-57f97d9fcb9b.fbx`）→ `sit.rest`；P1 起身 `motions/casual/OTL→立ち上がり.vmd` | full | sad 0.5 |
 | `hold.eat` 吃东西 | `eat:*`（持续） | `stand.relaxed`（`postures/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx`）+ 口型层咀嚼 + 头部小点头 | `stand.relaxed`（`mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx`）+ 口型层咀嚼（幅度 ×0.8）+ 头部小点头 | — | happy 0.7 |
-| `hold.walk` 走路（P1） | `walk`（持续，漫游开启时） | `motions/walk_n_run/walk_A01_f0-40_s9.85.vmd`（1.3 s 步行循环，需腿部 FK/IK，P1）；P0：保持 `stand.relaxed`、yaw ±60° 朝向行进方向 + 轻微上下 | `mixamo/c9cceeed-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Walking Forward，1.1 s，去掉根位移原地踏步） | full | happy 0.25 |
+| `hold.walk` 走路（T-2711） | `walk` 且窗口在移动（或正在转身） | `mixamo/c9c66731-b96c-11e4-a802-0aaa78deedf9.fbx`（轻盈窄步、柔和摆臂，1.37 s/两步，原速 1.05 m/s） | `mixamo/c9c609a9-b96c-11e4-a802-0aaa78deedf9.fbx`（步幅大、双脚与髋同宽、放松摆臂，1.4 s/两步，原速 1.12 m/s） | full，loop + detrend；in 0.3 / out 0.5；步频随窗口速度（§3.6） | F happy 0.25 / M 0.15 |
 
 **本期验收最小集（P0，只依赖 Mixamo FBX）**：姿势 `stand.relaxed / stand.confident / stand.shy / stand.playful / sit.rest`（5 种）；idle `idle.happy / idle.variant2(M) 或 idle.posture-cycle(F) / idle.posture-cycle`（每套 ≥ 3 段）；反应 `touch-head / touch-face / touch-hands / shy(降级) / angry / annoyed / ticklish(降级) / lift / greet / cheer / talk / think`（≥ 6 种，男女各一套）。VMD 条目（P1）在 VMD 烘焙完成后替换降级素材，无需改导演逻辑。
 
@@ -393,6 +394,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 | `test/vrm-style.test.js` | 推断优先级（pack.json > 导入写入 > meta 推断 > neutral）；`bustSpring>0 → female`、`shoulderHip≥1.5 → male`、否则 neutral（用测试内构造的最小 GLB JSON，覆盖「VRoid 男性有 Bust 节点但无 SpringBone」用例）；对象形式 style 继承与夹值。 |
 | `test/vrm-library.test.js` | `src/core/vrm-library.json` 结构校验（kind/mask/trim/face 合法、id 唯一、`src` 为 `postures/`/`mixamo/`/`motions/` 下的相对路径、无 `..`）；每个 style 至少 4 姿势、3 idle、6 反应；若设置了 `PIXELPET_VRM_ASSETS`，额外检查每个 `src` 文件存在（CI 无素材时跳过）。 |
 | `test/vrm-bake.test.js` | 重定向数学：静止旋转为单位时 `q_vrm == q`；已知父/子静止旋转时补偿结果正确；Mixamo 骨名映射覆盖 VRM 必需骨骼；VMD 解析（测试内构造 VMD 二进制，含 shift_jis 骨名）；左右手系转换；写出的 GLB 通过 `V.inspectVrmaJson`；trim/loop/mask/amplitude 行为。 |
+| `test/vrm-walk-talk.test.js`（T-2711） | 漫游：转身 \|yaw\| ≤ 60°、10%→90% ≥ 0.3 s、角速度 ≤ 150°/s 且首帧缓入、turnLead 指向转身方向且转完归零；窗口不动不播走路、不同速度下支撑脚横向速度与窗口速度误差 < 5%、相位单调、停下淡出 ≥ 0.4 s 且每帧权重变化 ≤ 0.12；原地转身小步；男女走路不同素材。说话：男女各三段不同素材、upper ≥ 0.9、非定格；思考为静止姿势+视线上；12 s 长回复 ≥ 3 段且不连续重复、片段时间不冻结、权重不掉；流式回复（think+talk）→ talk；空闲小欢呼在开始思考时结束。男性拎起摆幅 ≥ 女性 60%；戳脸 weight ≥ 0.95、boost ≥ 1.3；男性打盹小腿 offset ≥ 9°；烘焙 `detrendClip` / `travelSpeed` / `boostClip`。 |
 | `test/vrm-life.test.js` | 微动层上限（单骨 ≤ 4°、根 ≤ 2 cm，lift 腿 ≤ 12°）；呼吸频率随 style/sleep；重心切换间隔 6–14 s；不存在 hop/spin/stride/dangle 等字段（解耦回归）。 |
 | `test/vrm-motion.test.js`（改） | 删除对 STATE_LOOKS/pose 的断言；保留 resolveFace、眨眼、gaze、口型、帧预算用例。 |
 | `test/packs.test.js`（改） | `vrm.style` / `vrm.motions` 校验与错误文案。 |
@@ -422,6 +424,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 - 拒绝位于仓库内的素材/模型路径；
 - 烘焙 → 导入 liliya（female 推断）与 vroid.vrm（male 推断）→ 逐个触发 §5 的每个姿势/idle/反应，各截图，并录屏对比男女差异（liliya 的戳脸/害羞 vs vroid 的同一事件）；
 - 输出每个条目的「素材路径 → 截图」对照表供人工评审「自然、有活人感」。
+- T-2711：`.agents/acceptance/scripts/vrm-walk-talk-real-acceptance.js`（参数同上）——漫游（`petFx.walk`，即空闲链的 `fx.walkPet`）左右各一次：30 ms 页内采样得到转身角度曲线（\|yaw\| ≤ 60°、10%→90% ≥ 0.3 s、头胸领先）、左右脚踝前后交替次数、每次支撑期支撑脚在屏幕上的净滑移 / 窗口位移（≤ 35%）、停下时走路权重单调淡出且无骨骼跳变，并用 x11grab 录桌面视频；短回复与 ≥ 8 s 流式长回复的手臂峰值偏转（≥ 30°）、片段轮换（≥ 3 段、不连续重复、手臂不定格）、与思考的动作类型区分（手势角速度 ≥ 3× 思考、思考视线固定向上）；男性拖动腿摆幅 ≥ 女性 60%、戳脸峰值（≥ 30°）、`sit.doze` 膝角 ≥ 0°。
 
 ### 8.4 像素回归
 
@@ -615,3 +618,15 @@ L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 �
 - **坐姿**：女性改为椅坐素材（跷腿坐 `51846e47`、后撑坐 `abe202be`），渲染器在坐姿下淡入一个圆墩坐具（从地面到臀下 10% 胯高处；席地坐时是 4 cm 的坐垫），不再悬空。
 - **验收脚本**：`vrm-reactions-real-acceptance.js` 的 legs hang 改为真检查（脚踝低于臀部距离大于站立、脚尖下垂 > 3 cm、膝角 0…45°、身体抬起 > 5 cm、腿随窗口摆动 ≥ 2°），新增 10 项男性/女性反应幅度比 ≥ 60% 断言；`vrm-motion-real-acceptance.js` 新增 liliya idle 每帧转头 ≤ ±12°、男性 idle 35 s 内 ≥ 2 次明显变化、坐具可见且在臀下的断言。调试接口 `figures[0].pose`（各主骨骼四元数、腿部高度与膝角、头/胯相对身体朝向的偏航）与 `figures[0].props`（坐具、抬起量）供验收读取。
 - vendor `three-vrm.min.js` 用 `scripts/build-vrm-vendor.js` 重新打包，多导出 `Mesh / PlaneGeometry / CylinderGeometry / MeshBasicMaterial / MeshLambertMaterial / CanvasTexture`（阴影与坐具用），版本不变。
+
+## T-2711 漫游走路、说话手势与三处小修
+
+T-2698 复核的剩余问题。架构不变（intent → director → anim/life），像素核心文件不改。
+
+- **漫游不再滑行**：新增 `hold.walk@female/male`（素材包 Mixamo 走路循环，§5.3），烘焙参数 `detrend`（去掉前进位移、保留摆胯与起伏）并在索引里写入片段自身速度 `speed`（髋高/秒）。导演新增 `stepFacing`（时间最优的缓入缓出转身，±50°，不过冲）与 `stepGait`（走路相位按 `窗口速度 /（片段速度 × sin|yaw|）` 推进；窗口不动时不播，转身时 0.55 倍速原地小步，停下淡出），计划里新增 `turnLead`、`walk { on, rate, wanted, phase, target, turning }`。渲染器按导演的 yaw 直接转身（不再自己 lerp），把 `turnLead` 分给 head/neck/upperChest/chest 让上身先转；窗口速度从“本段移动开始以来的平均速度”算（系统移动窗口是不均匀的跳步），并修正原先除以“距上次绘制时间”导致的低估。
+- **说话手势**：`hold.talk` 改为每种风格三段不同的讲解手势（`hold.talk`、`hold.talk-2`、`hold.talk-3`，`mask: upper`，女 0.9 / 男 1.0），导演逐段播放、播完换下一段（不连续重复，0.6 s 交叉淡化），life 层加轻点头（`talk`）。思考保持原来的静止姿势 + 视线上移，二者在动作类型上区分：说话是持续的手势与点头、看着对方；思考是定住的托腮/叉腰、看上方。流式回复时应用同时处于 think 与 talk，导演改为说话优先（文字在出现时她就在说）。
+- **男性拖动腿摆**：style 新增 `liftSwing`（女 1、男 1.6、中性 1.2），乘在 life 层拎起摆动与悬空晃脚上。
+- **戳脸峰值**：烘焙参数 `boost`（按骨骼把每个关键帧相对静止的转角放大 k 倍）。女性 head/neck ×1.35、权重 0.95；男性 head/neck ×1.5、upperChest ×1.3、权重 1.0。
+- **男性打盹膝盖**：`sit.doze@male` 小腿 `offset` +14°（原素材膝角约 −9°，过伸）。
+- **其他**：反应的优先级 0（cue 的小欢呼）此前被 `opts.prio || PRIORITY.touch` 当成触摸优先级；改正后，开始思考/说话/吃/被拎时小欢呼即淡出。调试接口新增 `PetVRM.director.pose()`（只取腿部/脚踝/头胯偏航，便于高频采样），`pose.legs.*.ankleFwd`（脚踝在身体朝向上相对髋的前后位置）与 `ankleClientX`（脚踝在屏幕上的 x）。
+- **实测（liliya 女 / vroid 男，真实导入，`vrm-walk-talk-real-acceptance.js` 最终一轮 37/37）**：转身 \|yaw\| 最大 50.8°，10%→90% 用时 0.42–0.97 s，头胸领先 14–22°；走路时左右脚踝前后交替 3–4 次（1.25–1.49 步/秒），片段按自身 0.97–1.06 倍速播放；稳定行走时支撑脚每次支撑期在屏幕上的净滑移为窗口位移的 7–19%（含起步/收步 8–39%；整身滑行为 100%）；停下 0.74–0.85 s 内走路权重单调降到 0。说话手臂峰值偏转女 69–72°、男 90–104°（T-2698 女 18°/9°），14.8 s 长回复内轮换 4 段、手臂从未定格；思考手臂角速度 0°/s、视线固定向上。男性拖动大腿摆幅为女性的 99%（多轮 99–280%，随拖动轨迹而变）；戳脸峰值女 43.4°（head）/ 男 44.0°（neck）（原 21° / 25°）；vroid 打盹膝角 23.7° / 22.5°。
