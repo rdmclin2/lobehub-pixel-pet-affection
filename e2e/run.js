@@ -8361,9 +8361,11 @@ async function petuiScenario() {
         await hover(page);
         await page.waitForTimeout(400);
         await shot('05-toolbar');
-        const acts = await page.$$eval('#toolbar [data-act]', (b) => b.map((x) => x.dataset.act));
+        // a pixel look: ♪ 跳舞 (VRM only, T-2801) is in the toolbar but hidden
+        const acts = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
         assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']);
-        const rows = await page.$$eval('#toolbar [data-act]', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
+        assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true, '♪ hidden on a pixel look');
+        const rows = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
         assert.equal(rows, 1, 'the toolbar fits on one row');
         return acts.join(' / ');
       }, page);
@@ -9754,8 +9756,9 @@ async function adminScenario() {
 
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
       await hover(page);
-      const items = await page.$$eval('#toolbar [data-act]', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
-      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置']);
+      const items = await page.$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
+      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置']); // + 跳舞, hidden on this pixel look (VRM only, T-2801)
+      assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
       await page.click('[data-act="settings"]');
@@ -10559,6 +10562,7 @@ async function interjectScenario() {
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
+  if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
   if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'spriteframe' || which === 'all') await spriteFrameScenarios().spriteFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
