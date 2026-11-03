@@ -53,7 +53,7 @@ module.exports = function live2dFrameScenarios(ctx) {
     // a third-party model as a user has it: the 中肥鱼 files in a plain folder, no pack.json (so no halfBody)
     const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframe-model-'));
     const own = path.join(fix, 'Whale');
-    fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
+    fs.cpSync(path.join(ROOT, 'catalog', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
     // the homemade VRM (outside the repo) for 两类角色一致
     const vrmDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframe-vrm-'));
     const vrmFile = path.join(vrmDir, 'e2e-fish.vrm');

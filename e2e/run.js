@@ -982,7 +982,7 @@ async function dafeiyu() {
       await page.waitForSelector('#hatch-vwrap:not(.hidden)', { timeout: 15000 });
       await page.waitForFunction(() => { const v = document.getElementById('hatch-video'); return v.readyState >= 2 && !v.paused; }, null, { timeout: 10000 });
       await page.waitForTimeout(600);
-      assert.match(await page.evaluate(() => document.getElementById('hatch-video').src), /dafeiyu\/hatch\.webm$/);
+      assert.match(await page.evaluate(() => document.getElementById('hatch-video').src), /^pack:\/\/dafeiyu-clips\/hatch\.webm$/);
     }, page);
 
     await step(S, 'the pet appears as a transparent video in a small window with no controls showing', async () => {
@@ -5881,7 +5881,7 @@ async function live2dImport() {
   // "her own" model: the 中肥鱼 model files as a user has them, plus an expression named in Japanese
   const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dmodel-'));
   const own = path.join(fix, 'Whale');
-  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
+  fs.cpSync(path.join(ROOT, 'catalog', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
   fs.renameSync(path.join(own, 'medium.model3.json'), path.join(own, 'Whale.model3.json'));
   fs.writeFileSync(path.join(own, '照れ.exp3.json'), JSON.stringify({ Type: 'Live2D Expression', Parameters: [{ Id: 'PARAM_EXP4', Value: 1, Blend: 'Add' }] }));
   const m3 = JSON.parse(fs.readFileSync(path.join(own, 'Whale.model3.json'), 'utf8'));
@@ -8877,7 +8877,7 @@ async function adminCoverageScenario() {
   fs.copyFileSync(path.join(ROOT, 'build', 'icon.png'), path.join(pic, 'daily.png'));
   fs.writeFileSync(path.join(pic, 'pack.json'), JSON.stringify({ schema: 2, id: 'gemini-photo', name: '双子立绘', species: 'gemini', kind: 'pictures', author: 'e2e', license: 'CC0', outfits: { daily: 'daily.png' } }));
   const l2d = path.join(fix, 'Whale');
-  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), l2d, { recursive: true });
+  fs.cpSync(path.join(ROOT, 'catalog', 'packs', 'dafeiyu-live2d', 'model'), l2d, { recursive: true });
   const vrmFile = path.join(fix, 'fish.vrm');
   fs.writeFileSync(vrmFile, require('../scripts/make-test-vrm').makeTestVrm({ name: 'Test Fish', meta: { allowRedistribution: true, licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
 
@@ -8958,7 +8958,7 @@ async function adminCoverageScenario() {
       await go('/packs');
       const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-packs] tbody tr')].map((tr) => tr.textContent));
       const packs = await admin.evaluate(async () => (await window.petAdmin.state()).packs.map((p) => `${p.id}:${p.kind}:${p.source}`));
-      for (const want of ['gemini-photo:pictures:user', `${b.pack.id}:live2d:user`, `${c.pack.id}:vrm:user`, 'dafeiyu-live2d:live2d:builtin', 'dafeiyu-live:rig:builtin', 'grok-pixel:sprites:builtin']) assert.ok(packs.includes(want), `${want} in ${packs.join(' ')}`);
+      for (const want of ['gemini-photo:pictures:user', `${b.pack.id}:live2d:user`, `${c.pack.id}:vrm:user`, 'dafeiyu-live2d:live2d:download', 'dafeiyu-live:rig:download', 'grok-pixel:sprites:builtin']) assert.ok(packs.includes(want), `${want} in ${packs.join(' ')}`);
       const f = await shot('b1-packs');
       return `${packs.length} packs (${rows.length} table rows): ${packs.join(' ')}; ${f}`;
     }, () => admin);
@@ -9620,8 +9620,9 @@ async function adminScenario() {
       return `grok-classic stage ${classic.src.split('/').slice(-3).join('/')}; 切换 → pet window ${await page.getAttribute('#pet-look', 'data-key')}; pet.json characterId=${petJson().characterId}; agent unchanged`;
     }, () => admin);
 
-    await step(S, 'A13b every built-in all-ages character draws on her own stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
-      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.filter((c) => c.source === 'builtin' && !c.adult).map((c) => ({ id: c.id, kind: c.kind, pack: c.pack && c.pack.id })));
+    await step(S, 'A13b every official all-ages character (5 built-in + the downloaded ones) draws on her own stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
+      // only the pixel five ship; the e2e run counts catalog/ as downloaded (PIXELPET_CATALOG_PREINSTALLED)
+      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.filter((c) => (c.source === 'builtin' || c.source === 'download') && !c.adult).map((c) => ({ id: c.id, kind: c.kind, pack: c.pack && c.pack.id })));
       const rows = [];
       const kinds = new Set();
       for (const c of chars) {
@@ -9654,7 +9655,7 @@ async function adminScenario() {
         rows.push(`${c.id}[${c.kind}] stage→${st.type} tried ${tryId || '—'}→${tr ? tr.type : '—'}`);
       }
       assert.ok(['sprites', 'rig', 'live2d', 'video'].every((k) => kinds.has(k)), [...kinds].join(','));
-      assert.equal(chars.length, 13, '13 all-ages built-in characters');
+      assert.equal(chars.length, 13, '13 all-ages official characters (5 built-in, 8 downloaded)');
       return `${rows.length} characters drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
     }, () => admin);
 
