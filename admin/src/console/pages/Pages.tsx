@@ -57,15 +57,21 @@ export const SimpleSettingsPage = ({ page }: { page: string }) => (
 );
 
 // ---- 朗读 -------------------------------------------------------------------------------------------------
+const ENGINE_NAME: Record<string, string> = { elevenlabs: 'ElevenLabs', fish: 'Fish Audio', minimax: 'MiniMax' };
+
 export const TtsPage = () => {
   const { settings, merge } = useStore();
   const st = settings.ttsStatus;
+  const picked: string | undefined = settings.tts?.provider;
+  const pickedName = picked ? ENGINE_NAME[picked] : undefined; // a cloud engine (needs a key)
   const eng = (id: string) => {
     const e = st?.engines?.[id];
     if (!e) return null;
+    // Cloud engines need a key; the local one is ready once it has an address (its key is optional).
+    const noKey = id !== 'local' && !e.hasKey;
     return (
       <Flexbox gap={4} horizontal>
-        <Tag color={e.ready ? 'success' : undefined}>{e.ready ? '可用' : '未就绪'}</Tag>
+        <Tag color={e.ready ? 'success' : noKey ? 'warning' : undefined}>{e.ready ? '可用' : noKey ? '未设置 Key' : '未就绪'}</Tag>
         {e.lastError && <Tag color="error">上次失败：{e.lastError}</Tag>}
       </Flexbox>
     );
@@ -74,6 +80,9 @@ export const TtsPage = () => {
     <>
       <Header page="tts" />
       {!settings.prefs?.voice && <Alert title="朗读关着：打开「朗读回复」后，下面的引擎设置才会用上。" type="info" />}
+      {pickedName && st?.engines?.[picked!] && !st.engines[picked!].hasKey && (
+        <Alert title={`${pickedName} 还没设置 Key：在下方「${pickedName}」里填写 API Key 后才能用它朗读。`} type="warning" />
+      )}
       <SettingsForm extra={{ 'Fish Audio': eng('fish'), MiniMax: eng('minimax'), ElevenLabs: eng('elevenlabs'), 本地语音服务: eng('local') }} page="tts" />
       <Surface
         extra={

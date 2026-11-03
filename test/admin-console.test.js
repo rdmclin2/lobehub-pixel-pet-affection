@@ -177,6 +177,67 @@ test('API keys are write-only: they go to the key store hook, never into setting
   assert.equal((await admin.set('keys.openai', 'whatever-123')).ok, false, 'only the known slots');
 });
 
+test('ElevenLabs in 设置 → 朗读: engine option, its own card (端点 / 默认音色 ID / 模型 / API Key) and the checks on each', () => {
+  const provider = schema.FIELDS.find((f) => f.key === 'tts.provider');
+  assert.ok(provider.options.some((o) => o.value === 'elevenlabs' && o.label === 'ElevenLabs'));
+  assert.equal(schema.validate('tts.provider', 'elevenlabs').ok, true);
+  const card = schema.FIELDS.filter((f) => f.page === 'tts' && f.card === 'ElevenLabs');
+  assert.deepEqual(card.map((f) => [f.key, f.type]), [['tts.endpoints.elevenlabs', 'url'], ['tts.elevenlabs.voiceId', 'text'], ['tts.elevenlabs.modelId', 'select'], ['keys.elevenlabs', 'secret']]);
+  const by = Object.fromEntries(card.map((f) => [f.key, f]));
+  assert.equal(by['tts.endpoints.elevenlabs'].validator, 'tts:elevenlabs');
+  assert.match(by['tts.endpoints.elevenlabs'].desc, /留空使用.*https:\/\/api\.elevenlabs\.io/);
+  assert.match(by['tts.elevenlabs.voiceId'].desc, /Voice Library.*voice_id/);
+  assert.equal(by['tts.elevenlabs.modelId'].default, 'eleven_multilingual_v2');
+  assert.deepEqual(by['tts.elevenlabs.modelId'].options.map((o) => o.value), ['eleven_multilingual_v2', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_v3']);
+  assert.equal(by['keys.elevenlabs'].store, 'keys');
+  assert.equal(by['keys.elevenlabs'].sensitive, true);
+  assert.match(by['keys.elevenlabs'].desc, /只写入，不回显。保存后显示「已设置」。/);
+  // endpoint: https (or loopback for debugging), no credentials; empty = the official address
+  assert.deepEqual(schema.validate('tts.endpoints.elevenlabs', ''), { ok: true, value: '' });
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://el.example.com').ok, true);
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'http://el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://u:p@el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'ftp://el.example.com').reason, 'bad-endpoint');
+  // voice_id: letters and digits as ElevenLabs gives them; model: one of the listed ones
+  assert.deepEqual(schema.validate('tts.elevenlabs.voiceId', ' 21m00Tcm4TlvDq8ikWAM '), { ok: true, value: '21m00Tcm4TlvDq8ikWAM' });
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', '').ok, true, 'cleared');
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', 'not/a voice').reason, 'pattern');
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'eleven_flash_v2_5').ok, true);
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'gpt-4o-mini-tts').reason, 'option');
+  assert.deepEqual(schema.patchFor('tts.elevenlabs.voiceId', 'abc'), { setter: 'setTts', patch: { elevenlabs: { voiceId: 'abc' } } });
+  assert.deepEqual(schema.patchFor('tts.endpoints.elevenlabs', 'https://x'), { setter: 'setTts', patch: { endpoints: { elevenlabs: 'https://x' } } });
+});
+
+test('ElevenLabs settings save through admin-set into settings.json; its key goes to the key store only', async () => {
+  const { admin, file, hooks, data } = setup();
+  assert.equal((await admin.set('tts.provider', 'elevenlabs')).ok, true);
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'https://el.example.com/')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.voiceId', '21m00Tcm4TlvDq8ikWAM')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.modelId', 'eleven_turbo_v2_5')).ok, true);
+  const t = file().tts;
+  assert.equal(t.provider, 'elevenlabs');
+  assert.equal(t.endpoints.elevenlabs, 'https://el.example.com');
+  assert.deepEqual(t.elevenlabs, { voiceId: '21m00Tcm4TlvDq8ikWAM', modelId: 'eleven_turbo_v2_5' });
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'http://el.example.com')).reason, 'bad-endpoint');
+  assert.equal(file().tts.endpoints.elevenlabs, 'https://el.example.com', 'a refused endpoint changes nothing');
+  const r = await admin.set('keys.elevenlabs', 'sk_el_abcdefgh12345');
+  assert.deepEqual([r.ok, r.hasKey, r.value], [true, true, undefined]);
+  assert.equal(hooks.keys.elevenlabs, 'sk_el_abcdefgh12345');
+  assert.ok(!fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes('sk_el_abcdefgh12345'));
+  assert.equal((await admin.set('keys.elevenlabs', 'has space in it')).reason, 'bad-key');
+  assert.equal((await admin.set('keys.elevenlabs', '')).ok, true, 'empty clears');
+  assert.equal(hooks.keys.elevenlabs, '');
+});
+
+test('朗读 page: the ElevenLabs card shows its engine status, and a cloud engine without a key says 未设置 Key', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
+  assert.match(src, /ElevenLabs: eng\('elevenlabs'\)/);
+  assert.match(src, /'未设置 Key'/);
+  assert.match(src, /还没设置 Key/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-settings.js'), 'utf8'), /KEY_SLOTS = new Set\(\[\.\.\.NEURAL/);
+  assert.ok(require('../src/core/tts').NEURAL.includes('elevenlabs'), 'key slot, set-tts key and ttsStatus all follow NEURAL');
+});
+
 test('admin-reset puts every listed key back to its default; read-only ones are skipped', async () => {
   const { admin, file } = setup();
   await admin.set('prefs.memes', false);

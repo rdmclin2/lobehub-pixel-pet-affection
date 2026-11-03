@@ -96,8 +96,8 @@
 | `tts.local.api` | enum | `'openai'` | `openai`（`/v1/audio/speech`）\| `whale`（`/tts`） | 语音 → 本地语音服务 → 接口 · `set-tts` | 即时 |
 | `tts.local.model` | string | `''`（请求时用 `tts-1`） | 去掉首尾空白，最多 80 字 | 语音 → 本地语音服务 → 模型 · `set-tts` | 即时 |
 | `tts.local.voice` | string | `''`（请求时用 `default`） | 最多 80 字；角色文件里的 `voice.tts.local.voice` 优先 | 语音 → 本地语音服务 → 音色名 · `set-tts` | 即时 |
-| `tts.elevenlabs.voiceId` | string | `''`（没有音色时不用 ElevenLabs） | 去掉首尾空白，最多 80 字；角色文件里的 `voice.tts.elevenlabs.voiceId` 优先 | 语音 → ElevenLabs → 默认音色 ID · `set-tts` | 即时 |
-| `tts.elevenlabs.modelId` | string | `'eleven_multilingual_v2'` | 最多 80 字；空串回到默认；角色文件里的 `voice.tts.elevenlabs.model` 优先 | 语音 → ElevenLabs → 模型 · `set-tts` | 即时 |
+| `tts.elevenlabs.voiceId` | string | `''`（没有音色时不用 ElevenLabs） | 从 ElevenLabs Voice Library 复制的 voice_id：去掉首尾空白后为空，或 10–40 位字母和数字（`^[A-Za-z0-9]{10,40}$`，否则 `reason:'pattern'`）；角色文件里的 `voice.tts.elevenlabs.voiceId` 优先 | 语音 → ElevenLabs → 默认音色 ID · `set-tts` | 即时 |
+| `tts.elevenlabs.modelId` | enum | `'eleven_multilingual_v2'` | 设置窗口里是下拉：`eleven_multilingual_v2` \| `eleven_flash_v2_5` \| `eleven_turbo_v2_5` \| `eleven_v3`（其它值 `reason:'option'`）；settings.json 里最多 80 字，空串回到默认；角色文件里的 `voice.tts.elevenlabs.model` 优先 | 语音 → ElevenLabs → 模型 · `set-tts` | 即时 |
 
 语音的密钥和操作：
 
