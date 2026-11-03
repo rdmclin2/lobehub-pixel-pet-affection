@@ -45,10 +45,11 @@ const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per la
 
 // Every settings update also carries the pet size: the character area scales with it (style.css .stage).
 function setSettings(st) {
-  const wasOn = !!(settings && settings.prefs && settings.prefs.voice);
+  const wasOn = IVoice.voiceOn(settings && settings.prefs);
   settings = st;
   appearance.set(st && st.ui && st.ui.theme);
-  if (wasOn && !(st && st.prefs && st.prefs.voice)) stopSpeech('voice-off'); // 朗读 off: quiet at once, nothing pending
+  if (wasOn && !IVoice.voiceOn(st && st.prefs)) stopSpeech(st && st.prefs && st.prefs.muted ? 'muted' : 'voice-off'); // 朗读 off / 静音: quiet at once, nothing pending
+  syncMute();
   syncPrewarm();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
@@ -956,7 +957,7 @@ const LOCAL_LINE_GAP_MS = 4000;
 const localLineAt = {};
 function localLine(kind) {
   const p = settings && settings.prefs;
-  if (VISITOR || !p || !p.voice || p.voiceInteractions === false || !view || thinking) return;
+  if (VISITOR || !IVoice.voiceOn(p) || p.voiceInteractions === false || !view || thinking) return;
   const now = performance.now();
   if (now - (localLineAt[kind] || -Infinity) < LOCAL_LINE_GAP_MS) return;
   localLineAt[kind] = now;
@@ -973,7 +974,7 @@ let prewarmTimer = null;
 let lastPrewarm = null;
 function syncPrewarm() {
   const p = settings && settings.prefs;
-  if (!p || !p.voice || p.voiceInteractions === false || !view || !view.pet || VISITOR) { prewarmSig = null; return; }
+  if (!IVoice.voiceOn(p) || p.voiceInteractions === false || !view || !view.pet || VISITOR) { prewarmSig = null; return; }
   const t = settings.tts || {};
   const keys = settings.ttsStatus ? Object.entries(settings.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}:${e.ready}`).join(',') : '';
   const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
@@ -1112,6 +1113,7 @@ function bindPetUi() {
       $('chat-row').classList.toggle('hidden');
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
     } else if (act === 'settings') openSettings();
+    else if (act === 'mute') toggleMute();
   });
   const send = async () => {
     const input = $('chat-input');
@@ -1248,8 +1250,10 @@ function bindPetPointer({ onClick, onMenu }) {
 }
 
 // Behaviour switches for the effects layer.
+// fx.js reads prefs through this (and stays as it is for pixel characters): 静音 silences the click sound too
 function petPrefs() {
-  return (settings && settings.prefs) || {};
+  const p = (settings && settings.prefs) || {};
+  return p.muted === true ? { ...p, clickSound: false } : p;
 }
 
 // Where the character is drawn in the window (for knocking into other pets): its art, not the whole window.
@@ -1630,6 +1634,26 @@ function paintMic() {
   st.textContent = line;
   st.dataset.state = s;
   st.classList.toggle('hidden', !line);
+}
+
+// 静音 (toolbar speaker): one switch over everything she sounds — 朗读, 互动语音 and the click sound.
+// It is its own pref (prefs.muted), so un-muting brings back exactly what 朗读 / 点击音效 were set to.
+function syncMute() {
+  const b = $('btn-mute');
+  if (!b || !settings || !settings.prefs) return;
+  const p = settings.prefs;
+  const muted = p.muted === true;
+  b.setAttribute('aria-pressed', String(muted));
+  b.setAttribute('aria-label', muted ? '取消静音' : '静音');
+  b.title = muted ? '已静音：点一下恢复她的声音'
+    : p.voice || p.clickSound ? '静音：让她不出声' : '静音（朗读回复和点击音效现在都没开，可在设置里打开）';
+}
+async function toggleMute() {
+  if (!settings || !settings.prefs) return;
+  const muted = settings.prefs.muted !== true;
+  if (muted) stopSpeech('muted'); // quiet at once, before main answers
+  const r = await window.pet.setPrefs({ muted });
+  if (r && r.settings) setSettings(r.settings);
 }
 
 // Shown or hidden with 语音输入; switching it off mid-recording drops the recording.
