@@ -9183,6 +9183,15 @@ async function charMigrateScenario() {
       ].join('\n');
       record('m2-idempotent-second-start.txt', `${dump}\n`);
       return `${dump.replace(/\n/g, '; ')}; ${await petShot('m2-pet-window-second-start')}`;
+    }, () => page);
+
+    await step(S, 'M3 角色图鉴（实施包 B）：一位角色一张卡；原形象包都是她的形象（大肥鱼 · 像素 / Live2D / 导入的「我的大肥鱼」…，在她页面的「形象」里），没有「形象包」字样', async () => {
+      await openAdmin();
+      await go('/characters');
+      await attached('[data-base="dafeiyu"][data-row]');
+      await until('roster cards drawn', () => admin.evaluate(() => [...document.querySelectorAll('[data-roster] [data-row]')].every((r) => !!r.querySelector('[data-drawn]'))), 60000);
+      const rows = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, text: e.innerText.replace(/\s+/g, ' ').trim() })));
+      const text = await admin.innerText('[data-admin-page]');
       // her looks, from her page (装扮 → 形象)
       const looksOf = async (id, base) => {
         await go(`/characters/${id}`);
@@ -9193,15 +9202,6 @@ async function charMigrateScenario() {
       for (const id of ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-classic', 'my-fish', 'claude-pixel', 'claude-classic']) assert.ok(ids.includes(id), `${id} is one of her looks: ${ids.join(',')}`);
       await go('/characters');
       await attached('[data-base="dafeiyu"][data-row]');
-    }, () => page);
-
-    await step(S, 'M3 角色图鉴（实施包 B）：一位角色一张卡；原形象包都是她的形象（大肥鱼 · 像素 / Live2D / 导入的「我的大肥鱼」…，在她页面的「形象」里），没有「形象包」字样', async () => {
-      await openAdmin();
-      await go('/characters');
-      await attached('[data-base="dafeiyu"][data-row]');
-      await until('roster cards drawn', () => admin.evaluate(() => [...document.querySelectorAll('[data-roster] [data-row]')].every((r) => !!r.querySelector('[data-drawn]'))), 60000);
-      const rows = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, text: e.innerText.replace(/\s+/g, ' ').trim() })));
-      const text = await admin.innerText('[data-admin-page]');
       assert.ok(!text.includes('形象包'), 'no 形象包 on 角色图鉴');
       record('m3-roster.txt', `${rows.map((r) => `${r.id}\t${r.kind}\t${r.text}`).join('\n')}\n\n--- page innerText ---\n${text}\n`);
       return `${rows.length} cards: ${ids.join(', ')}; ${await shot('m3-roster-after-migration')}`;
@@ -9434,7 +9434,6 @@ async function adminCoverageScenario() {
         if (sel) await attached(sel);
         if (t === '装扮') { await attached('[data-outfits="grok-pixel"]'); await attached('[data-framing-row="grok-pixel"]'); }
         out.push(await shot(`b3-grok-${t}`));
-      assert.equal(await admin.getAttribute('[data-go-voicepacks]', 'href'), '#/voicepacks', '语音包 is one click away');
       }
       const persona = await admin.textContent('[data-personality="grok-pixel"]').catch(() => '');
       await tab('个性化设定');
@@ -9444,6 +9443,7 @@ async function adminCoverageScenario() {
       const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
       assert.match(kinds, /语音包/);
       assert.match(kinds, /角色包格萝可 · 像素（内置）/);
+      assert.equal(await admin.getAttribute('[data-go-voicepacks]', 'href'), '#/voicepacks', '语音包 is one click away');
       return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
     }, () => admin);
 
@@ -10040,6 +10040,14 @@ async function adminScenario() {
       await admin.getByRole('dialog').getByRole('button', { name: '初次见面' }).click();
       await admin.waitForSelector('[data-current="claude-pixel"]', { timeout: 30000 });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('claude-'), null, { timeout: 15000 });
+      const key = await page.getAttribute('#pet-look', 'data-key');
+      await shot('a12-switched');
+      await admin.click('[data-switch="grok-pixel"]');
+      await admin.waitForSelector('[data-current="grok-pixel"]', { timeout: 30000 });
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-'), null, { timeout: 15000 });
+      return `pet window look → ${key}; switched back to grok`;
+    }, () => admin);
+
     await step(S, 'A12d 实施包 B: 详情标签进 URL（深链 / 刷新）、页头紧凑好感、页底危险操作在弹窗里确认、找不到角色有出路、角色包按角色分组', async () => {
       const selected = () => admin.evaluate(() => [...document.querySelectorAll('[role="tab"]')].find((t) => t.getAttribute('aria-selected') === 'true')?.textContent.trim());
       // B02 (CHAR-02): a deep link opens 模型, a reload stays there, a tab click writes the URL
@@ -10084,14 +10092,6 @@ async function adminScenario() {
       assert.equal(new Set(groups).size, groups.length, 'one parent row per character');
       await shot('a12d-packs-grouped');
       return `deep link + reload → 「${afterReload}」; tab click → #/characters/grok-pixel/affection; tabs ${tabs.join('/')}; tab bar y=${tabsY}; unlock confirm in a dialog, cancelled; nobody → 找不到这位角色 + 回角色图鉴 / 去商店; packs groups ${groups.join(',')}`;
-    }, () => admin);
-
-      const key = await page.getAttribute('#pet-look', 'data-key');
-      await shot('a12-switched');
-      await admin.click('[data-switch="grok-pixel"]');
-      await admin.waitForSelector('[data-current="grok-pixel"]', { timeout: 30000 });
-      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-'), null, { timeout: 15000 });
-      return `pet window look → ${key}; switched back to grok`;
     }, () => admin);
 
     // her stage on the character page (the showcase on the left): what it shows, and once it is really drawn
