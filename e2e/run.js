@@ -8072,6 +8072,7 @@ async function frontslimScenario() {
     await step(S, 'F12 本机能力开关 → 后台 LobeHub 与本机：开（二次确认）→ 关', async () => {
       const loc = () => page.evaluate(() => window.pet.debugHeartbeat().then((v) => !!(v.local && v.local.enabled)));
       const was = await loc();
+      await go('/safety'); // 实施包 A (A04 / PG-05): 本机能力 moved to 隐私与安全 → 成人向与本机能力
       await flip('localAbilities');
       const dlg = await dialogOk('开启本机能力');
       await shotAdmin('f12-admin-local-confirm');
@@ -8083,7 +8084,7 @@ async function frontslimScenario() {
       for (let i = 0; i < 100 && (await loc()); i++) await page.waitForTimeout(150);
       const off = await loc();
       assert.deepEqual([was, on, off], [false, true, false]);
-      map.push(['本机能力：开/关', '设置 › 连接 › LobeHub 与本机 › 本机能力（开启需二次确认）']);
+      map.push(['本机能力：开/关', '设置 › 隐私与安全 › 成人向与本机能力 › 本机能力（开启需二次确认）']);
       return `confirm 「${dlg}」; local ${was} → ${on} → ${off}`;
     }, () => admin);
 
@@ -8103,7 +8104,7 @@ async function frontslimScenario() {
       for (let i = 0; i < 60 && adult(); i++) await page.waitForTimeout(150);
       const off = adult();
       assert.deepEqual([was, on, off], [false, true, false]);
-      map.push(['成人向内容：开/关', '设置 › 系统 › 内容与安全 › 成人向内容（打开需 18+ 确认）']);
+      map.push(['成人向内容：开/关', '设置 › 隐私与安全 › 成人向与本机能力 › 成人向内容（打开需 18+ 确认）']);
       return `dialog 「${dlg}」 → 「${ok}」; adultContent ${was} → ${on} → ${off}`;
     }, () => admin);
 
@@ -8112,10 +8113,11 @@ async function frontslimScenario() {
       tag = 'v0.0.1';
       await clickText('button', '检查更新');
       await until(admin, () => /已是最新版本/.test(document.querySelector('[data-path="/update"]').innerText), null, 15000, '已是最新版本');
-      const latest = (await pageText()).match(/状态 [^ ]+/)[0];
+      // 实施包 A (A15 / PG-04): the result is a line in the 版本 card
+      const latest = (await admin.textContent('[data-update-result]')).trim();
       tag = 'v9.9.9';
       await clickText('button', '检查更新');
-      await until(admin, () => /需要手动下载新版本/.test(document.querySelector('[data-path="/update"]').innerText), null, 15000, '新版本');
+      await until(admin, () => /有新版本 v9\.9\.9/.test(document.querySelector('[data-path="/update"]').innerText), null, 15000, '新版本');
       await shotAdmin('f14-admin-update-found');
       // the pet window: a dot on ⚙, and ⚙ goes straight to 版本与更新
       await page.bringToFront();
@@ -8148,38 +8150,39 @@ async function frontslimScenario() {
       await shotAdmin('f15-admin-about');
       assert.ok(fs.existsSync(log), 'open-log touched the log file');
       assert.match(await pageText(), /素材署名/);
-      map.push(['打开错误日志', '设置 › 系统 › 数据与关于 › 打开错误日志']);
-      map.push(['素材署名', '设置 › 系统 › 数据与关于 › 素材署名']);
+      map.push(['打开错误日志', '设置 › 系统 › 关于与数据 › 打开错误日志']);
+      map.push(['素材署名', '设置 › 系统 › 关于与数据 › 素材署名（折叠）']);
       return `log file ${existed ? 'existed' : 'created'} → ${fs.existsSync(log)} (${log.replace(os.tmpdir(), '$TMP')}); credits 「${credits.slice(0, 100)}」`;
     }, () => admin);
 
-    await step(S, 'F16 仅重置本地 → 数据与关于：二次确认（先取消一次），确认后回到选角页、LobeHub agent 保留', async () => {
+    await step(S, 'F16 仅重置本地 → 隐私与安全 › 重置与放生：二次确认（先取消一次），确认后回到选角页、LobeHub agent 保留', async () => {
+      await go('/reset'); // 实施包 A (A16 / PG-03): the irreversible actions have their own page; cancel reads 先不了
       await clickText('button', '仅重置本地');
       const dlg = await dialogOk('仅重置本地');
       await shotAdmin('f16-admin-forget-confirm');
-      await dialogClick('取消');
+      await dialogClick('先不了');
       await admin.waitForTimeout(400);
       const still = fs.existsSync(path.join(data, 'pet.json')) && !!petState().speciesId;
       await clickText('button', '仅重置本地');
       await dialogOk('仅重置本地');
       await dialogClick('仅重置本地');
-      await toastSeen(/已重置本地进度/);
+      await toastSeen(/已重置本地/);
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 10000 });
       const deletes = calls().filter((a) => a[0] === 'agent' && a[1] === 'delete').length;
       assert.equal(deletes, 0);
       await shotPet('f16-pet-onboarding-after-forget');
-      map.push(['仅重置本地', '设置 › 系统 › 数据与关于 › 危险操作 › 仅重置本地（二次确认）']);
+      map.push(['仅重置本地', '设置 › 隐私与安全 › 重置与放生 › 仅重置本地（二次确认，弹窗内执行）']);
       return `confirm 「${dlg}」; after 取消 still has a pet: ${still}; after 确认: onboarding shown, lh agent delete calls ${deletes}`;
     }, () => admin);
 
-    await step(S, 'F17 放生并删除 agent → 数据与关于：二次确认后删除 LobeHub agent', async () => {
+    await step(S, 'F17 放生并删除 agent → 隐私与安全 › 重置与放生：二次确认后删除 LobeHub agent', async () => {
       await page.bringToFront();
       await page.click('.char-card[data-species="claude"]');
       await page.uncheck('#local-opt');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await idle();
-      await go('/about');
+      await go('/reset');
       await clickText('button', '放生并删除 agent');
       const dlg = await dialogOk('放生并删除 agent');
       await shotAdmin('f17-admin-release-confirm');
@@ -8188,7 +8191,7 @@ async function frontslimScenario() {
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 10000 });
       const deletes = calls().filter((a) => a[0] === 'agent' && a[1] === 'delete');
       assert.ok(deletes.length >= 1);
-      map.push(['放生并删除 agent', '设置 › 系统 › 数据与关于 › 危险操作 › 放生并删除 agent（二次确认）']);
+      map.push(['放生并删除 agent', '设置 › 隐私与安全 › 重置与放生 › 放生并删除 agent（二次确认，弹窗内执行并报告删除数）']);
       return `confirm 「${dlg}」; lh agent delete ×${deletes.length} (${deletes.map((a) => a[2]).join(', ')}); pet back on onboarding`;
     }, () => admin);
 
@@ -9588,6 +9591,11 @@ async function adminCoverageScenario() {
       const missing = [];
       for (const pg of pages) {
         await go(`/${pg}`);
+        // 实施包 A (A13 / PG-01): 朗读 shows only the engine in use; the other engines' fields are under 其他引擎 — open it
+        if (pg === 'tts') {
+          await admin.click('[data-other-engines] button');
+          await admin.waitForSelector('[data-key="tts.endpoints.minimax"]', { timeout: 5000 });
+        }
         const want = fields.filter((f) => f.page === pg).map((f) => f.key);
         const got = await admin.evaluate(() => [...document.querySelectorAll('[data-key]')].map((el) => ({ key: el.getAttribute('data-key'), tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), checked: el.getAttribute('aria-checked'), label: (el.closest('[class*="item"], [class*="row"], div')?.textContent || '').trim().slice(0, 80) })));
         const keys = new Set(got.map((g) => g.key));
