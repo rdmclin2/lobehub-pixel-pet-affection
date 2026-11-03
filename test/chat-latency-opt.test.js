@@ -174,3 +174,71 @@ test('contentGuard still guards the chat page with a stale list: a blocked reply
   assert.match(r.message.text, /这个我不聊啦/);
   await svc._catalogLoading;
 });
+
+// ---- the reply as increments (core/chat-live.js): IPC carries only what was added, the page merges per frame ----
+const ChatLive = require('../src/core/chat-live');
+
+test('chat-live encode: an append sends only the added piece; the first piece, a take-back or a restart send the whole text', () => {
+  assert.deepEqual(ChatLive.encode('', '你好'), { text: '你好' });
+  assert.deepEqual(ChatLive.encode('你好', '你好呀，今天'), { at: 2, append: '呀，今天' });
+  assert.deepEqual(ChatLive.encode('你好呀[开心', '你好呀'), { text: '你好呀' }, 'a half-written meme tag taken back out');
+  assert.deepEqual(ChatLive.encode('你好', '你好'), { text: '你好' });
+});
+
+test('chat-live apply/merge: increments rebuild the text; a piece that does not fit leaves it as is and asks for a resync', () => {
+  const base = { speciesId: 'claude', turnId: null, text: '' }; // what send() puts up before the first delta
+  let r = ChatLive.apply(base, { speciesId: 'claude', turnId: 't1', text: '今天' });
+  assert.deepEqual(r, { live: { speciesId: 'claude', turnId: 't1', text: '今天' }, resync: false });
+  r = ChatLive.apply(r.live, { speciesId: 'claude', turnId: 't1', at: 2, append: '天气' });
+  assert.equal(r.live.text, '今天天气');
+  // a page opened mid-reply: it has nothing, the piece starts at 4
+  const gap = ChatLive.apply({ speciesId: 'claude', turnId: null, text: '' }, { speciesId: 'claude', turnId: 't1', at: 4, append: '真好' });
+  assert.equal(gap.resync, true);
+  assert.equal(gap.live.text, '', 'never a gap: the text stays until main sends it whole');
+  // another turn's piece does not join this one
+  assert.equal(ChatLive.apply({ speciesId: 'claude', turnId: 't0', text: '今天' }, { speciesId: 'claude', turnId: 't1', at: 2, append: 'x' }).resync, true);
+  // one frame, many deltas → one state
+  const m = ChatLive.merge(base, [
+    { speciesId: 'claude', turnId: 't1', text: '今' },
+    { speciesId: 'claude', turnId: 't1', at: 1, append: '天' },
+    { speciesId: 'claude', turnId: 't1', at: 2, append: '天气' },
+  ]);
+  assert.deepEqual(m, { live: { speciesId: 'claude', turnId: 't1', text: '今天天气' }, resync: false });
+  // a whole-text piece later in the frame repairs an earlier gap
+  const fixed = ChatLive.merge({ speciesId: 'claude', turnId: null, text: '' }, [{ speciesId: 'claude', turnId: 't1', at: 4, append: 'x' }, { speciesId: 'claude', turnId: 't1', text: '今天天气x' }]);
+  assert.deepEqual(fixed, { live: { speciesId: 'claude', turnId: 't1', text: '今天天气x' }, resync: false });
+});
+
+test('chatAs streams increments: the deltas put together are the reply, the bytes sent are the reply once; a page opened mid-reply reads the text so far', async () => {
+  const { svc } = await setup();
+  const runTurn = svc._runTurn.bind(svc);
+  const seen = [];
+  svc._runTurn = async (args, stream, opts) => {
+    const res = await runTurn(args, null, opts);
+    const full = res.text;
+    for (const n of [3, 5, 8, full.length]) {
+      stream.onDelta(full.slice(0, n).slice(-1), full.slice(0, n));
+      seen.push(svc.chatHistory('claude', { limit: 1 }).live); // what a page opened now would start from
+    }
+    return res;
+  };
+  const deltas = [];
+  const r = await svc.chatAs('claude', { text: '今天好累呀' }, { onDelta: (d) => deltas.push(d) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.message.text, 'echo: 今天好累呀');
+  assert.ok('text' in deltas[0] && !('append' in deltas[0]), 'the first piece is whole');
+  assert.ok(deltas.slice(1).every((d) => typeof d.append === 'string' && !('text' in d)), 'the rest are increments only');
+  const page = ChatLive.merge({ speciesId: 'claude', turnId: null, text: '' }, deltas);
+  assert.deepEqual(page, { live: { speciesId: 'claude', turnId: r.turnId, text: 'echo: 今天好累呀' }, resync: false });
+  assert.equal(deltas.reduce((n, d) => n + (d.append ?? d.text).length, 0), 'echo: 今天好累呀'.length, 'each character crosses IPC once');
+  assert.deepEqual(seen.map((x) => x.text), ['ech', 'echo:', 'echo: 今天', 'echo: 今天好累呀']);
+  assert.ok(seen.every((x) => x.turnId === r.turnId));
+  // a page that opened after the 2nd delta: starts from history().live, then the increments fit
+  const late = ChatLive.merge({ speciesId: 'claude', ...seen[1] }, deltas.slice(2));
+  assert.equal(late.live.text, 'echo: 今天好累呀');
+  assert.equal(late.resync, false);
+  // after the turn: nothing live
+  const after = svc.chatHistory('claude');
+  assert.equal(after.streaming, false);
+  assert.equal(after.live, null);
+});

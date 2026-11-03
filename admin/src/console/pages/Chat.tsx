@@ -10,7 +10,8 @@ import { ChatInputActionBar, ChatInputAreaInner, ChatItem, ChatSendButton, Loadi
 import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X } from 'lucide-react';
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { api, reasonText, type ChatCharacter, type ChatMessage, type RosterRow } from '../api';
+import ChatLive from '../../../../src/core/chat-live.js';
+import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow } from '../api';
 import { SpriteStage } from '../stage/SpriteStage';
 import { useStore } from '../store';
 
@@ -235,7 +236,7 @@ interface Pending {
   size: number;
 }
 
-/** The reply being written: deltas carry the whole text so far. */
+/** The reply being written, put together from the deltas (increments, core/chat-live.js). */
 interface Live {
   speciesId: string;
   text: string;
@@ -338,7 +339,10 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     }
     setMessages(r.messages);
     setHasMore(r.hasMore);
-    if (r.streaming) setLive((l) => (l && l.speciesId === sid ? l : { speciesId: sid, text: '', turnId: null }));
+    if (r.streaming) {
+      const now = r.live;
+      setLive((l) => (l && l.speciesId === sid && (!now || l.text.length >= now.text.length) ? l : { speciesId: sid, text: now?.text ?? '', turnId: now?.turnId ?? null }));
+    }
   }, []);
 
   // first visit, a reload, another character or coming back from another page: read it all again from main
@@ -358,9 +362,40 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const countRef = useRef(0);
   countRef.current = messages.length;
   useEffect(() => {
-    const offDelta = chat().onDelta((d) => setLive({ speciesId: d.speciesId, text: d.text, turnId: d.turnId }));
+    // the deltas of one frame become one render (requestAnimationFrame); a piece that does not fit asks main for the text so far
+    let queue: ChatDelta[] = [];
+    let frame = 0;
+    let resyncing = false;
+    const resync = async (sid: string) => {
+      if (resyncing) return;
+      resyncing = true;
+      try {
+        const r = await chat().history(sid, { limit: 1 });
+        const now = r.ok && r.streaming ? r.live : null;
+        if (now) setLive((l) => (l && l.speciesId === sid && l.text.length > now.text.length && l.turnId === now.turnId ? l : { speciesId: sid, text: now.text, turnId: now.turnId }));
+      } finally {
+        resyncing = false;
+      }
+    };
+    const flush = () => {
+      frame = 0;
+      const q = queue;
+      queue = [];
+      // no reply on the page (it ended: done, stopped or refused): a late piece must not bring the bubble back
+      if (!q.length || !liveRef.current) return;
+      const r = ChatLive.merge(liveRef.current, q);
+      liveRef.current = r.live;
+      setLive(r.live);
+      if (r.resync) resync(q.at(-1)!.speciesId);
+    };
+    const offDelta = chat().onDelta((d) => {
+      queue.push(d);
+      if (!frame) frame = requestAnimationFrame(flush);
+    });
     const offDone = chat().onDone((d) => {
       if (activeRef.current === d.speciesId) setMessages((ms) => (ms.some((x) => x.id === d.message.id) ? ms : [...ms, d.message]));
+      queue = queue.filter((x) => x.turnId !== d.turnId);
+      if (liveRef.current?.speciesId === d.speciesId) liveRef.current = null;
       setLive((l) => (l && l.speciesId === d.speciesId ? null : l));
       refreshCharacters();
     });
@@ -371,6 +406,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
       if (sid && (!d.speciesId || d.speciesId === sid) && !liveRef.current) loadLatest(sid, countRef.current);
     });
     return () => {
+      if (frame) cancelAnimationFrame(frame);
       offDelta();
       offDone();
       offChanged();
@@ -500,6 +536,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     const here = activeRef.current === sid;
     if (!r.userMessage) {
       // refused before anything was kept: put what you wrote back
+      if (liveRef.current?.speciesId === sid) liveRef.current = null;
       setLive((l) => (l && l.speciesId === sid ? null : l));
       if (here) {
         setMessages((ms) => ms.filter((x) => x.id !== temp.id));
@@ -516,6 +553,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         return !message || next.some((x) => x.id === message.id) ? next : [...next, message];
       });
     }
+    if (liveRef.current?.speciesId === sid) liveRef.current = null;
     setLive((l) => (l && l.speciesId === sid ? null : l));
     refreshCharacters();
   };

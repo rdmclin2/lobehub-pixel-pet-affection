@@ -28,6 +28,7 @@ const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
+const chatLive = require('../core/chat-live');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -1146,7 +1147,9 @@ class PetService extends EventEmitter {
     const id = this._target(speciesId);
     if (!id) return { ok: false, reason: 'unknown-character' };
     const page = adminChat.historyPage(adminChat.conversationOf(this.log.list(), id), { before, limit });
-    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!(this._consoleTurn && this._consoleTurn.speciesId === id), ...page };
+    const t = this._consoleTurn && this._consoleTurn.speciesId === id ? this._consoleTurn : null;
+    // live: the reply being written so far, for a page opened mid-reply (deltas are increments, core/chat-live.js)
+    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!t, live: t ? { turnId: t.turnId, text: t.text || '' } : null, ...page };
   }
 
   // Stop the reply the chat page is waiting for (only its own turn: the desktop's is stopped there).
@@ -1280,17 +1283,20 @@ class PetService extends EventEmitter {
           if (this._cancelRequested) return;
           const shown = contentGuard.checkReply(soFar).ok ? adminChat.answerOnly(memes.streamingText(soFar), { streaming: true }) : '';
           if (shown === partial) return;
+          const piece = chatLive.encode(partial, shown); // only what was added goes over IPC (whole text when it is not an append)
           partial = shown;
+          if (this._consoleTurn) this._consoleTurn.text = shown;
           trace.mark('firstShown');
           trace.markLast('lastShown');
           trace.add('deltas');
-          trace.add('ipcBytes', Buffer.byteLength(shown));
+          trace.add('ipcBytes', Buffer.byteLength(piece.append ?? piece.text));
           try {
-            onDelta({ speciesId: id, turnId, text: shown });
+            onDelta({ speciesId: id, turnId, ...piece });
           } catch { /* a display callback must not cost the turn */ }
         },
         restart: () => {
           partial = '';
+          if (this._consoleTurn) this._consoleTurn.text = '';
           try {
             onDelta({ speciesId: id, turnId, text: '', restart: true });
           } catch { /* as above */ }

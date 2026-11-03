@@ -379,6 +379,8 @@ export interface ChatPickedImage {
 
 export interface ChatHistory {
   hasMore: boolean;
+  /** The reply being written so far (when streaming). */
+  live?: { text: string; turnId: string } | null;
   messages: ChatMessage[];
   met: boolean;
   ok: boolean;
@@ -399,10 +401,13 @@ export interface ChatSendResult {
   userMessage?: ChatMessage;
 }
 
+/** One piece of the reply being written (core/chat-live.js): an increment `{ at, append }` or the whole text `{ text }`. */
 export interface ChatDelta {
+  append?: string;
+  at?: number;
   restart?: boolean;
   speciesId: string;
-  text: string;
+  text?: string;
   turnId: string;
 }
 
