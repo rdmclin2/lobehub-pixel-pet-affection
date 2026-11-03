@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('pet', {
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
+  setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
@@ -62,6 +63,8 @@ contextBridge.exposeInMainWorld('pet', {
   switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
+  setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
+  vrmLibraryInfo: () => ipcRenderer.invoke('vrm-library-info'),
   // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines
   ttsSynthesize: (text, mood) => ipcRenderer.invoke('tts-synthesize', { text, mood }),
   ttsCancel: () => ipcRenderer.send('tts-cancel'),

@@ -15,8 +15,13 @@ const { importVrm } = require('../core/vrm-import');
 
 // Must run before the app is ready. CORS-enabled so the page can read a sheet's pixels (部位触摸 hit-tests
 // clicks against her opaque pixels); the files are pictures only, see serve().
+// (registerSchemesAsPrivileged may be called only once: the VRM motion library's vrmlib:// is registered here too,
+// it is served by src/main/vrm-library.js)
 function registerPackScheme() {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+  protocol.registerSchemesAsPrivileged([
+    { scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'vrmlib', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  ]);
 }
 
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, (e, _o, stderr) => (e ? reject(new Error(String(stderr || e.message).trim().slice(0, 200))) : resolve())));

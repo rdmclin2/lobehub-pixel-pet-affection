@@ -13,6 +13,11 @@ const { OUTFITS, OUTFIT_IDS } = require('./outfits');
 const { SPECIES, SPECIES_IDS } = require('./species');
 const { STATES } = require('./fx');
 const V = require('./vrm');
+const VrmStyle = require('./vrm-style');
+// the motion library's bake list (ids only matter here: pack.json vrm.motions names them)
+let libManifest = null;
+const vrmLibraryManifest = () => libManifest || (libManifest = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, 'vrm-library.json'), 'utf8')));
+const { FRAMINGS, WAIST_RANGE, isWaist } = require('./framing');
 
 // Schema 2 names a sprite action after the app's states (the DeepSeek pet's 15 states plus `lifted`,
 // see src/core/fx.js). Schema 1 packs keep their 8 older action names; the app maps states onto
@@ -270,13 +275,33 @@ function readVrm(dir, cfg, adult, errors) {
     else expressions[state] = name;
   }
   const idle = c.idle === undefined ? null : vrmaFile(dir, c.idle, errors, 'vrm.idle');
+  // the motion style (docs/vrm-motion-system.md §4.2): "female" | "male" | "neutral" | { base, …overrides };
+  // left out → guessed from each model's body when it is drawn
+  const st = VrmStyle.parsePackStyle(c.style);
+  errors.push(...st.errors);
+  // vrm.motions: { slot: library clip id } — which library entry a slot plays for this pack
+  const motions = {};
+  if (c.motions !== undefined) {
+    if (!c.motions || typeof c.motions !== 'object' || Array.isArray(c.motions)) errors.push('vrm.motions must be an object { slot: clip id }');
+    else {
+      const lib = vrmLibraryManifest();
+      for (const [slot, id] of Object.entries(c.motions)) {
+        const known = Object.keys(lib.clips).map((k) => k.split('@')[0]);
+        if (!known.includes(slot)) { errors.push(`vrm.motions.${slot}: unknown slot (known: ${[...new Set(known)].join(', ')})`); continue; }
+        if (typeof id !== 'string' || !lib.clips[id] || id.split('@')[0] !== slot) { errors.push(`vrm.motions.${slot}: "${id}" is not a ${slot}@<style> entry of the motion library`); continue; }
+        motions[slot] = id;
+      }
+    }
+  }
   if (errors.length > before) return null;
   return {
     outfits,
     idle: idle ? idle.rel : null,
     height,
     expressions,
-    models: Object.fromEntries(list.map((m) => [m.rel, { meta: m.meta, license: V.vrmLicense(m.meta), expressions: m.expressions, springBone: m.springBone }])),
+    style: st.value,
+    motions,
+    models: Object.fromEntries(list.map((m) => [m.rel, { meta: m.meta, license: V.vrmLicense(m.meta), expressions: m.expressions, springBone: m.springBone, body: m.body || null }])),
     license: combineVrmLicense(list),
   };
 }
@@ -289,7 +314,7 @@ function vrmPackId(speciesId, name) {
   const hash = crypto.createHash('sha1').update(String(name)).digest('hex').slice(0, 8);
   return `vrm-${speciesId}-${slug.length >= 3 ? slug : hash}`.slice(0, 40).replace(/-+$/, '');
 }
-function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_FILE, idle = null }) {
+function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_FILE, idle = null, style = null }) {
   const safe = Object.fromEntries(Object.entries(outfits).filter(([id]) => OUTFIT_IDS.includes(id) && !ADULT_OUTFITS.has(id)));
   return {
     schema: SCHEMA,
@@ -301,7 +326,7 @@ function vrmManifest({ speciesId, name, outfits, meta = null, preview = PREVIEW_
     description: '从本地导入的 VRM 模型（授权信息读自模型文件）。',
     species: speciesId,
     kind: 'vrm',
-    vrm: { outfits: safe, height: VRM_HEIGHT.dflt, ...(idle ? { idle } : {}) },
+    vrm: { outfits: safe, height: VRM_HEIGHT.dflt, ...(idle ? { idle } : {}), ...(VrmStyle.NAMES.includes(style) ? { style } : {}) },
     ...(preview ? { outfits: Object.fromEntries(Object.keys(safe).map((id) => [id, preview])) } : {}),
   };
 }
@@ -452,6 +477,12 @@ function validatePack(manifest, dir) {
   if (!text(m.name, 40)) errors.push('name is required');
   if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
+  // 取景 default for whoever wears this pack (core/framing.js): 'full' | 'half'; a character's own choice goes first
+  if (m.framing !== undefined && !FRAMINGS.includes(m.framing)) errors.push(`framing must be one of ${FRAMINGS.join(', ')}`);
+  // 半身 cut for this pack's model (Live2D / VRM): halfBody.waist = share of her height from the top of her head (0)
+  // to her soles (1); without it the renderer measures (VRM bones) or infers (Live2D hit area / eyes)
+  const halfBody = m.halfBody === undefined ? null : m.halfBody && typeof m.halfBody === 'object' && !Array.isArray(m.halfBody) && Object.keys(m.halfBody).every((k) => k === 'waist') && isWaist(m.halfBody.waist) ? { waist: m.halfBody.waist } : null;
+  if (m.halfBody !== undefined && !halfBody) errors.push(`halfBody must be { "waist": a number from ${WAIST_RANGE[0]} to ${WAIST_RANGE[1]} } (share of her height from the top of her head)`);
 
   const outfits = {};
   const src = m.outfits && typeof m.outfits === 'object' ? m.outfits : {};
@@ -492,7 +523,7 @@ function validatePack(manifest, dir) {
 
   if (errors.length) return { ok: false, errors };
   // VRM: author and license come from the model files, not from pack.json
-  const vrmPack = vrm && { height: vrm.height, idle: vrm.idle, expressions: vrm.expressions, models: vrm.models, license: vrm.license, previews: outfits };
+  const vrmPack = vrm && { height: vrm.height, idle: vrm.idle, expressions: vrm.expressions, style: vrm.style, motions: vrm.motions, models: vrm.models, license: vrm.license, previews: outfits };
   return {
     ok: true,
     pack: {
@@ -513,6 +544,8 @@ function validatePack(manifest, dir) {
       model: live2d ? m.model : model,
       live2d,
       vrm: vrmPack,
+      ...(FRAMINGS.includes(m.framing) ? { framing: m.framing } : {}),
+      ...(halfBody ? { halfBody } : {}),
       outfits: vrm ? { ...vrm.outfits } : outfits,
       dir: path.resolve(dir),
     },
@@ -563,7 +596,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
   for (const id of [packId, defaultPack(speciesId), fallbackId || fallbackPack(speciesId)]) {
     const p = id && packs.get(id);
     if (!p || p.species !== speciesId || !p.outfits[outfitId]) continue;
-    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated };
+    const base = { packId: p.id, kind: p.kind, url: packUrl(p, p.outfits[outfitId]), pixelated: p.pixelated, ...(p.framing ? { framing: p.framing } : {}), ...(p.halfBody ? { halfBody: { ...p.halfBody } } : {}) };
     if (p.kind === 'sprites') return { ...base, frame: p.frame, actions: p.actions };
     if (p.kind === 'live2d') return { ...base, model: packUrl(p, p.model), live2d: p.live2d };
     if (p.kind === 'vrm') {
@@ -572,7 +605,7 @@ function resolveLook(packs, { packId, fallbackId, speciesId, outfitId }) {
       const rel = p.outfits[outfitId];
       const preview = p.vrm.previews[outfitId];
       const lic = p.vrm.license;
-      return { ...base, url: preview ? packUrl(p, preview) : null, model: packUrl(p, rel), vrm: { height: p.vrm.height, idle: p.vrm.idle ? packUrl(p, p.vrm.idle) : null, expressions: p.vrm.expressions, modelExpressions: p.vrm.models[rel].expressions, springBone: p.vrm.models[rel].springBone, meta: p.vrm.models[rel].meta, license: lic } };
+      return { ...base, url: preview ? packUrl(p, preview) : null, model: packUrl(p, rel), vrm: { height: p.vrm.height, idle: p.vrm.idle ? packUrl(p, p.vrm.idle) : null, expressions: p.vrm.expressions, modelExpressions: p.vrm.models[rel].expressions, springBone: p.vrm.models[rel].springBone, meta: p.vrm.models[rel].meta, license: lic, style: VrmStyle.resolveStyle({ packStyle: p.vrm.style, body: p.vrm.models[rel].body }), motions: p.vrm.motions || {} } };
     }
     if (p.kind === 'rig') {
       const folder = path.posix.dirname(p.outfits[outfitId]);

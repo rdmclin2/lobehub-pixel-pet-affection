@@ -1,5 +1,6 @@
 'use strict';
 
+
 // VRM models (角色包 kind "vrm"): reading a .vrm file without three.js. A .vrm is a glTF binary (GLB): a
 // 12-byte header ("glTF", version 2, length), then a JSON chunk and a BIN chunk. Everything the app needs
 // before drawing — who made the model, what its license allows, which expressions it has — is in the JSON
@@ -9,6 +10,7 @@
 // Electron-free and three-free so it can be tested; format: docs/pet-packs.md "VRM 角色包".
 
 const fs = require('node:fs');
+const VrmStyle = require('./vrm-style');
 
 const GLB_MAGIC = 0x46546c67; // "glTF" little-endian
 const CHUNK_JSON = 0x4e4f534a; // "JSON"
@@ -178,11 +180,12 @@ function vrmHasSpringBone(json) {
   return !!(ext.VRMC_springBone || (ext.VRM && ext.VRM.secondaryAnimation && Array.isArray(ext.VRM.secondaryAnimation.boneGroups) && ext.VRM.secondaryAnimation.boneGroups.length));
 }
 
-// Everything about a .vrm the app keeps: { ok: true, meta, expressions, springBone } or { ok: false, errors }.
+// Everything about a .vrm the app keeps: { ok: true, meta, expressions, springBone, body } or { ok: false, errors }.
+// body: { bustSpring, shoulderHip } — what core/vrm-style.js guesses the motion style from (§4.2).
 function inspectVrmJson(json) {
   const meta = vrmMetaFromJson(json);
   if (!meta) return { ok: false, errors: ['not a VRM model: the glTF has no VRMC_vrm (1.0) or VRM (0.x) extension'] };
-  return { ok: true, meta, expressions: vrmExpressionsFromJson(json), springBone: vrmHasSpringBone(json) };
+  return { ok: true, meta, expressions: vrmExpressionsFromJson(json), springBone: vrmHasSpringBone(json), body: VrmStyle.bodyFromJson(json) };
 }
 function inspectVrm(buf) {
   try { return inspectVrmJson(readGlbJson(buf)); } catch (e) { return { ok: false, errors: [e.message] }; }

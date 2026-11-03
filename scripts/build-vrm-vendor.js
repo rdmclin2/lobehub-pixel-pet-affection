@@ -18,11 +18,11 @@ const VERSIONS = { three: '0.187.0', '@pixiv/three-vrm': '3.5.5', '@pixiv/three-
 const OUT = path.join(__dirname, '..', 'src', 'renderer', 'vendor', 'vrm');
 
 const ENTRY = `
-import { WebGLRenderer, Scene, PerspectiveCamera, DirectionalLight, AmbientLight, Object3D, Vector3, Box3, Quaternion, Euler, MathUtils, SRGBColorSpace, Clock, AnimationMixer, LoopRepeat } from 'three';
+import { WebGLRenderer, Scene, PerspectiveCamera, DirectionalLight, AmbientLight, Object3D, Vector3, Box3, Quaternion, Euler, MathUtils, SRGBColorSpace, Clock, AnimationMixer, LoopRepeat, Mesh, PlaneGeometry, CylinderGeometry, MeshBasicMaterial, MeshLambertMaterial, CanvasTexture } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, VRMExpressionPresetName, VRMHumanBoneName } from '@pixiv/three-vrm';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-export const THREE = { WebGLRenderer, Scene, PerspectiveCamera, DirectionalLight, AmbientLight, Object3D, Vector3, Box3, Quaternion, Euler, MathUtils, SRGBColorSpace, Clock, AnimationMixer, LoopRepeat };
+export const THREE = { WebGLRenderer, Scene, PerspectiveCamera, DirectionalLight, AmbientLight, Object3D, Vector3, Box3, Quaternion, Euler, MathUtils, SRGBColorSpace, Clock, AnimationMixer, LoopRepeat, Mesh, PlaneGeometry, CylinderGeometry, MeshBasicMaterial, MeshLambertMaterial, CanvasTexture };
 export { GLTFLoader, VRMLoaderPlugin, VRMUtils, VRMExpressionPresetName, VRMHumanBoneName, VRMAnimationLoaderPlugin, createVRMAnimationClip };
 export const versions = ${JSON.stringify({ three: VERSIONS.three, 'three-vrm': VERSIONS['@pixiv/three-vrm'], 'three-vrm-animation': VERSIONS['@pixiv/three-vrm-animation'] })};
 `;

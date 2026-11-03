@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack: blob:; connect-src 'self' pack: blob:; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: pack: blob:; connect-src 'self' pack: vrmlib: blob:; media-src 'self' blob:" />
   <title>Pixel Pet</title>
   <!-- LobeHub design tokens (lobe-design, @lobehub/ui theme): light / dark follow the OS like the admin window -->
   <link rel="stylesheet" href="design/lobe-tokens.css" />
@@ -17,7 +17,7 @@
       <li>所有角色都是成年人（设定年龄 18 岁）。</li>
       <li>裸露、露骨图片只会出现在导入角色包的成人向服饰里；Q 版角色不会出现。</li>
       <li>选择“只看全年龄”后，暧昧 / 恋人阶段会显示为“知己 / 挚友”，成人向话题和服饰不会出现。</li>
-      <li>之后可以随时在 ⋯ 菜单里关闭成人向内容。</li>
+      <li>之后可以随时在 设置 → 内容与安全 里关闭成人向内容。</li>
     </ul>
     <div class="row">
       <button id="age-yes" class="btn primary">我已年满 18 岁</button>
@@ -31,7 +31,7 @@
     <p class="sub">以 AI 模型厂商为主题的同人角色（非官方形象），选一位带回桌面。</p>
     <div id="cards" class="cards" role="radiogroup" aria-label="角色"></div>
     <div id="card-info" class="card-info">点一位看看。</div>
-    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在菜单里随时关闭。</span></span></label>
+    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在 设置 → LobeHub 与本机 里随时关闭。</span></span></label>
     <div class="row">
       <input id="pet-name" maxlength="12" placeholder="给她起个名字（可选）" autocomplete="off" />
       <button id="hatch-btn" class="btn primary" disabled>唤醒</button>
@@ -97,6 +97,8 @@
     <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>停止</button>
     <!-- everything below is only shown while the pointer is over the window -->
     <div id="hud" class="hud">
+      <!-- one status panel: needs (饥饿/心情/体力), affection, and the name · stage line, split by hairlines -->
+      <div id="status-panel" class="status-panel">
       <div id="bars" class="bars">
         <span title="饥饿"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg><i id="bar-hunger"></i></span>
         <span title="心情"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="12" cy="12" r="10"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg><i id="bar-mood"></i></span>
@@ -108,14 +110,14 @@
         <span id="aff-num" class="aff-num"></span>
       </div>
       <div id="meta" class="meta"></div>
+      </div>
       <div id="toolbar" class="toolbar">
         <button class="btn" data-act="feed">喂食</button>
         <button class="btn" data-act="play">玩耍</button>
         <button class="btn" data-act="sleep">睡觉</button>
         <button class="btn" data-act="chat">聊天</button>
-        <button class="btn" data-act="topics" id="btn-topics" title="话题：按好感度阶段解锁" aria-label="话题">话题<b class="new-dot hidden">新</b></button>
-        <button class="btn" data-act="wardrobe" id="btn-wardrobe" title="衣柜：按好感度阶段解锁服饰" aria-label="衣柜">衣柜<b class="new-dot hidden">新</b></button>
-        <button class="btn icon-btn" data-act="menu" title="更多（也可以右键或在触屏上长按她）" aria-label="更多"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        <!-- the only way into the settings window (配置后台) from here; everything the old ⋯ menu held is there now -->
+        <button class="btn icon-btn settings-btn" data-act="settings" id="btn-settings" title="设置（Ctrl/⌘ + ,；也可以右键或在触屏上长按她）" aria-label="设置"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><b class="new-dot dot hidden" aria-hidden="true"></b></button>
       </div>
       <div id="attach-row" class="attach-row hidden"></div>
       <div id="chat-row" class="row chat-row hidden">
@@ -126,64 +128,31 @@
       </div>
       <div id="mic-status" class="mic-status hidden" role="status" aria-live="polite"></div>
       <div id="food-menu" class="popup hidden"></div>
-      <div id="action-menu" class="popup hidden" aria-label="动作">
-        <button class="btn" data-cue="look">东张西望</button>
-        <button class="btn" data-cue="turn">转身</button>
-        <button class="btn" data-cue="walk">走两步</button>
-        <button class="btn" data-cue="happy">开心</button>
-        <button class="btn" data-cue="pat">害羞</button>
-        <button class="btn" data-cue="play">玩耍</button>
-        <button class="btn" data-cue="think">想事情</button>
-        <button class="btn" data-cue="sad">难过</button>
-        <button class="btn" data-cue="evolve">闪亮登场</button>
-      </div>
-      <div id="main-menu" class="popup hidden">
-        <button class="btn hidden" id="menu-update" data-menu="update">新版本</button>
-        <button class="btn" data-menu="settings" id="menu-settings" title="Ctrl/⌘ + ,">设置…</button>
-        <button class="btn" data-menu="characters" id="menu-characters">角色列表</button>
-        <button class="btn" data-menu="history" id="menu-history">聊天记录</button>
-        <button class="btn" data-menu="new-topic" id="menu-new-topic">重新开始话题</button>
-        <button class="btn" id="menu-adult" data-menu="adult">成人向内容：…</button>
-        <button class="btn" id="menu-local" data-menu="local">本机能力：…</button>
-        <button class="btn" data-menu="actions" id="menu-actions">动作…</button>
-        <button class="btn" data-menu="home" id="menu-home">回到右下角</button>
-        <button class="btn" data-menu="check-update" id="menu-check-update">检查更新</button>
-        <button class="btn" data-menu="release">放生并删除 agent</button>
-        <button class="btn" data-menu="forget">仅重置本地</button>
-        <button class="btn" data-menu="log">打开错误日志</button>
-        <button class="btn" data-menu="credits">素材署名</button>
-        <button class="btn" data-menu="quit">退出</button>
-      </div>
     </div>
 
     <!-- a visiting model-chan (index.html?visitor=<id>): her name and a button to send her home -->
     <div id="visitor-bar" class="visitor-bar"><span id="visitor-name"></span><button id="visitor-close" class="btn" title="送她回去" aria-label="送她回去"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
 
-    <!-- wardrobe / topics: the window grows while one is open -->
-    <div id="panel" class="panel hidden" role="dialog" aria-labelledby="panel-title">
-      <div class="panel-head">
-        <div>
-          <div id="panel-title" class="panel-title"></div>
-          <div id="panel-sub" class="panel-sub"></div>
-        </div>
-        <button id="panel-close" class="btn icon-btn" title="关闭" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-      </div>
-      <div id="panel-msg" class="panel-msg hidden" role="status"></div>
-      <div id="panel-body" class="panel-body"></div>
-    </div>
   </section>
 
   <script src="../core/fx.js"></script>
   <script src="../core/voice.js"></script>
   <script src="../core/interaction-voice.js"></script>
   <script src="../core/touch-zones.js"></script>
+  <script src="../core/framing.js"></script>
   <script src="../core/vrm-ui.js"></script>
   <script src="fx.js"></script>
   <script src="rig.js"></script>
   <script src="live2d.js"></script>
   <script src="../core/vrm-motion.js"></script>
+  <script src="../core/vrm-intent.js"></script>
+  <script src="../core/vrm-library.js"></script>
+  <script src="../core/vrm-director.js"></script>
+  <script src="../core/vrm-style.js"></script>
+  <script src="../core/vrm-life.js"></script>
+  <script src="../core/vrm-hit.js"></script>
+  <script src="vrm-anim.js"></script>
   <script src="vrm.js"></script>
-  <script src="history.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

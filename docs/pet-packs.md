@@ -29,6 +29,8 @@ my-grok/
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态；live2d；vrm：3D（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
+  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，对 vrm 和 live2d 生效）；角色页的选择优先，见 docs/half-body-mode.md
+  "halfBody": { "waist": 0.52 },     // 可选（vrm / live2d）：半身时腰线的位置，= 她身高的比例，头顶 0、脚底 1（0.2–0.9）；不写则自动测量 / 推断
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
   "actions": {                       // sprites 必填：每个状态在精灵图里的位置（行、起始列都从 0 开始）
@@ -99,6 +101,22 @@ my-grok/
 - 手臂、尾巴、耳朵如果是模型物理的输出，应用的动作会叠加在物理结果上。
 - 没有 WebGL 的电脑上显示 `outfits` 里的图。
 
+### 半身取景的可选字段（Live2D / VRM 通用）
+
+取景（全身 / 半身）是用户的设置（设置窗口 → 桌宠行为 → 取景，或角色页单独设），包里可以带两个**可选**字段，详见 [half-body-mode.md](half-body-mode.md)：
+
+| 字段 | 取值 | 作用 |
+| --- | --- | --- |
+| `framing` | `"full"` / `"half"` | 这个包的默认取景（用户在角色页的单独选择仍然优先）。只有上半身的模型写 `"half"`。 |
+| `halfBody.waist` | 0.2 – 0.9 | 半身时裁到哪里：她身高的比例，**头顶 = 0、脚底 = 1**（看包里的全身预览图量一下腰带 / 肚脐的位置即可）。只认 `waist` 一个键，超范围或别的写法导入时报错。 |
+
+不写 `halfBody` 时应用自己找腰线：
+
+- **Live2D**：先看模型 `.model3.json` 的 `HitAreas` 里名字含 Head / 头 的区域（按头的高度推腰线）；没有就找 `ParamEyeLOpen` 会动的图层（眼睛），由眼睛的高度推头再推腰线；都没有用身高的 55%。用户导入的模型（没有 `pack.json`）也走这条路，所以第三方模型不写任何字段也能半身。
+- **VRM**：按人形骨骼（head / hips）测量；`halfBody.waist` 写了就代替 hips 推出的腰线。
+
+内置的 `dafeiyu-live2d` 写的是 `"halfBody": { "waist": 0.52 }`。
+
 ### 直接导入自己的 Live2D 模型
 
 不想写 `pack.json` 的话：⋯ 菜单 → 角色列表 → 角色 → 外观 → **导入 Live2D 模型…**，选模型的 `.model3.json`，或者把模型文件夹打成的 `.zip`（macOS 上也可以直接选文件夹）。支持 Cubism 3 / 4 / 5 的模型；Cubism 2 的模型（`.model.json` + `.moc`）不支持。导入时应用会：
@@ -126,7 +144,9 @@ my-grok/
       "pajamas": "models/pajamas.vrm"
     },
     "height": 0.9,                    // 可选：她占画面高度的比例，0.3–1，默认 0.9
-    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma），循环播放，应用的动作叠加在上面
+    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma）；没有动作库时用它做待机
+    "style": "female",                // 可选：动作风格 female / male / neutral，或 { "base": "female", "amplitude": 0.7, … }；不写则从模型推断
+    "motions": { "stand.relaxed": "stand.relaxed@male" },  // 可选：某个动作槽用动作库里的哪一条
     "expressions": {                  // 可选：应用状态 → 模型里的表情名（覆盖默认映射；表情名必须是模型里有的）
       "pat": "happy", "sleep": "relaxed"
     }
@@ -137,7 +157,9 @@ my-grok/
 
 - **校验**：每个 `.vrm` 必须在包目录内、存在、不超过 256 MB，是 glTF 二进制（文件头 magic `glTF`、版本 2，第一个 chunk 是 JSON），并带 `VRMC_vrm`（1.0）或 `VRM`（0.x）扩展。任何一项不符合，整个包被拒绝并说明原因。
 - **作者和授权读自模型文件**：`pack.json` 里写的 `author` / `license` 对 VRM 包不起作用，显示的作者和授权摘要来自模型的 VRM meta，所以包作者无法放宽模型本身的授权。VRM 1.0 读 `extensions.VRMC_vrm.meta` 的全部字段（name、version、authors、copyrightInformation、contactInformation、references、licenseUrl、avatarPermission、allowExcessivelyViolentUsage、allowExcessivelySexualUsage、commercialUsage、allowPoliticalOrReligiousUsage、allowAntisocialOrHateUsage、creditNotation、allowRedistribution、modification、otherLicenseUrl）；VRM 0.x 读 `extensions.VRM.meta`（title、author、allowedUserName、violentUssageName、sexualUssageName、commercialUssageName、licenseName、otherPermissionUrl、otherLicenseUrl…），由 `licenseName` 推出是否可再分发、可修改、需署名。缺失或不认识的字段一律按最严格的理解（VRM 1.0 规范的默认值）：不可再分发、禁止修改、需署名、仅限个人非商业、不允许性/暴力表现。
-- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。有它时，她站着的姿态（重心、手臂、呼吸）由这段动画循环驱动，应用的动作（点头、拖起摆动、玩耍转圈…）作为相对静止姿态的偏移叠加在上面；表情、眨眼、视线和口型照旧由应用决定。没有它时用应用自己的程序化待机。动画加载失败时退回程序化待机，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
+- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。本机没有动作库（见下文“VRM 的动作”）时，她的待机姿态由这段动画循环驱动；动作库在时以动作库为准。动画加载失败时退回双手自然下垂的静止姿态 + 呼吸等微动，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
+- **动作风格（`vrm.style`，可选）**：`"female"` / `"male"` / `"neutral"`，或对象 `{ "base": "female", "amplitude": 0.7, "hipSway": 0.6, … }`（可调 `amplitude`、`hipSway`、`stanceWidth`、`handPose`、`headTilt`、`emotion`、`idleEvery`、`lookAway`，越界的值被夹到允许范围，未写的继承 `base`）。决定她用哪一套姿势/待机（女性套、男性套）以及动作幅度、重心摆动、站姿宽度、呼吸方式（胸式/腹式）和表情强度。不写时从模型推断：VRM meta 没有性别字段，应用看模型的 SpringBone 是否挂在胸部骨骼上（是 → 女性），否则看肩宽/胯宽（≥ 1.5 → 男性），都不是 → 中性（女性姿势 + 折中幅度）。不认识的风格名或字段会让整个包被拒绝并说明原因。
+- **动作槽覆盖（`vrm.motions`，可选）**：`{ 槽位: 动作库条目 id }`，例如让女性模型用男性套的放松站姿 `{ "stand.relaxed": "stand.relaxed@male" }`。槽位与条目必须是 `src/core/vrm-library.json` 里有的。
 - **衣柜只列有模型的服饰**：VRM 包的衣柜就是它自己的服饰，每个不同的 `.vrm` 一项（同一个模型写在几套服饰下只算一项，因为一个模型换不了衣服）。只有一个模型时她就只有这一个样子，衣柜按钮隐藏，好感升级也不再提示新服饰。
 
 ### 授权提示与应用的强制规则
@@ -183,30 +205,18 @@ my-grok/
 
 桌宠窗口里的 VRM 由 `src/renderer/vrm.js` 用 three.js + [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) 画在透明的 WebGL 画布上（`src/renderer/vendor/vrm/`：three r187 + three-vrm 3.5.5，MIT，版本与来源见该目录的 README；只在第一次显示 VRM 外观时加载）。渲染层只画应用已经决定好的外观和服饰（18+、好感解锁、服饰规则都在应用里），模型只能从它自己的角色包里读（`pack://<包 id>/…`），模型引用包外的文件一律拒绝。
 
-- **待机**：呼吸（脊柱、胸口微动）、2–6 秒一次的随机眨眼（`blink`）、视线跟随鼠标（VRM lookAt；鼠标在窗口外时按屏幕坐标换算）、SpringBone 每帧更新；拖动窗口时她会被甩一下再弹回来，头发、尾巴跟着晃。
-- **状态 → 表情和动作**（`src/core/vrm-motion.js`，有单测）：
+VRM 有自己的一套交互与动作（设计见 [docs/vrm-motion-system.md](vrm-motion-system.md)），**不再**套用像素角色的状态动作（跳、转圈、甩手脚、CSS 压扁/镜像这些都不作用在 VRM 上）：应用把“发生了什么”（需求状态、摸了哪里、被提起、在说话/思考/吃东西、光标在不在…）交给 VRM 导演，由它按模型的风格挑姿势、待机和表情。
 
-| 状态 | 表情 | 动作 |
-| --- | --- | --- |
-| idle / look | 无 / 无 | 呼吸；look 时左右张望 |
-| happy | happy | 跳、张开手 |
-| pat（摸头） | relaxed + happy | 低头、歪头 |
-| sad / hungry | sad | 低头、塌背；hungry 还微张嘴、晃 |
-| sleep | blink（闭眼）+ relaxed | 低头、慢呼吸 |
-| eat_rice / eat_cookie / eat_fruit（喂食） | happy | 嚼（aa 张合）、点头 |
-| think | neutral，视线向上 | 歪头 |
-| talk | happy（淡） | 点头 |
-| play（玩耍） | happy | 跳、转一圈、左右晃 |
-| hatch / evolve | surprised / happy + surprised | 挥手 / 举手大跳 |
-| lifted（被提起） | surprised | 手脚下垂乱摆、身体像钟摆 |
-| walk | happy（淡） | 迈步、摆臂 |
-| touch-head / face / hands / belly / feet | relaxed、happy、眨单眼… | 低头、挥手、扭… |
-| touch-chest / butt / legs / tail | surprised（+ angry）… | 往后缩、跳… |
-| 触摸后生气 / 不耐烦 | angry / angry + sad | 发抖 / 歪头 |
+- **动作库（姿势、待机）**：动作是 `.vrma` 片段，存在本机，不在仓库也不进安装包。开发机用 `node scripts/vrm-bake.js` 把 `~/vrm-assets/` 里的 Mixamo FBX 重定向烘焙成 `.vrma`（默认写到 `~/vrm-assets/baked/`，附 `library.json`），应用从 `$PIXELPET_VRM_MOTIONS_DIR`、`<用户数据目录>/vrm-motions/`、（开发运行时）`~/vrm-assets/baked/` 依次查找，通过 `vrmlib://` 读取；仓库里只有烘焙清单 `src/core/vrm-library.json`（素材路径和参数，不含二进制）。没有动作库时退回包里的 `vrm.idle` 或静止姿态 + 微动，不报错。
+- **姿势**：放松站、叉腰站、害羞站、俏皮站、坐着、靠坐 6 种，女性套和男性套各用各的素材。外观页 VRM 卡片上的“姿势”菜单可固定一种（按角色包保存在设置里，重启后保持），“自动”时由她自己换；切换姿势 1 秒交叉淡化（站↔坐 1.2 秒），过渡中各片段权重之和始终为 1，不会闪回 T-pose。睡觉时坐下打盹，难过/饿时换成害羞站，3 分钟没人理会坐下，光标回来再站起。
+- **待机**：自动姿势下在几段待机之间随机切换（每段 8–20 秒，不连续重复）：开心待机、换边待机、换姿势待机（女性 12 秒、男性 18 秒换一次站姿）；固定姿势时保持姿势，换成“静静呼吸 / 东张西望 / 换脚站”等微动变体。始终叠加呼吸（女性胸式、男性腹式，睡觉更慢更深）、每 6–14 秒换一次重心、头部不停的细微晃动、眼球微跳与偶尔看别处、2–6 秒随机眨眼、视线跟随鼠标；这些微动单骨骼不超过 4°，长时间运行不累积、不漂移。SpringBone 每帧更新。
+- **朝向**：她不再被左右镜像（镜像会把不对称的发型饰品翻过来），而是把身体转向那一侧（±18°，走路 ±60°）。
+- **事件 → 表情和视线**（本期；互动反应动作片段在后续实现）：摸头 relaxed + happy；害羞区域 surprised + 看向斜下方；怕痒 happy；不耐烦 angry + sad 并转开视线；生气 angry 且盯人不眨眼；被提起 surprised、双腿受重力下垂并随窗口晃动（阻尼摆，不乱甩）；思考时视线向上；吃东西 happy + 咀嚼口型；说话时压低会改变嘴形的情绪；睡觉闭眼。男性套表情强度 ×0.8。
 
-  `vrm.expressions` 可以把某个状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
+  `vrm.expressions` 可以把某个应用状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
 - **口型**：念 TTS 语音（包括摸头、喂食这类互动语音）时，用 WebAudio AnalyserNode 分析正在播放的声音，按频谱驱动 aa / ih / ou / ee / oh 五个口型，平滑开合，念完归零；系统语音（Web Speech）没有音频流，按音节节奏开合。不说话时口型为 0。
-- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼）时最多 30 fps；6 秒没动静降到 12 fps，此时只保留表情和姿势、不再蹦跳；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼、姿势过渡）时最多 30 fps；6 秒没动静降到 12 fps（待机动画照常播放）；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+- **调试字段**：VRM 画布带 `data-style`（风格 + 来源 pack/meta/default）、`data-posture`、`data-idle`、`data-hold`、`data-layers`（片段:权重）、`data-library`（loaded / partial:n / none）等；`window.PetVRM.director`（也是 `window.__pet.vrmDirector`）可 `speed(k)` 加快调度时钟、`seed(n)` 固定随机数、`plan()` 查看当前决策。
 
 ### 关于木子惡魔《蓝色小肥鱼Deepseek》
 

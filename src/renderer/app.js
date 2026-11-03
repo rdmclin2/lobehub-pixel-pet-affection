@@ -27,7 +27,6 @@ let info = null; // { species[], foods, testMode }
 let view = null; // latest pet view from main
 let selected = null;
 let thinking = false;
-let naming = null; // { id, value }: the first-meeting name form that is open (kept across panel re-renders)
 let arriving = null; // nameZh of a character on her way (her agent is being created), shown instead of 思考中
 let eating = null;
 let talkUntil = 0;
@@ -41,8 +40,6 @@ let pointerInside = false;
 let fx = null; // the shared effects layer (fx.js), created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
-let panelKind = null; // 'wardrobe' | 'topics' | 'characters' | 'advanced' | 'history' while a panel is open
-let panelNew = new Set(); // items that were "new" when the panel opened (marked seen right after)
 let toastTimer = null;
 const notedBlocks = new Set(); // "cooldown" / "cap" notes are shown once per launch
 
@@ -55,6 +52,22 @@ function setSettings(st) {
   syncPrewarm();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
+  if (window.PetVRM && window.PetVRM.director && view && view.look && view.look.kind === 'vrm') window.PetVRM.director.setPosture(view.look.packId, vrmPostureOf(view.look.packId));
+  syncFraming();
+}
+
+// 取景 (core/framing.js, docs/half-body-mode.md): 全身 / 半身 for what she wears now — her own choice (her page in
+// the settings window), her pack's default, then 桌宠行为 → 取景. A model-drawn look is re-framed in place (VRM: the
+// camera glides; Live2D: the model glides to its new scale and offset): it never reloads her or flashes a T-pose.
+const PF = window.PetFraming;
+const framingOf = (look) => PF.resolveFraming(settings, view && view.pet && view.pet.speciesId, look);
+function syncFraming() {
+  const slot = document.getElementById('pet-look');
+  const el = slot && slot.firstElementChild;
+  const f = view && view.look ? framingOf(view.look) : null;
+  if (el && el.petFigure && el.petFigure.setFraming && f) el.petFigure.setFraming(f.mode);
+  const wrap = document.getElementById('char-wrap');
+  if (wrap) wrap.dataset.framing = f ? f.mode : 'full';
 }
 
 function showScale(k) {
@@ -205,8 +218,10 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
     try {
-      const figure = LIVE_KINDS[look.kind]().createFigure(c, look);
-      const r = { canvas: c, figure, action, ok: false };
+      if (look.kind === 'vrm' && window.PetVRM && window.PetVRM.director) window.PetVRM.director.setPosture(look.packId, vrmPostureOf(look.packId)); // her saved posture, before she is drawn
+      const figure = LIVE_KINDS[look.kind]().createFigure(c, look, { framing: framingOf(look).mode });
+      c.petFigure = figure; // syncFraming re-frames it when the settings change
+      const r = { canvas: c, figure, action, ok: false, kind: look.kind };
       figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
@@ -292,9 +307,33 @@ function voiceNow() {
   if (window.speechSynthesis && speechSynthesis.speaking) return 'system';
   return null;
 }
+// A VRM figure gets a read-only snapshot of the app instead of a state to act out (docs/vrm-motion-system.md
+// §2.2): its own director decides what she does. Rig and Live2D figures keep the state.
+function vrmSnapshot(now) {
+  return {
+    t: now / 1000,
+    state: petStatus(), // only the key of pack.json vrm.expressions overrides
+    status: view.status,
+    shot: fx.current(now),
+    lifted: fx.lifted,
+    flying: fx.flying,
+    thinking,
+    eating,
+    talking: now < talkUntil,
+    voice: voiceNow(),
+    walking: fx.walking,
+    touch: lastTouch && { n: lastTouch.n, zone: lastTouch.zone, mood: lastTouch.mood, streak: lastTouch.streak },
+    facing: $('pet-body').dataset.facing,
+    pointerInside,
+    win: [window.screenX, window.screenY],
+  };
+}
+// The posture saved for a VRM pack (settings.vrmPostures; 'auto' = her director chooses).
+const vrmPostureOf = (packId) => (settings && settings.vrmPostures && settings.vrmPostures[packId]) || 'auto';
 function tickRigs(now) {
   for (const r of rigs) {
     if (!r.canvas.isConnected) { r.figure.dispose(); rigs.delete(r); continue; }
+    if (r.kind === 'vrm' && r.action === petAction && view) { r.figure.draw(vrmSnapshot(now)); continue; }
     const state = r.action();
     const mood = state.startsWith('touch-') && lastTouch ? lastTouch.mood : null;
     r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', voice: voiceNow(), win: [window.screenX, window.screenY] });
@@ -520,8 +559,10 @@ function applyArt() {
   $('char-wrap').classList.toggle('hidden', video);
   $('vwrap').classList.toggle('hidden', !video);
   if (video) return;
+  // (not the framing: a change of 取景 re-frames the figure in place, see syncFraming)
   const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
+  $('pet-body').dataset.kind = view.look.kind; // style.css: a VRM is not squashed, dangled or mirrored by CSS
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
     setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
@@ -532,6 +573,7 @@ function applyArt() {
     void $('char-wrap').offsetWidth;
     $('char-wrap').classList.add('changed');
   }
+  syncFraming();
 }
 
 function enterPet(v) {
@@ -582,17 +624,34 @@ function refreshHud() {
   $('aff-num').textContent = `♥${a.value}/${a.max}`;
   $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
   $('aff-row').setAttribute('aria-label', $('aff-row').title);
-  // one look and nothing to change into (a single VRM model): no wardrobe to open
-  const oneLook = view.outfits.length <= 1;
-  $('btn-wardrobe').classList.toggle('hidden', oneLook);
-  if (oneLook && panelKind === 'wardrobe') closePanel();
-  $('btn-wardrobe').querySelector('.new-dot').classList.toggle('hidden', !view.outfits.some((o) => o.isNew));
-  $('btn-topics').querySelector('.new-dot').classList.toggle('hidden', !view.topics.some((o) => o.isNew));
   setSettings(view.settings);
-  $('menu-adult').textContent = !settings.ageConfirmed ? '成人向内容：关（需年满 18 岁）' : `成人向内容：${settings.adultContent ? '开（点此关闭）' : '关（点此开启）'}`;
-  const loc = view.local && view.local.enabled;
-  $('menu-local').textContent = `本机能力：${loc ? '开（点此关闭）' : '关（点此开启）'}`;
-  if (panelKind) renderPanel();
+  syncSettingsDot();
+}
+
+// The one way into the settings window (配置后台) from the pet: the ⚙ button, a right click or a long press
+// on her, and Ctrl/⌘+, (main.js). Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is
+// something new waiting in it: an outfit or topic just unlocked, or a new version.
+const SETTINGS_SECTION = { update: 'update', outfit: () => `characters/${view.pet.speciesId}`, topic: 'topics' };
+function settingsNews() {
+  if (updateState && ['ready', 'manual'].includes(updateState.status)) return 'update';
+  if (view && view.outfits.some((o) => o.isNew)) return 'outfit';
+  if (view && view.topics.some((o) => o.isNew)) return 'topic';
+  return null;
+}
+function syncSettingsDot() {
+  const news = settingsNews();
+  const b = $('btn-settings');
+  b.querySelector('.new-dot').classList.toggle('hidden', !news);
+  b.dataset.news = news || '';
+  b.title = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,；也可以右键或在触屏上长按她）';
+}
+function openSettings(section) {
+  if (thinking) return;
+  $('food-menu').classList.add('hidden');
+  hideToast();
+  const news = section === undefined ? settingsNews() : null;
+  const s = section !== undefined ? section : news ? SETTINGS_SECTION[news] : undefined;
+  window.pet.openAdmin(typeof s === 'function' ? s() : s);
 }
 
 // ---------- affection feedback (design 9.3, 9.4) ----------
@@ -632,8 +691,6 @@ function showUnlockToast(e) {
   const names = (list) => list.map((x) => `「${x.label}」`).join('、');
   $('unlock-toast').classList.remove('notice');
   $('toast-open').classList.remove('hidden');
-  $('toast-open').dataset.scroll = '';
-  $('toast-open').dataset.admin = '';
   $('toast-title').textContent = `🎉 关系升级：${a.stageName}（♥${a.value}）`;
   const body = $('toast-body');
   body.innerHTML = '';
@@ -645,8 +702,9 @@ function showUnlockToast(e) {
     line.appendChild(document.createTextNode(names(list)));
     body.appendChild(line);
   }
+  // the wardrobe and the topics live in the settings window: her page (衣柜) and 玩法 → 话题
   const outfits = !!(e.unlocks && e.unlocks.outfits && e.unlocks.outfits.length);
-  $('toast-open').dataset.panel = outfits ? 'wardrobe' : 'topics';
+  $('toast-open').dataset.admin = outfits ? `characters/${(e.view || view).pet.speciesId}` : 'topics';
   $('toast-open').textContent = outfits ? '去衣柜看看' : '去聊聊新话题';
   $('unlock-toast').classList.remove('hidden');
   clearTimeout(toastTimer);
@@ -656,603 +714,6 @@ function showUnlockToast(e) {
 function hideToast() {
   clearTimeout(toastTimer);
   $('unlock-toast').classList.add('hidden');
-}
-
-// ---------- wardrobe and topics (design 9.5, 9.6) ----------
-// The same look the pet shows when wearing the outfit (Dafeiyu's signature outfit is its idle clip).
-const outfitArt = (o, speciesId) => lookEl(o.look, { className: 'look', alt: o.label, speciesId });
-
-function panelMsg(text, ok = false) {
-  const m = $('panel-msg');
-  m.textContent = text;
-  m.classList.toggle('ok', ok);
-  m.classList.toggle('hidden', !text);
-}
-
-async function openPanel(kind) {
-  if (thinking) return;
-  $('food-menu').classList.add('hidden');
-  $('main-menu').classList.add('hidden');
-  $('chat-row').classList.add('hidden');
-  hideToast();
-  panelKind = kind;
-  charDetail = null; // 角色列表 opens on the list
-  const list = kind === 'wardrobe' ? view.outfits : kind === 'topics' ? view.topics : [];
-  panelNew = new Set(list.filter((x) => x.isNew).map((x) => x.id));
-  window.pet.panel(true);
-  panelMsg('');
-  $('panel').classList.remove('hidden');
-  renderPanel();
-  $('panel-body').scrollTop = 0; // every panel opens at its top, not where the previous one was scrolled to
-  if (kind === 'wardrobe' || kind === 'topics') await window.pet.markSeen(kind === 'wardrobe' ? 'outfit' : 'topic');
-}
-
-function closePanel() {
-  if (!panelKind) return;
-  panelKind = null;
-  $('panel').classList.add('hidden');
-  window.pet.panel(false);
-}
-
-function progressLine() {
-  const a = view.affection;
-  return `${a.stageName} ♥${a.value}/${a.max}${a.next ? ` · 距「${a.nextName}」还差 ${a.need}` : ' · 已满级'}`;
-}
-
-function renderPanel() {
-  if (panelKind === 'wardrobe') renderWardrobe();
-  else if (panelKind === 'topics') renderTopics();
-  else if (panelKind === 'characters') renderCharacters();
-  else if (panelKind === 'history') window.PetHistory.render({ $, api: window.pet, panelMsg, isOpen: () => panelKind === 'history' });
-}
-
-let charDetail = null; // ⋯ → 角色列表: the character whose page is open (null: the list)
-const charName = (c) => (c.met && c.met.name !== c.nameZh ? `「${c.met.name}」${c.nameZh}（${c.vendor}）` : `${c.nameZh}（${c.vendor}）`);
-const charRel = (c) => (c.met ? `已认识 · ${c.met.stage} · 好感 ${Math.round(c.met.affection)}` : '未见过');
-// Her picture in the list and on her page: her chosen pack in the outfit she wears (daily if not met);
-// `data-look` names the pack ('clips' for Dafeiyu's own clips).
-function charThumb(c, large = false) {
-  const box = document.createElement('div');
-  box.className = `char-thumb${large ? ' lg' : ''}`;
-  box.dataset.look = c.look ? c.look.packId : 'clips';
-  box.appendChild(lookEl(c.look, { className: 'look', alt: c.nameZh, speciesId: c.id }));
-  return box;
-}
-// Switch to her, or meet her for the first time (name her first).
-function charPick(c, row) {
-  const pick = document.createElement('button');
-  pick.className = 'btn pick';
-  pick.setAttribute('role', 'radio');
-  pick.textContent = c.current ? '✓ 当前' : c.met ? '切换' : '初次见面';
-  pick.setAttribute('aria-checked', String(c.current));
-  pick.disabled = c.current;
-  pick.addEventListener('click', (e) => { e.stopPropagation(); if (c.met) switchCharacter(c); else askName(row, c); });
-  return pick;
-}
-
-// ⋯ → 角色列表: every character with her picture, name, title and how well you know her. A click opens her
-// page (renderCharacter), where her own settings live; 切换 / 初次见面 work right here as well.
-function renderCharacters() {
-  const c = charDetail && view.characters.find((x) => x.id === charDetail);
-  if (c) return renderCharacter(c);
-  charDetail = null;
-  $('panel-title').textContent = '角色列表';
-  $('panel-sub').textContent = `现在是「${view.species.nameZh}」（${view.species.vendor}）· ${progressLine()}`;
-  const body = $('panel-body');
-  body.innerHTML = '';
-  // who the companion is: every character has her own agent, chat history, name and affection
-  const who = document.createElement('div');
-  who.className = 'adv-section';
-  who.innerHTML = '<h3>角色</h3><p class="adv-text">每位模型娘都有自己的 LobeHub agent、聊天记录、名字和好感度，换走再换回来都还在。第一次见面时给她起个名字，会在 LobeHub 里为她新建一个 agent。点角色打开她的页：外观和好感度；模型和个性化设定在设置窗口（⋯ → 设置…）里编辑。</p><div class="char-list" role="radiogroup" aria-label="角色"></div>';
-  for (const ch of view.characters) {
-    const row = document.createElement('div');
-    row.className = `pack-opt char-opt${ch.current ? ' on' : ''}${ch.met ? ' met' : ' new'}`;
-    row.dataset.species = ch.id;
-    row.style.setProperty('--accent', ch.accent);
-    row.innerHTML = '<div class="meta"><b></b><span></span><em class="char-rel"></em></div><button class="btn char-open" aria-label="角色设置">设置 ›</button>';
-    row.prepend(charThumb(ch));
-    row.querySelector('b').textContent = charName(ch);
-    row.querySelector('span').textContent = ch.title;
-    row.querySelector('.char-rel').textContent = charRel(ch);
-    row.insertBefore(charPick(ch, row), row.querySelector('.char-open'));
-    row.addEventListener('click', (e) => { if (!e.target.closest('.pick')) openCharacter(ch.id); });
-    who.querySelector('.char-list').appendChild(row);
-    if (naming && naming.id === ch.id && !ch.met) askName(row, ch, naming.value);
-  }
-  body.appendChild(who);
-}
-
-function openCharacter(id) {
-  charDetail = id;
-  if (naming && naming.id !== id) naming = null;
-  panelMsg('');
-  renderPanel();
-  $('panel-body').scrollTop = 0;
-}
-
-// A character's page: who she is, and the settings that are hers alone (kept per character in
-// settings.json / pet.json): the model her agent runs on, how she looks, and her affection.
-function renderCharacter(c) {
-  const sp = speciesOf(c.id) || {};
-  $('panel-title').textContent = c.met ? c.met.name : c.nameZh;
-  $('panel-sub').textContent = `${c.nameZh}（${c.vendor}）· ${c.current ? '当前陪伴' : c.met ? '已认识' : '未见过'}${c.met ? ` · ${c.met.stage} ♥${Math.round(c.met.affection)}` : ''}`;
-  const body = $('panel-body');
-  body.innerHTML = '';
-
-  const back = document.createElement('div');
-  back.className = 'size-row char-back-row';
-  back.innerHTML = '<button id="char-back" class="btn">‹ 角色列表</button>';
-  back.querySelector('#char-back').addEventListener('click', () => { charDetail = null; naming = null; panelMsg(''); renderPanel(); });
-  body.appendChild(back);
-
-  // who she is, and 切换 / 初次见面
-  const head = document.createElement('div');
-  head.className = 'adv-section char-head';
-  head.id = 'char-head';
-  head.style.setProperty('--accent', c.accent);
-  head.innerHTML = '<div class="pack-opt char-opt"><div class="meta"><b></b><span></span><em class="char-rel"></em><small class="adv-note"></small></div></div>';
-  const row = head.querySelector('.char-opt');
-  row.classList.toggle('on', c.current);
-  row.classList.add(c.met ? 'met' : 'new');
-  row.dataset.species = c.id;
-  row.prepend(charThumb(c, true));
-  row.querySelector('b').textContent = charName(c);
-  row.querySelector('span').textContent = c.title;
-  row.querySelector('.char-rel').textContent = charRel(c);
-  row.querySelector('small').textContent = sp.blurb || '';
-  row.appendChild(charPick(c, row));
-  body.appendChild(head);
-  if (naming && naming.id === c.id && !c.met) askName(row, c, naming.value);
-
-  // 模型 and 个性化设定 are edited in the settings window (配置后台 → 角色列表 → her page); here only what
-  // they are now, and the way there (one place to configure, no second copy of the form)
-  const cfg = document.createElement('div');
-  cfg.className = 'adv-section';
-  cfg.id = 'char-config';
-  cfg.innerHTML = '<h3>模型与个性化设定</h3><p class="adv-text cfg-model"></p><p class="adv-text cfg-role"></p><div class="size-row"><button id="char-admin" class="btn primary">在设置窗口中编辑 ›</button></div>';
-  const m = c.model;
-  const now = m && m.options.find((o) => o.key === m.current);
-  cfg.querySelector('.cfg-model').textContent = `模型：${now ? now.label : m && m.current ? m.current : '默认'}`;
-  cfg.querySelector('.cfg-role').textContent = `个性化设定：${c.systemRole ? `已写 ${[...c.systemRole].length} 字` : '还没写'}`;
-  cfg.querySelector('#char-admin').addEventListener('click', () => window.pet.openAdmin(`characters/${c.id}`));
-  body.appendChild(cfg);
-
-  // appearance: which pet pack dresses her; packs can be imported from a folder or .zip
-  const look = document.createElement('div');
-  look.className = 'adv-section';
-  look.id = 'look-section';
-  look.innerHTML = '<h3>外观（角色包）</h3><p class="adv-text">选择她的画风。角色包只提供图片，解锁条件不受角色包影响；标着 18+ 的成年版只在确认已满 18 岁并打开成人向内容后列出，成人向服饰只在穿成年版时出现。格式见项目里的 docs/pet-packs.md。</p><div class="pack-list" role="radiogroup" aria-label="外观"></div><div class="size-row"><button id="pack-import" class="btn">导入角色包…</button><button id="pack-folder" class="btn">打开角色包文件夹</button></div><p class="adv-text l2d-text">也可以直接用你自己的 Live2D 模型（Cubism 3 / 4 / 5，选它的 .model3.json 或打包好的 .zip）：她会用模型自己的物理，表情、眨眼、口型和动作由应用驱动，所有全年龄服饰下都穿这个模型。</p><div class="size-row"><button id="l2d-import" class="btn">导入 Live2D 模型…</button></div><p class="adv-text vrm-text">或者导入 VRM 3D 模型（VRM 1.0 / 0.x 的 .vrm 文件）：作者和授权从模型文件里读出并显示在这里，应用按授权限制使用（不可再分发的模型不能导出，不允许性表现的模型不能用于 18+ 内容）。模型只复制到本机的用户数据目录。</p><div class="size-row"><button id="vrm-import" class="btn">导入 VRM 模型…</button></div>';
-  const list = look.querySelector('.pack-list');
-  for (const o of c.appearance.options) {
-    const on = o.id === c.appearance.packId;
-    const prow = document.createElement('div');
-    prow.className = `pack-opt${on ? ' on' : ''}`;
-    prow.dataset.pack = o.id;
-    prow.innerHTML = '<button class="btn pick" role="radio"></button><div class="meta"><b></b><span></span></div>';
-    if (o.kind === 'vrm') prow.classList.add('vrm');
-    const pick = prow.querySelector('.pick');
-    pick.textContent = on ? '✓ 使用中' : '使用';
-    pick.setAttribute('aria-checked', String(on));
-    pick.disabled = on;
-    prow.querySelector('b').textContent = o.name;
-    prow.querySelector('span').textContent = window.PetVrmUi.packMetaLine(o);
-    const credit = o.kind === 'vrm' && window.PetVrmUi.creditLine(o.vrm);
-    if (credit) {
-      // the license asks for credit: the author stays on the card, not only in the details
-      const cr = document.createElement('small');
-      cr.className = 'vrm-credit';
-      cr.textContent = credit;
-      prow.querySelector('.meta').appendChild(cr);
-    }
-    pick.addEventListener('click', async () => {
-      const r = await window.pet.setAppearance(o.id, c.id);
-      if (!r.ok) return;
-      view = r.view;
-      applyArt();
-      renderPanel();
-      panelMsg(`${c.nameZh}的外观已换成「${o.name}」。`, true);
-    });
-    // a VRM card has more to offer (授权信息, 导出…): its buttons get a row of their own under the meta
-    const actions = o.kind === 'vrm' ? document.createElement('div') : prow;
-    if (o.kind === 'vrm') { actions.className = 'pack-actions'; prow.appendChild(actions); }
-    if (o.kind === 'vrm' && o.vrm) {
-      const info = document.createElement('button');
-      info.className = 'btn vrm-info';
-      info.textContent = '授权信息';
-      info.setAttribute('aria-expanded', String(vrmOpen.has(o.id)));
-      info.addEventListener('click', () => {
-        if (vrmOpen.has(o.id)) vrmOpen.delete(o.id); else vrmOpen.add(o.id);
-        renderPanel();
-      });
-      actions.appendChild(info);
-    }
-    if (o.source === 'user') {
-      // 导出…: a .zip of the pack; refused (and the reason shown) when the model may not be redistributed
-      const ex = document.createElement('button');
-      ex.className = 'btn pack-export';
-      ex.textContent = '导出…';
-      const can = window.PetVrmUi.exportState(o);
-      if (!can.ok) {
-        ex.disabled = true;
-        ex.title = can.text;
-        ex.setAttribute('aria-description', can.text);
-      }
-      ex.addEventListener('click', async () => {
-        const r = await window.pet.exportPack(o.id);
-        if (r.reason === 'canceled') return;
-        panelMsg(r.ok ? `已导出「${o.name}」到 ${r.file}` : `不能导出：${r.text || r.reason}`, !!r.ok);
-      });
-      actions.appendChild(ex);
-    }
-    if (o.source === 'user') {
-      const del = document.createElement('button');
-      del.className = 'btn pack-remove';
-      del.textContent = '移除';
-      del.addEventListener('click', async () => {
-        if (!confirm(`移除角色包「${o.name}」？`)) return;
-        await window.pet.removePack(o.id);
-      });
-      actions.appendChild(del);
-    }
-    list.appendChild(prow);
-    if (o.kind === 'vrm' && o.vrm) {
-      const can = window.PetVrmUi.exportState(o);
-      if (o.source === 'user' && !can.ok) {
-        const why = document.createElement('p');
-        why.className = 'adv-note vrm-noexport';
-        why.dataset.pack = o.id;
-        why.textContent = `🚫 导出已禁用：${can.text}`;
-        list.appendChild(why);
-      }
-      if (vrmOpen.has(o.id)) list.appendChild(vrmLicenseBox(o.vrm, o.id));
-    }
-  }
-  look.querySelector('#pack-import').addEventListener('click', async () => {
-    const r = await window.pet.importPack();
-    if (r.reason === 'canceled') return;
-    if (!r.ok) return panelMsg(`导入失败：${(r.errors || []).slice(0, 3).join('；')}`);
-    panelMsg(r.pack.species === c.id ? `已导入「${r.pack.name}」，点“使用”换上。` : `已导入「${r.pack.name}」（给 ${(speciesOf(r.pack.species) || {}).nameZh || r.pack.species} 用的）。`, true);
-  });
-  look.querySelector('#pack-folder').addEventListener('click', () => window.pet.openPacksFolder());
-  look.querySelector('#l2d-import').addEventListener('click', () => importLive2d(c));
-  look.querySelector('#vrm-import').addEventListener('click', () => importVrm(c));
-  // an imported Live2D model in use: how much of the window she fills
-  const mine = c.appearance.options.find((o) => o.id === c.appearance.packId && o.kind === 'live2d' && o.source === 'user');
-  if (mine) {
-    const row = document.createElement('div');
-    row.className = 'size-row l2d-size';
-    row.innerHTML = '<span>模型大小</span><input type="range" min="30" max="100" step="5" aria-label="Live2D 模型大小"><b></b>';
-    const range = row.querySelector('input');
-    const label = row.querySelector('b');
-    range.value = String(Math.round(mine.height * 100));
-    label.textContent = `${range.value}%`;
-    range.addEventListener('input', () => { label.textContent = `${range.value}%`; });
-    range.addEventListener('change', async () => {
-      const r = await window.pet.setLive2dHeight(mine.id, Number(range.value) / 100);
-      if (!r.ok) panelMsg('没能保存模型大小。');
-    });
-    look.appendChild(row);
-  }
-  body.appendChild(look);
-
-  // affection: unlock everything at once (to see all the content, or to skip the grind) — hers only
-  const sec = document.createElement('div');
-  sec.className = 'adv-section';
-  sec.id = 'unlock-section';
-  sec.innerHTML = '<h3>好感度 · 一键解锁</h3><p class="adv-text"></p><p class="adv-note"></p><button id="unlock-all" class="btn primary"></button>';
-  const a = c.met && c.met.progress;
-  const all = !!a && !a.next && a.value >= a.max;
-  sec.querySelector('.adv-text').textContent = `直接把${c.nameZh}的好感度加满（♥100），她的所有关系阶段、话题和服饰立刻解锁。适合想先看看全部内容、或者不想慢慢攒好感的玩家。只作用于她，不影响其他角色。解锁后不能撤销，之后的互动照常计分。`;
-  sec.querySelector('.adv-note').textContent = !c.met ? `还没认识${c.nameZh}：先点上面的“初次见面”请她来，才有好感度可以解锁。` : settings && settings.adultContent ? '成人向话题和服饰会一起解锁。' : '成人向话题和服饰只在确认年满 18 岁并开启“成人向内容”（⋯ 菜单）后出现；没开启时只解锁全年龄内容。';
-  const btn = sec.querySelector('#unlock-all');
-  btn.textContent = !c.met ? '还没认识她' : all ? '已经全部解锁' : `解锁${c.nameZh}的全部好感度和服饰`;
-  btn.disabled = !c.met || all;
-  btn.addEventListener('click', () => unlockAllNow(c));
-  body.appendChild(sec);
-}
-
-// 外观 → 导入 Live2D 模型…: main copies the model into a new pack; here it is drawn once off-screen for its
-// picture (lists, the wardrobe) and then worn. A model that will not load here is removed again.
-const FACE_NAMES = { blush: '脸红', wide: '惊讶', squint: '眯眼', gloom: '阴沉', dizzy: '晕', drool: '口水' };
-async function importLive2d(c) {
-  const r = await window.pet.importLive2d(c.id);
-  if (r.reason === 'canceled') return;
-  if (!r.ok) return panelMsg(`导入失败：${(r.errors || []).slice(0, 3).join('；')}`);
-  panelMsg(`正在加载「${r.pack.name}」…`, true);
-  let png;
-  try {
-    png = await live2dPicture(r.model);
-  } catch (e) {
-    await window.pet.removePack(r.pack.id);
-    return panelMsg(`导入失败：这个模型在这台电脑上加载不了（${(e && e.message) || e}）。`);
-  }
-  await window.pet.savePackPreview(r.pack.id, png);
-  const s = await window.pet.setAppearance(r.pack.id, c.id);
-  if (s.ok) {
-    view = s.view;
-    applyArt();
-    renderPanel();
-  }
-  const faces = (r.faces || []).map((f) => FACE_NAMES[f] || f);
-  panelMsg(`已导入 Live2D 模型「${r.pack.name}」并换上${faces.length ? `，用上了它的表情：${faces.join('、')}` : ''}。`, true);
-}
-// 外观 → 导入 VRM 模型…: main checks the file (glTF + VRM extension), reads its meta and license from the
-// model and copies it into a new user pack. Before she wears it, 导入确认 shows who made the model and what
-// its license allows; 取消导入 removes the pack again. The license details stay one click away on the card.
-const vrmOpen = new Set(); // VRM pack ids whose 授权信息 is open in the list
-async function importVrm(c) {
-  const r = await window.pet.importVrm(c.id);
-  if (r.reason === 'canceled') return;
-  if (!r.ok) return panelMsg(window.PetVrmUi.importErrorText(r.errors));
-  panelMsg(`已导入「${r.pack.name}」，请确认授权信息。`, true);
-  // the picture for lists and the wardrobe, when the 3D renderer is there to draw one
-  if (window.PetVRM && window.PetVRM.picture) {
-    try { await window.pet.savePackPreview(r.pack.id, await window.PetVRM.picture(r.model)); } catch (e) { console.warn('[vrm] no picture:', e && e.message); }
-  }
-  const use = await vrmConfirm(r);
-  if (!use) {
-    await window.pet.removePack(r.pack.id);
-    return panelMsg(`已取消导入「${r.pack.name}」，模型没有留在本机的角色包里。`, true);
-  }
-  const s = await window.pet.setAppearance(r.pack.id, c.id);
-  if (s.ok) {
-    view = s.view;
-    applyArt();
-    renderPanel();
-  }
-  panelMsg(`已导入 VRM 模型「${r.pack.name}」并换上（作者：${r.license.author}）。`, true);
-}
-// 导入确认: the model's meta and the restrictions of its license; resolves true for 使用这个模型.
-function vrmConfirm(r) {
-  return new Promise((resolve) => {
-    const box = document.createElement('div');
-    box.className = 'vrm-confirm';
-    box.id = 'vrm-confirm';
-    box.setAttribute('role', 'dialog');
-    box.setAttribute('aria-modal', 'true');
-    box.setAttribute('aria-labelledby', 'vrm-confirm-title');
-    box.innerHTML = '<div class="vrm-confirm-card"><h3 id="vrm-confirm-title"></h3><p class="adv-note"></p><div class="vrm-confirm-body"></div><div class="size-row vrm-confirm-actions"><button class="btn" data-act="cancel">取消导入</button><button class="btn primary" data-act="use">使用这个模型</button></div></div>';
-    box.querySelector('h3').textContent = `导入 VRM 模型「${r.pack.name}」`;
-    box.querySelector('.adv-note').textContent = `${r.outfits.length} 套全年龄服饰都会穿这个模型。以下信息读自模型文件，应用会按授权限制使用；点“使用这个模型”即表示你确认有权在本机使用它。`;
-    box.querySelector('.vrm-confirm-body').appendChild(vrmLicenseBox({ ...r.license, models: [{ file: '', meta: r.meta, restrictions: r.license.restrictions }] }, r.pack.id, true));
-    const done = (v) => { box.remove(); resolve(v); };
-    box.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
-    box.querySelector('[data-act="use"]').addEventListener('click', () => done(true));
-    document.body.appendChild(box);
-    box.querySelector('[data-act="use"]').focus();
-  });
-}
-// The license of a VRM pack: the restrictions (what the app enforces first), then per model its meta.
-function vrmLicenseBox(vrm, packId, inDialog = false) {
-  const U = window.PetVrmUi;
-  const box = document.createElement('div');
-  box.className = 'vrm-license';
-  box.dataset.pack = packId;
-  const h = document.createElement('div');
-  h.className = 'vrm-summary';
-  h.textContent = vrm.summary || '';
-  box.appendChild(h);
-  const rs = U.restrictionList(vrm.restrictions);
-  if (rs.length) {
-    const ul = document.createElement('ul');
-    ul.className = 'vrm-restrictions';
-    ul.setAttribute('aria-label', '授权限制');
-    for (const x of rs) {
-      const li = document.createElement('li');
-      li.className = `tone-${x.tone}`;
-      li.dataset.id = x.id;
-      li.textContent = x.text;
-      ul.appendChild(li);
-    }
-    box.appendChild(ul);
-  }
-  for (const m of vrm.models || []) {
-    const dl = document.createElement('dl');
-    dl.className = 'vrm-meta';
-    if (!inDialog && (vrm.models || []).length > 1) dl.dataset.file = m.file;
-    for (const row of U.licenseRows(m.meta)) {
-      const dt = document.createElement('dt');
-      dt.textContent = row.label;
-      const dd = document.createElement('dd');
-      if (row.href) {
-        const a = document.createElement('a');
-        a.href = row.href;
-        a.textContent = row.text;
-        a.title = '在浏览器中打开';
-        a.addEventListener('click', (e) => { e.preventDefault(); window.pet.openLink(row.href); });
-        dd.appendChild(a);
-      } else dd.textContent = row.text;
-      dl.append(dt, dd);
-    }
-    box.appendChild(dl);
-  }
-  return box;
-}
-async function live2dPicture(model) {
-  const c = document.createElement('canvas');
-  c.width = 332;
-  c.height = 452;
-  const figure = window.PetLive2D.createFigure(c, { kind: 'live2d', model, live2d: { height: 0.8 } });
-  try {
-    if ((await figure.ready) !== true) throw new Error('模型没有加载出来');
-    for (let i = 0; i < 30; i++) figure.draw({ t: i / 30, state: 'idle', blink: 0 }); // let the physics settle
-    return c.toDataURL('image/png');
-  } finally {
-    figure.dispose();
-  }
-}
-
-// First meeting: name her (like at hatch: optional, 12 characters, her own name by default), then she comes.
-function askName(row, c, value = c.nameZh) {
-  const open = document.querySelector('.char-name-form');
-  if (open) open.remove();
-  naming = { id: c.id, value };
-  const form = document.createElement('form');
-  form.className = 'size-row char-name-form';
-  form.innerHTML = '<input maxlength="12" autocomplete="off" aria-label="名字" /><button class="btn primary" type="submit">请她来</button><button class="btn" type="button">取消</button>';
-  const input = form.querySelector('input');
-  input.value = value;
-  input.placeholder = `给她起个名字（默认「${c.nameZh}」）`;
-  input.addEventListener('input', () => { naming.value = input.value; });
-  form.querySelector('button[type="button"]').addEventListener('click', () => { naming = null; form.remove(); });
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    naming = null;
-    for (const el of form.elements) el.disabled = true;
-    switchCharacter(c, input.value);
-  });
-  row.after(form);
-  // on a re-render the panel body is attached only after this row: focus once it is on screen
-  setTimeout(() => {
-    input.focus();
-    if (value === c.nameZh) input.select();
-  });
-}
-
-async function switchCharacter(c, name) {
-  if (!c.met) {
-    arriving = c.nameZh;
-    panelMsg(`${c.nameZh}正在赶来…（在 LobeHub 里为她新建 agent）`, true);
-  }
-  let r;
-  try {
-    r = await window.pet.switchCharacter(c.id, name);
-  } finally {
-    arriving = null;
-  }
-  if (!r.ok) {
-    // she did not come: the name form is usable again, for another try
-    const form = document.querySelector('.char-name-form');
-    if (form) for (const el of form.elements) el.disabled = false;
-    if (r.reason === 'canceled') return panelMsg(`没有请${c.nameZh}来，还是原来的她陪你。`);
-    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再换。' : r.reason === 'error' ? `${c.nameZh}没能来（${String(r.message || '').slice(0, 80)}），还是原来的她陪你。` : '现在没法切换。');
-    return;
-  }
-  view = r.view;
-  syncPrewarm();
-  fx.clear();
-  fx.setFacing('right');
-  applyArt();
-  refreshHud();
-  renderPanel();
-  fx.play('hatch', Fx.oneShotMs(isVideo(view.pet.speciesId), 'hatch'));
-  panelMsg(r.created ? `「${view.pet.name}」来了！这是她自己的 agent，从陌生开始。` : `已切换为「${view.pet.name}」。`, true);
-}
-
-async function unlockAllNow(c) {
-  if (!confirm(`把${c.nameZh}的好感度直接加满，解锁她的全部阶段、话题和服饰？这一步不能撤销。`)) return;
-  const r = await window.pet.unlockAll(c.id);
-  if (!r.ok) {
-    panelMsg(r.reason === 'busy' ? '她正在忙，等她说完再试。' : r.reason === 'not-met' ? `还没认识${c.nameZh}。` : '现在没法解锁。');
-    return;
-  }
-  view = r.view;
-  applyArt();
-  refreshHud();
-  renderPanel();
-  const n = (l) => (l ? l.length : 0);
-  const outfits = n(r.unlocks.outfits);
-  panelMsg(r.already ? `${c.nameZh}的好感度已加满，内容之前就已全部解锁。` : `已为${c.nameZh}解锁：${n(r.unlocks.topics)} 个话题${outfits ? `、${outfits} 套服饰。${c.current ? '去衣柜换上看看吧。' : '换成她之后去衣柜换上看看吧。'}` : '。'}`, true);
-}
-
-function renderWardrobe() {
-  const list = view.outfits;
-  const worn = list.find((o) => o.id === view.outfit) || list[0];
-  $('panel-title').textContent = `衣柜 · ${view.pet.name}`;
-  $('panel-sub').textContent = `${progressLine()} · 已解锁 ${list.filter((o) => o.unlocked).length}/${list.length} 套`;
-  const body = $('panel-body');
-  body.innerHTML = '';
-  const wrap = document.createElement('div');
-  wrap.className = 'wardrobe';
-  const pv = document.createElement('div');
-  pv.className = 'preview';
-  pv.id = 'outfit-preview';
-  pv.dataset.outfit = worn.id;
-  const grownUp = !!(view.appearance && (view.appearance.options.find((x) => x.id === view.appearance.packId) || {}).adult);
-  pv.innerHTML = `<div class="nm"></div><div class="adult-note">当前穿着 · ${grownUp ? '成年版（20 岁）' : '成年（18 岁）'}</div>`;
-  pv.prepend(outfitArt(worn, view.pet.speciesId));
-  pv.querySelector('.nm').textContent = worn.label;
-  wrap.appendChild(pv);
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  for (const o of list) {
-    const card = document.createElement('button');
-    card.className = `card${o.locked ? ' locked' : ''}${o.equipped ? ' equipped' : ''}`;
-    card.dataset.outfit = o.id;
-    const status = o.equipped ? '✓ 穿着中' : o.unlocked ? '点击穿上' : `🔒 ${o.condition}`;
-    card.title = `${o.label}：${o.desc}`;
-    card.setAttribute('aria-label', `${o.label}，${status}`);
-    card.innerHTML = '<div class="nm"></div><div class="st"></div>';
-    card.prepend(outfitArt(o, view.pet.speciesId));
-    card.querySelector('.nm').textContent = o.label;
-    card.querySelector('.st').textContent = status;
-    if (o.rating === 'adult') card.insertAdjacentHTML('beforeend', '<span class="tag adult">成人向</span>');
-    if (panelNew.has(o.id)) card.insertAdjacentHTML('beforeend', '<span class="tag new">新</span>');
-    card.addEventListener('click', () => equip(o));
-    grid.appendChild(card);
-  }
-  wrap.appendChild(grid);
-  body.appendChild(wrap);
-}
-
-async function equip(o) {
-  const r = await window.pet.equipOutfit(o.id);
-  if (!r.ok) {
-    panelMsg(r.reason === 'locked' ? `🔒 「${o.label}」还没解锁：${r.condition}` : '这件现在不能穿。');
-    return;
-  }
-  view = r.view;
-  applyArt();
-  refreshHud();
-  panelMsg(`换好了：「${r.outfit.label}」`, true);
-}
-
-function renderTopics() {
-  const list = view.topics;
-  $('panel-title').textContent = `话题 · ${view.pet.name}`;
-  $('panel-sub').textContent = `${progressLine()} · 已解锁 ${list.filter((t) => t.unlocked).length}/${list.length} 个`;
-  const body = $('panel-body');
-  body.innerHTML = '';
-  const groups = [];
-  for (const t of list) {
-    let g = groups.find((x) => x.stage === t.stage);
-    if (!g) groups.push((g = { stage: t.stage, name: t.stageName, items: [] }));
-    g.items.push(t);
-  }
-  for (const g of groups) {
-    const sec = document.createElement('div');
-    sec.className = 'topic-group';
-    sec.innerHTML = '<h3></h3>';
-    sec.querySelector('h3').textContent = `${g.name}${g.items[0].locked ? `（${g.items[0].condition}）` : ''}`;
-    for (const t of g.items) {
-      const b = document.createElement('button');
-      b.className = `topic${t.locked ? ' locked' : ''}${t.talkedToday ? ' done' : ''}`;
-      b.dataset.topic = t.id;
-      const status = t.locked ? `🔒 ${t.condition}` : t.talkedToday ? '今天聊过了（不再加好感）' : '点击聊聊';
-      b.setAttribute('aria-label', `${t.label}，${status}`);
-      b.innerHTML = '<span class="nm"></span><span class="st"></span>';
-      b.querySelector('.nm').textContent = t.label;
-      b.querySelector('.st').textContent = status;
-      if (t.rating === 'adult') b.querySelector('.nm').insertAdjacentHTML('beforeend', ' <span class="tag">成人向</span>');
-      if (panelNew.has(t.id)) b.querySelector('.nm').insertAdjacentHTML('beforeend', ' <span class="tag">新</span>');
-      b.addEventListener('click', () => startTopic(t));
-      sec.appendChild(b);
-    }
-    body.appendChild(sec);
-  }
-}
-
-async function startTopic(t) {
-  if (t.locked) {
-    const r = await window.pet.talkTopic(t.id); // refused by the main process as well
-    panelMsg(`🔒 「${t.label}」还没解锁：${r.condition || t.condition}`);
-    return;
-  }
-  closePanel();
-  stopSpeech('new-message');
-  const r = await window.pet.talkTopic(t.id);
-  if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
-  if (!r.ok && r.reason === 'canceled') say('（好吧，不聊了。）', 'canceled', 'fallback');
 }
 
 // `streamId`: this line is the final text of the reply that was being written into the bubble (流式回复):
@@ -1315,7 +776,6 @@ function onChatDelta(d) {
   Object.assign(stream, { n: d.n, text: d.withheld ? '' : String(d.text || ''), withheld: !!d.withheld });
   logStream({ ev: 'delta', id: d.id, n: d.n, len: [...stream.text].length, text: stream.text, withheld: stream.withheld });
   showStream();
-  if (window.PetHistory && panelKind === 'history') window.PetHistory.live({ $, turnId: stream.turnId, text: stream.withheld ? '……' : stream.text, done: false });
 }
 function showStream() {
   const b = $('bubble');
@@ -1359,7 +819,6 @@ function onChatDone(d) {
   if (!d || !d.id) return;
   const turnId = stream && stream.id === d.id ? stream.turnId : d.turnId;
   endStream(d.id, d.ok, d.reason);
-  if (window.PetHistory && panelKind === 'history' && turnId) window.PetHistory.live({ $, turnId, done: true, ok: d.ok });
 }
 
 // Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, and with
@@ -1592,7 +1051,6 @@ function setThinking(on) {
     // nothing but the pet and this bubble while it works; controls come back when it is done
     document.activeElement && document.activeElement.blur && document.activeElement.blur();
     $('food-menu').classList.add('hidden');
-    $('main-menu').classList.add('hidden');
     clearTimeout(bubbleTimer);
     $('meme-sticker').classList.add('hidden');
     b.classList.remove('hidden');
@@ -1644,81 +1102,16 @@ function buildFoodMenu() {
 function bindPetUi() {
   buildFoodMenu();
   $('toolbar').addEventListener('click', (e) => {
-    const act = e.target.dataset && e.target.dataset.act;
+    const btn = e.target.closest && e.target.closest('[data-act]');
+    const act = btn && btn.dataset.act;
     if (!act) return;
-    $('food-menu').classList.add('hidden');
-    $('main-menu').classList.add('hidden');
-    $('action-menu').classList.add('hidden');
+    if (act !== 'feed') $('food-menu').classList.add('hidden');
     if (act === 'feed') $('food-menu').classList.toggle('hidden');
     else if (act === 'play' || act === 'sleep') doAct(act);
-    else if (act === 'wardrobe' || act === 'topics') openPanel(act);
     else if (act === 'chat') {
       $('chat-row').classList.toggle('hidden');
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
-    } else if (act === 'menu') $('main-menu').classList.toggle('hidden');
-  });
-  // 动作: play any effect on request (dsh-pet's right-click "动作" menu)
-  $('action-menu').addEventListener('click', (e) => {
-    const a = e.target.dataset && e.target.dataset.cue;
-    if (!a) return;
-    $('action-menu').classList.add('hidden');
-    if (thinking) return;
-    fx.cue(a, isVideo(view && view.pet.speciesId));
-  });
-  $('main-menu').addEventListener('click', async (e) => {
-    const m = e.target.dataset && e.target.dataset.menu;
-    if (!m) return;
-    $('main-menu').classList.add('hidden');
-    if (m === 'actions') { $('action-menu').classList.remove('hidden'); return; }
-    if (m === 'home') { fx.stopThrow(); fx.stopWalk(); window.pet.place('pet'); return; } // dsh-pet 回到原位
-    if (m === 'quit') window.pet.quit();
-    // 设置… / 高级设置: the settings window (配置后台) holds every app-wide setting now
-    if (m === 'settings') window.pet.openAdmin();
-    if (m === 'advanced') window.pet.openAdmin('behavior');
-    if (m === 'characters') openPanel('characters');
-    if (m === 'history') { window.PetHistory.reset(); openPanel('history'); }
-    if (m === 'new-topic') {
-      if (!confirm('和她开一个新话题？\n她会从头聊起，不再带着之前的对话上下文。旧话题不会删除，仍保留在 LobeHub 里；好感度和聊天记录也都保留。')) return;
-      const r = await window.pet.newTopic();
-      if (r.ok) {
-        view = r.view;
-        say('（好，我们换个新话题，从头聊起吧。）', 'settings', 'fallback');
-      } else say(r.reason === 'busy' ? '等等，我还在想上一句……' : '（现在没法重新开始。）', r.reason === 'busy' ? 'busy' : 'error', 'fallback');
-    }
-    if (m === 'check-update') {
-      window.pet.openAdmin('update');
-      window.pet.checkUpdate();
-    }
-    if (m === 'update') await window.pet.installUpdate();
-    if (m === 'adult') {
-      const label = (v, id) => ((v.outfits.find((o) => o.id === id) || {}).label || id);
-      if (!view.settings.ageConfirmed) {
-        // Only the same 18+ confirmation can turn adult content on; there is no other way in.
-        showAgeGate((r) => {
-          enterPet(r.view);
-          say(r.settings.adultContent ? '（成人向内容已开启，可以随时在菜单里关闭。）' : '（好的，继续只看全年龄内容。）', 'settings', 'fallback');
-        });
-        return;
-      }
-      const r = await window.pet.setAdult(!view.settings.adultContent);
-      if (r.ok) {
-        view = r.view;
-        refreshHud();
-        say(r.settings.adultContent ? '（成人向内容已开启。）' : `（成人向内容已关闭${r.outfitChanged ? `，已换回「${label(r.view, r.outfitChanged.to)}」` : ''}。）`, 'settings', 'fallback');
-      }
-    }
-    if (m === 'log') window.pet.openLog();
-    if (m === 'local') {
-      const on = !(view && view.local && view.local.enabled);
-      if (on && !confirm('让宠物使用这台电脑？\n它可以读写文件、搜索内容、运行命令，能碰到你账号权限内的所有东西（不是沙盒）。')) return;
-      const r = await window.pet.setLocal(on);
-      if (r.ok) say(on ? '（已连上这台电脑，要我帮你找什么？）' : '（好，我不碰你的电脑了。）', 'local', 'fallback');
-      else if (r.reason === 'canceled') say('（好，先不弄了。）', 'canceled', 'fallback');
-      else if (r.reason !== 'busy') say(`（没成功：${String(r.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', r.message);
-    }
-    if (m === 'credits') alert(credits());
-    if (m === 'release' && confirm('放生它，并在 LobeHub 里删除每位角色的 agent（含聊天记录）？')) await release(true);
-    if (m === 'forget' && confirm('只重置本地进度，LobeHub 里的 agent 会保留。继续？')) await release(false);
+    } else if (act === 'settings') openSettings();
   });
   const send = async () => {
     const input = $('chat-input');
@@ -1776,23 +1169,15 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  bindPetPointer({ onClick: touchAt, onMenu: openMenuAtPet });
+  // a right click (or a long press on a touch screen) on her opens the settings window, as ⚙ does: there is
+  // no menu in the pet window any more
+  bindPetPointer({ onClick: touchAt, onMenu: () => openSettings() });
   bindTouchHint();
   document.addEventListener('contextmenu', (e) => {
     if (!e.target.closest || !e.target.closest('.pet-hit')) return;
     e.preventDefault();
-    openMenuAtPet();
+    openSettings();
   });
-}
-
-// The menu from a right click, or a long press on a touch screen.
-function openMenuAtPet() {
-  if (thinking) return;
-  pointerInside = true;
-  syncHover();
-  $('food-menu').classList.add('hidden');
-  $('action-menu').classList.add('hidden');
-  $('main-menu').classList.remove('hidden');
 }
 
 // Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
@@ -1801,7 +1186,7 @@ function openMenuAtPet() {
 //   screen edges); let go slowly and it is just put down;
 // - press twice quickly, pull and let go: the slingshot launches it the opposite way of the pull;
 // - press it while it flies: caught, with a score for a fast one;
-// - touch: a long press held still opens the menu (`onMenu`), like a right click.
+// - touch: a long press held still opens the settings window (`onMenu`), like a right click.
 function bindPetPointer({ onClick, onMenu }) {
   let drag = null;
   let lastPressAt = null;
@@ -1862,10 +1247,9 @@ function bindPetPointer({ onClick, onMenu }) {
   window.addEventListener('pointercancel', (e) => end(e, true));
 }
 
-// Behaviour switches for the effects layer; she never walks off while a panel has the window enlarged.
+// Behaviour switches for the effects layer.
 function petPrefs() {
-  const p = (settings && settings.prefs) || {};
-  return panelKind ? { ...p, roam: false } : p;
+  return (settings && settings.prefs) || {};
 }
 
 // Where the character is drawn in the window (for knocking into other pets): its art, not the whole window.
@@ -1969,11 +1353,24 @@ function artPoint(cx, cy) {
   const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
   const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
   const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
-  return { x: (px - b.x0) / (b.x1 - b.x0), y: (py - b.y0) / (b.y1 - b.y0), opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
+  // 半身 (a VRM / Live2D figure framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
+  // head-to-feet art) get y in her full-body proportions; legs and feet are below the picture, out of reach
+  const half = a.el.dataset && a.el.dataset.framing === 'half' ? { mode: 'half', cut: Number(a.el.dataset.cut) } : null;
+  const y = (py - b.y0) / (b.y1 - b.y0);
+  return { x: (px - b.x0) / (b.x1 - b.x0), y: half ? PF.toFullBody({ y }, half).y : y, framing: half ? 'half' : 'full', opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
 }
 
+// The VRM figure drawn as her look right now, or null.
+function vrmFigure() {
+  const el = $('pet-look').firstElementChild;
+  for (const r of rigs) if (r.kind === 'vrm' && r.canvas === el && r.figure.zoneAt) return r.figure;
+  return null;
+}
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
+// A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
 function zoneAtClient(cx, cy) {
+  const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
+  if (vf) return vf.zoneAt(cx, cy);
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -2006,9 +1403,9 @@ function showTouch(r, pt, at) {
   const ly = (y) => (y - pr.top) / k;
   const box = { left: lx(pt.box.left), top: ly(pt.box.top), width: (pt.box.right - pt.box.left) / k, height: (pt.box.bottom - pt.box.top) / k, mirrored: pt.mirrored };
   // her face in the box (0..1), for the blush: from her zone table (a chibi's face sits much lower)
-  const fz = TZ.zonesFor(sp, pt.pose).find((z) => z.id === 'face');
+  const fz = pt.faceRect ? { rects: [pt.faceRect] } : TZ.zonesFor(sp, pt.pose).find((z) => z.id === 'face'); // a VRM knows where its face is
   if (fz) box.face = fz.rects[0];
-  lastTouch = { n: (lastTouch ? lastTouch.n : 0) + 1, zone: r.zone, mood: r.reaction.mood, clip, line: r.line };
+  lastTouch = { n: (lastTouch ? lastTouch.n : 0) + 1, zone: r.zone, mood: r.reaction.mood, streak: r.reaction.streak || null, clip, line: r.line };
   fx.touch({ zone: r.zone, mood: r.reaction.mood, clip, ms: video ? 3000 : 1600, box, at: { x: lx(at.x), y: ly(at.y) } });
 }
 let lastTouch = null;
@@ -2060,7 +1457,6 @@ function syncHover() {
   if (!pointerInside && !micActive()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
     $('food-menu').classList.add('hidden');
-    $('main-menu').classList.add('hidden');
   }
 }
 function bindHover() {
@@ -2131,12 +1527,6 @@ function renderAttachments() {
   row.classList.toggle('hidden', attachments.length === 0);
 }
 
-async function release(deleteAgent) {
-  await window.pet.release({ deleteAgent });
-  view = null;
-  showOnboarding();
-}
-
 // ---------- render loop ----------
 // What the pet is doing right now, in the shared state vocabulary (src/core/fx.js STATES), by priority:
 // lifted or flying > waking up / stage-up > thinking > eating > a one-shot (click, play, idle cue, error)
@@ -2154,7 +1544,7 @@ function petStatus() {
   if (shot) return shot;
   if (fx.walking) return 'walk';
   if (now < talkUntil) return 'talk';
-  return view.status;
+  return view ? view.status : 'idle'; // no pet (just released): the effects layer may still ask once
 }
 const petAction = () => petStatus();
 
@@ -2351,7 +1741,8 @@ function asrFail(r) {
   showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', admin: 'asr' } : null);
 }
 
-// A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a panel.
+// A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a page of
+// the settings window (`admin`: its section).
 function showNotice(title, text, action = null, ms = 8000) {
   $('unlock-toast').classList.add('notice');
   $('toast-title').textContent = title;
@@ -2359,9 +1750,7 @@ function showNotice(title, text, action = null, ms = 8000) {
   const open = $('toast-open');
   open.classList.toggle('hidden', !action);
   open.textContent = action ? action.label : '';
-  open.dataset.panel = action ? action.panel || '' : '';
   open.dataset.admin = action ? action.admin || '' : '';
-  open.dataset.scroll = action ? action.scroll || '' : '';
   $('unlock-toast').classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, ms);
@@ -2397,7 +1786,8 @@ window.petFx = {
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
   // 部位触摸: what a client point maps to, and the last reaction shown
-  touchPoint: (cx, cy) => { const { zone, pt } = zoneAtClient(cx, cy); return pt ? { zone, x: pt.x, y: pt.y, opaque: pt.opaque, pose: pt.pose, mirrored: pt.mirrored, box: pt.box } : null; },
+  touchPoint: (cx, cy) => { const { zone, pt } = zoneAtClient(cx, cy); return pt ? { zone, x: pt.x, y: pt.y, opaque: pt.opaque, pose: pt.pose, mirrored: pt.mirrored, box: pt.box, framing: pt.framing } : null; },
+  framing: () => (view && view.look ? framingOf(view.look) : null),
   lastTouch: () => lastTouch,
   throw: (vx, vy) => throwPet({ vx, vy }),
   burst: (n) => fx.burst(n),
@@ -2423,6 +1813,8 @@ window.petFx = {
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
+  live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
   // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
   // without a TTS engine; resolves with how the clip ended
   testVoice: (seconds = 2) => new Promise((resolve) => {
@@ -2467,6 +1859,12 @@ async function onApiCmd({ id, cmd, args }) {
         result = { ok: true };
       }
     }
+    // 设置 → 桌面 → 回到右下角: stop flying / walking; main then puts the window back in its corner
+    if (cmd === 'home') {
+      fx.stopThrow();
+      fx.stopWalk();
+      result = { ok: true };
+    }
     if (cmd === 'throw') {
       const r = await throwPet({ vx: args.vx, vy: args.vy });
       result = r ? { ok: true, bounces: r.bounces } : { ok: false, reason: 'flying' };
@@ -2493,15 +1891,12 @@ let updateAnnounced = null;
 let updateState = null;
 function onUpdateStatus(u) {
   updateState = u;
-  const b = $('menu-update');
-  const label = { downloading: `正在下载新版本 v${u.version}…`, ready: `立即更新到 v${u.version} 并重启`, manual: `下载新版本 v${u.version}` }[u.status];
-  b.classList.toggle('hidden', !label);
-  b.disabled = u.status === 'downloading';
-  if (label) b.textContent = label;
+  // 新版本 (the old ⋯ menu's first item): a dot on ⚙, which then opens 设置 → 版本与更新 (立即更新 / 下载新版本)
+  if (view) syncSettingsDot();
   if (!view || updateAnnounced === `${u.status}:${u.version}`) return;
   const moveFirst = ['translocated', 'dmg', 'read-only'].includes(u.error);
-  if (u.status === 'ready') say(`（新版本 v${u.version} 已经下载好了。你离开电脑一会儿时我会自己重启更新，也可以在 ⋯ 菜单里立即更新。）`, 'update', 'fallback');
-  else if (u.status === 'manual') say(moveFirst ? `（有新版本 v${u.version}。先把我拖进“应用程序”文件夹再打开，以后就能自动更新了；这次可以在 ⋯ 菜单里下载。）` : `（有新版本 v${u.version}，可以在 ⋯ 菜单里下载。）`, 'update', 'fallback');
+  if (u.status === 'ready') say(`（新版本 v${u.version} 已经下载好了。你离开电脑一会儿时我会自己重启更新，也可以在 设置 → 版本与更新 里立即更新。）`, 'update', 'fallback');
+  else if (u.status === 'manual') say(moveFirst ? `（有新版本 v${u.version}。先把我拖进“应用程序”文件夹再打开，以后就能自动更新了；这次可以在 设置 → 版本与更新 里下载。）` : `（有新版本 v${u.version}，可以在 设置 → 版本与更新 里下载。）`, 'update', 'fallback');
   else return;
   updateAnnounced = `${u.status}:${u.version}`;
 }
@@ -2519,18 +1914,20 @@ async function main() {
   $('hatch-retry').addEventListener('click', showOnboarding);
   $('age-yes').addEventListener('click', () => answerAgeGate(true));
   $('age-no').addEventListener('click', () => answerAgeGate(false));
-  $('panel-close').addEventListener('click', closePanel);
   $('toast-close').addEventListener('click', hideToast);
-  $('toast-open').addEventListener('click', async () => {
-    const { panel, scroll, admin } = $('toast-open').dataset;
+  // 去衣柜看看 / 去聊聊新话题 / 去设置: the page in the settings window
+  $('toast-open').addEventListener('click', () => {
+    const { admin } = $('toast-open').dataset;
     hideToast();
-    if (admin) { window.pet.openAdmin(admin); return; }
-    await openPanel(panel || 'wardrobe');
-    const el = scroll && document.getElementById(scroll);
-    if (el) el.scrollIntoView({ block: 'start' });
+    window.pet.openAdmin(admin || undefined);
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panelKind && !thinking) closePanel(); });
-  window.pet.onUpdate((v) => { view = v; syncPrewarm(); if (v) { applyArt(); refreshHud(); if (panelKind === 'characters') renderPanel(); } });
+  window.pet.onUpdate((v) => {
+    view = v;
+    syncPrewarm();
+    if (v) { applyArt(); refreshHud(); return; }
+    // 放生 / 仅重置本地 (设置 → 数据与关于): no pet any more, so back to choosing one
+    if (!$('pet-screen').classList.contains('hidden')) { stopSpeech('released'); hideToast(); showOnboarding(); }
+  });
   window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme, m.streamId || null); speak(m); });
   window.pet.onChatDelta(onChatDelta);
   window.pet.onChatDone(onChatDone);

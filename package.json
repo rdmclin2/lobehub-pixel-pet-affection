@@ -1,7 +1,7 @@
 {
   "name": "pixel-pet-affection",
   "productName": "Pixel Pet Affection",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Adult (18+) affection edition of a pixel-art desktop pet powered by a LobeHub agent",
   "main": "src/main/main.js",
   "license": "MIT",
@@ -11,6 +11,7 @@
     "start": "electron .",
     "prestart:no-sandbox": "npm run build:admin",
     "start:no-sandbox": "electron . --no-sandbox",
+    "predemo": "npm run build:admin",
     "demo": "node scripts/demo.js",
     "test": "node --test \"test/*.test.js\"",
     "e2e": "node e2e/run.js",
@@ -63,6 +64,11 @@
       "!**/*.VRM",
       "!**/*.vrma",
       "!**/*.VRMA",
+      "!**/*.fbx",
+      "!**/*.FBX",
+      "!**/*.vmd",
+      "!**/*.bvh",
+      "!**/*.pmx",
       "package.json"
     ],
     "directories": {

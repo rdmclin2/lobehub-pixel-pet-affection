@@ -21,9 +21,11 @@ const IDLE_CHECK_MS = 60 * 1000;
 const IDLE_INSTALL_S = 10 * 60; // install on its own after 10 minutes without keyboard or mouse input
 
 class Updater extends EventEmitter {
-  constructor({ isBusy = () => false, log = () => {} } = {}) {
+  // autoCheck(): settings.update.autoCheck, read at every scheduled check (版本与更新 → 自动检查更新 applies at once)
+  constructor({ isBusy = () => false, log = () => {}, autoCheck = () => true } = {}) {
     super();
     this.isBusy = isBusy;
+    this.autoCheck = autoCheck;
     this.log = log;
     // status: idle | checking | latest | downloading | ready | manual | error | disabled
     this.state = { status: 'idle', version: null, url: null, error: null, current: app.getVersion(), checkedAt: null };
@@ -50,7 +52,8 @@ class Updater extends EventEmitter {
     // PIXELPET_UPDATE_NOW=1 (release checks in CI): check at once and install as soon as it is ready.
     const now = process.env.PIXELPET_UPDATE_NOW === '1';
     if (now) this.on('status', (st) => { if (st.status === 'ready') this.install(); });
-    const check = () => this.checkNow();
+    // scheduled checks only while 自动检查更新 is on; checkNow() (检查更新) always checks
+    const check = () => (now || this.autoCheck() ? this.checkNow() : this.state);
     if (process.env.PIXELPET_UPDATE_TEST !== '1') setTimeout(check, now ? 1000 : 20 * 1000);
     setInterval(check, CHECK_EVERY_MS);
     setInterval(() => this._maybeInstallWhileIdle(), IDLE_CHECK_MS);

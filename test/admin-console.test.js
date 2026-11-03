@@ -64,7 +64,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 15, '15 pages under 4 rail places (docs §6.3)');
+  assert.equal(navPages.length, 18, '18 pages under 4 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718)');
   assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings'], 'the rail holds four places, not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
@@ -497,14 +497,53 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   assert.match(main, /label: '偏好设置…', accelerator: 'CmdOrCtrl\+,'/);
 });
 
-test('the pet window: ⋯ → 设置… opens the settings window; the old 高级设置 panel and her model / system-role forms are gone', () => {
+test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  assert.match(html, /data-menu="settings"[^>]*>设置…</);
-  assert.doesNotMatch(html, /data-menu="advanced"/);
-  for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
-  assert.match(app, /window\.pet\.openAdmin\(`characters\/\$\{c\.id\}`\)/);
+  // the toolbar: the four interactions and ⚙
+  const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'settings']);
+  assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
+  for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
+  for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
+  assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'history.js')));
+  // ⚙, a right click and a long press all open the settings window
+  assert.match(app, /else if \(act === 'settings'\) openSettings\(\);/);
+  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(\) => openSettings\(\) \}\)/);
+  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
+  assert.match(app, /window\.pet\.openAdmin\(/);
+  // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
+  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.speciesId\}` : 'topics'/);
   assert.match(app, /\{ label: '去设置', admin: 'asr' \}/);
+  // no 高级设置 panel or her model / system-role forms either (since the console)
+  for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
+});
+
+test('every item of the old ⋯ menu has its place in the settings window (T-2718)', () => {
+  const preload = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  const read = (f) => fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', ...f.split('/')), 'utf8');
+  const pages = read('pages/Pages.tsx');
+  const together = read('pages/Together.tsx');
+  const app = read('ConsoleApp.tsx');
+  const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
+  for (const p of ['characters', 'topics', 'history', 'desk', 'connection', 'safety', 'update', 'about']) {
+    assert.ok(navPages.includes(p), `${p} is in the nav`);
+    if (!['characters'].includes(p)) assert.match(app, new RegExp(`case '${p}':`), `${p} has a page`);
+  }
+  // the bridge: each menu action has a channel
+  for (const fn of ['newTopic:', 'setAdult:', 'confirmAge:', 'checkUpdate:', 'installUpdate:', 'release:', 'openLog:', 'cue:', 'home:', 'quit:', 'talkTopic:', 'markSeen:', 'historyList:', 'historyGet:', 'switchCharacter:', 'equipOutfit:']) assert.ok(preload.includes(fn), fn);
+  assert.match(main, /ipcMain\.handle\('admin-home', adminOnly\(/);
+  assert.match(main, /ipcMain\.handle\('admin-quit', adminOnly\(/);
+  assert.match(main, /const ADMIN_CUES = \[\.\.\.CUE_STATES, 'turn'\];/);
+  // dangerous ones are asked again
+  assert.match(together, /ask\('退出桌宠？'/);
+  assert.match(pages, /ask\('和她开一个新话题？'/);
+  assert.match(pages, /deleteAgent \? '放生并删除 agent？' : '仅重置本地？'/);
+  // the 动作 list keeps the old menu's nine actions
+  assert.match(together, /const CUES = \['look', 'turn', 'walk', 'happy', 'pat', 'play', 'think', 'sad', 'evolve'\];/);
+  assert.match(pages, /素材署名/);
+  assert.match(pages, /打开错误日志/);
 });
 
 test('docs/admin-console-design.md names every settings.json key and settings IPC channel (scripts/check-admin-console-doc.js)', () => {
@@ -519,4 +558,58 @@ test('roster: a sprite preview carries her sheet\'s actions, so the console can 
   assert.equal(pv.type, 'sprite');
   assert.deepEqual(pv.actions, look.actions);
   assert.equal(previewOf({}, { ...look, actions: undefined }).actions, null);
+});
+
+// 后台点击卡顿 (T-2701): what made every click in the console freeze, kept from coming back.
+test('admin perf: the console view carries her needs as the whole numbers it shows, without the tick clock', () => {
+  const { adminView } = require('../src/core/roster');
+  const view = { pet: { hunger: 30.0412, mood: 69.987, energy: 89.97, lastTickAt: 1793625869524, sleeping: false, name: 'x' }, characters: [] };
+  const a = adminView(view);
+  assert.deepEqual(a.pet, { hunger: 30, mood: 70, energy: 90, sleeping: false, name: 'x' });
+  assert.equal(view.pet.lastTickAt, 1793625869524, 'the service view itself is not touched');
+  assert.equal(a.characters, view.characters);
+  // two heartbeats a moment apart: the same console state, so main sends nothing
+  const b = adminView({ ...view, pet: { ...view.pet, hunger: 30.0477, mood: 69.9857, energy: 89.9714, lastTickAt: 1793625870385 } });
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+  assert.equal(adminView(null), null);
+});
+
+test('admin perf: main sends the console a state only when it changed; sprite sheets are decoded off the main thread', () => {
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  assert.match(main, /if \(json === adminSent\) return;/);
+  assert.match(main, /view: adminView\(view\)/);
+  const stage = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'stage', 'SpriteStage.tsx'), 'utf8');
+  // a whole 2656 × 8136 sheet drawn onto a canvas is decoded synchronously on the main thread (1–2 s each)
+  assert.match(stage, /createImageBitmap\(b\)/);
+  assert.match(stage, /g\.drawImage\(frames\[i\], 0, 0\)/);
+  assert.doesNotMatch(stage, /new Image\(\)/);
+  assert.doesNotMatch(stage, /requestAnimationFrame\(/, 'frames advance at the sheet fps, not every vsync');
+  assert.match(fs.readFileSync(path.join(ROOT, 'admin', 'index.html'), 'utf8'), /connect-src 'self' pack:/, 'the sheets are fetched from pack://');
+  const cs = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'stage', 'CharacterStage.tsx'), 'utf8');
+  assert.doesNotMatch(cs, /infinite/, 'no endless full-stage animation');
+  const store = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'store.tsx'), 'utf8');
+  assert.match(store, /share\(d, \{ \.\.\.d, \.\.\.st \}\)/, 'a pushed state reuses what did not change');
+});
+
+// 前台精简 (T-2718) took the pet window's 外观 panel away; its VRM license flow lives on in the settings window.
+test('VRM import in the settings window: 导入确认 with the license before she wears it, 取消导入 removes it, 授权信息 on the card', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
+  assert.match(src, /data-import-vrm onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
+  assert.match(src, /cancelText="取消导入"/);
+  assert.match(src, /okText="使用这个模型"/);
+  assert.match(src, /await api\(\)\.removePack\(r\.pack\.id\)/, '取消导入 removes the pack again');
+  assert.match(src, /data-vrm-info=\{p\.id\}/);
+  assert.match(src, /data-vrm-credit=\{p\.id\}/);
+  assert.match(src, /data-vrm-noexport=\{p\.id\}/);
+  const lic = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'stage', 'VrmLicense.tsx'), 'utf8');
+  assert.match(lic, /from '\.\.\/\.\.\/\.\.\/\.\.\/src\/core\/vrm-ui\.js'/, 'the same wording as before (core/vrm-ui.js)');
+  assert.match(lic, /api\(\)\.openLink\(row\.href!\)/, 'license links open in the system browser');
+});
+
+test('Live2D import from the settings window: main hands the new pack to the service at once, and the console puts it on', () => {
+  const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
+  const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
+  assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
+  assert.match(src, /data-import-live2d[\s\S]{0,600}api\(\)\.setAppearance\(r\.pack\.id, c\.id\)/);
 });
