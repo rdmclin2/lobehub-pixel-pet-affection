@@ -6968,6 +6968,19 @@ async function voiceHotkeyScenario() {
   const call = () => page.evaluate(() => window.petFx.voiceCall());
   const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return { shown: !b.classList.contains('hidden'), text: b.textContent, kind: b.dataset.kind, reason: b.dataset.reason }; });
   const waitMic = (st, timeout = 10000) => page.waitForFunction((s) => window.petFx.micState() === s, st, { timeout });
+  // the bubble and the notice are both readable: inside the window and not on top of each other
+  const bothVisible = async () => {
+    const g = await page.evaluate(() => {
+      const r = (id) => { const x = document.getElementById(id).getBoundingClientRect(); return { top: Math.round(x.top), bottom: Math.round(x.bottom), left: Math.round(x.left), right: Math.round(x.right) }; };
+      const el = document.getElementById('bubble');
+      return { bubble: r('bubble'), toast: r('unlock-toast'), h: window.innerHeight, w: window.innerWidth, clipped: el.scrollHeight - el.clientHeight };
+    });
+    const { bubble: b, toast: t } = g;
+    assert.ok(g.clipped <= 1, `the whole bubble text shows, nothing scrolled away ${JSON.stringify(g)}`);
+    assert.ok(b.top >= 0 && t.top >= 0 && b.bottom <= g.h && t.bottom <= g.h, `both inside the window ${JSON.stringify(g)}`);
+    assert.ok(b.bottom <= t.top || t.bottom <= b.top, `the notice does not cover the bubble ${JSON.stringify(g)}`);
+    return `bubble y ${b.top}–${b.bottom}, notice y ${t.top}–${t.bottom} (window ${g.w}×${g.h}): no overlap`;
+  };
   const petState = () => page.evaluate(() => window.petFx.state().state);
   const away = async () => { await page.mouse.move(-50, -50).catch(() => {}); await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave'))); };
   const openAsr = async () => { admin = await openAdminWindow(app, page, 'asr'); await admin.waitForSelector('[data-key="asr.hotkey"]'); await admin.waitForTimeout(250); return admin; };
@@ -7026,15 +7039,18 @@ async function voiceHotkeyScenario() {
       assert.equal(b.shown, true);
       assert.equal(b.reason, 'asr-off');
       assert.match(b.text, /语音输入还没开/);
-      assert.match(b.text, /设置 → 语音输入/);
-      assert.match(b.text, /Ctrl\+Shift\+Space/);
+      assert.match(b.text, /下面的提示/);
       assert.equal(await page.isVisible('#unlock-toast'), true);
+      const tt = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
+      assert.match(tt, /设置 → 语音输入/);
+      assert.match(tt, /Ctrl\+Shift\+Space/);
       assert.equal(await page.getAttribute('#toast-open', 'data-admin'), 'asr');
       assert.equal((await page.textContent('#toast-open')).trim(), '去设置');
       assert.equal(await page.evaluate(() => window.petFx.micState()), 'idle', 'no recording');
+      const geo = await bothVisible();
       const s = await shot('v1-asr-off-hint');
       await page.click('#toast-close');
-      return note(`hidden → shortcut → visible=${st.petVisible}; bubble 「${b.text}」; toast 去设置 → #/asr; ${s}`);
+      return note(`hidden → shortcut → visible=${st.petVisible}; bubble 「${b.text}」; toast 「${tt.replace('×', '').trim()}」 去设置 → #/asr; ${geo}; ${s}`);
     }, page);
 
     await step(S, 'V2 语音输入 on: minimised pet restored + focused, chat box open, recording, 「我在听…」 bubble, she looks at you', async () => {
@@ -7131,10 +7147,13 @@ async function voiceHotkeyScenario() {
       assert.equal(await page.isVisible('#unlock-toast'), true);
       const t = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
       assert.match(t, /没有麦克风权限/);
+      // what to do on this system (the e2e runs on Linux: sound input / PipeWire·PulseAudio / Flatpak·Snap)
+      if (process.platform === 'linux') { assert.match(t, /声音 → 输入/); assert.match(t, /PipeWire/); assert.match(t, /Flatpak \/ Snap/); assert.doesNotMatch(t, /隐私与安全性/); }
+      const geo = await bothVisible();
       const s = await shot('v5-mic-denied');
       await page.evaluate(() => window.pet.debugMicAccess(''));
       await page.click('#toast-close');
-      return note(`bubble 「${b.text}」; toast 「${t.replace('×', '').trim()}」; ${s}`);
+      return note(`bubble 「${b.text}」; toast 「${t.replace('×', '').trim()}」; ${geo}; ${s}`);
     }, page);
 
     await step(S, 'V6 设置 → 语音输入 → 快捷键: shows Ctrl+Shift+Space, 已生效', async () => {
@@ -7147,6 +7166,10 @@ async function voiceHotkeyScenario() {
       assert.equal(f.tag, '已生效');
       assert.match(f.hint, /Ctrl\+Shift\+Space/);
       assert.match(f.shown, /Ctrl/i);
+      // Space is written out (not lucide's ␣ icon) and the stored value is still an Electron accelerator
+      assert.equal(f.shown, 'Ctrl Shift Space');
+      assert.equal(await admin.evaluate(() => document.querySelectorAll('[data-key="asr.hotkey"] kbd svg').length), 0);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
       const s = await ashot('v6-settings-hotkey-ok');
       return note(`field ${JSON.stringify(f)}; ${s}`);
     }, () => admin);
@@ -7155,13 +7178,14 @@ async function voiceHotkeyScenario() {
       chapter('V7 无效组合：没有修饰键 / 只有 Shift，字段下方报错且不保存');
       await record('KeyA');
       let f = await field();
-      assert.match(f.inputError || '', /组合无效/);
+      // the exact wording README / docs/asr.md quote
+      assert.equal(f.inputError, '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键');
       assert.equal(await saved(), 'CommandOrControl+Shift+Space');
       const s1 = await ashot('v7-invalid-no-modifier');
       await record('Shift+KeyA');
       await adminUntil(admin, () => !!document.querySelector('[data-error="asr.hotkey"]'), null, 8000, 'error under the field');
       f = await field();
-      assert.match(f.error, /只有 Shift 不够/);
+      assert.equal(f.error, require('../src/core/hotkey').MESSAGES['shift-only']);
       assert.equal(await saved(), 'CommandOrControl+Shift+Space');
       assert.equal(f.keys, 'mod+shift+space', 'the shortcut in use is still shown');
       assert.equal((await status()).registered, true);
@@ -7173,8 +7197,9 @@ async function voiceHotkeyScenario() {
       chapter('V8 冲突组合：应用内 Ctrl+, / 被其他应用占用的 Ctrl+Alt+K，提示且不保存');
       await record('Control+Comma');
       let f = await field();
-      assert.match(f.inputError || '', /打开设置/);
-      assert.match(f.inputError || '', /冲突/);
+      // the same wording as main's own check (core/hotkey.js), quoted in README / docs/asr.md
+      assert.equal(f.inputError, '和应用内的「打开设置」（Ctrl+,）冲突，换一个组合');
+      assert.equal(f.inputError, require('../src/core/hotkey').checkHotkey('Control+,', 'linux').message);
       const s1 = await ashot('v8-conflict-in-app');
       await record('Control+Alt+KeyK');
       await adminUntil(admin, () => /占用/.test((document.querySelector('[data-error="asr.hotkey"]') || {}).textContent || ''), null, 8000, 'taken error');
