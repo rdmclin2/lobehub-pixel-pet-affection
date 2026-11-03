@@ -1,0 +1,126 @@
+[
+  {
+    "ms": 27187,
+    "what": "admin window open (its own video starts about here)"
+  },
+  {
+    "ms": 30451,
+    "what": "round 1 desktop cold: sent"
+  },
+  {
+    "ms": 41604,
+    "what": "round 1 desktop: reply final"
+  },
+  {
+    "ms": 43177,
+    "what": "round 1 admin cold: sent"
+  },
+  {
+    "ms": 43299,
+    "what": "round 1 admin: 0 chars on screen at 2 ms"
+  },
+  {
+    "ms": 46885,
+    "what": "round 1 admin: 46 chars on screen at 3644 ms"
+  },
+  {
+    "ms": 47225,
+    "what": "round 1 admin: 91 chars on screen at 3982 ms"
+  },
+  {
+    "ms": 47503,
+    "what": "round 1 admin: 113 chars on screen at 4252 ms"
+  },
+  {
+    "ms": 47794,
+    "what": "round 1 admin: 177 chars on screen at 4536 ms"
+  },
+  {
+    "ms": 48068,
+    "what": "round 1 admin: 231 chars on screen at 4820 ms"
+  },
+  {
+    "ms": 48338,
+    "what": "round 1 admin: 283 chars on screen at 5096 ms"
+  },
+  {
+    "ms": 48615,
+    "what": "round 1 admin: 329 chars on screen at 5366 ms"
+  },
+  {
+    "ms": 48918,
+    "what": "round 1 admin: 382 chars on screen at 5640 ms"
+  },
+  {
+    "ms": 49209,
+    "what": "round 1 admin: 426 chars on screen at 5947 ms"
+  },
+  {
+    "ms": 49476,
+    "what": "round 1 admin: 429 chars on screen at 6236 ms"
+  },
+  {
+    "ms": 52945,
+    "what": "round 1 admin: reply final"
+  },
+  {
+    "ms": 54511,
+    "what": "round 2 admin warm: sent"
+  },
+  {
+    "ms": 54617,
+    "what": "round 2 admin: 0 chars on screen at 2 ms"
+  },
+  {
+    "ms": 57787,
+    "what": "round 2 admin: 49 chars on screen at 3200 ms"
+  },
+  {
+    "ms": 58173,
+    "what": "round 2 admin: 68 chars on screen at 3587 ms"
+  },
+  {
+    "ms": 58452,
+    "what": "round 2 admin: 105 chars on screen at 3870 ms"
+  },
+  {
+    "ms": 58716,
+    "what": "round 2 admin: 108 chars on screen at 4148 ms"
+  },
+  {
+    "ms": 58981,
+    "what": "round 2 admin: 204 chars on screen at 4415 ms"
+  },
+  {
+    "ms": 59259,
+    "what": "round 2 admin: 255 chars on screen at 4680 ms"
+  },
+  {
+    "ms": 59544,
+    "what": "round 2 admin: 297 chars on screen at 4951 ms"
+  },
+  {
+    "ms": 59811,
+    "what": "round 2 admin: 353 chars on screen at 5236 ms"
+  },
+  {
+    "ms": 60092,
+    "what": "round 2 admin: 387 chars on screen at 5503 ms"
+  },
+  {
+    "ms": 60366,
+    "what": "round 2 admin: 411 chars on screen at 5784 ms"
+  },
+  {
+    "ms": 63200,
+    "what": "round 2 admin: reply final"
+  },
+  {
+    "ms": 64752,
+    "what": "round 2 desktop warm: sent"
+  },
+  {
+    "ms": 74324,
+    "what": "round 2 desktop: reply final"
+  }
+]

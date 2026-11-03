@@ -12,7 +12,9 @@
 //   LAT_ROUNDS (9), LAT_COLD_EVERY (3; 0 = all warm), LAT_MODEL (a regexp on the model label / id, default
 //   "V4\.1 Flash|flash"), LAT_LONG=1 (ask for ~400 字 instead of ~80), LAT_RAW (5: turns sent afterwards straight
 //   to the Responses API from node with the same agent, topic and prompt shape — the floor without the app),
-//   LAT_LHRUN (0: turns sent through `lh agent run --json`, the fallback way, from node)
+//   LAT_LHRUN (0: turns sent through `lh agent run --json`, the fallback way, from node),
+//   LAT_SEQ=1 (a screenshot of the chat page every ~250 ms while each of its replies streams → <label>-seq/),
+//   LAT_VIDEO=1 (Playwright records every window → <label>-video/, plus <label>-video-marks.json: ms since launch)
 // → out/e2e/chat-latency/<label>.json (+ screenshots), and a summary table on stdout.
 const { _electron } = require('playwright');
 const fs = require('node:fs');
@@ -31,6 +33,8 @@ const TOPICS = ['早餐吃什么', '下雨天适合做什么', '最喜欢的颜�
 const LONG = process.env.LAT_LONG === '1'; // long replies (~400 字): what the chat page's smoothed Markdown does with them
 const FRESH_EVERY = Number(process.env.LAT_FRESH_EVERY || 0); // every Nth round the chat page's turn opens a fresh topic (as after 4 h)
 const LHRUN = Number(process.env.LAT_LHRUN || 0); // turns sent through `lh agent run --json` (the fallback way) from node
+const SEQ = process.env.LAT_SEQ === '1';
+const VIDEO = process.env.LAT_VIDEO === '1';
 const RAW = Number(process.env.LAT_RAW ?? 5); // turns sent straight to the Responses API from node (no Electron, no UI)
 const message = (i) => `第${i + 1}轮：请用大约 ${LONG ? 400 : 80} 个字，和我聊聊「${TOPICS[i % TOPICS.length]}」。`;
 fs.mkdirSync(OUT, { recursive: true });
@@ -129,7 +133,10 @@ async function main(name = 'baseline') {
   const env = { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), PIXELPET_DATA_DIR: data, LH_BIN: 'lh', PIXELPET_NO_CONNECT: '1', PIXELPET_DIRECT: '1', PIXELPET_LATENCY: '1', PIXELPET_LATENCY_FILE: latFile };
   for (const k of ['LOBEHUB_OPERATION_ID', 'LOBEHUB_TOPIC_ID', 'LOBEHUB_AGENT_ID', 'LOBEHUB_ASSISTANT_MESSAGE_ID']) delete env[k];
   const extraArgs = (process.env.LAT_CHROME_ARGS || '').split(/\s+/).filter(Boolean);
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...extraArgs], cwd: ROOT, env });
+  const launchedAt = Date.now();
+  const videoMarks = [];
+  const vmark = (what) => { if (VIDEO) videoMarks.push({ ms: Date.now() - launchedAt, what }); };
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...extraArgs], cwd: ROOT, env, ...(VIDEO ? { recordVideo: { dir: path.join(OUT, `${name}-video`), size: { width: 1280, height: 800 } } } : {}) });
   await app.context().addInitScript(PROBE);
   let stdout = '';
   app.process().stdout.on('data', (d) => { stdout += d; });
@@ -156,6 +163,7 @@ async function main(name = 'baseline') {
     say(`met ${SPECIES}: agent ${agentId}`);
 
     const admin = await openAdminWindow(app, page, `chat/${SPECIES}`);
+    vmark('admin window open (its own video starts about here)');
     await admin.setViewportSize({ width: 1080, height: 720 }).catch(() => {});
     await until(admin, () => !!document.querySelector('[data-chat-page] [data-chat-textarea]'), null, 30000, 'chat page');
     await until(admin, (s) => window.petAdmin.state().then((st) => !!st.roster.find((c) => (c.base || c.id) === s && c.model)?.model?.loaded), SPECIES, 60000, 'model list');
@@ -209,14 +217,26 @@ async function main(name = 'baseline') {
         const p = kind === 'admin' ? await sendAdmin(text) : await sendDesktop(text);
         let midShot = shots < 2;
         const t0 = Date.now();
+        vmark(`round ${i + 1} ${kind} ${cond}: sent`);
+        const seqDir = path.join(OUT, `${label}-seq`);
+        if (SEQ && kind === 'admin') fs.mkdirSync(seqDir, { recursive: true });
+        let lastSeq = 0;
+        let seqChars = -1;
         for (;;) {
           const cur = await p.evaluate(() => { const c = window.__lat.cur; return { doneAt: c.doneAt, chars: c.lastStreamChars }; });
+          if (SEQ && kind === 'admin' && !cur.doneAt && Date.now() - lastSeq >= 250 && cur.chars !== seqChars) {
+            lastSeq = Date.now();
+            seqChars = cur.chars;
+            const ms = Date.now() - t0;
+            await p.screenshot({ path: path.join(seqDir, `r${i + 1}-${String(ms).padStart(5, '0')}ms-${cur.chars}chars.png`) });
+            vmark(`round ${i + 1} admin: ${cur.chars} chars on screen at ${ms} ms`);
+          }
           if (midShot && cur.chars > 20) {
             await p.screenshot({ path: path.join(OUT, `${label}-${kind}-streaming.png`) });
             midShot = false;
             shots += 1;
           }
-          if (cur.doneAt) break;
+          if (cur.doneAt) { vmark(`round ${i + 1} ${kind}: reply final`); break; }
           if (Date.now() - t0 > 180000) throw new Error(`${kind} round ${i + 1}: no reply within 180 s`);
           await sleep(100);
         }
@@ -347,6 +367,7 @@ async function main(name = 'baseline') {
   } finally {
     report.mainStdoutLatencyLines = stdout.split('\n').filter((l) => l.startsWith('[latency]')).length;
     fs.writeFileSync(path.join(OUT, `${label}.json`), JSON.stringify(report, null, 2));
+    if (VIDEO) fs.writeFileSync(path.join(OUT, `${label}-video-marks.json`), JSON.stringify(videoMarks, null, 2));
     if (fs.existsSync(latFile)) fs.copyFileSync(latFile, path.join(OUT, `${label}-latency.jsonl`));
     say(`→ ${path.relative(ROOT, path.join(OUT, `${label}.json`))}`);
     await app.close().catch(() => {});
