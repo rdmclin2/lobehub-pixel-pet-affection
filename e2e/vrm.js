@@ -1487,7 +1487,7 @@ module.exports = function vrmScenarios(ctx) {
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
         ID = imp.pack.id;
-        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), ID);
+        await page.evaluate((x) => window.pet.switchCharacter(x), ID);
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), ID, { timeout: 15000 });
         await H.drawing(3);
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
@@ -1753,7 +1753,7 @@ module.exports = function vrmScenarios(ctx) {
         r = await api('POST', '/dance', { id: 'e2e-test', loop: true });
         assert.equal(r.status, 200);
         await waitState('on');
-        await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu'));
+        await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
         await sleep(400);
         const c2 = await ctl();
@@ -1764,7 +1764,7 @@ module.exports = function vrmScenarios(ctx) {
       });
 
       await ST('无音乐舞蹈（渲染时钟、默认循环）与内置示例舞「节拍摇摆」（合成节拍、拍手 / 举手比心）', async () => {
-        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), ID);
+        await page.evaluate((x) => window.pet.switchCharacter(x), ID);
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), ID, { timeout: 15000 });
         await H.drawing(3);
         await page.waitForFunction(() => window.PetVRM.debug().figures[0] && window.PetVRM.debug().figures[0].library === 'loaded', null, { timeout: 20000 });
@@ -1939,7 +1939,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
-        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), imp.pack.id);
+        await page.evaluate((x) => window.pet.switchCharacter(x), imp.pack.id);
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), imp.pack.id, { timeout: 15000 });
         await H.drawing(3);
         await hoverPet();
@@ -2051,7 +2051,7 @@ module.exports = function vrmScenarios(ctx) {
       });
 
       await ST('换回像素外观：「跳舞」再次隐藏，设置页恢复禁用说明；无渲染 / CSP 报错，仓库无新增文件', async () => {
-        await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu'));
+        await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('dafeiyu-pixel/'), null, { timeout: 10000 });
         await hoverPet();
         await page.waitForFunction(() => document.getElementById('btn-dance').classList.contains('hidden'), null, { timeout: 3000 });
@@ -2181,7 +2181,7 @@ module.exports = function vrmScenarios(ctx) {
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
         VRM_ID = imp.pack.id;
-        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), VRM_ID);
+        await page.evaluate((x) => window.pet.switchCharacter(x), VRM_ID);
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), VRM_ID, { timeout: 15000 });
         await H.drawing(3);
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
@@ -2356,7 +2356,7 @@ module.exports = function vrmScenarios(ctx) {
         const r = await api('POST', '/dance', { id: IMPORTED, loop: true });
         assert.equal(r.status, 200, JSON.stringify(r.json));
         await waitState('on', 8000);
-        await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu'));
+        await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
         await sleep(400);
         const c = await ctl();
@@ -2505,7 +2505,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
-        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), imp.pack.id);
+        await page.evaluate((x) => window.pet.switchCharacter(x), imp.pack.id);
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), imp.pack.id, { timeout: 15000 });
         await H.drawing(3);
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
