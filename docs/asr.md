@@ -15,6 +15,7 @@
 ## 1. 功能说明
 
 - **入口**：悬停宠物 → 💬 打开聊天框，输入框和“发送”之间的 🎤。只在 **设置窗口 → 语音输入** 打开后显示。
+- **快捷键入口**：在任何地方按 `Ctrl+Shift+Space`（macOS `⌘⇧Space`），她出现并开始听；再按一次结束。见下方 1.1。
 - **两种按法**：
   - 点一下 🎤 开始，说完再点一下结束；
   - 按住 🎤 说话（按住超过 0.35 秒），松开就结束。
@@ -24,6 +25,23 @@
 - **结果**：文字**接在**输入框已有内容后面（中间补一个空格），你可以改好再按 Enter 或“发送”。勾选“识别后直接发送”时直接发给她；如果她还在回上一句，就只填进输入框。
 - **失败**：右下角弹出「🎤 语音输入没成功」，说明原因；跟设置有关的失败带一个“去设置”按钮。输入框里原来的文字不会被清掉。
 - **只在按 🎤 时录音**，不常驻监听，没有唤醒词。
+
+### 1.1 快捷键唤起语音对话
+
+- **默认**：macOS `⌘⇧Space`，Windows / Linux `Ctrl+Shift+Space`（`settings.json` 里是 `asr.hotkey: "CommandOrControl+Shift+Space"`）。全局生效：桌宠窗口不在前台、被隐藏或最小化都可以。
+- **第一次按**：桌宠窗口被唤出并拿到焦点 → 聊天框展开 → 开始录音（和点 🎤 是同一个录音器，`asr.maxSeconds`、Esc 取消、太短提示都一样）。可见状态：🎤 变成红色 `■ Ns`，上方「🔴 正在听」，气泡「我在听…说完再按 <快捷键> 结束」，她转头看着你（录音中动作为 look）。
+- **第二次按**（录音中）：结束并识别。气泡「嗯…让我想想你说了什么」，🎤 转圈，她做思考动作。结果：
+  - 默认填进输入框，气泡「听到啦～在输入框里，没问题就按 Enter 发给我」，聊天框保持展开 15 秒；
+  - 勾选「识别后直接发送」时直接发给她的 agent，她回复（开着朗读就读出来）。
+- **识别中或麦克风正在打开时**再按会被忽略；她正在回上一句时按，她说「等等，我还在想上一句……」。
+- **用不了时不会静默**：
+  - 语音输入没开 / 引擎选了「关闭」：她出现并说「语音输入还没开，我听不到你。去 设置 → 语音输入 打开它…」，右下角提示带 **去设置**（直接打开 设置 → 语音输入）。
+  - 麦克风权限被拒：气泡「我听不到你：麦克风权限被拒绝了…」，右下角提示各系统的处理方法（见第 5 节第一行）。
+  - 识别失败（连不上、超时、未登录…）：气泡和提示条说明原因，和点 🎤 时一样，设置相关的带「去设置」。
+- **在设置里改**：设置 → 语音输入 → **快捷键 → 唤起语音对话**（`@lobehub/ui` HotkeyInput）。点一下输入框按下新组合即保存，主进程先注销旧的、再注册新的；× 清空 = 关闭；↺ 恢复默认。状态标签：已生效 / 未启用 / 被占用 / 组合无效。
+- **校验规则**（`src/core/hotkey.js`，设置窗口和主进程都检查）：至少一个修饰键（Ctrl / ⌘ / Alt；只有 Shift 不行）+ 恰好一个已知普通键（A–Z、0–9、F1–F24、Space、Tab、Enter、方向键、Home/End/PageUp/PageDown、Insert/Delete、Backspace、Esc、常用标点）。不能用应用自己的组合（⌘/Ctrl+, 打开设置，⌘/Ctrl+Q/C/V/X/A/Z，⌘/Ctrl+Shift+Z）。被系统或其他应用占用（`globalShortcut.register` 返回 false 或抛错）的组合不保存，正在用的那个不变。
+- **手改 `settings.json`**：`asr.hotkey` 写 Electron accelerator（`CommandOrControl+Alt+V`）或 `""`（关闭）；读不懂的值回到默认。启动时被占用会在设置页显示「被占用」。
+- **限制**：Linux Wayland 会话下全局快捷键通常收不到（Electron 走 X11 的 XGrabKey；Wayland 需要桌面环境的 GlobalShortcuts 门户），请用 X11 会话或在桌面环境里另行绑定。macOS 不需要辅助功能权限。
 
 ## 2. 打开语音输入（两种方式通用）
 
@@ -48,6 +66,7 @@
 | 通用 | 语言（`asr.language`） | 否 | `auto` | `auto` 或 `zh`、`en`、`ja` 等语言代码 |
 | 通用 | 用不了时换另一个引擎（`asr.fallback`） | 否 | `false` | 打开后一种失败自动换另一种 |
 | 通用 | 识别后直接发送（`asr.autoSend`） | 否 | `false` | 关闭时只填进输入框 |
+| 通用 | 快捷键唤起语音对话（`asr.hotkey`） | 否 | `CommandOrControl+Shift+Space` | Electron accelerator；`""` = 关闭（1.1） |
 | 通用 | 单次最长录音秒数（`asr.maxSeconds`，仅文件） | 否 | `60` | 5–120 |
 | 方式一 LobeHub | 本机 `lh` 已登录（`lh login`） | **是** | — | 和聊天同一账号，不需要另外的 Key |
 | 方式一 LobeHub | 模型（`asr.lobehub.model`） | 否 | `gpt-4o-mini-transcribe` | `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`；provider 固定 `lobehub` |
@@ -276,6 +295,8 @@ node scripts/asr-transcribe.js clip.webm --engine local --endpoint http://127.0.
 | 命令 | 内容 |
 |---|---|
 | `npm test` | 包含 `test/asr.test.js`：两种 provider、每种错误原文到原因的映射、回退、暂停、超时、设置迁移、麦克风权限判断 |
+| `node --test test/voice-hotkey.test.js` | 快捷键：组合的解析 / 规范化 / 校验、应用内冲突、注册状态机（假 globalShortcut：启动注册、改动先注销再注册、清空、被占用、退出注销）、设置窗口保存路径 |
+| `xvfb-run -a node e2e/run.js voicehotkey` | 真 Electron：默认快捷键注册；语音输入关闭时唤出隐藏的桌宠并提示去设置；最小化时唤出 → 录音 → 再按识别（mock whisper）→ 输入框；直接发送并收到回复；麦克风被拒提示；设置页显示 / 录制组合，无效 / 应用内冲突 / 被占用（真实 `register` 返回 false）提示且不保存；改组合后旧的注销；清空 / 恢复默认；重启后被占用状态；退出注销。装了 xdotool 时 V2 通过 X11 真按一次快捷键。截图在 `out/e2e/voicehotkey/` |
 | `xvfb-run -a node e2e/run.js asr` | 真 Electron：Chromium 假麦克风（`--use-file-for-fake-audio-capture`）→ MediaRecorder → mock whisper 服务 → 输入框；覆盖开关、测试连接、点按 / 按住、Esc、太短、失败提示、直接发送、摄像头拒绝、重启后保留。不耗 token |
 | `PIXELPET_E2E_WHISPER=http://127.0.0.1:8179 PIXELPET_E2E_ASR_WAV=<语音.wav> xvfb-run -a node e2e/run.js asr` | 额外一步 A8：把假麦克风播放的语音发给真实的 whisper 服务 |
 | 再加 `PIXELPET_E2E_ASR_LOBEHUB=1`（agent 里再加 `PIXELPET_CLEAR_JWT=1`） | 额外一步 A8b：把同一段语音发给真实的 LobeHub 云端识别（用本机 `lh` 登录，消耗少量 Credits） |
