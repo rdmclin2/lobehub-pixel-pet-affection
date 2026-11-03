@@ -81,6 +81,22 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   assert.equal(d.fields.length, schema.FIELDS.length);
 });
 
+test('T-2787: no 形象包 wording left in the console copy (every look is a character of her own since T-2764)', () => {
+  // page titles / descriptions, nav, every field's label, card, description and option labels as the console shows them
+  const texts = [
+    ...Object.entries(schema.PAGES).flatMap(([k, p]) => [`${k}: ${p.title}`, `${k}: ${p.description || ''}`]),
+    ...schema.NAV.flatMap((g) => [g.label || '', ...g.items.map((i) => `${i.page}: ${i.label || ''}`)]),
+    ...schema.RAIL.map((r) => `${r.key}: ${r.label || ''}`),
+    ...schema.FIELDS.flatMap((f) => [`${f.key}: ${f.label}`, `${f.key}: ${f.card}`, `${f.key}: ${f.desc || ''}`, ...(f.options || []).map((o) => `${f.key}: ${o.label || ''}`)]),
+  ];
+  assert.ok(texts.length > 100, `${texts.length} strings`);
+  assert.deepEqual(texts.filter((t) => /形象包|跟随形象包|set-appearance|setAppearance/.test(t)), []);
+  // the pages that used to say it now speak of characters, outfits and 角色包
+  assert.match(schema.PAGES.characters.description, /给她换衣服/);
+  assert.match(schema.field('prefs.framing').desc, /角色包也可以自带默认取景/);
+  assert.match(schema.field('characterModel').desc, /每套形象成为一位独立角色/);
+});
+
 test('schema.validate: types, ranges, options, URLs and read-only items', () => {
   assert.deepEqual(schema.validate('prefs.roam', false), { ok: true, value: false });
   assert.equal(schema.validate('prefs.roam', 'no').reason, 'type');

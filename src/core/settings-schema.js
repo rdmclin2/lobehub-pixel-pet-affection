@@ -75,7 +75,7 @@ const NAV = [
 
 const PAGES = {
   overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
-  characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、换形象包、调她的模型和设定。' },
+  characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、给她换衣服、调她的模型和设定。' },
   play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
   packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
@@ -106,7 +106,7 @@ const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, ca
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
 add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
-add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，角色包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
@@ -173,7 +173,7 @@ add('answered', 'safety', '年龄确认', '已回答年龄确认', 'readonly', {
 add('ageConfirmed', 'safety', '年龄确认', '已确认满 18 周岁', 'readonly', { internal: true });
 add('ageConfirmedAt', 'safety', '年龄确认', '确认时间', 'readonly', { internal: true, format: 'time' });
 // T-2764: which character model the file is written under (core/character-migrate.js): 2 = every look is a character
-add('characterModel', 'about', '数据', '角色数据版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.CHARACTER_MODEL}；旧文件（按角色选形象包）在启动时迁移一次。` });
+add('characterModel', 'about', '数据', '角色数据版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.CHARACTER_MODEL}；旧版数据（一位角色带多套形象）在启动时迁移一次，每套形象成为一位独立角色。` });
 add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.AGE_GATE_VERSION}；版本不一致时会重新询问。` });
 
 // ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
