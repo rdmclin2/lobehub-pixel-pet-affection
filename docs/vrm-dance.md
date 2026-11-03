@@ -245,6 +245,18 @@ VMD 帧号按 30 fps；每个骨骼帧带 X / Y / Z / 旋转 4 条三次贝塞�
 - 输出 `.vrma`：节点树为参考骨架换算后的 humanoid rest（与现有 FBX 烘焙相同的 `writeVrma`），rotation 全骨骼 + translation 仅 hips + 可选表情轨道；用 `src/core/vrm.js` 的 `inspectVrmaJson` 校验。
 - 同时算出写进索引的度量（§5.3）：`duration`、`extent`（整段里双手 / 头相对 hips 的最大上方与侧向伸展，单位 hips 高度——相机取景用）、`stage.clampHits`（限幅生效帧占比）、`unmapped` 骨名、`ik`（`on` / `fk` / `mixed`）。
 
+### 2.11 D1 实现记录（T-2799）
+
+代码：`src/core/vmd.js`（解析 / 贝塞尔 / 采样 / 写 VMD）、`src/core/vmd-retarget.js`（参考骨架、映射、IK、限幅、表情、报告）、`src/core/vrma-write.js`（从 `scripts/lib/vrm-bake-core.js` 抽出的四元数工具与 `writeVrma` / `readVrma`，bake-core 原样 re-export，并新增表情轨道）、`scripts/vrm-bake.js --dance`、`scripts/vrm-dance-frames.js`（用 vendor 运行时在真实 VRM 上出静帧 + 世界坐标测量，供评审）。测试：`test/vmd.test.js`、`test/vmd-retarget.test.js`。
+
+实现中定下的细节（对上文的补充，不改变结论）：
+
+- **参考骨架**：`MMD_REF` 按约 20 单位高的标准 MMD 模型取值；腿在侧视里取「髋–踝连线上的膝」（rest 腿伸直），否则伸直时 VRM 膝会反折约 6°。A-pose 角由 `腕→ひじ` 算出为 38.35°。
+- **hips 原点**：输出的 hips 位移与 rest 节点都减去参考 `下半身` 的 x/z，静止站立 = 正好在原点。
+- **IK 模式**：先看 IK 开关段；但「足ＩＫ / 足IK親 从未动过、足 / ひざ 有 FK 帧」判为已烘成 FK（书记舞的 IK 段写着 on，IK 骨只有第 0 帧）。
+- **追加映射**：`上半身1`（部分模型在 上半身 与 上半身2 之间的一节）右乘并入 spine；`足先EX`（准标准骨架的脚尖）并入 toes。
+- **报告**：`bake.json` / `retargetVmd().report` 含 `ikStats`（FK 复核误差、最远目标 / 腿长、伸直占比、膝角范围）、`stage.clampHits`、`extent`、`ground`、`bones.mapped/ignored/unmapped/animated`、`morphs`、`fingers`。
+
 ---
 
 ## 3. 与现有动作层的关系
