@@ -6,8 +6,11 @@ PASS  [admincov] B4 装扮 → 衣柜: a click in the settings window dresses he
 PASS  [admincov] B5 桌宠行为: 宠物大小 slider → the pet window grows at once; 自己走动 switch saved; 找回桌宠 puts her back bottom-right — --pet-scale 1.25 → 0.5, window 268×388 → 230×260; prefs.roam → false (file and pet window); 找回桌宠 (10,10) → (1026,740) = work area bottom-right; b5-behavior.png, b5-pet-before.png, b5-pet-after-50.png, b5-behavior-after.png
 PASS  [admincov] B6 主动搭话与好感: page screenshot; 主动说话 off is saved and its thresholds grey out — proactive.enabled → false; b6-proactive.png, b6-proactive-off.png
 PASS  [admincov] B7 版本与更新: 自动检查更新 switch (new, was only PIXELPET_NO_UPDATE) saved at once — update.autoCheck → false in settings.json; b7-update.png
-PASS  [admincov] B8 数据与关于: the data folder's path is shown and 打开数据目录 answers — shows /tmp/pp-admincov-hBAQSo; b8-about.png
+PASS  [admincov] B8 数据与关于: the data folder's path is shown and 打开数据目录 answers — shows /tmp/pp-admincov-sUR7ad; b8-about.png
 PASS  [admincov] B9 大肥鱼 in her imported Live2D: 角色详情 → 装扮 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window) — l2d-dafeiyu-medium live2d.height → 0.3 in pack.json; b9-pet-live2d-before.png, b9-pet-live2d-after.png, b9-dafeiyu-looks.png
 PASS  [admincov] B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kind and 角色包, and the 衣柜 note for one not met — b10-dafeiyu-about.png, b10-claude-looks-vrm.png, b10-gemini-about.png
 PASS  [admincov] B12 every user-configurable schema field is rendered as a control on its page (DOM export), and the roster data is real — 73 fields on 10 pages all rendered; b12-admin-dom-fields.json, b12-roster-data.json
 PASS  [admincov] B11 no console errors in the settings window — none
+
+13/13 passed
+exit=0

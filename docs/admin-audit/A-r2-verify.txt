@@ -1,0 +1,31 @@
+# 实施包 A 第 2 轮验证原始输出（HEAD a067563 + 本轮 e2e 修正，worktree feat/admin-ia-polish）
+
+## npm test (tail)
+✔ idle clip with a held key (a flat stretch, like idle_loop.vrma's last 0.46 s): the moved bones keep the clip's pose, not the T-pose (36.58484ms)
+ℹ tests 759
+ℹ suites 0
+ℹ pass 758
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 63241.409324
+exit=0
+
+## npx tsc -p admin
+tsc exit=0
+
+## npm run build:admin (tail)
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.43s
+build exit=0
+
+## lint-lobe
+$ node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/Shell.tsx admin/src/console/ConsoleApp.tsx admin/src/console/store.tsx admin/src/console/SettingsForm.tsx admin/src/console/fields.tsx admin/src/console/pages/Home.tsx admin/src/console/pages/Hub.tsx admin/src/console/pages/Pages.tsx admin/src/console/common/index.tsx
+LOBE-DESIGN · LINT   9 file(s)   platform=desktop（product.md）   项目层不适用：P-06, P-07, P-08, P-09   lint-allow：LOBE-FONT-FAMILY LOBE-RAW-COLOR LOBE-SPACING-OFFGRID LOBE-LETTER-SPACING LOBE-MOTION-DURATION LOBE-BOUNCE LOBE-GLOW LOBE-EMOJI-ICON LOBE-NULLISH-RENDER src/renderer/** | LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/** | LOBE-MOTION-DURATION admin/src/console/stage/**
+WARN
+  [LOBE-MULTI-PRIMARY] admin/src/console/pages/Pages.tsx:493  3 个 primary
+      → 同一文件出现多个 primary 按钮；一屏只有一个主 CTA，对应 brief 的主任务（W-01 · 40-flow）
+RESULT: 0 FAIL, 1 WARN
+lint exit=0

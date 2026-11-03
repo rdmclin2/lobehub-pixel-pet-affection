@@ -10413,8 +10413,10 @@ async function adminScenario() {
       await go('/reset');
       await admin.click('[data-release="local"]');
       await admin.getByRole('dialog').getByText('仅重置本地？').waitFor({ timeout: 5000 });
+      await admin.waitForTimeout(400); // A16: askAsync's Modal fades in (C round 2, S-7) — shoot it settled, not mid-fade
       await ashot('reset-dialog');
       await admin.getByRole('dialog').getByRole('button', { name: '先不了' }).click();
+      await admin.getByText('仅重置本地？').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
       await ashot('reset');
       return `safety: adult + local; about: theme, quit, no dup folders; update → 「${upd.trim()}」; reset dialog shown, 先不了 closes it`;
     }, () => admin);
@@ -10456,8 +10458,11 @@ async function adminScenario() {
         await a2.click('[data-release="local"]');
         await a2.getByRole('dialog').getByRole('button', { name: '仅重置本地' }).click();
         await a2.waitForFunction(() => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && /已重置本地：进度和聊天记录已清除/.test(el.textContent || '')), null, { timeout: 15000 });
+        // A16 (PG-03): the dialog closes only after main answered ok. askAsync renders its own Modal since C's round 2
+        // (S-7), whose close animation keeps the title in the DOM for a moment — wait for it to go, don't count at once
+        await a2.getByText('仅重置本地？').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+        assert.equal(await a2.getByText('仅重置本地？').isVisible(), false, 'the dialog closed only after it worked');
         await a2.screenshot({ path: path.join(SHOTS, 'A-after-reset-done.png') });
-        assert.equal(await a2.getByText('仅重置本地？').count(), 0, 'the dialog closed only after it worked');
         return `仅重置本地 → toast 已重置本地 (dialog closed after main answered); after restart: proactive=${JSON.stringify(st.proactive)} characterId=grok-classic; hardware acceleration ${before} → ${after} (pendingRestart [])`;
       } finally {
         await again.app.close().catch(() => {});

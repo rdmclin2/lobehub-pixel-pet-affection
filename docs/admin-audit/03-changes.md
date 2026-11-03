@@ -47,7 +47,7 @@
 | --- | --- | --- | --- |
 | A-D1 | A07 / §1.4：主题、硬件加速放进「设置窗口」卡 | 卡名改为「显示」 | 硬件加速影响的是桌宠窗口的绘制，放在「设置窗口」卡名下是口径错误（W-03 专名与口径一致） |
 | A-D2 | S-5：需重启的项弹 `toast.warning`（id `restart`）+「立即重启」 | 不另弹 toast，用 Shell 已有的常驻「X：重启应用后生效 · 立即重启」横幅 + 内联「已保存」 | 横幅本来就在且原地刷新，再弹一条 toast 是同一件事说两遍（W-07） |
-| A-D3 | S-7 / C-15：提交期间弹窗不可关闭 | `confirmModal` 的确认按钮会进入 loading，但「取消」不能被禁用；提交中点取消会关窗，请求仍执行，结果仍按 toast 报告 | `@lobehub/ui` `confirmModal` 不提供 cancel 的禁用属性；不自建 Modal 以遵守「原子组件用 @lobehub/ui」。后续若上游支持 `cancelButtonProps` 再补 |
+| A-D3 | S-7 / C-15：提交期间弹窗不可关闭 | **第 2 轮已补齐**：C 包 `901fa71` 把 `askAsync` 改成 `@lobehub/ui` `Modal` 渲染（`AskHost`），执行期间「取消」禁用、✕ / Esc / 点遮罩都关不掉。A 包的调用方（重置与放生、清空语音缓存、换令牌）无需改动 | 第 1 轮时 `confirmModal` 不能禁用取消；改为 `Modal`（仍是 @lobehub/ui 原子组件）后满足 S-7。A 在第 2 轮修正了 e2e 断言以适配新 Modal 的关闭动画（见 A.6） |
 | A-D4 | A19：「导入语音包…」 | 未做（方案 §4 PG-08 已标「部分不做」） | 需要主进程新增文件复制与校验 IPC，不影响 IA；本期做了空态说明 +「打开文件夹」 |
 | A-D5 | A06 插个嘴页、A04「重新开始对话」、A18「退出应用」 | 页面组件 / 聊天页 ⋯ 菜单 / 桌面上的她移除退出由 C 包完成；A 负责 schema、路由、关于与数据的退出按钮 | 与 C 包在同一工作区协作，按 02-plan §5.1 文件归属避免两个包改同一函数 |
 | A-D6 | A08 三个按钮直达标签 | A 写好链接（`/characters/:id/affection|looks|model`），落到对应标签依赖 B02 的详情路由 | 02-plan §5.1 顺序：A08 依赖 B02 |
@@ -108,6 +108,32 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 - `160a394` 在 amend 时**误带入了实施包 B 当时已暂存的源码**（`pages/Characters.tsx`、`pages/character/*`、`roster-model.ts`、`stage/*`、`useHashPath.ts`、`test/roster-model.test.js`）。这些改动的作者与说明归 B 包（见 B 小节与 `baa4b2f`）；三个包已商定不改写历史。
 - 共享文件只提交了 A 的部分：`e2e/run.js`（admin 场景断言、`adminRelease` 改走 `#/reset`、admincov B12 展开「其他引擎」、frontslim F12 / F14 / F16 / F17）、`test/admin-console.test.js`（schema 断言）、`src/core/admin-coverage.js`（隐私与安全 / 关于与数据的落位文案）；`Pages.tsx` 中 `ProactivePage` / `BehaviorPage` 归 C。
 - 依赖：A 引用 B 的 `roster-model.ts`（`resolveCharacter` / `lookName` / `groupRoster` / `detailHref`）与 C 的 `InterjectPage`。
+
+
+### A.6 第 2 轮：在当前分支 HEAD 上重跑全部验证
+
+> 背景：第 1 轮的验证跑在 A + B + C 当时的隔离副本上。此后 B、C 各提交了第 2 轮（`4b119be`、`34105f6`、`cf690a5`、`bf3e238`、`901fa71`、`a067563`），其中 `901fa71` 改了 A 的共享件 `askAsync`。本轮在 `a067563` 上重跑，原始输出见 `A-r2-verify.txt`、`A-after-e2e-*.txt`。
+
+**本轮改动（仅 `e2e/run.js` 中 A 写的断言，产品代码无变化）**
+
+| 位置 | 问题 | 改动 |
+| --- | --- | --- |
+| admin 场景 A17 末尾「仅重置本地」 | PG-03（A16） | 在 HEAD 上首跑失败：`the dialog closed only after it worked 1 !== 0`。原因是 `askAsync` 改由 `Modal` 渲染，成功后关闭有淡出动画，旧断言在 toast 出现的同一刻数 DOM。产品行为正确（主进程返回成功后才关）。改为等标题 `hidden`（5s）后再断言不可见；「重置完成」截图挪到断言之后，拍到弹窗已关的状态 |
+| AIA5 / 截图 `reset-dialog`、`reset` | PG-03（A16） | 弹窗出现后等 400ms 再截图（之前拍到淡入半透明），点「先不了」后等弹窗隐藏再拍 `reset` |
+
+**验证结果（HEAD `a067563` + 上述断言修正）**
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| 单元测试 | `npm test` | **758 pass / 0 fail / 1 skipped**（759 项），exit 0 |
+| 类型检查 | `npx tsc -p admin` | exit 0 |
+| 构建 | `npm run build:admin` | `✓ built in 1.43s`，`src/admin-ui/` 已更新（被 gitignore） |
+| lobe-design lint | `node .agents/skills/lobe-design/scripts/lint-lobe.mjs` Shell / ConsoleApp / store / SettingsForm / fields / Home / Hub / Pages / common/index.tsx | **0 FAIL**，1 WARN（同 A.4 的 `LOBE-MULTI-PRIMARY`，Pages.tsx 三个 primary 分属不同页面 / 互斥状态） |
+| e2e admin | `unset ELECTRON_RUN_AS_NODE; xvfb-run -a node e2e/run.js admin` | 修正前 28/29（A17 见上）；修正后 **29/29 PASS** |
+| e2e admincov | `xvfb-run -a node e2e/run.js admincov` | **13/13 PASS** |
+| e2e frontslim | `xvfb-run -a node e2e/run.js frontslim` | **19/19 PASS** |
+
+**截图**：`docs/admin-audit/screenshots/A-after-*.png` 共 31 张已用本轮 admin 场景的输出全部重新覆盖（与 A.3 表格同名），反映 HEAD 的实际界面；`A-before-*` 仍为基线 `1fe0a5e` 所拍，未变。
 
 ---
 

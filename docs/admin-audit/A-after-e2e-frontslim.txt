@@ -4,16 +4,19 @@ PASS  [frontslim] F3 点 ⚙ 设置 打开后台（单实例），落在 小屋 
 PASS  [frontslim] F4 右键她 → 打开后台（不再弹菜单）；Ctrl+, 也打开后台 — right click → settings window (pet popups open: 0); Ctrl+, → settings window (1)
 PASS  [frontslim] F5 升阶 Toast「去衣柜看看」→ 后台她的页（衣柜），点衣服立即换上 — toast button 「去衣柜看看」 → #/characters/grok-pixel; outfits daily✓ scarf casual beret idol pajamas cat_ears swimsuit yukata bikini qipao couple_hoodie🔒 flower_crown🔒; wore scarf (pet view.outfit=scarf)
 PASS  [frontslim] F6 话题 → 后台 玩法 › 话题：点「聊聊」她在桌面上开口 — 11/13 topics unlocked; 聊聊 intro → pet bubble 「echo: [话题] 自我介绍：跟主人简单介绍一下你自己，顺便问问主人怎么称呼。」; lh agent run
-PASS  [frontslim] F7 聊天记录 → 后台 聊天（#/history 重定向到她的会话，C01） — #/history → #/chat/grok-pixel; thread: user: 18:53:07 你好呀，今天过得怎么样？ 桌面 | assistant: 18:53:07 echo: 你好呀，今天过得怎么样？ 桌面
+PASS  [frontslim] F7 聊天记录 → 后台 聊天（#/history 重定向到她的会话，C01） — #/history → #/chat/grok-pixel; thread: user: 22:22:29 你好呀，今天过得怎么样？ 桌面 | assistant: 22:22:29 echo: 你好呀，今天过得怎么样？ 桌面
 PASS  [frontslim] F8 动作 → 后台 玩法 › 桌面上的她：9 个动作逐个点，桌宠执行 — buttons look:东张西望 turn:转身 walk:走两步 happy:开心 pat:害羞 play:玩耍 think:想事情 sad:委屈 evolve:闪亮登场; results look=ok(look) turn=ok(turn) walk=ok(walk) happy=ok(happy) pat=ok(pat) play=ok(play) think=ok(think) sad=ok(sad) evolve=ok(evolve)
-PASS  [frontslim] F9 回到右下角 → 后台 桌面上的她 › 找回桌宠（C11）：被拖走的桌宠回到右下角 — pet window 871,612 → 988,612 (268x388; work area 1280x1024)
+PASS  [frontslim] F9 回到右下角 → 后台 桌面上的她 › 找回桌宠（C11）：被拖走的桌宠回到右下角 — pet window 100,100 → 988,612 (268x388; work area 1280x1024)
 PASS  [frontslim] F10 角色列表 → 后台 角色：图鉴与她的页 — 5 character entries; /characters/claude title 「克洛蒂 · 像素（Anthropic）」
 PASS  [frontslim] F11 重新开始话题 → 后台 聊天 › ⋯ › 重新开始对话（C04）：二次确认后开新话题 — confirm 「和小蓝重新开始对话？ 她会从头聊起，不再带着之前的对话上下文。旧对话保留在 LobeHub 里；好感和这里的聊天记录都不变。 先不了 重新开始对话」; topicEpoch 0 → 1
 PASS  [frontslim] F12 本机能力开关 → 后台 LobeHub 与本机：开（二次确认）→ 关 — confirm 「开启本机能力？ 她将可以在这台电脑上读写文件、运行命令。只在你信任当前模型和设定时开启。 取消 开启本机能力」; local false → true → false
 PASS  [frontslim] F13 成人向内容开关 → 后台 设置 › 内容与安全：年龄确认后打开，再关闭 — dialog 「确认你已年满 18 周岁？ 成人向外观和服饰只对已满 18 周岁的人开放。选择「我已满 18 周岁」即表示你确认自己已成年。 取消 我已满 18 周岁」 → 「我已满 18 周岁」; adultContent false → true → false
 PASS  [frontslim] F14 检查更新 / 新版本 → 后台 版本与更新；有新版本时 ⚙ 出现红点并直达该页 — first check: 已是最新版本 v0.22.0 · 刚刚检查; then ⚙ title 「有新版本 v9.9.9：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）」 → #/update, button 「下载新版本 v9.9.9」; opened []
-PASS  [frontslim] F15 打开错误日志 / 素材署名 → 后台 设置 › 数据与关于 — log file created → true ($TMP/pp-slim-UFtb5C/pixel-pet.log); credits 「」
+PASS  [frontslim] F15 打开错误日志 / 素材署名 → 后台 设置 › 数据与关于 — log file created → true ($TMP/pp-slim-FjOGjt/pixel-pet.log); credits 「」
 PASS  [frontslim] F16 仅重置本地 → 隐私与安全 › 重置与放生：二次确认（先取消一次），确认后回到选角页、LobeHub agent 保留 — confirm 「仅重置本地？ 只删除本机的进度和聊天记录，LobeHub 里的 agent 保留。设置和导入的角色包保留。不能撤销。 先不了 仅重置本地」; after 取消 still has a pet: true; after 确认: onboarding shown, lh agent delete calls 0
-PASS  [frontslim] F17 放生并删除 agent → 隐私与安全 › 重置与放生：二次确认后删除 LobeHub agent — confirm 「放生并删除 agent？ 会删除本机进度和聊天记录，并在 LobeHub 里删除每位角色的 agent（含 LobeHub 里的聊天记录）。设置和导入的角色包保留。不能撤销。 先不了 放生并删除 agent」; lh agent delete ×1 (agt_FAKE1793728406078718); pet back on onboarding
+PASS  [frontslim] F17 放生并删除 agent → 隐私与安全 › 重置与放生：二次确认后删除 LobeHub agent — confirm 「放生并删除 agent？ 会删除本机进度和聊天记录，并在 LobeHub 里删除每位角色的 agent（含 LobeHub 里的聊天记录）。设置和导入的角色包保留。不能撤销。 先不了 放生并删除 agent」; lh agent delete ×1 (agt_FAKE1793740968420527); pet back on onboarding
 PASS  [frontslim] F18 退出 → 后台 设置 › 系统 › 关于与数据 › 退出应用（C11 / A18）：二次确认后整个应用退出 — confirm 「退出桌宠？ 桌宠和设置窗口都会关闭。进度和设置都已保存。 取消 退出」; app process exit code 0
 PASS  [frontslim] F19 无页面错误；菜单项 → 后台入口 对照表 — page errors 0; 16 entries: 设置 → ⚙ 设置按钮 / 右键 / Ctrl+, → 后台 小屋 ; 话题（原工具栏按钮） → 玩法 › 和她一起 › 话题（聊聊） ; 聊天记录 → 聊天（rail）› 她的会话（全部历史） ; 动作… → 玩法 › 和她一起 › 桌面上的她 › 动作（9 个） ; 回到右下角 → 玩法 › 和她互动 › 桌面上的她 › 找回桌宠 ; 角色列表 → 角色（rail）› 角色图鉴 › 她的页 ; 重新开始话题 → 聊天 › ⋯ › 重新开始对话（二次确认） ; 本机能力：开/关 → 设置 › 隐私与安全 › 成人向与本机能力 › 本机能力（开启需二次确认） ; 成人向内容：开/关 → 设置 › 隐私与安全 › 成人向与本机能力 › 成人向内容（打开需 18+ 确认） ; 检查更新 → 设置 › 系统 › 版本与更新 › 检查更新 ; 新版本（下载/立即更新） → ⚙ 红点 → 版本与更新 › 下载新版本 / 立即更新 ; 打开错误日志 → 设置 › 系统 › 关于与数据 › 打开错误日志 ; 素材署名 → 设置 › 系统 › 关于与数据 › 素材署名（折叠） ; 仅重置本地 → 设置 › 隐私与安全 › 重置与放生 › 仅重置本地（二次确认，弹窗内执行） ; 放生并删除 agent → 设置 › 隐私与安全 › 重置与放生 › 放生并删除 agent（二次确认，弹窗内执行并报告删除数） ; 退出 → 设置 › 系统 › 关于与数据 › 退出应用（二次确认）
+
+19/19 passed
+exit=0
