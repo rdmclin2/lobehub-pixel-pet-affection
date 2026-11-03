@@ -1594,7 +1594,7 @@ const ASR_REASON = {
   server: '识别服务出错了。',
   'bad-audio': '这段录音没法识别。',
   'not-configured': '语音输入没开，或者没选识别引擎。',
-  'mic-denied': '没有麦克风权限。macOS：系统设置 → 隐私与安全性 → 麦克风，允许本应用；Windows：设置 → 隐私 → 麦克风。',
+  'mic-denied': '没有麦克风权限。', // + what to do on this system (MIC_FIX)
   'no-mic': '没找到麦克风。',
   'mic-error': '麦克风打不开',
   canceled: '已取消。',
@@ -1604,7 +1604,15 @@ let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
 
+// 麦克风被拒: what to do, for the system she runs on (docs/asr.md §5)
+const OS = /mac/i.test(navigator.platform) ? 'mac' : /win/i.test(navigator.platform) ? 'win' : 'linux';
+const MIC_FIX = {
+  mac: '到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。',
+  win: '到 设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。',
+  linux: '到 系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 pactl list sources short 查看）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风。',
+};
 function asrReasonText(r) {
+  if (r.reason === 'mic-denied') return `${ASR_REASON['mic-denied']}${MIC_FIX[OS]}`;
   const base = ASR_REASON[r.reason] || (String(r.reason || '').startsWith('http-') ? `识别服务返回了错误 ${r.reason.slice(5)}。` : `识别失败（${r.reason || '未知原因'}）。`);
   if (r.reason === 'network') return `${base}：${(settings && settings.asr && settings.asr.local.endpoint) || ''}。它开着吗？`;
   if (r.reason === 'mic-error') return `${base}（${String(r.message || '').slice(0, 60)}）。`;
@@ -1821,7 +1829,7 @@ function endVoiceCall(outcome, r = null) {
     $('chat-input').focus();
   } else if (outcome === 'fail') {
     const denied = r && (r.reason === 'mic-denied' || r.reason === 'no-mic' || r.reason === 'mic-error');
-    const text = r && r.reason === 'mic-denied' ? '（我听不到你：麦克风权限被拒绝了。在系统设置里允许本应用使用麦克风，再按一次快捷键试试。）'
+    const text = r && r.reason === 'mic-denied' ? '（我听不到你：麦克风权限被拒绝了，办法在下面的提示里。）'
       : denied ? `（我听不到你：${asrReasonText(r)}）`
         : `（${asrReasonText(r)}）`;
     say(text, 'error', 'hotkey', (r && r.reason) || 'failed');
@@ -1843,7 +1851,8 @@ function onVoiceHotkey(p) {
   const label = hotkeyLabel(p);
   if (!asrOn()) {
     const why = settings && settings.asr && settings.asr.enabled ? '识别引擎选了「关闭」' : '语音输入还没开';
-    say(`（${why}，我听不到你。去 设置 → 语音输入 打开它，再按 ${label} 就能直接和我说话。）`, 'hint', 'hotkey', 'asr-off');
+    // short enough for the two lines the bubble has above her; how to turn it on is in the notice below
+    say(`（${why}，我听不到你～打开方法在下面的提示里。）`, 'hint', 'hotkey', 'asr-off');
     showNotice('🎤 语音输入还没开', `${why}。在 设置 → 语音输入 打开并选一个识别引擎（LobeHub 云端或本地 whisper），再按 ${label} 就能和她语音对话。`, { label: '去设置', admin: 'asr' });
     voiceHold(VOICE_HOLD_MS.hint);
     logVoice('asr-off');
