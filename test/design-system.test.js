@@ -69,7 +69,8 @@ test('admin window stays offline: strict CSP and no remote web fonts', () => {
   const html = read('admin/index.html');
   const csp = html.match(/Content-Security-Policy"\s+content="([^"]+)"/)[1];
   assert.match(csp, /default-src 'self'/);
-  assert.match(csp, /script-src 'self'/);
+  assert.match(csp, /script-src 'self'( 'wasm-unsafe-eval')?;/);
+  assert.doesNotMatch(csp, /'unsafe-eval'/, 'no JS eval (WebAssembly only, for the chat code highlighter)');
   assert.doesNotMatch(csp, /https?:/);
   assert.match(read('admin/src/design/DesignProvider.tsx'), /enableCustomFonts=\{false\}/);
   assert.doesNotMatch(read('admin/src/design/DesignProvider.tsx'), /<FontLoader/);

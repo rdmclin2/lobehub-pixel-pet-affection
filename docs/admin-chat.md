@@ -138,3 +138,15 @@ LobeHub 的 Responses API（`POST {server}/api/v1/responses`，认证同 `Respon
 
 - 单元测试：`node --test test/admin-chat.test.js`（会话增删改查与重启恢复、历史顺序与多轮上下文拼装、图片校验、模型列表过滤、真实 `ResponsesClient` 经假 SSE 服务端的流式 / 报错 / 中止、preload 与本文档一致）；`npm test` 全量。
 - 端到端：`xvfb-run -a node e2e/run.js adminchat`（假 lh + 假 Responses SSE，不花 token）在真实设置窗口的渲染进程里调用 `petAdmin.chat`，订阅 `onDelta` / `onDone`，覆盖模型、流式、多轮、图片、中止、重启恢复；`adminchat-live` 是同样的步骤对真实 LobeHub（会花少量 token，结束后删除建出的聊天 agent）。截图与日志在 `out/e2e/adminchat*/`，`PIXELPET_E2E_VIDEO=1` 另录视频。
+
+## 5. 聊天页（设置窗口 UI，T-2765）
+
+`admin/src/console/pages/Chat.tsx`，rail 第五个入口「聊天」→ `#/chat`（R-05 的例外，理由见 `.agents/ux/lobe-design-rules.md`）。页面铺满主区域：
+
+- **会话栏**：新建（当前会话还是空的就只聚焦输入框，不堆空会话）、点击切换、悬停删除（确认弹窗）；正在回复的会话旁有转圈。上次打开的会话 id 存在 `localStorage`（`pixelpet.adminChat.session`），刷新 / 回到本页时用 `getSession` 读回历史和图片。
+- **顶栏**：会话标题与条数、模型 `Select`（`listModels` 的列表，支持视觉的带「视觉」标签，同名模型标出 provider；切换即 `setModel`，由主进程记住）、刷新模型列表、清空会话（确认）。
+- **消息区**：`@lobehub/ui/chat` 的 `ChatItem`（Markdown，代码块由 shiki 高亮，因此 CSP 加了 `'wasm-unsafe-eval'`）；生成中的气泡显示 `LoadingDots` / 逐段文字和「正在生成」；中止的标「已停止」，出错的显示错误和「重试」（把这一轮的文字和图片再发一次）。贴底时跟随新内容，上翻后不拉回，出现「回到最新消息」。
+- **输入卡片**：`ChatInputAreaInner`（Enter 发送、Shift+Enter 换行、输入法组字时不发送）+ 图片按钮（主进程文件框）+ 粘贴 / 拖入图片（≤ 4 张，PNG/JPG/WebP/GIF，≤ 10 MB，作为 data URL 发送）；缩略图可点开放大、可移除；所选模型不支持视觉时提示且不发送。`ChatSendButton` 在回复中变为「停止」（`abort`）。
+- 同一时间只有一轮回复（主进程限制）：别的会话在回复时，输入框提示稍后再发。
+
+端到端：`xvfb-run -a node e2e/run.js chatui`（`e2e/chat-ui.js`，假 lh + 假 Responses SSE，不花 token），截图在 `out/e2e/chatui/`，`PIXELPET_CHATUI_SHOTS=<dir>` 另拷一份。

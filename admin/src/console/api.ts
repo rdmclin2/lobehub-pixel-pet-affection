@@ -254,6 +254,106 @@ export interface PetAdminApi {
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
+  /** 聊天 (docs/admin-chat.md): the settings window's own AI chat, never through the pet. */
+  chat: ChatApi;
+}
+
+// --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
+
+export interface ChatModel {
+  hosted: boolean;
+  id: string;
+  key: string;
+  label: string;
+  providerId: string;
+  vision: boolean;
+}
+
+export interface ChatSessionSummary {
+  createdAt: number;
+  id: string;
+  messageCount: number;
+  model: string | null;
+  preview: string;
+  title: string;
+  updatedAt: number;
+}
+
+export interface ChatAttachment {
+  id: string;
+  mime: string;
+  name: string;
+  size: number;
+  /** data URL; null when the file is gone */
+  url: string | null;
+}
+
+export interface ChatMessage {
+  attachments: ChatAttachment[];
+  createdAt: number;
+  error?: string;
+  id: string;
+  model: string;
+  role: 'user' | 'assistant';
+  status: 'done' | 'error' | 'aborted';
+  text: string;
+}
+
+export interface ChatSession extends ChatSessionSummary {
+  messages: ChatMessage[];
+  streaming: boolean;
+}
+
+export type ChatImageInput = { path: string } | { dataUrl: string; name?: string } | string;
+
+export interface ChatPickedImage {
+  dataUrl: string;
+  mime: string;
+  name: string;
+  path: string;
+  size: number;
+}
+
+export interface ChatSendResult {
+  code?: string | null;
+  error?: string;
+  message?: ChatMessage;
+  ok: boolean;
+  reason?: string;
+  session?: ChatSessionSummary;
+  sessionId?: string;
+  userMessage?: ChatMessage;
+}
+
+export interface ChatDelta {
+  delta: string;
+  messageId: string;
+  sessionId: string;
+  text: string;
+}
+
+export interface ChatDone {
+  error?: string;
+  message: ChatMessage;
+  messageId: string;
+  ok: boolean;
+  reason?: 'aborted' | 'error';
+  sessionId: string;
+}
+
+export interface ChatApi {
+  abort: (sessionId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
+  clearSession: (id: string) => Promise<{ ok: boolean; message?: string; session?: ChatSession }>;
+  createSession: (title?: string) => Promise<{ ok: boolean; session: ChatSessionSummary }>;
+  deleteSession: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  getSession: (id: string) => Promise<{ ok: boolean; message?: string; reason?: string; session?: ChatSession }>;
+  listModels: (force?: boolean) => Promise<{ error: string | null; models: ChatModel[]; ok: boolean; selected: string | null }>;
+  listSessions: () => Promise<{ ok: boolean; sessions: ChatSessionSummary[] }>;
+  onDelta: (cb: (d: ChatDelta) => void) => () => void;
+  onDone: (cb: (d: ChatDone) => void) => () => void;
+  pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
+  send: (req: { images?: ChatImageInput[]; model?: string; sessionId: string; text?: string }) => Promise<ChatSendResult>;
+  setModel: (key: string) => Promise<{ message?: string; ok: boolean; reason?: string; selected?: string }>;
 }
 
 /** 聊天记录 (PetService.history / historySession): only the conversations the owner started. */

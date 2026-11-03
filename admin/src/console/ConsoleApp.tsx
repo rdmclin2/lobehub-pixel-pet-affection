@@ -1,6 +1,7 @@
 import { Alert, Center, Flexbox, Spin, Text } from '@lobehub/ui';
 
 import { useHashPath } from '../useHashPath';
+import { ChatPage } from './pages/Chat';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
@@ -16,6 +17,8 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <OverviewPage navigate={navigate} />;
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
+    case 'chat':
+      return <ChatPage />;
     case 'play':
       return <HubPage key="play" place="play" />;
     case 'settings':

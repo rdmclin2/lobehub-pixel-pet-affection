@@ -8,7 +8,7 @@
 
 | 场景 | 用什么 | 注意 |
 | --- | --- | --- |
-| 窗口骨架、导航 | `Shell`（`admin/src/console/Shell.tsx`）：80px rail 只放 小屋 / 角色 / 玩法 / 设置 四个入口，其余页面在下一层（入口卡片 → 页面，列表 → 详情） | 不要把每个页面都挂到侧栏（R-05）；路由用 hash（`#/characters/claude`），链接是 `href="#…"` 的锚点 |
+| 窗口骨架、导航 | `Shell`（`admin/src/console/Shell.tsx`）：80px rail 放 小屋 / 角色 / 玩法 / 设置 四个入口 + 聊天（R-05 例外），其余页面在下一层（入口卡片 → 页面，列表 → 详情） | 不要把每个页面都挂到侧栏（R-05）；路由用 hash（`#/characters/claude`），链接是 `href="#…"` 的锚点 |
 | 页面标题 | `PageHeader`（dashboard） | 每页一个；主操作放 `action` |
 | 信息卡片 | `Surface`（dashboard）/ `Block` | 不手写边框 + 背景（D-06） |
 | 设置表单 | `Form` + `useForm`（**`@lobehub/ui/form`**），`itemsType="group"` `variant="filled"` | 根入口的 `Form` 不带校验（`LOBE-FORM-ENTRY`）；开关字段写 `valueProp: 'checked'` |
@@ -35,6 +35,7 @@
 | `SpriteStage`（`console/stage/`） | 任何要画角色的地方：卡片、头像、衣柜、舞台 | 按包的 `actions` 播放；列表里传 `animate={false}` 或依赖视口暂停；没遇见的用 `silhouette` |
 | `CharacterStage` | 一页的主角：小屋、角色详情、玩法顶部 | 一页一个（签名动作只有一个）；`interactive` 时点她 → 爱心 + 台词 + 桌宠联动 |
 | `HeartMeter` | 好感：卡片里用 `compact`，详情 / 小屋用完整版（阶段节点） | 颜色来自 `--pet-accent`，不另造状态色 |
+| `ChatPage`（`console/pages/Chat.tsx`） | 聊天（`#/chat`）：会话栏 + 消息区 + 输入卡片，数据全部来自 `petAdmin.chat`（docs/admin-chat.md） | 消息用 `@lobehub/ui/chat` 的 `ChatItem`（Markdown、错误 + 重试）；输入用 `ChatInputAreaInner` + `ChatInputActionBar` + `ChatSendButton`（不用会铺满定位的 `ChatInputArea`）；图片用 `Image` + `PreviewGroup` 放大；模型用 `Select` |
 | `HubPage`（`console/pages/Hub.tsx`） | 玩法 / 设置 的入口卡片 | 卡片写当前状态一句话，不放开关（开关在下一层的表单里） |
 
 ## 与 lobe-ui 重复
