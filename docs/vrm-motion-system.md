@@ -487,7 +487,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 |---|---|
 | P0（本期必达） | 解耦（intent/director、CSS 豁免、删除程序化大动作）；Mixamo FBX 烘焙；姿势 5 种、idle 每套 ≥ 3、反应 ≥ 6（男女两套）；life 层；表情/口型；style 推断；`vrmlib://`；单测 + e2e + liliya/vroid 真实验收 |
 | P1 | VMD 烘焙（上半身）替换降级素材；腿部 IK 后开放坐下/起身/走路 VMD；`zoneRects()`；候选片段预览器 |
-| P2 | 蹲/躺姿势；舞蹈（`dances/`，本期不做） |
+| P2 | 蹲/躺姿势；舞蹈（`dances/`，本期不做；方案见 [`docs/vrm-dance.md`](vrm-dance.md)，其 §2.3 更正了本文 §3.7 中「手捩」的归属：并入前臂 lowerArm，而不是 hand） |
 
 | 风险 | 应对 |
 |---|---|
