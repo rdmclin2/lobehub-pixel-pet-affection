@@ -3874,6 +3874,7 @@ async function voice() {
       assert.equal(sp.engine, 'elevenlabs');
       assert.notEqual(sp.provider, 'elevenlabs');
       assert.deepEqual(sp.fellBackFrom.filter((f) => f.provider === 'elevenlabs'), [{ provider: 'elevenlabs', reason: 'no-key' }]);
+      await admin.locator('[data-has-key="keys.elevenlabs"]').scrollIntoViewIfNeeded();
       await ashot('v17-elevenlabs-no-key');
       // 不出声: straight from the engine (the IPC the pet window uses), the result says why
       await seg('引擎用不了时', '不出声');
