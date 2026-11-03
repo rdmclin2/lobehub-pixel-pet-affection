@@ -1,0 +1,9 @@
+(node:3624) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/ubuntu/develop/rdmclin2/pixel-pet-ia-polish/admin/src/console/roster-model.ts is not specified and it doesn't parse as CommonJS.
+ℹ tests 758
+ℹ suites 0
+ℹ pass 757
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 64028.882417
