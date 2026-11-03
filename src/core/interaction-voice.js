@@ -62,10 +62,15 @@
     return null;
   }
 
-  // Whether to read `m` with these prefs (settings.prefs): 朗读 off = nothing at all.
+  // Whether she reads anything aloud at all: 朗读 on and not 静音 (the toolbar's speaker, prefs.muted).
+  function voiceOn(prefs) {
+    return !!prefs && prefs.voice === true && prefs.muted !== true;
+  }
+
+  // Whether to read `m` with these prefs (settings.prefs): 朗读 off or 静音 = nothing at all.
   function shouldSpeak(m, prefs) {
     const p = prefs || {};
-    if (p.voice !== true) return false;
+    if (!voiceOn(p)) return false;
     const c = classify(m);
     if (!c) return false;
     if (c.cls === 'reply') return true;
@@ -126,5 +131,5 @@
     }
   }
 
-  return { MIN_GAP_MS, TIER, INTERACTIONS, MURMURS, LOCAL, DEFAULT_LINES, MOOD, classify, shouldSpeak, moodFor, touchMood, localLines, validateLines, SpeechGate };
+  return { MIN_GAP_MS, TIER, INTERACTIONS, MURMURS, LOCAL, DEFAULT_LINES, MOOD, classify, voiceOn, shouldSpeak, moodFor, touchMood, localLines, validateLines, SpeechGate };
 });

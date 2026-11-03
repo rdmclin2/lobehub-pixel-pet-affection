@@ -3,6 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "wardrobepack" -> 衣柜按形象包隔离 (T-2752): 大肥鱼 pixel → Live2D: the 衣柜 follows the pack, unsupported outfits refused
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
@@ -11,6 +12,8 @@
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
 //   scenario "admin-chat" -> 设置窗口 → 聊天 acceptance: the chatui walk (fake) + a real companion talked to through the same page
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
+//   scenario "interject" -> 插个嘴: off → no jev call; on + mock jev 0.86 → a remark with 别插嘴 / 说得好; 别插嘴 → rule → same kind skipped; rules UI
+//   scenario "voicehotkey" -> 快捷键唤起语音对话: the global shortcut → pet shown, listening, recognised; settings window records / refuses combinations
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
 const fs = require('node:fs');
@@ -3385,13 +3388,14 @@ async function touch() {
 }
 
 // ---------------------------------------------------------------- voice
-// 语音 engines (core/tts.js) against a local stand-in for Fish Audio and MiniMax (no real key, no cost):
+// 语音 engines (core/tts.js) against a local stand-in for Fish Audio, MiniMax and ElevenLabs (no real key, no cost):
 // engine choice, the cache, one line at a time, and every fallback (HTTP error, pause, timeout, no key,
 // offline, silent), configured through 高级设置 → 语音 like a user would.
 function ttsMock() {
   const http = require('node:http');
   const KEY = 'e2e-fake-fish-key-7f3a9c';
   const MM_KEY = 'e2e-fake-minimax-key-41b2';
+  const EL_KEY = 'e2e-fake-elevenlabs-key-9d0e';
   // a 440 Hz tone: a real WAV the page can decode and play (0.5 s, or `perCharMs` per character of the line)
   const tone = (sec) => {
     const rate = 8000;
@@ -3403,7 +3407,7 @@ function ttsMock() {
     return w;
   };
   const wav = tone(0.5);
-  const m = { KEY, MM_KEY, wav, mode: 'ok', slow: {}, perCharMs: 0, log: [] };
+  const m = { KEY, MM_KEY, EL_KEY, wav, mode: 'ok', slow: {}, perCharMs: 0, log: [] };
   m.server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; });
@@ -3413,8 +3417,12 @@ function ttsMock() {
       const fish = req.url === '/v1/tts';
       // a local voice server (本地语音服务): the OpenAI speech API or whale-voice's /tts; no key
       const local = req.url === '/v1/audio/speech' || req.url === '/tts';
-      const auth = local || req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
-      const rec = local
+      // ElevenLabs: POST /v1/text-to-speech/{voice_id}?output_format=… with the key in xi-api-key
+      const el = req.url.startsWith('/v1/text-to-speech/');
+      const auth = local || (el ? req.headers['xi-api-key'] === EL_KEY : req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`);
+      const rec = el
+        ? { at: Date.now(), method: req.method, path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] || '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
+        : local
         ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
         : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
       m.log.push(rec);
@@ -3428,7 +3436,7 @@ function ttsMock() {
         rec.status = 200;
         const audio = m.perCharMs ? tone(Math.min(6, Math.max(0.4, ([...(j.text || '')].length * m.perCharMs) / 1000))) : wav;
         rec.audioMs = Math.round(((audio.length - 44) / 2 / 8000) * 1000);
-        if (fish || local) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
+        if (fish || local || el) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: audio.toString('hex') } }));
       };
       if (m.mode === 'hang') return setTimeout(send, 8000);
@@ -3507,7 +3515,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3525,9 +3533,9 @@ async function voice() {
       const opts = await admin.locator('[role="option"]').allTextContents();
       await ashot('v1-engine-options');
       await admin.keyboard.press('Escape');
-      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', 'ElevenLabs', '本地语音服务', '系统语音']);
       assert.equal(await field('朗读引擎').locator('[role="combobox"]').textContent(), '自动（跟随角色）');
-      assert.match(await waitTags('Fish Audio', /未就绪/), /未就绪/);
+      assert.match(await waitTags('Fish Audio', /未设置 Key/), /未设置 Key/); // a cloud engine without a key
       await ashot('v1-voice-section-empty');
       await saveDraft('tts.endpoints.fish', mock.url);
       await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
@@ -3700,7 +3708,7 @@ async function voice() {
       await admin.locator('button', { hasText: /^清除API Key$/ }).click(); // the confirmation
       await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fish"]').textContent === '未设置');
       await toast(/API Key 已清除/);
-      const tags = await waitTags('Fish Audio', /^未就绪$/);
+      const tags = await waitTags('Fish Audio', /^未设置 Key$/);
       assert.equal((await ttsSet()).ttsStatus.engines.fish.hasKey, false);
       const before = reqs();
       const sp = await speakLine('没有钥匙的时候');
@@ -3834,6 +3842,118 @@ async function voice() {
       await waitSet((st) => st.tts.packs === true, '语音包 on');
       return note(`pack: ${packText}; recorded: ${fmt(sp)}; not recorded: ${fmt(other)}; 语音包 off: ${fmt(off)}; requests ${before} → ${reqs()}`);
     }, () => admin || page);
+
+    await step(S, 'V16 ElevenLabs: endpoint, default voice and key in 设置窗口 → 朗读, picked as the engine → POST /v1/text-to-speech/{voice_id} with xi-api-key', async () => {
+      const EL_VOICE = '21m00Tcm4TlvDq8ikWAM';
+      await openTts();
+      assert.match(await waitTags('ElevenLabs', /未设置 Key/), /未设置 Key/);
+      assert.equal((await ttsSet()).ttsStatus.engines.elevenlabs.hasKey, false);
+      await admin.locator('[data-key="tts.endpoints.elevenlabs"]').scrollIntoViewIfNeeded();
+      await ashot('v16-elevenlabs-card-empty');
+      await saveDraft('tts.endpoints.elevenlabs', mock.url);
+      await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
+      await saveDraft('tts.elevenlabs.voiceId', EL_VOICE);
+      await toast(/已保存：默认音色 ID → 21m00Tcm4TlvDq8ikWAM/);
+      const st0 = await waitSet((s) => s.tts.endpoints.elevenlabs === mock.url && s.tts.elevenlabs.voiceId === EL_VOICE, 'the ElevenLabs endpoint and voice');
+      assert.deepEqual(st0.tts.elevenlabs, { voiceId: EL_VOICE, modelId: 'eleven_multilingual_v2' });
+      assert.equal(await admin.getAttribute('[data-key="keys.elevenlabs"]', 'type'), 'password');
+      await saveKey('keys.elevenlabs', mock.EL_KEY);
+      await toast(/API Key 已保存（不会回显）/);
+      assert.equal(await admin.inputValue('[data-key="keys.elevenlabs"]'), '', 'the key is not kept in the page');
+      const tags = await waitTags('ElevenLabs', /^可用$/);
+      await pick('朗读引擎', 'ElevenLabs');
+      await toast(/已保存：朗读引擎 → ElevenLabs/);
+      const st = await waitSet((s) => s.tts.provider === 'elevenlabs' && s.ttsStatus.engines.elevenlabs.hasKey, 'provider elevenlabs with a key');
+      await admin.locator('[data-key="tts.endpoints.elevenlabs"]').scrollIntoViewIfNeeded();
+      await ashot('v16-elevenlabs-configured');
+      await prewarmed(page);
+      const sp = await speakLine('用 ElevenLabs 读这一句');
+      const rq = mock.log[mock.log.length - 1];
+      assert.equal(sp.engine, 'elevenlabs');
+      assert.equal(sp.provider, 'elevenlabs');
+      assert.equal(sp.voiceId, EL_VOICE);
+      assert.deepEqual(sp.fellBackFrom, []);
+      assert.equal(rq.method, 'POST');
+      assert.equal(rq.path, `/v1/text-to-speech/${EL_VOICE}`);
+      assert.equal(rq.query, 'output_format=mp3_44100_128');
+      assert.equal(rq.auth, true, 'xi-api-key matched');
+      assert.equal(rq.bearer, false, 'no Authorization header');
+      assert.equal(rq.accept, 'audio/mpeg');
+      assert.equal(rq.model, 'eleven_multilingual_v2');
+      assert.deepEqual(Object.keys(rq.prosody).sort(), ['similarity_boost', 'speed', 'stability', 'style', 'use_speaker_boost']);
+      assert.equal(rq.text, '用 ElevenLabs 读这一句');
+      assert.equal(fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes(mock.EL_KEY), false, 'the key is not in settings.json');
+      assert.equal((await admin.content()).includes(mock.EL_KEY), false, 'the key is nowhere in the settings window');
+      // the same playback path as Fish / MiniMax: main hands the audio to the pet window, playAudio() plays it
+      assert.equal(sp.mime, 'audio/wav');
+      assert.equal(sp.bytes, mock.wav.length, 'the bytes the stand-in sent');
+      await page.waitForTimeout(300);
+      await shot('v16-elevenlabs-speaking');
+      const played = await page.waitForFunction(() => { const r = window.petFx.lastSpeech(); return r && r.status === 'done' && r; }, null, { timeout: 8000 }).then((h) => h.jsonValue());
+      assert.equal(played.provider, 'elevenlabs');
+      assert.equal(played.started, true, 'the <audio> element started playing');
+      note(`playback: provider=${played.provider} mime=${played.mime} bytes=${played.bytes} started=${played.started} status=${played.status} (renderer playAudio, as fish / minimax)`);
+      // a reply the owner asked for, read by ElevenLabs: the bubble marks the sentence being played
+      const prevN = played.n;
+      mock.perCharMs = 250; // a longer tone, so the screenshot lands while it plays
+      if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+      await page.fill('#chat-input', '请用 ElevenLabs 的声音回答我');
+      await page.press('#chat-input', 'Enter');
+      const reading = await page.waitForFunction((p) => { const r = window.petFx.lastSpeech(); const m = document.querySelector('#bubble .sentence.reading'); const au = window.petFx.audioState(); return r && r.n > p && r.provider === 'elevenlabs' && r.status === 'playing' && r.started && au && !au.paused && au.currentTime > 0.3 && m && { n: r.n, provider: r.provider, status: r.status, mime: r.mime, bytes: r.bytes, text: r.text, marked: m.textContent, bubble: document.getElementById('bubble').textContent.trim(), started: r.started, audio: au }; }, prevN, { timeout: 20000 }).then((h) => h.jsonValue());
+      await page.screenshot({ path: path.join(SHOTS, 'v16-elevenlabs-reply-reading.png') });
+      // the same moment with a probe label (e2e only) spelling out what the pet window is playing
+      await page.evaluate((r) => { const d = document.createElement('div'); d.id = 'e2e-probe'; d.style.cssText = 'position:fixed;left:4px;right:4px;bottom:4px;z-index:99999;background:rgba(0,0,0,.78);color:#fff;font:11px/1.4 monospace;padding:4px 6px;border-radius:4px;white-space:pre-wrap'; d.textContent = `e2e 探针 lastSpeech\nprovider=${r.provider} status=${r.status}\nmime=${r.mime} bytes=${r.bytes}\naudio ${r.audio ? `paused=${r.audio.paused} t=${r.audio.currentTime.toFixed(2)}/${r.audio.duration}s` : '-'}\n正在读：${r.marked}`; document.body.appendChild(d); }, reading);
+      await page.screenshot({ path: path.join(SHOTS, 'v16-elevenlabs-reply-reading-probe.png') });
+      await page.evaluate(() => document.getElementById('e2e-probe').remove());
+      mock.perCharMs = 0;
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 30000 });
+      const rq2 = mock.log.filter((r) => r.path.startsWith('/v1/text-to-speech/')).pop();
+      assert.equal(rq2.text, reading.text, 'the stand-in got the sentence being read');
+      note(`reply read by ElevenLabs: bubble 「${reading.bubble}」 marked 「${reading.marked}」 provider=${reading.provider} status=${reading.status} mime=${reading.mime} bytes=${reading.bytes} audio=${JSON.stringify(reading.audio)}; mock got 「${rq2.text}」`);
+      return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw ${rq.method} ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
+    }, () => admin || page);
+
+    await step(S, 'V17 ElevenLabs without a key: cleared → no request, fellBackFrom elevenlabs:no-key; 不出声 → silent with a reason, never a silent success', async () => {
+      await openTts();
+      await admin.locator('[data-has-key="keys.elevenlabs"]').scrollIntoViewIfNeeded();
+      await admin.locator('[data-has-key="keys.elevenlabs"]').locator('xpath=..').locator('button', { hasText: /^清除$/ }).click();
+      await admin.locator('button', { hasText: /^清除API Key$/ }).click();
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.elevenlabs"]').textContent === '未设置');
+      const tags = await waitTags('ElevenLabs', /^未设置 Key$/);
+      // ElevenLabs is the picked engine and has no key: the page says so at the top, not only on the card
+      const warn = await admin.locator('.ant-alert, [role="alert"]', { hasText: 'ElevenLabs 还没设置 Key' }).first().textContent({ timeout: 5000 });
+      assert.match(warn, /ElevenLabs 还没设置 Key：在下方「ElevenLabs」里填写 API Key 后才能用它朗读。/);
+      await admin.evaluate(() => window.scrollTo(0, 0));
+      await admin.locator('.ant-alert, [role="alert"]', { hasText: 'ElevenLabs 还没设置 Key' }).first().scrollIntoViewIfNeeded();
+      await ashot('v17-elevenlabs-no-key-warning');
+      const eng = (await ttsSet()).ttsStatus.engines.elevenlabs;
+      assert.equal(eng.hasKey, false);
+      assert.equal(eng.ready, false);
+      const before = reqs();
+      const sp = await speakLine('ElevenLabs 没有钥匙');
+      assert.equal(sp.engine, 'elevenlabs');
+      assert.notEqual(sp.provider, 'elevenlabs');
+      assert.deepEqual(sp.fellBackFrom.filter((f) => f.provider === 'elevenlabs'), [{ provider: 'elevenlabs', reason: 'no-key' }]);
+      await admin.locator('[data-has-key="keys.elevenlabs"]').scrollIntoViewIfNeeded();
+      await ashot('v17-elevenlabs-no-key');
+      // 不出声: straight from the engine (the IPC the pet window uses), the result says why
+      await seg('引擎用不了时', '不出声');
+      await waitSet((s) => s.tts.fallback === 'silent', 'fallback silent');
+      mock.mode = '500'; // the other engine with a key (MiniMax) fails too: nothing can read the line
+      const raw = await page.evaluate(async () => { const r = await window.pet.ttsSynthesize('不出声也要说清楚', ''); return { ok: r.ok, reason: r.reason, message: r.message, fallback: r.fallback, fellBackFrom: r.fellBackFrom, next: r.next }; });
+      assert.equal(raw.ok, false);
+      assert.equal(raw.fallback, 'silent');
+      assert.equal(raw.reason, 'no-key');
+      assert.deepEqual(raw.fellBackFrom.filter((f) => f.provider === 'elevenlabs'), [{ provider: 'elevenlabs', reason: 'no-key' }]);
+      const quiet = await speakLine('安静地没有钥匙');
+      assert.equal(quiet.status, 'silent');
+      assert.equal(reqs() - before, mock.log.slice(before).filter((r) => !r.path.startsWith('/v1/text-to-speech/')).length, 'no ElevenLabs request without a key');
+      assert.equal(mock.log.slice(before).some((r) => r.path.startsWith('/v1/text-to-speech/')), false);
+      mock.mode = 'ok';
+      await seg('引擎用不了时', '改用系统语音');
+      await waitSet((s) => s.tts.fallback === 'system', 'fallback system');
+      return note(`card: ${tags}; status.elevenlabs=${JSON.stringify(eng)}; system fallback: ${fmt(sp)}; silent IPC result: ${JSON.stringify(raw)}; silent line: ${fmt(quiet)}`);
+    }, () => admin || page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
@@ -3912,7 +4032,7 @@ async function localvoice() {
       await field('朗读引擎').locator('[role="combobox"]').click();
       await admin.waitForSelector('[role="option"]');
       const opts = await admin.locator('[role="option"]').allTextContents();
-      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', 'ElevenLabs', '本地语音服务', '系统语音']);
       await admin.locator('[role="option"]', { hasText: rx('本地语音服务') }).click();
       await toast(/已保存：朗读引擎 → 本地语音服务/);
       await waitSet((st) => st.tts.provider === 'local', 'provider local');
@@ -4428,6 +4548,71 @@ async function ivoice() {
       assert.equal(sp.provider, 'fish');
       return note(`murmur with 朗读碎碎念 off: offered ${before.length}; on: 「${after[0].text}」 said via ${sp.provider} (${sp.status})`);
     }, page);
+
+    await step(S, 'I13b 静音 (toolbar speaker): one click silences the reading line, interactions and the click sound; a second click brings them back', async () => {
+      await idle();
+      await page.evaluate(() => window.pet.setPrefs({ clickSound: true, touchZones: false }));
+      await page.waitForTimeout(300);
+      await hover(page);
+      const btn = page.locator('#btn-mute');
+      assert.equal(await btn.getAttribute('aria-pressed'), 'false', 'starts un-muted');
+      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
+      // a long reply is being read when the speaker is clicked: it stops at once
+      mock.perCharMs = 300; // long enough to click the speaker while she is still reading
+      await page.evaluate(() => { window.petFx.speak('今天天气真好。我们一起出去走走吧。路上还可以买点好吃的。回来再一起看书。'); }); // not awaited: speak() resolves once she has finished
+      const samples = [];
+      for (let i = 0; ; i++) {
+        const st = await page.evaluate(() => { const sp = window.petFx.lastSpeech(); return { kind: sp && sp.kind, status: sp && sp.status, cur: sp && sp.current, s: sp && sp.sentences.map((x) => x.status).join(','), audio: window.petFx.audioState() }; });
+        samples.push(st);
+        if (st.kind === 'api' && st.audio && !st.audio.paused) break;
+        if (i > 150) throw new Error(`reply not playing: ${JSON.stringify(samples.slice(-3))}`);
+        await page.waitForTimeout(100);
+      }
+      const reading = await last();
+      await btn.click();
+      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'true', null, { timeout: 3000, polling: 50 });
+      const stopped = await page.evaluate((n) => ({ sp: window.petFx.lastSpeech(), audio: window.petFx.audioState(), stop: window.petFx.speechLog().find((e) => e.n === n && e.event === 'stop') }), reading.n);
+      mock.perCharMs = 0;
+      assert.equal(stopped.sp.status, 'interrupted', JSON.stringify(stopped.sp));
+      assert.equal(stopped.stop && stopped.stop.why, 'muted');
+      assert.equal(stopped.audio, null, 'nothing playing');
+      assert.equal(await prefNow('muted'), true);
+      assert.equal(await prefNow('voice'), true, '朗读回复 left as it was');
+      const label = await btn.getAttribute('aria-label');
+      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
+      // muted: pat + 玩耍 + a reply — the bubble shows each line, nothing is offered to the voice, no click sound
+      await page.waitForTimeout(1600);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const snd0 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      const b = await petBox();
+      await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4);
+      await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'pat', null, { timeout: 15000 });
+      await page.evaluate(() => window.pet.debugSet({ energy: 80 }));
+      await clickAct(page, 'play');
+      await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'play', null, { timeout: 15000 });
+      await page.evaluate(() => window.petFx.speak('一句回复'));
+      await page.waitForTimeout(1500);
+      await shot('i13b-muted-play');
+      const got = (await slog()).slice(n0);
+      const snd1 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      assert.equal(got.length, 0, `offered while muted: ${JSON.stringify(got)}`);
+      assert.equal(mock.log.length, m0, 'no HTTP request while muted');
+      assert.equal(snd1, snd0, 'no click sound while muted');
+      // un-mute from the same button: the next interaction is read again and the click sound is back
+      await hover(page);
+      await btn.click();
+      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+      assert.equal(await prefNow('muted'), false);
+      await page.waitForTimeout(1600);
+      const r = await interact('静音后恢复 pat', /^pat$/, async () => { const bb = await petBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height * 0.4); });
+      const snd2 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      assert.ok(snd2 > snd1, `click sound back (${snd1} → ${snd2})`);
+      return note(`静音: reading #${reading.n} stopped (why=muted), button aria-label「${label}」, prefs.voice stays on; muted pat + play + reply → offered ${got.length}, HTTP ${m0} → ${mock.log.length}, click sounds ${snd0} → ${snd1}; un-muted → ${r}; click sounds ${snd1} → ${snd2}`);
+    }, page);
+
+    mock.perCharMs = 0;
+    await page.evaluate(() => window.pet.setPrefs({ muted: false, clickSound: false, touchZones: true }));
 
     await step(S, 'I14 关掉 朗读回复: every interaction again — no line offered, no request to any engine', async () => {
       await idle();
@@ -6155,6 +6340,8 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
+// 像素 sprites 取景 (半身): e2e/sprite-frame.js
+const spriteFrameScenarios = () => require('./sprite-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
@@ -6356,6 +6543,9 @@ async function asrScenario() {
       const recLine = await page.textContent('#mic-status');
       assert.match(recLine, /正在听 \d+s/);
       assert.equal(await page.getAttribute('#chat-input', 'placeholder'), '正在听…');
+      // 🎤 too: she is listening while you speak (look, the ear over her)
+      const lis = await page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx }; });
+      assert.deepEqual(lis, { state: 'look', listening: true, fx: '👂' }, 'listening while 🎤 records');
       await shot('a2-recording');
       await page.click('#chat-mic');
       await waitMic('transcribing');
@@ -6745,6 +6935,396 @@ async function asrScenario() {
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'asr-log.txt'), evidence.join('\n\n') + '\n');
     fs.writeFileSync(path.join(SHOTS, 'asr-requests.json'), JSON.stringify(mock.log, null, 2) + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ----------------------------------------------------------------- voicehotkey
+// 快捷键唤起语音对话 (asr.hotkey, src/main/voice-hotkey.js): the global shortcut shows the pet, opens the chat
+// box and starts the same recorder as 🎤 (fake microphone → mock whisper); a second press stops and recognises.
+// With 语音输入 off or the microphone refused she says so. The settings window shows the shortcut, records a
+// new one with HotkeyInput and refuses invalid / in-app / taken combinations ("another app" = a combination
+// main registers first, PIXELPET_E2E_TAKEN_HOTKEYS, so globalShortcut.register really returns false).
+// V2 also presses the real key through X11 (xdotool) when it is installed: the OS-level path, not the hook.
+async function voiceHotkeyScenario() {
+  const S = 'voicehotkey';
+  const SHOTS = path.join(OUT, 'voicehotkey');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const TAKEN = 'CommandOrControl+Alt+K';
+  const mock = await asrMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vhk-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vhkfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const wav = toneWav(path.join(data, 'fake-mic.wav'));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_E2E_TAKEN_HOTKEYS: TAKEN };
+  const args = ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`];
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video'), args });
+  const errors = [];
+  const watch = (p) => { p.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); }); };
+  watch(page);
+  const t0 = Date.now();
+  const chapters = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `voicehotkey/${name}.png`; };
+  let admin = null;
+  const ashot = async (name) => { await admin.waitForTimeout(250); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `voicehotkey/${name}.png`; };
+  const status = () => page.evaluate(() => window.pet.debugVoiceHotkeyStatus());
+  const press = () => page.evaluate(() => window.pet.debugVoiceHotkey());
+  const call = () => page.evaluate(() => window.petFx.voiceCall());
+  const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return { shown: !b.classList.contains('hidden'), text: b.textContent, kind: b.dataset.kind, reason: b.dataset.reason }; });
+  const waitMic = (st, timeout = 10000) => page.waitForFunction((s) => window.petFx.micState() === s, st, { timeout });
+  // the bubble and the notice are both readable: inside the window and not on top of each other
+  const bothVisible = async () => {
+    const g = await page.evaluate(() => {
+      const r = (id) => { const x = document.getElementById(id).getBoundingClientRect(); return { top: Math.round(x.top), bottom: Math.round(x.bottom), left: Math.round(x.left), right: Math.round(x.right) }; };
+      const el = document.getElementById('bubble');
+      return { bubble: r('bubble'), toast: r('unlock-toast'), h: window.innerHeight, w: window.innerWidth, clipped: el.scrollHeight - el.clientHeight };
+    });
+    const { bubble: b, toast: t } = g;
+    assert.ok(g.clipped <= 1, `the whole bubble text shows, nothing scrolled away ${JSON.stringify(g)}`);
+    assert.ok(b.top >= 0 && t.top >= 0 && b.bottom <= g.h && t.bottom <= g.h, `both inside the window ${JSON.stringify(g)}`);
+    assert.ok(b.bottom <= t.top || t.bottom <= b.top, `the notice does not cover the bubble ${JSON.stringify(g)}`);
+    return `bubble y ${b.top}–${b.bottom}, notice y ${t.top}–${t.bottom} (window ${g.w}×${g.h}): no overlap`;
+  };
+  const petState = () => page.evaluate(() => window.petFx.state().state);
+  const away = async () => { await page.mouse.move(-50, -50).catch(() => {}); await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave'))); };
+  const openAsr = async () => { admin = await openAdminWindow(app, page, 'asr'); await admin.waitForSelector('[data-key="asr.hotkey"]'); await admin.waitForTimeout(250); return admin; };
+  const closeAdmin = async () => { if (admin) await admin.close().catch(() => {}); admin = null; await page.bringToFront(); };
+  const field = () => admin.evaluate(() => {
+    const el = document.querySelector('[data-key="asr.hotkey"]');
+    const col = el.closest('[data-key="asr.hotkey"]').parentElement.parentElement;
+    const err = document.querySelector('[data-error="asr.hotkey"]');
+    const inner = [...col.querySelectorAll('div')].filter((d) => d.childElementCount === 0 && /冲突|无效|占用/.test(d.textContent)).map((d) => d.textContent.trim());
+    const tag = document.querySelector('[data-hotkey-state]');
+    return { keys: el.getAttribute('data-hotkey-keys'), shown: el.innerText.replace(/\s+/g, ' ').trim(), state: tag && tag.getAttribute('data-hotkey-state'), tag: tag && tag.textContent.trim(), error: err && err.textContent.trim(), inputError: inner[0] || null, hint: (document.querySelector('[data-hotkey-hint]') || {}).textContent || null };
+  });
+  // HotkeyInput records what is pressed while it has focus (react-hotkeys-hook, by key code)
+  const record = async (combo) => {
+    await admin.bringToFront();
+    // a click on the field (its value area) focuses HotkeyInput's hidden input and starts recording
+    await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"] input').blur());
+    await admin.waitForTimeout(100);
+    // (dispatched in the page: the settings window sits behind the always-on-top pet, so a pointer click waits forever)
+    await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"] > div > div:first-child').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await adminUntil(admin, () => document.activeElement === document.querySelector('[data-key="asr.hotkey"] input'), null, 5000, 'HotkeyInput focused');
+    await admin.keyboard.press(combo);
+    await admin.waitForTimeout(600);
+  };
+  const saved = () => page.evaluate(async () => (await window.pet.getSettings()).asr.hotkey);
+  try {
+    await step(S, 'V0 hatch; the default shortcut is registered at launch (Ctrl+Shift+Space)', async () => {
+      chapter('V0 孵化；启动时注册默认快捷键 Ctrl+Shift+Space');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await status();
+      assert.equal(st.state, 'ok');
+      assert.equal(st.accelerator, 'CommandOrControl+Shift+Space');
+      assert.equal(st.label, 'Ctrl+Shift+Space');
+      assert.equal(st.registered, true, 'globalShortcut.isRegistered');
+      const set = await saved();
+      assert.equal(set, 'CommandOrControl+Shift+Space');
+      return note(`status ${JSON.stringify({ state: st.state, accelerator: st.accelerator, label: st.label, registered: st.registered })}; settings.asr.hotkey=${set}`);
+    }, page);
+
+    await step(S, 'V1 语音输入 off: the pet (hidden) comes back and says how to turn it on — 去设置', async () => {
+      chapter('V1 语音输入未开启：隐藏的桌宠被唤出，气泡和提示条引导去设置');
+      await away();
+      const hid = await page.evaluate(() => window.pet.debugHidePet(false));
+      assert.equal(hid.visible, false);
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'asr-off', null, { timeout: 5000 });
+      const st = await status();
+      assert.equal(st.petVisible, true, 'shown again by the shortcut');
+      const b = await bubble();
+      assert.equal(b.shown, true);
+      assert.equal(b.reason, 'asr-off');
+      assert.match(b.text, /语音输入还没开/);
+      assert.match(b.text, /下面的提示/);
+      assert.equal(await page.isVisible('#unlock-toast'), true);
+      const tt = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
+      assert.match(tt, /设置 → 语音输入/);
+      assert.match(tt, /Ctrl\+Shift\+Space/);
+      assert.equal(await page.getAttribute('#toast-open', 'data-admin'), 'asr');
+      assert.equal((await page.textContent('#toast-open')).trim(), '去设置');
+      assert.equal(await page.evaluate(() => window.petFx.micState()), 'idle', 'no recording');
+      const geo = await bothVisible();
+      const s = await shot('v1-asr-off-hint');
+      await page.click('#toast-close');
+      return note(`hidden → shortcut → visible=${st.petVisible}; bubble 「${b.text}」; toast 「${tt.replace('×', '').trim()}」 去设置 → #/asr; ${geo}; ${s}`);
+    }, page);
+
+    await step(S, 'V2 语音输入 on: minimised pet restored + focused, chat box open, recording, 「我在听…」 bubble, she looks at you', async () => {
+      chapter('V2 开启语音输入后：最小化的桌宠被唤出、聊天框展开、开始录音、气泡「我在听…」');
+      const r = await page.evaluate((url) => window.pet.asr.set({ enabled: true, engine: 'local', local: { endpoint: url } }), mock.url);
+      assert.equal(r.ok, true);
+      await away();
+      // V1's hint keeps the controls up for a while: wait until they are down, so the shortcut is what brings them up
+      await page.waitForFunction(() => !window.petFx.voiceCall().held && !document.body.classList.contains('hover'), null, { timeout: 15000 });
+      await page.evaluate(() => window.pet.debugHidePet(true));
+      // the real key through X11 when xdotool is there (globalShortcut's own path), otherwise the hook
+      let via = 'hook';
+      try {
+        execFileSync('xdotool', ['key', '--clearmodifiers', 'ctrl+shift+space'], { timeout: 5000 });
+        await page.waitForFunction(() => window.petFx.voiceCall().log.some((e) => e.ev === 'start'), null, { timeout: 4000 });
+        via = 'xdotool (X11 key press → globalShortcut)';
+      } catch {
+        await press();
+      }
+      await waitMic('recording', 10000);
+      await page.waitForTimeout(700);
+      const st = await status();
+      assert.equal(st.petVisible, true, 'restored from minimised');
+      const c = await call();
+      assert.equal(c.on, true);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('voice-call')), true);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true, 'controls up without the pointer');
+      assert.equal(await page.isVisible('#chat-input'), true, 'chat box open');
+      assert.equal(await page.getAttribute('#chat-mic', 'data-state'), 'recording');
+      assert.match(await page.textContent('#chat-mic'), /■ \d+s/);
+      assert.match(await page.textContent('#mic-status'), /正在听/);
+      const b = await bubble();
+      assert.equal(b.kind, 'listen');
+      assert.equal(b.reason, 'recording');
+      assert.match(b.text, /我在听/);
+      assert.match(b.text, /Ctrl\+Shift\+Space/);
+      // while you speak she is listening, the whole time: the look state, the ear over her, the lean (class listening)
+      const pet = () => page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx, status: document.getElementById('char-wrap').dataset.status }; });
+      const samples = [];
+      for (let i = 0; i < 4; i++) { samples.push({ t: i * 600, ...(await pet()) }); await page.waitForTimeout(600); }
+      for (const p of samples) {
+        assert.equal(p.state, 'look', `listening while recording ${JSON.stringify(samples)}`);
+        assert.equal(p.listening, true, `char-wrap.listening ${JSON.stringify(samples)}`);
+        assert.equal(p.fx, '👂', `the ear over her ${JSON.stringify(samples)}`);
+      }
+      const ps = samples[0].state;
+      const s = await shot('v2-listening');
+      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#chat-mic')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet while recording ${JSON.stringify(samples)}; ${s}`);
+    }, page);
+
+    await step(S, 'V3 second press: stops, recognises (mock whisper), the text waits in the box; bubble 「听到啦」', async () => {
+      chapter('V3 再按一次：结束录音并识别，文字填进输入框');
+      const before = mock.log.length;
+      await page.waitForTimeout(800);
+      await press();
+      await page.waitForFunction(() => ['stopping', 'transcribing'].includes(window.petFx.micState()), null, { timeout: 5000 });
+      const mid = await bubble();
+      const ps = await petState();
+      // no longer listening once it stops (the render loop takes it off on its next frame): she thinks
+      await page.waitForFunction(() => !window.petFx.state().listening, null, { timeout: 2000 });
+      const s1 = await shot('v3-recognising');
+      await waitMic('idle', 20000);
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'ok', null, { timeout: 5000 });
+      assert.match(mid.text, /让我想想/);
+      assert.equal(mid.reason === 'transcribing' || mid.reason === 'stopping', true);
+      assert.equal(mock.log.length, before + 1, 'one clip sent to the recogniser');
+      assert.match(mock.log[before].type, /^audio\/webm/);
+      assert.equal(await page.inputValue('#chat-input'), mock.TEXT);
+      const b = await bubble();
+      assert.match(b.text, /听到啦/);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true, 'the box stays up to send it');
+      const s2 = await shot('v3-heard-text-in-box');
+      await page.fill('#chat-input', '');
+      return note(`recognising: bubble 「${mid.text}」 state ${ps}; mock got ${mock.log[before].bytes} bytes ${mock.log[before].type}; box 「${mock.TEXT}」; bubble 「${b.text}」; ${s1}, ${s2}`);
+    }, page);
+
+    await step(S, 'V4 识别后直接发送 on: press, speak, press → sent to her agent and she replies', async () => {
+      chapter('V4 识别后直接发送：按→说→按，直接发给她并收到回复');
+      assert.equal((await page.evaluate(() => window.pet.asr.set({ autoSend: true }))).ok, true);
+      await away();
+      await press();
+      await waitMic('recording', 10000);
+      await page.waitForTimeout(900);
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'ok', null, { timeout: 20000 });
+      const la = await page.evaluate(() => window.petFx.lastAsr());
+      assert.equal(la.sent, true);
+      await page.waitForFunction(() => { const b = document.getElementById('bubble'); return !b.classList.contains('hidden') && !b.classList.contains('thinking') && b.dataset.source !== 'hotkey' && b.textContent.trim().length > 0 && b.textContent !== '……'; }, null, { timeout: 30000 });
+      const reply = await bubbleText(page);
+      const s = await shot('v4-sent-and-replied');
+      assert.equal((await page.evaluate(() => window.pet.asr.set({ autoSend: false }))).ok, true);
+      return note(`lastAsr ${JSON.stringify({ ok: la.ok, text: la.text, sent: la.sent })}; her reply 「${String(reply).slice(0, 60)}」; ${s}`);
+    }, page);
+
+    await step(S, 'V5 microphone refused: she says she cannot hear you and how to allow it (no silent failure)', async () => {
+      chapter('V5 麦克风权限被拒：气泡说明并引导');
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await page.evaluate(() => window.pet.debugMicAccess('denied'));
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'fail', null, { timeout: 8000 });
+      const b = await bubble();
+      assert.match(b.text, /麦克风权限/);
+      assert.equal(b.reason, 'mic-denied');
+      assert.equal(await page.isVisible('#unlock-toast'), true);
+      const t = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
+      assert.match(t, /没有麦克风权限/);
+      // what to do on this system (the e2e runs on Linux: sound input / PipeWire·PulseAudio / Flatpak·Snap)
+      if (process.platform === 'linux') { assert.match(t, /声音 → 输入/); assert.match(t, /PipeWire/); assert.match(t, /Flatpak \/ Snap/); assert.doesNotMatch(t, /隐私与安全性/); }
+      const geo = await bothVisible();
+      const s = await shot('v5-mic-denied');
+      await page.evaluate(() => window.pet.debugMicAccess(''));
+      await page.click('#toast-close');
+      return note(`bubble 「${b.text}」; toast 「${t.replace('×', '').trim()}」; ${geo}; ${s}`);
+    }, page);
+
+    await step(S, 'V6 设置 → 语音输入 → 快捷键: shows Ctrl+Shift+Space, 已生效', async () => {
+      chapter('V6 设置窗口：快捷键字段显示当前组合与「已生效」');
+      await openAsr();
+      await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"]').scrollIntoView({ block: 'center' }));
+      const f = await field();
+      assert.equal(f.keys, 'mod+shift+space');
+      assert.equal(f.state, 'ok');
+      assert.equal(f.tag, '已生效');
+      assert.match(f.hint, /Ctrl\+Shift\+Space/);
+      assert.match(f.shown, /Ctrl/i);
+      // Space is written out (not lucide's ␣ icon) and the stored value is still an Electron accelerator
+      assert.equal(f.shown, 'Ctrl Shift Space');
+      assert.equal(await admin.evaluate(() => document.querySelectorAll('[data-key="asr.hotkey"] kbd svg').length), 0);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const s = await ashot('v6-settings-hotkey-ok');
+      return note(`field ${JSON.stringify(f)}; ${s}`);
+    }, () => admin);
+
+    await step(S, 'V7 invalid combinations: no modifier (HotkeyInput) and Shift+A (main) — error under the field, not saved', async () => {
+      chapter('V7 无效组合：没有修饰键 / 只有 Shift，字段下方报错且不保存');
+      await record('KeyA');
+      let f = await field();
+      // the exact wording README / docs/asr.md quote
+      assert.equal(f.inputError, '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键');
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const first = f.inputError;
+      const s1 = await ashot('v7-invalid-no-modifier');
+      await record('Shift+KeyA');
+      await adminUntil(admin, () => !!document.querySelector('[data-error="asr.hotkey"]'), null, 8000, 'error under the field');
+      f = await field();
+      assert.equal(f.error, require('../src/core/hotkey').MESSAGES['shift-only']);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      assert.equal(f.keys, 'mod+shift+space', 'the shortcut in use is still shown');
+      assert.equal((await status()).registered, true);
+      const s2 = await ashot('v7-invalid-shift-only');
+      return note(`A → 「${first}」; Shift+A → 「${f.error}」; saved still CommandOrControl+Shift+Space; ${s1}, ${s2}`);
+    }, () => admin);
+
+    await step(S, 'V8 conflicts: Ctrl+, (the app opens settings with it) and Ctrl+Alt+K (held by another app) — not saved', async () => {
+      chapter('V8 冲突组合：应用内 Ctrl+, / 被其他应用占用的 Ctrl+Alt+K，提示且不保存');
+      await record('Control+Comma');
+      let f = await field();
+      // the same wording as main's own check (core/hotkey.js), quoted in README / docs/asr.md
+      assert.equal(f.inputError, '和应用内的「打开设置」（Ctrl+,）冲突，换一个组合');
+      assert.equal(f.inputError, require('../src/core/hotkey').checkHotkey('Control+,', 'linux').message);
+      const first = f.inputError;
+      const s1 = await ashot('v8-conflict-in-app');
+      await record('Control+Alt+KeyK');
+      await adminUntil(admin, () => /占用/.test((document.querySelector('[data-error="asr.hotkey"]') || {}).textContent || ''), null, 8000, 'taken error');
+      f = await field();
+      assert.match(f.error, /被系统或其他应用占用/);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const st = await status();
+      assert.equal(st.accelerator, 'CommandOrControl+Shift+Space');
+      assert.equal(st.registered, true, 'the old shortcut keeps working');
+      const s2 = await ashot('v8-conflict-taken');
+      return note(`Ctrl+, → 「${first}」; Ctrl+Alt+K → 「${f.error}」; still ${st.accelerator} registered=${st.registered}; ${s1}, ${s2}`);
+    }, () => admin);
+
+    await step(S, 'V9 a new combination (Alt+Shift+V) is saved and re-registered; the old one is let go; the bubble names the new one', async () => {
+      chapter('V9 改成 Alt+Shift+V：保存、注销旧的并注册新的');
+      await record('Alt+Shift+KeyV');
+      await adminUntil(admin, () => document.querySelector('[data-key="asr.hotkey"]').getAttribute('data-hotkey-keys') === 'alt+shift+v', null, 8000, 'alt+shift+v');
+      const f = await field();
+      assert.equal(f.state, 'ok');
+      assert.equal(f.error, null);
+      assert.equal(await saved(), 'Alt+Shift+V');
+      const st = await status();
+      assert.equal(st.accelerator, 'Alt+Shift+V');
+      assert.equal(st.registered, true);
+      const old = await app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
+      assert.equal(old, false, 'the old one is free again');
+      const s1 = await ashot('v9-settings-new-hotkey');
+      await closeAdmin();
+      await press();
+      await waitMic('recording', 10000);
+      const b = await bubble();
+      assert.match(b.text, /Alt\+Shift\+V/);
+      await page.keyboard.press('Escape'); // Esc cancels, as with 🎤
+      await waitMic('idle', 5000);
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'canceled', null, { timeout: 5000 });
+      return note(`field ${JSON.stringify({ keys: f.keys, state: f.state, hint: f.hint })}; registered Alt+Shift+V, old free=${!old}; bubble 「${b.text.replace(/\n/g, ' ')}」; Esc → canceled; ${s1}`);
+    }, page);
+
+    await step(S, 'V10 clear (×) = off, nothing registered, pressing does nothing; 恢复默认 brings Ctrl+Shift+Space back', async () => {
+      chapter('V10 清空=关闭；恢复默认');
+      await openAsr();
+      // HotkeyInput's × (the last action button; ↺ comes first when the value is not the default)
+      await admin.evaluate(() => { const b = [...document.querySelectorAll('[data-key="asr.hotkey"] button')].pop(); b.click(); });
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'disabled', null, 8000, 'disabled');
+      assert.equal(await saved(), '');
+      let st = await status();
+      assert.equal(st.state, 'disabled');
+      const any = await app.evaluate(({ globalShortcut }) => ['Alt+Shift+V', 'CommandOrControl+Shift+Space'].some((a) => globalShortcut.isRegistered(a)));
+      assert.equal(any, false);
+      const f = await field();
+      assert.equal(f.tag, '未启用');
+      const s1 = await ashot('v10-cleared');
+      await admin.evaluate(() => document.querySelector('[data-reset="asr.hotkey"]').click());
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'ok', null, 8000, 'ok again');
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      st = await status();
+      assert.equal(st.registered, true);
+      await closeAdmin();
+      return note(`cleared → state disabled, tag 未启用, no shortcut registered; 恢复默认 → ${st.accelerator} registered=${st.registered}; ${s1}`);
+    }, () => admin || page);
+
+    await step(S, 'V11 a hand-edited settings.json with a taken combination: after a restart the page shows 被占用', async () => {
+      chapter('V11 重启：settings.json 里是被占用的组合 → 设置页显示「被占用」');
+      await app.close();
+      const file = path.join(data, 'settings.json');
+      const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+      j.asr.hotkey = TAKEN;
+      fs.writeFileSync(file, JSON.stringify(j, null, 2));
+      ({ app, page } = await launch(env, { args }));
+      watch(page);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      const st = await status();
+      assert.equal(st.state, 'conflict');
+      assert.equal(st.code, 'taken');
+      await openAsr();
+      await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"]').scrollIntoView({ block: 'center' }));
+      const f = await field();
+      assert.equal(f.state, 'conflict');
+      assert.equal(f.tag, '被占用');
+      assert.match(f.error, /被系统或其他应用占用/);
+      const s = await ashot('v11-settings-taken-after-restart');
+      // and a free one fixes it
+      assert.equal((await adminSet(admin, 'asr.hotkey', 'mod+shift+space')).ok, true);
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'ok', null, 8000, 'ok');
+      await closeAdmin();
+      return note(`settings.asr.hotkey=${TAKEN} at launch → status ${JSON.stringify({ state: st.state, code: st.code })}; page tag 「${f.tag}」 error 「${f.error}」; ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'V12 quit lets every global shortcut go (will-quit → unregisterAll)', async () => {
+      chapter('V12 退出：注销全部全局快捷键');
+      const before = await app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
+      assert.equal(before, true);
+      const after = await app.evaluate(({ app: a, globalShortcut }) => { a.emit('will-quit', { preventDefault() {} }); return globalShortcut.isRegistered('CommandOrControl+Shift+Space'); });
+      assert.equal(after, false);
+      return note(`registered before will-quit: ${before}; after: ${after}`);
+    }, null);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voicehotkey-log.txt'), evidence.join('\n\n') + '\n');
     fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
     await app.close().catch(() => {});
     mock.server.close();
@@ -7702,12 +8282,14 @@ async function petuiScenario() {
         await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
         await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
       }, page);
-      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
+      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
         await hover(page);
         await page.waitForTimeout(400);
         await shot('05-toolbar');
         const acts = await page.$$eval('#toolbar [data-act]', (b) => b.map((x) => x.dataset.act));
-        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'settings']);
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']);
+        const rows = await page.$$eval('#toolbar [data-act]', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
+        assert.equal(rows, 1, 'the toolbar fits on one row');
         return acts.join(' / ');
       }, page);
       await step(S, `${theme}: 喂食菜单`, async () => {
@@ -7750,6 +8332,210 @@ async function petuiScenario() {
     } finally {
       await app.close().catch(() => {});
     }
+  }
+}
+
+// ---------------------------------------------------------------- wardrobepack (衣柜按形象包隔离, T-2752)
+// The wardrobe follows the pack she wears: 大肥鱼 in her pixel pack has a full 衣柜; changing into her Live2D
+// pack (art for daily only) leaves daily alone, takes off the scarf she wore (saved), refuses other outfits and
+// never swaps her into another pack. Driven through the settings window like a user. Free: fake lh, no network.
+async function wardrobePackScenario() {
+  const S = 'wardrobepack';
+  const SHOTS = path.join(OUT, 'wardrobepack');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobe-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const savedPet = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  const errors = [];
+  let admin = null;
+  const W = 1180;
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (name) => {
+    await admin.bringToFront();
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, name));
+    await admin.waitForTimeout(250);
+  };
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  const chips = () => admin.$$eval('[data-outfits="dafeiyu"] [data-outfit]', (els) => els.map((e) => e.getAttribute('data-outfit')));
+  const petLook = () => page.evaluate(() => ({ kind: document.getElementById('pet-body').dataset.kind, outfit: document.getElementById('char-wrap').dataset.outfit }));
+  const viewNow = async () => { const v = (await call('state')).view; return { packId: v.look && v.look.packId, kind: v.look && v.look.kind, outfit: v.outfit, outfits: v.outfits.map((o) => o.id), cards: [...new Set(v.outfits.map((o) => o.look && o.look.packId))] }; };
+  try {
+    await step(S, 'W0 hatch 大肥鱼, open the settings window, unlock every stage', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'settings');
+      for (let i = 0; i < 200 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      const u = await call('unlockAll', 'dafeiyu');
+      assert.equal(u.ok, true);
+      if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-pixel');
+      return `default pack ${v.packId}; wardrobe ${v.outfits.join(',')}`;
+    }, page);
+
+    await step(S, 'W1 像素包: 衣柜 lists the pixel pack\'s outfits; a click on 针织围巾套装 dresses her', async () => {
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 8000 });
+      await attached('[data-outfit="scarf"][data-equipped="true"]');
+      await page.waitForTimeout(500);
+      const c = await chips();
+      assert.ok(c.length > 1 && c.includes('scarf'), c.join(','));
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'scarf');
+      const out = [await shot('w1-pixel-wardrobe'), await petShot('w1-pet-pixel-scarf')];
+      return `衣柜 chips (dafeiyu-pixel): ${c.join(',')}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W2 换上 Live2D 包: 衣柜 shows only daily, the scarf is taken off and saved, she is the Live2D model', async () => {
+      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+      await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await page.waitForTimeout(1500);
+      const chipsNow = await chips();
+      const v = await viewNow();
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(v.outfit, 'daily');
+      assert.equal(v.kind, 'live2d');
+      assert.deepEqual(v.cards, ['dafeiyu-live2d'], 'every card is drawn from her Live2D pack');
+      const others = ['scarf', 'swimsuit', 'qipao', 'beret', 'maid'].filter((o) => v.outfits.includes(o) || chipsNow.includes(o));
+      assert.deepEqual(others, [], 'no outfit only another pack has is listed');
+      const saved = savedPet().characters.dafeiyu.equippedOutfit;
+      assert.equal(saved, 'daily', 'the correction is saved');
+      const out = [await shot('w2-live2d-wardrobe'), await petShot('w2-pet-live2d')];
+      return `衣柜 chips ${chipsNow.join(',')}; view ${JSON.stringify(v)}; pet.json equippedOutfit=${saved}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W3 an outfit the Live2D pack has not (scarf / swimsuit / qipao) is refused; she stays in her Live2D pack', async () => {
+      const rs = {};
+      for (const id of ['scarf', 'swimsuit', 'qipao']) {
+        const r = await call('equipOutfit', id);
+        rs[id] = r.ok ? 'ok' : r.reason;
+        assert.equal(r.ok, false, id);
+        assert.ok(r.reason, `${id} refused with a reason`);
+      }
+      await page.waitForTimeout(800);
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      assert.equal(v.outfit, 'daily');
+      const pl = await petLook();
+      assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
+      return `equipOutfit → ${JSON.stringify(rs)}; view ${v.packId}/${v.outfit}; pet window ${JSON.stringify(pl)}; ${await petShot('w3-pet-still-live2d')}`;
+    }, () => admin);
+
+    await step(S, 'W3b wearing the outfit the Live2D pack has (daily, via the 衣柜 chip and via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu"] [data-outfit="daily"]');
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="daily"]');
+      await page.waitForTimeout(800);
+      const r = await call('equipOutfit', 'daily');
+      assert.equal(r.ok, true, JSON.stringify(r));
+      await page.waitForTimeout(1200);
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      assert.equal(v.kind, 'live2d');
+      assert.equal(v.outfit, 'daily');
+      const pl = await petLook();
+      assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      const out = [await shot('w3b-live2d-wardrobe-daily-worn'), await petShot('w3b-pet-live2d-daily-worn')];
+      return `equipOutfit(daily) → ${JSON.stringify({ ok: r.ok, outfit: r.outfit && r.outfit.id })}; view ${JSON.stringify(v)}; pet window ${JSON.stringify(pl)}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W4 18+ confirmed and adult content on: the Live2D wardrobe is still daily only', async () => {
+      await call('confirmAge', true);
+      await call('setAdult', true);
+      await page.waitForTimeout(500);
+      const v = await viewNow();
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      return `view ${JSON.stringify(v)}; ${await shot('w4-live2d-adult-on')}`;
+    }, () => admin);
+
+    await step(S, 'W5 back to the pixel pack: its full wardrobe again, she keeps daily', async () => {
+      await admin.click('[data-use-pack="dafeiyu-pixel"]');
+      await until('pixel worn', async () => (await viewNow()).packId === 'dafeiyu-pixel');
+      await until('rack grows', async () => (await chips()).includes('scarf'));
+      const v = await viewNow();
+      assert.equal(v.outfit, 'daily');
+      assert.equal(v.kind, 'sprites');
+      const c = await chips();
+      assert.ok(c.length > 1 && c.includes('scarf') && c.includes('qipao'), `pixel rack ${c.join(',')}`);
+      assert.notDeepEqual(c, ['daily'], 'the 衣柜 changed with the pack');
+      return `view ${JSON.stringify(v)}; 衣柜 chips ${c.join(',')}; ${await shot('w5-pixel-again')}`;
+    }, () => admin);
+
+    await step(S, 'W5b in the pixel pack she wears 旗袍 (qipao); changing into the Live2D pack puts her back in daily (saved), still Live2D', async () => {
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="qipao"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 8000 });
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'qipao');
+      const before = await viewNow();
+      assert.equal(before.packId, 'dafeiyu-pixel');
+      const s1 = await petShot('w5b-pet-pixel-qipao');
+      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+      await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await page.waitForTimeout(1500);
+      const v = await viewNow();
+      assert.equal(v.kind, 'live2d');
+      assert.equal(v.outfit, 'daily');
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      const out = [s1, await shot('w5b-live2d-wardrobe-after-qipao'), await petShot('w5b-pet-live2d-after-qipao')];
+      return `before ${before.packId}/${before.outfit}; after ${JSON.stringify(v)}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W6 no console errors in the settings window', async () => {
+      assert.deepEqual(errors, []);
+      return 'none';
+    });
+  } finally {
+    await app.close().catch(() => {});
   }
 }
 
@@ -8074,6 +8860,110 @@ async function adminCoverageScenario() {
 // dark, a setting changed there takes effect in the pet window and lands in settings.json, typed values are
 // checked, keys are write-only, a restart-only item says so, and 角色列表 lists / switches characters.
 // Free: fake lh, no paid scenario, no network.
+// T-2751: on macOS the settings window has no native title bar (titleBarStyle 'hiddenInset'), so it only moves by a
+// page area marked `-webkit-app-region: drag`. Linux has no hiddenInset, so the run reports darwin to the page
+// (PIXELPET_E2E_PLATFORM, test mode only) and checks the strip: it is draggable, spans the top, nothing clickable
+// sits under it on any page (also with her stage stuck while scrolling); with the real platform there is no strip.
+async function titlebarScenario() {
+  const S = 'titlebar';
+  const SHOTS = path.join(OUT, 'titlebar');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/tts'];
+  const open = async (platform) => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebar-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebarfake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, ...(platform ? { PIXELPET_E2E_PLATFORM: platform } : {}) });
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await page.evaluate(() => window.pet.openAdmin(''));
+    let admin = null;
+    for (let i = 0; i < 100 && !admin; i++) {
+      admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+      if (!admin) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!admin) throw new Error('the settings window did not open');
+    await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+    const go = async (route) => {
+      await admin.evaluate((r) => { location.hash = r; }, route);
+      await admin.waitForSelector(`[data-path="${route}"]`, { timeout: 10000 });
+      await admin.waitForTimeout(250);
+    };
+    return { app, admin, go };
+  };
+  // everything a click lands on (not the visually hidden aria-hidden inputs behind custom switches), and whether its box reaches into the top `h` px of the window
+  const underStrip = (admin, h) => admin.evaluate((hh) => [...document.querySelectorAll('a, button, input, textarea, select, [role="tab"], [role="switch"], [role="slider"], [role="combobox"], [data-pat], [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => { const r = el.getBoundingClientRect(); return !el.closest('[aria-hidden="true"]') && r.width > 0 && r.height > 0 && r.top < hh && r.bottom > 0 && getComputedStyle(el).visibility !== 'hidden'; })
+    .map((el) => `${el.tagName.toLowerCase()}${el.dataset.rail ? `[rail=${el.dataset.rail}]` : ''}${el.dataset.back ? `[back=${el.dataset.back}]` : ''} "${(el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 12)}" top=${Math.round(el.getBoundingClientRect().top)}`), h);
+
+  let run = null;
+  try {
+    run = await open('darwin');
+    const { admin, go } = run;
+    await step(S, 'T1 macOS: a drag strip spans the whole top of the settings window, over the traffic lights', async () => {
+      const t = await admin.evaluate(() => {
+        const el = document.querySelector('[data-titlebar]');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return { region: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region') || cs.getPropertyValue('app-region'), top: r.top, left: r.left, width: r.width, height: r.height, vw: window.innerWidth, hits: [8, 200, window.innerWidth / 2, window.innerWidth - 8].map((x) => document.elementFromPoint(x, 16)?.hasAttribute('data-titlebar')) };
+      });
+      assert.ok(t, 'no [data-titlebar] in the darwin window');
+      assert.equal(t.region, 'drag', `-webkit-app-region: ${t.region}`);
+      assert.deepEqual([t.top, t.left, t.width, t.height], [0, 0, t.vw, 32]);
+      assert.deepEqual(t.hits, [true, true, true, true], 'the strip is what the pointer meets across the top (rail, page, right edge)');
+      await admin.screenshot({ path: path.join(SHOTS, 'mac-overview.png') });
+      return `app-region ${t.region}, ${t.width}×${t.height} at 0,0; topmost at x=8/200/mid/right`;
+    }, () => run.admin);
+
+    await step(S, 'T2 macOS: on every page nothing clickable sits under the strip (back link, rail, tabs start below it)', async () => {
+      const out = [];
+      for (const r of ROUTES) {
+        await go(r);
+        const bad = await underStrip(admin, 32);
+        assert.deepEqual(bad, [], `${r}: clickable under the drag strip`);
+        const back = await admin.evaluate(() => { const b = document.querySelector('[data-back]'); return b ? Math.round(b.getBoundingClientRect().top) : null; });
+        out.push(`${r}${back !== null ? ` (back top=${back})` : ''}`);
+        await admin.screenshot({ path: path.join(SHOTS, `mac-${r.slice(1).replace(/\//g, '-')}.png`) });
+      }
+      return out.join(', ');
+    }, () => run.admin);
+
+    await step(S, 'T3 macOS: her page scrolled — the stage stays stuck below the strip, the strip stays on top', async () => {
+      await go('/characters/grok');
+      const r = await admin.evaluate(async () => {
+        const m = document.querySelector('main');
+        m.scrollTop = m.scrollHeight;
+        await new Promise((res) => setTimeout(res, 300));
+        const stage = document.querySelector('[data-stage]');
+        return { scrolled: m.scrollTop, stageTop: stage ? Math.round(stage.getBoundingClientRect().top) : null, hit: document.elementFromPoint(window.innerWidth / 2, 16)?.hasAttribute('data-titlebar') };
+      });
+      assert.ok(r.scrolled > 0, 'her page did not scroll');
+      assert.ok(r.stageTop === null || r.stageTop >= 32, `stage top ${r.stageTop} under the strip`);
+      assert.equal(r.hit, true);
+      await admin.screenshot({ path: path.join(SHOTS, 'mac-characters-grok-scrolled.png') });
+      await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });
+      return `scrollTop ${r.scrolled}, stage top ${r.stageTop}, strip still topmost`;
+    }, () => run.admin);
+    await run.app.close();
+    run = null;
+
+    run = await open(null);
+    await step(S, `T4 ${process.platform} (native title bar): no drag strip, the page keeps its usual top padding`, async () => {
+      const r = await run.admin.evaluate(() => ({ strip: document.querySelectorAll('[data-titlebar]').length, pad: getComputedStyle(document.querySelector('[data-admin-page]')).paddingTop, drag: [...document.querySelectorAll('*')].filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'drag').length }));
+      assert.deepEqual(r, { strip: 0, pad: '24px', drag: 0 });
+      await run.admin.screenshot({ path: path.join(SHOTS, `${process.platform}-overview.png`) });
+      return `no strip, padding-top ${r.pad}, 0 drag regions`;
+    }, () => run.admin);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+}
+
 async function adminScenario() {
   const S = 'admin';
   const SHOTS = path.join(OUT, 'admin');
@@ -8122,7 +9012,7 @@ async function adminScenario() {
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
       await hover(page);
       const items = await page.$$eval('#toolbar [data-act]', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
-      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '设置']);
+      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置']);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
       await page.click('[data-act="settings"]');
@@ -8631,6 +9521,274 @@ async function adminScenario() {
   }
 }
 
+// ---------------------------------------------------------------- interject (插个嘴)
+// 插个嘴 (docs/interject.md): the real app with the fake `lh` — its `generate decide` answers the probability in
+// <FAKE_LH_DIR>/decide.json (the mock jev, no tokens) and logs every call to decide-calls.jsonl.
+// IJ1 off by default: typing a draft → zero decide calls · IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: the group folds
+// open (dependsOn) when switched on there · IJ3 a low probability → silence · IJ4 on + mock 0.86 → her remark in
+// the bubble with 别插嘴 / 说得好 on it · IJ5 click 别插嘴 → feedback mute → a block rule · IJ6 a draft of the same
+// kind → dropped by the rule, no decide call, no remark · IJ7 the rules table and the decision records in the
+// settings window · IJ8 停用 there → that kind is judged again; 说得好 on a remark → an allow rule · IJ9 删除 a
+// rule (confirmed) → gone from the table and interject.json.
+// Output: out/e2e/interject/*.png, video/, evidence.json, chapters.json, interject.json.
+async function interjectScenario() {
+  const S = 'interject';
+  const SHOTS = path.join(OUT, 'interject');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ij-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ijfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const t0 = Date.now();
+  const chapters = [];
+  const evidence = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const note = (s) => { evidence.push(s); say(`    ${s}`); };
+  const decideCalls = () => { const f = path.join(fakeDir, 'decide-calls.jsonl'); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []; };
+  const mock = (o) => fs.writeFileSync(path.join(fakeDir, 'decide.json'), JSON.stringify(o));
+  const shot = async (p, name) => { await p.waitForTimeout(250); await p.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `interject/${name}.png`; };
+  const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return b.classList.contains('hidden') ? '' : b.textContent.trim(); });
+  const feedbackRow = () => page.evaluate(() => { const r = document.getElementById('ij-feedback'); return { shown: !r.classList.contains('hidden'), buttons: [...r.querySelectorAll('.ij-btn')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent.trim()), done: r.querySelector('.ij-done').classList.contains('hidden') ? '' : r.querySelector('.ij-done').textContent, decision: r.dataset.decision || null, result: r.dataset.result || null }; });
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await page.click('[data-act="chat"]'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
+  const typeDraft = async (text) => { await openChat(); await page.fill('#chat-input', ''); await page.type('#chat-input', text, { delay: 15 }); };
+  const lastDecision = async () => (await page.evaluate(() => window.pet.interject.decisions())).decisions.pop();
+  const rules = async () => (await page.evaluate(() => window.pet.interject.rules())).rules;
+  // a remark: mock `p`, fresh moment (she has not just spoken, no cooldown), type a draft, wait for 辛苦啦
+  const remark = async (text) => {
+    mock({ probability: 0.86 });
+    await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+    await page.evaluate(() => window.pet.debugInterjectResetCooldown());
+    await typeDraft(text);
+    await page.waitForFunction(() => /辛苦啦/.test(document.getElementById('bubble').textContent) && !document.getElementById('ij-feedback').classList.contains('hidden'), null, { timeout: 20000 });
+    await idle();
+  };
+  let admin = null;
+  const adminRows = (sel) => admin.evaluate((s) => [...document.querySelectorAll(`${s} [data-row-key]`)].map((tr) => [...tr.children].map((td) => td.textContent.trim())), sel);
+  const scrollTo = (sel) => admin.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'start' }), sel);
+  try {
+    await step(S, 'IJ0 hatch; 插个嘴 is off by default (interject.enabled false, clipboard off, jev-1.14.0)', async () => {
+      chapter('IJ0 孵化：插个嘴默认关闭');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="claude"]');
+      await page.fill('#pet-name', '小芽');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      const ij = (await page.evaluate(() => window.pet.getSettings())).interject;
+      note(`默认 settings.interject = ${JSON.stringify(ij)}`);
+      assert.equal(ij.enabled, false);
+      assert.equal(ij.sources.clipboard, false);
+      assert.equal(ij.model, 'lobehub/jev-1.14.0');
+      return shot(page, 'ij0-hatched');
+    }, page);
+
+    await step(S, 'IJ1 off: typing a draft in her chat box makes zero `lh generate decide` calls and no record', async () => {
+      chapter('IJ1 开关关：聊天框打字，零次 jev 调用');
+      mock({ probability: 0.99 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      await typeDraft('终于把这个 bug 修好了！累死我了');
+      await page.waitForTimeout(5500); // longer than the default 4 s debounce
+      const n = decideCalls().length;
+      const d = await page.evaluate(() => window.pet.interject.decisions());
+      note(`开关关：decide 调用 ${n} 次，判断记录 ${d.decisions.length} 条，气泡「${await bubble()}」`);
+      assert.equal(n, 0);
+      assert.equal(d.decisions.length, 0);
+      assert.equal((await feedbackRow()).shown, false);
+      const p = await shot(page, 'ij1-off-typing');
+      await page.fill('#chat-input', '');
+      return `decide calls 0, records 0; ${p}`;
+    }, page);
+
+    await step(S, 'IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: off folds the group; switching it on there shows sources, quotas, thresholds, model', async () => {
+      chapter('IJ2 设置窗口：插个嘴分组（关 → 开，dependsOn 联动）');
+      admin = await openAdminWindow(app, page, 'proactive');
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
+      await adminUntil(admin, () => !!document.querySelector('[data-key="interject.enabled"]'), null, 15000, 'the 插个嘴 switch');
+      const visibleKeys = () => admin.evaluate(() => [...document.querySelectorAll('[data-key^="interject."]')].filter((el) => el.offsetParent !== null).map((el) => el.dataset.key));
+      const offKeys = await visibleKeys();
+      const desc = await admin.evaluate(() => [...document.querySelectorAll('[data-settings-page="proactive"] *')].map((el) => el.childElementCount === 0 ? el.textContent : '').find((t) => /^默认关闭。/.test(t)) || '');
+      await scrollTo('[data-key="interject.enabled"]');
+      await shot(admin, 'ij2a-console-off');
+      await admin.evaluate(() => document.querySelector('[data-key="interject.enabled"]').click());
+      await adminUntil(admin, () => !!document.querySelector('[data-key="interject.sources.chatDraft"]'), null, 8000, 'the sources fold open');
+      await adminUntil(admin, async () => (await window.petAdmin.state()).settings.interject.enabled === true, null, 8000, 'saved');
+      // for the run: 1 s debounce and no quiet hours (start = end), set like the owner would in the same form
+      for (const [k, v] of [['interject.debounceSec', 1], ['interject.quietStart', 0], ['interject.quietEnd', 0]]) assert.equal((await admin.evaluate(([key, val]) => window.petAdmin.set(key, val), [k, v])).ok, true, k);
+      await admin.waitForTimeout(300);
+      const onKeys = await visibleKeys();
+      await scrollTo('[data-key="interject.enabled"]');
+      const p = await shot(admin, 'ij2b-console-on');
+      await scrollTo('[data-key="interject.quietEnd"]');
+      await shot(admin, 'ij2c-console-on-thresholds');
+      const s = (await page.evaluate(() => window.pet.getSettings())).interject;
+      note(`关时可见字段 ${JSON.stringify(offKeys)}；开后可见 ${onKeys.length} 个：${onKeys.join(', ')}`);
+      note(`开关说明：${desc.replace(/\s+/g, ' ').slice(0, 160)}`);
+      note(`设置窗口打开后 settings.interject = ${JSON.stringify(s)}`);
+      assert.deepEqual(offKeys, ['interject.enabled']);
+      for (const k of ['interject.sources.chatDraft', 'interject.sources.voice', 'interject.sources.api', 'interject.sources.clipboard', 'interject.cooldownMin', 'interject.maxPerHour', 'interject.highThreshold', 'interject.lowThreshold', 'interject.model']) assert.ok(onKeys.includes(k), k);
+      assert.match(desc, /默认关闭/);
+      assert.match(desc, /不装键盘钩子/);
+      assert.equal(s.enabled, true);
+      assert.equal(s.debounceSec, 1);
+      await page.bringToFront();
+      return p;
+    }, () => admin);
+
+    await step(S, 'IJ3 on + a low probability (mock 0.2 ≤ 0.3) on a voice transcript → she stays quiet', async () => {
+      chapter('IJ3 jev 0.2 → 不插嘴');
+      mock({ probability: 0.2 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      const before = decideCalls().length;
+      const shown = await bubble() || null;
+      await page.evaluate(() => window.pet.debugInterjectInput('voice', '提醒我明天早上九点交报告'));
+      await page.evaluate(() => window.pet.debugInterjectFlush());
+      const d = await lastDecision();
+      note(`低概率记录：${JSON.stringify(d)}`);
+      assert.equal(decideCalls().length, before + 1);
+      assert.equal(d.verdict, 'skip');
+      assert.equal(d.reason, 'confident-no');
+      await page.waitForTimeout(1500);
+      assert.doesNotMatch(await bubble(), /辛苦啦/, 'no remark');
+      assert.notEqual(d.said, shown);
+      assert.equal(d.said, undefined);
+      assert.equal((await feedbackRow()).shown, false);
+      return shot(page, 'ij3-low-quiet');
+    }, page);
+
+    let remarkId = null;
+    await step(S, 'IJ4 on + high probability: a draft → jev (mock 0.86 ≥ 0.7) → her remark in the bubble, 别插嘴 / 说得好 on it', async () => {
+      chapter('IJ4 开关开 + 高概率 → 插嘴气泡（带反馈按钮）');
+      const before = decideCalls().length;
+      await remark('终于把这个 bug 修好了！累死我了');
+      const calls = decideCalls().slice(before);
+      const rec = await lastDecision();
+      const row = await feedbackRow();
+      remarkId = rec.id;
+      note(`decide 调用 ${calls.length} 次，model=${calls[0].model}`);
+      note(`jev state:\n${calls[0].state}`);
+      note(`判断记录：${JSON.stringify(rec)}`);
+      note(`气泡「${await bubble()}」；反馈按钮 ${JSON.stringify(row)}`);
+      assert.equal(calls.length, 1);
+      assert.match(calls[0].state, /终于把这个 bug 修好了/);
+      assert.equal(rec.verdict, 'interject');
+      assert.equal(rec.probability, 0.86);
+      assert.deepEqual(row.buttons, ['别插嘴', '说得好']);
+      assert.equal(row.decision, rec.id);
+      return shot(page, 'ij4-remark-bubble');
+    }, page);
+
+    await step(S, 'IJ5 click 别插嘴 on the bubble → feedback mute → a block rule on 写代码', async () => {
+      chapter('IJ5 点「别插嘴」→ 生成规则');
+      await page.click('#ij-feedback [data-ij="mute"]');
+      await page.waitForFunction(() => document.getElementById('ij-feedback').dataset.result === 'mute', null, { timeout: 5000 });
+      const row = await feedbackRow();
+      const p = await shot(page, 'ij5-mute-clicked');
+      const rs = await rules();
+      const d = (await page.evaluate(() => window.pet.interject.decisions())).decisions.find((x) => x.id === remarkId);
+      note(`点击后：${JSON.stringify(row)}；记录 feedback=${d.feedback}；规则 ${JSON.stringify(rs)}`);
+      assert.equal(d.feedback, 'mute');
+      assert.equal(rs.length, 1);
+      assert.equal(rs[0].effect, 'block');
+      assert.equal(rs[0].category, 'code');
+      assert.equal(rs[0].origin, 'mute');
+      assert.match(row.done, /不插嘴了/);
+      return p;
+    }, page);
+
+    await step(S, 'IJ6 a draft of the same kind (code) is dropped by the rule: no decide call, no remark', async () => {
+      chapter('IJ6 同类输入不再插嘴（不调用 jev）');
+      mock({ probability: 0.95 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      await page.waitForFunction(() => document.getElementById('ij-feedback').classList.contains('hidden'), null, { timeout: 5000 });
+      const before = decideCalls().length;
+      const shown = await bubble();
+      await typeDraft('npm test 又报错了，stack trace 一大串');
+      await page.waitForTimeout(2500);
+      const d = await lastDecision();
+      const after = decideCalls().length;
+      note(`拦截记录：${JSON.stringify(d)}；decide 调用 ${before} → ${after}；气泡「${await bubble()}」`);
+      assert.equal(after, before);
+      assert.equal(d.stage, 'prefilter');
+      assert.equal(d.reason, 'rule');
+      const now = await bubble();
+      assert.ok(now === shown || now === '', 'no new remark (the old line may have timed out)');
+      assert.equal((await feedbackRow()).shown, false);
+      assert.equal((await rules())[0].hits, 1);
+      const p = await shot(page, 'ij6-rule-blocks');
+      await page.fill('#chat-input', '');
+      return p;
+    }, page);
+
+    await step(S, 'IJ7 设置窗口: the rules table (rule, origin, hits, created) and the recent decisions (probability, interjected or not)', async () => {
+      chapter('IJ7 设置窗口：规则表与判断记录');
+      await admin.evaluate(() => { location.hash = '/proactive'; });
+      await adminUntil(admin, () => document.querySelectorAll('[data-interject-rules] [data-row-key]').length === 1 && document.querySelectorAll('[data-interject-decisions] [data-row-key]').length >= 3, null, 10000, 'rules and records');
+      const r = await adminRows('[data-interject-rules]');
+      const d = await adminRows('[data-interject-decisions]');
+      note(`规则表：${JSON.stringify(r)}`);
+      note(`判断记录（新→旧）：${JSON.stringify(d)}`);
+      assert.match(r[0][0], /别插嘴/);
+      assert.match(r[0][0], /写代码/);
+      assert.equal(r[0][1], '让她别插嘴');
+      assert.equal(r[0][2], '1 次');
+      assert.match(r[0][3], /\d/);
+      assert.match(d[0].join(' '), /命中「别插嘴」规则/);
+      assert.match(d[1].join(' '), /86%.*插了一句.*别插嘴/);
+      assert.match(d[2].join(' '), /20%.*没说/);
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij7-rules-and-records');
+    }, () => admin);
+
+    await step(S, 'IJ8 停用 the rule in the table → the same kind is judged again; 说得好 on that remark → an allow rule', async () => {
+      chapter('IJ8 停用规则 → 同类重新判断；点「说得好」→ 可以插嘴规则');
+      const id = (await rules())[0].id;
+      await admin.evaluate((rid) => document.querySelector(`[data-rule-toggle="${rid}"]`).click(), id);
+      await adminUntil(admin, () => /已停用/.test(document.querySelector('[data-interject-rules]').textContent), null, 8000, '已停用');
+      assert.equal((await rules())[0].disabled, true);
+      await shot(admin, 'ij8a-rule-disabled');
+      const before = decideCalls().length;
+      await remark('git push 被拒绝了，冲突好多');
+      assert.equal(decideCalls().length, before + 1, 'judged again');
+      await page.click('#ij-feedback [data-ij="like"]');
+      await page.waitForFunction(() => document.getElementById('ij-feedback').dataset.result === 'like', null, { timeout: 5000 });
+      await shot(page, 'ij8b-like-clicked');
+      const rs = await rules();
+      note(`停用后同类输入 decide ${before} → ${decideCalls().length}；点「说得好」后规则 ${JSON.stringify(rs)}`);
+      assert.equal(rs.length, 1, 'same scope: allow replaces the disabled block');
+      assert.equal(rs[0].effect, 'allow');
+      assert.equal(rs[0].origin, 'like');
+      await adminUntil(admin, () => /可以插嘴/.test(document.querySelector('[data-interject-rules]').textContent), null, 8000, 'the allow rule in the table');
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij8c-allow-rule');
+    }, () => admin);
+
+    await step(S, 'IJ9 删除 the rule in the table (confirmed) → the table is empty and interject.json has no rules', async () => {
+      chapter('IJ9 删除规则（确认）');
+      const id = (await rules())[0].id;
+      await admin.evaluate((rid) => document.querySelector(`[data-rule-delete="${rid}"]`).click(), id);
+      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => b.textContent.trim() === '删除规则'), null, 8000, 'the confirm dialog');
+      await shot(admin, 'ij9a-delete-confirm');
+      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => b.textContent.trim() === '删除规则').pop().click());
+      await adminUntil(admin, () => document.querySelectorAll('[data-interject-rules] [data-row-key]').length === 0, null, 8000, 'the row gone');
+      const file = JSON.parse(fs.readFileSync(path.join(data, 'interject.json'), 'utf8'));
+      fs.writeFileSync(path.join(SHOTS, 'interject.json'), JSON.stringify(file, null, 2));
+      note(`interject.json：rules ${file.rules.length}，decisions ${file.decisions.length}`);
+      assert.equal(file.rules.length, 0);
+      await admin.waitForTimeout(400);
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij9b-rule-deleted');
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+    const vids = fs.existsSync(path.join(SHOTS, 'video')) ? fs.readdirSync(path.join(SHOTS, 'video')) : [];
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2));
+    fs.writeFileSync(path.join(SHOTS, 'evidence.json'), JSON.stringify({ results: results.filter((r) => r.scenario === S), evidence, videos: vids }, null, 2));
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -8664,17 +9822,22 @@ async function adminScenario() {
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
   if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
+  if (which === 'spriteframe' || which === 'all') await spriteFrameScenarios().spriteFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
+  if (which === 'voicehotkey' || which === 'all') await voiceHotkeyScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');
   if (which === 'chatui' || which === 'all') await chatUiScenario();
   if (which === 'adminchat-live') retiredScenario('adminchat-live', 'admin-chat (its real-LobeHub part)');
   if (which === 'admin-chat') await adminChatAcceptance(); // T-2773 acceptance: chatui walk + real LobeHub through the chat page (a few tokens)
+  if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
+  if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

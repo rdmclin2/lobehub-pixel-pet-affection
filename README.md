@@ -201,12 +201,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | **按角色**（默认） | 她的引擎的 Key | 每位角色用自己文件里 `voice.tts.default` 的引擎：**大肥鱼用 MiniMax**（`qiaopi_mengmei`「俏皮萌妹」），克洛蒂 / 格萝可 / 杰米 / 吉皮缇用 Fish Audio。她的引擎没填 Key 或出错时，这一句换另一个填了 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」），再按“用不了时”降级 |
 | **Fish Audio** | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 所有角色都用 Fish：大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
 | **MiniMax** | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色（大肥鱼 `qiaopi_mengmei`）。默认端点 `https://api.minimax.cn`（国内站）；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+| **ElevenLabs** | ElevenLabs API Key（[elevenlabs.io](https://elevenlabs.io) → 左下角头像 Profile → API Keys 创建）+ 音色 `voice_id`（必填） | 所有角色都用 ElevenLabs：请求 `POST {端点}/v1/text-to-speech/{voice_id}`，Key 放在 `xi-api-key` 请求头。`voice_id` 从 ElevenLabs Voice Library / My Voices 复制（20 位字母和数字，如 `21m00Tcm4TlvDq8ikWAM`），填在 设置窗口 → 朗读 → ElevenLabs → **默认音色 ID**，或写进角色文件的 `voice.tts.elevenlabs.voiceId`（角色文件优先）；两边都没有时不用 ElevenLabs。**模型** 可选（默认 `eleven_multilingual_v2`，另有 `eleven_flash_v2_5` / `eleven_turbo_v2_5` / `eleven_v3`）；**端点** 可选，留空用官方 `https://api.elevenlabs.io`，自建代理填 `https://…` |
 | **本地语音服务** | 你自己部署的语音服务的地址（Key 可不填） | 你在本机或家里有显卡的电脑上跑的服务（IndexTTS2、GPT-SoVITS、[whale-voice](https://github.com/2177302423qqcom-byte/whale-voice) 等），音色由你的服务决定。只在选它时使用，不当云端引擎的备用。见下方“本地语音服务” |
 | **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面几个的最后一道降级 |
 
 配置步骤：
 
-1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。
+1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax / ElevenLabs）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。用 ElevenLabs 时除了 Key 还要填 **默认音色 ID**（`voice_id`）。
 2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（macOS 上是只有当前用户可读的 0600 文件——不用钥匙串，因为 ad-hoc 签名每次自动更新后都会重新弹「输入登录密码」；Windows / Linux 有系统密钥服务时用 Electron `safeStorage` 加密，否则同样是 0600 文件。旧版本在 macOS 上加密存的 Key 会在升级后读一次（最后弹一次钥匙串）并改存为 0600），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、5 秒没响应（长句最多 10 秒）、返回错误时，这一句立即降级，出错的引擎暂停一会儿：超时 / 断网 / 服务端出错 20 秒，被限流 20 秒，Key 无效 / 余额不足 5 分钟（改 Key / 端点 / 引擎会立刻重试）。MiniMax 国内站每分钟只能合成 10 次（免费账户），桌宠按这个数控制请求，预合成只用多出来的次数；请求在主进程异步进行，不会卡住界面。
@@ -234,14 +235,15 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
     "default": "minimax",
     "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
     "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" },
+    "elevenlabs": { "voiceId": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_multilingual_v2", "stability": 0.5, "similarityBoost": 0.75, "style": 0, "speed": 1.0, "speakerBoost": true },
     "local": { "voice": "whale" }
   }
 }
 ```
 
-`default` 是“按角色”时她用的引擎（`fish` / `minimax`，省略为 `fish`）。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
+`default` 是“按角色”时她用的引擎（`fish` / `minimax` / `elevenlabs` / `local`，省略为 `fish`）。`elevenlabs` 里只有 `voiceId` 必填（ElevenLabs 的 `voice_id`，10–40 位字母和数字）；`model` 省略时用设置里的模型（默认 `eleven_multilingual_v2`），`stability` / `similarityBoost` / `style` 取 0–1（默认 0.5 / 0.75 / 0），`speed` 取 0.7–1.2（默认 1.0），`speakerBoost` 是 true / false（默认 true），这几项作为请求体里的 `voice_settings` 发出。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
 
-> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax / ElevenLabs 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
 ### 互动语音
 
@@ -296,14 +298,14 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ### 隐私与音色授权
 
-- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio 或 MiniMax 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
+- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio、MiniMax 或 ElevenLabs 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
 - **Key 只在本机**：存在 `userData/tts-keys.json`（只有当前用户可读；Windows / Linux 有系统密钥服务时另加密），不写进 `settings.json`、不进日志、不回传到页面。合成的音频缓存在 `userData/tts-cache/`，可在 设置窗口 → 朗读 清空。
 - **音色授权**：Fish 社区音色由上传者负责来源，仓库只写 Fish 音色 id 和署名（`credit`），不分发 Fish 合成的音频；Fish 免费账号限个人非商业使用，商用要付费订阅。MiniMax 用的是平台系统音色，没有复刻真人声音；内置语音包（`src/voicepacks/`）就是用这些 MiniMax 系统音色合成的音频。参考视频里的“ssr大肥鱼音色”音源属于 UP 主 星落落_oi（页面注明“未经作者授权，禁止转载”），本项目**没有复刻也没有收录**它；想 1:1 复刻要先取得 UP 主许可，并只在自己电脑上用。
 - **AI 合成声明**：所有语音都是 AI 合成，不是真人录音；录屏公开发布或商用时请标注 AI 生成，并分别取得音色作者和平台的授权。
 
 ## 语音输入（ASR）
 
-打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
+打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤（也可以在任何地方按 **Ctrl+Shift+Space / ⌘⇧Space** 直接唤起语音对话，见下方 [快捷键唤起语音对话](#快捷键唤起语音对话)）：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
 
 - **LobeHub 云端识别**：复用 LobeHub 的语音识别（`lh generate asr --provider lobehub`，模型 `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`），用本机 `lh login` 的账号，按 Credits 计费，录音上传到 LobeHub 云端。
 - **本地识别服务（whisper）**：你自己跑的 whisper 服务，例如 whisper.cpp `whisper-server`、speaches（faster-whisper），或任何 OpenAI 兼容的 `/v1/audio/transcriptions`；录音只发到你填的本机 / 局域网地址，不经过云端，免费。
@@ -311,6 +313,64 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
 
 **完成状态**：相对原仓库，本项目已完成语音输入（ASR）支持——新增 🎤 录音输入、LobeHub 云端识别与本地 whisper 识别服务两种可切换的识别方式（可互为回退）、设置窗口 → 语音输入 的配置与「测试连接」、错误提示与隐私说明；两种方式都已在真实服务上实测识别通过。快速开始：按下方 [安装与运行](#安装与运行) `git clone` → `npm install` → `npm start`，再到 设置窗口 → 语音输入 打开并选引擎；各配置项的必填项和默认值见 [docs/asr.md §2.1](docs/asr.md#21-配置项一览必填--默认值)。
+
+### 快捷键唤起语音对话
+
+不用把鼠标移到她身上：在任何应用里按下全局快捷键，她就出现在桌面上、打开聊天框并开始听你说话；说完再按一次结束并识别。识别出的文字和点 🎤 一样处理——默认填进输入框等你按 Enter，勾选「识别后直接发送」时直接发给她（她回复，开着朗读时也会读出来）。
+
+- **默认组合**：macOS `⌘⇧Space`（Command+Shift+Space），Windows / Linux `Ctrl+Shift+Space`。系统自带的快捷键里没有它（⌘Space / Ctrl+Space 是 Spotlight、输入法切换，⌘⌥Space 是访达搜索）；但有的应用在自己窗口里用它（例如 VS Code 的“参数提示”），桌宠运行时这个组合会先给她，想留给那些应用就换一个或清空。
+- **按下后会发生什么**：桌宠窗口被隐藏或最小化时会被唤出并拿到焦点 → 聊天框展开 → 🎤 变成红色的 `■ Ns`、输入框上方显示「🔴 正在听」、气泡显示「我在听…说完再按 Ctrl+Shift+Space 结束」；你说话的整段时间她都处于「在听」状态：安静地看着你、身子微微前倾，头旁边有一只跳动的 👂（点 🎤 录音时也一样）→ 再按一次：气泡变成「嗯…让我想想你说了什么」、🎤 转圈 → 识别结果进输入框（或直接发送）。录音中按 **Esc** 取消。
+- **修改 / 关闭**：设置窗口 → **设置 → 声音 → 语音输入 → 快捷键 → 唤起语音对话**。点一下输入框，按下新的组合即保存并立即生效（旧的同时注销，不用重启）；输入框里的 × 清空 = 不用快捷键；↺「恢复默认」回到默认组合。字段左边的标签显示当前状态：**已生效** / **未启用**（已清空）/ **被占用** / **组合无效**。
+- **提示的含义**（显示在字段下方，出错的组合不会保存，正在用的快捷键保持不变）：
+  - 「组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键」：只按了普通键（没有修饰键）。必须是 **至少一个 Ctrl / ⌘ / Alt(⌥) + 一个普通键**（字母、数字、空格、F1–F24、方向键、标点）。
+  - 「只有 Shift 不够：Shift + 字母会挡住打大写字母，再加一个 Ctrl / ⌘ / Alt」：只用了 Shift 作修饰键。
+  - 「和应用内的「打开设置」（Ctrl+,）冲突，换一个组合」（macOS 上是 `⌘,`）：这个组合应用自己在用；其它同类：「退出（macOS）」⌘/Ctrl+Q、「复制」「粘贴（聊天框里粘贴图片）」「剪切」「全选」「撤销」⌘/Ctrl+C/V/X/A/Z、「重做」⌘/Ctrl+Shift+Z。
+  - 「被系统或其他应用占用了，按下时不会唤起她。换一个组合，或关掉占用它的程序后重启桌宠。」：系统或别的程序已经注册了它（Electron `globalShortcut.register` 返回失败）。手改 `settings.json` 写进去的组合在启动时被占用，设置页也会显示「被占用」和这句话。
+  - 输入框里 Space 写作「Space」（如 `Ctrl` `Shift` `Space`），保存到 `settings.json` 的仍是 Electron accelerator `CommandOrControl+Shift+Space`。
+- **前置条件**：
+  1. **打开语音输入并选一个识别引擎**（设置 → 语音输入 → 开启语音输入；引擎选 LobeHub 云端 或 本地服务）。没打开时按快捷键她会出现并说「语音输入还没开，我听不到你～打开方法在下面的提示里。」，提示条带「去设置」按钮，不会静默无反应。
+  2. **LobeHub 云端识别**：本机装好 `lh` 并 `lh login`（和聊天同一账号，按 Credits 计费）；或者 **本地识别**：先启动 whisper 服务并在设置里填地址（见 [docs/asr.md](docs/asr.md) 第 4 节）。
+  3. **麦克风权限**：权限被拒时按快捷键她会说「我听不到你：麦克风权限被拒绝了，办法在下面的提示里。」，气泡下方的提示条按当前系统给出处理方法（提示条不会挡住气泡）：
+     - **macOS**：第一次录音时系统会弹窗询问，允许即可；拒绝过的话到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。
+     - **Windows**：设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。
+     - **Linux**：系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 `pactl list sources short` 查看输入设备）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风（Flatpak 可用 Flatseal，Snap：`snap connect <应用名>:audio-record`）。
+  4. macOS 上全局快捷键不需要“辅助功能”权限。
+- **已知限制**：Linux **Wayland** 会话下 Electron 的全局快捷键依赖 XWayland / 桌面环境的 GlobalShortcuts 门户，很多桌面上按键收不到（设置页可能仍显示「已生效」）；请在 X11 会话里使用，或在桌面环境的系统快捷键里绑定一个命令来唤起。快捷键在桌宠还没唤醒（首次领养前）时只把窗口叫出来。
+
+设置保存在 `settings.json` 的 `asr.hotkey`（Electron accelerator 格式，如 `CommandOrControl+Shift+Space`，`""` = 关闭），详见 [docs/asr.md §1.1](docs/asr.md#11-快捷键唤起语音对话)。
+
+## 插个嘴（自动插嘴）
+
+打开后，她会“听”你在几处**明确列出的**地方写的、说的字，偶尔小声插一句碎碎念。这些字不是对她说的：聊天框里打了还没发的草稿、语音输入的转写、本机脚本报来的事、（单独打开时）剪贴板。要不要插嘴不由生成模型自己决定，而是像 LobeHub IM Bot 判断“没 @ 它的群消息要不要回”那样，交给决策模型 **jev** 回答一个是 / 否问题，按概率阈值判断：拿不准就不说，判断失败也不说。你的反应会沉淀成规则，越用越懂分寸。设计、数据流和规则细节见 **[docs/interject.md](docs/interject.md)**。
+
+### 配置与使用方式
+
+1. **准备**：本机 `lh` 已登录（`lh login`，和唤醒她用的是同一个账号），账号能调用决策模型 `lobehub/jev-1.14.0`（LobeHub 服务端需开放 TypeSafe 决策，即 `lh generate decide`）。没登录或没权限时她一律不说话，判断记录里会是“判断失败”。插嘴的那一句走她平时的 agent 对话，和主动搭话共用「每小时最多调用模型」额度，额度用完就换成离线台词。
+2. **开启**：⚙ 设置 → 玩法 → **主动搭话与好感** → 「插个嘴」卡片 → 打开总开关。**默认关闭**；打开后下面的来源、额度、阈值、决策模型才会出现。改动立即生效。
+3. **使用**：在她的聊天框里打一句、停一下不发送；或者用 🎤 说一句；或者让本机脚本 `POST /pixel-pet/observe`（要先在「对外接口」里开启接口，并带上令牌）。她觉得值得时，气泡里会冒出一句很短的话，**气泡上方**有两个按钮：
+   - **别插嘴**：这一类话以后不再判断（生成「别插嘴」规则）。在聊天框回「别打扰 / 别插嘴 / 安静点」也一样。
+   - **说得好**：这一类话在拿不准时也可以说（生成「可以插嘴」规则）。
+4. **查看与清理规则**：同一页下方有「沉淀的规则」表，列出规则、来源（让她别插嘴 / 点了说得好 / 没人理 / 你接过话）、命中次数和创建时间，每条都可以**停用**（保留但不生效）或**删除**（需确认）。「最近 20 次判断」表列出每次判断的来源、输入摘要、决策模型给的概率，以及最后有没有插嘴、原因是什么，可以「清空记录」。这些数据存在数据目录的 `interject.json` 里，删掉这个文件等于清空规则和记录。
+
+| 设置项 | 默认 | 说明 |
+| --- | --- | --- |
+| 插个嘴（总开关） | **关** | 关闭时任何输入都直接丢掉，不调用决策模型 |
+| 来源：聊天框草稿 / 语音输入 / 外部程序 | 开 / 开 / 开 | 总开关打开后才生效 |
+| 来源：剪贴板（系统级） | **关** | 要单独打开；记录里只留字数 |
+| 两次插嘴至少间隔 · 每小时最多插嘴 | 10 分钟 · 3 次 | 另外她 60 秒内刚说过话也不插 |
+| 每小时最多判断 · 停顿多久再判断 · 太短不判断 | 20 次 · 4 秒 · 6 字 | 决策模型的调用额度和防抖 |
+| 勿扰时段 | 23–8 点 | 开始和结束相同 = 不设勿扰 |
+| 插嘴阈值 · 不插嘴阈值 | 70% · 30% | 两者之间默认不说，命中「可以插嘴」规则才说 |
+| 判断超时 · 决策模型 | 10 秒 · `lobehub/jev-1.14.0` | 超时一律不说 |
+
+**隐私说明**：
+
+- 只听上表的来源。没有全局键盘钩子，不读其它窗口的标题或内容，不截屏，麦克风只在你按 🎤 时录。
+- 像密码、密钥、验证码、长数字串的输入在本地就丢掉，不发给模型。
+- 发给决策模型的只有最近 10 分钟内的最多 5 条输入（每条截到 200 字）和你的规则摘要，经临时文件（权限 0600，用完即删）交给 `lh`，不出现在命令行参数里。
+- 记录只留每句前 24 个字和一个去重用的哈希；剪贴板只记字数；报错只记错误码。
+- 她决定插嘴时，那一小段输入会作为提示词进入她的 LobeHub 话题，和平时聊天一样。
+
 
 ## 内容边界声明
 
@@ -338,6 +398,14 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
+- **Electron 本体（`node_modules/electron/dist`）**：`npm install` / `npm ci` 结束时 `postinstall`（[scripts/ensure-electron.js](scripts/ensure-electron.js)）会检查它，缺了就自动运行 Electron 自己的下载器。原因：npm 11 起依赖包的安装脚本要在 `allowScripts` 里放行才执行，而 Electron 45 改成首次 `require('electron')` 时才下载，`npm ci` 之后可能根本没有 `dist`，`npm start` / e2e 启动时再下载容易卡住或失败。如果安装时没网（脚本只提示、不让安装失败），或用了 `--ignore-scripts`，联网后手动补一次：
+
+  ```bash
+  node node_modules/electron/install.js   # 下载 Electron 到 node_modules/electron/dist
+  ls node_modules/electron/dist           # 有 electron（macOS 为 Electron.app）即可 npm start
+  ```
+
+  已经自带 Electron 的 CI 可以设 `ELECTRON_SKIP_BINARY_DOWNLOAD=1` 跳过。
 - Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
 - 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
@@ -363,7 +431,8 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 ```bash
 git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
 cd lobehub-pixel-pet-affection
-npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）
+npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）；postinstall 补下 Electron 本体
+node node_modules/electron/install.js  # 仅当 node_modules/electron/dist 仍缺失时（安装时没网 / --ignore-scripts），见上文
 npm start                              # prestart 先 npm run build:admin，再启动桌宠
 npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 未配置时）
 xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux
@@ -376,7 +445,7 @@ npm run dev:admin                      # 只开发设置窗口界面：Vite 开�
 
 ## 半身模式（VRM / Live2D）
 
-**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM 和 Live2D 形象包生效（像素 / 图片包保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM、Live2D 和像素形象包生效（图片 / 全动态包保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
 
 1. **选 Live2D / VRM 形象**：设置窗口 → 角色 → 点一位角色 → **形象包** 标签。大肥鱼内置「大肥鱼 · Live2D」，点 **穿上**；自己的模型用同页的 **导入 Live2D…**（`.model3.json` / `.zip`）或 **导入 VRM…**（`.vrm`），导入的卡片出现后再点它的 **穿上**。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
 2. **切换半身 / 全身**：设置窗口 → 玩法 → 桌宠行为 → **取景**（全局）；或角色详情 → 形象包 → **取景**（只这位角色：跟随 / 全身 / 半身）。立即生效。

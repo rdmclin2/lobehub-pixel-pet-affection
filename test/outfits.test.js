@@ -165,3 +165,31 @@ test('an 18+ look (adult pack) brings its own wardrobe, adult outfits included, 
   assert.deepEqual(o.listOutfits(p, ADULT).filter((x) => x.rating === 'adult'), []);
   assert.deepEqual(o.enforceOutfit(p, ADULT), { changed: true, from: 'bunny', to: 'daily' });
 });
+
+// T-2752: the wardrobe follows the pack she wears (形象包), never her other packs. 大肥鱼's Live2D pack has
+// art for daily only, so her 衣柜 in it is daily only, whatever her character file or pixel pack offers.
+test('a Live2D pack (大肥鱼) offers only its own outfits: other outfits are not listed, cannot be worn, and a worn one is taken off', () => {
+  const P = require('../src/core/packs');
+  const path = require('node:path');
+  const { packs } = P.loadPacks([{ dir: path.join(__dirname, '..', 'src', 'renderer', 'packs'), source: 'builtin' }]);
+  const live2d = P.lookContext(packs.get('dafeiyu-live2d'));
+  const pixel = P.lookContext(packs.get('dafeiyu-pixel'));
+  assert.deepEqual(live2d, { adult: false, only: true, outfits: ['daily'] });
+  const p = mk(100, 'dafeiyu');
+  for (const s of [OFF, ADULT]) {
+    assert.deepEqual(o.listOutfits(p, s, live2d).map((x) => x.id), ['daily'], 'her Live2D wardrobe: daily only');
+    assert.deepEqual(o.outfitsForStages(['familiar', 'close', 'flirty', 'lover'], p, s, live2d), [], 'no unlock toast for outfits the pack has not');
+    for (const id of ['scarf', 'swimsuit', 'qipao', 'maid']) assert.equal(o.equipOutfit(p, s, id, live2d).ok, false, id);
+    assert.equal(o.checkOutfit(p, s, 'scarf', live2d).reason, 'unavailable');
+  }
+  // her pixel pack has the scarf: worn there, then the Live2D pack is chosen → back to daily
+  assert.equal(o.equipOutfit(p, OFF, 'scarf', pixel).ok, true);
+  assert.ok(o.listOutfits(p, OFF, pixel).some((x) => x.id === 'scarf' && x.equipped));
+  assert.equal(o.wornOutfit(p, OFF, live2d), 'daily');
+  assert.deepEqual(o.enforceOutfit(p, OFF, live2d), { changed: true, from: 'scarf', to: 'daily' });
+  assert.equal(p.equippedOutfit, 'daily');
+  // her own clips (原版动画): only her signature outfit
+  assert.deepEqual(o.listOutfits(p, OFF, P.lookContextOf(packs, 'dafeiyu-clips', 'dafeiyu')).map((x) => x.id), ['daily']);
+  // no pack loaded at all (look null): her file's list, as before
+  assert.ok(o.listOutfits(p, OFF, null).some((x) => x.id === 'scarf'));
+});

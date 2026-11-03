@@ -74,7 +74,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
     if (f.store === 'settings' && !f.key.includes('<id>')) assert.deepEqual(f.default, schema.at(settingsLib.normalizeSettings(null), f.key), f.key);
   }
   // sensitive ones are masked / write-only
-  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.fish', 'keys.local', 'keys.minimax']);
+  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.elevenlabs', 'keys.fish', 'keys.local', 'keys.minimax']);
   assert.deepEqual(schema.FIELDS.filter((f) => f.restart).map((f) => f.key), ['system.hardwareAcceleration']);
   // describe() is plain data for the window
   const d = JSON.parse(JSON.stringify(schema.describe()));
@@ -175,6 +175,67 @@ test('API keys are write-only: they go to the key store hook, never into setting
   assert.equal((await admin.set('keys.asrlocal', '')).ok, true, 'empty clears');
   assert.equal(hooks.keys.asrlocal, '');
   assert.equal((await admin.set('keys.openai', 'whatever-123')).ok, false, 'only the known slots');
+});
+
+test('ElevenLabs in 设置 → 朗读: engine option, its own card (端点 / 默认音色 ID / 模型 / API Key) and the checks on each', () => {
+  const provider = schema.FIELDS.find((f) => f.key === 'tts.provider');
+  assert.ok(provider.options.some((o) => o.value === 'elevenlabs' && o.label === 'ElevenLabs'));
+  assert.equal(schema.validate('tts.provider', 'elevenlabs').ok, true);
+  const card = schema.FIELDS.filter((f) => f.page === 'tts' && f.card === 'ElevenLabs');
+  assert.deepEqual(card.map((f) => [f.key, f.type]), [['tts.endpoints.elevenlabs', 'url'], ['tts.elevenlabs.voiceId', 'text'], ['tts.elevenlabs.modelId', 'select'], ['keys.elevenlabs', 'secret']]);
+  const by = Object.fromEntries(card.map((f) => [f.key, f]));
+  assert.equal(by['tts.endpoints.elevenlabs'].validator, 'tts:elevenlabs');
+  assert.match(by['tts.endpoints.elevenlabs'].desc, /留空使用.*https:\/\/api\.elevenlabs\.io/);
+  assert.match(by['tts.elevenlabs.voiceId'].desc, /Voice Library.*voice_id/);
+  assert.equal(by['tts.elevenlabs.modelId'].default, 'eleven_multilingual_v2');
+  assert.deepEqual(by['tts.elevenlabs.modelId'].options.map((o) => o.value), ['eleven_multilingual_v2', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_v3']);
+  assert.equal(by['keys.elevenlabs'].store, 'keys');
+  assert.equal(by['keys.elevenlabs'].sensitive, true);
+  assert.match(by['keys.elevenlabs'].desc, /只写入，不回显。保存后显示「已设置」。/);
+  // endpoint: https (or loopback for debugging), no credentials; empty = the official address
+  assert.deepEqual(schema.validate('tts.endpoints.elevenlabs', ''), { ok: true, value: '' });
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://el.example.com').ok, true);
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'http://el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://u:p@el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'ftp://el.example.com').reason, 'bad-endpoint');
+  // voice_id: letters and digits as ElevenLabs gives them; model: one of the listed ones
+  assert.deepEqual(schema.validate('tts.elevenlabs.voiceId', ' 21m00Tcm4TlvDq8ikWAM '), { ok: true, value: '21m00Tcm4TlvDq8ikWAM' });
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', '').ok, true, 'cleared');
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', 'not/a voice').reason, 'pattern');
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'eleven_flash_v2_5').ok, true);
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'gpt-4o-mini-tts').reason, 'option');
+  assert.deepEqual(schema.patchFor('tts.elevenlabs.voiceId', 'abc'), { setter: 'setTts', patch: { elevenlabs: { voiceId: 'abc' } } });
+  assert.deepEqual(schema.patchFor('tts.endpoints.elevenlabs', 'https://x'), { setter: 'setTts', patch: { endpoints: { elevenlabs: 'https://x' } } });
+});
+
+test('ElevenLabs settings save through admin-set into settings.json; its key goes to the key store only', async () => {
+  const { admin, file, hooks, data } = setup();
+  assert.equal((await admin.set('tts.provider', 'elevenlabs')).ok, true);
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'https://el.example.com/')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.voiceId', '21m00Tcm4TlvDq8ikWAM')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.modelId', 'eleven_turbo_v2_5')).ok, true);
+  const t = file().tts;
+  assert.equal(t.provider, 'elevenlabs');
+  assert.equal(t.endpoints.elevenlabs, 'https://el.example.com');
+  assert.deepEqual(t.elevenlabs, { voiceId: '21m00Tcm4TlvDq8ikWAM', modelId: 'eleven_turbo_v2_5' });
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'http://el.example.com')).reason, 'bad-endpoint');
+  assert.equal(file().tts.endpoints.elevenlabs, 'https://el.example.com', 'a refused endpoint changes nothing');
+  const r = await admin.set('keys.elevenlabs', 'sk_el_abcdefgh12345');
+  assert.deepEqual([r.ok, r.hasKey, r.value], [true, true, undefined]);
+  assert.equal(hooks.keys.elevenlabs, 'sk_el_abcdefgh12345');
+  assert.ok(!fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes('sk_el_abcdefgh12345'));
+  assert.equal((await admin.set('keys.elevenlabs', 'has space in it')).reason, 'bad-key');
+  assert.equal((await admin.set('keys.elevenlabs', '')).ok, true, 'empty clears');
+  assert.equal(hooks.keys.elevenlabs, '');
+});
+
+test('朗读 page: the ElevenLabs card shows its engine status, and a cloud engine without a key says 未设置 Key', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
+  assert.match(src, /ElevenLabs: eng\('elevenlabs'\)/);
+  assert.match(src, /'未设置 Key'/);
+  assert.match(src, /还没设置 Key/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-settings.js'), 'utf8'), /KEY_SLOTS = new Set\(\[\.\.\.NEURAL/);
+  assert.ok(require('../src/core/tts').NEURAL.includes('elevenlabs'), 'key slot, set-tts key and ttsStatus all follow NEURAL');
 });
 
 test('admin-reset puts every listed key back to its default; read-only ones are skipped', async () => {
@@ -425,7 +486,7 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'update-status']);
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh
   // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
   for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
@@ -441,9 +502,9 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
 test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  // the toolbar: the four interactions and ⚙
+  // the toolbar: the four interactions, 🔈 and ⚙
   const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'settings']);
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']); // 🔈 静音 (T-2733) sits left of ⚙
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);

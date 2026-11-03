@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,13 +19,16 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
+const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
+const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
+const { VoiceHotkey } = require('./voice-hotkey');
 const { createAdminSettings } = require('./admin-settings');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
@@ -58,6 +61,8 @@ let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
+let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
+let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -174,6 +179,20 @@ function showPet() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+// 快捷键唤起语音对话: wherever the owner is, the pet comes up (shown, restored, focused so Esc works) and her
+// window starts listening — or, while she listens, stops and recognises (renderer onVoiceHotkey → micStart /
+// micStop). With 语音输入 off she says how to turn it on.
+function onVoiceHotkey(p) {
+  if (!win || win.isDestroyed()) return;
+  showPet();
+  send('voice-hotkey', p);
+}
+function applyHotkey() {
+  if (!voiceHotkey || !service) return false;
+  const before = JSON.stringify(voiceHotkey.status());
+  voiceHotkey.apply(service.settings.asr.hotkey);
+  return JSON.stringify(voiceHotkey.status()) !== before;
 }
 // 托盘 (§5.3): the way back to the settings and to the pet when she is covered or off screen.
 function createTray() {
@@ -318,6 +337,17 @@ function wire() {
   ipcMain.handle('touch', (_e, target) => service.touch(target));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
+  // 插个嘴 (core/interject.js, docs/interject.md): the chat box's unsent draft (the renderer sends it only while
+  // the feature and that source are on), the owner's reaction to a remark, and the rules / records for the UI
+  ipcMain.on('interject-draft', (_e, p) => { service.interjectInput('chatDraft', String((p && p.text) || '').slice(0, 4000)); });
+  ipcMain.handle('interject-feedback', (_e, p) => service.interjectFeedback(p && p.id, p && p.kind));
+  ipcMain.handle('interject-rules', () => service.interjectRules());
+  ipcMain.handle('interject-add-rule', (_e, p) => service.interjectAddRule(p && p.rule));
+  ipcMain.handle('interject-delete-rule', (_e, p) => service.interjectDeleteRule(p && p.id));
+  ipcMain.handle('interject-set-rule', (_e, p) => service.interjectSetRuleDisabled(p && p.id, !!(p && p.disabled)));
+  ipcMain.handle('interject-clear-decisions', () => service.interjectClearDecisions());
+  ipcMain.handle('interject-decisions', (_e, p) => service.interjectDecisions(p && p.limit));
+  ipcMain.handle('set-interject', (_e, patch) => { const r = service.setSection('interject', patch); syncClipboardWatch(); return r; });
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
@@ -533,7 +563,7 @@ function wire() {
   ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
-    if (!service.settings.prefs.voice) tts.engine.stopAll(); // 朗读 off: nothing more goes to an engine
+    if (!IVoice.voiceOn(service.settings.prefs)) tts.engine.stopAll(); // 朗读 off or 静音: nothing more goes to an engine
     return r;
   });
   // 语音: synthesise one line with the chosen engine for the current character; the renderer plays it
@@ -541,7 +571,7 @@ function wire() {
   ipcMain.handle('tts-synthesize', async (_e, { text, mood }) => {
     const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
     if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
-    if (!service.settings.prefs.voice) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
+    if (!IVoice.voiceOn(service.settings.prefs)) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
     const hit = recordedLine(sp, text);
     if (hit) { tts.engine.cancel(); tts.engine.stats.packHits = (tts.engine.stats.packHits || 0) + 1; return { ok: true, ...hit, cached: true, fellBackFrom: [], fallback: service.settings.tts.fallback, latencyMs: 0 }; }
     const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
@@ -561,7 +591,7 @@ function wire() {
   // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
   ipcMain.handle('tts-prewarm', async () => {
     const p = service.settings.prefs;
-    if (!service.pet || !p.voice || p.voiceInteractions === false) return { skipped: 'off' };
+    if (!service.pet || !IVoice.voiceOn(p) || p.voiceInteractions === false) return { skipped: 'off' };
     const sp = SPECIES[service.pet.speciesId];
     const all = service.voiceLines();
     const lines = all.filter((l) => !recordedLine(sp, l.text, true)); // the 语音包 already has these
@@ -592,6 +622,7 @@ function wire() {
   // 🎤 before the first recording: macOS asks the owner once (Info.plist NSMicrophoneUsageDescription);
   // elsewhere the OS has no per-app prompt and getUserMedia reports a refusal itself.
   ipcMain.handle('asr-mic-access', async () => {
+    if (TEST_MODE && micAccessOverride) return micAccessOverride; // e2e: what the OS would answer (debug-mic-access)
     if (process.platform !== 'darwin' || !systemPreferences.getMediaAccessStatus) return 'granted';
     const st = systemPreferences.getMediaAccessStatus('microphone');
     if (st === 'not-determined') return (await systemPreferences.askForMediaAccess('microphone')) ? 'granted' : 'denied';
@@ -639,7 +670,7 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -749,6 +780,16 @@ function wire() {
       return true;
     });
     ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
+    // 插个嘴: judge what is waiting now instead of after the debounce, and feed any listed source
+    ipcMain.handle('debug-interject-flush', async () => service.interjector.flush());
+    // e2e: forget the last remark's time (the cooldown and the hourly cap), so a run needs no 10-minute wait
+    ipcMain.handle('debug-interject-reset-cooldown', () => { service.interjector.lastInterject = null; service.interjector.interjectStamps = []; return true; });
+    ipcMain.handle('debug-interject-input', (_e, p) => service.interjectInput(p && p.source, p && p.text));
+    // 快捷键唤起语音对话: press it as the OS would (the registered handler), read its state, hide the pet first
+    ipcMain.handle('debug-voice-hotkey', () => { voiceHotkey.trigger('test'); return voiceHotkey.status(); });
+    ipcMain.handle('debug-voice-hotkey-status', () => ({ ...voiceHotkey.status(), registered: voiceHotkey.current ? globalShortcut.isRegistered(voiceHotkey.current) : false, petVisible: !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()), petFocused: !!(win && !win.isDestroyed() && win.isFocused()) }));
+    ipcMain.handle('debug-mic-access', (_e, v) => { micAccessOverride = typeof v === 'string' && v ? v : null; return micAccessOverride; });
+    ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
@@ -763,12 +804,46 @@ function wire() {
   service.on('chat-done', (d) => { send('chat-done', d); admin.send('admin-chat-changed', { speciesId: service.pet ? service.pet.speciesId : null }); });
   service.on('chat-log', (d) => admin.send('admin-chat-changed', d));
   service.on('affection', (a) => send('affection', a));
-  service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); });
+  // 插个嘴: what was judged and what she said (the record without the owner's text beyond its short summary)
+  // — to the pet window (the 别插嘴 / 说得好 buttons under a remark) and the settings window (规则 and 判断记录)
+  service.on('interject', (e) => {
+    const m = { type: e.type, decision: e.decision || null, rule: e.rule || null, decisionId: e.decisionId || null };
+    send('interject', m);
+    if (admin && admin.alive) admin.send('interject', m);
+  });
+  // a new shortcut is registered before anyone is told, so the status that goes out is the new one
+  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
   updater.on('status', (st) => { send('update-status', st); if (admin) admin.send('update-status', st); });
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
+}
+
+// 插个嘴 source 'clipboard' (system level): only while 插个嘴 AND its own clipboard switch are on (both off by
+// default). Polls the clipboard's plain text every few seconds; what was there when watching started is not judged.
+// Nothing else system-wide is read (no keyboard hook, no window titles, no screen).
+const CLIPBOARD_POLL_MS = 3000;
+let clipboardWatch = null;
+function syncClipboardWatch() {
+  const ij = service && service.settings.interject;
+  const want = !!(ij && ij.enabled && ij.sources.clipboard);
+  if (!want) {
+    if (clipboardWatch) clearInterval(clipboardWatch.timer);
+    clipboardWatch = null;
+    return;
+  }
+  if (clipboardWatch) return;
+  const w = { last: clipboard.readText() };
+  w.timer = setInterval(() => {
+    let text = '';
+    try { text = clipboard.readText(); } catch { return; }
+    if (text === w.last) return;
+    w.last = text;
+    if (text.trim()) service.interjectInput('clipboard', text.slice(0, 4000));
+  }, CLIPBOARD_POLL_MS);
+  if (w.timer.unref) w.timer.unref();
+  clipboardWatch = w;
 }
 
 app.whenReady().then(() => {
@@ -791,7 +866,8 @@ app.whenReady().then(() => {
   const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
+  voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
+  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -804,6 +880,7 @@ app.whenReady().then(() => {
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
     chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
+    observe: (text) => service.interjectInput('api', text), // 插个嘴 source 'api': she may or may not remark on it
   }, logError);
   // 语音输入: the microphone only for our own page, audio only, and only while 语音输入 is on
   // (core/asr.js mediaAllowed). Other permissions keep Electron's default.
@@ -821,10 +898,11 @@ app.whenReady().then(() => {
     service,
     hooks: {
       resizePet: (k) => resizePet(clampScale(k)),
-      afterPrefs: (prefs) => { if (!prefs.voice) tts.engine.stopAll(); },
+      afterPrefs: (prefs) => { if (!IVoice.voiceOn(prefs)) tts.engine.stopAll(); },
       beforeTts: () => { tts.engine.endPrewarm(); tts.engine.reset(); },
       afterApi: () => applyApi(),
       setKey: (id, value) => tts.keys.set(id, value),
+      probeHotkey: (acc) => voiceHotkey.probe(acc),
     },
   });
   wire();
@@ -832,9 +910,15 @@ app.whenReady().then(() => {
   createTray();
   createAppMenu();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
+  // E2E only: combinations "another app" already holds (registered here first, so ours really gets false)
+  if (TEST_MODE && process.env.PIXELPET_E2E_TAKEN_HOTKEYS) for (const a of process.env.PIXELPET_E2E_TAKEN_HOTKEYS.split(',').filter(Boolean)) globalShortcut.register(a.trim(), () => {});
+  applyHotkey();
   applyApi();
+  syncClipboardWatch();
   updater.start();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);
 });
 
 app.on('window-all-closed', () => app.quit());
+// every global shortcut goes with the app (快捷键唤起语音对话)
+app.on('will-quit', () => { if (voiceHotkey) voiceHotkey.dispose(); else globalShortcut.unregisterAll(); });

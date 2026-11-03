@@ -21,6 +21,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const hotkeyLib = require('./hotkey');
 
 const ENGINES = ['lobehub', 'local', 'off'];
 const PROVIDER_IDS = ['lobehub', 'local'];
@@ -76,6 +77,7 @@ const ASR_DEFAULTS = {
   language: 'auto', // auto | an ISO-639-1 code (zh, en, ja…)
   maxSeconds: SECONDS.default,
   autoSend: false, // 识别后直接发送 (renderer): the text goes to the chat at once instead of waiting in the box
+  hotkey: hotkeyLib.DEFAULT_HOTKEY, // 快捷键唤起语音对话 (core/hotkey.js, main/voice-hotkey.js): an Electron accelerator, '' = off
   lobehub: { model: LOBEHUB_MODELS[0] },
   local: { endpoint: DEFAULT_ENDPOINT, api: 'openai', model: 'whisper-1', timeoutSec: LOCAL_TIMEOUT.default },
 };
@@ -121,6 +123,7 @@ function normalizeAsr(raw) {
     language: typeof r.language === 'string' && LANG_RE.test(r.language.trim().toLowerCase()) ? r.language.trim().toLowerCase() : ASR_DEFAULTS.language,
     maxSeconds: int(r.maxSeconds, SECONDS),
     autoSend: r.autoSend === true,
+    hotkey: hotkeyLib.normalizeHotkey(r.hotkey),
     lobehub: { model: typeof lob.model === 'string' && MODEL_RE.test(lob.model.trim()) ? lob.model.trim() : ASR_DEFAULTS.lobehub.model },
     local: {
       endpoint: endpointOk(loc.endpoint) ? cleanEndpoint(loc.endpoint) : DEFAULT_ENDPOINT,
@@ -132,7 +135,7 @@ function normalizeAsr(raw) {
 }
 
 // The owner changed something in 高级设置 → 语音输入: merge, and say what could not be taken.
-// Returns { asr, ok, errors: ['bad-endpoint' | 'bad-model' | 'bad-language' | 'bad-engine'] }.
+// Returns { asr, ok, errors: ['bad-endpoint' | 'bad-model' | 'bad-language' | 'bad-engine' | 'bad-hotkey' | 'hotkey-conflict'] }.
 function applyAsrPatch(cur, patch) {
   const c = normalizeAsr(cur);
   const p = patch && typeof patch === 'object' ? patch : {};
@@ -144,6 +147,11 @@ function applyAsrPatch(cur, patch) {
   if (p.language !== undefined) { if (typeof p.language === 'string' && LANG_RE.test(p.language.trim().toLowerCase())) next.language = p.language.trim().toLowerCase(); else errors.push('bad-language'); }
   if (p.maxSeconds !== undefined) next.maxSeconds = int(p.maxSeconds, SECONDS);
   if (typeof p.autoSend === 'boolean') next.autoSend = p.autoSend;
+  if (p.hotkey !== undefined) {
+    // '' = off; an invalid combination or one the app itself uses is not taken (the old one stays)
+    const h = hotkeyLib.checkHotkey(p.hotkey === null ? '' : p.hotkey);
+    if (h.ok) next.hotkey = h.accelerator; else errors.push(h.reason === 'conflict' ? 'hotkey-conflict' : 'bad-hotkey');
+  }
   const lob = p.lobehub && typeof p.lobehub === 'object' ? p.lobehub : {};
   if (lob.model !== undefined) { if (typeof lob.model === 'string' && MODEL_RE.test(lob.model.trim())) next.lobehub.model = lob.model.trim(); else errors.push('bad-model'); }
   const loc = p.local && typeof p.local === 'object' ? p.local : {};

@@ -1,7 +1,10 @@
 'use strict';
-// Neural voices (TTS engines) behind one provider interface; docs/tts-voice-research.md §5–§8.
+// Neural voices (TTS engines) behind one provider interface; docs/tts-voice-research.md §5–§8 (ElevenLabs: §11).
 // The system voice (Web Speech, core/voice.js) stays the last fallback and runs in the renderer; the
 // cloud engines run here in the main process, so API keys never reach the page.
+//
+// Providers (PROVIDERS): fish (Fish Audio), minimax (MiniMax), elevenlabs (ElevenLabs) — the cloud engines,
+// each with its own API key — local (the user's own voice server) and system (Web Speech).
 //
 // Every provider has the same shape (PROVIDERS):
 //   { id, label, kind: 'neural' | 'system', needsKey, available(ctx), config(voice) }
@@ -15,7 +18,7 @@
 // The local engine is a voice server the user runs on their own machine (IndexTTS2, GPT-SoVITS… on a GPU):
 // no key, slower, configured in settings (endpoint, API shape, voice) rather than per character.
 //
-// A character sets her engines in her file under `voice.tts` (fish / minimax / local, and `default`: the engine
+// A character sets her engines in her file under `voice.tts` (fish / minimax / elevenlabs / local, and `default`: the engine
 // she reads with under 'auto', fish when missing), next to the lang / pitch / rate / prefer the system voice uses. Older files without `tts` stay valid: the engines
 // then use DEFAULT_TTS (or nothing for a provider without a default) and she falls back to the system voice.
 
@@ -23,8 +26,8 @@ const crypto = require('node:crypto');
 const Voice = require('./voice');
 const InteractionVoice = require('./interaction-voice');
 
-const ENGINES = ['auto', 'fish', 'minimax', 'local', 'system'];
-const NEURAL = ['fish', 'minimax', 'local'];
+const ENGINES = ['auto', 'fish', 'minimax', 'elevenlabs', 'local', 'system'];
+const NEURAL = ['fish', 'minimax', 'elevenlabs', 'local'];
 const FALLBACKS = ['system', 'silent'];
 const TIMEOUT_MS = 5000; // no response headers in this time (plus PER_CHAR_MS a character): give up and fall back (doc §8)
 const PER_CHAR_MS = 50; // a non-streaming engine answers once the whole line is synthesised: longer lines take longer
@@ -151,6 +154,55 @@ const MINIMAX = {
   },
 };
 
+// ElevenLabs Text-to-Speech: POST {endpoint}/v1/text-to-speech/{voice_id} with the key in `xi-api-key`
+// (https://elevenlabs.io/docs/api-reference/text-to-speech/convert). Her voice comes from her file
+// (voice.tts.elevenlabs); without one, from settings.tts.elevenlabs (a voice the user picked in 语音).
+const ELEVENLABS_MODEL = 'eleven_multilingual_v2';
+const ELEVENLABS_VOICE_ID = /^[A-Za-z0-9]{10,40}$/; // their voice ids are 20 letters and digits (21m00Tcm4TlvDq8ikWAM)
+const ELEVENLABS = {
+  id: 'elevenlabs',
+  label: 'ElevenLabs',
+  kind: 'neural',
+  needsKey: true,
+  defaultEndpoint: 'https://api.elevenlabs.io',
+  // no per-minute cap: ElevenLabs limits concurrent requests by plan (2 on free, more when paid) and answers 429 past
+  // it — https://elevenlabs.io/docs/models#concurrency-and-priority. One line at a time here, so 0 (a 429 still pauses it 20 s)
+  rpm: 0,
+  available: neuralAvailable,
+  config(voice, set) {
+    const t = ttsOf(voice);
+    const own = (t && t.elevenlabs) || {};
+    const def = (set && set.elevenlabs) || TTS_DEFAULTS.elevenlabs;
+    const voiceId = str(own.voiceId) ? own.voiceId.trim() : def.voiceId;
+    if (!str(voiceId)) return null;
+    return {
+      voiceId,
+      model: str(own.model) ? own.model.trim() : str(def.modelId) ? def.modelId : ELEVENLABS_MODEL,
+      stability: clamp(own.stability, 0, 1, 0.5),
+      similarityBoost: clamp(own.similarityBoost, 0, 1, 0.75),
+      style: clamp(own.style, 0, 1, 0),
+      speed: clamp(own.speed, 0.7, 1.2, 1),
+      speakerBoost: own.speakerBoost !== false,
+    };
+  },
+  text: (_cfg, text) => text,
+  async synthesize(cfg, text, { key, endpoint, fetch, signal, wait }) {
+    if (!str(key)) throw new TtsError('no-key'); // never a request without a key
+    const res = await wait(fetch(`${endpoint}/v1/text-to-speech/${encodeURIComponent(cfg.voiceId)}?output_format=mp3_44100_128`, {
+      method: 'POST',
+      signal,
+      headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+      body: JSON.stringify({ text, model_id: cfg.model, voice_settings: { stability: cfg.stability, similarity_boost: cfg.similarityBoost, style: cfg.style, speed: cfg.speed, use_speaker_boost: cfg.speakerBoost } }),
+    }));
+    if (!res.ok) throw new TtsError(`http-${res.status}`);
+    const mime = (res.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim();
+    if (!/^audio\//.test(mime)) throw new TtsError('not-audio'); // a JSON error with 200, or a proxy page
+    const audio = Buffer.from(await res.arrayBuffer());
+    if (!audio.length) throw new TtsError('empty');
+    return { audio, mime };
+  },
+};
+
 // A voice server the user runs (IndexTTS2, GPT-SoVITS, CosyVoice… on their own GPU, often over a minute to
 // load and seconds a line): the OpenAI speech API (POST {endpoint}/v1/audio/speech — index-tts-vllm and most
 // self-hosted servers) or whale-voice's tts_daemon (POST {endpoint}/tts { text, emo } -> wav). Its voice is
@@ -207,7 +259,7 @@ const LOCAL = {
 // Web Speech: the system's own voices, free and offline (core/voice.js; spoken by the renderer).
 const SYSTEM = { ...Voice.webSpeech, label: '系统语音（Web Speech）' };
 
-const PROVIDERS = { fish: FISH, minimax: MINIMAX, local: LOCAL, system: SYSTEM };
+const PROVIDERS = { fish: FISH, minimax: MINIMAX, elevenlabs: ELEVENLABS, local: LOCAL, system: SYSTEM };
 
 // ---- character files --------------------------------------------------------------------------------
 // Problems with a character's `voice` (empty = valid). The old shape { lang, pitch, rate, prefer } is valid as is.
@@ -221,7 +273,7 @@ function validateVoice(v) {
   if (v.prefer !== undefined && (!Array.isArray(v.prefer) || !v.prefer.every(str))) errors.push('voice.prefer must be a list of system voice names');
   errors.push(...InteractionVoice.validateLines(v.lines)); // 拖拽 / 甩出 / 接住 lines (core/interaction-voice.js)
   if (v.tts === undefined) return errors;
-  if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax, local })'];
+  if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax, elevenlabs, local })'];
   for (const [id, c] of Object.entries(v.tts)) {
     const at = `voice.tts.${id}`;
     if (id === 'default') { if (!NEURAL.includes(c)) errors.push(`${at} must be one of ${NEURAL.join(', ')}`); continue; }
@@ -229,9 +281,14 @@ function validateVoice(v) {
     if (!c || typeof c !== 'object') { errors.push(`${at} must be an object`); continue; }
     if (id === 'fish' && !/^[0-9a-f]{32}$/.test(c.referenceId || '')) errors.push(`${at}.referenceId must be a Fish Audio model id (32 hex characters)`);
     if (id === 'minimax' && !/^[A-Za-z0-9_() -]{2,80}$/.test(c.voiceId || '')) errors.push(`${at}.voiceId must be a MiniMax voice id`);
+    if (id === 'elevenlabs' && !ELEVENLABS_VOICE_ID.test(c.voiceId || '')) errors.push(`${at}.voiceId must be an ElevenLabs voice id (10–40 letters and digits)`);
+    if (id === 'elevenlabs' && c.speakerBoost !== undefined && typeof c.speakerBoost !== 'boolean') errors.push(`${at}.speakerBoost must be true or false`);
     if (id === 'local' && c.voice !== undefined && !str(c.voice)) errors.push(`${at}.voice must be a voice name on the local server`);
     if (c.model !== undefined && !str(c.model)) errors.push(`${at}.model must be a model name`);
-    const ranges = id === 'fish' ? { speed: [0.5, 2], volume: [-20, 20], temperature: [0, 1], topP: [0, 1] } : id === 'local' ? { speed: [0.5, 2] } : { speed: [0.5, 2], pitch: [-12, 12], vol: [0.1, 10] };
+    const ranges = id === 'fish' ? { speed: [0.5, 2], volume: [-20, 20], temperature: [0, 1], topP: [0, 1] }
+      : id === 'local' ? { speed: [0.5, 2] }
+        : id === 'elevenlabs' ? { stability: [0, 1], similarityBoost: [0, 1], style: [0, 1], speed: [0.7, 1.2] }
+          : { speed: [0.5, 2], pitch: [-12, 12], vol: [0.1, 10] };
     for (const [k, [lo, hi]] of Object.entries(ranges)) if (c[k] !== undefined && !(Number.isFinite(c[k]) && c[k] >= lo && c[k] <= hi)) errors.push(`${at}.${k} must be a number from ${lo} to ${hi}`);
     if (c.moodTags !== undefined && (!c.moodTags || typeof c.moodTags !== 'object' || !Object.values(c.moodTags).every(str))) errors.push(`${at}.moodTags must map moods to tags`);
   }
@@ -256,7 +313,8 @@ function defaultEngine(species) {
 // they live encrypted in tts-keys.json. providerSet: the user picked the engine in 语音 (settings.js moves
 // saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
 // local: the user's own voice server — its API shape (openai / whale), model and voice name.
-const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } };
+// elevenlabs: the voice and model used for a character whose file names no ElevenLabs voice.
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: ELEVENLABS_MODEL } };
 
 // https anywhere; plain http only to this machine — or, for the local engine (`lan`), to a machine on the
 // home network (a GPU box next to the Mac): only the text of her lines goes there.
@@ -276,6 +334,7 @@ function normalizeTts(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const ep = r.endpoints && typeof r.endpoints === 'object' ? r.endpoints : {};
   const lo = r.local && typeof r.local === 'object' ? r.local : {};
+  const el = r.elevenlabs && typeof r.elevenlabs === 'object' ? r.elevenlabs : {};
   return {
     provider: ENGINES.includes(r.provider) ? r.provider : TTS_DEFAULTS.provider,
     providerSet: r.providerSet === true,
@@ -283,6 +342,7 @@ function normalizeTts(raw) {
     packs: r.packs !== false, // 语音包: her recorded fixed lines first (core/voice-pack.js)
     endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOkFor(id, ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
     local: { api: LOCAL_APIS.includes(lo.api) ? lo.api : 'openai', model: name80(lo.model), voice: name80(lo.voice) },
+    elevenlabs: { voiceId: name80(el.voiceId), modelId: name80(el.modelId) || ELEVENLABS_MODEL },
   };
 }
 
@@ -408,10 +468,11 @@ class TtsEngine {
     for (const id of providerChain(set, (p) => ready(p, set, this.keys), species)) {
       const p = PROVIDERS[id];
       if (p.kind === 'system') return done({ ok: false, reason: set.provider === 'system' ? 'system' : 'fallback', next: 'system' });
+      // not ready first: a cloud engine without a key says 'no-key' even when she has no voice there yet
+      if (!ready(id, set, this.keys)) { fellBackFrom.push({ provider: id, reason: p.needsKey === false ? 'no-endpoint' : 'no-key' }); continue; }
       const cfg = this._cfg(p, species, set, mood);
       if (!cfg) { fellBackFrom.push({ provider: id, reason: 'no-voice' }); continue; }
       const key = this.keys.get(id);
-      if (!ready(id, set, this.keys)) { fellBackFrom.push({ provider: id, reason: p.needsKey === false ? 'no-endpoint' : 'no-key' }); continue; }
       const h = this.health[id];
       if (h && h.until > this.now()) { fellBackFrom.push({ provider: id, reason: `paused:${h.reason}` }); continue; }
       const said = p.text(cfg, line, mood);
@@ -447,7 +508,9 @@ class TtsEngine {
         this.log(new Error(`tts ${id}: ${redact(reason === 'network' ? `network (${e.message})` : reason, this.keys.all())} — falling back`));
       }
     }
-    return done({ ok: false, reason: 'fallback', next: null }); // silent
+    // silent: nothing reads the line. Say why (the first engine's reason, e.g. 'no-key'), never just 'fallback'
+    const why = fellBackFrom[0];
+    return done({ ok: false, reason: why ? why.reason : 'fallback', message: fellBackFrom.map((f) => `${PROVIDERS[f.provider] ? PROVIDERS[f.provider].label : f.provider}: ${f.reason}`).join('; ') || 'no engine', next: null });
   }
 
   // 互动语音: synthesise her common short lines ahead into the cache, so a pat or a feed plays at once.
@@ -541,4 +604,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { ENGINES, NEURAL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { ENGINES, NEURAL, ELEVENLABS_MODEL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };

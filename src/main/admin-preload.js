@@ -73,6 +73,14 @@ contextBridge.exposeInMainWorld('petAdmin', {
   markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
+  // 插个嘴 (core/interject.js): the rules her owner's reactions settled and the recent decisions — data, not
+  // settings; the same channels the pet window uses. Switch a rule off / on, delete it, clear the records.
+  interjectRules: () => ipcRenderer.invoke('interject-rules'),
+  interjectDecisions: (limit) => ipcRenderer.invoke('interject-decisions', { limit }),
+  interjectSetRule: (id, disabled) => ipcRenderer.invoke('interject-set-rule', { id, disabled }),
+  interjectDeleteRule: (id) => ipcRenderer.invoke('interject-delete-rule', { id }),
+  interjectClearDecisions: () => ipcRenderer.invoke('interject-clear-decisions'),
+  onInterject: on('interject'),
   // pushes: the whole admin state after any change (from either window), update / API status
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),

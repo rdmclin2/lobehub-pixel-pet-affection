@@ -84,23 +84,27 @@
 
 | key | 类型 | 默认值 | 取值范围 / 校验 | 当前编辑入口 · IPC | 生效 |
 | --- | --- | --- | --- | --- | --- |
+| `prefs.muted` | boolean | `false` | 开着时盖过下面所有朗读开关和 `prefs.clickSound`，但不改它们的值 | 桌宠工具栏喇叭按钮；设置 → 朗读 → 静音 · `set-prefs` | 即时；开启时 `tts.engine.stopAll()`，渲染进程立刻停掉正在读的话 |
 | `prefs.voice` | boolean | `false` | — | ⋯ → 高级设置 → 桌宠行为 → 朗读回复 · `set-prefs` | 即时；关闭时 `tts.engine.stopAll()` |
 | `prefs.voiceInteractions` | boolean | `true` | 要 `prefs.voice` 开着才起作用 | 同上 → 互动语音 · `set-prefs` | 即时（开启后会预合成 `tts-prewarm`） |
 | `prefs.voiceMurmurs` | boolean | `false` | 要 `prefs.voice` 开着才起作用 | 同上 → 朗读碎碎念 · `set-prefs` | 即时 |
-| `tts.provider` | enum | `'auto'` | `auto` \| `fish` \| `minimax` \| `local` \| `system`（`ENGINES`） | ⋯ → 高级设置 → 语音 → 引擎 · `set-tts` | 即时（重置熔断器、停止预热） |
+| `tts.provider` | enum | `'auto'` | `auto` \| `fish` \| `minimax` \| `elevenlabs` \| `local` \| `system`（`ENGINES`） | ⋯ → 高级设置 → 语音 → 引擎 · `set-tts` | 即时（重置熔断器、停止预热） |
 | `tts.providerSet` | boolean | `false` | 内部标记：主人选过引擎。没有这个标记的旧设置迁移成 `auto` | 不直接编辑（`set-tts {provider}` 时置 true） | — |
 | `tts.fallback` | enum | `'system'` | `system` \| `silent`（`FALLBACKS`） | 语音 → 用不了时 · `set-tts` | 即时 |
 | `tts.packs` | boolean | `true` | — | 语音 → 语音包 · `set-tts` | 即时 |
 | `tts.endpoints.fish` | URL string | `''`（为空时用官方地址 `https://api.fish.audio`） | 必须是 https；只有本机调试可以用 http://127.0.0.1 / localhost / [::1]；不能带用户名和密码 | 语音 → Fish Audio → 端点 · `set-tts` | 即时；不合法时 `reason:'bad-endpoint'` |
 | `tts.endpoints.minimax` | URL string | `''`（官方 `https://api.minimax.cn`） | 同上 | 语音 → MiniMax → 端点 · `set-tts` | 即时 |
+| `tts.endpoints.elevenlabs` | URL string | `''`（官方 `https://api.elevenlabs.io`） | 同上 | 语音 → ElevenLabs → 端点 · `set-tts` | 即时 |
 | `tts.endpoints.local` | URL string | `''`（为空时本地引擎不可用） | https，或者本机 / 局域网的 http（10.x、192.168.x、172.16–31.x、*.local） | 语音 → 本地语音服务 → 地址 · `set-tts` | 即时 |
 | `tts.local.api` | enum | `'openai'` | `openai`（`/v1/audio/speech`）\| `whale`（`/tts`） | 语音 → 本地语音服务 → 接口 · `set-tts` | 即时 |
 | `tts.local.model` | string | `''`（请求时用 `tts-1`） | 去掉首尾空白，最多 80 字 | 语音 → 本地语音服务 → 模型 · `set-tts` | 即时 |
 | `tts.local.voice` | string | `''`（请求时用 `default`） | 最多 80 字；角色文件里的 `voice.tts.local.voice` 优先 | 语音 → 本地语音服务 → 音色名 · `set-tts` | 即时 |
+| `tts.elevenlabs.voiceId` | string | `''`（没有音色时不用 ElevenLabs） | 从 ElevenLabs Voice Library 复制的 voice_id：去掉首尾空白后为空，或 10–40 位字母和数字（`^[A-Za-z0-9]{10,40}$`，否则 `reason:'pattern'`）；角色文件里的 `voice.tts.elevenlabs.voiceId` 优先 | 语音 → ElevenLabs → 默认音色 ID · `set-tts` | 即时 |
+| `tts.elevenlabs.modelId` | enum | `'eleven_multilingual_v2'` | 设置窗口里是下拉：`eleven_multilingual_v2` \| `eleven_flash_v2_5` \| `eleven_turbo_v2_5` \| `eleven_v3`（其它值 `reason:'option'`）；settings.json 里最多 80 字，空串回到默认；角色文件里的 `voice.tts.elevenlabs.model` 优先 | 语音 → ElevenLabs → 模型 · `set-tts` | 即时 |
 
 语音的密钥和操作：
 
-- Key `fish` / `minimax` / `local` 存在 `tts-keys.json` 里，格式是 `^[\x21-\x7e]{8,256}$`。入口是语音 → 各引擎 → Key 保存 / 清除，调用 `set-tts {key:{id,value}}`，格式不对时返回 `bad-key`。Windows / Linux 用 safeStorage 加密，macOS 用权限 0600 的明文文件。
+- Key `fish` / `minimax` / `elevenlabs` / `local` 存在 `tts-keys.json` 里，格式是 `^[\x21-\x7e]{8,256}$`。入口是语音 → 各引擎 → Key 保存 / 清除，调用 `set-tts {key:{id,value}}`，格式不对时返回 `bad-key`。Windows / Linux 用 safeStorage 加密，macOS 用权限 0600 的明文文件。
 - 动作：`tts-clear-cache`（清空语音缓存）、`open-voicepacks-folder`、`voicepacks-reload`（重新读语音包）。「试听一句」在渲染进程里调 `speak()`，最后走到 `tts-synthesize`。运行时还有 `tts-cancel` 和 `tts-prewarm`，它们不是配置。
 - 角色自己的音色（`voice.tts.fish.referenceId`、语速、moodTags…）写在 `src/characters/<id>.json` 里，**界面上不能改**。后台只读展示，同时显示音色的署名。
 
@@ -114,6 +118,7 @@
 | `asr.language` | string | `'auto'` | `^(auto\|[a-z]{2})$`；界面上只列 auto / zh / en / ja / ko / fr / de / es / ru | 语音输入 → 语言 · `set-asr` | 即时 |
 | `asr.maxSeconds` | int | `60` | 5–120 | **界面上没有入口**（只在说明文字里显示），只能手改 `settings.json` | 下一次录音时生效 |
 | `asr.autoSend` | boolean | `false` | — | 语音输入 → 识别后直接发送 · `set-asr` | 即时 |
+| `asr.hotkey` | Electron accelerator string | `'CommandOrControl+Shift+Space'` | `''` = 关闭；至少一个修饰键（只有 Shift 不行）+ 一个已知普通键；不能和应用内快捷键（⌘/Ctrl+, 等）重复；缺省或读不懂时回到默认值（`core/hotkey.js`） | 语音输入 → 快捷键 → 唤起语音对话（HotkeyInput）· `admin-set` | 即时（`main/voice-hotkey.js` 注销旧的再注册新的；被系统或其他应用占用时不保存，`hotkey-taken`） |
 | `asr.lobehub.model` | string | `'gpt-4o-mini-transcribe'` | `^[A-Za-z0-9._:/-]{1,80}$`；界面上只给两个选项（mini / 完整版 `gpt-4o-transcribe`） | 语音输入 → LobeHub 云端识别 → 模型 · `set-asr` | 即时 |
 | `asr.local.endpoint` | URL string | `'http://127.0.0.1:8179'` | https，或本机 / 局域网的 http；不能带 query、hash 或账号密码；不合法时回到默认值 | 语音输入 → 本地识别服务 → 地址 · `set-asr` | 即时；不合法时 `bad-endpoint` |
 | `asr.local.api` | enum | `'openai'` | `openai`（`/v1/audio/transcriptions`）\| `whispercpp`（`/inference`） | 同上 → 接口 · `set-asr` | 即时 |
@@ -443,6 +448,20 @@ node scripts/check-admin-console-doc.js   # 0 = 全部覆盖；1 = 打印 MISS �
 | `affectionRules.dailyCap` | int | `12`（`DAILY_CAP`） | 4–40 | 主动行为与好感度 → 好感度 | 即时（`affection.setRules`） |
 | `affectionRules.decay` | boolean | `true` | — | 同上 | 即时；关闭期间这次缺席的步数记为已扣，重新打开不会一次补扣 |
 | `ui.theme` | enum | `'auto'` | `auto` \| `light` \| `dark` | 外观主题 | 即时（只影响设置窗口） |
+| `interject.enabled` | boolean | `false` | — | 主动搭话与好感 → 插个嘴 · `admin-set` / `set-interject` | 即时；关闭时清掉待判断的输入、中止进行中的判断（`Interjector#cancel`），之后零次决策调用。详见 `docs/interject.md` |
+| `interject.sources.chatDraft` | boolean | `true` | — | 同上 → 来源：聊天框草稿 | 即时（桌宠窗口只在开着时才发 `interject-draft`） |
+| `interject.sources.voice` | boolean | `true` | — | 同上 → 来源：语音输入 | 即时 |
+| `interject.sources.api` | boolean | `true` | — | 同上 → 来源：外部程序（`POST /pixel-pet/observe`） | 即时 |
+| `interject.sources.clipboard` | boolean | `false` | 系统级来源，单独开关 | 同上 → 来源：剪贴板 | 即时（主进程开 / 停 3 秒一次的轮询） |
+| `interject.cooldownMin` | int | `10` | 1–240 | 同上 | 即时 |
+| `interject.maxPerHour` | int | `3` | 0–20 | 同上 | 即时 |
+| `interject.maxDecidePerHour` | int | `20` | 0–120 | 同上 | 即时（`LlmBudget.max`） |
+| `interject.debounceSec` | int | `4` | 1–60 | 同上 | 下一次输入 |
+| `interject.minChars` | int | `6` | 1–200 | 同上 | 即时 |
+| `interject.quietStart` / `interject.quietEnd` | int | `23` / `8` | 0–23；相同 = 不设勿扰 | 同上 | 即时 |
+| `interject.highThreshold` / `interject.lowThreshold` | number | `0.7` / `0.3` | 0.5–0.99 / 0–0.5；低阈值不小于高阈值时两项都回到默认 | 同上 | 即时 |
+| `interject.timeoutSec` | int | `10` | 2–60 | 同上 | 下一次判断 |
+| `interject.model` | string | `'lobehub/jev-1.14.0'` | `provider/model`（`DECISION_MODEL_RE`） | 同上 | 下一次判断 |
 | `system.hardwareAcceleration` | boolean | `true` | — | 数据与关于 → 系统 | **重启后生效**（`app.disableHardwareAcceleration` 只能在 ready 前调用）；后台显示「重启后生效」标签和「立即重启」横幅（`settingsView().pendingRestart`） |
 
 这几项原来是 §2.5 列出的写死常量；常量本身保留为默认值（`proactive.DEFAULTS`、`affection.DAILY_CAP`）。
@@ -524,7 +543,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 
 <!-- coverage-matrix:start (generated by `node scripts/check-admin-console-doc.js --write`; do not edit by hand) -->
 
-### 12.1 settings.json：57 个叶子键
+### 12.1 settings.json：78 个叶子键
 
 | 键 | 页面 | 名称 | 生效 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -540,6 +559,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `framings.<id>` | character | 取景 | 即时生效 | 角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`） |
 | `prefs.roam` | behavior | 自己走动 | 即时生效 |  |
 | `prefs.clickSound` | behavior | 点击音效 | 即时生效 |  |
+| `prefs.muted` | tts | 静音 | 即时生效 |  |
 | `prefs.voice` | tts | 朗读回复 | 即时生效 |  |
 | `prefs.voiceInteractions` | tts | 互动语音 | 即时生效 |  |
 | `prefs.voiceMurmurs` | tts | 朗读碎碎念 | 即时生效 |  |
@@ -559,16 +579,20 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `tts.packs` | tts | 使用语音包 | 即时生效 |  |
 | `tts.endpoints.fish` | tts | 端点 | 即时生效 |  |
 | `tts.endpoints.minimax` | tts | 端点 | 即时生效 |  |
+| `tts.endpoints.elevenlabs` | tts | 端点 | 即时生效 |  |
 | `tts.endpoints.local` | tts | 地址 | 即时生效 |  |
 | `tts.local.api` | tts | 接口 | 即时生效 |  |
 | `tts.local.model` | tts | 模型 | 即时生效 |  |
 | `tts.local.voice` | tts | 音色名 | 即时生效 |  |
+| `tts.elevenlabs.voiceId` | tts | 默认音色 ID | 即时生效 |  |
+| `tts.elevenlabs.modelId` | tts | 模型 | 即时生效 |  |
 | `asr.enabled` | asr | 开启语音输入 | 即时生效 |  |
 | `asr.engine` | asr | 识别引擎 | 即时生效 |  |
 | `asr.fallback` | asr | 用不了时换另一个引擎 | 即时生效 |  |
 | `asr.language` | asr | 语言 | 即时生效 |  |
 | `asr.maxSeconds` | asr | 单次最长录音 | 即时生效 |  |
 | `asr.autoSend` | asr | 识别后直接发送 | 即时生效 |  |
+| `asr.hotkey` | asr | 唤起语音对话 | 即时生效 |  |
 | `asr.lobehub.model` | asr | 模型 | 即时生效 |  |
 | `asr.local.endpoint` | asr | 地址 | 即时生效 |  |
 | `asr.local.api` | asr | 接口 | 即时生效 |  |
@@ -579,6 +603,22 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `proactive.boredAfterMin` | proactive | 多久没理她算无聊 | 即时生效 |  |
 | `proactive.hungryAt` | proactive | 饥饿提醒阈值 | 即时生效 |  |
 | `proactive.maxLlmPerHour` | proactive | 每小时最多调用模型 | 即时生效 |  |
+| `interject.enabled` | proactive | 插个嘴 | 即时生效 |  |
+| `interject.sources.chatDraft` | proactive | 来源：聊天框草稿 | 即时生效 |  |
+| `interject.sources.voice` | proactive | 来源：语音输入 | 即时生效 |  |
+| `interject.sources.api` | proactive | 来源：外部程序 | 即时生效 |  |
+| `interject.sources.clipboard` | proactive | 来源：剪贴板（系统级） | 即时生效 |  |
+| `interject.cooldownMin` | proactive | 两次插嘴至少间隔 | 即时生效 |  |
+| `interject.maxPerHour` | proactive | 每小时最多插嘴 | 即时生效 |  |
+| `interject.maxDecidePerHour` | proactive | 每小时最多判断 | 即时生效 |  |
+| `interject.debounceSec` | proactive | 停顿多久再判断 | 即时生效 |  |
+| `interject.minChars` | proactive | 太短不判断 | 即时生效 |  |
+| `interject.quietStart` | proactive | 勿扰开始 | 即时生效 |  |
+| `interject.quietEnd` | proactive | 勿扰结束 | 即时生效 |  |
+| `interject.timeoutSec` | proactive | 判断超时 | 即时生效 |  |
+| `interject.highThreshold` | proactive | 插嘴阈值 | 即时生效 |  |
+| `interject.lowThreshold` | proactive | 不插嘴阈值 | 即时生效 |  |
+| `interject.model` | proactive | 决策模型 | 即时生效 |  |
 | `affectionRules.decay` | proactive | 久未见面时好感衰减 | 即时生效 |  |
 | `affectionRules.dailyCap` | proactive | 每日好感上限 | 即时生效 |  |
 | `ui.theme` | appearance | 主题 | 即时生效 |  |
@@ -596,9 +636,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 主动搭话 | 玩法 → 主动搭话与好感 | `proactive.enabled` `proactive.speakCooldownMin` `proactive.boredAfterMin` `proactive.hungryAt` `proactive.maxLlmPerHour` | — | 即时生效 |
 | 好感 | 玩法 → 主动搭话与好感；角色详情 → 好感 | `affectionRules.dailyCap` `affectionRules.decay` | `unlock-all` | 即时生效 |
 | 同屏伙伴 | 玩法 → 同屏伙伴 | `visitors` `prefs.collide` | — | 即时生效 |
-| 语音（朗读 / TTS） | 设置 → 朗读 | `prefs.voice` `prefs.voiceInteractions` `prefs.voiceMurmurs` `tts.provider` `tts.fallback` `tts.packs` `tts.endpoints.fish` `tts.endpoints.minimax` `tts.endpoints.local` `tts.local.api` `tts.local.model` `tts.local.voice` `keys.fish` `keys.minimax` `keys.local` | `tts-clear-cache` | 即时生效 |
+| 语音（朗读 / TTS） | 设置 → 朗读 | `prefs.muted` `prefs.voice` `prefs.voiceInteractions` `prefs.voiceMurmurs` `tts.provider` `tts.fallback` `tts.packs` `tts.endpoints.fish` `tts.endpoints.minimax` `tts.endpoints.local` `tts.local.api` `tts.local.model` `tts.local.voice` `keys.fish` `keys.minimax` `keys.local` | `tts-clear-cache` | 即时生效 |
 | 语音包 | 设置 → 语音包 | `tts.packs` | `voicepacks-reload` `open-voicepacks-folder` | 即时生效 |
-| 语音输入（ASR） | 设置 → 语音输入 | `asr.enabled` `asr.engine` `asr.fallback` `asr.language` `asr.autoSend` `asr.maxSeconds` `asr.lobehub.model` `asr.local.endpoint` `asr.local.api` `asr.local.model` `asr.local.timeoutSec` `keys.asrlocal` | `asr-test` | 即时生效 |
+| 语音输入（ASR） | 设置 → 语音输入 | `asr.enabled` `asr.engine` `asr.fallback` `asr.language` `asr.autoSend` `asr.hotkey` `asr.maxSeconds` `asr.lobehub.model` `asr.local.endpoint` `asr.local.api` `asr.local.model` `asr.local.timeoutSec` `keys.asrlocal` | `asr-test` | 即时生效 |
 | 对外接口 | 设置 → 对外接口 | `api.enabled` `api.port` `api.token` | `set-api` `api-status` | 即时生效 |
 | 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
 | 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
@@ -638,10 +678,10 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：81 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：97 个
 
-- 设置窗口有同一通道（35）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
-- 设置窗口用别的通道做同一件事（10）：
+- 设置窗口有同一通道（40）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口用别的通道做同一件事（11）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
   - `set-pet-scale` → `admin-set` petScale（桌宠行为 → 宠物大小）
@@ -649,10 +689,11 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-prefs` → `admin-set` prefs.*（桌宠行为 / 朗读）
   - `set-tts` → `admin-set` tts.* 与 keys.*（朗读）
   - `set-asr` → `admin-set` asr.* 与 keys.asrlocal（语音输入）
+  - `set-interject` → `admin-set` interject.*（玩法 → 主动搭话与好感 → 插个嘴）
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（36）：
+- 不是配置，只在桌宠窗口（46）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -674,6 +715,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `asr-transcribe`：一次语音输入
   - `asr-cancel`：取消语音输入
   - `asr-mic-access`：麦克风权限请求
+  - `interject-draft`：插个嘴的输入来源：聊天框里还没发送的草稿（运行时输入，不是配置）
+  - `interject-feedback`：插个嘴：主人对一次插嘴的反馈（气泡上的「别插嘴」/「说得好」），沉淀为规则
+  - `interject-add-rule`：插个嘴：手动加一条规则（脚本 / 测试用；设置窗口的规则表只启用 / 停用 / 删除）
   - `visitor-boot`：同屏伙伴窗口启动
   - `pose`：扔出去时的碰撞
   - `peers`：同屏伙伴的位置（碰撞）
@@ -689,6 +733,13 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `debug-tray`：测试钩子
   - `debug-tray-click`：测试钩子
   - `debug-heartbeat`：测试钩子
+  - `debug-interject-flush`：测试钩子（插个嘴：立即判断）
+  - `debug-interject-reset-cooldown`：测试钩子（插个嘴：清掉冷却）
+  - `debug-interject-input`：测试钩子（插个嘴：喂一条来源输入）
+  - `debug-voice-hotkey`：测试钩子：按一次快捷键唤起语音对话（调用注册的处理函数）
+  - `debug-voice-hotkey-status`：测试钩子：快捷键注册状态（设置窗口从 settings.hotkeyStatus 读同一份）
+  - `debug-mic-access`：测试钩子：模拟系统拒绝麦克风
+  - `debug-hide-pet`：测试钩子：先隐藏 / 最小化桌宠，再验证快捷键把她叫出来
 
 缺失：无
 

@@ -94,7 +94,7 @@ test('every outfit a character offers has its own sheet in her default pack (not
   }
 });
 
-test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout as daily; with 旧版像素 chosen it comes from the default pack", () => {
+test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout as daily; with 旧版像素 chosen she stays in 旧版像素 (T-2752)", () => {
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   const px = packs.get('claude-pixel');
   assert.equal(px.outfits.swimsuit, 'sheets/swimsuit.webp');
@@ -104,36 +104,43 @@ test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout a
   assert.deepEqual({ frame: swim.frame, actions: swim.actions }, { frame: daily.frame, actions: daily.actions });
   assert.equal(packs.get('claude-classic').outfits.swimsuit, undefined, 'no classic swimsuit art');
   const classic = P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'swimsuit' });
-  assert.equal(classic.packId, 'claude-pixel');
-  assert.equal(classic.url, swim.url);
+  assert.equal(classic.packId, 'claude-classic', 'never borrowed from another pack');
+  assert.equal(classic.url, P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'daily' }).url, 'worn as the pack\'s own daily');
   assert.equal(P.resolveLook(packs, { packId: 'claude-classic', fallbackId: P.fallbackPack('claude'), speciesId: 'claude', outfitId: 'daily' }).packId, 'claude-classic', 'daily stays classic');
 });
 
-test("大肥鱼's swimsuit: with 原版动画 chosen she wears her pixel pack's swimsuit sheet, and daily goes back to her clips", () => {
+test("大肥鱼's swimsuit: only her pixel pack has it; with 原版动画 or 旧版像素 chosen the look never leaves that appearance (T-2752)", () => {
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
   assert.equal(packs.get('dafeiyu-pixel').outfits.swimsuit, 'sheets/swimsuit.webp');
   const pixel = P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'swimsuit' });
   const clipsId = P.chosenPack(packs, { dafeiyu: 'dafeiyu-clips' }, 'dafeiyu');
   assert.equal(clipsId, 'dafeiyu-clips');
-  const swim = P.resolveLook(packs, { packId: clipsId, fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'swimsuit' });
-  assert.ok(swim, 'the clips only show daily: the swimsuit is not left without art');
-  assert.equal(swim.packId, 'dafeiyu-pixel');
-  assert.equal(swim.kind, 'sprites');
-  assert.equal(swim.url, 'pack://dafeiyu-pixel/sheets/swimsuit.webp');
-  assert.deepEqual(swim, pixel);
+  assert.equal(pixel.packId, 'dafeiyu-pixel');
+  assert.equal(pixel.kind, 'sprites');
+  assert.equal(pixel.url, 'pack://dafeiyu-pixel/sheets/swimsuit.webp');
+  assert.equal(P.resolveLook(packs, { packId: clipsId, fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'swimsuit' }), null, 'her clips stay her clips, never the pixel swimsuit');
   assert.equal(P.resolveLook(packs, { packId: clipsId, fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'daily' }), null, 'daily plays her clips');
+  assert.deepEqual(P.lookContextOf(packs, clipsId, 'dafeiyu'), { adult: false, only: true, outfits: ['daily'] }, 'the clips wardrobe is daily only');
   const classic = P.resolveLook(packs, { packId: 'dafeiyu-classic', fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'swimsuit' });
-  assert.equal(classic.url, swim.url, 'with 旧版像素 it also comes from her default pack');
+  assert.equal(classic.packId, 'dafeiyu-classic', 'with 旧版像素 she stays in 旧版像素');
+  assert.equal(classic.url, 'pack://dafeiyu-classic/' + packs.get('dafeiyu-classic').outfits.daily);
 });
 
-test('a pack with art for some outfits falls back to the character default pack for the rest', () => {
+test('a pack with art for some outfits never borrows the rest from another pack; only a missing pack falls back as a whole (T-2752)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'packs-'));
   writePack(root, sprites({ outfits: { scarf: 'a.png' } }), ['a.png']);
   const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }, { dir: root, source: 'user' }]);
   assert.equal(packs.get('my-pack').source, 'user');
   const args = { packId: 'my-pack', fallbackId: 'grok-pixel', speciesId: 'grok' };
   assert.equal(P.resolveLook(packs, { ...args, outfitId: 'scarf' }).packId, 'my-pack');
-  assert.equal(P.resolveLook(packs, { ...args, outfitId: 'daily' }).packId, 'grok-pixel', 'then the character default pack');
+  const daily = P.resolveLook(packs, { ...args, outfitId: 'daily' });
+  assert.equal(daily.packId, 'my-pack', 'no daily art: the pack\'s own first outfit, not the default pack');
+  assert.equal(daily.url, 'pack://my-pack/a.png');
+  assert.equal(P.resolveLook(packs, { ...args, outfitId: 'beret' }).packId, 'my-pack');
+  assert.deepEqual(P.lookContext(packs.get('my-pack')), { adult: false, only: true, outfits: ['scarf'] });
+  const gone = P.resolveLook(packs, { ...args, packId: 'no-such-pack', outfitId: 'beret' });
+  assert.equal(gone.packId, 'grok-pixel', 'a chosen pack that does not exist: the whole look falls back to her default pack');
+  assert.equal(gone.url, 'pack://grok-pixel/' + packs.get('grok-pixel').outfits.beret);
   assert.ok(P.packsFor(packs, 'grok').some((x) => x.id === 'my-pack' && x.outfits === 1));
 });
 
@@ -201,7 +208,7 @@ test('every character has an 18+ 成年版 pack: her daily look and the adult ou
 });
 
 // 全动态 rig packs: a model.json of layers and the skeleton they hang from, every outfit a folder of layers
-test('rig packs: the model is checked and goes to the renderer with the look; other outfits fall back', () => {
+test('rig packs: the model is checked and goes to the renderer with the look; other outfits stay in the pack', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rig-'));
   const model = {
     size: [100, 200],
@@ -222,7 +229,7 @@ test('rig packs: the model is checked and goes to the renderer with the look; ot
   assert.equal(look.base, 'pack://my-rig/daily', 'the layers are read next to the preview');
   assert.equal(look.url, 'pack://my-rig/daily/preview.png');
   assert.deepEqual(look.model.face.mouth, [50, 42]);
-  assert.equal(P.resolveLook(packs, { packId: 'my-rig', speciesId: 'grok', outfitId: 'beret' }).packId, 'grok-pixel', 'an outfit without layers wears the default pack');
+  assert.deepEqual(P.resolveLook(packs, { packId: 'my-rig', speciesId: 'grok', outfitId: 'beret' }), look, 'an outfit without layers is worn as the pack\'s daily, never another pack');
 
   // a missing layer, an unknown deformer, a reserved part id, a model outside the pack
   fs.rmSync(path.join(dir, 'daily', 'head.png'));
@@ -267,7 +274,8 @@ test('live2d packs: the model and its files are checked, the parameter map goes 
   assert.equal(look.model, 'pack://my-l2d/m/a.model3.json');
   assert.equal(look.url, 'pack://my-l2d/preview.png', 'the picture for lists and the wardrobe');
   assert.equal(look.live2d.params.tail, 'ParamTail');
-  assert.equal(P.resolveLook(packs, { packId: 'my-l2d', speciesId: 'grok', outfitId: 'beret' }).packId, 'grok-pixel', 'other outfits wear the default pack');
+  assert.deepEqual(P.resolveLook(packs, { packId: 'my-l2d', speciesId: 'grok', outfitId: 'beret' }), look, 'other outfits are worn as the pack\'s daily, never another pack');
+  assert.deepEqual(P.lookContext(packs.get('my-l2d')), { adult: false, only: true, outfits: ['daily'] }, 'its wardrobe is its own outfits');
 
   const errs = (over) => { fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify(l2d(over))); return P.readPack(dir).errors.join(); };
   assert.match(errs({ model: '../a.model3.json' }), /relative path to a \.model3\.json/);
@@ -381,4 +389,24 @@ test('packsFor: every option carries a cover for the wardrobe — a playable she
   assert.equal(fish.find((o) => o.id === 'dafeiyu-live2d').cover.type, 'image');
   const clips = fish.find((o) => o.kind === 'video');
   if (clips) assert.equal(clips.cover.type, 'video');
+});
+
+// T-2752: dressing her never swaps her into another pack. 大肥鱼 in her Live2D pack asked for any outfit is
+// still her Live2D model; every pack's wardrobe is exactly the outfits it has art for.
+test('resolveLook never crosses packs: 大肥鱼 in Live2D stays Live2D for every outfit; each pack lists only its own outfits', () => {
+  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const daily = P.resolveLook(packs, { packId: 'dafeiyu-live2d', fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'daily' });
+  assert.equal(daily.kind, 'live2d');
+  for (const outfitId of ['scarf', 'swimsuit', 'bikini', 'qipao', 'maid', 'flower_crown', 'nope']) {
+    assert.deepEqual(P.resolveLook(packs, { packId: 'dafeiyu-live2d', fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId }), daily, `${outfitId}: her Live2D model, not another pack`);
+  }
+  for (const [id, p] of packs) {
+    const ctx = P.lookContext(p);
+    assert.equal(ctx.only, true, id);
+    if (p.kind !== 'vrm') assert.deepEqual(ctx.outfits, Object.keys(p.outfits), `${id}: its own outfits`);
+    for (const outfitId of ctx.outfits) assert.equal(P.resolveLook(packs, { packId: id, fallbackId: P.fallbackPack(p.species), speciesId: p.species, outfitId }).packId, id, `${id}/${outfitId}`);
+    for (const outfitId of ['scarf', 'swimsuit', 'maid']) assert.equal(P.resolveLook(packs, { packId: id, fallbackId: P.fallbackPack(p.species), speciesId: p.species, outfitId }).packId, id, `${id}/${outfitId} never leaves the pack`);
+  }
+  assert.deepEqual(P.lookContext(packs.get('dafeiyu-adult')).adult, true, '18+ packs stay 18+ looks');
+  assert.equal(P.lookContextOf(packs, 'grok-pixel', 'dafeiyu'), null, 'another species\' pack is not her wardrobe');
 });

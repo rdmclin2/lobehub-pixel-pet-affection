@@ -36,7 +36,7 @@ const USER_ORIGIN = 'user';
 // The origin of a pet line from its `kind` (the same kinds PetService emits on 'say').
 const KIND_ORIGIN = {
   met: 'greeting', switch: 'greeting', greet_morning: 'greeting', greet_evening: 'greeting',
-  hungry: 'proactive', bored: 'proactive', missed: 'proactive',
+  hungry: 'proactive', bored: 'proactive', missed: 'proactive', interject: 'proactive',
   stage_up: 'emotion',
   feed: 'care', pat: 'care', play: 'care', sleep: 'care',
   woke: 'system', retired: 'system',

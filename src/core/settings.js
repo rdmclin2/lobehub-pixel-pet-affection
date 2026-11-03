@@ -5,6 +5,7 @@ const path = require('node:path');
 const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
 const framingLib = require('./framing');
+const hotkeyLib = require('./hotkey');
 
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
@@ -34,7 +35,7 @@ const petScale = (s) => clampScale(s && s.petScale);
 // automatic murmurs are read only when 朗读碎碎念 is switched on as well.
 // 取景 (core/framing.js, docs/half-body-mode.md): 'full' (head to feet) or 'half' (半身, head to waist, bigger);
 // the one non-switch pref. A character's own choice (settings.framings) and a pack's default go before it.
-const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT };
+const PREFS = { roam: true, clickSound: false, muted: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
@@ -44,6 +45,30 @@ const SYSTEM_ROLE_MAX = 1000;
 // The defaults are proactive.DEFAULTS, which these replaced as hard-coded constants (admin console §2.5).
 const PROACTIVE = { enabled: true, speakCooldownMin: 12, boredAfterMin: 45, hungryAt: 75, maxLlmPerHour: 6 };
 const PROACTIVE_RANGE = { speakCooldownMin: [3, 240], boredAfterMin: [5, 480], hungryAt: [50, 100], maxLlmPerHour: [0, 30] };
+// 插个嘴 (core/interject.js, docs/interject.md): she listens to the inputs listed in `sources` (and nothing else)
+// and a decision model (jev, `lh generate decide`) judges whether a short remark is worth it. Off by default;
+// the system-level source (clipboard) has its own switch and is off even when the feature is switched on.
+// Probabilities ≥ highThreshold → she says something; ≤ lowThreshold → silence; in between → silence too,
+// unless one of the owner's allow rules matches (不打扰优先). Quiet hours: quietStart..quietEnd (equal = none).
+const INTERJECT = {
+  enabled: false,
+  sources: { chatDraft: true, voice: true, api: true, clipboard: false },
+  cooldownMin: 10,
+  maxPerHour: 3,
+  maxDecidePerHour: 20,
+  debounceSec: 4,
+  minChars: 6,
+  quietStart: 23,
+  quietEnd: 8,
+  highThreshold: 0.7,
+  lowThreshold: 0.3,
+  timeoutSec: 10,
+  model: 'lobehub/jev-1.14.0',
+};
+const INTERJECT_SOURCES = Object.keys(INTERJECT.sources);
+const INTERJECT_RANGE = { cooldownMin: [1, 240], maxPerHour: [0, 20], maxDecidePerHour: [0, 120], debounceSec: [1, 60], minChars: [1, 200], quietStart: [0, 23], quietEnd: [0, 23], timeoutSec: [2, 60] };
+const INTERJECT_THRESHOLD_RANGE = { highThreshold: [0.5, 0.99], lowThreshold: [0, 0.5] };
+const DECISION_MODEL_RE = /^[a-z0-9][a-z0-9-]{0,39}\/[A-Za-z0-9._-]{1,80}$/;
 // 好感度 rules (core/affection.js): the offline decay switch and the daily gain cap (default DAILY_CAP 12).
 const AFFECTION_RULES = { decay: true, dailyCap: 12 };
 const DAILY_CAP_RANGE = [4, 40];
@@ -59,7 +84,7 @@ const UPDATE = { autoCheck: true };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -88,6 +113,22 @@ function normalizeProactive(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
   const out = { enabled: typeof p.enabled === 'boolean' ? p.enabled : PROACTIVE.enabled };
   for (const k of Object.keys(PROACTIVE_RANGE)) out[k] = intIn(p[k], PROACTIVE_RANGE[k], PROACTIVE[k]);
+  return out;
+}
+
+const numIn = (v, [min, max], d) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? Math.round(v * 100) / 100 : d);
+
+// Files from before 插个嘴 have no `interject` (→ the defaults: off). A low threshold not below the high one
+// falls back to both defaults; an unknown source key is dropped.
+function normalizeInterject(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  const src = p.sources && typeof p.sources === 'object' ? p.sources : {};
+  const out = { enabled: typeof p.enabled === 'boolean' ? p.enabled : INTERJECT.enabled };
+  out.sources = Object.fromEntries(INTERJECT_SOURCES.map((k) => [k, typeof src[k] === 'boolean' ? src[k] : INTERJECT.sources[k]]));
+  for (const k of Object.keys(INTERJECT_RANGE)) out[k] = intIn(p[k], INTERJECT_RANGE[k], INTERJECT[k]);
+  for (const k of Object.keys(INTERJECT_THRESHOLD_RANGE)) out[k] = numIn(p[k], INTERJECT_THRESHOLD_RANGE[k], INTERJECT[k]);
+  if (out.lowThreshold >= out.highThreshold) Object.assign(out, { highThreshold: INTERJECT.highThreshold, lowThreshold: INTERJECT.lowThreshold });
+  out.model = typeof p.model === 'string' && DECISION_MODEL_RE.test(p.model.trim()) ? p.model.trim() : INTERJECT.model;
   return out;
 }
 
@@ -149,13 +190,23 @@ function normalizeSettings(raw) {
   s.tts = normalizeTts(s.tts && s.tts.providerSet === true ? s.tts : { ...s.tts, provider: 'auto' });
   // 语音输入 (core/asr.js): off by default; engine, fallback, language and the local server. Its optional key is in tts-keys.json
   s.asr = normalizeAsr(s.asr);
+  // 快捷键唤起语音对话: a valid Electron accelerator ('' = off); none yet / unreadable → the default (core/hotkey.js)
+  s.asr.hotkey = normalizeHotkey(s.asr.hotkey);
   s.proactive = normalizeProactive(s.proactive);
+  s.interject = normalizeInterject(s.interject);
   s.affectionRules = normalizeAffectionRules(s.affectionRules);
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
   s.update = normalizeUpdate(s.update);
   return s;
 }
+
+// 快捷键唤起语音对话 (asr.hotkey). Any spelling (Electron 'CmdOrCtrl+Shift+Space' or the settings window's
+// HotkeyInput 'mod+shift+space') -> the Electron accelerator; '' = off. Unreadable / missing -> the default.
+const normalizeHotkey = (v) => hotkeyLib.normalizeHotkey(v);
+// Before one is saved: at least one modifier (not Shift alone) and exactly one known key, and not a combination
+// the app itself uses. -> { ok, accelerator } | { ok: false, reason: 'invalid' | 'conflict', code, message }
+const validateHotkey = (v, platform = process.platform) => hotkeyLib.checkHotkey(v, platform);
 
 // No answer yet (or an outdated one): show the age gate before anything else.
 const needsAgeGate = (s) => !normalizeSettings(s).answered;
@@ -206,4 +257,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

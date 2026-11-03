@@ -8,6 +8,7 @@ import { api, reasonText } from '../api';
 import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
+import { InterjectData } from './Interject';
 
 const Header = ({ page, action }: { action?: ReactNode; page: string }) => {
   const { schema } = useStore();
@@ -56,6 +57,20 @@ export const SimpleSettingsPage = ({ page }: { page: string }) => (
   </>
 );
 
+// ---- 主动搭话与好感 ---------------------------------------------------------------------------------------
+/** The schema cards (主动行为 / 插个嘴 / 好感度) plus what 插个嘴 has learned: rules and recent decisions. */
+export const ProactivePage = () => {
+  const { settings } = useStore();
+  const on = !!settings.interject?.enabled;
+  return (
+    <>
+      <Header page="proactive" />
+      <SettingsForm extra={{ 插个嘴: <Tag color={on ? 'success' : undefined}>{on ? '已打开' : '默认关闭'}</Tag> }} page="proactive" />
+      <InterjectData />
+    </>
+  );
+};
+
 // ---- 桌宠行为 ---------------------------------------------------------------------------------------------
 /** The schema cards plus 找回桌宠 (⋯ → 回到右下角 / the tray's 显示桌宠, for a pet covered or off screen). */
 export const BehaviorPage = () => {
@@ -91,15 +106,21 @@ export const BehaviorPage = () => {
 };
 
 // ---- 朗读 -------------------------------------------------------------------------------------------------
+const ENGINE_NAME: Record<string, string> = { elevenlabs: 'ElevenLabs', fish: 'Fish Audio', minimax: 'MiniMax' };
+
 export const TtsPage = () => {
   const { settings, merge } = useStore();
   const st = settings.ttsStatus;
+  const picked: string | undefined = settings.tts?.provider;
+  const pickedName = picked ? ENGINE_NAME[picked] : undefined; // a cloud engine (needs a key)
   const eng = (id: string) => {
     const e = st?.engines?.[id];
     if (!e) return null;
+    // Cloud engines need a key; the local one is ready once it has an address (its key is optional).
+    const noKey = id !== 'local' && !e.hasKey;
     return (
       <Flexbox gap={4} horizontal>
-        <Tag color={e.ready ? 'success' : undefined}>{e.ready ? '可用' : '未就绪'}</Tag>
+        <Tag color={e.ready ? 'success' : noKey ? 'warning' : undefined}>{e.ready ? '可用' : noKey ? '未设置 Key' : '未就绪'}</Tag>
         {e.lastError && <Tag color="error">上次失败：{e.lastError}</Tag>}
       </Flexbox>
     );
@@ -108,7 +129,10 @@ export const TtsPage = () => {
     <>
       <Header page="tts" />
       {!settings.prefs?.voice && <Alert title="朗读关着：打开「朗读回复」后，下面的引擎设置才会用上。" type="info" />}
-      <SettingsForm extra={{ 'Fish Audio': eng('fish'), MiniMax: eng('minimax'), 本地语音服务: eng('local') }} page="tts" />
+      {pickedName && st?.engines?.[picked!] && !st.engines[picked!].hasKey && (
+        <Alert title={`${pickedName} 还没设置 Key：在下方「${pickedName}」里填写 API Key 后才能用它朗读。`} type="warning" />
+      )}
+      <SettingsForm extra={{ 'Fish Audio': eng('fish'), MiniMax: eng('minimax'), ElevenLabs: eng('elevenlabs'), 本地语音服务: eng('local') }} page="tts" />
       <Surface
         extra={
           <Button
