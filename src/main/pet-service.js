@@ -13,6 +13,7 @@ const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
 const C = require('../core/characters');
 const characterMigrate = require('../core/character-migrate');
+const Catalog = require('../core/catalog');
 const modelsLib = require('../core/models');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
@@ -44,7 +45,8 @@ class PetService extends EventEmitter {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
-    this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
+    // main always passes its pack store's; the default (tests) is a repo checkout with catalog/ downloaded
+    this.packs = packs || Catalog.repoPacks().packs;
     this.lh = lh;
     // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
     this.responses = responses;
@@ -243,6 +245,9 @@ class PetService extends EventEmitter {
       model: this.modelView(),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
+      // her saved character is one that has to be downloaded first (it no longer ships with the app): she is
+      // shown as her default one meanwhile and becomes it again once it is downloaded
+      pendingDownload: this._pendingDownload(),
       characters: C.listCharacters(this.packs, { adultOk: this._adultOk() }).map((x) => {
         const b = SPECIES[x.base];
         const e = characters[x.base];
@@ -761,11 +766,23 @@ class PetService extends EventEmitter {
     // who she may be is decided first: an unknown or (adult content off) 18+ character is refused for that reason,
     // never with a passing 'busy' that tells the owner to try again later (T-2787)
     const e = C.characterById(this.packs, id) || (Object.hasOwn(SPECIES, id) ? C.characterById(this.packs, this._charOf(id)) : null);
-    if (!e) return { ok: false, reason: 'unknown' };
+    if (!e) {
+      // a catalog character not downloaded yet (内置与下载): download her first
+      const d = Catalog.entry(id);
+      if (d) return { ok: false, reason: d.adult && !this._adultOk() ? 'adult' : 'not-downloaded', name: d.name };
+      return { ok: false, reason: 'unknown' };
+    }
     if (!C.available(e, this._adultOk())) return { ok: false, reason: 'adult' };
     if (this.busy) return { ok: false, reason: 'busy' };
     const from = this._cid();
-    if (e.id === from) return { ok: true, view: this.view(), same: true };
+    if (e.id === from) {
+      // shown as her default while her saved look waits to be downloaded: choosing the default keeps it
+      if (this.pet.characterId !== e.id) {
+        this.pet.characterId = e.id;
+        this._save();
+      }
+      return { ok: true, view: this.view(), same: true };
+    }
     const speciesId = e.base;
     if (speciesId === this.pet.speciesId) {
       this.pet.characterId = e.id;
@@ -1078,6 +1095,20 @@ class PetService extends EventEmitter {
   // Every character the roster lists now (core/characters.js), 18+ looks only with adult content on.
   characterList() {
     return C.listCharacters(this.packs, { adultOk: this._adultOk() });
+  }
+
+  // 内置与下载 (core/catalog.js): the characters that can be downloaded and are not on this machine yet.
+  catalogList() {
+    return Catalog.notInstalled((id) => !!C.characterById(this.packs, id), { adultOk: this._adultOk() });
+  }
+
+  // { id, name, sizeLabel } when the saved character waits to be downloaded (see view().pendingDownload)
+  _pendingDownload() {
+    const want = this.pet && this.pet.characterId;
+    if (!want || C.characterById(this.packs, want)) return null;
+    const d = Catalog.entry(want);
+    if (!d || d.base !== this.pet.speciesId || (d.adult && !this._adultOk())) return null;
+    return { id: d.id, name: d.name, sizeLabel: Catalog.sizeLabel(d.bytes) };
   }
 
   // After packs were imported or removed. An imported pack is a new character (T-2764); when the one she is

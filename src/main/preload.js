@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('pet', {
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),

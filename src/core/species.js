@@ -78,7 +78,9 @@ function toSpecies(c) {
     // video characters keep `art: 'video'` + `clips` at the top level (what the renderer reads)
     art: art.kind === 'video' ? 'video' : 'pack',
     clips: art.kind === 'video' ? { ...art.clips } : null,
-    clipDir: art.kind === 'video' ? art.dir : null,
+    // her clips are a downloaded character (<id>-clips, core/catalog.js) served by the pack: protocol from
+    // <userData>/clips/<id>-clips once installed; art.dir is where they live in the repo (catalog/clips/…)
+    clipDir: art.kind === 'video' ? `pack://${c.id}-clips` : null,
     packs: [...art.packs],
     // a video character with a pack starts in that pack; its clips are picked under 外观 (clipsLook)
     defaultPack: art.packs[0] || null,
@@ -96,7 +98,7 @@ function toSpecies(c) {
 function missingFiles(c, root = ASSETS) {
   const out = [];
   const art = c.art || {};
-  if (art.kind === 'video' && art.clips) for (const v of Object.values(art.clips)) for (const f of [].concat(v)) if (!fs.existsSync(path.join(root, art.dir, f))) out.push(`${art.dir}/${f}`);
+  // (her clips are not here: they are downloaded, see scripts/build-character-catalog.js)
   for (const m of c.memes || []) if (!fs.existsSync(path.join(root, 'assets', 'memes', c.id, `${m.id}.webp`))) out.push(`assets/memes/${c.id}/${m.id}.webp`);
   return out;
 }

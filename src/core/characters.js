@@ -28,8 +28,13 @@ const KIND_LABEL = { sprites: '像素', pictures: '图片', rig: '全动态', li
 
 // The id standing for a video character's own clips (null for a character without clips).
 const clipsId = (base) => (SPECIES[base] && SPECIES[base].clipsLook ? `${base}-clips` : null);
+// Her clips are a downloaded character too (core/catalog.js): the pack store marks the installed ones on its
+// Map as `packs.clips` (a Set of `<base>-clips` ids, src/main/packs.js). Not installed = not a character.
+const hasClips = (map, base) => !!clipsId(base) && map.clips instanceof Set && map.clips.has(clipsId(base));
 
 const asMap = (packs) => (packs instanceof Map ? packs : new Map((Array.isArray(packs) ? packs : []).map((p) => [p.id, p])));
+// where a character comes from: 内置 (ships with the app), 下载 (from the catalog), 导入 (the owner's own)
+const sourceOf = (p) => (p.source === 'user' || p.source === 'download' ? p.source : 'builtin');
 
 // 「大肥鱼 · 像素」: a pack's own name when it already says whose it is, else her name in front.
 function displayName(base, packName) {
@@ -49,13 +54,13 @@ function lookLabel(base, name) {
 
 function entryOf(p) {
   const name = displayName(p.species, p.name);
-  return { id: p.id, base: p.species, packId: p.id, clips: false, name, label: lookLabel(p.species, name), kind: p.kind, kindLabel: KIND_LABEL[p.kind] || p.kind, adult: !!p.adult, source: p.source === 'user' ? 'user' : 'builtin' };
+  return { id: p.id, base: p.species, packId: p.id, clips: false, name, label: lookLabel(p.species, name), kind: p.kind, kindLabel: KIND_LABEL[p.kind] || p.kind, adult: !!p.adult, source: sourceOf(p) };
 }
 
 function clipsEntry(base) {
   const sp = SPECIES[base];
   const name = displayName(base, sp.clipsLook.name);
-  return { id: clipsId(base), base, packId: null, clips: true, name, label: lookLabel(base, name), kind: 'video', kindLabel: KIND_LABEL.video, adult: false, source: 'builtin' };
+  return { id: clipsId(base), base, packId: null, clips: true, name, label: lookLabel(base, name), kind: 'video', kindLabel: KIND_LABEL.video, adult: false, source: 'download' };
 }
 
 // A base none of whose packs is loaded (a broken install, tests without packs) is still one character: her
@@ -77,8 +82,8 @@ function listCharacters(packs, { adultOk = false, all = false } = {}) {
     const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
     const mine = [...map.values()].filter((p) => p.species === base).sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)) || a.id.localeCompare(b.id));
     for (const p of mine) if (all || adultOk || !p.adult) out.push(entryOf(p));
-    if (!mine.length && !clipsId(base)) out.push(stubEntry(base));
-    if (clipsId(base)) out.push(clipsEntry(base));
+    if (!mine.length && !hasClips(map, base)) out.push(stubEntry(base));
+    if (hasClips(map, base)) out.push(clipsEntry(base));
   }
   return out;
 }
@@ -86,9 +91,9 @@ function listCharacters(packs, { adultOk = false, all = false } = {}) {
 // One character by id (any, 18+ included), or null when there is none (an unknown or removed pack).
 function characterById(packs, id) {
   if (!isCharacterId(id)) return null;
-  const base = id.endsWith('-clips') ? id.slice(0, -'-clips'.length) : null;
-  if (base && clipsId(base) === id) return clipsEntry(base);
   const map = asMap(packs);
+  const base = id.endsWith('-clips') ? id.slice(0, -'-clips'.length) : null;
+  if (base && clipsId(base) === id) return hasClips(map, base) ? clipsEntry(base) : null;
   const p = map.get(id);
   if (p) return SPECIES[p.species] ? entryOf(p) : null;
   // her fallback pack when none of hers is loaded at all (stubEntry)

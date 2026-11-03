@@ -29,6 +29,7 @@
 
 const { SPECIES, RETIRED } = require('./species');
 const C = require('./characters');
+const Catalog = require('./catalog');
 const { DEFAULT_OUTFIT, OUTFIT_IDS } = require('./outfits');
 
 const CHARACTER_MODEL = 2;
@@ -44,15 +45,21 @@ function baseKey(k) {
 
 // The character `base` wore under the old model: her chosen pack when it still exists and is hers (an 18+ one
 // too: the choice is kept, as before; it is shown once adult content is on), else her default character.
-function chosenCharacter(packs, appearance, base) {
+// A look that no longer ships with the app but can be downloaded (core/catalog.js: 旧版像素, Live2D, 成年版, …)
+// is kept too: she is shown as her default character until it is downloaded, then becomes it again
+// (PetService._cid), so `keepDownloadable: false` is only for lists that need her on the desktop now (visitors).
+function chosenCharacter(packs, appearance, base, { keepDownloadable = true } = {}) {
   const want = isObj(appearance) ? appearance[base] : null;
   const e = typeof want === 'string' ? C.characterById(packs, want) : null;
   if (e && e.base === base) return e.id;
+  const d = keepDownloadable && typeof want === 'string' ? Catalog.entry(want) : null;
+  if (d && d.base === base) return d.id;
   return C.defaultCharacter(packs, base, true);
 }
 
-// Every character of a base, 18+ included.
-const charactersOf = (packs, base) => C.listCharacters(packs, { all: true }).filter((e) => e.base === base).map((e) => e.id);
+// Every character of a base, 18+ included, and the downloadable ones she may become later (their 取景 and
+// wardrobe are kept for then).
+const charactersOf = (packs, base) => [...new Set([...C.listCharacters(packs, { all: true }).filter((e) => e.base === base).map((e) => e.id), ...Catalog.loadIndex().characters.filter((c) => c.base === base).map((c) => c.id)])];
 
 // settings.json (normalized or raw). -> { settings, changed }
 function migrateSettings(settings, packs) {
@@ -73,7 +80,7 @@ function migrateSettings(settings, packs) {
   const visitors = [];
   for (const v of Array.isArray(settings.visitors) ? settings.visitors : []) {
     const base = typeof v === 'string' ? baseKey(v) : null;
-    const id = base ? chosenCharacter(packs, ap, base) : C.characterById(packs, v) ? v : null;
+    const id = base ? chosenCharacter(packs, ap, base, { keepDownloadable: false }) : C.characterById(packs, v) ? v : null;
     if (id && !visitors.includes(id)) visitors.push(id);
   }
 

@@ -186,8 +186,39 @@ export interface PackRow {
   version: string;
 }
 
+/** A character that does not ship with the app and can be downloaded (src/core/catalog.js notInstalled). */
+export interface CatalogRow {
+  adult: boolean;
+  author: string;
+  base: string;
+  bytes: number;
+  description: string;
+  id: string;
+  kind: string;
+  license: string;
+  name: string;
+  outfits: number;
+  /** relative to src/renderer: catalog/<id>.png */
+  picture: string | null;
+  pixelated: boolean;
+  sizeLabel: string;
+  version: string;
+}
+
+/** `catalog-progress` (src/main/catalog.js) */
+export interface DownloadProgress {
+  id: string;
+  received?: number;
+  reason?: string;
+  state: 'downloading' | 'installing' | 'done' | 'failed';
+  text?: string;
+  total?: number;
+}
+
 export interface AdminState {
   apiStatus: any;
+  catalog?: CatalogRow[];
+  downloads?: DownloadProgress[];
   packs: PackRow[];
   roster: RosterRow[];
   settings: Record<string, any>;
@@ -244,6 +275,10 @@ export interface PetAdminApi {
   release: (opts: { deleteAgent: boolean }) => Promise<any>;
   reloadVoicePacks: () => Promise<{ errors: string[]; settings: any }>;
   removePack: (id: string) => Promise<any>;
+  downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
+  cancelDownload: (id: string) => Promise<{ ok: boolean }>;
+  removeDownload: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  onCatalogProgress: (cb: (p: DownloadProgress) => void) => () => void;
   reset: (keys: string[]) => Promise<{ ok: boolean; results: SetResult[]; settings: any }>;
   set: (key: string, value: unknown) => Promise<SetResult>;
   setAdult: (on: boolean) => Promise<any>;
@@ -324,6 +359,7 @@ export const at = (obj: any, key: string): any => key.split('.').reduce((v, k) =
 /** Readable failure text for the per-character / pack channels (reasons from PetService and PackStore). */
 export const REASON: Record<string, string> = {
   adult: '18+ 外观需要先确认已满 18 周岁并打开成人向内容',
+  'not-downloaded': '她还没有下载：先在角色图鉴里下载这个角色',
   busy: '她正在忙（说话或切换中），稍后再试',
   'no-pet': '桌宠还没出现在桌面上',
   'no-window': '桌宠窗口没有打开',

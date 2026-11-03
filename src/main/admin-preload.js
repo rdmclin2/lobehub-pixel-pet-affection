@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
+  onCatalogProgress: on('catalog-progress'),
   exportPack: (id) => ipcRenderer.invoke('export-pack', { id }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),

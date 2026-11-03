@@ -11,6 +11,7 @@ const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { app, protocol, net } = require('electron');
 const P = require('../core/packs');
+const Catalog = require('../core/catalog');
 const { importVrm } = require('../core/vrm-import');
 
 // Must run before the app is ready. CORS-enabled so the page can read a sheet's pixels (部位触摸 hit-tests
@@ -19,7 +20,8 @@ const { importVrm } = require('../core/vrm-import');
 // it is served by src/main/vrm-library.js)
 function registerPackScheme() {
   protocol.registerSchemesAsPrivileged([
-    { scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    // stream: a downloaded video character's clips play from pack://<base>-clips (media needs range requests)
+    { scheme: 'pack', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
     { scheme: 'vrmlib', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   ]);
 }
@@ -59,25 +61,102 @@ class PackStore {
   constructor() {
     this.builtinDir = path.join(__dirname, '..', 'renderer', 'packs');
     this.userDir = path.join(app.getPath('userData'), 'packs');
+    // downloaded clips (a video character's, `<base>-clips`, core/catalog.js); downloaded packs go to userDir
+    this.clipsDir = path.join(app.getPath('userData'), 'clips');
     fs.mkdirSync(this.userDir, { recursive: true });
+    fs.mkdirSync(this.clipsDir, { recursive: true });
+    // tests only: a folder laid out as catalog/ (packs/, clips/) counts as downloaded, so the e2e scenarios
+    // that are not about downloading find every character without fetching 100 MB first
+    const pre = process.env.PIXELPET_TEST === '1' && process.env.PIXELPET_CATALOG_PREINSTALLED;
+    this.preinstalled = pre && fs.existsSync(pre) ? path.resolve(pre) : null;
     this.reload();
   }
 
   reload() {
-    const { packs, problems } = P.loadPacks([{ dir: this.builtinDir, source: 'builtin' }, { dir: this.userDir, source: 'user' }]);
+    const roots = [{ dir: this.builtinDir, source: 'builtin' }, { dir: this.userDir, source: 'user' }];
+    if (this.preinstalled) roots.push({ dir: path.join(this.preinstalled, 'packs'), source: 'download' });
+    const { packs, problems } = P.loadPacks(roots);
+    // a pack in the user folder that came from the catalog carries its marker: 下载, not 导入
+    for (const [id, p] of packs) if (p.source === 'user' && fs.existsSync(path.join(p.dir, Catalog.MARKER))) packs.set(id, { ...p, source: 'download' });
+    this.clipDirs = new Map();
+    for (const root of [this.clipsDir, this.preinstalled && path.join(this.preinstalled, 'clips')].filter(Boolean)) {
+      let names = [];
+      try {
+        names = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && /-clips$/.test(d.name)).map((d) => d.name);
+      } catch {
+        continue;
+      }
+      for (const id of names) if (!this.clipDirs.has(id) && Catalog.entry(id)) this.clipDirs.set(id, path.join(root, id));
+    }
+    packs.clips = new Set(this.clipDirs.keys()); // core/characters.js hasClips
     this.packs = packs;
     this.problems = problems;
     return packs;
+  }
+
+  // Is catalog character `id` on this machine (downloaded, or preinstalled for tests)?
+  installed(id) {
+    const p = this.packs.get(id);
+    return this.clipDirs.has(id) || !!(p && p.source !== 'user');
+  }
+
+  // Put a downloaded, already checked archive of catalog character `entry` in place (src/main/catalog.js).
+  // The folder is assembled next to its final place and renamed in, so a failure never leaves half a character.
+  async installDownload(entry, zipFile) {
+    const root = entry.type === 'clips' ? this.clipsDir : this.userDir;
+    const tmp = fs.mkdtempSync(path.join(root, `.${entry.id}-`));
+    try {
+      await unzip(zipFile, tmp);
+      if (entry.type === 'pack') {
+        const r = P.readPack(tmp);
+        if (!r.ok) return { ok: false, reason: 'invalid', errors: r.errors };
+        if (r.pack.id !== entry.id) return { ok: false, reason: 'invalid', errors: [`the archive holds ${r.pack.id}, not ${entry.id}`] };
+        const existing = this.packs.get(entry.id);
+        if (existing && existing.source === 'builtin') return { ok: false, reason: 'builtin', errors: [`${entry.id} ships with the app`] };
+      } else {
+        const sp = require('../core/species').SPECIES[entry.base];
+        const missing = sp && sp.clips ? Object.values(sp.clips).flat().filter((f) => !fs.existsSync(path.join(tmp, f))) : ['clips'];
+        if (missing.length) return { ok: false, reason: 'invalid', errors: [`missing ${missing.join(', ')}`] };
+      }
+      fs.writeFileSync(path.join(tmp, Catalog.MARKER), `${JSON.stringify({ id: entry.id, version: entry.version || '', sha256: entry.sha256, installedAt: new Date().toISOString() }, null, 2)}\n`);
+      const dest = path.join(root, entry.id);
+      fs.rmSync(dest, { recursive: true, force: true });
+      fs.renameSync(tmp, dest);
+      this.reload();
+      return { ok: true, id: entry.id };
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  // 删除下载: a downloaded character's files go; she can be downloaded again (her wardrobe is kept by id).
+  removeDownload(id) {
+    if (this.clipDirs.has(id)) {
+      const dir = this.clipDirs.get(id);
+      if (!dir.startsWith(this.clipsDir + path.sep)) return { ok: false, reason: 'preinstalled' };
+      fs.rmSync(dir, { recursive: true, force: true });
+      this.reload();
+      return { ok: true };
+    }
+    const p = this.packs.get(id);
+    if (!p || p.source !== 'download') return { ok: false, reason: 'not-downloaded' };
+    if (!p.dir.startsWith(this.userDir + path.sep)) return { ok: false, reason: 'preinstalled' };
+    fs.rmSync(p.dir, { recursive: true, force: true });
+    this.reload();
+    return { ok: true };
   }
 
   // pack://<id>/<file>: only files inside that pack's folder.
   serve() {
     protocol.handle('pack', (req) => {
       const u = new URL(req.url);
-      const pack = this.packs.get(u.hostname);
       const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
+      // pack://<base>-clips/<clip>.webm: a downloaded video character's clips
+      const clips = this.clipDirs.get(u.hostname);
+      const pack = clips ? { dir: clips } : this.packs.get(u.hostname);
       const file = pack && path.resolve(pack.dir, rel);
-      if (!pack || !file.startsWith(pack.dir + path.sep) || !/\.(png|webp|gif|jpe?g|json|moc3|vrma?)$/i.test(file)) return new Response('not found', { status: 404 });
+      const allowed = clips ? /\.(webm|png)$/i : /\.(png|webp|gif|jpe?g|json|moc3|vrma?)$/i;
+      if (!pack || !file.startsWith(pack.dir + path.sep) || !allowed.test(file)) return new Response('not found', { status: 404 });
       return net.fetch(pathToFileURL(file).toString()).then((res) => {
         const headers = new Headers(res.headers);
         headers.set('access-control-allow-origin', '*');
@@ -220,7 +299,7 @@ class PackStore {
   shareable(id) {
     const p = this.packs.get(id);
     if (!p) return { ok: false, reason: 'unknown', text: '没有这个角色包' };
-    if (p.source !== 'user') return { ok: false, reason: 'builtin', text: '内置角色包随应用提供，不需要导出' };
+    if (p.source !== 'user') return { ok: false, reason: 'builtin', text: p.source === 'download' ? '下载的角色可以随时从角色图鉴重新下载，不需要导出' : '内置角色包随应用提供，不需要导出' };
     return P.packShareable(p);
   }
 

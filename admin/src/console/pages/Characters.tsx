@@ -2,12 +2,12 @@
  * 角色列表 (P-02) · 角色详情 (P-03 + P-04) · 角色包 / 导入角色 (P-02). Data: core/roster.js rows, rebuilt in main on
  * every change, so a switch made here shows in the pet window and the other way round.
  */
-import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
+import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Progress, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -173,18 +173,94 @@ const gstyles = createStaticStyles(({ css }) => ({
 const KIND_ORDER = ['sprites', 'pictures', 'rig', 'live2d', 'vrm', 'video'];
 
 /**
+ * 下载角色 (src/core/catalog.js): only the five pixel characters ship with the app; every other look is
+ * downloaded here first. Progress comes as `catalog-progress`; a finished one arrives as a character in the
+ * roster (main pushes the new state), so the map only drives the bar and the 取消 button meanwhile.
+ */
+export const useDownloads = () => {
+  const { downloads } = useStore();
+  const [map, setMap] = useState<Record<string, DownloadProgress>>(() => Object.fromEntries((downloads ?? []).map((d) => [d.id, d])));
+  useEffect(() => api().onCatalogProgress((p) => setMap((m) => ({ ...m, [p.id]: p }))), []);
+  const start = async (d: { id: string; name: string }) => {
+    setMap((m) => ({ ...m, [d.id]: { id: d.id, received: 0, state: 'downloading' } }));
+    const r = await api().downloadCharacter(d.id);
+    if (r && r.ok) toast.success(`「${d.name}」下载好了，可以切换到她`);
+    else if (r && r.reason !== 'canceled') toast.error({ description: r.text ?? reasonText(r), title: `没能下载「${d.name}」` });
+  };
+  return { map, start };
+};
+
+const downloading = (p?: DownloadProgress) => !!p && (p.state === 'downloading' || p.state === 'installing');
+
+/** One character that can be downloaded: her picture from the index, size, and 下载 / progress / 取消. */
+const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => void; p?: DownloadProgress }) => {
+  const busy = downloading(p);
+  const pct = p && p.total ? Math.min(100, Math.round(((p.received ?? 0) / p.total) * 100)) : 0;
+  return (
+    <article className={gstyles.card} data-catalog={d.id} data-kind={d.kind}>
+      <div className={gstyles.art}>
+        <SpriteStage animate={false} height={184} name={d.name} preview={d.picture ? { pixelated: d.pixelated, type: 'image', url: `../renderer/${d.picture}` } : null} />
+        <span className={gstyles.ribbon}>
+          <Tag data-not-downloaded={d.id}>未下载</Tag>
+        </span>
+        <span className={gstyles.kind}>
+          <KindTag adult={d.adult} kind={d.kind} label={KIND_NAME[d.kind] ?? d.kind} />
+        </span>
+      </div>
+      <Flexbox flex={1} gap={8} padding={12}>
+        <Flexbox gap={2}>
+          <Text ellipsis strong>
+            {d.name}
+          </Text>
+          <Text ellipsis fontSize={12} type="secondary">
+            {d.description}
+          </Text>
+        </Flexbox>
+        <Text data-catalog-meta={d.id} ellipsis fontSize={12} type="secondary">
+          {[d.sizeLabel, d.outfits ? `${d.outfits} 套服饰` : '', d.license].filter(Boolean).join(' · ')}
+        </Text>
+        {busy && (
+          <Flexbox data-download-progress={d.id} gap={4}>
+            <Progress percent={pct} showInfo={false} size="small" />
+            <Text fontSize={12} type="secondary">
+              {p?.state === 'installing' ? '正在安装…' : `已下载 ${pct}%`}
+            </Text>
+          </Flexbox>
+        )}
+        <Flexbox align="center" gap={8} horizontal justify="flex-end" style={{ marginBlockStart: 'auto' }}>
+          {busy ? (
+            <Button data-download-cancel={d.id} disabled={p?.state === 'installing'} onClick={() => api().cancelDownload(d.id)} size="small">
+              取消
+            </Button>
+          ) : (
+            <Button data-download={d.id} icon={Download} onClick={onDownload} size="small">
+              下载
+            </Button>
+          )}
+        </Flexbox>
+      </Flexbox>
+    </article>
+  );
+};
+
+/**
  * 角色图鉴: every character as a collectible card — met ones in colour with their hearts, the rest a shadow.
  * One card per character (T-2764): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two of them, each its own look.
  */
 export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) => {
-  const { roster, view } = useStore();
+  const { roster, view, catalog: cat } = useStore();
+  const catalog = cat ?? [];
   const sw = useSwitch();
+  const dl = useDownloads();
   const met = roster.filter((c) => c.met).length;
   const [kind, setKind] = useState('all');
-  // 按形象类型: each character has one kind; 导入的 = from a pack you imported
-  const kinds = KIND_ORDER.filter((k) => roster.some((c) => c.kind === k));
+  // 按形象类型: each character has one kind; 导入的 = from a pack you imported; 未下载 = can be downloaded
+  const kinds = KIND_ORDER.filter((k) => roster.some((c) => c.kind === k) || catalog.some((d) => d.kind === k));
   const user = roster.filter((c) => c.source === 'user').length;
-  const shown = roster.filter((c) => kind === 'all' || (kind === 'user' ? c.source === 'user' : c.kind === kind));
+  const shown = kind === 'remote' ? [] : roster.filter((c) => kind === 'all' || (kind === 'user' ? c.source === 'user' : c.kind === kind));
+  const remote = catalog.filter((d) => kind === 'all' || kind === 'remote' || d.kind === kind);
+  const pending = view?.pendingDownload as { id: string; name: string; sizeLabel: string } | null | undefined;
+  const pendingRow = pending ? catalog.find((d) => d.id === pending.id) : undefined;
   return (
     <>
       <PageHeader
@@ -193,10 +269,26 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
             导入角色
           </Button>
         }
-        description={`已遇见 ${met} / ${roster.length} 位。每种形象都是一位独立角色；点开一位，看她的故事、衣柜、模型和设定。`}
+        description={`已遇见 ${met} / ${roster.length} 位。每种形象都是一位独立角色；应用自带 5 位像素角色，其他角色下载后就能结识。`}
         title="角色图鉴"
       />
       {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
+      {pending && (
+        <Alert
+          action={
+            pendingRow && !downloading(dl.map[pending.id]) ? (
+              <Button data-pending-download={pending.id} icon={Download} onClick={() => dl.start(pendingRow)} size="small" type="primary">
+                下载（{pending.sizeLabel}）
+              </Button>
+            ) : undefined
+          }
+          data-pending={pending.id}
+          description={`「${pending.name}」不再随应用自带，下载后她会自动换回这个形象；在那之前先用默认形象陪你，好感和聊天记录都不受影响。`}
+          showIcon
+          title={`「${pending.name}」需要下载`}
+          type="info"
+        />
+      )}
       <Flexbox align="center" data-kind-filter gap={8} horizontal wrap="wrap">
         <Text fontSize={12} type="secondary">
           按形象类型
@@ -204,9 +296,11 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         <Segmented
           onChange={(v) => setKind(String(v))}
           options={[
-            { label: `全部 ${roster.length}`, value: 'all' },
-            ...kinds.map((k) => ({ label: `${KIND_NAME[k] ?? k} ${roster.filter((c) => c.kind === k).length}`, value: k })),
+            { label: `全部 ${roster.length + catalog.length}`, value: 'all' },
+            // a kind counts her characters and the ones of that kind that can be downloaded (both are listed)
+            ...kinds.map((k) => ({ label: `${KIND_NAME[k] ?? k} ${roster.filter((c) => c.kind === k).length + catalog.filter((d) => d.kind === k).length}`, value: k })),
             ...(user ? [{ label: `导入的 ${user}`, value: 'user' }] : []),
+            ...(catalog.length ? [{ label: `未下载 ${catalog.length}`, value: 'remote' }] : []),
           ]}
           size="small"
           value={kind}
@@ -259,6 +353,21 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
           </article>
         ))}
       </div>
+      {remote.length > 0 && (
+        <Flexbox gap={12}>
+          <Flexbox gap={2}>
+            <Text strong>可下载的角色</Text>
+            <Text fontSize={12} type="secondary">
+              这些形象不随应用自带，下载后会成为图鉴里的一位角色，可以切换、换装；不需要了可以在她的页面删除下载。
+            </Text>
+          </Flexbox>
+          <div className={gstyles.grid} data-catalog-grid>
+            {remote.map((d) => (
+              <CatalogCard d={d} key={d.id} onDownload={() => dl.start(d)} p={dl.map[d.id]} />
+            ))}
+          </div>
+        </Flexbox>
+      )}
       {sw.modal}
     </>
   );
@@ -720,7 +829,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
               <KindTag adult={p.adult} kind={p.kind} label={KIND_NAME[p.kind] ?? p.kind} />
             </Flexbox>
             <Text fontSize={12} type="secondary">
-              {[p.source === 'user' ? '导入' : '内置', p.outfits ? `${p.outfits} 套服饰` : '', p.author ?? '', p.license ?? ''].filter(Boolean).join(' · ')}
+              {[p.source === 'user' ? '导入' : p.source === 'download' ? '下载' : '内置', p.outfits ? `${p.outfits} 套服饰` : '', p.author ?? '', p.license ?? ''].filter(Boolean).join(' · ')}
             </Text>
             {p.kind === 'vrm' && p.vrm && vrmUi().creditLine(p.vrm) && (
               <Text data-vrm-credit={p.id} fontSize={12} type="secondary">
@@ -736,6 +845,27 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
               <div>
                 <Button data-vrm-info={p.id} onClick={() => setLicenseOf(p)} size="small">
                   授权信息
+                </Button>
+              </div>
+            )}
+            {p.source === 'download' && (
+              <div>
+                <Button
+                  data-remove-download={p.id}
+                  danger
+                  icon={Trash2}
+                  onClick={async () => {
+                    const msg = c.current ? '她正陪着你：删除后先换回默认形象，再下载就能换回来。' : '她的形象文件会从本机删除，之后可以在角色图鉴里重新下载。';
+                    if (!(await ask(`删除下载「${p.name}」？`, `${msg}衣柜、好感和聊天记录都会保留。`, '删除下载', true))) return;
+                    const r = await api().removeDownload(p.id);
+                    if (r && r.ok) {
+                      toast.success(`已删除下载「${p.name}」`);
+                      location.hash = '#/characters';
+                    } else toast.error(reasonText(r));
+                  }}
+                  size="small"
+                >
+                  删除下载
                 </Button>
               </div>
             )}
@@ -961,8 +1091,9 @@ const useStageHeight = () => {
  * right comes back as a new roster row (main rebuilds it on every change) and the stage redraws at once.
  */
 export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) => void }) => {
-  const { roster, view } = useStore();
+  const { roster, view, catalog } = useStore();
   const sw = useSwitch();
+  const dl = useDownloads();
   const [tab, setTab] = useState<DetailTab>('looks');
   const [trying, setTrying] = useState<string | null>(null);
   const stage = useStageHeight();
@@ -970,6 +1101,15 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
   // an old link names her base (`#/characters/dafeiyu`, before T-2764): the current one of that base, else her first
   const c = roster.find((x) => x.id === id) ?? roster.find((x) => x.base === id && x.current) ?? roster.find((x) => x.base === id);
   const ch = view?.characters?.find((x: any) => x.id === c?.id);
+  // a character that has to be downloaded first: her card, nothing else to set until she is here
+  const remote = !c ? (catalog ?? []).find((d) => d.id === id) : undefined;
+  if (!c && remote)
+    return (
+      <Flexbox data-detail-remote={remote.id} gap={16} style={{ maxWidth: 360 }}>
+        <Alert description="这个形象不随应用自带。下载后她会出现在角色图鉴里，可以切换、换装。" showIcon title={`「${remote.name}」还没有下载`} type="info" />
+        <CatalogCard d={remote} onDownload={() => dl.start(remote)} p={dl.map[remote.id]} />
+      </Flexbox>
+    );
   if (!c) return <Alert title={`没有角色「${id}」`} type="error" />;
   // 试穿: one of her outfits on her stage, not saved until 穿上
   const tryOpt: OutfitRow | undefined = trying ? (c.outfits ?? []).find((o) => o.id === trying && !o.locked) : undefined;
@@ -1124,7 +1264,20 @@ export const PacksPage = () => {
             {
               key: 'act',
               render: (_: unknown, p) =>
-                p.removable ? (
+                p.source === 'download' ? (
+                  <Button
+                    danger
+                    data-remove-download={p.id}
+                    icon={Trash2}
+                    onClick={async () => {
+                      if (await ask(`删除下载「${p.name}」？`, '她的形象文件会从本机删除，之后可以在角色图鉴里重新下载。衣柜、好感和聊天记录都会保留。', '删除下载', true)) run(api().removeDownload(p.id), `已删除下载「${p.name}」`);
+                    }}
+                    size="small"
+                    type="text"
+                  >
+                    删除下载
+                  </Button>
+                ) : p.removable ? (
                   <Flexbox gap={4} horizontal>
                     <Button data-export-pack={p.id} disabled={!p.exportable} icon={Download} onClick={() => run(api().exportPack(p.id), `已导出「${p.name}」`)} size="small" type="text">
                       导出

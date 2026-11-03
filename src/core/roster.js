@@ -9,7 +9,8 @@ const { SPECIES } = require('./species');
 const C = require('./characters');
 
 const KIND_LABEL = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
-const SOURCE_LABEL = { builtin: '内置', user: '导入' };
+const SOURCE_LABEL = { builtin: '内置', download: '下载', user: '导入' };
+const SOURCE_ORDER = { user: 0, download: 1, builtin: 2 };
 const ENGINE_LABEL = { fish: 'Fish Audio', minimax: 'MiniMax', elevenlabs: 'ElevenLabs', local: '本地语音服务', system: '系统语音' };
 
 // What the list shows as her picture: a sprite sheet's first frame, a picture, or the first frame of her
@@ -20,7 +21,7 @@ function previewOf(sp, look, clips = true) {
   if (!look) {
     if (!clips) return null;
     const idle = sp && sp.clips ? [].concat(sp.clips.idle)[0] : null;
-    return idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null;
+    return idle ? { type: 'video', url: `${sp.clipDir}/${idle}` } : null;
   }
   if (look.kind === 'sprites') return { type: 'sprite', url: look.url, frame: { width: look.frame.width, height: look.frame.height }, actions: look.actions || null, pixelated: !!look.pixelated };
   if (!look.url) return null; // a VRM model without a saved picture yet
@@ -94,8 +95,8 @@ function buildRoster(view, settings, { characters = null, look = null, outfitsOf
       pack: opt ? { id: opt.id, name: opt.name, kind: opt.kind, adult: !!opt.adult, source: opt.source, author: opt.author, license: opt.license, outfits: opt.outfits || 0, vrm: opt.vrm || null } : null,
       kind,
       kindLabel: KIND_LABEL[kind] || '--',
-      source: opt ? opt.source : 'builtin',
-      sourceLabel: SOURCE_LABEL[opt ? opt.source : 'builtin'],
+      source: opt ? opt.source : c.source || 'builtin',
+      sourceLabel: SOURCE_LABEL[opt ? opt.source : c.source || 'builtin'],
       voicePack: voicePackFor(base, packs),
       model,
       systemRole: c.systemRole || '',
@@ -143,9 +144,10 @@ function packRows(packStore) {
     license: p.license || '',
     version: p.version || '',
     outfits: Object.keys(p.outfits || {}).length,
-    removable: p.source === 'user',
+    // 删除下载 for a downloaded one (src/main/packs.js removeDownload): it can be downloaded again
+    removable: p.source === 'user' || p.source === 'download',
     exportable: p.source === 'user' && !(p.vrm && p.vrm.license && p.vrm.license.redistributable === false),
-  })).sort((a, b) => (a.source === b.source ? a.species.localeCompare(b.species) || a.id.localeCompare(b.id) : a.source === 'user' ? -1 : 1));
+  })).sort((a, b) => (a.source === b.source ? a.species.localeCompare(b.species) || a.id.localeCompare(b.id) : SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]));
 }
 
 module.exports = { buildRoster, packRows, adminView, previewOf, packKinds, KIND_LABEL, SOURCE_LABEL, ENGINE_LABEL };

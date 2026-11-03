@@ -581,7 +581,7 @@ function loadPacks(roots) {
   for (const { dir, source } of roots) {
     let names = [];
     try {
-      names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+      names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name).sort(); // .<id>-…: a download being unpacked
     } catch {
       continue;
     }
@@ -660,7 +660,7 @@ function clipsOption(speciesId) {
   const c = clipsId(speciesId) && sp.clipsLook;
   if (!c) return null;
   const idle = sp.clips ? [].concat(sp.clips.idle)[0] : null;
-  return { id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1, cover: idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null };
+  return { id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'download', outfits: 1, cover: idle ? { type: 'video', url: `${sp.clipDir}/${idle}` } : null };
 }
 
 // What the UI shows for a VRM pack (外观 list, credits): per model its meta and license, and the pack's restrictions.

@@ -17,6 +17,7 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const { CatalogDownloader } = require('./catalog');
 const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
 const { screenPx } = require('../core/fx');
@@ -48,6 +49,7 @@ let vrmLibrary = null; // where the VRM motion library is served from (src/main/
 let service = null;
 let updater = null;
 let packStore = null;
+let catalog = null; // 下载角色 (src/main/catalog.js)
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -141,7 +143,7 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -409,6 +411,20 @@ function wire() {
   ipcMain.handle('set-live2d-height', (_e, { id, height }) => {
     const r = packStore.setLive2dHeight(String(id || ''), height);
     if (r.ok) service.setPacks(packStore.packs);
+    return r;
+  });
+  // 下载角色 (core/catalog.js): progress arrives as `catalog-progress`; when she is in, she is a character
+  ipcMain.handle('catalog-download', async (_e, { id }) => {
+    const r = await catalog.download(String(id || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    pushAdmin();
+    return r;
+  });
+  ipcMain.handle('catalog-cancel', (_e, { id }) => catalog.cancel(String(id || '')));
+  ipcMain.handle('catalog-remove', (_e, { id }) => {
+    const r = packStore.removeDownload(String(id || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    pushAdmin();
     return r;
   });
   ipcMain.handle('remove-pack', (_e, { id }) => {
@@ -739,6 +755,7 @@ app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   packStore = new PackStore();
   packStore.serve();
+  catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
