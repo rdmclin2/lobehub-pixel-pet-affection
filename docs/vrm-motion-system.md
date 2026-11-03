@@ -528,7 +528,7 @@ done
 | §3.6 朝向、落地 | 身体 yaw ±18°（走路 ±60°），不镜像；每帧把最低的脚/膝/坐骨贴地，坐姿按身体横向范围居中 |
 | §3.7 烘焙 | `scripts/vrm-bake.js` + `scripts/lib/vrm-bake-core.js`：Mixamo FBX（three FBXLoader，临时目录安装 three@0.187.0）→ 重定向 `q_vrm = Q_parentWorldRest · q · Q_worldRest⁻¹` → trim/hold/mirror/amplitude/loop/center → `.vrma` + `library.json` |
 | §4 风格 | `src/core/vrm-style.js`：三套档案 + `VRM_STYLE_LIMITS`；`pack.json vrm.style`（名称或对象）、`vrm.motions` 由 `packs.js` 校验；未指定时 `inspectVrmJson().body` → `bustSpring>0 → female`、`shoulderHip≥1.5 → male`、否则 neutral（liliya → female，vroid.vrm → male，与 §4.2 实测表一致） |
-| 姿势持久化 | `settings.vrmPostures { packId: posture }`（`auto` 不存）；外观页 VRM 卡片“姿势”下拉框 → `set-vrm-posture` IPC；重启后保持 |
+| 姿势持久化 | `settings.vrmPostures { packId: posture }`（`auto` 不存）；设置窗口 → 角色 → 她的页 → 装扮 → “VRM 姿势”下拉框（她穿 VRM 形象包时出现） → `set-vrm-posture` IPC；重启后保持 |
 | §6 素材加载 | `src/main/vrm-library.js`：`vrmlib://index/library.json`、`vrmlib://<style>/<slot>.vrma`，目录为 `$PIXELPET_VRM_MOTIONS_DIR` → `<userData>/vrm-motions` → 开发运行时 `~/vrm-assets/baked`；仓库内路径拒绝；CSP `connect-src` 加 `vrmlib:`；`.gitignore`/`build.files` 排除 fbx/vmd/bvh/pmx/vroid |
 | §7 调试字段 | `data-style/posture/idle/reaction/hold/layers/library`，`data-state` 为语义事件摘要；`window.PetVRM.director`（= `window.__pet.vrmDirector`）：`speed/seed/plan/history/setPosture` |
 | §8 测试 | `test/vrm-{intent,director,style,library,life,bake,pack-style}.test.js`；`e2e/vrm.js` 用 `scripts/make-test-vrma.js` 自制动作库；真实素材验收 `.agents/acceptance/scripts/vrm-motion-real-acceptance.js` |

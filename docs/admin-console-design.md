@@ -64,7 +64,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `appearance.<id>` | `{[characterId]: packId}` | `{}`（取角色的默认包 `art.packs[0]`，再退到 `fallbackPack`） | 包 id `^[a-z0-9][a-z0-9-]{2,39}$`；包必须属于这个角色；18+ 的包要求 `ageConfirmed && adultContent`；大肥鱼可以选 `dafeiyu-clips`（视频） | ⋯ → 角色列表 → 她的页 → 外观（角色包） · `set-appearance` | 即时，离开 18+ 外观时会换下成人服饰 · 仅回调用方 |
 | `framings.<id>` | `{[characterId]: 'full' \| 'half'}` | `{}`（没有这一项 = 跟随形象包 `pack.json` 的 `framing`，再跟随全局 `prefs.framing`） | 只收 `full` / `half`；`auto` 删除这一项（`normalizeFramings`） | 设置窗口 → 角色 → 她的页 → 形象包 → 取景（跟随 / 全身 / 半身） · `set-framing` | 即时：桌宠窗口的 VRM 原地换取景（相机滑过去，不重载模型），见 `docs/half-body-mode.md` |
-| `vrmPostures.<id>` | `{[vrmPackId]: posture}` | `{}`（没有这一项 = 自动：待机时 VRM 导演自己换姿势） | 只收 `stand.relaxed` / `stand.confident` / `stand.shy` / `stand.playful` / `sit.rest` / `sit.doze`；`auto` 删除这一项（`normalizeVrmPostures`） | 设置窗口 → 角色 → 她的页 → 形象包 → VRM 姿势（她穿 VRM 形象包时出现）；桌宠窗口 → 衣柜 → VRM 卡片 → 姿势 · `set-vrm-posture` | 即时：桌宠窗口的 VRM 导演换到这个姿势（`docs/vrm-motion-system.md`） |
+| `vrmPostures.<id>` | `{[vrmPackId]: posture}` | `{}`（没有这一项 = 自动：待机时 VRM 导演自己换姿势） | 只收 `stand.relaxed` / `stand.confident` / `stand.shy` / `stand.playful` / `sit.rest` / `sit.doze`；`auto` 删除这一项（`normalizeVrmPostures`） | 设置窗口 → 角色 → 她的页 → 形象包 → VRM 姿势（她穿 VRM 形象包时出现） · `set-vrm-posture` | 即时：桌宠窗口的 VRM 导演换到这个姿势（`docs/vrm-motion-system.md`） |
 | `systemRoles.<id>` | `{[characterId]: string}` | `{}` | 经过 `cleanSystemRole`：去掉控制字符，最多 `SYSTEM_ROLE_MAX` = 1000 字；空串会删除这一项 | ⋯ → 角色列表 → 她的页 → 个性化设定（System Role） · `set-system-role` | 当前角色在后台更新 agent 的 system role（personaKey 变了）；其他角色在下次说话前更新 · 仅回调用方 |
 | `petScale` | number | `1.25` | `PET_SCALE` 0.5–2.5，两位小数；窗口会按屏幕大小再收一次（`fitScale`） | ⋯ → 高级设置 → 宠物大小（滑块 50–250%，步长 5）；桌面上拖左上角手柄；Ctrl/⌘+滚轮 · `set-pet-scale`（拖动中用 `preview-pet-scale`） | 即时（`resizePet`） |
 | `petScaleSet` | boolean | `false` | 内部标记，表示主人是否手动选过大小（选过就不再跟随默认值）。由 `set-pet-scale` 置为 true，「恢复默认」不会清它 | 不直接编辑 | — |
@@ -607,25 +607,29 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 
-### 12.3 菜单（⋯ / 托盘 / 应用菜单）：22 项
+### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：24 项
+
+桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
 
 | 菜单项 | 后台对应 |
 | --- | --- |
-| `menu:update` | 版本与更新 → 状态 / 立即重启更新 |
-| `menu:settings` | 打开设置窗口 |
+| `menu:update` | 版本与更新 → 状态 / 立即重启更新（有新版本时 ⚙ 出现红点直达） |
+| `menu:settings` | 桌宠窗口的 ⚙ 设置 / 右键她 / Ctrl+⌘ + , → 打开设置窗口 |
 | `menu:characters` | 角色图鉴（列表 + 详情） |
-| `menu:history` | 不需要：聊天记录是查看，不是配置；只在桌宠窗口 |
+| `menu:history` | 玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`） |
 | `menu:new-topic` | LobeHub 与本机 → 话题 → 重新开始话题 |
 | `menu:adult` | 内容与安全 → 成人向内容 |
 | `menu:local` | LobeHub 与本机 → 本机能力 |
-| `menu:actions` | 角色详情 → 舞台上的动作按钮（`admin-cue`） |
-| `menu:home` | 桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
+| `menu:actions` | 玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
+| `menu:home` | 玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
 | `menu:check-update` | 版本与更新 → 检查更新 |
 | `menu:release` | 数据与关于 → 危险操作 → 放生并删除 agent |
 | `menu:forget` | 数据与关于 → 危险操作 → 仅重置本地 |
 | `menu:log` | 数据与关于 → 数据目录 → 打开错误日志 |
 | `menu:credits` | 数据与关于 → 素材署名；角色详情 → 资料 |
-| `menu:quit` | 不需要：退出程序；托盘和应用菜单也有 |
+| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有 |
+| `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
+| `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
 | `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
 | `tray:检查更新` | 版本与更新 → 检查更新 |
@@ -636,7 +640,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 
 ### 12.4 桌宠窗口通道（src/main/preload.js）：81 个
 
-- 设置窗口有同一通道（31）：`whoami` `confirm-age` `set-adult` `equip-outfit` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（35）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（10）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
@@ -648,16 +652,12 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（40）：
+- 不是配置，只在桌宠窗口（36）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
   - `act`：互动：喂食 / 玩耍 / 睡觉
   - `touch`：互动：摸摸（部位触摸）
-  - `talk-topic`：互动：按话题聊天
-  - `mark-seen`：衣柜 / 话题面板的「新」角标
-  - `history-list`：聊天记录（查看，不是配置）
-  - `history-get`：聊天记录（查看，不是配置）
   - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
   - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
   - `chat`：聊天

@@ -247,7 +247,50 @@ export interface PetAdminApi {
   switchCharacter: (id: string, name?: string) => Promise<any>;
   ttsClearCache: () => Promise<any>;
   unlockAll: (species: string) => Promise<any>;
+  historyGet: (id: string) => Promise<{ ok: boolean; reason?: string; session?: HistorySession }>;
+  historyList: () => Promise<{ sessions: HistorySummary[] }>;
+  home: () => Promise<{ ok: boolean; reason?: string }>;
+  markSeen: (kind: 'outfit' | 'topic') => Promise<{ marked?: number; ok: boolean }>;
+  quit: () => Promise<{ ok: boolean }>;
+  talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
+}
+
+/** 聊天记录 (PetService.history / historySession): only the conversations the owner started. */
+export interface HistorySummary {
+  count: number;
+  endedAt?: number;
+  id: string;
+  name: string;
+  preview?: string;
+  startedAt: number;
+}
+
+export interface HistoryMessage {
+  at: number;
+  attachments?: { files?: string[]; images?: number } | null;
+  role: 'user' | 'pet';
+  status?: string | null;
+  text?: string;
+  turnId?: string;
+}
+
+export interface HistorySession extends HistorySummary {
+  messages: HistoryMessage[];
+}
+
+/** 话题 (view.topics, core/dialogue.js listTopics). */
+export interface TopicRow {
+  condition?: string | null;
+  id: string;
+  isNew?: boolean;
+  label: string;
+  locked: boolean;
+  rating?: string;
+  stage: string;
+  stageName: string;
+  talkedToday?: boolean;
+  unlocked?: boolean;
 }
 
 declare global {
@@ -276,6 +319,7 @@ export const REASON: Record<string, string> = {
   canceled: '已取消',
   empty: '还没有唤醒桌宠，先在桌宠窗口里完成唤醒',
   'not-met': '还没见过她：先切换到她并起个名字',
+  'bad-state': '没有这个动作',
   'no-redistribution': '这个模型的授权不允许导出',
   'too-long': '太长了',
   unknown: '找不到这一项',

@@ -75,6 +75,9 @@ const useStatus = () => {
       safety: settings.adultContent ? '成人向内容：开' : '成人向内容：关',
       update: `v${version}${update?.status === 'ready' ? ' · 新版本已就绪' : ''}`,
       about: '数据目录、系统选项、素材署名',
+      topics: view?.topics ? `已解锁 ${view.topics.filter((t: any) => !t.locked).length} / ${view.topics.length} 个${view.topics.some((t: any) => t.isNew) ? ' · 有新话题' : ''}` : '',
+      history: '你主动发起的聊天',
+      desk: '动作 · 回到右下角 · 退出',
     })[page] ?? '';
 };
 

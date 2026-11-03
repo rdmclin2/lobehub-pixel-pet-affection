@@ -85,6 +85,17 @@ function buildRoster(view, settings) {
   });
 }
 
+// The view as the console gets it: her needs to the whole number it shows (玩法 rounds them anyway) and
+// without the tick clock. Those are the only fields a heartbeat moves, every few seconds by a fraction:
+// sent raw, each one was a fresh state that re-rendered the console for nothing it shows.
+const NEEDS = ['hunger', 'mood', 'energy'];
+function adminView(view) {
+  if (!view || !view.pet) return view;
+  const { lastTickAt: _t, ...pet } = view.pet;
+  for (const k of NEEDS) if (typeof pet[k] === 'number') pet[k] = Math.round(pet[k]);
+  return { ...view, pet };
+}
+
 // 外观资源: every pet pack, with whose it is and what may be done with it.
 function packRows(packStore) {
   const list = packStore instanceof Map ? [...packStore.values()] : Array.isArray(packStore) ? packStore : [];
@@ -107,4 +118,4 @@ function packRows(packStore) {
   })).sort((a, b) => (a.source === b.source ? a.species.localeCompare(b.species) || a.id.localeCompare(b.id) : a.source === 'user' ? -1 : 1));
 }
 
-module.exports = { buildRoster, packRows, previewOf, packKinds, KIND_LABEL, SOURCE_LABEL, ENGINE_LABEL };
+module.exports = { buildRoster, packRows, adminView, previewOf, packKinds, KIND_LABEL, SOURCE_LABEL, ENGINE_LABEL };

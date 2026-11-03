@@ -8,8 +8,9 @@
 // app's limits show. Drawn by the real three-vrm renderer under SwiftShader (run.js launches Electron with
 // --enable-unsafe-swiftshader --ignore-gpu-blocklist).
 //
-//   vrmimport  外观 → 导入 VRM 模型… → 导入确认 (author, license, restrictions) → the user pack, its card and
-//              授权信息; the model copied into userData only; drawn on the desk.
+//   vrmimport  settings window → her page → 装扮 → 导入 VRM… → 导入确认 (author, license, restrictions); 取消导入
+//              removes the pack; 使用这个模型 → the user pack, its card (credit, 导出已禁用) and 授权信息; 外观资源
+//              keeps 导出 disabled; the model copied into userData only; drawn on the desk.
 //   vrm        wearing it with a homemade motion library (scripts/make-test-vrma.js in <userData>/vrm-motions):
 //              the canvas draws, data-library loaded, idle frame budget, the idle schedule (≥ 3 variants, no
 //              repeat), the 姿势 menu (cross-fade, saved), blinking, gaze; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI
@@ -76,8 +77,49 @@ module.exports = function vrmScenarios(ctx) {
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, ...settings }));
     return { data, env: { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir } };
   }
-  function helpers(page, prefix, evidence) {
+  // The settings window (T-2718: the pet window keeps only ⚙): opened from ⚙, driven by evaluate — it sits
+  // behind the always-on-top pet and gets few frames, so waits poll instead of waitFor*.
+  function adminOf(app, page) {
+    let w = null;
+    const until = async (fn, arg, ms = 15000, what = 'condition') => {
+      const t0 = Date.now();
+      for (;;) {
+        if (await w.evaluate(fn, arg).catch(() => false)) return;
+        if (Date.now() - t0 > ms) throw new Error(`settings window: timed out waiting for ${what}`);
+        await sleep(150);
+      }
+    };
+    const open = async () => {
+      if (w && !w.isClosed()) return w;
+      await clickAct(page, 'settings');
+      for (let i = 0; i < 200 && !(w = app.windows().find((x) => x.url().includes('admin-ui'))); i++) await sleep(100);
+      if (!w) throw new Error('the settings window did not open');
+      await until(() => !!document.querySelector('[data-admin-page]'), null, 20000, 'the console');
+      return w;
+    };
+    const go = async (route) => {
+      await open();
+      await w.evaluate((x) => { location.hash = x; }, route);
+      await until((x) => !!document.querySelector(`[data-path="${x}"]`), route, 15000, route);
+      await sleep(300);
+    };
+    // her page → 装扮 (衣柜 + 形象包)
+    const lookTab = async (sp) => {
+      await go(`/characters/${sp}`);
+      await w.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
+      await until(() => !!document.querySelector('[data-wardrobe]'), null, 10000, '装扮');
+    };
+    const click = (sel) => w.evaluate((x) => { const el = document.querySelector(x); if (!el) throw new Error(`no ${x}`); el.scrollIntoView({ block: 'center' }); el.click(); }, sel);
+    const text = (sel) => w.evaluate((x) => { const el = document.querySelector(x); return el ? el.textContent : null; }, sel);
+    const modalButton = (label) => w.evaluate((t) => { const b = [...document.querySelectorAll('[role="dialog"] button')].filter((x) => x.textContent.trim() === t).pop(); if (!b) throw new Error(`no dialog button ${t}`); b.click(); }, label);
+    const toastSeen = (re) => until((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, 10000, `toast ${re}`);
+    const shot = async (file) => { await w.bringToFront().catch(() => {}); await sleep(250); await w.screenshot({ path: file }); };
+    return { open, go, lookTab, click, text, modalButton, toastSeen, until, shot, get win() { return w; } };
+  }
+  function helpers(page, prefix, evidence, app) {
     const shot = async (name) => { await sleep(120); await page.screenshot({ path: path.join(SHOTS, `${prefix}-${name}.png`) }); return `vrm/${prefix}-${name}.png`; };
+    const A = adminOf(app, page);
+    const adminShot = async (name) => { await A.shot(path.join(SHOTS, `${prefix}-${name}.png`)); return `vrm/${prefix}-${name}.png`; };
     const ds = () => page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c ? { ...c.dataset } : null; });
     const fig = async () => { const d = await page.evaluate(() => window.petFx.vrm()); return d && d.figures[0]; };
     const note = (s) => { evidence.push(s); return s; };
@@ -90,17 +132,16 @@ module.exports = function vrmScenarios(ctx) {
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
     };
-    // 角色页 → 外观: pick a pack as a user does; waits until her look is that pack
+    // settings window → her page → 装扮 → 穿上 on the pack's card, as a user does; waits until her look is that pack
     const pickPack = async (id) => {
-      await openCurrentPage(page);
-      await page.locator(`.pack-opt[data-pack="${id}"]`).scrollIntoViewIfNeeded();
-      if (!(await page.locator(`.pack-opt.on[data-pack="${id}"]`).count())) await page.click(`.pack-opt[data-pack="${id}"] .pick`);
-      await page.waitForSelector(`.pack-opt.on[data-pack="${id}"]`);
-      await page.click('#panel-close');
-      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 });
+      await A.lookTab('dafeiyu');
+      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack card ${id}`);
+      if (!(await A.win.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await A.click(`[data-use-pack="${id}"]`);
+      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id, 15000, `${id} worn`);
+      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 }).catch(async () => { throw new Error(`pickPack(${id}): pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
     };
     const drawing = (n = 2, timeout = 30000) => page.waitForFunction((k) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > k; }, n, { timeout });
-    return { shot, ds, fig, note, hatch, pickPack, drawing };
+    return { shot, adminShot, A, ds, fig, note, hatch, pickPack, drawing };
   }
   const watchErrors = (page) => {
     const errors = [];
@@ -118,8 +159,8 @@ module.exports = function vrmScenarios(ctx) {
     const evidence = [];
     const { app, page } = await launch(env);
     const errors = watchErrors(page);
-    const H = helpers(page, 'vrmimport', evidence);
-    const msg = () => page.textContent('#panel-msg');
+    const H = helpers(page, 'vrmimport', evidence, app);
+    const A = H.A;
     let ID = null;
     try {
       await step(S, 'a homemade VRM 1.0 with a restrictive license is generated outside the repository', async () => {
@@ -138,50 +179,78 @@ module.exports = function vrmScenarios(ctx) {
 
       await step(S, 'hatching 大肥鱼 in her default pixel look', H.hatch, page);
 
-      await step(S, '外观 → 导入 VRM 模型…: 导入确认 shows author, license and the restrictions', async () => {
-        await openCurrentPage(page);
-        await page.locator('#vrm-import').scrollIntoViewIfNeeded();
-        assert.equal(await page.locator('#vrm-import').textContent(), '导入 VRM 模型…');
+      const userVrmPacks = () => (fs.existsSync(path.join(data, 'packs')) ? fs.readdirSync(path.join(data, 'packs')).filter((d) => d.startsWith('vrm-')) : []);
+      const importOnce = async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file); // answers the system file dialog
-        await page.click('#vrm-import');
-        await page.waitForSelector('#vrm-confirm', { timeout: 20000 });
-        const t = await page.textContent('#vrm-confirm');
-        for (const s of [`导入 VRM 模型「${MODEL_NAME}」`, '作者E2E Maker', '版权© E2E Maker', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/']) assert.ok(t.includes(s), `missing: ${s}`);
-        const rs = await page.$$eval('#vrm-confirm .vrm-restrictions li', (ls) => ls.map((l) => `${l.dataset.id}: ${l.textContent.trim()}`));
+        await A.click('[data-import-vrm]');
+        await A.until(() => !!document.querySelector('[data-vrm-confirm]'), null, 20000, '导入确认');
+        await sleep(400);
+      };
+
+      await step(S, '设置窗口 → 她的页 → 装扮 → 导入 VRM…: 导入确认 shows author, license and the restrictions', async () => {
+        await A.lookTab('dafeiyu');
+        assert.equal((await A.text('[data-import-vrm]')).trim(), '导入 VRM…');
+        await importOnce();
+        const t = await A.win.evaluate(() => document.querySelector('[data-vrm-confirm]').closest('[role="dialog"]').textContent);
+        for (const x of [`导入 VRM 模型「${MODEL_NAME}」`, '作者E2E Maker', '版权© E2E Maker', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/', '取消导入', '使用这个模型']) assert.ok(t.includes(x), `missing: ${x}`);
+        const rs = await A.win.evaluate(() => [...document.querySelectorAll('[data-vrm-confirm] [data-vrm-restrictions] li')].map((l) => `${l.dataset.id}: ${l.textContent.trim()}`));
         for (const id of ['no-redistribution', 'no-modification', 'credit-required']) assert.ok(rs.some((r) => r.startsWith(`${id}:`)), `restriction ${id}: ${rs.join(' | ')}`);
         assert.match(t, /不可再分发：仅限本机使用/);
-        await H.shot('1-confirm');
+        await H.adminShot('1-confirm');
         return H.note(`导入确认 restrictions: ${rs.join(' | ')}`);
-      }, page);
+      }, () => A.win);
 
-      await step(S, '使用这个模型: the user pack is made and worn; the card shows VRM · 作者 and the credit line', async () => {
-        await page.click('#vrm-confirm [data-act="use"]');
-        await page.waitForSelector('.pack-opt.on[data-pack^="vrm-"]', { timeout: 20000 });
-        ID = await page.getAttribute('.pack-opt.on[data-pack^="vrm-"]', 'data-pack');
-        assert.match(await msg(), new RegExp(`已导入 VRM 模型「${MODEL_NAME}」并换上（作者：E2E Maker）`));
-        const line = await page.textContent(`.pack-opt[data-pack="${ID}"] .meta span`);
-        assert.match(line, /^VRM · \d+ 套服饰 · E2E Maker · 本地导入$/);
-        assert.equal(await page.textContent(`.pack-opt[data-pack="${ID}"] .vrm-credit`), '署名：E2E Maker（模型授权要求署名）');
-        const ex = page.locator(`.pack-opt[data-pack="${ID}"] .pack-export`);
-        assert.equal(await ex.isDisabled(), true, '导出… disabled for a non-redistributable model');
-        const why = (await page.textContent(`.vrm-noexport[data-pack="${ID}"]`)).trim();
+      await step(S, '取消导入 removes the pack again: nothing left in userData, nothing worn', async () => {
+        const before = userVrmPacks();
+        assert.equal(before.length, 1, `the import made one pack: ${before}`);
+        await A.modalButton('取消导入');
+        await A.toastSeen(/已取消导入「E2E 自制小鱼」，模型没有留在本机的角色包里/);
+        for (let i = 0; i < 50 && userVrmPacks().length; i++) await sleep(100);
+        assert.deepEqual(userVrmPacks(), []);
+        assert.equal(await A.win.evaluate(() => document.querySelectorAll('[data-wardrobe] [data-pack^="vrm-"]').length), 0);
+        assert.match(await page.getAttribute('#pet-look', 'data-key'), /^dafeiyu-pixel\//);
+        await H.adminShot('1b-canceled');
+        return H.note(`取消导入: ${before[0]} removed; pet still ${await page.getAttribute('#pet-look', 'data-key')}`);
+      }, () => A.win);
+
+      await step(S, '使用这个模型: the user pack is made and worn; the card shows VRM · 作者, the credit line and 导出已禁用', async () => {
+        await importOnce();
+        await A.modalButton('使用这个模型');
+        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」并换上（作者：E2E Maker）`));
+        await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-'), null, { timeout: 20000 });
+        ID = (await page.getAttribute('#pet-look', 'data-key')).split('/')[0];
+        await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), ID, 15000, 'the VRM card worn');
+        const card = (await A.text(`[data-wardrobe] [data-pack="${ID}"]`)).replace(/\s+/g, ' ');
+        assert.match(card, /VRM/);
+        assert.match(card, /E2E Maker/);
+        assert.equal((await A.text(`[data-vrm-credit="${ID}"]`)).trim(), '署名：E2E Maker（模型授权要求署名）');
+        const why = (await A.text(`[data-vrm-noexport="${ID}"]`)).trim();
         assert.match(why, /导出已禁用：这个 VRM 模型的授权不允许再分发/);
-        await page.locator(`.pack-opt[data-pack="${ID}"]`).scrollIntoViewIfNeeded();
-        await H.shot('2-card');
-        return H.note(`pack ${ID}: 「${line}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}`);
-      }, page);
+        await A.win.evaluate((x) => document.querySelector(`[data-wardrobe] [data-pack="${x}"]`).scrollIntoView({ block: 'center' }), ID);
+        await H.adminShot('2-card');
+        // 外观资源 lists it with 导出 disabled (main refuses it too)
+        await A.go('/packs');
+        await A.until((x) => !!document.querySelector(`[data-export-pack="${x}"]`), ID, 10000, '外观资源 row');
+        assert.equal(await A.win.evaluate((x) => document.querySelector(`[data-export-pack="${x}"]`).disabled, ID), true, '导出 disabled for a non-redistributable model');
+        const ex = await A.win.evaluate((x) => window.petAdmin.exportPack(x), ID);
+        assert.equal(ex.ok, false);
+        await H.adminShot('2b-packs-export-disabled');
+        return H.note(`pack ${ID}: card 「${card.slice(0, 120)}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}; 外观资源 导出 disabled, exportPack → ${ex.reason}`);
+      }, () => A.win);
 
       await step(S, '授权信息 on the card: the license details with author and restrictions', async () => {
-        await page.click(`.pack-opt[data-pack="${ID}"] .vrm-info`);
-        const sel = `.pack-list .vrm-license[data-pack="${ID}"]`;
-        await page.waitForSelector(sel);
-        const t = (await page.textContent(sel)).replace(/\s+/g, ' ');
+        await A.lookTab('dafeiyu');
+        await A.click(`[data-vrm-info="${ID}"]`);
+        const sel = `[role="dialog"] [data-vrm-license="${ID}"]`;
+        await A.until((x) => !!document.querySelector(x), sel, 10000, '授权信息');
+        await sleep(400);
+        const t = (await A.text(sel)).replace(/\s+/g, ' ');
         assert.match(t, /VRM 1\.0 授权：仅限个人非商业使用 \/ 不可再分发 \/ 禁止修改 \/ 需署名/);
         assert.match(t, /作者E2E Maker/);
-        await page.locator(sel).scrollIntoViewIfNeeded();
-        await H.shot('3-license');
+        await H.adminShot('3-license');
+        await A.win.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => /close|关闭/i.test(b.getAttribute('aria-label') || '')).click());
         return H.note(`授权信息: ${t.slice(0, 260)}`);
-      }, page);
+      }, () => A.win);
 
       await step(S, 'the user pack lives in userData: pack.json kind "vrm" with the meta; the model copied there, not into the repo', async () => {
         const dir = path.join(data, 'packs', ID);
@@ -197,7 +266,6 @@ module.exports = function vrmScenarios(ctx) {
       });
 
       await step(S, 'on the desk the imported model is drawn by three-vrm', async () => {
-        await page.click('#panel-close');
         await H.drawing(2);
         await sleep(800);
         const d = await H.ds();
@@ -227,7 +295,7 @@ module.exports = function vrmScenarios(ctx) {
     const samples = {};
     const { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] });
     const errors = watchErrors(page);
-    const H = helpers(page, 'vrm', evidence);
+    const H = helpers(page, 'vrm', evidence, app);
     let ID = null;
     let box = null;
     const petBox = () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
@@ -334,16 +402,18 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`data-idle seen: ${seen.join(' → ')}; director history ${hist.join(' → ')} (${new Set(hist).size} variants, no repeat)`);
       }, page);
 
-      await step(S, '姿势 menu on the VRM card: each posture cross-fades in (weights sum to 1), is saved, and the bone shows it', async () => {
+      await step(S, '设置窗口 → 她的页 → 装扮 → VRM 姿势: each posture cross-fades in (weights sum to 1), is saved, and the bone shows it', async () => {
         const got = [];
+        const LABEL = { 'stand.confident': '叉腰站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'stand.relaxed': '放松站' };
         for (const p of ['stand.confident', 'stand.playful', 'sit.rest', 'stand.relaxed']) {
-          await openCurrentPage(page);
-          const sel = page.locator(`select.vrm-posture[data-pack="${ID}"]`);
-          await sel.scrollIntoViewIfNeeded();
-          await sel.selectOption(p);
-          await page.waitForFunction(() => /姿势已设为/.test(document.getElementById('panel-msg').textContent));
-          if (p === 'stand.confident') await H.shot('2c-posture-menu');
-          await page.click('#panel-close');
+          await H.A.lookTab('dafeiyu');
+          await H.A.until(() => !!document.querySelector('[data-posture-row="dafeiyu"] [role="combobox"]'), null, 10000, 'VRM 姿势 row');
+          const w = H.A.win;
+          await w.locator('[data-posture-row="dafeiyu"]').scrollIntoViewIfNeeded();
+          await w.locator('[data-posture-row="dafeiyu"]').getByRole('combobox').click();
+          await w.getByRole('option', { name: LABEL[p], exact: true }).click();
+          await H.A.toastSeen(new RegExp(`的姿势已设为「${LABEL[p]}」`));
+          if (p === 'stand.confident') await H.adminShot('2c-posture-menu');
           const sums = [];
           for (let i = 0; i < 8; i++) { sums.push((await H.fig()).weightSum); await sleep(80); }
           await page.waitForFunction((x) => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.posture === x && /^[^,]+:1\.00$/.test(c.dataset.layers); }, p, { timeout: 15000 });
@@ -757,11 +827,19 @@ module.exports = function vrmScenarios(ctx) {
         await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 8000 });
         const toast = (await page.textContent('#toast-title')).trim();
         await H.shot('10a-unlock-toast');
-        assert.notEqual(await page.evaluate(() => document.getElementById('toast-open').dataset.panel), 'wardrobe');
+        const toastTo = await page.evaluate(() => document.getElementById('toast-open').dataset.admin);
+        assert.equal(toastTo, 'topics', 'the notice leads to 话题, not to a wardrobe');
         await page.click('#toast-close');
-        const cardsOf = () => page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, label: c.querySelector('.nm').textContent, locked: c.classList.contains('locked'), adultTag: !!c.querySelector('.tag.adult') })));
-        const wardrobeHidden = () => page.evaluate(() => document.getElementById('btn-wardrobe').classList.contains('hidden'));
-        assert.equal(await wardrobeHidden(), true, 'one VRM model: no 衣柜');
+        // the wardrobe is the 衣柜 on her page in the settings window; adult outfits are known from the view
+        const cardsOf = async () => {
+          await H.A.lookTab('dafeiyu');
+          const view = await page.evaluate(async () => (await window.pet.boot()).view);
+          const adult = new Set((view.outfits || []).filter((o) => o.rating === 'adult' || o.adult).map((o) => o.id));
+          const rows = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => ({ id: b.dataset.outfit, label: b.textContent.trim().replace(/新$/, ''), locked: b.disabled, equipped: b.dataset.equipped === 'true' })));
+          return rows.map((r) => ({ ...r, adultTag: adult.has(r.id) }));
+        };
+        const single = await cardsOf();
+        assert.equal(single.length, 1, `one VRM model: one look in 衣柜 (${JSON.stringify(single)})`);
         const view0 = await page.evaluate(async () => (await window.pet.boot()).view);
         assert.deepEqual(view0.outfits.map((x) => x.id), ['daily']);
         assert.equal(view0.outfits[0].label, '招牌女仆装');
@@ -770,14 +848,13 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(eq.ok, false);
         const eqP = await page.evaluate(() => window.pet.equipOutfit('pajamas'));
         assert.equal(eqP.ok, false, 'no other outfit to change into');
-        await H.shot('10b-single-look-no-wardrobe');
-        await openCurrentPage(page);
-        const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
+        await H.adminShot('10b-single-look-wardrobe');
+        await H.A.lookTab('dafeiyu');
+        const listed = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-wardrobe] [data-pack]')].map((o) => o.dataset.pack));
         assert.ok(!listed.includes('vrm-e2e-adult'), listed.join(', '));
         assert.ok(listed.includes(ID), listed.join(', '));
-        await page.locator('.pack-list').scrollIntoViewIfNeeded();
-        await H.shot('10c-adult-off-packs');
-        await page.click('#panel-close');
+        await H.A.win.evaluate(() => document.querySelector('[data-wardrobe]').scrollIntoView({ block: 'center' }));
+        await H.adminShot('10c-adult-off-packs');
         const set = await page.evaluate(() => window.pet.setAppearance('vrm-e2e-adult', 'dafeiyu'));
         await sleep(500);
         const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
@@ -786,31 +863,27 @@ module.exports = function vrmScenarios(ctx) {
         // contrast: 18+ on → the 18+ VRM pack is offered and its adult outfit 性感女仆装 (成人向) can be worn; off again → gone
         await page.evaluate(() => window.pet.setAdult(true));
         await H.pickPack('vrm-e2e-adult');
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('.card[data-outfit="maid"]:not(.locked)');
+        await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"]:not([disabled])'), null, 10000, 'maid in 衣柜');
         const on = await cardsOf();
         const maidOn = on.find((c) => c.id === 'maid');
         assert.ok(maidOn && maidOn.label === '性感女仆装' && maidOn.adultTag, JSON.stringify(on));
-        await page.click('.card[data-outfit="maid"]');
-        await page.waitForSelector('.card.equipped[data-outfit="maid"]');
-        await page.locator('.card[data-outfit="maid"]').scrollIntoViewIfNeeded();
-        await H.shot('10d-adult-on-wardrobe-maid');
-        await page.click('#panel-close');
+        await H.A.click('[data-outfits] [data-outfit="maid"]');
+        await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"][data-equipped="true"]'), null, 10000, 'maid worn');
+        await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-e2e-adult/maid'), null, { timeout: 10000 }).catch(async () => { throw new Error(`maid: pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
+        await H.adminShot('10d-adult-on-wardrobe-maid');
         await page.evaluate(() => window.pet.setAdult(false));
         await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
         const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
-        // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 is back, without maid
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('#panel:not(.hidden) .card');
+        // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 has more, without maid
+        await H.A.until(() => document.querySelectorAll('[data-outfits] [data-outfit]').length > 1, null, 10000, 'her 2D wardrobe');
         const off2 = await cardsOf();
         assert.ok(off2.length > 1, 'her 2D look has a wardrobe');
         assert.ok(!off2.some((c) => c.id === 'maid' || c.adultTag), JSON.stringify(off2));
         const eq2 = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq2.ok, false);
-        await H.shot('10e-adult-off-again-wardrobe');
-        await page.click('#panel-close');
+        await H.adminShot('10e-adult-off-again-wardrobe');
         const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
-        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 hidden, outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
+        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 has one look (${single.map((c) => c.label).join('')}), outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
 
       await step(S, 'back to dafeiyu-pixel: the 2D look draws, the VRM canvas is removed and the figure disposed', async () => {
@@ -951,7 +1024,7 @@ module.exports = function vrmScenarios(ctx) {
     const evidence = [];
     let { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] });
     let errors = watchErrors(page);
-    let H = helpers(page, 'frame', evidence);
+    let H = helpers(page, 'frame', evidence, app);
     let admin = null;
     let testId = null;
     let realId = null;
@@ -1260,7 +1333,7 @@ module.exports = function vrmScenarios(ctx) {
         await app.close();
         ({ app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] }));
         errors = watchErrors(page);
-        H = helpers(page, 'frame', evidence);
+        H = helpers(page, 'frame', evidence, app);
         await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
         await H.drawing(5, 60000);
         await settled('half');

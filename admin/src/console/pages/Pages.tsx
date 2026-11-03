@@ -245,7 +245,9 @@ export const ConnectionPage = () => {
           <Text type="secondary">让当前角色在一个新的 LobeHub 话题里继续。旧话题保留在 LobeHub，好感和聊天记录不变。</Text>
           <Button
             disabled={!view}
+            data-new-topic
             onClick={async () => {
+              if (!(await ask('和她开一个新话题？', '她会从头聊起，不再带着之前的对话上下文。旧话题不会删除，仍保留在 LobeHub 里；好感度和聊天记录也都保留。', '重新开始话题'))) return;
               const r = await api().newTopic();
               if (r && r.view) merge({ view: r.view });
               if (r && r.ok) toast.success('下一句会开一个新话题');

@@ -4,6 +4,7 @@ import { useHashPath } from '../useHashPath';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
+import { DeskPage, HistoryPage, TopicsPage } from './pages/Together';
 import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
 import { Shell } from './Shell';
 import { StoreProvider } from './store';
@@ -37,6 +38,12 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <UpdatePage />;
     case 'about':
       return <AboutPage />;
+    case 'topics':
+      return <TopicsPage />;
+    case 'history':
+      return <HistoryPage />;
+    case 'desk':
+      return <DeskPage />;
     case 'behavior':
       return <BehaviorPage />;
     case 'visitors':
@@ -64,7 +71,7 @@ export const ConsoleApp = () => (
         {error ? (
           <Flexbox gap={8} style={{ maxWidth: 480 }}>
             <Alert description={error} title="设置窗口没有加载成功" type="error" />
-            <Text type="secondary">关掉这个窗口，从桌宠的 ⋯ 菜单 → 设置… 重新打开。</Text>
+            <Text type="secondary">关掉这个窗口，点桌宠的 ⚙ 设置按钮（或 Ctrl/⌘ + ,）重新打开。</Text>
           </Flexbox>
         ) : (
           <Spin />

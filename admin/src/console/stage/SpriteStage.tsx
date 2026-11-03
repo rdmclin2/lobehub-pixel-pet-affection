@@ -1,5 +1,5 @@
 import { Avatar, createStaticStyles, cx } from '@lobehub/ui';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 
 import type { Preview } from '../api';
 
@@ -21,21 +21,52 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-// one decoded sheet per URL, shared by every stage that shows it
-const sheets = new Map<string, Promise<HTMLImageElement>>();
-const loadSheet = (url: string) => {
+// A pack's sprite sheet is one big picture (the HD packs are 4 × 9 cells of 664 × 904 = 2656 × 8136 px,
+// ~86 MB decoded). Drawing it straight onto a canvas makes Chromium decode the whole sheet synchronously on
+// the main thread, again every time a stage mounts or its preview changes: one to two seconds per sheet, and
+// the console froze on every click that re-rendered a stage. Instead the sheet is fetched as a Blob and
+// decoded off the main thread (createImageBitmap), and each cell is cut out once, already scaled to the size
+// it is shown at; the stages then only ever draw those small bitmaps.
+type Cell = Promise<ImageBitmap>;
+const MAX_SHEETS = 2; // decoded whole sheets kept while their cells are being cut (they are large)
+const sheets = new Map<string, Promise<ImageBitmap>>();
+const cells = new Map<string, Cell>();
+const MAX_CELLS = 400;
+
+const decodeSheet = (url: string) => {
   let p = sheets.get(url);
-  if (!p) {
-    p = new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => {
-        sheets.delete(url);
-        reject(new Error(`could not load ${url}`));
-      };
-      img.src = url;
-    });
+  if (p) {
+    sheets.delete(url); // most recently used last
     sheets.set(url, p);
+    return p;
+  }
+  p = fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`could not load ${url}`);
+      return r.blob();
+    })
+    .then((b) => createImageBitmap(b));
+  p.catch(() => sheets.delete(url));
+  sheets.set(url, p);
+  while (sheets.size > MAX_SHEETS) {
+    const [oldest, q] = sheets.entries().next().value as [string, Promise<ImageBitmap>];
+    sheets.delete(oldest);
+    q.then((bm) => bm.close(), () => {});
+  }
+  return p;
+};
+
+/** One cell of a sheet, scaled to `h` device pixels high (cached: drawing it is cheap from then on). */
+export const loadCell = (url: string, frame: { height: number; width: number }, row: number, col: number, h: number, pixelated: boolean): Cell => {
+  const key = `${url}|${row},${col}|${h}|${pixelated ? 1 : 0}`;
+  let p = cells.get(key);
+  if (!p) {
+    const w = Math.max(1, Math.round((h * frame.width) / frame.height));
+    p = decodeSheet(url).then((sheet) => createImageBitmap(sheet, col * frame.width, row * frame.height, frame.width, frame.height, { resizeHeight: h, resizeQuality: pixelated ? 'pixelated' : 'high', resizeWidth: w }));
+    p.catch(() => cells.delete(key));
+    cells.set(key, p);
+    // forget the oldest (not closed: a stage may still be drawing it; the GC frees it once nobody does)
+    if (cells.size > MAX_CELLS) cells.delete(cells.keys().next().value as string);
   }
   return p;
 };
@@ -62,7 +93,7 @@ export interface SpriteStageProps {
  * (row, col, frames, fps from her pack), a pack picture, or her own clip. Stops when off screen or when the
  * system asks for reduced motion. A broken picture falls back to her initial on her accent colour.
  */
-export const SpriteStage = ({ preview, name, accent, height, action = 'idle', animate = true, silhouette, className }: SpriteStageProps) => {
+export const SpriteStage = memo(({ preview, name, accent, height, action = 'idle', animate = true, silhouette, className }: SpriteStageProps) => {
   const canvas = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -76,48 +107,66 @@ export const SpriteStage = ({ preview, name, accent, height, action = 'idle', an
     return () => io.disconnect();
   }, []);
 
+  // `data-drawn` = the url whose first frame is on screen (set outside React: no re-render for it). The e2e
+  // run waits on it to know a stage really shows her and not an empty box.
+  const drawn = (url: string) => {
+    if (box.current) box.current.dataset.drawn = url;
+  };
+
   useEffect(() => {
     setFailed(false);
+    // the same picture under a new preview object (a pack tried on, then worn) is still the one on screen
+    if (box.current && box.current.dataset.drawn !== preview?.url) delete box.current.dataset.drawn;
+  }, [preview]);
+
+  useEffect(() => {
     if (!preview || preview.type !== 'sprite' || !preview.frame) return;
     const c = canvas.current;
     if (!c) return;
-    const { width, height: fh } = preview.frame;
+    const frame = preview.frame;
     const acts = preview.actions ?? {};
     const a = acts[action] ?? acts.idle ?? { col: 0, fps: 1, frames: 1, row: 0 };
     const play = animate && visible && a.frames > 1 && !reducedMotion();
-    let raf = 0;
+    let timer = 0;
     let alive = true;
-    loadSheet(preview.url).then(
-      (img) => {
+    // device pixels the stage shows her at: no point cutting cells larger than that
+    const h = Math.max(1, Math.round(height * (window.devicePixelRatio || 1)));
+    const pix = !!preview.pixelated;
+    const n = play ? a.frames : 1;
+    Promise.all(Array.from({ length: n }, (_, i) => loadCell(preview.url, frame, a.row, a.col + i, h, pix))).then(
+      (frames) => {
         if (!alive) return;
-        c.width = width;
-        c.height = fh;
+        c.width = frames[0].width;
+        c.height = frames[0].height;
         const g = c.getContext('2d');
         if (!g) return;
-        g.imageSmoothingEnabled = !preview.pixelated;
         let last = -1;
         const draw = (i: number) => {
           if (i === last) return;
           last = i;
-          g.clearRect(0, 0, width, fh);
-          g.drawImage(img, (a.col + i) * width, a.row * fh, width, fh, 0, 0, width, fh);
+          g.clearRect(0, 0, c.width, c.height);
+          g.drawImage(frames[i], 0, 0);
         };
         draw(0);
+        drawn(preview.url);
         if (!play) return;
-        const t0 = performance.now();
-        const tick = (t: number) => {
-          draw(Math.floor(((t - t0) / 1000) * a.fps) % a.frames);
-          raf = requestAnimationFrame(tick);
+        // her sheet plays at 2–8 fps: wake up only when the frame changes (a requestAnimationFrame loop
+        // would run the page's whole frame lifecycle 60 times a second for it)
+        let i = 0;
+        const step = () => {
+          i = (i + 1) % a.frames;
+          draw(i);
+          timer = window.setTimeout(step, 1000 / a.fps);
         };
-        raf = requestAnimationFrame(tick);
+        timer = window.setTimeout(step, 1000 / a.fps);
       },
       () => alive && setFailed(true),
     );
     return () => {
       alive = false;
-      cancelAnimationFrame(raf);
+      clearTimeout(timer);
     };
-  }, [preview, action, animate, visible]);
+  }, [preview, action, animate, visible, height]);
 
   const ratio = preview?.type === 'sprite' && preview.frame ? preview.frame.width / preview.frame.height : 1;
   const width = Math.round(height * ratio);
@@ -128,11 +177,12 @@ export const SpriteStage = ({ preview, name, accent, height, action = 'idle', an
   if (!preview || failed) inner = <Avatar avatar={name.slice(0, 1)} background={accent} shape="square" size={Math.round(height * 0.6)} />;
   else if (preview.type === 'sprite') inner = <canvas aria-label={name} className={cls} ref={canvas} role="img" style={shade} />;
   else if (preview.type === 'video')
-    inner = <video aria-label={name} autoPlay={animate && !reducedMotion()} className={cls} loop muted onError={() => setFailed(true)} playsInline preload="metadata" src={animate ? preview.url : `${preview.url}#t=0.1`} style={shade} />;
-  else inner = <img alt={name} className={cls} onError={() => setFailed(true)} src={preview.url} style={shade} />;
+    inner = <video aria-label={name} autoPlay={animate && !reducedMotion()} className={cls} loop muted onError={() => setFailed(true)} onLoadedData={() => drawn(preview.url)} playsInline preload="metadata" src={animate ? preview.url : `${preview.url}#t=0.1`} style={shade} />;
+  else inner = <img alt={name} className={cls} decoding="async" onError={() => setFailed(true)} onLoad={() => drawn(preview.url)} src={preview.url} style={shade} />;
   return (
-    <div className={cx(styles.root, className)} data-action={action} data-preview={preview?.type ?? 'none'} ref={box} style={{ height, width }}>
+    <div className={cx(styles.root, className)} data-action={action} data-failed={failed || undefined} data-preview={preview?.type ?? 'none'} data-src={preview?.url} ref={box} style={{ height, width }}>
       {inner}
     </div>
   );
-};
+});
+SpriteStage.displayName = 'SpriteStage';
