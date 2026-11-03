@@ -12,6 +12,7 @@
 const settingsLib = require('./settings');
 const { ENGINES: TTS_ENGINES, FALLBACKS, LOCAL_APIS: TTS_LOCAL_APIS, endpointOkFor } = require('./tts');
 const asrLib = require('./asr');
+const hotkeyLib = require('./hotkey');
 
 const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
@@ -87,7 +88,7 @@ const PAGES = {
   desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
-  asr: { title: '语音输入', description: '按住 🎤 说话，识别成文字发给她。' },
+  asr: { title: '语音输入', description: '按住 🎤 说话，或在任何地方按快捷键直接和她语音对话；识别成文字发给她。' },
   voicepacks: { title: '语音包', description: '提前录好的台词：命中时直接播放，不用请求引擎。' },
   connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
   api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
@@ -99,7 +100,7 @@ const PAGES = {
 const opts = (pairs) => pairs.map(([value, label]) => ({ value, label }));
 const pct = (v) => `${Math.round(v * 100)}%`;
 
-// type: switch | select | segmented | slider | number | text | url | secret | textarea | readonly
+// type: switch | select | segmented | slider | number | text | url | hotkey | secret | textarea | readonly
 // live: true = applies at once (all settings.json keys but RESTART_KEYS); restart: true = after a restart
 const F = [];
 const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, card, label, type, store: 'settings', ...extra });
@@ -156,6 +157,12 @@ add('asr.fallback', 'asr', '语音输入', '用不了时换另一个引擎', 'sw
 add('asr.language', 'asr', '语音输入', '语言', 'select', { desc: '自动识别，或固定一种语言（更准）。', options: opts([['auto', '自动'], ['zh', '中文'], ['en', '英语'], ['ja', '日语'], ['ko', '韩语'], ['fr', '法语'], ['de', '德语'], ['es', '西班牙语'], ['ru', '俄语']]), dependsOn: { key: 'asr.enabled', value: true } });
 add('asr.autoSend', 'asr', '语音输入', '识别后直接发送', 'switch', { desc: '识别出的文字直接发给她，不在输入框里等你确认。', dependsOn: { key: 'asr.enabled', value: true } });
 add('asr.maxSeconds', 'asr', '语音输入', '单次最长录音', 'number', { desc: '录到这个时长自动停止。', unit: '秒', min: 5, max: 120, step: 5, dependsOn: { key: 'asr.enabled', value: true } });
+// 快捷键唤起语音对话 (core/hotkey.js, main/voice-hotkey.js): works with 语音输入 off too — she then says how to turn it on
+add('asr.hotkey', 'asr', '快捷键', '唤起语音对话', 'hotkey', {
+  desc: '在任何地方按下：她出现在桌面上、打开聊天框并开始听；说完再按一次结束并识别。录下组合时至少要有一个 Ctrl / ⌘ / Alt。清空 = 不用快捷键。',
+  defaultKeys: hotkeyLib.toHotkeyKeys(hotkeyLib.DEFAULT_HOTKEY),
+  reserved: hotkeyLib.RESERVED.map((r) => ({ keys: hotkeyLib.toHotkeyKeys(r.accelerator), label: r.label })),
+});
 add('asr.lobehub.model', 'asr', 'LobeHub 云端识别', '模型', 'select', { desc: '完整版更准，mini 更快更省。', options: opts([['gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe（快）'], ['gpt-4o-transcribe', 'gpt-4o-transcribe（准）']]) });
 add('asr.local.endpoint', 'asr', '本地识别服务', '地址', 'url', { desc: 'https，或本机 / 局域网的 http；不能带查询参数或账号密码。清空恢复默认。', placeholder: asrLib.DEFAULT_ENDPOINT, validator: 'asr' });
 add('asr.local.api', 'asr', '本地识别服务', '接口', 'segmented', { desc: 'OpenAI 兼容（/v1/audio/transcriptions）或 whisper.cpp（/inference）。', options: opts([['openai', 'OpenAI 兼容'], ['whispercpp', 'whisper.cpp']]) });
@@ -263,6 +270,12 @@ function validate(key, value) {
       if (v.length > f.maxLength) return no('too-long', `（最多 ${f.maxLength} 字）`);
       if (f.pattern && v && !new RegExp(f.pattern).test(v)) return no('pattern');
       return { ok: true, value: v };
+    }
+    case 'hotkey': {
+      // '' = off; otherwise a valid accelerator that the app itself does not use (core/hotkey.js checkHotkey)
+      if (value !== null && typeof value !== 'string') return no('type');
+      const h = hotkeyLib.checkHotkey(value === null ? '' : value);
+      return h.ok ? { ok: true, value: h.accelerator } : { ok: false, reason: h.reason === 'conflict' ? 'hotkey-conflict' : 'bad-hotkey', message: h.message };
     }
     case 'visitors':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) return no('type');
