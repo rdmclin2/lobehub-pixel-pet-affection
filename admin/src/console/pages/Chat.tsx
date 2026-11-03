@@ -18,6 +18,10 @@ const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const PAGE = 40;
+// The reply being written: still smoothed in (streamdown), but with the `realtime` preset (≈40 ms buffer, up to
+// 180 字/s) instead of the default `balanced` (120 ms, 132 字/s), which fell ≈0.4 s behind LobeHub's ≈170 字/s
+// on long replies (docs/admin-chat-latency.md R4). One object, so the live bubble's Markdown is not re-created per delta.
+const STREAM_MARKDOWN = { animated: true, streamSmoothingPreset: 'realtime' } as const;
 
 const styles = createStaticStyles(({ css }) => ({
   root: css`
@@ -802,7 +806,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                     data-role="assistant"
                     data-streaming
                     loading
-                    markdownProps={{ animated: true }}
+                    markdownProps={STREAM_MARKDOWN}
                     message={liveHere.text}
                     placement="left"
                     renderMessage={(content) => (liveHere.text ? content : <LoadingDots />)}

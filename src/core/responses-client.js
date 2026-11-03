@@ -24,8 +24,22 @@ const EXPIRY_MARGIN_S = 60;
 
 const cliHome = (env = process.env) => path.join(os.homedir(), env.LOBEHUB_CLI_HOME || '.lobehub');
 
+// The file key: 100 000 rounds of PBKDF2, ≈30 ms of blocking work in main before every direct turn
+// (docs/admin-chat-latency.md §7). It only depends on the hostname and user, so it is derived once per pair.
+const keyCache = new Map();
+function cliKey(hostname, username) {
+  const id = `${hostname}\n${username}`;
+  let key = keyCache.get(id);
+  if (!key) {
+    key = crypto.pbkdf2Sync(`lobehub-cli:${hostname}:${username}`, 'lobehub-cli-salt', 100000, 32, 'sha256');
+    keyCache.set(id, key);
+  }
+  return key;
+}
+
 // The CLI keeps its login as base64(iv(12) + authTag(16) + AES-256-GCM ciphertext), keyed by this machine's
 // hostname and user (apps/cli/src/auth/credentials.ts). Older versions wrote plain JSON. Null when unreadable.
+// The file itself is read every time: `lh` rewrites it when it refreshes the login.
 function readCliCredentials({ env = process.env, hostname = os.hostname(), username = os.userInfo().username } = {}) {
   let data;
   try {
@@ -35,7 +49,7 @@ function readCliCredentials({ env = process.env, hostname = os.hostname(), usern
   }
   try {
     const packed = Buffer.from(data, 'base64');
-    const key = crypto.pbkdf2Sync(`lobehub-cli:${hostname}:${username}`, 'lobehub-cli-salt', 100000, 32, 'sha256');
+    const key = cliKey(hostname, username);
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, packed.subarray(0, 12));
     decipher.setAuthTag(packed.subarray(12, 28));
     const creds = JSON.parse(decipher.update(packed.subarray(28)) + decipher.final('utf8'));

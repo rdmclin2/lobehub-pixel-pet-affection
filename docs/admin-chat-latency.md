@@ -1,6 +1,20 @@
-# 聊天窗口 vs 桌面对话：链路对比、基线测速与根因（T-2815）
+# 聊天窗口 vs 桌面对话：链路对比、根因、优化与前后对比（T-2815 / T-2818）
 
-> 分支 `perf/admin-chat-latency`（基于 canary `00252f9`）。本文只做测量和根因定位，不改聊天行为；优化项留给后续任务。
+> 分支 `perf/admin-chat-latency`（基于 canary `00252f9`）。§0–§6 是 T-2815 的测量与根因定位（不改行为）；
+> **§7–§10 是 T-2818 的优化改动、优化前后对比数据与回归验证结果。**
+
+## 优化结果速览（T-2818，同方法同账号同角色同模型同消息集，前后各 12 轮 × 2 链路，冷 / 热各 6 轮；ms，p50 / p90）
+
+| 聊天窗口 | 优化前 TTFT | 优化后 TTFT | 变化（p50） | 优化前总耗时 | 优化后总耗时 | 变化（p50） |
+|---|---|---|---|---|---|---|
+| 冷（模型目录过期） | 5829 / 8062 | **2860 / 3276** | **−2969（−51%）** | 10315 / 12772 | **6656 / 6893** | **−3659（−35%）** |
+| 热 | 2973 / 4371 | 2893 / 3575 | −80（−3%，噪声内） | 6739 / 8444 | 6746 / 7280 | +7（0%，噪声内） |
+| 全部 | 5403 / 6035 | **2878 / 3510** | **−2525（−47%）** | 8729 / 11134 | **6656 / 7243** | **−2073（−24%）** |
+
+- main 进程准备（点击后到请求发出）：冷态 2788 → 27 ms，热态 56 → 4 ms。
+- 长回复（约 250–400 字）在聊天页「最后一段→全文上屏」：458 → 236 ms。
+- 热态 TTFT 和总耗时没有变化，因为热态时间几乎全花在服务端：请求→首字约 2.8 s，最后一段文字→`response.completed` 约 3.5 s（R1/R3）。§7.3 的探针证明这两段客户端改不了。
+- 详见 §7（改动）、§8（对比数据）、§9（回归）、§10（复现）。
 > 「聊天窗口」= 设置窗口 → 聊天（`PetService#chatAs`，`admin-chat-send` / `admin-chat-delta`，`admin/src/console/pages/Chat.tsx`）；
 > 「桌面」= 桌宠气泡对话（`PetService#chat`，`chat` / `chat-delta`，`src/renderer/app.js`）。
 
@@ -201,7 +215,7 @@ main 埋点原始行示例（`baseline-latency.jsonl`，冷态聊天窗口这一
 
 合计每轮不超过约 50 ms，而且大部分发生在等网络期间，对 TTFT 没有可测影响。
 
-## 5. 建议的优化项（交给后续任务，本任务不实施）
+## 5. 建议的优化项（T-2815 提出；T-2818 的落实情况见 §7.2）
 
 1. **模型目录改为 stale-while-revalidate**（对应 R2，预计冷态 TTFT 少 2.3 s）：已有缓存时，`chatAs`（`pet-service.js:1210`）和 `_doEnsureReady`（`:542`）不再等待 `refreshModels`，先用旧目录发请求，后台刷新；目录变了下一轮再 `_applyModel`。打开聊天页或开始输入时也可以预热一次。
 2. **把服务端收尾的问题报给 LobeHub Responses API**（对应 R1，约 3.5 s）：查清文字发完后 3.4–4.6 s 的后处理是什么（持久化、用量、标题等），请服务端先发 `output_text.done`，再做后处理。客户端可以选择：收到 `output_text.done` 就把气泡标为完成、恢复「发送」，最终 id 和用量晚到再补上。
@@ -214,3 +228,247 @@ main 埋点原始行示例（`baseline-latency.jsonl`，冷态聊天窗口这一
 
 - 测量机器是 Linux + xvfb（软件渲染，60 fps），用户截图里是 macOS。渲染和 IPC 的结论在 Mac 上可能有几十 ms 的差别，但不影响秒级的 R1、R2。用户本机可以用 `PIXELPET_LATENCY=1` 启动 app，按同样的字段直接对比。
 - 本任务没有复现「同等条件下聊天窗口明显更慢」：网络和主进程层面没有差异。如果用户本机差异明显，优先用埋点看 `via` / `fallbackReason`（是否走了回退）和 `modelsCached`（是否冷态）。
+
+## 7. 优化改动（T-2818）
+
+### 7.1 改了什么
+
+| # | 对应根因 | 文件 / 函数 | 改动 | 效果（§8 数据） |
+|---|---|---|---|---|
+| O1 | R2 模型目录过期时串行 `refreshModels`（≈2.3–2.8 s） | `src/main/pet-service.js` 新增 `_catalogForTurn()`、`prewarmModels()`；`chatAs()`、`_doEnsureReady()` 改为调用 `_catalogForTurn()` | **stale-while-revalidate**：已有目录时，即使超过 `MODELS_TTL_MS` 也直接使用，同时在后台刷新，目录的变化从下一轮开始 `_applyModel`。只有从未加载过目录（首次启动）时才等待。 | 冷态 main 准备 2788 → 27 ms；冷态 TTFT −2969 ms |
+| O2 | R2 预热 | `PetService#chatCharacters()`（聊天页打开、每轮结束都会调用） | 目录过期时在后台调用 `prewarmModels()`。并发安全：已有加载在进行时不重复发起，从不阻塞。 | 打开聊天页到发第一条消息之间就完成刷新 |
+| O3 | 每轮直连前同步跑 PBKDF2（10 万轮，≈30–47 ms 阻塞 main） | `src/core/responses-client.js` `cliKey()` | 按 hostname+user 缓存派生出的 key。凭据文件仍然每轮重新读取，`lh` 刷新登录后仍能拿到新 token。 | 热态 main 准备 56 → 4 ms；`readCliCredentials` 47 ms → 0.2 ms |
+| O4 | R4 聊天页 Markdown 平滑落后 | `admin/src/console/pages/Chat.tsx` `STREAM_MARKDOWN` | live 气泡改用 `streamSmoothingPreset: 'realtime'`（40 ms 缓冲、最高 180 字/s），原来是默认的 `balanced`（120 ms、132 字/s）。props 提成模块常量，不再每次 delta 都新建对象。保留逐字渐显。 | 长回复全文上屏滞后 458 → 236 ms（§8.2） |
+
+关键 diff（节选）：
+
+```diff
+// src/main/pet-service.js  chatAs()
+       trace.set('modelsCached', this._modelsFresh());
+       try {
+-        await this.refreshModels();
++        await this._catalogForTurn();
+       } catch { /* keep the agent's model */ }
+// _doEnsureReady()（桌面同样受益）
+-      await this.refreshModels();
++      await this._catalogForTurn();
++  async _catalogForTurn() {
++    if (!this._catalog) return this.refreshModels();
++    this.prewarmModels();
++    return this._catalog;
++  }
++  prewarmModels() {
++    if (this._modelsFresh() || this._catalogLoading) return;
++    this.refreshModels().catch(() => {});
++  }
+// chatCharacters()
++    this.prewarmModels(); // the chat page is open: have her model list fresh before the first message
+
+// src/core/responses-client.js  readCliCredentials()
+-    const key = crypto.pbkdf2Sync(`lobehub-cli:${hostname}:${username}`, 'lobehub-cli-salt', 100000, 32, 'sha256');
++    const key = cliKey(hostname, username); // derived once per host+user, cached in keyCache
+
+// admin/src/console/pages/Chat.tsx
++const STREAM_MARKDOWN = { animated: true, streamSmoothingPreset: 'realtime' } as const;
+-                    markdownProps={{ animated: true }}
++                    markdownProps={STREAM_MARKDOWN}
+```
+
+单测：新增 `test/chat-latency-opt.test.js`，共 8 条。覆盖以下场景：目录过期时 chatAs 不等待后台刷新（刷新被人为卡住，turn 照样完成）；桌面 `_ensureReady` 同样不等；没有目录时必须等；过期期间选的模型在本轮生效，刷新后目录去掉了该模型则下一轮改用默认模型并重新 apply；聊天页打开时只预热一次；后台刷新期间 busy 互斥和 abort 正常；PBKDF2 每个 host/user 只派生一次，凭据文件每次重新读取；contentGuard 拦截的回复不会推流，落盘的是拒答台词。`test/models.test.js` 的「10 分钟后重读目录」改为等待后台刷新完成后再断言。
+
+### 7.2 候选方向逐项结论（没改的项给出理由与数据）
+
+| 候选方向 | 结论 | 依据 |
+|---|---|---|
+| refreshModels / _applyModel 移出关键路径 | **已改**（O1/O2）。`_applyModel` 只在目标模型变了时调用 `lh agent edit`，平时是 0 ms（key 比较），留在原位，以保证「选了模型本轮就生效」 | 冷态 prep 2788 → 27 ms |
+| 避免每轮重复 `_ensurePersona` | 不需要改：它只比较 `personaVersion`/`personaKey`，命中时不调用 lh | 基线 `marks.persona − marks.logged` = 0 ms（§3.1 原始行） |
+| 控制新话题上下文体积 | 不改：带上 recentRounds 后 prompt 为 2660–3215 字，TTFT 在噪声内 | §3.2 fresh 行 4175 ms，同组热态为 4946 ms |
+| 确保走直连 SSE | 已经是：前后两次实测 via=direct 48/48，`fallbackReason` 为空 | `before/after-latency.jsonl` |
+| 前端 delta rAF 合并、IPC 只发增量 | 不改：每轮推送 1–9 次，≤ 7.2 KB；main→窗口首帧 12–79 ms，主要是渲染耗时，不在 IPC 上 | §8 推送次数 / 字节，T-2815 §4 |
+| 降低 markdown 重渲染开销 | **已改**（O4）：平滑预设改为 realtime，props 改成稳定引用 | §8.2 |
+| R1 服务端收尾 3.5 s | 客户端改不了（§7.3），需要服务端处理 | 探针 |
+
+### 7.3 R1（服务端收尾）探针：客户端无法缩短
+
+用一个新建的 agent（`你是一个简短回答的助手。`，DeepSeek V4.1 Flash），从 node 直接 POST `/api/v1/responses`（stream），打印全部 SSE 事件：
+
+```
+== 新话题
+hdr 2819 200
+4641 response.output_text.delta "一碗热豆浆配两根油条，再加个水煮蛋——简单管饱，十分钟搞定。"
+9127 response.output_text.done …
+9129 response.completed … "usage":{"input_tokens":1598,"output_tokens":31,…}
+== 同话题 store:false
+2901 response.output_text.delta "燕麦粥配牛奶、一个煎蛋加半根香蕉——暖胃又顶饱，五分钟上桌。"
+6250 response.output_text.done …
+== 同话题 默认
+2733 response.output_text.delta …   6188 response.output_text.done …
+== 同话题 store:false
+2472 response.output_text.delta …   6465 response.output_text.done …
+```
+
+结论：
+
+- 31 个 token 的回复是一次性推来的。之后 3.3–4.5 s 服务端不发任何事件，`output_text.done` 和 `completed` 同时到达。
+- 与 persona、prompt 长度、`store` 参数、是否新话题都无关。
+- 客户端拿不到「文字已经写完」的提前信号，所以不能提前把这轮标为完成：提前结束会破坏 contentGuard 对全文的检查、最终消息落盘以及 busy 互斥。
+
+**建议（交给 LobeHub 服务端）**：先发 `output_text.done`，再做持久化等后处理。
+
+## 8. 优化前后对比数据
+
+方法与 T-2815 基线一致（§3）：
+
+- 脚本 `e2e/chat-latency.js`（场景 `latency`）；真实 LobeHub 账号 rdmclin2，`lh` 登录；直连 SSE，`lh connect` 关闭，本地能力关闭。
+- 每次运行新领养**大肥鱼**，选 **DeepSeek V4.1 Flash（`lobehub:deepseek-flash`）**。消息集合同 `TOPICS`（第 N 轮：请用大约 80 个字…）。
+- 两条链路逐轮交替发送，先后顺序轮流。
+- 冷态 = 发送前调用 `debugExpireModels()`（相当于模型目录超过 10 分钟 TTL）。
+- **TTFT** = 窗口里点击发送 → 首帧出现回复文字（rAF 探针，与 main 同一个 `Date.now()` 时钟）。**总耗时** = 点击 → 生成中气泡被最终消息替换。
+
+为了排除服务端在不同时间段的漂移，「优化前」**不直接引用 T-2815 的旧数据**，而是用 `git worktree` 检出优化前提交 `0c3135b`，以同样配置在同一时段重跑：`LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5`，冷 / 热各 6 轮。紧接着在优化后代码上跑同样的配置。
+
+### 8.1 短回复（约 50 字）：before.json vs after.json
+
+（`node scripts/latency-compare.js docs/data/admin-chat-latency/before.json docs/data/admin-chat-latency/after.json ttft total prep reqToFirstText` 的完整输出见 [`compare-tables.md`](data/admin-chat-latency/compare-tables.md)）
+
+**TTFT 点击→首字上屏（ms）**
+
+| 链路 · 状态 | 优化前 n | 优化前 p50 / p90 | 优化前 min–max | 优化后 n | 优化后 p50 / p90 | 优化后 min–max | p50 变化 | p90 变化 |
+|---|---|---|---|---|---|---|---|---|
+| 聊天窗口 · 冷 | 6 | 5829 / 8062 | 5249–10073 | 6 | 2860 / 3276 | 2291–3283 | −2969 ms（−51%） | −4786 ms（−59%） |
+| 聊天窗口 · 热 | 6 | 2973 / 4371 | 2537–5557 | 6 | 2893 / 3575 | 2560–3615 | −80 ms（−3%） | −796 ms（−18%） |
+| 聊天窗口 · 全部 | 12 | 5403 / 6035 | 2537–10073 | 12 | 2878 / 3510 | 2291–3615 | −2525 ms（−47%） | −2525 ms（−42%） |
+| 桌面 · 冷 | 6 | 5577 / 6113 | 5076–6163 | 6 | 2988 / 3229 | 2748–3230 | −2589 ms（−46%） | −2884 ms（−47%） |
+| 桌面 · 热 | 6 | 2677 / 2986 | 2463–3114 | 6 | 2584 / 3051 | 2237–3109 | −93 ms（−3%） | +65 ms（2%） |
+| 桌面 · 全部 | 12 | 4095 / 6019 | 2463–6163 | 12 | 2797 / 3223 | 2237–3230 | −1298 ms（−32%） | −2796 ms（−46%） |
+| raw（node 直连，无 app）· 热 | 5 | 2921 / 3224 | 2478–3364 | 5 | 3083 / 7830 | 2164–10716 | +162 ms | +4606 ms（一轮服务端 10.7 s 抖动） |
+
+**总耗时 点击→最终回复上屏（ms）**
+
+| 链路 · 状态 | 优化前 n | 优化前 p50 / p90 | 优化前 min–max | 优化后 n | 优化后 p50 / p90 | 优化后 min–max | p50 变化 | p90 变化 |
+|---|---|---|---|---|---|---|---|---|
+| 聊天窗口 · 冷 | 6 | 10315 / 12772 | 8602–14343 | 6 | 6656 / 6893 | 6072–6967 | −3659 ms（−35%） | −5879 ms（−46%） |
+| 聊天窗口 · 热 | 6 | 6739 / 8444 | 5817–8855 | 6 | 6746 / 7280 | 6155–7285 | +7 ms（0%） | −1164 ms（−14%） |
+| 聊天窗口 · 全部 | 12 | 8729 / 11134 | 5817–14343 | 12 | 6656 / 7243 | 6072–7285 | −2073 ms（−24%） | −3891 ms（−35%） |
+| 桌面 · 冷 | 6 | 9189 / 9800 | 8915–10000 | 6 | 6821 / 7647 | 6283–7881 | −2368 ms（−26%） | −2153 ms（−22%） |
+| 桌面 · 热 | 6 | 6536 / 6823 | 5973–6847 | 6 | 6339 / 7294 | 5907–8095 | −197 ms（−3%） | +471 ms（7%） |
+| 桌面 · 全部 | 12 | 7881 / 9574 | 5973–10000 | 12 | 6475 / 7834 | 5907–8095 | −1406 ms（−18%） | −1740 ms（−18%） |
+| raw · 热 | 5 | 6760 / 9993 | 6312–11536 | 5 | 7040 / 12304 | 6454–15276 | +280 ms | +2311 ms |
+
+**main 准备（点击后 main 收到 → 请求发出，ms）**
+
+| 链路 · 状态 | 优化前 p50 / p90（min–max） | 优化后 p50 / p90（min–max） |
+|---|---|---|
+| 聊天窗口 · 冷 | 2788 / 2894（2768–2952） | **27 / 35（12–37）** |
+| 聊天窗口 · 热 | 56 / 61（52–64） | **4 / 20（1–22）** |
+| 桌面 · 冷 | 2847 / 2894（2736–2917） | **9 / 12（9–12）** |
+| 桌面 · 热 | 37 / 38（35–38） | **1 / 1（0–1）** |
+
+**服务端 请求→首个文字（ms，对照组：不受本次改动影响）**：聊天窗口 2922 / 5211 → 2799 / 3477，桌面 2684 / 3092 → 2741 / 3174，raw 2890 / 3173 → 3083 / 7818。两次运行的服务端条件相当，TTFT 的下降来自 app 侧的准备时间，而不是网络变快。
+
+**解读**：
+
+- **冷态**：聊天窗口 TTFT p50 降低 2969 ms（−51%），总耗时降低 3659 ms（−35%）。下降量与 main 准备时间的下降量（−2761 ms）对得上，正好是被移出关键路径的 `refreshModels`。优化后冷态与热态已经没有差别（2860 vs 2893 ms）。
+- **热态**：TTFT 和总耗时都在噪声内（p50 −80 ms / +7 ms）。热态 TTFT ≈ 2.8 s 的服务端首字时间 + 约 50 ms，总耗时里还有约 3.5 s 服务端收尾（R1）。这两段都不在客户端，§7.3 的探针证实了这一点。
+- **与桌面对比**：优化前聊天窗口冷态 p90 8062 ms，比桌面 6113 ms 更差（第 1 轮服务端 7.2 s 抖动）；优化后两条链路冷 / 热 TTFT 都在 2.6–3.0 s，与 raw 直连地板（约 2.9–3.1 s）一致。聊天窗口相对桌面只多 main→窗口首帧的 10–50 ms 渲染开销。
+- **波动**：每格都给出了 min–max。优化后聊天窗口 12 轮 TTFT 全部落在 2291–3615 ms；优化前是 2537–10073 ms。
+
+逐轮原始输出（优化前，worktree `0c3135b`）：
+
+```
+#1 admin   cold via=direct prompt=498 ipcIn=7 prep=2803 req→1st=7186 shown→paint=76 TTFT=10073 … total=14343
+#3 admin   cold via=direct prompt=499 ipcIn=2 prep=2952 req→1st=3053 shown→paint=44 TTFT=6051 … total=9520
+#5 admin   cold via=direct prompt=499 ipcIn=10 prep=2772 req→1st=2440 shown→paint=27 TTFT=5249 … total=8602
+#7 admin   cold via=direct prompt=498 ipcIn=3 prep=2835 req→1st=2774 shown→paint=47 TTFT=5659 … total=11201
+#9 admin   cold via=direct prompt=498 ipcIn=10 prep=2772 req→1st=2913 shown→paint=68 TTFT=5763 … total=10527
+#11 admin  cold via=direct prompt=499 ipcIn=8 prep=2768 req→1st=3070 shown→paint=49 TTFT=5895 … total=10102
+#2 admin   warm via=direct prompt=501 ipcIn=6 prep=58 req→1st=5447 TTFT=5557 total=8855
+#4 admin   warm via=direct prompt=498 ipcIn=6 prep=53 req→1st=2557 TTFT=2644 total=6881
+… 全部 24 + 5 行见 data/admin-chat-latency/before-run.txt
+```
+
+逐轮原始输出（优化后）：
+
+```
+#1 admin   cold via=direct prompt=498 ipcIn=7 prep=12 req→1st=2694 shown→paint=44 TTFT=2757 … total=6550
+#3 admin   cold via=direct prompt=499 ipcIn=10 prep=37 req→1st=2864 shown→paint=52 TTFT=2963 … total=6742
+#5 admin   cold via=direct prompt=499 ipcIn=2 prep=12 req→1st=2392 shown→paint=21 TTFT=2427 … total=6072
+#7 admin   cold via=direct prompt=498 ipcIn=2 prep=28 req→1st=2239 shown→paint=22 TTFT=2291 … total=6570
+#9 admin   cold via=direct prompt=498 ipcIn=2 prep=32 req→1st=3227 shown→paint=22 TTFT=3283 … total=6967
+#11 admin  cold via=direct prompt=499 ipcIn=2 prep=26 req→1st=3215 shown→paint=25 TTFT=3268 … total=6819
+#2 admin   warm via=direct prompt=501 ipcIn=8 prep=22 req→1st=2498 TTFT=2560 total=6348
+#4 admin   warm via=direct prompt=498 ipcIn=5 prep=1 req→1st=2734 TTFT=2792 total=7285
+… 全部见 data/admin-chat-latency/after-run.txt
+```
+
+### 8.2 长回复（`LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0`，热态，前后各 6 轮 × 2 链路）
+
+| 指标（ms，p50 / p90，min–max） | 聊天窗口 优化前 | 聊天窗口 优化后 | 桌面 优化前 | 桌面 优化后 |
+|---|---|---|---|---|
+| 最后一段 → 全文上屏 | 458 / 483（341–495） | **236 / 262（16–269）** | 10 / 14 | 8 / 14 |
+| TTFT | 4561 / 7738 | 3351 / 4499 | 3724 / 4338 | 3199 / 4693 |
+| 总耗时 | 10661 / 13566 | 8609 / 10045 | 9185 / 11024 | 7940 / 9322 |
+| 回复字数 | 413 / 453 | 230 / 304 | 415 / 427 | 173 / 290 |
+
+注意：优化后那次运行里，服务端给的回复明显更短（模型没有照「约 400 字」写），所以这组的总耗时下降**不能**归因于改动。只看多段推送（≥ 3 个 delta）的聊天窗口轮次：
+
+- 优化前 6 轮，368–478 字，滞后 341–495 ms；
+- 优化后 4 轮，217–312 字，滞后 235–269 ms；
+- T-2815 基线（`balanced`）在相近字数（188–313 字）下是 397 / 427 ms。
+
+综合判断，`realtime` 预设把滞后从约 400 ms 降到约 250 ms，桌面气泡仍在 10 ms 级。流式截图 [`long-after-admin-streaming.png`](data/admin-chat-latency/long-after-admin-streaming.png) 显示逐字渐显仍然保留。
+
+## 9. 回归验证
+
+全部在优化后的代码上运行。原始输出在 [`data/admin-chat-latency/regression/`](data/admin-chat-latency/regression/)，截图同目录。
+
+| 命令 | 结果 |
+|---|---|
+| `npm test` | **766 tests：765 pass / 0 fail / 1 skipped**。skip 的是一条既有用例：没有设置 `PIXELPET_VRM_ASSETS` 时跳过，与本任务无关。日志：`npm-test.txt` |
+| `xvfb-run -a node e2e/run.js admin-chat` | **22/22 passed**（U1–U16 共 16 步走 fake lh；L0–L5 共 6 步走真实 LobeHub 账号）。日志：`e2e-admin-chat.txt` |
+| `xvfb-run -a node e2e/run.js chatui` | **16/16 passed**。日志：`e2e-chatui.txt` |
+| `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Chat.tsx` | `RESULT: 0 FAIL, 0 WARN` |
+| `npm run typecheck:admin` / `npm run build:admin` | 通过 |
+
+admin-chat 的 live 部分第一次跑时 L1/L5 失败，报错 `timed out waiting for model list; model view: null`，日志见 `e2e-admin-chat-before-e2e-fix.txt`。原因是 canary 的 #114（角色扁平化）之后，roster 行的 `id` 不再等于 `claude`，e2e 脚本仍按 `c.id === 'claude'` 查找，于是一直找不到。这是**测试脚本早就存在的问题，与本次改动无关**：同一次运行里 L2–L4 的真实对话都通过了，chatui 的 U3 模型切换也通过了。已把 `e2e/admin-chat.js` 改成与测速脚本相同的 `(c.base || c.id) === 'claude' && c.model`，并在超时信息里打印 model 视图。重跑后 22/22 通过。
+
+逐项功能结论：
+
+| 功能 | 结论 | 证据 |
+|---|---|---|
+| 文字对话（流式、Markdown、停止 / 发送按钮） | 正常 | admin-chat U4，live L2：真实回复「好的，暗号「青柠42」我记下了…」。截图 `L2-real-reply.png`；流式中截图 `../long-after-admin-streaming.png` |
+| 图片对话 | 正常 | U7（选择、粘贴、拖入 → 上传 → add-files 挂到话题）、U8；live L4 真实模型答出「红色」，截图 `L4-real-image.png` |
+| 中断（停止 / `admin-chat-abort`） | 正常，已生成的部分保留并标「已停止」 | U10，截图 `10-stopped.png`。单测：stop 只结束聊天页自己的这一轮；后台刷新目录期间 `chatAbort` 正常。说明：聊天页的中断入口是「停止」按钮（IPC `admin-chat-abort`），Esc 是桌宠窗口的取消键，不在本页 |
+| 切换模型（选择生效） | 正常 | U3（lh agent edit 换成所选模型）；live L1 选 claude-haiku-5-5，L5 用 `lh agent view` 读回 `model=claude-haiku-5-5 provider=lobehub`。截图 `L1-real-model-picker.png`、`03-model-picker-open.png`。单测：目录过期期间选的模型在本轮生效 |
+| 切换角色 | 正常，各自的 agent 和历史 | U13，截图 `13-other-character.png` |
+| 历史分页 / 话题滚动 | 正常 | U2（打开时 40 条，「查看更早」翻到 60 条）、U12（回复中上翻不被拉回），截图 `02-history-earlier.png` |
+| 上下文携带 / recall | 正常 | U5（话题记住上一句）、U6（问起以前的事，请求里带上【更早的聊天记录摘录】「青柠42」）；live L3 真实多轮答出「青柠42」；单测：满 4 小时换话题时带上 recentRounds |
+| 内容审核 contentGuard | 正常 | 新单测：目录过期时，被拦截的回复不会推流，落盘的是拒答台词「…这个我不聊啦…」 |
+| busy 互斥 | 正常 | 单测：已有一轮在进行时 chatAs 返回 `busy`（新旧单测各一条） |
+| 桌面与聊天页记录同步 | 正常 | U2：在桌宠聊天框说一句，聊天页自动出现并标「桌面」，截图 `02b-desktop-round.png`；live L5：桌面「聊天记录」里有这几轮（6 条消息） |
+| 直连 SSE（无回退） | 正常 | 前后两次测速 `via=direct` 48/48，`fallbackReason` 为空 |
+| 页面无报错 | 正常 | U16：pageerror 0，console.error 0 |
+
+## 10. 复现
+
+```bash
+unset ELECTRON_RUN_AS_NODE
+# 优化前（同一配置，旧代码）
+git worktree add /tmp/pp-before 0c3135b && ln -s "$PWD/node_modules" /tmp/pp-before/node_modules
+(cd /tmp/pp-before && npm run build:admin && LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5 xvfb-run -a node e2e/run.js latency before)
+# 优化后
+npm run build:admin && LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5 xvfb-run -a node e2e/run.js latency after
+# 长回复
+(cd /tmp/pp-before && LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0 xvfb-run -a node e2e/run.js latency long-before)
+LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0 xvfb-run -a node e2e/run.js latency long-after
+# 对比表
+node scripts/latency-compare.js out/e2e/chat-latency/before.json out/e2e/chat-latency/after.json ttft total prep reqToFirstText
+node scripts/latency-compare.js out/e2e/chat-latency/long-before.json out/e2e/chat-latency/long-after.json ttft total revealLag replyChars
+```
+
+数据：[`docs/data/admin-chat-latency/`](data/admin-chat-latency/) 下的以下文件：
+
+- `before.json` / `after.json` / `long-before.json` / `long-after.json`：逐轮明细，含 marks 和窗口采样。
+- `*-latency.jsonl`：main 埋点原始行。
+- `*-run.txt`：脚本 stdout。
+- `compare-tables.md`：对比表。

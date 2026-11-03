@@ -539,7 +539,7 @@ class PetService extends EventEmitter {
     // the model follows the character: her pick or default among her own vendor's models
     try {
       trace.set('modelsCached', this._modelsFresh());
-      await this.refreshModels();
+      await this._catalogForTurn();
       trace.mark('models');
       await this._applyModel();
       trace.mark('applyModel');
@@ -594,6 +594,24 @@ class PetService extends EventEmitter {
       return this._catalog;
     })();
     return this._catalogLoading;
+  }
+
+  // The list a turn picks her model from (docs/admin-chat-latency.md R2): stale-while-revalidate. A list already
+  // loaded is used right away, even past MODELS_TTL_MS; then it is reloaded in the background, and what changed
+  // is applied from the next turn (_applyModel). Only with no list yet (first launch) does the turn wait for it.
+  // Reloading costs several `lh` processes in a row (≈2.3 s), which used to sit before the request every time
+  // the list was older than 10 minutes.
+  async _catalogForTurn() {
+    if (!this._catalog) return this.refreshModels();
+    this.prewarmModels();
+    return this._catalog;
+  }
+
+  // Reload a list past MODELS_TTL_MS in the background (the chat page opening, a turn on a stale list), so the
+  // next turn does not wait for it. Never throws, never waits.
+  prewarmModels() {
+    if (this._modelsFresh() || this._catalogLoading) return;
+    this.refreshModels().catch(() => {});
   }
 
   _modelOptions(speciesId) {
@@ -1107,6 +1125,7 @@ class PetService extends EventEmitter {
   // The left column: every character, with how her conversation stands.
   chatCharacters() {
     if (!this.pet) return { ok: true, characters: [] };
+    this.prewarmModels(); // the chat page is open: have her model list fresh before the first message
     const all = this.log.list();
     return {
       ok: true,
@@ -1207,7 +1226,7 @@ class PetService extends EventEmitter {
       // the model she runs on: hers, among her vendor's (the same pick as her page → 模型)
       trace.set('modelsCached', this._modelsFresh());
       try {
-        await this.refreshModels();
+        await this._catalogForTurn();
       } catch { /* keep the agent's model */ }
       trace.mark('models');
       const target = modelsLib.pick(id, this._modelOptions(id), this.settings.models[id]);
