@@ -28,7 +28,7 @@ test('store index: the characters and the VRM models together, each from its own
   assert.equal(all.characters.length, chars.characters.length + vrm.length);
   assert.ok(chars.characters.every((c) => c.release === chars.release), 'a character archive stays in characters-v1');
   for (const c of vrm) {
-    assert.equal(c.release, 'vrm-v1');
+    assert.equal(c.release, 'vrm-v2');
     assert.equal(c.type, 'pack');
     assert.ok(Array.isArray(c.licenseRows) && c.licenseRows.some((r) => r.label === '再分发'), `${c.id}: the license rows are listed`);
     if (c.parts) assert.equal(c.parts.reduce((n, p) => n + p.bytes, 0), c.bytes, `${c.id}: the parts add up`);
@@ -36,7 +36,7 @@ test('store index: the characters and the VRM models together, each from its own
   }
   // the CDN keeps each release under its own prefix; a mirror / test server has every file in one folder
   const v = vrm[0];
-  assert.equal(Catalog.downloadUrl(v, {}, {}), `${Catalog.CDN_ORIGIN}/dc/ops-assets/archives/pixel-pet/vrm-v1/${v.file}`);
+  assert.equal(Catalog.downloadUrl(v, {}, {}), `${Catalog.CDN_ORIGIN}/dc/ops-assets/archives/pixel-pet/vrm-v2/${v.file}`);
   assert.equal(Catalog.downloadUrl(Catalog.entry('dafeiyu-live2d'), {}, {}), `${Catalog.DEFAULT_BASE_URL}/dafeiyu-live2d.zip`);
   assert.equal(Catalog.downloadUrl(v, {}, { PIXELPET_CATALOG_URL: 'http://127.0.0.1:9/x/' }), `http://127.0.0.1:9/x/${v.file}`);
   // 18+ models only behind the switches

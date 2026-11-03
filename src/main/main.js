@@ -19,6 +19,7 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
+const { GENERIC_BASE } = require('../core/generic');
 const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
@@ -434,6 +435,8 @@ function wire() {
     // whose base the new character stands on: the character asked for, else the companion's
     const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
+    // a generic VRM companion's base is made when her model loads (core/generic.js): nothing else may stand on it
+    if (SPECIES[sp] && SPECIES[sp].virtual) return { ok: false, errors: ['通用设定的 VRM 伙伴不能再导入 Live2D 形象，请到一位模型娘的页面导入'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
     nextOpenPath = null;
@@ -454,7 +457,9 @@ function wire() {
   ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
     const parent = windowOf(_e) || win;
     const v = service.view();
-    const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
+    // 通用设定 by default (core/generic.js): the model is a companion of her own; 导入确认 can make her a new look
+    // of a character instead (set-pack-base). A character id / base passed in keeps the old behaviour.
+    const sp = species === GENERIC_BASE || !whose(species) ? GENERIC_BASE : service._baseOf(species) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
@@ -468,6 +473,11 @@ function wire() {
       logError(e);
       return { ok: false, errors: [e.message] };
     }
+  });
+  ipcMain.handle('set-pack-base', (_e, { id, base } = {}) => {
+    const r = packStore.setBase(String(id || ''), String(base || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    return r;
   });
   // after the renderer drew the imported model (or found it would not load): its picture, then the list
   ipcMain.handle('save-pack-preview', (_e, { id, dataUrl }) => {
@@ -488,13 +498,18 @@ function wire() {
     return r;
   });
   ipcMain.handle('catalog-cancel', (_e, { id }) => catalog.cancel(String(id || '')));
+  // a generic companion (core/generic.js) has no other look to fall back on: she is not deleted while she is out
+  const removingCurrentGeneric = (id) => { const p = packStore.packs.get(id); return !!(p && p.generic && service.pet && service._cid() === id); };
+  const KEEP_CURRENT = { ok: false, reason: 'current-generic', text: '她正在桌面上陪你。先切换到别的角色，再删除她的模型。' };
   ipcMain.handle('catalog-remove', (_e, { id }) => {
+    if (removingCurrentGeneric(String(id || ''))) return KEEP_CURRENT;
     const r = packStore.removeDownload(String(id || ''));
     if (r.ok) service.setPacks(packStore.packs);
     pushAdmin();
     return r;
   });
   ipcMain.handle('remove-pack', (_e, { id }) => {
+    if (removingCurrentGeneric(String(id || ''))) return KEEP_CURRENT;
     const r = packStore.remove(String(id || ''));
     if (r.ok) service.setPacks(packStore.packs);
     return r;
@@ -896,7 +911,14 @@ function wire() {
     });
   }
 
-  service.on('update', (v) => { send('update', v); pushAdmin(); });
+  // 通用设定: a downloaded / imported generic VRM adds a base of her own; the pet window gets the new list
+  let speciesSig = SPECIES_IDS.join(',');
+  service.on('update', (v) => {
+    const sig = SPECIES_IDS.join(',');
+    send('update', sig === speciesSig || !v ? v : { ...v, speciesList: speciesInfo() });
+    speciesSig = sig;
+    pushAdmin();
+  });
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)

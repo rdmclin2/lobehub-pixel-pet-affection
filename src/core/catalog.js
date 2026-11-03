@@ -48,7 +48,7 @@ function loadIndex(file = INDEX_FILE) {
 }
 
 // 商店 → 角色 / VRM (scripts/build-store-assets.js): the VRM models live in their own index and release
-// (src/core/vrm-catalog.json, vrm-v1); everything the app downloads as a character is both indexes together.
+// (src/core/vrm-catalog.json, vrm-v2); everything the app downloads as a character is both indexes together.
 const VRM_INDEX_FILE = path.join(__dirname, 'vrm-catalog.json');
 let storeCached = null;
 function storeIndex({ characters = INDEX_FILE, vrm = VRM_INDEX_FILE } = {}) {

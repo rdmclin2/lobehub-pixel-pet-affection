@@ -298,6 +298,7 @@ export interface PetAdminApi {
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
   importVrm: (species: string) => Promise<any>;
+  setPackBase: (id: string, base: string) => Promise<{ base?: string | null; generic?: boolean; ok: boolean; reason?: string }>;
   installUpdate: () => Promise<any>;
   newApiToken: () => Promise<any>;
   newTopic: () => Promise<any>;

@@ -208,6 +208,11 @@ module.exports = function vrmScenarios(ctx) {
         const rs = await A.win.evaluate(() => [...document.querySelectorAll('[data-vrm-confirm] [data-vrm-restrictions] li')].map((l) => `${l.dataset.id}: ${l.textContent.trim()}`));
         for (const id of ['no-redistribution', 'no-modification', 'credit-required']) assert.ok(rs.some((r) => r.startsWith(`${id}:`)), `restriction ${id}: ${rs.join(' | ')}`);
         assert.match(t, /不可再分发：仅限本机使用/);
+        // 设定 (docs/vrm-dance.md §12): 通用 by default, or a new look of 大肥鱼
+        const base = await A.win.evaluate(() => document.querySelector('[data-vrm-base]')?.textContent || '');
+        assert.match(base, /通用（一位新伙伴）/);
+        assert.match(base, /「大肥鱼」的新形象/);
+        assert.match(base, /好感、名字和聊天记录只属于她/);
         await H.adminShot('1-confirm');
         return H.note(`导入确认 restrictions: ${rs.join(' | ')}`);
       }, () => A.win);
@@ -227,10 +232,10 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`取消导入: ${before[0]} removed; 角色图鉴 ${ids.length} characters, none vrm-*; pet still ${await page.getAttribute('#pet-look', 'data-key')}`);
       }, () => A.win);
 
-      await step(S, '使用这个模型: the import becomes a character of her own (角色图鉴 row, her page, current); 角色包 card shows VRM · 作者, the credit line and 导出已禁用; her 衣柜 is a card list she can dress from', async () => {
+      await step(S, '使用这个模型 (设定 通用): the import becomes a companion of her own (her own base; 角色图鉴 row, her page, current); 角色包 card shows VRM · 作者, the credit line and 导出已禁用; her 衣柜 is a card list she can dress from', async () => {
         await importOnce();
         await A.modalButton('使用这个模型');
-        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」，成为新角色（作者：E2E Maker）`));
+        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」，成为一位新伙伴（作者：E2E Maker）`));
         await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-'), null, { timeout: 20000 });
         ID = (await page.getAttribute('#pet-look', 'data-key')).split('/')[0];
         // she is a new character: her own page opens, she is 当前角色, and 角色图鉴 lists her next to 大肥鱼 · 像素
@@ -240,7 +245,9 @@ module.exports = function vrmScenarios(ctx) {
         const view = await page.evaluate(async () => (await window.pet.boot()).view);
         assert.equal(view.pet.characterId, ID, 'the pet window is her');
         const me = view.characters.find((c) => c.id === ID);
-        assert.ok(me && me.base === 'dafeiyu' && me.kind === 'vrm' && me.source === 'user', JSON.stringify(me));
+        // 通用设定: a companion of her own (her own base), not one of 大肥鱼's looks
+        assert.ok(me && /^vrmx[a-z]{12}$/.test(me.base) && me.kind === 'vrm' && me.source === 'user', JSON.stringify(me));
+        assert.equal(view.pet.speciesId, me.base);
         const title = (await A.text(`[data-character-title="${ID}"]`)).trim();
         assert.match(title, new RegExp(MODEL_NAME));
         const card = (await A.text(`[data-pack="${ID}"]`)).replace(/\s+/g, ' ');
@@ -288,7 +295,7 @@ module.exports = function vrmScenarios(ctx) {
         const dir = path.join(data, 'packs', ID);
         const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'pack.json'), 'utf8'));
         assert.equal(manifest.kind, 'vrm');
-        assert.equal(manifest.species, 'dafeiyu');
+        assert.equal(manifest.species, 'generic');
         const files = [...new Set(Object.values(manifest.vrm.outfits))];
         for (const f of files) assert.ok(fs.existsSync(path.join(dir, f)), f);
         assert.ok(!Object.keys(manifest.vrm.outfits).some((o) => require('../src/core/outfits').OUTFITS.find((x) => x.id === o).rating === 'adult'), 'the importer maps no adult outfit');

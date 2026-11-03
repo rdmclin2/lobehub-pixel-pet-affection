@@ -82,7 +82,8 @@ function listCharacters(packs, { adultOk = false, all = false } = {}) {
     const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
     const mine = [...map.values()].filter((p) => p.species === base).sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)) || a.id.localeCompare(b.id));
     for (const p of mine) if (all || adultOk || !p.adult) out.push(entryOf(p));
-    if (!mine.length && !hasClips(map, base)) out.push(stubEntry(base));
+    // a generic companion (core/generic.js) without her model is not listed: she has no look to show
+    if (!mine.length && !hasClips(map, base) && !SPECIES[base].virtual) out.push(stubEntry(base));
     if (hasClips(map, base)) out.push(clipsEntry(base));
   }
   return out;
@@ -97,7 +98,7 @@ function characterById(packs, id) {
   const p = map.get(id);
   if (p) return SPECIES[p.species] ? entryOf(p) : null;
   // her fallback pack when none of hers is loaded at all (stubEntry)
-  const stub = SPECIES_IDS.find((b) => fallbackId(b) === id && ![...map.values()].some((x) => x.species === b));
+  const stub = SPECIES_IDS.find((b) => !SPECIES[b].virtual && fallbackId(b) === id && ![...map.values()].some((x) => x.species === b));
   return stub ? stubEntry(stub) : null;
 }
 

@@ -876,6 +876,9 @@ node scripts/check-dance-packaging.js           # 打包守卫（真实 electron
 | `src/main/dance-import.js` `installStore` / `installedIds`、`main.js`、`admin-preload.js` | 商店舞蹈入库、IPC `dance-store` / `dance-download` / `dance-download-cancel` | 商店 |
 | `admin/src/console/pages/Store.tsx`、`Characters.tsx`、`stage/VrmLicense.tsx` | 商店「舞蹈」分类、按类型筛选、VRM 卡「授权」弹窗 | 商店 |
 | `test/store-assets.test.js`、`e2e/run.js` `storeScenario` | 单测与 e2e `store` | 商店 |
+| `src/core/generic.js`、`species.js` `registerGeneric` / `ensureGeneric`、`packs.js` `loadPacks`、`characters.js` | 通用设定：每个通用 VRM 一位独立伙伴；模型不在时存档保留（§12） | 通用设定 |
+| `src/main/packs.js` `setBase`、`main.js` `import-vrm` / `set-pack-base`、`admin/…/Characters.tsx` 导入确认「设定」 | 导入 VRM 默认通用，可改成某位角色的新形象 | 通用设定 |
+| `test/generic.test.js` | 单测 | 通用设定 |
 
 ---
 
@@ -894,7 +897,7 @@ node scripts/check-dance-packaging.js           # 打包守卫（真实 electron
 | 内容 | 索引 | CDN 前缀（`dc/ops-assets/archives/pixel-pet/…`） | 压缩包内容 | 装到 |
 |---|---|---|---|---|
 | 舞蹈 | `src/core/dance-catalog.json`（release `dances-v1`，id 以 `dance-` 开头） | `dances-v1/` | `dance.json`（库条目字段）、`dance.vrma`、`audio.mp3`、`cover.jpg`、`readme.txt` | `<userData>/vrm-dances/<id>/`，`library.json` 记 `source: "store"` 与 sha256 |
-| VRM 角色 | `src/core/vrm-catalog.json`（release `vrm-v1`；与角色索引合并，见 `core/catalog.js` `storeIndex`） | `vrm-v1/` | VRM 角色包（`pack.json`、`models/*.vrm`、`preview.png`），由导入 VRM 的同一流程生成，归属 `dafeiyu` | `<userData>/packs/<id>/`（与其他下载角色相同） |
+| VRM 角色 | `src/core/vrm-catalog.json`（release `vrm-v2`；与角色索引合并，见 `core/catalog.js` `storeIndex`） | `vrm-v2/` | VRM 角色包（`pack.json`、`models/*.vrm`、`preview.png`），由导入 VRM 的同一流程生成，`species: "generic"`（§12）；索引里的 `base` 是她自己的通用基础角色 id | `<userData>/packs/<id>/`（与其他下载角色相同） |
 
 - 下载沿用 `src/main/catalog.js` 的 `CatalogDownloader`：校验大小和 sha256，失败时丢弃。舞蹈用同一个下载器，换掉 `lookup` / `isInstalled` / `install` 三个函数。进度走同一个 `catalog-progress` 事件。
 - **分段**：Develop Center 单个文件最大 20 MB。超过的压缩包按 19 MB 切成 `<id>-p1.zip`、`<id>-p2.zip`…，索引里记在 `parts`。下载时按顺序拼接，最后整体校验 sha256。分段大小之和必须等于 `bytes`，否则这个 `parts` 不被采用。
@@ -922,6 +925,19 @@ DC_CLI=…/develop-center/packages/cli/dist/index.js DC_TOKEN=… DC_BASE_URL=�
   - 分段包里一段坏了会被 sha256 拒绝；正常下载后能穿上。
   - 在商店点「让她跳」，舞蹈带音乐播放，停止后回到待机。
 - 加 `STORE_CDN=1` 就直接从真实 CDN 下载。
+
+## 12. 通用设定：VRM 模型不挂在某位模型娘名下
+
+> 负责人决定（2026-11-03）：VRM 角色用一套「通用」设定，不挂在大肥鱼等模型娘名下。每个模型是一位独立伙伴，好感、名字、聊天记录和 LobeHub 助手各自一份。商店下载的和自己导入的 VRM 默认都用通用设定。新用户的「选择你的模型娘」里没有它，下载或导入 VRM 后才出现。
+
+- **做法**（`src/core/generic.js`）：`pack.json` 里 `species: "generic"`（仅限 `kind: vrm`）。加载角色包时（`core/packs.js` `loadPacks`），每个这样的包都按模板生成一个专属基础角色，并注册进 `SPECIES`（`species.registerGeneric`）：
+  - id 为 `vrmx` 加 12 个字母，由包 id 的 sha1 推出。只用字母是为了满足设置里 `models.<base>` / `systemRoles.<base>` 的键名规则。同一个模型重新下载回来，得到的还是同一个 id。
+  - 名字和标题取模型名，厂商一栏写「通用」。人设是中性的成年伙伴，用模型自己的名字，不冒充模型原作里的角色。台词是通用的一套，主题色由 id 推出。
+  - 现有「按基础角色保存」的数据结构（`pet.characters[base]`、聊天记录、助手、设置）因此不用改，每个模型天然各有一份。
+- **模型不在了**：存档里的通用伙伴不会被「退役」或并到别的角色（`resolveSpeciesId` → `ensureGeneric` 注册一个幽灵基础角色）。如果是商店里的模型，名字从商店索引里取，「需要下载」可以把她找回来；角色图鉴不为她显示空卡。她在桌面上陪你时，不能删除她的模型（`catalog-remove` / `remove-pack` 会拒绝，提示先切换到别的角色）。
+- **导入 VRM**：设置窗口的「导入 VRM 角色…」默认用通用设定（`import-vrm {species: "generic"}`）。导入确认里可以改成「「大肥鱼」的新形象」等（`set-pack-base`），那样就和那位角色共用人设与好感，像换衣服一样。桌宠窗口的旧接口 `window.pet.importVrm(base)` 仍按传入的角色导入。
+- **桌宠窗口**：基础角色的列表变化时（下载或删除了通用 VRM），主进程在下一次 `update` 里附上新的 `speciesList`，渲染进程据此更新。
+- **验证**：单测 `test/generic.test.js`（id 规则、两个模型两位伙伴、人设用模型名、不挂在大肥鱼名下、模型删除后存档保留、商店索引的 `base`）；e2e `store` S4（下载后她的基础角色是 `vrmx…`、厂商「通用」、名字是模型名）。
 
 ## 附录 A：核对清单（本设计引用的现状）
 

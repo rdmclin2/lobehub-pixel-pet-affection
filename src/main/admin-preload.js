@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
+  // 导入确认 → 设定: 通用 ("generic") or one of the characters
+  setPackBase: (id, base) => ipcRenderer.invoke('set-pack-base', { id, base }),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // 下载角色: the characters that do not ship with the app (core/catalog.js)
   downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),

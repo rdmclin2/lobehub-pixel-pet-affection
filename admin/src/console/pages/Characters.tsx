@@ -52,7 +52,8 @@ export const useSwitch = () => {
   };
   const start = (c: RosterRow) => {
     if (c.met) return run(c);
-    setName('');
+    // a generic VRM companion (通用设定) is called by her model's name unless the owner picks another
+    setName(c.vendor === '通用' ? [...(c.nameZh ?? '')].slice(0, 12).join('') : '');
     setNaming(c);
   };
   const modal = (
@@ -810,10 +811,15 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
   // made the model and what its license allows. 取消导入 removes the pack again; 授权信息 stays on her page.
   const [vrmImport, setVrmImport] = useState<any>(null);
   const [licenseOf, setLicenseOf] = useState<PackOption | null>(null);
+  // 设定 (docs/vrm-dance.md §12): 通用 by default — the model is a companion of her own (her own name, affection
+  // and chat); or a new look of this page's character, sharing hers. A generic character's page offers only 通用.
+  const ownBase = c.vendor !== '通用' ? c.base : null;
+  const [vrmBase, setVrmBase] = useState<string>('generic');
   const importVrm = async () => {
-    const r = await api().importVrm(c.id);
+    const r = await api().importVrm('generic');
     if (!r || r.reason === 'canceled') return;
     if (!r.ok) return void toast.error(vrmUi().importErrorText(r.errors));
+    setVrmBase('generic');
     setVrmImport(r);
   };
   const closeVrmImport = async (use: boolean) => {
@@ -825,7 +831,11 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
       toast.success(`已取消导入「${r.pack.name}」，模型没有留在本机。`);
       return;
     }
-    await becomeNew(r.pack.id, `已导入 VRM 模型「${r.pack.name}」，成为新角色（作者：${r.license?.author ?? '未署名'}）`);
+    if (vrmBase !== 'generic') {
+      const b = await api().setPackBase(r.pack.id, vrmBase);
+      if (!b || !b.ok) return void toast.error('没能把她设成这位角色的新形象，模型仍按通用设定导入');
+    }
+    await becomeNew(r.pack.id, `已导入 VRM 模型「${r.pack.name}」，${vrmBase === 'generic' ? '成为一位新伙伴' : `成为「${c.nameZh}」的新形象`}（作者：${r.license?.author ?? '未署名'}）`);
   };
   if (!view) return <Alert title="唤醒桌宠后可以给她换装扮" type="info" />;
   return (
@@ -845,6 +855,22 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
             <Text type="secondary">
               {`${vrmImport.outfits?.length ?? 1} 套全年龄服饰都会穿这个模型。以下信息读自模型文件，应用会按授权限制使用；点“使用这个模型”即表示你确认有权在本机使用它。`}
             </Text>
+            {ownBase && (
+              <Flexbox data-vrm-base gap={6}>
+                <Text strong>设定</Text>
+                <Segmented
+                  onChange={(v) => setVrmBase(String(v))}
+                  options={[
+                    { label: '通用（一位新伙伴）', value: 'generic' },
+                    { label: `「${c.nameZh}」的新形象`, value: ownBase },
+                  ]}
+                  value={vrmBase}
+                />
+                <Text fontSize={12} type="secondary">
+                  {vrmBase === 'generic' ? `用通用设定：她叫「${vrmImport.pack.name}」，好感、名字和聊天记录只属于她。` : `和「${c.nameZh}」共用人设、好感和聊天记录，换上这个模型就像换衣服。`}
+                </Text>
+              </Flexbox>
+            )}
             <VrmLicense packId={vrmImport.pack.id} vrm={{ ...vrmImport.license, models: [{ file: '', meta: vrmImport.meta, restrictions: vrmImport.license?.restrictions }] }} />
           </Flexbox>
         )}
@@ -907,27 +933,38 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
           </Flexbox>
         </Surface>
       )}
-      <Surface description={`导入的模型或角色包会成为${c.nameZh}的一位新角色：和她共用名字、好感和聊天记录，出现在角色图鉴里。`} title="导入新角色">
+      <Surface
+        description={
+          ownBase
+            ? `导入的 Live2D 模型或角色包会成为${c.nameZh}的一位新角色：和她共用名字、好感和聊天记录。VRM 模型默认用通用设定，成为一位新伙伴，也可以在导入确认里改成${c.nameZh}的新形象。`
+            : '导入的 VRM 模型用通用设定，成为一位新伙伴，有自己的名字、好感和聊天记录。'
+        }
+        title="导入新角色"
+      >
         <Flexbox data-import-row={c.id} gap={8} horizontal wrap="wrap">
-          <Button
-            data-import-live2d
-            icon={Import}
-            onClick={async () => {
-              // the imported model is a new character on her base: she becomes her at once
-              const r = await api().importLive2d(c.id);
-              if (!r || r.reason === 'canceled') return;
-              if (!r.ok) return void toast.error({ description: (r.errors ?? []).slice(0, 3).join('；') || reasonText(r), title: 'Live2D 导入失败' });
-              await becomeNew(r.pack.id, `已导入 Live2D 模型「${r.pack.name}」，成为新角色`);
-            }}
-          >
-            导入 Live2D 角色…
-          </Button>
+          {ownBase && (
+            <Button
+              data-import-live2d
+              icon={Import}
+              onClick={async () => {
+                // the imported model is a new character on her base: she becomes her at once
+                const r = await api().importLive2d(c.id);
+                if (!r || r.reason === 'canceled') return;
+                if (!r.ok) return void toast.error({ description: (r.errors ?? []).slice(0, 3).join('；') || reasonText(r), title: 'Live2D 导入失败' });
+                await becomeNew(r.pack.id, `已导入 Live2D 模型「${r.pack.name}」，成为新角色`);
+              }}
+            >
+              导入 Live2D 角色…
+            </Button>
+          )}
           <Button data-import-vrm icon={Import} onClick={importVrm}>
             导入 VRM 角色…
           </Button>
-          <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入，成为新角色')}>
-            导入角色包…
-          </Button>
+          {ownBase && (
+            <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入，成为新角色')}>
+              导入角色包…
+            </Button>
+          )}
         </Flexbox>
       </Surface>
     </Flexbox>

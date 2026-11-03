@@ -42,9 +42,10 @@ const DANCE_INDEX = path.join(ROOT, 'src', 'core', 'dance-catalog.json');
 const VRM_INDEX = path.join(ROOT, 'src', 'core', 'vrm-catalog.json');
 const PICS = path.join(ROOT, 'src', 'renderer', 'catalog');
 const DANCE_RELEASE = 'dances-v1';
-const VRM_RELEASE = 'vrm-v1';
-// the base every store VRM character belongs to (core/species.js): her stats and voice come from it
-const VRM_BASE = 'dafeiyu';
+const VRM_RELEASE = 'vrm-v2'; // v2: 通用设定 (species "generic", core/generic.js) instead of 大肥鱼
+// 通用设定 (core/generic.js): every store VRM model is a companion of her own, with a base made for her
+const { GENERIC_BASE, baseIdOf } = require('../src/core/generic');
+const VRM_BASE = GENERIC_BASE;
 
 const inside = (p, dir) => p === dir || p.startsWith(dir + path.sep);
 const ffmpeg = (args) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], { maxBuffer: 64 * 1024 * 1024 });
@@ -316,7 +317,7 @@ async function buildVrm(file, used, seen) {
     const parts = splitParts(out);
     console.log(`${id.padEnd(34)} ${mb(fs.statSync(out).size).padStart(9)} ${hasPic ? 'pic' : '   '} ${adult ? '18+' : '   '} 再分发:${m.allowRedistribution ? '允许' : '不允许'}  ${name} — ${authors}`);
     return {
-      ...(parts ? { parts } : {}), id, type: 'pack', base: VRM_BASE, name, kind: 'vrm', adult, version: manifest.version, author: manifest.author, license: manifest.license,
+      ...(parts ? { parts } : {}), id, type: 'pack', base: baseIdOf(id), name, kind: 'vrm', adult, version: manifest.version, author: manifest.author, license: manifest.license,
       description: manifest.description, outfits: 1, pixelated: false, file: `${id}.zip`, bytes: fs.statSync(out).size, sha256: sha256(out),
       picture: hasPic ? `catalog/vrm/${id}.png` : null,
       licenseRows: VrmUi.licenseRows(m).map((row) => ({ label: row.label, text: String(row.text).slice(0, 300), ...(row.href ? { href: row.href } : {}) })),

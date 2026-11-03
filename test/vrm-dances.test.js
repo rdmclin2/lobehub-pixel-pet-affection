@@ -257,5 +257,8 @@ test('leak guards (§5.6): no dance material in git or the package, ignored fold
   let tracked = [];
   try { tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n'); } catch { return; }
   assert.deepEqual(tracked.filter((f) => /\.(vmd|ncm|vrma)$/i.test(f)), [], 'no motion or encrypted music in git');
-  assert.deepEqual(tracked.filter((f) => /(^|\/)(vrm-)?dances\//i.test(f) && /\.(mp3|wav|ogg|m4a|flac|jpe?g|png|webp)$/i.test(f)), [], 'no dance music or covers in git');
+  // 商店 → 舞蹈's card pictures (src/renderer/catalog/dances/<id>.jpg, scripts/build-store-assets.js) ship like the
+  // character catalog's: small, re-encoded, the covers themselves and the music stay out
+  const storePic = (f) => /^src\/renderer\/catalog\/dances\/dance-[a-z0-9-]+\.jpg$/.test(f) && fs.statSync(path.join(ROOT, f)).size < 120 * 1024;
+  assert.deepEqual(tracked.filter((f) => /(^|\/)(vrm-)?dances\//i.test(f) && /\.(mp3|wav|ogg|m4a|flac|jpe?g|png|webp)$/i.test(f) && !storePic(f)), [], 'no dance music or covers in git');
 });

@@ -8806,6 +8806,8 @@ async function storeScenario() {
   let { app, page } = await launch(env);
   let admin = null;
   const errors = [];
+  page.on('pageerror', (e) => errors.push(`pet: ${e}`));
+  page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`pet: ${msg.text()}`); });
   const W = 1180;
   const until = async (what, fn, ms = 20000) => {
     for (let t = 0; t < ms; t += 100) {
@@ -8845,7 +8847,7 @@ async function storeScenario() {
       await page.locator('.char-card[data-character="dafeiyu-pixel"]').click();
       await page.fill('#pet-name', '小鱼');
       await page.click('#hatch-btn');
-      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 }).catch((e) => { throw new Error(`${e.message.split('\n')[0]}; pet window errors: ${errors.join(' | ') || 'none'}`); });
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       admin = await openAdminWindow(app, page, 'overview');
       admin.on('pageerror', (e) => errors.push(String(e)));
@@ -8909,7 +8911,7 @@ async function storeScenario() {
       return `VRM 卡 ${n} 张（全年龄）；${VRM} 卡：${meta}；授权：${rows.join('；')} → ${grid}, ${modal}`;
     }, page);
 
-    await step(S, 'S4 分段下载：被改过一个字节的分段 → 校验不通过，什么都没留下；正常下载后两段拼回、她成了 VRM 角色', async () => {
+    await step(S, 'S4 分段下载：被改过一个字节的分段 → 校验不通过，什么都没留下；正常下载后两段拼回，她是一位用通用设定的新伙伴（不挂在大肥鱼名下）', async () => {
       const e = Catalog.entry(VRM);
       assert.ok(e.parts && e.parts.length === 2, JSON.stringify(e.parts));
       if (!CDN) {
@@ -8929,10 +8931,23 @@ async function storeScenario() {
       await go(`/characters/${VRM}`);
       await attached(`[data-switch="${VRM}"]`);
       await admin.click(`[data-switch="${VRM}"]`);
+      // 初次见面: a new companion — the name is her model's, filled in
+      await attached('[data-meet-name]');
+      const meetName = await admin.$eval('[data-meet-name]', (el) => el.value);
+      assert.equal(meetName, '凍香(天使)');
+      await admin.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '初次见面' && !b.dataset.switch).click());
       await until(`${VRM} current`, async () => (await state()).view.pet.characterId === VRM, 30000);
+      // 通用设定 (core/generic.js): she is a companion of her own — her own base, her model's name, not 大肥鱼
+      const st = await state();
+      const row = st.roster.find((x) => x.id === VRM);
+      assert.match(st.view.pet.speciesId, /^vrmx[a-z]{12}$/, st.view.pet.speciesId);
+      assert.equal(row.vendor, '通用');
+      assert.equal(row.nameZh, '凍香(天使)');
+      assert.ok(!st.roster.some((x) => x.base === 'dafeiyu' && x.id === VRM));
+      const generic = `base ${st.view.pet.speciesId} (通用 · ${row.nameZh}), her own name「${st.view.pet.name || row.nameZh}」`;
       await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 5; }, null, { timeout: 60000 });
       await page.waitForTimeout(1500);
-      return `checksum refused: ${CDN ? '(CDN run: skipped)' : 'yes'}; downloaded ${e.bytes} bytes in ${Date.now() - t0} ms from ${parts.join(' + ') || 'the CDN'}; pack ${pack.id} 「${pack.name}」; she wears it → ${await petShot('s4-pet-vrm-from-store')}`;
+      return `checksum refused: ${CDN ? '(CDN run: skipped)' : 'yes'}; downloaded ${e.bytes} bytes in ${Date.now() - t0} ms from ${parts.join(' + ') || 'the CDN'}; pack ${pack.id} 「${pack.name}」 species ${pack.species}; ${generic}; she wears it → ${await petShot('s4-pet-vrm-from-store')}, ${await shot('s4b-her-page-generic')}`;
     }, page);
 
     await step(S, 'S5 VRM 角色：商店 → 舞蹈 点「让她跳」→ 她跳《开心摇》，音乐在播、进度往前走；停止后回到待机', async () => {

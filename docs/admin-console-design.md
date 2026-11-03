@@ -225,7 +225,7 @@
 | 初次见面（起名 + 新建 agent） | `switch-character {id,name}` | 行内，弹出 Modal 起名 |
 | 查看详情 | 现有「她的页」：模型、个性化设定、外观、好感度 | 点行打开详情页（P-03 详情页） |
 | 切换角色（每种形象都是一位独立角色，T-2764；原「选择外观包」已删除） | `switch-character {id}` | 角色图鉴 / 详情 → 切换 |
-| 导入角色包 / Live2D / VRM | `import-pack`、`import-live2d {species}`、`import-vrm {species}` | 详情 → 外观，以及「外观资源」页 |
+| 导入角色包 / Live2D / VRM | `import-pack`、`import-live2d {species}`、`import-vrm {species}`（默认通用设定，`species: "generic"`）、`set-pack-base {id, base}`（导入确认里改成「通用」或某位角色的新形象） | 详情 → 外观，以及「外观资源」页 |
 | 删除导入的包 | `remove-pack {id}`（内置包不能删） | 外观资源页，带确认 |
 | 导出包 | `export-pack {id}`（不能再分发的 VRM 会被拒绝） | 外观资源页 |
 | 调 Live2D 高度 | `set-live2d-height {id,height}` | 详情 → 外观（Live2D 包） |
@@ -647,7 +647,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
 | 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
 | 角色（服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `models.<id>` `systemRoles.<id>` `framings.<id>` `vrmPostures.<id>` | `switch-character` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` `set-vrm-posture` | 即时生效 |
-| 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 外观（导入的包成为新角色） | — | `import-pack` `import-live2d` `import-vrm` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
+| 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 外观（导入的包成为新角色） | — | `import-pack` `import-live2d` `import-vrm` `set-pack-base` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 

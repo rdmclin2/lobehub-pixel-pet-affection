@@ -2503,6 +2503,8 @@ async function main() {
     window.pet.openAdmin(admin || undefined);
   });
   window.pet.onUpdate((v) => {
+    // 通用设定: main sends the bases again when a generic VRM companion came or went (core/generic.js)
+    if (v && Array.isArray(v.speciesList)) { info.species = v.speciesList; delete v.speciesList; }
     view = v;
     syncPrewarm();
     if (v) { applyArt(); refreshHud(); return; }
