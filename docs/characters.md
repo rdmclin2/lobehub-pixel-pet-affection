@@ -3,7 +3,7 @@
 桌宠的伙伴是以 AI 模型厂商为主题的同人“模型娘”。**她们都不是厂商官方形象**，厂商名只用来说明灵感来源。本文列出每位角色的厂商、名称、形象设定、主题色、服饰、素材来源与许可，以及已下线的旧角色和存档迁移。怎么安装、运行、切换角色和触发效果见 [使用说明](usage.md)。
 
 - 应用实际读取的角色数据：`src/characters/<id>.json`（启动时全部加载，按 `order` 排序）。
-- 美术：随应用自带的只有 5 个像素包 `src/renderer/packs/<id>-pixel/`；其余形象（旧版像素、全动态、Live2D、成年版、大肥鱼的原版动画视频）在 `catalog/` 里，用户在角色图鉴下载后才能使用，见下面「内置与下载」。
+- 美术：随应用自带的只有 5 个像素包 `src/renderer/packs/<id>-pixel/`；其余形象（旧版像素、全动态、Live2D、成年版、大肥鱼的原版动画视频）在 `catalog/` 里，用户在商店下载后才能使用，见下面「内置与下载」。
 - 更细的设定（色板、示例台词、对原设的改动）：[art/model-chan/CHARACTERS.md](../art/model-chan/CHARACTERS.md)；授权全文：[NOTICE.md](../NOTICE.md)。
 
 ## 一、角色总表
@@ -202,7 +202,8 @@
 - **下载地址**：`PIXELPET_CATALOG_URL`（测试 / 镜像）> `settings.catalogUrl`（镜像用，手动写进 settings.json，设置窗口里没有这一项）> 默认 LobeHub 公开 CDN `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/characters-v1`，取 `<地址>/<id>.zip`。只接受 http(s) / file 地址。
 - **上传**：`npm run catalog:upload` 重新打包并核对目录文件，然后用 Develop Center 的 CLI（`dc ops-assets upload`，lobehub-biz/develop-center 的 `packages/cli`，需要先 `dc auth login --token <DC_CLI_TOKEN> --base-url <DC 地址>`，或设 `DC_CLI` 指向 `dist/index.js`）传到 `dc/ops-assets/archives/pixel-pet/<release>/`，再从应用用的地址逐个下载回来核对大小和 sha256。已存在且大小相同的跳过；大小不同会报错，不会悄悄覆盖——内容变了就改 `release`（`scripts/build-character-catalog.js` 的 `RELEASE`）。`-- --dry-run` 只打包核对、列出地址。Ops Assets 单个文件上限 20 MB，最大的 `gpt-adult.zip` 约 19.6 MB。
 - **下载流程**（`src/main/catalog.js`）：流式下载，边下边算 sha256，大小或 sha256 对不上就丢弃并提示「校验没通过」；通过后解压到用户数据目录旁边的临时文件夹，检查包（`readPack`、id 一致）或视频（每段 clip 都在），写入安装标记 `.catalog.json`，再整体改名到位——失败不会留下半个角色。角色包装到 `<userData>/packs/<id>/`（来源记为「下载」），视频装到 `<userData>/clips/<id>/`，通过 `pack://<id>/<clip>.webm` 播放（`pack` 协议开了 `stream` 权限）。进度通过 `catalog-progress` 推给所有窗口。18+ 角色只有确认 18+ 并打开成人向内容后才列出、才能下载。
-- **角色图鉴**：已有角色之后是「可下载的角色」，每张卡有图片、「未下载」、大小 · 服饰数 · 授权，以及「下载」按钮；下载中显示进度条和「取消」。按形象类型筛选同时作用于两部分，另有「未下载 N」。打开一个还没下载的角色的链接，显示她的下载卡。下载好的角色和内置的一样：切换、衣柜、取景都按角色 id；她的页面多一个「删除下载」（衣柜、好感和聊天记录都保留，之后可以重新下载）。
+- **商店**（设置窗口左侧栏「商店」，`#/store`，`admin/src/console/pages/Store.tsx`）：按类别分标签页，现在只有「角色」，以后的声音包等加新的标签页。每张卡有图片、「未下载 / 已下载」、大小 · 服饰数 · 授权；未下载的有「下载」，下载中显示进度条和「取消」，已下载的有「查看」（进她的页面）。筛选：全部 / 未下载 / 已下载。18+ 角色只在确认 18+ 并打开成人向内容后出现。
+- **角色图鉴只放本机已有的角色**（内置、下载、导入）：还有可下载的时，底部提示「商店里还有 N 位角色可以下载」和「去商店」。下载好的角色和内置的一样：切换、衣柜、取景都按角色 id；她的页面多一个「删除下载」（衣柜、好感和聊天记录都保留，之后可以在商店重新下载）。打开一个还没下载的角色的链接（如旧书签），显示她的下载卡。
 - **切换到没下载的角色**：`switchCharacter` 返回 `reason: 'not-downloaded'`（18+ 且成人向关着时仍是 `adult`）。
 
 ### 老用户的数据迁移（接在上面「数据迁移方式」之后）
