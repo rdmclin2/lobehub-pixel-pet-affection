@@ -150,21 +150,39 @@
 | 当前角色 | — | `pet.json` 的 `characterId`（`speciesId` 仍在，等于其基础角色） | |
 | 同屏伙伴 | 角色 | `settings.visitors[]` 是角色 id | 不能是当前角色的任何形象，同一基础角色最多一位。 |
 
-### 数据迁移（`src/core/character-migrate.js`）
+### 数据迁移方式（`src/core/character-migrate.js`，T-2764 / T-2786）
 
-`PetService` 每次加载 `settings.json` / `pet.json` 时运行；只在没有 `characterModel: 2` 标记的文件上运行一次（幂等：再跑一次原样返回、文件不再改写），改写前各备份一次为 `settings.characters.bak.json` / `pet.characters.bak.json`。
+**什么时候跑**：`PetService` 每次加载 `settings.json` / `pet.json` 时调用 `migrateAll`（先 settings，再 pet.json）。只处理**没有** `characterModel: 2` 标记的文件；迁移后的文件带上这个标记，再加载时原样返回、不再改写（幂等）。迁移是纯函数，落盘由 `PetService` 做：只在有变化时写，写之前各备份一次原文件：
+
+| 原文件 | 备份 | 规则 |
+| --- | --- | --- |
+| `settings.json` | `settings.characters.bak.json` | 迁移前的原样内容；已存在就不再覆盖 |
+| `pet.json` | `pet.characters.bak.json` | 同上。更老的 schema 1 / 2 存档在同一次加载里先升到 schema 3，这时备份是 `pet.v<N>.bak.json`（同样是原样内容），不再另写 `pet.characters.bak.json` |
+
+**旧 key → 新 key 对照**
 
 | 旧 key（按人设 / 按包） | 新 key（按角色） | 规则 |
 | --- | --- | --- |
-| `pet.speciesId` = `dafeiyu` + `settings.appearance.dafeiyu` = `dafeiyu-live2d` | `pet.characterId` = `dafeiyu-live2d` | 所选包存在且属于她（18+ 的也保留，成人向关着时临时显示默认角色）→ 该包；不存在 / 已删除 / 不是她的 → 她的默认角色（角色文件第一个包，再退到 `fallbackPack`）。已下线人设的选择交给接替者。 |
-| `settings.appearance.<base>` | 删除；原值只读保留在 `settings.legacyAppearance` | 供迁移得晚的 `pet.json`（比如从备份恢复）仍能找到旧选择。 |
-| `settings.framings.<base>` | `settings.framings.<该基础角色的每个角色 id>` | 复制到她的每个形象（不覆盖已按角色设的值）。 |
-| `settings.visitors[]` = `claude` | `claude-classic`（她当时所选的包对应的角色） | 不认识的丢掉。 |
-| `pet.characters.<base>.equippedOutfit` / `lastSafeOutfit` | `pet.characters.<base>.wardrobes.<每个角色 id>` | 复制到她的每个形象；某个形象的包没有这套衣服时，到场时换回日常服并保存。 |
-| `settings.vrmPostures.<packId>` | 不变 | 角色 id = 包 id。 |
-| `settings.models.<base>`、`settings.systemRoles.<base>`、`pet.characters.<base>`（agent / 聊天 / 名字 / 好感 …）、聊天记录的 `speciesId`、语音包 | 不变 | 同一基础角色的各角色共享。 |
+| `pet.speciesId` = `dafeiyu` + `settings.appearance.dafeiyu` = `dafeiyu-pixel` | `pet.characterId` = `dafeiyu-pixel`（`pet.speciesId` 保留，等于基础角色 `dafeiyu`） | 所选包存在且属于她（18+ 的也保留，成人向关着时临时显示默认角色）→ 该包；不存在 / 已删除 / 不是她的 → 她的默认角色（角色文件第一个包，再退到 `fallbackPack`）。已下线人设的选择交给接替者。 |
+| `settings.appearance.<base>` | 删除；原值只读保留在 `settings.legacyAppearance` | 给迁移得晚的 `pet.json`（比如从备份恢复的）找旧选择用。 |
+| `settings.framings.<base>`（如 `dafeiyu: 'half'`） | `settings.framings.<她的每个角色 id>`（`dafeiyu-pixel`、`dafeiyu-live2d`、导入的 `my-fish` …） | 复制到她的每个角色，包括导入的；已经按角色设过的值不覆盖。 |
+| `settings.visitors[]` = `claude` | `claude-pixel`（她当时所选的包对应的角色） | 不认识的 id 丢掉。 |
+| `pet.characters.<base>.equippedOutfit` / `lastSafeOutfit` | `pet.characters.<base>.wardrobes.<她的每个角色 id>` = `{ equippedOutfit, lastSafeOutfit }` | 复制到她的每个角色。某个角色的包没有这套衣服的图时，她到场时换回这个包有的日常服并保存（`lastSafeOutfit` 不动）。旧字段继续镜像当前角色的值，给旧版本读。 |
+| `settings.vrmPostures.<packId>` | 不变 | 角色 id 就是包 id。 |
+| 导入的包（用户数据目录 `packs/<id>/`） | 不变，各自成为一位角色（id = 包 id） | 文件不搬动；她的 `species` 决定她共享谁的 agent / 好感。 |
+| `settings.models.<base>`、`settings.systemRoles.<base>`、`pet.characters.<base>`（agent / 聊天 / 名字 / 好感 / 需求 / 解锁）、聊天记录的 `speciesId`、语音包 | 不变 | 同一基础角色的各角色共享（见上面「共享与隔离」）。 |
+
+**共享 / 隔离规则（一句话版）**：她**是谁**（agent、聊天记录、名字、好感与解锁、需求、模型、个性化设定、语音包）按基础角色共享；她**长什么样**（衣柜里正在穿的、最后一套全年龄服饰、取景、VRM 姿势）按角色隔离。所以切到「大肥鱼 · Live2D」不会重新认识、不掉好感，但在「大肥鱼 · 像素」身上换的衣服不会出现在 Live2D 那位身上；不同基础角色（大肥鱼 / 克洛蒂）之间什么都不共享。
 
 旧调用方仍可传人设 id：`switchCharacter('claude')` / `hatch({ speciesId })` / 管理端旧链接 `#/characters/dafeiyu` 都落到该人设当前的（或默认的）角色。
+
+**回退策略**
+
+1. **完整回到迁移前**（推荐，降级到 v0.21 及更早版本时用）：先退出应用，把用户数据目录里的 `settings.characters.bak.json` 复制回 `settings.json`、`pet.characters.bak.json`（或 `pet.v<N>.bak.json`）复制回 `pet.json`，再启动旧版本。迁移之后的改动（新穿的衣服、新涨的好感、新聊天的 topic 指针）会丢；导入的包在 `packs/` 里，不受影响。之后再升级会重新迁移一次（备份已存在，不会被覆盖）。
+2. **不恢复备份直接降级**：旧版本能读迁移后的文件——`pet.json` 的 `equippedOutfit` / `lastSafeOutfit` 镜像当前角色、`speciesId` 仍是基础角色，所以好感、agent、聊天和当前衣服都在；`settings.appearance` 已删除，旧版本按默认形象包显示；按角色 id 存的取景对旧版本无效（显示全局取景）。**已知限制**（T-2786 验收实测）：旧版本会把按角色 id 存的 `settings.visitors` 清空（同屏伙伴丢失）；它保留了 `characterModel: 2` 标记，所以在旧版本里重新选的形象包（写回 `settings.appearance`）在再次升级时**不会**被迁移，仍停在降级前的角色，`appearance` 作为无用键留在文件里。需要带着旧版本里的选择回来时，用方式 1，或手动删掉两个文件里的 `characterModel` 后再升级。
+3. **只想撤销某一位的形象选择**：不需要回退数据——在设置窗口 → 角色里「切换」到她的另一个角色即可，衣柜各自保留。
+
+**验证**：单元测试 `test/character-model.test.js`（迁移规则、幂等、备份）；真机 `xvfb-run -a node e2e/run.js charmigrate`（旧格式 settings + pet.json + 一个导入包，当前 大肥鱼 + `dafeiyu-pixel`、长旗袍、半身、VRM 姿势、♥72 → 进入「大肥鱼 · 像素」，第二次启动 `settings.json` 逐字节不变，再在角色图鉴 / 衣柜卡片 / 切换角色里检查不串数据；输入输出快照和截图在 `out/e2e/charmigrate/`）；`... migrate` 的 T-2764 步骤覆盖 Live2D 选择、已删除包和同屏伙伴的映射。
 
 ### 设置窗口里的样子（T-2784）
 
