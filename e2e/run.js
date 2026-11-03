@@ -7181,6 +7181,7 @@ async function voiceHotkeyScenario() {
       // the exact wording README / docs/asr.md quote
       assert.equal(f.inputError, '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键');
       assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const first = f.inputError;
       const s1 = await ashot('v7-invalid-no-modifier');
       await record('Shift+KeyA');
       await adminUntil(admin, () => !!document.querySelector('[data-error="asr.hotkey"]'), null, 8000, 'error under the field');
@@ -7190,7 +7191,7 @@ async function voiceHotkeyScenario() {
       assert.equal(f.keys, 'mod+shift+space', 'the shortcut in use is still shown');
       assert.equal((await status()).registered, true);
       const s2 = await ashot('v7-invalid-shift-only');
-      return note(`A → 「${(await field()).inputError || f.inputError}」; Shift+A → 「${f.error}」; saved still CommandOrControl+Shift+Space; ${s1}, ${s2}`);
+      return note(`A → 「${first}」; Shift+A → 「${f.error}」; saved still CommandOrControl+Shift+Space; ${s1}, ${s2}`);
     }, () => admin);
 
     await step(S, 'V8 conflicts: Ctrl+, (the app opens settings with it) and Ctrl+Alt+K (held by another app) — not saved', async () => {
@@ -7200,6 +7201,7 @@ async function voiceHotkeyScenario() {
       // the same wording as main's own check (core/hotkey.js), quoted in README / docs/asr.md
       assert.equal(f.inputError, '和应用内的「打开设置」（Ctrl+,）冲突，换一个组合');
       assert.equal(f.inputError, require('../src/core/hotkey').checkHotkey('Control+,', 'linux').message);
+      const first = f.inputError;
       const s1 = await ashot('v8-conflict-in-app');
       await record('Control+Alt+KeyK');
       await adminUntil(admin, () => /占用/.test((document.querySelector('[data-error="asr.hotkey"]') || {}).textContent || ''), null, 8000, 'taken error');
@@ -7210,7 +7212,7 @@ async function voiceHotkeyScenario() {
       assert.equal(st.accelerator, 'CommandOrControl+Shift+Space');
       assert.equal(st.registered, true, 'the old shortcut keeps working');
       const s2 = await ashot('v8-conflict-taken');
-      return note(`Ctrl+, → 「${(await field()).inputError}」; Ctrl+Alt+K → 「${f.error}」; still ${st.accelerator} registered=${st.registered}; ${s1}, ${s2}`);
+      return note(`Ctrl+, → 「${first}」; Ctrl+Alt+K → 「${f.error}」; still ${st.accelerator} registered=${st.registered}; ${s1}, ${s2}`);
     }, () => admin);
 
     await step(S, 'V9 a new combination (Alt+Shift+V) is saved and re-registered; the old one is let go; the bubble names the new one', async () => {
