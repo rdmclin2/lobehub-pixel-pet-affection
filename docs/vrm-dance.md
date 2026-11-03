@@ -1,6 +1,6 @@
 # VRM 舞蹈功能设计（桌宠）
 
-> 状态：设计稿（T-2798），后续实现任务按本文执行。　分支：`feat/vrm-dance`（基于 `origin/canary` ec46849）
+> 状态：已实现（T-2798 设计 → T-2799–T-2801 实现 → T-2803 端到端验证）；**使用方式见 §9，关键改动清单见 §10**。　分支：`feat/vrm-dance`（基于 `origin/canary` ec46849）
 > 范围：只面向 VRM 外观；像素 / 图片 / rig / Live2D 角色不跳舞（入口隐藏或禁用，见 §6）。
 > 前置文档：[`docs/vrm-motion-system.md`](vrm-motion-system.md)（下称「动作文档」）——动作分层 L0–L6（§3.1）、素材格式与重定向（§3.7）、素材存放与防泄漏守卫（§6）、调试字段（§7）、分期里把舞蹈列为 P2（§10）。本文是 §10 P2「舞蹈」的展开。
 > 参考：[lobe-vidol](https://github.com/lobehub/lobe-vidol)（本机 `~/work/t2688/lobe-vidol`，commit fa50051，Apache-2.0）两年前的舞蹈实现。**只借鉴功能与交互思路，不复制、不改写、不移植它的任何代码**，边界逐项列在 §1.3。
@@ -754,6 +754,117 @@ Pipeline：00-brief → 40-flow → 70-detail
 | 聊天识别误触（「跳过」「舞台」） | 意外开跳 | 关键词需含「跳 + 舞」或明确舞名；否定词表；设置开关；单测反例 |
 | 跳舞时 CPU / GPU 占用（持续 active 帧率） | 发热、耗电 | 窗口隐藏即暂停；帧率上限 30 fps（舞蹈素材本身 30 fps） |
 | 透明窗口里大动作被画布裁切 | 出画 | 相机按 `extent` 拉远；e2e 第 7 步断言投影在画布内 |
+
+---
+
+## 9. 使用方式（T-2803）
+
+本节写给使用者和接手的开发者：怎么放置 / 导入舞蹈、怎么让她跳和停、本地 API、素材授权、怎么验证。前提：她穿的是 **VRM 外观**（设置窗口 → 角色 → 她 → 装扮 → 导入 VRM… → 穿上；仓库里没有模型，可用 `node scripts/make-test-vrm.js /tmp/test.vrm` 生成一个 CC0 测试模型）。像素 / 图片 / Live2D 外观不跳舞，所有入口都会说明原因（§3.8）。
+
+### 9.1 放置 / 导入舞蹈
+
+| 方式 | 做法 | 落到哪里 |
+|---|---|---|
+| **设置窗口导入（推荐，安装版就能用）** | 设置窗口 → 玩法 → 和她一起 → **舞蹈** →「导入舞蹈」（多选 `.vmd` + 可选音乐 mp3 / wav / ogg / m4a / flac、封面 jpg / png / webp、readme）或「选文件夹导入」（vidol 舞蹈包按 `meta.json`；MMD 文件夹自动跳过镜头 / 道具 VMD，多个动作时在确认页选）→ 确认页改名 / 换音乐 / 换封面 →「导入舞蹈」→ 转换（worker 线程，可取消）→ 卡片出现 | `<数据目录>/vrm-dances/<id>/`：`dance.vrma`、`audio.<ext>`、`cover.<ext>`、`readme.txt`、`src/<原 VMD>`；索引 `<数据目录>/vrm-dances/library.json`。数据目录 = Electron `userData`（e2e / 多开时为 `$PIXELPET_DATA_DIR`） |
+| **开发机批量烘焙** | 把素材放在 `~/vrm-assets/dances/<包或文件夹>`，运行 `node scripts/vrm-bake.js --dance ~/vrm-assets/dances/<包>`（`--out <dir>` 可改输出） | 默认 `~/vrm-assets/baked-dances/`（含 `library.json`）；开发运行（`npm start`，非打包）自动读取；或 `PIXELPET_VRM_DANCES_DIR=<目录> npm start`。输出 / 覆盖目录在仓库内一律拒绝 |
+| **内置示例「节拍摇摆」**（`id: demo`） | 无需操作 | 由 `src/core/dance-demo.js` 在内存里生成（自制关键帧 + 合成节拍 WAV），不落盘、不能删 |
+
+导入失败会写明原因与出路，例如：只有镜头 / 道具动作（「这里的 .vmd 只有镜头或道具的动作，没有人形骨骼的舞蹈动作。找到跳舞的那个 .vmd（通常最大）再导入。」）、音乐是加密的 `.ncm`、格式不支持、文件过大（动作 64 MB / 音乐 200 MB / 封面 10 MB）、正在导入上一支等（`src/main/dance-import.js` `IMPORT_ERRORS`）。删除：舞蹈卡片的垃圾桶 →「删除舞蹈」（正在跳这支会先停）。
+
+### 9.2 触发与停止
+
+| 入口 | 开始 | 停止 |
+|---|---|---|
+| 桌宠工具栏 ♪「跳舞」（仅 VRM 外观显示） | 点开浮层 → 点一支（↑↓ + Enter 也行）；跳舞中按钮为按下态 | 再点开浮层 →「停止」；或在桌宠窗口按 **Esc** |
+| 设置窗口 → 舞蹈 | 卡片「让她跳」 | 「正在跳」卡或卡片上的「停止」；同卡可切「循环播放」、调音乐音量 |
+| 本地 API | `POST /pixel-pet/dance` | `POST /pixel-pet/dance/stop` |
+| 渲染进程 / 自动化 | `window.pet.dance.play({ id, loop })` | `window.pet.dance.stop()` |
+
+跳舞时的打断规则（§3.4）：**拖起她** → 暂停（动作与音乐一起停，叠拎起姿势），放下 0.6 s 后从暂停点续跳；**拖着不放超过 10 s** → 视为不想让她跳了，停止并回到 idle；**点她** → 只有表情回应和原有的触摸台词 / 好感，不打断舞步；**她说话** → 继续跳、音乐压到 30%；**喂食 / 玩耍 / 睡觉 / `/anim`** → 先停舞再执行；**窗口隐藏** → 暂停，显示后续跳；**换外观 / 换到非 VRM** → 立即停止、音乐立即停。自然跳完 → 末帧停 0.3 s → 0.8 s 淡回 idle。
+
+音量：设置窗口 → 舞蹈 →「跳舞时 · 音乐音量」（`prefs.danceVolume`，默认 60）；工具栏静音按钮同时静音舞曲（动作照跳）。
+
+聊天里说「跳个舞」的本地识别**尚未实现**（§6.4「本任务不含」），目前请用上面的入口。
+
+### 9.3 本地 API
+
+在设置窗口 → 设置 → 连接 → **对外接口** 打开「开启对外接口」（只监听 127.0.0.1，默认端口 7340，首次开启自动生成令牌）。所有请求带 `Authorization: Bearer <令牌>`：
+
+```bash
+T=<令牌>; B=http://127.0.0.1:7340/pixel-pet
+curl -s -H "Authorization: Bearer $T" $B/dances                                   # 列表 + 当前能不能跳（vrm / reason）
+curl -s -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+     -d '{"id":"demo","loop":false}' $B/dance                                     # 开跳；不给 id/name 则随机一支
+curl -s -H "Authorization: Bearer $T" $B/state | jq .dance                          # 播放状态（id、state、t、audio…）或 null
+curl -s -H "Authorization: Bearer $T" -X POST $B/dance/stop                        # 停止
+```
+
+返回与错误码见 §3.8（`409 not-vrm` 带中文 `message` 与 `kind`，`404 no-dance`，`502 load-failed`，`409 vrm-not-ready`，`400 bad-id / bad-name / bad-loop`）。非 VRM 外观时的回复（本任务 e2e 实测）：
+
+```json
+{"ok":false,"error":"not-vrm","message":"舞蹈只有 VRM 外观可以跳。她现在是像素外观，换成 VRM 模型再来吧。","kind":"sprites"}
+```
+
+### 9.4 素材授权注意事项
+
+- **第三方舞蹈不入库、不打包、不分发**：MMD 动作（VMD）与舞曲通常要求署名、禁止再分发，部分音乐有版权。它们只放在你自己电脑的用户目录（`~/vrm-assets/dances/`、`<数据目录>/vrm-dances/`），不提交到 git、不进安装包、不随角色包导出或分享（设置页和确认页都写明「只保存在这台电脑上」）。
+- 导入时原包的 `readme.txt` 原样保存，并提取「Motion by …」/「动作作者：…」作为署名显示在卡片上；使用前请自行阅读原作者的使用规约（是否允许直播 / 录屏 / 商用等）。
+- 仓库里唯一的舞蹈是自制的「节拍摇摆」（`src/core/dance-demo.js`，代码生成，无音频文件）和 e2e 夹具（`scripts/make-test-dance.js`，运行时写到临时目录）。
+- 守卫：`.gitignore` 忽略 `*.vmd *.VMD *.vrma *.ncm vrm-dances/ baked-dances/`；`package.json` `build.files` 排除 `**/*.vmd`、`**/*.VMD`、`**/*.vrma`、`**/*.ncm`、`**/vrm-dances/**`、`**/baked-dances/**`；`npm test`（`test/vrm-library.test.js`、`test/vrm-dances.test.js`）检查 git 里没有这些文件；`node scripts/check-dance-packaging.js` 用真实的 `electron-builder --linux dir` 打包，在 `src/` 下预先放入诱饵舞蹈素材，确认 `app.asar` 里没有任何 `.vmd / .vrma / .ncm`、舞蹈库目录，以及 `src/voicepacks/` 以外的音频（§9.6）。
+
+### 9.5 验证
+
+```bash
+npm test                                        # 单测（含 VMD 解析 / 重定向 / 导演舞蹈层 / 舞蹈库 / 导入 / 守卫）
+unset ELECTRON_RUN_AS_NODE                      # 设了它 Electron 起不来
+xvfb-run -a node e2e/run.js dance               # 端到端：导入失败 + 成功 → VRM → 列出 → 播放 → 拖拽 / 点击打断 → idle → 再播并停止 → 非 VRM 拒绝
+xvfb-run -a node e2e/run.js vrmdance            # 运行时细节：淡入权重、音频同步、重定向角度、限位取景、静音音量、说话压低、隐藏、循环、API
+xvfb-run -a node e2e/run.js danceui             # 界面：工具栏浮层、设置页、导入确认、删除
+node scripts/check-dance-packaging.js           # 打包守卫（真实 electron-builder --linux dir，约 10 s）；--no-guard 为反证（应失败）
+```
+
+`dance` 场景不消耗 token、不依赖 live：模型、舞蹈、音乐、封面都在测试临时目录里生成，登录走 fake lh。证据输出到 `out/e2e/vrm/`：`dance-*.png`（每步截图）、`dance-frames/f000.png…`（播放中每约 0.2 s 一帧）、`dance-frames.gif`、`dance-contact.png`（帧序列拼图）、`dance.webm`（全程录屏）、`dance-evidence.json`（章节时间点、每步实测值、播放采样）。
+
+### 9.6 打包守卫实测（T-2803）
+
+`scripts/check-dance-packaging.js` 在 `src/renderer/vrm-dances/…`、`src/core/baked-dances/…` 与 `src/` 根放 11 个诱饵（`dance.vrma`、`audio.mp3`、`audio.wav`、`cover.png`、`library.json`、`Motion.vmd`、`.VMD`、`.ncm`、`.vrma`），跑 `electron-builder --linux dir --x64`（与 `dist:*` 同一份 `build.files`），列出 `app.asar` 与 `app.asar.unpacked`，断言：诱饵 0、`.vmd/.vrma/.ncm` 0、`vrm-dances/ baked-dances/` 路径 0、`src/voicepacks/` 以外的音频 0；同时确认舞蹈代码、内置示例 `src/core/dance-demo.js` 和一个同时放入的对照文件 `src/assets-decoy-control.txt` 在包里（证明诱饵确实在打包范围内）。结束后删除诱饵。
+
+`--no-guard` 是反证：用一份去掉所有 `!` 排除规则的配置文件（`--config`；注意 `-c.files=…` 只会追加到 `package.json` 的列表、排除规则仍生效，不能用来做反证）重新打包，检查必须失败。T-2803 实测：
+
+| 运行 | 包内文件 | 诱饵 | `.vmd/.vrma/.ncm` | 舞蹈库路径 | voicepacks 以外的音频 | 结果 |
+|---|---|---|---|---|---|---|
+| `node scripts/check-dance-packaging.js` | 1636 | 0 | 0 | 0 | 0 | PASS（exit 0） |
+| `node scripts/check-dance-packaging.js --no-guard` | 1652 | 13 | 7 | 12 | 3 | FAIL（exit 1） |
+
+## 10. 关键改动清单（文件 → 作用）
+
+| 文件 | 作用 | 任务 |
+|---|---|---|
+| `src/core/vmd.js` | VMD 二进制读写（Shift-JIS 骨名 / 表情 / IK 开关 / 镜头），贝塞尔插值、重采样、镜头 / 道具判据 | T-2799 |
+| `src/core/vmd-retarget.js` | VMD → VRM 人形重定向：骨骼映射（含英文骨名）、A-pose 补偿、捩骨合并、两骨腿 IK、hips 漂移软限幅、表情映射、`bakeVmd` | T-2799 |
+| `src/core/vrma-write.js` | 写 `.vrma`（glTF + VRMC_vrm_animation）与 `inspectVrmaJson` 校验（从 bake-core 抽出） | T-2799 |
+| `scripts/vrm-bake.js` `--dance`、`scripts/lib/vrm-bake-core.js` | 开发机批量烘焙舞蹈到 `~/vrm-assets/baked-dances`，原子写 `library.json`，拒绝写入仓库 | T-2799 / T-2800 |
+| `scripts/vrm-dance-frames.js` | 真实模型上按时间点出静帧拼图 + 姿态数值，供人工评审 | T-2799 |
+| `src/core/vrm-dances.js` | 舞蹈索引清洗 `cleanDanceIndex`、列表 / 查找 / 随机、`cannotDance`（非 VRM 原因文案）、导入识别 `detectDance` | T-2800 / T-2801 |
+| `src/core/dance-demo.js` | 内置原创示例「节拍摇摆」的关键帧与合成节拍 WAV | T-2800 |
+| `src/core/vrm-director.js` | 舞蹈层 D 状态机（cueing / in / on / paused / out），独占全身、拎起暂停 / 超时停止、触摸只出表情、说话 / 录音压低 | T-2800 |
+| `src/core/vrm-intent.js` | 快照 → `holds.dance` / `holds.recording`、`dance:start|stop` 事件 | T-2800 |
+| `src/renderer/vrm-anim.js` | 外部时钟 `setBase(…, { clock: 'external' })`、`seekBase`、循环 A/B 接缝 | T-2800 |
+| `src/renderer/vrm.js` | 舞蹈片段加载 / 释放、舞蹈相机、固定地面、调试字段 `data-dance-*`、`director.dance.seek/speed`、`pose()` / `framePoints()` | T-2800 |
+| `src/renderer/vrm-dance.js` | 渲染端控制器：`<audio>` 主钟、音量 / 静音 / 压低、暂停 / 续跳、循环、停止原因统计 | T-2800 |
+| `src/renderer/app.js`、`index.html`、`style.css` | 接入快照；工具栏 ♪ 与浮层（列表、正在跳、循环、停止、键盘）；Esc / 喂食 / 玩耍 / 睡觉 / `/anim` 先停舞；跳舞时不漫游 | T-2800 / T-2801 |
+| `src/main/vrm-dances.js`、`src/main/vrm-library.js` | 舞蹈目录优先级（env / userData / dev）、`vrmlib://dance/…` 白名单与 Range、列表 | T-2800 |
+| `src/main/dance-import.js`、`dance-bake.js`、`dance-bake-worker.js` | 导入：选择 → 识别 → 草稿 → worker 烘焙 → 临时目录 rename 入库；换音乐 / 封面、取消、删除；失败文案 | T-2801 |
+| `src/main/main.js`、`preload.js`、`admin-preload.js` | IPC `dances:list` / `dance:play|stop|state|loop`、导入系列；`window.pet.dance.*`、`window.petAdmin.dance*` | T-2800 / T-2801 |
+| `src/core/api.js` | `GET /dances`、`POST /dance`、`POST /dance/stop`、`/state.dance` | T-2800 |
+| `src/core/settings.js`、`settings-schema.js`、`admin-coverage.js` | `prefs.danceVolume`；设置项归到「舞蹈」页；后台覆盖矩阵 | T-2800 / T-2801 |
+| `admin/src/console/pages/Dances.tsx`、`api.ts`、`Hub.tsx`、`ConsoleApp.tsx`、`icons.ts` | 设置窗口「舞蹈」页：非 VRM 说明、正在跳卡、卡片网格、导入确认弹窗、删除确认、音量 | T-2801 |
+| `.gitignore`、`package.json` `build.files` | 舞蹈素材不进 git / 安装包 | T-2799 / T-2800 |
+| `scripts/check-dance-packaging.js` | 真实打包 + 诱饵素材的打包守卫 | T-2803 |
+| `scripts/make-test-dance.js` | e2e 夹具：自制 VMD（已知关键帧）、6 s 提示音 WAV、PNG 封面、`library.json` | T-2800 |
+| `e2e/vrm.js` `danceE2e` / `vrmDance` / `danceUi`，`e2e/run.js` | e2e 场景 `dance`（端到端）、`vrmdance`（运行时）、`danceui`（界面） | T-2800 / T-2801 / T-2803 |
+| `test/vmd.test.js`、`vmd-retarget.test.js`、`vrm-dances.test.js`、`vrm-director-dance.test.js`、`dance-import.test.js` | 单测 | T-2799–T-2801 |
+| `docs/vrm-dance.md`、`docs/usage.md`「跳舞」、`README.md` | 设计、接口、使用方式 | T-2798–T-2803 |
 
 ---
 

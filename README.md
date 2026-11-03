@@ -193,6 +193,10 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 动作来自素材包（Mixamo 姿势与动作），需要在本机下载并烘焙；模型通过「导入 VRM 模型…」导入。**模型和素材仅限个人使用，不进仓库、不随安装包分发。** 步骤（放置素材、烘焙、导入莉莉雅 liliya、授权说明）见 [docs/vrm-liliya.md](docs/vrm-liliya.md)，设计见 [docs/vrm-motion-system.md](docs/vrm-motion-system.md)。
 
+### 跳舞（只有 VRM 外观）
+
+她穿 VRM 外观时，工具栏多一个 ♪「跳舞」：点开选一支就跳，再点开可「循环播放」/「停止」，Esc 也能停。拖起她会暂停、放下续跳（拖住超过 10 s 就停下）；点她只会换表情、不打断。设置窗口 → 玩法 → 和她一起 → **舞蹈** 可以导入 MMD 舞蹈（`.vmd` + 音乐 + 封面，或整个舞蹈文件夹），导入时转换成 VRM 动作，存在本机数据目录的 `vrm-dances/`。本地 API：`GET /pixel-pet/dances`、`POST /pixel-pet/dance`、`POST /pixel-pet/dance/stop`。内置一支自制示例「节拍摇摆」。**第三方舞蹈和舞曲只在本机使用，不进仓库、不随安装包或角色包分发**（`node scripts/check-dance-packaging.js` 验证安装包）。使用方式、API、授权与验证：[docs/vrm-dance.md §9](docs/vrm-dance.md#9-使用方式t-2803)，关键改动清单 §10；e2e：`xvfb-run -a node e2e/run.js dance`。
+
 ## 语音（TTS）
 
 打开 **设置窗口 → 朗读 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来；她的互动台词也念（见下方“互动语音”），自动碎碎念默认不念。用哪个引擎在 **设置窗口 → 朗读** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。

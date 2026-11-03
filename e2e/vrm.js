@@ -2075,5 +2075,344 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi };
+
+  // ------------------------------------------------------------------ dance
+  // The dance feature end to end (docs/vrm-dance.md 「使用方式」, T-2803), no tokens, no live service: import a
+  // dance in the settings window (a camera-only folder fails with its reason; a homemade MMD folder is baked into
+  // <userData>/vrm-dances), wear a homemade VRM, list the dances (toolbar ♪, IPC, local API), dance the imported one
+  // from the ♪ menu (debug fields: its id, progress moving, the bones moving and the legs bending, the music
+  // playing; a frame sequence recorded), interrupt it with a real mouse drag (pause, put down → on again; held up
+  // longer than 10 s → stopped, back to idle) and a click (a face, no reaction clip), dance again and stop it with
+  // 停止 in the menu, then switch to a pixel look while dancing (stops at once) and ask again: refused with its
+  // reason (API 409 not-vrm, IPC, the settings page). Evidence: out/e2e/vrm/dance-*.png, dance-frames/,
+  // dance-frames.gif, dance-contact.png, dance.webm, dance-evidence.json.
+  async function danceE2e() {
+    const S = 'dance';
+    const PORT = 7400 + Math.floor(Math.random() * 400);
+    const TOKEN = `e2e-dance-${Math.random().toString(36).slice(2, 12)}-token`;
+    const { data, env } = dataDir('dance', { ageConfirmed: true, ageConfirmedAt: Date.now(), api: { enabled: true, port: PORT, token: TOKEN } }, { motions: true });
+    const { testVmd, beepWav, coverPng } = require('../scripts/make-test-dance');
+    const VMD = require('../src/core/vmd');
+    const danceDir = path.join(data, 'vrm-dances');
+    // what the owner picks: a homemade MMD folder (dance + camera + music + cover + readme) and a camera-only one
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-dance-src-'));
+    const folder = path.join(src, '自制小舞 Homemade');
+    fs.mkdirSync(folder);
+    fs.writeFileSync(path.join(folder, 'Motion.vmd'), testVmd());
+    fs.writeFileSync(path.join(folder, 'Camera.vmd'), VMD.writeVmd({ modelName: 'cam', bones: [], cameras: [{ frame: 0, distance: -45, pos: [0, 10, 0], rot: [0, 0, 0], fov: 30 }] }));
+    fs.writeFileSync(path.join(folder, 'Motion.wav'), beepWav(6));
+    fs.writeFileSync(path.join(folder, 'cover.png'), coverPng(128));
+    fs.writeFileSync(path.join(folder, 'readme.txt'), '自制测试舞（e2e）\r\nMotion by e2e\r\n只在本机测试使用。\r\n');
+    const camOnly = path.join(src, 'camera-only');
+    fs.mkdirSync(camOnly);
+    fs.copyFileSync(path.join(folder, 'Camera.vmd'), path.join(camOnly, 'Camera.vmd'));
+    const model = makeModel(ROOT, 'dance');
+    const gitBefore = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
+    const VIDEO = path.join(SHOTS, 'dance-video');
+    const FRAMES = path.join(SHOTS, 'dance-frames');
+    for (const d of [VIDEO, FRAMES]) { fs.rmSync(d, { recursive: true, force: true }); fs.mkdirSync(d, { recursive: true }); }
+    const evidence = [];
+    const chapters = [];
+    const shots = [];
+    const t0 = Date.now();
+    const { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'], video: VIDEO });
+    const errors = watchErrors(page);
+    const H = helpers(page, 'dance', evidence, app);
+    const A = H.A;
+    const ds = H.ds;
+    const ctl = () => page.evaluate(() => window.petFx.dance());
+    const api = async (method, p, body) => {
+      const r = await fetch(`http://127.0.0.1:${PORT}/pixel-pet${p}`, { method, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, json: await r.json() };
+    };
+    const waitState = (want, ms = 4000) => page.waitForFunction((w) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(`^(${w})$`).test(c.dataset.danceState || ''); }, want, { timeout: ms });
+    const petShot = async (name) => { const p = await H.shot(name); shots.push(p); return p; };
+    const setShot = async (name) => { const p = await H.adminShot(name); shots.push(p); return p; };
+    const hoverPet = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); await sleep(150); };
+    const openMenu = async () => { await hoverPet(); await page.click('#btn-dance'); await page.waitForSelector('#dance-menu:not(.hidden) .dance-row', { timeout: 5000 }); };
+    const closeMenu = async () => { await page.evaluate(() => document.getElementById('dance-menu').classList.add('hidden')); await page.mouse.move(115, 120); };
+    // the angle between two quaternions (deg): how far a bone turned
+    const qAng = (a, b) => { if (!a || !b) return 0; const d = Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]); return +(2 * Math.acos(Math.min(1, d)) * 180 / Math.PI).toFixed(1); };
+    const ST = async (name, fn) => { chapters.push({ at: (Date.now() - t0) / 1000, title: name }); return step(S, name, fn, page); };
+    let IMPORTED = null;
+    let VRM_ID = null;
+    try {
+      await ST('导入失败：只有镜头动作的文件夹 → 设置 → 舞蹈 页面说明原因与出路，库里没有新条目', async () => {
+        await H.hatch();
+        await A.go('/dances');
+        await A.until(() => !!document.querySelector('[data-dance-import-folder]'), null, 10000, '选文件夹导入');
+        await page.evaluate((x) => window.pet.debugNextOpen(x), camOnly);
+        await A.click('[data-dance-import-folder]');
+        await A.until(() => !!document.querySelector('[data-dance-pick-error]'), null, 10000, 'the pick error');
+        const msg = await A.text('[data-dance-pick-error]');
+        assert.match(msg, /只有镜头或道具的动作/);
+        const list = await page.evaluate(() => window.pet.dance.list());
+        assert.deepEqual(list.dances.map((d) => d.id), ['demo'], 'nothing imported');
+        await setShot('1-import-fail');
+        return H.note(`camera-only folder → 「${msg}」; library still ${list.dances.map((d) => d.id).join(', ')}`);
+      });
+
+      await ST('导入成功：选 MMD 文件夹 → 确认页 → 转换入库（userData/vrm-dances/<id>/dance.vrma + 音乐 + 封面）→ 卡片出现', async () => {
+        await page.evaluate((x) => window.pet.debugNextOpen(x), folder);
+        await A.click('[data-dance-import-folder]');
+        await A.until(() => !!document.querySelector('[data-dance-draft]'), null, 15000, 'the confirm dialog');
+        const draft = await A.win.evaluate(() => ({ name: document.querySelector('[data-dance-name]').value, dur: document.querySelector('[data-dance-draft-duration]').textContent, text: document.querySelector('[data-dance-draft]').textContent }));
+        assert.equal(draft.name, '自制小舞 Homemade');
+        assert.equal(draft.dur, '0:06');
+        assert.match(draft.text, /不会随角色包导出或分享/);
+        await setShot('2-import-confirm');
+        await A.click('[data-dance-import-ok]');
+        await A.until(() => !document.querySelector('[data-dance-draft]'), null, 30000, 'the dialog to close');
+        await A.until(() => [...document.querySelectorAll('[data-dance]')].some((c) => c.textContent.includes('自制小舞 Homemade')), null, 10000, 'the new card');
+        IMPORTED = await A.win.evaluate(() => [...document.querySelectorAll('[data-dance]')].find((c) => c.textContent.includes('自制小舞 Homemade')).dataset.dance);
+        assert.match(IMPORTED, /^homemade-[0-9a-f]{4}$/);
+        const lib = JSON.parse(fs.readFileSync(path.join(danceDir, 'library.json'), 'utf8'));
+        const e = lib.dances[IMPORTED];
+        assert.ok(e && e.audio && e.cover && Math.abs(e.duration - 6) < 0.1, JSON.stringify(e));
+        const files = fs.readdirSync(path.join(danceDir, IMPORTED)).sort();
+        assert.deepEqual(files, ['audio.wav', 'cover.png', 'dance.vrma', 'readme.txt', 'src']);
+        assert.ok(!path.resolve(danceDir).startsWith(path.resolve(ROOT) + path.sep), 'the library is outside the repository');
+        await setShot('3-imported');
+        return H.note(`imported ${IMPORTED}: ${path.join(danceDir, IMPORTED)} = ${files.join(', ')}; library.json entry ${JSON.stringify({ name: e.name, duration: e.duration, audio: e.audio, cover: e.cover, credit: e.credit, ik: e.ik })}`);
+      });
+
+      await ST('VRM 角色加载：穿上自制 VRM，画布绘制、动作库 loaded、舞蹈调试字段 off', async () => {
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        VRM_ID = imp.pack.id;
+        await page.evaluate((x) => window.pet.setAppearance(x, 'dafeiyu'), VRM_ID);
+        await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), VRM_ID, { timeout: 15000 });
+        await H.drawing(3);
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
+        const d = await ds();
+        assert.equal(d.danceState, 'off');
+        assert.equal(d.dance, '');
+        await petShot('4-vrm-loaded');
+        return H.note(`VRM ${VRM_ID}: frame ${d.frame}, library ${d.library}, data-dance-state ${d.danceState}, layers ${d.layers}`);
+      });
+
+      await ST('列出舞蹈：工具栏 ♪ 浮层、IPC dances:list、本地 API GET /dances 三处一致（导入的 + 示例舞）', async () => {
+        for (let i = 0; i < 50; i++) { try { if ((await api('GET', '/state')).status === 200) break; } catch { /* not listening yet */ } await sleep(200); }
+        const http = await api('GET', '/dances');
+        assert.equal(http.status, 200);
+        assert.equal(http.json.vrm, true);
+        const ipc = await page.evaluate(() => window.pet.dance.list());
+        assert.equal(ipc.vrm, true);
+        assert.equal(ipc.dir, danceDir);
+        assert.equal(ipc.source, 'userData');
+        await openMenu();
+        const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => ({ id: r.dataset.dance, name: r.querySelector('.dance-name').textContent, meta: r.querySelector('.dance-meta').textContent })));
+        assert.deepEqual(rows.map((r) => r.id), [IMPORTED, 'demo']);
+        assert.deepEqual(ipc.dances.map((x) => x.id).sort(), [IMPORTED, 'demo'].sort());
+        assert.deepEqual(http.json.dances.map((x) => x.id).sort(), [IMPORTED, 'demo'].sort());
+        await petShot('5-menu');
+        return H.note(`♪ menu ${JSON.stringify(rows)}; IPC ${ipc.dances.map((x) => `${x.id}(${x.duration}s, music ${x.music})`).join(', ')} dir ${ipc.dir} (${ipc.source}); GET /dances ${http.json.dances.map((x) => x.id).join(', ')}`);
+      });
+
+      await ST('开始播放（浮层点导入的舞）：data-dance = id、状态 on、进度推进、骨骼姿态变化且腿部弯曲、音乐 playing；录帧序列', async () => {
+        await page.click(`#dance-menu .dance-row[data-dance="${IMPORTED}"]`);
+        await closeMenu();
+        await waitState('on', 8000);
+        const pose0 = await page.evaluate(() => window.PetVRM.director.pose());
+        const samples = [];
+        let n = 0;
+        const s0 = Date.now();
+        while (Date.now() - s0 < 5200) {
+          const r = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); return { d: { ...c.dataset }, p: window.PetVRM.director.pose(), s: window.petFx.dance().state }; });
+          samples.push({ at: Date.now() - s0, id: r.d.dance, state: r.d.danceState, t: Number(r.d.danceT), audio: r.d.danceAudio, layers: r.d.layers, knee: Math.max(r.p.legs.left.knee, r.p.legs.right.knee), hipsY: r.p.legs.hipsY, armR: r.p.arms.right.elev, armL: r.p.arms.left.elev, q: r.p.q, media: r.s && r.s.media ? r.s.media.t : null });
+          if (samples.length % 3 === 1) { await page.screenshot({ path: path.join(FRAMES, `f${String(n).padStart(3, '0')}.png`) }); n++; }
+          await sleep(60);
+        }
+        assert.ok(samples.every((x) => x.id === IMPORTED), `data-dance ${[...new Set(samples.map((x) => x.id))]}`);
+        const on = samples.filter((x) => x.state === 'on');
+        assert.ok(on.length >= samples.length - 2, [...new Set(samples.map((x) => x.state))].join(' '));
+        const ts = on.map((x) => x.t);
+        assert.ok(ts[ts.length - 1] - ts[0] > 3.5, `progress ${ts[0]} → ${ts[ts.length - 1]}`);
+        assert.ok(ts.every((t, i) => i === 0 || t >= ts[i - 1] - 0.05), 'progress moves forward');
+        assert.ok(on.every((x) => x.audio === 'playing'), `audio ${[...new Set(on.map((x) => x.audio))]}`);
+        assert.ok(on.filter((x) => x.media !== null).length > on.length / 2, 'the <audio> element has a clock');
+        // the bones: the right upper arm turns to level around 1 s, the knees bend in the squat around 4 s
+        const turn = {};
+        for (const b of ['rightUpperArm', 'leftUpperArm', 'hips', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg']) turn[b] = Math.max(...samples.map((x) => qAng(x.q[b], pose0.q[b])));
+        assert.ok(turn.rightUpperArm > 25 && turn.leftUpperArm > 25, `arms turned ${JSON.stringify(turn)}`);
+        assert.ok(turn.leftLowerLeg > 20 && turn.rightLowerLeg > 20, `lower legs turned ${JSON.stringify(turn)}`);
+        const maxKnee = Math.max(...samples.map((x) => x.knee));
+        const minKnee = Math.min(...samples.map((x) => x.knee));
+        assert.ok(maxKnee > 30 && maxKnee - minKnee > 25, `knees ${minKnee}° … ${maxKnee}°`);
+        const armMax = Math.max(...samples.map((x) => x.armR));
+        assert.ok(armMax > -12, `right arm up to ${armMax}° (level ≈ 0)`);
+        const hipsRange = Math.max(...samples.map((x) => x.hipsY)) - Math.min(...samples.map((x) => x.hipsY));
+        assert.ok(hipsRange > 0.03, `hips went down ${hipsRange} m`);
+        const squat = samples.reduce((a, b) => (b.knee > a.knee ? b : a));
+        await page.evaluate(() => window.PetVRM.director.dance.speed(0.25));
+        await page.evaluate(() => window.PetVRM.director.dance.seek(4.15));
+        await sleep(250);
+        await petShot('6-dancing-squat');
+        await page.evaluate(() => window.PetVRM.director.dance.seek(1.0));
+        await sleep(250);
+        await petShot('6b-dancing-arm');
+        await page.evaluate(() => window.PetVRM.director.dance.speed(1));
+        evidence.push({ playback: samples.map(({ q, ...x }) => x) });
+        return H.note(`${samples.length} samples over 5.2 s: data-dance ${IMPORTED}, state on, t ${ts[0]} → ${ts[ts.length - 1]} s, audio ${on[0].audio} (media t ${on[on.length - 1].media}); max bone turn vs start ${JSON.stringify(turn)}°; knee ${minKnee}°…${maxKnee}° (squat at t ${squat.t}), hips Y range ${hipsRange.toFixed(3)} m, right arm up to ${armMax}°; ${n} frames → dance-frames/`);
+      });
+
+      await ST('拖拽打断（真实鼠标）：按住拖起 → paused、时间冻结、音乐暂停、只叠 hold.lift；放下 → 续跳', async () => {
+        await page.evaluate(() => window.PetVRM.director.dance.seek(1.5));
+        const c = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        const p = c.body || c.chest || c.belly || c.head;
+        await page.mouse.move(p.x, p.y);
+        await page.mouse.down();
+        for (let i = 1; i <= 5; i++) { await page.mouse.move(p.x + i * 3, p.y - i * 2); await sleep(30); }
+        await waitState('paused', 3000);
+        await sleep(500);
+        const a = await ds();
+        await sleep(800);
+        const b = await ds();
+        assert.equal(b.danceState, 'paused');
+        assert.equal(a.danceT, b.danceT, 'frozen while held up');
+        assert.equal(b.danceAudio, 'paused');
+        assert.match(b.overlays, /^hold:hold\.lift@\w+:/);
+        await petShot('7-dragged-paused');
+        await page.mouse.up();
+        const s0 = Date.now();
+        await waitState('on', 3000);
+        const back = Date.now() - s0;
+        await sleep(200);
+        const d = await ds();
+        assert.equal(d.danceAudio, 'playing');
+        assert.ok(Number(d.danceT) >= Number(b.danceT) - 0.05, `${b.danceT} → ${d.danceT}`);
+        return H.note(`mouse drag at ${Math.round(p.x)},${Math.round(p.y)} (zones ${Object.keys(c).join('/')}): state ${b.danceState}, t ${a.danceT} = ${b.danceT}, audio ${b.danceAudio}, overlays ${b.overlays}; released → on after ${back} ms at t ${d.danceT}, audio ${d.danceAudio}`);
+      });
+
+      await ST('点击打断：点她的头 → 只有表情回应、没有反应动作，继续跳；触摸照常计数', async () => {
+        const c = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        const n0 = ((await page.evaluate(() => window.petFx.lastTouch())) || { n: 0 }).n;
+        await page.mouse.click(c.head.x, c.head.y);
+        await page.waitForFunction((k) => { const t = window.petFx.lastTouch(); return t && t.n > k; }, n0, { timeout: 5000 });
+        const out = [];
+        for (let i = 0; i < 14; i++) { out.push(await ds()); await sleep(60); }
+        assert.ok(out.every((x) => x.reaction === '' && x.overlays === ''), 'no reaction clip over the dance');
+        assert.ok(out.every((x) => x.danceState === 'on'));
+        assert.ok(out.some((x) => /relaxed:0\.[3-9]|happy:0\.[4-9]/.test(x.expr)), `a face: ${out.map((x) => x.expr).join(' | ')}`);
+        await petShot('8-clicked');
+        const lt = await page.evaluate(() => window.petFx.lastTouch());
+        return H.note(`clicked ${lt.zone} (touch n ${n0} → ${lt.n}); reaction '' overlays '' state on throughout; expr ${out.find((x) => /relaxed|happy/.test(x.expr)).expr}`);
+      });
+
+      await ST('拖住不放超过 10 s → 舞蹈停止（interrupted）；放下后回到 idle（无舞蹈层、data-dancing 去掉）', async () => {
+        const c = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        const p = c.body || c.chest || c.belly || c.head;
+        await page.mouse.move(p.x, p.y);
+        await page.mouse.down();
+        for (let i = 1; i <= 5; i++) { await page.mouse.move(p.x - i * 3, p.y - i * 2); await sleep(30); }
+        await waitState('paused', 3000);
+        const s0 = Date.now();
+        await waitState('out|off', 13000);
+        const held = Date.now() - s0;
+        const c1 = await ctl();
+        await page.mouse.up();
+        await waitState('off', 4000);
+        await sleep(1500);
+        const d = await ds();
+        assert.ok(held >= 9000, `stopped after ${held} ms held up`);
+        assert.equal(c1.stats.lastStop.reason, 'interrupted');
+        assert.ok(!/dance:/.test(d.layers), d.layers);
+        assert.ok(d.idle || d.posture, 'the idle is back');
+        assert.equal(d.dance, '');
+        assert.equal(await page.getAttribute('#pet-body', 'data-dancing'), null);
+        assert.equal((await ctl()).state, null);
+        await petShot('9-idle-after-interrupt');
+        return H.note(`held up ${held} ms → last stop ${JSON.stringify(c1.stats.lastStop)}; after: data-dance-state ${d.danceState}, layers ${d.layers}, idle ${d.idle}, posture ${d.posture}`);
+      });
+
+      await ST('再次播放并手动停止：浮层点舞 → on（按钮按下）→ 浮层「停止」→ out → off，按钮抬起', async () => {
+        await openMenu();
+        await page.click(`#dance-menu .dance-row[data-dance="${IMPORTED}"]`);
+        await closeMenu();
+        await waitState('on', 8000);
+        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'true');
+        await sleep(1200);
+        await openMenu();
+        await page.waitForSelector('#dance-menu .dance-now');
+        const now = await page.evaluate(() => ({ title: document.querySelector('.dance-now b').textContent, progress: document.querySelector('.dance-progress').textContent }));
+        assert.match(now.title, /正在跳《自制小舞 Homemade》/);
+        await petShot('10-playing-again-menu');
+        const s0 = Date.now();
+        await page.click('#dance-menu .dance-stop');
+        await waitState('out|off', 1500);
+        const ms = Date.now() - s0;
+        await waitState('off', 3000);
+        const c = await ctl();
+        assert.equal(c.state, null);
+        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'false');
+        const st = await api('GET', '/state');
+        assert.equal(st.json.dance, null);
+        await closeMenu();
+        return H.note(`menu 「${now.title}」 ${now.progress}; 停止 → out in ${ms} ms → off; last stop ${JSON.stringify(c.stats.lastStop)}; /state.dance ${st.json.dance}`);
+      });
+
+      await ST('切换到非 VRM 外观：跳舞中换像素 → 立即停止、音乐停；再请求跳舞 → 被拒绝并说明原因（API 409、IPC、设置页）', async () => {
+        const r = await api('POST', '/dance', { id: IMPORTED, loop: true });
+        assert.equal(r.status, 200, JSON.stringify(r.json));
+        await waitState('on', 8000);
+        await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu'));
+        await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
+        await sleep(400);
+        const c = await ctl();
+        assert.equal(c.state, null);
+        assert.equal(c.stats.lastStop.reason, 'look');
+        assert.equal(c.stats.fading, 0, 'the music stopped at once');
+        const http = await api('POST', '/dance', { id: IMPORTED });
+        assert.equal(http.status, 409);
+        assert.equal(http.json.error, 'not-vrm');
+        assert.match(http.json.message, /舞蹈只有 VRM 外观可以跳。她现在是像素外观/);
+        const ipc = await page.evaluate((x) => window.pet.dance.play({ id: x }), IMPORTED);
+        assert.equal(ipc.ok, false);
+        assert.equal(ipc.reason, 'not-vrm');
+        assert.match(ipc.message || '', /只有 VRM 外观/);
+        await hoverPet();
+        assert.equal(await page.evaluate(() => document.getElementById('btn-dance').classList.contains('hidden')), true, '♪ hidden on a pixel look');
+        await petShot('11-pixel-no-dance');
+        await A.go('/dances');
+        await A.until(() => !!document.querySelector('[data-dance-notvrm]') && document.querySelectorAll('[data-dance-play]').length > 0, null, 10000, 'not-vrm alert');
+        const alert = await A.text('[data-dance-notvrm]');
+        assert.match(alert, /舞蹈只有 VRM 外观可以跳/);
+        const disabled = await A.win.evaluate(() => [...document.querySelectorAll('[data-dance-play]')].map((b) => b.disabled));
+        assert.ok(disabled.every(Boolean), `让她跳 disabled: ${disabled}`);
+        await setShot('12-pixel-refused-settings');
+        return H.note(`dancing → pixel look: last stop ${JSON.stringify(c.stats.lastStop)}, fading ${c.stats.fading}; POST /dance → ${http.status} ${JSON.stringify(http.json)}; IPC → ${JSON.stringify(ipc)}; ♪ hidden; settings 「${alert.replace(/\s+/g, ' ')}」, 让她跳 disabled ×${disabled.length}`);
+      });
+
+      await ST('守卫：无渲染 / CSP 报错；仓库没有新增文件，舞蹈只在 userData', async () => {
+        const gitAfter = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
+        assert.equal(gitAfter, gitBefore, 'nothing written into the repository');
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        assert.ok(!/Content Security Policy|Refused to/.test(app.stderrBuf || ''), 'no CSP refusal');
+        return H.note(`git status unchanged; console errors none; dances in ${danceDir}`);
+      });
+    } finally {
+      const vpath = await page.video() ? await page.video().path().catch(() => null) : null;
+      await app.close().catch(() => {});
+      let video = null;
+      if (vpath && fs.existsSync(vpath)) { video = path.join(SHOTS, 'dance.webm'); fs.copyFileSync(vpath, video); }
+      // the frame sequence as a GIF and a contact sheet (ffmpeg, when there is one)
+      const frames = fs.readdirSync(FRAMES).filter((f) => f.endsWith('.png'));
+      let gif = null;
+      let contact = null;
+      if (frames.length) {
+        try {
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '5', '-i', path.join(FRAMES, 'f%03d.png'), '-vf', 'split[a][b];[a]palettegen[p];[b][p]paletteuse', path.join(SHOTS, 'dance-frames.gif')]);
+          gif = path.join(SHOTS, 'dance-frames.gif');
+          const cols = 8;
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '5', '-i', path.join(FRAMES, 'f%03d.png'), '-frames:v', '1', '-vf', `tile=${cols}x${Math.ceil(frames.length / cols)}`, path.join(SHOTS, 'dance-contact.png')]);
+          contact = path.join(SHOTS, 'dance-contact.png');
+        } catch (e) { evidence.push(`ffmpeg: ${e.message.split('\n')[0]}`); }
+      }
+      fs.writeFileSync(path.join(SHOTS, 'dance-evidence.json'), JSON.stringify({ chapters, evidence, shots, frames: frames.length, gif, contact, video }, null, 2));
+    }
+  }
+
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e };
 };

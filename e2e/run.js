@@ -10563,6 +10563,7 @@ async function interjectScenario() {
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
+  if (which === 'dance' || which === 'all') await vrmScenarios().danceE2e();
   if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'spriteframe' || which === 'all') await spriteFrameScenarios().spriteFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
