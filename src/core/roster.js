@@ -8,7 +8,7 @@ const { SPECIES } = require('./species');
 
 const KIND_LABEL = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
 const SOURCE_LABEL = { builtin: '内置', user: '导入' };
-const ENGINE_LABEL = { fish: 'Fish Audio', minimax: 'MiniMax', local: '本地语音服务', system: '系统语音' };
+const ENGINE_LABEL = { fish: 'Fish Audio', minimax: 'MiniMax', elevenlabs: 'ElevenLabs', local: '本地语音服务', system: '系统语音' };
 
 // What the list shows as her picture: a sprite sheet's first frame, a picture, or the first frame of her
 // idle clip (a video character). URLs are pack:// (served to every window) or relative to the console page.

@@ -120,7 +120,7 @@ Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start
 | E20 | 落地挤压随冲击加深 | — | 甩得越猛，落地压得越扁（300 px/s 压到 0.8，1500 px/s 以上压到 0.55） | 无，始终可用 |
 | E21 | 点击音效 | — | 桌宠行为 →“点击音效”（默认关）；点她时“啵”一声，100 毫秒内连点只响一次 | 桌宠行为 →“点击音效”（默认关） |
 | E22 | 梗图贴纸 | — | 桌宠行为 →“梗图”（默认开）。agent 回复时自己挑一张（每条消息附带她的梗图清单）；饿了 / 无聊 / 问候等离线碎碎念随机配图。大肥鱼 9 张，其他角色各 4 张 | 桌宠行为 →“梗图”（默认开） |
-| E23 | 语音（TTS）：对话语音 + 互动语音 | — | 桌宠行为 →“朗读回复”（总开关，默认关）。开启后：**对话语音**——agent 的回复、话题和对外接口发来的话整段按句朗读，正在读的句子在气泡里高亮，主人发新消息立即停；**互动语音**（“互动语音”，默认开）——初次见面、摸摸、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、关系升级、切换角色念出她气泡里的那句，连点不排队、1.5 秒内只说一句；**碎碎念**（“朗读碎碎念”，默认关）。引擎在 设置窗口 → 朗读 选：按角色（默认：大肥鱼用 MiniMax，其他角色用 Fish Audio）、Fish Audio、MiniMax（云端引擎需 API Key）、系统语音（离线免费）；每位角色有自己的音色。云端用不了（没 Key、断网、4 秒超时、出错）时这句改用系统语音或不出声。详见下方“语音（TTS）” | 桌宠行为 →“朗读回复”（默认关）、“互动语音”（默认开）、“朗读碎碎念”（默认关） |
+| E23 | 语音（TTS）：对话语音 + 互动语音 | — | 桌宠行为 →“朗读回复”（总开关，默认关）。开启后：**对话语音**——agent 的回复、话题和对外接口发来的话整段按句朗读，正在读的句子在气泡里高亮，主人发新消息立即停；**互动语音**（“互动语音”，默认开）——初次见面、摸摸、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、关系升级、切换角色念出她气泡里的那句，连点不排队、1.5 秒内只说一句；**碎碎念**（“朗读碎碎念”，默认关）。引擎在 设置窗口 → 朗读 选：按角色（默认：大肥鱼用 MiniMax，其他角色用 Fish Audio）、Fish Audio、MiniMax、ElevenLabs（云端引擎需 API Key）、系统语音（离线免费）；每位角色有自己的音色。云端用不了（没 Key、断网、4 秒超时、出错）时这句改用系统语音或不出声。详见下方“语音（TTS）” | 桌宠行为 →“朗读回复”（默认关）、“互动语音”（默认开）、“朗读碎碎念”（默认关） |
 | E24 | 同屏伙伴（最多 3 位） | 全部 | 设置窗口 → **同屏伙伴** 勾选角色，她们出现在桌面上（没有 agent），一起走动、被点、被甩；悬停伙伴点 × 送她回去 | 同屏伙伴：勾选即开，不勾即无（默认无） |
 | E25 | 互相碰撞 | `lifted` | 有同屏伙伴时把她甩向伙伴，撞到的伙伴被弹开。开关：桌宠行为 →“互相碰撞”（默认开） | 桌宠行为 →“互相碰撞”（默认开） |
 | E26 | 本机 HTTP 接口 | 任意状态 | 设置窗口 → **对外接口** 勾选开启（默认关），只监听 `127.0.0.1:7340`，每次调用都要带设置里显示的令牌，见下文 | 对外接口：“开启对外接口”（默认关） |
@@ -151,6 +151,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
    | 按角色（默认） | 她的引擎的 Key | 大肥鱼用 MiniMax「俏皮萌妹」（`qiaopi_mengmei`），其他角色用 Fish Audio；她的引擎没 Key 或出错时换另一个有 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」） |
    | Fish Audio | API Key（[fish.audio](https://fish.audio) → API Keys） | 所有角色都用 Fish：模型 `s2.1-pro`，每位角色一个社区音色；免费账号限个人非商业使用 |
    | MiniMax | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色。默认端点是国内站 `https://api.minimax.cn`；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+   | ElevenLabs | API Key（[elevenlabs.io](https://elevenlabs.io) → Profile → API Keys）+ 音色 `voice_id`（必填） | 所有角色都用 ElevenLabs（`POST /v1/text-to-speech/{voice_id}`，Key 在 `xi-api-key` 请求头）。`voice_id` 从 Voice Library / My Voices 复制，填在 ElevenLabs 卡片的 **默认音色 ID** 或角色文件 `voice.tts.elevenlabs.voiceId`（角色优先）；**模型** 可选，默认 `eleven_multilingual_v2`；**端点** 可选，留空用 `https://api.elevenlabs.io`。没填 Key 时卡片显示「未设置 Key」，选了它会提示先填 Key |
    | 本地语音服务（自己部署） | 你自己跑的语音服务的地址（Key 可不填） | IndexTTS2 / GPT-SoVITS / whale-voice 等跑在本机或局域网电脑上，音色由你的服务决定；接口选 OpenAI 兼容（`/v1/audio/speech`）或 whale-voice（`/tts`）。只在选它时用，不当云端引擎的备用；等待时间是云端的 4 倍（20 秒，长句最多 40 秒）。详见 [README](../README.md#语音tts) “本地语音服务” |
    | 系统语音 | 无 | 操作系统自带语音，离线免费；Linux 需装 speech-dispatcher 和中文语音包 |
 
@@ -193,7 +194,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 玩法 · 和她一起 | 话题 | 按好感阶段解锁的话题，「聊聊」让她在桌面上开口；新解锁的标「新」 | — |
 | 玩法 · 和她一起 | 聊天记录 | 你主动发起的聊天：列表 → 对话 | — |
 | 玩法 · 和她一起 | 桌面上的她 | 动作（9 个）、回到右下角、退出（确认） | — |
-| 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / 本地语音服务各一张卡片（端点、Key、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
+| 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / ElevenLabs / 本地语音服务各一张卡片（端点、Key、ElevenLabs 默认音色 ID / 模型、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
 | 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
 | 设置 · 声音 | 语音包 | 每个语音包的角色、引擎、句数、来源和署名；打开文件夹、重新读取 | — |
 | 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（给某位角色换上：她的详情 → 形象包） | — |
@@ -307,9 +308,10 @@ npm run dist:win       # Windows x64 安装包 + zip
      "voice": {                      // 语音（可省略）
        "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao"], // 系统语音：语言、音调、语速、优先的系统语音名
        "tts": {                      // 云端引擎的音色，每个引擎可省略
-         "default": "fish",           // “按角色”时用的引擎：fish / minimax / local（省略为 fish；大肥鱼是 minimax）
+         "default": "fish",           // “按角色”时用的引擎：fish / minimax / elevenlabs / local（省略为 fish；大肥鱼是 minimax）
          "fish": { "referenceId": "<32 位 Fish 音色 id>", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "happy": "开心地" }, "credit": "Fish Audio 社区音色「…」by …" },
          "minimax": { "voiceId": "Chinese (Mandarin)_Soft_Girl", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 0, "vol": 1, "emotion": "happy" },
+         "elevenlabs": { "voiceId": "<ElevenLabs voice_id，20 位字母和数字>", "model": "eleven_multilingual_v2", "stability": 0.5, "similarityBoost": 0.75, "style": 0, "speed": 1.0, "speakerBoost": true }, // 可省略：只有 voiceId 必填；不写时用 设置 → 朗读 → ElevenLabs 的默认音色 ID
          "local": { "voice": "whale" }  // 可省略：她在本地语音服务上的音色名（不写就用设置里填的）
        },
        "lines": { "lift": ["…", "…"], "throw": ["…", "…"], "catch": ["…", "…"] } // 拖拽 / 甩出 / 接住时说的台词（互动语音）
