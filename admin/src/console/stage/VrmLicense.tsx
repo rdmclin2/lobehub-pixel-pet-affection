@@ -98,3 +98,28 @@ export const VrmLicense = ({ packId, vrm }: { packId: string; vrm: any }) => {
     </Flexbox>
   );
 };
+
+/** A license as rows (商店 → VRM 角色: read from the model when the store was built, before it is downloaded). */
+export const LicenseRows = ({ id, rows }: { id: string; rows: { href?: string | null; label: string; text: string }[] }) => (
+  <dl className={styles.meta} data-store-license={id}>
+    {rows.map((row, j) => [
+      <dt key={`t${j}`}>{row.label}</dt>,
+      <dd key={`d${j}`}>
+        {row.href ? (
+          <a
+            href={row.href}
+            onClick={(e) => {
+              e.preventDefault();
+              api().openLink(row.href!);
+            }}
+            title="在浏览器中打开"
+          >
+            {row.text}
+          </a>
+        ) : (
+          row.text
+        )}
+      </dd>,
+    ])}
+  </dl>
+);

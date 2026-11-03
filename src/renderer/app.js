@@ -38,6 +38,7 @@ let thinkTimer = null;
 let attachments = []; // [{ kind:'image', dataUrl, name } | { kind:'path', path, name }] waiting for the next message
 let pointerInside = false;
 let fx = null; // the shared effects layer (fx.js), created at boot
+let dance = null; // VRM dancing (vrm-dance.js, docs/vrm-dance.md): what she dances, its music and clock; created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
 let toastTimer = null;
@@ -492,6 +493,8 @@ function vrmSnapshot(now) {
     facing: $('pet-body').dataset.facing,
     pointerInside,
     win: [window.screenX, window.screenY],
+    dance: dance ? dance.snapshot() : null,
+    recording: micActive(),
   };
 }
 // The posture saved for a VRM pack (settings.vrmPostures; 'auto' = her director chooses).
@@ -823,6 +826,7 @@ function syncSettingsDot() {
 function openSettings(section) {
   if (thinking) return;
   $('food-menu').classList.add('hidden');
+  closeDanceMenu();
   hideToast();
   const news = section === undefined ? settingsNews() : null;
   const s = section !== undefined ? section : news ? SETTINGS_SECTION[news] : undefined;
@@ -1270,8 +1274,8 @@ function setThinking(on) {
   const b = $('bubble');
   if (on) {
     // nothing but the pet and this bubble while it works; controls come back when it is done
-    document.activeElement && document.activeElement.blur && document.activeElement.blur();
     $('food-menu').classList.add('hidden');
+    closeDanceMenu();
     clearTimeout(bubbleTimer);
     $('meme-sticker').classList.add('hidden');
     b.classList.remove('hidden');
@@ -1296,6 +1300,8 @@ function errorLine(r) {
 
 async function doAct(kind, food) {
   if (thinking) return;
+  // 喂食 / 玩耍 / 睡觉 are a new order for her body: the dance stops first (docs/vrm-dance.md §3.4)
+  if (dance && dance.active()) dance.stop({ reason: kind });
   const r = await window.pet.act(kind, food);
   const video = isVideo(view && view.pet.speciesId);
   if (kind === 'feed' && r.ok) {
@@ -1320,14 +1326,202 @@ function buildFoodMenu() {
   }
 }
 
+// ---------- 跳舞 (docs/vrm-dance.md §6.2 L2 / L4, §6.3) ----------
+// The toolbar's 跳舞 button (a VRM look only) and its menu: what she is dancing (progress, 循环播放, 停止), the
+// dances (cover, name, length, 无音乐), and a way to the settings window's 舞蹈 page. One click on a row dances it.
+const DANCE_ROWS = 6; // more than this: the most recent ones and 全部舞蹈…
+const ICO_MUSIC = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+const ICO_STOP = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>';
+const ICO_LOOP = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+const danceRecent = []; // ids, most recently danced first (this session)
+let danceLoading = null; // the id whose clip / music is loading
+let danceMenuTimer = null;
+const mmss = (s) => { const t = Math.max(0, Math.round(s || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+const canDanceNow = () => !!(view && view.look && view.look.kind === 'vrm');
+function danceCover(d, size) {
+  const el = document.createElement('span');
+  el.className = `dance-cover s${size}`;
+  if (d && d.cover) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = `vrmlib://dance/${d.cover}`;
+    img.addEventListener('error', () => { el.innerHTML = ICO_MUSIC; }, { once: true });
+    el.appendChild(img);
+  } else el.innerHTML = ICO_MUSIC;
+  return el;
+}
+function closeDanceMenu() {
+  $('dance-menu').classList.add('hidden');
+  clearInterval(danceMenuTimer);
+  danceMenuTimer = null;
+}
+async function openDanceMenu() {
+  const m = $('dance-menu');
+  if (!m.classList.contains('hidden')) return closeDanceMenu();
+  $('food-menu').classList.add('hidden');
+  m.classList.remove('hidden');
+  await renderDanceMenu();
+  const first = m.querySelector('[role="menuitem"]:not([disabled])');
+  if (first) first.focus({ preventScroll: true });
+  clearInterval(danceMenuTimer);
+  danceMenuTimer = setInterval(updateDanceNow, 250);
+}
+async function renderDanceMenu() {
+  const m = $('dance-menu');
+  const all = dance ? await dance.list() : [];
+  const st = dance ? dance.state() : null;
+  m.innerHTML = '';
+  if (st) {
+    const now = document.createElement('div');
+    now.className = 'dance-now';
+    now.dataset.danceNow = st.id;
+    const entry = all.find((d) => d.id === st.id);
+    now.appendChild(danceCover(entry, 24));
+    const txt = document.createElement('div');
+    txt.className = 'dance-now-text';
+    txt.innerHTML = '<b></b><small class="dance-progress"></small>';
+    txt.querySelector('b').textContent = `正在跳《${st.name}》`;
+    txt.title = st.name;
+    now.appendChild(txt);
+    const loop = document.createElement('button');
+    loop.className = 'btn icon-btn dance-loop';
+    loop.setAttribute('role', 'menuitemcheckbox');
+    loop.setAttribute('aria-label', '循环播放');
+    loop.title = '循环播放';
+    loop.innerHTML = ICO_LOOP;
+    loop.addEventListener('click', () => { const cur = dance.state(); if (cur) dance.setLoop(!cur.loop); updateDanceNow(); });
+    const stop = document.createElement('button');
+    stop.className = 'btn dance-stop';
+    stop.setAttribute('role', 'menuitem');
+    stop.innerHTML = `${ICO_STOP}停止`;
+    stop.addEventListener('click', () => { dance.stop({ reason: 'menu' }); closeDanceMenu(); syncDanceButton(); });
+    now.append(loop, stop);
+    m.appendChild(now);
+  }
+  const own = all.filter((d) => !d.builtin).sort((a, b) => (danceRecent.indexOf(a.id) + 1 || 1e9) - (danceRecent.indexOf(b.id) + 1 || 1e9));
+  const rows = [...own.slice(0, DANCE_ROWS - 1), ...all.filter((d) => d.builtin)];
+  const list = document.createElement('div');
+  list.className = 'dance-list';
+  for (const d of rows) {
+    const b = document.createElement('button');
+    b.className = 'btn dance-row';
+    b.setAttribute('role', 'menuitem');
+    b.dataset.dance = d.id;
+    b.title = d.name;
+    b.appendChild(danceCover(d, 32));
+    const name = document.createElement('span');
+    name.className = 'dance-name';
+    name.textContent = d.name;
+    const meta = document.createElement('small');
+    meta.className = 'dance-meta';
+    // with music: ♪ before the length; without: 无音乐 (in words, not only an icon or a colour)
+    if (st && st.id === d.id) meta.textContent = '正在跳';
+    else if (danceLoading === d.id) meta.textContent = '准备中…';
+    else if (d.audio) { meta.innerHTML = `${ICO_MUSIC}<span></span>`; meta.querySelector('span').textContent = mmss(d.duration); meta.setAttribute('aria-label', `有音乐，${mmss(d.duration)}`); meta.title = '有音乐'; }
+    else meta.textContent = `无音乐 · ${mmss(d.duration)}`;
+    b.append(name, meta);
+    if (danceLoading === d.id) b.classList.add('loading');
+    b.addEventListener('click', () => startDance(d));
+    list.appendChild(b);
+  }
+  m.appendChild(list);
+  const more = document.createElement('button');
+  more.className = 'btn dance-more';
+  more.setAttribute('role', 'menuitem');
+  more.textContent = !own.length ? '导入更多舞蹈…' : own.length > DANCE_ROWS - 1 ? `全部舞蹈（${own.length + 1}）…` : '管理舞蹈…';
+  more.addEventListener('click', () => { closeDanceMenu(); openSettings('dances'); });
+  m.appendChild(more);
+  updateDanceNow();
+}
+function updateDanceNow() {
+  const m = $('dance-menu');
+  const st = dance ? dance.state() : null;
+  const box = m.querySelector('.dance-now');
+  if (!!st !== !!box || (st && box && box.dataset.danceNow !== st.id)) { renderDanceMenu(); return; }
+  if (!st) return;
+  box.querySelector('.dance-progress').textContent = `${mmss(st.t)} / ${mmss(st.duration)}${st.paused ? ' · 暂停中' : ''}${st.music ? '' : ' · 无音乐'}`;
+  const loop = box.querySelector('.dance-loop');
+  loop.setAttribute('aria-checked', String(!!st.loop));
+  loop.setAttribute('aria-pressed', String(!!st.loop));
+  loop.title = st.loop ? '循环播放：开（点一下关闭）' : '循环播放：关（点一下打开）';
+}
+// 聊天里说「跳个舞」/「跳一下节拍摇摆」/「别跳了」(core/dance-intent.js): recognised locally, never by the model
+let danceRefusedAt = 0;
+async function chatDanceIntent(text) {
+  if (!window.PetDanceIntent || !dance) return;
+  const dancing = dance.active();
+  const all = canDanceNow() ? await dance.list() : [];
+  const m = window.PetDanceIntent.matchDanceIntent(text, all, { dancing });
+  if (!m) return;
+  if (m.action === 'stop') { dance.stop({ reason: 'chat' }); syncDanceButton(); return; }
+  if (!canDanceNow()) {
+    // a look that cannot dance: one local line, not again within 10 minutes
+    if (Date.now() - danceRefusedAt > 10 * 60 * 1000) { danceRefusedAt = Date.now(); say('我现在这个样子跳不了舞……换成 VRM 模型再来吧。', 'fallback', 'fallback'); }
+    return;
+  }
+  const d = (m.id && all.find((x) => x.id === m.id)) || window.PetDanceIntent.pickOther(all, danceRecent);
+  if (d) await startDance(d);
+}
+async function startDance(d) {
+  if (!dance || danceLoading) return;
+  danceLoading = d.id;
+  syncDanceButton();
+  renderDanceMenu();
+  let r;
+  try { r = await dance.play({ id: d.id }); } finally { danceLoading = null; }
+  if (r && r.ok) {
+    const i = danceRecent.indexOf(d.id);
+    if (i >= 0) danceRecent.splice(i, 1);
+    danceRecent.unshift(d.id);
+    closeDanceMenu();
+  } else if (r && r.reason !== 'cancelled') {
+    closeDanceMenu();
+    showNotice('没能跳舞', r.reason === 'load-failed' ? `《${d.name}》没能载入，可能文件被删了。到 设置 → 舞蹈 重新导入。` : r.message || '她现在跳不了，稍后再试。', { label: '打开舞蹈设置', admin: 'dances' });
+  }
+  syncDanceButton();
+}
+// the button: shown for a VRM look only; pressed while she dances; spinning while a dance loads
+function syncDanceButton() {
+  const b = $('btn-dance');
+  const show = canDanceNow();
+  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
+  if (!show && !$('dance-menu').classList.contains('hidden')) closeDanceMenu();
+  const st = dance && dance.active() ? dance.state() : null;
+  const pressed = String(!!st);
+  if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
+  const title = danceLoading ? '正在准备舞蹈…' : st ? `正在跳《${st.name}》，点一下可以停止或换一支` : '跳舞';
+  if (b.title !== title) b.title = title;
+  b.classList.toggle('loading', !!danceLoading);
+  b.disabled = !!danceLoading;
+}
+function bindDanceMenu() {
+  const m = $('dance-menu');
+  m.addEventListener('keydown', (e) => {
+    const items = [...m.querySelectorAll('[role^="menuitem"]:not([disabled])')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = items.length ? items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length] : null;
+      if (n) n.focus();
+    } else if (e.key === 'Escape') {
+      e.stopPropagation(); // Esc closes the menu here; it does not stop the dance
+      closeDanceMenu();
+      $('btn-dance').focus();
+    }
+  });
+}
+
 function bindPetUi() {
   buildFoodMenu();
+  bindDanceMenu();
   $('toolbar').addEventListener('click', (e) => {
     const btn = e.target.closest && e.target.closest('[data-act]');
     const act = btn && btn.dataset.act;
     if (!act) return;
     if (act !== 'feed') $('food-menu').classList.add('hidden');
-    if (act === 'feed') $('food-menu').classList.toggle('hidden');
+    if (act !== 'dance') closeDanceMenu();
+    if (act === 'dance') openDanceMenu();
+    else if (act === 'feed') $('food-menu').classList.toggle('hidden');
     else if (act === 'play' || act === 'sleep') doAct(act);
     else if (act === 'chat') {
       $('chat-row').classList.toggle('hidden');
@@ -1338,6 +1532,8 @@ function bindPetUi() {
   const send = async () => {
     const input = $('chat-input');
     const text = input.value.trim();
+    // 「别跳了」 while she is still thinking about the last message: the dance part still happens
+    if (thinking && text && !attachments.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { input.value = ''; chatDanceIntent(text); return; }
     if ((!text && attachments.length === 0) || thinking) return;
     const imgs = attachments.filter((a) => a.kind === 'image');
     const files = attachments.filter((a) => a.kind === 'path').map((a) => a.path);
@@ -1347,6 +1543,7 @@ function bindPetUi() {
       if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
+    if (text && !imgs.length && !files.length) chatDanceIntent(text); // 「跳个舞」/「别跳了」: local, the message still goes to her agent
     attachments = [];
     renderAttachments();
     input.value = '';
@@ -1393,7 +1590,7 @@ function bindPetUi() {
     for (const img of picked) pushAttachment({ kind: 'image', ...img });
   });
   bindMic();
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); else if (e.key === 'Escape' && dance && dance.active()) dance.stop({ reason: 'esc' }); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
@@ -1689,6 +1886,7 @@ function syncHover() {
   if (!pointerInside && !micActive() && !voiceHeld()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
     $('food-menu').classList.add('hidden');
+    closeDanceMenu();
   }
 }
 function bindHover() {
@@ -1789,7 +1987,8 @@ function animatePet() {
   const now = performance.now();
   const sp = speciesOf(view.pet.speciesId);
   const video = isVideo(view.pet.speciesId);
-  fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
+  // no idle cues (walks, turns) while she dances: the window moving would drag the dance along (§3.4)
+  fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside && !(dance && dance.active()), video);
   const state = petStatus();
   const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : isLive(view.look) ? { name: state, exact: !RIG_OVERLAY.has(state) } : { name: state, exact: false };
   if (video) playClip($('pet-video'), sp, r.name);
@@ -2177,6 +2376,8 @@ window.petFx = {
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // dancing: the controller's state (id, time, music, gain…) and counters
+  dance: () => (dance ? { state: dance.state(), stats: dance.stats() } : null),
   // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
   live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
   // the desktop pet's pixel sprite: framing, half-body band (pack / default), measured reference, crop, canvas size
@@ -2216,10 +2417,16 @@ async function onApiCmd({ id, cmd, args }) {
   let result = { ok: false, reason: 'no-pet' };
   if (view && !$('pet-screen').classList.contains('hidden')) {
     const video = isVideo(view.pet.speciesId);
-    if (cmd === 'state') result = { ok: true, fx: window.petFx.state(), bubble: $('bubble').classList.contains('hidden') ? null : $('bubble').textContent };
+    if (cmd === 'state') result = { ok: true, fx: window.petFx.state(), bubble: $('bubble').classList.contains('hidden') ? null : $('bubble').textContent, dance: dance ? dance.state() : null };
+    // dancing (docs/vrm-dance.md §6.2): a VRM look only; the reason otherwise
+    if (cmd === 'dance') result = dance ? await dance.play({ id: args.id || null, name: args.name || null, loop: args.loop }) : { ok: false, reason: 'no-pet' };
+    if (cmd === 'dance-stop') result = dance ? dance.stop({ reason: args.immediate ? 'removed' : 'api', immediate: !!args.immediate }) : { ok: false, reason: 'no-pet' };
+    if (cmd === 'dance-loop') result = dance && dance.active() ? { ok: true, loop: dance.setLoop(args.on) } : { ok: false, reason: 'not-dancing' };
+    if (cmd === 'dance-state') result = { ok: true, dance: dance ? dance.state() : null };
     if (cmd === 'anim') {
       if (thinking) result = { ok: false, reason: 'busy' };
       else {
+        if (dance && dance.active()) dance.stop({ reason: 'anim' });
         if (args.facing) fx.setFacing(args.facing);
         fx.cue(args.state, video);
         result = { ok: true };
@@ -2241,6 +2448,8 @@ async function onApiCmd({ id, cmd, args }) {
 
 const spriteGliding = () => { for (const s of sprites) if (s.glide) return true; return false; }; // a framing glide wants every frame
 function frameLoop() {
+  if (dance) dance.tick(performance.now()); // before the figure draws: the clock, the music, the director's asks
+  if (view && !VISITOR) syncDanceButton();
   tickSprites(performance.now());
   tickRigs(performance.now());
   if (!$('hatching').classList.contains('hidden')) {
@@ -2271,6 +2480,11 @@ function onUpdateStatus(u) {
 // ---------- boot ----------
 async function main() {
   fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), touchLayer: $('touch-fx'), api: window.pet, prefs: petPrefs, hitBox: petHitBox });
+  if (window.PetDance) {
+    // only the desk pet's own VRM figure dances (not a picture, not the hatch screen)
+    dance = window.PetDance.create({ figure: () => (view && view.look && view.look.kind === 'vrm' && !$('pet-screen').classList.contains('hidden') ? vrmFigure() : null), look: () => view && view.look, prefs: () => (settings && settings.prefs) || {}, body: $('pet-body') });
+    window.PetDance.current = dance;
+  }
   window.pet.onKicked((v) => fx.kicked(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) }));
   if (VISITOR) return visitorMain();
   info = await window.pet.boot();
@@ -2289,6 +2503,8 @@ async function main() {
     window.pet.openAdmin(admin || undefined);
   });
   window.pet.onUpdate((v) => {
+    // 通用设定: main sends the bases again when a generic VRM companion came or went (core/generic.js)
+    if (v && Array.isArray(v.speciesList)) { info.species = v.speciesList; delete v.speciesList; }
     view = v;
     syncPrewarm();
     if (v) { applyArt(); refreshHud(); return; }

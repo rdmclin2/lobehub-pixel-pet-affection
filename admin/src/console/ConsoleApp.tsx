@@ -5,6 +5,7 @@ import { ChatPage } from './pages/Chat';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
+import { DancesPage } from './pages/Dances';
 import { StorePage } from './pages/Store';
 import { DeskPage, HistoryPage, TopicsPage } from './pages/Together';
 import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, ProactivePage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
@@ -50,6 +51,8 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <HistoryPage />;
     case 'desk':
       return <DeskPage />;
+    case 'dances':
+      return <DancesPage />;
     case 'behavior':
       return <BehaviorPage />;
     case 'proactive':

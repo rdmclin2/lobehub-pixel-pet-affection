@@ -27,10 +27,16 @@ const REASON_TEXT = {
 class CatalogDownloader {
   // `packStore`: src/main/packs.js; `settings()`: the current settings (catalogUrl, the 18+ switches);
   // `emit(channel, payload)`: to every window.
-  constructor({ packStore, settings, emit }) {
+  // 商店 → 舞蹈 uses the same downloader with its own index and installer: `lookup(id)` → an index entry,
+  // `isInstalled(entry)`, `install(entry, zipFile)` → { ok, reason?, errors? }; the defaults are the characters'.
+  constructor({ packStore, settings, emit, lookup = null, isInstalled = null, install = null, texts = null }) {
     this.packStore = packStore;
     this.settings = settings;
     this.emit = emit;
+    this.lookup = lookup || ((id) => Catalog.entry(id));
+    this.isInstalled = isInstalled || ((e) => this.packStore.installed(e.id));
+    this.install = install || ((e, zipFile) => this.packStore.installDownload(e, zipFile));
+    this.texts = { ...REASON_TEXT, ...(texts || {}) };
     this.jobs = new Map(); // id → { received, total, controller }
   }
 
@@ -46,16 +52,17 @@ class CatalogDownloader {
   }
 
   async download(id) {
+    const T = this.texts;
     const fail = (reason, extra = {}) => {
-      this.emit('catalog-progress', { id, state: 'failed', reason, text: REASON_TEXT[reason] || reason });
-      return { ok: false, reason, text: REASON_TEXT[reason] || reason, ...extra };
+      this.emit('catalog-progress', { id, state: 'failed', reason, text: T[reason] || reason });
+      return { ok: false, reason, text: T[reason] || reason, ...extra };
     };
-    const e = Catalog.entry(String(id || ''));
-    if (!e) return { ok: false, reason: 'unknown', text: REASON_TEXT.unknown };
-    if (this.packStore.installed(e.id)) return { ok: false, reason: 'installed', text: REASON_TEXT.installed };
+    const e = this.lookup(String(id || ''));
+    if (!e) return { ok: false, reason: 'unknown', text: T.unknown };
+    if (this.isInstalled(e)) return { ok: false, reason: 'installed', text: T.installed };
     const s = this.settings();
-    if (e.adult && !(s.ageConfirmed && s.adultContent)) return { ok: false, reason: 'adult', text: REASON_TEXT.adult };
-    if (this.jobs.has(e.id)) return { ok: false, reason: 'busy', text: REASON_TEXT.busy };
+    if (e.adult && !(s.ageConfirmed && s.adultContent)) return { ok: false, reason: 'adult', text: T.adult };
+    if (this.jobs.has(e.id)) return { ok: false, reason: 'busy', text: T.busy };
     const controller = new AbortController();
     const job = { received: 0, total: e.bytes, controller };
     this.jobs.set(e.id, job);
@@ -64,36 +71,41 @@ class CatalogDownloader {
     const progress = (state) => this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state });
     try {
       progress('downloading');
-      let res;
-      try {
-        res = await net.fetch(Catalog.downloadUrl(e, s), { signal: controller.signal, headers: { 'User-Agent': `PixelPetAffection/${app.getVersion()}` } });
-      } catch (err) {
-        return fail(controller.signal.aborted ? 'canceled' : 'network', { message: err.message });
-      }
-      if (!res.ok) return fail('http', { status: res.status });
+      // one file, or the archive's parts in order (core/catalog.js: the CDN takes at most 20 MB per file)
+      const parts = Array.isArray(e.parts) && e.parts.length ? e.parts : [{ file: e.file, bytes: e.bytes }];
       const hash = crypto.createHash('sha256');
       const out = fs.createWriteStream(tmp);
-      try {
-        for await (const chunk of res.body) {
-          const buf = Buffer.from(chunk);
-          job.received += buf.length;
-          if (job.received > e.bytes) throw Object.assign(new Error('too large'), { reason: 'size' });
-          hash.update(buf);
-          if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
-          if (Date.now() - last > 150) {
-            last = Date.now();
-            progress('downloading');
-          }
+      for (const part of parts) {
+        let res;
+        try {
+          res = await net.fetch(Catalog.downloadUrl({ ...e, file: part.file }, s), { signal: controller.signal, headers: { 'User-Agent': `PixelPetAffection/${app.getVersion()}` } });
+        } catch (err) {
+          out.destroy();
+          return fail(controller.signal.aborted ? 'canceled' : 'network', { message: err.message });
         }
-      } catch (err) {
-        out.destroy();
-        return fail(err.reason || (controller.signal.aborted ? 'canceled' : 'network'), { message: err.message });
+        if (!res.ok) { out.destroy(); return fail('http', { status: res.status }); }
+        try {
+          for await (const chunk of res.body) {
+            const buf = Buffer.from(chunk);
+            job.received += buf.length;
+            if (job.received > e.bytes) throw Object.assign(new Error('too large'), { reason: 'size' });
+            hash.update(buf);
+            if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
+            if (Date.now() - last > 150) {
+              last = Date.now();
+              progress('downloading');
+            }
+          }
+        } catch (err) {
+          out.destroy();
+          return fail(err.reason || (controller.signal.aborted ? 'canceled' : 'network'), { message: err.message });
+        }
       }
       await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
       if (job.received !== e.bytes) return fail('size');
       if (hash.digest('hex') !== e.sha256) return fail('checksum');
       progress('installing');
-      const r = await this.packStore.installDownload(e, tmp);
+      const r = await this.install(e, tmp);
       if (!r.ok) return fail(r.reason === 'builtin' ? 'installed' : 'invalid', { errors: r.errors });
       this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state: 'done' });
       return { ok: true, id: e.id, name: e.name };
