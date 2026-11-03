@@ -10,7 +10,7 @@
  * - C02 / CHAT-03：会话栏只列已遇见的角色（正在陪你置顶），底部一行「结识更多 →」去角色图鉴（M-08 Hick）。
  * - CHAT-02（B12 状态词）：「在桌面」→「正在陪你」。
  * - C03 / CHAT-04：模型下拉下方写影响范围「桌面上也用这个模型」，换好后内联「已保存」，失败 toast 写原因（P-05、S-4 / S-5）。
- * - C04 / HUB-03 / PG-05：页头「⋯」→「重新开始对话」（确认后执行）与「在她的页面设置模型」。
+ * - C04 / HUB-03 / PG-05：页头「⋯」→「重新开始对话」（确认后执行，任一已遇见的角色都可用；执行期间弹窗不可关闭，S-7）与「在她的页面设置模型」。
  * - C09 / TOG-01：历史读取失败显示 LoadFailed +「重试」，不再画成空对话或一直转圈（K-05）；「查看更早的消息」失败给 toast。
  */
 import { ActionIcon, Alert, Button, createStaticStyles, cssVar, DropdownMenu, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
@@ -568,15 +568,15 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     else setSavedAt(Date.now()); // S-5: the select shows the new value; a quiet 已保存 beside it, no toast
   };
 
-  // C04: 重新开始对话 works on the character who is with you (pet-service newTopic → her current topic)
-  const isCurrent = !!row?.current || !!who?.current;
+  // C04: 重新开始对话 works on the character whose conversation is open (any met one; pet-service newTopic(id)).
+  // The dialog runs it and cannot be dismissed until main answers (askAsync, S-7); busy / not-met is said in it.
   const restart = () =>
     askAsync({
       cancelText: '先不了',
       content: '她会从头聊起，不再带着之前的对话上下文。旧对话保留在 LobeHub 里；好感和这里的聊天记录都不变。',
       okText: '重新开始对话',
       run: async () => {
-        const r = await api().newTopic();
+        const r = await api().newTopic(activeId ?? undefined);
         if (r && r.view) merge({ view: r.view });
         return asResult(r);
       },
@@ -811,8 +811,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
               <DropdownMenu
                 items={[
                   {
-                    desc: isCurrent ? '她从头聊起，聊天记录和好感不变' : `只能对正在陪你的角色使用；先把${name}换到桌面上`,
-                    disabled: !isCurrent,
+                    desc: '她从头聊起，聊天记录和好感不变',
                     icon: MessageSquarePlus,
                     key: 'new-topic',
                     label: <span data-chat-new-topic>重新开始对话</span>,

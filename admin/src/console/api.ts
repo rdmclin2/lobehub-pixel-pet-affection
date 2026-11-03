@@ -286,7 +286,8 @@ export interface PetAdminApi {
   importVrm: (species: string) => Promise<any>;
   installUpdate: () => Promise<any>;
   newApiToken: () => Promise<any>;
-  newTopic: () => Promise<any>;
+  /** C04: `speciesId` = any met character (chat page); none = the current one */
+  newTopic: (speciesId?: string) => Promise<any>;
   onApiStatus: (cb: (st: any) => void) => () => void;
   onState: (cb: (st: AdminState) => void) => () => void;
   onUpdateStatus: (cb: (st: any) => void) => () => void;

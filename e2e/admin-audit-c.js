@@ -59,8 +59,13 @@ module.exports = function auditC(ctx) {
       global.__auditOrig = global.__auditOrig || {};
       if (!(a.channel in global.__auditOrig)) global.__auditOrig[a.channel] = ipcMain._invokeHandlers && ipcMain._invokeHandlers.get(a.channel);
       ipcMain.removeHandler(a.channel);
-      ipcMain.handle(a.channel, async () => {
+      ipcMain.handle(a.channel, async (e, ...args) => {
         if (a.mode === 'throw') throw new Error(a.value);
+        // 'slow': the real handler, answered `value` ms late (S-7: the dialog while main is still working)
+        if (a.mode === 'slow') {
+          await new Promise((r) => setTimeout(r, a.value));
+          return global.__auditOrig[a.channel](e, ...args);
+        }
         return a.value;
       });
     }, { channel, mode, value });
@@ -109,7 +114,16 @@ module.exports = function auditC(ctx) {
         return `${out.join(', ')}; side: ${side.replace(/\s+/g, ' ').slice(0, 160)}`;
       }, () => admin);
 
-      await step(S, 'C04 聊天页头 ⋯ → 重新开始对话（确认 → 结果 toast）', async () => {
+      // dialog state for S-7: is it still open, can 取消 be pressed, is the ✕ there, does the 确认 button spin
+      const askState = (re) => admin.evaluate((src) => {
+        const d = [...document.querySelectorAll('[role="dialog"]')].find((x) => new RegExp(src).test(x.textContent));
+        if (!d) return { open: false };
+        const btn = (t) => [...d.querySelectorAll('button')].find((b) => b.textContent.trim() === t);
+        const busy = d.querySelector('[data-ask-busy]')?.getAttribute('data-ask-busy');
+        return { busy, cancelDisabled: !!(btn('先不了') || btn('取消'))?.disabled, closeX: !!d.querySelector('button[aria-label="Close"], button[aria-label="关闭"]') || [...d.querySelectorAll('button')].some((b) => !b.textContent.trim() && b.querySelector('svg.lucide-x')), open: true };
+      }, re);
+
+      await step(S, 'C04 聊天页头 ⋯ → 重新开始对话（确认 → 执行中不可关闭 → 结果 toast）', async () => {
         if (!AFTER) return `before: 页头没有 ⋯ 菜单，重新开始话题在 设置 → LobeHub 与本机 — ${await shot('chat-header')}`;
         await admin.click('[data-chat-more]');
         await adminUntil(admin, () => !!document.querySelector('[data-chat-new-topic]'), null, 5000, 'the menu');
@@ -117,10 +131,30 @@ module.exports = function auditC(ctx) {
         await admin.click('[data-chat-new-topic]');
         await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"]')].some((d) => /从头聊起/.test(d.textContent)), null, 5000, 'the confirmation');
         const confirm = await shot('chat-new-topic-confirm');
+        const idle = await askState('从头聊起');
+        assert.equal(idle.cancelDisabled, false, '先不了 can be pressed before confirming');
+        // main answers 2.5 s late: while it works the dialog cannot be dismissed (S-7)
+        await inject('new-topic', 'slow', 2500);
         await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].filter((b) => b.textContent.trim() === '重新开始对话').pop().click());
+        await sleep(250);
+        const during = await askState('从头聊起');
+        const busyShot = await shot('chat-new-topic-busy');
+        await admin.keyboard.press('Escape');
+        await admin.mouse.click(8, 8); // the backdrop, outside the dialog
+        await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === '先不了')?.click());
+        await sleep(300);
+        const afterTries = await askState('从头聊起');
+        assert.equal(during.busy, 'true', 'the dialog says it is working');
+        assert.equal(during.cancelDisabled, true, '先不了 is disabled while it runs');
+        assert.equal(during.closeX, false, 'no ✕ while it runs');
+        assert.equal(afterTries.open, true, 'Esc / backdrop / 先不了 do not close it while it runs');
         await adminUntil(admin, () => /下一句会开一个新对话/.test(document.body.innerText), null, 8000, 'the toast');
+        await adminUntil(admin, () => ![...document.querySelectorAll('[role="dialog"]')].some((d) => /从头聊起/.test(d.textContent)), null, 5000, 'the dialog to close');
+        const closed = await askState('从头聊起');
+        await restore('new-topic');
         const done = await shot('chat-new-topic-done');
-        return [menu, confirm, done].join(', ');
+        assert.equal(closed.open, false, 'closed once it worked');
+        return `${[menu, confirm, busyShot, done].join(', ')}; 执行中：busy=${during.busy} 先不了disabled=${during.cancelDisabled} ✕=${during.closeX}；按 Esc / 点遮罩 / 点先不了之后仍打开=${afterTries.open}；成功后关闭=${!closed.open}`;
       }, () => admin);
 
       await step(S, 'C09 聊天历史读取失败：LoadFailed + 重试，不再画成空对话', async () => {
@@ -147,6 +181,39 @@ module.exports = function auditC(ctx) {
         const where = await admin.evaluate(() => document.querySelector('[data-admin-page]')?.getAttribute('data-admin-page'));
         if (AFTER) assert.equal(where, 'chat', '#/history → 聊天');
         return `${f}; #/history 显示的页面：${where}`;
+      }, () => admin);
+
+      await step(S, 'C04b 不在桌面上的角色也能重新开始对话（主进程 newTopic 按角色）', async () => {
+        if (!AFTER) return 'before: 重新开始话题只作用于当前角色（设置 → LobeHub 与本机）';
+        const met = await page.evaluate(() => window.pet.switchCharacter('gpt', '小G'));
+        assert.equal(met.ok, true, `meet gpt: ${JSON.stringify(met)}`);
+        // back to 格萝可 on the desktop (retried while 小G's first greeting keeps her busy): 小G is met but not current
+        let back = null;
+        for (let i = 0; i < 40; i++) {
+          await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+          back = await page.evaluate(() => window.pet.switchCharacter('grok'));
+          if (back.ok) break;
+          await sleep(500);
+        }
+        assert.equal(back.ok, true, `back to grok: ${JSON.stringify(back && { reason: back.reason })}`);
+        // the toast from C04 is gone first, so the one below is hers
+        await adminUntil(admin, () => !/下一句会开一个新对话/.test(document.body.innerText), null, 15000, 'the earlier toast to go');
+        await go('/overview');
+        await go('/chat/gpt');
+        await adminUntil(admin, () => /小G/.test(document.querySelector('[data-chat-title]')?.textContent || ''), null, 8000, 'her conversation');
+        // the side list says who is with you now: 格萝可, not 小G
+        await adminUntil(admin, () => /正在陪你/.test(document.querySelector('[data-character="grok"]')?.textContent || '') && !/正在陪你/.test(document.querySelector('[data-character="gpt"]')?.textContent || ''), null, 10000, '格萝可 正在陪你, 小G not');
+        await admin.click('[data-chat-more]');
+        await adminUntil(admin, () => !!document.querySelector('[data-chat-new-topic]'), null, 5000, 'the menu');
+        const disabled = await admin.evaluate(() => document.querySelector('[data-chat-new-topic]').closest('[role="menuitem"]')?.getAttribute('aria-disabled') === 'true');
+        assert.equal(disabled, false, '重新开始对话 is enabled for a met character who is not on the desktop');
+        const menu = await shot('chat-new-topic-other-menu');
+        await admin.click('[data-chat-new-topic]');
+        await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"]')].some((d) => /和小G重新开始对话/.test(d.textContent)), null, 5000, 'her confirmation');
+        await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].filter((b) => b.textContent.trim() === '重新开始对话').pop().click());
+        await adminUntil(admin, () => /下一句会开一个新对话/.test(document.body.innerText), null, 8000, 'the toast');
+        const done = await shot('chat-new-topic-other-done');
+        return `${menu}, ${done}; 小G（不在桌面，会话栏「正在陪你」是格萝可）菜单项可用，确认后 toast「下一句会开一个新对话」`;
       }, () => admin);
 
       // ---- 插个嘴 ----------------------------------------------------------------------------------------

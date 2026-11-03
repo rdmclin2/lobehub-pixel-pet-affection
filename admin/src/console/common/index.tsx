@@ -8,9 +8,9 @@
  * - SavedHint (S-5, C-17 / FORM-03): an instant setting saved → a quiet 已保存 next to it, not a toast
  * - useLeaveGuard (S-6, P-04 / FORM-01): an unsaved Key / URL / text draft asks before the page is left
  */
-import { Alert, Button, confirmModal, createStaticStyles, cssVar, Empty, Flexbox, Icon, Text } from '@lobehub/ui';
+import { Alert, Button, confirmModal, createStaticStyles, cssVar, Empty, Flexbox, Icon, Modal, Text } from '@lobehub/ui';
 import { Check, CloudOff, PawPrint, RotateCw } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { api, reasonText } from '../api';
 
@@ -102,46 +102,109 @@ export interface AskResult {
   reason?: string;
 }
 
+interface AskOpts {
+  cancelText?: string;
+  content: ReactNode;
+  danger?: boolean;
+  okText: string;
+  run: () => Promise<AskResult>;
+  title: ReactNode;
+}
+interface AskEntry {
+  id: number;
+  open: boolean;
+  opts: AskOpts;
+  resolve: (r: AskResult | null) => void;
+}
+
+// the dialogs askAsync opened, rendered by <AskHost /> (mounted once next to ModalHost, design/DesignProvider)
+let asks: AskEntry[] = [];
+let askSeed = 0;
+const askListeners = new Set<() => void>();
+const setAsks = (next: AskEntry[]) => {
+  asks = next;
+  askListeners.forEach((l) => l());
+};
+
 /**
- * An irreversible action confirmed and run in one dialog (S-7, C-15): 确认 shows 进行中 until `run` settles; on
- * failure the reason appears in the dialog and it stays open (try again or cancel); it closes only on success.
- * Resolves with the result that closed it, or null when cancelled.
+ * One askAsync dialog (S-7, C-15). While `run` is in flight (C04 / C08 follow-up): 确认 shows loading, 取消 is
+ * disabled, and the ✕ / Esc / a click outside cannot close it — the outcome is not known yet, so leaving would hide
+ * it. A failure is written in the dialog (it stays open: try again or cancel); it closes only on success.
  */
-export const askAsync = (opts: { cancelText?: string; content: ReactNode; danger?: boolean; okText: string; run: () => Promise<AskResult>; title: ReactNode }) =>
+const AskDialog = ({ entry }: { entry: AskEntry }) => {
+  const { opts } = entry;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const close = (r: AskResult | null) => {
+    setAsks(asks.map((a) => (a.id === entry.id ? { ...a, open: false } : a)));
+    entry.resolve(r);
+  };
+  const ok = async () => {
+    if (busy) return;
+    setErr(null);
+    setBusy(true);
+    let r: AskResult;
+    try {
+      r = await opts.run();
+    } catch (e) {
+      r = { ok: false, reason: String((e as Error)?.message ?? e) };
+    }
+    setBusy(false);
+    if (r.ok) close(r);
+    else setErr(r.reason || '操作没有成功');
+  };
+  return (
+    <Modal
+      afterClose={() => setAsks(asks.filter((a) => a.id !== entry.id))}
+      cancelButtonProps={{ disabled: busy }}
+      cancelText={opts.cancelText ?? '取消'}
+      closable={!busy}
+      confirmLoading={busy}
+      draggable={false}
+      keyboard={!busy}
+      maskClosable={!busy}
+      okButtonProps={opts.danger ? { danger: true } : undefined}
+      okText={opts.okText}
+      onCancel={() => !busy && close(null)}
+      onOk={ok}
+      open={entry.open}
+      title={opts.title}
+      width={420}
+    >
+      <Flexbox data-ask-body data-ask-busy={busy ? 'true' : 'false'} gap={12}>
+        <div>{opts.content}</div>
+        {err && <Alert data-ask-error description={err} showIcon title="没有成功，什么都没有改动的部分保持原样" type="error" />}
+      </Flexbox>
+    </Modal>
+  );
+};
+
+/** Where askAsync's dialogs render: mount once inside ConfigProvider (design/DesignProvider, next to ModalHost). */
+export const AskHost = () => {
+  const list = useSyncExternalStore(
+    (l) => {
+      askListeners.add(l);
+      return () => askListeners.delete(l);
+    },
+    () => asks,
+  );
+  return (
+    <>
+      {list.map((a) => (
+        <AskDialog entry={a} key={a.id} />
+      ))}
+    </>
+  );
+};
+
+/**
+ * An irreversible action confirmed and run in one dialog (S-7, C-15): 确认 shows 进行中 until `run` settles and the
+ * dialog cannot be dismissed meanwhile; on failure the reason appears in the dialog and it stays open (try again or
+ * cancel); it closes only on success. Resolves with the result that closed it, or null when cancelled.
+ */
+export const askAsync = (opts: AskOpts) =>
   new Promise<AskResult | null>((resolve) => {
-    let show: (msg: string | null) => void = () => {};
-    const Body = () => {
-      const [err, setErr] = useState<string | null>(null);
-      show = setErr;
-      return (
-        <Flexbox data-ask-body gap={12}>
-          <div>{opts.content}</div>
-          {err && <Alert data-ask-error description={err} showIcon title="没有成功，什么都没有改动的部分保持原样" type="error" />}
-        </Flexbox>
-      );
-    };
-    confirmModal({
-      cancelText: opts.cancelText ?? '取消',
-      content: <Body />,
-      okButtonProps: opts.danger ? { danger: true } : undefined,
-      okText: opts.okText,
-      onCancel: () => resolve(null),
-      onOk: async () => {
-        show(null);
-        let r: AskResult;
-        try {
-          r = await opts.run();
-        } catch (e) {
-          r = { ok: false, reason: String((e as Error)?.message ?? e) };
-        }
-        if (!r.ok) {
-          show(r.reason || '操作没有成功');
-          throw new Error(r.reason); // keeps the dialog open (confirmModal closes only when onOk resolves)
-        }
-        resolve(r);
-      },
-      title: opts.title,
-    });
+    setAsks([...asks, { id: ++askSeed, open: true, opts, resolve }]);
   });
 
 /** An IPC answer as an AskResult: `ok` from main, the reason in words. */

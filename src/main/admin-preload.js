@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
   confirmAge: (adult) => ipcRenderer.invoke('confirm-age', { adult }),
   // data, update, about
-  newTopic: () => ipcRenderer.invoke('new-topic'),
+  newTopic: (speciesId) => ipcRenderer.invoke('new-topic', speciesId),
   release: (opts) => ipcRenderer.invoke('release', opts),
   checkUpdate: () => ipcRenderer.invoke('update-check'),
   installUpdate: () => ipcRenderer.invoke('update-install'),

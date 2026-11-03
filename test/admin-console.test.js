@@ -595,7 +595,9 @@ test('every item of the old ⋯ menu has its place in the settings window (T-271
   assert.match(pages, /data-app-quit/);
   assert.doesNotMatch(together, /api\(\)\.quit\(/);
   assert.match(chat, /okText: '重新开始对话'/);
-  assert.match(chat, /api\(\)\.newTopic\(\)/);
+  assert.match(chat, /api\(\)\.newTopic\(activeId/); // C04: the open conversation's character, any met one
+  assert.match(preload, /newTopic: \(speciesId\) => ipcRenderer\.invoke\('new-topic', speciesId\)/);
+  assert.match(main, /ipcMain\.handle\('new-topic', \(_e, speciesId\) => service\.newTopic\(/);
   assert.match(pages, /deleteAgent \? '放生并删除 agent？' : '仅重置本地？'/);
   // the 动作 list keeps the old menu's nine actions
   assert.match(together, /const CUES = \['look', 'turn', 'walk', 'happy', 'pat', 'play', 'think', 'sad', 'evolve'\];/);

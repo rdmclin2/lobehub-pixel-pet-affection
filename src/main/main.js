@@ -519,7 +519,8 @@ function wire() {
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
   ipcMain.on('cancel', () => service.cancel());
-  ipcMain.handle('new-topic', () => service.newTopic());
+  // C04: the chat page names the character (any met one); the desktop ⋯ menu names none (the current one)
+  ipcMain.handle('new-topic', (_e, speciesId) => service.newTopic(typeof speciesId === 'string' ? speciesId : undefined));
   ipcMain.handle('release', async (_e, opts) => {
     const r = await service.release(opts);
     place('onboarding');

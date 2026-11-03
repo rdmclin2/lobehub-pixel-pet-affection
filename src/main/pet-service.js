@@ -1772,13 +1772,20 @@ class PetService extends EventEmitter {
     return { ok: true, view: this.view(), unlocks, already: r.unlockedStages.length === 0, speciesId: id };
   }
 
-  // ⋯ → 重新开始: the current character continues in a fresh LobeHub topic. Nothing is deleted: the old
+  // ⋯ → 重新开始: a character continues in a fresh LobeHub topic. Nothing is deleted: the old
   // topic stays in LobeHub (its id is kept in `pastTopicIds`), and her agent, affection and 聊天记录 stay
   // as they are. The next run goes without `-t`, so LobeHub opens the new topic itself.
-  newTopic() {
+  // `speciesId` (C04, chat page ⋯): any character you have met, as on the chat page; none = the current one.
+  newTopic(speciesId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
     if (this.busy) return { ok: false, reason: 'busy' };
-    const c = this._c();
+    let c = this._c();
+    if (speciesId !== undefined && speciesId !== null && speciesId !== '') {
+      const id = this._target(speciesId);
+      if (!id) return { ok: false, reason: 'unknown-character' };
+      c = this.pet.characters[id];
+      if (!c) return { ok: false, reason: 'not-met' };
+    }
     const previous = c.topicId || null;
     if (previous) c.pastTopicIds = [...(Array.isArray(c.pastTopicIds) ? c.pastTopicIds : []), previous].slice(-50);
     c.topicId = null;

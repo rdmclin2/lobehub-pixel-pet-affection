@@ -293,6 +293,33 @@ test('重新开始话题 on the desktop is a clean start: nothing from before it
   assert.doesNotMatch(runs().at(-1).prompt, /旧话题里的话/);
 });
 
+test('重新开始对话 from the chat page (C04): any met character, not only the companion; unknown / not met are refused', async () => {
+  const { svc, clock, runs } = await setup();
+  await svc.chatAs('claude', { text: '克的旧话题' });
+  const claude = svc.pet.characters.claude;
+  const oldTopic = claude.topicId;
+  assert.ok(oldTopic);
+  await svc.switchCharacter('gpt');
+  const companion = svc._c();
+  const companionTopic = companion.topicId;
+  const companionEpoch = companion.topicEpoch || 0;
+  clock.t += 60000;
+  const r = svc.newTopic('claude');
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.previous, oldTopic);
+  assert.equal(claude.topicId, null);
+  assert.equal(claude.pastTopicIds.at(-1), oldTopic);
+  assert.equal(claude.topicEpoch, 1);
+  // the companion is untouched
+  assert.equal(companion.topicId, companionTopic);
+  assert.equal(companion.topicEpoch || 0, companionEpoch);
+  await svc.chatAs('claude', { text: '新的开始' });
+  assert.doesNotMatch(runs().at(-1).prompt, /克的旧话题/);
+  assert.notEqual(runs().at(-1).topic, oldTopic);
+  assert.deepEqual(svc.newTopic('grok'), { ok: false, reason: 'not-met' });
+  assert.deepEqual(svc.newTopic('nobody'), { ok: false, reason: 'unknown-character' });
+});
+
 test('wantsRecall / pickRecall / recentRounds / historyPage', () => {
   assert.equal(AC.wantsRecall('你还记得吗'), true);
   assert.equal(AC.wantsRecall('上次那家店叫什么'), true);
