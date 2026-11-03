@@ -1011,3 +1011,63 @@ test('pet scale is saved in settings, reported to the UI and survives releasing 
   await svc.release({ deleteAgent: true });
   assert.equal(svc.settingsStore.load().petScale, 2.5);
 });
+
+// T-2752: the wardrobe follows the pack she wears. 大肥鱼's Live2D pack has art for daily only: her 衣柜 there
+// lists daily only, other outfits are refused, and an outfit worn in her pixel pack is taken off (and saved)
+// when she changes into Live2D — it never loads another pack.
+test('大肥鱼 in her Live2D pack: the wardrobe is that pack\'s, other outfits are refused, the worn one is corrected and saved', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  await svc.hatch({ speciesId: 'dafeiyu', name: '鱼' });
+  svc.unlockAll('dafeiyu');
+  // her pixel pack (default) has the scarf
+  assert.equal(svc.view().look.packId, 'dafeiyu-pixel');
+  assert.ok(svc.view().outfits.some((x) => x.id === 'scarf'));
+  assert.equal(svc.equipOutfit('scarf').ok, true);
+  assert.equal(svc.view().outfit, 'scarf');
+
+  const r = svc.setAppearance('dafeiyu-live2d');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.view.outfits.map((o) => o.id), ['daily'], 'her Live2D wardrobe: daily only');
+  assert.equal(r.view.outfit, 'daily', 'the scarf is taken off');
+  assert.equal(r.view.look.packId, 'dafeiyu-live2d');
+  assert.equal(r.view.look.kind, 'live2d');
+  assert.ok(r.view.outfits.every((o) => !o.look || o.look.packId === 'dafeiyu-live2d'), 'every wardrobe card is drawn from her Live2D pack');
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pet.json'), 'utf8'));
+  assert.equal(saved.characters.dafeiyu.equippedOutfit, 'daily', 'the correction is saved');
+
+  for (const id of ['scarf', 'swimsuit', 'qipao', 'maid']) {
+    const e = svc.equipOutfit(id);
+    assert.equal(e.ok, false, id);
+    assert.equal(svc.view().look.packId, 'dafeiyu-live2d', `${id}: she stays in her Live2D pack`);
+  }
+  assert.equal(svc.equipOutfit('scarf').reason, 'unavailable');
+  for (const id of ['scarf', 'swimsuit', 'qipao']) assert.equal(svc.lookFor('dafeiyu', id).packId, 'dafeiyu-live2d', `${id} never resolves to another pack`);
+
+  // the adult switch does not bring other packs' outfits back either
+  svc.answerAgeGate(true);
+  svc.setAdultContent(true);
+  assert.deepEqual(svc.view().outfits.map((o) => o.id), ['daily']);
+  assert.equal(svc.view().look.packId, 'dafeiyu-live2d');
+
+  // back to pixels: her pixel wardrobe again
+  assert.ok(svc.setAppearance('dafeiyu-pixel').view.outfits.some((x) => x.id === 'scarf'));
+});
+
+test('switching to a character whose pack lacks her saved outfit corrects it on arrival', async () => {
+  const { svc, dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  await svc.hatch({ speciesId: 'dafeiyu', name: '鱼' });
+  svc.unlockAll('dafeiyu');
+  assert.equal(svc.equipOutfit('swimsuit').ok, true);
+  await svc.switchCharacter('grok', { name: '小格' });
+  // her look is changed on her page while she is away; her saved outfit is still the swimsuit
+  svc.settings = { ...svc.settings, appearance: { ...svc.settings.appearance, dafeiyu: 'dafeiyu-live2d' } };
+  assert.equal(svc.pet.characters.dafeiyu.equippedOutfit, 'swimsuit');
+  const r = await svc.switchCharacter('dafeiyu');
+  assert.equal(r.ok, true);
+  assert.equal(r.view.look.packId, 'dafeiyu-live2d', 'she arrives in her Live2D pack, not the pixel swimsuit');
+  assert.equal(r.view.outfit, 'daily');
+  assert.equal(svc.pet.characters.dafeiyu.equippedOutfit, 'daily');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pet.json'), 'utf8')).characters.dafeiyu.equippedOutfit, 'daily', 'and saved');
+});

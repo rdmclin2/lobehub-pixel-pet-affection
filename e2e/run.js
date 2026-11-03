@@ -3,6 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "wardrobepack" -> 衣柜按形象包隔离 (T-2752): 大肥鱼 pixel → Live2D: the 衣柜 follows the pack, unsupported outfits refused
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
@@ -7749,6 +7750,160 @@ async function petuiScenario() {
   }
 }
 
+// ---------------------------------------------------------------- wardrobepack (衣柜按形象包隔离, T-2752)
+// The wardrobe follows the pack she wears: 大肥鱼 in her pixel pack has a full 衣柜; changing into her Live2D
+// pack (art for daily only) leaves daily alone, takes off the scarf she wore (saved), refuses other outfits and
+// never swaps her into another pack. Driven through the settings window like a user. Free: fake lh, no network.
+async function wardrobePackScenario() {
+  const S = 'wardrobepack';
+  const SHOTS = path.join(OUT, 'wardrobepack');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobe-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-wardrobefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const savedPet = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  const errors = [];
+  let admin = null;
+  const W = 1180;
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (name) => {
+    await admin.bringToFront();
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, name));
+    await admin.waitForTimeout(250);
+  };
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  const chips = () => admin.$$eval('[data-outfits="dafeiyu"] [data-outfit]', (els) => els.map((e) => e.getAttribute('data-outfit')));
+  const petLook = () => page.evaluate(() => ({ kind: document.getElementById('pet-body').dataset.kind, outfit: document.getElementById('char-wrap').dataset.outfit }));
+  const viewNow = async () => { const v = (await call('state')).view; return { packId: v.look && v.look.packId, kind: v.look && v.look.kind, outfit: v.outfit, outfits: v.outfits.map((o) => o.id), cards: [...new Set(v.outfits.map((o) => o.look && o.look.packId))] }; };
+  try {
+    await step(S, 'W0 hatch 大肥鱼, open the settings window, unlock every stage', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'settings');
+      for (let i = 0; i < 200 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      const u = await call('unlockAll', 'dafeiyu');
+      assert.equal(u.ok, true);
+      if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-pixel');
+      return `default pack ${v.packId}; wardrobe ${v.outfits.join(',')}`;
+    }, page);
+
+    await step(S, 'W1 像素包: 衣柜 lists the pixel pack\'s outfits; a click on 针织围巾套装 dresses her', async () => {
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 8000 });
+      await attached('[data-outfit="scarf"][data-equipped="true"]');
+      await page.waitForTimeout(500);
+      const c = await chips();
+      assert.ok(c.length > 1 && c.includes('scarf'), c.join(','));
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'scarf');
+      const out = [await shot('w1-pixel-wardrobe'), await petShot('w1-pet-pixel-scarf')];
+      return `衣柜 chips (dafeiyu-pixel): ${c.join(',')}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W2 换上 Live2D 包: 衣柜 shows only daily, the scarf is taken off and saved, she is the Live2D model', async () => {
+      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+      await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await page.waitForTimeout(1500);
+      const v = await viewNow();
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(v.outfit, 'daily');
+      assert.deepEqual(v.cards, ['dafeiyu-live2d'], 'every card is drawn from her Live2D pack');
+      const saved = savedPet().characters.dafeiyu.equippedOutfit;
+      assert.equal(saved, 'daily', 'the correction is saved');
+      const out = [await shot('w2-live2d-wardrobe'), await petShot('w2-pet-live2d')];
+      return `view ${JSON.stringify(v)}; pet.json equippedOutfit=${saved}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W3 an outfit the Live2D pack has not (scarf / swimsuit / qipao) is refused; she stays in her Live2D pack', async () => {
+      const rs = {};
+      for (const id of ['scarf', 'swimsuit', 'qipao']) {
+        const r = await call('equipOutfit', id);
+        rs[id] = r.ok ? 'ok' : r.reason;
+        assert.equal(r.ok, false, id);
+      }
+      await page.waitForTimeout(800);
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      assert.equal(v.outfit, 'daily');
+      const pl = await petLook();
+      assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
+      return `equipOutfit → ${JSON.stringify(rs)}; view ${v.packId}/${v.outfit}; pet window ${JSON.stringify(pl)}; ${await petShot('w3-pet-still-live2d')}`;
+    }, () => admin);
+
+    await step(S, 'W4 18+ confirmed and adult content on: the Live2D wardrobe is still daily only', async () => {
+      await call('confirmAge', true);
+      await call('setAdult', true);
+      await page.waitForTimeout(500);
+      const v = await viewNow();
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      return `view ${JSON.stringify(v)}; ${await shot('w4-live2d-adult-on')}`;
+    }, () => admin);
+
+    await step(S, 'W5 back to the pixel pack: its full wardrobe again, she keeps daily', async () => {
+      await admin.click('[data-use-pack="dafeiyu-pixel"]');
+      await until('pixel worn', async () => (await viewNow()).packId === 'dafeiyu-pixel');
+      await until('rack grows', async () => (await chips()).includes('scarf'));
+      const v = await viewNow();
+      assert.equal(v.outfit, 'daily');
+      return `view ${JSON.stringify(v)}; ${await shot('w5-pixel-again')}`;
+    }, () => admin);
+
+    await step(S, 'W6 no console errors in the settings window', async () => {
+      assert.deepEqual(errors, []);
+      return 'none';
+    });
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------- admincov (配置后台覆盖度)
 // docs/admin-console-design.md §12: the settings window lists every character with every kind of pack
 // (built-in pixel / 全动态 / Live2D, imported 图片 / Live2D / VRM), filters by kind, shows each detail tab
@@ -8667,6 +8822,7 @@ async function adminScenario() {
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
+  if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
