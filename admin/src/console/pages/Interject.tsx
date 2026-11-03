@@ -85,7 +85,9 @@ export const InterjectPage = () => {
       {enabled ? (
         <InterjectData />
       ) : (
-        <Surface data-interject-off description="打开上面的「插个嘴」后，这里列出沉淀的规则和最近的判断记录。关着时已有的规则保留、不生效。" title="规则与判断记录" />
+        <Surface data-interject-off title="规则与判断记录">
+          <Text type="secondary">打开上面的「插个嘴」后，这里列出沉淀的规则和最近的判断记录。关着时已有的规则保留、不生效。</Text>
+        </Surface>
       )}
     </>
   );
