@@ -61,6 +61,7 @@
 | Together（话题 / 聊天记录 / 桌面上的她） | `#/topics`、`#/history`、`#/desk` | `pages/Together.tsx` | `together-topics-light.png`、`together-history-empty-light.png`、`together-desk-light.png` | TOG-01～TOG-05 |
 | Store（商店） | `#/store` | `pages/Store.tsx` | `store-light.png`、`store-dark.png` | STORE-01～STORE-03 |
 | Pages（各设置页） | `#/tts` `#/asr` `#/voicepacks` `#/connection` `#/api` `#/safety` `#/update` `#/about` `#/appearance` `#/behavior` | `pages/Pages.tsx` | `pages-*.png`（11 张） | PG-01～PG-08 |
+| 同屏伙伴（通用设置页） | `#/visitors` | `pages/Pages.tsx`（`SimpleSettingsPage`）+ `SettingsForm.tsx`、`fields.tsx`（`visitors` 多选） | `settingsform-visitors-light.png` | 没有本页独有问题；单字段页面同样带「默认：无」标签和页头「恢复本页默认」，归入 FORM-02、FORM-05（T-2825 补记） |
 | SettingsForm / fields | 所有设置页的表单 | `SettingsForm.tsx`、`fields.tsx` | `settingsform-behavior-*.png`、`interject-proactive-full-light.png`、`pages-tts-full-light.png` | FORM-01～FORM-06 |
 | stage 组件 | 舞台、立绘、好感条 | `stage/CharacterStage.tsx`、`SpriteStage.tsx`、`HeartMeter.tsx`、`VrmLicense.tsx` | `home-light.png`、`character-detail-tab-好感.png`、`characters-list-light.png` | STG-01～STG-03 |
 
@@ -517,7 +518,7 @@
 
 - **模块 · 文件**：SettingsForm/fields · `fields.tsx:645`（`默认：{formatValue}` Tag）、`:108-125`（行尾 `ResetButton`）、`:655`（「敏感 · 遮罩显示」）；`SettingsForm.tsx:73`（页头「恢复本页默认」）
 - **类别**：IA · **严重度**：P1
-- **问题**：每一行下面都有一个灰色的「默认：开」标签（桌宠行为页、朗读页每一行都有），Key 字段又多一个「敏感 · 遮罩显示」，和输入框旁的「已设置 / 未设置」标签并列。说明文字被标签压住，扫读时先看到的是噪音。截图：`screenshots/settingsform-behavior-light.png`、`screenshots/settingsform-behavior-bottom-light.png`、`screenshots/pages-tts-full-light.png`。
+- **问题**：每一行下面都有一个灰色的「默认：开」标签（桌宠行为页、朗读页每一行都有），Key 字段又多一个「敏感 · 遮罩显示」，和输入框旁的「已设置 / 未设置」标签并列。说明文字被标签压住，扫读时先看到的是噪音。截图：`screenshots/settingsform-visitors-light.png`（只有一个字段的同屏伙伴页也挂着「默认：无」）、`screenshots/settingsform-behavior-light.png`、`screenshots/settingsform-behavior-bottom-light.png`、`screenshots/pages-tts-full-light.png`。
 - **习惯依据**：U-2（靠扫读找到要改的那一项）。
 - **design.lobe.li**：C-17「设置项的状态由值本身表达……再挂一个复述它的 badge 只是噪音」<https://design.lobe.li/rules/C-17>；W-07 <https://design.lobe.li/rules/W-07>。
 - **方向**：默认值只在和当前值不同时显示，放进恢复默认按钮的提示里；去掉「敏感」标签。

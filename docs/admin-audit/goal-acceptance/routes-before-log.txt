@@ -1,0 +1,4 @@
+revision 00252f9
+/visitors: heading=「同屏伙伴」 font=14px color=rgb(31, 31, 31) bg=rgb(248, 248, 248) blank=false errorsSoFar=0 text=小屋 角色 商店 玩法 设置 聊天 玩法 / 同屏伙伴 同屏伙伴 让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。 恢复本页默认 同屏伙伴 一起待在桌面上的角色 最多 3 位，不能选当前角色。 默认：无 选几位来串门
+/play: heading=「玩法」 font=14px color=rgb(31, 31, 31) bg=rgb(248, 248, 248) blank=false errorsSoFar=0 text=小屋 角色 商店 玩法 设置 聊天 玩法 她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。 格萝可现在 醒着 心情 70 饱腹 70 精力 90 喂食、陪玩和哄睡在桌宠窗口里进行；下面这些决定她在桌面上怎么陪你。 陪伴方式 桌宠行为 
+pageerror/console.error total: 0

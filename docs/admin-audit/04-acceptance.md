@@ -106,3 +106,13 @@ change rows total 55; rows without design.lobe.li link: 0
 3. 前后对比只做了亮色；暗色只有改后（admin A3 dark）。
 4. 本轮没有安排独立的 acceptance-checker 复核，截图由验收执行者本人逐张查看；最终判定由 LobeHub 验收轮次的独立 verifier 给出。
 5. 「未拥有」角色卡（剪影 +「去商店」）在内置数据下不会出现，只有单测覆盖（03-changes.md B.2 第 3 条）。
+
+## 7. 目标终验补充（T-2825）
+
+按目标验收的七条标准复核，代码未变（`cb368eb..aec8450` 只改了文档），上面 §1–§6 的证据仍然有效。这一轮补了三项检查，并修正了一处遗漏：
+
+1. **模块覆盖**（`goal-acceptance/check-ia.js`，输出在 `ia-check.txt`）：基线 `00252f9` 的 `ConsoleApp.tsx` 一共 22 个路由。原覆盖矩阵漏掉了 `#/visitors`（同屏伙伴）：审计时截过 `settingsform-visitors-light.png`，但没有写进矩阵。现在已补进 01-issues.md §2，这一页没有独有的问题，归入 FORM-02 / FORM-05。补完后路由覆盖 **22/22**，矩阵 12 个模块，55 条问题。
+2. **方案与代码一致**：02-plan §1.2「优化后」树里的 24 个路由，**24/24** 都能在 HEAD 找到：22 个在 `ConsoleApp.tsx` 的路由分支里，`history` / `appearance` 在 `settings-schema.js` 的 `REDIRECTS` 里。RAIL 顺序与 §1.1 一致（小屋 / 角色 / 聊天 / 商店 ─ 玩法 / 设置，`group` world → config）。NAV 20 个页面名中，19 个原样出现在方案树里；「角色图鉴」在树里简写为「图鉴」，§1.3 用的是全名。
+3. **design.lobe.li 规则真实存在**（`check-lobeli.js`，输出在 `lobeli-check.txt`）：抓取线上站点的 bundle（`assets/index-DQhO-CVn.js`）后核对，三份文档引用的 18 / 18 / 19 个规则号**全部**在站点上，规则标题与文档写法一致（如 P-03「详情 / 对象页」、C-15「确认弹窗与浮层菜单」、W-03「专名与口径一致」）。
+4. **全路由运行**（`views.js`，日志在 `routes-after-log.txt`）：在 HEAD `aec8450` 上用真实 Electron 加 fake lh，依次打开 31 个地址：22 个页面、角色详情 5 个标签、2 个旧路由重定向、1 个未知路由。没有空白页，`pageerror` / `console.error` 为 **0**。总览图是 `screenshots/acceptance/after-all-routes-sheet.png`。
+5. **新增一组前后对比**：`screenshots/acceptance/cmp-visitors.png`，左为基线、右为 HEAD。字段下的「默认：无」标签已去掉（FORM-02 → A21），rail 改为新顺序并加了分隔（SH-05 → A01）；字体 14px、文字色 `rgb(31,31,31)`、底色 `rgb(248,248,248)` 前后相同。

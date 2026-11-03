@@ -1,0 +1,19 @@
+# fetched 2026-11-03T21:51:50Z: https://design.lobe.li/ → assets/index-DQhO-CVn.js
+01-issues.md: design.lobe.li links=126, distinct rule ids=18, ids not on live site=none
+02-plan.md: design.lobe.li links=123, distinct rule ids=18, ids not on live site=none
+03-changes.md: design.lobe.li links=138, distinct rule ids=19, ids not on live site=none
+P-02 → 列表 / 搜索 / 筛选
+P-03 → 详情 / 对象页
+P-04 → 新建 / 编辑表单
+P-05 → 配置 / 设置
+C-15 → 确认弹窗与浮层菜单
+C-17 → 表单：就地编辑
+K-05 → 状态与反馈
+W-01 → 动作文案
+W-03 → 专名与口径一致
+W-04 → 空态文案
+W-05 → 错误文案
+W-07 → 简化判据（吸收 Impeccable distill）
+M-02 → 格式塔原理（UI）
+M-03 → 尼尔森十大启发式
+M-08 → 认知负荷

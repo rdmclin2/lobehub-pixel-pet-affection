@@ -1,0 +1,76 @@
+[1] baseline 00252f9 admin routes (22): overview characters store chat play settings packs tts asr voicepacks connection api safety update about topics history desk behavior proactive visitors appearance
+  #/overview    COVERED  module=Home（小屋）  issues=HOME-01～HOME-04
+  #/characters  COVERED  module=Characters（图鉴 / 详情 / 角色包）  issues=CHAR-01～CHAR-08
+  #/store       COVERED  module=Store（商店）  issues=STORE-01～STORE-03
+  #/chat        COVERED  module=Chat（聊天）  issues=CHAT-01～CHAT-04
+  #/play        COVERED  module=Hub（玩法 / 设置入口）  issues=HUB-01～HUB-04
+  #/settings    COVERED  module=Hub（玩法 / 设置入口）  issues=HUB-01～HUB-04
+  #/packs       COVERED  module=Characters（图鉴 / 详情 / 角色包）  issues=CHAR-01～CHAR-08
+  #/tts         COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/asr         COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/voicepacks  COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/connection  COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/api         COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/safety      COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/update      COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/about       COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/topics      COVERED  module=Together（话题 / 聊天记录 / 桌面上的她）  issues=TOG-01～TOG-05
+  #/history     COVERED  module=Together（话题 / 聊天记录 / 桌面上的她）  issues=TOG-01～TOG-05
+  #/desk        COVERED  module=Together（话题 / 聊天记录 / 桌面上的她）  issues=TOG-01～TOG-05
+  #/behavior    COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  #/proactive   COVERED  module=Interject（插个嘴）  issues=INT-01～INT-04
+  #/visitors    COVERED  module=同屏伙伴（通用设置页）  issues=没有本页独有问题；单字段页面同样带「默认：无」标签和页头「恢复本页默认」，归入 FORM-02、FORM-05（T-2825 补记）
+  #/appearance  COVERED  module=Pages（各设置页）  issues=PG-01～PG-08
+  route coverage 22/22 = 100%; modules in matrix=12; issues=55
+  issues per module: Shell 导航:6 · Home（小屋）:4 · Hub（玩法 / 设置入口）:4 · Characters（图鉴 / 详情 / 角色包）:8 · Chat（聊天）:4 · Interject（插个嘴）:4 · Together（话题 / 聊天记录 / 桌面上的她）:5 · Store（商店）:3 · Pages（各设置页）:8 · 同屏伙伴（通用设置页）:0 · SettingsForm / fields:6 · stage 组件:3
+
+[2] 02-plan §1.2 优化后 routes (24): overview characters packs chat store play behavior proactive interject visitors topics desk settings tts asr voicepacks safety api reset connection update about history appearance
+  #/overview    route in ConsoleApp
+  #/characters  route in ConsoleApp
+  #/packs       route in ConsoleApp
+  #/chat        route in ConsoleApp
+  #/store       route in ConsoleApp
+  #/play        route in ConsoleApp
+  #/behavior    route in ConsoleApp
+  #/proactive   route in ConsoleApp
+  #/interject   route in ConsoleApp
+  #/visitors    route in ConsoleApp
+  #/topics      route in ConsoleApp
+  #/desk        route in ConsoleApp
+  #/settings    route in ConsoleApp
+  #/tts         route in ConsoleApp
+  #/asr         route in ConsoleApp
+  #/voicepacks  route in ConsoleApp
+  #/safety      route in ConsoleApp
+  #/api         route in ConsoleApp
+  #/reset       route in ConsoleApp
+  #/connection  route in ConsoleApp
+  #/update      route in ConsoleApp
+  #/about       route in ConsoleApp
+  #/history     redirect → #/chat
+  #/appearance  redirect → #/about
+  plan routes implemented: 24/24
+
+  HEAD RAIL: 小屋#/overview[world] | 角色#/characters[world] | 聊天#/chat[world] | 商店#/store[world] | 玩法#/play[config] | 设置#/settings[config]
+  RAIL order matches plan §1.1 (小屋/角色/聊天/商店/玩法/设置, divider before 玩法): true
+  NAV chat/聊天 → 聊天 #/chat: named in plan
+  NAV home/小屋 → 小屋 #/overview: named in plan
+  NAV characters/角色 → 角色图鉴 #/characters: NOT NAMED IN PLAN
+  NAV characters/角色 → 角色包 #/packs: named in plan
+  NAV store/商店 → 商店 #/store: named in plan
+  NAV play/她怎么陪你 → 桌宠行为 #/behavior: named in plan
+  NAV play/她怎么陪你 → 主动搭话与好感 #/proactive: named in plan
+  NAV play/她怎么陪你 → 插个嘴 #/interject: named in plan
+  NAV play/她怎么陪你 → 同屏伙伴 #/visitors: named in plan
+  NAV play/和她互动 → 话题 #/topics: named in plan
+  NAV play/和她互动 → 桌面上的她 #/desk: named in plan
+  NAV settings/声音 → 朗读与音效 #/tts: named in plan
+  NAV settings/声音 → 语音输入 #/asr: named in plan
+  NAV settings/声音 → 语音包 #/voicepacks: named in plan
+  NAV settings/隐私与安全 → 成人向与本机能力 #/safety: named in plan
+  NAV settings/隐私与安全 → 对外接口 #/api: named in plan
+  NAV settings/隐私与安全 → 重置与放生 #/reset: named in plan
+  NAV settings/系统 → 账号与连接 #/connection: named in plan
+  NAV settings/系统 → 版本与更新 #/update: named in plan
+  NAV settings/系统 → 关于与数据 #/about: named in plan
+  NAV item labels found in plan tree: 19/20
