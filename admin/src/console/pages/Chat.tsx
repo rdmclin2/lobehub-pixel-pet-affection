@@ -4,13 +4,23 @@
  * conversation: her own agent and topic, the same 聊天记录 as on the desktop, so there is no 新建 / 清空.
  * Everything lives in main (`petAdmin.chat`): this page keeps only what is on screen, and `#/chat/<id>` says
  * whose conversation is open, so a reload or a trip to another page reads it all back.
+ *
+ * 实施包 C（docs/admin-audit/02-plan.md §5.4, F9）：
+ * - C01 / SH-02 / CHAT-01：这里就是她的全部聊天记录（原「聊天记录」页并入，`#/history` 重定向到这里）；文案统一为「和桌面上是同一段对话」。
+ * - C02 / CHAT-03：会话栏只列已遇见的角色（正在陪你置顶），底部一行「结识更多 →」去角色图鉴（M-08 Hick）。
+ * - CHAT-02（B12 状态词）：「在桌面」→「正在陪你」。
+ * - C03 / CHAT-04：模型下拉下方写影响范围「桌面上也用这个模型」，换好后内联「已保存」，失败 toast 写原因（P-05、S-4 / S-5）。
+ * - C04 / HUB-03 / PG-05：页头「⋯」→「重新开始对话」（确认后执行）与「在她的页面设置模型」。
+ * - C09 / TOG-01：历史读取失败显示 LoadFailed +「重试」，不再画成空对话或一直转圈（K-05）；「查看更早的消息」失败给 toast。
  */
-import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, DropdownMenu, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
 import { ChatInputActionBar, ChatInputAreaInner, ChatItem, ChatSendButton, LoadingDots } from '@lobehub/ui/chat';
-import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, Cpu, Eye, History, ImagePlus, MessageSquarePlus, MessagesSquare, MoreHorizontal, RotateCw, User, X } from 'lucide-react';
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { api, reasonText, type ChatCharacter, type ChatMessage, type RosterRow } from '../api';
+import { api, reasonText, type ChatCharacter, type ChatHistory, type ChatMessage, type RosterRow } from '../api';
+import { askAsync, asResult, LoadFailed, SavedHint } from '../common';
+import { detailHref, STATE_WORD } from '../roster-model';
 import { SpriteStage } from '../stage/SpriteStage';
 import { useStore } from '../store';
 
@@ -277,7 +287,7 @@ const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: num
 );
 
 export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) => void }) => {
-  const { roster, merge } = useStore();
+  const { roster, merge, view } = useStore();
   const [characters, setCharacters] = useState<ChatCharacter[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -289,6 +299,9 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // C09: a history read that failed (its reason) — shown where the messages would be, with 重试
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -324,14 +337,24 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
 
   /** The latest page of her conversation (at least as many as are on screen, so 查看更早 stays loaded). */
   const loadLatest = useCallback(async (sid: string, keep = 0) => {
-    const r = await chat().history(sid, { limit: Math.max(PAGE, keep) });
+    let r: ChatHistory;
+    try {
+      r = await chat().history(sid, { limit: Math.max(PAGE, keep) });
+    } catch (e) {
+      if (activeRef.current !== sid) return;
+      setLoading(false);
+      setLoadError(String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+      return;
+    }
     if (activeRef.current !== sid) return;
     setLoading(false);
     if (!r.ok) {
+      // `empty` (not awake) / `unknown-character`: she has no conversation, that is not a failed read
       setMessages([]);
       setHasMore(false);
       return;
     }
+    setLoadError(null);
     setMessages(r.messages);
     setHasMore(r.hasMore);
     if (r.streaming) setLive((l) => (l && l.speciesId === sid ? l : { speciesId: sid, text: '', turnId: null }));
@@ -347,6 +370,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     setMessages([]);
     setHasMore(false);
     setLoading(true);
+    setLoadError(null);
     setPending([]);
     loadLatest(activeId);
   }, [activeId, loadLatest]);
@@ -405,8 +429,12 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     const fromBottom = el ? el.scrollHeight - el.scrollTop : 0;
     setLoadingMore(true);
     try {
-      const r = await chat().history(sid, { before: messages[0].id, limit: PAGE });
-      if (activeRef.current !== sid || !r.ok) return;
+      const r = await chat().history(sid, { before: messages[0].id, limit: PAGE }).catch((e): ChatHistory => ({ hasMore: false, messages: [], met: true, ok: false, reason: String((e as Error)?.message ?? e), speciesId: sid, streaming: false, total: 0 }));
+      if (activeRef.current !== sid) return;
+      if (!r.ok) {
+        toast.error({ description: `${reasonText(r)}。已显示的消息不受影响，可以再点一次。`, title: '没能读出更早的消息' });
+        return;
+      }
       stick.current = false;
       setMessages((ms) => [...r.messages.filter((x) => !ms.some((y) => y.id === x.id)), ...ms]);
       setHasMore(r.hasMore);
@@ -502,7 +530,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         setInput((v) => v || body);
         setPending((p) => (p.length ? p : images));
       }
-      toast.error(r.error ?? '没有发出去');
+      toast.error({ description: `${r.error ?? reasonText(r)}。你写的内容已放回输入框。`, title: '没能发出去' });
       return;
     }
     const { message, userMessage } = r;
@@ -533,10 +561,27 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const changeModel = async (key: string) => {
     // only one of hers (the picker is rebuilt per character, so another one's pick never lands here)
     if (!row || !m?.options.some((o) => o.key === key) || key === m.current) return;
+    const label = (m.options.find((o) => o.key === key)?.label as string | undefined) ?? key;
     const r = await api().setModel(key, row.id);
     if (r && r.view) merge({ view: r.view });
-    if (!r || !r.ok) toast.error(reasonText(r));
+    if (!r || !r.ok) toast.error({ description: `${reasonText(r)}。她继续用原来的模型。`, title: `没能换成 ${label}` });
+    else setSavedAt(Date.now()); // S-5: the select shows the new value; a quiet 已保存 beside it, no toast
   };
+
+  // C04: 重新开始对话 works on the character who is with you (pet-service newTopic → her current topic)
+  const isCurrent = !!row?.current || !!who?.current;
+  const restart = () =>
+    askAsync({
+      cancelText: '先不了',
+      content: '她会从头聊起，不再带着之前的对话上下文。旧对话保留在 LobeHub 里；好感和这里的聊天记录都不变。',
+      okText: '重新开始对话',
+      run: async () => {
+        const r = await api().newTopic();
+        if (r && r.view) merge({ view: r.view });
+        return asResult(r);
+      },
+      title: `和${name}重新开始对话？`,
+    }).then((done) => done && toast.success('下一句会开一个新对话'));
 
   const refreshModels = async () => {
     setRefreshing(true);
@@ -650,7 +695,9 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         const c = rowOf(roster, b) as RosterRow;
         return { count: 0, current: roster.some((x) => x.base === b && x.current), id: b, lastAt: null, met: !!c.met, name: c.met?.name ?? c.nameZh, preview: '' };
       });
-  const ordered = [...list].sort((a, b) => Number(b.met) - Number(a.met) || Number(b.current) - Number(a.current) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+  // C02: only the ones you have met (正在陪你 first); meeting someone new happens in 角色图鉴 (结识更多)
+  const ordered = list.filter((c) => c.met || c.current).sort((a, b) => Number(b.current) - Number(a.current) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+  const unmet = list.filter((c) => !c.met && !c.current).length;
 
   return (
     <div className={styles.root} data-chat-page>
@@ -658,7 +705,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         <Flexbox paddingBlock={12} paddingInline={16}>
           <Text strong>角色</Text>
           <Text fontSize={12} type="secondary">
-            一个角色一段对话，和桌面上共用
+            一个角色一段对话，和桌面上是同一段
           </Text>
         </Flexbox>
         <div className={styles.sideList} data-character-list>
@@ -687,11 +734,11 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                     <Text className={styles.ellipsis} ellipsis>
                       {c.name}
                     </Text>
-                    {c.current && <Tag size="small">在桌面</Tag>}
+                    {c.current && <Tag size="small">{STATE_WORD.current}</Tag>}
                     {live?.speciesId === c.id && <Spin size="small" />}
                   </Flexbox>
                   <Text className={styles.ellipsis} fontSize={12} type="secondary">
-                    {!c.met ? '还没见过面' : c.preview || (c.count ? `${c.count} 条消息` : '还没聊过')}
+                    {c.preview || (c.count ? `${c.count} 条消息` : '还没聊过')}
                   </Text>
                 </div>
                 <Text fontSize={12} type="secondary">
@@ -700,7 +747,17 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
               </div>
             );
           })}
+          {!ordered.length && (
+            <Text data-chat-none fontSize={12} style={{ display: 'block', padding: 8 }} type="secondary">
+              {view?.pet ? '还没有遇见过的角色。' : '还没有唤醒桌宠：在桌宠窗口里选一位角色并唤醒她。'}
+            </Text>
+          )}
         </div>
+        <Flexbox paddingBlock={8} paddingInline={8} style={{ borderBlockStart: `1px solid ${cssVar.colorBorderSecondary}` }}>
+          <Button data-meet-more icon={ArrowRight} iconPosition="end" onClick={() => navigate('/characters')} type="text">
+            {unmet ? `结识更多（还有 ${unmet} 位没见过）` : '结识更多'}
+          </Button>
+        </Flexbox>
       </aside>
 
       <section
@@ -728,6 +785,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
           </Flexbox>
           {met && (
             <>
+              <Flexbox align="flex-end" gap={2}>
               <span data-model-select>
                 <Select
                   key={activeId}
@@ -742,7 +800,35 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                   value={m?.current ?? undefined}
                 />
               </span>
+                <Flexbox align="center" gap={8} horizontal>
+                  <SavedHint full={`已保存：${name}的模型 → ${modelLabel(row, m?.current)}`} tick={savedAt} />
+                  <Text data-model-scope fontSize={12} type="secondary">
+                    桌面上也用这个模型
+                  </Text>
+                </Flexbox>
+              </Flexbox>
               <ActionIcon icon={RotateCw} loading={refreshing} onClick={refreshModels} title="刷新模型列表" />
+              <DropdownMenu
+                items={[
+                  {
+                    desc: isCurrent ? '她从头聊起，聊天记录和好感不变' : `只能对正在陪你的角色使用；先把${name}换到桌面上`,
+                    disabled: !isCurrent,
+                    icon: MessageSquarePlus,
+                    key: 'new-topic',
+                    label: <span data-chat-new-topic>重新开始对话</span>,
+                    onClick: () => void restart(),
+                  },
+                  {
+                    icon: Cpu,
+                    key: 'model',
+                    label: <span data-chat-her-page>在她的页面设置模型</span>,
+                    onClick: () => row && (location.hash = detailHref(row.id, 'model')),
+                  },
+                ]}
+                placement="bottomRight"
+              >
+                <ActionIcon data-chat-more icon={MoreHorizontal} title="更多" />
+              </DropdownMenu>
             </>
           )}
         </header>
@@ -770,13 +856,24 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                   title={`还没见过${name}`}
                 />
               </Flexbox>
+            ) : loadError && !messages.length ? (
+              <LoadFailed
+                onRetry={() => {
+                  if (!activeId) return;
+                  setLoadError(null);
+                  setLoading(true);
+                  loadLatest(activeId, countRef.current);
+                }}
+                reason={loadError}
+                what={`和${name}的聊天记录`}
+              />
             ) : loading ? (
               <Flexbox align="center" paddingBlock={48}>
                 <Spin />
               </Flexbox>
             ) : messages.length === 0 && !liveHere ? (
               <Flexbox align="center" paddingBlock={64}>
-                <Empty description="在这里说的话，她在桌面上也记得；聊天记录里也看得到。" icon={MessagesSquare} title={`和${name}说点什么？`} />
+                <Empty description="和桌面上是同一段对话：在这里说的话，她在桌面上也记得；以前聊过的也都在这里。" icon={MessagesSquare} title={`和${name}说点什么？`} />
               </Flexbox>
             ) : (
               <Flexbox gap={0}>

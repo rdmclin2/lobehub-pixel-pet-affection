@@ -150,15 +150,17 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
 
       await step(S, 'U1 左侧 rail 有「聊天」：点进去是角色列表（一个角色一个会话），默认打开桌面上的当前角色；原有入口不变', async () => {
         const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-        assert.deepEqual(rail.map((r) => r[0]), ['小屋', '角色', '商店', '玩法', '设置', '聊天']);
+        assert.deepEqual(rail.map((r) => r[0]), ['小屋', '角色', '聊天', '商店', '玩法', '设置']); // A01 (SH-05): 她的世界 first, then 配置
         await admin.click('[data-rail="chat"]');
         await until(() => location.hash.startsWith('#/chat') && !!document.querySelector('[data-chat-page] [data-chat-textarea]'), null, 10000, 'chat page');
         assert.equal(await admin.getAttribute('[data-rail="chat"]', 'aria-current'), 'page');
         const list = await admin.$$eval('[data-character]', (els) => els.map((e) => ({ id: e.dataset.character, met: e.dataset.met, current: e.getAttribute('aria-current'), text: e.innerText.replace(/\s+/g, ' ').trim() })));
-        assert.equal(list.length, 5, 'every character');
-        assert.deepEqual(list.slice(0, 2).map((x) => x.id).sort(), ['claude', 'gpt'], 'the ones met come first');
+        // C02 (CHAT-03): only the ones met, 正在陪你 first; the rest are one line away (结识更多 → 角色图鉴)
+        assert.deepEqual(list.map((x) => x.id), ['claude', 'gpt'], 'only the ones met, the companion first');
         assert.equal(list.find((x) => x.id === 'claude').current, 'true', 'opens the desktop companion');
-        assert.ok(list.filter((x) => x.met === 'false').every((x) => /还没见过面/.test(x.text)));
+        assert.match(list[0].text, /正在陪你/, 'CHAT-02 状态词');
+        assert.match(await admin.$eval('[data-meet-more]', (e) => e.innerText), /结识更多（还有 3 位没见过）/);
+        assert.match(await admin.$eval('[data-model-scope]', (e) => e.innerText), /桌面上也用这个模型/, 'C03 (CHAT-04)');
         assert.match(await admin.$eval('[data-chat-title]', (e) => e.innerText), /小克/);
         assert.equal(await admin.$('[data-new-session]'), null, 'no 新建会话');
         assert.equal(await admin.$('[data-clear-session]'), null, 'no 清空');
@@ -413,9 +415,10 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
         return note(`小G: ${before} messages before, own agent ${lastReq().model}, models offered: ${shownModels.join(', ')}; back to 小克 → ${back.length} messages, last one is her long reply`);
       }, admin);
 
-      await step(S, 'U14 没见过面的角色：说明「还没见过面」并给出「去见她」，没有输入框', async () => {
+      await step(S, 'U14 没见过面的角色（深链接 #/chat/grok，会话栏里不列）：说明「还没见过面」并给出「去见她」，没有输入框', async () => {
         await ensureChat();
-        await admin.click('[data-character="grok"]');
+        assert.equal(await admin.$('[data-character="grok"]'), null, 'not in the side list (C02)');
+        await admin.evaluate(() => { location.hash = '/chat/grok'; });
         await until(() => location.hash === '#/chat/grok' && /还没见过/.test(document.querySelector('[data-chat-scroll]')?.innerText || ''), null, 8000, 'not met');
         assert.equal(await admin.$('[data-chat-textarea]'), null);
         const txt = (await admin.$eval('[data-chat-scroll]', (e) => e.innerText)).replace(/\s+/g, ' ');

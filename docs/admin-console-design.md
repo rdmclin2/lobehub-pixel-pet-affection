@@ -551,14 +551,14 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `ageGateVersion` | safety（内部） | 确认文案版本 | — | 确认文案版本（文案改了就重新询问，只读） |
 | `ageConfirmed` | safety（内部） | 已确认满 18 周岁 | — | 是否确认满 18 周岁（同上，只读） |
 | `ageConfirmedAt` | safety（内部） | 确认时间 | — | 确认时间（同上，只读） |
-| `adultContent` | safety | 成人向内容 | 即时生效 | 内容与安全 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`） |
-| `answered` | safety（内部） | 已回答年龄确认 | — | 年龄确认的答案（由 18+ 确认对话写入，内容与安全页只读显示） |
+| `adultContent` | safety | 成人向内容 | 即时生效 | 隐私与安全 → 成人向与本机能力 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`） |
+| `answered` | safety（内部） | 已回答年龄确认 | — | 年龄确认的答案（由 18+ 确认对话写入，成人向与本机能力页只读显示） |
 | `petScale` | behavior | 宠物大小 | 即时生效 |  |
 | `models.<id>` | character | 模型 | 即时生效 | 角色详情 → 模型（`set-model` / `refresh-models`） |
 | `systemRoles.<id>` | character | 个性化设定 | 即时生效 | 角色详情 → 设定 → 个性化设定（`set-system-role`） |
 | `framings.<id>` | character | 取景 | 即时生效 | 角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`） |
 | `prefs.roam` | behavior | 自己走动 | 即时生效 |  |
-| `prefs.clickSound` | behavior | 点击音效 | 即时生效 |  |
+| `prefs.clickSound` | tts | 点击音效 | 即时生效 |  |
 | `prefs.muted` | tts | 静音 | 即时生效 |  |
 | `prefs.voice` | tts | 朗读回复 | 即时生效 |  |
 | `prefs.voiceInteractions` | tts | 互动语音 | 即时生效 |  |
@@ -603,25 +603,25 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `proactive.boredAfterMin` | proactive | 多久没理她算无聊 | 即时生效 |  |
 | `proactive.hungryAt` | proactive | 饥饿提醒阈值 | 即时生效 |  |
 | `proactive.maxLlmPerHour` | proactive | 每小时最多调用模型 | 即时生效 |  |
-| `interject.enabled` | proactive | 插个嘴 | 即时生效 |  |
-| `interject.sources.chatDraft` | proactive | 来源：聊天框草稿 | 即时生效 |  |
-| `interject.sources.voice` | proactive | 来源：语音输入 | 即时生效 |  |
-| `interject.sources.api` | proactive | 来源：外部程序 | 即时生效 |  |
-| `interject.sources.clipboard` | proactive | 来源：剪贴板（系统级） | 即时生效 |  |
-| `interject.cooldownMin` | proactive | 两次插嘴至少间隔 | 即时生效 |  |
-| `interject.maxPerHour` | proactive | 每小时最多插嘴 | 即时生效 |  |
-| `interject.maxDecidePerHour` | proactive | 每小时最多判断 | 即时生效 |  |
-| `interject.debounceSec` | proactive | 停顿多久再判断 | 即时生效 |  |
-| `interject.minChars` | proactive | 太短不判断 | 即时生效 |  |
-| `interject.quietStart` | proactive | 勿扰开始 | 即时生效 |  |
-| `interject.quietEnd` | proactive | 勿扰结束 | 即时生效 |  |
-| `interject.timeoutSec` | proactive | 判断超时 | 即时生效 |  |
-| `interject.highThreshold` | proactive | 插嘴阈值 | 即时生效 |  |
-| `interject.lowThreshold` | proactive | 不插嘴阈值 | 即时生效 |  |
-| `interject.model` | proactive | 决策模型 | 即时生效 |  |
+| `interject.enabled` | interject | 插个嘴 | 即时生效 |  |
+| `interject.sources.chatDraft` | interject | 来源：聊天框草稿 | 即时生效 |  |
+| `interject.sources.voice` | interject | 来源：语音输入 | 即时生效 |  |
+| `interject.sources.api` | interject | 来源：外部程序 | 即时生效 |  |
+| `interject.sources.clipboard` | interject | 来源：剪贴板（系统级） | 即时生效 |  |
+| `interject.cooldownMin` | interject | 两次插嘴至少间隔 | 即时生效 |  |
+| `interject.maxPerHour` | interject | 每小时最多插嘴 | 即时生效 |  |
+| `interject.maxDecidePerHour` | interject | 每小时最多判断 | 即时生效 |  |
+| `interject.debounceSec` | interject | 停顿多久再判断 | 即时生效 |  |
+| `interject.minChars` | interject | 太短不判断 | 即时生效 |  |
+| `interject.quietStart` | interject | 勿扰开始 | 即时生效 |  |
+| `interject.quietEnd` | interject | 勿扰结束 | 即时生效 |  |
+| `interject.timeoutSec` | interject | 判断超时 | 即时生效 |  |
+| `interject.highThreshold` | interject | 插嘴阈值 | 即时生效 |  |
+| `interject.lowThreshold` | interject | 不插嘴阈值 | 即时生效 |  |
+| `interject.model` | interject | 决策模型 | 即时生效 |  |
 | `affectionRules.decay` | proactive | 久未见面时好感衰减 | 即时生效 |  |
 | `affectionRules.dailyCap` | proactive | 每日好感上限 | 即时生效 |  |
-| `ui.theme` | appearance | 主题 | 即时生效 |  |
+| `ui.theme` | about | 主题 | 即时生效 |  |
 | `system.hardwareAcceleration` | about | 硬件加速 | 重启后生效 |  |
 | `update.autoCheck` | update | 自动检查更新 | 即时生效 |  |
 | `petScaleSet` | behavior（内部） | 手动选过大小 | — | 内部标记：动过「宠物大小」后不再跟随默认大小（由 `petScale` 的修改写入） |
@@ -642,11 +642,11 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 语音输入（ASR） | 设置 → 语音输入 | `asr.enabled` `asr.engine` `asr.fallback` `asr.language` `asr.autoSend` `asr.hotkey` `asr.maxSeconds` `asr.lobehub.model` `asr.local.endpoint` `asr.local.api` `asr.local.model` `asr.local.timeoutSec` `keys.asrlocal` | `asr-test` | 即时生效 |
 | 对外接口 | 设置 → 对外接口 | `api.enabled` `api.port` `api.token` | `set-api` `api-status` | 即时生效 |
 | 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
-| 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
+| 安全（成人向 / 本机能力） | 设置 → 隐私与安全 → 成人向与本机能力 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
 | 角色（服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `models.<id>` `systemRoles.<id>` `framings.<id>` `vrmPostures.<id>` | `switch-character` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` `set-vrm-posture` | 即时生效 |
 | 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 外观（导入的包成为新角色） | — | `import-pack` `import-live2d` `import-vrm` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
-| 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
-| 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
+| 数据目录与重置 | 设置 → 关于与数据；隐私与安全 → 重置与放生 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
+| 设置窗口外观 | 设置 → 关于与数据 → 显示；rail 底部的明暗按钮 | `ui.theme` | — | 即时生效 |
 
 ### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：24 项
 
@@ -657,22 +657,22 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `menu:update` | 版本与更新 → 状态 / 立即重启更新（有新版本时 ⚙ 出现红点直达） |
 | `menu:settings` | 桌宠窗口的 ⚙ 设置 / 右键她 / Ctrl+⌘ + , → 打开设置窗口 |
 | `menu:characters` | 角色图鉴（列表 + 详情） |
-| `menu:history` | 玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`） |
-| `menu:new-topic` | LobeHub 与本机 → 话题 → 重新开始话题 |
-| `menu:adult` | 内容与安全 → 成人向内容 |
-| `menu:local` | LobeHub 与本机 → 本机能力 |
-| `menu:actions` | 玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
-| `menu:home` | 玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
+| `menu:history` | 聊天 → 她的会话（全部历史，`admin-chat-history`；旧地址 #/history 重定向到这里） |
+| `menu:new-topic` | 聊天 → 页头 ⋯ → 重新开始对话 |
+| `menu:adult` | 隐私与安全 → 成人向与本机能力 → 成人向内容 |
+| `menu:local` | 隐私与安全 → 成人向与本机能力 → 本机能力 |
+| `menu:actions` | 玩法 → 和她互动 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
+| `menu:home` | 玩法 → 和她互动 → 桌面上的她 → 找回桌宠（`admin-place-pet`） |
 | `menu:check-update` | 版本与更新 → 检查更新 |
-| `menu:release` | 数据与关于 → 危险操作 → 放生并删除 agent |
-| `menu:forget` | 数据与关于 → 危险操作 → 仅重置本地 |
-| `menu:log` | 数据与关于 → 数据目录 → 打开错误日志 |
-| `menu:credits` | 数据与关于 → 素材署名；角色详情 → 资料 |
-| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有 |
-| `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
+| `menu:release` | 隐私与安全 → 重置与放生 → 放生并删除 agent |
+| `menu:forget` | 隐私与安全 → 重置与放生 → 仅重置本地 |
+| `menu:log` | 关于与数据 → 数据目录 → 打开错误日志 |
+| `menu:credits` | 关于与数据 → 素材署名（折叠）；角色详情 → 资料 |
+| `menu:quit` | 设置 → 系统 → 关于与数据 → 退出应用（`admin-quit`）；托盘和应用菜单也有 |
+| `toolbar:topics` | 玩法 → 和她互动 → 话题（聊聊，`talk-topic`） |
 | `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
-| `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
+| `tray:显示桌宠` | 玩法 → 和她互动 → 桌面上的她 → 找回桌宠 |
 | `tray:检查更新` | 版本与更新 → 检查更新 |
 | `tray:退出` | 不需要：退出程序 |
 | `app:关于 Pixel Pet` | 不需要：系统「关于」面板；版本也在 版本与更新 |
@@ -686,13 +686,13 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
   - `set-pet-scale` → `admin-set` petScale（桌宠行为 → 宠物大小）
-  - `set-local` → `admin-set` localAbilities（LobeHub 与本机 → 本机能力）
+  - `set-local` → `admin-set` localAbilities（隐私与安全 → 成人向与本机能力 → 本机能力）
   - `set-prefs` → `admin-set` prefs.*（桌宠行为 / 朗读）
   - `set-tts` → `admin-set` tts.* 与 keys.*（朗读）
   - `set-asr` → `admin-set` asr.* 与 keys.asrlocal（语音输入）
-  - `set-interject` → `admin-set` interject.*（玩法 → 主动搭话与好感 → 插个嘴）
+  - `set-interject` → `admin-set` interject.*（玩法 → 插个嘴）
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
-  - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
+  - `place` → `admin-place-pet`（玩法 → 和她互动 → 桌面上的她 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
 - 不是配置，只在桌宠窗口（46）：
   - `boot`：桌宠窗口启动

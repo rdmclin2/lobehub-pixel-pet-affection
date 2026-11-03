@@ -578,7 +578,10 @@ test('every item of the old ⋯ menu has its place in the settings window (T-271
   const together = read('pages/Together.tsx');
   const app = read('ConsoleApp.tsx');
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
-  for (const p of ['characters', 'topics', 'history', 'desk', 'connection', 'safety', 'update', 'about']) {
+  const chat = read('pages/Chat.tsx');
+  // 聊天记录 is the chat page (C01, docs/admin-audit/03-changes.md): `#/history` is redirected there
+  assert.equal(schema.REDIRECTS.history, 'chat');
+  for (const p of ['characters', 'topics', 'desk', 'connection', 'safety', 'update', 'about']) {
     assert.ok(navPages.includes(p), `${p} is in the nav`);
     if (!['characters'].includes(p)) assert.match(app, new RegExp(`case '${p}':`), `${p} has a page`);
   }
@@ -588,8 +591,11 @@ test('every item of the old ⋯ menu has its place in the settings window (T-271
   assert.match(main, /ipcMain\.handle\('admin-quit', adminOnly\(/);
   assert.match(main, /const ADMIN_CUES = \[\.\.\.CUE_STATES, 'turn'\];/);
   // dangerous ones are asked again
-  assert.match(together, /ask\('退出桌宠？'/);
-  assert.match(pages, /ask\('和她开一个新话题？'/);
+  // 退出 is in 关于与数据 (C11 / A18); 重新开始对话 in the chat page's ⋯ (C04), confirmed and run in the dialog (askAsync)
+  assert.match(pages, /data-app-quit/);
+  assert.doesNotMatch(together, /api\(\)\.quit\(/);
+  assert.match(chat, /okText: '重新开始对话'/);
+  assert.match(chat, /api\(\)\.newTopic\(\)/);
   assert.match(pages, /deleteAgent \? '放生并删除 agent？' : '仅重置本地？'/);
   // the 动作 list keeps the old menu's nine actions
   assert.match(together, /const CUES = \['look', 'turn', 'walk', 'happy', 'pat', 'play', 'think', 'sad', 'evolve'\];/);

@@ -9,7 +9,6 @@ import { askAsync, NoPet } from '../common';
 import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
-import { InterjectData } from './Interject';
 
 const Header = ({ page, action }: { action?: ReactNode; page: string }) => {
   const { schema } = useStore();
@@ -46,52 +45,12 @@ export const SimpleSettingsPage = ({ page }: { page: string }) => (
 );
 
 // ---- 主动搭话与好感 ---------------------------------------------------------------------------------------
-/** The schema cards (主动行为 / 插个嘴 / 好感度) plus what 插个嘴 has learned: rules and recent decisions. */
-export const ProactivePage = () => {
-  const { settings } = useStore();
-  const on = !!settings.interject?.enabled;
-  return (
-    <>
-      <Header page="proactive" />
-      <SettingsForm extra={{ 插个嘴: <Tag color={on ? 'success' : undefined}>{on ? '已打开' : '默认关闭'}</Tag> }} page="proactive" />
-      <InterjectData />
-    </>
-  );
-};
+/** C05 / INT-01: 主动行为 + 好感度 only; 插个嘴 (its cards and both tables) is its own page `#/interject` (pages/Interject.tsx). */
+export const ProactivePage = () => <SimpleSettingsPage page="proactive" />;
 
 // ---- 桌宠行为 ---------------------------------------------------------------------------------------------
-/** The schema cards plus 找回桌宠 (⋯ → 回到右下角 / the tray's 显示桌宠, for a pet covered or off screen). */
-export const BehaviorPage = () => {
-  const { view } = useStore();
-  const [busy, setBusy] = useState(false);
-  return (
-    <>
-      <Header page="behavior" />
-      <SettingsForm page="behavior" />
-      <Surface description="她被窗口挡住、跑到屏幕外，或者换了显示器找不到时：让她出现并回到主屏幕右下角（同桌宠窗口 ⋯ → 回到右下角）。" title="位置">
-        <Flexbox horizontal>
-          <Button
-            data-place-pet
-            disabled={!view}
-            loading={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                const r = await api().placePet();
-                if (r && r.ok) toast.success('她回到右下角了');
-                else toast.error(reasonText(r));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            找回桌宠（回到右下角）
-          </Button>
-        </Flexbox>
-      </Surface>
-    </>
-  );
-};
+/** C11 / TOG-04: just the schema cards; 找回桌宠 lives once, in 和她互动 → 桌面上的她 (pages/Together.tsx). */
+export const BehaviorPage = () => <SimpleSettingsPage page="behavior" />;
 
 // ---- 朗读与音效 ---------------------------------------------------------------------------------------------
 const ENGINE_NAME: Record<string, string> = { elevenlabs: 'ElevenLabs', fish: 'Fish Audio', local: '本地语音服务', minimax: 'MiniMax' };

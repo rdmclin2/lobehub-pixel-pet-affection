@@ -1,18 +1,23 @@
 /**
- * 玩法 → 主动搭话与好感 → 插个嘴 (core/interject.js, docs/interject.md §5): below the schema cards, what the
+ * 玩法 → 她怎么陪你 → 插个嘴 `#/interject` (core/interject.js, docs/interject.md §5)。C05 / INT-01：从「主动搭话与好感」
+ * 拆出来的独立页（页名 = 入口名，W-02）。C06 / INT-02：关闭时只留一句说明，不渲染两张表（P-05「配置项只在开启后出现」）。
+ * C07 / INT-03：读取失败在表格位置显示 LoadFailed（K-05「失败不是零条」）。C08 / INT-04：清空 / 删除走 askAsync，按 ok 反馈（C-15）。
+ *
+ * Below the schema cards, what the
  * feature has learned and done — the rules her owner's reactions settled (别插嘴 / 说得好 above a remark,
  * 「别打扰」 in the chat box, remarks left unanswered) and the recent decisions with the decision model's
  * probability. Data, not settings: a rule can be switched off (kept, matches nothing) or deleted; the records
  * can be cleared. Updates live through `onInterject` (a new decision, feedback, a new rule).
  */
-import { Alert, Button, Flexbox, Switch, Table, Tag, Text, toast } from '@lobehub/ui';
-import { Surface } from '@lobehub/ui/dashboard';
+import { Button, Flexbox, Switch, Table, Tag, Text, toast } from '@lobehub/ui';
+import { PageHeader, Surface } from '@lobehub/ui/dashboard';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, reasonText, type InterjectDecision, type InterjectRule } from '../api';
-import { ask } from '../fields';
+import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
+import { askAsync, asResult, LoadFailed } from '../common';
 
 const RECENT = 20;
 
@@ -67,67 +72,112 @@ const FEEDBACK: Record<string, { color?: string; text: string }> = {
   mute: { color: 'error', text: '别插嘴' },
 };
 
-export const InterjectData = () => {
-  const { settings } = useStore();
+/** The page: the 插个嘴 switch card first; sources / budget / thresholds and the two tables only while it is on (C06). */
+export const InterjectPage = () => {
+  const { schema, settings } = useStore();
   const enabled = !!settings.interject?.enabled;
+  const p = schema.pages.interject;
+  return (
+    <>
+      <PageHeader action={<ResetPageButton page="interject" />} description={p?.description} title={p?.title ?? '插个嘴'} />
+      {/* C06 / INT-02: off → only the switch card; 来源 / 额度与时段 / 判断 appear once it is on (P-05) */}
+      <SettingsForm cards={enabled ? undefined : ['插个嘴']} page="interject" />
+      {enabled ? (
+        <InterjectData />
+      ) : (
+        <Surface data-interject-off description="打开上面的「插个嘴」后，这里列出沉淀的规则和最近的判断记录。关着时已有的规则保留、不生效。" title="规则与判断记录" />
+      )}
+    </>
+  );
+};
+
+/** What 插个嘴 has learned and done (only shown while it is on). */
+export const InterjectData = () => {
   const [rules, setRules] = useState<InterjectRule[] | null>(null);
   const [decisions, setDecisions] = useState<InterjectDecision[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // each table answers for its own read (K-05「读失败由数据所在的表面负责」)
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [decisionsError, setDecisionsError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const [r, d] = await Promise.all([api().interjectRules(), api().interjectDecisions(RECENT)]);
-      setRules(r.rules);
-      setDecisions([...d.decisions].reverse()); // newest first
-      setError(null);
-    } catch (e) {
-      setError(String((e as Error).message || e)); // keep what was shown: a failed refresh does not empty the lists
-    }
+    setLoading(true);
+    const why = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    // a failed refresh keeps what was shown (stale rows + a note), a failed first read shows LoadFailed
+    await Promise.all([
+      api().interjectRules().then((r) => {
+          setRules(r.rules);
+          setRulesError(null);
+        }, (e) => setRulesError(why(e))),
+      api().interjectDecisions(RECENT).then((d) => {
+          setDecisions([...d.decisions].reverse()); // newest first
+          setDecisionsError(null);
+        }, (e) => setDecisionsError(why(e))),
+    ]);
+    setLoading(false);
   }, []);
   useEffect(() => {
     load();
     return api().onInterject(() => load());
   }, [load]);
 
+  // 启用 / 停用 is instant: the switch itself shows the result (S-5), only a failure says something (S-4)
   const toggle = async (r: InterjectRule, on: boolean) => {
     setBusy(r.id);
     try {
       const res = await api().interjectSetRule(r.id, !on);
-      if (!res.ok) toast.error(reasonText(res));
-      else toast.success(on ? '规则已启用' : '规则已停用：保留在列表里，但不再生效');
+      if (!res.ok) toast.error({ description: reasonText(res), title: on ? '没能启用这条规则' : '没能停用这条规则' });
       await load();
     } finally {
       setBusy(null);
     }
   };
   const remove = async (r: InterjectRule) => {
-    if (!(await ask('删除这条规则？', `「${r.note}」删除后，她对这类输入会重新由决策模型判断。`, '删除规则', true))) return;
-    const res = await api().interjectDeleteRule(r.id);
-    if (!res.ok) toast.error(reasonText(res));
-    else toast.success('规则已删除');
+    const done = await askAsync({
+      content: `「${r.note}」删除后，她对这类输入会重新由决策模型判断。`,
+      danger: true,
+      okText: '删除规则',
+      run: async () => asResult(await api().interjectDeleteRule(r.id)),
+      title: '删除这条规则？',
+    });
+    if (done) toast.success('规则已删除');
     await load();
   };
   const clear = async () => {
-    if (!(await ask('清空判断记录？', '只删除下面的记录（概率、结果和摘要），规则保留。', '清空记录', true))) return;
-    await api().interjectClearDecisions();
-    toast.success('判断记录已清空');
+    const n = decisions?.length ?? 0;
+    const done = await askAsync({
+      content: '只删除下面的记录（概率、结果和摘要），规则保留。删除后不能恢复。',
+      danger: true,
+      okText: '清空记录',
+      run: async () => {
+        const res = await api().interjectClearDecisions();
+        return res && res.ok ? { ok: true } : { ok: false, reason: `没能清空判断记录：${reasonText(res)}。记录没有改动，可以稍后再试。` };
+      },
+      title: '清空判断记录？',
+    });
+    if (done) toast.success(`判断记录已清空：删除了 ${n} 条`);
     await load();
   };
+  const staleNote = (e: string | null, has: boolean) =>
+    e && has ? (
+      <Text data-refresh-failed fontSize={12} type="warning">
+        刷新没成功，下面是上次读到的：{e}
+      </Text>
+    ) : null;
 
   return (
     <>
-      {error && <Alert closable description={error} onClose={() => setError(null)} title="插个嘴的规则和记录没有读出来" type="warning" />}
       <Surface
         bleed
         data-interject-rules
-        description={
-          enabled
-            ? '你的反应会沉淀成规则：点「别插嘴」或在聊天框说「别打扰」→ 这类输入以后不再判断；点「说得好」或接过两次话 → 拿不准时也可以说。'
-            : '插个嘴关着时规则不生效，但会保留。'
-        }
+        description="你的反应会沉淀成规则：点「别插嘴」或在聊天框说「别打扰」→ 这类输入以后不再判断；点「说得好」或接过两次话 → 拿不准时也可以说。"
+        extra={staleNote(rulesError, !!rules)}
         title={`沉淀的规则${rules ? ` · ${rules.length} 条` : ''}`}
       >
+        {rules === null && rulesError ? (
+          <LoadFailed onRetry={load} reason={rulesError} what="沉淀的规则" />
+        ) : (
         <Table
           columns={[
             {
@@ -157,22 +207,24 @@ export const InterjectData = () => {
             },
           ]}
           dataSource={rules ?? []}
-          loading={rules === null && !error}
+          loading={rules === null}
           locale={{ emptyText: '还没有规则：她插嘴后，点气泡上方的「别插嘴」或「说得好」就会记下一条。' }}
           pagination={false}
           rowKey="id"
           size="small"
         />
+        )}
       </Surface>
       <Surface
         bleed
         data-interject-decisions
         extra={
-          <Flexbox gap={8} horizontal>
-            <Button icon={RefreshCw} onClick={() => load()} size="small">
+          <Flexbox align="center" gap={8} horizontal>
+            {staleNote(decisionsError, !!decisions)}
+            <Button icon={RefreshCw} loading={loading} onClick={() => load()} size="small">
               刷新
             </Button>
-            <Button disabled={!decisions?.length} icon={Trash2} onClick={clear} size="small">
+            <Button data-interject-clear disabled={!decisions?.length} icon={Trash2} onClick={clear} size="small">
               清空记录
             </Button>
           </Flexbox>
@@ -180,6 +232,9 @@ export const InterjectData = () => {
         description="每次判断都留一条：决策模型给的概率、最后说没说、为什么。只保存输入的前 24 个字，剪贴板只记字数。"
         title={`最近 ${RECENT} 次判断`}
       >
+        {decisions === null && decisionsError ? (
+          <LoadFailed onRetry={load} reason={decisionsError} what="判断记录" />
+        ) : (
         <Table
           columns={[
             { dataIndex: 'at', key: 'at', render: (v: number) => time(v), title: '时间', width: 120 },
@@ -204,12 +259,13 @@ export const InterjectData = () => {
             },
           ]}
           dataSource={decisions ?? []}
-          loading={decisions === null && !error}
-          locale={{ emptyText: enabled ? '还没有判断记录：在她的聊天框里打一句、停下来不发送试试。' : '还没有判断记录。打开上面的「插个嘴」后，她才会开始听。' }}
+          loading={decisions === null}
+          locale={{ emptyText: '还没有判断记录：在她的聊天框里打一句、停下来不发送试试。' }}
           pagination={false}
           rowKey="id"
           size="small"
         />
+        )}
       </Surface>
     </>
   );

@@ -4983,16 +4983,17 @@ async function history() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
   const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
-  // 聊天记录 lives in the settings window now (玩法 → 和她一起 → 聊天记录, T-2718)
+  // 聊天记录 is the settings window's 聊天 page now (C01 / SH-02, docs/admin-audit/03-changes.md): her whole
+  // conversation, rounds from the desktop tagged 桌面; the old `#/history` address lands there
   let admin = null;
   const openHistory = async () => {
-    admin = await openAdminWindow(app, page, 'history');
-    await admin.evaluate(() => { location.hash = '/overview'; });
-    await admin.evaluate(() => { location.hash = '/history'; }); // mounted again: the list is read afresh
-    await adminUntil(admin, () => !!document.querySelector('[data-history-empty], [data-session]'), null, 15000, '聊天记录');
+    admin = await openAdminWindow(app, page, 'overview');
+    await admin.evaluate(() => { location.hash = '/history'; }); // the old address: redirected to 聊天 with her
+    await adminUntil(admin, () => /^#\/chat/.test(location.hash) && !!document.querySelector('[data-chat-page] [data-chat-textarea]') && !document.querySelector('[data-chat-page] .ant-spin-spinning'), null, 15000, '聊天 (from #/history)');
+    await new Promise((r) => setTimeout(r, 400));
   };
   const shotAdmin = (n) => admin.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-  const items = () => admin.evaluate(() => [...document.querySelectorAll('[data-session]')].map((b) => ({ time: b.querySelector('[data-history-time]').textContent, who: b.querySelector('[data-history-who]').textContent, count: b.querySelector('[data-history-count]').textContent.trim(), preview: b.querySelector('[data-history-preview]').textContent })));
+  const rounds = () => admin.evaluate(() => [...document.querySelectorAll('[data-chat-page] [data-message-id]')].map((m) => ({ role: m.dataset.role, text: (m.querySelector('.lobe-markdown, [class*="markdown"]') || m).innerText.trim(), desktop: /桌面/.test(m.innerText) })));
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card[data-species="claude"]').first().click();
@@ -5001,11 +5002,12 @@ async function history() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'H1 设置 → 聊天记录 opens; with only her greeting so far it shows the empty state', async () => {
+    await step(S, 'H1 #/history → 聊天 with her; with only her greeting so far it shows the empty state (same conversation as the desktop)', async () => {
       await openHistory();
-      const empty = await admin.evaluate(() => document.querySelector('[data-history-empty]')?.innerText || '');
-      assert.match(empty, /还没有你主动发起的聊天/);
-      assert.equal(await admin.locator('[data-session]').count(), 0);
+      const empty = await admin.evaluate(() => document.querySelector('[data-chat-scroll]')?.innerText || '');
+      assert.match(empty, /说点什么/);
+      assert.match(empty, /和桌面上是同一段对话/);
+      assert.equal((await rounds()).length, 0);
       assert.ok(logged().some((m) => m.origin === 'greeting' && m.kind === 'met'), 'the greeting was logged (origin greeting)');
       await shotAdmin('h1-empty');
       return `empty state: 「${empty.trim().slice(0, 40)}」 while chat-log.json holds ${logged().length} system message(s)`;
@@ -5044,53 +5046,42 @@ async function history() {
       return `logged: ${u.map((m) => `${m.role}「${m.text}」`).join(' → ')}`;
     }, page);
 
-    await step(S, 'H4 聊天记录 lists only that conversation: time, first message, 2 条; no greeting / proactive / stage-up text', async () => {
+    await step(S, 'H4 聊天 shows only that conversation: her message and her reply, tagged 桌面; no greeting / proactive / stage-up text', async () => {
       await openHistory();
-      await adminUntil(admin, () => document.querySelectorAll('[data-session]').length > 0, null, 10000, 'the conversation');
-      const list = await items();
-      assert.equal(list.length, 1, JSON.stringify(list));
-      assert.equal(list[0].preview, '今天也辛苦啦，晚上想吃什么？');
-      assert.equal(list[0].count, '2 条');
-      assert.match(list[0].time, /\d{2}:\d{2}/);
-      const text = await admin.evaluate(() => document.querySelector('[data-history-list]').innerText);
-      assert.ok(!/\[事件\]|echo: \[/.test(text), 'no system text in the list');
+      await adminUntil(admin, () => document.querySelectorAll('[data-chat-page] [data-message-id]').length >= 2, null, 10000, 'the conversation');
+      const list = await rounds();
+      assert.deepEqual(list.map((m) => [m.role, m.text]), [['user', '今天也辛苦啦，晚上想吃什么？'], ['assistant', 'echo: 今天也辛苦啦，晚上想吃什么？']]);
+      assert.ok(list.every((m) => m.desktop), 'both rounds tagged 桌面');
+      const text = await admin.evaluate(() => document.querySelector('[data-chat-scroll]').innerText);
+      assert.ok(!/\[事件\]|echo: \[/.test(text), 'no system text in the conversation');
       const hidden = await page.evaluate(() => window.pet.historyList().then((r) => r.hidden));
       await shotAdmin('h4-list');
-      return `${list.map((i) => `${i.time} · ${i.who} · ${i.count} · 「${i.preview}」`).join(' | ')}; left out by origin: ${JSON.stringify(hidden)}`;
+      return `${list.map((m) => `${m.role}「${m.text}」`).join(' → ')}; left out by origin: ${JSON.stringify(hidden)}`;
     }, () => admin);
 
-    await step(S, 'H5 opening it shows the owner\'s message and her reply in full; 返回列表 goes back', async () => {
-      await admin.evaluate(() => document.querySelector('[data-session]').click());
-      await adminUntil(admin, () => !!document.querySelector('[data-history-thread] [data-role]'), null, 10000, 'the thread');
-      const msgs = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-role]')].map((m) => ({ role: m.dataset.role, text: m.querySelector('[data-history-text]').textContent })));
-      assert.deepEqual(msgs, [{ role: 'user', text: '今天也辛苦啦，晚上想吃什么？' }, { role: 'pet', text: 'echo: 今天也辛苦啦，晚上想吃什么？' }]);
-      await shotAdmin('h5-detail');
-      await admin.evaluate(() => document.querySelector('[data-history-back]').click());
-      await adminUntil(admin, () => !!document.querySelector('[data-session]'), null, 10000, 'the list again');
-      return msgs.map((m) => `${m.role}「${m.text}」`).join(' → ');
-    }, () => admin);
-
-    await step(S, 'H6 after a restart the history is still there (chat-log.json)', async () => {
+    await step(S, 'H6 after a restart the conversation is still there (chat-log.json)', async () => {
       await app.close();
       ({ app, page } = await launch(env));
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await openHistory();
-      const previews = (await items()).map((i) => i.preview);
-      assert.deepEqual(previews, ['今天也辛苦啦，晚上想吃什么？']);
+      await adminUntil(admin, () => document.querySelectorAll('[data-chat-page] [data-message-id]').length >= 2, null, 10000, 'the conversation');
+      const texts = (await rounds()).map((m) => m.text);
+      assert.deepEqual(texts, ['今天也辛苦啦，晚上想吃什么？', 'echo: 今天也辛苦啦，晚上想吃什么？']);
       await shotAdmin('h6-after-restart');
-      return `previews after restart: ${previews.join(', ')}`;
+      return `after restart: ${texts.join(' → ')}`;
     }, () => admin);
 
-    await step(S, 'H7 设置 → LobeHub 与本机 → 重新开始话题: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, history keeps both', async () => {
+    await step(S, 'H7 聊天 → ⋯ → 重新开始对话: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, the conversation keeps both', async () => {
       const runs = () => fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
       const oldTopic = runs().pop().topic;
-      await admin.evaluate(() => { location.hash = '/connection'; });
-      await adminUntil(admin, () => !!document.querySelector('[data-new-topic]'), null, 10000, '重新开始话题');
-      await admin.evaluate(() => document.querySelector('[data-new-topic]').click());
-      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"], .ant-modal')].some((d) => /旧话题不会删除/.test(d.textContent)), null, 8000, 'the confirmation');
+      await openHistory();
+      await admin.click('[data-chat-more]');
+      await adminUntil(admin, () => !!document.querySelector('[data-chat-new-topic]'), null, 8000, 'the ⋯ menu');
+      await admin.click('[data-chat-new-topic]');
+      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"]')].some((d) => /旧对话保留在 LobeHub/.test(d.textContent)), null, 8000, 'the confirmation');
       await shotAdmin('h7-menu-new-topic');
-      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === '重新开始话题').pop().click());
-      await adminUntil(admin, () => ![...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === '重新开始话题'), null, 8000, 'the dialog to close');
+      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].filter((b) => (b.textContent || '').trim() === '重新开始对话').pop().click());
+      await adminUntil(admin, () => /下一句会开一个新对话/.test(document.body.innerText), null, 8000, 'the result toast');
       await page.bringToFront();
       await clickAct(page, 'chat');
       await page.fill('#chat-input', '我们聊点新的吧');
@@ -5102,11 +5093,11 @@ async function history() {
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8');
       assert.doesNotMatch(calls, /"topic","delete"|"agent","delete"/);
       await openHistory();
-      await adminUntil(admin, () => document.querySelectorAll('[data-session]').length === 2, null, 10000, 'two conversations');
-      const previews = (await items()).map((i) => i.preview);
-      assert.equal(previews.length, 2, previews.join(' | '));
+      await adminUntil(admin, () => document.querySelectorAll('[data-chat-page] [data-message-id]').length >= 4, null, 10000, 'both rounds');
+      const texts = (await rounds()).filter((m) => m.role === 'user').map((m) => m.text);
+      assert.deepEqual(texts, ['今天也辛苦啦，晚上想吃什么？', '我们聊点新的吧']);
       await shotAdmin('h7-history-after-new-topic');
-      return `topic ${oldTopic} → ${newTopic}; nothing deleted; history: ${previews.join(' | ')}`;
+      return `topic ${oldTopic} → ${newTopic}; nothing deleted; conversation: ${texts.join(' | ')}`;
     }, () => admin);
   } finally {
     await app.close().catch(() => {});
@@ -6412,6 +6403,8 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
+// 设置窗口 IA 打磨 · 实施包 C 的前后对照截图（docs/admin-audit/03-changes.md；PIXELPET_AUDIT_PHASE=before|after）
+const auditC = () => require('./admin-audit-c')({ ROOT, FAKE_LH, step, launch, openAdminWindow, adminUntil, clickAct })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
 const spriteFrameScenarios = () => require('./sprite-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
@@ -7583,7 +7576,7 @@ async function streamScenario() {
 
     // 聊天记录 is a page of the settings window now (T-2718): while she writes, the bubble streams; once she is
     // done, the conversation there shows exactly what was saved
-    await step(S, 'S6 a streamed reply lands in 设置 → 聊天记录 as saved, once she is done', async () => {
+    await step(S, 'S6 a streamed reply lands in 设置 → 聊天 (her conversation, C01) as saved, once she is done', async () => {
       reply({ pieces: ['记录里', '也能', '看到我', '一点点写出来。'], gapMs: 500 });
       const done = page.evaluate(() => window.pet.chat('历史面板测试', [], []));
       await page.waitForFunction(() => document.getElementById('bubble').classList.contains('streaming'), null, { timeout: 10000 });
@@ -7591,10 +7584,8 @@ async function streamScenario() {
       await shot('s6-history-live');
       await done;
       await idle();
-      const admin = await openAdminWindow(app, page, 'history');
-      await adminUntil(admin, () => !!document.querySelector('[data-session]'), null, 10000, 'conversations');
-      await admin.evaluate(() => document.querySelector('[data-session]').click());
-      await adminUntil(admin, () => [...document.querySelectorAll('[data-history-thread] [data-role="pet"] [data-history-text]')].some((e) => e.textContent === '记录里也能看到我一点点写出来。'), null, 10000, 'the saved reply');
+      const admin = await openAdminWindow(app, page, 'chat');
+      await adminUntil(admin, () => [...document.querySelectorAll('[data-chat-page] [data-role="assistant"][data-message-id]')].some((e) => e.innerText.includes('记录里也能看到我一点点写出来。')), null, 10000, 'the saved reply');
       await admin.screenshot({ path: path.join(SHOTS, 's6-history-final.png') });
       return note(`bubble while writing: 「${live1}」; 聊天记录 after: the saved reply`);
     }, page);
@@ -8004,17 +7995,13 @@ async function frontslimScenario() {
       return `${info.open}/${info.all} topics unlocked; 聊聊 ${id} → pet bubble 「${reply.slice(0, 50)}」; lh ${run.slice(0, 2).join(' ')}`;
     }, () => admin);
 
-    await step(S, 'F7 聊天记录 → 后台 玩法 › 聊天记录：列表与对话', async () => {
-      await go('/history');
-      await until(admin, () => document.querySelectorAll('[data-session]').length > 0, null, 10000, 'a conversation');
-      const n = await admin.evaluate(() => document.querySelectorAll('[data-session]').length);
-      await shotAdmin('f7-admin-history-list');
-      await admin.evaluate(() => document.querySelector('[data-session]').click());
-      await until(admin, () => !!document.querySelector('[data-history-thread] [data-role="pet"]'), null, 10000, 'the thread');
-      const t = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-role]')].map((m) => `${m.dataset.role}: ${m.innerText.replace(/\s+/g, ' ').slice(0, 50)}`));
+    await step(S, 'F7 聊天记录 → 后台 聊天（#/history 重定向到她的会话，C01）', async () => {
+      await admin.evaluate(() => { location.hash = '/history'; });
+      await until(admin, () => /^#\/chat/.test(location.hash) && document.querySelectorAll('[data-chat-page] [data-message-id]').length > 0, null, 10000, 'her conversation');
+      const t = await admin.evaluate(() => [...document.querySelectorAll('[data-chat-page] [data-message-id]')].map((m) => `${m.dataset.role}: ${m.innerText.replace(/\s+/g, ' ').slice(0, 50)}`));
       await shotAdmin('f7-admin-history-thread');
-      map.push(['聊天记录', '玩法 › 和她一起 › 聊天记录']);
-      return `${n} conversation(s); thread: ${t.join(' | ')}`;
+      map.push(['聊天记录', '聊天（rail）› 她的会话（全部历史）']);
+      return `#/history → ${await admin.evaluate(() => location.hash)}; thread: ${t.join(' | ')}`;
     }, () => admin);
 
     await step(S, 'F8 动作 → 后台 玩法 › 桌面上的她：9 个动作逐个点，桌宠执行', async () => {
@@ -8037,10 +8024,10 @@ async function frontslimScenario() {
       return `buttons ${cues.join(' ')}; results ${done.join(' ')}`;
     }, () => admin);
 
-    await step(S, 'F9 回到右下角 → 后台 桌面上的她：被拖走的桌宠回到右下角', async () => {
+    await step(S, 'F9 回到右下角 → 后台 桌面上的她 › 找回桌宠（C11）：被拖走的桌宠回到右下角', async () => {
       await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui')); w.setPosition(100, 100); });
       const before = await petBounds(app);
-      await admin.evaluate(() => document.querySelector('[data-desk-home]').click());
+      await admin.evaluate(() => document.querySelector('[data-place-pet]').click());
       await toastSeen(/回到右下角/);
       const after = await petBounds(app);
       const wa = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
@@ -8048,7 +8035,7 @@ async function frontslimScenario() {
       assert.equal(after.y + after.height, wa.y + wa.height - 24);
       await shotAdmin('f9-admin-home');
       desktop('f9-desktop-pet-home');
-      map.push(['回到右下角', '玩法 › 和她一起 › 桌面上的她 › 回到右下角']);
+      map.push(['回到右下角', '玩法 › 和她互动 › 桌面上的她 › 找回桌宠']);
       return `pet window ${before.x},${before.y} → ${after.x},${after.y} (${after.width}x${after.height}; work area ${wa.width}x${wa.height})`;
     }, () => admin);
 
@@ -8063,19 +8050,22 @@ async function frontslimScenario() {
       return `${n} character entries; /characters/claude title 「${title}」`;
     }, () => admin);
 
-    await step(S, 'F11 重新开始话题 → 后台 设置 › LobeHub 与本机：二次确认后开新话题', async () => {
+    await step(S, 'F11 重新开始话题 → 后台 聊天 › ⋯ › 重新开始对话（C04）：二次确认后开新话题', async () => {
       const before = petState();
       const cur = before.currentSpecies || before.speciesId;
       const epoch = (o) => { const c = (o.characters || {})[cur] || Object.values(o.characters || {})[0] || {}; return c.topicEpoch || 0; };
-      await go('/connection');
-      await admin.evaluate(() => document.querySelector('[data-new-topic]').click());
-      const dlg = await dialogOk('重新开始话题');
+      await go('/chat');
+      await until(admin, () => !!document.querySelector('[data-chat-more]'), null, 10000, 'the chat header');
+      await admin.click('[data-chat-more]');
+      await until(admin, () => !!document.querySelector('[data-chat-new-topic]'), null, 5000, 'the ⋯ menu');
+      await admin.click('[data-chat-new-topic]');
+      const dlg = await dialogOk('重新开始对话');
       await shotAdmin('f11-admin-new-topic-confirm');
-      await dialogClick('重新开始话题');
-      await toastSeen(/新话题/);
+      await dialogClick('重新开始对话');
+      await toastSeen(/新对话/);
       const after = petState();
       assert.equal(epoch(after), epoch(before) + 1);
-      map.push(['重新开始话题', '设置 › 连接 › LobeHub 与本机 › 话题 › 重新开始话题（二次确认）']);
+      map.push(['重新开始话题', '聊天 › ⋯ › 重新开始对话（二次确认）']);
       return `confirm 「${dlg}」; topicEpoch ${epoch(before)} → ${epoch(after)}`;
     }, () => admin);
 
@@ -8202,16 +8192,17 @@ async function frontslimScenario() {
       return `confirm 「${dlg}」; lh agent delete ×${deletes.length} (${deletes.map((a) => a[2]).join(', ')}); pet back on onboarding`;
     }, () => admin);
 
-    await step(S, 'F18 退出 → 后台 桌面上的她：二次确认后整个应用退出', async () => {
-      await go('/desk');
-      await admin.evaluate(() => document.querySelector('[data-desk-quit]').click());
-      const dlg = await dialogOk('退出');
+    await step(S, 'F18 退出 → 后台 设置 › 系统 › 关于与数据 › 退出应用（C11 / A18）：二次确认后整个应用退出', async () => {
+      await go('/about');
+      await admin.evaluate(() => document.querySelector('[data-app-quit]').click());
+      const okText = await admin.evaluate(async () => { for (let i = 0; i < 40; i++) { const b = [...document.querySelectorAll('[role="dialog"] button')].pop(); if (b) return b.textContent.trim(); await new Promise((r) => setTimeout(r, 150)); } return ''; });
+      const dlg = await dialogOk(okText);
       await shotAdmin('f18-admin-quit-confirm');
       const exited = new Promise((r) => app.process().once('exit', (code) => r(code)));
-      await dialogClick('退出').catch(() => {}); // the window may be gone before the click returns
+      await dialogClick(okText).catch(() => {}); // the window may be gone before the click returns
       const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r('still running'), 10000))]);
       assert.notEqual(code, 'still running');
-      map.push(['退出', '玩法 › 和她一起 › 桌面上的她 › 退出（二次确认）']);
+      map.push(['退出', '设置 › 系统 › 关于与数据 › 退出应用（二次确认）']);
       return `confirm 「${dlg}」; app process exit code ${code}`;
     });
 
@@ -8540,9 +8531,7 @@ async function wardrobePackScenario() {
         filterHtml: document.querySelector('[data-kind-filter]').outerHTML,
         importButton: document.querySelector('[data-go-import]').outerHTML,
         cards: [...document.querySelectorAll('[data-roster] [data-row]')].map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, link: e.querySelector('a').getAttribute('href'), title: e.querySelector('a').getAttribute('aria-label') })),
-      // B07: the card leads with her Live2D look; the filter is in the URL (P-02)
         oldWordsFound: ['形象包', '跟随形象包', '有导入包', '导入角色包', 'packs'].filter((w) => document.querySelector('[data-admin-page]').innerText.includes(w)),
-      assert.equal(await admin.evaluate(() => location.hash), '#/characters?kind=live2d');
       }));
       fs.writeFileSync(path.join(SHOTS, 'w0b-roster-dom.json'), JSON.stringify(dom, null, 2));
       assert.deepEqual(dom.oldWordsFound, []);
@@ -8551,7 +8540,9 @@ async function wardrobePackScenario() {
       await admin.locator('[data-kind-filter]').getByText(/^Live2D \d+$/).click();
       await attached('[data-roster-filter="live2d"]');
       const l2d = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.dataset.row));
+      // B07: the card leads with her Live2D look; the filter is in the URL (P-02)
       assert.ok(l2d.includes('dafeiyu-live2d') && !l2d.includes('dafeiyu-pixel'), l2d.join(','));
+      assert.equal(await admin.evaluate(() => location.hash), '#/characters?kind=live2d');
       const filtered = await shot('w0b-roster-live2d');
       await admin.locator('[data-kind-filter]').getByText(/^全部 \d+$/).click();
       await attached('[data-roster-filter="all"]');
@@ -9499,6 +9490,7 @@ async function adminCoverageScenario() {
       // 找回桌宠: she was dragged to the top-left corner
       await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
       const moved = await petBoundsNow();
+      await go('/desk'); // C11 / TOG-04: 找回桌宠 lives once, on 桌面上的她
       await admin.click('[data-place-pet]');
       await page.waitForTimeout(500);
       const back = await petBoundsNow();
@@ -10671,7 +10663,7 @@ async function interjectScenario() {
 
     await step(S, 'IJ7 设置窗口: the rules table (rule, origin, hits, created) and the recent decisions (probability, interjected or not)', async () => {
       chapter('IJ7 设置窗口：规则表与判断记录');
-      await admin.evaluate(() => { location.hash = '/proactive'; });
+      await admin.evaluate(() => { location.hash = '/interject'; }); // C05 / INT-01: its own page
       await adminUntil(admin, () => document.querySelectorAll('[data-interject-rules] [data-row-key]').length === 1 && document.querySelectorAll('[data-interject-decisions] [data-row-key]').length >= 3, null, 10000, 'rules and records');
       const r = await adminRows('[data-interject-rules]');
       const d = await adminRows('[data-interject-decisions]');
@@ -10787,6 +10779,7 @@ async function interjectScenario() {
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   if (which === 'interject' || which === 'all') await interjectScenario();
+  if (which === 'auditc') await auditC(); // not in `all`: writes docs/admin-audit/screenshots/C-*
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
