@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,6 +19,7 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
+const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
@@ -317,6 +318,15 @@ function wire() {
   ipcMain.handle('touch', (_e, target) => service.touch(target));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
+  // 插个嘴 (core/interject.js, docs/interject.md): the chat box's unsent draft (the renderer sends it only while
+  // the feature and that source are on), the owner's reaction to a remark, and the rules / records for the UI
+  ipcMain.on('interject-draft', (_e, p) => { service.interjectInput('chatDraft', String((p && p.text) || '').slice(0, 4000)); });
+  ipcMain.handle('interject-feedback', (_e, p) => service.interjectFeedback(p && p.id, p && p.kind));
+  ipcMain.handle('interject-rules', () => service.interjectRules());
+  ipcMain.handle('interject-add-rule', (_e, p) => service.interjectAddRule(p && p.rule));
+  ipcMain.handle('interject-delete-rule', (_e, p) => service.interjectDeleteRule(p && p.id));
+  ipcMain.handle('interject-decisions', (_e, p) => service.interjectDecisions(p && p.limit));
+  ipcMain.handle('set-interject', (_e, patch) => { const r = service.setSection('interject', patch); syncClipboardWatch(); return r; });
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
   ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
@@ -703,6 +713,9 @@ function wire() {
       return true;
     });
     ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
+    // 插个嘴: judge what is waiting now instead of after the debounce, and feed any listed source
+    ipcMain.handle('debug-interject-flush', async () => service.interjector.flush());
+    ipcMain.handle('debug-interject-input', (_e, p) => service.interjectInput(p && p.source, p && p.text));
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
@@ -716,12 +729,40 @@ function wire() {
   service.on('chat-delta', (d) => send('chat-delta', d));
   service.on('chat-done', (d) => send('chat-done', d));
   service.on('affection', (a) => send('affection', a));
-  service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); });
+  service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
+  // 插个嘴: what was judged and what she said (the record without the owner's text beyond its short summary)
+  service.on('interject', (e) => send('interject', { type: e.type, decision: e.decision || null, rule: e.rule || null, decisionId: e.decisionId || null }));
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
   updater.on('status', (st) => { send('update-status', st); if (admin) admin.send('update-status', st); });
   ipcMain.on('open-log', () => { try { fs.appendFileSync(logFile(), ''); shell.showItemInFolder(logFile()); } catch { /* ignore */ } });
+}
+
+// 插个嘴 source 'clipboard' (system level): only while 插个嘴 AND its own clipboard switch are on (both off by
+// default). Polls the clipboard's plain text every few seconds; what was there when watching started is not judged.
+// Nothing else system-wide is read (no keyboard hook, no window titles, no screen).
+const CLIPBOARD_POLL_MS = 3000;
+let clipboardWatch = null;
+function syncClipboardWatch() {
+  const ij = service && service.settings.interject;
+  const want = !!(ij && ij.enabled && ij.sources.clipboard);
+  if (!want) {
+    if (clipboardWatch) clearInterval(clipboardWatch.timer);
+    clipboardWatch = null;
+    return;
+  }
+  if (clipboardWatch) return;
+  const w = { last: clipboard.readText() };
+  w.timer = setInterval(() => {
+    let text = '';
+    try { text = clipboard.readText(); } catch { return; }
+    if (text === w.last) return;
+    w.last = text;
+    if (text.trim()) service.interjectInput('clipboard', text.slice(0, 4000));
+  }, CLIPBOARD_POLL_MS);
+  if (w.timer.unref) w.timer.unref();
+  clipboardWatch = w;
 }
 
 app.whenReady().then(() => {
@@ -744,7 +785,7 @@ app.whenReady().then(() => {
   const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
+  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -757,6 +798,7 @@ app.whenReady().then(() => {
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
     chat: (text) => service.chat(text, [], [], { origin: 'api' }), // an outside script, not the owner: not in 聊天记录
+    observe: (text) => service.interjectInput('api', text), // 插个嘴 source 'api': she may or may not remark on it
   }, logError);
   // 语音输入: the microphone only for our own page, audio only, and only while 语音输入 is on
   // (core/asr.js mediaAllowed). Other permissions keep Electron's default.
@@ -785,6 +827,7 @@ app.whenReady().then(() => {
   createAppMenu();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
   applyApi();
+  syncClipboardWatch();
   updater.start();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);
 });

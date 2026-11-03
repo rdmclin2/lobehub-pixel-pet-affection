@@ -1141,6 +1141,13 @@ function bindPetUi() {
   };
   $('chat-send').addEventListener('click', send);
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
+  // Only this box: nothing typed anywhere else is seen.
+  $('chat-input').addEventListener('input', () => {
+    const ij = settings && settings.interject;
+    if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
+    window.pet.interject.draft($('chat-input').value);
+  });
 
   // ---- pictures: paste (Ctrl/⌘+V), drag in, or the 📎 button; Escape stops a running task
   document.addEventListener('paste', (e) => {

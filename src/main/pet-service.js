@@ -19,6 +19,7 @@ const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
 const { endpointOkFor } = require('../core/tts');
 const asrLib = require('../core/asr');
+const interjectLib = require('../core/interject');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
@@ -38,7 +39,7 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, log = new chatLog.MemoryChatLog() }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -73,6 +74,19 @@ class PetService extends EventEmitter {
     this._catalogError = null;
     this._catalogLoading = null;
     this._localAgent = null; // the agent the last device check bound
+    // 插个嘴 (core/interject.js): listens only to the inputs fed in through interjectInput(); off by default
+    this.interjector = new interjectLib.Interjector({
+      decide: (req) => this.lh.decide(req),
+      speak: (req) => this._interjectSpeak(req),
+      config: () => this.settings.interject,
+      pet: () => (this.pet ? { ...this._c() } : null),
+      busy: () => this.busy,
+      now: () => this.now(),
+      rnd: () => this.rnd(),
+      store: interjectStore,
+      ...(timers ? { timers } : {}),
+      onEvent: (e) => (e.type === 'error' ? this.emit('error', e.error) : this.emit('interject', e)),
+    });
   }
 
   _c() {
@@ -836,6 +850,8 @@ class PetService extends EventEmitter {
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
+    // 插个嘴: a message to her ends whatever was waiting, and may be the owner's reaction to her last remark
+    if (origin === 'user') this.interjector.userChatted(clean);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
     const stream = this._openStream('chat', turn);
     try {
@@ -875,6 +891,72 @@ class PetService extends EventEmitter {
       this._save(); // touch() above may have woken the pet; keep the sprite in sync
       if (e.code === 'ECANCELED') return { ok: false, reason: 'canceled' };
       return { ok: false, reason: 'error', code: e.code || null, message: e.message };
+    } finally {
+      this.busy = false;
+      this.emit('thinking', false);
+    }
+  }
+
+  // ---- 插个嘴 (core/interject.js, docs/interject.md) -------------------------------------------------------
+  // Something the owner typed / said / copied that is not addressed to her, from one of the listed sources
+  // ('chatDraft' | 'voice' | 'api' | 'clipboard'). → { accepted, reason? }; the judgement comes later (debounce).
+  interjectInput(source, text) {
+    if (!this.pet) return { accepted: false, reason: 'no-pet' };
+    return this.interjector.input(source, text);
+  }
+
+  interjectFeedback(decisionId, kind) {
+    return this.interjector.feedback(String(decisionId || ''), kind);
+  }
+
+  interjectRules() {
+    return { rules: this.interjector.listRules() };
+  }
+
+  interjectAddRule(rule) {
+    return this.interjector.addRule(rule);
+  }
+
+  interjectDeleteRule(id) {
+    return this.interjector.deleteRule(String(id || ''));
+  }
+
+  interjectDecisions(limit = 50) {
+    return { decisions: this.interjector.listDecisions(Number(limit) || 50), status: this.interjector.status() };
+  }
+
+  // The decision said yes: one short line in her voice through the usual bubble. The agent writes it (counted
+  // against 主动行为's hourly LLM budget like her other unprompted lines); with the budget spent or the turn
+  // failing she murmurs an offline line instead. → { ok, text, via } — ok: false when she is busy or gone.
+  async _interjectSpeak({ text, source, decisionId }) {
+    if (!this.pet || this.busy) return { ok: false, reason: 'busy' };
+    const t = this.now();
+    const c = this._c();
+    const offline = () => interjectLib.OFFLINE_LINES[Math.floor(this.rnd() * interjectLib.OFFLINE_LINES.length)];
+    const sayMeta = (shown, via, stream = null, reason = null) => {
+      const said = this._say(shown, via === 'llm' ? 'llm' : 'fallback', 'interject', reason, null, null, stream);
+      this.emit('interject', { type: 'said', decisionId, text: said, via });
+      return { ok: true, text: said, via };
+    };
+    if (!this.budget.canSpend(t)) return sayMeta(offline(), 'fallback', null, 'hourly LLM budget spent');
+    this.busy = true;
+    this._cancelRequested = false;
+    this.emit('thinking', true);
+    const stream = this._openStream('interject');
+    try {
+      this.budget.spend(t);
+      await this._ensureReady();
+      this._throwIfCanceled();
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: interjectLib.buildInterjectPrompt(persona.buildStateBlock(c, t, this.settings), { text, source }) }, stream);
+      if (res.topicId) c.topicId = res.topicId;
+      const r = sayMeta(this._guard(res.text), 'llm', stream);
+      this._closeStream(stream, true, null, r.text);
+      return r;
+    } catch (e) {
+      this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
+      if (e.code === 'ECANCELED') return { ok: false, reason: 'canceled' };
+      this.emit('error', e);
+      return sayMeta(offline(), 'fallback', null, e.message);
     } finally {
       this.busy = false;
       this.emit('thinking', false);
@@ -1051,7 +1133,10 @@ class PetService extends EventEmitter {
   // -> { ok: true, text, lang, provider, ms, fellBackFrom } | { ok: false, reason, message, provider, tried }
   async asrTranscribe(bytes, mime, { ms } = {}) {
     if (!this.asr) return { ok: false, reason: 'not-configured', message: 'ASR is not available', provider: null, tried: [] };
-    return this.asr.transcribe(bytes, mime, this.settings.asr, { ms });
+    const r = await this.asr.transcribe(bytes, mime, this.settings.asr, { ms });
+    // 插个嘴 source 'voice': the transcript (auto-sent ones are dropped again when the chat message arrives)
+    if (r && r.ok && r.text) this.interjector.input('voice', r.text);
+    return r;
   }
 
   asrCancel() {
@@ -1080,9 +1165,13 @@ class PetService extends EventEmitter {
   // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: { ...this.settings[name], ...p } });
+    const merged = { ...this.settings[name], ...p };
+    // interject.sources is the one nested object: a patch of one source keeps the others
+    if (name === 'interject' && p.sources && typeof p.sources === 'object') merged.sources = { ...this.settings.interject.sources, ...p.sources };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: merged });
+    if (name === 'interject' && !this.settings.interject.enabled) this.interjector.cancel();
     this.settingsStore.save(this.settings);
     this._applyRules();
     this.emit('settings', this.settingsView());
@@ -1248,6 +1337,7 @@ class PetService extends EventEmitter {
     if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: c.affection });
     if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke', origin: this._logPet('哈——睡饱啦。', 'woke') });
     this._sayRetiredNotice();
+    this.interjector.tick(); // 插个嘴: a remark nobody reacted to counts as ignored
     // 主动行为 off: she still lives (needs, decay, waking up) but never speaks up on her own
     const pro = this.settings.proactive;
     if (!pro.enabled) return;

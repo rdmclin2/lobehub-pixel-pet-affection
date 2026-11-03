@@ -31,6 +31,19 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   else if (mode === 'model') { console.error('12:00:00 [ERROR] ASR failed: LobeHubModelDeprecated'); process.exit(1); }
   else if (mode === 'fail') { console.error('12:00:00 [ERROR] ASR failed:'); process.exit(1); }
   else console.log(JSON.stringify({ text: `heard ${args[args.indexOf('--model') + 1]} ${args.includes('--language') ? args[args.indexOf('--language') + 1] : 'auto'}` }, null, 2));
+} else if (args[0] === 'generate' && args[1] === 'decide') {
+  // 插个嘴 (core/interject.js). `decide.json` in FAKE_LH_DIR: { "probability": 0.85 } (default) | { "mode": "fail" | "hang" | "refusal" | "garbage" }.
+  // Every call's model, questions and state are appended to decide-calls.jsonl.
+  const at = (f) => args[args.indexOf(f) + 1];
+  const state = args.includes('--state-file') ? fs.readFileSync(at('--state-file'), 'utf8') : '';
+  fs.appendFileSync(path.join(dir, 'decide-calls.jsonl'), JSON.stringify({ model: at('-m'), questions: JSON.parse(at('-q')), state }) + '\n');
+  const f = path.join(dir, 'decide.json');
+  const cfg = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { probability: 0.85 };
+  const name = Object.keys(JSON.parse(at('-q')))[0];
+  if (cfg.mode === 'hang') setInterval(() => {}, 1000);
+  else if (cfg.mode === 'fail') { console.error('12:00:00 [ERROR] Decision failed: TypeSafe provider is not configured'); process.exit(1); }
+  else if (cfg.mode === 'garbage') console.log('not json');
+  else console.log(JSON.stringify({ answers: { [name]: cfg.mode === 'refusal' ? { type: 'refusal' } : { probability: cfg.probability, type: 'boolean' } }, model: 'jev-1.14.0', usage: { totalTokens: 400 } }, null, 2));
 } else if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
   console.log(JSON.stringify({ fullName: 'Test Owner', username: 'tester', email: 't@example.com' }));
@@ -142,7 +155,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   if (fs.existsSync(replyFile)) return slowStreamRun(JSON.parse(fs.readFileSync(replyFile, 'utf8')), topic);
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
-    { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
+    { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : (prompt.split('\n').pop().startsWith('[插嘴]') ? '（小声）嘿嘿，辛苦啦～' : `echo: ${prompt.split('\n').pop()}`), usage: { cost: 0.001 } } },
     { type: 'agent_runtime_end', data: {} },
   ]);
   const delay = Number(process.env.FAKE_LH_RUN_DELAY_MS || 0);

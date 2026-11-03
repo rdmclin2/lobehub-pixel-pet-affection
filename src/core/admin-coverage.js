@@ -51,6 +51,7 @@ const VIA = {
   'get-settings': '`admin-boot` / `admin-state`（整份设置随广播推送）',
   place: '`admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）',
   'open-admin': '这就是打开设置窗口本身',
+  'set-interject': '`admin-set` interject.*（玩法 → 主动搭话与好感 → 插个嘴）',
 };
 
 // pet-window channels that are not settings: what they are
@@ -96,6 +97,14 @@ const PET_ONLY = {
   'debug-tray': '测试钩子',
   'debug-tray-click': '测试钩子',
   'debug-heartbeat': '测试钩子',
+  'debug-interject-flush': '测试钩子（插个嘴：立即判断）',
+  'debug-interject-input': '测试钩子（插个嘴：喂一条来源输入）',
+  'interject-draft': '插个嘴的输入来源：聊天框里还没发送的草稿（运行时输入，不是配置）',
+  'interject-feedback': '插个嘴：主人对一次插嘴的反馈（🙊 别打扰 / 👍），沉淀为规则',
+  'interject-rules': '插个嘴：查看沉淀的规则（数据，不是配置项；设置窗口里的规则页是后续任务）',
+  'interject-add-rule': '插个嘴：手动加一条规则（同上）',
+  'interject-delete-rule': '插个嘴：删除一条规则（同上）',
+  'interject-decisions': '插个嘴：判断记录（查看，不是配置）',
 };
 
 // the former ⋯ menu (menu:) and toolbar buttons (toolbar:) of the pet window, any data-menu item it grows again,
