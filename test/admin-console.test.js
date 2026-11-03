@@ -486,7 +486,7 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'update-status']);
+  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
   // the settings window's own channels answer that window only (outside tests)
   assert.match(main, /const adminOnly = \(fn\) => \(e, p\) => \(admin\.isSender\(e\) \|\| TEST_MODE/);

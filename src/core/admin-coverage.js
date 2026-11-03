@@ -51,6 +51,7 @@ const VIA = {
   'get-settings': '`admin-boot` / `admin-state`（整份设置随广播推送）',
   place: '`admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）',
   'open-admin': '这就是打开设置窗口本身',
+  'set-interject': '`admin-set` interject.*（玩法 → 主动搭话与好感 → 插个嘴）',
 };
 
 // pet-window channels that are not settings: what they are
@@ -96,6 +97,12 @@ const PET_ONLY = {
   'debug-tray': '测试钩子',
   'debug-tray-click': '测试钩子',
   'debug-heartbeat': '测试钩子',
+  'debug-interject-flush': '测试钩子（插个嘴：立即判断）',
+  'debug-interject-reset-cooldown': '测试钩子（插个嘴：清掉冷却）',
+  'debug-interject-input': '测试钩子（插个嘴：喂一条来源输入）',
+  'interject-draft': '插个嘴的输入来源：聊天框里还没发送的草稿（运行时输入，不是配置）',
+  'interject-feedback': '插个嘴：主人对一次插嘴的反馈（气泡上的「别插嘴」/「说得好」），沉淀为规则',
+  'interject-add-rule': '插个嘴：手动加一条规则（脚本 / 测试用；设置窗口的规则表只启用 / 停用 / 删除）',
   'debug-voice-hotkey': '测试钩子：按一次快捷键唤起语音对话（调用注册的处理函数）',
   'debug-voice-hotkey-status': '测试钩子：快捷键注册状态（设置窗口从 settings.hotkeyStatus 读同一份）',
   'debug-mic-access': '测试钩子：模拟系统拒绝麦克风',

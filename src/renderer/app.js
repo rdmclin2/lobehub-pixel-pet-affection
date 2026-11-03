@@ -717,6 +717,52 @@ function hideToast() {
   $('unlock-toast').classList.add('hidden');
 }
 
+// 插个嘴 (core/interject.js): while a remark she made on her own is in the bubble, 别插嘴 / 说得好 sit on top of
+// it. A click is the owner's explicit feedback on that decision (mute → a block rule, like → an allow rule).
+// The row goes away with the bubble or as soon as anything else is shown there.
+let ijDecision = null;
+let ijDoneTimer = null;
+function showInterjectFeedback(decisionId) {
+  const b = $('bubble');
+  if (!decisionId || b.classList.contains('hidden') || b.dataset.kind !== 'interject') return;
+  ijDecision = decisionId;
+  clearTimeout(ijDoneTimer);
+  const row = $('ij-feedback');
+  row.dataset.decision = decisionId;
+  for (const btn of row.querySelectorAll('.ij-btn')) { btn.classList.remove('hidden'); btn.disabled = false; }
+  row.querySelector('.ij-done').classList.add('hidden');
+  row.classList.remove('hidden');
+}
+function hideInterjectFeedback() {
+  ijDecision = null;
+  clearTimeout(ijDoneTimer);
+  $('ij-feedback').classList.add('hidden');
+}
+function bindInterjectFeedback() {
+  const row = $('ij-feedback');
+  row.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.ij-btn');
+    if (!btn || !ijDecision) return;
+    const id = ijDecision;
+    for (const x of row.querySelectorAll('.ij-btn')) x.disabled = true;
+    let r = null;
+    try { r = await window.pet.interject.feedback(id, btn.dataset.ij); } catch { /* shown below */ }
+    if (ijDecision !== id) return;
+    const done = row.querySelector('.ij-done');
+    done.textContent = !r || !r.ok ? '没记上，稍后再试' : btn.dataset.ij === 'mute' ? '好，这类话我不插嘴了' : '嘿嘿，记住啦';
+    for (const x of row.querySelectorAll('.ij-btn')) x.classList.add('hidden');
+    done.classList.remove('hidden');
+    row.dataset.result = r && r.ok ? btn.dataset.ij : 'error';
+    ijDoneTimer = setTimeout(hideInterjectFeedback, 2500);
+  });
+  // anything else in the bubble (or the bubble hiding) takes the row away
+  new MutationObserver(() => {
+    const b = $('bubble');
+    if (ijDecision && (b.classList.contains('hidden') || b.dataset.kind !== 'interject' || b.dataset.stream)) hideInterjectFeedback();
+  }).observe($('bubble'), { attributes: true, attributeFilter: ['class', 'data-kind', 'data-stream'] });
+  window.pet.onInterject((e) => { if (e && e.type === 'said' && !VISITOR) showInterjectFeedback(e.decisionId); });
+}
+
 // `streamId`: this line is the final text of the reply that was being written into the bubble (流式回复):
 // the bubble is corrected to it and the stream ends here.
 function say(text, kind, source, reason, meme = null, streamId = null) {
@@ -1141,6 +1187,13 @@ function bindPetUi() {
   };
   $('chat-send').addEventListener('click', send);
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
+  // Only this box: nothing typed anywhere else is seen.
+  $('chat-input').addEventListener('input', () => {
+    const ij = settings && settings.interject;
+    if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
+    window.pet.interject.draft($('chat-input').value);
+  });
 
   // ---- pictures: paste (Ctrl/⌘+V), drag in, or the 📎 button; Escape stops a running task
   document.addEventListener('paste', (e) => {
@@ -1168,6 +1221,7 @@ function bindPetUi() {
   bindMic();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
+  bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 

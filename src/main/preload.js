@@ -82,6 +82,20 @@ contextBridge.exposeInMainWorld('pet', {
     set: (patch) => ipcRenderer.invoke('set-asr', patch),
     micAccess: () => ipcRenderer.invoke('asr-mic-access'), // 'granted' | 'denied' | 'restricted' (macOS asks once)
   },
+  // 插个嘴 (core/interject.js): the unsent chat draft (only while 插个嘴 and its 聊天框 source are on), the owner's
+  // reaction to a remark ('mute' | 'like'), and the rules / records the settings UI shows
+  interject: {
+    draft: (text) => ipcRenderer.send('interject-draft', { text }),
+    feedback: (id, kind) => ipcRenderer.invoke('interject-feedback', { id, kind }),
+    rules: () => ipcRenderer.invoke('interject-rules'),
+    addRule: (rule) => ipcRenderer.invoke('interject-add-rule', { rule }),
+    deleteRule: (id) => ipcRenderer.invoke('interject-delete-rule', { id }),
+    setRule: (id, disabled) => ipcRenderer.invoke('interject-set-rule', { id, disabled }),
+    clearDecisions: () => ipcRenderer.invoke('interject-clear-decisions'),
+    decisions: (limit) => ipcRenderer.invoke('interject-decisions', { limit }),
+    set: (patch) => ipcRenderer.invoke('set-interject', patch),
+  },
+  onInterject: on('interject'),
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),
   apiStatus: () => ipcRenderer.invoke('api-status'),
@@ -107,6 +121,9 @@ contextBridge.exposeInMainWorld('pet', {
   debugTray: () => ipcRenderer.invoke('debug-tray'),
   debugTrayClick: (label) => ipcRenderer.invoke('debug-tray-click', { label }),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
+  debugInterjectFlush: () => ipcRenderer.invoke('debug-interject-flush'),
+  debugInterjectResetCooldown: () => ipcRenderer.invoke('debug-interject-reset-cooldown'),
+  debugInterjectInput: (source, text) => ipcRenderer.invoke('debug-interject-input', { source, text }),
   debugVoiceHotkey: () => ipcRenderer.invoke('debug-voice-hotkey'),
   debugVoiceHotkeyStatus: () => ipcRenderer.invoke('debug-voice-hotkey-status'),
   debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
