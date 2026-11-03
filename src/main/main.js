@@ -18,6 +18,7 @@ const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { CatalogDownloader } = require('./catalog');
+const Catalog = require('../core/catalog');
 const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
@@ -56,6 +57,7 @@ let service = null;
 let updater = null;
 let packStore = null;
 let catalog = null; // 下载角色 (src/main/catalog.js)
+let danceStore = null; // 商店 → 舞蹈: the same downloader, installing into the dance library
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -646,6 +648,13 @@ function wire() {
     try { return await danceImport.commit(opts, danceDirNow()); } catch (err) { logError(err); return DancesLib.importError('write-failed'); }
   });
   ipcMain.handle('dance-import-cancel', () => danceImport.cancel());
+  // 商店 → 舞蹈 (core/catalog.js loadDanceIndex): the store's dances, each 已下载 or not; download / cancel
+  ipcMain.handle('dance-store', () => {
+    const have = danceImport.installedIds(danceDirNow());
+    return { dances: Catalog.listDances((id) => have.has(id)), downloads: danceStore ? danceStore.state() : [], vrm: !DancesLib.cannotDance((service.view() || {}).look) };
+  });
+  ipcMain.handle('dance-download', (_e, { id } = {}) => danceStore.download(String(id || '')));
+  ipcMain.handle('dance-download-cancel', (_e, { id } = {}) => danceStore.cancel(String(id || '')));
   // 删除舞蹈: the one she is dancing stops first (at once), then its folder and its entry go
   ipcMain.handle('dance-remove', async (_e, { id } = {}) => {
     const st = await danceState().catch(() => null);
@@ -942,6 +951,13 @@ app.whenReady().then(() => {
   packStore = new PackStore();
   packStore.serve();
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
+  danceStore = new CatalogDownloader({
+    packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
+    lookup: (id) => Catalog.danceEntry(id),
+    isInstalled: (e) => danceImport.installedIds(danceDirNow()).has(e.id),
+    install: (e, zipFile) => danceImport.installStore(danceDirNow(), e, zipFile),
+    texts: { unknown: '商店里没有这支舞', installed: '这支舞已经下载好了', invalid: '下载的舞蹈文件有问题，已丢弃' },
+  });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a

@@ -5,6 +5,7 @@
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
 //   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 商店 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
+//   scenario "store" -> 商店 → 舞蹈 / VRM 角色: every store dance (cover, credit, 有音乐), downloading one; the VRM models with their license; a VRM in parts (sha256 refusal), worn; dancing the store dance with its music
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
@@ -8758,6 +8759,217 @@ async function wardrobePackScenario() {
   }
 }
 
+// ---------------------------------------------------------------- store (商店 → 舞蹈 / VRM 角色)
+// 商店 sells the dances and VRM models of scripts/build-store-assets.js. From a local server playing the CDN (the
+// archives in ~/vrm-assets/store, or STORE_DIR; STORE_CDN=1 downloads from the real CDN instead): 商店 → 舞蹈
+// lists every dance (cover, credit, length, 有音乐); a pixel pet may download one but not dance it; 商店 → 角色
+// lists the VRM models with their license (授权); a VRM over 20 MB comes down in parts; she wears it and dances
+// the store dance from 商店 with its music. A corrupted part is refused by the sha256. Free: fake lh.
+// Evidence in out/e2e/store/.
+async function storeScenario() {
+  const S = 'store';
+  const SHOTS = path.join(OUT, 'store');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const STORE = process.env.STORE_DIR || path.join(os.homedir(), 'vrm-assets', 'store');
+  const CDN = process.env.STORE_CDN === '1';
+  if (!CDN && !fs.existsSync(path.join(STORE, 'dances'))) {
+    console.log(`SKIP  [${S}] no store archives in ${STORE} (node scripts/build-store-assets.js), STORE_CDN not set`);
+    return;
+  }
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const DANCE = 'dance-sample';
+  const VRM = 'vrm-f060464a'; // 凍香(天使): over 20 MB (two parts), its license allows redistribution
+  const http = require('node:http');
+  const corrupt = new Set();
+  const served = [];
+  const server = http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = [path.join(STORE, 'dances', name), path.join(STORE, 'vrm', name)].find((f) => fs.existsSync(f));
+    served.push(name);
+    if (!file) { res.writeHead(404); return res.end('not found'); }
+    let buf = fs.readFileSync(file);
+    if (corrupt.has(name)) { buf = Buffer.from(buf); buf[Math.floor(buf.length / 2)] ^= 0xff; }
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 512 * 1024)); i += 512 * 1024; setTimeout(tick, 40); };
+    tick();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/store`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-store-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-storefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_PREINSTALLED: '', ...(CDN ? {} : { PIXELPET_CATALOG_URL: base }) };
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (label) => {
+    await admin.evaluate((l) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === l); if (!t) throw new Error(`no tab ${l}`); t.click(); }, label);
+    await admin.waitForTimeout(400);
+  };
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(500);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const viewShot = async (name) => { await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  const state = () => call('state');
+  const leftovers = () => ['packs', 'vrm-dances'].flatMap((d) => (fs.existsSync(path.join(data, d)) ? fs.readdirSync(path.join(data, d)).filter((n) => n.startsWith('.')).map((n) => `${d}/${n}`) : []));
+
+  try {
+    await step(S, 'S1 唤醒像素角色；商店多了「舞蹈」分类，列出所有舞（封面、署名、时长、大小、有音乐），像素角色时提示只有 VRM 能跳', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card[data-character="dafeiyu-pixel"]').click();
+      await page.fill('#pet-name', '小鱼');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      admin = await openAdminWindow(app, page, 'overview');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      await go('/store');
+      const tabs = await admin.$$eval('[role="tab"]', (els) => els.map((e) => e.textContent.trim()));
+      assert.ok(tabs.includes('角色') && tabs.includes('舞蹈'), tabs.join(','));
+      await tab('舞蹈');
+      await attached('[data-store-dances]');
+      const want = Catalog.loadDanceIndex().dances;
+      const cards = await admin.$$eval('[data-store-dance]', (els) => els.map((e) => ({ id: e.dataset.storeDance, name: e.querySelector('strong, [class*="strong"]')?.textContent || e.textContent.slice(0, 40), meta: e.querySelector('[data-store-dance-meta]')?.textContent, music: /有音乐/.test(e.textContent), img: !!e.querySelector('img') })));
+      assert.equal(cards.length, want.length, `${cards.length} cards, ${want.length} in the index`);
+      assert.ok(cards.every((c) => /^\d+:\d\d · \d+(\.\d)? (MB|KB)$/.test(c.meta)), JSON.stringify(cards.slice(0, 3)));
+      await admin.waitForFunction(() => [...document.querySelectorAll('[data-store-dances] img')].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 15000 });
+      const pics = await admin.$$eval('[data-store-dances] img', (els) => els.length);
+      const alert = await admin.evaluate(() => [...document.querySelectorAll('[role="alert"], .ant-alert')].map((e) => e.textContent).join(' | '));
+      assert.match(alert, /她现在不是 VRM 角色/);
+      return `舞蹈 ${cards.length} 支（${cards.filter((c) => c.music).length} 支有音乐，${pics} 张封面）；提示「${alert.slice(0, 60)}」 → ${await shot('s1-store-dances')}, ${await viewShot('s1b-store-dances-top')}`;
+    }, page);
+
+    await step(S, `S2 下载《开心摇》：进度 → 已下载；舞蹈页列出它（有音乐、署名），像素角色时「让她跳」不可点`, async () => {
+      await admin.click(`[data-dance-download="${DANCE}"]`);
+      await attached(`[data-dance-download-progress="${DANCE}"]`, 15000).catch(() => {});
+      const mid = await viewShot('s2a-dance-downloading');
+      await attached(`[data-dance-downloaded="${DANCE}"]`, 60000);
+      const lib = JSON.parse(fs.readFileSync(path.join(data, 'vrm-dances', 'library.json'), 'utf8'));
+      const e = lib.dances[DANCE];
+      assert.ok(e && e.source === 'store' && /audio\./.test(e.audio || ''), JSON.stringify(e));
+      assert.ok(fs.existsSync(path.join(data, 'vrm-dances', DANCE, 'dance.vrma')));
+      const play = await admin.$eval(`[data-store-dance-play="${DANCE}"]`, (b) => b.disabled);
+      assert.equal(play, true, '让她跳 is off on a pixel look');
+      const after = await viewShot('s2b-dance-downloaded');
+      const list = await call('dances');
+      const row = list.dances.find((d) => d.id === DANCE);
+      assert.ok(row && row.music, JSON.stringify(list.dances.map((d) => d.id)));
+      await go('/dances');
+      await admin.waitForFunction((id) => !!document.querySelector(`[data-dance-card="${id}"], [data-dance="${id}"]`) || document.body.textContent.includes('开心摇'), DANCE, { timeout: 10000 });
+      return `${DANCE}: library ${JSON.stringify({ file: e.file, audio: e.audio, cover: e.cover, credit: e.credit, source: e.source })}; 让她跳 disabled=${play}; served ${served.filter((n) => n.startsWith(DANCE)).join(', ') || '(CDN)'} → ${mid}, ${after}, ${await shot('s2c-dances-page-with-store-dance')}`;
+    }, page);
+
+    await step(S, 'S3 商店 → 角色 按类型筛 VRM：每张卡有作者与授权；「授权」弹窗列出模型文件里的授权（再分发、商用、性表现…）', async () => {
+      await go('/store');
+      await tab('角色');
+      await attached('[data-store-kind]');
+      await admin.evaluate(() => { const o = [...document.querySelectorAll('[data-store-kind] *')].filter((x) => /^VRM \d+$/.test(x.textContent.trim())).pop(); if (!o) throw new Error(`no VRM filter: ${document.querySelector('[data-store-kind]').textContent}`); o.click(); });
+      await admin.waitForTimeout(500);
+      const kinds = await admin.$$eval('[data-catalog-grid] [data-catalog]', (els) => [...new Set(els.map((e) => e.dataset.kind))]);
+      assert.deepEqual(kinds, ['vrm']);
+      const n = await admin.$$eval('[data-catalog-grid] [data-catalog]', (els) => els.length);
+      const allAges = Catalog.storeIndex().characters.filter((c) => c.kind === 'vrm' && !c.adult).length;
+      assert.equal(n, allAges, 'every all-ages VRM model, no 18+ one');
+      const meta = await admin.$eval(`[data-catalog="${VRM}"] [data-catalog-meta]`, (el) => el.textContent);
+      const grid = await shot('s3a-store-vrm');
+      await admin.click(`[data-store-license-open="${VRM}"]`);
+      await attached(`[data-store-license="${VRM}"]`);
+      const rows = await admin.$$eval(`[data-store-license="${VRM}"] dt`, (els) => els.map((e) => `${e.textContent}=${e.nextElementSibling.textContent}`));
+      assert.ok(rows.some((r) => /^再分发=/.test(r)) && rows.some((r) => /^作者=/.test(r)), rows.join('; '));
+      const modal = await viewShot('s3b-vrm-license');
+      await admin.keyboard.press('Escape');
+      return `VRM 卡 ${n} 张（全年龄）；${VRM} 卡：${meta}；授权：${rows.join('；')} → ${grid}, ${modal}`;
+    }, page);
+
+    await step(S, 'S4 分段下载：被改过一个字节的分段 → 校验不通过，什么都没留下；正常下载后两段拼回、她成了 VRM 角色', async () => {
+      const e = Catalog.entry(VRM);
+      assert.ok(e.parts && e.parts.length === 2, JSON.stringify(e.parts));
+      if (!CDN) {
+        corrupt.add(e.parts[1].file);
+        const bad = await call('downloadCharacter', VRM);
+        assert.equal(bad.reason, 'checksum', JSON.stringify(bad));
+        corrupt.clear();
+        assert.deepEqual(leftovers(), []);
+        assert.ok(!fs.existsSync(path.join(data, 'packs', VRM)));
+      }
+      const t0 = Date.now();
+      const r = await call('downloadCharacter', VRM);
+      assert.equal(r.ok, true, JSON.stringify(r));
+      const parts = served.filter((n) => n.startsWith(`${VRM}-p`));
+      const pack = JSON.parse(fs.readFileSync(path.join(data, 'packs', VRM, 'pack.json'), 'utf8'));
+      assert.equal(pack.kind, 'vrm');
+      await go(`/characters/${VRM}`);
+      await attached(`[data-switch="${VRM}"]`);
+      await admin.click(`[data-switch="${VRM}"]`);
+      await until(`${VRM} current`, async () => (await state()).view.pet.characterId === VRM, 30000);
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 5; }, null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      return `checksum refused: ${CDN ? '(CDN run: skipped)' : 'yes'}; downloaded ${e.bytes} bytes in ${Date.now() - t0} ms from ${parts.join(' + ') || 'the CDN'}; pack ${pack.id} 「${pack.name}」; she wears it → ${await petShot('s4-pet-vrm-from-store')}`;
+    }, page);
+
+    await step(S, 'S5 VRM 角色：商店 → 舞蹈 点「让她跳」→ 她跳《开心摇》，音乐在播、进度往前走；停止后回到待机', async () => {
+      await go('/store');
+      await tab('舞蹈');
+      await attached(`[data-store-dance-play="${DANCE}"]`);
+      await admin.waitForFunction((id) => !document.querySelector(`[data-store-dance-play="${id}"]`).disabled, DANCE, { timeout: 15000 });
+      const noAlert = await admin.evaluate(() => !document.body.textContent.includes('她现在不是 VRM 角色'));
+      assert.ok(noAlert);
+      await admin.click(`[data-store-dance-play="${DANCE}"]`);
+      let st = null;
+      await until('dancing', async () => { st = await call('danceState'); return st && st.id === DANCE && st.state === 'on' && st.t > 2; }, 30000);
+      assert.equal(st.audio, 'playing', JSON.stringify(st));
+      await page.waitForTimeout(800);
+      const a = await petShot('s5a-pet-dancing');
+      await page.waitForTimeout(1200);
+      const b = await petShot('s5b-pet-dancing-later');
+      const st2 = await call('danceState');
+      assert.ok(st2.t > st.t, `${st.t} → ${st2.t}`);
+      await call('danceStop');
+      await until('stopped', async () => !(await call('danceState')), 10000);
+      return `state ${JSON.stringify({ id: st.id, state: st.state, t: st.t, audio: st.audio, clock: st.clock })} → t ${st2.t}; stopped → ${a}, ${b}, ${await petShot('s5c-pet-idle-after')}`;
+    }, page);
+
+    await step(S, 'S6 没有渲染错误、没有遗留的临时目录', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      assert.deepEqual(leftovers(), []);
+      record('served.txt', `${CDN ? 'STORE_CDN=1: downloaded from the CDN' : `served from ${base}`}\n${served.join('\n')}\n`);
+      return `no console errors; served: ${served.length} requests`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
 // ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
 // A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
 // other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
@@ -8843,7 +9055,11 @@ async function catalogDownloadScenario() {
     await attached(`[data-download="${id}"]`);
     await admin.click(`[data-download="${id}"]`);
   };
-  const ALL_AGES_REMOTE = ['dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'claude-classic', 'gemini-classic', 'gpt-classic', 'grok-classic', 'dafeiyu-clips'];
+  const CHAR_REMOTE = ['dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'claude-classic', 'gemini-classic', 'gpt-classic', 'grok-classic', 'dafeiyu-clips'];
+  // 商店 → 角色 also sells the VRM models (src/core/vrm-catalog.json, scripts/build-store-assets.js): the all-ages ones
+  const VRM_REMOTE = require('../src/core/catalog').storeIndex().characters.filter((c) => c.kind === 'vrm' && !c.adult).map((c) => c.id);
+  const ALL_AGES_REMOTE = [...CHAR_REMOTE, ...VRM_REMOTE];
+  const N = ALL_AGES_REMOTE.length;
 
   try {
     await step(S, 'D1 新安装：桌宠窗口「选择你的模型娘」只有 5 位内置像素角色，提示更多形象到商店下载', async () => {
@@ -8869,7 +9085,7 @@ async function catalogDownloadScenario() {
     admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
     await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
 
-    await step(S, 'D2 角色图鉴只有本机的 5 位内置角色（另提示去商店）；商店 → 角色 有 8 张可下载卡（图片、未下载、大小），18+ 不列出', async () => {
+    await step(S, 'D2 角色图鉴只有本机的 5 位内置角色（另提示去商店）；商店 → 角色 有 8 张角色卡加上全年龄的 VRM 模型（图片、未下载、大小），18+ 不列出', async () => {
       await go('/characters');
       const ids = await rosterIds();
       assert.deepEqual(ids, ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
@@ -8877,7 +9093,7 @@ async function catalogDownloadScenario() {
       const seg = await admin.$eval('[data-kind-filter]', (el) => el.textContent);
       assert.doesNotMatch(seg, /未下载/);
       const hint = await admin.$eval('[data-store-hint]', (el) => el.textContent);
-      assert.match(hint, /商店里还有 8 位角色可以下载/);
+      assert.match(hint, new RegExp(`商店里还有 ${N} 位角色可以下载`));
       const rosterShot = await shot('d2a-roster-local-only');
       await admin.click('[data-go-store]');
       await attached('[data-path="/store"]');
@@ -8895,7 +9111,7 @@ async function catalogDownloadScenario() {
       assert.ok(l2d.img && l2d.img.ok, JSON.stringify(l2d.img));
       assert.equal(l2d.btn, '下载');
       const filter = await admin.$eval('[data-store-filter]', (el) => el.textContent);
-      assert.match(filter, /全部 8.*未下载 8.*已下载 0/);
+      assert.match(filter, new RegExp(`全部 ${N}.*未下载 ${N}.*已下载 0`));
       return `图鉴角色: ${ids.join(', ')}（提示「${hint}」）; 商店可下载: ${remote.join(', ')}; Live2D 卡: ${JSON.stringify(l2d)} → ${rosterShot}, ${await shot('d2b-store-characters')}`;
     }, page);
 
@@ -10583,6 +10799,7 @@ async function interjectScenario() {
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
+  if (which === 'store' || which === 'all') await storeScenario();
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

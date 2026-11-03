@@ -86,6 +86,10 @@ contextBridge.exposeInMainWorld('petAdmin', {
   danceImportCommit: (draft) => ipcRenderer.invoke('dance-import-commit', draft),
   danceImportCancel: () => ipcRenderer.invoke('dance-import-cancel'),
   danceRemove: (id) => ipcRenderer.invoke('dance-remove', { id }),
+  // 商店 → 舞蹈: the store's dances (已下载 or not), download / cancel; progress arrives as `catalog-progress`
+  danceStore: () => ipcRenderer.invoke('dance-store'),
+  danceDownload: (id) => ipcRenderer.invoke('dance-download', { id }),
+  danceDownloadCancel: (id) => ipcRenderer.invoke('dance-download-cancel', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

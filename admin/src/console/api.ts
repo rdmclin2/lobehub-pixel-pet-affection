@@ -210,6 +210,26 @@ export interface CatalogRow {
   version: string;
   /** on this machine now (downloaded) */
   installed: boolean;
+  /** a VRM model's license, read from the model file (scripts/build-store-assets.js) */
+  licenseRows?: { href?: string; label: string; text: string }[];
+  redistributable?: boolean;
+}
+
+/** 商店 → 舞蹈 (core/catalog.js listDances) */
+export interface StoreDanceRow {
+  bytes: number;
+  credit: string;
+  /** the package's readme, its first lines */
+  description: string;
+  duration: number;
+  face: boolean;
+  id: string;
+  installed: boolean;
+  music: boolean;
+  name: string;
+  /** relative to src/renderer: catalog/dances/<id>.jpg */
+  picture: string | null;
+  sizeLabel: string;
 }
 
 /** `catalog-progress` (src/main/catalog.js) */
@@ -335,6 +355,9 @@ export interface PetAdminApi {
   danceImportCommit: (draft: { audio: string | null; cover: string | null; motion: string; name: string; token: string }) => Promise<{ dance: DanceRow; id: string; name: string; ok: true } | ImportFail>;
   danceImportCancel: () => Promise<{ ok: boolean }>;
   danceRemove: (id: string) => Promise<{ id?: string; message?: string; name?: string; ok: boolean; reason?: string }>;
+  danceStore: () => Promise<{ dances: StoreDanceRow[]; downloads: DownloadProgress[]; vrm: boolean }>;
+  danceDownload: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
+  danceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   whoami: () => Promise<any>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;

@@ -12,7 +12,7 @@ import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
 import { SpriteStage } from '../stage/SpriteStage';
-import { VrmLicense, vrmUi } from '../stage/VrmLicense';
+import { LicenseRows, VrmLicense, vrmUi } from '../stage/VrmLicense';
 import { useStore } from '../store';
 
 const KIND_COLOR: Record<string, string> = { sprites: 'geekblue', pictures: 'cyan', rig: 'purple', live2d: 'magenta', vrm: 'volcano', video: 'gold' };
@@ -193,8 +193,11 @@ export const useDownloads = () => {
 export const downloading = (p?: DownloadProgress) => !!p && (p.state === 'downloading' || p.state === 'installing');
 
 /** One character in 商店 → 角色: her picture from the index, size, and 下载 / progress / 取消, or 已下载 → 查看. */
+export { gstyles as storeStyles };
+
 export const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => void; p?: DownloadProgress }) => {
   const busy = downloading(p);
+  const [license, setLicense] = useState(false);
   const pct = p && p.total ? Math.min(100, Math.round(((p.received ?? 0) / p.total) * 100)) : 0;
   return (
     <article className={gstyles.card} data-catalog={d.id} data-kind={d.kind}>
@@ -223,7 +226,7 @@ export const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: (
           </Text>
         </Flexbox>
         <Text data-catalog-meta={d.id} ellipsis fontSize={12} type="secondary">
-          {[d.sizeLabel, d.outfits ? `${d.outfits} 套服饰` : '', d.license].filter(Boolean).join(' · ')}
+          {[d.sizeLabel, d.kind === 'vrm' ? d.author : d.outfits ? `${d.outfits} 套服饰` : '', d.license].filter(Boolean).join(' · ')}
         </Text>
         {busy && (
           <Flexbox data-download-progress={d.id} gap={4}>
@@ -234,6 +237,11 @@ export const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: (
           </Flexbox>
         )}
         <Flexbox align="center" gap={8} horizontal justify="flex-end" style={{ marginBlockStart: 'auto' }}>
+          {d.licenseRows && d.licenseRows.length > 0 && (
+            <Button data-store-license-open={d.id} onClick={() => setLicense(true)} size="small" type="text">
+              授权
+            </Button>
+          )}
           {d.installed ? (
             <Button data-store-open={d.id} href={`#/characters/${d.id}`} size="small">
               查看
@@ -249,6 +257,16 @@ export const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: (
           )}
         </Flexbox>
       </Flexbox>
+      {d.licenseRows && (
+        <Modal footer={null} onCancel={() => setLicense(false)} open={license} title={`「${d.name}」的授权`} width={520}>
+          <Flexbox gap={12}>
+            <Text fontSize={12} type="secondary">
+              {d.redistributable ? '模型声明允许再分发。' : '模型没有声明允许再分发。'}使用前请阅读授权条款；授权信息读自模型文件。
+            </Text>
+            <LicenseRows id={d.id} rows={d.licenseRows} />
+          </Flexbox>
+        </Modal>
+      )}
     </article>
   );
 };

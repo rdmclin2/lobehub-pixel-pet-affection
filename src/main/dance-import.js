@@ -228,6 +228,49 @@ function remove(dir, id) {
   return { ok: true, id, name: name || id };
 }
 
+// 商店 → 舞蹈 (core/catalog.js loadDanceIndex): a downloaded archive (dance.json, dance.vrma, audio.*, cover.*,
+// readme.txt; checked against the index's sha256 already) into the library as `<entry.id>/`, under the id the
+// store knows it by, so 商店 shows it as 已下载 and 删除舞蹈 frees it for another download.
+async function installStore(dir, entry, zipFile, unzipFn = require('../core/vrm-import').unzip) {
+  if (!dir || insideRepo(dir)) return { ok: false, reason: 'invalid', errors: ['no dance library'] };
+  if (!entry || !Dances.ID_RE.test(entry.id)) return { ok: false, reason: 'invalid', errors: ['bad id'] };
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = fs.mkdtempSync(path.join(dir, `.${entry.id}-`));
+  try {
+    await unzipFn(zipFile, tmp);
+    let meta = null;
+    try { meta = JSON.parse(fs.readFileSync(path.join(tmp, 'dance.json'), 'utf8')); } catch { meta = null; }
+    if (!meta || !stat(path.join(tmp, 'dance.vrma'))) return { ok: false, reason: 'invalid', errors: ['the archive has no dance.json / dance.vrma'] };
+    const own = (f, re) => (typeof f === 'string' && re.test(f) && path.basename(f) === f && stat(path.join(tmp, f)) ? f : null);
+    const audio = own(meta.audio, Dances.AUDIO_EXT);
+    const cover = own(meta.cover, Dances.COVER_EXT);
+    const readme = own(meta.readme, /\.txt$/i);
+    const id = entry.id;
+    const lib = { ...meta, name: entry.name || meta.name, file: `${id}/dance.vrma`, source: 'store', catalog: { sha256: entry.sha256 }, importedAt: new Date().toISOString() };
+    delete lib.audio; delete lib.cover; delete lib.readme;
+    if (audio) lib.audio = `${id}/${audio}`;
+    if (cover) lib.cover = `${id}/${cover}`;
+    if (readme) lib.readme = `${id}/${readme}`;
+    const clean = Dances.cleanDanceIndex({ dances: { [id]: lib } }).dances[id];
+    if (!clean) return { ok: false, reason: 'invalid', errors: ['dance.json is not a dance'] };
+    const dest = path.join(dir, id);
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.renameSync(tmp, dest);
+    const index = readRawIndex(dir);
+    index.dances[id] = lib;
+    writeIndex(dir, index);
+    return { ok: true, id };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// the store dances in the library now (商店 → 舞蹈 已下载)
+function installedIds(dir) {
+  if (!dir) return new Set();
+  return new Set(Object.keys(readRawIndex(dir).dances).filter((id) => stat(path.join(dir, id))));
+}
+
 const importing = () => !!baking;
 
-module.exports = { inspect, addExtra, commit, cancel, remove, importing, LIMITS, _sessions: sessions };
+module.exports = { inspect, addExtra, commit, cancel, remove, importing, installStore, installedIds, LIMITS, _sessions: sessions };

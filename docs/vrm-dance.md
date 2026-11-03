@@ -869,8 +869,59 @@ node scripts/check-dance-packaging.js           # 打包守卫（真实 electron
 | `e2e/vrm.js` `danceE2e` / `vrmDance` / `danceUi` / `danceFinal`，`e2e/run.js` | e2e 场景 `dance`（端到端）、`vrmdance`（运行时）、`danceui`（界面）、`dancefinal`（收尾验收） | T-2800 / T-2801 / T-2803 / T-2805 |
 | `test/vmd.test.js`、`vmd-retarget.test.js`、`vrm-dances.test.js`、`vrm-director-dance.test.js`、`dance-import.test.js`、`dance-intent.test.js` | 单测 | T-2799–T-2805 |
 | `docs/vrm-dance.md`、`docs/usage.md`「跳舞」、`README.md` | 设计、接口、使用方式 | T-2798–T-2803 |
+| `scripts/build-store-assets.js`、`render-store-thumbs.js`、`upload-store-assets.js` | 商店上架：烘焙 / 打包舞蹈与 VRM、缩略图、上传 CDN 并回下载校验（§11） | 商店 |
+| `src/core/dance-catalog.json`、`vrm-catalog.json`、`src/renderer/catalog/{dances,vrm}/` | 商店索引与卡片图（素材本身不进仓库） | 商店 |
+| `src/core/catalog.js` | `storeIndex`（角色 + VRM）、`loadDanceIndex` / `danceEntry` / `listDances`、按 release 的下载地址、`parts` | 商店 |
+| `src/main/catalog.js` | 下载器可换 `lookup` / `isInstalled` / `install`，分段顺序下载后整体校验 | 商店 |
+| `src/main/dance-import.js` `installStore` / `installedIds`、`main.js`、`admin-preload.js` | 商店舞蹈入库、IPC `dance-store` / `dance-download` / `dance-download-cancel` | 商店 |
+| `admin/src/console/pages/Store.tsx`、`Characters.tsx`、`stage/VrmLicense.tsx` | 商店「舞蹈」分类、按类型筛选、VRM 卡「授权」弹窗 | 商店 |
+| `test/store-assets.test.js`、`e2e/run.js` `storeScenario` | 单测与 e2e `store` | 商店 |
 
 ---
+
+## 11. 商店上架：舞蹈与 VRM 模型
+
+> 范围：把 `~/vrm-assets/dances/`（21 支舞，含 5 个 vidol 舞蹈包）和 `~/vrm-assets/models/`（73 个不同的 VRM 模型）放进设置窗口的「商店」，用户下载后就能用。
+
+### 11.1 上架范围（负责人决定，2026-11-03）
+
+- **舞蹈**：21 支全部上架，**带音乐**。负责人看过各 readme 的条款后决定全部上架：其中多支写明「禁止再分发」（NatsumiSan ×7、ureshiiiiii、Nikisa San），书记舞禁止原样二次配布，几乎所有歌曲都是商业音乐。每张卡写出动作作者（§11.3 `CREDITS`），压缩包里带原 readme。
+- **VRM 模型**：73 个全部上架，带授权信息。授权从模型文件读取（`core/vrm.js`），商店卡片显示授权摘要，「授权」弹窗列出完整的 `licenseRows`。只有 6 个模型声明允许再分发；大多数 VRoid Hub 模型的授权是「Other」，按应用的规则判为不允许再分发，卡片如实显示。2 个 R18 模型（`R18-魅魔/`、`muma.vrm`）标为 18+，只在打开成人向内容后列出。
+- 所有素材、压缩包和音乐都不进仓库。仓库里只放索引和卡片缩略图（`src/core/dance-catalog.json`、`src/core/vrm-catalog.json`、`src/renderer/catalog/{dances,vrm}/`）。
+
+### 11.2 数据与下载
+
+| 内容 | 索引 | CDN 前缀（`dc/ops-assets/archives/pixel-pet/…`） | 压缩包内容 | 装到 |
+|---|---|---|---|---|
+| 舞蹈 | `src/core/dance-catalog.json`（release `dances-v1`，id 以 `dance-` 开头） | `dances-v1/` | `dance.json`（库条目字段）、`dance.vrma`、`audio.mp3`、`cover.jpg`、`readme.txt` | `<userData>/vrm-dances/<id>/`，`library.json` 记 `source: "store"` 与 sha256 |
+| VRM 角色 | `src/core/vrm-catalog.json`（release `vrm-v1`；与角色索引合并，见 `core/catalog.js` `storeIndex`） | `vrm-v1/` | VRM 角色包（`pack.json`、`models/*.vrm`、`preview.png`），由导入 VRM 的同一流程生成，归属 `dafeiyu` | `<userData>/packs/<id>/`（与其他下载角色相同） |
+
+- 下载沿用 `src/main/catalog.js` 的 `CatalogDownloader`：校验大小和 sha256，失败时丢弃。舞蹈用同一个下载器，换掉 `lookup` / `isInstalled` / `install` 三个函数。进度走同一个 `catalog-progress` 事件。
+- **分段**：Develop Center 单个文件最大 20 MB。超过的压缩包按 19 MB 切成 `<id>-p1.zip`、`<id>-p2.zip`…，索引里记在 `parts`。下载时按顺序拼接，最后整体校验 sha256。分段大小之和必须等于 `bytes`，否则这个 `parts` 不被采用。
+- IPC：`dance-store`（列表、是否已下载、是否 VRM）、`dance-download`、`dance-download-cancel`；删除复用 `dance-remove`。
+
+### 11.3 构建与上传
+
+```bash
+node scripts/build-store-assets.js            # 烘焙 21 支舞 + 打包 73 个 VRM → ~/vrm-assets/store/{dances,vrm}/，写两个索引和缩略图
+xvfb-run -a node scripts/render-store-thumbs.js   # 模型没有缩略图时，用应用自带的运行时渲染站姿卡片图
+DC_CLI=…/develop-center/packages/cli/dist/index.js DC_TOKEN=… DC_BASE_URL=… node scripts/upload-store-assets.js
+```
+
+- 舞蹈用和「导入舞蹈」相同的识别（`dance-import.inspect` → `detectDance`）和烘焙（`bakeVmd`）。wav 转成 192 kbps mp3，`.ncm` 跳过。AOA 的 5 段动作合并成一支（`MERGE`），没有 `meta.json` 的包用 `NAMES` 里的名字。
+- 输出目录不能在仓库里。压缩包可复现：文件按名排序，时间戳固定。上传时 `--skip-existing`，内容变了要换 release。
+- 上传脚本会从应用实际使用的地址把每个条目下载回来，分段的按顺序拼接，再和索引比对。2026-11-03 首次上传：舞蹈 21/21、VRM 73/73（76 个文件）全部一致。
+
+### 11.4 验证
+
+- 单测 `test/store-assets.test.js`：两个索引合并、各自的 release、地址、`parts` 校验、18+ 过滤、商店卡片带授权行；商店舞蹈入库、`installedIds`、删除后可以再下载。
+- e2e `xvfb-run -a node e2e/run.js store`：
+  - 商店里有「舞蹈」分类，21 张卡。
+  - 像素角色时可以下载，但「让她跳」不可点。
+  - VRM 筛选出 71 张全年龄卡片；「授权」弹窗内容正确。
+  - 分段包里一段坏了会被 sha256 拒绝；正常下载后能穿上。
+  - 在商店点「让她跳」，舞蹈带音乐播放，停止后回到待机。
+- 加 `STORE_CDN=1` 就直接从真实 CDN 下载。
 
 ## 附录 A：核对清单（本设计引用的现状）
 

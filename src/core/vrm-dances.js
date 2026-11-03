@@ -11,7 +11,7 @@
   const ID_RE = /^[a-z0-9-]{1,48}$/;
   // the only files a dance folder serves (§5.2): the motion, the music, the cover
   const FILE_RE = /^(dance\.vrma|audio\.(mp3|wav|ogg|m4a|flac)|cover\.(jpg|jpeg|png|webp))$/;
-  const SOURCES = ['vidol-pack', 'mmd-folder', 'vmd', 'vrma', 'builtin'];
+  const SOURCES = ['vidol-pack', 'mmd-folder', 'vmd', 'vrma', 'store', 'builtin'];
   const IK = ['on', 'fk', 'mixed'];
   const DEMO_ID = 'demo';
   // a dance without music up to this long loops by default (§4.3)
