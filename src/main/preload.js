@@ -110,6 +110,14 @@ contextBridge.exposeInMainWorld('pet', {
   apiReply: (id, result) => ipcRenderer.send('api-reply', { id, result }),
   onKicked: on('kicked'),
   onApiCmd: on('api-cmd'),
+  // dancing (docs/vrm-dance.md): list → { dir, source, vrm, reason?, dances: [{ id, name, duration, music, loop… }] };
+  // play({ id?, name?, loop? }) → { ok, id, name… } | { ok: false, reason: not-vrm | no-dance | load-failed…, message? }
+  dance: {
+    list: () => ipcRenderer.invoke('dances:list'),
+    play: (opts) => ipcRenderer.invoke('dance:play', opts || {}),
+    stop: () => ipcRenderer.invoke('dance:stop'),
+    state: () => ipcRenderer.invoke('dance:state'),
+  },
   onApiStatus: on('api-status'),
   quit: () => ipcRenderer.send('quit'),
   place: (mode) => ipcRenderer.send('place', mode),

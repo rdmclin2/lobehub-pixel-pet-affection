@@ -348,6 +348,18 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 2. **舞蹈取景（运行时）**：`extent`（§2.10）给出整段里手 / 头相对 hips 的最大上伸与侧伸（hips 高度为单位）；舞蹈相机 = 全身取景，再按 `max(1, 上伸 / 站立头高, 侧伸 / 画布半宽可容纳量)` 拉远，使整段都在画内（她大约缩到画布高度的 0.6–0.7）。半身取景（`data-framing=half`）在跳舞期间临时切到全身，停舞后切回，沿用现有 0.35 s 相机滑动。
 3. 设置项「舞台范围」：`原地`（上面的 R）/ `小范围`（R = 0.3 × hips 高度，相机再拉远）——放到 D5，P1 先只做「原地」。
 
+### 3.7 D2 运行时实现记录（T-2800）
+
+代码：`src/core/vrm-dances.js`（索引清洗 `cleanDanceIndex`、列表 / 查找 / 随机、`cannotDance` 非 VRM 原因、内置示例条目）、`src/core/dance-demo.js`（「节拍摇摆」关键帧与合成节拍 WAV）、`src/main/vrm-dances.js`（目录优先级、`vrmlib://dance/…` 白名单与 Range、列表）、`src/main/vrm-library.js`（vrmlib 处理器分派 `dance` 主机）、`src/core/vrm-director.js`（舞蹈层 D 状态机 `DANCE`）、`src/core/vrm-intent.js`（`holds.dance` / `holds.recording`、`dance:start|stop` 事件）、`src/renderer/vrm-anim.js`（外部时钟 `setBase(…, { clock: 'external' })`、`seekBase(t, { blend })`、`remove`）、`src/renderer/vrm.js`（舞蹈片段加载与释放、舞蹈相机、固定地面、调试字段）、`src/renderer/vrm-dance.js`（控制器：音乐、时钟、暂停 / 续跳、压低、静音 / 音量）、`src/renderer/app.js`（接入快照、喂食 / 玩耍 / 睡觉 / `/anim` / Esc 先停舞、跳舞时不发起漫游）、`src/main/main.js` + `preload.js`（IPC `dances:list` / `dance:play` / `dance:stop` / `dance:state`，`window.pet.dance.*`）、`src/core/api.js`（`GET /dances`、`POST /dance`、`POST /dance/stop`、`/state.dance`）、`prefs.danceVolume`（设置 → 桌宠行为 → 动作 → 舞蹈音乐音量）。`scripts/vrm-bake.js --dance` 现在同时复制音乐 / 封面 / readme 并原子写入 `<out>/library.json`，开发机默认 `~/vrm-assets/baked-dances` 即可被应用直接读到。e2e：`xvfb-run -a node e2e/run.js vrmdance`（夹具 `scripts/make-test-dance.js`）。
+
+与上文的出入（均为等效实现，不改结论）：
+
+- **示例舞**由主进程在内存里生成并以 `vrmlib://dance/demo/dance.vrma`、`audio.wav` 提供（`dance-demo.js` → `writeVrma` / WAV），渲染进程与普通舞蹈走同一条加载与音频路径；不落盘、不进仓库文件。
+- **音量**用 `<audio>` 元素的 `volume`（设置音量 × 压低系数，0.2 s 斜坡）实现，不接 WebAudio：同样不进口型分析器，且不会因 AudioContext 未启动而静音。
+- **循环接缝**：控制器每次回绕计数，渲染端只在计数变化时用 A/B 两个 action 做 0.5 s 淡化；调试 `seek` 是硬切（便于按时间点核对姿势）。
+- **舞台限位**：D1 的限幅把慢漂移限在 0.15、律动夹在 0.35 hips 高度内，e2e 按「≤ 0.5 hips 高度且头 / 手 / 脚始终在画布内」断言（§7.3 第 7 步原写的 0.15 只约束慢漂移）。
+- 本任务不含：工具栏按钮与浮层、设置页「舞蹈」管理页、导入流程、聊天识别（D3 / D4）。
+
 ---
 
 ## 4. 音乐同步、音量与静音

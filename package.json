@@ -70,6 +70,10 @@
       "!**/*.fbx",
       "!**/*.FBX",
       "!**/*.vmd",
+      "!**/*.VMD",
+      "!**/*.ncm",
+      "!**/vrm-dances/**",
+      "!**/baked-dances/**",
       "!**/*.bvh",
       "!**/*.pmx",
       "package.json"

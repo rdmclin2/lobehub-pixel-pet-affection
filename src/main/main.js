@@ -19,6 +19,8 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { CatalogDownloader } = require('./catalog');
 const { serveVrmLibrary } = require('./vrm-library');
+const vrmDances = require('./vrm-dances');
+const DancesLib = require('../core/vrm-dances');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
@@ -265,6 +267,26 @@ function askRenderer(cmd, args, timeoutMs = 8000) {
     win.webContents.send('api-cmd', { id, cmd, args });
   });
 }
+// ---- dancing (docs/vrm-dance.md): the list is main's (the folder on disk), playing is the pet window's ----
+function danceList() {
+  const r = vrmDances.listDances(vrmLibrary && vrmLibrary.dances);
+  const v = service.view();
+  const no = DancesLib.cannotDance(v && v.look);
+  return { dir: r.dir, source: r.source, ...(r.refused ? { refused: r.refused } : {}), ...(r.error ? { error: r.error } : {}), vrm: !no, ...(no ? { reason: no.reason, message: no.message } : {}), dances: r.dances.map(DancesLib.publicEntry) };
+}
+// Dance in the pet window: not a VRM look → the reason, without asking the window; an unknown id → no-dance.
+async function dancePlay({ id, name, loop } = {}) {
+  const v = service.view();
+  if (!v) return { ok: false, reason: 'no-pet' };
+  const no = DancesLib.cannotDance(v.look);
+  if (no) return { ok: false, ...no };
+  const list = vrmDances.listDances(vrmLibrary && vrmLibrary.dances).dances;
+  if ((id || name) && !DancesLib.findDance(list, { id, name })) return { ok: false, reason: 'no-dance', dances: list.map((d) => d.id) };
+  return askRenderer('dance', { id: id || null, name: name || null, loop }, 15000);
+}
+const danceStop = () => askRenderer('dance-stop', {});
+const danceState = async () => { const r = await askRenderer('dance-state', {}); return r && r.ok ? r.dance : null; };
+
 async function applyApi() {
   if (!apiServer) return;
   const a = service.settings.api;
@@ -588,6 +610,11 @@ function wire() {
   });
   ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
   ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
+  // dancing: list / play / stop / state — from any window (the settings page too), played by the pet window
+  ipcMain.handle('dances:list', () => danceList());
+  ipcMain.handle('dance:play', (_e, opts) => dancePlay(opts || {}));
+  ipcMain.handle('dance:stop', () => danceStop());
+  ipcMain.handle('dance:state', () => danceState());
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
     if (!IVoice.voiceOn(service.settings.prefs)) tts.engine.stopAll(); // 朗读 off or 静音: nothing more goes to an engine
@@ -902,8 +929,11 @@ app.whenReady().then(() => {
     state: async () => {
       const r = await askRenderer('state');
       const v = service.view();
-      return { pet: v ? { name: v.pet.name, species: v.pet.speciesId, affection: v.pet.affection, hunger: v.pet.hunger, mood: v.pet.mood, energy: v.pet.energy, sleeping: v.pet.sleeping, busy: v.busy } : null, fx: r && r.ok ? r.fx : null, bubble: r && r.ok ? r.bubble : null };
+      return { pet: v ? { name: v.pet.name, species: v.pet.speciesId, affection: v.pet.affection, hunger: v.pet.hunger, mood: v.pet.mood, energy: v.pet.energy, sleeping: v.pet.sleeping, busy: v.busy } : null, fx: r && r.ok ? r.fx : null, bubble: r && r.ok ? r.bubble : null, dance: r && r.ok ? r.dance || null : null };
     },
+    dances: async () => danceList(),
+    dance: (opts) => dancePlay(opts),
+    danceStop: () => danceStop(),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),

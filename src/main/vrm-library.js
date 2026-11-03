@@ -8,12 +8,14 @@
 // Where: $PIXELPET_VRM_MOTIONS_DIR, else <userData>/vrm-motions; on a development run (not packaged, not a
 // test) with neither present, ~/vrm-assets/baked — the bake's default output. A folder inside the
 // repository is refused, so baked motions are never committed by accident. The scheme itself is registered
-// with pack:// (src/main/packs.js registerPackScheme).
+// with pack:// (src/main/packs.js registerPackScheme). vrmlib://dance/… is the dance library
+// (src/main/vrm-dances.js, docs/vrm-dance.md §5.2), with its own folder and the same guards.
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const dances = require('./vrm-dances');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const insideRepo = (p) => { const r = path.relative(REPO, path.resolve(p)); return !r.startsWith('..') && !path.isAbsolute(r); };
@@ -50,7 +52,12 @@ function resolveUrl(dir, url) {
 function serveVrmLibrary({ protocol, net, app }) {
   const where = libraryDir({ userData: app.getPath('userData'), packaged: app.isPackaged });
   if (where.refused) console.warn(`[vrm] PIXELPET_VRM_MOTIONS_DIR is inside the repository, not used: ${where.refused}`);
+  const danceWhere = dances.danceDir({ userData: app.getPath('userData'), packaged: app.isPackaged });
+  if (danceWhere.refused) console.warn(`[vrm] PIXELPET_VRM_DANCES_DIR is inside the repository, not used: ${danceWhere.refused}`);
+  where.dances = danceWhere;
   protocol.handle('vrmlib', (req) => {
+    const dance = dances.danceResponse(danceWhere, req);
+    if (dance) return dance;
     const file = resolveUrl(where.dir, req.url);
     // no library baked yet (the usual case on a user's machine): an empty index, not an error in the console
     if (file && path.basename(file) === 'library.json' && !fs.existsSync(file)) return new Response(JSON.stringify({ schema: 1, clips: {} }), { status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } });

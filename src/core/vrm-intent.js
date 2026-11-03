@@ -26,8 +26,8 @@
   }
 
   // snap (this frame) + prev (the last frame's snapshot, or null) → { holds, events }
-  //   holds: { mood, talk, think, eat, walk, lift, attention, facing }
-  //   events: [{ type: 'touch', zone, mood, streak } | { type: 'drag', what: 'lift'|'drop'|'thrown' } |
+  //   holds: { mood, talk, think, eat, walk, lift, attention, facing, dance (null | { id, t, duration, loop, ready, playing, paused, faceTrack }), recording }
+  //   events: [{ type: 'touch', zone, mood, streak } | { type: 'drag', what: 'lift'|'drop'|'thrown' } | { type: 'dance', what: 'start'|'stop', id } |
   //            { type: 'cue', name } | { type: 'celebrate', name } | { type: 'touch', zone: 'pat' }]
   function fromSnapshot(snap, prev = null) {
     const s = snap || {};
@@ -43,8 +43,15 @@
       lift: lifted,
       attention: !!s.pointerInside,
       facing: s.facing === 'left' ? 'left' : 'right',
+      // the dance the app plays (docs/vrm-dance.md §3.5): what, where its clock is, whether it runs; the
+      // microphone recording (the music ducks lower then)
+      dance: s.dance && s.dance.id ? { id: String(s.dance.id), t: Number(s.dance.t) || 0, duration: Number(s.dance.duration) || 0, loop: !!s.dance.loop, ready: s.dance.ready !== false, playing: !!s.dance.playing, paused: s.dance.paused || null, faceTrack: !!s.dance.faceTrack } : null,
+      recording: !!s.recording,
     };
     const events = [];
+    const danceId = holds.dance ? holds.dance.id : null;
+    const wasDance = p.dance && p.dance.id ? String(p.dance.id) : null;
+    if (prev && danceId !== wasDance) { if (wasDance) events.push({ type: 'dance', what: 'stop', id: wasDance }); if (danceId) events.push({ type: 'dance', what: 'start', id: danceId }); }
     if (lifted && !wasLifted) events.push({ type: 'drag', what: 'lift' });
     if (!lifted && wasLifted) events.push({ type: 'drag', what: p.flying ? 'thrown' : 'drop' });
     // a touch on a body part: core/touch-zones.js counted it (n goes up by one each time) and chose the mood
@@ -65,7 +72,8 @@
     const h = [`mood:${holds.mood}`];
     for (const k of ['talk', 'think', 'walk', 'lift', 'attention']) if (holds[k]) h.push(k);
     if (holds.eat) h.push(`eat:${holds.eat}`);
-    for (const e of events) h.push(e.type === 'touch' ? `touch:${e.zone}` : e.type === 'drag' ? `drag:${e.what}` : `${e.type}:${e.name}`);
+    if (holds.dance) h.push(`dance:${holds.dance.id}`);
+    for (const e of events) h.push(e.type === 'touch' ? `touch:${e.zone}` : e.type === 'drag' || e.type === 'dance' ? `${e.type}:${e.what}` : `${e.type}:${e.name}`);
     return h.join(' ');
   }
 

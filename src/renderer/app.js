@@ -38,6 +38,7 @@ let thinkTimer = null;
 let attachments = []; // [{ kind:'image', dataUrl, name } | { kind:'path', path, name }] waiting for the next message
 let pointerInside = false;
 let fx = null; // the shared effects layer (fx.js), created at boot
+let dance = null; // VRM dancing (vrm-dance.js, docs/vrm-dance.md): what she dances, its music and clock; created at boot
 let settings = null; // latest settings view: { needsAgeGate, ageConfirmed, adultContent, ... }
 let gateAfter = null; // what to do once the age gate is answered
 let toastTimer = null;
@@ -492,6 +493,8 @@ function vrmSnapshot(now) {
     facing: $('pet-body').dataset.facing,
     pointerInside,
     win: [window.screenX, window.screenY],
+    dance: dance ? dance.snapshot() : null,
+    recording: micActive(),
   };
 }
 // The posture saved for a VRM pack (settings.vrmPostures; 'auto' = her director chooses).
@@ -1296,6 +1299,8 @@ function errorLine(r) {
 
 async function doAct(kind, food) {
   if (thinking) return;
+  // 喂食 / 玩耍 / 睡觉 are a new order for her body: the dance stops first (docs/vrm-dance.md §3.4)
+  if (dance && dance.active()) dance.stop({ reason: kind });
   const r = await window.pet.act(kind, food);
   const video = isVideo(view && view.pet.speciesId);
   if (kind === 'feed' && r.ok) {
@@ -1393,7 +1398,7 @@ function bindPetUi() {
     for (const img of picked) pushAttachment({ kind: 'image', ...img });
   });
   bindMic();
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); else if (e.key === 'Escape' && dance && dance.active()) dance.stop({ reason: 'esc' }); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
@@ -1789,7 +1794,8 @@ function animatePet() {
   const now = performance.now();
   const sp = speciesOf(view.pet.speciesId);
   const video = isVideo(view.pet.speciesId);
-  fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside, video);
+  // no idle cues (walks, turns) while she dances: the window moving would drag the dance along (§3.4)
+  fx.tickIdle(now, ['idle', 'happy'].includes(petStatus()) && !pointerInside && !(dance && dance.active()), video);
   const state = petStatus();
   const r = state.startsWith('touch-') ? { name: state, exact: true } : video ? clipFor(sp, state) : view.look && view.look.kind === 'sprites' ? Fx.resolveAction(state, (n) => !!view.look.actions[n]) : isLive(view.look) ? { name: state, exact: !RIG_OVERLAY.has(state) } : { name: state, exact: false };
   if (video) playClip($('pet-video'), sp, r.name);
@@ -2177,6 +2183,8 @@ window.petFx = {
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
+  // dancing: the controller's state (id, time, music, gain…) and counters
+  dance: () => (dance ? { state: dance.state(), stats: dance.stats() } : null),
   // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
   live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
   // the desktop pet's pixel sprite: framing, half-body band (pack / default), measured reference, crop, canvas size
@@ -2216,10 +2224,15 @@ async function onApiCmd({ id, cmd, args }) {
   let result = { ok: false, reason: 'no-pet' };
   if (view && !$('pet-screen').classList.contains('hidden')) {
     const video = isVideo(view.pet.speciesId);
-    if (cmd === 'state') result = { ok: true, fx: window.petFx.state(), bubble: $('bubble').classList.contains('hidden') ? null : $('bubble').textContent };
+    if (cmd === 'state') result = { ok: true, fx: window.petFx.state(), bubble: $('bubble').classList.contains('hidden') ? null : $('bubble').textContent, dance: dance ? dance.state() : null };
+    // dancing (docs/vrm-dance.md §6.2): a VRM look only; the reason otherwise
+    if (cmd === 'dance') result = dance ? await dance.play({ id: args.id || null, name: args.name || null, loop: args.loop }) : { ok: false, reason: 'no-pet' };
+    if (cmd === 'dance-stop') result = dance ? dance.stop({ reason: 'api' }) : { ok: false, reason: 'no-pet' };
+    if (cmd === 'dance-state') result = { ok: true, dance: dance ? dance.state() : null };
     if (cmd === 'anim') {
       if (thinking) result = { ok: false, reason: 'busy' };
       else {
+        if (dance && dance.active()) dance.stop({ reason: 'anim' });
         if (args.facing) fx.setFacing(args.facing);
         fx.cue(args.state, video);
         result = { ok: true };
@@ -2241,6 +2254,7 @@ async function onApiCmd({ id, cmd, args }) {
 
 const spriteGliding = () => { for (const s of sprites) if (s.glide) return true; return false; }; // a framing glide wants every frame
 function frameLoop() {
+  if (dance) dance.tick(performance.now()); // before the figure draws: the clock, the music, the director's asks
   tickSprites(performance.now());
   tickRigs(performance.now());
   if (!$('hatching').classList.contains('hidden')) {
@@ -2271,6 +2285,11 @@ function onUpdateStatus(u) {
 // ---------- boot ----------
 async function main() {
   fx = window.PetEffects.createEffects({ body: $('pet-body'), floatLayer: $('float-layer'), touchLayer: $('touch-fx'), api: window.pet, prefs: petPrefs, hitBox: petHitBox });
+  if (window.PetDance) {
+    // only the desk pet's own VRM figure dances (not a picture, not the hatch screen)
+    dance = window.PetDance.create({ figure: () => (view && view.look && view.look.kind === 'vrm' && !$('pet-screen').classList.contains('hidden') ? vrmFigure() : null), look: () => view && view.look, prefs: () => (settings && settings.prefs) || {}, body: $('pet-body') });
+    window.PetDance.current = dance;
+  }
   window.pet.onKicked((v) => fx.kicked(v, { onLand: () => fx.play('pat', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'pat')) }));
   if (VISITOR) return visitorMain();
   info = await window.pet.boot();
