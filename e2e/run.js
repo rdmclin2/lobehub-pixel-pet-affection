@@ -3832,6 +3832,23 @@ async function voice() {
       assert.equal(played.provider, 'elevenlabs');
       assert.equal(played.started, true, 'the <audio> element started playing');
       note(`playback: provider=${played.provider} mime=${played.mime} bytes=${played.bytes} started=${played.started} status=${played.status} (renderer playAudio, as fish / minimax)`);
+      // a reply the owner asked for, read by ElevenLabs: the bubble marks the sentence being played
+      const prevN = played.n;
+      mock.perCharMs = 250; // a longer tone, so the screenshot lands while it plays
+      if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+      await page.fill('#chat-input', '请用 ElevenLabs 的声音回答我');
+      await page.press('#chat-input', 'Enter');
+      const reading = await page.waitForFunction((p) => { const r = window.petFx.lastSpeech(); const m = document.querySelector('#bubble .sentence.reading'); const au = window.petFx.audioState(); return r && r.n > p && r.provider === 'elevenlabs' && r.status === 'playing' && r.started && au && !au.paused && au.currentTime > 0.3 && m && { n: r.n, provider: r.provider, status: r.status, mime: r.mime, bytes: r.bytes, text: r.text, marked: m.textContent, bubble: document.getElementById('bubble').textContent.trim(), started: r.started, audio: au }; }, prevN, { timeout: 20000 }).then((h) => h.jsonValue());
+      await page.screenshot({ path: path.join(SHOTS, 'v16-elevenlabs-reply-reading.png') });
+      // the same moment with a probe label (e2e only) spelling out what the pet window is playing
+      await page.evaluate((r) => { const d = document.createElement('div'); d.id = 'e2e-probe'; d.style.cssText = 'position:fixed;left:4px;right:4px;bottom:4px;z-index:99999;background:rgba(0,0,0,.78);color:#fff;font:11px/1.4 monospace;padding:4px 6px;border-radius:4px;white-space:pre-wrap'; d.textContent = `e2e 探针 lastSpeech\nprovider=${r.provider} status=${r.status}\nmime=${r.mime} bytes=${r.bytes}\naudio ${r.audio ? `paused=${r.audio.paused} t=${r.audio.currentTime.toFixed(2)}/${r.audio.duration}s` : '-'}\n正在读：${r.marked}`; document.body.appendChild(d); }, reading);
+      await page.screenshot({ path: path.join(SHOTS, 'v16-elevenlabs-reply-reading-probe.png') });
+      await page.evaluate(() => document.getElementById('e2e-probe').remove());
+      mock.perCharMs = 0;
+      await page.waitForFunction(() => window.petFx.lastSpeech().status === 'done', null, { timeout: 30000 });
+      const rq2 = mock.log.filter((r) => r.path.startsWith('/v1/text-to-speech/')).pop();
+      assert.equal(rq2.text, reading.text, 'the stand-in got the sentence being read');
+      note(`reply read by ElevenLabs: bubble 「${reading.bubble}」 marked 「${reading.marked}」 provider=${reading.provider} status=${reading.status} mime=${reading.mime} bytes=${reading.bytes} audio=${JSON.stringify(reading.audio)}; mock got 「${rq2.text}」`);
       return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw POST ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
     }, () => admin || page);
 
