@@ -360,6 +360,50 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 - **舞台限位**：D1 的限幅把慢漂移限在 0.15、律动夹在 0.35 hips 高度内，e2e 按「≤ 0.5 hips 高度且头 / 手 / 脚始终在画布内」断言（§7.3 第 7 步原写的 0.15 只约束慢漂移）。
 - 本任务不含：工具栏按钮与浮层、设置页「舞蹈」管理页、导入流程、聊天识别（D3 / D4）。
 
+### 3.8 运行时舞蹈：对外接口说明（T-2800）
+
+只有 **VRM 外观** 能跳舞。其它外观（像素 / 图片 / Live2D）一律返回 `not-vrm` 与一句说明原因的中文文案，不静默失败。
+
+#### 舞蹈库（主进程 `src/main/vrm-dances.js`）
+
+| 项 | 说明 |
+|---|---|
+| 目录优先级 | `$PIXELPET_VRM_DANCES_DIR`（位于仓库内则拒绝，`refused`）→ `<userData>/vrm-dances`（有 `library.json` 时）→ 开发运行（非打包、非测试）时 `~/vrm-assets/baked-dances` → `<userData>/vrm-dances` |
+| 开发机接入转换产物 | `node scripts/vrm-bake.js --dance ~/vrm-assets/dances/<包或文件夹>`：把 `~/vrm-assets/dances` 里的 VMD 烘焙成 `dance.vrma`，复制音乐 / 封面 / readme，原子写入 `~/vrm-assets/baked-dances/library.json`；应用开发运行时自动读取，或设 `PIXELPET_VRM_DANCES_DIR=<目录>` |
+| URL | `vrmlib://dance/library.json`（清洗后的索引；无文件时为空索引）、`vrmlib://dance/<id>/<file>`；`<id>` 匹配 `^[a-z0-9-]{1,48}$`，`<file>` 只允许 `dance.vrma`、`audio.(mp3/wav/ogg/m4a/flac)`、`cover.(jpg/jpeg/png/webp)`；解析后必须以舞蹈目录 + 分隔符开头；支持 Range（206）。内置示例 `demo` 由主进程内存生成 |
+| CSP | 桌宠页 `media-src 'self' blob: vrmlib:`（`connect-src` 已含 `vrmlib:`） |
+| 索引条目 | `{ id, name, file, audio?, cover?, duration, audioDuration?, offset, loop, credit?, face, ik?, extent{up,side}, stage?, ground, source, bakedWith?, importedAt? }`（`core/vrm-dances.js cleanDanceIndex`） |
+
+#### 主进程 IPC / preload（`window.pet.dance`）
+
+| 调用 | IPC | 返回 |
+|---|---|---|
+| `window.pet.dance.list()` | `dances:list` | `{ dir, source: env\|userData\|dev\|none, refused?, error?, vrm: bool, reason?, message?, dances: [{ id, name, duration, music, cover, loop, face, builtin, credit? }] }` |
+| `window.pet.dance.play({ id?, name?, loop? })` | `dance:play` | `{ ok: true, id, name, loop, duration, music, audio }` 或 `{ ok: false, reason: not-vrm \| vrm-not-ready \| no-dance \| load-failed \| no-pet, message?, kind?, dances? }` |
+| `window.pet.dance.stop()` | `dance:stop` | `{ ok: true, id, reason }` 或 `{ ok: false, reason: 'not-dancing' }` |
+| `window.pet.dance.state()` | `dance:state` | `null`（没在跳）或下方状态对象 |
+
+状态对象（`renderer/vrm-dance.js state()`）：`{ id, name, state: cueing|in|on|paused|out, t（播放进度，秒）, duration, loop, paused, pausedBy: lift|hidden|null, music, audio: playing|paused|muted|ducked|none|failed, clock: audio|render, volume, gain, muted, ducked, exclusive（是否独占全身）, drift（ms）, media?{ t, paused, ready, error, rate } }`。
+
+#### 本地 HTTP API（`src/core/api.js`，127.0.0.1 + `Authorization: Bearer <token>`）
+
+| 路由 | 请求 | 成功 | 失败 |
+|---|---|---|---|
+| `GET /pixel-pet/dances` | — | `200 { ok, dir, source, vrm, dances: [...] }` | — |
+| `POST /pixel-pet/dance` | `{ "id"?: "…", "name"?: "…", "loop"?: bool }`（都不给则随机一支，避开刚跳过的） | `200 { ok, id, name, loop, duration, music }` | `409 not-vrm { message, kind }`、`404 no-dance { dances }`、`502 load-failed { message }`、`409 vrm-not-ready`、`400 bad-id / bad-name / bad-loop` |
+| `POST /pixel-pet/dance/stop` | — | `200 { ok, id }`；没在跳时 `200 { ok, id: null, dancing: false }` | — |
+| `GET /pixel-pet/state` | — | 原有字段 + `dance: <状态对象> \| null` | — |
+
+非 VRM 时的文案：`舞蹈只有 VRM 外观可以跳。她现在是像素外观，换成 VRM 模型再来吧。`（`像素` 按外观替换为 `图片` / `Live2D`）。
+
+#### 设置
+
+`prefs.danceVolume`（0–100，默认 60）：设置 → 桌宠行为 → 动作 → 舞蹈音乐音量，或 `window.pet.setPrefs({ danceVolume })`；全局静音 `prefs.muted` 时音乐静音、动作照跳；她说话时音乐压到 30%，录音时 15%。
+
+#### 调试字段（e2e 断言用）
+
+VRM 画布：`data-dance`（id 或空）、`data-dance-state`（off/cueing/in/on/paused/out）、`data-dance-t`（进度 s）、`data-dance-audio`、`data-dance-drift`（ms）、`data-dance-hips`（x,z m）、`data-dance-cam`（相机拉远倍数）、`data-dance-exclusive`（1 = 独占全身）；`#pet-body[data-dancing="1"]`；`window.PetVRM.debug().figures[0].dance`（含 `weightSum`、`layers`、`clips`）；`window.PetVRM.director.dance.seek(t) / speed(k)`；`window.PetVRM.director.framePoints()`；`window.petFx.dance()`（控制器状态 + 计数 `lastStop`）。
+
 ---
 
 ## 4. 音乐同步、音量与静音
