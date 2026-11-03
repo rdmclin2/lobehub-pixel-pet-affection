@@ -155,10 +155,10 @@ async function adminFlip(admin, key, okText = null) {
   await adminUntil(admin, (t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === t), okText, 8000, `confirm ${okText}`);
   await admin.evaluate((t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === t).pop().click(), okText);
 }
-// 设置 → 数据与关于 → 放生并删除 agent / 仅重置本地 (the old ⋯ menu items, T-2718), confirmed; the pet window
-// goes back to choosing a character.
+// 设置 → 隐私与安全 → 重置与放生 → 放生并删除 agent / 仅重置本地 (the old ⋯ menu items, T-2718; A16 moved them
+// out of 关于与数据), confirmed and run in the dialog; the pet window goes back to choosing a character.
 async function adminRelease(app, page, deleteAgent = true) {
-  const admin = await openAdminWindow(app, page, 'about');
+  const admin = await openAdminWindow(app, page, 'reset');
   const t = deleteAgent ? '放生并删除 agent' : '仅重置本地';
   await adminClickConfirm(admin, t, t);
   return admin;
@@ -9800,7 +9800,8 @@ async function adminScenario() {
     }, () => admin);
 
     // every page, light and dark (theme pinned through 外观主题 = ui.theme, which the console applies itself)
-    const ROUTES = ['/overview', '/characters', '/characters/grok-pixel', '/store', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
+    // 实施包 A (A00): −/appearance (now 关于与数据 → 显示) +/interject +/reset
+    const ROUTES = ['/overview', '/characters', '/characters/grok-pixel', '/store', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/interject', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/reset', '/update', '/about'];
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
     for (const theme of ['light', 'dark']) {
       await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 6 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
@@ -9817,7 +9818,7 @@ async function adminScenario() {
           await shot(`${theme}-${r.slice(1).replace(/\//g, '-')}`);
           await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
           out.push(`${r}`);
-          assert.equal(f.nav, 6, `rail links ${f.nav}: 小屋 / 角色 / 商店 / 玩法 / 设置 / 聊天, not every page`);
+          assert.equal(f.nav, 6, `rail links ${f.nav}: 小屋 / 角色 / 聊天 / 商店 / 玩法 / 设置, not every page`);
         }
         return `${out.length} pages · rail of 6 · data-theme=${theme}`;
       }, () => admin);
@@ -9827,7 +9828,9 @@ async function adminScenario() {
     await step(S, 'A3b depth: the rail holds 6 places (4 + 商店 + 聊天); 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
       await go('/overview');
       const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => a.textContent.trim()));
-      assert.deepEqual(rail, ['小屋', '角色', '商店', '玩法', '设置', '聊天']);
+      // 实施包 A (A01 / SH-05): 她的世界 above the divider, 配置 below
+      assert.deepEqual(rail, ['小屋', '角色', '聊天', '商店', '玩法', '设置']);
+      assert.equal(await admin.locator('nav [data-rail-divider]').count(), 1, 'one divider between 商店 and 玩法');
       await admin.click('[data-rail="settings"]');
       await admin.waitForSelector('[data-path="/settings"]');
       const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
@@ -9897,10 +9900,13 @@ async function adminScenario() {
       await input.fill('999');
       await admin.waitForSelector('[data-error="proactive.speakCooldownMin"]');
       const err = await admin.textContent('[data-error="proactive.speakCooldownMin"]');
-      assert.equal(await admin.isDisabled('[data-save="proactive.speakCooldownMin"]'), true);
+      // 实施包 A (A20 / FORM-01): numbers save on Enter / blur like the switches — no 保存 button; out of range is not saved
+      assert.equal(await admin.locator('[data-save="proactive.speakCooldownMin"]').count(), 0, 'no 保存 button on a number');
+      await input.press('Enter');
+      assert.notEqual(saved().proactive.speakCooldownMin, 999, 'out of range is not saved');
       await shot('a6-proactive-invalid');
       await input.fill('20');
-      await admin.click('[data-save="proactive.speakCooldownMin"]');
+      await input.press('Enter');
       await toast(/已保存：主动说话间隔/);
       assert.equal(saved().proactive.speakCooldownMin, 20);
       await admin.click('[data-key="proactive.enabled"]');
@@ -9921,6 +9927,8 @@ async function adminScenario() {
       const err = await admin.textContent('[data-error="tts.endpoints.fish"]');
       assert.match(err, /https/);
       assert.equal(saved().tts.endpoints.fish, '');
+      // 实施包 A (A20 / S-6): the refused draft is still unsaved — clear it, or leaving the page would ask first
+      await admin.fill('[data-key="tts.endpoints.fish"]', '');
       const key = 'fk_test_0123456789abcdef';
       await admin.fill('[data-key="keys.fish"]', key);
       assert.equal(await admin.getAttribute('[data-key="keys.fish"]', 'type'), 'password');
@@ -9938,6 +9946,8 @@ async function adminScenario() {
     await step(S, 'A8 对外接口: switching it on generates a token that is shown masked', async () => {
       await go('/api');
       await admin.click('[data-key="api.enabled"]');
+      // 实施包 A (A23 / FORM-04): switching it on is confirmed first
+      await admin.getByRole('dialog').getByRole('button', { name: '开启对外接口' }).click();
       await toast(/已保存：开启对外接口/);
       await admin.waitForSelector('[data-key="api.token"][data-masked="true"]');
       const shown = await admin.textContent('[data-key="api.token"]');
@@ -9964,8 +9974,10 @@ async function adminScenario() {
     await step(S, 'A10 恢复本页默认 on 桌宠行为 puts petScale / memes back', async () => {
       await go('/behavior');
       await admin.click('[data-reset-page="behavior"]');
-      await admin.getByRole('dialog').getByRole('button', { name: '恢复默认' }).click();
+      // 实施包 A (A24 / FORM-05): undoable, so no confirmation — the toast offers 撤销
+      assert.equal(await admin.getByText('恢复本页默认设置？').count(), 0, 'no confirmation');
       await toast(/已恢复 \d+ 项默认设置/);
+      assert.ok(await admin.getByRole('button', { name: '撤销' }).count() >= 1, 'the toast offers 撤销');
       assert.equal(saved().prefs.memes, true);
       assert.equal(saved().petScale, 1.25);
       await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim() === '1.25');
@@ -10217,6 +10229,118 @@ async function adminScenario() {
       return `right click (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
     }, () => admin);
 
+    // 实施包 A (docs/admin-audit/02-plan.md §5.2): navigation, hubs, 小屋, settings pages, feedback — on the real window
+    const ashot = (name) => admin.screenshot({ path: path.join(SHOTS, `A-after-${name}.png`) });
+    await step(S, 'AIA1 实施包 A navigation: unknown route → 没有这个页面; old routes redirect; 角色包 keeps 角色 lit; 设置 groups 声音 / 隐私与安全 / 系统', async () => {
+      await admin.evaluate(() => { location.hash = '/nope'; });
+      await admin.waitForSelector('[data-not-found]');
+      const crumb = await admin.evaluate(() => document.querySelector('[data-admin-page]').innerText.slice(0, 120));
+      assert.match(crumb, /没有这个页面/);
+      assert.equal(await admin.locator('[data-rail][aria-current="page"]').count(), 0, 'no rail place lit for an unknown page');
+      await ashot('not-found');
+      await admin.evaluate(() => { location.hash = '/appearance'; });
+      await admin.waitForSelector('[data-path="/about"]');
+      await admin.evaluate(() => { location.hash = '/history'; });
+      await adminUntil(admin, () => /^#\/chat\//.test(location.hash), null, 8000, '#/history → #/chat/<her>');
+      const histTo = await admin.evaluate(() => location.hash);
+      await go('/packs');
+      assert.equal(await admin.getAttribute('[data-rail="characters"]', 'aria-current'), 'page', '角色包 sits under 角色');
+      assert.match(await admin.textContent('[data-back="characters"]'), /角色图鉴/);
+      await go('/settings');
+      const groups = await admin.$$eval('[data-hub-group]', (gs) => gs.map((g) => g.querySelector('h2').textContent.trim()));
+      assert.deepEqual(groups, ['声音', '隐私与安全', '系统']);
+      const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => `${t.dataset.tile}:${t.querySelector('[data-tile-summary]').textContent.trim()}`));
+      assert.ok(tiles.every((t) => t.split(':')[1].length <= 20), tiles.join(' | '));
+      await ashot('settings-hub');
+      await go('/play');
+      const play = await admin.$$eval('[data-hub-group]', (gs) => gs.map((g) => `${g.querySelector('h2').textContent.trim()}=${[...g.querySelectorAll('[data-tile]')].map((t) => t.dataset.tile).join(',')}`));
+      assert.deepEqual(play, ['她怎么陪你=behavior,proactive,interject,visitors', '和她互动=topics,desk']);
+      assert.equal(await admin.locator('[data-feed-pet]').count(), 1, '去桌宠窗口喂她 next to her stats');
+      await ashot('play-hub');
+      return `#/nope → 没有这个页面; #/appearance → /about; #/history → ${histTo}; #/packs lights 角色; 设置 ${groups.join(' / ')}; 玩法 ${play.join(' ; ')}`;
+    }, () => admin);
+
+    await step(S, 'AIA2 小屋: three buttons to three tabs, 今天的陪伴 as status lines (no 开/关 tag, no 对外接口), met friends by character (≤ 4)', async () => {
+      await go('/overview');
+      const chips = await admin.$$eval('[data-chip]', (cs) => cs.map((c) => `${c.dataset.chip} ${c.querySelector('[data-chip-status]').textContent.trim()}`));
+      assert.ok(!chips.some((c) => c.startsWith('#/api')), 'no 对外接口 chip');
+      assert.equal(await admin.locator('[data-chip] .ant-tag, [data-chip] [class*="tag"]').count(), 0, 'no 开 / 关 tags');
+      const friends = await admin.$$eval('[data-friend]', (fs2) => fs2.map((f) => f.dataset.friend));
+      assert.ok(friends.length <= 4, friends.join(','));
+      await ashot('overview');
+      const targets = [];
+      for (const b of ['data-go-detail', 'data-go-looks', 'data-go-model']) {
+        await go('/overview');
+        await admin.click(`[${b}]`);
+        await adminUntil(admin, () => /^#\/characters\/[^/]+\/\w+/.test(location.hash), null, 8000, b);
+        targets.push(await admin.evaluate(() => location.hash));
+      }
+      assert.deepEqual(targets.map((t) => t.split('/').pop()), ['affection', 'looks', 'model']);
+      return `chips: ${chips.join(' | ')}; friends ${friends.join(',') || '(none met yet)'}; buttons → ${targets.join(' , ')}`;
+    }, () => admin);
+
+    await step(S, 'AIA3 朗读与音效: 声音 card has 点击音效; only the active engine expanded, others folded; 试听 result written in the 引擎 card', async () => {
+      await go('/tts');
+      assert.equal(await admin.locator('[data-key="prefs.clickSound"]').count(), 1, '点击音效 moved here (A25)');
+      await go('/behavior');
+      assert.equal(await admin.locator('[data-key="prefs.clickSound"]').count(), 0, '…and not on 桌宠行为');
+      await go('/tts');
+      const active = await admin.getAttribute('[data-engine-active]', 'data-engine-active');
+      const shown = await admin.$$eval('[data-settings-page="tts"] [data-key]', (els) => els.map((e) => e.dataset.key));
+      assert.ok(await admin.locator('[data-other-engines]').count(), 'other engines folded');
+      await admin.click('[data-tts-test]');
+      await admin.waitForSelector('[data-tts-test-result]', { timeout: 20000 });
+      const res = await admin.textContent('[data-tts-test-result]');
+      assert.equal(await admin.locator('text=默认：').count(), 0, 'A21: no 默认： tags');
+      assert.equal(await admin.locator('text=敏感 · 遮罩显示').count(), 0, 'A21: no 敏感 tags');
+      await ashot('tts');
+      return `active engine ${active}; fields shown ${shown.length}; 试听 → 「${res.trim()}」`;
+    }, () => admin);
+
+    await step(S, 'AIA4 unsaved draft: leaving 朗读 with an unsaved endpoint asks 放弃未保存的修改？ — 留在这里 keeps it, 放弃修改 leaves', async () => {
+      await go('/tts');
+      const url = await admin.$eval('[data-settings-page="tts"] input[data-key^="tts.endpoints"], [data-settings-page="tts"] [data-key^="tts.endpoints"] input', (e) => e.getAttribute('data-key') || e.closest('[data-key]').dataset.key);
+      await admin.fill(`[data-key="${url}"]`, 'https://example.com');
+      await admin.click('[data-rail="settings"]');
+      await admin.getByRole('dialog').getByText('放弃未保存的修改？').waitFor({ timeout: 5000 });
+      await ashot('leave-guard');
+      await admin.getByRole('dialog').getByRole('button', { name: '留在这里' }).click();
+      await admin.waitForTimeout(300);
+      assert.equal(await admin.evaluate(() => location.hash), '#/tts');
+      assert.equal(await admin.inputValue(`[data-key="${url}"]`), 'https://example.com', 'the draft is still there');
+      await admin.click('[data-rail="settings"]');
+      await admin.getByRole('dialog').getByRole('button', { name: '放弃修改' }).click();
+      await admin.waitForSelector('[data-path="/settings"]');
+      return `${url} draft → 留在这里 kept #/tts, 放弃修改 → #/settings`;
+    }, () => admin);
+
+    await step(S, 'AIA5 设置 pages: 成人向与本机能力 holds both switches; 关于与数据 has 显示 + folded 署名 + 退出应用; 检查更新 writes its result; 重置与放生 confirms in a dialog', async () => {
+      await go('/safety');
+      assert.equal(await admin.locator('[data-key="adultContent"]').count(), 1);
+      assert.equal(await admin.locator('[data-key="localAbilities"]').count(), 1, '本机能力 moved here (A04)');
+      await ashot('safety');
+      await go('/connection');
+      assert.equal(await admin.locator('[data-new-topic]').count(), 0, '重新开始话题 left 账号与连接');
+      await go('/about');
+      assert.equal(await admin.locator('[data-key="ui.theme"]').count(), 1, '主题 is on 关于与数据 (A07)');
+      assert.equal(await admin.locator('[data-app-quit]').count(), 1);
+      assert.equal(await admin.getByText('角色包文件夹', { exact: true }).count(), 0, 'no duplicate folder buttons (A18)');
+      assert.equal(await admin.getByText('放生并删除 agent').count(), 0, 'danger moved to 重置与放生 (A16)');
+      await ashot('about');
+      await go('/update');
+      await admin.click('[data-check-update]');
+      await admin.waitForSelector('[data-update-result]:not([data-update-result="checking"])', { timeout: 15000 });
+      const upd = await admin.textContent('[data-update-result]');
+      await ashot('update');
+      await go('/reset');
+      await admin.click('[data-release="local"]');
+      await admin.getByRole('dialog').getByText('仅重置本地？').waitFor({ timeout: 5000 });
+      await ashot('reset-dialog');
+      await admin.getByRole('dialog').getByRole('button', { name: '先不了' }).click();
+      await ashot('reset');
+      return `safety: adult + local; about: theme, quit, no dup folders; update → 「${upd.trim()}」; reset dialog shown, 先不了 closes it`;
+    }, () => admin);
+
     await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
       assert.deepEqual(remote, []);
       assert.deepEqual(errors, []);
@@ -10248,7 +10372,15 @@ async function adminScenario() {
         // the file itself, as written by core/settings.js (SettingsStore) — evidence of what was saved
         fs.writeFileSync(path.join(SHOTS, 'settings-after-restart.json'), fs.readFileSync(path.join(data, 'settings.json')));
         await a2.evaluate(() => window.petAdmin.set('system.hardwareAcceleration', true));
-        return `after restart: proactive=${JSON.stringify(st.proactive)} characterId=grok-classic; hardware acceleration ${before} → ${after} (pendingRestart [])`;
+        // 实施包 A (A16 / PG-03 P0): 仅重置本地 runs inside its dialog and reports what main really did
+        await a2.evaluate(() => { location.hash = '/reset'; });
+        await a2.waitForSelector('[data-release="local"]');
+        await a2.click('[data-release="local"]');
+        await a2.getByRole('dialog').getByRole('button', { name: '仅重置本地' }).click();
+        await a2.waitForFunction(() => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && /已重置本地：进度和聊天记录已清除/.test(el.textContent || '')), null, { timeout: 15000 });
+        await a2.screenshot({ path: path.join(SHOTS, 'A-after-reset-done.png') });
+        assert.equal(await a2.getByText('仅重置本地？').count(), 0, 'the dialog closed only after it worked');
+        return `仅重置本地 → toast 已重置本地 (dialog closed after main answered); after restart: proactive=${JSON.stringify(st.proactive)} characterId=grok-classic; hardware acceleration ${before} → ${after} (pendingRestart [])`;
       } finally {
         await again.app.close().catch(() => {});
       }
@@ -10261,7 +10393,7 @@ async function adminScenario() {
 // ---------------------------------------------------------------- interject (插个嘴)
 // 插个嘴 (docs/interject.md): the real app with the fake `lh` — its `generate decide` answers the probability in
 // <FAKE_LH_DIR>/decide.json (the mock jev, no tokens) and logs every call to decide-calls.jsonl.
-// IJ1 off by default: typing a draft → zero decide calls · IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: the group folds
+// IJ1 off by default: typing a draft → zero decide calls · IJ2 设置窗口 → 玩法 → 插个嘴 (its own page): the group folds
 // open (dependsOn) when switched on there · IJ3 a low probability → silence · IJ4 on + mock 0.86 → her remark in
 // the bubble with 别插嘴 / 说得好 on it · IJ5 click 别插嘴 → feedback mute → a block rule · IJ6 a draft of the same
 // kind → dropped by the rule, no decide call, no remark · IJ7 the rules table and the decision records in the
@@ -10339,14 +10471,15 @@ async function interjectScenario() {
       return `decide calls 0, records 0; ${p}`;
     }, page);
 
-    await step(S, 'IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: off folds the group; switching it on there shows sources, quotas, thresholds, model', async () => {
+    await step(S, 'IJ2 设置窗口 → 玩法 → 插个嘴（独立页，C05）: off folds the group; switching it on there shows sources, quotas, thresholds, model', async () => {
       chapter('IJ2 设置窗口：插个嘴分组（关 → 开，dependsOn 联动）');
-      admin = await openAdminWindow(app, page, 'proactive');
+      admin = await openAdminWindow(app, page, 'interject');
       await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
       await adminUntil(admin, () => !!document.querySelector('[data-key="interject.enabled"]'), null, 15000, 'the 插个嘴 switch');
       const visibleKeys = () => admin.evaluate(() => [...document.querySelectorAll('[data-key^="interject."]')].filter((el) => el.offsetParent !== null).map((el) => el.dataset.key));
       const offKeys = await visibleKeys();
-      const desc = await admin.evaluate(() => [...document.querySelectorAll('[data-settings-page="proactive"] *')].map((el) => el.childElementCount === 0 ? el.textContent : '').find((t) => /^默认关闭。/.test(t)) || '');
+      assert.equal(await admin.$('[data-interject-rules]'), null, 'no tables while it is off (C06 / INT-02)');
+      const desc = await admin.evaluate(() => [...document.querySelectorAll('[data-settings-page="interject"] *')].map((el) => el.childElementCount === 0 ? el.textContent : '').find((t) => /^打开后她只听/.test(t)) || '');
       await scrollTo('[data-key="interject.enabled"]');
       await shot(admin, 'ij2a-console-off');
       await admin.evaluate(() => document.querySelector('[data-key="interject.enabled"]').click());
@@ -10366,8 +10499,7 @@ async function interjectScenario() {
       note(`设置窗口打开后 settings.interject = ${JSON.stringify(s)}`);
       assert.deepEqual(offKeys, ['interject.enabled']);
       for (const k of ['interject.sources.chatDraft', 'interject.sources.voice', 'interject.sources.api', 'interject.sources.clipboard', 'interject.cooldownMin', 'interject.maxPerHour', 'interject.highThreshold', 'interject.lowThreshold', 'interject.model']) assert.ok(onKeys.includes(k), k);
-      assert.match(desc, /默认关闭/);
-      assert.match(desc, /不装键盘钩子/);
+      assert.match(desc, /不装键盘钩子/); // 「默认关闭」 is said once, in the page description (C06 / INT-02)
       assert.equal(s.enabled, true);
       assert.equal(s.debounceSec, 1);
       await page.bringToFront();

@@ -1,10 +1,13 @@
 /**
  * One control per setting, chosen by the schema type (core/settings-schema.js):
  * - instant two-state / choice items (Switch, Segmented, Select, Slider) save on change (P-05: switches only
- *   for items that apply at once) with a toast;
- * - typed values (number, text, URL) are drafts with a 保存 button, checked here first and again in main;
+ *   for items that apply at once); success is a quiet inline 已保存 (A22 / FORM-03, C-17), failure a toast;
+ * - numbers save when you leave the field or press Enter, checked first (A20 / FORM-01: the same way as the
+ *   switches, no 保存 button); out of range stays red and is not saved;
+ * - text and URL are drafts with a 保存 button; an unsaved draft asks before the page is left (A20, S-6 / P-04);
  * - keys are write-only (InputPassword, never filled from the store), the API token is masked.
- * Every editable field offers 恢复默认 when it differs from its default.
+ * Every editable field offers 恢复默认 when it differs from its default; it is undone from the toast, not confirmed
+ * (A24 / FORM-05, W-07).
  */
 import {
   ActionIcon,
@@ -28,7 +31,8 @@ import {
 import { Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { api, at, type FieldDef, type HotkeyStatus } from './api';
+import { api, at, reasonText, type FieldDef, type HotkeyStatus } from './api';
+import { askAsync, NoPet, SavedHint, useLeaveGuard } from './common';
 import { useSave, useStore } from './store';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -102,31 +106,57 @@ export const checkDraft = (f: FieldDef, raw: string): { error?: string; value?: 
   return { value: raw };
 };
 
-const savedToast = (f: FieldDef, v: unknown, restart?: boolean) =>
-  restart ? toast.warning({ description: '重启应用后生效', title: `已保存：${f.label}` }) : toast.success(`已保存：${f.label} → ${formatValue(f, v)}`);
+/** The sentence a save is announced with (screen readers; SavedHint shows only 已保存). */
+export const savedText = (f: FieldDef, v: unknown) => `已保存：${f.label} → ${formatValue(f, v)}`;
 
-/** 恢复默认 for one field. */
+/** A22: a save's inline confirmation — a tick per save, the sentence for screen readers. */
+const useSaved = () => {
+  const [saved, setSaved] = useState<{ full: string; tick: number }>({ full: '', tick: 0 });
+  return [saved, (full: string) => setSaved((s) => ({ full, tick: s.tick + 1 }))] as const;
+};
+
+/**
+ * 恢复默认 for one field (A21 / FORM-02: the default is said in this button's tooltip, only while the value
+ * differs; A24 / FORM-05: no confirmation — the toast offers 撤销 for 5 s).
+ */
 export const ResetButton = ({ field, value }: { field: FieldDef; value: unknown }) => {
   const save = useSave();
   if (!(field.live || field.restart) || field.default === undefined || same(value, field.default)) return null;
+  const before = value;
   return (
-    <ActionIcon
-      data-reset={field.key}
-      icon={RotateCcw}
-      onClick={async () => {
-        const r = await save(field.key, field.default);
-        if (r.ok) toast.success(`${field.label}：已恢复默认（${formatValue(field, field.default)}）`);
-        else toast.error(r.message || '没有恢复成功');
-      }}
-      size="small"
-      title={`恢复默认：${formatValue(field, field.default)}`}
-    />
+    <Tooltip title={`恢复默认：${formatValue(field, field.default)}`}>
+      <ActionIcon
+        aria-label={`恢复默认：${formatValue(field, field.default)}`}
+        data-reset={field.key}
+        icon={RotateCcw}
+        onClick={async () => {
+          const r = await save(field.key, field.default);
+          if (!r.ok) return toast.error({ description: reasonText(r), title: `没能恢复「${field.label}」的默认值` });
+          toast.success({
+            actions: [
+              {
+                label: '撤销',
+                onClick: async () => {
+                  const u = await save(field.key, before);
+                  if (!u.ok) toast.error({ description: reasonText(u), title: `没能撤销「${field.label}」` });
+                },
+              },
+            ],
+            duration: 5000,
+            id: `reset:${field.key}`,
+            title: `${field.label}：已恢复默认（${formatValue(field, field.default)}）`,
+          });
+        }}
+        size="small"
+      />
+    </Tooltip>
   );
 };
 
 const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) => {
   const save = useSave();
   const [busy, setBusy] = useState(false);
+  const [saved, markSaved] = useSaved();
   const [local, setLocal] = useState(value);
   // while the owner is still moving the slider (or a save is on its way) the stored value must not snap the
   // control back; it follows the store again once the edit is saved
@@ -139,15 +169,18 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
   }, [value]);
   useEffect(() => () => { if (keyTimer.current) clearTimeout(keyTimer.current); }, []);
   const commit = async (v: unknown) => {
+    // A23 (FORM-04, P-05): a high-risk switch asks before it goes on; off never asks
+    if (field.confirmOn && v === true && !(await ask(field.confirmOn.title, field.confirmOn.content, field.confirmOn.okText, true))) return;
     editing.current += 1;
     setBusy(true);
     setLocal(v);
     try {
       const r = await save(field.key, v);
-      if (r.ok) savedToast(field, r.value, r.restart);
+      // A22: saved → 已保存 next to it (a restart item also gets the window's 重启后生效 banner, Shell)
+      if (r.ok) markSaved(savedText(field, r.value));
       else {
         setLocal(value);
-        toast.error({ description: r.message || r.reason, title: `${field.label} 没有保存` });
+        toast.error({ description: reasonText(r), title: `没能保存「${field.label}」` });
       }
     } finally {
       editing.current -= 1;
@@ -155,26 +188,40 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
     }
   };
   const data = { 'data-key': field.key };
+  const hint = <SavedHint full={saved.full} tick={saved.tick} />;
   switch (field.type) {
     case 'switch':
-      return <Switch {...data} aria-label={field.label} checked={!!local} loading={busy} onChange={(c: boolean) => commit(c)} />;
+      return (
+        <Flexbox align="center" gap={8} horizontal>
+          {hint}
+          <Switch {...data} aria-label={field.label} checked={!!local} loading={busy} onChange={(c: boolean) => commit(c)} />
+        </Flexbox>
+      );
     // Select / Segmented do not pass data-* / aria-* through: the wrapper carries the key and the name
     case 'segmented':
       return (
-        <div {...data} aria-label={field.label} role="group">
-          <Segmented disabled={busy} onChange={(v) => commit(v)} options={field.options ?? []} value={String(local)} />
-        </div>
+        <Flexbox align="center" gap={8} horizontal>
+          {hint}
+          <div {...data} aria-label={field.label} role="group">
+            <Segmented disabled={busy} onChange={(v) => commit(v)} options={field.options ?? []} value={String(local)} />
+          </div>
+        </Flexbox>
       );
     case 'select':
       return (
-        <div {...data} aria-label={field.label} role="group">
-          <Select disabled={busy} onChange={(v) => commit(v)} options={field.options ?? []} style={{ width: 240 }} value={local as string} />
-        </div>
+        <Flexbox align="center" gap={8} horizontal>
+          {hint}
+          <div {...data} aria-label={field.label} role="group">
+            <Select disabled={busy} onChange={(v) => commit(v)} options={field.options ?? []} style={{ width: 240 }} value={local as string} />
+          </div>
+        </Flexbox>
       );
     case 'slider': {
       const percent = field.format === 'percent';
       const n = Number(local);
       return (
+        <Flexbox align="center" gap={8} horizontal>
+        {hint}
         <Flexbox
           align="center"
           gap={12}
@@ -207,6 +254,7 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
             {percent ? pct(n) : n}
           </Text>
         </Flexbox>
+        </Flexbox>
       );
     }
     default:
@@ -214,12 +262,17 @@ const InstantControl = ({ field, value }: { field: FieldDef; value: unknown }) =
   }
 };
 
-/** number / text / url: a draft, checked as you type, saved with 保存 (or Enter). */
+/**
+ * number: checked as you type, saved when you leave the field or press Enter (A20 / FORM-01) — no 保存 button.
+ * text / url: a draft, checked as you type, saved with 保存 (or Enter); unsaved, it holds the page (S-6).
+ */
 const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => {
   const save = useSave();
   const [draft, setDraft] = useState(value === null || value === undefined ? '' : String(value));
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, markSaved] = useSaved();
+  const instant = field.type === 'number';
   useEffect(() => {
     setDraft(value === null || value === undefined ? '' : String(value));
     setServerError(null);
@@ -227,19 +280,24 @@ const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
   const check = checkDraft(field, draft);
   const dirty = draft !== (value === null || value === undefined ? '' : String(value));
   const error = check.error ?? serverError;
+  useLeaveGuard(`draft:${field.key}`, dirty && !instant);
+  const inflight = useRef(false);
   const submit = async () => {
-    if (check.error || !dirty) return;
+    // Enter then blur: one save
+    if (check.error || !dirty || inflight.current) return;
+    inflight.current = true;
     setBusy(true);
     try {
       const r = await save(field.key, check.value);
       if (r.ok) {
         setServerError(null);
-        savedToast(field, r.value, r.restart);
+        markSaved(savedText(field, r.value));
       } else {
-        setServerError(r.message || r.reason || '没有保存');
-        toast.error({ description: r.message || r.reason, title: `${field.label} 没有保存` });
+        // the reason stays under the field (where the value is); no second message in a toast
+        setServerError(reasonText(r));
       }
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   };
@@ -249,6 +307,7 @@ const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
         aria-label={field.label}
         data-key={field.key}
         // no min / max here: the field would clamp silently; out-of-range input is shown as an error instead
+        onBlur={submit}
         onChange={(v) => setDraft(v === null ? '' : String(v))}
         onPressEnter={submit}
         aria-invalid={!!error}
@@ -272,18 +331,21 @@ const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
   return (
     <Flexbox gap={4} style={{ alignItems: 'flex-end' }}>
       <Flexbox align="center" gap={8} horizontal>
+        <SavedHint full={saved.full} tick={saved.tick} />
         {input}
-        <Button data-save={field.key} disabled={!dirty || !!check.error} loading={busy} onClick={submit}>
-          保存
-        </Button>
+        {!instant && (
+          <Button data-save={field.key} disabled={!dirty || !!check.error} loading={busy} onClick={submit}>
+            保存
+          </Button>
+        )}
       </Flexbox>
       {error && (
         <Text data-error={field.key} fontSize={12} type="danger">
-          {error}
+          {error}{instant ? '（没有保存）' : ''}
         </Text>
       )}
-      {!error && dirty && (
-        <Text fontSize={12} type="secondary">
+      {!error && dirty && !instant && (
+        <Text data-unsaved={field.key} fontSize={12} type="secondary">
           未保存的修改
         </Text>
       )}
@@ -319,6 +381,7 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saved, markSaved] = useSaved();
   // HotkeyInput offers a recorded combination again on every render while the stored value stays the old one
   // (main refused it): each combination is sent once per recording, never in a loop
   const inflight = useRef<string | null>(null);
@@ -335,7 +398,7 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
     setBusy(true);
     try {
       const r = await save(field.key, next);
-      if (r.ok) toast.success(next ? `已保存：${field.label} → ${r.settings?.hotkeyStatus?.label ?? next}` : `${field.label}：已关闭`);
+      if (r.ok) markSaved(next ? `已保存：${field.label} → ${r.settings?.hotkeyStatus?.label ?? next}` : `${field.label}：已关闭`);
       else {
         refused.current = next;
         setError(r.message || r.reason || '没有保存');
@@ -357,6 +420,7 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
   return (
     <Flexbox gap={4} style={{ alignItems: 'flex-end' }}>
       <Flexbox align="center" gap={8} horizontal>
+        <SavedHint full={saved.full} tick={saved.tick} />
         {tag && (
           <Tag color={tag.color} data-hotkey-state={st?.state}>
             {tag.text}
@@ -416,14 +480,17 @@ const SecretControl = ({ field }: { field: FieldDef }) => {
   const [busy, setBusy] = useState(false);
   const has = hasKeyFor(settings, field.key);
   const bad = draft.trim() !== '' && !/^[\x21-\x7e]{8,256}$/.test(draft.trim());
+  const [saved, markSaved] = useSaved();
+  useLeaveGuard(`secret:${field.key}`, draft.trim() !== '');
   const write = async (v: string) => {
     setBusy(true);
     try {
       const r = await save(field.key, v);
+      // S-5: the tag turning 已设置 is the confirmation; 已保存 next to it, no toast
       if (r.ok) {
         setDraft('');
-        toast.success(v ? `${field.label} 已保存（不会回显）` : `${field.label} 已清除`);
-      } else toast.error({ description: r.message, title: `${field.label} 没有保存` });
+        markSaved(v ? `${field.label} 已保存（不会回显）` : `${field.label} 已清除`);
+      } else toast.error({ description: reasonText(r), title: `没能保存「${field.label}」` });
     } finally {
       setBusy(false);
     }
@@ -431,6 +498,7 @@ const SecretControl = ({ field }: { field: FieldDef }) => {
   return (
     <Flexbox gap={4} style={{ alignItems: 'flex-end' }}>
       <Flexbox align="center" gap={8} horizontal>
+        <SavedHint full={saved.full} tick={saved.tick} />
         <Tag color={has ? 'success' : undefined} data-has-key={field.key}>
           {has ? '已设置' : '未设置'}
         </Tag>
@@ -484,11 +552,25 @@ const TokenControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
       <ActionIcon icon={shown ? EyeOff : Eye} onClick={() => setShown(!shown)} size="small" title={shown ? '隐藏' : '显示'} />
       <CopyButton content={token} size="small" />
       <Button
+        data-new-token
         onClick={async () => {
-          if (!(await ask('换一个令牌？', '旧令牌立即失效，用到它的脚本需要改成新的。', '换一个令牌', true))) return;
-          const r = await api().newApiToken();
-          if (r && r.settings) merge({ settings: r.settings });
-          toast.success('已换成新的令牌');
+          // A23 (FORM-04): runs in the dialog, reports what really happened (S-7, C-15)
+          const done = await askAsync({
+            content: '旧令牌立即失效，用到它的脚本需要改成新的。',
+            danger: true,
+            okText: '换一个令牌',
+            run: async () => {
+              const r = await api().newApiToken();
+              if (r && r.settings) merge({ settings: r.settings });
+              return r && r.ok !== false && r.settings?.api?.token && r.settings.api.token !== token ? { ok: true } : { ok: false, reason: `${reasonText(r)}。旧令牌仍然有效` };
+            },
+            title: '换一个令牌？',
+          });
+          if (done) {
+            setShown(true);
+            setTimeout(() => setShown(false), 3000);
+            toast.success({ id: 'api-token', title: '已换成新的令牌，旧令牌已失效' });
+          }
         }}
         size="small"
       >
@@ -529,8 +611,11 @@ const VisitorsControl = ({ field, value }: { field: FieldDef; value: unknown }) 
 const AdultControl = ({ value }: { value: unknown }) => {
   const { settings, merge } = useStore();
   const [busy, setBusy] = useState(false);
+  const [saved, markSaved] = useSaved();
   const on = !!value;
   return (
+    <Flexbox align="center" gap={8} horizontal>
+    <SavedHint full={saved.full} tick={saved.tick} />
     <Switch
       aria-label="成人向内容"
       checked={on}
@@ -546,13 +631,16 @@ const AdultControl = ({ value }: { value: unknown }) => {
             r = await api().confirmAge(true);
           } else r = await api().setAdult(next);
           if (r && r.settings) merge({ settings: r.settings });
-          if (r && r.ok === false) toast.error('需要先确认已满 18 周岁');
-          else toast.success(`成人向内容：${next ? '开' : '关'}`);
+          // A23 (FORM-04): only what main confirmed counts as done
+          const now = !!(r && r.settings ? r.settings.adultContent : undefined);
+          if (!r || r.ok === false || now !== next) toast.error({ description: r?.reason === 'age' || (next && !r?.settings?.ageConfirmed) ? '需要先确认已满 18 周岁' : reasonText(r), title: `没能${next ? '打开' : '关闭'}成人向内容` });
+          else markSaved(`成人向内容：${next ? '开' : '关'}`);
         } finally {
           setBusy(false);
         }
       }}
     />
+    </Flexbox>
   );
 };
 
@@ -561,9 +649,13 @@ const LocalControl = ({ field }: { field: FieldDef }) => {
   const { view, merge } = useStore();
   const save = useSave();
   const [busy, setBusy] = useState(false);
+  const [saved, markSaved] = useSaved();
   const on = !!view?.local?.enabled;
-  if (!view) return <Text type="secondary">唤醒桌宠后可用</Text>;
+  // A11 / A23 (FORM-04): not awake → say so and offer the way forward, not a grey line
+  if (!view) return <NoPet compact what="唤醒桌宠后才能开启" />;
   return (
+    <Flexbox align="center" gap={8} horizontal>
+    <SavedHint full={saved.full} tick={saved.tick} />
     <Switch
       aria-label={field.label}
       checked={on}
@@ -575,13 +667,14 @@ const LocalControl = ({ field }: { field: FieldDef }) => {
         try {
           const r: any = await save(field.key, next);
           if (r.view) merge({ view: r.view });
-          if (r.ok) toast.success(`本机能力：${next ? '开' : '关'}`);
-          else toast.error(r.message || r.reason || '没有成功');
+          if (r.ok) markSaved(`本机能力：${next ? '开' : '关'}`);
+          else toast.error({ description: reasonText(r), title: `没能${next ? '开启' : '关闭'}本机能力` });
         } finally {
           setBusy(false);
         }
       }}
     />
+    </Flexbox>
   );
 };
 
@@ -635,26 +728,20 @@ export const FieldControl = ({ field }: { field: FieldDef }) => {
   );
 };
 
-/** Label line extras: 默认值, 重启后生效, 敏感. */
+/**
+ * The description, plus 重启后生效 where that is true. A21 (FORM-02, C-17): no 「默认：xx」 tag on every row (the
+ * default is in the 恢复默认 tooltip, shown only when the value differs) and no 「敏感」 tag (the masked / write-only
+ * control already says it).
+ */
 export const FieldDesc = ({ field }: { field: FieldDef }) => (
   <Flexbox gap={4}>
     {field.desc && <span>{field.desc}</span>}
-    <Flexbox gap={4} horizontal wrap="wrap">
-      {field.default !== undefined && field.type !== 'readonly' && field.type !== 'token' && field.type !== 'adult' && (
-        <Tooltip title="恢复默认时用这个值">
-          <Tag size="small">默认：{formatValue(field, field.default)}</Tag>
-        </Tooltip>
-      )}
-      {field.restart && (
+    {field.restart && (
+      <Flexbox gap={4} horizontal wrap="wrap">
         <Tag color="warning" size="small">
           重启后生效
         </Tag>
-      )}
-      {field.sensitive && (
-        <Tag color="processing" size="small">
-          敏感 · 遮罩显示
-        </Tag>
-      )}
-    </Flexbox>
+      </Flexbox>
+    )}
   </Flexbox>
 );

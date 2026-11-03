@@ -1,9 +1,11 @@
 /** 小屋 (overview): her on her stage, how close you are, and today's companionship at a glance. */
-import { Alert, Block, Button, createStaticStyles, cssVar, Flexbox, Icon, Tag, Text } from '@lobehub/ui';
-import { ChevronRight, Lock, Mic, MessageCircleHeart, Shirt, UsersRound, Volume2, Webhook } from 'lucide-react';
+import { Block, Button, createStaticStyles, cssVar, Flexbox, Icon, Tag, Text } from '@lobehub/ui';
+import { Bot, ChevronRight, HeartHandshake, Mic, MessageCircleHeart, Shirt, UsersRound, Volume2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { RosterRow } from '../api';
+import { NoPet } from '../common';
+import { detailHref, groupRoster } from '../roster-model';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
 import { SpriteStage } from '../stage/SpriteStage';
@@ -87,6 +89,10 @@ const greeting = () => {
   return '晚上好';
 };
 
+/**
+ * A10 (HOME-03): one card per kind of companionship, saying what it is set to (「朗读：Fish Audio」) — no 开 / 关 tag
+ * dressed like a switch (P-05: switches only where they act); the icon is tinted while it is on.
+ */
 const Chip = ({ icon, label, on, hint, href }: { hint: string; href: string; icon: LucideIcon; label: string; on: boolean }) => (
   <a className={styles.link} data-chip={href} href={href}>
     <Block clickable gap={12} horizontal padding={12} style={{ alignItems: 'center' }} variant="outlined">
@@ -94,13 +100,8 @@ const Chip = ({ icon, label, on, hint, href }: { hint: string; href: string; ico
         <Icon icon={icon} size={18} />
       </div>
       <Flexbox flex={1} gap={2} style={{ minWidth: 0 }}>
-        <Flexbox align="center" gap={6} horizontal>
-          <Text strong>{label}</Text>
-          <Tag color={on ? 'success' : undefined} size="small">
-            {on ? '开' : '关'}
-          </Tag>
-        </Flexbox>
-        <Text ellipsis fontSize={12} type="secondary">
+        <Text strong>{label}</Text>
+        <Text data-chip-status ellipsis fontSize={12} type="secondary">
           {hint}
         </Text>
       </Flexbox>
@@ -108,18 +109,23 @@ const Chip = ({ icon, label, on, hint, href }: { hint: string; href: string; ico
   </a>
 );
 
-const Friend = ({ c }: { c: RosterRow }) => (
-  <a className={styles.link} data-friend={c.id} href={`#/characters/${c.id}`} style={{ ['--pet-accent' as string]: c.accent }}>
+/** A09 (HOME-02): one card per character you have met (her best-known look), not every look. */
+const Friend = ({ c, looks }: { c: RosterRow; looks: number }) => (
+  <a className={styles.link} data-friend={c.id} href={detailHref(c.id)} style={{ ['--pet-accent' as string]: c.accent }}>
     <Block clickable gap={8} padding={8} variant="outlined">
       <div className={styles.friendArt}>
-        <SpriteStage animate={false} height={88} name={c.nameZh} preview={c.preview} silhouette={!c.met} />
+        <SpriteStage animate={false} height={88} name={c.nameZh} preview={c.preview} />
       </div>
       <Flexbox gap={4} paddingInline={4}>
         <Flexbox align="center" gap={4} horizontal justify="space-between">
           <Text ellipsis strong>
-            {`${c.met?.name ?? c.nameZh}${c.label ? ` · ${c.label}` : ''}`}
+            {c.met?.name ?? c.nameZh}
           </Text>
-          {!c.met && <Icon icon={Lock} size={12} />}
+          {looks > 1 && (
+            <Text fontSize={12} type="secondary">
+              {looks} 套形象
+            </Text>
+          )}
         </Flexbox>
         <HeartMeter c={c} compact />
       </Flexbox>
@@ -127,10 +133,15 @@ const Friend = ({ c }: { c: RosterRow }) => (
   </a>
 );
 
+const FRIENDS_MAX = 4;
+
 export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) => {
-  const { roster, settings, view, apiStatus } = useStore();
+  const { roster, settings, view } = useStore();
   const cur = roster.find((c) => c.current);
-  const others = roster.filter((c) => !c.current);
+  // A09 (HOME-02, P-01 第一屏优先级): only the characters you have met, by character, at most four; the rest in 图鉴
+  const met = groupRoster(roster).filter((g) => g.state === 'met');
+  const friends = met.slice(0, FRIENDS_MAX).map((g) => ({ c: g.looks.find((x) => x.met) ?? g.looks[0], looks: g.looks.length }));
+  const engine: Record<string, string> = { auto: '跟随角色', elevenlabs: 'ElevenLabs', fish: 'Fish Audio', local: '本地语音服务', minimax: 'MiniMax', system: '系统语音' };
   const visitors = Array.isArray(settings.visitors) ? settings.visitors.length : 0;
   const name = cur ? (cur.met?.name ?? cur.nameZh) : '';
   return (
@@ -151,13 +162,19 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
             {cur.catchphrase && <blockquote className={styles.quote}>「{cur.catchphrase}」</blockquote>}
             <HeartMeter c={cur} />
             <Flexbox gap={8} horizontal wrap="wrap">
-              <Button data-go-detail icon={MessageCircleHeart} onClick={() => navigate(`/characters/${cur.id}`)} type="primary">
-                去看看她
+              {/* A08 (HOME-01, W-07): each button goes to its own tab of her page — no two to the same place */}
+              <Button data-go-detail icon={HeartHandshake} onClick={() => navigate(`/characters/${cur.id}/affection`)} type="primary">
+                她的好感
               </Button>
-              <Button data-go-looks icon={Shirt} onClick={() => navigate(`/characters/${cur.id}`)}>
+              <Button data-go-looks icon={Shirt} onClick={() => navigate(`/characters/${cur.id}/looks`)}>
                 换装扮
               </Button>
-              <Button onClick={() => navigate('/characters')}>换一位陪你</Button>
+              <Button data-go-model icon={Bot} onClick={() => navigate(`/characters/${cur.id}/model`)}>
+                调模型
+              </Button>
+              <Button data-go-roster onClick={() => navigate('/characters')}>
+                换一位陪你
+              </Button>
             </Flexbox>
             <Text fontSize={12} type="secondary">
               点她一下：她会回应你，桌面上的她也一样。
@@ -165,7 +182,8 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
           </Flexbox>
         </div>
       ) : (
-        <Alert description="先在桌宠窗口里选一位角色并完成唤醒，她会出现在这里。" showIcon title="还没有唤醒桌宠" type="info" />
+        // A11 (HOME-04): the same 未唤醒 state everywhere, with the way forward
+        <NoPet what="她的样子、你们的关系" />
       )}
 
       <Flexbox gap={12} style={{ marginBlockStart: 16 }}>
@@ -173,32 +191,38 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
           今天的陪伴
         </Text>
         <div className={styles.chips}>
-          <Chip hint="把回复读出来" href="#/tts" icon={Volume2} label="朗读" on={!!settings.prefs?.voice} />
-          <Chip hint={settings.asr?.engine === 'local' ? '本地识别服务' : 'LobeHub 云端识别'} href="#/asr" icon={Mic} label="语音输入" on={!!settings.asr?.enabled} />
+          {/* A10 (HOME-03): 对外接口 is a developer setting, not companionship — it lives in 设置 → 隐私与安全 only */}
+          <Chip
+            hint={settings.prefs?.muted ? '静音中' : settings.prefs?.voice ? `朗读：${engine[settings.tts?.provider ?? 'auto'] ?? settings.tts?.provider}` : '没有读出来，只显示文字'}
+            href="#/tts"
+            icon={Volume2}
+            label="朗读"
+            on={!!settings.prefs?.voice && !settings.prefs?.muted}
+          />
+          <Chip hint={settings.asr?.enabled ? (settings.asr?.engine === 'local' ? '用本地识别服务' : '用 LobeHub 云端识别') : '没开：按住 🎤 不会录音'} href="#/asr" icon={Mic} label="语音输入" on={!!settings.asr?.enabled} />
           <Chip hint={settings.proactive?.enabled ? `每 ${settings.proactive?.speakCooldownMin} 分钟至多一次` : '只在你找她时说话'} href="#/proactive" icon={MessageCircleHeart} label="主动搭话" on={!!settings.proactive?.enabled} />
-          <Chip hint={visitors ? `${visitors} 位伙伴在桌面上` : '让其他角色一起来玩'} href="#/visitors" icon={UsersRound} label="同屏伙伴" on={visitors > 0} />
-          <Chip hint={apiStatus?.listening ? `127.0.0.1:${settings.api?.port}` : '脚本让她说话、做动作'} href="#/api" icon={Webhook} label="对外接口" on={!!settings.api?.enabled} />
+          <Chip hint={visitors ? `${visitors} 位伙伴在桌面上` : '还没有请伙伴来'} href="#/visitors" icon={UsersRound} label="同屏伙伴" on={visitors > 0} />
         </div>
       </Flexbox>
 
-      {others.length > 0 && (
+      {friends.length > 0 && (
         <Flexbox gap={12} style={{ marginBlockStart: 16 }}>
           <Flexbox align="center" horizontal justify="space-between">
             <Text as="h2" fontSize={18} strong style={{ margin: 0 }}>
-              其他伙伴
+              遇见过的伙伴
             </Text>
-            <Button href="#/characters" icon={ChevronRight} iconPosition="end" size="small" type="text">
-              角色图鉴
+            <Button data-go-roster-all href="#/characters" icon={ChevronRight} iconPosition="end" size="small" type="text">
+              {met.length > FRIENDS_MAX ? `去图鉴看全部 ${met.length} 位` : '去图鉴'}
             </Button>
           </Flexbox>
           <div className={styles.friends}>
-            {others.map((c) => (
-              <Friend c={c} key={c.id} />
+            {friends.map((f) => (
+              <Friend c={f.c} key={f.c.id} looks={f.looks} />
             ))}
           </div>
         </Flexbox>
       )}
-      {!view && cur && <Alert title="桌宠还没唤醒：开关的状态会在唤醒后同步。" type="info" />}
+      {!view && cur && <NoPet compact what="桌宠还没唤醒：上面的状态会在唤醒后同步。" />}
     </>
   );
 };

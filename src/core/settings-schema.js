@@ -18,92 +18,105 @@ const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
 
 // Navigation. The window's rail has six places only (RAIL: the four + 商店 and 聊天, .agents/ux R-05 exceptions); everything else sits one level down: 角色 →
-// her page, 商店 → a category (角色 now; 声音包 and more later), 玩法 / 设置 → a hub of tiles → one page per
+// her page / 角色包, 商店 → a category (角色 now; 声音包 and more later), 玩法 / 设置 → a hub of tiles → one page per
 // tile (docs/admin-console-design.md §6.3). NAV groups are those hub sections; `section` says which rail place a
 // group belongs to.
+// docs/admin-audit/02-plan.md A00 / A01 (SH-05, X-1): 她的世界 first (小屋 / 角色 / 聊天 / 商店), a divider, then 配置
+// (玩法 / 设置) — `group` says which half a place sits in (M-02 邻近, M-08). 聊天 is a daily task (R-05 聊天例外), so it
+// moves up; 商店 stays right after 角色 (R-05 商店例外). Same six places, names and icons.
 const RAIL = [
-  { key: 'home', label: '小屋', icon: 'House', page: 'overview' },
-  { key: 'characters', label: '角色', icon: 'Users', page: 'characters' },
-  // 商店 (docs/characters.md 「内置与下载」): what can be downloaded — characters now, 声音包 etc. later
-  { key: 'store', label: '商店', icon: 'Store', page: 'store' },
-  { key: 'play', label: '玩法', icon: 'Gamepad2', page: 'play' },
-  { key: 'settings', label: '设置', icon: 'Settings', page: 'settings' },
+  { key: 'home', label: '小屋', icon: 'House', page: 'overview', group: 'world' },
+  { key: 'characters', label: '角色', icon: 'Users', page: 'characters', group: 'world' },
   // 聊天 (T-2765): a daily AI chat of its own (docs/admin-chat.md), not a setting — its own place, one page
-  { key: 'chat', label: '聊天', icon: 'MessageCircle', page: 'chat' },
+  { key: 'chat', label: '聊天', icon: 'MessageCircle', page: 'chat', group: 'world' },
+  // 商店 (docs/characters.md 「内置与下载」): what can be downloaded — characters now, 声音包 etc. later
+  { key: 'store', label: '商店', icon: 'Store', page: 'store', group: 'world' },
+  { key: 'play', label: '玩法', icon: 'Gamepad2', page: 'play', group: 'config' },
+  { key: 'settings', label: '设置', icon: 'Settings', page: 'settings', group: 'config' },
 ];
 
 const NAV = [
   { key: 'chat', section: 'chat', label: '聊天', items: [{ page: 'chat', label: '聊天', icon: 'MessageCircle' }] },
   { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }] },
-  { key: 'characters', section: 'characters', label: '角色', items: [{ page: 'characters', label: '角色图鉴', icon: 'Users' }] },
-  { key: 'store', section: 'store', label: '商店', items: [{ page: 'store', label: '商店', icon: 'Store' }] },
+  // A04 (SH-01, X-2): 角色包 is a list of characters, so it sits under 角色 (the rail keeps 角色 lit there)
   {
-    key: 'play', section: 'play', label: '陪伴方式', items: [
+    key: 'characters', section: 'characters', label: '角色', items: [
+      { page: 'characters', label: '角色图鉴', icon: 'Users' },
+      { page: 'packs', label: '角色包', icon: 'Shirt' },
+    ],
+  },
+  { key: 'store', section: 'store', label: '商店', items: [{ page: 'store', label: '商店', icon: 'Store' }] },
+  // A06 (HUB-03, INT-01): the two 玩法 groups say what they are — settings (她怎么陪你) and things to do (和她互动);
+  // 插个嘴 has its own page
+  {
+    key: 'play', section: 'play', label: '她怎么陪你', items: [
       { page: 'behavior', label: '桌宠行为', icon: 'PawPrint' },
       { page: 'proactive', label: '主动搭话与好感', icon: 'HeartHandshake' },
+      { page: 'interject', label: '插个嘴', icon: 'MessageSquareQuote' },
       { page: 'visitors', label: '同屏伙伴', icon: 'UsersRound' },
     ],
   },
-  // the pet window's old ⋯ menu and its 话题 panel (T-2718): what she can talk about, what you talked
-  // about, and the desktop controls (动作 / 回到右下角 / 退出)
+  // the pet window's old ⋯ menu and its 话题 panel (T-2718). 聊天记录 is part of 聊天 now (A04 / SH-02, X-3)
   {
-    key: 'together', section: 'play', label: '和她一起', items: [
+    key: 'together', section: 'play', label: '和她互动', items: [
       { page: 'topics', label: '话题', icon: 'MessagesSquare' },
-      { page: 'history', label: '聊天记录', icon: 'History' },
       { page: 'desk', label: '桌面上的她', icon: 'Monitor' },
     ],
   },
+  // A04 (HUB-02, PG-05): 设置 grouped by reach — 声音 / 隐私与安全 (every high-risk item in one place) / 系统
   {
     key: 'voice', section: 'settings', label: '声音', items: [
-      { page: 'tts', label: '朗读', icon: 'Volume2' },
+      { page: 'tts', label: '朗读与音效', icon: 'Volume2' },
       { page: 'asr', label: '语音输入', icon: 'Mic' },
       { page: 'voicepacks', label: '语音包', icon: 'AudioLines' },
     ],
   },
   {
-    key: 'looks', section: 'settings', label: '资源与外观', items: [
-      { page: 'packs', label: '角色包', icon: 'Shirt' },
-      { page: 'appearance', label: '外观主题', icon: 'Palette' },
-    ],
-  },
-  {
-    key: 'connect', section: 'settings', label: '连接', items: [
-      { page: 'connection', label: 'LobeHub 与本机', icon: 'Cloud' },
+    key: 'privacy', section: 'settings', label: '隐私与安全', items: [
+      { page: 'safety', label: '成人向与本机能力', icon: 'ShieldCheck' },
       { page: 'api', label: '对外接口', icon: 'Webhook' },
+      { page: 'reset', label: '重置与放生', icon: 'TriangleAlert' },
     ],
   },
   {
     key: 'system', section: 'settings', label: '系统', items: [
-      { page: 'safety', label: '内容与安全', icon: 'ShieldCheck' },
+      { page: 'connection', label: '账号与连接', icon: 'Cloud' },
       { page: 'update', label: '版本与更新', icon: 'RefreshCw' },
-      { page: 'about', label: '数据与关于', icon: 'Info' },
+      { page: 'about', label: '关于与数据', icon: 'Info' },
     ],
   },
 ];
 
+// Old routes that still arrive (bookmarks, other windows, docs): where they live now (A00). `#/history` goes to 聊天
+// with the character who is with you (resolved in the console, it needs the roster).
+const REDIRECTS = { history: 'chat', appearance: 'about' };
+
+// title / description: the page's own header. summary: the one line on its hub tile (A05 / HUB-01, W-02: does not
+// repeat the title, ≤ 20 字); the tile's second line is the page's real state.
 const PAGES = {
   overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
   characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、给她换衣服、调她的模型和设定。' },
   store: { title: '商店', description: '下载更多内容：现在有角色，以后还会有声音包等。下载好的角色出现在角色图鉴里。' },
-  chat: { title: '聊天', description: '和 AI 日常聊天：可以发图片、换模型，会话保存在这台电脑上。和桌宠的对话互不影响。' },
-  play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
-  settings: { title: '设置', description: '声音、资源、连接和系统。' },
-  packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
-  visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
-  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
-  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
-  topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
-  history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
-  desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
-  appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
-  tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
-  asr: { title: '语音输入', description: '按住 🎤 说话，或在任何地方按快捷键直接和她语音对话；识别成文字发给她。' },
-  voicepacks: { title: '语音包', description: '提前录好的台词：命中时直接播放，不用请求引擎。' },
-  connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
-  api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
-  safety: { title: '内容与安全', description: '18+ 确认与成人向内容。打开成人向内容必须走年龄确认。' },
-  update: { title: '版本与更新', description: '当前版本、更新状态、自动更新开关，以及手动检查。新版本在后台下载，离开电脑 10 分钟后或退出时安装。' },
-  about: { title: '数据与关于', description: '数据目录、系统选项、素材署名和危险操作。' },
+  // A04 (SH-02 / CHAT-01): 聊天 and the pet window are one conversation, not two
+  chat: { title: '聊天', description: '和桌面上是同一段对话：在这里说的话，她在桌面上也记得。可以发图片、换模型。' },
+  play: { title: '玩法', description: '她在桌面上怎么陪你，和你能和她一起做的事。' },
+  settings: { title: '设置', description: '声音、隐私与安全，和系统。' },
+  packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。', summary: '导入、导出和删除角色' },
+  visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。', summary: '请其他角色来桌面串门' },
+  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、梗图和触摸。改动立即生效。', summary: '大小、取景、走动和触摸' },
+  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；以及好感度的每日上限和衰减。改动立即生效。', summary: '她多久找你一次、好感怎么涨' },
+  interject: { title: '插个嘴', description: '打开后，她会听你允许的来源（聊天框草稿、语音输入、外部程序、剪贴板），觉得值得时插一句碎碎念。默认关闭。', summary: '听你允许的来源，偶尔插一句' },
+  topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。', summary: '点一个话题，她就开口' },
+  desk: { title: '桌面上的她', description: '让她在桌面上做个动作；找不到她时把她找回屏幕右下角。', summary: '让她做动作、找回桌宠' },
+  tts: { title: '朗读与音效', description: '她出不出声：静音、朗读、互动语音和点击音效；以及朗读用哪个引擎。Key 只写入，不回显。', summary: '静音、朗读引擎和音效' },
+  asr: { title: '语音输入', description: '按住 🎤 说话，或在任何地方按快捷键直接和她语音对话；识别成文字发给她。', summary: '用说的代替打字' },
+  voicepacks: { title: '语音包', description: '提前录好的台词：命中时直接播放，不用请求引擎。', summary: '录好的台词直接播放' },
+  connection: { title: '账号与连接', description: '登录的 LobeHub 账号和所在空间。', summary: '登录的账号和空间' },
+  api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让本机脚本让她说话、做动作。拿到令牌的脚本都能控制她，开启前会再确认一次。', summary: '让本机脚本控制她' },
+  safety: { title: '成人向与本机能力', description: '两个高风险开关：成人向内容（需年龄确认）和本机能力（她能读写文件、运行命令）。开启都要再确认一次，关闭随时可以。', summary: '18+ 内容和读写文件的权限' },
+  reset: { title: '重置与放生', description: '不能撤销的操作都在这里。设置（settings.json）和导入的角色包都会保留。', summary: '清空进度，或连 agent 一起删除' },
+  update: { title: '版本与更新', description: '当前版本、更新状态、自动更新开关，以及手动检查。新版本在后台下载，离开电脑 10 分钟后或退出时安装。', summary: '检查和安装新版本' },
+  about: { title: '关于与数据', description: '设置窗口的主题、数据目录、素材署名，和退出应用。', summary: '主题、数据目录和素材署名' },
 };
 
 const opts = (pairs) => pairs.map(([value, label]) => ({ value, label }));
@@ -118,7 +131,6 @@ const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, ca
 add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
 add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身）；角色详情页可以单独设置，角色包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
-add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
 add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '有同屏伙伴时，扔出去的桌宠会撞到别人。' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });
@@ -131,39 +143,42 @@ add('proactive.speakCooldownMin', 'proactive', '主动行为', '主动说话间�
 add('proactive.boredAfterMin', 'proactive', '主动行为', '多久没理她算无聊', 'number', { desc: '超过这个时间没有互动，她可能会来找你。', unit: '分钟', min: 5, max: 480, step: 5, dependsOn: { key: 'proactive.enabled', value: true } });
 add('proactive.hungryAt', 'proactive', '主动行为', '饥饿提醒阈值', 'slider', { desc: '饥饿值到这里时她会喊饿（0–100）。', min: 50, max: 100, step: 1, dependsOn: { key: 'proactive.enabled', value: true } });
 add('proactive.maxLlmPerHour', 'proactive', '主动行为', '每小时最多调用模型', 'number', { desc: '主动说话每小时最多花几次模型调用，超出后改用离线台词。0 = 只用离线台词。', unit: '次', min: 0, max: 30, step: 1, dependsOn: { key: 'proactive.enabled', value: true } });
-// 插个嘴 (core/interject.js, docs/interject.md): off by default; the clipboard has its own switch and stays off
+// 插个嘴 (core/interject.js, docs/interject.md): off by default; the clipboard has its own switch and stays off.
+// A06 (INT-01): its own page #/interject, cards 插个嘴 / 来源 / 额度与时段 / 判断
 const IJ = { key: 'interject.enabled', value: true };
 const IR = settingsLib.INTERJECT_RANGE;
-add('interject.enabled', 'proactive', '插个嘴', '插个嘴', 'switch', { desc: '默认关闭。打开后她只听下面列出、并且打开了的来源（不是对她说的话），由 LobeHub 的决策模型（需要登录）判断值不值得插一句碎碎念；拿不准就不说，判断失败也不说。不装键盘钩子、不读其它窗口、不截屏；记录只留每句前 24 个字。' });
-add('interject.sources.chatDraft', 'proactive', '插个嘴', '来源：聊天框草稿', 'switch', { desc: '你在她的聊天框里打字、停下来还没发送时。只看这个输入框。', dependsOn: IJ });
-add('interject.sources.voice', 'proactive', '插个嘴', '来源：语音输入', 'switch', { desc: '语音输入转写出来的文字。', dependsOn: IJ });
-add('interject.sources.api', 'proactive', '插个嘴', '来源：外部程序', 'switch', { desc: '本机脚本通过对外接口 POST /pixel-pet/observe 告诉她的内容（需开启对外接口）。', dependsOn: IJ });
-add('interject.sources.clipboard', 'proactive', '插个嘴', '来源：剪贴板（系统级）', 'switch', { desc: '每 3 秒看一次剪贴板里的文字。系统级来源，默认关闭；记录里只留字数，不留内容；像密码、密钥的文字直接跳过。', dependsOn: IJ });
-add('interject.cooldownMin', 'proactive', '插个嘴', '两次插嘴至少间隔', 'number', { unit: '分钟', min: IR.cooldownMin[0], max: IR.cooldownMin[1], step: 1, dependsOn: IJ });
-add('interject.maxPerHour', 'proactive', '插个嘴', '每小时最多插嘴', 'number', { unit: '次', min: IR.maxPerHour[0], max: IR.maxPerHour[1], step: 1, dependsOn: IJ });
-add('interject.maxDecidePerHour', 'proactive', '插个嘴', '每小时最多判断', 'number', { desc: '每小时最多调用几次决策模型；超出后这一小时不再判断。', unit: '次', min: IR.maxDecidePerHour[0], max: IR.maxDecidePerHour[1], step: 1, dependsOn: IJ });
-add('interject.debounceSec', 'proactive', '插个嘴', '停顿多久再判断', 'number', { desc: '你连续输入时不判断，停下这么久之后才看。', unit: '秒', min: IR.debounceSec[0], max: IR.debounceSec[1], step: 1, dependsOn: IJ });
-add('interject.minChars', 'proactive', '插个嘴', '太短不判断', 'number', { desc: '少于这么多字的输入直接跳过。', unit: '字', min: IR.minChars[0], max: IR.minChars[1], step: 1, dependsOn: IJ });
-add('interject.quietStart', 'proactive', '插个嘴', '勿扰开始', 'number', { desc: '勿扰时段内不插嘴；开始和结束相同 = 不设勿扰。', unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
-add('interject.quietEnd', 'proactive', '插个嘴', '勿扰结束', 'number', { unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
-add('interject.highThreshold', 'proactive', '插个嘴', '插嘴阈值', 'slider', { desc: '决策模型给出的概率不低于它才插嘴。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
-add('interject.lowThreshold', 'proactive', '插个嘴', '不插嘴阈值', 'slider', { desc: '概率不高于它就肯定不说；两个阈值之间默认也不说，除非你点过“可以插嘴”的规则命中。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
-add('interject.timeoutSec', 'proactive', '插个嘴', '判断超时', 'number', { desc: '超时一律不说话。', unit: '秒', min: IR.timeoutSec[0], max: IR.timeoutSec[1], step: 1, dependsOn: IJ });
-add('interject.model', 'proactive', '插个嘴', '决策模型', 'text', { desc: 'provider/model，默认 lobehub/jev-1.14.0。', placeholder: 'lobehub/jev-1.14.0', maxLength: 121, pattern: settingsLib.DECISION_MODEL_RE.source, dependsOn: IJ });
+add('interject.enabled', 'interject', '插个嘴', '插个嘴', 'switch', { desc: '打开后她只听下面列出、并且打开了的来源（不是对她说的话），由 LobeHub 的决策模型（需要登录）判断值不值得插一句碎碎念；拿不准就不说，判断失败也不说。不装键盘钩子、不读其它窗口、不截屏；记录只留每句前 24 个字。' });
+add('interject.sources.chatDraft', 'interject', '来源', '来源：聊天框草稿', 'switch', { desc: '你在她的聊天框里打字、停下来还没发送时。只看这个输入框。', dependsOn: IJ });
+add('interject.sources.voice', 'interject', '来源', '来源：语音输入', 'switch', { desc: '语音输入转写出来的文字。', dependsOn: IJ });
+add('interject.sources.api', 'interject', '来源', '来源：外部程序', 'switch', { desc: '本机脚本通过对外接口 POST /pixel-pet/observe 告诉她的内容（需开启对外接口）。', dependsOn: IJ });
+add('interject.sources.clipboard', 'interject', '来源', '来源：剪贴板（系统级）', 'switch', { desc: '每 3 秒看一次剪贴板里的文字。系统级来源，默认关闭；记录里只留字数，不留内容；像密码、密钥的文字直接跳过。', dependsOn: IJ });
+add('interject.cooldownMin', 'interject', '额度与时段', '两次插嘴至少间隔', 'number', { unit: '分钟', min: IR.cooldownMin[0], max: IR.cooldownMin[1], step: 1, dependsOn: IJ });
+add('interject.maxPerHour', 'interject', '额度与时段', '每小时最多插嘴', 'number', { unit: '次', min: IR.maxPerHour[0], max: IR.maxPerHour[1], step: 1, dependsOn: IJ });
+add('interject.maxDecidePerHour', 'interject', '额度与时段', '每小时最多判断', 'number', { desc: '每小时最多调用几次决策模型；超出后这一小时不再判断。', unit: '次', min: IR.maxDecidePerHour[0], max: IR.maxDecidePerHour[1], step: 1, dependsOn: IJ });
+add('interject.debounceSec', 'interject', '额度与时段', '停顿多久再判断', 'number', { desc: '你连续输入时不判断，停下这么久之后才看。', unit: '秒', min: IR.debounceSec[0], max: IR.debounceSec[1], step: 1, dependsOn: IJ });
+add('interject.minChars', 'interject', '额度与时段', '太短不判断', 'number', { desc: '少于这么多字的输入直接跳过。', unit: '字', min: IR.minChars[0], max: IR.minChars[1], step: 1, dependsOn: IJ });
+add('interject.quietStart', 'interject', '额度与时段', '勿扰开始', 'number', { desc: '勿扰时段内不插嘴；开始和结束相同 = 不设勿扰。', unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
+add('interject.quietEnd', 'interject', '额度与时段', '勿扰结束', 'number', { unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
+add('interject.highThreshold', 'interject', '判断', '插嘴阈值', 'slider', { desc: '决策模型给出的概率不低于它才插嘴。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
+add('interject.lowThreshold', 'interject', '判断', '不插嘴阈值', 'slider', { desc: '概率不高于它就肯定不说；两个阈值之间默认也不说，除非你点过“可以插嘴”的规则命中。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
+add('interject.timeoutSec', 'interject', '判断', '判断超时', 'number', { desc: '超时一律不说话。', unit: '秒', min: IR.timeoutSec[0], max: IR.timeoutSec[1], step: 1, dependsOn: IJ });
+add('interject.model', 'interject', '判断', '决策模型', 'text', { desc: 'provider/model，默认 lobehub/jev-1.14.0。', placeholder: 'lobehub/jev-1.14.0', maxLength: 121, pattern: settingsLib.DECISION_MODEL_RE.source, dependsOn: IJ });
 add('affectionRules.dailyCap', 'proactive', '好感度', '每日好感上限', 'number', { desc: '每个好感日（凌晨 4 点分界）最多能涨多少好感。', unit: '点', min: settingsLib.DAILY_CAP_RANGE[0], max: settingsLib.DAILY_CAP_RANGE[1], step: 1 });
 add('affectionRules.decay', 'proactive', '好感度', '久未见面时好感衰减', 'switch', { desc: '48 小时没互动后，每 12 小时减 1 点，一次最多减 8 点，不会掉阶段。' });
 
-// ---- 外观主题 ---------------------------------------------------------------------------------------------
-add('ui.theme', 'appearance', '设置窗口', '主题', 'segmented', { desc: '设置窗口的明暗。跟随系统时随操作系统切换。', options: opts([['auto', '跟随系统'], ['light', '亮色'], ['dark', '暗色']]) });
+// ---- 外观主题 → 关于与数据「显示」卡 (A07: SH-06 / X-4 one field is not a page; PG-06 says what it changes) ----
+add('ui.theme', 'about', '显示', '主题', 'segmented', { desc: '设置窗口和桌宠窗口的气泡、菜单都跟着变；角色本身不变。跟随系统时随操作系统切换。rail 底部的按钮也能切换。', options: opts([['auto', '跟随系统'], ['light', '亮色'], ['dark', '暗色']]) });
 
 // ---- 同屏伙伴 ---------------------------------------------------------------------------------------------
 add('visitors', 'visitors', '同屏伙伴', '一起待在桌面上的角色', 'visitors', { desc: `最多 ${settingsLib.MAX_VISITORS} 位，不能选当前角色。`, max: settingsLib.MAX_VISITORS });
 
 // ---- 朗读 -------------------------------------------------------------------------------------------------
-add('prefs.muted', 'tts', '朗读', '静音', 'switch', { desc: '一键让她不出声：朗读、互动语音和点击音效都停下，下面的开关保持原样。桌宠工具栏上的喇叭按钮也能切换。' });
-add('prefs.voice', 'tts', '朗读', '朗读回复', 'switch', { desc: '她的回复和主动说的话用语音读出来。总开关：关闭时下面的语音都不会响。' });
-add('prefs.voiceInteractions', 'tts', '朗读', '互动语音', 'switch', { desc: '摸摸、喂食、拖动时的短台词也读出来（会提前合成）。', dependsOn: { key: 'prefs.voice', value: true } });
-add('prefs.voiceMurmurs', 'tts', '朗读', '朗读碎碎念', 'switch', { desc: '她自言自语的碎碎念也读出来。', dependsOn: { key: 'prefs.voice', value: true } });
+// A25 (FORM-06): every "does she make a sound" switch on one card, 点击音效 included (moved from 桌宠行为; settings key unchanged)
+add('prefs.muted', 'tts', '声音', '静音', 'switch', { desc: '一键让她不出声：朗读、互动语音和点击音效都停下，下面的开关保持原样。桌宠工具栏上的喇叭按钮也能切换。' });
+add('prefs.voice', 'tts', '声音', '朗读回复', 'switch', { desc: '她的回复和主动说的话用语音读出来。总开关：关闭时下面的语音都不会响。' });
+add('prefs.voiceInteractions', 'tts', '声音', '互动语音', 'switch', { desc: '摸摸、喂食、拖动时的短台词也读出来（会提前合成）。', dependsOn: { key: 'prefs.voice', value: true } });
+add('prefs.voiceMurmurs', 'tts', '声音', '朗读碎碎念', 'switch', { desc: '她自言自语的碎碎念也读出来。', dependsOn: { key: 'prefs.voice', value: true } });
+add('prefs.clickSound', 'tts', '声音', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('tts.provider', 'tts', '引擎', '朗读引擎', 'select', { desc: '自动 = 用角色自己配好的引擎。', options: opts([['auto', '自动（跟随角色）'], ['fish', 'Fish Audio'], ['minimax', 'MiniMax'], ['elevenlabs', 'ElevenLabs'], ['local', '本地语音服务'], ['system', '系统语音']]) });
 add('tts.fallback', 'tts', '引擎', '引擎用不了时', 'segmented', { desc: '选的引擎失败（没 Key、超时、额度用完）时怎么办。', options: opts([['system', '改用系统语音'], ['silent', '不出声']]) });
 add('tts.packs', 'tts', '引擎', '使用语音包', 'switch', { desc: '命中录好的台词时直接播放，不请求引擎。' });
@@ -198,11 +213,15 @@ add('asr.local.model', 'asr', '本地识别服务', '模型', 'text', { desc: '�
 add('asr.local.timeoutSec', 'asr', '本地识别服务', '超时', 'number', { desc: 'CPU 推理较慢，首个请求可能要十几秒。', unit: '秒', min: 5, max: 120, step: 5 });
 
 // ---- 对外接口 ---------------------------------------------------------------------------------------------
-add('api.enabled', 'api', '对外接口（本机 HTTP）', '开启对外接口', 'switch', { desc: '只监听 127.0.0.1；第一次开启时自动生成令牌。' });
+add('api.enabled', 'api', '对外接口（本机 HTTP）', '开启对外接口', 'switch', {
+  desc: '只监听 127.0.0.1；第一次开启时自动生成令牌。',
+  // A23 (FORM-04, P-05 高风险): switching on is confirmed, switching off never is
+  confirmOn: { title: '开启对外接口？', content: '开启后，本机上的脚本拿到令牌就能让她说话、做动作。只在你自己写的脚本需要时开启。', okText: '开启对外接口' },
+});
 add('api.port', 'api', '对外接口（本机 HTTP）', '端口', 'number', { desc: '1024–65535。', min: settingsLib.API.minPort, max: settingsLib.API.maxPort, step: 1 });
 add('api.token', 'api', '对外接口（本机 HTTP）', '令牌', 'token', { desc: '调用接口时放在 Authorization: Bearer 里。默认遮罩，可以复制或换一个。', sensitive: true });
 
-// ---- 内容与安全 -------------------------------------------------------------------------------------------
+// ---- 成人向与本机能力 (A04: HUB-02 two high-risk switches on one page) -------------------------------------------------------------------------------------------
 add('adultContent', 'safety', '成人向内容', '成人向内容', 'adult', { desc: '18+ 外观与服饰。打开前必须确认已满 18 周岁；关闭随时可以。' });
 add('answered', 'safety', '年龄确认', '已回答年龄确认', 'readonly', { internal: true });
 add('ageConfirmed', 'safety', '年龄确认', '已确认满 18 周岁', 'readonly', { internal: true });
@@ -211,8 +230,8 @@ add('ageConfirmedAt', 'safety', '年龄确认', '确认时间', 'readonly', { in
 add('characterModel', 'about', '数据', '角色数据版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.CHARACTER_MODEL}；旧版数据（一位角色带多套形象）在启动时迁移一次，每套形象成为一位独立角色。` });
 add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.AGE_GATE_VERSION}；版本不一致时会重新询问。` });
 
-// ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
-add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', { desc: '用 GPU 绘制桌宠。透明窗口出现黑块或闪烁时可以关掉。', restart: true });
+// ---- 关于与数据 ------------------------------------------------------------------------------------
+add('system.hardwareAcceleration', 'about', '显示', '硬件加速', 'switch', { desc: '用 GPU 绘制桌宠。透明窗口出现黑块或闪烁时可以关掉。', restart: true });
 
 // ---- 版本与更新 -------------------------------------------------------------------------------------------
 add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch', { desc: '启动约 20 秒后检查一次，之后每 4 小时一次，有新版本就在后台下载。关闭后只在你点「检查更新」时检查；已下载的新版本仍会在退出时安装。' });
@@ -232,7 +251,7 @@ secret('keys.minimax', 'tts', 'MiniMax', 'API Key', { desc: '只写入，不回�
 secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。请求时放在 xi-api-key 头里。' });
 secret('keys.local', 'tts', '本地语音服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写。' });
 secret('keys.asrlocal', 'asr', '本地识别服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写；清除后不再发送。' });
-F.push({ key: 'localAbilities', page: 'connection', card: '本机能力', label: '本机能力', type: 'local', store: 'pet', desc: '允许她在这台电脑上读写文件、运行命令（工具调用）。高风险：开启前会再确认一次。' });
+F.push({ key: 'localAbilities', page: 'safety', card: '本机能力', label: '本机能力', type: 'local', store: 'pet', desc: '允许她在这台电脑上读写文件、运行命令（工具调用）。高风险：开启前会再确认一次。' });
 
 for (const f of F) {
   if (f.store === 'settings' && !f.key.includes('<id>')) {
@@ -337,7 +356,7 @@ function patchFor(key, value) {
 
 // What goes to the window: plain data only.
 function describe() {
-  return { rail: RAIL, nav: NAV, pages: PAGES, fields: FIELDS, defaults: DEFAULTS, restartKeys: settingsLib.RESTART_KEYS };
+  return { rail: RAIL, nav: NAV, pages: PAGES, redirects: REDIRECTS, fields: FIELDS, defaults: DEFAULTS, restartKeys: settingsLib.RESTART_KEYS };
 }
 
-module.exports = { RAIL, NAV, PAGES, FIELDS, DEFAULTS, field: (k) => byKey.get(k) || null, settingsLeaves, validate, patchFor, describe, at, TTS_ENGINES, FALLBACKS, TTS_LOCAL_APIS };
+module.exports = { RAIL, NAV, PAGES, REDIRECTS, FIELDS, DEFAULTS, field: (k) => byKey.get(k) || null, settingsLeaves, validate, patchFor, describe, at, TTS_ENGINES, FALLBACKS, TTS_LOCAL_APIS };

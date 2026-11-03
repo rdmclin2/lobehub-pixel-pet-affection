@@ -22,7 +22,7 @@ const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
-const { TtsEngine, NEURAL } = require('../core/tts');
+const { TtsEngine, NEURAL, PROVIDERS: TTS_PROVIDERS } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
@@ -606,6 +606,18 @@ function wire() {
     return r;
   });
   ipcMain.on('tts-cancel', () => tts.engine.cancel());
+  // 试听 (docs/admin-audit/02-plan.md A14 / PG-02): one fixed line through the engine the current settings pick, for
+  // the settings window's 朗读与音效 page — read even with 朗读回复 off (the owner asked to hear it), never from a 语音包
+  // (that would not test the engine). -> { ok, provider, label, latencyMs, cached, audio, mime } | { ok: false, reason, message }
+  ipcMain.handle('admin-tts-test', async () => {
+    const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
+    if (!sp) return { ok: false, reason: 'no-pet' };
+    const r = await tts.engine.synthesize({ text: '你好呀，能听到我的声音吗？', species: sp, mood: 'happy' }, service.settings.tts);
+    if (r.fellBackFrom.length) service.emit('settings', service.settingsView());
+    const label = (id) => (TTS_PROVIDERS[id] && TTS_PROVIDERS[id].label) || id;
+    if (!r.ok) return { ok: false, reason: r.reason, message: r.message || null, tried: r.fellBackFrom.map((f) => `${label(f.provider)}：${f.reason}`) };
+    return { ok: true, provider: r.provider, label: label(r.provider), latencyMs: r.latencyMs, cached: !!r.cached, audio: r.audio, mime: r.mime };
+  });
   // 语音包: her recorded line for this text, when packs are on and the engine that would read it is the
   // one the pack was recorded with (or none can): played from disk, no request (core/voice-pack.js).
   function recordedLine(sp, text, probe = false) {

@@ -1,5 +1,5 @@
-import { Button, createStaticStyles, cssVar, Flexbox, Icon, keyframes, Text } from '@lobehub/ui';
-import { Heart, Sparkles } from 'lucide-react';
+import { Button, Checkbox, createStaticStyles, cssVar, DropdownMenu, Flexbox, Icon, keyframes, Text, Tooltip } from '@lobehub/ui';
+import { ChevronDown, Heart, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { api, type Preview, type RosterRow } from '../api';
@@ -85,7 +85,15 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: none;
 
-    transition: transform 160ms ease-out;
+    transition:
+      transform 160ms ease-out,
+      filter 160ms ease-out;
+
+    /* B11 (STG-02): she answers a hover, so the tap is discoverable (M-06 缺提示 P) */
+    &:hover {
+      transform: translateY(-2px);
+      filter: drop-shadow(0 6px 12px color-mix(in srgb, var(--pet-accent) 35%, transparent));
+    }
 
     &:active {
       transform: scale(0.98);
@@ -98,6 +106,10 @@ const styles = createStaticStyles(({ css }) => ({
 
     @media (prefers-reduced-motion: reduce) {
       transition: none;
+
+      &:hover {
+        transform: none;
+      }
     }
   `,
   heart: css`
@@ -160,6 +172,14 @@ interface Burst {
   hearts: { delay: number; dx: number; size: number; x: number }[];
 }
 
+/**
+ * B10 (STG-01, M-08「并列选项 > 7 个先分组」): the actions shown as chips; the rest are under 更多. The pet window
+ * plays the same names (main ADMIN_CUES), so 「桌面上的她也做」 sends the chip there too.
+ */
+const COMMON_ACTIONS = ['idle', 'happy', 'pat', 'talk', 'think', 'play'];
+const DESK_CUES = new Set(['look', 'happy', 'pat', 'sad', 'sleep', 'eat_cookie', 'think', 'talk', 'play', 'walk', 'idle']);
+const PAT_TIP_SEEN = 'pet-admin:pat-tip-seen';
+
 /** What she says when patted: her catchphrase, or a line about what she likes. */
 const reactionLines = (c: RosterRow) => {
   const name = c.met?.name ?? c.nameZh;
@@ -191,6 +211,10 @@ export const CharacterStage = ({ c, height, preview, interactive = true, actions
   const [react, setReact] = useState<string | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [bursts, setBursts] = useState<Burst[]>([]);
+  // 「桌面上的她也做」: only the companion on the desktop can (c.current); off by default, the stage is a preview
+  const [desk, setDesk] = useState(false);
+  // B11: the first pat explains once what it did (she on the desktop answered too)
+  const [tip, setTip] = useState<string | null>(null);
   const seq = useRef(0);
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
@@ -210,19 +234,37 @@ export const CharacterStage = ({ c, height, preview, interactive = true, actions
     later(() => setLine(null), 2600);
     // the pet on the desktop is her: she answers there too (no pet yet / busy → nothing to say about it)
     if (c.current) api().cue('happy').catch(() => {});
+    try {
+      if (!localStorage.getItem(PAT_TIP_SEEN)) {
+        localStorage.setItem(PAT_TIP_SEEN, '1');
+        setTip(c.current ? '她感觉到了：桌面上的她也会开心一下。随时点她都可以。' : '她感觉到了。她陪你的时候，桌面上的她也会跟着开心。');
+        later(() => setTip(null), 6000);
+      }
+    } catch {
+      /* no storage: no tip */
+    }
+  };
+
+  const play = (k: string) => {
+    // a chosen action wins over a running reaction
+    setReact(null);
+    setAction(k);
+    if (desk && c.current && DESK_CUES.has(k)) api().cue(k).catch(() => {});
   };
 
   const shown = react ?? action;
-  const art = <SpriteStage accent={c.accent} action={shown} animate height={Math.round(height * 0.82)} name={c.nameZh} preview={pv} silhouette={!c.met && !c.current && !preview} />;
+  const art = <SpriteStage accent={c.accent} action={shown} animate height={Math.round(height * 0.82)} name={c.nameZh} preview={pv} />;
   return (
     <Flexbox gap={12}>
       <div className={styles.stage} data-stage={c.id} style={{ height, ['--pet-accent' as string]: c.accent }}>
         <div className={styles.aura} />
         <div className={styles.floor} />
         {interactive ? (
-          <button aria-label={`摸摸${c.met?.name ?? c.nameZh}`} className={styles.hit} data-pat={c.id} onClick={pat} type="button">
-            {art}
-          </button>
+          <Tooltip title={`摸摸${c.met?.name ?? c.nameZh}`}>
+            <button aria-label={`摸摸${c.met?.name ?? c.nameZh}`} className={styles.hit} data-pat={c.id} onClick={pat} type="button">
+              {art}
+            </button>
+          </Tooltip>
         ) : (
           <div className={styles.hit}>{art}</div>
         )}
@@ -241,20 +283,36 @@ export const CharacterStage = ({ c, height, preview, interactive = true, actions
         {badge && <div className={styles.badge}>{badge}</div>}
         {corner && <div className={styles.corner}>{corner}</div>}
       </div>
+      {tip && (
+        <Text data-pat-tip fontSize={12} role="status" type="secondary">
+          {tip}
+        </Text>
+      )}
       {actions && available.length > 1 && (
-        <Flexbox align="center" gap={4} horizontal wrap="wrap">
+        <Flexbox align="center" data-stage-actions gap={4} horizontal wrap="wrap">
           <Text fontSize={12} style={{ marginInlineEnd: 4 }} type="secondary">
             <Icon icon={Sparkles} size={12} /> 动作
           </Text>
-          {available.map((k) => (
-            <Button aria-pressed={action === k} data-action-chip={k} key={k} onClick={() => {
-                // a chosen action wins over a running reaction
-                setReact(null);
-                setAction(k);
-              }} size="small" type={action === k ? 'default' : 'text'}>
+          {available.filter((k) => COMMON_ACTIONS.includes(k)).map((k) => (
+            <Button aria-pressed={action === k} data-action-chip={k} key={k} onClick={() => play(k)} size="small" type={action === k ? 'default' : 'text'}>
               {ACTION_LABEL[k]}
             </Button>
           ))}
+          {available.some((k) => !COMMON_ACTIONS.includes(k)) && (
+            <DropdownMenu items={available.filter((k) => !COMMON_ACTIONS.includes(k)).map((k) => ({ key: k, label: ACTION_LABEL[k], onClick: () => play(k) }))}>
+              <Button data-action-more size="small" type={available.some((k) => !COMMON_ACTIONS.includes(k) && k === action) ? 'default' : 'text'}>
+                {!COMMON_ACTIONS.includes(action) && ACTION_LABEL[action] ? ACTION_LABEL[action] : '更多'}
+                <Icon icon={ChevronDown} size={12} />
+              </Button>
+            </DropdownMenu>
+          )}
+          {c.current && (
+            <Checkbox checked={desk} data-desk-too onChange={(v) => setDesk(v)} style={{ marginInlineStart: 'auto' }}>
+              <Text fontSize={12} type="secondary">
+                桌面上的她也做
+              </Text>
+            </Checkbox>
+          )}
         </Flexbox>
       )}
     </Flexbox>

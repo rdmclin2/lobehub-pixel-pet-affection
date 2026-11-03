@@ -222,7 +222,7 @@ export const SpriteStage = memo(({ preview, name, accent, height, action = 'idle
     inner = seen ? <video aria-label={name} autoPlay={animate && !reducedMotion()} className={cls} loop muted onError={() => setFailed(true)} onLoadedData={() => drawn(preview.url)} playsInline preload="metadata" src={animate ? preview.url : `${preview.url}#t=0.1`} style={shade} /> : null;
   else inner = <img alt={name} className={cls} decoding="async" loading={lazy ? 'lazy' : undefined} onError={() => setFailed(true)} onLoad={() => drawn(preview.url)} src={preview.url} style={shade} />;
   return (
-    <div className={cx(styles.root, className)} data-action={action} data-failed={failed || undefined} data-preview={preview?.type ?? 'none'} data-src={preview?.url} ref={box} style={{ height, width }}>
+    <div className={cx(styles.root, className)} data-action={action} data-failed={failed || undefined} data-preview={preview?.type ?? 'none'} data-silhouette={silhouette || undefined} data-src={preview?.url} ref={box} style={{ height, width }}>
       {inner}
     </div>
   );

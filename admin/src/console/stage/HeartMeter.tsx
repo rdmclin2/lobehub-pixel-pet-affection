@@ -89,12 +89,10 @@ export interface HeartMeterProps {
 export const HeartMeter = ({ c, marks = true, compact = false }: HeartMeterProps) => {
   if (!c.met) {
     return (
-      <Flexbox align="center" gap={4} horizontal>
-        <Icon icon={Lock} size={12} />
-        <Text fontSize={12} type="secondary">
-          还没遇见她
-        </Text>
-      </Flexbox>
+      // STG-03 / B12: one word for it (roster-model STATE_WORD.unmet), no second lock over the silhouette
+      <Text data-heart-unmet={c.id} fontSize={12} type="secondary">
+        还没见面
+      </Text>
     );
   }
   const p = c.met.progress ?? {};

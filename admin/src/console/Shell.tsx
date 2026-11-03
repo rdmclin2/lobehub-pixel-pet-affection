@@ -1,9 +1,10 @@
-import { ActionIcon, Alert, Button, createStaticStyles, cssVar, ErrorBoundary, Flexbox, Icon, Text } from '@lobehub/ui';
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Divider, ErrorBoundary, Flexbox, Icon, Text } from '@lobehub/ui';
 import { ChevronLeft, Monitor, Moon, PawPrint, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { api, type NavGroupDef } from './api';
 import { ICONS } from './icons';
+import { lookName, resolveCharacter } from './roster-model';
 import { SpriteStage } from './stage/SpriteStage';
 import { useSave, useStore } from './store';
 
@@ -139,8 +140,9 @@ const THEME_NEXT: Record<string, { icon: typeof Sun; label: string; next: string
   dark: { icon: Moon, label: '外观：暗色（点按切回跟随系统）', next: 'auto' },
 };
 
-/** Which rail place a page sits under. */
-export const placeOf = (page: string, nav: NavGroupDef[]) => (page === 'play' || page === 'settings' ? page : (nav.find((g) => g.items.some((i) => i.page === page))?.section ?? 'home'));
+/** Which rail place a page sits under (null: no such page). */
+export const placeOf = (page: string, nav: NavGroupDef[]) => (page === 'play' || page === 'settings' ? page : (nav.find((g) => g.items.some((i) => i.page === page))?.section ?? null));
+
 
 /**
  * The window: a slim rail with four places (小屋 / 角色 / 玩法 / 设置) and the page. Every other page is one
@@ -151,11 +153,17 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const save = useSave();
   const cur = roster.find((c) => c.current) ?? null;
   const [, page = 'overview', sub] = path.split('/');
-  const place = placeOf(page, schema.nav);
+  // an old route on its way to its new place (A00) is lit where it is going
+  const moved = schema.redirects?.[page];
+  const place = placeOf(moved ?? page, schema.nav);
   const rail = schema.rail.find((r) => r.key === place);
   const isTop = schema.rail.some((r) => r.page === page) && !sub;
-  const back = !isTop && rail ? rail : null;
-  const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
+  // A02 (SH-03): an unknown address gets its own crumb, not 小屋's
+  const lost = !place && !moved;
+  const back = !isTop && rail ? rail : lost ? schema.rail[0] : null;
+  // A03 (SH-04): the breadcrumb resolves her the way her page does (B13 resolveCharacter / lookName)
+  const who = page === 'characters' && sub ? resolveCharacter(roster, sub) : null;
+  const here = lost ? '没有这个页面' : page === 'characters' ? (who ? lookName(who) : '找不到这位角色') : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
   const full = page === 'chat';
   const mac = platform === 'darwin';
@@ -170,14 +178,19 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
         <div className={styles.me} title={cur ? `正在陪你：${cur.met?.name ?? cur.nameZh}` : 'Pixel Pet'}>
           {cur ? <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} /> : <Icon icon={PawPrint} size={20} />}
         </div>
-        {schema.rail.map((r) => (
-          <a aria-current={place === r.key ? 'page' : undefined} className={styles.link} data-rail={r.key} href={`#/${r.page}`} key={r.key}>
-            <Icon icon={ICONS[r.icon]} size={20} />
-            {r.label}
-          </a>
+        {schema.rail.map((r, i) => (
+          <Flexbox align="center" gap={4} key={r.key}>
+            {/* A01 (SH-05): 她的世界 above, 配置 below (M-02 邻近) */}
+            {i > 0 && r.group && r.group !== schema.rail[i - 1].group && <Divider data-rail-divider style={{ marginBlock: 4, width: 40 }} />}
+            <a aria-current={place === r.key ? 'page' : undefined} className={styles.link} data-rail={r.key} href={`#/${r.page}`}>
+              <Icon icon={ICONS[r.icon]} size={20} />
+              {r.label}
+            </a>
+          </Flexbox>
         ))}
         <Flexbox flex={1} />
-        <ActionIcon icon={PawPrint} onClick={() => api().showPet()} title="把桌宠叫到前面" />
+        {/* HOME-04: the button says what it does */}
+        <ActionIcon aria-label="打开桌宠窗口" data-show-pet icon={PawPrint} onClick={() => api().showPet()} title="打开桌宠窗口" />
         <ActionIcon data-theme-toggle icon={theme.icon} onClick={() => save('ui.theme', theme.next)} title={theme.label} />
       </nav>
       <main className={`${styles.main} ${full ? styles.mainFull : ''}`}>

@@ -1,7 +1,9 @@
 /** 玩法 / 设置: a hub of tiles, one per page below it, each with what that page is set to right now. */
-import { Block, createStaticStyles, cssVar, Flexbox, Icon, Progress, Tag, Text } from '@lobehub/ui';
+import { Block, Button, createStaticStyles, cssVar, Flexbox, Icon, Progress, Tag, Text } from '@lobehub/ui';
 import { PageHeader } from '@lobehub/ui/dashboard';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, PawPrint } from 'lucide-react';
+
+import { api } from '../api';
 
 import { ICONS } from '../icons';
 import { CharacterStage } from '../stage/CharacterStage';
@@ -53,31 +55,30 @@ const styles = createStaticStyles(({ css }) => ({
 }));
 
 const yes = (b: unknown) => (b ? '开' : '关');
+const ENGINE: Record<string, string> = { auto: '跟随角色', elevenlabs: 'ElevenLabs', fish: 'Fish Audio', local: '本地语音服务', minimax: 'MiniMax', system: '系统语音' };
 
-/** One line on what a page is set to now (empty when there is nothing short to say). */
+/**
+ * One line on what a page is set to now (A05 / HUB-01: the real state, not a second description; empty when the
+ * page has no state worth a line — then the tile shows no status row).
+ */
 const useStatus = () => {
-  const { settings, apiStatus, update, version, view, packs } = useStore();
+  const { settings, apiStatus, update, version, view } = useStore();
   const p = settings.prefs ?? {};
   const visitors = Array.isArray(settings.visitors) ? settings.visitors.length : 0;
-  const theme: Record<string, string> = { auto: '跟随系统', light: '亮色', dark: '暗色' };
   return (page: string): string =>
     ({
       behavior: `大小 ${Math.round((settings.petScale ?? 1) * 100)}% · 走动 ${yes(p.roam)} · 梗图 ${yes(p.memes)}`,
       proactive: settings.proactive?.enabled ? `主动搭话：每 ${settings.proactive.speakCooldownMin} 分钟至多一次` : '主动搭话：关',
+      interject: settings.interject?.enabled ? '插个嘴：开' : '插个嘴：关',
       visitors: visitors ? `${visitors} 位伙伴在桌面上` : '还没有邀请伙伴',
-      tts: `朗读 ${yes(p.voice)}${settings.tts?.engine ? ` · ${settings.tts.engine}` : ''}`,
-      asr: `语音输入 ${yes(settings.asr?.enabled)}`,
+      tts: p.muted ? '静音中' : p.voice ? `朗读：${ENGINE[settings.tts?.provider ?? 'auto'] ?? settings.tts?.provider}` : '朗读：关',
+      asr: `语音输入：${yes(settings.asr?.enabled)}`,
       voicepacks: `${(settings.ttsStatus?.packs ?? []).length} 个语音包`,
-      packs: `${packs.length} 个角色包（导入 ${packs.filter((x) => x.source === 'user').length} 个）`,
-      appearance: theme[settings.ui?.theme ?? 'auto'] ?? '跟随系统',
       connection: view?.space ? (view.space.personal ? '个人空间' : view.space.name) : '还没唤醒',
-      api: apiStatus?.listening ? `监听中 127.0.0.1:${apiStatus.port}` : `对外接口 ${yes(settings.api?.enabled)}`,
-      safety: settings.adultContent ? '成人向内容：开' : '成人向内容：关',
-      update: `v${version}${update?.status === 'ready' ? ' · 新版本已就绪' : ''}`,
-      about: '数据目录、系统选项、素材署名',
+      api: apiStatus?.listening ? `监听中 127.0.0.1:${apiStatus.port}` : apiStatus?.error ? `没有启动：${apiStatus.error}` : `对外接口：${yes(settings.api?.enabled)}`,
+      safety: `成人向：${yes(settings.adultContent)} · 本机能力：${view ? yes(view.local?.enabled) : '--'}`,
+      update: `v${version}${update?.status === 'ready' ? ' · 新版本已就绪' : update?.status === 'error' ? ' · 上次检查没成功' : ''}`,
       topics: view?.topics ? `已解锁 ${view.topics.filter((t: any) => !t.locked).length} / ${view.topics.length} 个${view.topics.some((t: any) => t.isNew) ? ' · 有新话题' : ''}` : '',
-      history: '你主动发起的聊天',
-      desk: '动作 · 回到右下角 · 退出',
     })[page] ?? '';
 };
 
@@ -113,9 +114,15 @@ const PetStatus = () => {
             <Text style={{ flex: 'none', textAlign: 'end', width: 32 }}>{b.value}</Text>
           </Flexbox>
         ))}
-        <Text fontSize={12} type="secondary">
-          喂食、陪玩和哄睡在桌宠窗口里进行；下面这些决定她在桌面上怎么陪你。
-        </Text>
+        {/* A12 (HUB-04, M-06 缺能力 A): the stats can be acted on — the way to her food is one click away */}
+        <Flexbox align="center" gap={8} horizontal wrap="wrap">
+          <Button data-feed-pet icon={PawPrint} onClick={() => api().showPet()} size="small">
+            去桌宠窗口喂她
+          </Button>
+          <Text fontSize={12} type="secondary">
+            喂食、陪玩和哄睡在桌宠窗口里进行。
+          </Text>
+        </Flexbox>
       </Flexbox>
     </div>
   );
@@ -151,8 +158,8 @@ export const HubPage = ({ place }: { place: 'play' | 'settings' }) => {
                       </Text>
                       <Icon icon={ChevronRight} size={16} />
                     </Flexbox>
-                    <Text fontSize={12} type="secondary">
-                      {schema.pages[i.page]?.description}
+                    <Text data-tile-summary fontSize={12} type="secondary">
+                      {schema.pages[i.page]?.summary ?? schema.pages[i.page]?.description}
                     </Text>
                     {status(i.page) && (
                       <Text data-tile-status fontSize={12} style={{ marginBlockStart: 4 }}>

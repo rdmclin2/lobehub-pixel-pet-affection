@@ -27,6 +27,8 @@ export interface FieldOption {
 
 export interface FieldDef {
   card: string;
+  /** switching on asks first (A23: 对外接口) */
+  confirmOn?: { content: string; okText: string; title: string };
   default?: unknown;
   /** hotkey: the default in HotkeyInput's format ('mod+shift+space') */
   defaultKeys?: string;
@@ -65,6 +67,8 @@ export interface NavGroupDef {
 
 /** The window's four places (小屋 / 角色 / 玩法 / 设置); every other page is one level below one of them. */
 export interface RailDef {
+  /** 'world' (小屋 / 角色 / 聊天 / 商店) above the divider, 'config' (玩法 / 设置) below (A01) */
+  group?: 'config' | 'world';
   icon: string;
   key: string;
   label: string;
@@ -76,7 +80,9 @@ export interface Schema {
   fields: FieldDef[];
   nav: NavGroupDef[];
   rail: RailDef[];
-  pages: Record<string, { description: string; title: string }>;
+  pages: Record<string, { description: string; summary?: string; title: string }>;
+  /** old page → where it lives now (A00: history → chat, appearance → about) */
+  redirects?: Record<string, string>;
   restartKeys: string[];
 }
 
@@ -311,6 +317,7 @@ export interface PetAdminApi {
   state: () => Promise<AdminState>;
   switchCharacter: (id: string, name?: string) => Promise<any>;
   ttsClearCache: () => Promise<any>;
+  ttsTest: () => Promise<{ audio?: Uint8Array; cached?: boolean; label?: string; latencyMs?: number; message?: string | null; mime?: string; ok: boolean; provider?: string; reason?: string; tried?: string[] }>;
   unlockAll: (species: string) => Promise<any>;
   interjectClearDecisions: () => Promise<{ ok: boolean }>;
   interjectDecisions: (limit?: number) => Promise<{ decisions: InterjectDecision[]; status: any }>;

@@ -64,8 +64,25 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 20, '20 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog)');
-  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
+  // docs/admin-audit/02-plan.md A00: −聊天记录 (into 聊天) −外观主题 (into 关于与数据) +插个嘴 +重置与放生
+  assert.equal(navPages.length, 20, '20 pages under 6 rail places (docs §6.3; 02-plan §1.2)');
+  // A01 (SH-05, X-1): 她的世界 (小屋 / 角色 / 聊天 / 商店) above the divider, 配置 (玩法 / 设置) below
+  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'chat', 'store', 'play', 'settings'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
+  assert.deepEqual(schema.RAIL.map((r) => r.group), ['world', 'world', 'world', 'world', 'config', 'config']);
+  // A04 (SH-01, HUB-02): 角色包 under 角色; 设置 grouped 声音 / 隐私与安全 / 系统
+  assert.equal(schema.NAV.find((g) => g.items.some((i) => i.page === 'packs')).section, 'characters');
+  assert.deepEqual(schema.NAV.filter((g) => g.section === 'settings').map((g) => g.label), ['声音', '隐私与安全', '系统']);
+  assert.deepEqual(schema.NAV.find((g) => g.key === 'privacy').items.map((i) => i.page), ['safety', 'api', 'reset']);
+  assert.deepEqual(schema.REDIRECTS, { history: 'chat', appearance: 'about' });
+  for (const [from, to] of Object.entries(schema.REDIRECTS)) assert.ok(!navPages.includes(from) && (to === 'chat' || navPages.includes(to)), from);
+  // A05: every hub tile has a one-line summary, ≤ 20 字 (W-02)
+  for (const p of schema.NAV.filter((g) => ['play', 'settings'].includes(g.section)).flatMap((g) => g.items.map((i) => i.page))) assert.ok(schema.PAGES[p].summary && schema.PAGES[p].summary.length <= 20, p);
+  // A25 (FORM-06) / INT-01 / PG-05: the fields moved, their settings keys did not
+  assert.equal(schema.field('prefs.clickSound').page, 'tts');
+  assert.equal(schema.field('localAbilities').page, 'safety');
+  assert.ok(schema.FIELDS.filter((f) => f.key.startsWith('interject.')).every((f) => f.page === 'interject'));
+  assert.equal(schema.field('ui.theme').page, 'about');
+  assert.ok(schema.field('api.enabled').confirmOn, 'A23: switching 对外接口 on is confirmed');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
   for (const f of schema.FIELDS) {
@@ -247,7 +264,9 @@ test('ElevenLabs settings save through admin-set into settings.json; its key goe
 
 test('朗读 page: the ElevenLabs card shows its engine status, and a cloud engine without a key says 未设置 Key', () => {
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
-  assert.match(src, /ElevenLabs: eng\('elevenlabs'\)/);
+  // A13 (PG-01): each engine's card carries its status tag — the active one, and the folded others
+  assert.match(src, /ENGINE_CARD: Record<string, string> = \{ elevenlabs: 'ElevenLabs'/);
+  assert.match(src, /extra=\{\{ \[activeCard\]: eng\(active\) \}\}/);
   assert.match(src, /'未设置 Key'/);
   assert.match(src, /还没设置 Key/);
   assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-settings.js'), 'utf8'), /KEY_SLOTS = new Set\(\[\.\.\.NEURAL/);

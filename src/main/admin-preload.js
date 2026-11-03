@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
   // voice
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
+  // 试听: one fixed line through the chosen engine (A14 / PG-02)
+  ttsTest: () => ipcRenderer.invoke('admin-tts-test'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
   asrTest: (provider) => ipcRenderer.invoke('asr-test', { provider }),

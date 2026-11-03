@@ -1789,18 +1789,20 @@ class PetService extends EventEmitter {
 
   // Release the pet: optionally delete every character's LobeHub agent as well. `deleted`: how many were.
   async release({ deleteAgent = false } = {}) {
-    if (!this.pet) return { ok: true };
+    if (!this.pet) return { ok: true, deleted: 0, failed: 0 };
     let deleted = 0;
+    let failed = 0;
     if (deleteAgent) {
       const ids = [...Object.values(this.pet.characters), ...Object.values(this.pet.retiredCharacters || {})].map((c) => c && c.agentId).filter(Boolean);
       for (const id of new Set(ids)) if (await this.lh.deleteAgent(id)) deleted += 1;
+      failed = new Set(ids).size - deleted; // A16 (PG-03): the settings window says how many could not be deleted
     }
     this.pet = null;
     this.lh.setWorkspace(null);
     this.store.clear();
     this.log.clear(); // 聊天记录 goes with the pet
     this.emit('update', null);
-    return { ok: true, deleted };
+    return { ok: true, deleted, failed };
   }
 }
 

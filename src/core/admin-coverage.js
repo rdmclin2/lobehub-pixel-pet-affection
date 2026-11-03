@@ -21,7 +21,7 @@
 const INTERNAL_SETTINGS = {
   petScaleSet: '内部标记：动过「宠物大小」后不再跟随默认大小（由 `petScale` 的修改写入）',
   'tts.providerSet': '内部标记：选过朗读引擎后不再迁移成「自动」（由 `tts.provider` 的修改写入）',
-  answered: '年龄确认的答案（由 18+ 确认对话写入，内容与安全页只读显示）',
+  answered: '年龄确认的答案（由 18+ 确认对话写入，成人向与本机能力页只读显示）',
   ageConfirmed: '是否确认满 18 周岁（同上，只读）',
   ageConfirmedAt: '确认时间（同上，只读）',
   ageGateVersion: '确认文案版本（文案改了就重新询问，只读）',
@@ -30,7 +30,7 @@ const INTERNAL_SETTINGS = {
 
 // settings.json leaves the generic form does not write, and the console control that does
 const SPECIAL_SETTINGS = {
-  adultContent: '内容与安全 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`）',
+  adultContent: '隐私与安全 → 成人向与本机能力 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`）',
   'api.token': '对外接口 → 令牌（遮罩显示、复制、「换一个」：`set-api` newToken）',
   'models.<id>': '角色详情 → 模型（`set-model` / `refresh-models`）',
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
@@ -47,7 +47,7 @@ const VIA = {
   'set-api': '`admin-set` api.*（对外接口）；「换一个令牌」用同一通道',
   'set-pet-scale': '`admin-set` petScale（桌宠行为 → 宠物大小）',
   'preview-pet-scale': '`admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）',
-  'set-local': '`admin-set` localAbilities（LobeHub 与本机 → 本机能力）',
+  'set-local': '`admin-set` localAbilities（隐私与安全 → 成人向与本机能力 → 本机能力）',
   'get-settings': '`admin-boot` / `admin-state`（整份设置随广播推送）',
   place: '`admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）',
   'open-admin': '这就是打开设置窗口本身',
@@ -117,15 +117,15 @@ const MENU = {
   'menu:characters': '角色图鉴（列表 + 详情）',
   'menu:history': '玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`）',
   'menu:new-topic': 'LobeHub 与本机 → 话题 → 重新开始话题',
-  'menu:adult': '内容与安全 → 成人向内容',
-  'menu:local': 'LobeHub 与本机 → 本机能力',
+  'menu:adult': '隐私与安全 → 成人向与本机能力 → 成人向内容',
+  'menu:local': '隐私与安全 → 成人向与本机能力 → 本机能力',
   'menu:actions': '玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`）',
   'menu:home': '玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`）',
   'menu:check-update': '版本与更新 → 检查更新',
-  'menu:release': '数据与关于 → 危险操作 → 放生并删除 agent',
-  'menu:forget': '数据与关于 → 危险操作 → 仅重置本地',
-  'menu:log': '数据与关于 → 数据目录 → 打开错误日志',
-  'menu:credits': '数据与关于 → 素材署名；角色详情 → 资料',
+  'menu:release': '隐私与安全 → 重置与放生 → 放生并删除 agent',
+  'menu:forget': '隐私与安全 → 重置与放生 → 仅重置本地',
+  'menu:log': '关于与数据 → 数据目录 → 打开错误日志',
+  'menu:credits': '关于与数据 → 素材署名（折叠）；角色详情 → 资料',
   'menu:quit': '玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有',
   'toolbar:topics': '玩法 → 和她一起 → 话题（聊聊，`talk-topic`）',
   'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
@@ -152,11 +152,11 @@ const RUNTIME = [
   { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.hotkey', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
-  { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
+  { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 隐私与安全 → 成人向与本机能力', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
   { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
-  { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
-  { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
+  { id: 'data', label: '数据目录与重置', where: '设置 → 关于与数据；隐私与安全 → 重置与放生', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
+  { id: 'theme', label: '设置窗口外观', where: '设置 → 关于与数据 → 显示；rail 底部的明暗按钮', keys: ['ui.theme'] },
 ];
 
 // window.petAdmin methods no page needs to call, and why
