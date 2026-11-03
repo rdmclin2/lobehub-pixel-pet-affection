@@ -5643,7 +5643,7 @@ async function rigScenario() {
   try {
     await step(S, 'hatching 大肥鱼 in her 全动态 look', async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
+      await page.locator('.char-card[data-character="dafeiyu-live"]').click(); // T-2764: she is her own character (settings.appearance is gone)
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
@@ -5771,7 +5771,7 @@ async function live2dScenario() {
   try {
     await step(S, 'hatching 大肥鱼 in her Live2D look', async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
+      await page.locator('.char-card[data-character="dafeiyu-live2d"]').click(); // T-2764: she is her own character (settings.appearance is gone)
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
@@ -9546,7 +9546,7 @@ async function adminCoverageScenario() {
 
     await step(S, 'B12 every user-configurable schema field is rendered as a control on its page (DOM export), and the roster data is real', async () => {
       // fields that depend on a switch (dependsOn) only show while it is on: switch the parents on first
-      for (const [k, v] of [['proactive.enabled', true], ['prefs.voice', true], ['asr.enabled', true], ['api.enabled', true]]) assert.equal((await call('set', k, v)).ok, true, k);
+      for (const [k, v] of [['proactive.enabled', true], ['prefs.voice', true], ['asr.enabled', true], ['api.enabled', true], ['interject.enabled', true]]) assert.equal((await call('set', k, v)).ok, true, k);
       const boot = await admin.evaluate(() => window.petAdmin.boot());
       const fields = boot.schema.fields.filter((f) => !f.internal && f.page !== 'character');
       const pages = [...new Set(fields.map((f) => f.page))];
