@@ -481,7 +481,15 @@ export const DancesPage = () => {
                         </Tag>
                       )}
                       {d.builtin && <Tag size="small">内置示例</Tag>}
-                      {!d.music && <Tag size="small">无音乐</Tag>}
+                      {d.music ? (
+                        <Tag data-dance-music="1" icon={<Icon icon={Music} size={12} />} size="small">
+                          有音乐
+                        </Tag>
+                      ) : (
+                        <Tag data-dance-music="0" size="small">
+                          无音乐
+                        </Tag>
+                      )}
                       {d.face && <Tag size="small">含表情</Tag>}
                     </Flexbox>
                     {d.credit && (

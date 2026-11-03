@@ -1414,7 +1414,11 @@ async function renderDanceMenu() {
     name.textContent = d.name;
     const meta = document.createElement('small');
     meta.className = 'dance-meta';
-    meta.textContent = st && st.id === d.id ? '正在跳' : danceLoading === d.id ? '准备中…' : `${d.audio ? '' : '无音乐 · '}${mmss(d.duration)}`;
+    // with music: ♪ before the length; without: 无音乐 (in words, not only an icon or a colour)
+    if (st && st.id === d.id) meta.textContent = '正在跳';
+    else if (danceLoading === d.id) meta.textContent = '准备中…';
+    else if (d.audio) { meta.innerHTML = `${ICO_MUSIC}<span></span>`; meta.querySelector('span').textContent = mmss(d.duration); meta.setAttribute('aria-label', `有音乐，${mmss(d.duration)}`); meta.title = '有音乐'; }
+    else meta.textContent = `无音乐 · ${mmss(d.duration)}`;
     b.append(name, meta);
     if (danceLoading === d.id) b.classList.add('loading');
     b.addEventListener('click', () => startDance(d));

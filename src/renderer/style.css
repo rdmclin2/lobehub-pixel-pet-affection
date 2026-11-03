@@ -430,6 +430,8 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .dance-menu .btn.dance-row { display: flex; align-items: center; gap: var(--pet-space-sm); width: 100%; min-height: 36px; padding: var(--pet-space-xxs) var(--pet-space-xs); }
 .dance-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dance-row.loading .dance-meta { color: var(--lobe-color-primary); }
+.dance-meta { display: inline-flex; align-items: center; gap: var(--pet-space-xxs); }
+.dance-menu .dance-meta .ico { width: 11px; height: 11px; }
 .dance-cover { flex: none; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text-tertiary); }
 .dance-cover.s24 { width: 24px; height: 24px; }
 .dance-cover.s32 { width: 32px; height: 32px; }

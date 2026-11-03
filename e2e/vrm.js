@@ -1836,6 +1836,16 @@ module.exports = function vrmScenarios(ctx) {
     const { testVmd, beepWav, coverPng } = require('../scripts/make-test-dance');
     const VMD = require('../src/core/vmd');
     const danceDir = path.join(data, 'vrm-dances');
+    // already in the library: a short dance without music (scripts/make-test-dance.js e2e-silent), so the lists
+    // show both 有音乐 and 无音乐
+    {
+      const { writeTestDances } = require('../scripts/make-test-dance');
+      writeTestDances(danceDir);
+      fs.rmSync(path.join(danceDir, 'e2e-test'), { recursive: true, force: true });
+      const lib = JSON.parse(fs.readFileSync(path.join(danceDir, 'library.json'), 'utf8'));
+      delete lib.dances['e2e-test'];
+      fs.writeFileSync(path.join(danceDir, 'library.json'), JSON.stringify(lib, null, 2));
+    }
     // what the owner would pick: an MMD folder (dance + camera + music + cover + readme), and a camera-only folder
     const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-danceui-src-'));
     const folder = path.join(src, '自制小舞 Homemade');
@@ -1918,6 +1928,8 @@ module.exports = function vrmScenarios(ctx) {
         assert.deepEqual(fs.readdirSync(path.join(danceDir, IMPORTED)).sort(), ['audio.wav', 'cover.png', 'dance.vrma', 'readme.txt', 'src']);
         const card = await A.text(`[data-dance="${IMPORTED}"]`);
         assert.match(card, /0:06/);
+        assert.match(card, /有音乐/);
+        assert.match(await A.text('[data-dance="e2e-silent"]'), /无音乐/);
         assert.match(card, /含表情/);
         await setShot('5-imported');
         return H.note(`draft: name 「${draft.name}」, ${draft.dur}, credit ${draft.credit}; imported ${IMPORTED} → ${path.join(danceDir, IMPORTED)} (${Object.keys(lib.dances).length} in library.json); card 「${card.replace(/\s+/g, ' ')}」`);
@@ -1937,13 +1949,15 @@ module.exports = function vrmScenarios(ctx) {
         await petShot('6-vrm-toolbar');
         await page.click('#btn-dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
-        const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => ({ id: r.dataset.dance, name: r.querySelector('.dance-name').textContent, meta: r.querySelector('.dance-meta').textContent, img: !!r.querySelector('img') })));
-        assert.deepEqual(rows.map((r) => r.id), [IMPORTED, 'demo']);
+        const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => ({ id: r.dataset.dance, name: r.querySelector('.dance-name').textContent, meta: r.querySelector('.dance-meta').textContent, music: !!r.querySelector('.dance-meta .ico'), img: !!r.querySelector('img') })));
+        assert.deepEqual(rows.map((r) => r.id), [IMPORTED, 'e2e-silent', 'demo']);
         assert.equal(rows[0].meta, '0:06');
+        assert.equal(rows[0].music, true, '♪ on a dance with music');
+        assert.equal(rows[1].meta, '无音乐 · 0:03');
         assert.equal(rows[0].img, true, 'the cover');
         assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset.dance), IMPORTED, 'keyboard focus on the first row');
         await page.keyboard.press('ArrowDown');
-        assert.equal(await page.evaluate(() => document.activeElement.dataset.dance), 'demo');
+        assert.equal(await page.evaluate(() => document.activeElement.dataset.dance), 'e2e-silent');
         await petShot('7-menu');
         await page.keyboard.press('Escape');
         assert.equal(await page.evaluate(() => document.getElementById('dance-menu').classList.contains('hidden')), true, 'Esc closes the menu');
@@ -2021,19 +2035,19 @@ module.exports = function vrmScenarios(ctx) {
         await A.modalButton('删除舞蹈');
         await A.until((id) => !document.querySelector(`[data-dance="${id}"]`), IMPORTED, 8000, 'the card gone');
         assert.equal(fs.existsSync(path.join(danceDir, IMPORTED)), false);
-        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(danceDir, 'library.json'), 'utf8')).dances), []);
+        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(danceDir, 'library.json'), 'utf8')).dances), ['e2e-silent']);
         const st = (await page.evaluate(() => window.petFx.dance())).state;
         assert.equal(st, null, 'she stopped');
         await hoverPet();
         await page.click('#btn-dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
         const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => r.dataset.dance));
-        assert.deepEqual(rows, ['demo']);
+        assert.deepEqual(rows, ['e2e-silent', 'demo']);
         const more = await page.textContent('#dance-menu .dance-more');
-        assert.equal(more, '导入更多舞蹈…');
+        assert.equal(more, '管理舞蹈…');
         await petShot('13-after-delete-menu');
         await page.keyboard.press('Escape');
-        return H.note(`deleted ${IMPORTED} while dancing: stopped first, folder gone, library empty; menu rows ${rows.join(', ')} + 「${more}」`);
+        return H.note(`deleted ${IMPORTED} while dancing: stopped first, folder gone, only e2e-silent left in library.json; menu rows ${rows.join(', ')} + 「${more}」`);
       });
 
       await ST('换回像素外观：「跳舞」再次隐藏，设置页恢复禁用说明；无渲染 / CSP 报错，仓库无新增文件', async () => {
