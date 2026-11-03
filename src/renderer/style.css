@@ -236,6 +236,9 @@ body.busy.over .stop-btn { display: flex; }
    just above the 🎤 status line, so the bubble and the notice are both readable. It never reaches the room the
    bubble can take at the top (≤ 92px: 76px bubble + tail); in a small window (pet at 50%) a long one scrolls */
 #pet-screen:has(> .bubble:not(.hidden)) .unlock-toast { top: auto; bottom: 122px; max-height: max(56px, calc(100% - 214px)); overflow-y: auto; transform-origin: 50% 100%; }
+/* …and, lying over her, it lets clicks, drags and right clicks through to her; only its buttons take them */
+#pet-screen:has(> .bubble:not(.hidden)) .unlock-toast { pointer-events: none; }
+#pet-screen:has(> .bubble:not(.hidden)) .unlock-toast button { pointer-events: auto; }
 .toast-title { font-weight: var(--lobe-font-weight-strong); font-size: 12px; color: var(--lobe-color-text); padding-right: var(--lobe-padding-md); }
 .toast-body div { word-break: break-word; }
 .toast-body b { color: var(--lobe-color-text); }
