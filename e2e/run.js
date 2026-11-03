@@ -8853,6 +8853,110 @@ async function adminCoverageScenario() {
 // dark, a setting changed there takes effect in the pet window and lands in settings.json, typed values are
 // checked, keys are write-only, a restart-only item says so, and 角色列表 lists / switches characters.
 // Free: fake lh, no paid scenario, no network.
+// T-2751: on macOS the settings window has no native title bar (titleBarStyle 'hiddenInset'), so it only moves by a
+// page area marked `-webkit-app-region: drag`. Linux has no hiddenInset, so the run reports darwin to the page
+// (PIXELPET_E2E_PLATFORM, test mode only) and checks the strip: it is draggable, spans the top, nothing clickable
+// sits under it on any page (also with her stage stuck while scrolling); with the real platform there is no strip.
+async function titlebarScenario() {
+  const S = 'titlebar';
+  const SHOTS = path.join(OUT, 'titlebar');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/tts'];
+  const open = async (platform) => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebar-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebarfake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, ...(platform ? { PIXELPET_E2E_PLATFORM: platform } : {}) });
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await page.evaluate(() => window.pet.openAdmin(''));
+    let admin = null;
+    for (let i = 0; i < 100 && !admin; i++) {
+      admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+      if (!admin) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!admin) throw new Error('the settings window did not open');
+    await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+    const go = async (route) => {
+      await admin.evaluate((r) => { location.hash = r; }, route);
+      await admin.waitForSelector(`[data-path="${route}"]`, { timeout: 10000 });
+      await admin.waitForTimeout(250);
+    };
+    return { app, admin, go };
+  };
+  // everything a click lands on (not the visually hidden aria-hidden inputs behind custom switches), and whether its box reaches into the top `h` px of the window
+  const underStrip = (admin, h) => admin.evaluate((hh) => [...document.querySelectorAll('a, button, input, textarea, select, [role="tab"], [role="switch"], [role="slider"], [role="combobox"], [data-pat], [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => { const r = el.getBoundingClientRect(); return !el.closest('[aria-hidden="true"]') && r.width > 0 && r.height > 0 && r.top < hh && r.bottom > 0 && getComputedStyle(el).visibility !== 'hidden'; })
+    .map((el) => `${el.tagName.toLowerCase()}${el.dataset.rail ? `[rail=${el.dataset.rail}]` : ''}${el.dataset.back ? `[back=${el.dataset.back}]` : ''} "${(el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 12)}" top=${Math.round(el.getBoundingClientRect().top)}`), h);
+
+  let run = null;
+  try {
+    run = await open('darwin');
+    const { admin, go } = run;
+    await step(S, 'T1 macOS: a drag strip spans the whole top of the settings window, over the traffic lights', async () => {
+      const t = await admin.evaluate(() => {
+        const el = document.querySelector('[data-titlebar]');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return { region: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region') || cs.getPropertyValue('app-region'), top: r.top, left: r.left, width: r.width, height: r.height, vw: window.innerWidth, hits: [8, 200, window.innerWidth / 2, window.innerWidth - 8].map((x) => document.elementFromPoint(x, 16)?.hasAttribute('data-titlebar')) };
+      });
+      assert.ok(t, 'no [data-titlebar] in the darwin window');
+      assert.equal(t.region, 'drag', `-webkit-app-region: ${t.region}`);
+      assert.deepEqual([t.top, t.left, t.width, t.height], [0, 0, t.vw, 32]);
+      assert.deepEqual(t.hits, [true, true, true, true], 'the strip is what the pointer meets across the top (rail, page, right edge)');
+      await admin.screenshot({ path: path.join(SHOTS, 'mac-overview.png') });
+      return `app-region ${t.region}, ${t.width}×${t.height} at 0,0; topmost at x=8/200/mid/right`;
+    }, () => run.admin);
+
+    await step(S, 'T2 macOS: on every page nothing clickable sits under the strip (back link, rail, tabs start below it)', async () => {
+      const out = [];
+      for (const r of ROUTES) {
+        await go(r);
+        const bad = await underStrip(admin, 32);
+        assert.deepEqual(bad, [], `${r}: clickable under the drag strip`);
+        const back = await admin.evaluate(() => { const b = document.querySelector('[data-back]'); return b ? Math.round(b.getBoundingClientRect().top) : null; });
+        out.push(`${r}${back !== null ? ` (back top=${back})` : ''}`);
+        await admin.screenshot({ path: path.join(SHOTS, `mac-${r.slice(1).replace(/\//g, '-')}.png`) });
+      }
+      return out.join(', ');
+    }, () => run.admin);
+
+    await step(S, 'T3 macOS: her page scrolled — the stage stays stuck below the strip, the strip stays on top', async () => {
+      await go('/characters/grok');
+      const r = await admin.evaluate(async () => {
+        const m = document.querySelector('main');
+        m.scrollTop = m.scrollHeight;
+        await new Promise((res) => setTimeout(res, 300));
+        const stage = document.querySelector('[data-stage]');
+        return { scrolled: m.scrollTop, stageTop: stage ? Math.round(stage.getBoundingClientRect().top) : null, hit: document.elementFromPoint(window.innerWidth / 2, 16)?.hasAttribute('data-titlebar') };
+      });
+      assert.ok(r.scrolled > 0, 'her page did not scroll');
+      assert.ok(r.stageTop === null || r.stageTop >= 32, `stage top ${r.stageTop} under the strip`);
+      assert.equal(r.hit, true);
+      await admin.screenshot({ path: path.join(SHOTS, 'mac-characters-grok-scrolled.png') });
+      await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });
+      return `scrollTop ${r.scrolled}, stage top ${r.stageTop}, strip still topmost`;
+    }, () => run.admin);
+    await run.app.close();
+    run = null;
+
+    run = await open(null);
+    await step(S, `T4 ${process.platform} (native title bar): no drag strip, the page keeps its usual top padding`, async () => {
+      const r = await run.admin.evaluate(() => ({ strip: document.querySelectorAll('[data-titlebar]').length, pad: getComputedStyle(document.querySelector('[data-admin-page]')).paddingTop, drag: [...document.querySelectorAll('*')].filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'drag').length }));
+      assert.deepEqual(r, { strip: 0, pad: '24px', drag: 0 });
+      await run.admin.screenshot({ path: path.join(SHOTS, `${process.platform}-overview.png`) });
+      return `no strip, padding-top ${r.pad}, 0 drag regions`;
+    }, () => run.admin);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+}
+
 async function adminScenario() {
   const S = 'admin';
   const SHOTS = path.join(OUT, 'admin');
@@ -9449,6 +9553,7 @@ async function adminScenario() {
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();

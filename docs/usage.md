@@ -348,6 +348,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
+| `xvfb-run -a node e2e/run.js titlebar` | 设置窗口在 macOS 上可拖动：页面按 darwin 渲染（`PIXELPET_E2E_PLATFORM`，仅测试模式），顶部 32px 拖动条（`-webkit-app-region: drag`）横跨整窗、各页没有可点控件压在它下面、角色页滚动后舞台停在它下方；真实平台（原生标题栏）下没有拖动条；截图在 `out/e2e/titlebar/` |
 | `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类形象包、详情各标签页，改动出现在桌宠窗口 |
 | `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
 | `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
@@ -432,6 +433,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 ```bash
 npm test                                   # 单元测试：含 test/framing.test.js、test/framing-live2d.test.js、test/admin-console.test.js
 xvfb-run -a node e2e/run.js admin          # 设置窗口：打开方式、各页、编辑保存、角色图鉴与详情、行为同步、亮 / 暗 → out/e2e/admin/
+xvfb-run -a node e2e/run.js titlebar       # 设置窗口 macOS 顶部拖动条（按 darwin 渲染）→ out/e2e/titlebar/
 xvfb-run -a node e2e/run.js admincov       # 配置覆盖度：每个配置项在设置窗口里都有控件，改动出现在桌宠窗口
 xvfb-run -a node e2e/run.js vrmframe       # VRM 半身 / 全身（现做测试 VRM）→ out/e2e/vrm/frame-*.png
 xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身 / 全身（内置大肥鱼 Live2D + 导入的模型）→ out/e2e/live2d-frame/
