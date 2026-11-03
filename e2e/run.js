@@ -8517,12 +8517,13 @@ async function wardrobePackScenario() {
       assert.ok(fish.looks >= 3, `大肥鱼 has ${fish.looks} looks`);
       assert.match(fish.text, new RegExp(`${fish.looks} 套形象`));
       assert.equal(fish.kind, 'sprites');
-      // her looks are on her page (装扮 → 形象): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 each still a page of her own
-      await go('/characters/dafeiyu-pixel');
-      await attached('[data-looks="dafeiyu"] [data-look="dafeiyu-live2d"]');
+      // her looks are on her page (装扮 → 形象): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 each still a page of her own.
+      // Read from her Live2D page: opening 大肥鱼 · 像素's 装扮 here would mark her 新 outfits seen before W1 looks at them.
+      await go('/characters/dafeiyu-live2d');
+      await attached('[data-looks="dafeiyu"] [data-look="dafeiyu-pixel"]');
       const lookIds = await admin.$$eval('[data-looks="dafeiyu"] [data-look]', (els) => els.map((e) => e.dataset.look));
       assert.ok(lookIds.includes('dafeiyu-pixel') && lookIds.includes('dafeiyu-live2d'), lookIds.join(','));
-      assert.equal(await admin.getAttribute('[data-look="dafeiyu-live2d"]', 'href'), '#/characters/dafeiyu-live2d/looks');
+      assert.equal(await admin.getAttribute('[data-look="dafeiyu-pixel"]', 'href'), '#/characters/dafeiyu-pixel/looks');
       await go('/characters');
       await attached('[data-row="dafeiyu-pixel"]');
       // the cards in view draw her (first frame of each character's own look) before the screenshot
