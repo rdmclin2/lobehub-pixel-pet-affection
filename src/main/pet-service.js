@@ -758,10 +758,12 @@ class PetService extends EventEmitter {
   // current character (her default one when she is not the companion).
   async switchCharacter(id, { name } = {}) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    if (this.busy) return { ok: false, reason: 'busy' };
+    // who she may be is decided first: an unknown or (adult content off) 18+ character is refused for that reason,
+    // never with a passing 'busy' that tells the owner to try again later (T-2787)
     const e = C.characterById(this.packs, id) || (Object.hasOwn(SPECIES, id) ? C.characterById(this.packs, this._charOf(id)) : null);
     if (!e) return { ok: false, reason: 'unknown' };
     if (!C.available(e, this._adultOk())) return { ok: false, reason: 'adult' };
+    if (this.busy) return { ok: false, reason: 'busy' };
     const from = this._cid();
     if (e.id === from) return { ok: true, view: this.view(), same: true };
     const speciesId = e.base;

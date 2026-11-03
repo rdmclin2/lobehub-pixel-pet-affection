@@ -261,6 +261,12 @@ test('the 18+ 成年版 look is a character of her own: refused without adult co
   svc.answerAgeGate(false);
   assert.ok(!svc.view().characters.some((o) => o.id === 'claude-adult'), 'not listed for all-ages');
   assert.equal((await svc.switchCharacter('claude-adult')).reason, 'adult');
+  // T-2787: while she is busy (an agent sync, a reply) the refusal still names the real reason, not 'busy'
+  svc.busy = true;
+  assert.deepEqual(await svc.switchCharacter('claude-adult'), { ok: false, reason: 'adult' });
+  assert.deepEqual(await svc.switchCharacter('no-such-character'), { ok: false, reason: 'unknown' });
+  assert.equal((await svc.switchCharacter('claude-classic')).reason, 'busy', 'an allowed switch still waits while busy');
+  svc.busy = false;
   svc.answerAgeGate(true);
   assert.ok(svc.view().characters.some((o) => o.id === 'claude-adult' && o.adult && o.base === 'claude'), 'listed, marked 18+');
   assert.equal((await svc.switchCharacter('claude-adult')).ok, true);
