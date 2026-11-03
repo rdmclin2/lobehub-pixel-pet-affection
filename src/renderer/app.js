@@ -23,7 +23,7 @@ const FOOD_SPRITE = { rice: 'rice', cookie: 'cookie', fruit: 'fruit' };
 // 素材署名: every character's credits, from its file (src/characters/<id>.json).
 const credits = () => ['角色均为同人形象，不是厂商官方形象；美术仅限非商业使用。', ...info.species.flatMap((sp) => ['', `${sp.title}「${sp.nameZh}」`, ...sp.credits.map((c) => `· ${c}`)])].join('\n');
 
-let info = null; // { species[], foods, testMode }
+let info = null; // { species[] (the bases: persona, credits, clips), characters[] (one per look, T-2764), foods, testMode }
 let view = null; // latest pet view from main
 let selected = null;
 let thinking = false;
@@ -61,7 +61,8 @@ function setSettings(st) {
 // the settings window), her pack's default, then 桌宠行为 → 取景. A model-drawn look is re-framed in place (VRM: the
 // camera glides; Live2D: the model glides to its new scale and offset): it never reloads her or flashes a T-pose.
 const PF = window.PetFraming;
-const framingOf = (look) => PF.resolveFraming(settings, view && view.pet && view.pet.speciesId, look);
+// per character (T-2764: each look of hers has her own 取景), keyed by her character id
+const framingOf = (look) => PF.resolveFraming(settings, view && view.pet && (view.pet.characterId || view.pet.speciesId), look);
 function syncFraming() {
   const slot = document.getElementById('pet-look');
   const el = slot && slot.firstElementChild;
@@ -132,6 +133,8 @@ function bindResize() {
 }
 
 const speciesOf = (id) => info.species.find((s) => s.id === id);
+// a character (one look of a base, T-2764): { id, base, name 「大肥鱼 · 像素」, kind, portrait (her daily look) … }
+const characterOf = (id) => (info.characters || []).find((c) => c.id === id);
 // How a companion looks comes from its pet pack (`view.look`, see core/packs.js): a picture per outfit, or
 // a pixel sprite sheet per outfit with one row of frames per action. Dafeiyu plays her own clips when
 // they are picked under 外观 (look: null).
@@ -554,32 +557,38 @@ async function answerAgeGate(adult) {
 }
 
 // ---------- onboarding: choose a model-chan ----------
+// One card per character (T-2764): every look is a character of her own (「大肥鱼 · 像素」「大肥鱼 · Live2D」…).
+// data-species is her base (several cards may share one), data-character who she is.
 function buildCards() {
   const wrap = $('cards');
   wrap.innerHTML = '';
-  for (const sp of info.species) {
+  for (const ch of info.characters) {
+    const sp = speciesOf(ch.base);
     const card = document.createElement('button');
     card.className = 'char-card';
-    card.dataset.species = sp.id;
+    card.dataset.species = ch.base;
+    card.dataset.character = ch.id;
+    card.dataset.kind = ch.kind || '';
     card.setAttribute('role', 'radio');
     card.setAttribute('aria-checked', 'false');
-    card.setAttribute('aria-label', `${sp.title}，${sp.nameZh}`);
+    card.setAttribute('aria-label', `${sp.title}，${ch.name}`);
     card.style.setProperty('--accent', sp.accent);
     card.innerHTML = '<div class="pic"></div><div class="vendor"></div><div class="nm"></div>';
-    card.querySelector('.pic').appendChild(portraitEl(sp, 'card-look'));
-    card.querySelector('.vendor').textContent = sp.vendor;
-    card.querySelector('.nm').textContent = sp.nameZh;
-    card.addEventListener('click', () => selectCard(sp.id));
+    card.querySelector('.pic').appendChild(lookEl(ch.portrait, { className: 'card-look', alt: ch.name, action: () => 'idle', speciesId: ch.base }));
+    card.querySelector('.vendor').textContent = `${sp.vendor} · ${ch.kindLabel || ''}`;
+    card.querySelector('.nm').textContent = ch.name;
+    card.addEventListener('click', () => selectCard(ch.id));
     wrap.appendChild(card);
   }
 }
 
 function selectCard(id) {
   selected = id;
-  const sp = speciesOf(id);
+  const ch = characterOf(id);
+  const sp = speciesOf(ch.base);
   for (const c of document.querySelectorAll('.char-card')) {
-    c.classList.toggle('selected', c.dataset.species === id);
-    c.setAttribute('aria-checked', String(c.dataset.species === id));
+    c.classList.toggle('selected', c.dataset.character === id);
+    c.setAttribute('aria-checked', String(c.dataset.character === id));
   }
   const box = $('card-info');
   box.textContent = '';
@@ -649,10 +658,11 @@ function chooseSpace({ workspaces, pinned }) {
 }
 
 async function startHatch() {
-  const species = speciesOf(selected);
+  const chosen = characterOf(selected);
+  const species = speciesOf(chosen.base);
   revealSpecies = null;
   // she is asleep (dimmed) while LobeHub is set up, and wakes up when the agent is ready
-  setLook($('hatch-look'), species.portrait, { className: 'look', alt: species.nameZh, action: () => 'sleep', speciesId: species.id });
+  setLook($('hatch-look'), chosen.portrait, { className: 'look', alt: chosen.name, action: () => 'sleep', speciesId: species.id });
   $('hatch-look').classList.add('asleep');
   $('hatch-look').classList.remove('hidden');
   $('hatch-look').dataset.progress = '0';
@@ -681,7 +691,7 @@ async function startHatch() {
       setStep('choose-space');
       space = await chooseSpace(res);
     }
-    res = await window.pet.hatch(species.id, $('pet-name').value, $('local-opt').checked, space);
+    res = await window.pet.hatch(chosen.id, $('pet-name').value, $('local-opt').checked, space);
   }
   offStep();
   offLogin();
@@ -699,21 +709,22 @@ async function startHatch() {
   revealSpecies = res.view.pet.speciesId;
   $('hatch-title').textContent = `${res.view.pet.name} 醒来了！`;
   const sp = speciesOf(revealSpecies);
+  const her = characterOf(res.view.pet.characterId) || chosen;
   // the wake-up: every character plays its `hatch` state (a clip, or a sprite action)
   $('hatch-look').classList.remove('asleep');
-  if (sp.art === 'video' && !sp.portrait) {
+  if (sp.art === 'video' && !her.portrait) {
     $('hatch-look').classList.add('hidden');
     $('hatch-vwrap').classList.remove('hidden');
     $('hatch-video').dataset.key = '';
     playClip($('hatch-video'), sp, clipFor(sp, 'hatch').name, false);
   } else {
-    setLook($('hatch-look'), sp.portrait, { className: 'look', alt: sp.nameZh, action: () => 'hatch' });
+    setLook($('hatch-look'), her.portrait, { className: 'look', alt: her.name, action: () => 'hatch' });
   }
   setTimeout(() => {
     enterPet(res.view);
     if (res.localError) setTimeout(() => say(`（没能连上这台电脑，文件功能先关着：${String(res.localError).slice(0, 60)}）`, 'error', 'fallback', res.localError), 600);
     else if (res.localWarning) setTimeout(() => say(`（${res.localWarning}）`, 'error', 'fallback', res.localWarning), 600);
-  }, sp.art === 'video' && !sp.portrait ? Fx.oneShotMs(true, 'hatch') : Fx.oneShotMs(false, 'hatch') + 600);
+  }, sp.art === 'video' && !her.portrait ? Fx.oneShotMs(true, 'hatch') : Fx.oneShotMs(false, 'hatch') + 600);
 }
 
 // ---------- pet ----------
@@ -776,7 +787,8 @@ function refreshHud() {
   set('bar-energy', p.energy, false);
   const a = view.affection;
   const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
-  $('meta').textContent = `${p.name} · ${view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
+  // who she is: her character's name (「大肥鱼 · Live2D」, T-2764)
+  $('meta').textContent = `${p.name} · ${view.character ? view.character.name : view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
   $('pet-body').style.setProperty('--accent', view.species.accent);
   $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`;
   // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
@@ -794,7 +806,7 @@ function refreshHud() {
 // The one way into the settings window (配置后台) from the pet: the ⚙ button, a right click or a long press
 // on her, and Ctrl/⌘+, (main.js). Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is
 // something new waiting in it: an outfit or topic just unlocked, or a new version.
-const SETTINGS_SECTION = { update: 'update', outfit: () => `characters/${view.pet.speciesId}`, topic: 'topics' };
+const SETTINGS_SECTION = { update: 'update', outfit: () => `characters/${view.pet.characterId || view.pet.speciesId}`, topic: 'topics' };
 function settingsNews() {
   if (updateState && ['ready', 'manual'].includes(updateState.status)) return 'update';
   if (view && view.outfits.some((o) => o.isNew)) return 'outfit';
@@ -867,7 +879,7 @@ function showUnlockToast(e) {
   }
   // the wardrobe and the topics live in the settings window: her page (衣柜) and 玩法 → 话题
   const outfits = !!(e.unlocks && e.unlocks.outfits && e.unlocks.outfits.length);
-  $('toast-open').dataset.admin = outfits ? `characters/${(e.view || view).pet.speciesId}` : 'topics';
+  $('toast-open').dataset.admin = outfits ? `characters/${(e.view || view).pet.characterId || (e.view || view).pet.speciesId}` : 'topics';
   $('toast-open').textContent = outfits ? '去衣柜看看' : '去聊聊新话题';
   $('unlock-toast').classList.remove('hidden');
   clearTimeout(toastTimer);
@@ -2307,15 +2319,16 @@ async function visitorMain() {
   document.body.classList.add('visitor');
   const b = await window.pet.visitorBoot();
   if (!b) return;
-  info = { species: b.species, testMode: b.testMode };
+  info = { species: b.species, characters: [], testMode: b.testMode };
   setSettings(b.settings);
   const sp = speciesOf(b.speciesId);
-  view = { pet: { speciesId: sp.id, name: sp.nameZh }, look: b.look, outfit: 'daily', status: 'idle' };
+  // a visitor is a character (T-2764): her own look, her base's persona
+  view = { pet: { speciesId: sp.id, characterId: b.characterId, name: sp.nameZh }, look: b.look, outfit: 'daily', status: 'idle' };
   window.pet.onSettings((st) => setSettings(st));
   bindHover();
   bindPetPointer({ onClick: () => { fx.click(isVideo(sp.id)); fx.burst(3); }, onMenu: () => { pointerInside = true; syncHover(); } });
-  $('visitor-name').textContent = `${sp.nameZh}（${sp.vendor}）来串门`;
-  $('visitor-close').addEventListener('click', () => window.pet.setVisitors(settings.visitors.filter((v) => v !== sp.id)));
+  $('visitor-name').textContent = `${b.name || sp.nameZh}（${sp.vendor}）来串门`;
+  $('visitor-close').addEventListener('click', () => window.pet.setVisitors(settings.visitors.filter((v) => v !== b.characterId)));
   show('pet-screen');
   applyArt();
   requestAnimationFrame(frameLoop);

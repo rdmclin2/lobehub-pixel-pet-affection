@@ -231,7 +231,7 @@ export const VoicePacksPage = () => {
       <Surface bleed title={`共 ${packs.length} 个`}>
         <Table
           columns={[
-            { key: 'c', render: (_: unknown, p: any) => roster.find((c) => c.id === p.character)?.nameZh ?? p.character, title: '角色', width: 100 },
+            { key: 'c', render: (_: unknown, p: any) => roster.find((c) => c.base === p.character)?.nameZh ?? p.character, title: '角色', width: 100 },
             { dataIndex: 'name', key: 'name', title: '名称' },
             { dataIndex: 'engine', key: 'engine', render: (v: string) => <Tag>{v}</Tag>, title: '引擎', width: 110 },
             { dataIndex: 'lines', key: 'lines', render: (v: number) => `${v} 句`, title: '句数', width: 90 },
@@ -414,8 +414,8 @@ export const AboutPage = () => {
       </Surface>
       <Surface title="素材署名">
         <Flexbox gap={8}>
-          {roster.map((c) => (
-            <Flexbox gap={2} key={c.id}>
+          {roster.filter((c, i, all) => all.findIndex((x) => x.base === c.base) === i).map((c) => (
+            <Flexbox gap={2} key={c.base}>
               <Text strong>{c.nameZh}</Text>
               {c.credits.map((x) => (
                 <Text fontSize={12} key={x} type="secondary">

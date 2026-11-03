@@ -32,15 +32,19 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
   setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
-  setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
-  // 服饰: put on one of the current character's unlocked outfits (the pet window's 衣柜 does the same)
-  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
-  // 外观资源: import (file dialog in main), export, remove, folders
+  // 服饰: put on one of a character's unlocked outfits (none = the current one, as the pet window's 衣柜 did)
+  equipOutfit: (id, species) => ipcRenderer.invoke('equip-outfit', { id, species }),
+  // 角色包: import (file dialog in main), export, remove, folders
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
+  onCatalogProgress: on('catalog-progress'),
   exportPack: (id) => ipcRenderer.invoke('export-pack', { id }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
@@ -70,7 +74,7 @@ contextBridge.exposeInMainWorld('petAdmin', {
   home: () => ipcRenderer.invoke('admin-home'),
   quit: () => ipcRenderer.invoke('admin-quit'),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
-  markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // 插个嘴 (core/interject.js): the rules her owner's reactions settled and the recent decisions — data, not

@@ -103,11 +103,12 @@ module.exports = function vrmScenarios(ctx) {
       await until((x) => !!document.querySelector(`[data-path="${x}"]`), route, 15000, route);
       await sleep(300);
     };
-    // her page → 装扮 (衣柜 + 形象包)
-    const lookTab = async (sp) => {
-      await go(`/characters/${sp}`);
+    // her page → 装扮 (衣柜 cards, 取景, VRM 姿势, 角色包, 导入新角色). `id` is a character id (T-2764: every
+    // look is a character of her own); a base id (`dafeiyu`) opens the current character of that base.
+    const lookTab = async (id) => {
+      await go(`/characters/${id}`);
       await w.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
-      await until(() => !!document.querySelector('[data-wardrobe]'), null, 10000, '装扮');
+      await until(() => !!document.querySelector('[data-import-row]'), null, 10000, '装扮');
     };
     const click = (sel) => w.evaluate((x) => { const el = document.querySelector(x); if (!el) throw new Error(`no ${x}`); el.scrollIntoView({ block: 'center' }); el.click(); }, sel);
     const text = (sel) => w.evaluate((x) => { const el = document.querySelector(x); return el ? el.textContent : null; }, sel);
@@ -125,23 +126,24 @@ module.exports = function vrmScenarios(ctx) {
     const note = (s) => { evidence.push(s); return s; };
     const hatch = async () => {
       await page.waitForSelector('.char-card', { timeout: 20000 });
-      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.click('.char-card[data-character="dafeiyu-pixel"]'); // one card per character (T-2764)
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
     };
-    // settings window → her page → 装扮 → 穿上 on the pack's card, as a user does; waits until her look is that pack
-    const pickPack = async (id) => {
-      await A.lookTab('dafeiyu');
-      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack card ${id}`);
-      if (!(await A.win.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await A.click(`[data-use-pack="${id}"]`);
-      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id, 15000, `${id} worn`);
-      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 }).catch(async () => { throw new Error(`pickPack(${id}): pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
+    // settings window → 角色图鉴 → her page → 切换, as a user does (T-2764: there is no 形象包 to put on, every
+    // pack is a character of her own); waits until the pet window wears that character
+    const switchTo = async (id) => {
+      await A.go(`/characters/${id}`);
+      await A.until((x) => !!document.querySelector(`[data-character-title="${x}"]`), id, 10000, `her page ${id}`);
+      if (!(await A.win.evaluate((x) => !!document.querySelector(`[data-current="${x}"]`), id))) await A.click(`[data-switch="${id}"]`);
+      await A.until((x) => !!document.querySelector(`[data-current="${x}"]`), id, 15000, `${id} current`);
+      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 }).catch(async () => { throw new Error(`switchTo(${id}): pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
     };
     const drawing = (n = 2, timeout = 30000) => page.waitForFunction((k) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > k; }, n, { timeout });
-    return { shot, adminShot, A, ds, fig, note, hatch, pickPack, drawing };
+    return { shot, adminShot, A, ds, fig, note, hatch, switchTo, drawing };
   }
   const watchErrors = (page) => {
     const errors = [];
@@ -187,9 +189,12 @@ module.exports = function vrmScenarios(ctx) {
         await sleep(400);
       };
 
-      await step(S, '设置窗口 → 她的页 → 装扮 → 导入 VRM…: 导入确认 shows author, license and the restrictions', async () => {
-        await A.lookTab('dafeiyu');
-        assert.equal((await A.text('[data-import-vrm]')).trim(), '导入 VRM…');
+      // 角色图鉴 as the console has it (main's roster): one row per character
+      const rosterIds = async () => (await A.win.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => r.id)));
+
+      await step(S, '设置窗口 → 她的页 → 装扮 → 导入 VRM 角色…: 导入确认 shows author, license and the restrictions', async () => {
+        await A.lookTab('dafeiyu-pixel');
+        assert.equal((await A.text('[data-import-vrm]')).trim(), '导入 VRM 角色…');
         await importOnce();
         const t = await A.win.evaluate(() => document.querySelector('[data-vrm-confirm]').closest('[role="dialog"]').textContent);
         for (const x of [`导入 VRM 模型「${MODEL_NAME}」`, '作者E2E Maker', '版权© E2E Maker', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/', '取消导入', '使用这个模型']) assert.ok(t.includes(x), `missing: ${x}`);
@@ -200,46 +205,66 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`导入确认 restrictions: ${rs.join(' | ')}`);
       }, () => A.win);
 
-      await step(S, '取消导入 removes the pack again: nothing left in userData, nothing worn', async () => {
+      await step(S, '取消导入 removes the pack again: nothing left in userData, no new character, nothing switched', async () => {
         const before = userVrmPacks();
         assert.equal(before.length, 1, `the import made one pack: ${before}`);
         await A.modalButton('取消导入');
-        await A.toastSeen(/已取消导入「E2E 自制小鱼」，模型没有留在本机的角色包里/);
+        await A.toastSeen(/已取消导入「E2E 自制小鱼」，模型没有留在本机/);
         for (let i = 0; i < 50 && userVrmPacks().length; i++) await sleep(100);
         assert.deepEqual(userVrmPacks(), []);
-        assert.equal(await A.win.evaluate(() => document.querySelectorAll('[data-wardrobe] [data-pack^="vrm-"]').length), 0);
+        const ids = await rosterIds();
+        assert.equal(ids.filter((x) => x.startsWith('vrm-')).length, 0, `no VRM character in 角色图鉴: ${ids.join(', ')}`);
+        assert.equal(await A.win.evaluate(() => document.querySelectorAll('[data-pack^="vrm-"], [data-current^="vrm-"]').length), 0);
         assert.match(await page.getAttribute('#pet-look', 'data-key'), /^dafeiyu-pixel\//);
         await H.adminShot('1b-canceled');
-        return H.note(`取消导入: ${before[0]} removed; pet still ${await page.getAttribute('#pet-look', 'data-key')}`);
+        return H.note(`取消导入: ${before[0]} removed; 角色图鉴 ${ids.length} characters, none vrm-*; pet still ${await page.getAttribute('#pet-look', 'data-key')}`);
       }, () => A.win);
 
-      await step(S, '使用这个模型: the user pack is made and worn; the card shows VRM · 作者, the credit line and 导出已禁用', async () => {
+      await step(S, '使用这个模型: the import becomes a character of her own (角色图鉴 row, her page, current); 角色包 card shows VRM · 作者, the credit line and 导出已禁用; her 衣柜 is a card list she can dress from', async () => {
         await importOnce();
         await A.modalButton('使用这个模型');
-        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」并换上（作者：E2E Maker）`));
+        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」，成为新角色（作者：E2E Maker）`));
         await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-'), null, { timeout: 20000 });
         ID = (await page.getAttribute('#pet-look', 'data-key')).split('/')[0];
-        await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), ID, 15000, 'the VRM card worn');
-        const card = (await A.text(`[data-wardrobe] [data-pack="${ID}"]`)).replace(/\s+/g, ' ');
+        // she is a new character: her own page opens, she is 当前角色, and 角色图鉴 lists her next to 大肥鱼 · 像素
+        await A.until((x) => location.hash === `#/characters/${x}` && !!document.querySelector(`[data-current="${x}"]`), ID, 15000, 'her own page, current');
+        const ids = await rosterIds();
+        assert.ok(ids.includes(ID) && ids.includes('dafeiyu-pixel'), `角色图鉴: ${ids.join(', ')}`);
+        const view = await page.evaluate(async () => (await window.pet.boot()).view);
+        assert.equal(view.pet.characterId, ID, 'the pet window is her');
+        const me = view.characters.find((c) => c.id === ID);
+        assert.ok(me && me.base === 'dafeiyu' && me.kind === 'vrm' && me.source === 'user', JSON.stringify(me));
+        const title = (await A.text(`[data-character-title="${ID}"]`)).trim();
+        assert.match(title, new RegExp(MODEL_NAME));
+        const card = (await A.text(`[data-pack="${ID}"]`)).replace(/\s+/g, ' ');
         assert.match(card, /VRM/);
         assert.match(card, /E2E Maker/);
         assert.equal((await A.text(`[data-vrm-credit="${ID}"]`)).trim(), '署名：E2E Maker（模型授权要求署名）');
         const why = (await A.text(`[data-vrm-noexport="${ID}"]`)).trim();
         assert.match(why, /导出已禁用：这个 VRM 模型的授权不允许再分发/);
-        await A.win.evaluate((x) => document.querySelector(`[data-wardrobe] [data-pack="${x}"]`).scrollIntoView({ block: 'center' }), ID);
+        // 可穿衣: her 衣柜 is the card list of her own outfits; the one she has on is 正在穿, 穿上 is the user's way in
+        const outfits = await A.win.evaluate((x) => [...document.querySelectorAll(`[data-outfits="${x}"] [data-outfit]`)].map((c) => ({ id: c.dataset.outfit, equipped: c.dataset.equipped === 'true', locked: c.dataset.locked === 'true' })), ID);
+        assert.ok(outfits.length >= 1 && outfits.filter((o) => o.equipped).length === 1, JSON.stringify(outfits));
+        const worn = outfits.find((o) => o.equipped).id;
+        assert.ok((await page.getAttribute('#pet-look', 'data-key')).startsWith(`${ID}/${worn}`), `衣柜 正在穿 ${worn} vs pet look ${await page.getAttribute('#pet-look', 'data-key')}`);
+        const eq = await A.win.evaluate((x) => window.petAdmin.equipOutfit(x.o, x.id), { o: worn, id: ID });
+        assert.equal(eq.ok, true, `equipOutfit(${worn}, ${ID}) → ${JSON.stringify(eq).slice(0, 200)}`);
+        await A.win.evaluate((x) => document.querySelector(`[data-pack="${x}"]`).scrollIntoView({ block: 'center' }), ID);
         await H.adminShot('2-card');
-        // 外观资源 lists it with 导出 disabled (main refuses it too)
+        await A.win.evaluate((x) => document.querySelector(`[data-outfits="${x}"]`).scrollIntoView({ block: 'center' }), ID);
+        await H.adminShot('2a-wardrobe-cards');
+        // 角色包 lists it with 导出 disabled (main refuses it too)
         await A.go('/packs');
-        await A.until((x) => !!document.querySelector(`[data-export-pack="${x}"]`), ID, 10000, '外观资源 row');
+        await A.until((x) => !!document.querySelector(`[data-export-pack="${x}"]`), ID, 10000, '角色包 row');
         assert.equal(await A.win.evaluate((x) => document.querySelector(`[data-export-pack="${x}"]`).disabled, ID), true, '导出 disabled for a non-redistributable model');
         const ex = await A.win.evaluate((x) => window.petAdmin.exportPack(x), ID);
         assert.equal(ex.ok, false);
         await H.adminShot('2b-packs-export-disabled');
-        return H.note(`pack ${ID}: card 「${card.slice(0, 120)}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}; 外观资源 导出 disabled, exportPack → ${ex.reason}`);
+        return H.note(`new character ${ID} 「${title}」 (base ${me.base}, kind ${me.kind}, ${me.source}): current, in 角色图鉴 (${ids.length} rows); 角色包 card 「${card.slice(0, 120)}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}; 衣柜 cards ${outfits.map((o) => `${o.id}${o.equipped ? '[正在穿]' : ''}${o.locked ? '[🔒]' : ''}`).join('、')}, 穿上 ${worn} → ok; 角色包页 导出 disabled, exportPack → ${ex.reason}`);
       }, () => A.win);
 
       await step(S, '授权信息 on the card: the license details with author and restrictions', async () => {
-        await A.lookTab('dafeiyu');
+        await A.lookTab(ID);
         await A.click(`[data-vrm-info="${ID}"]`);
         const sel = `[role="dialog"] [data-vrm-license="${ID}"]`;
         await A.until((x) => !!document.querySelector(x), sel, 10000, '授权信息');
@@ -325,14 +350,22 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`2D look: PetVrmRuntime ${r.rt}, PetVRM ${r.vrm}`);
       }, page);
 
-      await step(S, 'the homemade model is imported (real import-vrm IPC) and picked under 外观', async () => {
+      await step(S, 'the homemade model is imported (real import-vrm IPC) as a character of her own and switched to in 角色图鉴', async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
         ID = imp.pack.id;
-        await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu')); // the import wears it: start from 2D
-        await H.pickPack(ID);
-        return H.note(`imported ${ID} (${imp.license && imp.license.summary}); picked in 外观`);
+        // T-2764: the import is a new character (id = the pack id) next to 大肥鱼 · 像素, not a 形象包 of hers
+        const chars = (await page.evaluate(async () => (await window.pet.boot()).view)).characters;
+        const me = chars.find((c) => c.id === ID);
+        assert.ok(me && me.base === 'dafeiyu' && me.kind === 'vrm', `the import is a character: ${JSON.stringify(me)}`);
+        assert.ok(chars.some((c) => c.id === 'dafeiyu-pixel'), 'her pixel character stays');
+        // start from 2D: the 3D runtime is loaded only when she becomes the VRM character
+        const back = await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
+        assert.equal(back.ok, true, JSON.stringify(back).slice(0, 200));
+        await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('dafeiyu-pixel/'), null, { timeout: 10000 });
+        await H.switchTo(ID);
+        return H.note(`imported ${ID} (${imp.license && imp.license.summary}) → character ${me.id} 「${me.label || me.name}」 (base ${me.base}, kind ${me.kind}); switched to it on her page in 角色图鉴`);
       }, page);
 
       await step(S, 'the VRM canvas appears, data-frame climbs, three r187 + three-vrm loaded', async () => {
@@ -406,11 +439,11 @@ module.exports = function vrmScenarios(ctx) {
         const got = [];
         const LABEL = { 'stand.confident': '叉腰站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'stand.relaxed': '放松站' };
         for (const p of ['stand.confident', 'stand.playful', 'sit.rest', 'stand.relaxed']) {
-          await H.A.lookTab('dafeiyu');
-          await H.A.until(() => !!document.querySelector('[data-posture-row="dafeiyu"] [role="combobox"]'), null, 10000, 'VRM 姿势 row');
+          await H.A.lookTab(ID); // her page is the VRM character's own (T-2764)
+          await H.A.until((x) => !!document.querySelector(`[data-posture-row="${x}"] [role="combobox"]`), ID, 10000, 'VRM 姿势 row');
           const w = H.A.win;
-          await w.locator('[data-posture-row="dafeiyu"]').scrollIntoViewIfNeeded();
-          await w.locator('[data-posture-row="dafeiyu"]').getByRole('combobox').click();
+          await w.locator(`[data-posture-row="${ID}"]`).scrollIntoViewIfNeeded();
+          await w.locator(`[data-posture-row="${ID}"]`).getByRole('combobox').click();
           await w.getByRole('option', { name: LABEL[p], exact: true }).click();
           await H.A.toastSeen(new RegExp(`的姿势已设为「${LABEL[p]}」`));
           if (p === 'stand.confident') await H.adminShot('2c-posture-menu');
@@ -830,13 +863,12 @@ module.exports = function vrmScenarios(ctx) {
         const toastTo = await page.evaluate(() => document.getElementById('toast-open').dataset.admin);
         assert.equal(toastTo, 'topics', 'the notice leads to 话题, not to a wardrobe');
         await page.click('#toast-close');
-        // the wardrobe is the 衣柜 on her page in the settings window; adult outfits are known from the view
-        const cardsOf = async () => {
-          await H.A.lookTab('dafeiyu');
-          const view = await page.evaluate(async () => (await window.pet.boot()).view);
-          const adult = new Set((view.outfits || []).filter((o) => o.rating === 'adult' || o.adult).map((o) => o.id));
-          const rows = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => ({ id: b.dataset.outfit, label: b.textContent.trim().replace(/新$/, ''), locked: b.disabled, equipped: b.dataset.equipped === 'true' })));
-          return rows.map((r) => ({ ...r, adultTag: adult.has(r.id) }));
+        // the wardrobe is the 衣柜 on her page in the settings window (T-2784: a card per outfit, 成人 / 全年龄 tag,
+        // 正在穿 / 穿上 / 未解锁); `id` defaults to her base, i.e. whichever of her characters is current
+        const cardsOf = async (id = 'dafeiyu') => {
+          await H.A.lookTab(id);
+          await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit]'), null, 10000, '衣柜 cards');
+          return H.A.win.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => ({ id: b.dataset.outfit, label: ((b.querySelector('[data-try-outfit]').getAttribute('aria-label') || '').match(/「(.+)」/) || [])[1], locked: b.dataset.locked === 'true', equipped: b.dataset.equipped === 'true', adultTag: (b.querySelector('[data-rating]') || {}).textContent === '成人' })));
         };
         const single = await cardsOf();
         assert.equal(single.length, 1, `one VRM model: one look in 衣柜 (${JSON.stringify(single)})`);
@@ -849,25 +881,39 @@ module.exports = function vrmScenarios(ctx) {
         const eqP = await page.evaluate(() => window.pet.equipOutfit('pajamas'));
         assert.equal(eqP.ok, false, 'no other outfit to change into');
         await H.adminShot('10b-single-look-wardrobe');
-        await H.A.lookTab('dafeiyu');
-        const listed = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-wardrobe] [data-pack]')].map((o) => o.dataset.pack));
+        // 角色图鉴 (the console's roster and the 选择模型娘 list of the pet window) does not offer the 18+ character
+        await H.A.go('/characters');
+        await H.A.until(() => !!document.querySelector('[data-roster] [data-row]'), null, 10000, '角色图鉴');
+        const listed = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-roster] [data-row]')].map((o) => o.dataset.row));
         assert.ok(!listed.includes('vrm-e2e-adult'), listed.join(', '));
         assert.ok(listed.includes(ID), listed.join(', '));
-        await H.A.win.evaluate(() => document.querySelector('[data-wardrobe]').scrollIntoView({ block: 'center' }));
-        await H.adminShot('10c-adult-off-packs');
-        const set = await page.evaluate(() => window.pet.setAppearance('vrm-e2e-adult', 'dafeiyu'));
+        const pickable = (await page.evaluate(async () => (await window.pet.boot()).view)).characters.map((c) => c.id);
+        assert.ok(!pickable.includes('vrm-e2e-adult') && pickable.includes(ID), pickable.join(', '));
+        await H.adminShot('10c-adult-off-roster');
+        // her page is not there either, and switching to her is refused with the reason
+        await H.A.go('/characters/vrm-e2e-adult');
+        await H.A.until(() => /没有角色「vrm-e2e-adult」/.test(document.querySelector('[data-path="/characters/vrm-e2e-adult"]').textContent), null, 10000, 'no page for the 18+ character');
+        assert.equal(await H.A.win.evaluate(() => document.querySelectorAll('[data-switch="vrm-e2e-adult"]').length), 0);
+        const lookBefore = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
+        const set = await page.evaluate(() => window.pet.switchCharacter('vrm-e2e-adult'));
+        const setA = await H.A.win.evaluate(() => window.petAdmin.switchCharacter('vrm-e2e-adult'));
+        assert.deepEqual([set.ok, set.reason], [false, 'adult'], JSON.stringify(set).slice(0, 200));
+        assert.deepEqual([setA.ok, setA.reason], [false, 'adult'], JSON.stringify(setA).slice(0, 200));
         await sleep(500);
         const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
         assert.ok(!key.startsWith('vrm-e2e-adult/'), `look ${key}`);
+        assert.equal(key, lookBefore, 'she stays who she was');
+        assert.equal((await page.evaluate(async () => (await window.pet.boot()).view)).pet.characterId, ID);
         const unlocked = cards.filter((c) => !c.locked).length;
         // contrast: 18+ on → the 18+ VRM pack is offered and its adult outfit 性感女仆装 (成人向) can be worn; off again → gone
         await page.evaluate(() => window.pet.setAdult(true));
-        await H.pickPack('vrm-e2e-adult');
-        await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"]:not([disabled])'), null, 10000, 'maid in 衣柜');
-        const on = await cardsOf();
+        await H.switchTo('vrm-e2e-adult');
+        await H.A.lookTab('vrm-e2e-adult');
+        await H.A.until(() => !!document.querySelector('[data-outfits="vrm-e2e-adult"] [data-outfit="maid"][data-locked="false"]'), null, 10000, 'maid in 衣柜');
+        const on = await cardsOf('vrm-e2e-adult');
         const maidOn = on.find((c) => c.id === 'maid');
-        assert.ok(maidOn && maidOn.label === '性感女仆装' && maidOn.adultTag, JSON.stringify(on));
-        await H.A.click('[data-outfits] [data-outfit="maid"]');
+        assert.ok(maidOn && maidOn.label === '性感女仆装' && maidOn.adultTag && !maidOn.locked, JSON.stringify(on));
+        await H.A.click('[data-outfits] [data-equip="maid"]');
         await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"][data-equipped="true"]'), null, 10000, 'maid worn');
         await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-e2e-adult/maid'), null, { timeout: 10000 }).catch(async () => { throw new Error(`maid: pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
         await H.adminShot('10d-adult-on-wardrobe-maid');
@@ -875,6 +921,11 @@ module.exports = function vrmScenarios(ctx) {
         await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
         const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
         // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 has more, without maid
+        // the 18+ character is gone from the console too: her page is no more, 角色图鉴 no longer lists her
+        await H.A.until(() => /没有角色「vrm-e2e-adult」/.test(document.body.textContent), null, 10000, 'the 18+ page is gone');
+        const rosterOff = await H.A.win.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => r.id));
+        assert.ok(!rosterOff.includes('vrm-e2e-adult'), rosterOff.join(', '));
+        await H.A.lookTab('dafeiyu'); // her current character, the one she fell back to
         await H.A.until(() => document.querySelectorAll('[data-outfits] [data-outfit]').length > 1, null, 10000, 'her 2D wardrobe');
         const off2 = await cardsOf();
         assert.ok(off2.length > 1, 'her 2D look has a wardrobe');
@@ -883,11 +934,11 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(eq2.ok, false);
         await H.adminShot('10e-adult-off-again-wardrobe');
         const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
-        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 has one look (${single.map((c) => c.label).join('')}), outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
+        return H.note(`adult content off (all unlocked): 角色图鉴 lists ${listed.join(', ')} (no vrm-e2e-adult), her page says 没有角色; switchCharacter(vrm-e2e-adult) → ok=${set.ok} reason=${set.reason} (console: ok=${setA.ok} reason=${setA.reason}), look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 has one look (${single.map((c) => c.label).join('')}), outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
 
       await step(S, 'back to dafeiyu-pixel: the 2D look draws, the VRM canvas is removed and the figure disposed', async () => {
-        await H.pickPack('dafeiyu-pixel');
+        await H.switchTo('dafeiyu-pixel');
         await page.waitForFunction(() => !document.querySelector('#pet-look canvas.vrm') && window.PetVRM.stats.live === 0, null, { timeout: 8000 });
         const st = await page.evaluate(() => ({ stats: window.PetVRM.stats, el: document.querySelector('#pet-look').firstElementChild.outerHTML.slice(0, 100), key: document.getElementById('pet-look').dataset.key }));
         assert.ok(st.key.startsWith('dafeiyu-pixel/'));
@@ -898,7 +949,7 @@ module.exports = function vrmScenarios(ctx) {
       }, page);
 
       await step(S, 'and to the VRM again: a new figure draws', async () => {
-        await H.pickPack(ID);
+        await H.switchTo(ID);
         await H.drawing(2);
         const a = await H.ds();
         await sleep(800);
@@ -927,7 +978,7 @@ module.exports = function vrmScenarios(ctx) {
         const r = await page.evaluate((d) => window.pet.debugImportPack(d), dir);
         assert.equal(r.ok, true, JSON.stringify(r.errors));
         await page.evaluate(() => window.pet.setVrmPosture('vrm-e2e-female', 'stand.confident'));
-        await H.pickPack('vrm-e2e-female');
+        await H.switchTo('vrm-e2e-female');
         await H.drawing(2);
         await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /^stand\.confident@female:1\.00$/.test(c.dataset.layers || ''); }, null, { timeout: 15000 });
         await sleep(400);
@@ -945,14 +996,14 @@ module.exports = function vrmScenarios(ctx) {
         await touchZone('belly');
         const fr = await watchReaction('react.ticklish', { shotName: '12b-female-ticklish' });
         assert.match(fr.peak.d.overlays, /reaction:react\.ticklish@female:/);
-        await H.pickPack(ID);
+        await H.switchTo(ID);
         return H.note(`imported model: data-style ${md.style}, layers ${md.layers}, leftUpperLeg ${male.bones.leftUpperLeg}, amplitude ${male.style.amplitude}, hipSway ${male.style.hipSway}\npack.json vrm.style "female": data-style ${d.style}, layers ${d.layers}, clips ${f.clips.length} @female, leftUpperLeg ${f.bones.leftUpperLeg}, amplitude ${f.style.amplitude}, hipSway ${f.style.hipSway}\nfemale belly touch → ${fr.peak.d.overlays} (male: react.ticklish@male)`);
       }, page);
 
       await step(S, 'no motion library (library.json removed): data-library none, she still draws (arms down, alive layer), no error', async () => {
         fs.renameSync(path.join(data, 'vrm-motions', 'library.json'), path.join(data, 'vrm-motions', 'library.off'));
-        await H.pickPack('dafeiyu-pixel');
-        await H.pickPack(ID);
+        await H.switchTo('dafeiyu-pixel');
+        await H.switchTo(ID);
         await H.drawing(5);
         await sleep(800);
         const a = await H.ds();
@@ -1078,7 +1129,7 @@ module.exports = function vrmScenarios(ctx) {
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
         testId = imp.pack.id;
-        await H.pickPack(testId); // 外观: wear it, as the owner does
+        await H.switchTo(testId); // 角色图鉴 → her page → 切换, as the owner does
         await H.drawing(5);
         await settled('full');
         const st = await page.evaluate(() => window.pet.getSettings());
@@ -1278,19 +1329,20 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`${shot} + ${glideGif}: data-framing=full; camera ${JSON.stringify(f.camera)} = the first one; opaque box ${JSON.stringify(c)} (first: ${JSON.stringify(fullCam.comp)}); glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
       }, page);
 
-      await step(S, '她的页 → 形象包 → 取景: her own 半身 wins over the global 全身; 跟随全局 goes back', async () => {
-        await admin.evaluate(() => { location.hash = '/characters/dafeiyu'; });
-        await admin.waitForSelector('[data-framing-row="dafeiyu"]', { timeout: 10000 });
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText('半身', { exact: true }).click();
+      await step(S, '她的页 → 装扮 → 取景 (per character): her own 半身 wins over the global 全身; 跟随全局 goes back', async () => {
+        // the VRM character's own page (T-2764: 取景 is saved per character, not per base)
+        await admin.evaluate((x) => { location.hash = `/characters/${x}`; }, testId);
+        await admin.waitForSelector(`[data-framing-row="${testId}"]`, { timeout: 10000 });
+        await admin.locator(`[data-framing-row="${testId}"]`).getByText('半身', { exact: true }).click();
         await adminToast(/的取景已改为「半身」/);
         await settled('half');
         const shotA = await adminShot('9-admin-character-half');
         const s1 = saved();
-        assert.deepEqual(s1.framings, { dafeiyu: 'half' });
+        assert.deepEqual(s1.framings, { [testId]: 'half' });
         assert.equal(s1.prefs.framing, 'full');
         const fr = await page.evaluate(() => window.petFx.framing());
         assert.deepEqual([fr.mode, fr.source], ['half', 'character']);
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText(/跟随全局/).click();
+        await admin.locator(`[data-framing-row="${testId}"]`).getByText(/跟随全局/).click();
         await adminToast(/的取景已改为「跟随全局（全身）」/);
         await settled('full');
         assert.deepEqual(saved().framings, {});
@@ -1304,7 +1356,7 @@ module.exports = function vrmScenarios(ctx) {
           const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
           assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
           realId = imp.pack.id;
-          await H.pickPack(realId);
+          await H.switchTo(realId);
           await H.drawing(5, 60000);
           await settled('full');
           await stand();

@@ -361,7 +361,7 @@ function lookContext(pack) {
   return { adult: !!pack.adult, only: true, outfits: Object.keys(pack.outfits || {}) };
 }
 
-// The wardrobe context of the appearance `packId` chosen for `speciesId` (chosenPack): a video character's
+// The wardrobe context of pack `packId` worn by `speciesId` (her character's own pack, core/characters.js): a video character's
 // own clips are one look, her signature outfit; an unknown id (no pack loaded at all) is null.
 function lookContextOf(packs, packId, speciesId) {
   if (packId && packId === clipsId(speciesId)) return { adult: false, only: true, outfits: ['daily'] };
@@ -483,6 +483,8 @@ function validatePack(manifest, dir) {
   if (!SCHEMAS.includes(m.schema)) errors.push(`schema must be one of ${SCHEMAS.join(', ')}`);
   const known = ACTIONS[m.schema] || ACTIONS[SCHEMA];
   if (!ID_RE.test(m.id || '')) errors.push('id must be 3–40 characters: a-z, 0-9 and "-"');
+  // a pack is a character of its own (core/characters.js): its id may not be a character file's (or a retired one's)
+  else if (Object.hasOwn(SPECIES, m.id) || Object.hasOwn(require('./species').RETIRED, m.id) || /-clips$/.test(m.id)) errors.push(`id ${m.id} is reserved`);
   if (!text(m.name, 40)) errors.push('name is required');
   if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
@@ -579,7 +581,7 @@ function loadPacks(roots) {
   for (const { dir, source } of roots) {
     let names = [];
     try {
-      names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+      names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name).sort(); // .<id>-…: a download being unpacked
     } catch {
       continue;
     }
@@ -596,7 +598,7 @@ function loadPacks(roots) {
 // URL the renderer loads a pack file from (served by the `pack:` protocol, see src/main/packs.js).
 const packUrl = (pack, rel) => `pack://${pack.id}/${rel.split('/').map(encodeURIComponent).join('/')}`;
 
-// How `speciesId` looks in `outfitId` with the chosen pack. The chosen pack is the only source (T-2752): an
+// How `speciesId` looks in `outfitId` in pack `packId` (her character's own pack, core/characters.js). That pack is the only source (T-2752): an
 // outfit it has no art for is worn as that pack's own default look (`daily`, else its first outfit), never
 // borrowed from another pack, so dressing her can never swap her into another look. Only when the chosen
 // pack does not exist (or is not hers) does the whole look fall back: to her default pack, then her
@@ -633,9 +635,6 @@ function lookIn(p, outfitId) {
   return base;
 }
 
-// Packs for one species, as the appearance picker lists them: hers in the order of her character file
-// (the default first), then imported ones; a video character's own clips come last. 18+ packs only
-// when `adultOk` (the user confirmed 18+ and turned adult content on).
 // A picture of a pack for lists and the wardrobe (settings window): its daily outfit — a sprite sheet with its
 // actions (so it can be played), an outfit picture, or a VRM model's saved preview. null = nothing to show.
 function packCover(p) {
@@ -649,20 +648,19 @@ function packCover(p) {
   return { type: 'image', url: packUrl(p, rel), pixelated: !!p.pixelated };
 }
 
-function packsFor(packs, speciesId, adultOk = false) {
-  const own = (SPECIES[speciesId] && SPECIES[speciesId].packs) || [];
-  const rank = (p) => (own.includes(p.id) ? own.indexOf(p.id) : own.length);
-  const out = [...packs.values()]
-    .filter((p) => p.species === speciesId && (adultOk || !p.adult))
-    .sort((a, b) => rank(a) - rank(b))
-    .map((p) => ({ id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, cover: packCover(p), ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) }));
-  const c = clipsId(speciesId) && SPECIES[speciesId].clipsLook;
-  if (c) {
-    const sp = SPECIES[speciesId];
-    const idle = sp.clips ? [].concat(sp.clips.idle)[0] : null;
-    out.push({ id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'builtin', outfits: 1, cover: idle ? { type: 'video', url: `../renderer/${sp.clipDir}/${idle}` } : null });
-  }
-  return out;
+// A character's own pack as her page shows it (T-2764: one pack per character, nothing to choose): its picture,
+// author, license and, for a VRM model, its terms.
+function packOption(p) {
+  return { id: p.id, name: p.name, author: p.author, license: p.license, version: p.version, description: p.description, kind: p.kind, source: p.source, adult: p.adult, outfits: Object.keys(p.outfits).length, cover: packCover(p), ...(p.live2d ? { height: p.live2d.height } : {}), ...(p.vrm ? { height: p.vrm.height, vrm: vrmView(p) } : {}) };
+}
+
+// The same for a video character's own clips (`<id>-clips`).
+function clipsOption(speciesId) {
+  const sp = SPECIES[speciesId];
+  const c = clipsId(speciesId) && sp.clipsLook;
+  if (!c) return null;
+  const idle = sp.clips ? [].concat(sp.clips.idle)[0] : null;
+  return { id: clipsId(speciesId), name: c.name, author: c.author, license: c.license, version: '', description: c.description, kind: 'video', source: 'download', outfits: 1, cover: idle ? { type: 'video', url: `${sp.clipDir}/${idle}` } : null };
 }
 
 // What the UI shows for a VRM pack (外观 list, credits): per model its meta and license, and the pack's restrictions.
@@ -675,22 +673,11 @@ function vrmView(p) {
   };
 }
 
-// The look a character starts with (its first pack; none for a video character without packs, which
-// plays its clips), and the pack every other pack falls back to. Both come from src/characters/<id>.json.
+// A base character's first pack (her default character, core/characters.js) and the pack a missing one falls
+// back to. Both come from src/characters/<id>.json.
 const defaultPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].defaultPack) || null;
 const fallbackPack = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].fallbackPack) || `${speciesId}-pixel`;
 // The appearance id that stands for a video character's own clips (null for a pack character).
 const clipsId = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].clipsLook ? `${speciesId}-clips` : null);
-// The pack she wears: her chosen one, else her default. An 18+ pack counts only when `adultOk`; without
-// it she falls back to her default look (the choice is kept for when adult content is on again).
-function chosenPack(packs, appearance, speciesId, adultOk = false) {
-  const want = appearance && appearance[speciesId];
-  if (want && want === clipsId(speciesId)) return want;
-  for (const id of [want, defaultPack(speciesId), fallbackPack(speciesId)]) {
-    const p = id && packs.get(id);
-    if (p && p.species === speciesId && (adultOk || !p.adult)) return p.id;
-  }
-  return fallbackPack(speciesId);
-}
 
-module.exports = { MAX_VRM_BYTES, VRM_HEIGHT, vrmPackId, vrmManifest, vrmView, lookContext, lookContextOf, lockedLook, packShareable, defaultPack, fallbackPack, clipsId, chosenPack, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, packsFor, LIVE2D_DIR, PREVIEW_FILE, findLive2dModels, live2dPackId, facesFromExpressions, live2dManifest };
+module.exports = { MAX_VRM_BYTES, VRM_HEIGHT, vrmPackId, vrmManifest, vrmView, lookContext, lookContextOf, lockedLook, packShareable, defaultPack, fallbackPack, clipsId, packOption, clipsOption, packCover, SCHEMA, SCHEMAS, ACTIONS, ACTIONS_V1, KINDS, validatePack, readPack, loadPacks, packUrl, resolveLook, LIVE2D_DIR, PREVIEW_FILE, findLive2dModels, live2dPackId, facesFromExpressions, live2dManifest };

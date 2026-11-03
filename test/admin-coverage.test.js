@@ -89,7 +89,7 @@ function setup() {
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   const data = path.join(dir, 'data');
   const lh = new LhClient({ bin: FAKE, env: { ...cleanEnv(), FAKE_LH_DIR: dir } });
-  const { packs } = loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const svc = new PetService({ lh, store: new Store(data), settingsStore: new settingsLib.SettingsStore(data), now: () => new Date('2026-01-05T14:00:00').getTime(), rnd: () => 0.5, packs });
   svc.on('error', () => {});
   const admin = createAdminSettings({ service: svc });
@@ -123,29 +123,31 @@ test('自动检查更新 (update.autoCheck): default on, saved through admin-set
   assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8'), /autoCheck: \(\) => !!\(service && service\.settings\.update && service\.settings\.update\.autoCheck\)/);
 });
 
-test('roster rows carry her 设定 (persona), every kind of pack she can wear, and the current character\'s outfits', async () => {
+test('roster rows carry her 设定 (persona), her own kind of look, and the current character\'s outfits', async () => {
   const { svc } = setup();
   await svc.hatch({ speciesId: 'dafeiyu', name: '小鱼' });
   const rows = buildRoster(svc.view(), svc.settingsView());
-  const fish = rows.find((r) => r.id === 'dafeiyu');
+  const fish = rows.find((r) => r.id === 'dafeiyu-pixel');
   assert.ok(fish.personality.length > 20, 'her persona from the character file');
-  const kinds = Object.fromEntries(fish.packKinds.map((k) => [k.kind, k]));
-  assert.ok(kinds.sprites && kinds.rig && kinds.live2d, JSON.stringify(fish.packKinds));
-  assert.equal(kinds.live2d.label, 'Live2D');
-  assert.equal(kinds.live2d.builtin, 1);
-  assert.equal(kinds.live2d.user, 0);
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').personality, fish.personality, 'inherited by each of her looks');
+  // T-2764: every look is a character: each row has exactly her own kind
+  assert.deepEqual(fish.packKinds, [{ kind: 'sprites', label: '像素', builtin: 1, user: 0 }]);
+  const l2d = rows.find((r) => r.id === 'dafeiyu-live2d');
+  assert.deepEqual(l2d.packKinds, [{ kind: 'live2d', label: 'Live2D', builtin: 1, user: 0 }]);
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live').kind, 'rig');
+  assert.equal(l2d.outfits, null, 'not the current character: no outfits known');
   // outfits: only the current character's, each with lock state and a preview
   assert.ok(Array.isArray(fish.outfits) && fish.outfits.length >= 1);
   assert.equal(fish.outfits.filter((o) => o.equipped).length, 1);
   assert.ok(fish.outfits.some((o) => o.locked && /解锁/.test(o.condition)), 'a locked outfit says how to unlock it');
-  assert.equal(rows.find((r) => r.id === 'claude').outfits, null);
+  assert.equal(rows.find((r) => r.id === 'claude-pixel').outfits, null);
   // unlock + equip (the console's 服饰 → 穿上 calls equip-outfit = PetService.equipOutfit)
   svc.unlockAll('dafeiyu');
-  const target = buildRoster(svc.view(), svc.settingsView()).find((r) => r.id === 'dafeiyu').outfits.find((o) => !o.equipped && !o.locked);
+  const target = buildRoster(svc.view(), svc.settingsView()).find((r) => r.id === 'dafeiyu-pixel').outfits.find((o) => !o.equipped && !o.locked);
   assert.ok(target, 'an unlocked outfit to put on');
   const r = svc.equipOutfit(target.id);
   assert.equal(r.ok, true);
-  assert.equal(buildRoster(r.view, svc.settingsView()).find((x) => x.id === 'dafeiyu').outfits.find((o) => o.equipped).id, target.id);
+  assert.equal(buildRoster(r.view, svc.settingsView()).find((x) => x.id === 'dafeiyu-pixel').outfits.find((o) => o.equipped).id, target.id);
   // packKinds counts imported packs apart
   assert.deepEqual(packKinds([{ kind: 'vrm', source: 'user' }, { kind: 'vrm', source: 'builtin' }, { kind: 'pictures', source: 'user' }]), [{ kind: 'vrm', label: 'VRM', builtin: 1, user: 1 }, { kind: 'pictures', label: '图片', builtin: 0, user: 1 }]);
 });
@@ -153,10 +155,48 @@ test('roster rows carry her 设定 (persona), every kind of pack she can wear, a
 test('settings window bridge: 服饰, 找回桌宠 and 数据目录 are whitelisted and answer the settings window only', () => {
   const pre = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
   const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
-  assert.match(pre, /equipOutfit: \(id\) => ipcRenderer\.invoke\('equip-outfit', \{ id \}\)/);
+  assert.match(pre, /equipOutfit: \(id, species\) => ipcRenderer\.invoke\('equip-outfit', \{ id, species \}\)/);
+  assert.match(main, /ipcMain\.handle\('equip-outfit', \(_e, \{ id, species \}\) => service\.equipOutfit\(String\(id \|\| ''\), whose\(species\)\)\)/);
   assert.match(pre, /placePet: \(\) => ipcRenderer\.invoke\('admin-place-pet'\)/);
   assert.match(pre, /openDataFolder: \(\) => ipcRenderer\.invoke\('open-data-folder'\)/);
   assert.match(main, /ipcMain\.handle\('admin-place-pet', adminOnly\(/);
   assert.match(main, /ipcMain\.handle\('open-data-folder', adminOnly\(/);
   assert.match(main, /dataDir: app\.getPath\('userData'\)/);
+});
+
+// T-2784: her page lists the 衣柜 of any character met before, as cards — not only the current one's — and
+// 穿上 there saves into that character's own wardrobe without touching who is with you now.
+test('衣柜 cards for every met character: outfitsOf + equipOutfit(id, character) keep each character\'s own wardrobe', async () => {
+  const { svc } = setup();
+  await svc.hatch({ speciesId: 'dafeiyu', name: '小鱼' });
+  svc.unlockAll('dafeiyu');
+  const rows = buildRoster(svc.view(), svc.settingsView(), { outfitsOf: (id) => svc.outfitsOf(id) });
+  const pixel = rows.find((r) => r.id === 'dafeiyu-pixel');
+  const l2d = rows.find((r) => r.id === 'dafeiyu-live2d');
+  assert.equal(pixel.current, true);
+  assert.equal(l2d.current, false);
+  // the other look of the same base is met (shared hearts): her own wardrobe is listed, from her own pack
+  assert.ok(Array.isArray(l2d.outfits) && l2d.outfits.length >= 1, 'Live2D 大肥鱼 has her own outfit cards');
+  assert.ok(l2d.outfits.length < pixel.outfits.length, 'her Live2D pack has fewer outfits than the pixel one');
+  assert.equal(l2d.outfits.filter((o) => o.equipped).length, 1);
+  assert.ok(pixel.outfits.every((o) => 'rating' in o && 'isNew' in o && 'preview' in o), 'each card: rating, 新, preview');
+  assert.ok(pixel.outfits.filter((o) => !o.locked).every((o) => o.preview && o.preview.type === 'sprite' && o.preview.frame), 'pixel cards show a sheet cell');
+  // a character of a base not met yet has no wardrobe to show
+  assert.equal(rows.find((r) => r.id === 'claude-pixel').outfits, null);
+  assert.equal(svc.outfitsOf('claude-pixel'), null);
+  // 穿上 on another character of hers: saved in her wardrobe, the one with you keeps hers
+  assert.equal((await svc.switchCharacter('dafeiyu-live2d')).ok, true);
+  const wornBefore = svc.view().pet.equippedOutfit;
+  const other = svc.outfitsOf('dafeiyu-pixel').find((o) => !o.locked && !o.equipped);
+  const r = svc.equipOutfit(other.id, 'dafeiyu-pixel');
+  assert.equal(r.ok, true);
+  assert.equal(svc.view().pet.characterId, 'dafeiyu-live2d', 'still the same character with you');
+  assert.equal(svc.view().pet.equippedOutfit, wornBefore, 'her outfit untouched');
+  assert.equal(svc.outfitsOf('dafeiyu-pixel').find((o) => o.equipped).id, other.id, 'the pixel 大肥鱼 wears it next time');
+  const back = buildRoster(r.view, svc.settingsView(), { outfitsOf: (id) => svc.outfitsOf(id) }).find((x) => x.id === 'dafeiyu-pixel');
+  assert.equal(back.outfits.find((o) => o.equipped).id, other.id, 'and her card says 正在穿');
+  // her Live2D outfit cannot go on her pixel self's wardrobe and the other way round (her own pack's outfits only)
+  assert.equal(svc.equipOutfit(other.id, 'dafeiyu-live2d').ok, false);
+  assert.equal(svc.equipOutfit('daily', 'claude-pixel').reason, 'not-met');
+  assert.equal(svc.equipOutfit('daily', 'nobody').reason, 'unknown');
 });

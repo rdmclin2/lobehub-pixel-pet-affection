@@ -8,7 +8,7 @@
 
 | 场景 | 用什么 | 注意 |
 | --- | --- | --- |
-| 窗口骨架、导航 | `Shell`（`admin/src/console/Shell.tsx`）：80px rail 放 小屋 / 角色 / 玩法 / 设置 四个入口 + 聊天（R-05 例外），其余页面在下一层（入口卡片 → 页面，列表 → 详情） | 不要把每个页面都挂到侧栏（R-05）；路由用 hash（`#/characters/claude`），链接是 `href="#…"` 的锚点 |
+| 窗口骨架、导航 | `Shell`（`admin/src/console/Shell.tsx`）：80px rail 放 小屋 / 角色 / 玩法 / 设置 四个入口 + 商店、聊天（R-05 的两个例外），其余页面在下一层（入口卡片 → 页面，列表 → 详情） | 不要把每个页面都挂到侧栏（R-05）；路由用 hash（`#/characters/claude`），链接是 `href="#…"` 的锚点 |
 | 页面标题 | `PageHeader`（dashboard） | 每页一个；主操作放 `action` |
 | 信息卡片 | `Surface`（dashboard）/ `Block` | 不手写边框 + 背景（D-06） |
 | 设置表单 | `Form` + `useForm`（**`@lobehub/ui/form`**），`itemsType="group"` `variant="filled"` | 根入口的 `Form` 不带校验（`LOBE-FORM-ENTRY`）；开关字段写 `valueProp: 'checked'` |

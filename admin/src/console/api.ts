@@ -120,8 +120,15 @@ export interface ModelOption {
   [k: string]: unknown;
 }
 
+/**
+ * One row per character (T-2764: every look is a character of her own — 「大肥鱼 · 像素」「大肥鱼 · Live2D」 …).
+ * `id` is the character id (her pack's id, or `<base>-clips`); `base` the persona (src/characters/<base>.json)
+ * whose agent, name, affection (`met`), model and 个性化设定 all of the base's characters share; `pack`, `kind`,
+ * `preview` and `outfits` are the character's own.
+ */
 export interface RosterRow {
   accent: string;
+  base: string;
   blurb: string;
   catchphrase: string;
   credits: string[];
@@ -130,12 +137,16 @@ export interface RosterRow {
   id: string;
   kind: string | null;
   kindLabel: string;
+  /** what sets this look apart in her name: 像素 / Live2D / 成年版（18+）… */
+  label: string;
   likes: string[];
   met: null | { affection: number; name: string; progress: any; stage: string };
   model: null | { applied: string | null; chosen?: boolean; current: string | null; loaded: boolean; options: ModelOption[]; pending: boolean };
+  /** her character's name, 「大肥鱼 · 像素」 */
+  name: string;
+  /** her base's name, 大肥鱼 */
   nameZh: string;
-  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; source: string; vrm?: any };
-  packCount: number;
+  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; outfits?: number; source: string; vrm?: any };
   preview: Preview | null;
   source: string;
   sourceLabel: string;
@@ -180,8 +191,41 @@ export interface PackRow {
   version: string;
 }
 
+/** A character in 商店 → 角色: does not ship with the app, can be downloaded (src/core/catalog.js listAll). */
+export interface CatalogRow {
+  adult: boolean;
+  author: string;
+  base: string;
+  bytes: number;
+  description: string;
+  id: string;
+  kind: string;
+  license: string;
+  name: string;
+  outfits: number;
+  /** relative to src/renderer: catalog/<id>.png */
+  picture: string | null;
+  pixelated: boolean;
+  sizeLabel: string;
+  version: string;
+  /** on this machine now (downloaded) */
+  installed: boolean;
+}
+
+/** `catalog-progress` (src/main/catalog.js) */
+export interface DownloadProgress {
+  id: string;
+  received?: number;
+  reason?: string;
+  state: 'downloading' | 'installing' | 'done' | 'failed';
+  text?: string;
+  total?: number;
+}
+
 export interface AdminState {
   apiStatus: any;
+  catalog?: CatalogRow[];
+  downloads?: DownloadProgress[];
   packs: PackRow[];
   roster: RosterRow[];
   settings: Record<string, any>;
@@ -228,7 +272,8 @@ export interface PetAdminApi {
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
   cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
-  equipOutfit: (id: string) => Promise<any>;
+  /** `species`: whose wardrobe (a character id); none = the current character's. */
+  equipOutfit: (id: string, species?: string) => Promise<any>;
   exportPack: (id: string) => Promise<any>;
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
@@ -249,10 +294,13 @@ export interface PetAdminApi {
   release: (opts: { deleteAgent: boolean }) => Promise<any>;
   reloadVoicePacks: () => Promise<{ errors: string[]; settings: any }>;
   removePack: (id: string) => Promise<any>;
+  downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
+  cancelDownload: (id: string) => Promise<{ ok: boolean }>;
+  removeDownload: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  onCatalogProgress: (cb: (p: DownloadProgress) => void) => () => void;
   reset: (keys: string[]) => Promise<{ ok: boolean; results: SetResult[]; settings: any }>;
   set: (key: string, value: unknown) => Promise<SetResult>;
   setAdult: (on: boolean) => Promise<any>;
-  setAppearance: (id: string, species: string) => Promise<any>;
   setLive2dHeight: (id: string, height: number) => Promise<any>;
   setModel: (key: string, species: string) => Promise<any>;
   setSystemRole: (text: string, species: string) => Promise<any>;
@@ -273,7 +321,8 @@ export interface PetAdminApi {
   historyGet: (id: string) => Promise<{ ok: boolean; reason?: string; session?: HistorySession }>;
   historyList: () => Promise<{ sessions: HistorySummary[] }>;
   home: () => Promise<{ ok: boolean; reason?: string }>;
-  markSeen: (kind: 'outfit' | 'topic') => Promise<{ marked?: number; ok: boolean }>;
+  /** `species`: whose 衣柜 was looked at (a character id); none = the current character's. */
+  markSeen: (kind: 'outfit' | 'topic', species?: string) => Promise<{ marked?: number; ok: boolean }>;
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
@@ -461,6 +510,7 @@ export const at = (obj: any, key: string): any => key.split('.').reduce((v, k) =
 /** Readable failure text for the per-character / pack channels (reasons from PetService and PackStore). */
 export const REASON: Record<string, string> = {
   adult: '18+ 外观需要先确认已满 18 周岁并打开成人向内容',
+  'not-downloaded': '她还没有下载：先在角色图鉴里下载这个角色',
   busy: '她正在忙（说话或切换中），稍后再试',
   'no-pet': '桌宠还没出现在桌面上',
   'no-window': '桌宠窗口没有打开',
@@ -476,6 +526,6 @@ export const REASON: Record<string, string> = {
   'unknown-character': '没有这个角色',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
-  unavailable: '她现在的形象包没有这套服饰',
+  unavailable: '这位角色没有这套服饰',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';

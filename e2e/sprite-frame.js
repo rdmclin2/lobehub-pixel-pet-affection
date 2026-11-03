@@ -109,12 +109,9 @@ module.exports = function spriteFrameScenarios(ctx) {
       }
     };
     const pickPack = async (id) => {
-      if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, 'characters/claude');
-      await admin.evaluate(() => { location.hash = '/characters/claude'; });
-      await adminUntil(() => !!document.querySelector('[data-path="/characters/claude"]'), null, 15000, 'her page');
-      await admin.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
-      await adminUntil((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack ${id}`);
-      if (!(await admin.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await admin.evaluate((x) => document.querySelector(`[data-use-pack="${x}"]`).click(), id);
+      // T-2764: every look is a character of her own — 「克洛蒂 · 旧版像素」 is switched to, not picked in a wardrobe
+      const r = await page.evaluate((x) => window.pet.switchCharacter(x), id);
+      assert.ok(r && r.ok, `switch to ${id}: ${JSON.stringify(r && { ok: r.ok, reason: r.reason })}`);
       await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 });
     };
     // the crop while switching (it moves one way; the same canvas element throughout)
@@ -314,23 +311,23 @@ module.exports = function spriteFrameScenarios(ctx) {
 
       await step(S, '她的页 → 取景: a pixel look is offered 半身; her own 半身 wins over the global 全身, 跟随全局 goes back', async () => {
         await admin.evaluate(() => { location.hash = '/characters/claude'; });
-        await admin.waitForSelector('[data-framing-row="claude"]', { timeout: 10000 });
-        const hint = await admin.locator('[data-framing-row="claude"]').textContent();
+        await admin.waitForSelector('[data-framing-row]', { timeout: 10000 });
+        const hint = await admin.locator('[data-framing-row]').textContent();
         assert.match(hint, /半身只显示腰部以上/, 'a pixel look is offered 半身 (no "不能半身取景")');
         assert.doesNotMatch(hint, /不能半身取景/);
-        await admin.locator('[data-framing-row="claude"]').scrollIntoViewIfNeeded();
+        await admin.locator('[data-framing-row]').scrollIntoViewIfNeeded();
         const sRow = await adminShot('7-admin-framing-row-pixel');
-        await admin.locator('[data-framing-row="claude"]').getByText('半身', { exact: true }).click();
+        await admin.locator('[data-framing-row]').getByText('半身', { exact: true }).click();
         await adminToast(/的取景已改为「半身」/);
         await settled('half');
         const sa = await adminShot('7-admin-character-half');
         const sp = await shot('7-character-half');
         const s1 = saved();
-        assert.deepEqual(s1.framings, { claude: 'half' });
+        assert.deepEqual(s1.framings, { 'claude-pixel': 'half' }); // per character (T-2764)
         assert.equal(s1.prefs.framing, 'full');
         const fr = await page.evaluate(() => window.petFx.framing());
         assert.deepEqual([fr.mode, fr.source, fr.supported], ['half', 'character', true]);
-        await admin.locator('[data-framing-row="claude"]').getByText(/跟随全局/).click();
+        await admin.locator('[data-framing-row]').getByText(/跟随全局/).click();
         await adminToast(/的取景已改为「跟随全局（全身）」/);
         await settled('full');
         assert.deepEqual(saved().framings, {});
@@ -478,17 +475,16 @@ module.exports = function spriteFrameScenarios(ctx) {
       await adminUntil(() => !!document.querySelector('[data-path="/characters/dafeiyu"]'), null, 15000, 'her page');
     };
     const pickPack = async (id) => {
-      await herPage();
-      await admin.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
-      await adminUntil((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack ${id}`);
-      if (!(await admin.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await admin.evaluate((x) => document.querySelector(`[data-use-pack="${x}"]`).click(), id);
+      // T-2764: every look (an imported pack too) is a character of her own: switch to her
+      const r = await page.evaluate((x) => window.pet.switchCharacter(x), id);
+      assert.ok(r && r.ok, `switch to ${id}: ${JSON.stringify(r && { ok: r.ok, reason: r.reason })}`);
       await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 15000 });
     };
     const framingRow = async () => {
       await herPage();
-      await admin.waitForSelector('[data-framing-row="dafeiyu"]', { timeout: 10000 });
-      await admin.locator('[data-framing-row="dafeiyu"]').scrollIntoViewIfNeeded();
-      return (await admin.locator('[data-framing-row="dafeiyu"]').textContent()).replace(/\s+/g, ' ');
+      await admin.waitForSelector('[data-framing-row]', { timeout: 10000 });
+      await admin.locator('[data-framing-row]').scrollIntoViewIfNeeded();
+      return (await admin.locator('[data-framing-row]').textContent()).replace(/\s+/g, ' ');
     };
     const halfOk = (c, why, topMax = 0.15) => {
       assert.ok(c && !c.empty, `${why}: she is drawn`);
@@ -674,7 +670,7 @@ module.exports = function spriteFrameScenarios(ctx) {
         await settled('full');
         const hint = await framingRow();
         assert.match(hint, /半身只显示腰部以上/);
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText('半身', { exact: true }).click();
+        await admin.locator('[data-framing-row]').getByText('半身', { exact: true }).click();
         await adminToast(/的取景已改为「半身」/);
         await settled('half');
         await stand();
@@ -683,11 +679,11 @@ module.exports = function spriteFrameScenarios(ctx) {
         const sa = await adminShot('d5-admin-character-half');
         const sp = await shot('d5-character-half');
         const s1 = saved();
-        assert.deepEqual(s1.framings, { dafeiyu: 'half' });
+        assert.deepEqual(s1.framings, { 'dafeiyu-pixel': 'half' }); // per character (T-2764)
         assert.equal(s1.prefs.framing, 'full');
         assert.deepEqual([fr.mode, fr.source], ['half', 'character']);
         halfOk(c, 'her own 半身');
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText(/跟随全局/).click();
+        await admin.locator('[data-framing-row]').getByText(/跟随全局/).click();
         await adminToast(/的取景已改为「跟随全局（全身）」/);
         await settled('full');
         assert.deepEqual(saved().framings, {});
@@ -710,13 +706,13 @@ module.exports = function spriteFrameScenarios(ctx) {
         assert.equal(d.cut, '0.520');
         halfOk(c, 'pack default 半身');
         const hint = await framingRow();
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText('全身', { exact: true }).click();
+        await admin.locator('[data-framing-row]').getByText('全身', { exact: true }).click();
         await adminToast(/的取景已改为「全身」/);
         await settled('full');
         const fr2 = await framing();
         const s2 = await shot('d6-pack-default-own-full');
         assert.deepEqual([fr2.mode, fr2.source], ['full', 'character']);
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText(/跟随/).first().click();
+        await admin.locator('[data-framing-row]').getByText(/跟随/).first().click();
         await settled('half');
         const fr3 = await framing();
         assert.deepEqual([fr3.mode, fr3.source], ['half', 'pack']);

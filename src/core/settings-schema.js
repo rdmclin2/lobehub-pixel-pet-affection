@@ -17,12 +17,15 @@ const hotkeyLib = require('./hotkey');
 const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
 
-// Navigation. The window's rail has four places only (RAIL); everything else sits one level down: 角色 →
-// her page, 玩法 / 设置 → a hub of tiles → one page per tile (docs/admin-console-design.md §6.3). NAV groups
-// are those hub sections; `section` says which rail place a group belongs to.
+// Navigation. The window's rail has six places only (RAIL: the four + 商店 and 聊天, .agents/ux R-05 exceptions); everything else sits one level down: 角色 →
+// her page, 商店 → a category (角色 now; 声音包 and more later), 玩法 / 设置 → a hub of tiles → one page per
+// tile (docs/admin-console-design.md §6.3). NAV groups are those hub sections; `section` says which rail place a
+// group belongs to.
 const RAIL = [
   { key: 'home', label: '小屋', icon: 'House', page: 'overview' },
   { key: 'characters', label: '角色', icon: 'Users', page: 'characters' },
+  // 商店 (docs/characters.md 「内置与下载」): what can be downloaded — characters now, 声音包 etc. later
+  { key: 'store', label: '商店', icon: 'Store', page: 'store' },
   { key: 'play', label: '玩法', icon: 'Gamepad2', page: 'play' },
   { key: 'settings', label: '设置', icon: 'Settings', page: 'settings' },
   // 聊天 (T-2765): a daily AI chat of its own (docs/admin-chat.md), not a setting — its own place, one page
@@ -33,6 +36,7 @@ const NAV = [
   { key: 'chat', section: 'chat', label: '聊天', items: [{ page: 'chat', label: '聊天', icon: 'MessageCircle' }] },
   { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }] },
   { key: 'characters', section: 'characters', label: '角色', items: [{ page: 'characters', label: '角色图鉴', icon: 'Users' }] },
+  { key: 'store', section: 'store', label: '商店', items: [{ page: 'store', label: '商店', icon: 'Store' }] },
   {
     key: 'play', section: 'play', label: '陪伴方式', items: [
       { page: 'behavior', label: '桌宠行为', icon: 'PawPrint' },
@@ -79,11 +83,12 @@ const NAV = [
 
 const PAGES = {
   overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
-  characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、换形象包、调她的模型和设定。' },
+  characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、给她换衣服、调她的模型和设定。' },
+  store: { title: '商店', description: '下载更多内容：现在有角色，以后还会有声音包等。下载好的角色出现在角色图鉴里。' },
   chat: { title: '聊天', description: '和 AI 日常聊天：可以发图片、换模型，会话保存在这台电脑上。和桌宠的对话互不影响。' },
   play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
-  packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
+  packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
@@ -111,7 +116,7 @@ const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, ca
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
 add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
-add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身）；角色详情页可以单独设置，角色包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
@@ -202,6 +207,8 @@ add('adultContent', 'safety', '成人向内容', '成人向内容', 'adult', { d
 add('answered', 'safety', '年龄确认', '已回答年龄确认', 'readonly', { internal: true });
 add('ageConfirmed', 'safety', '年龄确认', '已确认满 18 周岁', 'readonly', { internal: true });
 add('ageConfirmedAt', 'safety', '年龄确认', '确认时间', 'readonly', { internal: true, format: 'time' });
+// T-2764: which character model the file is written under (core/character-migrate.js): 2 = every look is a character
+add('characterModel', 'about', '数据', '角色数据版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.CHARACTER_MODEL}；旧版数据（一位角色带多套形象）在启动时迁移一次，每套形象成为一位独立角色。` });
 add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.AGE_GATE_VERSION}；版本不一致时会重新询问。` });
 
 // ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
@@ -211,11 +218,12 @@ add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', 
 add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch', { desc: '启动约 20 秒后检查一次，之后每 4 小时一次，有新版本就在后台下载。关闭后只在你点「检查更新」时检查；已下载的新版本仍会在退出时安装。' });
 
 // ---- 按角色（角色详情页） ----------------------------------------------------------------------------------
-add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
-add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型。' });
-add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '她自己的取景：跟随全局（或形象包的默认）/ 全身 / 半身。' });
-add('vrmPostures.<id>', 'character', '外观', 'VRM 姿势', 'perCharacter', { desc: '按 VRM 形象包记住的姿势（键是形象包 id）：自动（待机时她自己换姿势）/ 放松站 / 叉腰站 / 害羞站 / 俏皮站 / 坐着 / 靠坐。', options: settingsLib.VRM_POSTURES });
-add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
+// T-2764: every look is a character of its own (core/characters.js). 取景 / VRM 姿势 are per character (键是角色 id);
+// 模型 / 个性化设定 belong to her base persona and are shared by all her characters (键是基础角色 id).
+add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型（同一基础角色的各个形象共用）。' });
+add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '这个角色自己的取景：跟随全局（或角色包的默认）/ 全身 / 半身。' });
+add('vrmPostures.<id>', 'character', '外观', 'VRM 姿势', 'perCharacter', { desc: '按 VRM 角色记住的姿势（键是角色 id，也就是她的角色包 id）：自动（待机时她自己换姿势）/ 放松站 / 叉腰站 / 害羞站 / 俏皮站 / 坐着 / 靠坐。', options: settingsLib.VRM_POSTURES });
+add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字（同一基础角色的各个形象共用）。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
 
 // ---- 不在 settings.json 的：密钥、pet.json -----------------------------------------------------------------
 const secret = (key, page, card, label, extra = {}) => F.push({ key, page, card, label, type: 'secret', store: 'keys', sensitive: true, ...extra });
@@ -242,7 +250,7 @@ function settingsLeaves(obj = DEFAULTS, prefix = '') {
   const out = [];
   for (const [k, v] of Object.entries(obj)) {
     const p = prefix ? `${prefix}.${k}` : k;
-    if (['appearance', 'models', 'systemRoles', 'framings', 'vrmPostures'].includes(p)) out.push(`${p}.<id>`);
+    if (['models', 'systemRoles', 'framings', 'vrmPostures'].includes(p)) out.push(`${p}.<id>`);
     else if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) out.push(...settingsLeaves(v, p));
     else out.push(p);
   }

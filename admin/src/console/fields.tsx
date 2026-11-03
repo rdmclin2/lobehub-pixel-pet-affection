@@ -513,10 +513,10 @@ const VisitorsControl = ({ field, value }: { field: FieldDef; value: unknown }) 
           return;
         }
         const r = await save(field.key, ids);
-        if (r.ok) toast.success(`同屏伙伴：${ids.length ? ids.map((id) => roster.find((c) => c.id === id)?.nameZh ?? id).join('、') : '无'}`);
+        if (r.ok) toast.success(`同屏伙伴：${ids.length ? ids.map((id) => roster.find((c) => c.id === id)?.name ?? id).join('、') : '无'}`);
         else toast.error(r.message || '没有保存');
       }}
-      options={roster.filter((c) => !c.current).map((c) => ({ label: `${c.nameZh}（${c.vendor}）`, value: c.id }))}
+      options={roster.filter((c) => !c.current && c.base !== roster.find((x) => x.current)?.base).map((c) => ({ label: `${c.name ?? c.nameZh}（${c.vendor}）`, value: c.id }))}
       placeholder="选几位来串门"
       style={{ width: 360 }}
       value={list}

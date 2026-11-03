@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('pet', {
   boot: () => ipcRenderer.invoke('boot'),
   whoami: () => ipcRenderer.invoke('whoami'),
   spaces: () => ipcRenderer.invoke('spaces'),
-  hatch: (speciesId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities, space }),
+  // `characterId`: who she is (T-2764: one character per look, e.g. dafeiyu-pixel)
+  hatch: (characterId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { characterId, name, localAbilities, space }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
   // Touch a body part: a zone id ('head', 'chest', …) or { x, y } in the sprite's visible box (0..1).
   touch: (target) => ipcRenderer.invoke('touch', target === undefined ? null : target),
@@ -27,13 +28,16 @@ contextBridge.exposeInMainWorld('pet', {
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // per-character settings: `species` is whose (⋯ → 角色列表 → her page); left out = the current character
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
-  setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),

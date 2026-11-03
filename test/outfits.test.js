@@ -171,7 +171,7 @@ test('an 18+ look (adult pack) brings its own wardrobe, adult outfits included, 
 test('a Live2D pack (大肥鱼) offers only its own outfits: other outfits are not listed, cannot be worn, and a worn one is taken off', () => {
   const P = require('../src/core/packs');
   const path = require('node:path');
-  const { packs } = P.loadPacks([{ dir: path.join(__dirname, '..', 'src', 'renderer', 'packs'), source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const live2d = P.lookContext(packs.get('dafeiyu-live2d'));
   const pixel = P.lookContext(packs.get('dafeiyu-pixel'));
   assert.deepEqual(live2d, { adult: false, only: true, outfits: ['daily'] });

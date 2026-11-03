@@ -155,7 +155,7 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const rail = schema.rail.find((r) => r.key === place);
   const isTop = schema.rail.some((r) => r.page === page) && !sub;
   const back = !isTop && rail ? rail : null;
-  const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.nameZh ?? sub) : (schema.pages[page]?.title ?? page);
+  const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
   const full = page === 'chat';
   const mac = platform === 'darwin';

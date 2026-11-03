@@ -17,6 +17,7 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const { CatalogDownloader } = require('./catalog');
 const { serveVrmLibrary } = require('./vrm-library');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
@@ -51,6 +52,7 @@ let vrmLibrary = null; // where the VRM motion library is served from (src/main/
 let service = null;
 let updater = null;
 let packStore = null;
+let catalog = null; // 下载角色 (src/main/catalog.js)
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -147,7 +149,7 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -225,14 +227,16 @@ function createAppMenu() {
 }
 
 // ---- visitors (同屏伙伴): other model-chan on the desktop, each in its own small window -------------
+// Visitors are characters (T-2764: `claude-pixel`, `vrm-gpt-…`); `speciesId` of a pet window is her base.
 function syncVisitors() {
-  const want = service && service.pet ? service.settings.visitors.filter((id) => SPECIES[id] && id !== service.pet.speciesId) : [];
+  const want = service && service.pet ? service.settings.visitors.filter((id) => { const b = service._baseOf(id); return b && b !== service.pet.speciesId; }) : [];
   for (const [id, p] of pets) {
     if (id === 'main') continue;
-    if (!want.includes(p.speciesId)) { pets.delete(id); if (!p.win.isDestroyed()) p.win.destroy(); }
+    if (!want.includes(p.characterId)) { pets.delete(id); if (!p.win.isDestroyed()) p.win.destroy(); }
   }
-  want.forEach((speciesId, i) => {
-    const id = `visitor:${speciesId}`;
+  want.forEach((characterId, i) => {
+    const id = `visitor:${characterId}`;
+    const speciesId = service._baseOf(characterId);
     if (pets.has(id)) return;
     const wa = screen.getDisplayMatching(win.getBounds()).workArea;
     const mb = win.getBounds();
@@ -243,8 +247,8 @@ function syncVisitors() {
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
     });
     v.setMenuBarVisibility(false);
-    v.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { visitor: speciesId } });
-    pets.set(id, { win: v, speciesId, hit: null, vx: 0, vy: 0 });
+    v.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { visitor: characterId } });
+    pets.set(id, { win: v, speciesId, characterId, hit: null, vx: 0, vy: 0 });
     v.on('closed', () => { if (pets.get(id) && pets.get(id).win === v) pets.delete(id); });
   });
 }
@@ -297,12 +301,17 @@ function createWindow() {
   });
 }
 
+// What a pet window knows of the cast: every base (persona: credits, touch zones, clips, voice) with her default
+// look, and every character (T-2764: one per look) with hers — the hatch screen lists the characters.
+const speciesInfo = () => SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') }));
+const charactersInfo = () => service.characterList().map((e) => ({ ...e, nameZh: SPECIES[e.base].nameZh, vendor: SPECIES[e.base].vendor, title: SPECIES[e.base].title, accent: SPECIES[e.base].accent, blurb: SPECIES[e.base].blurb, portrait: service.lookFor(e.id, 'daily') }));
+
 function wire() {
   ipcMain.handle('boot', () => {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
-    return { view: v, update: updater.state, settings: service.getSettings(), species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), foods: FOODS, testMode: TEST_MODE };
+    return { view: v, update: updater.state, settings: service.getSettings(), species: speciesInfo(), characters: charactersInfo(), foods: FOODS, testMode: TEST_MODE };
   });
   ipcMain.handle('whoami', () => service.lh.whoami());
   const onLoginPrompt = (p) => {
@@ -317,9 +326,10 @@ function wire() {
       return { ok: false, error: e.message };
     }
   });
-  ipcMain.handle('hatch', async (_e, { speciesId, name, localAbilities, space }) => {
+  ipcMain.handle('hatch', async (_e, { characterId, speciesId, name, localAbilities, space }) => {
     try {
       const { view, localError, localWarning } = await service.hatch({
+        characterId: typeof characterId === 'string' ? characterId : undefined,
         speciesId,
         name,
         localAbilities: !!localAbilities,
@@ -350,9 +360,11 @@ function wire() {
   ipcMain.handle('set-interject', (_e, patch) => { const r = service.setSection('interject', patch); syncClipboardWatch(); return r; });
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
-  ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
-  // per-character settings (⋯ → 角色列表 → her page): `species` says whose; none = the current character
+  // per-character settings (⋯ → 角色列表 → her page): `species` says whose — a character id (T-2764; an old
+  // per-persona id still works); none = the current character
   const whose = (v) => (typeof v === 'string' && v ? v : undefined);
+  // 衣柜: the current character's outfit, or (her page in the settings window) another character's she met
+  ipcMain.handle('equip-outfit', (_e, { id, species }) => service.equipOutfit(String(id || ''), whose(species)));
   ipcMain.handle('unlock-all', (_e, p) => service.unlockAll(whose(p && p.species)));
   // the model (her page → 模型): only her own vendor's models are offered
   ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
@@ -363,8 +375,8 @@ function wire() {
     await service.refreshModels({ force: true });
     return { ok: true, view: service.view() };
   });
-  // pet packs (her page → 外观)
-  ipcMain.handle('set-appearance', (_e, { id, species }) => service.setAppearance(String(id || ''), whose(species)));
+  // pet packs: every pack is a character of its own (T-2764) — importing one adds a character (its id is the
+  // pack's), there is no 形象包 to put on any more
   ipcMain.handle('import-pack', async (e) => {
     const r = await dialog.showOpenDialog(windowOf(e) || win, { title: '导入角色包', properties: ['openFile', 'openDirectory'], filters: [{ name: '角色包', extensions: ['zip', 'json'] }] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
@@ -383,7 +395,8 @@ function wire() {
   ipcMain.handle('import-live2d', async (_e, { species } = {}) => {
     const parent = windowOf(_e) || win;
     const v = service.view();
-    const sp = whose(species) || (v && v.pet.speciesId);
+    // whose base the new character stands on: the character asked for, else the companion's
+    const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
@@ -405,7 +418,7 @@ function wire() {
   ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
     const parent = windowOf(_e) || win;
     const v = service.view();
-    const sp = whose(species) || (v && v.pet.speciesId);
+    const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
@@ -429,6 +442,20 @@ function wire() {
   ipcMain.handle('set-live2d-height', (_e, { id, height }) => {
     const r = packStore.setLive2dHeight(String(id || ''), height);
     if (r.ok) service.setPacks(packStore.packs);
+    return r;
+  });
+  // 下载角色 (core/catalog.js): progress arrives as `catalog-progress`; when she is in, she is a character
+  ipcMain.handle('catalog-download', async (_e, { id }) => {
+    const r = await catalog.download(String(id || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    pushAdmin();
+    return r;
+  });
+  ipcMain.handle('catalog-cancel', (_e, { id }) => catalog.cancel(String(id || '')));
+  ipcMain.handle('catalog-remove', (_e, { id }) => {
+    const r = packStore.removeDownload(String(id || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    pushAdmin();
     return r;
   });
   ipcMain.handle('remove-pack', (_e, { id }) => {
@@ -469,7 +496,7 @@ function wire() {
   // the window only ever receives the conversations the owner started.
   ipcMain.handle('history-list', () => service.history());
   ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
-  ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
+  ipcMain.handle('mark-seen', (_e, { kind, species }) => service.markSeen(String(kind || ''), typeof species === 'string' && species ? species : undefined));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.
@@ -556,8 +583,8 @@ function wire() {
   ipcMain.handle('visitor-boot', (e) => {
     const p = pets.get(petIdOf(windowOf(e)));
     if (!p) return null;
-    const sp = SPECIES[p.speciesId];
-    return { speciesId: p.speciesId, species: SPECIES_IDS.map((id) => ({ ...SPECIES[id], fallback: undefined, personality: undefined, portrait: service.lookFor(id, 'daily') })), look: service.lookFor(sp.id, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
+    // her character's own look in her own wardrobe's daily outfit
+    return { speciesId: p.speciesId, characterId: p.characterId, name: (service.characterList().find((e) => e.id === p.characterId) || {}).name || SPECIES[p.speciesId].nameZh, species: speciesInfo(), look: service.lookFor(p.characterId, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
   ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
   ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
@@ -850,6 +877,7 @@ app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   packStore = new PackStore();
   packStore.serve();
+  catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a

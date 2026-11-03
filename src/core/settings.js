@@ -7,6 +7,10 @@ const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
 const framingLib = require('./framing');
 const hotkeyLib = require('./hotkey');
 
+// a character id (core/characters.js: a pack id or `<base>-clips`), or an old per-persona id (2–20 letters)
+const CHARACTER_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
+const CHARACTER_MODEL = 2;
+
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
 
@@ -84,7 +88,7 @@ const UPDATE = { autoCheck: true };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -168,22 +172,30 @@ function normalizeSettings(raw) {
   s.adultContent = s.ageConfirmed && s.adultContent === true;
   s.petScaleSet = typeof r.petScaleSet === 'boolean' ? r.petScaleSet : typeof r.petScale === 'number' && clampScale(r.petScale) !== OLD_DEFAULT_SCALE;
   s.petScale = s.petScaleSet ? clampScale(s.petScale) : PET_SCALE.default;
-  // the pet pack chosen per character ({ dafeiyu: 'dafeiyu-pixel' }); unknown packs fall back when looked up
-  const ap = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
-  s.appearance = Object.fromEntries(Object.entries(ap).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9][a-z0-9-]{2,39}$/.test(v)));
+  // 角色模型 (T-2764, core/character-migrate.js): 2 = every look is a character of its own. A file without the
+  // mark is from before (it still has `appearance`, the 形象包 chosen per persona) and is migrated once when
+  // PetService loads it; a new file (nothing saved yet) starts at 2.
+  s.characterModel = Number.isInteger(r.characterModel) ? r.characterModel : raw && typeof raw === 'object' && Object.keys(raw).length ? 1 : CHARACTER_MODEL;
+  const lookMap = (v) => Object.fromEntries(Object.entries(v && typeof v === 'object' && !Array.isArray(v) ? v : {}).filter(([k, x]) => /^[a-z]{2,20}$/.test(k) && typeof x === 'string' && CHARACTER_ID_RE.test(x)));
+  if (s.characterModel < CHARACTER_MODEL) s.appearance = lookMap(s.appearance); // read by the migration only
+  else delete s.appearance;
+  // the old choice, kept read-only after the migration (a pet.json restored from before still finds it)
+  if (s.legacyAppearance !== undefined) s.legacyAppearance = lookMap(s.legacyAppearance);
   // the model chosen per character ({ claude: 'lobehub:claude-sonnet-5-5' }); one she may not use falls back when looked up
   const md = s.models && typeof s.models === 'object' ? s.models : {};
   s.models = Object.fromEntries(Object.entries(md).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string' && /^[a-z0-9-]{2,40}:[A-Za-z0-9._-]{1,80}$/.test(v)));
   // the 个性化设定 per character ({ claude: '叫我老板' }); empty ones are dropped
   const sr = s.systemRoles && typeof s.systemRoles === 'object' ? s.systemRoles : {};
   s.systemRoles = Object.fromEntries(Object.entries(sr).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string').map(([k, v]) => [k, cleanSystemRole(v)]).filter(([, v]) => v));
-  // 取景 per character ({ claude: 'half' }); no entry = follow the pack / the global prefs.framing
+  // 取景 per character ({ 'claude-pixel': 'half' }); no entry = follow the pack / the global prefs.framing
   s.framings = framingLib.normalizeFramings(s.framings);
   s.prefs = normalizePrefs(s.prefs);
-  // a VRM pack's posture (core/vrm-library.js POSTURES, or 'auto' = the VRM director decides): { packId: posture }
+  // a VRM character's posture (core/vrm-library.js POSTURES, or 'auto' = the VRM director decides): { id: posture }
+  // (her character id is her pack's id)
   s.vrmPostures = normalizeVrmPostures(s.vrmPostures);
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
-  s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
+  // (before characterModel 2 they were persona ids: `claude`; they are mapped by the migration)
+  s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && CHARACTER_ID_RE.test(v)))].slice(0, MAX_VISITORS);
   s.api = normalizeApi(s.api);
   // 语音: the engine that reads (core/tts.js), the fallback and the endpoints; the keys are in tts-keys.json
   // an engine nobody picked follows the character ('auto'): settings from before 'auto' saved 'fish' regardless
@@ -237,6 +249,14 @@ class SettingsStore {
     }
   }
 
+  // A copy of settings.json as it is now, made once (before a migration rewrites it).
+  backupOnce(name) {
+    const to = path.join(path.dirname(this.file), name);
+    try {
+      if (fs.existsSync(this.file) && !fs.existsSync(to)) fs.copyFileSync(this.file, to);
+    } catch { /* a backup is best effort */ }
+  }
+
   save(s) {
     const tmp = `${this.file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(normalizeSettings(s), null, 2));
@@ -252,9 +272,13 @@ class MemorySettingsStore {
   load() {
     return normalizeSettings(this.data);
   }
+  backupOnce(name) {
+    if (!this.backups) this.backups = {};
+    if (this.data && !this.backups[name]) this.backups[name] = JSON.parse(JSON.stringify(this.data));
+  }
   save(s) {
     this.data = normalizeSettings(s);
   }
 }
 
-module.exports = { DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

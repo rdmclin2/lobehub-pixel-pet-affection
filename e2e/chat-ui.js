@@ -120,7 +120,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
     const pickModel = async (key) => {
       await openModels();
       await admin.click(`[role="option"] [data-model-option="${key}"]`);
-      await until((k) => window.petAdmin.state().then((s) => (s.roster.find((c) => c.id === 'claude') || {}).model?.current === k), key, 8000, `model ${key} chosen`);
+      await until((k) => window.petAdmin.state().then((s) => (s.roster.find((c) => c.base === 'claude') || {}).model?.current === k), key, 8000, `model ${key} chosen`);
     };
 
     // a step that failed half-way may have left another page open: the next one starts from her chat
@@ -150,7 +150,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
 
       await step(S, 'U1 左侧 rail 有「聊天」：点进去是角色列表（一个角色一个会话），默认打开桌面上的当前角色；原有入口不变', async () => {
         const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => [a.textContent.trim(), a.getAttribute('href')]));
-        assert.deepEqual(rail.map((r) => r[0]), ['小屋', '角色', '玩法', '设置', '聊天']);
+        assert.deepEqual(rail.map((r) => r[0]), ['小屋', '角色', '商店', '玩法', '设置', '聊天']);
         await admin.click('[data-rail="chat"]');
         await until(() => location.hash.startsWith('#/chat') && !!document.querySelector('[data-chat-page] [data-chat-textarea]'), null, 10000, 'chat page');
         assert.equal(await admin.getAttribute('[data-rail="chat"]', 'aria-current'), 'page');
@@ -195,7 +195,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
 
       let claudeModels = null;
       await step(S, 'U3 模型选择器：只有她所属厂商的模型，与她的角色页同一个值；切换后她的 agent 换成这个模型', async () => {
-        claudeModels = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => c.id === 'claude').model;
+        claudeModels = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => c.base === 'claude').model;
         assert.ok(claudeModels.options.length >= 2, JSON.stringify(claudeModels).slice(0, 200));
         await openModels();
         const shown = await admin.$$eval('[role="option"] [data-model-option]', (els) => [...new Set(els.map((e) => e.getAttribute('data-model-option')))]);
@@ -406,7 +406,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
         await until(() => location.hash === '#/chat/claude', null, 8000, 'claude');
         await until((n) => document.querySelectorAll('[data-chat-page] [data-role]').length >= Math.min(n, 40), claudeCount, 8000, 'claude history');
         const back = await bubbles();
-        const after = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => c.id === 'claude').model.current;
+        const after = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => c.base === 'claude').model.current;
         assert.equal(after, claudeModels.options.find((o) => o.vision).key, 'switching characters changes nobody\'s model');
         assert.equal(await admin.evaluate(() => [...document.querySelectorAll('.ant-message, [class*="toast"]')].some((e) => /找不到/.test(e.innerText))), false, 'no error toast');
         assert.match(back[back.length - 1].text, /第 40 行|滚动测试/);

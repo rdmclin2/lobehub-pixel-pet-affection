@@ -266,6 +266,10 @@ const modelLabel = (row: RosterRow | undefined, key: string | null | undefined) 
   return (o?.label as string | undefined) ?? key.split(':').pop() ?? key;
 };
 
+/** Her row in the roster for a conversation (her base): the look she is now, else her first one. */
+const rowOf = (roster: RosterRow[], base: string | null): RosterRow | undefined =>
+  base ? (roster.find((c) => c.base === base && c.current) ?? roster.find((c) => c.base === base)) : undefined;
+
 const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) => (
   <span className={styles.avatar} style={{ height: size, width: size }}>
     {row ? <SpriteStage animate={false} height={size} name={row.nameZh} preview={row.preview} silhouette={!row.met} /> : null}
@@ -293,12 +297,16 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const liveRef = useRef<Live | null>(null);
   liveRef.current = live;
 
-  // whose conversation: the one in the address, else the companion on the desktop
-  const fallbackId = characters.find((c) => c.current)?.id ?? roster.find((c) => c.current)?.id ?? characters[0]?.id ?? null;
-  const activeId = id && roster.some((c) => c.id === id) ? id : fallbackId;
+  // whose conversation: the one in the address, else the companion on the desktop. A conversation is her base's
+  // (T-2764: 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 share one agent and chat), so a character id in the address
+  // (`#/chat/dafeiyu-live2d`) means her base's conversation
+  const baseOf = (x: string | null | undefined) => (x ? (roster.find((c) => c.id === x)?.base ?? x) : null);
+  const fallbackId = characters.find((c) => c.current)?.id ?? baseOf(roster.find((c) => c.current)?.id) ?? characters[0]?.id ?? null;
+  const asked = baseOf(id);
+  const activeId = asked && (characters.some((c) => c.id === asked) || roster.some((c) => c.base === asked)) ? asked : fallbackId;
   const activeRef = useRef<string | null>(activeId);
   activeRef.current = activeId;
-  const row = roster.find((c) => c.id === activeId);
+  const row = rowOf(roster, activeId);
   const who = characters.find((c) => c.id === activeId);
   const met = !!row?.met;
   const name = who?.name ?? row?.nameZh ?? '';
@@ -638,7 +646,10 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
 
   const list = characters.length
     ? characters
-    : roster.map((c) => ({ count: 0, current: c.current, id: c.id, lastAt: null, met: !!c.met, name: c.met?.name ?? c.nameZh, preview: '' }));
+    : [...new Set(roster.map((c) => c.base))].map((b) => {
+        const c = rowOf(roster, b) as RosterRow;
+        return { count: 0, current: roster.some((x) => x.base === b && x.current), id: b, lastAt: null, met: !!c.met, name: c.met?.name ?? c.nameZh, preview: '' };
+      });
   const ordered = [...list].sort((a, b) => Number(b.met) - Number(a.met) || Number(b.current) - Number(a.current) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
 
   return (
@@ -652,7 +663,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         </Flexbox>
         <div className={styles.sideList} data-character-list>
           {ordered.map((c) => {
-            const r = roster.find((x) => x.id === c.id);
+            const r = rowOf(roster, c.id);
             return (
               <div
                 role="button"

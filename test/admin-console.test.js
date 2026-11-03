@@ -64,8 +64,8 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 19, '19 pages under 5 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765)');
-  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings', 'chat'], 'the rail holds five places (four + 聊天, R-05), not every page');
+  assert.equal(navPages.length, 20, '20 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog)');
+  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
   for (const f of schema.FIELDS) {
@@ -79,6 +79,22 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   // describe() is plain data for the window
   const d = JSON.parse(JSON.stringify(schema.describe()));
   assert.equal(d.fields.length, schema.FIELDS.length);
+});
+
+test('T-2787: no 形象包 wording left in the console copy (every look is a character of her own since T-2764)', () => {
+  // page titles / descriptions, nav, every field's label, card, description and option labels as the console shows them
+  const texts = [
+    ...Object.entries(schema.PAGES).flatMap(([k, p]) => [`${k}: ${p.title}`, `${k}: ${p.description || ''}`]),
+    ...schema.NAV.flatMap((g) => [g.label || '', ...g.items.map((i) => `${i.page}: ${i.label || ''}`)]),
+    ...schema.RAIL.map((r) => `${r.key}: ${r.label || ''}`),
+    ...schema.FIELDS.flatMap((f) => [`${f.key}: ${f.label}`, `${f.key}: ${f.card}`, `${f.key}: ${f.desc || ''}`, ...(f.options || []).map((o) => `${f.key}: ${o.label || ''}`)]),
+  ];
+  assert.ok(texts.length > 100, `${texts.length} strings`);
+  assert.deepEqual(texts.filter((t) => /形象包|跟随形象包|set-appearance|setAppearance/.test(t)), []);
+  // the pages that used to say it now speak of characters, outfits and 角色包
+  assert.match(schema.PAGES.characters.description, /给她换衣服/);
+  assert.match(schema.field('prefs.framing').desc, /角色包也可以自带默认取景/);
+  assert.match(schema.field('characterModel').desc, /每套形象成为一位独立角色/);
 });
 
 test('schema.validate: types, ranges, options, URLs and read-only items', () => {
@@ -318,8 +334,12 @@ test('好感度 rules: the daily cap and the decay switch apply to scoring at on
 
 test('roster: before the first hatch every character is listed from the character files, none current', () => {
   const rows = buildRoster(null, { ttsStatus: { packs: [] } });
-  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
-  assert.ok(rows.every((r) => !r.current && !r.met));
+  // T-2764: one row per character; only the five pixel characters ship with the app (core/catalog.js), the
+  // other looks (Live2D, 旧版像素, 原版动画, 成年版 …) are downloaded first and are not characters before that
+  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+  assert.deepEqual([...new Set(rows.map((r) => r.base))], ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
+  assert.ok(rows.every((r) => !r.current && !r.met && r.source === 'builtin' && r.kind === 'sprites'));
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-pixel').name, '大肥鱼 · 像素');
 });
 
 test('roster rows: name, preview, type, source, voice pack, model and the current mark', async () => {
@@ -327,9 +347,12 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   await ctx.ready;
   const settings = { ...ctx.svc.settingsView(), ttsStatus: { packs: [{ id: 'grok-minimax', name: '格萝可语音', character: 'grok', engine: 'minimax', lines: 120, builtIn: true, credit: 'MiniMax' }] } };
   const rows = buildRoster(ctx.svc.view(), settings);
-  const grok = rows.find((r) => r.id === 'grok');
+  const grok = rows.find((r) => r.id === 'grok-pixel');
   assert.equal(grok.current, true);
-  assert.equal(grok.displayName, '「小格」格萝可（xAI）');
+  assert.equal(grok.base, 'grok');
+  assert.equal(grok.displayName, '「小格」格萝可 · 像素（xAI）');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').met.name, '小格', 'her other look shares her base');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').voicePack.id, 'grok-minimax', 'so does her 语音包');
   assert.equal(grok.kind, 'sprites');
   assert.equal(grok.kindLabel, '像素');
   assert.equal(grok.source, 'builtin');
@@ -340,32 +363,38 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   assert.deepEqual(grok.voicePack, { id: 'grok-minimax', name: '格萝可语音', engine: 'minimax', engineLabel: 'MiniMax', lines: 120, builtIn: true, credit: 'MiniMax' });
   assert.equal(grok.met.name, '小格');
   assert.equal(rows.filter((r) => r.current).length, 1);
-  const fish = rows.find((r) => r.id === 'dafeiyu');
+  const fish = rows.find((r) => r.id === 'dafeiyu-pixel');
   assert.equal(fish.met, null);
   assert.equal(fish.voicePack, null);
   // switching (the admin calls the same switch-character) moves the mark
   await ctx.svc.switchCharacter('claude', { name: '小克' });
   const after = buildRoster(ctx.svc.view(), settings);
-  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude']);
+  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude-pixel']);
 });
 
 test('roster: a video character (大肥鱼 clips) gets her idle clip as the preview', async () => {
   const ctx = setup({ hatch: true });
   await ctx.ready;
-  assert.equal(ctx.svc.setAppearance('dafeiyu-clips', 'dafeiyu').ok, true);
-  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu');
+  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu-clips');
   assert.equal(fish.kind, 'video');
   assert.equal(fish.kindLabel, '视频');
   assert.equal(fish.preview.type, 'video');
-  // relative to the console page (src/admin-ui/index.html): ../renderer/assets/dafeiyu/idle.webm
-  assert.ok(fs.existsSync(path.join(ROOT, 'src', 'admin-ui', fish.preview.url)), fish.preview.url);
+  // her clips are downloaded (core/catalog.js) and served as pack://dafeiyu-clips/<clip> (src/main/packs.js)
+  assert.equal(fish.preview.url, 'pack://dafeiyu-clips/idle.webm');
+  assert.equal(fish.source, 'download');
+  assert.ok(fs.existsSync(path.join(ROOT, 'catalog', 'clips', 'dafeiyu-clips', 'idle.webm')));
 });
 
-test('外观资源 rows: built-in packs cannot be removed or exported, imported ones can', () => {
-  const { packs } = loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+test('外观资源 rows: built-in packs cannot be removed or exported, downloaded ones can be removed, imported ones both', () => {
+  const { packs } = require('../src/core/catalog').repoPacks();
   const rows = packRows(packs);
   assert.equal(rows.length, packs.size);
-  assert.ok(rows.every((r) => r.source === 'builtin' && !r.removable && !r.exportable));
+  const builtin = rows.filter((r) => r.source === 'builtin');
+  assert.deepEqual(builtin.map((r) => r.id).sort(), ['claude-pixel', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
+  assert.ok(builtin.every((r) => !r.removable && !r.exportable && r.sourceLabel === '内置'));
+  const downloaded = rows.filter((r) => r.source === 'download');
+  assert.equal(downloaded.length, rows.length - 5);
+  assert.ok(downloaded.every((r) => r.removable && !r.exportable && r.sourceLabel === '下载'));
   assert.ok(rows.some((r) => r.kind === 'live2d' && r.kindLabel === 'Live2D'));
   const user = packRows([{ id: 'my-grok', name: 'x', species: 'grok', kind: 'sprites', source: 'user', outfits: { daily: 'a.png' } }, { id: 'my-vrm', name: 'v', species: 'grok', kind: 'vrm', source: 'user', outfits: {}, vrm: { license: { redistributable: false } } }]);
   assert.deepEqual(user.map((r) => [r.id, r.removable, r.exportable]), [['my-grok', true, true], ['my-vrm', true, false]]);
@@ -384,12 +413,12 @@ test('broadcast reaches every pet window and the settings window; a per-characte
   assert.deepEqual(got.map((g) => g[0]), ['pet', 'visitor', 'admin']);
   adminAlive = false;
   assert.equal(broadcast('settings', {}), 2, 'a closed settings window is skipped');
-  // the setters main wires to the broadcast emit `update` (set-model / set-appearance / set-system-role / unlock-all)
+  // the setters main wires to the broadcast emit `update` (switch-character / set-system-role / unlock-all)
   const ctx = setup({ hatch: true });
   await ctx.ready;
   const updates = [];
   ctx.svc.on('update', (v) => updates.push(v && v.pet.speciesId));
-  ctx.svc.setAppearance('grok-classic', 'grok');
+  await ctx.svc.switchCharacter('grok-classic');
   ctx.svc.setSystemRole('叫我老板', 'grok');
   ctx.svc.unlockAll('grok');
   assert.ok(updates.length >= 3, `update events: ${updates.length}`);
@@ -486,7 +515,7 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'catalog-progress', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色
   // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
   for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
@@ -515,7 +544,8 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
   assert.match(app, /window\.pet\.openAdmin\(/);
   // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
-  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.speciesId\}` : 'topics'/);
+  // T-2764: her page is the character's (one look), e.g. characters/dafeiyu-live2d
+  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.characterId/);
   assert.match(app, /\{ label: '去设置', admin: 'asr' \}/);
   // no 高级设置 panel or her model / system-role forms either (since the console)
   for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
@@ -596,7 +626,7 @@ test('admin perf: main sends the console a state only when it changed; sprite sh
 // 前台精简 (T-2718) took the pet window's 外观 panel away; its VRM license flow lives on in the settings window.
 test('VRM import in the settings window: 导入确认 with the license before she wears it, 取消导入 removes it, 授权信息 on the card', () => {
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-vrm onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
+  assert.match(src, /data-import-vrm [^>]*onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
   assert.match(src, /cancelText="取消导入"/);
   assert.match(src, /okText="使用这个模型"/);
   assert.match(src, /await api\(\)\.removePack\(r\.pack\.id\)/, '取消导入 removes the pack again');
@@ -613,5 +643,8 @@ test('Live2D import from the settings window: main hands the new pack to the ser
   const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
   assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-live2d[\s\S]{0,600}api\(\)\.setAppearance\(r\.pack\.id, c\.id\)/);
+  // T-2764: the imported model is a new character; the console switches to her (no 形象包 to put on)
+  assert.match(src, /data-import-live2d[\s\S]{0,900}becomeNew\(r\.pack\.id/);
+  assert.match(src, /const becomeNew = async \(id: string, ok: string\) => \{\n\s+const r = await run\(api\(\)\.switchCharacter\(id\), ok\);/, 'becomeNew switches to the new character');
+  assert.doesNotMatch(src, /setAppearance/);
 });

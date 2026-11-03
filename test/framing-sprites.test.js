@@ -187,9 +187,8 @@ const WAISTS = {
   'claude-adult': 0.5, 'dafeiyu-adult': 0.52, 'gemini-adult': 0.5, 'gpt-adult': 0.5, 'grok-adult': 0.5,
   'claude-classic': 0.6, 'dafeiyu-classic': 0.72, 'gemini-classic': 0.66, 'gpt-classic': 0.6, 'grok-classic': 0.62,
 };
-test('built-in sprites packs: pack.json halfBody.waist validated and carried into the look of every outfit', () => {
-  const dir = path.join(__dirname, '..', 'src', 'renderer', 'packs');
-  const { packs } = P.loadPacks([{ dir, source: 'builtin' }]);
+test('official sprites packs (5 built-in + the downloadable ones in catalog/): pack.json halfBody.waist validated and carried into the look of every outfit', () => {
+  const { packs } = require('../src/core/catalog').repoPacks();
   const sprites = [...packs.values()].filter((p) => p.kind === 'sprites');
   assert.equal(sprites.length, 15);
   for (const p of sprites) {
