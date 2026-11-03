@@ -4,6 +4,7 @@
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
+//   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
@@ -8344,6 +8345,284 @@ async function wardrobePackScenario() {
   }
 }
 
+// ---------------------------------------------------------------- charmigrate (旧数据迁移到独立角色, T-2786)
+// A user of the 形象包 era: 当前角色 大肥鱼, 形象包 dafeiyu-pixel, in 长旗袍, 半身 取景, a VRM posture, ♥72, a
+// pack she imported herself (「我的大肥鱼」, data/packs/my-fish) and 克洛蒂 met as well in 贝雷帽画家装. The app
+// opens on the character 「大肥鱼 · 像素」 with all of it kept, a second start migrates nothing, 角色图鉴 lists
+// every look (the imported one too) as its own character, and switching characters / dressing one does not leak
+// into another. Free: fake lh, no network. Evidence in out/e2e/charmigrate/.
+async function charMigrateScenario() {
+  const S = 'charmigrate';
+  const SHOTS = path.join(OUT, 'charmigrate');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-charmig-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-charmigfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' };
+  const now = Date.now();
+  const read = (f) => fs.readFileSync(path.join(data, f), 'utf8');
+  const json = (f) => JSON.parse(read(f));
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+
+  // the imported pack: a copy of her pixel pack's daily sheet under an id and name of the owner's own
+  const mine = path.join(data, 'packs', 'my-fish');
+  const basePack = path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-pixel');
+  const m = JSON.parse(fs.readFileSync(path.join(basePack, 'pack.json'), 'utf8'));
+  fs.mkdirSync(path.join(mine, 'sheets'), { recursive: true });
+  const sheet = `sheets/mine${path.extname(m.outfits.daily)}`;
+  fs.copyFileSync(path.join(basePack, m.outfits.daily), path.join(mine, sheet));
+  const { adult: _a, halfBody: _h, ...rest } = m;
+  fs.writeFileSync(path.join(mine, 'pack.json'), JSON.stringify({ ...rest, id: 'my-fish', name: '我的大肥鱼', author: 'tester', outfits: { daily: sheet } }, null, 2));
+
+  const c0 = { createdAt: now - 1e6, hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, personaVersion: 6, seenUnlocks: [], dailyCounts: {}, lastAffectionAt: {}, topicsToday: [] };
+  const petBefore = { schemaVersion: 3, speciesId: 'dafeiyu', createdAt: now - 1e6, owner: 'me', space: { workspaceId: null, name: '个人空间' }, characters: {
+    dafeiyu: { ...c0, speciesId: 'dafeiyu', name: '小鱼', agentId: 'agt_FISH', topicId: 'tpc_FISH', affection: 72, relStage: 'flirty', peakStage: 'flirty', equippedOutfit: 'qipao', lastSafeOutfit: 'qipao' },
+    claude: { ...c0, speciesId: 'claude', name: '克克', agentId: 'agt_CLAUDE', topicId: 'tpc_CLAUDE', affection: 20, relStage: 'familiar', peakStage: 'familiar', equippedOutfit: 'beret', lastSafeOutfit: 'beret' },
+  } };
+  const settingsBefore = { ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false,
+    appearance: { dafeiyu: 'dafeiyu-pixel', claude: 'claude-pixel' },
+    framings: { dafeiyu: 'half' },
+    vrmPostures: { 'vrm-dafeiyu-mine': 'sit.rest' },
+    visitors: ['claude'],
+    models: { dafeiyu: 'lobehub:deepseek-chat' },
+    systemRoles: { dafeiyu: '叫我老板' } };
+  fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(petBefore, null, 2));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settingsBefore, null, 2));
+  record('m0-old-format-input.json', JSON.stringify({ 'settings.json': settingsBefore, 'pet.json': petBefore, 'packs/my-fish/pack.json': json('packs/my-fish/pack.json') }, null, 2));
+
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (name) => {
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true'; }, name));
+    await admin.waitForTimeout(250);
+  };
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  const petLook = () => page.evaluate(() => ({ kind: document.getElementById('pet-body').dataset.kind, outfit: document.getElementById('char-wrap').dataset.outfit }));
+  const cards = (id) => admin.$$eval(`[data-outfits="${id}"] [data-outfit]`, (els) => els.map((e) => ({ id: e.dataset.outfit, equipped: e.dataset.equipped === 'true', locked: e.dataset.locked === 'true', worn: e.querySelector('[data-worn]')?.textContent || '', equip: e.querySelector('[data-equip]')?.textContent || '', picture: !!e.querySelector('canvas, img, video') })));
+  const wardrobes = () => Object.fromEntries(Object.entries(json('pet.json').characters).map(([b, c]) => [b, c.wardrobes]));
+  const openAdmin = async () => {
+    admin = await openAdminWindow(app, page, 'overview');
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+  };
+  const switchTo = async (id) => {
+    await go(`/characters/${id}`);
+    await attached(`[data-switch="${id}"]`);
+    await admin.click(`[data-switch="${id}"]`);
+    await until(`${id} current`, async () => (await call('state')).view.pet.characterId === id);
+    await tab('装扮');
+  };
+  const viewNow = async () => { const v = (await call('state')).view; return { characterId: v.pet.characterId, name: v.character && v.character.name, packId: v.look && v.look.packId, outfit: v.outfit, affection: v.pet.affection, agentId: v.pet.agentId, petName: v.pet.name }; };
+
+  let petAfter1 = null;
+  let settingsAfter1 = null;
+  try {
+    await step(S, 'M1 旧数据（大肥鱼 + 形象包 dafeiyu-pixel）启动后进入独立角色「大肥鱼 · 像素」，衣服/取景/VRM 姿势/好感度/导入包/模型/个性化设定都在', async () => {
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 15000 });
+      await page.waitForTimeout(1200);
+      const v = await view(page);
+      assert.equal(v.pet.characterId, 'dafeiyu-pixel', '大肥鱼 + dafeiyu-pixel → 「大肥鱼 · 像素」');
+      assert.equal(v.character.name, '大肥鱼 · 像素');
+      assert.equal(v.look.packId, 'dafeiyu-pixel');
+      assert.equal(v.outfit, 'qipao', 'she still wears 长旗袍');
+      assert.equal(v.pet.affection, 72);
+      assert.equal(v.pet.agentId, 'agt_FISH');
+      assert.equal(v.pet.name, '小鱼');
+      const pl = await petLook();
+      assert.deepEqual(pl, { kind: 'sprites', outfit: 'qipao' });
+      await hover(page);
+      const meta = await page.textContent('#meta');
+      assert.match(meta, /小鱼 · 大肥鱼 · 像素 · 知己 ♥72/);
+      petAfter1 = json('pet.json');
+      settingsAfter1 = json('settings.json');
+      assert.equal(petAfter1.characterModel, 2);
+      assert.equal(petAfter1.characterId, 'dafeiyu-pixel');
+      assert.equal(petAfter1.speciesId, 'dafeiyu');
+      assert.deepEqual(petAfter1.characters.dafeiyu.wardrobes['dafeiyu-pixel'], { equippedOutfit: 'qipao', lastSafeOutfit: 'qipao' });
+      assert.ok(petAfter1.characters.dafeiyu.wardrobes['my-fish'], 'the imported pack, a character of hers, gets a wardrobe too');
+      assert.deepEqual(petAfter1.characters.claude.wardrobes['claude-pixel'], { equippedOutfit: 'beret', lastSafeOutfit: 'beret' });
+      assert.equal(petAfter1.characters.dafeiyu.affection, 72);
+      assert.equal(settingsAfter1.characterModel, 2);
+      assert.equal(settingsAfter1.appearance, undefined, 'the old key is gone');
+      assert.deepEqual(settingsAfter1.legacyAppearance, settingsBefore.appearance, 'kept read-only for an older pet.json');
+      assert.equal(settingsAfter1.framings['dafeiyu-pixel'], 'half', '取景 for 「大肥鱼 · 像素」');
+      assert.equal(settingsAfter1.framings['my-fish'], 'half', '…and for each of her characters, the imported one too');
+      assert.equal(settingsAfter1.framings.dafeiyu, undefined);
+      assert.deepEqual(settingsAfter1.vrmPostures, settingsBefore.vrmPostures);
+      assert.deepEqual(settingsAfter1.visitors, ['claude-pixel']);
+      assert.deepEqual([settingsAfter1.models, settingsAfter1.systemRoles], [settingsBefore.models, settingsBefore.systemRoles]);
+      assert.ok(fs.existsSync(path.join(data, 'packs', 'my-fish', 'pack.json')), 'the imported pack is still there');
+      assert.deepEqual(json('settings.characters.bak.json'), settingsBefore, 'settings backed up as they were');
+      assert.deepEqual(json('pet.characters.bak.json'), petBefore, 'pet.json backed up as it was');
+      const ch = v.characters.find((x) => x.id === 'dafeiyu-pixel');
+      assert.equal(ch.framing, 'half');
+      const mineCh = v.characters.find((x) => x.id === 'my-fish');
+      assert.ok(mineCh && mineCh.name === '大肥鱼 · 我的大肥鱼' || mineCh.name === '我的大肥鱼', JSON.stringify(mineCh && mineCh.name));
+      record('m1-migrated-output.json', JSON.stringify({ 'settings.json': settingsAfter1, 'pet.json': petAfter1, 'settings.characters.bak.json (== input)': 'deepEqual ok', 'pet.characters.bak.json (== input)': 'deepEqual ok', view: { characterId: v.pet.characterId, character: v.character.name, look: v.look.packId, outfit: v.outfit, affection: v.pet.affection, agentId: v.pet.agentId, name: v.pet.name, framing: ch.framing, meta } }, null, 2));
+      const s = await petShot('m1-pet-window-migrated');
+      return `characterId ${v.pet.characterId} (${v.character.name}); outfit ${v.outfit}; ♥${v.pet.affection}; agent ${v.pet.agentId}; meta 「${meta}」; framings ${JSON.stringify(settingsAfter1.framings)}; vrmPostures ${JSON.stringify(settingsAfter1.vrmPostures)}; imported → ${mineCh.id} 「${mineCh.name}」; ${s}`;
+    }, () => page);
+
+    await step(S, 'M2 再次启动：没有二次迁移 —— settings.json 字节不变，pet.json 角色/衣柜/好感度不变，备份不被覆盖', async () => {
+      await app.close();
+      const s1 = read('settings.json');
+      const p1 = json('pet.json');
+      const bak1 = [read('settings.characters.bak.json'), read('pet.characters.bak.json')];
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 15000 });
+      const v = await view(page);
+      assert.equal(v.pet.characterId, 'dafeiyu-pixel');
+      assert.equal(v.outfit, 'qipao');
+      assert.equal(v.pet.affection, 72);
+      const s2 = read('settings.json');
+      const p2 = json('pet.json');
+      assert.equal(s2, s1, 'settings.json byte for byte');
+      const strip = (p) => { const { lastTickAt: _t, ...r } = p; const cs = {}; for (const [k, c] of Object.entries(p.characters)) { const { lastTickAt: _x, hunger: _hu, mood: _mo, energy: _en, ...cr } = c; cs[k] = cr; } return { ...r, characters: cs }; };
+      assert.deepEqual(strip(p2), strip(p1), 'pet.json the same but for the clock and needs the heartbeat moves');
+      assert.deepEqual([read('settings.characters.bak.json'), read('pet.characters.bak.json')], bak1, 'the backups are not overwritten');
+      // the migration itself, run once more on what is on disk now: nothing to change
+      const P = require('../src/core/packs');
+      const CM = require('../src/core/character-migrate');
+      const { packs } = P.loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }, { dir: path.join(data, 'packs'), source: 'user' }]);
+      const again = CM.migrateAll({ settings: JSON.parse(s2), pet: p2, packs });
+      assert.equal(again.settingsChanged, false);
+      assert.equal(again.petChanged, false);
+      assert.deepEqual(again.pet.characters.dafeiyu.wardrobes, p1.characters.dafeiyu.wardrobes);
+      const dump = [
+        `settings.json 1st start sha-like length ${s1.length}, 2nd start ${s2.length}, identical: ${s1 === s2}`,
+        `pet.json characterId ${p1.characterId} → ${p2.characterId}; characterModel ${p1.characterModel} → ${p2.characterModel}`,
+        `wardrobes 1st: ${JSON.stringify(Object.fromEntries(Object.entries(p1.characters).map(([b, c]) => [b, c.wardrobes])))}`,
+        `wardrobes 2nd: ${JSON.stringify(Object.fromEntries(Object.entries(p2.characters).map(([b, c]) => [b, c.wardrobes])))}`,
+        `affection 1st/2nd: ${p1.characters.dafeiyu.affection}/${p2.characters.dafeiyu.affection}`,
+        `backups unchanged: true`,
+        `migrateAll(on-disk files again) → settingsChanged=${again.settingsChanged} petChanged=${again.petChanged}`,
+      ].join('\n');
+      record('m2-idempotent-second-start.txt', `${dump}\n`);
+      return `${dump.replace(/\n/g, '; ')}; ${await petShot('m2-pet-window-second-start')}`;
+    }, () => page);
+
+    await step(S, 'M3 角色图鉴：每个原形象包都是独立角色卡（大肥鱼 · 像素 / Live2D / 导入的「我的大肥鱼」…），没有「形象包」字样', async () => {
+      await openAdmin();
+      await go('/characters');
+      await attached('[data-row="dafeiyu-pixel"]');
+      await attached('[data-row="my-fish"]');
+      await until('roster cards drawn', () => admin.evaluate(() => [...document.querySelectorAll('[data-roster] [data-row]')].every((r) => !!r.querySelector('[data-drawn]'))), 60000);
+      const rows = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, text: e.innerText.replace(/\s+/g, ' ').trim() })));
+      const ids = rows.map((r) => r.id);
+      for (const id of ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-classic', 'my-fish', 'claude-pixel', 'claude-classic']) assert.ok(ids.includes(id), `${id} is a card: ${ids.join(',')}`);
+      const text = await admin.innerText('[data-admin-page]');
+      assert.ok(!text.includes('形象包'), 'no 形象包 on 角色图鉴');
+      record('m3-roster.txt', `${rows.map((r) => `${r.id}\t${r.kind}\t${r.text}`).join('\n')}\n\n--- page innerText ---\n${text}\n`);
+      return `${rows.length} cards: ${ids.join(', ')}; ${await shot('m3-roster-after-migration')}`;
+    }, () => admin);
+
+    await step(S, 'M4「大肥鱼 · 像素」的衣柜是卡片列表，迁移过来的长旗袍「正在穿」；穿上 针织围巾套装 后桌宠换装', async () => {
+      await go('/characters/dafeiyu-pixel');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="qipao"][data-equipped="true"]');
+      const c = await cards('dafeiyu-pixel');
+      assert.ok(c.length >= 10 && c.every((x) => x.picture), `${c.length} cards with pictures`);
+      assert.equal(c.find((x) => x.equipped).id, 'qipao');
+      assert.equal(c.find((x) => x.id === 'qipao').worn, '正在穿');
+      await admin.locator('[data-outfits="dafeiyu-pixel"] [data-outfit="qipao"]').scrollIntoViewIfNeeded();
+      await admin.waitForTimeout(800);
+      const s0 = await shot('m4a-pixel-wardrobe-cards-qipao-worn');
+      const p0 = await petShot('m4a-pet-qipao');
+      await admin.locator('[data-outfits="dafeiyu-pixel"] [data-equip="scarf"]').scrollIntoViewIfNeeded();
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-equip="scarf"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 8000 });
+      await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="scarf"][data-equipped="true"]');
+      await page.waitForTimeout(600);
+      assert.equal(wardrobes().dafeiyu['dafeiyu-pixel'].equippedOutfit, 'scarf');
+      const s1 = await shot('m4b-pixel-wardrobe-scarf-worn');
+      const p1 = await petShot('m4b-pet-scarf');
+      return `${c.length} cards: ${c.map((x) => `${x.id}${x.equipped ? '[正在穿]' : x.locked ? '[未解锁]' : ''}`).join(' ')}; 穿上 scarf → pet window ${JSON.stringify(await petLook())}; ${[s0, p0, s1, p1].join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'M5 切换到导入的「我的大肥鱼」：同一个她（agent/好感度共享），衣柜只有她自己的日常服；像素版仍穿着围巾', async () => {
+      await switchTo('my-fish');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
+      await attached('[data-outfits="my-fish"] [data-outfit="daily"][data-equipped="true"]');
+      const v = await viewNow();
+      assert.equal(v.packId, 'my-fish');
+      assert.equal(v.outfit, 'daily');
+      assert.equal(v.agentId, 'agt_FISH', 'same agent as 「大肥鱼 · 像素」');
+      assert.equal(v.affection, 72, 'same affection');
+      const c = await cards('my-fish');
+      assert.deepEqual(c.map((x) => x.id), ['daily'], 'only the outfits her own pack has');
+      assert.equal(wardrobes().dafeiyu['dafeiyu-pixel'].equippedOutfit, 'scarf', 'the pixel character keeps her scarf');
+      await page.waitForTimeout(800);
+      return `view ${JSON.stringify(v)}; cards ${c.map((x) => x.id).join(',')}; wardrobes.dafeiyu ${JSON.stringify(wardrobes().dafeiyu)}; ${await shot('m5-my-fish-wardrobe')}, ${await petShot('m5-pet-my-fish')}`;
+    }, () => admin);
+
+    await step(S, 'M6 切换到「克洛蒂 · 像素」：她自己的 agent、好感度和迁移过来的贝雷帽；穿上休闲卫衣不影响大肥鱼的衣柜', async () => {
+      await switchTo('claude-pixel');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'beret', null, { timeout: 15000 });
+      const v = await viewNow();
+      assert.equal(v.packId, 'claude-pixel');
+      assert.equal(v.agentId, 'agt_CLAUDE');
+      assert.equal(v.affection, 20);
+      assert.equal(v.outfit, 'beret', 'her migrated outfit');
+      await attached('[data-outfits="claude-pixel"] [data-outfit="beret"][data-equipped="true"]');
+      const before = await petShot('m6a-pet-claude-beret');
+      await admin.locator('[data-outfits="claude-pixel"] [data-equip="casual"]').scrollIntoViewIfNeeded();
+      await admin.click('[data-outfits="claude-pixel"] [data-equip="casual"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'casual', null, { timeout: 8000 });
+      const w = wardrobes();
+      assert.equal(w.claude['claude-pixel'].equippedOutfit, 'casual');
+      assert.equal(w.dafeiyu['dafeiyu-pixel'].equippedOutfit, 'scarf', 'not touched');
+      assert.equal(w.dafeiyu['my-fish'].equippedOutfit !== 'beret', true);
+      assert.ok(!(await cards('claude-pixel')).some((x) => x.id === 'qipao' && x.equipped), 'no 大肥鱼 outfit worn here');
+      await page.waitForTimeout(600);
+      return `view ${JSON.stringify(v)} → casual; wardrobes ${JSON.stringify({ claude: w.claude['claude-pixel'], 'dafeiyu-pixel': w.dafeiyu['dafeiyu-pixel'], 'my-fish': w.dafeiyu['my-fish'] })}; ${before}, ${await shot('m6-claude-wardrobe-casual')}, ${await petShot('m6b-pet-claude-casual')}`;
+    }, () => admin);
+
+    await step(S, 'M7 回到「大肥鱼 · 像素」：还是围巾、♥72、agt_FISH；没有控制台错误', async () => {
+      await switchTo('dafeiyu-pixel');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 15000 });
+      const v = await viewNow();
+      assert.deepEqual([v.packId, v.outfit, v.affection, v.agentId], ['dafeiyu-pixel', 'scarf', 72, 'agt_FISH']);
+      assert.deepEqual(errors, []);
+      await page.waitForTimeout(800);
+      record('m7-final-wardrobes.json', JSON.stringify({ characterId: json('pet.json').characterId, wardrobes: wardrobes(), framings: json('settings.json').framings }, null, 2));
+      return `view ${JSON.stringify(v)}; console errors: none; ${await shot('m7-pixel-back-scarf')}, ${await petShot('m7-pet-pixel-scarf')}`;
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------- admincov (配置后台覆盖度)
 // docs/admin-console-design.md §12: the settings window lists every character with every kind of pack
 // (built-in pixel / 全动态 / Live2D, imported 图片 / Live2D / VRM), filters by kind, shows each detail tab
@@ -9266,6 +9545,7 @@ async function adminScenario() {
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
+  if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
