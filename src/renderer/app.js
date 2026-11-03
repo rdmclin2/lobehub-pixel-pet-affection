@@ -306,8 +306,15 @@ function drawSprite(s, now) {
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
-  const crop = s.pet ? spriteCrop(s, now) : null;
-  const whole = !crop || (crop.sx === 0 && crop.sy === 0 && crop.sw === w && crop.sh === h);
+  const base = s.pet ? spriteCrop(s, now) : null;
+  const whole = !base || (base.sx === 0 && base.sy === 0 && base.sw === w && base.sh === h);
+  // 半身: a frame drawn floating takes the crop up with her (core/framing.js spriteLift), eased in with the glide
+  s.lift = 0;
+  if (!whole && s.half && s.sheet.ref) {
+    const progress = Math.min(1, Math.max(0, (h - base.sh) / Math.max(1e-6, h - s.half.sh)));
+    s.lift = PF.spriteLift(s.sheet.ref, spriteCellBottom(s, a.row, a.col + i), { w, h }, { pixelated: !!look.pixelated }) * progress;
+  }
+  const crop = s.lift ? { ...base, sy: base.sy - s.lift } : base;
   if (whole) ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
   else {
     // 半身: only the crop of this cell, clipped to it (the rest of the sheet is the neighbouring frames)
@@ -326,8 +333,11 @@ function drawSprite(s, now) {
     if (d.cut !== cut) d.cut = cut;
     const band = half ? s.half.source : '';
     if (d.band !== band) d.band = band;
-    const cr = whole ? '' : [crop.sx, crop.sy, crop.sw, crop.sh].map((v) => Math.round(v * 10) / 10).join(',');
+    // data-crop: the crop for her standing frames; data-lift: how far it is moved up for this (floating) frame
+    const cr = whole ? '' : [base.sx, base.sy, base.sw, base.sh].map((v) => Math.round(v * 10) / 10).join(',');
     if (d.crop !== cr) d.crop = cr;
+    const lift = s.lift ? String(Math.round(s.lift * 10) / 10) : '0';
+    if (d.lift !== lift) d.lift = lift;
   }
 }
 // The desktop pet's sprite canvas for its framing (core/framing.js spriteCanvas): hard pixel art in 半身 gets a
@@ -404,11 +414,40 @@ function spriteRefOf(s) {
   e.ref = PF.spriteRef(boxes, { w: fw, h: fh });
   return e.ref;
 }
+// Her soles in one frame of the sheet (frame px, exclusive): the last row with an opaque pixel, read at the size
+// spriteRefOf reads (a quarter for HD art, so a stray 1 px line does not count), once per frame and sheet.
+let cellProbe = null;
+function spriteCellBottom(s, row, col) {
+  const e = s.sheet;
+  const key = `${row}:${col}`;
+  if (!e.cells) e.cells = new Map();
+  if (e.cells.has(key)) return e.cells.get(key);
+  const img = e.src;
+  const { look, k } = s;
+  const fw = look.frame.width;
+  const fh = look.frame.height;
+  const q = fw >= 400 ? 4 / k : 1;
+  const cw = Math.max(1, Math.round(fw / k / q));
+  const ch = Math.max(1, Math.round(fh / k / q));
+  let bottom = NaN;
+  try {
+    if (!cellProbe) cellProbe = document.createElement('canvas');
+    cellProbe.width = cw;
+    cellProbe.height = ch;
+    const ctx = cellProbe.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(img, (col * fw) / k, (row * fh) / k, fw / k, fh / k, 0, 0, cw, ch);
+    const data = ctx.getImageData(0, 0, cw, ch).data;
+    for (let y = ch - 1; y >= 0 && !Number.isFinite(bottom); y--) for (let x = 0; x < cw; x++) if (data[(y * cw + x) * 4 + 3] >= SPRITE_ALPHA) { bottom = (y + 1) * (fh / ch); break; }
+  } catch { /* a sheet that cannot be read back: no lift */ }
+  e.cells.set(key, bottom);
+  return bottom;
+}
 // petFx.sprite(): what the desktop pet's sprite canvas draws (e2e)
 function spriteDebug(s) {
   return {
     packId: s.look.packId, framing: s.framing, band: s.half ? s.half.source : null, waist: s.half ? s.half.waist : null, cut: s.half ? s.half.cut : 1, scale: s.half ? s.half.scale : 1,
-    ref: s.sheet.ref || null, crop: s.canvas.dataset.crop || null, canvas: [s.canvas.width, s.canvas.height], gliding: !!s.glide, pixelated: !!s.look.pixelated, action: s.cur || null,
+    ref: s.sheet.ref || null, crop: s.canvas.dataset.crop || null, lift: s.lift || 0, canvas: [s.canvas.width, s.canvas.height], gliding: !!s.glide, pixelated: !!s.look.pixelated, action: s.cur || null,
   };
 }
 // No WebGL (or a layer that would not load): show her picture instead of an empty canvas.

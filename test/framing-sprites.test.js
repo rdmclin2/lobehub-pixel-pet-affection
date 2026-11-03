@@ -204,3 +204,26 @@ test('built-in sprites packs: pack.json halfBody.waist validated and carried int
     }
   }
 });
+
+test('spriteLift: a frame drawn floating takes the half-body crop up with her; ordinary frames and lifted frames stay put', () => {
+  // dafeiyu-pixel daily: the reference soles 904, idle#1 drawn 94 px higher (soles 810)
+  const ref = { top: 194, bottom: 904, cx: 330 };
+  assert.equal(FR.SPRITE.liftMin, 0.02);
+  assert.equal(FR.SPRITE.liftMax, 0.2);
+  assert.equal(FR.spriteLift(ref, 810, HD), 94);
+  // the 1–2 px between ordinary frames (and lifted frames, soles on the floor): no move, no jitter
+  for (const b of [904, 903, 902, 895]) assert.equal(FR.spriteLift(ref, b, HD), 0);
+  // a frame below the reference never pulls the crop down
+  assert.equal(FR.spriteLift({ ...ref, bottom: 850 }, 904, HD), 0);
+  // at most liftMax of the frame (a frame drawn half empty is not followed off the canvas)
+  assert.equal(FR.spriteLift(ref, 300, HD), 0.2 * 904);
+  // pixel art: whole source px
+  assert.equal(FR.spriteLift({ top: 17, bottom: 112, cx: 41.5 }, 104.6, CLASSIC, { pixelated: true }), 7);
+  // nothing measured: no move
+  assert.equal(FR.spriteLift(ref, NaN, HD), 0);
+  assert.equal(FR.spriteLift(null, 800, HD), 0);
+  // with the lift the crop keeps her head below its top edge: the floating idle#1's head (100) vs the crop top
+  const c = FR.spriteHalfCrop(ref, { frame: HD, waist: 0.52 });
+  assert.ok(c.sy > 100, 'without the lift the crop starts below her floating head');
+  assert.ok(c.sy - FR.spriteLift(ref, 810, HD) < 100, 'with it, above');
+});

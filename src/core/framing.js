@@ -205,7 +205,7 @@
   // oddly drawn frame does not move the crop), once per sheet. docs/pixel-half-body-plan.md §3.
   // `margin`: air above her head (share of the canvas). 8% rather than HALF.margin: the top of a pixel frame often
   // holds a raised hand, a prop or a thought bubble above her head; with 8% only 1–5% of the frames poke out.
-  const SPRITE = { margin: 0.08, refActions: ['idle', 'pat', 'talk', 'look', 'sad', 'think', 'happy'], canvasH: 452 };
+  const SPRITE = { margin: 0.08, refActions: ['idle', 'pat', 'talk', 'look', 'sad', 'think', 'happy'], canvasH: 452, liftMin: 0.02, liftMax: 0.2 };
   const median = (xs) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
     if (!v.length) return NaN;
@@ -266,6 +266,20 @@
     if (x1 <= x0 || y1 <= y0) return null;
     return { src: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, dst: { x: (x0 - crop.sx) * kx, y: (y0 - crop.sy) * ky, w: (x1 - x0) * kx, h: (y1 - y0) * ky } };
   }
+  // A frame drawn floating (her soles above where the reference frames put them: an art slip, e.g. dafeiyu-pixel
+  // daily idle#1 is the whole figure 94 px higher) would leave the half-body crop with her head cut off by its top
+  // edge, every other frame. In 半身 such a frame's crop moves up with her: by how far her soles float, when that is
+  // more than SPRITE.liftMin of the frame (the 1–2 px between ordinary frames stay put: no jitter) and at most
+  // SPRITE.liftMax (a frame drawn half empty is not followed off the canvas). Frames drawn smaller with the soles
+  // on the floor (lifted) are not moved. `cellBottom`: that frame's own soles (frame px, exclusive). -> px to move
+  // the crop up (≥ 0), whole px for pixel art.
+  function spriteLift(ref, cellBottom, frame, { pixelated = false } = {}) {
+    if (!ref || !Number.isFinite(cellBottom) || !frame || !(frame.h > 0)) return 0;
+    const d = ref.bottom - cellBottom;
+    if (!(d > SPRITE.liftMin * frame.h)) return 0;
+    const v = Math.min(d, SPRITE.liftMax * frame.h);
+    return pixelated ? Math.round(v) : v;
+  }
   // two crops mixed (a switch of framing glides, eased like blendCamera)
   function blendRect(a, b, t) {
     const k = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
@@ -281,5 +295,5 @@
     return { ...pt, y: pt.y * Math.min(1, framing.cut) };
   }
 
-  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, WAIST_RANGE, HALF, HALF_BOX, L2D, SPRITE, spriteRef, spriteCanvas, spriteFull, spriteHalfCrop, spriteDrawRects, blendRect, isWaist, waistFromHead, live2dHalfBand, live2dPlacement, blendPlacement, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
+  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, WAIST_RANGE, HALF, HALF_BOX, L2D, SPRITE, spriteRef, spriteCanvas, spriteFull, spriteHalfCrop, spriteDrawRects, spriteLift, blendRect, isWaist, waistFromHead, live2dHalfBand, live2dPlacement, blendPlacement, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
 });
