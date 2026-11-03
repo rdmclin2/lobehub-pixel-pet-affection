@@ -172,7 +172,7 @@ module.exports = function live2dFrameScenarios(ctx) {
         admin = await openAdminWindow(app, page, 'behavior');
         await admin.waitForSelector('[data-path="/behavior"] [data-key="prefs.framing"]');
         const desc = await admin.evaluate(() => { const el = document.querySelector('[data-key="prefs.framing"]'); let p = el; for (let i = 0; i < 12 && p; i++) { if (/Live2D/.test(p.textContent)) return p.textContent.replace(/\s+/g, ' ').slice(0, 300); p = p.parentElement; } return null; });
-        assert.ok(desc && /VRM 和 Live2D/.test(desc), `the 取景 card says it works for Live2D: ${desc}`);
+        assert.ok(desc && /VRM、Live2D/.test(desc), `the 取景 card says it works for Live2D: ${desc}`);
         await adminShot('2-admin-behavior-full');
         const burst = gif('glide-to-half', 14, 0, null, 12);
         await pickGlobal('半身');

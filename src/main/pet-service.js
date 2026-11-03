@@ -186,9 +186,12 @@ class PetService extends EventEmitter {
         const e = characters[x.id];
         const ad = adultAllowed(this.settings, x.id);
         const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, ad), progress: state.toAffectionProgress(e, { adult: ad }) } : null;
+        const look = this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings, this._look(x.id)) : outfits.DEFAULT_OUTFIT);
         return {
           id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met,
-          look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings, this._look(x.id)) : outfits.DEFAULT_OUTFIT),
+          look,
+          // 取景: whether what she wears can be shown 半身 (core/framing.js SUPPORTED_KINDS: VRM, Live2D, sprites)
+          framingSupported: framingLib.resolveFraming(this.settings, x.id, look).supported,
           appearance: this.appearanceView(x.id),
           model: this.modelView(x.id),
           systemRole: this.settings.systemRoles[x.id] || '',
