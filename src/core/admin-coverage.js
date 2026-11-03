@@ -49,7 +49,7 @@ const VIA = {
   'preview-pet-scale': '`admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）',
   'set-local': '`admin-set` localAbilities（隐私与安全 → 成人向与本机能力 → 本机能力）',
   'get-settings': '`admin-boot` / `admin-state`（整份设置随广播推送）',
-  place: '`admin-place-pet`（玩法 → 和她互动 → 桌面上的她 → 找回桌宠）',
+  place: '`admin-place-pet`（玩法 → 和她互动 → 桌面上的她 → 找回桌宠，随后 `admin-home` 让她停下）',
   'open-admin': '这就是打开设置窗口本身',
   'set-interject': '`admin-set` interject.*（玩法 → 插个嘴）',
 };
@@ -120,7 +120,7 @@ const MENU = {
   'menu:adult': '隐私与安全 → 成人向与本机能力 → 成人向内容',
   'menu:local': '隐私与安全 → 成人向与本机能力 → 本机能力',
   'menu:actions': '玩法 → 和她互动 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`）',
-  'menu:home': '玩法 → 和她互动 → 桌面上的她 → 找回桌宠（`admin-place-pet`）',
+  'menu:home': '玩法 → 和她互动 → 桌面上的她 → 找回桌宠（`admin-place-pet` 显示并放回 + `admin-home` 停下）',
   'menu:check-update': '版本与更新 → 检查更新',
   'menu:release': '隐私与安全 → 重置与放生 → 放生并删除 agent',
   'menu:forget': '隐私与安全 → 重置与放生 → 仅重置本地',
@@ -164,10 +164,9 @@ const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
   chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
-  // 实施包 C（docs/admin-audit/03-changes.md）：聊天记录并入聊天页（C01），历史经 `admin-chat-history` 读；找回桌宠只留一处，调 placePet（C11）
+  // 实施包 C（docs/admin-audit/03-changes.md）：聊天记录并入聊天页（C01），历史经 `admin-chat-history` 读；找回桌宠只留一处（C11）
   historyList: '聊天记录并入 聊天 页（C01 / SH-02）：历史经 `admin-chat-history` 读取；通道保留给桌宠窗口与旧版兼容',
   historyGet: '同 historyList：聊天页按角色读全部历史（C01）',
-  home: '「回到右下角」与「找回桌宠」合一（C11 / TOG-04），设置窗口统一调 `admin-place-pet`',
 };
 
 const uniq = (a) => [...new Set(a)];

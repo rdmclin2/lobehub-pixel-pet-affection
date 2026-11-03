@@ -109,7 +109,6 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 - 共享文件只提交了 A 的部分：`e2e/run.js`（admin 场景断言、`adminRelease` 改走 `#/reset`、admincov B12 展开「其他引擎」、frontslim F12 / F14 / F16 / F17）、`test/admin-console.test.js`（schema 断言）、`src/core/admin-coverage.js`（隐私与安全 / 关于与数据的落位文案）；`Pages.tsx` 中 `ProactivePage` / `BehaviorPage` 归 C。
 - 依赖：A 引用 B 的 `roster-model.ts`（`resolveCharacter` / `lookName` / `groupRoster` / `detailHref`）与 C 的 `InterjectPage`。
 
-
 ---
 
 ## 实施包 B：角色模块（图鉴 / 详情 / 角色包 / 舞台）
@@ -212,7 +211,7 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 | C08 | INT-04 | 「清空记录」「删除规则」走 `askAsync`：确认后在弹窗内执行，按 `ok` 分支；失败原因写在弹窗里、弹窗不关；成功 toast 写实际条数「判断记录已清空：删除了 3 条」。规则启用 / 停用即时生效，成功不弹 toast，失败 `toast.error`「没能停用这条规则」 | C-15 <https://design.lobe.li/rules/C-15>；W-05 <https://design.lobe.li/rules/W-05>；C-17 <https://design.lobe.li/rules/C-17> | `Interject.tsx`（`clear`、`remove`、`toggle`） |
 | C09 | TOG-01 | 聊天历史读取失败（IPC 抛错）：消息区显示 `LoadFailed`「没能读取和格萝可的聊天记录」+ 原因 +「重试」，不再一直转圈或画成空对话；「查看更早的消息」失败给 toast，已显示的消息不受影响 | K-05 <https://design.lobe.li/rules/K-05>；W-04 <https://design.lobe.li/rules/W-04> | `Chat.tsx`（`loadLatest`、`loadEarlier`） |
 | C10 | TOG-03 | 「聊聊」：不再在请求前弹「开始聊了」；按钮 loading 直到她聊完，结果出来只给一条 toast（成功「格萝可在桌面上聊了「自我介绍」」/ 失败「没能聊「自我介绍」」+ 原因 + 怎么办） | K-05 <https://design.lobe.li/rules/K-05>；M-03 #1 系统状态可见 <https://design.lobe.li/models/M-03> | `Together.tsx`（`talk`） |
-| C11 | TOG-04 | 「桌面上的她」= 动作 + 找回桌宠（统一调 `placePet`，原「回到右下角」与桌宠行为页「找回桌宠」合一）；「退出」移出（A18 放到 关于与数据 →「退出应用」`data-app-quit`）；桌宠行为页删掉找回按钮；动作按钮按结果反馈（成功「她：开心」，失败「她没能…」+ 原因），点下后其余动作按钮暂时禁用 | W-07 <https://design.lobe.li/rules/W-07>；P-05 高风险单独一区 <https://design.lobe.li/rules/P-05>；M-03 #4 <https://design.lobe.li/models/M-03> | `Together.tsx`（`DeskPage`）、`Pages.tsx`（`BehaviorPage`） |
+| C11 | TOG-04 | 「桌面上的她」= 动作 + 找回桌宠（原「回到右下角」与桌宠行为页「找回桌宠」合一：先 `placePet` 显示并放回右下角，再 `home` 让她停下，被藏起来和走远两种情况都覆盖）；「退出」移出（A18 放到 关于与数据 →「退出应用」`data-app-quit`）；桌宠行为页删掉找回按钮；动作按钮按结果反馈（成功「她：开心」，失败「她没能…」+ 原因），点下后其余动作按钮暂时禁用 | W-07 <https://design.lobe.li/rules/W-07>；P-05 高风险单独一区 <https://design.lobe.li/rules/P-05>；M-03 #4 <https://design.lobe.li/models/M-03> | `Together.tsx`（`DeskPage`）、`Pages.tsx`（`BehaviorPage`） |
 | TOG-05（A11 共享件） | TOG-05 | 话题 / 桌面上的她未唤醒时用 A 包共享 `NoPet`（带「打开桌宠窗口」） | W-04 <https://design.lobe.li/rules/W-04> | `Together.tsx` |
 | C12 | STORE-01 | 只有一个类别时不渲染 `PageTabs`（出现第二个类别时自动出现）；商店卡片动作保持「查看」（图鉴侧「详情 → 查看」属 B07） | W-07「切换后画面不变的控件 → 删」<https://design.lobe.li/rules/W-07>；W-03 <https://design.lobe.li/rules/W-03> | `Store.tsx`（`StorePage`） |
 | C13 | STORE-03 | 筛选写进 `#/store?show=remote|installed`（`useHashQuery` + `replaceHash`，不新增历史记录），返回 / 刷新保持；筛选后为空写「已经全部下载了。」；页头读 `PAGES.store`，不再写死 | P-02「筛选不进 URL」<https://design.lobe.li/rules/P-02>；W-03 <https://design.lobe.li/rules/W-03> | `Store.tsx`（`CharactersShelf`） |
@@ -230,7 +229,7 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 | `src/core/settings-schema.js`（`#/interject` 的 NAV / PAGES、interject.* 字段移到 `page: 'interject'`、去掉 history、`redirects.history = 'chat'`、PAGES.chat / desk 说明） | A00 / A04 / A06 | 由 A 改。C 提供的文案：`PAGES.desk`「让她在桌面上做个动作；找不到她时把她找回屏幕右下角。」；interject.enabled 说明去掉开头重复的「默认关闭。」（INT-02）。 |
 | `admin/src/console/ConsoleApp.tsx`（`case 'interject'` 从 `./pages/Interject` 引入 `InterjectPage`；`#/history` 重定向） | A00 | 由 A 改；C 提供 `InterjectPage`。 |
 | `admin/src/console/pages/Pages.tsx` | A（其余页面）/ C（`ProactivePage`、`BehaviorPage`） | C 只改这两个函数（去掉 `InterjectData`、「默认关闭」标签与找回按钮）。「退出应用」按钮（`data-app-quit`）由 A18 放进 `AboutPage`。 |
-| `src/core/admin-coverage.js` | C | `UNUSED_OK` 增加 `historyList` / `historyGet`（聊天记录并入聊天页）、`home`（找回桌宠统一 `placePet`）；`MENU` / `VIA` 中 history、home、quit、new-topic、topics、actions、tray 显示桌宠、set-interject 的位置文案改成新路径。 |
+| `src/core/admin-coverage.js` | C | `UNUSED_OK` 增加 `historyList` / `historyGet`（聊天记录并入聊天页）；`MENU` / `VIA` 中 history、home、quit、new-topic、topics、actions、tray 显示桌宠、set-interject 的位置文案改成新路径。 |
 | `test/admin-console.test.js` | A / C | C 只改「every item of the old ⋯ menu」一条：history 改为断言 `REDIRECTS.history === 'chat'`；退出断言 `Pages.tsx` 有 `data-app-quit`；重新开始对话断言在 `Chat.tsx`。 |
 | `e2e/run.js` | A / C | C 改：`history` 场景（H1、H4、H6、H7 改为在聊天页验证，原 H5 详情页并入 H4）、`stream` S6、`frontslim` F7 / F9 / F11 / F18、`admincov` B5（到 `#/desk` 点找回桌宠）、`interject` IJ2 / IJ7（`#/interject`）；新增 `auditc` 场景注册（不在 `all` 里）。 |
 | `e2e/chat-ui.js` | C | U1：rail 新顺序（A01）、会话栏只列已遇见 +「结识更多」+「正在陪你」+ 模型影响范围；U14：没遇见的角色走深链。 |

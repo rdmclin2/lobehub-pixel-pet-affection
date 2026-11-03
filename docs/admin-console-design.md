@@ -662,7 +662,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `menu:adult` | 隐私与安全 → 成人向与本机能力 → 成人向内容 |
 | `menu:local` | 隐私与安全 → 成人向与本机能力 → 本机能力 |
 | `menu:actions` | 玩法 → 和她互动 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
-| `menu:home` | 玩法 → 和她互动 → 桌面上的她 → 找回桌宠（`admin-place-pet`） |
+| `menu:home` | 玩法 → 和她互动 → 桌面上的她 → 找回桌宠（`admin-place-pet` 显示并放回 + `admin-home` 停下） |
 | `menu:check-update` | 版本与更新 → 检查更新 |
 | `menu:release` | 隐私与安全 → 重置与放生 → 放生并删除 agent |
 | `menu:forget` | 隐私与安全 → 重置与放生 → 仅重置本地 |
@@ -692,7 +692,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-asr` → `admin-set` asr.* 与 keys.asrlocal（语音输入）
   - `set-interject` → `admin-set` interject.*（玩法 → 插个嘴）
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
-  - `place` → `admin-place-pet`（玩法 → 和她互动 → 桌面上的她 → 找回桌宠）
+  - `place` → `admin-place-pet`（玩法 → 和她互动 → 桌面上的她 → 找回桌宠，随后 `admin-home` 让她停下）
   - `open-admin` → 这就是打开设置窗口本身
 - 不是配置，只在桌宠窗口（46）：
   - `boot`：桌宠窗口启动

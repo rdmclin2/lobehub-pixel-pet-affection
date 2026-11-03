@@ -3,7 +3,7 @@
  * 回到右下角. The pet window now has one ⚙ button that opens this window.
  * 实施包 C（docs/admin-audit/02-plan.md §5.4）：C01 / SH-02 / TOG-02 聊天记录并入聊天页（HistoryPage 下线，`#/history` 由
  * A00 重定向到 `#/chat`）；C10 / TOG-03「聊聊」按钮 loading，结果出来只给一条 toast；C11 / TOG-04「找回桌宠」只留这一处
- * （统一调 placePet），「退出」移到 关于与数据；未唤醒用共享 NoPet（A11 / TOG-05）。
+ * （先 placePet 显示并放回，再 home 让她停下），「退出」移到 关于与数据；未唤醒用共享 NoPet（A11 / TOG-05）。
  */
 import { Button, Flexbox, Tag, Text, toast } from '@lobehub/ui';
 import { PageHeader, Surface } from '@lobehub/ui/dashboard';
@@ -155,7 +155,10 @@ export const DeskPage = () => {
             onClick={async () => {
               setPlacing(true);
               try {
-                const r = await api().placePet();
+                // show her and put her in the corner (placePet), then stop her walking / flying there (home), so
+                // the one button covers both old ones: hidden or off screen, and dragged away mid-walk
+                let r = await api().placePet();
+                if (r && r.ok) r = await api().home();
                 if (r && r.ok) toast.success('她回到右下角了');
                 else toast.error({ description: reasonText(r), title: '没能找回桌宠' });
               } finally {
