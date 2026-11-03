@@ -326,6 +326,104 @@ export interface PetAdminApi {
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
+  /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
+  chat: ChatApi;
+}
+
+// --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
+// One conversation per character: her own agent and topic, her 聊天记录. Her model: `setModel(key, species)`.
+
+export interface ChatCharacter {
+  count: number;
+  current: boolean;
+  id: string;
+  lastAt: number | null;
+  met: boolean;
+  name: string;
+  preview: string;
+}
+
+export interface ChatAttachment {
+  id: string;
+  mime: string;
+  name: string;
+  size: number;
+  /** data URL; null when the file is gone */
+  url: string | null;
+}
+
+export interface ChatMessage {
+  attachments: ChatAttachment[];
+  createdAt: number;
+  error?: string;
+  id: string;
+  model: string | null;
+  role: 'user' | 'assistant';
+  status: 'done' | 'error' | 'aborted';
+  text: string;
+  turnId: string | null;
+  /** pictures sent on the desktop: only their count was kept */
+  unsavedImages: number;
+  via: 'console' | 'desktop';
+}
+
+export type ChatImageInput = { path: string } | { dataUrl: string; name?: string } | string;
+
+export interface ChatPickedImage {
+  dataUrl: string;
+  mime: string;
+  name: string;
+  path: string;
+  size: number;
+}
+
+export interface ChatHistory {
+  hasMore: boolean;
+  messages: ChatMessage[];
+  met: boolean;
+  ok: boolean;
+  reason?: string;
+  speciesId: string;
+  streaming: boolean;
+  total: number;
+}
+
+export interface ChatSendResult {
+  code?: string | null;
+  error?: string;
+  message?: ChatMessage;
+  ok: boolean;
+  reason?: string;
+  speciesId?: string;
+  turnId?: string;
+  userMessage?: ChatMessage;
+}
+
+export interface ChatDelta {
+  restart?: boolean;
+  speciesId: string;
+  text: string;
+  turnId: string;
+}
+
+export interface ChatDone {
+  error?: string;
+  message: ChatMessage;
+  ok: boolean;
+  reason?: 'aborted' | 'error';
+  speciesId: string;
+  turnId: string;
+}
+
+export interface ChatApi {
+  abort: (speciesId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
+  history: (speciesId: string, opts?: { before?: string; limit?: number }) => Promise<ChatHistory>;
+  listCharacters: () => Promise<{ busy: string | null; characters: ChatCharacter[]; ok: boolean }>;
+  onChanged: (cb: (d: { speciesId: string | null }) => void) => () => void;
+  onDelta: (cb: (d: ChatDelta) => void) => () => void;
+  onDone: (cb: (d: ChatDone) => void) => () => void;
+  pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
+  send: (req: { images?: ChatImageInput[]; speciesId: string; text?: string }) => Promise<ChatSendResult>;
 }
 
 /** 插个嘴 (core/interject.js): a rule settled from the owner's reactions, and one decision record. */

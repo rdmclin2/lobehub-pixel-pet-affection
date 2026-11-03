@@ -306,9 +306,16 @@ class ResponsesClient {
   // tool-step preambles included (a later step's first piece starts with a paragraph break). `fullSoFar` is all
   // pieces so far joined; the returned `text` stays the final reply. A server that answers with plain JSON
   // anyway is read the old way and `onDelta` gets the whole reply once. Without `onDelta`: `stream: false`.
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], onDelta = null }) {
+  // `prompt` is the request's `input`: a string, or Responses input items (the admin chat's multimodal turn).
+  // `signal` stops just this run (cancel() stops every run of this client).
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], onDelta = null, signal = null }) {
     const ac = new AbortController();
     this._active.add(ac);
+    const onAbort = () => ac.abort();
+    if (signal) {
+      if (signal.aborted) ac.abort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs);
     let toolsRan = false;
@@ -384,6 +391,7 @@ class ResponsesClient {
     } finally {
       clearTimeout(timer);
       this._active.delete(ac);
+      if (signal) signal.removeEventListener('abort', onAbort);
     }
     throw new ResponsesError(timedOut ? `Responses API timed out after ${timeoutMs}ms` : 'Canceled', { code: timedOut ? 'ETIMEDOUT' : 'ECANCELED', toolsRan });
   }

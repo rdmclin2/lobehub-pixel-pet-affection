@@ -17,7 +17,7 @@ const hotkeyLib = require('./hotkey');
 const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
 
-// Navigation. The window's rail has five places only (RAIL); everything else sits one level down: 角色 →
+// Navigation. The window's rail has six places only (RAIL: the four + 商店 and 聊天, .agents/ux R-05 exceptions); everything else sits one level down: 角色 →
 // her page, 商店 → a category (角色 now; 声音包 and more later), 玩法 / 设置 → a hub of tiles → one page per
 // tile (docs/admin-console-design.md §6.3). NAV groups are those hub sections; `section` says which rail place a
 // group belongs to.
@@ -28,9 +28,12 @@ const RAIL = [
   { key: 'store', label: '商店', icon: 'Store', page: 'store' },
   { key: 'play', label: '玩法', icon: 'Gamepad2', page: 'play' },
   { key: 'settings', label: '设置', icon: 'Settings', page: 'settings' },
+  // 聊天 (T-2765): a daily AI chat of its own (docs/admin-chat.md), not a setting — its own place, one page
+  { key: 'chat', label: '聊天', icon: 'MessageCircle', page: 'chat' },
 ];
 
 const NAV = [
+  { key: 'chat', section: 'chat', label: '聊天', items: [{ page: 'chat', label: '聊天', icon: 'MessageCircle' }] },
   { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }] },
   { key: 'characters', section: 'characters', label: '角色', items: [{ page: 'characters', label: '角色图鉴', icon: 'Users' }] },
   { key: 'store', section: 'store', label: '商店', items: [{ page: 'store', label: '商店', icon: 'Store' }] },
@@ -82,6 +85,7 @@ const PAGES = {
   overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
   characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、给她换衣服、调她的模型和设定。' },
   store: { title: '商店', description: '下载更多内容：现在有角色，以后还会有声音包等。下载好的角色出现在角色图鉴里。' },
+  chat: { title: '聊天', description: '和 AI 日常聊天：可以发图片、换模型，会话保存在这台电脑上。和桌宠的对话互不影响。' },
   play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
   packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },

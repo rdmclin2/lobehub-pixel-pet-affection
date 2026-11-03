@@ -111,6 +111,15 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: radial-gradient(60% 100% at 30% 0%, color-mix(in srgb, var(--pet-accent) 14%, transparent), transparent 70%);
   `,
+  // 聊天 fills the window: its own panes scroll, the page itself does not
+  mainFull: css`
+    overflow: hidden;
+  `,
+  pageFull: css`
+    position: relative;
+    width: 100%;
+    height: 100%;
+  `,
   page: css`
     position: relative;
     width: 100%;
@@ -148,6 +157,7 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const back = !isTop && rail ? rail : null;
   const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
+  const full = page === 'chat';
   const mac = platform === 'darwin';
   const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
   return (
@@ -170,9 +180,9 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
         <ActionIcon icon={PawPrint} onClick={() => api().showPet()} title="把桌宠叫到前面" />
         <ActionIcon data-theme-toggle icon={theme.icon} onClick={() => save('ui.theme', theme.next)} title={theme.label} />
       </nav>
-      <main className={styles.main}>
-        <div className={styles.glow} />
-        <Flexbox className={styles.page} data-admin-page={page} data-path={path} gap={16}>
+      <main className={`${styles.main} ${full ? styles.mainFull : ''}`}>
+        {!full && <div className={styles.glow} />}
+        <Flexbox className={full ? styles.pageFull : styles.page} data-admin-page={page} data-path={path} gap={full ? 0 : 16}>
           {back && (
             <Flexbox align="center" gap={4} horizontal>
               <Button data-back={back.key} href={`#/${back.page}`} icon={ChevronLeft} size="small" type="text">
