@@ -113,13 +113,14 @@
    - 平滑高清包（`pixelated: false`，664×904）：画布保持帧尺寸，平滑采样，约放大 2.2 倍。
    - 硬像素包（`pixelated: true`，classic 83×113）：半身时画布换成帧的整数倍（83×113 × 4 = **332×452**，和 VRM / Live2D 画布相同），裁切高度取“画布高 / 整数”，起点取整，最近邻采样：每个源像素正好是 6×6 或 7×7 个画布像素，没有粗细不一的像素块。切回全身时画布恢复成帧尺寸。
 6. **切换**：`setFraming(mode)` 只换裁切框；高清包在 0.35 s 内用 smoothstep 从当前框滑到新框（滑动期间帧循环跑满 rAF），硬像素包直接切换（滑动中的非整数倍最近邻会闪）。图集、canvas 元素、动作计时都保留，**不重建 sprite、不重新加载图集**。
+   - **上浮帧跟随**（`spriteLift`，T-2770）：个别帧整张人物画高了（素材漂移，脚底离开帧底；例：dafeiyu-pixel 日常 `idle#1` 整体上浮 94 px，gemini-pixel swimsuit / couple_hoodie 的 `idle#0`、grok-pixel yukata 的 `walk`）。同一个裁切框会把这些帧的头顶切掉，idle 每 0.5 s 闪一次。半身时每帧量一次自己的脚底（四分之一分辨率，按格缓存），比参考脚底高出帧高 2% 以上就把裁切框上移同样距离（最多 20%，硬像素包取整），她在画面里保持不动、头部完整；脚底在帧底的帧（含 `lifted`、`hatch`）不动，普通帧之间 1–2 px 的差不跟，不会抖。全身绘制不受影响。画布上 `data-lift` 是这一帧上移的像素数，`data-crop` 仍是站姿帧的裁切框。
 7. **交互**：
    - **触摸区**：sprite 画布上带 `data-framing="half"` 和 `data-cut`（= 腰线比例），`artPoint` 和 VRM / Live2D 同一条路径：读画布上已经裁好的画面得到可见包围盒，用 `toFullBody` 把 y 乘以 `cut` 换回全身比例。头、脸、胸、手、肚子照常命中，**腿和脚在半身下点不到**。alpha 缓存键 `data-frame` 加上了取景和裁切（`…#row:col@half:sx,sy,sw`），切换后不会继续用全身的像素。
    - **拎起 / 走路 / 说话 / 睡觉**：都只是换动作帧，裁切框不变；`lifted` 帧里她画得矮一些，半身时在画面里低约 4–9%，头和躯干完整；拎起的摆动（`.pet-body.lifted`）是整个形象一起摆，和取景无关。
    - 卡片、衣柜、孵化页的小图不挂 `setFraming`，一直全身。
 8. **调试字段**：sprite 画布 `data-framing`、`data-cut`、`data-band`（`pack` / `default`）、`data-crop`（`sx,sy,sw,sh`，帧内像素）、`data-frame`；`window.petFx.sprite()` 给出 `framing`、`band`、`waist`、`cut`、`ref`、`crop`、`canvas`、`gliding`、`pixelated`。
 
-已知取舍：`hatch#0`（蹲下）半身时只露出发顶，下一帧才“冒出来”（不为它单独换裁切框，避免跳动）；少数举手 / 举物 / 气泡帧顶端被裁掉几十像素的装饰；左右会裁掉张开的手臂和长发；素材本身的大小不一致（如 dafeiyu-pixel 的 `idle#1` 画大了约 13%）放大后更明显；classic Q 版的腰线（0.66–0.72）落在默认触摸区表的“腿”上沿（触摸区表按 HD 包测量，全身时同样如此）。
+已知取舍：`hatch#0`（蹲下）半身时只露出发顶，下一帧才“冒出来”（不为它单独换裁切框，避免跳动）；少数举手 / 举物 / 气泡帧顶端被裁掉几十像素的装饰；左右会裁掉张开的手臂和长发；素材本身的大小不一致（如 dafeiyu-pixel bikini 的 `idle#1` 画大了、头顶比站姿高约 120 px，半身下发顶会出框；整帧上浮的帧已由 `spriteLift` 处理）放大后更明显；classic Q 版的腰线（0.66–0.72）落在默认触摸区表的“腿”上沿（触摸区表按 HD 包测量，全身时同样如此）。
 
 ## 如何复现
 
@@ -132,9 +133,9 @@ xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身端到端
 xvfb-run -a node e2e/run.js spriteframe    # 像素 sprites 半身端到端
 ```
 
-`spriteframe` 场景（`e2e/sprite-frame.js`）：穿「克洛蒂 · 像素」→ 全身截图 → 设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时半身（检查：窗口不变、同一个画布元素、`data-framing=half`、`data-cut=0.520`、`data-band=pack`、腰线在画布底边、头在上方、裁切框单调滑动）→ 半身下点头部 / 胸口命中、腿 / 脚点不到，拎起、走路、说话 → 切回「全身」（画面和切换前逐像素一致）→ 换「克洛蒂 · 旧版像素」看整数倍像素块 → 角色页单独设「全身」再改回“跟随” → 重启应用，半身保留。截图在 `out/e2e/sprite-frame/`，逐步记录在 `out/e2e/sprite-frame/evidence.txt`。
+`spriteframe` 场景（`e2e/sprite-frame.js`）：穿「克洛蒂 · 像素」→ 全身截图 → 设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时半身（检查：窗口不变、同一个画布元素、`data-framing=half`、`data-cut=0.520`、`data-band=pack`、腰线在画布底边、头在上方、裁切框单调滑动）→ 半身下点头部 / 胸口命中、腿 / 脚点不到，拎起、走路、说话 → 切回「全身」（画面和切换前逐像素一致）→ 换「克洛蒂 · 旧版像素」看整数倍像素块 → 角色页单独设「全身」再改回“跟随” → 重启应用，半身保留；再以「大肥鱼 · 像素」（第二个 HD 包）走同样三条取景来源：全局半身、角色页单独半身、`userData/packs` 里一个 `pack.json` 写 `"framing": "half"` 的像素包（全局全身、无角色选择时 `source: pack`，角色页「全身」优先于它），半身下 idle 两帧（含上浮的 `idle#1`）/ pat / lifted / talk 的裁切、头 / 身体点击、图片包与全动态（rig）包在全局半身下保持全身、切回全身逐像素一致、重启保持（截图在 `out/e2e/sprite-frame/dafeiyu/`）。截图在 `out/e2e/sprite-frame/`，逐步记录在 `out/e2e/sprite-frame/evidence.txt`。
 
-`vrmframe` 场景：用 `scripts/make-test-vrm.js` 现做一个测试 VRM（写在临时目录，不进仓库）→ 全身截图 → 打开设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时变成半身（检查：窗口位置尺寸不变、腰线在底边、头在上方、水平居中、角色更大、模型没有重建、相机单调滑动）→ 半身下视线跟随、触摸区映射（腿 / 脚点不到）、点击反应、拖起、口型 → 切回「全身」（相机与最初完全一致）→ 角色页单独设「半身」再改回“跟随” → 真实 VRM 各拍一组全身 / 半身 → 重启应用，半身保留。截图在 `out/e2e/vrm/frame-*.png`，逐步记录在 `out/e2e/vrm/frame-evidence.txt`。
+`vrmframe` 场景：用 `scripts/make-test-vrm.js` 现做一个测试 VRM（写在临时目录，不进仓库）→ 全身截图 → 打开设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时变成半身（检查：窗口位置尺寸不变、腰线在底边、头在上方、水平居中、角色更大、模型没有重建、相机单调滑动）→ 半身下视线跟随、触摸区映射（腿 / 脚点不到）、点击反应、拖起、口型 → 切回「全身」（相机与最初完全一致）→ 角色页单独设「半身」再改回“跟随” → 真实 VRM 各拍一组全身 / 半身 → 重启应用，半身保留；再以「大肥鱼 · 像素」（第二个 HD 包）走同样三条取景来源：全局半身、角色页单独半身、`userData/packs` 里一个 `pack.json` 写 `"framing": "half"` 的像素包（全局全身、无角色选择时 `source: pack`，角色页「全身」优先于它），半身下 idle 两帧（含上浮的 `idle#1`）/ pat / lifted / talk 的裁切、头 / 身体点击、图片包与全动态（rig）包在全局半身下保持全身、切回全身逐像素一致、重启保持（截图在 `out/e2e/sprite-frame/dafeiyu/`）。截图在 `out/e2e/vrm/frame-*.png`，逐步记录在 `out/e2e/vrm/frame-evidence.txt`。
 
 真实模型：仓库里没有可再分发的 VRM。`vrmframe` 默认找本机的 `~/art-archive/vrm-test/extracted/model.vrm`（木子惡魔《蓝色小肥鱼Deepseek》，VRM 1.0，禁止再分发，仅本机测试）和 `~/art-archive/airi-vrm-test/AvatarSample_A.vrm`（VRoid 示例，VRM 0.x）；也可以用 `PIXELPET_E2E_REAL_VRM=/path/a.vrm:/path/b.vrm` 指定（必须在仓库外）。没有就跳过这一步。
 
