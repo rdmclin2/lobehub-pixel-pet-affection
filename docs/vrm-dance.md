@@ -358,7 +358,7 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 - **音量**用 `<audio>` 元素的 `volume`（设置音量 × 压低系数，0.2 s 斜坡）实现，不接 WebAudio：同样不进口型分析器，且不会因 AudioContext 未启动而静音。
 - **循环接缝**：控制器每次回绕计数，渲染端只在计数变化时用 A/B 两个 action 做 0.5 s 淡化；调试 `seek` 是硬切（便于按时间点核对姿势）。
 - **舞台限位**：D1 的限幅把慢漂移限在 0.15、律动夹在 0.35 hips 高度内，e2e 按「≤ 0.5 hips 高度且头 / 手 / 脚始终在画布内」断言（§7.3 第 7 步原写的 0.15 只约束慢漂移）。
-- 本任务不含：工具栏按钮与浮层、设置页「舞蹈」管理页、导入流程、聊天识别（D3 / D4）。
+- 本任务不含：工具栏按钮与浮层、设置页「舞蹈」管理页、导入流程、聊天识别（D3 / D4）。工具栏、浮层、设置页、导入与删除见 §6.4（T-2801）。
 
 ### 3.8 运行时舞蹈：对外接口说明（T-2800）
 
@@ -398,7 +398,7 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 
 #### 设置
 
-`prefs.danceVolume`（0–100，默认 60）：设置 → 桌宠行为 → 动作 → 舞蹈音乐音量，或 `window.pet.setPrefs({ danceVolume })`；全局静音 `prefs.muted` 时音乐静音、动作照跳；她说话时音乐压到 30%，录音时 15%。
+`prefs.danceVolume`（0–100，默认 60）：设置 → 玩法 → 和她一起 → 舞蹈 → 跳舞时 → 音乐音量（T-2801 起；之前在 桌宠行为 → 动作），或 `window.pet.setPrefs({ danceVolume })`；全局静音 `prefs.muted` 时音乐静音、动作照跳；她说话时音乐压到 30%，录音时 15%。
 
 #### 调试字段（e2e 断言用）
 
@@ -627,6 +627,28 @@ Pipeline：00-brief → 40-flow → 70-detail
 | 可访问性 | 按钮有可访问名；浮层 `role="menu"`、行 `role="menuitem"`，键盘可达；进度文字而非只有进度条；「无音乐」用文字不用颜色；焦点环沿用 `.btn` 的令牌样式；`prefers-reduced-motion` 时浮层不做位移动画（舞蹈本身是角色美术，不受影响）。 |
 | 一致性 | 术语统一：「舞蹈」（对象）、「跳舞」（动作）、「让她跳」（按钮）、「停止」「循环播放」「导入舞蹈」「删除舞蹈」；不用「播放」「动作文件」「VMD」等技术词（详情里才出现原文件名）。 |
 | 响应式 | 桌宠窗口随「大小」缩放：浮层宽度 = 窗口宽 − 16 px，最小 200 px；设置窗口 ≥ 768 px 双列卡片，更窄时单列。 |
+
+### 6.4 界面实现记录（T-2801）
+
+按 CLAUDE.md 走 lobe-design：读了 `.agents/ux/product.md`、`components.md`、`lobe-design-rules.md`；`route.mjs "实现桌宠 VRM 舞蹈交互界面：工具栏跳舞按钮与舞蹈浮层、设置窗口舞蹈页（列表、导入、删除、音量、循环）、非 VRM 时禁用并说明原因"` → `00-brief → 30-structure → 40-flow → 70-detail`（00 / 40 / 70 沿用 §6.1–6.3，30 的组件选择见下表）。`lint-lobe.mjs` 对全部改动路径 0 FAIL（`src/main/main.js` 里两处存量的 `BrowserWindow.backgroundColor` 字面色值按 I-10 在 `product.md` 写了放行理由）。
+
+| 位置 | 实现 | 组件 / 令牌 |
+|---|---|---|
+| 桌宠工具栏 | `#btn-dance`（lucide `music`，图标按钮）：只有 VRM 外观显示；跳舞中 `aria-pressed="true"`，`title` 写正在跳哪支；片段加载中转圈并禁用。有它时工具栏收紧间距，仍是一行（252 px） | `.icon-btn`，`--lobe-*` 令牌（R-04） |
+| 跳舞浮层 `#dance-menu` | `role="menu"`；顶部「正在跳《…》」+ 进度 `0:02 / 0:06`（250 ms 刷新）+ 循环播放（`aria-pressed`）+ 停止；列表行 = 封面 32 px（无封面用 `music` 占位）+ 名字（单行省略）+「无音乐 · 时长」/「正在跳」/「准备中…」；导入的舞蹈按本次会话最近跳过的排前、最多 5 支，示例舞在最后；底部「管理舞蹈… / 导入更多舞蹈… / 全部舞蹈（N）…」→ 设置窗口 `#/dances`；↑↓ 移动焦点、Enter 播放、Esc 只关浮层（不停舞）；加载失败用桌宠窗口的提示条给出原因与「打开舞蹈设置」 | `.popup`（对照 `Dropdown`） |
+| 设置窗口 玩法 → 和她一起 → 舞蹈（`#/dances`） | `PageHeader`（主操作「导入舞蹈」= 多选文件，次操作「选文件夹导入」）；非 VRM / 未唤醒时 `Alert`（info）「舞蹈只有 VRM 外观可以跳 · 她现在是像素外观…」+「去换外观」；「正在跳」卡（封面、进度条、循环播放 `Switch`、停止）；舞蹈卡片网格（封面、名字两行省略、时长、`Tag`：正在跳 / 内置示例 / 无音乐 / 含表情、署名；「让她跳」/「停止」，非 VRM 时禁用 + `Tooltip`「换成 VRM 外观后可以跳」；删除 `ActionIcon` → `confirmModal`「删除舞蹈 / 取消」，正在跳这支时说明会先停下）；`Form`「跳舞时 · 音乐音量」（`prefs.danceVolume` 从「桌宠行为」移到这里）；页尾「只保存在这台电脑上」+ 舞蹈库位置。「能不能跳」取设置窗口自己的 `view.look.kind`，换外观立即生效 | `@lobehub/ui`：`PageHeader` `Surface` `Alert` `Button` `Tag` `Switch` `Progress` `Tooltip` `ActionIcon` `Modal` `Input` `Select` `toast`；样式只用 `cssVar` |
+| 导入确认 `Modal` | 名字（可改）、动作（多个候选时 `Select`，带时长）、时长、音乐（`Select` + 「换一个…」+「不带音乐」）、封面预览（「换封面… / 不要封面」）、署名、readme 摘录、警告（还有其他动作、`.ncm` 加密音乐）、「不会随角色包导出或分享」；「导入舞蹈」后显示转换中进度条与「取消导入」；失败在弹窗内 `Alert`（error）写原因与出路 | 同上 |
+| 玩法 Hub 卡片 | 状态一句：「她现在是 VRM 外观，可以跳舞 · 音乐音量 60%」/「她现在不是 VRM 外观，跳不了舞」 | `HubPage` |
+
+**导入（主进程 `src/main/dance-import.js`，纯识别在 `src/core/vrm-dances.js detectDance`）**：`dance-import-pick`（系统对话框；e2e 用 `debug-next-open`，多个路径用换行分隔）→ `inspect`：读出文件夹 / 所选文件，逐个 VMD 解析与分类（镜头 / 道具 / 舞蹈），vidol 包按 `meta.json`，否则取骨骼帧最多的舞蹈动作，音乐 = 包内指定 / 与动作同名 / 最大，封面 = `cover.*` / `thumb.*` / 第一张图，readme 解码（UTF-8，失败再试 Shift-JIS）并提取署名 → 草稿（token，30 分钟有效）。`dance-import-commit`：`worker_threads` 里跑 `vmd-retarget.bakeVmd` 并用 `inspectVrmaJson` 校验（起不来 worker 时同进程跑），写进 `<舞蹈库>/.<id>.tmp/` 再 rename 成 `<id>/`（`dance.vrma`、`audio.<ext>`、`cover.<ext>`、`readme.txt`、`src/<原 VMD>`），`library.json` 先写临时文件再 rename；同一时间只允许一支在导入。`dance-import-extra` 换音乐 / 封面（拒绝 `.ncm` 与不支持的格式）；`dance-import-cancel` 终止 worker；`dance-remove` 正在跳这支时先立即停，再删目录与索引（示例舞不能删）。`id` = 名字的 ASCII slug + 4 位十六进制（无 ASCII 时 `dance-xxxx`）。
+
+失败文案（`IMPORT_ERRORS`）：没选到文件 / 没有 .vmd / 只有镜头或道具动作 / VMD 读不出来 / 素材包不是舞蹈 / 加密音乐 / 音乐或封面格式不对 / 文件太大（动作 64 MB、音乐 200 MB、封面 10 MB）/ 动作转换失败 / 舞蹈库位置不可用 / 写文件失败 / 导入已过期 / 正在导入上一支 / 已取消——每条都说清发生了什么、怎么办。
+
+新增 IPC（设置窗口 `window.petAdmin`）：`dances` `dancePlay` `danceStop` `danceState` `danceLoop`（`dance:loop` → 桌宠窗口控制器 `setLoop`）`danceImportPick` `danceImportExtra` `danceImportCommit` `danceImportCancel` `danceRemove`。`dances:list` 的条目多了 `coverUrl`（`vrmlib://dance/<id>/cover.*`；设置窗口与桌宠窗口的 CSP `img-src` 加了 `vrmlib:`）、`importedAt`，列表多了 `importing`。
+
+本任务不含：聊天里说「跳个舞」的本地识别、详情页（readme 全文、offset 微调）、拖文件夹进设置页导入、按舞蹈记住默认循环——留给后续任务。
+
+验证：`npm test`（新增 `test/dance-import.test.js`：识别、失败文案、署名、id、导入→入库→删除、镜头 / 损坏 VMD、拒绝仓库内目录）；e2e `xvfb-run -a node e2e/run.js danceui`（8 步：像素外观禁用 → 导入失败 → 导入确认与入库 → VRM 入口与浮层 → 播放中（浮层 + 设置页）→ 设置页关循环 / 音量 / 停止 → 删除正在跳的舞 → 换回像素；截图 `out/e2e/vrm/danceui-*.png`，录屏 `danceui.webm` 与章节 `danceui-evidence.json`）；回归 `vrmdance`、`admin`、`petui`。
 
 ---
 

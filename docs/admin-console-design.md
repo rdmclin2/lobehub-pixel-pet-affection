@@ -135,7 +135,7 @@
 | `prefs.clickSound` | boolean | `false` | — | 同上 → 点击音效 · `set-prefs` | 即时 |
 | `prefs.memes` | boolean | `true` | — | 同上 → 梗图 · `set-prefs` | 即时 |
 | `prefs.collide` | boolean | `true` | 只在有同屏伙伴时有意义 | 同上 → 互相碰撞 · `set-prefs` | 即时 |
-| `prefs.danceVolume` | number | `60` | 0–100（%），VRM 跳舞时音乐的音量；说话时自动压低，`prefs.muted` 时不出声 | 同上 → 舞蹈音乐音量 · `set-prefs` | 即时 |
+| `prefs.danceVolume` | number | `60` | 0–100（%），VRM 跳舞时音乐的音量；说话时自动压低，`prefs.muted` 时不出声 | 玩法 → 和她一起 → 舞蹈 → 音乐音量 · `set-prefs` | 即时 |
 | `prefs.touchZones` | boolean | `true` | 关闭后点哪里都是普通的摸摸 | 同上 → 部位触摸 · `set-prefs` | 即时 |
 | `prefs.touchHint` | boolean | `true` | 要 `prefs.touchZones` 开着才起作用 | 同上 → 触摸提示 · `set-prefs` | 即时 |
 | `prefs.framing` | `'full' \| 'half'` | `'full'` | 其它值（含旧文件里没有这一项）都按 `full` 读（`normalizePrefs`）；角色自己的 `framings.<id>` 和角色包的 `framing` 优先 | 设置窗口 → 玩法 → 桌宠行为 → 大小与取景 → 取景 · `admin-set` → `set-prefs` | 即时（目前只对 VRM 生效，见 `docs/half-body-mode.md`） |
@@ -569,7 +569,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `prefs.touchZones` | behavior | 部位触摸 | 即时生效 |  |
 | `prefs.touchHint` | behavior | 触摸提示 | 即时生效 |  |
 | `prefs.framing` | behavior | 取景 | 即时生效 |  |
-| `prefs.danceVolume` | behavior | 舞蹈音乐音量 | 即时生效 |  |
+| `prefs.danceVolume` | dances | 音乐音量 | 即时生效 |  |
 | `vrmPostures.<id>` | character | VRM 姿势 | 即时生效 | 角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`） |
 | `visitors` | visitors | 一起待在桌面上的角色 | 即时生效 |  |
 | `api.enabled` | api | 开启对外接口 | 即时生效 |  |
@@ -636,7 +636,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 走动 | 玩法 → 桌宠行为 | `prefs.roam` | `admin-place-pet` | 即时生效 |
 | 大小 | 玩法 → 桌宠行为 | `petScale` | — | 即时生效 |
 | 触摸与音效 | 玩法 → 桌宠行为 | `prefs.touchZones` `prefs.touchHint` `prefs.clickSound` `prefs.memes` `prefs.collide` | — | 即时生效 |
-| 舞蹈（VRM） | 玩法 → 桌宠行为 → 动作 | `prefs.danceVolume` `prefs.muted` | — | 即时生效 |
+| 舞蹈（VRM） | 玩法 → 和她一起 → 舞蹈 | `prefs.danceVolume` `prefs.muted` | `dance:play` `dance:stop` `dance:loop` `dance-import-pick` `dance-import-extra` `dance-import-commit` `dance-import-cancel` `dance-remove` | 即时生效 |
 | 主动搭话 | 玩法 → 主动搭话与好感 | `proactive.enabled` `proactive.speakCooldownMin` `proactive.boredAfterMin` `proactive.hungryAt` `proactive.maxLlmPerHour` | — | 即时生效 |
 | 好感 | 玩法 → 主动搭话与好感；角色详情 → 好感 | `affectionRules.dailyCap` `affectionRules.decay` | `unlock-all` | 即时生效 |
 | 同屏伙伴 | 玩法 → 同屏伙伴 | `visitors` `prefs.collide` | — | 即时生效 |
@@ -682,9 +682,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：99 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：103 个
 
-- 设置窗口有同一通道（42）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（46）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
