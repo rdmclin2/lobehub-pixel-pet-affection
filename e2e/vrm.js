@@ -1558,6 +1558,7 @@ module.exports = function vrmScenarios(ctx) {
         const a1 = await at(1.0);
         const a2 = await at(2.05);
         const a4 = await at(4.15);
+        await H.shot('3-squat'); // still in the squat: the clock runs at a quarter speed
         await page.evaluate(() => window.PetVRM.director.dance.speed(1));
         assert.ok(Math.abs(a0.p.arms.left.elev + 38.4) < 8 && Math.abs(a0.p.arms.right.elev + 38.4) < 8, `A-pose ${JSON.stringify(a0.p.arms)}`);
         assert.ok(Math.abs(a1.p.arms.right.elev) < 8, `right arm level at ${a1.t}: ${JSON.stringify(a1.p.arms)}`);
@@ -1567,7 +1568,6 @@ module.exports = function vrmScenarios(ctx) {
           assert.ok(a4.p.legs[s].knee > 30, `${s} knee ${a4.p.legs[s].knee}° at ${a4.t}`);
           assert.ok(Math.abs(a4.p.legs[s].ankleY - a0.p.legs[s].ankleY) < 0.03, `${s} ankle on the floor: ${a4.p.legs[s].ankleY} vs ${a0.p.legs[s].ankleY}`);
         }
-        await H.shot('3-squat');
         return H.note(`t ${a0.t}: arms ${JSON.stringify(a0.p.arms)}; t ${a1.t}: ${JSON.stringify(a1.p.arms)}; t ${a2.t}: ${JSON.stringify(a2.p.arms)}; t ${a4.t}: knees ${a4.p.legs.left.knee}° / ${a4.p.legs.right.knee}°, ankles ${a4.p.legs.left.ankleY} / ${a4.p.legs.right.ankleY} (standing ${a0.p.legs.left.ankleY})`);
       });
 
