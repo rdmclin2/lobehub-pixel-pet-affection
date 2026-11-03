@@ -1,152 +1,92 @@
-# 设置窗口 · 聊天 —— 主进程服务与 IPC 契约
+# 设置窗口 · 聊天 —— 按角色组织的对话
 
-后台（设置窗口）左侧栏「聊天」页的后端：与桌宠无关的日常 AI 聊天。渲染进程只通过 `window.petAdmin.chat` 调用；
-所有通道都是 `admin-chat-*`，在主进程里用 `adminOnly` 包裹（只有设置窗口能调，测试模式除外）。
+后台（设置窗口）左侧栏「聊天」页：和自己的角色聊天。**一个角色就是一个会话**：用的是她自己的 LobeHub agent 和话题（与桌宠同一个），消息记在她的 聊天记录（`core/chat-log.js`）里。在这里说的话，她在桌面上也记得，⋯ → 聊天记录 里也看得到；反过来桌面上的对话也出现在这里。没有「新建会话」和「清空」：她一直在这一个对话里。
+
+渲染进程只通过 `window.petAdmin.chat` 调用；所有通道都是 `admin-chat-*`，在主进程里用 `adminOnly` 包裹（只有设置窗口能调）。
 
 | 位置 | 作用 |
 | --- | --- |
-| `src/core/admin-chat.js` | 与 Electron 无关的聊天模块（会话、持久化、图片校验、上下文拼装、发送 / 流式 / 中止） |
-| `src/core/models.js` → `chatModelOptions` | 从模型目录筛出可用聊天模型（复用 `refresh-models` 同一份目录） |
-| `src/core/responses-client.js` | LobeHub Responses API 的认证与请求（新增可选 `signal`，只中止这一轮） |
-| `src/main/main.js` | 注册 `admin-chat-*` 的 `ipcMain.handle`，推送 `admin-chat-delta` / `admin-chat-done` |
+| `src/core/admin-chat.js` | 与 Electron 无关的纯逻辑：她的对话（`conversationOf` / `historyPage`）、4 小时上下文（`recentRounds`）、回溯更早记录（`wantsRecall` / `pickRecall`）、提示词正文（`buildConsoleBody`）、图片校验与存放（`readImage` / `ChatImages`）、消息视图（`messageView`）、只留最终答案（`answerOnly`）、可读错误（`readableError`） |
+| `src/main/pet-service.js` | `chatAs` / `chatHistory` / `chatCharacters` / `chatAbort`：用她的 agent 和话题跑一轮 |
+| `src/main/main.js` | 注册 `admin-chat-*` 的 `ipcMain.handle`，推送 `admin-chat-delta` / `admin-chat-done` / `admin-chat-changed` |
 | `src/main/admin-preload.js` | 暴露 `petAdmin.chat` |
+| `admin/src/console/pages/Chat.tsx` | 聊天页（`#/chat/<角色 id>`） |
 | `test/admin-chat.test.js` | 单元测试 |
 
 ## 1. 渲染进程 API（`window.petAdmin.chat`）
 
-所有方法返回 Promise；失败不抛异常，而是 `{ ok: false, reason, error|message }`（`error` / `message` 是可直接展示的中文）。
+所有方法返回 Promise；失败不抛异常，而是 `{ ok: false, reason, error }`（`error` 是可直接展示的中文）。
 
 | 方法 | IPC 通道 | 参数 | 返回值 |
 | --- | --- | --- | --- |
-| `chat.listModels(force?)` | `admin-chat-models` | `force`：`true` 时强制刷新模型目录 | `{ ok, models: Model[], selected: string \| null, error: string \| null }` |
-| `chat.setModel(key)` | `admin-chat-set-model` | `key`：`"providerId:modelId"` | `{ ok: true, selected }` ／ `{ ok: false, reason: 'bad-model' \| 'unknown-model', message }` |
-| `chat.listSessions()` | `admin-chat-sessions` | — | `{ ok, sessions: SessionSummary[] }`（按 `updatedAt` 倒序） |
-| `chat.createSession(title?)` | `admin-chat-create` | `title`：可选，默认「新会话」 | `{ ok, session: SessionSummary }` |
-| `chat.getSession(id)` | `admin-chat-get` | 会话 id | `{ ok, session: Session }` ／ `{ ok: false, reason: 'not-found', message }` |
-| `chat.deleteSession(id)` | `admin-chat-delete` | 会话 id | `{ ok: true }` ／ `{ ok: false, reason: 'not-found' }`（同时删除该会话的图片；正在回复会先中止） |
-| `chat.clearSession(id)` | `admin-chat-clear` | 会话 id | `{ ok, session: Session }`（消息与图片清空，标题恢复「新会话」，id 不变） |
-| `chat.pickImages()` | `admin-chat-pick-images` | — | 主进程弹出文件选择框：`{ ok: true, images: PickedImage[], rejected: [{ name, reason, message }] }` ／ `{ ok: false, reason: 'canceled', images: [] }` |
-| `chat.send(req)` | `admin-chat-send` | `SendRequest` | 回合结束时 resolve：`SendResult`（流式过程见 `onDelta`） |
-| `chat.abort(sessionId?)` | `admin-chat-abort` | 会话 id（省略 = 当前任何一轮） | `{ ok: true, aborted: boolean, sessionId?, messageId? }` |
-| `chat.onDelta(cb)` | 事件 `admin-chat-delta` | `cb(DeltaEvent)` | 返回取消订阅函数 |
-| `chat.onDone(cb)` | 事件 `admin-chat-done` | `cb(DoneEvent)` | 返回取消订阅函数 |
+| `chat.listCharacters()` | `admin-chat-characters` | — | `{ ok, busy: string \| null, characters: Character[] }`（`busy`：正在回复的角色 id，桌面那边在说话时为 `'desktop'`） |
+| `chat.history(speciesId, { before?, limit? })` | `admin-chat-history` | 角色 id；`before`：消息 id（取它之前的一页），`limit` 默认 40 | `{ ok, speciesId, met, streaming, messages: Message[], hasMore, total }`（旧的在前） |
+| `chat.pickImages()` | `admin-chat-pick-images` | — | 主进程弹出文件选择框：`{ ok: true, images: PickedImage[], rejected }` ／ `{ ok: false, reason: 'canceled', images: [] }` |
+| `chat.send(req)` | `admin-chat-send` | `{ speciesId, text?, images? }` | 这一轮结束时 resolve：`SendResult`（流式过程见 `onDelta`） |
+| `chat.abort(speciesId?)` | `admin-chat-abort` | 角色 id（省略 = 聊天页正在进行的那一轮） | `{ ok: true, aborted: boolean }`；只停聊天页自己的一轮 |
+| `chat.onDelta(cb)` | 事件 `admin-chat-delta` | `cb({ speciesId, turnId, text, restart? })`，`text` 是到目前为止的全文 | 返回取消订阅函数 |
+| `chat.onDone(cb)` | 事件 `admin-chat-done` | `cb({ speciesId, turnId, ok, reason?, error?, message })` | 返回取消订阅函数 |
+| `chat.onChanged(cb)` | 事件 `admin-chat-changed` | `cb({ speciesId })`：她的记录变了（这里或桌面上的一轮） | 返回取消订阅函数 |
 
-### 类型
+**模型**不在 `chat` 下：用已有的 `petAdmin.setModel(key, speciesId)`（与 角色 → 她的页面 → 模型 是同一个值 `settings.models[id]`），选项来自 `roster[i].model.options`（只有她所属厂商的模型，`vision` 标出能看图的）。
 
 ```ts
-type Model = { key: string; id: string; providerId: string; label: string; vision: boolean; hosted: boolean };
-
-type SessionSummary = {
-  id: string;            // ses_…
-  title: string;         // 首条用户消息前 30 字，或「新会话」
-  createdAt: number;     // ms
-  updatedAt: number;
-  model: string | null;  // 最近一轮用的模型 key
-  messageCount: number;
-  preview: string;       // 最后一条有文字的消息前 60 字
-};
-
-type Session = SessionSummary & { messages: Message[]; streaming: boolean };
-
-type Attachment = { id: string; name: string; mime: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; size: number; url: string | null };
-// url 是 data URL，可直接放进 <img src>（设置窗口 CSP 允许 img-src data:）；文件丢失时为 null
+type Character = { id: string; name: string; met: boolean; current: boolean; count: number; lastAt: number | null; preview: string };
 
 type Message = {
-  id: string;                         // msg_…
+  id: string; turnId: string | null;
   role: 'user' | 'assistant';
   text: string;
-  attachments: Attachment[];          // 只有用户消息会有
-  model: string;                      // 这条消息所用模型 key
   createdAt: number;
   status: 'done' | 'error' | 'aborted';
-  error?: string;                     // status === 'error' 时的可读错误
-};
-
-type ImageInput = { path: string } | { dataUrl: string; name?: string } | string; // 绝对路径或 data URL
-
-type SendRequest = {
-  sessionId: string;
-  text?: string;          // ≤ 20000 字符
-  images?: ImageInput[];  // ≤ 4 张；png/jpg/webp/gif（按文件头识别），每张 ≤ 10 MB
-  model?: string;         // 省略 = 上次选择的模型（setModel），再没有就是列表第一个
+  error?: string;
+  model: string | null;              // 这条回复所用模型 key（桌面上的旧记录没有）
+  via: 'console' | 'desktop';        // 在哪里聊的
+  attachments: { id; name; mime; size; url: string | null }[]; // 聊天页发的图片，url 是 data URL
+  unsavedImages: number;             // 桌面上发的图片只记了张数
 };
 
 type SendResult =
-  | { ok: true; sessionId; userMessage: Message; message: Message; session: SessionSummary }
-  | { ok: false; reason: 'aborted'; sessionId; error: '已停止'; userMessage; message /* status 'aborted'，保留已生成的文字 */; session }
-  | { ok: false; reason: 'error'; code: 'EAUTH' | 'ENET' | 'ETIMEDOUT' | 'ENOREPLY' | 'EAPI' | 'EUPLOAD' | 'EAGENT' | null; error: string; sessionId; userMessage; message /* status 'error' */; session }
-  | { ok: false; reason: 'not-found' | 'empty' | 'too-long' | 'too-many-images' | 'bad-input' | 'bad-type' | 'too-large' | 'not-found' | 'no-model' | 'no-vision' | 'busy'; error: string };
-  // 最后一类是发送前就被拒绝：什么都不保存，也不会有 delta / done 事件
-
-type PickedImage = { path: string; name: string; mime: string; size: number; dataUrl: string }; // dataUrl 用于输入区预览；发送时传 { path } 即可
-
-type DeltaEvent = { sessionId: string; messageId: string; delta: string; text: string }; // text = 到目前为止的全文
-type DoneEvent  = { sessionId: string; messageId: string; ok: boolean; reason?: 'aborted' | 'error'; error?: string; message: Message };
+  | { ok: true; speciesId; turnId; userMessage: Message; message: Message }
+  | { ok: false; reason: 'aborted' | 'error'; error; speciesId; turnId; userMessage; message }   // 这一轮已记下
+  | { ok: false; reason: 'not-met' | 'unknown-character' | 'empty' | 'too-long' | 'too-many-images'
+      | 'bad-input' | 'bad-type' | 'too-large' | 'not-found' | 'no-vision' | 'busy'; error };   // 发送前被拒绝，什么都没记
 ```
 
-### 典型调用顺序（给 UI）
+## 2. 一轮怎样到达她
 
-```js
-const { chat } = window.petAdmin;
-const { models, selected } = await chat.listModels();
-let { sessions } = await chat.listSessions();
-const sid = sessions[0]?.id ?? (await chat.createSession()).session.id;
-const off = chat.onDelta((d) => { if (d.sessionId === sid) renderStreaming(d.messageId, d.text); });
-const picked = await chat.pickImages();                       // 预览：picked.images[i].dataUrl
-const r = await chat.send({ sessionId: sid, text: '这张图里是什么？', images: picked.images.map((i) => ({ path: i.path })), model: selected });
-if (!r.ok && !r.message) toast(r.error);                       // 发送前被拒绝
-// 否则 r.userMessage / r.message 就是要落到列表里的两条消息（失败与中止也会有 assistant 消息，带 status）
-// 停止：chat.abort(sid)；刷新 / 切换会话：chat.getSession(id) 读回全部历史与图片
-```
+1. **她的 agent 和话题**：`chatAs(speciesId)` 用 `pet.characters[speciesId]` 的 `agentId` / `topicId`，不要求她是桌面上的当前角色；没见过面的角色（还没有 agent）返回 `not-met`。人设（system role）与模型在这一轮前按她自己的设置更新（`_ensurePersona` / `_applyModel(c)`），提示词与桌面相同（`persona.buildChatPrompt`，带她的状态块），但不给本机工具（`_runTurn(..., { plain: true })`）。桌面上不出气泡；她是当前角色时桌宠显示「思考中」，好感度按一次聊天计算。
+2. **同一时间只有一轮**：与桌面共用 `busy`。桌面在说话时返回 `busy`，聊天页在回复时桌面也要等。
+3. **记录**：用户消息在请求之前写进 聊天记录（`origin: 'user'`、`via: 'console'`、图片 `attachments: { images, refs }`），回复（或失败 / 停止）用同一个 `turnId` 写在后面。聊天页的历史就是 `chatLog.userSessions` 过滤后她的全部消息（问候、主动搭话等系统台词不出现，规则与 聊天记录 一致）。
+4. **流式**：回复逐块经 `onDelta` 推送；`answerOnly` 去掉模型写进正文的工具调用 / 思考标记，梗图标签也不显示。直连失败改走 `lh agent run` 时推送 `restart: true` 重新开始这一条。
 
-`send` 同一时间只允许一轮（所有会话共用一个聊天 agent），第二次调用返回 `reason: 'busy'`。
+### 上下文：最近 4 小时，问起更早的再去翻
 
-## 2. 主进程实现要点
+实测 LobeHub 接着同一个话题跑（`previous_response_id` = 话题 id）时会把话题里的历史交给模型。所以模型看到的上下文由**话题**决定：
 
-### 持久化（`userData/admin-chat/`，经 `core/store.js` 原子写入）
+- **4 小时换话题**：话题开始超过 `CONTEXT_MS`（4 小时）后，下一轮把它放进 `pastTopicIds`（LobeHub 里保留），开一个新话题；新话题的第一轮带上**最近 4 小时**的完整对话轮次（`recentRounds`，最多约 8000 字，从最旧的开始舍弃），标为「【最近 4 小时的聊天（换了新话题，接着聊）】」。话题开始时间记在 `c.topicMeta`；桌面开的或旧版本留下的话题没有记录时，取最近一段没有 4 小时间隔的对话的第一轮作为开始时间。
+- **重新开始话题**（桌面 ⋯ → 重新开始）是用户要求的干净开头：之前的内容不带过去（按 `topicEpoch` 区分）。
+- **回溯更早的记录**：用户的话里有指向过去或记忆的词（「之前」「以前」「上次」「还记得」「昨天」「聊过 / 说过 / 提过」「remember」…，`wantsRecall`）时，从当前上下文之前的聊天记录里挑出与问题字词重合最多的轮次，加上最近的几轮（`pickRecall`，最多 12 轮 / 约 6000 字），按时间顺序作为「【更早的聊天记录摘录】」随这一轮发出；普通消息不带。
 
-```
-index.json                  { version: 1, selectedModel, agent: { id, workspaceId, modelKey }, sessions: SessionSummary[] }
-sessions/<sessionId>.json   { id, title, createdAt, updatedAt, model, messages: Message[] (attachments 存 file / remote) }
-attachments/<sessionId>/    att_<id>.<png|jpg|webp|gif>
-```
+### 图片
 
-用户消息在请求模型之前就写盘，所以失败 / 中止 / 崩溃后历史里仍有它；回复结束（成功、出错或中止）后追加一条 assistant 消息。
-会话 id 与附件文件名都按正则校验，渲染进程传来的 id 不能拼出目录外的路径；返回给渲染进程的附件不含磁盘路径与远端 file id。
-
-### 请求怎样到达模型
-
-LobeHub 的 Responses API（`POST {server}/api/v1/responses`，认证同 `ResponsesClient`：`LOBEHUB_CLI_API_KEY` 或 `lh login` 的凭据，`X-Workspace-Id` 跟随桌宠的工作区）运行的是 **agent**：`model` 字段是 agent id，所用 LLM 由 agent 的 model / provider 决定。因此：
-
-1. **专用 agent**：第一次发送时用 `lh agent create` 建一个「Pixel Pet 聊天」agent（id 记在 `index.json`），换模型时 `lh agent edit -m <id> -p <provider>`；工作区变了会重建，agent 在 LobeHub 里被删了也会自动重建一次。
-2. **多轮上下文**：实测服务端只读取 input 最后一条消息的文字（多条 message 的数组不会成为上下文），所以每轮由 `buildTurnInput` 把**本会话完整历史**（按时间顺序，出错的回复与空的中止回复除外；超过 60000 字符从最旧的开始省略）写进一条用户消息，再接上当前消息。上下文以本地存储为准，清空 / 删除会话立即生效。
-3. **图片**：服务端目前会忽略 `input_image` 内容，所以图片同时走两条路：上传为 LobeHub 文件（`lh file upload`，每张只传一次，file id 缓存在附件上），挂到新话题里的一条用户消息（`lh message create` + `add-files`），本轮以 `previous_response_id` 接着这个话题，模型因此能看到图；同一请求里也按 Responses 规范附上 `{ type: 'input_image', file_id, detail: 'auto' }`。每轮带上本会话最近 6 张图片。
-4. **流式与中止**：`stream: true`，`response.output_text.delta` 逐块经 `onDelta` → `admin.send('admin-chat-delta', …)` 推给设置窗口；聊天用自己的 `ResponsesClient` 实例并传入 `AbortController.signal`，`abort` 只停这一轮，不影响桌宠的对话。`tools: []`，聊天不使用本机能力。
-5. **错误**：映射成可读中文（登录失效提示运行 `lh login`、连不上、超时、无回复、服务端错误原文、图片上传失败），写在 assistant 消息的 `error` 与 `SendResult.error` 里。
-
-### 模型列表
-
-`listModels` 调用 `PetService#refreshModels`（与 `refresh-models` 同一份缓存目录：`lh provider list` + `lh model list <provider> --type chat --enabled`），用 `models.chatModelOptions` 过滤：只要启用的 chat 模型，去掉只出图的模型（`abilities.imageOutput`）与重复项，LobeHub 托管的排前面，`vision` 来自 `abilities.vision`。上次选择存在 `index.json.selectedModel`；所选模型不支持视觉时，带图发送会返回 `reason: 'no-vision'`。
+主进程按文件头校验（png / jpg / webp / gif，每张 ≤ 10 MB，一次 ≤ 4 张），存到 `userData/admin-chat/images/<角色 id>/att_….<ext>`（`ChatImages`，路径按正则校验，渲染进程拿不到磁盘路径），再上传为 LobeHub 文件、挂到她话题里的一条用户消息上（`lh file upload` → `message create` → `add-files`），模型因此能看到图。读历史时转成 data URL 返回。所选模型的 `abilities.vision` 为 false 时，带图发送返回 `no-vision`，什么都不记。桌面上发的图片当时没有保存，只显示张数。
 
 ## 3. 安全边界
 
-- 只有 `admin-chat-*` 通道，桌宠的 `chat` 通道仍不在设置窗口的白名单里（`test/admin-console.test.js`）。
-- 渲染进程拿不到任何 token；聊天使用主进程里 LobeHub CLI 的登录。各类 key 仍然只写不读。
-- 图片按文件头识别类型（不信任扩展名与 data URL 声明的类型），大小在解码前先检查；`pickImages` 的文件选择框在主进程里打开。
+- 只有 `admin-chat-*` 通道，桌宠窗口的 `chat` 通道不在设置窗口的白名单里。
+- 渲染进程拿不到任何 token；聊天用主进程里 LobeHub CLI 的登录。各类 key 仍然只写不读。
 
-## 4. 验证
+## 4. 聊天页
 
-- 单元测试：`node --test test/admin-chat.test.js`（会话增删改查与重启恢复、历史顺序与多轮上下文拼装、图片校验、模型列表过滤、真实 `ResponsesClient` 经假 SSE 服务端的流式 / 报错 / 中止、preload 与本文档一致）；`npm test` 全量。
-- 端到端：`xvfb-run -a node e2e/run.js adminchat`（假 lh + 假 Responses SSE，不花 token）在真实设置窗口的渲染进程里调用 `petAdmin.chat`，订阅 `onDelta` / `onDone`，覆盖模型、流式、多轮、图片、中止、重启恢复；`adminchat-live` 是同样的步骤对真实 LobeHub（会花少量 token，结束后删除建出的聊天 agent）。截图与日志在 `out/e2e/adminchat*/`，`PIXELPET_E2E_VIDEO=1` 另录视频。
+`admin/src/console/pages/Chat.tsx`，rail 入口「聊天」→ `#/chat/<角色 id>`（不带 id 时打开桌面上的当前角色；地址里有 id，所以刷新后还是她）。
 
-## 5. 聊天页（设置窗口 UI，T-2765）
+- **角色栏**：每个角色一行（头像、名字、最后一句、时间），见过面的在前；「在桌面」标出当前角色；正在回复的有转圈；没见过面的显示「还没见过面」，点进去有「去见她」。
+- **顶栏**：她的头像和名字、消息条数与上下文说明、模型 `Select`（她所属厂商的模型，能看图的带「视觉」标签，切换即 `setModel`，和角色页同步）、刷新模型列表。
+- **消息区**：`ChatItem`（Markdown）；一次读最近 40 条，顶部「查看更早的消息」往前翻页且保持阅读位置；桌面上聊的标「桌面」；生成中显示 `LoadingDots` / 逐段文字和「正在回复」；停止的标「已停止」，出错的显示错误和「重试」。贴底时跟随新内容，上翻后不拉回，出现「回到最新消息」。桌面上聊了新的一轮时（`onChanged`）自动刷新。
+- **输入卡片**：Enter 发送、Shift+Enter 换行；图片按钮（主进程文件框）、粘贴、拖入，缩略图可放大、可移除；模型看不了图时提示且不发送；回复中发送按钮变「停止」。
 
-`admin/src/console/pages/Chat.tsx`，rail 第五个入口「聊天」→ `#/chat`（R-05 的例外，理由见 `.agents/ux/lobe-design-rules.md`）。页面铺满主区域：
+## 5. 验证
 
-- **会话栏**：新建（当前会话还是空的就只聚焦输入框，不堆空会话）、点击切换、悬停删除（确认弹窗）；正在回复的会话旁有转圈。上次打开的会话 id 存在 `localStorage`（`pixelpet.adminChat.session`），刷新 / 回到本页时用 `getSession` 读回历史和图片。
-- **顶栏**：会话标题与条数、模型 `Select`（`listModels` 的列表，支持视觉的带「视觉」标签，同名模型标出 provider；切换即 `setModel`，由主进程记住）、刷新模型列表、清空会话（确认）。
-- **消息区**：`@lobehub/ui/chat` 的 `ChatItem`（Markdown，代码块由 shiki 高亮，因此 CSP 加了 `'wasm-unsafe-eval'`）；生成中的气泡显示 `LoadingDots` / 逐段文字和「正在生成」；中止的标「已停止」，出错的显示错误和「重试」（把这一轮的文字和图片再发一次）。贴底时跟随新内容，上翻后不拉回，出现「回到最新消息」。
-- **输入卡片**：`ChatInputAreaInner`（Enter 发送、Shift+Enter 换行、输入法组字时不发送）+ 图片按钮（主进程文件框）+ 粘贴 / 拖入图片（≤ 4 张，PNG/JPG/WebP/GIF，≤ 10 MB，作为 data URL 发送）；缩略图可点开放大、可移除；所选模型不支持视觉时提示且不发送。`ChatSendButton` 在回复中变为「停止」（`abort`）。
-- 同一时间只有一轮回复（主进程限制）：别的会话在回复时，输入框提示稍后再发。
-
-端到端：`xvfb-run -a node e2e/run.js chatui`（`e2e/chat-ui.js`，假 lh + 假 Responses SSE，不花 token），截图在 `out/e2e/chatui/`，`PIXELPET_CHATUI_SHOTS=<dir>` 另拷一份。
+- 单元测试：`node --test test/admin-chat.test.js`；`npm test` 全量。
+- 端到端：`xvfb-run -a node e2e/run.js chatui`（假 lh，不花 token），截图在 `out/e2e/chatui/`；`admin-chat` 另加真实 LobeHub 的几步（会花少量 token）。

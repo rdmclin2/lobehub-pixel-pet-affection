@@ -18,7 +18,7 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'chat':
-      return <ChatPage />;
+      return <ChatPage id={sub} key="chat" navigate={navigate} />;
     case 'play':
       return <HubPage key="play" place="play" />;
     case 'settings':

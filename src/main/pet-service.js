@@ -22,6 +22,7 @@ const asrLib = require('../core/asr');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
+const adminChat = require('../core/admin-chat');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -412,7 +413,19 @@ class PetService extends EventEmitter {
   }
 
   async _doEnsureReady() {
-    const p = this._c();
+    await this._ensurePersona(this._c());
+    // the model follows the character: her pick or default among her own vendor's models
+    try {
+      await this.refreshModels();
+      await this._applyModel();
+    } catch (e) {
+      this.emit('error', e); // keep the agent's current model; retried on the next turn
+    }
+    if (this.pet.localAbilities) await this._verifyLocal();
+  }
+
+  // Her agent's system role follows her persona file, name and the owner's settings (updated once per change).
+  async _ensurePersona(p) {
     const key = persona.personaKey(p, this.settings);
     if (p.personaVersion !== persona.PERSONA_VERSION || p.personaKey !== key) {
       try {
@@ -424,14 +437,6 @@ class PetService extends EventEmitter {
         this.emit('error', e); // carry on with the old prompt; retried on the next turn
       }
     }
-    // the model follows the character: her pick or default among her own vendor's models
-    try {
-      await this.refreshModels();
-      await this._applyModel();
-    } catch (e) {
-      this.emit('error', e); // keep the agent's current model; retried on the next turn
-    }
-    if (this.pet.localAbilities) await this._verifyLocal();
   }
 
   // ---- the model (⋯ → 角色列表 → her page → 模型) ----------------------------------------------------------
@@ -486,9 +491,8 @@ class PetService extends EventEmitter {
   }
 
   // Point the agent at the model the current character should run on, once per change.
-  async _applyModel() {
-    if (!this.pet || !this._catalog) return;
-    const c = this._c();
+  async _applyModel(c = this.pet && this._c()) {
+    if (!this.pet || !this._catalog || !c) return;
     const target = modelsLib.pick(c.speciesId, this._modelOptions(c.speciesId), this.settings.models[c.speciesId]);
     if (!target || c.modelApplied === target.key) return;
     await this.lh.updateAgent({ agentId: c.agentId, model: target.id, provider: target.providerId });
@@ -750,9 +754,10 @@ class PetService extends EventEmitter {
   //   once: the reply is not lost, the bubble starts over with that one (no doubled text), and the line is said
   //   and saved to 聊天记录 once, by the caller, after this returns.
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
-  async _runTurn(args, stream = null) {
+  // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
+  async _runTurn(args, stream = null, { plain = false } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
-    const tools = this._tools();
+    const tools = plain ? [] : this._tools();
     if (tools.length) {
       if (this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
       try {
@@ -877,6 +882,197 @@ class PetService extends EventEmitter {
     } finally {
       this.busy = false;
       this.emit('thinking', false);
+    }
+  }
+
+  // ---- 设置窗口 → 聊天 (core/admin-chat.js, docs/admin-chat.md) ------------------------------------------------
+  // One character is one conversation: her own agent and topic, her 聊天记录. Any character met before can be
+  // talked to here, not only the companion on the desktop; the desktop shows nothing of it (no bubble), but
+  // the rounds are in her history there and her agent remembers them.
+
+  // The left column: every character, with how her conversation stands.
+  chatCharacters() {
+    if (!this.pet) return { ok: true, characters: [] };
+    const all = this.log.list();
+    return {
+      ok: true,
+      busy: this.busy ? (this._consoleTurn ? this._consoleTurn.speciesId : 'desktop') : null,
+      characters: Object.values(SPECIES).map((x) => {
+        const e = this.pet.characters[x.id];
+        const conv = e ? adminChat.conversationOf(all, x.id) : [];
+        const last = conv[conv.length - 1] || null;
+        const lastText = last ? (last.text || '').replace(/\s+/g, ' ').trim() : '';
+        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
+      }),
+    };
+  }
+
+  // Her conversation, a page at a time (newest last): raw 聊天记录 messages; main turns them into views.
+  chatHistory(speciesId, { before = null, limit } = {}) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    const page = adminChat.historyPage(adminChat.conversationOf(this.log.list(), id), { before, limit });
+    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!(this._consoleTurn && this._consoleTurn.speciesId === id), ...page };
+  }
+
+  // Stop the reply the chat page is waiting for (only its own turn: the desktop's is stopped there).
+  chatAbort(speciesId) {
+    const t = this._consoleTurn;
+    if (!t || (speciesId && t.speciesId !== speciesId)) return { ok: true, aborted: false };
+    this.cancel();
+    return { ok: true, aborted: true, speciesId: t.speciesId };
+  }
+
+  _logAs(speciesId, msg) {
+    const c = this.pet.characters[speciesId];
+    const n = (c && c.topicEpoch) || 0;
+    try {
+      return this.log.append({ speciesId, origin: 'user', kind: 'chat', via: 'console', ...(n ? { topicEpoch: n } : {}), ...msg }, this.now());
+    } catch (e) {
+      this.emit('error', e);
+      return { id: `x${this.now().toString(36)}`, at: this.now(), speciesId, ...msg };
+    }
+  }
+
+  // The topic this turn continues (docs/admin-chat.md §2): one that has run for CONTEXT_MS is put aside and
+  // the turn opens a fresh one. `conv`: her conversation so far. -> { fresh, startedAt }
+  _rollTopic(c, conv, t) {
+    const span = adminChat.CONTEXT_MS;
+    if (c.topicId) {
+      let meta = c.topicMeta && c.topicMeta.id === c.topicId ? c.topicMeta : null;
+      if (!meta) {
+        // a topic from before this rule (or opened on the desktop): it started no later than the first round of
+        // the last stretch without a CONTEXT_MS pause; with no round in the last CONTEXT_MS it is put aside
+        const lastAt = conv.length ? conv[conv.length - 1].at : 0;
+        if (lastAt && t - lastAt <= span) {
+          let first = conv.length - 1;
+          while (first > 0 && conv[first].at - conv[first - 1].at <= span) first--;
+          meta = { id: c.topicId, startedAt: conv[first].at };
+        } else meta = { id: c.topicId, startedAt: 0 };
+        c.topicMeta = meta;
+      }
+      if (t - meta.startedAt <= span) return { fresh: false, startedAt: meta.startedAt };
+      c.pastTopicIds = [...(Array.isArray(c.pastTopicIds) ? c.pastTopicIds : []), c.topicId].slice(-50);
+      c.topicId = null;
+      c.topicMeta = null;
+    }
+    return { fresh: true, startedAt: t };
+  }
+
+  // One round from the chat page with `speciesId`. `images`: pictures already checked and saved by main
+  // ([{ path, ref }], core/admin-chat.js ChatImages). onDelta({ speciesId, turnId, text }) as the reply is written.
+  // -> { ok, speciesId, turnId, userMessage, message } | { ok: false, reason, error, userMessage?, message? }
+  async chatAs(speciesId, { text, images = [] } = {}, { onDelta = () => {} } = {}) {
+    if (!this.pet) return { ok: false, reason: 'empty', error: '还没有领养桌宠' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character', error: '没有这个角色' };
+    const c = this.pet.characters[id];
+    if (!c) return { ok: false, reason: 'not-met', error: '还没和她见过面：先在「角色」里和她初次见面，再来聊天' };
+    const clean = String(text || '').trim();
+    const imgs = (Array.isArray(images) ? images : []).filter((x) => x && x.path).slice(0, adminChat.MAX_IMAGES);
+    if (!clean && !imgs.length) return { ok: false, reason: 'empty', error: '消息是空的' };
+    if (clean.length > adminChat.MAX_TEXT) return { ok: false, reason: 'too-long', error: `一条消息最多 ${adminChat.MAX_TEXT} 个字符` };
+    if (this.busy) return { ok: false, reason: 'busy', error: this._consoleTurn ? '上一条消息还在回复中' : '桌宠那边正在说话，等她说完再发' };
+    const sp = getSpecies(id);
+    const isCur = id === this.pet.speciesId;
+    this.busy = true;
+    this._cancelRequested = false;
+    const turnId = `t${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`;
+    this._consoleTurn = { speciesId: id, turnId };
+    if (isCur) this.emit('thinking', true);
+    let userMessage = null;
+    let partial = '';
+    let modelKey = null;
+    try {
+      // the model she runs on: hers, among her vendor's (the same pick as her page → 模型)
+      try {
+        await this.refreshModels();
+      } catch { /* keep the agent's model */ }
+      const target = modelsLib.pick(id, this._modelOptions(id), this.settings.models[id]);
+      modelKey = target ? target.key : c.modelApplied || null;
+      if (imgs.length && target && target.vision === false) return { ok: false, reason: 'no-vision', error: `「${target.label}」看不了图片：在模型里换一个标着「视觉」的，或者先移除图片` };
+      const t = this.now();
+      const conv = adminChat.conversationOf(this.log.list(), id);
+      userMessage = this._logAs(id, { role: 'user', turnId, text: clean, ...(imgs.length ? { attachments: { images: imgs.length, refs: imgs.map((x) => x.ref).filter(Boolean) } } : {}) });
+      this.emit('chat-log', { speciesId: id });
+      await this._ensurePersona(c);
+      try {
+        await this._applyModel(c);
+      } catch (e) {
+        this.emit('error', e);
+      }
+      this._throwIfCanceled();
+      const roll = this._rollTopic(c, conv, t);
+      // 重新开始话题 (newTopic) asked for a clean start: nothing from before it is carried over
+      const epoch = c.topicEpoch || 0;
+      const recent = roll.fresh ? adminChat.recentRounds(conv.filter((m) => (Number(m.topicEpoch) || 0) === epoch), t) : [];
+      // what is not in the model's context any more: before the carried-over rounds, or before this topic began
+      const cutoff = roll.fresh ? (recent.length ? recent[0].at : t) : roll.startedAt;
+      const recall = adminChat.wantsRecall(clean) ? adminChat.pickRecall(conv.filter((m) => m.at < cutoff), clean) : [];
+      if (imgs.length) {
+        const fileIds = [];
+        for (const img of imgs) fileIds.push(await this.lh.uploadFile(img.path));
+        if (!c.topicId) {
+          c.topicId = await this.lh.createTopic(c.agentId, c.name);
+          c.topicMeta = { id: c.topicId, startedAt: t };
+        }
+        const mid = await this.lh.createUserMessage({ agentId: c.agentId, topicId: c.topicId, content: clean || '（发了一张图片）' });
+        await this.lh.addFilesToMessage(mid, fileIds);
+      }
+      this._throwIfCanceled();
+      const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      const stream = {
+        onDelta: (_chunk, soFar) => {
+          if (this._cancelRequested) return;
+          const shown = contentGuard.checkReply(soFar).ok ? adminChat.answerOnly(memes.streamingText(soFar), { streaming: true }) : '';
+          if (shown === partial) return;
+          partial = shown;
+          try {
+            onDelta({ speciesId: id, turnId, text: shown });
+          } catch { /* a display callback must not cost the turn */ }
+        },
+        restart: () => {
+          partial = '';
+          try {
+            onDelta({ speciesId: id, turnId, text: '', restart: true });
+          } catch { /* as above */ }
+        },
+      };
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true });
+      if (res.topicId && res.topicId !== c.topicId) {
+        c.topicId = res.topicId;
+        c.topicMeta = { id: res.topicId, startedAt: t };
+      }
+      let reply = adminChat.answerOnly(memes.extractMeme(res.text, sp).text || res.text);
+      if (!reply) throw Object.assign(new Error('Agent produced no answer'), { code: 'ENOREPLY' });
+      const g = contentGuard.checkReply(reply);
+      if (!g.ok) {
+        this.emit('error', Object.assign(new Error(`reply blocked by content guard: ${g.category}`), { code: 'ECONTENT' }));
+        reply = contentGuard.refusalLine(sp);
+      }
+      c.lastSpokeAt = this.now();
+      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}) });
+      // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
+      let affection = null;
+      if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length ? 2 : 0) }).affection;
+      this._save();
+      if (affection) this._reportAffection(affection);
+      this.emit('update', this.view());
+      return { ok: true, speciesId: id, turnId, userMessage, message, affection };
+    } catch (e) {
+      const canceled = e.code === 'ECANCELED' || this._cancelRequested;
+      if (!canceled) this.emit('error', e);
+      const error = canceled ? '已停止' : adminChat.readableError(e);
+      const message = userMessage ? this._logAs(id, { role: 'pet', turnId, text: canceled ? partial : '', status: canceled ? 'canceled' : 'error', ...(canceled ? {} : { error }), ...(modelKey ? { model: modelKey } : {}) }) : null;
+      this._save();
+      return { ok: false, reason: canceled ? 'aborted' : 'error', code: e.code || null, error, speciesId: id, turnId, userMessage, message };
+    } finally {
+      this.busy = false;
+      this._consoleTurn = null;
+      if (isCur) this.emit('thinking', false);
+      this.emit('chat-log', { speciesId: id });
     }
   }
 

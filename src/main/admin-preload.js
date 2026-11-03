@@ -1,8 +1,8 @@
 'use strict';
 
 // The settings window's bridge (docs/admin-console-design.md §5.2): `window.petAdmin`, a whitelist of the
-// settings and roster channels, plus the settings window's own AI chat (`petAdmin.chat`, docs/admin-chat.md:
-// the `admin-chat-*` channels only; it never talks through the pet, so the pet's `chat` channel stays out).
+// settings and roster channels, plus 聊天 with a character (`petAdmin.chat`, docs/admin-chat.md: the
+// `admin-chat-*` channels only; the pet window's `chat` channel stays out, the console has its own turn).
 // No window moving, no debug hooks. Keys are write-only: they go in through `set('keys.<id>', value)` and
 // only "has a key" ever comes back; the chat uses the LobeHub CLI login in main and never sees a token.
 const { contextBridge, ipcRenderer } = require('electron');
@@ -77,19 +77,16 @@ contextBridge.exposeInMainWorld('petAdmin', {
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),
   onApiStatus: on('api-status'),
-  // 聊天 (docs/admin-chat.md): sessions kept in userData/admin-chat; a reply streams as onDelta events
+  // 聊天 (docs/admin-chat.md): one conversation per character, her 聊天记录; a reply streams as onDelta events.
+  // Her model is chosen with setModel(key, species) above (the same pick as her page → 模型).
   chat: {
-    listModels: (force) => ipcRenderer.invoke('admin-chat-models', { force }),
-    setModel: (key) => ipcRenderer.invoke('admin-chat-set-model', { key }),
-    listSessions: () => ipcRenderer.invoke('admin-chat-sessions'),
-    createSession: (title) => ipcRenderer.invoke('admin-chat-create', { title }),
-    getSession: (id) => ipcRenderer.invoke('admin-chat-get', { id }),
-    deleteSession: (id) => ipcRenderer.invoke('admin-chat-delete', { id }),
-    clearSession: (id) => ipcRenderer.invoke('admin-chat-clear', { id }),
+    listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),
+    history: (speciesId, opts = {}) => ipcRenderer.invoke('admin-chat-history', { speciesId, before: opts.before, limit: opts.limit }),
     pickImages: () => ipcRenderer.invoke('admin-chat-pick-images'),
     send: (req) => ipcRenderer.invoke('admin-chat-send', req),
-    abort: (sessionId) => ipcRenderer.invoke('admin-chat-abort', { sessionId }),
+    abort: (speciesId) => ipcRenderer.invoke('admin-chat-abort', { speciesId }),
     onDelta: on('admin-chat-delta'),
     onDone: on('admin-chat-done'),
+    onChanged: on('admin-chat-changed'),
   },
 });

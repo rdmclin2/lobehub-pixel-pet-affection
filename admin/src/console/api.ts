@@ -254,29 +254,21 @@ export interface PetAdminApi {
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
-  /** 聊天 (docs/admin-chat.md): the settings window's own AI chat, never through the pet. */
+  /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;
 }
 
 // --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
+// One conversation per character: her own agent and topic, her 聊天记录. Her model: `setModel(key, species)`.
 
-export interface ChatModel {
-  hosted: boolean;
+export interface ChatCharacter {
+  count: number;
+  current: boolean;
   id: string;
-  key: string;
-  label: string;
-  providerId: string;
-  vision: boolean;
-}
-
-export interface ChatSessionSummary {
-  createdAt: number;
-  id: string;
-  messageCount: number;
-  model: string | null;
+  lastAt: number | null;
+  met: boolean;
+  name: string;
   preview: string;
-  title: string;
-  updatedAt: number;
 }
 
 export interface ChatAttachment {
@@ -293,15 +285,14 @@ export interface ChatMessage {
   createdAt: number;
   error?: string;
   id: string;
-  model: string;
+  model: string | null;
   role: 'user' | 'assistant';
   status: 'done' | 'error' | 'aborted';
   text: string;
-}
-
-export interface ChatSession extends ChatSessionSummary {
-  messages: ChatMessage[];
-  streaming: boolean;
+  turnId: string | null;
+  /** pictures sent on the desktop: only their count was kept */
+  unsavedImages: number;
+  via: 'console' | 'desktop';
 }
 
 export type ChatImageInput = { path: string } | { dataUrl: string; name?: string } | string;
@@ -314,46 +305,53 @@ export interface ChatPickedImage {
   size: number;
 }
 
+export interface ChatHistory {
+  hasMore: boolean;
+  messages: ChatMessage[];
+  met: boolean;
+  ok: boolean;
+  reason?: string;
+  speciesId: string;
+  streaming: boolean;
+  total: number;
+}
+
 export interface ChatSendResult {
   code?: string | null;
   error?: string;
   message?: ChatMessage;
   ok: boolean;
   reason?: string;
-  session?: ChatSessionSummary;
-  sessionId?: string;
+  speciesId?: string;
+  turnId?: string;
   userMessage?: ChatMessage;
 }
 
 export interface ChatDelta {
-  delta: string;
-  messageId: string;
-  sessionId: string;
+  restart?: boolean;
+  speciesId: string;
   text: string;
+  turnId: string;
 }
 
 export interface ChatDone {
   error?: string;
   message: ChatMessage;
-  messageId: string;
   ok: boolean;
   reason?: 'aborted' | 'error';
-  sessionId: string;
+  speciesId: string;
+  turnId: string;
 }
 
 export interface ChatApi {
-  abort: (sessionId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
-  clearSession: (id: string) => Promise<{ ok: boolean; message?: string; session?: ChatSession }>;
-  createSession: (title?: string) => Promise<{ ok: boolean; session: ChatSessionSummary }>;
-  deleteSession: (id: string) => Promise<{ ok: boolean; reason?: string }>;
-  getSession: (id: string) => Promise<{ ok: boolean; message?: string; reason?: string; session?: ChatSession }>;
-  listModels: (force?: boolean) => Promise<{ error: string | null; models: ChatModel[]; ok: boolean; selected: string | null }>;
-  listSessions: () => Promise<{ ok: boolean; sessions: ChatSessionSummary[] }>;
+  abort: (speciesId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
+  history: (speciesId: string, opts?: { before?: string; limit?: number }) => Promise<ChatHistory>;
+  listCharacters: () => Promise<{ busy: string | null; characters: ChatCharacter[]; ok: boolean }>;
+  onChanged: (cb: (d: { speciesId: string | null }) => void) => () => void;
   onDelta: (cb: (d: ChatDelta) => void) => () => void;
   onDone: (cb: (d: ChatDone) => void) => () => void;
   pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
-  send: (req: { images?: ChatImageInput[]; model?: string; sessionId: string; text?: string }) => Promise<ChatSendResult>;
-  setModel: (key: string) => Promise<{ message?: string; ok: boolean; reason?: string; selected?: string }>;
+  send: (req: { images?: ChatImageInput[]; speciesId: string; text?: string }) => Promise<ChatSendResult>;
 }
 
 /** 聊天记录 (PetService.history / historySession): only the conversations the owner started. */

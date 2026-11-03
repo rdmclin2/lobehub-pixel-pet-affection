@@ -1,42 +1,37 @@
 'use strict';
 
-// 设置窗口 → 聊天 (docs/admin-chat.md): an everyday AI chat with any of the user's LobeHub chat models, apart
-// from the pet. Electron-free so it can be tested: main.js passes the LobeHub side (`lh`, a ResponsesClient,
-// the model catalog of PetService#refreshModels) and the folder under userData; the tests pass fakes.
+// 设置窗口 → 聊天 (docs/admin-chat.md): the owner talks with one of her characters from the settings window.
+// One character is one conversation: her own LobeHub agent and topic, the same ones the desktop pet talks
+// through, and the same 聊天记录 (core/chat-log.js) — a message sent here is part of her history on the desktop
+// too, and the other way round. There is no 新建 / 清空: she stays in that one conversation.
 //
-// On disk (userData/admin-chat/, written atomically through core/store.js):
-//   index.json                  { version, selectedModel, agent, sessions: [summary] }
-//   sessions/<sessionId>.json   { id, title, createdAt, updatedAt, model, messages: [message] }
-//   attachments/<sessionId>/    the pictures sent in that session (att_….png …)
+// Context. LobeHub keeps the topic's messages and gives them to the model on every turn of that topic
+// (previous_response_id = topic id). So what the model sees is bounded by the topic: a topic that has run
+// for CONTEXT_MS (4 hours) is put aside (kept in LobeHub, `pastTopicIds`) and the next turn opens a fresh one,
+// carrying the owner's rounds of the last CONTEXT_MS with it (recentRounds → buildConsoleBody). Older rounds
+// are not sent — unless the owner asks about something from before ("之前…", "还记得…", "上次…": wantsRecall);
+// then the rounds of 聊天记录 from before the context that best match the question (pickRecall) go with that
+// one turn.
 //
-// How a turn reaches the model. LobeHub's Responses API (`/api/v1/responses`, the same auth and request as
-// core/responses-client.js) runs an *agent*: `model` is an agent id, and the agent's model/provider decide the
-// LLM. So the chat keeps one agent of its own ("Pixel Pet 聊天"), switched to the chosen model before a turn.
-// The server reads the text of the last input message only, so the whole history is written into that message
-// (buildTurnInput); pictures are uploaded as LobeHub files, attached to a user message in a fresh topic the
-// turn continues (`previous_response_id`), and listed as `input_image` { file_id } parts of the same input.
+// This file is Electron-free: the pure parts (context window, recall, history pages, pictures on disk) are
+// here; PetService#chatAs runs the turn, main.js wires the IPC. The tests drive both with fakes.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { Store } = require('./store');
-const modelsLib = require('./models');
+const chatLog = require('./chat-log');
 
-const VERSION = 1;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGES = 4; // per message
-const MAX_CONTEXT_IMAGES = 6; // the most recent pictures of a session the model sees again
-const MAX_CONTEXT_CHARS = 60000; // history written into one turn; the oldest messages go first
 const MAX_TEXT = 20000; // one message
-const TIMEOUT_MS = 180000;
-const TITLE_LEN = 30;
-const ID_RE = /^ses_[a-z0-9]{6,40}$/;
+const CONTEXT_MS = 4 * 60 * 60 * 1000; // what one topic (the model's context) spans
+const MAX_RECENT_CHARS = 8000; // the last CONTEXT_MS carried into a fresh topic; the oldest go first
+const MAX_RECALL_CHARS = 6000; // older rounds sent along when the owner asks about them
+const MAX_RECALL_ROUNDS = 12;
+const PAGE = 40; // messages per history page
 const ATT_RE = /^att_[a-z0-9]{6,40}\.(png|jpg|gif|webp)$/;
-const MIME = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
-const AGENT_TITLE = 'Pixel Pet 聊天';
-const SYSTEM_ROLE = '你是一个友好、可靠的 AI 助手，在 Pixel Pet 的设置窗口里和用户日常聊天。用用户使用的语言回答，简洁清楚；看得到用户发来的图片时，先看图再回答。';
-const DEFAULT_TITLE = '新会话';
+const SPECIES_RE = /^[a-z0-9-]{1,40}$/;
 
 const rid = (prefix) => `${prefix}_${Date.now().toString(36)}${crypto.randomBytes(5).toString('hex')}`;
 
@@ -101,33 +96,223 @@ function readImage(input, { maxBytes = MAX_IMAGE_BYTES } = {}) {
   return { ok: true, buffer, mime, ext, name: name || `image.${ext}` };
 }
 
-// ---- context -------------------------------------------------------------------------------------------
-const imageNote = (m) => (m.attachments && m.attachments.length ? `［附图 ${m.attachments.length} 张：${m.attachments.map((a) => a.name).join('、')}］` : '');
-
-// The messages that count as context: finished ones with something in them, in order (failed turns and
-// empty stopped ones are left out; a stopped reply that said something stays).
-function contextMessages(messages) {
-  return (messages || []).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && m.status !== 'error' && ((m.text && m.text.trim()) || (m.attachments && m.attachments.length)));
+// ---- one character's conversation ------------------------------------------------------------------------
+// Her conversation as the chat page shows it: the rounds the owner started with her (chatLog.userSessions is
+// the one filter, so a greeting or a proactive line never shows up here either), oldest first, every
+// conversation of hers joined into one.
+function conversationOf(messages, speciesId) {
+  return chatLog.userSessions(messages).sessions.filter((s) => s.speciesId === speciesId).reverse().flatMap((s) => s.messages);
 }
 
-// The Responses API input of one turn: a single user message whose text is the earlier conversation (oldest
-// first, cut from the front at maxChars) followed by the new message, plus one `input_image` per picture the
-// model should see (`imageFileIds`, LobeHub file ids). -> [{ type: 'message', role: 'user', content }]
-function buildTurnInput(history, current, { imageFileIds = [], maxChars = MAX_CONTEXT_CHARS } = {}) {
-  const lines = contextMessages(history).map((m) => `${m.role === 'user' ? '【用户】' : '【助手】'}${(m.text || '').trim()}${m.role === 'user' ? imageNote(m) : ''}`);
-  let used = 0;
-  let from = lines.length;
-  while (from > 0 && used + lines[from - 1].length + 1 <= maxChars) used += lines[--from].length + 1;
-  const kept = lines.slice(from);
-  const now = (current.text || '').trim() || '（请看我发的图片）';
-  const parts = [];
-  if (kept.length) {
-    parts.push(`以下是我们这次对话到目前为止的记录（按时间顺序${from ? `，更早的 ${from} 条已省略` : ''}）：`, ...kept, '', '现在我说：');
+// One page of it, newest last: the `limit` messages before the message `before` (an id; none = the latest).
+function historyPage(list, { before = null, limit = PAGE } = {}) {
+  const n = Math.max(1, Math.min(200, Number(limit) || PAGE));
+  let end = list.length;
+  if (before) {
+    const i = list.findIndex((m) => m.id === before);
+    if (i >= 0) end = i;
   }
-  parts.push(`${now}${imageNote(current)}`);
-  const content = [{ type: 'input_text', text: parts.join('\n') }];
-  for (const id of imageFileIds) content.push({ type: 'input_image', file_id: id, detail: 'auto' });
-  return [{ type: 'message', role: 'user', content }];
+  const start = Math.max(0, end - n);
+  return { messages: list.slice(start, end), hasMore: start > 0, total: list.length };
+}
+
+// Does this message ask about something from before the current context? Kept simple and visible: words that
+// point back in time or at memory. A miss costs nothing but the recall; a false hit sends a few old rounds.
+const RECALL_RE = /之前|以前|先前|上次|上回|那次|那天|那时|当时|还记得|记得吗|记不记得|记得我|忘了吗|前几天|昨天|前天|上周|上星期|上个月|早些时候|聊过|说过|提过|讲过|告诉过|问过|答应过|\bearlier\b|\bbefore\b|\blast time\b|\bremember\b|\byesterday\b/i;
+function wantsRecall(text) {
+  return RECALL_RE.test(String(text || ''));
+}
+
+// Rounds: the owner's message and her reply share a turnId.
+function roundsOf(list) {
+  const out = [];
+  const byTurn = new Map();
+  for (const m of list) {
+    const k = m.turnId || m.id;
+    let r = byTurn.get(k);
+    if (!r) {
+      r = { turnId: k, at: m.at, messages: [] };
+      byTurn.set(k, r);
+      out.push(r);
+    }
+    r.messages.push(m);
+  }
+  return out;
+}
+
+// The pieces a question is matched on: Chinese character pairs and Latin / digit words.
+function terms(text) {
+  const t = String(text || '').toLowerCase();
+  const out = new Set();
+  for (const w of t.match(/[a-z0-9]{2,}/g) || []) out.add(w);
+  const han = t.match(/[㐀-鿿]+/g) || [];
+  for (const run of han) for (let i = 0; i + 1 < run.length; i++) out.add(run.slice(i, i + 2));
+  return out;
+}
+const STOP = new Set(['之前', '以前', '上次', '还记', '记得', '得吗', '我们', '你们', '什么', '一下', '的时', '时候', '说过', '聊过', '提过', '告诉', '诉过', '是什', '么吗', '那个', '这个', '一个', '昨天', '前天', '吗？', 'remember', 'before', 'earlier']);
+
+// The older rounds that go with a question about the past: those sharing the most words with it, then the
+// latest ones before the context (what "上次" usually means), at most maxRounds / maxChars, in time order.
+function pickRecall(older, question, { maxChars = MAX_RECALL_CHARS, maxRounds = MAX_RECALL_ROUNDS } = {}) {
+  const rounds = roundsOf(older).filter((r) => r.messages.some((m) => (m.text || '').trim()));
+  if (!rounds.length) return [];
+  const q = [...terms(question)].filter((w) => !STOP.has(w));
+  const scored = rounds.map((r, i) => {
+    const t = terms(r.messages.map((m) => m.text).join(' '));
+    return { r, i, score: q.reduce((n, w) => n + (t.has(w) ? 1 : 0), 0) };
+  });
+  const chosen = new Set();
+  for (const s of [...scored].filter((x) => x.score > 0).sort((a, b) => b.score - a.score || b.i - a.i)) {
+    if (chosen.size >= Math.ceil(maxRounds / 2)) break;
+    chosen.add(s.i);
+  }
+  for (let i = rounds.length - 1; i >= 0 && chosen.size < maxRounds; i--) chosen.add(i);
+  const picked = [...chosen].sort((a, b) => a - b).map((i) => rounds[i]);
+  // over the budget: the least relevant, oldest go first
+  const rank = new Map(scored.map((s) => [s.r, s.score]));
+  let used = picked.reduce((n, r) => n + roundChars(r), 0);
+  while (picked.length > 1 && used > maxChars) {
+    let k = 0;
+    for (let j = 1; j < picked.length; j++) if (rank.get(picked[j]) < rank.get(picked[k])) k = j;
+    used -= roundChars(picked[k]);
+    picked.splice(k, 1);
+  }
+  return picked.flatMap((r) => r.messages);
+}
+const roundChars = (r) => r.messages.reduce((n, m) => n + (m.text || '').length + 8, 0);
+
+// The rounds of the last `spanMs` before `now` (what a fresh topic carries), cut from the front at maxChars.
+function recentRounds(list, now, { spanMs = CONTEXT_MS, maxChars = MAX_RECENT_CHARS } = {}) {
+  const rounds = roundsOf(list).filter((r) => r.messages.some((m) => m.at >= now - spanMs));
+  let used = 0;
+  let from = rounds.length;
+  while (from > 0 && used + roundChars(rounds[from - 1]) <= maxChars) used += roundChars(rounds[--from]);
+  return rounds.slice(from).flatMap((r) => r.messages);
+}
+
+const clock = (t) => {
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const picNote = (m) => {
+  const n = m.attachments && Number(m.attachments.images);
+  return n ? `［发了 ${n} 张图片］` : '';
+};
+function transcript(list, name) {
+  return list
+    .filter((m) => (m.text || '').trim() || picNote(m))
+    .map((m) => `[${clock(m.at)}] ${m.role === 'user' ? '主人' : name}：${(m.text || '').trim()}${m.role === 'user' ? picNote(m) : ''}`)
+    .join('\n');
+}
+
+// What the owner's message becomes before PetService wraps it in her state block (persona.buildChatPrompt):
+// the carried-over recent rounds (fresh topic only), the recalled older rounds (a question about the past
+// only), a note about the pictures, then her words.
+function buildConsoleBody({ name, text, recent = [], recall = [], images = 0 }) {
+  const parts = [];
+  if (recent.length) parts.push(`【最近 4 小时的聊天（换了新话题，接着聊）】\n${transcript(recent, name)}`);
+  if (recall.length) parts.push(`【更早的聊天记录摘录（主人问到以前的事，供你回忆；只在相关时引用）】\n${transcript(recall, name)}`);
+  if (images) parts.push(`[图片] 主人刚发来 ${images} 张图片${text ? '和下面这句话' : ''}（就在上一条消息里），请先看图，再直接回应。`);
+  parts.push(text || (images ? '（发了图片）' : ''));
+  return parts.filter(Boolean).join('\n\n');
+}
+
+// ---- pictures sent from the chat page ---------------------------------------------------------------------
+// Kept at <dir>/<speciesId>/att_….png so her history can show them again (聊天记录 keeps only the refs).
+class ChatImages {
+  constructor(dir) {
+    this.dir = dir;
+  }
+
+  _path(speciesId, file) {
+    if (!SPECIES_RE.test(String(speciesId || '')) || !ATT_RE.test(String(file || ''))) return null;
+    return path.join(this.dir, speciesId, file);
+  }
+
+  // read: readImage() results. -> [{ ref: { id, file, name, mime, size }, path }]
+  save(speciesId, read) {
+    if (!SPECIES_RE.test(String(speciesId || ''))) throw new ChatError('unknown character', 'EBADCHAR');
+    const dir = path.join(this.dir, speciesId);
+    fs.mkdirSync(dir, { recursive: true });
+    return read.map((r) => {
+      const file = `${rid('att').toLowerCase()}.${r.ext}`;
+      const p = path.join(dir, file);
+      fs.writeFileSync(p, r.buffer);
+      return { ref: { id: file.replace(/\.\w+$/, ''), file, name: r.name, mime: r.mime, size: r.buffer.length }, path: p };
+    });
+  }
+
+  dataUrl(speciesId, ref) {
+    const p = ref && this._path(speciesId, ref.file);
+    if (!p) return null;
+    try {
+      return `data:${ref.mime};base64,${fs.readFileSync(p).toString('base64')}`;
+    } catch {
+      return null; // the file is gone: shown as missing
+    }
+  }
+}
+
+// A 聊天记录 message as the chat page gets it. Pictures sent from the chat page come back as data URLs;
+// ones sent on the desktop were not kept (only their count), so they are listed without a picture.
+function messageView(m, images, speciesId) {
+  const a = m.attachments || {};
+  const refs = Array.isArray(a.refs) ? a.refs : [];
+  const shown = refs.map((r) => ({ id: r.id, name: r.name, mime: r.mime, size: r.size, url: images ? images.dataUrl(speciesId, r) : null }));
+  const extra = Math.max(0, (Number(a.images) || 0) - refs.length);
+  return {
+    id: m.id,
+    turnId: m.turnId || null,
+    role: m.role === 'user' ? 'user' : 'assistant',
+    text: m.text || '',
+    createdAt: m.at,
+    status: m.status === 'error' ? 'error' : m.status === 'canceled' ? 'aborted' : 'done',
+    error: m.error || undefined,
+    model: m.model || null,
+    via: m.via === 'console' ? 'console' : 'desktop',
+    attachments: shown,
+    unsavedImages: extra,
+  };
+}
+
+// Only the answer is shown (like LobeHub's Personal Agent), never the model's working. The chat runs with no tools
+// (`tools: []`), and the Responses stream's reasoning / tool events are not passed on (responses-client reads
+// `output_text` only), but some models still write their working into the answer text: a tool call they cannot
+// make as markup (DeepSeek's `<｜｜DSML｜｜ calls>…`, `<｜tool▁calls▁begin｜>…`, `<tool_call>…`, `<function_calls>…`)
+// or their thinking (`<think>…</think>`). Seen on real LobeHub (T-2777): 「我先去抓一下今天的科技新闻。」 followed by
+// a raw `<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="activateSkill">…`. Those blocks are cut out — a block still
+// open (mid-stream, or never closed) up to the end, and the start of an opening marker at the very end of a
+// streamed piece, so it never flashes up.
+const WORKING_BLOCKS = [
+  [/<[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(function_)?calls\s*>/i, /<\/[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(function_)?calls\s*>/i],
+  [/<[｜|]tool▁calls▁begin[｜|]>/, /<[｜|]tool▁calls▁end[｜|]>/],
+  [/<tool_calls?>/i, /<\/tool_calls?>/i],
+  [/<function_calls>/i, /<\/function_calls>/i],
+  [/<think(ing)?>/i, /<\/think(ing)?>/i],
+];
+const OPENERS = ['<｜｜DSML｜｜', '<||DSML||', '<｜tool▁calls▁begin｜>', '<tool_call', '<function_calls>', '<think>', '<thinking>'];
+function answerOnly(text, { streaming = false } = {}) {
+  let t = String(text || '');
+  for (const [open, close] of WORKING_BLOCKS) {
+    for (let guard = 0; guard < 50; guard++) {
+      const a = t.search(open);
+      if (a < 0) break;
+      const rest = t.slice(a);
+      const m = rest.slice(1).match(close);
+      const end = m ? a + 1 + m.index + m[0].length : t.length;
+      t = t.slice(0, a) + t.slice(end);
+    }
+  }
+  if (streaming) {
+    const lt = t.lastIndexOf('<');
+    if (lt >= 0 && t.length - lt <= 24) {
+      const tail = t.slice(lt);
+      if (OPENERS.some((o) => o.toLowerCase().startsWith(tail.toLowerCase()))) t = t.slice(0, lt);
+    }
+    return t.replace(/\s+$/, (w) => (/\n\n/.test(w) ? '' : w));
+  }
+  return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // A readable sentence for a failed turn (the UI shows it as is).
@@ -145,310 +330,8 @@ function readableError(e) {
   }
 }
 
-// ---- the store -------------------------------------------------------------------------------------------
-class AdminChat {
-  // dir: userData/admin-chat. lh: LhClient (workspace scope, agent, files, topics). responses: ResponsesClient.
-  // loadCatalog({ force }): the catalog [{ id, displayName, providerId, enabled, type, abilities }].
-  constructor({ dir, lh, responses, loadCatalog = async () => [], now = () => Date.now(), timeoutMs = TIMEOUT_MS }) {
-    this.dir = dir;
-    this.lh = lh;
-    this.responses = responses;
-    this.loadCatalog = loadCatalog;
-    this.now = now;
-    this.timeoutMs = timeoutMs;
-    this.index = new Store(dir, 'index.json');
-    this.sessionsDir = path.join(dir, 'sessions');
-    this.attDir = path.join(dir, 'attachments');
-    fs.mkdirSync(this.sessionsDir, { recursive: true });
-    fs.mkdirSync(this.attDir, { recursive: true });
-    this.state = this._loadIndex();
-    this._models = null; // last listModels() options
-    this.inflight = null; // { sessionId, ac, messageId }
-  }
 
-  _loadIndex() {
-    const s = this.index.load();
-    if (!s || typeof s !== 'object' || !Array.isArray(s.sessions)) return { version: VERSION, selectedModel: null, agent: null, sessions: [] };
-    return { version: VERSION, selectedModel: typeof s.selectedModel === 'string' ? s.selectedModel : null, agent: s.agent && typeof s.agent.id === 'string' ? s.agent : null, sessions: s.sessions.filter((x) => x && ID_RE.test(x.id)) };
-  }
-
-  _saveIndex() {
-    this.index.save(this.state);
-  }
-
-  _sessionStore(id) {
-    return new Store(this.sessionsDir, `${id}.json`);
-  }
-
-  _readSession(id) {
-    if (!ID_RE.test(String(id || ''))) return null;
-    const s = this._sessionStore(id).load();
-    return s && s.id === id && Array.isArray(s.messages) ? s : null;
-  }
-
-  _summary(s) {
-    const last = [...s.messages].reverse().find((m) => m.text && m.text.trim());
-    return { id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt, model: s.model || null, messageCount: s.messages.length, preview: last ? last.text.trim().slice(0, 60) : '' };
-  }
-
-  _writeSession(s) {
-    this._sessionStore(s.id).save(s);
-    const sum = this._summary(s);
-    const i = this.state.sessions.findIndex((x) => x.id === s.id);
-    if (i >= 0) this.state.sessions[i] = sum;
-    else this.state.sessions.push(sum);
-    this._saveIndex();
-    return sum;
-  }
-
-  _attachmentPath(sessionId, file) {
-    if (!ID_RE.test(sessionId) || !ATT_RE.test(String(file || ''))) return null;
-    return path.join(this.attDir, sessionId, file);
-  }
-
-  // A message as the renderer gets it: pictures as data URLs it can show directly (CSP allows data:).
-  _messageView(sessionId, m) {
-    const attachments = (m.attachments || []).map((a) => {
-      let url = null;
-      const p = this._attachmentPath(sessionId, a.file);
-      try {
-        if (p) url = `data:${a.mime};base64,${fs.readFileSync(p).toString('base64')}`;
-      } catch { /* file gone: shown as missing */ }
-      return { id: a.id, name: a.name, mime: a.mime, size: a.size, url };
-    });
-    const { attachments: _a, ...rest } = m;
-    const out = { ...rest, attachments };
-    delete out.remote;
-    return out;
-  }
-
-  // ---- sessions ----
-  listSessions() {
-    return { ok: true, sessions: [...this.state.sessions].sort((a, b) => b.updatedAt - a.updatedAt) };
-  }
-
-  createSession({ title } = {}) {
-    const t = this.now();
-    const s = { id: rid('ses').toLowerCase(), title: typeof title === 'string' && title.trim() ? title.trim().slice(0, 60) : DEFAULT_TITLE, createdAt: t, updatedAt: t, model: null, messages: [] };
-    return { ok: true, session: this._writeSession(s) };
-  }
-
-  getSession(id) {
-    const s = this._readSession(id);
-    if (!s) return { ok: false, reason: 'not-found', message: '会话不存在' };
-    return { ok: true, session: { ...this._summary(s), messages: s.messages.map((m) => this._messageView(s.id, m)), streaming: !!(this.inflight && this.inflight.sessionId === s.id) } };
-  }
-
-  deleteSession(id) {
-    if (!ID_RE.test(String(id || ''))) return { ok: false, reason: 'not-found', message: '会话不存在' };
-    if (this.inflight && this.inflight.sessionId === id) this.abort(id);
-    const had = this.state.sessions.some((x) => x.id === id);
-    this.state.sessions = this.state.sessions.filter((x) => x.id !== id);
-    this._saveIndex();
-    this._sessionStore(id).clear();
-    fs.rmSync(path.join(this.attDir, id), { recursive: true, force: true });
-    return had ? { ok: true } : { ok: false, reason: 'not-found', message: '会话不存在' };
-  }
-
-  // Empty a session (its messages and pictures); it keeps its id, gets its default title back.
-  clearSession(id) {
-    const s = this._readSession(id);
-    if (!s) return { ok: false, reason: 'not-found', message: '会话不存在' };
-    if (this.inflight && this.inflight.sessionId === id) this.abort(id);
-    s.messages = [];
-    s.title = DEFAULT_TITLE;
-    s.updatedAt = this.now();
-    fs.rmSync(path.join(this.attDir, id), { recursive: true, force: true });
-    const sum = this._writeSession(s);
-    return { ok: true, session: { ...sum, messages: [], streaming: false } };
-  }
-
-  // ---- models ----
-  async listModels({ force = false } = {}) {
-    let error = null;
-    let catalog = [];
-    try {
-      catalog = (await this.loadCatalog({ force })) || [];
-    } catch (e) {
-      error = e.message;
-    }
-    const models = modelsLib.chatModelOptions(catalog);
-    if (models.length) this._models = models;
-    const list = models.length ? models : this._models || [];
-    const sel = list.find((m) => m.key === this.state.selectedModel) || list[0] || null;
-    return { ok: true, models: list, selected: sel ? sel.key : null, error: error || (list.length ? null : '没有可用的聊天模型：请检查 LobeHub 登录与模型服务商设置') };
-  }
-
-  async setModel(key) {
-    const k = String(key || '');
-    if (!modelsLib.KEY_RE.test(k)) return { ok: false, reason: 'bad-model', message: '模型格式不对' };
-    const list = this._models || (await this.listModels()).models;
-    if (list.length && !list.some((m) => m.key === k)) return { ok: false, reason: 'unknown-model', message: '没有这个模型' };
-    this.state.selectedModel = k;
-    this._saveIndex();
-    return { ok: true, selected: k };
-  }
-
-  async _resolveModel(key) {
-    const list = this._models || (await this.listModels()).models;
-    const k = key || this.state.selectedModel;
-    const m = list.find((x) => x.key === k) || (!key ? list[0] : null);
-    if (m) return m;
-    if (k && modelsLib.KEY_RE.test(k) && !list.length) {
-      // the catalog could not be loaded: trust a well-formed key (vision unknown → allowed)
-      const [providerId, ...rest] = k.split(':');
-      return { key: k, providerId, id: rest.join(':'), label: rest.join(':'), vision: true };
-    }
-    return null;
-  }
-
-  // ---- the chat's own agent ----
-  async _ensureAgent(model) {
-    const ws = this.lh.workspaceId === undefined ? null : this.lh.workspaceId || null;
-    let a = this.state.agent;
-    if (!a || (a.workspaceId || null) !== ws) {
-      const r = await this.lh.createAgent({ title: AGENT_TITLE, description: '设置窗口 → 聊天 使用的通用助手', systemRole: SYSTEM_ROLE });
-      a = { id: r.agentId, workspaceId: ws, modelKey: null };
-      this.state.agent = a;
-      this._saveIndex();
-    }
-    if (a.modelKey !== model.key) {
-      try {
-        await this.lh.updateAgent({ agentId: a.id, model: model.id, provider: model.providerId });
-      } catch (e) {
-        // the agent may have been deleted in LobeHub: make a new one, once
-        if (this.state.agent !== a) throw e;
-        this.state.agent = null;
-        return this._ensureAgent(model);
-      }
-      a.modelKey = model.key;
-      this._saveIndex();
-    }
-    return a.id;
-  }
-
-  // The pictures the model sees this turn (the latest MAX_CONTEXT_IMAGES of the session), uploaded once
-  // each (the LobeHub file id is kept on the attachment as `remote`). -> [fileId]
-  async _uploadContextImages(s, signal) {
-    const atts = s.messages.filter((m) => m.role === 'user' && m.status !== 'error').flatMap((m) => m.attachments || []).slice(-MAX_CONTEXT_IMAGES);
-    const ids = [];
-    for (const a of atts) {
-      if (signal.aborted) throw new ChatError('Canceled', 'ECANCELED');
-      if (!a.remote || a.remote.workspaceId !== (this.lh.workspaceId || null)) {
-        const p = this._attachmentPath(s.id, a.file);
-        if (!p || !fs.existsSync(p)) continue;
-        try {
-          a.remote = { fileId: await this.lh.uploadFile(p), workspaceId: this.lh.workspaceId || null };
-        } catch (e) {
-          throw new ChatError(`图片上传失败：${e.message}`, 'EUPLOAD');
-        }
-        this._sessionStore(s.id).save(s);
-      }
-      ids.push(a.remote.fileId);
-    }
-    return ids;
-  }
-
-  // ---- a turn ----
-  // { sessionId, text, images: [{ path } | { dataUrl, name }], model?: 'provider:id' }
-  // onDelta({ sessionId, messageId, delta, text }) for each piece of the reply as it streams.
-  // -> { ok: true, userMessage, message } | { ok: false, reason, message?, error?, userMessage?, ... }
-  async send({ sessionId, text, images = [], model } = {}, { onDelta = () => {} } = {}) {
-    const s = this._readSession(sessionId);
-    if (!s) return { ok: false, reason: 'not-found', error: '会话不存在' };
-    const clean = typeof text === 'string' ? text.trim() : '';
-    const imgs = Array.isArray(images) ? images : [];
-    if (!clean && !imgs.length) return { ok: false, reason: 'empty', error: '消息是空的' };
-    if (clean.length > MAX_TEXT) return { ok: false, reason: 'too-long', error: `一条消息最多 ${MAX_TEXT} 个字符` };
-    if (imgs.length > MAX_IMAGES) return { ok: false, reason: 'too-many-images', error: `一次最多发送 ${MAX_IMAGES} 张图片` };
-    if (this.inflight) return { ok: false, reason: 'busy', error: '上一条消息还在回复中' };
-    const read = imgs.map((x) => readImage(x));
-    const badImg = read.find((r) => !r.ok);
-    if (badImg) return { ok: false, reason: badImg.reason, error: badImg.message };
-    const m = await this._resolveModel(typeof model === 'string' && model ? model : null);
-    if (!m) return { ok: false, reason: 'no-model', error: model ? '没有这个模型' : '没有可用的聊天模型' };
-    if (read.length && !m.vision) return { ok: false, reason: 'no-vision', error: `${m.label} 不支持图片，请换一个支持视觉的模型` };
-    if (this.inflight) return { ok: false, reason: 'busy', error: '上一条消息还在回复中' };
-
-    const ac = new AbortController();
-    const messageId = rid('msg');
-    this.inflight = { sessionId: s.id, ac, messageId };
-    try {
-      // the user's message is kept first, so it is there even when the turn fails
-      const history = s.messages.slice();
-      const dir = path.join(this.attDir, s.id);
-      if (read.length) fs.mkdirSync(dir, { recursive: true });
-      const attachments = read.map((r) => {
-        const file = `${rid('att').toLowerCase()}.${r.ext}`;
-        fs.writeFileSync(path.join(dir, file), r.buffer);
-        return { id: file.replace(/\.\w+$/, ''), file, name: r.name, mime: r.mime, size: r.buffer.length };
-      });
-      const t = this.now();
-      const user = { id: rid('msg'), role: 'user', text: clean, attachments, model: m.key, createdAt: t, status: 'done' };
-      s.messages.push(user);
-      if (s.title === DEFAULT_TITLE && clean) s.title = clean.replace(/\s+/g, ' ').slice(0, TITLE_LEN);
-      s.updatedAt = t;
-      s.model = m.key;
-      this._writeSession(s);
-
-      let partial = '';
-      const finish = (extra) => {
-        const msg = { id: messageId, role: 'assistant', text: partial, attachments: [], model: m.key, createdAt: this.now(), ...extra };
-        s.messages.push(msg);
-        s.updatedAt = msg.createdAt;
-        this._writeSession(s);
-        return this._messageView(s.id, msg);
-      };
-      try {
-        if (this.responses.available && !this.responses.available()) throw new ChatError('LobeHub login is missing', 'EAUTH');
-        const agentId = await this._ensureAgent(m).catch((e) => { throw e.code ? e : new ChatError(`聊天助手准备失败：${e.message}`, 'EAGENT'); });
-        if (ac.signal.aborted) throw new ChatError('Canceled', 'ECANCELED');
-        const fileIds = await this._uploadContextImages(s, ac.signal);
-        let topicId;
-        if (fileIds.length) {
-          try {
-            topicId = await this.lh.createTopic(agentId, s.title.slice(0, 40) || AGENT_TITLE);
-            const mid = await this.lh.createUserMessage({ agentId, topicId, content: '（这次对话里的图片，按发送顺序）' });
-            await this.lh.addFilesToMessage(mid, fileIds);
-          } catch (e) {
-            throw new ChatError(`图片上传失败：${e.message}`, 'EUPLOAD');
-          }
-        }
-        if (ac.signal.aborted) throw new ChatError('Canceled', 'ECANCELED');
-        const input = buildTurnInput(history, user, { imageFileIds: fileIds });
-        const r = await this.responses.run({
-          agentId, prompt: input, topicId, tools: [], timeoutMs: this.timeoutMs, signal: ac.signal,
-          onDelta: (delta, full) => {
-            partial = full;
-            try {
-              onDelta({ sessionId: s.id, messageId, delta, text: full });
-            } catch { /* a display callback must not cost the turn */ }
-          },
-        });
-        partial = r.text;
-        const message = finish({ status: 'done' });
-        return { ok: true, sessionId: s.id, userMessage: this._messageView(s.id, user), message, session: this._summary(s) };
-      } catch (e) {
-        if (e.code === 'ECANCELED' || ac.signal.aborted) {
-          const message = finish({ status: 'aborted' });
-          return { ok: false, reason: 'aborted', sessionId: s.id, error: '已停止', userMessage: this._messageView(s.id, user), message, session: this._summary(s) };
-        }
-        const error = readableError(e);
-        const message = finish({ status: 'error', error });
-        return { ok: false, reason: 'error', code: e.code || null, error, sessionId: s.id, userMessage: this._messageView(s.id, user), message, session: this._summary(s) };
-      }
-    } finally {
-      this.inflight = null;
-    }
-  }
-
-  // Stop the reply being written in `sessionId` (any session when omitted). -> { ok, aborted }
-  abort(sessionId) {
-    const f = this.inflight;
-    if (!f || (sessionId && f.sessionId !== sessionId)) return { ok: true, aborted: false };
-    f.ac.abort();
-    return { ok: true, aborted: true, sessionId: f.sessionId, messageId: f.messageId };
-  }
-}
-
-module.exports = { AdminChat, ChatError, readImage, sniffImage, buildTurnInput, contextMessages, readableError, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_CONTEXT_IMAGES, MAX_CONTEXT_CHARS, AGENT_TITLE };
+module.exports = {
+  ChatError, ChatImages, answerOnly, readImage, sniffImage, readableError, conversationOf, historyPage, wantsRecall, pickRecall, recentRounds,
+  buildConsoleBody, messageView, transcript, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_TEXT, CONTEXT_MS, PAGE,
+};

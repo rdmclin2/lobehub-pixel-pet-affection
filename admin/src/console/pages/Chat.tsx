@@ -1,39 +1,23 @@
 /**
- * 聊天 (T-2765): the settings window's own AI chat (docs/admin-chat.md), shaped like LobeHub's chat page —
- * sessions on the left, the conversation in the middle, the input card at the bottom. Everything lives in main
- * (`petAdmin.chat`): this page keeps only what is on screen, so a reload or a trip to another page reads the
- * sessions, messages and pictures back from there.
+ * 聊天 (docs/admin-chat.md): talk with a character from the settings window, shaped like LobeHub's chat page —
+ * characters on the left, her conversation in the middle, the input card at the bottom. One character is one
+ * conversation: her own agent and topic, the same 聊天记录 as on the desktop, so there is no 新建 / 清空.
+ * Everything lives in main (`petAdmin.chat`): this page keeps only what is on screen, and `#/chat/<id>` says
+ * whose conversation is open, so a reload or a trip to another page reads it all back.
  */
-import {
-  ActionIcon,
-  Alert,
-  Avatar,
-  Button,
-  confirmModal,
-  createStaticStyles,
-  cssVar,
-  Empty,
-  Flexbox,
-  Icon,
-  Image,
-  PreviewGroup,
-  Select,
-  Spin,
-  Tag,
-  Text,
-  toast,
-  Tooltip,
-} from '@lobehub/ui';
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
 import { ChatInputActionBar, ChatInputAreaInner, ChatItem, ChatSendButton, LoadingDots } from '@lobehub/ui/chat';
-import { ArrowDown, Bot, Eraser, Eye, ImagePlus, MessageCirclePlus, MessagesSquare, RotateCw, Trash2, User, X } from 'lucide-react';
+import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X } from 'lucide-react';
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { api, type ChatMessage, type ChatModel, type ChatSessionSummary } from '../api';
+import { api, reasonText, type ChatCharacter, type ChatMessage, type RosterRow } from '../api';
+import { SpriteStage } from '../stage/SpriteStage';
+import { useStore } from '../store';
 
-const ACTIVE_KEY = 'pixelpet.adminChat.session';
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const PAGE = 40;
 
 const styles = createStaticStyles(({ css }) => ({
   root: css`
@@ -93,14 +77,8 @@ const styles = createStaticStyles(({ css }) => ({
       outline-offset: -2px;
     }
 
-    & [data-session-delete] {
-      opacity: 0;
-    }
-
-    &:hover [data-session-delete],
-    &:focus-within [data-session-delete],
-    &[aria-current='true'] [data-session-delete] {
-      opacity: 1;
+    &[data-met='false'] {
+      color: ${cssVar.colorTextTertiary};
     }
   `,
   sessionText: css`
@@ -217,6 +195,24 @@ const styles = createStaticStyles(({ css }) => ({
   sendBar: css`
     white-space: nowrap;
   `,
+  avatar: css`
+    overflow: hidden;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+
+    background: ${cssVar.colorFillTertiary};
+  `,
+  earlier: css`
+    display: flex;
+    justify-content: center;
+    padding-block: 4px 12px;
+  `,
   modelOption: css`
     overflow: hidden;
     display: flex;
@@ -237,18 +233,19 @@ interface Pending {
 
 /** The reply being written: deltas carry the whole text so far. */
 interface Live {
-  messageId: string | null;
-  sessionId: string;
+  speciesId: string;
   text: string;
+  turnId: string | null;
 }
 
 const chat = () => api().chat;
 
-const clock = (t: number) => {
+const clock = (t: number | null) => {
+  if (!t) return '';
   const d = new Date(t);
   const now = new Date();
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return d.toDateString() === now.toDateString() ? hm : `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  return d.toDateString() === now.toDateString() ? hm : `${d.getMonth() + 1}月${d.getDate()}日`;
 };
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -263,113 +260,110 @@ const readFile = (file: File) =>
 
 const USER_AVATAR = { avatar: <Icon icon={User} size={20} />, backgroundColor: cssVar.colorFillSecondary, title: '你' };
 
-export const ChatPage = () => {
-  const [models, setModels] = useState<ChatModel[]>([]);
-  const [modelError, setModelError] = useState<string | null>(null);
-  const [modelsLoading, setModelsLoading] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+const modelLabel = (row: RosterRow | undefined, key: string | null | undefined) => {
+  if (!key) return '';
+  const o = row?.model?.options.find((x) => x.key === key);
+  return (o?.label as string | undefined) ?? key.split(':').pop() ?? key;
+};
+
+const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) => (
+  <span className={styles.avatar} style={{ height: size, width: size }}>
+    {row ? <SpriteStage animate={false} height={size} name={row.nameZh} preview={row.preview} silhouette={!row.met} /> : null}
+  </span>
+);
+
+export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) => void }) => {
+  const { roster, merge } = useStore();
+  const [characters, setCharacters] = useState<ChatCharacter[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loadingSession, setLoadingSession] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [live, setLive] = useState<Live | null>(null);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const activeRef = useRef<string | null>(null);
-  activeRef.current = activeId;
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
+  const liveRef = useRef<Live | null>(null);
+  liveRef.current = live;
 
-  const model = models.find((m) => m.key === selected) ?? null;
-  const labelOf = useCallback(
-    (key: string | null | undefined) => (key ? (models.find((m) => m.key === key)?.label ?? key.split(':').pop() ?? key) : ''),
-    [models],
-  );
+  // whose conversation: the one in the address, else the companion on the desktop
+  const fallbackId = characters.find((c) => c.current)?.id ?? roster.find((c) => c.current)?.id ?? characters[0]?.id ?? null;
+  const activeId = id && roster.some((c) => c.id === id) ? id : fallbackId;
+  const activeRef = useRef<string | null>(activeId);
+  activeRef.current = activeId;
+  const row = roster.find((c) => c.id === activeId);
+  const who = characters.find((c) => c.id === activeId);
+  const met = !!row?.met;
+  const name = who?.name ?? row?.nameZh ?? '';
+  const m = row?.model ?? null;
+  const currentModel = m?.options.find((o) => o.key === m.current) ?? null;
+  const vision = currentModel ? currentModel.vision !== false : true;
   const busy = !!live;
-  const liveHere = live && live.sessionId === activeId ? live : null;
-  const active = sessions.find((s) => s.id === activeId) ?? null;
+  const liveHere = live && live.speciesId === activeId ? live : null;
 
-  const refreshSessions = useCallback(async () => {
-    const r = await chat().listSessions();
-    if (r.ok) setSessions(r.sessions);
-    return r.ok ? r.sessions : [];
+  const refreshCharacters = useCallback(async () => {
+    const r = await chat().listCharacters();
+    if (r.ok) setCharacters(r.characters);
+    return r;
   }, []);
 
-  const loadModels = useCallback(async (force = false) => {
-    setModelsLoading(true);
-    try {
-      const r = await chat().listModels(force);
-      setModels(r.models ?? []);
-      setSelected(r.selected ?? r.models?.[0]?.key ?? null);
-      setModelError(r.error ?? (r.models?.length ? null : '没有可用的聊天模型：先在 LobeHub 里启用一个对话模型。'));
-    } catch (e) {
-      setModelError(String((e as Error)?.message ?? e));
-    } finally {
-      setModelsLoading(false);
+  /** The latest page of her conversation (at least as many as are on screen, so 查看更早 stays loaded). */
+  const loadLatest = useCallback(async (sid: string, keep = 0) => {
+    const r = await chat().history(sid, { limit: Math.max(PAGE, keep) });
+    if (activeRef.current !== sid) return;
+    setLoading(false);
+    if (!r.ok) {
+      setMessages([]);
+      setHasMore(false);
+      return;
     }
+    setMessages(r.messages);
+    setHasMore(r.hasMore);
+    if (r.streaming) setLive((l) => (l && l.speciesId === sid ? l : { speciesId: sid, text: '', turnId: null }));
   }, []);
 
-  /** Open a session: its whole history (and pictures) comes back from main; a reply still running keeps streaming. */
-  const open = useCallback(async (id: string | null) => {
-    setActiveId(id);
-    activeRef.current = id;
+  // first visit, a reload, another character or coming back from another page: read it all again from main
+  useEffect(() => {
+    refreshCharacters();
+  }, [refreshCharacters]);
+  useEffect(() => {
+    if (!activeId) return;
     stick.current = true;
-    if (id) localStorage.setItem(ACTIVE_KEY, id);
-    else localStorage.removeItem(ACTIVE_KEY);
-    if (!id) {
-      setMessages([]);
-      setLoadingSession(false);
-      return;
-    }
     setMessages([]);
-    setLoadingSession(true);
-    const r = await chat().getSession(id);
-    if (activeRef.current !== id) return;
-    setLoadingSession(false);
-    if (!r.ok || !r.session) {
-      setMessages([]);
-      toast.error(r.message ?? '这个会话没有打开');
-      return;
-    }
-    setMessages(r.session.messages);
-    if (r.session.streaming) setLive((l) => (l && l.sessionId === id ? l : { messageId: null, sessionId: id, text: '' }));
-  }, []);
+    setHasMore(false);
+    setLoading(true);
+    setPending([]);
+    loadLatest(activeId);
+  }, [activeId, loadLatest]);
 
-  // first visit, a reload or coming back from another page: everything is read again from main
+  const countRef = useRef(0);
+  countRef.current = messages.length;
   useEffect(() => {
-    loadModels();
-    (async () => {
-      const list = await refreshSessions();
-      const saved = localStorage.getItem(ACTIVE_KEY);
-      await open(list.find((s) => s.id === saved)?.id ?? list[0]?.id ?? null);
-    })();
-  }, [loadModels, open, refreshSessions]);
-
-  useEffect(() => {
-    let seen: string | null = null;
-    const offDelta = chat().onDelta((d) => {
-      setLive({ messageId: d.messageId, sessionId: d.sessionId, text: d.text });
-      // the first words of a reply: your message is saved by now, so the list shows its new title and count
-      if (seen !== d.messageId) {
-        seen = d.messageId;
-        refreshSessions();
-      }
-    });
+    const offDelta = chat().onDelta((d) => setLive({ speciesId: d.speciesId, text: d.text, turnId: d.turnId }));
     const offDone = chat().onDone((d) => {
-      if (activeRef.current === d.sessionId) setMessages((ms) => (ms.some((m) => m.id === d.message.id) ? ms : [...ms, d.message]));
-      setLive((l) => (l && l.sessionId === d.sessionId ? null : l));
-      refreshSessions();
+      if (activeRef.current === d.speciesId) setMessages((ms) => (ms.some((x) => x.id === d.message.id) ? ms : [...ms, d.message]));
+      setLive((l) => (l && l.speciesId === d.speciesId ? null : l));
+      refreshCharacters();
+    });
+    // her history moved: a round on the desktop, or this page's own round being saved
+    const offChanged = chat().onChanged((d) => {
+      refreshCharacters();
+      const sid = activeRef.current;
+      if (sid && (!d.speciesId || d.speciesId === sid) && !liveRef.current) loadLatest(sid, countRef.current);
     });
     return () => {
       offDelta();
       offDone();
+      offChanged();
     };
-  }, [refreshSessions]);
+  }, [loadLatest, refreshCharacters]);
 
   // stay at the bottom while she writes — unless you scrolled up to read
   // always instant: a smooth scroll would pass through "not at the bottom" and unstick itself mid-way
@@ -379,7 +373,7 @@ export const ChatPage = () => {
   }, []);
   useLayoutEffect(() => {
     if (stick.current) toBottom();
-  }, [messages, liveHere?.text, activeId, loadingSession, toBottom]);
+  }, [messages, liveHere?.text, activeId, loading, toBottom]);
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -393,6 +387,27 @@ export const ChatPage = () => {
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
     stick.current = near;
     setAtBottom(near);
+  };
+
+  /** 查看更早的消息: the page before the oldest one shown, keeping what you are looking at in place. */
+  const loadEarlier = async () => {
+    if (!activeId || !messages.length || loadingMore) return;
+    const sid = activeId;
+    const el = scrollRef.current;
+    const fromBottom = el ? el.scrollHeight - el.scrollTop : 0;
+    setLoadingMore(true);
+    try {
+      const r = await chat().history(sid, { before: messages[0].id, limit: PAGE });
+      if (activeRef.current !== sid || !r.ok) return;
+      stick.current = false;
+      setMessages((ms) => [...r.messages.filter((x) => !ms.some((y) => y.id === x.id)), ...ms]);
+      setHasMore(r.hasMore);
+      requestAnimationFrame(() => {
+        if (el) el.scrollTop = el.scrollHeight - fromBottom;
+      });
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const addFiles = async (files: File[]) => {
@@ -444,46 +459,38 @@ export const ChatPage = () => {
   };
 
   const send = async (text: string, images: Pending[]) => {
-    if (busy) return;
+    if (busy || !activeId || !met) return;
     const body = text.trim();
     if (!body && !images.length) return;
-    if (images.length && model && !model.vision) {
-      toast.warning(`「${model.label}」看不了图片：换一个标着「视觉」的模型，或者先移除图片`);
+    if (images.length && !vision) {
+      toast.warning(`「${currentModel?.label ?? '这个模型'}」看不了图片：换一个标着「视觉」的模型，或者先移除图片`);
       return;
     }
-    let sid = activeRef.current;
-    if (!sid) {
-      const c = await chat().createSession();
-      sid = c.session.id;
-      setSessions((s) => [c.session, ...s]);
-      await open(sid);
-    }
+    const sid = activeId;
     const temp: ChatMessage = {
       attachments: images.map((i) => ({ id: i.key, mime: i.mime, name: i.name, size: i.size, url: i.dataUrl })),
       createdAt: Date.now(),
       id: `tmp_${Date.now()}`,
-      model: selected ?? '',
+      model: m?.current ?? null,
       role: 'user',
       status: 'done',
       text: body,
+      turnId: null,
+      unsavedImages: 0,
+      via: 'console',
     };
     stick.current = true;
     setMessages((ms) => [...ms, temp]);
     setInput('');
     setPending([]);
-    setLive({ messageId: null, sessionId: sid, text: '' });
-    const r = await chat().send({
-      images: images.map((i) => (i.path ? { path: i.path } : { dataUrl: i.dataUrl, name: i.name })),
-      model: selected ?? undefined,
-      sessionId: sid,
-      text: body,
-    });
+    setLive({ speciesId: sid, text: '', turnId: null });
+    const r = await chat().send({ images: images.map((i) => (i.path ? { path: i.path } : { dataUrl: i.dataUrl, name: i.name })), speciesId: sid, text: body });
     const here = activeRef.current === sid;
-    if (!r.message || !r.userMessage) {
-      // refused before anything was saved: put what you wrote back
-      setLive((l) => (l && l.sessionId === sid ? null : l));
+    if (!r.userMessage) {
+      // refused before anything was kept: put what you wrote back
+      setLive((l) => (l && l.speciesId === sid ? null : l));
       if (here) {
-        setMessages((ms) => ms.filter((m) => m.id !== temp.id));
+        setMessages((ms) => ms.filter((x) => x.id !== temp.id));
         setInput((v) => v || body);
         setPending((p) => (p.length ? p : images));
       }
@@ -493,21 +500,21 @@ export const ChatPage = () => {
     const { message, userMessage } = r;
     if (here) {
       setMessages((ms) => {
-        const next = ms.map((m) => (m.id === temp.id ? userMessage : m));
-        return next.some((m) => m.id === message.id) ? next : [...next, message];
+        const next = ms.filter((x) => x.id !== userMessage.id).map((x) => (x.id === temp.id ? userMessage : x));
+        return !message || next.some((x) => x.id === message.id) ? next : [...next, message];
       });
     }
-    setLive((l) => (l && l.sessionId === sid ? null : l));
-    refreshSessions();
+    setLive((l) => (l && l.speciesId === sid ? null : l));
+    refreshCharacters();
   };
 
   const stop = () => {
-    if (live) chat().abort(live.sessionId);
+    if (live) chat().abort(live.speciesId);
   };
 
-  /** 重试: the turn that failed is sent again (its words and pictures). */
+  /** 重试: the round that failed is sent again (its words and pictures). */
   const retry = (assistantIndex: number) => {
-    const user = [...messages.slice(0, assistantIndex)].reverse().find((m) => m.role === 'user');
+    const user = [...messages.slice(0, assistantIndex)].reverse().find((x) => x.role === 'user');
     if (!user) return;
     send(
       user.text,
@@ -515,202 +522,173 @@ export const ChatPage = () => {
     );
   };
 
-  const newSession = async () => {
-    if (active && active.messageCount === 0 && messages.length === 0) return textRef.current?.focus();
-    const c = await chat().createSession();
-    if (!c.ok) return toast.error('没有新建成功');
-    setSessions((s) => [c.session, ...s]);
-    await open(c.session.id);
-    textRef.current?.focus();
-  };
-
-  const removeSession = (s: ChatSessionSummary) =>
-    confirmModal({
-      cancelText: '取消',
-      content: '会话里的消息和图片会一起删除，无法恢复。',
-      okButtonProps: { danger: true },
-      okText: '删除会话',
-      onOk: async () => {
-        const r = await chat().deleteSession(s.id);
-        if (!r.ok) return toast.error('没有删除成功');
-        if (live?.sessionId === s.id) setLive(null);
-        const list = await refreshSessions();
-        if (activeRef.current === s.id) await open(list[0]?.id ?? null);
-        toast.success(`已删除「${s.title}」`);
-      },
-      title: `删除会话「${s.title}」？`,
-    });
-
-  const clearSession = () => {
-    if (!activeId) return;
-    confirmModal({
-      cancelText: '取消',
-      content: '这个会话里的消息和图片会被清空，会话本身保留。之后的对话不再带着之前的内容。',
-      okButtonProps: { danger: true },
-      okText: '清空消息',
-      onOk: async () => {
-        const id = activeId;
-        if (live?.sessionId === id) await chat().abort(id);
-        const r = await chat().clearSession(id);
-        if (!r.ok) return toast.error(r.message ?? '没有清空成功');
-        if (activeRef.current === id) setMessages([]);
-        refreshSessions();
-        toast.success('已清空');
-      },
-      title: '清空这个会话的消息？',
-    });
-  };
-
   const changeModel = async (key: string) => {
-    const prev = selected;
-    setSelected(key);
-    const r = await chat().setModel(key);
-    if (!r.ok) {
-      setSelected(prev);
-      toast.error(r.message ?? '没有切换成功');
+    // only one of hers (the picker is rebuilt per character, so another one's pick never lands here)
+    if (!row || !m?.options.some((o) => o.key === key) || key === m.current) return;
+    const r = await api().setModel(key, row.id);
+    if (r && r.view) merge({ view: r.view });
+    if (!r || !r.ok) toast.error(reasonText(r));
+  };
+
+  const refreshModels = async () => {
+    setRefreshing(true);
+    try {
+      const r = await api().refreshModels();
+      if (r && r.view) merge({ view: r.view });
+    } finally {
+      setRefreshing(false);
     }
   };
+  // her vendor's model list is loaded the first time someone needs it (as on her page → 模型)
+  useEffect(() => {
+    if (m && !m.loaded) api().refreshModels().then((r) => r && r.view && merge({ view: r.view }), () => {});
+  }, [m?.loaded, merge]);
 
   const modelOptions = useMemo(() => {
+    const opts = m?.options ?? [];
     // the same name from two providers: say whose it is
-    const twice = new Set(models.filter((m, i) => models.findIndex((x) => x.label === m.label) !== i).map((m) => m.label));
-    return models.map((m) => ({
+    const twice = new Set(opts.filter((o, i) => opts.findIndex((x) => x.label === o.label) !== i).map((o) => o.label));
+    return opts.map((o) => ({
       label: (
-        <span className={styles.modelOption} data-model-option={m.key}>
-          <span className={styles.ellipsis}>{m.label}</span>
-          {twice.has(m.label) && (
+        <span className={styles.modelOption} data-model-option={o.key}>
+          <span className={styles.ellipsis}>{o.label as string}</span>
+          {twice.has(o.label) && (
             <Text fontSize={12} type="secondary">
-              {m.providerId}
+              {o.providerId as string}
             </Text>
           )}
-          {m.vision && (
+          {o.vision === true && (
             <Tag color="processing" icon={<Icon icon={Eye} />} size="small">
               视觉
             </Tag>
           )}
         </span>
       ),
-      title: `${m.label}（${m.providerId}）`,
-      value: m.key,
+      title: `${o.label as string}（${o.providerId as string}）`,
+      value: o.key,
     }));
-  }, [models]);
+  }, [m?.options]);
 
-  const visionBlocked = pending.length > 0 && !!model && !model.vision;
-  const canSend = !busy && (!!input.trim() || pending.length > 0) && !visionBlocked && !!selected;
+  const visionBlocked = pending.length > 0 && !vision;
+  const canSend = met && !busy && (!!input.trim() || pending.length > 0) && !visionBlocked;
+  const herAvatar = { avatar: <CharAvatar row={row} size={32} />, backgroundColor: 'transparent', title: name };
 
-  const renderMessage = (m: ChatMessage, i: number) => {
-    const isUser = m.role === 'user';
-    const pictures = m.attachments.length > 0 && (
+  const renderMessage = (x: ChatMessage, i: number) => {
+    const isUser = x.role === 'user';
+    const pictures = (x.attachments.length > 0 || x.unsavedImages > 0) && (
       <PreviewGroup>
         <Flexbox data-message-images gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'} wrap="wrap">
-          {m.attachments.map((a) =>
+          {x.attachments.map((a) =>
             a.url ? (
               <Image alt={a.name} data-chat-image={a.id} height={128} key={a.id} objectFit="cover" preview src={a.url} variant="outlined" width={128} />
             ) : (
               <Tag key={a.id}>图片已丢失：{a.name}</Tag>
             ),
           )}
+          {x.unsavedImages > 0 && <Tag data-unsaved-images>在桌面发的 {x.unsavedImages} 张图片（没有保存）</Tag>}
         </Flexbox>
       </PreviewGroup>
     );
     return (
       <ChatItem
         aboveMessage={isUser ? pictures : undefined}
-        avatar={isUser ? USER_AVATAR : { avatar: <Icon icon={Bot} size={20} />, backgroundColor: cssVar.colorFillSecondary, title: labelOf(m.model) || 'AI' }}
+        avatar={isUser ? USER_AVATAR : herAvatar}
         belowMessage={
-          !isUser && (
-            <Flexbox align="center" gap={8} horizontal paddingBlock={4}>
-              <Text fontSize={12} type="secondary">
-                {labelOf(m.model)}
+          <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'} paddingBlock={4}>
+            {!isUser && x.model && (
+              <Text data-message-model fontSize={12} type="secondary">
+                {modelLabel(row, x.model)}
               </Text>
-              {m.status === 'aborted' && <Tag size="small">已停止</Tag>}
-            </Flexbox>
-          )
+            )}
+            {x.via === 'desktop' && (
+              <Tooltip title="这一轮是在桌宠的聊天框里聊的">
+                <Tag size="small">桌面</Tag>
+              </Tooltip>
+            )}
+            {x.status === 'aborted' && <Tag size="small">已停止</Tag>}
+          </Flexbox>
         }
-        data-message-id={m.id}
-        data-role={m.role}
-        data-status={m.status}
+        data-message-id={x.id}
+        data-role={x.role}
+        data-status={x.status}
         error={
-          m.status === 'error'
+          x.status === 'error'
             ? {
                 action: (
                   <Button data-retry icon={RotateCw} onClick={() => retry(i)} size="small">
                     重试
                   </Button>
                 ),
-                description: m.error,
+                description: x.error,
                 showIcon: true,
                 title: '回复没有完成',
                 type: 'error',
               }
             : undefined
         }
-        key={m.id}
-        message={m.text || (m.status === 'aborted' ? '（还没说什么就停止了）' : '')}
+        key={x.id}
+        message={x.text || (x.status === 'aborted' ? '（还没说什么就停止了）' : '')}
         placement={isUser ? 'right' : 'left'}
         showTitle={false}
-        time={m.createdAt}
+        time={x.createdAt}
         variant="bubble"
       />
     );
   };
 
+  const list = characters.length
+    ? characters
+    : roster.map((c) => ({ count: 0, current: c.current, id: c.id, lastAt: null, met: !!c.met, name: c.met?.name ?? c.nameZh, preview: '' }));
+  const ordered = [...list].sort((a, b) => Number(b.met) - Number(a.met) || Number(b.current) - Number(a.current) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+
   return (
     <div className={styles.root} data-chat-page>
-      <aside aria-label="会话列表" className={styles.side}>
-        <Flexbox align="center" horizontal justify="space-between" paddingBlock={12} paddingInline={16}>
-          <Text strong>会话</Text>
-          <ActionIcon data-new-session icon={MessageCirclePlus} onClick={newSession} title="新建会话" />
+      <aside aria-label="角色" className={styles.side}>
+        <Flexbox paddingBlock={12} paddingInline={16}>
+          <Text strong>角色</Text>
+          <Text fontSize={12} type="secondary">
+            一个角色一段对话，和桌面上共用
+          </Text>
         </Flexbox>
-        <div className={styles.sideList} data-session-list>
-          {sessions.length === 0 ? (
-            <Empty description="还没有会话，发一条消息就会建一个。" icon={MessagesSquare} />
-          ) : (
-            sessions.map((s) => (
+        <div className={styles.sideList} data-character-list>
+          {ordered.map((c) => {
+            const r = roster.find((x) => x.id === c.id);
+            return (
               <div
                 role="button"
                 tabIndex={0}
-                aria-current={s.id === activeId ? 'true' : undefined}
+                aria-current={c.id === activeId ? 'true' : undefined}
                 className={styles.session}
-                data-session={s.id}
-                key={s.id}
-                onClick={() => s.id !== activeId && open(s.id)}
+                data-character={c.id}
+                data-met={c.met ? 'true' : 'false'}
+                key={c.id}
+                onClick={() => c.id !== activeId && navigate(`/chat/${c.id}`)}
                 onKeyDown={(e) => {
                   if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
                     e.preventDefault();
-                    if (s.id !== activeId) open(s.id);
+                    if (c.id !== activeId) navigate(`/chat/${c.id}`);
                   }
                 }}
               >
+                <CharAvatar row={r} />
                 <div className={styles.sessionText}>
                   <Flexbox align="center" gap={8} horizontal>
                     <Text className={styles.ellipsis} ellipsis>
-                      {s.title}
+                      {c.name}
                     </Text>
-                    {live?.sessionId === s.id && <Spin size="small" />}
+                    {c.current && <Tag size="small">在桌面</Tag>}
+                    {live?.speciesId === c.id && <Spin size="small" />}
                   </Flexbox>
                   <Text className={styles.ellipsis} fontSize={12} type="secondary">
-                    {s.preview || (s.messageCount ? `${s.messageCount} 条消息` : '还没有消息')}
+                    {!c.met ? '还没见过面' : c.preview || (c.count ? `${c.count} 条消息` : '还没聊过')}
                   </Text>
                 </div>
-                <Flexbox align="flex-end" gap={4}>
-                  <Text fontSize={12} type="secondary">
-                    {clock(s.updatedAt)}
-                  </Text>
-                  <ActionIcon
-                    data-session-delete
-                    icon={Trash2}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeSession(s);
-                    }}
-                    size="small"
-                    title="删除会话"
-                  />
-                </Flexbox>
+                <Text fontSize={12} type="secondary">
+                  {clock(c.lastAt)}
+                </Text>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
       </aside>
 
@@ -721,75 +699,92 @@ export const ChatPage = () => {
           if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
         }}
         onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes('Files')) return;
+          if (!e.dataTransfer.types.includes('Files') || !met) return;
           e.preventDefault();
           setDragging(true);
         }}
         onDrop={onDrop}
       >
         <header className={styles.header}>
+          <CharAvatar row={row} size={32} />
           <Flexbox flex={1} style={{ minWidth: 0 }}>
             <Text className={styles.ellipsis} data-chat-title strong>
-              {active?.title ?? '新会话'}
+              {name}
             </Text>
             <Text fontSize={12} type="secondary">
-              {active ? `${active.messageCount} 条消息` : '发一条消息开始'}
+              {met ? `${who?.count ?? messages.length} 条消息 · 她记得最近 4 小时，问起以前的事会去翻聊天记录` : '还没见过面'}
             </Text>
           </Flexbox>
-          <span data-model-select>
-            <Select
-              disabled={modelsLoading && !models.length}
-              loading={modelsLoading}
-              onChange={(v) => changeModel(v as string)}
-              options={modelOptions}
-              placeholder={modelsLoading ? '正在读取模型…' : '选择模型'}
-              popupMatchSelectWidth={false}
-              showSearch
-              style={{ width: 240 }}
-              value={selected ?? undefined}
-            />
-          </span>
-          <ActionIcon icon={RotateCw} loading={modelsLoading} onClick={() => loadModels(true)} title="刷新模型列表" />
-          <ActionIcon data-clear-session disabled={!activeId || !messages.length} icon={Eraser} onClick={clearSession} title="清空会话消息" />
+          {met && (
+            <>
+              <span data-model-select>
+                <Select
+                  key={activeId}
+                  aria-label="模型"
+                  disabled={!m?.options.length}
+                  loading={!!m && !m.loaded}
+                  onChange={(v) => changeModel(v as string)}
+                  options={modelOptions}
+                  placeholder={m?.loaded ? `没有可用的 ${row?.vendor ?? ''} 模型` : '正在读取模型…'}
+                  popupMatchSelectWidth={false}
+                  style={{ width: 240 }}
+                  value={m?.current ?? undefined}
+                />
+              </span>
+              <ActionIcon icon={RotateCw} loading={refreshing} onClick={refreshModels} title="刷新模型列表" />
+            </>
+          )}
         </header>
 
-        {modelError && (
+        {met && m?.loaded && !m.options.length && (
           <Flexbox paddingBlock={8} paddingInline={16}>
-            <Alert
-              action={
-                <Button onClick={() => loadModels(true)} size="small">
-                  重新读取
-                </Button>
-              }
-              data-model-error
-              description={modelError}
-              showIcon
-              title="模型列表没有读到"
-              type="warning"
-            />
+            <Alert data-model-error description={`只能选 ${row?.vendor} 的模型；你还没有启用任何一个，她先用原来的模型。`} showIcon title="没有可选的模型" type="warning" />
           </Flexbox>
         )}
 
         <div className={styles.scroll} data-chat-scroll onScroll={onScroll} ref={scrollRef}>
           <div className={styles.messages} ref={contentRef}>
-            {loadingSession ? (
+            {!met ? (
+              <Flexbox align="center" paddingBlock={64}>
+                <Empty
+                  action={
+                    row && (
+                      <Button onClick={() => navigate(`/characters/${row.id}`)} type="primary">
+                        去见她
+                      </Button>
+                    )
+                  }
+                  description="和她初次见面之后，她才有自己的 agent，才能在这里聊天。"
+                  icon={MessagesSquare}
+                  title={`还没见过${name}`}
+                />
+              </Flexbox>
+            ) : loading ? (
               <Flexbox align="center" paddingBlock={48}>
                 <Spin />
               </Flexbox>
             ) : messages.length === 0 && !liveHere ? (
               <Flexbox align="center" paddingBlock={64}>
-                <Empty description="日常提问、写东西、看图都可以。会话保存在这台电脑上，和桌宠的对话互不影响。" icon={MessagesSquare} title="想聊点什么？" />
+                <Empty description="在这里说的话，她在桌面上也记得；聊天记录里也看得到。" icon={MessagesSquare} title={`和${name}说点什么？`} />
               </Flexbox>
             ) : (
               <Flexbox gap={0}>
+                {hasMore && (
+                  <div className={styles.earlier}>
+                    <Button data-load-earlier icon={History} loading={loadingMore} onClick={loadEarlier} size="small" type="text">
+                      查看更早的消息
+                    </Button>
+                  </div>
+                )}
                 {messages.map(renderMessage)}
                 {liveHere && (
                   <ChatItem
-                    avatar={{ avatar: <Icon icon={Bot} size={20} />, backgroundColor: cssVar.colorFillSecondary, title: labelOf(selected) || 'AI' }}
+                    avatar={herAvatar}
                     belowMessage={
                       <Flexbox align="center" gap={8} horizontal paddingBlock={4}>
                         <Text fontSize={12} type="secondary">
-                          {labelOf(selected)} · 正在生成
+                          {modelLabel(row, m?.current)}
+                          {m?.current ? ' · ' : ''}正在回复
                         </Text>
                       </Flexbox>
                     }
@@ -809,7 +804,7 @@ export const ChatPage = () => {
           </div>
         </div>
 
-        {!atBottom && (
+        {!atBottom && met && (
           <ActionIcon
             className={styles.toBottom}
             data-to-bottom
@@ -823,71 +818,73 @@ export const ChatPage = () => {
           />
         )}
 
-        <div className={styles.inputWrap}>
-          <div className={styles.inputCard} data-chat-input data-dragging={dragging}>
-            {visionBlocked && (
-              <Flexbox paddingInline={12}>
-                <Alert data-vision-warning showIcon title={`「${model?.label}」看不了图片：换一个标着「视觉」的模型，或者移除图片。`} type="warning" />
-              </Flexbox>
-            )}
-            {pending.length > 0 && (
-              <PreviewGroup>
-                <div className={styles.thumbs} data-pending-images>
-                  {pending.map((p) => (
-                    <div className={styles.thumb} data-pending-image={p.name} key={p.key}>
-                      <Tooltip title={`${p.name} · ${kb(p.size)}`}>
-                        <Image alt={p.name} height={64} objectFit="cover" preview src={p.dataUrl} variant="outlined" width={64} />
-                      </Tooltip>
-                      <ActionIcon
-                        className={styles.thumbRemove}
-                        data-remove-image
-                        icon={X}
-                        onClick={() => setPending((list) => list.filter((x) => x.key !== p.key))}
-                        size="small"
-                        title={`移除 ${p.name}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </PreviewGroup>
-            )}
-            <ChatInputAreaInner
-              aria-label="消息"
-              autoSize={{ maxRows: 10, minRows: 2 }}
-              data-chat-textarea
-              loading={busy}
-              onInput={setInput}
-              onPaste={onPaste}
-              onSend={() => canSend && send(input, pending)}
-              placeholder={busy && !liveHere ? '另一个会话正在回复，结束或停止后再发…' : '输入消息，Enter 发送，Shift + Enter 换行；可以粘贴或拖入图片'}
-              ref={textRef}
-              value={input}
-            />
-            <ChatInputActionBar
-              leftAddons={
-                <ActionIcon
-                  data-pick-images
-                  disabled={pending.length >= MAX_IMAGES}
-                  icon={ImagePlus}
-                  onClick={pickImages}
-                  title={model && !model.vision ? `添加图片（「${model.label}」看不了图片）` : `添加图片（最多 ${MAX_IMAGES} 张）`}
-                />
-              }
-              padding="0 8px"
-              rightAddons={
-                <ChatSendButton
-                  className={styles.sendBar}
-                  data-send
-                  loading={busy}
-                  onSend={() => canSend && send(input, pending)}
-                  onStop={stop}
-                  paddingInline={0}
-                  texts={{ send: '发送', stop: '停止', warp: '换行' }}
-                />
-              }
-            />
+        {met && (
+          <div className={styles.inputWrap}>
+            <div className={styles.inputCard} data-chat-input data-dragging={dragging}>
+              {visionBlocked && (
+                <Flexbox paddingInline={12}>
+                  <Alert data-vision-warning showIcon title={`「${currentModel?.label as string}」看不了图片：换一个标着「视觉」的模型，或者移除图片。`} type="warning" />
+                </Flexbox>
+              )}
+              {pending.length > 0 && (
+                <PreviewGroup>
+                  <div className={styles.thumbs} data-pending-images>
+                    {pending.map((p) => (
+                      <div className={styles.thumb} data-pending-image={p.name} key={p.key}>
+                        <Tooltip title={`${p.name} · ${kb(p.size)}`}>
+                          <Image alt={p.name} height={64} objectFit="cover" preview src={p.dataUrl} variant="outlined" width={64} />
+                        </Tooltip>
+                        <ActionIcon
+                          className={styles.thumbRemove}
+                          data-remove-image
+                          icon={X}
+                          onClick={() => setPending((l) => l.filter((x) => x.key !== p.key))}
+                          size="small"
+                          title={`移除 ${p.name}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </PreviewGroup>
+              )}
+              <ChatInputAreaInner
+                aria-label="消息"
+                autoSize={{ maxRows: 10, minRows: 2 }}
+                data-chat-textarea
+                loading={busy}
+                onInput={setInput}
+                onPaste={onPaste}
+                onSend={() => canSend && send(input, pending)}
+                placeholder={busy && !liveHere ? '另一个角色正在回复，结束或停止后再发…' : `和${name}说点什么，Enter 发送，Shift + Enter 换行；可以粘贴或拖入图片`}
+                ref={textRef}
+                value={input}
+              />
+              <ChatInputActionBar
+                leftAddons={
+                  <ActionIcon
+                    data-pick-images
+                    disabled={pending.length >= MAX_IMAGES}
+                    icon={ImagePlus}
+                    onClick={pickImages}
+                    title={!vision ? `添加图片（「${currentModel?.label as string}」看不了图片）` : `添加图片（最多 ${MAX_IMAGES} 张）`}
+                  />
+                }
+                padding="0 8px"
+                rightAddons={
+                  <ChatSendButton
+                    className={styles.sendBar}
+                    data-send
+                    loading={busy}
+                    onSend={() => canSend && send(input, pending)}
+                    onStop={stop}
+                    paddingInline={0}
+                    texts={{ send: '发送', stop: '停止', warp: '换行' }}
+                  />
+                }
+              />
+            </div>
           </div>
-        </div>
+        )}
       </section>
     </div>
   );
