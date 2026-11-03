@@ -10558,6 +10558,7 @@ async function interjectScenario() {
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
   if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'spriteframe' || which === 'all') await spriteFrameScenarios().spriteFraming();
   if (which === 'asr' || which === 'all') await asrScenario();

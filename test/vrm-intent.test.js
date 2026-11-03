@@ -31,7 +31,7 @@ test('lifted / flying: drag:lift on the way up, drag:drop or drag:thrown on the 
 
 test('holds: mood from pet-state, talk / think / eat / walk, attention, facing; cues and celebrations from the shot', () => {
   const h = I.fromSnapshot({ ...base, status: 'sleep', talking: false, voice: 'audio', thinking: true, eating: 'rice', walking: true, pointerInside: true, facing: 'left' }, base).holds;
-  assert.deepEqual(h, { mood: 'sleep', talk: true, think: true, eat: 'rice', walk: true, lift: false, attention: true, facing: 'left' });
+  assert.deepEqual(h, { mood: 'sleep', talk: true, think: true, eat: 'rice', walk: true, lift: false, attention: true, facing: 'left', dance: null, recording: false });
   assert.equal(I.fromSnapshot({ ...base, status: 'weird' }, base).holds.mood, 'idle');
   assert.deepEqual(I.fromSnapshot({ ...base, shot: 'look' }, base).events, [{ type: 'cue', name: 'look' }]);
   assert.deepEqual(I.fromSnapshot({ ...base, shot: 'evolve' }, base).events, [{ type: 'celebrate', name: 'evolve' }]);
