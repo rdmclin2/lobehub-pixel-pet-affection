@@ -39,7 +39,7 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -49,6 +49,8 @@ class PetService extends EventEmitter {
     this.responses = responses;
     this._responsesFailedAt = 0;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
+    // 快捷键唤起语音对话: the global shortcut's state (main/voice-hotkey.js status(): ok | disabled | invalid | conflict)
+    this.hotkeyStatus = hotkeyStatus;
     this.asr = asr; // 语音输入 (core/asr.js AsrEngine): recognition runs in main; null = not available (tests)
     this.store = store;
     this.settingsStore = settingsStore;
@@ -149,7 +151,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, pendingRestart: this.pendingRestart() };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, pendingRestart: this.pendingRestart() };
   }
 
   // Restart-only settings (settings.RESTART_KEYS) changed since this process started: they apply after a restart.

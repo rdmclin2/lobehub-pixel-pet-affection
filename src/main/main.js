@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -28,6 +28,7 @@ const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } 
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
+const { VoiceHotkey } = require('./voice-hotkey');
 const { createAdminSettings } = require('./admin-settings');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
@@ -58,6 +59,8 @@ let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
+let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
+let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -174,6 +177,20 @@ function showPet() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+// 快捷键唤起语音对话: wherever the owner is, the pet comes up (shown, restored, focused so Esc works) and her
+// window starts listening — or, while she listens, stops and recognises (renderer onVoiceHotkey → micStart /
+// micStop). With 语音输入 off she says how to turn it on.
+function onVoiceHotkey(p) {
+  if (!win || win.isDestroyed()) return;
+  showPet();
+  send('voice-hotkey', p);
+}
+function applyHotkey() {
+  if (!voiceHotkey || !service) return false;
+  const before = JSON.stringify(voiceHotkey.status());
+  voiceHotkey.apply(service.settings.asr.hotkey);
+  return JSON.stringify(voiceHotkey.status()) !== before;
 }
 // 托盘 (§5.3): the way back to the settings and to the pet when she is covered or off screen.
 function createTray() {
@@ -603,6 +620,7 @@ function wire() {
   // 🎤 before the first recording: macOS asks the owner once (Info.plist NSMicrophoneUsageDescription);
   // elsewhere the OS has no per-app prompt and getUserMedia reports a refusal itself.
   ipcMain.handle('asr-mic-access', async () => {
+    if (TEST_MODE && micAccessOverride) return micAccessOverride; // e2e: what the OS would answer (debug-mic-access)
     if (process.platform !== 'darwin' || !systemPreferences.getMediaAccessStatus) return 'granted';
     const st = systemPreferences.getMediaAccessStatus('microphone');
     if (st === 'not-determined') return (await systemPreferences.askForMediaAccess('microphone')) ? 'granted' : 'denied';
@@ -650,7 +668,7 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -720,6 +738,11 @@ function wire() {
     // e2e: forget the last remark's time (the cooldown and the hourly cap), so a run needs no 10-minute wait
     ipcMain.handle('debug-interject-reset-cooldown', () => { service.interjector.lastInterject = null; service.interjector.interjectStamps = []; return true; });
     ipcMain.handle('debug-interject-input', (_e, p) => service.interjectInput(p && p.source, p && p.text));
+    // 快捷键唤起语音对话: press it as the OS would (the registered handler), read its state, hide the pet first
+    ipcMain.handle('debug-voice-hotkey', () => { voiceHotkey.trigger('test'); return voiceHotkey.status(); });
+    ipcMain.handle('debug-voice-hotkey-status', () => ({ ...voiceHotkey.status(), registered: voiceHotkey.current ? globalShortcut.isRegistered(voiceHotkey.current) : false, petVisible: !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()), petFocused: !!(win && !win.isDestroyed() && win.isFocused()) }));
+    ipcMain.handle('debug-mic-access', (_e, v) => { micAccessOverride = typeof v === 'string' && v ? v : null; return micAccessOverride; });
+    ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
       return service.view();
@@ -733,7 +756,6 @@ function wire() {
   service.on('chat-delta', (d) => send('chat-delta', d));
   service.on('chat-done', (d) => send('chat-done', d));
   service.on('affection', (a) => send('affection', a));
-  service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
   // 插个嘴: what was judged and what she said (the record without the owner's text beyond its short summary)
   // — to the pet window (the 别插嘴 / 说得好 buttons under a remark) and the settings window (规则 and 判断记录)
   service.on('interject', (e) => {
@@ -741,6 +763,8 @@ function wire() {
     send('interject', m);
     if (admin && admin.alive) admin.send('interject', m);
   });
+  // a new shortcut is registered before anyone is told, so the status that goes out is the new one
+  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
@@ -794,7 +818,8 @@ app.whenReady().then(() => {
   const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
-  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr });
+  voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
+  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -828,6 +853,7 @@ app.whenReady().then(() => {
       beforeTts: () => { tts.engine.endPrewarm(); tts.engine.reset(); },
       afterApi: () => applyApi(),
       setKey: (id, value) => tts.keys.set(id, value),
+      probeHotkey: (acc) => voiceHotkey.probe(acc),
     },
   });
   wire();
@@ -835,6 +861,9 @@ app.whenReady().then(() => {
   createTray();
   createAppMenu();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
+  // E2E only: combinations "another app" already holds (registered here first, so ours really gets false)
+  if (TEST_MODE && process.env.PIXELPET_E2E_TAKEN_HOTKEYS) for (const a of process.env.PIXELPET_E2E_TAKEN_HOTKEYS.split(',').filter(Boolean)) globalShortcut.register(a.trim(), () => {});
+  applyHotkey();
   applyApi();
   syncClipboardWatch();
   updater.start();
@@ -842,3 +871,5 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+// every global shortcut goes with the app (快捷键唤起语音对话)
+app.on('will-quit', () => { if (voiceHotkey) voiceHotkey.dispose(); else globalShortcut.unregisterAll(); });
