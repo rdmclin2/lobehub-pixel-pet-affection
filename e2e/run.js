@@ -3361,7 +3361,7 @@ function ttsMock() {
       const el = req.url.startsWith('/v1/text-to-speech/');
       const auth = local || (el ? req.headers['xi-api-key'] === EL_KEY : req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`);
       const rec = el
-        ? { at: Date.now(), path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] || '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
+        ? { at: Date.now(), method: req.method, path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] || '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
         : local
         ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
         : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
@@ -3813,6 +3813,7 @@ async function voice() {
       assert.equal(sp.provider, 'elevenlabs');
       assert.equal(sp.voiceId, EL_VOICE);
       assert.deepEqual(sp.fellBackFrom, []);
+      assert.equal(rq.method, 'POST');
       assert.equal(rq.path, `/v1/text-to-speech/${EL_VOICE}`);
       assert.equal(rq.query, 'output_format=mp3_44100_128');
       assert.equal(rq.auth, true, 'xi-api-key matched');
@@ -3849,7 +3850,7 @@ async function voice() {
       const rq2 = mock.log.filter((r) => r.path.startsWith('/v1/text-to-speech/')).pop();
       assert.equal(rq2.text, reading.text, 'the stand-in got the sentence being read');
       note(`reply read by ElevenLabs: bubble 「${reading.bubble}」 marked 「${reading.marked}」 provider=${reading.provider} status=${reading.status} mime=${reading.mime} bytes=${reading.bytes} audio=${JSON.stringify(reading.audio)}; mock got 「${rq2.text}」`);
-      return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw POST ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
+      return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw ${rq.method} ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
     }, () => admin || page);
 
     await step(S, 'V17 ElevenLabs without a key: cleared → no request, fellBackFrom elevenlabs:no-key; 不出声 → silent with a reason, never a silent success', async () => {
