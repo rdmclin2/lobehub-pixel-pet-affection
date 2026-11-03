@@ -11,6 +11,7 @@ import {
   Button,
   CopyButton,
   Flexbox,
+  HotkeyInput,
   Input,
   InputNumber,
   InputPassword,
@@ -27,12 +28,23 @@ import {
 import { Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { api, at, type FieldDef } from './api';
+import { api, at, type FieldDef, type HotkeyStatus } from './api';
 import { useSave, useStore } from './store';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent);
+const MAC_SYM: Record<string, string> = { Alt: '⌥', AltGr: '⌥', Command: '⌘', CommandOrControl: '⌘', Control: '⌃', Shift: '⇧', Super: '⌘' };
+const PC_NAME: Record<string, string> = { Alt: 'Alt', AltGr: 'AltGr', Command: 'Win', CommandOrControl: 'Ctrl', Control: 'Ctrl', Shift: 'Shift', Super: 'Win' };
+/** An Electron accelerator as the owner reads it: ⌘⇧Space on macOS, Ctrl+Shift+Space elsewhere (core/hotkey.js labelFor). */
+export const acceleratorLabel = (acc: string, mac = IS_MAC) => {
+  if (!acc) return '';
+  const parts = acc.split('+');
+  const key = parts.pop() ?? '';
+  return mac ? `${parts.map((p) => MAC_SYM[p] ?? p).join('')}${key}` : [...parts.map((p) => PC_NAME[p] ?? p), key].join('+');
+};
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 export const formatValue = (f: FieldDef, v: unknown): string => {
+  if (f.type === 'hotkey') return typeof v === 'string' && v ? acceleratorLabel(v) : '不用快捷键';
   if (v === null || v === undefined || v === '') return '--';
   if (typeof v === 'boolean') return v ? '开' : '关';
   if (f.format === 'percent' && typeof v === 'number') return pct(v);
@@ -279,6 +291,104 @@ const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
   );
 };
 
+/** 快捷键唤起语音对话: the state main reports for the shortcut (voice-hotkey.js), as a tag. */
+const HOTKEY_STATE: Record<HotkeyStatus['state'], { color?: string; text: string }> = {
+  conflict: { color: 'error', text: '被占用' },
+  disabled: { text: '未启用' },
+  invalid: { color: 'error', text: '组合无效' },
+  ok: { color: 'success', text: '已生效' },
+};
+
+/**
+ * 快捷键 (asr.hotkey): recorded with HotkeyInput (click, press the combination). Main checks it again and only
+ * then registers it; an invalid one or one the app itself, the system or another app uses is not saved and the
+ * reason stays under the field. Clear (×) = no shortcut; 恢复默认 brings the default back.
+ */
+const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) => {
+  const { settings, platform } = useStore();
+  const save = useSave();
+  const st: HotkeyStatus | null = settings?.hotkeyStatus ?? null;
+  const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // HotkeyInput offers a recorded combination again on every render while the stored value stays the old one
+  // (main refused it): each combination is sent once per recording, never in a loop
+  const inflight = useRef<string | null>(null);
+  const refused = useRef<string | null>(null);
+  const acc = typeof value === 'string' ? value : '';
+  const keys = st && st.accelerator === acc ? st.keys : '';
+  const reserved = field.reserved ?? [];
+  const commit = async (next: string) => {
+    if (next === keys || next === inflight.current || next === refused.current) return;
+    inflight.current = next;
+    setError(null);
+    setConflict(null);
+    setBusy(true);
+    try {
+      const r = await save(field.key, next);
+      if (r.ok) toast.success(next ? `已保存：${field.label} → ${r.settings?.hotkeyStatus?.label ?? next}` : `${field.label}：已关闭`);
+      else {
+        refused.current = next;
+        setError(r.message || r.reason || '没有保存');
+        toast.error({ description: r.message || r.reason, title: `${field.label} 没有保存` });
+      }
+    } finally {
+      inflight.current = null;
+      setBusy(false);
+    }
+  };
+  // a new recording: anything may be tried again
+  const onFocus = () => {
+    refused.current = null;
+    setError(null);
+    setConflict(null);
+  };
+  const tag = st ? HOTKEY_STATE[st.state] : null;
+  const statusError = !error && st && (st.state === 'conflict' || st.state === 'invalid') ? st.message : null;
+  return (
+    <Flexbox gap={4} style={{ alignItems: 'flex-end' }}>
+      <Flexbox align="center" gap={8} horizontal>
+        {tag && (
+          <Tag color={tag.color} data-hotkey-state={st?.state}>
+            {tag.text}
+          </Tag>
+        )}
+        <div aria-label={field.label} data-hotkey-keys={keys} data-key={field.key} role="group" style={{ width: 240 }}>
+          <HotkeyInput
+            allowClear
+            disabled={busy}
+            hotkeyConflicts={reserved.map((r) => r.keys)}
+            isApple={platform === 'darwin'}
+            onChange={(v: string) => commit(v)}
+            onConflict={(k: string) => setConflict(reserved.find((r) => r.keys === k)?.label ?? k)}
+            onFocus={onFocus}
+            placeholder="点这里，然后按下新的组合"
+            resetValue={field.defaultKeys}
+            texts={{
+              clear: '清空（不用快捷键）',
+              conflicts: `和应用内的「${conflict ?? '已有快捷键'}」冲突，没有保存，换一个组合`,
+              invalidCombination: '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键',
+              reset: '恢复默认',
+            }}
+            value={keys}
+            variant="filled"
+          />
+        </div>
+      </Flexbox>
+      {(error || statusError) && (
+        <Text data-error={field.key} fontSize={12} type="danger">
+          {error || statusError}
+        </Text>
+      )}
+      {!error && !statusError && st?.state === 'ok' && (
+        <Text data-hotkey-hint={field.key} fontSize={12} type="secondary">
+          在任何地方按 {st.label} 唤起她
+        </Text>
+      )}
+    </Flexbox>
+  );
+};
+
 const hasKeyFor = (settings: any, key: string): boolean => {
   const id = key.slice('keys.'.length);
   if (id === 'asrlocal') return !!settings?.asrStatus?.local?.hasKey;
@@ -478,6 +588,9 @@ export const FieldControl = ({ field }: { field: FieldDef }) => {
     case 'text':
     case 'url':
       control = <DraftControl field={field} value={value} />;
+      break;
+    case 'hotkey':
+      control = <HotkeyControl field={field} value={value} />;
       break;
     case 'secret':
       control = <SecretControl field={field} />;
