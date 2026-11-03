@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
+  // 导入确认 → 设定: 通用 ("generic") or one of the characters
+  setPackBase: (id, base) => ipcRenderer.invoke('set-pack-base', { id, base }),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
   // 下载角色: the characters that do not ship with the app (core/catalog.js)
   downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
@@ -74,6 +76,22 @@ contextBridge.exposeInMainWorld('petAdmin', {
   home: () => ipcRenderer.invoke('admin-home'),
   quit: () => ipcRenderer.invoke('admin-quit'),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
+  // 舞蹈 (docs/vrm-dance.md §6.2): the list, 让她跳 / 停止 / 循环播放 (played by the pet window), 导入舞蹈 (pick →
+  // a draft → commit, baked in main) and 删除舞蹈
+  dances: () => ipcRenderer.invoke('dances:list'),
+  dancePlay: (id, loop) => ipcRenderer.invoke('dance:play', { id, loop }),
+  danceStop: () => ipcRenderer.invoke('dance:stop'),
+  danceState: () => ipcRenderer.invoke('dance:state'),
+  danceLoop: (on) => ipcRenderer.invoke('dance:loop', { on }),
+  danceImportPick: (folder) => ipcRenderer.invoke('dance-import-pick', { folder: !!folder }),
+  danceImportExtra: (token, kind) => ipcRenderer.invoke('dance-import-extra', { token, kind }),
+  danceImportCommit: (draft) => ipcRenderer.invoke('dance-import-commit', draft),
+  danceImportCancel: () => ipcRenderer.invoke('dance-import-cancel'),
+  danceRemove: (id) => ipcRenderer.invoke('dance-remove', { id }),
+  // 商店 → 舞蹈: the store's dances (已下载 or not), download / cancel; progress arrives as `catalog-progress`
+  danceStore: () => ipcRenderer.invoke('dance-store'),
+  danceDownload: (id) => ipcRenderer.invoke('dance-download', { id }),
+  danceDownloadCancel: (id) => ipcRenderer.invoke('dance-download-cancel', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

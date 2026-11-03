@@ -58,3 +58,7 @@ lint-allow: LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/**
 设置窗口里的角色舞台（`admin/src/console/stage/**`）同属角色美术：爱心飘起（1.4s）和她的光晕漂移（9s，`prefers-reduced-motion` 下停止）是角色的表演，不是界面反馈动效，放行时长检查；界面部分（按钮、卡片悬停）仍按 ≤ 300ms。
 
 lint-allow: LOBE-MOTION-DURATION admin/src/console/stage/**
+
+主进程创建窗口时的 `backgroundColor`（`src/main/main.js`：透明窗口 `#00000000`、e2e 截图用的不透明底色）在页面 CSS 加载之前生效，只能写字面色值，引用不了 `--lobe-*` 令牌；它不是界面样式（2026-11-03，T-2801 跑 lint 时发现的存量项）。
+
+lint-allow: LOBE-RAW-COLOR src/main/main.js

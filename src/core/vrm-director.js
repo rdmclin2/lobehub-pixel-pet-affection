@@ -54,6 +54,18 @@
   // A long reply rotates through the style's talk clips (hold.talk, hold.talk-2, hold.talk-3): each plays
   // once from its start, then the next one (never the same twice in a row) cross-fades in over xfade s.
   const TALK = { xfade: 0.6, nodHz: 0.9 };
+  // ---------- the dance layer D (docs/vrm-dance.md §3) ----------
+  // A dance takes the whole body: its clip replaces the base (L0/L1), no hold or reaction is laid over it
+  // (only hold.lift while she is lifted), the alive layer keeps only the eyes, she faces the camera and looks
+  // at you. off → cueing (the base fades to the dance's first frame, fadeIn) → in (asks the app to start the
+  // music and the clock) → on ⇄ paused → out (fadeOut back to the idle) → off. The app holds what is danced and
+  // the clock (holds.dance); the director only reads it and asks (plan.dance.request: start | pause | resume |
+  // stop), so the interruption rules are here and testable (§3.4):
+  //   lifted → pause (and hold.lift); put down → resume after resumeAfter s; lifted longer than pauseMax → stop;
+  //   a touch → only its face, no reaction; talking → keep dancing, the music ducked to duckTalk (recording:
+  //   duckMic); eating (fed) → stop; celebrations and cues → dropped.
+  const DANCE = { fadeIn: 0.6, fadeOut: 0.8, resumeAfter: 0.6, pauseMax: 10, duckTalk: 0.3, duckMic: 0.15, touchFace: 1.2, face: { happy: 0.25 } };
+  const DANCE_ON = ['cueing', 'in', 'on', 'paused'];
 
   // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
   // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle (think and talk at once — a reply
@@ -142,6 +154,7 @@
       yawVel: 0,
       gait: { phase: 0, rate: 0, wanted: 0, on: false, steps: 0 }, // the walk cycle's clock
       talk: { cur: null, prev: null, n: 0, last: null, segments: [] }, // the talk segment playing, the one fading out
+      dance: { state: 'off', id: null, since: 0, started: false, liftAt: null, dropAt: null, key: 0, n: 0 }, // the dance layer D
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
@@ -204,7 +217,8 @@
       if (S.base && S.base.id === id) { S.posture = posture; S.postureSource = source; return; }
       const first = !S.base;
       const sitChange = S.base && clip && !!clip.sit !== !!S.base.sit;
-      S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), fade: first ? FADE.first : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
+      const fromDance = !!(S.base && S.base.dance);
+      S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), fade: first ? FADE.first : fromDance ? DANCE.fadeOut : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
       S.posture = posture;
       S.postureSource = source;
     }
@@ -268,6 +282,16 @@
       S.lastEvent = S.t;
       S.events.push(e);
       if (S.events.length > 20) S.events.shift();
+      if (DANCE_ON.includes(S.dance.state)) {
+        // the whole body is the dance's: a touch shows on her face only; the rest waits or is dropped (§3.4)
+        if (e.type === 'touch' && !holds.lift) {
+          const tf = e.mood === 'happy' || !TOUCH_FACE[e.mood] ? { face: ZONE_FACE[e.zone] || TOUCH_FACE.happy.face } : TOUCH_FACE[e.mood];
+          S.face = { ...(tf.face || tf) };
+          S.faceUntil = S.t + DANCE.touchFace;
+          S.danceTouch = { zone: e.zone, mood: e.mood, at: S.t };
+        }
+        return;
+      }
       const busy = S.react && S.t < S.react.end ? S.react.prio : -1;
       if (e.type === 'touch') {
         if (holds.lift) return; // held in the air: the lift wins
@@ -373,10 +397,58 @@
       overlays.push({ layer: 'hold', slot: T.cur.slot, id: T.cur.clip.id, mask: T.cur.clip.mask, time: clamp(S.t - T.cur.start, 0, len(T.cur)), weight: +b.toFixed(4) });
     }
 
+    // The dance layer this frame (DANCE above): its state, and what the app is asked to do.
+    function stepDance(holds) {
+      const D = S.dance;
+      const h = holds.dance && holds.dance.id ? holds.dance : null;
+      let request = null;
+      if (h && (!DANCE_ON.includes(D.state) || D.id !== h.id)) {
+        // a new dance: the reaction and the holds give way at once, the base fades to its first frame
+        Object.assign(D, { state: 'cueing', id: h.id, since: S.t, started: false, liftAt: null, dropAt: null, n: D.n + 1 });
+        if (S.react) cutReaction();
+        S.queued = null;
+        S.base = { id: `dance:${h.id}`, file: null, sit: false, dance: true, clock: 'external', fade: S.base ? DANCE.fadeIn : 0, key: (S.base ? S.base.key : 0) + 1 };
+      }
+      if (h) {
+        if (D.state === 'cueing' && S.t - D.since >= DANCE.fadeIn && h.ready !== false) D.state = 'in';
+        if (D.state === 'in') {
+          if (h.playing) { D.state = 'on'; D.started = true; } else request = 'start';
+        }
+        if (D.started) {
+          // lifted: paused while held up, back to dancing a moment after being put down; held too long → stop
+          if (holds.lift) { if (D.liftAt === null) D.liftAt = S.t; D.dropAt = null; } else if (D.liftAt !== null && D.dropAt === null) D.dropAt = S.t;
+          const wantPause = holds.lift || (D.dropAt !== null && S.t - D.dropAt < DANCE.resumeAfter);
+          if (!wantPause && D.dropAt !== null) { D.liftAt = null; D.dropAt = null; }
+          if (holds.lift && S.t - D.liftAt > DANCE.pauseMax) request = 'stop';
+          else if (wantPause) request = h.paused ? null : 'pause';
+          else if (h.paused === 'lift') request = 'resume';
+          if (holds.eat) request = 'stop'; // fed while dancing: the new order wins
+          D.state = wantPause || h.paused ? 'paused' : 'on';
+        }
+      } else if (DANCE_ON.includes(D.state)) {
+        D.state = 'out';
+        D.since = S.t;
+      }
+      if (D.state === 'out' && S.t - D.since >= DANCE.fadeOut) { D.state = 'off'; D.id = null; }
+      const on = DANCE_ON.includes(D.state);
+      return {
+        state: D.state,
+        id: D.id,
+        on,
+        t: h ? Math.max(0, Number(h.t) || 0) : 0,
+        request,
+        ready: D.state === 'in',
+        duck: on ? (holds.recording ? DANCE.duckMic : holds.talk ? DANCE.duckTalk : 1) : 1,
+        exclusive: on,
+        n: D.n,
+      };
+    }
+
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
     function update(dt, { holds, events = [] }) {
       S.t += dt;
       if (holds.attention) S.lastEvent = S.t;
+      const dance = stepDance(holds);
       for (const e of events) onEvent(e, holds);
 
       const held = heldPosture(holds);
@@ -388,9 +460,11 @@
         S.idle.regime = regime;
       }
 
-      // the base clip
+      // the base clip (a dance holds it: stepDance set it)
       const I = S.idle;
-      if (held) {
+      if (dance.on) {
+        // nothing: the dance's clip stays the base
+      } else if (held) {
         const c = postureClip(held.slot) || postureClip('stand.relaxed');
         setBase(c, FADE.posture, held.slot, held.source);
       } else if (I.kind === 'clip') {
@@ -407,12 +481,12 @@
 
       // where she faces, and the walk cycle's pace (before the holds: the walk is on only while she moves)
       const facing = holds.facing === 'left' ? -1 : 1;
-      const turn = stepFacing(dt, (holds.walk ? WALK.yaw : WALK.idleYaw) * facing);
-      const walkOn = stepGait(dt, holds, turn);
+      const turn = stepFacing(dt, dance.on ? 0 : (holds.walk ? WALK.yaw : WALK.idleYaw) * facing);
+      const walkOn = dance.on ? false : stepGait(dt, holds, turn);
 
       // the activity she holds, by priority
       // (a reply streaming in keeps the app "thinking" while its words appear: then she talks — T-2711)
-      const hold = holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      const hold = dance.on ? (holds.lift ? 'lift' : null) : holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
       stepHolds(dt, hold);
       // a cue's small cheer is only for an idle moment: thinking, talking, eating or being lifted ends it (it
       // fades out under the hold; T-2711: one ran on over the thinking pose)
@@ -432,6 +506,8 @@
       const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.clip.mask, time: r.clip.still ? 0 : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), key: r.key });
       for (const r of S.fading) reactClip(r, 'fading');
       if (R) reactClip(R, 'reaction');
+      // dancing: nothing over the dance but the lift (§3.1)
+      if (dance.on) for (let i = overlays.length - 1; i >= 0; i--) if (overlays[i].slot !== 'hold.lift') overlays.splice(i, 1);
 
       // face: the mood's, annoyed for a while after angry, the held activity's, a cue's smile, the reaction's
       let face = { ...(MOOD_FACE[holds.mood] || {}) };
@@ -440,6 +516,12 @@
       if (hold) face = { ...face, ...((hc && hc.clip && hc.clip.face) || (HOLD_LOOK[hold] || {}).face || HOLD_FACE[hold] || {}) };
       if (S.t < S.faceUntil) face = { ...face, ...S.face };
       if (R && S.t < R.end - R.fadeOut * 0.5) face = { ...face, ...R.face }; // from the first frame (the renderer eases it in)
+      if (dance.on) {
+        // the dance's own face track when it has one (the mixer drives it), else a light smile; a touch's face over it
+        face = holds.dance && holds.dance.faceTrack ? {} : { ...DANCE.face };
+        if (hold === 'lift') face = { ...face, ...((HOLD_LOOK.lift || {}).face || {}) };
+        if (S.t < S.faceUntil) face = { ...face, ...S.face };
+      }
       face = scaleFace(face, style.emotion || 1);
 
       // gaze: the reaction's (a look aside, at the hand), think → up, sleep → down, looking about on cue,
@@ -451,6 +533,8 @@
       else if (holds.mood === 'sleep') gaze = { mode: 'fixed', kind: 'sleep', x: 0, y: -0.6 };
       else if (S.t < S.scanUntil) gaze = { mode: 'fixed', kind: 'scan', x: Math.sin((S.scanUntil - S.t) * 2.4) * 1.4, y: 0.15 };
       else if (holdGaze) gaze = { mode: 'fixed', kind: 'hold', x: holdGaze.x, y: holdGaze.y };
+      // dancing she looks at you (the camera), only her eyes move: the head is the dance's
+      if (dance.on) gaze = hold === 'lift' && holdGaze ? { mode: 'fixed', kind: 'hold', x: holdGaze.x, y: holdGaze.y } : { mode: 'fixed', kind: 'dance', x: 0, y: 0.05 };
 
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
       const standing = !(S.base && S.base.sit) && holds.mood !== 'sleep';
@@ -472,13 +556,14 @@
         face,
         gaze,
         noBlink: S.t < S.noBlinkUntil,
-        life: { sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
+        dance,
+        life: { dance: dance.on, sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
         facingYaw: +S.yaw.toFixed(3),
-        turnLead: +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
+        turnLead: dance.on ? 0 : +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
         walk: { on: S.gait.on, rate: +S.gait.rate.toFixed(3), wanted: +S.gait.wanted.toFixed(3), phase: +S.gait.phase.toFixed(3), target: turn.target, turning: turn.turning },
         talkSegment: S.talk.cur ? S.talk.cur.slot : null,
         talkSegments: S.talk.n,
-        busy: !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
+        busy: dance.on || dance.state === 'out' || !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
       };
     }
 
@@ -494,5 +579,5 @@
     };
   }
 
-  return { WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

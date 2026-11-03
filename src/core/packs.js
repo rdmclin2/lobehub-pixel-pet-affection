@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { OUTFITS, OUTFIT_IDS } = require('./outfits');
 const { SPECIES, SPECIES_IDS } = require('./species');
+const { GENERIC_BASE } = require('./generic');
 const { STATES } = require('./fx');
 const V = require('./vrm');
 const VrmStyle = require('./vrm-style');
@@ -486,7 +487,10 @@ function validatePack(manifest, dir) {
   // a pack is a character of its own (core/characters.js): its id may not be a character file's (or a retired one's)
   else if (Object.hasOwn(SPECIES, m.id) || Object.hasOwn(require('./species').RETIRED, m.id) || /-clips$/.test(m.id)) errors.push(`id ${m.id} is reserved`);
   if (!text(m.name, 40)) errors.push('name is required');
-  if (!SPECIES_IDS.includes(m.species)) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}`);
+  // "generic": 通用设定 (core/generic.js) — the pack gets a base of its own when it is loaded
+  // a generic companion's own base (vrmx…) exists only once her model is loaded: a pack may not name it
+  if (require('./generic').isGenericBase(m.species)) errors.push('species may not be a generic companion\'s base (use "generic" in a VRM pack)');
+  else if (!SPECIES_IDS.includes(m.species) && !(m.species === GENERIC_BASE && m.kind === 'vrm')) errors.push(`species must be one of ${SPECIES_IDS.join(', ')}${m.kind === 'vrm' ? `, ${GENERIC_BASE}` : ''}`);
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
   // 取景 default for whoever wears this pack (core/framing.js): 'full' | 'half'; a character's own choice goes first
   if (m.framing !== undefined && !FRAMINGS.includes(m.framing)) errors.push(`framing must be one of ${FRAMINGS.join(', ')}`);
@@ -589,7 +593,12 @@ function loadPacks(roots) {
       const r = readPack(path.join(dir, name));
       if (!r.ok) problems.push({ dir: path.join(dir, name), errors: r.errors });
       else if (packs.has(r.pack.id)) problems.push({ dir: path.join(dir, name), errors: [`id ${r.pack.id} is already used by another pack`] });
-      else packs.set(r.pack.id, { ...r.pack, source });
+      else if (r.pack.species === GENERIC_BASE) {
+        // 通用设定: she is a companion of her own (core/generic.js)
+        let sp = null;
+        try { sp = require('./species').registerGeneric(r.pack); } catch (e) { problems.push({ dir: path.join(dir, name), errors: [e.message] }); continue; }
+        packs.set(r.pack.id, { ...r.pack, species: sp.id, generic: true, source });
+      } else packs.set(r.pack.id, { ...r.pack, source });
     }
   }
   return { packs, problems };

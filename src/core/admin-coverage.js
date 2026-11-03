@@ -62,6 +62,10 @@ const PET_ONLY = {
   hatch: '首次唤醒（领养）流程',
   act: '互动：喂食 / 玩耍 / 睡觉',
   'vrm-library-info': 'VRM 动作库从哪里加载（只读诊断信息，给 e2e 和排查用，不是设置）',
+  'dances:list': '舞蹈列表（VRM 舞蹈，docs/vrm-dance.md；只读：舞蹈库目录、来源与条目，不是设置）',
+  'dance:play': '互动：让 VRM 外观跳一支舞（本地 API POST /pixel-pet/dance 同一条路径）',
+  'dance:stop': '互动：让她停下不跳',
+  'dance:state': '正在跳的舞蹈（只读状态：id、进度、音乐，给 e2e 和排查用）',
   touch: '互动：摸摸（部位触摸）',
   'talk-topic': '互动：按话题聊天',
   chat: '聊天',
@@ -144,6 +148,7 @@ const RUNTIME = [
   { id: 'roam', label: '走动', where: '玩法 → 桌宠行为', keys: ['prefs.roam'], actions: ['admin-place-pet'] },
   { id: 'size', label: '大小', where: '玩法 → 桌宠行为', keys: ['petScale'] },
   { id: 'touch', label: '触摸与音效', where: '玩法 → 桌宠行为', keys: ['prefs.touchZones', 'prefs.touchHint', 'prefs.clickSound', 'prefs.memes', 'prefs.collide'] },
+  { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 和她一起 → 舞蹈', keys: ['prefs.danceVolume', 'prefs.muted'], actions: ['dance:play', 'dance:stop', 'dance:loop', 'dance-import-pick', 'dance-import-extra', 'dance-import-commit', 'dance-import-cancel', 'dance-remove'] },
   { id: 'proactive', label: '主动搭话', where: '玩法 → 主动搭话与好感', keys: ['proactive.enabled', 'proactive.speakCooldownMin', 'proactive.boredAfterMin', 'proactive.hungryAt', 'proactive.maxLlmPerHour'] },
   { id: 'affection', label: '好感', where: '玩法 → 主动搭话与好感；角色详情 → 好感', keys: ['affectionRules.dailyCap', 'affectionRules.decay'], actions: ['unlock-all'] },
   { id: 'visitors', label: '同屏伙伴', where: '玩法 → 同屏伙伴', keys: ['visitors', 'prefs.collide'] },
@@ -154,7 +159,7 @@ const RUNTIME = [
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
-  { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
+  { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'set-pack-base', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
 ];
@@ -246,7 +251,7 @@ function collect(root) {
   const read = (...p) => fs.readFileSync(path.join(root, ...p), 'utf8');
   const schema = require(path.join(root, 'src', 'core', 'settings-schema.js'));
   const settingsLib = require(path.join(root, 'src', 'core', 'settings.js'));
-  const chans = (src) => [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9-]+)'/g)].map((m) => m[1]);
+  const chans = (src) => [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9:-]+)'/g)].map((m) => m[1]);
   const main = read('src', 'main', 'main.js');
   const between = (src, start, end) => {
     const i = src.indexOf(start);

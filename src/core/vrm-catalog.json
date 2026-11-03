@@ -1,0 +1,5289 @@
+{
+  "schema": 1,
+  "release": "vrm-v2",
+  "characters": [
+    {
+      "parts": [
+        {
+          "file": "vrm-clown-doll-a-p1.zip",
+          "bytes": 19922944
+        },
+        {
+          "file": "vrm-clown-doll-a-p2.zip",
+          "bytes": 2741207
+        }
+      ],
+      "id": "vrm-clown-doll-a",
+      "type": "pack",
+      "base": "vrmxjfnpkhdhedmo",
+      "name": "Clown doll A",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "ぴケ/Pike",
+      "license": "Other",
+      "description": "VRM 模型，作者 ぴケ/Pike。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-clown-doll-a.zip",
+      "bytes": 22664151,
+      "sha256": "7ef8f4542c83bcdc896bfa8d386f1d181a2972a6037eff4a0c5d93ba4f20d63d",
+      "picture": "catalog/vrm/vrm-clown-doll-a.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Clown doll A"
+        },
+        {
+          "label": "作者",
+          "text": "ぴケ/Pike"
+        },
+        {
+          "label": "联系方式",
+          "text": "pike8341@gmail.com"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://kodaiga.xyz/2022/07/19/teamsofuse/",
+          "href": "https://kodaiga.xyz/2022/07/19/teamsofuse/"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://kodaiga.xyz/2022/07/19/teamsofuse/",
+          "href": "https://kodaiga.xyz/2022/07/19/teamsofuse/"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/【free】VRoid・VRM Clown doll（ぴケの創作屋さん）/vrm/Clown doll A.vrm"
+    },
+    {
+      "id": "vrm-noelle",
+      "type": "pack",
+      "base": "vrmxxgsbqtyudlft",
+      "name": "Noelle",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, MiHoYo",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, MiHoYo。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-noelle.zip",
+      "bytes": 10511941,
+      "sha256": "e56387c7a3b96754ea44e39eaf5b430a18131191bf63c289a6dd8ba9bb17e0fc",
+      "picture": "catalog/vrm/vrm-noelle.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Noelle（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, MiHoYo"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1040837016792539856.vrm"
+    },
+    {
+      "id": "vrm-fds",
+      "type": "pack",
+      "base": "vrmxcjjyznbkfbks",
+      "name": "fds",
+      "kind": "vrm",
+      "adult": false,
+      "version": "d",
+      "author": "g",
+      "license": "Other",
+      "description": "VRM 模型，作者 g。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-fds.zip",
+      "bytes": 4704261,
+      "sha256": "911a4c6597d050506bdb7f18fd0badbb42720fba6df60080d7cb7a01eea56007",
+      "picture": "catalog/vrm/vrm-fds.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "fds（d）"
+        },
+        {
+          "label": "作者",
+          "text": "g"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1107988908595443287.vrm"
+    },
+    {
+      "id": "vrm-vampire-fischl",
+      "type": "pack",
+      "base": "vrmxbmpohxdjxzce",
+      "name": "Vampire Fischl",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Private",
+      "license": "Other",
+      "description": "VRM 模型，作者 Private。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-vampire-fischl.zip",
+      "bytes": 8344882,
+      "sha256": "05f6e8f56e0f424271649d9a01231c3f234fc7479e510690df224aaaefdd4dc1",
+      "picture": null,
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Vampire Fischl（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Private"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1238673869191108188.vrm"
+    },
+    {
+      "id": "vrm-raiden-orchid",
+      "type": "pack",
+      "base": "vrmxazypzdympixp",
+      "name": "Raiden Orchid",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, reiikuma, meovden, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, reiikuma, meovden, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-raiden-orchid.zip",
+      "bytes": 10207514,
+      "sha256": "2639c0e0f972019eff866e289c65062203e2d1d672711fe38ba83f384b41bb57",
+      "picture": "catalog/vrm/vrm-raiden-orchid.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Raiden Orchid（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, reiikuma, meovden, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1347496417698417678.vrm"
+    },
+    {
+      "id": "vrm-saber",
+      "type": "pack",
+      "base": "vrmxfutazhkdreqn",
+      "name": "Saber",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Private",
+      "license": "Other",
+      "description": "VRM 模型，作者 Private。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-saber.zip",
+      "bytes": 8278687,
+      "sha256": "81f262689c4e1e1e61fa7373097172d675c2f4f16b369347b344cc001445e1f3",
+      "picture": "catalog/vrm/vrm-saber.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Saber（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Private"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1460281130622983526.vrm"
+    },
+    {
+      "id": "vrm-kotoha",
+      "type": "pack",
+      "base": "vrmxcjssnpnnjhtl",
+      "name": "Kotoha",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "藤依ひな",
+      "license": "Other",
+      "description": "VRM 模型，作者 藤依ひな。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-kotoha.zip",
+      "bytes": 13267925,
+      "sha256": "f5749db63a7671f9d1b8c783b0252f7ec4eb959dbf5f38b858c9db208eea9a1f",
+      "picture": "catalog/vrm/vrm-kotoha.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Kotoha"
+        },
+        {
+          "label": "作者",
+          "text": "藤依ひな"
+        },
+        {
+          "label": "联系方式",
+          "text": "https://fujihina.com/contact/",
+          "href": "https://fujihina.com/contact/"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/1543989543285279312.vrm"
+    },
+    {
+      "id": "vrm-a185cf3a",
+      "type": "pack",
+      "base": "vrmxljgcuhpkdakv",
+      "name": "試作1",
+      "kind": "vrm",
+      "adult": false,
+      "version": "2",
+      "author": "畑のお肉",
+      "license": "VRM 1.0 授权",
+      "description": "VRM 模型，作者 畑のお肉。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-a185cf3a.zip",
+      "bytes": 8842366,
+      "sha256": "5e6653b0ff15e9cf2b585f733e71f8daacee0e3476d42a6531b0c7c5c55d0d35",
+      "picture": "catalog/vrm/vrm-a185cf3a.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "試作1（2）"
+        },
+        {
+          "label": "作者",
+          "text": "畑のお肉"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "无需署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://vrm.dev/licenses/1.0/",
+          "href": "https://vrm.dev/licenses/1.0/"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/2047313988004016046.vrm"
+    },
+    {
+      "id": "vrm-layla",
+      "type": "pack",
+      "base": "vrmxeyeohwckxzzr",
+      "name": "Layla",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.9",
+      "author": "taramiko, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-layla.zip",
+      "bytes": 3413401,
+      "sha256": "a8fb94ee7338c0afaec7ae72ab9cf99d427759d1865e7ecd11d4658982d6edd8",
+      "picture": "catalog/vrm/vrm-layla.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Layla（0.9）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "参考",
+          "text": "blendshapes broken"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2272401320298342743.vrm"
+    },
+    {
+      "id": "vrm-apho2-bronya-3-0",
+      "type": "pack",
+      "base": "vrmxtgjimsruuwvg",
+      "name": "APHO2 Bronya 3.0",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "Zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 Zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-apho2-bronya-3-0.zip",
+      "bytes": 4996898,
+      "sha256": "0416b800f1c91d4695e2a192bf27810827ff09704e5ee9381b886fd520bfee29",
+      "picture": "catalog/vrm/vrm-apho2-bronya-3-0.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "APHO2 Bronya 3.0（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2280447760146557373.vrm"
+    },
+    {
+      "id": "vrm-7b1d0ff9",
+      "type": "pack",
+      "base": "vrmxuksrcavluikf",
+      "name": "瓶底メガネメイド",
+      "kind": "vrm",
+      "adult": false,
+      "version": "2.0",
+      "author": "畑のお肉",
+      "license": "VRM 1.0 授权",
+      "description": "VRM 模型，作者 畑のお肉。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-7b1d0ff9.zip",
+      "bytes": 8470547,
+      "sha256": "40b0debf8920a1ab727f26ce30ac3692add40c82804e5a05f536672ec4881f53",
+      "picture": "catalog/vrm/vrm-7b1d0ff9.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "瓶底メガネメイド（2.0）"
+        },
+        {
+          "label": "作者",
+          "text": "畑のお肉"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人与企业均可商用"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "无需署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://vrm.dev/licenses/1.0/",
+          "href": "https://vrm.dev/licenses/1.0/"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/2309930806915752256.vrm"
+    },
+    {
+      "id": "vrm-13789dec",
+      "type": "pack",
+      "base": "vrmxaqwaugxajnzh",
+      "name": "2353799309196924056",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-13789dec.zip",
+      "bytes": 2830401,
+      "sha256": "f51b253a37e287bee6420d3cc68961edcbd2595cbcddb4f28d5635e9d3c3d450",
+      "picture": "catalog/vrm/vrm-13789dec.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2353799309196924056.vrm"
+    },
+    {
+      "id": "vrm-xingqiu",
+      "type": "pack",
+      "base": "vrmxdsdxmywlkjma",
+      "name": "Xingqiu",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Private",
+      "license": "Other",
+      "description": "VRM 模型，作者 Private。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-xingqiu.zip",
+      "bytes": 7424878,
+      "sha256": "fe13322e266e1b94158c22158d740913eb7e6e191f60a065114ca7090b09d3b4",
+      "picture": "catalog/vrm/vrm-xingqiu.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Xingqiu（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Private"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2565196890795760928.vrm"
+    },
+    {
+      "id": "vrm-yanfei",
+      "type": "pack",
+      "base": "vrmxzxlmrimyfukd",
+      "name": "Yanfei",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.1",
+      "author": "Bladed6, taramiko",
+      "license": "Other",
+      "description": "VRM 模型，作者 Bladed6, taramiko。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-yanfei.zip",
+      "bytes": 11066442,
+      "sha256": "4009c24934379360fe51812cb5b859b54e93c3ee2cb69e349482266dbecbae96",
+      "picture": "catalog/vrm/vrm-yanfei.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Yanfei（1.1）"
+        },
+        {
+          "label": "作者",
+          "text": "Bladed6, taramiko"
+        },
+        {
+          "label": "联系方式",
+          "text": "onion#8444"
+        },
+        {
+          "label": "参考",
+          "text": "Lukatoni PMX models"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2871881890733087527.vrm"
+    },
+    {
+      "id": "vrm-paimon",
+      "type": "pack",
+      "base": "vrmxbctgqzcyjudf",
+      "name": "paimon",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-paimon.zip",
+      "bytes": 3938260,
+      "sha256": "4ff014376e601493a1656fb09eae1c5feb296efc4e02024fa00be9ffa732a184",
+      "picture": "catalog/vrm/vrm-paimon.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "paimon（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/2970018933788526168.vrm"
+    },
+    {
+      "id": "vrm-wanderer",
+      "type": "pack",
+      "base": "vrmxsockpeyuowmw",
+      "name": "Wanderer",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, Kimiegg, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, Kimiegg, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-wanderer.zip",
+      "bytes": 3651822,
+      "sha256": "3151bfe2be48d08297712f86e2edcedf2610ce3b81043c1816f187bb4dda65e7",
+      "picture": "catalog/vrm/vrm-wanderer.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Wanderer（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, Kimiegg, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3025277208146426578.vrm"
+    },
+    {
+      "id": "vrm-model",
+      "type": "pack",
+      "base": "vrmxidamhauiuljn",
+      "name": "3030333584490357517",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-model.zip",
+      "bytes": 2761715,
+      "sha256": "a533ecefcb5256f2cd70076b9755906b935974c0b42f83522d1e4f95ad4d0de3",
+      "picture": "catalog/vrm/vrm-model.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "model（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3030333584490357517.vrm"
+    },
+    {
+      "id": "vrm-faruzan",
+      "type": "pack",
+      "base": "vrmxpcoyqasudrsh",
+      "name": "Faruzan",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-faruzan.zip",
+      "bytes": 4252609,
+      "sha256": "f71ef5cb9e7b722fa4ea450c6f9aa2ace94fa971861dfc6c04740fc1fcf19204",
+      "picture": "catalog/vrm/vrm-faruzan.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Faruzan（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3274471941260331001.vrm"
+    },
+    {
+      "id": "vrm-sara",
+      "type": "pack",
+      "base": "vrmxkbjtqqhljzxy",
+      "name": "Sara",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Private",
+      "license": "Other",
+      "description": "VRM 模型，作者 Private。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-sara.zip",
+      "bytes": 6485593,
+      "sha256": "efe2cb9003e2bd8107633634003c0fcbfa9d1a6c4e84e30eeffa046d1dd2b81c",
+      "picture": "catalog/vrm/vrm-sara.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Sara（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Private"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3475169946044519461.vrm"
+    },
+    {
+      "id": "vrm-4abacf73",
+      "type": "pack",
+      "base": "vrmxnyntsftuknnc",
+      "name": "艾尔海森",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "sss",
+      "license": "Other",
+      "description": "VRM 模型，作者 sss。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-4abacf73.zip",
+      "bytes": 5237372,
+      "sha256": "6aefa5f375d52131ffb442c894b3b24034dc934a9a35e1c9eb9b3f061dcabd32",
+      "picture": "catalog/vrm/vrm-4abacf73.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "艾尔海森（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "sss"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3563168348695700700.vrm"
+    },
+    {
+      "id": "vrm-86871af6",
+      "type": "pack",
+      "base": "vrmxhljjkbejljug",
+      "name": "燈水梔子",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "毒毒",
+      "license": "VRM 1.0 授权",
+      "description": "VRM 模型，作者 毒毒。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-86871af6.zip",
+      "bytes": 10850487,
+      "sha256": "e04ae92c0e93ad0fa55b1f23952978d628bf1ba3c9a00359e351178a4ec69bd2",
+      "picture": "catalog/vrm/vrm-86871af6.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "燈水梔子"
+        },
+        {
+          "label": "作者",
+          "text": "毒毒"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人与企业均可商用"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "无需署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://vrm.dev/licenses/1.0/",
+          "href": "https://vrm.dev/licenses/1.0/"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/360477699125799950.vrm"
+    },
+    {
+      "id": "vrm-shima-guns",
+      "type": "pack",
+      "base": "vrmxxhilefizuhuz",
+      "name": "Shima Guns",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "Caesar",
+      "license": "Other",
+      "description": "VRM 模型，作者 Caesar。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-shima-guns.zip",
+      "bytes": 2899844,
+      "sha256": "074905c8f5d223128e8c5b2e028adff317a03d39c679073b15de5cf6c011037b",
+      "picture": "catalog/vrm/vrm-shima-guns.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Shima Guns（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Caesar"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3644575416391514384.vrm"
+    },
+    {
+      "id": "vrm-33757bd3",
+      "type": "pack",
+      "base": "vrmxokqztuewwnuv",
+      "name": "绮良良",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "333",
+      "license": "Other",
+      "description": "VRM 模型，作者 333。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-33757bd3.zip",
+      "bytes": 5058518,
+      "sha256": "00c34013fa4e8bca8138dedb750be8e83fe5ee0a0608b1a960ecb827ceed9bdf",
+      "picture": "catalog/vrm/vrm-33757bd3.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "绮良良（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "333"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/3682610047957415694.vrm"
+    },
+    {
+      "parts": [
+        {
+          "file": "vrm-f060464a-p1.zip",
+          "bytes": 19922944
+        },
+        {
+          "file": "vrm-f060464a-p2.zip",
+          "bytes": 2041939
+        }
+      ],
+      "id": "vrm-f060464a",
+      "type": "pack",
+      "base": "vrmxjwnrcnezedpc",
+      "name": "凍香(天使)",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.1.1",
+      "author": "あわ",
+      "license": "VRM 1.0 授权",
+      "description": "VRM 模型，作者 あわ。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-f060464a.zip",
+      "bytes": 21964883,
+      "sha256": "0e67dbcb4a2a21163c9280031b59241d9ff33f7f2b04ad80437ef8b290714e85",
+      "picture": "catalog/vrm/vrm-f060464a.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "凍香(天使)（1.1.1）"
+        },
+        {
+          "label": "作者",
+          "text": "あわ"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人与企业均可商用"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "无需署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://vrm.dev/licenses/1.0/",
+          "href": "https://vrm.dev/licenses/1.0/"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/4043018172957611916.vrm"
+    },
+    {
+      "id": "vrm-x-neoket-shino",
+      "type": "pack",
+      "base": "vrmxhptdddjussta",
+      "name": "X-NEOKET-Shino",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "藤依ひな",
+      "license": "Other",
+      "description": "VRM 模型，作者 藤依ひな。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-x-neoket-shino.zip",
+      "bytes": 12414224,
+      "sha256": "51e374ce963423301305d24a5e3d0591974362f1c441c46dd5bdf3df0b2b0981",
+      "picture": "catalog/vrm/vrm-x-neoket-shino.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "X-NEOKET-Shino"
+        },
+        {
+          "label": "作者",
+          "text": "藤依ひな"
+        },
+        {
+          "label": "联系方式",
+          "text": "https://fujihina.com/contact/",
+          "href": "https://fujihina.com/contact/"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4076347966491689472.vrm"
+    },
+    {
+      "id": "vrm-raiden-formal-dress",
+      "type": "pack",
+      "base": "vrmxaanysawifjng",
+      "name": "Raiden Formal Dress",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, Mitsu, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, Mitsu, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-raiden-formal-dress.zip",
+      "bytes": 11028501,
+      "sha256": "7cb0b64ec0a7eece77128002b15259c0132cf34cb0fc6a5eb5eb2771546427c2",
+      "picture": "catalog/vrm/vrm-raiden-formal-dress.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Raiden Formal Dress（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, Mitsu, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "参考",
+          "text": "Shiremide1/Dastezi/SukarettoG/AneCoco/TDA"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4235247881317041326.vrm"
+    },
+    {
+      "id": "vrm-sucrose",
+      "type": "pack",
+      "base": "vrmxugseavcxzxrw",
+      "name": "Sucrose",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.01",
+      "author": "mihoyo",
+      "license": "Other",
+      "description": "VRM 模型，作者 mihoyo。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-sucrose.zip",
+      "bytes": 8343848,
+      "sha256": "e1506f1ef0b466b368fd7624c67fe64b189209f4d0873dac33d7d7ad2eb11ca0",
+      "picture": "catalog/vrm/vrm-sucrose.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Sucrose（1.01）"
+        },
+        {
+          "label": "作者",
+          "text": "mihoyo"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "仅作者本人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=author&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=disallow&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=author&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=disallow&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=author&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=disallow&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=author&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=disallow&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4485019039281706214.vrm"
+    },
+    {
+      "id": "vrm-b2b750b1",
+      "type": "pack",
+      "base": "vrmxfvktkhlwgmxq",
+      "name": "レイニーデビル",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Mujo Moroyuki",
+      "license": "Other",
+      "description": "VRM 模型，作者 Mujo Moroyuki。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-b2b750b1.zip",
+      "bytes": 15099245,
+      "sha256": "55da9c42a3024b744418205a26cea1886efa8c50bf129e1163b05d9d6a89d0cb",
+      "picture": "catalog/vrm/vrm-b2b750b1.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "レイニーデビル（1.0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Mujo Moroyuki"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4490406470623724712.vrm"
+    },
+    {
+      "id": "vrm-beidou-model",
+      "type": "pack",
+      "base": "vrmxykrdyxqmpyqu",
+      "name": "Beidou model",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-beidou-model.zip",
+      "bytes": 3960894,
+      "sha256": "42ee6412d94746ae59731676ccdfdb890d21d16bc0d3844020f42f6e0866662d",
+      "picture": null,
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Beidou model（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/450275860931535644.vrm"
+    },
+    {
+      "id": "vrm-10f8db30",
+      "type": "pack",
+      "base": "vrmxltzrcgyaocdq",
+      "name": "試作1",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "畑のお肉",
+      "license": "VRM 1.0 授权",
+      "description": "VRM 模型，作者 畑のお肉。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-10f8db30.zip",
+      "bytes": 9014035,
+      "sha256": "da4c2fe674d4cf65b9927548714d5744e66348c2bbab09e1a90733799b365540",
+      "picture": "catalog/vrm/vrm-10f8db30.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "試作1（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "畑のお肉"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "无需署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://vrm.dev/licenses/1.0/",
+          "href": "https://vrm.dev/licenses/1.0/"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/4645445766526644626.vrm"
+    },
+    {
+      "id": "vrm-kuki-shinobu",
+      "type": "pack",
+      "base": "vrmxnykcjrdaalji",
+      "name": "Kuki Shinobu",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "Zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 Zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-kuki-shinobu.zip",
+      "bytes": 6035015,
+      "sha256": "af163c0391a3c78d6ad11b49233270dd38f86a433c32ead32d62618cead56111",
+      "picture": "catalog/vrm/vrm-kuki-shinobu.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Kuki Shinobu（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4657503614223276033.vrm"
+    },
+    {
+      "id": "vrm-pardofelis",
+      "type": "pack",
+      "base": "vrmxopnxkpbbwhyl",
+      "name": "Pardofelis",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "mihoyo",
+      "license": "Other",
+      "description": "VRM 模型，作者 mihoyo。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-pardofelis.zip",
+      "bytes": 6034270,
+      "sha256": "b4cef8ee6184f8441af95dcc40b452086859be751c157c74f6acd3c3075790c8",
+      "picture": "catalog/vrm/vrm-pardofelis.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Pardofelis（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "mihoyo"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/4844538754539596230.vrm"
+    },
+    {
+      "parts": [
+        {
+          "file": "vrm-7770a32c-p1.zip",
+          "bytes": 19922944
+        },
+        {
+          "file": "vrm-7770a32c-p2.zip",
+          "bytes": 6972135
+        }
+      ],
+      "id": "vrm-7770a32c",
+      "type": "pack",
+      "base": "vrmxpfgcfssnqakj",
+      "name": "光莉",
+      "kind": "vrm",
+      "adult": false,
+      "version": "5",
+      "author": "あわ",
+      "license": "Other",
+      "description": "VRM 模型，作者 あわ。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-7770a32c.zip",
+      "bytes": 26895079,
+      "sha256": "6f3deca65dd9fcdaef31f385761a8ffc47a42d9e3db50e7b149c3a7946b6e80f",
+      "picture": "catalog/vrm/vrm-7770a32c.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "光莉（5）"
+        },
+        {
+          "label": "作者",
+          "text": "あわ"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5075840185788639488.vrm"
+    },
+    {
+      "id": "vrm-8302916c",
+      "type": "pack",
+      "base": "vrmxxfpdjtxhszdm",
+      "name": "沙耶子 (チラ見)",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Mujo Moroyuki",
+      "license": "Other",
+      "description": "VRM 模型，作者 Mujo Moroyuki。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-8302916c.zip",
+      "bytes": 13107975,
+      "sha256": "e49625e57dee2dd5513f78ed377474f14906d36124e481fe730cf775faac8e67",
+      "picture": "catalog/vrm/vrm-8302916c.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "沙耶子 (チラ見)（1.0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Mujo Moroyuki"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=allow&personal_commercial_use=nonprofit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5416512305060481803 (1).vrm"
+    },
+    {
+      "id": "vrm-xiangling",
+      "type": "pack",
+      "base": "vrmxyldygdtxuzeh",
+      "name": "XiangLing",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1",
+      "author": "Fxy",
+      "license": "Other",
+      "description": "VRM 模型，作者 Fxy。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-xiangling.zip",
+      "bytes": 6060543,
+      "sha256": "08971c1e6e4f05ebf1c2a0e6b53dca5279a8d9b15da77d3362e51904c0359202",
+      "picture": "catalog/vrm/vrm-xiangling.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "XiangLing（1）"
+        },
+        {
+          "label": "作者",
+          "text": "Fxy"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5552752362210794428.vrm"
+    },
+    {
+      "id": "vrm-3ba3f497",
+      "type": "pack",
+      "base": "vrmxfmfddynrlbkj",
+      "name": "aa",
+      "kind": "vrm",
+      "adult": false,
+      "version": "aa",
+      "author": "aa",
+      "license": "Other",
+      "description": "VRM 模型，作者 aa。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-3ba3f497.zip",
+      "bytes": 3909274,
+      "sha256": "95bc1e38212af373855e0d9157c323a8f565d344c1827ea27363743de5a91238",
+      "picture": "catalog/vrm/vrm-3ba3f497.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "aa（aa）"
+        },
+        {
+          "label": "作者",
+          "text": "aa"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5612724512331498757.vrm"
+    },
+    {
+      "id": "vrm-kamisato-ayato",
+      "type": "pack",
+      "base": "vrmxhsuiutqvudgp",
+      "name": "Kamisato Ayato",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-kamisato-ayato.zip",
+      "bytes": 6361013,
+      "sha256": "9af50a640d4f838e5930f92e0e09e0f796f7bfc44d7f151abf98cd01813b7c1c",
+      "picture": "catalog/vrm/vrm-kamisato-ayato.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Kamisato Ayato（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5698934730092276704.vrm"
+    },
+    {
+      "id": "vrm-83baf37c",
+      "type": "pack",
+      "base": "vrmxejryjnjablny",
+      "name": "5765691768716165134",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-83baf37c.zip",
+      "bytes": 1456788,
+      "sha256": "3c2262dccebba5f78654ef99991472e1ab7b89f104d12261137e28d5842bc18c",
+      "picture": "catalog/vrm/vrm-83baf37c.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5765691768716165134.vrm"
+    },
+    {
+      "id": "vrm-3-1",
+      "type": "pack",
+      "base": "vrmxmfbyestxsnpy",
+      "name": "プリ子３_1",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0",
+      "author": "zakiame",
+      "license": "Other",
+      "description": "VRM 模型，作者 zakiame。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-3-1.zip",
+      "bytes": 12545546,
+      "sha256": "1f0a02d9ab6747eebd6fdf84c261a0aea74b63b254eda353c93345e16a1121c3",
+      "picture": "catalog/vrm/vrm-3-1.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "プリ子３_1（0）"
+        },
+        {
+          "label": "作者",
+          "text": "zakiame"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/5876570490179264320.vrm"
+    },
+    {
+      "id": "vrm-wa-maid-pu",
+      "type": "pack",
+      "base": "vrmxpbdfbttqvyqi",
+      "name": "Wa maid PU",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Hopu",
+      "license": "Other",
+      "description": "VRM 模型，作者 Hopu。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-wa-maid-pu.zip",
+      "bytes": 19693166,
+      "sha256": "546129244d93b14a18a73055b5b7162a1efdc1d37f7a9e25c9470dae60b151ac",
+      "picture": "catalog/vrm/vrm-wa-maid-pu.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Wa maid PU"
+        },
+        {
+          "label": "作者",
+          "text": "Hopu"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/6080595597310758144.vrm"
+    },
+    {
+      "id": "vrm-kazuha",
+      "type": "pack",
+      "base": "vrmxxclfmhuqoegu",
+      "name": "Kazuha",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Cyrus",
+      "license": "Other",
+      "description": "VRM 模型，作者 Cyrus。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-kazuha.zip",
+      "bytes": 4360573,
+      "sha256": "1fe299dee41d32755a8db389125b38ecfa032c88977c5bbf5db77dfe00acb1c4",
+      "picture": "catalog/vrm/vrm-kazuha.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Kazuha（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Cyrus"
+        },
+        {
+          "label": "联系方式",
+          "text": "espltdsnakebyte#1875"
+        },
+        {
+          "label": "参考",
+          "text": "Kazuha"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/6248870530516925774.vrm"
+    },
+    {
+      "id": "vrm-54de7192",
+      "type": "pack",
+      "base": "vrmxqiytmbpymvfv",
+      "name": "6264114599296196706",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-54de7192.zip",
+      "bytes": 1622677,
+      "sha256": "cf6c68ec168bddd344f4b3a561986ec6e1c72dec8bf14582bdd3b9e925c4beff",
+      "picture": "catalog/vrm/vrm-54de7192.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/6264114599296196706.vrm"
+    },
+    {
+      "id": "vrm-hu-tao",
+      "type": "pack",
+      "base": "vrmxwfgdxkxadgjy",
+      "name": "Hu tao",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Impmagik",
+      "license": "Other",
+      "description": "VRM 模型，作者 Impmagik。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-hu-tao.zip",
+      "bytes": 4243499,
+      "sha256": "3e655564cd7eb9485ea0c0a1718b764469b46ec0f83d95455377044ac93bdd8e",
+      "picture": "catalog/vrm/vrm-hu-tao.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Hu tao（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Impmagik"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/6765325639849467918.vrm"
+    },
+    {
+      "id": "vrm-0188c0f0",
+      "type": "pack",
+      "base": "vrmxzrskdiyimapt",
+      "name": "6823478844411844649",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-0188c0f0.zip",
+      "bytes": 4221468,
+      "sha256": "8ae4142ad32e361977bd87bf7e154c2f4827736f9f3b43eb1d174b2472e8ea02",
+      "picture": "catalog/vrm/vrm-0188c0f0.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/6823478844411844649.vrm"
+    },
+    {
+      "id": "vrm-yae",
+      "type": "pack",
+      "base": "vrmxdwwdiqnqjbox",
+      "name": "Yae",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Private",
+      "license": "Other",
+      "description": "VRM 模型，作者 Private。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-yae.zip",
+      "bytes": 3214655,
+      "sha256": "cad3634ee71a7b437758cdbcb71f349d06c15fced6b2daf36033d132bcb4c43f",
+      "picture": "catalog/vrm/vrm-yae.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Yae（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Private"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/716071017220214926.vrm"
+    },
+    {
+      "id": "vrm-7527ca84",
+      "type": "pack",
+      "base": "vrmxnqbbdigvwwry",
+      "name": "猫耳刹那",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "AH",
+      "license": "Other",
+      "description": "VRM 模型，作者 AH。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-7527ca84.zip",
+      "bytes": 9165231,
+      "sha256": "41f70f1cef7e818c1bd66742409d7ba5295faf2d68576bc3b70d85b932ec8b85",
+      "picture": "catalog/vrm/vrm-7527ca84.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "猫耳刹那"
+        },
+        {
+          "label": "作者",
+          "text": "AH"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/7224187107958677325.vrm"
+    },
+    {
+      "id": "vrm-keqing",
+      "type": "pack",
+      "base": "vrmxingpupwerqca",
+      "name": "Keqing",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-keqing.zip",
+      "bytes": 9275775,
+      "sha256": "1676dec177dc63f382f05972918b41e9606b7f8d2698aa5f6fcc46b96465a7a2",
+      "picture": "catalog/vrm/vrm-keqing.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Keqing（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/7687830832006039364.vrm"
+    },
+    {
+      "id": "vrm-nana",
+      "type": "pack",
+      "base": "vrmxefdrjzjjahls",
+      "name": "nana",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "io",
+      "license": "Other",
+      "description": "VRM 模型，作者 io。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-nana.zip",
+      "bytes": 3747981,
+      "sha256": "d23322137326f07212aef08d639e6f10b103e96014f144c2209fdf6c326160ab",
+      "picture": "catalog/vrm/vrm-nana.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "nana"
+        },
+        {
+          "label": "作者",
+          "text": "io"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/7773512812009146739.vrm"
+    },
+    {
+      "id": "vrm-diona",
+      "type": "pack",
+      "base": "vrmxzcgffasqrxdy",
+      "name": "Diona",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "Zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 Zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-diona.zip",
+      "bytes": 4568340,
+      "sha256": "36ba3881db120983bbb366784536a58e5d3fa0488d9fa281ca628b77f34cdadb",
+      "picture": "catalog/vrm/vrm-diona.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Diona（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/7803864750032413601.vrm"
+    },
+    {
+      "id": "vrm-kaiya",
+      "type": "pack",
+      "base": "vrmxkljmkycwzhcw",
+      "name": "Kaiya",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1",
+      "author": "ctto",
+      "license": "Other",
+      "description": "VRM 模型，作者 ctto。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-kaiya.zip",
+      "bytes": 3398997,
+      "sha256": "4819851afbe76019bb5570282bcb0230d9fef14a477f49da9c6cb68f5fa74d31",
+      "picture": "catalog/vrm/vrm-kaiya.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Kaiya（1）"
+        },
+        {
+          "label": "作者",
+          "text": "ctto"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8050722269004659940.vrm"
+    },
+    {
+      "id": "vrm-durandal",
+      "type": "pack",
+      "base": "vrmxuedbdkalrawu",
+      "name": "Durandal",
+      "kind": "vrm",
+      "adult": false,
+      "version": "Valkyrie Gloria",
+      "author": "Kashito Elz Kutazi",
+      "license": "Other",
+      "description": "VRM 模型，作者 Kashito Elz Kutazi。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-durandal.zip",
+      "bytes": 6640661,
+      "sha256": "16297fc1625d8e96fa79be53ae30f45d6bdda237ed4f380398ea2dba3e6dc2b7",
+      "picture": "catalog/vrm/vrm-durandal.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Durandal（Valkyrie Gloria）"
+        },
+        {
+          "label": "作者",
+          "text": "Kashito Elz Kutazi"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8173334968551002451.vrm"
+    },
+    {
+      "id": "vrm-d8ae70a5",
+      "type": "pack",
+      "base": "vrmxcsdjmaaevxvz",
+      "name": "提纳里",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "000",
+      "license": "Other",
+      "description": "VRM 模型，作者 000。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-d8ae70a5.zip",
+      "bytes": 4083651,
+      "sha256": "4e3dbeb18f6f033bc13bf513fcf348284d29fba8098dcd52205dfed0e2b7b53f",
+      "picture": null,
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "提纳里（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "000"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8330110358162111132.vrm"
+    },
+    {
+      "id": "vrm-candace",
+      "type": "pack",
+      "base": "vrmxssrbbaqlajjm",
+      "name": "Candace",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "taramiko, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 taramiko, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-candace.zip",
+      "bytes": 3451338,
+      "sha256": "6bf1c03f0661d4565cf264be4954a63d08ac54b508dff7aa65d3933c3e46eb90",
+      "picture": "catalog/vrm/vrm-candace.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Candace（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "taramiko, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8532622507606418715.vrm"
+    },
+    {
+      "id": "vrm-aponia",
+      "type": "pack",
+      "base": "vrmxcqczaulhgpyw",
+      "name": "APONIA",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "mihoyo",
+      "license": "Other",
+      "description": "VRM 模型，作者 mihoyo。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-aponia.zip",
+      "bytes": 5029042,
+      "sha256": "af7fe217070cd11658a9bcafaa0094801c4da90678bb40353b6b8f8823e82d9d",
+      "picture": "catalog/vrm/vrm-aponia.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "APONIA（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "mihoyo"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8658492331848297921.vrm"
+    },
+    {
+      "id": "vrm-eula",
+      "type": "pack",
+      "base": "vrmxjillfegixkzc",
+      "name": "Eula",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-eula.zip",
+      "bytes": 5439365,
+      "sha256": "ac7274d001130ec4ab151d56d6c18fc2c8dac887246e52f1ffce71e10e73cc6a",
+      "picture": "catalog/vrm/vrm-eula.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Eula（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8720284547810328434.vrm"
+    },
+    {
+      "id": "vrm-sangonomiya-kokomi",
+      "type": "pack",
+      "base": "vrmxivrfouumufgf",
+      "name": "Sangonomiya Kokomi",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "raidenshougun",
+      "license": "Other",
+      "description": "VRM 模型，作者 raidenshougun。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-sangonomiya-kokomi.zip",
+      "bytes": 3470311,
+      "sha256": "8c3edc075f2bac6739af00fa17a845e0c356939cb8078202d4a3f5cb8e6e07fa",
+      "picture": "catalog/vrm/vrm-sangonomiya-kokomi.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Sangonomiya Kokomi"
+        },
+        {
+          "label": "作者",
+          "text": "raidenshougun"
+        },
+        {
+          "label": "参考",
+          "text": "感谢下载本模型\r\n\r\n◆允许完善物理，修正模型权重、表情等bug\r\n\r\n  允许改色，适度更改衣装，添加spa、toon等\r\n\r\n◆请勿二次配布，以及拆取部件以用于改造其他模型\r\n\r\n  请勿用于18禁作品，极端宗教宣传，血腥恐怖猎奇作品，人身攻击等\r\n\r\n  请勿用于商业用途\r\n\r\n◆他人使用本模型所造成的一切不良后果，不由模型改造者与miHoYo承担，请向使用者追究全部责任\r\n\r\n◆物理参考：YYB Hatsune Miku_10th\r\n\r\n◆模型提供：miHoYo\r\n\r\n◆模型改造：观海\r\n\r\n  联系我【BiliBili：观海子】\r\n\r\n◆最终解释权归属：miHoYo\r\n\r\n请遵守本规"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/894800543032779675.vrm"
+    },
+    {
+      "id": "vrm-elysia",
+      "type": "pack",
+      "base": "vrmxjgjdjskicacd",
+      "name": "Elysia",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0.0",
+      "author": "zero",
+      "license": "Other",
+      "description": "VRM 模型，作者 zero。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-elysia.zip",
+      "bytes": 7561513,
+      "sha256": "e9afcb10ff78856637f084fd33ff43a5ea260df650ead1ad0a19f185f95713c3",
+      "picture": "catalog/vrm/vrm-elysia.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Elysia（0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "zero"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/8963717688097791154.vrm"
+    },
+    {
+      "id": "vrm-nilou",
+      "type": "pack",
+      "base": "vrmxrtbpsgmprvia",
+      "name": "Nilou",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "Bladed6, taramiko, HoYoverse",
+      "license": "Other",
+      "description": "VRM 模型，作者 Bladed6, taramiko, HoYoverse。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-nilou.zip",
+      "bytes": 4318504,
+      "sha256": "2ace3a65dfa472c3ef52bce5a7c8106d0af8bbe631c5cc74c801d1244fa4d2b6",
+      "picture": "catalog/vrm/vrm-nilou.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Nilou（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Bladed6, taramiko, HoYoverse"
+        },
+        {
+          "label": "联系方式",
+          "text": "discord.gg/0vrm"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/921794271458476944.vrm"
+    },
+    {
+      "id": "vrm-ms-hina",
+      "type": "pack",
+      "base": "vrmxnsrbikpgkctm",
+      "name": "Ms Hina",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.01",
+      "author": "mihoyo",
+      "license": "Other",
+      "description": "VRM 模型，作者 mihoyo。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-ms-hina.zip",
+      "bytes": 19896909,
+      "sha256": "4f7fc06ed4505047a5a613cd2b3fe906fc453b92acf8eddaff18f3ed2d673a86",
+      "picture": "catalog/vrm/vrm-ms-hina.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Ms Hina（1.01）"
+        },
+        {
+          "label": "作者",
+          "text": "mihoyo"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/930071028751740412.vrm"
+    },
+    {
+      "id": "vrm-camomecamome",
+      "type": "pack",
+      "base": "vrmxbgxhyfqipxuu",
+      "name": "camomecamome",
+      "kind": "vrm",
+      "adult": false,
+      "version": "8",
+      "author": "Yumetengu",
+      "license": "Other",
+      "description": "VRM 模型，作者 Yumetengu。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-camomecamome.zip",
+      "bytes": 3602094,
+      "sha256": "2a094bf98174a860ca4412a54de1c7aa96105f33a0d24ae719f560b1de211988",
+      "picture": "catalog/vrm/vrm-camomecamome.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "camomecamome（8）"
+        },
+        {
+          "label": "作者",
+          "text": "Yumetengu"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "VRM 0.x 默认条款（模型未附链接）"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/CamomeCamome/CamomeCamome/CamomeCamome.vrm"
+    },
+    {
+      "id": "vrm-hayaseyuuka",
+      "type": "pack",
+      "base": "vrmxvpufikxeztiz",
+      "name": "HayaseYuuka",
+      "kind": "vrm",
+      "adult": false,
+      "version": "5th105",
+      "author": "Unf",
+      "license": "Redistribution_Prohibited",
+      "description": "VRM 模型，作者 Unf。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-hayaseyuuka.zip",
+      "bytes": 11531136,
+      "sha256": "ff21945258d1c50363e519ed0859cb47dd465e8b9e07d118870d02e2df1b0de4",
+      "picture": "catalog/vrm/vrm-hayaseyuuka.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "HayaseYuuka（5th105）"
+        },
+        {
+          "label": "作者",
+          "text": "Unf"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "仅作者本人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Redistribution_Prohibited"
+        },
+        {
+          "label": "授权条款",
+          "text": "VRM 0.x 默认条款（模型未附链接）"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/Hayaseyuuka/Hayaseyuuka.vrm"
+    },
+    {
+      "id": "vrm-julius-vrm",
+      "type": "pack",
+      "base": "vrmxflrymultfdzn",
+      "name": "Julius_VRM",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.1.0",
+      "author": "brochiManac",
+      "license": "Other",
+      "description": "VRM 模型，作者 brochiManac。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-julius-vrm.zip",
+      "bytes": 11663429,
+      "sha256": "2aeffd7c0387ced0a5134e90e968b6ea251ed84955c49745c664e780cfbf3dee",
+      "picture": "catalog/vrm/vrm-julius-vrm.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Julius_VRM（1.1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "brochiManac"
+        },
+        {
+          "label": "联系方式",
+          "text": "ⒸbrochiManac"
+        },
+        {
+          "label": "参考",
+          "text": "https://brochimanac.com/",
+          "href": "https://brochimanac.com/"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "仅获作者单独授权的人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://brochimanac.booth.pm/items/5380991",
+          "href": "https://brochimanac.booth.pm/items/5380991"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://brochimanac.booth.pm/items/5380991",
+          "href": "https://brochimanac.booth.pm/items/5380991"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/Julius_VRM_1.1.0/Julius_VRM_1.1.0.vrm"
+    },
+    {
+      "id": "vrm-vroid-for-giveaway",
+      "type": "pack",
+      "base": "vrmxefvoxftuzpbi",
+      "name": "vroid for giveaway",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "renai lol",
+      "license": "Other",
+      "description": "VRM 模型，作者 renai lol。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-vroid-for-giveaway.zip",
+      "bytes": 11643402,
+      "sha256": "1400fc60d4bd961fabbb4eb430f8e37eb74a94e48b8a069d92dac2c2eadbe5fe",
+      "picture": "catalog/vrm/vrm-vroid-for-giveaway.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "vroid for giveaway"
+        },
+        {
+          "label": "作者",
+          "text": "renai lol"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/K-00616/K-00616.vrm"
+    },
+    {
+      "id": "vrm-mimimechanism-milkyhoodie",
+      "type": "pack",
+      "base": "vrmxyqnglofahhbw",
+      "name": "MimiMechanism_MilkyHoodie",
+      "kind": "vrm",
+      "adult": false,
+      "version": "0",
+      "author": "Emi",
+      "license": "Other",
+      "description": "VRM 模型，作者 Emi。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-mimimechanism-milkyhoodie.zip",
+      "bytes": 7463776,
+      "sha256": "5de3c003a9a9f99aed2ada29eac57cfd471ff6371a5bc2f23d7dd45d6f045fb3",
+      "picture": "catalog/vrm/vrm-mimimechanism-milkyhoodie.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "MimiMechanism_MilkyHoodie（0）"
+        },
+        {
+          "label": "作者",
+          "text": "Emi"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/K-00671/model.vrm"
+    },
+    {
+      "id": "vrm-cd67dd02",
+      "type": "pack",
+      "base": "vrmxhxpkralzcsjx",
+      "name": "艾許．香緹伊",
+      "kind": "vrm",
+      "adult": false,
+      "version": "beta",
+      "author": "夜默",
+      "license": "Other",
+      "description": "VRM 模型，作者 夜默。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-cd67dd02.zip",
+      "bytes": 15285350,
+      "sha256": "1539e5a8ddb6dd448c773f4165f5d811a1b51ba320c36b6a02f0bbb2d01da935",
+      "picture": "catalog/vrm/vrm-cd67dd02.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "艾許．香緹伊（beta）"
+        },
+        {
+          "label": "作者",
+          "text": "夜默"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=unnecessary&modification=disallow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/K-00673/K-00673.vrm"
+    },
+    {
+      "id": "vrm-liqu",
+      "type": "pack",
+      "base": "vrmxnegjxbxfiahb",
+      "name": "Liqu",
+      "kind": "vrm",
+      "adult": false,
+      "version": "v1.05",
+      "author": "KarakuriPower",
+      "license": "CC_BY_SA",
+      "description": "VRM 模型，作者 KarakuriPower。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-liqu.zip",
+      "bytes": 4535831,
+      "sha256": "78c479bef0f3e354e6980f785e9cdce245159dcba8908a7e93f521c4c837654b",
+      "picture": "catalog/vrm/vrm-liqu.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Liqu（v1.05）"
+        },
+        {
+          "label": "作者",
+          "text": "KarakuriPower"
+        },
+        {
+          "label": "联系方式",
+          "text": "Twitter:@karpo_tw Discord:KarakuriPower#0001"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "允许"
+        },
+        {
+          "label": "修改",
+          "text": "可修改，也可分发修改版"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "CC_BY_SA"
+        },
+        {
+          "label": "授权条款",
+          "text": "詳しい利用規約はこちら【https://kar.booth.pm/items/1148939】"
+        }
+      ],
+      "redistributable": true,
+      "source": "模型文件/Liqu_v1.6/Liqu_v1.6/Liqu.vrm"
+    },
+    {
+      "id": "vrm-mia",
+      "type": "pack",
+      "base": "vrmxpzuurfrkqbmp",
+      "name": "MIA",
+      "kind": "vrm",
+      "adult": true,
+      "version": "0.1",
+      "author": "Hamuketsu",
+      "license": "Other",
+      "description": "VRM 模型，作者 Hamuketsu。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-mia.zip",
+      "bytes": 4732823,
+      "sha256": "41ae8de9ce030be6c803ab8bd6f76c5fcd99c2567288b2f28fb57c31193fe638",
+      "picture": "catalog/vrm/vrm-mia.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "MIA（0.1）"
+        },
+        {
+          "label": "作者",
+          "text": "Hamuketsu"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=nonprofit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=nonprofit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=nonprofit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=nonprofit&redistribution=allow&sexual_expression=disallow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/muma.vrm"
+    },
+    {
+      "id": "vrm-r18",
+      "type": "pack",
+      "base": "vrmxksrknirrkmxr",
+      "name": "R18-魅魔",
+      "kind": "vrm",
+      "adult": true,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-r18.zip",
+      "bytes": 8283916,
+      "sha256": "f29e808fd235bc0dafe323e7b22ac2f98a91f6ae36181ee723bf7490dc5c7173",
+      "picture": "catalog/vrm/vrm-r18.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=disallow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=allow&version=1&violent_expression=allow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/R18-魅魔/713741281235530485.vrm"
+    },
+    {
+      "id": "vrm-vrchat-avatar",
+      "type": "pack",
+      "base": "vrmxjtsqgekypppi",
+      "name": "Vrchat Avatar",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Calvin Meng",
+      "license": "Redistribution_Prohibited",
+      "description": "VRM 模型，作者 Calvin Meng。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-vrchat-avatar.zip",
+      "bytes": 9692795,
+      "sha256": "a193d665f01a010eab8f70b477105a987b5ff9315d397903489ab1e5556cb805",
+      "picture": "catalog/vrm/vrm-vrchat-avatar.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "Vrchat Avatar"
+        },
+        {
+          "label": "作者",
+          "text": "Calvin Meng"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "仅作者本人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Redistribution_Prohibited"
+        },
+        {
+          "label": "授权条款",
+          "text": "VRM 0.x 默认条款（模型未附链接）"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/vroid.vrm"
+    },
+    {
+      "id": "vrm-0e606167",
+      "type": "pack",
+      "base": "vrmxfvoywhsraikj",
+      "name": "九条フレカ_私服",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Avex Technologies Inc.",
+      "license": "Other",
+      "description": "VRM 模型，作者 Avex Technologies Inc.。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-0e606167.zip",
+      "bytes": 9512502,
+      "sha256": "f5e76e9e86497c6b87ffc75e5e4f542b13014403c7a9928495ba3a6ee7e6b8b8",
+      "picture": "catalog/vrm/vrm-0e606167.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "九条フレカ_私服（1.0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Avex Technologies Inc."
+        },
+        {
+          "label": "联系方式",
+          "text": "ribla-cs@av.avex.co.jp"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://avex-technologies.com/riblas/lab/chara_terms.html",
+          "href": "https://avex-technologies.com/riblas/lab/chara_terms.html"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://avex-technologies.com/riblas/lab/chara_terms.html",
+          "href": "https://avex-technologies.com/riblas/lab/chara_terms.html"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/オリジナル3Dモデル_九条フレカ__私服ver._/オリジナル3Dモデル「九条フレカ」（私服ver.）/九条フレカ_私服.vrm"
+    },
+    {
+      "id": "vrm-3c9c81b3",
+      "type": "pack",
+      "base": "vrmxdkwwqqtbsxbo",
+      "name": "生駒ミル",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "Avex Technologies Inc.",
+      "license": "Other",
+      "description": "VRM 模型，作者 Avex Technologies Inc.。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-3c9c81b3.zip",
+      "bytes": 14799980,
+      "sha256": "b8c958b6b4215930e9599858d54c35188fdbea8ab7e006f1c4cc47ee92d6b7f9",
+      "picture": "catalog/vrm/vrm-3c9c81b3.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "生駒ミル（1.0.0）"
+        },
+        {
+          "label": "作者",
+          "text": "Avex Technologies Inc."
+        },
+        {
+          "label": "联系方式",
+          "text": "ribla-cs@av.avex.co.jp"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://avex-technologies.com/riblas/lab/chara_terms.html",
+          "href": "https://avex-technologies.com/riblas/lab/chara_terms.html"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://avex-technologies.com/riblas/lab/chara_terms.html",
+          "href": "https://avex-technologies.com/riblas/lab/chara_terms.html"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/オリジナル3Dモデル「生駒ミル」（私服ver.）/生駒ミル_私服.vrm"
+    },
+    {
+      "id": "vrm-0bb4b4fe",
+      "type": "pack",
+      "base": "vrmxvefwibnxivbr",
+      "name": "止丸式初音ミクNT",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0",
+      "author": "止丸",
+      "license": "Redistribution_Prohibited",
+      "description": "VRM 模型，作者 止丸。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-0bb4b4fe.zip",
+      "bytes": 6902045,
+      "sha256": "2fbdb58393d986f74fc9ac0a8b3dad1d2b8c745f191d7e837524d73992bc7bfb",
+      "picture": "catalog/vrm/vrm-0bb4b4fe.png",
+      "licenseRows": [
+        {
+          "label": "模型名",
+          "text": "止丸式初音ミクNT（1.0）"
+        },
+        {
+          "label": "作者",
+          "text": "止丸"
+        },
+        {
+          "label": "联系方式",
+          "text": "twitter:@tomaru_o"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "仅限个人非商业使用"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Redistribution_Prohibited"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://piapro.jp/license/pcl",
+          "href": "https://piapro.jp/license/pcl"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/止丸式初音ミクNT_ver1.1.2/HatsuneMikuNT.vrm"
+    },
+    {
+      "id": "vrm-d8789c38",
+      "type": "pack",
+      "base": "vrmxxqrhudqbaesc",
+      "name": "莉莉雅",
+      "kind": "vrm",
+      "adult": false,
+      "version": "1.0.0",
+      "author": "未署名",
+      "license": "Other",
+      "description": "VRM 模型。授权信息读自模型文件，使用前请阅读模型的授权条款。",
+      "outfits": 1,
+      "pixelated": false,
+      "file": "vrm-d8789c38.zip",
+      "bytes": 12215511,
+      "sha256": "7bbeee908bb570bd0a8eaef44f33b4e4d216cfda0c3c2cda2988943f0af6e0ad",
+      "picture": "catalog/vrm/vrm-d8789c38.png",
+      "licenseRows": [
+        {
+          "label": "作者",
+          "text": "未署名"
+        },
+        {
+          "label": "谁可以扮演",
+          "text": "任何人"
+        },
+        {
+          "label": "商用",
+          "text": "个人可商用（企业/法人不可）"
+        },
+        {
+          "label": "再分发",
+          "text": "不允许"
+        },
+        {
+          "label": "修改",
+          "text": "禁止修改"
+        },
+        {
+          "label": "署名",
+          "text": "需要署名"
+        },
+        {
+          "label": "性表现",
+          "text": "不允许"
+        },
+        {
+          "label": "暴力表现",
+          "text": "不允许"
+        },
+        {
+          "label": "授权",
+          "text": "Other"
+        },
+        {
+          "label": "授权条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        },
+        {
+          "label": "其他条款",
+          "text": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow",
+          "href": "https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=necessary&modification=disallow&personal_commercial_use=profit&redistribution=disallow&sexual_expression=disallow&version=1&violent_expression=disallow"
+        }
+      ],
+      "redistributable": false,
+      "source": "模型文件/莉莉雅/liliya.vrm"
+    }
+  ]
+}

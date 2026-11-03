@@ -269,6 +269,24 @@ class PackStore {
     return { ...r, pack: { id: pack.id, name: pack.name, species: pack.species }, characterId: pack.id, model: P.packUrl(pack, pack.outfits.daily || Object.values(pack.outfits)[0]) };
   }
 
+  // 导入确认 → 设定: an imported VRM pack under 通用设定 (a companion of her own, core/generic.js) or as a new
+  // look of one of the characters (`base`: a character file's id). Only the user's own VRM packs.
+  setBase(id, base) {
+    const p = this.packs.get(id);
+    if (!p || p.source !== 'user' || p.kind !== 'vrm') return { ok: false, reason: 'not-user-vrm' };
+    const { GENERIC_BASE } = require('../core/generic');
+    const S = require('../core/species');
+    const want = base === GENERIC_BASE ? GENERIC_BASE : S.SPECIES[base] && !S.SPECIES[base].virtual ? base : null;
+    if (!want) return { ok: false, reason: 'unknown-base' };
+    const file = path.join(p.dir, 'pack.json');
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    manifest.species = want;
+    fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+    this.reload();
+    const pack = this.packs.get(id);
+    return { ok: true, id, base: pack ? pack.species : null, generic: !!(pack && pack.generic) };
+  }
+
   // The picture an imported Live2D model shows in lists and the wardrobe, drawn by the renderer (PNG data URL).
   savePreview(id, dataUrl) {
     const p = this.packs.get(id);
