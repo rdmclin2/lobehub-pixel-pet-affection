@@ -161,7 +161,7 @@ add('asr.maxSeconds', 'asr', '语音输入', '单次最长录音', 'number', { d
 add('asr.hotkey', 'asr', '快捷键', '唤起语音对话', 'hotkey', {
   desc: '在任何地方按下：她出现在桌面上、打开聊天框并开始听；说完再按一次结束并识别。录下组合时至少要有一个 Ctrl / ⌘ / Alt。清空 = 不用快捷键。',
   defaultKeys: hotkeyLib.toHotkeyKeys(hotkeyLib.DEFAULT_HOTKEY),
-  reserved: hotkeyLib.RESERVED.map((r) => ({ keys: hotkeyLib.toHotkeyKeys(r.accelerator), label: r.label })),
+  reserved: hotkeyLib.RESERVED.map((r) => ({ accelerator: r.accelerator, keys: hotkeyLib.toHotkeyKeys(r.accelerator), label: r.label })),
 });
 add('asr.lobehub.model', 'asr', 'LobeHub 云端识别', '模型', 'select', { desc: '完整版更准，mini 更快更省。', options: opts([['gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe（快）'], ['gpt-4o-transcribe', 'gpt-4o-transcribe（准）']]) });
 add('asr.local.endpoint', 'asr', '本地识别服务', '地址', 'url', { desc: 'https，或本机 / 局域网的 http；不能带查询参数或账号密码。清空恢复默认。', placeholder: asrLib.DEFAULT_ENDPOINT, validator: 'asr' });

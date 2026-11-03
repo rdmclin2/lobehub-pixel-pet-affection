@@ -291,6 +291,14 @@ const DraftControl = ({ field, value }: { field: FieldDef; value: unknown }) => 
   );
 };
 
+/**
+ * HotkeyInput draws `space` as lucide's ␣ icon; `Space` is not in its key map, so it is written out as text.
+ * Only for showing: what is saved goes back through `fromShownKeys` (HotkeyInput format, main turns it into
+ * the Electron accelerator `…+Space`).
+ */
+const toShownKeys = (keys: string) => keys.split('+').map((k) => (k === 'space' ? 'Space' : k)).join('+');
+const fromShownKeys = (keys: string) => keys.split('+').map((k) => (k === 'Space' ? 'space' : k)).join('+');
+
 /** 快捷键唤起语音对话: the state main reports for the shortcut (voice-hotkey.js), as a tag. */
 const HOTKEY_STATE: Record<HotkeyStatus['state'], { color?: string; text: string }> = {
   conflict: { color: 'error', text: '被占用' },
@@ -318,7 +326,8 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
   const acc = typeof value === 'string' ? value : '';
   const keys = st && st.accelerator === acc ? st.keys : '';
   const reserved = field.reserved ?? [];
-  const commit = async (next: string) => {
+  const commit = async (shown: string) => {
+    const next = fromShownKeys(shown);
     if (next === keys || next === inflight.current || next === refused.current) return;
     inflight.current = next;
     setError(null);
@@ -360,17 +369,21 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
             hotkeyConflicts={reserved.map((r) => r.keys)}
             isApple={platform === 'darwin'}
             onChange={(v: string) => commit(v)}
-            onConflict={(k: string) => setConflict(reserved.find((r) => r.keys === k)?.label ?? k)}
+            onConflict={(k: string) => {
+              const r = reserved.find((x) => x.keys === k);
+              setConflict(r ? `「${r.label}」（${acceleratorLabel(r.accelerator)}）` : null);
+            }}
             onFocus={onFocus}
             placeholder="点这里，然后按下新的组合"
-            resetValue={field.defaultKeys}
+            resetValue={field.defaultKeys && toShownKeys(field.defaultKeys)}
             texts={{
               clear: '清空（不用快捷键）',
-              conflicts: `和应用内的「${conflict ?? '已有快捷键'}」冲突，没有保存，换一个组合`,
+              // the same wording as main's check (core/hotkey.js checkHotkey) and README / docs/asr.md
+              conflicts: `和应用内的${conflict ?? '快捷键'}冲突，换一个组合`,
               invalidCombination: '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键',
               reset: '恢复默认',
             }}
-            value={keys}
+            value={toShownKeys(keys)}
             variant="filled"
           />
         </div>

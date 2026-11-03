@@ -125,7 +125,10 @@ test('schema: asr.hotkey is a hotkey field on the 语音输入 page with its def
   assert.equal(f.default, 'CommandOrControl+Shift+Space');
   assert.equal(f.defaultKeys, 'mod+shift+space');
   assert.ok(f.live);
-  assert.ok(f.reserved.some((r) => r.keys === 'mod+comma' && /设置/.test(r.label)));
+  assert.ok(f.reserved.some((r) => r.keys === 'mod+comma' && r.accelerator === 'CommandOrControl+,' && /设置/.test(r.label)));
+  // the settings page writes the in-app conflict the way main does: 和应用内的「打开设置」（Ctrl+,）冲突，换一个组合
+  assert.equal(hotkey.checkHotkey('CommandOrControl+,', 'linux').message, '和应用内的「打开设置」（Ctrl+,）冲突，换一个组合');
+  assert.equal(hotkey.checkHotkey('CommandOrControl+,', 'darwin').message, '和应用内的「打开设置」（⌘,）冲突，换一个组合');
   assert.deepEqual(schema.validate('asr.hotkey', 'mod+shift+space'), { ok: true, value: 'CommandOrControl+Shift+Space' });
   assert.deepEqual(schema.validate('asr.hotkey', ''), { ok: true, value: '' });
   assert.equal(schema.validate('asr.hotkey', 'shift+a').reason, 'bad-hotkey');

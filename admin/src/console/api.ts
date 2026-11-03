@@ -45,7 +45,7 @@ export interface FieldDef {
   pattern?: string;
   placeholder?: string;
   /** hotkey: combinations the app itself uses (HotkeyInput format) and what they do */
-  reserved?: { keys: string; label: string }[];
+  reserved?: { accelerator: string; keys: string; label: string }[];
   restart?: boolean;
   sensitive?: boolean;
   step?: number;
