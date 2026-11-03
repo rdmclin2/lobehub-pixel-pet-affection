@@ -354,7 +354,7 @@ test('catalog: an old choice of a look that no longer ships is kept; she is her 
   assert.equal(v.pet.affection, 30);
   assert.deepEqual(v.pendingDownload, { id: 'dafeiyu-live2d', name: '大肥鱼 · Live2D', sizeLabel: Catalog.sizeLabel(Catalog.entry('dafeiyu-live2d').bytes) });
   assert.ok(!v.characters.some((c) => c.id === 'dafeiyu-live2d'), 'not a character before it is downloaded');
-  assert.ok(svc.catalogList().some((c) => c.id === 'dafeiyu-live2d'));
+  assert.equal(svc.catalogList().find((c) => c.id === 'dafeiyu-live2d').installed, false, '商店 offers her');
   assert.ok(Object.hasOwn(JSON.parse(read('settings.json')).framings, 'dafeiyu-live2d'), 'her 取景 waits for her too');
   // switching to a look not downloaded is refused with that reason
   assert.deepEqual(await svc.switchCharacter('claude-classic'), { ok: false, reason: 'not-downloaded', name: '克洛蒂 · 旧版像素' });
@@ -363,7 +363,7 @@ test('catalog: an old choice of a look that no longer ships is kept; she is her 
   svc.setPacks(builtin());
   assert.equal(svc.view().pet.characterId, 'dafeiyu-live2d');
   assert.equal(svc.view().pendingDownload, null);
-  assert.ok(!svc.catalogList().some((c) => c.id === 'dafeiyu-live2d'));
+  assert.equal(svc.catalogList().find((c) => c.id === 'dafeiyu-live2d').installed, true, '商店 shows her as downloaded');
   // removed again (删除下载): back to her default, the choice kept for the next download
   svc.setPacks(shippedOnly());
   assert.equal(svc.view().pet.characterId, 'dafeiyu-pixel');

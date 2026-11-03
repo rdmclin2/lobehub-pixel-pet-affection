@@ -4,7 +4,7 @@
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
-//   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 角色图鉴 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
+//   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 商店 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
@@ -8822,7 +8822,8 @@ async function catalogDownloadScenario() {
   };
   const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
   const rosterIds = () => admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.dataset.row));
-  const catalogIds = () => admin.$$eval('[data-catalog-grid] [data-catalog]', (els) => els.map((e) => e.dataset.catalog));
+  // 商店 → 角色: every card, and the ones still to download
+  const catalogIds = () => admin.$$eval('[data-catalog-grid] [data-catalog]', (els) => els.filter((e) => e.querySelector('[data-not-downloaded]')).map((e) => e.dataset.catalog));
   const state = () => call('state');
   const leftovers = () => ['packs', 'clips'].flatMap((d) => (fs.existsSync(path.join(data, d)) ? fs.readdirSync(path.join(data, d)).filter((n) => n.startsWith('.')).map((n) => `${d}/${n}`) : []));
   const switchTo = async (id) => {
@@ -8832,19 +8833,19 @@ async function catalogDownloadScenario() {
     await until(`${id} current`, async () => (await state()).view.pet.characterId === id);
   };
   const download = async (id) => {
-    await go('/characters');
+    await go('/store');
     await attached(`[data-download="${id}"]`);
     await admin.click(`[data-download="${id}"]`);
   };
   const ALL_AGES_REMOTE = ['dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'claude-classic', 'gemini-classic', 'gpt-classic', 'grok-classic', 'dafeiyu-clips'];
 
   try {
-    await step(S, 'D1 新安装：桌宠窗口「选择你的模型娘」只有 5 位内置像素角色，提示更多形象到角色图鉴下载', async () => {
+    await step(S, 'D1 新安装：桌宠窗口「选择你的模型娘」只有 5 位内置像素角色，提示更多形象到商店下载', async () => {
       await page.waitForSelector('.char-card');
       const cards = await page.locator('.char-card').evaluateAll((els) => els.map((e) => `${e.dataset.character}=${e.querySelector('.nm').textContent}`));
       assert.deepEqual(cards.map((c) => c.split('=')[0]), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel'], cards.join(', '));
       assert.ok(cards.every((c) => / · 像素$/.test(c)), cards.join(', '));
-      assert.match(await page.textContent('#onboarding .sub'), /更多形象.*角色图鉴.*下载/);
+      assert.match(await page.textContent('#onboarding .sub'), /更多形象.*商店.*下载/);
       // every card draws her pixel look (a sheet's first frame) before the picture is taken
       await page.waitForFunction(() => [...document.querySelectorAll('.char-card .pic')].every((p) => { const c = p.querySelector('canvas, img'); return c && (c.tagName === 'IMG' ? c.complete && c.naturalWidth > 0 : c.width > 0); }), null, { timeout: 15000 }).catch(() => {});
       await page.waitForTimeout(1500);
@@ -8862,11 +8863,20 @@ async function catalogDownloadScenario() {
     admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
     await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
 
-    await step(S, 'D2 角色图鉴：5 位内置角色 + 「可下载的角色」8 张卡（图片、未下载、大小），18+ 不列出', async () => {
+    await step(S, 'D2 角色图鉴只有本机的 5 位内置角色（另提示去商店）；商店 → 角色 有 8 张可下载卡（图片、未下载、大小），18+ 不列出', async () => {
       await go('/characters');
-      await attached('[data-catalog-grid]');
       const ids = await rosterIds();
       assert.deepEqual(ids, ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+      assert.equal(await admin.$$eval('[data-roster] [data-catalog], [data-catalog-grid]', (els) => els.length), 0, 'no downloadable card in the 图鉴');
+      const seg = await admin.$eval('[data-kind-filter]', (el) => el.textContent);
+      assert.doesNotMatch(seg, /未下载/);
+      const hint = await admin.$eval('[data-store-hint]', (el) => el.textContent);
+      assert.match(hint, /商店里还有 8 位角色可以下载/);
+      const rosterShot = await shot('d2a-roster-local-only');
+      await admin.click('[data-go-store]');
+      await attached('[data-path="/store"]');
+      await attached('[data-catalog-grid]');
+      assert.equal(await admin.getAttribute('[data-rail="store"]', 'aria-current'), 'page', '商店 is lit on the rail');
       const remote = await catalogIds();
       assert.deepEqual([...remote].sort(), [...ALL_AGES_REMOTE].sort());
       const l2d = await admin.evaluate(() => {
@@ -8878,9 +8888,9 @@ async function catalogDownloadScenario() {
       assert.match(l2d.meta, /^\d+\.\d MB · 1 套服饰/);
       assert.ok(l2d.img && l2d.img.ok, JSON.stringify(l2d.img));
       assert.equal(l2d.btn, '下载');
-      const seg = await admin.$eval('[data-kind-filter]', (el) => el.textContent);
-      assert.match(seg, /未下载 8/);
-      return `图鉴角色: ${ids.join(', ')}; 可下载: ${remote.join(', ')}; Live2D 卡: ${JSON.stringify(l2d)} → ${await shot('d2-roster-and-downloadable')}`;
+      const filter = await admin.$eval('[data-store-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 8.*未下载 8.*已下载 0/);
+      return `图鉴角色: ${ids.join(', ')}（提示「${hint}」）; 商店可下载: ${remote.join(', ')}; Live2D 卡: ${JSON.stringify(l2d)} → ${rosterShot}, ${await shot('d2b-store-characters')}`;
     }, page);
 
     await step(S, 'D3 下载「大肥鱼 · Live2D」：进度条走动，完成后成为图鉴里的角色（来源「下载」），切换后桌宠是 Live2D', async () => {
@@ -8890,8 +8900,13 @@ async function catalogDownloadScenario() {
       const mid = await admin.$eval('[data-download-progress="dafeiyu-live2d"]', (el) => el.textContent);
       const midShot = await admin.screenshot({ path: path.join(SHOTS, 'd3a-downloading.png') }).then(() => 'd3a-downloading.png');
       await toast(/「大肥鱼 · Live2D」下载好了/);
-      await until('live2d in roster', async () => (await rosterIds()).includes('dafeiyu-live2d'));
+      await until('live2d in roster', async () => (await state()).roster.some((r) => r.id === 'dafeiyu-live2d'));
       assert.ok(!(await catalogIds()).includes('dafeiyu-live2d'));
+      // 商店 keeps her, as 已下载 with 查看 (→ her page)
+      await go('/store');
+      await attached('[data-downloaded="dafeiyu-live2d"]');
+      assert.equal(await admin.getAttribute('[data-store-open="dafeiyu-live2d"]', 'href'), '#/characters/dafeiyu-live2d');
+      const storeShot = await shot('d3d-store-downloaded');
       const marker = JSON.parse(fs.readFileSync(path.join(data, 'packs', 'dafeiyu-live2d', '.catalog.json'), 'utf8'));
       const st = await state();
       const row = st.roster.find((r) => r.id === 'dafeiyu-live2d');
@@ -8903,7 +8918,7 @@ async function catalogDownloadScenario() {
       const v = await view(page);
       assert.equal(v.look.packId, 'dafeiyu-live2d');
       assert.equal(v.pet.agentId, st.view.pet.agentId, 'the same 大肥鱼: shared agent');
-      return `进度: ${mid}; 安装标记: ${JSON.stringify(marker)}; 图鉴行: ${row.source}/${row.sourceLabel}/${row.kind}; 桌宠 look=${v.look.packId} → ${midShot}, ${await shot('d3b-live2d-downloaded')}, ${await petShot('d3c-pet-live2d')}`;
+      return `进度: ${mid}; 安装标记: ${JSON.stringify(marker)}; 图鉴行: ${row.source}/${row.sourceLabel}/${row.kind}; 桌宠 look=${v.look.packId} → ${midShot}, ${storeShot}, ${await shot('d3b-live2d-downloaded')}, ${await petShot('d3c-pet-live2d')}`;
     }, page);
 
     await step(S, 'D4 下载「大肥鱼 · 原版动画」：切换后桌宠从 pack://dafeiyu-clips 播放视频', async () => {
@@ -8935,7 +8950,7 @@ async function catalogDownloadScenario() {
       corrupt.delete('claude-classic.zip');
       await admin.click('[data-download="claude-classic"]');
       await toast(/「克洛蒂 · 旧版像素」下载好了/);
-      await until('claude-classic in roster', async () => (await rosterIds()).includes('claude-classic'));
+      await until('claude-classic in roster', async () => (await state()).roster.some((r) => r.id === 'claude-classic'));
       return `篡改后: 未安装、无残留；恢复后重下成功 → ${failShot}`;
     }, page);
 
@@ -9593,7 +9608,7 @@ async function titlebarScenario() {
   const SHOTS = path.join(OUT, 'titlebar');
   fs.mkdirSync(SHOTS, { recursive: true });
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
-  const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/tts'];
+  const ROUTES = ['/overview', '/characters', '/characters/grok', '/store', '/play', '/settings', '/tts'];
   const open = async (platform) => {
     const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebar-'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebarfake-'));
@@ -9781,10 +9796,10 @@ async function adminScenario() {
     }, () => admin);
 
     // every page, light and dark (theme pinned through 外观主题 = ui.theme, which the console applies itself)
-    const ROUTES = ['/overview', '/characters', '/characters/grok-pixel', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
+    const ROUTES = ['/overview', '/characters', '/characters/grok-pixel', '/store', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
     for (const theme of ['light', 'dark']) {
-      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 4 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
+      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 5 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
         await admin.evaluate((t) => window.petAdmin.set('ui.theme', t), theme);
         await admin.waitForFunction((t) => document.documentElement.dataset.theme === t, theme);
         const out = [];
@@ -9798,17 +9813,17 @@ async function adminScenario() {
           await shot(`${theme}-${r.slice(1).replace(/\//g, '-')}`);
           await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
           out.push(`${r}`);
-          assert.equal(f.nav, 4, `rail links ${f.nav}: 小屋 / 角色 / 玩法 / 设置, not every page`);
+          assert.equal(f.nav, 5, `rail links ${f.nav}: 小屋 / 角色 / 商店 / 玩法 / 设置, not every page`);
         }
-        return `${out.length} pages · rail of 4 · data-theme=${theme}`;
+        return `${out.length} pages · rail of 5 · data-theme=${theme}`;
       }, () => admin);
     }
     await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
 
-    await step(S, 'A3b depth: the rail holds 4 places; 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
+    await step(S, 'A3b depth: the rail holds 5 places; 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
       await go('/overview');
       const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => a.textContent.trim()));
-      assert.deepEqual(rail, ['小屋', '角色', '玩法', '设置']);
+      assert.deepEqual(rail, ['小屋', '角色', '商店', '玩法', '设置']);
       await admin.click('[data-rail="settings"]');
       await admin.waitForSelector('[data-path="/settings"]');
       const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
