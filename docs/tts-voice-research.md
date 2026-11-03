@@ -61,7 +61,7 @@ Fish Audio 上和大肥鱼相关的社区音色（2026-10-30 通过公开接口 
 
 ## 3. 候选方案对比
 
-一共对比 7 类：①Fish Audio 云端（含社区音色）②本地开源复刻 GPT-SoVITS ③本地开源复刻 CosyVoice ④云端声音复刻 MiniMax ⑤云端声音复刻 火山引擎豆包 ⑥LobeHub 自带 TTS（`lh gen tts` / `@lobehub/tts`）⑦Edge TTS 免费神经语音。另外把 ⓪现有系统 Web Speech 列在表里作为对照。
+一共对比 7 类：①Fish Audio 云端（含社区音色）②本地开源复刻 GPT-SoVITS ③本地开源复刻 CosyVoice ④云端声音复刻 MiniMax ⑤云端声音复刻 火山引擎豆包 ⑥LobeHub 自带 TTS（`lh gen tts` / `@lobehub/tts`）⑦Edge TTS 免费神经语音。另外把 ⓪现有系统 Web Speech 列在表里作为对照。后来新增的云端引擎 ElevenLabs 不在这张表里，单独见 §11。
 
 | 维度 | ① Fish Audio | ② GPT-SoVITS（本地） | ③ CosyVoice（本地） | ④ MiniMax | ⑤ 火山豆包 | ⑥ LobeHub TTS（`lh gen tts`） | ⑦ Edge TTS | ⓪ 系统 Web Speech（现状） |
 |---|---|---|---|---|---|---|---|---|
@@ -278,3 +278,33 @@ const provider = {
 [civil-code]: https://flk.npc.gov.cn/detail2.html?ZmY4MDgxODE3MjlkMWVmZTAxNzI5ZDUwYjVjNTAwYmY%3D
 [cac-deep]: https://www.cac.gov.cn/2022-12/11/c_1672221949354811.htm
 [cac-label]: https://www.cac.gov.cn/2025-03/14/c_1743654684782215.htm
+
+## 11. ElevenLabs（新增的云端引擎）
+
+2026-11-03 补充。ElevenLabs 作为和 Fish Audio、MiniMax 同级的云端引擎接入（`src/core/tts.js` 的 `ELEVENLABS` provider），在 设置窗口 → 朗读 里有自己的卡片（端点 / 默认音色 ID / 模型 / API Key）。
+
+- **端点**：`POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128`（[TTS API][el-api]）。设置里的“端点”只替换前面的 `https://api.elevenlabs.io`，规则和其他云端引擎一样：必须 `https://`，本机调试允许 `http://127.0.0.1`。
+- **鉴权**：Key 放在 `xi-api-key` 请求头（[鉴权][el-auth]），不用 `Authorization: Bearer`。Key 在 elevenlabs.io → 左下角头像 Profile → API Keys 创建，存在本机 `tts-keys.json`，不进 `settings.json` 和日志。没有 Key 时不发请求：这一句记为 `no-key` 并按“用不了时”降级，选了“不出声”时返回的 `reason` 就是 `no-key`，设置窗口的 ElevenLabs 卡片显示「未设置 Key」。
+- **请求体**：`{ text, model_id, voice_settings: { stability, similarity_boost, style, speed, use_speaker_boost } }`，请求头另带 `Accept: audio/mpeg`。
+  - `voice_id`（路径参数，必填）：Voice Library / My Voices 里复制，20 位字母和数字（如 `21m00Tcm4TlvDq8ikWAM`）。角色文件 `voice.tts.elevenlabs.voiceId` 优先，没有时用设置里的“默认音色 ID”，两边都没有时不用 ElevenLabs（`no-voice`）。
+  - `model_id`：默认 `eleven_multilingual_v2`（API 默认值也是它，[TTS API][el-api]）；设置里可选 `eleven_flash_v2_5` / `eleven_turbo_v2_5` / `eleven_v3`（[模型][el-models]）。角色文件的 `voice.tts.elevenlabs.model` 优先。
+  - `voice_settings`：`stability` 0–1（默认 0.5）、`similarity_boost` 0–1（默认 0.75）、`style` 0–1（默认 0）、`speed`（默认 1.0，本项目限制在 0.7–1.2）、`use_speaker_boost`（默认 true），对应角色文件里的 `stability` / `similarityBoost` / `style` / `speed` / `speakerBoost`。
+  - `output_format`（查询参数）：固定 `mp3_44100_128`，所有套餐都能用；192kbps MP3 要 Creator 以上，44.1kHz PCM / WAV 要 Pro 以上（[TTS API][el-api]）。
+- **返回**：音频二进制（`audio/mpeg`），和 Fish / MiniMax / 本地语音服务一样交给同一个播放路径（主进程合成 → 缓存 → IPC 交给渲染进程播放）。非 2xx 记为 `http-<状态码>`，返回体不是 `audio/*` 记为 `not-audio`，空音频记为 `empty`，都按现有规则降级和暂停。
+- **限速**：ElevenLabs 不按“每分钟请求数”限速，而是按套餐限制**并发**：Multilingual v2 免费版 2、Starter 3、Creator 5、Pro 10、Scale / Business 15，Flash 是这些数的两倍；超出并发的请求排队（[模型 · Concurrency and priority][el-models]）。桌宠同一时间只合成一句，所以 provider 的 `rpm` 是 0（不做每分钟计数）；收到 429 时和其他引擎一样暂停 20 秒。
+- **价格**：API 按字符计费：Multilingual v2 / v3 每 1K 字符 $0.08，Flash / Turbo 每 1K 字符 $0.04；订阅档位 Free、Starter $6/月、Creator $22/月、Pro $99/月、Scale $299/月、Business $990/月（[API 价格][el-api-price]、[套餐][el-price]，2026-11-03 查看）。一个汉字算一个字符，按每天 100 句 × 30 字算，Multilingual v2 约 $7/月，Flash 约 $3.6/月。
+- **授权**：ElevenLabs 的音色来自 Voice Library（由上传者授权给平台用户）或你自己复刻的音色；复刻他人声音前要取得本人同意。本项目不内置任何 ElevenLabs 音色 id，也不分发它合成的音频。
+
+参考资料（2026-11-03 访问均返回 200）：
+
+- [el-api] ElevenLabs Text to Speech API：<https://elevenlabs.io/docs/api-reference/text-to-speech/convert>
+- [el-auth] ElevenLabs 鉴权（`xi-api-key`）：<https://elevenlabs.io/docs/api-reference/authentication>
+- [el-models] ElevenLabs 模型与并发限制：<https://elevenlabs.io/docs/models#concurrency-and-priority>
+- [el-api-price] ElevenLabs API 价格：<https://elevenlabs.io/pricing/api>
+- [el-price] ElevenLabs 套餐：<https://elevenlabs.io/pricing>
+
+[el-api]: https://elevenlabs.io/docs/api-reference/text-to-speech/convert
+[el-auth]: https://elevenlabs.io/docs/api-reference/authentication
+[el-models]: https://elevenlabs.io/docs/models#concurrency-and-priority
+[el-api-price]: https://elevenlabs.io/pricing/api
+[el-price]: https://elevenlabs.io/pricing
