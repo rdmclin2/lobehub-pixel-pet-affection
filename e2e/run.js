@@ -6536,6 +6536,9 @@ async function asrScenario() {
       const recLine = await page.textContent('#mic-status');
       assert.match(recLine, /正在听 \d+s/);
       assert.equal(await page.getAttribute('#chat-input', 'placeholder'), '正在听…');
+      // 🎤 too: she is listening while you speak (look, the ear over her)
+      const lis = await page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx }; });
+      assert.deepEqual(lis, { state: 'look', listening: true, fx: '👂' }, 'listening while 🎤 records');
       await shot('a2-recording');
       await page.click('#chat-mic');
       await waitMic('transcribing');
@@ -7087,10 +7090,18 @@ async function voiceHotkeyScenario() {
       assert.equal(b.reason, 'recording');
       assert.match(b.text, /我在听/);
       assert.match(b.text, /Ctrl\+Shift\+Space/);
-      const ps = await petState();
-      assert.ok(['look', 'happy'].includes(ps), `she looks at you / perks up, got ${ps}`);
+      // while you speak she is listening, the whole time: the look state, the ear over her, the lean (class listening)
+      const pet = () => page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx, status: document.getElementById('char-wrap').dataset.status }; });
+      const samples = [];
+      for (let i = 0; i < 4; i++) { samples.push({ t: i * 600, ...(await pet()) }); await page.waitForTimeout(600); }
+      for (const p of samples) {
+        assert.equal(p.state, 'look', `listening while recording ${JSON.stringify(samples)}`);
+        assert.equal(p.listening, true, `char-wrap.listening ${JSON.stringify(samples)}`);
+        assert.equal(p.fx, '👂', `the ear over her ${JSON.stringify(samples)}`);
+      }
+      const ps = samples[0].state;
       const s = await shot('v2-listening');
-      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#chat-mic')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet state ${ps}; ${s}`);
+      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#chat-mic')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet while recording ${JSON.stringify(samples)}; ${s}`);
     }, page);
 
     await step(S, 'V3 second press: stops, recognises (mock whisper), the text waits in the box; bubble 「听到啦」', async () => {
@@ -7101,6 +7112,8 @@ async function voiceHotkeyScenario() {
       await page.waitForFunction(() => ['stopping', 'transcribing'].includes(window.petFx.micState()), null, { timeout: 5000 });
       const mid = await bubble();
       const ps = await petState();
+      // no longer listening once it stops (the render loop takes it off on its next frame): she thinks
+      await page.waitForFunction(() => !window.petFx.state().listening, null, { timeout: 2000 });
       const s1 = await shot('v3-recognising');
       await waitMic('idle', 20000);
       await page.waitForFunction(() => window.petFx.voiceCall().last === 'ok', null, { timeout: 5000 });

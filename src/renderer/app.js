@@ -1544,8 +1544,10 @@ function petStatus() {
   const shot = fx.current(now);
   if (shot && CELEBRATIONS.includes(shot)) return shot;
   if (thinking) return 'think';
-  // 快捷键唤起语音对话: she listens (look) and then works out what was said (think)
-  if (voiceCall.on && mic.state !== 'idle') return shot || (mic.state === 'recording' || mic.state === 'starting' ? 'look' : 'think');
+  // 语音输入 (🎤 or the 快捷键): while you speak she listens — looks at you, nothing else plays over it —
+  // and then works out what was said (think)
+  if (micListening()) return 'look';
+  if (mic.state === 'stopping' || mic.state === 'transcribing') return 'think';
   if (eating) return `eat_${eating}`;
   if (shot) return shot;
   if (fx.walking) return 'walk';
@@ -1566,7 +1568,10 @@ function animatePet() {
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
   // an emoji over a character that has no own art for the state (a sprite or clip draws its own)
-  const fxText = r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
+  // listening: an ear over her whatever the art (a clip or a rig has no "listening" of its own), see style.css .listening
+  const listening = micListening();
+  if (wrap.classList.contains('listening') !== listening) wrap.classList.toggle('listening', listening);
+  const fxText = listening ? LISTEN_FX : r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
   if ($('char-fx').textContent !== fxText) $('char-fx').textContent = fxText;
   fx.render(state, r.name, r.exact, sp.fx.noMirror);
   $('pet-body').classList.toggle('flash', now < flashUntil);
@@ -1603,6 +1608,9 @@ let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, ti
 let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
+// she is listening while the microphone is opening or recording (🎤 or the 快捷键)
+const micListening = () => mic.state === 'recording' || mic.state === 'starting';
+const LISTEN_FX = '👂';
 
 // 麦克风被拒: what to do, for the system she runs on (docs/asr.md §5)
 const OS = /mac/i.test(navigator.platform) ? 'mac' : /win/i.test(navigator.platform) ? 'win' : 'linux';
@@ -1864,8 +1872,7 @@ function onVoiceHotkey(p) {
   document.body.classList.add('voice-call');
   logVoice('start');
   openChat();
-  fx.play('happy', Fx.oneShotMs(isVideo(view.pet.speciesId), 'happy')); // she perks up, then looks at you while listening
-  micStart();
+  micStart(); // she turns to listen (petStatus → look, the ear over her) for as long as it records
 }
 
 // A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a page of
@@ -1909,7 +1916,7 @@ function bindMic() {
 }
 
 window.petFx = {
-  state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
+  state: () => (view ? { state: petStatus(), listening: $('char-wrap').classList.contains('listening'), fx: $('char-fx').textContent, action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
   // 部位触摸: what a client point maps to, and the last reaction shown
