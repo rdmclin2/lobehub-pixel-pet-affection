@@ -11,6 +11,7 @@ export type FieldType =
   | 'number'
   | 'text'
   | 'url'
+  | 'hotkey'
   | 'secret'
   | 'token'
   | 'readonly'
@@ -27,6 +28,8 @@ export interface FieldOption {
 export interface FieldDef {
   card: string;
   default?: unknown;
+  /** hotkey: the default in HotkeyInput's format ('mod+shift+space') */
+  defaultKeys?: string;
   dependsOn?: { key: string; value: unknown };
   desc?: string;
   format?: 'percent' | 'time';
@@ -41,6 +44,8 @@ export interface FieldDef {
   page: string;
   pattern?: string;
   placeholder?: string;
+  /** hotkey: combinations the app itself uses (HotkeyInput format) and what they do */
+  reserved?: { accelerator: string; keys: string; label: string }[];
   restart?: boolean;
   sensitive?: boolean;
   step?: number;
@@ -190,6 +195,18 @@ export interface BootData extends AdminState {
   schema: Schema;
   testMode: boolean;
   version: string;
+}
+
+/** 快捷键唤起语音对话 (src/main/voice-hotkey.js status()): settings.hotkeyStatus. */
+export interface HotkeyStatus {
+  accelerator: string;
+  code?: 'reserved' | 'taken' | string;
+  keys: string;
+  label: string;
+  message?: string;
+  platform: string;
+  state: 'ok' | 'disabled' | 'invalid' | 'conflict';
+  triggers?: number;
 }
 
 export interface SetResult {

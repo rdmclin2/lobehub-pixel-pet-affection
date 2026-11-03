@@ -5,6 +5,7 @@ const path = require('node:path');
 const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
 const framingLib = require('./framing');
+const hotkeyLib = require('./hotkey');
 
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
@@ -149,6 +150,8 @@ function normalizeSettings(raw) {
   s.tts = normalizeTts(s.tts && s.tts.providerSet === true ? s.tts : { ...s.tts, provider: 'auto' });
   // 语音输入 (core/asr.js): off by default; engine, fallback, language and the local server. Its optional key is in tts-keys.json
   s.asr = normalizeAsr(s.asr);
+  // 快捷键唤起语音对话: a valid Electron accelerator ('' = off); none yet / unreadable → the default (core/hotkey.js)
+  s.asr.hotkey = normalizeHotkey(s.asr.hotkey);
   s.proactive = normalizeProactive(s.proactive);
   s.affectionRules = normalizeAffectionRules(s.affectionRules);
   s.ui = normalizeUi(s.ui);
@@ -156,6 +159,13 @@ function normalizeSettings(raw) {
   s.update = normalizeUpdate(s.update);
   return s;
 }
+
+// 快捷键唤起语音对话 (asr.hotkey). Any spelling (Electron 'CmdOrCtrl+Shift+Space' or the settings window's
+// HotkeyInput 'mod+shift+space') -> the Electron accelerator; '' = off. Unreadable / missing -> the default.
+const normalizeHotkey = (v) => hotkeyLib.normalizeHotkey(v);
+// Before one is saved: at least one modifier (not Shift alone) and exactly one known key, and not a combination
+// the app itself uses. -> { ok, accelerator } | { ok: false, reason: 'invalid' | 'conflict', code, message }
+const validateHotkey = (v, platform = process.platform) => hotkeyLib.checkHotkey(v, platform);
 
 // No answer yet (or an outdated one): show the age gate before anything else.
 const needsAgeGate = (s) => !normalizeSettings(s).answered;
@@ -206,4 +216,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

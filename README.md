@@ -305,7 +305,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ## 语音输入（ASR）
 
-打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
+打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤（也可以在任何地方按 **Ctrl+Shift+Space / ⌘⇧Space** 直接唤起语音对话，见下方 [快捷键唤起语音对话](#快捷键唤起语音对话)）：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
 
 - **LobeHub 云端识别**：复用 LobeHub 的语音识别（`lh generate asr --provider lobehub`，模型 `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`），用本机 `lh login` 的账号，按 Credits 计费，录音上传到 LobeHub 云端。
 - **本地识别服务（whisper）**：你自己跑的 whisper 服务，例如 whisper.cpp `whisper-server`、speaches（faster-whisper），或任何 OpenAI 兼容的 `/v1/audio/transcriptions`；录音只发到你填的本机 / 局域网地址，不经过云端，免费。
@@ -313,6 +313,31 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
 
 **完成状态**：相对原仓库，本项目已完成语音输入（ASR）支持——新增 🎤 录音输入、LobeHub 云端识别与本地 whisper 识别服务两种可切换的识别方式（可互为回退）、设置窗口 → 语音输入 的配置与「测试连接」、错误提示与隐私说明；两种方式都已在真实服务上实测识别通过。快速开始：按下方 [安装与运行](#安装与运行) `git clone` → `npm install` → `npm start`，再到 设置窗口 → 语音输入 打开并选引擎；各配置项的必填项和默认值见 [docs/asr.md §2.1](docs/asr.md#21-配置项一览必填--默认值)。
+
+### 快捷键唤起语音对话
+
+不用把鼠标移到她身上：在任何应用里按下全局快捷键，她就出现在桌面上、打开聊天框并开始听你说话；说完再按一次结束并识别。识别出的文字和点 🎤 一样处理——默认填进输入框等你按 Enter，勾选「识别后直接发送」时直接发给她（她回复，开着朗读时也会读出来）。
+
+- **默认组合**：macOS `⌘⇧Space`（Command+Shift+Space），Windows / Linux `Ctrl+Shift+Space`。系统自带的快捷键里没有它（⌘Space / Ctrl+Space 是 Spotlight、输入法切换，⌘⌥Space 是访达搜索）；但有的应用在自己窗口里用它（例如 VS Code 的“参数提示”），桌宠运行时这个组合会先给她，想留给那些应用就换一个或清空。
+- **按下后会发生什么**：桌宠窗口被隐藏或最小化时会被唤出并拿到焦点 → 聊天框展开 → 🎤 变成红色的 `■ Ns`、输入框上方显示「🔴 正在听」、气泡显示「我在听…说完再按 Ctrl+Shift+Space 结束」；你说话的整段时间她都处于「在听」状态：安静地看着你、身子微微前倾，头旁边有一只跳动的 👂（点 🎤 录音时也一样）→ 再按一次：气泡变成「嗯…让我想想你说了什么」、🎤 转圈 → 识别结果进输入框（或直接发送）。录音中按 **Esc** 取消。
+- **修改 / 关闭**：设置窗口 → **设置 → 声音 → 语音输入 → 快捷键 → 唤起语音对话**。点一下输入框，按下新的组合即保存并立即生效（旧的同时注销，不用重启）；输入框里的 × 清空 = 不用快捷键；↺「恢复默认」回到默认组合。字段左边的标签显示当前状态：**已生效** / **未启用**（已清空）/ **被占用** / **组合无效**。
+- **提示的含义**（显示在字段下方，出错的组合不会保存，正在用的快捷键保持不变）：
+  - 「组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键」：只按了普通键（没有修饰键）。必须是 **至少一个 Ctrl / ⌘ / Alt(⌥) + 一个普通键**（字母、数字、空格、F1–F24、方向键、标点）。
+  - 「只有 Shift 不够：Shift + 字母会挡住打大写字母，再加一个 Ctrl / ⌘ / Alt」：只用了 Shift 作修饰键。
+  - 「和应用内的「打开设置」（Ctrl+,）冲突，换一个组合」（macOS 上是 `⌘,`）：这个组合应用自己在用；其它同类：「退出（macOS）」⌘/Ctrl+Q、「复制」「粘贴（聊天框里粘贴图片）」「剪切」「全选」「撤销」⌘/Ctrl+C/V/X/A/Z、「重做」⌘/Ctrl+Shift+Z。
+  - 「被系统或其他应用占用了，按下时不会唤起她。换一个组合，或关掉占用它的程序后重启桌宠。」：系统或别的程序已经注册了它（Electron `globalShortcut.register` 返回失败）。手改 `settings.json` 写进去的组合在启动时被占用，设置页也会显示「被占用」和这句话。
+  - 输入框里 Space 写作「Space」（如 `Ctrl` `Shift` `Space`），保存到 `settings.json` 的仍是 Electron accelerator `CommandOrControl+Shift+Space`。
+- **前置条件**：
+  1. **打开语音输入并选一个识别引擎**（设置 → 语音输入 → 开启语音输入；引擎选 LobeHub 云端 或 本地服务）。没打开时按快捷键她会出现并说「语音输入还没开，我听不到你～打开方法在下面的提示里。」，提示条带「去设置」按钮，不会静默无反应。
+  2. **LobeHub 云端识别**：本机装好 `lh` 并 `lh login`（和聊天同一账号，按 Credits 计费）；或者 **本地识别**：先启动 whisper 服务并在设置里填地址（见 [docs/asr.md](docs/asr.md) 第 4 节）。
+  3. **麦克风权限**：权限被拒时按快捷键她会说「我听不到你：麦克风权限被拒绝了，办法在下面的提示里。」，气泡下方的提示条按当前系统给出处理方法（提示条不会挡住气泡）：
+     - **macOS**：第一次录音时系统会弹窗询问，允许即可；拒绝过的话到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。
+     - **Windows**：设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。
+     - **Linux**：系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 `pactl list sources short` 查看输入设备）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风（Flatpak 可用 Flatseal，Snap：`snap connect <应用名>:audio-record`）。
+  4. macOS 上全局快捷键不需要“辅助功能”权限。
+- **已知限制**：Linux **Wayland** 会话下 Electron 的全局快捷键依赖 XWayland / 桌面环境的 GlobalShortcuts 门户，很多桌面上按键收不到（设置页可能仍显示「已生效」）；请在 X11 会话里使用，或在桌面环境的系统快捷键里绑定一个命令来唤起。快捷键在桌宠还没唤醒（首次领养前）时只把窗口叫出来。
+
+设置保存在 `settings.json` 的 `asr.hotkey`（Electron accelerator 格式，如 `CommandOrControl+Shift+Space`，`""` = 关闭），详见 [docs/asr.md §1.1](docs/asr.md#11-快捷键唤起语音对话)。
 
 ## 内容边界声明
 
@@ -340,6 +365,14 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
+- **Electron 本体（`node_modules/electron/dist`）**：`npm install` / `npm ci` 结束时 `postinstall`（[scripts/ensure-electron.js](scripts/ensure-electron.js)）会检查它，缺了就自动运行 Electron 自己的下载器。原因：npm 11 起依赖包的安装脚本要在 `allowScripts` 里放行才执行，而 Electron 45 改成首次 `require('electron')` 时才下载，`npm ci` 之后可能根本没有 `dist`，`npm start` / e2e 启动时再下载容易卡住或失败。如果安装时没网（脚本只提示、不让安装失败），或用了 `--ignore-scripts`，联网后手动补一次：
+
+  ```bash
+  node node_modules/electron/install.js   # 下载 Electron 到 node_modules/electron/dist
+  ls node_modules/electron/dist           # 有 electron（macOS 为 Electron.app）即可 npm start
+  ```
+
+  已经自带 Electron 的 CI 可以设 `ELECTRON_SKIP_BINARY_DOWNLOAD=1` 跳过。
 - Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
 - 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
@@ -365,7 +398,8 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 ```bash
 git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
 cd lobehub-pixel-pet-affection
-npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）
+npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）；postinstall 补下 Electron 本体
+node node_modules/electron/install.js  # 仅当 node_modules/electron/dist 仍缺失时（安装时没网 / --ignore-scripts），见上文
 npm start                              # prestart 先 npm run build:admin，再启动桌宠
 npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 未配置时）
 xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux

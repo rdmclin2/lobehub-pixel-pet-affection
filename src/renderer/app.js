@@ -1457,8 +1457,8 @@ function throwPet(v) {
 // files are kept and come back with the next hover.
 function syncHover() {
   document.body.classList.toggle('over', pointerInside); // pointer over the window (used by the stop button)
-  document.body.classList.toggle('hover', !thinking && (pointerInside || micActive())); // listening keeps 🎤 in reach
-  if (!pointerInside && !micActive()) {
+  document.body.classList.toggle('hover', !thinking && (pointerInside || micActive() || voiceHeld())); // listening (or a hotkey call) keeps 🎤 in reach
+  if (!pointerInside && !micActive() && !voiceHeld()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
     $('food-menu').classList.add('hidden');
   }
@@ -1544,6 +1544,10 @@ function petStatus() {
   const shot = fx.current(now);
   if (shot && CELEBRATIONS.includes(shot)) return shot;
   if (thinking) return 'think';
+  // 语音输入 (🎤 or the 快捷键): while you speak she listens — looks at you, nothing else plays over it —
+  // and then works out what was said (think)
+  if (micListening()) return 'look';
+  if (mic.state === 'stopping' || mic.state === 'transcribing') return 'think';
   if (eating) return `eat_${eating}`;
   if (shot) return shot;
   if (fx.walking) return 'walk';
@@ -1564,7 +1568,10 @@ function animatePet() {
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
   // an emoji over a character that has no own art for the state (a sprite or clip draws its own)
-  const fxText = r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
+  // listening: an ear over her whatever the art (a clip or a rig has no "listening" of its own), see style.css .listening
+  const listening = micListening();
+  if (wrap.classList.contains('listening') !== listening) wrap.classList.toggle('listening', listening);
+  const fxText = listening ? LISTEN_FX : r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
   if ($('char-fx').textContent !== fxText) $('char-fx').textContent = fxText;
   fx.render(state, r.name, r.exact, sp.fx.noMirror);
   $('pet-body').classList.toggle('flash', now < flashUntil);
@@ -1592,7 +1599,7 @@ const ASR_REASON = {
   server: '识别服务出错了。',
   'bad-audio': '这段录音没法识别。',
   'not-configured': '语音输入没开，或者没选识别引擎。',
-  'mic-denied': '没有麦克风权限。macOS：系统设置 → 隐私与安全性 → 麦克风，允许本应用；Windows：设置 → 隐私 → 麦克风。',
+  'mic-denied': '没有麦克风权限。', // + what to do on this system (MIC_FIX)
   'no-mic': '没找到麦克风。',
   'mic-error': '麦克风打不开',
   canceled: '已取消。',
@@ -1601,8 +1608,19 @@ let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, ti
 let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
+// she is listening while the microphone is opening or recording (🎤 or the 快捷键)
+const micListening = () => mic.state === 'recording' || mic.state === 'starting';
+const LISTEN_FX = '👂';
 
+// 麦克风被拒: what to do, for the system she runs on (docs/asr.md §5)
+const OS = /mac/i.test(navigator.platform) ? 'mac' : /win/i.test(navigator.platform) ? 'win' : 'linux';
+const MIC_FIX = {
+  mac: '到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。',
+  win: '到 设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。',
+  linux: '到 系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 pactl list sources short 查看）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风。',
+};
 function asrReasonText(r) {
+  if (r.reason === 'mic-denied') return `${ASR_REASON['mic-denied']}${MIC_FIX[OS]}`;
   const base = ASR_REASON[r.reason] || (String(r.reason || '').startsWith('http-') ? `识别服务返回了错误 ${r.reason.slice(5)}。` : `识别失败（${r.reason || '未知原因'}）。`);
   if (r.reason === 'network') return `${base}：${(settings && settings.asr && settings.asr.local.endpoint) || ''}。它开着吗？`;
   if (r.reason === 'mic-error') return `${base}（${String(r.message || '').slice(0, 60)}）。`;
@@ -1634,6 +1652,9 @@ function paintMic() {
   st.textContent = line;
   st.dataset.state = s;
   st.classList.toggle('hidden', !line);
+  if (voiceCall.on && s !== 'idle') {
+    listenBubble(s === 'recording' ? `我在听…\n说完再按 ${voiceCall.label} 结束` : s === 'starting' ? '正在打开麦克风…' : '嗯…让我想想你说了什么', s);
+  }
 }
 
 // 静音 (toolbar speaker): one switch over everything she sounds — 朗读, 互动语音 and the click sound.
@@ -1711,7 +1732,7 @@ async function micStart() {
 
 // Stop listening: the clip goes to be recognised, or (cancel) is thrown away.
 function micStop(cancel = false) {
-  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); return; }
+  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); endVoiceCall('canceled'); return; }
   if (mic.state !== 'recording') {
     if (cancel && mic.state === 'transcribing') window.pet.asr.cancel();
     return;
@@ -1732,7 +1753,7 @@ async function micDone(rec) {
   const ms = Math.round(mic.ms || 0);
   const cancel = mic.cancel;
   micRelease();
-  if (cancel) { mic.state = 'idle'; paintMic(); syncHover(); lastAsr = { ok: false, reason: 'canceled', clipMs: ms }; return; }
+  if (cancel) { mic.state = 'idle'; paintMic(); syncHover(); lastAsr = { ok: false, reason: 'canceled', clipMs: ms }; endVoiceCall('canceled'); return; }
   if (ms < MIC_MIN_MS || !chunks.length) { mic.state = 'idle'; paintMic(); syncHover(); asrFail({ ok: false, reason: 'too-short', clipMs: ms }); return; }
   const blob = new Blob(chunks, { type: mime });
   mic.state = 'transcribing';
@@ -1747,7 +1768,7 @@ async function micDone(rec) {
   paintMic();
   syncHover();
   lastAsr = { ...r, bytes: blob.size, mime, clipMs: ms, at: Date.now() };
-  if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); return; }
+  if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); else endVoiceCall('canceled'); return; }
   const input = $('chat-input');
   const cur = input.value.trimEnd();
   input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 400);
@@ -1756,6 +1777,7 @@ async function micDone(rec) {
     if (thinking) showNotice('🎤 已填进输入框', '她还在回上一句，等她说完再点“发送”。');
     else { lastAsr.sent = true; $('chat-send').click(); }
   }
+  endVoiceCall('ok', lastAsr);
 }
 
 // What went wrong goes in a toast; what is in the box stays.
@@ -1763,6 +1785,94 @@ function asrFail(r) {
   lastAsr = { ...(lastAsr && lastAsr.at === r.at ? lastAsr : {}), ...r };
   const settingsFix = !/^(too-short|empty|canceled|mic-denied|no-mic)$/.test(r.reason);
   showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', admin: 'asr' } : null);
+  endVoiceCall('fail', r);
+}
+
+// ---------- 快捷键唤起语音对话 (main/voice-hotkey.js → 'voice-hotkey'; docs/asr.md §1.1) ----------
+// The global shortcut in 设置 → 语音输入 → 快捷键. Main has already shown and focused this window; here the
+// chat box opens and the same recorder as 🎤 starts (micStart); pressed again while she listens it stops
+// and the clip is recognised (micStop) — then 识别后直接发送 and the rest work as with 🎤. While a call is on
+// the controls stay up without the pointer on her, the bubble says what she is doing, and she looks at you.
+const VOICE_HOLD_MS = { hint: 9000, heard: 15000, failed: 9000 };
+let voiceCall = { on: false, label: '', until: 0, timer: null, log: [], last: null };
+const voiceHeld = () => voiceCall.on || performance.now() < voiceCall.until;
+const hotkeyLabel = (p) => (p && p.label) || (settings && settings.hotkeyStatus && settings.hotkeyStatus.label) || '快捷键';
+function logVoice(ev, extra = {}) {
+  voiceCall.last = ev;
+  voiceCall.log.push({ ev, mic: mic.state, at: Date.now(), ...extra });
+  if (voiceCall.log.length > 50) voiceCall.log.shift();
+}
+// keep the controls up for a while after the call (the recognised text waits in the box, a hint is read)
+function voiceHold(ms) {
+  voiceCall.until = performance.now() + ms;
+  clearTimeout(voiceCall.timer);
+  voiceCall.timer = setTimeout(() => { voiceCall.until = 0; syncHover(); }, ms + 50);
+  syncHover();
+}
+// the bubble while she listens: no talking mouth, no reading aloud, stays until the call moves on
+function listenBubble(text, state) {
+  const b = $('bubble');
+  if (b.dataset.kind === 'listen' && b.dataset.reason === state && b.textContent === text && !b.classList.contains('hidden')) return;
+  clearTimeout(bubbleTimer);
+  b.classList.remove('thinking', 'streaming', 'hidden');
+  delete b.dataset.stream;
+  b.textContent = text;
+  b.dataset.kind = 'listen';
+  b.dataset.source = 'hotkey';
+  b.dataset.reason = state;
+  b.dataset.meme = '';
+  $('meme-sticker').classList.add('hidden');
+  talkUntil = 0;
+}
+function endVoiceCall(outcome, r = null) {
+  if (!voiceCall.on) return;
+  voiceCall.on = false;
+  document.body.classList.remove('voice-call');
+  logVoice(outcome, r ? { reason: r.reason || null, sent: !!r.sent } : {});
+  const b = $('bubble');
+  if (outcome === 'ok') {
+    if (r && r.sent) return; // sent at once (识别后直接发送): her reply takes the bubble
+    say(`听到啦～在输入框里，没问题就按 Enter 发给我。`, 'hint', 'hotkey', 'heard');
+    voiceHold(VOICE_HOLD_MS.heard);
+    $('chat-input').focus();
+  } else if (outcome === 'fail') {
+    const denied = r && (r.reason === 'mic-denied' || r.reason === 'no-mic' || r.reason === 'mic-error');
+    const text = r && r.reason === 'mic-denied' ? '（我听不到你：麦克风权限被拒绝了，办法在下面的提示里。）'
+      : denied ? `（我听不到你：${asrReasonText(r)}）`
+        : `（${asrReasonText(r)}）`;
+    say(text, 'error', 'hotkey', (r && r.reason) || 'failed');
+    voiceHold(VOICE_HOLD_MS.failed);
+  } else if (b.dataset.kind === 'listen') {
+    hideBubbleLater(1200);
+  }
+}
+function onVoiceHotkey(p) {
+  logVoice('pressed', { source: (p && p.source) || null });
+  if (VISITOR) return;
+  if (!view || $('pet-screen').classList.contains('hidden')) {
+    showNotice('🎤 还不能语音对话', '先在这个窗口里唤醒你的伙伴，之后按快捷键就能直接和她说话。');
+    logVoice('no-pet');
+    return;
+  }
+  if (mic.state === 'recording') { logVoice('stop'); micStop(); return; } // the second press: stop and recognise
+  if (mic.state !== 'idle') { logVoice('ignored'); return; } // the microphone is opening / it is being recognised
+  const label = hotkeyLabel(p);
+  if (!asrOn()) {
+    const why = settings && settings.asr && settings.asr.enabled ? '识别引擎选了「关闭」' : '语音输入还没开';
+    // short enough for the two lines the bubble has above her; how to turn it on is in the notice below
+    say(`（${why}，我听不到你～打开方法在下面的提示里。）`, 'hint', 'hotkey', 'asr-off');
+    showNotice('🎤 语音输入还没开', `${why}。在 设置 → 语音输入 打开并选一个识别引擎（LobeHub 云端或本地 whisper），再按 ${label} 就能和她语音对话。`, { label: '去设置', admin: 'asr' });
+    voiceHold(VOICE_HOLD_MS.hint);
+    logVoice('asr-off');
+    return;
+  }
+  if (thinking) { say('等等，我还在想上一句……', 'busy', 'hotkey', 'busy'); logVoice('busy'); return; }
+  voiceCall.on = true;
+  voiceCall.label = label;
+  document.body.classList.add('voice-call');
+  logVoice('start');
+  openChat();
+  micStart(); // she turns to listen (petStatus → look, the ear over her) for as long as it records
 }
 
 // A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a page of
@@ -1806,7 +1916,7 @@ function bindMic() {
 }
 
 window.petFx = {
-  state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
+  state: () => (view ? { state: petStatus(), listening: $('char-wrap').classList.contains('listening'), fx: $('char-fx').textContent, action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
   // 部位触摸: what a client point maps to, and the last reaction shown
@@ -1834,6 +1944,8 @@ window.petFx = {
   speechGate: () => ({ ...speechGate.stats }),
   lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
   lastAsr: () => lastAsr && { ...lastAsr },
+  // 快捷键唤起语音对话: whether a call is on, what happened on each press
+  voiceCall: () => ({ on: voiceCall.on, held: voiceHeld(), label: voiceCall.label, last: voiceCall.last, log: voiceCall.log.slice(), mic: mic.state }),
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
@@ -1959,6 +2071,7 @@ async function main() {
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);
   window.pet.onSettings((st) => { setSettings(st); });
+  window.pet.onVoiceHotkey(onVoiceHotkey);
   window.pet.onUpdateStatus(onUpdateStatus);
   setSettings(info.settings);
   const start = (v) => (v ? enterPet(v) : showOnboarding());

@@ -14,7 +14,7 @@ const KEY_SLOTS = new Set([...NEURAL, ASR_KEY_ID]);
 const noop = () => {};
 
 function createAdminSettings({ service, hooks = {} }) {
-  const h = { resizePet: (k) => k, afterPrefs: noop, beforeTts: noop, afterApi: async () => {}, setKey: () => true, ...hooks };
+  const h = { resizePet: (k) => k, afterPrefs: noop, beforeTts: noop, afterApi: async () => {}, setKey: () => true, probeHotkey: () => null, ...hooks };
 
   const result = (key, r, extra = {}) => {
     const settings = service.settingsView();
@@ -59,8 +59,13 @@ function createAdminSettings({ service, hooks = {} }) {
         r = service.setTts(route.patch);
         break;
       case 'setAsr': {
+        if (f.key === 'asr.hotkey' && v.value) {
+          // 快捷键: one the system or another app holds is not saved; the shortcut in use stays (main/voice-hotkey.js probe)
+          const p = h.probeHotkey(v.value);
+          if (p && p.state !== 'ok') return { ok: false, reason: 'hotkey-taken', message: p.message || '这个组合用不了', key: f.key, value: v.value, settings: service.settingsView() };
+        }
         r = service.setAsr(route.patch);
-        if (r.ok === false) r = { ...r, message: { 'bad-endpoint': schema.validate('asr.local.endpoint', 'x').message, 'bad-model': '模型名格式不对' }[r.reason] };
+        if (r.ok === false) r = { ...r, message: { 'bad-endpoint': schema.validate('asr.local.endpoint', 'x').message, 'bad-model': '模型名格式不对' }[r.reason] || r.message };
         break;
       }
       case 'setApi':

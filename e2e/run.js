@@ -10,6 +10,7 @@
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
+//   scenario "voicehotkey" -> 快捷键唤起语音对话: the global shortcut → pet shown, listening, recognised; settings window records / refuses combinations
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
 const fs = require('node:fs');
@@ -6535,6 +6536,9 @@ async function asrScenario() {
       const recLine = await page.textContent('#mic-status');
       assert.match(recLine, /正在听 \d+s/);
       assert.equal(await page.getAttribute('#chat-input', 'placeholder'), '正在听…');
+      // 🎤 too: she is listening while you speak (look, the ear over her)
+      const lis = await page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx }; });
+      assert.deepEqual(lis, { state: 'look', listening: true, fx: '👂' }, 'listening while 🎤 records');
       await shot('a2-recording');
       await page.click('#chat-mic');
       await waitMic('transcribing');
@@ -6924,6 +6928,396 @@ async function asrScenario() {
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'asr-log.txt'), evidence.join('\n\n') + '\n');
     fs.writeFileSync(path.join(SHOTS, 'asr-requests.json'), JSON.stringify(mock.log, null, 2) + '\n');
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ----------------------------------------------------------------- voicehotkey
+// 快捷键唤起语音对话 (asr.hotkey, src/main/voice-hotkey.js): the global shortcut shows the pet, opens the chat
+// box and starts the same recorder as 🎤 (fake microphone → mock whisper); a second press stops and recognises.
+// With 语音输入 off or the microphone refused she says so. The settings window shows the shortcut, records a
+// new one with HotkeyInput and refuses invalid / in-app / taken combinations ("another app" = a combination
+// main registers first, PIXELPET_E2E_TAKEN_HOTKEYS, so globalShortcut.register really returns false).
+// V2 also presses the real key through X11 (xdotool) when it is installed: the OS-level path, not the hook.
+async function voiceHotkeyScenario() {
+  const S = 'voicehotkey';
+  const SHOTS = path.join(OUT, 'voicehotkey');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const TAKEN = 'CommandOrControl+Alt+K';
+  const mock = await asrMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vhk-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vhkfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const wav = toneWav(path.join(data, 'fake-mic.wav'));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_E2E_TAKEN_HOTKEYS: TAKEN };
+  const args = ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`];
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video'), args });
+  const errors = [];
+  const watch = (p) => { p.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); }); };
+  watch(page);
+  const t0 = Date.now();
+  const chapters = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s; };
+  const shot = async (name) => { await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `voicehotkey/${name}.png`; };
+  let admin = null;
+  const ashot = async (name) => { await admin.waitForTimeout(250); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `voicehotkey/${name}.png`; };
+  const status = () => page.evaluate(() => window.pet.debugVoiceHotkeyStatus());
+  const press = () => page.evaluate(() => window.pet.debugVoiceHotkey());
+  const call = () => page.evaluate(() => window.petFx.voiceCall());
+  const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return { shown: !b.classList.contains('hidden'), text: b.textContent, kind: b.dataset.kind, reason: b.dataset.reason }; });
+  const waitMic = (st, timeout = 10000) => page.waitForFunction((s) => window.petFx.micState() === s, st, { timeout });
+  // the bubble and the notice are both readable: inside the window and not on top of each other
+  const bothVisible = async () => {
+    const g = await page.evaluate(() => {
+      const r = (id) => { const x = document.getElementById(id).getBoundingClientRect(); return { top: Math.round(x.top), bottom: Math.round(x.bottom), left: Math.round(x.left), right: Math.round(x.right) }; };
+      const el = document.getElementById('bubble');
+      return { bubble: r('bubble'), toast: r('unlock-toast'), h: window.innerHeight, w: window.innerWidth, clipped: el.scrollHeight - el.clientHeight };
+    });
+    const { bubble: b, toast: t } = g;
+    assert.ok(g.clipped <= 1, `the whole bubble text shows, nothing scrolled away ${JSON.stringify(g)}`);
+    assert.ok(b.top >= 0 && t.top >= 0 && b.bottom <= g.h && t.bottom <= g.h, `both inside the window ${JSON.stringify(g)}`);
+    assert.ok(b.bottom <= t.top || t.bottom <= b.top, `the notice does not cover the bubble ${JSON.stringify(g)}`);
+    return `bubble y ${b.top}–${b.bottom}, notice y ${t.top}–${t.bottom} (window ${g.w}×${g.h}): no overlap`;
+  };
+  const petState = () => page.evaluate(() => window.petFx.state().state);
+  const away = async () => { await page.mouse.move(-50, -50).catch(() => {}); await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave'))); };
+  const openAsr = async () => { admin = await openAdminWindow(app, page, 'asr'); await admin.waitForSelector('[data-key="asr.hotkey"]'); await admin.waitForTimeout(250); return admin; };
+  const closeAdmin = async () => { if (admin) await admin.close().catch(() => {}); admin = null; await page.bringToFront(); };
+  const field = () => admin.evaluate(() => {
+    const el = document.querySelector('[data-key="asr.hotkey"]');
+    const col = el.closest('[data-key="asr.hotkey"]').parentElement.parentElement;
+    const err = document.querySelector('[data-error="asr.hotkey"]');
+    const inner = [...col.querySelectorAll('div')].filter((d) => d.childElementCount === 0 && /冲突|无效|占用/.test(d.textContent)).map((d) => d.textContent.trim());
+    const tag = document.querySelector('[data-hotkey-state]');
+    return { keys: el.getAttribute('data-hotkey-keys'), shown: el.innerText.replace(/\s+/g, ' ').trim(), state: tag && tag.getAttribute('data-hotkey-state'), tag: tag && tag.textContent.trim(), error: err && err.textContent.trim(), inputError: inner[0] || null, hint: (document.querySelector('[data-hotkey-hint]') || {}).textContent || null };
+  });
+  // HotkeyInput records what is pressed while it has focus (react-hotkeys-hook, by key code)
+  const record = async (combo) => {
+    await admin.bringToFront();
+    // a click on the field (its value area) focuses HotkeyInput's hidden input and starts recording
+    await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"] input').blur());
+    await admin.waitForTimeout(100);
+    // (dispatched in the page: the settings window sits behind the always-on-top pet, so a pointer click waits forever)
+    await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"] > div > div:first-child').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await adminUntil(admin, () => document.activeElement === document.querySelector('[data-key="asr.hotkey"] input'), null, 5000, 'HotkeyInput focused');
+    await admin.keyboard.press(combo);
+    await admin.waitForTimeout(600);
+  };
+  const saved = () => page.evaluate(async () => (await window.pet.getSettings()).asr.hotkey);
+  try {
+    await step(S, 'V0 hatch; the default shortcut is registered at launch (Ctrl+Shift+Space)', async () => {
+      chapter('V0 孵化；启动时注册默认快捷键 Ctrl+Shift+Space');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await waitReply(page, 15000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await status();
+      assert.equal(st.state, 'ok');
+      assert.equal(st.accelerator, 'CommandOrControl+Shift+Space');
+      assert.equal(st.label, 'Ctrl+Shift+Space');
+      assert.equal(st.registered, true, 'globalShortcut.isRegistered');
+      const set = await saved();
+      assert.equal(set, 'CommandOrControl+Shift+Space');
+      return note(`status ${JSON.stringify({ state: st.state, accelerator: st.accelerator, label: st.label, registered: st.registered })}; settings.asr.hotkey=${set}`);
+    }, page);
+
+    await step(S, 'V1 语音输入 off: the pet (hidden) comes back and says how to turn it on — 去设置', async () => {
+      chapter('V1 语音输入未开启：隐藏的桌宠被唤出，气泡和提示条引导去设置');
+      await away();
+      const hid = await page.evaluate(() => window.pet.debugHidePet(false));
+      assert.equal(hid.visible, false);
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'asr-off', null, { timeout: 5000 });
+      const st = await status();
+      assert.equal(st.petVisible, true, 'shown again by the shortcut');
+      const b = await bubble();
+      assert.equal(b.shown, true);
+      assert.equal(b.reason, 'asr-off');
+      assert.match(b.text, /语音输入还没开/);
+      assert.match(b.text, /下面的提示/);
+      assert.equal(await page.isVisible('#unlock-toast'), true);
+      const tt = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
+      assert.match(tt, /设置 → 语音输入/);
+      assert.match(tt, /Ctrl\+Shift\+Space/);
+      assert.equal(await page.getAttribute('#toast-open', 'data-admin'), 'asr');
+      assert.equal((await page.textContent('#toast-open')).trim(), '去设置');
+      assert.equal(await page.evaluate(() => window.petFx.micState()), 'idle', 'no recording');
+      const geo = await bothVisible();
+      const s = await shot('v1-asr-off-hint');
+      await page.click('#toast-close');
+      return note(`hidden → shortcut → visible=${st.petVisible}; bubble 「${b.text}」; toast 「${tt.replace('×', '').trim()}」 去设置 → #/asr; ${geo}; ${s}`);
+    }, page);
+
+    await step(S, 'V2 语音输入 on: minimised pet restored + focused, chat box open, recording, 「我在听…」 bubble, she looks at you', async () => {
+      chapter('V2 开启语音输入后：最小化的桌宠被唤出、聊天框展开、开始录音、气泡「我在听…」');
+      const r = await page.evaluate((url) => window.pet.asr.set({ enabled: true, engine: 'local', local: { endpoint: url } }), mock.url);
+      assert.equal(r.ok, true);
+      await away();
+      // V1's hint keeps the controls up for a while: wait until they are down, so the shortcut is what brings them up
+      await page.waitForFunction(() => !window.petFx.voiceCall().held && !document.body.classList.contains('hover'), null, { timeout: 15000 });
+      await page.evaluate(() => window.pet.debugHidePet(true));
+      // the real key through X11 when xdotool is there (globalShortcut's own path), otherwise the hook
+      let via = 'hook';
+      try {
+        execFileSync('xdotool', ['key', '--clearmodifiers', 'ctrl+shift+space'], { timeout: 5000 });
+        await page.waitForFunction(() => window.petFx.voiceCall().log.some((e) => e.ev === 'start'), null, { timeout: 4000 });
+        via = 'xdotool (X11 key press → globalShortcut)';
+      } catch {
+        await press();
+      }
+      await waitMic('recording', 10000);
+      await page.waitForTimeout(700);
+      const st = await status();
+      assert.equal(st.petVisible, true, 'restored from minimised');
+      const c = await call();
+      assert.equal(c.on, true);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('voice-call')), true);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true, 'controls up without the pointer');
+      assert.equal(await page.isVisible('#chat-input'), true, 'chat box open');
+      assert.equal(await page.getAttribute('#chat-mic', 'data-state'), 'recording');
+      assert.match(await page.textContent('#chat-mic'), /■ \d+s/);
+      assert.match(await page.textContent('#mic-status'), /正在听/);
+      const b = await bubble();
+      assert.equal(b.kind, 'listen');
+      assert.equal(b.reason, 'recording');
+      assert.match(b.text, /我在听/);
+      assert.match(b.text, /Ctrl\+Shift\+Space/);
+      // while you speak she is listening, the whole time: the look state, the ear over her, the lean (class listening)
+      const pet = () => page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx, status: document.getElementById('char-wrap').dataset.status }; });
+      const samples = [];
+      for (let i = 0; i < 4; i++) { samples.push({ t: i * 600, ...(await pet()) }); await page.waitForTimeout(600); }
+      for (const p of samples) {
+        assert.equal(p.state, 'look', `listening while recording ${JSON.stringify(samples)}`);
+        assert.equal(p.listening, true, `char-wrap.listening ${JSON.stringify(samples)}`);
+        assert.equal(p.fx, '👂', `the ear over her ${JSON.stringify(samples)}`);
+      }
+      const ps = samples[0].state;
+      const s = await shot('v2-listening');
+      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#chat-mic')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet while recording ${JSON.stringify(samples)}; ${s}`);
+    }, page);
+
+    await step(S, 'V3 second press: stops, recognises (mock whisper), the text waits in the box; bubble 「听到啦」', async () => {
+      chapter('V3 再按一次：结束录音并识别，文字填进输入框');
+      const before = mock.log.length;
+      await page.waitForTimeout(800);
+      await press();
+      await page.waitForFunction(() => ['stopping', 'transcribing'].includes(window.petFx.micState()), null, { timeout: 5000 });
+      const mid = await bubble();
+      const ps = await petState();
+      // no longer listening once it stops (the render loop takes it off on its next frame): she thinks
+      await page.waitForFunction(() => !window.petFx.state().listening, null, { timeout: 2000 });
+      const s1 = await shot('v3-recognising');
+      await waitMic('idle', 20000);
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'ok', null, { timeout: 5000 });
+      assert.match(mid.text, /让我想想/);
+      assert.equal(mid.reason === 'transcribing' || mid.reason === 'stopping', true);
+      assert.equal(mock.log.length, before + 1, 'one clip sent to the recogniser');
+      assert.match(mock.log[before].type, /^audio\/webm/);
+      assert.equal(await page.inputValue('#chat-input'), mock.TEXT);
+      const b = await bubble();
+      assert.match(b.text, /听到啦/);
+      assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true, 'the box stays up to send it');
+      const s2 = await shot('v3-heard-text-in-box');
+      await page.fill('#chat-input', '');
+      return note(`recognising: bubble 「${mid.text}」 state ${ps}; mock got ${mock.log[before].bytes} bytes ${mock.log[before].type}; box 「${mock.TEXT}」; bubble 「${b.text}」; ${s1}, ${s2}`);
+    }, page);
+
+    await step(S, 'V4 识别后直接发送 on: press, speak, press → sent to her agent and she replies', async () => {
+      chapter('V4 识别后直接发送：按→说→按，直接发给她并收到回复');
+      assert.equal((await page.evaluate(() => window.pet.asr.set({ autoSend: true }))).ok, true);
+      await away();
+      await press();
+      await waitMic('recording', 10000);
+      await page.waitForTimeout(900);
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'ok', null, { timeout: 20000 });
+      const la = await page.evaluate(() => window.petFx.lastAsr());
+      assert.equal(la.sent, true);
+      await page.waitForFunction(() => { const b = document.getElementById('bubble'); return !b.classList.contains('hidden') && !b.classList.contains('thinking') && b.dataset.source !== 'hotkey' && b.textContent.trim().length > 0 && b.textContent !== '……'; }, null, { timeout: 30000 });
+      const reply = await bubbleText(page);
+      const s = await shot('v4-sent-and-replied');
+      assert.equal((await page.evaluate(() => window.pet.asr.set({ autoSend: false }))).ok, true);
+      return note(`lastAsr ${JSON.stringify({ ok: la.ok, text: la.text, sent: la.sent })}; her reply 「${String(reply).slice(0, 60)}」; ${s}`);
+    }, page);
+
+    await step(S, 'V5 microphone refused: she says she cannot hear you and how to allow it (no silent failure)', async () => {
+      chapter('V5 麦克风权限被拒：气泡说明并引导');
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await page.evaluate(() => window.pet.debugMicAccess('denied'));
+      await press();
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'fail', null, { timeout: 8000 });
+      const b = await bubble();
+      assert.match(b.text, /麦克风权限/);
+      assert.equal(b.reason, 'mic-denied');
+      assert.equal(await page.isVisible('#unlock-toast'), true);
+      const t = (await page.textContent('#unlock-toast')).replace(/\s+/g, ' ');
+      assert.match(t, /没有麦克风权限/);
+      // what to do on this system (the e2e runs on Linux: sound input / PipeWire·PulseAudio / Flatpak·Snap)
+      if (process.platform === 'linux') { assert.match(t, /声音 → 输入/); assert.match(t, /PipeWire/); assert.match(t, /Flatpak \/ Snap/); assert.doesNotMatch(t, /隐私与安全性/); }
+      const geo = await bothVisible();
+      const s = await shot('v5-mic-denied');
+      await page.evaluate(() => window.pet.debugMicAccess(''));
+      await page.click('#toast-close');
+      return note(`bubble 「${b.text}」; toast 「${t.replace('×', '').trim()}」; ${geo}; ${s}`);
+    }, page);
+
+    await step(S, 'V6 设置 → 语音输入 → 快捷键: shows Ctrl+Shift+Space, 已生效', async () => {
+      chapter('V6 设置窗口：快捷键字段显示当前组合与「已生效」');
+      await openAsr();
+      await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"]').scrollIntoView({ block: 'center' }));
+      const f = await field();
+      assert.equal(f.keys, 'mod+shift+space');
+      assert.equal(f.state, 'ok');
+      assert.equal(f.tag, '已生效');
+      assert.match(f.hint, /Ctrl\+Shift\+Space/);
+      assert.match(f.shown, /Ctrl/i);
+      // Space is written out (not lucide's ␣ icon) and the stored value is still an Electron accelerator
+      assert.equal(f.shown, 'Ctrl Shift Space');
+      assert.equal(await admin.evaluate(() => document.querySelectorAll('[data-key="asr.hotkey"] kbd svg').length), 0);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const s = await ashot('v6-settings-hotkey-ok');
+      return note(`field ${JSON.stringify(f)}; ${s}`);
+    }, () => admin);
+
+    await step(S, 'V7 invalid combinations: no modifier (HotkeyInput) and Shift+A (main) — error under the field, not saved', async () => {
+      chapter('V7 无效组合：没有修饰键 / 只有 Shift，字段下方报错且不保存');
+      await record('KeyA');
+      let f = await field();
+      // the exact wording README / docs/asr.md quote
+      assert.equal(f.inputError, '组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键');
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const first = f.inputError;
+      const s1 = await ashot('v7-invalid-no-modifier');
+      await record('Shift+KeyA');
+      await adminUntil(admin, () => !!document.querySelector('[data-error="asr.hotkey"]'), null, 8000, 'error under the field');
+      f = await field();
+      assert.equal(f.error, require('../src/core/hotkey').MESSAGES['shift-only']);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      assert.equal(f.keys, 'mod+shift+space', 'the shortcut in use is still shown');
+      assert.equal((await status()).registered, true);
+      const s2 = await ashot('v7-invalid-shift-only');
+      return note(`A → 「${first}」; Shift+A → 「${f.error}」; saved still CommandOrControl+Shift+Space; ${s1}, ${s2}`);
+    }, () => admin);
+
+    await step(S, 'V8 conflicts: Ctrl+, (the app opens settings with it) and Ctrl+Alt+K (held by another app) — not saved', async () => {
+      chapter('V8 冲突组合：应用内 Ctrl+, / 被其他应用占用的 Ctrl+Alt+K，提示且不保存');
+      await record('Control+Comma');
+      let f = await field();
+      // the same wording as main's own check (core/hotkey.js), quoted in README / docs/asr.md
+      assert.equal(f.inputError, '和应用内的「打开设置」（Ctrl+,）冲突，换一个组合');
+      assert.equal(f.inputError, require('../src/core/hotkey').checkHotkey('Control+,', 'linux').message);
+      const first = f.inputError;
+      const s1 = await ashot('v8-conflict-in-app');
+      await record('Control+Alt+KeyK');
+      await adminUntil(admin, () => /占用/.test((document.querySelector('[data-error="asr.hotkey"]') || {}).textContent || ''), null, 8000, 'taken error');
+      f = await field();
+      assert.match(f.error, /被系统或其他应用占用/);
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      const st = await status();
+      assert.equal(st.accelerator, 'CommandOrControl+Shift+Space');
+      assert.equal(st.registered, true, 'the old shortcut keeps working');
+      const s2 = await ashot('v8-conflict-taken');
+      return note(`Ctrl+, → 「${first}」; Ctrl+Alt+K → 「${f.error}」; still ${st.accelerator} registered=${st.registered}; ${s1}, ${s2}`);
+    }, () => admin);
+
+    await step(S, 'V9 a new combination (Alt+Shift+V) is saved and re-registered; the old one is let go; the bubble names the new one', async () => {
+      chapter('V9 改成 Alt+Shift+V：保存、注销旧的并注册新的');
+      await record('Alt+Shift+KeyV');
+      await adminUntil(admin, () => document.querySelector('[data-key="asr.hotkey"]').getAttribute('data-hotkey-keys') === 'alt+shift+v', null, 8000, 'alt+shift+v');
+      const f = await field();
+      assert.equal(f.state, 'ok');
+      assert.equal(f.error, null);
+      assert.equal(await saved(), 'Alt+Shift+V');
+      const st = await status();
+      assert.equal(st.accelerator, 'Alt+Shift+V');
+      assert.equal(st.registered, true);
+      const old = await app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
+      assert.equal(old, false, 'the old one is free again');
+      const s1 = await ashot('v9-settings-new-hotkey');
+      await closeAdmin();
+      await press();
+      await waitMic('recording', 10000);
+      const b = await bubble();
+      assert.match(b.text, /Alt\+Shift\+V/);
+      await page.keyboard.press('Escape'); // Esc cancels, as with 🎤
+      await waitMic('idle', 5000);
+      await page.waitForFunction(() => window.petFx.voiceCall().last === 'canceled', null, { timeout: 5000 });
+      return note(`field ${JSON.stringify({ keys: f.keys, state: f.state, hint: f.hint })}; registered Alt+Shift+V, old free=${!old}; bubble 「${b.text.replace(/\n/g, ' ')}」; Esc → canceled; ${s1}`);
+    }, page);
+
+    await step(S, 'V10 clear (×) = off, nothing registered, pressing does nothing; 恢复默认 brings Ctrl+Shift+Space back', async () => {
+      chapter('V10 清空=关闭；恢复默认');
+      await openAsr();
+      // HotkeyInput's × (the last action button; ↺ comes first when the value is not the default)
+      await admin.evaluate(() => { const b = [...document.querySelectorAll('[data-key="asr.hotkey"] button')].pop(); b.click(); });
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'disabled', null, 8000, 'disabled');
+      assert.equal(await saved(), '');
+      let st = await status();
+      assert.equal(st.state, 'disabled');
+      const any = await app.evaluate(({ globalShortcut }) => ['Alt+Shift+V', 'CommandOrControl+Shift+Space'].some((a) => globalShortcut.isRegistered(a)));
+      assert.equal(any, false);
+      const f = await field();
+      assert.equal(f.tag, '未启用');
+      const s1 = await ashot('v10-cleared');
+      await admin.evaluate(() => document.querySelector('[data-reset="asr.hotkey"]').click());
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'ok', null, 8000, 'ok again');
+      assert.equal(await saved(), 'CommandOrControl+Shift+Space');
+      st = await status();
+      assert.equal(st.registered, true);
+      await closeAdmin();
+      return note(`cleared → state disabled, tag 未启用, no shortcut registered; 恢复默认 → ${st.accelerator} registered=${st.registered}; ${s1}`);
+    }, () => admin || page);
+
+    await step(S, 'V11 a hand-edited settings.json with a taken combination: after a restart the page shows 被占用', async () => {
+      chapter('V11 重启：settings.json 里是被占用的组合 → 设置页显示「被占用」');
+      await app.close();
+      const file = path.join(data, 'settings.json');
+      const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+      j.asr.hotkey = TAKEN;
+      fs.writeFileSync(file, JSON.stringify(j, null, 2));
+      ({ app, page } = await launch(env, { args }));
+      watch(page);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      const st = await status();
+      assert.equal(st.state, 'conflict');
+      assert.equal(st.code, 'taken');
+      await openAsr();
+      await admin.evaluate(() => document.querySelector('[data-key="asr.hotkey"]').scrollIntoView({ block: 'center' }));
+      const f = await field();
+      assert.equal(f.state, 'conflict');
+      assert.equal(f.tag, '被占用');
+      assert.match(f.error, /被系统或其他应用占用/);
+      const s = await ashot('v11-settings-taken-after-restart');
+      // and a free one fixes it
+      assert.equal((await adminSet(admin, 'asr.hotkey', 'mod+shift+space')).ok, true);
+      await adminUntil(admin, () => document.querySelector('[data-hotkey-state]').getAttribute('data-hotkey-state') === 'ok', null, 8000, 'ok');
+      await closeAdmin();
+      return note(`settings.asr.hotkey=${TAKEN} at launch → status ${JSON.stringify({ state: st.state, code: st.code })}; page tag 「${f.tag}」 error 「${f.error}」; ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'V12 quit lets every global shortcut go (will-quit → unregisterAll)', async () => {
+      chapter('V12 退出：注销全部全局快捷键');
+      const before = await app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+Space'));
+      assert.equal(before, true);
+      const after = await app.evaluate(({ app: a, globalShortcut }) => { a.emit('will-quit', { preventDefault() {} }); return globalShortcut.isRegistered('CommandOrControl+Shift+Space'); });
+      assert.equal(after, false);
+      return note(`registered before will-quit: ${before}; after: ${after}`);
+    }, null);
+
+    await step(S, 'no console errors or page errors', async () => {
+      assert.deepEqual(errors, []);
+      return `${errors.length} errors`;
+    }, null);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voicehotkey-log.txt'), evidence.join('\n\n') + '\n');
     fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2) + '\n');
     await app.close().catch(() => {});
     mock.server.close();
@@ -9050,6 +9444,7 @@ async function adminScenario() {
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
   if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
+  if (which === 'voicehotkey' || which === 'all') await voiceHotkeyScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
