@@ -8116,7 +8116,8 @@ async function wardrobePackScenario() {
       const dom = await admin.evaluate(() => ({
         route: location.hash,
         innerText: document.querySelector('[data-admin-page]').innerText,
-        filter: [...document.querySelectorAll('[data-kind-filter] .ant-segmented-item')].map((x) => x.textContent),
+        filter: document.querySelector('[data-kind-filter]').innerText.split('\n').map((x) => x.trim()).filter(Boolean),
+        filterHtml: document.querySelector('[data-kind-filter]').outerHTML,
         importButton: document.querySelector('[data-go-import]').outerHTML,
         cards: [...document.querySelectorAll('[data-roster] [data-row]')].map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, link: e.querySelector('a').getAttribute('href'), title: e.querySelector('a').getAttribute('aria-label') })),
         oldWordsFound: ['形象包', '跟随形象包', '有导入包', '导入角色包', 'packs'].filter((w) => document.querySelector('[data-admin-page]').innerText.includes(w)),
