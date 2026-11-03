@@ -96,7 +96,7 @@
 | --- | --- | --- |
 | lmy414/ai-chan-sheets（https://github.com/lmy414/ai-chan-sheets）`设定图/` | **CC BY-NC-SA 4.0**（署名、非商业、相同方式共享） | 只取文字层面的身份锚点（发型、配色、服饰、标志物、主题色），写成英文提示词；**没有复制或描摹**任何图片，也没有使用其 `参考原图/` 目录下的未授权原图 |
 | 用户素材：ZipZipPipe《AI娘化》（Pixiv 148186519，https://www.pixiv.net/artworks/148186519，用户文件 file_5SAeAA60gpeZ） | 作者声明：可取用、需署名、**不可商用** | 作为原始形象设计参考并署名，同样未直接复制图片 |
-| PC2005-cloud/dsh-pet（https://github.com/PC2005-cloud/dsh-pet） | 素材允许开源使用、禁止商用；大肥鱼形象 CC BY-NC-SA 4.0（仓库 `src/renderer/assets/dafeiyu/NOTICE.md`）；鲸鱼娘基于 上善无形 原创角色「溟月」二创 | 大肥鱼原 15 段视频保持不变；`dafeiyu-pixel` 按文字描述重画同一形象，不是逐帧描摹视频 |
+| PC2005-cloud/dsh-pet（https://github.com/PC2005-cloud/dsh-pet） | 素材允许开源使用、禁止商用；大肥鱼形象 CC BY-NC-SA 4.0（仓库 `catalog/clips/dafeiyu-clips/NOTICE.md`）；鲸鱼娘基于 上善无形 原创角色「溟月」二创 | 大肥鱼原 15 段视频保持不变；`dafeiyu-pixel` 按文字描述重画同一形象，不是逐帧描摹视频 |
 
 **生成管线（原创生成，非改绘）**：`scripts/art/model_chan_prompts.py` 产出每角色 2 条英文提示词（`<id>_base` 8 个标准动作、`<id>_extra` 8 个扩展状态，每条一张 4×4 宫格）→ `lh generate image -m gpt-image-2.5-sunburst`（GPT Image 2.5）生成品红底宫格 → `scripts/art/slice_sheet.py` 抠图、像素化、限制调色板 → `scripts/art/fit_cells.py` 放入 83×113 格子并去品红边 → `scripts/art/build_model_chan_pack.py` 组包 → `scripts/art/check_model_chan.py` 校验 → `scripts/art/model_chan_preview.py` 出预览图。
 

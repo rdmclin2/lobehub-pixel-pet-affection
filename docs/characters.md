@@ -3,7 +3,7 @@
 桌宠的伙伴是以 AI 模型厂商为主题的同人“模型娘”。**她们都不是厂商官方形象**，厂商名只用来说明灵感来源。本文列出每位角色的厂商、名称、形象设定、主题色、服饰、素材来源与许可，以及已下线的旧角色和存档迁移。怎么安装、运行、切换角色和触发效果见 [使用说明](usage.md)。
 
 - 应用实际读取的角色数据：`src/characters/<id>.json`（启动时全部加载，按 `order` 排序）。
-- 美术：像素包 `src/renderer/packs/<id>-pixel/`，大肥鱼另有视频 `src/renderer/assets/dafeiyu/`。
+- 美术：随应用自带的只有 5 个像素包 `src/renderer/packs/<id>-pixel/`；其余形象（旧版像素、全动态、Live2D、成年版、大肥鱼的原版动画视频）在 `catalog/` 里，用户在角色图鉴下载后才能使用，见下面「内置与下载」。
 - 更细的设定（色板、示例台词、对原设的改动）：[art/model-chan/CHARACTERS.md](../art/model-chan/CHARACTERS.md)；授权全文：[NOTICE.md](../NOTICE.md)。
 
 ## 一、角色总表
@@ -38,10 +38,10 @@
 | 形象设定 | 鲸鱼娘女仆：深蓝渐变浅蓝的及腿长发、环状呆毛、蓝色大眼、带蓝色小蝴蝶结的鲸鱼鳍耳、身后分叉的鲸鱼尾鳍。懒洋洋、嘴硬、爱吃白饭，叫主人“鱼片”，口头禅“咕噜~”。像素包和其他四位一样是成人比例；社区原版的 Q 版（约 3 头身）只保留在可选的原版动画里。只有全年龄内容 |
 | 主题色 | `#2C4A8A` 深海蓝（色板 `#2C4A8A` `#FFFFFF` `#6FA8E8` `#E8D6A0`） |
 | 服饰 | 招牌女仆装：白色泡泡袖衬衫（遮肩）、蓝宝石小领结、金扣深藏青束腰、右下角绣小鲸鱼的白围裙、深藏青外层 + 蓝白竖条纹中层 + 白荷叶边的及踝长裙、白色连裤袜、深藏青玛丽珍鞋。原先的 8 套服饰立绘（针织围巾套装、休闲卫衣等）和她的形象不搭，已经移除；旧存档里穿着这些服饰的会换回招牌女仆装。运动泳装（`swimsuit`，亲近 ♥35 解锁）：高领短袖的深藏青运动款连体泳衣（蓝色侧拼、白荷叶边、蓝宝石小领结），外搭蓝白竖条纹及膝沙滩裤（白荷叶边）、右下角绣小鲸鱼的白色防晒开衫和深藏青沙滩凉鞋；保留女仆头饰、鲸鱼鳍耳、呆毛和尾鳍。原版动画只有招牌女仆装：选了「原版动画」时换上运动泳装，桌宠和衣柜改用 `dafeiyu-pixel` 的泳装像素图，换回招牌女仆装后重新播放原版动画；沙滩比基尼（`bikini`，知己 ♥60 解锁，全年龄）：白色两层荷叶边上衣（高圆领、深藏青细边、海军领小蝴蝶结）、到膝盖上方的深藏青两层荷叶边泳裙、领口系一颗扣的白色短开衫（下摆绣小鲸鱼），保留女仆头饰、鲸鱼鳍耳和尾鳍；另有 10 套全年龄日常服饰（针织围巾套装、休闲卫衣、贝雷帽画家装、偶像演出服、毛绒睡衣、猫耳家居服、浴衣、长旗袍、情侣卫衣、花冠长裙），款式五位相同，配色按她的色板（见 `art/model-chan/CHARACTERS.md`） |
-| 美术 | 21 段透明 webm（`src/renderer/assets/dafeiyu/`：15 个基础状态 + 被拎起 `lifted`、走路 `walk`，以及点击回应变体 `pat_shy`、`pat_pout`、`pat_tickle`、`happy_jump`），在外观里选「大肥鱼 · 原版动画」时播放；默认是像素包 `dafeiyu-pixel`（高清，每帧 332×452，16 个动作 × 2 帧 + 4 帧侧身步行）；「角色列表 → 大肥鱼 → 外观」里还可以选 v0.7.0 的「旧版像素」`dafeiyu-classic` |
+| 美术 | 21 段透明 webm（`catalog/clips/dafeiyu-clips/`：15 个基础状态 + 被拎起 `lifted`、走路 `walk`，以及点击回应变体 `pat_shy`、`pat_pout`、`pat_tickle`、`happy_jump`），在外观里选「大肥鱼 · 原版动画」时播放；默认是像素包 `dafeiyu-pixel`（高清，每帧 332×452，16 个动作 × 2 帧 + 4 帧侧身步行）；「角色列表 → 大肥鱼 → 外观」里还可以选 v0.7.0 的「旧版像素」`dafeiyu-classic` |
 | 梗图 / 朗读 | 9 张梗图（dsh-pet）；朗读音调 1.35、语速 1.0 |
 | 素材来源 / 生成方式 | 动画来自 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet)；形象是 DeepSeek 吉祥物的社区二创：原型「溟月」B站 @上善无形，女仆鲸鱼娘设计 B站 @ZipZipPipe，设定参考 ai-chan-sheets `03_DeepSeek娘_鲸鱼娘`。像素版由 **GPT Image 2.5**（`gpt-image-2.5-sunburst`，经 LobeHub）按文字提示词重画，没有逐帧描摹视频 |
-| 许可 | 动画：dsh-pet 素材可开源使用、**禁止商用**；形象 **CC BY-NC-SA 4.0**（`src/renderer/assets/dafeiyu/NOTICE.md`）。像素包同样 **CC BY-NC-SA 4.0** |
+| 许可 | 动画：dsh-pet 素材可开源使用、**禁止商用**；形象 **CC BY-NC-SA 4.0**（`catalog/clips/dafeiyu-clips/NOTICE.md`）。像素包同样 **CC BY-NC-SA 4.0** |
 
 | 桌面截图 | 像素包精灵图 |
 | --- | --- |
@@ -191,6 +191,30 @@
 - 衣柜下面是取景、VRM 姿势、Live2D 模型大小、她来自的「角色包」信息（作者、授权、VRM 授权信息），最后是「导入新角色」：导入 Live2D / VRM / 角色包 → 成为以她为原型的新角色，并切换过去。
 - **缩略图性能**：每套服饰是一整张 sprite sheet（高清包解码约 86 MB）。卡片只取首帧、按卡片大小裁好缓存（`SpriteStage` 的 `loadCell`）；卡片进入视口前不加载（`lazy`）；整张 sheet 同时最多解码 3 张，被挤出缓存的 sheet 等它上面正在裁的格子裁完才释放。
 - 数据：`core/roster.js` 的每一行 `outfits`——当前角色取 `view().outfits`，其他已遇见的角色取 `PetService.outfitsOf(id)`；没遇见的是 `null`。
+
+## 四之二、内置与下载：只内置 5 位像素角色，其他角色下载后使用
+
+验收反馈（d5120bc3 · C3）：选角时不该一次摆出 13 位。现在：
+
+- **随应用自带的**：5 位像素角色 `dafeiyu-pixel` / `claude-pixel` / `grok-pixel` / `gemini-pixel` / `gpt-pixel`（`src/renderer/packs/`）。新用户第一次打开，「选择你的模型娘」只有这 5 张卡。
+- **下载后使用的**：其余 13 个形象——`*-classic`（旧版像素）、`dafeiyu-live`（全动态）、`dafeiyu-live2d`、`*-adult`（成年版，18+）、`dafeiyu-clips`（原版动画视频）。它们搬到了仓库的 `catalog/packs/<id>/`、`catalog/clips/<id>/`，不在安装包里（electron-builder 只打包 `src/**`），安装包小了约 107 MB。
+- **目录文件** `src/core/character-catalog.json`（随应用自带）：每个可下载角色的 id、原型、名字、类型、是否 18+、作者 / 授权、服饰数、文件名、大小、sha256，以及卡片图 `src/renderer/catalog/<id>.png`。由 `node scripts/build-character-catalog.js` 从 `catalog/` 生成（zip 可复现：同样的文件得到同样的 sha256）；改了 `catalog/` 里的东西就重跑并提交目录文件和图片，再把 `out/character-catalog/*.zip` 上传为 GitHub Release `characters-v1` 的附件。
+- **下载地址**：`PIXELPET_CATALOG_URL`（测试 / 镜像）> `settings.catalogUrl`（镜像用，手动写进 settings.json，设置窗口里没有这一项）> 默认 `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/download/characters-v1`，取 `<地址>/<id>.zip`。只接受 http(s) / file 地址。
+- **下载流程**（`src/main/catalog.js`）：流式下载，边下边算 sha256，大小或 sha256 对不上就丢弃并提示「校验没通过」；通过后解压到用户数据目录旁边的临时文件夹，检查包（`readPack`、id 一致）或视频（每段 clip 都在），写入安装标记 `.catalog.json`，再整体改名到位——失败不会留下半个角色。角色包装到 `<userData>/packs/<id>/`（来源记为「下载」），视频装到 `<userData>/clips/<id>/`，通过 `pack://<id>/<clip>.webm` 播放（`pack` 协议开了 `stream` 权限）。进度通过 `catalog-progress` 推给所有窗口。18+ 角色只有确认 18+ 并打开成人向内容后才列出、才能下载。
+- **角色图鉴**：已有角色之后是「可下载的角色」，每张卡有图片、「未下载」、大小 · 服饰数 · 授权，以及「下载」按钮；下载中显示进度条和「取消」。按形象类型筛选同时作用于两部分，另有「未下载 N」。打开一个还没下载的角色的链接，显示她的下载卡。下载好的角色和内置的一样：切换、衣柜、取景都按角色 id；她的页面多一个「删除下载」（衣柜、好感和聊天记录都保留，之后可以重新下载）。
+- **切换到没下载的角色**：`switchCharacter` 返回 `reason: 'not-downloaded'`（18+ 且成人向关着时仍是 `adult`）。
+
+### 老用户的数据迁移（接在上面「数据迁移方式」之后）
+
+| 情况 | 处理 |
+| --- | --- |
+| 迁移前选的形象包现在要下载（如 `settings.appearance.dafeiyu = 'dafeiyu-live2d'`） | `pet.characterId` 仍记为 `dafeiyu-live2d`（`character-migrate.js chosenCharacter` 认目录里的 id），取景和衣柜也给她预先复制好。下载前她以默认像素形象陪你（`PetService._cid` 回退），agent、好感、聊天记录不变；设置窗口的角色图鉴顶部提示「「大肥鱼 · Live2D」需要下载」，带下载按钮（`view().pendingDownload`）。下载完成后自动换回 Live2D，提示消失。 |
+| 已经是 `characterModel: 2` 的数据，当前角色是一个现在需要下载的 | 同上：`characterId` 不改写，回退显示默认角色并提示下载。 |
+| 同屏伙伴是需要下载的角色 | 迁移时只用已有的角色（`keepDownloadable: false`），没下载的不进同屏伙伴列表。 |
+| 用户自己选了默认形象 | 切到默认角色时 `characterId` 改成它，不再提示下载。 |
+| 删除下载了当前角色 | 和上面一样回退并提示，点提示里的「下载」就回来。 |
+
+**验证**：单元测试 `test/character-model.test.js`（`catalog:` 开头的 4 项：只自带 5 位、目录与 `catalog/` 一致、18+ 过滤、下载地址优先级、原版动画按安装判定、老用户选择保留 / 回退 / 下载后换回 / 删除后再回退）；真机 `xvfb-run -a node e2e/run.js catalogdl`（本地服务器扮演 Release，限速以便看到进度：新装只有 5 张卡、图鉴 8 张可下载卡、下载 Live2D 并切换、原版动画从 `pack://` 播放、篡改文件被 sha256 拒绝且不留文件、删除正在陪伴的下载角色后出现「需要下载」提示并一键下载换回；截图在 `out/e2e/catalogdl/`）。其他 e2e 场景启动时把仓库的 `catalog/` 视为已下载（`PIXELPET_CATALOG_PREINSTALLED`，仅测试模式生效），`fresh` 和 `catalogdl` 按新装处理。
 
 ## 五、已下线的角色与存档迁移
 

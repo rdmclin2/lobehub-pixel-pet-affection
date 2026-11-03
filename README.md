@@ -398,7 +398,7 @@ npm run dev:admin                      # 只开发设置窗口界面：Vite 开�
 
 - 本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。好感度系统、服饰立绘、合规守卫等派生部分同样以 MIT 发布。
 - **模型娘形象**是同人作品，不是厂商官方形象：克洛蒂、格萝可、杰米、吉皮缇的设定来自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets)（CC BY-NC-SA 4.0）与 ZipZipPipe《AI娘化》（署名、不可商用），像素图由 gpt-image-2.5 生成后像素化，以 **CC BY-NC-SA 4.0、禁止商用** 发布，详见 [NOTICE.md](NOTICE.md)。
-- **大肥鱼**动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（PC2005-cloud），角色为 DeepSeek 吉祥物的社区二创（原型“溟月”：B站 @上善无形；女仆鲸鱼娘设计：B站 @ZipZipPipe），许可 **CC BY-NC-SA 4.0，禁止商用**。包含这些素材的构建仅限非商业用途，详见 `src/renderer/assets/dafeiyu/NOTICE.md`。
+- **大肥鱼**动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（PC2005-cloud），角色为 DeepSeek 吉祥物的社区二创（原型“溟月”：B站 @上善无形；女仆鲸鱼娘设计：B站 @ZipZipPipe），许可 **CC BY-NC-SA 4.0，禁止商用**。包含这些素材的构建仅限非商业用途，详见 `catalog/clips/dafeiyu-clips/NOTICE.md`。
 - 本项目是基于 LobeHub 的社区项目，不是 LobeHub 官方产品。
 
 以下为上游原 README（英文），描述 v0.2 的桌宠基础能力。
@@ -495,14 +495,14 @@ xvfb-run -a node e2e/run.js all       # drives the real Electron app; `live` use
 
 ## Credits
 
-The **大肥鱼 (Dafeiyu)** animations (`src/renderer/assets/dafeiyu/`) come from the open-source project **dsh-pet** by PC2005-cloud: <https://github.com/PC2005-cloud/dsh-pet>.
+The **大肥鱼 (Dafeiyu)** animations (`catalog/clips/dafeiyu-clips/`) come from the open-source project **dsh-pet** by PC2005-cloud: <https://github.com/PC2005-cloud/dsh-pet>.
 
 - The code of dsh-pet is MIT-licensed. Its assets are free for open-source use but **may not be used commercially**.
 - The character is a community re-creation of DeepSeek's "大肥鱼" (not an official DeepSeek image), licensed **CC BY-NC-SA 4.0**. The prototype "溟月" is by Bilibili @上善无形; the DeepSeek maid-whale design is by Bilibili @ZipZipPipe.
-- Because of those terms, do not sell this app or ship it commercially while it includes these files. Remove `src/renderer/assets/dafeiyu/` and the `dafeiyu` entry in `src/core/species.js` first.
+- Because of those terms, do not sell this app or ship it commercially while it includes these files. Remove `catalog/clips/dafeiyu-clips/` and the `dafeiyu` entry in `src/core/species.js` first.
 
-Full text: `src/renderer/assets/dafeiyu/NOTICE.md`.
+Full text: `catalog/clips/dafeiyu-clips/NOTICE.md`.
 
 ## License
 
-The code is MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The 大肥鱼 animations in `src/renderer/assets/dafeiyu/` are **not** MIT: they are non-commercial only (see [Credits](#credits)), so builds that include them are for non-commercial use.
+The code is MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The 大肥鱼 animations in `catalog/clips/dafeiyu-clips/` are **not** MIT: they are non-commercial only (see [Credits](#credits)), so builds that include them are for non-commercial use.

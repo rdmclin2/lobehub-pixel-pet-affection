@@ -43,7 +43,7 @@
 | 服饰立绘 `OUTFIT_ART`（`sprites.js`，本项目自制） | 13 | 通过：统一成年体型模板（54 行高、约 6.5 头身，`FIG_PROPORTIONS` 有测试），无裸露；成人向 4 套为及膝女仆裙、及地露肩礼服、保守款连体泳装（含遮阳帽）、系好腰带的及膝睡袍。 |
 | 像素宠物（焰团 / 泡鲸 / 叶芽，代码生成） | 3 | 通过：非人形的元素生物（火团、鲸鱼、芽苗），只有 `adult` 一种体型（`STAGE_DIM` 仅 `adult`），服饰只以颜色叠层呈现，无身体暴露。 |
 | 灵石（原“蛋”）选择图 | 4 | 通过：纯色块图形；文案已改为“灵石 / 唤醒”（F3）。 |
-| 大肥鱼动画 `assets/dafeiyu/*.webm`（dsh-pet，CC BY-NC-SA 4.0） | 15 | 通过（见 O1）：穿长款女仆装、无暴露；只在全年龄内容中出现。 |
+| 大肥鱼动画 `catalog/clips/dafeiyu-clips/*.webm`（dsh-pet，CC BY-NC-SA 4.0） | 15 | 通过（见 O1）：穿长款女仆装、无暴露；只在全年龄内容中出现。 |
 | 应用图标 `build/icon.png` | 1 | 通过：三颗像素灵石。 |
 | 截图复核 | 3 | `outfit-sheet.png`（13 套立绘 × 4 角色总表）、`14-wardrobe-maid-equipped-adult-on.png`、`22-wardrobe-adult-off-no-adult-items.png` 已人工查看。 |
 

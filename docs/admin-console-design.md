@@ -646,9 +646,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：80 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：83 个
 
-- 设置窗口有同一通道（34）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（37）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（10）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
