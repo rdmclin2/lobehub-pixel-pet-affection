@@ -9117,7 +9117,7 @@ async function interjectScenario() {
       const onKeys = await visibleKeys();
       await scrollTo('[data-key="interject.enabled"]');
       const p = await shot(admin, 'ij2b-console-on');
-      await admin.evaluate(() => window.scrollBy(0, 600));
+      await scrollTo('[data-key="interject.quietEnd"]');
       await shot(admin, 'ij2c-console-on-thresholds');
       const s = (await page.evaluate(() => window.pet.getSettings())).interject;
       note(`关时可见字段 ${JSON.stringify(offKeys)}；开后可见 ${onKeys.length} 个：${onKeys.join(', ')}`);
