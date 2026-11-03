@@ -52,6 +52,7 @@
 | A-D5 | A06 插个嘴页、A04「重新开始对话」、A18「退出应用」 | 页面组件 / 聊天页 ⋯ 菜单 / 桌面上的她移除退出由 C 包完成；A 负责 schema、路由、关于与数据的退出按钮 | 与 C 包在同一工作区协作，按 02-plan §5.1 文件归属避免两个包改同一函数 |
 | A-D6 | A08 三个按钮直达标签 | A 写好链接（`/characters/:id/affection|looks|model`），落到对应标签依赖 B02 的详情路由 | 02-plan §5.1 顺序：A08 依赖 B02 |
 | A-D7 | S-6 离开提醒覆盖「rail、面包屑、hash 变化」 | 覆盖窗口内所有 hash 导航；关闭设置窗口本身不拦截 | Electron 窗口关闭走主进程，拦截需改 main 的 close 流程，超出 A 包 |
+| A-D8 | §5.2 文件清单列了 `admin/src/console/store.tsx` | **未修改**（第 2 轮核对补记） | `store.tsx` 只提供 `useStore` 读状态与 `useSave` 写一项设置（返回 `SetResult`，成功即合并新 settings）；A20 / A22 / A24 的保存反馈（`SavedHint`、失败 toast、撤销）都在 `fields.tsx` / `SettingsForm.tsx` 里按 `SetResult` 处理，NAV / 页面结构由 `settings-schema.js` 数据驱动，store 的接口不需要变 |
 
 ### A.3 前后截图
 
