@@ -364,13 +364,7 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 #voice-section .size-row + .size-row { margin-top: var(--pet-space-xs); }
 .bubble .sentence.reading { background: var(--lobe-color-fill-secondary); box-shadow: 0 0 0 1px var(--lobe-color-fill-secondary); border-radius: 2px; }
 
-/* ---- VRM packs: the license (导入确认 / 授权信息), the credit on the card, the placeholder look ---- */
-#look-section .vrm-text { margin-top: var(--pet-space-md); }
-.pack-opt.vrm { flex-wrap: wrap; }
-.pack-opt.vrm .meta { flex-basis: 0; }
-.pack-opt .pack-actions { flex-basis: 100%; display: flex; gap: var(--pet-space-sm); justify-content: flex-end; }
-.pack-opt .pack-actions:empty { display: none; }
-.pack-opt .vrm-credit { color: var(--lobe-color-text-secondary); font-size: 11px; white-space: normal; }
+/* ---- VRM: the license block and the placeholder look (the old 外观 → 形象包 list, .pack-opt, is gone: T-2784) ---- */
 .vrm-noexport { margin: -2px 0 2px var(--pet-space-sm); color: var(--lobe-color-error); }
 .vrm-license { border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); background: var(--lobe-color-fill-quaternary); padding: var(--pet-space-sm) var(--pet-space-md); font-size: 11px; line-height: 1.6; }
 .vrm-summary { font-weight: var(--lobe-font-weight-strong); margin-bottom: var(--pet-space-xs); word-break: break-all; }

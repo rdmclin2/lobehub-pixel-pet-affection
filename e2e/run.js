@@ -7975,7 +7975,7 @@ async function petuiScenario() {
       // 话题 / 衣柜 / 聊天记录 / 角色列表 left the pet window (T-2718): the toast and ⚙ open the settings window
       await step(S, `${theme}: Toast「去衣柜看看 / 去聊聊新话题」与 ⚙ 打开设置窗口`, async () => {
         const where = await page.getAttribute('#toast-open', 'data-admin');
-        assert.match(where, /^(characters\/claude|topics)$/);
+        assert.match(where, /^(characters\/claude-pixel|topics)$/);
         await page.click('#toast-open');
         let admin = null;
         for (let i = 0; i < 200 && !admin; i++) { admin = app.windows().find((w) => w.url().includes('admin-ui')) || null; if (!admin) await page.waitForTimeout(100); }
