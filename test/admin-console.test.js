@@ -644,7 +644,8 @@ test('admin perf: main sends the console a state only when it changed; sprite sh
 
 // 前台精简 (T-2718) took the pet window's 外观 panel away; its VRM license flow lives on in the settings window.
 test('VRM import in the settings window: 导入确认 with the license before she wears it, 取消导入 removes it, 授权信息 on the card', () => {
-  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
+  // 实施包 B split Characters.tsx: the detail page (装扮 → 导入新角色) is pages/character/DetailPage.tsx
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'character', 'DetailPage.tsx'), 'utf8');
   assert.match(src, /data-import-vrm [^>]*onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
   assert.match(src, /cancelText="取消导入"/);
   assert.match(src, /okText="使用这个模型"/);
@@ -661,7 +662,8 @@ test('Live2D import from the settings window: main hands the new pack to the ser
   const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
   const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
   assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
-  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
+  // 实施包 B split Characters.tsx: the detail page (装扮 → 导入新角色) is pages/character/DetailPage.tsx
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'character', 'DetailPage.tsx'), 'utf8');
   // T-2764: the imported model is a new character; the console switches to her (no 形象包 to put on)
   assert.match(src, /data-import-live2d[\s\S]{0,900}becomeNew\(r\.pack\.id/);
   assert.match(src, /const becomeNew = async \(id: string, ok: string\) => \{\n\s+const r = await run\(api\(\)\.switchCharacter\(id\), ok\);/, 'becomeNew switches to the new character');
