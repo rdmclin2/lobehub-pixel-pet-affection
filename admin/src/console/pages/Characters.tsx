@@ -569,6 +569,45 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
 };
 
 /**
+ * VRM 姿势 (docs/vrm-motion-system.md): the posture her VRM pack stands (or sits) in, kept per pack
+ * (settings.vrmPostures); 自动 lets her change it herself while idle. Only shown while she wears a VRM pack.
+ */
+const POSTURE_LABEL: Record<string, string> = { auto: '自动', 'stand.relaxed': '放松站', 'stand.confident': '叉腰站', 'stand.shy': '害羞站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'sit.doze': '靠坐' };
+const PostureRow = ({ c }: { c: RosterRow }) => {
+  const { view, settings, merge } = useStore();
+  const ch = view?.characters?.find((x: any) => x.id === c.id);
+  const [busy, setBusy] = useState(false);
+  const packId: string | undefined = ch?.look?.kind === 'vrm' ? ch?.look?.packId : undefined;
+  if (!packId) return null;
+  const own: string = settings?.vrmPostures?.[packId] ?? 'auto';
+  return (
+    <Flexbox align="center" data-posture-row={c.id} gap={12} horizontal wrap="wrap">
+      <Text strong>VRM 姿势</Text>
+      <div aria-label="VRM 姿势" data-key={`vrmPostures.${packId}`} role="group">
+        <Select
+          disabled={busy}
+          onChange={async (v: string) => {
+            setBusy(true);
+            try {
+              const r = await api().setVrmPosture(packId, v);
+              if (r && r.settings) merge({ settings: r.settings });
+              if (r && r.ok) toast.success(`${c.nameZh} 的姿势已设为「${POSTURE_LABEL[v] ?? v}」`);
+              else toast.error(reasonText(r));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          options={Object.entries(POSTURE_LABEL).map(([value, label]) => ({ label, value }))}
+          style={{ minWidth: 120 }}
+          value={own}
+        />
+      </div>
+      <Text fontSize={12} type="secondary">按这个 VRM 形象包记住。自动：待机时她自己换姿势。立即生效。</Text>
+    </Flexbox>
+  );
+};
+
+/**
  * 装扮: her wardrobe. The outfits of the pack she wears, then every pack she can wear as a card with its
  * picture; 试穿 shows it on her stage on the left, 穿上 dresses her (in the pet window too).
  */
@@ -632,6 +671,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
       </Modal>
       <OutfitRack c={c} />
       <FramingRow c={c} />
+      <PostureRow c={c} />
       <Surface description="她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。" title="形象包">
         <div className={wstyles.grid} data-wardrobe={c.id}>
           {options.map((p) => (

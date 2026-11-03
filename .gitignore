@@ -11,5 +11,13 @@ tts-cache/
 *.VRM
 *.vrma
 *.VRMA
+# VRM motion sources and baked motions (personal use only, docs/vrm-motion-system.md §6.4)
+*.fbx
+*.FBX
+*.vmd
+*.VMD
+*.bvh
+*.pmx
+*.vroid
 # admin console build output (npm run build:admin; rebuilt by prestart / predist:*)
 src/admin-ui/

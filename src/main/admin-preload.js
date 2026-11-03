@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
+  // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
+  setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
   setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
   // 服饰: put on one of the current character's unlocked outfits (the pet window's 衣柜 does the same)

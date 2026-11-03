@@ -11,9 +11,15 @@
 //   vrmimport  settings window → her page → 装扮 → 导入 VRM… → 导入确认 (author, license, restrictions); 取消导入
 //              removes the pack; 使用这个模型 → the user pack, its card (credit, 导出已禁用) and 授权信息; 外观资源
 //              keeps 导出 disabled; the model copied into userData only; drawn on the desk.
-//   vrm        wearing it: the canvas draws (data-frame climbs, three / three-vrm loaded), idle frame budget,
-//              blinking, gaze following the cursor; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI; an interaction
-//              line from her voice pack moving aa/ih/ou/ee/oh and back to 0; 18+ off keeps a VRM pack's adult
+//   vrm        wearing it with a homemade motion library (scripts/make-test-vrma.js in <userData>/vrm-motions):
+//              the canvas draws, data-library loaded, idle frame budget, the idle schedule (≥ 3 variants, no
+//              repeat), the 姿势 menu (cross-fade, saved), blinking, gaze; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI
+//              act out VRM's own way (faces, holds; no pixel moves, no CSS animation on the canvas); male / female
+//              style; no library → still draws; an interaction
+//              line from her voice pack moving aa/ih/ou/ee/oh and back to 0; the reaction layer (T-2681):
+//              touch zones hit on the 3D skeleton, every reaction by a real click / drag / chat (clip laid over
+//              the base, face, gaze, back to the idle), the streak escalation happy → annoyed → angry, an
+//              interrupted reaction fading under the next, holds for lift / think / talk / eat, never a T-pose; 18+ off keeps a VRM pack's adult
 //              outfit out of reach; back to dafeiyu-pixel and to the VRM again; no .vrm in git or the build.
 //   vrmframe   取景 (半身模式, docs/half-body-mode.md): 全身 → 设置窗口 桌宠行为 → 取景 → 半身 → only head to waist,
 //              centred, bigger, same window; the camera glides (no reload, no T-pose); gaze, 摸摸 (touch zones
@@ -28,6 +34,7 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 
 const { makeTestVrm } = require('../scripts/make-test-vrm');
+const { writeTestLibrary, ARM, LEFT_ARM } = require('../scripts/make-test-vrma');
 
 // The restrictive license the e2e model carries (a homemade mesh; only the meta says "restricted").
 const RESTRICTED = {
@@ -61,8 +68,10 @@ module.exports = function vrmScenarios(ctx) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // a fresh data dir, logged in through the fake lh
-  function dataDir(tag, settings) {
+  function dataDir(tag, settings, { motions = false } = {}) {
     const data = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${tag}-`));
+    // a homemade motion library (scripts/make-test-vrma.js) where the app looks for one: <userData>/vrm-motions
+    if (motions) writeTestLibrary(path.join(data, 'vrm-motions'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${tag}fake-`));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, ...settings }));
@@ -279,7 +288,8 @@ module.exports = function vrmScenarios(ctx) {
   async function vrmScenario() {
     const S = 'vrm';
     // 18+ confirmed but adult content off: the app's switch decides (5)
-    const { data, env } = dataDir('vrm', { ageConfirmed: true, ageConfirmedAt: Date.now() });
+    const { data, env } = dataDir('vrm', { ageConfirmed: true, ageConfirmedAt: Date.now() }, { motions: true });
+    env.FAKE_LH_RUN_DELAY_MS = '2500'; // the chat reply takes a while: she thinks (hold.think) before she talks
     const model = makeModel(ROOT, 'vrm');
     const evidence = [];
     const samples = {};
@@ -296,7 +306,8 @@ module.exports = function vrmScenarios(ctx) {
       while (Date.now() - t0 < ms) {
         const d = await H.ds();
         const f = await H.fig();
-        const s = { state: d.state, expr: d.expr, mouth: d.mouth, motion: f.motion, root: f.root, frame: d.frame, mode: d.mode, fps: d.fps };
+        const css = await page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const cs = getComputedStyle(c); const b = getComputedStyle(document.getElementById('pet-body')); return { animationName: cs.animationName, transform: cs.transform, scale: cs.scale, body: b.animationName }; });
+        const s = { state: await page.evaluate(() => window.petFx.state().state), events: d.state, hold: d.hold, reaction: d.reaction, overlays: d.overlays, expr: d.expr, mouth: d.mouth, motion: f.motion, root: f.root, frame: d.frame, mode: d.mode, fps: d.fps, css };
         if (want(s)) { best = s; break; }
         best = s;
         await sleep(60);
@@ -336,10 +347,15 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(f.loaded && f.springJoints >= 4, `springs ${f.springJoints}`);
         // the embedded texture (loaded through a blob: URL, as a real model's are) has its image: T-2654
         assert.ok(f.maps.total >= 1 && f.maps.loaded === f.maps.total, `texture maps ${JSON.stringify(f.maps)}`);
-        samples.start = { a, b, runtime: rt.versions, maps: f.maps };
+        // VRM's own motion: the library over vrmlib://, the style read from the model, a posture clip at full weight
+        assert.equal(b.library, 'loaded', `data-library ${b.library}`);
+        assert.equal(b.anim, 'vrma');
+        assert.match(b.style, /^(female|male|neutral) \((meta|pack)\)$/);
+        assert.match(b.layers, /@(female|male):/);
+        samples.start = { a, b, runtime: rt.versions, maps: f.maps, clips: f.clips, style: f.style };
         box = await page.locator('#pet-look canvas.vrm').boundingBox();
         await H.shot('1-drawn');
-        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}; texture maps ${f.maps.loaded}/${f.maps.total} loaded`);
+        return H.note(`data-frame ${a.frame} → ${b.frame} in 1 s (fps ${b.fps}, mode ${b.mode}); runtime ${JSON.stringify(rt.versions)}; SpringBone joints ${f.springJoints}; texture maps ${f.maps.loaded}/${f.maps.total} loaded\nmotion library: data-library=${b.library}, ${f.clips.length} clips (${f.clips.join(', ')}); data-style=${b.style}; data-posture=${b.posture}; data-idle=${b.idle}; data-layers=${b.layers}`);
       }, page);
 
       await step(S, 'idle: after a while with nothing happening the frame budget drops (data-mode idle, lower fps)', async () => {
@@ -347,12 +363,22 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.petFx.cue('happy'));
         await sleep(900);
         const act = await H.ds();
-        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.mode === 'idle', null, { timeout: 25000 });
-        await sleep(2200);
-        const f0 = await H.ds();
-        await sleep(2000);
-        const f1 = await H.ds();
-        const measured = (Number(f1.frame) - Number(f0.frame)) / 2;
+        // an idle cue of the app (fx) may now and then play a small cheer (T-2681): that wakes her up for a few
+        // seconds by design, so a window with a reaction in it is measured again
+        let f0;
+        let f1;
+        let measured;
+        for (let tries = 0; tries < 4; tries++) {
+          await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.mode === 'idle', null, { timeout: 25000 });
+          await sleep(2200);
+          const r0 = (await page.evaluate(() => window.PetVRM.director.reactions())).length;
+          f0 = await H.ds();
+          await sleep(2000);
+          f1 = await H.ds();
+          measured = (Number(f1.frame) - Number(f0.frame)) / 2;
+          const r1 = (await page.evaluate(() => window.PetVRM.director.reactions())).length;
+          if (r1 === r0 && f1.mode === 'idle') break;
+        }
         samples.frameBudget = { active: act, idle: f1, idleFramesPerSecond: measured };
         assert.equal(act.mode, 'active');
         assert.equal(f1.mode, 'idle');
@@ -360,6 +386,49 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(measured <= 18 && measured > 3, `idle frames/s measured ${measured}`);
         await H.shot('2-idle');
         return H.note(`active: mode ${act.mode} fps ${act.fps} → idle: mode ${f1.mode} fps ${f1.fps}; frames counted in 2 s idle: ${f0.frame} → ${f1.frame} (${measured}/s)`);
+      }, page);
+
+      await step(S, 'idle schedule: with the director\'s clock ×20, data-idle goes through ≥ 3 variants, never the same twice in a row', async () => {
+        await page.evaluate(() => { window.PetVRM.director.seed(11); window.PetVRM.director.speed(20); });
+        const seen = [];
+        const t0 = Date.now();
+        while (Date.now() - t0 < 9000) { const d = await H.ds(); if (seen[seen.length - 1] !== d.idle) seen.push(d.idle); await sleep(100); }
+        const hist = await page.evaluate(() => window.PetVRM.director.history());
+        await page.evaluate(() => window.PetVRM.director.speed(1));
+        assert.ok(new Set(hist).size >= 3, hist.join(' → '));
+        for (let i = 1; i < hist.length; i++) assert.notEqual(hist[i], hist[i - 1], hist.join(' → '));
+        await H.shot('2b-idle-variants');
+        samples.idle = { seen, history: hist };
+        return H.note(`data-idle seen: ${seen.join(' → ')}; director history ${hist.join(' → ')} (${new Set(hist).size} variants, no repeat)`);
+      }, page);
+
+      await step(S, '设置窗口 → 她的页 → 装扮 → VRM 姿势: each posture cross-fades in (weights sum to 1), is saved, and the bone shows it', async () => {
+        const got = [];
+        const LABEL = { 'stand.confident': '叉腰站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'stand.relaxed': '放松站' };
+        for (const p of ['stand.confident', 'stand.playful', 'sit.rest', 'stand.relaxed']) {
+          await H.A.lookTab('dafeiyu');
+          await H.A.until(() => !!document.querySelector('[data-posture-row="dafeiyu"] [role="combobox"]'), null, 10000, 'VRM 姿势 row');
+          const w = H.A.win;
+          await w.locator('[data-posture-row="dafeiyu"]').scrollIntoViewIfNeeded();
+          await w.locator('[data-posture-row="dafeiyu"]').getByRole('combobox').click();
+          await w.getByRole('option', { name: LABEL[p], exact: true }).click();
+          await H.A.toastSeen(new RegExp(`的姿势已设为「${LABEL[p]}」`));
+          if (p === 'stand.confident') await H.adminShot('2c-posture-menu');
+          const sums = [];
+          for (let i = 0; i < 8; i++) { sums.push((await H.fig()).weightSum); await sleep(80); }
+          await page.waitForFunction((x) => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.posture === x && /^[^,]+:1\.00$/.test(c.dataset.layers); }, p, { timeout: 15000 });
+          await sleep(300);
+          const f = await H.fig();
+          const saved = await page.evaluate(async (id) => (await window.pet.getSettings()).vrmPostures[id], ID);
+          // the homemade clip raises the right upper arm by ARM[p]° from hanging (70° roll); the alive layer adds ≤ 4°
+          const roll = Math.abs(f.bones.rightUpperArm[2]);
+          assert.ok(Math.abs(roll - (70 - ARM[p])) < 8, `${p}: right arm roll ${roll} (want ≈ ${70 - ARM[p]})`);
+          assert.ok(sums.every((x) => Math.abs(x - 1) < 0.01), `weights ${sums}`);
+          assert.equal(saved, p);
+          got.push(`${p}: layers ${(await H.ds()).layers}, arm ${roll.toFixed(1)}°, saved ${saved}, sums ${[...new Set(sums.map((x) => x.toFixed(2)))].join('/')}`);
+          await H.shot(`2d-posture-${p}`);
+        }
+        return H.note(got.join('\n'));
       }, page);
 
       await step(S, 'blinking: the blink expression shows up on its own', async () => {
@@ -373,22 +442,27 @@ module.exports = function vrmScenarios(ctx) {
       await step(S, 'gaze: moving the cursor left / right moves the lookAt target', async () => {
         await page.mouse.move(box.x + 2, box.y + box.height * 0.2);
         await sleep(900);
-        const gl = (await H.ds()).gaze;
+        const dl = await H.ds();
+        const gl = dl.gaze;
         const tl = (await H.fig()).gaze;
         await H.shot('4-gaze-left');
         await page.mouse.move(box.x + box.width - 2, box.y + box.height * 0.2);
         await sleep(900);
-        const gr = (await H.ds()).gaze;
+        const dr = await H.ds();
+        const gr = dr.gaze;
         const tr = (await H.fig()).gaze;
         await H.shot('4-gaze-right');
         const x = (g) => Number(g.split(',')[0]);
+        // T-2729: a moving cursor is what her eyes follow — never a glance away (走神) in the middle of it
+        assert.equal(dl.gazeSrc, 'cursor', `left: eyes on ${dl.gazeSrc}`);
+        assert.equal(dr.gazeSrc, 'cursor', `right: eyes on ${dr.gazeSrc}`);
         assert.ok(x(gl) < -0.3 && x(gr) > 0.3 && gl !== gr, `left ${gl} right ${gr}`);
         samples.gaze = { left: gl, right: gr, debugLeft: tl, debugRight: tr };
         await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.25);
-        return H.note(`data-gaze cursor left ${gl} → right ${gr}; lookAt target left ${JSON.stringify(tl)} → right ${JSON.stringify(tr)}`);
+        return H.note(`data-gaze cursor left ${gl} (${dl.gazeSrc}) → right ${gr} (${dr.gazeSrc}); lookAt target left ${JSON.stringify(tl)} → right ${JSON.stringify(tr)}`);
       }, page);
 
-      await step(S, '摸摸 (a click on her): pat → relaxed face, a nod', async () => {
+      await step(S, '摸摸 (a click on her): pat → relaxed face; no pixel nod / hop, no CSS animation on the VRM', async () => {
         await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
         await rest();
         // a click reacts with pat or happy, never the same twice in a row (fx.pickClickReaction): click until pat
@@ -398,17 +472,20 @@ module.exports = function vrmScenarios(ctx) {
           if (i) await rest();
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
-          s = await peak('pat', (x) => (x.state === 'pat' && /relaxed:/.test(x.expr) && x.motion.nodDown > 3) || (x.state === 'happy' && /happy:/.test(x.expr) && x.motion.hop > 0.2));
+          s = await peak('pat', (x) => (x.state === 'pat' && /relaxed:/.test(x.expr)) || (x.state === 'happy' && /happy:/.test(x.expr)));
           tried.push(`${s.state}{${s.expr}; ${fmtMotion(s.motion)}}`);
         }
         await H.shot('5-pat');
         assert.equal(s.state, 'pat');
         assert.match(s.expr, /relaxed:/);
-        assert.ok(s.motion.nodDown > 3, fmtMotion(s.motion));
+        // VRM's own: a face, no pixel moves on the bones or the canvas
+        assert.deepEqual(s.motion, {}, fmtMotion(s.motion));
+        assert.equal(s.css.animationName, 'none');
+        assert.equal(s.css.transform, 'none');
         return H.note(`clicks → ${tried.join(' → ')}; pat: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}`);
       }, page);
 
-      await step(S, '拖起 (press and drag her): lifted → surprised face, dangling', async () => {
+      await step(S, '拖起 (press and drag her): lifted → surprised face, data-hold lift, legs hang; no pixel dangle, no CSS swing', async () => {
         await rest();
         const b = await petBox();
         const x0 = b.x + b.width / 2;
@@ -416,40 +493,54 @@ module.exports = function vrmScenarios(ctx) {
         await page.mouse.move(x0, y0);
         await page.mouse.down();
         for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
-        const s = await peak('lifted', (x) => x.state === 'lifted' && /surprised:/.test(x.expr) && x.motion.dangle > 0.5);
+        const s = await peak('lifted', (x) => x.state === 'lifted' && x.hold === 'lift' && /(surprised|oh):/.test(x.expr));
         await H.shot('6-lifted');
+        const legs = (await H.fig()).bones.leftUpperLeg;
         await page.mouse.up();
         assert.equal(s.state, 'lifted');
-        assert.match(s.expr, /surprised:/);
-        assert.ok(s.motion.dangle > 0.5, fmtMotion(s.motion));
+        assert.equal(s.hold, 'lift');
+        assert.match(s.expr, /(surprised|oh):/);
+        // no pixel dangle: no CSS swing on her or the window's body, no procedural flailing
+        assert.deepEqual(s.motion, {});
+        assert.equal(s.css.animationName, 'none');
+        assert.equal(s.css.body, 'none', 'the pet-dangle CSS swing is off for VRM');
+        assert.equal(s.css.transform, 'none');
         await sleep(600);
         const after = await H.ds();
-        return H.note(`lifted: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}; released → state ${after.state}`);
+        return H.note(`lifted: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, canvas css ${JSON.stringify(s.css)}, legs ${JSON.stringify(legs)} (gravity, ≤ 8°/12°); released → ${after.state}`);
       }, page);
 
-      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing', async () => {
+      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing with the mouth (aa), not the bones', async () => {
         await rest();
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
         await clickAct(page, 'feed');
         await page.click('#food-menu button');
-        const s = await peak('feed', (x) => /^eat/.test(x.state) && /happy:/.test(x.expr) && x.motion.chew > 0.5, 3000);
+        const s = await peak('feed', (x) => /^eat/.test(x.state) && x.hold === 'eat' && /happy:/.test(x.expr) && /aa:0\.[2-9]/.test(x.mouth), 3000);
         await H.shot('7-feed');
         assert.match(s.state, /^eat/);
+        assert.equal(s.hold, 'eat');
         assert.match(s.expr, /happy:/);
-        assert.ok(s.motion.chew > 0.5, fmtMotion(s.motion));
-        return H.note(`feed: state ${s.state}, expr ${s.expr}, mouth ${s.mouth}, motion ${fmtMotion(s.motion)}`);
+        assert.match(s.mouth, /aa:0\.[2-9]/, 'chewing is the mouth (aa), not a bone');
+        assert.match(s.overlays, /hold:hold\.eat@\w+:/, `the eating hold is laid over the base: ${s.overlays}`);
+        assert.deepEqual(s.motion, {});
+        return H.note(`feed: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, mouth ${s.mouth}`);
       }, page);
 
-      await step(S, '玩耍: play → happy face, a spin', async () => {
+      await step(S, '玩耍: play → happy face; she does not spin round (the pixel play), body stays turned to the user', async () => {
         await page.waitForFunction(() => !/^eat/.test(window.petFx.state().state), null, { timeout: 8000 });
         await rest();
         await clickAct(page, 'play');
-        const s = await peak('play', (x) => x.state === 'play' && /happy:/.test(x.expr) && x.motion.spin > 0.3, 3000);
+        const s = await peak('play', (x) => x.state === 'play' && /happy:/.test(x.expr), 3000);
+        const yaws = [];
+        for (let i = 0; i < 12; i++) { yaws.push(Math.abs((await H.fig()).root.yaw)); await sleep(100); }
         await H.shot('8-play');
         assert.equal(s.state, 'play');
         assert.match(s.expr, /happy:/);
-        assert.ok(s.motion.spin > 0.3, fmtMotion(s.motion));
-        return H.note(`play: state ${s.state}, expr ${s.expr}, motion ${fmtMotion(s.motion)}, root yaw ${s.root.yaw.toFixed(0)}°`);
+        // the pixel play spun her round every 3 s; a VRM smiles and stays turned to the user (≤ the facing yaw)
+        assert.ok(Math.max(...yaws) <= 25, `body yaw ${Math.max(...yaws).toFixed(1)}°`);
+        assert.deepEqual(s.motion, {});
+        assert.equal(s.css.animationName, 'none', 'no CSS char-hop');
+        return H.note(`play: app state ${s.state}, VRM ${s.events}, expr ${s.expr}, body yaw ≤ ${Math.max(...yaws).toFixed(1)}° over 1.2 s (no spin), canvas animation ${s.css.animationName}`);
       }, page);
 
       await step(S, '口型: her pat line (built-in voice pack audio) moves aa/ih/ou/ee/oh, back to 0 when it ends', async () => {
@@ -494,6 +585,216 @@ module.exports = function vrmScenarios(ctx) {
         await H.shot('9-lipsync-after');
         await page.evaluate(() => window.pet.setPrefs({ voice: false }));
         return H.note(`speech provider=${sp.provider} 「${sp.text}」; while playing (${playing.length} samples / 50 ms): shapes ${[...shapes].join(',')}, max ${maxOpen.toFixed(2)}; samples ${playing.filter((_, i) => i % 3 === 0).map((m) => `${m.lip}{${m.mouth}}`).join(' ')}\nafter: ${after.join(' | ')}`);
+      }, page);
+
+      // ---------------------------------------------------------------- the reaction layer (T-2681)
+      // one frame's dataset and bones together (the same draw)
+      const frameNow = () => page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.PetVRM.debug().figures[0]; return { d: { ...c.dataset }, bones: f.bones, reactions: f.reactions, plan: f.plan }; });
+      // the left upper arm the overlays should give (make-test-vrma: base −70°, each clip raises it LEFT_ARM°)
+      const expectArm = (overlays) => {
+        let z = -70;
+        for (const o of (overlays || '').split(',').filter(Boolean)) {
+          const [, id, w] = o.split(':');
+          z += (-70 + (LEFT_ARM[id.split('@')[0]] || 0) - z) * Number(w);
+        }
+        return z;
+      };
+      // watch until data-reaction is `want`, then until it is over; every frame: no T-pose, the arm as the overlays say
+      const watchReaction = async (want, { ms = 4000, after = 6000, shotName = null } = {}) => {
+        const t0 = Date.now();
+        const frames = [];
+        let peakF = null;
+        let shot = null;
+        while (Date.now() - t0 < ms + after) {
+          const f = await frameNow();
+          frames.push({ t: Date.now() - t0, reaction: f.d.reaction, hold: f.d.hold, overlays: f.d.overlays, expr: f.d.expr, gaze: f.d.gaze, layers: f.d.layers, la: f.bones.leftUpperArm[2], ra: f.bones.rightUpperArm[2] });
+          if (f.d.reaction === want) {
+            const w = Number(((f.d.overlays.match(new RegExp(`reaction:${want.replace('.', '\\.')}@\\w+:([0-9.]+)`)) || [])[1]) || 0);
+            if (!peakF || w > peakF.w) peakF = { ...f, w };
+            if (shotName && !shot && w > 0.4) shot = await H.shot(shotName);
+          }
+          if (peakF && f.d.reaction !== want && !/reaction:/.test(f.d.overlays) && !/fading:/.test(f.d.overlays)) break;
+          if (!peakF && Date.now() - t0 > ms) break;
+          await sleep(40);
+        }
+        if (shotName && !shot && peakF) shot = await H.shot(shotName);
+        assert.ok(peakF, `${want} never showed: ${frames.slice(-5).map((x) => `${x.reaction}{${x.overlays}}`).join(' | ')}`);
+        // never a T-pose (the right arm stays down with the base), and the left arm is what the overlays say
+        for (const x of frames) {
+          assert.ok(Math.abs(x.ra) > 15, `T-pose? right arm ${x.ra} at ${x.t} ms`);
+          assert.ok(Math.abs(x.la - expectArm(x.overlays)) < 4, `left arm ${x.la.toFixed(1)} vs overlays ${x.overlays} (${expectArm(x.overlays).toFixed(1)}) at ${x.t} ms`);
+        }
+        const end = frames[frames.length - 1];
+        return { peak: peakF, frames, end, shot };
+      };
+      const touchZone = async (zone) => {
+        const c = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        assert.ok(c[zone], `no ${zone} on screen: ${Object.keys(c)}`);
+        const n0 = ((await page.evaluate(() => window.petFx.lastTouch())) || { n: 0 }).n;
+        await page.mouse.click(c[zone].x, c[zone].y);
+        await page.waitForFunction((n) => { const t = window.petFx.lastTouch(); return t && t.n > n; }, n0, { timeout: 5000 });
+        return page.evaluate(() => window.petFx.lastTouch());
+      };
+      const settle = async () => { await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && !c.dataset.reaction && !/reaction:|fading:/.test(c.dataset.overlays || ''); }, null, { timeout: 15000 }); await sleep(300); };
+      const reactionLog = [];
+      samples.reactions = reactionLog;
+
+      await step(S, '触摸区 3D 命中: each zone is hit on the skeleton (ray vs capsules), and the zones follow her posture', async () => {
+        await page.evaluate(() => window.pet.setPrefs({ touchZones: true, voice: false }));
+        await page.evaluate(() => window.pet.debugSet({ affection: 20, mood: 60, hunger: 20, sleeping: false, lastAffectionAt: {}, affectionToday: 0 }));
+        await rest();
+        await settle();
+        const c = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        const got = {};
+        for (const z of ['head', 'face', 'chest', 'belly', 'hands', 'legs', 'feet']) {
+          const tp = await page.evaluate((p) => window.petFx.touchPoint(p.x, p.y), c[z]);
+          got[z] = tp && tp.zone;
+          assert.equal(got[z], z, `${z} at ${JSON.stringify(c[z])} → ${tp && tp.zone}`);
+          assert.equal(tp.pose, 'vrm', 'hit on the VRM skeleton, not the 2D zone table');
+        }
+        await H.shot('13a-zones');
+        // seated: the head comes down; where it was is no longer the head
+        await page.evaluate((id) => window.PetVRM.director.setPosture(id, 'sit.rest'), ID);
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.posture === 'sit.rest', null, { timeout: 10000 });
+        await sleep(2500);
+        const sc = await page.evaluate(() => window.PetVRM.director.zoneCenters());
+        const oldHead = await page.evaluate((p) => window.petFx.touchPoint(p.x, p.y), c.head);
+        const newHead = await page.evaluate((p) => window.petFx.touchPoint(p.x, p.y), sc.head);
+        await H.shot('13b-zones-seated');
+        await page.evaluate((id) => window.PetVRM.director.setPosture(id, 'stand.relaxed'), ID);
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.posture === 'stand.relaxed', null, { timeout: 10000 });
+        await sleep(2000);
+        // seated she is raised so her seat, legs and feet stay inside the frame (T-2684), so the head comes down
+        // less than on the floor line; what matters is that the zones follow her (the next two asserts)
+        assert.ok(sc.head.y > c.head.y + 10, `the head moved down sitting: ${c.head.y} → ${sc.head.y}`);
+        assert.notEqual(oldHead && oldHead.zone, 'head');
+        assert.equal(newHead.zone, 'head');
+        return H.note(`standing zone centres → touchPoint: ${JSON.stringify(got)}\nzones on screen ${JSON.stringify(Object.fromEntries(Object.entries(c).map(([k, v]) => [k, [Math.round(v.x), Math.round(v.y)]])))}\nsit.rest: head ${Math.round(c.head.y)} → ${Math.round(sc.head.y)} px; the old head spot is now ${oldHead && oldHead.zone}, the new one ${newHead.zone}`);
+      }, page);
+
+      for (const [zone, want, label] of [['head', 'react.touch-head', '摸头'], ['face', 'react.touch-face', '戳脸'], ['hands', 'react.touch-hands', '牵手'], ['belly', 'react.ticklish', '怕痒'], ['chest', 'react.angry', '敏感区·低好感生气']]) {
+        await step(S, `${label}: a click on ${zone} → ${want} (clip over the base + face + gaze), then back to the idle`, async () => {
+          await settle();
+          const before = await frameNow();
+          const t = await touchZone(zone);
+          const r = await watchReaction(want, { shotName: `13-${want.replace('react.', '')}` });
+          const pk = r.peak;
+          assert.match(pk.d.overlays, new RegExp(`reaction:${want.replace('.', '\\.')}@male:`), pk.d.overlays);
+          assert.ok(pk.d.expr.length > 0, 'a face');
+          assert.equal(r.end.reaction, '', 'over');
+          assert.equal(r.end.layers.split(',').length, 1, `one base clip at full weight: ${r.end.layers}`);
+          assert.equal(r.end.layers.split(':')[0], before.d.layers.split(':')[0], `back to the same idle base (${before.d.layers} → ${r.end.layers})`);
+          reactionLog.push({ want, mood: t.mood, streak: t.streak, peak: { overlays: pk.d.overlays, expr: pk.d.expr, gaze: pk.d.gaze, leftArm: pk.bones.leftUpperArm }, frames: r.frames.length, shot: r.shot });
+          return H.note(`click ${zone} → touch-zones mood ${t.mood}${t.streak ? ` (streak ${t.streak})` : ''} → data-reaction ${want}; peak overlays ${pk.d.overlays}, expr ${pk.d.expr}, gaze ${pk.d.gaze}, left arm ${pk.bones.leftUpperArm[2].toFixed(1)}° (base −70 + ${LEFT_ARM[want]}×w); ${r.frames.length} frames checked (no T-pose, arm = overlays); end: reaction '${r.end.reaction}', overlays '${r.end.overlays}', base ${r.end.layers}`);
+        }, page);
+      }
+
+      await step(S, '敏感区·中好感害羞: chest at affection 40 → react.shy, eyes down aside, the shy posture for a while', async () => {
+        await page.evaluate(() => window.pet.debugSet({ affection: 40, lastAffectionAt: {}, affectionToday: 0 }));
+        await page.evaluate((id) => window.pet.setVrmPosture(id, 'auto'), ID); // 姿势: 自动 (the shy posture only follows in auto)
+        await settle();
+        await sleep(9000); // past the chest streak window: a fresh first touch
+        const t = await touchZone('chest');
+        const r = await watchReaction('react.shy', { shotName: '13-shy' });
+        assert.equal(t.mood, 'shy');
+        const g = r.peak.d.gaze.split(',').map(Number);
+        assert.ok(g[0] < 0 && g[1] < 0, `looks down aside: ${r.peak.d.gaze}`);
+        assert.match(r.peak.d.expr, /(surprised|oh|sad|sorrow)/);
+        const f = await frameNow();
+        assert.equal(f.plan.postureSource, 'shy');
+        reactionLog.push({ want: 'react.shy', mood: t.mood, peak: { overlays: r.peak.d.overlays, expr: r.peak.d.expr, gaze: r.peak.d.gaze } });
+        await page.evaluate((id) => window.pet.setVrmPosture(id, 'stand.relaxed'), ID);
+        await sleep(1500);
+        return H.note(`chest at affection 40 → mood ${t.mood} → react.shy; peak overlays ${r.peak.d.overlays}, expr ${r.peak.d.expr}, gaze ${r.peak.d.gaze}; after: posture ${f.plan.posture} (${f.plan.postureSource})`);
+      }, page);
+
+      await step(S, '连续触摸情绪升级: poking the head 7× in a row goes happy → annoyed → angry (touch-zones streak); each new reaction fades the old one out, never a T-pose', async () => {
+        await settle();
+        await sleep(9000); // a fresh streak
+        const moods = [];
+        const frames = [];
+        let sawFading = false;
+        for (let i = 0; i < 7; i++) {
+          const t = await touchZone('head');
+          moods.push(`${t.mood}${t.streak ? `/${t.streak}` : ''}`);
+          const t0 = Date.now();
+          while (Date.now() - t0 < 750) {
+            const f = await frameNow();
+            frames.push({ i, reaction: f.d.reaction, overlays: f.d.overlays, la: f.bones.leftUpperArm[2], ra: f.bones.rightUpperArm[2] });
+            if (/fading:/.test(f.d.overlays)) sawFading = true;
+            await sleep(40);
+          }
+        }
+        await H.shot('13-angry-escalated');
+        const hist = (await frameNow()).reactions;
+        for (const x of frames) {
+          assert.ok(Math.abs(x.ra) > 15, `T-pose? ${x.ra}`);
+          assert.ok(Math.abs(x.la - expectArm(x.overlays)) < 4, `arm ${x.la} vs ${x.overlays}`);
+        }
+        assert.deepEqual(moods.slice(0, 2), ['happy', 'happy']);
+        assert.ok(moods.slice(2, 5).every((m) => m === 'annoyed/annoyed'), moods.join(' '));
+        assert.ok(moods.slice(5).every((m) => m === 'angry/angry'), moods.join(' '));
+        const tail = hist.slice(-3);
+        assert.deepEqual(tail, ['react.touch-head', 'react.annoyed', 'react.angry'], hist.join(' → '));
+        assert.ok(sawFading, 'the interrupted reaction faded out under the new one');
+        await settle();
+        const calm = await frameNow();
+        reactionLog.push({ want: 'escalation', moods, reactions: tail });
+        return H.note(`touch-zones moods: ${moods.join(' → ')}\ndirector reactions: ${tail.join(' → ')} (repeated happy touches extend touch-head instead of restarting it)\n${frames.length} frames: right arm never < 15°, left arm = overlays (fading seen: ${sawFading}); afterwards expr ${calm.d.expr} (still a little cross)`);
+      }, page);
+
+      await step(S, '拖拽提起与放下: lifted → hold.lift laid over (legs hang); put down → react.drop (knee dip) → idle', async () => {
+        await settle();
+        const b = await petBox();
+        const x0 = b.x + b.width / 2;
+        const y0 = b.y + b.height * 0.45;
+        await page.mouse.move(x0, y0);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
+        await page.waitForFunction(() => /hold:hold\.lift@\w+:(0\.[5-9]|1)/.test(document.querySelector('#pet-look canvas.vrm').dataset.overlays), null, { timeout: 5000 });
+        const up = await frameNow();
+        await H.shot('13-lift');
+        await page.mouse.up();
+        const r = await watchReaction('react.drop', { shotName: '13-drop' });
+        assert.match(up.d.overlays, /hold:hold\.lift@male/);
+        assert.equal(up.d.hold, 'lift');
+        assert.ok(Math.abs(up.bones.leftUpperArm[2] - expectArm(up.d.overlays)) < 4);
+        reactionLog.push({ want: 'hold.lift / react.drop', lift: up.d.overlays, drop: r.peak.d.overlays });
+        return H.note(`lifted: data-hold ${up.d.hold}, overlays ${up.d.overlays}, expr ${up.d.expr}, left arm ${up.bones.leftUpperArm[2].toFixed(1)}°, legs ${JSON.stringify(up.bones.leftUpperLeg)}\nreleased → ${r.peak.d.reaction}: overlays ${r.peak.d.overlays}, expr ${r.peak.d.expr}; then reaction '${r.end.reaction}', base ${r.end.layers}`);
+      }, page);
+
+      await step(S, '思考/等待回复 → 说话: the chat waits (hold.think, eyes up), the reply talks (hold.talk + the mouth moving together)', async () => {
+        await settle();
+        await clickAct(page, 'chat');
+        await page.fill('#chat-input', '你在想什么呀');
+        await page.press('#chat-input', 'Enter');
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForFunction(() => /hold:hold\.think@\w+:(0\.[5-9]|1)/.test(document.querySelector('#pet-look canvas.vrm').dataset.overlays), null, { timeout: 8000 });
+        const th = await frameNow();
+        await H.shot('13-think');
+        const g = th.d.gaze.split(',').map(Number);
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c.dataset.hold === 'talk' && /hold:hold\.talk(?:-\d)?@\w+:(0\.[3-9]|1)/.test(c.dataset.overlays) && Math.max(...c.dataset.mouth.split(',').map((p) => Number(p.split(':')[1]))) > 0.15; }, null, { timeout: 15000 });
+        const tk = await frameNow();
+        await H.shot('13-talk');
+        assert.equal(th.d.hold, 'think');
+        assert.ok(g[1] > 0.5, `thinking looks up: ${th.d.gaze}`);
+        assert.ok(Math.abs(th.bones.leftUpperArm[2] - expectArm(th.d.overlays)) < 4);
+        assert.match(tk.d.overlays, /hold:hold\.talk(?:-\d)?@male/);
+        assert.notEqual(tk.d.lip, 'off');
+        reactionLog.push({ want: 'hold.think / hold.talk', think: th.d.overlays, talk: tk.d.overlays, mouth: tk.d.mouth });
+        return H.note(`waiting for the reply: data-hold ${th.d.hold}, overlays ${th.d.overlays}, gaze ${th.d.gaze} (up), expr ${th.d.expr}\nthe reply: data-hold ${tk.d.hold}, overlays ${tk.d.overlays}, lip ${tk.d.lip}, mouth ${tk.d.mouth} — the gesture and the mouth together`);
+      }, page);
+
+      await step(S, '开心/打招呼: evolve → react.cheer, hatch → react.greet (full body), back to the idle', async () => {
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.hold === '', null, { timeout: 30000 });
+        await settle();
+        await page.evaluate(() => window.PetVRM.director.inject({ type: 'celebrate', name: 'evolve' }));
+        const c = await watchReaction('react.cheer', { shotName: '13-cheer' });
+        await page.evaluate(() => window.PetVRM.director.inject({ type: 'celebrate', name: 'hatch' }));
+        const g = await watchReaction('react.greet', { shotName: '13-greet', after: 8000 });
+        assert.match(c.peak.d.expr, /happy|joy/);
+        reactionLog.push({ want: 'react.cheer / react.greet', cheer: c.peak.d.overlays, greet: g.peak.d.overlays });
+        return H.note(`celebrate:evolve → ${c.peak.d.reaction} (${c.peak.d.overlays}, expr ${c.peak.d.expr}); celebrate:hatch → ${g.peak.d.reaction} (${g.peak.d.overlays}); end reaction '${g.end.reaction}', base ${g.end.layers}`);
       }, page);
 
       await step(S, '18+ off: a VRM pack\'s adult outfit cannot be chosen (pack hidden, no adult card, equip refused)', async () => {
@@ -610,15 +911,73 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`VRM again: frame ${a.frame} → ${b.frame}; stats created ${st.created}, disposed ${st.disposed}, live ${st.live}`);
       }, page);
 
-      await step(S, 'packaging guard: no .vrm / .vrma in git ls-files nor in the files package.json build.files ships', async () => {
-        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.vrma?$/i.test(f));
+      await step(S, 'style: the homemade model is read as male (meta); a pack with vrm.style "female" plays the female set (pack), narrower stance', async () => {
+        await page.evaluate((id) => window.pet.setVrmPosture(id, 'stand.confident'), ID);
+        await page.waitForFunction(() => /^stand\.confident@male:1\.00$/.test(document.querySelector('#pet-look canvas.vrm').dataset.layers), null, { timeout: 15000 });
+        await sleep(300);
+        const male = await H.fig();
+        const md = await H.ds();
+        // the box model has broad shoulders (shoulder / hip 1.57, no bust springs) → male, from the file
+        assert.equal(md.style, 'male (meta)');
+        assert.ok(male.clips.every((c) => c.endsWith('@male')), male.clips.join(', '));
+        const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrm-female-')), 'female-pack');
+        fs.mkdirSync(path.join(dir, 'models'), { recursive: true });
+        fs.copyFileSync(model.file, path.join(dir, 'models', 'a.vrm'));
+        fs.writeFileSync(path.join(dir, 'pack.json'), JSON.stringify({ schema: 2, id: 'vrm-e2e-female', name: 'E2E Female Fish', species: 'dafeiyu', kind: 'vrm', vrm: { outfits: { daily: 'models/a.vrm' }, style: 'female' } }));
+        const r = await page.evaluate((d) => window.pet.debugImportPack(d), dir);
+        assert.equal(r.ok, true, JSON.stringify(r.errors));
+        await page.evaluate(() => window.pet.setVrmPosture('vrm-e2e-female', 'stand.confident'));
+        await H.pickPack('vrm-e2e-female');
+        await H.drawing(2);
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /^stand\.confident@female:1\.00$/.test(c.dataset.layers || ''); }, null, { timeout: 15000 });
+        await sleep(400);
+        const d = await H.ds();
+        const f = await H.fig();
+        assert.equal(d.style, 'female (pack)');
+        assert.ok(f.clips.every((c) => c.endsWith('@female')), f.clips.join(', '));
+        // same model, same posture: the male set stands with the feet apart (clip 4° + male stance), the female not
+        assert.ok(male.bones.leftUpperLeg[2] > f.bones.leftUpperLeg[2] + 2, `legs: male ${male.bones.leftUpperLeg} vs female ${f.bones.leftUpperLeg}`);
+        assert.ok(f.style.amplitude > male.style.amplitude && f.style.hipSway > male.style.hipSway);
+        await H.shot('12b-female-style');
+        // the same touch on the female set plays the female clip
+        await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+        await sleep(9000);
+        await touchZone('belly');
+        const fr = await watchReaction('react.ticklish', { shotName: '12b-female-ticklish' });
+        assert.match(fr.peak.d.overlays, /reaction:react\.ticklish@female:/);
+        await H.pickPack(ID);
+        return H.note(`imported model: data-style ${md.style}, layers ${md.layers}, leftUpperLeg ${male.bones.leftUpperLeg}, amplitude ${male.style.amplitude}, hipSway ${male.style.hipSway}\npack.json vrm.style "female": data-style ${d.style}, layers ${d.layers}, clips ${f.clips.length} @female, leftUpperLeg ${f.bones.leftUpperLeg}, amplitude ${f.style.amplitude}, hipSway ${f.style.hipSway}\nfemale belly touch → ${fr.peak.d.overlays} (male: react.ticklish@male)`);
+      }, page);
+
+      await step(S, 'no motion library (library.json removed): data-library none, she still draws (arms down, alive layer), no error', async () => {
+        fs.renameSync(path.join(data, 'vrm-motions', 'library.json'), path.join(data, 'vrm-motions', 'library.off'));
+        await H.pickPack('dafeiyu-pixel');
+        await H.pickPack(ID);
+        await H.drawing(5);
+        await sleep(800);
+        const a = await H.ds();
+        await sleep(800);
+        const b = await H.ds();
+        const f = await H.fig();
+        assert.equal(b.library, 'none');
+        assert.ok(Number(b.frame) > Number(a.frame));
+        assert.equal(b.layers, '');
+        assert.ok(f.bones.leftUpperArm[2] < -50 && f.bones.rightUpperArm[2] > 50, `arms down, not a T-pose: ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+        await H.shot('12c-no-library');
+        fs.renameSync(path.join(data, 'vrm-motions', 'library.off'), path.join(data, 'vrm-motions', 'library.json'));
+        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+      }, page);
+
+      await step(S, 'packaging guard: no .vrm / .vrma / .fbx / .vmd in git ls-files nor in the files package.json build.files ships', async () => {
+        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx|vroid)$/i.test(f));
         assert.deepEqual(tracked, []);
         const build = require('../package.json').build.files;
         assert.ok(build.includes('!**/*.vrm') && build.includes('!**/*.VRM') && build.includes('!**/*.vrma') && build.includes('!**/*.VRMA'), JSON.stringify(build));
+        for (const ext of ['fbx', 'vmd', 'bvh', 'pmx']) assert.ok(build.includes(`!**/*.${ext}`), ext);
         // what build.files matches on disk (src/**/*, package.json), before the exclusions
         const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
         const shipped = [...walk(path.join(ROOT, 'src')), path.join(ROOT, 'package.json')];
-        const vrms = shipped.filter((f) => /\.vrma?$/i.test(f));
+        const vrms = shipped.filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx)$/i.test(f));
         assert.deepEqual(vrms, []);
         const models = [model.file];
         assert.ok(models.every((f) => path.relative(ROOT, f).startsWith('..')));
@@ -819,6 +1178,9 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
         await stand();
         const idleGif = await gif('half-idle', 16, 200, null, 5); // 待机: breathing, blinking, in 半身
+        // the app's state (pat / happy / lifted) is petFx.state(); the VRM canvas's data-state lists the director's
+        // semantic events since the VRM motion system (docs/vrm-motion-system.md), data-reaction / data-hold what she plays
+        const appDs = async () => ({ ...(await H.ds()), state: await page.evaluate(() => window.petFx.state().state) });
         let s = null;
         const tried = [];
         for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) {
@@ -826,7 +1188,7 @@ module.exports = function vrmScenarios(ctx) {
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
           const t0 = Date.now();
-          while (Date.now() - t0 < 2500) { s = await H.ds(); if (s.state === 'pat' || s.state === 'happy') break; await sleep(60); }
+          while (Date.now() - t0 < 2500) { s = await appDs(); if (s.state === 'pat' || s.state === 'happy') break; await sleep(60); }
           tried.push(s.state);
         }
         await H.shot('5-half-pat');
@@ -842,15 +1204,16 @@ module.exports = function vrmScenarios(ctx) {
         const dragGif = await gif('half-drag', 8, 60, null, 8); // lifted: dangling while held, 半身
         let l = null;
         const t0 = Date.now();
-        while (Date.now() - t0 < 2500) { l = await H.ds(); if (l.state === 'lifted') break; await sleep(60); }
+        while (Date.now() - t0 < 2500) { l = await appDs(); if (l.state === 'lifted' && l.hold === 'lift') break; await sleep(60); }
         const shot = await H.shot('6-half-lifted');
         await page.mouse.up();
         assert.equal(l.state, 'lifted');
+        assert.equal(l.hold, 'lift', 'the VRM plays her lifted hold (legs hang)');
         assert.equal(l.framing, 'half', 'still 半身 while dragged');
         await sleep(800);
         await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
         const w1 = await petBounds(app);
-        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state} (expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
+        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state}, hold ${l.hold} (${l.overlays}; expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
       }, page);
 
       await step(S, '半身: 口型 — her pat line (voice pack audio) opens the mouth, back to 0 after', async () => {

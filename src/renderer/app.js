@@ -52,6 +52,7 @@ function setSettings(st) {
   syncPrewarm();
   syncMic(); // 🎤 only while 语音输入 is on
   if (st && st.petScale && !VISITOR) showScale(st.petScale); // a visitor keeps her own small size
+  if (window.PetVRM && window.PetVRM.director && view && view.look && view.look.kind === 'vrm') window.PetVRM.director.setPosture(view.look.packId, vrmPostureOf(view.look.packId));
   syncFraming();
 }
 
@@ -217,9 +218,10 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
     try {
+      if (look.kind === 'vrm' && window.PetVRM && window.PetVRM.director) window.PetVRM.director.setPosture(look.packId, vrmPostureOf(look.packId)); // her saved posture, before she is drawn
       const figure = LIVE_KINDS[look.kind]().createFigure(c, look, { framing: framingOf(look).mode });
       c.petFigure = figure; // syncFraming re-frames it when the settings change
-      const r = { canvas: c, figure, action, ok: false };
+      const r = { canvas: c, figure, action, ok: false, kind: look.kind };
       figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
@@ -305,9 +307,33 @@ function voiceNow() {
   if (window.speechSynthesis && speechSynthesis.speaking) return 'system';
   return null;
 }
+// A VRM figure gets a read-only snapshot of the app instead of a state to act out (docs/vrm-motion-system.md
+// §2.2): its own director decides what she does. Rig and Live2D figures keep the state.
+function vrmSnapshot(now) {
+  return {
+    t: now / 1000,
+    state: petStatus(), // only the key of pack.json vrm.expressions overrides
+    status: view.status,
+    shot: fx.current(now),
+    lifted: fx.lifted,
+    flying: fx.flying,
+    thinking,
+    eating,
+    talking: now < talkUntil,
+    voice: voiceNow(),
+    walking: fx.walking,
+    touch: lastTouch && { n: lastTouch.n, zone: lastTouch.zone, mood: lastTouch.mood, streak: lastTouch.streak },
+    facing: $('pet-body').dataset.facing,
+    pointerInside,
+    win: [window.screenX, window.screenY],
+  };
+}
+// The posture saved for a VRM pack (settings.vrmPostures; 'auto' = her director chooses).
+const vrmPostureOf = (packId) => (settings && settings.vrmPostures && settings.vrmPostures[packId]) || 'auto';
 function tickRigs(now) {
   for (const r of rigs) {
     if (!r.canvas.isConnected) { r.figure.dispose(); rigs.delete(r); continue; }
+    if (r.kind === 'vrm' && r.action === petAction && view) { r.figure.draw(vrmSnapshot(now)); continue; }
     const state = r.action();
     const mood = state.startsWith('touch-') && lastTouch ? lastTouch.mood : null;
     r.figure.draw({ t: now / 1000, state, mood, talking: state === 'talk', voice: voiceNow(), win: [window.screenX, window.screenY] });
@@ -536,6 +562,7 @@ function applyArt() {
   // (not the framing: a change of 取景 re-frames the figure in place, see syncFraming)
   const key = `${view.look.packId}/${view.outfit}${view.look.live2d ? `@${view.look.live2d.height}` : ''}${view.look.vrm ? `@${view.look.vrm.height}#${view.look.model}~${view.look.vrm.idle || ''}` : ''}`; // a Live2D / VRM model's size is redrawn too
   const slot = $('pet-look');
+  $('pet-body').dataset.kind = view.look.kind; // style.css: a VRM is not squashed, dangled or mirrored by CSS
   if (slot.dataset.key !== key) {
     slot.dataset.key = key;
     setLook(slot, view.look, { className: 'char', alt: view.pet.name, action: petAction });
@@ -1333,8 +1360,17 @@ function artPoint(cx, cy) {
   return { x: (px - b.x0) / (b.x1 - b.x0), y: half ? PF.toFullBody({ y }, half).y : y, framing: half ? 'half' : 'full', opaque: m ? m.opaqueAt(px, py, NEAR_PX / fit) : true, pose, box, mirrored };
 }
 
+// The VRM figure drawn as her look right now, or null.
+function vrmFigure() {
+  const el = $('pet-look').firstElementChild;
+  for (const r of rigs) if (r.kind === 'vrm' && r.canvas === el && r.figure.zoneAt) return r.figure;
+  return null;
+}
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
+// A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
 function zoneAtClient(cx, cy) {
+  const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
+  if (vf) return vf.zoneAt(cx, cy);
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -1367,9 +1403,9 @@ function showTouch(r, pt, at) {
   const ly = (y) => (y - pr.top) / k;
   const box = { left: lx(pt.box.left), top: ly(pt.box.top), width: (pt.box.right - pt.box.left) / k, height: (pt.box.bottom - pt.box.top) / k, mirrored: pt.mirrored };
   // her face in the box (0..1), for the blush: from her zone table (a chibi's face sits much lower)
-  const fz = TZ.zonesFor(sp, pt.pose).find((z) => z.id === 'face');
+  const fz = pt.faceRect ? { rects: [pt.faceRect] } : TZ.zonesFor(sp, pt.pose).find((z) => z.id === 'face'); // a VRM knows where its face is
   if (fz) box.face = fz.rects[0];
-  lastTouch = { n: (lastTouch ? lastTouch.n : 0) + 1, zone: r.zone, mood: r.reaction.mood, clip, line: r.line };
+  lastTouch = { n: (lastTouch ? lastTouch.n : 0) + 1, zone: r.zone, mood: r.reaction.mood, streak: r.reaction.streak || null, clip, line: r.line };
   fx.touch({ zone: r.zone, mood: r.reaction.mood, clip, ms: video ? 3000 : 1600, box, at: { x: lx(at.x), y: ly(at.y) } });
 }
 let lastTouch = null;

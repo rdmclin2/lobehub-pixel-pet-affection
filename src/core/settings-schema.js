@@ -180,6 +180,7 @@ add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch'
 add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
 add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型。' });
 add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '她自己的取景：跟随全局（或形象包的默认）/ 全身 / 半身。' });
+add('vrmPostures.<id>', 'character', '外观', 'VRM 姿势', 'perCharacter', { desc: '按 VRM 形象包记住的姿势（键是形象包 id）：自动（待机时她自己换姿势）/ 放松站 / 叉腰站 / 害羞站 / 俏皮站 / 坐着 / 靠坐。', options: settingsLib.VRM_POSTURES });
 add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
 
 // ---- 不在 settings.json 的：密钥、pet.json -----------------------------------------------------------------
@@ -206,7 +207,7 @@ function settingsLeaves(obj = DEFAULTS, prefix = '') {
   const out = [];
   for (const [k, v] of Object.entries(obj)) {
     const p = prefix ? `${prefix}.${k}` : k;
-    if (['appearance', 'models', 'systemRoles', 'framings'].includes(p)) out.push(`${p}.<id>`);
+    if (['appearance', 'models', 'systemRoles', 'framings', 'vrmPostures'].includes(p)) out.push(`${p}.<id>`);
     else if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) out.push(...settingsLeaves(v, p));
     else out.push(p);
   }

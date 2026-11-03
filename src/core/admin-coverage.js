@@ -35,6 +35,7 @@ const SPECIAL_SETTINGS = {
   'models.<id>': '角色详情 → 模型（`set-model` / `refresh-models`）',
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
+  'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（她穿 VRM 形象包时；按形象包记住，自动 / 6 种姿势：`set-vrm-posture`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -59,6 +60,7 @@ const PET_ONLY = {
   spaces: '首次唤醒时选择空间（唤醒后不能改，连接页只读显示）',
   hatch: '首次唤醒（领养）流程',
   act: '互动：喂食 / 玩耍 / 睡觉',
+  'vrm-library-info': 'VRM 动作库从哪里加载（只读诊断信息，给 e2e 和排查用，不是设置）',
   touch: '互动：摸摸（部位触摸）',
   'talk-topic': '互动：按话题聊天',
   chat: '聊天',
@@ -140,7 +142,7 @@ const RUNTIME = [
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
-  { id: 'character', label: '角色（形象包 / 服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['appearance.<id>', 'models.<id>', 'systemRoles.<id>', 'framings.<id>'], actions: ['switch-character', 'set-appearance', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing'] },
+  { id: 'character', label: '角色（形象包 / 服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['appearance.<id>', 'models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'set-appearance', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
   { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 形象包', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },

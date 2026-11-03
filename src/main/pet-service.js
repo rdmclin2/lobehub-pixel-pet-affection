@@ -988,6 +988,17 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
+  // 外观 → VRM 姿势: the posture a VRM pack stands (or sits) in; 'auto' lets the VRM director choose.
+  setVrmPosture(packId, posture) {
+    if (typeof packId !== 'string' || !/^[a-z0-9][a-z0-9-]{2,39}$/.test(packId) || !settingsLib.VRM_POSTURES.includes(posture)) return { ok: false, reason: 'invalid' };
+    const next = { ...this.settings.vrmPostures };
+    if (posture === 'auto') delete next[packId]; else next[packId] = posture;
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, vrmPostures: next });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, posture, settings: this.settingsView() };
+  }
+
   // 高级设置 → 桌宠行为: roaming, click sound, voice, memes, collisions (settings.PREFS).
   setPrefs(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};

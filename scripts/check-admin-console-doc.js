@@ -23,7 +23,7 @@ const coverage = require('../src/core/admin-coverage');
 
 const ROOT = path.join(__dirname, '..');
 const DOC = path.join(ROOT, 'docs', 'admin-console-design.md');
-const PER_CHARACTER = ['appearance', 'models', 'systemRoles', 'framings'];
+const PER_CHARACTER = ['appearance', 'models', 'systemRoles', 'framings', 'vrmPostures'];
 
 function leaves(obj, prefix = '') {
   const out = [];
