@@ -29,13 +29,11 @@ const pop = keyframes`
   from { opacity: 0; transform: translate(-50%, 8px) scale(0.96); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 `;
-const drift = keyframes`
-  from { transform: translate3d(-4%, 0, 0) scale(1); }
-  to { transform: translate3d(4%, -3%, 0) scale(1.06); }
-`;
 
 const styles = createStaticStyles(({ css }) => ({
-  // her own colour is the light of the room: soft pools of it on the surface, drifting slowly
+  // her own colour is the light of the room: soft pools of it on the surface. Still, on purpose: an
+  // endlessly drifting full-stage gradient layer kept the compositor redrawing the window every frame
+  // (the console's idle GPU load doubled and clicks waited for it)
   stage: css`
     position: relative;
     isolation: isolate;
@@ -57,11 +55,6 @@ const styles = createStaticStyles(({ css }) => ({
       radial-gradient(40% 45% at 30% 35%, color-mix(in srgb, var(--pet-accent) 34%, transparent), transparent 70%),
       radial-gradient(35% 40% at 75% 25%, color-mix(in srgb, var(--pet-accent) 20%, transparent), transparent 70%),
       radial-gradient(60% 40% at 50% 100%, color-mix(in srgb, var(--pet-accent) 26%, transparent), transparent 70%);
-    animation: ${drift} 9s ease-in-out infinite alternate;
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-    }
   `,
   floor: css`
     pointer-events: none;

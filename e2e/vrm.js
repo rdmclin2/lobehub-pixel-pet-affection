@@ -8,12 +8,18 @@
 // app's limits show. Drawn by the real three-vrm renderer under SwiftShader (run.js launches Electron with
 // --enable-unsafe-swiftshader --ignore-gpu-blocklist).
 //
-//   vrmimport  外观 → 导入 VRM 模型… → 导入确认 (author, license, restrictions) → the user pack, its card and
-//              授权信息; the model copied into userData only; drawn on the desk.
+//   vrmimport  settings window → her page → 装扮 → 导入 VRM… → 导入确认 (author, license, restrictions); 取消导入
+//              removes the pack; 使用这个模型 → the user pack, its card (credit, 导出已禁用) and 授权信息; 外观资源
+//              keeps 导出 disabled; the model copied into userData only; drawn on the desk.
 //   vrm        wearing it: the canvas draws (data-frame climbs, three / three-vrm loaded), idle frame budget,
 //              blinking, gaze following the cursor; 摸摸 / 拖起 / 喂食 / 玩耍 through the UI; an interaction
 //              line from her voice pack moving aa/ih/ou/ee/oh and back to 0; 18+ off keeps a VRM pack's adult
 //              outfit out of reach; back to dafeiyu-pixel and to the VRM again; no .vrm in git or the build.
+//   vrmframe   取景 (半身模式, docs/half-body-mode.md): 全身 → 设置窗口 桌宠行为 → 取景 → 半身 → only head to waist,
+//              centred, bigger, same window; the camera glides (no reload, no T-pose); gaze, 摸摸 (touch zones
+//              mapped, legs out of reach), 拖起, 口型 in 半身; back to 全身 = the first camera again; her own
+//              取景 on her page; a real VRM too (PIXELPET_E2E_REAL_VRM=<file.vrm>, never copied into the repo);
+//              a restart keeps 半身.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -49,7 +55,7 @@ function makeModel(root, tag, opts = {}) {
 }
 
 module.exports = function vrmScenarios(ctx) {
-  const { ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct } = ctx;
+  const { ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds } = ctx;
   const SHOTS = path.join(OUT, 'vrm');
   fs.mkdirSync(SHOTS, { recursive: true });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -62,8 +68,49 @@ module.exports = function vrmScenarios(ctx) {
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, ...settings }));
     return { data, env: { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir } };
   }
-  function helpers(page, prefix, evidence) {
+  // The settings window (T-2718: the pet window keeps only ⚙): opened from ⚙, driven by evaluate — it sits
+  // behind the always-on-top pet and gets few frames, so waits poll instead of waitFor*.
+  function adminOf(app, page) {
+    let w = null;
+    const until = async (fn, arg, ms = 15000, what = 'condition') => {
+      const t0 = Date.now();
+      for (;;) {
+        if (await w.evaluate(fn, arg).catch(() => false)) return;
+        if (Date.now() - t0 > ms) throw new Error(`settings window: timed out waiting for ${what}`);
+        await sleep(150);
+      }
+    };
+    const open = async () => {
+      if (w && !w.isClosed()) return w;
+      await clickAct(page, 'settings');
+      for (let i = 0; i < 200 && !(w = app.windows().find((x) => x.url().includes('admin-ui'))); i++) await sleep(100);
+      if (!w) throw new Error('the settings window did not open');
+      await until(() => !!document.querySelector('[data-admin-page]'), null, 20000, 'the console');
+      return w;
+    };
+    const go = async (route) => {
+      await open();
+      await w.evaluate((x) => { location.hash = x; }, route);
+      await until((x) => !!document.querySelector(`[data-path="${x}"]`), route, 15000, route);
+      await sleep(300);
+    };
+    // her page → 装扮 (衣柜 + 形象包)
+    const lookTab = async (sp) => {
+      await go(`/characters/${sp}`);
+      await w.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
+      await until(() => !!document.querySelector('[data-wardrobe]'), null, 10000, '装扮');
+    };
+    const click = (sel) => w.evaluate((x) => { const el = document.querySelector(x); if (!el) throw new Error(`no ${x}`); el.scrollIntoView({ block: 'center' }); el.click(); }, sel);
+    const text = (sel) => w.evaluate((x) => { const el = document.querySelector(x); return el ? el.textContent : null; }, sel);
+    const modalButton = (label) => w.evaluate((t) => { const b = [...document.querySelectorAll('[role="dialog"] button')].filter((x) => x.textContent.trim() === t).pop(); if (!b) throw new Error(`no dialog button ${t}`); b.click(); }, label);
+    const toastSeen = (re) => until((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, 10000, `toast ${re}`);
+    const shot = async (file) => { await w.bringToFront().catch(() => {}); await sleep(250); await w.screenshot({ path: file }); };
+    return { open, go, lookTab, click, text, modalButton, toastSeen, until, shot, get win() { return w; } };
+  }
+  function helpers(page, prefix, evidence, app) {
     const shot = async (name) => { await sleep(120); await page.screenshot({ path: path.join(SHOTS, `${prefix}-${name}.png`) }); return `vrm/${prefix}-${name}.png`; };
+    const A = adminOf(app, page);
+    const adminShot = async (name) => { await A.shot(path.join(SHOTS, `${prefix}-${name}.png`)); return `vrm/${prefix}-${name}.png`; };
     const ds = () => page.evaluate(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c ? { ...c.dataset } : null; });
     const fig = async () => { const d = await page.evaluate(() => window.petFx.vrm()); return d && d.figures[0]; };
     const note = (s) => { evidence.push(s); return s; };
@@ -76,17 +123,16 @@ module.exports = function vrmScenarios(ctx) {
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'dafeiyu-pixel/daily', null, { timeout: 10000 });
     };
-    // 角色页 → 外观: pick a pack as a user does; waits until her look is that pack
+    // settings window → her page → 装扮 → 穿上 on the pack's card, as a user does; waits until her look is that pack
     const pickPack = async (id) => {
-      await openCurrentPage(page);
-      await page.locator(`.pack-opt[data-pack="${id}"]`).scrollIntoViewIfNeeded();
-      if (!(await page.locator(`.pack-opt.on[data-pack="${id}"]`).count())) await page.click(`.pack-opt[data-pack="${id}"] .pick`);
-      await page.waitForSelector(`.pack-opt.on[data-pack="${id}"]`);
-      await page.click('#panel-close');
-      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 });
+      await A.lookTab('dafeiyu');
+      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack card ${id}`);
+      if (!(await A.win.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await A.click(`[data-use-pack="${id}"]`);
+      await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id, 15000, `${id} worn`);
+      await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 }).catch(async () => { throw new Error(`pickPack(${id}): pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
     };
     const drawing = (n = 2, timeout = 30000) => page.waitForFunction((k) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > k; }, n, { timeout });
-    return { shot, ds, fig, note, hatch, pickPack, drawing };
+    return { shot, adminShot, A, ds, fig, note, hatch, pickPack, drawing };
   }
   const watchErrors = (page) => {
     const errors = [];
@@ -104,8 +150,8 @@ module.exports = function vrmScenarios(ctx) {
     const evidence = [];
     const { app, page } = await launch(env);
     const errors = watchErrors(page);
-    const H = helpers(page, 'vrmimport', evidence);
-    const msg = () => page.textContent('#panel-msg');
+    const H = helpers(page, 'vrmimport', evidence, app);
+    const A = H.A;
     let ID = null;
     try {
       await step(S, 'a homemade VRM 1.0 with a restrictive license is generated outside the repository', async () => {
@@ -124,50 +170,78 @@ module.exports = function vrmScenarios(ctx) {
 
       await step(S, 'hatching 大肥鱼 in her default pixel look', H.hatch, page);
 
-      await step(S, '外观 → 导入 VRM 模型…: 导入确认 shows author, license and the restrictions', async () => {
-        await openCurrentPage(page);
-        await page.locator('#vrm-import').scrollIntoViewIfNeeded();
-        assert.equal(await page.locator('#vrm-import').textContent(), '导入 VRM 模型…');
+      const userVrmPacks = () => (fs.existsSync(path.join(data, 'packs')) ? fs.readdirSync(path.join(data, 'packs')).filter((d) => d.startsWith('vrm-')) : []);
+      const importOnce = async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file); // answers the system file dialog
-        await page.click('#vrm-import');
-        await page.waitForSelector('#vrm-confirm', { timeout: 20000 });
-        const t = await page.textContent('#vrm-confirm');
-        for (const s of [`导入 VRM 模型「${MODEL_NAME}」`, '作者E2E Maker', '版权© E2E Maker', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/']) assert.ok(t.includes(s), `missing: ${s}`);
-        const rs = await page.$$eval('#vrm-confirm .vrm-restrictions li', (ls) => ls.map((l) => `${l.dataset.id}: ${l.textContent.trim()}`));
+        await A.click('[data-import-vrm]');
+        await A.until(() => !!document.querySelector('[data-vrm-confirm]'), null, 20000, '导入确认');
+        await sleep(400);
+      };
+
+      await step(S, '设置窗口 → 她的页 → 装扮 → 导入 VRM…: 导入确认 shows author, license and the restrictions', async () => {
+        await A.lookTab('dafeiyu');
+        assert.equal((await A.text('[data-import-vrm]')).trim(), '导入 VRM…');
+        await importOnce();
+        const t = await A.win.evaluate(() => document.querySelector('[data-vrm-confirm]').closest('[role="dialog"]').textContent);
+        for (const x of [`导入 VRM 模型「${MODEL_NAME}」`, '作者E2E Maker', '版权© E2E Maker', '谁可以扮演仅作者本人', '商用仅限个人非商业使用', '再分发不允许', '修改禁止修改', '署名需要署名', '授权条款https://vrm.dev/licenses/1.0/', '取消导入', '使用这个模型']) assert.ok(t.includes(x), `missing: ${x}`);
+        const rs = await A.win.evaluate(() => [...document.querySelectorAll('[data-vrm-confirm] [data-vrm-restrictions] li')].map((l) => `${l.dataset.id}: ${l.textContent.trim()}`));
         for (const id of ['no-redistribution', 'no-modification', 'credit-required']) assert.ok(rs.some((r) => r.startsWith(`${id}:`)), `restriction ${id}: ${rs.join(' | ')}`);
         assert.match(t, /不可再分发：仅限本机使用/);
-        await H.shot('1-confirm');
+        await H.adminShot('1-confirm');
         return H.note(`导入确认 restrictions: ${rs.join(' | ')}`);
-      }, page);
+      }, () => A.win);
 
-      await step(S, '使用这个模型: the user pack is made and worn; the card shows VRM · 作者 and the credit line', async () => {
-        await page.click('#vrm-confirm [data-act="use"]');
-        await page.waitForSelector('.pack-opt.on[data-pack^="vrm-"]', { timeout: 20000 });
-        ID = await page.getAttribute('.pack-opt.on[data-pack^="vrm-"]', 'data-pack');
-        assert.match(await msg(), new RegExp(`已导入 VRM 模型「${MODEL_NAME}」并换上（作者：E2E Maker）`));
-        const line = await page.textContent(`.pack-opt[data-pack="${ID}"] .meta span`);
-        assert.match(line, /^VRM · \d+ 套服饰 · E2E Maker · 本地导入$/);
-        assert.equal(await page.textContent(`.pack-opt[data-pack="${ID}"] .vrm-credit`), '署名：E2E Maker（模型授权要求署名）');
-        const ex = page.locator(`.pack-opt[data-pack="${ID}"] .pack-export`);
-        assert.equal(await ex.isDisabled(), true, '导出… disabled for a non-redistributable model');
-        const why = (await page.textContent(`.vrm-noexport[data-pack="${ID}"]`)).trim();
+      await step(S, '取消导入 removes the pack again: nothing left in userData, nothing worn', async () => {
+        const before = userVrmPacks();
+        assert.equal(before.length, 1, `the import made one pack: ${before}`);
+        await A.modalButton('取消导入');
+        await A.toastSeen(/已取消导入「E2E 自制小鱼」，模型没有留在本机的角色包里/);
+        for (let i = 0; i < 50 && userVrmPacks().length; i++) await sleep(100);
+        assert.deepEqual(userVrmPacks(), []);
+        assert.equal(await A.win.evaluate(() => document.querySelectorAll('[data-wardrobe] [data-pack^="vrm-"]').length), 0);
+        assert.match(await page.getAttribute('#pet-look', 'data-key'), /^dafeiyu-pixel\//);
+        await H.adminShot('1b-canceled');
+        return H.note(`取消导入: ${before[0]} removed; pet still ${await page.getAttribute('#pet-look', 'data-key')}`);
+      }, () => A.win);
+
+      await step(S, '使用这个模型: the user pack is made and worn; the card shows VRM · 作者, the credit line and 导出已禁用', async () => {
+        await importOnce();
+        await A.modalButton('使用这个模型');
+        await A.toastSeen(new RegExp(`已导入 VRM 模型「${MODEL_NAME}」并换上（作者：E2E Maker）`));
+        await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-'), null, { timeout: 20000 });
+        ID = (await page.getAttribute('#pet-look', 'data-key')).split('/')[0];
+        await A.until((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), ID, 15000, 'the VRM card worn');
+        const card = (await A.text(`[data-wardrobe] [data-pack="${ID}"]`)).replace(/\s+/g, ' ');
+        assert.match(card, /VRM/);
+        assert.match(card, /E2E Maker/);
+        assert.equal((await A.text(`[data-vrm-credit="${ID}"]`)).trim(), '署名：E2E Maker（模型授权要求署名）');
+        const why = (await A.text(`[data-vrm-noexport="${ID}"]`)).trim();
         assert.match(why, /导出已禁用：这个 VRM 模型的授权不允许再分发/);
-        await page.locator(`.pack-opt[data-pack="${ID}"]`).scrollIntoViewIfNeeded();
-        await H.shot('2-card');
-        return H.note(`pack ${ID}: 「${line}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}`);
-      }, page);
+        await A.win.evaluate((x) => document.querySelector(`[data-wardrobe] [data-pack="${x}"]`).scrollIntoView({ block: 'center' }), ID);
+        await H.adminShot('2-card');
+        // 外观资源 lists it with 导出 disabled (main refuses it too)
+        await A.go('/packs');
+        await A.until((x) => !!document.querySelector(`[data-export-pack="${x}"]`), ID, 10000, '外观资源 row');
+        assert.equal(await A.win.evaluate((x) => document.querySelector(`[data-export-pack="${x}"]`).disabled, ID), true, '导出 disabled for a non-redistributable model');
+        const ex = await A.win.evaluate((x) => window.petAdmin.exportPack(x), ID);
+        assert.equal(ex.ok, false);
+        await H.adminShot('2b-packs-export-disabled');
+        return H.note(`pack ${ID}: card 「${card.slice(0, 120)}」; credit 「署名：E2E Maker（模型授权要求署名）」; ${why}; 外观资源 导出 disabled, exportPack → ${ex.reason}`);
+      }, () => A.win);
 
       await step(S, '授权信息 on the card: the license details with author and restrictions', async () => {
-        await page.click(`.pack-opt[data-pack="${ID}"] .vrm-info`);
-        const sel = `.pack-list .vrm-license[data-pack="${ID}"]`;
-        await page.waitForSelector(sel);
-        const t = (await page.textContent(sel)).replace(/\s+/g, ' ');
+        await A.lookTab('dafeiyu');
+        await A.click(`[data-vrm-info="${ID}"]`);
+        const sel = `[role="dialog"] [data-vrm-license="${ID}"]`;
+        await A.until((x) => !!document.querySelector(x), sel, 10000, '授权信息');
+        await sleep(400);
+        const t = (await A.text(sel)).replace(/\s+/g, ' ');
         assert.match(t, /VRM 1\.0 授权：仅限个人非商业使用 \/ 不可再分发 \/ 禁止修改 \/ 需署名/);
         assert.match(t, /作者E2E Maker/);
-        await page.locator(sel).scrollIntoViewIfNeeded();
-        await H.shot('3-license');
+        await H.adminShot('3-license');
+        await A.win.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find((b) => /close|关闭/i.test(b.getAttribute('aria-label') || '')).click());
         return H.note(`授权信息: ${t.slice(0, 260)}`);
-      }, page);
+      }, () => A.win);
 
       await step(S, 'the user pack lives in userData: pack.json kind "vrm" with the meta; the model copied there, not into the repo', async () => {
         const dir = path.join(data, 'packs', ID);
@@ -183,7 +257,6 @@ module.exports = function vrmScenarios(ctx) {
       });
 
       await step(S, 'on the desk the imported model is drawn by three-vrm', async () => {
-        await page.click('#panel-close');
         await H.drawing(2);
         await sleep(800);
         const d = await H.ds();
@@ -212,7 +285,7 @@ module.exports = function vrmScenarios(ctx) {
     const samples = {};
     const { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] });
     const errors = watchErrors(page);
-    const H = helpers(page, 'vrm', evidence);
+    const H = helpers(page, 'vrm', evidence, app);
     let ID = null;
     let box = null;
     const petBox = () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
@@ -321,7 +394,7 @@ module.exports = function vrmScenarios(ctx) {
         // a click reacts with pat or happy, never the same twice in a row (fx.pickClickReaction): click until pat
         const tried = [];
         let s = null;
-        for (let i = 0; i < 6 && !(s && s.state === 'pat'); i++) { // a happy left over from before can be caught first: allow a few more clicks
+        for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) { // a happy left over from before can be caught first: allow a few more clicks
           if (i) await rest();
           const b = await petBox();
           await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
@@ -453,11 +526,19 @@ module.exports = function vrmScenarios(ctx) {
         await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 8000 });
         const toast = (await page.textContent('#toast-title')).trim();
         await H.shot('10a-unlock-toast');
-        assert.notEqual(await page.evaluate(() => document.getElementById('toast-open').dataset.panel), 'wardrobe');
+        const toastTo = await page.evaluate(() => document.getElementById('toast-open').dataset.admin);
+        assert.equal(toastTo, 'topics', 'the notice leads to 话题, not to a wardrobe');
         await page.click('#toast-close');
-        const cardsOf = () => page.$$eval('.card', (cs) => cs.map((c) => ({ id: c.dataset.outfit, label: c.querySelector('.nm').textContent, locked: c.classList.contains('locked'), adultTag: !!c.querySelector('.tag.adult') })));
-        const wardrobeHidden = () => page.evaluate(() => document.getElementById('btn-wardrobe').classList.contains('hidden'));
-        assert.equal(await wardrobeHidden(), true, 'one VRM model: no 衣柜');
+        // the wardrobe is the 衣柜 on her page in the settings window; adult outfits are known from the view
+        const cardsOf = async () => {
+          await H.A.lookTab('dafeiyu');
+          const view = await page.evaluate(async () => (await window.pet.boot()).view);
+          const adult = new Set((view.outfits || []).filter((o) => o.rating === 'adult' || o.adult).map((o) => o.id));
+          const rows = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => ({ id: b.dataset.outfit, label: b.textContent.trim().replace(/新$/, ''), locked: b.disabled, equipped: b.dataset.equipped === 'true' })));
+          return rows.map((r) => ({ ...r, adultTag: adult.has(r.id) }));
+        };
+        const single = await cardsOf();
+        assert.equal(single.length, 1, `one VRM model: one look in 衣柜 (${JSON.stringify(single)})`);
         const view0 = await page.evaluate(async () => (await window.pet.boot()).view);
         assert.deepEqual(view0.outfits.map((x) => x.id), ['daily']);
         assert.equal(view0.outfits[0].label, '招牌女仆装');
@@ -466,14 +547,13 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(eq.ok, false);
         const eqP = await page.evaluate(() => window.pet.equipOutfit('pajamas'));
         assert.equal(eqP.ok, false, 'no other outfit to change into');
-        await H.shot('10b-single-look-no-wardrobe');
-        await openCurrentPage(page);
-        const listed = await page.$$eval('.pack-list .pack-opt', (os) => os.map((o) => o.dataset.pack));
+        await H.adminShot('10b-single-look-wardrobe');
+        await H.A.lookTab('dafeiyu');
+        const listed = await H.A.win.evaluate(() => [...document.querySelectorAll('[data-wardrobe] [data-pack]')].map((o) => o.dataset.pack));
         assert.ok(!listed.includes('vrm-e2e-adult'), listed.join(', '));
         assert.ok(listed.includes(ID), listed.join(', '));
-        await page.locator('.pack-list').scrollIntoViewIfNeeded();
-        await H.shot('10c-adult-off-packs');
-        await page.click('#panel-close');
+        await H.A.win.evaluate(() => document.querySelector('[data-wardrobe]').scrollIntoView({ block: 'center' }));
+        await H.adminShot('10c-adult-off-packs');
         const set = await page.evaluate(() => window.pet.setAppearance('vrm-e2e-adult', 'dafeiyu'));
         await sleep(500);
         const key = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
@@ -482,31 +562,27 @@ module.exports = function vrmScenarios(ctx) {
         // contrast: 18+ on → the 18+ VRM pack is offered and its adult outfit 性感女仆装 (成人向) can be worn; off again → gone
         await page.evaluate(() => window.pet.setAdult(true));
         await H.pickPack('vrm-e2e-adult');
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('.card[data-outfit="maid"]:not(.locked)');
+        await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"]:not([disabled])'), null, 10000, 'maid in 衣柜');
         const on = await cardsOf();
         const maidOn = on.find((c) => c.id === 'maid');
         assert.ok(maidOn && maidOn.label === '性感女仆装' && maidOn.adultTag, JSON.stringify(on));
-        await page.click('.card[data-outfit="maid"]');
-        await page.waitForSelector('.card.equipped[data-outfit="maid"]');
-        await page.locator('.card[data-outfit="maid"]').scrollIntoViewIfNeeded();
-        await H.shot('10d-adult-on-wardrobe-maid');
-        await page.click('#panel-close');
+        await H.A.click('[data-outfits] [data-outfit="maid"]');
+        await H.A.until(() => !!document.querySelector('[data-outfits] [data-outfit="maid"][data-equipped="true"]'), null, 10000, 'maid worn');
+        await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('vrm-e2e-adult/maid'), null, { timeout: 10000 }).catch(async () => { throw new Error(`maid: pet look stays ${await page.getAttribute('#pet-look', 'data-key')}`); });
+        await H.adminShot('10d-adult-on-wardrobe-maid');
         await page.evaluate(() => window.pet.setAdult(false));
         await page.waitForFunction(() => !document.getElementById('pet-look').dataset.key.includes('/maid') && !document.getElementById('pet-look').dataset.key.startsWith('vrm-e2e-adult/'), null, { timeout: 8000 });
         const keyOff = await page.evaluate(() => document.getElementById('pet-look').dataset.key);
-        // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 is back, without maid
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('#panel:not(.hidden) .card');
+        // she leaves the 18+ pack for her default (2D) look, whose wardrobe is real: 衣柜 has more, without maid
+        await H.A.until(() => document.querySelectorAll('[data-outfits] [data-outfit]').length > 1, null, 10000, 'her 2D wardrobe');
         const off2 = await cardsOf();
         assert.ok(off2.length > 1, 'her 2D look has a wardrobe');
         assert.ok(!off2.some((c) => c.id === 'maid' || c.adultTag), JSON.stringify(off2));
         const eq2 = await page.evaluate(() => window.pet.equipOutfit('maid'));
         assert.equal(eq2.ok, false);
-        await H.shot('10e-adult-off-again-wardrobe');
-        await page.click('#panel-close');
+        await H.adminShot('10e-adult-off-again-wardrobe');
         const contrast = `18+ on: ${on.map((c) => `${c.label}${c.adultTag ? '[成人向]' : ''}`).join('、')} → wore 性感女仆装; 18+ off again → look ${keyOff}, cards ${off2.map((c) => c.label).join('、')} (no 性感女仆装, no 成人向 tag), equipOutfit(maid) → ${eq2.reason}`;
-        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 hidden, outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
+        return H.note(`adult content off (all unlocked): 外观 lists ${listed.join(', ')} (no vrm-e2e-adult); setAppearance(vrm-e2e-adult) → ok=${set.ok} ${set.reason || ''}, look stays ${key}; toast 「${toast}」 (not to a wardrobe); 衣柜 has one look (${single.map((c) => c.label).join('')}), outfits ${cards.map((c) => `${c.id}=${c.label}`).join('、')} (${unlocked} unlocked); equipOutfit(maid) → ${eq.reason}, equipOutfit(pajamas) → ${eqP.reason}; all-ages pack with maid → ${sneakyNote}\ncontrast — ${contrast}`);
       }, page);
 
       await step(S, 'back to dafeiyu-pixel: the 2D look draws, the VRM canvas is removed and the figure disposed', async () => {
@@ -559,5 +635,364 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport };
+  // ------------------------------------------------------------------ vrmframe
+  // Where her opaque pixels are in the VRM canvas (0..1 of the canvas): read back from the WebGL drawing buffer.
+  const composition = (page) => page.evaluate(() => {
+    const c = document.querySelector('#pet-look canvas.vrm');
+    if (!c) return null;
+    const w = 166;
+    const h = Math.round((c.height / c.width) * w);
+    const t = document.createElement('canvas');
+    t.width = w; t.height = h;
+    const g = t.getContext('2d', { willReadFrequently: true });
+    g.drawImage(c, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1, n = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 24) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return { empty: true };
+    const r = (v) => Math.round(v * 1000) / 1000;
+    return { left: r(x0 / w), right: r((x1 + 1) / w), top: r(y0 / h), bottom: r((y1 + 1) / h), cx: r((x0 + x1 + 1) / 2 / w), fill: r(n / (w * h)), height: r((y1 + 1 - y0) / h) };
+  });
+
+  async function vrmFraming() {
+    const S = 'vrmframe';
+    const { data, env } = dataDir('vrmframe', { prefs: { roam: false } }); // she stays put: window bounds are compared
+    const model = makeModel(ROOT, 'vrmframe');
+    // real models on this machine (never in the repo: their licenses do not allow redistribution): a list split by ':'
+    const realFiles = (process.env.PIXELPET_E2E_REAL_VRM || [path.join(os.homedir(), 'art-archive', 'vrm-test', 'extracted', 'model.vrm'), path.join(os.homedir(), 'art-archive', 'airi-vrm-test', 'AvatarSample_A.vrm')].join(path.delimiter)).split(path.delimiter).filter((f) => f && fs.existsSync(f));
+    for (const f of realFiles) { const rel = path.relative(ROOT, f); assert.ok(rel.startsWith('..') || path.isAbsolute(rel), `a real model must stay outside the repository: ${f}`); }
+    const real = realFiles.length > 0;
+    const evidence = [];
+    let { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] });
+    let errors = watchErrors(page);
+    let H = helpers(page, 'frame', evidence, app);
+    let admin = null;
+    let testId = null;
+    let realId = null;
+    const fullCam = {};
+    const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+    const petBox = () => page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+    const canvasBox = () => page.locator('#pet-look canvas.vrm').boundingBox();
+    const settled = (mode) => page.waitForFunction((m) => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.petFx.vrm(); return c && c.dataset.framing === m && f && f.figures[0] && !f.figures[0].gliding; }, mode, { timeout: 15000 });
+    const rest = async () => { await page.waitForFunction(() => { const s = window.petFx.state(); return s && /^(idle|walk|sit|bored)$/.test(s.state); }, null, { timeout: 15000 }).catch(() => {}); await sleep(400); };
+    // composition shots: standing at rest (not sitting / bored), pointer off her
+    const stand = async () => { await page.mouse.move(5, 5); await page.waitForFunction(() => { const s = window.petFx.state(); return s && s.state === 'idle'; }, null, { timeout: 30000 }).catch(() => {}); await sleep(500); };
+    const adminToast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 8000 });
+    const adminShot = async (name) => { await sleep(200); await admin.screenshot({ path: path.join(SHOTS, `frame-${name}.png`) }); return `vrm/frame-${name}.png`; };
+    // 设置窗口 → 桌宠行为 → 大小与取景 → 取景: click 全身 / 半身 as the owner does
+    const pickGlobal = async (label) => {
+      await admin.evaluate(() => { location.hash = '/behavior'; });
+      await admin.waitForSelector('[data-path="/behavior"] [data-key="prefs.framing"]');
+      await admin.locator('[data-key="prefs.framing"]').getByText(label, { exact: true }).click();
+      await adminToast(new RegExp(`已保存：取景 → ${label}`));
+    };
+    // the glide: camera samples while switching (distance and height move one way, the figure is not rebuilt)
+    const glideSamples = async (ms = 700) => {
+      const out = [];
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        const f = (await page.evaluate(() => window.petFx.vrm())).figures[0];
+        out.push({ t: Date.now() - t0, z: f.camera.z, y: f.camera.y, gliding: f.gliding, frame: f.frame, loaded: f.loaded });
+        await sleep(30);
+      }
+      return out;
+    };
+    // a GIF from rapid screenshots of the pet window (frames kept next to it): `grab(i)` runs before frame i
+    const gif = async (name, n, gapMs, grab = null, fps = 8) => {
+      const dir = path.join(SHOTS, `frame-${name}`);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(dir, { recursive: true });
+      for (let i = 0; i < n; i++) {
+        if (grab) await grab(i);
+        await page.screenshot({ path: path.join(dir, `${String(i).padStart(3, '0')}.png`) });
+        if (gapMs) await sleep(gapMs);
+      }
+      const out = path.join(SHOTS, `frame-${name}.gif`);
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', String(fps), '-i', path.join(dir, '%03d.png'), '-vf', 'split[a][b];[a]palettegen=reserve_transparent=0[p];[b][p]paletteuse', out]);
+      return `vrm/frame-${name}.gif (${n} frames)`;
+    };
+    const monotonic = (xs) => xs.every((v, i) => i === 0 || (v - xs[i - 1]) * Math.sign(xs[xs.length - 1] - xs[0]) >= -1e-6);
+    try {
+      await step(S, 'hatching 大肥鱼; the homemade VRM (outside the repo) is imported and worn; 取景 default 全身', async () => {
+        await H.hatch();
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        testId = imp.pack.id;
+        await H.pickPack(testId); // 外观: wear it, as the owner does
+        await H.drawing(5);
+        await settled('full');
+        const st = await page.evaluate(() => window.pet.getSettings());
+        assert.equal(st.prefs.framing, 'full');
+        assert.deepEqual(st.framings, {});
+        return H.note(`imported ${testId}; prefs.framing=${st.prefs.framing}, framings=${JSON.stringify(st.framings)}`);
+      }, page);
+
+      await step(S, '全身 (homemade model): head to feet, feet on the floor, centred — screenshot', async () => {
+        await stand();
+        const f = await H.fig();
+        const c = await composition(page);
+        fullCam.test = f.camera;
+        fullCam.bounds = await petBounds(app);
+        fullCam.canvas = await canvasBox();
+        fullCam.comp = c;
+        const shot = await H.shot('1-test-full');
+        assert.equal((await H.ds()).framing, 'full');
+        assert.ok(c.bottom > 0.95 && c.top > 0.03 && c.height < 0.97, `feet on the bottom, air above: ${JSON.stringify(c)}`);
+        return H.note(`${shot}: data-framing=full; opaque box ${JSON.stringify(c)}; camera ${JSON.stringify(f.camera)}; window ${JSON.stringify(fullCam.bounds)}; band (measured, unused) ${JSON.stringify(f.band)}`);
+      }, page);
+
+      await step(S, '设置窗口 → 桌宠行为 → 大小与取景: the 取景 control (全身 / 半身, 立即生效) next to 宠物大小', async () => {
+        admin = await openAdminWindow(app, page, 'behavior');
+        await admin.waitForSelector('[data-path="/behavior"] [data-key="prefs.framing"]');
+        const card = await admin.evaluate(() => { const el = document.querySelector('[data-key="prefs.framing"]'); let p = el; for (let i = 0; i < 12 && p; i++) { if (p.textContent.includes('宠物大小') && p.textContent.includes('大小与取景')) return p.textContent.replace(/\s+/g, ' ').slice(0, 400); p = p.parentElement; } return null; });
+        assert.ok(card && /取景/.test(card) && /立即生效/.test(card), card);
+        const shot = await adminShot('2-admin-behavior-full');
+        return H.note(`${shot}: card text 「${card}」`);
+      }, page);
+
+      await step(S, '后台切到 半身: the pet window re-frames at once — head to waist, centred, bigger, same window (right-bottom anchor)', async () => {
+        const before = await page.evaluate(() => window.petFx.vrm().stats);
+        const burst = gif('glide-to-half', 14, 0, null, 12); // the switch frame by frame: a glide, no T-pose, no blank
+        await pickGlobal('半身');
+        const glide = await glideSamples(600);
+        const glideGif = await burst;
+        await settled('half');
+        await stand();
+        const f = await H.fig();
+        const c = await composition(page);
+        const b = await petBounds(app);
+        const after = await page.evaluate(() => window.petFx.vrm().stats);
+        const shot = await H.shot('3-test-half');
+        await adminShot('3-admin-behavior-half');
+        assert.equal(saved().prefs.framing, 'half', 'saved in settings.json');
+        assert.equal(f.band.source, 'bones', 'the band comes from the humanoid bones');
+        assert.deepEqual(b, fullCam.bounds, 'the window keeps its size and its right-bottom corner');
+        assert.ok(f.camera.z < fullCam.test.z * 0.75, `the camera came closer: ${fullCam.test.z} → ${f.camera.z}`);
+        assert.ok(c.bottom > 0.98, `she is cut at the bottom edge (waist): ${JSON.stringify(c)}`);
+        assert.ok(c.top < 0.12, `her head near the top: ${JSON.stringify(c)}`);
+        assert.ok(Math.abs(c.cx - 0.5) < 0.08, `centred: ${JSON.stringify(c)}`);
+        assert.ok(c.fill > fullCam.comp.fill * 1.4, `she is drawn bigger: fill ${fullCam.comp.fill} → ${c.fill}`);
+        assert.equal(after.created, before.created, 'the figure was not rebuilt (no reload, no T-pose)');
+        const zs = glide.map((g) => g.z);
+        assert.ok(monotonic(zs), `the camera glides one way: ${zs.map((z) => z.toFixed(2)).join(' ')}`);
+        assert.ok(glide.every((g) => g.loaded), 'the model stays loaded during the glide');
+        return H.note(`${shot} + ${glideGif}: data-framing=half, data-cut=${(await H.ds()).cut}, band ${JSON.stringify(f.band)}; opaque box ${JSON.stringify(c)} (full: ${JSON.stringify(fullCam.comp)}); camera z ${fullCam.test.z.toFixed(3)} → ${f.camera.z.toFixed(3)}, y ${fullCam.test.y.toFixed(3)} → ${f.camera.y.toFixed(3)}; window ${JSON.stringify(b)} (unchanged); figures created ${before.created} → ${after.created}; glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
+      }, page);
+
+      await step(S, '半身: gaze still follows the cursor left / right', async () => {
+        const box = await canvasBox();
+        await page.mouse.move(box.x + 2, box.y + box.height * 0.2);
+        await sleep(900);
+        const gl = (await H.ds()).gaze;
+        await page.mouse.move(box.x + box.width - 2, box.y + box.height * 0.2);
+        await sleep(900);
+        const gr = (await H.ds()).gaze;
+        const shot = await H.shot('4-half-gaze-right');
+        const x = (g) => Number(g.split(',')[0]);
+        assert.ok(x(gl) < -0.3 && x(gr) > 0.3, `left ${gl} right ${gr}`);
+        // the cursor sweeps right → left → right across the window while she watches it (and idles, blinks)
+        const xs = [1, 0.75, 0.5, 0.25, 0, 0, 0.25, 0.5, 0.75, 1, 1];
+        const sweep = await gif('half-gaze', xs.length * 2, 120, async (i) => { const k = xs[Math.floor(i / 2)]; await page.mouse.move(box.x + 2 + (box.width - 4) * k, box.y + box.height * 0.2); }, 6);
+        return H.note(`${shot} + ${sweep}: data-gaze left ${gl} → right ${gr}`);
+      }, page);
+
+      await step(S, '半身: touch zones map onto her upper body — head / chest / belly reachable, the bottom of the picture is not legs / feet', async () => {
+        const box = await canvasBox();
+        const probe = async (fx, fy) => page.evaluate(([x, y]) => window.petFx.touchPoint(x, y), [box.x + box.width * fx, box.y + box.height * fy]);
+        const rows = [];
+        const zones = new Set();
+        for (const fy of [0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.97]) {
+          const p = await probe(0.5, fy);
+          rows.push(`y=${fy}: ${p ? `${p.zone || '-'} (y_full=${p.y.toFixed(2)}, ${p.framing})` : 'off'}`);
+          if (p && p.zone) zones.add(p.zone);
+        }
+        assert.ok(!zones.has('legs') && !zones.has('feet'), [...zones].join(','));
+        assert.ok(zones.has('head') || zones.has('face'), [...zones].join(','));
+        assert.ok(zones.has('chest') || zones.has('belly'), [...zones].join(','));
+        const p = await probe(0.5, 0.97);
+        assert.equal(p.framing, 'half');
+        return H.note(`touchPoint down the middle of the half-body picture: ${rows.join('; ')}`);
+      }, page);
+
+      await step(S, '半身: 摸摸 (a click) → pat / happy reaction; 拖起 (press and drag) → lifted, she dangles; released back', async () => {
+        await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+        await stand();
+        const idleGif = await gif('half-idle', 16, 200, null, 5); // 待机: breathing, blinking, in 半身
+        let s = null;
+        const tried = [];
+        for (let i = 0; i < 3 && !(s && s.state === 'pat'); i++) {
+          if (i) await rest();
+          const b = await petBox();
+          await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
+          const t0 = Date.now();
+          while (Date.now() - t0 < 2500) { s = await H.ds(); if (s.state === 'pat' || s.state === 'happy') break; await sleep(60); }
+          tried.push(s.state);
+        }
+        await H.shot('5-half-pat');
+        assert.ok(['pat', 'happy'].includes(s.state), tried.join('→')); // a click is pat or happy (fx.pickClickReaction)
+        await rest();
+        const b = await petBox();
+        const x0 = b.x + b.width / 2;
+        const y0 = b.y + b.height * 0.45;
+        const w0 = await petBounds(app);
+        await page.mouse.move(x0, y0);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
+        const dragGif = await gif('half-drag', 8, 60, null, 8); // lifted: dangling while held, 半身
+        let l = null;
+        const t0 = Date.now();
+        while (Date.now() - t0 < 2500) { l = await H.ds(); if (l.state === 'lifted') break; await sleep(60); }
+        const shot = await H.shot('6-half-lifted');
+        await page.mouse.up();
+        assert.equal(l.state, 'lifted');
+        assert.equal(l.framing, 'half', 'still 半身 while dragged');
+        await sleep(800);
+        await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+        const w1 = await petBounds(app);
+        return H.note(`${idleGif}; ${dragGif}; ${shot}: clicks → ${tried.join(' → ')}; drag → state ${l.state} (expr ${l.expr}), framing ${l.framing}; window ${w0.x},${w0.y} → ${w1.x},${w1.y}`);
+      }, page);
+
+      await step(S, '半身: 口型 — her pat line (voice pack audio) opens the mouth, back to 0 after', async () => {
+        await page.evaluate(() => window.pet.setPrefs({ voice: true }));
+        await rest();
+        await sleep(1700);
+        // a click is pat or happy (they alternate); click until one of her interaction lines is playing
+        let playing = false;
+        for (let i = 0; i < 4 && !playing; i++) {
+          if (i) { await rest(); await sleep(1700); }
+          const b = await petBox();
+          await page.mouse.move(b.x + b.width / 2, b.y + b.height * 0.45);
+          await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.45);
+          playing = await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return sp && sp.status === 'playing'; }, null, { timeout: 8000 }).then(() => true, () => false);
+        }
+        assert.ok(playing, 'an interaction line played');
+        let maxOpen = 0;
+        let shot = null;
+        const lips = new Set();
+        const lipDir = path.join(SHOTS, 'frame-half-lipsync');
+        fs.rmSync(lipDir, { recursive: true, force: true });
+        fs.mkdirSync(lipDir, { recursive: true });
+        let lipN = 0;
+        for (let i = 0; i < 120; i++) {
+          if (lipN < 40) await page.screenshot({ path: path.join(lipDir, `${String(lipN++).padStart(3, '0')}.png`) });
+          const d = await H.ds();
+          lips.add(d.lip);
+          const open = Math.max(...d.mouth.split(',').map((p) => Number(p.split(':')[1])));
+          maxOpen = Math.max(maxOpen, open);
+          if (!shot && d.lip === 'audio' && open > 0.25) shot = await H.shot('7-half-lipsync');
+          if ((await page.evaluate(() => window.petFx.lastSpeech().status)) !== 'playing') break;
+          await sleep(50);
+        }
+        await page.waitForFunction(() => { const s = window.petFx.lastSpeech(); return s && s.status !== 'playing'; }, null, { timeout: 15000 });
+        await sleep(700);
+        const after = (await H.ds()).mouth;
+        await page.evaluate(() => window.pet.setPrefs({ voice: false }));
+        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-framerate', '8', '-i', path.join(lipDir, '%03d.png'), '-vf', 'split[a][b];[a]palettegen=reserve_transparent=0[p];[b][p]paletteuse', path.join(SHOTS, 'frame-half-lipsync.gif')]);
+        assert.ok(lips.has('audio') && maxOpen > 0.2, `lip ${[...lips]} max ${maxOpen}`);
+        assert.equal(after, 'aa:0.00,ih:0.00,ou:0.00,ee:0.00,oh:0.00');
+        return H.note(`${shot} + vrm/frame-half-lipsync.gif (${lipN} frames): lip modes ${[...lips].join(',')}, max mouth ${maxOpen.toFixed(2)}; after: ${after}`);
+      }, page);
+
+      await step(S, '后台切回 全身: the first camera and composition again, the window unchanged', async () => {
+        const b0 = await petBounds(app); // (the drag moved the window)
+        const burst = gif('glide-to-full', 14, 0, null, 12);
+        await pickGlobal('全身');
+        const glide = await glideSamples(600);
+        const glideGif = await burst;
+        await settled('full');
+        await stand();
+        const f = await H.fig();
+        const c = await composition(page);
+        const b = await petBounds(app);
+        const shot = await H.shot('8-test-full-again');
+        const d = (k) => Math.abs(f.camera[k] - fullCam.test[k]);
+        assert.ok(d('x') < 1e-6 && d('y') < 1e-6 && d('z') < 1e-6, `camera ${JSON.stringify(f.camera)} vs ${JSON.stringify(fullCam.test)}`);
+        assert.deepEqual(b, b0, 'the window keeps its size and place');
+        assert.equal(saved().prefs.framing, 'full');
+        const zs = glide.map((g) => g.z);
+        assert.ok(monotonic(zs), zs.join(' '));
+        return H.note(`${shot} + ${glideGif}: data-framing=full; camera ${JSON.stringify(f.camera)} = the first one; opaque box ${JSON.stringify(c)} (first: ${JSON.stringify(fullCam.comp)}); glide z ${zs.map((z) => z.toFixed(2)).join(' → ')}`);
+      }, page);
+
+      await step(S, '她的页 → 形象包 → 取景: her own 半身 wins over the global 全身; 跟随全局 goes back', async () => {
+        await admin.evaluate(() => { location.hash = '/characters/dafeiyu'; });
+        await admin.waitForSelector('[data-framing-row="dafeiyu"]', { timeout: 10000 });
+        await admin.locator('[data-framing-row="dafeiyu"]').getByText('半身', { exact: true }).click();
+        await adminToast(/的取景已改为「半身」/);
+        await settled('half');
+        const shotA = await adminShot('9-admin-character-half');
+        const s1 = saved();
+        assert.deepEqual(s1.framings, { dafeiyu: 'half' });
+        assert.equal(s1.prefs.framing, 'full');
+        const fr = await page.evaluate(() => window.petFx.framing());
+        assert.deepEqual([fr.mode, fr.source], ['half', 'character']);
+        await admin.locator('[data-framing-row="dafeiyu"]').getByText(/跟随全局/).click();
+        await adminToast(/的取景已改为「跟随全局（全身）」/);
+        await settled('full');
+        assert.deepEqual(saved().framings, {});
+        return H.note(`${shotA}: framings ${JSON.stringify(s1.framings)} with prefs.framing ${s1.prefs.framing} → pet ${fr.mode} (source ${fr.source}); 跟随全局 → framings {} → pet full`);
+      }, page);
+
+      for (const [ri, realFile] of realFiles.entries()) {
+        await step(S, `a real VRM (${path.basename(realFile)}, local file, not in the repo): 全身 and 半身 screenshots`, async () => {
+          await page.evaluate(() => window.pet.setPrefs({ framing: 'full' })); // start each model from 全身
+          await page.evaluate((x) => window.pet.debugNextOpen(x), realFile);
+          const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+          assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+          realId = imp.pack.id;
+          await H.pickPack(realId);
+          await H.drawing(5, 60000);
+          await settled('full');
+          await stand();
+          const cf = await composition(page);
+          const ff = await H.fig();
+          const shotF = await H.shot(`10-real${ri + 1}-full`);
+          await pickGlobal('半身');
+          await settled('half');
+          await stand();
+          const ch = await composition(page);
+          const fh = await H.fig();
+          const shotH = await H.shot(`11-real${ri + 1}-half`);
+          assert.equal(fh.band.source, 'bones');
+          assert.ok(ch.bottom > 0.98 && ch.top < 0.12 && Math.abs(ch.cx - 0.5) < 0.1, JSON.stringify(ch));
+          assert.ok(fh.band.cut < 0.85 && fh.band.bottom > ff.size.minY + ff.size.h * 0.1, `the band is her upper body, not her whole height: ${JSON.stringify(fh.band)}`);
+          assert.ok(fh.camera.z < ff.camera.z * 0.9, `closer: ${ff.camera.z} → ${fh.camera.z}`); // a chibi's wide head limits how close
+          assert.ok(ch.fill > cf.fill * 1.2, `drawn bigger: fill ${cf.fill} → ${ch.fill}`);
+          return H.note(`${shotF}: full opaque box ${JSON.stringify(cf)}, camera z ${ff.camera.z.toFixed(3)} (VRM ${(await H.ds()).vrm})\n${shotH}: half opaque box ${JSON.stringify(ch)}, camera z ${fh.camera.z.toFixed(3)}, band ${JSON.stringify(fh.band)} (${imp.pack.name})`);
+        }, page);
+      }
+      if (!real) evidence.push('no real VRM on this machine (PIXELPET_E2E_REAL_VRM): the real-model step was skipped');
+
+      await step(S, 'a restart keeps 半身: settings.json prefs.framing=half, the pet starts framed head to waist', async () => {
+        if (!real) await pickGlobal('半身');
+        assert.equal(saved().prefs.framing, 'half');
+        await app.close();
+        ({ app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'] }));
+        errors = watchErrors(page);
+        H = helpers(page, 'frame', evidence, app);
+        await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+        await H.drawing(5, 60000);
+        await settled('half');
+        await stand();
+        const c = await composition(page);
+        const st = await page.evaluate(() => window.pet.getSettings());
+        const shot = await H.shot('12-after-restart-half');
+        assert.equal(st.prefs.framing, 'half');
+        assert.ok(c.bottom > 0.98 && c.top < 0.12, JSON.stringify(c));
+        return H.note(`${shot}: after restart prefs.framing=${st.prefs.framing}, data-framing=${(await H.ds()).framing}, opaque box ${JSON.stringify(c)}`);
+      }, page);
+
+      await step(S, 'no renderer error on the page', async () => {
+        const real = realErrors(errors);
+        assert.deepEqual(real, []);
+        return H.note('no console errors');
+      }, page);
+    } finally {
+      fs.writeFileSync(path.join(SHOTS, 'frame-evidence.txt'), evidence.join('\n\n'));
+      await app.close().catch(() => {});
+    }
+  }
+
+  return { vrmScenario, vrmImport, vrmFraming };
 };

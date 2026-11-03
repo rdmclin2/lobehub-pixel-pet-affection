@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
+const framingLib = require('./framing');
 
 // settings.json: the 18+ confirmation and the adult-content switch (design 7.2, 8.3, 8.4).
 // Unlike pet.json it survives releasing the pet.
@@ -31,7 +32,9 @@ const petScale = (s) => clampScale(s && s.petScale);
 // old single pat), with a hint of the part under the pointer while hovering.
 // 互动语音 (core/interaction-voice.js): with 朗读 on she also says her interaction lines (pat, feed, drag…);
 // automatic murmurs are read only when 朗读碎碎念 is switched on as well.
-const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true };
+// 取景 (core/framing.js, docs/half-body-mode.md): 'full' (head to feet) or 'half' (半身, head to waist, bigger);
+// the one non-switch pref. A character's own choice (settings.framings) and a pack's default go before it.
+const PREFS = { roam: true, clickSound: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
@@ -49,14 +52,21 @@ const UI = { theme: 'auto' };
 const THEMES = ['auto', 'light', 'dark'];
 // 系统: GPU acceleration (app.disableHardwareAcceleration must run before the app is ready → takes a restart).
 const SYSTEM = { hardwareAcceleration: true };
+// 版本与更新: whether the app looks for a new version on its own (at launch, then every 4 hours). Off = only
+// 检查更新 (tray, ⋯ menu, settings window) checks. Before this switch it could only be turned off with
+// PIXELPET_NO_UPDATE=1; a version already downloaded is still installed on quit.
+const UPDATE = { autoCheck: true };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, appearance: {}, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
 
+// Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
-  return Object.fromEntries(Object.entries(PREFS).map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
+  const out = Object.fromEntries(Object.entries(PREFS).filter(([k]) => k !== 'framing').map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
+  out.framing = framingLib.normalizeFraming(p.framing, PREFS.framing);
+  return out;
 }
 
 function normalizeApi(raw) {
@@ -90,6 +100,11 @@ function normalizeSystem(raw) {
   return { hardwareAcceleration: typeof y.hardwareAcceleration === 'boolean' ? y.hardwareAcceleration : SYSTEM.hardwareAcceleration };
 }
 
+function normalizeUpdate(raw) {
+  const u = raw && typeof raw === 'object' ? raw : {};
+  return { autoCheck: typeof u.autoCheck === 'boolean' ? u.autoCheck : UPDATE.autoCheck };
+}
+
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
 function cleanSystemRole(v) {
   return String(v || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, SYSTEM_ROLE_MAX).trim();
@@ -115,6 +130,8 @@ function normalizeSettings(raw) {
   // the 个性化设定 per character ({ claude: '叫我老板' }); empty ones are dropped
   const sr = s.systemRoles && typeof s.systemRoles === 'object' ? s.systemRoles : {};
   s.systemRoles = Object.fromEntries(Object.entries(sr).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && typeof v === 'string').map(([k, v]) => [k, cleanSystemRole(v)]).filter(([, v]) => v));
+  // 取景 per character ({ claude: 'half' }); no entry = follow the pack / the global prefs.framing
+  s.framings = framingLib.normalizeFramings(s.framings);
   s.prefs = normalizePrefs(s.prefs);
   // character ids only (checked against the roster by the caller), no repeats, at most MAX_VISITORS
   s.visitors = [...new Set((Array.isArray(s.visitors) ? s.visitors : []).filter((v) => typeof v === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(v)))].slice(0, MAX_VISITORS);
@@ -128,6 +145,7 @@ function normalizeSettings(raw) {
   s.affectionRules = normalizeAffectionRules(s.affectionRules);
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
+  s.update = normalizeUpdate(s.update);
   return s;
 }
 
@@ -180,4 +198,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, RESTART_KEYS, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { AGE_GATE_VERSION, PET_SCALE, PREFS, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

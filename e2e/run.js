@@ -3,9 +3,11 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
+//   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
-//   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, menus, toast, #panel) in light + dark (LobeHub tokens)
+//   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
+//   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -48,6 +50,15 @@ async function step(scenario, name, fn, page) {
   results.push(rec);
   say(`${rec.status === 'pass' ? 'PASS' : 'FAIL'}  [${scenario}] ${name}${rec.note ? ' — ' + rec.note : ''}`);
   return rec.status === 'pass';
+}
+
+// T-2718 (前台精简) removed the pet window's ⋯ menu and its panels (角色列表 / her page / 衣柜 / 话题 / 聊天记录).
+// Scenarios written against those panels are skipped (recorded as SKIP, not PASS) until they are ported to the
+// settings window; `instead` names the scenarios that cover the same feature there now.
+function retiredScenario(scenario, instead) {
+  const rec = { scenario, name: 'skipped: drove the removed in-pet panels (T-2718)', status: 'skip', ms: 0, shot: null, note: `covered in the settings window by: ${instead}` };
+  results.push(rec);
+  say(`SKIP  [${scenario}] ${rec.name} — ${rec.note}`);
 }
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
@@ -108,6 +119,39 @@ async function openAdminWindow(app, page, route = 'overview') {
   }
   if (!admin) throw new Error('the settings window did not open');
   await admin.waitForSelector(`[data-path="/${route}"]`, { timeout: 15000 });
+  return admin;
+}
+// The settings window sits behind the always-on-top pet and gets few frames: poll with evaluate, not waitFor*.
+async function adminUntil(admin, fn, arg, ms = 15000, what = 'condition') {
+  const t0 = Date.now();
+  for (;;) {
+    if (await admin.evaluate(fn, arg).catch(() => false)) return;
+    if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+// Click a button in the settings window by its text, then the confirm dialog's `okText` (危险操作 ask twice).
+async function adminClickConfirm(admin, text, okText = text) {
+  await adminUntil(admin, (t) => [...document.querySelectorAll('[data-admin-page] button')].some((b) => (b.textContent || '').trim().includes(t) && !b.disabled), text, 15000, `button ${text}`);
+  await admin.evaluate((t) => [...document.querySelectorAll('[data-admin-page] button')].find((b) => (b.textContent || '').trim().includes(t) && !b.disabled).click(), text);
+  if (!okText) return;
+  await adminUntil(admin, (t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === t), okText, 8000, `confirm ${okText}`);
+  await admin.evaluate((t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === t).pop().click(), okText).catch(() => {});
+}
+// A switch (data-key) in the settings window; `okText`: its confirm dialog when switching on asks first.
+async function adminFlip(admin, key, okText = null) {
+  await adminUntil(admin, (k) => !!document.querySelector(`[data-key="${k}"]`), key, 15000, `switch ${key}`);
+  await admin.evaluate((k) => { const el = document.querySelector(`[data-key="${k}"]`); (el.matches('button') ? el : el.querySelector('button')).click(); }, key);
+  if (!okText) return;
+  await adminUntil(admin, (t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === t), okText, 8000, `confirm ${okText}`);
+  await admin.evaluate((t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === t).pop().click(), okText);
+}
+// 设置 → 数据与关于 → 放生并删除 agent / 仅重置本地 (the old ⋯ menu items, T-2718), confirmed; the pet window
+// goes back to choosing a character.
+async function adminRelease(app, page, deleteAgent = true) {
+  const admin = await openAdminWindow(app, page, 'about');
+  const t = deleteAgent ? '放生并删除 agent' : '仅重置本地';
+  await adminClickConfirm(admin, t, t);
   return admin;
 }
 // One setting through the settings window's bridge: the same admin-set its forms call (checked in main, saved by
@@ -311,23 +355,25 @@ async function fresh() {
       return `after restart: ${await page.textContent('#meta')}`;
     }, () => page);
 
-    await step(S, 'without an 18+ answer the adult switch is off and only reopens the same 18+ confirmation', async () => {
-      await clickAct(page, 'menu');
-      assert.equal((await page.textContent('#menu-adult')).trim(), '成人向内容：关（需年满 18 岁）');
-      await page.screenshot({ path: path.join(OUT, 'adult-switch-needs-18.png') });
-      await page.click('#menu-adult');
-      await page.waitForSelector('#age-gate:not(.hidden)');
-      await page.screenshot({ path: path.join(OUT, 'adult-switch-reopens-gate.png') });
-      await page.click('#age-no');
-      await page.waitForSelector('#pet-screen:not(.hidden)');
+    // 成人向内容 lives in 设置 → 内容与安全 now (T-2718): without an 18+ answer, switching it on asks the same
+    // 18+ question first; declining keeps it off
+    await step(S, 'without an 18+ answer the adult switch is off and only opens the 18+ confirmation', async () => {
+      const admin = await openAdminWindow(app, page, 'safety');
+      await adminUntil(admin, () => document.querySelector('[data-key="adultContent"]')?.getAttribute('aria-checked') === 'false', null, 10000, 'adult switch off');
+      await admin.screenshot({ path: path.join(OUT, 'adult-switch-needs-18.png') });
+      await adminFlip(admin, 'adultContent');
+      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"], .ant-modal')].some((d) => /年满 18 周岁/.test(d.textContent)), null, 8000, 'the 18+ question');
+      await admin.screenshot({ path: path.join(OUT, 'adult-switch-reopens-gate.png') });
+      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === '取消').pop().click());
+      await admin.waitForTimeout(500);
       const v = await view(page);
       assert.equal(v.settings.adultContent, false);
       assert.ok(v.outfits.every((o) => o.rating === 'all'));
+      await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
     }, () => page);
 
     await step(S, 'release deletes the agent through lh and returns to character selection', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="release"]');
+      await adminRelease(app, page, true); // 设置 → 数据与关于 → 放生并删除 agent（二次确认）
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 15000 });
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
       const del = calls.find((a) => a[0] === 'agent' && a[1] === 'delete');
@@ -346,6 +392,7 @@ async function fresh() {
 // like every model-chan she is all-ages, so the adult tiers never appear even with 18+ on.
 // Named screenshots go to out/e2e/affection-ui/.
 async function wardrobe() {
+  return retiredScenario('wardrobe', 'frontslim F5 (toast → 衣柜 on her page, equip), admin a13 (her stage / 装扮)');
   const S = 'wardrobe';
   const SHOTS = path.join(OUT, 'affection-ui');
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -679,6 +726,7 @@ async function migrate() {
 // ------------------------------------------------------------- characters
 // Every character has her own agent, topic, name and affection (schema 3). Starts from a schema-2 save.
 async function characters() {
+  return retiredScenario('characters', 'admin (角色图鉴, 切换 / 初次见面), frontslim F10');
   const S = 'characters';
   const SHOTS = path.join(OUT, 'characters');
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -897,16 +945,15 @@ async function dafeiyu() {
       assert.match(created.systemRole, /鱼片/);
       assert.match(created.title, /Mow \(Dafeiyu\)/);
     });
-    await step(S, 'in the wardrobe the signature outfit shows its animation cropped to fill the card', async () => {
+    // 衣柜 moved to the settings window (her page, T-2718): her signature outfit is there and worn
+    await step(S, 'in 设置 → her page the wardrobe lists her signature outfit, worn', async () => {
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-      await clickAct(page, 'wardrobe');
-      await page.waitForSelector('.card[data-outfit="daily"] .vlook video');
-      await page.waitForFunction(() => { const v = document.querySelector('.card[data-outfit="daily"] .vlook video'); return v && v.readyState >= 2; }, null, { timeout: 10000 });
-      const box = await page.evaluate(() => { const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; }; return { card: r('.card[data-outfit="daily"] .vlook'), video: r('.card[data-outfit="daily"] .vlook video'), preview: r('#outfit-preview .vlook') }; });
-      assert.ok(box.card[1] >= 100 && box.video[0] > box.card[0] * 2, JSON.stringify(box));
-      await page.screenshot({ path: path.join(OUT, 'dafeiyu-wardrobe-signature.png') });
-      await page.click('#panel-close');
-      return `card ${box.card.join('x')}, video ${box.video.join('x')}, preview ${box.preview.join('x')}`;
+      const admin = await openAdminWindow(app, page, 'characters/dafeiyu');
+      await adminUntil(admin, () => !!document.querySelector('[data-outfits="dafeiyu"] [data-outfit="daily"]'), null, 15000, 'her wardrobe');
+      const rack = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits="dafeiyu"] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.dataset.equipped === 'true' ? '✓' : ''}`));
+      assert.ok(rack.includes('daily✓'), rack.join(' '));
+      await admin.screenshot({ path: path.join(OUT, 'dafeiyu-wardrobe-signature.png') });
+      return `wardrobe ${rack.join(' ')}`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -1024,17 +1071,18 @@ async function busy() {
       assert.equal(await page.locator('#attach-row .attach-chip').count(), 0);
     }, () => page);
 
-    await step(S, 'turning computer access off from the menu unbinds the agent, and on binds it again', async () => {
-      await clickAct(page, 'menu');
-      assert.match(await page.textContent('#menu-local'), /开/);
-      await page.click('#menu-local');
+    await step(S, 'turning computer access off in 设置 → LobeHub 与本机 unbinds the agent, and on (confirmed) binds it again', async () => {
+      const admin = await openAdminWindow(app, page, 'connection');
+      await adminUntil(admin, () => document.querySelector('[data-key="localAbilities"]')?.getAttribute('aria-checked') === 'true', null, 10000, 'local on');
+      await adminFlip(admin, 'localAbilities');
+      await adminUntil(admin, () => document.querySelector('[data-key="localAbilities"]')?.getAttribute('aria-checked') === 'false', null, 15000, 'local off');
       await idle();
       let edits = fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.agencyConfig);
       assert.deepEqual(edits.at(-1).agencyConfig, { boundDeviceId: null });
-      await clickAct(page, 'menu');
-      assert.match(await page.textContent('#menu-local'), /关/);
-      await page.click('#menu-local');
+      await adminFlip(admin, 'localAbilities', '开启本机能力');
+      await adminUntil(admin, () => document.querySelector('[data-key="localAbilities"]')?.getAttribute('aria-checked') === 'true', null, 15000, 'local on again');
       await idle();
+      await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
       edits = fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.agencyConfig);
       assert.equal(edits.at(-1).agencyConfig.boundDeviceId, 'dev_DAEMON');
     }, () => page);
@@ -1336,8 +1384,7 @@ async function live() {
 
     await step(S, 'release deletes the real agent and returns to character selection', async () => {
       await idle(); // a stage-up makes the pet speak; controls stay hidden until it is done
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="release"]');
+      await adminRelease(app, page, true); // 设置 → 数据与关于 → 放生并删除 agent（二次确认）
       await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 30000 });
       let gone = false;
       try { lh('agent', 'view', agentId); } catch { gone = true; }
@@ -1355,6 +1402,7 @@ async function live() {
 // ------------------------------------------------------------------ advanced
 // Advanced settings: one click unlocks every stage, topic and outfit (adult ones with 18+ and adult on).
 async function advanced() {
+  return retiredScenario('advanced', 'admin (her page → 好感度 → 一键解锁)');
   const S = 'advanced';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adv-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-advfake-'));
@@ -1530,6 +1578,7 @@ async function advanced() {
 // test hook, the UI opens a file dialog), used, and removed again; 大肥鱼 switches between her clips and
 // her pixel pack.
 async function packs() {
+  return retiredScenario('packs', 'admin (角色包: import / use / remove)');
   const S = 'packs';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-packs-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-packsfake-'));
@@ -1677,6 +1726,7 @@ async function packs() {
 // only her own vendor's models; the agent follows the pick, and switching character switches the list (and the model)
 // to the new character's.
 async function models() {
+  return retiredScenario('models', 'admin (her page → 模型)');
   const S = 'models';
   const SHOTS = path.join(OUT, 'models');
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -1809,6 +1859,7 @@ async function models() {
 // she arrives with them; her affection can be unlocked there. The settings window's system pages hold no
 // per-character controls, and their settings still save.
 async function charpage() {
+  return retiredScenario('charpage', 'admin (角色图鉴 → her page, two columns)');
   const S = 'charpage';
   const SHOTS = path.join(OUT, 'charpage');
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -2235,22 +2286,24 @@ async function update() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '⋯ → 检查更新 opens 设置 → 版本与更新, shows the version and says it is the newest one', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="check-update"]');
+    await step(S, '⚙ 设置 → 版本与更新 → 检查更新 shows the version and says it is the newest one', async () => {
+      await clickAct(page, 'settings');
       admin = await adminWin();
+      await admin.waitForSelector('[data-path="/overview"]', { timeout: 15000 });
+      await admin.evaluate(() => { location.hash = '/update'; });
       await admin.waitForSelector('[data-path="/update"]', { timeout: 15000 });
+      await admin.getByRole('button', { name: '检查更新' }).click();
       await waitStatus(/状态 已是最新版本/);
       const text = await updateText();
       assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
       assert.match(text, /上次检查 \d/, 'the time of the check is shown');
       assert.equal(await admin.getByRole('button', { name: '立即更新' }).count(), 0, 'nothing to install');
-      assert.equal(await page.isVisible('#menu-update'), false, 'no download item in ⋯ either');
+      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), '', 'no dot on ⚙ either');
       await admin.screenshot({ path: path.join(OUT, 'update-latest.png') });
       return text.slice(text.indexOf('当前版本'), text.lastIndexOf('检查更新')).trim();
     }, () => admin || page);
 
-    await step(S, 'when a newer release exists, 检查更新 in the settings window finds it; the pet says so and ⋯ offers the download', async () => {
+    await step(S, 'when a newer release exists, 检查更新 in the settings window finds it; the pet says so, ⚙ gets a dot and opens 版本与更新 with the download', async () => {
       tag = 'v9.9.9';
       await admin.getByRole('button', { name: '检查更新' }).click();
       await waitStatus(/状态 需要手动下载新版本 · v?9\.9\.9/);
@@ -2260,11 +2313,15 @@ async function update() {
       await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const said = await bubbleText(page);
       await page.bringToFront();
-      await clickAct(page, 'menu');
-      const menu = await page.textContent('#menu-update');
-      assert.match(menu, /下载新版本 v9\.9\.9/);
+      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), 'update');
+      await hover(page);
       await page.screenshot({ path: path.join(OUT, 'update-menu.png') });
-      return `${text.slice(text.indexOf('状态'), text.indexOf('上次检查')).trim()} · bubble 「${said}」 · menu: ${menu}`;
+      await admin.evaluate(() => { location.hash = '/overview'; });
+      await clickAct(page, 'settings');
+      await admin.waitForSelector('[data-path="/update"]', { timeout: 15000 });
+      const menu = (await admin.textContent('[data-update-download]')).trim();
+      assert.match(menu, /下载新版本 v9\.9\.9/);
+      return `${text.slice(text.indexOf('状态'), text.indexOf('上次检查')).trim()} · bubble 「${said}」 · ⚙ → #/update: ${menu}`;
     }, page);
   } finally {
     await app.close().catch(() => {});
@@ -2454,6 +2511,7 @@ const ROSTER = [
 ];
 const SPECIES_MEMES = { dafeiyu: 'onebowl', claude: 'think', grok: 'interesting', gemini: 'peek', gpt: 'glad' };
 async function roster() {
+  return retiredScenario('roster', "admin a13b (every character's built-in packs on her stage)");
   const only = process.argv[3];
   for (const ch of ROSTER) if (!only || only === ch.id) await rosterOne(ch);
 }
@@ -3295,12 +3353,9 @@ async function touch() {
 
     await step(S, 'parts are found on the 旧版像素 pack too (83×113, drawn as blocks): head and feet', async () => {
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
-      await openCharacters(page, 'claude');
-      await page.click('.pack-opt[data-pack="claude-classic"] .pick');
-      await page.waitForSelector('.pack-opt.on[data-pack="claude-classic"]');
-      await page.click('#panel-close');
+      // her look is chosen in 设置 → her page (T-2718); the same set-appearance channel
+      assert.equal((await page.evaluate(() => window.pet.setAppearance('claude-classic', 'claude'))).ok, true);
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'claude-classic/daily', null, { timeout: 5000 });
-      await page.waitForFunction(() => window.innerWidth < 400, null, { timeout: 5000 });
       await page.evaluate(() => window.pet.debugSet({ affection: 90, mood: 60, sleeping: false }));
       await settle();
       const got = [];
@@ -4301,18 +4356,16 @@ async function ivoice() {
 
     // Every character has her own agent (#51): meeting 克洛蒂 the first time is her hello (met); going back to
     // one met before is 切换角色 (switch). Both are read in her own Fish voice.
-    await step(S, 'I11 切换角色: ⋯ → 角色列表 → 克洛蒂 — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
+    await step(S, 'I11 切换角色: 设置 → 角色 → 克洛蒂 (switch-character) — her hello, then her greeting on coming back, read in her own Fish voice', async () => {
       const toClaude = async () => {
-        await clickAct(page, 'menu');
-        await page.click('[data-menu="characters"]');
-        await pickCharacter(page, 'claude');
+        const r = await page.evaluate(() => window.pet.switchCharacter('claude', ''));
+        assert.equal(r.ok, true, JSON.stringify(r));
       };
       const r1 = await interact('初次见面 克洛蒂 met', /^met$/, toClaude);
       let sp = await last();
       assert.equal(sp.species, 'claude');
       assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
       await shot('i11-met');
-      await page.click('#panel-close');
       await idle();
       await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
       await page.waitForTimeout(800);
@@ -4321,12 +4374,13 @@ async function ivoice() {
       assert.equal(sp.species, 'claude');
       assert.equal(sp.voiceId, 'faccba1a8ac54016bcfc02761285e67f');
       await shot('i11-switch');
-      await page.click('#panel-close');
       return `${r1} || ${r2}`;
     }, page);
 
     await step(S, 'I12 rapid clicks: 8 clicks in 0.8 s — the bubble follows every one, the voice says one line, nothing piles up', async () => {
       await idle();
+      // a stage-up toast from meeting her stays up to 30 s over her head (no in-pet panel closes it any more): close it like the owner would
+      if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
       const pts = await zonePoints(page);
       const n0 = (await slog()).length;
       const m0 = mock.log.length;
@@ -4485,8 +4539,7 @@ async function chatvoice() {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await waitReply(page, 15000);
       await idle();
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="settings"]'); // ⋯ → 设置… opens the settings window (at 概览); then its 朗读 page
+      await clickAct(page, 'settings'); // ⚙ 设置 opens the settings window (at 小屋); then its 朗读 page
       admin = await openAdminWindow(app, page, 'overview'); // let it load first: a route sent while it loads is lost
       admin = await openAdminWindow(app, page, 'tts');
       await admin.click('[data-key="prefs.voice"]');
@@ -4671,14 +4724,16 @@ async function history() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
   const logged = () => JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages;
+  // 聊天记录 lives in the settings window now (玩法 → 和她一起 → 聊天记录, T-2718)
+  let admin = null;
   const openHistory = async () => {
-    // the stage-up toast from H2 stays up to 30 s over the top of the window (and the ⋯ menu): close it like the owner would
-    if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
-    await clickAct(page, 'menu');
-    await page.click('[data-menu="history"]');
-    await page.waitForSelector('#panel:not(.hidden)');
-    await page.waitForFunction(() => document.getElementById('panel-title').textContent.startsWith('聊天记录') && document.querySelector('.history-empty, .history-item'));
+    admin = await openAdminWindow(app, page, 'history');
+    await admin.evaluate(() => { location.hash = '/overview'; });
+    await admin.evaluate(() => { location.hash = '/history'; }); // mounted again: the list is read afresh
+    await adminUntil(admin, () => !!document.querySelector('[data-history-empty], [data-session]'), null, 15000, '聊天记录');
   };
+  const shotAdmin = (n) => admin.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+  const items = () => admin.evaluate(() => [...document.querySelectorAll('[data-session]')].map((b) => ({ time: b.querySelector('[data-history-time]').textContent, who: b.querySelector('[data-history-who]').textContent, count: b.querySelector('[data-history-count]').textContent.trim(), preview: b.querySelector('[data-history-preview]').textContent })));
   try {
     await page.waitForSelector('.char-card');
     await page.locator('.char-card[data-species="claude"]').click();
@@ -4687,17 +4742,18 @@ async function history() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'H1 ⋯ → 聊天记录 opens; with only her greeting so far it shows the empty state', async () => {
+    await step(S, 'H1 设置 → 聊天记录 opens; with only her greeting so far it shows the empty state', async () => {
       await openHistory();
-      assert.match(await page.textContent('.history-empty'), /还没有你主动发起的聊天/);
-      assert.equal(await page.locator('.history-item').count(), 0);
+      const empty = await admin.evaluate(() => document.querySelector('[data-history-empty]')?.innerText || '');
+      assert.match(empty, /还没有你主动发起的聊天/);
+      assert.equal(await admin.locator('[data-session]').count(), 0);
       assert.ok(logged().some((m) => m.origin === 'greeting' && m.kind === 'met'), 'the greeting was logged (origin greeting)');
-      await shot('h1-empty');
-      await page.click('#panel-close');
-      return `empty state: 「${(await page.textContent('.history-empty')).trim().slice(0, 40)}」 while chat-log.json holds ${logged().length} system message(s)`;
-    }, page);
+      await shotAdmin('h1-empty');
+      return `empty state: 「${empty.trim().slice(0, 40)}」 while chat-log.json holds ${logged().length} system message(s)`;
+    }, () => admin);
 
     await step(S, 'H2 system lines happen: touch, feed, a proactive "hungry" line and a stage-up', async () => {
+      await page.bringToFront();
       await page.evaluate(() => window.pet.touch('head'));
       await page.evaluate(() => window.pet.act('feed', 'rice'));
       await page.evaluate(() => window.pet.debugSet({ hunger: 90, lastSpokeAt: 0 }));
@@ -4716,6 +4772,7 @@ async function history() {
     }, page);
 
     await step(S, 'H3 the owner sends one message from the chat box and gets a reply', async () => {
+      if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
       await clickAct(page, 'chat');
       await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
       await page.press('#chat-input', 'Enter');
@@ -4730,51 +4787,52 @@ async function history() {
 
     await step(S, 'H4 聊天记录 lists only that conversation: time, first message, 2 条; no greeting / proactive / stage-up text', async () => {
       await openHistory();
-      const items = await page.$$eval('.history-item', (bs) => bs.map((b) => ({ time: b.querySelector('.history-time').textContent, who: b.querySelector('.history-who').textContent, count: b.querySelector('.history-count').textContent, preview: b.querySelector('.history-preview').textContent })));
-      assert.equal(items.length, 1, JSON.stringify(items));
-      assert.equal(items[0].preview, '今天也辛苦啦，晚上想吃什么？');
-      assert.equal(items[0].count, '2 条');
-      assert.match(items[0].time, /\d{2}:\d{2}/);
-      const panel = await page.textContent('#panel');
-      assert.ok(!/\[事件\]|echo: \[/.test(panel), 'no system text in the list');
+      await adminUntil(admin, () => document.querySelectorAll('[data-session]').length > 0, null, 10000, 'the conversation');
+      const list = await items();
+      assert.equal(list.length, 1, JSON.stringify(list));
+      assert.equal(list[0].preview, '今天也辛苦啦，晚上想吃什么？');
+      assert.equal(list[0].count, '2 条');
+      assert.match(list[0].time, /\d{2}:\d{2}/);
+      const text = await admin.evaluate(() => document.querySelector('[data-history-list]').innerText);
+      assert.ok(!/\[事件\]|echo: \[/.test(text), 'no system text in the list');
       const hidden = await page.evaluate(() => window.pet.historyList().then((r) => r.hidden));
-      await shot('h4-list');
-      return `${items.map((i) => `${i.time} · ${i.who} · ${i.count} · 「${i.preview}」`).join(' | ')}; left out by origin: ${JSON.stringify(hidden)}`;
-    }, page);
+      await shotAdmin('h4-list');
+      return `${list.map((i) => `${i.time} · ${i.who} · ${i.count} · 「${i.preview}」`).join(' | ')}; left out by origin: ${JSON.stringify(hidden)}`;
+    }, () => admin);
 
-    await step(S, 'H5 opening it shows the owner\'s message and her reply in full; ← 返回列表 goes back', async () => {
-      await page.click('.history-item');
-      await page.waitForSelector('.history-thread');
-      const msgs = await page.$$eval('.history-msg', (ms) => ms.map((m) => ({ role: m.dataset.role, text: m.querySelector('.history-msg-text').textContent })));
+    await step(S, 'H5 opening it shows the owner\'s message and her reply in full; 返回列表 goes back', async () => {
+      await admin.evaluate(() => document.querySelector('[data-session]').click());
+      await adminUntil(admin, () => !!document.querySelector('[data-history-thread] [data-role]'), null, 10000, 'the thread');
+      const msgs = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-role]')].map((m) => ({ role: m.dataset.role, text: m.querySelector('[data-history-text]').textContent })));
       assert.deepEqual(msgs, [{ role: 'user', text: '今天也辛苦啦，晚上想吃什么？' }, { role: 'pet', text: 'echo: 今天也辛苦啦，晚上想吃什么？' }]);
-      await shot('h5-detail');
-      await page.click('.history-back');
-      await page.waitForSelector('.history-item');
+      await shotAdmin('h5-detail');
+      await admin.evaluate(() => document.querySelector('[data-history-back]').click());
+      await adminUntil(admin, () => !!document.querySelector('[data-session]'), null, 10000, 'the list again');
       return msgs.map((m) => `${m.role}「${m.text}」`).join(' → ');
-    }, page);
+    }, () => admin);
 
     await step(S, 'H6 after a restart the history is still there (chat-log.json)', async () => {
       await app.close();
       ({ app, page } = await launch(env));
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await openHistory();
-      const previews = await page.$$eval('.history-preview', (ps) => ps.map((p) => p.textContent));
+      const previews = (await items()).map((i) => i.preview);
       assert.deepEqual(previews, ['今天也辛苦啦，晚上想吃什么？']);
-      await shot('h6-after-restart');
+      await shotAdmin('h6-after-restart');
       return `previews after restart: ${previews.join(', ')}`;
-    }, page);
+    }, () => admin);
 
-    await step(S, 'H7 ⋯ → 重新开始话题: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, history keeps both', async () => {
+    await step(S, 'H7 设置 → LobeHub 与本机 → 重新开始话题: confirm, her next run goes without -t into a new LobeHub topic; old topic not deleted, history keeps both', async () => {
       const runs = () => fs.readFileSync(path.join(fakeDir, 'runs.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
       const oldTopic = runs().pop().topic;
-      await page.click('#panel-close');
-      await clickAct(page, 'menu');
-      await page.waitForSelector('[data-menu="new-topic"]');
-      await shot('h7-menu-new-topic');
-      await page.click('[data-menu="new-topic"]');
-      await page.waitForFunction(() => /换个新话题/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
-      assert.match(page.lastDialog || '', /旧话题不会删除/);
-      await shot('h7-new-topic-bubble');
+      await admin.evaluate(() => { location.hash = '/connection'; });
+      await adminUntil(admin, () => !!document.querySelector('[data-new-topic]'), null, 10000, '重新开始话题');
+      await admin.evaluate(() => document.querySelector('[data-new-topic]').click());
+      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"], .ant-modal')].some((d) => /旧话题不会删除/.test(d.textContent)), null, 8000, 'the confirmation');
+      await shotAdmin('h7-menu-new-topic');
+      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === '重新开始话题').pop().click());
+      await adminUntil(admin, () => ![...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === '重新开始话题'), null, 8000, 'the dialog to close');
+      await page.bringToFront();
       await clickAct(page, 'chat');
       await page.fill('#chat-input', '我们聊点新的吧');
       await page.press('#chat-input', 'Enter');
@@ -4785,11 +4843,12 @@ async function history() {
       const calls = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8');
       assert.doesNotMatch(calls, /"topic","delete"|"agent","delete"/);
       await openHistory();
-      const previews = await page.$$eval('.history-preview', (ps) => ps.map((p) => p.textContent));
+      await adminUntil(admin, () => document.querySelectorAll('[data-session]').length === 2, null, 10000, 'two conversations');
+      const previews = (await items()).map((i) => i.preview);
       assert.equal(previews.length, 2, previews.join(' | '));
-      await shot('h7-history-after-new-topic');
+      await shotAdmin('h7-history-after-new-topic');
       return `topic ${oldTopic} → ${newTopic}; nothing deleted; history: ${previews.join(' | ')}`;
-    }, page);
+    }, () => admin);
   } finally {
     await app.close().catch(() => {});
   }
@@ -4806,6 +4865,7 @@ async function history() {
 // her back into her usual look and an all-ages outfit.
 // usage: node e2e/run.js adultlook [character id, default claude]. Screenshots in out/e2e/adultlook-<id>/.
 async function adultLook() {
+  return retiredScenario(`adultlook-${(process.argv[3] || 'claude')}`, 'admin (内容与安全 + her page → 装扮)');
   const ch = ROSTER.find((r) => r.id === (process.argv[3] || 'claude'));
   const S = `adultlook-${ch.id}`;
   const SHOTS = path.join(OUT, S);
@@ -4945,6 +5005,7 @@ async function adultLook() {
 }
 
 async function outfitScenario() {
+  return retiredScenario('outfit', 'frontslim F5, admin a13');
   const ch = ROSTER.find((r) => r.id === (process.argv[3] || 'claude'));
   const OID = process.argv[4] || 'swimsuit';
   const O = require('../src/core/outfits').OUTFITS.find((o) => o.id === OID);
@@ -5556,6 +5617,7 @@ async function live2dScenario() {
 // ------------------------------------------------------------------ l2dimport
 // 外观 → 导入 Live2D 模型…: the user's own Cubism model (a plain folder, no pack.json) becomes her look.
 async function live2dImport() {
+  return retiredScenario('l2dimport', 'admin (her page → 装扮 → 导入 Live2D…)');
   const S = 'l2dimport';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2di-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2difake-'));
@@ -5730,6 +5792,7 @@ function vrmGlb(json) {
   return out;
 }
 async function vrmUi() {
+  return retiredScenario('vrmui', 'admin (her page → 装扮 → 导入 VRM…); vrm / vrmimport scenarios');
   const S = 'vrmui';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmui-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmuifake-'));
@@ -6037,7 +6100,9 @@ async function vrmUi() {
 
 // ------------------------------------------------------------------ vrm / vrmimport
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
-const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct });
+const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
+// Live2D 取景 (半身): e2e/live2d-frame.js
+const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 
 // ------------------------------------------------------------------ asr (语音输入)
 // 🎤 in the chat row: Chromium's fake microphone plays a WAV (--use-file-for-fake-audio-capture), the page
@@ -6811,26 +6876,22 @@ async function streamScenario() {
       return note(`proactive (hungry): ${seen.map((t) => `「${t}」`).join(' → ')}; new stream id ${sl[0].id}`);
     }, page);
 
-    await step(S, 'S6 an open 聊天记录 conversation fills in her reply as it is written, then shows what was saved', async () => {
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="history"]');
-      await page.waitForSelector('.history-item');
-      await page.locator('.history-item').first().click();
-      await page.waitForSelector('.history-thread');
+    // 聊天记录 is a page of the settings window now (T-2718): while she writes, the bubble streams; once she is
+    // done, the conversation there shows exactly what was saved
+    await step(S, 'S6 a streamed reply lands in 设置 → 聊天记录 as saved, once she is done', async () => {
       reply({ pieces: ['记录里', '也能', '看到我', '一点点写出来。'], gapMs: 500 });
-      // the chat box is behind the panel; the same chat IPC the box uses
       const done = page.evaluate(() => window.pet.chat('历史面板测试', [], []));
-      // the conversation was drawn before this round: it is drawn again with the new message, then her reply fills in
-      await page.waitForFunction(() => { const r = document.querySelector('.history-msg.pet.streaming .history-msg-text'); return r && r.textContent.length > 0; }, null, { timeout: 10000 });
-      const live1 = await page.evaluate(() => document.querySelector('.history-msg.pet.streaming .history-msg-text').textContent);
-      assert.ok('记录里也能看到我一点点写出来。'.startsWith(live1) && live1.length < 15, `live row 「${live1}」`);
-      assert.equal(await page.evaluate(() => document.body.classList.contains('busy')), true);
+      await page.waitForFunction(() => document.getElementById('bubble').classList.contains('streaming'), null, { timeout: 10000 });
+      const live1 = await bubbleText(page);
       await shot('s6-history-live');
       await done;
-      await page.waitForFunction(() => !document.querySelector('.history-msg.pet.streaming') && [...document.querySelectorAll('.history-msg.pet .history-msg-text')].some((e) => e.textContent === '记录里也能看到我一点点写出来。'), null, { timeout: 10000 });
-      await shot('s6-history-final');
-      await page.click('#panel-close');
-      return note(`history row while writing: 「${live1}」; after: the saved reply`);
+      await idle();
+      const admin = await openAdminWindow(app, page, 'history');
+      await adminUntil(admin, () => !!document.querySelector('[data-session]'), null, 10000, 'conversations');
+      await admin.evaluate(() => document.querySelector('[data-session]').click());
+      await adminUntil(admin, () => [...document.querySelectorAll('[data-history-thread] [data-role="pet"] [data-history-text]')].some((e) => e.textContent === '记录里也能看到我一点点写出来。'), null, 10000, 'the saved reply');
+      await admin.screenshot({ path: path.join(SHOTS, 's6-history-final.png') });
+      return note(`bubble while writing: 「${live1}」; 聊天记录 after: the saved reply`);
     }, page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'stream-log.txt'), evidence.join('\n\n') + '\n');
@@ -7032,6 +7093,433 @@ async function designScenario() {
   }
 }
 
+// ---------------------------------------------------------------- frontslim (前台精简, T-2718)
+// The pet window keeps 喂食 / 玩耍 / 睡觉 / 聊天 and one ⚙ 设置 button; 话题, 衣柜 and the ⋯ menu are gone.
+// ⚙, a right click on her, Ctrl+, and the unlock toast open the settings window, and every item of the old ⋯
+// menu is clicked there for real: 新版本, 设置, 角色列表, 聊天记录, 重新开始话题, 成人向内容, 本机能力, 动作,
+// 回到右下角, 检查更新, 放生并删除 agent, 仅重置本地, 打开错误日志, 素材署名, 退出 (+ 话题 and 衣柜).
+// Free: fake lh, a local update feed, no network.
+async function frontslimScenario() {
+  const S = 'frontslim';
+  const SHOTS = path.join(OUT, 'frontslim');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const http = require('node:http');
+  let tag = 'v0.0.1';
+  const server = http.createServer((req, res) => {
+    if (req.url !== '/releases/latest') { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ tag_name: tag, html_url: `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/tag/${tag}` }));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-slim-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-slimfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_UPDATE_TEST: '1', PIXELPET_UPDATE_FEED: `http://127.0.0.1:${server.address().port}` });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(`pet: ${e} @ ${String(e.stack || '').split('\n').slice(1, 3).join(' ')}`));
+  const calls = () => { try { return fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l).args); } catch { return []; } };
+  const petState = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+  const shotPet = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+  const desktop = (name) => {
+    try {
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'x11grab', '-video_size', process.env.PIXELPET_E2E_SCREEN || '1280x1024', '-i', process.env.DISPLAY, '-frames:v', '1', path.join(SHOTS, `${name}.png`)]);
+      return `${name}.png`;
+    } catch { return 'no desktop capture'; }
+  };
+  let admin = null;
+  const adminWins = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.webContents.getURL().includes('admin-ui')).length);
+  const findAdmin = async () => {
+    for (let i = 0; i < 200; i++) {
+      const w = app.windows().find((p) => p.url().includes('admin-ui'));
+      if (w) {
+        if (w !== admin) {
+          w.on('pageerror', (e) => errors.push(`admin: ${e}`));
+          await w.setViewportSize({ width: 1180, height: 860 }).catch(() => {});
+        }
+        return w;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('the settings window did not open');
+  };
+  const closeAdmin = async () => {
+    await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
+    for (let i = 0; i < 50 && (await adminWins()); i++) await new Promise((r) => setTimeout(r, 100));
+    admin = null;
+  };
+  // the settings window sits behind the always-on-top pet and gets few frames: poll with evaluate, not waitFor*
+  const until = async (w, fn, arg, ms = 15000, what = 'condition') => {
+    const t0 = Date.now();
+    for (;;) {
+      if (await w.evaluate(fn, arg).catch(() => false)) return;
+      if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  };
+  const atPath = (p) => until(admin, (x) => !!document.querySelector(`[data-path="${x}"]`), p, 15000, `page ${p}`);
+  const go = async (p) => { await admin.evaluate((x) => { location.hash = x; }, p); await atPath(p); await admin.waitForTimeout(300); };
+  const shotAdmin = async (n) => { await admin.bringToFront().catch(() => {}); await admin.waitForTimeout(250); await admin.screenshot({ path: path.join(SHOTS, `${n}.png`) }); };
+  const pageText = () => admin.evaluate(() => document.querySelector('[data-admin-page]').innerText.replace(/\s+/g, ' '));
+  const toastSeen = (re) => until(admin, (src) => [...document.querySelectorAll('li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, 10000, `toast ${re}`);
+  const clickText = (sel, text) => admin.evaluate(([s, t]) => { const b = [...document.querySelectorAll(s)].find((x) => (x.textContent || '').trim().includes(t) && !x.disabled); if (!b) throw new Error(`no ${s} "${t}"`); b.click(); }, [sel, text]);
+  const dialogOk = async (okText) => {
+    await until(admin, (t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === t), okText, 8000, `confirm dialog "${okText}"`);
+    const title = await admin.evaluate(() => { const d = [...document.querySelectorAll('[role="dialog"], .ant-modal')].pop(); return d ? d.innerText.replace(/\s+/g, ' ').slice(0, 120) : ''; });
+    return title;
+  };
+  const dialogClick = (t) => admin.evaluate((x) => { const b = [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((e) => (e.textContent || '').trim() === x).pop(); b.click(); }, t);
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const flip = (key) => admin.evaluate((k) => { const el = document.querySelector(`[data-key="${k}"]`); (el.matches('button') ? el : el.querySelector('button')).click(); }, key);
+  const map = [];
+  try {
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.fill('#pet-name', '小蓝');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await idle();
+
+    await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
+      await hover(page);
+      await page.waitForTimeout(400);
+      await shotPet('f1-pet-toolbar');
+      const ui = await page.evaluate(() => ({
+        acts: [...document.querySelectorAll('#toolbar [data-act]')].map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
+        visible: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => b.offsetParent).length,
+        gone: ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)),
+        menuBtn: document.querySelectorAll('[data-act="menu"], [data-menu]').length,
+        text: document.getElementById('toolbar').innerText.replace(/\s+/g, ' ').trim(),
+      }));
+      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'settings:设置']);
+      assert.equal(ui.visible, 5);
+      assert.deepEqual(ui.gone, []);
+      assert.equal(ui.menuBtn, 0);
+      assert.doesNotMatch(ui.text, /话题|衣柜/);
+      return `toolbar ${JSON.stringify(ui.acts)}; text 「${ui.text}」; removed elements present: ${ui.gone.length}`;
+    }, page);
+
+    await step(S, 'F2 前台互动保留：喂食菜单、玩耍、聊天输入框都还在且可用', async () => {
+      await clickAct(page, 'feed');
+      await page.waitForSelector('#food-menu:not(.hidden)');
+      const foods = await page.$$eval('#food-menu .btn', (b) => b.map((x) => x.textContent.trim()));
+      await shotPet('f2-food-menu');
+      await page.click('#food-menu .btn');
+      await idle();
+      await clickAct(page, 'chat');
+      await page.waitForSelector('#chat-row:not(.hidden)');
+      await page.fill('#chat-input', '你好呀，今天过得怎么样？');
+      await page.click('#chat-send');
+      const reply = await waitReply(page, 20000);
+      await idle();
+      return `foods ${foods.join('/')}; chat reply 「${reply.slice(0, 40)}」`;
+    }, page);
+
+    await step(S, 'F3 点 ⚙ 设置 打开后台（单实例），落在 小屋', async () => {
+      await clickAct(page, 'settings');
+      admin = await findAdmin();
+      await atPath('/overview');
+      const n = await adminWins();
+      assert.equal(n, 1);
+      await shotAdmin('f3-admin-from-gear');
+      const d = desktop('f3-desktop-pet-and-admin');
+      map.push(['设置', '⚙ 设置按钮 / 右键 / Ctrl+, → 后台 小屋']);
+      return `settings windows ${n}; path /overview; ${d}`;
+    }, () => admin);
+
+    await step(S, 'F4 右键她 → 打开后台（不再弹菜单）；Ctrl+, 也打开后台', async () => {
+      await closeAdmin();
+      await page.bringToFront();
+      await hover(page);
+      const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { id: el.id, x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
+      const hit = await page.evaluate(({ x, y }) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName}#${e.id}.${e.className}` : null; }, box);
+      await page.mouse.click(box.x, box.y, { button: 'right' });
+      try { admin = await findAdmin(); } catch (e) { throw new Error(`${e.message} (right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit}, pet-hit ${box.id})`); }
+      await atPath('/overview');
+      const popups = await page.evaluate(() => [...document.querySelectorAll('.popup')].filter((p) => !p.classList.contains('hidden')).map((p) => p.id));
+      assert.deepEqual(popups, [], 'no menu pops up in the pet window');
+      await closeAdmin();
+      await page.bringToFront();
+      // a real key press as the window receives it (before-input-event sees sendInputEvent, not CDP key events)
+      await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui'));
+        w.focus();
+        w.webContents.sendInputEvent({ type: 'keyDown', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
+        w.webContents.sendInputEvent({ type: 'keyUp', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
+      });
+      admin = await findAdmin();
+      await atPath('/overview');
+      return `right click → settings window (pet popups open: ${popups.length}); Ctrl+, → settings window (${await adminWins()})`;
+    }, () => admin);
+
+    await step(S, 'F5 升阶 Toast「去衣柜看看」→ 后台她的页（衣柜），点衣服立即换上', async () => {
+      await page.bringToFront();
+      await page.evaluate(() => window.pet.debugSet({ affection: 70 }));
+      await page.waitForSelector('#unlock-toast:not(.hidden)', { timeout: 10000 });
+      await idle();
+      const btn = (await page.textContent('#toast-open')).trim();
+      const where = await page.getAttribute('#toast-open', 'data-admin');
+      await hover(page);
+      await shotPet('f5-unlock-toast');
+      await page.click('#toast-open');
+      admin = await findAdmin();
+      await atPath(`/${where}`);
+      let wore = '';
+      if (where.startsWith('characters/')) {
+        await until(admin, () => !!document.querySelector('[data-outfits] [data-outfit]'), null, 15000, 'the outfit rack');
+        const before = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.disabled ? '🔒' : ''}${b.dataset.equipped === 'true' ? '✓' : ''}`));
+        await shotAdmin('f5-admin-wardrobe');
+        const pick = await admin.evaluate(() => { const b = [...document.querySelectorAll('[data-outfits] [data-outfit]')].find((x) => !x.disabled && x.dataset.equipped !== 'true'); if (b) { b.click(); return b.dataset.outfit; } return null; });
+        if (pick) {
+          await until(admin, (id) => document.querySelector(`[data-outfits] [data-outfit="${id}"]`)?.dataset.equipped === 'true', pick, 10000, 'outfit equipped');
+          const petOutfit = await page.evaluate(() => window.pet.debugHeartbeat().then((v) => v.outfit));
+          assert.equal(petOutfit, pick);
+          wore = `; wore ${pick} (pet view.outfit=${petOutfit})`;
+          await shotAdmin('f5-admin-wardrobe-worn');
+        }
+        wore = `; outfits ${before.join(' ')}${wore}`;
+      } else await shotAdmin('f5-admin-topics');
+      return `toast button 「${btn}」 → #/${where}${wore}`;
+    }, () => admin);
+
+    await step(S, 'F6 话题 → 后台 玩法 › 话题：点「聊聊」她在桌面上开口', async () => {
+      await go('/topics');
+      await until(admin, () => document.querySelectorAll('[data-topic]').length > 0, null, 10000, 'topics');
+      const info = await admin.evaluate(() => ({ all: document.querySelectorAll('[data-topic]').length, open: document.querySelectorAll('[data-topic][data-locked="false"]').length }));
+      await shotAdmin('f6-admin-topics');
+      const id = await admin.evaluate(() => { const r = document.querySelector('[data-topic][data-locked="false"]'); r.querySelector('button').click(); return r.dataset.topic; });
+      await page.waitForFunction(() => document.body.classList.contains('busy') || /echo/.test(document.getElementById('bubble').textContent), null, { timeout: 10000 });
+      const reply = await waitReply(page, 20000);
+      await idle();
+      const run = calls().filter((a) => a[0] === 'agent' && a[1] === 'run').pop();
+      map.push(['话题（原工具栏按钮）', '玩法 › 和她一起 › 话题（聊聊）']);
+      return `${info.open}/${info.all} topics unlocked; 聊聊 ${id} → pet bubble 「${reply.slice(0, 50)}」; lh ${run.slice(0, 2).join(' ')}`;
+    }, () => admin);
+
+    await step(S, 'F7 聊天记录 → 后台 玩法 › 聊天记录：列表与对话', async () => {
+      await go('/history');
+      await until(admin, () => document.querySelectorAll('[data-session]').length > 0, null, 10000, 'a conversation');
+      const n = await admin.evaluate(() => document.querySelectorAll('[data-session]').length);
+      await shotAdmin('f7-admin-history-list');
+      await admin.evaluate(() => document.querySelector('[data-session]').click());
+      await until(admin, () => !!document.querySelector('[data-history-thread] [data-role="pet"]'), null, 10000, 'the thread');
+      const t = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-role]')].map((m) => `${m.dataset.role}: ${m.innerText.replace(/\s+/g, ' ').slice(0, 50)}`));
+      await shotAdmin('f7-admin-history-thread');
+      map.push(['聊天记录', '玩法 › 和她一起 › 聊天记录']);
+      return `${n} conversation(s); thread: ${t.join(' | ')}`;
+    }, () => admin);
+
+    await step(S, 'F8 动作 → 后台 玩法 › 桌面上的她：9 个动作逐个点，桌宠执行', async () => {
+      await go('/desk');
+      const cues = await admin.evaluate(() => [...document.querySelectorAll('[data-cue]')].map((b) => `${b.dataset.cue}:${b.textContent.trim()}`));
+      assert.equal(cues.length, 9);
+      const done = [];
+      for (const c of cues.map((x) => x.split(':')[0])) {
+        const r = await admin.evaluate((x) => window.petAdmin.cue(x), c).catch((e) => ({ ok: false, reason: String(e) }));
+        const fx = await page.evaluate(() => window.petFx.state());
+        done.push(`${c}=${r.ok ? 'ok' : r.reason}${fx && fx.lastCue ? `(${fx.lastCue})` : ''}`);
+        await page.waitForTimeout(150);
+      }
+      // and one real click on a button
+      await admin.evaluate(() => document.querySelector('[data-cue="happy"]').click());
+      await toastSeen(/她：开心/);
+      await shotAdmin('f8-admin-desk');
+      assert.ok(done.every((d) => /=ok/.test(d)), done.join(' '));
+      map.push(['动作…', '玩法 › 和她一起 › 桌面上的她 › 动作（9 个）']);
+      return `buttons ${cues.join(' ')}; results ${done.join(' ')}`;
+    }, () => admin);
+
+    await step(S, 'F9 回到右下角 → 后台 桌面上的她：被拖走的桌宠回到右下角', async () => {
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui')); w.setPosition(100, 100); });
+      const before = await petBounds(app);
+      await admin.evaluate(() => document.querySelector('[data-desk-home]').click());
+      await toastSeen(/回到右下角/);
+      const after = await petBounds(app);
+      const wa = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+      assert.equal(after.x + after.width, wa.x + wa.width - 24);
+      assert.equal(after.y + after.height, wa.y + wa.height - 24);
+      await shotAdmin('f9-admin-home');
+      desktop('f9-desktop-pet-home');
+      map.push(['回到右下角', '玩法 › 和她一起 › 桌面上的她 › 回到右下角']);
+      return `pet window ${before.x},${before.y} → ${after.x},${after.y} (${after.width}x${after.height}; work area ${wa.width}x${wa.height})`;
+    }, () => admin);
+
+    await step(S, 'F10 角色列表 → 后台 角色：图鉴与她的页', async () => {
+      await go('/characters');
+      await until(admin, () => document.querySelectorAll('[data-character], [data-card], a[href^="#/characters/"]').length >= 5, null, 10000, 'character cards');
+      const n = await admin.evaluate(() => document.querySelectorAll('a[href^="#/characters/"], [data-character]').length);
+      await shotAdmin('f10-admin-characters');
+      await go('/characters/claude');
+      const title = await admin.evaluate(() => document.querySelector('[data-character-title]').textContent.trim());
+      map.push(['角色列表', '角色（rail）› 角色图鉴 › 她的页']);
+      return `${n} character entries; /characters/claude title 「${title}」`;
+    }, () => admin);
+
+    await step(S, 'F11 重新开始话题 → 后台 设置 › LobeHub 与本机：二次确认后开新话题', async () => {
+      const before = petState();
+      const cur = before.currentSpecies || before.speciesId;
+      const epoch = (o) => { const c = (o.characters || {})[cur] || Object.values(o.characters || {})[0] || {}; return c.topicEpoch || 0; };
+      await go('/connection');
+      await admin.evaluate(() => document.querySelector('[data-new-topic]').click());
+      const dlg = await dialogOk('重新开始话题');
+      await shotAdmin('f11-admin-new-topic-confirm');
+      await dialogClick('重新开始话题');
+      await toastSeen(/新话题/);
+      const after = petState();
+      assert.equal(epoch(after), epoch(before) + 1);
+      map.push(['重新开始话题', '设置 › 连接 › LobeHub 与本机 › 话题 › 重新开始话题（二次确认）']);
+      return `confirm 「${dlg}」; topicEpoch ${epoch(before)} → ${epoch(after)}`;
+    }, () => admin);
+
+    await step(S, 'F12 本机能力开关 → 后台 LobeHub 与本机：开（二次确认）→ 关', async () => {
+      const loc = () => page.evaluate(() => window.pet.debugHeartbeat().then((v) => !!(v.local && v.local.enabled)));
+      const was = await loc();
+      await flip('localAbilities');
+      const dlg = await dialogOk('开启本机能力');
+      await shotAdmin('f12-admin-local-confirm');
+      await dialogClick('开启本机能力');
+      for (let i = 0; i < 100 && !(await loc()); i++) await page.waitForTimeout(150);
+      const on = await loc();
+      await shotAdmin('f12-admin-local-on');
+      await flip('localAbilities');
+      for (let i = 0; i < 100 && (await loc()); i++) await page.waitForTimeout(150);
+      const off = await loc();
+      assert.deepEqual([was, on, off], [false, true, false]);
+      map.push(['本机能力：开/关', '设置 › 连接 › LobeHub 与本机 › 本机能力（开启需二次确认）']);
+      return `confirm 「${dlg}」; local ${was} → ${on} → ${off}`;
+    }, () => admin);
+
+    await step(S, 'F13 成人向内容开关 → 后台 设置 › 内容与安全：年龄确认后打开，再关闭', async () => {
+      await go('/safety');
+      const adult = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).adultContent;
+      const was = adult();
+      await flip('adultContent');
+      const dlg = await dialogOk('我已满 18 周岁');
+      await shotAdmin('f13-admin-adult-confirm');
+      await dialogClick('我已满 18 周岁');
+      const ok = '我已满 18 周岁';
+      for (let i = 0; i < 60 && !adult(); i++) await page.waitForTimeout(150);
+      const on = adult();
+      await shotAdmin('f13-admin-adult-on');
+      await flip('adultContent');
+      for (let i = 0; i < 60 && adult(); i++) await page.waitForTimeout(150);
+      const off = adult();
+      assert.deepEqual([was, on, off], [false, true, false]);
+      map.push(['成人向内容：开/关', '设置 › 系统 › 内容与安全 › 成人向内容（打开需 18+ 确认）']);
+      return `dialog 「${dlg}」 → 「${ok}」; adultContent ${was} → ${on} → ${off}`;
+    }, () => admin);
+
+    await step(S, 'F14 检查更新 / 新版本 → 后台 版本与更新；有新版本时 ⚙ 出现红点并直达该页', async () => {
+      await go('/update');
+      tag = 'v0.0.1';
+      await clickText('button', '检查更新');
+      await until(admin, () => /已是最新版本/.test(document.querySelector('[data-path="/update"]').innerText), null, 15000, '已是最新版本');
+      const latest = (await pageText()).match(/状态 [^ ]+/)[0];
+      tag = 'v9.9.9';
+      await clickText('button', '检查更新');
+      await until(admin, () => /需要手动下载新版本/.test(document.querySelector('[data-path="/update"]').innerText), null, 15000, '新版本');
+      await shotAdmin('f14-admin-update-found');
+      // the pet window: a dot on ⚙, and ⚙ goes straight to 版本与更新
+      await page.bringToFront();
+      await page.waitForFunction(() => document.getElementById('btn-settings').dataset.news === 'update', null, { timeout: 5000 });
+      await hover(page);
+      await page.waitForTimeout(300);
+      await shotPet('f14-pet-gear-dot');
+      const title = await page.getAttribute('#btn-settings', 'title');
+      await go('/overview');
+      await page.click('#btn-settings');
+      await atPath('/update');
+      const btn = await admin.evaluate(() => { const b = document.querySelector('[data-update-download]'); return b ? b.textContent.trim() : ''; });
+      assert.match(btn, /下载新版本 v9\.9\.9/);
+      await admin.evaluate(() => document.querySelector('[data-update-download]').click());
+      await admin.waitForTimeout(500);
+      const links = await page.evaluate(() => window.pet.debugOpenedLinks());
+      await shotAdmin('f14-admin-update-download');
+      map.push(['检查更新', '设置 › 系统 › 版本与更新 › 检查更新']);
+      map.push(['新版本（下载/立即更新）', '⚙ 红点 → 版本与更新 › 下载新版本 / 立即更新']);
+      return `first check: ${latest}; then ⚙ title 「${title}」 → #/update, button 「${btn}」; opened ${JSON.stringify(links.slice(-1))}`;
+    }, () => admin);
+
+    await step(S, 'F15 打开错误日志 / 素材署名 → 后台 设置 › 数据与关于', async () => {
+      await go('/about');
+      const log = path.join(data, 'pixel-pet.log');
+      const existed = fs.existsSync(log);
+      await clickText('button', '打开错误日志');
+      for (let i = 0; i < 30 && !fs.existsSync(log); i++) await page.waitForTimeout(100);
+      const credits = await admin.evaluate(() => { const s = [...document.querySelectorAll('h1,h2,h3,h4,div')].find((e) => e.textContent.trim() === '素材署名'); return s ? s.closest('[class]').parentElement.innerText.replace(/\s+/g, ' ').slice(0, 160) : ''; });
+      await shotAdmin('f15-admin-about');
+      assert.ok(fs.existsSync(log), 'open-log touched the log file');
+      assert.match(await pageText(), /素材署名/);
+      map.push(['打开错误日志', '设置 › 系统 › 数据与关于 › 打开错误日志']);
+      map.push(['素材署名', '设置 › 系统 › 数据与关于 › 素材署名']);
+      return `log file ${existed ? 'existed' : 'created'} → ${fs.existsSync(log)} (${log.replace(os.tmpdir(), '$TMP')}); credits 「${credits.slice(0, 100)}」`;
+    }, () => admin);
+
+    await step(S, 'F16 仅重置本地 → 数据与关于：二次确认（先取消一次），确认后回到选角页、LobeHub agent 保留', async () => {
+      await clickText('button', '仅重置本地');
+      const dlg = await dialogOk('仅重置本地');
+      await shotAdmin('f16-admin-forget-confirm');
+      await dialogClick('取消');
+      await admin.waitForTimeout(400);
+      const still = fs.existsSync(path.join(data, 'pet.json')) && !!petState().speciesId;
+      await clickText('button', '仅重置本地');
+      await dialogOk('仅重置本地');
+      await dialogClick('仅重置本地');
+      await toastSeen(/已重置本地进度/);
+      await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 10000 });
+      const deletes = calls().filter((a) => a[0] === 'agent' && a[1] === 'delete').length;
+      assert.equal(deletes, 0);
+      await shotPet('f16-pet-onboarding-after-forget');
+      map.push(['仅重置本地', '设置 › 系统 › 数据与关于 › 危险操作 › 仅重置本地（二次确认）']);
+      return `confirm 「${dlg}」; after 取消 still has a pet: ${still}; after 确认: onboarding shown, lh agent delete calls ${deletes}`;
+    }, () => admin);
+
+    await step(S, 'F17 放生并删除 agent → 数据与关于：二次确认后删除 LobeHub agent', async () => {
+      await page.bringToFront();
+      await page.click('.char-card[data-species="claude"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      await go('/about');
+      await clickText('button', '放生并删除 agent');
+      const dlg = await dialogOk('放生并删除 agent');
+      await shotAdmin('f17-admin-release-confirm');
+      await dialogClick('放生并删除 agent');
+      await toastSeen(/已放生/);
+      await page.waitForSelector('#onboarding:not(.hidden)', { timeout: 10000 });
+      const deletes = calls().filter((a) => a[0] === 'agent' && a[1] === 'delete');
+      assert.ok(deletes.length >= 1);
+      map.push(['放生并删除 agent', '设置 › 系统 › 数据与关于 › 危险操作 › 放生并删除 agent（二次确认）']);
+      return `confirm 「${dlg}」; lh agent delete ×${deletes.length} (${deletes.map((a) => a[2]).join(', ')}); pet back on onboarding`;
+    }, () => admin);
+
+    await step(S, 'F18 退出 → 后台 桌面上的她：二次确认后整个应用退出', async () => {
+      await go('/desk');
+      await admin.evaluate(() => document.querySelector('[data-desk-quit]').click());
+      const dlg = await dialogOk('退出');
+      await shotAdmin('f18-admin-quit-confirm');
+      const exited = new Promise((r) => app.process().once('exit', (code) => r(code)));
+      await dialogClick('退出').catch(() => {}); // the window may be gone before the click returns
+      const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r('still running'), 10000))]);
+      assert.notEqual(code, 'still running');
+      map.push(['退出', '玩法 › 和她一起 › 桌面上的她 › 退出（二次确认）']);
+      return `confirm 「${dlg}」; app process exit code ${code}`;
+    });
+
+    await step(S, 'F19 无页面错误；菜单项 → 后台入口 对照表', async () => {
+      assert.deepEqual(errors, []);
+      fs.writeFileSync(path.join(SHOTS, 'menu-map.json'), JSON.stringify(map, null, 2));
+      return `page errors 0; ${map.length} entries: ${map.map((m) => `${m[0]} → ${m[1]}`).join(' ; ')}`;
+    });
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
+
 // ---------------------------------------------------------------- petui
 // The pet window's own UI (bubble, HUD bars + 好感, toolbar, chat box, ⋯ menu, stage-up toast, #panel:
 // 衣柜 / 话题 / 聊天记录 / 角色列表 and her page, 18+ gate, onboarding) in light and dark. The OS appearance reaches the
@@ -7054,7 +7542,6 @@ async function petuiScenario() {
     page.on('pageerror', (e) => errors.push(String(e)));
     const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
     const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-    const closePanel = async () => { await page.click('#panel-close'); await page.waitForSelector('#panel.hidden', { state: 'attached' }); };
     const tokens = () => page.evaluate(() => {
       const cs = getComputedStyle(document.documentElement);
       const b = getComputedStyle(document.getElementById('age-gate'));
@@ -7093,6 +7580,62 @@ async function petuiScenario() {
         await shot('02-hover-hud-bubble');
         return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
       }, page);
+      // T-2726: the status bar is ONE panel — needs, affection and the name line share one surface (rows split by
+      // hairlines); values still update live, it fits the window at the smallest pet size, and it only shows on hover
+      const panelGeom = () => page.evaluate(() => {
+        const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
+        const panel = document.getElementById('status-panel');
+        const cs = getComputedStyle(panel);
+        const rows = ['bars', 'aff-row', 'meta'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, borderTop: c.borderTopWidth, ...r(el) }; });
+        const meta = document.getElementById('meta');
+        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), metaCut: meta.scrollWidth > meta.clientWidth, hudOpacity: getComputedStyle(document.getElementById('hud')).opacity };
+      });
+      await step(S, `${theme}: 状态栏是一个整体 Panel（需求 / 好感 / 信息行同一底板，分隔线分区）`, async () => {
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        const g = await panelGeom();
+        assert.equal(g.border, '1px'); assert.ok(g.shadow); assert.notEqual(g.bg, 'rgba(0, 0, 0, 0)');
+        for (const row of g.rows) {
+          assert.ok(row.in, `${row.id} inside the panel`);
+          assert.equal(row.bg, 'rgba(0, 0, 0, 0)', `${row.id} has no own background`);
+          assert.equal(row.shadow, 'none', `${row.id} has no own shadow`);
+          assert.ok(row.x >= g.panel.x && row.r <= g.panel.r && row.y >= g.panel.y && row.b <= g.panel.b, `${row.id} within the panel box`);
+        }
+        assert.deepEqual(g.rows.map((x) => x.borderTop), ['0px', '1px', '1px'], 'hairlines between the three rows');
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside the window');
+        assert.ok(g.toolbar.y >= g.panel.b, 'toolbar right under the panel');
+        await shot('02b-status-panel');
+        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y} top=${x.borderTop}`), toolbarY: g.toolbar.y });
+      }, page);
+      await step(S, `${theme}: Panel 内数值实时更新（饥饿 / 心情 / 体力 / 好感）`, async () => {
+        const vals = () => page.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), num: document.getElementById('aff-num').textContent, meta: document.getElementById('meta').textContent }));
+        const before = await vals();
+        await page.evaluate(() => window.pet.debugSet({ hunger: 90, mood: 15, energy: 50, affection: 12 }));
+        await page.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' pushes the view
+        const after = await vals();
+        assert.equal(after['bar-hunger'], '10%'); assert.equal(after['bar-mood'], '15%'); assert.equal(after['bar-energy'], '50%');
+        assert.match(after.meta, /♥12/);
+        await hover(page);
+        await shot('02c-status-panel-updated');
+        return `before ${JSON.stringify(before)} → after ${JSON.stringify(after)}`;
+      }, page);
+      await step(S, `${theme}: 最小尺寸（50%）Panel 不溢出窗口；移开指针后隐藏`, async () => {
+        const k = await page.evaluate(() => window.pet.setPetScale(0.5));
+        await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+        await page.waitForTimeout(300);
+        await hover(page);
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        const g = await panelGeom();
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, `panel ${g.panel.x}..${g.panel.r} inside window ${g.win}`);
+        for (const row of g.rows) assert.ok(row.r <= g.panel.r, `${row.id} inside the panel`);
+        await shot('02d-status-panel-smallest');
+        await page.mouse.move(-20, -20);
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForFunction(() => !document.body.classList.contains('hover') && getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+        await page.evaluate(() => window.pet.setPetScale(1.25));
+        await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 1.25, null, { timeout: 8000 });
+        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: window ${g.win}px, panel ${g.panel.x}..${g.panel.r} (${g.panel.w}px), meta cut with … = ${g.metaCut}; hidden again off hover`;
+      }, page);
       await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
         await clickAct(page, 'chat');
         await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
@@ -7107,15 +7650,13 @@ async function petuiScenario() {
         await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
         await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
       }, page);
-      await step(S, `${theme}: ⋯ 菜单`, async () => {
-        await clickAct(page, 'menu');
-        await page.waitForSelector('#main-menu:not(.hidden)');
-        await page.waitForTimeout(400); // let the menu's open transition finish
-        await shot('05-main-menu');
-        // the menu closes when the pointer leaves the window (as in `fresh`)
-        await page.mouse.move(-20, -20);
-        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-        await page.waitForSelector('#main-menu.hidden', { state: 'attached' });
+      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
+        await hover(page);
+        await page.waitForTimeout(400);
+        await shot('05-toolbar');
+        const acts = await page.$$eval('#toolbar [data-act]', (b) => b.map((x) => x.dataset.act));
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'settings']);
+        return acts.join(' / ');
       }, page);
       await step(S, `${theme}: 喂食菜单`, async () => {
         await clickAct(page, 'feed');
@@ -7134,44 +7675,21 @@ async function petuiScenario() {
         await shot('07-unlock-toast');
         return (await page.textContent('#toast-title')).trim();
       }, page);
-      await step(S, `${theme}: #panel 衣柜`, async () => {
-        if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
-        await clickAct(page, 'wardrobe');
-        await page.waitForSelector('#panel:not(.hidden) .grid .card');
+      // 话题 / 衣柜 / 聊天记录 / 角色列表 left the pet window (T-2718): the toast and ⚙ open the settings window
+      await step(S, `${theme}: Toast「去衣柜看看 / 去聊聊新话题」与 ⚙ 打开设置窗口`, async () => {
+        const where = await page.getAttribute('#toast-open', 'data-admin');
+        assert.match(where, /^(characters\/claude|topics)$/);
+        await page.click('#toast-open');
+        let admin = null;
+        for (let i = 0; i < 200 && !admin; i++) { admin = app.windows().find((w) => w.url().includes('admin-ui')) || null; if (!admin) await page.waitForTimeout(100); }
+        await adminUntil(admin, (p) => !!document.querySelector(`[data-path="/${p}"]`), where, 15000, where);
+        await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
+        await page.bringToFront();
+        await hover(page);
         await page.waitForTimeout(300);
-        await shot('08-panel-wardrobe');
-        await closePanel();
-      }, page);
-      await step(S, `${theme}: #panel 话题`, async () => {
-        await clickAct(page, 'topics');
-        await page.waitForSelector('#panel:not(.hidden) .topic');
-        await shot('09-panel-topics');
-        await closePanel();
-      }, page);
-      await step(S, `${theme}: #panel 聊天记录（列表 / 对话）`, async () => {
-        await clickAct(page, 'menu');
-        await page.click('[data-menu="history"]');
-        await page.waitForSelector('#panel:not(.hidden) .history-item');
-        await shot('10-panel-history-list');
-        await page.click('.history-item');
-        await page.waitForSelector('.history-thread');
-        await shot('11-panel-history-thread');
-        await closePanel();
-      }, page);
-      await step(S, `${theme}: #panel 角色列表`, async () => {
-        await openCharacters(page);
-        await page.waitForTimeout(300);
-        await shot('12-panel-characters');
-        await closePanel();
-      }, page);
-      // 高级设置 moved to the settings window (配置后台, scenario `admin`): her page in 角色列表 instead
-      await step(S, `${theme}: #panel 角色列表 → 她的页（模型与个性化设定 → 在设置窗口中编辑）`, async () => {
-        await openCharacters(page);
-        await openCharPage(page, 'claude');
-        await page.waitForSelector('#panel:not(.hidden) #char-config #char-admin');
-        await page.waitForTimeout(300);
-        await shot('13-panel-char-page');
-        await closePanel();
+        await shot('08-toolbar-settings');
+        assert.equal(await page.locator('#btn-topics, #btn-wardrobe, #main-menu, #panel').count(), 0);
+        return `toast → #/${where}; toolbar: ${(await page.textContent('#toolbar')).replace(/\s+/g, ' ').trim()} + ⚙`;
       }, page);
       await step(S, `${theme}: 无页面错误`, async () => {
         assert.deepEqual(errors, []);
@@ -7180,6 +7698,322 @@ async function petuiScenario() {
     } finally {
       await app.close().catch(() => {});
     }
+  }
+}
+
+// ---------------------------------------------------------------- admincov (配置后台覆盖度)
+// docs/admin-console-design.md §12: the settings window lists every character with every kind of pack
+// (built-in pixel / 全动态 / Live2D, imported 图片 / Live2D / VRM), filters by kind, shows each detail tab
+// (形象包, 服饰, 好感, 模型, 设定, 语音, 资料), and the controls that used to live only in the pet window or
+// a menu now work from here: 服饰 → 穿上, Live2D 模型大小, 找回桌宠, 自动检查更新, 数据目录. A behaviour changed
+// in the settings window shows in the pet window at once. Free: fake lh, no network.
+async function adminCoverageScenario() {
+  const S = 'admincov';
+  const SHOTS = path.join(OUT, 'admincov');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincov-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  // the packs a user brings: a 图片 pack (gemini), her own Live2D model (dafeiyu) and a VRM (claude)
+  const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-admincovfix-'));
+  const pic = path.join(fix, 'gemini-photo');
+  fs.mkdirSync(pic);
+  fs.copyFileSync(path.join(ROOT, 'build', 'icon.png'), path.join(pic, 'daily.png'));
+  fs.writeFileSync(path.join(pic, 'pack.json'), JSON.stringify({ schema: 2, id: 'gemini-photo', name: '双子立绘', species: 'gemini', kind: 'pictures', author: 'e2e', license: 'CC0', outfits: { daily: 'daily.png' } }));
+  const l2d = path.join(fix, 'Whale');
+  fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), l2d, { recursive: true });
+  const vrmFile = path.join(fix, 'fish.vrm');
+  fs.writeFileSync(vrmFile, require('../scripts/make-test-vrm').makeTestVrm({ name: 'Test Fish', meta: { allowRedistribution: true, licenseUrl: 'https://vrm.dev/licenses/1.0/', avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1' });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const errors = [];
+  let admin = null;
+  const W = 1180;
+  const adminWin = `BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui'))`;
+  // a settings window behind the always-on-top pet gets no animation frames (Playwright's waits poll on them)
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  // the whole page in one image: grow the window to the page's height, capture, shrink back
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  // while the tabs switch the old panel stays a moment (inert): wait for the one live panel
+  const tab = async (name) => {
+    await admin.bringToFront();
+    await admin.getByRole('tab', { name, exact: true }).click();
+    await until(`tab ${name}`, () => admin.evaluate((n) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === n); return !!t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, name));
+    await admin.waitForTimeout(250);
+  };
+  // poll with evaluate (not on animation frames): true once `sel` is in the settings window
+  const until = async (what, fn, ms = 15000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  try {
+    await step(S, 'B0 hatch 格萝可, ⚙ 设置 opens the settings window (the pet window has no ⋯ menu since T-2718)', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="grok"]');
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      await clickAct(page, 'settings');
+      for (let i = 0; i < 200 && !admin; i++) {
+        admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+        if (!admin) await page.waitForTimeout(100);
+      }
+      assert.ok(admin, 'the settings window opened');
+      admin.on('pageerror', (e) => errors.push(String(e)));
+      admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+      return 'settings window up';
+    }, page);
+
+    await step(S, 'B1 imported packs of every kind: 图片 (gemini), Live2D (dafeiyu, from the settings window), VRM (claude, from the settings window)', async () => {
+      const a = await page.evaluate((d) => window.pet.debugImportPack(d), pic);
+      assert.equal(a.ok, true, JSON.stringify(a));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), path.join(l2d, 'medium.model3.json'));
+      const b = await call('importLive2d', 'dafeiyu');
+      assert.equal(b.ok, true, JSON.stringify(b));
+      await page.evaluate((x) => window.pet.debugNextOpen(x), vrmFile);
+      const c = await call('importVrm', 'claude');
+      assert.equal(c.ok, true, JSON.stringify(c));
+      await go('/packs');
+      const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-packs] tbody tr')].map((tr) => tr.textContent));
+      const packs = await admin.evaluate(async () => (await window.petAdmin.state()).packs.map((p) => `${p.id}:${p.kind}:${p.source}`));
+      for (const want of ['gemini-photo:pictures:user', `${b.pack.id}:live2d:user`, `${c.pack.id}:vrm:user`, 'dafeiyu-live2d:live2d:builtin', 'dafeiyu-live:rig:builtin', 'grok-pixel:sprites:builtin']) assert.ok(packs.includes(want), `${want} in ${packs.join(' ')}`);
+      const f = await shot('b1-packs');
+      return `${packs.length} packs (${rows.length} table rows): ${packs.join(' ')}; ${f}`;
+    }, () => admin);
+
+    let roster = [];
+    await step(S, 'B2 角色图鉴 lists every character, with the kinds of pack each can wear; 按形象类型 filters (全部 / 像素 / 全动态 / Live2D / 图片 / VRM / 有导入包)', async () => {
+      await go('/characters');
+      roster = await admin.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => ({ id: r.id, kinds: r.packKinds.map((k) => `${k.label}${k.user ? `+导入${k.user}` : ''}`) })));
+      const cards = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      assert.deepEqual(cards, roster.map((r) => r.id), 'one card per character');
+      assert.ok(cards.length >= 5, cards.join(','));
+      const filter = (await admin.textContent('[data-kind-filter]')).trim();
+      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '有导入包']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      const out = [await shot('b2-characters-all')];
+      const pick = async (label) => {
+        await admin.locator('[data-kind-filter]').getByText(new RegExp(`^${label} \\d+$`)).click();
+        await admin.waitForTimeout(300);
+        return admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
+      };
+      const vrm = await pick('VRM');
+      assert.deepEqual(vrm, ['claude']);
+      out.push(await shot('b2-characters-vrm'));
+      const l2dRows = await pick('Live2D');
+      assert.deepEqual(l2dRows, ['dafeiyu']);
+      const pics = await pick('图片');
+      assert.deepEqual(pics, ['gemini']);
+      const imported = await pick('有导入包');
+      assert.deepEqual([...imported].sort(), ['claude', 'dafeiyu', 'gemini']);
+      out.push(await shot('b2-characters-imported'));
+      await pick('全部');
+      return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B3 角色详情 (格萝可, current): 装扮 (衣柜 + 取景 + 形象包) / 好感 / 模型 / 个性化设定 / 语音 / 资料, one screenshot per tab', async () => {
+      await go('/characters/grok');
+      const out = [];
+      for (const [t, sel] of [['装扮', '[data-wardrobe="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['个性化设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
+        await tab(t);
+        if (sel) await attached(sel);
+        if (t === '装扮') { await attached('[data-outfits="grok"]'); await attached('[data-framing-row="grok"]'); }
+        out.push(await shot(`b3-grok-${t}`));
+      }
+      const persona = await admin.textContent('[data-personality="grok"]').catch(() => '');
+      await tab('个性化设定');
+      const p2 = await admin.textContent('[data-personality="grok"]');
+      assert.ok(p2.length > 20, 'her persona from the character file');
+      await tab('资料');
+      const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
+      assert.match(kinds, /像素 · 内置 \d+ · 导入 0/);
+      return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
+    }, () => admin);
+
+    await step(S, 'B4 装扮 → 衣柜: a click in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
+      const u = await call('unlockAll', 'grok');
+      assert.equal(u.ok, true);
+      await go('/characters/grok');
+      await tab('装扮');
+      const before = await page.getAttribute('#char-wrap', 'data-outfit');
+      await attached('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])');
+      const id = await admin.getAttribute('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])', 'data-outfit');
+      assert.ok(id && id !== before, `${id} vs ${before}`);
+      // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
+      if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
+      await page.waitForTimeout(400);
+      const pBefore = await petShot('b4-pet-before');
+      await admin.click(`[data-outfits="grok"] [data-outfit="${id}"]`);
+      await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
+      await attached(`[data-outfit="${id}"][data-equipped="true"]`);
+      await page.waitForTimeout(500);
+      const pAfter = await petShot('b4-pet-after');
+      const a = await shot('b4-grok-outfits-after');
+      return `pet window #char-wrap data-outfit ${before} → ${id}; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B5 桌宠行为: 宠物大小 slider → the pet window grows at once; 自己走动 switch saved; 找回桌宠 puts her back bottom-right', async () => {
+      await go('/behavior');
+      const out = [await shot('b5-behavior')];
+      const b0 = await petBoundsNow();
+      const s0 = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--pet-scale').trim());
+      out.push(await petShot('b5-pet-before'));
+      const thumb = admin.locator('[data-key="petScale"] input[type="range"]').first();
+      await thumb.focus();
+      await admin.keyboard.press('Home');
+      await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
+      const b1 = await petBoundsNow();
+      assert.ok(b1.width < b0.width && b1.height < b0.height, `${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+      assert.equal(saved().petScale, 0.5);
+      out.push(await petShot('b5-pet-after-50'));
+      // a switch: 自己走动 off → settings.json and the pet window's copy at once
+      await admin.click('[data-key="prefs.roam"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="prefs.roam"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().prefs.roam, false);
+      const petRoam = await page.evaluate(async () => (await window.pet.getSettings()).prefs.roam);
+      assert.equal(petRoam, false);
+      // 找回桌宠: she was dragged to the top-left corner
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
+      const moved = await petBoundsNow();
+      await admin.click('[data-place-pet]');
+      await page.waitForTimeout(500);
+      const back = await petBoundsNow();
+      const wa = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+      assert.equal(back.x, wa.x + wa.width - back.width - 24);
+      assert.equal(back.y, wa.y + wa.height - back.height - 24);
+      out.push(await shot('b5-behavior-after'));
+      return `--pet-scale ${s0} → 0.5, window ${b0.width}×${b0.height} → ${b1.width}×${b1.height}; prefs.roam → false (file and pet window); 找回桌宠 (${moved.x},${moved.y}) → (${back.x},${back.y}) = work area bottom-right; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B6 主动搭话与好感: page screenshot; 主动说话 off is saved and its thresholds grey out', async () => {
+      await go('/proactive');
+      const out = [await shot('b6-proactive')];
+      await admin.click('[data-key="proactive.enabled"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="proactive.enabled"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().proactive.enabled, false);
+      out.push(await shot('b6-proactive-off'));
+      return `proactive.enabled → ${saved().proactive.enabled}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'B7 版本与更新: 自动检查更新 switch (new, was only PIXELPET_NO_UPDATE) saved at once', async () => {
+      await go('/update');
+      assert.equal(await admin.getAttribute('[data-key="update.autoCheck"]', 'aria-checked'), 'true');
+      await admin.click('[data-key="update.autoCheck"]');
+      await admin.waitForFunction(() => document.querySelector('[data-key="update.autoCheck"]').getAttribute('aria-checked') === 'false', null, { timeout: 5000 });
+      assert.equal(saved().update.autoCheck, false);
+      return `update.autoCheck → false in settings.json; ${await shot('b7-update')}`;
+    }, () => admin);
+
+    await step(S, 'B8 数据与关于: the data folder\'s path is shown and 打开数据目录 answers', async () => {
+      await go('/about');
+      const shown = (await admin.textContent('[data-data-dir]')).trim();
+      assert.equal(shown, data);
+      const r = await call('openDataFolder');
+      assert.equal(r.ok, true);
+      assert.equal(r.path, data);
+      return `shows ${shown}; ${await shot('b8-about')}`;
+    }, () => admin);
+
+    let l2dId = null;
+    await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 装扮 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
+      const sw = await call('switchCharacter', 'dafeiyu', '小鱼');
+      assert.equal(sw.ok, true, JSON.stringify(sw));
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const st = await admin.evaluate(async () => (await window.petAdmin.state()).packs.filter((p) => p.kind === 'live2d' && p.source === 'user').map((p) => p.id));
+      l2dId = st[0];
+      const ap = await call('setAppearance', l2dId, 'dafeiyu');
+      assert.equal(ap.ok, true, JSON.stringify(ap));
+      await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 30000 });
+      await page.waitForTimeout(1500);
+      const pBefore = await petShot('b9-pet-live2d-before');
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await attached(`[data-live2d-size="${l2dId}"]`);
+      const thumb = admin.locator(`[data-live2d-size="${l2dId}"] input[type="range"]`).first();
+      await thumb.focus();
+      await admin.keyboard.press('Home'); // 30%
+      const file = path.join(data, 'packs', l2dId, 'pack.json');
+      for (let i = 0; i < 50 && JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height !== 0.3; i++) await page.waitForTimeout(100);
+      assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).live2d.height, 0.3);
+      await page.waitForTimeout(1500);
+      const pAfter = await petShot('b9-pet-live2d-after');
+      const a = await shot('b9-dafeiyu-looks');
+      return `${l2dId} live2d.height → 0.3 in pack.json; ${pBefore}, ${pAfter}, ${a}`;
+    }, () => admin);
+
+    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 衣柜 note for one not current', async () => {
+      const out = [];
+      await go('/characters/dafeiyu');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 1 · 导入 1/);
+      out.push(await shot('b10-dafeiyu-about'));
+      await go('/characters/claude');
+      await tab('装扮');
+      out.push(await shot('b10-claude-looks-vrm'));
+      assert.match(await admin.textContent('[role="tabpanel"]'), /衣柜跟着当前陪你的角色走/);
+      await go('/characters/gemini');
+      await tab('资料');
+      assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);
+      out.push(await shot('b10-gemini-about'));
+      return out.join(', ');
+    }, () => admin);
+
+    await step(S, 'B12 every user-configurable schema field is rendered as a control on its page (DOM export), and the roster data is real', async () => {
+      // fields that depend on a switch (dependsOn) only show while it is on: switch the parents on first
+      for (const [k, v] of [['proactive.enabled', true], ['prefs.voice', true], ['asr.enabled', true], ['api.enabled', true]]) assert.equal((await call('set', k, v)).ok, true, k);
+      const boot = await admin.evaluate(() => window.petAdmin.boot());
+      const fields = boot.schema.fields.filter((f) => !f.internal && f.page !== 'character');
+      const pages = [...new Set(fields.map((f) => f.page))];
+      const dom = {};
+      const missing = [];
+      for (const pg of pages) {
+        await go(`/${pg}`);
+        const want = fields.filter((f) => f.page === pg).map((f) => f.key);
+        const got = await admin.evaluate(() => [...document.querySelectorAll('[data-key]')].map((el) => ({ key: el.getAttribute('data-key'), tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), checked: el.getAttribute('aria-checked'), label: (el.closest('[class*="item"], [class*="row"], div')?.textContent || '').trim().slice(0, 80) })));
+        const keys = new Set(got.map((g) => g.key));
+        for (const k of want) if (!keys.has(k)) missing.push(`${pg}:${k}`);
+        dom[pg] = { schemaKeys: want, controls: got, restartKeys: boot.schema.fields.filter((f) => f.page === pg && f.restart).map((f) => f.key), restartBadge: await admin.evaluate(() => document.body.textContent.includes('重启后生效')) };
+      }
+      fs.writeFileSync(path.join(SHOTS, 'b12-admin-dom-fields.json'), JSON.stringify({ pages: dom, missing }, null, 2));
+      const st = await admin.evaluate(() => window.petAdmin.state());
+      const roster = st.roster.map((r) => ({ id: r.id, displayName: r.displayName, current: r.current, kind: r.kind, pack: r.pack && { id: r.pack.id, kind: r.pack.kind, source: r.pack.source }, packKinds: r.packKinds, met: r.met && { name: r.met.name, affection: r.met.affection, stage: r.met.stage }, model: r.model && { current: r.model.current, options: (r.model.options || []).length }, personality: (r.personality || '').slice(0, 60), systemRole: r.systemRole, outfits: r.outfits && r.outfits.map((o) => `${o.id}${o.equipped ? '*' : ''}${o.locked ? '(锁)' : ''}`) }));
+      const packs = st.packs.map((p) => ({ id: p.id, species: p.species, kind: p.kind, source: p.source }));
+      fs.writeFileSync(path.join(SHOTS, 'b12-roster-data.json'), JSON.stringify({ source: 'window.petAdmin.state() → main adminState() → core/roster.js buildRoster(PetService.view()) + packRows(PackStore: src/renderer/packs [builtin] + <data>/packs [user])', dataDir: data, userPacksOnDisk: fs.readdirSync(path.join(data, 'packs')), roster, packs }, null, 2));
+      assert.deepEqual(missing, []);
+      return `${fields.length} fields on ${pages.length} pages all rendered; b12-admin-dom-fields.json, b12-roster-data.json`;
+    }, () => admin);
+
+    await step(S, 'B11 no console errors in the settings window', async () => {
+      const real = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(real, []);
+      return 'none';
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
   }
 }
 
@@ -7233,13 +8067,13 @@ async function adminScenario() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, 'A1 ⋯ → 设置… opens the settings window (contextIsolation, only window.petAdmin), 高级设置 is gone from the menu', async () => {
-      await clickAct(page, 'menu');
-      const items = await page.$$eval('#main-menu [data-menu]', (els) => els.filter((e) => !e.classList.contains('hidden')).map((e) => e.textContent.trim()));
-      assert.ok(items.includes('设置…'), items.join(','));
-      assert.ok(!items.includes('高级设置'), 'the in-pet 高级设置 panel was replaced by the settings window');
+    await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
+      await hover(page);
+      const items = await page.$$eval('#toolbar [data-act]', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
+      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '设置']);
+      assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
-      await page.click('[data-menu="settings"]');
+      await page.click('[data-act="settings"]');
       admin = await adminPage();
       admin.on('request', (r) => { if (!/^(file|data|blob|devtools|pack):/.test(r.url())) remote.push(r.url()); });
       admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -7251,10 +8085,10 @@ async function adminScenario() {
       assert.equal(prefs.length, 1);
       assert.equal(prefs[0].contextIsolation, true);
       assert.equal(prefs[0].nodeIntegration, false);
-      return `menu: ${items.slice(0, 4).join(' / ')}…; window ${JSON.stringify(prefs[0])}; bridge has ${iso.keys} calls`;
+      return `toolbar: ${items.join(' / ')}; window ${JSON.stringify(prefs[0])}; bridge has ${iso.keys} calls`;
     }, () => admin || page);
 
-    await step(S, 'A2 single instance: tray → 打开设置…, ⋯ → 设置… again and Ctrl+, all reuse the same window', async () => {
+    await step(S, 'A2 single instance: tray → 打开设置…, ⚙ 设置 again and Ctrl+, all reuse the same window', async () => {
       const tray = await page.evaluate(() => window.pet.debugTray());
       assert.equal(tray.created, true, 'tray created');
       assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '检查更新', '退出']);
@@ -7265,10 +8099,9 @@ async function adminScenario() {
       await page.waitForTimeout(400);
       seen.push(['tray', (await count()).length]);
       await page.bringToFront();
-      await clickAct(page, 'menu');
-      await page.click('[data-menu="settings"]');
+      await clickAct(page, 'settings');
       await page.waitForTimeout(400);
-      seen.push(['⋯ 设置…', (await count()).length]);
+      seen.push(['⚙ 设置', (await count()).length]);
       await page.focus('body');
       await page.keyboard.press('Control+Comma');
       await page.waitForTimeout(500);
@@ -7485,24 +8318,187 @@ async function adminScenario() {
       return `pet window look → ${key}; switched back to grok`;
     }, () => admin);
 
-    await step(S, 'A13 角色详情 → 外观: choosing 旧版像素 changes the look in the pet window', async () => {
-      await admin.click('[data-detail="grok"]');
+    // her stage on the character page (the showcase on the left): what it shows, and once it is really drawn
+    const stageOf = (id) => admin.evaluate((cid) => {
+      const el = document.querySelector(`[data-showcase="${cid}"] [data-stage] [data-preview]`);
+      return el ? { type: el.dataset.preview, src: el.dataset.src || null, drawn: el.dataset.drawn || null, failed: !!el.dataset.failed } : null;
+    }, id);
+    const stageDrawn = (id, notSrc) => admin.waitForFunction(([cid, prev]) => {
+      const el = document.querySelector(`[data-showcase="${cid}"] [data-stage] [data-preview]`);
+      return el && !el.dataset.failed && el.dataset.src && el.dataset.drawn === el.dataset.src && el.dataset.src !== prev;
+    }, [id, notSrc || null], { timeout: 15000 }).catch(async (e) => { const diag = await admin.evaluate(async (cid) => { const st = await window.petAdmin.state(); const r = st.roster.find((x) => x.id === cid); return { pushes: window.__pushes || null, main: r && r.preview && r.preview.url, trying: !!document.querySelector('[data-trying-tag]'), caption: (document.querySelector(`[data-worn-caption="${cid}"]`) || {}).textContent, worn: [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-worn="true"]`)].map((x) => x.dataset.pack) }; }, id); throw new Error(`stage of ${id} not drawn (not ${notSrc}): ${JSON.stringify(await stageOf(id))} ${JSON.stringify(diag)} — ${e.message.split('\n')[0]}`); });
+    const showcaseShot = (id, name) => admin.locator(`[data-showcase="${id}"]`).screenshot({ path: path.join(SHOTS, `${name}.png`) });
+
+    await step(S, 'A12b 角色详情: two columns — her stage pinned on the left (scales with the window), story and settings on the right', async () => {
+      await go('/characters/grok');
+      await admin.waitForSelector('[data-showcase="grok"]');
+      await stageDrawn('grok');
+      const box = () => admin.evaluate(() => {
+        const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), right: Math.round(b.right) }; };
+        return { show: r('[data-showcase]'), panels: r('[data-detail-layout] > div:last-child'), stage: r('[data-showcase] [data-stage]'), title: r('[data-character-title]') };
+      });
+      const a = await box();
+      assert.ok(a.show.right <= a.panels.x, `stage column ${JSON.stringify(a.show)} left of the panels ${JSON.stringify(a.panels)}`);
+      assert.ok(a.title.x >= a.panels.x, 'her name heads the right column');
+      for (const sel of ['[data-wardrobe="grok"]', '[data-outfits="grok"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
+      assert.ok(await admin.evaluate(() => { const p = document.querySelector('[data-detail-layout] > div:last-child'); return !!p.querySelector('[role="tablist"]') && !!p.querySelector('[data-character-title]'); }), 'tabs + info in the right column');
+      // the whole page, full size
+      const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+      await app.evaluate(({ BrowserWindow }, hh) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, Math.min(Math.max(hh, 1000), 4000)); }, h);
+      await admin.waitForTimeout(400);
+      await shot('a12b-detail-two-columns-full');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(400);
+      // pinned: scrolling the page moves the panels, not her (a short window, so the page has room to scroll)
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 700); });
+      await admin.waitForTimeout(400);
+      const top = await box();
+      const scrolled = await admin.evaluate(() => { const m = document.querySelector('main'); m.scrollTop = m.scrollHeight; return m.scrollTop; });
+      await admin.waitForTimeout(300);
+      const b = await box();
+      assert.ok(scrolled >= 300, `the page scrolls (${scrolled}px)`);
+      assert.ok(Math.abs(top.panels.y - scrolled - b.panels.y) <= 2, `panels scrolled with the page ${top.panels.y} → ${b.panels.y}`);
+      assert.ok(b.show.y >= 0 && b.show.y <= 40 && b.show.y + b.stage.h <= 700, `stage stays in view at the top: y=${b.show.y} h=${b.stage.h}`);
+      await shot('a12b-detail-scrolled-stage-pinned');
+      await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(400);
+      // scales with the window: a short window gives a shorter stage, a narrow one stacks the columns
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 640); });
+      await admin.waitForTimeout(500);
+      const c = await box();
+      await shot('a12b-detail-short-window');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(820, 1000); });
+      await admin.waitForTimeout(500);
+      const d = await box();
+      await shot('a12b-detail-narrow-window');
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
+      await admin.waitForTimeout(500);
+      assert.ok(c.stage.h < a.stage.h, `stage ${a.stage.h}px in 1180×1000 → ${c.stage.h}px in 1180×640`);
+      assert.ok(d.panels.y > d.show.y + d.show.h - 1, `narrow: panels below the stage (${JSON.stringify(d)})`);
+      await stageDrawn('grok');
+      return `1180×1000: stage column x=${a.show.x} w=${a.show.w}, panels x=${a.panels.x} w=${a.panels.w}, stage ${a.stage.h}px; 1180×700 scrolled ${scrolled}px: panels y ${top.panels.y}→${b.panels.y}, stage y ${top.show.y}→${b.show.y}; 1180×640: stage ${c.stage.h}px; 820 wide: stacked (panels y=${d.panels.y} below stage bottom ${d.show.y + d.show.h})`;
+    }, () => admin);
+
+    await step(S, 'A12c 衣柜: two outfits put on from the right panel show on her stage at once (and in the pet window)', async () => {
+      await go('/characters/grok');
+      await admin.getByRole('tab', { name: '装扮' }).click();
+      const un = await admin.evaluate(() => window.petAdmin.unlockAll('grok'));
+      assert.equal(un.ok, true);
+      await admin.waitForSelector('[data-outfit="swimsuit"]:not([disabled])');
+      await admin.waitForSelector('[data-outfit="pajamas"]:not([disabled])');
+      await stageDrawn('grok');
+      const s0 = await stageOf('grok');
+      const caption0 = await admin.textContent('[data-worn-caption="grok"]');
+      await showcaseShot('grok', 'a12c-stage-0-daily');
+      const out = [`daily: ${s0.src.split('/').slice(-2).join('/')}`];
+      let prev = s0.src;
+      let i = 0;
+      for (const id of ['swimsuit', 'pajamas']) {
+        const t0 = Date.now();
+        await admin.click(`[data-outfit="${id}"]`);
+        await stageDrawn('grok', prev);
+        const ms = Date.now() - t0;
+        const st = await stageOf('grok');
+        assert.notEqual(st.src, prev, `${id}: stage source changed`);
+        assert.match(st.src, new RegExp(id), `${id}: the stage draws the ${id} sheet (${st.src})`);
+        assert.equal(await admin.getAttribute(`[data-outfit="${id}"]`, 'data-equipped'), 'true');
+        await page.waitForFunction((o) => (document.getElementById('pet-look').dataset.key || '').includes(o), id, { timeout: 10000 });
+        const caption = await admin.textContent('[data-worn-caption="grok"]');
+        await showcaseShot('grok', `a12c-stage-${++i}-${id}`);
+        out.push(`${id}: ${st.src.split('/').slice(-2).join('/')} drawn ${ms}ms after the click; caption "${caption.trim()}"; pet #pet-look ${await page.getAttribute('#pet-look', 'data-key')}`);
+        prev = st.src;
+      }
+      await shot('a12c-detail-after-outfits');
+      // back to her daily outfit (the rest of the run expects it)
+      await admin.click('[data-outfit="daily"]');
+      await stageDrawn('grok', prev);
+      return `caption before "${caption0.trim()}"; ${out.join(' | ')}`;
+    }, () => admin);
+
+    // 穿上 on a card, scrolled to the middle first: the last toast (bottom-right) may sit over a card at the bottom edge
+    const useOn = async (id) => {
+      await admin.locator(`[data-use-pack="${id}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await admin.click(`[data-use-pack="${id}"]`);
+    };
+    await step(S, 'A13 角色详情 → 装扮: trying 旧版像素 on shows it on her stage, 穿上 keeps it there and changes the pet window', async () => {
+      await go('/characters/grok');
       await admin.waitForSelector('[data-character-title="grok"]');
+      await admin.evaluate(() => { window.__pushes = []; const t0 = performance.now(); window.petAdmin.onState((st) => { const r = st.roster && st.roster.find((x) => x.id === 'grok'); window.__pushes.push(`${Math.round(performance.now() - t0)}:${r ? r.preview.url.split('/')[2] : st.roster ? '?' : 'no-roster'}`); }); });
+      await stageDrawn('grok');
+      const before = await stageOf('grok');
       await shot('a13-detail-overview');
-      await admin.getByRole('tab', { name: '形象包' }).click();
-      // 试穿 first: the stage above shows the pack, nothing is saved yet
+      await showcaseShot('grok', 'a13-stage-0-before');
+      await admin.getByRole('tab', { name: '装扮' }).click();
+      // 试穿 first: the stage shows the pack, nothing is saved yet
       await admin.click('[data-try-pack="grok-classic"]');
       await admin.waitForSelector('[data-trying-tag]');
-      const tried = await admin.evaluate(() => document.querySelector('[data-stage="grok"] [data-preview]').dataset.preview);
+      await stageDrawn('grok', before.src);
+      const tried = await stageOf('grok');
+      assert.match(tried.src, /grok-classic/, `try-on stage ${tried.src}`);
       assert.notEqual(saved().appearance && saved().appearance.grok, 'grok-classic', 'trying on saves nothing');
       await shot('a13-detail-try-on');
-      await admin.click('[data-use-pack="grok-classic"]');
+      await showcaseShot('grok', 'a13-stage-1-try-on');
+      await useOn('grok-classic');
       await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
+      await admin.waitForFunction(() => /正在穿：旧版像素|正在穿：.*classic/i.test(document.querySelector('[data-worn-caption="grok"]').textContent) || !/试穿中/.test(document.querySelector('[data-worn-caption="grok"]').textContent));
+      await stageDrawn('grok');
+      const worn = await stageOf('grok');
+      assert.match(worn.src, /grok-classic/, `after 穿上 the stage keeps the new pack: ${worn.src}`);
       assert.equal(saved().appearance.grok, 'grok-classic');
+      // the other way: back to her pixel pack, the stage follows without a reload
+      await useOn('grok-pixel');
+      for (let k = 0; k < 40 && saved().appearance.grok !== 'grok-pixel'; k++) await admin.waitForTimeout(200);
+      if (saved().appearance.grok !== 'grok-pixel') await Promise.reject(new Error('unsaved')).catch(async () => { throw new Error(`穿上 grok-pixel did not save: appearance=${JSON.stringify(saved().appearance)}; toasts=${JSON.stringify(await admin.$$eval('[data-sonner-toast]', (ts) => ts.map((t) => t.textContent)))}; button=${await admin.locator('[data-use-pack="grok-pixel"]').count()}`); });
+      await stageDrawn('grok', worn.src);
+      const back = await stageOf('grok');
+      assert.match(back.src, /grok-pixel/);
+      await showcaseShot('grok', 'a13-stage-2-pixel-again');
+      await useOn('grok-classic');
+      await stageDrawn('grok', back.src);
+      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
       await shot('a13-detail-look');
+      await showcaseShot('grok', 'a13-stage-3-classic-worn');
       await page.screenshot({ path: path.join(SHOTS, 'pet-after-look.png') });
-      return `try-on stage ${tried} (unsaved), then 穿上: pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=grok-classic`;
+      return `stage ${before.src.split('/').slice(-3).join('/')} → try-on ${tried.src.split('/').slice(-3).join('/')} (unsaved) → 穿上 ${worn.src.split('/').slice(-3).join('/')} → grok-pixel ${back.src.split('/').slice(-3).join('/')} → grok-classic again; pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=${saved().appearance.grok}`;
+    }, () => admin);
+
+    await step(S, 'A13b every built-in look of every character draws on her stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
+      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.map((c) => ({ id: c.id, packId: c.appearance.packId, options: c.appearance.options.filter((o) => o.source === 'builtin' && !o.adult).map((o) => ({ id: o.id, kind: o.kind })) })));
+      const rows = [];
+      const kinds = new Set();
+      for (const c of chars) {
+        await go(`/characters/${c.id}`);
+        await admin.waitForSelector(`[data-showcase="${c.id}"]`);
+        await admin.getByRole('tab', { name: '装扮' }).click();
+        for (const o of c.options) {
+          const r = await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [o.id, c.id]);
+          assert.equal(r.ok, true, `${c.id} ← ${o.id}: ${JSON.stringify(r)}`);
+          await admin.waitForFunction(([cid, pid]) => [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-pack="${pid}"]`)].some((x) => x.dataset.worn === 'true'), [c.id, o.id], { timeout: 10000 }).catch(() => {});
+          await stageDrawn(c.id);
+          const st = await stageOf(c.id);
+          assert.ok(st && st.type !== 'none' && !st.failed && st.drawn, `${c.id} in ${o.id} (${o.kind}): ${JSON.stringify(st)}`);
+          // and tried on from her wardrobe (in colour even before she is met: a silhouette is only for the worn look)
+          await admin.click(`[data-try-pack="${o.id}"]`);
+          await admin.waitForSelector('[data-trying-tag]');
+          await stageDrawn(c.id);
+          const tr = await stageOf(c.id);
+          assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying ${o.id}: ${JSON.stringify(tr)}`);
+          if (!kinds.has(o.kind)) {
+            kinds.add(o.kind);
+            await showcaseShot(c.id, `a13b-stage-${o.kind}-${o.id}`);
+          }
+          await admin.click(`[data-try-pack="${o.id}"]`);
+          await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
+          rows.push(`${c.id}/${o.id}[${o.kind}] worn→${st.type} tried→${tr.type}`);
+        }
+        // as she was
+        await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [c.packId || c.options[0].id, c.id]);
+      }
+      assert.ok(['sprites', 'rig', 'live2d', 'video'].every((k) => kinds.has(k)), [...kinds].join(','));
+      assert.equal(saved().appearance.grok, 'grok-classic');
+      return `${rows.length} looks drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
     }, () => admin);
 
     await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
@@ -7525,14 +8521,22 @@ async function adminScenario() {
       return 'my-grok listed after import, removed (folder gone)';
     }, () => admin);
 
-    await step(S, 'A15 the pet window\'s 角色列表 → her page sends 模型与个性化设定 to the settings window', async () => {
+    await step(S, 'A15 a right click on her brings the same settings window forward (no menu, no second window)', async () => {
+      await admin.evaluate(() => { location.hash = '/characters/grok'; });
       await page.bringToFront();
-      await openCharacters(page, 'grok');
-      assert.equal(await page.locator('#model-select, #role-input').count(), 0, 'no second copy of the form in the pet window');
-      await page.click('#char-admin');
-      await admin.waitForSelector('[data-character-title="grok"]');
+      await hover(page);
+      // ⚙ / a right click go to what is new (an update, an unlocked outfit or topic), else keep the window's page
+      const news = await page.getAttribute('#btn-settings', 'data-news');
+      const want = { update: '/update', outfit: '/characters/grok', topic: '/topics' }[news] || '/characters/grok';
+      const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
+      await page.mouse.click(box.x, box.y, { button: 'right' });
+      await page.waitForTimeout(500);
+      assert.equal(await page.locator('#model-select, #role-input, #main-menu, #panel').count(), 0, 'no form, menu or panel in the pet window');
+      const info = await page.evaluate(() => window.pet.debugAdmin());
+      assert.equal(info.opened, 1);
+      await adminUntil(admin, (p) => !!document.querySelector(`[data-path="${p}"]`), want, 15000, want);
       await page.screenshot({ path: path.join(SHOTS, 'pet-char-page-jump.png') });
-      return `pet her page → admin ${await admin.evaluate(() => location.hash)}`;
+      return `right click (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
     }, () => admin);
 
     await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
@@ -7606,18 +8610,23 @@ async function adminScenario() {
   if (which === 'vrmui' || which === 'all') await vrmUi();
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
+  if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'live2dframe' || which === 'all') await live2dFrameScenarios().live2dFraming();
   if (which === 'asr' || which === 'all') await asrScenario();
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'frontslim' || which === 'all') await frontslimScenario();
+  if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];
   try { prior = JSON.parse(fs.readFileSync(path.join(OUT, 'results.json'), 'utf8')).filter((r) => !ran.has(r.scenario)); } catch { /* first run */ }
   fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify([...prior, ...results], null, 2));
   const failed = results.filter((r) => r.status === 'fail');
-  say(`\n${results.length - failed.length}/${results.length} passed`);
+  const skipped = results.filter((r) => r.status === 'skip');
+  say(`\n${results.length - failed.length - skipped.length}/${results.length - skipped.length} passed${skipped.length ? `, ${skipped.length} skipped` : ''}`);
   fs.appendFileSync(path.join(OUT, 'run-log.txt'), `# ${new Date().toISOString()} scenarios: ${which}\n` + logLines.join('\n') + '\n');
   process.exit(failed.length ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });

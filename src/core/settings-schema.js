@@ -36,6 +36,15 @@ const NAV = [
       { page: 'visitors', label: '同屏伙伴', icon: 'UsersRound' },
     ],
   },
+  // the pet window's old ⋯ menu and its 话题 panel (T-2718): what she can talk about, what you talked
+  // about, and the desktop controls (动作 / 回到右下角 / 退出)
+  {
+    key: 'together', section: 'play', label: '和她一起', items: [
+      { page: 'topics', label: '话题', icon: 'MessagesSquare' },
+      { page: 'history', label: '聊天记录', icon: 'History' },
+      { page: 'desk', label: '桌面上的她', icon: 'Monitor' },
+    ],
+  },
   {
     key: 'voice', section: 'settings', label: '声音', items: [
       { page: 'tts', label: '朗读', icon: 'Volume2' },
@@ -71,8 +80,11 @@ const PAGES = {
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
   packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
-  behavior: { title: '桌宠行为', description: '桌面上的大小、走动、音效、梗图和触摸。改动立即生效。' },
+  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
+  topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
+  history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
+  desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
   asr: { title: '语音输入', description: '按住 🎤 说话，识别成文字发给她。' },
@@ -80,7 +92,7 @@ const PAGES = {
   connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
   api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
   safety: { title: '内容与安全', description: '18+ 确认与成人向内容。打开成人向内容必须走年龄确认。' },
-  update: { title: '版本与更新', description: '当前版本、更新状态，以及手动检查。' },
+  update: { title: '版本与更新', description: '当前版本、更新状态、自动更新开关，以及手动检查。新版本在后台下载，离开电脑 10 分钟后或退出时安装。' },
   about: { title: '数据与关于', description: '数据目录、系统选项、素材署名和危险操作。' },
 };
 
@@ -93,14 +105,15 @@ const F = [];
 const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, card, label, type, store: 'settings', ...extra });
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
-add('petScale', 'behavior', '大小', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
+add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
 add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '有同屏伙伴时，扔出去的桌宠会撞到别人。' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });
 add('prefs.touchHint', 'behavior', '触摸', '触摸提示', 'switch', { desc: '悬停时提示指针下是哪个部位。', dependsOn: { key: 'prefs.touchZones', value: true } });
-add('petScaleSet', 'behavior', '大小', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
+add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
 
 // ---- 主动行为与好感度 ------------------------------------------------------------------------------------
 add('proactive.enabled', 'proactive', '主动行为', '主动说话', 'switch', { desc: '饿了、无聊了、早晚问候时自己开口。关闭后她只在你互动时说话。' });
@@ -160,9 +173,13 @@ add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly'
 // ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
 add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', { desc: '用 GPU 绘制桌宠。透明窗口出现黑块或闪烁时可以关掉。', restart: true });
 
+// ---- 版本与更新 -------------------------------------------------------------------------------------------
+add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch', { desc: '启动约 20 秒后检查一次，之后每 4 小时一次，有新版本就在后台下载。关闭后只在你点「检查更新」时检查；已下载的新版本仍会在退出时安装。' });
+
 // ---- 按角色（角色详情页） ----------------------------------------------------------------------------------
 add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
 add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型。' });
+add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '她自己的取景：跟随全局（或形象包的默认）/ 全身 / 半身。' });
 add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
 
 // ---- 不在 settings.json 的：密钥、pet.json -----------------------------------------------------------------
@@ -189,7 +206,7 @@ function settingsLeaves(obj = DEFAULTS, prefix = '') {
   const out = [];
   for (const [k, v] of Object.entries(obj)) {
     const p = prefix ? `${prefix}.${k}` : k;
-    if (['appearance', 'models', 'systemRoles'].includes(p)) out.push(`${p}.<id>`);
+    if (['appearance', 'models', 'systemRoles', 'framings'].includes(p)) out.push(`${p}.<id>`);
     else if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) out.push(...settingsLeaves(v, p));
     else out.push(p);
   }
@@ -263,7 +280,7 @@ function patchFor(key, value) {
   if (head === 'tts') return { setter: 'setTts', patch: nest(parts.slice(1), value) };
   if (head === 'asr') return { setter: 'setAsr', patch: nest(parts.slice(1), value) };
   if (head === 'api') return { setter: 'setApi', patch: { [parts[1]]: value } };
-  if (['proactive', 'affectionRules', 'ui', 'system'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
+  if (['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
   return null;
 }
 
