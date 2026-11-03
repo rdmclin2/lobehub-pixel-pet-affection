@@ -345,7 +345,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
 | `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类形象包、详情各标签页，改动出现在桌宠窗口 |
-| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
+| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` / `spriteframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）/ 像素（克洛蒂 · 像素 + 旧版像素）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
 | `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
 | `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
@@ -398,7 +398,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 ## 十一、半身模式（VRM / Live2D）
 
-**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。只对 **VRM** 和 **Live2D** 形象包生效，像素 / 图片 / 全动态包保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。对 **VRM**、**Live2D** 和**像素**形象包生效，图片 / 全动态包保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
 
 **1. 让角色穿上 Live2D 或 VRM 形象包**（设置窗口 → **角色** → 点一位角色 → 详情 → **形象包** 标签）：
 

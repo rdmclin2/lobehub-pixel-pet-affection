@@ -13,6 +13,9 @@
     "width": 83,
     "height": 113
   },
+  "halfBody": {
+    "waist": 0.72
+  },
   "actions": {
     "idle": {
       "row": 0,

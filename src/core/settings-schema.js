@@ -106,7 +106,7 @@ const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, ca
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
 add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
-add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身）；角色详情页可以单独设置，形象包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });

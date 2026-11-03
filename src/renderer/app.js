@@ -237,7 +237,29 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.height = Math.round(look.frame.height / k);
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
-    const s = { canvas: c, look, k, sheet: useSheet(look.url, k), action, start: performance.now() };
+    const s = { canvas: c, look, k, sheet: useSheet(look.url, k), action, start: performance.now(), framing: 'full', glide: null, pet: className === 'char' };
+    if (s.pet) {
+      // 取景 (core/framing.js, docs/half-body-mode.md): the desktop pet crops each frame to head → waist and draws it
+      // bigger in the same canvas box; the same setFraming() as a VRM / Live2D figure (syncFraming calls it). The sheet,
+      // the canvas and the action's timing stay: only the part of the frame drawn changes (a short glide for smooth HD
+      // art; hard pixel art switches at once, a gliding nearest-neighbour scale would shimmer).
+      s.framing = framingOf(look).mode === 'half' ? 'half' : 'full';
+      sizeSpriteCanvas(s);
+      c.petFigure = {
+        setFraming(mode, { instant = false } = {}) {
+          const next = mode === 'half' ? 'half' : 'full';
+          if (next === s.framing) return false;
+          const now = performance.now();
+          s.glide = instant || look.pixelated ? null : { from: spriteCrop(s, now), t0: now };
+          s.framing = next;
+          sizeSpriteCanvas(s);
+          drawSprite(s, now);
+          return true;
+        },
+        framing: () => s.framing,
+        debug: () => spriteDebug(s),
+      };
+    }
     sprites.add(s);
     drawSprite(s, performance.now());
     return c;
@@ -284,9 +306,110 @@ function drawSprite(s, now) {
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
-  ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
-  const frame = `${look.url}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
+  const crop = s.pet ? spriteCrop(s, now) : null;
+  const whole = !crop || (crop.sx === 0 && crop.sy === 0 && crop.sw === w && crop.sh === h);
+  if (whole) ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
+  else {
+    // 半身: only the crop of this cell, clipped to it (the rest of the sheet is the neighbouring frames)
+    const r = PF.spriteDrawRects(crop, { w, h }, { W: canvas.width, H: canvas.height });
+    if (r) ctx.drawImage(img, ((a.col + i) * w + r.src.x) / k, (a.row * h + r.src.y) / k, r.src.w / k, r.src.h / k, r.dst.x, r.dst.y, r.dst.w, r.dst.h);
+  }
+  // which frame is up, and how it is cropped (touch hit tests cache its pixels by this)
+  const frame = `${look.url}#${a.row}:${a.col + i}${whole ? '' : `@${s.framing}:${crop.sx | 0},${crop.sy | 0},${crop.sw | 0}`}`;
   if (canvas.dataset.frame !== frame) canvas.dataset.frame = frame;
+  if (s.pet) {
+    // debug fields (e2e) and what artPoint reads for the touch zones: data-framing / data-cut like a Live2D canvas
+    const d = canvas.dataset;
+    const half = s.framing === 'half' && s.half;
+    if (d.framing !== s.framing) d.framing = s.framing;
+    const cut = half ? s.half.cut.toFixed(3) : '1';
+    if (d.cut !== cut) d.cut = cut;
+    const band = half ? s.half.source : '';
+    if (d.band !== band) d.band = band;
+    const cr = whole ? '' : [crop.sx, crop.sy, crop.sw, crop.sh].map((v) => Math.round(v * 10) / 10).join(',');
+    if (d.crop !== cr) d.crop = cr;
+  }
+}
+// The desktop pet's sprite canvas for its framing (core/framing.js spriteCanvas): hard pixel art in 半身 gets a
+// whole-number multiple of the frame, so each source pixel is an even block; otherwise the frame's own size.
+function sizeSpriteCanvas(s) {
+  const { W, H } = PF.spriteCanvas({ w: s.look.frame.width, h: s.look.frame.height }, { mode: s.framing, pixelated: !!s.look.pixelated });
+  if (s.canvas.width !== W) s.canvas.width = W;
+  if (s.canvas.height !== H) s.canvas.height = H;
+}
+const SPRITE_GLIDE_MS = 350; // the switch between 全身 and 半身 (the same as a VRM / Live2D figure)
+// The part of the frame drawn now (frame px): the whole frame in 全身, the half-body crop in 半身, eased between
+// the two for SPRITE_GLIDE_MS after a switch.
+function spriteCrop(s, now) {
+  const frame = { w: s.look.frame.width, h: s.look.frame.height };
+  let target = PF.spriteFull(frame);
+  s.half = null;
+  if (s.framing === 'half') {
+    const ref = spriteRefOf(s);
+    if (ref) {
+      s.half = PF.spriteHalfCrop(ref, { frame, waist: s.look.halfBody && s.look.halfBody.waist, canvas: { W: s.canvas.width, H: s.canvas.height }, pixelated: !!s.look.pixelated });
+      target = s.half;
+    }
+  }
+  if (!s.glide) return target;
+  const t = (now - s.glide.t0) / SPRITE_GLIDE_MS;
+  if (t >= 1) { s.glide = null; return target; }
+  return PF.blendRect(s.glide.from, target, t);
+}
+// Her head-to-soles extent in the frames of this sheet (core/framing.js spriteRef), measured once per sheet from
+// the opaque pixels of frame 0 of a few standing actions, read at a quarter of the size for big HD frames. A sheet
+// that cannot be read back counts as her filling the whole frame. null until the sheet is decoded.
+const SPRITE_ALPHA = 128;
+function spriteRefOf(s) {
+  const e = s.sheet;
+  if (e.ref) return e.ref;
+  const img = e.src;
+  if (!img || (img instanceof HTMLImageElement && (!img.complete || !img.naturalWidth))) return null;
+  const { look, k } = s;
+  const fw = look.frame.width;
+  const fh = look.frame.height;
+  const q = fw >= 400 ? 4 / k : 1; // HD: a quarter (166×226 a frame); pixel art: as is
+  const cw = Math.max(1, Math.round(fw / k / q));
+  const ch = Math.max(1, Math.round(fh / k / q));
+  const boxes = [];
+  try {
+    const c = document.createElement('canvas');
+    c.width = cw;
+    c.height = ch;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    for (const name of PF.SPRITE.refActions) {
+      const a = look.actions[name];
+      if (!a) continue;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(img, (a.col * fw) / k, (a.row * fh) / k, fw / k, fh / k, 0, 0, cw, ch);
+      const data = ctx.getImageData(0, 0, cw, ch).data;
+      let x0 = cw;
+      let y0 = ch;
+      let x1 = -1;
+      let y1 = -1;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+        if (data[(y * cw + x) * 4 + 3] < SPRITE_ALPHA) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      const sx = fw / cw;
+      const sy = fh / ch;
+      if (x1 >= 0) boxes.push({ top: y0 * sy, bottom: (y1 + 1) * sy, minX: x0 * sx, maxX: (x1 + 1) * sx });
+    }
+  } catch (err) {
+    console.warn('[sprite] cannot read the sheet back, framing on the whole frame:', err && err.message);
+  }
+  e.ref = PF.spriteRef(boxes, { w: fw, h: fh });
+  return e.ref;
+}
+// petFx.sprite(): what the desktop pet's sprite canvas draws (e2e)
+function spriteDebug(s) {
+  return {
+    packId: s.look.packId, framing: s.framing, band: s.half ? s.half.source : null, waist: s.half ? s.half.waist : null, cut: s.half ? s.half.cut : 1, scale: s.half ? s.half.scale : 1,
+    ref: s.sheet.ref || null, crop: s.canvas.dataset.crop || null, canvas: [s.canvas.width, s.canvas.height], gliding: !!s.glide, pixelated: !!s.look.pixelated, action: s.cur || null,
+  };
 }
 // No WebGL (or a layer that would not load): show her picture instead of an empty canvas.
 function rigFailed(canvas, look, alt, className, e) {
@@ -1353,7 +1476,7 @@ function artPoint(cx, cy) {
   const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
   const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
   const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
-  // 半身 (a VRM / Live2D figure framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
+  // 半身 (a VRM / Live2D figure or a pixel sprite framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
   // head-to-feet art) get y in her full-body proportions; legs and feet are below the picture, out of reach
   const half = a.el.dataset && a.el.dataset.framing === 'half' ? { mode: 'half', cut: Number(a.el.dataset.cut) } : null;
   const y = (py - b.y0) / (b.y1 - b.y0);
@@ -1815,6 +1938,8 @@ window.petFx = {
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
   // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
   live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
+  // the desktop pet's pixel sprite: framing, half-body band (pack / default), measured reference, crop, canvas size
+  sprite: () => { const el = $('pet-look').firstElementChild; return el && el.petFigure && el.classList.contains('sprite') && !el.classList.contains('rig') ? el.petFigure.debug() : null; },
   // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
   // without a TTS engine; resolves with how the clip ended
   testVoice: (seconds = 2) => new Promise((resolve) => {
@@ -1873,6 +1998,7 @@ async function onApiCmd({ id, cmd, args }) {
   window.pet.apiReply(id, result);
 }
 
+const spriteGliding = () => { for (const s of sprites) if (s.glide) return true; return false; }; // a framing glide wants every frame
 function frameLoop() {
   tickSprites(performance.now());
   tickRigs(performance.now());
@@ -1882,7 +2008,7 @@ function frameLoop() {
     animatePet();
   }
   // ~12 fps keeps the pixel feel and idles cheaply; a rig's springs want every frame
-  if (rigs.size) requestAnimationFrame(frameLoop);
+  if (rigs.size || spriteGliding()) requestAnimationFrame(frameLoop);
   else setTimeout(() => requestAnimationFrame(frameLoop), 80);
 }
 
