@@ -3328,13 +3328,14 @@ async function touch() {
 }
 
 // ---------------------------------------------------------------- voice
-// 语音 engines (core/tts.js) against a local stand-in for Fish Audio and MiniMax (no real key, no cost):
+// 语音 engines (core/tts.js) against a local stand-in for Fish Audio, MiniMax and ElevenLabs (no real key, no cost):
 // engine choice, the cache, one line at a time, and every fallback (HTTP error, pause, timeout, no key,
 // offline, silent), configured through 高级设置 → 语音 like a user would.
 function ttsMock() {
   const http = require('node:http');
   const KEY = 'e2e-fake-fish-key-7f3a9c';
   const MM_KEY = 'e2e-fake-minimax-key-41b2';
+  const EL_KEY = 'e2e-fake-elevenlabs-key-9d0e';
   // a 440 Hz tone: a real WAV the page can decode and play (0.5 s, or `perCharMs` per character of the line)
   const tone = (sec) => {
     const rate = 8000;
@@ -3346,7 +3347,7 @@ function ttsMock() {
     return w;
   };
   const wav = tone(0.5);
-  const m = { KEY, MM_KEY, wav, mode: 'ok', slow: {}, perCharMs: 0, log: [] };
+  const m = { KEY, MM_KEY, EL_KEY, wav, mode: 'ok', slow: {}, perCharMs: 0, log: [] };
   m.server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; });
@@ -3356,8 +3357,12 @@ function ttsMock() {
       const fish = req.url === '/v1/tts';
       // a local voice server (本地语音服务): the OpenAI speech API or whale-voice's /tts; no key
       const local = req.url === '/v1/audio/speech' || req.url === '/tts';
-      const auth = local || req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`;
-      const rec = local
+      // ElevenLabs: POST /v1/text-to-speech/{voice_id}?output_format=… with the key in xi-api-key
+      const el = req.url.startsWith('/v1/text-to-speech/');
+      const auth = local || (el ? req.headers['xi-api-key'] === EL_KEY : req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`);
+      const rec = el
+        ? { at: Date.now(), path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] ? '(set)' : '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
+        : local
         ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
         : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
       m.log.push(rec);
@@ -3371,7 +3376,7 @@ function ttsMock() {
         rec.status = 200;
         const audio = m.perCharMs ? tone(Math.min(6, Math.max(0.4, ([...(j.text || '')].length * m.perCharMs) / 1000))) : wav;
         rec.audioMs = Math.round(((audio.length - 44) / 2 / 8000) * 1000);
-        if (fish || local) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
+        if (fish || local || el) return res.writeHead(200, { 'content-type': 'audio/wav' }).end(audio);
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: audio.toString('hex') } }));
       };
       if (m.mode === 'hang') return setTimeout(send, 8000);
@@ -3450,7 +3455,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -3468,7 +3473,7 @@ async function voice() {
       const opts = await admin.locator('[role="option"]').allTextContents();
       await ashot('v1-engine-options');
       await admin.keyboard.press('Escape');
-      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', 'ElevenLabs', '本地语音服务', '系统语音']);
       assert.equal(await field('朗读引擎').locator('[role="combobox"]').textContent(), '自动（跟随角色）');
       assert.match(await waitTags('Fish Audio', /未就绪/), /未就绪/);
       await ashot('v1-voice-section-empty');
@@ -3777,6 +3782,86 @@ async function voice() {
       await waitSet((st) => st.tts.packs === true, '语音包 on');
       return note(`pack: ${packText}; recorded: ${fmt(sp)}; not recorded: ${fmt(other)}; 语音包 off: ${fmt(off)}; requests ${before} → ${reqs()}`);
     }, () => admin || page);
+
+    await step(S, 'V16 ElevenLabs: endpoint, default voice and key in 设置窗口 → 朗读, picked as the engine → POST /v1/text-to-speech/{voice_id} with xi-api-key', async () => {
+      const EL_VOICE = '21m00Tcm4TlvDq8ikWAM';
+      await openTts();
+      assert.match(await waitTags('ElevenLabs', /未就绪/), /未就绪/);
+      assert.equal((await ttsSet()).ttsStatus.engines.elevenlabs.hasKey, false);
+      await admin.locator('[data-key="tts.endpoints.elevenlabs"]').scrollIntoViewIfNeeded();
+      await ashot('v16-elevenlabs-card-empty');
+      await saveDraft('tts.endpoints.elevenlabs', mock.url);
+      await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
+      await saveDraft('tts.elevenlabs.voiceId', EL_VOICE);
+      await toast(/已保存：默认音色 ID → 21m00Tcm4TlvDq8ikWAM/);
+      const st0 = await waitSet((s) => s.tts.endpoints.elevenlabs === mock.url && s.tts.elevenlabs.voiceId === EL_VOICE, 'the ElevenLabs endpoint and voice');
+      assert.deepEqual(st0.tts.elevenlabs, { voiceId: EL_VOICE, modelId: 'eleven_multilingual_v2' });
+      assert.equal(await admin.getAttribute('[data-key="keys.elevenlabs"]', 'type'), 'password');
+      await saveKey('keys.elevenlabs', mock.EL_KEY);
+      await toast(/API Key 已保存（不会回显）/);
+      assert.equal(await admin.inputValue('[data-key="keys.elevenlabs"]'), '', 'the key is not kept in the page');
+      const tags = await waitTags('ElevenLabs', /^可用$/);
+      await pick('朗读引擎', 'ElevenLabs');
+      await toast(/已保存：朗读引擎 → ElevenLabs/);
+      const st = await waitSet((s) => s.tts.provider === 'elevenlabs' && s.ttsStatus.engines.elevenlabs.hasKey, 'provider elevenlabs with a key');
+      await admin.locator('[data-key="tts.endpoints.elevenlabs"]').scrollIntoViewIfNeeded();
+      await ashot('v16-elevenlabs-configured');
+      await prewarmed(page);
+      const sp = await speakLine('用 ElevenLabs 读这一句');
+      const rq = mock.log[mock.log.length - 1];
+      assert.equal(sp.engine, 'elevenlabs');
+      assert.equal(sp.provider, 'elevenlabs');
+      assert.equal(sp.voiceId, EL_VOICE);
+      assert.deepEqual(sp.fellBackFrom, []);
+      assert.equal(rq.path, `/v1/text-to-speech/${EL_VOICE}`);
+      assert.equal(rq.query, 'output_format=mp3_44100_128');
+      assert.equal(rq.auth, true, 'xi-api-key matched');
+      assert.equal(rq.bearer, false, 'no Authorization header');
+      assert.equal(rq.accept, 'audio/mpeg');
+      assert.equal(rq.model, 'eleven_multilingual_v2');
+      assert.deepEqual(Object.keys(rq.prosody).sort(), ['similarity_boost', 'speed', 'stability', 'style', 'use_speaker_boost']);
+      assert.equal(rq.text, '用 ElevenLabs 读这一句');
+      assert.equal(fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes(mock.EL_KEY), false, 'the key is not in settings.json');
+      assert.equal((await admin.content()).includes(mock.EL_KEY), false, 'the key is nowhere in the settings window');
+      await page.waitForTimeout(300);
+      await shot('v16-elevenlabs-speaking');
+      return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw POST ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
+    }, () => admin || page);
+
+    await step(S, 'V17 ElevenLabs without a key: cleared → no request, fellBackFrom elevenlabs:no-key; 不出声 → silent with a reason, never a silent success', async () => {
+      await openTts();
+      await admin.locator('[data-has-key="keys.elevenlabs"]').scrollIntoViewIfNeeded();
+      await admin.locator('[data-has-key="keys.elevenlabs"]').locator('xpath=..').locator('button', { hasText: /^清除$/ }).click();
+      await admin.locator('button', { hasText: /^清除API Key$/ }).click();
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.elevenlabs"]').textContent === '未设置');
+      const tags = await waitTags('ElevenLabs', /^未就绪$/);
+      const eng = (await ttsSet()).ttsStatus.engines.elevenlabs;
+      assert.equal(eng.hasKey, false);
+      assert.equal(eng.ready, false);
+      const before = reqs();
+      const sp = await speakLine('ElevenLabs 没有钥匙');
+      assert.equal(sp.engine, 'elevenlabs');
+      assert.notEqual(sp.provider, 'elevenlabs');
+      assert.deepEqual(sp.fellBackFrom.filter((f) => f.provider === 'elevenlabs'), [{ provider: 'elevenlabs', reason: 'no-key' }]);
+      await ashot('v17-elevenlabs-no-key');
+      // 不出声: straight from the engine (the IPC the pet window uses), the result says why
+      await seg('引擎用不了时', '不出声');
+      await waitSet((s) => s.tts.fallback === 'silent', 'fallback silent');
+      mock.mode = '500'; // the other engine with a key (MiniMax) fails too: nothing can read the line
+      const raw = await page.evaluate(async () => { const r = await window.pet.ttsSynthesize('不出声也要说清楚', ''); return { ok: r.ok, reason: r.reason, message: r.message, fallback: r.fallback, fellBackFrom: r.fellBackFrom, next: r.next }; });
+      assert.equal(raw.ok, false);
+      assert.equal(raw.fallback, 'silent');
+      assert.equal(raw.reason, 'no-key');
+      assert.deepEqual(raw.fellBackFrom.filter((f) => f.provider === 'elevenlabs'), [{ provider: 'elevenlabs', reason: 'no-key' }]);
+      const quiet = await speakLine('安静地没有钥匙');
+      assert.equal(quiet.status, 'silent');
+      assert.equal(reqs() - before, mock.log.slice(before).filter((r) => !r.path.startsWith('/v1/text-to-speech/')).length, 'no ElevenLabs request without a key');
+      assert.equal(mock.log.slice(before).some((r) => r.path.startsWith('/v1/text-to-speech/')), false);
+      mock.mode = 'ok';
+      await seg('引擎用不了时', '改用系统语音');
+      await waitSet((s) => s.tts.fallback === 'system', 'fallback system');
+      return note(`card: ${tags}; status.elevenlabs=${JSON.stringify(eng)}; system fallback: ${fmt(sp)}; silent IPC result: ${JSON.stringify(raw)}; silent line: ${fmt(quiet)}`);
+    }, () => admin || page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'voice-log.txt'), evidence.join('\n') + '\n\nmock requests:\n' + mock.log.map((r) => JSON.stringify({ ...r, at: undefined })).join('\n') + '\n');
     await app.close().catch(() => {});
@@ -3855,7 +3940,7 @@ async function localvoice() {
       await field('朗读引擎').locator('[role="combobox"]').click();
       await admin.waitForSelector('[role="option"]');
       const opts = await admin.locator('[role="option"]').allTextContents();
-      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', '本地语音服务', '系统语音']);
+      assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', 'ElevenLabs', '本地语音服务', '系统语音']);
       await admin.locator('[role="option"]', { hasText: rx('本地语音服务') }).click();
       await toast(/已保存：朗读引擎 → 本地语音服务/);
       await waitSet((st) => st.tts.provider === 'local', 'provider local');

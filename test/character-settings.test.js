@@ -170,7 +170,7 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   assert.deepEqual(st.prefs, old.prefs);
   assert.deepEqual(st.visitors, ['gemini']);
   assert.deepEqual(st.api, old.api);
-  assert.deepEqual({ provider: st.tts.provider, fallback: st.tts.fallback, endpoints: st.tts.endpoints }, { provider: 'minimax', fallback: 'silent', endpoints: { fish: 'https://fish.example.com', minimax: '', local: '' } });
+  assert.deepEqual({ provider: st.tts.provider, fallback: st.tts.fallback, endpoints: st.tts.endpoints }, { provider: 'minimax', fallback: 'silent', endpoints: { fish: 'https://fish.example.com', minimax: '', elevenlabs: '', local: '' } });
   // nothing is rewritten on load, and a per-character change touches only its own key
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')).characters.claude, pet.characters.claude);
   assert.equal(s.setModel('lobehub:gemini-3.8-flash', 'gemini').ok, true);
@@ -183,7 +183,7 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   const newSections = { proactive, affectionRules, ui, system };
   // 语音包 (v0.11), 个性化设定, the local voice server and 语音输入 (asr, off) are new: an old file gets their defaults; the 18+ wording changed
   // (AGE_GATE_VERSION 2), so the old answer no longer counts and the user is asked again; everything else stays as it was
-  assert.deepEqual(restAfter, { ...restOld, answered: false, systemRoles: {}, tts: { ...restOld.tts, packs: true, endpoints: { ...restOld.tts.endpoints, local: '' }, local: { api: 'openai', model: '', voice: '' } }, asr: require('../src/core/asr').ASR_DEFAULTS, ...newSections }, 'same keys and values otherwise');
+  assert.deepEqual(restAfter, { ...restOld, answered: false, systemRoles: {}, tts: { ...restOld.tts, packs: true, endpoints: { ...restOld.tts.endpoints, elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } }, asr: require('../src/core/asr').ASR_DEFAULTS, ...newSections }, 'same keys and values otherwise');
 });
 
 const roleEdits = (dir) => (fs.existsSync(path.join(dir, 'edits.log')) ? fs.readFileSync(path.join(dir, 'edits.log'), 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.systemRole) : []);

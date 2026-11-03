@@ -85,20 +85,23 @@
 | `prefs.voice` | boolean | `false` | — | ⋯ → 高级设置 → 桌宠行为 → 朗读回复 · `set-prefs` | 即时；关闭时 `tts.engine.stopAll()` |
 | `prefs.voiceInteractions` | boolean | `true` | 要 `prefs.voice` 开着才起作用 | 同上 → 互动语音 · `set-prefs` | 即时（开启后会预合成 `tts-prewarm`） |
 | `prefs.voiceMurmurs` | boolean | `false` | 要 `prefs.voice` 开着才起作用 | 同上 → 朗读碎碎念 · `set-prefs` | 即时 |
-| `tts.provider` | enum | `'auto'` | `auto` \| `fish` \| `minimax` \| `local` \| `system`（`ENGINES`） | ⋯ → 高级设置 → 语音 → 引擎 · `set-tts` | 即时（重置熔断器、停止预热） |
+| `tts.provider` | enum | `'auto'` | `auto` \| `fish` \| `minimax` \| `elevenlabs` \| `local` \| `system`（`ENGINES`） | ⋯ → 高级设置 → 语音 → 引擎 · `set-tts` | 即时（重置熔断器、停止预热） |
 | `tts.providerSet` | boolean | `false` | 内部标记：主人选过引擎。没有这个标记的旧设置迁移成 `auto` | 不直接编辑（`set-tts {provider}` 时置 true） | — |
 | `tts.fallback` | enum | `'system'` | `system` \| `silent`（`FALLBACKS`） | 语音 → 用不了时 · `set-tts` | 即时 |
 | `tts.packs` | boolean | `true` | — | 语音 → 语音包 · `set-tts` | 即时 |
 | `tts.endpoints.fish` | URL string | `''`（为空时用官方地址 `https://api.fish.audio`） | 必须是 https；只有本机调试可以用 http://127.0.0.1 / localhost / [::1]；不能带用户名和密码 | 语音 → Fish Audio → 端点 · `set-tts` | 即时；不合法时 `reason:'bad-endpoint'` |
 | `tts.endpoints.minimax` | URL string | `''`（官方 `https://api.minimax.cn`） | 同上 | 语音 → MiniMax → 端点 · `set-tts` | 即时 |
+| `tts.endpoints.elevenlabs` | URL string | `''`（官方 `https://api.elevenlabs.io`） | 同上 | 语音 → ElevenLabs → 端点 · `set-tts` | 即时 |
 | `tts.endpoints.local` | URL string | `''`（为空时本地引擎不可用） | https，或者本机 / 局域网的 http（10.x、192.168.x、172.16–31.x、*.local） | 语音 → 本地语音服务 → 地址 · `set-tts` | 即时 |
 | `tts.local.api` | enum | `'openai'` | `openai`（`/v1/audio/speech`）\| `whale`（`/tts`） | 语音 → 本地语音服务 → 接口 · `set-tts` | 即时 |
 | `tts.local.model` | string | `''`（请求时用 `tts-1`） | 去掉首尾空白，最多 80 字 | 语音 → 本地语音服务 → 模型 · `set-tts` | 即时 |
 | `tts.local.voice` | string | `''`（请求时用 `default`） | 最多 80 字；角色文件里的 `voice.tts.local.voice` 优先 | 语音 → 本地语音服务 → 音色名 · `set-tts` | 即时 |
+| `tts.elevenlabs.voiceId` | string | `''`（没有音色时不用 ElevenLabs） | 去掉首尾空白，最多 80 字；角色文件里的 `voice.tts.elevenlabs.voiceId` 优先 | 语音 → ElevenLabs → 默认音色 ID · `set-tts` | 即时 |
+| `tts.elevenlabs.modelId` | string | `'eleven_multilingual_v2'` | 最多 80 字；空串回到默认；角色文件里的 `voice.tts.elevenlabs.model` 优先 | 语音 → ElevenLabs → 模型 · `set-tts` | 即时 |
 
 语音的密钥和操作：
 
-- Key `fish` / `minimax` / `local` 存在 `tts-keys.json` 里，格式是 `^[\x21-\x7e]{8,256}$`。入口是语音 → 各引擎 → Key 保存 / 清除，调用 `set-tts {key:{id,value}}`，格式不对时返回 `bad-key`。Windows / Linux 用 safeStorage 加密，macOS 用权限 0600 的明文文件。
+- Key `fish` / `minimax` / `elevenlabs` / `local` 存在 `tts-keys.json` 里，格式是 `^[\x21-\x7e]{8,256}$`。入口是语音 → 各引擎 → Key 保存 / 清除，调用 `set-tts {key:{id,value}}`，格式不对时返回 `bad-key`。Windows / Linux 用 safeStorage 加密，macOS 用权限 0600 的明文文件。
 - 动作：`tts-clear-cache`（清空语音缓存）、`open-voicepacks-folder`、`voicepacks-reload`（重新读语音包）。「试听一句」在渲染进程里调 `speak()`，最后走到 `tts-synthesize`。运行时还有 `tts-cancel` 和 `tts-prewarm`，它们不是配置。
 - 角色自己的音色（`voice.tts.fish.referenceId`、语速、moodTags…）写在 `src/characters/<id>.json` 里，**界面上不能改**。后台只读展示，同时显示音色的署名。
 

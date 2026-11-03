@@ -74,7 +74,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
     if (f.store === 'settings' && !f.key.includes('<id>')) assert.deepEqual(f.default, schema.at(settingsLib.normalizeSettings(null), f.key), f.key);
   }
   // sensitive ones are masked / write-only
-  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.fish', 'keys.local', 'keys.minimax']);
+  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.elevenlabs', 'keys.fish', 'keys.local', 'keys.minimax']);
   assert.deepEqual(schema.FIELDS.filter((f) => f.restart).map((f) => f.key), ['system.hardwareAcceleration']);
   // describe() is plain data for the window
   const d = JSON.parse(JSON.stringify(schema.describe()));

@@ -94,9 +94,9 @@ test('validateCharacter rejects a broken voice.tts', () => {
 
 // ---- settings ----------------------------------------------------------------------------------------
 test('settings.tts: each character\'s own engine (auto) by default with the system voice as fallback; bad values are dropped', () => {
-  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
+  assert.deepEqual(settingsLib.normalizeSettings(null).tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
   const s = settingsLib.normalizeSettings({ tts: { provider: 'azure', providerSet: true, fallback: 'loud', endpoints: { fish: 'http://evil.example.com', minimax: 'https://mm.example.com/' } } });
-  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', packs: true, endpoints: { fish: '', minimax: 'https://mm.example.com', local: '' }, local: { api: 'openai', model: '', voice: '' } });
+  assert.deepEqual(s.tts, { provider: 'auto', providerSet: true, fallback: 'system', packs: true, endpoints: { fish: '', minimax: 'https://mm.example.com', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
   // saved before 'auto': provider 'fish' was the default, never a choice → auto; a picked engine stays
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.provider, 'auto');
   assert.equal(settingsLib.normalizeSettings({ tts: { provider: 'fish', fallback: 'silent' } }).tts.fallback, 'silent');
@@ -143,7 +143,7 @@ test('auto, 大肥鱼 without a MiniMax key: straight to Fish, no MiniMax reques
 });
 
 test('every provider has the same shape; Web Speech is the system provider', () => {
-  assert.deepEqual(Object.keys(tts.PROVIDERS), ['fish', 'minimax', 'local', 'system']);
+  assert.deepEqual(Object.keys(tts.PROVIDERS), ['fish', 'minimax', 'elevenlabs', 'local', 'system']);
   for (const p of Object.values(tts.PROVIDERS)) {
     for (const k of ['id', 'label', 'kind', 'needsKey']) assert.ok(p[k] !== undefined, `${p.id}.${k}`);
     for (const k of ['available', 'config']) assert.equal(typeof p[k], 'function', `${p.id}.${k}`);
@@ -498,7 +498,7 @@ test('PetService.setTts saves engine, fallback and endpoints; the settings view 
   const svc = new PetService({ lh: null, store: null, settingsStore: store, ttsStatus: () => ({ engines: { fish: { hasKey: keys.has('fish') }, minimax: { hasKey: keys.has('minimax') } } }) });
   let r = svc.setTts({ provider: 'minimax', fallback: 'silent', endpoints: { fish: 'http://127.0.0.1:7777' } });
   assert.equal(r.ok, true);
-  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', packs: true, endpoints: { fish: 'http://127.0.0.1:7777', minimax: '', local: '' }, local: { api: 'openai', model: '', voice: '' } });
+  assert.deepEqual(store.load().tts, { provider: 'minimax', providerSet: true, fallback: 'silent', packs: true, endpoints: { fish: 'http://127.0.0.1:7777', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
   r = svc.setTts({ endpoints: { fish: 'ftp://nope' } });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'bad-endpoint');
@@ -551,8 +551,8 @@ test('local engine: without an endpoint it is skipped; it is never a fallback fo
   const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY }), fetch });
   const r = await e.synthesize({ text: '你好', species: dfy }, LOCAL({}, ''));
   assert.deepEqual(r.fellBackFrom.map((f) => `${f.provider}:${f.reason}`), ['local:no-endpoint', 'fish:http-500'], 'chosen without an address: on to the cloud engine with a key');
-  assert.deepEqual(tts.providerChain({ provider: 'fish', endpoints: { local: 'http://127.0.0.1:7864' } }, () => true, dfy), ['fish', 'minimax', 'system']);
-  assert.deepEqual(tts.providerChain(LOCAL(), () => true, dfy), ['local', 'fish', 'minimax', 'system']);
+  assert.deepEqual(tts.providerChain({ provider: 'fish', endpoints: { local: 'http://127.0.0.1:7864' } }, () => true, dfy), ['fish', 'minimax', 'elevenlabs', 'system']);
+  assert.deepEqual(tts.providerChain(LOCAL(), () => true, dfy), ['local', 'fish', 'minimax', 'elevenlabs', 'system']);
   assert.equal(e.status(LOCAL()).local.ready, true);
   assert.equal(e.status(LOCAL()).local.hasKey, false);
   assert.equal(e.status().local.ready, false);
@@ -587,4 +587,202 @@ test('local engine settings: API shape, model and voice are kept; http to the ho
   assert.deepEqual(validateCharacter({ ...dfy, voice: { ...dfy.voice, tts: { ...dfy.voice.tts, local: { voice: 'whale', speed: 3 } } } }).filter((x) => /local/.test(x)), ['voice.tts.local.speed must be a number from 0.5 to 2']);
   assert.equal(tts.voiceFor({ voice: { tts: { local: { voice: 'whale' } } } }, 'local', LOCAL({ voice: 'other' })).voiceId, 'whale');
   assert.equal(tts.voiceFor(dfy, 'local', LOCAL({ voice: 'other' })).voiceId, 'other');
+});
+
+// ---- ElevenLabs ----------------------------------------------------------------------------------------
+const EL_KEY = 'el-secret-key-abcdef123';
+const EL_VOICE = '21m00Tcm4TlvDq8ikWAM';
+const EL = (extra = {}) => ({ provider: 'elevenlabs', fallback: 'system', endpoints: {}, elevenlabs: { voiceId: EL_VOICE }, ...extra });
+const elSpecies = (el) => ({ voice: { lang: 'zh-CN', tts: { elevenlabs: el } } });
+
+test('ElevenLabs: a neural provider like Fish / MiniMax, in the engine lists, with an official https endpoint', () => {
+  const p = tts.PROVIDERS.elevenlabs;
+  assert.equal(p.id, 'elevenlabs');
+  assert.equal(p.label, 'ElevenLabs');
+  assert.equal(p.kind, 'neural');
+  assert.equal(p.needsKey, true);
+  assert.equal(p.defaultEndpoint, 'https://api.elevenlabs.io');
+  assert.equal(p.rpm, 0);
+  assert.equal(p.available, tts.PROVIDERS.fish.available, 'same availability rule as the other cloud engines');
+  assert.ok(tts.ENGINES.includes('elevenlabs'));
+  assert.ok(tts.NEURAL.includes('elevenlabs'));
+  assert.equal(tts.TTS_DEFAULTS.endpoints.elevenlabs, '');
+  assert.equal(require('../src/core/roster').ENGINE_LABEL.elevenlabs, 'ElevenLabs');
+  assert.equal(require('../src/core/settings-schema').validate('tts.provider', 'elevenlabs').ok, true);
+});
+
+test('ElevenLabs: normalizeTts keeps an https endpoint, drops a bad one to \'\', and cleans the default voice / model', () => {
+  const n = (raw) => tts.normalizeTts(raw);
+  assert.equal(n({ endpoints: { elevenlabs: 'https://el.example.com/' } }).endpoints.elevenlabs, 'https://el.example.com');
+  for (const bad of ['http://el.example.com', 'ftp://el.example.com', 'https://u:p@el.example.com', 'not a url', 42, 'http://192.168.1.5:8000']) {
+    assert.equal(n({ endpoints: { elevenlabs: bad } }).endpoints.elevenlabs, '', String(bad));
+  }
+  assert.equal(n({ endpoints: { elevenlabs: 'http://127.0.0.1:9' } }).endpoints.elevenlabs, 'http://127.0.0.1:9', 'local debugging only');
+  assert.deepEqual(n(null).elevenlabs, { voiceId: '', modelId: 'eleven_multilingual_v2' });
+  assert.deepEqual(n({ elevenlabs: { voiceId: `  ${EL_VOICE}  `, modelId: '  eleven_flash_v2_5 ' } }).elevenlabs, { voiceId: EL_VOICE, modelId: 'eleven_flash_v2_5' });
+  assert.deepEqual(n({ elevenlabs: { voiceId: 'x'.repeat(200), modelId: '' } }).elevenlabs, { voiceId: 'x'.repeat(80), modelId: 'eleven_multilingual_v2' });
+  assert.deepEqual(n({ elevenlabs: 'nope' }).elevenlabs, { voiceId: '', modelId: 'eleven_multilingual_v2' });
+});
+
+test('ElevenLabs config: her file first, else the settings voice / model; no voice anywhere = null', () => {
+  const own = tts.voiceFor(elSpecies({ voiceId: 'AZnzlk1XvdvUeBnXmlld', model: 'eleven_turbo_v2_5', stability: 0.3, similarityBoost: 0.9, style: 0.2, speed: 1.1, speakerBoost: false }), 'elevenlabs', EL());
+  assert.deepEqual(own, { voiceId: 'AZnzlk1XvdvUeBnXmlld', model: 'eleven_turbo_v2_5', stability: 0.3, similarityBoost: 0.9, style: 0.2, speed: 1.1, speakerBoost: false });
+  const def = tts.voiceFor(dfy, 'elevenlabs', EL({ elevenlabs: { voiceId: EL_VOICE, modelId: 'eleven_flash_v2_5' } }));
+  assert.equal(def.voiceId, EL_VOICE);
+  assert.equal(def.model, 'eleven_flash_v2_5');
+  assert.deepEqual({ ...tts.voiceFor(dfy, 'elevenlabs', EL()), voiceId: undefined }, { voiceId: undefined, model: 'eleven_multilingual_v2', stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1, speakerBoost: true });
+  assert.equal(tts.voiceFor(dfy, 'elevenlabs', {}), null, 'no voice in her file or settings');
+  assert.equal(tts.voiceFor(elSpecies({ voiceId: EL_VOICE, speed: 5, stability: -1 }), 'elevenlabs').speed, 1.2, 'clamped to 0.7–1.2');
+  assert.equal(tts.voiceFor(elSpecies({ voiceId: EL_VOICE, stability: -1 }), 'elevenlabs').stability, 0);
+  // the cache key changes with voice and model
+  const a = tts.cacheKey('elevenlabs', def, '你好');
+  assert.notEqual(a, tts.cacheKey('elevenlabs', { ...def, voiceId: 'AZnzlk1XvdvUeBnXmlld' }, '你好'));
+  assert.notEqual(a, tts.cacheKey('elevenlabs', { ...def, model: 'eleven_multilingual_v2' }, '你好'));
+});
+
+test('ElevenLabs synthesize: POST /v1/text-to-speech/{voice_id} on the official endpoint with xi-api-key, model_id and voice_settings', async () => {
+  const f = fakeFetch(() => audioRes(Buffer.from('ID3el-mp3'), 'audio/mpeg'));
+  const e = new tts.TtsEngine({ keys: keysWith({ elevenlabs: EL_KEY }), fetch: f });
+  const r = await e.synthesize({ text: '摸摸头', species: elSpecies({ voiceId: EL_VOICE, stability: 0.4, similarityBoost: 0.8, style: 0.1, speed: 0.9 }) }, EL());
+  assert.equal(r.ok, true);
+  assert.equal(r.provider, 'elevenlabs');
+  assert.equal(r.voiceId, EL_VOICE);
+  assert.equal(r.model, 'eleven_multilingual_v2');
+  assert.ok(Buffer.isBuffer(r.audio));
+  assert.equal(r.audio.toString(), 'ID3el-mp3');
+  assert.equal(r.mime, 'audio/mpeg');
+  assert.deepEqual(r.fellBackFrom, []);
+  assert.equal(f.calls.length, 1);
+  const c = f.calls[0];
+  assert.equal(c.url, `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}?output_format=mp3_44100_128`);
+  assert.equal(c.init.method, 'POST');
+  assert.equal(c.init.headers['xi-api-key'], EL_KEY);
+  assert.equal(c.init.headers['Content-Type'], 'application/json');
+  assert.equal(c.init.headers.Accept, 'audio/mpeg');
+  assert.equal(c.init.headers.Authorization, undefined, 'ElevenLabs takes xi-api-key, not a Bearer token');
+  assert.deepEqual(c.body, { text: '摸摸头', model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.1, speed: 0.9, use_speaker_boost: true } });
+});
+
+test('ElevenLabs synthesize: an overridden base URL, the settings model, and a voice id that is URL-encoded', async () => {
+  const f = fakeFetch(() => audioRes(Buffer.from('ID3'), 'audio/mpeg; charset=binary'));
+  const e = new tts.TtsEngine({ keys: keysWith({ elevenlabs: EL_KEY }), fetch: f });
+  const r = await e.synthesize({ text: '你好', species: dfy }, EL({ endpoints: { elevenlabs: 'https://proxy.example.com/' }, elevenlabs: { voiceId: EL_VOICE, modelId: 'eleven_flash_v2_5' } }));
+  assert.equal(r.ok, true);
+  assert.equal(r.mime, 'audio/mpeg');
+  assert.equal(f.calls[0].url, `https://proxy.example.com/v1/text-to-speech/${EL_VOICE}?output_format=mp3_44100_128`);
+  assert.equal(f.calls[0].body.model_id, 'eleven_flash_v2_5');
+  // the provider itself encodes whatever voice id it is given
+  const g = fakeFetch(() => audioRes());
+  await tts.PROVIDERS.elevenlabs.synthesize({ ...tts.voiceFor(dfy, 'elevenlabs', EL()), voiceId: 'a/b?c' }, 'hi', { key: EL_KEY, endpoint: 'https://api.elevenlabs.io', fetch: g, wait: (p) => p });
+  assert.equal(g.calls[0].url, 'https://api.elevenlabs.io/v1/text-to-speech/a%2Fb%3Fc?output_format=mp3_44100_128');
+});
+
+test('ElevenLabs: no key = no request, fellBackFrom says no-key; with silence the result is ok:false with a readable reason', async () => {
+  const f = fakeFetch(() => audioRes());
+  const e = new tts.TtsEngine({ keys: keysWith({}), fetch: f });
+  let r = await e.synthesize({ text: '你好', species: dfy }, EL());
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'elevenlabs', reason: 'no-key' }]);
+  assert.equal(r.next, 'system');
+  r = await e.synthesize({ text: '你好', species: dfy }, EL({ fallback: 'silent' }));
+  assert.equal(r.ok, false, 'never a silent success');
+  assert.equal(r.fallback, 'silent');
+  assert.equal(r.reason, 'no-key');
+  assert.match(r.message, /ElevenLabs: no-key/);
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'elevenlabs', reason: 'no-key' }]);
+  // no key and no voice either: the key is what is missing first
+  r = await e.synthesize({ text: '你好', species: dfy }, { provider: 'elevenlabs', fallback: 'silent' });
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'elevenlabs', reason: 'no-key' }]);
+  assert.equal(f.calls.length, 0, 'no request without a key');
+  const st = e.status(EL());
+  assert.equal(st.elevenlabs.hasKey, false);
+  assert.equal(st.elevenlabs.ready, false);
+  assert.equal(st.elevenlabs.rpm, null);
+  // the provider refuses to send without a key even when called directly
+  await assert.rejects(tts.PROVIDERS.elevenlabs.synthesize(tts.voiceFor(dfy, 'elevenlabs', EL()), 'hi', { key: '', endpoint: 'https://api.elevenlabs.io', fetch: f, wait: (p) => p }), (err) => err instanceof tts.TtsError && err.reason === 'no-key');
+  assert.equal(f.calls.length, 0);
+  assert.equal(new tts.TtsEngine({ keys: keysWith({ elevenlabs: EL_KEY }) }).status(EL()).elevenlabs.ready, true);
+});
+
+test('ElevenLabs: a key but no voice anywhere falls back with no-voice and sends nothing', async () => {
+  const f = fakeFetch(() => audioRes());
+  const e = new tts.TtsEngine({ keys: keysWith({ elevenlabs: EL_KEY }), fetch: f });
+  const r = await e.synthesize({ text: '你好', species: dfy }, { provider: 'elevenlabs', fallback: 'system' });
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'elevenlabs', reason: 'no-voice' }]);
+  assert.equal(f.calls.length, 0);
+});
+
+test('ElevenLabs errors: 401 pauses it 5 minutes, 429 20 s, 5xx 20 s; empty and non-audio answers are failures', async () => {
+  const cases = [[errRes(401), 'http-401', 300], [errRes(429), 'http-429', 20], [errRes(500), 'http-500', 20], [errRes(503), 'http-503', 20],
+    [audioRes(Buffer.alloc(0)), 'empty', 20], [audioRes(Buffer.from('{"detail":"x"}'), 'application/json'), 'not-audio', 20]];
+  for (const [res, reason, pausedFor] of cases) {
+    let now = 1000;
+    const f = fakeFetch(() => res);
+    const e = new tts.TtsEngine({ keys: keysWith({ elevenlabs: EL_KEY }), fetch: f, now: () => now });
+    const r = await e.synthesize({ text: '你好', species: dfy }, EL());
+    assert.equal(r.ok, false, reason);
+    assert.deepEqual(r.fellBackFrom, [{ provider: 'elevenlabs', reason }], reason);
+    assert.equal(e.status(EL()).elevenlabs.lastError, reason);
+    assert.equal(e.status(EL()).elevenlabs.pausedFor, pausedFor, reason);
+    // paused: the next line does not ask it again
+    const again = await e.synthesize({ text: '再说一句', species: dfy }, EL());
+    assert.deepEqual(again.fellBackFrom, [{ provider: 'elevenlabs', reason: `paused:${reason}` }], reason);
+    assert.equal(f.calls.length, 1, reason);
+    now += pausedFor * 1000 + 1;
+    await e.synthesize({ text: '过了一会儿', species: dfy }, EL());
+    assert.equal(f.calls.length, 2, `${reason}: asked again after the pause`);
+  }
+});
+
+test('ElevenLabs in the chain: chosen first; under auto (or another pick) it is a fallback once it has a key', async () => {
+  const has = (...ids) => (id) => ids.includes(id);
+  assert.deepEqual(tts.providerChain({ provider: 'elevenlabs' }, has()), ['elevenlabs', 'system']);
+  assert.deepEqual(tts.providerChain({ provider: 'elevenlabs' }, has('fish', 'elevenlabs')), ['elevenlabs', 'fish', 'system']);
+  assert.deepEqual(tts.providerChain({ provider: 'elevenlabs', fallback: 'silent' }, has()), ['elevenlabs']);
+  assert.deepEqual(tts.providerChain({ provider: 'auto' }, has('elevenlabs'), SPECIES.claude), ['fish', 'elevenlabs', 'system']);
+  assert.deepEqual(tts.providerChain({ provider: 'fish' }, has('minimax', 'elevenlabs'), dfy), ['fish', 'minimax', 'elevenlabs', 'system']);
+  // a character whose own engine is ElevenLabs reads with it under auto
+  const elGirl = { voice: { lang: 'zh-CN', tts: { default: 'elevenlabs', elevenlabs: { voiceId: EL_VOICE } } } };
+  assert.equal(tts.defaultEngine(elGirl), 'elevenlabs');
+  assert.deepEqual(tts.providerChain({ provider: 'auto' }, has('fish'), elGirl), ['elevenlabs', 'fish', 'system']);
+  // Fish fails: on to ElevenLabs, which reads the line
+  const f = fakeFetch((url) => (url.startsWith('https://api.fish.audio') ? errRes(500) : audioRes()));
+  const e = new tts.TtsEngine({ keys: keysWith({ fish: KEY, elevenlabs: EL_KEY }), fetch: f });
+  const r = await e.synthesize({ text: '你好', species: SPECIES.claude }, { provider: 'auto', elevenlabs: { voiceId: EL_VOICE } });
+  assert.equal(r.ok, true);
+  assert.equal(r.provider, 'elevenlabs');
+  assert.deepEqual(r.fellBackFrom, [{ provider: 'fish', reason: 'http-500' }]);
+  assert.equal(e.firstUsable(elGirl, { provider: 'auto' }), 'elevenlabs');
+});
+
+test('ElevenLabs in a character file: voiceId format, number ranges, and default: elevenlabs', () => {
+  assert.deepEqual(tts.validateVoice({ tts: { default: 'elevenlabs', elevenlabs: { voiceId: EL_VOICE, model: 'eleven_multilingual_v2', stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1, speakerBoost: true } } }), []);
+  const bad = (el) => tts.validateVoice({ tts: { elevenlabs: el } }).join('; ');
+  assert.match(bad({}), /voice\.tts\.elevenlabs\.voiceId must be an ElevenLabs voice id/);
+  assert.match(bad({ voiceId: 'bad id!' }), /voiceId/);
+  assert.match(bad({ voiceId: EL_VOICE, stability: 2 }), /stability must be a number from 0 to 1/);
+  assert.match(bad({ voiceId: EL_VOICE, similarityBoost: -0.1 }), /similarityBoost must be a number from 0 to 1/);
+  assert.match(bad({ voiceId: EL_VOICE, style: 'x' }), /style must be a number from 0 to 1/);
+  assert.match(bad({ voiceId: EL_VOICE, speed: 2 }), /speed must be a number from 0.7 to 1.2/);
+  assert.match(bad({ voiceId: EL_VOICE, speakerBoost: 'yes' }), /speakerBoost must be true or false/);
+  assert.match(bad({ voiceId: EL_VOICE, model: '' }), /model must be a model name/);
+  assert.match(tts.validateVoice({ tts: { default: 'azure' } }).join(), /one of fish, minimax, elevenlabs, local/);
+});
+
+test('ElevenLabs settings through the pet service: endpoint, default voice and model are saved; a bad endpoint is refused', () => {
+  const { PetService } = require('../src/main/pet-service');
+  const store = new settingsLib.MemorySettingsStore();
+  const svc = new PetService({ lh: null, store: null, settingsStore: store, ttsStatus: () => ({ engines: {} }) });
+  let r = svc.setTts({ provider: 'elevenlabs', endpoints: { elevenlabs: 'https://el.example.com/' }, elevenlabs: { voiceId: EL_VOICE, modelId: 'eleven_flash_v2_5' } });
+  assert.equal(r.ok, true);
+  const t = store.load().tts;
+  assert.equal(t.provider, 'elevenlabs');
+  assert.equal(t.endpoints.elevenlabs, 'https://el.example.com');
+  assert.deepEqual(t.elevenlabs, { voiceId: EL_VOICE, modelId: 'eleven_flash_v2_5' });
+  r = svc.setTts({ endpoints: { elevenlabs: 'http://el.example.com' } });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'bad-endpoint');
+  assert.equal(store.load().tts.endpoints.elevenlabs, 'https://el.example.com');
+  svc.setTts({ elevenlabs: { modelId: '' } });
+  assert.deepEqual(store.load().tts.elevenlabs, { voiceId: EL_VOICE, modelId: 'eleven_multilingual_v2' }, 'a partial patch keeps the voice');
 });

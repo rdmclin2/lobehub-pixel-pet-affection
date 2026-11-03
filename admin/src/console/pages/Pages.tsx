@@ -74,7 +74,7 @@ export const TtsPage = () => {
     <>
       <Header page="tts" />
       {!settings.prefs?.voice && <Alert title="朗读关着：打开「朗读回复」后，下面的引擎设置才会用上。" type="info" />}
-      <SettingsForm extra={{ 'Fish Audio': eng('fish'), MiniMax: eng('minimax'), 本地语音服务: eng('local') }} page="tts" />
+      <SettingsForm extra={{ 'Fish Audio': eng('fish'), MiniMax: eng('minimax'), ElevenLabs: eng('elevenlabs'), 本地语音服务: eng('local') }} page="tts" />
       <Surface
         extra={
           <Button

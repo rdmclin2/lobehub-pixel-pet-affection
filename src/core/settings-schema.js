@@ -121,12 +121,15 @@ add('visitors', 'visitors', '同屏伙伴', '一起待在桌面上的角色', 'v
 add('prefs.voice', 'tts', '朗读', '朗读回复', 'switch', { desc: '她的回复和主动说的话用语音读出来。总开关：关闭时下面的语音都不会响。' });
 add('prefs.voiceInteractions', 'tts', '朗读', '互动语音', 'switch', { desc: '摸摸、喂食、拖动时的短台词也读出来（会提前合成）。', dependsOn: { key: 'prefs.voice', value: true } });
 add('prefs.voiceMurmurs', 'tts', '朗读', '朗读碎碎念', 'switch', { desc: '她自言自语的碎碎念也读出来。', dependsOn: { key: 'prefs.voice', value: true } });
-add('tts.provider', 'tts', '引擎', '朗读引擎', 'select', { desc: '自动 = 用角色自己配好的引擎。', options: opts([['auto', '自动（跟随角色）'], ['fish', 'Fish Audio'], ['minimax', 'MiniMax'], ['local', '本地语音服务'], ['system', '系统语音']]) });
+add('tts.provider', 'tts', '引擎', '朗读引擎', 'select', { desc: '自动 = 用角色自己配好的引擎。', options: opts([['auto', '自动（跟随角色）'], ['fish', 'Fish Audio'], ['minimax', 'MiniMax'], ['elevenlabs', 'ElevenLabs'], ['local', '本地语音服务'], ['system', '系统语音']]) });
 add('tts.fallback', 'tts', '引擎', '引擎用不了时', 'segmented', { desc: '选的引擎失败（没 Key、超时、额度用完）时怎么办。', options: opts([['system', '改用系统语音'], ['silent', '不出声']]) });
 add('tts.packs', 'tts', '引擎', '使用语音包', 'switch', { desc: '命中录好的台词时直接播放，不请求引擎。' });
 add('tts.providerSet', 'tts', '引擎', '手动选过引擎', 'readonly', { internal: true, desc: '内部标记：选过引擎后不再迁移成「自动」。' });
 add('tts.endpoints.fish', 'tts', 'Fish Audio', '端点', 'url', { desc: '留空使用官方地址 https://api.fish.audio。必须是 https。', placeholder: 'https://api.fish.audio', validator: 'tts:fish' });
 add('tts.endpoints.minimax', 'tts', 'MiniMax', '端点', 'url', { desc: '留空使用官方地址 https://api.minimax.cn。必须是 https。', placeholder: 'https://api.minimax.cn', validator: 'tts:minimax' });
+add('tts.endpoints.elevenlabs', 'tts', 'ElevenLabs', '端点', 'url', { desc: '留空使用官方地址 https://api.elevenlabs.io。必须是 https。', placeholder: 'https://api.elevenlabs.io', validator: 'tts:elevenlabs' });
+add('tts.elevenlabs.voiceId', 'tts', 'ElevenLabs', '默认音色 ID', 'text', { desc: '角色文件里没配 ElevenLabs 音色时用这个（voice_id）；都没有时不用 ElevenLabs。', placeholder: '21m00Tcm4TlvDq8ikWAM', maxLength: 80 });
+add('tts.elevenlabs.modelId', 'tts', 'ElevenLabs', '模型', 'text', { desc: '留空使用 eleven_multilingual_v2；角色文件里配了模型时以角色为准。', placeholder: 'eleven_multilingual_v2', maxLength: 80 });
 add('tts.endpoints.local', 'tts', '本地语音服务', '地址', 'url', { desc: 'https，或本机 / 局域网的 http。为空时本地引擎不可用。', placeholder: 'http://127.0.0.1:8000', validator: 'tts:local' });
 add('tts.local.api', 'tts', '本地语音服务', '接口', 'segmented', { desc: 'OpenAI 兼容（/v1/audio/speech）或 Whale（/tts）。', options: opts([['openai', 'OpenAI 兼容'], ['whale', 'Whale']]) });
 add('tts.local.model', 'tts', '本地语音服务', '模型', 'text', { desc: '留空时请求用 tts-1。Whale 接口不用这一项。', placeholder: 'tts-1', maxLength: 80, dependsOn: { key: 'tts.local.api', value: 'openai' } });
@@ -169,6 +172,7 @@ add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perC
 const secret = (key, page, card, label, extra = {}) => F.push({ key, page, card, label, type: 'secret', store: 'keys', sensitive: true, ...extra });
 secret('keys.fish', 'tts', 'Fish Audio', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。' });
 secret('keys.minimax', 'tts', 'MiniMax', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。' });
+secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。请求时放在 xi-api-key 头里。' });
 secret('keys.local', 'tts', '本地语音服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写。' });
 secret('keys.asrlocal', 'asr', '本地识别服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写；清除后不再发送。' });
 F.push({ key: 'localAbilities', page: 'connection', card: '本机能力', label: '本机能力', type: 'local', store: 'pet', desc: '允许她在这台电脑上读写文件、运行命令（工具调用）。高风险：开启前会再确认一次。' });

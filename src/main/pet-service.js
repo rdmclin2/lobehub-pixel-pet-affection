@@ -981,13 +981,13 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
-  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / local / system), the fallback (system / silent),
-  // the endpoints and the local server's API / model / voice. API keys go through main.js into tts-keys.json, never into settings.json.
+  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / elevenlabs / local / system), the fallback (system / silent),
+  // the endpoints, the local server's API / model / voice and the ElevenLabs default voice / model. API keys go through main.js into tts-keys.json, never into settings.json.
   setTts(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const cur = this.settings.tts;
     const picked = p.provider !== undefined;
-    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) } };
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) }, elevenlabs: { ...cur.elevenlabs, ...(p.elevenlabs && typeof p.elevenlabs === 'object' ? p.elevenlabs : {}) } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;
