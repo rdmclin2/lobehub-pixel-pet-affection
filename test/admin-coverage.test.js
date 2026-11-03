@@ -89,7 +89,7 @@ function setup() {
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   const data = path.join(dir, 'data');
   const lh = new LhClient({ bin: FAKE, env: { ...cleanEnv(), FAKE_LH_DIR: dir } });
-  const { packs } = loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const svc = new PetService({ lh, store: new Store(data), settingsStore: new settingsLib.SettingsStore(data), now: () => new Date('2026-01-05T14:00:00').getTime(), rnd: () => 0.5, packs });
   svc.on('error', () => {});
   const admin = createAdminSettings({ service: svc });

@@ -4,6 +4,7 @@
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
+//   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 角色图鉴 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
@@ -72,7 +73,9 @@ async function launch(env, { gate = false, video = null, args = [] } = {}) {
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   }
   // software WebGL: xvfb has no GPU, and 全动态 looks (rig.js) need WebGL (without it they show a still picture)
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
+  // only the five pixel characters ship (core/catalog.js); the scenarios that are not about downloading find
+  // every other look already downloaded (src/main/packs.js PIXELPET_CATALOG_PREINSTALLED). `catalogdl` passes ''.
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
@@ -222,16 +225,17 @@ async function fresh() {
   const S = 'fresh';
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-data-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-fake-'));
-  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_LOGIN_MS: '2500' };
+  // a new install: nothing downloaded yet (only the five pixel characters ship, core/catalog.js)
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_LOGIN_MS: '2500', PIXELPET_CATALOG_PREINSTALLED: '' };
   let { app, page } = await launch(env);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await step(S, 'first launch shows every character: one card per look (T-2764)', async () => {
+    await step(S, 'first launch offers the five pixel characters that ship with the app, one card each', async () => {
       await page.waitForSelector('.char-card');
-      // 5 base model-chan × their all-ages looks (像素 / 旧版像素, 大肥鱼 also Live2D / 全动态 / 原版动画) = 13
-      assert.equal(await page.locator('.char-card').count(), 13);
-      assert.deepEqual(await page.locator('.char-card').evaluateAll((els) => els.map((e) => e.dataset.character)), ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-live', 'dafeiyu-classic', 'dafeiyu-clips', 'claude-pixel', 'claude-classic', 'grok-pixel', 'grok-classic', 'gemini-pixel', 'gemini-classic', 'gpt-pixel', 'gpt-classic']);
-      assert.match(await page.locator('.char-card[data-character="dafeiyu-live2d"] .nm').textContent(), /大肥鱼 · Live2D/);
+      // the other looks (旧版像素, Live2D, 全动态, 原版动画, 成年版) are downloaded later from 角色图鉴
+      assert.equal(await page.locator('.char-card').count(), 5);
+      assert.deepEqual(await page.locator('.char-card').evaluateAll((els) => els.map((e) => e.dataset.character)), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+      assert.match(await page.locator('.char-card[data-character="dafeiyu-pixel"] .nm').textContent(), /大肥鱼 · 像素/);
       assert.equal(await page.locator('#hatch-btn').isDisabled(), true);
     }, page);
 
@@ -8351,6 +8355,229 @@ async function wardrobePackScenario() {
   }
 }
 
+// ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
+// A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
+// other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
+// host, throttled so the progress shows) makes her a character: switchable, her own wardrobe; 原版动画's clips play
+// from pack://. A corrupted archive is refused by its sha256 and leaves nothing behind. 删除下载 while she is with
+// you puts her default look back with a 需要下载 notice whose button brings her back. Free: fake lh, no network.
+// Evidence in out/e2e/catalogdl/.
+async function catalogDownloadScenario() {
+  const S = 'catalogdl';
+  const SHOTS = path.join(OUT, 'catalogdl');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  // the release assets, rebuilt from catalog/ and checked against the index the app ships
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-catzips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-character-catalog.js'), '--zips-only', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const corrupt = new Set();
+  const served = [];
+  const server = http.createServer((req, res) => {
+    const name = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/chars\//, '');
+    const file = path.join(zips, path.basename(name));
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    let buf = fs.readFileSync(file);
+    if (corrupt.has(name)) { buf = Buffer.from(buf); buf[Math.floor(buf.length / 2)] ^= 0xff; } // same size, other bytes
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~1.5 MB/s, so the bar is seen moving
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 96 * 1024)); i += 96 * 1024; setTimeout(tick, 60); };
+    tick();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/chars`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-catdl-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-catdlfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_CATALOG_URL: base };
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  record('d0-zips-built.txt', `$ node scripts/build-character-catalog.js --zips-only --out <tmp>\n${built}\nserved from ${base} (throttled ~1.5 MB/s)\n`);
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 20000 });
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(350);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
+  const rosterIds = () => admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.dataset.row));
+  const catalogIds = () => admin.$$eval('[data-catalog-grid] [data-catalog]', (els) => els.map((e) => e.dataset.catalog));
+  const state = () => call('state');
+  const leftovers = () => ['packs', 'clips'].flatMap((d) => (fs.existsSync(path.join(data, d)) ? fs.readdirSync(path.join(data, d)).filter((n) => n.startsWith('.')).map((n) => `${d}/${n}`) : []));
+  const switchTo = async (id) => {
+    await go(`/characters/${id}`);
+    await attached(`[data-switch="${id}"]`);
+    await admin.click(`[data-switch="${id}"]`);
+    await until(`${id} current`, async () => (await state()).view.pet.characterId === id);
+  };
+  const download = async (id) => {
+    await go('/characters');
+    await attached(`[data-download="${id}"]`);
+    await admin.click(`[data-download="${id}"]`);
+  };
+  const ALL_AGES_REMOTE = ['dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'claude-classic', 'gemini-classic', 'gpt-classic', 'grok-classic', 'dafeiyu-clips'];
+
+  try {
+    await step(S, 'D1 新安装：桌宠窗口「选择你的模型娘」只有 5 位内置像素角色，提示更多形象到角色图鉴下载', async () => {
+      await page.waitForSelector('.char-card');
+      const cards = await page.locator('.char-card').evaluateAll((els) => els.map((e) => `${e.dataset.character}=${e.querySelector('.nm').textContent}`));
+      assert.deepEqual(cards.map((c) => c.split('=')[0]), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel'], cards.join(', '));
+      assert.ok(cards.every((c) => / · 像素$/.test(c)), cards.join(', '));
+      assert.match(await page.textContent('#onboarding .sub'), /更多形象.*角色图鉴.*下载/);
+      // every card draws her pixel look (a sheet's first frame) before the picture is taken
+      await page.waitForFunction(() => [...document.querySelectorAll('.char-card .pic')].every((p) => { const c = p.querySelector('canvas, img'); return c && (c.tagName === 'IMG' ? c.complete && c.naturalWidth > 0 : c.width > 0); }), null, { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const shotName = await petShot('d1-onboarding-five-pixel');
+      await page.locator('.char-card[data-character="dafeiyu-pixel"]').click();
+      await page.fill('#pet-name', '小鱼');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      return `选角卡片: ${cards.join('、')} (5 张) → ${shotName}`;
+    }, page);
+
+    admin = await openAdminWindow(app, page, 'overview');
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+
+    await step(S, 'D2 角色图鉴：5 位内置角色 + 「可下载的角色」8 张卡（图片、未下载、大小），18+ 不列出', async () => {
+      await go('/characters');
+      await attached('[data-catalog-grid]');
+      const ids = await rosterIds();
+      assert.deepEqual(ids, ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+      const remote = await catalogIds();
+      assert.deepEqual([...remote].sort(), [...ALL_AGES_REMOTE].sort());
+      const l2d = await admin.evaluate(() => {
+        const el = document.querySelector('[data-catalog="dafeiyu-live2d"]');
+        const img = el.querySelector('img');
+        return { tag: el.querySelector('[data-not-downloaded]')?.textContent, meta: el.querySelector('[data-catalog-meta]')?.textContent, img: img ? { src: img.getAttribute('src'), ok: img.complete && img.naturalWidth > 0 } : null, btn: el.querySelector('[data-download]')?.textContent };
+      });
+      assert.equal(l2d.tag, '未下载');
+      assert.match(l2d.meta, /^\d+\.\d MB · 1 套服饰/);
+      assert.ok(l2d.img && l2d.img.ok, JSON.stringify(l2d.img));
+      assert.equal(l2d.btn, '下载');
+      const seg = await admin.$eval('[data-kind-filter]', (el) => el.textContent);
+      assert.match(seg, /未下载 8/);
+      return `图鉴角色: ${ids.join(', ')}; 可下载: ${remote.join(', ')}; Live2D 卡: ${JSON.stringify(l2d)} → ${await shot('d2-roster-and-downloadable')}`;
+    }, page);
+
+    await step(S, 'D3 下载「大肥鱼 · Live2D」：进度条走动，完成后成为图鉴里的角色（来源「下载」），切换后桌宠是 Live2D', async () => {
+      await download('dafeiyu-live2d');
+      await attached('[data-download-progress="dafeiyu-live2d"]');
+      await admin.waitForFunction(() => /已下载 [1-9]\d?%/.test(document.querySelector('[data-download-progress="dafeiyu-live2d"]')?.textContent || ''), null, { timeout: 15000 });
+      const mid = await admin.$eval('[data-download-progress="dafeiyu-live2d"]', (el) => el.textContent);
+      const midShot = await admin.screenshot({ path: path.join(SHOTS, 'd3a-downloading.png') }).then(() => 'd3a-downloading.png');
+      await toast(/「大肥鱼 · Live2D」下载好了/);
+      await until('live2d in roster', async () => (await rosterIds()).includes('dafeiyu-live2d'));
+      assert.ok(!(await catalogIds()).includes('dafeiyu-live2d'));
+      const marker = JSON.parse(fs.readFileSync(path.join(data, 'packs', 'dafeiyu-live2d', '.catalog.json'), 'utf8'));
+      const st = await state();
+      const row = st.roster.find((r) => r.id === 'dafeiyu-live2d');
+      assert.deepEqual([row.source, row.sourceLabel, row.kind], ['download', '下载', 'live2d']);
+      assert.deepEqual(leftovers(), []);
+      await switchTo('dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d', null, { timeout: 20000 });
+      await page.waitForTimeout(2500);
+      const v = await view(page);
+      assert.equal(v.look.packId, 'dafeiyu-live2d');
+      assert.equal(v.pet.agentId, st.view.pet.agentId, 'the same 大肥鱼: shared agent');
+      return `进度: ${mid}; 安装标记: ${JSON.stringify(marker)}; 图鉴行: ${row.source}/${row.sourceLabel}/${row.kind}; 桌宠 look=${v.look.packId} → ${midShot}, ${await shot('d3b-live2d-downloaded')}, ${await petShot('d3c-pet-live2d')}`;
+    }, page);
+
+    await step(S, 'D4 下载「大肥鱼 · 原版动画」：切换后桌宠从 pack://dafeiyu-clips 播放视频', async () => {
+      await download('dafeiyu-clips');
+      await toast(/「大肥鱼 · 原版动画」下载好了/);
+      await switchTo('dafeiyu-clips');
+      const probe = () => page.evaluate(() => { const v = document.getElementById('pet-video'); return { src: v.src, w: v.videoWidth, h: v.videoHeight, t: v.currentTime, ready: v.readyState, err: v.error && v.error.message, hidden: document.getElementById('vwrap').classList.contains('hidden') }; });
+      try {
+        await page.waitForFunction(() => { const v = document.getElementById('pet-video'); return v.src.startsWith('pack://dafeiyu-clips/') && v.readyState >= 2 && !document.getElementById('vwrap').classList.contains('hidden'); }, null, { timeout: 20000 });
+      } catch (e) {
+        throw new Error(`clip not playing: ${JSON.stringify(await probe())}`);
+      }
+      const vid = await probe();
+      assert.ok(vid.w > 0 && vid.h > 0);
+      assert.ok(fs.existsSync(path.join(data, 'clips', 'dafeiyu-clips', 'idle.webm')));
+      return `video ${JSON.stringify(vid)} → ${await petShot('d4-pet-clips')}`;
+    }, page);
+
+    await step(S, 'D5 下载的文件被篡改：sha256 校验不通过，提示失败，本机不留任何文件，卡片仍可重新下载', async () => {
+      corrupt.add('claude-classic.zip');
+      await download('claude-classic');
+      await toast(/没能下载「克洛蒂 · 旧版像素」/);
+      await toast(/校验没通过/);
+      const failShot = await shot('d5-checksum-failed');
+      assert.ok(!fs.existsSync(path.join(data, 'packs', 'claude-classic')));
+      assert.deepEqual(leftovers(), []);
+      assert.ok((await catalogIds()).includes('claude-classic'));
+      await attached('[data-download="claude-classic"]');
+      corrupt.delete('claude-classic.zip');
+      await admin.click('[data-download="claude-classic"]');
+      await toast(/「克洛蒂 · 旧版像素」下载好了/);
+      await until('claude-classic in roster', async () => (await rosterIds()).includes('claude-classic'));
+      return `篡改后: 未安装、无残留；恢复后重下成功 → ${failShot}`;
+    }, page);
+
+    await step(S, 'D6 删除正在陪伴的下载角色：先换回默认像素形象并提示「需要下载」，点提示里的下载后自动换回', async () => {
+      await switchTo('dafeiyu-live2d');
+      await attached('[data-remove-download="dafeiyu-live2d"]');
+      await admin.click('[data-remove-download="dafeiyu-live2d"]');
+      await admin.getByRole('button', { name: '删除下载' }).last().click();
+      await toast(/已删除下载「大肥鱼 · Live2D」/);
+      await until('back to pixel', async () => (await state()).view.pet.characterId === 'dafeiyu-pixel');
+      assert.ok(!fs.existsSync(path.join(data, 'packs', 'dafeiyu-live2d')));
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'sprites', null, { timeout: 20000 });
+      await go('/characters');
+      await attached('[data-pending="dafeiyu-live2d"]');
+      const alert = await admin.$eval('[data-pending="dafeiyu-live2d"]', (el) => el.textContent);
+      assert.match(alert, /「大肥鱼 · Live2D」需要下载/);
+      assert.match(alert, /好感和聊天记录都不受影响/);
+      await admin.evaluate(() => document.querySelector('[data-pending]').scrollIntoView({ block: 'center' }));
+      await admin.waitForTimeout(400);
+      const pendShot = await admin.screenshot({ path: path.join(SHOTS, 'd6a-pending-download.png') }).then(() => 'd6a-pending-download.png');
+      await admin.click('[data-pending-download="dafeiyu-live2d"]');
+      await toast(/「大肥鱼 · Live2D」下载好了/);
+      await until('back to live2d', async () => (await state()).view.pet.characterId === 'dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d', null, { timeout: 20000 });
+      await admin.waitForFunction(() => !document.querySelector('[data-pending]'), null, { timeout: 8000 });
+      return `提示: ${alert}; 下载后 characterId=dafeiyu-live2d → ${pendShot}, ${await shot('d6b-after-redownload')}`;
+    }, page);
+
+    await step(S, 'D7 设置窗口无报错；只从配置的下载地址取文件', async () => {
+      assert.deepEqual(errors, []);
+      assert.ok(served.length >= 5 && served.every((n) => /^[a-z0-9-]+\.zip$/.test(n)), served.join(', '));
+      return `served: ${served.join(', ')}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
 // ---------------------------------------------------------------- charmigrate (旧数据迁移到独立角色, T-2786)
 // A user of the 形象包 era: 当前角色 大肥鱼, 形象包 dafeiyu-pixel, in 长旗袍, 半身 取景, a VRM posture, ♥72, a
 // pack she imported herself (「我的大肥鱼」, data/packs/my-fish) and 克洛蒂 met as well in 贝雷帽画家装. The app
@@ -9552,6 +9779,7 @@ async function adminScenario() {
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
+  if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

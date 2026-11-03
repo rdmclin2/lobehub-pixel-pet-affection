@@ -1,7 +1,7 @@
 'use strict';
 
 // Live2D 取景 e2e (run.js `live2dframe`, docs/half-body-mode.md "Live2D 实现"), kept out of run.js (over the size
-// limit). The built-in 大肥鱼 · Live2D pack (src/renderer/packs/dafeiyu-live2d) drawn by the real Cubism runtime
+// limit). The built-in 大肥鱼 · Live2D pack (catalog/packs/dafeiyu-live2d) drawn by the real Cubism runtime
 // under SwiftShader:
 //   全身 → 设置窗口 桌宠行为 → 取景 → 半身: only head to waist, centred, bigger, same window; the model glides (same
 //   canvas, never reloaded); in 半身: blinking, 口型 (talk), expressions (happy / sad), gaze following the cursor,

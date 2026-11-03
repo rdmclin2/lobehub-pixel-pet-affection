@@ -18,7 +18,7 @@ const { PetService } = require('../src/main/pet-service');
 const ROOT = path.join(__dirname, '..');
 const BUILTIN = path.join(ROOT, 'src', 'renderer', 'packs');
 const FAKE = path.join(__dirname, 'fixtures', 'fake-lh.js');
-const builtin = () => P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs;
+const builtin = () => require('../src/core/catalog').repoPacks().packs;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 const ALL_AGES = [
@@ -68,18 +68,23 @@ test('roster: every built-in pack (and 大肥鱼\'s clips) is a character of her
 });
 
 test('roster before the first hatch: one row per character with her own name, kind, picture and the base\'s persona', () => {
-  const rows = buildRoster(null, { ttsStatus: { packs: [] } });
+  // what ships with the app: the five pixel characters (the others are downloaded first, core/catalog.js)
+  const shipped = buildRoster(null, { ttsStatus: { packs: [] } });
+  assert.deepEqual(shipped.map((r) => [r.id, r.base, r.name, r.kind]), ALL_AGES.filter(([id]) => id.endsWith('-pixel')));
+  // with everything downloaded (catalog/ counted as downloaded): main.js hands buildRoster the characters and
+  // each one's daily look (PetService.lookFor), as here
+  const packs = builtin();
+  const look = (id) => { const e = C.characterById(packs, id); return e.clips ? null : P.resolveLook(packs, { packId: e.packId, speciesId: e.base, outfitId: 'daily' }); };
+  const rows = buildRoster(null, { ttsStatus: { packs: [] } }, { characters: C.listCharacters(packs), look });
   assert.deepEqual(rows.map((r) => [r.id, r.base, r.name, r.kind]), ALL_AGES);
   const l2d = rows.find((r) => r.id === 'dafeiyu-live2d');
   assert.equal(l2d.displayName, '大肥鱼 · Live2D（DeepSeek）');
   assert.equal(l2d.kindLabel, 'Live2D');
-  assert.equal(l2d.pack.id, 'dafeiyu-live2d');
+  assert.equal(l2d.source, 'download');
+  assert.equal(l2d.sourceLabel, '下载');
   assert.equal(l2d.personality, rows.find((r) => r.id === 'dafeiyu-pixel').personality, 'persona inherited from her base');
   assert.ok(l2d.personality.length > 20);
-  // pictures: main.js hands buildRoster each character's daily look (PetService.lookFor), as here
-  const packs = builtin();
-  const look = (id) => { const e = C.characterById(packs, id); return e.clips ? null : P.resolveLook(packs, { packId: e.packId, speciesId: e.base, outfitId: 'daily' }); };
-  const pics = buildRoster(null, { ttsStatus: { packs: [] } }, { characters: C.listCharacters(packs), look });
+  const pics = rows;
   assert.equal(pics.find((r) => r.id === 'dafeiyu-clips').preview.type, 'video');
   assert.equal(pics.find((r) => r.id === 'claude-pixel').preview.type, 'sprite');
   assert.match(pics.find((r) => r.id === 'dafeiyu-live2d').preview.url, /^pack:\/\/dafeiyu-live2d\//);
@@ -225,13 +230,13 @@ test('PetService migrates settings.json and pet.json once on load, with backups;
 test('an imported pack is an independent character: listed on her own, switchable, and an old choice of it migrates to her', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'petcm-user-'));
   const dst = path.join(tmp, 'claude-mine');
-  fs.cpSync(path.join(BUILTIN, 'claude-classic'), dst, { recursive: true });
+  fs.cpSync(path.join(ROOT, 'catalog', 'packs', 'claude-classic'), dst, { recursive: true });
   const m = JSON.parse(fs.readFileSync(path.join(dst, 'pack.json'), 'utf8'));
   fs.writeFileSync(path.join(dst, 'pack.json'), JSON.stringify({ ...m, id: 'claude-mine', name: '克洛蒂 · 我的' }));
   const user = P.loadPacks([{ dir: tmp, source: 'user' }]);
   assert.deepEqual([...user.packs.keys()], ['claude-mine'], JSON.stringify(user.errors || []));
   const packs = new Map([...builtin(), ...user.packs]);
-  assert.deepEqual(C.listCharacters(packs).filter((e) => e.base === 'claude').map((e) => [e.id, e.source]), [['claude-pixel', 'builtin'], ['claude-classic', 'builtin'], ['claude-mine', 'user']]);
+  assert.deepEqual(C.listCharacters(packs).filter((e) => e.base === 'claude').map((e) => [e.id, e.source]), [['claude-pixel', 'builtin'], ['claude-classic', 'download'], ['claude-mine', 'user']]);
 
   // an old save that wore it as claude's 形象包
   const pet = { ...clone(OLD_PET), speciesId: 'claude', characters: { claude: oldChar('claude', '小克') } };
@@ -288,4 +293,83 @@ test('the wardrobe is per character: what one look wears never changes another\'
   assert.equal(w['claude-pixel'].equippedOutfit, 'swimsuit');
   assert.equal(w['claude-adult'].equippedOutfit, 'maid');
   assert.equal(w['claude-adult'].lastSafeOutfit, 'daily', 'an adult outfit is never the all-ages fallback');
+});
+
+// ---- 内置与下载 (core/catalog.js): only the five pixel characters ship -------------------------------------
+
+const Catalog = require('../src/core/catalog');
+const shippedOnly = () => Catalog.repoPacks({ catalog: false }).packs;
+
+test('catalog: the app ships five pixel characters; every other look is in the download index with size and sha256', () => {
+  const ids = C.listCharacters(shippedOnly(), { all: true }).map((e) => e.id);
+  assert.deepEqual(ids, ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+  const idx = Catalog.loadIndex();
+  const all = C.listCharacters(builtin(), { all: true }).map((e) => e.id);
+  // the index lists exactly the looks that do not ship, the clips included
+  assert.deepEqual(idx.characters.map((c) => c.id).sort(), all.filter((id) => !ids.includes(id)).sort());
+  for (const c of idx.characters) {
+    assert.match(c.sha256, /^[0-9a-f]{64}$/, c.id);
+    assert.ok(c.bytes > 0 && c.file === `${c.id}.zip`, c.id);
+    assert.ok(fs.existsSync(path.join(ROOT, 'src', 'renderer', c.picture)), `${c.id}: card picture ${c.picture}`);
+    assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'packs', c.id)), `${c.id} must not ship`);
+  }
+  assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'assets', 'dafeiyu')), 'the clips do not ship either');
+});
+
+test('catalog: what can be downloaded — 18+ only with adult content on, installed ones not again; where from', () => {
+  const none = () => false;
+  const safe = Catalog.notInstalled(none).map((c) => c.id);
+  assert.ok(safe.includes('dafeiyu-live2d') && safe.includes('dafeiyu-clips') && safe.includes('claude-classic'));
+  assert.ok(!safe.some((id) => id.endsWith('-adult')), '18+ looks are not offered with adult content off');
+  assert.ok(Catalog.notInstalled(none, { adultOk: true }).some((c) => c.id === 'dafeiyu-adult'));
+  assert.ok(!Catalog.notInstalled((id) => id === 'dafeiyu-live2d').some((c) => c.id === 'dafeiyu-live2d'));
+  const l2d = Catalog.notInstalled(none).find((c) => c.id === 'dafeiyu-live2d');
+  assert.deepEqual([l2d.base, l2d.kind, l2d.name], ['dafeiyu', 'live2d', '大肥鱼 · Live2D']);
+  assert.match(l2d.sizeLabel, /^\d+\.\d MB$/);
+  assert.equal(Catalog.baseUrl({}, {}), `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/download/${Catalog.loadIndex().release}`);
+  assert.equal(Catalog.baseUrl({ catalogUrl: 'https://mirror.example/chars/' }, {}), 'https://mirror.example/chars');
+  assert.equal(Catalog.baseUrl({ catalogUrl: 'https://mirror.example/chars' }, { PIXELPET_CATALOG_URL: 'file:///tmp/cat' }), 'file:///tmp/cat');
+  assert.equal(Catalog.baseUrl({ catalogUrl: 'javascript:alert(1)' }, {}), Catalog.DEFAULT_BASE_URL, 'only http(s) / file URLs');
+  assert.equal(Catalog.downloadUrl(Catalog.entry('dafeiyu-live2d'), {}, { PIXELPET_CATALOG_URL: 'http://127.0.0.1:9/x' }), 'http://127.0.0.1:9/x/dafeiyu-live2d.zip');
+});
+
+test('catalog: 原版动画 is a character only once her clips are installed', () => {
+  const packs = shippedOnly();
+  assert.equal(C.characterById(packs, 'dafeiyu-clips'), null);
+  assert.ok(!C.listCharacters(packs).some((e) => e.id === 'dafeiyu-clips'));
+  packs.clips = new Set(['dafeiyu-clips']);
+  assert.equal(C.characterById(packs, 'dafeiyu-clips').source, 'download');
+  assert.ok(C.listCharacters(packs).some((e) => e.id === 'dafeiyu-clips'));
+});
+
+test('catalog: an old choice of a look that no longer ships is kept; she is her default until it is downloaded, then becomes it', async () => {
+  const packs = shippedOnly();
+  // pre-T-2764 data that wore 大肥鱼 · Live2D, on an install where it is not downloaded
+  const { mk, read } = svcOn({ settings: { ...OLD_SETTINGS, appearance: { dafeiyu: 'dafeiyu-live2d' }, visitors: ['claude'] }, pet: OLD_PET, packs });
+  const svc = mk();
+  const v = svc.init();
+  assert.equal(JSON.parse(read('pet.json')).characterId, 'dafeiyu-live2d', 'the choice is kept');
+  assert.equal(v.pet.characterId, 'dafeiyu-pixel', 'shown as her default meanwhile');
+  assert.equal(v.pet.agentId, 'agt_dafeiyu', 'same girl: agent, affection and chat are hers');
+  assert.equal(v.pet.affection, 30);
+  assert.deepEqual(v.pendingDownload, { id: 'dafeiyu-live2d', name: '大肥鱼 · Live2D', sizeLabel: Catalog.sizeLabel(Catalog.entry('dafeiyu-live2d').bytes) });
+  assert.ok(!v.characters.some((c) => c.id === 'dafeiyu-live2d'), 'not a character before it is downloaded');
+  assert.ok(svc.catalogList().some((c) => c.id === 'dafeiyu-live2d'));
+  assert.ok(Object.hasOwn(JSON.parse(read('settings.json')).framings, 'dafeiyu-live2d'), 'her 取景 waits for her too');
+  // switching to a look not downloaded is refused with that reason
+  assert.deepEqual(await svc.switchCharacter('claude-classic'), { ok: false, reason: 'not-downloaded', name: '克洛蒂 · 旧版像素' });
+  assert.equal((await svc.switchCharacter('claude-adult')).reason, 'not-downloaded', 'adult content is on in OLD_SETTINGS: only the download is missing');
+  // downloaded (the pack store reloads): she becomes the look she chose, the notice goes
+  svc.setPacks(builtin());
+  assert.equal(svc.view().pet.characterId, 'dafeiyu-live2d');
+  assert.equal(svc.view().pendingDownload, null);
+  assert.ok(!svc.catalogList().some((c) => c.id === 'dafeiyu-live2d'));
+  // removed again (删除下载): back to her default, the choice kept for the next download
+  svc.setPacks(shippedOnly());
+  assert.equal(svc.view().pet.characterId, 'dafeiyu-pixel');
+  assert.equal(svc.view().pendingDownload.id, 'dafeiyu-live2d');
+  // choosing her default herself ends the wait
+  assert.equal((await svc.switchCharacter('dafeiyu-pixel')).ok, true);
+  assert.equal(svc.view().pendingDownload, null);
+  assert.equal(JSON.parse(read('pet.json')).characterId, 'dafeiyu-pixel');
 });

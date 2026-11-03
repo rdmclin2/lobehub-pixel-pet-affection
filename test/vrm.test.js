@@ -148,7 +148,7 @@ test('vrm packs: models per outfit are checked (inside the pack, existing, glTF 
   assert.equal(p.license, 'VRM 1.0 授权：仅限个人非商业使用 / 不可再分发 / 禁止修改 / 需署名', 'so does the license');
   assert.equal(p.vrm.models['model.vrm'].meta.allowRedistribution, false);
 
-  const packs = new Map([[p.id, { ...p, source: 'user' }], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[p.id, { ...p, source: 'user' }], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'daily' });
   assert.equal(look.kind, 'vrm');
   assert.equal(look.model, 'pack://my-vrm/model.vrm');
@@ -208,7 +208,7 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   for (const k of ['rating', 'unlockAll', 'ageConfirmed', 'adultContent', 'stage', 'outfitRules']) assert.equal(k in r.pack, false, k);
   assert.equal('stages' in r.pack.vrm || 'rating' in r.pack.vrm, false);
   const pack = { ...r.pack, source: 'user' };
-  const packs = new Map([[pack.id, pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[pack.id, pack], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.lookContext(pack);
   assert.deepEqual(look, { adult: true, only: true, outfits: ['daily', 'maid', 'pajamas'] });
 
@@ -364,7 +364,7 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   const root = path.join(dir, 'packs');
   const whale = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-whale', outfits: { daily: 'preview.png' } }), { 'model.vrm': vrm1(), 'preview.png': PNG })).pack;
   const adultPack = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-free-adult', adult: true, vrm: { outfits: { daily: 'model.vrm', maid: 'maid.vrm' } } }), { 'model.vrm': vrm1(FREE_META), 'maid.vrm': vrm1(FREE_META) })).pack;
-  const packs = new Map([...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs, [whale.id, { ...whale, source: 'user' }], [adultPack.id, { ...adultPack, source: 'user' }]]);
+  const packs = new Map([...require('../src/core/catalog').repoPacks().packs, [whale.id, { ...whale, source: 'user' }], [adultPack.id, { ...adultPack, source: 'user' }]]);
   const data = path.join(dir, 'data');
   const lh = new LhClient({ bin: path.join(__dirname, 'fixtures', 'fake-lh.js'), env: { ...cleanEnv(), FAKE_LH_DIR: dir } });
   const svc = new PetService({ lh, store: new Store(data), settingsStore: new SettingsStore(data), packs, now: () => Date.now(), rnd: () => 0.5 });

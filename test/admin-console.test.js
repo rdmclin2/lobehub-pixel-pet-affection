@@ -334,12 +334,12 @@ test('好感度 rules: the daily cap and the decay switch apply to scoring at on
 
 test('roster: before the first hatch every character is listed from the character files, none current', () => {
   const rows = buildRoster(null, { ttsStatus: { packs: [] } });
-  // T-2764: one row per character (every built-in look), 18+ looks not listed
-  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-live', 'dafeiyu-classic', 'dafeiyu-clips', 'claude-pixel', 'claude-classic', 'grok-pixel', 'grok-classic', 'gemini-pixel', 'gemini-classic', 'gpt-pixel', 'gpt-classic']);
+  // T-2764: one row per character; only the five pixel characters ship with the app (core/catalog.js), the
+  // other looks (Live2D, 旧版像素, 原版动画, 成年版 …) are downloaded first and are not characters before that
+  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
   assert.deepEqual([...new Set(rows.map((r) => r.base))], ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
-  assert.ok(rows.every((r) => !r.current && !r.met));
-  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').name, '大肥鱼 · Live2D');
-  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').kind, 'live2d');
+  assert.ok(rows.every((r) => !r.current && !r.met && r.source === 'builtin' && r.kind === 'sprites'));
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-pixel').name, '大肥鱼 · 像素');
 });
 
 test('roster rows: name, preview, type, source, voice pack, model and the current mark', async () => {
@@ -379,15 +379,22 @@ test('roster: a video character (大肥鱼 clips) gets her idle clip as the prev
   assert.equal(fish.kind, 'video');
   assert.equal(fish.kindLabel, '视频');
   assert.equal(fish.preview.type, 'video');
-  // relative to the console page (src/admin-ui/index.html): ../renderer/assets/dafeiyu/idle.webm
-  assert.ok(fs.existsSync(path.join(ROOT, 'src', 'admin-ui', fish.preview.url)), fish.preview.url);
+  // her clips are downloaded (core/catalog.js) and served as pack://dafeiyu-clips/<clip> (src/main/packs.js)
+  assert.equal(fish.preview.url, 'pack://dafeiyu-clips/idle.webm');
+  assert.equal(fish.source, 'download');
+  assert.ok(fs.existsSync(path.join(ROOT, 'catalog', 'clips', 'dafeiyu-clips', 'idle.webm')));
 });
 
-test('外观资源 rows: built-in packs cannot be removed or exported, imported ones can', () => {
-  const { packs } = loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+test('外观资源 rows: built-in packs cannot be removed or exported, downloaded ones can be removed, imported ones both', () => {
+  const { packs } = require('../src/core/catalog').repoPacks();
   const rows = packRows(packs);
   assert.equal(rows.length, packs.size);
-  assert.ok(rows.every((r) => r.source === 'builtin' && !r.removable && !r.exportable));
+  const builtin = rows.filter((r) => r.source === 'builtin');
+  assert.deepEqual(builtin.map((r) => r.id).sort(), ['claude-pixel', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
+  assert.ok(builtin.every((r) => !r.removable && !r.exportable && r.sourceLabel === '内置'));
+  const downloaded = rows.filter((r) => r.source === 'download');
+  assert.equal(downloaded.length, rows.length - 5);
+  assert.ok(downloaded.every((r) => r.removable && !r.exportable && r.sourceLabel === '下载'));
   assert.ok(rows.some((r) => r.kind === 'live2d' && r.kindLabel === 'Live2D'));
   const user = packRows([{ id: 'my-grok', name: 'x', species: 'grok', kind: 'sprites', source: 'user', outfits: { daily: 'a.png' } }, { id: 'my-vrm', name: 'v', species: 'grok', kind: 'vrm', source: 'user', outfits: {}, vrm: { license: { redistributable: false } } }]);
   assert.deepEqual(user.map((r) => [r.id, r.removable, r.exportable]), [['my-grok', true, true], ['my-vrm', true, false]]);
@@ -508,7 +515,7 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'update-status']);
+  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'catalog-progress', 'update-status']);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
   // the settings window's own channels answer that window only (outside tests)
   assert.match(main, /const adminOnly = \(fn\) => \(e, p\) => \(admin\.isSender\(e\) \|\| TEST_MODE/);

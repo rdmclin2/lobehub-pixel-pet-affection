@@ -122,7 +122,7 @@ test('touch zones on a Live2D half-body picture: head and face where they are, l
 
 test('pack.json halfBody: { waist } validated and carried into the look (Live2D and VRM); anything else refused', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-halfbody-pack-'));
-  const src = path.join(__dirname, '..', 'src', 'renderer', 'packs', 'dafeiyu-live2d');
+  const src = path.join(__dirname, '..', 'catalog', 'packs', 'dafeiyu-live2d');
   const make = (id, over) => {
     const dir = path.join(root, id);
     fs.cpSync(src, dir, { recursive: true });
@@ -149,7 +149,7 @@ test('pack.json halfBody: { waist } validated and carried into the look (Live2D 
 });
 
 test('the built-in 大肥鱼 · Live2D pack carries its half-body waist', () => {
-  const dir = path.join(__dirname, '..', 'src', 'renderer', 'packs', 'dafeiyu-live2d');
+  const dir = path.join(__dirname, '..', 'catalog', 'packs', 'dafeiyu-live2d');
   const r = P.validatePack(JSON.parse(fs.readFileSync(path.join(dir, 'pack.json'), 'utf8')), dir);
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(r.pack.halfBody, { waist: 0.52 });

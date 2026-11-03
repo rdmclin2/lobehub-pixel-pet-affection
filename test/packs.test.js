@@ -31,7 +31,7 @@ function writePack(root, manifest, files = []) {
 const sprites = (over = {}) => ({ schema: 1, id: 'my-pack', name: 'Mine', species: 'grok', kind: 'sprites', pixelated: true, frame: { width: 10, height: 20 }, actions: { idle: { row: 0, col: 0, frames: 2, fps: 2 } }, outfits: { daily: 'a.png' }, ...over });
 
 test('every built-in pack is valid, and every character has art for every outfit it offers', () => {
-  const { packs, problems } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs, problems } = require('../src/core/catalog').repoPacks();
   assert.deepEqual(problems, []);
   assert.deepEqual([...packs.keys()].sort(), ['claude-adult', 'claude-classic', 'claude-pixel', 'dafeiyu-adult', 'dafeiyu-classic', 'dafeiyu-live', 'dafeiyu-live2d', 'dafeiyu-pixel', 'gemini-adult', 'gemini-classic', 'gemini-pixel', 'gpt-adult', 'gpt-classic', 'gpt-pixel', 'grok-adult', 'grok-classic', 'grok-pixel']);
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
@@ -45,7 +45,7 @@ test('every built-in pack is valid, and every character has art for every outfit
 });
 
 test('the model-chan pixel packs are schema 2 and animate every state of the shared effects layer', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   for (const id of ['claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel', 'dafeiyu-pixel']) {
     const px = packs.get(id);
     assert.equal(px.schema, 2);
@@ -61,7 +61,7 @@ test('the model-chan pixel packs are schema 2 and animate every state of the sha
 });
 
 test('looks: the chosen pack, the character default, then its fallback pack; the video character picks its clips', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   assert.equal(chosenPack(packs, {}, 'grok'), 'grok-pixel');
   assert.equal(chosenPack(packs, { grok: 'claude-pixel' }, 'grok'), 'grok-pixel', "another character's pack is ignored");
   assert.equal(chosenPack(packs, { grok: 'gone' }, 'grok'), 'grok-pixel');
@@ -83,7 +83,7 @@ test('looks: the chosen pack, the character default, then its fallback pack; the
 });
 
 test('every character keeps her v0.7.0 pixels as a 旧版像素 pack she can switch to, the new pack staying the default', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const old = packs.get(`${id}-classic`);
     assert.equal(old.species, id);
@@ -97,7 +97,7 @@ test('every character keeps her v0.7.0 pixels as a 旧版像素 pack she can swi
 });
 
 test('every outfit a character offers has its own sheet in her default pack (not only through a fallback)', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const own = packs.get(SPECIES[id].packs[0]);
     for (const outfit of SPECIES[id].outfits) assert.ok(own.outfits[outfit] && fs.existsSync(path.join(BUILTIN, own.id, own.outfits[outfit])), `${own.id} has ${outfit}`);
@@ -105,7 +105,7 @@ test('every outfit a character offers has its own sheet in her default pack (not
 });
 
 test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout as daily; with 旧版像素 chosen she stays in 旧版像素 (T-2752)", () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const px = packs.get('claude-pixel');
   assert.equal(px.outfits.swimsuit, 'sheets/swimsuit.webp');
   const daily = P.resolveLook(packs, { packId: 'claude-pixel', fallbackId: 'claude-pixel', speciesId: 'claude', outfitId: 'daily' });
@@ -120,7 +120,7 @@ test("克洛蒂's swimsuit: her own sheet in the default pack, the same layout a
 });
 
 test("大肥鱼's swimsuit: only her pixel pack has it; with 原版动画 or 旧版像素 chosen the look never leaves that appearance (T-2752)", () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   assert.equal(packs.get('dafeiyu-pixel').outfits.swimsuit, 'sheets/swimsuit.webp');
   const pixel = P.resolveLook(packs, { packId: 'dafeiyu-pixel', fallbackId: 'dafeiyu-pixel', speciesId: 'dafeiyu', outfitId: 'swimsuit' });
   const clipsId = chosenPack(packs, { dafeiyu: 'dafeiyu-clips' }, 'dafeiyu');
@@ -199,7 +199,7 @@ test('every character has an 18+ 成年版 pack: her daily look and the adult ou
   const { OUTFITS } = require('../src/core/outfits');
   const adultIds = OUTFITS.filter((o) => o.rating === 'adult').map((o) => o.id);
   const drawn = adultIds; // every adult outfit is drawn (2026-11-01)
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   for (const id of ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']) {
     const a = packs.get(`${id}-adult`);
     assert.equal(a.species, id);
@@ -233,7 +233,7 @@ test('rig packs: the model is checked and goes to the renderer with the look; ot
   const r = P.readPack(dir);
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(r.pack.model.parts.map((p) => [p.id, p.deformer, p.grid]), [['body', 'skirt', [4, 8]], ['head', 'head', [4, 4]]]);
-  const packs = new Map([[r.pack.id, r.pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[r.pack.id, r.pack], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.resolveLook(packs, { packId: 'my-rig', speciesId: 'grok', outfitId: 'daily' });
   assert.equal(look.kind, 'rig');
   assert.equal(look.base, 'pack://my-rig/daily', 'the layers are read next to the preview');
@@ -257,7 +257,7 @@ test('rig packs: the model is checked and goes to the renderer with the look; ot
 });
 
 test('大肥鱼 · 全动态: every layer of the built-in rig is in the model, with her face and skeleton', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const live = packs.get('dafeiyu-live');
   assert.equal(live.kind, 'rig');
   assert.deepEqual(live.model.parts.filter((p) => !p.id.startsWith('face_')).map((p) => p.id).sort(), ['ahoge', 'arm_l', 'arm_r', 'body', 'fin_l', 'fin_r', 'hair', 'head', 'leg_l', 'leg_r', 'tail']);
@@ -278,7 +278,7 @@ test('live2d packs: the model and its files are checked, the parameter map goes 
   const r = P.readPack(dir);
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(r.pack.live2d, { height: 0.75, params: { armL: 'ParamArmL', tail: 'ParamTail', armOut: -20 }, faces: { blush: { ParamCheek: 1 } }, pinned: { ParamWatermark: 1 } });
-  const packs = new Map([[r.pack.id, r.pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[r.pack.id, r.pack], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.resolveLook(packs, { packId: 'my-l2d', speciesId: 'grok', outfitId: 'daily' });
   assert.equal(look.kind, 'live2d');
   assert.equal(look.model, 'pack://my-l2d/m/a.model3.json');
@@ -342,14 +342,14 @@ test('importing a Live2D model: it is found in its folder, its expressions becom
   assert.equal(r.pack.adult, false);
   const { OUTFITS } = require('../src/core/outfits');
   assert.deepEqual(Object.keys(r.pack.outfits).sort(), OUTFITS.filter((o) => o.rating !== 'adult').map((o) => o.id).sort(), 'she wears it in every all-ages outfit, never an adult one');
-  const packs = new Map([[r.pack.id, { ...r.pack, source: 'user' }], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[r.pack.id, { ...r.pack, source: 'user' }], ...require('../src/core/catalog').repoPacks().packs]);
   assert.equal(P.resolveLook(packs, { packId: r.pack.id, speciesId: 'grok', outfitId: 'beret' }).kind, 'live2d');
   const opt = packsFor(packs, 'grok').find((o) => o.id === r.pack.id);
   assert.deepEqual(opt, { id: 'l2d-grok-hiyori', name: 'Hiyori', author: '本地导入', license: '模型作者的条款', version: '1.0.0', description: '从本地导入的 Live2D 模型。', kind: 'live2d', source: 'user', adult: false, outfits: Object.keys(r.pack.outfits).length, cover: { type: 'image', url: P.packUrl(r.pack, r.pack.outfits.daily), pixelated: false }, height: 0.8 });
 });
 
 test('大肥鱼 · Live2D: the built-in model is complete, its watermark and chest physics are pinned, pixels stay her default', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const p = packs.get('dafeiyu-live2d');
   assert.equal(p.kind, 'live2d');
   assert.equal(p.live2d.pinned.Paramcol_3, 1, 'the model\'s own watermark switch is off');
@@ -375,20 +375,20 @@ function imageSize(file) {
 
 test('every outfit sheet of every built-in sprite pack is exactly its frame size times the grid it is cut from', () => {
   // a sheet at the wrong scale (e.g. a 332x452-cell sheet in a 664x904 pack after a merge) cuts empty frames
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   for (const p of packs.values()) {
     if (p.kind !== 'sprites') continue;
     const cols = Math.max(...Object.values(p.actions).map((a) => a.col + a.frames));
     const rows = Math.max(...Object.values(p.actions).map((a) => a.row + 1));
     for (const [outfit, rel] of Object.entries(p.outfits)) {
-      const [w, h] = imageSize(path.join(BUILTIN, p.id, rel));
+      const [w, h] = imageSize(path.join(p.dir, rel));
       assert.ok(w >= p.frame.width * cols && h >= p.frame.height * rows && w % p.frame.width === 0 && h % p.frame.height === 0, `${p.id} ${outfit}: ${w}x${h} for ${p.frame.width}x${p.frame.height} frames, ${cols}x${rows}`);
     }
   }
 });
 
 test('packsFor: every option carries a cover for the wardrobe — a playable sheet, a picture, or her own clip', () => {
-  const packs = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs;
+  const packs = require('../src/core/catalog').repoPacks().packs;
   const grok = packsFor(packs, 'grok');
   const pixel = grok.find((o) => o.id === 'grok-pixel');
   assert.equal(pixel.cover.type, 'sprite');
@@ -404,7 +404,7 @@ test('packsFor: every option carries a cover for the wardrobe — a playable she
 // T-2752: dressing her never swaps her into another pack. 大肥鱼 in her Live2D pack asked for any outfit is
 // still her Live2D model; every pack's wardrobe is exactly the outfits it has art for.
 test('resolveLook never crosses packs: 大肥鱼 in Live2D stays Live2D for every outfit; each pack lists only its own outfits', () => {
-  const { packs } = P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]);
+  const { packs } = require('../src/core/catalog').repoPacks();
   const daily = P.resolveLook(packs, { packId: 'dafeiyu-live2d', fallbackId: P.fallbackPack('dafeiyu'), speciesId: 'dafeiyu', outfitId: 'daily' });
   assert.equal(daily.kind, 'live2d');
   for (const outfitId of ['scarf', 'swimsuit', 'bikini', 'qipao', 'maid', 'flower_crown', 'nope']) {

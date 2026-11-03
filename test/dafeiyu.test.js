@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { SPECIES, SPECIES_IDS } = require('../src/core/species');
 
-const DIR = path.join(__dirname, '..', 'src', 'renderer', 'assets', 'dafeiyu');
+const DIR = path.join(__dirname, '..', 'catalog', 'clips', 'dafeiyu-clips'); // downloaded, not shipped (core/catalog.js)
 const REQUIRED_CLIPS = ['idle', 'happy', 'sad', 'hungry', 'sleep', 'eat_rice', 'eat_cookie', 'eat_fruit', 'think', 'talk', 'play', 'pat', 'hatch', 'evolve', 'lifted', 'walk'];
 
 test('the roster is the model-chan: DeepSeek 大肥鱼 (kept, video), Claude and Grok', () => {
