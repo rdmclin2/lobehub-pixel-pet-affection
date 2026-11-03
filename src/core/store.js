@@ -5,8 +5,9 @@ const path = require('node:path');
 
 // Tiny JSON persistence with atomic writes.
 class Store {
-  constructor(dir) {
-    this.file = path.join(dir, 'pet.json');
+  // `name`: the file inside `dir` (pet.json by default; the admin chat keeps its own files the same way)
+  constructor(dir, name = 'pet.json') {
+    this.file = path.join(dir, name);
     fs.mkdirSync(dir, { recursive: true });
   }
 

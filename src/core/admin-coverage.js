@@ -163,6 +163,7 @@ const RUNTIME = [
 const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
+  chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
 };
 
 const uniq = (a) => [...new Set(a)];

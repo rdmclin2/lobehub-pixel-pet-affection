@@ -30,6 +30,7 @@ const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { createAdminSettings } = require('./admin-settings');
+const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
 const { buildRoster, packRows, adminView } = require('../core/roster');
@@ -54,6 +55,7 @@ let petBounds = null; // the pet window's bounds while a panel (wardrobe / topic
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
 let adminSettings = null; // admin-set / admin-reset (admin-settings.js)
+let chatImages = null; // 设置窗口 → 聊天: pictures sent there (core/admin-chat.js, docs/admin-chat.md)
 let tray = null;
 let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
@@ -709,6 +711,51 @@ function wire() {
     setImmediate(() => app.quit());
     return { ok: true };
   }));
+  // 设置窗口 → 聊天 (docs/admin-chat.md): one conversation per character, through her own agent and topic, kept
+  // in her 聊天记录 (PetService#chatAs). Replies stream to the settings window as `admin-chat-delta`, the end
+  // of a round as `admin-chat-done`; `admin-chat-changed` says her history moved (a round here or on the desktop).
+  const chatView = (speciesId) => (m) => chatMessageView(m, chatImages, speciesId);
+  ipcMain.handle('admin-chat-characters', adminOnly(() => service.chatCharacters()));
+  ipcMain.handle('admin-chat-history', adminOnly(({ speciesId, before, limit }) => {
+    const r = service.chatHistory(String(speciesId || ''), { before: before ? String(before) : null, limit });
+    return r.ok ? { ...r, messages: r.messages.map(chatView(r.speciesId)) } : r;
+  }));
+  ipcMain.handle('admin-chat-abort', adminOnly(({ speciesId }) => service.chatAbort(speciesId ? String(speciesId) : undefined)));
+  ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images }) => {
+    const id = String(speciesId || '');
+    const list = Array.isArray(images) ? images : [];
+    if (list.length > CHAT_MAX_IMAGES) return { ok: false, reason: 'too-many-images', error: `一次最多发送 ${CHAT_MAX_IMAGES} 张图片` };
+    const read = list.map((x) => readChatImage(x));
+    const bad = read.find((r) => !r.ok);
+    if (bad) return { ok: false, reason: bad.reason, error: bad.message };
+    let saved = [];
+    try {
+      saved = read.length ? chatImages.save(id, read) : [];
+    } catch (e) {
+      return { ok: false, reason: 'error', error: `图片没有保存下来：${e.message}` };
+    }
+    const r = await service.chatAs(id, { text, images: saved }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
+    if (!r.userMessage) for (const x of saved) fs.rmSync(x.path, { force: true }); // refused before it was kept
+    const view = chatView(r.speciesId || id);
+    const out = { ...r, userMessage: r.userMessage ? view(r.userMessage) : undefined, message: r.message ? view(r.message) : undefined };
+    if (out.message) admin.send('admin-chat-done', { speciesId: out.speciesId, turnId: out.turnId, ok: out.ok, reason: out.ok ? undefined : out.reason, error: out.error, message: out.message });
+    if (!r.ok && r.reason === 'error') logError(new Error(`admin chat: ${r.code || ''} ${r.error}`));
+    return out;
+  }));
+  // 选择图片: a file dialog in main; each picked file comes back checked (type, ≤10 MB) with a preview data URL
+  ipcMain.handle('admin-chat-pick-images', adminOnly(async () => {
+    const r = nextOpenPath ? { filePaths: nextOpenPath.split('|') } : await dialog.showOpenDialog(admin.win || win, { title: '选择图片', properties: ['openFile', 'multiSelections'], filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
+    nextOpenPath = null;
+    if (r.canceled || !r.filePaths.length) return { ok: false, reason: 'canceled', images: [] };
+    const images = [];
+    const rejected = [];
+    for (const f of r.filePaths.slice(0, CHAT_MAX_IMAGES)) {
+      const img = readChatImage({ path: f });
+      if (img.ok) images.push({ path: f, name: img.name, mime: img.mime, size: img.buffer.length, dataUrl: `data:${img.mime};base64,${img.buffer.toString('base64')}` });
+      else rejected.push({ name: path.basename(f), reason: img.reason, message: img.message });
+    }
+    return { ok: true, images, rejected };
+  }));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 
@@ -754,7 +801,8 @@ function wire() {
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
   service.on('chat-delta', (d) => send('chat-delta', d));
-  service.on('chat-done', (d) => send('chat-done', d));
+  service.on('chat-done', (d) => { send('chat-done', d); admin.send('admin-chat-changed', { speciesId: service.pet ? service.pet.speciesId : null }); });
+  service.on('chat-log', (d) => admin.send('admin-chat-changed', d));
   service.on('affection', (a) => send('affection', a));
   // 插个嘴: what was judged and what she said (the record without the owner's text beyond its short summary)
   // — to the pet window (the 别插嘴 / 说得好 buttons under a remark) and the settings window (规则 and 判断记录)
@@ -845,6 +893,7 @@ app.whenReady().then(() => {
     return a === null ? true : a;
   });
   admin = new AdminWindow({ testMode: TEST_MODE });
+  chatImages = new ChatImages(path.join(app.getPath('userData'), 'admin-chat', 'images'));
   adminSettings = createAdminSettings({
     service,
     hooks: {

@@ -9,6 +9,8 @@
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
+//   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
+//   scenario "admin-chat" -> 设置窗口 → 聊天 acceptance: the chatui walk (fake) + a real companion talked to through the same page
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 //   scenario "interject" -> 插个嘴: off → no jev call; on + mock jev 0.86 → a remark with 别插嘴 / 说得好; 别插嘴 → rule → same kind skipped; rules UI
 //   scenario "voicehotkey" -> 快捷键唤起语音对话: the global shortcut → pet shown, listening, recognised; settings window records / refuses combinations
@@ -6335,6 +6337,8 @@ async function vrmUi() {
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
+const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
+const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
 const spriteFrameScenarios = () => require('./sprite-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
@@ -9056,7 +9060,7 @@ async function adminScenario() {
     const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
     for (const theme of ['light', 'dark']) {
-      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 4 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
+      await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 5 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
         await admin.evaluate((t) => window.petAdmin.set('ui.theme', t), theme);
         await admin.waitForFunction((t) => document.documentElement.dataset.theme === t, theme);
         const out = [];
@@ -9070,17 +9074,17 @@ async function adminScenario() {
           await shot(`${theme}-${r.slice(1).replace(/\//g, '-')}`);
           await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1000); });
           out.push(`${r}`);
-          assert.equal(f.nav, 4, `rail links ${f.nav}: 小屋 / 角色 / 玩法 / 设置, not every page`);
+          assert.equal(f.nav, 5, `rail links ${f.nav}: 小屋 / 角色 / 玩法 / 设置 / 聊天, not every page`);
         }
-        return `${out.length} pages · rail of 4 · data-theme=${theme}`;
+        return `${out.length} pages · rail of 5 · data-theme=${theme}`;
       }, () => admin);
     }
     await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
 
-    await step(S, 'A3b depth: the rail holds 4 places; 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
+    await step(S, 'A3b depth: the rail holds 5 places (4 + 聊天); 设置 → a tile → its page → back up; 角色 → a card → her page', async () => {
       await go('/overview');
       const rail = await admin.$$eval('nav a[data-rail]', (as) => as.map((a) => a.textContent.trim()));
-      assert.deepEqual(rail, ['小屋', '角色', '玩法', '设置']);
+      assert.deepEqual(rail, ['小屋', '角色', '玩法', '设置', '聊天']);
       await admin.click('[data-rail="settings"]');
       await admin.waitForSelector('[data-path="/settings"]');
       const tiles = await admin.$$eval('[data-tile]', (ts) => ts.map((t) => t.dataset.tile));
@@ -9828,6 +9832,10 @@ async function interjectScenario() {
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
+  if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');
+  if (which === 'chatui' || which === 'all') await chatUiScenario();
+  if (which === 'adminchat-live') retiredScenario('adminchat-live', 'admin-chat (its real-LobeHub part)');
+  if (which === 'admin-chat') await adminChatAcceptance(); // T-2773 acceptance: chatui walk + real LobeHub through the chat page (a few tokens)
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.

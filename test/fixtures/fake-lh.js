@@ -107,7 +107,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   fs.appendFileSync(path.join(dir, 'model-lists.log'), args[2] + '\n');
   const chat = (id, displayName, extra = {}) => ({ id, displayName, enabled: true, type: 'chat', abilities: { functionCall: true }, ...extra });
   const catalogs = {
-    lobehub: [chat('deepseek-flash', 'DeepSeek V4.1 Flash'), chat('claude-opus-5-5', 'Claude Opus 5.5'), chat('claude-sonnet-5-5', 'Claude Sonnet 5.5'), chat('claude-haiku-5-5', 'Claude Haiku 5.5'),
+    lobehub: [chat('deepseek-flash', 'DeepSeek V4.1 Flash'), chat('claude-opus-5-5', 'Claude Opus 5.5'), chat('claude-sonnet-5-5', 'Claude Sonnet 5.5'), chat('claude-haiku-5-5', 'Claude Haiku 5.5', { abilities: { functionCall: true, vision: true } }),
       chat('grok-4.7', 'Grok 4.7'), chat('gemini-3.8-flash', 'Gemini 3.8 Flash'), chat('gemini-3.1-flash-image', 'Nano Banana 2', { abilities: { imageOutput: true } }),
       chat('gpt-6-sol', 'GPT-6 Sol'), chat('gpt-6-luna', 'GPT-6 Luna'), chat('glm-5.3', 'GLM-5.3')],
     openai: [chat('gpt-6-luna', 'GPT-6 Luna'), chat('o3', 'o3')],

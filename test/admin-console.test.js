@@ -64,8 +64,8 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 18, '18 pages under 4 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718)');
-  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings'], 'the rail holds four places, not every page');
+  assert.equal(navPages.length, 19, '19 pages under 5 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765)');
+  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings', 'chat'], 'the rail holds five places (four + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
   for (const f of schema.FIELDS) {
@@ -477,7 +477,7 @@ test('the settings window: single instance, isolated (contextIsolation, sandbox,
   });
 });
 
-test('admin preload: a whitelist of settings / roster channels, each one handled in main; no chat, move or debug', () => {
+test('admin preload: a whitelist of settings / roster / admin-chat channels, each one handled in main; no pet chat, move or debug', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
   const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
   const invoked = [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9-]+)'/g)].map((m) => m[1]);
@@ -486,7 +486,9 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh
+  // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
+  for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
   // the settings window's own channels answer that window only (outside tests)
   assert.match(main, /const adminOnly = \(fn\) => \(e, p\) => \(admin\.isSender\(e\) \|\| TEST_MODE/);
