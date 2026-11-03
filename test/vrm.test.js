@@ -10,6 +10,16 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const V = require('../src/core/vrm');
 const P = require('../src/core/packs');
+
+// T-2764: there is no 形象包 choice any more; every pack is a character (core/characters.js). These two helpers
+// express what the old chosenPack / packsFor answered through the new API: the character a base is shown as
+// for a saved pack id (hers and showable, else her default), and her characters as their 外观 cards.
+const C = require('../src/core/characters');
+const chosenPack = (packs, ap, base, adultOk = false) => {
+  const e = C.characterById(packs, ap && ap[base]);
+  return e && e.base === base && C.available(e, adultOk) ? e.id : C.defaultCharacter(packs, base, adultOk);
+};
+const packsFor = (packs, base, adultOk = false) => C.listCharacters(packs, { adultOk }).filter((e) => e.base === base && !e.missing).map((e) => (e.clips ? P.clipsOption(base) : P.packOption(packs.get(e.packId))));
 const I = require('../src/core/vrm-import');
 const o = require('../src/core/outfits');
 const st = require('../src/core/pet-state');
@@ -138,7 +148,7 @@ test('vrm packs: models per outfit are checked (inside the pack, existing, glTF 
   assert.equal(p.license, 'VRM 1.0 授权：仅限个人非商业使用 / 不可再分发 / 禁止修改 / 需署名', 'so does the license');
   assert.equal(p.vrm.models['model.vrm'].meta.allowRedistribution, false);
 
-  const packs = new Map([[p.id, { ...p, source: 'user' }], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[p.id, { ...p, source: 'user' }], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'daily' });
   assert.equal(look.kind, 'vrm');
   assert.equal(look.model, 'pack://my-vrm/model.vrm');
@@ -148,8 +158,9 @@ test('vrm packs: models per outfit are checked (inside the pack, existing, glTF 
   assert.equal(look.vrm.meta.name, '蓝色小肥鱼Deepseek');
   assert.ok(look.vrm.modelExpressions.includes('aa'));
   assert.equal(P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'pajamas' }).url, null, 'no preview picture for that outfit');
-  assert.notEqual(P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'scarf' }).kind, 'vrm', 'other outfits fall back to her default pack');
-  const listed = P.packsFor(packs, 'dafeiyu').find((x) => x.id === p.id);
+  const scarf = P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'scarf' });
+  assert.deepEqual([scarf.packId, scarf.kind, scarf.model], [p.id, 'vrm', look.model], 'an outfit the pack has no model for is worn as its daily model, never another pack (T-2752)');
+  const listed = packsFor(packs, 'dafeiyu').find((x) => x.id === p.id);
   assert.equal(listed.vrm.author, '木子惡魔');
   assert.ok(listed.vrm.restrictions.some((x) => x.id === 'no-redistribution'));
   assert.equal(listed.vrm.models[0].meta.contactInformation, 'https://github.com/sunfish1728');
@@ -197,15 +208,15 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   for (const k of ['rating', 'unlockAll', 'ageConfirmed', 'adultContent', 'stage', 'outfitRules']) assert.equal(k in r.pack, false, k);
   assert.equal('stages' in r.pack.vrm || 'rating' in r.pack.vrm, false);
   const pack = { ...r.pack, source: 'user' };
-  const packs = new Map([[pack.id, pack], ...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs]);
+  const packs = new Map([[pack.id, pack], ...require('../src/core/catalog').repoPacks().packs]);
   const look = P.lookContext(pack);
   assert.deepEqual(look, { adult: true, only: true, outfits: ['daily', 'maid', 'pajamas'] });
 
   // 18+ not confirmed / adult content off: the pack is not even chosen, adult outfits do not exist
   for (const s of [ADULT_OFF, NOT_CONFIRMED]) {
     const adultOk = !!(s.ageConfirmed && s.adultContent);
-    assert.notEqual(P.chosenPack(packs, { dafeiyu: pack.id }, 'dafeiyu', adultOk), pack.id);
-    assert.equal(P.packsFor(packs, 'dafeiyu', adultOk).some((x) => x.id === pack.id), false);
+    assert.notEqual(chosenPack(packs, { dafeiyu: pack.id }, 'dafeiyu', adultOk), pack.id);
+    assert.equal(packsFor(packs, 'dafeiyu', adultOk).some((x) => x.id === pack.id), false);
     const p = pet(100);
     assert.equal(o.listOutfits(p, s, look).some((x) => x.id === 'maid'), false);
     assert.equal(o.equipOutfit(p, s, 'maid', look).ok, false);
@@ -217,7 +228,7 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   assert.equal(o.equipOutfit(low, ADULT_ON, 'pajamas', look).reason, 'locked', 'all-ages outfits keep their stage too');
   // 18+ on and 暧昧: the app's own unlock lets it on
   const high = pet(70);
-  assert.equal(P.chosenPack(packs, { dafeiyu: pack.id }, 'dafeiyu', true), pack.id);
+  assert.equal(chosenPack(packs, { dafeiyu: pack.id }, 'dafeiyu', true), pack.id);
   assert.equal(o.equipOutfit(high, ADULT_ON, 'maid', look).ok, true);
   assert.equal(P.resolveLook(packs, { packId: pack.id, speciesId: 'dafeiyu', outfitId: 'maid' }).kind, 'vrm');
   // then adult content off: back into an all-ages outfit
@@ -228,7 +239,7 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   assert.deepEqual(P.lookContext(forged), { adult: false, only: true, outfits: ['daily', 'pajamas'] });
   const fp = new Map([['forged', forged], ...packs]);
   const lk = P.resolveLook(fp, { packId: 'forged', speciesId: 'dafeiyu', outfitId: 'maid' });
-  assert.ok(!lk || lk.kind !== 'vrm' || lk.packId !== 'forged');
+  assert.deepEqual([lk.packId, lk.model], ['forged', 'pack://forged/model.vrm'], 'the maid model is never worn: the pack\'s daily model instead, still the same pack');
   assert.equal(o.listOutfits(pet(100), ADULT_ON, P.lookContext(forged)).some((x) => x.id === 'maid'), false);
 });
 
@@ -353,7 +364,7 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   const root = path.join(dir, 'packs');
   const whale = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-whale', outfits: { daily: 'preview.png' } }), { 'model.vrm': vrm1(), 'preview.png': PNG })).pack;
   const adultPack = P.readPack(writeVrmPack(root, vrmPack({ id: 'vrm-free-adult', adult: true, vrm: { outfits: { daily: 'model.vrm', maid: 'maid.vrm' } } }), { 'model.vrm': vrm1(FREE_META), 'maid.vrm': vrm1(FREE_META) })).pack;
-  const packs = new Map([...P.loadPacks([{ dir: BUILTIN, source: 'builtin' }]).packs, [whale.id, { ...whale, source: 'user' }], [adultPack.id, { ...adultPack, source: 'user' }]]);
+  const packs = new Map([...require('../src/core/catalog').repoPacks().packs, [whale.id, { ...whale, source: 'user' }], [adultPack.id, { ...adultPack, source: 'user' }]]);
   const data = path.join(dir, 'data');
   const lh = new LhClient({ bin: path.join(__dirname, 'fixtures', 'fake-lh.js'), env: { ...cleanEnv(), FAKE_LH_DIR: dir } });
   const svc = new PetService({ lh, store: new Store(data), settingsStore: new SettingsStore(data), packs, now: () => Date.now(), rnd: () => 0.5 });
@@ -363,17 +374,20 @@ test('PetService: a VRM look is worn, listed with its license, and its adult out
   svc.setAdultContent(false);
 
   // the whale model: worn in daily, listed with author and restrictions
-  assert.equal(svc.setAppearance('vrm-whale', 'dafeiyu').ok, true);
+  // T-2764: the imported VRM pack is a character of her own (base 大肥鱼, same agent)
+  assert.equal((await svc.switchCharacter('vrm-whale')).ok, true);
   let v = svc.view();
+  assert.equal(v.pet.characterId, 'vrm-whale');
   assert.equal(v.look.kind, 'vrm');
   assert.equal(v.look.vrm.license.author, '木子惡魔');
-  const opt = svc.appearanceView('dafeiyu').options.find((x) => x.id === 'vrm-whale');
+  const opt = v.characters.find((x) => x.id === 'vrm-whale').pack;
   assert.deepEqual([opt.author, opt.vrm.redistributable, opt.vrm.adultOk], ['木子惡魔', false, false]);
 
-  // the 18+ VRM pack: not selectable with adult content off
-  assert.deepEqual(svc.setAppearance('vrm-free-adult', 'dafeiyu'), { ok: false, reason: 'adult' });
+  // the 18+ VRM character: not listed nor selectable with adult content off
+  assert.equal(v.characters.some((x) => x.id === 'vrm-free-adult'), false);
+  assert.deepEqual(await svc.switchCharacter('vrm-free-adult'), { ok: false, reason: 'adult' });
   svc.setAdultContent(true);
-  assert.equal(svc.setAppearance('vrm-free-adult', 'dafeiyu').ok, true);
+  assert.equal((await svc.switchCharacter('vrm-free-adult')).ok, true);
   v = svc.view();
   const maid = v.outfits.find((x) => x.id === 'maid');
   assert.equal(maid.locked, true, 'adult outfits still wait for 暧昧');
@@ -427,8 +441,8 @@ test('one VRM model is one look: no wardrobe of identical cards (packs imported 
   assert.equal(m.ok, true, JSON.stringify(m.errors));
   assert.deepEqual(P.lookContext(m.pack).outfits, ['daily', 'pajamas']);
 
-  // 2D packs keep her own wardrobe
-  assert.equal(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), null);
+  // 2D packs offer their own wardrobe too (T-2752): the outfits they have art for
+  assert.deepEqual(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), { adult: false, only: true, outfits: ['daily'] });
 });
 
 // An idle loop (.vrma) under the app's moves (pack vrm.idle; a folder / .zip import brings it along).
@@ -487,15 +501,10 @@ test('import: a folder / .zip brings its idle animation along (the only .vrma, o
   assert.equal(single.idle, null);
 });
 
-test('moves over an idle clip: offsets from the rest pose (resting is no offset, a nod still nods, arms are not lowered twice)', () => {
+test('no clip yet (or no library): she rests with the arms down, never the T-pose; the pixel moves are gone', () => {
   const M = require('../src/core/vrm-motion');
-  const rest = M.poseOffsets(M.pose({}, 0, 0, { breathK: M.NO_BREATH }).bones);
-  for (const r of Object.values(rest)) assert.deepEqual([r.x, r.y, r.z].map((v) => Math.abs(v) < 1e-9), [true, true, true]);
-  const nod = M.poseOffsets(M.pose({ nodDown: 9 }, 0, 0, { breathK: M.NO_BREATH }).bones);
-  assert.ok(nod.head.x > 5 && nod.neck.x > 3);
-  assert.ok(Math.abs(nod.leftUpperArm.z) < 1e-9, 'the arm-down rest is the clip\'s job');
-  const up = M.poseOffsets(M.pose({ armsUp: 1 }, 0, 0, { breathK: M.NO_BREATH }).bones);
-  assert.ok(up.leftUpperArm.z > 60 && up.rightUpperArm.z < -60);
+  assert.ok(M.REST_POSE.leftUpperArm.z <= -60 && M.REST_POSE.rightUpperArm.z >= 60, 'arms down from the T-pose');
+  for (const k of ['STATE_LOOKS', 'TOUCH_LOOKS', 'MOOD_LOOKS', 'MOTIONS', 'REPEATING', 'calm', 'lookFor', 'pose', 'poseOffsets', 'motionMouth']) assert.equal(M[k], undefined, `${k} removed (docs/vrm-motion-system.md §2.3)`);
 });
 
 test('idle clip with a held key (a flat stretch, like idle_loop.vrma\'s last 0.46 s): the moved bones keep the clip\'s pose, not the T-pose', async () => {

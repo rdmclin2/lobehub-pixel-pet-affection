@@ -1,6 +1,8 @@
 # 角色包（Pet Pack）格式 · schema 2
 
-角色包决定一个角色**长什么样**：每套服饰一张立绘，或者每套服饰一张像素动作精灵图。应用自带几套（`src/renderer/packs/`），用户自己的放在用户数据目录的 `packs/` 下（⋯ 菜单 → 角色列表 → 角色 → 外观 → “导入角色包…”或“打开角色包文件夹”）。这份格式也是以后角色包市场的上架格式。
+> **每个角色包就是一个独立角色**（T-2764，[角色清单 · 四](characters.md#四角色与形象每个形象就是一个独立角色t-2764)）：包的 `id` 就是角色 id，`species` 指定她继承哪个基础角色的人设、台词和触摸。导入一个包 = 角色列表里多一位角色；不再有“给角色换形象包”。包 `id` 不能与角色文件 id 相同，也不能以 `-clips` 结尾。
+
+角色包决定一个角色**长什么样**：每套服饰一张立绘，或者每套服饰一张像素动作精灵图。应用只自带 5 个像素包（`src/renderer/packs/<id>-pixel`）；其余官方形象（旧版像素、全动态、Live2D、成年版）放在仓库的 `catalog/packs/`，打成 zip 发布，用户在商店里下载后装进用户数据目录的 `packs/<id>/`（带 `.catalog.json` 安装标记，来源显示「下载」，见 [角色清单 · 内置与下载](characters.md#四之二内置与下载只内置-5-位像素角色其他角色下载后使用)）。用户自己的放在用户数据目录的 `packs/` 下（设置窗口 → 角色 → 右上角「导入角色」→「导入角色…」，或某位角色的详情 → 装扮 → 「导入新角色」；设置 → 资源与外观 → 角色包文件夹 打开目录）。每个包导入后就是角色图鉴里的一位新角色。这份格式也是以后角色包市场的上架格式。
 
 角色包**只提供图片**。有哪些角色（`src/characters/<id>.json`）、有哪些服饰、什么好感阶段解锁、哪些属于成人向，全部由应用决定（`src/core/outfits.js`），角色包改不了。所以导入的角色包没法绕过 18+ 确认和“成人向内容”开关。动作怎么播放、何时触发也由应用的共享效果层决定（`src/core/fx.js`），所有角色一样。
 
@@ -29,8 +31,8 @@ my-grok/
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态；live2d；vrm：3D（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
-  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，对 vrm 和 live2d 生效）；角色页的选择优先，见 docs/half-body-mode.md
-  "halfBody": { "waist": 0.52 },     // 可选（vrm / live2d）：半身时腰线的位置，= 她身高的比例，头顶 0、脚底 1（0.2–0.9）；不写则自动测量 / 推断
+  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，对 vrm / live2d / sprites 生效）；角色页的选择优先，见 docs/half-body-mode.md
+  "halfBody": { "waist": 0.52 },     // 可选（vrm / live2d / sprites）：半身时腰线的位置，= 她身高的比例，头顶 0、脚底 1（0.2–0.9）；不写则自动测量 / 推断
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
   "actions": {                       // sprites 必填：每个状态在精灵图里的位置（行、起始列都从 0 开始）
@@ -45,9 +47,14 @@ my-grok/
 }
 ```
 
-- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`sexy_bikini`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。角色平时只会穿她的 character.json 里 `outfits` 列出的服饰；穿 18+ 角色包（`"adult": true`）时，衣柜改为这个包里有图的服饰，成人向的也算；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
+- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`sexy_bikini`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。衣柜只列**这位角色自己的角色包**里有图的服饰（`outfits` 的键；VRM 包每个模型一项；18+ 包成人向的也算），`daily` 始终在；别的角色（哪怕是同一个她的另一个形象）包里有、这个包里没有的服饰既不显示也穿不上。每位角色有自己的衣柜（`pet.characters.<基础角色>.wardrobes.<角色 id>`）；切到一位角色时若她衣柜里记的服饰她的包里没有，会换回这个包有的最近一件全年龄服饰（没有就是 `daily`）并保存。穿衣**绝不会换成别的角色**：包里缺某件服饰的图时，用这个包自己的 `daily`（再没有就用它的第一套）。只有当前角色的包不存在（比如导入的包被删掉）时，才改用她基础角色的默认角色，再是回落包（`art.fallbackPack`）。character.json 的 `outfits` 只在一个包都没加载时使用。
+- **衣柜按角色隔离：实现与验证**（T-2752，T-2764 起一个包 = 一位角色）：
+  - 实现：`src/core/packs.js` 的 `lookContextOf(packs, packId, speciesId)` 给出当前包的服饰表（`{ adult, only: true, outfits }`），`src/core/outfits.js` 只要有这份表就以它为唯一来源（列表、穿衣、换包纠正都走它）；`resolveLook` 只从选中的包取图，不跨包。主进程 `src/main/pet-service.js` 的 `_look` 用它生成设置窗口衣柜（`view.outfits`），换角色、切成人向内容时纠正身上的服饰并保存。设置窗口 → 角色 → 详情 → 装扮 → **衣柜**把这些服饰显示成一组卡片（首帧缩略图、名称、全年龄 / 成人、解锁阶段、「新」、「正在穿」/「穿上」/「未解锁」），见 [characters.md · 设置窗口里的样子](characters.md#设置窗口里的样子t-2784)。
+  - 给一个包加服饰：在它的 `pack.json` 的 `outfits` 里加上服饰 id 和图（Live2D / 全动态同理；VRM 写在 `vrm.outfits`），衣柜就会多出这一项；服饰 id 必须是上面列出的应用内服饰，好感解锁和 18+ 规则不变。不写的服饰在这个包下既不显示也穿不上。
+  - 单元测试：`npm test`，相关用例在 `test/outfits.test.js`（“a Live2D pack (大肥鱼) offers only its own outfits…”）、`test/packs.test.js`（`resolveLook` 不跨包、`lookContextOf`）、`test/pet-service.test.js`（“大肥鱼 in her Live2D pack…”、“switching to a character whose pack lacks her saved outfit…”）。
+  - 真机验证：`xvfb-run -a node e2e/run.js wardrobepack`（shell 里设了 `ELECTRON_RUN_AS_NODE` 时先 `unset`）。场景在设置窗口里依次：角色图鉴里「大肥鱼 · 像素」「大肥鱼 · Live2D」是两张卡 → 「大肥鱼 · 像素」的衣柜卡片里穿上围巾 → 切换到角色「大肥鱼 · Live2D」（衣柜只剩 `daily`，桌宠是 Live2D）→ 穿其他服饰被拒（`unavailable`）且角色与渲染类型不变 → 打开 18+ 后衣柜仍只有 `daily` → 切回「大肥鱼 · 像素」（衣柜 13 张卡、仍穿围巾）→ 像素那位穿旗袍再切到 Live2D（各自保存）。截图在 `out/e2e/wardrobepack/`。旧数据迁移后的同类检查：`xvfb-run -a node e2e/run.js charmigrate`（截图在 `out/e2e/charmigrate/`）。
 - **`swimsuit` 与 `retro_swimsuit` 的区别**：`swimsuit`（运动泳装，亲近 ♥35，**全年龄**）是高领短袖的运动款连体泳衣，外面穿及膝沙滩裤和长袖防晒开衫，胸口、腰腹和臀部都遮住；五位内置角色的默认包都带这张图（`sheets/swimsuit.webp`）。`retro_swimsuit`（高开衩连体泳衣，恋人 ♥85，**成人向**）只在确认 18+ 并打开成人向内容后显示，而且只在 `adult: true` 的角色或 18+ 角色包上出现；内置角色只有成年版角色包（`<id>-adult`）带它的图。导入包给 `swimsuit` 提供的图也要符合同样的全年龄标准（不是比基尼、不露腰、不高开衩）。
-- **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，有日常服和 11 套成人向服饰：性感女仆装、露肩晚礼服、职场 OL、护士服、空姐制服、性感比基尼（暧昧 ♥60），高开衩连体泳衣、丝绸睡裙、兔女郎、黑丝毛衣裙、小恶魔 COS（恋人 ♥85）。只有确认年满 18 岁并打开“成人向内容”后，它才出现在“外观”里；选了它，衣柜换成这个包里有图的服饰。关掉成人向内容时她换回默认外观，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
+- **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，有日常服和 11 套成人向服饰：性感女仆装、露肩晚礼服、职场 OL、护士服、空姐制服、性感比基尼（暧昧 ♥60），高开衩连体泳衣、丝绸睡裙、兔女郎、黑丝毛衣裙、小恶魔 COS（恋人 ♥85）。它们是独立角色「<名字> · 成年版（18+）」，只有确认年满 18 岁并打开“成人向内容”后才出现在角色图鉴里；切换到她，衣柜就是这个包里有图的服饰。关掉成人向内容时她换回同一基础角色的默认角色，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
 - **`bikini`**（沙滩比基尼，暧昧 ♥60，**全年龄**）：比运动泳装清凉，但仍是全年龄标准：上衣从锁骨下方盖住整个胸口、不显胸型和乳沟，泳裙到膝盖上方、盖住臀部，外搭盖住肩膀的短开衫；只露出一窄条腰、手臂和小腿，布料不透明，没有内衣感和性暗示的姿势。五位内置角色的默认包都带这张图（`sheets/bikini.webp`）。导入包给 `bikini` 提供的图也要符合这个标准。
 - **动作（schema 2）**：动作名就是应用的状态名（大肥鱼原版动画的 15 个状态 + `lifted`）。只有 `idle` 必填；缺的状态按回落链降级并叠加一个表情符号（例如 `eat_fruit` → `eat_rice` → `happy` → `idle`）。
 
@@ -93,7 +100,7 @@ my-grok/
     "faces": { "blush": { "PARAM_EXP4": 1 }, "wide": { "PARAM_EXP5": 1 }, "squint": { "PARAM_EXP5": -1 } },  // 表情开关
     "pinned": { "Paramcol_3": 1 }              // 每帧在物理之后固定的值（水印开关、要关掉的物理等）
   },
-  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；有图的服饰才用 Live2D，其他服饰穿默认角色包
+  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；衣柜只列这里有的服饰（只写 daily 就只有一套）
 }
 ```
 
@@ -101,7 +108,7 @@ my-grok/
 - 手臂、尾巴、耳朵如果是模型物理的输出，应用的动作会叠加在物理结果上。
 - 没有 WebGL 的电脑上显示 `outfits` 里的图。
 
-### 半身取景的可选字段（Live2D / VRM 通用）
+### 半身取景的可选字段（Live2D / VRM / 像素 sprites 通用）
 
 取景（全身 / 半身）是用户的设置（设置窗口 → 桌宠行为 → 取景，或角色页单独设），包里可以带两个**可选**字段，详见 [half-body-mode.md](half-body-mode.md)：
 
@@ -114,15 +121,16 @@ my-grok/
 
 - **Live2D**：先看模型 `.model3.json` 的 `HitAreas` 里名字含 Head / 头 的区域（按头的高度推腰线）；没有就找 `ParamEyeLOpen` 会动的图层（眼睛），由眼睛的高度推头再推腰线；都没有用身高的 55%。用户导入的模型（没有 `pack.json`）也走这条路，所以第三方模型不写任何字段也能半身。
 - **VRM**：按人形骨骼（head / hips）测量；`halfBody.waist` 写了就代替 hips 推出的腰线。
+- **像素 sprites**：应用量出她在帧里的头顶、脚底和水平中心（几个站姿首帧的中位数），腰线没写就用身高的 55%。像素图没有可推断腰部的结构信息，**建议写上 `halfBody.waist`**：头身比正常的角色量交叠双手下沿再往下约 0.02–0.03，Q 版大头角色的腰线更低（内置 classic 包是 0.60–0.72）。半身时每帧只画腰线以上并放大，帧的构图要统一（脚底贴帧底、各帧人物大小一致），否则放大后跳动更明显。图片（pictures）和全动态（rig）包不支持半身，保持全身。
 
-内置的 `dafeiyu-live2d` 写的是 `"halfBody": { "waist": 0.52 }`。
+内置的 `dafeiyu-live2d` 写的是 `"halfBody": { "waist": 0.52 }`；15 个内置像素包也都写了实测值（`*-pixel` / `*-adult` 0.50–0.52，`*-classic` 0.60–0.72，见 [pixel-half-body-plan.md](pixel-half-body-plan.md) §4）。
 
 ### 直接导入自己的 Live2D 模型
 
-不想写 `pack.json` 的话：⋯ 菜单 → 角色列表 → 角色 → 外观 → **导入 Live2D 模型…**，选模型的 `.model3.json`，或者把模型文件夹打成的 `.zip`（macOS 上也可以直接选文件夹）。支持 Cubism 3 / 4 / 5 的模型；Cubism 2 的模型（`.model.json` + `.moc`）不支持。导入时应用会：
+不想写 `pack.json` 的话：设置窗口 → 角色 → 某位角色的详情 → 装扮 → 导入新角色 → **导入 Live2D 角色…**，选模型的 `.model3.json`，或者把模型文件夹打成的 `.zip`（macOS 上也可以直接选文件夹）。支持 Cubism 3 / 4 / 5 的模型；Cubism 2 的模型（`.model.json` + `.moc`）不支持。导入时应用会：
 
 1. 把 `.model3.json` 所在的文件夹整个复制进新角色包的 `model/`（最多 300 MB；模型引用的文件必须都在这个文件夹里）；
-2. 写一份 `pack.json`：`id` 是 `l2d-<角色>-<模型名>`，同一个模型再导入一次会替换旧的；给当前角色用，所有全年龄服饰下都穿这个模型（成人向服饰仍然只在 18+ 角色包里有）；
+2. 写一份 `pack.json`：`id` 是 `l2d-<角色>-<模型名>`，同一个模型再导入一次会替换旧的；它成为以这位角色为原型的一位新角色（共享她的名字、好感和聊天记录），并切换过去；所有全年龄服饰下都穿这个模型（成人向服饰仍然只在 18+ 角色包里有）；
 3. 从模型的表情（`Expressions`）里按名字认出应用要用的表情：脸红（blush / shy / 照れ / 害羞…）、惊讶（surprise / 驚 / 惊讶…）、眯眼（squint / >< …）、阴沉（gloom / sad / 落ち込み / 难过…）、晕（dizzy / 目回…）、口水（drool / よだれ…）。只取表情里 Add 和 Overwrite 的值，而且跳过应用每帧自己驱动的参数（头、视线、眼睛、眉毛、嘴）；没有脸红表情但有 `ParamCheek` 的模型，用它脸红；
 4. 在本机把模型画一帧作为预览图 `preview.png`（列表和衣柜里显示）。这台电脑加载不了的模型会被直接删掉，并说明原因。
 
@@ -144,7 +152,9 @@ my-grok/
       "pajamas": "models/pajamas.vrm"
     },
     "height": 0.9,                    // 可选：她占画面高度的比例，0.3–1，默认 0.9
-    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma），循环播放，应用的动作叠加在上面
+    "idle": "animations/idle.vrma",   // 可选：待机动画（VRM Animation .vrma）；没有动作库时用它做待机
+    "style": "female",                // 可选：动作风格 female / male / neutral，或 { "base": "female", "amplitude": 0.7, … }；不写则从模型推断
+    "motions": { "stand.relaxed": "stand.relaxed@male" },  // 可选：某个动作槽用动作库里的哪一条
     "expressions": {                  // 可选：应用状态 → 模型里的表情名（覆盖默认映射；表情名必须是模型里有的）
       "pat": "happy", "sleep": "relaxed"
     }
@@ -155,7 +165,9 @@ my-grok/
 
 - **校验**：每个 `.vrm` 必须在包目录内、存在、不超过 256 MB，是 glTF 二进制（文件头 magic `glTF`、版本 2，第一个 chunk 是 JSON），并带 `VRMC_vrm`（1.0）或 `VRM`（0.x）扩展。任何一项不符合，整个包被拒绝并说明原因。
 - **作者和授权读自模型文件**：`pack.json` 里写的 `author` / `license` 对 VRM 包不起作用，显示的作者和授权摘要来自模型的 VRM meta，所以包作者无法放宽模型本身的授权。VRM 1.0 读 `extensions.VRMC_vrm.meta` 的全部字段（name、version、authors、copyrightInformation、contactInformation、references、licenseUrl、avatarPermission、allowExcessivelyViolentUsage、allowExcessivelySexualUsage、commercialUsage、allowPoliticalOrReligiousUsage、allowAntisocialOrHateUsage、creditNotation、allowRedistribution、modification、otherLicenseUrl）；VRM 0.x 读 `extensions.VRM.meta`（title、author、allowedUserName、violentUssageName、sexualUssageName、commercialUssageName、licenseName、otherPermissionUrl、otherLicenseUrl…），由 `licenseName` 推出是否可再分发、可修改、需署名。缺失或不认识的字段一律按最严格的理解（VRM 1.0 规范的默认值）：不可再分发、禁止修改、需署名、仅限个人非商业、不允许性/暴力表现。
-- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。有它时，她站着的姿态（重心、手臂、呼吸）由这段动画循环驱动，应用的动作（点头、拖起摆动、玩耍转圈…）作为相对静止姿态的偏移叠加在上面；表情、眨眼、视线和口型照旧由应用决定。没有它时用应用自己的程序化待机。动画加载失败时退回程序化待机，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
+- **待机动画（`vrm.idle`，可选）**：一个 `.vrma`（glTF 二进制 + `VRMC_vrm_animation` 扩展，包目录内，不超过 32 MB）。本机没有动作库（见下文“VRM 的动作”）时，她的待机姿态由这段动画循环驱动；动作库在时以动作库为准。动画加载失败时退回双手自然下垂的静止姿态 + 呼吸等微动，不影响显示。导入文件夹或 .zip 时，里面唯一的 `.vrma`（或文件名以 `idle` 开头的那个）会自动作为待机动画；只选一个 `.vrm` 文件导入时不会去扫描它所在的文件夹。
+- **动作风格（`vrm.style`，可选）**：`"female"` / `"male"` / `"neutral"`，或对象 `{ "base": "female", "amplitude": 0.7, "hipSway": 0.6, … }`（可调 `amplitude`、`hipSway`、`stanceWidth`、`handPose`、`headTilt`、`emotion`、`idleEvery`、`lookAway`，越界的值被夹到允许范围，未写的继承 `base`）。决定她用哪一套姿势/待机（女性套、男性套）以及动作幅度、重心摆动、站姿宽度、呼吸方式（胸式/腹式）和表情强度。不写时从模型推断：VRM meta 没有性别字段，应用看模型的 SpringBone 是否挂在胸部骨骼上（是 → 女性），否则看肩宽/胯宽（≥ 1.5 → 男性），都不是 → 中性（女性姿势 + 折中幅度）。不认识的风格名或字段会让整个包被拒绝并说明原因。
+- **动作槽覆盖（`vrm.motions`，可选）**：`{ 槽位: 动作库条目 id }`，例如让女性模型用男性套的放松站姿 `{ "stand.relaxed": "stand.relaxed@male" }`。槽位与条目必须是 `src/core/vrm-library.json` 里有的。
 - **衣柜只列有模型的服饰**：VRM 包的衣柜就是它自己的服饰，每个不同的 `.vrm` 一项（同一个模型写在几套服饰下只算一项，因为一个模型换不了衣服）。只有一个模型时她就只有这一个样子，衣柜按钮隐藏，好感升级也不再提示新服饰。
 
 ### 授权提示与应用的强制规则
@@ -179,7 +191,7 @@ my-grok/
 
 ### 直接导入自己的 VRM 模型
 
-⋯ 菜单 → 角色列表 → 角色 → 外观 → **导入 VRM 模型…**，选一个 `.vrm`，或者包含 `.vrm` 的 `.zip`（macOS 上也可以直接选文件夹），不用写 `pack.json`。导入时应用会：
+设置窗口 → 角色 → 某位角色的详情 → 装扮 → 导入新角色 → **导入 VRM 角色…**，选一个 `.vrm`，或者包含 `.vrm` 的 `.zip`（macOS 上也可以直接选文件夹），不用写 `pack.json`。导入时应用会：
 
 1. 先读每个模型的 VRM meta；不是 glTF 二进制、不是 VRM、超过 256 MB 的，什么都不复制，直接说明原因；
 2. 只有一个 `.vrm`：它就是她的默认服饰（`daily`），没有衣柜；旧版本导入时把一个模型铺到所有服饰的包，现在同样只显示这一项；有多个：按文件名对应服饰（`daily.vrm`、`pajamas.vrm`…，必须有 `daily.vrm`），成人向服饰名的文件被跳过；
@@ -190,41 +202,29 @@ my-grok/
 
 ### 界面里的作者与授权
 
-- **导入确认**：复制完成后先弹出确认框，列出模型名（版本）、作者、版权、联系方式、参考链接、谁可以扮演、商用、再分发、修改、署名、性/暴力表现、授权条款链接，以及按授权生成的限制提示（不可再分发、禁止修改、需署名、个人非商业、禁止性表现 → 18+ 下不可用 …，会被应用强制执行的标红）。点“使用这个模型”换上；点“取消导入”删除刚复制的包。
-- **包卡片**：meta 行是 `VRM · N 套服饰 · 作者 · 本地导入`（作者读自模型）；授权要求署名时，卡片上常驻一行“署名：作者（模型授权要求署名）”。“授权信息”按钮展开同样的授权详情。
+- **导入确认**：复制完成后先弹出确认框，列出模型名（版本）、作者、版权、联系方式、参考链接、谁可以扮演、商用、再分发、修改、署名、性/暴力表现、授权条款链接，以及按授权生成的限制提示（不可再分发、禁止修改、需署名、个人非商业、禁止性表现 → 18+ 下不可用 …，会被应用强制执行的标红）。点“使用这个模型”切换到这位新角色；点“取消导入”删除刚复制的包。
+- **角色卡 / 角色包信息**：meta 行是 `VRM · N 套服饰 · 作者 · 本地导入`（作者读自模型）；授权要求署名时，卡片上常驻一行“署名：作者（模型授权要求署名）”。“授权信息”按钮展开同样的授权详情。
 - **链接**：`licenseUrl`、`otherLicenseUrl`、参考和联系方式里的 http(s) 链接可点击，在系统浏览器里打开（主进程 `open-link` 只放行 http/https）；其他内容（如 `mailto:`）只显示文字。
 - **导出**：导入的角色包有“导出…”（打成 `.zip`，可再用“导入角色包…”读回）。`allowRedistribution: false` 的 VRM 包按钮禁用，卡片下方写明“导出已禁用：这个 VRM 模型的授权不允许再分发…”；主进程 `export-pack` 也会再拒绝一次（`packShareable`）。
 - **衣柜**：只有一个模型时不显示衣柜按钮；有多个模型时，VRM 包的服饰照常按好感锁定（🔒 + 解锁条件），锁定的服饰只给图片、不给模型；没有预览图时显示“VRM”占位。
-- **切换**：从 VRM 包切回 `dafeiyu-pixel` / `dafeiyu-classic` 等 2D 包时，VRM 画布离开页面，渲染器的 figure 随即 `dispose()`；再切回 VRM 会重新创建。渲染器以 `window.PetVRM.createFigure(canvas, look)` 接入（与 Live2D / 全动态相同的接口）；未加载时显示占位图。
+- **切换**：从 VRM 角色切回 `dafeiyu-pixel` / `dafeiyu-classic` 等 2D 角色时，VRM 画布离开页面，渲染器的 figure 随即 `dispose()`；再切回 VRM 会重新创建。渲染器以 `window.PetVRM.createFigure(canvas, look)` 接入（与 Live2D / 全动态相同的接口）；未加载时显示占位图。
 
 ### VRM 怎么画出来：表情、动作、口型
 
 桌宠窗口里的 VRM 由 `src/renderer/vrm.js` 用 three.js + [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) 画在透明的 WebGL 画布上（`src/renderer/vendor/vrm/`：three r187 + three-vrm 3.5.5，MIT，版本与来源见该目录的 README；只在第一次显示 VRM 外观时加载）。渲染层只画应用已经决定好的外观和服饰（18+、好感解锁、服饰规则都在应用里），模型只能从它自己的角色包里读（`pack://<包 id>/…`），模型引用包外的文件一律拒绝。
 
-- **待机**：呼吸（脊柱、胸口微动）、2–6 秒一次的随机眨眼（`blink`）、视线跟随鼠标（VRM lookAt；鼠标在窗口外时按屏幕坐标换算）、SpringBone 每帧更新；拖动窗口时她会被甩一下再弹回来，头发、尾巴跟着晃。
-- **状态 → 表情和动作**（`src/core/vrm-motion.js`，有单测）：
+VRM 有自己的一套交互与动作（设计见 [docs/vrm-motion-system.md](vrm-motion-system.md)），**不再**套用像素角色的状态动作（跳、转圈、甩手脚、CSS 压扁/镜像这些都不作用在 VRM 上）：应用把“发生了什么”（需求状态、摸了哪里、被提起、在说话/思考/吃东西、光标在不在…）交给 VRM 导演，由它按模型的风格挑姿势、待机和表情。
 
-| 状态 | 表情 | 动作 |
-| --- | --- | --- |
-| idle / look | 无 / 无 | 呼吸；look 时左右张望 |
-| happy | happy | 跳、张开手 |
-| pat（摸头） | relaxed + happy | 低头、歪头 |
-| sad / hungry | sad | 低头、塌背；hungry 还微张嘴、晃 |
-| sleep | blink（闭眼）+ relaxed | 低头、慢呼吸 |
-| eat_rice / eat_cookie / eat_fruit（喂食） | happy | 嚼（aa 张合）、点头 |
-| think | neutral，视线向上 | 歪头 |
-| talk | happy（淡） | 点头 |
-| play（玩耍） | happy | 跳、转一圈、左右晃 |
-| hatch / evolve | surprised / happy + surprised | 挥手 / 举手大跳 |
-| lifted（被提起） | surprised | 手脚下垂乱摆、身体像钟摆 |
-| walk | happy（淡） | 迈步、摆臂 |
-| touch-head / face / hands / belly / feet | relaxed、happy、眨单眼… | 低头、挥手、扭… |
-| touch-chest / butt / legs / tail | surprised（+ angry）… | 往后缩、跳… |
-| 触摸后生气 / 不耐烦 | angry / angry + sad | 发抖 / 歪头 |
+- **动作库（姿势、待机）**：动作是 `.vrma` 片段，存在本机，不在仓库也不进安装包。开发机用 `node scripts/vrm-bake.js` 把 `~/vrm-assets/` 里的 Mixamo FBX 重定向烘焙成 `.vrma`（默认写到 `~/vrm-assets/baked/`，附 `library.json`），应用从 `$PIXELPET_VRM_MOTIONS_DIR`、`<用户数据目录>/vrm-motions/`、（开发运行时）`~/vrm-assets/baked/` 依次查找，通过 `vrmlib://` 读取；仓库里只有烘焙清单 `src/core/vrm-library.json`（素材路径和参数，不含二进制）。没有动作库时退回包里的 `vrm.idle` 或静止姿态 + 微动，不报错。
+- **姿势**：放松站、叉腰站、害羞站、俏皮站、坐着、靠坐 6 种，女性套和男性套各用各的素材。她的详情 → 装扮里的“VRM 姿势”可固定一种（按角色保存在设置 `vrmPostures.<角色 id>` 里，重启后保持），“自动”时由她自己换；切换姿势 1 秒交叉淡化（站↔坐 1.2 秒），过渡中各片段权重之和始终为 1，不会闪回 T-pose。睡觉时坐下打盹，难过/饿时换成害羞站，3 分钟没人理会坐下，光标回来再站起。
+- **待机**：自动姿势下在几段待机之间随机切换（每段 8–20 秒，不连续重复）：开心待机、换边待机、换姿势待机（女性 12 秒、男性 18 秒换一次站姿）；固定姿势时保持姿势，换成“静静呼吸 / 东张西望 / 换脚站”等微动变体。始终叠加呼吸（女性胸式、男性腹式，睡觉更慢更深）、每 6–14 秒换一次重心、头部不停的细微晃动、眼球微跳与偶尔看别处、2–6 秒随机眨眼、视线跟随鼠标；这些微动单骨骼不超过 4°，长时间运行不累积、不漂移。SpringBone 每帧更新。
+- **朝向**：她不再被左右镜像（镜像会把不对称的发型饰品翻过来），而是把身体转向那一侧（±18°，走路 ±60°）。
+- **事件 → 表情和视线**（本期；互动反应动作片段在后续实现）：摸头 relaxed + happy；害羞区域 surprised + 看向斜下方；怕痒 happy；不耐烦 angry + sad 并转开视线；生气 angry 且盯人不眨眼；被提起 surprised、双腿受重力下垂并随窗口晃动（阻尼摆，不乱甩）；思考时视线向上；吃东西 happy + 咀嚼口型；说话时压低会改变嘴形的情绪；睡觉闭眼。男性套表情强度 ×0.8。
 
-  `vrm.expressions` 可以把某个状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
+  `vrm.expressions` 可以把某个应用状态的主表情换成模型里的其他表情名；模型缺某个标准表情时按 relaxed→happy、surprised→oh、blinkLeft/Right→blink、angry→sad 降级，什么都没有就不做表情，不会出错。
 - **口型**：念 TTS 语音（包括摸头、喂食这类互动语音）时，用 WebAudio AnalyserNode 分析正在播放的声音，按频谱驱动 aa / ih / ou / ee / oh 五个口型，平滑开合，念完归零；系统语音（Web Speech）没有音频流，按音节节奏开合。不说话时口型为 0。
-- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼）时最多 30 fps；6 秒没动静降到 12 fps，此时只保留表情和姿势、不再蹦跳；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+- **省电**：有动静（互动、说话、拖动、鼠标在她身上、眨眼、姿势过渡）时最多 30 fps；6 秒没动静降到 12 fps（待机动画照常播放）；窗口隐藏或最小化时停止绘制。切换外观/角色包时 geometry、material、texture 和 WebGL 渲染器都会释放；模型画不出来（比如只有 meta 的文件）时显示预览图块并释放渲染器。
+- **调试字段**：VRM 画布带 `data-style`（风格 + 来源 pack/meta/default）、`data-posture`、`data-idle`、`data-hold`、`data-layers`（片段:权重）、`data-library`（loaded / partial:n / none）等；`window.PetVRM.director`（也是 `window.__pet.vrmDirector`）可 `speed(k)` 加快调度时钟、`seed(n)` 固定随机数、`plan()` 查看当前决策。
 
 ### 关于木子惡魔《蓝色小肥鱼Deepseek》
 
@@ -234,9 +234,9 @@ my-grok/
 - 不要把它提交到仓库、放进 `src/`、附在 issue / PR 里，或打包分享给别人。仓库的 `.gitignore` 忽略 `*.vrm`，`package.json` 的 `build.files` 排除 `**/*.vrm`，`npm test` 会检查 `src/` 下和 git 里都没有 `.vrm`。
 - 导入步骤：
   1. 从发布页下载 `deepseek-whale-v1.0.0.zip`，解压到**仓库以外**的目录（例如 `~/art-archive/vrm-test/`），里面的 `model.vrm` 就是模型（约 18 MB）。
-  2. ⋯ → 角色列表 → 大肥鱼 → 外观 → **导入 VRM 模型…**，选 `model.vrm`（也可以直接选下载的 `.zip`）。
-  3. 导入确认里会列出模型名、作者（模型文件里写的是简体“木子恶魔”，界面按文件原样显示）和全部授权限制；点“使用这个模型”后她就换成 3D 外观，所有全年龄服饰都穿这个模型。外观页的卡片常驻署名，“导出…”被禁用，“授权信息”可随时展开。
-  4. 想换回 2D：在外观里选 `dafeiyu-pixel` / `dafeiyu-classic` 等即可，VRM 包保留在列表里，随时再选；不要了就点“移除”。
+  2. 设置窗口 → 角色 → 「大肥鱼 · 像素」详情 → 装扮 → 导入新角色 → **导入 VRM 角色…**，选 `model.vrm`（也可以直接选下载的 `.zip`）。
+  3. 导入确认里会列出模型名、作者（模型文件里写的是简体“木子恶魔”，界面按文件原样显示）和全部授权限制；点“使用这个模型”后角色图鉴里多出一位 VRM 角色并切换过去（和大肥鱼共享名字、好感与聊天），所有全年龄服饰都穿这个模型。她的角色包信息常驻署名，“导出…”被禁用，“授权信息”可随时展开。
+  4. 想换回 2D：在角色图鉴里「切换」到「大肥鱼 · 像素」/「大肥鱼 · 旧版像素」等即可，VRM 角色保留在图鉴里，随时再切；不要了在 设置 → 资源与外观 → 角色包 里移除。
 - 这个模型的 meta `version` 是占位的 `"undefined"`，界面按“没有版本”处理；它的贴图嵌在 GLB 里，渲染时通过 `blob:` 地址加载（页面 CSP 的 `img-src` / `connect-src` 允许 `blob:`，否则会画成没有贴图的白模）。
 - 测试只用测试代码里即时构造的最小 GLB（`test/vrm.test.js`），不含任何第三方模型；需要真实模型的验收用 `.agents/acceptance/scripts/vrm-real-model-acceptance.js <仓库> <输出目录> <仓库外的 model.vrm>`，模型路径在仓库内会被拒绝。
 - 可以再分发的替代来源：azwosile/DeepSeek-whale-girl-3D（Blender 工程，CC BY-NC-SA 4.0），需要自己导出成 VRM（补骨骼与表情），导出的文件同样只放在用户数据目录。
@@ -276,10 +276,24 @@ my-rig/
 - **expressions**（推荐）：原画表情。`{ "happy": "face_happy", … }` 把表情名对到一个图层（挂在 `head` 上，只画脸上变了的那块），应用按状态淡入淡出；`blink`（闭眼）和 `talk`（张嘴）叠在其他表情上，用来眨眼和说话。表情名：`happy`、`content`、`surprised`、`sad`、`angry`、`shy`、`sleep`、`wink`、`blink`、`talk`，缺哪个那个状态就用原脸。
 - **face**（没有 `expressions` 时）：眼睛和嘴的位置。眨眼、闭眼（^ ^ / 睡着）、半睁、wink、生气、各种嘴型、腮红和眼泪，都是按这些位置实时画上去的，所以原图画一张睁眼闭嘴的脸就够了。
 - **图层要多画一点被挡住的部分**：头发在头后面的部分、身体在头下面的部分，各自补上颜色，这样一层动起来时不会露出空洞。
-- 只有部分服饰做了图层也可以：其他服饰穿这个角色的默认角色包。
+- 只有部分服饰做了图层也可以：衣柜只列做了图层的服饰，其他服饰不会出现，也不会借用别的包。
 - 本仓库的 `scripts/art/rig_build.py` 从一张主图和它的编辑图（去掉手臂、去掉鳍、只留头发、每种表情各一张，都由 gpt-image 在同一张主图上编辑，构图不变）算出这些图层：两张图的差异就是被编辑的部位，所以不用手描轮廓；规格和原图在 `art/rig/dafeiyu-v2.json`、`art/rig/dafeiyu-v2/`。
 - **图层图片可以比 `box` 更清晰**：图片按 `box` 拉伸贴上，所以 `box` 宽 32、图片宽 64 也行，画出来更清楚。（内置的大肥鱼全动态 v2 直接用 664×904 的坐标，图层按这个尺寸切出。）
 - **schema 1**：旧格式的 8 个动作名 `idle / wave / lifted / eat / sleep / think / talk / cheer` 仍然可用，应用把 `pat` 映射到 `wave`，`happy`、`play`、`hatch`、`evolve` 映射到 `cheer`，三种吃饭映射到 `eat`。schema 1 包里不能写 schema 2 的新动作名。
+
+## 数据迁移方式（形象包 → 独立角色）
+
+T-2764 之前，一个角色（人设）可以在几个**形象包**之间切换，选择存在 `settings.appearance`；现在每个包就是一位角色。老用户的数据在第一次启动新版本时自动迁移一次，完整规则、备份文件与回退步骤见 [characters.md · 数据迁移方式](characters.md#数据迁移方式srccorecharacter-migratejst-2764--t-2786)。和角色包有关的部分：
+
+| 旧 key | 新 key | 说明 |
+| --- | --- | --- |
+| `settings.appearance.<人设>` = `<包 id>` | `pet.characterId` = `<包 id>`（原值只读留在 `settings.legacyAppearance`） | 选中的包就是迁移后的当前角色；包已删除 / 不属于她 → 她的默认角色 |
+| `pet.characters.<人设>.equippedOutfit` / `lastSafeOutfit` | `pet.characters.<人设>.wardrobes.<包 id>` | 复制到她的每个包（含导入的）；包里没有那套服饰的图，到场时换回日常服 |
+| `settings.framings.<人设>` | `settings.framings.<包 id>` | 复制到她的每个包 |
+| `settings.vrmPostures.<包 id>` | 不变 | 包 id = 角色 id |
+| 导入的包 `packs/<id>/` | 不变 | 每个成为一位角色；`species` 决定她和谁共享 agent / 好感 / 聊天 |
+
+共享 / 隔离：同一 `species` 的各个包共享 agent、聊天记录、名字、好感、需求、模型、个性化设定和语音包；衣柜、取景、VRM 姿势按包（角色）各自独立。迁移只跑一次（`characterModel: 2` 标记），改写前把原文件备份成 `settings.characters.bak.json` / `pet.characters.bak.json`；回退就是退出应用后把这两个备份复制回去。
 
 ## 内容要求
 

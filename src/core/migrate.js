@@ -15,7 +15,7 @@ const MIGRATION_CAP = 50; // migrated pets top out in 亲近 and never land in a
 
 // Fields of the whole save; everything else belongs to one character. `createdAt` is both: the hatch at the
 // top, the day she was met in her entry.
-const SHARED_KEYS = ['schemaVersion', 'speciesId', 'characters', 'space', 'owner', 'localAbilities', 'createdAt', 'legacy', 'retiredFrom', 'retiredCharacters'];
+const SHARED_KEYS = ['schemaVersion', 'speciesId', 'characterId', 'characterModel', 'characters', 'space', 'owner', 'localAbilities', 'createdAt', 'legacy', 'retiredFrom', 'retiredCharacters'];
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const needsMigration = (raw) => !!raw && typeof raw === 'object' && !(raw.schemaVersion >= SCHEMA_VERSION);
@@ -46,6 +46,11 @@ function normalizeCharacter(pet, speciesId, now) {
   // falls back to the default outfit.
   if (!OUTFIT_IDS.includes(out.equippedOutfit) || !hasArt(out.speciesId, out.equippedOutfit)) out.equippedOutfit = DEFAULT_OUTFIT;
   if (!OUTFIT_IDS.includes(out.lastSafeOutfit) || !hasArt(out.speciesId, out.lastSafeOutfit)) out.lastSafeOutfit = DEFAULT_OUTFIT;
+  // T-2764: each of her characters (looks) keeps her own wardrobe (core/character-migrate.js); a bad entry goes
+  if (out.wardrobes !== undefined) {
+    const w = isObj(out.wardrobes) ? out.wardrobes : {};
+    out.wardrobes = Object.fromEntries(Object.entries(w).filter(([k, v]) => /^[a-z0-9][a-z0-9-]{2,39}$/.test(k) && isObj(v)).map(([k, v]) => [k, { equippedOutfit: OUTFIT_IDS.includes(v.equippedOutfit) ? v.equippedOutfit : DEFAULT_OUTFIT, lastSafeOutfit: OUTFIT_IDS.includes(v.lastSafeOutfit) ? v.lastSafeOutfit : DEFAULT_OUTFIT }]));
+  }
   out.unlockedTopics = unlockedTopicIds(out.peakStage);
   delete out.schemaVersion;
   delete out.xp;

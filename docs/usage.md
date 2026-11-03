@@ -87,7 +87,7 @@ Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start
   - **初次见面**：点没见过的角色旁边的 **初次见面**，给她起个名字（可选，最多 12 个字，默认用她自己的名字）→ **请她来**。应用在你唤醒时选的空间里为她新建 agent（标题 `名字 (英文名)`），这时气泡和面板显示“她正在赶来…”；她从陌生开始，跟你打招呼。新建失败（网络、登录过期、`lh` 被固定在别的 workspace）时留在原角色，什么都不保存，可以再试。
   - **见过的角色**：点 **切换**，她的 agent、聊天记录、名字、好感度和服饰都还在，用一句离线台词打招呼。不在屏幕上的角色需求值暂停，离开的时间也不算冷落她（不掉好感）。
   - 切换后播放唤醒演出。开着“使用本机”时，新角色的 agent 也会绑定到这台电脑；关掉时解绑所有角色的 agent。
-- **换画风**：⚙ 设置 → **角色** → 她 → **装扮（形象包）**（每位角色各自选，存在 `settings.json` 的 `appearance`）。每位角色默认用新的高清像素包（每帧 664×904，平滑绘制），也可以换成「旧版像素」（v0.7.0 及以前那套 83×113、更 Q 的像素图）；大肥鱼还能换成原版动画（dsh-pet 透明视频）。随时可以换回来；也可以“导入角色包…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)），“打开角色包文件夹”查看已导入的包。
+- **换画风 = 换角色**：没有“形象包”可选了，每个形象都是一位独立角色。⚙ 设置 → **角色**（角色图鉴）里，「克洛蒂 · 像素」（默认的高清像素，每帧 664×904，平滑绘制）和「克洛蒂 · 旧版像素」（v0.7.0 及以前那套 83×113、更 Q 的像素图）是两张卡；大肥鱼还有「大肥鱼 · Live2D」「大肥鱼 · 全动态」「大肥鱼 · 原版动画」（dsh-pet 透明视频）。点 **切换** 即换；同一位模型娘的各个形象共享 agent、聊天记录、名字和好感，衣柜、取景和 VRM 姿势各自独立（当前角色存在 `pet.json` 的 `characterId`）。也可以“导入角色…”（文件夹或 `.zip`，格式见 [pet-packs.md](pet-packs.md)）成为新角色。老版本存在 `settings.json` 的 `appearance` 里的选择会在升级时自动迁移，见 [characters.md · 数据迁移方式](characters.md#数据迁移方式srccorecharacter-migratejst-2764--t-2786)。
 - **个性化设定**：设置窗口 → **角色列表** → 她 → **个性化设定**。写几句给她的额外设定（怎么称呼你、说话风格、要记住的事，最多 1000 字），点“保存”；它会加进她 agent 的 system role（“主人给你的个性化设定”一段），只对她生效，关系阶段和内容红线仍然优先。给当前角色保存后立即更新她的 agent；给别的角色写的，等她下次陪你时（或初次见面新建 agent 时）用上。“清空”确认后删掉，她回到默认性格。存在 `settings.json` 的 `systemRoles`。
 - **换模型**：设置窗口 → **角色列表** → 她 → **模型**（模型跟着角色走）。下拉框里只有她自家厂商的模型：大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT（含 o 系列）。列表来自你在 LobeHub 里启用的模型：LobeHub 托管的排在前面；如果你还启用了该厂商自己的服务商（填了自己的 Key），那些模型也会列出，标“（自己的 … Key）”。只能出图的模型（如 Nano Banana）不列。没选过时用角色的默认模型（标“默认”）：大肥鱼 DeepSeek V4.1 Flash、克洛蒂 Claude Sonnet 5.5、格萝可 Grok 4.7、杰米 Gemini 3.8 Flash、吉皮缇 GPT-6 Luna；默认模型没启用时用列表第一个。给当前角色选好后立即改 agent 的模型；给别的角色选的，等她下次陪你时（下一句话起）换上；换角色后，下一句话起换成新角色的模型，每位角色各自记住你的选择（存在 `settings.json` 的 `models`）。模型列表 10 分钟内复用，点“刷新”立即重读；`lh` 读不到列表（版本太旧或离线）时她继续用原来的模型。
 - **请别的模型娘来串门**：设置窗口 → **同屏伙伴**，见下面的 E24。
@@ -120,7 +120,7 @@ Linux 上 `npm run demo` 自动带 `--no-sandbox`（原因见上）；`npm start
 | E20 | 落地挤压随冲击加深 | — | 甩得越猛，落地压得越扁（300 px/s 压到 0.8，1500 px/s 以上压到 0.55） | 无，始终可用 |
 | E21 | 点击音效 | — | 桌宠行为 →“点击音效”（默认关）；点她时“啵”一声，100 毫秒内连点只响一次 | 桌宠行为 →“点击音效”（默认关） |
 | E22 | 梗图贴纸 | — | 桌宠行为 →“梗图”（默认开）。agent 回复时自己挑一张（每条消息附带她的梗图清单）；饿了 / 无聊 / 问候等离线碎碎念随机配图。大肥鱼 9 张，其他角色各 4 张 | 桌宠行为 →“梗图”（默认开） |
-| E23 | 语音（TTS）：对话语音 + 互动语音 | — | 桌宠行为 →“朗读回复”（总开关，默认关）。开启后：**对话语音**——agent 的回复、话题和对外接口发来的话整段按句朗读，正在读的句子在气泡里高亮，主人发新消息立即停；**互动语音**（“互动语音”，默认开）——初次见面、摸摸、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、关系升级、切换角色念出她气泡里的那句，连点不排队、1.5 秒内只说一句；**碎碎念**（“朗读碎碎念”，默认关）。引擎在 设置窗口 → 朗读 选：按角色（默认：大肥鱼用 MiniMax，其他角色用 Fish Audio）、Fish Audio、MiniMax（云端引擎需 API Key）、系统语音（离线免费）；每位角色有自己的音色。云端用不了（没 Key、断网、4 秒超时、出错）时这句改用系统语音或不出声。详见下方“语音（TTS）” | 桌宠行为 →“朗读回复”（默认关）、“互动语音”（默认开）、“朗读碎碎念”（默认关） |
+| E23 | 语音（TTS）：对话语音 + 互动语音 | — | 桌宠行为 →“朗读回复”（总开关，默认关）。开启后：**对话语音**——agent 的回复、话题和对外接口发来的话整段按句朗读，正在读的句子在气泡里高亮，主人发新消息立即停；**互动语音**（“互动语音”，默认开）——初次见面、摸摸、部位触摸、喂食、玩耍、哄睡、拖拽、甩出、接住、关系升级、切换角色念出她气泡里的那句，连点不排队、1.5 秒内只说一句；**碎碎念**（“朗读碎碎念”，默认关）。引擎在 设置窗口 → 朗读 选：按角色（默认：大肥鱼用 MiniMax，其他角色用 Fish Audio）、Fish Audio、MiniMax、ElevenLabs（云端引擎需 API Key）、系统语音（离线免费）；每位角色有自己的音色。云端用不了（没 Key、断网、4 秒超时、出错）时这句改用系统语音或不出声。详见下方“语音（TTS）” | 桌宠行为 →“朗读回复”（默认关）、“互动语音”（默认开）、“朗读碎碎念”（默认关） |
 | E24 | 同屏伙伴（最多 3 位） | 全部 | 设置窗口 → **同屏伙伴** 勾选角色，她们出现在桌面上（没有 agent），一起走动、被点、被甩；悬停伙伴点 × 送她回去 | 同屏伙伴：勾选即开，不勾即无（默认无） |
 | E25 | 互相碰撞 | `lifted` | 有同屏伙伴时把她甩向伙伴，撞到的伙伴被弹开。开关：桌宠行为 →“互相碰撞”（默认开） | 桌宠行为 →“互相碰撞”（默认开） |
 | E26 | 本机 HTTP 接口 | 任意状态 | 设置窗口 → **对外接口** 勾选开启（默认关），只监听 `127.0.0.1:7340`，每次调用都要带设置里显示的令牌，见下文 | 对外接口：“开启对外接口”（默认关） |
@@ -141,6 +141,8 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 设置窗口 → **语音输入** 打开后，聊天框旁的 🎤 把你说的话转成文字填进输入框。两种识别方式（复用 LobeHub 云端识别，或本机跑 whisper.cpp / speaches 等本地服务）的安装、配置、测试连接和故障排查见 [asr.md](asr.md)。
 
+**快捷键唤起语音对话**：在任何地方按 **Ctrl+Shift+Space**（macOS **⌘⇧Space**），她出现在桌面上并开始听，说完再按一次结束并识别。在 设置 → 语音输入 → 快捷键 里修改、清空或恢复默认；无效、和应用内快捷键冲突或被其他应用占用的组合会在字段下方提示且不保存。详见 [asr.md §1.1](asr.md#11-快捷键唤起语音对话)。
+
 ### 语音（TTS）
 
 1. **打开**：悬停 → ⚙ 设置 → 设置 → **朗读** → 打开 **朗读回复**。关着时什么都不念，也不请求任何语音服务。
@@ -151,6 +153,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
    | 按角色（默认） | 她的引擎的 Key | 大肥鱼用 MiniMax「俏皮萌妹」（`qiaopi_mengmei`），其他角色用 Fish Audio；她的引擎没 Key 或出错时换另一个有 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」） |
    | Fish Audio | API Key（[fish.audio](https://fish.audio) → API Keys） | 所有角色都用 Fish：模型 `s2.1-pro`，每位角色一个社区音色；免费账号限个人非商业使用 |
    | MiniMax | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色。默认端点是国内站 `https://api.minimax.cn`；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+   | ElevenLabs | API Key（[elevenlabs.io](https://elevenlabs.io) → Profile → API Keys）+ 音色 `voice_id`（必填） | 所有角色都用 ElevenLabs（`POST /v1/text-to-speech/{voice_id}`，Key 在 `xi-api-key` 请求头）。`voice_id` 从 Voice Library / My Voices 复制，填在 ElevenLabs 卡片的 **默认音色 ID** 或角色文件 `voice.tts.elevenlabs.voiceId`（角色优先）；**模型** 可选，默认 `eleven_multilingual_v2`；**端点** 可选，留空用 `https://api.elevenlabs.io`。没填 Key 时卡片显示「未设置 Key」，选了它会提示先填 Key |
    | 本地语音服务（自己部署） | 你自己跑的语音服务的地址（Key 可不填） | IndexTTS2 / GPT-SoVITS / whale-voice 等跑在本机或局域网电脑上，音色由你的服务决定；接口选 OpenAI 兼容（`/v1/audio/speech`）或 whale-voice（`/tts`）。只在选它时用，不当云端引擎的备用；等待时间是云端的 4 倍（20 秒，长句最多 40 秒）。详见 [README](../README.md#语音tts) “本地语音服务” |
    | 系统语音 | 无 | 操作系统自带语音，离线免费；Linux 需装 speech-dispatcher 和中文语音包 |
 
@@ -186,17 +189,17 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 入口 | 下一层 | 内容 | 默认 |
 | --- | --- | --- | --- |
 | 小屋 | — | 当前角色站在舞台上：**点她一下**会冒出爱心、说一句话，桌面上的她也会做「开心」的动作；下面能切换她的动作（待机、开心、摸头、说话、思考、睡觉……）。旁边是你们的关系（好感进度条，每个关系阶段是一个节点）、今天的陪伴开关（朗读、语音输入、主动搭话、同屏伙伴、对外接口）和其他伙伴 | — |
-| 角色 | 角色图鉴 → 角色详情 | 图鉴：每位角色一张卡片（会动的立绘、类型、关系、来源、语音包），没遇见的是剪影；切换 / 初次见面。点开一位进入**详情**：大舞台（可点、可切动作）、简介、口头禅、喜欢的东西、好感进度；下面的标签页：**形象包**（她能穿的角色包，点图片在上面的舞台**试穿**，满意再「穿上」；在这里导入角色包 / Live2D / VRM）、**好感**（关系路线图、一键解锁）、**模型**、**个性化设定**、**语音**、**资料** | — |
+| 角色 | 角色图鉴 → 角色详情 | 图鉴：每位角色一张卡片（会动的立绘、类型、关系、来源、语音包），没遇见的是剪影；切换 / 初次见面。点开一位进入**详情**：大舞台（可点、可切动作）、简介、口头禅、喜欢的东西、好感进度；下面的标签页：**装扮**（她的**衣柜**是一组服饰卡片：缩略图、名称、全年龄 / 成人、解锁阶段、「新」，点图片在上面的舞台**试穿**，满意再「穿上」；下面是取景、VRM 姿势、她来自的角色包信息，以及「导入新角色」：Live2D / VRM / 角色包）、**好感**（关系路线图、一键解锁）、**模型**、**个性化设定**、**语音**、**资料** | — |
 | 玩法 | 桌宠行为 | 宠物大小（50%–250%）、自己走动（E15）、点击音效（E21）、梗图（E22）、互相碰撞（E25）、部位触摸、触摸提示 | 125%、开、关、开、开、开、开 |
 | 玩法 | 主动搭话与好感 | 主动说话开关、主动说话间隔、多久没理她算无聊、饥饿提醒阈值、每小时最多调用模型；每日好感上限、久未见面时好感衰减 | 开、12 分钟、45 分钟、75、6 次；12 点、开 |
 | 玩法 | 同屏伙伴 | 最多 3 位来串门（E24） | 无 |
 | 玩法 · 和她一起 | 话题 | 按好感阶段解锁的话题，「聊聊」让她在桌面上开口；新解锁的标「新」 | — |
 | 玩法 · 和她一起 | 聊天记录 | 你主动发起的聊天：列表 → 对话 | — |
 | 玩法 · 和她一起 | 桌面上的她 | 动作（9 个）、回到右下角、退出（确认） | — |
-| 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / 本地语音服务各一张卡片（端点、Key、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
-| 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
+| 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / ElevenLabs / 本地语音服务各一张卡片（端点、Key、ElevenLabs 默认音色 ID / 模型、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
+| 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、快捷键（唤起语音对话）、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
 | 设置 · 声音 | 语音包 | 每个语音包的角色、引擎、句数、来源和署名；打开文件夹、重新读取 | — |
-| 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（给某位角色换上：她的详情 → 形象包） | — |
+| 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（导入的每个包都是一位独立角色，在角色图鉴里切换） | — |
 | 设置 · 资源与外观 | 外观主题 | 设置窗口的亮色 / 暗色 / 跟随系统 | 跟随系统 |
 | 设置 · 连接 | LobeHub 与本机 | 登录账号、空间（只读）、本机能力（开启前确认）、重新开始话题 | — |
 | 设置 · 连接 | 对外接口 | 开关、端口、令牌（遮罩显示，可复制、换一个）（E26） | 关，端口 7340 |
@@ -307,9 +310,10 @@ npm run dist:win       # Windows x64 安装包 + zip
      "voice": {                      // 语音（可省略）
        "lang": "zh-CN", "pitch": 1.1, "rate": 1.0, "prefer": ["Xiaoxiao"], // 系统语音：语言、音调、语速、优先的系统语音名
        "tts": {                      // 云端引擎的音色，每个引擎可省略
-         "default": "fish",           // “按角色”时用的引擎：fish / minimax / local（省略为 fish；大肥鱼是 minimax）
+         "default": "fish",           // “按角色”时用的引擎：fish / minimax / elevenlabs / local（省略为 fish；大肥鱼是 minimax）
          "fish": { "referenceId": "<32 位 Fish 音色 id>", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "happy": "开心地" }, "credit": "Fish Audio 社区音色「…」by …" },
          "minimax": { "voiceId": "Chinese (Mandarin)_Soft_Girl", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 0, "vol": 1, "emotion": "happy" },
+         "elevenlabs": { "voiceId": "<ElevenLabs voice_id，20 位字母和数字>", "model": "eleven_multilingual_v2", "stability": 0.5, "similarityBoost": 0.75, "style": 0, "speed": 1.0, "speakerBoost": true }, // 可省略：只有 voiceId 必填；不写时用 设置 → 朗读 → ElevenLabs 的默认音色 ID
          "local": { "voice": "whale" }  // 可省略：她在本地语音服务上的音色名（不写就用设置里填的）
        },
        "lines": { "lift": ["…", "…"], "throw": ["…", "…"], "catch": ["…", "…"] } // 拖拽 / 甩出 / 接住时说的台词（互动语音）
@@ -342,11 +346,13 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js roster` | 逐个角色选择、唤醒，逐项触发 E1–E14 和 N1–N14（即 E15–E26 及其开关）；截图在 `out/e2e/`，录屏在 `out/e2e/roster-video/<角色>/`。`... roster claude` 只跑一个角色 |
 | `xvfb-run -a node e2e/run.js outfit [角色] [服饰]` | 第二套服饰的真机检查（默认 `claude swimsuit`）：真实升级解锁 → 衣柜换上 → idle / walk / lifted 与 daily 对齐 → 重启保留 → 选「旧版像素」时回落到默认包 → 无控制台报错；截图和 `report.txt` 在 `out/e2e/outfit-<角色>-<服饰>/` |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
-| `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
+| `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`charmigrate`（形象包时代的旧数据 → 独立角色：迁移、二次启动幂等、角色图鉴 / 衣柜卡片 / 切换不串数据，输出在 `out/e2e/charmigrate/`）、`wardrobepack`（角色图鉴每个形象一张卡、衣柜卡片、穿上、各角色衣柜隔离）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
-| `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类形象包、详情各标签页，改动出现在桌宠窗口 |
-| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
+| `xvfb-run -a node e2e/run.js titlebar` | 设置窗口在 macOS 上可拖动：页面按 darwin 渲染（`PIXELPET_E2E_PLATFORM`，仅测试模式），顶部 32px 拖动条（`-webkit-app-region: drag`）横跨整窗、各页没有可点控件压在它下面、角色页滚动后舞台停在它下方；真实平台（原生标题栏）下没有拖动条；截图在 `out/e2e/titlebar/` |
+| `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类角色、详情各标签页，改动出现在桌宠窗口 |
+| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` / `spriteframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（大肥鱼 · Live2D + 导入的模型）/ 像素（克洛蒂 · 像素 + 旧版像素）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
 | `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
+| `xvfb-run -a node e2e/run.js voicehotkey` | 快捷键唤起语音对话：快捷键 → 唤出桌宠、录音、识别（mock whisper）、直接发送；语音输入关闭 / 麦克风被拒提示；设置页的无效 / 冲突 / 被占用提示，改组合、清空、恢复默认、退出注销 |
 | `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
@@ -392,41 +398,42 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 左侧四个入口：**小屋**（当前角色、关系、今天的陪伴开关）、**角色**（角色图鉴 → 角色详情）、**玩法**（桌宠行为、主动搭话与好感、同屏伙伴）、**设置**（声音、资源与外观、连接、系统）。开关、下拉和滑块改了立即保存并在桌宠上生效（例如 玩法 → 桌宠行为 → 宠物大小，桌宠窗口跟着变大），右下角提示「已保存」；设置写进数据目录的 `settings.json`，重启后保留。
 
-**查看角色列表**：设置窗口左侧 → **角色**，就是**角色图鉴**：每位角色一张卡片（立绘、形象包类型、关系、来源、语音包），没遇见的显示剪影；上方的筛选按形象包类型（像素 / Live2D / VRM …）过滤。点一张卡片进入**角色详情**：大舞台、简介、好感进度，下面的标签页是**形象包**（含**取景**）、**服饰**、**好感**、**模型**、**设定**（个性化设定）、**语音**、**资料**。桌宠窗口里 ⋯ → **角色列表** 是同一份数据的快速切换版。
+**查看角色列表**：设置窗口左侧 → **角色**，就是**角色图鉴**：每个形象一张角色卡片（立绘、形象类型、关系、来源、服饰数、语音包），没遇见的显示剪影；上方的筛选按形象类型（像素 / 全动态 / Live2D / VRM / 视频 / 导入的）过滤。点一张卡片进入**角色详情**：大舞台、简介、好感进度，下面的标签页是**装扮**（衣柜卡片、**取景**、VRM 姿势、角色包信息、导入新角色）、**好感**、**模型**、**个性化设定**、**语音**、**资料**。
 
 **开发设置窗口本身**：`npm run dev:admin` 启动 Vite 开发服务器（默认 <http://localhost:5173/>），用于在浏览器里改样式、热更新；浏览器里没有桌宠的 IPC 桥（`window.petAdmin`），所以页面只显示「设置窗口没有加载成功 · 设置窗口没有连上桌宠（window.petAdmin 不存在）」、不加载数据。要看带数据的真实设置窗口，用上面的 `npm start` / `npm run start:no-sandbox`（每次启动都会重新构建），或改完后 `npm run build:admin` 再重开设置窗口。提交前跑 `npm run typecheck:admin` 和 `npm run lint:design`。
 
 ## 十一、半身模式（VRM / Live2D）
 
-**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。只对 **VRM** 和 **Live2D** 形象包生效，像素 / 图片 / 全动态包保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。对 **VRM**、**Live2D** 和**像素**角色生效，图片 / 全动态角色保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
 
-**1. 让角色穿上 Live2D 或 VRM 形象包**（设置窗口 → **角色** → 点一位角色 → 详情 → **形象包** 标签）：
+**1. 切换到一位 Live2D 或 VRM 角色**（设置窗口 → **角色**）：
 
-- **Live2D（内置）**：大肥鱼自带「大肥鱼 · Live2D」。角色图鉴里点**大肥鱼**（没见过时先在卡片上点「初次见面」或在桌宠里 ⋯ → 角色列表切换过去）→ 形象包 → 点「大肥鱼 · Live2D」的图片可以先在上面舞台**试穿**，再点 **穿上**。
-- **Live2D（自己的模型）**：同一页最后一张「添加形象包」卡片 → **导入 Live2D…** → 选 `.model3.json` 或 `.zip`（Cubism 3 / 4 / 5）。导入的包出现在这一排卡片里，点它的 **穿上**；穿上后可以在下面「Live2D 模型大小」调高度。
+- **Live2D（内置）**：角色图鉴里「大肥鱼 · Live2D」是一张独立的卡，点 **切换**（没见过大肥鱼时先点「初次见面」）。
+- **Live2D（自己的模型）**：任意一位角色的详情 → **装扮** → 「导入新角色」→ **导入 Live2D 角色…** → 选 `.model3.json` 或 `.zip`（Cubism 3 / 4 / 5）。导入后成为以她为原型的一位新角色并切换过去；在她的装扮页「Live2D 模型大小」调高度。
 - **VRM**：仓库里没有可再分发的 VRM 模型，用你自己的 `.vrm`（VRM 0.x / 1.0），或者生成一个测试用的 CC0 小模型：
 
   ```bash
   node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm
   ```
 
-  然后在「添加形象包」卡片 → **导入 VRM…** → 选这个 `.vrm`（右下角提示「VRM 模型已导入」），新卡片「Pixel Pet test fish」（类型 VRM）出现在这一排里，点它的 **穿上**。导入只是加进她的形象包，不会自动换上。没有 GPU 的 Linux（虚拟机、xvfb）要让 Chromium 用软件 WebGL 画 3D：`npm run start:no-sandbox -- --enable-unsafe-swiftshader --ignore-gpu-blocklist`。
+  然后在角色详情 → **装扮** → 「导入新角色」→ **导入 VRM 角色…** → 选这个 `.vrm`（右下角提示「VRM 模型已导入」），在导入确认里点「使用这个模型」，角色图鉴里多出一位 VRM 角色「Pixel Pet test fish」并切换过去。没有 GPU 的 Linux（虚拟机、xvfb）要让 Chromium 用软件 WebGL 画 3D：`npm run start:no-sandbox -- --enable-unsafe-swiftshader --ignore-gpu-blocklist`。
 
 **2. 切换半身 / 全身**（改完立即生效，不重新加载模型，相机 / 缩放在 0.35 s 内平滑过去）：
 
 | 范围 | 在哪里改 | 存在哪里 |
 | --- | --- | --- |
 | 所有角色（全局） | 设置窗口 → **玩法** → **桌宠行为** → 「大小与取景」→ **取景**：全身 / 半身 | `settings.json` → `prefs.framing` |
-| 只这一位角色 | 设置窗口 → **角色** → 她的详情 → **形象包** 标签 → **取景**：跟随 / 全身 / 半身 | `settings.json` → `framings.<角色 id>` |
-| 形象包自带默认 | `pack.json` 的 `"framing": "half"`，腰线 `"halfBody": { "waist": 0.52 }` | 包里（格式见 [pet-packs.md](pet-packs.md)） |
+| 只这一位角色 | 设置窗口 → **角色** → 她的详情 → **装扮** 标签 → **取景**：跟随 / 全身 / 半身 | `settings.json` → `framings.<角色 id>` |
+| 角色包自带默认 | `pack.json` 的 `"framing": "half"`，腰线 `"halfBody": { "waist": 0.52 }` | 包里（格式见 [pet-packs.md](pet-packs.md)） |
 
-优先级：角色自己的选择 > 形象包默认 > 全局。半身下视线跟随、口型、点击反应、拖起、走动照常；触摸区映射回全身比例，所以腿和脚点不到。重启后取景保留。
+优先级：角色自己的选择 > 角色包默认 > 全局。半身下视线跟随、口型、点击反应、拖起、走动照常；触摸区映射回全身比例，所以腿和脚点不到。重启后取景保留。
 
 **3. 跑相关测试**（`all` 会额外跑消耗 token 的 `live`，不要用）：
 
 ```bash
 npm test                                   # 单元测试：含 test/framing.test.js、test/framing-live2d.test.js、test/admin-console.test.js
 xvfb-run -a node e2e/run.js admin          # 设置窗口：打开方式、各页、编辑保存、角色图鉴与详情、行为同步、亮 / 暗 → out/e2e/admin/
+xvfb-run -a node e2e/run.js titlebar       # 设置窗口 macOS 顶部拖动条（按 darwin 渲染）→ out/e2e/titlebar/
 xvfb-run -a node e2e/run.js admincov       # 配置覆盖度：每个配置项在设置窗口里都有控件，改动出现在桌宠窗口
 xvfb-run -a node e2e/run.js vrmframe       # VRM 半身 / 全身（现做测试 VRM）→ out/e2e/vrm/frame-*.png
 xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身 / 全身（内置大肥鱼 Live2D + 导入的模型）→ out/e2e/live2d-frame/

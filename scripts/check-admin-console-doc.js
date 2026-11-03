@@ -8,7 +8,7 @@
 // Keys come from the code, not from a hand-written list: normalizeSettings(null) (src/core/settings.js, which
 // pulls in TTS_DEFAULTS and ASR_DEFAULTS) is flattened into dotted leaf paths (`prefs.roam`, `tts.local.api`, …).
 // A path counts as covered when the doc names it in backticks (`prefs.roam`). Per-character maps that are empty
-// by default (`appearance`, `models`, `systemRoles`, `framings`) are checked as `appearance.<id>` etc.
+// by default (`models`, `systemRoles`, `framings`) are checked as `appearance.<id>` etc.
 // The set-* / per-character channels registered in src/main/main.js must be named in the doc as well.
 //
 // 覆盖矩阵 (§12, src/core/admin-coverage.js): every user-configurable settings.json key has a schema field (or is
@@ -23,7 +23,7 @@ const coverage = require('../src/core/admin-coverage');
 
 const ROOT = path.join(__dirname, '..');
 const DOC = path.join(ROOT, 'docs', 'admin-console-design.md');
-const PER_CHARACTER = ['appearance', 'models', 'systemRoles', 'framings'];
+const PER_CHARACTER = ['models', 'systemRoles', 'framings', 'vrmPostures'];
 
 function leaves(obj, prefix = '') {
   const out = [];

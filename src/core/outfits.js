@@ -4,8 +4,8 @@
 // way as topics: by `peakStage` (unlocks are never taken back) and by rating. `adult` outfits exist only
 // when the user confirmed 18+ AND turned adult content on AND either the character allows it (none of the
 // model-chan do) or she wears an 18+ look (`look.adult`: an adult pet pack, e.g. the 20-year-old
-// "<id>-adult" packs, T-1261). A character only offers the outfits it has art for: in an adult look the
-// outfits of that pack, otherwise `outfits` in its file. Turning adult content off (or leaving the adult
+// "<id>-adult" packs, T-1261). A character only offers the outfits the pack she wears has art for (T-2752:
+// the wardrobe follows her 形象包, never her other packs); `outfits` in her file only when no pack is loaded. Turning adult content off (or leaving the adult
 // look) puts the pet back into the last all-ages outfit it wore.
 //
 // Content boundary (design 8.2, docs/compliance-review.md 3f): never nude. The adult tier is sexy glamour
@@ -60,11 +60,11 @@ const byId = (id) => OUTFITS.find((o) => o.id === id) || null;
 // A character's own look (its file's `signature`) replaces the generic name of the default outfit.
 const signature = (speciesId) => (SPECIES[speciesId] && SPECIES[speciesId].signature) || null;
 // Outfits a character has art for; an unknown character has only the default outfit.
-const ownList = (look) => !!(look && Array.isArray(look.outfits) && (look.adult || look.only));
+const ownList = (look) => !!(look && Array.isArray(look.outfits));
 const hasArt = (speciesId, id, look = null) => id === DEFAULT_OUTFIT || (ownList(look) ? look.outfits.includes(id) : !!(SPECIES[speciesId] && SPECIES[speciesId].outfits.includes(id)));
-// `look`: { adult, outfits, only? } of the pack she wears (src/main/pet-service.js _look, core/packs.js
-// lookContext): an allowed 18+ pack, or a VRM pack (`only`: its own wardrobe, one entry per model); null
-// otherwise.
+// `look`: { adult, outfits, only } of the pack she wears (src/main/pet-service.js _look, core/packs.js
+// lookContext): its own wardrobe, whatever kind of pack it is (a VRM pack: one entry per model); null only
+// when she has no pack loaded at all.
 const adultLookOn = (look) => !!(look && look.adult && Array.isArray(look.outfits));
 const adultOutfitsAllowed = (pet, settings, look) => adultAllowed(settings, pet.speciesId) || (adultLookOn(look) && !!(settings && settings.ageConfirmed && settings.adultContent));
 

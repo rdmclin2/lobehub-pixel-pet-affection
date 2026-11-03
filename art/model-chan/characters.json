@@ -11,7 +11,7 @@
       "accent": "#2C4A8A",
       "palette": ["#2C4A8A", "#FFFFFF", "#6FA8E8", "#E8D6A0"],
       "look": "保留原 Q 版女仆装（不重新设计；像素包 dafeiyu-pixel 是同一形象的像素版，仍为 Q 版比例）：深蓝长发渐变浅蓝、环状呆毛、蓝色大眼、鲸鱼鳍耳与小尾鳍，深藏青女仆装 + 白围裙（右下绣蓝色小鲸鱼）+ 白色女仆头饰、白连裤袜、玛丽珍鞋。",
-      "art": { "kind": "video", "pack": "src/renderer/packs/dafeiyu-pixel", "dir": "src/renderer/assets/dafeiyu", "states": ["idle", "look", "happy", "pat", "sad", "hungry", "sleep", "eat_rice", "eat_cookie", "eat_fruit", "think", "talk", "play", "hatch", "evolve"] },
+      "art": { "kind": "video", "pack": "src/renderer/packs/dafeiyu-pixel", "dir": "catalog/clips/dafeiyu-clips", "states": ["idle", "look", "happy", "pat", "sad", "hungry", "sleep", "eat_rice", "eat_cookie", "eat_fruit", "think", "talk", "play", "hatch", "evolve"] },
       "personality": "沿用现有设定：DeepSeek 社区的蓝色鲸鱼娘，穿女仆装，爱吃白饭，懒洋洋又有点嘴硬，叫主人“鱼片”；偶尔冒一句社区梗（“就一碗”“先养着吧”），全年龄友好语气。",
       "catchphrase": "咕噜~",
       "likes": "白米饭、摸鱼、被叫“大肥鱼”",
@@ -24,7 +24,7 @@
         "greet": ["咕噜~鱼片你来啦~"]
       },
       "sources": [
-        { "what": "动画（15 段 webm）", "from": "PC2005-cloud/dsh-pet", "url": "https://github.com/PC2005-cloud/dsh-pet", "license": "素材允许开源使用、禁止商用；大肥鱼形象 CC BY-NC-SA 4.0（见 src/renderer/assets/dafeiyu/NOTICE.md）" },
+        { "what": "动画（15 段 webm）", "from": "PC2005-cloud/dsh-pet", "url": "https://github.com/PC2005-cloud/dsh-pet", "license": "素材允许开源使用、禁止商用；大肥鱼形象 CC BY-NC-SA 4.0（见 catalog/clips/dafeiyu-clips/NOTICE.md）" },
         { "what": "形象参考", "from": "用户素材 ZipZipPipe《AI娘化》p00/p01；ai-chan-sheets 03_DeepSeek娘_鲸鱼娘", "url": "https://www.pixiv.net/artworks/148186519", "license": "署名、不可商用；鲸鱼娘基于 上善无形 原创角色「溟月」二创，CC BY-NC-SA 4.0" }
       ]
     },

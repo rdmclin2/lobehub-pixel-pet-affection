@@ -7,8 +7,9 @@
 //   1. her own choice on her page in the settings window (settings.framings[<character id>]),
 //   2. the pack she wears (pack.json `framing`, e.g. a bust-only model that has no legs to show),
 //   3. the global setting (settings.prefs.framing, 桌宠行为 → 大小与取景).
-// Only looks drawn live from a model can be re-framed (VRM: the camera; Live2D: the model's scale and offset);
-// the others (pixel sprites, pictures, rigs) keep their full art whatever is chosen, and say so (`supported: false`).
+// Looks whose renderer can re-frame (VRM: the camera; Live2D: the model's scale and offset; pixel sprites: the
+// part of each frame drawn) follow it; the others (pictures, rigs) keep their full art whatever is chosen, and say
+// so (`supported: false`).
 //
 // The half-body camera band comes from the humanoid bones (head, neck, upperChest / chest, hips), not from
 // the whole model's bounding box, so long hair, a tail or a skirt do not move the cut; a model without
@@ -23,10 +24,11 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const FRAMINGS = ['full', 'half'];
   const DEFAULT = 'full';
-  // kinds whose renderer can re-frame (VRM: a camera; Live2D: scale + offset): others always show their full art
-  const SUPPORTED_KINDS = ['vrm', 'live2d'];
+  // kinds whose renderer can re-frame (VRM: a camera; Live2D: scale + offset; sprites: a crop of each frame):
+  // others (pictures, rig) always show their full art
+  const SUPPORTED_KINDS = ['vrm', 'live2d', 'sprites'];
   // pack.json `halfBody.waist`: where the half-body cut sits, as a share of her height from the top of her head
-  // (0) to her soles (1). Optional, for either kind; the renderer measures / infers it otherwise.
+  // (0) to her soles (1). Optional, for any of those kinds; the renderer measures / infers it otherwise.
   const WAIST_RANGE = [0.2, 0.9];
 
   const isFraming = (v) => FRAMINGS.includes(v);
@@ -37,7 +39,7 @@
   // (no entry = follow the pack / the global setting).
   function normalizeFramings(raw) {
     const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-    return Object.fromEntries(Object.entries(m).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && isFraming(v)));
+    return Object.fromEntries(Object.entries(m).filter(([k, v]) => /^[a-z0-9][a-z0-9-]{1,39}$/.test(k) && isFraming(v)));
   }
 
   // Which framing she is shown in. `settings`: the settings (view) with prefs.framing and framings;
@@ -193,6 +195,98 @@
     return { s: a.s + (b.s - a.s) * k, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
   }
 
+  // ---- pixel sprites -----------------------------------------------------------------------------------
+  // A sprite sheet is frames of one fixed composition (her soles on the frame's bottom edge, about 80% of its
+  // height), so the half-body picture is one crop of the frame for the whole sheet: from a little above her head
+  // down to the waist, scaled up to fill the canvas (same aspect as the frame, so the window and the layout do not
+  // change). Where her waist is: pack.json halfBody.waist ('pack'), else L2D.dflt of her height ('default') — a
+  // pixel picture has no hit areas or eyes to infer it from. Her head-to-soles extent (`ref`) is measured by the
+  // renderer from the opaque pixels of a few standing frames (SPRITE.refActions, frame 0 each; the median, so one
+  // oddly drawn frame does not move the crop), once per sheet. docs/pixel-half-body-plan.md §3.
+  // `margin`: air above her head (share of the canvas). 8% rather than HALF.margin: the top of a pixel frame often
+  // holds a raised hand, a prop or a thought bubble above her head; with 8% only 1–5% of the frames poke out.
+  const SPRITE = { margin: 0.08, refActions: ['idle', 'pat', 'talk', 'look', 'sad', 'think', 'happy'], canvasH: 452, liftMin: 0.02, liftMax: 0.2 };
+  const median = (xs) => {
+    const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!v.length) return NaN;
+    const m = v.length >> 1;
+    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+  };
+  // `boxes`: the opaque bounding boxes { top, bottom, minX, maxX } (frame px, y down; bottom exclusive) of the
+  // sampled frames; `frame`: { w, h }. -> { top, bottom, cx } (the medians), or the whole frame when nothing could be
+  // read (a tainted sheet, empty frames).
+  function spriteRef(boxes, frame) {
+    const ok = (boxes || []).filter((b) => b && [b.top, b.bottom, b.minX, b.maxX].every(Number.isFinite) && b.bottom > b.top);
+    if (!ok.length) return { top: 0, bottom: frame.h, cx: frame.w / 2, measured: false };
+    return { top: median(ok.map((b) => b.top)), bottom: median(ok.map((b) => b.bottom)), cx: median(ok.map((b) => (b.minX + b.maxX) / 2)), measured: true };
+  }
+  // The canvas the desktop pet draws a sprite look in (px). 全身: the frame's own size (as before). 半身 of hard
+  // pixel art (`pixelated`): the frame times a whole number, about SPRITE.canvasH tall (83×113 → 332×452, the VRM /
+  // Live2D canvas), so every source pixel becomes a whole block of canvas pixels; smooth HD frames keep their size.
+  function spriteCanvas(frame, { mode = 'full', pixelated = false } = {}) {
+    if (mode !== 'half' || !pixelated) return { W: frame.w, H: frame.h };
+    const n = Math.max(1, Math.round(SPRITE.canvasH / frame.h));
+    return { W: frame.w * n, H: frame.h * n };
+  }
+  // The whole frame (全身: drawn exactly as before).
+  const spriteFull = (frame) => ({ sx: 0, sy: 0, sw: frame.w, sh: frame.h });
+  // The half-body crop of a frame. `ref`: spriteRef; `frame`: { w, h }; `waist`: pack.json halfBody.waist (else
+  // L2D.dflt); `canvas`: { W, H } (spriteCanvas); `pixelated`: whole-number scale, crop on whole source pixels.
+  // -> { sx, sy, sw, sh (frame px; may reach outside the frame — drawn as transparent), waist, source ('pack' |
+  //      'default'), cut (share of her full height shown, 0..1 — touch zones, PF.toFullBody), scale (canvas px per
+  //      frame px) }. Her waist lands on the canvas' bottom edge, her head `margin` below its top, her centre in the
+  //      middle; never smaller than 全身 (sh ≤ frame.h).
+  function spriteHalfCrop(ref, { frame, waist = null, canvas = null, pixelated = false, margin = SPRITE.margin } = {}) {
+    const W = isWaist(waist) ? waist : L2D.dflt;
+    const source = isWaist(waist) ? 'pack' : 'default';
+    const cv = canvas || spriteCanvas(frame, { mode: 'half', pixelated });
+    const H = Math.max(1, ref.bottom - ref.top);
+    const cutY = ref.top + W * H;
+    let sh = Math.min(frame.h, Math.max(1, cutY - ref.top) / (1 - margin));
+    if (pixelated) {
+      const s = Math.max(1, Math.floor(cv.H / sh));
+      sh = cv.H / s; // a little taller than needed: the extra goes above her head
+    }
+    const sw = (sh * frame.w) / frame.h;
+    let sy = cutY - sh;
+    let sx = ref.cx - sw / 2;
+    if (pixelated) { sy = Math.round(sy); sx = Math.round(sx); }
+    return { sx, sy, sw, sh, waist: W, source, cut: clamp01(W), scale: cv.H / sh };
+  }
+  // A crop drawn into a W × H canvas, clipped to the frame (frame px outside [0, w] × [0, h] belong to the
+  // neighbouring frames of the sheet: never read them). -> { src: { x, y, w, h } (frame px), dst: { x, y, w, h }
+  // (canvas px) }, or null when nothing of the frame is in the crop.
+  function spriteDrawRects(crop, frame, { W, H }) {
+    const kx = W / crop.sw;
+    const ky = H / crop.sh;
+    const x0 = Math.max(0, crop.sx);
+    const y0 = Math.max(0, crop.sy);
+    const x1 = Math.min(frame.w, crop.sx + crop.sw);
+    const y1 = Math.min(frame.h, crop.sy + crop.sh);
+    if (x1 <= x0 || y1 <= y0) return null;
+    return { src: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, dst: { x: (x0 - crop.sx) * kx, y: (y0 - crop.sy) * ky, w: (x1 - x0) * kx, h: (y1 - y0) * ky } };
+  }
+  // A frame drawn floating (her soles above where the reference frames put them: an art slip, e.g. dafeiyu-pixel
+  // daily idle#1 is the whole figure 94 px higher) would leave the half-body crop with her head cut off by its top
+  // edge, every other frame. In 半身 such a frame's crop moves up with her: by how far her soles float, when that is
+  // more than SPRITE.liftMin of the frame (the 1–2 px between ordinary frames stay put: no jitter) and at most
+  // SPRITE.liftMax (a frame drawn half empty is not followed off the canvas). Frames drawn smaller with the soles
+  // on the floor (lifted) are not moved. `cellBottom`: that frame's own soles (frame px, exclusive). -> px to move
+  // the crop up (≥ 0), whole px for pixel art.
+  function spriteLift(ref, cellBottom, frame, { pixelated = false } = {}) {
+    if (!ref || !Number.isFinite(cellBottom) || !frame || !(frame.h > 0)) return 0;
+    const d = ref.bottom - cellBottom;
+    if (!(d > SPRITE.liftMin * frame.h)) return 0;
+    const v = Math.min(d, SPRITE.liftMax * frame.h);
+    return pixelated ? Math.round(v) : v;
+  }
+  // two crops mixed (a switch of framing glides, eased like blendCamera)
+  function blendRect(a, b, t) {
+    const k = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+    const mix = (x, y) => x + (y - x) * k;
+    return { sx: mix(a.sx, b.sx), sy: mix(a.sy, b.sy), sw: mix(a.sw, b.sw), sh: mix(a.sh, b.sh) };
+  }
+
   // A touch on the half-body picture, in her full-body proportions: the visible box of the half-body picture
   // spans the top `cut` of her, so y (0..1 down that box) is y·cut of her full height. Parts below the cut
   // (legs, feet; the hips as the cut sits at the waist) cannot be reached.
@@ -201,5 +295,5 @@
     return { ...pt, y: pt.y * Math.min(1, framing.cut) };
   }
 
-  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, WAIST_RANGE, HALF, HALF_BOX, L2D, isWaist, waistFromHead, live2dHalfBand, live2dPlacement, blendPlacement, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
+  return { FRAMINGS, DEFAULT, SUPPORTED_KINDS, WAIST_RANGE, HALF, HALF_BOX, L2D, SPRITE, spriteRef, spriteCanvas, spriteFull, spriteHalfCrop, spriteDrawRects, spriteLift, blendRect, isWaist, waistFromHead, live2dHalfBand, live2dPlacement, blendPlacement, isFraming, normalizeFraming, normalizeFramings, resolveFraming, halfBodyBand, cameraFor, blendCamera, toFullBody };
 });

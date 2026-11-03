@@ -50,7 +50,7 @@ test('settings: 取景 survives a save and a reload (SettingsStore on disk = aft
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).prefs.framing, 'half');
 });
 
-test('resolveFraming: her own choice > the pack default > the global setting; only camera looks re-frame', () => {
+test('resolveFraming: her own choice > the pack default > the global setting; only re-framable kinds re-frame', () => {
   const vrm = { kind: 'vrm', packId: 'v' };
   const vrmHalfPack = { kind: 'vrm', packId: 'v', framing: 'half' };
   const pixel = { kind: 'sprites', packId: 'p' };
@@ -60,8 +60,10 @@ test('resolveFraming: her own choice > the pack default > the global setting; on
   assert.deepEqual(FR.resolveFraming(S('full'), 'dafeiyu', vrmHalfPack), { mode: 'half', wanted: 'half', source: 'pack', supported: true });
   assert.deepEqual(FR.resolveFraming(S('half', { dafeiyu: 'full' }), 'dafeiyu', vrmHalfPack), { mode: 'full', wanted: 'full', source: 'character', supported: true });
   assert.equal(FR.resolveFraming(S('full', { claude: 'half' }), 'dafeiyu', vrm).mode, 'full', 'another character\'s choice is not hers');
-  // a pixel pack keeps its full art whatever is asked
-  assert.deepEqual(FR.resolveFraming(S('half'), 'claude', pixel), { mode: 'full', wanted: 'half', source: 'global', supported: false });
+  // a pixel sprite pack re-frames too (a crop of each frame, docs/half-body-mode.md "像素实现")
+  assert.deepEqual(FR.resolveFraming(S('half'), 'claude', pixel), { mode: 'half', wanted: 'half', source: 'global', supported: true });
+  // pictures and rigs keep their full art whatever is asked
+  for (const kind of ['pictures', 'rig']) assert.deepEqual(FR.resolveFraming(S('half'), 'claude', { kind, packId: 'x' }), { mode: 'full', wanted: 'half', source: 'global', supported: false }, kind);
   // nothing known yet (before the settings arrive / no look)
   assert.equal(FR.resolveFraming(null, null, vrm).mode, 'full');
   assert.equal(FR.resolveFraming(S('half'), 'dafeiyu', null).mode, 'full');
@@ -256,17 +258,26 @@ test('PetService: 取景 set globally (set-prefs / admin-set) and per character 
   // her page: 取景 for one character
   const f = svc.setFraming('full', 'dafeiyu');
   assert.equal(f.ok, true);
-  assert.deepEqual(svc.settings.framings, { dafeiyu: 'full' });
-  assert.equal(f.view.characters.find((c) => c.id === 'dafeiyu').framing, 'full');
-  assert.equal(f.view.characters.find((c) => c.id === 'claude').framing, 'auto');
+  // T-2764: per character (one look); an old per-persona id means her current / default character
+  assert.deepEqual(svc.settings.framings, { 'dafeiyu-pixel': 'full' });
+  assert.equal(f.view.characters.find((c) => c.id === 'dafeiyu-pixel').framing, 'full');
+  assert.equal(f.view.characters.find((c) => c.id === 'dafeiyu-live2d').framing, 'auto', 'her other looks keep their own');
+  assert.equal(f.view.characters.find((c) => c.id === 'claude-pixel').framing, 'auto');
+  // the settings window's hint comes from the main process (core/framing.js SUPPORTED_KINDS), not a list of kinds of its own:
+  // claude wears her pixel sprites pack → 半身 is offered
+  const claudeRow = f.view.characters.find((c) => c.id === 'claude-pixel');
+  assert.equal(claudeRow.look.kind, 'sprites');
+  assert.equal(claudeRow.framingSupported, true);
+  for (const c of f.view.characters) assert.equal(c.framingSupported, !!c.look && ['vrm', 'live2d', 'sprites'].includes(c.look.kind), c.id);
   assert.equal(svc.setFraming('half', 'nobody').ok, false);
   assert.equal(svc.setFraming('bust', 'claude').ok, false);
-  svc.setFraming('half', 'claude');
+  svc.setFraming('half', 'claude-pixel');
+  svc.setFraming('half', 'dafeiyu-live2d');
   svc.setFraming('auto', 'dafeiyu');
-  assert.deepEqual(svc.settings.framings, { claude: 'half' });
+  assert.deepEqual(svc.settings.framings, { 'claude-pixel': 'half', 'dafeiyu-live2d': 'half' });
   assert.ok(sent.length >= 5, `every change is broadcast to the windows: ${sent.join(' ')}`);
   // a restart: a new service on the same data dir
   const again = mk();
   assert.equal(again.settings.prefs.framing, 'half');
-  assert.deepEqual(again.settings.framings, { claude: 'half' });
+  assert.deepEqual(again.settings.framings, { 'claude-pixel': 'half', 'dafeiyu-live2d': 'half' });
 });

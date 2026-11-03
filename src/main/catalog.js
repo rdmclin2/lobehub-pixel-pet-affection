@@ -1,0 +1,107 @@
+'use strict';
+
+// 下载角色 (core/catalog.js): fetch a catalog character's archive, check its size and sha256 against the index
+// the app shipped with, and hand it to the pack store to put in place. One download per character at a time;
+// progress goes to every window as `catalog-progress` { id, received, total, state }.
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { app, net } = require('electron');
+const Catalog = require('../core/catalog');
+
+const REASON_TEXT = {
+  unknown: '没有这个可下载的角色',
+  installed: '她已经下载好了',
+  adult: '18+ 角色需要先确认已满 18 周岁并打开成人向内容',
+  busy: '正在下载中',
+  network: '下载失败，请检查网络后重试',
+  http: '下载地址暂时不可用，请稍后重试',
+  size: '下载的文件大小不对，已丢弃，请重试',
+  checksum: '下载的文件校验没通过，已丢弃，请重试',
+  invalid: '下载的角色文件有问题，已丢弃',
+  canceled: '已取消下载',
+};
+
+class CatalogDownloader {
+  // `packStore`: src/main/packs.js; `settings()`: the current settings (catalogUrl, the 18+ switches);
+  // `emit(channel, payload)`: to every window.
+  constructor({ packStore, settings, emit }) {
+    this.packStore = packStore;
+    this.settings = settings;
+    this.emit = emit;
+    this.jobs = new Map(); // id → { received, total, controller }
+  }
+
+  state() {
+    return [...this.jobs.entries()].map(([id, j]) => ({ id, received: j.received, total: j.total, state: 'downloading' }));
+  }
+
+  cancel(id) {
+    const j = this.jobs.get(id);
+    if (!j) return { ok: false, reason: 'unknown' };
+    j.controller.abort();
+    return { ok: true };
+  }
+
+  async download(id) {
+    const fail = (reason, extra = {}) => {
+      this.emit('catalog-progress', { id, state: 'failed', reason, text: REASON_TEXT[reason] || reason });
+      return { ok: false, reason, text: REASON_TEXT[reason] || reason, ...extra };
+    };
+    const e = Catalog.entry(String(id || ''));
+    if (!e) return { ok: false, reason: 'unknown', text: REASON_TEXT.unknown };
+    if (this.packStore.installed(e.id)) return { ok: false, reason: 'installed', text: REASON_TEXT.installed };
+    const s = this.settings();
+    if (e.adult && !(s.ageConfirmed && s.adultContent)) return { ok: false, reason: 'adult', text: REASON_TEXT.adult };
+    if (this.jobs.has(e.id)) return { ok: false, reason: 'busy', text: REASON_TEXT.busy };
+    const controller = new AbortController();
+    const job = { received: 0, total: e.bytes, controller };
+    this.jobs.set(e.id, job);
+    const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pixelpet-dl-')), e.file);
+    let last = 0;
+    const progress = (state) => this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state });
+    try {
+      progress('downloading');
+      let res;
+      try {
+        res = await net.fetch(Catalog.downloadUrl(e, s), { signal: controller.signal, headers: { 'User-Agent': `PixelPetAffection/${app.getVersion()}` } });
+      } catch (err) {
+        return fail(controller.signal.aborted ? 'canceled' : 'network', { message: err.message });
+      }
+      if (!res.ok) return fail('http', { status: res.status });
+      const hash = crypto.createHash('sha256');
+      const out = fs.createWriteStream(tmp);
+      try {
+        for await (const chunk of res.body) {
+          const buf = Buffer.from(chunk);
+          job.received += buf.length;
+          if (job.received > e.bytes) throw Object.assign(new Error('too large'), { reason: 'size' });
+          hash.update(buf);
+          if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
+          if (Date.now() - last > 150) {
+            last = Date.now();
+            progress('downloading');
+          }
+        }
+      } catch (err) {
+        out.destroy();
+        return fail(err.reason || (controller.signal.aborted ? 'canceled' : 'network'), { message: err.message });
+      }
+      await new Promise((r, j) => out.end((err) => (err ? j(err) : r())));
+      if (job.received !== e.bytes) return fail('size');
+      if (hash.digest('hex') !== e.sha256) return fail('checksum');
+      progress('installing');
+      const r = await this.packStore.installDownload(e, tmp);
+      if (!r.ok) return fail(r.reason === 'builtin' ? 'installed' : 'invalid', { errors: r.errors });
+      this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state: 'done' });
+      return { ok: true, id: e.id, name: e.name };
+    } finally {
+      this.jobs.delete(e.id);
+      fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
+    }
+  }
+}
+
+module.exports = { CatalogDownloader, REASON_TEXT };

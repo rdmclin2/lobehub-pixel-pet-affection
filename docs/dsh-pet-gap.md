@@ -10,7 +10,7 @@
 
 | 本仓库 | 效果 | 对应的 dsh-pet 来源 | 结论 | 本次变化 |
 | --- | --- | --- | --- | --- |
-| E1 | 唤醒演出 `hatch` | dsh-pet 视频素材（本仓库 `assets/dafeiyu/hatch.webm`） | 已实现 | 无 |
+| E1 | 唤醒演出 `hatch` | dsh-pet 视频素材（本仓库 `catalog/clips/dafeiyu-clips/hatch.webm`） | 已实现 | 无 |
 | E2 | 待机呼吸 `idle` | `animations.idle`「待机呼吸休闲」 | 已实现 | 无 |
 | E3 | 自播链：东张西望 / 转身镜像 / 小动作 / 开心 | `pickers.ts` `rollKind`、`animations.turn`、`next-animation.ts` | 已实现 | 自播链加入“走两步”（D4，E15） |
 | E4 | 点击回应 + Q 弹挤压 + 爱心 | `animations.clicks`、`physics/squash.ts` | 已实现 | 一个状态可挂多段片段；大肥鱼 `pat` 4 段、`happy` 2 段轮换（D6）；可选点击音效（E21） |

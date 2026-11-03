@@ -31,6 +31,19 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   else if (mode === 'model') { console.error('12:00:00 [ERROR] ASR failed: LobeHubModelDeprecated'); process.exit(1); }
   else if (mode === 'fail') { console.error('12:00:00 [ERROR] ASR failed:'); process.exit(1); }
   else console.log(JSON.stringify({ text: `heard ${args[args.indexOf('--model') + 1]} ${args.includes('--language') ? args[args.indexOf('--language') + 1] : 'auto'}` }, null, 2));
+} else if (args[0] === 'generate' && args[1] === 'decide') {
+  // 插个嘴 (core/interject.js). `decide.json` in FAKE_LH_DIR: { "probability": 0.85 } (default) | { "mode": "fail" | "hang" | "refusal" | "garbage" }.
+  // Every call's model, questions and state are appended to decide-calls.jsonl.
+  const at = (f) => args[args.indexOf(f) + 1];
+  const state = args.includes('--state-file') ? fs.readFileSync(at('--state-file'), 'utf8') : '';
+  fs.appendFileSync(path.join(dir, 'decide-calls.jsonl'), JSON.stringify({ model: at('-m'), questions: JSON.parse(at('-q')), state }) + '\n');
+  const f = path.join(dir, 'decide.json');
+  const cfg = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : { probability: 0.85 };
+  const name = Object.keys(JSON.parse(at('-q')))[0];
+  if (cfg.mode === 'hang') setInterval(() => {}, 1000);
+  else if (cfg.mode === 'fail') { console.error('12:00:00 [ERROR] Decision failed: TypeSafe provider is not configured'); process.exit(1); }
+  else if (cfg.mode === 'garbage') console.log('not json');
+  else console.log(JSON.stringify({ answers: { [name]: cfg.mode === 'refusal' ? { type: 'refusal' } : { probability: cfg.probability, type: 'boolean' } }, model: 'jev-1.14.0', usage: { totalTokens: 400 } }, null, 2));
 } else if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
   console.log(JSON.stringify({ fullName: 'Test Owner', username: 'tester', email: 't@example.com' }));
@@ -94,7 +107,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   fs.appendFileSync(path.join(dir, 'model-lists.log'), args[2] + '\n');
   const chat = (id, displayName, extra = {}) => ({ id, displayName, enabled: true, type: 'chat', abilities: { functionCall: true }, ...extra });
   const catalogs = {
-    lobehub: [chat('deepseek-flash', 'DeepSeek V4.1 Flash'), chat('claude-opus-5-5', 'Claude Opus 5.5'), chat('claude-sonnet-5-5', 'Claude Sonnet 5.5'), chat('claude-haiku-5-5', 'Claude Haiku 5.5'),
+    lobehub: [chat('deepseek-flash', 'DeepSeek V4.1 Flash'), chat('claude-opus-5-5', 'Claude Opus 5.5'), chat('claude-sonnet-5-5', 'Claude Sonnet 5.5'), chat('claude-haiku-5-5', 'Claude Haiku 5.5', { abilities: { functionCall: true, vision: true } }),
       chat('grok-4.7', 'Grok 4.7'), chat('gemini-3.8-flash', 'Gemini 3.8 Flash'), chat('gemini-3.1-flash-image', 'Nano Banana 2', { abilities: { imageOutput: true } }),
       chat('gpt-6-sol', 'GPT-6 Sol'), chat('gpt-6-luna', 'GPT-6 Luna'), chat('glm-5.3', 'GLM-5.3')],
     openai: [chat('gpt-6-luna', 'GPT-6 Luna'), chat('o3', 'o3')],
@@ -142,7 +155,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   if (fs.existsSync(replyFile)) return slowStreamRun(JSON.parse(fs.readFileSync(replyFile, 'utf8')), topic);
   const out = JSON.stringify([
     { type: 'agent_runtime_init', data: { topicId: topic } },
-    { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : `echo: ${prompt.split('\n').pop()}`, usage: { cost: 0.001 } } },
+    { type: 'stream_end', data: { finalContent: process.env.FAKE_LH_LONG_REPLY ? Array.from({ length: 14 }, (_, i) => `第${i + 1}行：这是一条很长很长的回复，用来检查气泡会不会滚动。`).join('\n') : (prompt.split('\n').pop().startsWith('[插嘴]') ? '（小声）嘿嘿，辛苦啦～' : `echo: ${prompt.split('\n').pop()}`), usage: { cost: 0.001 } } },
     { type: 'agent_runtime_end', data: {} },
   ]);
   const delay = Number(process.env.FAKE_LH_RUN_DELAY_MS || 0);

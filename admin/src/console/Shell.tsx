@@ -30,6 +30,19 @@ const styles = createStaticStyles(({ css }) => ({
   railMac: css`
     padding-block-start: 40px;
   `,
+  // macOS draws the window with titleBarStyle 'hiddenInset' (no native title bar), so the window only moves by
+  // what the page marks draggable: this strip across the top, over the traffic lights, the rail and the page.
+  titlebar: css`
+    -webkit-app-region: drag;
+    user-select: none;
+
+    position: fixed;
+    z-index: 10;
+    inset-block-start: 0;
+    inset-inline: 0;
+
+    height: var(--pet-titlebar);
+  `,
   me: css`
     overflow: hidden;
     display: flex;
@@ -98,15 +111,27 @@ const styles = createStaticStyles(({ css }) => ({
 
     background: radial-gradient(60% 100% at 30% 0%, color-mix(in srgb, var(--pet-accent) 14%, transparent), transparent 70%);
   `,
+  // 聊天 fills the window: its own panes scroll, the page itself does not
+  mainFull: css`
+    overflow: hidden;
+  `,
+  pageFull: css`
+    position: relative;
+    width: 100%;
+    height: 100%;
+  `,
   page: css`
     position: relative;
     width: 100%;
     max-width: 1120px;
     margin-inline: auto;
-    padding-block: 24px 48px;
+    padding-block: calc(24px + var(--pet-titlebar)) 48px;
     padding-inline: 32px;
   `,
 }));
+
+/** Height of the drag strip on macOS: the hiddenInset traffic lights sit in it. */
+const TITLEBAR_MAC = 32;
 
 const THEME_NEXT: Record<string, { icon: typeof Sun; label: string; next: string }> = {
   auto: { icon: Monitor, label: '外观：跟随系统（点按切到亮色）', next: 'light' },
@@ -130,12 +155,18 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const rail = schema.rail.find((r) => r.key === place);
   const isTop = schema.rail.some((r) => r.page === page) && !sub;
   const back = !isTop && rail ? rail : null;
-  const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.nameZh ?? sub) : (schema.pages[page]?.title ?? page);
+  const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
+  const full = page === 'chat';
+  const mac = platform === 'darwin';
   const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
   return (
-    <div className={styles.shell} style={{ ['--pet-accent' as string]: cur?.accent ?? cssVar.colorPrimary }}>
-      <nav aria-label="主导航" className={`${styles.rail} ${platform === 'darwin' ? styles.railMac : ''}`}>
+    <div
+      className={styles.shell}
+      style={{ ['--pet-accent' as string]: cur?.accent ?? cssVar.colorPrimary, ['--pet-titlebar' as string]: mac ? `${TITLEBAR_MAC}px` : '0px' }}
+    >
+      {mac && <div aria-hidden className={styles.titlebar} data-titlebar />}
+      <nav aria-label="主导航" className={`${styles.rail} ${mac ? styles.railMac : ''}`}>
         <div className={styles.me} title={cur ? `正在陪你：${cur.met?.name ?? cur.nameZh}` : 'Pixel Pet'}>
           {cur ? <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} /> : <Icon icon={PawPrint} size={20} />}
         </div>
@@ -149,9 +180,9 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
         <ActionIcon icon={PawPrint} onClick={() => api().showPet()} title="把桌宠叫到前面" />
         <ActionIcon data-theme-toggle icon={theme.icon} onClick={() => save('ui.theme', theme.next)} title={theme.label} />
       </nav>
-      <main className={styles.main}>
-        <div className={styles.glow} />
-        <Flexbox className={styles.page} data-admin-page={page} data-path={path} gap={16}>
+      <main className={`${styles.main} ${full ? styles.mainFull : ''}`}>
+        {!full && <div className={styles.glow} />}
+        <Flexbox className={full ? styles.pageFull : styles.page} data-admin-page={page} data-path={path} gap={full ? 0 : 16}>
           {back && (
             <Flexbox align="center" gap={4} horizontal>
               <Button data-back={back.key} href={`#/${back.page}`} icon={ChevronLeft} size="small" type="text">

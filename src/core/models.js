@@ -38,7 +38,7 @@ function optionsFor(speciesId, catalog) {
       const key = keyOf(m);
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ key, id: m.id, providerId: m.providerId, label: m.displayName || m.id, hosted: p === HOSTED });
+      out.push({ key, id: m.id, providerId: m.providerId, label: m.displayName || m.id, hosted: p === HOSTED, vision: !!(m.abilities || {}).vision });
     }
   }
   return out;

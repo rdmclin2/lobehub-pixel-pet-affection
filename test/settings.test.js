@@ -88,3 +88,14 @@ test('systemRoles keeps per-character text only: trimmed, capped, control charac
   assert.deepEqual(s.normalizeSettings(null).systemRoles, {});
   assert.deepEqual(s.normalizeSettings({ systemRoles: 'x' }).systemRoles, {});
 });
+
+test('tts.elevenlabs and tts.endpoints.elevenlabs: defaults, cleaning, and a bad endpoint dropped', () => {
+  const d = s.normalizeSettings(null).tts;
+  assert.equal(d.endpoints.elevenlabs, '');
+  assert.deepEqual(d.elevenlabs, { voiceId: '', modelId: 'eleven_multilingual_v2' });
+  const n = s.normalizeSettings({ tts: { provider: 'elevenlabs', providerSet: true, endpoints: { elevenlabs: 'https://el.example.com/' }, elevenlabs: { voiceId: ' 21m00Tcm4TlvDq8ikWAM ', modelId: 'eleven_flash_v2_5' } } }).tts;
+  assert.equal(n.provider, 'elevenlabs');
+  assert.equal(n.endpoints.elevenlabs, 'https://el.example.com');
+  assert.deepEqual(n.elevenlabs, { voiceId: '21m00Tcm4TlvDq8ikWAM', modelId: 'eleven_flash_v2_5' });
+  assert.equal(s.normalizeSettings({ tts: { endpoints: { elevenlabs: 'http://el.example.com' } } }).tts.endpoints.elevenlabs, '');
+});

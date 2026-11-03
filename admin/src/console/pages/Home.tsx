@@ -117,7 +117,7 @@ const Friend = ({ c }: { c: RosterRow }) => (
       <Flexbox gap={4} paddingInline={4}>
         <Flexbox align="center" gap={4} horizontal justify="space-between">
           <Text ellipsis strong>
-            {c.met?.name ?? c.nameZh}
+            {`${c.met?.name ?? c.nameZh}${c.label ? ` · ${c.label}` : ''}`}
           </Text>
           {!c.met && <Icon icon={Lock} size={12} />}
         </Flexbox>
@@ -155,7 +155,7 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
                 去看看她
               </Button>
               <Button data-go-looks icon={Shirt} onClick={() => navigate(`/characters/${cur.id}`)}>
-                换形象包
+                换装扮
               </Button>
               <Button onClick={() => navigate('/characters')}>换一位陪你</Button>
             </Flexbox>

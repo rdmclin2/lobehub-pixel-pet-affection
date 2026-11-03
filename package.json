@@ -7,6 +7,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/ensure-electron.js",
     "prestart": "npm run build:admin",
     "start": "electron .",
     "prestart:no-sandbox": "npm run build:admin",
@@ -26,7 +27,9 @@
     "predist:win": "npm run build:admin",
     "dist:win": "electron-builder --win --x64 --publish never",
     "predist:linux": "npm run build:admin",
-    "dist:linux": "electron-builder --linux tar.gz --x64 --publish never"
+    "dist:linux": "electron-builder --linux tar.gz --x64 --publish never",
+    "catalog:build": "node scripts/build-character-catalog.js",
+    "catalog:upload": "node scripts/upload-character-catalog.js"
   },
   "devDependencies": {
     "@lobehub/fluent-emoji": "^5.0.1",
@@ -64,6 +67,11 @@
       "!**/*.VRM",
       "!**/*.vrma",
       "!**/*.VRMA",
+      "!**/*.fbx",
+      "!**/*.FBX",
+      "!**/*.vmd",
+      "!**/*.bvh",
+      "!**/*.pmx",
       "package.json"
     ],
     "directories": {

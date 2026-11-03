@@ -103,6 +103,10 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 .bubble::-webkit-scrollbar-thumb { background: var(--lobe-color-fill); border-radius: 3px; }
 .bubble-tail { flex: none; position: relative; z-index: 1; width: 10px; height: 10px; margin: -6px auto 8px; background: var(--pet-surface); border-right: 1px solid var(--pet-line-soft); border-bottom: 1px solid var(--pet-line-soft); border-bottom-right-radius: 2px; transform: rotate(45deg); }
 .bubble.hidden + .bubble-tail { display: none; }
+/* 插个嘴 feedback: two small buttons riding on the bubble's top edge, only while her own remark is shown */
+.ij-feedback { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--pet-space-xs); max-width: 210px; width: 100%; margin-bottom: var(--pet-space-xs); }
+.ij-feedback .ij-btn { padding: 0 var(--pet-space-sm); min-height: 20px; line-height: 18px; font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
+.ij-feedback .ij-done { font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-radius: var(--lobe-border-radius-sm); padding: 0 var(--pet-space-sm); }
 .bubble.thinking { color: var(--lobe-color-text-tertiary); }
 /* 流式回复: a blinking caret after the words while she is still writing */
 .bubble.streaming::after { content: '▍'; display: inline-block; margin-left: 1px; color: var(--lobe-color-text-tertiary); animation: caret-blink 0.9s steps(1) infinite; }
@@ -143,6 +147,10 @@ body.hover .hud { opacity: 1; pointer-events: auto; }
 .toolbar .btn { padding: 0 var(--pet-space-sm); min-height: 21px; line-height: 19px; font-size: 12px; background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
 .toolbar .btn:hover:not(:disabled) { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
 .toolbar .btn.icon-btn { padding: 0 var(--pet-space-xs); min-width: 26px; }
+/* 静音: the speaker shows what you'd hear now; muted = speaker crossed out, in the secondary text colour */
+#btn-mute .mute-off, #btn-mute[aria-pressed="true"] .mute-on { display: none; }
+#btn-mute[aria-pressed="true"] .mute-off { display: inline-block; }
+#btn-mute[aria-pressed="true"] { color: var(--lobe-color-text-tertiary); }
 /* chat input: the LobeHub chat input bar (one elevated card holding the attach, the text box, the mic and send) */
 .chat-row { position: absolute; left: 4px; right: 4px; bottom: 60px; margin: 0; gap: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); padding: var(--pet-space-xs); }
 .chat-row input { flex: 1; padding: 2px var(--pet-space-xs); border: none; background: transparent; box-shadow: none; font-size: 12px; }
@@ -179,6 +187,13 @@ body.busy .pet-hit { cursor: progress; }
 @keyframes mic-spin { to { transform: rotate(360deg); } }
 .mic-status { position: absolute; left: 4px; right: 4px; bottom: 96px; z-index: 6; background: var(--lobe-color-text); color: var(--lobe-color-bg-container); font-size: 11px; padding: 2px var(--pet-space-sm); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--lobe-box-shadow-secondary); pointer-events: none; }
 .mic-status[data-state="recording"] { background: var(--lobe-color-error); color: var(--pet-on-solid); }
+/* 快捷键唤起语音对话: the bubble while she listens — a pulsing red dot while recording, a spinner while it is recognised */
+.bubble[data-kind="listen"] { border: 1px solid var(--pet-line-soft); }
+.bubble[data-kind="listen"][data-reason="recording"] { border-color: color-mix(in srgb, var(--lobe-color-error) 45%, transparent); }
+.bubble[data-kind="listen"]::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: var(--pet-space-xs); border-radius: 50%; vertical-align: 1px; background: var(--lobe-color-text-tertiary); }
+.bubble[data-kind="listen"][data-reason="recording"]::before { background: var(--lobe-color-error); animation: mic-pulse 1s ease-in-out infinite; }
+.bubble[data-kind="listen"][data-reason="transcribing"]::before, .bubble[data-kind="listen"][data-reason="stopping"]::before { width: 6px; height: 6px; border: 2px solid var(--lobe-color-text-tertiary); border-right-color: transparent; background: transparent; animation: mic-spin .7s linear infinite; vertical-align: -1px; }
+@media (prefers-reduced-motion: reduce) { .bubble[data-kind="listen"]::before { animation: none !important; } }
 .unlock-toast.notice .toast-title { color: var(--lobe-color-error); }
 #asr-section .tts-engine.dim { opacity: .55; }
 #asr-test-result[data-ok="true"] { color: var(--lobe-color-success); }
@@ -221,6 +236,13 @@ body.busy.over .stop-btn { display: flex; }
 
 /* stage-up / unlock notice: visible without hovering (the LobeHub toast: elevated card, title, body, action) */
 .unlock-toast { position: absolute; left: 4px; right: 4px; top: 4px; z-index: 9; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow); padding: var(--pet-space-sm) var(--pet-space-md); font-size: 11px; line-height: 1.5; color: var(--lobe-color-text-secondary); animation: pop-in var(--lobe-motion-duration-slow) var(--pet-ease); transform-origin: 50% 0; }
+/* while she is saying something (a hint, 麦克风被拒…) the bubble keeps the top: the notice moves down over her,
+   just above the 🎤 status line, so the bubble and the notice are both readable. It never reaches the room the
+   bubble can take at the top (≤ 92px: 76px bubble + tail); in a small window (pet at 50%) a long one scrolls */
+#pet-screen:has(> .bubble:not(.hidden)) .unlock-toast { top: auto; bottom: 122px; max-height: max(56px, calc(100% - 214px)); overflow-y: auto; transform-origin: 50% 100%; }
+/* …and, lying over her, it lets clicks, drags and right clicks through to her; only its buttons take them */
+#pet-screen:has(> .bubble:not(.hidden)) .unlock-toast { pointer-events: none; }
+#pet-screen:has(> .bubble:not(.hidden)) .unlock-toast button { pointer-events: auto; }
 .toast-title { font-weight: var(--lobe-font-weight-strong); font-size: 12px; color: var(--lobe-color-text); padding-right: var(--lobe-padding-md); }
 .toast-body div { word-break: break-word; }
 .toast-body b { color: var(--lobe-color-text); }
@@ -229,8 +251,9 @@ body.busy.over .stop-btn { display: flex; }
 .toast-x .ico { width: 13px; height: 13px; }
 .toast-btn { margin-top: var(--pet-space-xs); font-size: 11px; padding: 1px var(--pet-space-sm); }
 
-/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
-.toolbar { flex-wrap: wrap; justify-content: center; max-width: 236px; }
+/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天, 🔈 静音 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
+/* 4 interactions + 🔈 + ⚙ on one row (4×42 + 2×26 + 5×4 = 240px); the window leaves ~264px */
+.toolbar { flex-wrap: wrap; justify-content: center; max-width: 248px; }
 .toolbar .btn { position: relative; }
 .new-dot.dot { top: -3px; right: -3px; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; }
 .new-dot { position: absolute; top: -8px; right: -8px; font-size: 9px; font-weight: 500; line-height: 14px; min-width: 14px; color: var(--pet-on-solid); background: var(--lobe-color-error); border-radius: 7px; padding: 0 3px; box-shadow: 0 0 0 1.5px var(--pet-surface); }
@@ -247,6 +270,9 @@ body.busy.over .stop-btn { display: flex; }
 .char-wrap[data-status="talk"] .char { animation: char-bob .5s ease-in-out infinite; }
 .char-wrap[data-status^="eat"] .char { animation: char-bob .35s ease-in-out infinite; }
 .char-wrap[data-status="think"] .char { animation: char-breathe 1.8s ease-in-out infinite; }
+/* listening (语音输入 recording): she leans in to hear you, an ear pulses over her (app.js micListening) */
+.char-wrap.listening .char { animation: char-listen 2.4s ease-in-out infinite; }
+.char-wrap.listening ~ .char-fx { font-size: 22px; animation: fx-listen 1.2s ease-in-out infinite; }
 .char-wrap[data-status="sad"] .char { filter: saturate(.6) brightness(.95) drop-shadow(0 2px 2px rgba(43,34,51,.35)); transform: rotate(-3deg); }
 .char-wrap[data-status="hungry"] .char { animation: char-wobble 1.2s ease-in-out infinite; }
 .char-wrap[data-status="sleep"] .char { filter: brightness(.78) saturate(.8) drop-shadow(0 2px 2px rgba(43,34,51,.35)); transform: rotate(-4deg) translateY(2px); }
@@ -258,6 +284,8 @@ body.busy.over .stop-btn { display: flex; }
 @keyframes char-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
 @keyframes char-sparkle { from { opacity: 1; } to { opacity: 0; } }
 @keyframes fx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes char-listen { 0%, 100% { transform: rotate(-2deg) scale(1, 1); } 50% { transform: rotate(-4deg) scale(1.01, 1.02); } }
+@keyframes fx-listen { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.25); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .char-wrap .char, .char-fx { animation: none !important; } }
 .hatch-img { height: 192px; object-fit: contain; }
 
@@ -276,6 +304,11 @@ canvas.sprite { object-fit: contain; }
 .char-wrap .char.sprite { width: auto; height: 100%; }
 /* a sprite pack animates itself: no extra bobbing, only the mood tints */
 .char-wrap.has-sprites .char { animation: none !important; transform: none !important; }
+/* VRM has its own motion (docs/vrm-motion-system.md §2.3): none of the pictures' CSS hops, squishes, tilts,
+   dangling or mirroring touch the 3D canvas — she turns her body instead of being flipped. The window still
+   moves (drag, throw): that is the window, not her bones. */
+.char-wrap .char.vrm { animation: none !important; transform: none !important; scale: none !important; filter: none !important; }
+.pet-body[data-kind="vrm"].squash, .pet-body[data-kind="vrm"].lifted, .pet-body[data-kind="vrm"].flying { animation: none; }
 .card .look.sprite, .preview .look.sprite { width: auto; }
 .hatch-img .look { height: 192px; }
 /* Dafeiyu's clip as a picture (lookEl): the same crop as .vwrap on the desktop (326x184 at -88,-25 in 150x150) */
@@ -354,13 +387,7 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 #voice-section .size-row + .size-row { margin-top: var(--pet-space-xs); }
 .bubble .sentence.reading { background: var(--lobe-color-fill-secondary); box-shadow: 0 0 0 1px var(--lobe-color-fill-secondary); border-radius: 2px; }
 
-/* ---- VRM packs: the license (导入确认 / 授权信息), the credit on the card, the placeholder look ---- */
-#look-section .vrm-text { margin-top: var(--pet-space-md); }
-.pack-opt.vrm { flex-wrap: wrap; }
-.pack-opt.vrm .meta { flex-basis: 0; }
-.pack-opt .pack-actions { flex-basis: 100%; display: flex; gap: var(--pet-space-sm); justify-content: flex-end; }
-.pack-opt .pack-actions:empty { display: none; }
-.pack-opt .vrm-credit { color: var(--lobe-color-text-secondary); font-size: 11px; white-space: normal; }
+/* ---- VRM: the license block and the placeholder look (the old 外观 → 形象包 list, .pack-opt, is gone: T-2784) ---- */
 .vrm-noexport { margin: -2px 0 2px var(--pet-space-sm); color: var(--lobe-color-error); }
 .vrm-license { border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); background: var(--lobe-color-fill-quaternary); padding: var(--pet-space-sm) var(--pet-space-md); font-size: 11px; line-height: 1.6; }
 .vrm-summary { font-weight: var(--lobe-font-weight-strong); margin-bottom: var(--pet-space-xs); word-break: break-all; }

@@ -7,20 +7,20 @@
 - **好感度反馈**：悬停时显示 💗 好感条、数值（♥42/100）、阶段名和“距「下一阶段」还差 N”；每次加分在宠物头顶飘出 `+N ♥`，冷却或当日上限时会说明原因。
 - **升级提示**：跨过阈值时弹出“🎉 关系升级”，逐一列出本次解锁的话题和服饰。
 - **话题面板**：按阶段分组，锁定话题显示 🔒 和解锁条件；点已解锁话题，agent 按该话题和当前阶段的语气回应。
-- **衣柜**：每位角色只列出她有美术的服饰（五位角色都有各自的原设服装，大肥鱼是招牌女仆装；五位还各有同样的 12 套全年龄服饰，按好感阶段解锁：针织围巾套装、休闲卫衣、贝雷帽画家装、偶像演出服、毛绒睡衣、猫耳家居服、运动泳装、浴衣、沙滩比基尼、长旗袍、情侣卫衣、花冠长裙，配色按各自的色板；确认年满 18 岁并开启成人向内容后，还能在“外观”里换成 18+ 成年版，衣柜换成成年版的日常服和 11 套成人向服饰）；衣柜里看到的就是她换上后桌面上的样子，锁定项显示 🔒 和解锁条件，换装立即生效。
+- **衣柜**：每位角色只列出她有美术的服饰（五位角色都有各自的原设服装，大肥鱼是招牌女仆装；五位还各有同样的 12 套全年龄服饰，按好感阶段解锁：针织围巾套装、休闲卫衣、贝雷帽画家装、偶像演出服、毛绒睡衣、猫耳家居服、运动泳装、浴衣、沙滩比基尼、长旗袍、情侣卫衣、花冠长裙，配色按各自的色板；确认年满 18 岁并开启成人向内容后，角色图鉴里会多出她的 18+ 成年版角色，衣柜是成年版的日常服和 11 套成人向服饰）；衣柜是一组服饰卡片，卡片上看到的就是她换上后桌面上的样子，锁定项显示剪影和解锁条件，「穿上」立即生效；每个角色（包括同一位模型娘的不同形象）的衣柜各自独立。
 - **放在哪里由你选**：唤醒时会问把 agent 建在哪里，默认是**个人空间**；也可以选你加入的某个 workspace（那里的成员可能看得到它）。之后所有调用都固定在这个空间。
 - **状态保持**：好感度、阶段、已解锁内容和当前服饰保存在本机 `pet.json`，退出重启后不变；18+ 回答和成人向开关保存在 `settings.json`。
 
 ## 模型娘角色
 
-> - **[形象 / 角色清单](docs/characters.md)**：每位模型娘的厂商、形象设定、主题色、服饰、素材来源与许可、截图，以及已下线角色和存档迁移。
+> - **[形象 / 角色清单](docs/characters.md)**：每位模型娘的厂商、形象设定、主题色、服饰、素材来源与许可、截图，「每个形象就是一个独立角色」的共享 / 隔离规则与**数据迁移方式**（旧 key → 新 key、备份与回退），以及已下线角色和存档迁移。
 > - **[流式回复](docs/streaming.md)**：AI 回复如何边写边显示在她的气泡里——数据源与事件格式、核心层解析、IPC 事件、渲染层增量显示、与内容守卫 / 好感度 / 朗读的关系、回退行为，以及单测、e2e `stream` 场景和真实 `lh` 的验证方法。
-> - **[半身模式](docs/half-body-mode.md)**：取景 全身 / 半身（设置窗口 → 桌宠行为 → 大小与取景，或角色页单独设置，形象包可带默认）；VRM 按人形骨骼取景到腰部以上，参考 Airi 的做法与取舍，以及复现方法。
+> - **[半身模式](docs/half-body-mode.md)**：取景 全身 / 半身（设置窗口 → 桌宠行为 → 大小与取景，或角色页单独设置，角色包可带默认）；VRM 按人形骨骼取景到腰部以上，参考 Airi 的做法与取舍，以及复现方法。
 > - **[使用说明](docs/usage.md)**：安装、运行（含 Linux chrome-sandbox）、选角与切换、每项效果怎么触发、设置窗口、连接 LobeHub、打包、测试，以及新增一个厂商角色。
 
 | 角色 | 厂商 | 主题色 | 美术 | 服饰 |
 |---|---|---|---|---|
-| 大肥鱼（DeepSeek 娘 · 鲸鱼女仆） | DeepSeek | `#2C4A8A` | 像素包 `dafeiyu-pixel`（默认，和其他角色同一画风和比例）；可在“外观”里换成 **Live2D** `dafeiyu-live2d`（中肥鱼 Live2D 模型，作者 Mao绒绒家园 / 香甜小兔子：头发、裙子、手臂、耳鳍和尾巴都有物理，眨眼、口型和表情随状态变化；目前只有日常服），**全动态** `dafeiyu-live`（一张高清原画拆成头、身体、手臂、腿、头发、尾巴等图层实时弯折：手臂会摆会挥手，腿会迈步，头发、裙摆、尾巴随动作和拖拽甩动；表情是原画，会眨眼、说话；目前只有日常服），或原版 Q 版 21 段透明视频（dsh-pet，含拖拽、走路和 5 种点击回应）；也可以在“外观”里**导入你自己的 VRM 3D 模型**（例如木子惡魔《蓝色小肥鱼Deepseek》：授权不可再分发，需自行下载导入，不随应用分发，作者与授权显示在外观页，见 [docs/pet-packs.md](docs/pet-packs.md#vrm-角色包kind-vrm)） | 招牌女仆装 + 12 套全年龄服饰；原版动画下其他服饰都用像素图 |
+| 大肥鱼（DeepSeek 娘 · 鲸鱼女仆） | DeepSeek | `#2C4A8A` | 像素角色「大肥鱼 · 像素」`dafeiyu-pixel`（默认，和其他角色同一画风和比例）；她的其他形象各是一位独立角色，在 设置 → 商店 下载后到角色图鉴里「切换」：**Live2D** `dafeiyu-live2d`（中肥鱼 Live2D 模型，作者 Mao绒绒家园 / 香甜小兔子：头发、裙子、手臂、耳鳍和尾巴都有物理，眨眼、口型和表情随状态变化；目前只有日常服），**全动态** `dafeiyu-live`（一张高清原画拆成头、身体、手臂、腿、头发、尾巴等图层实时弯折：手臂会摆会挥手，腿会迈步，头发、裙摆、尾巴随动作和拖拽甩动；表情是原画，会眨眼、说话；目前只有日常服），或原版 Q 版 21 段透明视频（dsh-pet，含拖拽、走路和 5 种点击回应）；也可以**导入你自己的 VRM 3D 模型**成为她的一位新角色（例如木子惡魔《蓝色小肥鱼Deepseek》：授权不可再分发，需自行下载导入，不随应用分发，作者与授权显示在她的详情页，见 [docs/pet-packs.md](docs/pet-packs.md#vrm-角色包kind-vrm)） | 招牌女仆装 + 12 套全年龄服饰；原版动画下其他服饰都用像素图 |
 | 克洛蒂（Claude 娘 · 橘发菊纹） | Anthropic | `#C4622D` | 像素包 `claude-pixel`（16 个动作） | 橘白哥特长裙 + 12 套全年龄服饰 |
 | 格萝可（Grok 娘 · 黑金吸血鬼） | xAI | `#8E1F33` | 像素包 `grok-pixel`（16 个动作） | 黑金哥特礼服 + 12 套全年龄服饰 |
 | 杰米（Gemini 娘 · 四角星猫耳） | Google | `#7B5CD6` | 像素包 `gemini-pixel`（16 个动作） | 星纹宽袖外披 + 12 套全年龄服饰 |
@@ -29,11 +29,12 @@
 - 每个角色是一份数据文件 `src/characters/<id>.json`（厂商、人设、口头禅、离线台词、主题色、可用服饰、署名），美术是一个角色包（`src/renderer/packs/<id>-pixel`）或一组视频；**效果全部共用**，角色之间只差配置、素材和台词。新增角色：放一份 character.json 和一个角色包即可，不用改代码。设定与素材来源见 [art/model-chan/](art/model-chan/README.md)。
 - 五位都是全年龄角色（`adult: false`）：即使确认 18+ 并开启成人向内容，她们也只用全年龄的语气、话题和服饰。成人向机制仍保留，只对 character.json 里写明 `adult: true` 的角色生效。
 - **旧角色已下线**：焰团、泡鲸、叶芽和“灵石”选择界面已移除。老存档打开时自动由新角色接替（泡鲸、叶芽 → 大肥鱼，焰团 → 克洛蒂），LobeHub agent、聊天记录和好感度都保留，她的人设在下一句话前更新；身上的服饰如果新角色没有，就换回日常服。旧存档会备份为 `pet.retired.bak.json`。
-- **换角色**：⚙ 设置 → **角色**（角色图鉴：每位角色带形象、名字、称号和关系）。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
+- **换角色**：⚙ 设置 → **角色**（角色图鉴：每个形象都是一位独立角色，「大肥鱼 · 像素」「大肥鱼 · Live2D」「大肥鱼 · 旧版像素」、导入的模型各是一张卡，带形象、名字、称号和关系）。同一位模型娘的不同形象共享 agent、聊天记录、名字和好感，衣柜、取景和 VRM 姿势各自独立。每位角色有自己的 LobeHub agent、聊天记录、名字、好感度和饥饿 / 心情 / 精力：第一次见面时点“初次见面”给她起名（默认用她自己的名字），应用为她新建一个 agent；见过的角色点“切换”，回来时一切照旧。不在屏幕上的角色需求值暂停，不会因为你陪了别人而饿坏或掉好感。
+- **老用户升级（形象包 → 独立角色）**：以前“给角色换形象包”的选择在第一次启动新版本时自动迁移一次：当前选的形象包就是迁移后的当前角色（例如 大肥鱼 + `dafeiyu-pixel` → 「大肥鱼 · 像素」），身上的衣服、取景、VRM 姿势、好感、聊天、模型、个性化设定和导入的包都保留；原文件先备份成 `settings.characters.bak.json` / `pet.characters.bak.json`，回退就是退出应用后把它们复制回去。旧 key → 新 key 对照与共享 / 隔离规则见 [docs/characters.md · 数据迁移方式](docs/characters.md#数据迁移方式srccorecharacter-migratejst-2764--t-2786)。
 - **桌宠窗口只留互动**：悬停时工具栏只有 喂食 / 玩耍 / 睡觉 / 聊天 和一个 **⚙ 设置** 按钮；话题、衣柜、角色列表、聊天记录、动作、回到右下角、检查更新、放生、错误日志、素材署名、退出等原 ⋯ 菜单的功能都在设置窗口里（对照见 [docs/usage.md 第六节](docs/usage.md#六设置窗口配置后台)）。有新解锁的服饰 / 话题或新版本时，⚙ 上有个小红点，点它直达对应页面。
-- **设置窗口（配置后台）**：点桌宠的 **⚙ 设置**（也可以右键或在触屏上长按她、Ctrl/⌘ + ,、托盘 → 打开设置…）打开。左侧只有 **小屋 / 角色 / 玩法 / 设置** 四个入口，其余页面都在下一层：小屋里她站在舞台上，点她会冒爱心、回应你（桌面上的她也一起动）；角色图鉴是一张张会动的角色卡，没遇见的是剪影，点进去是她的详情页，可以试穿、更换形象包；玩法和设置是入口卡片，再进入各项配置。亮 / 暗主题，见 [usage.md 第六节](docs/usage.md#六设置窗口配置后台)。
+- **设置窗口（配置后台）**：点桌宠的 **⚙ 设置**（也可以右键或在触屏上长按她、Ctrl/⌘ + ,、托盘 → 打开设置…）打开。左侧只有 **小屋 / 角色 / 玩法 / 设置** 四个入口，其余页面都在下一层：小屋里她站在舞台上，点她会冒爱心、回应你（桌面上的她也一起动）；角色图鉴是一张张会动的角色卡，没遇见的是剪影，点进去是她的详情页，衣柜里的服饰是一组卡片，可以试穿、穿上；玩法和设置是入口卡片，再进入各项配置。亮 / 暗主题，见 [usage.md 第六节](docs/usage.md#六设置窗口配置后台)。
 - **LobeHub 风格的界面与设计系统**：设置窗口和桌宠窗口（菜单、面板、对话气泡、输入框、提示）都用 LobeHub 的设计令牌（`@lobehub/ui` 主题，经 [lobe-design](https://github.com/lobehub/lobe-design-skill) 初始化），亮 / 暗主题跟随系统。设计系统在 `admin/src/design/`（后台）和 `src/renderer/design/`（桌宠窗口用的令牌导出），维护方式见 [docs/design-system.md](docs/design-system.md) 和 [usage.md 第六节](docs/usage.md#设计系统位置与维护)。
-- **角色设置**：设置窗口 → **角色** → 点一位角色进入详情，按角色设置**形象包**（先试穿再穿上）、**模型**、**个性化设定（System Role）**，查看**好感**路线图并可一键解锁（只作用于她）。
+- **角色设置**：设置窗口 → **角色** → 点一位角色进入详情，在**装扮**里打开她的**衣柜**（服饰卡片：缩略图、名称、分级、解锁阶段，点图片先试穿，再点「穿上」）、**取景**，导入新角色，设置**模型**、**个性化设定（System Role）**，查看**好感**路线图并可一键解锁（只作用于她）。
 - **换模型**：设置窗口 → **角色** → 角色 → 模型。每位角色只能选自家厂商的模型（大肥鱼 DeepSeek、克洛蒂 Claude、格萝可 Grok、杰米 Gemini、吉皮缇 GPT），列表来自你在 LobeHub 里启用的模型；换角色时模型跟着换成新角色的（每位角色各自记住你的选择）。
 
 ### 每个角色都有的效果（移植自 dsh-pet）
@@ -96,7 +97,7 @@
 | 暧昧（知己）♥60 | 交换小秘密、深夜谈心 | 调戏一下、吃醋模式、假装约会 | 浴衣、沙滩比基尼、长旗袍 | 性感女仆装、露肩晚礼服、职场 OL、护士服、空姐制服、性感比基尼（只在 18+ 成年版外观） |
 | 恋人（挚友）♥85 | 约定、回忆我们 | 土味情话、睡前悄悄话、奇奇怪怪的告白 | 情侣卫衣、花冠长裙 | 高开衩连体泳衣、丝绸睡裙、兔女郎、黑丝毛衣裙、小恶魔 COS（只在 18+ 成年版外观） |
 
-合计 19 个话题（13 全年龄 + 6 成人向）、24 套服饰（13 全年龄 + 11 成人向；每位角色只显示她有美术的服饰：五位的默认外观有全部 13 套全年龄服饰；成人向服饰只画在 18+ 成年版角色包 `<id>-adult` 里（20 岁成年形象，日常服 + 11 套成人向服饰，性感但不裸露），只有确认年满 18 岁并开启成人向内容后才能在“外观”里选它。沙滩比基尼 `bikini` 也是全年龄：高圆领两层荷叶边上衣盖住整个胸口，到膝盖上方的荷叶边泳裙，外搭短开衫，只露出一窄条腰、手臂和小腿。运动泳装 `swimsuit` 是全年龄的高领短袖运动款连体泳衣 + 及膝沙滩裤 + 防晒开衫，和成人向的复古连体泳装 `retro_swimsuit` 是两套不同的服饰）。每个阶段除话题外还有对应的离线台词（问候、被喂、被摸、玩耍、无聊、升级）。成人向关闭时，成人向话题、服饰和台词**完全隐藏**（不显示为锁定），身上的成人向服饰会自动换回最近穿过的全年龄服饰；重新开启后按已达到的阶段恢复，不需要重新攒好感。角色像素图由 gpt-image-2.5 通过 LobeHub 生成（来源、许可和重新生成方法见 [NOTICE.md](NOTICE.md)）。
+合计 19 个话题（13 全年龄 + 6 成人向）、24 套服饰（13 全年龄 + 11 成人向；每位角色只显示她有美术的服饰：五位的默认像素角色有全部 13 套全年龄服饰；成人向服饰只画在 18+ 成年版角色包 `<id>-adult` 里（20 岁成年形象，日常服 + 11 套成人向服饰，性感但不裸露），作为独立角色「<名字> · 成年版（18+）」，只有确认年满 18 岁并开启成人向内容后才出现在角色图鉴里。沙滩比基尼 `bikini` 也是全年龄：高圆领两层荷叶边上衣盖住整个胸口，到膝盖上方的荷叶边泳裙，外搭短开衫，只露出一窄条腰、手臂和小腿。运动泳装 `swimsuit` 是全年龄的高领短袖运动款连体泳衣 + 及膝沙滩裤 + 防晒开衫，和成人向的复古连体泳装 `retro_swimsuit` 是两套不同的服饰）。每个阶段除话题外还有对应的离线台词（问候、被喂、被摸、玩耍、无聊、升级）。成人向关闭时，成人向话题、服饰和台词**完全隐藏**（不显示为锁定），身上的成人向服饰会自动换回最近穿过的全年龄服饰；重新开启后按已达到的阶段恢复，不需要重新攒好感。角色像素图由 gpt-image-2.5 通过 LobeHub 生成（来源、许可和重新生成方法见 [NOTICE.md](NOTICE.md)）。
 
 ## 触摸系统
 
@@ -186,6 +187,12 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 - **新增一个部位**（例如“耳朵”）：在 `touch-zones.js` 里把 id 加进 `ZONE_IDS`，在 `ZONES` 写中文名、敏感度（0 随便碰 / 1 有点私人 / 2 边界）和默认心情，在 `DEFAULT_ZONES`（或角色文件的 `touch.zones`）给出矩形、放进 `ZONE_ORDER`，在 `DEFAULT_LINES` 写三档台词；在 `src/core/affection.js` 的规则表加 `touch:<部位>` 的分值、冷却和每日上限；在 `src/renderer/fx.js` 的 `TOUCH_MARKS` 配标记。可选：角色包里加名为 `touch-<部位>` 的动作，就会代替“摸摸”播放。
 - 改完跑 `npm test`：角色文件的 `touch` 块会被校验（部位名、矩形范围、每档台词非空），所有台词会过内容守卫和合规词表。
 
+## VRM 3D 模型（独立的姿势 / idle / 交互反应）
+
+导入的 VRM 模型有一套独立于像素角色的动作体系：6 种姿势（站 4 种、坐 2 种，可在外观里选择或交给「自动」调度）、带呼吸/重心/视线/眨眼微动的 idle 待机，以及触摸头/脸/手/肚子/胸、拖起与放下、思考、说话、吃东西、庆祝等反应，并按模型体型分 female / male 两套风格。像素角色的原有交互不受影响。
+
+动作来自素材包（Mixamo 姿势与动作），需要在本机下载并烘焙；模型通过「导入 VRM 模型…」导入。**模型和素材仅限个人使用，不进仓库、不随安装包分发。** 步骤（放置素材、烘焙、导入莉莉雅 liliya、授权说明）见 [docs/vrm-liliya.md](docs/vrm-liliya.md)，设计见 [docs/vrm-motion-system.md](docs/vrm-motion-system.md)。
+
 ## 语音（TTS）
 
 打开 **设置窗口 → 朗读 → 朗读回复** 后，她的回复和对外接口发来的话会被念出来；她的互动台词也念（见下方“互动语音”），自动碎碎念默认不念。用哪个引擎在 **设置窗口 → 朗读** 里选，选型依据见 [docs/tts-voice-research.md](docs/tts-voice-research.md)。
@@ -195,12 +202,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | **按角色**（默认） | 她的引擎的 Key | 每位角色用自己文件里 `voice.tts.default` 的引擎：**大肥鱼用 MiniMax**（`qiaopi_mengmei`「俏皮萌妹」），克洛蒂 / 格萝可 / 杰米 / 吉皮缇用 Fish Audio。她的引擎没填 Key 或出错时，这一句换另一个填了 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」），再按“用不了时”降级 |
 | **Fish Audio** | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 所有角色都用 Fish：大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
 | **MiniMax** | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色（大肥鱼 `qiaopi_mengmei`）。默认端点 `https://api.minimax.cn`（国内站）；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+| **ElevenLabs** | ElevenLabs API Key（[elevenlabs.io](https://elevenlabs.io) → 左下角头像 Profile → API Keys 创建）+ 音色 `voice_id`（必填） | 所有角色都用 ElevenLabs：请求 `POST {端点}/v1/text-to-speech/{voice_id}`，Key 放在 `xi-api-key` 请求头。`voice_id` 从 ElevenLabs Voice Library / My Voices 复制（20 位字母和数字，如 `21m00Tcm4TlvDq8ikWAM`），填在 设置窗口 → 朗读 → ElevenLabs → **默认音色 ID**，或写进角色文件的 `voice.tts.elevenlabs.voiceId`（角色文件优先）；两边都没有时不用 ElevenLabs。**模型** 可选（默认 `eleven_multilingual_v2`，另有 `eleven_flash_v2_5` / `eleven_turbo_v2_5` / `eleven_v3`）；**端点** 可选，留空用官方 `https://api.elevenlabs.io`，自建代理填 `https://…` |
 | **本地语音服务** | 你自己部署的语音服务的地址（Key 可不填） | 你在本机或家里有显卡的电脑上跑的服务（IndexTTS2、GPT-SoVITS、[whale-voice](https://github.com/2177302423qqcom-byte/whale-voice) 等），音色由你的服务决定。只在选它时使用，不当云端引擎的备用。见下方“本地语音服务” |
 | **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面几个的最后一道降级 |
 
 配置步骤：
 
-1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。
+1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax / ElevenLabs）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。用 ElevenLabs 时除了 Key 还要填 **默认音色 ID**（`voice_id`）。
 2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（macOS 上是只有当前用户可读的 0600 文件——不用钥匙串，因为 ad-hoc 签名每次自动更新后都会重新弹「输入登录密码」；Windows / Linux 有系统密钥服务时用 Electron `safeStorage` 加密，否则同样是 0600 文件。旧版本在 macOS 上加密存的 Key 会在升级后读一次（最后弹一次钥匙串）并改存为 0600），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、5 秒没响应（长句最多 10 秒）、返回错误时，这一句立即降级，出错的引擎暂停一会儿：超时 / 断网 / 服务端出错 20 秒，被限流 20 秒，Key 无效 / 余额不足 5 分钟（改 Key / 端点 / 引擎会立刻重试）。MiniMax 国内站每分钟只能合成 10 次（免费账户），桌宠按这个数控制请求，预合成只用多出来的次数；请求在主进程异步进行，不会卡住界面。
@@ -228,14 +236,15 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
     "default": "minimax",
     "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
     "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" },
+    "elevenlabs": { "voiceId": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_multilingual_v2", "stability": 0.5, "similarityBoost": 0.75, "style": 0, "speed": 1.0, "speakerBoost": true },
     "local": { "voice": "whale" }
   }
 }
 ```
 
-`default` 是“按角色”时她用的引擎（`fish` / `minimax`，省略为 `fish`）。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
+`default` 是“按角色”时她用的引擎（`fish` / `minimax` / `elevenlabs` / `local`，省略为 `fish`）。`elevenlabs` 里只有 `voiceId` 必填（ElevenLabs 的 `voice_id`，10–40 位字母和数字）；`model` 省略时用设置里的模型（默认 `eleven_multilingual_v2`），`stability` / `similarityBoost` / `style` 取 0–1（默认 0.5 / 0.75 / 0），`speed` 取 0.7–1.2（默认 1.0），`speakerBoost` 是 true / false（默认 true），这几项作为请求体里的 `voice_settings` 发出。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
 
-> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax / ElevenLabs 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
 ### 互动语音
 
@@ -290,14 +299,14 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ### 隐私与音色授权
 
-- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio 或 MiniMax 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
+- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio、MiniMax 或 ElevenLabs 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
 - **Key 只在本机**：存在 `userData/tts-keys.json`（只有当前用户可读；Windows / Linux 有系统密钥服务时另加密），不写进 `settings.json`、不进日志、不回传到页面。合成的音频缓存在 `userData/tts-cache/`，可在 设置窗口 → 朗读 清空。
 - **音色授权**：Fish 社区音色由上传者负责来源，仓库只写 Fish 音色 id 和署名（`credit`），不分发 Fish 合成的音频；Fish 免费账号限个人非商业使用，商用要付费订阅。MiniMax 用的是平台系统音色，没有复刻真人声音；内置语音包（`src/voicepacks/`）就是用这些 MiniMax 系统音色合成的音频。参考视频里的“ssr大肥鱼音色”音源属于 UP 主 星落落_oi（页面注明“未经作者授权，禁止转载”），本项目**没有复刻也没有收录**它；想 1:1 复刻要先取得 UP 主许可，并只在自己电脑上用。
 - **AI 合成声明**：所有语音都是 AI 合成，不是真人录音；录屏公开发布或商用时请标注 AI 生成，并分别取得音色作者和平台的授权。
 
 ## 语音输入（ASR）
 
-打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
+打开 设置窗口 → **语音输入** 后，聊天框旁边出现 🎤（也可以在任何地方按 **Ctrl+Shift+Space / ⌘⇧Space** 直接唤起语音对话，见下方 [快捷键唤起语音对话](#快捷键唤起语音对话)）：点一下开始说、再点一下结束（或按住说话、松开结束，Esc 取消），识别出的文字填进输入框（也可以设成识别后直接发送）。只在按 🎤 时录音，默认关闭。两种识别方式，可以设成一种失败时自动换另一种：
 
 - **LobeHub 云端识别**：复用 LobeHub 的语音识别（`lh generate asr --provider lobehub`，模型 `gpt-4o-mini-transcribe` / `gpt-4o-transcribe`），用本机 `lh login` 的账号，按 Credits 计费，录音上传到 LobeHub 云端。
 - **本地识别服务（whisper）**：你自己跑的 whisper 服务，例如 whisper.cpp `whisper-server`、speaches（faster-whisper），或任何 OpenAI 兼容的 `/v1/audio/transcriptions`；录音只发到你填的本机 / 局域网地址，不经过云端，免费。
@@ -305,6 +314,64 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 安装与启动步骤（macOS / Linux / Windows）、模型和端口、设置填写、测试连接、故障排查和隐私说明见 **[docs/asr.md](docs/asr.md)**。
 
 **完成状态**：相对原仓库，本项目已完成语音输入（ASR）支持——新增 🎤 录音输入、LobeHub 云端识别与本地 whisper 识别服务两种可切换的识别方式（可互为回退）、设置窗口 → 语音输入 的配置与「测试连接」、错误提示与隐私说明；两种方式都已在真实服务上实测识别通过。快速开始：按下方 [安装与运行](#安装与运行) `git clone` → `npm install` → `npm start`，再到 设置窗口 → 语音输入 打开并选引擎；各配置项的必填项和默认值见 [docs/asr.md §2.1](docs/asr.md#21-配置项一览必填--默认值)。
+
+### 快捷键唤起语音对话
+
+不用把鼠标移到她身上：在任何应用里按下全局快捷键，她就出现在桌面上、打开聊天框并开始听你说话；说完再按一次结束并识别。识别出的文字和点 🎤 一样处理——默认填进输入框等你按 Enter，勾选「识别后直接发送」时直接发给她（她回复，开着朗读时也会读出来）。
+
+- **默认组合**：macOS `⌘⇧Space`（Command+Shift+Space），Windows / Linux `Ctrl+Shift+Space`。系统自带的快捷键里没有它（⌘Space / Ctrl+Space 是 Spotlight、输入法切换，⌘⌥Space 是访达搜索）；但有的应用在自己窗口里用它（例如 VS Code 的“参数提示”），桌宠运行时这个组合会先给她，想留给那些应用就换一个或清空。
+- **按下后会发生什么**：桌宠窗口被隐藏或最小化时会被唤出并拿到焦点 → 聊天框展开 → 🎤 变成红色的 `■ Ns`、输入框上方显示「🔴 正在听」、气泡显示「我在听…说完再按 Ctrl+Shift+Space 结束」；你说话的整段时间她都处于「在听」状态：安静地看着你、身子微微前倾，头旁边有一只跳动的 👂（点 🎤 录音时也一样）→ 再按一次：气泡变成「嗯…让我想想你说了什么」、🎤 转圈 → 识别结果进输入框（或直接发送）。录音中按 **Esc** 取消。
+- **修改 / 关闭**：设置窗口 → **设置 → 声音 → 语音输入 → 快捷键 → 唤起语音对话**。点一下输入框，按下新的组合即保存并立即生效（旧的同时注销，不用重启）；输入框里的 × 清空 = 不用快捷键；↺「恢复默认」回到默认组合。字段左边的标签显示当前状态：**已生效** / **未启用**（已清空）/ **被占用** / **组合无效**。
+- **提示的含义**（显示在字段下方，出错的组合不会保存，正在用的快捷键保持不变）：
+  - 「组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键」：只按了普通键（没有修饰键）。必须是 **至少一个 Ctrl / ⌘ / Alt(⌥) + 一个普通键**（字母、数字、空格、F1–F24、方向键、标点）。
+  - 「只有 Shift 不够：Shift + 字母会挡住打大写字母，再加一个 Ctrl / ⌘ / Alt」：只用了 Shift 作修饰键。
+  - 「和应用内的「打开设置」（Ctrl+,）冲突，换一个组合」（macOS 上是 `⌘,`）：这个组合应用自己在用；其它同类：「退出（macOS）」⌘/Ctrl+Q、「复制」「粘贴（聊天框里粘贴图片）」「剪切」「全选」「撤销」⌘/Ctrl+C/V/X/A/Z、「重做」⌘/Ctrl+Shift+Z。
+  - 「被系统或其他应用占用了，按下时不会唤起她。换一个组合，或关掉占用它的程序后重启桌宠。」：系统或别的程序已经注册了它（Electron `globalShortcut.register` 返回失败）。手改 `settings.json` 写进去的组合在启动时被占用，设置页也会显示「被占用」和这句话。
+  - 输入框里 Space 写作「Space」（如 `Ctrl` `Shift` `Space`），保存到 `settings.json` 的仍是 Electron accelerator `CommandOrControl+Shift+Space`。
+- **前置条件**：
+  1. **打开语音输入并选一个识别引擎**（设置 → 语音输入 → 开启语音输入；引擎选 LobeHub 云端 或 本地服务）。没打开时按快捷键她会出现并说「语音输入还没开，我听不到你～打开方法在下面的提示里。」，提示条带「去设置」按钮，不会静默无反应。
+  2. **LobeHub 云端识别**：本机装好 `lh` 并 `lh login`（和聊天同一账号，按 Credits 计费）；或者 **本地识别**：先启动 whisper 服务并在设置里填地址（见 [docs/asr.md](docs/asr.md) 第 4 节）。
+  3. **麦克风权限**：权限被拒时按快捷键她会说「我听不到你：麦克风权限被拒绝了，办法在下面的提示里。」，气泡下方的提示条按当前系统给出处理方法（提示条不会挡住气泡）：
+     - **macOS**：第一次录音时系统会弹窗询问，允许即可；拒绝过的话到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。
+     - **Windows**：设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。
+     - **Linux**：系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 `pactl list sources short` 查看输入设备）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风（Flatpak 可用 Flatseal，Snap：`snap connect <应用名>:audio-record`）。
+  4. macOS 上全局快捷键不需要“辅助功能”权限。
+- **已知限制**：Linux **Wayland** 会话下 Electron 的全局快捷键依赖 XWayland / 桌面环境的 GlobalShortcuts 门户，很多桌面上按键收不到（设置页可能仍显示「已生效」）；请在 X11 会话里使用，或在桌面环境的系统快捷键里绑定一个命令来唤起。快捷键在桌宠还没唤醒（首次领养前）时只把窗口叫出来。
+
+设置保存在 `settings.json` 的 `asr.hotkey`（Electron accelerator 格式，如 `CommandOrControl+Shift+Space`，`""` = 关闭），详见 [docs/asr.md §1.1](docs/asr.md#11-快捷键唤起语音对话)。
+
+## 插个嘴（自动插嘴）
+
+打开后，她会“听”你在几处**明确列出的**地方写的、说的字，偶尔小声插一句碎碎念。这些字不是对她说的：聊天框里打了还没发的草稿、语音输入的转写、本机脚本报来的事、（单独打开时）剪贴板。要不要插嘴不由生成模型自己决定，而是像 LobeHub IM Bot 判断“没 @ 它的群消息要不要回”那样，交给决策模型 **jev** 回答一个是 / 否问题，按概率阈值判断：拿不准就不说，判断失败也不说。你的反应会沉淀成规则，越用越懂分寸。设计、数据流和规则细节见 **[docs/interject.md](docs/interject.md)**。
+
+### 配置与使用方式
+
+1. **准备**：本机 `lh` 已登录（`lh login`，和唤醒她用的是同一个账号），账号能调用决策模型 `lobehub/jev-1.14.0`（LobeHub 服务端需开放 TypeSafe 决策，即 `lh generate decide`）。没登录或没权限时她一律不说话，判断记录里会是“判断失败”。插嘴的那一句走她平时的 agent 对话，和主动搭话共用「每小时最多调用模型」额度，额度用完就换成离线台词。
+2. **开启**：⚙ 设置 → 玩法 → **主动搭话与好感** → 「插个嘴」卡片 → 打开总开关。**默认关闭**；打开后下面的来源、额度、阈值、决策模型才会出现。改动立即生效。
+3. **使用**：在她的聊天框里打一句、停一下不发送；或者用 🎤 说一句；或者让本机脚本 `POST /pixel-pet/observe`（要先在「对外接口」里开启接口，并带上令牌）。她觉得值得时，气泡里会冒出一句很短的话，**气泡上方**有两个按钮：
+   - **别插嘴**：这一类话以后不再判断（生成「别插嘴」规则）。在聊天框回「别打扰 / 别插嘴 / 安静点」也一样。
+   - **说得好**：这一类话在拿不准时也可以说（生成「可以插嘴」规则）。
+4. **查看与清理规则**：同一页下方有「沉淀的规则」表，列出规则、来源（让她别插嘴 / 点了说得好 / 没人理 / 你接过话）、命中次数和创建时间，每条都可以**停用**（保留但不生效）或**删除**（需确认）。「最近 20 次判断」表列出每次判断的来源、输入摘要、决策模型给的概率，以及最后有没有插嘴、原因是什么，可以「清空记录」。这些数据存在数据目录的 `interject.json` 里，删掉这个文件等于清空规则和记录。
+
+| 设置项 | 默认 | 说明 |
+| --- | --- | --- |
+| 插个嘴（总开关） | **关** | 关闭时任何输入都直接丢掉，不调用决策模型 |
+| 来源：聊天框草稿 / 语音输入 / 外部程序 | 开 / 开 / 开 | 总开关打开后才生效 |
+| 来源：剪贴板（系统级） | **关** | 要单独打开；记录里只留字数 |
+| 两次插嘴至少间隔 · 每小时最多插嘴 | 10 分钟 · 3 次 | 另外她 60 秒内刚说过话也不插 |
+| 每小时最多判断 · 停顿多久再判断 · 太短不判断 | 20 次 · 4 秒 · 6 字 | 决策模型的调用额度和防抖 |
+| 勿扰时段 | 23–8 点 | 开始和结束相同 = 不设勿扰 |
+| 插嘴阈值 · 不插嘴阈值 | 70% · 30% | 两者之间默认不说，命中「可以插嘴」规则才说 |
+| 判断超时 · 决策模型 | 10 秒 · `lobehub/jev-1.14.0` | 超时一律不说 |
+
+**隐私说明**：
+
+- 只听上表的来源。没有全局键盘钩子，不读其它窗口的标题或内容，不截屏，麦克风只在你按 🎤 时录。
+- 像密码、密钥、验证码、长数字串的输入在本地就丢掉，不发给模型。
+- 发给决策模型的只有最近 10 分钟内的最多 5 条输入（每条截到 200 字）和你的规则摘要，经临时文件（权限 0600，用完即删）交给 `lh`，不出现在命令行参数里。
+- 记录只留每句前 24 个字和一个去重用的哈希；剪贴板只记字数；报错只记错误码。
+- 她决定插嘴时，那一小段输入会作为提示词进入她的 LobeHub 话题，和平时聊天一样。
+
 
 ## 内容边界声明
 
@@ -332,6 +399,14 @@ npm install
 npm start                         # 启动桌宠：先回答 18+ 确认，再选择模型娘、起名、唤醒
 ```
 
+- **Electron 本体（`node_modules/electron/dist`）**：`npm install` / `npm ci` 结束时 `postinstall`（[scripts/ensure-electron.js](scripts/ensure-electron.js)）会检查它，缺了就自动运行 Electron 自己的下载器。原因：npm 11 起依赖包的安装脚本要在 `allowScripts` 里放行才执行，而 Electron 45 改成首次 `require('electron')` 时才下载，`npm ci` 之后可能根本没有 `dist`，`npm start` / e2e 启动时再下载容易卡住或失败。如果安装时没网（脚本只提示、不让安装失败），或用了 `--ignore-scripts`，联网后手动补一次：
+
+  ```bash
+  node node_modules/electron/install.js   # 下载 Electron 到 node_modules/electron/dist
+  ls node_modules/electron/dist           # 有 electron（macOS 为 Electron.app）即可 npm start
+  ```
+
+  已经自带 Electron 的 CI 可以设 `ELECTRON_SKIP_BINARY_DOWNLOAD=1` 跳过。
 - Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
 - 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
@@ -344,20 +419,21 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
   - Windows：用安装包（`-setup.exe`）装的版本可以自动更新；zip 版和 Linux 的 tar.gz 只会提示有新版本，并在菜单里给出下载页。
   - 不想自动更新的话，设置环境变量 `PIXELPET_NO_UPDATE=1`。
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
-- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js admin` 驱动设置窗口（打开方式、四个入口与下一层、点她的反应、试穿与更换形象包、配置项编辑与保存、角色图鉴、行为控制、亮 / 暗主题）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
+- 测试：`npm test`（单元测试，假 `lh`，不联网）；`xvfb-run -a node e2e/run.js admin` 驱动设置窗口（打开方式、四个入口与下一层、点她的反应、衣柜卡片试穿与穿上、配置项编辑与保存、角色图鉴、行为控制、亮 / 暗主题）；`xvfb-run -a node e2e/run.js wardrobe` 在无界面机器上驱动真实 Electron 应用走完“新建 → 好感升级 → 解锁 → 换装 → 重启 → 关闭成人向”全流程，截图和录屏在 `out/e2e/affection-ui/`；`xvfb-run -a node e2e/run.js charmigrate` 用一份形象包时代的旧数据启动，检查迁移到独立角色、二次启动幂等、角色图鉴 / 衣柜卡片 / 切换角色不串数据（输出在 `out/e2e/charmigrate/`）；`xvfb-run -a node e2e/run.js space` 检查“放在哪里”的选择；`... art` 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png`；`... roster` 逐个角色唤醒并逐项触发 E1–E26 效果，截图在 `out/e2e/`、录屏在 `out/e2e/roster-video/<角色>/`（`... roster claude` 只跑一个角色）。
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⚙ 设置 → 数据与关于 → “放生并删除 agent”会删除宠物和每位角色的 LobeHub agent（会再确认一次）。
 
 ## 配置后台（设置窗口）
 
-桌宠的所有配置都在单独的**设置窗口**里：小屋（当前角色、关系、陪伴开关）、角色（角色图鉴 → 角色详情：形象包、好感、模型、个性化设定、语音）、玩法（桌宠行为、主动搭话与好感、同屏伙伴）、设置（声音、资源与外观、连接、系统）。改动立即保存到 `settings.json` 并在桌宠上生效，重启后保留。
+桌宠的所有配置都在单独的**设置窗口**里：小屋（当前角色、关系、陪伴开关）、角色（角色图鉴 → 角色详情：装扮 / 衣柜、好感、模型、个性化设定、语音）、玩法（桌宠行为、主动搭话与好感、同屏伙伴）、设置（声音、资源与外观、连接、系统）。改动立即保存到 `settings.json` 并在桌宠上生效，重启后保留。
 
 从干净克隆跑起来（Node.js 20+；无显示器的 Linux 先装 `xvfb`）：
 
 ```bash
 git clone https://github.com/rdmclin2/lobehub-pixel-pet-affection.git
 cd lobehub-pixel-pet-affection
-npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）
+npm ci                                 # 按 lockfile 安装（Electron、Vite、@lobehub/ui）；postinstall 补下 Electron 本体
+node node_modules/electron/install.js  # 仅当 node_modules/electron/dist 仍缺失时（安装时没网 / --ignore-scripts），见上文
 npm start                              # prestart 先 npm run build:admin，再启动桌宠
 npm run start:no-sandbox               # Linux 从源码运行（chrome-sandbox 未配置时）
 xvfb-run -a npm run start:no-sandbox   # 没有显示器的 Linux
@@ -365,15 +441,15 @@ npm run dev:admin                      # 只开发设置窗口界面：Vite 开�
 ```
 
 - **打开设置窗口**：悬停宠物 → ⋯（或右键）→ **设置…**；或在桌宠上按 **Ctrl+,**（macOS **⌘,**）；或托盘图标 → **打开设置…**。
-- **查看角色列表**：设置窗口左侧 → **角色**（角色图鉴，每位角色一张卡片，可按形象包类型筛选）→ 点一张卡片看**角色详情**。
+- **查看角色列表**：设置窗口左侧 → **角色**（角色图鉴，每个形象一张角色卡片，可按形象类型筛选：像素 / Live2D / VRM / 视频 / 导入的）→ 点一张卡片看**角色详情**。
 - 不登录 LobeHub 试玩、每一步的说明和常见问题：[使用说明 · 十、配置后台：从干净克隆跑起来](docs/usage.md#十配置后台从干净克隆跑起来)；设计、覆盖矩阵与维护：[docs/admin-console-design.md](docs/admin-console-design.md)。
 
 ## 半身模式（VRM / Live2D）
 
-**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM 和 Live2D 形象包生效（像素 / 图片包保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线在窗口底边，窗口大小和位置不变。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身），实现参考了 [Airi](https://github.com/moeru-ai/airi)。
 
-1. **选 Live2D / VRM 形象**：设置窗口 → 角色 → 点一位角色 → **形象包** 标签。大肥鱼内置「大肥鱼 · Live2D」，点 **穿上**；自己的模型用同页的 **导入 Live2D…**（`.model3.json` / `.zip`）或 **导入 VRM…**（`.vrm`），导入的卡片出现后再点它的 **穿上**。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
-2. **切换半身 / 全身**：设置窗口 → 玩法 → 桌宠行为 → **取景**（全局）；或角色详情 → 形象包 → **取景**（只这位角色：跟随 / 全身 / 半身）。立即生效。
+1. **选 Live2D / VRM 角色**：设置窗口 → 角色 → 角色图鉴里「大肥鱼 · Live2D」那张卡点 **切换**；自己的模型在任意一位角色的详情 → **装扮** → 导入新角色 → **导入 Live2D 角色…**（`.model3.json` / `.zip`）或 **导入 VRM 角色…**（`.vrm`），导入后它成为一位新角色并切换过去。仓库里没有 VRM 模型，可以用 `node scripts/make-test-vrm.js /tmp/pixelpet-test-fish.vrm` 生成一个 CC0 测试模型。
+2. **切换半身 / 全身**：设置窗口 → 玩法 → 桌宠行为 → **取景**（全局）；或角色详情 → 装扮 → **取景**（只这位角色：跟随 / 全身 / 半身）。立即生效。
 3. **测试**（不要用 `all`，它包含消耗 token 的 `live`）：
 
    ```bash
@@ -389,7 +465,7 @@ npm run dev:admin                      # 只开发设置窗口界面：Vite 开�
 
 - 本仓库派生自 [ONLY-yours/lobehub-pixel-pet](https://github.com/ONLY-yours/lobehub-pixel-pet)（v0.2.1，MIT，作者 LiJian），保留其完整提交历史、[LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md) 署名。好感度系统、服饰立绘、合规守卫等派生部分同样以 MIT 发布。
 - **模型娘形象**是同人作品，不是厂商官方形象：克洛蒂、格萝可、杰米、吉皮缇的设定来自 [lmy414/ai-chan-sheets](https://github.com/lmy414/ai-chan-sheets)（CC BY-NC-SA 4.0）与 ZipZipPipe《AI娘化》（署名、不可商用），像素图由 gpt-image-2.5 生成后像素化，以 **CC BY-NC-SA 4.0、禁止商用** 发布，详见 [NOTICE.md](NOTICE.md)。
-- **大肥鱼**动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（PC2005-cloud），角色为 DeepSeek 吉祥物的社区二创（原型“溟月”：B站 @上善无形；女仆鲸鱼娘设计：B站 @ZipZipPipe），许可 **CC BY-NC-SA 4.0，禁止商用**。包含这些素材的构建仅限非商业用途，详见 `src/renderer/assets/dafeiyu/NOTICE.md`。
+- **大肥鱼**动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（PC2005-cloud），角色为 DeepSeek 吉祥物的社区二创（原型“溟月”：B站 @上善无形；女仆鲸鱼娘设计：B站 @ZipZipPipe），许可 **CC BY-NC-SA 4.0，禁止商用**。包含这些素材的构建仅限非商业用途，详见 `catalog/clips/dafeiyu-clips/NOTICE.md`。
 - 本项目是基于 LobeHub 的社区项目，不是 LobeHub 官方产品。
 
 以下为上游原 README（英文），描述 v0.2 的桌宠基础能力。
@@ -486,14 +562,14 @@ xvfb-run -a node e2e/run.js all       # drives the real Electron app; `live` use
 
 ## Credits
 
-The **大肥鱼 (Dafeiyu)** animations (`src/renderer/assets/dafeiyu/`) come from the open-source project **dsh-pet** by PC2005-cloud: <https://github.com/PC2005-cloud/dsh-pet>.
+The **大肥鱼 (Dafeiyu)** animations (`catalog/clips/dafeiyu-clips/`) come from the open-source project **dsh-pet** by PC2005-cloud: <https://github.com/PC2005-cloud/dsh-pet>.
 
 - The code of dsh-pet is MIT-licensed. Its assets are free for open-source use but **may not be used commercially**.
 - The character is a community re-creation of DeepSeek's "大肥鱼" (not an official DeepSeek image), licensed **CC BY-NC-SA 4.0**. The prototype "溟月" is by Bilibili @上善无形; the DeepSeek maid-whale design is by Bilibili @ZipZipPipe.
-- Because of those terms, do not sell this app or ship it commercially while it includes these files. Remove `src/renderer/assets/dafeiyu/` and the `dafeiyu` entry in `src/core/species.js` first.
+- Because of those terms, do not sell this app or ship it commercially while it includes these files. Remove `catalog/clips/dafeiyu-clips/` and the `dafeiyu` entry in `src/core/species.js` first.
 
-Full text: `src/renderer/assets/dafeiyu/NOTICE.md`.
+Full text: `catalog/clips/dafeiyu-clips/NOTICE.md`.
 
 ## License
 
-The code is MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The 大肥鱼 animations in `src/renderer/assets/dafeiyu/` are **not** MIT: they are non-commercial only (see [Credits](#credits)), so builds that include them are for non-commercial use.
+The code is MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The 大肥鱼 animations in `catalog/clips/dafeiyu-clips/` are **not** MIT: they are non-commercial only (see [Credits](#credits)), so builds that include them are for non-commercial use.

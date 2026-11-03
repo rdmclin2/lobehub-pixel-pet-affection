@@ -1,7 +1,7 @@
 'use strict';
 
 // Live2D 取景 e2e (run.js `live2dframe`, docs/half-body-mode.md "Live2D 实现"), kept out of run.js (over the size
-// limit). The built-in 大肥鱼 · Live2D pack (src/renderer/packs/dafeiyu-live2d) drawn by the real Cubism runtime
+// limit). The built-in 大肥鱼 · Live2D pack (catalog/packs/dafeiyu-live2d) drawn by the real Cubism runtime
 // under SwiftShader:
 //   全身 → 设置窗口 桌宠行为 → 取景 → 半身: only head to waist, centred, bigger, same window; the model glides (same
 //   canvas, never reloaded); in 半身: blinking, 口型 (talk), expressions (happy / sad), gaze following the cursor,
@@ -47,13 +47,13 @@ module.exports = function live2dFrameScenarios(ctx) {
     const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframe-'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframefake-'));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
-    // she wears the built-in Live2D pack and stays put (window bounds are compared)
-    fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, appearance: { dafeiyu: 'dafeiyu-live2d' }, prefs: { roam: false } }));
+    // she is 「大肥鱼 · Live2D」 (the built-in Live2D character, chosen at hatching) and stays put (window bounds are compared)
+    fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { roam: false } }));
     const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
     // a third-party model as a user has it: the 中肥鱼 files in a plain folder, no pack.json (so no halfBody)
     const fix = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframe-model-'));
     const own = path.join(fix, 'Whale');
-    fs.cpSync(path.join(ROOT, 'src', 'renderer', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
+    fs.cpSync(path.join(ROOT, 'catalog', 'packs', 'dafeiyu-live2d', 'model'), own, { recursive: true });
     // the homemade VRM (outside the repo) for 两类角色一致
     const vrmDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-l2dframe-vrm-'));
     const vrmFile = path.join(vrmDir, 'e2e-fish.vrm');
@@ -82,7 +82,7 @@ module.exports = function live2dFrameScenarios(ctx) {
       await admin.locator('[data-key="prefs.framing"]').getByText(label, { exact: true }).click();
       await adminToast(new RegExp(`已保存：取景 → ${label}`));
     };
-    // settings window → her page → 装扮 → 穿上 (the pet window has no 外观 panel since T-2718)
+    // settings window → her page (the pet window has no 外观 panel since T-2718)
     const adminUntil = async (fn, arg, ms = 15000, what = 'condition') => {
       const t0 = Date.now();
       for (;;) {
@@ -91,17 +91,20 @@ module.exports = function live2dFrameScenarios(ctx) {
         await sleep(150);
       }
     };
-    const lookTab = async () => {
-      if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, 'characters/dafeiyu');
-      await admin.evaluate(() => { location.hash = '/characters/dafeiyu'; });
-      await adminUntil(() => !!document.querySelector('[data-path="/characters/dafeiyu"]'), null, 15000, 'her page');
+    // her page → 装扮 (衣柜 cards, 取景, 导入新角色); `id` a character id, or her base for the current one of hers
+    const lookTab = async (id = 'dafeiyu') => {
+      if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, `characters/${id}`);
+      await admin.evaluate((x) => { location.hash = `/characters/${x}`; }, id);
+      await adminUntil((x) => !!document.querySelector(`[data-path="/characters/${x}"]`), id, 15000, 'her page');
       await admin.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
-      await adminUntil(() => !!document.querySelector('[data-wardrobe]'), null, 10000, '装扮');
+      await adminUntil(() => !!document.querySelector('[data-import-row]'), null, 10000, '装扮');
     };
-    const pickPack = async (id) => {
-      await lookTab();
-      await adminUntil((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack ${id}`);
-      if (!(await admin.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await admin.evaluate((x) => document.querySelector(`[data-use-pack="${x}"]`).click(), id);
+    // 角色图鉴 → her page → 切换 (T-2764: every look is a character of her own, there is no 形象包 to put on)
+    const switchTo = async (id) => {
+      await lookTab(id);
+      await adminUntil((x) => !!document.querySelector(`[data-current="${x}"], [data-switch="${x}"]`), id, 10000, `switch ${id}`);
+      if (!(await admin.evaluate((x) => !!document.querySelector(`[data-current="${x}"]`), id))) await admin.evaluate((x) => document.querySelector(`[data-switch="${x}"]`).click(), id);
+      await adminUntil((x) => !!document.querySelector(`[data-current="${x}"]`), id, 15000, `${id} current`);
       await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 });
     };
     // placement samples while switching (the scale moves one way; the same canvas, the model stays loaded)
@@ -141,9 +144,9 @@ module.exports = function live2dFrameScenarios(ctx) {
       assert.ok(Math.abs(c.cx - 0.5) < 0.1, `${why}: centred: ${JSON.stringify(c)}`);
     };
     try {
-      await step(S, 'hatching 大肥鱼 in her Live2D look; 取景 default 全身', async () => {
+      await step(S, 'hatching 「大肥鱼 · Live2D」 (her own character card); 取景 default 全身', async () => {
         await page.waitForSelector('.char-card', { timeout: 20000 });
-        await page.click('.char-card[data-species="dafeiyu"]');
+        await page.click('.char-card[data-character="dafeiyu-live2d"]');
         await page.fill('#pet-name', 'Mow');
         await page.click('#hatch-btn');
         await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -172,7 +175,7 @@ module.exports = function live2dFrameScenarios(ctx) {
         admin = await openAdminWindow(app, page, 'behavior');
         await admin.waitForSelector('[data-path="/behavior"] [data-key="prefs.framing"]');
         const desc = await admin.evaluate(() => { const el = document.querySelector('[data-key="prefs.framing"]'); let p = el; for (let i = 0; i < 12 && p; i++) { if (/Live2D/.test(p.textContent)) return p.textContent.replace(/\s+/g, ' ').slice(0, 300); p = p.parentElement; } return null; });
-        assert.ok(desc && /VRM 和 Live2D/.test(desc), `the 取景 card says it works for Live2D: ${desc}`);
+        assert.ok(desc && /VRM、Live2D/.test(desc), `the 取景 card says it works for Live2D: ${desc}`);
         await adminShot('2-admin-behavior-full');
         const burst = gif('glide-to-half', 14, 0, null, 12);
         await pickGlobal('半身');
@@ -351,22 +354,23 @@ module.exports = function live2dFrameScenarios(ctx) {
         return note(`${s} + ${glideGif}: data-framing=full; placement ${JSON.stringify(f.placement)} = the first; opaque box ${JSON.stringify(c)} (first ${JSON.stringify(first.comp)}); glide scale ${ss.map((v) => v.toFixed(4)).join(' → ')}`);
       }, page);
 
-      await step(S, '她的页 → 形象包 → 取景: her own 半身 wins over the global 全身 (Live2D card text), 跟随全局 goes back', async () => {
-        await admin.evaluate(() => { location.hash = '/characters/dafeiyu'; });
-        await admin.waitForSelector('[data-framing-row="dafeiyu"]', { timeout: 10000 });
-        const hint = await admin.locator('[data-framing-row="dafeiyu"]').textContent();
+      await step(S, '她的页 → 装扮 → 取景: 「大肥鱼 · Live2D」 her own 半身 wins over the global 全身 (Live2D card text), 跟随全局 goes back', async () => {
+        // her character's own page: 取景 is saved per character (T-2764), here 「大肥鱼 · Live2D」
+        await admin.evaluate(() => { location.hash = '/characters/dafeiyu-live2d'; });
+        await admin.waitForSelector('[data-framing-row="dafeiyu-live2d"]', { timeout: 10000 });
+        const hint = await admin.locator('[data-framing-row="dafeiyu-live2d"]').textContent();
         assert.match(hint, /半身只显示腰部以上/, 'a Live2D look is offered 半身 (not "只有 VRM")');
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText('半身', { exact: true }).click();
+        await admin.locator('[data-framing-row="dafeiyu-live2d"]').getByText('半身', { exact: true }).click();
         await adminToast(/的取景已改为「半身」/);
         await settled('half');
         const sa = await adminShot('10-admin-character-half');
         const sp = await shot('10-character-half');
         const s1 = saved();
-        assert.deepEqual(s1.framings, { dafeiyu: 'half' });
+        assert.deepEqual(s1.framings, { 'dafeiyu-live2d': 'half' });
         assert.equal(s1.prefs.framing, 'full');
         const fr = await page.evaluate(() => window.petFx.framing());
         assert.deepEqual([fr.mode, fr.source, fr.supported], ['half', 'character', true]);
-        await admin.locator('[data-framing-row="dafeiyu"]').getByText(/跟随全局/).click();
+        await admin.locator('[data-framing-row="dafeiyu-live2d"]').getByText(/跟随全局/).click();
         await adminToast(/的取景已改为「跟随全局（全身）」/);
         await settled('full');
         assert.deepEqual(saved().framings, {});
@@ -379,13 +383,29 @@ module.exports = function live2dFrameScenarios(ctx) {
         await lookTab();
         await adminUntil(() => document.querySelectorAll('[role="tabpanel"]').length === 1 && !!document.querySelector('[role="tabpanel"] [data-import-live2d]'), null, 10000, '导入 Live2D… in the live 装扮 panel');
         const nBtn = await admin.evaluate(() => { const b = document.querySelectorAll('[data-import-live2d]'); b[b.length - 1].click(); return b.length; });
-        // the import puts it on at once (as the pet window's import did): her look becomes the new pack
+        // the import is a new character and she becomes her at once: her look becomes the new pack
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('l2d-'), null, { timeout: 60000 });
         const msg = `导入 Live2D…（${nBtn} 个按钮）→ 她穿上了 ${await page.getAttribute('#pet-look', 'data-key')}`;
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('l2d-'), null, { timeout: 15000 });
         const imp = { pack: { id: (await page.evaluate(() => document.getElementById('pet-look').dataset.key)).split('/')[0] } };
         const manifest = JSON.parse(fs.readFileSync(path.join(data, 'packs', imp.pack.id, 'pack.json'), 'utf8'));
         assert.equal(manifest.halfBody, undefined, 'the generated pack.json has no halfBody');
+        // T-2764: the import is a character of her own — her page opens, she is 当前角色, 角色图鉴 lists her next to
+        // 「大肥鱼 · Live2D」, and her 衣柜 is a card list with the outfit she has on (可穿衣: 穿上 it again works)
+        const L = imp.pack.id;
+        await adminUntil((x) => location.hash === `#/characters/${x}` && !!document.querySelector(`[data-current="${x}"]`), L, 15000, 'her own page, current');
+        const roster = await admin.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => r.id));
+        assert.ok(roster.includes(L) && roster.includes('dafeiyu-live2d'), `角色图鉴: ${roster.join(', ')}`);
+        const me = (await page.evaluate(async () => (await window.pet.boot()).view)).characters.find((c) => c.id === L);
+        assert.ok(me && me.base === 'dafeiyu' && me.kind === 'live2d' && me.source === 'user', JSON.stringify(me));
+        await adminUntil((x) => !!document.querySelector(`[data-outfits="${x}"] [data-outfit]`), L, 10000, '衣柜 cards');
+        const rack = await admin.evaluate((x) => [...document.querySelectorAll(`[data-outfits="${x}"] [data-outfit]`)].map((c) => ({ id: c.dataset.outfit, equipped: c.dataset.equipped === 'true', locked: c.dataset.locked === 'true' })), L);
+        assert.equal(rack.filter((o) => o.equipped).length, 1, JSON.stringify(rack));
+        const worn = rack.find((o) => o.equipped).id;
+        const eq = await admin.evaluate((x) => window.petAdmin.equipOutfit(x.o, x.id), { o: worn, id: L });
+        assert.equal(eq.ok, true, JSON.stringify(eq).slice(0, 200));
+        await admin.evaluate((x) => document.querySelector(`[data-outfits="${x}"]`).scrollIntoView({ block: 'center' }), L);
+        const sR = await adminShot('11-thirdparty-character-wardrobe');
         await settled('full', 30000);
         await stand();
         const sF = await shot('11-thirdparty-full');
@@ -398,19 +418,19 @@ module.exports = function live2dFrameScenarios(ctx) {
         assert.equal(f.band.source, 'eyes');
         assert.ok(f.band.waist > 0.4 && f.band.waist < 0.65, JSON.stringify(f.band));
         halfChecks(c, 'third-party 半身');
-        return note(`${sF}, ${sH}: 「${msg}」 pack ${imp.pack.id} (pack.json without halfBody): band ${JSON.stringify(f.band)} (eyes ${JSON.stringify(f.eyes)}); opaque box ${JSON.stringify(c)}`);
+        return note(`${sR}: new character ${L} (base ${me.base}, kind ${me.kind}, ${me.source}) current, in 角色图鉴; 衣柜 ${rack.map((o) => `${o.id}${o.equipped ? '[正在穿]' : ''}${o.locked ? '[🔒]' : ''}`).join('、')}, 穿上 ${worn} → ok\n${sF}, ${sH}: 「${msg}」 pack ${imp.pack.id} (pack.json without halfBody): band ${JSON.stringify(f.band)} (eyes ${JSON.stringify(f.eyes)}); opaque box ${JSON.stringify(c)}`);
       }, page);
 
       await step(S, '两类角色一致: under the same 半身 setting the VRM look is half-body too (same window, cut at the bottom, head at the top)', async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), vrmFile);
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
-        await pickPack(imp.pack.id);
+        await switchTo(imp.pack.id);
         await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); const f = window.petFx.vrm(); return c && c.dataset.framing === 'half' && f && f.figures[0] && !f.figures[0].gliding && Number(c.dataset.frame) > 5; }, null, { timeout: 60000 });
         await stand();
         const cv = await composition(page, '#pet-look canvas.vrm');
         const sV = await shot('12-vrm-half-same-setting');
-        await pickPack('dafeiyu-live2d');
+        await switchTo('dafeiyu-live2d');
         await settled('half', 30000);
         await stand();
         const cl = await composition(page);

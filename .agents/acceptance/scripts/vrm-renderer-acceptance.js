@@ -57,12 +57,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check(!before2d.runtime && !before2d.scripts.includes('vendor/vrm/three-vrm.min.js'), `2D look: three-vrm not loaded yet (scripts: ${before2d.scripts.join(', ')})`);
     await shot('01-2d-before.png');
 
-    // import the homemade model (real IPC; the dialog answered by debug-next-open) and wear it
+    // import the homemade model (real IPC; the dialog answered by debug-next-open): it is a character of her own (T-2764), switch to her
     await page.evaluate((p) => window.pet.debugNextOpen(p), model);
     const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
     check(imp.ok === true, `import-vrm → ${imp.pack && imp.pack.id} (${imp.license && imp.license.summary})`);
-    const set = await page.evaluate((id) => window.pet.setAppearance(id, 'dafeiyu'), imp.pack.id);
-    check(set.ok && set.view.look.kind === 'vrm' && /^pack:\/\//.test(set.view.look.model), `setAppearance → look.kind=${set.view.look.kind}, model=${set.view.look.model}`);
+    const set = await page.evaluate((id) => window.pet.switchCharacter(id), imp.pack.id);
+    check(set.ok && set.view.look.kind === 'vrm' && /^pack:\/\//.test(set.view.look.model), `switchCharacter → look.kind=${set.view.look.kind}, model=${set.view.look.model}`);
     await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 2; }, null, { timeout: 30000 });
     const rt = await page.evaluate(() => ({ versions: window.PetVrmRuntime && window.PetVrmRuntime.versions, script: [...document.scripts].some((s) => s.getAttribute('src') === 'vendor/vrm/three-vrm.min.js') }));
     check(rt.script && rt.versions && rt.versions.three === '0.187.0', `runtime loaded on first VRM look: ${JSON.stringify(rt.versions)}`);
@@ -211,14 +211,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const rootAfter = (await dbg()).figures[0].root;
     check(Math.abs(rootMoving.x - rootBefore.x) > 0.002 || Math.abs(rootMoving.roll - rootBefore.roll) > 0.3, `window drag inertia: root x ${rootBefore.x.toFixed(3)} → ${rootMoving.x.toFixed(3)} → ${rootAfter.x.toFixed(3)}, roll ${rootBefore.roll.toFixed(1)}° → ${rootMoving.roll.toFixed(1)}° → ${rootAfter.roll.toFixed(1)}°`);
 
-    // back to the 2D pack: the figure is disposed (renderer, geometries, textures), the 2D look draws
-    const back = await page.evaluate(() => window.pet.setAppearance('dafeiyu-pixel', 'dafeiyu'));
+    // back to 「大肥鱼 · 像素」 (the 2D character): the figure is disposed (renderer, geometries, textures), the 2D look draws
+    const back = await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
     await sleep(1500);
     const st = await page.evaluate(() => ({ stats: window.PetVRM.stats, canvas: !!document.querySelector('#pet-look canvas.vrm'), el: document.querySelector('#pet-look').firstElementChild && document.querySelector('#pet-look').firstElementChild.outerHTML.slice(0, 120) }));
     check(back.ok && back.view.look.kind !== 'vrm' && !st.canvas && st.stats.live === 0 && st.stats.disposed >= 1, `back to 2D (${back.view.look.kind}): VRM canvas gone, figures live ${st.stats.live}, disposed ${st.stats.disposed}, memory before dispose ${JSON.stringify(st.stats.lastDispose && st.stats.lastDispose.before)} → after ${JSON.stringify(st.stats.lastDispose && st.stats.lastDispose.after)}`);
     await shot('05-back-to-2d.png');
     // and again to the VRM: a new figure, no leftovers
-    await page.evaluate((id) => window.pet.setAppearance(id, 'dafeiyu'), imp.pack.id);
+    await page.evaluate((id) => window.pet.switchCharacter(id), imp.pack.id);
     await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 2; }, null, { timeout: 20000 });
     const st2 = await page.evaluate(() => window.PetVRM.stats);
     check(st2.live === 1 && st2.created === st2.disposed + 1, `VRM again: created ${st2.created}, disposed ${st2.disposed}, live ${st2.live}`);
@@ -232,7 +232,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     note(`      pack.json: ${fs.readFileSync(path.join(pdir, 'pack.json'), 'utf8').replace(/\s+/g, ' ')}`);
     const ip = await page.evaluate((d) => window.pet.debugImportPack(d), pdir);
     note(`      debugImportPack → ${JSON.stringify(ip).slice(0, 200)}`);
-    await page.evaluate(() => window.pet.setAppearance('vrm-override-test', 'dafeiyu'));
+    await page.evaluate(() => window.pet.switchCharacter('vrm-override-test'));
     await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && Number(c.dataset.frame) > 2; }, null, { timeout: 20000 });
     const exprs = (await dbg()).figures[0].expressions;
     await page.evaluate(() => window.petFx.cue('pat'));
@@ -251,7 +251,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     // repeated switching VRM ↔ 2D: no growth in live figures, GL resources or JS heap
     const heap = [];
     for (let i = 0; i < 6; i++) {
-      await page.evaluate((id) => window.pet.setAppearance(id, 'dafeiyu'), i % 2 ? 'dafeiyu-pixel' : imp.pack.id);
+      await page.evaluate((id) => window.pet.switchCharacter(id), i % 2 ? 'dafeiyu-pixel' : imp.pack.id);
       await sleep(1500);
       const m = await page.evaluate(() => { if (window.gc) window.gc(); const f = window.petFx.vrm().figures[0]; return { live: window.PetVRM.stats.live, created: window.PetVRM.stats.created, disposed: window.PetVRM.stats.disposed, gl: f ? f.memory : null, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null }; });
       heap.push(m);
@@ -268,7 +268,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     fs.writeFileSync(metaOnly, g2);
     await page.evaluate((p) => window.pet.debugNextOpen(p), metaOnly);
     const imp2 = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
-    await page.evaluate((id) => window.pet.setAppearance(id, 'dafeiyu'), imp2.pack.id);
+    await page.evaluate((id) => window.pet.switchCharacter(id), imp2.pack.id);
     await page.waitForSelector('#pet-look .vrm-look', { timeout: 20000 });
     await sleep(500);
     const st3 = await page.evaluate(() => window.PetVRM.stats);

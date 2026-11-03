@@ -11,6 +11,8 @@
 //   { pieces, gapMs, hang: true }        the pieces, then the connection stays open
 //   { status: 502, body: '..' }          a plain HTTP error
 //   { json: {...} }                      a non-streamed JSON answer
+//   { pieces, working: [[type, data]] }  extra SSE events (reasoning / server-side tool steps) sent before the
+//                                        answer pieces, as LobeHub may stream them
 // Every request is recorded in `requests` ({ body, headers, at }).
 const http = require('node:http');
 
@@ -39,6 +41,7 @@ async function startFakeResponses(plan = () => ({ pieces: ['好的'] })) {
       }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       sse(res, 'response.created', { response: { id, status: 'in_progress', output: [] } });
+      for (const [type, data] of p.working || []) sse(res, type, data);
       const pieces = p.pieces || [];
       for (let i = 0; i < pieces.length; i++) {
         if (p.cutAfter !== undefined && i >= p.cutAfter) { res.end(); return; }

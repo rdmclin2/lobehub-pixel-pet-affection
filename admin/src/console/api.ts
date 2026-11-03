@@ -11,6 +11,7 @@ export type FieldType =
   | 'number'
   | 'text'
   | 'url'
+  | 'hotkey'
   | 'secret'
   | 'token'
   | 'readonly'
@@ -27,6 +28,8 @@ export interface FieldOption {
 export interface FieldDef {
   card: string;
   default?: unknown;
+  /** hotkey: the default in HotkeyInput's format ('mod+shift+space') */
+  defaultKeys?: string;
   dependsOn?: { key: string; value: unknown };
   desc?: string;
   format?: 'percent' | 'time';
@@ -41,6 +44,8 @@ export interface FieldDef {
   page: string;
   pattern?: string;
   placeholder?: string;
+  /** hotkey: combinations the app itself uses (HotkeyInput format) and what they do */
+  reserved?: { accelerator: string; keys: string; label: string }[];
   restart?: boolean;
   sensitive?: boolean;
   step?: number;
@@ -115,8 +120,15 @@ export interface ModelOption {
   [k: string]: unknown;
 }
 
+/**
+ * One row per character (T-2764: every look is a character of her own — 「大肥鱼 · 像素」「大肥鱼 · Live2D」 …).
+ * `id` is the character id (her pack's id, or `<base>-clips`); `base` the persona (src/characters/<base>.json)
+ * whose agent, name, affection (`met`), model and 个性化设定 all of the base's characters share; `pack`, `kind`,
+ * `preview` and `outfits` are the character's own.
+ */
 export interface RosterRow {
   accent: string;
+  base: string;
   blurb: string;
   catchphrase: string;
   credits: string[];
@@ -125,12 +137,16 @@ export interface RosterRow {
   id: string;
   kind: string | null;
   kindLabel: string;
+  /** what sets this look apart in her name: 像素 / Live2D / 成年版（18+）… */
+  label: string;
   likes: string[];
   met: null | { affection: number; name: string; progress: any; stage: string };
   model: null | { applied: string | null; chosen?: boolean; current: string | null; loaded: boolean; options: ModelOption[]; pending: boolean };
+  /** her character's name, 「大肥鱼 · 像素」 */
+  name: string;
+  /** her base's name, 大肥鱼 */
   nameZh: string;
-  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; source: string; vrm?: any };
-  packCount: number;
+  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; outfits?: number; source: string; vrm?: any };
   preview: Preview | null;
   source: string;
   sourceLabel: string;
@@ -175,8 +191,41 @@ export interface PackRow {
   version: string;
 }
 
+/** A character in 商店 → 角色: does not ship with the app, can be downloaded (src/core/catalog.js listAll). */
+export interface CatalogRow {
+  adult: boolean;
+  author: string;
+  base: string;
+  bytes: number;
+  description: string;
+  id: string;
+  kind: string;
+  license: string;
+  name: string;
+  outfits: number;
+  /** relative to src/renderer: catalog/<id>.png */
+  picture: string | null;
+  pixelated: boolean;
+  sizeLabel: string;
+  version: string;
+  /** on this machine now (downloaded) */
+  installed: boolean;
+}
+
+/** `catalog-progress` (src/main/catalog.js) */
+export interface DownloadProgress {
+  id: string;
+  received?: number;
+  reason?: string;
+  state: 'downloading' | 'installing' | 'done' | 'failed';
+  text?: string;
+  total?: number;
+}
+
 export interface AdminState {
   apiStatus: any;
+  catalog?: CatalogRow[];
+  downloads?: DownloadProgress[];
   packs: PackRow[];
   roster: RosterRow[];
   settings: Record<string, any>;
@@ -190,6 +239,18 @@ export interface BootData extends AdminState {
   schema: Schema;
   testMode: boolean;
   version: string;
+}
+
+/** 快捷键唤起语音对话 (src/main/voice-hotkey.js status()): settings.hotkeyStatus. */
+export interface HotkeyStatus {
+  accelerator: string;
+  code?: 'reserved' | 'taken' | string;
+  keys: string;
+  label: string;
+  message?: string;
+  platform: string;
+  state: 'ok' | 'disabled' | 'invalid' | 'conflict';
+  triggers?: number;
 }
 
 export interface SetResult {
@@ -211,7 +272,8 @@ export interface PetAdminApi {
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
   cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
-  equipOutfit: (id: string) => Promise<any>;
+  /** `species`: whose wardrobe (a character id); none = the current character's. */
+  equipOutfit: (id: string, species?: string) => Promise<any>;
   exportPack: (id: string) => Promise<any>;
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
@@ -232,27 +294,164 @@ export interface PetAdminApi {
   release: (opts: { deleteAgent: boolean }) => Promise<any>;
   reloadVoicePacks: () => Promise<{ errors: string[]; settings: any }>;
   removePack: (id: string) => Promise<any>;
+  downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
+  cancelDownload: (id: string) => Promise<{ ok: boolean }>;
+  removeDownload: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  onCatalogProgress: (cb: (p: DownloadProgress) => void) => () => void;
   reset: (keys: string[]) => Promise<{ ok: boolean; results: SetResult[]; settings: any }>;
   set: (key: string, value: unknown) => Promise<SetResult>;
   setAdult: (on: boolean) => Promise<any>;
-  setAppearance: (id: string, species: string) => Promise<any>;
   setLive2dHeight: (id: string, height: number) => Promise<any>;
   setModel: (key: string, species: string) => Promise<any>;
   setSystemRole: (text: string, species: string) => Promise<any>;
   setFraming: (mode: 'auto' | 'full' | 'half', species: string) => Promise<any>;
+  setVrmPosture: (packId: string, posture: string) => Promise<any>;
   placePet: () => Promise<any>;
   showPet: () => void;
   state: () => Promise<AdminState>;
   switchCharacter: (id: string, name?: string) => Promise<any>;
   ttsClearCache: () => Promise<any>;
   unlockAll: (species: string) => Promise<any>;
+  interjectClearDecisions: () => Promise<{ ok: boolean }>;
+  interjectDecisions: (limit?: number) => Promise<{ decisions: InterjectDecision[]; status: any }>;
+  interjectDeleteRule: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  interjectRules: () => Promise<{ rules: InterjectRule[] }>;
+  interjectSetRule: (id: string, disabled: boolean) => Promise<{ ok: boolean; reason?: string; rule?: InterjectRule }>;
+  onInterject: (cb: (e: { decision: InterjectDecision | null; decisionId: string | null; rule: InterjectRule | null; type: string }) => void) => () => void;
   historyGet: (id: string) => Promise<{ ok: boolean; reason?: string; session?: HistorySession }>;
   historyList: () => Promise<{ sessions: HistorySummary[] }>;
   home: () => Promise<{ ok: boolean; reason?: string }>;
-  markSeen: (kind: 'outfit' | 'topic') => Promise<{ marked?: number; ok: boolean }>;
+  /** `species`: whose 衣柜 was looked at (a character id); none = the current character's. */
+  markSeen: (kind: 'outfit' | 'topic', species?: string) => Promise<{ marked?: number; ok: boolean }>;
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
+  /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
+  chat: ChatApi;
+}
+
+// --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
+// One conversation per character: her own agent and topic, her 聊天记录. Her model: `setModel(key, species)`.
+
+export interface ChatCharacter {
+  count: number;
+  current: boolean;
+  id: string;
+  lastAt: number | null;
+  met: boolean;
+  name: string;
+  preview: string;
+}
+
+export interface ChatAttachment {
+  id: string;
+  mime: string;
+  name: string;
+  size: number;
+  /** data URL; null when the file is gone */
+  url: string | null;
+}
+
+export interface ChatMessage {
+  attachments: ChatAttachment[];
+  createdAt: number;
+  error?: string;
+  id: string;
+  model: string | null;
+  role: 'user' | 'assistant';
+  status: 'done' | 'error' | 'aborted';
+  text: string;
+  turnId: string | null;
+  /** pictures sent on the desktop: only their count was kept */
+  unsavedImages: number;
+  via: 'console' | 'desktop';
+}
+
+export type ChatImageInput = { path: string } | { dataUrl: string; name?: string } | string;
+
+export interface ChatPickedImage {
+  dataUrl: string;
+  mime: string;
+  name: string;
+  path: string;
+  size: number;
+}
+
+export interface ChatHistory {
+  hasMore: boolean;
+  messages: ChatMessage[];
+  met: boolean;
+  ok: boolean;
+  reason?: string;
+  speciesId: string;
+  streaming: boolean;
+  total: number;
+}
+
+export interface ChatSendResult {
+  code?: string | null;
+  error?: string;
+  message?: ChatMessage;
+  ok: boolean;
+  reason?: string;
+  speciesId?: string;
+  turnId?: string;
+  userMessage?: ChatMessage;
+}
+
+export interface ChatDelta {
+  restart?: boolean;
+  speciesId: string;
+  text: string;
+  turnId: string;
+}
+
+export interface ChatDone {
+  error?: string;
+  message: ChatMessage;
+  ok: boolean;
+  reason?: 'aborted' | 'error';
+  speciesId: string;
+  turnId: string;
+}
+
+export interface ChatApi {
+  abort: (speciesId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
+  history: (speciesId: string, opts?: { before?: string; limit?: number }) => Promise<ChatHistory>;
+  listCharacters: () => Promise<{ busy: string | null; characters: ChatCharacter[]; ok: boolean }>;
+  onChanged: (cb: (d: { speciesId: string | null }) => void) => () => void;
+  onDelta: (cb: (d: ChatDelta) => void) => () => void;
+  onDone: (cb: (d: ChatDone) => void) => () => void;
+  pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
+  send: (req: { images?: ChatImageInput[]; speciesId: string; text?: string }) => Promise<ChatSendResult>;
+}
+
+/** 插个嘴 (core/interject.js): a rule settled from the owner's reactions, and one decision record. */
+export interface InterjectRule {
+  bucket?: string;
+  category?: string;
+  createdAt: number;
+  disabled?: boolean;
+  effect: 'allow' | 'block';
+  hits: number;
+  id: string;
+  note: string;
+  origin: 'engaged' | 'ignored' | 'like' | 'manual' | 'mute';
+  source?: string;
+}
+
+export interface InterjectDecision {
+  at: number;
+  category?: string;
+  feedback?: 'engaged' | 'ignored' | 'like' | 'mute' | null;
+  id: string;
+  probability: number | null;
+  reason: string;
+  said?: string;
+  source: string;
+  stage: 'decided' | 'error' | 'prefilter';
+  summary: string;
+  verdict: 'interject' | 'silent' | 'skip';
 }
 
 /** 聊天记录 (PetService.history / historySession): only the conversations the owner started. */
@@ -311,6 +510,7 @@ export const at = (obj: any, key: string): any => key.split('.').reduce((v, k) =
 /** Readable failure text for the per-character / pack channels (reasons from PetService and PackStore). */
 export const REASON: Record<string, string> = {
   adult: '18+ 外观需要先确认已满 18 周岁并打开成人向内容',
+  'not-downloaded': '她还没有下载：先在角色图鉴里下载这个角色',
   busy: '她正在忙（说话或切换中），稍后再试',
   'no-pet': '桌宠还没出现在桌面上',
   'no-window': '桌宠窗口没有打开',
@@ -322,9 +522,10 @@ export const REASON: Record<string, string> = {
   'no-redistribution': '这个模型的授权不允许导出',
   'too-long': '太长了',
   unknown: '找不到这一项',
+  'not-found': '找不到这一项（可能已经删掉了）',
   'unknown-character': '没有这个角色',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
-  unavailable: '她现在的形象包没有这套服饰',
+  unavailable: '这位角色没有这套服饰',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';

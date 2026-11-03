@@ -1,6 +1,6 @@
 # 半身模式（取景：全身 / 半身）
 
-> VRM 和 Live2D 两类角色共用同一个取景设置（见“设置”），在同一设置下表现一致：腰部以上、头在上方、水平居中、窗口不变。
+> VRM、Live2D 和像素（sprites）三类角色共用同一个取景设置（见“设置”），在同一设置下表现一致：腰部以上、头在上方、水平居中、窗口不变。
 
 桌宠默认从头到脚显示（**全身**）。**半身**只显示腰部以上：同一个窗口里角色画得更大，头部和上半身居中，腰部正好落在窗口底边。适合把桌宠放在屏幕角落里聊天、看口型和表情。
 
@@ -27,7 +27,7 @@
 **不采纳的**
 
 - **不用整模包围盒定构图**：桌宠模型常有长发、尾巴、裙摆、举起的手（VRM 0.x 在 canary 上还会举着手，见“已知问题”），包围盒一变构图就跳。我们的半身取景只看骨骼：头顶取“跟着 head 骨骼及其子骨骼动的顶点”的最高点，腰线 = hips 骨骼上方 12% 躯干长度（躯干 = head − hips），左右以 head–hips 连线居中。
-- **不开放 x/y/z/距离/FOV 五个自由滑杆，也不开轨道相机**：桌宠窗口很小、透明、能拖动，自由相机很容易把人“调丢”。我们只给一个二选一（全身 / 半身）加已有的“宠物大小”（`petScale`，窗口右下角不动）。需要特殊构图的模型，由形象包在 `pack.json` 里带默认取景。
+- **不开放 x/y/z/距离/FOV 五个自由滑杆，也不开轨道相机**：桌宠窗口很小、透明、能拖动，自由相机很容易把人“调丢”。我们只给一个二选一（全身 / 半身）加已有的“宠物大小”（`petScale`，窗口右下角不动）。需要特殊构图的模型，由角色包在 `pack.json` 里带默认取景。
 - Live2D 不用 Airi 的“模型画布 ×2、中心放在底边”当半身：那是按**模型画布**（`.moc3` 的画布，常带大片透明边，角色也未必站在正中）的一半裁，裁到哪里取决于建模时画布留了多少边：大肥鱼碰巧合适（画布中线 2496 px 在她身高的 52% 处，接近腰），但画布下方留白多的模型会裁到胸口，留白少的会露出大腿。我们量的是**实际画出来的图层**（不透明 drawable 的范围）和腰线（见“Live2D 实现”），并且保留全身作为默认。
 - 不把设置放 `localStorage`：取景写进 `settings.json`，设置窗口和桌宠窗口共用、重启保留，并且能按角色覆盖。
 
@@ -36,15 +36,15 @@
 | 位置 | key | 取值 | 说明 |
 | --- | --- | --- | --- |
 | 设置窗口 → 玩法 → 桌宠行为 → **大小与取景** → 取景 | `prefs.framing` | `full`（默认）/ `half` | 全局默认。改动立即生效。 |
-| 设置窗口 → 角色 → 她的页 → 形象包 → **取景** | `framings.<角色 id>` | 跟随 / `full` / `half` | 只对这一位角色生效；“跟随”= 删除这一项。 |
-| 形象包 `pack.json` | `framing` | `full` / `half`（可选） | 这个包的默认取景，例如只有上半身的模型写 `"framing": "half"`。 |
-| 形象包 `pack.json` | `halfBody.waist` | 0.2–0.9（可选） | 半身裁到哪里：她身高的比例，头顶 0、脚底 1。VRM 写了就代替骨骼推出的腰线；Live2D 写了就不再推断。 |
+| 设置窗口 → 角色 → 她的页 → 装扮 → **取景** | `framings.<角色 id>` | 跟随 / `full` / `half` | 只对这一位角色生效；“跟随”= 删除这一项。 |
+| 角色包 `pack.json` | `framing` | `full` / `half`（可选） | 这个包的默认取景，例如只有上半身的模型写 `"framing": "half"`。 |
+| 角色包 `pack.json` | `halfBody.waist` | 0.2–0.9（可选） | 半身裁到哪里：她身高的比例，头顶 0、脚底 1。VRM 写了就代替骨骼推出的腰线；Live2D 写了就不再推断；像素包写了就按它裁，不写用 55%。 |
 
-优先级：**角色自己的选择 > 形象包默认 > 全局设置**（`src/core/framing.js` → `resolveFraming`）。
+优先级：**角色自己的选择 > 角色包默认 > 全局设置**（`src/core/framing.js` → `resolveFraming`）。
 
 - 迁移：旧的 `settings.json` 没有 `prefs.framing`，读成 `full`，看起来和以前一样；非法值也读成 `full`。`framings` 只保留合法角色 id 和 `full`/`half`。
-- **VRM**（相机）和 **Live2D**（模型缩放 + 偏移）形象包会真的换取景；像素 / 图片 / 全动态包保持全身（设置窗口里会提示）。`resolveFraming` 的 `SUPPORTED_KINDS = ['vrm', 'live2d']`。
-- 写入路径：设置窗口 `admin-set prefs.framing` → `PetService.setPrefs` → `settings.json` → `settings` 广播；按角色是 `set-framing` → `PetService.setFraming`。桌宠窗口收到新设置后调用形象的 `setFraming()`（VRM 和 Live2D 同一个接口），**不重新加载模型**。
+- **VRM**（相机）、**Live2D**（模型缩放 + 偏移）和**像素 sprites**（每帧只画上半部分并放大）角色会真的换取景；图片 / 全动态（rig）角色保持全身（设置窗口里会提示）。`resolveFraming` 的 `SUPPORTED_KINDS = ['vrm', 'live2d', 'sprites']`；主进程把 `resolveFraming(...).supported` 作为 `view.characters[].framingSupported` 发给设置窗口，提示不再写死 kind。
+- 写入路径：设置窗口 `admin-set prefs.framing` → `PetService.setPrefs` → `settings.json` → `settings` 广播；按角色是 `set-framing` → `PetService.setFraming`。桌宠窗口收到新设置后调用形象的 `setFraming()`（VRM、Live2D 和像素 sprites 同一个接口），**不重新加载模型 / 图集**。
 
 ## VRM 实现
 
@@ -94,6 +94,34 @@
 
 调试字段：Live2D 画布 `data-framing`、`data-cut`、`data-band`（`pack` / `hitarea` / `eyes` / `default`）、`data-gaze`；`window.petFx.live2d()` 给出每个 Live2D 形象的 `framing`、`band`、`content`、`eyes`、`head`、`face`、`placement`、`gliding`、`gaze`、`params`（眼、嘴、头部角度）、`faces`。
 
+## 像素（sprites）实现
+
+代码：`src/core/framing.js`（`spriteRef` / `spriteCanvas` / `spriteHalfCrop` / `spriteDrawRects` / `blendRect`，纯函数，`test/framing-sprites.test.js`）+ `src/renderer/app.js`（`lookEl` 的 sprites 分支挂 `petFigure.setFraming`、`drawSprite` 裁切绘制、`spriteRefOf` 参考框测量）。设计和逐帧测量见 [pixel-half-body-plan.md](pixel-half-body-plan.md)。
+
+1. **为什么能做**：像素包的每一帧都是同一个构图（脚底贴帧底、身高约 80% 帧高、水平居中），所以半身就是**整张图集用同一个裁切框**：`drawImage` 的源矩形从“整格”换成“头顶上方一点到腰线”，目标仍是整个画布。
+2. **参考框**（每张图集测一次，换服饰 = 换图集再测）：取 `idle / pat / talk / look / sad / think / happy` 里存在的动作的第 0 帧，读不透明像素（alpha ≥ 128，HD 包按 1/4 分辨率读）的包围盒，取头顶、脚底、水平中心的**中位数**（个别画大了的帧不会带偏）。图集读不回像素时把整帧当作她。
+3. **腰线**：
+
+   | `data-band` | 来源 |
+   | --- | --- |
+   | `pack` | `pack.json` 的 `halfBody.waist`（身高比例，头顶 0、脚底 1，0.2–0.9） |
+   | `default` | 身高的 55%（`L2D.dflt`；像素图里没有 HitArea / 眼睛参数可推断） |
+
+   15 个内置像素包都写了实测值：HD 的 `*-pixel` / `*-adult` 为 0.50–0.52（裁在交叠双手下沿以下），`*-classic` 为 0.60–0.72（Q 版头大，腰线更低）。
+4. **裁切**（`spriteHalfCrop`）：腰线正好落在画布底边；头顶上方留 **8%**（VRM / Live2D 是 5%：像素帧顶端常有举起的手、道具、气泡，8% 时每包只有 1–5% 的帧顶端出框）；裁切框保持帧的宽高比，所以窗口、布局、右下角锚点都不变；以她的重心水平居中；不会比全身小。源矩形严格裁在本格内（`spriteDrawRects`），不会读到图集里相邻的帧。
+5. **清晰度**：
+   - 平滑高清包（`pixelated: false`，664×904）：画布保持帧尺寸，平滑采样，约放大 2.2 倍。
+   - 硬像素包（`pixelated: true`，classic 83×113）：半身时画布换成帧的整数倍（83×113 × 4 = **332×452**，和 VRM / Live2D 画布相同），裁切高度取“画布高 / 整数”，起点取整，最近邻采样：每个源像素正好是 6×6 或 7×7 个画布像素，没有粗细不一的像素块。切回全身时画布恢复成帧尺寸。
+6. **切换**：`setFraming(mode)` 只换裁切框；高清包在 0.35 s 内用 smoothstep 从当前框滑到新框（滑动期间帧循环跑满 rAF），硬像素包直接切换（滑动中的非整数倍最近邻会闪）。图集、canvas 元素、动作计时都保留，**不重建 sprite、不重新加载图集**。
+   - **上浮帧跟随**（`spriteLift`，T-2770）：个别帧整张人物画高了（素材漂移，脚底离开帧底；例：dafeiyu-pixel 日常 `idle#1` 整体上浮 94 px，gemini-pixel swimsuit / couple_hoodie 的 `idle#0`、grok-pixel yukata 的 `walk`）。同一个裁切框会把这些帧的头顶切掉，idle 每 0.5 s 闪一次。半身时每帧量一次自己的脚底（四分之一分辨率，按格缓存），比参考脚底高出帧高 2% 以上就把裁切框上移同样距离（最多 20%，硬像素包取整），她在画面里保持不动、头部完整；脚底在帧底的帧（含 `lifted`、`hatch`）不动，普通帧之间 1–2 px 的差不跟，不会抖。全身绘制不受影响。画布上 `data-lift` 是这一帧上移的像素数，`data-crop` 仍是站姿帧的裁切框。
+7. **交互**：
+   - **触摸区**：sprite 画布上带 `data-framing="half"` 和 `data-cut`（= 腰线比例），`artPoint` 和 VRM / Live2D 同一条路径：读画布上已经裁好的画面得到可见包围盒，用 `toFullBody` 把 y 乘以 `cut` 换回全身比例。头、脸、胸、手、肚子照常命中，**腿和脚在半身下点不到**。alpha 缓存键 `data-frame` 加上了取景和裁切（`…#row:col@half:sx,sy,sw`），切换后不会继续用全身的像素。
+   - **拎起 / 走路 / 说话 / 睡觉**：都只是换动作帧，裁切框不变；`lifted` 帧里她画得矮一些，半身时在画面里低约 4–9%，头和躯干完整；拎起的摆动（`.pet-body.lifted`）是整个形象一起摆，和取景无关。
+   - 卡片、衣柜、孵化页的小图不挂 `setFraming`，一直全身。
+8. **调试字段**：sprite 画布 `data-framing`、`data-cut`、`data-band`（`pack` / `default`）、`data-crop`（`sx,sy,sw,sh`，帧内像素）、`data-frame`；`window.petFx.sprite()` 给出 `framing`、`band`、`waist`、`cut`、`ref`、`crop`、`canvas`、`gliding`、`pixelated`。
+
+已知取舍：`hatch#0`（蹲下）半身时只露出发顶，下一帧才“冒出来”（不为它单独换裁切框，避免跳动）；少数举手 / 举物 / 气泡帧顶端被裁掉几十像素的装饰；左右会裁掉张开的手臂和长发；素材本身的大小不一致（如 dafeiyu-pixel bikini 的 `idle#1` 画大了、头顶比站姿高约 120 px，半身下发顶会出框；整帧上浮的帧已由 `spriteLift` 处理）放大后更明显；classic Q 版的腰线（0.66–0.72）落在默认触摸区表的“腿”上沿（触摸区表按 HD 包测量，全身时同样如此）。
+
 ## 如何复现
 
 ```bash
@@ -102,7 +130,10 @@ npm test                                   # 含 test/framing.test.js（设置�
 npm run build:admin
 xvfb-run -a node e2e/run.js vrmframe       # VRM 半身端到端（勿跑 all）
 xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身端到端
+xvfb-run -a node e2e/run.js spriteframe    # 像素 sprites 半身端到端
 ```
+
+`spriteframe` 场景（`e2e/sprite-frame.js`）：穿「克洛蒂 · 像素」→ 全身截图 → 设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时半身（检查：窗口不变、同一个画布元素、`data-framing=half`、`data-cut=0.520`、`data-band=pack`、腰线在画布底边、头在上方、裁切框单调滑动）→ 半身下点头部 / 胸口命中、腿 / 脚点不到，拎起、走路、说话 → 切回「全身」（画面和切换前逐像素一致）→ 换「克洛蒂 · 旧版像素」看整数倍像素块 → 角色页单独设「全身」再改回“跟随” → 重启应用，半身保留；再以「大肥鱼 · 像素」（第二个 HD 包）走同样三条取景来源：全局半身、角色页单独半身、`userData/packs` 里一个 `pack.json` 写 `"framing": "half"` 的像素包（全局全身、无角色选择时 `source: pack`，角色页「全身」优先于它），半身下 idle 两帧（含上浮的 `idle#1`）/ pat / lifted / talk 的裁切、头 / 身体点击、图片包与全动态（rig）包在全局半身下保持全身、切回全身逐像素一致、重启保持（截图在 `out/e2e/sprite-frame/dafeiyu/`）。截图在 `out/e2e/sprite-frame/`，逐步记录在 `out/e2e/sprite-frame/evidence.txt`。
 
 `vrmframe` 场景：用 `scripts/make-test-vrm.js` 现做一个测试 VRM（写在临时目录，不进仓库）→ 全身截图 → 打开设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时变成半身（检查：窗口位置尺寸不变、腰线在底边、头在上方、水平居中、角色更大、模型没有重建、相机单调滑动）→ 半身下视线跟随、触摸区映射（腿 / 脚点不到）、点击反应、拖起、口型 → 切回「全身」（相机与最初完全一致）→ 角色页单独设「半身」再改回“跟随” → 真实 VRM 各拍一组全身 / 半身 → 重启应用，半身保留。截图在 `out/e2e/vrm/frame-*.png`，逐步记录在 `out/e2e/vrm/frame-evidence.txt`。
 
@@ -110,7 +141,7 @@ xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身端到端
 
 `live2dframe` 场景（`e2e/live2d-frame.js`）：内置「大肥鱼 · Live2D」→ 全身截图 → 设置窗口 → 桌宠行为 → 取景点「半身」→ 桌宠窗口即时半身（检查：窗口不变、腰线在底边、头在上方、居中、画得更大、同一个画布、缩放单调滑动、`data-band=pack`、`data-cut=0.520`）→ 半身下眨眼 / 说话口型 / 开心脸红 / 难过脸黑、视线跟随（左 / 右 / 上）、触摸区映射（腿 / 脚点不到）并真的点头部、拖起、走路、气泡在眼睛上方 → 切回「全身」（摆放与最初完全一致）→ 角色页单独设「半身」再改回“跟随” → 用“导入 Live2D 模型…”导入一个没有 `pack.json` 的模型文件夹，半身走眼睛推断 → 同一设置下换成自制 VRM，也是半身 → 重启应用，半身保留。截图和 GIF 在 `out/e2e/live2d-frame/`，逐步记录在 `out/e2e/live2d-frame/evidence.txt`。
 
-手动试：`npm start` → 设置窗口 → 角色 → 她的详情 → 形象包 → 导入 VRM…（或大肥鱼的「大肥鱼 · Live2D」）→ 点新卡片的「穿上」→ 玩法 → 桌宠行为 → 取景 → 半身。从干净克隆开始的完整步骤见 [usage.md 第十、十一节](usage.md#十一半身模式vrm--live2d)。
+手动试：`npm start` → 设置窗口 → 角色 → 她的详情 → 装扮 → 导入 VRM 角色…（导入后自动成为新角色并切换过去；或在角色图鉴里切换到「大肥鱼 · Live2D」）→ 玩法 → 桌宠行为 → 取景 → 半身。从干净克隆开始的完整步骤见 [usage.md 第十、十一节](usage.md#十一半身模式vrm--live2d)。
 
 ## 已知问题 / 后续
 

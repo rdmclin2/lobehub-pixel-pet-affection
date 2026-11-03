@@ -1,8 +1,10 @@
 'use strict';
 
 // The settings window's bridge (docs/admin-console-design.md §5.2): `window.petAdmin`, a whitelist of the
-// settings and roster channels only. No chat, no window moving, no debug hooks. Keys are write-only: they go
-// in through `set('keys.<id>', value)` and only "has a key" ever comes back.
+// settings and roster channels, plus 聊天 with a character (`petAdmin.chat`, docs/admin-chat.md: the
+// `admin-chat-*` channels only; the pet window's `chat` channel stays out, the console has its own turn).
+// No window moving, no debug hooks. Keys are write-only: they go in through `set('keys.<id>', value)` and
+// only "has a key" ever comes back; the chat uses the LobeHub CLI login in main and never sees a token.
 const { contextBridge, ipcRenderer } = require('electron');
 
 const on = (channel) => (cb) => {
@@ -28,15 +30,21 @@ contextBridge.exposeInMainWorld('petAdmin', {
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
-  setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
+  // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
+  setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
-  // 服饰: put on one of the current character's unlocked outfits (the pet window's 衣柜 does the same)
-  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
-  // 外观资源: import (file dialog in main), export, remove, folders
+  // 服饰: put on one of a character's unlocked outfits (none = the current one, as the pet window's 衣柜 did)
+  equipOutfit: (id, species) => ipcRenderer.invoke('equip-outfit', { id, species }),
+  // 角色包: import (file dialog in main), export, remove, folders
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
+  onCatalogProgress: on('catalog-progress'),
   exportPack: (id) => ipcRenderer.invoke('export-pack', { id }),
   setLive2dHeight: (id, height) => ipcRenderer.invoke('set-live2d-height', { id, height }),
   openPacksFolder: () => ipcRenderer.send('open-packs-folder'),
@@ -66,11 +74,31 @@ contextBridge.exposeInMainWorld('petAdmin', {
   home: () => ipcRenderer.invoke('admin-home'),
   quit: () => ipcRenderer.invoke('admin-quit'),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
-  markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
+  // 插个嘴 (core/interject.js): the rules her owner's reactions settled and the recent decisions — data, not
+  // settings; the same channels the pet window uses. Switch a rule off / on, delete it, clear the records.
+  interjectRules: () => ipcRenderer.invoke('interject-rules'),
+  interjectDecisions: (limit) => ipcRenderer.invoke('interject-decisions', { limit }),
+  interjectSetRule: (id, disabled) => ipcRenderer.invoke('interject-set-rule', { id, disabled }),
+  interjectDeleteRule: (id) => ipcRenderer.invoke('interject-delete-rule', { id }),
+  interjectClearDecisions: () => ipcRenderer.invoke('interject-clear-decisions'),
+  onInterject: on('interject'),
   // pushes: the whole admin state after any change (from either window), update / API status
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),
   onApiStatus: on('api-status'),
+  // 聊天 (docs/admin-chat.md): one conversation per character, her 聊天记录; a reply streams as onDelta events.
+  // Her model is chosen with setModel(key, species) above (the same pick as her page → 模型).
+  chat: {
+    listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),
+    history: (speciesId, opts = {}) => ipcRenderer.invoke('admin-chat-history', { speciesId, before: opts.before, limit: opts.limit }),
+    pickImages: () => ipcRenderer.invoke('admin-chat-pick-images'),
+    send: (req) => ipcRenderer.invoke('admin-chat-send', req),
+    abort: (speciesId) => ipcRenderer.invoke('admin-chat-abort', { speciesId }),
+    onDelta: on('admin-chat-delta'),
+    onDone: on('admin-chat-done'),
+    onChanged: on('admin-chat-changed'),
+  },
 });

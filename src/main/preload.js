@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('pet', {
   boot: () => ipcRenderer.invoke('boot'),
   whoami: () => ipcRenderer.invoke('whoami'),
   spaces: () => ipcRenderer.invoke('spaces'),
-  hatch: (speciesId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { speciesId, name, localAbilities, space }),
+  // `characterId`: who she is (T-2764: one character per look, e.g. dafeiyu-pixel)
+  hatch: (characterId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { characterId, name, localAbilities, space }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
   // Touch a body part: a zone id ('head', 'chest', …) or { x, y } in the sprite's visible box (0..1).
   touch: (target) => ipcRenderer.invoke('touch', target === undefined ? null : target),
@@ -27,13 +28,16 @@ contextBridge.exposeInMainWorld('pet', {
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // per-character settings: `species` is whose (⋯ → 角色列表 → her page); left out = the current character
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
-  setAppearance: (id, species) => ipcRenderer.invoke('set-appearance', { id, species }),
   setModel: (key, species) => ipcRenderer.invoke('set-model', { key, species }),
   refreshModels: () => ipcRenderer.invoke('refresh-models'),
   setSystemRole: (text, species) => ipcRenderer.invoke('set-system-role', { text, species }),
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   importPack: () => ipcRenderer.invoke('import-pack'),
   removePack: (id) => ipcRenderer.invoke('remove-pack', { id }),
+  // 下载角色: the characters that do not ship with the app (core/catalog.js)
+  downloadCharacter: (id) => ipcRenderer.invoke('catalog-download', { id }),
+  cancelDownload: (id) => ipcRenderer.invoke('catalog-cancel', { id }),
+  removeDownload: (id) => ipcRenderer.invoke('catalog-remove', { id }),
   // her own Live2D model: import (file dialog in main), then its picture drawn here, and her size in the window
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
@@ -63,6 +67,8 @@ contextBridge.exposeInMainWorld('pet', {
   switchCharacter: (id, name) => ipcRenderer.invoke('switch-character', { id, name }),
   // dsh-pet effects: behaviour switches, visitors (同屏伙伴), pets knocking into each other, local API
   setPrefs: (patch) => ipcRenderer.invoke('set-prefs', patch),
+  setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
+  vrmLibraryInfo: () => ipcRenderer.invoke('vrm-library-info'),
   // 语音 (core/tts.js): synthesise a line in main (keys never come here), stop it, configure the engines
   ttsSynthesize: (text, mood) => ipcRenderer.invoke('tts-synthesize', { text, mood }),
   ttsCancel: () => ipcRenderer.send('tts-cancel'),
@@ -80,6 +86,20 @@ contextBridge.exposeInMainWorld('pet', {
     set: (patch) => ipcRenderer.invoke('set-asr', patch),
     micAccess: () => ipcRenderer.invoke('asr-mic-access'), // 'granted' | 'denied' | 'restricted' (macOS asks once)
   },
+  // 插个嘴 (core/interject.js): the unsent chat draft (only while 插个嘴 and its 聊天框 source are on), the owner's
+  // reaction to a remark ('mute' | 'like'), and the rules / records the settings UI shows
+  interject: {
+    draft: (text) => ipcRenderer.send('interject-draft', { text }),
+    feedback: (id, kind) => ipcRenderer.invoke('interject-feedback', { id, kind }),
+    rules: () => ipcRenderer.invoke('interject-rules'),
+    addRule: (rule) => ipcRenderer.invoke('interject-add-rule', { rule }),
+    deleteRule: (id) => ipcRenderer.invoke('interject-delete-rule', { id }),
+    setRule: (id, disabled) => ipcRenderer.invoke('interject-set-rule', { id, disabled }),
+    clearDecisions: () => ipcRenderer.invoke('interject-clear-decisions'),
+    decisions: (limit) => ipcRenderer.invoke('interject-decisions', { limit }),
+    set: (patch) => ipcRenderer.invoke('set-interject', patch),
+  },
+  onInterject: on('interject'),
   setVisitors: (ids) => ipcRenderer.invoke('set-visitors', { ids }),
   setApi: (opts) => ipcRenderer.invoke('set-api', opts),
   apiStatus: () => ipcRenderer.invoke('api-status'),
@@ -105,6 +125,13 @@ contextBridge.exposeInMainWorld('pet', {
   debugTray: () => ipcRenderer.invoke('debug-tray'),
   debugTrayClick: (label) => ipcRenderer.invoke('debug-tray-click', { label }),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
+  debugInterjectFlush: () => ipcRenderer.invoke('debug-interject-flush'),
+  debugInterjectResetCooldown: () => ipcRenderer.invoke('debug-interject-reset-cooldown'),
+  debugInterjectInput: (source, text) => ipcRenderer.invoke('debug-interject-input', { source, text }),
+  debugVoiceHotkey: () => ipcRenderer.invoke('debug-voice-hotkey'),
+  debugVoiceHotkeyStatus: () => ipcRenderer.invoke('debug-voice-hotkey-status'),
+  debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
+  debugHidePet: (minimize) => ipcRenderer.invoke('debug-hide-pet', { minimize }),
   onUpdate: on('update'),
   onWindowShown: on('window-shown'),
   onSay: on('say'),
@@ -114,6 +141,8 @@ contextBridge.exposeInMainWorld('pet', {
   onChatDone: on('chat-done'),
   onAffection: on('affection'),
   onSettings: on('settings'),
+  // 快捷键唤起语音对话 (main/voice-hotkey.js): { accelerator, label, source } — start listening, or stop and recognise
+  onVoiceHotkey: on('voice-hotkey'),
   onUpdateStatus: on('update-status'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
   checkUpdate: () => ipcRenderer.invoke('update-check'),

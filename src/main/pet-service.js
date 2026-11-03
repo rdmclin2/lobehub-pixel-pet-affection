@@ -11,6 +11,9 @@ const settingsLib = require('../core/settings');
 const framingLib = require('../core/framing');
 const { getSpecies, SPECIES } = require('../core/species');
 const packsLib = require('../core/packs');
+const C = require('../core/characters');
+const characterMigrate = require('../core/character-migrate');
+const Catalog = require('../core/catalog');
 const modelsLib = require('../core/models');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
@@ -19,9 +22,11 @@ const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
 const { endpointOkFor } = require('../core/tts');
 const asrLib = require('../core/asr');
+const interjectLib = require('../core/interject');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
+const adminChat = require('../core/admin-chat');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -38,20 +43,23 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, log = new chatLog.MemoryChatLog() }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
-    this.packs = packs || packsLib.loadPacks([{ dir: path.join(__dirname, '..', 'renderer', 'packs'), source: 'builtin' }]).packs;
+    // main always passes its pack store's; the default (tests) is a repo checkout with catalog/ downloaded
+    this.packs = packs || Catalog.repoPacks().packs;
     this.lh = lh;
     // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
     this.responses = responses;
     this._responsesFailedAt = 0;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
+    // 快捷键唤起语音对话: the global shortcut's state (main/voice-hotkey.js status(): ok | disabled | invalid | conflict)
+    this.hotkeyStatus = hotkeyStatus;
     this.asr = asr; // 语音输入 (core/asr.js AsrEngine): recognition runs in main; null = not available (tests)
     this.store = store;
     this.settingsStore = settingsStore;
-    this.settings = settingsStore.load();
+    this.settings = this._loadSettings();
     this.now = now;
     this.rnd = rnd;
     this.budget = budget;
@@ -73,10 +81,91 @@ class PetService extends EventEmitter {
     this._catalogError = null;
     this._catalogLoading = null;
     this._localAgent = null; // the agent the last device check bound
+    // 插个嘴 (core/interject.js): listens only to the inputs fed in through interjectInput(); off by default
+    this.interjector = new interjectLib.Interjector({
+      decide: (req) => this.lh.decide(req),
+      speak: (req) => this._interjectSpeak(req),
+      config: () => this.settings.interject,
+      pet: () => (this.pet ? { ...this._c() } : null),
+      busy: () => this.busy,
+      now: () => this.now(),
+      rnd: () => this.rnd(),
+      store: interjectStore,
+      ...(timers ? { timers } : {}),
+      onEvent: (e) => (e.type === 'error' ? this.emit('error', e.error) : this.emit('interject', e)),
+    });
   }
 
   _c() {
     return cur(this.pet);
+  }
+
+  // settings.json, migrated once to 「每个形象就是一个角色」 (core/character-migrate.js, T-2764): the file as it
+  // was is kept as settings.characters.bak.json. Idempotent: a migrated file comes back unchanged.
+  _loadSettings() {
+    const raw = this.settingsStore.load();
+    const r = characterMigrate.migrateSettings(raw, this.packs);
+    if (!r.changed) return raw;
+    if (this.settingsStore.backupOnce) this.settingsStore.backupOnce('settings.characters.bak.json');
+    const s = settingsLib.normalizeSettings(r.settings);
+    this.settingsStore.save(s);
+    return s;
+  }
+
+  // ---- 角色 (T-2764, core/characters.js) ------------------------------------------------------------------
+  // Every look is a character of its own; her base (pet.speciesId) is the persona whose agent, affection and
+  // chat history all of the base's characters share. `_cid()`: the character on the desktop now — the saved
+  // one, or her base's default when that one is gone or is an 18+ look with adult content off (the choice is
+  // kept for when it can be shown again).
+  _cid() {
+    if (!this.pet) return null;
+    const base = this.pet.speciesId;
+    const want = C.characterById(this.packs, this.pet.characterId);
+    if (want && want.base === base && C.available(want, this._adultOk())) return want.id;
+    return C.defaultCharacter(this.packs, base, this._adultOk());
+  }
+
+  // A character id as the UI or an old caller gives it: a character, or an old per-persona id (`claude`, her
+  // default character — her current one when she is the companion). null = unknown.
+  _charOf(id) {
+    if (id === undefined || id === null || id === '') return this._cid();
+    if (typeof id !== 'string') return null;
+    const e = C.characterById(this.packs, id);
+    if (e) return e.id;
+    if (Object.hasOwn(SPECIES, id)) return this.pet && this.pet.speciesId === id ? this._cid() : C.defaultCharacter(this.packs, id, this._adultOk());
+    return null;
+  }
+
+  _baseOf(id) {
+    return C.baseOf(this.packs, id);
+  }
+
+  // `id`'s wardrobe as "the pet" core/outfits.js takes: her base's state (stage, unlocks) with this character's
+  // own outfit. `put` writes it back after outfits.equip / enforce changed it; the flat fields on the base's
+  // state mirror the current character's (what an older app version would read).
+  _wearer(id, c = this.pet && this.pet.characters[this._baseOf(id)]) {
+    if (!c) return null;
+    const w = (c.wardrobes && c.wardrobes[id]) || {};
+    return { ...c, equippedOutfit: w.equippedOutfit || outfits.DEFAULT_OUTFIT, lastSafeOutfit: w.lastSafeOutfit || outfits.DEFAULT_OUTFIT };
+  }
+
+  _keepWardrobe(id, w) {
+    const c = this.pet && this.pet.characters[this._baseOf(id)];
+    if (!c || !w) return;
+    c.wardrobes = { ...(c.wardrobes || {}), [id]: { equippedOutfit: w.equippedOutfit, lastSafeOutfit: w.lastSafeOutfit } };
+    if (id === this._cid()) {
+      c.equippedOutfit = w.equippedOutfit;
+      c.lastSafeOutfit = w.lastSafeOutfit;
+    }
+  }
+
+  // outfits.enforceOutfit for character `id` (default: the current one), saved into her wardrobe.
+  _enforce(id = this._cid()) {
+    const w = this._wearer(id);
+    if (!w) return { changed: false };
+    const r = outfits.enforceOutfit(w, this.settings, this._look(id));
+    this._keepWardrobe(id, w);
+    return r;
   }
 
   // The runtime rules that come from settings: 好感度 (daily cap, decay) and 主动行为's hourly LLM budget.
@@ -88,19 +177,18 @@ class PetService extends EventEmitter {
   // Load the save; a growth-system save (xp / stage) is backed up once and migrated (design 6).
   init() {
     const t = this.now();
-    this.settings = this.settingsStore.load();
+    this.settings = this._loadSettings();
     this._applyRules();
     const raw = this.store.load();
-    const { pet, migrated, from, remapped } = migratePet(raw, t);
+    const { pet: loaded, migrated, from, remapped } = migratePet(raw, t);
     if (migrated) this.store.backupOnce(`pet.v${from}.bak.json`);
     if (remapped) this.store.backupOnce('pet.retired.bak.json');
+    // 「每个形象就是一个角色」 (T-2764): the companion she was + the 形象包 she wore → one character id, and her
+    // outfit into the wardrobe of each of her characters (core/character-migrate.js). Once, with a backup.
+    const cm = characterMigrate.migratePet(loaded, { packs: this.packs, appearance: this.settings.legacyAppearance || {} });
+    if (cm.changed && !migrated) this.store.backupOnce('pet.characters.bak.json');
+    const pet = cm.pet;
     this.pet = pet;
-    // looks chosen for characters that no longer exist are dropped
-    const ap = this.settings.appearance || {};
-    if (Object.keys(ap).some((k) => !SPECIES[k])) {
-      this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: Object.fromEntries(Object.entries(ap).filter(([k]) => SPECIES[k])) });
-      this.settingsStore.save(this.settings);
-    }
     // told once, on the first heartbeat / warmup: who took over a retired character
     this._retiredNotice = remapped && pet ? { from: remapped, to: pet.speciesId } : null;
     // A pet's agent is reached in the space it was created in (no `space`: an older save, lh's default).
@@ -109,8 +197,8 @@ class PetService extends EventEmitter {
       // only the current character lives on while the app is closed; the others stay where they were
       const { decay } = state.tick(this._c(), t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
-      const { changed } = outfits.enforceOutfit(this._c(), this.settings, this._look(this.pet.speciesId));
-      if (migrated || remapped || decay > 0 || changed) this.store.save(this.pet);
+      const { changed } = this._enforce();
+      if (migrated || remapped || cm.changed || decay > 0 || changed) this.store.save(this.pet);
       if (decay > 0) this._pendingDecay = decay;
     }
     return this.view();
@@ -126,17 +214,18 @@ class PetService extends EventEmitter {
     return !!(this.settings.ageConfirmed && this.settings.adultContent);
   }
 
-  // The wardrobe context of the look `speciesId` wears: { adult, outfits } when it is an 18+ pack (its
-  // outfits, adult ones included, replace her file's list), else null.
-  _look(speciesId) {
-    const p = this.packs.get(packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()));
+  // The wardrobe context of character `id` (default: the current one): { adult, only, outfits } of her own pack
+  // (its outfits are her whole wardrobe, T-2752), her clips: daily only; null only when she has no pack.
+  _look(id = this._cid()) {
+    const e = C.characterById(this.packs, id);
+    if (!e) return null;
     // a VRM pack whose model license forbids sexual usage is never an 18+ look (core/packs.js lookContext)
-    return packsLib.lookContext(p);
+    return packsLib.lookContextOf(this.packs, e.clips ? C.clipsId(e.base) : e.packId, e.base);
   }
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, pendingRestart: this.pendingRestart() };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, pendingRestart: this.pendingRestart() };
   }
 
   // Restart-only settings (settings.RESTART_KEYS) changed since this process started: they apply after a restart.
@@ -145,38 +234,52 @@ class PetService extends EventEmitter {
     return settingsLib.RESTART_KEYS.filter((k) => at(this._bootSettings, k) !== at(this.settings, k));
   }
 
-  // `pet` is the current character as one flat object (owner-level fields + her entry), as before schema 3.
-  // `characters` lists the roster with who has been met, under which name, and her affection, plus what
-  // ⋯ → 角色列表 → her page configures for her: her look (thumbnail), pack, model and affection progress.
+  // `pet` is the current character as one flat object (owner-level fields + her base's entry + her own
+  // wardrobe), as before schema 3; `pet.characterId` is who she is, `pet.speciesId` her base (persona).
+  // `characters` lists the roster — one row per character (T-2764: every look is one) — with whether her base
+  // has been met, under which name, and her affection, plus what ⋯ → 角色列表 → her page configures for her:
+  // her look (thumbnail), her pack, model and affection progress.
   view() {
     if (!this.pet) return null;
     const c = this._c();
     const sp = getSpecies(this.pet.speciesId);
+    const cid = this._cid();
+    const me = C.characterById(this.packs, cid);
+    const w = this._wearer(cid, c);
     const { characters, retiredCharacters, ...shared } = this.pet;
     const adult = this._adult();
+    const worn = outfits.wornOutfit(w, this.settings, this._look(cid));
     return {
-      pet: { ...shared, ...c },
+      pet: { ...shared, ...c, characterId: cid, equippedOutfit: w.equippedOutfit, lastSafeOutfit: w.lastSafeOutfit },
       status: state.currentStatus(c),
       affection: state.toAffectionProgress(c, { adult }),
       topics: dialogue.listTopics(c, this.settings),
       // a locked outfit's VRM model is not handed out (only its picture): nothing to load before it unlocks
-      outfits: outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)).map((o) => ({ ...o, look: packsLib.lockedLook(this.lookFor(this.pet.speciesId, o.id), o.locked) })),
-      outfit: outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId)),
-      look: this.lookFor(this.pet.speciesId, outfits.wornOutfit(c, this.settings, this._look(this.pet.speciesId))),
-      appearance: this.appearanceView(this.pet.speciesId),
+      outfits: outfits.listOutfits(w, this.settings, this._look(cid)).map((o) => ({ ...o, look: packsLib.lockedLook(this.lookFor(cid, o.id), o.locked) })),
+      outfit: worn,
+      look: this.lookFor(cid, worn),
+      character: me ? this._characterInfo(me) : null,
       model: this.modelView(),
       settings: this.settingsView(),
       species: { id: sp.id, name: sp.name, nameZh: sp.nameZh, vendor: sp.vendor, title: sp.title, accent: sp.accent },
-      characters: Object.values(SPECIES).map((x) => {
-        const e = characters[x.id];
-        const ad = adultAllowed(this.settings, x.id);
+      // her saved character is one that has to be downloaded first (it no longer ships with the app): she is
+      // shown as her default one meanwhile and becomes it again once it is downloaded
+      pendingDownload: this._pendingDownload(),
+      characters: C.listCharacters(this.packs, { adultOk: this._adultOk() }).map((x) => {
+        const b = SPECIES[x.base];
+        const e = characters[x.base];
+        const ad = adultAllowed(this.settings, x.base);
         const met = e ? { name: e.name, affection: e.affection, stage: stageName(e.relStage, ad), progress: state.toAffectionProgress(e, { adult: ad }) } : null;
+        const xw = e ? this._wearer(x.id, e) : null;
+        const look = this.lookFor(x.id, xw ? outfits.wornOutfit(xw, this.settings, this._look(x.id)) : outfits.DEFAULT_OUTFIT);
         return {
-          id: x.id, nameZh: x.nameZh, vendor: x.vendor, title: x.title, accent: x.accent, current: x.id === sp.id, met,
-          look: this.lookFor(x.id, e ? outfits.wornOutfit(e, this.settings, this._look(x.id)) : outfits.DEFAULT_OUTFIT),
-          appearance: this.appearanceView(x.id),
-          model: this.modelView(x.id),
-          systemRole: this.settings.systemRoles[x.id] || '',
+          ...this._characterInfo(x),
+          vendor: b.vendor, title: b.title, accent: b.accent, current: x.id === cid, met,
+          look,
+          // 取景: whether what she wears can be shown 半身 (core/framing.js SUPPORTED_KINDS: VRM, Live2D, sprites)
+          framingSupported: framingLib.resolveFraming(this.settings, x.id, look).supported,
+          model: this.modelView(x.base),
+          systemRole: this.settings.systemRoles[x.base] || '',
           framing: this.settings.framings[x.id] || 'auto',
         };
       }),
@@ -339,8 +442,15 @@ class PetService extends EventEmitter {
 
   // Login (if needed) -> create the LobeHub agent in the chosen space -> create local pet state.
   // `space`: { workspaceId: null (personal, the default) | id, name, switchToPersonal }.
-  async hatch({ speciesId, name, localAbilities = false, space = null, onStep = () => {}, onLoginPrompt = () => {} }) {
+  // `characterId`: who she is (a character, T-2764); an old caller's `speciesId` means her base's default one.
+  async hatch({ characterId, speciesId, name, localAbilities = false, space = null, onStep = () => {}, onLoginPrompt = () => {} }) {
     if (this.pet) throw new Error('A pet already exists');
+    const want = characterId || speciesId;
+    const pick = C.characterById(this.packs, want);
+    const base = pick ? pick.base : Object.hasOwn(SPECIES, want) ? want : null;
+    if (!base) throw new Error(`Unknown character: ${want}`);
+    const chosen = pick && C.available(pick, this._adultOk()) ? pick.id : C.defaultCharacter(this.packs, base, this._adultOk());
+    speciesId = base;
     const sp = getSpecies(speciesId);
     const petName = (name || '').trim().slice(0, 12) || sp.nameZh;
     const workspaceId = (space && space.workspaceId) || null;
@@ -357,7 +467,8 @@ class PetService extends EventEmitter {
       }
     }
     const first = await this._createCharacter(speciesId, petName);
-    this.pet = state.createSave(first, this.now());
+    this.pet = { ...state.createSave(first, this.now()), characterId: chosen, characterModel: characterMigrate.CHARACTER_MODEL };
+    first.wardrobes = { [chosen]: { equippedOutfit: first.equippedOutfit, lastSafeOutfit: first.lastSafeOutfit } };
     this.pet.space = { workspaceId, name: workspaceId ? String((space && space.name) || workspaceId).slice(0, 60) : '个人空间' };
     this.pet.owner = user.name;
     this._save();
@@ -412,7 +523,19 @@ class PetService extends EventEmitter {
   }
 
   async _doEnsureReady() {
-    const p = this._c();
+    await this._ensurePersona(this._c());
+    // the model follows the character: her pick or default among her own vendor's models
+    try {
+      await this.refreshModels();
+      await this._applyModel();
+    } catch (e) {
+      this.emit('error', e); // keep the agent's current model; retried on the next turn
+    }
+    if (this.pet.localAbilities) await this._verifyLocal();
+  }
+
+  // Her agent's system role follows her persona file, name and the owner's settings (updated once per change).
+  async _ensurePersona(p) {
     const key = persona.personaKey(p, this.settings);
     if (p.personaVersion !== persona.PERSONA_VERSION || p.personaKey !== key) {
       try {
@@ -424,14 +547,6 @@ class PetService extends EventEmitter {
         this.emit('error', e); // carry on with the old prompt; retried on the next turn
       }
     }
-    // the model follows the character: her pick or default among her own vendor's models
-    try {
-      await this.refreshModels();
-      await this._applyModel();
-    } catch (e) {
-      this.emit('error', e); // keep the agent's current model; retried on the next turn
-    }
-    if (this.pet.localAbilities) await this._verifyLocal();
   }
 
   // ---- the model (⋯ → 角色列表 → her page → 模型) ----------------------------------------------------------
@@ -474,21 +589,24 @@ class PetService extends EventEmitter {
     return { loaded: !!this._catalog, error: this._catalogError, options, current: current ? current.key : null, applied: (e && e.modelApplied) || null, chosen: !!(current && current.key === this.settings.models[id]) };
   }
 
-  // The packs a character can wear and the one she wears (settings.appearance[id], or her default).
-  appearanceView(speciesId) {
-    return { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()), options: packsLib.packsFor(this.packs, speciesId, this._adultOk()) };
+  // What the UI shows of one character: who she is (her name 「大肥鱼 · 像素」 and her base's), her kind and her
+  // own pack as the 外观 card shows it (packsLib.packOption: picture, author, license, VRM terms).
+  _characterInfo(e) {
+    const b = SPECIES[e.base];
+    const p = e.packId ? this.packs.get(e.packId) : null;
+    return { id: e.id, base: e.base, name: e.name, label: e.label, nameZh: b.nameZh, kind: e.kind, kindLabel: e.kindLabel, adult: e.adult, source: e.source, pack: p ? packsLib.packOption(p) : e.clips ? packsLib.clipsOption(e.base) : null };
   }
 
-  // The character a per-character setting is for: `speciesId` when given, else the current one.
-  _target(speciesId) {
-    if (speciesId === undefined || speciesId === null || speciesId === '') return this.pet.speciesId;
-    return typeof speciesId === 'string' && Object.hasOwn(SPECIES, speciesId) ? speciesId : null;
+  // The base (persona) a per-persona setting (model, 个性化设定, 好感度) is for: that of character `id` (an old
+  // per-persona id is itself), else the current one's.
+  _target(id) {
+    if (id === undefined || id === null || id === '') return this.pet.speciesId;
+    return this._baseOf(id);
   }
 
   // Point the agent at the model the current character should run on, once per change.
-  async _applyModel() {
-    if (!this.pet || !this._catalog) return;
-    const c = this._c();
+  async _applyModel(c = this.pet && this._c()) {
+    if (!this.pet || !this._catalog || !c) return;
     const target = modelsLib.pick(c.speciesId, this._modelOptions(c.speciesId), this.settings.models[c.speciesId]);
     if (!target || c.modelApplied === target.key) return;
     await this.lh.updateAgent({ agentId: c.agentId, model: target.id, provider: target.providerId });
@@ -512,12 +630,13 @@ class PetService extends EventEmitter {
     return { ok: true, view: this.view() };
   }
 
-  // her page in the settings window → 外观 → 取景: `speciesId`'s own framing ('full' | 'half'), or 'auto' to follow
-  // her pack's default and then the global prefs.framing (core/framing.js resolveFraming); kept in settings.framings.
-  // Every pet window gets the new settings at once and re-frames her live (renderer/vrm.js setFraming).
-  setFraming(mode, speciesId) {
+  // her page in the settings window → 外观 → 取景: character `characterId`'s own framing ('full' | 'half'), or 'auto'
+  // to follow her pack's default and then the global prefs.framing (core/framing.js resolveFraming); kept in
+  // settings.framings per character (each look of hers on its own, T-2764). Every pet window gets the new
+  // settings at once and re-frames her live (renderer/vrm.js setFraming).
+  setFraming(mode, characterId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const id = this._target(speciesId);
+    const id = this._charOf(characterId);
     if (!id) return { ok: false, reason: 'unknown-character' };
     if (mode !== 'auto' && !framingLib.isFraming(mode)) return { ok: false, reason: 'invalid' };
     const { [id]: _old, ...rest } = this.settings.framings;
@@ -661,12 +780,41 @@ class PetService extends EventEmitter {
   // name, affection and needs. One met before is back right away (her needs stood still while she was away);
   // a new one gets her own agent first (`name`: what the owner calls her, default her nameZh, as at hatch),
   // then says hello. If that fails, the current character stays and nothing is stored.
-  async switchCharacter(speciesId, { name } = {}) {
+  // T-2764: `id` is a character (one look). Another look of the companion's own base is the same girl in
+  // another form — same agent, chat, name and affection — so she changes at once and in silence; her own
+  // wardrobe (what she last wore as that character) comes with her. An old per-persona id means that base's
+  // current character (her default one when she is not the companion).
+  async switchCharacter(id, { name } = {}) {
     if (!this.pet) return { ok: false, reason: 'empty' };
+    // who she may be is decided first: an unknown or (adult content off) 18+ character is refused for that reason,
+    // never with a passing 'busy' that tells the owner to try again later (T-2787)
+    const e = C.characterById(this.packs, id) || (Object.hasOwn(SPECIES, id) ? C.characterById(this.packs, this._charOf(id)) : null);
+    if (!e) {
+      // a catalog character not downloaded yet (内置与下载): download her first
+      const d = Catalog.entry(id);
+      if (d) return { ok: false, reason: d.adult && !this._adultOk() ? 'adult' : 'not-downloaded', name: d.name };
+      return { ok: false, reason: 'unknown' };
+    }
+    if (!C.available(e, this._adultOk())) return { ok: false, reason: 'adult' };
     if (this.busy) return { ok: false, reason: 'busy' };
-    if (!SPECIES[speciesId]) return { ok: false, reason: 'unknown' };
-    if (speciesId === this.pet.speciesId) return { ok: true, view: this.view(), same: true };
-    const from = this.pet.speciesId;
+    const from = this._cid();
+    if (e.id === from) {
+      // shown as her default while her saved look waits to be downloaded: choosing the default keeps it
+      if (this.pet.characterId !== e.id) {
+        this.pet.characterId = e.id;
+        this._save();
+      }
+      return { ok: true, view: this.view(), same: true };
+    }
+    const speciesId = e.base;
+    if (speciesId === this.pet.speciesId) {
+      this.pet.characterId = e.id;
+      // her wardrobe as this character applies: an outfit her pack has no art for is taken off (T-2752)
+      this._enforce(e.id);
+      this._dropVisitorsOf(speciesId);
+      this._save();
+      return { ok: true, view: this.view(), from, created: false, sameBase: true };
+    }
     const sp = getSpecies(speciesId);
     let next = this.pet.characters[speciesId];
     const created = !next;
@@ -699,15 +847,25 @@ class PetService extends EventEmitter {
     // the one leaving stops here; her needs wait for her return
     state.tick(this._c(), this.now());
     this.pet.speciesId = speciesId;
-    outfits.enforceOutfit(next, this.settings, this._look(speciesId));
-    // she cannot visit herself: the new companion leaves the visitors (同屏伙伴)
-    if (this.settings.visitors.includes(speciesId)) this.setVisitors(this.settings.visitors.filter((v) => v !== speciesId));
+    this.pet.characterId = e.id;
+    // her pack's wardrobe applies on arrival: an outfit it has no art for is taken off and saved (T-2752)
+    const { changed: outfitChanged } = this._enforce(e.id);
+    if (!created) this._save(); // saved below for a new one
+    void outfitChanged;
+    // she cannot visit herself (in any of her looks): the new companion leaves the visitors (同屏伙伴)
+    this._dropVisitorsOf(speciesId);
     if (created) {
       this._save();
       if (this.pet.localAbilities) await this._verifyLocal({ force: true });
       await this._speak('met');
     } else this._say(sp.fallback.greet[0], 'fallback', 'switch');
     return { ok: true, view: this.view(), from, created };
+  }
+
+  // 同屏伙伴 who are the companion herself in another look go home.
+  _dropVisitorsOf(base) {
+    const keep = this.settings.visitors.filter((v) => this._baseOf(v) !== base);
+    if (keep.length !== this.settings.visitors.length) this.setVisitors(keep);
   }
 
   _tools() {
@@ -750,9 +908,10 @@ class PetService extends EventEmitter {
   //   once: the reply is not lost, the bubble starts over with that one (no doubled text), and the line is said
   //   and saved to 聊天记录 once, by the caller, after this returns.
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
-  async _runTurn(args, stream = null) {
+  // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
+  async _runTurn(args, stream = null, { plain = false } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
-    const tools = this._tools();
+    const tools = plain ? [] : this._tools();
     if (tools.length) {
       if (this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
       try {
@@ -835,6 +994,8 @@ class PetService extends EventEmitter {
     this.busy = true;
     this._cancelRequested = false;
     this.emit('thinking', true);
+    // 插个嘴: a message to her ends whatever was waiting, and may be the owner's reaction to her last remark
+    if (origin === 'user') this.interjector.userChatted(clean);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
     const stream = this._openStream('chat', turn);
     try {
@@ -880,6 +1041,271 @@ class PetService extends EventEmitter {
     }
   }
 
+  // ---- 设置窗口 → 聊天 (core/admin-chat.js, docs/admin-chat.md) ------------------------------------------------
+  // One character is one conversation: her own agent and topic, her 聊天记录. Any character met before can be
+  // talked to here, not only the companion on the desktop; the desktop shows nothing of it (no bubble), but
+  // the rounds are in her history there and her agent remembers them.
+
+  // The left column: every character, with how her conversation stands.
+  chatCharacters() {
+    if (!this.pet) return { ok: true, characters: [] };
+    const all = this.log.list();
+    return {
+      ok: true,
+      busy: this.busy ? (this._consoleTurn ? this._consoleTurn.speciesId : 'desktop') : null,
+      characters: Object.values(SPECIES).map((x) => {
+        const e = this.pet.characters[x.id];
+        const conv = e ? adminChat.conversationOf(all, x.id) : [];
+        const last = conv[conv.length - 1] || null;
+        const lastText = last ? (last.text || '').replace(/\s+/g, ' ').trim() : '';
+        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
+      }),
+    };
+  }
+
+  // Her conversation, a page at a time (newest last): raw 聊天记录 messages; main turns them into views.
+  chatHistory(speciesId, { before = null, limit } = {}) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character' };
+    const page = adminChat.historyPage(adminChat.conversationOf(this.log.list(), id), { before, limit });
+    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!(this._consoleTurn && this._consoleTurn.speciesId === id), ...page };
+  }
+
+  // Stop the reply the chat page is waiting for (only its own turn: the desktop's is stopped there).
+  chatAbort(speciesId) {
+    const t = this._consoleTurn;
+    if (!t || (speciesId && t.speciesId !== speciesId)) return { ok: true, aborted: false };
+    this.cancel();
+    return { ok: true, aborted: true, speciesId: t.speciesId };
+  }
+
+  _logAs(speciesId, msg) {
+    const c = this.pet.characters[speciesId];
+    const n = (c && c.topicEpoch) || 0;
+    try {
+      return this.log.append({ speciesId, origin: 'user', kind: 'chat', via: 'console', ...(n ? { topicEpoch: n } : {}), ...msg }, this.now());
+    } catch (e) {
+      this.emit('error', e);
+      return { id: `x${this.now().toString(36)}`, at: this.now(), speciesId, ...msg };
+    }
+  }
+
+  // The topic this turn continues (docs/admin-chat.md §2): one that has run for CONTEXT_MS is put aside and
+  // the turn opens a fresh one. `conv`: her conversation so far. -> { fresh, startedAt }
+  _rollTopic(c, conv, t) {
+    const span = adminChat.CONTEXT_MS;
+    if (c.topicId) {
+      let meta = c.topicMeta && c.topicMeta.id === c.topicId ? c.topicMeta : null;
+      if (!meta) {
+        // a topic from before this rule (or opened on the desktop): it started no later than the first round of
+        // the last stretch without a CONTEXT_MS pause; with no round in the last CONTEXT_MS it is put aside
+        const lastAt = conv.length ? conv[conv.length - 1].at : 0;
+        if (lastAt && t - lastAt <= span) {
+          let first = conv.length - 1;
+          while (first > 0 && conv[first].at - conv[first - 1].at <= span) first--;
+          meta = { id: c.topicId, startedAt: conv[first].at };
+        } else meta = { id: c.topicId, startedAt: 0 };
+        c.topicMeta = meta;
+      }
+      if (t - meta.startedAt <= span) return { fresh: false, startedAt: meta.startedAt };
+      c.pastTopicIds = [...(Array.isArray(c.pastTopicIds) ? c.pastTopicIds : []), c.topicId].slice(-50);
+      c.topicId = null;
+      c.topicMeta = null;
+    }
+    return { fresh: true, startedAt: t };
+  }
+
+  // One round from the chat page with `speciesId`. `images`: pictures already checked and saved by main
+  // ([{ path, ref }], core/admin-chat.js ChatImages). onDelta({ speciesId, turnId, text }) as the reply is written.
+  // -> { ok, speciesId, turnId, userMessage, message } | { ok: false, reason, error, userMessage?, message? }
+  async chatAs(speciesId, { text, images = [] } = {}, { onDelta = () => {} } = {}) {
+    if (!this.pet) return { ok: false, reason: 'empty', error: '还没有领养桌宠' };
+    const id = this._target(speciesId);
+    if (!id) return { ok: false, reason: 'unknown-character', error: '没有这个角色' };
+    const c = this.pet.characters[id];
+    if (!c) return { ok: false, reason: 'not-met', error: '还没和她见过面：先在「角色」里和她初次见面，再来聊天' };
+    const clean = String(text || '').trim();
+    const imgs = (Array.isArray(images) ? images : []).filter((x) => x && x.path).slice(0, adminChat.MAX_IMAGES);
+    if (!clean && !imgs.length) return { ok: false, reason: 'empty', error: '消息是空的' };
+    if (clean.length > adminChat.MAX_TEXT) return { ok: false, reason: 'too-long', error: `一条消息最多 ${adminChat.MAX_TEXT} 个字符` };
+    if (this.busy) return { ok: false, reason: 'busy', error: this._consoleTurn ? '上一条消息还在回复中' : '桌宠那边正在说话，等她说完再发' };
+    const sp = getSpecies(id);
+    const isCur = id === this.pet.speciesId;
+    this.busy = true;
+    this._cancelRequested = false;
+    const turnId = `t${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`;
+    this._consoleTurn = { speciesId: id, turnId };
+    if (isCur) this.emit('thinking', true);
+    let userMessage = null;
+    let partial = '';
+    let modelKey = null;
+    try {
+      // the model she runs on: hers, among her vendor's (the same pick as her page → 模型)
+      try {
+        await this.refreshModels();
+      } catch { /* keep the agent's model */ }
+      const target = modelsLib.pick(id, this._modelOptions(id), this.settings.models[id]);
+      modelKey = target ? target.key : c.modelApplied || null;
+      if (imgs.length && target && target.vision === false) return { ok: false, reason: 'no-vision', error: `「${target.label}」看不了图片：在模型里换一个标着「视觉」的，或者先移除图片` };
+      const t = this.now();
+      const conv = adminChat.conversationOf(this.log.list(), id);
+      userMessage = this._logAs(id, { role: 'user', turnId, text: clean, ...(imgs.length ? { attachments: { images: imgs.length, refs: imgs.map((x) => x.ref).filter(Boolean) } } : {}) });
+      this.emit('chat-log', { speciesId: id });
+      await this._ensurePersona(c);
+      try {
+        await this._applyModel(c);
+      } catch (e) {
+        this.emit('error', e);
+      }
+      this._throwIfCanceled();
+      const roll = this._rollTopic(c, conv, t);
+      // 重新开始话题 (newTopic) asked for a clean start: nothing from before it is carried over
+      const epoch = c.topicEpoch || 0;
+      const recent = roll.fresh ? adminChat.recentRounds(conv.filter((m) => (Number(m.topicEpoch) || 0) === epoch), t) : [];
+      // what is not in the model's context any more: before the carried-over rounds, or before this topic began
+      const cutoff = roll.fresh ? (recent.length ? recent[0].at : t) : roll.startedAt;
+      const recall = adminChat.wantsRecall(clean) ? adminChat.pickRecall(conv.filter((m) => m.at < cutoff), clean) : [];
+      if (imgs.length) {
+        const fileIds = [];
+        for (const img of imgs) fileIds.push(await this.lh.uploadFile(img.path));
+        if (!c.topicId) {
+          c.topicId = await this.lh.createTopic(c.agentId, c.name);
+          c.topicMeta = { id: c.topicId, startedAt: t };
+        }
+        const mid = await this.lh.createUserMessage({ agentId: c.agentId, topicId: c.topicId, content: clean || '（发了一张图片）' });
+        await this.lh.addFilesToMessage(mid, fileIds);
+      }
+      this._throwIfCanceled();
+      const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      const stream = {
+        onDelta: (_chunk, soFar) => {
+          if (this._cancelRequested) return;
+          const shown = contentGuard.checkReply(soFar).ok ? adminChat.answerOnly(memes.streamingText(soFar), { streaming: true }) : '';
+          if (shown === partial) return;
+          partial = shown;
+          try {
+            onDelta({ speciesId: id, turnId, text: shown });
+          } catch { /* a display callback must not cost the turn */ }
+        },
+        restart: () => {
+          partial = '';
+          try {
+            onDelta({ speciesId: id, turnId, text: '', restart: true });
+          } catch { /* as above */ }
+        },
+      };
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true });
+      if (res.topicId && res.topicId !== c.topicId) {
+        c.topicId = res.topicId;
+        c.topicMeta = { id: res.topicId, startedAt: t };
+      }
+      let reply = adminChat.answerOnly(memes.extractMeme(res.text, sp).text || res.text);
+      if (!reply) throw Object.assign(new Error('Agent produced no answer'), { code: 'ENOREPLY' });
+      const g = contentGuard.checkReply(reply);
+      if (!g.ok) {
+        this.emit('error', Object.assign(new Error(`reply blocked by content guard: ${g.category}`), { code: 'ECONTENT' }));
+        reply = contentGuard.refusalLine(sp);
+      }
+      c.lastSpokeAt = this.now();
+      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}) });
+      // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
+      let affection = null;
+      if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length ? 2 : 0) }).affection;
+      this._save();
+      if (affection) this._reportAffection(affection);
+      this.emit('update', this.view());
+      return { ok: true, speciesId: id, turnId, userMessage, message, affection };
+    } catch (e) {
+      const canceled = e.code === 'ECANCELED' || this._cancelRequested;
+      if (!canceled) this.emit('error', e);
+      const error = canceled ? '已停止' : adminChat.readableError(e);
+      const message = userMessage ? this._logAs(id, { role: 'pet', turnId, text: canceled ? partial : '', status: canceled ? 'canceled' : 'error', ...(canceled ? {} : { error }), ...(modelKey ? { model: modelKey } : {}) }) : null;
+      this._save();
+      return { ok: false, reason: canceled ? 'aborted' : 'error', code: e.code || null, error, speciesId: id, turnId, userMessage, message };
+    } finally {
+      this.busy = false;
+      this._consoleTurn = null;
+      if (isCur) this.emit('thinking', false);
+      this.emit('chat-log', { speciesId: id });
+    }
+  }
+
+  // ---- 插个嘴 (core/interject.js, docs/interject.md) -------------------------------------------------------
+  // Something the owner typed / said / copied that is not addressed to her, from one of the listed sources
+  // ('chatDraft' | 'voice' | 'api' | 'clipboard'). → { accepted, reason? }; the judgement comes later (debounce).
+  interjectInput(source, text) {
+    if (!this.pet) return { accepted: false, reason: 'no-pet' };
+    return this.interjector.input(source, text);
+  }
+
+  interjectFeedback(decisionId, kind) {
+    return this.interjector.feedback(String(decisionId || ''), kind);
+  }
+
+  interjectRules() {
+    return { rules: this.interjector.listRules() };
+  }
+
+  interjectAddRule(rule) {
+    return this.interjector.addRule(rule);
+  }
+
+  interjectSetRuleDisabled(id, disabled) {
+    return this.interjector.setRuleDisabled(String(id || ''), !!disabled);
+  }
+
+  interjectClearDecisions() {
+    return this.interjector.clearDecisions();
+  }
+
+  interjectDeleteRule(id) {
+    return this.interjector.deleteRule(String(id || ''));
+  }
+
+  interjectDecisions(limit = 50) {
+    return { decisions: this.interjector.listDecisions(Number(limit) || 50), status: this.interjector.status() };
+  }
+
+  // The decision said yes: one short line in her voice through the usual bubble. The agent writes it (counted
+  // against 主动行为's hourly LLM budget like her other unprompted lines); with the budget spent or the turn
+  // failing she murmurs an offline line instead. → { ok, text, via } — ok: false when she is busy or gone.
+  async _interjectSpeak({ text, source, decisionId }) {
+    if (!this.pet || this.busy) return { ok: false, reason: 'busy' };
+    const t = this.now();
+    const c = this._c();
+    const offline = () => interjectLib.OFFLINE_LINES[Math.floor(this.rnd() * interjectLib.OFFLINE_LINES.length)];
+    const sayMeta = (shown, via, stream = null, reason = null) => {
+      const said = this._say(shown, via === 'llm' ? 'llm' : 'fallback', 'interject', reason, null, null, stream);
+      this.emit('interject', { type: 'said', decisionId, text: said, via });
+      return { ok: true, text: said, via };
+    };
+    if (!this.budget.canSpend(t)) return sayMeta(offline(), 'fallback', null, 'hourly LLM budget spent');
+    this.busy = true;
+    this._cancelRequested = false;
+    this.emit('thinking', true);
+    const stream = this._openStream('interject');
+    try {
+      this.budget.spend(t);
+      await this._ensureReady();
+      this._throwIfCanceled();
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: interjectLib.buildInterjectPrompt(persona.buildStateBlock(c, t, this.settings), { text, source }) }, stream);
+      if (res.topicId) c.topicId = res.topicId;
+      const r = sayMeta(this._guard(res.text), 'llm', stream);
+      this._closeStream(stream, true, null, r.text);
+      return r;
+    } catch (e) {
+      this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
+      if (e.code === 'ECANCELED') return { ok: false, reason: 'canceled' };
+      this.emit('error', e);
+      return sayMeta(offline(), 'fallback', null, e.message);
+    } finally {
+      this.busy = false;
+      this.emit('thinking', false);
+    }
+  }
+
   _fallback(sp, kind) {
     return fallbackLine(sp, kind, this.rnd, this._c(), this.settings);
   }
@@ -894,7 +1320,7 @@ class PetService extends EventEmitter {
   async _onStageUp(r) {
     const unlocks = {
       topics: dialogue.topicsForStages(r.unlockedStages, this._c(), this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, this._c(), this.settings, this._look(this.pet.speciesId)),
+      outfits: outfits.outfitsForStages(r.unlockedStages, this._c(), this.settings, this._look()),
     };
     this.emit('affection', { type: 'stage-up', stage: r.to, view: this.view(), unlocks });
     await this._speak('stage_up');
@@ -949,33 +1375,41 @@ class PetService extends EventEmitter {
     return this.settingsView();
   }
 
-  // How `speciesId` looks in `outfitId` with its chosen pack (null: Dafeiyu's signature clips).
-  lookFor(speciesId, outfitId) {
-    return packsLib.resolveLook(this.packs, { packId: packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()), fallbackId: packsLib.fallbackPack(speciesId), speciesId, outfitId });
+  // How character `id` looks in `outfitId`: her own pack is the only source (null: a video character's clips).
+  // An old per-persona id means that base's default character. There is no other pack to choose (T-2764).
+  lookFor(id, outfitId) {
+    const e = C.characterById(this.packs, id) || C.characterById(this.packs, Object.hasOwn(SPECIES, id) ? C.defaultCharacter(this.packs, id, this._adultOk()) : null);
+    if (!e) return null;
+    return packsLib.resolveLook(this.packs, { packId: e.clips ? C.clipsId(e.base) : e.packId, fallbackId: packsLib.fallbackPack(e.base), speciesId: e.base, outfitId });
   }
 
-  // ⋯ → 角色列表 → her page → 外观: dress `speciesId` (default: the current companion) in another pack of
-  // her species, kept in settings.appearance[speciesId].
-  setAppearance(packId, speciesId) {
-    if (!this.pet) return { ok: false, reason: 'empty' };
-    const id = this._target(speciesId);
-    if (!id) return { ok: false, reason: 'unknown-character' };
-    const p = this.packs.get(packId);
-    const clips = packId === packsLib.clipsId(id);
-    if (!clips && (!p || p.species !== id)) return { ok: false, reason: 'unknown' };
-    if (p && p.adult && !this._adultOk()) return { ok: false, reason: 'adult' };
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [id]: packId } });
-    this.settingsStore.save(this.settings);
-    // leaving an 18+ look takes its adult outfit off (back to the last all-ages one)
-    const e = this.pet.characters[id];
-    if (e) outfits.enforceOutfit(e, this.settings, this._look(id));
-    this._save();
-    return { ok: true, view: this.view() };
+  // Every character the roster lists now (core/characters.js), 18+ looks only with adult content on.
+  characterList() {
+    return C.listCharacters(this.packs, { adultOk: this._adultOk() });
   }
 
-  // After packs were imported or removed.
+  // 商店 → 角色 (core/catalog.js): every character that can be downloaded, each with `installed` (on this
+  // machine now). 18+ ones only with adult content on.
+  catalogList() {
+    return Catalog.listAll((id) => !!C.characterById(this.packs, id), { adultOk: this._adultOk() });
+  }
+
+  // { id, name, sizeLabel } when the saved character waits to be downloaded (see view().pendingDownload)
+  _pendingDownload() {
+    const want = this.pet && this.pet.characterId;
+    if (!want || C.characterById(this.packs, want)) return null;
+    const d = Catalog.entry(want);
+    if (!d || d.base !== this.pet.speciesId || (d.adult && !this._adultOk())) return null;
+    return { id: d.id, name: d.name, sizeLabel: Catalog.sizeLabel(d.bytes) };
+  }
+
+  // After packs were imported or removed. An imported pack is a new character (T-2764); when the one she is
+  // goes, she becomes her base's default character (her choice is kept in pet.characterId), and visitors that
+  // no longer exist go home.
   setPacks(packs) {
     this.packs = packs;
+    const visitors = this.settings.visitors.filter((v) => C.characterById(packs, v));
+    if (visitors.length !== this.settings.visitors.length) this.setVisitors(visitors);
     if (this.pet) this.emit('update', this.view());
   }
 
@@ -986,6 +1420,18 @@ class PetService extends EventEmitter {
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
     return { ok: true, settings: this.settingsView() };
+  }
+
+  // 外观 → VRM 姿势: the posture a VRM character stands (or sits) in; 'auto' lets the VRM director choose. Keyed
+  // by her character id, which is her pack's id.
+  setVrmPosture(packId, posture) {
+    if (typeof packId !== 'string' || !/^[a-z0-9][a-z0-9-]{2,39}$/.test(packId) || !settingsLib.VRM_POSTURES.includes(posture)) return { ok: false, reason: 'invalid' };
+    const next = { ...this.settings.vrmPostures };
+    if (posture === 'auto') delete next[packId]; else next[packId] = posture;
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, vrmPostures: next });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    return { ok: true, posture, settings: this.settingsView() };
   }
 
   // 高级设置 → 桌宠行为: roaming, click sound, voice, memes, collisions (settings.PREFS).
@@ -999,13 +1445,13 @@ class PetService extends EventEmitter {
     return { ok: true, settings: this.settingsView() };
   }
 
-  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / local / system), the fallback (system / silent),
-  // the endpoints and the local server's API / model / voice. API keys go through main.js into tts-keys.json, never into settings.json.
+  // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / elevenlabs / local / system), the fallback (system / silent),
+  // the endpoints, the local server's API / model / voice and the ElevenLabs default voice / model. API keys go through main.js into tts-keys.json, never into settings.json.
   setTts(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
     const cur = this.settings.tts;
     const picked = p.provider !== undefined;
-    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) } };
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) }, elevenlabs: { ...cur.elevenlabs, ...(p.elevenlabs && typeof p.elevenlabs === 'object' ? p.elevenlabs : {}) } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;
@@ -1038,7 +1484,10 @@ class PetService extends EventEmitter {
   // -> { ok: true, text, lang, provider, ms, fellBackFrom } | { ok: false, reason, message, provider, tried }
   async asrTranscribe(bytes, mime, { ms } = {}) {
     if (!this.asr) return { ok: false, reason: 'not-configured', message: 'ASR is not available', provider: null, tried: [] };
-    return this.asr.transcribe(bytes, mime, this.settings.asr, { ms });
+    const r = await this.asr.transcribe(bytes, mime, this.settings.asr, { ms });
+    // 插个嘴 source 'voice': the transcript (auto-sent ones are dropped again when the chat message arrives)
+    if (r && r.ok && r.text) this.interjector.input('voice', r.text);
+    return r;
   }
 
   asrCancel() {
@@ -1053,10 +1502,18 @@ class PetService extends EventEmitter {
     return this.asr.test(set, { only });
   }
 
-  // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play).
+  // 同屏伙伴: other model-chan who visit the desktop (no agent of their own; they only play). Characters (an old
+  // per-persona id: her default one); never the companion herself in another look, nor one girl twice.
   setVisitors(ids) {
     const own = this.pet ? this.pet.speciesId : null;
-    const list = (Array.isArray(ids) ? ids : []).filter((id) => SPECIES[id] && id !== own);
+    const bases = new Set(own ? [own] : []);
+    const list = [];
+    for (const raw of Array.isArray(ids) ? ids : []) {
+      const e = C.characterById(this.packs, raw) || (Object.hasOwn(SPECIES, raw) ? C.characterById(this.packs, C.defaultCharacter(this.packs, raw, this._adultOk())) : null);
+      if (!e || !C.available(e, this._adultOk()) || bases.has(e.base)) continue;
+      bases.add(e.base);
+      list.push(e.id);
+    }
     this.settings = settingsLib.normalizeSettings({ ...this.settings, visitors: list });
     this.settingsStore.save(this.settings);
     this.emit('settings', this.settingsView());
@@ -1067,9 +1524,13 @@ class PetService extends EventEmitter {
   // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
-    this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: { ...this.settings[name], ...p } });
+    const merged = { ...this.settings[name], ...p };
+    // interject.sources is the one nested object: a patch of one source keeps the others
+    if (name === 'interject' && p.sources && typeof p.sources === 'object') merged.sources = { ...this.settings.interject.sources, ...p.sources };
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: merged });
+    if (name === 'interject' && !this.settings.interject.enabled) this.interjector.cancel();
     this.settingsStore.save(this.settings);
     this._applyRules();
     this.emit('settings', this.settingsView());
@@ -1108,7 +1569,7 @@ class PetService extends EventEmitter {
       this.emit('settings', this.settingsView());
       return null;
     }
-    const r = outfits.enforceOutfit(this._c(), this.settings, this._look(this.pet.speciesId));
+    const r = this._enforce();
     this._save();
     return r.changed ? { from: r.from, to: r.to } : null;
   }
@@ -1124,19 +1585,43 @@ class PetService extends EventEmitter {
 
   // ---- wardrobe (design 5, 9.5) ---------------------------------------------------------------
   // Only an unlocked outfit the user may see can be put on; the choice is saved with the pet.
-  equipOutfit(id) {
+  // `characterId` (her page in the settings window, T-2784): put it on another character met before — saved
+  // in her own wardrobe, worn the next time she is with you; none = the current character.
+  equipOutfit(id, characterId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    const r = outfits.equipOutfit(this._c(), this.settings, String(id || ''), this._look(this.pet.speciesId));
+    // her own wardrobe (T-2764): the outfit is saved for that character, not for her other looks
+    const cid = characterId ? this._charOf(characterId) : this._cid();
+    if (!cid) return { ok: false, reason: 'unknown' };
+    const w = this._wearer(cid);
+    if (!w) return { ok: false, reason: 'not-met' };
+    const r = outfits.equipOutfit(w, this.settings, String(id || ''), this._look(cid));
     if (!r.ok) return r;
+    this._keepWardrobe(cid, w);
     this._save();
     return { ok: true, outfit: r.outfit, view: this.view() };
   }
 
+  // 衣柜 of character `id` (her page in the settings window, T-2784): her outfits as view().outfits lists the
+  // current one's — what she may wear, locked or not, which one she has on. null: her base not met yet.
+  outfitsOf(id) {
+    if (!this.pet) return null;
+    const cid = this._charOf(id);
+    const base = cid && this._baseOf(cid);
+    const e = base && this.pet.characters[base];
+    if (!e) return null;
+    const w = { speciesId: base, ...this._wearer(cid, e) };
+    const look = this._look(cid);
+    return outfits.listOutfits(w, this.settings, look).map((o) => ({ ...o, look: packsLib.lockedLook(this.lookFor(cid, o.id), o.locked) }));
+  }
+
   // The user opened the wardrobe or topic panel: its unlocked items are no longer "new".
-  markSeen(kind) {
+  // `characterId`: whose 衣柜 (her page in the settings window, T-2784); none = the current character.
+  markSeen(kind, characterId) {
     if (!this.pet || !['outfit', 'topic'].includes(kind)) return { ok: false };
-    const c = this._c();
-    const list = kind === 'outfit' ? outfits.listOutfits(c, this.settings, this._look(this.pet.speciesId)) : dialogue.listTopics(c, this.settings);
+    const cid = characterId ? this._charOf(characterId) : this._cid();
+    const c = cid && this.pet.characters[this._baseOf(cid)];
+    if (!c) return { ok: false };
+    const list = kind === 'outfit' ? outfits.listOutfits({ speciesId: this._baseOf(cid), ...this._wearer(cid, c) }, this.settings, this._look(cid)) : dialogue.listTopics(c, this.settings);
     const ids = list.filter((x) => x.isNew).map((x) => `${kind}:${x.id}`);
     if (ids.length) {
       c.seenUnlocks = [...(c.seenUnlocks || []), ...ids];
@@ -1235,6 +1720,7 @@ class PetService extends EventEmitter {
     if (lost > 0) this.emit('affection', { type: 'decay', delta: -lost, value: c.affection });
     if (events.includes('woke')) this.emit('say', { text: '哈——睡饱啦。', source: 'fallback', kind: 'woke', origin: this._logPet('哈——睡饱啦。', 'woke') });
     this._sayRetiredNotice();
+    this.interjector.tick(); // 插个嘴: a remark nobody reacted to counts as ignored
     // 主动行为 off: she still lives (needs, decay, waking up) but never speaks up on her own
     const pro = this.settings.proactive;
     if (!pro.enabled) return;
@@ -1253,6 +1739,8 @@ class PetService extends EventEmitter {
       if (k === 'speciesId' || k === 'characters') continue;
       if (SHARED_KEYS.includes(k) && k !== 'createdAt') this.pet[k] = v;
       else c[k] = v;
+      // the outfit is per character (T-2764): forcing it dresses the current one
+      if (k === 'equippedOutfit' || k === 'lastSafeOutfit') { const w = this._wearer(this._cid(), c); w[k] = v; this._keepWardrobe(this._cid(), w); }
     }
     if (typeof affection === 'number') {
       const r = state.setAffectionForTest(c, affection);
@@ -1277,7 +1765,7 @@ class PetService extends EventEmitter {
     const r = state.unlockAll(c, this.now());
     const unlocks = {
       topics: dialogue.topicsForStages(r.unlockedStages, c, this.settings),
-      outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings, this._look(id)),
+      outfits: outfits.outfitsForStages(r.unlockedStages, c, this.settings, this._look(this._charOf(speciesId))),
     };
     this._save();
     if (isCurrent && r.unlockedStages.length) setImmediate(() => this._onStageUp(r));

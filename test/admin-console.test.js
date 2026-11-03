@@ -64,8 +64,8 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 18, '18 pages under 4 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718)');
-  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'play', 'settings'], 'the rail holds four places, not every page');
+  assert.equal(navPages.length, 20, '20 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog)');
+  assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
   for (const f of schema.FIELDS) {
@@ -74,11 +74,27 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
     if (f.store === 'settings' && !f.key.includes('<id>')) assert.deepEqual(f.default, schema.at(settingsLib.normalizeSettings(null), f.key), f.key);
   }
   // sensitive ones are masked / write-only
-  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.fish', 'keys.local', 'keys.minimax']);
+  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.elevenlabs', 'keys.fish', 'keys.local', 'keys.minimax']);
   assert.deepEqual(schema.FIELDS.filter((f) => f.restart).map((f) => f.key), ['system.hardwareAcceleration']);
   // describe() is plain data for the window
   const d = JSON.parse(JSON.stringify(schema.describe()));
   assert.equal(d.fields.length, schema.FIELDS.length);
+});
+
+test('T-2787: no 形象包 wording left in the console copy (every look is a character of her own since T-2764)', () => {
+  // page titles / descriptions, nav, every field's label, card, description and option labels as the console shows them
+  const texts = [
+    ...Object.entries(schema.PAGES).flatMap(([k, p]) => [`${k}: ${p.title}`, `${k}: ${p.description || ''}`]),
+    ...schema.NAV.flatMap((g) => [g.label || '', ...g.items.map((i) => `${i.page}: ${i.label || ''}`)]),
+    ...schema.RAIL.map((r) => `${r.key}: ${r.label || ''}`),
+    ...schema.FIELDS.flatMap((f) => [`${f.key}: ${f.label}`, `${f.key}: ${f.card}`, `${f.key}: ${f.desc || ''}`, ...(f.options || []).map((o) => `${f.key}: ${o.label || ''}`)]),
+  ];
+  assert.ok(texts.length > 100, `${texts.length} strings`);
+  assert.deepEqual(texts.filter((t) => /形象包|跟随形象包|set-appearance|setAppearance/.test(t)), []);
+  // the pages that used to say it now speak of characters, outfits and 角色包
+  assert.match(schema.PAGES.characters.description, /给她换衣服/);
+  assert.match(schema.field('prefs.framing').desc, /角色包也可以自带默认取景/);
+  assert.match(schema.field('characterModel').desc, /每套形象成为一位独立角色/);
 });
 
 test('schema.validate: types, ranges, options, URLs and read-only items', () => {
@@ -177,6 +193,67 @@ test('API keys are write-only: they go to the key store hook, never into setting
   assert.equal((await admin.set('keys.openai', 'whatever-123')).ok, false, 'only the known slots');
 });
 
+test('ElevenLabs in 设置 → 朗读: engine option, its own card (端点 / 默认音色 ID / 模型 / API Key) and the checks on each', () => {
+  const provider = schema.FIELDS.find((f) => f.key === 'tts.provider');
+  assert.ok(provider.options.some((o) => o.value === 'elevenlabs' && o.label === 'ElevenLabs'));
+  assert.equal(schema.validate('tts.provider', 'elevenlabs').ok, true);
+  const card = schema.FIELDS.filter((f) => f.page === 'tts' && f.card === 'ElevenLabs');
+  assert.deepEqual(card.map((f) => [f.key, f.type]), [['tts.endpoints.elevenlabs', 'url'], ['tts.elevenlabs.voiceId', 'text'], ['tts.elevenlabs.modelId', 'select'], ['keys.elevenlabs', 'secret']]);
+  const by = Object.fromEntries(card.map((f) => [f.key, f]));
+  assert.equal(by['tts.endpoints.elevenlabs'].validator, 'tts:elevenlabs');
+  assert.match(by['tts.endpoints.elevenlabs'].desc, /留空使用.*https:\/\/api\.elevenlabs\.io/);
+  assert.match(by['tts.elevenlabs.voiceId'].desc, /Voice Library.*voice_id/);
+  assert.equal(by['tts.elevenlabs.modelId'].default, 'eleven_multilingual_v2');
+  assert.deepEqual(by['tts.elevenlabs.modelId'].options.map((o) => o.value), ['eleven_multilingual_v2', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_v3']);
+  assert.equal(by['keys.elevenlabs'].store, 'keys');
+  assert.equal(by['keys.elevenlabs'].sensitive, true);
+  assert.match(by['keys.elevenlabs'].desc, /只写入，不回显。保存后显示「已设置」。/);
+  // endpoint: https (or loopback for debugging), no credentials; empty = the official address
+  assert.deepEqual(schema.validate('tts.endpoints.elevenlabs', ''), { ok: true, value: '' });
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://el.example.com').ok, true);
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'http://el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'https://u:p@el.example.com').reason, 'bad-endpoint');
+  assert.equal(schema.validate('tts.endpoints.elevenlabs', 'ftp://el.example.com').reason, 'bad-endpoint');
+  // voice_id: letters and digits as ElevenLabs gives them; model: one of the listed ones
+  assert.deepEqual(schema.validate('tts.elevenlabs.voiceId', ' 21m00Tcm4TlvDq8ikWAM '), { ok: true, value: '21m00Tcm4TlvDq8ikWAM' });
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', '').ok, true, 'cleared');
+  assert.equal(schema.validate('tts.elevenlabs.voiceId', 'not/a voice').reason, 'pattern');
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'eleven_flash_v2_5').ok, true);
+  assert.equal(schema.validate('tts.elevenlabs.modelId', 'gpt-4o-mini-tts').reason, 'option');
+  assert.deepEqual(schema.patchFor('tts.elevenlabs.voiceId', 'abc'), { setter: 'setTts', patch: { elevenlabs: { voiceId: 'abc' } } });
+  assert.deepEqual(schema.patchFor('tts.endpoints.elevenlabs', 'https://x'), { setter: 'setTts', patch: { endpoints: { elevenlabs: 'https://x' } } });
+});
+
+test('ElevenLabs settings save through admin-set into settings.json; its key goes to the key store only', async () => {
+  const { admin, file, hooks, data } = setup();
+  assert.equal((await admin.set('tts.provider', 'elevenlabs')).ok, true);
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'https://el.example.com/')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.voiceId', '21m00Tcm4TlvDq8ikWAM')).ok, true);
+  assert.equal((await admin.set('tts.elevenlabs.modelId', 'eleven_turbo_v2_5')).ok, true);
+  const t = file().tts;
+  assert.equal(t.provider, 'elevenlabs');
+  assert.equal(t.endpoints.elevenlabs, 'https://el.example.com');
+  assert.deepEqual(t.elevenlabs, { voiceId: '21m00Tcm4TlvDq8ikWAM', modelId: 'eleven_turbo_v2_5' });
+  assert.equal((await admin.set('tts.endpoints.elevenlabs', 'http://el.example.com')).reason, 'bad-endpoint');
+  assert.equal(file().tts.endpoints.elevenlabs, 'https://el.example.com', 'a refused endpoint changes nothing');
+  const r = await admin.set('keys.elevenlabs', 'sk_el_abcdefgh12345');
+  assert.deepEqual([r.ok, r.hasKey, r.value], [true, true, undefined]);
+  assert.equal(hooks.keys.elevenlabs, 'sk_el_abcdefgh12345');
+  assert.ok(!fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes('sk_el_abcdefgh12345'));
+  assert.equal((await admin.set('keys.elevenlabs', 'has space in it')).reason, 'bad-key');
+  assert.equal((await admin.set('keys.elevenlabs', '')).ok, true, 'empty clears');
+  assert.equal(hooks.keys.elevenlabs, '');
+});
+
+test('朗读 page: the ElevenLabs card shows its engine status, and a cloud engine without a key says 未设置 Key', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
+  assert.match(src, /ElevenLabs: eng\('elevenlabs'\)/);
+  assert.match(src, /'未设置 Key'/);
+  assert.match(src, /还没设置 Key/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-settings.js'), 'utf8'), /KEY_SLOTS = new Set\(\[\.\.\.NEURAL/);
+  assert.ok(require('../src/core/tts').NEURAL.includes('elevenlabs'), 'key slot, set-tts key and ttsStatus all follow NEURAL');
+});
+
 test('admin-reset puts every listed key back to its default; read-only ones are skipped', async () => {
   const { admin, file } = setup();
   await admin.set('prefs.memes', false);
@@ -257,8 +334,12 @@ test('好感度 rules: the daily cap and the decay switch apply to scoring at on
 
 test('roster: before the first hatch every character is listed from the character files, none current', () => {
   const rows = buildRoster(null, { ttsStatus: { packs: [] } });
-  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
-  assert.ok(rows.every((r) => !r.current && !r.met));
+  // T-2764: one row per character; only the five pixel characters ship with the app (core/catalog.js), the
+  // other looks (Live2D, 旧版像素, 原版动画, 成年版 …) are downloaded first and are not characters before that
+  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'claude-pixel', 'grok-pixel', 'gemini-pixel', 'gpt-pixel']);
+  assert.deepEqual([...new Set(rows.map((r) => r.base))], ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
+  assert.ok(rows.every((r) => !r.current && !r.met && r.source === 'builtin' && r.kind === 'sprites'));
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-pixel').name, '大肥鱼 · 像素');
 });
 
 test('roster rows: name, preview, type, source, voice pack, model and the current mark', async () => {
@@ -266,9 +347,12 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   await ctx.ready;
   const settings = { ...ctx.svc.settingsView(), ttsStatus: { packs: [{ id: 'grok-minimax', name: '格萝可语音', character: 'grok', engine: 'minimax', lines: 120, builtIn: true, credit: 'MiniMax' }] } };
   const rows = buildRoster(ctx.svc.view(), settings);
-  const grok = rows.find((r) => r.id === 'grok');
+  const grok = rows.find((r) => r.id === 'grok-pixel');
   assert.equal(grok.current, true);
-  assert.equal(grok.displayName, '「小格」格萝可（xAI）');
+  assert.equal(grok.base, 'grok');
+  assert.equal(grok.displayName, '「小格」格萝可 · 像素（xAI）');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').met.name, '小格', 'her other look shares her base');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').voicePack.id, 'grok-minimax', 'so does her 语音包');
   assert.equal(grok.kind, 'sprites');
   assert.equal(grok.kindLabel, '像素');
   assert.equal(grok.source, 'builtin');
@@ -279,32 +363,38 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   assert.deepEqual(grok.voicePack, { id: 'grok-minimax', name: '格萝可语音', engine: 'minimax', engineLabel: 'MiniMax', lines: 120, builtIn: true, credit: 'MiniMax' });
   assert.equal(grok.met.name, '小格');
   assert.equal(rows.filter((r) => r.current).length, 1);
-  const fish = rows.find((r) => r.id === 'dafeiyu');
+  const fish = rows.find((r) => r.id === 'dafeiyu-pixel');
   assert.equal(fish.met, null);
   assert.equal(fish.voicePack, null);
   // switching (the admin calls the same switch-character) moves the mark
   await ctx.svc.switchCharacter('claude', { name: '小克' });
   const after = buildRoster(ctx.svc.view(), settings);
-  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude']);
+  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude-pixel']);
 });
 
 test('roster: a video character (大肥鱼 clips) gets her idle clip as the preview', async () => {
   const ctx = setup({ hatch: true });
   await ctx.ready;
-  assert.equal(ctx.svc.setAppearance('dafeiyu-clips', 'dafeiyu').ok, true);
-  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu');
+  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu-clips');
   assert.equal(fish.kind, 'video');
   assert.equal(fish.kindLabel, '视频');
   assert.equal(fish.preview.type, 'video');
-  // relative to the console page (src/admin-ui/index.html): ../renderer/assets/dafeiyu/idle.webm
-  assert.ok(fs.existsSync(path.join(ROOT, 'src', 'admin-ui', fish.preview.url)), fish.preview.url);
+  // her clips are downloaded (core/catalog.js) and served as pack://dafeiyu-clips/<clip> (src/main/packs.js)
+  assert.equal(fish.preview.url, 'pack://dafeiyu-clips/idle.webm');
+  assert.equal(fish.source, 'download');
+  assert.ok(fs.existsSync(path.join(ROOT, 'catalog', 'clips', 'dafeiyu-clips', 'idle.webm')));
 });
 
-test('外观资源 rows: built-in packs cannot be removed or exported, imported ones can', () => {
-  const { packs } = loadPacks([{ dir: path.join(ROOT, 'src', 'renderer', 'packs'), source: 'builtin' }]);
+test('外观资源 rows: built-in packs cannot be removed or exported, downloaded ones can be removed, imported ones both', () => {
+  const { packs } = require('../src/core/catalog').repoPacks();
   const rows = packRows(packs);
   assert.equal(rows.length, packs.size);
-  assert.ok(rows.every((r) => r.source === 'builtin' && !r.removable && !r.exportable));
+  const builtin = rows.filter((r) => r.source === 'builtin');
+  assert.deepEqual(builtin.map((r) => r.id).sort(), ['claude-pixel', 'dafeiyu-pixel', 'gemini-pixel', 'gpt-pixel', 'grok-pixel']);
+  assert.ok(builtin.every((r) => !r.removable && !r.exportable && r.sourceLabel === '内置'));
+  const downloaded = rows.filter((r) => r.source === 'download');
+  assert.equal(downloaded.length, rows.length - 5);
+  assert.ok(downloaded.every((r) => r.removable && !r.exportable && r.sourceLabel === '下载'));
   assert.ok(rows.some((r) => r.kind === 'live2d' && r.kindLabel === 'Live2D'));
   const user = packRows([{ id: 'my-grok', name: 'x', species: 'grok', kind: 'sprites', source: 'user', outfits: { daily: 'a.png' } }, { id: 'my-vrm', name: 'v', species: 'grok', kind: 'vrm', source: 'user', outfits: {}, vrm: { license: { redistributable: false } } }]);
   assert.deepEqual(user.map((r) => [r.id, r.removable, r.exportable]), [['my-grok', true, true], ['my-vrm', true, false]]);
@@ -323,12 +413,12 @@ test('broadcast reaches every pet window and the settings window; a per-characte
   assert.deepEqual(got.map((g) => g[0]), ['pet', 'visitor', 'admin']);
   adminAlive = false;
   assert.equal(broadcast('settings', {}), 2, 'a closed settings window is skipped');
-  // the setters main wires to the broadcast emit `update` (set-model / set-appearance / set-system-role / unlock-all)
+  // the setters main wires to the broadcast emit `update` (switch-character / set-system-role / unlock-all)
   const ctx = setup({ hatch: true });
   await ctx.ready;
   const updates = [];
   ctx.svc.on('update', (v) => updates.push(v && v.pet.speciesId));
-  ctx.svc.setAppearance('grok-classic', 'grok');
+  await ctx.svc.switchCharacter('grok-classic');
   ctx.svc.setSystemRole('叫我老板', 'grok');
   ctx.svc.unlockAll('grok');
   assert.ok(updates.length >= 3, `update events: ${updates.length}`);
@@ -416,7 +506,7 @@ test('the settings window: single instance, isolated (contextIsolation, sandbox,
   });
 });
 
-test('admin preload: a whitelist of settings / roster channels, each one handled in main; no chat, move or debug', () => {
+test('admin preload: a whitelist of settings / roster / admin-chat channels, each one handled in main; no pet chat, move or debug', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
   const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
   const invoked = [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9-]+)'/g)].map((m) => m[1]);
@@ -425,7 +515,9 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'update-status']);
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'catalog-progress', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色
+  // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
+  for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
   // the settings window's own channels answer that window only (outside tests)
   assert.match(main, /const adminOnly = \(fn\) => \(e, p\) => \(admin\.isSender\(e\) \|\| TEST_MODE/);
@@ -439,9 +531,9 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
 test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  // the toolbar: the four interactions and ⚙
+  // the toolbar: the four interactions, 🔈 and ⚙
   const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'settings']);
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']); // 🔈 静音 (T-2733) sits left of ⚙
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
@@ -452,7 +544,8 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
   assert.match(app, /window\.pet\.openAdmin\(/);
   // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
-  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.speciesId\}` : 'topics'/);
+  // T-2764: her page is the character's (one look), e.g. characters/dafeiyu-live2d
+  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.characterId/);
   assert.match(app, /\{ label: '去设置', admin: 'asr' \}/);
   // no 高级设置 panel or her model / system-role forms either (since the console)
   for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
@@ -533,7 +626,7 @@ test('admin perf: main sends the console a state only when it changed; sprite sh
 // 前台精简 (T-2718) took the pet window's 外观 panel away; its VRM license flow lives on in the settings window.
 test('VRM import in the settings window: 导入确认 with the license before she wears it, 取消导入 removes it, 授权信息 on the card', () => {
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-vrm onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
+  assert.match(src, /data-import-vrm [^>]*onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
   assert.match(src, /cancelText="取消导入"/);
   assert.match(src, /okText="使用这个模型"/);
   assert.match(src, /await api\(\)\.removePack\(r\.pack\.id\)/, '取消导入 removes the pack again');
@@ -550,5 +643,8 @@ test('Live2D import from the settings window: main hands the new pack to the ser
   const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
   assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-live2d[\s\S]{0,600}api\(\)\.setAppearance\(r\.pack\.id, c\.id\)/);
+  // T-2764: the imported model is a new character; the console switches to her (no 形象包 to put on)
+  assert.match(src, /data-import-live2d[\s\S]{0,900}becomeNew\(r\.pack\.id/);
+  assert.match(src, /const becomeNew = async \(id: string, ok: string\) => \{\n\s+const r = await run\(api\(\)\.switchCharacter\(id\), ok\);/, 'becomeNew switches to the new character');
+  assert.doesNotMatch(src, /setAppearance/);
 });
