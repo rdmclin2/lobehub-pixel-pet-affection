@@ -243,10 +243,12 @@ test('every character sounds different, and only replies and API lines are read 
 test('visitors: other model-chan only, at most three, never the companion herself', async () => {
   const { svc } = service();
   await svc.hatch({ speciesId: 'claude', name: 'T' });
-  assert.deepEqual(svc.setVisitors(['grok', 'claude', 'nobody', 'gemini']).settings.visitors, ['grok', 'gemini']);
-  // switching to a visitor sends her home from the visitors
-  await svc.switchCharacter('grok');
-  assert.deepEqual(svc.settings.visitors, ['gemini']);
+  // T-2764: visitors are characters; an old per-persona id means her default one; never the companion in any
+  // of her looks, and one girl only once
+  assert.deepEqual(svc.setVisitors(['grok', 'claude', 'claude-classic', 'nobody', 'gemini-classic', 'gemini-pixel']).settings.visitors, ['grok-pixel', 'gemini-classic']);
+  // switching to a visitor (in any of her looks) sends her home from the visitors
+  await svc.switchCharacter('grok-classic');
+  assert.deepEqual(svc.settings.visitors, ['gemini-classic']);
   assert.deepEqual(settingsLib.normalizeSettings({ visitors: ['a1', 'b1', 'c1', 'd1'] }).visitors, ['a1', 'b1', 'c1']);
 });
 

@@ -129,7 +129,44 @@
 - **参考素材**：ai-chan-sheets 和 ZipZipPipe 原设只取文字层面的身份锚点（发型、配色、服饰、标志物），没有复制或描摹任何图片，也没有使用 ai-chan-sheets `参考原图/` 下的未授权原图。
 - **许可**：所有模型娘美术以 **CC BY-NC-SA 4.0** 发布（每个 `pack.json` 的 `license` 字段相同）；大肥鱼动画另受 dsh-pet“禁止商用”约束。应用内 ⋯ 菜单 →“素材署名”显示每位角色 `credits` 字段里的署名。代码按 MIT 授权；含上述美术的构建只能非商业使用。
 
-## 四、已下线的角色与存档迁移
+## 四、角色与形象：每个形象就是一个独立角色（T-2764）
+
+从 `characterModel: 2` 起不再有“形象包（appearance pack）”这个面向用户的概念，也没有“一个角色切换多个形象包”的选择逻辑。每个角色包——内置的（`dafeiyu-pixel` / `dafeiyu-live2d` / `dafeiyu-live` / `dafeiyu-classic` / `dafeiyu-adult`、`claude-pixel` / `claude-classic` / `claude-adult` …）和用户导入的（角色包、Live2D、VRM）——都是角色列表里的**一个独立角色**；大肥鱼的原版视频是 `dafeiyu-clips`。代码：`src/core/characters.js`。
+
+- **id**：角色 id 就是她的角色包 id（视频是 `<基础角色>-clips`）。角色包 id 不能与角色文件 id（`dafeiyu`、`claude` …）或已下线 id 相同，也不能以 `-clips` 结尾（`validatePack`），所以旧的“按人设”的 id 与新角色 id 永远不会撞。
+- **显示名**：取包的 `name`（内置包已经是「大肥鱼 · 像素」「大肥鱼 · Live2D」这种格式）；不以她名字开头的导入包显示为「克洛蒂 · 我的包名」。
+- **顺序**：按角色文件的 `order` 一位一位排；每位先列她角色文件里 `art.packs` 的顺序（默认的在前），再列导入的，最后是视频。18+ 的「成年版」只在确认 18+ 且打开成人向内容后出现。全年龄 13 位，打开成人向后 18 位。
+- **基础角色（人设）**：每个角色都站在一个基础角色文件上（`src/characters/<base>.json`），人设、台词、触摸部位、语音、可用模型都从那里继承。
+
+### 共享与隔离（设计决定）
+
+| 数据 | 归属 | 键 | 说明 |
+| --- | --- | --- | --- |
+| LobeHub agent、聊天记录（topic / `pastTopicIds` / 聊天记录 chat-log）、名字、好感度与解锁、需求（饱食/心情/精力）、已读解锁 | **同一基础角色的各角色共享** | `pet.characters[<base>]` | 「大肥鱼 · 像素」和「大肥鱼 · Live2D」是同一个她换了形象：不重新认识、不新建 agent、聊天不断。切到同基础角色的另一个角色是即时、无声的。 |
+| 模型（`settings.models`）、个性化设定（`settings.systemRoles`）、语音包 | 共享 | 基础角色 id | 这些属于她的人设和 agent，不属于形象。 |
+| 衣柜：当前服饰、最后一套全年龄服饰 | **每个角色自己的** | `pet.characters[<base>].wardrobes[<角色 id>]` | 衣柜只列她自己包里有美术的服饰（沿用 T-2752）；在一个角色身上换衣服不影响另一个。旧字段 `equippedOutfit` / `lastSafeOutfit` 只镜像当前角色的值（给旧版本读）。 |
+| 取景 | 每个角色自己的 | `settings.framings[<角色 id>]` | |
+| VRM 姿势 | 每个角色自己的 | `settings.vrmPostures[<角色 id>]` | 角色 id = 包 id，键不变。 |
+| 当前角色 | — | `pet.json` 的 `characterId`（`speciesId` 仍在，等于其基础角色） | |
+| 同屏伙伴 | 角色 | `settings.visitors[]` 是角色 id | 不能是当前角色的任何形象，同一基础角色最多一位。 |
+
+### 数据迁移（`src/core/character-migrate.js`）
+
+`PetService` 每次加载 `settings.json` / `pet.json` 时运行；只在没有 `characterModel: 2` 标记的文件上运行一次（幂等：再跑一次原样返回、文件不再改写），改写前各备份一次为 `settings.characters.bak.json` / `pet.characters.bak.json`。
+
+| 旧 key（按人设 / 按包） | 新 key（按角色） | 规则 |
+| --- | --- | --- |
+| `pet.speciesId` = `dafeiyu` + `settings.appearance.dafeiyu` = `dafeiyu-live2d` | `pet.characterId` = `dafeiyu-live2d` | 所选包存在且属于她（18+ 的也保留，成人向关着时临时显示默认角色）→ 该包；不存在 / 已删除 / 不是她的 → 她的默认角色（角色文件第一个包，再退到 `fallbackPack`）。已下线人设的选择交给接替者。 |
+| `settings.appearance.<base>` | 删除；原值只读保留在 `settings.legacyAppearance` | 供迁移得晚的 `pet.json`（比如从备份恢复）仍能找到旧选择。 |
+| `settings.framings.<base>` | `settings.framings.<该基础角色的每个角色 id>` | 复制到她的每个形象（不覆盖已按角色设的值）。 |
+| `settings.visitors[]` = `claude` | `claude-classic`（她当时所选的包对应的角色） | 不认识的丢掉。 |
+| `pet.characters.<base>.equippedOutfit` / `lastSafeOutfit` | `pet.characters.<base>.wardrobes.<每个角色 id>` | 复制到她的每个形象；某个形象的包没有这套衣服时，到场时换回日常服并保存。 |
+| `settings.vrmPostures.<packId>` | 不变 | 角色 id = 包 id。 |
+| `settings.models.<base>`、`settings.systemRoles.<base>`、`pet.characters.<base>`（agent / 聊天 / 名字 / 好感 …）、聊天记录的 `speciesId`、语音包 | 不变 | 同一基础角色的各角色共享。 |
+
+旧调用方仍可传人设 id：`switchCharacter('claude')` / `hatch({ speciesId })` / 管理端旧链接 `#/characters/dafeiyu` 都落到该人设当前的（或默认的）角色。
+
+## 五、已下线的角色与存档迁移
 
 模型娘改造（T-1158）移除了上游的三位原创角色和“灵石”选择界面（原来的“四颗蛋”，改名“灵石”后仍是按颜色选种类的界面），新建宠物改为“选择模型娘 → 唤醒”。
 
@@ -147,6 +184,6 @@
 - 身上的服饰接替者没有美术时换回日常服（`daily`）。
 - 新角色文件不能用这三个旧 id（`validateCharacter` 会报 `is a retired character id`）。
 
-## 五、新增角色
+## 六、新增角色
 
 一个角色 = 一份数据文件 + 一个角色包，不需要改应用代码。步骤见 [使用说明 · 新增一个厂商角色](usage.md#八新增一个厂商角色)；加完后在本文的总表和第二节各加一份。

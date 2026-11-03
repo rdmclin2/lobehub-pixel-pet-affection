@@ -117,7 +117,7 @@ const Friend = ({ c }: { c: RosterRow }) => (
       <Flexbox gap={4} paddingInline={4}>
         <Flexbox align="center" gap={4} horizontal justify="space-between">
           <Text ellipsis strong>
-            {c.met?.name ?? c.nameZh}
+            {`${c.met?.name ?? c.nameZh}${c.label ? ` · ${c.label}` : ''}`}
           </Text>
           {!c.met && <Icon icon={Lock} size={12} />}
         </Flexbox>

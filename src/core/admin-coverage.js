@@ -25,17 +25,17 @@ const INTERNAL_SETTINGS = {
   ageConfirmed: '是否确认满 18 周岁（同上，只读）',
   ageConfirmedAt: '确认时间（同上，只读）',
   ageGateVersion: '确认文案版本（文案改了就重新询问，只读）',
+  characterModel: '角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读）',
 };
 
 // settings.json leaves the generic form does not write, and the console control that does
 const SPECIAL_SETTINGS = {
   adultContent: '内容与安全 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`）',
   'api.token': '对外接口 → 令牌（遮罩显示、复制、「换一个」：`set-api` newToken）',
-  'appearance.<id>': '角色详情 → 形象包（`set-appearance`）',
   'models.<id>': '角色详情 → 模型（`set-model` / `refresh-models`）',
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
-  'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（她穿 VRM 形象包时；按形象包记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -142,8 +142,8 @@ const RUNTIME = [
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
-  { id: 'character', label: '角色（形象包 / 服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['appearance.<id>', 'models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'set-appearance', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
-  { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 形象包', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
+  { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
+  { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
 ];

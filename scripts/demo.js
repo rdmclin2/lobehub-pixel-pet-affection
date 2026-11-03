@@ -23,7 +23,7 @@ function arg(name, fallback) {
 async function seed({ dataDir, fakeDir, speciesId, name }) {
   // the 18+ question already answered as "all ages", like an existing user
   const settingsFile = path.join(dataDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) fs.writeFileSync(settingsFile, JSON.stringify({ ageGateVersion: 1, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
+  if (!fs.existsSync(settingsFile)) fs.writeFileSync(settingsFile, JSON.stringify({ ageGateVersion: require('../src/core/settings').AGE_GATE_VERSION, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false }));
   if (fs.existsSync(path.join(dataDir, 'pet.json'))) return false;
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const { LhClient, cleanEnv } = require('../src/core/lh-client');

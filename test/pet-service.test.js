@@ -588,7 +588,9 @@ test('a save whose character was retired opens with a current character, never c
   assert.deepEqual(v.outfits.map((o) => o.id), ['daily', 'scarf', 'casual', 'beret', 'idol', 'pajamas', 'cat_ears', 'swimsuit', 'yukata', 'bikini', 'qipao', 'couple_hoodie', 'flower_crown'], "克洛蒂's own outfits");
   assert.deepEqual(v.pet.retiredFrom, { speciesId: 'embit', at: clock.t });
   assert.equal(v.look.packId, 'claude-pixel');
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, { grok: 'grok-pixel' }, 'looks of retired characters are dropped');
+  const st = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  assert.equal(st.appearance, undefined, 'no 形象包 choice any more (T-2764)');
+  assert.deepEqual(st.legacyAppearance, { grok: 'grok-pixel', dafeiyu: 'bubbo-pixel', claude: 'embit-illustrated' }, 'the old choice, kept read-only; retired ones mapped to their successors');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')), saved, 'the old save is backed up');
   assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')).speciesId, 'claude', 'and the new one written');
   await svc.warmup();
@@ -622,7 +624,7 @@ test('switching to a new character creates her own agent, name and affection, an
   const r = await svc.switchCharacter('grok', { name: '  小格格格格格格格格格格格格  ' });
   assert.equal(r.ok, true);
   assert.equal(r.created, true);
-  assert.equal(r.from, 'testchan');
+  assert.equal(r.from, 'testchan-pixel', 'from: the character she was');
   assert.equal(r.view.pet.speciesId, 'grok');
   assert.notEqual(r.view.pet.agentId, first.agentId, 'her own agent');
   assert.equal(r.view.pet.name, '小格格格格格格格格格格格', 'trimmed to 12 characters, like at hatch');
@@ -635,8 +637,8 @@ test('switching to a new character creates her own agent, name and affection, an
   assert.match(create.systemRole, /格萝可/);
   assert.equal(said.pop().kind, 'met');
   const met = Object.fromEntries(r.view.characters.filter((c) => c.met).map((c) => [c.id, [c.met.name, c.met.affection]]));
-  assert.deepEqual(met, { testchan: ['小鱼', first.affection], grok: ['小格格格格格格格格格格格', 0] });
-  assert.equal(r.view.characters.find((c) => c.id === 'claude').met, null, 'not met yet');
+  assert.deepEqual(met, { 'testchan-pixel': ['小鱼', first.affection], 'grok-pixel': ['小格格格格格格格格格格格', 0], 'grok-classic': ['小格格格格格格格格格格格', 0] }, 'one row per character; her looks share her base');
+  assert.equal(r.view.characters.find((c) => c.id === 'claude-pixel').met, null, 'not met yet');
   // the first one is untouched
   assert.equal(svc.pet.characters.testchan.agentId, first.agentId);
   assert.equal(svc.pet.characters.testchan.affection, first.affection);
@@ -742,7 +744,7 @@ test('a schema-2 save starts as one character with her agent, topic and affectio
   assert.equal(v.pet.topicId, 'tpc_OLD');
   assert.equal(v.pet.affection, 40);
   assert.equal(v.pet.owner, 'me');
-  assert.deepEqual(v.characters.filter((c) => c.met).map((c) => c.id), ['grok']);
+  assert.deepEqual(v.characters.filter((c) => c.met).map((c) => c.id), ['grok-pixel', 'grok-classic'], 'every character of a met base is met (T-2764: they share her)');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v2.bak.json'), 'utf8')), saved);
   const disk = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
   assert.equal(disk.schemaVersion, 3);
@@ -1012,29 +1014,38 @@ test('pet scale is saved in settings, reported to the UI and survives releasing 
   assert.equal(svc.settingsStore.load().petScale, 2.5);
 });
 
-// T-2752: the wardrobe follows the pack she wears. 大肥鱼's Live2D pack has art for daily only: her 衣柜 there
-// lists daily only, other outfits are refused, and an outfit worn in her pixel pack is taken off (and saved)
-// when she changes into Live2D — it never loads another pack.
-test('大肥鱼 in her Live2D pack: the wardrobe is that pack\'s, other outfits are refused, the worn one is corrected and saved', async () => {
+// T-2752 + T-2764: the wardrobe is the character's own. 「大肥鱼 · Live2D」 is a character of her own whose pack has
+// art for daily only: her 衣柜 lists daily only, other outfits are refused and never load another pack. Her
+// pixel self (「大肥鱼 · 像素」) keeps her own wardrobe and the outfit she wore.
+test('「大肥鱼 · Live2D」 is a character of her own: her wardrobe is her pack\'s, other outfits are refused, the pixel one keeps hers', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'dafeiyu', name: '鱼' });
   svc.unlockAll('dafeiyu');
-  // her pixel pack (default) has the scarf
+  // her default character is the pixel one, which has the scarf
+  assert.equal(svc.view().pet.characterId, 'dafeiyu-pixel');
   assert.equal(svc.view().look.packId, 'dafeiyu-pixel');
   assert.ok(svc.view().outfits.some((x) => x.id === 'scarf'));
   assert.equal(svc.equipOutfit('scarf').ok, true);
   assert.equal(svc.view().outfit, 'scarf');
+  assert.equal(typeof svc.setAppearance, 'undefined', 'there is no 形象包 to choose any more');
 
-  const r = svc.setAppearance('dafeiyu-live2d');
+  const r = await svc.switchCharacter('dafeiyu-live2d');
   assert.equal(r.ok, true);
+  assert.equal(r.created, false, 'the same girl: no new agent');
+  assert.equal(r.sameBase, true);
+  assert.equal(r.view.pet.characterId, 'dafeiyu-live2d');
+  assert.equal(r.view.character.name, '大肥鱼 · Live2D');
+  assert.equal(r.view.pet.name, '鱼', 'her name, affection and agent are her base\'s');
   assert.deepEqual(r.view.outfits.map((o) => o.id), ['daily'], 'her Live2D wardrobe: daily only');
-  assert.equal(r.view.outfit, 'daily', 'the scarf is taken off');
+  assert.equal(r.view.outfit, 'daily');
   assert.equal(r.view.look.packId, 'dafeiyu-live2d');
   assert.equal(r.view.look.kind, 'live2d');
-  assert.ok(r.view.outfits.every((o) => !o.look || o.look.packId === 'dafeiyu-live2d'), 'every wardrobe card is drawn from her Live2D pack');
+  assert.ok(r.view.outfits.every((o) => !o.look || o.look.packId === 'dafeiyu-live2d'), 'every wardrobe card is drawn from her own pack');
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pet.json'), 'utf8'));
-  assert.equal(saved.characters.dafeiyu.equippedOutfit, 'daily', 'the correction is saved');
+  assert.equal(saved.characterId, 'dafeiyu-live2d', 'who she is now is saved');
+  assert.deepEqual(saved.characters.dafeiyu.wardrobes['dafeiyu-pixel'], { equippedOutfit: 'scarf', lastSafeOutfit: 'scarf' }, 'the pixel one keeps her scarf');
+  assert.equal(saved.characters.dafeiyu.wardrobes['dafeiyu-live2d'].equippedOutfit, 'daily');
 
   for (const id of ['scarf', 'swimsuit', 'qipao', 'maid']) {
     const e = svc.equipOutfit(id);
@@ -1042,7 +1053,7 @@ test('大肥鱼 in her Live2D pack: the wardrobe is that pack\'s, other outfits 
     assert.equal(svc.view().look.packId, 'dafeiyu-live2d', `${id}: she stays in her Live2D pack`);
   }
   assert.equal(svc.equipOutfit('scarf').reason, 'unavailable');
-  for (const id of ['scarf', 'swimsuit', 'qipao']) assert.equal(svc.lookFor('dafeiyu', id).packId, 'dafeiyu-live2d', `${id} never resolves to another pack`);
+  for (const id of ['scarf', 'swimsuit', 'qipao']) assert.equal(svc.lookFor('dafeiyu-live2d', id).packId, 'dafeiyu-live2d', `${id} never resolves to another pack`);
 
   // the adult switch does not bring other packs' outfits back either
   svc.answerAgeGate(true);
@@ -1050,24 +1061,29 @@ test('大肥鱼 in her Live2D pack: the wardrobe is that pack\'s, other outfits 
   assert.deepEqual(svc.view().outfits.map((o) => o.id), ['daily']);
   assert.equal(svc.view().look.packId, 'dafeiyu-live2d');
 
-  // back to pixels: her pixel wardrobe again
-  assert.ok(svc.setAppearance('dafeiyu-pixel').view.outfits.some((x) => x.id === 'scarf'));
+  // back to the pixel character: her own wardrobe, still in the scarf
+  const back = await svc.switchCharacter('dafeiyu-pixel');
+  assert.ok(back.view.outfits.some((x) => x.id === 'scarf'));
+  assert.equal(back.view.outfit, 'scarf', 'each character keeps what she wore');
 });
 
-test('switching to a character whose pack lacks her saved outfit corrects it on arrival', async () => {
+test('switching to another character of a met base brings her own wardrobe; an outfit her pack lacks is corrected on arrival', async () => {
   const { svc, dir } = setup();
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   await svc.hatch({ speciesId: 'dafeiyu', name: '鱼' });
   svc.unlockAll('dafeiyu');
   assert.equal(svc.equipOutfit('swimsuit').ok, true);
   await svc.switchCharacter('grok', { name: '小格' });
-  // her look is changed on her page while she is away; her saved outfit is still the swimsuit
-  svc.settings = { ...svc.settings, appearance: { ...svc.settings.appearance, dafeiyu: 'dafeiyu-live2d' } };
-  assert.equal(svc.pet.characters.dafeiyu.equippedOutfit, 'swimsuit');
-  const r = await svc.switchCharacter('dafeiyu');
+  assert.equal(svc.view().pet.characterId, 'grok-pixel', 'an old per-persona id means her default character');
+  // her Live2D self's wardrobe says swimsuit (hand-edited / an older migration): she cannot wear it there
+  svc.pet.characters.dafeiyu.wardrobes = { ...svc.pet.characters.dafeiyu.wardrobes, 'dafeiyu-live2d': { equippedOutfit: 'swimsuit', lastSafeOutfit: 'swimsuit' } };
+  const r = await svc.switchCharacter('dafeiyu-live2d');
   assert.equal(r.ok, true);
-  assert.equal(r.view.look.packId, 'dafeiyu-live2d', 'she arrives in her Live2D pack, not the pixel swimsuit');
+  assert.equal(r.created, false, '大肥鱼 was met before: her agent is reused');
+  assert.equal(r.view.pet.name, '鱼');
+  assert.equal(r.view.look.packId, 'dafeiyu-live2d', 'she arrives as 「大肥鱼 · Live2D」, not the pixel swimsuit');
   assert.equal(r.view.outfit, 'daily');
-  assert.equal(svc.pet.characters.dafeiyu.equippedOutfit, 'daily');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pet.json'), 'utf8')).characters.dafeiyu.equippedOutfit, 'daily', 'and saved');
+  const disk = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pet.json'), 'utf8'));
+  assert.equal(disk.characters.dafeiyu.wardrobes['dafeiyu-live2d'].equippedOutfit, 'daily', 'and saved');
+  assert.equal(disk.characters.dafeiyu.wardrobes['dafeiyu-pixel'].equippedOutfit, 'swimsuit', 'her pixel self keeps the swimsuit');
 });

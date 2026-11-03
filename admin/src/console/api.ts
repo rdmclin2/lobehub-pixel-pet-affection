@@ -115,8 +115,15 @@ export interface ModelOption {
   [k: string]: unknown;
 }
 
+/**
+ * One row per character (T-2764: every look is a character of her own — 「大肥鱼 · 像素」「大肥鱼 · Live2D」 …).
+ * `id` is the character id (her pack's id, or `<base>-clips`); `base` the persona (src/characters/<base>.json)
+ * whose agent, name, affection (`met`), model and 个性化设定 all of the base's characters share; `pack`, `kind`,
+ * `preview` and `outfits` are the character's own.
+ */
 export interface RosterRow {
   accent: string;
+  base: string;
   blurb: string;
   catchphrase: string;
   credits: string[];
@@ -125,12 +132,16 @@ export interface RosterRow {
   id: string;
   kind: string | null;
   kindLabel: string;
+  /** what sets this look apart in her name: 像素 / Live2D / 成年版（18+）… */
+  label: string;
   likes: string[];
   met: null | { affection: number; name: string; progress: any; stage: string };
   model: null | { applied: string | null; chosen?: boolean; current: string | null; loaded: boolean; options: ModelOption[]; pending: boolean };
+  /** her character's name, 「大肥鱼 · 像素」 */
+  name: string;
+  /** her base's name, 大肥鱼 */
   nameZh: string;
   pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; source: string; vrm?: any };
-  packCount: number;
   preview: Preview | null;
   source: string;
   sourceLabel: string;
@@ -235,7 +246,6 @@ export interface PetAdminApi {
   reset: (keys: string[]) => Promise<{ ok: boolean; results: SetResult[]; settings: any }>;
   set: (key: string, value: unknown) => Promise<SetResult>;
   setAdult: (on: boolean) => Promise<any>;
-  setAppearance: (id: string, species: string) => Promise<any>;
   setLive2dHeight: (id: string, height: number) => Promise<any>;
   setModel: (key: string, species: string) => Promise<any>;
   setSystemRole: (text: string, species: string) => Promise<any>;

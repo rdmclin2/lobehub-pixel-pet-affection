@@ -44,8 +44,8 @@ export const useSwitch = () => {
     try {
       const r = await api().switchCharacter(c.id, nm);
       if (r && r.view) merge({ view: r.view });
-      if (r && r.ok) toast.success(`已切换到 ${c.nameZh}`);
-      else toast.error({ description: reasonText(r), title: `没能切换到 ${c.nameZh}` });
+      if (r && r.ok) toast.success(`已切换到 ${c.name ?? c.nameZh}`);
+      else toast.error({ description: reasonText(r), title: `没能切换到 ${c.name ?? c.nameZh}` });
     } finally {
       setBusy(null);
     }
@@ -187,7 +187,7 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
             导入角色包…
           </Button>
         }
-        description={`已遇见 ${met} / ${roster.length} 位。点开一位，看她的故事、换形象包、调她的模型和设定。`}
+        description={`已遇见 ${met} / ${roster.length} 位。每个形象都是一个独立角色；点开一位，看她的故事、衣柜、模型和设定。`}
         title="角色图鉴"
       />
       {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
@@ -197,7 +197,7 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         </Text>
         <Segmented
           onChange={(v) => setKind(String(v))}
-          options={[{ label: `全部 ${roster.length}`, value: 'all' }, ...kinds.map(([value, label]) => ({ label: `${label} ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.kind === value)).length}`, value })), { label: `有导入包 ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.user > 0)).length}`, value: 'user' }]}
+          options={[{ label: `全部 ${roster.length}`, value: 'all' }, ...kinds.map(([value, label]) => ({ label: `${label} ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.kind === value)).length}`, value })), { label: `导入的角色 ${roster.filter((c) => (c.packKinds ?? []).some((k) => k.user > 0)).length}`, value: 'user' }]}
           size="small"
           value={kind}
         />
@@ -205,7 +205,7 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
       <div className={gstyles.grid} data-roster data-roster-filter={kind}>
         {shown.map((c) => (
           <article className={gstyles.card} data-current={c.current} data-row={c.id} key={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
-            <a aria-label={`查看 ${c.nameZh}`} className={gstyles.art} href={`#/characters/${c.id}`}>
+            <a aria-label={`查看 ${c.name ?? c.nameZh}`} className={gstyles.art} href={`#/characters/${c.id}`}>
               <SpriteStage animate height={184} name={c.nameZh} preview={c.preview} silhouette={!c.met && !c.current} />
               {!c.met && !c.current && (
                 <span className={gstyles.locked}>
@@ -547,7 +547,7 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
               const r = await api().setFraming(v as 'auto' | 'full' | 'half', c.id);
               if (r && r.view) merge({ view: r.view });
               if (r && r.settings) merge({ settings: r.settings });
-              if (r && r.ok) toast.success(`${c.nameZh} 的取景已改为「${v === 'auto' ? follow : v === 'half' ? '半身' : '全身'}」`);
+              if (r && r.ok) toast.success(`${c.name ?? c.nameZh} 的取景已改为「${v === 'auto' ? follow : v === 'half' ? '半身' : '全身'}」`);
               else toast.error(reasonText(r));
             } finally {
               setBusy(false);
@@ -591,7 +591,7 @@ const PostureRow = ({ c }: { c: RosterRow }) => {
             try {
               const r = await api().setVrmPosture(packId, v);
               if (r && r.settings) merge({ settings: r.settings });
-              if (r && r.ok) toast.success(`${c.nameZh} 的姿势已设为「${POSTURE_LABEL[v] ?? v}」`);
+              if (r && r.ok) toast.success(`${c.name ?? c.nameZh} 的姿势已设为「${POSTURE_LABEL[v] ?? v}」`);
               else toast.error(reasonText(r));
             } finally {
               setBusy(false);
@@ -608,18 +608,25 @@ const PostureRow = ({ c }: { c: RosterRow }) => {
 };
 
 /**
- * 装扮: her wardrobe. The outfits of the pack she wears, then every pack she can wear as a card with its
- * picture; 试穿 shows it on her stage on the left, 穿上 dresses her (in the pet window too).
+ * 装扮: her wardrobe — the outfits of her own pack — then her look (T-2764: one pack per character, there is no
+ * 形象包 to choose: every pack is a character of her own). Importing a pack / a Live2D / a VRM model adds a new
+ * character on her base and switches to her (same agent and affection when it is the companion's base).
  */
 const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null) => void; trying: string | null }) => {
   const { view, merge } = useStore();
   const ch = view?.characters?.find((x: any) => x.id === c.id);
-  const options: PackOption[] = ch?.appearance?.options ?? [];
+  const options: PackOption[] = ch?.pack ? [ch.pack] : [];
   const run = async (p: Promise<any>, ok: string) => {
     const r = await p;
     if (r && r.view) merge({ view: r.view });
     if (r && r.ok) toast.success(ok);
     else if (r && r.reason !== 'canceled') toast.error(reasonText(r));
+    return r;
+  };
+  // a freshly imported pack is a new character: be her, and open her page
+  const becomeNew = async (id: string, ok: string) => {
+    const r = await run(api().switchCharacter(id), ok);
+    if (r && r.ok) location.hash = `/characters/${id}`;
     return r;
   };
   // 导入 VRM…: main checks the file and copies it into a new user pack; before she wears it, 导入确认 shows who
@@ -641,10 +648,10 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
       toast.success(`已取消导入「${r.pack.name}」，模型没有留在本机的角色包里。`);
       return;
     }
-    await run(api().setAppearance(r.pack.id, c.id), `已导入 VRM 模型「${r.pack.name}」并换上（作者：${r.license?.author ?? '未署名'}）`);
+    await becomeNew(r.pack.id, `已导入 VRM 模型「${r.pack.name}」，成为新角色（作者：${r.license?.author ?? '未署名'}）`);
   };
   if (!view) return <Alert title="唤醒桌宠后可以给她换装扮" type="info" />;
-  const worn = (p: PackOption) => p.id === c.pack?.id || (!c.pack && p.kind === 'video');
+  const worn = (_p: PackOption) => true; // her own and only pack
   return (
     <Flexbox gap={16}>
       <Modal
@@ -672,7 +679,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
       <OutfitRack c={c} />
       <FramingRow c={c} />
       <PostureRow c={c} />
-      <Surface description="她能穿的角色包。点图片试穿，满意再「穿上」；18+ 包要先确认已满 18 周岁并打开成人向内容。" title="形象包">
+      <Surface description="这个角色的形象。每个角色包都是一个独立角色；导入新的包会成为新角色。" title="形象">
         <div className={wstyles.grid} data-wardrobe={c.id}>
           {options.map((p) => (
             <div className={wstyles.card} data-pack={p.id} data-trying={trying === p.id} data-worn={worn(p)} key={p.id}>
@@ -700,22 +707,10 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
                   </Text>
                 )}
                 <Flexbox gap={4} horizontal style={{ marginBlockStart: 'auto' }} wrap="wrap">
-                  {worn(p) ? (
+                  {worn(p) && (
                     <Tag color="success" icon={<Icon icon={Check} />}>
-                      正在穿
+                      她的形象
                     </Tag>
-                  ) : (
-                    <Button
-                      data-use-pack={p.id}
-                      onClick={async () => {
-                        const r = await run(api().setAppearance(p.id, c.id), `${c.nameZh} 换上了「${p.name}」`);
-                        if (r && r.ok) onTry(null);
-                      }}
-                      size="small"
-                      type={trying === p.id ? 'primary' : 'default'}
-                    >
-                      穿上
-                    </Button>
                   )}
                   {p.kind === 'vrm' && p.vrm && (
                     <Button data-vrm-info={p.id} onClick={() => setLicenseOf(p)} size="small" type="text">
@@ -727,21 +722,21 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
             </div>
           ))}
           <div className={wstyles.add}>
-            <Text strong>添加形象包</Text>
+            <Text strong>添加角色</Text>
             <Text fontSize={12} type="secondary">
-              导入的包会出现在这一排里。
+              {`导入的包会成为${c.nameZh}的一个新角色，出现在角色图鉴里。`}
             </Text>
-            <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入')} size="small">
+            <Button icon={Import} onClick={() => run(api().importPack(), '角色包已导入，成为新角色')} size="small">
               导入角色包…
             </Button>
             <Button
               data-import-live2d
               onClick={async () => {
-                // as the pet window's 导入 Live2D 模型… did: the imported model is put on at once
+                // the imported model is a new character on her base: she becomes her at once
                 const r = await api().importLive2d(c.id);
                 if (!r || r.reason === 'canceled') return;
                 if (!r.ok) return void toast.error({ description: (r.errors ?? []).slice(0, 3).join('；') || reasonText(r), title: 'Live2D 导入失败' });
-                await run(api().setAppearance(r.pack.id, c.id), `已导入 Live2D 模型「${r.pack.name}」并换上`);
+                await becomeNew(r.pack.id, `已导入 Live2D 模型「${r.pack.name}」，成为新角色`);
               }}
               size="small"
             >
@@ -956,17 +951,18 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
   const [trying, setTrying] = useState<string | null>(null);
   const stage = useStageHeight();
   useEffect(() => setTrying(null), [id]);
-  const c = roster.find((x) => x.id === id);
-  const ch = view?.characters?.find((x: any) => x.id === id);
+  // an old link names her base (`#/characters/dafeiyu`, before T-2764): the current one of that base, else her first
+  const c = roster.find((x) => x.id === id) ?? roster.find((x) => x.base === id && x.current) ?? roster.find((x) => x.base === id);
+  const ch = view?.characters?.find((x: any) => x.id === c?.id);
   if (!c) return <Alert title={`没有角色「${id}」`} type="error" />;
-  const tryOpt: PackOption | undefined = trying ? (ch?.appearance?.options ?? []).find((o: PackOption) => o.id === trying) : undefined;
+  const tryOpt: PackOption | undefined = trying && ch?.pack?.id === trying ? ch.pack : undefined;
   const outfit: OutfitRow | undefined = c.current ? (view?.outfits ?? []).find((o: OutfitRow) => o.equipped) : undefined;
   const tts = c.voice?.tts;
   const wearing = c.pack ? c.pack.name : c.kind === 'video' ? '原版动画' : c.kindLabel;
   return (
     <>
       <div className={dstyles.layout} data-detail-layout={c.id} style={{ ['--pet-accent' as string]: c.accent }}>
-        <aside aria-label={`${c.nameZh} 的展示区`} className={dstyles.showcase} data-showcase={c.id} ref={stage.ref}>
+        <aside aria-label={`${c.name ?? c.nameZh} 的展示区`} className={dstyles.showcase} data-showcase={c.id} ref={stage.ref}>
           <CharacterStage
             actions
             badge={c.current ? <Tag color="success">正在陪你</Tag> : !c.met ? <Tag>未遇见</Tag> : undefined}

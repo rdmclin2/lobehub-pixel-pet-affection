@@ -225,14 +225,17 @@ async function fresh() {
   let { app, page } = await launch(env);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
-    await step(S, 'first launch shows the five model-chan', async () => {
+    await step(S, 'first launch shows every character: one card per look (T-2764)', async () => {
       await page.waitForSelector('.char-card');
-      assert.equal(await page.locator('.char-card').count(), 5);
+      // 5 base model-chan × their all-ages looks (像素 / 旧版像素, 大肥鱼 also Live2D / 全动态 / 原版动画) = 13
+      assert.equal(await page.locator('.char-card').count(), 13);
+      assert.deepEqual(await page.locator('.char-card').evaluateAll((els) => els.map((e) => e.dataset.character)), ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-live', 'dafeiyu-classic', 'dafeiyu-clips', 'claude-pixel', 'claude-classic', 'grok-pixel', 'grok-classic', 'gemini-pixel', 'gemini-classic', 'gpt-pixel', 'gpt-classic']);
+      assert.match(await page.locator('.char-card[data-character="dafeiyu-live2d"] .nm').textContent(), /大肥鱼 · Live2D/);
       assert.equal(await page.locator('#hatch-btn').isDisabled(), true);
     }, page);
 
     await step(S, 'choosing a character enables waking her and shows who she is', async () => {
-      await page.locator('.char-card').nth(2).click();
+      await page.locator('.char-card[data-species="grok"]').first().click();
       assert.equal(await page.locator('#hatch-btn').isDisabled(), false);
       assert.match(await page.locator('#card-info').textContent(), /xAI|格萝可/);
       await page.fill('#pet-name', '小蓝');
@@ -247,7 +250,7 @@ async function fresh() {
 
     await step(S, 'after login the agent is created and the pet appears', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 陌生 ♥\d+ · 距「熟悉」\d+/);
+      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 像素 · 陌生 ♥\d+ · 距「熟悉」\d+/, 'her character name (T-2764)');
       const text = await waitReply(page, 15000);
       assert.match(text, /echo:/);
       return `greeting: ${text.slice(0, 40)}`;
@@ -433,7 +436,7 @@ async function wardrobe() {
       const st = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
       assert.equal(st.ageConfirmed, true);
       assert.equal(st.adultContent, true);
-      await page.locator('.char-card').nth(0).click();
+      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
       await page.fill('#pet-name', '小蓝');
       assert.match(await page.textContent('#card-info'), /DeepSeek|大肥鱼/);
       const a = await shot('01b-new-pet-choose-companion');
@@ -677,7 +680,7 @@ async function migrate() {
       assert.match(bubble, /大肥鱼/);
       await hover(page);
       const meta = await page.textContent('#meta');
-      assert.match(meta, /小蓝 · 大肥鱼 · 熟悉 ♥25 · 距「亲近」10/);
+      assert.match(meta, /小蓝 · 大肥鱼 · 像素 · 熟悉 ♥25 · 距「亲近」10/);
       const v = await view(page);
       assert.equal(v.pet.speciesId, 'dafeiyu');
       assert.equal(v.pet.agentId, 'agt_LEGACY');
@@ -691,7 +694,10 @@ async function migrate() {
       assert.equal('xp' in disk.characters.dafeiyu, false);
       assert.equal('stage' in disk.characters.dafeiyu, false);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v1.bak.json'), 'utf8')), old);
-      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).appearance, {}, 'the retired look is dropped');
+      const st = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+      assert.equal(st.appearance, undefined, 'no 形象包 choice any more (T-2764)');
+      assert.equal(st.characterModel, 2);
+      assert.equal(disk.characterId, 'dafeiyu-pixel', 'the retired look (bubbo-pixel) → her default character');
       // the agent gets the new persona before its next turn
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const edits = fs.readFileSync(path.join(fakeDir, 'edits.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((e) => e.systemRole);
@@ -713,12 +719,67 @@ async function migrate() {
       assert.equal(v.outfit, 'daily');
       assert.equal(v.look.packId, 'claude-pixel');
       assert.equal(v.pet.affection, 70);
-      assert.match(await page.textContent('#meta'), /小火 · 克洛蒂 · 知己 ♥70/);
+      assert.match(await page.textContent('#meta'), /小火 · 克洛蒂 · 像素 · 知己 ♥70/);
       assert.equal(await page.locator('#pet-look canvas.sprite').count(), 1);
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')).speciesId, 'bubbo', 'the backup is written once and never overwritten');
       assert.doesNotMatch(app.stderrBuf, /Unknown species|TypeError/);
       return `meta: ${await page.textContent('#meta')}; outfit maid → ${v.outfit}`;
     }, page);
+
+    // T-2764: 形象包 → 独立角色. A v0.21 settings.json (大肥鱼 wears her Live2D pack, half-body 取景 per persona,
+    // 克洛蒂 visiting) and pet.json (大肥鱼 in the scarf) open as the character 「大肥鱼 · Live2D」, every per-persona
+    // key moved to character ids, and a second start changes nothing.
+    await step(S, 'T-2764: an old 形象包 choice opens as its own character, every per-character key migrated once (idempotent, backed up)', async () => {
+      await app.close();
+      for (const f of ['pet.json', 'settings.json', 'pet.characters.bak.json', 'settings.characters.bak.json', 'pet.retired.bak.json', 'pet.v1.bak.json', 'pet.v2.bak.json']) fs.rmSync(path.join(data, f), { force: true });
+      const petBefore = { schemaVersion: 3, speciesId: 'dafeiyu', createdAt: now - 1e6, owner: 'me', space: { workspaceId: null, name: '个人空间' }, characters: {
+        dafeiyu: { speciesId: 'dafeiyu', name: '小鱼', agentId: 'agt_FISH', topicId: 'tpc_FISH', createdAt: now - 1e6, affection: 40, relStage: 'close', peakStage: 'close', hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, equippedOutfit: 'scarf', lastSafeOutfit: 'scarf', personaVersion: 6, seenUnlocks: [], dailyCounts: {}, lastAffectionAt: {}, topicsToday: [] },
+        claude: { speciesId: 'claude', name: '克克', agentId: 'agt_CLAUDE', topicId: 'tpc_CLAUDE', createdAt: now - 1e6, affection: 10, relStage: 'stranger', peakStage: 'stranger', hunger: 30, mood: 60, energy: 90, sleeping: false, lastTickAt: now, lastInteractionAt: now, lastFedAt: now, lastSpokeAt: now, equippedOutfit: 'daily', lastSafeOutfit: 'daily', personaVersion: 6, seenUnlocks: [], dailyCounts: {}, lastAffectionAt: {}, topicsToday: [] },
+      } };
+      const settingsBefore = { ageGateVersion: 2, answered: true, ageConfirmed: false, adultContent: false, appearance: { dafeiyu: 'dafeiyu-live2d', claude: 'claude-classic', grok: 'grok-removed-pack' }, framings: { dafeiyu: 'half' }, visitors: ['claude', 'gemini'], vrmPostures: { 'vrm-dafeiyu-mine': 'sit.rest' }, models: { claude: 'lobehub:claude-sonnet-5-5' }, systemRoles: { dafeiyu: '叫我老板' } };
+      fs.writeFileSync(path.join(data, 'pet.json'), JSON.stringify(petBefore, null, 2));
+      fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify(settingsBefore, null, 2));
+      ({ app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      await page.waitForFunction(() => !!document.querySelector('#pet-look canvas, #pet-look .l2d, #pet-look [data-kind]') || !!(window.petDebug && window.petDebug.framing && window.petDebug.framing()), null, { timeout: 20000 }).catch(() => {});
+      await hover(page);
+      const v = await view(page);
+      assert.equal(v.pet.characterId, 'dafeiyu-live2d', '大肥鱼 + dafeiyu-live2d → the character 「大肥鱼 · Live2D」');
+      assert.equal(v.character.name, '大肥鱼 · Live2D');
+      assert.equal(v.look.packId, 'dafeiyu-live2d');
+      assert.equal(v.pet.agentId, 'agt_FISH', 'same agent, chat and affection');
+      assert.equal(v.pet.affection, 40);
+      assert.match(await page.textContent('#meta'), /小鱼 · 大肥鱼 · Live2D · 亲近 ♥40/);
+      await page.screenshot({ path: path.join(OUT, 't2764-migrated-live2d.png') });
+      const petAfter = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+      const stAfter = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+      assert.equal(petAfter.characterId, 'dafeiyu-live2d');
+      assert.equal(petAfter.characterModel, 2);
+      assert.deepEqual(petAfter.characters.dafeiyu.wardrobes['dafeiyu-pixel'], { equippedOutfit: 'scarf', lastSafeOutfit: 'scarf' }, 'her outfit goes into each of her characters\' wardrobes');
+      assert.equal(petAfter.characters.dafeiyu.wardrobes['dafeiyu-live2d'].equippedOutfit, 'daily', 'her Live2D self has no scarf: corrected to daily on arrival');
+      assert.ok(petAfter.characters.claude.wardrobes['claude-classic'], 'a met base gets a wardrobe per character too');
+      assert.equal(stAfter.appearance, undefined);
+      assert.equal(stAfter.characterModel, 2);
+      assert.deepEqual(stAfter.legacyAppearance, settingsBefore.appearance);
+      assert.deepEqual(stAfter.framings, { 'dafeiyu-pixel': 'half', 'dafeiyu-live2d': 'half', 'dafeiyu-live': 'half', 'dafeiyu-classic': 'half', 'dafeiyu-adult': 'half', 'dafeiyu-clips': 'half' }, '取景 per character');
+      assert.deepEqual(stAfter.visitors, ['claude-classic', 'gemini-pixel'], 'visitors: her chosen character');
+      assert.deepEqual(stAfter.vrmPostures, settingsBefore.vrmPostures, 'VRM postures: a character id is her pack id');
+      assert.deepEqual([stAfter.models, stAfter.systemRoles], [settingsBefore.models, settingsBefore.systemRoles], 'per-persona: shared by her characters, unchanged');
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'settings.characters.bak.json'), 'utf8')), settingsBefore, 'settings backed up as they were');
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.characters.bak.json'), 'utf8')), petBefore, 'pet.json backed up as it was');
+      // a second start: nothing to migrate, the files stay byte for byte (but for the clock the heartbeat moves)
+      await app.close();
+      const p1 = fs.readFileSync(path.join(data, 'settings.json'), 'utf8');
+      ({ app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
+      const v2 = await view(page);
+      assert.equal(v2.pet.characterId, 'dafeiyu-live2d');
+      assert.equal(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'), p1, 'settings.json unchanged by a second start');
+      const pet2 = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+      assert.deepEqual(pet2.characters.dafeiyu.wardrobes, petAfter.characters.dafeiyu.wardrobes);
+      fs.writeFileSync(path.join(OUT, 't2764-migrate-files.txt'), `--- settings.json (before) ---\n${JSON.stringify(settingsBefore, null, 2)}\n\n--- settings.json (after) ---\n${JSON.stringify({ characterModel: stAfter.characterModel, legacyAppearance: stAfter.legacyAppearance, framings: stAfter.framings, visitors: stAfter.visitors, vrmPostures: stAfter.vrmPostures, models: stAfter.models, systemRoles: stAfter.systemRoles }, null, 2)}\n\n--- pet.json (before) ---\n${JSON.stringify({ speciesId: petBefore.speciesId, dafeiyu: { equippedOutfit: 'scarf' } }, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify({ speciesId: petAfter.speciesId, characterId: petAfter.characterId, characterModel: petAfter.characterModel, wardrobes: { dafeiyu: petAfter.characters.dafeiyu.wardrobes, claude: petAfter.characters.claude.wardrobes } }, null, 2)}\n`);
+      return `characterId ${v.pet.characterId} (${v.character.name}); framings → ${Object.keys(stAfter.framings).length} characters; visitors ${stAfter.visitors.join(',')}; 2nd start: settings.json identical`;
+    }, () => page);
   } finally {
     await app.close().catch(() => {});
   }
@@ -903,9 +964,10 @@ async function dafeiyu() {
   try {
     await step(S, 'the character screen offers DeepSeek first', async () => {
       await page.waitForSelector('.char-card');
-      assert.equal(await page.locator('.char-card').count(), 5);
+      assert.equal(await page.locator('.char-card').count(), 13);
       assert.match(await page.locator('.char-card').nth(0).textContent(), /DeepSeek/);
-      await page.locator('.char-card').nth(0).click();
+      // her original clips are a character of their own (T-2764): 「大肥鱼 · 原版动画」
+      await page.locator('.char-card[data-character="dafeiyu-clips"]').click();
       assert.match(await page.locator('#card-info').textContent(), /大肥鱼|鱼片/);
       await page.fill('#pet-name', 'Mow');
     }, page);
@@ -949,9 +1011,10 @@ async function dafeiyu() {
     // 衣柜 moved to the settings window (her page, T-2718): her signature outfit is there and worn
     await step(S, 'in 设置 → her page the wardrobe lists her signature outfit, worn', async () => {
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      // an old per-persona link still opens her page: the current 大肥鱼 character, 「大肥鱼 · 原版动画」 (T-2764)
       const admin = await openAdminWindow(app, page, 'characters/dafeiyu');
-      await adminUntil(admin, () => !!document.querySelector('[data-outfits="dafeiyu"] [data-outfit="daily"]'), null, 15000, 'her wardrobe');
-      const rack = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits="dafeiyu"] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.dataset.equipped === 'true' ? '✓' : ''}`));
+      await adminUntil(admin, () => !!document.querySelector('[data-outfits="dafeiyu-clips"] [data-outfit="daily"]'), null, 15000, 'her wardrobe');
+      const rack = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits="dafeiyu-clips"] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.dataset.equipped === 'true' ? '✓' : ''}`));
       assert.ok(rack.includes('daily✓'), rack.join(' '));
       await admin.screenshot({ path: path.join(OUT, 'dafeiyu-wardrobe-signature.png') });
       return `wardrobe ${rack.join(' ')}`;
@@ -974,7 +1037,7 @@ async function busy() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(2).click();
+    await page.locator('.char-card[data-species="grok"]').first().click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
@@ -1149,7 +1212,7 @@ async function daemonlaunch() {
   const starts = () => (fs.existsSync(path.join(fakeDir, 'connects.log')) ? fs.readFileSync(path.join(fakeDir, 'connects.log'), 'utf8').trim().split('\n').length : 0);
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(1).click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'claiming a pet starts lh connect --daemon', async () => {
@@ -1187,7 +1250,7 @@ async function oldlh() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_NO_AGENCY: '1' });
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(2).click();
+    await page.locator('.char-card[data-species="grok"]').first().click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'an lh that cannot write the binding still works, and the pet says to upgrade lh', async () => {
@@ -1216,7 +1279,7 @@ async function longreply() {
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_LONG_REPLY: '1' });
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(2).click();
+    await page.locator('.char-card[data-species="grok"]').first().click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await step(S, 'a very long reply scrolls inside the bubble and stays within the window', async () => {
@@ -1256,7 +1319,7 @@ async function live() {
   try {
     await page.waitForSelector('.char-card');
     await step(S, 'real lh is logged in, so login is skipped and a real agent is created', async () => {
-      await page.locator('.char-card').nth(1).click();
+      await page.locator('.char-card[data-species="claude"]').first().click();
       await page.uncheck('#local-opt'); // tests must never bind an agent to, or run tools on, a real computer
       await page.fill('#pet-name', '芽芽');
       await page.click('#hatch-btn');
@@ -1413,7 +1476,7 @@ async function advanced() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(0).click();
+    await page.locator('.char-card[data-species="dafeiyu"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -1590,7 +1653,7 @@ async function packs() {
   const openLooks = async () => { await openCurrentPage(page); await page.waitForSelector('.pack-list .pack-opt'); };
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(2).click();
+    await page.locator('.char-card[data-species="grok"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -1766,7 +1829,7 @@ async function models() {
   const summary = () => page.textContent('#char-config .cfg-model');
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -1931,7 +1994,7 @@ async function charpage() {
   const cfg = () => page.evaluate(() => ({ model: document.querySelector('#char-config .cfg-model').textContent, role: document.querySelector('#char-config .cfg-role').textContent }));
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card[data-species="claude"], .char-card >> nth=1').first().click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -2281,7 +2344,7 @@ async function update() {
   const waitStatus = (re) => admin.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-path="/update"]').innerText.replace(/\s+/g, ' ')), re.source, { timeout: 15000 });
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(2).click();
+    await page.locator('.char-card[data-species="grok"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -2342,7 +2405,7 @@ async function space() {
   const createCall = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((c) => c.args[0] === 'agent' && c.args[1] === 'create').pop();
   const start = async (page) => {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card').nth(1).click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.click('#hatch-btn');
     await page.waitForSelector('#space-box:not(.hidden)', { timeout: 15000 });
   };
@@ -2547,8 +2610,8 @@ async function rosterOne(ch) {
     if (ch.idx === 0) {
       await step(S, 'onboarding offers the five model-chan, no spirit stones', async () => {
         await page.waitForSelector('.char-card');
-        assert.equal(await page.locator('.char-card').count(), 5);
-        const vendors = await page.locator('.char-card .vendor').allTextContents();
+        assert.equal(await page.locator('.char-card').count(), 13, 'one card per look (T-2764)');
+        const vendors = [...new Set((await page.locator('.char-card .vendor').allTextContents()).map((v) => v.split(' · ')[0]))];
         assert.deepEqual(vendors, ['DeepSeek', 'Anthropic', 'xAI', 'Google', 'OpenAI']);
         assert.doesNotMatch(await page.textContent('#onboarding'), /灵石|蛋/);
         return vendors.join(' / ');
@@ -2556,7 +2619,7 @@ async function rosterOne(ch) {
     }
     await step(S, `choose ${ch.zh} (${ch.vendor})`, async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card').nth(ch.idx).click();
+      await page.locator(`.char-card[data-species="${ch.id}"]`).first().click();
       assert.equal(await page.getAttribute(`.char-card[data-species="${ch.id}"]`, 'aria-checked'), 'true');
       assert.match(await page.textContent('#card-info'), new RegExp(`${ch.vendor}|${ch.zh}`));
       assert.equal(await page.locator('#hatch-btn').isDisabled(), false);
@@ -4919,7 +4982,7 @@ async function history() {
   const items = () => admin.evaluate(() => [...document.querySelectorAll('[data-session]')].map((b) => ({ time: b.querySelector('[data-history-time]').textContent, who: b.querySelector('[data-history-who]').textContent, count: b.querySelector('[data-history-count]').textContent.trim(), preview: b.querySelector('[data-history-preview]').textContent })));
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card[data-species="claude"]').click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -5073,7 +5136,7 @@ async function adultLook() {
   try {
     await step(S, `wake ${ch.zh} with all-ages content: 外观 has no 成年版 and her wardrobe no adult outfit`, async () => {
       await page.waitForSelector('.char-card');
-      await page.locator(`.char-card[data-species="${ch.id}"]`).click();
+      await page.locator(`.char-card[data-species="${ch.id}"]`).first().click();
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await idle();
@@ -5295,7 +5358,7 @@ async function outfitScenario() {
   try {
     await step(S, `choose ${ch.zh}, wake her: she wears daily`, async () => {
       await page.waitForSelector('.char-card');
-      await page.locator(`.char-card[data-species="${ch.id}"]`).click();
+      await page.locator(`.char-card[data-species="${ch.id}"]`).first().click();
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await idle();
@@ -5569,7 +5632,7 @@ async function rigScenario() {
   try {
     await step(S, 'hatching 大肥鱼 in her 全动态 look', async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card').nth(0).click();
+      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
@@ -5697,7 +5760,7 @@ async function live2dScenario() {
   try {
     await step(S, 'hatching 大肥鱼 in her Live2D look', async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card').nth(0).click();
+      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
@@ -5852,7 +5915,7 @@ async function live2dImport() {
   try {
     await step(S, 'hatching 大肥鱼 in her default pixel look', async () => {
       await page.waitForSelector('.char-card');
-      await page.locator('.char-card').nth(0).click();
+      await page.locator('.char-card[data-species="dafeiyu"]').first().click();
       await page.fill('#pet-name', 'Mow');
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 20000 });
@@ -6970,7 +7033,7 @@ async function streamScenario() {
   };
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card[data-species="claude"]').click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -7178,7 +7241,7 @@ async function streamDirectScenario() {
   };
   try {
     await page.waitForSelector('.char-card');
-    await page.locator('.char-card[data-species="claude"]').click();
+    await page.locator('.char-card[data-species="claude"]').first().click();
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
@@ -7796,7 +7859,7 @@ async function petuiScenario() {
       await page.click('#age-no');
       await step(S, `${theme}: 选角页（卡片、复选、输入框、主按钮）`, async () => {
         await page.waitForSelector('.char-card');
-        await page.locator('.char-card[data-species="claude"]').click();
+        await page.locator('.char-card[data-species="claude"]').first().click();
         await page.fill('#pet-name', '小克');
         await shot('01-onboarding');
       }, page);
@@ -7981,7 +8044,7 @@ async function wardrobePackScenario() {
     return `${name}.png`;
   };
   const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
-  const chips = () => admin.$$eval('[data-outfits="dafeiyu"] [data-outfit]', (els) => els.map((e) => e.getAttribute('data-outfit')));
+  const chips = (id) => admin.$$eval(`[data-outfits="${id}"] [data-outfit]`, (els) => els.map((e) => e.getAttribute('data-outfit')));
   const petLook = () => page.evaluate(() => ({ kind: document.getElementById('pet-body').dataset.kind, outfit: document.getElementById('char-wrap').dataset.outfit }));
   const viewNow = async () => { const v = (await call('state')).view; return { packId: v.look && v.look.packId, kind: v.look && v.look.kind, outfit: v.outfit, outfits: v.outfits.map((o) => o.id), cards: [...new Set(v.outfits.map((o) => o.look && o.look.packId))] }; };
   try {
@@ -8010,42 +8073,54 @@ async function wardrobePackScenario() {
       return `default pack ${v.packId}; wardrobe ${v.outfits.join(',')}`;
     }, page);
 
-    await step(S, 'W1 像素包: 衣柜 lists the pixel pack\'s outfits; a click on 针织围巾套装 dresses her', async () => {
-      await go('/characters/dafeiyu');
+    // T-2764: every look is a character of her own: 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 each have their own 衣柜
+    // (her page, data-outfits="<character id>"); switching between them is switching characters (same agent and
+    // affection, she is the same girl), and each one keeps the outfit she wore.
+    const wardrobeOf = (id) => savedPet().characters.dafeiyu.wardrobes[id] || {};
+    const switchTo = async (id) => {
+      await go(`/characters/${id}`);
+      await attached(`[data-switch="${id}"]`);
+      await admin.click(`[data-switch="${id}"]`);
+      await until(`${id} current`, async () => (await call('state')).view.pet.characterId === id);
       await tab('装扮');
-      await attached('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
-      await admin.click('[data-outfits="dafeiyu"] [data-outfit="scarf"]');
+    };
+    await step(S, 'W1 「大肥鱼 · 像素」: her 衣柜 lists the pixel pack\'s outfits; a click on 针织围巾套装 dresses her', async () => {
+      await go('/characters/dafeiyu-pixel');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="scarf"]');
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-outfit="scarf"]');
       await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 8000 });
       await attached('[data-outfit="scarf"][data-equipped="true"]');
       await page.waitForTimeout(500);
-      const c = await chips();
+      const c = await chips('dafeiyu-pixel');
       assert.ok(c.length > 1 && c.includes('scarf'), c.join(','));
-      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'scarf');
+      assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit, 'scarf');
       const out = [await shot('w1-pixel-wardrobe'), await petShot('w1-pet-pixel-scarf')];
       return `衣柜 chips (dafeiyu-pixel): ${c.join(',')}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'W2 换上 Live2D 包: 衣柜 shows only daily, the scarf is taken off and saved, she is the Live2D model', async () => {
-      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+    await step(S, 'W2 切换到角色「大肥鱼 · Live2D」: her own 衣柜 shows only daily, she is the Live2D model, the pixel one keeps her scarf', async () => {
+      await switchTo('dafeiyu-live2d');
       await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
       await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
-      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await until('rack shows daily only', async () => JSON.stringify(await chips('dafeiyu-live2d')) === '["daily"]');
       await page.waitForTimeout(1500);
-      const chipsNow = await chips();
+      const chipsNow = await chips('dafeiyu-live2d');
       const v = await viewNow();
       assert.deepEqual(v.outfits, ['daily']);
       assert.equal(v.outfit, 'daily');
       assert.equal(v.kind, 'live2d');
       assert.deepEqual(v.cards, ['dafeiyu-live2d'], 'every card is drawn from her Live2D pack');
       const others = ['scarf', 'swimsuit', 'qipao', 'beret', 'maid'].filter((o) => v.outfits.includes(o) || chipsNow.includes(o));
-      assert.deepEqual(others, [], 'no outfit only another pack has is listed');
-      const saved = savedPet().characters.dafeiyu.equippedOutfit;
-      assert.equal(saved, 'daily', 'the correction is saved');
+      assert.deepEqual(others, [], 'no outfit only another character has is listed');
+      assert.equal(wardrobeOf('dafeiyu-live2d').equippedOutfit, 'daily');
+      assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit, 'scarf', 'her pixel self keeps the scarf');
+      assert.equal(savedPet().characterId, 'dafeiyu-live2d');
       const out = [await shot('w2-live2d-wardrobe'), await petShot('w2-pet-live2d')];
-      return `衣柜 chips ${chipsNow.join(',')}; view ${JSON.stringify(v)}; pet.json equippedOutfit=${saved}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+      return `衣柜 chips ${chipsNow.join(',')}; view ${JSON.stringify(v)}; wardrobes ${JSON.stringify(savedPet().characters.dafeiyu.wardrobes)}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'W3 an outfit the Live2D pack has not (scarf / swimsuit / qipao) is refused; she stays in her Live2D pack', async () => {
+    await step(S, 'W3 an outfit her Live2D pack has not (scarf / swimsuit / qipao) is refused; she stays 「大肥鱼 · Live2D」', async () => {
       const rs = {};
       for (const id of ['scarf', 'swimsuit', 'qipao']) {
         const r = await call('equipOutfit', id);
@@ -8062,11 +8137,11 @@ async function wardrobePackScenario() {
       return `equipOutfit → ${JSON.stringify(rs)}; view ${v.packId}/${v.outfit}; pet window ${JSON.stringify(pl)}; ${await petShot('w3-pet-still-live2d')}`;
     }, () => admin);
 
-    await step(S, 'W3b wearing the outfit the Live2D pack has (daily, via the 衣柜 chip and via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
-      await go('/characters/dafeiyu');
+    await step(S, 'W3b wearing the outfit her pack has (daily, via the 衣柜 chip and via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
+      await go('/characters/dafeiyu-live2d');
       await tab('装扮');
-      await attached('[data-outfits="dafeiyu"] [data-outfit="daily"]');
-      await admin.click('[data-outfits="dafeiyu"] [data-outfit="daily"]');
+      await attached('[data-outfits="dafeiyu-live2d"] [data-outfit="daily"]');
+      await admin.click('[data-outfits="dafeiyu-live2d"] [data-outfit="daily"]');
       await page.waitForTimeout(800);
       const r = await call('equipOutfit', 'daily');
       assert.equal(r.ok, true, JSON.stringify(r));
@@ -8077,56 +8152,55 @@ async function wardrobePackScenario() {
       assert.equal(v.outfit, 'daily');
       const pl = await petLook();
       assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
-      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      assert.equal(wardrobeOf('dafeiyu-live2d').equippedOutfit, 'daily');
       const out = [await shot('w3b-live2d-wardrobe-daily-worn'), await petShot('w3b-pet-live2d-daily-worn')];
       return `equipOutfit(daily) → ${JSON.stringify({ ok: r.ok, outfit: r.outfit && r.outfit.id })}; view ${JSON.stringify(v)}; pet window ${JSON.stringify(pl)}; ${out.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'W4 18+ confirmed and adult content on: the Live2D wardrobe is still daily only', async () => {
+    await step(S, 'W4 18+ confirmed and adult content on: the Live2D character\'s wardrobe is still daily only', async () => {
       await call('confirmAge', true);
       await call('setAdult', true);
       await page.waitForTimeout(500);
       const v = await viewNow();
       assert.deepEqual(v.outfits, ['daily']);
       assert.equal(v.packId, 'dafeiyu-live2d');
-      await go('/characters/dafeiyu');
+      await go('/characters/dafeiyu-live2d');
       await tab('装扮');
-      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await until('rack shows daily only', async () => JSON.stringify(await chips('dafeiyu-live2d')) === '["daily"]');
       return `view ${JSON.stringify(v)}; ${await shot('w4-live2d-adult-on')}`;
     }, () => admin);
 
-    await step(S, 'W5 back to the pixel pack: its full wardrobe again, she keeps daily', async () => {
-      await admin.click('[data-use-pack="dafeiyu-pixel"]');
+    await step(S, 'W5 back to 「大肥鱼 · 像素」: her full wardrobe again, still in the scarf she wore as that character', async () => {
+      await switchTo('dafeiyu-pixel');
       await until('pixel worn', async () => (await viewNow()).packId === 'dafeiyu-pixel');
-      await until('rack grows', async () => (await chips()).includes('scarf'));
+      await until('rack grows', async () => (await chips('dafeiyu-pixel')).includes('scarf'));
       const v = await viewNow();
-      assert.equal(v.outfit, 'daily');
+      assert.equal(v.outfit, 'scarf', 'each character keeps her own outfit');
       assert.equal(v.kind, 'sprites');
-      const c = await chips();
+      const c = await chips('dafeiyu-pixel');
       assert.ok(c.length > 1 && c.includes('scarf') && c.includes('qipao'), `pixel rack ${c.join(',')}`);
-      assert.notDeepEqual(c, ['daily'], 'the 衣柜 changed with the pack');
       return `view ${JSON.stringify(v)}; 衣柜 chips ${c.join(',')}; ${await shot('w5-pixel-again')}`;
     }, () => admin);
 
-    await step(S, 'W5b in the pixel pack she wears 旗袍 (qipao); changing into the Live2D pack puts her back in daily (saved), still Live2D', async () => {
-      await admin.click('[data-outfits="dafeiyu"] [data-outfit="qipao"]');
+    await step(S, 'W5b as the pixel character she wears 旗袍 (qipao); the Live2D character stays in daily, each saved apart', async () => {
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-outfit="qipao"]');
       await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 8000 });
-      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'qipao');
+      assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit, 'qipao');
       const before = await viewNow();
       assert.equal(before.packId, 'dafeiyu-pixel');
       const s1 = await petShot('w5b-pet-pixel-qipao');
-      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+      await switchTo('dafeiyu-live2d');
       await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
       await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
-      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await until('rack shows daily only', async () => JSON.stringify(await chips('dafeiyu-live2d')) === '["daily"]');
       await page.waitForTimeout(1500);
       const v = await viewNow();
       assert.equal(v.kind, 'live2d');
       assert.equal(v.outfit, 'daily');
       assert.deepEqual(v.outfits, ['daily']);
-      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      assert.deepEqual([wardrobeOf('dafeiyu-pixel').equippedOutfit, wardrobeOf('dafeiyu-live2d').equippedOutfit], ['qipao', 'daily'], 'two wardrobes, saved apart');
       const out = [s1, await shot('w5b-live2d-wardrobe-after-qipao'), await petShot('w5b-pet-live2d-after-qipao')];
-      return `before ${before.packId}/${before.outfit}; after ${JSON.stringify(v)}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+      return `before ${before.packId}/${before.outfit}; after ${JSON.stringify(v)}; wardrobes ${JSON.stringify(savedPet().characters.dafeiyu.wardrobes)}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'W6 no console errors in the settings window', async () => {
@@ -8226,15 +8300,17 @@ async function adminCoverageScenario() {
       return 'settings window up';
     }, page);
 
+    let imported3 = {};
     await step(S, 'B1 imported packs of every kind: 图片 (gemini), Live2D (dafeiyu, from the settings window), VRM (claude, from the settings window)', async () => {
       const a = await page.evaluate((d) => window.pet.debugImportPack(d), pic);
       assert.equal(a.ok, true, JSON.stringify(a));
       await page.evaluate((x) => window.pet.debugNextOpen(x), path.join(l2d, 'medium.model3.json'));
-      const b = await call('importLive2d', 'dafeiyu');
+      const b = await call('importLive2d', 'dafeiyu-pixel');
       assert.equal(b.ok, true, JSON.stringify(b));
       await page.evaluate((x) => window.pet.debugNextOpen(x), vrmFile);
-      const c = await call('importVrm', 'claude');
+      const c = await call('importVrm', 'claude-pixel');
       assert.equal(c.ok, true, JSON.stringify(c));
+      imported3 = { l2d: b.pack.id, vrm: c.pack.id };
       await go('/packs');
       const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-packs] tbody tr')].map((tr) => tr.textContent));
       const packs = await admin.evaluate(async () => (await window.petAdmin.state()).packs.map((p) => `${p.id}:${p.kind}:${p.source}`));
@@ -8251,39 +8327,40 @@ async function adminCoverageScenario() {
       assert.deepEqual(cards, roster.map((r) => r.id), 'one card per character');
       assert.ok(cards.length >= 5, cards.join(','));
       const filter = (await admin.textContent('[data-kind-filter]')).trim();
-      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '有导入包']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '导入的角色']) assert.ok(filter.includes(k), `${k} in ${filter}`);
       const out = [await shot('b2-characters-all')];
       const pick = async (label) => {
         await admin.locator('[data-kind-filter]').getByText(new RegExp(`^${label} \\d+$`)).click();
         await admin.waitForTimeout(300);
         return admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
       };
+      // T-2764: every imported pack is a character of her own (not a pack hung under 格萝可 / 大肥鱼 …)
       const vrm = await pick('VRM');
-      assert.deepEqual(vrm, ['claude']);
+      assert.deepEqual(vrm, [imported3.vrm]);
       out.push(await shot('b2-characters-vrm'));
       const l2dRows = await pick('Live2D');
-      assert.deepEqual(l2dRows, ['dafeiyu']);
+      assert.deepEqual(l2dRows, ['dafeiyu-live2d', imported3.l2d]);
       const pics = await pick('图片');
-      assert.deepEqual(pics, ['gemini']);
-      const imported = await pick('有导入包');
-      assert.deepEqual([...imported].sort(), ['claude', 'dafeiyu', 'gemini']);
+      assert.deepEqual(pics, ['gemini-photo']);
+      const imported = await pick('导入的角色');
+      assert.deepEqual([...imported].sort(), [imported3.vrm, imported3.l2d, 'gemini-photo'].sort());
       out.push(await shot('b2-characters-imported'));
       await pick('全部');
       return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'B3 角色详情 (格萝可, current): 装扮 (衣柜 + 取景 + 形象包) / 好感 / 模型 / 个性化设定 / 语音 / 资料, one screenshot per tab', async () => {
-      await go('/characters/grok');
+      await go('/characters/grok-pixel');
       const out = [];
-      for (const [t, sel] of [['装扮', '[data-wardrobe="grok"]'], ['好感', '[data-road="grok"]'], ['模型', null], ['个性化设定', '[data-personality="grok"]'], ['语音', null], ['资料', null]]) {
+      for (const [t, sel] of [['装扮', '[data-wardrobe="grok-pixel"]'], ['好感', '[data-road="grok-pixel"]'], ['模型', null], ['个性化设定', '[data-personality="grok-pixel"]'], ['语音', null], ['资料', null]]) {
         await tab(t);
         if (sel) await attached(sel);
-        if (t === '装扮') { await attached('[data-outfits="grok"]'); await attached('[data-framing-row="grok"]'); }
+        if (t === '装扮') { await attached('[data-outfits="grok-pixel"]'); await attached('[data-framing-row="grok-pixel"]'); }
         out.push(await shot(`b3-grok-${t}`));
       }
-      const persona = await admin.textContent('[data-personality="grok"]').catch(() => '');
+      const persona = await admin.textContent('[data-personality="grok-pixel"]').catch(() => '');
       await tab('个性化设定');
-      const p2 = await admin.textContent('[data-personality="grok"]');
+      const p2 = await admin.textContent('[data-personality="grok-pixel"]');
       assert.ok(p2.length > 20, 'her persona from the character file');
       await tab('资料');
       const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
@@ -8292,19 +8369,19 @@ async function adminCoverageScenario() {
     }, () => admin);
 
     await step(S, 'B4 装扮 → 衣柜: a click in the settings window dresses her in the pet window at once (was only in the pet window\'s 衣柜)', async () => {
-      const u = await call('unlockAll', 'grok');
+      const u = await call('unlockAll', 'grok-pixel');
       assert.equal(u.ok, true);
-      await go('/characters/grok');
+      await go('/characters/grok-pixel');
       await tab('装扮');
       const before = await page.getAttribute('#char-wrap', 'data-outfit');
-      await attached('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])');
-      const id = await admin.getAttribute('[data-outfits="grok"] [data-outfit]:not([disabled]):not([data-equipped="true"])', 'data-outfit');
+      await attached('[data-outfits="grok-pixel"] [data-outfit]:not([disabled]):not([data-equipped="true"])');
+      const id = await admin.getAttribute('[data-outfits="grok-pixel"] [data-outfit]:not([disabled]):not([data-equipped="true"])', 'data-outfit');
       assert.ok(id && id !== before, `${id} vs ${before}`);
       // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
       if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
       await page.waitForTimeout(400);
       const pBefore = await petShot('b4-pet-before');
-      await admin.click(`[data-outfits="grok"] [data-outfit="${id}"]`);
+      await admin.click(`[data-outfits="grok-pixel"] [data-outfit="${id}"]`);
       await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
       await attached(`[data-outfit="${id}"][data-equipped="true"]`);
       await page.waitForTimeout(500);
@@ -8377,17 +8454,19 @@ async function adminCoverageScenario() {
 
     let l2dId = null;
     await step(S, 'B9 大肥鱼 in her imported Live2D: 角色详情 → 装扮 → Live2D 模型大小 resizes the model in the pet window at once (was only in the pet window)', async () => {
-      const sw = await call('switchCharacter', 'dafeiyu', '小鱼');
+      const sw = await call('switchCharacter', 'dafeiyu-pixel', '小鱼');
       assert.equal(sw.ok, true, JSON.stringify(sw));
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await admin.evaluate(async () => (await window.petAdmin.state()).packs.filter((p) => p.kind === 'live2d' && p.source === 'user').map((p) => p.id));
       l2dId = st[0];
-      const ap = await call('setAppearance', l2dId, 'dafeiyu');
+      // T-2764: her imported Live2D model is a character of her own: become her (same 大肥鱼, no new agent)
+      const ap = await call('switchCharacter', l2dId);
       assert.equal(ap.ok, true, JSON.stringify(ap));
+      assert.equal(ap.created, false, 'the same girl as 大肥鱼 · 像素');
       await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.live2d'); return c && c.dataset.frame; }, null, { timeout: 30000 });
       await page.waitForTimeout(1500);
       const pBefore = await petShot('b9-pet-live2d-before');
-      await go('/characters/dafeiyu');
+      await go(`/characters/${l2dId}`);
       await tab('装扮');
       await attached(`[data-live2d-size="${l2dId}"]`);
       const thumb = admin.locator(`[data-live2d-size="${l2dId}"] input[type="range"]`).first();
@@ -8404,15 +8483,16 @@ async function adminCoverageScenario() {
 
     await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 衣柜 note for one not current', async () => {
       const out = [];
-      await go('/characters/dafeiyu');
+      // one kind per character now (T-2764): her imported Live2D is its own character
+      await go(`/characters/${l2dId}`);
       await tab('资料');
-      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 1 · 导入 1/);
+      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 0 · 导入 1/);
       out.push(await shot('b10-dafeiyu-about'));
-      await go('/characters/claude');
+      await go('/characters/claude-pixel');
       await tab('装扮');
       out.push(await shot('b10-claude-looks-vrm'));
       assert.match(await admin.textContent('[role="tabpanel"]'), /衣柜跟着当前陪你的角色走/);
-      await go('/characters/gemini');
+      await go('/characters/gemini-photo');
       await tab('资料');
       assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);
       out.push(await shot('b10-gemini-about'));
@@ -8552,7 +8632,7 @@ async function adminScenario() {
     }, () => admin);
 
     // every page, light and dark (theme pinned through 外观主题 = ui.theme, which the console applies itself)
-    const ROUTES = ['/overview', '/characters', '/characters/grok', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
+    const ROUTES = ['/overview', '/characters', '/characters/grok-pixel', '/play', '/settings', '/packs', '/visitors', '/behavior', '/proactive', '/appearance', '/tts', '/asr', '/voicepacks', '/connection', '/api', '/safety', '/update', '/about'];
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
     for (const theme of ['light', 'dark']) {
       await step(S, `A3 ${theme}: all ${ROUTES.length} pages render (rail with 4 places, hubs, her stage, form cards), data-theme=${theme}`, async () => {
@@ -8595,8 +8675,8 @@ async function adminScenario() {
       await shot('a3b-play-hub');
       await admin.click('[data-rail="characters"]');
       await admin.waitForSelector('[data-path="/characters"]');
-      await admin.click('[data-row="gemini"] a[href="#/characters/gemini"]');
-      await admin.waitForSelector('[data-character-title="gemini"]');
+      await admin.click('[data-row="gemini-pixel"] a[href="#/characters/gemini-pixel"]');
+      await admin.waitForSelector('[data-character-title="gemini-pixel"]');
       await admin.click('[data-back="characters"]');
       await admin.waitForSelector('[data-path="/characters"]');
       return `rail ${rail.join(' / ')}; 设置 tiles ${tiles.join(',')}; 玩法 tiles ${play.join(',')}; card → /characters/gemini → back`;
@@ -8605,14 +8685,14 @@ async function adminScenario() {
     await step(S, 'A3c her stage: a tap sends hearts up, she answers, and the pet on the desktop plays happy too', async () => {
       await go('/overview');
       await page.evaluate(() => window.petFx.cue('idle'));
-      await admin.click('[data-pat="grok"]');
+      await admin.click('[data-pat="grok-pixel"]');
       await admin.waitForSelector('[data-reaction]');
       const line = await admin.textContent('[data-reaction]');
-      const hearts = await admin.$$eval('[data-stage="grok"] svg', (s) => s.length);
+      const hearts = await admin.$$eval('[data-stage="grok-pixel"] svg', (s) => s.length);
       await shot('a3c-pat');
       await page.waitForFunction(() => window.petFx.state().lastCue === 'happy', null, { timeout: 5000 });
       await admin.click('[data-action-chip="sleep"]');
-      assert.equal(await admin.getAttribute('[data-stage="grok"] [data-action]', 'data-action'), 'sleep');
+      assert.equal(await admin.getAttribute('[data-stage="grok-pixel"] [data-action]', 'data-action'), 'sleep');
       const bad = await admin.evaluate(() => window.petAdmin.cue('rm -rf'));
       assert.equal(bad.ok, false);
       return `reaction "${line.trim()}", ${hearts} hearts; pet window lastCue=happy; action chip → sleep; bad cue refused (${bad.reason})`;
@@ -8728,8 +8808,9 @@ async function adminScenario() {
       await go('/characters');
       await admin.waitForSelector('[data-roster] [data-row]');
       const rows = await admin.$$eval('[data-roster] [data-row]', (cards) => cards.map((el) => ({ id: el.dataset.row, text: el.innerText.replace(/\s+/g, ' ').trim(), preview: el.querySelector('[data-preview]') && el.querySelector('[data-preview]').dataset.preview })));
-      assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
-      const grok = rows.find((r) => r.id === 'grok');
+      // T-2764: one card per character (every look), base by base
+      assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-live', 'dafeiyu-classic', 'dafeiyu-clips', 'claude-pixel', 'claude-classic', 'grok-pixel', 'grok-classic', 'gemini-pixel', 'gemini-classic', 'gpt-pixel', 'gpt-classic']);
+      const grok = rows.find((r) => r.id === 'grok-pixel');
       assert.match(grok.text, /当前角色/);
       assert.match(grok.text, /像素/);
       assert.match(grok.text, /内置/);
@@ -8742,15 +8823,15 @@ async function adminScenario() {
     }, () => admin);
 
     await step(S, 'A12 初次见面 / 切换 from the list: Claude gets a name and becomes the pet in the pet window', async () => {
-      await admin.click('[data-switch="claude"]');
+      await admin.click('[data-switch="claude-pixel"]');
       await admin.fill('[data-meet-name]', '小克');
       await admin.getByRole('dialog').getByRole('button', { name: '初次见面' }).click();
-      await admin.waitForSelector('[data-current="claude"]', { timeout: 30000 });
+      await admin.waitForSelector('[data-current="claude-pixel"]', { timeout: 30000 });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('claude-'), null, { timeout: 15000 });
       const key = await page.getAttribute('#pet-look', 'data-key');
       await shot('a12-switched');
-      await admin.click('[data-switch="grok"]');
-      await admin.waitForSelector('[data-current="grok"]', { timeout: 30000 });
+      await admin.click('[data-switch="grok-pixel"]');
+      await admin.waitForSelector('[data-current="grok-pixel"]', { timeout: 30000 });
       await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-'), null, { timeout: 15000 });
       return `pet window look → ${key}; switched back to grok`;
     }, () => admin);
@@ -8767,9 +8848,9 @@ async function adminScenario() {
     const showcaseShot = (id, name) => admin.locator(`[data-showcase="${id}"]`).screenshot({ path: path.join(SHOTS, `${name}.png`) });
 
     await step(S, 'A12b 角色详情: two columns — her stage pinned on the left (scales with the window), story and settings on the right', async () => {
-      await go('/characters/grok');
-      await admin.waitForSelector('[data-showcase="grok"]');
-      await stageDrawn('grok');
+      await go('/characters/grok-pixel');
+      await admin.waitForSelector('[data-showcase="grok-pixel"]');
+      await stageDrawn('grok-pixel');
       const box = () => admin.evaluate(() => {
         const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), right: Math.round(b.right) }; };
         return { show: r('[data-showcase]'), panels: r('[data-detail-layout] > div:last-child'), stage: r('[data-showcase] [data-stage]'), title: r('[data-character-title]') };
@@ -8777,7 +8858,7 @@ async function adminScenario() {
       const a = await box();
       assert.ok(a.show.right <= a.panels.x, `stage column ${JSON.stringify(a.show)} left of the panels ${JSON.stringify(a.panels)}`);
       assert.ok(a.title.x >= a.panels.x, 'her name heads the right column');
-      for (const sel of ['[data-wardrobe="grok"]', '[data-outfits="grok"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
+      for (const sel of ['[data-wardrobe="grok-pixel"]', '[data-outfits="grok-pixel"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
       assert.ok(await admin.evaluate(() => { const p = document.querySelector('[data-detail-layout] > div:last-child'); return !!p.querySelector('[role="tablist"]') && !!p.querySelector('[data-character-title]'); }), 'tabs + info in the right column');
       // the whole page, full size
       const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
@@ -8789,6 +8870,9 @@ async function adminScenario() {
       // pinned: scrolling the page moves the panels, not her (a short window, so the page has room to scroll)
       await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 700); });
       await admin.waitForTimeout(400);
+      // from the top: an earlier step may have left the page scrolled
+      await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });
+      await admin.waitForTimeout(200);
       const top = await box();
       const scrolled = await admin.evaluate(() => { const m = document.querySelector('main'); m.scrollTop = m.scrollHeight; return m.scrollTop; });
       await admin.waitForTimeout(300);
@@ -8813,129 +8897,108 @@ async function adminScenario() {
       await admin.waitForTimeout(500);
       assert.ok(c.stage.h < a.stage.h, `stage ${a.stage.h}px in 1180×1000 → ${c.stage.h}px in 1180×640`);
       assert.ok(d.panels.y > d.show.y + d.show.h - 1, `narrow: panels below the stage (${JSON.stringify(d)})`);
-      await stageDrawn('grok');
+      await stageDrawn('grok-pixel');
       return `1180×1000: stage column x=${a.show.x} w=${a.show.w}, panels x=${a.panels.x} w=${a.panels.w}, stage ${a.stage.h}px; 1180×700 scrolled ${scrolled}px: panels y ${top.panels.y}→${b.panels.y}, stage y ${top.show.y}→${b.show.y}; 1180×640: stage ${c.stage.h}px; 820 wide: stacked (panels y=${d.panels.y} below stage bottom ${d.show.y + d.show.h})`;
     }, () => admin);
 
     await step(S, 'A12c 衣柜: two outfits put on from the right panel show on her stage at once (and in the pet window)', async () => {
-      await go('/characters/grok');
+      await go('/characters/grok-pixel');
       await admin.getByRole('tab', { name: '装扮' }).click();
-      const un = await admin.evaluate(() => window.petAdmin.unlockAll('grok'));
+      const un = await admin.evaluate(() => window.petAdmin.unlockAll('grok-pixel'));
       assert.equal(un.ok, true);
       await admin.waitForSelector('[data-outfit="swimsuit"]:not([disabled])');
       await admin.waitForSelector('[data-outfit="pajamas"]:not([disabled])');
-      await stageDrawn('grok');
-      const s0 = await stageOf('grok');
-      const caption0 = await admin.textContent('[data-worn-caption="grok"]');
-      await showcaseShot('grok', 'a12c-stage-0-daily');
+      await stageDrawn('grok-pixel');
+      const s0 = await stageOf('grok-pixel');
+      const caption0 = await admin.textContent('[data-worn-caption="grok-pixel"]');
+      await showcaseShot('grok-pixel', 'a12c-stage-0-daily');
       const out = [`daily: ${s0.src.split('/').slice(-2).join('/')}`];
       let prev = s0.src;
       let i = 0;
       for (const id of ['swimsuit', 'pajamas']) {
         const t0 = Date.now();
         await admin.click(`[data-outfit="${id}"]`);
-        await stageDrawn('grok', prev);
+        await stageDrawn('grok-pixel', prev);
         const ms = Date.now() - t0;
-        const st = await stageOf('grok');
+        const st = await stageOf('grok-pixel');
         assert.notEqual(st.src, prev, `${id}: stage source changed`);
         assert.match(st.src, new RegExp(id), `${id}: the stage draws the ${id} sheet (${st.src})`);
         assert.equal(await admin.getAttribute(`[data-outfit="${id}"]`, 'data-equipped'), 'true');
         await page.waitForFunction((o) => (document.getElementById('pet-look').dataset.key || '').includes(o), id, { timeout: 10000 });
-        const caption = await admin.textContent('[data-worn-caption="grok"]');
-        await showcaseShot('grok', `a12c-stage-${++i}-${id}`);
+        const caption = await admin.textContent('[data-worn-caption="grok-pixel"]');
+        await showcaseShot('grok-pixel', `a12c-stage-${++i}-${id}`);
         out.push(`${id}: ${st.src.split('/').slice(-2).join('/')} drawn ${ms}ms after the click; caption "${caption.trim()}"; pet #pet-look ${await page.getAttribute('#pet-look', 'data-key')}`);
         prev = st.src;
       }
       await shot('a12c-detail-after-outfits');
       // back to her daily outfit (the rest of the run expects it)
       await admin.click('[data-outfit="daily"]');
-      await stageDrawn('grok', prev);
+      await stageDrawn('grok-pixel', prev);
       return `caption before "${caption0.trim()}"; ${out.join(' | ')}`;
     }, () => admin);
 
-    // 穿上 on a card, scrolled to the middle first: the last toast (bottom-right) may sit over a card at the bottom edge
-    const useOn = async (id) => {
-      await admin.locator(`[data-use-pack="${id}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
-      await admin.click(`[data-use-pack="${id}"]`);
+    // T-2764: 旧版像素 is a character of her own (「格萝可 · 旧版像素」): her page shows her on the stage, 切换 makes her
+    // the companion (same agent / affection as 格萝可 · 像素) and the pet window follows; back and forth.
+    const petJson = () => JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
+    const becomeOn = async (id) => {
+      await go(`/characters/${id}`);
+      await admin.waitForSelector(`[data-character-title="${id}"]`);
+      await admin.locator(`[data-switch="${id}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await admin.click(`[data-switch="${id}"]`);
+      await page.waitForFunction((x) => (document.getElementById('pet-look').dataset.key || '').startsWith(`${x}/`), id, { timeout: 10000 });
+      for (let k = 0; k < 40 && petJson().characterId !== id; k++) await admin.waitForTimeout(200);
+      assert.equal(petJson().characterId, id, `${id} saved as the current character`);
     };
-    await step(S, 'A13 角色详情 → 装扮: trying 旧版像素 on shows it on her stage, 穿上 keeps it there and changes the pet window', async () => {
-      await go('/characters/grok');
-      await admin.waitForSelector('[data-character-title="grok"]');
-      await admin.evaluate(() => { window.__pushes = []; const t0 = performance.now(); window.petAdmin.onState((st) => { const r = st.roster && st.roster.find((x) => x.id === 'grok'); window.__pushes.push(`${Math.round(performance.now() - t0)}:${r ? r.preview.url.split('/')[2] : st.roster ? '?' : 'no-roster'}`); }); });
-      await stageDrawn('grok');
-      const before = await stageOf('grok');
-      await shot('a13-detail-overview');
-      await showcaseShot('grok', 'a13-stage-0-before');
-      await admin.getByRole('tab', { name: '装扮' }).click();
-      // 试穿 first: the stage shows the pack, nothing is saved yet
-      await admin.click('[data-try-pack="grok-classic"]');
-      await admin.waitForSelector('[data-trying-tag]');
-      await stageDrawn('grok', before.src);
-      const tried = await stageOf('grok');
-      assert.match(tried.src, /grok-classic/, `try-on stage ${tried.src}`);
-      assert.notEqual(saved().appearance && saved().appearance.grok, 'grok-classic', 'trying on saves nothing');
-      await shot('a13-detail-try-on');
-      await showcaseShot('grok', 'a13-stage-1-try-on');
-      await useOn('grok-classic');
-      await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
-      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
-      await admin.waitForFunction(() => /正在穿：旧版像素|正在穿：.*classic/i.test(document.querySelector('[data-worn-caption="grok"]').textContent) || !/试穿中/.test(document.querySelector('[data-worn-caption="grok"]').textContent));
-      await stageDrawn('grok');
-      const worn = await stageOf('grok');
-      assert.match(worn.src, /grok-classic/, `after 穿上 the stage keeps the new pack: ${worn.src}`);
-      assert.equal(saved().appearance.grok, 'grok-classic');
-      // the other way: back to her pixel pack, the stage follows without a reload
-      await useOn('grok-pixel');
-      for (let k = 0; k < 40 && saved().appearance.grok !== 'grok-pixel'; k++) await admin.waitForTimeout(200);
-      if (saved().appearance.grok !== 'grok-pixel') await Promise.reject(new Error('unsaved')).catch(async () => { throw new Error(`穿上 grok-pixel did not save: appearance=${JSON.stringify(saved().appearance)}; toasts=${JSON.stringify(await admin.$$eval('[data-sonner-toast]', (ts) => ts.map((t) => t.textContent)))}; button=${await admin.locator('[data-use-pack="grok-pixel"]').count()}`); });
-      await stageDrawn('grok', worn.src);
-      const back = await stageOf('grok');
-      assert.match(back.src, /grok-pixel/);
-      await showcaseShot('grok', 'a13-stage-2-pixel-again');
-      await useOn('grok-classic');
-      await stageDrawn('grok', back.src);
-      await page.waitForFunction(() => (document.getElementById('pet-look').dataset.key || '').startsWith('grok-classic/'), null, { timeout: 10000 });
-      await shot('a13-detail-look');
-      await showcaseShot('grok', 'a13-stage-3-classic-worn');
+    await step(S, 'A13 「格萝可 · 旧版像素」 is a character of her own: her page draws her on the stage, 切换 makes her the pet (same girl), and back', async () => {
+      await go('/characters/grok-classic');
+      await admin.waitForSelector('[data-character-title="grok-classic"]');
+      await stageDrawn('grok-classic');
+      const classic = await stageOf('grok-classic');
+      assert.match(classic.src, /grok-classic/, `her stage draws her own pack: ${classic.src}`);
+      assert.match(await admin.textContent('[data-character-title="grok-classic"]'), /格萝可 · 旧版像素/);
+      await shot('a13-detail-classic');
+      await showcaseShot('grok-classic', 'a13-stage-0-classic');
+      const agent = petJson().characters.grok.agentId;
+      await becomeOn('grok-classic');
+      assert.equal(petJson().characters.grok.agentId, agent, 'same agent: the same girl in another look');
       await page.screenshot({ path: path.join(SHOTS, 'pet-after-look.png') });
-      return `stage ${before.src.split('/').slice(-3).join('/')} → try-on ${tried.src.split('/').slice(-3).join('/')} (unsaved) → 穿上 ${worn.src.split('/').slice(-3).join('/')} → grok-pixel ${back.src.split('/').slice(-3).join('/')} → grok-classic again; pet window look ${await page.getAttribute('#pet-look', 'data-key')}; settings.json appearance.grok=${saved().appearance.grok}`;
+      await becomeOn('grok-pixel');
+      await stageDrawn('grok-pixel');
+      const back = await stageOf('grok-pixel');
+      assert.match(back.src, /grok-pixel/);
+      await showcaseShot('grok-pixel', 'a13-stage-1-pixel-again');
+      await becomeOn('grok-classic');
+      await shot('a13-detail-look');
+      return `grok-classic stage ${classic.src.split('/').slice(-3).join('/')}; 切换 → pet window ${await page.getAttribute('#pet-look', 'data-key')}; pet.json characterId=${petJson().characterId}; agent unchanged`;
     }, () => admin);
 
-    await step(S, 'A13b every built-in look of every character draws on her stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
-      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.map((c) => ({ id: c.id, packId: c.appearance.packId, options: c.appearance.options.filter((o) => o.source === 'builtin' && !o.adult).map((o) => ({ id: o.id, kind: o.kind })) })));
+    await step(S, 'A13b every built-in all-ages character draws on her own stage (像素 / 旧版 / 全动态 / Live2D / 原版动画), none blank or broken', async () => {
+      const chars = await admin.evaluate(async () => (await window.petAdmin.state()).view.characters.filter((c) => c.source === 'builtin' && !c.adult).map((c) => ({ id: c.id, kind: c.kind, pack: c.pack && c.pack.id })));
       const rows = [];
       const kinds = new Set();
       for (const c of chars) {
         await go(`/characters/${c.id}`);
         await admin.waitForSelector(`[data-showcase="${c.id}"]`);
+        await stageDrawn(c.id);
+        const st = await stageOf(c.id);
+        assert.ok(st && st.type !== 'none' && !st.failed && st.drawn, `${c.id} (${c.kind}): ${JSON.stringify(st)}`);
         await admin.getByRole('tab', { name: '装扮' }).click();
-        for (const o of c.options) {
-          const r = await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [o.id, c.id]);
-          assert.equal(r.ok, true, `${c.id} ← ${o.id}: ${JSON.stringify(r)}`);
-          await admin.waitForFunction(([cid, pid]) => [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-pack="${pid}"]`)].some((x) => x.dataset.worn === 'true'), [c.id, o.id], { timeout: 10000 }).catch(() => {});
-          await stageDrawn(c.id);
-          const st = await stageOf(c.id);
-          assert.ok(st && st.type !== 'none' && !st.failed && st.drawn, `${c.id} in ${o.id} (${o.kind}): ${JSON.stringify(st)}`);
-          // and tried on from her wardrobe (in colour even before she is met: a silhouette is only for the worn look)
-          await admin.click(`[data-try-pack="${o.id}"]`);
-          await admin.waitForSelector('[data-trying-tag]');
-          await stageDrawn(c.id);
-          const tr = await stageOf(c.id);
-          assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying ${o.id}: ${JSON.stringify(tr)}`);
-          if (!kinds.has(o.kind)) {
-            kinds.add(o.kind);
-            await showcaseShot(c.id, `a13b-stage-${o.kind}-${o.id}`);
-          }
-          await admin.click(`[data-try-pack="${o.id}"]`);
-          await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
-          rows.push(`${c.id}/${o.id}[${o.kind}] worn→${st.type} tried→${tr.type}`);
+        await admin.click(`[data-try-pack="${c.pack}"]`);
+        await admin.waitForSelector('[data-trying-tag]');
+        await stageDrawn(c.id);
+        const tr = await stageOf(c.id);
+        assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying her look: ${JSON.stringify(tr)}`);
+        if (!kinds.has(c.kind)) {
+          kinds.add(c.kind);
+          await showcaseShot(c.id, `a13b-stage-${c.kind}-${c.id}`);
         }
-        // as she was
-        await admin.evaluate(([id, sp]) => window.petAdmin.setAppearance(id, sp), [c.packId || c.options[0].id, c.id]);
+        await admin.click(`[data-try-pack="${c.pack}"]`);
+        await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
+        rows.push(`${c.id}[${c.kind}] stage→${st.type} tried→${tr.type}`);
       }
       assert.ok(['sprites', 'rig', 'live2d', 'video'].every((k) => kinds.has(k)), [...kinds].join(','));
-      assert.equal(saved().appearance.grok, 'grok-classic');
-      return `${rows.length} looks drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
+      assert.equal(chars.length, 13, '13 all-ages built-in characters');
+      return `${rows.length} characters drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
     }, () => admin);
 
     await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
@@ -8959,12 +9022,12 @@ async function adminScenario() {
     }, () => admin);
 
     await step(S, 'A15 a right click on her brings the same settings window forward (no menu, no second window)', async () => {
-      await admin.evaluate(() => { location.hash = '/characters/grok'; });
+      await admin.evaluate(() => { location.hash = '/characters/grok-pixel'; });
       await page.bringToFront();
       await hover(page);
       // ⚙ / a right click go to what is new (an update, an unlocked outfit or topic), else keep the window's page
       const news = await page.getAttribute('#btn-settings', 'data-news');
-      const want = { update: '/update', outfit: '/characters/grok', topic: '/topics' }[news] || '/characters/grok';
+      const want = { update: '/update', outfit: '/characters/grok-pixel', topic: '/topics' }[news] || '/characters/grok-pixel';
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       await page.mouse.click(box.x, box.y, { button: 'right' });
       await page.waitForTimeout(500);
@@ -8995,7 +9058,8 @@ async function adminScenario() {
         assert.equal(await a2.inputValue('[data-key="proactive.speakCooldownMin"] input').catch(() => null), null, 'folded: 主动说话 is still off');
         assert.equal(st.proactive.enabled, false);
         assert.equal(st.proactive.speakCooldownMin, 20);
-        assert.equal(st.appearance.grok, 'grok-classic');
+        assert.equal(st.appearance, undefined, 'no 形象包 choice (T-2764)');
+        assert.equal((await a2.evaluate(async () => (await window.petAdmin.state()).view.pet.characterId)), 'grok-classic', 'she is still 「格萝可 · 旧版像素」');
         assert.equal(st.system.hardwareAcceleration, false);
         assert.deepEqual(st.pendingRestart, [], 'applied by the restart');
         assert.equal(before, true);
@@ -9006,7 +9070,7 @@ async function adminScenario() {
         // the file itself, as written by core/settings.js (SettingsStore) — evidence of what was saved
         fs.writeFileSync(path.join(SHOTS, 'settings-after-restart.json'), fs.readFileSync(path.join(data, 'settings.json')));
         await a2.evaluate(() => window.petAdmin.set('system.hardwareAcceleration', true));
-        return `after restart: proactive=${JSON.stringify(st.proactive)} appearance.grok=${st.appearance.grok}; hardware acceleration ${before} → ${after} (pendingRestart [])`;
+        return `after restart: proactive=${JSON.stringify(st.proactive)} characterId=grok-classic; hardware acceleration ${before} → ${after} (pendingRestart [])`;
       } finally {
         await again.app.close().catch(() => {});
       }

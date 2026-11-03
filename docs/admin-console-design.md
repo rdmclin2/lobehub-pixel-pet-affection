@@ -62,7 +62,7 @@
 
 | key | 类型 | 默认值 | 取值范围 / 校验 | 当前编辑入口 · IPC | 生效 |
 | --- | --- | --- | --- | --- | --- |
-| `appearance.<id>` | `{[characterId]: packId}` | `{}`（取角色的默认包 `art.packs[0]`，再退到 `fallbackPack`） | 包 id `^[a-z0-9][a-z0-9-]{2,39}$`；包必须属于这个角色；18+ 的包要求 `ageConfirmed && adultContent`；大肥鱼可以选 `dafeiyu-clips`（视频） | ⋯ → 角色列表 → 她的页 → 外观（角色包） · `set-appearance` | 即时，离开 18+ 外观时会换下成人服饰 · 仅回调用方 |
+| `characterModel` | int | 新文件 `2`；没有这个字段的旧文件视为 `1` | T-2764：`2` = 每个形象就是一个独立角色（`core/characters.js`）。旧文件里的 `appearance.<id>`（按角色选的形象包）在启动时由 `core/character-migrate.js` 迁移一次：当前角色 + 所选包 → `pet.json` 的 `characterId`，`framings` / `visitors` 改按角色 id，原值只读保留在 `legacyAppearance` | 只读（内部标记） | 启动时 |
 | `framings.<id>` | `{[characterId]: 'full' \| 'half'}` | `{}`（没有这一项 = 跟随形象包 `pack.json` 的 `framing`，再跟随全局 `prefs.framing`） | 只收 `full` / `half`；`auto` 删除这一项（`normalizeFramings`） | 设置窗口 → 角色 → 她的页 → 形象包 → 取景（跟随 / 全身 / 半身） · `set-framing` | 即时：桌宠窗口的 VRM 原地换取景（相机滑过去，不重载模型），见 `docs/half-body-mode.md` |
 | `vrmPostures.<id>` | `{[vrmPackId]: posture}` | `{}`（没有这一项 = 自动：待机时 VRM 导演自己换姿势） | 只收 `stand.relaxed` / `stand.confident` / `stand.shy` / `stand.playful` / `sit.rest` / `sit.doze`；`auto` 删除这一项（`normalizeVrmPostures`） | 设置窗口 → 角色 → 她的页 → 形象包 → VRM 姿势（她穿 VRM 形象包时出现） · `set-vrm-posture` | 即时：桌宠窗口的 VRM 导演换到这个姿势（`docs/vrm-motion-system.md`） |
 | `systemRoles.<id>` | `{[characterId]: string}` | `{}` | 经过 `cleanSystemRole`：去掉控制字符，最多 `SYSTEM_ROLE_MAX` = 1000 字；空串会删除这一项 | ⋯ → 角色列表 → 她的页 → 个性化设定（System Role） · `set-system-role` | 当前角色在后台更新 agent 的 system role（personaKey 变了）；其他角色在下次说话前更新 · 仅回调用方 |
@@ -538,7 +538,6 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `adultContent` | safety | 成人向内容 | 即时生效 | 内容与安全 → 成人向内容（打开必须先过 18+ 确认：`confirm-age` / `set-adult`） |
 | `answered` | safety（内部） | 已回答年龄确认 | — | 年龄确认的答案（由 18+ 确认对话写入，内容与安全页只读显示） |
 | `petScale` | behavior | 宠物大小 | 即时生效 |  |
-| `appearance.<id>` | character | 形象包 | 即时生效 | 角色详情 → 形象包（`set-appearance`） |
 | `models.<id>` | character | 模型 | 即时生效 | 角色详情 → 模型（`set-model` / `refresh-models`） |
 | `systemRoles.<id>` | character | 个性化设定 | 即时生效 | 角色详情 → 设定 → 个性化设定（`set-system-role`） |
 | `framings.<id>` | character | 取景 | 即时生效 | 角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`） |
@@ -553,7 +552,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `prefs.touchZones` | behavior | 部位触摸 | 即时生效 |  |
 | `prefs.touchHint` | behavior | 触摸提示 | 即时生效 |  |
 | `prefs.framing` | behavior | 取景 | 即时生效 |  |
-| `vrmPostures.<id>` | character | VRM 姿势 | 即时生效 | 角色详情 → 外观 → VRM 姿势（她穿 VRM 形象包时；按形象包记住，自动 / 6 种姿势：`set-vrm-posture`） |
+| `vrmPostures.<id>` | character | VRM 姿势 | 即时生效 | 角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`） |
 | `visitors` | visitors | 一起待在桌面上的角色 | 即时生效 |  |
 | `api.enabled` | api | 开启对外接口 | 即时生效 |  |
 | `api.port` | api | 端口 | 即时生效 |  |
@@ -593,6 +592,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `system.hardwareAcceleration` | about | 硬件加速 | 重启后生效 |  |
 | `update.autoCheck` | update | 自动检查更新 | 即时生效 |  |
 | `petScaleSet` | behavior（内部） | 手动选过大小 | — | 内部标记：动过「宠物大小」后不再跟随默认大小（由 `petScale` 的修改写入） |
+| `characterModel` | about（内部） | 角色数据版本 | — | 角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读） |
 
 ### 12.2 运行时行为控制：16 项
 
@@ -610,8 +610,8 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 对外接口 | 设置 → 对外接口 | `api.enabled` `api.port` `api.token` | `set-api` `api-status` | 即时生效 |
 | 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
 | 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
-| 角色（形象包 / 服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `appearance.<id>` `models.<id>` `systemRoles.<id>` `framings.<id>` `vrmPostures.<id>` | `switch-character` `set-appearance` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` `set-vrm-posture` | 即时生效 |
-| 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 形象包 | — | `import-pack` `import-live2d` `import-vrm` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
+| 角色（服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `models.<id>` `systemRoles.<id>` `framings.<id>` `vrmPostures.<id>` | `switch-character` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` `set-vrm-posture` | 即时生效 |
+| 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 外观（导入的包成为新角色） | — | `import-pack` `import-live2d` `import-vrm` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 
@@ -646,9 +646,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：81 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：80 个
 
-- 设置窗口有同一通道（35）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（34）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（10）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）

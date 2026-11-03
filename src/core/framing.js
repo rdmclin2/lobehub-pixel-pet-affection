@@ -37,7 +37,7 @@
   // (no entry = follow the pack / the global setting).
   function normalizeFramings(raw) {
     const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-    return Object.fromEntries(Object.entries(m).filter(([k, v]) => /^[a-z]{2,20}$/.test(k) && isFraming(v)));
+    return Object.fromEntries(Object.entries(m).filter(([k, v]) => /^[a-z0-9][a-z0-9-]{1,39}$/.test(k) && isFraming(v)));
   }
 
   // Which framing she is shown in. `settings`: the settings (view) with prefs.framing and framings;

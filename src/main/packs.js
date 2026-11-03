@@ -106,13 +106,13 @@ class PackStore {
       fs.rmSync(dest, { recursive: true, force: true });
       fs.cpSync(dir, dest, { recursive: true, dereference: true });
       this.reload();
-      return { ok: true, pack: { id: r.pack.id, name: r.pack.name, species: r.pack.species }, replaced: !!existing };
+      return { ok: true, pack: { id: r.pack.id, name: r.pack.name, species: r.pack.species }, characterId: r.pack.id, replaced: !!existing };
     } finally {
       if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     }
   }
 
-  // Import the user's own Live2D model for `speciesId` (外观 → 导入 Live2D 模型…): a .model3.json, the folder
+  // Import the user's own Live2D model as a new character on base `speciesId` (T-2764: its id is the pack's) (外观 → 导入 Live2D 模型…): a .model3.json, the folder
   // holding one, or a .zip of it. The model's folder is copied into a new pack (core/packs.js live2dManifest);
   // the renderer then draws its preview (savePreview), or removes it when the model will not load.
   async importLive2d(src, speciesId) {
@@ -174,7 +174,7 @@ class PackStore {
       }
       this.reload();
       const pack = this.packs.get(manifest.id);
-      return { ok: true, pack: { id: pack.id, name: pack.name, species: pack.species }, model: P.packUrl(pack, pack.model), faces: Object.keys(pack.live2d.faces), replaced: !!existing };
+      return { ok: true, pack: { id: pack.id, name: pack.name, species: pack.species }, characterId: pack.id, model: P.packUrl(pack, pack.model), faces: Object.keys(pack.live2d.faces), replaced: !!existing };
     } finally {
       if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -187,7 +187,7 @@ class PackStore {
     if (!r.ok) return r;
     this.reload();
     const pack = this.packs.get(r.pack.id);
-    return { ...r, pack: { id: pack.id, name: pack.name, species: pack.species }, model: P.packUrl(pack, pack.outfits.daily || Object.values(pack.outfits)[0]) };
+    return { ...r, pack: { id: pack.id, name: pack.name, species: pack.species }, characterId: pack.id, model: P.packUrl(pack, pack.outfits.daily || Object.values(pack.outfits)[0]) };
   }
 
   // The picture an imported Live2D model shows in lists and the wardrobe, drawn by the renderer (PNG data URL).

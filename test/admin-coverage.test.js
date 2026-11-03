@@ -123,29 +123,31 @@ test('自动检查更新 (update.autoCheck): default on, saved through admin-set
   assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8'), /autoCheck: \(\) => !!\(service && service\.settings\.update && service\.settings\.update\.autoCheck\)/);
 });
 
-test('roster rows carry her 设定 (persona), every kind of pack she can wear, and the current character\'s outfits', async () => {
+test('roster rows carry her 设定 (persona), her own kind of look, and the current character\'s outfits', async () => {
   const { svc } = setup();
   await svc.hatch({ speciesId: 'dafeiyu', name: '小鱼' });
   const rows = buildRoster(svc.view(), svc.settingsView());
-  const fish = rows.find((r) => r.id === 'dafeiyu');
+  const fish = rows.find((r) => r.id === 'dafeiyu-pixel');
   assert.ok(fish.personality.length > 20, 'her persona from the character file');
-  const kinds = Object.fromEntries(fish.packKinds.map((k) => [k.kind, k]));
-  assert.ok(kinds.sprites && kinds.rig && kinds.live2d, JSON.stringify(fish.packKinds));
-  assert.equal(kinds.live2d.label, 'Live2D');
-  assert.equal(kinds.live2d.builtin, 1);
-  assert.equal(kinds.live2d.user, 0);
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').personality, fish.personality, 'inherited by each of her looks');
+  // T-2764: every look is a character: each row has exactly her own kind
+  assert.deepEqual(fish.packKinds, [{ kind: 'sprites', label: '像素', builtin: 1, user: 0 }]);
+  const l2d = rows.find((r) => r.id === 'dafeiyu-live2d');
+  assert.deepEqual(l2d.packKinds, [{ kind: 'live2d', label: 'Live2D', builtin: 1, user: 0 }]);
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live').kind, 'rig');
+  assert.equal(l2d.outfits, null, 'not the current character: no outfits known');
   // outfits: only the current character's, each with lock state and a preview
   assert.ok(Array.isArray(fish.outfits) && fish.outfits.length >= 1);
   assert.equal(fish.outfits.filter((o) => o.equipped).length, 1);
   assert.ok(fish.outfits.some((o) => o.locked && /解锁/.test(o.condition)), 'a locked outfit says how to unlock it');
-  assert.equal(rows.find((r) => r.id === 'claude').outfits, null);
+  assert.equal(rows.find((r) => r.id === 'claude-pixel').outfits, null);
   // unlock + equip (the console's 服饰 → 穿上 calls equip-outfit = PetService.equipOutfit)
   svc.unlockAll('dafeiyu');
-  const target = buildRoster(svc.view(), svc.settingsView()).find((r) => r.id === 'dafeiyu').outfits.find((o) => !o.equipped && !o.locked);
+  const target = buildRoster(svc.view(), svc.settingsView()).find((r) => r.id === 'dafeiyu-pixel').outfits.find((o) => !o.equipped && !o.locked);
   assert.ok(target, 'an unlocked outfit to put on');
   const r = svc.equipOutfit(target.id);
   assert.equal(r.ok, true);
-  assert.equal(buildRoster(r.view, svc.settingsView()).find((x) => x.id === 'dafeiyu').outfits.find((o) => o.equipped).id, target.id);
+  assert.equal(buildRoster(r.view, svc.settingsView()).find((x) => x.id === 'dafeiyu-pixel').outfits.find((o) => o.equipped).id, target.id);
   // packKinds counts imported packs apart
   assert.deepEqual(packKinds([{ kind: 'vrm', source: 'user' }, { kind: 'vrm', source: 'builtin' }, { kind: 'pictures', source: 'user' }]), [{ kind: 'vrm', label: 'VRM', builtin: 1, user: 1 }, { kind: 'pictures', label: '图片', builtin: 0, user: 1 }]);
 });

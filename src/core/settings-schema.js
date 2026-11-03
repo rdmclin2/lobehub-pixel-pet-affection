@@ -172,6 +172,8 @@ add('adultContent', 'safety', '成人向内容', '成人向内容', 'adult', { d
 add('answered', 'safety', '年龄确认', '已回答年龄确认', 'readonly', { internal: true });
 add('ageConfirmed', 'safety', '年龄确认', '已确认满 18 周岁', 'readonly', { internal: true });
 add('ageConfirmedAt', 'safety', '年龄确认', '确认时间', 'readonly', { internal: true, format: 'time' });
+// T-2764: which character model the file is written under (core/character-migrate.js): 2 = every look is a character
+add('characterModel', 'about', '数据', '角色数据版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.CHARACTER_MODEL}；旧文件（按角色选形象包）在启动时迁移一次。` });
 add('ageGateVersion', 'safety', '年龄确认', '确认文案版本', 'readonly', { internal: true, desc: `当前版本 ${settingsLib.AGE_GATE_VERSION}；版本不一致时会重新询问。` });
 
 // ---- 数据与关于 / 系统 ------------------------------------------------------------------------------------
@@ -181,11 +183,12 @@ add('system.hardwareAcceleration', 'about', '系统', '硬件加速', 'switch', 
 add('update.autoCheck', 'update', '自动更新', '自动检查更新', 'switch', { desc: '启动约 20 秒后检查一次，之后每 4 小时一次，有新版本就在后台下载。关闭后只在你点「检查更新」时检查；已下载的新版本仍会在退出时安装。' });
 
 // ---- 按角色（角色详情页） ----------------------------------------------------------------------------------
-add('appearance.<id>', 'character', '外观', '形象包', 'perCharacter', { desc: '她穿的角色包。' });
-add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型。' });
-add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '她自己的取景：跟随全局（或形象包的默认）/ 全身 / 半身。' });
-add('vrmPostures.<id>', 'character', '外观', 'VRM 姿势', 'perCharacter', { desc: '按 VRM 形象包记住的姿势（键是形象包 id）：自动（待机时她自己换姿势）/ 放松站 / 叉腰站 / 害羞站 / 俏皮站 / 坐着 / 靠坐。', options: settingsLib.VRM_POSTURES });
-add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
+// T-2764: every look is a character of its own (core/characters.js). 取景 / VRM 姿势 are per character (键是角色 id);
+// 模型 / 个性化设定 belong to her base persona and are shared by all her characters (键是基础角色 id).
+add('models.<id>', 'character', '模型', '模型', 'perCharacter', { desc: '她的 agent 用哪个模型（同一基础角色的各个形象共用）。' });
+add('framings.<id>', 'character', '外观', '取景', 'perCharacter', { desc: '这个角色自己的取景：跟随全局（或角色包的默认）/ 全身 / 半身。' });
+add('vrmPostures.<id>', 'character', '外观', 'VRM 姿势', 'perCharacter', { desc: '按 VRM 角色记住的姿势（键是角色 id，也就是她的角色包 id）：自动（待机时她自己换姿势）/ 放松站 / 叉腰站 / 害羞站 / 俏皮站 / 坐着 / 靠坐。', options: settingsLib.VRM_POSTURES });
+add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perCharacter', { desc: `加在她 system role 里的你自己的话，最多 ${settingsLib.SYSTEM_ROLE_MAX} 字（同一基础角色的各个形象共用）。`, maxLength: settingsLib.SYSTEM_ROLE_MAX });
 
 // ---- 不在 settings.json 的：密钥、pet.json -----------------------------------------------------------------
 const secret = (key, page, card, label, extra = {}) => F.push({ key, page, card, label, type: 'secret', store: 'keys', sensitive: true, ...extra });
@@ -212,7 +215,7 @@ function settingsLeaves(obj = DEFAULTS, prefix = '') {
   const out = [];
   for (const [k, v] of Object.entries(obj)) {
     const p = prefix ? `${prefix}.${k}` : k;
-    if (['appearance', 'models', 'systemRoles', 'framings', 'vrmPostures'].includes(p)) out.push(`${p}.<id>`);
+    if (['models', 'systemRoles', 'framings', 'vrmPostures'].includes(p)) out.push(`${p}.<id>`);
     else if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) out.push(...settingsLeaves(v, p));
     else out.push(p);
   }

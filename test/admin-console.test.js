@@ -318,8 +318,12 @@ test('好感度 rules: the daily cap and the decay switch apply to scoring at on
 
 test('roster: before the first hatch every character is listed from the character files, none current', () => {
   const rows = buildRoster(null, { ttsStatus: { packs: [] } });
-  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
+  // T-2764: one row per character (every built-in look), 18+ looks not listed
+  assert.deepEqual(rows.map((r) => r.id), ['dafeiyu-pixel', 'dafeiyu-live2d', 'dafeiyu-live', 'dafeiyu-classic', 'dafeiyu-clips', 'claude-pixel', 'claude-classic', 'grok-pixel', 'grok-classic', 'gemini-pixel', 'gemini-classic', 'gpt-pixel', 'gpt-classic']);
+  assert.deepEqual([...new Set(rows.map((r) => r.base))], ['dafeiyu', 'claude', 'grok', 'gemini', 'gpt']);
   assert.ok(rows.every((r) => !r.current && !r.met));
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').name, '大肥鱼 · Live2D');
+  assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').kind, 'live2d');
 });
 
 test('roster rows: name, preview, type, source, voice pack, model and the current mark', async () => {
@@ -327,9 +331,12 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   await ctx.ready;
   const settings = { ...ctx.svc.settingsView(), ttsStatus: { packs: [{ id: 'grok-minimax', name: '格萝可语音', character: 'grok', engine: 'minimax', lines: 120, builtIn: true, credit: 'MiniMax' }] } };
   const rows = buildRoster(ctx.svc.view(), settings);
-  const grok = rows.find((r) => r.id === 'grok');
+  const grok = rows.find((r) => r.id === 'grok-pixel');
   assert.equal(grok.current, true);
-  assert.equal(grok.displayName, '「小格」格萝可（xAI）');
+  assert.equal(grok.base, 'grok');
+  assert.equal(grok.displayName, '「小格」格萝可 · 像素（xAI）');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').met.name, '小格', 'her other look shares her base');
+  assert.equal(rows.find((r) => r.id === 'grok-classic').voicePack.id, 'grok-minimax', 'so does her 语音包');
   assert.equal(grok.kind, 'sprites');
   assert.equal(grok.kindLabel, '像素');
   assert.equal(grok.source, 'builtin');
@@ -340,20 +347,19 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   assert.deepEqual(grok.voicePack, { id: 'grok-minimax', name: '格萝可语音', engine: 'minimax', engineLabel: 'MiniMax', lines: 120, builtIn: true, credit: 'MiniMax' });
   assert.equal(grok.met.name, '小格');
   assert.equal(rows.filter((r) => r.current).length, 1);
-  const fish = rows.find((r) => r.id === 'dafeiyu');
+  const fish = rows.find((r) => r.id === 'dafeiyu-pixel');
   assert.equal(fish.met, null);
   assert.equal(fish.voicePack, null);
   // switching (the admin calls the same switch-character) moves the mark
   await ctx.svc.switchCharacter('claude', { name: '小克' });
   const after = buildRoster(ctx.svc.view(), settings);
-  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude']);
+  assert.deepEqual(after.filter((r) => r.current).map((r) => r.id), ['claude-pixel']);
 });
 
 test('roster: a video character (大肥鱼 clips) gets her idle clip as the preview', async () => {
   const ctx = setup({ hatch: true });
   await ctx.ready;
-  assert.equal(ctx.svc.setAppearance('dafeiyu-clips', 'dafeiyu').ok, true);
-  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu');
+  const fish = buildRoster(ctx.svc.view(), ctx.svc.settingsView()).find((r) => r.id === 'dafeiyu-clips');
   assert.equal(fish.kind, 'video');
   assert.equal(fish.kindLabel, '视频');
   assert.equal(fish.preview.type, 'video');
@@ -384,12 +390,12 @@ test('broadcast reaches every pet window and the settings window; a per-characte
   assert.deepEqual(got.map((g) => g[0]), ['pet', 'visitor', 'admin']);
   adminAlive = false;
   assert.equal(broadcast('settings', {}), 2, 'a closed settings window is skipped');
-  // the setters main wires to the broadcast emit `update` (set-model / set-appearance / set-system-role / unlock-all)
+  // the setters main wires to the broadcast emit `update` (switch-character / set-system-role / unlock-all)
   const ctx = setup({ hatch: true });
   await ctx.ready;
   const updates = [];
   ctx.svc.on('update', (v) => updates.push(v && v.pet.speciesId));
-  ctx.svc.setAppearance('grok-classic', 'grok');
+  await ctx.svc.switchCharacter('grok-classic');
   ctx.svc.setSystemRole('叫我老板', 'grok');
   ctx.svc.unlockAll('grok');
   assert.ok(updates.length >= 3, `update events: ${updates.length}`);
@@ -513,7 +519,8 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
   assert.match(app, /window\.pet\.openAdmin\(/);
   // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
-  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.speciesId\}` : 'topics'/);
+  // T-2764: her page is the character's (one look), e.g. characters/dafeiyu-live2d
+  assert.match(app, /dataset\.admin = outfits \? `characters\/\$\{\(e\.view \|\| view\)\.pet\.characterId/);
   assert.match(app, /\{ label: '去设置', admin: 'asr' \}/);
   // no 高级设置 panel or her model / system-role forms either (since the console)
   for (const gone of ['function renderAdvanced', 'function voiceSection', 'function asrSection', 'function behaviorSections', 'id="model-select"', 'id="role-input"']) assert.ok(!app.includes(gone), gone);
@@ -611,5 +618,8 @@ test('Live2D import from the settings window: main hands the new pack to the ser
   const h = main.slice(main.indexOf("ipcMain.handle('import-live2d'"), main.indexOf("ipcMain.handle('import-vrm'"));
   assert.match(h, /const out = await packStore\.importLive2d\(r\.filePaths\[0\], sp\);\n\s+if \(out\.ok\) service\.setPacks\(packStore\.packs\);/);
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-live2d[\s\S]{0,600}api\(\)\.setAppearance\(r\.pack\.id, c\.id\)/);
+  // T-2764: the imported model is a new character; the console switches to her (no 形象包 to put on)
+  assert.match(src, /data-import-live2d[\s\S]{0,900}becomeNew\(r\.pack\.id/);
+  assert.match(src, /const becomeNew = async \(id: string, ok: string\) => \{\n\s+const r = await run\(api\(\)\.switchCharacter\(id\), ok\);/, 'becomeNew switches to the new character');
+  assert.doesNotMatch(src, /setAppearance/);
 });
