@@ -183,6 +183,13 @@ body.busy .pet-hit { cursor: progress; }
 @keyframes mic-spin { to { transform: rotate(360deg); } }
 .mic-status { position: absolute; left: 4px; right: 4px; bottom: 96px; z-index: 6; background: var(--lobe-color-text); color: var(--lobe-color-bg-container); font-size: 11px; padding: 2px var(--pet-space-sm); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--lobe-box-shadow-secondary); pointer-events: none; }
 .mic-status[data-state="recording"] { background: var(--lobe-color-error); color: var(--pet-on-solid); }
+/* 快捷键唤起语音对话: the bubble while she listens — a pulsing red dot while recording, a spinner while it is recognised */
+.bubble[data-kind="listen"] { border: 1px solid var(--pet-line-soft); }
+.bubble[data-kind="listen"][data-reason="recording"] { border-color: color-mix(in srgb, var(--lobe-color-error) 45%, transparent); }
+.bubble[data-kind="listen"]::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: var(--pet-space-xs); border-radius: 50%; vertical-align: 1px; background: var(--lobe-color-text-tertiary); }
+.bubble[data-kind="listen"][data-reason="recording"]::before { background: var(--lobe-color-error); animation: mic-pulse 1s ease-in-out infinite; }
+.bubble[data-kind="listen"][data-reason="transcribing"]::before, .bubble[data-kind="listen"][data-reason="stopping"]::before { width: 6px; height: 6px; border: 2px solid var(--lobe-color-text-tertiary); border-right-color: transparent; background: transparent; animation: mic-spin .7s linear infinite; vertical-align: -1px; }
+@media (prefers-reduced-motion: reduce) { .bubble[data-kind="listen"]::before { animation: none !important; } }
 .unlock-toast.notice .toast-title { color: var(--lobe-color-error); }
 #asr-section .tts-engine.dim { opacity: .55; }
 #asr-test-result[data-ok="true"] { color: var(--lobe-color-success); }
