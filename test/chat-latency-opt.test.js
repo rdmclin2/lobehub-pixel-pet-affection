@@ -242,3 +242,15 @@ test('chatAs streams increments: the deltas put together are the reply, the byte
   assert.equal(after.streaming, false);
   assert.equal(after.live, null);
 });
+
+test('_ensurePersona is not repeated per turn: consecutive chat page turns write her system role at most once, only on a persona change', async () => {
+  const { svc, calls } = await setup();
+  const edits = () => calls().filter((a) => a[0] === 'agent' && a[1] === 'edit' && a.includes('-s')).length;
+  await svc.chatAs('claude', { text: '第一句' });
+  const first = edits();
+  for (const t of ['第二句', '第三句', '第四句']) assert.equal((await svc.chatAs('claude', { text: t })).ok, true);
+  assert.equal(edits(), first, 'no `lh agent edit -s` (system role) on an unchanged persona (key compare only)');
+  svc.pet.characters.claude.personaKey = 'changed'; // her persona changed (name / settings): written once on the next turn
+  await svc.chatAs('claude', { text: '第五句' });
+  assert.equal(edits(), first + 1);
+});

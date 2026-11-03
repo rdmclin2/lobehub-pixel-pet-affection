@@ -1,0 +1,3029 @@
+{
+  "label": "after-r3",
+  "startedAt": "2026-11-03T19:38:48.642Z",
+  "rounds": 12,
+  "coldEvery": 2,
+  "species": "dafeiyu",
+  "model": {
+    "key": "lobehub:deepseek-flash",
+    "label": "DeepSeek V4.1 Flash",
+    "options": [
+      "DeepSeek V4.1 Flash"
+    ]
+  },
+  "chromeArgs": [],
+  "turns": [
+    {
+      "round": 1,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第1轮：请用大约 80 个字，和我聊聊「早餐吃什么」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 54,
+      "deltas": 2,
+      "ipcBytes": 283,
+      "ipcIn": 16,
+      "prep": 10,
+      "models": 9,
+      "sendToReq": 26,
+      "reqToHeaders": 1442,
+      "reqToFirstText": 4460,
+      "firstTextToShown": 0,
+      "shownToPaint": 15,
+      "ttft": 4501,
+      "streamEnd": 7957,
+      "total": 8003,
+      "endToDone": 46,
+      "fullShown": 4568,
+      "revealLag": 15,
+      "shownAtStreamEnd": 54,
+      "lastStreamChars": 54,
+      "finalChars": 54,
+      "frames": 481,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 1,
+        "models": 9,
+        "applyModel": 9,
+        "local": 9,
+        "ready": 9,
+        "runStart": 10,
+        "token": 10,
+        "reqSent": 10,
+        "headers": 1452,
+        "firstByte": 1458,
+        "firstText": 4470,
+        "firstDelta": 4470,
+        "firstShown": 4470,
+        "lastShown": 4537,
+        "runEnd": 7941,
+        "doneSent": 7966,
+        "end": 7966
+      },
+      "samples": [
+        [
+          4501,
+          43
+        ],
+        [
+          4568,
+          54
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 1,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第1轮：请用大约 80 个字，和我聊聊「早餐吃什么」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 51,
+      "deltas": 2,
+      "ipcBytes": 149,
+      "ipcIn": 5,
+      "prep": 15,
+      "models": 11,
+      "sendToReq": 20,
+      "reqToHeaders": 6611,
+      "reqToFirstText": 8376,
+      "firstTextToShown": 1,
+      "shownToPaint": 51,
+      "ttft": 8448,
+      "streamEnd": 12269,
+      "total": 12305,
+      "endToDone": 36,
+      "fullShown": 8681,
+      "revealLag": 190,
+      "shownAtStreamEnd": 51,
+      "lastStreamChars": 51,
+      "finalChars": 51,
+      "frames": 738,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 11,
+        "logged": 13,
+        "persona": 13,
+        "applyModel": 13,
+        "prompt": 14,
+        "runStart": 14,
+        "token": 15,
+        "reqSent": 15,
+        "headers": 6626,
+        "firstByte": 6626,
+        "firstText": 8391,
+        "firstDelta": 8391,
+        "firstShown": 8392,
+        "lastShown": 8486,
+        "runEnd": 12264,
+        "end": 12289
+      },
+      "samples": [
+        [
+          8448,
+          39
+        ],
+        [
+          8581,
+          44
+        ],
+        [
+          8632,
+          47
+        ],
+        [
+          8681,
+          51
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 2,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第2轮：请用大约 80 个字，和我聊聊「下雨天适合做什么」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 501,
+      "bodyChars": 30,
+      "replyChars": 50,
+      "deltas": 2,
+      "ipcBytes": 146,
+      "ipcIn": 2,
+      "prep": 22,
+      "models": 0,
+      "sendToReq": 24,
+      "reqToHeaders": 1139,
+      "reqToFirstText": 2665,
+      "firstTextToShown": 1,
+      "shownToPaint": 27,
+      "ttft": 2717,
+      "streamEnd": 6360,
+      "total": 6393,
+      "endToDone": 33,
+      "fullShown": 2952,
+      "revealLag": 242,
+      "shownAtStreamEnd": 50,
+      "lastStreamChars": 50,
+      "finalChars": 50,
+      "frames": 384,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 21,
+        "persona": 22,
+        "applyModel": 22,
+        "prompt": 22,
+        "runStart": 22,
+        "token": 22,
+        "reqSent": 22,
+        "headers": 1161,
+        "firstByte": 1168,
+        "firstText": 2687,
+        "firstDelta": 2687,
+        "firstShown": 2688,
+        "lastShown": 2708,
+        "runEnd": 6358,
+        "end": 6379
+      },
+      "samples": [
+        [
+          2717,
+          46
+        ],
+        [
+          2803,
+          47
+        ],
+        [
+          2952,
+          50
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 2,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第2轮：请用大约 80 个字，和我聊聊「下雨天适合做什么」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 501,
+      "bodyChars": 30,
+      "replyChars": 56,
+      "deltas": 2,
+      "ipcBytes": 313,
+      "ipcIn": 35,
+      "prep": 1,
+      "models": 0,
+      "sendToReq": 36,
+      "reqToHeaders": 1213,
+      "reqToFirstText": 2664,
+      "firstTextToShown": 0,
+      "shownToPaint": 2,
+      "ttft": 2702,
+      "streamEnd": 6574,
+      "total": 6619,
+      "endToDone": 45,
+      "fullShown": 2734,
+      "revealLag": 15,
+      "shownAtStreamEnd": 56,
+      "lastStreamChars": 56,
+      "finalChars": 56,
+      "frames": 398,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 0,
+        "token": 1,
+        "reqSent": 1,
+        "headers": 1214,
+        "firstByte": 1229,
+        "firstText": 2665,
+        "firstDelta": 2665,
+        "firstShown": 2665,
+        "lastShown": 2684,
+        "runEnd": 6539,
+        "doneSent": 6564,
+        "end": 6564
+      },
+      "samples": [
+        [
+          2702,
+          51
+        ],
+        [
+          2734,
+          56
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 3,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第3轮：请用大约 80 个字，和我聊聊「最喜欢的颜色」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 60,
+      "deltas": 2,
+      "ipcBytes": 322,
+      "ipcIn": 23,
+      "prep": 10,
+      "models": 9,
+      "sendToReq": 33,
+      "reqToHeaders": 1053,
+      "reqToFirstText": 2785,
+      "firstTextToShown": 0,
+      "shownToPaint": 16,
+      "ttft": 2834,
+      "streamEnd": 7052,
+      "total": 7086,
+      "endToDone": 34,
+      "fullShown": 2885,
+      "revealLag": 7,
+      "shownAtStreamEnd": 60,
+      "lastStreamChars": 60,
+      "finalChars": 60,
+      "frames": 426,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 9,
+        "applyModel": 9,
+        "local": 9,
+        "ready": 9,
+        "runStart": 9,
+        "token": 10,
+        "reqSent": 10,
+        "headers": 1063,
+        "firstByte": 1070,
+        "firstText": 2795,
+        "firstDelta": 2795,
+        "firstShown": 2795,
+        "lastShown": 2855,
+        "runEnd": 7029,
+        "doneSent": 7048,
+        "end": 7048
+      },
+      "samples": [
+        [
+          2834,
+          50
+        ],
+        [
+          2885,
+          60
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 3,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第3轮：请用大约 80 个字，和我聊聊「最喜欢的颜色」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 52,
+      "deltas": 1,
+      "ipcBytes": 152,
+      "ipcIn": 2,
+      "prep": 11,
+      "models": 10,
+      "sendToReq": 13,
+      "reqToHeaders": 1178,
+      "reqToFirstText": 2704,
+      "firstTextToShown": 0,
+      "shownToPaint": 32,
+      "ttft": 2749,
+      "streamEnd": 6533,
+      "total": 6582,
+      "endToDone": 49,
+      "fullShown": 2749,
+      "revealLag": 32,
+      "shownAtStreamEnd": 52,
+      "lastStreamChars": 52,
+      "finalChars": 52,
+      "frames": 394,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 10,
+        "logged": 11,
+        "persona": 11,
+        "applyModel": 11,
+        "prompt": 11,
+        "runStart": 11,
+        "token": 11,
+        "reqSent": 11,
+        "headers": 1189,
+        "firstByte": 1197,
+        "firstText": 2715,
+        "firstDelta": 2715,
+        "firstShown": 2715,
+        "lastShown": 2715,
+        "runEnd": 6531,
+        "end": 6557
+      },
+      "samples": [
+        [
+          2749,
+          52
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 4,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第4轮：请用大约 80 个字，和我聊聊「周末的安排」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 49,
+      "deltas": 1,
+      "ipcBytes": 143,
+      "ipcIn": 1,
+      "prep": 18,
+      "models": 0,
+      "sendToReq": 19,
+      "reqToHeaders": 1290,
+      "reqToFirstText": 2591,
+      "firstTextToShown": 0,
+      "shownToPaint": 22,
+      "ttft": 2632,
+      "streamEnd": 6882,
+      "total": 6918,
+      "endToDone": 36,
+      "fullShown": 2632,
+      "revealLag": 22,
+      "shownAtStreamEnd": 49,
+      "lastStreamChars": 49,
+      "finalChars": 49,
+      "frames": 415,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 18,
+        "persona": 18,
+        "applyModel": 18,
+        "prompt": 18,
+        "runStart": 18,
+        "token": 18,
+        "reqSent": 18,
+        "headers": 1308,
+        "firstByte": 1316,
+        "firstText": 2609,
+        "firstDelta": 2609,
+        "firstShown": 2609,
+        "lastShown": 2609,
+        "runEnd": 6881,
+        "end": 6905
+      },
+      "samples": [
+        [
+          2632,
+          49
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 4,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第4轮：请用大约 80 个字，和我聊聊「周末的安排」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 54,
+      "deltas": 1,
+      "ipcBytes": 158,
+      "ipcIn": 5,
+      "prep": 1,
+      "models": 0,
+      "sendToReq": 6,
+      "reqToHeaders": 1119,
+      "reqToFirstText": 2592,
+      "firstTextToShown": 0,
+      "shownToPaint": 5,
+      "ttft": 2603,
+      "streamEnd": 5840,
+      "total": 5872,
+      "endToDone": 32,
+      "fullShown": 2603,
+      "revealLag": 5,
+      "shownAtStreamEnd": 54,
+      "lastStreamChars": 54,
+      "finalChars": 54,
+      "frames": 353,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 1,
+        "local": 1,
+        "ready": 1,
+        "runStart": 1,
+        "token": 1,
+        "reqSent": 1,
+        "headers": 1120,
+        "firstByte": 1128,
+        "firstText": 2593,
+        "firstDelta": 2593,
+        "firstShown": 2593,
+        "lastShown": 2593,
+        "runEnd": 5835,
+        "doneSent": 5858,
+        "end": 5858
+      },
+      "samples": [
+        [
+          2603,
+          54
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 5,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第5轮：请用大约 80 个字，和我聊聊「一本想读的书」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 50,
+      "deltas": 2,
+      "ipcBytes": 289,
+      "ipcIn": 27,
+      "prep": 9,
+      "models": 9,
+      "sendToReq": 36,
+      "reqToHeaders": 1368,
+      "reqToFirstText": 3583,
+      "firstTextToShown": 0,
+      "shownToPaint": 2,
+      "ttft": 3621,
+      "streamEnd": 7248,
+      "total": 7271,
+      "endToDone": 23,
+      "fullShown": 3636,
+      "revealLag": 2,
+      "shownAtStreamEnd": 50,
+      "lastStreamChars": 50,
+      "finalChars": 50,
+      "frames": 437,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 9,
+        "applyModel": 9,
+        "local": 9,
+        "ready": 9,
+        "runStart": 9,
+        "token": 9,
+        "reqSent": 9,
+        "headers": 1377,
+        "firstByte": 1385,
+        "firstText": 3592,
+        "firstDelta": 3592,
+        "firstShown": 3592,
+        "lastShown": 3607,
+        "runEnd": 7221,
+        "doneSent": 7240,
+        "end": 7240
+      },
+      "samples": [
+        [
+          3621,
+          49
+        ],
+        [
+          3636,
+          50
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 5,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第5轮：请用大约 80 个字，和我聊聊「一本想读的书」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 63,
+      "deltas": 2,
+      "ipcBytes": 185,
+      "ipcIn": 2,
+      "prep": 24,
+      "models": 10,
+      "sendToReq": 26,
+      "reqToHeaders": 1266,
+      "reqToFirstText": 2503,
+      "firstTextToShown": 0,
+      "shownToPaint": 30,
+      "ttft": 2559,
+      "streamEnd": 6033,
+      "total": 6073,
+      "endToDone": 40,
+      "fullShown": 2796,
+      "revealLag": 232,
+      "shownAtStreamEnd": 63,
+      "lastStreamChars": 63,
+      "finalChars": 63,
+      "frames": 364,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 10,
+        "logged": 24,
+        "persona": 24,
+        "applyModel": 24,
+        "prompt": 24,
+        "runStart": 24,
+        "token": 24,
+        "reqSent": 24,
+        "headers": 1290,
+        "firstByte": 1299,
+        "firstText": 2527,
+        "firstDelta": 2527,
+        "firstShown": 2527,
+        "lastShown": 2562,
+        "runEnd": 6031,
+        "end": 6057
+      },
+      "samples": [
+        [
+          2559,
+          58
+        ],
+        [
+          2662,
+          60
+        ],
+        [
+          2796,
+          63
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 6,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第6轮：请用大约 80 个字，和我聊聊「在海边散步」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 55,
+      "deltas": 2,
+      "ipcBytes": 161,
+      "ipcIn": 2,
+      "prep": 22,
+      "models": 0,
+      "sendToReq": 24,
+      "reqToHeaders": 1062,
+      "reqToFirstText": 2544,
+      "firstTextToShown": 0,
+      "shownToPaint": 33,
+      "ttft": 2601,
+      "streamEnd": 6537,
+      "total": 6578,
+      "endToDone": 41,
+      "fullShown": 2850,
+      "revealLag": 198,
+      "shownAtStreamEnd": 55,
+      "lastStreamChars": 55,
+      "finalChars": 55,
+      "frames": 394,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 21,
+        "persona": 21,
+        "applyModel": 21,
+        "prompt": 22,
+        "runStart": 22,
+        "token": 22,
+        "reqSent": 22,
+        "headers": 1084,
+        "firstByte": 1084,
+        "firstText": 2566,
+        "firstDelta": 2566,
+        "firstShown": 2566,
+        "lastShown": 2650,
+        "runEnd": 6535,
+        "end": 6560
+      },
+      "samples": [
+        [
+          2601,
+          47
+        ],
+        [
+          2750,
+          51
+        ],
+        [
+          2800,
+          52
+        ],
+        [
+          2850,
+          55
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 6,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第6轮：请用大约 80 个字，和我聊聊「在海边散步」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 56,
+      "deltas": 2,
+      "ipcBytes": 295,
+      "ipcIn": 27,
+      "prep": 0,
+      "models": 0,
+      "sendToReq": 27,
+      "reqToHeaders": 1273,
+      "reqToFirstText": 3094,
+      "firstTextToShown": 0,
+      "shownToPaint": 15,
+      "ttft": 3136,
+      "streamEnd": 6639,
+      "total": 6670,
+      "endToDone": 31,
+      "fullShown": 3169,
+      "revealLag": 8,
+      "shownAtStreamEnd": 56,
+      "lastStreamChars": 56,
+      "finalChars": 56,
+      "frames": 401,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 0,
+        "token": 0,
+        "reqSent": 0,
+        "headers": 1273,
+        "firstByte": 1274,
+        "firstText": 3094,
+        "firstDelta": 3094,
+        "firstShown": 3094,
+        "lastShown": 3134,
+        "runEnd": 6612,
+        "doneSent": 6636,
+        "end": 6636
+      },
+      "samples": [
+        [
+          3136,
+          45
+        ],
+        [
+          3169,
+          56
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 7,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第7轮：请用大约 80 个字，和我聊聊「养一盆植物」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 53,
+      "deltas": 2,
+      "ipcBytes": 271,
+      "ipcIn": 21,
+      "prep": 9,
+      "models": 9,
+      "sendToReq": 30,
+      "reqToHeaders": 6080,
+      "reqToFirstText": 8057,
+      "firstTextToShown": 0,
+      "shownToPaint": 14,
+      "ttft": 8101,
+      "streamEnd": 12516,
+      "total": 12552,
+      "endToDone": 36,
+      "fullShown": 8184,
+      "revealLag": 8,
+      "shownAtStreamEnd": 53,
+      "lastStreamChars": 53,
+      "finalChars": 53,
+      "frames": 754,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 9,
+        "applyModel": 9,
+        "local": 9,
+        "ready": 9,
+        "runStart": 9,
+        "token": 9,
+        "reqSent": 9,
+        "headers": 6089,
+        "firstByte": 6089,
+        "firstText": 8066,
+        "firstDelta": 8066,
+        "firstShown": 8066,
+        "lastShown": 8155,
+        "runEnd": 12495,
+        "doneSent": 12518,
+        "end": 12518
+      },
+      "samples": [
+        [
+          8101,
+          40
+        ],
+        [
+          8184,
+          53
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 7,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第7轮：请用大约 80 个字，和我聊聊「养一盆植物」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 58,
+      "deltas": 2,
+      "ipcBytes": 170,
+      "ipcIn": 2,
+      "prep": 39,
+      "models": 9,
+      "sendToReq": 41,
+      "reqToHeaders": 1243,
+      "reqToFirstText": 2912,
+      "firstTextToShown": 0,
+      "shownToPaint": 22,
+      "ttft": 2975,
+      "streamEnd": 7158,
+      "total": 7205,
+      "endToDone": 47,
+      "fullShown": 3293,
+      "revealLag": 246,
+      "shownAtStreamEnd": 58,
+      "lastStreamChars": 58,
+      "finalChars": 58,
+      "frames": 432,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 9,
+        "logged": 38,
+        "persona": 38,
+        "applyModel": 39,
+        "prompt": 39,
+        "runStart": 39,
+        "token": 39,
+        "reqSent": 39,
+        "headers": 1282,
+        "firstByte": 1282,
+        "firstText": 2951,
+        "firstDelta": 2951,
+        "firstShown": 2951,
+        "lastShown": 3045,
+        "runEnd": 7156,
+        "end": 7180
+      },
+      "samples": [
+        [
+          2975,
+          51
+        ],
+        [
+          3145,
+          55
+        ],
+        [
+          3293,
+          58
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 8,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第8轮：请用大约 80 个字，和我聊聊「学一门乐器」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 63,
+      "deltas": 2,
+      "ipcBytes": 185,
+      "ipcIn": 1,
+      "prep": 23,
+      "models": 0,
+      "sendToReq": 24,
+      "reqToHeaders": 1185,
+      "reqToFirstText": 2588,
+      "firstTextToShown": 1,
+      "shownToPaint": 34,
+      "ttft": 2647,
+      "streamEnd": 6480,
+      "total": 6529,
+      "endToDone": 49,
+      "fullShown": 2979,
+      "revealLag": 243,
+      "shownAtStreamEnd": 63,
+      "lastStreamChars": 63,
+      "finalChars": 63,
+      "frames": 391,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 23,
+        "persona": 23,
+        "applyModel": 23,
+        "prompt": 23,
+        "runStart": 23,
+        "token": 23,
+        "reqSent": 23,
+        "headers": 1208,
+        "firstByte": 1209,
+        "firstText": 2611,
+        "firstDelta": 2611,
+        "firstShown": 2612,
+        "lastShown": 2735,
+        "runEnd": 6479,
+        "end": 6504
+      },
+      "samples": [
+        [
+          2647,
+          39
+        ],
+        [
+          2830,
+          46
+        ],
+        [
+          2880,
+          52
+        ],
+        [
+          2930,
+          60
+        ],
+        [
+          2979,
+          63
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 8,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第8轮：请用大约 80 个字，和我聊聊「学一门乐器」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 66,
+      "deltas": 2,
+      "ipcBytes": 340,
+      "ipcIn": 23,
+      "prep": 1,
+      "models": 0,
+      "sendToReq": 24,
+      "reqToHeaders": 1006,
+      "reqToFirstText": 2558,
+      "firstTextToShown": 0,
+      "shownToPaint": 9,
+      "ttft": 2591,
+      "streamEnd": 5941,
+      "total": 5959,
+      "endToDone": 18,
+      "fullShown": 2691,
+      "revealLag": 8,
+      "shownAtStreamEnd": 66,
+      "lastStreamChars": 66,
+      "finalChars": 66,
+      "frames": 358,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 1,
+        "token": 1,
+        "reqSent": 1,
+        "headers": 1007,
+        "firstByte": 1007,
+        "firstText": 2559,
+        "firstDelta": 2559,
+        "firstShown": 2559,
+        "lastShown": 2660,
+        "runEnd": 5918,
+        "doneSent": 5920,
+        "end": 5920
+      },
+      "samples": [
+        [
+          2591,
+          50
+        ],
+        [
+          2691,
+          66
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 9,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第9轮：请用大约 80 个字，和我聊聊「深夜的夜宵」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 55,
+      "deltas": 2,
+      "ipcBytes": 289,
+      "ipcIn": 20,
+      "prep": 8,
+      "models": 7,
+      "sendToReq": 28,
+      "reqToHeaders": 1157,
+      "reqToFirstText": 2542,
+      "firstTextToShown": 0,
+      "shownToPaint": 10,
+      "ttft": 2580,
+      "streamEnd": 6041,
+      "total": 6064,
+      "endToDone": 23,
+      "fullShown": 2697,
+      "revealLag": 8,
+      "shownAtStreamEnd": 55,
+      "lastStreamChars": 55,
+      "finalChars": 55,
+      "frames": 364,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 7,
+        "applyModel": 7,
+        "local": 7,
+        "ready": 7,
+        "runStart": 8,
+        "token": 8,
+        "reqSent": 8,
+        "headers": 1165,
+        "firstByte": 1165,
+        "firstText": 2550,
+        "firstDelta": 2550,
+        "firstShown": 2550,
+        "lastShown": 2669,
+        "runEnd": 6021,
+        "doneSent": 6039,
+        "end": 6039
+      },
+      "samples": [
+        [
+          2580,
+          44
+        ],
+        [
+          2697,
+          55
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 9,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第9轮：请用大约 80 个字，和我聊聊「深夜的夜宵」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 56,
+      "deltas": 2,
+      "ipcBytes": 164,
+      "ipcIn": 3,
+      "prep": 34,
+      "models": 10,
+      "sendToReq": 37,
+      "reqToHeaders": 1164,
+      "reqToFirstText": 2523,
+      "firstTextToShown": 0,
+      "shownToPaint": 38,
+      "ttft": 2598,
+      "streamEnd": 5783,
+      "total": 5834,
+      "endToDone": 51,
+      "fullShown": 2598,
+      "revealLag": 27,
+      "shownAtStreamEnd": 56,
+      "lastStreamChars": 56,
+      "finalChars": 56,
+      "frames": 350,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 10,
+        "logged": 33,
+        "persona": 33,
+        "applyModel": 33,
+        "prompt": 34,
+        "runStart": 34,
+        "token": 34,
+        "reqSent": 34,
+        "headers": 1198,
+        "firstByte": 1198,
+        "firstText": 2557,
+        "firstDelta": 2557,
+        "firstShown": 2557,
+        "lastShown": 2568,
+        "runEnd": 5780,
+        "end": 5806
+      },
+      "samples": [
+        [
+          2598,
+          56
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 10,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第10轮：请用大约 80 个字，和我聊聊「冬天的第一场雪」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 501,
+      "bodyChars": 30,
+      "replyChars": 52,
+      "deltas": 1,
+      "ipcBytes": 152,
+      "ipcIn": 1,
+      "prep": 28,
+      "models": 1,
+      "sendToReq": 29,
+      "reqToHeaders": 1177,
+      "reqToFirstText": 2927,
+      "firstTextToShown": 0,
+      "shownToPaint": 35,
+      "ttft": 2991,
+      "streamEnd": 6482,
+      "total": 6536,
+      "endToDone": 54,
+      "fullShown": 2991,
+      "revealLag": 35,
+      "shownAtStreamEnd": 52,
+      "lastStreamChars": 52,
+      "finalChars": 52,
+      "frames": 392,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 1,
+        "logged": 27,
+        "persona": 27,
+        "applyModel": 27,
+        "prompt": 27,
+        "runStart": 27,
+        "token": 28,
+        "reqSent": 28,
+        "headers": 1205,
+        "firstByte": 1205,
+        "firstText": 2955,
+        "firstDelta": 2955,
+        "firstShown": 2955,
+        "lastShown": 2955,
+        "runEnd": 6481,
+        "end": 6510
+      },
+      "samples": [
+        [
+          2991,
+          52
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 10,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第10轮：请用大约 80 个字，和我聊聊「冬天的第一场雪」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 501,
+      "bodyChars": 30,
+      "replyChars": 52,
+      "deltas": 2,
+      "ipcBytes": 277,
+      "ipcIn": 6,
+      "prep": 0,
+      "models": 0,
+      "sendToReq": 6,
+      "reqToHeaders": 1107,
+      "reqToFirstText": 3074,
+      "firstTextToShown": 0,
+      "shownToPaint": 14,
+      "ttft": 3094,
+      "streamEnd": 7189,
+      "total": 7212,
+      "endToDone": 23,
+      "fullShown": 3144,
+      "revealLag": 12,
+      "shownAtStreamEnd": 52,
+      "lastStreamChars": 52,
+      "finalChars": 52,
+      "frames": 433,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 0,
+        "token": 0,
+        "reqSent": 0,
+        "headers": 1107,
+        "firstByte": 1107,
+        "firstText": 3074,
+        "firstDelta": 3074,
+        "firstShown": 3074,
+        "lastShown": 3126,
+        "runEnd": 7183,
+        "doneSent": 7202,
+        "end": 7202
+      },
+      "samples": [
+        [
+          3094,
+          43
+        ],
+        [
+          3144,
+          52
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 11,
+      "kind": "desktop",
+      "cond": "cold",
+      "text": "第11轮：请用大约 80 个字，和我聊聊「一部老电影」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 58,
+      "deltas": 2,
+      "ipcBytes": 325,
+      "ipcIn": 31,
+      "prep": 10,
+      "models": 9,
+      "sendToReq": 41,
+      "reqToHeaders": 1126,
+      "reqToFirstText": 3004,
+      "firstTextToShown": 0,
+      "shownToPaint": 6,
+      "ttft": 3051,
+      "streamEnd": 7217,
+      "total": 7252,
+      "endToDone": 35,
+      "fullShown": 3084,
+      "revealLag": 6,
+      "shownAtStreamEnd": 58,
+      "lastStreamChars": 58,
+      "finalChars": 58,
+      "frames": 436,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 9,
+        "applyModel": 9,
+        "local": 9,
+        "ready": 9,
+        "runStart": 10,
+        "token": 10,
+        "reqSent": 10,
+        "headers": 1136,
+        "firstByte": 1136,
+        "firstText": 3014,
+        "firstDelta": 3014,
+        "firstShown": 3014,
+        "lastShown": 3047,
+        "runEnd": 7186,
+        "doneSent": 7209,
+        "end": 7209
+      },
+      "samples": [
+        [
+          3051,
+          53
+        ],
+        [
+          3084,
+          58
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 11,
+      "kind": "admin",
+      "cond": "cold",
+      "text": "第11轮：请用大约 80 个字，和我聊聊「一部老电影」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": false,
+      "waitedReady": false,
+      "promptChars": 499,
+      "bodyChars": 28,
+      "replyChars": 54,
+      "deltas": 2,
+      "ipcBytes": 158,
+      "ipcIn": 3,
+      "prep": 36,
+      "models": 9,
+      "sendToReq": 39,
+      "reqToHeaders": 1125,
+      "reqToFirstText": 2748,
+      "firstTextToShown": 0,
+      "shownToPaint": 29,
+      "ttft": 2816,
+      "streamEnd": 6078,
+      "total": 6139,
+      "endToDone": 61,
+      "fullShown": 3043,
+      "revealLag": 250,
+      "shownAtStreamEnd": 54,
+      "lastStreamChars": 54,
+      "finalChars": 54,
+      "frames": 368,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 9,
+        "logged": 35,
+        "persona": 35,
+        "applyModel": 35,
+        "prompt": 36,
+        "runStart": 36,
+        "token": 36,
+        "reqSent": 36,
+        "headers": 1161,
+        "firstByte": 1161,
+        "firstText": 2784,
+        "firstDelta": 2784,
+        "firstShown": 2784,
+        "lastShown": 2790,
+        "runEnd": 6075,
+        "end": 6109
+      },
+      "samples": [
+        [
+          2816,
+          53
+        ],
+        [
+          3043,
+          54
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 12,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第12轮：请用大约 80 个字，和我聊聊「收拾房间」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 60,
+      "deltas": 2,
+      "ipcBytes": 176,
+      "ipcIn": 2,
+      "prep": 9,
+      "models": 0,
+      "sendToReq": 11,
+      "reqToHeaders": 1171,
+      "reqToFirstText": 2741,
+      "firstTextToShown": 0,
+      "shownToPaint": 29,
+      "ttft": 2781,
+      "streamEnd": 6027,
+      "total": 6076,
+      "endToDone": 49,
+      "fullShown": 2781,
+      "revealLag": 27,
+      "shownAtStreamEnd": 60,
+      "lastStreamChars": 60,
+      "finalChars": 60,
+      "frames": 364,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 9,
+        "persona": 9,
+        "applyModel": 9,
+        "prompt": 9,
+        "runStart": 9,
+        "token": 9,
+        "reqSent": 9,
+        "headers": 1180,
+        "firstByte": 1180,
+        "firstText": 2750,
+        "firstDelta": 2750,
+        "firstShown": 2750,
+        "lastShown": 2752,
+        "runEnd": 6025,
+        "end": 6050
+      },
+      "samples": [
+        [
+          2781,
+          60
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 12,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第12轮：请用大约 80 个字，和我聊聊「收拾房间」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 61,
+      "deltas": 1,
+      "ipcBytes": 179,
+      "ipcIn": 25,
+      "prep": 0,
+      "models": 0,
+      "sendToReq": 25,
+      "reqToHeaders": 999,
+      "reqToFirstText": 2456,
+      "firstTextToShown": 0,
+      "shownToPaint": 8,
+      "ttft": 2489,
+      "streamEnd": 6413,
+      "total": 6440,
+      "endToDone": 27,
+      "fullShown": 2489,
+      "revealLag": 8,
+      "shownAtStreamEnd": 61,
+      "lastStreamChars": 61,
+      "finalChars": 61,
+      "frames": 387,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 0,
+        "token": 0,
+        "reqSent": 0,
+        "headers": 999,
+        "firstByte": 999,
+        "firstText": 2456,
+        "firstDelta": 2456,
+        "firstShown": 2456,
+        "lastShown": 2456,
+        "runEnd": 6388,
+        "doneSent": 6407,
+        "end": 6407
+      },
+      "samples": [
+        [
+          2489,
+          61
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 13,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 499,
+      "replyChars": 46,
+      "deltas": 1,
+      "prep": 29,
+      "reqToHeaders": 1163,
+      "reqToFirstText": 2757,
+      "ttft": 2786,
+      "streamEnd": 6259,
+      "total": 6259,
+      "pieces": [
+        [
+          2786,
+          46
+        ]
+      ],
+      "marks": {
+        "token": 28,
+        "reqSent": 29,
+        "headers": 1192,
+        "firstByte": 1194,
+        "firstText": 2786,
+        "end": 6259
+      },
+      "events": [
+        [
+          1194,
+          "response.created",
+          null
+        ],
+        [
+          1195,
+          "response.in_progress",
+          null
+        ],
+        [
+          2786,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2786,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2786,
+          "response.output_text.delta",
+          46
+        ],
+        [
+          6256,
+          "response.output_text.done",
+          null
+        ],
+        [
+          6256,
+          "response.content_part.done",
+          null
+        ],
+        [
+          6256,
+          "response.output_item.done",
+          null
+        ],
+        [
+          6258,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          1194,
+          1194,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          1195,
+          1195,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2786,
+          2786,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2786,
+          2786,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2786,
+          2786,
+          "response.output_text.delta",
+          1,
+          46
+        ],
+        [
+          6256,
+          6256,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          6256,
+          6256,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          6256,
+          6256,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          6258,
+          6258,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 14,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 502,
+      "replyChars": 48,
+      "deltas": 1,
+      "prep": 0,
+      "reqToHeaders": 1050,
+      "reqToFirstText": 2835,
+      "ttft": 2835,
+      "streamEnd": 6164,
+      "total": 6164,
+      "pieces": [
+        [
+          2835,
+          48
+        ]
+      ],
+      "marks": {
+        "token": 0,
+        "reqSent": 0,
+        "headers": 1050,
+        "firstByte": 1050,
+        "firstText": 2835,
+        "end": 6164
+      },
+      "events": [
+        [
+          1050,
+          "response.created",
+          null
+        ],
+        [
+          1050,
+          "response.in_progress",
+          null
+        ],
+        [
+          2834,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2834,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2834,
+          "response.output_text.delta",
+          48
+        ],
+        [
+          6163,
+          "response.output_text.done",
+          null
+        ],
+        [
+          6163,
+          "response.content_part.done",
+          null
+        ],
+        [
+          6163,
+          "response.output_item.done",
+          null
+        ],
+        [
+          6164,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          1050,
+          1050,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          1050,
+          1050,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2834,
+          2834,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2834,
+          2834,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2834,
+          2834,
+          "response.output_text.delta",
+          1,
+          48
+        ],
+        [
+          6163,
+          6163,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          6163,
+          6163,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          6163,
+          6163,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          6164,
+          6164,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 15,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 500,
+      "replyChars": 46,
+      "deltas": 1,
+      "prep": 1,
+      "reqToHeaders": 972,
+      "reqToFirstText": 2621,
+      "ttft": 2622,
+      "streamEnd": 6373,
+      "total": 6373,
+      "pieces": [
+        [
+          2622,
+          46
+        ]
+      ],
+      "marks": {
+        "token": 1,
+        "reqSent": 1,
+        "headers": 973,
+        "firstByte": 973,
+        "firstText": 2622,
+        "end": 6373
+      },
+      "events": [
+        [
+          973,
+          "response.created",
+          null
+        ],
+        [
+          973,
+          "response.in_progress",
+          null
+        ],
+        [
+          2622,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2622,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2622,
+          "response.output_text.delta",
+          46
+        ],
+        [
+          6371,
+          "response.output_text.done",
+          null
+        ],
+        [
+          6371,
+          "response.content_part.done",
+          null
+        ],
+        [
+          6371,
+          "response.output_item.done",
+          null
+        ],
+        [
+          6373,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          973,
+          973,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          973,
+          973,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2622,
+          2622,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2622,
+          2622,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2622,
+          2622,
+          "response.output_text.delta",
+          1,
+          46
+        ],
+        [
+          6371,
+          6371,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          6371,
+          6371,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          6371,
+          6371,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          6373,
+          6373,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 16,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 499,
+      "replyChars": 45,
+      "deltas": 1,
+      "prep": 1,
+      "reqToHeaders": 9690,
+      "reqToFirstText": 11415,
+      "ttft": 11416,
+      "streamEnd": 15583,
+      "total": 15583,
+      "pieces": [
+        [
+          11416,
+          45
+        ]
+      ],
+      "marks": {
+        "token": 1,
+        "reqSent": 1,
+        "headers": 9691,
+        "firstByte": 9699,
+        "firstText": 11416,
+        "end": 15583
+      },
+      "events": [
+        [
+          9699,
+          "response.created",
+          null
+        ],
+        [
+          9699,
+          "response.in_progress",
+          null
+        ],
+        [
+          11416,
+          "response.output_item.added",
+          null
+        ],
+        [
+          11416,
+          "response.content_part.added",
+          null
+        ],
+        [
+          11416,
+          "response.output_text.delta",
+          45
+        ],
+        [
+          15582,
+          "response.output_text.done",
+          null
+        ],
+        [
+          15582,
+          "response.content_part.done",
+          null
+        ],
+        [
+          15582,
+          "response.output_item.done",
+          null
+        ],
+        [
+          15583,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          9699,
+          9699,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          9699,
+          9699,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          11416,
+          11416,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          11416,
+          11416,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          11416,
+          11416,
+          "response.output_text.delta",
+          1,
+          45
+        ],
+        [
+          15582,
+          15582,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          15582,
+          15582,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          15582,
+          15582,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          15583,
+          15583,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 17,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 500,
+      "replyChars": 53,
+      "deltas": 1,
+      "prep": 0,
+      "reqToHeaders": 9671,
+      "reqToFirstText": 11549,
+      "ttft": 11549,
+      "streamEnd": 16410,
+      "total": 16410,
+      "pieces": [
+        [
+          11549,
+          53
+        ]
+      ],
+      "marks": {
+        "token": 0,
+        "reqSent": 0,
+        "headers": 9671,
+        "firstByte": 9680,
+        "firstText": 11549,
+        "end": 16410
+      },
+      "events": [
+        [
+          9680,
+          "response.created",
+          null
+        ],
+        [
+          9680,
+          "response.in_progress",
+          null
+        ],
+        [
+          11548,
+          "response.output_item.added",
+          null
+        ],
+        [
+          11548,
+          "response.content_part.added",
+          null
+        ],
+        [
+          11548,
+          "response.output_text.delta",
+          53
+        ],
+        [
+          16410,
+          "response.output_text.done",
+          null
+        ],
+        [
+          16410,
+          "response.content_part.done",
+          null
+        ],
+        [
+          16410,
+          "response.output_item.done",
+          null
+        ],
+        [
+          16410,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          9680,
+          9680,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          9680,
+          9680,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          11548,
+          11548,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          11548,
+          11548,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          11548,
+          11548,
+          "response.output_text.delta",
+          1,
+          53
+        ],
+        [
+          16410,
+          16410,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          16410,
+          16410,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          16410,
+          16410,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          16410,
+          16410,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    }
+  ],
+  "summary": {
+    "desktop/cold": {
+      "n": 6,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 22,
+        "p90": 29
+      },
+      "prep": {
+        "p50": 10,
+        "p90": 10
+      },
+      "models": {
+        "p50": 9,
+        "p90": 9
+      },
+      "sendToReq": {
+        "p50": 32,
+        "p90": 39
+      },
+      "reqToHeaders": {
+        "p50": 1263,
+        "p90": 3761
+      },
+      "reqToFirstText": {
+        "p50": 3294,
+        "p90": 6259
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 12,
+        "p90": 16
+      },
+      "ttft": {
+        "p50": 3336,
+        "p90": 6301
+      },
+      "streamEnd": {
+        "p50": 7233,
+        "p90": 10237
+      },
+      "endToDone": {
+        "p50": 35,
+        "p90": 41
+      },
+      "fullShown": {
+        "p50": 3360,
+        "p90": 6376
+      },
+      "revealLag": {
+        "p50": 8,
+        "p90": 12
+      },
+      "total": {
+        "p50": 7262,
+        "p90": 10278
+      },
+      "promptChars": {
+        "p50": 499,
+        "p90": 499
+      },
+      "replyChars": {
+        "p50": 55,
+        "p90": 59
+      },
+      "shownAtStreamEnd": {
+        "p50": 55,
+        "p90": 59
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 289,
+        "p90": 324
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "desktop/warm": {
+      "n": 6,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 24,
+        "p90": 31
+      },
+      "prep": {
+        "p50": 1,
+        "p90": 1
+      },
+      "models": {
+        "p50": 0,
+        "p90": 0
+      },
+      "sendToReq": {
+        "p50": 25,
+        "p90": 32
+      },
+      "reqToHeaders": {
+        "p50": 1113,
+        "p90": 1243
+      },
+      "reqToFirstText": {
+        "p50": 2628,
+        "p90": 3084
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 9,
+        "p90": 15
+      },
+      "ttft": {
+        "p50": 2653,
+        "p90": 3115
+      },
+      "streamEnd": {
+        "p50": 6494,
+        "p90": 6914
+      },
+      "endToDone": {
+        "p50": 29,
+        "p90": 39
+      },
+      "fullShown": {
+        "p50": 2713,
+        "p90": 3157
+      },
+      "revealLag": {
+        "p50": 8,
+        "p90": 14
+      },
+      "total": {
+        "p50": 6530,
+        "p90": 6941
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 56,
+        "p90": 64
+      },
+      "shownAtStreamEnd": {
+        "p50": 56,
+        "p90": 64
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 286,
+        "p90": 327
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "desktop/all": {
+      "n": 12,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 23,
+        "p90": 31
+      },
+      "prep": {
+        "p50": 5,
+        "p90": 10
+      },
+      "models": {
+        "p50": 4,
+        "p90": 9
+      },
+      "sendToReq": {
+        "p50": 28,
+        "p90": 36
+      },
+      "reqToHeaders": {
+        "p50": 1142,
+        "p90": 1435
+      },
+      "reqToFirstText": {
+        "p50": 2895,
+        "p90": 4372
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 10,
+        "p90": 15
+      },
+      "ttft": {
+        "p50": 2943,
+        "p90": 4413
+      },
+      "streamEnd": {
+        "p50": 6846,
+        "p90": 7886
+      },
+      "endToDone": {
+        "p50": 32,
+        "p90": 44
+      },
+      "fullShown": {
+        "p50": 2985,
+        "p90": 4475
+      },
+      "revealLag": {
+        "p50": 8,
+        "p90": 15
+      },
+      "total": {
+        "p50": 6878,
+        "p90": 7930
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 56,
+        "p90": 61
+      },
+      "shownAtStreamEnd": {
+        "p50": 56,
+        "p90": 61
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 289,
+        "p90": 325
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "admin/cold": {
+      "n": 6,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 3,
+        "p90": 4
+      },
+      "prep": {
+        "p50": 29,
+        "p90": 38
+      },
+      "models": {
+        "p50": 10,
+        "p90": 11
+      },
+      "sendToReq": {
+        "p50": 32,
+        "p90": 40
+      },
+      "reqToHeaders": {
+        "p50": 1211,
+        "p90": 3939
+      },
+      "reqToFirstText": {
+        "p50": 2726,
+        "p90": 5644
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 1
+      },
+      "shownToPaint": {
+        "p50": 31,
+        "p90": 45
+      },
+      "ttft": {
+        "p50": 2783,
+        "p90": 5712
+      },
+      "streamEnd": {
+        "p50": 6306,
+        "p90": 9714
+      },
+      "endToDone": {
+        "p50": 48,
+        "p90": 56
+      },
+      "fullShown": {
+        "p50": 2920,
+        "p90": 5987
+      },
+      "revealLag": {
+        "p50": 211,
+        "p90": 248
+      },
+      "total": {
+        "p50": 6361,
+        "p90": 9755
+      },
+      "promptChars": {
+        "p50": 499,
+        "p90": 499
+      },
+      "replyChars": {
+        "p50": 55,
+        "p90": 61
+      },
+      "shownAtStreamEnd": {
+        "p50": 55,
+        "p90": 61
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 161,
+        "p90": 178
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "admin/warm": {
+      "n": 6,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 2,
+        "p90": 2
+      },
+      "prep": {
+        "p50": 22,
+        "p90": 26
+      },
+      "models": {
+        "p50": 0,
+        "p90": 1
+      },
+      "sendToReq": {
+        "p50": 24,
+        "p90": 27
+      },
+      "reqToHeaders": {
+        "p50": 1174,
+        "p90": 1238
+      },
+      "reqToFirstText": {
+        "p50": 2628,
+        "p90": 2834
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 1
+      },
+      "shownToPaint": {
+        "p50": 31,
+        "p90": 35
+      },
+      "ttft": {
+        "p50": 2682,
+        "p90": 2886
+      },
+      "streamEnd": {
+        "p50": 6481,
+        "p90": 6710
+      },
+      "endToDone": {
+        "p50": 45,
+        "p90": 52
+      },
+      "fullShown": {
+        "p50": 2901,
+        "p90": 2985
+      },
+      "revealLag": {
+        "p50": 117,
+        "p90": 243
+      },
+      "total": {
+        "p50": 6533,
+        "p90": 6748
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 54,
+        "p90": 62
+      },
+      "shownAtStreamEnd": {
+        "p50": 54,
+        "p90": 62
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 157,
+        "p90": 181
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "admin/all": {
+      "n": 12,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 2,
+        "p90": 3
+      },
+      "prep": {
+        "p50": 23,
+        "p90": 36
+      },
+      "models": {
+        "p50": 5,
+        "p90": 10
+      },
+      "sendToReq": {
+        "p50": 24,
+        "p90": 39
+      },
+      "reqToHeaders": {
+        "p50": 1178,
+        "p90": 1288
+      },
+      "reqToFirstText": {
+        "p50": 2685,
+        "p90": 2926
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 1
+      },
+      "shownToPaint": {
+        "p50": 31,
+        "p90": 38
+      },
+      "ttft": {
+        "p50": 2733,
+        "p90": 2989
+      },
+      "streamEnd": {
+        "p50": 6481,
+        "p90": 7130
+      },
+      "endToDone": {
+        "p50": 48,
+        "p90": 54
+      },
+      "fullShown": {
+        "p50": 2901,
+        "p90": 3268
+      },
+      "revealLag": {
+        "p50": 194,
+        "p90": 246
+      },
+      "total": {
+        "p50": 6533,
+        "p90": 7176
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 55,
+        "p90": 63
+      },
+      "shownAtStreamEnd": {
+        "p50": 55,
+        "p90": 63
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 160,
+        "p90": 184
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "raw/warm": {
+      "n": 5,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": null,
+        "p90": null
+      },
+      "prep": {
+        "p50": 1,
+        "p90": 18
+      },
+      "models": {
+        "p50": null,
+        "p90": null
+      },
+      "sendToReq": {
+        "p50": null,
+        "p90": null
+      },
+      "reqToHeaders": {
+        "p50": 1163,
+        "p90": 9682
+      },
+      "reqToFirstText": {
+        "p50": 2835,
+        "p90": 11495
+      },
+      "firstTextToShown": {
+        "p50": null,
+        "p90": null
+      },
+      "shownToPaint": {
+        "p50": null,
+        "p90": null
+      },
+      "ttft": {
+        "p50": 2835,
+        "p90": 11496
+      },
+      "streamEnd": {
+        "p50": 6373,
+        "p90": 16079
+      },
+      "endToDone": {
+        "p50": null,
+        "p90": null
+      },
+      "fullShown": {
+        "p50": null,
+        "p90": null
+      },
+      "revealLag": {
+        "p50": null,
+        "p90": null
+      },
+      "total": {
+        "p50": 6373,
+        "p90": 16079
+      },
+      "promptChars": {
+        "p50": 500,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 46,
+        "p90": 51
+      },
+      "shownAtStreamEnd": {
+        "p50": null,
+        "p90": null
+      },
+      "deltas": {
+        "p50": 1,
+        "p90": 1
+      },
+      "ipcBytes": {
+        "p50": null,
+        "p90": null
+      },
+      "longtaskMs": {
+        "p50": null,
+        "p90": null
+      },
+      "fps": {
+        "p50": null,
+        "p90": null
+      }
+    },
+    "raw/all": {
+      "n": 5,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": null,
+        "p90": null
+      },
+      "prep": {
+        "p50": 1,
+        "p90": 18
+      },
+      "models": {
+        "p50": null,
+        "p90": null
+      },
+      "sendToReq": {
+        "p50": null,
+        "p90": null
+      },
+      "reqToHeaders": {
+        "p50": 1163,
+        "p90": 9682
+      },
+      "reqToFirstText": {
+        "p50": 2835,
+        "p90": 11495
+      },
+      "firstTextToShown": {
+        "p50": null,
+        "p90": null
+      },
+      "shownToPaint": {
+        "p50": null,
+        "p90": null
+      },
+      "ttft": {
+        "p50": 2835,
+        "p90": 11496
+      },
+      "streamEnd": {
+        "p50": 6373,
+        "p90": 16079
+      },
+      "endToDone": {
+        "p50": null,
+        "p90": null
+      },
+      "fullShown": {
+        "p50": null,
+        "p90": null
+      },
+      "revealLag": {
+        "p50": null,
+        "p90": null
+      },
+      "total": {
+        "p50": 6373,
+        "p90": 16079
+      },
+      "promptChars": {
+        "p50": 500,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 46,
+        "p90": 51
+      },
+      "shownAtStreamEnd": {
+        "p50": null,
+        "p90": null
+      },
+      "deltas": {
+        "p50": 1,
+        "p90": 1
+      },
+      "ipcBytes": {
+        "p50": null,
+        "p90": null
+      },
+      "longtaskMs": {
+        "p50": null,
+        "p90": null
+      },
+      "fps": {
+        "p50": null,
+        "p90": null
+      }
+    }
+  },
+  "mainStdoutLatencyLines": 24
+}

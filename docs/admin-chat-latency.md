@@ -3,17 +3,22 @@
 > 分支 `perf/admin-chat-latency`（基于 canary `00252f9`）。§0–§6 是 T-2815 的测量与根因定位（不改行为）；
 > **§7–§10 是 T-2818 的优化改动、优化前后对比数据与回归验证结果。**
 
-## 优化结果速览（T-2818，同方法同账号同角色同模型同消息集，前后各 12 轮 × 2 链路，冷 / 热各 6 轮；ms，p50 / p90）
+## 优化结果速览（T-2818 最终代码；同方法、同账号、同角色、同模型、同消息集；ms，p50 / p90）
+
+优化前 = 检出优化前提交 `0c3135b` 重跑（`before.json`）；优化后 = 最终代码重跑（`after-r3.json`，§8.3）。每条链路 12 轮，冷 / 热各 6 轮。
 
 | 聊天窗口 | 优化前 TTFT | 优化后 TTFT | 变化（p50） | 优化前总耗时 | 优化后总耗时 | 变化（p50） |
 |---|---|---|---|---|---|---|
-| 冷（模型目录过期） | 5829 / 8062 | **2860 / 3276** | **−2969（−51%）** | 10315 / 12772 | **6656 / 6893** | **−3659（−35%）** |
-| 热 | 2973 / 4371 | 2893 / 3575 | −80（−3%，噪声内） | 6739 / 8444 | 6746 / 7280 | +7（0%，噪声内） |
-| 全部 | 5403 / 6035 | **2878 / 3510** | **−2525（−47%）** | 8729 / 11134 | **6656 / 7243** | **−2073（−24%）** |
+| 冷（模型目录过期） | 5829 / 8062 | **2783 / 5712** | **−3046（−52%）** | 10315 / 12772 | **6361 / 9755** | **−3954（−38%）** |
+| 热 | 2973 / 4371 | 2682 / 2886 | −291（−10%） | 6739 / 8444 | 6533 / 6748 | −206（−3%） |
+| 全部 | 5403 / 6035 | **2733 / 2989** | **−2670（−49%）** | 8729 / 11134 | **6533 / 7176** | **−2196（−25%）** |
 
-- main 进程准备（点击后到请求发出）：冷态 2788 → 27 ms，热态 56 → 4 ms。
-- 长回复（约 250–400 字）在聊天页「最后一段→全文上屏」：458 → 236 ms。
-- 热态 TTFT 和总耗时没有变化，因为热态时间几乎全花在服务端：请求→首字约 2.8 s，最后一段文字→`response.completed` 约 3.5 s（R1/R3）。§7.3 的探针证明这两段客户端改不了。
+- **可复现**：优化后共独立跑了两次。第一次在提交 `97e39c0` 上（`after.json`，§8.1），冷态 TTFT p50 为 2860 ms；第二次在最终代码上（`after-r3.json`），为 2783 ms。两次相对优化前都是 −51% / −52%。
+- 冷态 p90 5712 ms 来自 1 轮服务端抖动：第 1 轮请求→首字 8376 ms。同一次运行里 raw 直连也有 2 轮出现 9.7 s 才收到响应头。其余 5 轮冷态 TTFT 都在 2559–2975 ms。
+- **与桌面对比（同一次运行）**：TTFT p50，冷态聊天窗口 2783 / 桌面 3336，热态 2682 / 2653；总耗时 p50，冷态 6361 / 7262，热态 6533 / 6530。聊天窗口已与桌面持平。
+- main 进程准备（点击后到请求发出）：冷态 2788 → 29 ms，热态 56 → 22 ms。
+- 长回复（约 250–400 字）：聊天窗口「最后一段→全文上屏」458 → 253 ms。每轮 main→窗口 IPC 字节 5431 → **748**（−86%），也就是每个字只传一次；桌面仍推全文，为 4384 B。
+- 热态 TTFT 和总耗时几乎全花在服务端：请求→首字约 2.7 s，最后一段文字→`response.completed` 约 3.5 s（R1/R3）。§7.3 的探针证明这两段客户端改不了。
 - 详见 §7（改动）、§8（对比数据）、§9（回归）、§10（复现）。
 > 「聊天窗口」= 设置窗口 → 聊天（`PetService#chatAs`，`admin-chat-send` / `admin-chat-delta`，`admin/src/console/pages/Chat.tsx`）；
 > 「桌面」= 桌宠气泡对话（`PetService#chat`，`chat` / `chat-delta`，`src/renderer/app.js`）。
@@ -238,6 +243,7 @@ main 埋点原始行示例（`baseline-latency.jsonl`，冷态聊天窗口这一
 | O1 | R2 模型目录过期时串行 `refreshModels`（≈2.3–2.8 s） | `src/main/pet-service.js` 新增 `_catalogForTurn()`、`prewarmModels()`；`chatAs()`、`_doEnsureReady()` 改为调用 `_catalogForTurn()` | **stale-while-revalidate**：已有目录时，即使超过 `MODELS_TTL_MS` 也直接使用，同时在后台刷新，目录的变化从下一轮开始 `_applyModel`。只有从未加载过目录（首次启动）时才等待。 | 冷态 main 准备 2788 → 27 ms；冷态 TTFT −2969 ms |
 | O2 | R2 预热 | `PetService#chatCharacters()`（聊天页打开、每轮结束都会调用） | 目录过期时在后台调用 `prewarmModels()`。并发安全：已有加载在进行时不重复发起，从不阻塞。 | 打开聊天页到发第一条消息之间就完成刷新 |
 | O3 | 每轮直连前同步跑 PBKDF2（10 万轮，≈30–47 ms 阻塞 main） | `src/core/responses-client.js` `cliKey()` | 按 hostname+user 缓存派生出的 key。凭据文件仍然每轮重新读取，`lh` 刷新登录后仍能拿到新 token。 | 热态 main 准备 56 → 4 ms；`readCliCredentials` 47 ms → 0.2 ms |
+| O5 | IPC 推全文、每个 delta 一次重渲染（候选方向「前端 delta 增量 / 节流、IPC 只发增量」） | 新增 `src/core/chat-live.js`（`encode` / `apply` / `merge`，main 与页面共用，UMD）；`PetService#chatAs` 的 `stream.onDelta`；`PetService#chatHistory` 返回 `live`；`Chat.tsx` 的 `onDelta` | main 只发新增部分 `{ at, append }`，不是纯追加时（首段、表情标签被收回、restart）才发全文 `{ text }`。页面把同一帧内收到的 delta 入队，用 `requestAnimationFrame` 合并成一次 `setLive`。增量对不上时（回复中途打开页面、丢了一段）不显示缺口，改用 `history().live` 取回已显示的全文。`done` / 发送结束后丢弃迟到的 delta，气泡不会复活。 | 长回复每轮 IPC 5431 → 748 B（−86%），每个字只传一次；短回复 TTFT 不受影响（§8.3） |
 | O4 | R4 聊天页 Markdown 平滑落后 | `admin/src/console/pages/Chat.tsx` `STREAM_MARKDOWN` | live 气泡改用 `streamSmoothingPreset: 'realtime'`（40 ms 缓冲、最高 180 字/s），原来是默认的 `balanced`（120 ms、132 字/s）。props 提成模块常量，不再每次 delta 都新建对象。保留逐字渐显。 | 长回复全文上屏滞后 458 → 236 ms（§8.2） |
 
 关键 diff（节选）：
@@ -268,7 +274,38 @@ main 埋点原始行示例（`baseline-latency.jsonl`，冷态聊天窗口这一
 -    const key = crypto.pbkdf2Sync(`lobehub-cli:${hostname}:${username}`, 'lobehub-cli-salt', 100000, 32, 'sha256');
 +    const key = cliKey(hostname, username); // derived once per host+user, cached in keyCache
 
-// admin/src/console/pages/Chat.tsx
+// src/main/pet-service.js  chatAs() 的 stream.onDelta（O5，提交 1842856）
+           if (shown === partial) return;
++          const piece = chatLive.encode(partial, shown); // only what was added goes over IPC
+           partial = shown;
++          if (this._consoleTurn) this._consoleTurn.text = shown;
+-          trace.add('ipcBytes', Buffer.byteLength(shown));
+-            onDelta({ speciesId: id, turnId, text: shown });
++          trace.add('ipcBytes', Buffer.byteLength(piece.append ?? piece.text));
++            onDelta({ speciesId: id, turnId, ...piece });
+// chatHistory()：回复中途打开的页面从这里取已显示的全文
++    return { ok: true, …, streaming: !!t, live: t ? { turnId: t.turnId, text: t.text || '' } : null, ...page };
+
+// src/core/chat-live.js（新文件）
++  function encode(prev, next) {
++    if (prev && next.length > prev.length && next.startsWith(prev)) return { at: prev.length, append: next.slice(prev.length) };
++    return { text: next };
++  }
++  function apply(live, d) { /* 追加且 at === live.text.length → 拼接；否则 resync，live 不变 */ }
++  function merge(live, queue) { /* 一帧内的 delta 依次 apply，合成一次状态 */ }
+
+// admin/src/console/pages/Chat.tsx  onDelta（O5）
+-    const offDelta = chat().onDelta((d) => setLive({ speciesId: d.speciesId, text: d.text, turnId: d.turnId }));
++    const flush = () => {
++      frame = 0; const q = queue; queue = [];
++      if (!q.length || !liveRef.current) return; // the reply ended: a late piece must not bring the bubble back
++      const r = ChatLive.merge(liveRef.current, q);
++      liveRef.current = r.live; setLive(r.live);
++      if (r.resync) resync(q.at(-1)!.speciesId);     // history(sid, { limit: 1 }).live
++    };
++    const offDelta = chat().onDelta((d) => { queue.push(d); if (!frame) frame = requestAnimationFrame(flush); });
+
+// admin/src/console/pages/Chat.tsx  STREAM_MARKDOWN（O4）
 +const STREAM_MARKDOWN = { animated: true, streamSmoothingPreset: 'realtime' } as const;
 -                    markdownProps={{ animated: true }}
 +                    markdownProps={STREAM_MARKDOWN}
@@ -276,15 +313,21 @@ main 埋点原始行示例（`baseline-latency.jsonl`，冷态聊天窗口这一
 
 单测：新增 `test/chat-latency-opt.test.js`，共 8 条。覆盖以下场景：目录过期时 chatAs 不等待后台刷新（刷新被人为卡住，turn 照样完成）；桌面 `_ensureReady` 同样不等；没有目录时必须等；过期期间选的模型在本轮生效，刷新后目录去掉了该模型则下一轮改用默认模型并重新 apply；聊天页打开时只预热一次；后台刷新期间 busy 互斥和 abort 正常；PBKDF2 每个 host/user 只派生一次，凭据文件每次重新读取；contentGuard 拦截的回复不会推流，落盘的是拒答台词。`test/models.test.js` 的「10 分钟后重读目录」改为等待后台刷新完成后再断言。
 
+第 3 轮又新增 4 条单测，`test/chat-latency-opt.test.js` 共 12 条：
+- `chat-live encode`：纯追加时只发新增部分；首段、表情标签被收回、内容相同时发全文。
+- `apply/merge`：按增量重建出全文；一帧内的多个 delta 合成一个状态；对不上（回复中途打开、换了一轮）时 live 不变并要求 resync；同一帧里后到的全文能修复之前的缺口。
+- `chatAs streams increments`：首段是全文，其后全是增量；拼起来等于最终回复，每个字只过一次 IPC；每次 delta 后 `chatHistory().live` 都等于已显示的文字；从第 2 段之后打开的页面也能接上；回复结束后 `live` 为 null。
+- `_ensurePersona is not repeated per turn`：连续 4 轮聊天页对话不再调用 `lh agent edit -s`；persona 变化后只写一次。
+
 ### 7.2 候选方向逐项结论（没改的项给出理由与数据）
 
 | 候选方向 | 结论 | 依据 |
 |---|---|---|
 | refreshModels / _applyModel 移出关键路径 | **已改**（O1/O2）。`_applyModel` 只在目标模型变了时调用 `lh agent edit`，平时是 0 ms（key 比较），留在原位，以保证「选了模型本轮就生效」 | 冷态 prep 2788 → 27 ms |
-| 避免每轮重复 `_ensurePersona` | 不需要改：它只比较 `personaVersion`/`personaKey`，命中时不调用 lh | 基线 `marks.persona − marks.logged` = 0 ms（§3.1 原始行） |
+| 避免每轮重复 `_ensurePersona` | 现有实现已经满足：它只比较 `personaVersion`/`personaKey`，命中时不调用 lh。补了单测锁定这个行为 | 基线 `marks.persona − marks.logged` = 0 ms（§3.1 原始行）；单测：连续 4 轮 0 次 `lh agent edit -s`，persona 变了才写 1 次 |
 | 控制新话题上下文体积 | 不改：带上 recentRounds 后 prompt 为 2660–3215 字，TTFT 在噪声内 | §3.2 fresh 行 4175 ms，同组热态为 4946 ms |
 | 确保走直连 SSE | 已经是：前后两次实测 via=direct 48/48，`fallbackReason` 为空 | `before/after-latency.jsonl` |
-| 前端 delta rAF 合并、IPC 只发增量 | 不改：每轮推送 1–9 次，≤ 7.2 KB；main→窗口首帧 12–79 ms，主要是渲染耗时，不在 IPC 上 | §8 推送次数 / 字节，T-2815 §4 |
+| 前端 delta rAF 合并、IPC 只发增量 | **已改**（O5，第 3 轮）。这项本身耗时不大，每轮推送 1–9 次，优化前 ≤ 7.2 KB；但长回复下 IPC 体积是平方增长，所以按候选方向落地。 | 长回复 IPC 5431 → 748 B；短回复 TTFT 无回退（§8.3） |
 | 降低 markdown 重渲染开销 | **已改**（O4）：平滑预设改为 realtime，props 改成稳定引用 | §8.2 |
 | R1 服务端收尾 3.5 s | 客户端改不了（§7.3），需要服务端处理 | 探针 |
 
@@ -418,17 +461,62 @@ hdr 2819 200
 
 综合判断，`realtime` 预设把滞后从约 400 ms 降到约 250 ms，桌面气泡仍在 10 ms 级。流式截图 [`long-after-admin-streaming.png`](data/admin-chat-latency/long-after-admin-streaming.png) 显示逐字渐显仍然保留。
 
+### 8.3 最终代码复测（第 3 轮，含 O5；before.json vs after-r3.json / long-before.json vs long-after-r3.json）
+
+O5 改了流式显示路径，所以在最终代码上用同一配置重跑了全部测速：`LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5` 和 `LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0`。优化前仍是 `0c3135b` 的那次运行。完整输出见 [`compare-tables-r3.md`](data/admin-chat-latency/compare-tables-r3.md)；逐轮 stdout 见 `after-r3-run.txt`、`long-after-r3-run.txt`；逐轮明细见 `after-r3.json`、`long-after-r3.json`。
+
+**短回复 TTFT（ms）**
+
+| 链路 · 状态 | 优化前 n | 优化前 p50 / p90 | 优化前 min–max | 优化后 n | 优化后 p50 / p90 | 优化后 min–max | p50 变化 | p90 变化 |
+|---|---|---|---|---|---|---|---|---|
+| 聊天窗口 · 冷 | 6 | 5829 / 8062 | 5249–10073 | 6 | 2783 / 5712 | 2559–8448 | −3046 ms（−52%） | −2350 ms（−29%） |
+| 聊天窗口 · 热 | 6 | 2973 / 4371 | 2537–5557 | 6 | 2682 / 2886 | 2601–2991 | −291 ms（−10%） | −1485 ms（−34%） |
+| 聊天窗口 · 全部 | 12 | 5403 / 6035 | 2537–10073 | 12 | 2733 / 2989 | 2559–8448 | −2670 ms（−49%） | −3046 ms（−50%） |
+| 桌面 · 冷 | 6 | 5577 / 6113 | 5076–6163 | 6 | 3336 / 6301 | 2580–8101 | −2241 ms（−40%） | +188 ms（3%） |
+| 桌面 · 热 | 6 | 2677 / 2986 | 2463–3114 | 6 | 2653 / 3115 | 2489–3136 | −24 ms（−1%） | +129 ms（4%） |
+| raw（node 直连）· 热 | 5 | 2921 / 3224 | 2478–3364 | 5 | 2835 / 11496 | 2622–11549 | −86 ms | +8272 ms（2 轮服务端 9.7 s 才回响应头） |
+
+**短回复总耗时（ms）**
+
+| 链路 · 状态 | 优化前 n | 优化前 p50 / p90 | 优化前 min–max | 优化后 n | 优化后 p50 / p90 | 优化后 min–max | p50 变化 | p90 变化 |
+|---|---|---|---|---|---|---|---|---|
+| 聊天窗口 · 冷 | 6 | 10315 / 12772 | 8602–14343 | 6 | 6361 / 9755 | 5834–12305 | −3954 ms（−38%） | −3017 ms（−24%） |
+| 聊天窗口 · 热 | 6 | 6739 / 8444 | 5817–8855 | 6 | 6533 / 6748 | 6076–6918 | −206 ms（−3%） | −1696 ms（−20%） |
+| 聊天窗口 · 全部 | 12 | 8729 / 11134 | 5817–14343 | 12 | 6533 / 7176 | 5834–12305 | −2196 ms（−25%） | −3958 ms（−36%） |
+| 桌面 · 冷 | 6 | 9189 / 9800 | 8915–10000 | 6 | 7262 / 10278 | 6064–12552 | −1927 ms（−21%） | +478 ms（5%） |
+| 桌面 · 热 | 6 | 6536 / 6823 | 5973–6847 | 6 | 6530 / 6941 | 5872–7212 | −6 ms（0%） | +118 ms（2%） |
+
+**main 准备（ms）**：聊天窗口冷态 2788 / 2894 → 29 / 38，热态 56 / 61 → 22 / 26；桌面冷态 2847 / 2894 → 10 / 10。
+**服务端 请求→首字（对照组）**：聊天窗口 2922 / 5211 → 2685 / 2926，桌面 2684 / 3092 → 2895 / 4372。服务端条件相当，下降来自 app 侧。
+
+**长回复（热态，前后各 6 轮 × 2 链路）**
+
+| 指标（p50 / p90，min–max） | 聊天窗口 优化前 | 聊天窗口 最终 | 桌面 优化前 | 桌面 最终 |
+|---|---|---|---|---|
+| 最后一段 → 全文上屏（ms） | 458 / 483（341–495） | **253 / 287（20–304）** | 10 / 14 | 11 / 14 |
+| 每轮 IPC 字节（B） | 5431 / 6994（4602–7402） | **748 / 925（114–964）** | 5379 / 6042 | 4384 / 5123（未改，仍推全文） |
+| 每轮 delta 次数 | 8 / 9 | 5 / 7 | 8 / 8 | 7 / 8 |
+| TTFT（ms） | 4561 / 7738 | 3215 / 3729 | 3724 / 4338 | 3607 / 3916 |
+| 总耗时（ms） | 10661 / 13566 | 7860 / 8719 | 9185 / 11024 | 8927 / 10275 |
+| 回复字数 | 413 / 453 | 254 / 315 | 415 / 427 | 350 / 409 |
+
+解读：
+- O5 没有让 TTFT 回退：热态 TTFT 2682 ms，比优化前 2973 ms 还低，和桌面 2653 ms 持平；shown→paint 25–31 ms，与 §8.1 同一量级。
+- IPC 体积的下降在长回复里可以直接看到：同一轮次中，桌面 350 字推 4384 B，聊天窗口 254 字推 748 B，约每字 2.9 B，相当于 UTF-8 下每个字只传一次。
+- 长回复的 TTFT 和总耗时下降有一部分是因为这次服务端写得更短（254 vs 413 字），**不能**全部归因于改动。能归因于改动的只有「全文上屏滞后」和「IPC 字节」两项。
+
 ## 9. 回归验证
 
-全部在优化后的代码上运行。原始输出在 [`data/admin-chat-latency/regression/`](data/admin-chat-latency/regression/)，截图同目录。
+全部在**最终代码**（含 O5）上运行，时间是 2026-11-03 第 3 轮。原始输出在 [`data/admin-chat-latency/regression/`](data/admin-chat-latency/regression/)，截图在同一目录。真实账号的那一轮可以用 agent `agt_F04zjikqmktB` 和话题 `tpc_R4mvND8aRswE` 辨认，日志见 `admin-chat-live-log.txt`。
 
 | 命令 | 结果 |
 |---|---|
-| `npm test` | **766 tests：765 pass / 0 fail / 1 skipped**。skip 的是一条既有用例：没有设置 `PIXELPET_VRM_ASSETS` 时跳过，与本任务无关。日志：`npm-test.txt` |
-| `xvfb-run -a node e2e/run.js admin-chat` | **22/22 passed**（U1–U16 共 16 步走 fake lh；L0–L5 共 6 步走真实 LobeHub 账号）。日志：`e2e-admin-chat.txt` |
+| `npm test` | **770 tests：769 pass / 0 fail / 1 skipped**。跳过的是一条既有用例：没有设置 `PIXELPET_VRM_ASSETS` 时跳过，与本任务无关。日志：`npm-test.txt` |
+| `xvfb-run -a node e2e/run.js admin-chat` | **22/22 passed**：U1–U16 共 16 步走 fake lh，L0–L5 共 6 步走真实 LobeHub 账号。真实账号这几步走的就是新的增量流式路径（L2：「2 streamed states」）。日志：`e2e-admin-chat.txt` |
 | `xvfb-run -a node e2e/run.js chatui` | **16/16 passed**。日志：`e2e-chatui.txt` |
-| `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Chat.tsx` | `RESULT: 0 FAIL, 0 WARN` |
+| `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Chat.tsx admin/src/console/api.ts admin/env.d.ts` | `RESULT: 0 FAIL, 0 WARN` |
 | `npm run typecheck:admin` / `npm run build:admin` | 通过 |
+| 测速 `latency after-r3` / `long-after-r3`（真实账号） | app 内 36 轮（24 短 + 12 长）加 raw 5 轮，全部 `via=direct`。聊天窗口 **18/18** 轮的流式结束时已显示字数 `shown@end` 等于 `reply`，说明增量拼出的文字完整，没有缺字也没有重复。桌面路径未改，17/18 轮一致 |
 
 admin-chat 的 live 部分第一次跑时 L1/L5 失败，报错 `timed out waiting for model list; model view: null`，日志见 `e2e-admin-chat-before-e2e-fix.txt`。原因是 canary 的 #114（角色扁平化）之后，roster 行的 `id` 不再等于 `claude`，e2e 脚本仍按 `c.id === 'claude'` 查找，于是一直找不到。这是**测试脚本早就存在的问题，与本次改动无关**：同一次运行里 L2–L4 的真实对话都通过了，chatui 的 U3 模型切换也通过了。已把 `e2e/admin-chat.js` 改成与测速脚本相同的 `(c.base || c.id) === 'claude' && c.model`，并在超时信息里打印 model 视图。重跑后 22/22 通过。
 
@@ -436,7 +524,8 @@ admin-chat 的 live 部分第一次跑时 L1/L5 失败，报错 `timed out waiti
 
 | 功能 | 结论 | 证据 |
 |---|---|---|
-| 文字对话（流式、Markdown、停止 / 发送按钮） | 正常 | admin-chat U4，live L2：真实回复「好的，暗号「青柠42」我记下了…」。截图 `L2-real-reply.png`；流式中截图 `../long-after-admin-streaming.png` |
+| 文字对话（流式、Markdown、停止 / 发送按钮） | 正常 | admin-chat U4（4 次渐增采样，Markdown 正常），live L2：真实回复「嗯，记下了。暗号是「青柠42」，我会记住的。」。截图 `L2-real-reply.png`、`L2-real-streaming-midway.png`、`04-streaming-midway.png`；长回复流式截图 `../long-after-r3-admin-streaming.png` |
+| 流式增量拼接（O5） | 正常：不缺字、不重复，回复结束后气泡不会复活 | 单测 3 条（§7.1）；测速中聊天窗口 18/18 轮 `shown@end = reply`；chatui / admin-chat 全部通过 |
 | 图片对话 | 正常 | U7（选择、粘贴、拖入 → 上传 → add-files 挂到话题）、U8；live L4 真实模型答出「红色」，截图 `L4-real-image.png` |
 | 中断（停止 / `admin-chat-abort`） | 正常，已生成的部分保留并标「已停止」 | U10，截图 `10-stopped.png`。单测：stop 只结束聊天页自己的这一轮；后台刷新目录期间 `chatAbort` 正常。说明：聊天页的中断入口是「停止」按钮（IPC `admin-chat-abort`），Esc 是桌宠窗口的取消键，不在本页 |
 | 切换模型（选择生效） | 正常 | U3（lh agent edit 换成所选模型）；live L1 选 claude-haiku-5-5，L5 用 `lh agent view` 读回 `model=claude-haiku-5-5 provider=lobehub`。截图 `L1-real-model-picker.png`、`03-model-picker-open.png`。单测：目录过期期间选的模型在本轮生效 |
@@ -446,7 +535,7 @@ admin-chat 的 live 部分第一次跑时 L1/L5 失败，报错 `timed out waiti
 | 内容审核 contentGuard | 正常 | 新单测：目录过期时，被拦截的回复不会推流，落盘的是拒答台词「…这个我不聊啦…」 |
 | busy 互斥 | 正常 | 单测：已有一轮在进行时 chatAs 返回 `busy`（新旧单测各一条） |
 | 桌面与聊天页记录同步 | 正常 | U2：在桌宠聊天框说一句，聊天页自动出现并标「桌面」，截图 `02b-desktop-round.png`；live L5：桌面「聊天记录」里有这几轮（6 条消息） |
-| 直连 SSE（无回退） | 正常 | 前后两次测速 `via=direct` 48/48，`fallbackReason` 为空 |
+| 直连 SSE（无回退） | 正常 | 三次测速（before、after、after-r3）`via=direct` 全部命中，`fallbackReason` 为空 |
 | 页面无报错 | 正常 | U16：pageerror 0，console.error 0 |
 
 ## 10. 复现
@@ -461,6 +550,11 @@ npm run build:admin && LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5 xvfb-run -a node
 # 长回复
 (cd /tmp/pp-before && LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0 xvfb-run -a node e2e/run.js latency long-before)
 LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0 xvfb-run -a node e2e/run.js latency long-after
+# 最终代码复测（第 3 轮，§8.3）
+LAT_ROUNDS=12 LAT_COLD_EVERY=2 LAT_RAW=5 xvfb-run -a node e2e/run.js latency after-r3
+LAT_LONG=1 LAT_ROUNDS=6 LAT_COLD_EVERY=0 LAT_RAW=0 xvfb-run -a node e2e/run.js latency long-after-r3
+node scripts/latency-compare.js docs/data/admin-chat-latency/before.json docs/data/admin-chat-latency/after-r3.json ttft total prep reqToFirstText
+node scripts/latency-compare.js docs/data/admin-chat-latency/long-before.json docs/data/admin-chat-latency/long-after-r3.json ttft total revealLag replyChars ipcBytes deltas
 # 对比表
 node scripts/latency-compare.js out/e2e/chat-latency/before.json out/e2e/chat-latency/after.json ttft total prep reqToFirstText
 node scripts/latency-compare.js out/e2e/chat-latency/long-before.json out/e2e/chat-latency/long-after.json ttft total revealLag replyChars
@@ -476,13 +570,17 @@ node scripts/latency-compare.js out/e2e/chat-latency/long-before.json out/e2e/ch
 ## 11. 交付说明（T-2818）
 
 - **PR**：https://github.com/rdmclin2/lobehub-pixel-pet-affection/pull/118（`perf/admin-chat-latency` → `canary`）。
-- **分支**：`perf/admin-chat-latency`。提交：`0c3135b`（T-2815 埋点与根因）、`97e39c0`（T-2818 优化、数据、回归），以及补充本节的文档提交。
+- **分支**：`perf/admin-chat-latency`。提交：
+  - `0c3135b`：T-2815 的埋点与根因。
+  - `97e39c0`：T-2818 O1–O4，模型目录 stale-while-revalidate、凭据 key 缓存、流式平滑 realtime。
+  - `1842856`：T-2818 O5，IPC 只发增量、前端按帧合并。
+  - 其后的测试和文档提交：`_ensurePersona` 单测、§8.3 最终复测、本节。
 - **四要素**：
   1. 根因与两条链路的差异证据：§0、§1、§3、§7.3。
-  2. 代码改动：§7.1，diff 节选。
-  3. 前后对比数据：§8，原始数据在 `docs/data/admin-chat-latency/`。
+  2. 代码改动：§7.1，O1–O5，含 diff 节选；没改的项及理由见 §7.2。
+  3. 前后对比数据：§8，最终代码的数据见 §8.3；原始数据在 `docs/data/admin-chat-latency/`。
   4. 回归验证：§9。
 - 仓库内文件的在线地址：https://github.com/rdmclin2/lobehub-pixel-pet-affection/tree/perf/admin-chat-latency/docs/data/admin-chat-latency
 - **下一步建议**：
-  - R1（服务端收尾约 3.5 s）和 R3（首字约 2.8 s）是热态剩下的主要耗时，需要 LobeHub Responses API 先发 `output_text.done`，再做持久化等后处理。
+  - 热态剩下的主要耗时是 R1（服务端收尾约 3.5 s）和 R3（首字约 2.7 s）。需要 LobeHub Responses API 先发 `output_text.done`，再做持久化等后处理。
   - 客户端这边已没有秒级可优化项。
