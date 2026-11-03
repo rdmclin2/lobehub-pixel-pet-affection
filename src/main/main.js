@@ -638,7 +638,7 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
