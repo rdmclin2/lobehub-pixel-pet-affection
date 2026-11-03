@@ -96,6 +96,10 @@ const PET_ONLY = {
   'debug-tray': '测试钩子',
   'debug-tray-click': '测试钩子',
   'debug-heartbeat': '测试钩子',
+  'debug-voice-hotkey': '测试钩子：按一次快捷键唤起语音对话（调用注册的处理函数）',
+  'debug-voice-hotkey-status': '测试钩子：快捷键注册状态（设置窗口从 settings.hotkeyStatus 读同一份）',
+  'debug-mic-access': '测试钩子：模拟系统拒绝麦克风',
+  'debug-hide-pet': '测试钩子：先隐藏 / 最小化桌宠，再验证快捷键把她叫出来',
 };
 
 // the former ⋯ menu (menu:) and toolbar buttons (toolbar:) of the pet window, any data-menu item it grows again,
@@ -138,7 +142,7 @@ const RUNTIME = [
   { id: 'visitors', label: '同屏伙伴', where: '玩法 → 同屏伙伴', keys: ['visitors', 'prefs.collide'] },
   { id: 'tts', label: '语音（朗读 / TTS）', where: '设置 → 朗读', keys: ['prefs.muted', 'prefs.voice', 'prefs.voiceInteractions', 'prefs.voiceMurmurs', 'tts.provider', 'tts.fallback', 'tts.packs', 'tts.endpoints.fish', 'tts.endpoints.minimax', 'tts.endpoints.local', 'tts.local.api', 'tts.local.model', 'tts.local.voice', 'keys.fish', 'keys.minimax', 'keys.local'], actions: ['tts-clear-cache'] },
   { id: 'voicepacks', label: '语音包', where: '设置 → 语音包', keys: ['tts.packs'], actions: ['voicepacks-reload', 'open-voicepacks-folder'] },
-  { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
+  { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.hotkey', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
