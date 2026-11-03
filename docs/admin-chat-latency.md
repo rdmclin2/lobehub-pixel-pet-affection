@@ -472,3 +472,17 @@ node scripts/latency-compare.js out/e2e/chat-latency/long-before.json out/e2e/ch
 - `*-latency.jsonl`：main 埋点原始行。
 - `*-run.txt`：脚本 stdout。
 - `compare-tables.md`：对比表。
+
+## 11. 交付说明（T-2818）
+
+- **PR**：https://github.com/rdmclin2/lobehub-pixel-pet-affection/pull/118（`perf/admin-chat-latency` → `canary`）。
+- **分支**：`perf/admin-chat-latency`。提交：`0c3135b`（T-2815 埋点与根因）、`97e39c0`（T-2818 优化、数据、回归），以及补充本节的文档提交。
+- **四要素**：
+  1. 根因与两条链路的差异证据：§0、§1、§3、§7.3。
+  2. 代码改动：§7.1，diff 节选。
+  3. 前后对比数据：§8，原始数据在 `docs/data/admin-chat-latency/`。
+  4. 回归验证：§9。
+- 仓库内文件的在线地址：https://github.com/rdmclin2/lobehub-pixel-pet-affection/tree/perf/admin-chat-latency/docs/data/admin-chat-latency
+- **下一步建议**：
+  - R1（服务端收尾约 3.5 s）和 R3（首字约 2.8 s）是热态剩下的主要耗时，需要 LobeHub Responses API 先发 `output_text.done`，再做持久化等后处理。
+  - 客户端这边已没有秒级可优化项。
