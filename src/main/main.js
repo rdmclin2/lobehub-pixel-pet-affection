@@ -25,6 +25,7 @@ const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
+const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { createAdminSettings } = require('./admin-settings');
 const { createBroadcast } = require('./broadcast');
@@ -531,7 +532,7 @@ function wire() {
   ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
-    if (!service.settings.prefs.voice) tts.engine.stopAll(); // 朗读 off: nothing more goes to an engine
+    if (!IVoice.voiceOn(service.settings.prefs)) tts.engine.stopAll(); // 朗读 off or 静音: nothing more goes to an engine
     return r;
   });
   // 语音: synthesise one line with the chosen engine for the current character; the renderer plays it
@@ -539,7 +540,7 @@ function wire() {
   ipcMain.handle('tts-synthesize', async (_e, { text, mood }) => {
     const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
     if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
-    if (!service.settings.prefs.voice) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
+    if (!IVoice.voiceOn(service.settings.prefs)) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
     const hit = recordedLine(sp, text);
     if (hit) { tts.engine.cancel(); tts.engine.stats.packHits = (tts.engine.stats.packHits || 0) + 1; return { ok: true, ...hit, cached: true, fellBackFrom: [], fallback: service.settings.tts.fallback, latencyMs: 0 }; }
     const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
@@ -559,7 +560,7 @@ function wire() {
   // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
   ipcMain.handle('tts-prewarm', async () => {
     const p = service.settings.prefs;
-    if (!service.pet || !p.voice || p.voiceInteractions === false) return { skipped: 'off' };
+    if (!service.pet || !IVoice.voiceOn(p) || p.voiceInteractions === false) return { skipped: 'off' };
     const sp = SPECIES[service.pet.speciesId];
     const all = service.voiceLines();
     const lines = all.filter((l) => !recordedLine(sp, l.text, true)); // the 语音包 already has these
@@ -772,7 +773,7 @@ app.whenReady().then(() => {
     service,
     hooks: {
       resizePet: (k) => resizePet(clampScale(k)),
-      afterPrefs: (prefs) => { if (!prefs.voice) tts.engine.stopAll(); },
+      afterPrefs: (prefs) => { if (!IVoice.voiceOn(prefs)) tts.engine.stopAll(); },
       beforeTts: () => { tts.engine.endPrewarm(); tts.engine.reset(); },
       afterApi: () => applyApi(),
       setKey: (id, value) => tts.keys.set(id, value),

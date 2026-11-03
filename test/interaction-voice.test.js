@@ -48,6 +48,19 @@ test('with 朗读 off nothing at all is read, whatever the other switches say', 
   }
 });
 
+test('静音 (the toolbar speaker) silences everything and leaves the 朗读 switches as they were', () => {
+  const all = { ...ON, voiceInteractions: true, voiceMurmurs: true };
+  const muted = { ...all, muted: true };
+  for (const m of [line('chat', 'llm'), line('api', 'api'), line('pat'), line('touch:head'), line('stage_up', 'llm'), line('hungry', 'llm')]) {
+    assert.equal(IV.shouldSpeak(m, muted), false, m.kind);
+    assert.equal(IV.shouldSpeak(m, { ...muted, muted: false }), true, `${m.kind} after un-muting`);
+  }
+  assert.equal(IV.voiceOn(muted), false);
+  assert.equal(IV.voiceOn(all), true);
+  assert.equal(IV.voiceOn({ voice: false }), false);
+  assert.equal(IV.voiceOn(null), false);
+});
+
 test('互动语音 and 朗读碎碎念 decide interactions and murmurs; replies are read either way', () => {
   assert.equal(IV.shouldSpeak(line('pat'), ON), true);
   assert.equal(IV.shouldSpeak(line('met', 'llm'), ON), true);

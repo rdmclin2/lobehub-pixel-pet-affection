@@ -131,6 +131,7 @@ add('ui.theme', 'appearance', '设置窗口', '主题', 'segmented', { desc: '�
 add('visitors', 'visitors', '同屏伙伴', '一起待在桌面上的角色', 'visitors', { desc: `最多 ${settingsLib.MAX_VISITORS} 位，不能选当前角色。`, max: settingsLib.MAX_VISITORS });
 
 // ---- 朗读 -------------------------------------------------------------------------------------------------
+add('prefs.muted', 'tts', '朗读', '静音', 'switch', { desc: '一键让她不出声：朗读、互动语音和点击音效都停下，下面的开关保持原样。桌宠工具栏上的喇叭按钮也能切换。' });
 add('prefs.voice', 'tts', '朗读', '朗读回复', 'switch', { desc: '她的回复和主动说的话用语音读出来。总开关：关闭时下面的语音都不会响。' });
 add('prefs.voiceInteractions', 'tts', '朗读', '互动语音', 'switch', { desc: '摸摸、喂食、拖动时的短台词也读出来（会提前合成）。', dependsOn: { key: 'prefs.voice', value: true } });
 add('prefs.voiceMurmurs', 'tts', '朗读', '朗读碎碎念', 'switch', { desc: '她自言自语的碎碎念也读出来。', dependsOn: { key: 'prefs.voice', value: true } });
