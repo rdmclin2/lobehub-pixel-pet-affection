@@ -193,12 +193,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 | **按角色**（默认） | 她的引擎的 Key | 每位角色用自己文件里 `voice.tts.default` 的引擎：**大肥鱼用 MiniMax**（`qiaopi_mengmei`「俏皮萌妹」），克洛蒂 / 格萝可 / 杰米 / 吉皮缇用 Fish Audio。她的引擎没填 Key 或出错时，这一句换另一个填了 Key 的引擎（大肥鱼 → Fish「蓝色大肥鱼」），再按“用不了时”降级 |
 | **Fish Audio** | Fish API Key（[fish.audio](https://fish.audio) 创建；开发可用免费模型） | 所有角色都用 Fish：大肥鱼用社区音色「蓝色大肥鱼」`fe50cdf3040449298470d58ff0991e1d`，模型 `s2.1-pro`；其他角色各有默认音色 |
 | **MiniMax** | MiniMax 接口密钥（API Key，[platform.minimaxi.com](https://platform.minimaxi.com) 国内站 → 账户管理 → 接口密钥；不用填 GroupId） | 所有角色都用 MiniMax：`speech-2.8-turbo` + 平台系统音色（大肥鱼 `qiaopi_mengmei`）。默认端点 `https://api.minimax.cn`（国内站）；国际站（minimax.io）的 Key 要把端点改成 `https://api.minimax.io` |
+| **ElevenLabs** | ElevenLabs API Key（[elevenlabs.io](https://elevenlabs.io) → 左下角头像 Profile → API Keys 创建）+ 音色 `voice_id`（必填） | 所有角色都用 ElevenLabs：请求 `POST {端点}/v1/text-to-speech/{voice_id}`，Key 放在 `xi-api-key` 请求头。`voice_id` 从 ElevenLabs Voice Library / My Voices 复制（20 位字母和数字，如 `21m00Tcm4TlvDq8ikWAM`），填在 设置窗口 → 朗读 → ElevenLabs → **默认音色 ID**，或写进角色文件的 `voice.tts.elevenlabs.voiceId`（角色文件优先）；两边都没有时不用 ElevenLabs。**模型** 可选（默认 `eleven_multilingual_v2`，另有 `eleven_flash_v2_5` / `eleven_turbo_v2_5` / `eleven_v3`）；**端点** 可选，留空用官方 `https://api.elevenlabs.io`，自建代理填 `https://…` |
 | **本地语音服务** | 你自己部署的语音服务的地址（Key 可不填） | 你在本机或家里有显卡的电脑上跑的服务（IndexTTS2、GPT-SoVITS、[whale-voice](https://github.com/2177302423qqcom-byte/whale-voice) 等），音色由你的服务决定。只在选它时使用，不当云端引擎的备用。见下方“本地语音服务” |
 | **系统语音** | 无 | 操作系统自带的 Web Speech 语音，离线、免费；也是上面几个的最后一道降级 |
 
 配置步骤：
 
-1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。
+1. 设置窗口 → 朗读 → “引擎”保持 **按角色**（或固定选 Fish Audio / MiniMax / ElevenLabs）。大肥鱼要用 MiniMax 就填 MiniMax 的 Key；只填 Fish 的 Key 时她自动用 Fish。用 ElevenLabs 时除了 Key 还要填 **默认音色 ID**（`voice_id`）。
 2. 在对应引擎下粘贴 API Key，点 **保存**。Key 只发给主进程，存在本机 `userData/tts-keys.json`（macOS 上是只有当前用户可读的 0600 文件——不用钥匙串，因为 ad-hoc 签名每次自动更新后都会重新弹「输入登录密码」；Windows / Linux 有系统密钥服务时用 Electron `safeStorage` 加密，否则同样是 0600 文件。旧版本在 macOS 上加密存的 Key 会在升级后读一次（最后弹一次钥匙串）并改存为 0600），不写进 `settings.json`、不进日志、不回传到页面；保存后输入框清空，只显示“已设置”。
 3. 端点一般留空（用官方地址）；自建代理或本机调试可填 `https://…`（本机允许 `http://127.0.0.1`）。
 4. “用不了时”选 **改用系统语音** 或 **不出声**。没填 Key、断网、5 秒没响应（长句最多 10 秒）、返回错误时，这一句立即降级，出错的引擎暂停一会儿：超时 / 断网 / 服务端出错 20 秒，被限流 20 秒，Key 无效 / 余额不足 5 分钟（改 Key / 端点 / 引擎会立刻重试）。MiniMax 国内站每分钟只能合成 10 次（免费账户），桌宠按这个数控制请求，预合成只用多出来的次数；请求在主进程异步进行，不会卡住界面。
@@ -226,14 +227,15 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
     "default": "minimax",
     "fish": { "referenceId": "fe50cdf3040449298470d58ff0991e1d", "model": "s2.1-pro", "speed": 1.0, "volume": 0, "moodTags": { "hungry": "可怜巴巴地" } },
     "minimax": { "voiceId": "qiaopi_mengmei", "model": "speech-2.8-turbo", "speed": 1.0, "pitch": 2, "vol": 1, "emotion": "happy" },
+    "elevenlabs": { "voiceId": "21m00Tcm4TlvDq8ikWAM", "model": "eleven_multilingual_v2", "stability": 0.5, "similarityBoost": 0.75, "style": 0, "speed": 1.0, "speakerBoost": true },
     "local": { "voice": "whale" }
   }
 }
 ```
 
-`default` 是“按角色”时她用的引擎（`fish` / `minimax`，省略为 `fish`）。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
+`default` 是“按角色”时她用的引擎（`fish` / `minimax` / `elevenlabs` / `local`，省略为 `fish`）。`elevenlabs` 里只有 `voiceId` 必填（ElevenLabs 的 `voice_id`，10–40 位字母和数字）；`model` 省略时用设置里的模型（默认 `eleven_multilingual_v2`），`stability` / `similarityBoost` / `style` 取 0–1（默认 0.5 / 0.75 / 0），`speed` 取 0.7–1.2（默认 1.0），`speakerBoost` 是 true / false（默认 true），这几项作为请求体里的 `voice_settings` 发出。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
 
-> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+> **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax / ElevenLabs 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
 ### 互动语音
 
@@ -288,7 +290,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ### 隐私与音色授权
 
-- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio 或 MiniMax 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
+- **发出去的只有要念的文字**：开了云端引擎时，要念的那句文字（去掉表情、舞台说明、链接）会发给你选的 Fish Audio、MiniMax 或 ElevenLabs 合成；聊天里的图片、文件和其他记录不会发。选 **系统语音** 时什么都不发，全在本机。
 - **Key 只在本机**：存在 `userData/tts-keys.json`（只有当前用户可读；Windows / Linux 有系统密钥服务时另加密），不写进 `settings.json`、不进日志、不回传到页面。合成的音频缓存在 `userData/tts-cache/`，可在 设置窗口 → 朗读 清空。
 - **音色授权**：Fish 社区音色由上传者负责来源，仓库只写 Fish 音色 id 和署名（`credit`），不分发 Fish 合成的音频；Fish 免费账号限个人非商业使用，商用要付费订阅。MiniMax 用的是平台系统音色，没有复刻真人声音；内置语音包（`src/voicepacks/`）就是用这些 MiniMax 系统音色合成的音频。参考视频里的“ssr大肥鱼音色”音源属于 UP 主 星落落_oi（页面注明“未经作者授权，禁止转载”），本项目**没有复刻也没有收录**它；想 1:1 复刻要先取得 UP 主许可，并只在自己电脑上用。
 - **AI 合成声明**：所有语音都是 AI 合成，不是真人录音；录屏公开发布或商用时请标注 AI 生成，并分别取得音色作者和平台的授权。

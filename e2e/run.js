@@ -3361,7 +3361,7 @@ function ttsMock() {
       const el = req.url.startsWith('/v1/text-to-speech/');
       const auth = local || (el ? req.headers['xi-api-key'] === EL_KEY : req.headers.authorization === `Bearer ${fish ? KEY : MM_KEY}`);
       const rec = el
-        ? { at: Date.now(), path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] ? '(set)' : '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
+        ? { at: Date.now(), path: req.url.split('?')[0], query: req.url.split('?')[1] || '', auth, xiKey: req.headers['xi-api-key'] || '(none)', bearer: !!req.headers.authorization, accept: req.headers.accept, model: j.model_id, voice: decodeURIComponent(req.url.split('?')[0].slice('/v1/text-to-speech/'.length)), text: j.text, prosody: j.voice_settings, body: j, mode: m.mode, aborted: false, status: 0 }
         : local
         ? { at: Date.now(), path: req.url, auth, model: j.model, voice: j.voice, emo: j.emo, text: j.input || j.text, body: j, mode: m.mode, aborted: false, status: 0 }
         : { at: Date.now(), path: req.url, auth, model: fish ? req.headers.model : j.model, voice: fish ? j.reference_id : j.voice_setting && j.voice_setting.voice_id, text: j.text, prosody: j.prosody || j.voice_setting, mode: m.mode, aborted: false, status: 0 };
@@ -3475,7 +3475,7 @@ async function voice() {
       await admin.keyboard.press('Escape');
       assert.deepEqual(opts, ['自动（跟随角色）', 'Fish Audio', 'MiniMax', 'ElevenLabs', '本地语音服务', '系统语音']);
       assert.equal(await field('朗读引擎').locator('[role="combobox"]').textContent(), '自动（跟随角色）');
-      assert.match(await waitTags('Fish Audio', /未就绪/), /未就绪/);
+      assert.match(await waitTags('Fish Audio', /未设置 Key/), /未设置 Key/); // a cloud engine without a key
       await ashot('v1-voice-section-empty');
       await saveDraft('tts.endpoints.fish', mock.url);
       await toast(/已保存：端点 → http:\/\/127\.0\.0\.1/);
@@ -3648,7 +3648,7 @@ async function voice() {
       await admin.locator('button', { hasText: /^清除API Key$/ }).click(); // the confirmation
       await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fish"]').textContent === '未设置');
       await toast(/API Key 已清除/);
-      const tags = await waitTags('Fish Audio', /^未就绪$/);
+      const tags = await waitTags('Fish Audio', /^未设置 Key$/);
       assert.equal((await ttsSet()).ttsStatus.engines.fish.hasKey, false);
       const before = reqs();
       const sp = await speakLine('没有钥匙的时候');
@@ -3786,7 +3786,7 @@ async function voice() {
     await step(S, 'V16 ElevenLabs: endpoint, default voice and key in 设置窗口 → 朗读, picked as the engine → POST /v1/text-to-speech/{voice_id} with xi-api-key', async () => {
       const EL_VOICE = '21m00Tcm4TlvDq8ikWAM';
       await openTts();
-      assert.match(await waitTags('ElevenLabs', /未就绪/), /未就绪/);
+      assert.match(await waitTags('ElevenLabs', /未设置 Key/), /未设置 Key/);
       assert.equal((await ttsSet()).ttsStatus.engines.elevenlabs.hasKey, false);
       await admin.locator('[data-key="tts.endpoints.elevenlabs"]').scrollIntoViewIfNeeded();
       await ashot('v16-elevenlabs-card-empty');
@@ -3823,8 +3823,15 @@ async function voice() {
       assert.equal(rq.text, '用 ElevenLabs 读这一句');
       assert.equal(fs.readFileSync(path.join(data, 'settings.json'), 'utf8').includes(mock.EL_KEY), false, 'the key is not in settings.json');
       assert.equal((await admin.content()).includes(mock.EL_KEY), false, 'the key is nowhere in the settings window');
+      // the same playback path as Fish / MiniMax: main hands the audio to the pet window, playAudio() plays it
+      assert.equal(sp.mime, 'audio/wav');
+      assert.equal(sp.bytes, mock.wav.length, 'the bytes the stand-in sent');
       await page.waitForTimeout(300);
       await shot('v16-elevenlabs-speaking');
+      const played = await page.waitForFunction(() => { const r = window.petFx.lastSpeech(); return r && r.status === 'done' && r; }, null, { timeout: 8000 }).then((h) => h.jsonValue());
+      assert.equal(played.provider, 'elevenlabs');
+      assert.equal(played.started, true, 'the <audio> element started playing');
+      note(`playback: provider=${played.provider} mime=${played.mime} bytes=${played.bytes} started=${played.started} status=${played.status} (renderer playAudio, as fish / minimax)`);
       return note(`settings.tts.provider=${st.tts.provider} endpoints.elevenlabs=${st.tts.endpoints.elevenlabs} tts.elevenlabs=${JSON.stringify(st.tts.elevenlabs)}; card: ${tags}; ${fmt(sp)}; mock saw POST ${rq.path}?${rq.query} xi-api-key=${rq.xiKey} accept=${rq.accept} body=${JSON.stringify(rq.body)}`);
     }, () => admin || page);
 
@@ -3834,7 +3841,13 @@ async function voice() {
       await admin.locator('[data-has-key="keys.elevenlabs"]').locator('xpath=..').locator('button', { hasText: /^清除$/ }).click();
       await admin.locator('button', { hasText: /^清除API Key$/ }).click();
       await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.elevenlabs"]').textContent === '未设置');
-      const tags = await waitTags('ElevenLabs', /^未就绪$/);
+      const tags = await waitTags('ElevenLabs', /^未设置 Key$/);
+      // ElevenLabs is the picked engine and has no key: the page says so at the top, not only on the card
+      const warn = await admin.locator('.ant-alert, [role="alert"]', { hasText: 'ElevenLabs 还没设置 Key' }).first().textContent({ timeout: 5000 });
+      assert.match(warn, /ElevenLabs 还没设置 Key：在下方「ElevenLabs」里填写 API Key 后才能用它朗读。/);
+      await admin.evaluate(() => window.scrollTo(0, 0));
+      await admin.locator('.ant-alert, [role="alert"]', { hasText: 'ElevenLabs 还没设置 Key' }).first().scrollIntoViewIfNeeded();
+      await ashot('v17-elevenlabs-no-key-warning');
       const eng = (await ttsSet()).ttsStatus.engines.elevenlabs;
       assert.equal(eng.hasKey, false);
       assert.equal(eng.ready, false);

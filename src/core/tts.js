@@ -1,7 +1,10 @@
 'use strict';
-// Neural voices (TTS engines) behind one provider interface; docs/tts-voice-research.md §5–§8.
+// Neural voices (TTS engines) behind one provider interface; docs/tts-voice-research.md §5–§8 (ElevenLabs: §11).
 // The system voice (Web Speech, core/voice.js) stays the last fallback and runs in the renderer; the
 // cloud engines run here in the main process, so API keys never reach the page.
+//
+// Providers (PROVIDERS): fish (Fish Audio), minimax (MiniMax), elevenlabs (ElevenLabs) — the cloud engines,
+// each with its own API key — local (the user's own voice server) and system (Web Speech).
 //
 // Every provider has the same shape (PROVIDERS):
 //   { id, label, kind: 'neural' | 'system', needsKey, available(ctx), config(voice) }
