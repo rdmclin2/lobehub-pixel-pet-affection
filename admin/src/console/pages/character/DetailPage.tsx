@@ -975,7 +975,7 @@ const Detail = ({ c, tab, setTab, trying, setTrying, stage, sw, view }: { c: Ros
           {/* 页头：一行身份 + 一行紧凑好感（B03），标签栏进第一屏；口头禅、简介在「资料与语音」 */}
           <Flexbox data-detail-head={c.id} gap={8}>
             <Flexbox align="center" gap={8} horizontal wrap="wrap">
-              <Text as="h1" data-character-title={c.id} fontSize={24} strong style={{ lineHeight: 1.25, margin: 0 }}>
+              <Text as="h1" data-character-title={c.id} fontSize={28} strong style={{ lineHeight: 1.25, margin: 0 }}>
                 {c.displayName}
               </Text>
               <KindTag adult={c.pack?.adult} kind={c.kind} label={c.kindLabel} />
