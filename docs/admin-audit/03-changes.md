@@ -206,7 +206,7 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 
 ## 实施包 C：聊天、互动（插个嘴 / 话题 / 桌面上的她）与商店
 
-> 任务 T-2820。范围：02-plan §5.4（C01～C14）。文件：`admin/src/console/pages/Chat.tsx`、`Interject.tsx`、`Together.tsx`、`Store.tsx`，`Pages.tsx` 中的 `ProactivePage` / `BehaviorPage` 两个函数。视觉不变：只用 `@lobehub/ui` 原子（`Empty`、`DropdownMenu`、`Surface`、`Segmented`、`toast`、`confirmModal` 经 `askAsync`）与 `cssVar` 语义 token，没有新颜色、新字体、新间距体系（§6 不动项）。
+> 任务 T-2820。范围：02-plan §5.4（C01～C14）。文件：`admin/src/console/pages/Chat.tsx`、`Interject.tsx`、`Together.tsx`、`Store.tsx`，`Pages.tsx` 中的 `ProactivePage` / `BehaviorPage` 两个函数。视觉不变：只用 `@lobehub/ui` 原子（`Empty`、`DropdownMenu`、`Surface`、`Segmented`、`toast`、`Modal` 经 `askAsync`，第 2 轮前为 `confirmModal`）与 `cssVar` 语义 token，没有新颜色、新字体、新间距体系（§6 不动项）。
 
 ### C.1 改动清单（改动 → 问题 → design.lobe.li 依据 → 代码位置）
 
@@ -216,7 +216,7 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 | C02 | CHAT-03 | 会话栏只列已遇见的角色（正在陪你置顶）；底部一行「结识更多（还有 N 位没见过）→」去角色图鉴；没遇见的角色仍可用深链 `#/chat/<id>` 打开，显示「还没见过 + 去见她」 | W-07 <https://design.lobe.li/rules/W-07>；M-08 Hick 定律 <https://design.lobe.li/models/M-08> | `Chat.tsx`（`ordered` 过滤、`data-meet-more`） |
 | CHAT-02（B12 词表） | CHAT-02 | 会话栏状态「在桌面」→「正在陪你」，取自 B 包 `roster-model.ts` 的 `STATE_WORD.current` | W-03 <https://design.lobe.li/rules/W-03> | `Chat.tsx` |
 | C03 | CHAT-04 | 模型下拉下方固定一句「桌面上也用这个模型」（`data-model-scope`）；换成功后旁边内联 1.5 s「已保存」（`SavedHint`，不弹 toast）；失败 `toast.error`「没能换成 X」+ 原因 +「她继续用原来的模型」 | P-05「不说明影响范围」<https://design.lobe.li/rules/P-05>；C-17 <https://design.lobe.li/rules/C-17>；W-05 <https://design.lobe.li/rules/W-05> | `Chat.tsx`（`changeModel`、页头） |
-| C04 | HUB-03、PG-05 | 聊天页头「⋯」菜单：「重新开始对话」（只对正在陪你的角色可用，其他角色置灰并写原因）→ `askAsync` 确认，弹窗内执行 `newTopic`，成功 toast「下一句会开一个新对话」，失败原因写在弹窗里；「在她的页面设置模型」→ `#/characters/<id>/model`（B02） | W-03 一词一义 <https://design.lobe.li/rules/W-03>；C-15 <https://design.lobe.li/rules/C-15>；M-03 #2 <https://design.lobe.li/models/M-03> | `Chat.tsx`（`restart`、`DropdownMenu`） |
+| C04 | HUB-03、PG-05 | 聊天页头「⋯」菜单：「重新开始对话」（第 2 轮起：任一已遇见的角色都可用，作用于当前打开的这段对话，主进程 `newTopic(speciesId)`）→ `askAsync` 确认，弹窗内执行，执行期间弹窗不可关闭（S-7），成功 toast「下一句会开一个新对话」，失败原因写在弹窗里；「在她的页面设置模型」→ `#/characters/<id>/model`（B02） | W-03 一词一义 <https://design.lobe.li/rules/W-03>；C-15 <https://design.lobe.li/rules/C-15>；M-03 #2 <https://design.lobe.li/models/M-03> | `Chat.tsx`（`restart`、`DropdownMenu`） |
 | C05 | INT-01 | 插个嘴独立页 `#/interject`：`InterjectPage`（页头读 `PAGES.interject` + 恢复本页默认 + 表单 + 数据），「主动搭话与好感」只剩主动行为 / 好感度两张卡 | P-05「按影响范围分组」<https://design.lobe.li/rules/P-05>；W-02「页面标题和侧栏入口同名」<https://design.lobe.li/rules/W-02> | `Interject.tsx`（`InterjectPage`）、`Pages.tsx`（`ProactivePage`） |
 | C06 | INT-02 | 关闭时只渲染「插个嘴」开关卡（`SettingsForm cards={['插个嘴']}`），两张表不渲染，只留一张「规则与判断记录」说明卡；去掉卡头「默认关闭 / 已打开」标签 | P-05「配置项只在开启后出现」<https://design.lobe.li/rules/P-05>；C-17「复述的 badge 只是噪音」<https://design.lobe.li/rules/C-17> | `Interject.tsx`、`Pages.tsx` |
 | C07 | INT-03 | 规则表 / 判断记录各自负责自己的读取：首次读取失败在表格位置显示 `LoadFailed`（原因 +「重试」），不再显示「还没有规则」；刷新失败时保留上次的数据并在卡头写「刷新没成功，下面是上次读到的」；去掉可关闭的页顶 Alert | K-05「失败不是零条」「读失败由数据所在的表面负责」<https://design.lobe.li/rules/K-05>；W-04 区分三种空 <https://design.lobe.li/rules/W-04> | `Interject.tsx`（`load`、`staleNote`） |
@@ -235,17 +235,20 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 
 | 文件 | 谁改 | C 包的处理 |
 | --- | --- | --- |
-| `admin/src/console/common/index.tsx`（`NoPet` / `LoadFailed` / `askAsync` / `asResult` / `SavedHint`） | A00 | C 只引用，不改。C 曾先写过一个本地临时版，A00 落地后已删除，未提交。 |
+| `admin/src/console/common/index.tsx`（`NoPet` / `LoadFailed` / `askAsync` / `asResult` / `SavedHint`） | A00；第 2 轮 C 改 `askAsync` | 第 1 轮 C 只引用。第 2 轮为补齐 S-7「提交期间不可关闭」（C04 / C08 的流程依赖它），C 把 `askAsync` 的实现从 `confirmModal` 换成 `@lobehub/ui` 的声明式 `Modal`（新增 `AskHost` / `AskDialog`），**签名与返回值不变**，A（放生、字段确认）、B（DangerZone）的调用方无需改动；回归见 C.5。 |
+| `admin/src/design/DesignProvider.tsx` | 第 2 轮 C | 在 `ModalHost` 旁挂一行 `<AskHost />`（askAsync 的弹窗渲染处），其余不变。 |
+| `src/main/pet-service.js`（`newTopic`）、`src/main/main.js`（`new-topic` handler）、`src/main/admin-preload.js`、`admin/src/console/api.ts` | 第 2 轮 C | `newTopic(speciesId?)`：传入已遇见的角色就对她开新话题，不传仍是当前角色（桌宠窗口 `preload.js` 的调用不变）；未遇见 `not-met`、未知 `unknown-character`、忙 `busy`、未领养 `empty`。 |
 | `admin/src/console/roster-model.ts`（`STATE_WORD`、`detailHref`） | B01 / B12 | C 只引用。 |
 | `admin/src/useHashPath.ts`（`useHashQuery`、`replaceHash`，path 去掉 `?query`） | A / B | C13 直接使用，不改。 |
 | `src/core/settings-schema.js`（`#/interject` 的 NAV / PAGES、interject.* 字段移到 `page: 'interject'`、去掉 history、`redirects.history = 'chat'`、PAGES.chat / desk 说明） | A00 / A04 / A06 | 由 A 改。C 提供的文案：`PAGES.desk`「让她在桌面上做个动作；找不到她时把她找回屏幕右下角。」；interject.enabled 说明去掉开头重复的「默认关闭。」（INT-02）。 |
 | `admin/src/console/ConsoleApp.tsx`（`case 'interject'` 从 `./pages/Interject` 引入 `InterjectPage`；`#/history` 重定向） | A00 | 由 A 改；C 提供 `InterjectPage`。 |
 | `admin/src/console/pages/Pages.tsx` | A（其余页面）/ C（`ProactivePage`、`BehaviorPage`） | C 只改这两个函数（去掉 `InterjectData`、「默认关闭」标签与找回按钮）。「退出应用」按钮（`data-app-quit`）由 A18 放进 `AboutPage`。 |
 | `src/core/admin-coverage.js` | C | `UNUSED_OK` 增加 `historyList` / `historyGet`（聊天记录并入聊天页）；`MENU` / `VIA` 中 history、home、quit、new-topic、topics、actions、tray 显示桌宠、set-interject 的位置文案改成新路径。 |
-| `test/admin-console.test.js` | A / C | C 只改「every item of the old ⋯ menu」一条：history 改为断言 `REDIRECTS.history === 'chat'`；退出断言 `Pages.tsx` 有 `data-app-quit`；重新开始对话断言在 `Chat.tsx`。 |
+| `test/admin-console.test.js` | A / C | C 只改「every item of the old ⋯ menu」一条：history 改为断言 `REDIRECTS.history === 'chat'`；退出断言 `Pages.tsx` 有 `data-app-quit`；重新开始对话断言在 `Chat.tsx`（第 2 轮：断言传 `activeId`，preload / main 透传 speciesId）。 |
+| `test/admin-chat.test.js` | 第 2 轮 C | 新增「重新开始对话 from the chat page (C04): any met character…」：对不在桌面上的已遇见角色开新话题，当前角色不受影响，下一句不带旧上下文；`not-met` / `unknown-character` 被拒。 |
 | `e2e/run.js` | A / C | C 改：`history` 场景（H1、H4、H6、H7 改为在聊天页验证，原 H5 详情页并入 H4）、`stream` S6、`frontslim` F7 / F9 / F11 / F18、`admincov` B5（到 `#/desk` 点找回桌宠）、`interject` IJ2 / IJ7（`#/interject`）；新增 `auditc` 场景注册（不在 `all` 里）。 |
 | `e2e/chat-ui.js` | C | U1：rail 新顺序（A01）、会话栏只列已遇见 +「结识更多」+「正在陪你」+ 模型影响范围；U14：没遇见的角色走深链。 |
-| `e2e/admin-audit-c.js`（新） | C | 前后对照截图与 C01～C14 断言，失败态用主进程替换 IPC handler 注入（`admin-chat-history`、`interject-rules`、`interject-clear-decisions`、`talk-topic`），截完恢复原 handler。 |
+| `e2e/admin-audit-c.js`（新） | C | 前后对照截图与 C01～C14 断言，失败态用主进程替换 IPC handler 注入（`admin-chat-history`、`interject-rules`、`interject-clear-decisions`、`talk-topic`），截完恢复原 handler。第 2 轮新增 `slow` 注入（`new-topic` 晚 2.5 s 应答）断言 S-7，并新增 C04b（对不在桌面上的小G 重新开始对话）。 |
 | `admin/src/console/pages/Characters.tsx`（B 拆成 `pages/character/*`） | B | C 不改；C14 在 `Store.tsx` 里用导出的 `CatalogCard` / `useDownloads` 自建下载流程，不改 `useDownloads` 的 toast（图鉴页的下载 toast 由 B 决定是否跟进「去见她」）。 |
 
 ### C.3 验证
@@ -257,7 +260,7 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 | 类型检查 | `npx tsc --noEmit -p admin/tsconfig.json` | 0 error |
 | admin 构建 | `npm run build:admin` | `✓ built` |
 | lobe-design lint | `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/{Chat,Interject,Together,Store,Pages}.tsx` | `0 FAIL, 1 WARN`（WARN 为 `Pages.tsx` A 包区域的 LOBE-MULTI-PRIMARY，01-issues §6 已核对为互斥出现的误报） |
-| 单元测试 | `npm test` | 见 C.5（含 A / B 并行改动的结果） |
+| 单元测试 | `npm test` | 见 C.5（第 2 轮在最终代码上重跑） |
 | 前后对照 | `PIXELPET_AUDIT_PHASE=before|after xvfb-run -a node e2e/run.js auditc` | before 12/12 步骤执行（记录缺陷现象）；after 12/12 PASS（断言 C01～C14） |
 | 回归 | `xvfb-run -a node e2e/run.js history` / `chatui` / `interject` | 6/6、16/16、10/10 PASS |
 
@@ -287,6 +290,36 @@ before（改动前，提交 `1fe0a5e`）记录到的现象 → after：
 
 ### C.4 已知限制
 
-- `askAsync`（A 包共享件）基于 `confirmModal`：提交期间「取消」按钮仍可点（关闭后请求仍会完成）；02-plan S-7「提交期间不可关闭」需 A 包在共享件里改用 `Modal + confirmLoading` 才能完全满足。
-- 「重新开始对话」只能作用于正在陪你的角色（主进程 `newTopic()` 只处理当前角色）；其他角色的菜单项置灰并说明原因。要支持任意角色需要主进程按 speciesId 开新话题，超出本包范围。
+- ~~`askAsync` 提交期间「取消」仍可点~~：第 2 轮已补（见 C.5）。
+- ~~「重新开始对话」只能作用于正在陪你的角色~~：第 2 轮已补（见 C.5）。
 - 聊天历史 `ok:false`（`empty` 未唤醒 / `unknown-character`）仍按「没有对话」处理，只有 IPC 抛错才显示失败态——这两种 reason 本来就是「没有」而不是「没读出来」。
+
+### C.5 第 2 轮：补齐 S-7 与「重新开始对话」按角色，并在最终代码上重跑
+
+第 1 轮在 C.4 写下的两条未完成项本轮补上（都属于本包的 C04 / C08 流程），另在最终代码（含 A / B 包之后的提交）上重跑全部验证。
+
+| 改动 | 问题 | 做了什么 | design.lobe.li | 代码 |
+| --- | --- | --- | --- | --- |
+| C04 / C08 补 S-7 | INT-04、HUB-03（02-plan §2 S-7「提交期间不可关闭」） | `askAsync` 改用 `@lobehub/ui` 声明式 `Modal`：确认后「确认」按钮 loading（`confirmLoading`），「取消 / 先不了」禁用（`cancelButtonProps.disabled`），右上 ✕ 隐藏（`closable`），Esc（`keyboard`）与点遮罩（`maskClosable`）都不关；结果出来后恢复：失败把原因写在弹窗里、弹窗不关，成功才关并 toast。签名、返回值、文案不变 | C-15 确认弹窗 <https://design.lobe.li/rules/C-15>；W-05 <https://design.lobe.li/rules/W-05>；M-03 #1 系统状态可见 <https://design.lobe.li/models/M-03> | `common/index.tsx`（`AskDialog` / `AskHost` / `askAsync`）、`design/DesignProvider.tsx`（挂 `AskHost`） |
+| C04 按角色 | HUB-03、PG-05 | 「重新开始对话」对任一已遇见的角色可用（作用于当前打开的那段对话），不再对不在桌面上的角色置灰；主进程 `newTopic(speciesId)` 只动这个角色的 topic / epoch，正在陪你的角色不受影响 | W-03 一词一义 <https://design.lobe.li/rules/W-03>；P-03「入口和能力不一致」<https://design.lobe.li/rules/P-03> | `Chat.tsx`（`restart` 传 `activeId`，菜单去掉 disabled）、`pet-service.js`、`main.js`、`admin-preload.js`、`api.ts` |
+
+新增 / 更新的截图（`docs/admin-audit/screenshots/`）：
+
+- `C-after-chat-new-topic-busy.png`：确认后执行中——按钮转圈，「先不了」灰掉，没有 ✕。
+- `C-after-chat-new-topic-other-menu.png`、`C-after-chat-new-topic-other-done.png`：会话栏「正在陪你」是格萝可，打开小G 的对话，⋯ →「重新开始对话」可用，确认后 toast「下一句会开一个新对话」。
+- 其余 `C-after-*` 在本轮最终代码上重拍（与第 1 轮视觉一致；`C-before-*` 不变，来自改动前提交 `1fe0a5e`）。
+
+本轮验证（工作区 `pixel-pet-ia-polish`，`unset ELECTRON_RUN_AS_NODE`，未跑 live 场景）：
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 单元测试 | `npm test` | tests 759，pass 758，fail 0，skipped 1 |
+| 类型检查 | `npx tsc --noEmit -p admin/tsconfig.json` | 0 error |
+| admin 构建 | `npm run build:admin` | `✓ built` |
+| lobe-design lint | `lint-lobe.mjs admin/src/console/common/index.tsx admin/src/console/pages/Chat.tsx admin/src/design/DesignProvider.tsx admin/src/console/api.ts` | `0 FAIL, 0 WARN` |
+| 前后对照 | `PIXELPET_AUDIT_PHASE=after xvfb-run -a node e2e/run.js auditc` | 13/13 PASS（C04 增加执行中断言；新增 C04b） |
+| 回归（askAsync 的全部调用方 + 本包页面） | `xvfb-run -a node e2e/run.js <s>` | fresh 14/14（放生）、history 6/6（H7 重新开始对话）、frontslim 19/19（F11）、catalogdl 7/7（删除下载）、design 10/10（删除角色包）、admin 29/29、admincov 13/13、chatui 16/16、interject 10/10 |
+
+auditc C04 的原始输出：`执行中：busy=true 先不了disabled=true ✕=false；按 Esc / 点遮罩 / 点先不了之后仍打开=true；成功后关闭=true`。
+
+仍然保留的限制：聊天历史 `ok:false`（`empty` / `unknown-character`）按「没有对话」处理（见 C.4，属于「没有」而非「没读出来」）。图鉴页的下载 toast 是否加「去见她」由 B 包决定（C.2）。
