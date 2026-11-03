@@ -33,7 +33,11 @@ test('coverage audit on this tree: no gaps — every settings.json leaf, pet cha
   assert.ok(i.petChannels.length >= 70, `${i.petChannels.length} pet channels`);
   assert.ok(i.adminChannels.length >= 35, `${i.adminChannels.length} admin channels`);
   assert.deepEqual(i.trayItems, ['打开设置…', '显示桌宠', '检查更新', '退出']);
-  assert.ok(i.menuItems.includes('home') && i.menuItems.includes('adult') && i.menuItems.length >= 15);
+  // the pet window has no ⋯ menu any more (T-2718: only ⚙); each former item and toolbar button has its place
+  assert.deepEqual(i.menuItems, []);
+  const former = r.menu.filter((m) => /^(menu|toolbar):/.test(m.id));
+  assert.ok(former.length >= 17, `${former.length} former menu / toolbar items`);
+  for (const id of ['menu:home', 'menu:adult', 'menu:history', 'menu:quit', 'toolbar:topics', 'toolbar:wardrobe']) assert.equal(former.find((m) => m.id === id).status, 'ok', id);
   // every user setting is in the console; internal ones are exactly the bookkeeping flags
   assert.deepEqual(r.settings.filter((s) => s.status === 'internal').map((s) => s.key).sort(), Object.keys(coverage.INTERNAL_SETTINGS).sort());
   assert.ok(r.settings.filter((s) => s.status === 'ok').every((s) => ['即时生效', '重启后生效'].includes(s.apply)));

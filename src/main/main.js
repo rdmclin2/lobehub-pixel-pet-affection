@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
+// 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
+const ADMIN_CUES = [...CUE_STATES, 'turn'];
 const { ResponsesClient } = require('../core/responses-client');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
@@ -26,7 +28,7 @@ const { AdminWindow } = require('./admin-window');
 const { createAdminSettings } = require('./admin-settings');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
-const { buildRoster, packRows } = require('../core/roster');
+const { buildRoster, packRows, adminView } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
@@ -136,12 +138,29 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view, settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
+// What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
+// half of a save, a re-emitted view) is not sent at all. admin-boot clears it (a new window has nothing yet).
+let adminSent = null;
 function pushAdmin() {
   if (!admin || !admin.alive || adminPush) return;
-  adminPush = setImmediate(() => { adminPush = null; admin.send('admin-state', adminState()); });
+  adminPush = setImmediate(() => {
+    adminPush = null;
+    if (!admin.alive) return;
+    const st = adminState();
+    const json = JSON.stringify(st);
+    if (json === adminSent) return;
+    adminSent = json;
+    admin.send('admin-state', st);
+  });
+}
+// The window's first copy: what later pushes are compared against.
+function bootState() {
+  const st = adminState();
+  adminSent = JSON.stringify(st);
+  return st;
 }
 function openAdmin(section) {
   return admin.open(section);
@@ -170,7 +189,7 @@ function createTray() {
     tray.setContextMenu(trayMenu);
     tray.on('click', () => openAdmin());
   } catch (e) {
-    logError(e); // no tray on this desktop: the ⋯ menu and Ctrl+, still open the settings
+    logError(e); // no tray on this desktop: the ⚙ button, a right click on her and Ctrl+, still open the settings
   }
 }
 // macOS application menu: 偏好设置… ⌘, and 退出 ⌘Q (there was no app menu before)
@@ -337,7 +356,11 @@ function wire() {
     nextOpenPath = null;
     if (r.canceled || !r.filePaths[0]) return { ok: false, reason: 'canceled' };
     try {
-      return await packStore.importLive2d(r.filePaths[0], sp);
+      // the service learns the pack at once (it used to only after the pet window saved its picture), so 穿上
+      // from the settings window finds it
+      const out = await packStore.importLive2d(r.filePaths[0], sp);
+      if (out.ok) service.setPacks(packStore.packs);
+      return out;
     } catch (e) {
       logError(e);
       return { ok: false, errors: [e.message] };
@@ -606,11 +629,11 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
-  // 配置后台: ⋯ → 设置… / 高级设置 / her page → 在设置窗口中编辑 open it (at a section); single instance
+  // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...adminState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -635,7 +658,22 @@ function wire() {
     return { ok: true, path: app.getPath('userData') };
   }));
   // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
-  ipcMain.handle('admin-cue', adminOnly(({ state }) => (CUE_STATES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
+  ipcMain.handle('admin-cue', adminOnly(({ state }) => (ADMIN_CUES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
+  // the old ⋯ menu, now in the settings window (T-2718): 回到右下角 (the pet window stops flying / walking
+  // and goes back to its corner) and 退出 (asked once more in the window first)
+  ipcMain.handle('admin-home', adminOnly(async () => {
+    if (!win || win.isDestroyed()) return { ok: false, reason: 'no-window' };
+    if (!service || !service.pet) return { ok: false, reason: 'empty' };
+    const r = await askRenderer('home', {});
+    if (r.ok === false) return r;
+    petBounds = null;
+    place('pet');
+    return { ok: true, bounds: win.getBounds() };
+  }));
+  ipcMain.handle('admin-quit', adminOnly(() => {
+    setImmediate(() => app.quit());
+    return { ok: true };
+  }));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 

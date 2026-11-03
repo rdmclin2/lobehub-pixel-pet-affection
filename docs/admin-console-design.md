@@ -605,25 +605,29 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 
-### 12.3 菜单（⋯ / 托盘 / 应用菜单）：22 项
+### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：24 项
+
+桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
 
 | 菜单项 | 后台对应 |
 | --- | --- |
-| `menu:update` | 版本与更新 → 状态 / 立即重启更新 |
-| `menu:settings` | 打开设置窗口 |
+| `menu:update` | 版本与更新 → 状态 / 立即重启更新（有新版本时 ⚙ 出现红点直达） |
+| `menu:settings` | 桌宠窗口的 ⚙ 设置 / 右键她 / Ctrl+⌘ + , → 打开设置窗口 |
 | `menu:characters` | 角色图鉴（列表 + 详情） |
-| `menu:history` | 不需要：聊天记录是查看，不是配置；只在桌宠窗口 |
+| `menu:history` | 玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`） |
 | `menu:new-topic` | LobeHub 与本机 → 话题 → 重新开始话题 |
 | `menu:adult` | 内容与安全 → 成人向内容 |
 | `menu:local` | LobeHub 与本机 → 本机能力 |
-| `menu:actions` | 角色详情 → 舞台上的动作按钮（`admin-cue`） |
-| `menu:home` | 桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
+| `menu:actions` | 玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`） |
+| `menu:home` | 玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`） |
 | `menu:check-update` | 版本与更新 → 检查更新 |
 | `menu:release` | 数据与关于 → 危险操作 → 放生并删除 agent |
 | `menu:forget` | 数据与关于 → 危险操作 → 仅重置本地 |
 | `menu:log` | 数据与关于 → 数据目录 → 打开错误日志 |
 | `menu:credits` | 数据与关于 → 素材署名；角色详情 → 资料 |
-| `menu:quit` | 不需要：退出程序；托盘和应用菜单也有 |
+| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有 |
+| `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
+| `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
 | `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
 | `tray:检查更新` | 版本与更新 → 检查更新 |
@@ -634,7 +638,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 
 ### 12.4 桌宠窗口通道（src/main/preload.js）：79 个
 
-- 设置窗口有同一通道（30）：`whoami` `confirm-age` `set-adult` `equip-outfit` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（34）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（10）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
@@ -646,16 +650,12 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（39）：
+- 不是配置，只在桌宠窗口（35）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
   - `act`：互动：喂食 / 玩耍 / 睡觉
   - `touch`：互动：摸摸（部位触摸）
-  - `talk-topic`：互动：按话题聊天
-  - `mark-seen`：衣柜 / 话题面板的「新」角标
-  - `history-list`：聊天记录（查看，不是配置）
-  - `history-get`：聊天记录（查看，不是配置）
   - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
   - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
   - `chat`：聊天

@@ -19,7 +19,7 @@ const { execFileSync } = require('node:child_process');
 const { makeTestVrm } = require('../scripts/make-test-vrm');
 
 module.exports = function live2dFrameScenarios(ctx) {
-  const { ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds } = ctx;
+  const { ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, petBounds } = ctx;
   const SHOTS = path.join(OUT, 'live2d-frame');
   fs.mkdirSync(SHOTS, { recursive: true });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,12 +82,26 @@ module.exports = function live2dFrameScenarios(ctx) {
       await admin.locator('[data-key="prefs.framing"]').getByText(label, { exact: true }).click();
       await adminToast(new RegExp(`已保存：取景 → ${label}`));
     };
+    // settings window → her page → 装扮 → 穿上 (the pet window has no 外观 panel since T-2718)
+    const adminUntil = async (fn, arg, ms = 15000, what = 'condition') => {
+      const t0 = Date.now();
+      for (;;) {
+        if (await admin.evaluate(fn, arg).catch(() => false)) return;
+        if (Date.now() - t0 > ms) throw new Error(`settings window: timed out waiting for ${what}`);
+        await sleep(150);
+      }
+    };
+    const lookTab = async () => {
+      if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, 'characters/dafeiyu');
+      await admin.evaluate(() => { location.hash = '/characters/dafeiyu'; });
+      await adminUntil(() => !!document.querySelector('[data-path="/characters/dafeiyu"]'), null, 15000, 'her page');
+      await admin.evaluate(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '装扮'); if (t) t.click(); });
+      await adminUntil(() => !!document.querySelector('[data-wardrobe]'), null, 10000, '装扮');
+    };
     const pickPack = async (id) => {
-      await openCurrentPage(page);
-      await page.locator(`.pack-opt[data-pack="${id}"]`).scrollIntoViewIfNeeded();
-      if (!(await page.locator(`.pack-opt.on[data-pack="${id}"]`).count())) await page.click(`.pack-opt[data-pack="${id}"] .pick`);
-      await page.waitForSelector(`.pack-opt.on[data-pack="${id}"]`);
-      await page.click('#panel-close');
+      await lookTab();
+      await adminUntil((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"]`), id, 10000, `pack ${id}`);
+      if (!(await admin.evaluate((x) => !!document.querySelector(`[data-wardrobe] [data-pack="${x}"][data-worn="true"]`), id))) await admin.evaluate((x) => document.querySelector(`[data-use-pack="${x}"]`).click(), id);
       await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), id, { timeout: 10000 });
     };
     // placement samples while switching (the scale moves one way; the same canvas, the model stays loaded)
@@ -360,14 +374,14 @@ module.exports = function live2dFrameScenarios(ctx) {
       }, page);
 
       await step(S, 'a third-party Live2D model without half-body metadata (imported folder, no pack.json): 半身 falls back to her eye line', async () => {
-        // 她的页 → 外观 → 导入 Live2D 模型… as the owner does: the folder becomes a pack and she wears it
+        // 设置窗口 → 她的页 → 装扮 → 导入 Live2D… as the owner does: the folder becomes a pack and she wears it
         await page.evaluate((x) => window.pet.debugNextOpen(x), own);
-        await openCurrentPage(page);
-        await page.locator('#l2d-import').scrollIntoViewIfNeeded();
-        await page.click('#l2d-import');
-        await page.waitForFunction(() => /已导入 Live2D 模型/.test(document.getElementById('panel-msg').textContent), null, { timeout: 60000 });
-        const msg = await page.textContent('#panel-msg');
-        await page.click('#panel-close');
+        await lookTab();
+        await adminUntil(() => document.querySelectorAll('[role="tabpanel"]').length === 1 && !!document.querySelector('[role="tabpanel"] [data-import-live2d]'), null, 10000, '导入 Live2D… in the live 装扮 panel');
+        const nBtn = await admin.evaluate(() => { const b = document.querySelectorAll('[data-import-live2d]'); b[b.length - 1].click(); return b.length; });
+        // the import puts it on at once (as the pet window's import did): her look becomes the new pack
+        await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('l2d-'), null, { timeout: 60000 });
+        const msg = `导入 Live2D…（${nBtn} 个按钮）→ 她穿上了 ${await page.getAttribute('#pet-look', 'data-key')}`;
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('l2d-'), null, { timeout: 15000 });
         const imp = { pack: { id: (await page.evaluate(() => document.getElementById('pet-look').dataset.key)).split('/')[0] } };
         const manifest = JSON.parse(fs.readFileSync(path.join(data, 'packs', imp.pack.id, 'pack.json'), 'utf8'));

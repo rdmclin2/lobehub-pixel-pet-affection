@@ -8,8 +8,9 @@
 //   2. pet-window channels — every channel src/main/preload.js invokes is either one the settings window also
 //      has (src/main/admin-preload.js), reached in the console another way (VIA), or listed in PET_ONLY with why
 //      it is not a setting (chatting, dragging her, the first hatch, debug hooks …);
-//   3. menus — every ⋯ menu item (src/renderer/index.html data-menu) and tray / app menu item (src/main/main.js)
-//      has its place in the console (MENU) or a reason it does not need one;
+//   3. menus — every item of the former ⋯ menu and toolbar (话题 / 衣柜; removed from the pet window in T-2718,
+//      which keeps only ⚙), any data-menu item src/renderer/index.html would grow again, and every tray / app
+//      menu item (src/main/main.js) has its place in the console (MENU) or a reason it does not need one;
 //   4. runtime behaviour controls — the behaviours PetService / main run (走动, 主动搭话, 好感, 同屏伙伴, 语音,
 //      ASR, 对外接口, 更新, 安全, 数据目录 …) each name the settings keys and console actions that control them.
 //
@@ -95,23 +96,26 @@ const PET_ONLY = {
   'debug-heartbeat': '测试钩子',
 };
 
-// ⋯ menu (data-menu) and tray / app menu items → where the same thing is in the settings window
+// the former ⋯ menu (menu:) and toolbar buttons (toolbar:) of the pet window, any data-menu item it grows again,
+// and tray / app menu items → where the same thing is in the settings window
 const MENU = {
-  'menu:update': '版本与更新 → 状态 / 立即重启更新',
-  'menu:settings': '打开设置窗口',
+  'menu:update': '版本与更新 → 状态 / 立即重启更新（有新版本时 ⚙ 出现红点直达）',
+  'menu:settings': '桌宠窗口的 ⚙ 设置 / 右键她 / Ctrl+⌘ + , → 打开设置窗口',
   'menu:characters': '角色图鉴（列表 + 详情）',
-  'menu:history': '— 聊天记录是查看，不是配置；只在桌宠窗口',
+  'menu:history': '玩法 → 和她一起 → 聊天记录（`history-list` / `history-get`）',
   'menu:new-topic': 'LobeHub 与本机 → 话题 → 重新开始话题',
   'menu:adult': '内容与安全 → 成人向内容',
   'menu:local': 'LobeHub 与本机 → 本机能力',
-  'menu:actions': '角色详情 → 舞台上的动作按钮（`admin-cue`）',
-  'menu:home': '桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`）',
+  'menu:actions': '玩法 → 和她一起 → 桌面上的她 → 动作；角色详情 → 舞台上的动作按钮（`admin-cue`）',
+  'menu:home': '玩法 → 和她一起 → 桌面上的她 → 回到右下角（`admin-home`）；桌宠行为 → 位置 → 找回桌宠（`admin-place-pet`）',
   'menu:check-update': '版本与更新 → 检查更新',
   'menu:release': '数据与关于 → 危险操作 → 放生并删除 agent',
   'menu:forget': '数据与关于 → 危险操作 → 仅重置本地',
   'menu:log': '数据与关于 → 数据目录 → 打开错误日志',
   'menu:credits': '数据与关于 → 素材署名；角色详情 → 资料',
-  'menu:quit': '— 退出程序；托盘和应用菜单也有',
+  'menu:quit': '玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有',
+  'toolbar:topics': '玩法 → 和她一起 → 话题（聊聊，`talk-topic`）',
+  'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
   'tray:打开设置…': '打开设置窗口',
   'tray:显示桌宠': '桌宠行为 → 位置 → 找回桌宠',
   'tray:检查更新': '版本与更新 → 检查更新',
@@ -194,7 +198,14 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     if (m && m[1] !== 'admin-set' && m[1] !== 'admin-boot' && !admin.has(m[1])) problems.push(`VIA 里 \`${ch}\` 指向的 \`${m[1]}\` 不在 admin-preload 里`);
   }
 
-  const menu = [...menuItems.map((m) => `menu:${m}`), ...trayItems.map((m) => `tray:${m}`), ...appItems.map((m) => `app:${m}`)].map((id) => {
+  // the former ⋯ menu / toolbar items stay in the matrix (where each went); a data-menu item the pet window
+  // grows again is audited the same way
+  const former = Object.keys(MENU).filter((id) => id.startsWith('menu:') || id.startsWith('toolbar:'));
+  for (const [id, note] of Object.entries(MENU)) {
+    const m = note.match(/`([a-z0-9-]+)`/g) || [];
+    for (const ch of m.map((x) => x.slice(1, -1))) if (!admin.has(ch)) problems.push(`菜单项 \`${id}\` 指向的 \`${ch}\` 不在 admin-preload 里`);
+  }
+  const menu = [...uniq([...former, ...menuItems.map((m) => `menu:${m}`)]), ...trayItems.map((m) => `tray:${m}`), ...appItems.map((m) => `app:${m}`)].map((id) => {
     if (!MENU[id]) {
       problems.push(`菜单项 \`${id}\` 在设置窗口里没有对应，也没写为什么不需要`);
       return { id, status: 'MISSING', note: '' };
@@ -265,7 +276,9 @@ function renderMatrix(r) {
   L.push('| --- | --- | --- | --- | --- |');
   for (const x of r.runtime) L.push(`| ${x.label} | ${cell(x.where)} | ${(x.keys || []).map((k) => `\`${k}\``).join(' ') || '—'} | ${(x.actions || []).map((k) => `\`${k}\``).join(' ') || '—'} | ${x.apply} |`);
   L.push('');
-  L.push(`### 12.3 菜单（⋯ / 托盘 / 应用菜单）：${r.menu.length} 项`);
+  L.push(`### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：${r.menu.length} 项`);
+  L.push('');
+  L.push('桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。');
   L.push('');
   L.push('| 菜单项 | 后台对应 |');
   L.push('| --- | --- |');
