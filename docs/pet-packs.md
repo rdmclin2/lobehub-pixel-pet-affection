@@ -45,7 +45,12 @@ my-grok/
 }
 ```
 
-- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`sexy_bikini`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。角色平时只会穿她的 character.json 里 `outfits` 列出的服饰；穿 18+ 角色包（`"adult": true`）时，衣柜改为这个包里有图的服饰，成人向的也算；包里缺的服饰先用这个角色的默认角色包，再用她的回落包（`art.fallbackPack`）。
+- **服饰 id**：`daily`、`scarf`、`casual`、`beret`、`idol`、`pajamas`、`cat_ears`、`swimsuit`、`yukata`、`bikini`、`qipao`、`maid`、`offshoulder_gown`、`couple_hoodie`、`flower_crown`、`retro_swimsuit`、`silk_robe`、`office`、`nurse`、`stewardess`、`sexy_bikini`、`bunny`、`knit_dress`、`devil_cos`（最后这些和 `maid`、`offshoulder_gown` 一样是成人向）。衣柜只列她**当前穿的角色包**里有图的服饰（`outfits` 的键；VRM 包每个模型一项；18+ 包成人向的也算），`daily` 始终在；别的包里有、这个包里没有的服饰既不显示也穿不上。换包后若身上的服饰新包里没有，会换回这个包有的最近一件全年龄服饰（没有就是 `daily`）并保存。穿衣**绝不会换到别的角色包**：包里缺某件服饰的图时，用这个包自己的 `daily`（再没有就用它的第一套）。只有选中的包不存在时，才整体改用默认角色包，再是回落包（`art.fallbackPack`）。character.json 的 `outfits` 只在一个包都没加载时使用。
+- **衣柜按角色包隔离：实现与验证**（T-2752）：
+  - 实现：`src/core/packs.js` 的 `lookContextOf(packs, packId, speciesId)` 给出当前包的服饰表（`{ adult, only: true, outfits }`），`src/core/outfits.js` 只要有这份表就以它为唯一来源（列表、穿衣、换包纠正都走它）；`resolveLook` 只从选中的包取图，不跨包。主进程 `src/main/pet-service.js` 的 `_look` 用它生成设置窗口衣柜（`view.outfits`），换包、换角色、切成人向内容时纠正身上的服饰并保存。
+  - 给一个包加服饰：在它的 `pack.json` 的 `outfits` 里加上服饰 id 和图（Live2D / 全动态同理；VRM 写在 `vrm.outfits`），衣柜就会多出这一项；服饰 id 必须是上面列出的应用内服饰，好感解锁和 18+ 规则不变。不写的服饰在这个包下既不显示也穿不上。
+  - 单元测试：`npm test`，相关用例在 `test/outfits.test.js`（“a Live2D pack (大肥鱼) offers only its own outfits…”）、`test/packs.test.js`（`resolveLook` 不跨包、`lookContextOf`）、`test/pet-service.test.js`（“大肥鱼 in her Live2D pack…”、“switching to a character whose pack lacks her saved outfit…”）。
+  - 真机验证：`xvfb-run -a node e2e/run.js wardrobepack`（shell 里设了 `ELECTRON_RUN_AS_NODE` 时先 `unset`）。场景在设置窗口里依次：像素包穿围巾 → 换大肥鱼 Live2D 包（衣柜只剩 `daily`，桌宠是 Live2D）→ 穿其他服饰被拒（`unavailable`）且包 id 与渲染类型不变 → 打开 18+ 后衣柜仍只有 `daily` → 换回像素包（衣柜恢复 13 套）→ 像素包穿旗袍再换 Live2D（自动回落 `daily` 并保存）。截图在 `out/e2e/wardrobepack/`。
 - **`swimsuit` 与 `retro_swimsuit` 的区别**：`swimsuit`（运动泳装，亲近 ♥35，**全年龄**）是高领短袖的运动款连体泳衣，外面穿及膝沙滩裤和长袖防晒开衫，胸口、腰腹和臀部都遮住；五位内置角色的默认包都带这张图（`sheets/swimsuit.webp`）。`retro_swimsuit`（高开衩连体泳衣，恋人 ♥85，**成人向**）只在确认 18+ 并打开成人向内容后显示，而且只在 `adult: true` 的角色或 18+ 角色包上出现；内置角色只有成年版角色包（`<id>-adult`）带它的图。导入包给 `swimsuit` 提供的图也要符合同样的全年龄标准（不是比基尼、不露腰、不高开衩）。
 - **18+ 角色包与成人向衣柜**（T-1261，2026-10-31）：五位内置角色各有一个成年版角色包 `<id>-adult`（`"adult": true`）：20 岁的成年形象，有日常服和 11 套成人向服饰：性感女仆装、露肩晚礼服、职场 OL、护士服、空姐制服、性感比基尼（暧昧 ♥60），高开衩连体泳衣、丝绸睡裙、兔女郎、黑丝毛衣裙、小恶魔 COS（恋人 ♥85）。只有确认年满 18 岁并打开“成人向内容”后，它才出现在“外观”里；选了它，衣柜换成这个包里有图的服饰。关掉成人向内容时她换回默认外观，身上的成人向服饰换回最近穿过的全年龄服饰。角色包只影响外观和衣柜，人设、语气和话题仍按角色文件（五位都是 `adult: false`）。
 - **`bikini`**（沙滩比基尼，暧昧 ♥60，**全年龄**）：比运动泳装清凉，但仍是全年龄标准：上衣从锁骨下方盖住整个胸口、不显胸型和乳沟，泳裙到膝盖上方、盖住臀部，外搭盖住肩膀的短开衫；只露出一窄条腰、手臂和小腿，布料不透明，没有内衣感和性暗示的姿势。五位内置角色的默认包都带这张图（`sheets/bikini.webp`）。导入包给 `bikini` 提供的图也要符合这个标准。
@@ -93,7 +98,7 @@ my-grok/
     "faces": { "blush": { "PARAM_EXP4": 1 }, "wide": { "PARAM_EXP5": 1 }, "squint": { "PARAM_EXP5": -1 } },  // 表情开关
     "pinned": { "Paramcol_3": 1 }              // 每帧在物理之后固定的值（水印开关、要关掉的物理等）
   },
-  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；有图的服饰才用 Live2D，其他服饰穿默认角色包
+  "outfits": { "daily": "preview.png" }        // 列表、衣柜里显示的图；衣柜只列这里有的服饰（只写 daily 就只有一套）
 }
 ```
 
@@ -268,7 +273,7 @@ my-rig/
 - **expressions**（推荐）：原画表情。`{ "happy": "face_happy", … }` 把表情名对到一个图层（挂在 `head` 上，只画脸上变了的那块），应用按状态淡入淡出；`blink`（闭眼）和 `talk`（张嘴）叠在其他表情上，用来眨眼和说话。表情名：`happy`、`content`、`surprised`、`sad`、`angry`、`shy`、`sleep`、`wink`、`blink`、`talk`，缺哪个那个状态就用原脸。
 - **face**（没有 `expressions` 时）：眼睛和嘴的位置。眨眼、闭眼（^ ^ / 睡着）、半睁、wink、生气、各种嘴型、腮红和眼泪，都是按这些位置实时画上去的，所以原图画一张睁眼闭嘴的脸就够了。
 - **图层要多画一点被挡住的部分**：头发在头后面的部分、身体在头下面的部分，各自补上颜色，这样一层动起来时不会露出空洞。
-- 只有部分服饰做了图层也可以：其他服饰穿这个角色的默认角色包。
+- 只有部分服饰做了图层也可以：衣柜只列做了图层的服饰，其他服饰不会出现，也不会借用别的包。
 - 本仓库的 `scripts/art/rig_build.py` 从一张主图和它的编辑图（去掉手臂、去掉鳍、只留头发、每种表情各一张，都由 gpt-image 在同一张主图上编辑，构图不变）算出这些图层：两张图的差异就是被编辑的部位，所以不用手描轮廓；规格和原图在 `art/rig/dafeiyu-v2.json`、`art/rig/dafeiyu-v2/`。
 - **图层图片可以比 `box` 更清晰**：图片按 `box` 拉伸贴上，所以 `box` 宽 32、图片宽 64 也行，画出来更清楚。（内置的大肥鱼全动态 v2 直接用 664×904 的坐标，图层按这个尺寸切出。）
 - **schema 1**：旧格式的 8 个动作名 `idle / wave / lifted / eat / sleep / think / talk / cheer` 仍然可用，应用把 `pat` 映射到 `wave`，`happy`、`play`、`hatch`、`evolve` 映射到 `cheer`，三种吃饭映射到 `eat`。schema 1 包里不能写 schema 2 的新动作名。

@@ -148,7 +148,8 @@ test('vrm packs: models per outfit are checked (inside the pack, existing, glTF 
   assert.equal(look.vrm.meta.name, '蓝色小肥鱼Deepseek');
   assert.ok(look.vrm.modelExpressions.includes('aa'));
   assert.equal(P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'pajamas' }).url, null, 'no preview picture for that outfit');
-  assert.notEqual(P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'scarf' }).kind, 'vrm', 'other outfits fall back to her default pack');
+  const scarf = P.resolveLook(packs, { packId: p.id, speciesId: 'dafeiyu', outfitId: 'scarf' });
+  assert.deepEqual([scarf.packId, scarf.kind, scarf.model], [p.id, 'vrm', look.model], 'an outfit the pack has no model for is worn as its daily model, never another pack (T-2752)');
   const listed = P.packsFor(packs, 'dafeiyu').find((x) => x.id === p.id);
   assert.equal(listed.vrm.author, '木子惡魔');
   assert.ok(listed.vrm.restrictions.some((x) => x.id === 'no-redistribution'));
@@ -228,7 +229,7 @@ test('app rules win: a VRM pack cannot make adult outfits available — not with
   assert.deepEqual(P.lookContext(forged), { adult: false, only: true, outfits: ['daily', 'pajamas'] });
   const fp = new Map([['forged', forged], ...packs]);
   const lk = P.resolveLook(fp, { packId: 'forged', speciesId: 'dafeiyu', outfitId: 'maid' });
-  assert.ok(!lk || lk.kind !== 'vrm' || lk.packId !== 'forged');
+  assert.deepEqual([lk.packId, lk.model], ['forged', 'pack://forged/model.vrm'], 'the maid model is never worn: the pack\'s daily model instead, still the same pack');
   assert.equal(o.listOutfits(pet(100), ADULT_ON, P.lookContext(forged)).some((x) => x.id === 'maid'), false);
 });
 
@@ -427,8 +428,8 @@ test('one VRM model is one look: no wardrobe of identical cards (packs imported 
   assert.equal(m.ok, true, JSON.stringify(m.errors));
   assert.deepEqual(P.lookContext(m.pack).outfits, ['daily', 'pajamas']);
 
-  // 2D packs keep her own wardrobe
-  assert.equal(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), null);
+  // 2D packs offer their own wardrobe too (T-2752): the outfits they have art for
+  assert.deepEqual(P.lookContext({ kind: 'sprites', outfits: { daily: 'x' } }), { adult: false, only: true, outfits: ['daily'] });
 });
 
 // An idle loop (.vrma) under the app's moves (pack vrm.idle; a folder / .zip import brings it along).

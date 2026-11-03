@@ -126,12 +126,11 @@ class PetService extends EventEmitter {
     return !!(this.settings.ageConfirmed && this.settings.adultContent);
   }
 
-  // The wardrobe context of the look `speciesId` wears: { adult, outfits } when it is an 18+ pack (its
-  // outfits, adult ones included, replace her file's list), else null.
+  // The wardrobe context of the look `speciesId` wears: { adult, only, outfits } of the pack she wears (its
+  // outfits are her whole wardrobe, T-2752), her own clips: daily only; null only when no pack is loaded.
   _look(speciesId) {
-    const p = this.packs.get(packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()));
     // a VRM pack whose model license forbids sexual usage is never an 18+ look (core/packs.js lookContext)
-    return packsLib.lookContext(p);
+    return packsLib.lookContextOf(this.packs, packsLib.chosenPack(this.packs, this.settings.appearance, speciesId, this._adultOk()), speciesId);
   }
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
@@ -699,7 +698,9 @@ class PetService extends EventEmitter {
     // the one leaving stops here; her needs wait for her return
     state.tick(this._c(), this.now());
     this.pet.speciesId = speciesId;
-    outfits.enforceOutfit(next, this.settings, this._look(speciesId));
+    // her pack's wardrobe applies on arrival: an outfit it has no art for is taken off and saved (T-2752)
+    const { changed: outfitChanged } = outfits.enforceOutfit(next, this.settings, this._look(speciesId));
+    if (outfitChanged && !created) this._save();
     // she cannot visit herself: the new companion leaves the visitors (同屏伙伴)
     if (this.settings.visitors.includes(speciesId)) this.setVisitors(this.settings.visitors.filter((v) => v !== speciesId));
     if (created) {
@@ -966,7 +967,8 @@ class PetService extends EventEmitter {
     if (p && p.adult && !this._adultOk()) return { ok: false, reason: 'adult' };
     this.settings = settingsLib.normalizeSettings({ ...this.settings, appearance: { ...this.settings.appearance, [id]: packId } });
     this.settingsStore.save(this.settings);
-    // leaving an 18+ look takes its adult outfit off (back to the last all-ages one)
+    // the new pack's wardrobe applies at once: an outfit it has no art for (or an adult one, leaving an 18+
+    // look) is taken off and saved — back to the last all-ages one it has, else daily (T-2752)
     const e = this.pet.characters[id];
     if (e) outfits.enforceOutfit(e, this.settings, this._look(id));
     this._save();
