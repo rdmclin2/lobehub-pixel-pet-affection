@@ -325,6 +325,16 @@ export interface PetAdminApi {
   markSeen: (kind: 'outfit' | 'topic', species?: string) => Promise<{ marked?: number; ok: boolean }>;
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
+  dances: () => Promise<DanceList>;
+  dancePlay: (id: string, loop?: boolean) => Promise<{ id?: string; message?: string; name?: string; ok: boolean; reason?: string }>;
+  danceStop: () => Promise<{ ok: boolean; reason?: string }>;
+  danceState: () => Promise<DanceState | null>;
+  danceLoop: (on: boolean) => Promise<{ loop?: boolean; ok: boolean; reason?: string }>;
+  danceImportPick: (folder?: boolean) => Promise<DanceDraft | ImportFail>;
+  danceImportExtra: (token: string, kind: 'audio' | 'cover') => Promise<{ coverData?: string; label: string; ok: true; path: string } | ImportFail>;
+  danceImportCommit: (draft: { audio: string | null; cover: string | null; motion: string; name: string; token: string }) => Promise<{ dance: DanceRow; id: string; name: string; ok: true } | ImportFail>;
+  danceImportCancel: () => Promise<{ ok: boolean }>;
+  danceRemove: (id: string) => Promise<{ id?: string; message?: string; name?: string; ok: boolean; reason?: string }>;
   whoami: () => Promise<any>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;
@@ -529,3 +539,72 @@ export const REASON: Record<string, string> = {
   unavailable: '这位角色没有这套服饰',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';
+
+/** 舞蹈 (src/main/main.js danceList, docs/vrm-dance.md §3.8): one dance of the list. */
+export interface DanceRow {
+  builtin: boolean;
+  cover: boolean;
+  coverUrl: string | null;
+  credit?: string;
+  duration: number;
+  face: boolean;
+  id: string;
+  importedAt?: string;
+  loop: boolean;
+  music: boolean;
+  name: string;
+}
+
+export interface DanceList {
+  dances: DanceRow[];
+  dir: string | null;
+  error?: string;
+  importing?: boolean;
+  kind?: string | null;
+  message?: string;
+  reason?: string;
+  refused?: string;
+  source: string;
+  vrm: boolean;
+}
+
+/** The pet window's dance controller state (renderer/vrm-dance.js state()); null when she is not dancing. */
+export interface DanceState {
+  audio: string;
+  duration: number;
+  id: string;
+  loop: boolean;
+  music: boolean;
+  name: string;
+  paused: boolean;
+  pausedBy: string | null;
+  state: string;
+  t: number;
+}
+
+export interface ImportFail {
+  detail?: string;
+  message?: string;
+  ok: false;
+  reason: string;
+}
+
+/** 导入舞蹈: what was picked, for the confirm dialog (src/main/dance-import.js inspect). */
+export interface DanceDraft {
+  audio: string | null;
+  audios: { label: string; path: string }[];
+  cover: string | null;
+  coverData: string | null;
+  covers: { label: string; path: string }[];
+  credit: string | null;
+  duration: number;
+  folder: string | null;
+  motion: string;
+  motions: { duration?: number; keys?: number; label: string; path: string }[];
+  name: string;
+  ok: true;
+  readme: { excerpt: string; file: string } | null;
+  source: string;
+  token: string;
+  warnings: string[];
+}

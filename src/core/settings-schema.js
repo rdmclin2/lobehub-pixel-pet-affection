@@ -51,6 +51,8 @@ const NAV = [
       { page: 'topics', label: '话题', icon: 'MessagesSquare' },
       { page: 'history', label: '聊天记录', icon: 'History' },
       { page: 'desk', label: '桌面上的她', icon: 'Monitor' },
+      // VRM dancing (docs/vrm-dance.md §6.2): the dances, 让她跳 / 停止 / 循环播放, 导入舞蹈, 删除舞蹈, the music's volume
+      { page: 'dances', label: '舞蹈', icon: 'Music' },
     ],
   },
   {
@@ -94,6 +96,7 @@ const PAGES = {
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
   topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
   history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
+  dances: { title: '舞蹈', description: '让她在桌面上跳舞。只有 VRM 外观可以跳；舞蹈可以从 MMD 动作（.vmd，可带音乐和封面）导入。' },
   desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
@@ -121,7 +124,7 @@ add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空�
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
 add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '有同屏伙伴时，扔出去的桌宠会撞到别人。' });
-add('prefs.danceVolume', 'behavior', '动作', '舞蹈音乐音量', 'slider', { desc: 'VRM 外观跳舞时音乐的音量（0–100）；她说话时会自动压低，全局静音时不出声，动作照跳。', min: 0, max: 100, step: 5 });
+add('prefs.danceVolume', 'dances', '跳舞时', '音乐音量', 'slider', { desc: '跳舞时音乐的音量，跳舞中改动立即生效。她说话时会自动压低；桌宠工具栏静音时不出声，动作照跳。', min: 0, max: 100, step: 5, unit: '%' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });
 add('prefs.touchHint', 'behavior', '触摸', '触摸提示', 'switch', { desc: '悬停时提示指针下是哪个部位。', dependsOn: { key: 'prefs.touchZones', value: true } });
 add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });

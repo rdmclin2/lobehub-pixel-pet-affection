@@ -78,6 +78,7 @@ const useStatus = () => {
       topics: view?.topics ? `已解锁 ${view.topics.filter((t: any) => !t.locked).length} / ${view.topics.length} 个${view.topics.some((t: any) => t.isNew) ? ' · 有新话题' : ''}` : '',
       history: '你主动发起的聊天',
       desk: '动作 · 回到右下角 · 退出',
+      dances: !view?.pet ? '' : view.look?.kind === 'vrm' ? `她现在是 VRM 外观，可以跳舞 · 音乐音量 ${p.danceVolume ?? 60}%` : '她现在不是 VRM 外观，跳不了舞',
     })[page] ?? '';
 };
 

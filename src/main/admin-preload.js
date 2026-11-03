@@ -74,6 +74,18 @@ contextBridge.exposeInMainWorld('petAdmin', {
   home: () => ipcRenderer.invoke('admin-home'),
   quit: () => ipcRenderer.invoke('admin-quit'),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
+  // 舞蹈 (docs/vrm-dance.md §6.2): the list, 让她跳 / 停止 / 循环播放 (played by the pet window), 导入舞蹈 (pick →
+  // a draft → commit, baked in main) and 删除舞蹈
+  dances: () => ipcRenderer.invoke('dances:list'),
+  dancePlay: (id, loop) => ipcRenderer.invoke('dance:play', { id, loop }),
+  danceStop: () => ipcRenderer.invoke('dance:stop'),
+  danceState: () => ipcRenderer.invoke('dance:state'),
+  danceLoop: (on) => ipcRenderer.invoke('dance:loop', { on }),
+  danceImportPick: (folder) => ipcRenderer.invoke('dance-import-pick', { folder: !!folder }),
+  danceImportExtra: (token, kind) => ipcRenderer.invoke('dance-import-extra', { token, kind }),
+  danceImportCommit: (draft) => ipcRenderer.invoke('dance-import-commit', draft),
+  danceImportCancel: () => ipcRenderer.invoke('dance-import-cancel'),
+  danceRemove: (id) => ipcRenderer.invoke('dance-remove', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

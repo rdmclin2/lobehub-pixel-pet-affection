@@ -106,5 +106,93 @@
     return { reason: 'not-vrm', kind, message: `舞蹈只有 VRM 外观可以跳。她现在是${label}外观，换成 VRM 模型再来吧。` };
   }
 
-  return { ID_RE, FILE_RE, DEMO_ID, SHORT_LOOP, LOOK_LABEL, demoEntry, cleanDanceIndex, listDances, publicEntry, findDance, pickDance, cannotDance };
+  // ---------- importing (§5.5) ----------
+  const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|flac)$/i;
+  const COVER_EXT = /\.(jpe?g|png|webp)$/i;
+  const MOTION_EXT = /\.vmd$/i;
+  const base = (f) => String(f).replace(/^.*[\\/]/, '');
+  const stem = (f) => base(f).replace(/\.[^.]+$/, '').toLowerCase();
+  const ext = (f) => { const m = /\.([^.]+)$/.exec(base(f)); return m ? m[1].toLowerCase() : ''; };
+
+  // The words shown when an import cannot go on: what happened and what to do (W-05).
+  const IMPORT_ERRORS = {
+    'no-files': '没有选到文件。选上舞蹈的 .vmd 文件（可以同时选上音乐和封面），或者选整个舞蹈文件夹。',
+    'no-motion': '没有找到舞蹈动作文件（.vmd）。选上舞蹈的 .vmd 文件再试。',
+    'only-camera': '这里的 .vmd 只有镜头或道具的动作，没有人形骨骼的舞蹈动作。找到跳舞的那个 .vmd（通常最大）再导入。',
+    'bad-vmd': '这个 .vmd 文件读不出来，可能已损坏，或者不是 MMD 动作文件。',
+    'not-anim': '这个素材包不是舞蹈（meta.json 的 type 不是 anim），没法导入。',
+    'encrypted-audio': '这个音乐文件是加密格式（.ncm），播放不了。换成 mp3 / wav / ogg / m4a / flac 再导入，或者不带音乐导入。',
+    'bad-audio': '音乐只能是 mp3 / wav / ogg / m4a / flac 文件。',
+    'bad-cover': '封面只能是 jpg / png / webp 图片。',
+    'too-big': '文件太大了（动作文件最多 64 MB，音乐最多 200 MB，封面最多 10 MB）。',
+    'bake-failed': '动作转换失败：这个 .vmd 里的动作没法套到 VRM 人形骨骼上。',
+    'no-library': '舞蹈库的位置不可用（不能放在应用目录里），没法保存导入的舞蹈。',
+    'write-failed': '保存舞蹈时写文件失败，检查一下磁盘空间和数据目录的权限。',
+    expired: '这次导入已经过期了，重新选一次文件。',
+    busy: '正在导入上一支舞蹈，等它完成再导入下一支。',
+    canceled: '已取消导入。',
+  };
+  const importError = (reason, extra = {}) => ({ ok: false, reason, message: IMPORT_ERRORS[reason] || IMPORT_ERRORS['bake-failed'], ...extra });
+
+  // Who made the motion, from its readme (shown with the dance): "Motion by …", "动作作者：…".
+  function creditOf(text) {
+    const s = String(text || '');
+    const m = /motion[ \t]*(?:by|:|：)[ \t]*([^\r\n]{1,80})/i.exec(s) || /(?:动作|動作|モーション)(?:作者|制作|製作)?[ \t]*[:：][ \t]*([^\r\n]{1,80})/.exec(s);
+    return m ? m[0].trim().slice(0, 120) : null;
+  }
+
+  // A dance's folder name: an ASCII slug of its name and 4 random hex digits ("gokuraku-3f2a"; "dance-3f2a" for a
+  // name with no ASCII letters at all).
+  function danceId(name, rand = Math.random) {
+    const slug = String(name || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    const tail = Math.floor(rand() * 0x10000).toString(16).padStart(4, '0');
+    return `${slug || 'dance'}-${tail}`;
+  }
+
+  // What to import from what was picked (§5.5 step 2), pure. `listing`: { files: [{ path, size }], meta?: parsed
+  // meta.json | null, motions: [{ path, kind: motion | camera | prop | empty | bad, keys }], folder?: name }.
+  // → { ok, source, name, motion, others, audio, audios, cover, covers, readme, warnings } or an import error.
+  function detectDance(listing) {
+    const files = (listing && listing.files) || [];
+    if (!files.length) return importError('no-files');
+    const motions = (listing.motions || []).filter((m) => MOTION_EXT.test(m.path));
+    const songs = files.filter((f) => AUDIO_EXT.test(f.path));
+    const pics = files.filter((f) => COVER_EXT.test(f.path));
+    const encrypted = files.filter((f) => /\.ncm$/i.test(f.path));
+    const meta = listing.meta && typeof listing.meta === 'object' ? listing.meta : null;
+    const warnings = [];
+    let source = listing.folder ? 'mmd-folder' : 'vmd';
+    let name = listing.folder || null;
+    let motion = null;
+    let metaAudio = null;
+    if (meta) {
+      if (meta.type !== 'anim') return importError('not-anim');
+      source = 'vidol-pack';
+      if (typeof meta.name === 'string' && meta.name.trim()) name = meta.name.trim().slice(0, 60);
+      const want = typeof meta.src === 'string' ? base(meta.src).toLowerCase() : null;
+      motion = motions.find((m) => base(m.path).toLowerCase() === want && m.kind === 'motion') || null;
+      metaAudio = typeof meta.audio === 'string' ? base(meta.audio).toLowerCase() : null;
+    }
+    const dancers = motions.filter((m) => m.kind === 'motion').sort((a, b) => b.keys - a.keys);
+    if (!motion) {
+      if (!motions.length) return importError('no-motion');
+      if (!dancers.length) return importError(motions.every((m) => m.kind === 'bad') ? 'bad-vmd' : 'only-camera');
+      motion = dancers[0];
+    }
+    if (!name) name = base(motion.path).replace(/\.[^.]+$/, '');
+    const others = dancers.filter((m) => m !== motion).map((m) => m.path);
+    if (others.length) warnings.push(`文件夹里还有 ${others.length} 个舞蹈动作，默认用骨骼帧最多的那个，可以在下面换。`);
+    // the music: the pack's own, else the one named like the motion, else the largest
+    const bySize = songs.slice().sort((a, b) => b.size - a.size);
+    const audio = (metaAudio && songs.find((f) => base(f.path).toLowerCase() === metaAudio)) || songs.find((f) => stem(f.path) === stem(motion.path)) || bySize[0] || null;
+    if (!audio && encrypted.length) warnings.push(IMPORT_ERRORS['encrypted-audio']);
+    const cover = pics.find((f) => /^cover\./i.test(base(f.path))) || pics.find((f) => /^thumb\./i.test(base(f.path))) || pics[0] || null;
+    const readme = files.find((f) => /\.txt$/i.test(f.path) && /re[a]?d[-_ ]?me/i.test(base(f.path))) || files.find((f) => /\.txt$/i.test(f.path)) || null;
+    return {
+      ok: true, source, name, motion: motion.path, others, audio: audio ? audio.path : null, audios: bySize.map((f) => f.path),
+      cover: cover ? cover.path : null, covers: pics.map((f) => f.path), readme: readme ? readme.path : null, warnings,
+    };
+  }
+
+  return { ID_RE, FILE_RE, DEMO_ID, SHORT_LOOP, LOOK_LABEL, AUDIO_EXT, COVER_EXT, IMPORT_ERRORS, demoEntry, cleanDanceIndex, listDances, publicEntry, findDance, pickDance, cannotDance, creditOf, danceId, detectDance, importError, fileExt: ext };
 });

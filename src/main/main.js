@@ -21,6 +21,7 @@ const { CatalogDownloader } = require('./catalog');
 const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
+const danceImport = require('./dance-import');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
@@ -272,7 +273,9 @@ function danceList() {
   const r = vrmDances.listDances(vrmLibrary && vrmLibrary.dances);
   const v = service.view();
   const no = DancesLib.cannotDance(v && v.look);
-  return { dir: r.dir, source: r.source, ...(r.refused ? { refused: r.refused } : {}), ...(r.error ? { error: r.error } : {}), vrm: !no, ...(no ? { reason: no.reason, message: no.message } : {}), dances: r.dances.map(DancesLib.publicEntry) };
+  // coverUrl / importedAt: for the lists (the pet window's 跳舞 menu, the settings window's 舞蹈 page)
+  const row = (e) => ({ ...DancesLib.publicEntry(e), coverUrl: e.cover ? `vrmlib://dance/${e.cover}` : null, ...(e.importedAt ? { importedAt: e.importedAt } : {}) });
+  return { dir: r.dir, source: r.source, ...(r.refused ? { refused: r.refused } : {}), ...(r.error ? { error: r.error } : {}), vrm: !no, ...(no ? { reason: no.reason, message: no.message, kind: no.kind } : {}), importing: danceImport.importing(), dances: r.dances.map(row) };
 }
 // Dance in the pet window: not a VRM look → the reason, without asking the window; an unknown id → no-dance.
 async function dancePlay({ id, name, loop } = {}) {
@@ -285,6 +288,15 @@ async function dancePlay({ id, name, loop } = {}) {
   return askRenderer('dance', { id: id || null, name: name || null, loop }, 15000);
 }
 const danceStop = () => askRenderer('dance-stop', {});
+const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
+// 导入舞蹈 (settings → 舞蹈, docs/vrm-dance.md §5.5): pick (a dialog; e2e: debug-next-open, several paths split by
+// newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
+async function pickPaths(e, opts) {
+  if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
+  const r = await dialog.showOpenDialog(windowOf(e) || win, opts);
+  return r.canceled ? [] : r.filePaths || [];
+}
+const danceDirNow = () => (vrmLibrary && vrmLibrary.dances && vrmLibrary.dances.dir) || null;
 const danceState = async () => { const r = await askRenderer('dance-state', {}); return r && r.ok ? r.dance : null; };
 
 async function applyApi() {
@@ -615,6 +627,31 @@ function wire() {
   ipcMain.handle('dance:play', (_e, opts) => dancePlay(opts || {}));
   ipcMain.handle('dance:stop', () => danceStop());
   ipcMain.handle('dance:state', () => danceState());
+  ipcMain.handle('dance:loop', (_e, { on } = {}) => danceLoop(on));
+  ipcMain.handle('dance-import-pick', async (e, { folder } = {}) => {
+    if (danceImport.importing()) return DancesLib.importError('busy');
+    const paths = await pickPaths(e, folder
+      ? { title: '选择舞蹈文件夹', properties: ['openDirectory'] }
+      : { title: '选择舞蹈文件（.vmd，可同时选上音乐和封面）', properties: process.platform === 'darwin' ? ['openFile', 'openDirectory', 'multiSelections'] : ['openFile', 'multiSelections'], filters: [{ name: '舞蹈（.vmd、音乐、封面、readme）', extensions: ['vmd', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'json', 'ncm'] }] });
+    if (!paths.length) return { ok: false, reason: 'canceled' };
+    try { return danceImport.inspect(paths); } catch (err) { logError(err); return DancesLib.importError('bad-vmd'); }
+  });
+  ipcMain.handle('dance-import-extra', async (e, { token, kind } = {}) => {
+    const audio = kind === 'audio';
+    const paths = await pickPaths(e, { title: audio ? '选择舞蹈音乐' : '选择舞蹈封面', properties: ['openFile'], filters: [audio ? { name: '音乐（mp3 / wav / ogg / m4a / flac）', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'ncm'] } : { name: '图片（jpg / png / webp）', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] });
+    if (!paths.length) return { ok: false, reason: 'canceled' };
+    return danceImport.addExtra(String(token || ''), audio ? 'audio' : 'cover', paths[0]);
+  });
+  ipcMain.handle('dance-import-commit', async (_e, opts = {}) => {
+    try { return await danceImport.commit(opts, danceDirNow()); } catch (err) { logError(err); return DancesLib.importError('write-failed'); }
+  });
+  ipcMain.handle('dance-import-cancel', () => danceImport.cancel());
+  // 删除舞蹈: the one she is dancing stops first (at once), then its folder and its entry go
+  ipcMain.handle('dance-remove', async (_e, { id } = {}) => {
+    const st = await danceState().catch(() => null);
+    if (st && st.id === id) await askRenderer('dance-stop', { immediate: true });
+    return danceImport.remove(danceDirNow(), String(id || ''));
+  });
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
     if (!IVoice.voiceOn(service.settings.prefs)) tts.engine.stopAll(); // 朗读 off or 静音: nothing more goes to an engine

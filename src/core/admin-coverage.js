@@ -148,7 +148,7 @@ const RUNTIME = [
   { id: 'roam', label: '走动', where: '玩法 → 桌宠行为', keys: ['prefs.roam'], actions: ['admin-place-pet'] },
   { id: 'size', label: '大小', where: '玩法 → 桌宠行为', keys: ['petScale'] },
   { id: 'touch', label: '触摸与音效', where: '玩法 → 桌宠行为', keys: ['prefs.touchZones', 'prefs.touchHint', 'prefs.clickSound', 'prefs.memes', 'prefs.collide'] },
-  { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 桌宠行为 → 动作', keys: ['prefs.danceVolume', 'prefs.muted'] },
+  { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 和她一起 → 舞蹈', keys: ['prefs.danceVolume', 'prefs.muted'], actions: ['dance:play', 'dance:stop', 'dance:loop', 'dance-import-pick', 'dance-import-extra', 'dance-import-commit', 'dance-import-cancel', 'dance-remove'] },
   { id: 'proactive', label: '主动搭话', where: '玩法 → 主动搭话与好感', keys: ['proactive.enabled', 'proactive.speakCooldownMin', 'proactive.boredAfterMin', 'proactive.hungryAt', 'proactive.maxLlmPerHour'] },
   { id: 'affection', label: '好感', where: '玩法 → 主动搭话与好感；角色详情 → 好感', keys: ['affectionRules.dailyCap', 'affectionRules.decay'], actions: ['unlock-all'] },
   { id: 'visitors', label: '同屏伙伴', where: '玩法 → 同屏伙伴', keys: ['visitors', 'prefs.collide'] },
@@ -251,7 +251,7 @@ function collect(root) {
   const read = (...p) => fs.readFileSync(path.join(root, ...p), 'utf8');
   const schema = require(path.join(root, 'src', 'core', 'settings-schema.js'));
   const settingsLib = require(path.join(root, 'src', 'core', 'settings.js'));
-  const chans = (src) => [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9-]+)'/g)].map((m) => m[1]);
+  const chans = (src) => [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9:-]+)'/g)].map((m) => m[1]);
   const main = read('src', 'main', 'main.js');
   const between = (src, start, end) => {
     const i = src.indexOf(start);
