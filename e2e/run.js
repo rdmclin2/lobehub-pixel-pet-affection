@@ -4544,6 +4544,71 @@ async function ivoice() {
       return note(`murmur with 朗读碎碎念 off: offered ${before.length}; on: 「${after[0].text}」 said via ${sp.provider} (${sp.status})`);
     }, page);
 
+    await step(S, 'I13b 静音 (toolbar speaker): one click silences the reading line, interactions and the click sound; a second click brings them back', async () => {
+      await idle();
+      await page.evaluate(() => window.pet.setPrefs({ clickSound: true, touchZones: false }));
+      await page.waitForTimeout(300);
+      await hover(page);
+      const btn = page.locator('#btn-mute');
+      assert.equal(await btn.getAttribute('aria-pressed'), 'false', 'starts un-muted');
+      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
+      // a long reply is being read when the speaker is clicked: it stops at once
+      mock.perCharMs = 300; // long enough to click the speaker while she is still reading
+      await page.evaluate(() => { window.petFx.speak('今天天气真好。我们一起出去走走吧。路上还可以买点好吃的。回来再一起看书。'); }); // not awaited: speak() resolves once she has finished
+      const samples = [];
+      for (let i = 0; ; i++) {
+        const st = await page.evaluate(() => { const sp = window.petFx.lastSpeech(); return { kind: sp && sp.kind, status: sp && sp.status, cur: sp && sp.current, s: sp && sp.sentences.map((x) => x.status).join(','), audio: window.petFx.audioState() }; });
+        samples.push(st);
+        if (st.kind === 'api' && st.audio && !st.audio.paused) break;
+        if (i > 150) throw new Error(`reply not playing: ${JSON.stringify(samples.slice(-3))}`);
+        await page.waitForTimeout(100);
+      }
+      const reading = await last();
+      await btn.click();
+      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'true', null, { timeout: 3000, polling: 50 });
+      const stopped = await page.evaluate((n) => ({ sp: window.petFx.lastSpeech(), audio: window.petFx.audioState(), stop: window.petFx.speechLog().find((e) => e.n === n && e.event === 'stop') }), reading.n);
+      mock.perCharMs = 0;
+      assert.equal(stopped.sp.status, 'interrupted', JSON.stringify(stopped.sp));
+      assert.equal(stopped.stop && stopped.stop.why, 'muted');
+      assert.equal(stopped.audio, null, 'nothing playing');
+      assert.equal(await prefNow('muted'), true);
+      assert.equal(await prefNow('voice'), true, '朗读回复 left as it was');
+      const label = await btn.getAttribute('aria-label');
+      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
+      // muted: pat + 玩耍 + a reply — the bubble shows each line, nothing is offered to the voice, no click sound
+      await page.waitForTimeout(1600);
+      const n0 = (await slog()).length;
+      const m0 = mock.log.length;
+      const snd0 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      const b = await petBox();
+      await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4);
+      await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'pat', null, { timeout: 15000 });
+      await page.evaluate(() => window.pet.debugSet({ energy: 80 }));
+      await clickAct(page, 'play');
+      await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'play', null, { timeout: 15000 });
+      await page.evaluate(() => window.petFx.speak('一句回复'));
+      await page.waitForTimeout(1500);
+      await shot('i13b-muted-play');
+      const got = (await slog()).slice(n0);
+      const snd1 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      assert.equal(got.length, 0, `offered while muted: ${JSON.stringify(got)}`);
+      assert.equal(mock.log.length, m0, 'no HTTP request while muted');
+      assert.equal(snd1, snd0, 'no click sound while muted');
+      // un-mute from the same button: the next interaction is read again and the click sound is back
+      await hover(page);
+      await btn.click();
+      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+      assert.equal(await prefNow('muted'), false);
+      await page.waitForTimeout(1600);
+      const r = await interact('静音后恢复 pat', /^pat$/, async () => { const bb = await petBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height * 0.4); });
+      const snd2 = (await page.evaluate(() => window.petFx.stats())).sounds;
+      assert.ok(snd2 > snd1, `click sound back (${snd1} → ${snd2})`);
+      return note(`静音: reading #${reading.n} stopped (why=muted), button aria-label「${label}」, prefs.voice stays on; muted pat + play + reply → offered ${got.length}, HTTP ${m0} → ${mock.log.length}, click sounds ${snd0} → ${snd1}; un-muted → ${r}; click sounds ${snd1} → ${snd2}`);
+    }, page);
+
+    mock.perCharMs = 0;
+    await page.evaluate(() => window.pet.setPrefs({ muted: false, clickSound: false, touchZones: true }));
+
     await step(S, 'I14 关掉 朗读回复: every interaction again — no line offered, no request to any engine', async () => {
       await idle();
       await flip('voice', false, '朗读回复', 'i14-voice-off');
@@ -7815,12 +7880,14 @@ async function petuiScenario() {
         await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
         await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
       }, page);
-      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
+      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
         await hover(page);
         await page.waitForTimeout(400);
         await shot('05-toolbar');
         const acts = await page.$$eval('#toolbar [data-act]', (b) => b.map((x) => x.dataset.act));
-        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'settings']);
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']);
+        const rows = await page.$$eval('#toolbar [data-act]', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
+        assert.equal(rows, 1, 'the toolbar fits on one row');
         return acts.join(' / ');
       }, page);
       await step(S, `${theme}: 喂食菜单`, async () => {
@@ -8235,7 +8302,7 @@ async function adminScenario() {
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
       await hover(page);
       const items = await page.$$eval('#toolbar [data-act]', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
-      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '设置']);
+      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置']);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
       await page.click('[data-act="settings"]');

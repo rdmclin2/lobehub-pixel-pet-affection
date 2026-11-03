@@ -143,6 +143,10 @@ body.hover .hud { opacity: 1; pointer-events: auto; }
 .toolbar .btn { padding: 0 var(--pet-space-sm); min-height: 21px; line-height: 19px; font-size: 12px; background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
 .toolbar .btn:hover:not(:disabled) { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
 .toolbar .btn.icon-btn { padding: 0 var(--pet-space-xs); min-width: 26px; }
+/* 静音: the speaker shows what you'd hear now; muted = speaker crossed out, in the secondary text colour */
+#btn-mute .mute-off, #btn-mute[aria-pressed="true"] .mute-on { display: none; }
+#btn-mute[aria-pressed="true"] .mute-off { display: inline-block; }
+#btn-mute[aria-pressed="true"] { color: var(--lobe-color-text-tertiary); }
 /* chat input: the LobeHub chat input bar (one elevated card holding the attach, the text box, the mic and send) */
 .chat-row { position: absolute; left: 4px; right: 4px; bottom: 60px; margin: 0; gap: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); padding: var(--pet-space-xs); }
 .chat-row input { flex: 1; padding: 2px var(--pet-space-xs); border: none; background: transparent; box-shadow: none; font-size: 12px; }
@@ -229,8 +233,9 @@ body.busy.over .stop-btn { display: flex; }
 .toast-x .ico { width: 13px; height: 13px; }
 .toast-btn { margin-top: var(--pet-space-xs); font-size: 11px; padding: 1px var(--pet-space-sm); }
 
-/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
-.toolbar { flex-wrap: wrap; justify-content: center; max-width: 236px; }
+/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天, 🔈 静音 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
+/* 4 interactions + 🔈 + ⚙ on one row (4×42 + 2×26 + 5×4 = 240px); the window leaves ~264px */
+.toolbar { flex-wrap: wrap; justify-content: center; max-width: 248px; }
 .toolbar .btn { position: relative; }
 .new-dot.dot { top: -3px; right: -3px; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; }
 .new-dot { position: absolute; top: -8px; right: -8px; font-size: 9px; font-weight: 500; line-height: 14px; min-width: 14px; color: var(--pet-on-solid); background: var(--lobe-color-error); border-radius: 7px; padding: 0 3px; box-shadow: 0 0 0 1.5px var(--pet-surface); }
