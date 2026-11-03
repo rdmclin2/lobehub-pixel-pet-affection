@@ -400,3 +400,28 @@ test('the bake core keeps its exports: the shared writer is the same function (n
   assert.equal(B.qslerp, W.qslerp);
   assert.equal(B.VRM_PARENT, W.VRM_PARENT);
 });
+
+test('an English-named dance (center, upper body, arm_L, leg IK_L…) bakes exactly like the same dance in Japanese', () => {
+  const pairs = [
+    ['センター', 'center', { pos: [3, -2, 1] }], ['グルーブ', 'groove', { pos: [0, -0.5, 0] }], ['下半身', 'lower body', { rot: qy(10) }], ['上半身', 'upper body', { rot: qx(-15) }],
+    ['上半身2', 'upper body2', { rot: qz(5) }], ['首', 'neck', { rot: qy(8) }], ['頭', 'head', { rot: qx(6) }], ['左肩', 'shoulder_L', { rot: qz(7) }],
+    ['左腕', 'arm_L', { rot: qz(40) }], ['左腕捩', 'arm twist_L', { rot: qx(20) }], ['左ひじ', 'elbow_L', { rot: qy(-50) }], ['左手首', 'wrist_L', { rot: qz(-10) }],
+    ['右腕', 'arm_R', { rot: qz(-30) }], ['左親指1', 'thumb1_L', { rot: qx(15) }], ['左人指2', 'fore2_L', { rot: qz(-25) }],
+    ['左足IK', 'leg IK_L', { pos: [0.5, 1.5, -2] }], ['右足IK', 'leg IK_R', { pos: [0, 0.5, 1] }], ['左足', 'leg_L', { rot: qx(-10) }],
+  ];
+  const ja = []; const en = [];
+  for (const [j, e, v] of pairs) { ja.push({ name: j, frame: 0 }, { name: j, frame: 30, ...v }); en.push({ name: e, frame: 0 }, { name: e, frame: 30, ...v }); }
+  const morphsJa = [{ name: 'あ', frame: 0, weight: 0 }, { name: 'あ', frame: 30, weight: 1 }, { name: 'まばたき', frame: 15, weight: 1 }];
+  const morphsEn = [{ name: 'a', frame: 0, weight: 0 }, { name: 'a', frame: 30, weight: 1 }, { name: 'blink', frame: 15, weight: 1 }];
+  const J = bake(ja, { morphs: morphsJa });
+  const E = bake(en, { morphs: morphsEn });
+  assert.deepEqual(E.report.bones.unmapped, []);
+  assert.deepEqual(E.report.bones.mapped, J.report.bones.mapped);
+  assert.equal(E.report.bones.english['leg IK_L'], '左足IK');
+  for (const b of R.VRM_BONES) for (const t of [0, 0.5, 1]) assert.ok(W.qangle(rotAt(E.clip, b, t), rotAt(J.clip, b, t)) < 1e-4, `${b} at ${t}s`); // (identical quaternions read ~2e-6° through acos)
+  for (const t of [0, 0.5, 1]) assert.ok(len(sub(hipsAt(E.clip, t), hipsAt(J.clip, t))) < 1e-9);
+  assert.deepEqual(Object.keys(E.clip.expressions).sort(), ['aa', 'blink']);
+  // and it really moves: the legs are driven by the English-named IK, the arm by arm_L
+  assert.ok(W.qangle(rotAt(E.clip, 'leftLowerLeg', 1), ID) > 10);
+  assert.ok(W.qangle(rotAt(E.clip, 'leftUpperArm', 1), rotAt(E.clip, 'leftUpperArm', 0)) > 30);
+});

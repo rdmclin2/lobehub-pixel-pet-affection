@@ -145,7 +145,7 @@ for (const [s, j] of SIDES) {
   }
 }
 // Every MMD bone the bake reads, with what it becomes (for the report and the tests). Names are normalised
-// (vmd.normName: ＩＫ → IK, ０ → 0).
+// (vmd.boneName: ＩＫ → IK, ０ → 0, and the English names — center, upper body, arm_L, leg IK_L… — onto these).
 const BONE_ROLE = {
   全ての親: 'hips (root)', センター: 'hips', グルーブ: 'hips', 腰: 'hips', 下半身: 'hips',
   上半身: 'spine', 上半身1: 'spine', 上半身2: 'chest', 上半身3: 'upperChest', 首: 'neck', 頭: 'head',
@@ -253,8 +253,8 @@ function retargetVmd(input, options = {}) {
   const vmd = Buffer.isBuffer(input) || input instanceof Uint8Array ? V.parseVmd(input) : input;
   const kind = V.classifyVmd(vmd);
   if (kind !== 'motion') throw Object.assign(new Error(kind === 'camera' ? 'this VMD is a camera motion, not a dance' : kind === 'prop' ? 'this VMD moves a prop, not a person' : 'this VMD has no motion in it'), { code: `vmd-${kind}` });
-  const keys = V.groupKeys(vmd.bones);
-  const morphKeys = V.groupKeys(vmd.morphs);
+  const keys = V.groupKeys(vmd.bones, V.boneName); // English bone / morph names folded onto the Japanese ones
+  const morphKeys = V.groupKeys(vmd.morphs, V.morphName);
   const last = V.lastFrame(vmd);
   const step = 30 / o.fps;
   const nFrames = Math.floor(last / step) + 1;
@@ -510,6 +510,8 @@ function retargetVmd(input, options = {}) {
     else if (BONE_IGNORED.has(name)) ignored.push(name);
     else if (moves(name)) unmapped.push(name);
   }
+  const english = {};
+  for (const k of vmd.bones) { const n = V.normName(k.name); const c = V.boneName(n); if (c !== n) english[n] = c; }
   const animated = VRM_BONES.filter((b) => tracks[b].some((q) => qangle(q, tracks[b][0]) > 0.5));
   const ext = extentOf(clip, frames.length, o.fps);
   const ik = modeCount.ik && modeCount.fk ? 'mixed' : modeCount.ik ? 'on' : 'fk';
@@ -520,7 +522,7 @@ function retargetVmd(input, options = {}) {
     frames: nFrames,
     fps: o.fps,
     source: { boneKeys: vmd.bones.length, morphKeys: vmd.morphs.length, lastFrame: last, bones: keys.size, morphs: morphKeys.size, ikSwitchFrames: ikFrames.length },
-    bones: { mapped: mapped.sort(), ignored: ignored.sort(), unmapped: unmapped.sort(), vrm: VRM_BONES.length, animated },
+    bones: { mapped: mapped.sort(), ignored: ignored.sort(), unmapped: unmapped.sort(), english, vrm: VRM_BONES.length, animated },
     ik,
     legs: Object.fromEntries(SIDES.map(([s]) => [s, legMode[s].bakedFk ? 'fk (IK never animated)' : 'ik'])),
     ikStats: {

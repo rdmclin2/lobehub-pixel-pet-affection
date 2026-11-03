@@ -254,6 +254,7 @@ VMD 帧号按 30 fps；每个骨骼帧带 X / Y / Z / 旋转 4 条三次贝塞�
 - **参考骨架**：`MMD_REF` 按约 20 单位高的标准 MMD 模型取值；腿在侧视里取「髋–踝连线上的膝」（rest 腿伸直），否则伸直时 VRM 膝会反折约 6°。A-pose 角由 `腕→ひじ` 算出为 38.35°。
 - **hips 原点**：输出的 hips 位移与 rest 节点都减去参考 `下半身` 的 x/z，静止站立 = 正好在原点。
 - **IK 模式**：先看 IK 开关段；但「足ＩＫ / 足IK親 从未动过、足 / ひざ 有 FK 帧」判为已烘成 FK（书记舞的 IK 段写着 on，IK 骨只有第 0 帧）。
+- **英文骨名**：`vmd.boneName` 先做 NFKC，再把英文骨名折叠到日文标准名：PMX 标准英文名（`center`、`groove`、`upper body2`、`arm_L`、`arm twist_L`、`leg IK_L`、`toe IK_L`、`leg IKP_L`、`fore1_L`、`third1_L`…）以及常见写法（`index/ring/pinky`、`.L` / ` L` / `left_`、mmd_tools 的 `leg_L_D`）；表情同理（`a/i/u/e/o`、`blink`、`wink_R`、`smile`）。分组、IK 开关段、人物/道具判定、重定向都用折叠后的名字，报告 `bones.english` 列出文件里出现的英文名及其对应。
 - **追加映射**：`上半身1`（部分模型在 上半身 与 上半身2 之间的一节）右乘并入 spine；`足先EX`（准标准骨架的脚尖）并入 toes。
 - **报告**：`bake.json` / `retargetVmd().report` 含 `ikStats`（FK 复核误差、最远目标 / 腿长、伸直占比、膝角范围）、`stage.clampHits`、`extent`、`ground`、`bones.mapped/ignored/unmapped/animated`、`morphs`、`fingers`。
 

@@ -61,6 +61,48 @@ function encodeShiftJis(str) {
 // folded (ＩＫ → IK, ０ → 0, ﾈｸﾀｲ → ネクタイ), spaces trimmed.
 const normName = (s) => String(s || '').normalize('NFKC').trim();
 
+// English bone names (docs/vrm-dance.md §2.3): the English names of the standard MMD skeleton as PMX models carry
+// them (center, upper body, arm_L, leg IK_L…), which motions exported from English MMD / mmd_tools / MMD4Mecanim
+// use, plus common spellings (index / ring / pinky, .L / " L" / left_ …). Each is folded onto the Japanese name the
+// tables use, so an English-named dance bakes exactly like the same dance in Japanese.
+const enKey = (s) => normName(s).toLowerCase().replace(/[\s_.\-]+/g, '_').replace(/^_+|_+$/g, '');
+const EN_CENTRE = {
+  全ての親: ['master', 'mother', 'all_parent', 'parent_of_all'], センター: ['center', 'centre'], グルーブ: ['groove'], 腰: ['waist'],
+  上半身: ['upper_body', 'upperbody'], 上半身1: ['upper_body1', 'upperbody1'], 上半身2: ['upper_body2', 'upperbody2'], 上半身3: ['upper_body3', 'upperbody3'],
+  下半身: ['lower_body', 'lowerbody'], 首: ['neck'], 頭: ['head'], 両目: ['eyes', 'both_eyes'],
+};
+const EN_SIDED = { // Japanese name without 左/右 → English bases (the side is a suffix or a prefix)
+  目: ['eye'], 肩P: ['shoulderp', 'shoulder_p'], 肩: ['shoulder'], 肩C: ['shoulderc', 'shoulder_c'],
+  腕: ['arm'], 腕捩: ['arm_twist', 'armtwist'], ひじ: ['elbow'], 手捩: ['wrist_twist', 'hand_twist', 'wristtwist'], 手首: ['wrist', 'hand'],
+  親指0: ['thumb0'], 親指1: ['thumb1'], 親指2: ['thumb2'],
+  足: ['leg'], ひざ: ['knee'], 足首: ['ankle', 'foot'], つま先: ['toe'],
+  足IK: ['leg_ik', 'legik', 'foot_ik'], つま先IK: ['toe_ik', 'toeik'], 足IK親: ['leg_ikp', 'leg_ik_parent', 'leg_ik_p'],
+  腰キャンセル: ['waist_cancel', 'waistcancel'], 足D: ['leg_d', 'legd'], ひざD: ['knee_d', 'kneed'], 足首D: ['ankle_d', 'ankled'], 足先EX: ['toe_ex', 'toeex', 'toe2'],
+};
+for (const [ja, ens] of [['人指', ['fore', 'index']], ['中指', ['middle']], ['薬指', ['third', 'ring']], ['小指', ['little', 'pinky']]]) {
+  for (const n of [1, 2, 3]) EN_SIDED[`${ja}${n}`] = ens.map((e) => `${e}${n}`);
+}
+const EN_BONES = new Map();
+for (const [ja, ens] of Object.entries(EN_CENTRE)) for (const e of ens) EN_BONES.set(e, ja);
+for (const [ja, ens] of Object.entries(EN_SIDED)) {
+  for (const [side, kanji, word] of [['l', '左', 'left'], ['r', '右', 'right']]) {
+    for (const e of ens) {
+      const jaName = ja === '腰キャンセル' ? `${ja}${kanji}` : `${kanji}${ja}`; // MMD writes 腰キャンセル左 (side last)
+      for (const k of [`${e}_${side}`, `${side}_${e}`, `${word}_${e}`, `${e}_${word}`, `${word}${e}`]) EN_BONES.set(k, jaName);
+      if (e.endsWith('_d')) EN_BONES.set(`${e.slice(0, -2)}_${side}_d`, jaName); // leg_L_D (mmd_tools)
+    }
+  }
+}
+// A bone name as the tables know it: NFKC-folded, English names mapped to the Japanese standard name.
+const boneName = (s) => { const n = normName(s); return EN_BONES.get(enKey(n)) || n; };
+// Morphs: the English names of the standard MMD face morphs.
+const EN_MORPHS = new Map(Object.entries({
+  a: 'あ', i: 'い', u: 'う', e: 'え', o: 'お', blink: 'まばたき', wink: 'ウィンク', wink_l: 'ウィンク', wink_left: 'ウィンク',
+  wink_r: 'ウィンク右', wink_right: 'ウィンク右', wink2: 'ウィンク2', wink2_l: 'ウィンク2', wink2_r: 'ウィンク2右', wink2_right: 'ウィンク2右',
+  smile: '笑い', laugh: '笑い', cheerful: 'にこり', angry: '怒り', anger: '怒り', troubled: '困る', sad: '困る',
+}));
+const morphName = (s) => { const n = normName(s); return EN_MORPHS.get(enKey(n)) || n; };
+
 // ---------- reading ----------
 function parseVmd(input) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input.buffer ? input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength) : input);
@@ -119,7 +161,7 @@ function parseVmd(input) {
     o += 9;
     if (k * 21 > left()) throw new Error('VMD truncated in the IK section');
     const states = {};
-    for (let j = 0; j < k; j++, o += 21) states[normName(decodeName(buf.subarray(o, o + 20)))] = buf[o + 20] !== 0;
+    for (let j = 0; j < k; j++, o += 21) states[boneName(decodeName(buf.subarray(o, o + 20)))] = buf[o + 20] !== 0;
     ik.push({ frame, show, states });
   }
   return { version, modelName, bones, morphs, cameras, lights, shadows, ik };
@@ -133,11 +175,12 @@ function lastFrame(vmd) {
   return m;
 }
 
-// Keys by (normalised) name, sorted by frame; a second key on the same frame replaces the first.
-function groupKeys(keys) {
+// Keys by name (folded with `canon`: boneName for bones, morphName for morphs), sorted by frame; a second key on
+// the same frame replaces the first.
+function groupKeys(keys, canon = normName) {
   const by = new Map();
   for (const k of keys) {
-    const n = normName(k.name);
+    const n = canon(k.name);
     if (!by.has(n)) by.set(n, []);
     by.get(n).push(k);
   }
@@ -154,7 +197,7 @@ function groupKeys(keys) {
 // 'motion' (a dancer) or 'empty'.
 const BODY_BONES = new Set(['センター', '上半身', '下半身', '左足IK', '右足IK', '左腕', '右腕', '左足', '右足', '首', '頭', 'グルーブ', '全ての親']);
 function classifyVmd(vmd) {
-  const names = new Set(vmd.bones.map((k) => normName(k.name)));
+  const names = new Set(vmd.bones.map((k) => boneName(k.name)));
   if (!names.size) return vmd.cameras.length ? 'camera' : vmd.morphs.length ? 'motion' : 'empty';
   let body = 0;
   for (const n of names) if (BODY_BONES.has(n)) body++;
@@ -240,7 +283,7 @@ function morphSampler(keys) {
 // Whether an IK bone is on at a frame, from the IK section (a step function); undefined when the file never
 // says (MMD's default is on).
 function ikEnabled(ikFrames, name, frame) {
-  const n = normName(name);
+  const n = boneName(name);
   let state;
   for (const k of ikFrames) {
     if (k.frame > frame) break;
@@ -293,4 +336,4 @@ function writeVmd(m = {}) {
   return Buffer.concat(parts);
 }
 
-module.exports = { FPS, parseVmd, lastFrame, groupKeys, classifyVmd, bezierY, curve, boneSampler, morphSampler, ikEnabled, writeVmd, encodeShiftJis, decodeName, normName, LINEAR_INTERP };
+module.exports = { FPS, parseVmd, lastFrame, groupKeys, classifyVmd, bezierY, curve, boneSampler, morphSampler, ikEnabled, writeVmd, encodeShiftJis, decodeName, normName, boneName, morphName, EN_BONES, EN_MORPHS, LINEAR_INTERP };

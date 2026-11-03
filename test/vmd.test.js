@@ -152,3 +152,27 @@ test('what a VMD holds: a dancer, a camera, a prop, nothing', () => {
   assert.equal(read({ morphs: [{ name: 'あ', frame: 0, weight: 1 }] }), 'motion', 'a face-only motion still drives her');
   assert.equal(read({}), 'empty');
 });
+
+test('English bone and morph names (PMX standard English names, mmd_tools / MMD4Mecanim spellings) fold onto the Japanese ones', () => {
+  const cases = {
+    master: '全ての親', center: 'センター', groove: 'グルーブ', waist: '腰', 'lower body': '下半身', 'upper body': '上半身', 'upper body2': '上半身2', 'Upper_Body3': '上半身3',
+    neck: '首', head: '頭', eyes: '両目', shoulderP_L: '左肩P', shoulder_R: '右肩', arm_L: '左腕', 'arm twist_L': '左腕捩', elbow_R: '右ひじ', 'wrist twist_R': '右手捩', wrist_L: '左手首',
+    thumb0_L: '左親指0', thumb2_R: '右親指2', fore1_L: '左人指1', 'index3.R': '右人指3', middle2_L: '左中指2', third1_R: '右薬指1', ring3_L: '左薬指3', little1_L: '左小指1', 'pinky2 R': '右小指2',
+    leg_L: '左足', knee_R: '右ひざ', ankle_L: '左足首', toe_R: '右つま先', 'leg IK_L': '左足IK', 'leg ＩＫ_R': '右足IK', 'toe IK_L': '左つま先IK', 'leg IKP_R': '右足IK親',
+    'waist cancel_L': '腰キャンセル左', leg_L_D: '左足D', 'knee D_R': '右ひざD', 'toe EX_L': '左足先EX', LeftElbow: '左ひじ', right_arm: '右腕',
+  };
+  for (const [en, ja] of Object.entries(cases)) assert.equal(VMD.boneName(en), ja, en);
+  // Japanese names and anything unknown pass through (only folded)
+  assert.equal(VMD.boneName('左足ＩＫ'), '左足IK');
+  assert.equal(VMD.boneName('hair_L'), 'hair_L');
+  assert.equal(VMD.morphName('A'), 'あ');
+  assert.equal(VMD.morphName('blink'), 'まばたき');
+  assert.equal(VMD.morphName('wink_R'), 'ウィンク右');
+  assert.equal(VMD.morphName('smile'), '笑い');
+  // grouping, the IK switch section and the dancer check all see the folded names
+  const v = VMD.parseVmd(VMD.writeVmd({ bones: [{ name: 'center', frame: 0 }, { name: 'センター', frame: 10 }, { name: 'arm_L', frame: 0 }], ik: [{ frame: 0, states: { 'leg IK_L': false } }] }));
+  assert.deepEqual([...VMD.groupKeys(v.bones, VMD.boneName).keys()], ['センター', '左腕']);
+  assert.equal(VMD.groupKeys(v.bones, VMD.boneName).get('センター').length, 2);
+  assert.equal(VMD.ikEnabled(v.ik, '左足ＩＫ', 5), false);
+  assert.equal(VMD.classifyVmd(v), 'motion', 'an English-named dancer is a dancer, not a prop');
+});
