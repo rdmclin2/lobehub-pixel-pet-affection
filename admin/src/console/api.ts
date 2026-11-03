@@ -191,7 +191,7 @@ export interface PackRow {
   version: string;
 }
 
-/** A character that does not ship with the app and can be downloaded (src/core/catalog.js notInstalled). */
+/** A character in 商店 → 角色: does not ship with the app, can be downloaded (src/core/catalog.js listAll). */
 export interface CatalogRow {
   adult: boolean;
   author: string;
@@ -208,6 +208,8 @@ export interface CatalogRow {
   pixelated: boolean;
   sizeLabel: string;
   version: string;
+  /** on this machine now (downloaded) */
+  installed: boolean;
 }
 
 /** `catalog-progress` (src/main/catalog.js) */

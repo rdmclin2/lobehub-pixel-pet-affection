@@ -1192,9 +1192,10 @@ class PetService extends EventEmitter {
     return C.listCharacters(this.packs, { adultOk: this._adultOk() });
   }
 
-  // 内置与下载 (core/catalog.js): the characters that can be downloaded and are not on this machine yet.
+  // 商店 → 角色 (core/catalog.js): every character that can be downloaded, each with `installed` (on this
+  // machine now). 18+ ones only with adult content on.
   catalogList() {
-    return Catalog.notInstalled((id) => !!C.characterById(this.packs, id), { adultOk: this._adultOk() });
+    return Catalog.listAll((id) => !!C.characterById(this.packs, id), { adultOk: this._adultOk() });
   }
 
   // { id, name, sizeLabel } when the saved character waits to be downloaded (see view().pendingDownload)

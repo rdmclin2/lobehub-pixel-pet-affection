@@ -4,7 +4,7 @@
  */
 import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Progress, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
-import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Trash2 } from 'lucide-react';
+import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Store, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { api, reasonText, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
@@ -190,10 +190,10 @@ export const useDownloads = () => {
   return { map, start };
 };
 
-const downloading = (p?: DownloadProgress) => !!p && (p.state === 'downloading' || p.state === 'installing');
+export const downloading = (p?: DownloadProgress) => !!p && (p.state === 'downloading' || p.state === 'installing');
 
-/** One character that can be downloaded: her picture from the index, size, and 下载 / progress / 取消. */
-const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => void; p?: DownloadProgress }) => {
+/** One character in 商店 → 角色: her picture from the index, size, and 下载 / progress / 取消, or 已下载 → 查看. */
+export const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => void; p?: DownloadProgress }) => {
   const busy = downloading(p);
   const pct = p && p.total ? Math.min(100, Math.round(((p.received ?? 0) / p.total) * 100)) : 0;
   return (
@@ -201,7 +201,13 @@ const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => vo
       <div className={gstyles.art}>
         <SpriteStage animate={false} height={184} name={d.name} preview={d.picture ? { pixelated: d.pixelated, type: 'image', url: `../renderer/${d.picture}` } : null} />
         <span className={gstyles.ribbon}>
-          <Tag data-not-downloaded={d.id}>未下载</Tag>
+          {d.installed ? (
+            <Tag color="success" data-downloaded={d.id}>
+              已下载
+            </Tag>
+          ) : (
+            <Tag data-not-downloaded={d.id}>未下载</Tag>
+          )}
         </span>
         <span className={gstyles.kind}>
           <KindTag adult={d.adult} kind={d.kind} label={KIND_NAME[d.kind] ?? d.kind} />
@@ -228,7 +234,11 @@ const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => vo
           </Flexbox>
         )}
         <Flexbox align="center" gap={8} horizontal justify="flex-end" style={{ marginBlockStart: 'auto' }}>
-          {busy ? (
+          {d.installed ? (
+            <Button data-store-open={d.id} href={`#/characters/${d.id}`} size="small">
+              查看
+            </Button>
+          ) : busy ? (
             <Button data-download-cancel={d.id} disabled={p?.state === 'installing'} onClick={() => api().cancelDownload(d.id)} size="small">
               取消
             </Button>
@@ -243,22 +253,35 @@ const CatalogCard = ({ d, p, onDownload }: { d: CatalogRow; onDownload: () => vo
   );
 };
 
+/** 商店 → 角色: the catalog as cards (pages/Store.tsx), the same card style as the 图鉴. */
+export const CatalogGrid = ({ items }: { items: CatalogRow[] }) => {
+  const dl = useDownloads();
+  return (
+    <div className={gstyles.grid} data-catalog-grid>
+      {items.map((d) => (
+        <CatalogCard d={d} key={d.id} onDownload={() => dl.start(d)} p={dl.map[d.id]} />
+      ))}
+    </div>
+  );
+};
+
 /**
  * 角色图鉴: every character as a collectible card — met ones in colour with their hearts, the rest a shadow.
  * One card per character (T-2764): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two of them, each its own look.
  */
 export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) => {
   const { roster, view, catalog: cat } = useStore();
+  // 商店 holds what can be downloaded (pages/Store.tsx); the 图鉴 lists only characters on this machine
   const catalog = cat ?? [];
   const sw = useSwitch();
   const dl = useDownloads();
   const met = roster.filter((c) => c.met).length;
   const [kind, setKind] = useState('all');
-  // 按形象类型: each character has one kind; 导入的 = from a pack you imported; 未下载 = can be downloaded
-  const kinds = KIND_ORDER.filter((k) => roster.some((c) => c.kind === k) || catalog.some((d) => d.kind === k));
+  // 按形象类型: each character has one kind; 导入的 = from a pack you imported
+  const kinds = KIND_ORDER.filter((k) => roster.some((c) => c.kind === k));
   const user = roster.filter((c) => c.source === 'user').length;
-  const shown = kind === 'remote' ? [] : roster.filter((c) => kind === 'all' || (kind === 'user' ? c.source === 'user' : c.kind === kind));
-  const remote = catalog.filter((d) => kind === 'all' || kind === 'remote' || d.kind === kind);
+  const shown = roster.filter((c) => kind === 'all' || (kind === 'user' ? c.source === 'user' : c.kind === kind));
+  const remote = catalog.filter((d) => !d.installed);
   const pending = view?.pendingDownload as { id: string; name: string; sizeLabel: string } | null | undefined;
   const pendingRow = pending ? catalog.find((d) => d.id === pending.id) : undefined;
   return (
@@ -269,7 +292,7 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
             导入角色
           </Button>
         }
-        description={`已遇见 ${met} / ${roster.length} 位。每种形象都是一位独立角色；应用自带 5 位像素角色，其他角色下载后就能结识。`}
+        description={`已遇见 ${met} / ${roster.length} 位。每种形象都是一位独立角色；更多角色在商店里下载。`}
         title="角色图鉴"
       />
       {!view && <Alert description="先在桌宠窗口里选一位角色并完成唤醒，之后就能在这里结识和切换她们。" showIcon title="还没有唤醒桌宠" type="info" />}
@@ -296,11 +319,9 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         <Segmented
           onChange={(v) => setKind(String(v))}
           options={[
-            { label: `全部 ${roster.length + catalog.length}`, value: 'all' },
-            // a kind counts her characters and the ones of that kind that can be downloaded (both are listed)
-            ...kinds.map((k) => ({ label: `${KIND_NAME[k] ?? k} ${roster.filter((c) => c.kind === k).length + catalog.filter((d) => d.kind === k).length}`, value: k })),
+            { label: `全部 ${roster.length}`, value: 'all' },
+            ...kinds.map((k) => ({ label: `${KIND_NAME[k] ?? k} ${roster.filter((c) => c.kind === k).length}`, value: k })),
             ...(user ? [{ label: `导入的 ${user}`, value: 'user' }] : []),
-            ...(catalog.length ? [{ label: `未下载 ${catalog.length}`, value: 'remote' }] : []),
           ]}
           size="small"
           value={kind}
@@ -354,18 +375,13 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
         ))}
       </div>
       {remote.length > 0 && (
-        <Flexbox gap={12}>
-          <Flexbox gap={2}>
-            <Text strong>可下载的角色</Text>
-            <Text fontSize={12} type="secondary">
-              这些形象不随应用自带，下载后会成为图鉴里的一位角色，可以切换、换装；不需要了可以在她的页面删除下载。
-            </Text>
-          </Flexbox>
-          <div className={gstyles.grid} data-catalog-grid>
-            {remote.map((d) => (
-              <CatalogCard d={d} key={d.id} onDownload={() => dl.start(d)} p={dl.map[d.id]} />
-            ))}
-          </div>
+        <Flexbox align="center" data-store-hint gap={8} horizontal justify="space-between" wrap="wrap">
+          <Text fontSize={12} type="secondary">
+            {`商店里还有 ${remote.length} 位角色可以下载。`}
+          </Text>
+          <Button data-go-store href="#/store" icon={Store} size="small">
+            去商店
+          </Button>
         </Flexbox>
       )}
       {sw.modal}
@@ -562,7 +578,7 @@ const wstyles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const KIND_NAME: Record<string, string> = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
+export const KIND_NAME: Record<string, string> = { sprites: '像素', pictures: '图片', rig: '全动态', live2d: 'Live2D', vrm: 'VRM', video: '视频' };
 
 /**
  * 衣柜 (T-2784): her outfits as cards, the way her looks were listed before every look became a character of
@@ -856,7 +872,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
                   danger
                   icon={Trash2}
                   onClick={async () => {
-                    const msg = c.current ? '她正陪着你：删除后先换回默认形象，再下载就能换回来。' : '她的形象文件会从本机删除，之后可以在角色图鉴里重新下载。';
+                    const msg = c.current ? '她正陪着你：删除后先换回默认形象，再下载就能换回来。' : '她的形象文件会从本机删除，之后可以在商店里重新下载。';
                     if (!(await ask(`删除下载「${p.name}」？`, `${msg}衣柜、好感和聊天记录都会保留。`, '删除下载', true))) return;
                     const r = await api().removeDownload(p.id);
                     if (r && r.ok) {
@@ -1271,7 +1287,7 @@ export const PacksPage = () => {
                     data-remove-download={p.id}
                     icon={Trash2}
                     onClick={async () => {
-                      if (await ask(`删除下载「${p.name}」？`, '她的形象文件会从本机删除，之后可以在角色图鉴里重新下载。衣柜、好感和聊天记录都会保留。', '删除下载', true)) run(api().removeDownload(p.id), `已删除下载「${p.name}」`);
+                      if (await ask(`删除下载「${p.name}」？`, '她的形象文件会从本机删除，之后可以在商店里重新下载。衣柜、好感和聊天记录都会保留。', '删除下载', true)) run(api().removeDownload(p.id), `已删除下载「${p.name}」`);
                     }}
                     size="small"
                     type="text"

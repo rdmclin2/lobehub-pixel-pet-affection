@@ -57,10 +57,15 @@ function sizeLabel(bytes) {
 
 // The catalog characters not installed now, as roster entries (core/characters.js shape) with `download`:
 // 18+ ones only when `adultOk`. `installed(id)` says whether one is on disk already.
+const row = (c, installed) => ({ id: c.id, base: c.base, name: c.name, kind: c.kind, adult: !!c.adult, author: c.author || '', license: c.license || '', description: c.description || '', outfits: c.outfits || 0, picture: c.picture || null, pixelated: !!c.pixelated, bytes: c.bytes, sizeLabel: sizeLabel(c.bytes), version: c.version || '', installed });
+
 function notInstalled(installed, { adultOk = false, index = loadIndex() } = {}) {
-  return index.characters
-    .filter((c) => !installed(c.id) && (adultOk || !c.adult))
-    .map((c) => ({ id: c.id, base: c.base, name: c.name, kind: c.kind, adult: !!c.adult, author: c.author || '', license: c.license || '', description: c.description || '', outfits: c.outfits || 0, picture: c.picture || null, pixelated: !!c.pixelated, bytes: c.bytes, sizeLabel: sizeLabel(c.bytes), version: c.version || '' }));
+  return index.characters.filter((c) => !installed(c.id) && (adultOk || !c.adult)).map((c) => row(c, false));
+}
+
+// 商店 → 角色: every catalog character (18+ only when `adultOk`), each with `installed`.
+function listAll(installed, { adultOk = false, index = loadIndex() } = {}) {
+  return index.characters.filter((c) => adultOk || !c.adult).map((c) => row(c, !!installed(c.id)));
 }
 
 // The packs of a repo checkout with everything in catalog/ counted as downloaded (and the clips there marked
@@ -78,4 +83,4 @@ function repoPacks({ catalog = true } = {}) {
   return r;
 }
 
-module.exports = { INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, repoPacks };
+module.exports = { INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, listAll, repoPacks };
