@@ -917,6 +917,14 @@ class PetService extends EventEmitter {
     return this.interjector.addRule(rule);
   }
 
+  interjectSetRuleDisabled(id, disabled) {
+    return this.interjector.setRuleDisabled(String(id || ''), !!disabled);
+  }
+
+  interjectClearDecisions() {
+    return this.interjector.clearDecisions();
+  }
+
   interjectDeleteRule(id) {
     return this.interjector.deleteRule(String(id || ''));
   }

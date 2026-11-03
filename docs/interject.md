@@ -1,8 +1,10 @@
-# 插个嘴（自动插嘴）设计说明 · 初稿
+# 插个嘴（自动插嘴）设计说明
 
 > 代码：`src/core/interject.js`（监听 / 预过滤 / 阈值 / 记录与规则）、`src/core/lh-client.js#decide`（`lh generate decide` 封装）、
-> `src/main/pet-service.js`（接线与说话）、`src/main/main.js`（IPC、剪贴板轮询、本机接口）、`src/core/settings.js`（`interject.*`）。
-> 测试：`test/interject.test.js`。演示：`node scripts/interject-demo.js`；真机 e2e：`xvfb-run -a node e2e/interject.js`。
+> `src/main/pet-service.js`（接线与说话）、`src/main/main.js`（IPC、剪贴板轮询、本机接口）、`src/core/settings.js`（`interject.*`）、
+> `src/core/settings-schema.js`（设置窗口「插个嘴」卡片）、`admin/src/console/pages/Interject.tsx`（规则表与判断记录）、
+> `src/renderer/app.js#bindInterjectFeedback`（气泡上的「别插嘴」/「说得好」）。
+> 测试：`test/interject.test.js`。演示：`node scripts/interject-demo.js`；真机 e2e：`xvfb-run -a node e2e/run.js interject`（§7.3）。
 
 她会“听”几处**明确列出的**输入。这些输入不是对她说的：你在她聊天框里打了字还没发、语音输入的转写、外部程序报来的事、
 （单独打开时）剪贴板。偶尔她会小声插一句。思路和 LobeHub IM Bot 判断「没 @ 它的群消息要不要回」一样
@@ -123,12 +125,14 @@ state（`buildState`）：
 
 | 反馈 | 怎么来 | 结果 |
 | --- | --- | --- |
-| `mute` | 插嘴后 5 分钟内主人在聊天框说「别打扰 / 别插嘴 / 闭嘴 / 安静点 / 嘘…」（`MUTE_RE`），或 UI 点 🙊（`interject-feedback`） | 立刻生成 block 规则 |
-| `like` | UI 点 👍 | 立刻生成 allow 规则 |
+| `mute` | 气泡上方点「别插嘴」（`interject-feedback`），或插嘴后 5 分钟内主人在聊天框说「别打扰 / 别插嘴 / 闭嘴 / 安静点 / 嘘…」（`MUTE_RE`） | 立刻生成 block 规则 |
+| `like` | 气泡上方点「说得好」 | 立刻生成 allow 规则 |
 | `engaged` | 插嘴后 5 分钟内主人在聊天框接话 | 同一范围累计 2 次（含 like）生成 allow 规则 |
 | `ignored` | 插嘴后 10 分钟没有任何反应（心跳 `tick()`） | 同一范围最近 3 次都被忽略时生成 block 规则 |
 
-显式反馈（🙊 / 👍）可以覆盖先记下的隐式反馈；隐式反馈不会覆盖显式反馈。
+显式反馈（「别插嘴」/「说得好」）可以覆盖先记下的隐式反馈；隐式反馈不会覆盖显式反馈。
+
+气泡上的反馈按钮：她插嘴的那句一出现（`interject` 事件 `type: 'said'`），气泡上方出现「别插嘴」「说得好」两个小按钮（`#ij-feedback`，`data-decision` 是这次判断的 id）。点了之后按钮换成一句确认（「好，这类话我不插嘴了」/「嘿嘿，记住啦」），2.5 秒后消失。气泡被别的台词替换或者隐藏时，按钮也跟着消失，所以按钮永远只对应当前这一句插嘴。
 
 ### 5.3 规则（`interject.json` 的 `rules`，最多 50 条）
 
@@ -143,16 +147,23 @@ state（`buildState`）：
 
 - 匹配：规则写了的字段（`category` / `source` / `bucket`）全部相等才算命中。有分类的输入按分类出规则，`other` 按“来源 + 时段”出规则，避免一条规则拦掉所有输入。
 - 同一范围只留一条规则。新的 block 会替换同范围的 allow，反过来也一样。
+- **停用**（`disabled: true`，设置窗口规则表里的开关）：规则留在列表里，但不匹配任何输入，也不写进发给 jev 的 state / criteria。对一句插嘴再点一次同效果的反馈（例如停用了「别插嘴：写代码」后又对一句写代码的插嘴点「别插嘴」）会把这条规则重新启用，不会生成重复规则。
 - 本地生效：block 命中时，预过滤直接拦下，不调用 jev，`hits` 加 1。allow 命中时，中间区间的概率也算“要说”。
 - 模型侧生效：最近 10 条规则写进 state 的「主人定下的规则」，同时拼进问题的 `criteria.true` / `criteria.false`。
 
-### 5.4 查看 / 删除接口（供设置窗口的规则页使用，UI 在后续任务）
+### 5.4 查看 / 停用 / 删除：设置窗口与接口
+
+设置窗口 → 玩法 → 主动搭话与好感，表单下方有两张表（`admin/src/console/pages/Interject.tsx`，`window.petAdmin.onInterject` 推送后自动刷新）：
+
+- **沉淀的规则**：规则（「别插嘴」/「可以插嘴」标签 + 范围）、来源（让她别插嘴 / 点了说得好 / 没人理（连续 3 次）/ 你接过话（累计）/ 手动添加）、命中次数、创建时间；每行一个开关（启用 / 停用）和一个删除按钮（删除前确认）。
+- **最近 20 次判断**：时间、来源、输入摘要（悬停看她说了什么）、概率（没调用 jev 时为 --）、是否插嘴（插了一句 / 没说 / 没去判断 / 判断失败，以及主人的反馈和原因）；「刷新」「清空记录」（清空前确认，规则保留）。
 
 | 层 | 接口 |
 | --- | --- |
-| PetService | `interjectRules() → { rules }` · `interjectAddRule(rule) → { ok, rule }` · `interjectDeleteRule(id) → { ok } \| { ok:false, reason:'not-found' }` · `interjectDecisions(limit=50) → { decisions, status }` · `interjectFeedback(decisionId, 'mute'\|'like'\|'engaged'\|'ignored') → { ok, decision, rule }` · `interjectInput(source, text) → { accepted, reason? }` |
-| IPC（`ipcMain.handle`） | `interject-rules` · `interject-add-rule {rule}` · `interject-delete-rule {id}` · `interject-decisions {limit}` · `interject-feedback {id, kind}` · `set-interject <patch>`；`interject-draft {text}`（send） |
-| preload（`window.pet.interject`） | `rules()` · `addRule(rule)` · `deleteRule(id)` · `decisions(limit)` · `feedback(id, kind)` · `set(patch)` · `draft(text)`；事件 `window.pet.onInterject(cb)`（`{ type: 'decision'\|'feedback'\|'said', decision, rule, decisionId }`） |
+| PetService | `interjectRules() → { rules }` · `interjectAddRule(rule) → { ok, rule }` · `interjectDeleteRule(id) → { ok } \| { ok:false, reason:'not-found' }` · `interjectSetRuleDisabled(id, disabled) → { ok, rule }` · `interjectClearDecisions() → { ok }` · `interjectDecisions(limit=50) → { decisions, status }` · `interjectFeedback(decisionId, 'mute'\|'like'\|'engaged'\|'ignored') → { ok, decision, rule }` · `interjectInput(source, text) → { accepted, reason? }` |
+| IPC（`ipcMain.handle`） | `interject-rules` · `interject-add-rule {rule}` · `interject-delete-rule {id}` · `interject-set-rule {id, disabled}` · `interject-clear-decisions` · `interject-decisions {limit}` · `interject-feedback {id, kind}` · `set-interject <patch>`；`interject-draft {text}`（send） |
+| 设置窗口（`window.petAdmin`） | `interjectRules()` · `interjectDecisions(limit)` · `interjectSetRule(id, disabled)` · `interjectDeleteRule(id)` · `interjectClearDecisions()` · 事件 `onInterject(cb)` |
+| preload（`window.pet.interject`） | `rules()` · `addRule(rule)` · `deleteRule(id)` · `setRule(id, disabled)` · `clearDecisions()` · `decisions(limit)` · `feedback(id, kind)` · `set(patch)` · `draft(text)`；事件 `window.pet.onInterject(cb)`（`{ type: 'decision'\|'feedback'\|'said', decision, rule, decisionId }`） |
 | 本机 HTTP | `POST /pixel-pet/observe {"text"}` → 202 `{ok:true, accepted:true}`，或 200 `{ok:true, accepted:false, reason}` |
 
 ## 6. 配置（`settings.json` → `interject`）
@@ -170,12 +181,44 @@ state（`buildState`）：
 - 迁移：旧文件没有 `interject` 时取默认值（关闭）；非法值回到各自的默认值；`sources` 里不认识的键丢掉；`lowThreshold ≥ highThreshold` 时两项都回到默认值；`model` 必须是 `provider/model` 形式（`DECISION_MODEL_RE`）。见 `normalizeInterject`。
 - 设置窗口：玩法 → 主动搭话与好感 → 「插个嘴」卡片（由 `settings-schema.js` 生成，改动即时生效）。也可以用 `window.pet.interject.set({ enabled: true, sources: { clipboard: true } })`，只改 `sources` 里的一项时其它来源保持不变。
 
-## 7. 怎么用 / 怎么验证
+## 7. 配置与使用方式
 
-1. 设置窗口 → 玩法 → 主动搭话与好感 → 打开「插个嘴」，按需调整来源和额度。jev 需要 LobeHub 登录（`lh login`），服务端须配置 TypeSafe 决策模型。
-2. 在她的聊天框里打一句、停一下不发送；或者用 🎤 说一句；或者让脚本 `curl -X POST -H "Authorization: Bearer <令牌>" -d '{"text":"build failed"}' http://127.0.0.1:7340/pixel-pet/observe`。
-3. 她插嘴后，在聊天框回「别打扰」会沉淀成 block 规则；用 `window.pet.interject.rules()` 查看规则，用 `deleteRule(id)` 删除。
-4. 不连 LobeHub 的演示：`node scripts/interject-demo.js`。这里用假 `lh`（`test/fixtures/fake-lh.js`）：`generate decide` 返回脚本写进 `decide.json` 的概率，`agent run` 返回固定台词。脚本会逐步打印 输入 → 预过滤 → 概率与阈值 → 台词 / 不说的原因 → 反馈 → 规则 → 规则拦截。
-5. 真机 e2e：`xvfb-run -a node e2e/interject.js`。产物在 `out/e2e/interject/`：截图、视频、`evidence.json`、`chapters.json`。
+### 7.1 开启前要准备什么
 
-失败时的降级：没登录、没有 TypeSafe 权限、超时或模型拒答时，她一律不说话。这条记为 `stage: error` 或 `reason: refused`，下一次输入照常判断（计入每小时 jev 预算）。不会改用生成模型去“猜”要不要说。
+| 需要 | 说明 |
+| --- | --- |
+| LobeHub 登录 | 本机 `lh` 已登录（`lh login`，和唤醒她是同一个账号）。判断走 `lh generate decide`，插嘴的那句走她平时的 `lh agent run` |
+| 决策模型权限 | 账号能调用 `interject.model`（默认 `lobehub/jev-1.14.0`），LobeHub 服务端须开放 TypeSafe 决策。想换模型就填 `provider/model` |
+| 额度 | 判断：`maxDecidePerHour`（默认 20 次 / 小时）。插嘴台词和主动搭话共用 `proactive.maxLlmPerHour`，用完换离线台词 |
+| 外部程序来源（可选） | 设置窗口 → 对外接口：开启并拿到令牌，脚本才能 `POST /pixel-pet/observe` |
+
+没登录、没权限、超时或模型拒答时，她一律不说话。这条判断记为「判断失败」（`stage: error`）或「决策模型拒答」（`reason: refused`），下一次输入照常判断（计入每小时 jev 预算）。不会改用生成模型去“猜”要不要说。
+
+### 7.2 开启、使用、查看与清理
+
+1. **开启**：⚙ 设置 → 玩法 → 主动搭话与好感 → 「插个嘴」卡片（卡片右上角标着「默认关闭」/「已打开」）→ 打开总开关。关着时卡片里只有这一个开关；打开后才出现来源、冷却 / 每小时上限、判断额度、防抖、勿扰时段、两个阈值、超时和决策模型（`dependsOn`）。默认值见 §6，改动立即生效。
+2. **使用**：在她的聊天框里打一句、停一下不发送；或者用 🎤 说一句；或者让脚本 `curl -X POST -H "Authorization: Bearer <令牌>" -d '{"text":"build failed"}' http://127.0.0.1:7340/pixel-pet/observe`。
+3. **反馈**：她插嘴后，气泡上方有「别插嘴」「说得好」，点一下就沉淀成规则（§5.2）。在聊天框回「别打扰」也算「别插嘴」。
+4. **查看与清理**：同一页下方的「沉淀的规则」表可以逐条停用 / 删除；「最近 20 次判断」表看概率和结果，可以清空（§5.4）。规则和记录都存在 `<数据目录>/interject.json`（设置 → 数据与关于 → 打开数据目录），退出应用后删掉这个文件等于全部清空。
+5. **关掉**：关闭总开关后，待判断的输入和进行中的判断立刻丢弃，之后的输入直接拒收，**jev 调用为 0**。规则保留，下次打开继续生效。
+
+隐私边界见 §2：只听列出的来源，系统级来源（剪贴板）单独开关、默认关闭，敏感内容不发给模型，记录只留 24 字摘要。
+
+### 7.3 验证
+
+- 不连 LobeHub 的演示：`node scripts/interject-demo.js`。这里用假 `lh`（`test/fixtures/fake-lh.js`）：`generate decide` 返回脚本写进 `decide.json` 的概率，`agent run` 返回固定台词。脚本会逐步打印 输入 → 预过滤 → 概率与阈值 → 台词 / 不说的原因 → 反馈 → 规则 → 规则拦截。
+- 单元测试：`node --test test/interject.test.js`（也在 `npm test` 里）。
+- 真机 e2e（mock jev，不花 token）：`unset ELECTRON_RUN_AS_NODE; xvfb-run -a node e2e/run.js interject`。产物在 `out/e2e/interject/`：截图、`video/`、`evidence.json`、`chapters.json`、`interject.json`。
+
+| 步骤 | 验证内容 |
+| --- | --- |
+| IJ0 | 唤醒后 `interject.enabled = false`，剪贴板来源关，决策模型 `lobehub/jev-1.14.0` |
+| IJ1 | 开关关：在聊天框打字等过防抖，`decide` 调用 0 次，判断记录 0 条 |
+| IJ2 | 设置窗口：关时只显示总开关（说明里有“默认关闭”和隐私边界），在页面上打开后来源、额度、阈值、模型全部出现 |
+| IJ3 | 开 + mock 0.2：语音转写 → 判断 1 次，`confident-no`，不说话 |
+| IJ4 | 开 + mock 0.86：草稿 → 判断 1 次 → 气泡出现插嘴台词，上方有「别插嘴」「说得好」 |
+| IJ5 | 点「别插嘴」→ 反馈 `mute` → block 规则（写代码 / 技术，来源 mute） |
+| IJ6 | 同类草稿（写代码）→ 预过滤 `rule` 拦下，`decide` 调用数不变，没有新台词，规则命中 1 次 |
+| IJ7 | 设置窗口规则表（别插嘴 · 写代码 / 技术 · 让她别插嘴 · 1 次 · 时间）和判断记录（--/86%/20%，没去判断 / 插了一句 + 别插嘴 / 没说） |
+| IJ8 | 在表里停用规则 → 同类输入重新判断；点「说得好」→ 同范围变成 allow 规则 |
+| IJ9 | 在表里删除规则（确认弹窗）→ 表空，`interject.json` 的 `rules` 为空 |

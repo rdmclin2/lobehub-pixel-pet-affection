@@ -8,6 +8,7 @@ import { api, reasonText } from '../api';
 import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
+import { InterjectData } from './Interject';
 
 const Header = ({ page, action }: { action?: ReactNode; page: string }) => {
   const { schema } = useStore();
@@ -55,6 +56,20 @@ export const SimpleSettingsPage = ({ page }: { page: string }) => (
     <SettingsForm page={page} />
   </>
 );
+
+// ---- 主动搭话与好感 ---------------------------------------------------------------------------------------
+/** The schema cards (主动行为 / 插个嘴 / 好感度) plus what 插个嘴 has learned: rules and recent decisions. */
+export const ProactivePage = () => {
+  const { settings } = useStore();
+  const on = !!settings.interject?.enabled;
+  return (
+    <>
+      <Header page="proactive" />
+      <SettingsForm extra={{ 插个嘴: <Tag color={on ? 'success' : undefined}>{on ? '已打开' : '默认关闭'}</Tag> }} page="proactive" />
+      <InterjectData />
+    </>
+  );
+};
 
 // ---- 桌宠行为 ---------------------------------------------------------------------------------------------
 /** The schema cards plus 找回桌宠 (⋯ → 回到右下角 / the tray's 显示桌宠, for a pet covered or off screen). */

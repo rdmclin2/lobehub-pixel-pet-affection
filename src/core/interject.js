@@ -14,8 +14,8 @@
 // obviously not worth asking about, so with the feature off there are zero decision calls.
 //
 // Every judged input leaves a record (a short summary, the probability, what she did, the owner's reaction),
-// persisted in interject.json. The reaction turns into rules: "别打扰" (or an explicit 🙊) blocks that kind of
-// input at once, three ignored remarks in a row block it too, a 👍 or two remarks the owner answered allow it.
+// persisted in interject.json. The reaction turns into rules: "别打扰" (or 别插嘴 on the bubble) blocks that kind of
+// input at once, three ignored remarks in a row block it too, 说得好 or two remarks the owner answered allow it.
 // Rules are applied locally (block = never asked about; allow = an uncertain answer is enough) and are also
 // written into the decision's state and criteria, so the model sees what the owner wants.
 
@@ -107,10 +107,14 @@ function summarize(source, text) {
 
 // ---- rules -------------------------------------------------------------------------------------------------
 // { id, effect: 'block' | 'allow', category?, source?, bucket?, origin: 'mute'|'ignored'|'like'|'engaged'|'manual',
-//   note, createdAt, hits }. A rule matches an input when every field it names is equal.
+//   note, createdAt, hits, disabled? }. A rule matches an input when every field it names is equal. A disabled
+//   rule (switched off in the settings window's rules list) is kept, but matches nothing and is not sent to jev.
 const RULE_KEYS = ['category', 'source', 'bucket'];
 
+const activeRules = (rules) => rules.filter((r) => !r.disabled);
+
 function ruleMatches(rule, facts) {
+  if (rule.disabled) return false;
   const named = RULE_KEYS.filter((k) => rule[k]);
   return named.length > 0 && named.every((k) => rule[k] === facts[k]);
 }
@@ -130,6 +134,7 @@ function normalizeRule(r) {
   out.origin = ['mute', 'ignored', 'like', 'engaged', 'manual'].includes(r.origin) ? r.origin : 'manual';
   out.createdAt = Number.isFinite(r.createdAt) ? r.createdAt : 0;
   out.hits = Number.isInteger(r.hits) && r.hits >= 0 ? r.hits : 0;
+  if (r.disabled === true) out.disabled = true;
   out.note = describeRule(out);
   return out;
 }
@@ -160,7 +165,13 @@ function addRule(rules, rule, now, rnd = Math.random) {
   const r = normalizeRule({ ...rule, createdAt: now });
   if (!r) return { rules, rule: null };
   const existing = rules.find((x) => sameMatch(x, r));
-  if (existing && existing.effect === r.effect) return { rules, rule: existing, existed: true };
+  if (existing && existing.effect === r.effect) {
+    // the same rule again (feedback on a remark it had let through): a disabled one is switched back on
+    if (!existing.disabled) return { rules, rule: existing, existed: true };
+    const on = { ...existing };
+    delete on.disabled;
+    return { rules: rules.map((x) => (x === existing ? on : x)), rule: on, existed: true, reenabled: true };
+  }
   r.id = `r_${now.toString(36)}${crypto.randomBytes(3).toString('hex')}`;
   return { rules: [...rules.filter((x) => !sameMatch(x, r)), r].slice(-LIMITS.rulesKept), rule: r };
 }
@@ -200,7 +211,8 @@ function verdict(answer, cfg, allowMatched = false) {
 // ---- the decision request -------------------------------------------------------------------------------------
 const QUESTION = 'interject';
 
-function buildQuestions(rules = []) {
+function buildQuestions(all = []) {
+  const rules = activeRules(all);
   const allow = rules.filter((r) => r.effect === 'allow').map((r) => r.note.replace(/^可以插嘴：/, ''));
   const block = rules.filter((r) => r.effect === 'block').map((r) => r.note.replace(/^别插嘴：/, ''));
   return {
@@ -215,7 +227,8 @@ function buildQuestions(rules = []) {
   };
 }
 
-function buildState({ now, pet, inputs, rules, lastInterjectAt }) {
+function buildState({ now, pet, inputs, rules: all, lastInterjectAt }) {
+  const rules = activeRules(all);
   const d = new Date(now);
   const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const ago = (t) => (t ? `${Math.max(0, Math.round((now - t) / MIN))} 分钟前` : '从未');
@@ -364,7 +377,7 @@ class Interjector {
     const d = this.data.decisions.find((x) => x.id === decisionId);
     if (!d) return { ok: false, reason: 'not-found' };
     if (d.verdict !== 'interject' || !d.said) return { ok: false, reason: 'not-a-remark' };
-    // an explicit 🙊 / 👍 overrides an implicit reaction recorded before; implicit ones never override explicit
+    // an explicit 别插嘴 / 说得好 overrides an implicit reaction recorded before; implicit ones never override explicit
     if (d.feedback && (kind === 'ignored' || kind === 'engaged' || d.feedback === kind)) return { ok: true, decision: d, rule: null };
     d.feedback = kind;
     d.feedbackAt = this.now();
@@ -373,7 +386,7 @@ class Interjector {
     if (proposed) {
       const r = addRule(this.data.rules, proposed, this.now(), this.rnd);
       this.data.rules = r.rules;
-      if (r.rule && !r.existed) {
+      if (r.rule && (!r.existed || r.reenabled)) {
         rule = r.rule;
         d.ruleIds = [...(d.ruleIds || []), rule.id];
       }
@@ -393,6 +406,16 @@ class Interjector {
     this.data.rules = r.rules;
     this._save();
     return { ok: true, rule: r.rule };
+  }
+
+  // Switch one rule off (kept in the list, matches nothing) or back on. → { ok, rule } | { ok:false, reason:'not-found' }
+  setRuleDisabled(id, disabled) {
+    const r = this.data.rules.find((x) => x.id === id);
+    if (!r) return { ok: false, reason: 'not-found' };
+    if (disabled) r.disabled = true;
+    else delete r.disabled;
+    this._save();
+    return { ok: true, rule: { ...r } };
   }
 
   deleteRule(id) {
@@ -512,6 +535,6 @@ function buildInterjectPrompt(stateBlock, { text, source }) {
 module.exports = {
   SOURCES, SYSTEM_SOURCES, SOURCE_LABEL, CATEGORY_LABEL, BUCKET_LABEL, LIMITS, FEEDBACK, MUTE_RE, OFFLINE_LINES, QUESTION,
   classify, timeBucket, isSensitive, inQuietHours, summarize, hashOf,
-  ruleMatches, describeRule, normalizeRule, ruleFromFeedback, addRule, prefilter, verdict, buildQuestions, buildState, buildInterjectPrompt,
+  activeRules, ruleMatches, describeRule, normalizeRule, ruleFromFeedback, addRule, prefilter, verdict, buildQuestions, buildState, buildInterjectPrompt,
   InterjectStore, MemoryInterjectStore, Interjector,
 };

@@ -5,7 +5,7 @@ import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characte
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
 import { DeskPage, HistoryPage, TopicsPage } from './pages/Together';
-import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
+import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, ProactivePage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
 import { Shell } from './Shell';
 import { StoreProvider } from './store';
 
@@ -46,8 +46,9 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <DeskPage />;
     case 'behavior':
       return <BehaviorPage />;
-    case 'visitors':
     case 'proactive':
+      return <ProactivePage />;
+    case 'visitors':
     case 'appearance':
       return <SimpleSettingsPage page={page} />;
     default:

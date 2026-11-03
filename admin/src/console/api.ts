@@ -247,6 +247,12 @@ export interface PetAdminApi {
   switchCharacter: (id: string, name?: string) => Promise<any>;
   ttsClearCache: () => Promise<any>;
   unlockAll: (species: string) => Promise<any>;
+  interjectClearDecisions: () => Promise<{ ok: boolean }>;
+  interjectDecisions: (limit?: number) => Promise<{ decisions: InterjectDecision[]; status: any }>;
+  interjectDeleteRule: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  interjectRules: () => Promise<{ rules: InterjectRule[] }>;
+  interjectSetRule: (id: string, disabled: boolean) => Promise<{ ok: boolean; reason?: string; rule?: InterjectRule }>;
+  onInterject: (cb: (e: { decision: InterjectDecision | null; decisionId: string | null; rule: InterjectRule | null; type: string }) => void) => () => void;
   historyGet: (id: string) => Promise<{ ok: boolean; reason?: string; session?: HistorySession }>;
   historyList: () => Promise<{ sessions: HistorySummary[] }>;
   home: () => Promise<{ ok: boolean; reason?: string }>;
@@ -254,6 +260,34 @@ export interface PetAdminApi {
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
+}
+
+/** 插个嘴 (core/interject.js): a rule settled from the owner's reactions, and one decision record. */
+export interface InterjectRule {
+  bucket?: string;
+  category?: string;
+  createdAt: number;
+  disabled?: boolean;
+  effect: 'allow' | 'block';
+  hits: number;
+  id: string;
+  note: string;
+  origin: 'engaged' | 'ignored' | 'like' | 'manual' | 'mute';
+  source?: string;
+}
+
+export interface InterjectDecision {
+  at: number;
+  category?: string;
+  feedback?: 'engaged' | 'ignored' | 'like' | 'mute' | null;
+  id: string;
+  probability: number | null;
+  reason: string;
+  said?: string;
+  source: string;
+  stage: 'decided' | 'error' | 'prefilter';
+  summary: string;
+  verdict: 'interject' | 'silent' | 'skip';
 }
 
 /** 聊天记录 (PetService.history / historySession): only the conversations the owner started. */
@@ -323,6 +357,7 @@ export const REASON: Record<string, string> = {
   'no-redistribution': '这个模型的授权不允许导出',
   'too-long': '太长了',
   unknown: '找不到这一项',
+  'not-found': '找不到这一项（可能已经删掉了）',
   'unknown-character': '没有这个角色',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',

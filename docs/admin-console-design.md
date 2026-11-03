@@ -676,9 +676,9 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：90 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：93 个
 
-- 设置窗口有同一通道（35）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `set-api` `api-status` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（40）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-appearance` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
@@ -691,7 +691,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（44）：
+- 不是配置，只在桌宠窗口（42）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -714,11 +714,8 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `asr-cancel`：取消语音输入
   - `asr-mic-access`：麦克风权限请求
   - `interject-draft`：插个嘴的输入来源：聊天框里还没发送的草稿（运行时输入，不是配置）
-  - `interject-feedback`：插个嘴：主人对一次插嘴的反馈（🙊 别打扰 / 👍），沉淀为规则
-  - `interject-rules`：插个嘴：查看沉淀的规则（数据，不是配置项；设置窗口里的规则页是后续任务）
-  - `interject-add-rule`：插个嘴：手动加一条规则（同上）
-  - `interject-delete-rule`：插个嘴：删除一条规则（同上）
-  - `interject-decisions`：插个嘴：判断记录（查看，不是配置）
+  - `interject-feedback`：插个嘴：主人对一次插嘴的反馈（气泡上的「别插嘴」/「说得好」），沉淀为规则
+  - `interject-add-rule`：插个嘴：手动加一条规则（脚本 / 测试用；设置窗口的规则表只启用 / 停用 / 删除）
   - `visitor-boot`：同屏伙伴窗口启动
   - `pose`：扔出去时的碰撞
   - `peers`：同屏伙伴的位置（碰撞）
@@ -735,6 +732,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `debug-tray-click`：测试钩子
   - `debug-heartbeat`：测试钩子
   - `debug-interject-flush`：测试钩子（插个嘴：立即判断）
+  - `debug-interject-reset-cooldown`：测试钩子（插个嘴：清掉冷却）
   - `debug-interject-input`：测试钩子（插个嘴：喂一条来源输入）
 
 缺失：无

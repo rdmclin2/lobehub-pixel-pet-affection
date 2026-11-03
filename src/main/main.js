@@ -325,6 +325,8 @@ function wire() {
   ipcMain.handle('interject-rules', () => service.interjectRules());
   ipcMain.handle('interject-add-rule', (_e, p) => service.interjectAddRule(p && p.rule));
   ipcMain.handle('interject-delete-rule', (_e, p) => service.interjectDeleteRule(p && p.id));
+  ipcMain.handle('interject-set-rule', (_e, p) => service.interjectSetRuleDisabled(p && p.id, !!(p && p.disabled)));
+  ipcMain.handle('interject-clear-decisions', () => service.interjectClearDecisions());
   ipcMain.handle('interject-decisions', (_e, p) => service.interjectDecisions(p && p.limit));
   ipcMain.handle('set-interject', (_e, patch) => { const r = service.setSection('interject', patch); syncClipboardWatch(); return r; });
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
@@ -715,6 +717,8 @@ function wire() {
     ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
     // 插个嘴: judge what is waiting now instead of after the debounce, and feed any listed source
     ipcMain.handle('debug-interject-flush', async () => service.interjector.flush());
+    // e2e: forget the last remark's time (the cooldown and the hourly cap), so a run needs no 10-minute wait
+    ipcMain.handle('debug-interject-reset-cooldown', () => { service.interjector.lastInterject = null; service.interjector.interjectStamps = []; return true; });
     ipcMain.handle('debug-interject-input', (_e, p) => service.interjectInput(p && p.source, p && p.text));
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
@@ -731,7 +735,12 @@ function wire() {
   service.on('affection', (a) => send('affection', a));
   service.on('settings', (st) => { broadcast('settings', st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
   // 插个嘴: what was judged and what she said (the record without the owner's text beyond its short summary)
-  service.on('interject', (e) => send('interject', { type: e.type, decision: e.decision || null, rule: e.rule || null, decisionId: e.decisionId || null }));
+  // — to the pet window (the 别插嘴 / 说得好 buttons under a remark) and the settings window (规则 and 判断记录)
+  service.on('interject', (e) => {
+    const m = { type: e.type, decision: e.decision || null, rule: e.rule || null, decisionId: e.decisionId || null };
+    send('interject', m);
+    if (admin && admin.alive) admin.send('interject', m);
+  });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);

@@ -10,6 +10,7 @@
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
+//   scenario "interject" -> 插个嘴: off → no jev call; on + mock jev 0.86 → a remark with 别插嘴 / 说得好; 别插嘴 → rule → same kind skipped; rules UI
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
 const fs = require('node:fs');
@@ -9016,6 +9017,274 @@ async function adminScenario() {
   }
 }
 
+// ---------------------------------------------------------------- interject (插个嘴)
+// 插个嘴 (docs/interject.md): the real app with the fake `lh` — its `generate decide` answers the probability in
+// <FAKE_LH_DIR>/decide.json (the mock jev, no tokens) and logs every call to decide-calls.jsonl.
+// IJ1 off by default: typing a draft → zero decide calls · IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: the group folds
+// open (dependsOn) when switched on there · IJ3 a low probability → silence · IJ4 on + mock 0.86 → her remark in
+// the bubble with 别插嘴 / 说得好 on it · IJ5 click 别插嘴 → feedback mute → a block rule · IJ6 a draft of the same
+// kind → dropped by the rule, no decide call, no remark · IJ7 the rules table and the decision records in the
+// settings window · IJ8 停用 there → that kind is judged again; 说得好 on a remark → an allow rule · IJ9 删除 a
+// rule (confirmed) → gone from the table and interject.json.
+// Output: out/e2e/interject/*.png, video/, evidence.json, chapters.json, interject.json.
+async function interjectScenario() {
+  const S = 'interject';
+  const SHOTS = path.join(OUT, 'interject');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ij-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ijfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const t0 = Date.now();
+  const chapters = [];
+  const evidence = [];
+  const chapter = (title) => chapters.push({ at: Math.round((Date.now() - t0) / 1000), title });
+  const note = (s) => { evidence.push(s); say(`    ${s}`); };
+  const decideCalls = () => { const f = path.join(fakeDir, 'decide-calls.jsonl'); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []; };
+  const mock = (o) => fs.writeFileSync(path.join(fakeDir, 'decide.json'), JSON.stringify(o));
+  const shot = async (p, name) => { await p.waitForTimeout(250); await p.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `interject/${name}.png`; };
+  const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return b.classList.contains('hidden') ? '' : b.textContent.trim(); });
+  const feedbackRow = () => page.evaluate(() => { const r = document.getElementById('ij-feedback'); return { shown: !r.classList.contains('hidden'), buttons: [...r.querySelectorAll('.ij-btn')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent.trim()), done: r.querySelector('.ij-done').classList.contains('hidden') ? '' : r.querySelector('.ij-done').textContent, decision: r.dataset.decision || null, result: r.dataset.result || null }; });
+  const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await page.click('[data-act="chat"]'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
+  const typeDraft = async (text) => { await openChat(); await page.fill('#chat-input', ''); await page.type('#chat-input', text, { delay: 15 }); };
+  const lastDecision = async () => (await page.evaluate(() => window.pet.interject.decisions())).decisions.pop();
+  const rules = async () => (await page.evaluate(() => window.pet.interject.rules())).rules;
+  // a remark: mock `p`, fresh moment (she has not just spoken, no cooldown), type a draft, wait for 辛苦啦
+  const remark = async (text) => {
+    mock({ probability: 0.86 });
+    await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+    await page.evaluate(() => window.pet.debugInterjectResetCooldown());
+    await typeDraft(text);
+    await page.waitForFunction(() => /辛苦啦/.test(document.getElementById('bubble').textContent) && !document.getElementById('ij-feedback').classList.contains('hidden'), null, { timeout: 20000 });
+    await idle();
+  };
+  let admin = null;
+  const adminRows = (sel) => admin.evaluate((s) => [...document.querySelectorAll(`${s} [data-row-key]`)].map((tr) => [...tr.children].map((td) => td.textContent.trim())), sel);
+  const scrollTo = (sel) => admin.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'start' }), sel);
+  try {
+    await step(S, 'IJ0 hatch; 插个嘴 is off by default (interject.enabled false, clipboard off, jev-1.14.0)', async () => {
+      chapter('IJ0 孵化：插个嘴默认关闭');
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="claude"]');
+      await page.fill('#pet-name', '小芽');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await idle();
+      const ij = (await page.evaluate(() => window.pet.getSettings())).interject;
+      note(`默认 settings.interject = ${JSON.stringify(ij)}`);
+      assert.equal(ij.enabled, false);
+      assert.equal(ij.sources.clipboard, false);
+      assert.equal(ij.model, 'lobehub/jev-1.14.0');
+      return shot(page, 'ij0-hatched');
+    }, page);
+
+    await step(S, 'IJ1 off: typing a draft in her chat box makes zero `lh generate decide` calls and no record', async () => {
+      chapter('IJ1 开关关：聊天框打字，零次 jev 调用');
+      mock({ probability: 0.99 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      await typeDraft('终于把这个 bug 修好了！累死我了');
+      await page.waitForTimeout(5500); // longer than the default 4 s debounce
+      const n = decideCalls().length;
+      const d = await page.evaluate(() => window.pet.interject.decisions());
+      note(`开关关：decide 调用 ${n} 次，判断记录 ${d.decisions.length} 条，气泡「${await bubble()}」`);
+      assert.equal(n, 0);
+      assert.equal(d.decisions.length, 0);
+      assert.equal((await feedbackRow()).shown, false);
+      const p = await shot(page, 'ij1-off-typing');
+      await page.fill('#chat-input', '');
+      return `decide calls 0, records 0; ${p}`;
+    }, page);
+
+    await step(S, 'IJ2 设置窗口 → 主动搭话与好感 → 插个嘴: off folds the group; switching it on there shows sources, quotas, thresholds, model', async () => {
+      chapter('IJ2 设置窗口：插个嘴分组（关 → 开，dependsOn 联动）');
+      admin = await openAdminWindow(app, page, 'proactive');
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')); w.setSize(1180, 1000); });
+      await adminUntil(admin, () => !!document.querySelector('[data-key="interject.enabled"]'), null, 15000, 'the 插个嘴 switch');
+      const visibleKeys = () => admin.evaluate(() => [...document.querySelectorAll('[data-key^="interject."]')].filter((el) => el.offsetParent !== null).map((el) => el.dataset.key));
+      const offKeys = await visibleKeys();
+      const desc = await admin.evaluate(() => [...document.querySelectorAll('[data-settings-page="proactive"] *')].map((el) => el.childElementCount === 0 ? el.textContent : '').find((t) => /^默认关闭。/.test(t)) || '');
+      await scrollTo('[data-key="interject.enabled"]');
+      await shot(admin, 'ij2a-console-off');
+      await admin.evaluate(() => document.querySelector('[data-key="interject.enabled"]').click());
+      await adminUntil(admin, () => !!document.querySelector('[data-key="interject.sources.chatDraft"]'), null, 8000, 'the sources fold open');
+      await adminUntil(admin, async () => (await window.petAdmin.state()).settings.interject.enabled === true, null, 8000, 'saved');
+      // for the run: 1 s debounce and no quiet hours (start = end), set like the owner would in the same form
+      for (const [k, v] of [['interject.debounceSec', 1], ['interject.quietStart', 0], ['interject.quietEnd', 0]]) assert.equal((await admin.evaluate(([key, val]) => window.petAdmin.set(key, val), [k, v])).ok, true, k);
+      await admin.waitForTimeout(300);
+      const onKeys = await visibleKeys();
+      await scrollTo('[data-key="interject.enabled"]');
+      const p = await shot(admin, 'ij2b-console-on');
+      await admin.evaluate(() => window.scrollBy(0, 600));
+      await shot(admin, 'ij2c-console-on-thresholds');
+      const s = (await page.evaluate(() => window.pet.getSettings())).interject;
+      note(`关时可见字段 ${JSON.stringify(offKeys)}；开后可见 ${onKeys.length} 个：${onKeys.join(', ')}`);
+      note(`开关说明：${desc.replace(/\s+/g, ' ').slice(0, 160)}`);
+      note(`设置窗口打开后 settings.interject = ${JSON.stringify(s)}`);
+      assert.deepEqual(offKeys, ['interject.enabled']);
+      for (const k of ['interject.sources.chatDraft', 'interject.sources.voice', 'interject.sources.api', 'interject.sources.clipboard', 'interject.cooldownMin', 'interject.maxPerHour', 'interject.highThreshold', 'interject.lowThreshold', 'interject.model']) assert.ok(onKeys.includes(k), k);
+      assert.match(desc, /默认关闭/);
+      assert.match(desc, /不装键盘钩子/);
+      assert.equal(s.enabled, true);
+      assert.equal(s.debounceSec, 1);
+      await page.bringToFront();
+      return p;
+    }, () => admin);
+
+    await step(S, 'IJ3 on + a low probability (mock 0.2 ≤ 0.3) on a voice transcript → she stays quiet', async () => {
+      chapter('IJ3 jev 0.2 → 不插嘴');
+      mock({ probability: 0.2 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      const before = decideCalls().length;
+      const shown = await bubble() || null;
+      await page.evaluate(() => window.pet.debugInterjectInput('voice', '提醒我明天早上九点交报告'));
+      await page.evaluate(() => window.pet.debugInterjectFlush());
+      const d = await lastDecision();
+      note(`低概率记录：${JSON.stringify(d)}`);
+      assert.equal(decideCalls().length, before + 1);
+      assert.equal(d.verdict, 'skip');
+      assert.equal(d.reason, 'confident-no');
+      await page.waitForTimeout(1500);
+      assert.doesNotMatch(await bubble(), /辛苦啦/, 'no remark');
+      assert.notEqual(d.said, shown);
+      assert.equal(d.said, undefined);
+      assert.equal((await feedbackRow()).shown, false);
+      return shot(page, 'ij3-low-quiet');
+    }, page);
+
+    let remarkId = null;
+    await step(S, 'IJ4 on + high probability: a draft → jev (mock 0.86 ≥ 0.7) → her remark in the bubble, 别插嘴 / 说得好 on it', async () => {
+      chapter('IJ4 开关开 + 高概率 → 插嘴气泡（带反馈按钮）');
+      const before = decideCalls().length;
+      await remark('终于把这个 bug 修好了！累死我了');
+      const calls = decideCalls().slice(before);
+      const rec = await lastDecision();
+      const row = await feedbackRow();
+      remarkId = rec.id;
+      note(`decide 调用 ${calls.length} 次，model=${calls[0].model}`);
+      note(`jev state:\n${calls[0].state}`);
+      note(`判断记录：${JSON.stringify(rec)}`);
+      note(`气泡「${await bubble()}」；反馈按钮 ${JSON.stringify(row)}`);
+      assert.equal(calls.length, 1);
+      assert.match(calls[0].state, /终于把这个 bug 修好了/);
+      assert.equal(rec.verdict, 'interject');
+      assert.equal(rec.probability, 0.86);
+      assert.deepEqual(row.buttons, ['别插嘴', '说得好']);
+      assert.equal(row.decision, rec.id);
+      return shot(page, 'ij4-remark-bubble');
+    }, page);
+
+    await step(S, 'IJ5 click 别插嘴 on the bubble → feedback mute → a block rule on 写代码', async () => {
+      chapter('IJ5 点「别插嘴」→ 生成规则');
+      await page.click('#ij-feedback [data-ij="mute"]');
+      await page.waitForFunction(() => document.getElementById('ij-feedback').dataset.result === 'mute', null, { timeout: 5000 });
+      const row = await feedbackRow();
+      const p = await shot(page, 'ij5-mute-clicked');
+      const rs = await rules();
+      const d = (await page.evaluate(() => window.pet.interject.decisions())).decisions.find((x) => x.id === remarkId);
+      note(`点击后：${JSON.stringify(row)}；记录 feedback=${d.feedback}；规则 ${JSON.stringify(rs)}`);
+      assert.equal(d.feedback, 'mute');
+      assert.equal(rs.length, 1);
+      assert.equal(rs[0].effect, 'block');
+      assert.equal(rs[0].category, 'code');
+      assert.equal(rs[0].origin, 'mute');
+      assert.match(row.done, /不插嘴了/);
+      return p;
+    }, page);
+
+    await step(S, 'IJ6 a draft of the same kind (code) is dropped by the rule: no decide call, no remark', async () => {
+      chapter('IJ6 同类输入不再插嘴（不调用 jev）');
+      mock({ probability: 0.95 });
+      await page.evaluate(() => window.pet.debugSet({ lastSpokeAt: 0 }));
+      await page.waitForFunction(() => document.getElementById('ij-feedback').classList.contains('hidden'), null, { timeout: 5000 });
+      const before = decideCalls().length;
+      const shown = await bubble();
+      await typeDraft('npm test 又报错了，stack trace 一大串');
+      await page.waitForTimeout(2500);
+      const d = await lastDecision();
+      const after = decideCalls().length;
+      note(`拦截记录：${JSON.stringify(d)}；decide 调用 ${before} → ${after}；气泡「${await bubble()}」`);
+      assert.equal(after, before);
+      assert.equal(d.stage, 'prefilter');
+      assert.equal(d.reason, 'rule');
+      const now = await bubble();
+      assert.ok(now === shown || now === '', 'no new remark (the old line may have timed out)');
+      assert.equal((await feedbackRow()).shown, false);
+      assert.equal((await rules())[0].hits, 1);
+      const p = await shot(page, 'ij6-rule-blocks');
+      await page.fill('#chat-input', '');
+      return p;
+    }, page);
+
+    await step(S, 'IJ7 设置窗口: the rules table (rule, origin, hits, created) and the recent decisions (probability, interjected or not)', async () => {
+      chapter('IJ7 设置窗口：规则表与判断记录');
+      await admin.evaluate(() => { location.hash = '/proactive'; });
+      await adminUntil(admin, () => document.querySelectorAll('[data-interject-rules] [data-row-key]').length === 1 && document.querySelectorAll('[data-interject-decisions] [data-row-key]').length >= 3, null, 10000, 'rules and records');
+      const r = await adminRows('[data-interject-rules]');
+      const d = await adminRows('[data-interject-decisions]');
+      note(`规则表：${JSON.stringify(r)}`);
+      note(`判断记录（新→旧）：${JSON.stringify(d)}`);
+      assert.match(r[0][0], /别插嘴/);
+      assert.match(r[0][0], /写代码/);
+      assert.equal(r[0][1], '让她别插嘴');
+      assert.equal(r[0][2], '1 次');
+      assert.match(r[0][3], /\d/);
+      assert.match(d[0].join(' '), /命中「别插嘴」规则/);
+      assert.match(d[1].join(' '), /86%.*插了一句.*别插嘴/);
+      assert.match(d[2].join(' '), /20%.*没说/);
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij7-rules-and-records');
+    }, () => admin);
+
+    await step(S, 'IJ8 停用 the rule in the table → the same kind is judged again; 说得好 on that remark → an allow rule', async () => {
+      chapter('IJ8 停用规则 → 同类重新判断；点「说得好」→ 可以插嘴规则');
+      const id = (await rules())[0].id;
+      await admin.evaluate((rid) => document.querySelector(`[data-rule-toggle="${rid}"]`).click(), id);
+      await adminUntil(admin, () => /已停用/.test(document.querySelector('[data-interject-rules]').textContent), null, 8000, '已停用');
+      assert.equal((await rules())[0].disabled, true);
+      await shot(admin, 'ij8a-rule-disabled');
+      const before = decideCalls().length;
+      await remark('git push 被拒绝了，冲突好多');
+      assert.equal(decideCalls().length, before + 1, 'judged again');
+      await page.click('#ij-feedback [data-ij="like"]');
+      await page.waitForFunction(() => document.getElementById('ij-feedback').dataset.result === 'like', null, { timeout: 5000 });
+      await shot(page, 'ij8b-like-clicked');
+      const rs = await rules();
+      note(`停用后同类输入 decide ${before} → ${decideCalls().length}；点「说得好」后规则 ${JSON.stringify(rs)}`);
+      assert.equal(rs.length, 1, 'same scope: allow replaces the disabled block');
+      assert.equal(rs[0].effect, 'allow');
+      assert.equal(rs[0].origin, 'like');
+      await adminUntil(admin, () => /可以插嘴/.test(document.querySelector('[data-interject-rules]').textContent), null, 8000, 'the allow rule in the table');
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij8c-allow-rule');
+    }, () => admin);
+
+    await step(S, 'IJ9 删除 the rule in the table (confirmed) → the table is empty and interject.json has no rules', async () => {
+      chapter('IJ9 删除规则（确认）');
+      const id = (await rules())[0].id;
+      await admin.evaluate((rid) => document.querySelector(`[data-rule-delete="${rid}"]`).click(), id);
+      await adminUntil(admin, () => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => b.textContent.trim() === '删除规则'), null, 8000, 'the confirm dialog');
+      await shot(admin, 'ij9a-delete-confirm');
+      await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => b.textContent.trim() === '删除规则').pop().click());
+      await adminUntil(admin, () => document.querySelectorAll('[data-interject-rules] [data-row-key]').length === 0, null, 8000, 'the row gone');
+      const file = JSON.parse(fs.readFileSync(path.join(data, 'interject.json'), 'utf8'));
+      fs.writeFileSync(path.join(SHOTS, 'interject.json'), JSON.stringify(file, null, 2));
+      note(`interject.json：rules ${file.rules.length}，decisions ${file.decisions.length}`);
+      assert.equal(file.rules.length, 0);
+      await admin.waitForTimeout(400);
+      await scrollTo('[data-interject-rules]');
+      return shot(admin, 'ij9b-rule-deleted');
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+    const vids = fs.existsSync(path.join(SHOTS, 'video')) ? fs.readdirSync(path.join(SHOTS, 'video')) : [];
+    fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2));
+    fs.writeFileSync(path.join(SHOTS, 'evidence.json'), JSON.stringify({ results: results.filter((r) => r.scenario === S), evidence, videos: vids }, null, 2));
+  }
+}
+
 (async () => {
   if (which === 'fresh' || which === 'all') await fresh();
   if (which === 'wardrobe' || which === 'all') await wardrobe();
@@ -9057,6 +9326,7 @@ async function adminScenario() {
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();
+  if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

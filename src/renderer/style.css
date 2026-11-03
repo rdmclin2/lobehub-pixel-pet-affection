@@ -103,6 +103,10 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 .bubble::-webkit-scrollbar-thumb { background: var(--lobe-color-fill); border-radius: 3px; }
 .bubble-tail { flex: none; position: relative; z-index: 1; width: 10px; height: 10px; margin: -6px auto 8px; background: var(--pet-surface); border-right: 1px solid var(--pet-line-soft); border-bottom: 1px solid var(--pet-line-soft); border-bottom-right-radius: 2px; transform: rotate(45deg); }
 .bubble.hidden + .bubble-tail { display: none; }
+/* 插个嘴 feedback: two small buttons riding on the bubble's top edge, only while her own remark is shown */
+.ij-feedback { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--pet-space-xs); max-width: 210px; width: 100%; margin-bottom: var(--pet-space-xs); }
+.ij-feedback .ij-btn { padding: 0 var(--pet-space-sm); min-height: 20px; line-height: 18px; font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
+.ij-feedback .ij-done { font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-radius: var(--lobe-border-radius-sm); padding: 0 var(--pet-space-sm); }
 .bubble.thinking { color: var(--lobe-color-text-tertiary); }
 /* 流式回复: a blinking caret after the words while she is still writing */
 .bubble.streaming::after { content: '▍'; display: inline-block; margin-left: 1px; color: var(--lobe-color-text-tertiary); animation: caret-blink 0.9s steps(1) infinite; }

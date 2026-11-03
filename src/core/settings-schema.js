@@ -81,7 +81,7 @@ const PAGES = {
   packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
-  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
+  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
   topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
   history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
   desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
@@ -124,7 +124,7 @@ add('proactive.maxLlmPerHour', 'proactive', '主动行为', '每小时最多调�
 // 插个嘴 (core/interject.js, docs/interject.md): off by default; the clipboard has its own switch and stays off
 const IJ = { key: 'interject.enabled', value: true };
 const IR = settingsLib.INTERJECT_RANGE;
-add('interject.enabled', 'proactive', '插个嘴', '插个嘴', 'switch', { desc: '听你在下面这些地方写的、说的（不是对她说的），由决策模型判断值不值得插一句碎碎念。不打扰优先：拿不准就不说，判断失败也不说。' });
+add('interject.enabled', 'proactive', '插个嘴', '插个嘴', 'switch', { desc: '默认关闭。打开后她只听下面列出、并且打开了的来源（不是对她说的话），由 LobeHub 的决策模型（需要登录）判断值不值得插一句碎碎念；拿不准就不说，判断失败也不说。不装键盘钩子、不读其它窗口、不截屏；记录只留每句前 24 个字。' });
 add('interject.sources.chatDraft', 'proactive', '插个嘴', '来源：聊天框草稿', 'switch', { desc: '你在她的聊天框里打字、停下来还没发送时。只看这个输入框。', dependsOn: IJ });
 add('interject.sources.voice', 'proactive', '插个嘴', '来源：语音输入', 'switch', { desc: '语音输入转写出来的文字。', dependsOn: IJ });
 add('interject.sources.api', 'proactive', '插个嘴', '来源：外部程序', 'switch', { desc: '本机脚本通过对外接口 POST /pixel-pet/observe 告诉她的内容（需开启对外接口）。', dependsOn: IJ });

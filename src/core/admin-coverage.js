@@ -98,13 +98,11 @@ const PET_ONLY = {
   'debug-tray-click': '测试钩子',
   'debug-heartbeat': '测试钩子',
   'debug-interject-flush': '测试钩子（插个嘴：立即判断）',
+  'debug-interject-reset-cooldown': '测试钩子（插个嘴：清掉冷却）',
   'debug-interject-input': '测试钩子（插个嘴：喂一条来源输入）',
   'interject-draft': '插个嘴的输入来源：聊天框里还没发送的草稿（运行时输入，不是配置）',
-  'interject-feedback': '插个嘴：主人对一次插嘴的反馈（🙊 别打扰 / 👍），沉淀为规则',
-  'interject-rules': '插个嘴：查看沉淀的规则（数据，不是配置项；设置窗口里的规则页是后续任务）',
-  'interject-add-rule': '插个嘴：手动加一条规则（同上）',
-  'interject-delete-rule': '插个嘴：删除一条规则（同上）',
-  'interject-decisions': '插个嘴：判断记录（查看，不是配置）',
+  'interject-feedback': '插个嘴：主人对一次插嘴的反馈（气泡上的「别插嘴」/「说得好」），沉淀为规则',
+  'interject-add-rule': '插个嘴：手动加一条规则（脚本 / 测试用；设置窗口的规则表只启用 / 停用 / 删除）',
 };
 
 // the former ⋯ menu (menu:) and toolbar buttons (toolbar:) of the pet window, any data-menu item it grows again,

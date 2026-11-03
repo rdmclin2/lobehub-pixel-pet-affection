@@ -243,6 +243,37 @@ test('full chain (mock decide): judge → speak / stay quiet → 别打扰 → b
   assert.equal(r5.stage, 'decided');
 });
 
+test('a disabled rule (设置窗口 → 规则表 → 停用) is kept but matches nothing and is not sent to jev; 别插嘴 again re-enables it', async () => {
+  const { it, calls, say } = rig({ cfg: ON({ cooldownMin: 1 }), answers: [0.86, 0.9, 0.9] });
+  const r1 = await say('chatDraft', '终于把这个 bug 修好了！累死我了');
+  const fb = it.feedback(r1.id, 'mute');
+  assert.equal(fb.rule.effect, 'block');
+  // switched off: kept in the list, marked, persisted through normalizeRule
+  const off = it.setRuleDisabled(fb.rule.id, true);
+  assert.equal(off.ok, true);
+  assert.equal(off.rule.disabled, true);
+  assert.equal(ij.normalizeRule(off.rule).disabled, true);
+  assert.equal(it.listRules().length, 1);
+  assert.equal(ij.ruleMatches(off.rule, { category: 'code' }), false);
+  // the same kind is judged again, and the model no longer sees the rule
+  const r2 = await say('chatDraft', 'npm test 又报错了，什么鬼', 5);
+  assert.equal(r2.stage, 'decided');
+  assert.doesNotMatch(calls[calls.length - 1].state, /主人定下的规则/);
+  assert.doesNotMatch(calls[calls.length - 1].questions.interject.criteria.false, /写代码/);
+  // 别插嘴 on that remark switches the same rule back on (no duplicate)
+  const fb2 = it.feedback(r2.id, 'mute');
+  assert.equal(fb2.rule.id, fb.rule.id);
+  assert.equal(fb2.rule.disabled, undefined);
+  assert.equal(it.listRules().length, 1);
+  const r3 = await say('chatDraft', 'git push 被拒绝了，冲突好多', 5);
+  assert.equal(r3.reason, 'rule');
+  assert.equal(it.setRuleDisabled('r_nope', true).reason, 'not-found');
+  // clearing the records keeps the rules
+  assert.deepEqual(it.clearDecisions(), { ok: true });
+  assert.equal(it.listDecisions().length, 0);
+  assert.equal(it.listRules().length, 1);
+});
+
 test('👍 creates an allow rule: an uncertain answer (between the thresholds) is then enough for that kind', async () => {
   const { it, spoken, say } = rig({ cfg: ON({ cooldownMin: 1 }), answers: [0.8, 0.55, 0.55] });
   const r1 = await say('chatDraft', '奶茶店今天买一送一');
