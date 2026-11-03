@@ -141,6 +141,8 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 
 设置窗口 → **语音输入** 打开后，聊天框旁的 🎤 把你说的话转成文字填进输入框。两种识别方式（复用 LobeHub 云端识别，或本机跑 whisper.cpp / speaches 等本地服务）的安装、配置、测试连接和故障排查见 [asr.md](asr.md)。
 
+**快捷键唤起语音对话**：在任何地方按 **Ctrl+Shift+Space**（macOS **⌘⇧Space**），她出现在桌面上并开始听，说完再按一次结束并识别。在 设置 → 语音输入 → 快捷键 里修改、清空或恢复默认；无效、和应用内快捷键冲突或被其他应用占用的组合会在字段下方提示且不保存。详见 [asr.md §1.1](asr.md#11-快捷键唤起语音对话)。
+
 ### 语音（TTS）
 
 1. **打开**：悬停 → ⚙ 设置 → 设置 → **朗读** → 打开 **朗读回复**。关着时什么都不念，也不请求任何语音服务。
@@ -195,7 +197,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 玩法 · 和她一起 | 聊天记录 | 你主动发起的聊天：列表 → 对话 | — |
 | 玩法 · 和她一起 | 桌面上的她 | 动作（9 个）、回到右下角、退出（确认） | — |
 | 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / ElevenLabs / 本地语音服务各一张卡片（端点、Key、ElevenLabs 默认音色 ID / 模型、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
-| 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
+| 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、快捷键（唤起语音对话）、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
 | 设置 · 声音 | 语音包 | 每个语音包的角色、引擎、句数、来源和署名；打开文件夹、重新读取 | — |
 | 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（导入的每个包都是一位独立角色，在角色图鉴里切换） | — |
 | 设置 · 资源与外观 | 外观主题 | 设置窗口的亮色 / 暗色 / 跟随系统 | 跟随系统 |
@@ -346,9 +348,11 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`charmigrate`（形象包时代的旧数据 → 独立角色：迁移、二次启动幂等、角色图鉴 / 衣柜卡片 / 切换不串数据，输出在 `out/e2e/charmigrate/`）、`wardrobepack`（角色图鉴每个形象一张卡、衣柜卡片、穿上、各角色衣柜隔离）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
+| `xvfb-run -a node e2e/run.js titlebar` | 设置窗口在 macOS 上可拖动：页面按 darwin 渲染（`PIXELPET_E2E_PLATFORM`，仅测试模式），顶部 32px 拖动条（`-webkit-app-region: drag`）横跨整窗、各页没有可点控件压在它下面、角色页滚动后舞台停在它下方；真实平台（原生标题栏）下没有拖动条；截图在 `out/e2e/titlebar/` |
 | `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类角色、详情各标签页，改动出现在桌宠窗口 |
-| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（内置大肥鱼 Live2D + 导入的模型）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
+| `xvfb-run -a node e2e/run.js vrmframe` / `live2dframe` / `spriteframe` | 半身模式：VRM（现做测试 VRM）/ Live2D（大肥鱼 · Live2D + 导入的模型）/ 像素（克洛蒂 · 像素 + 旧版像素）的全身 ↔ 半身、交互、重启保留；见[第十一节](#十一半身模式vrm--live2d)和 [half-body-mode.md](half-body-mode.md#如何复现) |
 | `xvfb-run -a node e2e/run.js petui` / `design` | 桌宠窗口的 LobeHub 风格（菜单、面板、气泡、输入框，亮 / 暗）/ 设计系统预览页 |
+| `xvfb-run -a node e2e/run.js voicehotkey` | 快捷键唤起语音对话：快捷键 → 唤出桌宠、录音、识别（mock whisper）、直接发送；语音输入关闭 / 麦克风被拒提示；设置页的无效 / 冲突 / 被占用提示，改组合、清空、恢复默认、退出注销 |
 | `xvfb-run -a node e2e/run.js asr` | 语音输入：假麦克风 → MediaRecorder → mock whisper 服务 → 输入框（不耗 token）；加 `PIXELPET_E2E_WHISPER` / `PIXELPET_E2E_ASR_LOBEHUB` 时额外走真实 whisper 服务和 LobeHub 云端识别，见 [asr.md](asr.md#7-验证开发者) |
 | `node e2e/content-sets.js` | 输出全部内容条目及成人向开 / 关两种状态下的内容集合 |
 | `PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` | 用真实 LobeHub agent 跑 4 条对抗性请求（创建并删除一个临时 agent，消耗少量 token） |
@@ -400,7 +404,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 
 ## 十一、半身模式（VRM / Live2D）
 
-**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。只对 **VRM** 和 **Live2D** 角色生效，像素 / 图片 / 全动态角色保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
+**半身**只显示腰部以上：同一个窗口里角色画得更大，腰线落在窗口底边，窗口大小和右下角位置不变。对 **VRM**、**Live2D** 和**像素**角色生效，图片 / 全动态角色保持全身。原理、参考 Airi 的取舍、每个包的腰线配置见 [half-body-mode.md](half-body-mode.md)。
 
 **1. 切换到一位 Live2D 或 VRM 角色**（设置窗口 → **角色**）：
 
@@ -429,6 +433,7 @@ LH_BIN="$PWD/test/fixtures/fake-lh.js" FAKE_LH_DIR=/tmp/fake-lh PIXELPET_DATA_DI
 ```bash
 npm test                                   # 单元测试：含 test/framing.test.js、test/framing-live2d.test.js、test/admin-console.test.js
 xvfb-run -a node e2e/run.js admin          # 设置窗口：打开方式、各页、编辑保存、角色图鉴与详情、行为同步、亮 / 暗 → out/e2e/admin/
+xvfb-run -a node e2e/run.js titlebar       # 设置窗口 macOS 顶部拖动条（按 darwin 渲染）→ out/e2e/titlebar/
 xvfb-run -a node e2e/run.js admincov       # 配置覆盖度：每个配置项在设置窗口里都有控件，改动出现在桌宠窗口
 xvfb-run -a node e2e/run.js vrmframe       # VRM 半身 / 全身（现做测试 VRM）→ out/e2e/vrm/frame-*.png
 xvfb-run -a node e2e/run.js live2dframe    # Live2D 半身 / 全身（内置大肥鱼 Live2D + 导入的模型）→ out/e2e/live2d-frame/

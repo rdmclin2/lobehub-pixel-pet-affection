@@ -267,6 +267,27 @@ class LhClient {
     return runLh(this.bin, args, { env: this._env(), timeoutMs, signal });
   }
 
+  // ---- decision model (core/interject.js) --------------------------------------------------------------
+  // `lh generate decide -m <model> -q <questions JSON> --state-file <tmp>` → { answers, model, usage }.
+  // `questions`: { name: { type: 'boolean', instructions, criteria: { true, false } } }; `state`: plain text.
+  // The state goes through a temporary file (never argv: it holds what the owner typed, and a leading `-`
+  // would be read as an option); the file is removed afterwards. Like asr() it is not stopped by cancel()
+  // (Stop on a chat turn is not about this); the caller's `signal` and `timeoutMs` stop it. Any failure —
+  // timeout, abort, non-zero exit, unparsable output — rejects with an LhError (the caller stays silent).
+  async decide({ model, questions, state, timeoutMs = 10000, signal } = {}) {
+    if (!model || !questions || typeof questions !== 'object') throw new LhError('decide: model and questions are required', { code: 'EINVAL' });
+    const tmp = path.join(os.tmpdir(), `pixelpet-decide-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
+    fs.writeFileSync(tmp, String(state || ''), { mode: 0o600 });
+    try {
+      const args = ['generate', 'decide', '-m', model, '-q', JSON.stringify(questions), '--state-file', tmp];
+      const r = await runLh(this.bin, args, { env: this._env(), timeoutMs, signal });
+      if (r.code !== 0) throw new LhError(`Decision failed (exit ${r.code}): ${(r.stderr || r.stdout).trim().slice(0, 300)}`, { code: r.code, stderr: r.stderr });
+      return parseDecision(r.stdout);
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  }
+
   // ---- images ---------------------------------------------------------------
   // upload -> user message with the picture(s) in the topic; the next agent run sees it as context.
   async uploadFile(filePath) {
@@ -556,4 +577,21 @@ function summarizeRunEvents(events) {
   return { text, topicId, cost };
 }
 
-module.exports = { LhClient, LhError, runLh, cleanEnv, parseRunEvents, runEndCode, createEventScanner, createRunStream, RUN_CONTEXT_VARS };
+// `lh generate decide` prints one JSON object ({ answers: { name: { type, probability } }, model, usage }),
+// possibly after log lines. Returns it, or throws ENOPARSE when there is no object with `answers`.
+function parseDecision(stdout) {
+  const out = String(stdout || '');
+  const start = out.indexOf('{');
+  let obj = null;
+  if (start >= 0) {
+    try {
+      obj = JSON.parse(out.slice(start));
+    } catch {
+      createEventScanner((e) => { if (!obj && e && e.answers) obj = e; })(out);
+    }
+  }
+  if (!obj || typeof obj.answers !== 'object' || !obj.answers) throw new LhError(`Decision output not understood: ${out.trim().slice(0, 200)}`, { code: 'ENOPARSE' });
+  return { answers: obj.answers, model: obj.model || null, usage: obj.usage || null };
+}
+
+module.exports = { LhClient, LhError, runLh, cleanEnv, parseDecision, parseRunEvents, runEndCode, createEventScanner, createRunStream, RUN_CONTEXT_VARS };

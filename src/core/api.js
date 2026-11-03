@@ -21,6 +21,7 @@ const ROUTES = [
   ['POST', '/anim', `播一个动作：{ "state": "${ANIMS.join('|')}", "facing"?: "left|right" }`],
   ['POST', '/throw', '把她抛出去：{ "angle": 度（0=向右，90=向上）, "power": 0.2–3 }'],
   ['POST', '/chat', '和她的 agent 聊一句并等回复：{ "text": "…" }（会调用模型）'],
+  ['POST', '/observe', '插个嘴：告诉她主人正在做/写的事（不是对她说的），由她判断要不要插一句：{ "text": "…" }（需开启插个嘴和“外部程序”来源）'],
 ];
 
 function sameToken(a, b) {
@@ -40,7 +41,7 @@ function throwVelocity(angle, power) {
   return { vx: Math.round(Math.cos(rad) * 1200 * p), vy: Math.round(-Math.sin(rad) * 1200 * p) };
 }
 
-// One request → { status, json }. `ctx`: { token, state(), say(text), anim(state, facing), throw(v), chat(text) }.
+// One request → { status, json }. `ctx`: { token, state(), say(text), anim(state, facing), throw(v), chat(text), observe(text) }.
 async function handle(req, ctx) {
   if (!LOCAL_HOSTS.test(String((req.headers && req.headers.host) || ''))) return fail(403, 'bad-host');
   const auth = String((req.headers && req.headers.authorization) || '');
@@ -74,6 +75,13 @@ async function handle(req, ctx) {
     if (!text) return fail(400, 'empty');
     const r = await ctx.chat(text);
     return r.ok ? { status: 200, json: { ok: true, text: r.text } } : fail(r.reason === 'busy' ? 409 : 502, r.reason || 'error', r.message ? { message: String(r.message).slice(0, 200) } : {});
+  }
+  if (route === '/observe') {
+    const text = String(body.text || '').trim().slice(0, 2000);
+    if (!text) return fail(400, 'empty');
+    if (!ctx.observe) return fail(404, 'not-found');
+    const r = ctx.observe(text);
+    return r && r.accepted ? { status: 202, json: { ok: true, accepted: true } } : { status: 200, json: { ok: true, accepted: false, reason: (r && r.reason) || 'off' } };
   }
   return fail(404, 'not-found');
 }

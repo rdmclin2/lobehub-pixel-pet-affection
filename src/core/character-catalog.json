@@ -16,8 +16,8 @@
       "outfits": 12,
       "pixelated": false,
       "file": "claude-adult.zip",
-      "bytes": 18021031,
-      "sha256": "b0fe3286023dd8bb8633efc911b910f9e73a48876e596d13b9421afe6b108315",
+      "bytes": 18021048,
+      "sha256": "9dde6f00bd18f5cf0c3f1102b5497979c07ed1c65d6558354ad5938e5f0da8cb",
       "picture": "catalog/claude-adult.png"
     },
     {
@@ -34,8 +34,8 @@
       "outfits": 1,
       "pixelated": true,
       "file": "claude-classic.zip",
-      "bytes": 213784,
-      "sha256": "f8dd4b394833834ed01bdee2ee3b1c9802a157cee2dcc1020c015b77f793720e",
+      "bytes": 213800,
+      "sha256": "9d25d0975522507ffddf98792b2eb86ca4db3fc5f06bc458c173b29798f83ce7",
       "picture": "catalog/claude-classic.png"
     },
     {
@@ -52,8 +52,8 @@
       "outfits": 12,
       "pixelated": false,
       "file": "dafeiyu-adult.zip",
-      "bytes": 19390044,
-      "sha256": "55dbd35b2e4646a97775d088b9ff0dd4902632eed7bf5ff030a3b49eef27036f",
+      "bytes": 19390061,
+      "sha256": "fc4ce6c1a1a2bf87d2ed48646bb0626c5384d84ae9e54ec2c2eaefa473bae2e5",
       "picture": "catalog/dafeiyu-adult.png"
     },
     {
@@ -70,8 +70,8 @@
       "outfits": 1,
       "pixelated": true,
       "file": "dafeiyu-classic.zip",
-      "bytes": 221222,
-      "sha256": "9d121dc59dc2f830d4424dab17c8765129583ee56741605d0b07d38856055f8c",
+      "bytes": 221238,
+      "sha256": "7a33cd842174a501cb26df435cb84fc99b3bf4b760e17f408c53c85ef9696c2f",
       "picture": "catalog/dafeiyu-classic.png"
     },
     {
@@ -124,8 +124,8 @@
       "outfits": 12,
       "pixelated": false,
       "file": "gemini-adult.zip",
-      "bytes": 20525681,
-      "sha256": "0ec7313ef1c47e5dc8d54b4429571cfd13d03a70f3bcdf5553550977328f1b9a",
+      "bytes": 20525699,
+      "sha256": "e93b5345ae01d07bb309b505b5e7317214849bcc1278772dd2b7c2ca3ed303f9",
       "picture": "catalog/gemini-adult.png"
     },
     {
@@ -142,8 +142,8 @@
       "outfits": 1,
       "pixelated": true,
       "file": "gemini-classic.zip",
-      "bytes": 257572,
-      "sha256": "0913068c4c948f071a8b7dce0f3f7baf087ebfe7e514424847f7ac41592f9ba2",
+      "bytes": 257590,
+      "sha256": "22d55d8ba7125deeffa73a21a016f0001da24cd788fffb678fb71d0467b065b9",
       "picture": "catalog/gemini-classic.png"
     },
     {
@@ -160,8 +160,8 @@
       "outfits": 12,
       "pixelated": false,
       "file": "gpt-adult.zip",
-      "bytes": 20543524,
-      "sha256": "a5aa014066c09eb9faec9fc444ce6b2d6f9e86e897c8011f21909259ff0e14c6",
+      "bytes": 20543542,
+      "sha256": "270e2aef3763b00b01c3347770d231a3432de129ffab468b0911e56f6f29d941",
       "picture": "catalog/gpt-adult.png"
     },
     {
@@ -178,8 +178,8 @@
       "outfits": 1,
       "pixelated": true,
       "file": "gpt-classic.zip",
-      "bytes": 308521,
-      "sha256": "3f3bb56ca3e64268a7b0d76cc81c5e2be66d39b2724c22c14376f32f3bd8f6c1",
+      "bytes": 308538,
+      "sha256": "a06810b736f665d0b3d1e8b942cef2ce09a1e785e2f84d45c8e70d7b5d28ba3d",
       "picture": "catalog/gpt-classic.png"
     },
     {
@@ -196,8 +196,8 @@
       "outfits": 12,
       "pixelated": false,
       "file": "grok-adult.zip",
-      "bytes": 17461651,
-      "sha256": "051fcc3baad2714aa94820b0c6962bf2933e246ea532679f8e68c2e6a3f40a92",
+      "bytes": 17461670,
+      "sha256": "24f22b505a6a30c6207214a95c0159fde1a35aaf68b617b5ecd1b056a33ca1a0",
       "picture": "catalog/grok-adult.png"
     },
     {
@@ -214,8 +214,8 @@
       "outfits": 1,
       "pixelated": true,
       "file": "grok-classic.zip",
-      "bytes": 251920,
-      "sha256": "f488490a70429e94a39f9a9ba8a866de6766db3077f6da25fa318c7676391bf1",
+      "bytes": 251937,
+      "sha256": "056b448c940872d47ffe6e1c00223ca17508c1ba0ac8eaa5ea2e34b073fa6d53",
       "picture": "catalog/grok-classic.png"
     },
     {

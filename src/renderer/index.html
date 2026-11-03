@@ -70,6 +70,12 @@
 
   <!-- 3. the pet -->
   <section id="pet-screen" class="screen hidden">
+    <!-- 插个嘴: two small reactions above a remark she made on her own (core/interject.js feedback → rules) -->
+    <div id="ij-feedback" class="ij-feedback hidden" role="group" aria-label="对这句插嘴的反馈">
+      <button class="btn ij-btn" data-ij="mute" title="这类话以后别插嘴">别插嘴</button>
+      <button class="btn ij-btn" data-ij="like" title="这类话可以多说">说得好</button>
+      <span class="ij-done hidden" role="status" aria-live="polite"></span>
+    </div>
     <div id="bubble" class="bubble hidden"></div>
     <div class="bubble-tail"></div>
     <div id="unlock-toast" class="unlock-toast hidden" role="status" aria-live="polite">

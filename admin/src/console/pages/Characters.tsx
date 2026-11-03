@@ -676,7 +676,8 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
   const global = settings?.prefs?.framing === 'half' ? '半身' : '全身';
   const packDefault = ch?.look?.framing === 'half' ? '半身' : ch?.look?.framing === 'full' ? '全身' : null;
   const follow = packDefault ? `跟随角色默认（${packDefault}）` : `跟随全局（${global}）`;
-  const camera = ch?.look?.kind === 'vrm' || ch?.look?.kind === 'live2d';
+  // from the main process (core/framing.js SUPPORTED_KINDS); an older view without it: the kinds that re-frame
+  const reframes: boolean = ch?.framingSupported ?? ['vrm', 'live2d', 'sprites'].includes(ch?.look?.kind);
   return (
     <Flexbox align="center" data-framing-row={c.id} gap={12} horizontal wrap="wrap">
       <Text strong>取景</Text>
@@ -704,7 +705,7 @@ const FramingRow = ({ c }: { c: RosterRow }) => {
         />
       </div>
       <Text fontSize={12} type="secondary">
-        {camera ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '目前只有 VRM 和 Live2D 角色能半身取景；这位角色保持全身。'}
+        {reframes ? '半身只显示腰部以上，角色画得更大，窗口不变。立即生效。' : '图片和全动态角色不能半身取景，这位角色保持全身。'}
       </Text>
     </Flexbox>
   );
@@ -1021,7 +1022,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   showcase: css`
     position: sticky;
     z-index: 1;
-    inset-block-start: 16px;
+    inset-block-start: calc(16px + var(--pet-titlebar, 0px));
 
     display: flex;
     flex-direction: column;

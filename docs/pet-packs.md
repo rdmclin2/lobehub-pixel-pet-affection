@@ -31,8 +31,8 @@ my-grok/
   "species": "grok",                 // 给哪个角色用：dafeiyu | claude | grok | gemini | gpt（src/characters/ 里的 id）
   "kind": "sprites",                 // sprites：像素动作精灵图；pictures：每套服饰一张静态图；rig：全动态；live2d；vrm：3D（见下文）
   "pixelated": true,                 // 放大时保持硬像素（像素画请设为 true）
-  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，对 vrm 和 live2d 生效）；角色页的选择优先，见 docs/half-body-mode.md
-  "halfBody": { "waist": 0.52 },     // 可选（vrm / live2d）：半身时腰线的位置，= 她身高的比例，头顶 0、脚底 1（0.2–0.9）；不写则自动测量 / 推断
+  "framing": "half",                 // 可选：这个包的默认取景 full | half（半身，对 vrm / live2d / sprites 生效）；角色页的选择优先，见 docs/half-body-mode.md
+  "halfBody": { "waist": 0.52 },     // 可选（vrm / live2d / sprites）：半身时腰线的位置，= 她身高的比例，头顶 0、脚底 1（0.2–0.9）；不写则自动测量 / 推断
   "adult": false,                    // 可选：true = 18+ 角色包，只在确认年满 18 岁并打开成人向内容后列出和使用，可以带成人向服饰
   "frame": { "width": 83, "height": 113 },   // sprites 必填：单帧尺寸（像素）
   "actions": {                       // sprites 必填：每个状态在精灵图里的位置（行、起始列都从 0 开始）
@@ -108,7 +108,7 @@ my-grok/
 - 手臂、尾巴、耳朵如果是模型物理的输出，应用的动作会叠加在物理结果上。
 - 没有 WebGL 的电脑上显示 `outfits` 里的图。
 
-### 半身取景的可选字段（Live2D / VRM 通用）
+### 半身取景的可选字段（Live2D / VRM / 像素 sprites 通用）
 
 取景（全身 / 半身）是用户的设置（设置窗口 → 桌宠行为 → 取景，或角色页单独设），包里可以带两个**可选**字段，详见 [half-body-mode.md](half-body-mode.md)：
 
@@ -121,8 +121,9 @@ my-grok/
 
 - **Live2D**：先看模型 `.model3.json` 的 `HitAreas` 里名字含 Head / 头 的区域（按头的高度推腰线）；没有就找 `ParamEyeLOpen` 会动的图层（眼睛），由眼睛的高度推头再推腰线；都没有用身高的 55%。用户导入的模型（没有 `pack.json`）也走这条路，所以第三方模型不写任何字段也能半身。
 - **VRM**：按人形骨骼（head / hips）测量；`halfBody.waist` 写了就代替 hips 推出的腰线。
+- **像素 sprites**：应用量出她在帧里的头顶、脚底和水平中心（几个站姿首帧的中位数），腰线没写就用身高的 55%。像素图没有可推断腰部的结构信息，**建议写上 `halfBody.waist`**：头身比正常的角色量交叠双手下沿再往下约 0.02–0.03，Q 版大头角色的腰线更低（内置 classic 包是 0.60–0.72）。半身时每帧只画腰线以上并放大，帧的构图要统一（脚底贴帧底、各帧人物大小一致），否则放大后跳动更明显。图片（pictures）和全动态（rig）包不支持半身，保持全身。
 
-内置的 `dafeiyu-live2d` 写的是 `"halfBody": { "waist": 0.52 }`。
+内置的 `dafeiyu-live2d` 写的是 `"halfBody": { "waist": 0.52 }`；15 个内置像素包也都写了实测值（`*-pixel` / `*-adult` 0.50–0.52，`*-classic` 0.60–0.72，见 [pixel-half-body-plan.md](pixel-half-body-plan.md) §4）。
 
 ### 直接导入自己的 Live2D 模型
 

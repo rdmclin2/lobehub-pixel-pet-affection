@@ -241,7 +241,29 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
     c.height = Math.round(look.frame.height / k);
     c.setAttribute('role', 'img');
     c.setAttribute('aria-label', alt);
-    const s = { canvas: c, look, k, sheet: useSheet(look.url, k), action, start: performance.now() };
+    const s = { canvas: c, look, k, sheet: useSheet(look.url, k), action, start: performance.now(), framing: 'full', glide: null, pet: className === 'char' };
+    if (s.pet) {
+      // 取景 (core/framing.js, docs/half-body-mode.md): the desktop pet crops each frame to head → waist and draws it
+      // bigger in the same canvas box; the same setFraming() as a VRM / Live2D figure (syncFraming calls it). The sheet,
+      // the canvas and the action's timing stay: only the part of the frame drawn changes (a short glide for smooth HD
+      // art; hard pixel art switches at once, a gliding nearest-neighbour scale would shimmer).
+      s.framing = framingOf(look).mode === 'half' ? 'half' : 'full';
+      sizeSpriteCanvas(s);
+      c.petFigure = {
+        setFraming(mode, { instant = false } = {}) {
+          const next = mode === 'half' ? 'half' : 'full';
+          if (next === s.framing) return false;
+          const now = performance.now();
+          s.glide = instant || look.pixelated ? null : { from: spriteCrop(s, now), t0: now };
+          s.framing = next;
+          sizeSpriteCanvas(s);
+          drawSprite(s, now);
+          return true;
+        },
+        framing: () => s.framing,
+        debug: () => spriteDebug(s),
+      };
+    }
     sprites.add(s);
     drawSprite(s, performance.now());
     return c;
@@ -288,9 +310,149 @@ function drawSprite(s, now) {
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const { width: w, height: h } = look.frame;
-  ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
-  const frame = `${look.url}#${a.row}:${a.col + i}`; // which frame is up (touch hit tests cache its pixels)
+  const base = s.pet ? spriteCrop(s, now) : null;
+  const whole = !base || (base.sx === 0 && base.sy === 0 && base.sw === w && base.sh === h);
+  // 半身: a frame drawn floating takes the crop up with her (core/framing.js spriteLift), eased in with the glide
+  s.lift = 0;
+  if (!whole && s.half && s.sheet.ref) {
+    const progress = Math.min(1, Math.max(0, (h - base.sh) / Math.max(1e-6, h - s.half.sh)));
+    s.lift = PF.spriteLift(s.sheet.ref, spriteCellBottom(s, a.row, a.col + i), { w, h }, { pixelated: !!look.pixelated }) * progress;
+  }
+  const crop = s.lift ? { ...base, sy: base.sy - s.lift } : base;
+  if (whole) ctx.drawImage(img, ((a.col + i) * w) / k, (a.row * h) / k, w / k, h / k, 0, 0, canvas.width, canvas.height);
+  else {
+    // 半身: only the crop of this cell, clipped to it (the rest of the sheet is the neighbouring frames)
+    const r = PF.spriteDrawRects(crop, { w, h }, { W: canvas.width, H: canvas.height });
+    if (r) ctx.drawImage(img, ((a.col + i) * w + r.src.x) / k, (a.row * h + r.src.y) / k, r.src.w / k, r.src.h / k, r.dst.x, r.dst.y, r.dst.w, r.dst.h);
+  }
+  // which frame is up, and how it is cropped (touch hit tests cache its pixels by this)
+  const frame = `${look.url}#${a.row}:${a.col + i}${whole ? '' : `@${s.framing}:${crop.sx | 0},${crop.sy | 0},${crop.sw | 0}`}`;
   if (canvas.dataset.frame !== frame) canvas.dataset.frame = frame;
+  if (s.pet) {
+    // debug fields (e2e) and what artPoint reads for the touch zones: data-framing / data-cut like a Live2D canvas
+    const d = canvas.dataset;
+    const half = s.framing === 'half' && s.half;
+    if (d.framing !== s.framing) d.framing = s.framing;
+    const cut = half ? s.half.cut.toFixed(3) : '1';
+    if (d.cut !== cut) d.cut = cut;
+    const band = half ? s.half.source : '';
+    if (d.band !== band) d.band = band;
+    // data-crop: the crop for her standing frames; data-lift: how far it is moved up for this (floating) frame
+    const cr = whole ? '' : [base.sx, base.sy, base.sw, base.sh].map((v) => Math.round(v * 10) / 10).join(',');
+    if (d.crop !== cr) d.crop = cr;
+    const lift = s.lift ? String(Math.round(s.lift * 10) / 10) : '0';
+    if (d.lift !== lift) d.lift = lift;
+  }
+}
+// The desktop pet's sprite canvas for its framing (core/framing.js spriteCanvas): hard pixel art in 半身 gets a
+// whole-number multiple of the frame, so each source pixel is an even block; otherwise the frame's own size.
+function sizeSpriteCanvas(s) {
+  const { W, H } = PF.spriteCanvas({ w: s.look.frame.width, h: s.look.frame.height }, { mode: s.framing, pixelated: !!s.look.pixelated });
+  if (s.canvas.width !== W) s.canvas.width = W;
+  if (s.canvas.height !== H) s.canvas.height = H;
+}
+const SPRITE_GLIDE_MS = 350; // the switch between 全身 and 半身 (the same as a VRM / Live2D figure)
+// The part of the frame drawn now (frame px): the whole frame in 全身, the half-body crop in 半身, eased between
+// the two for SPRITE_GLIDE_MS after a switch.
+function spriteCrop(s, now) {
+  const frame = { w: s.look.frame.width, h: s.look.frame.height };
+  let target = PF.spriteFull(frame);
+  s.half = null;
+  if (s.framing === 'half') {
+    const ref = spriteRefOf(s);
+    if (ref) {
+      s.half = PF.spriteHalfCrop(ref, { frame, waist: s.look.halfBody && s.look.halfBody.waist, canvas: { W: s.canvas.width, H: s.canvas.height }, pixelated: !!s.look.pixelated });
+      target = s.half;
+    }
+  }
+  if (!s.glide) return target;
+  const t = (now - s.glide.t0) / SPRITE_GLIDE_MS;
+  if (t >= 1) { s.glide = null; return target; }
+  return PF.blendRect(s.glide.from, target, t);
+}
+// Her head-to-soles extent in the frames of this sheet (core/framing.js spriteRef), measured once per sheet from
+// the opaque pixels of frame 0 of a few standing actions, read at a quarter of the size for big HD frames. A sheet
+// that cannot be read back counts as her filling the whole frame. null until the sheet is decoded.
+const SPRITE_ALPHA = 128;
+function spriteRefOf(s) {
+  const e = s.sheet;
+  if (e.ref) return e.ref;
+  const img = e.src;
+  if (!img || (img instanceof HTMLImageElement && (!img.complete || !img.naturalWidth))) return null;
+  const { look, k } = s;
+  const fw = look.frame.width;
+  const fh = look.frame.height;
+  const q = fw >= 400 ? 4 / k : 1; // HD: a quarter (166×226 a frame); pixel art: as is
+  const cw = Math.max(1, Math.round(fw / k / q));
+  const ch = Math.max(1, Math.round(fh / k / q));
+  const boxes = [];
+  try {
+    const c = document.createElement('canvas');
+    c.width = cw;
+    c.height = ch;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    for (const name of PF.SPRITE.refActions) {
+      const a = look.actions[name];
+      if (!a) continue;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(img, (a.col * fw) / k, (a.row * fh) / k, fw / k, fh / k, 0, 0, cw, ch);
+      const data = ctx.getImageData(0, 0, cw, ch).data;
+      let x0 = cw;
+      let y0 = ch;
+      let x1 = -1;
+      let y1 = -1;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+        if (data[(y * cw + x) * 4 + 3] < SPRITE_ALPHA) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      const sx = fw / cw;
+      const sy = fh / ch;
+      if (x1 >= 0) boxes.push({ top: y0 * sy, bottom: (y1 + 1) * sy, minX: x0 * sx, maxX: (x1 + 1) * sx });
+    }
+  } catch (err) {
+    console.warn('[sprite] cannot read the sheet back, framing on the whole frame:', err && err.message);
+  }
+  e.ref = PF.spriteRef(boxes, { w: fw, h: fh });
+  return e.ref;
+}
+// Her soles in one frame of the sheet (frame px, exclusive): the last row with an opaque pixel, read at the size
+// spriteRefOf reads (a quarter for HD art, so a stray 1 px line does not count), once per frame and sheet.
+let cellProbe = null;
+function spriteCellBottom(s, row, col) {
+  const e = s.sheet;
+  const key = `${row}:${col}`;
+  if (!e.cells) e.cells = new Map();
+  if (e.cells.has(key)) return e.cells.get(key);
+  const img = e.src;
+  const { look, k } = s;
+  const fw = look.frame.width;
+  const fh = look.frame.height;
+  const q = fw >= 400 ? 4 / k : 1;
+  const cw = Math.max(1, Math.round(fw / k / q));
+  const ch = Math.max(1, Math.round(fh / k / q));
+  let bottom = NaN;
+  try {
+    if (!cellProbe) cellProbe = document.createElement('canvas');
+    cellProbe.width = cw;
+    cellProbe.height = ch;
+    const ctx = cellProbe.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(img, (col * fw) / k, (row * fh) / k, fw / k, fh / k, 0, 0, cw, ch);
+    const data = ctx.getImageData(0, 0, cw, ch).data;
+    for (let y = ch - 1; y >= 0 && !Number.isFinite(bottom); y--) for (let x = 0; x < cw; x++) if (data[(y * cw + x) * 4 + 3] >= SPRITE_ALPHA) { bottom = (y + 1) * (fh / ch); break; }
+  } catch { /* a sheet that cannot be read back: no lift */ }
+  e.cells.set(key, bottom);
+  return bottom;
+}
+// petFx.sprite(): what the desktop pet's sprite canvas draws (e2e)
+function spriteDebug(s) {
+  return {
+    packId: s.look.packId, framing: s.framing, band: s.half ? s.half.source : null, waist: s.half ? s.half.waist : null, cut: s.half ? s.half.cut : 1, scale: s.half ? s.half.scale : 1,
+    ref: s.sheet.ref || null, crop: s.canvas.dataset.crop || null, lift: s.lift || 0, canvas: [s.canvas.width, s.canvas.height], gliding: !!s.glide, pixelated: !!s.look.pixelated, action: s.cur || null,
+  };
 }
 // No WebGL (or a layer that would not load): show her picture instead of an empty canvas.
 function rigFailed(canvas, look, alt, className, e) {
@@ -729,6 +891,52 @@ function hideToast() {
   $('unlock-toast').classList.add('hidden');
 }
 
+// 插个嘴 (core/interject.js): while a remark she made on her own is in the bubble, 别插嘴 / 说得好 sit on top of
+// it. A click is the owner's explicit feedback on that decision (mute → a block rule, like → an allow rule).
+// The row goes away with the bubble or as soon as anything else is shown there.
+let ijDecision = null;
+let ijDoneTimer = null;
+function showInterjectFeedback(decisionId) {
+  const b = $('bubble');
+  if (!decisionId || b.classList.contains('hidden') || b.dataset.kind !== 'interject') return;
+  ijDecision = decisionId;
+  clearTimeout(ijDoneTimer);
+  const row = $('ij-feedback');
+  row.dataset.decision = decisionId;
+  for (const btn of row.querySelectorAll('.ij-btn')) { btn.classList.remove('hidden'); btn.disabled = false; }
+  row.querySelector('.ij-done').classList.add('hidden');
+  row.classList.remove('hidden');
+}
+function hideInterjectFeedback() {
+  ijDecision = null;
+  clearTimeout(ijDoneTimer);
+  $('ij-feedback').classList.add('hidden');
+}
+function bindInterjectFeedback() {
+  const row = $('ij-feedback');
+  row.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.ij-btn');
+    if (!btn || !ijDecision) return;
+    const id = ijDecision;
+    for (const x of row.querySelectorAll('.ij-btn')) x.disabled = true;
+    let r = null;
+    try { r = await window.pet.interject.feedback(id, btn.dataset.ij); } catch { /* shown below */ }
+    if (ijDecision !== id) return;
+    const done = row.querySelector('.ij-done');
+    done.textContent = !r || !r.ok ? '没记上，稍后再试' : btn.dataset.ij === 'mute' ? '好，这类话我不插嘴了' : '嘿嘿，记住啦';
+    for (const x of row.querySelectorAll('.ij-btn')) x.classList.add('hidden');
+    done.classList.remove('hidden');
+    row.dataset.result = r && r.ok ? btn.dataset.ij : 'error';
+    ijDoneTimer = setTimeout(hideInterjectFeedback, 2500);
+  });
+  // anything else in the bubble (or the bubble hiding) takes the row away
+  new MutationObserver(() => {
+    const b = $('bubble');
+    if (ijDecision && (b.classList.contains('hidden') || b.dataset.kind !== 'interject' || b.dataset.stream)) hideInterjectFeedback();
+  }).observe($('bubble'), { attributes: true, attributeFilter: ['class', 'data-kind', 'data-stream'] });
+  window.pet.onInterject((e) => { if (e && e.type === 'said' && !VISITOR) showInterjectFeedback(e.decisionId); });
+}
+
 // `streamId`: this line is the final text of the reply that was being written into the bubble (流式回复):
 // the bubble is corrected to it and the stream ends here.
 function say(text, kind, source, reason, meme = null, streamId = null) {
@@ -1153,6 +1361,13 @@ function bindPetUi() {
   };
   $('chat-send').addEventListener('click', send);
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
+  // Only this box: nothing typed anywhere else is seen.
+  $('chat-input').addEventListener('input', () => {
+    const ij = settings && settings.interject;
+    if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
+    window.pet.interject.draft($('chat-input').value);
+  });
 
   // ---- pictures: paste (Ctrl/⌘+V), drag in, or the 📎 button; Escape stops a running task
   document.addEventListener('paste', (e) => {
@@ -1180,6 +1395,7 @@ function bindPetUi() {
   bindMic();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
+  bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
@@ -1369,7 +1585,7 @@ function artPoint(cx, cy) {
   const sx = (v) => (mirrored ? ox + (a.w - v) * fit : ox + v * fit);
   const box = { left: Math.min(sx(b.x0), sx(b.x1)), right: Math.max(sx(b.x0), sx(b.x1)), top: oy + b.y0 * fit, bottom: oy + b.y1 * fit };
   const pose = a.video ? 'video' : $('pet-body').dataset.action || null;
-  // 半身 (a VRM / Live2D figure framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
+  // 半身 (a VRM / Live2D figure or a pixel sprite framed head to waist): the visible box is the top `cut` of her, so the touch zones (written for
   // head-to-feet art) get y in her full-body proportions; legs and feet are below the picture, out of reach
   const half = a.el.dataset && a.el.dataset.framing === 'half' ? { mode: 'half', cut: Number(a.el.dataset.cut) } : null;
   const y = (py - b.y0) / (b.y1 - b.y0);
@@ -1469,8 +1685,8 @@ function throwPet(v) {
 // files are kept and come back with the next hover.
 function syncHover() {
   document.body.classList.toggle('over', pointerInside); // pointer over the window (used by the stop button)
-  document.body.classList.toggle('hover', !thinking && (pointerInside || micActive())); // listening keeps 🎤 in reach
-  if (!pointerInside && !micActive()) {
+  document.body.classList.toggle('hover', !thinking && (pointerInside || micActive() || voiceHeld())); // listening (or a hotkey call) keeps 🎤 in reach
+  if (!pointerInside && !micActive() && !voiceHeld()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
     $('food-menu').classList.add('hidden');
   }
@@ -1556,6 +1772,10 @@ function petStatus() {
   const shot = fx.current(now);
   if (shot && CELEBRATIONS.includes(shot)) return shot;
   if (thinking) return 'think';
+  // 语音输入 (🎤 or the 快捷键): while you speak she listens — looks at you, nothing else plays over it —
+  // and then works out what was said (think)
+  if (micListening()) return 'look';
+  if (mic.state === 'stopping' || mic.state === 'transcribing') return 'think';
   if (eating) return `eat_${eating}`;
   if (shot) return shot;
   if (fx.walking) return 'walk';
@@ -1576,7 +1796,10 @@ function animatePet() {
   const wrap = $('char-wrap');
   if (wrap.dataset.status !== state) wrap.dataset.status = state; // pictures move with CSS (style.css)
   // an emoji over a character that has no own art for the state (a sprite or clip draws its own)
-  const fxText = r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
+  // listening: an ear over her whatever the art (a clip or a rig has no "listening" of its own), see style.css .listening
+  const listening = micListening();
+  if (wrap.classList.contains('listening') !== listening) wrap.classList.toggle('listening', listening);
+  const fxText = listening ? LISTEN_FX : r.exact ? '' : Fx.FOOD_OVERLAY[state] || Fx.OVERLAY[state] || '';
   if ($('char-fx').textContent !== fxText) $('char-fx').textContent = fxText;
   fx.render(state, r.name, r.exact, sp.fx.noMirror);
   $('pet-body').classList.toggle('flash', now < flashUntil);
@@ -1604,7 +1827,7 @@ const ASR_REASON = {
   server: '识别服务出错了。',
   'bad-audio': '这段录音没法识别。',
   'not-configured': '语音输入没开，或者没选识别引擎。',
-  'mic-denied': '没有麦克风权限。macOS：系统设置 → 隐私与安全性 → 麦克风，允许本应用；Windows：设置 → 隐私 → 麦克风。',
+  'mic-denied': '没有麦克风权限。', // + what to do on this system (MIC_FIX)
   'no-mic': '没找到麦克风。',
   'mic-error': '麦克风打不开',
   canceled: '已取消。',
@@ -1613,8 +1836,19 @@ let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, ti
 let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
+// she is listening while the microphone is opening or recording (🎤 or the 快捷键)
+const micListening = () => mic.state === 'recording' || mic.state === 'starting';
+const LISTEN_FX = '👂';
 
+// 麦克风被拒: what to do, for the system she runs on (docs/asr.md §5)
+const OS = /mac/i.test(navigator.platform) ? 'mac' : /win/i.test(navigator.platform) ? 'win' : 'linux';
+const MIC_FIX = {
+  mac: '到 系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用。',
+  win: '到 设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许桌面应用访问麦克风」。',
+  linux: '到 系统设置 → 声音 → 输入，选中麦克风并确认没有静音（PipeWire / PulseAudio 可以用 pactl list sources short 查看）；用 Flatpak / Snap 装的，还要在权限设置里允许它使用麦克风。',
+};
 function asrReasonText(r) {
+  if (r.reason === 'mic-denied') return `${ASR_REASON['mic-denied']}${MIC_FIX[OS]}`;
   const base = ASR_REASON[r.reason] || (String(r.reason || '').startsWith('http-') ? `识别服务返回了错误 ${r.reason.slice(5)}。` : `识别失败（${r.reason || '未知原因'}）。`);
   if (r.reason === 'network') return `${base}：${(settings && settings.asr && settings.asr.local.endpoint) || ''}。它开着吗？`;
   if (r.reason === 'mic-error') return `${base}（${String(r.message || '').slice(0, 60)}）。`;
@@ -1646,6 +1880,9 @@ function paintMic() {
   st.textContent = line;
   st.dataset.state = s;
   st.classList.toggle('hidden', !line);
+  if (voiceCall.on && s !== 'idle') {
+    listenBubble(s === 'recording' ? `我在听…\n说完再按 ${voiceCall.label} 结束` : s === 'starting' ? '正在打开麦克风…' : '嗯…让我想想你说了什么', s);
+  }
 }
 
 // 静音 (toolbar speaker): one switch over everything she sounds — 朗读, 互动语音 and the click sound.
@@ -1723,7 +1960,7 @@ async function micStart() {
 
 // Stop listening: the clip goes to be recognised, or (cancel) is thrown away.
 function micStop(cancel = false) {
-  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); return; }
+  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); endVoiceCall('canceled'); return; }
   if (mic.state !== 'recording') {
     if (cancel && mic.state === 'transcribing') window.pet.asr.cancel();
     return;
@@ -1744,7 +1981,7 @@ async function micDone(rec) {
   const ms = Math.round(mic.ms || 0);
   const cancel = mic.cancel;
   micRelease();
-  if (cancel) { mic.state = 'idle'; paintMic(); syncHover(); lastAsr = { ok: false, reason: 'canceled', clipMs: ms }; return; }
+  if (cancel) { mic.state = 'idle'; paintMic(); syncHover(); lastAsr = { ok: false, reason: 'canceled', clipMs: ms }; endVoiceCall('canceled'); return; }
   if (ms < MIC_MIN_MS || !chunks.length) { mic.state = 'idle'; paintMic(); syncHover(); asrFail({ ok: false, reason: 'too-short', clipMs: ms }); return; }
   const blob = new Blob(chunks, { type: mime });
   mic.state = 'transcribing';
@@ -1759,7 +1996,7 @@ async function micDone(rec) {
   paintMic();
   syncHover();
   lastAsr = { ...r, bytes: blob.size, mime, clipMs: ms, at: Date.now() };
-  if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); return; }
+  if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); else endVoiceCall('canceled'); return; }
   const input = $('chat-input');
   const cur = input.value.trimEnd();
   input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 400);
@@ -1768,6 +2005,7 @@ async function micDone(rec) {
     if (thinking) showNotice('🎤 已填进输入框', '她还在回上一句，等她说完再点“发送”。');
     else { lastAsr.sent = true; $('chat-send').click(); }
   }
+  endVoiceCall('ok', lastAsr);
 }
 
 // What went wrong goes in a toast; what is in the box stays.
@@ -1775,6 +2013,94 @@ function asrFail(r) {
   lastAsr = { ...(lastAsr && lastAsr.at === r.at ? lastAsr : {}), ...r };
   const settingsFix = !/^(too-short|empty|canceled|mic-denied|no-mic)$/.test(r.reason);
   showNotice('🎤 语音输入没成功', asrReasonText(r), settingsFix ? { label: '去设置', admin: 'asr' } : null);
+  endVoiceCall('fail', r);
+}
+
+// ---------- 快捷键唤起语音对话 (main/voice-hotkey.js → 'voice-hotkey'; docs/asr.md §1.1) ----------
+// The global shortcut in 设置 → 语音输入 → 快捷键. Main has already shown and focused this window; here the
+// chat box opens and the same recorder as 🎤 starts (micStart); pressed again while she listens it stops
+// and the clip is recognised (micStop) — then 识别后直接发送 and the rest work as with 🎤. While a call is on
+// the controls stay up without the pointer on her, the bubble says what she is doing, and she looks at you.
+const VOICE_HOLD_MS = { hint: 9000, heard: 15000, failed: 9000 };
+let voiceCall = { on: false, label: '', until: 0, timer: null, log: [], last: null };
+const voiceHeld = () => voiceCall.on || performance.now() < voiceCall.until;
+const hotkeyLabel = (p) => (p && p.label) || (settings && settings.hotkeyStatus && settings.hotkeyStatus.label) || '快捷键';
+function logVoice(ev, extra = {}) {
+  voiceCall.last = ev;
+  voiceCall.log.push({ ev, mic: mic.state, at: Date.now(), ...extra });
+  if (voiceCall.log.length > 50) voiceCall.log.shift();
+}
+// keep the controls up for a while after the call (the recognised text waits in the box, a hint is read)
+function voiceHold(ms) {
+  voiceCall.until = performance.now() + ms;
+  clearTimeout(voiceCall.timer);
+  voiceCall.timer = setTimeout(() => { voiceCall.until = 0; syncHover(); }, ms + 50);
+  syncHover();
+}
+// the bubble while she listens: no talking mouth, no reading aloud, stays until the call moves on
+function listenBubble(text, state) {
+  const b = $('bubble');
+  if (b.dataset.kind === 'listen' && b.dataset.reason === state && b.textContent === text && !b.classList.contains('hidden')) return;
+  clearTimeout(bubbleTimer);
+  b.classList.remove('thinking', 'streaming', 'hidden');
+  delete b.dataset.stream;
+  b.textContent = text;
+  b.dataset.kind = 'listen';
+  b.dataset.source = 'hotkey';
+  b.dataset.reason = state;
+  b.dataset.meme = '';
+  $('meme-sticker').classList.add('hidden');
+  talkUntil = 0;
+}
+function endVoiceCall(outcome, r = null) {
+  if (!voiceCall.on) return;
+  voiceCall.on = false;
+  document.body.classList.remove('voice-call');
+  logVoice(outcome, r ? { reason: r.reason || null, sent: !!r.sent } : {});
+  const b = $('bubble');
+  if (outcome === 'ok') {
+    if (r && r.sent) return; // sent at once (识别后直接发送): her reply takes the bubble
+    say(`听到啦～在输入框里，没问题就按 Enter 发给我。`, 'hint', 'hotkey', 'heard');
+    voiceHold(VOICE_HOLD_MS.heard);
+    $('chat-input').focus();
+  } else if (outcome === 'fail') {
+    const denied = r && (r.reason === 'mic-denied' || r.reason === 'no-mic' || r.reason === 'mic-error');
+    const text = r && r.reason === 'mic-denied' ? '（我听不到你：麦克风权限被拒绝了，办法在下面的提示里。）'
+      : denied ? `（我听不到你：${asrReasonText(r)}）`
+        : `（${asrReasonText(r)}）`;
+    say(text, 'error', 'hotkey', (r && r.reason) || 'failed');
+    voiceHold(VOICE_HOLD_MS.failed);
+  } else if (b.dataset.kind === 'listen') {
+    hideBubbleLater(1200);
+  }
+}
+function onVoiceHotkey(p) {
+  logVoice('pressed', { source: (p && p.source) || null });
+  if (VISITOR) return;
+  if (!view || $('pet-screen').classList.contains('hidden')) {
+    showNotice('🎤 还不能语音对话', '先在这个窗口里唤醒你的伙伴，之后按快捷键就能直接和她说话。');
+    logVoice('no-pet');
+    return;
+  }
+  if (mic.state === 'recording') { logVoice('stop'); micStop(); return; } // the second press: stop and recognise
+  if (mic.state !== 'idle') { logVoice('ignored'); return; } // the microphone is opening / it is being recognised
+  const label = hotkeyLabel(p);
+  if (!asrOn()) {
+    const why = settings && settings.asr && settings.asr.enabled ? '识别引擎选了「关闭」' : '语音输入还没开';
+    // short enough for the two lines the bubble has above her; how to turn it on is in the notice below
+    say(`（${why}，我听不到你～打开方法在下面的提示里。）`, 'hint', 'hotkey', 'asr-off');
+    showNotice('🎤 语音输入还没开', `${why}。在 设置 → 语音输入 打开并选一个识别引擎（LobeHub 云端或本地 whisper），再按 ${label} 就能和她语音对话。`, { label: '去设置', admin: 'asr' });
+    voiceHold(VOICE_HOLD_MS.hint);
+    logVoice('asr-off');
+    return;
+  }
+  if (thinking) { say('等等，我还在想上一句……', 'busy', 'hotkey', 'busy'); logVoice('busy'); return; }
+  voiceCall.on = true;
+  voiceCall.label = label;
+  document.body.classList.add('voice-call');
+  logVoice('start');
+  openChat();
+  micStart(); // she turns to listen (petStatus → look, the ear over her) for as long as it records
 }
 
 // A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a page of
@@ -1818,7 +2144,7 @@ function bindMic() {
 }
 
 window.petFx = {
-  state: () => (view ? { state: petStatus(), action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
+  state: () => (view ? { state: petStatus(), listening: $('char-wrap').classList.contains('listening'), fx: $('char-fx').textContent, action: $('pet-body').dataset.action, exact: $('pet-body').dataset.exact === 'yes', facing: $('pet-body').dataset.facing, lastCue: fx.lastCue, flying: fx.flying, species: view.pet.speciesId, video: isVideo(view.pet.speciesId) } : null),
   cue: (name) => fx.cue(name, isVideo(view.pet.speciesId)),
   click: () => doAct('pat'),
   // 部位触摸: what a client point maps to, and the last reaction shown
@@ -1846,11 +2172,15 @@ window.petFx = {
   speechGate: () => ({ ...speechGate.stats }),
   lastPrewarm: () => lastPrewarm && { ...lastPrewarm },
   lastAsr: () => lastAsr && { ...lastAsr },
+  // 快捷键唤起语音对话: whether a call is on, what happened on each press
+  voiceCall: () => ({ on: voiceCall.on, held: voiceHeld(), label: voiceCall.label, last: voiceCall.last, log: voiceCall.log.slice(), mic: mic.state }),
   micState: () => mic.state,
   // VRM figures (vrm.js): what each is drawing (mode, fps, face, mouth, gaze…), created / disposed counts
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
   // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
   live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
+  // the desktop pet's pixel sprite: framing, half-body band (pack / default), measured reference, crop, canvas size
+  sprite: () => { const el = $('pet-look').firstElementChild; return el && el.petFigure && el.classList.contains('sprite') && !el.classList.contains('rig') ? el.petFigure.debug() : null; },
   // e2e: a few seconds of vowel-like sound played through the TTS path (playAudio), so lip sync runs
   // without a TTS engine; resolves with how the clip ended
   testVoice: (seconds = 2) => new Promise((resolve) => {
@@ -1909,6 +2239,7 @@ async function onApiCmd({ id, cmd, args }) {
   window.pet.apiReply(id, result);
 }
 
+const spriteGliding = () => { for (const s of sprites) if (s.glide) return true; return false; }; // a framing glide wants every frame
 function frameLoop() {
   tickSprites(performance.now());
   tickRigs(performance.now());
@@ -1918,7 +2249,7 @@ function frameLoop() {
     animatePet();
   }
   // ~12 fps keeps the pixel feel and idles cheaply; a rig's springs want every frame
-  if (rigs.size) requestAnimationFrame(frameLoop);
+  if (rigs.size || spriteGliding()) requestAnimationFrame(frameLoop);
   else setTimeout(() => requestAnimationFrame(frameLoop), 80);
 }
 
@@ -1971,6 +2302,7 @@ async function main() {
   window.pet.onThinking(setThinking);
   window.pet.onAffection(onAffection);
   window.pet.onSettings((st) => { setSettings(st); });
+  window.pet.onVoiceHotkey(onVoiceHotkey);
   window.pet.onUpdateStatus(onUpdateStatus);
   setSettings(info.settings);
   const start = (v) => (v ? enterPet(v) : showOnboarding());

@@ -12,6 +12,7 @@
 const settingsLib = require('./settings');
 const { ENGINES: TTS_ENGINES, FALLBACKS, LOCAL_APIS: TTS_LOCAL_APIS, endpointOkFor } = require('./tts');
 const asrLib = require('./asr');
+const hotkeyLib = require('./hotkey');
 
 const DEFAULTS = settingsLib.normalizeSettings(null);
 const at = (o, key) => key.split('.').reduce((v, p) => (v && typeof v === 'object' ? v[p] : undefined), o);
@@ -81,13 +82,13 @@ const PAGES = {
   packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
-  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },
+  proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
   topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
   history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
   desk: { title: '桌面上的她', description: '让她做个动作、回到屏幕右下角，或者退出桌宠。' },
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
-  asr: { title: '语音输入', description: '按住 🎤 说话，识别成文字发给她。' },
+  asr: { title: '语音输入', description: '按住 🎤 说话，或在任何地方按快捷键直接和她语音对话；识别成文字发给她。' },
   voicepacks: { title: '语音包', description: '提前录好的台词：命中时直接播放，不用请求引擎。' },
   connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
   api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
@@ -99,14 +100,14 @@ const PAGES = {
 const opts = (pairs) => pairs.map(([value, label]) => ({ value, label }));
 const pct = (v) => `${Math.round(v * 100)}%`;
 
-// type: switch | select | segmented | slider | number | text | url | secret | textarea | readonly
+// type: switch | select | segmented | slider | number | text | url | hotkey | secret | textarea | readonly
 // live: true = applies at once (all settings.json keys but RESTART_KEYS); restart: true = after a restart
 const F = [];
 const add = (key, page, card, label, type, extra = {}) => F.push({ key, page, card, label, type, store: 'settings', ...extra });
 
 // ---- 桌宠行为 ----------------------------------------------------------------------------------------------
 add('petScale', 'behavior', '大小与取景', '宠物大小', 'slider', { desc: '桌面上角色的大小，窗口跟着变，右下角保持不动。', min: settingsLib.PET_SCALE.min, max: settingsLib.PET_SCALE.max, step: 0.05, format: 'percent' });
-add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM 和 Live2D 角色生效（像素 / 图片 / 全动态角色保持全身）；角色详情页可以单独设置，角色包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
+add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { desc: '全身：从头到脚；半身：只显示腰部以上，角色画得更大，窗口大小和右下角位置不变。改动立即生效。对 VRM、Live2D 和像素角色生效（图片 / 全动态角色保持全身）；角色详情页可以单独设置，角色包也可以自带默认取景。', options: opts([['full', '全身'], ['half', '半身']]) });
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
@@ -121,6 +122,25 @@ add('proactive.speakCooldownMin', 'proactive', '主动行为', '主动说话间�
 add('proactive.boredAfterMin', 'proactive', '主动行为', '多久没理她算无聊', 'number', { desc: '超过这个时间没有互动，她可能会来找你。', unit: '分钟', min: 5, max: 480, step: 5, dependsOn: { key: 'proactive.enabled', value: true } });
 add('proactive.hungryAt', 'proactive', '主动行为', '饥饿提醒阈值', 'slider', { desc: '饥饿值到这里时她会喊饿（0–100）。', min: 50, max: 100, step: 1, dependsOn: { key: 'proactive.enabled', value: true } });
 add('proactive.maxLlmPerHour', 'proactive', '主动行为', '每小时最多调用模型', 'number', { desc: '主动说话每小时最多花几次模型调用，超出后改用离线台词。0 = 只用离线台词。', unit: '次', min: 0, max: 30, step: 1, dependsOn: { key: 'proactive.enabled', value: true } });
+// 插个嘴 (core/interject.js, docs/interject.md): off by default; the clipboard has its own switch and stays off
+const IJ = { key: 'interject.enabled', value: true };
+const IR = settingsLib.INTERJECT_RANGE;
+add('interject.enabled', 'proactive', '插个嘴', '插个嘴', 'switch', { desc: '默认关闭。打开后她只听下面列出、并且打开了的来源（不是对她说的话），由 LobeHub 的决策模型（需要登录）判断值不值得插一句碎碎念；拿不准就不说，判断失败也不说。不装键盘钩子、不读其它窗口、不截屏；记录只留每句前 24 个字。' });
+add('interject.sources.chatDraft', 'proactive', '插个嘴', '来源：聊天框草稿', 'switch', { desc: '你在她的聊天框里打字、停下来还没发送时。只看这个输入框。', dependsOn: IJ });
+add('interject.sources.voice', 'proactive', '插个嘴', '来源：语音输入', 'switch', { desc: '语音输入转写出来的文字。', dependsOn: IJ });
+add('interject.sources.api', 'proactive', '插个嘴', '来源：外部程序', 'switch', { desc: '本机脚本通过对外接口 POST /pixel-pet/observe 告诉她的内容（需开启对外接口）。', dependsOn: IJ });
+add('interject.sources.clipboard', 'proactive', '插个嘴', '来源：剪贴板（系统级）', 'switch', { desc: '每 3 秒看一次剪贴板里的文字。系统级来源，默认关闭；记录里只留字数，不留内容；像密码、密钥的文字直接跳过。', dependsOn: IJ });
+add('interject.cooldownMin', 'proactive', '插个嘴', '两次插嘴至少间隔', 'number', { unit: '分钟', min: IR.cooldownMin[0], max: IR.cooldownMin[1], step: 1, dependsOn: IJ });
+add('interject.maxPerHour', 'proactive', '插个嘴', '每小时最多插嘴', 'number', { unit: '次', min: IR.maxPerHour[0], max: IR.maxPerHour[1], step: 1, dependsOn: IJ });
+add('interject.maxDecidePerHour', 'proactive', '插个嘴', '每小时最多判断', 'number', { desc: '每小时最多调用几次决策模型；超出后这一小时不再判断。', unit: '次', min: IR.maxDecidePerHour[0], max: IR.maxDecidePerHour[1], step: 1, dependsOn: IJ });
+add('interject.debounceSec', 'proactive', '插个嘴', '停顿多久再判断', 'number', { desc: '你连续输入时不判断，停下这么久之后才看。', unit: '秒', min: IR.debounceSec[0], max: IR.debounceSec[1], step: 1, dependsOn: IJ });
+add('interject.minChars', 'proactive', '插个嘴', '太短不判断', 'number', { desc: '少于这么多字的输入直接跳过。', unit: '字', min: IR.minChars[0], max: IR.minChars[1], step: 1, dependsOn: IJ });
+add('interject.quietStart', 'proactive', '插个嘴', '勿扰开始', 'number', { desc: '勿扰时段内不插嘴；开始和结束相同 = 不设勿扰。', unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
+add('interject.quietEnd', 'proactive', '插个嘴', '勿扰结束', 'number', { unit: '点', min: 0, max: 23, step: 1, dependsOn: IJ });
+add('interject.highThreshold', 'proactive', '插个嘴', '插嘴阈值', 'slider', { desc: '决策模型给出的概率不低于它才插嘴。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.highThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
+add('interject.lowThreshold', 'proactive', '插个嘴', '不插嘴阈值', 'slider', { desc: '概率不高于它就肯定不说；两个阈值之间默认也不说，除非你点过“可以插嘴”的规则命中。', min: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[0], max: settingsLib.INTERJECT_THRESHOLD_RANGE.lowThreshold[1], step: 0.01, format: 'percent', dependsOn: IJ });
+add('interject.timeoutSec', 'proactive', '插个嘴', '判断超时', 'number', { desc: '超时一律不说话。', unit: '秒', min: IR.timeoutSec[0], max: IR.timeoutSec[1], step: 1, dependsOn: IJ });
+add('interject.model', 'proactive', '插个嘴', '决策模型', 'text', { desc: 'provider/model，默认 lobehub/jev-1.14.0。', placeholder: 'lobehub/jev-1.14.0', maxLength: 121, pattern: settingsLib.DECISION_MODEL_RE.source, dependsOn: IJ });
 add('affectionRules.dailyCap', 'proactive', '好感度', '每日好感上限', 'number', { desc: '每个好感日（凌晨 4 点分界）最多能涨多少好感。', unit: '点', min: settingsLib.DAILY_CAP_RANGE[0], max: settingsLib.DAILY_CAP_RANGE[1], step: 1 });
 add('affectionRules.decay', 'proactive', '好感度', '久未见面时好感衰减', 'switch', { desc: '48 小时没互动后，每 12 小时减 1 点，一次最多减 8 点，不会掉阶段。' });
 
@@ -156,6 +176,12 @@ add('asr.fallback', 'asr', '语音输入', '用不了时换另一个引擎', 'sw
 add('asr.language', 'asr', '语音输入', '语言', 'select', { desc: '自动识别，或固定一种语言（更准）。', options: opts([['auto', '自动'], ['zh', '中文'], ['en', '英语'], ['ja', '日语'], ['ko', '韩语'], ['fr', '法语'], ['de', '德语'], ['es', '西班牙语'], ['ru', '俄语']]), dependsOn: { key: 'asr.enabled', value: true } });
 add('asr.autoSend', 'asr', '语音输入', '识别后直接发送', 'switch', { desc: '识别出的文字直接发给她，不在输入框里等你确认。', dependsOn: { key: 'asr.enabled', value: true } });
 add('asr.maxSeconds', 'asr', '语音输入', '单次最长录音', 'number', { desc: '录到这个时长自动停止。', unit: '秒', min: 5, max: 120, step: 5, dependsOn: { key: 'asr.enabled', value: true } });
+// 快捷键唤起语音对话 (core/hotkey.js, main/voice-hotkey.js): works with 语音输入 off too — she then says how to turn it on
+add('asr.hotkey', 'asr', '快捷键', '唤起语音对话', 'hotkey', {
+  desc: '在任何地方按下：她出现在桌面上、打开聊天框并开始听；说完再按一次结束并识别。录下组合时至少要有一个 Ctrl / ⌘ / Alt。清空 = 不用快捷键。',
+  defaultKeys: hotkeyLib.toHotkeyKeys(hotkeyLib.DEFAULT_HOTKEY),
+  reserved: hotkeyLib.RESERVED.map((r) => ({ accelerator: r.accelerator, keys: hotkeyLib.toHotkeyKeys(r.accelerator), label: r.label })),
+});
 add('asr.lobehub.model', 'asr', 'LobeHub 云端识别', '模型', 'select', { desc: '完整版更准，mini 更快更省。', options: opts([['gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe（快）'], ['gpt-4o-transcribe', 'gpt-4o-transcribe（准）']]) });
 add('asr.local.endpoint', 'asr', '本地识别服务', '地址', 'url', { desc: 'https，或本机 / 局域网的 http；不能带查询参数或账号密码。清空恢复默认。', placeholder: asrLib.DEFAULT_ENDPOINT, validator: 'asr' });
 add('asr.local.api', 'asr', '本地识别服务', '接口', 'segmented', { desc: 'OpenAI 兼容（/v1/audio/transcriptions）或 whisper.cpp（/inference）。', options: opts([['openai', 'OpenAI 兼容'], ['whispercpp', 'whisper.cpp']]) });
@@ -267,6 +293,12 @@ function validate(key, value) {
       if (f.pattern && v && !new RegExp(f.pattern).test(v)) return no('pattern');
       return { ok: true, value: v };
     }
+    case 'hotkey': {
+      // '' = off; otherwise a valid accelerator that the app itself does not use (core/hotkey.js checkHotkey)
+      if (value !== null && typeof value !== 'string') return no('type');
+      const h = hotkeyLib.checkHotkey(value === null ? '' : value);
+      return h.ok ? { ok: true, value: h.accelerator } : { ok: false, reason: h.reason === 'conflict' ? 'hotkey-conflict' : 'bad-hotkey', message: h.message };
+    }
     case 'visitors':
       if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) return no('type');
       if (value.length > f.max) return no('range', `（最多 ${f.max} 位）`);
@@ -289,6 +321,7 @@ function patchFor(key, value) {
   if (head === 'tts') return { setter: 'setTts', patch: nest(parts.slice(1), value) };
   if (head === 'asr') return { setter: 'setAsr', patch: nest(parts.slice(1), value) };
   if (head === 'api') return { setter: 'setApi', patch: { [parts[1]]: value } };
+  if (head === 'interject') return { setter: 'setSection', section: head, patch: nest(parts.slice(1), value) };
   if (['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
   return null;
 }
