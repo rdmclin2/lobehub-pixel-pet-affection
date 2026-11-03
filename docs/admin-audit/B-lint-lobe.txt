@@ -1,5 +1,8 @@
+# HEAD 4b119be
+$ node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Characters.tsx admin/src/console/pages/character admin/src/console/roster-model.ts admin/src/console/stage admin/src/useHashPath.ts
 LOBE-DESIGN · LINT   12 file(s)   platform=desktop（product.md）   项目层不适用：P-06, P-07, P-08, P-09   lint-allow：LOBE-FONT-FAMILY LOBE-RAW-COLOR LOBE-SPACING-OFFGRID LOBE-LETTER-SPACING LOBE-MOTION-DURATION LOBE-BOUNCE LOBE-GLOW LOBE-EMOJI-ICON LOBE-NULLISH-RENDER src/renderer/** | LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/** | LOBE-MOTION-DURATION admin/src/console/stage/**
 WARN
   [LOBE-MULTI-PRIMARY] admin/src/console/pages/character/DetailPage.tsx:807  2 个 primary
       → 同一文件出现多个 primary 按钮；一屏只有一个主 CTA，对应 brief 的主任务（W-01 · 40-flow）
 RESULT: 0 FAIL, 1 WARN
+exit 0

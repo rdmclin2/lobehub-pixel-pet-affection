@@ -1,1 +1,36 @@
-✓ built in 1.52s
+# HEAD 4b119be
+$ git rev-parse --abbrev-ref HEAD
+feat/admin-ia-polish
+4b119be
+$ npx tsc -p admin --noEmit
+(exit 0, no output)
+$ npm run build:admin
+src/admin-ui/assets/pierre-dark-tritanopia-DneQ5i7L.js                    4.13 kB │ gzip:     1.14 kB
+src/admin-ui/assets/pierre-light-tritanopia-BSHccQzI.js                   4.13 kB │ gzip:     1.13 kB
+src/admin-ui/assets/pierre-dark-protanopia-deuteranopia-BmjibgrW.js       4.14 kB │ gzip:     1.17 kB
+src/admin-ui/assets/pierre-light-protanopia-deuteranopia-Cd5nk0bp.js      4.14 kB │ gzip:     1.16 kB
+src/admin-ui/assets/houston-DduE73P7.js                                   4.40 kB │ gzip:     1.16 kB
+src/admin-ui/assets/vitesse-light-Cqenv4Qv.js                             4.55 kB │ gzip:     1.18 kB
+src/admin-ui/assets/vitesse-dark-BWf_ZQtP.js                              4.60 kB │ gzip:     1.18 kB
+src/admin-ui/assets/vitesse-black-Sqvrs2Sw.js                             4.60 kB │ gzip:     1.19 kB
+src/admin-ui/assets/catppuccin-mocha-DHkNF0Mp.js                          5.00 kB │ gzip:     1.26 kB
+src/admin-ui/assets/catppuccin-latte-b6208YQK.js                          5.00 kB │ gzip:     1.26 kB
+src/admin-ui/assets/catppuccin-frappe-DbLkF0J2.js                         5.00 kB │ gzip:     1.27 kB
+src/admin-ui/assets/catppuccin-macchiato-CNNBbV1L.js                      5.00 kB │ gzip:     1.27 kB
+src/admin-ui/assets/loader-CEGRnxiH.js                                    6.54 kB │ gzip:     1.44 kB
+src/admin-ui/assets/pierre-dark-vibrant-BUK9Y-N_.js                       8.62 kB │ gzip:     1.48 kB
+src/admin-ui/assets/pierre-light-vibrant-BgMZEwQI.js                      8.62 kB │ gzip:     1.47 kB
+src/admin-ui/assets/synthwave-84-BJJFg-sc.js                             10.31 kB │ gzip:     2.06 kB
+src/admin-ui/assets/default-Ckb1jcnl.js                                 272.78 kB │ gzip:   119.65 kB
+src/admin-ui/assets/index-LKndBAz8.js                                 4,535.97 kB │ gzip: 1,295.21 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 4096 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.25s
+$ ls -l src/admin-ui/index.html src/admin-ui/assets/index-*.js
+4535970 2026-11-03 20:14:16 src/admin-ui/assets/index-LKndBAz8.js
+936 2026-11-03 20:14:16 src/admin-ui/index.html
+(src/admin-ui/ 是 .gitignore 里的构建产物，不入库；上面由本次 build:admin 重新生成；e2e 期间又被重写过一次，产物文件名哈希 index-LKndBAz8 与上面构建输出一致，即同一份源码的构建)

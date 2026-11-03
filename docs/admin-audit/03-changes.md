@@ -156,39 +156,51 @@ PASS  [admin] A17 persisted across a restart: values read back from settings.jso
 4. **「NoPet」未换成 A 的共享件**：图鉴的「还没有唤醒桌宠」提示保留 `Alert`，只加了「打开桌宠窗口」按钮（与 NoPet 同一个动作）；A11 的 NoPet 清单里不含图鉴。
 5. **lint 剩 1 条 WARN**（`LOBE-MULTI-PRIMARY`，`DetailPage.tsx`）：两个 primary 在不同屏（「找不到这位角色」的「回角色图鉴」与「个性化设定」的「保存」），不会同屏出现。
 6. **提交归属**：A 的 `160a394` 在 amend 时把当时共享 index 里 staged 的 B 源码一起提交了（`Characters.tsx`、`pages/character/*`、`roster-model.ts`、`stage/*`、`useHashPath.ts`、`test/roster-model.test.js`）；三个包同时在一个工作区提交，没有重写历史。B 的 e2e / 单测 hunk 在 `baa4b2f`、`b531d90`。A 小节同样记录了这一点。
+7. **e2e 里 B 的三处断言被拼错了位置**（第 2 轮发现并修复，`4b119be`）：A / C 在共享工作区按 hunk 暂存提交时，charmigrate M3 的形象读取落进了 M2、admin A12 的收尾落到 A12d 之后、admincov B3 的语音包链接断言落进了标签循环。工作区里一直是正确版本，`4b119be` 只把它提交上去，断言内容不变；修复后上述场景全部通过（B.4）。
 
 ### B.3 前后截图（`screenshots/B-*`，1200×820，fake lh，当前角色格萝可）
 
-改动前取自干净的 `1fe0a5e`，改动后取自 A + B + C 合并后的工作区（同一脚本、同一数据）。
+改动前取自干净的基线 `1fe0a5e`（单独 worktree 重新 `build:admin`），改动后取自 `feat/admin-ia-polish`（A + B + C 都已提交后的 HEAD）；同一个 Playwright 脚本、同一份数据，第 2 轮全部重拍。截图里没有地址栏，**每张图拍摄时的 `location.hash`、选中的标签和主区域文字记在 [`B-screenshots-log.txt`](B-screenshots-log.txt)**，下表「地址」一列即取自该记录。
 
-| 看什么 | 改动前 | 改动后 |
-| --- | --- | --- |
-| 图鉴：13 张按形象平铺、11 张剪影加锁 → 5 张按角色、彩色、一个动作 | `B-before-characters-list-light.png` | `B-after-characters-list-light.png` |
-| 筛选 Live2D → 进详情 → 返回：回到「全部」→ 仍是 `?kind=live2d` | `B-before-characters-filter-after-back.png` | `B-after-characters-filter-live2d.png`、`B-after-characters-filter-after-back.png` |
-| 详情首屏：标签栏 y≈405 → y≈178；「形象」区 | `B-before-detail-looks-light.png` | `B-after-detail-looks-light.png`、`B-after-detail-multilook.png` |
-| 好感标签：两条好感条 + 正文里的一键解锁 → 一条（页头）+ 路线图 + 页底危险操作 | `B-before-detail-tab-好感.png` | `B-after-detail-tab-好感.png` |
-| 刷新后标签：回到「装扮」→ 仍在「模型」 | `B-before-detail-model-after-reload.png` | `B-after-detail-model-after-reload.png` |
-| 深链 `#/characters/grok/affection` | `B-before-detail-affection-deeplink.png`（落在装扮） | `B-after-detail-affection-deeplink.png` |
-| 资料 + 语音 → 资料与语音（带「管理语音包」） | `B-before-detail-tab-资料.png` | `B-after-detail-tab-资料与语音.png` |
-| 一键解锁：弹窗内确认 | — | `B-after-danger-unlock-confirm.png`、`B-e2e-a12d-danger-unlock-confirm.png` |
-| 页底 | `B-before-detail-bottom.png` | `B-after-detail-bottom.png` |
-| 舞台 hover：无提示 → 「摸摸格萝可」+ 6 个动作 +「更多」+「桌面上的她也做」 | `B-before-stage-hover.png` | `B-after-stage-hover.png` |
-| 找不到角色：一条红色 Alert → Empty + 原因 + 两个出口 | `B-before-detail-missing.png` | `B-after-detail-missing.png`、`B-e2e-a12d-missing.png` |
-| 角色包：17 行平铺、代码 id、「共 17 位角色」、面包屑「设置」→ 按角色分组、「角色图鉴 / 角色包」 | `B-before-packs-light.png` | `B-after-packs-light.png`、`B-e2e-a12d-packs-grouped.png` |
-| 暗色（配色 / 字体 / 基调不变） | `B-before-characters-list-dark.png`、`B-before-detail-dark.png`、`B-before-packs-dark.png` | `B-after-characters-list-dark.png`、`B-after-detail-dark.png`、`B-after-packs-dark.png` |
+| 看什么 | 改动前 | 改动后 | 地址（log） |
+| --- | --- | --- | --- |
+| 图鉴：13 张按形象平铺、多数剪影 → 5 张按角色、彩色、一个动作；计数「已遇见 2 / 13 位」→「已遇见 1 / 5 位角色 · 共 13 套形象」 | `B-before-characters-list-light.png` | `B-after-characters-list-light.png` | `#/characters` |
+| 筛选 Live2D | `B-before-characters-filter-live2d.png` | `B-after-characters-filter-live2d.png` | 前 `#/characters`（筛选不进地址）→ 后 `#/characters?kind=live2d` |
+| 筛选后进详情再「返回」 | `B-before-characters-filter-after-back.png`（筛选丢失，回到「全部」） | `B-after-characters-filter-after-back.png`（仍是 Live2D） | 前 `#/characters` → 后 `#/characters?kind=live2d` |
+| 详情首屏：标签栏 y≈405 → y≈178；新增「形象」区 | `B-before-detail-looks-light.png` | `B-after-detail-looks-light.png`、`B-after-detail-multilook.png` | `#/characters/grok` |
+| 好感标签：两条好感条 + 正文里的一键解锁 → 一条（页头）+ 路线图 + 页底危险操作 | `B-before-detail-tab-好感.png` | `B-after-detail-tab-好感.png` | 前 `#/characters/grok`（标签不进地址）→ 后 `#/characters/grok/affection` |
+| 点「模型」后刷新 | `B-before-detail-model-after-reload.png`（刷新后回到「装扮」） | `B-after-detail-model-after-reload.png`（仍在「模型」） | 前 `#/characters/grok`，选中「装扮」→ 后 `#/characters/grok/model`，选中「模型」 |
+| 深链到好感 | `B-before-detail-affection-deeplink.png`（落在「装扮」） | `B-after-detail-affection-deeplink.png`（落在「好感」） | `#/characters/grok/affection` |
+| 「资料」「语音」两个标签 → 「资料与语音」一个标签，语音卡带「管理语音包」按钮（改前「语音」标签另见 `B-before-detail-tab-模型.png` 的标签栏：6 个标签） | `B-before-detail-tab-资料.png` | `B-after-detail-tab-资料与语音.png` | 后 `#/characters/grok/about` |
+| 一键解锁：弹窗内确认 → 点「取消」后弹窗关闭、好感仍是「陌生 · 好感 0 / 100」 | — （改前一键解锁在好感标签正文里） | `B-after-danger-unlock-confirm.png`、`B-after-danger-unlock-cancelled.png`、`B-e2e-a12d-danger-unlock-confirm.png` | `#/characters/grok/affection` |
+| 页底 | `B-before-detail-bottom.png` | `B-after-detail-bottom.png` | `#/characters/grok` |
+| 鼠标悬停在舞台上（截图不含光标）：改前无提示、11 个动作两行平铺、「当前角色」标签 → 改后浮出「摸摸格萝可」提示、6 个动作 +「更多」+「桌面上的她也做」 | `B-before-stage-hover.png` | `B-after-stage-hover.png` | `#/characters/grok`，选中「装扮」 |
+| 找不到角色：一行红色 Alert → Empty + 原因 + 两个出口 | `B-before-detail-missing.png` | `B-after-detail-missing.png`、`B-e2e-a12d-missing.png` | `#/characters/nobody` |
+| 角色包：17 行平铺、代码 id、面包屑「设置 / 角色包」→ 按角色分组、面包屑「角色图鉴 / 角色包」 | `B-before-packs-light.png` | `B-after-packs-light.png`、`B-e2e-a12d-packs-grouped.png` | `#/packs` |
+| 暗色（配色 / 字体 / 基调不变） | `B-before-characters-list-dark.png`、`B-before-detail-dark.png`、`B-before-packs-dark.png` | `B-after-characters-list-dark.png`、`B-after-detail-dark.png`、`B-after-packs-dark.png` | — |
+
+> 对比时注意：左侧 rail 的顺序（改前 小屋 / 角色 / 商店 / 玩法 / 设置 / 聊天 → 改后 小屋 / 角色 / 聊天 / 商店 / 分隔线 / 玩法 / 设置）和角色包页 rail 高亮（「设置」→「角色」）是**实施包 A** 的导航改动，不是 B 的视觉改动。
+> `B-e2e-a12d-*` 三张取自 `e2e/run.js admin` 的 A12d 步骤。
 
 ### B.4 验证命令与结果
 
-| 检查 | 命令 | 结果 |
-| --- | --- | --- |
-| 单元测试 | `npm test` | `tests 758 · pass 757 · fail 0 · skipped 1`（新增 `test/roster-model.test.js` 4 项；`test/admin-console.test.js` 两处读源码的断言改指向 `pages/character/DetailPage.tsx`，断言内容不变）→ [`B-npm-test.txt`](B-npm-test.txt) |
-| 类型检查 | `npx tsc -p admin --noEmit` | 无输出（通过） |
-| 构建 | `npm run build:admin`（产出 `src/admin-ui/`） | `✓ built in 1.52s` → [`B-build.txt`](B-build.txt) |
-| lobe-design lint | `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Characters.tsx admin/src/console/pages/character admin/src/console/roster-model.ts admin/src/console/stage admin/src/useHashPath.ts` | `RESULT: 0 FAIL, 1 WARN`（WARN 见偏差 5；初版的 `LOBE-OUTLINE-NONE` FAIL 已修）→ [`B-lint-lobe.txt`](B-lint-lobe.txt) |
-| e2e admin（A+B+C 合并副本） | `xvfb-run -a node e2e/run.js admin` | 26/29；B 相关步骤全过：A3b（整卡链接）、A3c（「更多」→ 睡觉）、A11（5 张卡、looks `[5,2,2,2,2]`、「5 位角色 · 13 套形象」、「正在陪你」、还没见面无剪影）、A12（列表初次见面 / 切换）、**A12d（新增：深链 + 刷新留在「模型」、点「好感」写 URL、好感只画一次、标签栏 y<260、5 个标签、DangerZone 弹窗确认、找不到角色两个出口、角色包按角色分组）**、A12b/A12c/A13/A13b/A14。失败的 A10、AIA3、A17 是 A 的旧版断言，A 已告知修复后 29/29 → [`B-e2e-admin.txt`](B-e2e-admin.txt) |
-| e2e wardrobepack | `xvfb-run -a node e2e/run.js wardrobepack` | 12/12（W0b 改为：大肥鱼一张卡、形象列在她页面「形象」里、Live2D 筛选写进 URL） |
-| e2e admincov | `xvfb-run -a node e2e/run.js admincov` | 12/13；B2（按角色出卡、筛选）、B3（5 个标签、资料与语音 + 语音包链接）、B10 通过；B12 失败为 A13 把朗读引擎字段折叠后 DOM 找不到 `tts.endpoints.fish`，属 A，A 正在改该步骤 |
-| e2e catalogdl / charmigrate | `xvfb-run -a node e2e/run.js catalogdl` / `charmigrate` | 7/7、7/7（catalogdl 提示改为「8 套形象可以下载」；charmigrate M3 改为按角色出卡 + 从她页面读形象） |
+第 2 轮在 `feat/admin-ia-polish` HEAD `4b119be`（A、B、C 都已提交）上全部重跑；原始输出入库在本目录。
+
+| 检查 | 命令 | 结果 | 原始输出 |
+| --- | --- | --- | --- |
+| 单元测试 | `npm test` | `tests 758 · pass 757 · fail 0 · skipped 1`（含新增 `test/roster-model.test.js` 4 项；`test/admin-console.test.js` 两处读源码的断言改指向 `pages/character/DetailPage.tsx`，断言内容不变） | [`B-npm-test.txt`](B-npm-test.txt) |
+| 类型检查 | `npx tsc -p admin --noEmit` | 无输出，exit 0 | [`B-build.txt`](B-build.txt) |
+| 构建 | `npm run build:admin`（产出 `src/admin-ui/`，该目录在 `.gitignore` 里、不入库） | `✓ built in 1.25s`，产物 `src/admin-ui/index.html` + `assets/index-LKndBAz8.js` | [`B-build.txt`](B-build.txt) |
+| lobe-design lint | `node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src/console/pages/Characters.tsx admin/src/console/pages/character admin/src/console/roster-model.ts admin/src/console/stage admin/src/useHashPath.ts` | `RESULT: 0 FAIL, 1 WARN`（12 个文件；WARN 见偏差 5） | [`B-lint-lobe.txt`](B-lint-lobe.txt) |
+| e2e admin | `xvfb-run -a node e2e/run.js admin` | **29/29**。B 相关：A3b（整卡链接）、A3c（舞台「更多」）、A11（5 张卡、「正在陪你」、还没见面无剪影）、A12（列表初次见面 / 切换）、**A12d**（深链 + 刷新留在「模型」、点「好感」写 URL、好感只画一次、标签栏 y<260、5 个标签、危险操作弹窗确认后取消、找不到角色两个出口、角色包按角色分组）、A12b / A12c / A13 / A13b / A14 | [`B-e2e.txt`](B-e2e.txt) |
+| e2e admincov | `xvfb-run -a node e2e/run.js admincov` | **13/13**（B2 按角色出卡与筛选、B3 5 个标签 + 资料与语音 + 语音包链接） | 同上 |
+| e2e wardrobepack / catalogdl / charmigrate | `xvfb-run -a node e2e/run.js <场景>` | **12/12、7/7、7/7**（W0b 大肥鱼一张卡、形象在她页面「形象」里、Live2D 筛选进 URL；catalogdl 提示「N 套形象可以下载」；charmigrate M3 按角色出卡 + 从她页面读形象） | 同上 |
+
+第 1 轮记录的 `admin` 26/29、`admincov` 12/13 是 A 包断言尚未提交时的合并副本结果；A 提交后已全部通过，上表为准。
+
+### B.5 B 的提交
+
+`baa4b2f`（e2e / 单测 hunk）、`b531d90`、`1c4bc5a`、`28f3545`、`31048f5`、`4b119be`（还原被交错暂存打乱的 B 断言，见偏差 7），以及第 2 轮的文档 / 截图提交；B 源码随 A 的 `160a394` 入库（偏差 6）。
 
 ---
 

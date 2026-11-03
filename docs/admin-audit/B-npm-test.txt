@@ -1,4 +1,12 @@
-(node:3624) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/ubuntu/develop/rdmclin2/pixel-pet-ia-polish/admin/src/console/roster-model.ts is not specified and it doesn't parse as CommonJS.
+# HEAD 4b119be（feat/admin-ia-polish，A+B+C 已提交），2026-11-03
+$ npm test
+✔ a placeholder meta.version ("undefined", "null", "-") is read as empty and not shown next to the name (1.839896ms)
+✔ one VRM model is one look: no wardrobe of identical cards (packs imported with the old fan-out collapse too) (1.899595ms)
+✔ VRM animation: a .vrma is recognised; a model or a plain glTF is not one (0.675834ms)
+✔ pack vrm.idle: a .vrma inside the pack is handed to the renderer; outside the pack or not an animation is refused (2.785074ms)
+✔ import: a folder / .zip brings its idle animation along (the only .vrma, or idle*); a single picked .vrm does not (3.7818ms)
+✔ no clip yet (or no library): she rests with the arms down, never the T-pose; the pixel moves are gone (0.85634ms)
+✔ idle clip with a held key (a flat stretch, like idle_loop.vrma's last 0.46 s): the moved bones keep the clip's pose, not the T-pose (43.677923ms)
 ℹ tests 758
 ℹ suites 0
 ℹ pass 757
@@ -6,4 +14,4 @@
 ℹ cancelled 0
 ℹ skipped 1
 ℹ todo 0
-ℹ duration_ms 64028.882417
+ℹ duration_ms 63305.321484
