@@ -3,7 +3,7 @@
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
-//   scenario "wardrobepack" -> 衣柜按形象包隔离 (T-2752): 大肥鱼 pixel → Live2D: the 衣柜 follows the pack, unsupported outfits refused
+//   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
@@ -7562,9 +7562,10 @@ async function frontslimScenario() {
       let wore = '';
       if (where.startsWith('characters/')) {
         await until(admin, () => !!document.querySelector('[data-outfits] [data-outfit]'), null, 15000, 'the outfit rack');
-        const before = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.disabled ? '🔒' : ''}${b.dataset.equipped === 'true' ? '✓' : ''}`));
+        // T-2784: each outfit is a card (data-outfit), 穿上 is its [data-equip] button
+        const before = await admin.evaluate(() => [...document.querySelectorAll('[data-outfits] [data-outfit]')].map((b) => `${b.dataset.outfit}${b.dataset.locked === 'true' ? '🔒' : ''}${b.dataset.equipped === 'true' ? '✓' : ''}`));
         await shotAdmin('f5-admin-wardrobe');
-        const pick = await admin.evaluate(() => { const b = [...document.querySelectorAll('[data-outfits] [data-outfit]')].find((x) => !x.disabled && x.dataset.equipped !== 'true'); if (b) { b.click(); return b.dataset.outfit; } return null; });
+        const pick = await admin.evaluate(() => { const b = [...document.querySelectorAll('[data-outfits] [data-equip]')][0]; if (b) { b.click(); return b.dataset.equip; } return null; });
         if (pick) {
           await until(admin, (id) => document.querySelector(`[data-outfits] [data-outfit="${id}"]`)?.dataset.equipped === 'true', pick, 10000, 'outfit equipped');
           const petOutfit = await page.evaluate(() => window.pet.debugHeartbeat().then((v) => v.outfit));
@@ -7997,7 +7998,7 @@ async function petuiScenario() {
   }
 }
 
-// ---------------------------------------------------------------- wardrobepack (衣柜按形象包隔离, T-2752)
+// ---------------------------------------------------------------- wardrobepack (衣柜按角色隔离, T-2752 / T-2784 衣柜卡片)
 // The wardrobe follows the pack she wears: 大肥鱼 in her pixel pack has a full 衣柜; changing into her Live2D
 // pack (art for daily only) leaves daily alone, takes off the scarf she wore (saved), refuses other outfits and
 // never swaps her into another pack. Driven through the settings window like a user. Free: fake lh, no network.
@@ -8045,11 +8046,32 @@ async function wardrobePackScenario() {
   };
   const petShot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).then(() => `${name}.png`);
   const chips = (id) => admin.$$eval(`[data-outfits="${id}"] [data-outfit]`, (els) => els.map((e) => e.getAttribute('data-outfit')));
+  // T-2784: one outfit = one card: its picture (a try-on button), name, rating / 新 tags, and 正在穿 or 穿上
+  const cards = (id) => admin.$$eval(`[data-outfits="${id}"] [data-outfit]`, (els) => els.map((e) => ({
+    id: e.dataset.outfit,
+    text: e.textContent,
+    cover: !!e.querySelector(`[data-try-outfit="${e.dataset.outfit}"]`),
+    drawn: !!e.querySelector('[data-drawn]'),
+    picture: !!e.querySelector('canvas, img, video'),
+    rating: e.querySelector('[data-rating]')?.textContent || '',
+    isNew: !!e.querySelector('[data-new-outfit]'),
+    worn: e.querySelector('[data-worn]')?.textContent || '',
+    equip: e.querySelector('[data-equip]')?.textContent || '',
+    equipped: e.dataset.equipped === 'true',
+    locked: e.dataset.locked === 'true',
+  })));
   const petLook = () => page.evaluate(() => ({ kind: document.getElementById('pet-body').dataset.kind, outfit: document.getElementById('char-wrap').dataset.outfit }));
   const viewNow = async () => { const v = (await call('state')).view; return { packId: v.look && v.look.packId, kind: v.look && v.look.kind, outfit: v.outfit, outfits: v.outfits.map((o) => o.id), cards: [...new Set(v.outfits.map((o) => o.look && o.look.packId))] }; };
   try {
     await step(S, 'W0 hatch 大肥鱼, open the settings window, unlock every stage', async () => {
       await page.waitForSelector('.char-card');
+      // the pet window's only look picker is 选择模型娘: one card per character (T-2764), no 形象包 grouping
+      const picker = await page.$$eval('.char-card', (els) => els.map((e) => `${e.dataset.character}|${e.querySelector('.nm').textContent}|${e.querySelector('.vendor').textContent}`));
+      assert.ok(picker.some((x) => x.startsWith('dafeiyu-pixel|大肥鱼 · 像素')) && picker.some((x) => x.startsWith('dafeiyu-live2d|大肥鱼 · Live2D')), picker.join(' '));
+      assert.ok(!(await page.textContent('body')).includes('形象包'), 'no 形象包 in the pet window');
+      await page.waitForTimeout(1500);
+      await petShot('w0-pet-window-character-picker');
+      fs.writeFileSync(path.join(SHOTS, 'w0-pet-window-character-picker.txt'), picker.join('\n') + '\n');
       await page.click('.char-card[data-species="dafeiyu"]');
       await page.uncheck('#local-opt');
       await page.click('#hatch-btn');
@@ -8073,10 +8095,59 @@ async function wardrobePackScenario() {
       return `default pack ${v.packId}; wardrobe ${v.outfits.join(',')}`;
     }, page);
 
+    await step(S, 'W0b 角色图鉴: 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two cards of their own; no 形象包 wording; 按形象类型 still filters', async () => {
+      await go('/characters');
+      await attached('[data-row="dafeiyu-pixel"]');
+      await attached('[data-row="dafeiyu-live2d"]');
+      const rows = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, text: e.textContent })));
+      const fish = rows.filter((r) => r.id.startsWith('dafeiyu-'));
+      assert.ok(fish.length >= 3, fish.map((r) => r.id).join(','));
+      assert.match(rows.find((r) => r.id === 'dafeiyu-pixel').text, /大肥鱼 · 像素/);
+      assert.match(rows.find((r) => r.id === 'dafeiyu-live2d').text, /大肥鱼 · Live2D/);
+      assert.equal(rows.find((r) => r.id === 'dafeiyu-pixel').kind, 'sprites');
+      assert.equal(rows.find((r) => r.id === 'dafeiyu-live2d').kind, 'live2d');
+      // the cards in view draw her (first frame of each character's own look) before the screenshot
+      await until('roster cards drawn', () => admin.evaluate(() => [...document.querySelectorAll('[data-roster] [data-row]')].every((r) => !!r.querySelector('[data-drawn]'))), 60000);
+      const page0 = await admin.textContent('[data-admin-page]');
+      for (const w of ['形象包', '跟随形象包', '有导入包']) assert.ok(!page0.includes(w), `no 「${w}」 on 角色图鉴`);
+      assert.equal(await admin.locator('[data-pack-kinds]').count(), 0, 'no per-pack kind row on the cards');
+      assert.equal((await admin.textContent('[data-go-import]')).trim(), '导入角色');
+      // the page as text and its controls, for the record (w0b-roster-dom.json)
+      const dom = await admin.evaluate(() => ({
+        route: location.hash,
+        innerText: document.querySelector('[data-admin-page]').innerText,
+        filter: [...document.querySelectorAll('[data-kind-filter] .ant-segmented-item')].map((x) => x.textContent),
+        importButton: document.querySelector('[data-go-import]').outerHTML,
+        cards: [...document.querySelectorAll('[data-roster] [data-row]')].map((e) => ({ id: e.dataset.row, kind: e.dataset.kind, link: e.querySelector('a').getAttribute('href'), title: e.querySelector('a').getAttribute('aria-label') })),
+        oldWordsFound: ['形象包', '跟随形象包', '有导入包', '导入角色包', 'packs'].filter((w) => document.querySelector('[data-admin-page]').innerText.includes(w)),
+      }));
+      fs.writeFileSync(path.join(SHOTS, 'w0b-roster-dom.json'), JSON.stringify(dom, null, 2));
+      assert.deepEqual(dom.oldWordsFound, []);
+      const all = await shot('w0b-roster-all');
+      // 按形象类型 → Live2D: only Live2D characters, 「大肥鱼 · Live2D」 among them and not her pixel self
+      await admin.locator('[data-kind-filter]').getByText(/^Live2D \d+$/).click();
+      await attached('[data-roster-filter="live2d"]');
+      const l2d = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.dataset.row));
+      assert.ok(l2d.includes('dafeiyu-live2d') && !l2d.includes('dafeiyu-pixel'), l2d.join(','));
+      const filtered = await shot('w0b-roster-live2d');
+      await admin.locator('[data-kind-filter]').getByText(/^全部 \d+$/).click();
+      await attached('[data-roster-filter="all"]');
+      const filter = (await admin.textContent('[data-kind-filter]')).trim();
+      // the import page: 导入角色, no 形象包 / 外观资源 wording
+      await admin.click('[data-go-import]');
+      await attached('[data-path="/packs"]');
+      await attached('[data-import-pack]');
+      assert.equal((await admin.textContent('[data-import-pack]')).trim(), '导入角色…');
+      const packsText = await admin.textContent('[data-admin-page]');
+      for (const w of ['形象包', '外观资源']) assert.ok(!packsText.includes(w), `no 「${w}」 on the import page`);
+      const imp = await shot('w0b-import-page');
+      return `${rows.length} characters, 大肥鱼: ${fish.map((r) => `${r.id}(${r.kind})`).join(' ')}; filter 「${filter}」; Live2D → ${l2d.join(',')}; ${[all, filtered, imp].join(', ')}`;
+    }, () => admin);
+
     // T-2764: every look is a character of her own: 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 each have their own 衣柜
     // (her page, data-outfits="<character id>"); switching between them is switching characters (same agent and
     // affection, she is the same girl), and each one keeps the outfit she wore.
-    const wardrobeOf = (id) => savedPet().characters.dafeiyu.wardrobes[id] || {};
+    const wardrobeOf = (id) => (savedPet().characters.dafeiyu.wardrobes || {})[id] || {};
     const switchTo = async (id) => {
       await go(`/characters/${id}`);
       await attached(`[data-switch="${id}"]`);
@@ -8084,19 +8155,48 @@ async function wardrobePackScenario() {
       await until(`${id} current`, async () => (await call('state')).view.pet.characterId === id);
       await tab('装扮');
     };
-    await step(S, 'W1 「大肥鱼 · 像素」: her 衣柜 lists the pixel pack\'s outfits; a click on 针织围巾套装 dresses her', async () => {
+    await step(S, 'W1 「大肥鱼 · 像素」: her 衣柜 is a card list of the pixel pack\'s outfits (picture, name, rating, 新, 正在穿 / 穿上); 穿上 针织围巾套装 dresses her', async () => {
       await go('/characters/dafeiyu-pixel');
+      const t0 = Date.now();
       await tab('装扮');
       await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="scarf"]');
-      await admin.click('[data-outfits="dafeiyu-pixel"] [data-outfit="scarf"]');
+      // thumbnails: the cards in view draw their first frame; the rest wait until scrolled to (lazy)
+      await until('first thumbnails drawn', async () => (await cards('dafeiyu-pixel')).filter((c) => c.drawn).length >= 2, 20000);
+      const firstMs = Date.now() - t0;
+      const c0 = await cards('dafeiyu-pixel');
+      const drawnFirst = c0.filter((c) => c.drawn).length;
+      assert.ok(c0.length >= 10, `${c0.length} cards`);
+      assert.ok(c0.every((c) => c.cover && c.picture), 'every card has a picture');
+      assert.ok(c0.every((c) => c.rating === '全年龄' || c.rating === '成人'), 'every card has its rating tag');
+      assert.equal(c0.filter((c) => c.equipped).length, 1);
+      assert.equal(c0.find((c) => c.equipped).worn, '正在穿');
+      assert.ok(c0.filter((c) => !c.equipped && !c.locked).every((c) => c.equip === '穿上'), 'the others offer 穿上');
+      const fresh = c0.filter((c) => c.isNew).map((c) => c.id);
+      assert.ok(fresh.length > 0, 'outfits unlocked since she last looked carry 新');
+      const s0 = await shot('w1-pixel-wardrobe-cards');
+      // scroll through: every card ends up drawn
+      for (const c of c0) await admin.locator(`[data-outfits="dafeiyu-pixel"] [data-outfit="${c.id}"]`).scrollIntoViewIfNeeded();
+      await until('every thumbnail drawn', async () => (await cards('dafeiyu-pixel')).every((c) => c.drawn), 60000);
+      const allMs = Date.now() - t0;
+      // try on (not saved): her stage shows it, the caption says 试穿中
+      await admin.locator('[data-try-outfit="scarf"]').scrollIntoViewIfNeeded();
+      await admin.click('[data-try-outfit="scarf"]');
+      await attached('[data-trying-tag]');
+      assert.match(await admin.textContent('[data-worn-caption="dafeiyu-pixel"]'), /试穿中：针织围巾套装/);
+      assert.equal(await admin.getAttribute('[data-outfit="scarf"]', 'data-trying'), 'true');
+      assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit || 'daily', 'daily', 'trying on saves nothing');
+      const s1 = await shot('w1b-pixel-try-scarf');
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-equip="scarf"]');
       await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'scarf', null, { timeout: 8000 });
       await attached('[data-outfit="scarf"][data-equipped="true"]');
       await page.waitForTimeout(500);
       const c = await chips('dafeiyu-pixel');
       assert.ok(c.length > 1 && c.includes('scarf'), c.join(','));
       assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit, 'scarf');
-      const out = [await shot('w1-pixel-wardrobe'), await petShot('w1-pet-pixel-scarf')];
-      return `衣柜 chips (dafeiyu-pixel): ${c.join(',')}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+      await until('scarf card says 正在穿', async () => (await cards('dafeiyu-pixel')).find((x) => x.id === 'scarf').worn === '正在穿');
+      assert.equal(await admin.locator('[data-trying-tag]').count(), 0, '穿上 ends the try-on');
+      const out = [s0, s1, await shot('w1-pixel-wardrobe'), await petShot('w1-pet-pixel-scarf')];
+      return `${c0.length} cards (dafeiyu-pixel): ${c0.map((x) => `${x.id}[${x.rating}${x.isNew ? ',新' : ''}${x.equipped ? ',正在穿' : ''}]`).join(' ')}; thumbnails: ${drawnFirst} drawn first in ${firstMs} ms, all ${c0.length} after scrolling in ${allMs} ms; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'W2 切换到角色「大肥鱼 · Live2D」: her own 衣柜 shows only daily, she is the Live2D model, the pixel one keeps her scarf', async () => {
@@ -8137,12 +8237,13 @@ async function wardrobePackScenario() {
       return `equipOutfit → ${JSON.stringify(rs)}; view ${v.packId}/${v.outfit}; pet window ${JSON.stringify(pl)}; ${await petShot('w3-pet-still-live2d')}`;
     }, () => admin);
 
-    await step(S, 'W3b wearing the outfit her pack has (daily, via the 衣柜 chip and via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
+    await step(S, 'W3b wearing the outfit her pack has (daily: its card says 正在穿; again via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
       await go('/characters/dafeiyu-live2d');
       await tab('装扮');
-      await attached('[data-outfits="dafeiyu-live2d"] [data-outfit="daily"]');
-      await admin.click('[data-outfits="dafeiyu-live2d"] [data-outfit="daily"]');
-      await page.waitForTimeout(800);
+      await attached('[data-outfits="dafeiyu-live2d"] [data-outfit="daily"][data-equipped="true"] [data-worn="daily"]');
+      const lc = await cards('dafeiyu-live2d');
+      assert.deepEqual(lc.map((c) => `${c.id}:${c.worn}`), ['daily:正在穿']);
+      await until('Live2D card drawn', async () => (await cards('dafeiyu-live2d')).every((c) => c.drawn), 20000);
       const r = await call('equipOutfit', 'daily');
       assert.equal(r.ok, true, JSON.stringify(r));
       await page.waitForTimeout(1200);
@@ -8183,7 +8284,8 @@ async function wardrobePackScenario() {
     }, () => admin);
 
     await step(S, 'W5b as the pixel character she wears 旗袍 (qipao); the Live2D character stays in daily, each saved apart', async () => {
-      await admin.click('[data-outfits="dafeiyu-pixel"] [data-outfit="qipao"]');
+      await admin.locator('[data-outfits="dafeiyu-pixel"] [data-equip="qipao"]').scrollIntoViewIfNeeded();
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-equip="qipao"]');
       await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 8000 });
       assert.equal(wardrobeOf('dafeiyu-pixel').equippedOutfit, 'qipao');
       const before = await viewNow();
@@ -8201,6 +8303,35 @@ async function wardrobePackScenario() {
       assert.deepEqual([wardrobeOf('dafeiyu-pixel').equippedOutfit, wardrobeOf('dafeiyu-live2d').equippedOutfit], ['qipao', 'daily'], 'two wardrobes, saved apart');
       const out = [s1, await shot('w5b-live2d-wardrobe-after-qipao'), await petShot('w5b-pet-live2d-after-qipao')];
       return `before ${before.packId}/${before.outfit}; after ${JSON.stringify(v)}; wardrobes ${JSON.stringify(savedPet().characters.dafeiyu.wardrobes)}; ${out.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'W5c while 「大肥鱼 · Live2D」 is with you, her pixel self\'s page still lists her cards; 穿上 贝雷帽画家装 there is saved for the pixel character only', async () => {
+      await go('/characters/dafeiyu-pixel');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="qipao"][data-equipped="true"]');
+      const c = await cards('dafeiyu-pixel');
+      assert.ok(c.length > 1);
+      await admin.locator('[data-outfits="dafeiyu-pixel"] [data-equip="beret"]').scrollIntoViewIfNeeded();
+      await admin.click('[data-outfits="dafeiyu-pixel"] [data-equip="beret"]');
+      await attached('[data-outfits="dafeiyu-pixel"] [data-outfit="beret"][data-equipped="true"]');
+      await page.waitForTimeout(800);
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-live2d', 'still the Live2D character with you');
+      assert.equal(v.outfit, 'daily');
+      assert.deepEqual(await petLook(), { kind: 'live2d', outfit: 'daily' });
+      assert.deepEqual([wardrobeOf('dafeiyu-pixel').equippedOutfit, wardrobeOf('dafeiyu-live2d').equippedOutfit], ['beret', 'daily']);
+      await admin.locator('[data-outfits="dafeiyu-pixel"]').scrollIntoViewIfNeeded();
+      return `pixel cards ${c.length}; wardrobes ${JSON.stringify(savedPet().characters.dafeiyu.wardrobes)}; pet window ${JSON.stringify(await petLook())}; ${await shot('w5c-pixel-page-while-live2d')}`;
+    }, () => admin);
+
+    await step(S, 'W5d 18+ on: 「大肥鱼 · 成年版（18+）」 is a character of her own; her cards carry the 成人 tag', async () => {
+      await go('/characters/dafeiyu-adult');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu-adult"] [data-outfit="maid"]');
+      const c = await cards('dafeiyu-adult');
+      const adult = c.filter((x) => x.rating === '成人').map((x) => x.id);
+      assert.ok(adult.includes('maid'), `成人 on ${adult.join(',')}`);
+      return `${c.length} cards: ${c.map((x) => `${x.id}[${x.rating}]`).join(' ')}; ${await shot('w5d-adult-wardrobe-cards')}`;
     }, () => admin);
 
     await step(S, 'W6 no console errors in the settings window', async () => {
@@ -8320,14 +8451,15 @@ async function adminCoverageScenario() {
     }, () => admin);
 
     let roster = [];
-    await step(S, 'B2 角色图鉴 lists every character, with the kinds of pack each can wear; 按形象类型 filters (全部 / 像素 / 全动态 / Live2D / 图片 / VRM / 有导入包)', async () => {
+    await step(S, 'B2 角色图鉴 lists every character, one kind each; 按形象类型 filters (全部 / 像素 / 全动态 / Live2D / 图片 / VRM / 导入的)', async () => {
       await go('/characters');
       roster = await admin.evaluate(async () => (await window.petAdmin.state()).roster.map((r) => ({ id: r.id, kinds: r.packKinds.map((k) => `${k.label}${k.user ? `+导入${k.user}` : ''}`) })));
       const cards = await admin.$$eval('[data-roster] [data-row]', (els) => els.map((e) => e.getAttribute('data-row')));
       assert.deepEqual(cards, roster.map((r) => r.id), 'one card per character');
       assert.ok(cards.length >= 5, cards.join(','));
       const filter = (await admin.textContent('[data-kind-filter]')).trim();
-      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '导入的角色']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      for (const k of ['全部', '像素', '全动态', 'Live2D', '图片', 'VRM', '导入的']) assert.ok(filter.includes(k), `${k} in ${filter}`);
+      assert.ok(!filter.includes('有导入包'), filter);
       const out = [await shot('b2-characters-all')];
       const pick = async (label) => {
         await admin.locator('[data-kind-filter]').getByText(new RegExp(`^${label} \\d+$`)).click();
@@ -8342,17 +8474,17 @@ async function adminCoverageScenario() {
       assert.deepEqual(l2dRows, ['dafeiyu-live2d', imported3.l2d]);
       const pics = await pick('图片');
       assert.deepEqual(pics, ['gemini-photo']);
-      const imported = await pick('导入的角色');
+      const imported = await pick('导入的');
       assert.deepEqual([...imported].sort(), [imported3.vrm, imported3.l2d, 'gemini-photo'].sort());
       out.push(await shot('b2-characters-imported'));
       await pick('全部');
-      return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 有导入包→${imported.join(',')}; ${out.join(', ')}`;
+      return `${cards.length} characters: ${roster.map((r) => `${r.id}[${r.kinds.join('/')}]`).join(' ')}; filter 「${filter}」; VRM→${vrm} Live2D→${l2dRows} 图片→${pics} 导入的→${imported.join(',')}; ${out.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'B3 角色详情 (格萝可, current): 装扮 (衣柜 + 取景 + 形象包) / 好感 / 模型 / 个性化设定 / 语音 / 资料, one screenshot per tab', async () => {
+    await step(S, 'B3 角色详情 (格萝可, current): 装扮 (衣柜卡片 + 取景 + 角色包) / 好感 / 模型 / 个性化设定 / 语音 / 资料, one screenshot per tab', async () => {
       await go('/characters/grok-pixel');
       const out = [];
-      for (const [t, sel] of [['装扮', '[data-wardrobe="grok-pixel"]'], ['好感', '[data-road="grok-pixel"]'], ['模型', null], ['个性化设定', '[data-personality="grok-pixel"]'], ['语音', null], ['资料', null]]) {
+      for (const [t, sel] of [['装扮', '[data-pack="grok-pixel"]'], ['好感', '[data-road="grok-pixel"]'], ['模型', null], ['个性化设定', '[data-personality="grok-pixel"]'], ['语音', null], ['资料', null]]) {
         await tab(t);
         if (sel) await attached(sel);
         if (t === '装扮') { await attached('[data-outfits="grok-pixel"]'); await attached('[data-framing-row="grok-pixel"]'); }
@@ -8364,7 +8496,8 @@ async function adminCoverageScenario() {
       assert.ok(p2.length > 20, 'her persona from the character file');
       await tab('资料');
       const kinds = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').textContent);
-      assert.match(kinds, /像素 · 内置 \d+ · 导入 0/);
+      assert.match(kinds, /形象像素/);
+      assert.match(kinds, /角色包格萝可 · 像素（内置）/);
       return `tabs: ${out.join(', ')}; 设定 starts 「${p2.slice(0, 30)}…」${persona ? '' : ''}`;
     }, () => admin);
 
@@ -8374,14 +8507,15 @@ async function adminCoverageScenario() {
       await go('/characters/grok-pixel');
       await tab('装扮');
       const before = await page.getAttribute('#char-wrap', 'data-outfit');
-      await attached('[data-outfits="grok-pixel"] [data-outfit]:not([disabled]):not([data-equipped="true"])');
-      const id = await admin.getAttribute('[data-outfits="grok-pixel"] [data-outfit]:not([disabled]):not([data-equipped="true"])', 'data-outfit');
+      // T-2784: an outfit card that is unlocked and not worn offers 穿上 ([data-equip])
+      await attached('[data-outfits="grok-pixel"] [data-equip]');
+      const id = await admin.getAttribute('[data-outfits="grok-pixel"] [data-equip]', 'data-equip');
       assert.ok(id && id !== before, `${id} vs ${before}`);
       // the 关系升级 toast from 一键解锁 covers her: close it the way a user would, so the outfit shows
       if (await page.isVisible('#toast-close')) await page.evaluate(() => document.getElementById('toast-close').click());
       await page.waitForTimeout(400);
       const pBefore = await petShot('b4-pet-before');
-      await admin.click(`[data-outfits="grok-pixel"] [data-outfit="${id}"]`);
+      await admin.click(`[data-outfits="grok-pixel"] [data-equip="${id}"]`);
       await page.waitForFunction((w) => document.getElementById('char-wrap').dataset.outfit === w, id, { timeout: 8000 });
       await attached(`[data-outfit="${id}"][data-equipped="true"]`);
       await page.waitForTimeout(500);
@@ -8481,20 +8615,21 @@ async function adminCoverageScenario() {
       return `${l2dId} live2d.height → 0.3 in pack.json; ${pBefore}, ${pAfter}, ${a}`;
     }, () => admin);
 
-    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kinds of pack and the 衣柜 note for one not current', async () => {
+    await step(S, 'B10 大肥鱼 / Claude (VRM) / Gemini (图片) detail pages: her kind and 角色包, and the 衣柜 note for one not met', async () => {
       const out = [];
       // one kind per character now (T-2764): her imported Live2D is its own character
       await go(`/characters/${l2dId}`);
       await tab('资料');
-      assert.match(await admin.textContent('[role="tabpanel"]'), /Live2D · 内置 0 · 导入 1/);
+      assert.match(await admin.textContent('[role="tabpanel"]'), /形象Live2D角色包.+（导入）/);
       out.push(await shot('b10-dafeiyu-about'));
       await go('/characters/claude-pixel');
       await tab('装扮');
       out.push(await shot('b10-claude-looks-vrm'));
-      assert.match(await admin.textContent('[role="tabpanel"]'), /衣柜跟着当前陪你的角色走/);
+      // T-2784: a character whose base is not met yet has no wardrobe to show; one met shows her cards
+      assert.match(await admin.textContent('[role="tabpanel"]'), /初次见面之后，可以在这里看她的服饰/);
       await go('/characters/gemini-photo');
       await tab('资料');
-      assert.match(await admin.textContent('[role="tabpanel"]'), /图片 · 内置 0 · 导入 1/);
+      assert.match(await admin.textContent('[role="tabpanel"]'), /形象图片角色包.+（导入）/);
       out.push(await shot('b10-gemini-about'));
       return out.join(', ');
     }, () => admin);
@@ -8844,7 +8979,7 @@ async function adminScenario() {
     const stageDrawn = (id, notSrc) => admin.waitForFunction(([cid, prev]) => {
       const el = document.querySelector(`[data-showcase="${cid}"] [data-stage] [data-preview]`);
       return el && !el.dataset.failed && el.dataset.src && el.dataset.drawn === el.dataset.src && el.dataset.src !== prev;
-    }, [id, notSrc || null], { timeout: 15000 }).catch(async (e) => { const diag = await admin.evaluate(async (cid) => { const st = await window.petAdmin.state(); const r = st.roster.find((x) => x.id === cid); return { pushes: window.__pushes || null, main: r && r.preview && r.preview.url, trying: !!document.querySelector('[data-trying-tag]'), caption: (document.querySelector(`[data-worn-caption="${cid}"]`) || {}).textContent, worn: [...document.querySelectorAll(`[data-wardrobe="${cid}"] [data-worn="true"]`)].map((x) => x.dataset.pack) }; }, id); throw new Error(`stage of ${id} not drawn (not ${notSrc}): ${JSON.stringify(await stageOf(id))} ${JSON.stringify(diag)} — ${e.message.split('\n')[0]}`); });
+    }, [id, notSrc || null], { timeout: 15000 }).catch(async (e) => { const diag = await admin.evaluate(async (cid) => { const st = await window.petAdmin.state(); const r = st.roster.find((x) => x.id === cid); return { pushes: window.__pushes || null, main: r && r.preview && r.preview.url, trying: !!document.querySelector('[data-trying-tag]'), caption: (document.querySelector(`[data-worn-caption="${cid}"]`) || {}).textContent, worn: [...document.querySelectorAll(`[data-outfits="${cid}"] [data-equipped="true"]`)].map((x) => x.dataset.outfit) }; }, id); throw new Error(`stage of ${id} not drawn (not ${notSrc}): ${JSON.stringify(await stageOf(id))} ${JSON.stringify(diag)} — ${e.message.split('\n')[0]}`); });
     const showcaseShot = (id, name) => admin.locator(`[data-showcase="${id}"]`).screenshot({ path: path.join(SHOTS, `${name}.png`) });
 
     await step(S, 'A12b 角色详情: two columns — her stage pinned on the left (scales with the window), story and settings on the right', async () => {
@@ -8858,7 +8993,7 @@ async function adminScenario() {
       const a = await box();
       assert.ok(a.show.right <= a.panels.x, `stage column ${JSON.stringify(a.show)} left of the panels ${JSON.stringify(a.panels)}`);
       assert.ok(a.title.x >= a.panels.x, 'her name heads the right column');
-      for (const sel of ['[data-wardrobe="grok-pixel"]', '[data-outfits="grok-pixel"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
+      for (const sel of ['[data-pack="grok-pixel"]', '[data-outfits="grok-pixel"]']) assert.equal(await admin.locator(sel).count(), 1, `${sel} on the right`);
       assert.ok(await admin.evaluate(() => { const p = document.querySelector('[data-detail-layout] > div:last-child'); return !!p.querySelector('[role="tablist"]') && !!p.querySelector('[data-character-title]'); }), 'tabs + info in the right column');
       // the whole page, full size
       const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
@@ -8906,8 +9041,8 @@ async function adminScenario() {
       await admin.getByRole('tab', { name: '装扮' }).click();
       const un = await admin.evaluate(() => window.petAdmin.unlockAll('grok-pixel'));
       assert.equal(un.ok, true);
-      await admin.waitForSelector('[data-outfit="swimsuit"]:not([disabled])');
-      await admin.waitForSelector('[data-outfit="pajamas"]:not([disabled])');
+      await admin.waitForSelector('[data-outfits="grok-pixel"] [data-equip="swimsuit"]');
+      await admin.waitForSelector('[data-outfits="grok-pixel"] [data-equip="pajamas"]');
       await stageDrawn('grok-pixel');
       const s0 = await stageOf('grok-pixel');
       const caption0 = await admin.textContent('[data-worn-caption="grok-pixel"]');
@@ -8917,7 +9052,7 @@ async function adminScenario() {
       let i = 0;
       for (const id of ['swimsuit', 'pajamas']) {
         const t0 = Date.now();
-        await admin.click(`[data-outfit="${id}"]`);
+        await admin.click(`[data-outfits="grok-pixel"] [data-equip="${id}"]`);
         await stageDrawn('grok-pixel', prev);
         const ms = Date.now() - t0;
         const st = await stageOf('grok-pixel');
@@ -8932,7 +9067,7 @@ async function adminScenario() {
       }
       await shot('a12c-detail-after-outfits');
       // back to her daily outfit (the rest of the run expects it)
-      await admin.click('[data-outfit="daily"]');
+      await admin.click('[data-outfits="grok-pixel"] [data-equip="daily"]');
       await stageDrawn('grok-pixel', prev);
       return `caption before "${caption0.trim()}"; ${out.join(' | ')}`;
     }, () => admin);
@@ -8983,25 +9118,34 @@ async function adminScenario() {
         const st = await stageOf(c.id);
         assert.ok(st && st.type !== 'none' && !st.failed && st.drawn, `${c.id} (${c.kind}): ${JSON.stringify(st)}`);
         await admin.getByRole('tab', { name: '装扮' }).click();
-        await admin.click(`[data-try-pack="${c.pack}"]`);
-        await admin.waitForSelector('[data-trying-tag]');
-        await stageDrawn(c.id);
-        const tr = await stageOf(c.id);
-        assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying her look: ${JSON.stringify(tr)}`);
+        // T-2784: 试穿 is one of her outfit cards (a character with no picture per outfit has nothing to try)
+        // a character whose base is not met yet shows a note instead of cards
+        await admin.waitForSelector(`[data-outfits="${c.id}"] [data-outfit], [data-outfits-empty="${c.id}"]`);
+        const tryId = await admin.evaluate((cid) => { const b = document.querySelector(`[data-outfits="${cid}"] [data-try-outfit]:not([disabled])`); return b ? b.dataset.tryOutfit : null; }, c.id);
+        let tr = null;
+        if (tryId) {
+          await admin.click(`[data-try-outfit="${tryId}"]`);
+          await admin.waitForSelector('[data-trying-tag]');
+          await stageDrawn(c.id);
+          tr = await stageOf(c.id);
+          assert.ok(tr && tr.type !== 'none' && !tr.failed, `${c.id} trying ${tryId}: ${JSON.stringify(tr)}`);
+        }
         if (!kinds.has(c.kind)) {
           kinds.add(c.kind);
           await showcaseShot(c.id, `a13b-stage-${c.kind}-${c.id}`);
         }
-        await admin.click(`[data-try-pack="${c.pack}"]`);
-        await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
-        rows.push(`${c.id}[${c.kind}] stage→${st.type} tried→${tr.type}`);
+        if (tryId) {
+          await admin.click(`[data-try-outfit="${tryId}"]`);
+          await admin.waitForSelector('[data-trying-tag]', { state: 'detached' });
+        }
+        rows.push(`${c.id}[${c.kind}] stage→${st.type} tried ${tryId || '—'}→${tr ? tr.type : '—'}`);
       }
       assert.ok(['sprites', 'rig', 'live2d', 'video'].every((k) => kinds.has(k)), [...kinds].join(','));
       assert.equal(chars.length, 13, '13 all-ages built-in characters');
       return `${rows.length} characters drawn, kinds ${[...kinds].join('/')}: ${rows.join(', ')}`;
     }, () => admin);
 
-    await step(S, 'A14 外观资源: an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
+    await step(S, 'A14 角色包 (导入角色): an imported pack shows up (broadcast) and is deleted from the settings window after a confirmation', async () => {
       const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-adminpack-'));
       const base = path.join(ROOT, 'src', 'renderer', 'packs', 'grok-pixel');
       const m = JSON.parse(fs.readFileSync(path.join(base, 'pack.json'), 'utf8'));
@@ -9015,7 +9159,7 @@ async function adminScenario() {
       await admin.waitForSelector('[data-remove-pack="my-grok"]');
       await shot('a14-packs-imported');
       await admin.click('[data-remove-pack="my-grok"]');
-      await admin.getByRole('dialog').getByRole('button', { name: '删除角色包' }).click();
+      await admin.getByRole('dialog').getByRole('button', { name: '删除角色' }).click();
       await admin.waitForSelector('[data-remove-pack="my-grok"]', { state: 'detached' });
       assert.ok(!fs.existsSync(path.join(data, 'packs', 'my-grok')));
       return 'my-grok listed after import, removed (folder gone)';

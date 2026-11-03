@@ -78,7 +78,7 @@ const PAGES = {
   characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、换形象包、调她的模型和设定。' },
   play: { title: '玩法', description: '她在桌面上怎么陪你：走动、搭话、好感，还有同屏的伙伴。' },
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
-  packs: { title: '角色包', description: '内置和导入的角色包（像素 / 图片 / 全动态 / Live2D / VRM）。导入的包可以导出或删除；给某位角色换上，在她的详情页 → 形象包。' },
+  packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
   behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用，以及好感度的每日上限和衰减。改动立即生效。' },

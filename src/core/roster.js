@@ -45,6 +45,11 @@ function outfitRow(sp, o) {
   return { id: o.id, label: o.label, desc: o.desc || '', stageName: o.stageName || '', rating: o.rating || null, locked: !!o.locked, condition: o.condition || null, equipped: !!o.equipped, isNew: !!o.isNew, preview: o.look ? previewOf(sp, o.look) : null };
 }
 
+function outfitList(sp, c, view, outfitsOf) {
+  const list = c.current && view && Array.isArray(view.outfits) ? view.outfits : c.met && outfitsOf ? outfitsOf(c.id) : null;
+  return Array.isArray(list) ? list.map((o) => outfitRow(sp, o)) : null;
+}
+
 // Every built-in character (no imported pack is known without PetService), for a roster before the first hatch.
 let builtin = null;
 function builtinCharacters() {
@@ -60,7 +65,7 @@ function builtinCharacters() {
 // rows come from `characters` (PetService.characterList(): id, base, name, kind …) with `look(id)` for the
 // picture, every one not met yet. `met`, model, 个性化设定 and 语音包 are her base's (shared by her looks);
 // pack, kind, picture and outfits are the character's own.
-function buildRoster(view, settings, { characters = null, look = null } = {}) {
+function buildRoster(view, settings, { characters = null, look = null, outfitsOf = null } = {}) {
   const packs = settings && settings.ttsStatus ? settings.ttsStatus.packs : [];
   const list = view
     ? view.characters
@@ -86,7 +91,7 @@ function buildRoster(view, settings, { characters = null, look = null } = {}) {
       current: !!c.current,
       met: c.met,
       preview: previewOf(sp, c.look, kind === 'video'),
-      pack: opt ? { id: opt.id, name: opt.name, kind: opt.kind, adult: !!opt.adult, source: opt.source, author: opt.author, license: opt.license, vrm: opt.vrm || null } : null,
+      pack: opt ? { id: opt.id, name: opt.name, kind: opt.kind, adult: !!opt.adult, source: opt.source, author: opt.author, license: opt.license, outfits: opt.outfits || 0, vrm: opt.vrm || null } : null,
       kind,
       kindLabel: KIND_LABEL[kind] || '--',
       source: opt ? opt.source : 'builtin',
@@ -103,8 +108,9 @@ function buildRoster(view, settings, { characters = null, look = null } = {}) {
       personality: sp ? sp.personality || '' : '',
       // her own kind (像素 / 图片 / 全动态 / Live2D / VRM / 视频), built-in or imported — one look per character
       packKinds: packKinds(opt ? [opt] : kind ? [{ kind, source: c.source || 'builtin' }] : []),
-      // 服饰: only the current character's outfits are known (PetService.view().outfits is hers); others null
-      outfits: c.current && view && Array.isArray(view.outfits) ? view.outfits.map((o) => outfitRow(sp, o)) : null,
+      // 衣柜 (T-2784): the current character's from PetService.view().outfits, any other met one's from
+      // `outfitsOf(id)` (PetService.outfitsOf); null before her base is met
+      outfits: outfitList(sp, c, view, outfitsOf),
     };
   });
 }

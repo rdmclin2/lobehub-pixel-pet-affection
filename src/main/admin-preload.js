@@ -31,9 +31,9 @@ contextBridge.exposeInMainWorld('petAdmin', {
   // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
   setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
-  // 服饰: put on one of the current character's unlocked outfits (the pet window's 衣柜 does the same)
-  equipOutfit: (id) => ipcRenderer.invoke('equip-outfit', { id }),
-  // 外观资源: import (file dialog in main), export, remove, folders
+  // 服饰: put on one of a character's unlocked outfits (none = the current one, as the pet window's 衣柜 did)
+  equipOutfit: (id, species) => ipcRenderer.invoke('equip-outfit', { id, species }),
+  // 角色包: import (file dialog in main), export, remove, folders
   importPack: () => ipcRenderer.invoke('import-pack'),
   importLive2d: (species) => ipcRenderer.invoke('import-live2d', { species }),
   importVrm: (species) => ipcRenderer.invoke('import-vrm', { species }),
@@ -67,7 +67,7 @@ contextBridge.exposeInMainWorld('petAdmin', {
   home: () => ipcRenderer.invoke('admin-home'),
   quit: () => ipcRenderer.invoke('admin-quit'),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
-  markSeen: (kind) => ipcRenderer.invoke('mark-seen', { kind }),
+  markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),
   // pushes: the whole admin state after any change (from either window), update / API status

@@ -155,7 +155,7 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
                 去看看她
               </Button>
               <Button data-go-looks icon={Shirt} onClick={() => navigate(`/characters/${cur.id}`)}>
-                换形象包
+                换装扮
               </Button>
               <Button onClick={() => navigate('/characters')}>换一位陪你</Button>
             </Flexbox>

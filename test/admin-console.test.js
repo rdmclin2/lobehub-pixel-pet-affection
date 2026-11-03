@@ -601,7 +601,7 @@ test('admin perf: main sends the console a state only when it changed; sprite sh
 // 前台精简 (T-2718) took the pet window's 外观 panel away; its VRM license flow lives on in the settings window.
 test('VRM import in the settings window: 导入确认 with the license before she wears it, 取消导入 removes it, 授权信息 on the card', () => {
   const src = fs.readFileSync(path.join(ROOT, 'admin', 'src', 'console', 'pages', 'Characters.tsx'), 'utf8');
-  assert.match(src, /data-import-vrm onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
+  assert.match(src, /data-import-vrm [^>]*onClick=\{importVrm\}/, '导入 VRM… asks before wearing, not straight to a toast');
   assert.match(src, /cancelText="取消导入"/);
   assert.match(src, /okText="使用这个模型"/);
   assert.match(src, /await api\(\)\.removePack\(r\.pack\.id\)/, '取消导入 removes the pack again');

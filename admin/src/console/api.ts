@@ -141,7 +141,7 @@ export interface RosterRow {
   name: string;
   /** her base's name, 大肥鱼 */
   nameZh: string;
-  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; source: string; vrm?: any };
+  pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; outfits?: number; source: string; vrm?: any };
   preview: Preview | null;
   source: string;
   sourceLabel: string;
@@ -222,7 +222,8 @@ export interface PetAdminApi {
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
   cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
-  equipOutfit: (id: string) => Promise<any>;
+  /** `species`: whose wardrobe (a character id); none = the current character's. */
+  equipOutfit: (id: string, species?: string) => Promise<any>;
   exportPack: (id: string) => Promise<any>;
   importLive2d: (species: string) => Promise<any>;
   importPack: () => Promise<any>;
@@ -260,7 +261,8 @@ export interface PetAdminApi {
   historyGet: (id: string) => Promise<{ ok: boolean; reason?: string; session?: HistorySession }>;
   historyList: () => Promise<{ sessions: HistorySummary[] }>;
   home: () => Promise<{ ok: boolean; reason?: string }>;
-  markSeen: (kind: 'outfit' | 'topic') => Promise<{ marked?: number; ok: boolean }>;
+  /** `species`: whose 衣柜 was looked at (a character id); none = the current character's. */
+  markSeen: (kind: 'outfit' | 'topic', species?: string) => Promise<{ marked?: number; ok: boolean }>;
   quit: () => Promise<{ ok: boolean }>;
   talkTopic: (id: string) => Promise<any>;
   whoami: () => Promise<any>;
@@ -336,6 +338,6 @@ export const REASON: Record<string, string> = {
   'unknown-character': '没有这个角色',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
-  unavailable: '她现在的形象包没有这套服饰',
+  unavailable: '这位角色没有这套服饰',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';

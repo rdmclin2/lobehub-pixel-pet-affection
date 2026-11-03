@@ -141,7 +141,7 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily') }), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -327,10 +327,11 @@ function wire() {
   ipcMain.handle('get-settings', () => service.getSettings());
   ipcMain.handle('confirm-age', (_e, { adult }) => service.answerAgeGate(!!adult));
   ipcMain.handle('set-adult', (_e, { on }) => service.setAdultContent(!!on));
-  ipcMain.handle('equip-outfit', (_e, { id }) => service.equipOutfit(String(id || '')));
   // per-character settings (⋯ → 角色列表 → her page): `species` says whose — a character id (T-2764; an old
   // per-persona id still works); none = the current character
   const whose = (v) => (typeof v === 'string' && v ? v : undefined);
+  // 衣柜: the current character's outfit, or (her page in the settings window) another character's she met
+  ipcMain.handle('equip-outfit', (_e, { id, species }) => service.equipOutfit(String(id || ''), whose(species)));
   ipcMain.handle('unlock-all', (_e, p) => service.unlockAll(whose(p && p.species)));
   // the model (her page → 模型): only her own vendor's models are offered
   ipcMain.handle('set-model', (_e, { key, species }) => service.setModel(String(key || ''), whose(species)));
@@ -448,7 +449,7 @@ function wire() {
   // the window only ever receives the conversations the owner started.
   ipcMain.handle('history-list', () => service.history());
   ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
-  ipcMain.handle('mark-seen', (_e, { kind }) => service.markSeen(String(kind || '')));
+  ipcMain.handle('mark-seen', (_e, { kind, species }) => service.markSeen(String(kind || ''), typeof species === 'string' && species ? species : undefined));
   ipcMain.handle('chat', async (_e, { text, images, files }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.

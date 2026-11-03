@@ -1253,11 +1253,15 @@ class PetService extends EventEmitter {
 
   // ---- wardrobe (design 5, 9.5) ---------------------------------------------------------------
   // Only an unlocked outfit the user may see can be put on; the choice is saved with the pet.
-  equipOutfit(id) {
+  // `characterId` (her page in the settings window, T-2784): put it on another character met before — saved
+  // in her own wardrobe, worn the next time she is with you; none = the current character.
+  equipOutfit(id, characterId) {
     if (!this.pet) return { ok: false, reason: 'empty' };
-    // her own wardrobe (T-2764): the outfit is saved for the character she is now, not for her other looks
-    const cid = this._cid();
+    // her own wardrobe (T-2764): the outfit is saved for that character, not for her other looks
+    const cid = characterId ? this._charOf(characterId) : this._cid();
+    if (!cid) return { ok: false, reason: 'unknown' };
     const w = this._wearer(cid);
+    if (!w) return { ok: false, reason: 'not-met' };
     const r = outfits.equipOutfit(w, this.settings, String(id || ''), this._look(cid));
     if (!r.ok) return r;
     this._keepWardrobe(cid, w);
@@ -1265,11 +1269,27 @@ class PetService extends EventEmitter {
     return { ok: true, outfit: r.outfit, view: this.view() };
   }
 
+  // 衣柜 of character `id` (her page in the settings window, T-2784): her outfits as view().outfits lists the
+  // current one's — what she may wear, locked or not, which one she has on. null: her base not met yet.
+  outfitsOf(id) {
+    if (!this.pet) return null;
+    const cid = this._charOf(id);
+    const base = cid && this._baseOf(cid);
+    const e = base && this.pet.characters[base];
+    if (!e) return null;
+    const w = { speciesId: base, ...this._wearer(cid, e) };
+    const look = this._look(cid);
+    return outfits.listOutfits(w, this.settings, look).map((o) => ({ ...o, look: packsLib.lockedLook(this.lookFor(cid, o.id), o.locked) }));
+  }
+
   // The user opened the wardrobe or topic panel: its unlocked items are no longer "new".
-  markSeen(kind) {
+  // `characterId`: whose 衣柜 (her page in the settings window, T-2784); none = the current character.
+  markSeen(kind, characterId) {
     if (!this.pet || !['outfit', 'topic'].includes(kind)) return { ok: false };
-    const c = this._c();
-    const list = kind === 'outfit' ? outfits.listOutfits(this._wearer(this._cid(), c), this.settings, this._look()) : dialogue.listTopics(c, this.settings);
+    const cid = characterId ? this._charOf(characterId) : this._cid();
+    const c = cid && this.pet.characters[this._baseOf(cid)];
+    if (!c) return { ok: false };
+    const list = kind === 'outfit' ? outfits.listOutfits({ speciesId: this._baseOf(cid), ...this._wearer(cid, c) }, this.settings, this._look(cid)) : dialogue.listTopics(c, this.settings);
     const ids = list.filter((x) => x.isNew).map((x) => `${kind}:${x.id}`);
     if (ids.length) {
       c.seenUnlocks = [...(c.seenUnlocks || []), ...ids];
