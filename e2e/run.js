@@ -3297,10 +3297,12 @@ async function touch() {
     }, page);
 
     await step(S, "Dafeiyu's clip (video art): the five parts and her tail, facing either way", async () => {
-      await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
+      // her original clips are a character of her own, 「大肥鱼 · 原版动画」 (T-2764: id = the old look's id)
+      const sw = await page.evaluate(() => window.pet.switchCharacter('dafeiyu-clips'));
+      assert.equal(sw.ok, true, JSON.stringify(sw).slice(0, 200));
+      assert.equal((await view(page)).pet.characterId, 'dafeiyu-clips');
       await page.waitForTimeout(1500);
       await dismissToast();
-      await page.evaluate(() => window.pet.setAppearance('dafeiyu-clips'));
       await page.waitForFunction(() => window.petFx.state().video && document.getElementById('pet-video').videoWidth > 0, null, { timeout: 8000 });
       await page.waitForTimeout(8200); // the streak window
       await page.evaluate(() => window.petFx.cue('idle'));
@@ -3418,8 +3420,10 @@ async function touch() {
 
     await step(S, 'parts are found on the 旧版像素 pack too (83×113, drawn as blocks): head and feet', async () => {
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
-      // her look is chosen in 设置 → her page (T-2718); the same set-appearance channel
-      assert.equal((await page.evaluate(() => window.pet.setAppearance('claude-classic', 'claude'))).ok, true);
+      // 「Claude · 旧版像素」 is a character of her own (T-2764), chosen in 设置 → 角色图鉴 → 切换; the same switch-character channel
+      const sw = await page.evaluate(() => window.pet.switchCharacter('claude-classic'));
+      assert.equal(sw.ok, true, JSON.stringify(sw).slice(0, 200));
+      assert.equal((await view(page)).pet.characterId, 'claude-classic');
       await page.waitForFunction(() => document.getElementById('pet-look').dataset.key === 'claude-classic/daily', null, { timeout: 5000 });
       await page.evaluate(() => window.pet.debugSet({ affection: 90, mood: 60, sleeping: false }));
       await settle();
@@ -6245,8 +6249,9 @@ async function vrmUi() {
       assert.ok(!listed.includes('vrm-adult-open'), listed.join(', '));
       assert.ok(listed.includes('vrm-multi-open'), listed.join(', '));
       await page.click('#panel-close');
-      // nor can it be put on another way
-      const set = await page.evaluate(() => window.pet.setAppearance('vrm-adult-open', 'dafeiyu'));
+      // nor can she become that character another way (T-2764: every pack is a character): refused, with the reason
+      const set = await page.evaluate(() => window.pet.switchCharacter('vrm-adult-open'));
+      assert.deepEqual([set.ok, set.reason], [false, 'adult'], JSON.stringify(set));
       await page.waitForTimeout(500);
       assert.ok(!(await lookKey()).startsWith('vrm-adult-open/'), await lookKey());
       // the multi-look VRM pack has a wardrobe, with no adult card in it
@@ -6263,7 +6268,7 @@ async function vrmUi() {
       assert.equal(cards.filter((c) => c.adult).length, 0);
       const eq = await page.evaluate(() => window.pet.equipOutfit('maid'));
       assert.equal(eq.ok, false);
-      return `${single} | 外观: ${listed.join(', ')} (no vrm-adult-open); setAppearance(vrm-adult-open) → ok=${set.ok} ${set.reason || ''}, look ${await lookKey()}; vrm-multi-open 衣柜: ${cards.map((c) => c.id).join(', ')} (0 adult); equipOutfit(maid) → ${eq.reason}`;
+      return `${single} | 外观: ${listed.join(', ')} (no vrm-adult-open); switchCharacter(vrm-adult-open) → ok=${set.ok} reason=${set.reason}, look ${await lookKey()}; vrm-multi-open 衣柜: ${cards.map((c) => c.id).join(', ')} (0 adult); equipOutfit(maid) → ${eq.reason}`;
     }, page);
 
     await step(S, 'the VRM pack outfits stay locked by affection in the wardrobe, and a locked one cannot be worn', async () => {
@@ -7476,7 +7481,7 @@ async function frontslimScenario() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
+    await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + 🔊 静音 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
       await hover(page);
       await page.waitForTimeout(400);
       await shotPet('f1-pet-toolbar');
@@ -7487,8 +7492,9 @@ async function frontslimScenario() {
         menuBtn: document.querySelectorAll('[data-act="menu"], [data-menu]').length,
         text: document.getElementById('toolbar').innerText.replace(/\s+/g, ' ').trim(),
       }));
-      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'settings:设置']);
-      assert.equal(ui.visible, 5);
+      // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
+      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置']);
+      assert.equal(ui.visible, 6);
       assert.deepEqual(ui.gone, []);
       assert.equal(ui.menuBtn, 0);
       assert.doesNotMatch(ui.text, /话题|衣柜/);
