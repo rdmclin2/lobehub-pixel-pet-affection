@@ -326,7 +326,7 @@ test('catalog: what can be downloaded — 18+ only with adult content on, instal
   const l2d = Catalog.notInstalled(none).find((c) => c.id === 'dafeiyu-live2d');
   assert.deepEqual([l2d.base, l2d.kind, l2d.name], ['dafeiyu', 'live2d', '大肥鱼 · Live2D']);
   assert.match(l2d.sizeLabel, /^\d+\.\d MB$/);
-  assert.equal(Catalog.baseUrl({}, {}), `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/download/${Catalog.loadIndex().release}`);
+  assert.equal(Catalog.baseUrl({}, {}), `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/${Catalog.loadIndex().release}`);
   assert.equal(Catalog.baseUrl({ catalogUrl: 'https://mirror.example/chars/' }, {}), 'https://mirror.example/chars');
   assert.equal(Catalog.baseUrl({ catalogUrl: 'https://mirror.example/chars' }, { PIXELPET_CATALOG_URL: 'file:///tmp/cat' }), 'file:///tmp/cat');
   assert.equal(Catalog.baseUrl({ catalogUrl: 'javascript:alert(1)' }, {}), Catalog.DEFAULT_BASE_URL, 'only http(s) / file URLs');

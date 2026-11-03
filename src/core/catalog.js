@@ -7,13 +7,16 @@
 // picture, before anything is fetched. Electron-free so it can be tested; src/main/catalog.js downloads.
 //
 // Where the archives are fetched from: PIXELPET_CATALOG_URL (tests, a mirror), else settings.catalogUrl, else
-// DEFAULT_BASE_URL (the GitHub release named by the index). `<base>/<file>`; file: URLs work too.
+// DEFAULT_BASE_URL: LobeHub's public CDN, where `npm run catalog:upload` puts them through the Develop Center
+// (`dc ops-assets upload`, under dc/ops-assets/archives/pixel-pet/<release>/). `<base>/<file>`; file: URLs work too.
 
 const fs = require('node:fs');
 const path = require('node:path');
 
 const INDEX_FILE = path.join(__dirname, 'character-catalog.json');
-const REPO = 'rdmclin2/lobehub-pixel-pet-affection';
+// Develop Center ops assets (S3, public through the CDN): zips may only live under dc/ops-assets/archives/
+const CDN_ORIGIN = 'https://chat-cloud.lobeobjects.space';
+const UPLOAD_PREFIX_ROOT = 'dc/ops-assets/archives/pixel-pet';
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 // the marker an installed download carries in its folder: which catalog entry, which archive
@@ -34,7 +37,8 @@ function loadIndex(file = INDEX_FILE) {
   return index;
 }
 
-const DEFAULT_BASE_URL = `https://github.com/${REPO}/releases/download/${loadIndex().release}`;
+const UPLOAD_PREFIX = `${UPLOAD_PREFIX_ROOT}/${loadIndex().release}`;
+const DEFAULT_BASE_URL = `${CDN_ORIGIN}/${UPLOAD_PREFIX}`;
 
 function baseUrl(settings, env = process.env) {
   const pick = [env && env.PIXELPET_CATALOG_URL, settings && settings.catalogUrl].find((u) => typeof u === 'string' && /^(https?|file):\/\//.test(u.trim()));
@@ -74,4 +78,4 @@ function repoPacks({ catalog = true } = {}) {
   return r;
 }
 
-module.exports = { INDEX_FILE, MARKER, DEFAULT_BASE_URL, loadIndex, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, repoPacks };
+module.exports = { INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, repoPacks };

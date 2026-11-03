@@ -28,7 +28,8 @@
     "dist:win": "electron-builder --win --x64 --publish never",
     "predist:linux": "npm run build:admin",
     "dist:linux": "electron-builder --linux tar.gz --x64 --publish never",
-    "catalog:build": "node scripts/build-character-catalog.js"
+    "catalog:build": "node scripts/build-character-catalog.js",
+    "catalog:upload": "node scripts/upload-character-catalog.js"
   },
   "devDependencies": {
     "@lobehub/fluent-emoji": "^5.0.1",
