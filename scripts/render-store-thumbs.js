@@ -31,6 +31,9 @@ for (const c of index.characters) {
   // stdin ignored: electron must not read the caller's input
   execFileSync(ELECTRON, ['--no-sandbox', path.join(__dirname, 'vrm-dance-frames.js'), '--model', path.join(SRC, 'models', c.source), '--dance', POSE, '--out', tmp, '--times', '0.5', '--count', '1', '--size', '256x400', '--name', name], { env, stdio: ['ignore', 'ignore', 'inherit'], timeout: 120000 });
   const dest = path.join(ROOT, 'src', 'renderer', 'catalog', 'vrm', `${c.id}.png`);
+  // a model whose humanoid reads hips at 0 m is framed off-screen: a blank picture is worse than none
+  const m = JSON.parse(fs.readFileSync(path.join(tmp, `${name}.json`), 'utf8'));
+  if (!(m.hipsY > 0.2)) { console.log(`${c.id}  skipped (hips not found)`); continue; }
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', path.join(tmp, `${name}.png`), '-vf', 'crop=256:256:0:30', dest]);
   c.picture = `catalog/vrm/${c.id}.png`;
   n++;

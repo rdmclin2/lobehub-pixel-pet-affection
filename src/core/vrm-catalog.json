@@ -248,7 +248,7 @@
       "file": "vrm-vampire-fischl.zip",
       "bytes": 8344883,
       "sha256": "c422f46d20bbb220e794dafa614e0dc8e4b4072abf266b5ff14db19c14dd96ea",
-      "picture": "catalog/vrm/vrm-vampire-fischl.png",
+      "picture": null,
       "licenseRows": [
         {
           "label": "模型名",
@@ -2064,7 +2064,7 @@
       "file": "vrm-beidou-model.zip",
       "bytes": 3960894,
       "sha256": "7bd0471c83fd25dff006e8711bec1328e9f000dc147b545251fb3bc2c7cf4114",
-      "picture": "catalog/vrm/vrm-beidou-model.png",
+      "picture": null,
       "licenseRows": [
         {
           "label": "模型名",
@@ -3717,7 +3717,7 @@
       "file": "vrm-d8ae70a5.zip",
       "bytes": 4083652,
       "sha256": "78ccb3cbfca3d7eb2334a601ea172958d1c1670edccccdb2b3b3ee30a22fc84f",
-      "picture": "catalog/vrm/vrm-d8ae70a5.png",
+      "picture": null,
       "licenseRows": [
         {
           "label": "模型名",
