@@ -1981,6 +1981,7 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(card.dancing, 'true');
         assert.equal(card.btn, '停止');
         const prog = await A.text('[data-dance-progress]');
+        assert.match(await A.text('[data-dance-volume]'), /60%/, 'the volume slider in 正在跳');
         await setShot('10-playing-settings');
         return H.note(`pet menu: 「${now.title}」 ${now.progress}, row 「${now.row}」, loop → on; settings: 正在跳 ${prog}, card button 「${card.btn}」`);
       });
@@ -1994,6 +1995,9 @@ module.exports = function vrmScenarios(ctx) {
         await sleep(400);
         const st = (await page.evaluate(() => window.petFx.dance())).state;
         assert.equal(st.volume, 0.3);
+        await A.until(() => /30%/.test(document.querySelector('[data-dance-volume]')?.textContent || ''), null, 3000, 'volume 30% in 正在跳');
+        assert.equal(await A.win.evaluate(() => document.querySelector('[data-dance-loop]').getAttribute('aria-checked')), 'false');
+        await setShot('10b-playing-loop-off-volume30');
         await A.click('[data-dance-stop]');
         await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /^(out|off)$/.test(c.dataset.danceState); }, null, { timeout: 3000 });
         await A.until(() => !document.querySelector('[data-dance-now]'), null, 3000, '正在跳 gone');

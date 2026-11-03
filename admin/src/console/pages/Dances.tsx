@@ -3,9 +3,9 @@
  * 导入舞蹈 (an MMD .vmd with optional music and cover, baked into a VRM motion in main) and 删除舞蹈, and the
  * music's volume. Only a VRM look dances: otherwise the page says why, and 让她跳 is off.
  */
-import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Progress, Select, Switch, Tag, Text, toast, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Progress, Select, Slider, Switch, Tag, Text, toast, Tooltip } from '@lobehub/ui';
 import { PageHeader, Surface } from '@lobehub/ui/dashboard';
-import { FolderOpen, ImagePlus, Music, Play, Square, Trash2, Upload } from 'lucide-react';
+import { FolderOpen, ImagePlus, Music, Play, Square, Trash2, Upload, Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, type DanceDraft, type DanceList, type DanceRow, type DanceState } from '../api';
@@ -109,6 +109,36 @@ const Cover = ({ d, className }: { className: string; d: Pick<DanceRow, 'coverUr
 );
 
 // ---- 正在跳 ------------------------------------------------------------------------------------------------
+/** The music's volume while she dances (prefs.danceVolume, the same value as 跳舞时 → 音乐音量 below; live). */
+const DanceVolume = () => {
+  const { settings, merge } = useStore();
+  const saved = Number(settings.prefs?.danceVolume ?? 60);
+  const [v, setV] = useState<number | null>(null);
+  const muted = settings.prefs?.muted === true;
+  return (
+    <Flexbox align="center" data-dance-volume gap={8} horizontal style={{ width: 200 }}>
+      <Icon icon={Volume2} size={16} />
+      <Slider
+        aria-label="音乐音量"
+        max={100}
+        min={0}
+        onChange={(x: number) => setV(x)}
+        onChangeComplete={async (x: number) => {
+          const r = await api().set('prefs.danceVolume', x);
+          if (r.settings) merge({ settings: r.settings });
+          setV(null);
+        }}
+        step={5}
+        style={{ flex: 1 }}
+        value={v ?? saved}
+      />
+      <Text fontSize={12} style={{ minWidth: 40, textAlign: 'end' }} type="secondary">
+        {muted ? '已静音' : `${v ?? saved}%`}
+      </Text>
+    </Flexbox>
+  );
+};
+
 const NowDancing = ({ st, row, onStop, onLoop }: { onLoop: (on: boolean) => void; onStop: () => void; row?: DanceRow; st: DanceState }) => (
   <Surface title="正在跳">
     <Flexbox align="center" data-dance-now={st.id} gap={16} horizontal>
@@ -126,6 +156,7 @@ const NowDancing = ({ st, row, onStop, onLoop }: { onLoop: (on: boolean) => void
           {clock(st.t)} / {clock(st.duration)}
         </Text>
       </Flexbox>
+      {st.music && <DanceVolume />}
       <Flexbox align="center" gap={8} horizontal>
         <Switch aria-label="循环播放" checked={st.loop} data-dance-loop onChange={onLoop} size="small" />
         <Text fontSize={12}>循环播放</Text>
