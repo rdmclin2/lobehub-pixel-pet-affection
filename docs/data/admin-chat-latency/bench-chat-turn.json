@@ -1,0 +1,26 @@
+{
+  "messages": 3000,
+  "fileKB": 1089,
+  "convMsgs": 600,
+  "conversationOf (chatAs, once per turn)": {
+    "p50": 4.3,
+    "p90": 7.25
+  },
+  "log.append (sync write of the whole file; chat: 2× per turn, chatAs: 2×)": {
+    "p50": 2.83,
+    "p90": 7.61
+  },
+  "chatCharacters (every admin-chat-changed: 2× per chat-page turn, 1× per desktop turn)": {
+    "p50": 16.94,
+    "p90": 19.04
+  },
+  "recentRounds (fresh topic only)": {
+    "p50": 0.04,
+    "p90": 0.12
+  },
+  "pickRecall (a question about the past only)": {
+    "p50": 2.81,
+    "p90": 2.96
+  },
+  "recentRounds chars carried": 4727
+}

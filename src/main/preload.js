@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('pet', {
   // 配置后台: the settings window, at a section ('behavior', 'characters/claude' …); single instance
   openAdmin: (section) => ipcRenderer.invoke('open-admin', { section }),
   debugSet: (patch) => ipcRenderer.invoke('debug-set', patch),
+  debugExpireModels: () => ipcRenderer.invoke('debug-expire-models'),
   debugImportPack: (dir) => ipcRenderer.invoke('debug-import-pack', dir),
   debugNextOpen: (p) => ipcRenderer.invoke('debug-next-open', p),
   debugNextSave: (p) => ipcRenderer.invoke('debug-next-save', p),

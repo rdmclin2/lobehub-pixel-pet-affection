@@ -221,7 +221,8 @@ async function* chunksOf(body) {
 
 // One streamed response, read to its end, as the same object a `stream: false` request returns:
 // { id, status, output, output_text, usage, error }. Reply text is handed to `onText` as it arrives.
-async function readResponseStream(body, onText) {
+// `onChunk()`: each network read (the latency trace marks the first one).
+async function readResponseStream(body, onText, onChunk = null) {
   let response = null; // the latest full response object (created → completed / incomplete / failed)
   let terminal = null;
   let error = null;
@@ -244,6 +245,7 @@ async function readResponseStream(body, onText) {
     }
   });
   for await (const chunk of chunksOf(body)) {
+    if (onChunk) onChunk();
     parser.push(chunk);
     if (terminal || error || done) break;
   }
@@ -307,8 +309,10 @@ class ResponsesClient {
   // pieces so far joined; the returned `text` stays the final reply. A server that answers with plain JSON
   // anyway is read the old way and `onDelta` gets the whole reply once. Without `onDelta`: `stream: false`.
   // `prompt` is the request's `input`: a string, or Responses input items (the admin chat's multimodal turn).
-  // `signal` stops just this run (cancel() stops every run of this client).
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], onDelta = null, signal = null }) {
+  // `signal` stops just this run (cancel() stops every run of this client). `trace` (core/latency.js): marks
+  // token / reqSent / headers / firstByte / firstText of this run when the latency trace is on.
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], onDelta = null, signal = null, trace = null }) {
+    const tr = trace || { mark() {}, set() {}, add() {} };
     const ac = new AbortController();
     this._active.add(ac);
     const onAbort = () => ac.abort();
@@ -326,12 +330,14 @@ class ResponsesClient {
       if (newStep && full) chunk = `\n\n${chunk}`;
       newStep = false;
       full += chunk;
+      tr.mark('firstText');
       try {
         onDelta(chunk, full);
       } catch { /* a display callback must not cost the turn */ }
     };
     try {
       const headers = { Authorization: `Bearer ${await this._token()}`, 'Content-Type': 'application/json' };
+      tr.mark('token');
       const ws = await this._workspaceId();
       if (ws) headers['X-Workspace-Id'] = ws;
       const url = `${serverUrl(this.env)}/api/v1/responses`;
@@ -342,7 +348,10 @@ class ResponsesClient {
       for (let step = 0; step < MAX_STEPS; step++) {
         if (ac.signal.aborted) break;
         newStep = true;
+        tr.mark('reqSent');
+        tr.add('steps');
         const res = await this.fetch(url, { method: 'POST', headers: stream ? { ...headers, Accept: 'text/event-stream' } : headers, body: JSON.stringify({ ...body, stream, tools: functionTools, tools_mode: 'exclusive' }), signal: ac.signal });
+        tr.mark('headers');
         if (!res.ok) {
           const detail = await res.text().catch(() => '');
           throw new ResponsesError(`Responses API HTTP ${res.status}: ${detail.slice(0, 200)}`, { code: res.status === 401 || res.status === 403 ? 'EAUTH' : 'EAPI', status: res.status, toolsRan });
@@ -350,7 +359,8 @@ class ResponsesClient {
         const streamed = stream && res.body && isEventStream(res);
         let r;
         try {
-          r = streamed ? await readResponseStream(res.body, emit) : await res.json();
+          tr.set('streamed', !!streamed);
+          r = streamed ? await readResponseStream(res.body, emit, () => tr.mark('firstByte')) : await res.json();
         } catch (e) {
           if (e instanceof ResponsesError) e.toolsRan = toolsRan;
           throw e;
