@@ -35,10 +35,16 @@
   - 勾选「识别后直接发送」时直接发给她的 agent，她回复（开着朗读就读出来）。
 - **识别中或麦克风正在打开时**再按会被忽略；她正在回上一句时按，她说「等等，我还在想上一句……」。
 - **用不了时不会静默**：
-  - 语音输入没开 / 引擎选了「关闭」：她出现并说「语音输入还没开，我听不到你。去 设置 → 语音输入 打开它…」，右下角提示带 **去设置**（直接打开 设置 → 语音输入）。
-  - 麦克风权限被拒：气泡「我听不到你：麦克风权限被拒绝了…」，右下角提示各系统的处理方法（见第 5 节第一行）。
+  - 语音输入没开 / 引擎选了「关闭」：她出现并说「语音输入还没开，我听不到你～打开方法在下面的提示里。」，提示条「…在 设置 → 语音输入 打开并选一个识别引擎…再按 <快捷键> 就能和她语音对话。」带 **去设置**（直接打开 设置 → 语音输入）。
+  - 麦克风权限被拒：气泡「我听不到你：麦克风权限被拒绝了，办法在下面的提示里。」，提示条「没有麦克风权限。…」按当前系统（macOS / Windows / Linux）给出处理方法（见第 5 节第一行）。
+  - 气泡和提示条同时出现时，提示条移到气泡下方（她身上、🎤 状态条之上），不会挡住气泡（`src/renderer/style.css`，e2e V1 / V5 检查两者不重叠）。
   - 识别失败（连不上、超时、未登录…）：气泡和提示条说明原因，和点 🎤 时一样，设置相关的带「去设置」。
-- **在设置里改**：设置 → 语音输入 → **快捷键 → 唤起语音对话**（`@lobehub/ui` HotkeyInput）。点一下输入框按下新组合即保存，主进程先注销旧的、再注册新的；× 清空 = 关闭；↺ 恢复默认。状态标签：已生效 / 未启用 / 被占用 / 组合无效。
+- **在设置里改**：设置 → 语音输入 → **快捷键 → 唤起语音对话**（`@lobehub/ui` HotkeyInput）。点一下输入框按下新组合即保存，主进程先注销旧的、再注册新的；× 清空 = 关闭；↺ 恢复默认。状态标签：已生效 / 未启用 / 被占用 / 组合无效。输入框里 Space 写作「Space」（不是 ␣ 图标），保存的仍是 `CommandOrControl+Shift+Space`。
+- **字段下方的提示原文**（和 README 一致）：
+  - 「组合无效，没有保存：至少要有一个修饰键（Ctrl / ⌘ / Alt），且只能有一个普通键」（没有修饰键，HotkeyInput 当场拦下）
+  - 「只有 Shift 不够：Shift + 字母会挡住打大写字母，再加一个 Ctrl / ⌘ / Alt」等（主进程校验，`hotkey.js` 的 `MESSAGES`）
+  - 「和应用内的「打开设置」（Ctrl+,）冲突，换一个组合」（macOS 为 `⌘,`；设置页和主进程 `checkHotkey` 是同一句）
+  - 「被系统或其他应用占用了，按下时不会唤起她。换一个组合，或关掉占用它的程序后重启桌宠。」
 - **校验规则**（`src/core/hotkey.js`，设置窗口和主进程都检查）：至少一个修饰键（Ctrl / ⌘ / Alt；只有 Shift 不行）+ 恰好一个已知普通键（A–Z、0–9、F1–F24、Space、Tab、Enter、方向键、Home/End/PageUp/PageDown、Insert/Delete、Backspace、Esc、常用标点）。不能用应用自己的组合（⌘/Ctrl+, 打开设置，⌘/Ctrl+Q/C/V/X/A/Z，⌘/Ctrl+Shift+Z）。被系统或其他应用占用（`globalShortcut.register` 返回 false 或抛错）的组合不保存，正在用的那个不变。
 - **手改 `settings.json`**：`asr.hotkey` 写 Electron accelerator（`CommandOrControl+Alt+V`）或 `""`（关闭）；读不懂的值回到默认。启动时被占用会在设置页显示「被占用」。
 - **限制**：Linux Wayland 会话下全局快捷键通常收不到（Electron 走 X11 的 XGrabKey；Wayland 需要桌面环境的 GlobalShortcuts 门户），请用 X11 会话或在桌面环境里另行绑定。macOS 不需要辅助功能权限。
@@ -261,7 +267,7 @@ node scripts/asr-transcribe.js clip.webm --engine local --endpoint http://127.0.
 
 | 现象（提示文字） | 原因 | 处理 |
 |---|---|---|
-| “没有麦克风权限。” | 系统拒绝了麦克风 | **macOS**：系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用（未签名包被拒后不会再弹窗；可 `tccutil reset Microphone` 后重试）。**Windows**：设置 → 隐私和安全性 → 麦克风，打开“麦克风访问”和“允许桌面应用访问麦克风”。**Linux**：检查 PulseAudio/PipeWire 的输入设备（`pactl list sources short`）。 |
+| “没有麦克风权限。” | 系统拒绝了麦克风 | **macOS**：系统设置 → 隐私与安全性 → 麦克风，打开 Pixel Pet Affection，然后重开应用（未签名包被拒后不会再弹窗；可 `tccutil reset Microphone` 后重试）。**Windows**：设置 → 隐私和安全性 → 麦克风，打开“麦克风访问”和“允许桌面应用访问麦克风”。**Linux**：系统设置 → 声音 → 输入，选中麦克风并确认没有静音；PipeWire / PulseAudio 用 `pactl list sources short` 看有没有输入设备；Flatpak / Snap 安装的要允许麦克风（Flatpak：Flatseal 里打开 PulseAudio socket，即 `flatpak override --user --socket=pulseaudio <应用 ID>`；Snap：`snap connect <应用名>:audio-record`）。提示条只显示当前系统那一条。 |
 | “没找到麦克风。” | 没有输入设备 | 插上麦克风或在系统声音设置里选好输入设备 |
 | 🎤 不出现 | 语音输入没开，或引擎选了“关闭” | 设置窗口 → 语音输入：勾选开启、选一个引擎 |
 | “连不上本地识别服务：http://…。它开着吗？” | 服务没启动、端口不对、地址写错 | 确认服务进程还在、端口在监听（4.4），`curl` 自检（4.5）；地址与 `--port` 一致 |
