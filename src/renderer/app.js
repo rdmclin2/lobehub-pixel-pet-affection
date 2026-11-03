@@ -1445,6 +1445,23 @@ function updateDanceNow() {
   loop.setAttribute('aria-pressed', String(!!st.loop));
   loop.title = st.loop ? '循环播放：开（点一下关闭）' : '循环播放：关（点一下打开）';
 }
+// 聊天里说「跳个舞」/「跳一下节拍摇摆」/「别跳了」(core/dance-intent.js): recognised locally, never by the model
+let danceRefusedAt = 0;
+async function chatDanceIntent(text) {
+  if (!window.PetDanceIntent || !dance) return;
+  const dancing = dance.active();
+  const all = canDanceNow() ? await dance.list() : [];
+  const m = window.PetDanceIntent.matchDanceIntent(text, all, { dancing });
+  if (!m) return;
+  if (m.action === 'stop') { dance.stop({ reason: 'chat' }); syncDanceButton(); return; }
+  if (!canDanceNow()) {
+    // a look that cannot dance: one local line, not again within 10 minutes
+    if (Date.now() - danceRefusedAt > 10 * 60 * 1000) { danceRefusedAt = Date.now(); say('我现在这个样子跳不了舞……换成 VRM 模型再来吧。', 'fallback', 'fallback'); }
+    return;
+  }
+  const d = (m.id && all.find((x) => x.id === m.id)) || window.PetDanceIntent.pickOther(all, danceRecent);
+  if (d) await startDance(d);
+}
 async function startDance(d) {
   if (!dance || danceLoading) return;
   danceLoading = d.id;
@@ -1515,6 +1532,8 @@ function bindPetUi() {
   const send = async () => {
     const input = $('chat-input');
     const text = input.value.trim();
+    // 「别跳了」 while she is still thinking about the last message: the dance part still happens
+    if (thinking && text && !attachments.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { input.value = ''; chatDanceIntent(text); return; }
     if ((!text && attachments.length === 0) || thinking) return;
     const imgs = attachments.filter((a) => a.kind === 'image');
     const files = attachments.filter((a) => a.kind === 'path').map((a) => a.path);
@@ -1524,6 +1543,7 @@ function bindPetUi() {
       if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
+    if (text && !imgs.length && !files.length) chatDanceIntent(text); // 「跳个舞」/「别跳了」: local, the message still goes to her agent
     attachments = [];
     renderAttachments();
     input.value = '';

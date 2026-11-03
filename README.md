@@ -195,7 +195,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 ### 跳舞（只有 VRM 外观）
 
-她穿 VRM 外观时，工具栏多一个 ♪「跳舞」：点开选一支就跳，再点开可「循环播放」/「停止」，Esc 也能停。拖起她会暂停、放下续跳（拖住超过 10 s 就停下）；点她只会换表情、不打断。设置窗口 → 玩法 → 和她一起 → **舞蹈** 可以导入 MMD 舞蹈（`.vmd` + 音乐 + 封面，或整个舞蹈文件夹），导入时转换成 VRM 动作，存在本机数据目录的 `vrm-dances/`。本地 API：`GET /pixel-pet/dances`、`POST /pixel-pet/dance`、`POST /pixel-pet/dance/stop`。内置一支自制示例「节拍摇摆」。**第三方舞蹈和舞曲只在本机使用，不进仓库、不随安装包或角色包分发**（`node scripts/check-dance-packaging.js` 验证安装包）。使用方式、API、授权与验证：[docs/vrm-dance.md §9](docs/vrm-dance.md#9-使用方式t-2803)，关键改动清单 §10；e2e：`xvfb-run -a node e2e/run.js dance`。
+她穿 VRM 外观时，工具栏多一个 ♪「跳舞」：点开选一支就跳，再点开可「循环播放」/「停止」，Esc 也能停。拖起她会暂停、放下续跳（拖住超过 10 s 就停下）；点她只会换表情、不打断。聊天里说「跳个舞」她就跳、说「别跳了」就停（本地识别，不调用模型）。设置窗口 → 玩法 → 和她一起 → **舞蹈** 可以导入 MMD 舞蹈（`.vmd` + 音乐 + 封面，或整个舞蹈文件夹），导入时转换成 VRM 动作，存在本机数据目录的 `vrm-dances/`。本地 API：`GET /pixel-pet/dances`、`POST /pixel-pet/dance`、`POST /pixel-pet/dance/stop`。内置一支自制示例「节拍摇摆」。**第三方舞蹈和舞曲只在本机使用，不进仓库、不随安装包或角色包分发**（`node scripts/check-dance-packaging.js` 验证安装包）。使用方式、API、授权与验证：[docs/vrm-dance.md §9](docs/vrm-dance.md#9-使用方式t-2803)，关键改动清单 §10；e2e：`xvfb-run -a node e2e/run.js dance`。
 
 ## 语音（TTS）
 

@@ -686,7 +686,7 @@ Pipeline：00-brief → 40-flow → 70-detail
 | `test/vmd-retarget.test.js` | 手系：`左腕` 抬起 → `leftUpperArm` 抬起、手在 +X；A-pose：全零帧 → 手臂下垂 θ，`左腕` 转 +θ → 单位；捩骨合并；`上半身` 有帧 → spine 非单位（vidol 的缺陷不复现）；`親指０/１/２` 顺序；センター + グルーブ → hips 位移，按 rest hips 归一；两骨 IK：可达目标误差 < 1 mm、膝只向前弯、不可达时腿伸直；IK 关闭帧用 FK；漂移软限幅：|p̄| 远大于 R 时输出 ≤ R、律动分量保留、脚 IK 目标同步平移（腿长不变）；表情映射；写出的 GLB 过 `inspectVrmaJson` |
 | `test/vrm-dances.test.js` | `detectDance`：vidol 包（用 tmp 目录里伪造的 meta.json + 空文件）、MMD 文件夹（含 Camera.vmd、Chair.vmd、两个 Motion 候选）、单 `.vrma`、`.ncm` 拒绝；`cleanDanceIndex` 校验；`resolveUrl` 舞蹈路径与各种穿越；`credit` 从 readme 提取（`Motion by yurie`、`动作作者：妮谷丹`） |
 | `test/vrm-director-dance.test.js` | 注入时钟：dance 开始 → base 为舞蹈、overlays 空、life 掩码正确、facingYaw 0；拖起 → paused + hold.lift，放下 0.6 s 后续跳且时间从暂停点继续；拖起 > 10 s → 停止；touch → 只有 face、无 reaction；talk → 仍在跳、`duck` 标志；喂食 → out；结束 → out 后回 idle，任何时刻权重和 = 1；loop → 不进 out |
-| `test/dance-intent.test.js` | 「跳个舞」「来段舞」「跳一下极乐净土」（简繁日文名模糊匹配）、「别跳了」、不误触（「跳过这个」「舞台剧」） |
+| `test/dance-intent.test.js` | 「跳个舞」「来段舞」「跳一下节拍摇摆」「跳《極楽浄土》」（按舞蹈名 / 名字中的词 / id 匹配；实现未做简繁转换）、「别跳了」只在跳舞时生效、不误触（「跳过这一步」「心跳」「舞台」「我不想跳舞」） |
 | `test/api.test.js`（扩展） | `/dance`、`/dance/stop`、`/dances`、`/state.dance`；错误码 |
 | `test/vrm-library.test.js`（扩展） | §5.6 守卫 |
 
@@ -784,7 +784,9 @@ Pipeline：00-brief → 40-flow → 70-detail
 
 音量：设置窗口 → 舞蹈 →「跳舞时 · 音乐音量」（`prefs.danceVolume`，默认 60）；工具栏静音按钮同时静音舞曲（动作照跳）。
 
-聊天里说「跳个舞」的本地识别**尚未实现**（§6.4「本任务不含」），目前请用上面的入口。
+| 聊天框（T-2805） | 说「跳个舞」/「来段舞」/「跳一下节拍摇摆」/「跳《極楽浄土》」：本地规则识别（`src/core/dance-intent.js`，不调用模型），点名的跳那支，没点名的随机一支（避开刚跳过的）；消息照常发给她的 agent | 说「别跳了」/「停下」/「不跳了」（只在跳舞时生效，她还在想上一句时也生效） |
+
+聊天识别的规则：要有「跳 + 舞」或「跳一下 / 跳《」加一支已有舞蹈的名字；「跳过」「跳转」「心跳」「舞台」等不算；「不想跳舞」「我不会跳舞」这类否定不算；超过 60 字的长句当作聊天、不识别。非 VRM 外观说「跳个舞」：不跳，她回一句本地台词「我现在这个样子跳不了舞……换成 VRM 模型再来吧。」（10 分钟内只说一次）。设计里的「聊天触发开关」（§6.2 设置项）未做，识别始终开启。
 
 ### 9.3 本地 API
 
@@ -820,6 +822,7 @@ unset ELECTRON_RUN_AS_NODE                      # 设了它 Electron 起不来
 xvfb-run -a node e2e/run.js dance               # 端到端：导入失败 + 成功 → VRM → 列出 → 播放 → 拖拽 / 点击打断 → idle → 再播并停止 → 非 VRM 拒绝
 xvfb-run -a node e2e/run.js vrmdance            # 运行时细节：淡入权重、音频同步、重定向角度、限位取景、静音音量、说话压低、隐藏、循环、API
 xvfb-run -a node e2e/run.js danceui             # 界面：工具栏浮层、设置页、导入确认、删除
+xvfb-run -a node e2e/run.js dancefinal         # 收尾验收（T-2805）：自然播完 / 手动停止后骨骼无残留（对比跳舞前待机）、浮层切换舞蹈、停舞后触摸 / 拖起 / 说话照常、聊天「跳个舞」/「别跳了」、12 次开始 / 停止无报错无资源增长
 node scripts/check-dance-packaging.js           # 打包守卫（真实 electron-builder --linux dir，约 10 s）；--no-guard 为反证（应失败）
 ```
 
@@ -861,9 +864,10 @@ node scripts/check-dance-packaging.js           # 打包守卫（真实 electron
 | `admin/src/console/pages/Dances.tsx`、`api.ts`、`Hub.tsx`、`ConsoleApp.tsx`、`icons.ts` | 设置窗口「舞蹈」页：非 VRM 说明、正在跳卡、卡片网格、导入确认弹窗、删除确认、音量 | T-2801 |
 | `.gitignore`、`package.json` `build.files` | 舞蹈素材不进 git / 安装包 | T-2799 / T-2800 |
 | `scripts/check-dance-packaging.js` | 真实打包 + 诱饵素材的打包守卫 | T-2803 |
+| `src/core/dance-intent.js`、`src/renderer/app.js` `chatDanceIntent` | 聊天里说「跳个舞」/「别跳了」的本地识别与接线；非 VRM 时的本地台词 | T-2805 |
 | `scripts/make-test-dance.js` | e2e 夹具：自制 VMD（已知关键帧）、6 s 提示音 WAV、PNG 封面、`library.json` | T-2800 |
-| `e2e/vrm.js` `danceE2e` / `vrmDance` / `danceUi`，`e2e/run.js` | e2e 场景 `dance`（端到端）、`vrmdance`（运行时）、`danceui`（界面） | T-2800 / T-2801 / T-2803 |
-| `test/vmd.test.js`、`vmd-retarget.test.js`、`vrm-dances.test.js`、`vrm-director-dance.test.js`、`dance-import.test.js` | 单测 | T-2799–T-2801 |
+| `e2e/vrm.js` `danceE2e` / `vrmDance` / `danceUi` / `danceFinal`，`e2e/run.js` | e2e 场景 `dance`（端到端）、`vrmdance`（运行时）、`danceui`（界面）、`dancefinal`（收尾验收） | T-2800 / T-2801 / T-2803 / T-2805 |
+| `test/vmd.test.js`、`vmd-retarget.test.js`、`vrm-dances.test.js`、`vrm-director-dance.test.js`、`dance-import.test.js`、`dance-intent.test.js` | 单测 | T-2799–T-2805 |
 | `docs/vrm-dance.md`、`docs/usage.md`「跳舞」、`README.md` | 设计、接口、使用方式 | T-2798–T-2803 |
 
 ---
