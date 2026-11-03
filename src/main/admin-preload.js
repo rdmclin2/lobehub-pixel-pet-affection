@@ -1,8 +1,10 @@
 'use strict';
 
 // The settings window's bridge (docs/admin-console-design.md §5.2): `window.petAdmin`, a whitelist of the
-// settings and roster channels only. No chat, no window moving, no debug hooks. Keys are write-only: they go
-// in through `set('keys.<id>', value)` and only "has a key" ever comes back.
+// settings and roster channels, plus the settings window's own AI chat (`petAdmin.chat`, docs/admin-chat.md:
+// the `admin-chat-*` channels only; it never talks through the pet, so the pet's `chat` channel stays out).
+// No window moving, no debug hooks. Keys are write-only: they go in through `set('keys.<id>', value)` and
+// only "has a key" ever comes back; the chat uses the LobeHub CLI login in main and never sees a token.
 const { contextBridge, ipcRenderer } = require('electron');
 
 const on = (channel) => (cb) => {
@@ -75,4 +77,19 @@ contextBridge.exposeInMainWorld('petAdmin', {
   onState: on('admin-state'),
   onUpdateStatus: on('update-status'),
   onApiStatus: on('api-status'),
+  // 聊天 (docs/admin-chat.md): sessions kept in userData/admin-chat; a reply streams as onDelta events
+  chat: {
+    listModels: (force) => ipcRenderer.invoke('admin-chat-models', { force }),
+    setModel: (key) => ipcRenderer.invoke('admin-chat-set-model', { key }),
+    listSessions: () => ipcRenderer.invoke('admin-chat-sessions'),
+    createSession: (title) => ipcRenderer.invoke('admin-chat-create', { title }),
+    getSession: (id) => ipcRenderer.invoke('admin-chat-get', { id }),
+    deleteSession: (id) => ipcRenderer.invoke('admin-chat-delete', { id }),
+    clearSession: (id) => ipcRenderer.invoke('admin-chat-clear', { id }),
+    pickImages: () => ipcRenderer.invoke('admin-chat-pick-images'),
+    send: (req) => ipcRenderer.invoke('admin-chat-send', req),
+    abort: (sessionId) => ipcRenderer.invoke('admin-chat-abort', { sessionId }),
+    onDelta: on('admin-chat-delta'),
+    onDone: on('admin-chat-done'),
+  },
 });

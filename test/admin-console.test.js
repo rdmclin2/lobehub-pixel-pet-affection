@@ -416,7 +416,7 @@ test('the settings window: single instance, isolated (contextIsolation, sandbox,
   });
 });
 
-test('admin preload: a whitelist of settings / roster channels, each one handled in main; no chat, move or debug', () => {
+test('admin preload: a whitelist of settings / roster / admin-chat channels, each one handled in main; no pet chat, move or debug', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'main', 'admin-preload.js'), 'utf8');
   const main = fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8');
   const invoked = [...src.matchAll(/ipcRenderer\.(?:invoke|send)\('([a-z0-9-]+)'/g)].map((m) => m[1]);
@@ -425,7 +425,9 @@ test('admin preload: a whitelist of settings / roster channels, each one handled
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-state', 'api-status', 'update-status']);
+  assert.deepEqual(pushed.sort(), ['admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'update-status']);
+  // the settings window's own chat (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
+  for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);
   // the settings window's own channels answer that window only (outside tests)
   assert.match(main, /const adminOnly = \(fn\) => \(e, p\) => \(admin\.isSender\(e\) \|\| TEST_MODE/);

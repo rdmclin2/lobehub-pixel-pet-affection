@@ -58,4 +58,21 @@ function pick(speciesId, options, chosenKey) {
   return options[0];
 }
 
-module.exports = { HOSTED, KEY_RE, keyOf, providersToQuery, optionsFor, pick };
+// The admin console's 聊天 page (core/admin-chat.js): every enabled chat model of the same catalog, any vendor
+// (no per-character rule). Image-only models are left out; `vision` says it can look at pictures. Hosted
+// models first, then the other providers in catalog order; duplicates dropped.
+function chatModelOptions(catalog) {
+  const ok = (catalog || []).filter((m) => m && m.id && m.providerId && m.enabled !== false && (!m.type || m.type === 'chat') && !(m.abilities || {}).imageOutput);
+  const ordered = [...ok.filter((m) => m.providerId === HOSTED), ...ok.filter((m) => m.providerId !== HOSTED)];
+  const seen = new Set();
+  const out = [];
+  for (const m of ordered) {
+    const key = keyOf(m);
+    if (seen.has(key) || !KEY_RE.test(key)) continue;
+    seen.add(key);
+    out.push({ key, id: m.id, providerId: m.providerId, label: m.displayName || m.id, vision: !!(m.abilities || {}).vision, hosted: m.providerId === HOSTED });
+  }
+  return out;
+}
+
+module.exports = { HOSTED, KEY_RE, keyOf, providersToQuery, optionsFor, pick, chatModelOptions };

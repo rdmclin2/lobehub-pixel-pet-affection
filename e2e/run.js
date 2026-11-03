@@ -8,6 +8,7 @@
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
+//   scenario "adminchat" -> 设置窗口 → 聊天 backend: petAdmin.chat from the settings window (fake lh + fake Responses SSE); "adminchat-live" the same against real LobeHub
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -7068,6 +7069,229 @@ async function streamDirectScenario() {
   }
 }
 
+// --- adminchat: 设置窗口 → 聊天 backend (docs/admin-chat.md) driven from the settings window's renderer ---------
+// `window.petAdmin.chat` is called in the real settings window (sandboxed, contextIsolation): models, sessions,
+// a streamed reply whose deltas reach the renderer's onDelta callback, a picture (file dialog → preview →
+// input_image), multi-turn history, abort, and the sessions back after a restart. The chat page itself is a
+// later task, so a small test overlay (#chat-probe) shows what the callbacks received for the screenshots.
+// `adminchat` uses a fake lh + a fake Responses server (no tokens); `adminchat-live` the real lh / LobeHub.
+async function adminChatScenario({ live: isLive = false } = {}) {
+  const S = isLive ? 'adminchat-live' : 'adminchat';
+  const SHOTS = path.join(OUT, S);
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const { startFakeResponses } = require('../test/fixtures/fake-responses-server');
+  const PIECES = ['你好！', '我是设置窗口里的', '聊天助手，', '回复会', '一块一块', '流式到达。'];
+  let slow = false;
+  const srv = isLive ? null : await startFakeResponses((body) => {
+    const text = JSON.stringify(body.input || '');
+    if (slow) return { pieces: ['这一段', '会被', '中途', '停止', '后面', '不会', '出现'], gapMs: 400, id: body.previous_response_id || 'tpc_E2E_CHAT' };
+    if (/颜色/.test(text)) return { pieces: ['图里是', '一块', '红色。'], gapMs: 120, id: body.previous_response_id || 'tpc_E2E_CHAT' };
+    if (/我叫什么/.test(text)) return { pieces: ['你叫', '小明。'], gapMs: 120, id: 'tpc_E2E_CHAT' };
+    return { pieces: PIECES, gapMs: 300, id: 'tpc_E2E_CHAT' };
+  });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${S}-`));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${S}fake-`));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = isLive
+    ? { PIXELPET_DATA_DIR: data, LH_BIN: 'lh', PIXELPET_NO_CONNECT: '1', PIXELPET_DIRECT: '1' }
+    : { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir) };
+  // a 64×64 red PNG for the picture step
+  const red = path.join(data, 'red.png');
+  fs.writeFileSync(red, (() => {
+    const zlib = require('node:zlib');
+    const crc = (b) => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1; } return ~c >>> 0; };
+    const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
+    const w = 64; const raw = Buffer.alloc((w * 3 + 1) * w);
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) raw[y * (w * 3 + 1) + 1 + x * 3] = 255;
+    const ih = Buffer.alloc(13); ih.writeUInt32BE(w, 0); ih.writeUInt32BE(w, 4); ih[8] = 8; ih[9] = 2;
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  })());
+  const evidence = [];
+  const note = (s) => { evidence.push(s); return s.length > 300 ? `${s.slice(0, 297)}…` : s; };
+  // PIXELPET_E2E_VIDEO=1: a recording of every window (the settings window's overlay shows the callbacks)
+  const video = process.env.PIXELPET_E2E_VIDEO ? path.join(SHOTS, 'video') : null;
+  let { app, page } = await launch(env, { video });
+  let admin = null;
+  let agentId = null;
+  // the test overlay + the renderer-side subscriptions: every onDelta / onDone payload is kept in window.__chat
+  const probe = () => admin.evaluate(() => {
+    const c = window.petAdmin.chat;
+    window.__chat = { deltas: [], done: [] };
+    let box = document.getElementById('chat-probe');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'chat-probe';
+      box.style.cssText = 'position:fixed;right:16px;bottom:16px;width:460px;max-height:640px;overflow:auto;z-index:99999;background:#fff;color:#111;border:2px solid #1677ff;border-radius:10px;padding:12px;font:13px/1.5 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25)';
+      document.body.appendChild(box);
+    }
+    box.innerHTML = '<b>E2E 探针：petAdmin.chat 回调收到的数据</b><div id="cp-meta" style="color:#666"></div><div id="cp-log"></div><div id="cp-stream" style="white-space:pre-wrap;margin-top:6px;padding:6px;background:#f0f5ff;border-radius:6px"></div>';
+    window.__chatOff && window.__chatOff.forEach((f) => f());
+    window.__chatOff = [
+      c.onDelta((d) => { window.__chat.deltas.push({ ...d, t: Math.round(performance.now()) }); document.getElementById('cp-stream').textContent = `▶ onDelta #${window.__chat.deltas.length}（+「${d.delta}」）\n${d.text}`; }),
+      c.onDone((d) => { window.__chat.done.push(d); const l = document.getElementById('cp-log'); l.insertAdjacentHTML('beforeend', `<div>✔ onDone ok=${d.ok}${d.reason ? ` reason=${d.reason}` : ''} · ${d.message.status} · ${d.message.text.length} 字</div>`); }),
+    ];
+    return true;
+  });
+  const show = (html) => admin.evaluate((h) => { document.getElementById('cp-log').insertAdjacentHTML('beforeend', h); }, html);
+  try {
+    await page.waitForSelector('.char-card', { timeout: 30000 });
+    admin = await openAdminWindow(app, page, 'overview');
+    await probe();
+
+    let model = null;
+    await step(S, 'C1 listModels：渲染进程拿到可用聊天模型（providerId / id / label / vision），setModel 选择被记住', async () => {
+      const r = await admin.evaluate(() => window.petAdmin.chat.listModels(true));
+      assert.equal(r.ok, true, JSON.stringify(r));
+      assert.ok(r.models.length > 0, 'no models');
+      for (const m of r.models) assert.ok(m.providerId && m.id && m.label && typeof m.vision === 'boolean');
+      assert.ok(!r.models.some((m) => /image|banana/i.test(m.id)), 'image-only models are left out');
+      model = (r.models.find((m) => m.id === 'claude-haiku-5-5' && m.providerId === 'lobehub') || r.models.find((m) => m.vision)).key;
+      const s = await admin.evaluate((k) => window.petAdmin.chat.setModel(k), model);
+      assert.deepEqual(s, { ok: true, selected: model });
+      assert.equal((await admin.evaluate(() => window.petAdmin.chat.listModels())).selected, model);
+      await admin.evaluate(([n, k, v]) => { document.getElementById('cp-meta').textContent = `模型 ${n} 个 · 已选 ${k}（vision=${v}）`; }, [r.models.length, model, r.models.find((m) => m.key === model).vision]);
+      return note(`${r.models.length} models, e.g. ${r.models.slice(0, 4).map((m) => `${m.key}${m.vision ? '(vision)' : ''}`).join(', ')}; selected ${model}`);
+    }, admin);
+
+    let sid = null;
+    await step(S, 'C2 send：流式 delta 逐块到达设置窗口渲染进程的 onDelta 回调，onDone 收尾，消息落盘', async () => {
+      sid = (await admin.evaluate(() => window.petAdmin.chat.createSession())).session.id;
+      const p = admin.evaluate(([id, txt]) => window.petAdmin.chat.send({ sessionId: id, text: txt }), [sid, isLive ? '请用三句话介绍你自己，每句单独一行。' : '你好，介绍一下你自己']);
+      await adminUntil(admin, () => window.__chat.deltas.length >= 2, null, 60000, 'two deltas');
+      await admin.screenshot({ path: path.join(SHOTS, 'c2-streaming-midway.png') });
+      const r = await p;
+      assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+      await adminUntil(admin, () => window.__chat.done.length >= 1, null, 10000, 'onDone');
+      await admin.screenshot({ path: path.join(SHOTS, 'c2-streaming-final.png') });
+      const { deltas, done } = await admin.evaluate(() => window.__chat);
+      assert.ok(deltas.length >= (isLive ? 2 : PIECES.length), `${deltas.length} deltas`);
+      assert.equal(deltas.map((d) => d.delta).join(''), deltas[deltas.length - 1].text);
+      for (let i = 1; i < deltas.length; i++) assert.ok(deltas[i].text.startsWith(deltas[i - 1].text), 'each delta extends the text');
+      assert.equal(deltas[deltas.length - 1].text.trim(), r.message.text);
+      assert.ok(deltas.every((d) => d.sessionId === sid && d.messageId === r.message.id));
+      assert.equal(done[0].messageId, r.message.id);
+      if (!isLive) {
+        assert.deepEqual(deltas.map((d) => d.delta), PIECES);
+        const req = srv.requests[srv.requests.length - 1].body;
+        assert.equal(req.stream, true);
+        assert.deepEqual(req.tools, []);
+        assert.match(req.model, /^agt_/);
+      }
+      const span = deltas[deltas.length - 1].t - deltas[0].t;
+      const s = JSON.parse(fs.readFileSync(path.join(data, 'admin-chat', 'sessions', `${sid}.json`), 'utf8'));
+      assert.deepEqual(s.messages.map((m) => [m.role, m.status]), [['user', 'done'], ['assistant', 'done']]);
+      const idx = JSON.parse(fs.readFileSync(path.join(data, 'admin-chat', 'index.json'), 'utf8'));
+      agentId = idx.agent && idx.agent.id;
+      return note(`${deltas.length} onDelta events in the renderer over ${span} ms: ${deltas.map((d) => `「${d.delta.replace(/\n/g, '⏎')}」`).join(' ').slice(0, 400)}; onDone ok; reply 「${r.message.text.replace(/\n/g, '⏎').slice(0, 120)}」; on disk user+assistant; agent ${agentId}`);
+    }, admin);
+
+    await step(S, 'C3 多轮上下文：第二轮把第一轮历史一起发给模型，模型能接着回答', async () => {
+      await probe();
+      const a = await admin.evaluate((id) => window.petAdmin.chat.send({ sessionId: id, text: '记住：我叫小明，我最喜欢的水果是芒果。只回复“好的”。' }), sid);
+      assert.equal(a.ok, true, a.error);
+      const b = await admin.evaluate((id) => window.petAdmin.chat.send({ sessionId: id, text: '我叫什么？我最喜欢什么水果？' }), sid);
+      assert.equal(b.ok, true, b.error);
+      assert.match(b.message.text, /小明/);
+      if (isLive) assert.match(b.message.text, /芒果/);
+      if (!isLive) {
+        const txt = srv.requests[srv.requests.length - 1].body.input[0].content[0].text;
+        assert.ok(txt.indexOf('我叫小明') >= 0 && txt.indexOf('我叫小明') < txt.indexOf('现在我说：\n我叫什么？'), txt);
+      }
+      const got = await admin.evaluate((id) => window.petAdmin.chat.getSession(id), sid);
+      assert.deepEqual(got.session.messages.map((m) => m.role), ['user', 'assistant', 'user', 'assistant', 'user', 'assistant']);
+      await show(`<div>多轮：问「我叫什么？我最喜欢什么水果？」→ 答「${b.message.text.slice(0, 80)}」</div>`);
+      return note(`turn 3 answer 「${b.message.text.slice(0, 120)}」; session has ${got.session.messages.length} messages in order`);
+    }, admin);
+
+    await step(S, 'C4 图片：主进程文件框选图 → 预览 dataURL → 以 input_image 发送 → 历史里可回显（dataURL）', async () => {
+      await probe();
+      // the e2e hook that answers the next file dialog (debug-next-open, test mode only) instead of a real dialog
+      await page.evaluate((p) => window.pet.debugNextOpen(p), red);
+      const picked = await admin.evaluate(() => window.petAdmin.chat.pickImages());
+      assert.equal(picked.ok, true, JSON.stringify(picked).slice(0, 200));
+      assert.equal(picked.images.length, 1);
+      assert.match(picked.images[0].dataUrl, /^data:image\/png;base64,/);
+      await show(`<div>pickImages 预览：<img id="cp-preview" src="${picked.images[0].dataUrl}" style="width:40px;height:40px;vertical-align:middle;border:1px solid #ccc"> ${picked.images[0].name} · ${picked.images[0].size} B</div>`);
+      const r = await admin.evaluate(([id, p]) => window.petAdmin.chat.send({ sessionId: id, text: '这张图片是什么颜色？只回答颜色。', images: [{ path: p }] }), [sid, picked.images[0].path]);
+      assert.equal(r.ok, true, r.error);
+      assert.match(r.message.text, /红/);
+      const got = await admin.evaluate((id) => window.petAdmin.chat.getSession(id), sid);
+      const user = got.session.messages[got.session.messages.length - 2];
+      assert.equal(user.attachments.length, 1);
+      assert.match(user.attachments[0].url, /^data:image\/png;base64,/);
+      await show(`<div>历史回显：<img src="${user.attachments[0].url}" style="width:40px;height:40px;vertical-align:middle;border:1px solid #ccc"> → 答「${r.message.text.slice(0, 60)}」</div>`);
+      await admin.screenshot({ path: path.join(SHOTS, 'c4-image.png') });
+      const files = fs.readdirSync(path.join(data, 'admin-chat', 'attachments', sid));
+      let reqNote = '';
+      if (!isLive) {
+        const req = srv.requests[srv.requests.length - 1].body;
+        assert.deepEqual(req.input[0].content.filter((x) => x.type === 'input_image').map((x) => x.file_id), ['file_FAKE1']);
+        assert.equal(req.previous_response_id, 'tpc_FAKETOPIC');
+        reqNote = `; request input_image file_id=file_FAKE1, previous_response_id=${req.previous_response_id}`;
+      }
+      return note(`picked ${picked.images[0].name} (${picked.images[0].size} B); saved ${files.join(',')}; answer 「${r.message.text.slice(0, 60)}」; history returns a data URL${reqNote}`);
+    }, admin);
+
+    await step(S, 'C5 abort：回复中途停止，已生成部分保留为 aborted；校验失败的请求返回可读错误', async () => {
+      await probe();
+      slow = true;
+      const p = admin.evaluate(([id, txt]) => window.petAdmin.chat.send({ sessionId: id, text: txt }), [sid, isLive ? '请从1数到200，每个数字单独一行。' : '慢慢说一段话']);
+      await adminUntil(admin, () => window.__chat.deltas.length >= 2, null, 60000, 'deltas before abort');
+      const a = await admin.evaluate((id) => window.petAdmin.chat.abort(id), sid);
+      assert.equal(a.aborted, true);
+      const r = await p;
+      slow = false;
+      assert.equal(r.reason, 'aborted');
+      assert.equal(r.message.status, 'aborted');
+      assert.ok(r.message.text.length > 0);
+      const bad = await admin.evaluate((id) => window.petAdmin.chat.send({ sessionId: id, text: 'x', images: ['data:image/svg+xml;base64,PHN2Zy8+'] }), sid);
+      assert.equal(bad.reason, 'bad-type');
+      await show(`<div>abort → reason=${r.reason}，保留「${r.message.text.replace(/\n/g, ' ').slice(0, 40)}」；svg → ${bad.error}</div>`);
+      await admin.screenshot({ path: path.join(SHOTS, 'c5-abort.png') });
+      return note(`aborted after ${(await admin.evaluate(() => window.__chat.deltas.length))} deltas, kept 「${r.message.text.replace(/\n/g, '⏎').slice(0, 60)}」; svg refused: ${bad.error}`);
+    }, admin);
+
+    await step(S, 'C6 重启后恢复：会话列表、消息顺序、图片与所选模型都还在；清空 / 删除会话可用', async () => {
+      const before = await admin.evaluate((id) => window.petAdmin.chat.getSession(id), sid);
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('.char-card', { timeout: 30000 });
+      admin = await openAdminWindow(app, page, 'overview');
+      await probe();
+      const list = await admin.evaluate(() => window.petAdmin.chat.listSessions());
+      assert.equal(list.sessions[0].id, sid);
+      const after = await admin.evaluate((id) => window.petAdmin.chat.getSession(id), sid);
+      assert.deepEqual(after.session.messages.map((m) => [m.id, m.role, m.text, m.status, m.attachments.length]), before.session.messages.map((m) => [m.id, m.role, m.text, m.status, m.attachments.length]));
+      assert.equal((await admin.evaluate(() => window.petAdmin.chat.listModels())).selected, model);
+      const extra = (await admin.evaluate(() => window.petAdmin.chat.createSession('临时'))).session.id;
+      const cleared = await admin.evaluate((id) => window.petAdmin.chat.clearSession(id), extra);
+      assert.equal(cleared.ok, true);
+      assert.deepEqual(await admin.evaluate((id) => window.petAdmin.chat.deleteSession(id), extra), { ok: true });
+      assert.equal((await admin.evaluate(() => window.petAdmin.chat.listSessions())).sessions.length, 1);
+      await show(`<div>重启后：会话「${list.sessions[0].title}」${after.session.messages.length} 条消息原样恢复；所选模型 ${model}</div>`);
+      await admin.screenshot({ path: path.join(SHOTS, 'c6-restart.png') });
+      return note(`after restart: session 「${list.sessions[0].title}」 with ${after.session.messages.length} messages identical (ids, roles, texts, statuses, pictures); selected model kept; clear/delete ok`);
+    }, admin);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, `${S}-log.txt`), evidence.join('\n\n') + '\n');
+    if (srv) {
+      try { fs.writeFileSync(path.join(SHOTS, `${S}-requests.json`), JSON.stringify(srv.requests.map((q) => ({ at: q.at, body: JSON.parse(JSON.stringify(q.body, (k, v) => (typeof v === 'string' && v.length > 400 ? `${v.slice(0, 400)}…` : v))) })), null, 2) + '\n'); } catch { /* ignore */ }
+    }
+    await app.close().catch(() => {});
+    if (srv) await srv.close();
+    if (isLive) {
+      try { const idx = JSON.parse(fs.readFileSync(path.join(data, 'admin-chat', 'index.json'), 'utf8')); agentId = (idx.agent && idx.agent.id) || agentId; } catch { /* none */ }
+      // the app's lh calls use the personal space unless a pet chose a workspace: delete it in the same scope
+      let ws = null;
+      try { ws = JSON.parse(fs.readFileSync(path.join(data, 'admin-chat', 'index.json'), 'utf8')).agent.workspaceId; } catch { /* personal */ }
+      const env2 = { ...process.env };
+      delete env2.LOBEHUB_WORKSPACE_ID;
+      if (ws) env2.LOBEHUB_WORKSPACE_ID = ws;
+      if (agentId) { try { execFileSync('lh', ['agent', 'delete', agentId, '--yes'], { stdio: 'ignore', timeout: 60000, env: env2 }); say(`(deleted the live chat agent ${agentId})`); } catch (e) { say(`(could not delete the live chat agent ${agentId}: ${e.message})`); } }
+    }
+  }
+}
+
 // --- design: the design-system preview (admin bundle, @lobehub/ui) in a real Electron window ----------------
 // Builds src/admin-ui, opens it through scripts/design-preview.js (sandboxed, CSP, offline), then drives the
 // grouped nav, a switch, a select, a toast and a confirm modal in light and dark. No request may leave file://.
@@ -8667,6 +8891,8 @@ async function adminScenario() {
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
+  if (which === 'adminchat' || which === 'all') await adminChatScenario();
+  if (which === 'adminchat-live') await adminChatScenario({ live: true }); // real LobeHub: costs tokens
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));
   let prior = [];

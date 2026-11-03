@@ -27,6 +27,7 @@ const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } 
 const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
 const { AdminWindow } = require('./admin-window');
 const { createAdminSettings } = require('./admin-settings');
+const { AdminChat, readImage: readChatImage, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
 const { buildRoster, packRows, adminView } = require('../core/roster');
@@ -51,6 +52,7 @@ let petBounds = null; // the pet window's bounds while a panel (wardrobe / topic
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
 let adminSettings = null; // admin-set / admin-reset (admin-settings.js)
+let adminChat = null; // 设置窗口 → 聊天 (core/admin-chat.js, docs/admin-chat.md)
 let tray = null;
 let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
@@ -678,6 +680,36 @@ function wire() {
     setImmediate(() => app.quit());
     return { ok: true };
   }));
+  // 设置窗口 → 聊天 (docs/admin-chat.md): sessions in userData/admin-chat, replies streamed to the settings
+  // window as `admin-chat-delta`, the end of a turn as `admin-chat-done`. Settings-window only, like the rest.
+  ipcMain.handle('admin-chat-models', adminOnly(({ force }) => adminChat.listModels({ force: !!force })));
+  ipcMain.handle('admin-chat-set-model', adminOnly(({ key }) => adminChat.setModel(key)));
+  ipcMain.handle('admin-chat-sessions', adminOnly(() => adminChat.listSessions()));
+  ipcMain.handle('admin-chat-create', adminOnly(({ title }) => adminChat.createSession({ title })));
+  ipcMain.handle('admin-chat-get', adminOnly(({ id }) => adminChat.getSession(String(id || ''))));
+  ipcMain.handle('admin-chat-delete', adminOnly(({ id }) => adminChat.deleteSession(String(id || ''))));
+  ipcMain.handle('admin-chat-clear', adminOnly(({ id }) => adminChat.clearSession(String(id || ''))));
+  ipcMain.handle('admin-chat-abort', adminOnly(({ sessionId }) => adminChat.abort(sessionId ? String(sessionId) : undefined)));
+  ipcMain.handle('admin-chat-send', adminOnly(async ({ sessionId, text, images, model }) => {
+    const r = await adminChat.send({ sessionId: String(sessionId || ''), text, images, model }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
+    if (r.message) admin.send('admin-chat-done', { sessionId: r.sessionId, messageId: r.message.id, ok: r.ok, reason: r.ok ? undefined : r.reason, error: r.error, message: r.message });
+    if (!r.ok && r.reason === 'error') logError(new Error(`admin chat: ${r.code || ''} ${r.error}`));
+    return r;
+  }));
+  // 选择图片: a file dialog in main; each picked file comes back checked (type, ≤10 MB) with a preview data URL
+  ipcMain.handle('admin-chat-pick-images', adminOnly(async () => {
+    const r = nextOpenPath ? { filePaths: nextOpenPath.split('|') } : await dialog.showOpenDialog(admin.win || win, { title: '选择图片', properties: ['openFile', 'multiSelections'], filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
+    nextOpenPath = null;
+    if (r.canceled || !r.filePaths.length) return { ok: false, reason: 'canceled', images: [] };
+    const images = [];
+    const rejected = [];
+    for (const f of r.filePaths.slice(0, CHAT_MAX_IMAGES)) {
+      const img = readChatImage({ path: f });
+      if (img.ok) images.push({ path: f, name: img.name, mime: img.mime, size: img.buffer.length, dataUrl: `data:${img.mime};base64,${img.buffer.toString('base64')}` });
+      else rejected.push({ name: path.basename(f), reason: img.reason, message: img.message });
+    }
+    return { ok: true, images, rejected };
+  }));
   ipcMain.handle('update-install', () => updater.install());
   ipcMain.handle('update-check', () => updater.checkNow());
 
@@ -768,6 +800,13 @@ app.whenReady().then(() => {
     return a === null ? true : a;
   });
   admin = new AdminWindow({ testMode: TEST_MODE });
+  // its own ResponsesClient: 停止 in the chat must not cancel the pet's turn (and the other way round)
+  adminChat = new AdminChat({
+    dir: path.join(app.getPath('userData'), 'admin-chat'),
+    lh,
+    responses: TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? { available: () => false, run: async () => { throw new Error('no Responses client'); } } : new ResponsesClient({ lh }),
+    loadCatalog: ({ force }) => service.refreshModels({ force }),
+  });
   adminSettings = createAdminSettings({
     service,
     hooks: {
