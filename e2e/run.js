@@ -7847,14 +7847,18 @@ async function wardrobePackScenario() {
       await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
       await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
       await page.waitForTimeout(1500);
+      const chipsNow = await chips();
       const v = await viewNow();
       assert.deepEqual(v.outfits, ['daily']);
       assert.equal(v.outfit, 'daily');
+      assert.equal(v.kind, 'live2d');
       assert.deepEqual(v.cards, ['dafeiyu-live2d'], 'every card is drawn from her Live2D pack');
+      const others = ['scarf', 'swimsuit', 'qipao', 'beret', 'maid'].filter((o) => v.outfits.includes(o) || chipsNow.includes(o));
+      assert.deepEqual(others, [], 'no outfit only another pack has is listed');
       const saved = savedPet().characters.dafeiyu.equippedOutfit;
       assert.equal(saved, 'daily', 'the correction is saved');
       const out = [await shot('w2-live2d-wardrobe'), await petShot('w2-pet-live2d')];
-      return `view ${JSON.stringify(v)}; pet.json equippedOutfit=${saved}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
+      return `衣柜 chips ${chipsNow.join(',')}; view ${JSON.stringify(v)}; pet.json equippedOutfit=${saved}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'W3 an outfit the Live2D pack has not (scarf / swimsuit / qipao) is refused; she stays in her Live2D pack', async () => {
@@ -7863,6 +7867,7 @@ async function wardrobePackScenario() {
         const r = await call('equipOutfit', id);
         rs[id] = r.ok ? 'ok' : r.reason;
         assert.equal(r.ok, false, id);
+        assert.ok(r.reason, `${id} refused with a reason`);
       }
       await page.waitForTimeout(800);
       const v = await viewNow();
@@ -7871,6 +7876,26 @@ async function wardrobePackScenario() {
       const pl = await petLook();
       assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
       return `equipOutfit → ${JSON.stringify(rs)}; view ${v.packId}/${v.outfit}; pet window ${JSON.stringify(pl)}; ${await petShot('w3-pet-still-live2d')}`;
+    }, () => admin);
+
+    await step(S, 'W3b wearing the outfit the Live2D pack has (daily, via the 衣柜 chip and via IPC) keeps her in dafeiyu-live2d / live2d', async () => {
+      await go('/characters/dafeiyu');
+      await tab('装扮');
+      await attached('[data-outfits="dafeiyu"] [data-outfit="daily"]');
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="daily"]');
+      await page.waitForTimeout(800);
+      const r = await call('equipOutfit', 'daily');
+      assert.equal(r.ok, true, JSON.stringify(r));
+      await page.waitForTimeout(1200);
+      const v = await viewNow();
+      assert.equal(v.packId, 'dafeiyu-live2d');
+      assert.equal(v.kind, 'live2d');
+      assert.equal(v.outfit, 'daily');
+      const pl = await petLook();
+      assert.deepEqual(pl, { kind: 'live2d', outfit: 'daily' });
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      const out = [await shot('w3b-live2d-wardrobe-daily-worn'), await petShot('w3b-pet-live2d-daily-worn')];
+      return `equipOutfit(daily) → ${JSON.stringify({ ok: r.ok, outfit: r.outfit && r.outfit.id })}; view ${JSON.stringify(v)}; pet window ${JSON.stringify(pl)}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'W4 18+ confirmed and adult content on: the Live2D wardrobe is still daily only', async () => {
@@ -7892,7 +7917,32 @@ async function wardrobePackScenario() {
       await until('rack grows', async () => (await chips()).includes('scarf'));
       const v = await viewNow();
       assert.equal(v.outfit, 'daily');
-      return `view ${JSON.stringify(v)}; ${await shot('w5-pixel-again')}`;
+      assert.equal(v.kind, 'sprites');
+      const c = await chips();
+      assert.ok(c.length > 1 && c.includes('scarf') && c.includes('qipao'), `pixel rack ${c.join(',')}`);
+      assert.notDeepEqual(c, ['daily'], 'the 衣柜 changed with the pack');
+      return `view ${JSON.stringify(v)}; 衣柜 chips ${c.join(',')}; ${await shot('w5-pixel-again')}`;
+    }, () => admin);
+
+    await step(S, 'W5b in the pixel pack she wears 旗袍 (qipao); changing into the Live2D pack puts her back in daily (saved), still Live2D', async () => {
+      await admin.click('[data-outfits="dafeiyu"] [data-outfit="qipao"]');
+      await page.waitForFunction(() => document.getElementById('char-wrap').dataset.outfit === 'qipao', null, { timeout: 8000 });
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'qipao');
+      const before = await viewNow();
+      assert.equal(before.packId, 'dafeiyu-pixel');
+      const s1 = await petShot('w5b-pet-pixel-qipao');
+      await admin.click('[data-use-pack="dafeiyu-live2d"]');
+      await until('Live2D worn', async () => (await viewNow()).packId === 'dafeiyu-live2d');
+      await page.waitForFunction(() => document.getElementById('pet-body').dataset.kind === 'live2d' && document.getElementById('char-wrap').dataset.outfit === 'daily', null, { timeout: 15000 });
+      await until('rack shows daily only', async () => JSON.stringify(await chips()) === '["daily"]');
+      await page.waitForTimeout(1500);
+      const v = await viewNow();
+      assert.equal(v.kind, 'live2d');
+      assert.equal(v.outfit, 'daily');
+      assert.deepEqual(v.outfits, ['daily']);
+      assert.equal(savedPet().characters.dafeiyu.equippedOutfit, 'daily');
+      const out = [s1, await shot('w5b-live2d-wardrobe-after-qipao'), await petShot('w5b-pet-live2d-after-qipao')];
+      return `before ${before.packId}/${before.outfit}; after ${JSON.stringify(v)}; pet window ${JSON.stringify(await petLook())}; ${out.join(', ')}`;
     }, () => admin);
 
     await step(S, 'W6 no console errors in the settings window', async () => {
