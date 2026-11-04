@@ -34,7 +34,7 @@
 //
 //   base_resp.status_code (HTTP is 200 for these): 0 ok · 1002 / 1039 / 1041 / 1045 / 2045 rate limits · 1004 / 2049
 //   bad key · 1008 / 2053 / 2067 balance · 1026 / 1027 / 1040 sensitive content · 2013 / 2014 bad params ·
-//   2022 / 2061 / 2068 / 2069 model not available · 1001 / 2066 timeout · 1000 / 1024 / 1033 / 2064 server.
+//   2022 / 2061 / 2068 / 2069 model not available · 2153 (HTTP 410) closed to new users · 1001 / 2066 timeout · 1000 / 1024 / 1033 / 2064 server.
 //
 // The key is keys.minimax (tts-keys.json — the same MiniMax account key the 朗读 engine uses; a key is per account
 // and region, not per product), else the MINIMAX_API_KEY environment variable. Never written to settings.json.
@@ -86,7 +86,7 @@ function normalizeMusic(raw) {
 
 // ---- errors ----------------------------------------------------------------------------------------------------
 
-// reason: what kind of failure (no-key / bad-endpoint / bad-params / auth / rate-limit / balance / sensitive / model /
+// reason: what kind of failure (no-key / bad-endpoint / bad-params / auth / rate-limit / balance / sensitive / model / unavailable /
 // server / task-failed / network / timeout / aborted / empty / download / write). code: MiniMax's
 // base_resp.status_code, or `http-<status>`, or null. message: readable Chinese, with the code.
 class MusicError extends Error {
@@ -108,6 +108,9 @@ const API_ERRORS = [
   [[1026, 1027, 1040, 1046], 'sensitive', '内容涉及敏感信息，MiniMax 拒绝生成，请换个描述或歌词'],
   [[2013, 2014, 1042], 'bad-params', 'MiniMax 认为请求参数不合法'],
   [[2022, 2061, 2068, 2069], 'model', '这个音乐模型不存在、已下线或当前账号无权使用'],
+  // HTTP 410 + 2153 (seen 2026-11-04): "This Music API is no longer available to new users. Existing paying customers
+  // can continue to use the service." — the key is fine (朗读 still works), the account just cannot use music.
+  [[2153], 'unavailable', 'MiniMax 音乐接口已不再向新用户开放，这个账号用不了（仅已付费的老用户可继续使用）；Key 本身没问题，可换用已开通音乐接口的账号'],
   [[1001, 2066], 'server', 'MiniMax 处理超时，请稍后重试'],
   [[1000, 1024, 1033, 2064], 'server', 'MiniMax 服务暂时出错，请稍后重试'],
 ];
@@ -305,7 +308,13 @@ async function callJson(fetchFn, url, init, signal, why) {
     if (signal && signal.aborted) throw stopError(why());
     throw new MusicError('network', `连不上 MiniMax：${e && e.message ? e.message : '网络错误'}`);
   }
-  if (!res.ok) throw httpError(res.status);
+  if (!res.ok) {
+    // MiniMax may explain a non-2xx answer in base_resp (410 + 2153 = closed to new users): prefer that over the status
+    const body = await race(Promise.resolve().then(() => res.json()), signal, why).catch((e) => { if (e instanceof MusicError) throw e; return null; });
+    const c = body && body.base_resp ? body.base_resp.status_code : null;
+    if (c != null && c !== 0) { const e = apiError(c, body.base_resp.status_msg, body.trace_id || null); e.status = res.status; throw e; }
+    throw httpError(res.status);
+  }
   const j = await race(Promise.resolve().then(() => res.json()), signal, why).catch((e) => {
     if (e instanceof MusicError) throw e;
     throw new MusicError('server', 'MiniMax 返回的不是 JSON');

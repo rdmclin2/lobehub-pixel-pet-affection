@@ -186,6 +186,15 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 11. **重新生成内置语音包**：台词改了以后运行 `node scripts/voicepack-generate.js [--only dafeiyu]`。Key 从 `MINIMAX_API_KEY` 环境变量读，或者从 `~/.config/pixel-pet/minimax.env`、`~/.zshrc`、`~/.bashrc` 里的 `export MINIMAX_API_KEY=…` 读，脚本不会打印 Key。已录的句子会跳过，台词表里已经没有的句子会删掉；按每分钟 10 次节流，一个角色约 25 分钟。
 12. **隐私与授权**：开云端引擎时，只有要念的那句文字发给所选服务商；选系统语音时什么都不发。所有语音都是 AI 合成；内置语音包是用 MiniMax 官方系统音色生成的音频，仓库里收录的是这些合成音频和音色署名，没有收录任何真人录音。B 站参考音色（UP 主 星落落_oi 的“ssr大肥鱼音色”）没有被复刻或收录，想复刻需先取得作者许可。录屏公开或商用前请标注 AI 生成并取得相应授权。详见 [README](../README.md#隐私与音色授权) 和 [tts-voice-research.md](tts-voice-research.md)。
 
+### 音乐创作（MiniMax 作曲）
+
+1. **准备**：本机 `lh login`；在 ⚙ 设置 → 设置 → 声音 → **朗读** → MiniMax 卡片填 API Key（和朗读共用），或者启动前 `export MINIMAX_API_KEY=...`。账号要开通 MiniMax 音乐接口。
+2. **使用**：在聊天框说「来段轻松的纯音乐」「写一首关于夏天的歌」。气泡显示「作曲中…」，写好后她的回复下面出现歌曲卡片，可以 ▶ 播放、打开、在文件夹中显示。音频保存在 `<数据目录>/music/`。
+3. **设置**：⚙ 设置 → 设置 → 声音 → **音乐创作**（开关、端点、模型、格式、保存目录、超时）。
+4. **验证**：`npm run music:smoke -- --mock`（不联网）；`npm run music:smoke`（真实生成，会扣费）。
+
+参数表、错误码与处理建议、费用与已知限制见 **[music.md](music.md)**。
+
 ### 跳舞（VRM 外观）
 
 - **入口**：她穿 VRM 外观时，桌宠工具栏多一个 ♪「跳舞」按钮；点开是舞蹈列表（封面、名字、时长，没有音乐的标「无音乐」），点一支她就开跳。跳舞中按钮是按下状态，再点开能看到进度、「循环播放」和「停止」；Esc 也能让她停下。像素 / 图片 / Live2D 外观没有这个按钮。
@@ -237,6 +246,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 玩法 · 和她一起 | 桌面上的她 | 动作（9 个）、回到右下角、退出（确认） | — |
 | 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / ElevenLabs / 本地语音服务各一张卡片（端点、Key、ElevenLabs 默认音色 ID / 模型、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
 | 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、快捷键（唤起语音对话）、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
+| 设置 · 声音 | 音乐创作 | 让她作曲、端点、模型、格式、采样率、码率、取回方式、保存目录、超时、查询间隔；Key 和「朗读 → MiniMax」共用；详见 [music.md](music.md) | 开，`music-3.0`、mp3、`<数据目录>/music`、600 秒 |
 | 设置 · 声音 | 语音包 | 每个语音包的角色、引擎、句数、来源和署名；打开文件夹、重新读取 | — |
 | 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（导入的每个包都是一位独立角色，在角色图鉴里切换） | — |
 | 设置 · 资源与外观 | 外观主题 | 设置窗口的亮色 / 暗色 / 跟随系统 | 跟随系统 |
@@ -386,6 +396,7 @@ npm run dist:win       # Windows x64 安装包 + zip
 | `xvfb-run -a node e2e/run.js outfit [角色] [服饰]` | 第二套服饰的真机检查（默认 `claude swimsuit`）：真实升级解锁 → 衣柜换上 → idle / walk / lifted 与 daily 对齐 → 重启保留 → 选「旧版像素」时回落到默认包 → 无控制台报错；截图和 `report.txt` 在 `out/e2e/outfit-<角色>-<服饰>/` |
 | `xvfb-run -a node e2e/run.js art` | 输出服饰总表 `out/e2e/outfit-sheet.png` 和“每个角色 × 每个状态”总表 `out/e2e/state-sheet.png` |
 | `xvfb-run -a node e2e/run.js <场景>` | 其他场景：`fresh`（首次启动）、`wardrobe`（好感升级 → 解锁 → 换装 → 重启 → 关闭成人向，输出在 `out/e2e/affection-ui/`）、`migrate`（旧存档迁移）、`charmigrate`（形象包时代的旧数据 → 独立角色：迁移、二次启动幂等、角色图鉴 / 衣柜卡片 / 切换不串数据，输出在 `out/e2e/charmigrate/`）、`wardrobepack`（角色图鉴每个形象一张卡、衣柜卡片、穿上、各角色衣柜隔离）、`dafeiyu`、`busy`、`space`（放在哪里）、`advanced`、`packs`、`update`；`live` 用你真实的 `lh` 登录（会创建并删除一个真实 agent，消耗少量 token）；`all` 依次跑以上全部场景**再加** `art`、`roster` 和 `live`，所以要先 `lh login`，否则 live 那一段失败。在本仓库 fresh clone 上 `all` 共 282 步，约 15 分钟 |
+| `npm run music:smoke -- --mock` · `xvfb-run -a node e2e/run.js music` | 音乐创作：冒烟脚本（不联网；去掉 `--mock` 是真实生成，会扣费），以及设置页和聊天作曲的 e2e（假 LobeHub + 假 MiniMax）。`MUSIC_LIVE_MINIMAX=fake\|real ... musiclive` 用真实模型（花 token，不在 `all` 里）。详见 [music.md 第 6 节](music.md#6-最小可运行验证冒烟脚本) |
 | `xvfb-run -a node e2e/run.js admin` | 设置窗口：三种打开方式、每个分组、开关 / 下拉 / 滑块 / 输入项的编辑和保存（重启后保留）、恢复默认、角色列表与角色详情、行为控制同步到桌宠、亮 / 暗主题；截图在 `out/e2e/admin/` |
 | `xvfb-run -a node e2e/run.js titlebar` | 设置窗口在 macOS 上可拖动：页面按 darwin 渲染（`PIXELPET_E2E_PLATFORM`，仅测试模式），顶部 32px 拖动条（`-webkit-app-region: drag`）横跨整窗、各页没有可点控件压在它下面、角色页滚动后舞台停在它下方；真实平台（原生标题栏）下没有拖动条；截图在 `out/e2e/titlebar/` |
 | `xvfb-run -a node e2e/run.js admincov` | 配置覆盖度：每个配置项在设置窗口里都有控件，角色图鉴各类角色、详情各标签页，改动出现在桌宠窗口 |

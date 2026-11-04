@@ -163,6 +163,15 @@ test('other MiniMax codes: 1026 sensitive, 1008 balance, 2013 bad params, unknow
   }
 });
 
+test('HTTP 410 + base_resp 2153 (closed to new users, seen live 2026-11-04) is reason unavailable with the code, not a bare HTTP 410', async () => {
+  const cfg = cfgFor(tmpDir());
+  const gone = json({ base_resp: { status_code: 2153, status_msg: 'This Music API is no longer available to new users.' }, trace_id: 't-410' }, 410);
+  await assert.rejects(music.generateMusic(SONG, { config: cfg, fetch: mockFetch([gone]) }), (e) => e.reason === 'unavailable' && e.code === 2153 && e.status === 410 && e.traceId === 't-410' && /不再向新用户开放/.test(e.message));
+  // a non-2xx answer whose body is not JSON still reads as the HTTP status
+  const broken = { ok: false, status: 503, json: async () => { throw new Error('not json'); }, headers: { get: () => null } };
+  await assert.rejects(music.generateMusic(SONG, { config: cfg, fetch: mockFetch([broken]) }), (e) => e.reason === 'server' && e.code === 'http-503');
+});
+
 test('network error: a fetch that throws is 连不上 MiniMax (reason network); a failed download is reason download', async () => {
   const cfg = cfgFor(tmpDir());
   await assert.rejects(music.generateMusic(SONG, { config: cfg, fetch: async () => { throw new TypeError('fetch failed'); } }), (e) => e.reason === 'network' && /连不上 MiniMax：fetch failed/.test(e.message));

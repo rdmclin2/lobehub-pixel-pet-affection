@@ -16,6 +16,7 @@
     "demo": "node scripts/demo.js",
     "test": "node --test \"test/*.test.js\"",
     "e2e": "node e2e/run.js",
+    "music:smoke": "node scripts/music-smoke.js",
     "build:admin": "vite build --config admin/vite.config.mjs",
     "dev:admin": "vite --config admin/vite.config.mjs",
     "typecheck:admin": "tsc -p admin",
