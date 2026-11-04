@@ -72,6 +72,12 @@ function retiredScenario(scenario, instead) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
+// An owner from before AI 可读的文件夹 (T-5075) who had 本机能力 on: no folder limit, so her tools still go through
+// lh connect when there is no direct way (the fake lh). For the scenarios that check that path.
+const legacyLocal = (data) => {
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, local: { folders: null, allowCommands: true } }));
+};
 // 授权 (T-5075): scenarios that are not about it go on past the 授权 page by themselves (下一步, nothing granted),
 // as before it existed; `perms: true` leaves it for the `permissions` scenario.
 const passPerms = () => {
@@ -1057,6 +1063,7 @@ async function busy() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-busyfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_RUN_DELAY_MS: '3500' };
+  legacyLocal(data); // dropped files go through lh connect: an owner without the folder limit
   const { app, page } = await launch(env);
   const calls = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -1272,6 +1279,7 @@ async function oldlh() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-oldfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_OLD', hostname: '192.168.101.156', platform: process.platform, online: true, channels: [{ hostname: '192.168.101.156', connectedAt: new Date().toISOString() }] }]));
+  legacyLocal(data); // the device is named on each lh connect run: an owner without the folder limit
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_NO_AGENCY: '1' });
   try {
     await page.waitForSelector('.char-card');
