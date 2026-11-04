@@ -2828,6 +2828,8 @@ module.exports = function vrmScenarios(ctx) {
         await waitAction('idle');
         await sleep(400);
         const before = await ds();
+        const num = (p) => ({ affection: p.affection, mood: p.mood, energy: p.energy, hunger: p.hunger, sleeping: p.sleeping });
+        const pet0 = num((await api('GET', '/state')).json.pet);
         await page.click('#btn-reset');
         await sleep(200);
         const lr = await page.evaluate(() => window.petFx.lastReset());
@@ -2840,7 +2842,11 @@ module.exports = function vrmScenarios(ctx) {
         assert.deepEqual(tr, ['idle'], tr.join(' → '));
         assert.equal(after.reset || '0', before.reset || '0', 'no reset counted on the figure');
         assert.equal(after.posture, before.posture);
-        return H.note(`idle → ↺: lastReset ${JSON.stringify(lr)}; data-action path ${tr.join(' → ')}; data-reset ${before.reset || 0} → ${after.reset || 0}; posture ${before.posture} → ${after.posture}`);
+        const pet1 = num((await api('GET', '/state')).json.pet);
+        assert.equal(pet1.affection, pet0.affection, 'no affection change');
+        assert.equal(pet1.sleeping, pet0.sleeping);
+        assert.ok(pet1.mood <= pet0.mood && pet0.mood - pet1.mood < 0.5, `mood only drifts with time (${pet0.mood} → ${pet1.mood})`);
+        return H.note(`idle → ↺: lastReset ${JSON.stringify(lr)}; data-action path ${tr.join(' → ')}; data-reset ${before.reset || 0} → ${after.reset || 0}; posture ${before.posture} → ${after.posture}; /state.pet before ${JSON.stringify(pet0)} after ${JSON.stringify(pet1)}`);
       });
 
       await ST('跳舞中 → 点工具栏 ↺ → 平滑回到 Idle（舞蹈层淡出、音乐停止）', async () => {
@@ -2868,12 +2874,15 @@ module.exports = function vrmScenarios(ctx) {
         const aff0 = (await api('GET', '/state')).json.pet.affection;
         await clickAct(page, 'sleep');
         await page.waitForFunction(() => window.petFx.state().state === 'sleep', null, { timeout: 5000 });
-        const aff1 = (await api('GET', '/state')).json.pet.affection;
+        const asleep = (await api('GET', '/state')).json.pet;
+        const aff1 = asleep.affection;
+        const moodAsleep = asleep.mood;
         const note = await resetFrom('3-sleep', 'sleep', async () => page.evaluate(() => window.pet.debugTrayClick('重置姿势')), '托盘 → 重置姿势');
         const st = (await api('GET', '/state')).json.pet;
         assert.equal(st.sleeping, false, 'awake');
         assert.equal(st.affection, aff1, 'no affection lost by the reset');
-        return `${note}; /state.pet.sleeping ${st.sleeping}; affection before sleep ${aff0}, asleep ${aff1}, after reset ${st.affection}`;
+        assert.ok(st.mood > moodAsleep - 0.5, `no grumpy-wake mood (−8): ${moodAsleep} → ${st.mood}`);
+        return `${note}; /state.pet.sleeping ${st.sleeping}; affection before sleep ${aff0}, asleep ${aff1}, after reset ${st.affection}; mood asleep ${moodAsleep} → after reset ${st.mood}`;
       });
 
       await ST('玩耍 / 一次性反应中（点玩耍；没触发欢呼时用同层的庆祝反应）→ 本地 API POST /reset-pose → 回到 Idle', async () => {
@@ -2907,6 +2916,16 @@ module.exports = function vrmScenarios(ctx) {
         await waitAction('dance');
         await api('POST', '/reset-pose');
         await waitAction('idle');
+        // 喂食 is refused while she is still full (hunger < 8, pet-state.feed): since T-2831 the play step above
+        // plays on the first press, so the earlier meal may leave her full — play until she can eat again
+        for (let i = 0; i < 4 && (await api('GET', '/state')).json.pet.hunger < 8; i++) {
+          await clickAct(page, 'play');
+          await sleep(300);
+          await page.evaluate(() => window.pet.resetPose('test'));
+          await waitAction('idle');
+        }
+        const hunger = (await api('GET', '/state')).json.pet.hunger;
+        assert.ok(hunger >= 8, `hungry enough to eat (${hunger})`);
         await clickAct(page, 'feed');
         await page.click('#food-menu button');
         await waitAction('eat');
@@ -2914,7 +2933,7 @@ module.exports = function vrmScenarios(ctx) {
         await waitAction('idle');
         const real = realErrors(errors);
         assert.deepEqual(real, [], real.join('\n'));
-        return H.note('dance → POST /reset-pose → idle → 喂食 → eat → IPC resetPose → idle; console errors: none');
+        return H.note(`dance → POST /reset-pose → idle → (hunger ${hunger}) 喂食 → eat → IPC resetPose → idle; console errors: none`);
       });
     } finally {
       const vpath = await page.video() ? await page.video().path().catch(() => null) : null;
