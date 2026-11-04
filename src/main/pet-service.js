@@ -30,6 +30,8 @@ const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
 const chatLive = require('../core/chat-live');
+const musicLib = require('../core/music');
+const { createMusicTool, MUSIC_TOOL_NAME } = require('../core/responses-client');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -42,11 +44,18 @@ const TIRED_LINE = '好累……让我睡一会儿。';
 const PREWARM_MAX = 60; // lines synthesised ahead per character (互动语音)
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
+// 音乐创作 (T-5090): what the windows get of a song compose_music saved (the file and its facts, nothing more).
+function musicView(r) {
+  const meta = (r && r.meta) || {};
+  return { id: path.basename(r.filePath), title: meta.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationMs: r.durationMs || null, format: meta.format || path.extname(r.filePath).slice(1), instrumental: !!meta.instrumental };
+}
+const musicNames = (list) => list.map((m) => (m.title ? `《${m.title}》` : '新曲子')).join('、');
+
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
+  constructor({ lh, responses = null, music = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -56,6 +65,9 @@ class PetService extends EventEmitter {
     // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
     this.responses = responses;
     this._responsesFailedAt = 0;
+    // 音乐创作 (T-5090): { key: () => keys.minimax, userDataDir, env?, fetch?, allowInsecureLocal?, generate? } from
+    // main; null: the compose_music tool is never offered (tests that do not ask for it).
+    this.music = music;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     // 快捷键唤起语音对话: the global shortcut's state (main/voice-hotkey.js status(): ok | disabled | invalid | conflict)
     this.hotkeyStatus = hotkeyStatus;
@@ -314,16 +326,18 @@ class PetService extends EventEmitter {
   // line is the pet's own and its origin comes from `kind` (greeting, proactive, touch, …).
   // `stream`: the reply stream (_openStream) this line ends; its id goes with the line so the window turns the
   // bubble it has been filling into this final text instead of starting a new one.
-  _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null) {
+  // `extra.music`: songs compose_music saved this turn ([musicView]); they go with the line (气泡 → 播放) and into 聊天记录.
+  _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null, extra = {}) {
     if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
-    const origin = this._logPet(ex.text || text, kind, turn);
+    const music = extra && Array.isArray(extra.music) && extra.music.length ? extra.music : null;
+    const origin = this._logPet(ex.text || text, kind, turn, null, music ? { attachments: { music } } : null);
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
     const shown = ex.text || text;
-    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
+    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}), ...(music ? { music } : {}) });
     if (this.pet) this._save();
     return shown;
   }
@@ -397,11 +411,11 @@ class PetService extends EventEmitter {
     return n ? { topicEpoch: n } : {};
   }
 
-  _logPet(text, kind, turn = null, status = null) {
+  _logPet(text, kind, turn = null, status = null, extra = null) {
     const origin = turn ? turn.origin : chatLog.originOfKind(kind);
     if (!this.pet) return origin;
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}) }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}), ...(extra || {}) }, this.now());
     } catch (e) {
       this.emit('error', e); // a full disk must not silence the pet
     }
@@ -913,6 +927,71 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? LOCAL_TOOLS : [];
   }
 
+  // ---- 音乐创作: compose_music (T-5090) -------------------------------------------------------------------
+  // Its own gate, apart from 本机能力: on when 设置 → 音乐创作 → 让她作曲 is on and a MiniMax key is set (keys.minimax
+  // or MINIMAX_API_KEY), and this turn goes the direct way (the tool is a function tool run here; `lh agent run`
+  // has no way to carry it). Local abilities stay as they are: turning music on never exposes read_file /
+  // run_command. -> { on, reason: null | 'unsupported' | 'off' | 'no-key' | 'via-device' | 'no-direct' }
+  // `plain`: the settings window's 聊天 (no local tools, so the device path never applies there).
+  _musicStatus({ plain = false } = {}) {
+    if (!this.music) return { on: false, reason: 'unsupported' };
+    const m = musicLib.normalizeMusic(this.settings.music);
+    if (!m.enabled) return { on: false, reason: 'off' };
+    if (!this._musicKey()) return { on: false, reason: 'no-key' };
+    const local = !plain && this.pet && this._tools().length > 0;
+    if (local && this.localVia !== 'direct') return { on: false, reason: 'via-device' };
+    if (local ? !(this.responses && this.responses.available()) : !this._directUp()) return { on: false, reason: 'no-direct' };
+    return { on: true, reason: null };
+  }
+
+  _musicKey() {
+    let k = '';
+    try { k = (this.music && this.music.key && this.music.key()) || ''; } catch { /* unreadable key store: as none */ }
+    const env = (this.music && this.music.env) || process.env;
+    return (typeof k === 'string' && k.trim()) || (typeof env.MINIMAX_API_KEY === 'string' ? env.MINIMAX_API_KEY.trim() : '');
+  }
+
+  // Where songs are saved (and the only folder the windows may play from, main.js music-audio).
+  musicDir() {
+    if (!this.music) return null;
+    try {
+      return musicLib.resolveConfig({ settings: this.settings, key: '', env: this.music.env || process.env, userDataDir: this.music.userDataDir || '', allowInsecureLocal: !!this.music.allowInsecureLocal }).outputDir || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // One turn's compose_music tool. `ctx`: { kind, speciesId, turnId, streamId, results: [] } — the songs saved go into
+  // ctx.results (the caller shows them with the reply); every step is a 'music' event for the windows (作曲中…).
+  _musicTool(ctx) {
+    const generate = (params, opts) => {
+      const cfg = musicLib.resolveConfig({ settings: this.settings, key: this._musicKey(), env: this.music.env || process.env, userDataDir: this.music.userDataDir || '', allowInsecureLocal: !!this.music.allowInsecureLocal });
+      if (this.music.generate) return this.music.generate(params, { ...opts, config: cfg });
+      return musicLib.generateMusic(params, { ...opts, config: cfg, fetch: this.music.fetch, now: this.now });
+    };
+    return createMusicTool({
+      generate,
+      onEvent: (e) => {
+        const title = (e.args && typeof e.args.title === 'string' && e.args.title.slice(0, 60)) || '';
+        const base = { kind: ctx.kind, speciesId: ctx.speciesId, turnId: ctx.turnId, streamId: ctx.streamId || null, tool: MUSIC_TOOL_NAME, title, instrumental: !!(e.args && e.args.instrumental) };
+        if (e.state === 'start') {
+          ctx.startedAt = this.now();
+          this.emit('music', { ...base, state: 'composing', startedAt: ctx.startedAt });
+        } else if (e.state === 'progress') {
+          this.emit('music', { ...base, state: 'composing', stage: e.stage || null, startedAt: ctx.startedAt });
+        } else if (e.state === 'done') {
+          const v = musicView(e.result);
+          ctx.results.push(v);
+          this.emit('music', { ...base, state: 'done', music: v, ms: this.now() - (ctx.startedAt || this.now()) });
+        } else if (e.state === 'failed') {
+          const err = e.error || {};
+          ctx.errors.push({ reason: err.reason || 'error', message: String(err.message || err).slice(0, 200) });
+          this.emit('music', { ...base, state: 'failed', reason: err.reason || 'error', error: String(err.message || err).slice(0, 200) });
+        }
+      },
+    });
+  }
+
   // Stop whatever the agent is doing right now.
   cancel() {
     if (!this.busy) return;
@@ -951,11 +1030,16 @@ class PetService extends EventEmitter {
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
   // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
   // `trace` (core/latency.js): which way the turn went, and when a fallback started.
-  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP } = {}) {
+  // `music`: this turn's compose_music tool (_musicTool), or null. It is a function tool run here, so it only goes
+  // with a direct turn (_musicStatus said on); an `lh agent run` turn never has it. Once it ran (a song may have been
+  // made and billed), a failure afterwards is not sent again another way: toolsRan stands, like a local tool's.
+  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP, music = null } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
     if (trace.on) args = { ...args, trace };
     const tools = plain ? [] : this._tools();
+    const extraTools = music ? [music] : [];
     trace.set('tools', tools.length);
+    if (music) trace.set('music', true);
     if (tools.length) {
       if (this.localVia !== 'direct') {
         trace.set('via', 'lh-connect');
@@ -963,7 +1047,7 @@ class PetService extends EventEmitter {
       }
       trace.set('via', 'direct-tools');
       try {
-        return await this.responses.run({ ...args, tools });
+        return await this.responses.run({ ...args, tools, extraTools });
       } catch (e) {
         if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
         trace.set('via', 'lh-connect-fallback');
@@ -986,9 +1070,9 @@ class PetService extends EventEmitter {
     }
     trace.set('via', 'direct');
     try {
-      return await this.responses.run({ ...args, tools: [] });
+      return await this.responses.run({ ...args, tools: [], extraTools });
     } catch (e) {
-      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT') throw e;
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
       this._throwIfCanceled();
       trace.set('via', 'lh-run-fallback');
       trace.set('fallbackReason', String(e.message).slice(0, 200));
@@ -1065,6 +1149,7 @@ class PetService extends EventEmitter {
     trace.set('textChars', clean.length);
     trace.mark('logged');
     let ok = false;
+    let musicCtx = null;
     try {
       state.touch(c, t);
       await this._ensureReady(trace);
@@ -1076,6 +1161,9 @@ class PetService extends EventEmitter {
         return { ok: false, reason: 'local-error', message: this.localError };
       }
       const local = this._tools().length > 0;
+      const musicStatus = this._musicStatus();
+      trace.set('musicReason', musicStatus.reason);
+      musicCtx = { kind: 'chat', speciesId: c.speciesId, turnId: turn ? turn.turnId : null, streamId: stream.id, results: [], errors: [] };
       let body;
       if (images.length) {
         const fileIds = [];
@@ -1088,23 +1176,35 @@ class PetService extends EventEmitter {
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings, music: musicStatus });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
       trace.mark('runStart');
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace, music: musicStatus.on ? this._musicTool(musicCtx) : null });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
-      this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream));
+      const music = musicCtx.results;
+      this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream, { music }));
       trace.mark('doneSent');
       this._reportAffection(affection);
       ok = true;
-      return { ok: true, text, cost: res.cost, affection };
+      return { ok: true, text, cost: res.cost, affection, ...(music.length ? { music } : {}) };
     } catch (e) {
+      // the song was made (and billed) but her answer after it failed: the song is still shown and kept, the turn
+      // is not sent again (toolsRan), and the bubble says it is there
+      if (e.code !== 'ECANCELED' && musicCtx && musicCtx.results.length) {
+        this.emit('error', e);
+        const music = musicCtx.results;
+        const text = `曲子写好了：${musicNames(music)}，点下面就能听～`;
+        this._closeStream(stream, true, null, this._say(text, 'fallback', 'chat', e.message, null, turn, stream, { music }));
+        this._save();
+        ok = true;
+        return { ok: true, text, partial: true, music };
+      }
       this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code !== 'ECANCELED') this.emit('error', e);
       this._logPet('', 'chat', turn, e.code === 'ECANCELED' ? 'canceled' : 'error');
@@ -1221,6 +1321,7 @@ class PetService extends EventEmitter {
     let userMessage = null;
     let partial = '';
     let modelKey = null;
+    let musicCtx = null;
     const trace = latency.createTrace('admin');
     trace.set('speciesId', id);
     trace.set('turnId', turnId);
@@ -1270,7 +1371,11 @@ class PetService extends EventEmitter {
       }
       this._throwIfCanceled();
       const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
-      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      // 音乐创作 works here too: compose_music is not a local ability, so `plain` (no local tools) does not stop it
+      const musicStatus = this._musicStatus({ plain: true });
+      trace.set('musicReason', musicStatus.reason);
+      musicCtx = { kind: 'console', speciesId: id, turnId, streamId: null, results: [], errors: [] };
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings, music: musicStatus });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
       trace.set('recallMsgs', recall.length);
@@ -1304,7 +1409,7 @@ class PetService extends EventEmitter {
         },
       };
       trace.mark('runStart');
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true, trace });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true, trace, music: musicStatus.on ? this._musicTool(musicCtx) : null });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId && res.topicId !== c.topicId) {
@@ -1319,7 +1424,8 @@ class PetService extends EventEmitter {
         reply = contentGuard.refusalLine(sp);
       }
       c.lastSpokeAt = this.now();
-      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}) });
+      const music = musicCtx.results;
+      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}), ...(music.length ? { attachments: { music } } : {}) });
       // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
       let affection = null;
       if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length ? 2 : 0) }).affection;
@@ -1331,6 +1437,15 @@ class PetService extends EventEmitter {
     } catch (e) {
       const canceled = e.code === 'ECANCELED' || this._cancelRequested;
       if (!canceled) this.emit('error', e);
+      if (!canceled && musicCtx && musicCtx.results.length && userMessage) {
+        // the song was made but her answer after it failed: keep and show the song (see chat())
+        const music = musicCtx.results;
+        const message = this._logAs(id, { role: 'pet', turnId, text: `曲子写好了：${musicNames(music)}，点下面就能听～`, ...(modelKey ? { model: modelKey } : {}), attachments: { music } });
+        this._save();
+        this.emit('update', this.view());
+        ok = true;
+        return { ok: true, partial: true, speciesId: id, turnId, userMessage, message };
+      }
       const error = canceled ? '已停止' : adminChat.readableError(e);
       const message = userMessage ? this._logAs(id, { role: 'pet', turnId, text: canceled ? partial : '', status: canceled ? 'canceled' : 'error', ...(canceled ? {} : { error }), ...(modelKey ? { model: modelKey } : {}) }) : null;
       this._save();

@@ -125,5 +125,10 @@ contextBridge.exposeInMainWorld('petAdmin', {
     onDelta: on('admin-chat-delta'),
     onDone: on('admin-chat-done'),
     onChanged: on('admin-chat-changed'),
+    // 音乐创作 (T-5090): 作曲中… / done / failed of this page's round; a song's bytes, open / show it in its folder
+    onMusic: on('admin-chat-music'),
+    musicAudio: (filePath) => ipcRenderer.invoke('admin-chat-music-audio', { filePath }),
+    musicOpen: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath }),
+    musicReveal: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath, reveal: true }),
   },
 });

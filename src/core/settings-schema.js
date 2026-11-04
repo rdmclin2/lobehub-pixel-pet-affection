@@ -209,6 +209,7 @@ add('asr.local.timeoutSec', 'asr', '本地识别服务', '超时', 'number', { d
 
 // ---- 音乐创作 (core/music.js, T-5088) ---------------------------------------------------------------------
 const M_RANGE = musicLib.RANGE;
+add('music.enabled', 'music', 'MiniMax 音乐', '让她作曲', 'switch', { desc: '开启且填了 MiniMax Key 时，聊天里说「给我写首歌」「来段轻松的纯音乐」，她会调用 MiniMax 作曲，歌会出现在她的回复下面，点一下就能听。不需要开启本机能力；每首歌按 MiniMax 价格计费。' });
 add('music.endpoint', 'music', 'MiniMax 音乐', '端点', 'url', { desc: `留空时依次用环境变量 MINIMAX_MUSIC_ENDPOINT、「朗读 → MiniMax」的端点，最后是官方地址 ${musicLib.DEFAULT_ENDPOINT}（海外账号用 https://api.minimax.io）。必须是 https。`, placeholder: musicLib.DEFAULT_ENDPOINT, validator: 'music' });
 add('music.model', 'music', 'MiniMax 音乐', '模型', 'select', { desc: 'music-3.0 是官方推荐的最新模型；music-2.6 是上一代。', options: opts([['music-3.0', 'music-3.0（推荐）'], ['music-2.6', 'music-2.6']]) });
 add('music.format', 'music', '音频', '格式', 'segmented', { desc: 'mp3 体积小；wav / pcm 无损但大很多。', options: opts(musicLib.FORMATS.map((f) => [f, f])) });

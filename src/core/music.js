@@ -57,9 +57,10 @@ const LIMITS = { prompt: 2000, lyrics: 3500, title: 60, hint: 200, durationSec: 
 const RANGE = { timeoutSec: [30, 1800], pollIntervalSec: [1, 60] };
 const MAX_DOWNLOAD = 200 * 1024 * 1024;
 
-// settings.json `music` (core/settings.js). endpoint '' = MINIMAX_MUSIC_ENDPOINT, else tts.endpoints.minimax, else
+// settings.json `music` (core/settings.js). enabled: whether the AI may use the compose_music tool (T-5090; the tool
+// is offered only when this is on AND a MiniMax key is set). endpoint '' = MINIMAX_MUSIC_ENDPOINT, else tts.endpoints.minimax, else
 // DEFAULT_ENDPOINT. outputDir '' = <userData>/music.
-const MUSIC_DEFAULTS = { endpoint: '', model: 'music-3.0', outputDir: '', outputFormat: 'url', format: 'mp3', sampleRate: 44100, bitrate: 256000, timeoutSec: 600, pollIntervalSec: 3 };
+const MUSIC_DEFAULTS = { enabled: true, endpoint: '', model: 'music-3.0', outputDir: '', outputFormat: 'url', format: 'mp3', sampleRate: 44100, bitrate: 256000, timeoutSec: 600, pollIntervalSec: 3 };
 
 const httpsOk = (u) => endpointOk(u, { lan: false });
 const pick = (v, list, d) => (list.includes(v) ? v : d);
@@ -70,6 +71,7 @@ function normalizeMusic(raw) {
   const ep = typeof m.endpoint === 'string' ? m.endpoint.trim().replace(/\/+$/, '') : '';
   const dir = typeof m.outputDir === 'string' ? m.outputDir.trim() : '';
   return {
+    enabled: m.enabled !== false,
     endpoint: ep && httpsOk(ep) ? ep : '',
     model: pick(m.model, MODELS, MUSIC_DEFAULTS.model),
     outputDir: dir && path.isAbsolute(dir) && dir.length <= 500 ? dir : '',
@@ -236,20 +238,25 @@ function buildRequest(params, config = {}) {
 // Everything one generation needs, from the saved settings, the key store and the environment.
 // settings: the whole normalized settings (or just { music, tts }); key: keys.minimax (TtsKeyStore.get('minimax'));
 // userDataDir: app.getPath('userData'). -> { endpoint, apiKey, model, outputDir, …, timeoutMs, pollIntervalMs }
-function resolveConfig({ settings = {}, key = '', env = process.env, userDataDir = '' } = {}) {
+// allowInsecureLocal: e2e runs only (main.js under PIXELPET_TEST): MINIMAX_MUSIC_ENDPOINT may be a stand-in on
+// http://127.0.0.1:<port> (test/fixtures/fake-minimax-music.js). Never set for a real run.
+const LOOPBACK_HTTP = /^http:\/\/127\.0\.0\.1(:\d{1,5})?$/;
+const endpointAllowed = (ep, cfg) => httpsOk(ep) || !!(cfg && cfg.allowInsecureLocal && LOOPBACK_HTTP.test(ep));
+
+function resolveConfig({ settings = {}, key = '', env = process.env, userDataDir = '', allowInsecureLocal = false } = {}) {
   const m = normalizeMusic(settings.music);
   const ttsEp = settings.tts && settings.tts.endpoints && settings.tts.endpoints.minimax;
   const envEp = env && typeof env.MINIMAX_MUSIC_ENDPOINT === 'string' ? env.MINIMAX_MUSIC_ENDPOINT.trim().replace(/\/+$/, '') : '';
-  if (!m.endpoint && envEp && !httpsOk(envEp)) throw new MusicError('bad-endpoint', 'MINIMAX_MUSIC_ENDPOINT 不合法：必须是 https 地址，不能带账号密码');
+  if (!m.endpoint && envEp && !endpointAllowed(envEp, { allowInsecureLocal })) throw new MusicError('bad-endpoint', 'MINIMAX_MUSIC_ENDPOINT 不合法：必须是 https 地址，不能带账号密码');
   const endpoint = m.endpoint || envEp || (ttsEp && httpsOk(ttsEp) ? String(ttsEp).replace(/\/+$/, '') : '') || DEFAULT_ENDPOINT;
   const apiKey = (typeof key === 'string' && key.trim()) || (env && typeof env.MINIMAX_API_KEY === 'string' ? env.MINIMAX_API_KEY.trim() : '');
   const outputDir = m.outputDir || (userDataDir ? path.join(userDataDir, 'music') : '');
-  return { ...m, endpoint, apiKey, outputDir, timeoutMs: m.timeoutSec * 1000, pollIntervalMs: m.pollIntervalSec * 1000, queryPath: QUERY_PATH };
+  return { ...m, endpoint, apiKey, outputDir, allowInsecureLocal: !!allowInsecureLocal, timeoutMs: m.timeoutSec * 1000, pollIntervalMs: m.pollIntervalSec * 1000, queryPath: QUERY_PATH };
 }
 
 function checkConfig(cfg) {
   if (!cfg || !cfg.apiKey) throw new MusicError('no-key', '没有 MiniMax API Key：在 设置 → 朗读 → MiniMax 填写，或设置环境变量 MINIMAX_API_KEY');
-  if (!httpsOk(cfg.endpoint)) throw new MusicError('bad-endpoint', '音乐生成端点不合法：必须是 https 地址');
+  if (!endpointAllowed(cfg.endpoint, cfg)) throw new MusicError('bad-endpoint', '音乐生成端点不合法：必须是 https 地址');
   if (!cfg.outputDir || !path.isAbsolute(cfg.outputDir)) throw new MusicError('write', '没有可用的音乐保存目录');
 }
 
@@ -470,6 +477,6 @@ async function generateMusic(params, { settings, key, env, userDataDir, config, 
 
 module.exports = {
   DEFAULT_ENDPOINT, GENERATE_PATH, QUERY_PATH, MODELS, SAMPLE_RATES, BITRATES, FORMATS, OUTPUT_FORMATS, STRUCTURE_TAGS, LIMITS, RANGE,
-  MUSIC_DEFAULTS, normalizeMusic, MusicError, apiError, buildRequest, composePrompt, resolveConfig, createMusicClient, generateMusic, fileBase,
+  MUSIC_DEFAULTS, normalizeMusic, MusicError, apiError, buildRequest, composePrompt, resolveConfig, checkConfig, createMusicClient, generateMusic, fileBase,
   endpointOk: httpsOk,
 };

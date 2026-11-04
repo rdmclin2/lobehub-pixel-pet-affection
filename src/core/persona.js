@@ -164,14 +164,34 @@ function buildFilesBlock(files, hasText) {
   return `[文件] 主人拖来了 ${files.length} 个文件/文件夹。路径在他这台电脑上，不用他再上传，请用本机工具按路径直接读取：\n${list}${ask}`;
 }
 
-function buildChatPrompt(text, pet, now, { local = false, settings = null } = {}) {
-  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}` : ''}\n${text}`;
+// 音乐创作 (T-5090): the compose_music tool is offered this turn (pet-service _musicStatus().on).
+const MUSIC_HINT = '[作曲] 主人要你写歌、作曲、来段音乐/纯音乐/BGM 时，调用 compose_music 工具（纯音乐设 instrumental: true；有人声就自己写好带 [Verse]/[Chorus] 的歌词）。一次请求只调用一次，生成要一两分钟；好了用一句话告诉主人歌名，音频会自动出现在你的回复下面，不用念路径。';
+// Why it is not offered, for a turn where the owner may still ask for a song: she says so instead of pretending.
+const MUSIC_OFF = {
+  off: '在「设置 → 音乐创作」里关掉了',
+  'no-key': '还没有填 MiniMax API Key（设置 → 朗读 → MiniMax，或环境变量 MINIMAX_API_KEY）',
+  'via-device': '本机能力现在走 lh connect 设备，这条路不支持作曲',
+  'no-direct': '现在连不上 LobeHub 直连接口（需要 lh login），作曲要走直连',
+};
+function musicHint(music) {
+  if (!music) return '';
+  if (music.on) return MUSIC_HINT;
+  const why = MUSIC_OFF[music.reason];
+  return why ? `[作曲] 这次不能作曲：${why}。主人要你写歌时如实简单说明原因，不要假装写好了，也不要编造文件。` : '';
+}
+
+function buildChatPrompt(text, pet, now, { local = false, settings = null, music = null } = {}) {
+  const m = musicHint(music);
+  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}` : ''}${m ? `\n${m}` : ''}\n${text}`;
 }
 
 module.exports = {
   buildFilesBlock,
   cleanPath,
   LOCAL_HINT,
+  MUSIC_HINT,
+  MUSIC_OFF,
+  musicHint,
   PERSONA_VERSION,
   CONTENT_RULES,
   buildRelationSection,

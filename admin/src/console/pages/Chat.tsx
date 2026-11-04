@@ -7,11 +7,12 @@
  */
 import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
 import { ChatInputActionBar, ChatInputAreaInner, ChatItem, ChatSendButton, LoadingDots } from '@lobehub/ui/chat';
-import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X } from 'lucide-react';
+import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, Music, RotateCw, User, X } from 'lucide-react';
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import ChatLive from '../../../../src/core/chat-live.js';
-import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow, type UserFace } from '../api';
+import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type ChatMusicEvent, type RosterRow, type UserFace } from '../api';
+import { clockOf, MusicCard } from './MusicCard';
 import { CharacterAvatar, UserAvatar } from '../stage/CharacterAvatar';
 import { useStore } from '../store';
 
@@ -286,6 +287,9 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState<Live | null>(null);
+  // 音乐创作 (T-5090): this page's round is composing (compose_music running), or its last try failed
+  const [composing, setComposing] = useState<ChatMusicEvent | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -328,6 +332,16 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const vision = currentModel ? currentModel.vision !== false : true;
   const busy = !!live;
   const liveHere = live && live.speciesId === activeId ? live : null;
+  const composingHere = composing && liveHere && composing.speciesId === activeId ? composing : null;
+  useEffect(() => chat().onMusic((e) => setComposing(e)), []);
+  useEffect(() => {
+    if (!live) setComposing(null);
+  }, [live]);
+  useEffect(() => {
+    if (composing?.state !== 'composing') return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [composing?.state]);
 
   const refreshCharacters = useCallback(async () => {
     const r = await chat().listCharacters();
@@ -655,7 +669,15 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
         aboveMessage={isUser ? pictures : undefined}
         avatar={isUser ? userAvatar : herAvatar}
         belowMessage={
-          <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'} paddingBlock={4}>
+          <Flexbox gap={8} paddingBlock={4}>
+            {!isUser && (x.music?.length ?? 0) > 0 && (
+              <Flexbox data-message-music gap={8}>
+                {x.music!.map((mu) => (
+                  <MusicCard key={mu.id} music={mu} />
+                ))}
+              </Flexbox>
+            )}
+            <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'}>
             {!isUser && x.model && (
               <Text data-message-model fontSize={12} type="secondary">
                 {modelLabel(row, x.model)}
@@ -667,6 +689,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
               </Tooltip>
             )}
             {x.status === 'aborted' && <Tag size="small">已停止</Tag>}
+            </Flexbox>
           </Flexbox>
         }
         data-message-id={x.id}
@@ -839,7 +862,21 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                   <ChatItem
                     avatar={herAvatar}
                     belowMessage={
-                      <Flexbox align="center" gap={8} horizontal paddingBlock={4}>
+                      <Flexbox gap={8} paddingBlock={4}>
+                        {composingHere && (
+                          <Flexbox align="center" data-music-status={composingHere.state} gap={8} horizontal wrap="wrap">
+                            <Tag color={composingHere.state === 'failed' ? 'error' : composingHere.state === 'done' ? 'success' : 'processing'} icon={<Music size={12} />}>
+                              {composingHere.state === 'composing'
+                                ? `作曲中…${composingHere.title ? `《${composingHere.title}》` : ''} ${clockOf(Math.max(1000, now - (composingHere.startedAt ?? now))) || '0:01'}`
+                                : composingHere.state === 'done'
+                                  ? `写好了${composingHere.music?.title ? `《${composingHere.music.title}》` : ''}`
+                                  : '这次没写成'}
+                            </Tag>
+                            <Text fontSize={12} type="secondary">
+                              {composingHere.state === 'composing' ? '一首歌一般要 1–3 分钟，可以随时停止' : composingHere.state === 'failed' ? composingHere.error : '她在回你话'}
+                            </Text>
+                          </Flexbox>
+                        )}
                         <Text fontSize={12} type="secondary">
                           {modelLabel(row, m?.current)}
                           {m?.current ? ' · ' : ''}正在回复

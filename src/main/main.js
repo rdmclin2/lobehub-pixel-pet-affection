@@ -72,6 +72,7 @@ let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
+const openedMusic = []; // E2E only: songs a window asked to open with the system player / show in the folder
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
@@ -109,6 +110,44 @@ function place(mode) {
   const wa = screen.getPrimaryDisplay().workArea;
   if (mode === 'onboarding') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
+}
+
+// 音乐创作 (T-5090): a song file the windows may touch -> { ok, file } | { ok: false, reason }
+const MUSIC_MIME = { mp3: 'audio/mpeg', wav: 'audio/wav' };
+function musicFile(p) {
+  const f = p && typeof p.filePath === 'string' ? p.filePath : '';
+  const dir = service && service.musicDir();
+  if (!f || !path.isAbsolute(f) || !dir) return { ok: false, reason: 'invalid' };
+  let real;
+  let root;
+  try {
+    real = fs.realpathSync(f);
+    root = fs.realpathSync(dir);
+  } catch {
+    return { ok: false, reason: 'missing' };
+  }
+  const rel = path.relative(root, real);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, reason: 'forbidden' };
+  const ext = path.extname(real).slice(1).toLowerCase();
+  if (!['mp3', 'wav', 'pcm'].includes(ext)) return { ok: false, reason: 'forbidden' };
+  const st = fs.statSync(real);
+  if (!st.isFile() || st.size > 200 * 1024 * 1024) return { ok: false, reason: 'invalid' };
+  return { ok: true, file: real, ext, size: st.size };
+}
+function musicAudio(p) {
+  const r = musicFile(p);
+  if (!r.ok) return r;
+  if (!MUSIC_MIME[r.ext]) return { ok: false, reason: 'unplayable', message: 'pcm 是裸音频，窗口里放不了，用「打开」交给系统播放器' };
+  return { ok: true, mime: MUSIC_MIME[r.ext], data: fs.readFileSync(r.file) };
+}
+function musicOpen(p) {
+  const r = musicFile(p);
+  if (!r.ok) return r;
+  const reveal = !!(p && p.reveal);
+  if (TEST_MODE) { openedMusic.push({ file: r.file, reveal }); return { ok: true, test: true }; }
+  if (reveal) shell.showItemInFolder(r.file);
+  else shell.openPath(r.file);
+  return { ok: true };
 }
 
 function logFile() {
@@ -591,6 +630,10 @@ function wire() {
     });
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
+  // 音乐创作 (T-5090): a song compose_music saved, for the bubble's ▶ (bytes → a blob: URL in the window, CSP media-src
+  // blob:) and 打开 / 在文件夹中显示. Only files inside the music folder (realpath, so no ../ or symlink out of it).
+  ipcMain.handle('music-audio', (_e, p) => musicAudio(p));
+  ipcMain.handle('music-open', (_e, p) => musicOpen(p));
   ipcMain.on('cancel', () => service.cancel());
   ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {
@@ -944,6 +987,9 @@ function wire() {
     const r = service.chatHistory(String(speciesId || ''), { before: before ? String(before) : null, limit });
     return r.ok ? { ...r, messages: r.messages.map(chatView(r.speciesId)) } : r;
   }));
+  // 音乐创作 (T-5090): ▶ / 打开 / 在文件夹中显示 on a song in 聊天 (same checks as the pet window's, musicFile)
+  ipcMain.handle('admin-chat-music-audio', adminOnly((p) => musicAudio(p)));
+  ipcMain.handle('admin-chat-music-open', adminOnly((p) => musicOpen(p)));
   ipcMain.handle('admin-chat-abort', adminOnly(({ speciesId }) => service.chatAbort(speciesId ? String(speciesId) : undefined)));
   ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images }) => {
     const id = String(speciesId || '');
@@ -997,6 +1043,7 @@ function wire() {
     ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
     ipcMain.handle('debug-next-save', (_e, p) => { nextSavePath = String(p || '') || null; return true; });
     ipcMain.handle('debug-opened-links', () => openedLinks.slice());
+    ipcMain.handle('debug-opened-music', () => openedMusic.slice());
     // the tray (PIXELPET_TRAY=1 in tests): its menu items, and a click on one of them as the user would
     ipcMain.handle('debug-tray', () => ({ created: !!tray, items: trayMenu ? trayMenu.items.map((i) => i.label).filter(Boolean) : [] }));
     ipcMain.handle('debug-tray-click', (_e, { label } = {}) => {
@@ -1039,6 +1086,9 @@ function wire() {
     pushAdmin();
   });
   service.on('say', (m) => send('say', m));
+  // 音乐创作 (T-5090): 作曲中… / done / failed for the turn that called compose_music — the pet window for a desktop
+  // chat, the settings window's 聊天 for its own rounds
+  service.on('music', (e) => (e.kind === 'console' ? admin.send('admin-chat-music', e) : send('music-status', e)));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
   service.on('chat-delta', (d) => send('chat-delta', d));
@@ -1118,7 +1168,10 @@ app.whenReady().then(() => {
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
-  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  // 音乐创作 (T-5090): compose_music uses the MiniMax key of 朗读 (keys.minimax) or MINIMAX_API_KEY; e2e runs may
+  // point MINIMAX_MUSIC_ENDPOINT at a stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
+  const music = { key: () => keys.get('minimax'), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
+  service = new PetService({ lh, responses, music, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

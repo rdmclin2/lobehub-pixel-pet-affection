@@ -9,7 +9,7 @@
 //   scenario "store" -> 商店 → 舞蹈 / VRM 角色: every store dance (cover, credit, 有音乐), downloading one; the VRM models with their license; a VRM in parts (sha256 refusal), worn; dancing the store dance with its music
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
-//   scenario "music"  -> 音乐创作 (T-5088): 设置 → 音乐创作 page, its settings saved into settings.json `music`, http endpoint refused
+//   scenario "music"  -> 音乐创作 (T-5088): 设置 → 音乐创作 page, its settings saved into settings.json `music`, http endpoint refused; then (T-5090, also alone as "musicchat") 「来段轻松的纯音乐」→ compose_music → 作曲中… → a playable song in the bubble and in 聊天 (fake Responses + fake MiniMax, no tokens)
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
@@ -7107,6 +7107,8 @@ const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, 
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
+// 音乐创作 in the chat (T-5090): natural language → compose_music → a playable song in the bubble and in 聊天
+const musicChatScenario = () => require('./music-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, hover, clickAct })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
@@ -11609,6 +11611,7 @@ async function interjectScenario() {
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'music' || which === 'all') await musicSettingsScenario();
+  if (which === 'music' || which === 'musicchat' || which === 'all') await musicChatScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();

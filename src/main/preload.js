@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('pet', {
   debugNextOpen: (p) => ipcRenderer.invoke('debug-next-open', p),
   debugNextSave: (p) => ipcRenderer.invoke('debug-next-save', p),
   debugOpenedLinks: () => ipcRenderer.invoke('debug-opened-links'),
+  debugOpenedMusic: () => ipcRenderer.invoke('debug-opened-music'),
   debugAdmin: () => ipcRenderer.invoke('debug-admin'),
   debugTray: () => ipcRenderer.invoke('debug-tray'),
   debugTrayClick: (label) => ipcRenderer.invoke('debug-tray-click', { label }),
@@ -156,6 +157,14 @@ contextBridge.exposeInMainWorld('pet', {
   // 流式回复: { id, n, kind, turnId, text (shown so far), withheld?, restart? } while a reply is written; { id, ok, reason } when it ends
   onChatDelta: on('chat-delta'),
   onChatDone: on('chat-done'),
+  // 音乐创作 (T-5090): { state: composing | done | failed, title, stage?, startedAt?, music?, error?, streamId, turnId }
+  onMusicStatus: on('music-status'),
+  // a song compose_music saved (only files in the music folder): bytes for a blob: URL, or open it / show it in its folder
+  music: {
+    audio: (filePath) => ipcRenderer.invoke('music-audio', { filePath }),
+    open: (filePath) => ipcRenderer.invoke('music-open', { filePath }),
+    reveal: (filePath) => ipcRenderer.invoke('music-open', { filePath, reveal: true }),
+  },
   onAffection: on('affection'),
   onSettings: on('settings'),
   // 快捷键唤起语音对话 (main/voice-hotkey.js): { accelerator, label, source } — start listening, or stop and recognise

@@ -267,7 +267,7 @@ test('config: key from keys.minimax, else MINIMAX_API_KEY; endpoint from setting
 
 test('settings: settings.music defaults and normalisation; every music key has a console field on the 音乐创作 page; patches go to setSection', () => {
   const d = settingsLib.normalizeSettings(null).music;
-  assert.deepEqual(d, { endpoint: '', model: 'music-3.0', outputDir: '', outputFormat: 'url', format: 'mp3', sampleRate: 44100, bitrate: 256000, timeoutSec: 600, pollIntervalSec: 3 });
+  assert.deepEqual(d, { enabled: true, endpoint: '', model: 'music-3.0', outputDir: '', outputFormat: 'url', format: 'mp3', sampleRate: 44100, bitrate: 256000, timeoutSec: 600, pollIntervalSec: 3 });
   const n = settingsLib.normalizeSettings({ music: { model: 'nope', format: 'ogg', sampleRate: 1, timeoutSec: 99999, pollIntervalSec: 0, outputDir: 'relative/dir', outputFormat: 'x' } }).music;
   assert.deepEqual(n, d);
   for (const k of Object.keys(d)) {

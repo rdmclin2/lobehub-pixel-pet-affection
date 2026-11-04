@@ -13,6 +13,9 @@
 //   { json: {...} }                      a non-streamed JSON answer
 //   { pieces, working: [[type, data]] }  extra SSE events (reasoning / server-side tool steps) sent before the
 //                                        answer pieces, as LobeHub may stream them
+//   { pieces?, calls: [[callId, name, args]] }  the run parks on function calls (the app runs them and posts
+//                                        function_call_output with previous_response_id = this id): the pieces
+//                                        (a preamble), then one output_item.done per function_call
 // Every request is recorded in `requests` ({ body, headers, at }).
 const http = require('node:http');
 
@@ -38,8 +41,10 @@ async function startFakeResponses(plan = () => ({ pieces: ['好的'] })) {
       if (p.status) { res.writeHead(p.status, { 'content-type': 'text/plain' }).end(p.body || 'error'); return; }
       const id = p.id || body.previous_response_id || `tpc_RESP_${n}`;
       const full = (p.pieces || []).join('');
+      const callItems = (p.calls || []).map(([callId, name, args], i) => ({ type: 'function_call', id: `fc_${n}_${i}`, call_id: callId, name, arguments: JSON.stringify(args || {}) }));
       if (p.json || !body.stream) {
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(p.json || { id, status: 'completed', output: [{ type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: full }] }] }));
+        const out = [...(full ? [{ type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: full }] }] : []), ...callItems];
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(p.json || { id, status: 'completed', output: out }));
         return;
       }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
@@ -54,7 +59,8 @@ async function startFakeResponses(plan = () => ({ pieces: ['好的'] })) {
       }
       if (p.cutAfter !== undefined) { res.end(); return; }
       if (p.hang) return;
-      sse(res, 'response.output_item.done', { output_index: 0, item: { type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: full }] } });
+      if (full || !callItems.length) sse(res, 'response.output_item.done', { output_index: 0, item: { type: 'message', id: 'msg_1', content: [{ type: 'output_text', text: full }] } });
+      callItems.forEach((item, i) => sse(res, 'response.output_item.done', { output_index: i + 1, item }));
       sse(res, 'response.completed', { response: { id, status: 'completed', output: [], usage: { cost: 0.0001 } } });
       res.end();
     });
