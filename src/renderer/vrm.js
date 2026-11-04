@@ -1202,6 +1202,8 @@
     stop: (why = 'stop') => [...figures].map((f) => f.stopAction(why)),
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
+    // the action-state transitions (T-2829 plan.action: { t, from, to, why }), newest last — acceptance evidence (T-2832)
+    actions: () => { const f = [...figures][0]; const d = f && f.director(); return d && d.actions ? d.actions() : []; },
     // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)
     pose: () => { const f = [...figures][0]; return f ? f.pose() : null; },
     framePoints: () => { const f = [...figures][0]; return f ? f.framePoints() : null; },
