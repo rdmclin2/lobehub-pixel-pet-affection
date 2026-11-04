@@ -4524,7 +4524,7 @@ async function gvpack() {
       await female.waitFor();
       const t = [(await male.innerText()).replace(/\s+/g, ' '), (await female.innerText()).replace(/\s+/g, ' ')];
       assert.match(t[0], /^通用男声 通用男声（MiniMax 青涩青年） minimax 1 句 自定义/);
-      assert.match(t[1], /^通用女声 通用女声（MiniMax 甜美女性） minimax 0 句 内置/);
+      assert.match(t[1], /^通用女声 通用女声（MiniMax 甜美女性） minimax 138 句 内置/); // T-5077: recorded
       const fish = (await admin.locator('tr', { hasText: '大肥鱼（MiniMax' }).first().innerText()).replace(/\s+/g, ' ');
       await male.scrollIntoViewIfNeeded();
       await shot('g7-admin-voicepacks', admin);
@@ -4532,6 +4532,126 @@ async function gvpack() {
     }, () => admin || page);
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'gvpack-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- gvpack-recorded
+// 通用男女语音包的真实录音 (T-5077, scripts/voicepack-generate.js --generic): a male and a female VRM model imported
+// without a pack of their own, and no pack of the owner's in userData — each says three of the generic lines and
+// gets them from the built-in recording (provider=pack, generic-male / generic-female), decodable audio, and no
+// request to MiniMax (a MiniMax key and endpoint are set, pointing at the local stand-in, so any request is seen).
+async function gvpackRecorded() {
+  const S = 'gvpack-recorded';
+  const SHOTS = path.join(OUT, 'gvpack-recorded');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const G = require('../src/core/generic');
+  const { importVrm } = require('../src/core/vrm-import');
+  const { makeTestVrm } = require('../scripts/make-test-vrm');
+  const manifests = {};
+  for (const g of ['male', 'female']) manifests[g] = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', `generic-${g}`, 'manifest.json'), 'utf8'));
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrec-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  const models = {};
+  for (const [name, gender] of [['Kaito Test', 'male'], ['Mika Test', 'female']]) {
+    const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrec-src-')), `${name}.vrm`);
+    fs.writeFileSync(src, makeTestVrm({ name, meta: { allowRedistribution: true, avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+    const r = await importVrm({ src, speciesId: G.GENERIC_BASE, userDir: path.join(data, 'packs') });
+    if (!r.ok) throw new Error(`import ${name}: ${JSON.stringify(r.errors)}`);
+    const file = path.join(r.pack.dir, 'pack.json');
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), gender }, null, 1));
+    models[gender] = { name, packId: r.pack.id, base: G.baseIdOf(r.pack.id) };
+  }
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrecfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  // one line through tts-synthesize, decoded in the page (Web Audio) to prove it is real, playable audio
+  const say1 = (text) => page.evaluate(async (t) => {
+    const x = await window.pet.ttsSynthesize(t, '');
+    let sec = 0;
+    let peak = 0;
+    if (x.ok && x.audio) {
+      const ctx = new AudioContext();
+      const buf = await ctx.decodeAudioData(new Uint8Array(x.audio).buffer.slice(0));
+      sec = buf.duration;
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i += 50) peak = Math.max(peak, Math.abs(ch[i]));
+      await ctx.close();
+    }
+    return { ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null, mime: x.mime || null, bytes: x.audio ? x.audio.byteLength || x.audio.length : 0, sec: Math.round(sec * 100) / 100, peak: Math.round(peak * 1000) / 1000 };
+  }, text);
+  try {
+    await step(S, 'R0 hatch, MiniMax key + endpoint (local stand-in); built-in generic packs have 138 lines each', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      const st = await page.evaluate(() => window.pet.getSettings());
+      const rows = [];
+      for (const g of ['male', 'female']) {
+        const p = st.ttsStatus.packs.find((x) => x.id === `generic-${g}`);
+        assert.ok(p, `generic-${g}`);
+        assert.deepEqual([p.kind, p.gender, p.builtIn, p.lines], ['generic', g, true, 138], `generic-${g}`);
+        rows.push(`${p.id}[${p.kind}/${p.gender}] ${p.lines} 句 内置`);
+      }
+      return note(rows.join('\n'));
+    }, page);
+
+    for (const g of ['male', 'female']) {
+      await step(S, `R-${g} the ${g} model says three generic lines: from generic-${g}, decodable, no MiniMax request`, async () => {
+        const m = models[g];
+        const sw = await page.evaluate(([id, name]) => window.pet.switchCharacter(id, name), [m.packId, g === 'male' ? 'Kaito' : 'Mika']);
+        assert.notEqual(sw && sw.ok, false, JSON.stringify(sw));
+        await page.waitForTimeout(1500);
+        const st = (await page.evaluate(() => window.pet.voicePackState())).state;
+        assert.deepEqual([st.characterId, st.pack.id, st.source], [m.base, `generic-${g}`, 'generic']);
+        const texts = Object.keys(manifests[g].lines);
+        const pick = [texts[0], texts[Math.floor(texts.length / 2)], texts[texts.length - 1]];
+        const rows = [`${m.name} (${m.packId}) → ${st.pack.id} (${st.source}; gender ${st.gender}/${st.genderSource})`];
+        for (const t of pick) {
+          const n0 = mock.log.length;
+          const r = await say1(t);
+          const reqs = mock.log.length - n0;
+          rows.push(`「${t}」 → ok=${r.ok} provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} ${r.mime} ${r.bytes} B, decoded ${r.sec}s peak ${r.peak} | MiniMax requests: ${reqs}`);
+          assert.deepEqual([r.ok, r.provider, r.packId, reqs], [true, 'pack', `generic-${g}`, 0], t);
+          assert.ok(r.sec > 0.3 && r.peak > 0.01, `${t}: real audio (${r.sec}s, peak ${r.peak})`);
+        }
+        await page.screenshot({ path: path.join(SHOTS, `r-${g}.png`) });
+        return note(rows.join('\n'));
+      }, page);
+    }
+
+    await step(S, 'R3 no request reached the MiniMax stand-in during the whole run', async () => {
+      assert.equal(mock.log.length, 0, JSON.stringify(mock.log.map((x) => x.path)));
+      return note(`MiniMax stand-in requests: ${mock.log.length}`);
+    }, page);
+
+    let admin = null;
+    await step(S, 'R4 设置窗口 → 语音包 lists both built-in generic packs with 138 lines', async () => {
+      admin = await openAdminWindow(app, page, 'voicepacks');
+      const male = admin.locator('tr', { hasText: '通用男声（' }).first();
+      const female = admin.locator('tr', { hasText: '通用女声（' }).first();
+      await male.waitFor();
+      await female.waitFor();
+      const t = [(await male.innerText()).replace(/\s+/g, ' '), (await female.innerText()).replace(/\s+/g, ' ')];
+      assert.match(t[0], /^通用男声 通用男声（MiniMax 青涩青年） minimax 138 句 内置/);
+      assert.match(t[1], /^通用女声 通用女声（MiniMax 甜美女性） minimax 138 句 内置/);
+      await male.scrollIntoViewIfNeeded();
+      await admin.waitForTimeout(200);
+      await admin.screenshot({ path: path.join(SHOTS, 'r4-admin-voicepacks.png') });
+      return note(t.join('\n'));
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'gvpack-recorded-log.txt'), evidence.join('\n\n') + '\n');
     await app.close().catch(() => {});
     mock.server.close();
   }
@@ -11181,6 +11301,7 @@ async function interjectScenario() {
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
   if (which === 'gvpack' || which === 'all') await gvpack();
+  if (which === 'gvpack-recorded' || which === 'all') await gvpackRecorded();
   if (which === 'voice-pack-switch' || which === 'all') await voicePackSwitch();
   if (which === 'outfit' || which === 'all') await outfitScenario();
   if (which === 'adultlook' || which === 'all') await adultLook();
