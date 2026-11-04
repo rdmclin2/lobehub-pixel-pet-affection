@@ -228,8 +228,162 @@ function bakeDance(a) {
   return full;
 }
 
+// ---------- the v2 library (T-5081, docs/vrm-motion-library.md §6) ----------
+// node scripts/vrm-bake.js --v2 [--assets ~/vrm-assets] [--out ~/vrm-assets/baked-v2] [--only id,id] [--no-dances]
+//                              [--install [--user-data <dir>]]
+// Every clip of src/core/vrm-motion-index.json → <out>/<style>/<slot>.vrma + <out>/library.json (the motion library,
+// PIXELPET_VRM_MOTIONS_DIR=<out>), every dance → <out>/dances/<id>/dance.vrma + <out>/dances/library.json (the dance
+// library, PIXELPET_VRM_DANCES_DIR=<out>/dances; an MMD dance keeps its music, a Mixamo one is a silent loop).
+// --install copies both into the app's data folder (<userData>/vrm-motions, <userData>/vrm-dances), where a packaged
+// app finds them (src/main/vrm-library.js libraryDir, src/main/vrm-dances.js danceDir).
+const LOOP_SEAM_MAX = 2; // deg: a baked loop's last frame may differ from its first by at most this (test/vrm-motion-index.test.js)
+
+function userDataDir(given) {
+  if (given) return path.resolve(home(given));
+  if (process.env.PIXELPET_DATA_DIR) return path.resolve(home(process.env.PIXELPET_DATA_DIR));
+  const name = require('../package.json').productName; // Electron's app.name: the userData folder name
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', name);
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), name);
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), name);
+}
+
+function copyTree(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  let n = 0;
+  for (const f of fs.readdirSync(from, { withFileTypes: true })) {
+    const s = path.join(from, f.name);
+    const d = path.join(to, f.name);
+    if (f.isDirectory()) n += copyTree(s, d);
+    else if (f.isFile()) { fs.copyFileSync(s, d); n++; }
+  }
+  return n;
+}
+
+// <out> → <userData>/vrm-motions and <userData>/vrm-dances (the old contents replaced, library.json written last)
+function installLibrary(out, userData) {
+  const ud = userDataDir(userData);
+  if (insideRepo(ud)) throw new Error(`refusing to install inside the repository: ${ud}`);
+  const res = {};
+  const motions = path.join(ud, 'vrm-motions');
+  fs.rmSync(motions, { recursive: true, force: true });
+  let n = 0;
+  for (const st of L.SETS) if (fs.existsSync(path.join(out, st))) n += copyTree(path.join(out, st), path.join(motions, st));
+  fs.copyFileSync(path.join(out, 'library.json'), path.join(motions, 'library.json'));
+  res.motions = { dir: motions, files: n + 1 };
+  if (fs.existsSync(path.join(out, 'dances', 'library.json'))) {
+    const dances = path.join(ud, 'vrm-dances');
+    fs.rmSync(dances, { recursive: true, force: true });
+    res.dances = { dir: dances, files: copyTree(path.join(out, 'dances'), dances) };
+  }
+  return res;
+}
+
+function sourceClip(three, assets, src) {
+  const file = path.join(assets, src);
+  if (/\.vmd$/i.test(src)) return R.retargetVmd(fs.readFileSync(file), { face: false, stage: false }).clip;
+  return fbxToClip(three, file);
+}
+
+const V2_META = ['category', 'group', 'enter', 'exit', 'pack', 'srcStyle', 'by'];
+
+async function bakeV2(a) {
+  const assets = path.resolve(home(a.assets || process.env.PIXELPET_VRM_ASSETS || '~/vrm-assets'));
+  const out = path.resolve(home(typeof a.out === 'string' ? a.out : '~/vrm-assets/baked-v2'));
+  if (insideRepo(out)) throw new Error(`refusing to write motions inside the repository: ${out}`);
+  if (insideRepo(assets)) throw new Error(`refusing to read assets from inside the repository: ${assets}`);
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'core', 'vrm-motion-index.json'), 'utf8'));
+  if (idx.schema !== 2) throw new Error('src/core/vrm-motion-index.json: schema 2 expected');
+  const problems = L.validateManifest({ schema: 1, clips: idx.clips });
+  if (problems.length) throw new Error(`src/core/vrm-motion-index.json: ${problems.slice(0, 10).join('; ')}`);
+  const only = typeof a.only === 'string' ? new Set(a.only.split(',')) : null;
+  const three = await loadThree(threeDir(a.three));
+  const t0 = Date.now();
+  const lib = { schema: 1, bakedAt: new Date().toISOString(), generator: 'scripts/vrm-bake.js --v2', index: 'src/core/vrm-motion-index.json', styleFallback: idx.styleFallback, clips: {} };
+  const prev = fs.existsSync(path.join(out, 'library.json')) ? JSON.parse(fs.readFileSync(path.join(out, 'library.json'), 'utf8')) : null;
+  const report = [];
+  const failed = [];
+  const raws = new Map(); // a source read once for all three styles
+  const baked = new Map(); // and baked once per parameter set
+  for (const [id, e] of Object.entries(idx.clips)) {
+    const { slot, style } = L.parseId(id);
+    const meta = { kind: e.kind, style, label: e.label || slot, ...(e.sit ? { sit: true } : {}), ...(e.loop ? { loop: true } : {}), ...(e.cycle ? { cycle: e.cycle, every: e.every } : {}), ...runtimeMeta(e), ...Object.fromEntries(V2_META.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])) };
+    if (!e.src) { lib.clips[id] = meta; continue; }
+    const file = `${style}/${slot}.vrma`;
+    if (only && !only.has(id)) { if (prev && prev.clips[id]) lib.clips[id] = prev.clips[id]; continue; }
+    try {
+      if (!raws.has(e.src)) raws.set(e.src, sourceClip(three, assets, e.src));
+      const raw = raws.get(e.src);
+      const params = Object.fromEntries(Object.entries(e).filter(([k]) => !['style', 'label', 'about', 'score', 'by', 'srcStyle', 'category', 'group', 'enter', 'exit', 'pack', 'duration', 'note'].includes(k)));
+      const key = `${e.src}|${JSON.stringify(params)}`;
+      if (!baked.has(key)) {
+        const clip = B.bakeParams(raw, e);
+        const speed = e.detrend ? B.travelSpeed(Array.isArray(e.trim) ? B.trimClip(raw, e.trim[0], e.trim[1]) : raw) : 0;
+        baked.set(key, { clip, speed, buf: B.writeVrma(clip, { name: slot }) });
+      }
+      const { clip, speed, buf } = baked.get(key);
+      fs.mkdirSync(path.join(out, style), { recursive: true });
+      fs.writeFileSync(path.join(out, file), buf);
+      const seam = e.loop && e.kind !== 'posture' ? +B.seamAngle(clip).toFixed(2) : undefined;
+      lib.clips[id] = { ...meta, file, duration: +clip.duration.toFixed(3), bones: Object.keys(clip.bones).length, src: e.src, ...(speed > 0 ? { speed: +speed.toFixed(4) } : {}), ...(seam !== undefined ? { seamDeg: seam } : {}) };
+      if (seam !== undefined && seam > LOOP_SEAM_MAX) failed.push(`${id}: loop seam ${seam}° > ${LOOP_SEAM_MAX}°`);
+      report.push(`${id}: ${e.src} → ${file} (${clip.duration.toFixed(2)} s, ${Object.keys(clip.bones).length} bones, ${buf.length} B${seam !== undefined ? `, seam ${seam}°` : ''})`);
+    } catch (err) {
+      failed.push(`${id}: ${e.src}: ${err.message}`);
+    }
+  }
+  fs.mkdirSync(out, { recursive: true });
+  lib.counts = {};
+  for (const c of Object.values(lib.clips)) { const k = c.style; lib.counts[k] = lib.counts[k] || {}; lib.counts[k][c.category || c.kind] = (lib.counts[k][c.category || c.kind] || 0) + 1; }
+  // ---- dances ----
+  if (!a['no-dances']) {
+    const dout = path.join(out, 'dances');
+    fs.mkdirSync(dout, { recursive: true });
+    const dlibFile = path.join(dout, 'library.json');
+    let dlib = { schema: 1, dances: {} };
+    try { dlib = JSON.parse(fs.readFileSync(dlibFile, 'utf8')); if (!dlib.dances) dlib.dances = {}; } catch { /* new */ }
+    for (const [id, e] of Object.entries(idx.dances || {})) {
+      if (only && !only.has(id)) continue;
+      try {
+        if (e.pack === 'dances') {
+          const quiet = console.log;
+          console.log = () => {};
+          try { bakeDance({ dance: path.join(assets, e.folder), out: dout, id }); } finally { console.log = quiet; }
+          dlib = JSON.parse(fs.readFileSync(dlibFile, 'utf8'));
+        } else {
+          const raw = sourceClip(three, assets, e.src);
+          const clip = B.centerClip(B.bakeParams(raw, { kind: 'idle', loop: true }));
+          const buf = B.writeVrma(clip, { name: id });
+          fs.mkdirSync(path.join(dout, id), { recursive: true });
+          fs.writeFileSync(path.join(dout, id, 'dance.vrma'), buf);
+          dlib.dances[id] = { name: e.name, file: `${id}/dance.vrma`, duration: +clip.duration.toFixed(3), offset: 0, loop: true, face: false, ground: 0, source: 'vrma', src: { motion: path.basename(e.src) }, bakedWith: 'vrm-bake-core@mixamo', importedAt: new Date().toISOString() };
+        }
+        Object.assign(dlib.dances[id], { styles: e.styles, category: 'dance', pack: e.pack });
+        fs.writeFileSync(dlibFile, `${JSON.stringify(dlib, null, 2)}\n`);
+        report.push(`dance ${id}: ${e.src} → dances/${id}/dance.vrma (${dlib.dances[id].duration} s${dlib.dances[id].audio ? ', with music' : ''}; styles ${e.styles.join('/')})`);
+      } catch (err) {
+        failed.push(`dance ${id}: ${e.src}: ${err.message}`);
+      }
+    }
+    lib.dances = { dir: 'dances', count: Object.keys(dlib.dances).length };
+    for (const d of Object.values(dlib.dances)) for (const st of d.styles || L.SETS) { lib.counts[st] = lib.counts[st] || {}; lib.counts[st].dance = (lib.counts[st].dance || 0) + 1; }
+  }
+  fs.writeFileSync(path.join(out, 'library.json.tmp'), `${JSON.stringify(lib, null, 2)}\n`);
+  fs.renameSync(path.join(out, 'library.json.tmp'), path.join(out, 'library.json'));
+  console.log(report.join('\n'));
+  if (failed.length) console.log(`FAILED (${failed.length}):\n  ${failed.join('\n  ')}`);
+  console.log(`wrote ${path.join(out, 'library.json')}: ${Object.keys(lib.clips).length} clips in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+  console.log(`counts ${JSON.stringify(lib.counts)}`);
+  if (a.install) {
+    const r = installLibrary(out, typeof a['user-data'] === 'string' ? a['user-data'] : null);
+    console.log(`installed: ${r.motions.dir} (${r.motions.files} files)${r.dances ? `, ${r.dances.dir} (${r.dances.files} files)` : ''}`);
+  }
+  return { lib, failed };
+}
+
 async function main() {
   const a = args(process.argv.slice(2));
+  if (a.v2) { const r = await bakeV2(a); if (r.failed.length) process.exitCode = 1; return; }
+  if (a.install) { const out = path.resolve(home(typeof a.out === 'string' ? a.out : '~/vrm-assets/baked-v2')); const r = installLibrary(out, typeof a['user-data'] === 'string' ? a['user-data'] : null); console.log(JSON.stringify(r)); return; }
   if (a.dance) { bakeDance(a); return; }
   const assets = path.resolve(home(a.assets || process.env.PIXELPET_VRM_ASSETS || '~/vrm-assets'));
   const out = path.resolve(home(a.out || process.env.PIXELPET_VRM_MOTIONS_DIR || '~/vrm-assets/baked'));
@@ -274,4 +428,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { fbxToClip, loadThree, threeDir, runtimeMeta, danceSource, danceExtras, creditOf, bakeDance };
+module.exports = { fbxToClip, loadThree, threeDir, runtimeMeta, danceSource, danceExtras, creditOf, bakeDance, bakeV2, installLibrary, userDataDir, LOOP_SEAM_MAX };

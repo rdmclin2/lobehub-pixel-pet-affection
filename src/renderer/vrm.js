@@ -184,6 +184,7 @@
     let index = { clips: {} };
     const loaded = new Set();
     let libState = 'none';
+    let boneFold = null; // the bones this model lacks and where their turns went (foldMissingBones)
     let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
     let disposed = false;
@@ -313,7 +314,25 @@
       const g = await al.loadAsync(url);
       const a = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
       if (!a) throw new Error('not a VRM animation');
+      foldMissingBones(a);
       return R.createVRMAnimationClip(a, vrm);
+    }
+
+    // A model without an optional bone (upperChest, neck, shoulders…) would lose that bone's turn and everything
+    // below it with it (three-vrm drops the track): the rotation is carried into the present children first
+    // (core/vrm-bone-map.js foldMissing, T-5081). Counted in debug().boneFold.
+    function foldMissingBones(a) {
+      const BM = window.PetVrmBoneMap;
+      const rot = a && a.humanoidTracks && a.humanoidTracks.rotation;
+      if (!BM || !rot || !vrm || !vrm.humanoid) return;
+      const has = (b) => !!vrm.humanoid.getNormalizedBoneNode(b);
+      if ([...rot.keys()].every(has)) return;
+      const tracks = {};
+      for (const [b, tr] of rot) tracks[b] = { times: Array.from(tr.times), values: Array.from(tr.values) };
+      const r = BM.foldMissing(tracks, has);
+      for (const b of [...rot.keys()]) if (!r.tracks[b]) rot.delete(b);
+      for (const [b, tr] of Object.entries(r.tracks)) rot.set(b, new R.THREE.QuaternionKeyframeTrack(`${b}.quaternion`, tr.times, tr.values));
+      boneFold = { ...(boneFold || {}), folded: r.folded, dropped: r.dropped, level: BM.degradeLevel(has) };
     }
 
     // The library's clips for this style set (the set, female for neutral, any slot a pack override names),
@@ -321,10 +340,21 @@
     // the director falls back (§6.2), nothing here throws.
     async function loadClips(own) {
       index = await loadLibraryIndex();
-      const sets = new Set([style.set, style.set === 'neutral' ? 'female' : null].filter(Boolean));
-      const want = Object.values(index.clips).filter((c) => c.file && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
+      // the set itself, else the first set of its fallback chain the library has (core/vrm-library.js loadSets)
+      const sets = new Set(Lib.loadSets ? Lib.loadSets(index, style.set) : [style.set, style.set === 'neutral' ? 'female' : null].filter(Boolean));
+      // a model whose hips sit on the floor plays standing clips only (core/vrm-bone-map.js allowsClip, T-5081)
+      const BM = window.PetVrmBoneMap;
+      let rootHips = false;
+      if (BM && vrm.humanoid) {
+        const head = vrm.humanoid.getRawBoneNode('head');
+        const hy = head ? head.getWorldPosition(new R.THREE.Vector3()).y : 1;
+        rootHips = BM.rootHips(vrm.humanoid.normalizedRestPose.hips.position[1], hy);
+        if (rootHips) boneFold = { ...(boneFold || {}), rootHips: true };
+      }
+      const allowed = (c) => !BM || BM.allowsClip(c, { rootHips });
+      const want = Object.values(index.clips).filter((c) => c.file && allowed(c) && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
       // fall back to any set when the style's own set is not baked
-      const list = want.length ? want : Object.values(index.clips).filter((c) => c.file);
+      const list = want.length ? want : Object.values(index.clips).filter((c) => c.file && allowed(c));
       await Promise.all(list.map(async (c) => {
         try {
           const clip = await loadVrma(`vrmlib://${c.file}`, own);
@@ -1011,7 +1041,7 @@
         pose: () => (vrm ? poseSample() : null),
         framePoints,
         debug: () => ({
-          loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
+          loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], boneFold, sets: index ? (Lib.loadSets ? Lib.loadSets(index, style.set) : null) : null, mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
           plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw, turnLead: plan.turnLead, walk: plan.walk, talkSegment: plan.talkSegment, talkSegments: plan.talkSegments, action: plan.action, acts: plan.acts, actSit: plan.actSit },
           acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
