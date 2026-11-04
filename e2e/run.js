@@ -3590,7 +3590,7 @@ async function voice() {
       await waitReply(page, 15000);
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       const st = await ttsSet();
-      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
+      assert.deepEqual(st.tts, { provider: 'auto', providerSet: false, fallback: 'system', packs: true, voicePack: 'auto', voicePackByCharacter: {}, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: 'eleven_multilingual_v2' } });
       return note(`default settings.tts ${JSON.stringify(st.tts)}; keys: fish=${st.ttsStatus.engines.fish.hasKey} minimax=${st.ttsStatus.engines.minimax.hasKey}`);
     }, page);
 
@@ -4271,10 +4271,14 @@ async function vpack() {
       const st = await page.evaluate(() => window.pet.getSettings());
       assert.equal(st.tts.provider, 'auto');
       assert.equal(st.tts.packs, true);
-      assert.deepEqual(Object.entries(st.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`), ['fish:false', 'minimax:false', 'local:false']); // 本地语音服务 is the third engine
+      // every neural engine (core/tts.js NEURAL: fish, minimax, elevenlabs, local…), none with a key — read from
+      // the code so a new engine does not leave this list behind (T-5076: elevenlabs was missing)
+      const { NEURAL } = require('../src/core/tts');
+      const engines = Object.entries(st.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`);
+      assert.deepEqual(engines, NEURAL.map((id) => `${id}:false`));
       const pack = st.ttsStatus.packs.find((p) => p.character === 'dafeiyu');
       assert.ok(pack && pack.builtIn && pack.lines > 150, `built-in pack: ${JSON.stringify(pack)}`);
-      return note(`no keys; built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
+      return note(`no keys (engines ${engines.join(' ')}); built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
     }, page);
 
     const rows = [];
@@ -4342,6 +4346,693 @@ async function vpack() {
   } finally {
     fs.writeFileSync(path.join(SHOTS, 'vpack-log.txt'), evidence.join('\n\n') + '\n');
     await app.close().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------- gvpack
+// 通用男女语音包 (core/voice-pack.js kind generic, core/voice-gender.js, docs/voice-packs.md): two imported VRM
+// models without a pack of their own (pack.json gender male / female) fall back to generic-male / generic-female
+// — their recorded lines play from that pack and an agent reply goes to MiniMax in that gender's voice; the five
+// built-in characters resolve as before; set-voice-pack switches a character's pack for her next line and the
+// pick survives a restart.
+async function gvpack() {
+  const S = 'gvpack';
+  const SHOTS = path.join(OUT, 'gvpack');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const G = require('../src/core/generic');
+  const { importVrm } = require('../src/core/vrm-import');
+  const { makeTestVrm } = require('../scripts/make-test-vrm');
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvpack-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  // two models imported as 通用设定 companions, each with its gender in pack.json
+  const models = {};
+  for (const [name, gender] of [['Kaito Test', 'male'], ['Mika Test', 'female']]) {
+    const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvpack-src-')), `${name}.vrm`);
+    fs.writeFileSync(src, makeTestVrm({ name, meta: { allowRedistribution: true, avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+    const r = await importVrm({ src, speciesId: G.GENERIC_BASE, userDir: path.join(data, 'packs') });
+    if (!r.ok) throw new Error(`import ${name}: ${JSON.stringify(r.errors)}`);
+    const file = path.join(r.pack.dir, 'pack.json');
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), gender }, null, 1));
+    models[gender] = { name, packId: r.pack.id, base: G.baseIdOf(r.pack.id) };
+  }
+  // the owner's generic-male (same id: replaces the built-in one) with one line recorded (a tone)
+  const CATCH = '接住啦！';
+  const gm = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'generic-male', 'manifest.json'), 'utf8'));
+  const gmDir = path.join(data, 'voicepacks', 'generic-male');
+  fs.mkdirSync(gmDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'test', 'fixtures', 'voicepack', 'tone.mp3'), path.join(gmDir, 'tone.mp3'));
+  fs.writeFileSync(path.join(gmDir, 'manifest.json'), JSON.stringify({ ...gm, pending: undefined, lines: { [CATCH]: 'tone.mp3' } }));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvpackfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  let { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const shot = async (name, pg = page) => { await pg.waitForTimeout(200); await pg.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const state = async (id) => (await page.evaluate((c) => window.pet.voicePackState(c), id)).state;
+  const fmtState = (s) => `${s.characterId}: choice=${s.choice} → ${s.pack ? s.pack.id : null} (${s.source}; gender ${s.gender}/${s.genderSource}) engineVoice=${s.engineVoice ? `${s.engineVoice.engine}:${s.engineVoice.voiceId}${s.engineVoice.fromPack ? ' (from pack)' : ''}` : 'none'}`;
+  // one line through tts-synthesize (what the pet window does for every line she says), and the request it made
+  const synth = async (text) => {
+    const n0 = mock.log.length;
+    const r = await page.evaluate((t) => window.pet.ttsSynthesize(t, '').then((x) => ({ ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null, reason: x.reason || null })), text);
+    const req = mock.log.slice(n0).at(-1) || null;
+    return { ...r, request: req ? `${req.path} voice_id=${req.voice}` : 'no request' };
+  };
+  const fmtSynth = (t, r) => `「${t}」 → ok=${r.ok} provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} | ${r.request}`;
+  const REPLY = '这是 agent 的一条回复，不在任何语音包里。';
+  try {
+    await step(S, 'G0 hatch 大肥鱼; MiniMax key + endpoint (local stand-in); the packs list both kinds', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      const st = await page.evaluate(() => window.pet.getSettings());
+      assert.deepEqual(st.tts.voicePackByCharacter, {});
+      const list = st.ttsStatus.packs.map((p) => `${p.id}[${p.kind}${p.gender ? `/${p.gender}` : ''}${p.character ? ` ${p.character}` : ''}] ${p.lines} 句 ${p.builtIn ? '内置' : '自定义'}`);
+      for (const id of ['dafeiyu-minimax', 'claude-minimax', 'gemini-minimax', 'gpt-minimax', 'grok-minimax', 'generic-male', 'generic-female']) assert.ok(st.ttsStatus.packs.some((p) => p.id === id), id);
+      assert.equal(st.ttsStatus.packs.find((p) => p.id === 'generic-male').builtIn, false, 'the owner\'s generic-male replaces the built-in one');
+      await shot('g0-hatched');
+      return note(`ttsStatus.packs:\n  ${list.join('\n  ')}`);
+    }, page);
+
+    await step(S, 'G1 the five built-in characters resolve to their own packs and own voices, as before', async () => {
+      const BEFORE = { dafeiyu: ['dafeiyu-minimax', 'qiaopi_mengmei'], claude: ['claude-minimax', 'Chinese (Mandarin)_Soft_Girl'], grok: ['grok-minimax', 'female-shaonv'], gemini: ['gemini-minimax', 'Chinese (Mandarin)_Crisp_Girl'], gpt: ['gpt-minimax', 'Chinese (Mandarin)_Warm_Girl'] };
+      const rows = [];
+      for (const [id, [pack, voice]] of Object.entries(BEFORE)) {
+        const s = await state(id);
+        rows.push(fmtState(s));
+        assert.deepEqual([s.pack.id, s.source, s.pack.voiceId, s.engineVoice.fromPack], [pack, 'own', voice, false], id);
+      }
+      return note(rows.join('\n'));
+    }, page);
+
+    await step(S, 'G2 imported models with no pack of their own: male → generic-male, female → generic-female (and its voice)', async () => {
+      const m = await state(models.male.base);
+      const f = await state(models.female.base);
+      assert.deepEqual([m.pack.id, m.source, m.gender, m.genderSource, m.engineVoice.voiceId, m.engineVoice.fromPack], ['generic-male', 'generic', 'male', 'pack', 'male-qn-qingse', true]);
+      assert.deepEqual([f.pack.id, f.source, f.gender, f.genderSource, f.engineVoice.voiceId, f.engineVoice.fromPack], ['generic-female', 'generic', 'female', 'pack', 'female-tianmei', true]);
+      return note(`${models.male.name} (${models.male.packId}) ${fmtState(m)}\n${models.female.name} (${models.female.packId}) ${fmtState(f)}`);
+    }, page);
+
+    await step(S, 'G3 as the male model: his recorded line plays from generic-male, an agent reply is read in the male voice', async () => {
+      const r = await page.evaluate(([id, name]) => window.pet.switchCharacter(id, name), [models.male.packId, 'Kaito']);
+      assert.notEqual(r && r.ok, false, JSON.stringify(r));
+      await page.waitForTimeout(1500);
+      const cur = (await page.evaluate(() => window.pet.voicePackState())).state;
+      assert.equal(cur.characterId, models.male.base, 'voice-pack-state without an id: the current character');
+      const a = await synth(CATCH);
+      const b = await synth(REPLY);
+      assert.deepEqual([a.ok, a.provider, a.packId], [true, 'pack', 'generic-male']);
+      assert.equal(a.request, 'no request');
+      assert.deepEqual([b.ok, b.provider, b.voiceId], [true, 'minimax', 'male-qn-qingse']);
+      assert.match(b.request, /voice_id=male-qn-qingse$/);
+      await shot('g3-male-model');
+      return note(`${fmtState(cur)}\n${fmtSynth(CATCH, a)}\n${fmtSynth(REPLY, b)}`);
+    }, page);
+
+    await step(S, 'G4 as the female model: an agent reply is read in the female voice', async () => {
+      await page.evaluate(([id, name]) => window.pet.switchCharacter(id, name), [models.female.packId, 'Mika']);
+      await page.waitForTimeout(1500);
+      const b = await synth(REPLY);
+      assert.deepEqual([b.ok, b.provider, b.voiceId], [true, 'minimax', 'female-tianmei']);
+      await shot('g4-female-model');
+      return note(fmtSynth(REPLY, b));
+    }, page);
+
+    let ownLine = null;
+    await step(S, 'G5 大肥鱼: set-voice-pack generic-male takes effect on her next line; auto brings her own pack back', async () => {
+      await page.evaluate(() => window.pet.switchCharacter('dafeiyu'));
+      await page.waitForTimeout(1500);
+      const own = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'dafeiyu', 'manifest.json'), 'utf8'));
+      ownLine = Object.keys(own.lines).find((t) => t !== CATCH);
+      const rows = [];
+      const before = await synth(ownLine);
+      rows.push(`before: ${fmtSynth(ownLine, before)}`);
+      assert.deepEqual([before.provider, before.packId], ['pack', 'dafeiyu-minimax']);
+      const set = await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'generic-male'));
+      assert.equal(set.ok, true);
+      assert.deepEqual(set.settings.tts.voicePackByCharacter, { dafeiyu: 'generic-male' });
+      rows.push(`set-voice-pack {characterId:'dafeiyu', packId:'generic-male'} → ok=${set.ok} ${fmtState(set.state)}`);
+      const a = await synth(ownLine);
+      const c = await synth(CATCH);
+      const d = await synth(REPLY);
+      rows.push(`after:  ${fmtSynth(ownLine, a)}`, `after:  ${fmtSynth(CATCH, c)}`, `after:  ${fmtSynth(REPLY, d)}`);
+      assert.deepEqual([a.provider, a.voiceId], ['minimax', 'male-qn-qingse'], 'her own recorded line is no longer used');
+      assert.deepEqual([c.provider, c.packId], ['pack', 'generic-male']);
+      assert.deepEqual([d.provider, d.voiceId], ['minimax', 'male-qn-qingse']);
+      const bad = await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'no-such-pack'));
+      const badChar = await page.evaluate(() => window.pet.setVoicePack('nobody', 'generic-male'));
+      assert.deepEqual([bad.ok, bad.reason, badChar.ok, badChar.reason], [false, 'unknown-pack', false, 'unknown-character']);
+      rows.push(`set-voice-pack no-such-pack → ${bad.reason}; unknown character → ${badChar.reason}`);
+      const back = await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'auto'));
+      assert.deepEqual(back.settings.tts.voicePackByCharacter, {});
+      const e = await synth(ownLine);
+      const f = await synth(REPLY);
+      rows.push(`auto:   ${fmtSynth(ownLine, e)}`, `auto:   ${fmtSynth(REPLY, f)}`);
+      assert.deepEqual([e.provider, e.packId], ['pack', 'dafeiyu-minimax']);
+      assert.deepEqual([f.provider, f.voiceId], ['minimax', 'qiaopi_mengmei']);
+      await shot('g5-dafeiyu');
+      return note(rows.join('\n'));
+    }, page);
+
+    await step(S, 'G6 the pick is saved in settings.json and comes back after a restart', async () => {
+      await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'generic-female'));
+      await page.evaluate(([b]) => window.pet.setVoicePack(b, 'claude-minimax'), [models.male.base]);
+      const saved = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+      await app.close().catch(() => {});
+      ({ app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      const d = await state('dafeiyu');
+      const m = await state(models.male.base);
+      assert.deepEqual(saved, { dafeiyu: 'generic-female', [models.male.base]: 'claude-minimax' });
+      assert.deepEqual([d.choice, d.pack.id, d.source], ['generic-female', 'generic-female', 'user']);
+      assert.deepEqual([m.choice, m.pack.id, m.source, m.engineVoice.voiceId], ['claude-minimax', 'claude-minimax', 'user', 'Chinese (Mandarin)_Soft_Girl']);
+      await shot('g6-restarted');
+      return note(`settings.json tts.voicePackByCharacter = ${JSON.stringify(saved)}\nafter restart:\n${fmtState(d)}\n${fmtState(m)}`);
+    }, page);
+
+    let admin = null;
+    await step(S, 'G7 设置窗口 → 语音包 lists the generic packs as 通用男声 / 通用女声', async () => {
+      admin = await openAdminWindow(app, page, 'voicepacks');
+      const male = admin.locator('tr', { hasText: '通用男声（' }).first();
+      const female = admin.locator('tr', { hasText: '通用女声（' }).first();
+      await male.waitFor();
+      await female.waitFor();
+      const t = [(await male.innerText()).replace(/\s+/g, ' '), (await female.innerText()).replace(/\s+/g, ' ')];
+      assert.match(t[0], /^通用男声 通用男声（MiniMax 青涩青年） minimax 1 句 自定义/);
+      assert.match(t[1], /^通用女声 通用女声（MiniMax 甜美女性） minimax 138 句 内置/); // T-5077: recorded
+      const fish = (await admin.locator('tr', { hasText: '大肥鱼（MiniMax' }).first().innerText()).replace(/\s+/g, ' ');
+      await male.scrollIntoViewIfNeeded();
+      await shot('g7-admin-voicepacks', admin);
+      return note(`${t.join('\n')}\n${fish}`);
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'gvpack-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- gvpack-recorded
+// 通用男女语音包的真实录音 (T-5077, scripts/voicepack-generate.js --generic): a male and a female VRM model imported
+// without a pack of their own, and no pack of the owner's in userData — each says three of the generic lines and
+// gets them from the built-in recording (provider=pack, generic-male / generic-female), decodable audio, and no
+// request to MiniMax (a MiniMax key and endpoint are set, pointing at the local stand-in, so any request is seen).
+async function gvpackRecorded() {
+  const S = 'gvpack-recorded';
+  const SHOTS = path.join(OUT, 'gvpack-recorded');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const G = require('../src/core/generic');
+  const { importVrm } = require('../src/core/vrm-import');
+  const { makeTestVrm } = require('../scripts/make-test-vrm');
+  const manifests = {};
+  for (const g of ['male', 'female']) manifests[g] = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', `generic-${g}`, 'manifest.json'), 'utf8'));
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrec-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  const models = {};
+  for (const [name, gender] of [['Kaito Test', 'male'], ['Mika Test', 'female']]) {
+    const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrec-src-')), `${name}.vrm`);
+    fs.writeFileSync(src, makeTestVrm({ name, meta: { allowRedistribution: true, avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+    const r = await importVrm({ src, speciesId: G.GENERIC_BASE, userDir: path.join(data, 'packs') });
+    if (!r.ok) throw new Error(`import ${name}: ${JSON.stringify(r.errors)}`);
+    const file = path.join(r.pack.dir, 'pack.json');
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), gender }, null, 1));
+    models[gender] = { name, packId: r.pack.id, base: G.baseIdOf(r.pack.id) };
+  }
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gvrecfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir }, { video: path.join(SHOTS, 'video') });
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  // one line through tts-synthesize, decoded in the page (Web Audio) to prove it is real, playable audio
+  const say1 = (text) => page.evaluate(async (t) => {
+    const x = await window.pet.ttsSynthesize(t, '');
+    let sec = 0;
+    let peak = 0;
+    if (x.ok && x.audio) {
+      const ctx = new AudioContext();
+      const buf = await ctx.decodeAudioData(new Uint8Array(x.audio).buffer.slice(0));
+      sec = buf.duration;
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i += 50) peak = Math.max(peak, Math.abs(ch[i]));
+      await ctx.close();
+    }
+    return { ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null, mime: x.mime || null, bytes: x.audio ? x.audio.byteLength || x.audio.length : 0, sec: Math.round(sec * 100) / 100, peak: Math.round(peak * 1000) / 1000 };
+  }, text);
+  try {
+    await step(S, 'R0 hatch, MiniMax key + endpoint (local stand-in); built-in generic packs have 138 lines each', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      const st = await page.evaluate(() => window.pet.getSettings());
+      const rows = [];
+      for (const g of ['male', 'female']) {
+        const p = st.ttsStatus.packs.find((x) => x.id === `generic-${g}`);
+        assert.ok(p, `generic-${g}`);
+        assert.deepEqual([p.kind, p.gender, p.builtIn, p.lines], ['generic', g, true, 138], `generic-${g}`);
+        rows.push(`${p.id}[${p.kind}/${p.gender}] ${p.lines} 句 内置`);
+      }
+      return note(rows.join('\n'));
+    }, page);
+
+    for (const g of ['male', 'female']) {
+      await step(S, `R-${g} the ${g} model says three generic lines: from generic-${g}, decodable, no MiniMax request`, async () => {
+        const m = models[g];
+        const sw = await page.evaluate(([id, name]) => window.pet.switchCharacter(id, name), [m.packId, g === 'male' ? 'Kaito' : 'Mika']);
+        assert.notEqual(sw && sw.ok, false, JSON.stringify(sw));
+        await page.waitForTimeout(1500);
+        const st = (await page.evaluate(() => window.pet.voicePackState())).state;
+        assert.deepEqual([st.characterId, st.pack.id, st.source], [m.base, `generic-${g}`, 'generic']);
+        const texts = Object.keys(manifests[g].lines);
+        const pick = [texts[0], texts[Math.floor(texts.length / 2)], texts[texts.length - 1]];
+        const rows = [`${m.name} (${m.packId}) → ${st.pack.id} (${st.source}; gender ${st.gender}/${st.genderSource})`];
+        for (const t of pick) {
+          const n0 = mock.log.length;
+          const r = await say1(t);
+          const reqs = mock.log.length - n0;
+          rows.push(`「${t}」 → ok=${r.ok} provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} ${r.mime} ${r.bytes} B, decoded ${r.sec}s peak ${r.peak} | MiniMax requests: ${reqs}`);
+          assert.deepEqual([r.ok, r.provider, r.packId, reqs], [true, 'pack', `generic-${g}`, 0], t);
+          assert.ok(r.sec > 0.3 && r.peak > 0.01, `${t}: real audio (${r.sec}s, peak ${r.peak})`);
+        }
+        await page.screenshot({ path: path.join(SHOTS, `r-${g}.png`) });
+        return note(rows.join('\n'));
+      }, page);
+    }
+
+    await step(S, 'R3 no request reached the MiniMax stand-in during the whole run', async () => {
+      assert.equal(mock.log.length, 0, JSON.stringify(mock.log.map((x) => x.path)));
+      return note(`MiniMax stand-in requests: ${mock.log.length}`);
+    }, page);
+
+    let admin = null;
+    await step(S, 'R4 设置窗口 → 语音包 lists both built-in generic packs with 138 lines', async () => {
+      admin = await openAdminWindow(app, page, 'voicepacks');
+      const male = admin.locator('tr', { hasText: '通用男声（' }).first();
+      const female = admin.locator('tr', { hasText: '通用女声（' }).first();
+      await male.waitFor();
+      await female.waitFor();
+      const t = [(await male.innerText()).replace(/\s+/g, ' '), (await female.innerText()).replace(/\s+/g, ' ')];
+      assert.match(t[0], /^通用男声 通用男声（MiniMax 青涩青年） minimax 138 句 内置/);
+      assert.match(t[1], /^通用女声 通用女声（MiniMax 甜美女性） minimax 138 句 内置/);
+      await male.scrollIntoViewIfNeeded();
+      await admin.waitForTimeout(200);
+      await admin.screenshot({ path: path.join(SHOTS, 'r4-admin-voicepacks.png') });
+      return note(t.join('\n'));
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'gvpack-recorded-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- voice-pack-switch
+// 管理台角色语音包切换 (T-4272, admin/src/console/pages/Characters.tsx VoiceTab): 角色详情 → 语音 lists 自动（按性别）,
+// her own pack, the generic male / female packs (the owner's generic-male from userData/voicepacks included) and the
+// pack in force with its source (专属 / 通用·男 / 通用·女 · 自动 / 自动回退 / 手动指定); a pick made there is written to
+// settings.json, the pet's next line uses the new pack (packId), the list card follows, and it survives a restart.
+async function voicePackSwitch() {
+  const S = 'voice-pack-switch';
+  const SHOTS = path.join(OUT, 'voice-pack-switch');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const G = require('../src/core/generic');
+  const { importVrm } = require('../src/core/vrm-import');
+  const { makeTestVrm } = require('../scripts/make-test-vrm');
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitch-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  // a model imported as a 通用设定 companion, male in pack.json, without a pack of his own (自动回退 → 通用·男)
+  const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitch-src-')), 'Kaito Test.vrm');
+  fs.writeFileSync(src, makeTestVrm({ name: 'Kaito Test', meta: { allowRedistribution: true, avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+  const imp = await importVrm({ src, speciesId: G.GENERIC_BASE, userDir: path.join(data, 'packs') });
+  if (!imp.ok) throw new Error(`import: ${JSON.stringify(imp.errors)}`);
+  const pj = path.join(imp.pack.dir, 'pack.json');
+  fs.writeFileSync(pj, JSON.stringify({ ...JSON.parse(fs.readFileSync(pj, 'utf8')), gender: 'male' }, null, 1));
+  const male = { packId: imp.pack.id, base: G.baseIdOf(imp.pack.id) };
+  // the owner's generic-male in userData/voicepacks (replaces the built-in one) with one recorded line
+  const CATCH = '接住啦！';
+  const gm = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'generic-male', 'manifest.json'), 'utf8'));
+  const gmDir = path.join(data, 'voicepacks', 'generic-male');
+  fs.mkdirSync(gmDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'test', 'fixtures', 'voicepack', 'tone.mp3'), path.join(gmDir, 'tone.mp3'));
+  fs.writeFileSync(path.join(gmDir, 'manifest.json'), JSON.stringify({ ...gm, pending: undefined, lines: { [CATCH]: 'tone.mp3' } }));
+  const ownManifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'dafeiyu', 'manifest.json'), 'utf8'));
+  const OWN = Object.keys(ownManifest.lines).find((t) => t !== CATCH);
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitchfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const shot = async (name, pg = admin || page) => { await pg.waitForTimeout(300); await pg.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+  // one line the way the pet window says it (tts-synthesize): which pack / voice it came from
+  const synth = async (text) => {
+    const n0 = mock.log.length;
+    const r = await page.evaluate((t) => window.pet.ttsSynthesize(t, '').then((x) => ({ ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null })), text);
+    const req = mock.log.slice(n0).at(-1) || null;
+    return { ...r, request: req ? `${req.path} voice_id=${req.voice}` : 'no request' };
+  };
+  const fmtSynth = (t, r) => `桌宠 tts-synthesize「${t}」 → provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} | ${r.request}`;
+  // 角色详情 → 语音 tab of one character (by id), the live panel's text
+  const voiceTab = async (id) => {
+    if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, `characters/${id}`);
+    else {
+      await admin.evaluate((r) => { location.hash = r; }, `/characters/${id}`);
+      await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    }
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await admin.waitForFunction(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '语音'); return t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, null, { timeout: 5000 });
+    await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').waitFor();
+  };
+  // (scrolled into view: the screenshots show the whole 语音包 card, picker to 音色署名)
+  const current = async () => {
+    await admin.evaluate(() => document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.scrollIntoView({ block: 'end' }));
+    return (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-current]').innerText()).replace(/\s+/g, ' ').trim();
+  };
+  const comboText = async () => (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
+  const pickInUi = async (rx) => {
+    await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
+    await admin.waitForSelector('[role="option"]');
+    const opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    return opts;
+  };
+  const cardMeta = async (base) => {
+    await admin.evaluate(() => { location.hash = '/characters'; });
+    await admin.waitForSelector('[data-path="/characters"]');
+    const id = base === 'dafeiyu' ? 'dafeiyu-pixel' : base;
+    const loc = admin.locator(`[data-row-meta="${id}"]`).first();
+    await loc.waitFor();
+    return (await loc.innerText()).trim();
+  };
+  try {
+    await step(S, 'V0 hatch 大肥鱼; MiniMax key (local stand-in); before: her own pack, auto', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      assert.deepEqual(saved(), {});
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      return note(`settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n${fmtSynth(OWN, a)}`);
+    }, page);
+
+    await step(S, 'V1 角色列表: the card summary shows the pack in force (语音包 专属)', async () => {
+      admin = await openAdminWindow(app, page, 'characters');
+      const t = await cardMeta('dafeiyu');
+      assert.match(t, /语音包 专属$/);
+      await admin.locator('[data-row-meta="dafeiyu-pixel"]').first().scrollIntoViewIfNeeded();
+      await shot('v1-list-own');
+      return note(`list card dafeiyu-pixel: ${t}`);
+    }, () => admin || page);
+
+    let opts = [];
+    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 自动（按性别）/ 专属 / 通用·男 / 通用·女', async () => {
+      await voiceTab('dafeiyu-pixel');
+      const cur = await current();
+      assert.match(cur, /正在用 大肥鱼.* 专属/);
+      assert.match(cur, /来源 自动 · 她有专属语音包/);
+      assert.match(await comboText(), /自动（按性别） · 现在是 专属/);
+      await shot('v2-voice-tab-auto');
+      await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
+      await admin.waitForSelector('[role="option"]');
+      opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+      await shot('v2-picker-open');
+      await admin.keyboard.press('Escape');
+      assert.match(opts[0], /^自动（按性别）/);
+      assert.ok(opts.some((o) => /^专属 · 大肥鱼/.test(o)), 'her own');
+      assert.ok(opts.some((o) => /^通用·男 · 通用男声.* · 1 句$/.test(o)), 'the owner\'s generic-male (userData/voicepacks, 1 line)');
+      assert.ok(opts.some((o) => /^通用·女 · 通用女声/.test(o)), 'generic-female');
+      return note(`语音 tab: ${cur}\npicker options:\n  ${opts.join('\n  ')}`);
+    }, () => admin || page);
+
+    await step(S, 'V3 pick 通用·男 in the UI: settings.json written, the pet\'s next line comes from generic-male, the card follows', async () => {
+      await pickInUi(/^通用·男/);
+      await adminUntil(admin, () => /通用·男/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·男');
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 手动指定/);
+      assert.deepEqual(saved(), { dafeiyu: 'generic-male' });
+      const a = await synth(CATCH);
+      const b = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId, a.request], ['pack', 'generic-male', 'no request']);
+      assert.deepEqual([b.provider, b.voiceId], ['minimax', 'male-qn-qingse'], 'her own recorded line is no longer used; read in the pack\'s voice');
+      await shot('v3-picked-generic-male');
+      const t = await cardMeta('dafeiyu');
+      assert.match(t, /语音包 通用·男$/);
+      assert.match(await admin.locator('[data-row-meta="dafeiyu-pixel"]').first().getAttribute('title'), /^语音包：通用·男 · 通用男声.* · 1 句（手动指定）$/);
+      await shot('v3-list-generic-male');
+      return note(`UI → set-voice-pack(dafeiyu, generic-male)\n语音 tab: ${cur}\nsettings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n${fmtSynth(CATCH, a)}\n${fmtSynth(OWN, b)}\nlist card dafeiyu-pixel: ${t}`);
+    }, () => admin || page);
+
+    await step(S, 'V4 imported male model without a pack: 正在用 通用·男 · 来源 自动回退 (按性别 男)', async () => {
+      await voiceTab(male.packId);
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 自动回退 · 按性别（男）用通用语音包/);
+      assert.match(cur, /朗读音色 minimax · male-qn-qingse（来自语音包）/);
+      await shot('v4-male-model-fallback');
+      const t = await cardMeta(male.packId);
+      return note(`${male.packId} 语音 tab: ${cur}\nlist card: ${t}`);
+    }, () => admin || page);
+
+    await step(S, 'V5 restart: the pick is kept (settings.json, 语音 tab, the pet\'s next line)', async () => {
+      await app.close().catch(() => {});
+      admin = null;
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      assert.deepEqual(saved(), { dafeiyu: 'generic-male' });
+      const a = await synth(CATCH);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'generic-male']);
+      await voiceTab('dafeiyu-pixel');
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 手动指定/);
+      assert.match(await comboText(), /^通用·男/);
+      await shot('v5-after-restart');
+      return note(`after restart: settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n语音 tab: ${cur}\n${fmtSynth(CATCH, a)}`);
+    }, () => admin || page);
+
+    await step(S, 'V6 pick 通用·女, then 自动（按性别）: each in force at once; auto brings her own pack back', async () => {
+      await pickInUi(/^通用·女/);
+      await adminUntil(admin, () => /通用·女/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·女');
+      assert.deepEqual(saved(), { dafeiyu: 'generic-female' });
+      const f = await synth(OWN);
+      assert.deepEqual([f.provider, f.voiceId], ['minimax', 'female-tianmei']);
+      const c1 = await current();
+      await shot('v6-picked-generic-female');
+      await pickInUi(/^自动（按性别）/);
+      await adminUntil(admin, () => /专属/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 专属');
+      assert.deepEqual(saved(), {});
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      const c2 = await current();
+      await shot('v6-back-to-auto');
+      return note(`通用·女: ${c1}\n  settings → {dafeiyu:'generic-female'}; ${fmtSynth(OWN, f)}\n自动: ${c2}\n  settings → ${JSON.stringify(saved())}; ${fmtSynth(OWN, a)}`);
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voice-pack-switch-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
+// ---------------------------------------------------------------- user-voice-pack
+// 我的语音包 (用户语音包, settings.tts.voicePack, admin/src/console/pages/Pages.tsx MyVoicePack): 设置 → 语音包 lets the
+// owner pick a 通用语音包 (通用男声 / 通用女声, the built-in recorded ones) or any pack as their own; every character
+// without a pick of her own uses it from her next line, a pick for her (角色详情 → 语音) still wins, it is written to
+// settings.json and survives a restart, and 自动 brings each character's own pack back.
+async function userVoicePack() {
+  const S = 'user-voice-pack';
+  const SHOTS = path.join(OUT, 'user-voice-pack');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-uvp-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  const man = (id) => JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', id, 'manifest.json'), 'utf8'));
+  const gm = man('generic-male');
+  const gf = man('generic-female');
+  const own = man('dafeiyu');
+  const GEN = '接住啦！'; // recorded in both generic packs
+  assert.ok(gm.lines[GEN] && gf.lines[GEN]);
+  const OWN = Object.keys(own.lines).find((t) => !gm.lines[t] && !gf.lines[t]); // only in her own pack
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-uvpfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const shot = async (name, pg = admin || page) => { await pg.waitForTimeout(300); await pg.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const savedTts = () => { const t = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts || {}; return { voicePack: t.voicePack, voicePackByCharacter: t.voicePackByCharacter }; };
+  const synth = async (text) => {
+    const n0 = mock.log.length;
+    const r = await page.evaluate((t) => window.pet.ttsSynthesize(t, '').then((x) => ({ ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null })), text);
+    const req = mock.log.slice(n0).at(-1) || null;
+    return { ...r, request: req ? `${req.path} voice_id=${req.voice}` : 'no request' };
+  };
+  const fmtSynth = (t, r) => `桌宠 tts-synthesize「${t}」 → provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} | ${r.request}`;
+  const openPage = async () => {
+    if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, 'voicepacks');
+    else {
+      await admin.evaluate(() => { location.hash = '/voicepacks'; });
+      await admin.waitForSelector('[data-path="/voicepacks"]');
+    }
+    await admin.locator('[data-user-voice-pack-select] [role="combobox"]').waitFor();
+  };
+  const mine = async () => {
+    await admin.evaluate(() => document.querySelector('[data-user-voice-pack-current]')?.scrollIntoView({ block: 'center' }));
+    return (await admin.locator('[data-user-voice-pack-current]').innerText()).replace(/\s+/g, ' ').trim();
+  };
+  const combo = async () => (await admin.locator('[data-user-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
+  const pick = async (rx) => {
+    await admin.locator('[data-user-voice-pack-select] [role="combobox"]').click();
+    await admin.waitForSelector('[role="option"]');
+    const opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    return opts;
+  };
+  const until = (rx, what) => adminUntil(admin, (src) => new RegExp(src).test(document.querySelector('[data-user-voice-pack-current]')?.textContent || ''), rx.source, 10000, what);
+  try {
+    await step(S, 'U0 hatch 大肥鱼; MiniMax key (local stand-in); before: 我的语音包 = auto, she uses her own pack', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      assert.deepEqual(savedTts(), { voicePack: 'auto', voicePackByCharacter: {} });
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      return note(`settings.json tts = ${JSON.stringify(savedTts())}\n${fmtSynth(OWN, a)}`);
+    }, page);
+
+    let opts = [];
+    await step(S, 'U1 设置 → 语音包 → 我的语音包: 自动; the picker lists 通用男声 / 通用女声 (138 句, 内置) and the characters\' own packs', async () => {
+      await openPage();
+      const t = await mine();
+      assert.match(t, /我的语音包 自动/);
+      assert.match(t, /现在陪你的 大肥鱼 正在用 .*（专属 · 自动）/);
+      assert.match(await combo(), /^自动（每个角色用自己的专属语音包/);
+      await shot('u1-auto');
+      await admin.locator('[data-user-voice-pack-select] [role="combobox"]').click();
+      await admin.waitForSelector('[role="option"]');
+      opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+      await shot('u1-picker-open');
+      await admin.keyboard.press('Escape');
+      assert.match(opts[0], /^自动/);
+      assert.ok(opts.some((o) => /^通用男声 · .* · 138 句 · 内置$/.test(o)), 'generic-male');
+      assert.ok(opts.some((o) => /^通用女声 · .* · 138 句 · 内置$/.test(o)), 'generic-female');
+      assert.ok(opts.some((o) => /^大肥鱼 的专属 · /.test(o)), 'a character\'s own pack');
+      return note(`我的语音包: ${t}\npicker options:\n  ${opts.join('\n  ')}`);
+    }, () => admin || page);
+
+    await step(S, 'U2 pick 通用男声 as 我的语音包: settings.json tts.voicePack = generic-male; her next line comes from generic-male; replies in its voice', async () => {
+      await pick(/^通用男声/);
+      await until(/我的语音包.*通用男声/, '我的语音包 = 通用男声');
+      await until(/正在用 .*通用·男 · 我的语音包/, 'current character follows');
+      const t = await mine();
+      assert.deepEqual(savedTts(), { voicePack: 'generic-male', voicePackByCharacter: {} });
+      const a = await synth(GEN);
+      const b = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId, a.request], ['pack', 'generic-male', 'no request']);
+      assert.deepEqual([b.provider, b.voiceId], ['minimax', gm.voiceId], 'a line not in the pack: read in the pack\'s voice');
+      await shot('u2-picked-generic-male');
+      return note(`UI → set-user-voice-pack(generic-male)\n我的语音包: ${t}\nsettings.json tts = ${JSON.stringify(savedTts())}\n${fmtSynth(GEN, a)}\n${fmtSynth(OWN, b)}`);
+    }, () => admin || page);
+
+    await step(S, 'U3 角色详情 → 语音 of 大肥鱼: 正在用 通用·男 · 来源 自动 · 跟随我的语音包', async () => {
+      await admin.evaluate(() => { location.hash = '/characters/dafeiyu-pixel'; });
+      await admin.waitForSelector('[data-path="/characters/dafeiyu-pixel"]');
+      await admin.getByRole('tab', { name: '语音' }).click();
+      await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-current]').waitFor();
+      await adminUntil(admin, () => /跟随我的语音包/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'source = 我的语音包');
+      await admin.evaluate(() => document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.scrollIntoView({ block: 'end' }));
+      const cur = (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-current]').innerText()).replace(/\s+/g, ' ').trim();
+      const cb = (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 自动 · 跟随我的语音包/);
+      assert.match(cb, /^自动（跟随我的语音包） · 现在是 通用·男/);
+      await shot('u3-character-follows');
+      return note(`大肥鱼 语音 tab: ${cur}\npicker: ${cb}`);
+    }, () => admin || page);
+
+    await step(S, 'U4 restart: 我的语音包 is kept (settings.json, the page, the pet\'s next line)', async () => {
+      await app.close().catch(() => {});
+      admin = null;
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      assert.deepEqual(savedTts(), { voicePack: 'generic-male', voicePackByCharacter: {} });
+      const a = await synth(GEN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'generic-male']);
+      await openPage();
+      const t = await mine();
+      assert.match(t, /我的语音包 .*通用男声/);
+      assert.match(await combo(), /^通用男声 · /);
+      await shot('u4-after-restart');
+      return note(`after restart: settings.json tts = ${JSON.stringify(savedTts())}\n我的语音包: ${t}\n${fmtSynth(GEN, a)}`);
+    }, () => admin || page);
+
+    await step(S, 'U5 a pick for her beats 我的语音包; removing it brings 我的语音包 back; an unknown pack is refused', async () => {
+      const set = await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'generic-female'));
+      assert.equal(set.ok, true);
+      const a = await synth(GEN);
+      assert.deepEqual([a.packId, set.state.source], ['generic-female', 'user']);
+      const back = await page.evaluate(() => window.pet.setVoicePack('dafeiyu', 'auto'));
+      const b = await synth(GEN);
+      assert.deepEqual([b.packId, back.state.source, back.state.userChoice], ['generic-male', 'default', 'generic-male']);
+      const bad = await page.evaluate(() => window.pet.setUserVoicePack('no-such-pack'));
+      assert.deepEqual([bad.ok, bad.reason], [false, 'unknown-pack']);
+      assert.deepEqual(savedTts(), { voicePack: 'generic-male', voicePackByCharacter: {} });
+      return note(`set-voice-pack(dafeiyu, generic-female) → source=${set.state.source}; ${fmtSynth(GEN, a)}\nset-voice-pack(dafeiyu, auto) → source=${back.state.source} userChoice=${back.state.userChoice}; ${fmtSynth(GEN, b)}\nset-user-voice-pack(no-such-pack) → ok=${bad.ok} reason=${bad.reason}\nsettings.json tts = ${JSON.stringify(savedTts())}`);
+    }, () => admin || page);
+
+    await step(S, 'U6 pick 通用女声, then 自动: each in force at once; 自动 brings her own pack back', async () => {
+      await pick(/^通用女声/);
+      await until(/我的语音包.*通用女声/, '我的语音包 = 通用女声');
+      assert.deepEqual(savedTts(), { voicePack: 'generic-female', voicePackByCharacter: {} });
+      const f = await synth(GEN);
+      const fo = await synth(OWN);
+      assert.deepEqual([f.provider, f.packId], ['pack', 'generic-female']);
+      assert.deepEqual([fo.provider, fo.voiceId], ['minimax', gf.voiceId]);
+      const t1 = await mine();
+      await shot('u6-picked-generic-female');
+      await pick(/^自动/);
+      await until(/^我的语音包自动/, '我的语音包 = 自动');
+      await until(/（专属 · 自动）/, 'her own pack back');
+      assert.deepEqual(savedTts(), { voicePack: 'auto', voicePackByCharacter: {} });
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      const t2 = await mine();
+      await shot('u6-back-to-auto');
+      return note(`通用女声: ${t1}\n  ${fmtSynth(GEN, f)}\n  ${fmtSynth(OWN, fo)}\n自动: ${t2}\n  settings.json tts = ${JSON.stringify(savedTts())}; ${fmtSynth(OWN, a)}`);
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'user-voice-pack-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
   }
 }
 
@@ -10803,6 +11494,10 @@ async function interjectScenario() {
   if (which === 'chatvoice' || which === 'all') await chatvoice();
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
+  if (which === 'gvpack' || which === 'all') await gvpack();
+  if (which === 'gvpack-recorded' || which === 'all') await gvpackRecorded();
+  if (which === 'voice-pack-switch' || which === 'all') await voicePackSwitch();
+  if (which === 'user-voice-pack' || which === 'all') await userVoicePack();
   if (which === 'outfit' || which === 'all') await outfitScenario();
   if (which === 'adultlook' || which === 'all') await adultLook();
   if (which === 'rig' || which === 'all') await rigScenario();

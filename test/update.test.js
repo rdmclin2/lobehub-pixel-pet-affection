@@ -55,6 +55,27 @@ test('an app started from the DMG, Downloads (translocated) or a read-only folde
   assert.equal(U.macAppPath('/usr/bin/node', { access: ok }).reason, 'not-bundle');
 });
 
+// T-3386: an app left in ~/Downloads (quarantine cleared with xattr -cr, so not translocated) must not be
+// updated in place: staging beside it writes into Downloads and macOS asks for that folder again and again.
+test('an app in Downloads / Desktop / Documents is not updated in place, without touching the folder', () => {
+  const home = '/Users/lin';
+  const bin = (app) => path.join(app, 'Contents', 'MacOS', 'Pixel Pet Affection');
+  const touched = [];
+  const access = (p) => { touched.push(p); };
+  for (const dir of ['Downloads', 'Desktop', 'Documents', 'downloads', 'Downloads/apps/sub']) {
+    const r = U.macAppPath(bin(`${home}/${dir}/Pixel Pet Affection.app`), { access, home });
+    assert.deepEqual(r, { app: null, reason: 'protected-folder' }, dir);
+  }
+  assert.deepEqual(touched, [], 'no fs access on a protected folder (that access is what makes macOS ask)');
+  // elsewhere in the home folder, or in /Applications, it still updates itself
+  assert.equal(U.macAppPath(bin(`${home}/Applications/Pixel Pet Affection.app`), { access, home }).reason, null);
+  assert.equal(U.macAppPath(bin(`${home}/DownloadsOld/Pixel Pet Affection.app`), { access, home }).reason, null);
+  assert.equal(U.macAppPath(bin('/Applications/Pixel Pet Affection.app'), { access, home }).reason, null);
+  assert.equal(U.inProtectedFolder(`${home}/Downloads`, home), true);
+  assert.equal(U.inProtectedFolder(home, home), false);
+  assert.equal(U.inProtectedFolder('/Downloads/x.app', home), false);
+});
+
 // A fake bundle: <dir>/<name>.app/Contents/{Info.plist, version}
 function fakeApp(dir, name, version) {
   const app = path.join(dir, `${name}.app`);

@@ -39,6 +39,25 @@ test('the pick: the user\'s choice if still offered, else her preferred default,
   assert.deepEqual(M.providersToQuery(['lobehub', 'openai', 'fal', 'glmcodingplan']), ['lobehub', 'openai']);
 });
 
+test('a 通用设定 character may use every chat model, hosted first; her default is a vendor character\'s preferred one', () => {
+  const { registerGeneric, unregisterCharacter } = require('../src/core/species');
+  const sp = registerGeneric({ id: 't2838-generic', name: '测试伙伴' }).id;
+  try {
+    const opts = M.optionsFor(sp, CATALOG);
+    assert.deepEqual(opts.map((o) => o.key), [
+      'lobehub:deepseek-flash', 'lobehub:claude-opus-5-5', 'lobehub:claude-sonnet-5-5', 'lobehub:grok-4.7', 'lobehub:gemini-3.8-flash',
+      'lobehub:gpt-6-sol', 'lobehub:glm-5.3', 'openai:gpt-6-sol', 'openai:o3',
+    ], 'every vendor, even one of no roster character; still no image-only, disabled or embedding model');
+    assert.equal(M.pick(sp, opts, null).key, 'lobehub:deepseek-flash', 'not the priciest first entry');
+    assert.equal(M.pick(sp, opts, 'openai:o3').key, 'openai:o3');
+    assert.equal(M.pick(sp, M.optionsFor(sp, []), null), null, 'nothing loaded: keep the agent\'s model');
+    assert.deepEqual(M.optionsFor('nobody', CATALOG), [], 'an unknown character gets nothing');
+    assert.deepEqual(M.optionsFor('testchan', CATALOG), [], 'a vendor character without a rule still gets nothing');
+  } finally {
+    unregisterCharacter(sp);
+  }
+});
+
 test('settings keep one valid model choice per character', () => {
   const s = normalizeSettings({ models: { claude: 'lobehub:claude-opus-5-5', gpt: 'openai:o3', bad: 'no colon', '../x': 'lobehub:a' } });
   assert.deepEqual(s.models, { claude: 'lobehub:claude-opus-5-5', gpt: 'openai:o3' });

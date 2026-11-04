@@ -52,6 +52,8 @@ function candidateDirs({ home = os.homedir(), io = realFs } = {}) {
     path.join(home, '.npm-global/bin'),
     path.join(home, '.volta/bin'),
     path.join(home, '.bun/bin'),
+    path.join(home, 'Library/pnpm'), // pnpm's global bin on macOS (PNPM_HOME)
+    path.join(home, '.local/share/pnpm'), // ... and on Linux
     path.join(home, '.asdf/shims'),
     ...versionDirs(path.join(home, '.nvm/versions/node'), 'bin', io),
     ...versionDirs(path.join(home, '.fnm/node-versions'), 'installation/bin', io),
@@ -60,6 +62,30 @@ function candidateDirs({ home = os.homedir(), io = realFs } = {}) {
     '/usr/bin',
   ];
   return dirs.filter((d) => io.isDir(d));
+}
+
+// The login-shell lookup below runs the owner's interactive shell setup (~/.zshrc: oh-my-zsh, prompts,
+// plugins...) as a child of the app, so on macOS whatever that setup touches in Downloads / Desktop /
+// Documents is asked for in the app's name (T-3386). Its answer is remembered in a small file, and later
+// launches use it while that `lh` still exists instead of running the shell again.
+// fileCache(file) -> { get(): path | null, set(path) }; errors are ignored (the lookup simply runs again).
+function fileCache(file) {
+  return {
+    get: () => {
+      try {
+        const p = JSON.parse(fs.readFileSync(file, 'utf8')).lh;
+        return typeof p === 'string' && path.isAbsolute(p) ? p : null;
+      } catch {
+        return null;
+      }
+    },
+    set: (p) => {
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify({ lh: p }));
+      } catch { /* not remembered: the next launch asks the shell again */ }
+    },
+  };
 }
 
 function loginShellLookup(env = process.env) {
@@ -114,8 +140,9 @@ function spawnTarget(bin, { platform = process.platform, execPath = process.exec
   return { command: bin, prefix: [], env: {} };
 }
 
-// Returns an absolute path to `lh`, or null. `lookup` is the login-shell fallback (injectable for tests).
-function findLh({ env = process.env, home = os.homedir(), io = realFs, lookup = loginShellLookup, platform = process.platform } = {}) {
+// Returns an absolute path to `lh`, or null. `lookup` is the login-shell fallback (injectable for tests);
+// `cache` ({ get, set }, see fileCache) remembers what it found so it does not run at every launch.
+function findLh({ env = process.env, home = os.homedir(), io = realFs, lookup = loginShellLookup, platform = process.platform, cache = null } = {}) {
   if (env.LH_BIN) return env.LH_BIN;
   if (platform === 'win32') {
     const dirs = [...(env.PATH || env.Path || '').split(';').filter(Boolean), ...windowsCandidateDirs({ env, io })];
@@ -132,7 +159,11 @@ function findLh({ env = process.env, home = os.homedir(), io = realFs, lookup = 
     const p = path.join(d, 'lh');
     if (io.exists(p)) return p;
   }
-  return process.platform === 'win32' ? null : lookup(env);
+  const remembered = cache && cache.get();
+  if (remembered && io.exists(remembered)) return remembered;
+  const found = lookup(env);
+  if (found && cache) cache.set(found);
+  return found;
 }
 
 // PATH that lets `lh` find `node`: its own directory first (nvm/fnm/volta keep both together).
@@ -147,4 +178,4 @@ function withToolPath(env, lhPath, { home = os.homedir(), io = realFs, platform 
   return { ...env, PATH: [...new Set(dirs)].join(path.delimiter) };
 }
 
-module.exports = { findLh, withToolPath, candidateDirs, spawnTarget, resolveWindowsEntry, windowsCandidateDirs, realFs };
+module.exports = { findLh, fileCache, withToolPath, candidateDirs, spawnTarget, resolveWindowsEntry, windowsCandidateDirs, realFs };

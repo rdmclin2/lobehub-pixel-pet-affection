@@ -9,6 +9,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 
@@ -79,14 +80,30 @@ function sha512Base64(file) {
   });
 }
 
+// Folders macOS guards with a privacy prompt (TCC): touching anything in them makes the system ask the
+// owner "Pixel Pet Affection would like to access files in your Downloads folder" (T-3386).
+const PROTECTED_DIRS = ['Downloads', 'Desktop', 'Documents'];
+
+// Is `p` inside ~/Downloads, ~/Desktop or ~/Documents (case-insensitive, like the default APFS volume)?
+function inProtectedFolder(p, home = os.homedir()) {
+  const rel = path.relative(home, p);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const top = rel.split(path.sep)[0].toLowerCase();
+  return PROTECTED_DIRS.some((d) => d.toLowerCase() === top);
+}
+
 // The .app bundle the running binary belongs to, or null when it cannot replace itself: started from
 // the DMG, from a translocated copy (Gatekeeper runs apps opened from Downloads from a random read-only
-// path), or from a folder the user cannot write.
-function macAppPath(execPath, { access = fs.accessSync } = {}) {
+// path), from a folder the user cannot write, or from Downloads / Desktop / Documents once the quarantine
+// flag is gone (`xattr -cr`): staging the update beside the app there would write into a protected folder,
+// so macOS would ask for that folder 20 s after every launch and at every 4-hourly check. Those reasons are
+// decided from the path alone, before any file access.
+function macAppPath(execPath, { access = fs.accessSync, home = os.homedir() } = {}) {
   const app = path.resolve(execPath, '..', '..', '..');
   if (!app.endsWith('.app')) return { app: null, reason: 'not-bundle' };
   if (app.includes('/AppTranslocation/')) return { app: null, reason: 'translocated' };
   if (app.startsWith('/Volumes/')) return { app: null, reason: 'dmg' };
+  if (inProtectedFolder(app, home)) return { app: null, reason: 'protected-folder' };
   try {
     access(path.dirname(app), fs.constants.W_OK);
     access(app, fs.constants.W_OK);
@@ -158,4 +175,4 @@ function updateCheckDialog(st) {
   }
 }
 
-module.exports = { updateCheckDialog, REPO, LATEST_URL, RELEASES_API_URL, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };
+module.exports = { updateCheckDialog, PROTECTED_DIRS, inProtectedFolder, REPO, LATEST_URL, RELEASES_API_URL, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };

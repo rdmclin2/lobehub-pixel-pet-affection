@@ -1208,7 +1208,7 @@ function localLine(kind) {
   speak({ text, source: 'fallback', kind });
 }
 // Her common short lines are synthesised ahead (main.js tts-prewarm) whenever what they depend on
-// changes: 朗读 / 互动语音 switched on, the engine or its key, her character or relationship stage.
+// changes: 朗读 / 互动语音 switched on, the engine or its key, her character, her 语音包 or relationship stage.
 let prewarmSig = null;
 let prewarmTimer = null;
 let lastPrewarm = null;
@@ -1217,7 +1217,9 @@ function syncPrewarm() {
   if (!IVoice.voiceOn(p) || p.voiceInteractions === false || !view || !view.pet || VISITOR) { prewarmSig = null; return; }
   const t = settings.tts || {};
   const keys = settings.ttsStatus ? Object.entries(settings.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}:${e.ready}`).join(',') : '';
-  const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
+  // the 语音包 picked for her (set-voice-pack): another pack means other recorded lines and maybe another voice
+  const pick = `${(t.voicePackByCharacter || {})[view.pet.speciesId] || 'auto'}/${t.voicePack || 'auto'}`; // hers / 我的语音包
+  const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, pick, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
   if (sig === prewarmSig) return;
   prewarmSig = sig;
   clearTimeout(prewarmTimer);
@@ -2570,7 +2572,7 @@ function onUpdateStatus(u) {
   // 新版本 (the old ⋯ menu's first item): a dot on ⚙, which then opens 设置 → 版本与更新 (立即更新 / 下载新版本)
   if (view) syncSettingsDot();
   if (!view || updateAnnounced === `${u.status}:${u.version}`) return;
-  const moveFirst = ['translocated', 'dmg', 'read-only'].includes(u.error);
+  const moveFirst = ['translocated', 'dmg', 'read-only', 'protected-folder'].includes(u.error);
   if (u.status === 'ready') say(`（新版本 v${u.version} 已经下载好了。你离开电脑一会儿时我会自己重启更新，也可以在 设置 → 版本与更新 里立即更新。）`, 'update', 'fallback');
   else if (u.status === 'manual') say(moveFirst ? `（有新版本 v${u.version}。先把我拖进“应用程序”文件夹再打开，以后就能自动更新了；这次可以在 设置 → 版本与更新 里下载。）` : `（有新版本 v${u.version}，可以在 设置 → 版本与更新 里下载。）`, 'update', 'fallback');
   else return;
