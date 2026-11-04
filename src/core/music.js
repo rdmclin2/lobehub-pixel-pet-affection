@@ -262,7 +262,7 @@ function deadline(outer, timeoutMs) {
   const onAbort = () => { if (!why) why = 'aborted'; ac.abort(); };
   if (outer) { if (outer.aborted) onAbort(); else outer.addEventListener('abort', onAbort, { once: true }); }
   const timer = timeoutMs > 0 ? setTimeout(() => { if (!why) why = 'timeout'; ac.abort(); }, timeoutMs) : null;
-  if (timer && timer.unref) timer.unref();
+  // not unref'd: the deadline is what settles a job whose request hangs; a script with nothing else pending must wait for it
   return {
     signal: ac.signal,
     reason: () => why,
@@ -283,7 +283,8 @@ function race(p, signal, why) {
   });
 }
 
-const sleepFor = (ms, signal, why) => race(new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); }), signal, why);
+// a real timer (not unref'd): between two polls it may be the only thing keeping a plain node script alive
+const sleepFor = (ms, signal, why) => race(new Promise((r) => setTimeout(r, ms)), signal, why);
 
 // ---- the client ------------------------------------------------------------------------------------------------
 

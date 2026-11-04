@@ -285,6 +285,24 @@ test('settings: settings.music defaults and normalisation; every music key has a
   assert.equal(schema.validate('music.model', 'music-2.6').ok, true);
 });
 
+test('a plain node script waits for the deadline and the polls (the timers keep it alive): timeout and poll results arrive', () => {
+  const { execFileSync } = require('node:child_process');
+  const src = `const m = require(${JSON.stringify(path.join(__dirname, '..', 'src', 'core', 'music.js'))});
+    const cfg = { ...m.resolveConfig({ settings: {}, key: 'placeholder', env: {}, userDataDir: require('node:os').tmpdir() }), timeoutMs: 80, pollIntervalMs: 20 };
+    const hang = (u, { signal }) => new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('aborted'))));
+    let n = 0;
+    const poll = async (u) => ({ ok: true, status: 200, json: async () => (u.includes('/query/') ? (++n < 3 ? { data: { status: 1 } } : { data: { status: 2, audio: 'abcd' } }) : { task_id: 't' }) });
+    (async () => {
+      try { await m.generateMusic({ prompt: 'x', instrumental: true }, { config: cfg, fetch: hang }); } catch (e) { console.log('T:' + e.reason); }
+      const c = m.createMusicClient({ ...cfg, timeoutMs: 5000 }, { fetch: poll });
+      const r = await c.wait(await c.submit({ prompt: 'x', instrumental: true }));
+      console.log('P:' + r.audioHex + ':' + n);
+    })();`;
+  const out = execFileSync(process.execPath, ['-e', src], { encoding: 'utf8', timeout: 10000 });
+  assert.match(out, /T:timeout/);
+  assert.match(out, /P:abcd:3/);
+});
+
 test('no real key is committed: module, test and settings only hold placeholders', () => {
   for (const f of ['src/core/music.js', 'test/music.test.js']) {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
