@@ -184,7 +184,15 @@ async function main() {
   const styles = (a.styles || '').split(',').filter(Boolean);
   const names = (a.names || '').split(',').filter(Boolean);
   const models = files.map((f, i) => ({ url: pathToFileURL(f).href, name: names[i] || path.basename(f, '.vrm').slice(0, 18), style: styles[i] || 'female' }));
+  const dlib = fs.existsSync(path.join(lib, 'dances', 'library.json')) ? JSON.parse(fs.readFileSync(path.join(lib, 'dances', 'library.json'), 'utf8')) : { dances: {} };
   const clips = a.clips.split(',').map((id) => {
+    // dance:<id> — a dance of the dance library (<lib>/dances), the same file on every model
+    if (id.startsWith('dance:')) {
+      const d = dlib.dances[id.slice(6)];
+      if (!d) throw new Error(`no dance ${id} in ${lib}/dances/library.json`);
+      const f = path.join('dances', d.file);
+      return { label: id, meta: models.map(() => ({ group: 'dance', enter: 'stand', exit: 'stand' })), files: models.map(() => f), urls: models.map(() => pathToFileURL(path.join(lib, f)).href) };
+    }
     const filesFor = models.map((m) => {
       const full = id.includes('@') ? id : `${id}@${m.style}`;
       const fallback = index.styleFallback ? index.styleFallback[m.style] : [m.style];

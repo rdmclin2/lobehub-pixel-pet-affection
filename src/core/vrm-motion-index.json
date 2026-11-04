@@ -77,7 +77,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.relaxed@neutral": {
       "kind": "posture",
@@ -91,7 +93,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.confident@female": {
       "kind": "posture",
@@ -117,7 +121,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.confident@neutral": {
       "kind": "posture",
@@ -143,7 +149,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.shy@female": {
       "kind": "posture",
@@ -157,7 +165,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.shy@neutral": {
       "kind": "posture",
@@ -171,7 +181,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.playful@female": {
       "kind": "posture",
@@ -185,7 +197,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.playful@neutral": {
       "kind": "posture",
@@ -199,7 +213,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "sit.rest@female": {
       "kind": "posture",
@@ -214,7 +230,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "sit.rest@neutral": {
       "kind": "posture",
@@ -229,7 +247,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "sit.doze@female": {
       "kind": "posture",
@@ -244,7 +264,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "sit.doze@neutral": {
       "kind": "posture",
@@ -259,7 +281,9 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "stand.relaxed@male": {
       "kind": "posture",
@@ -273,7 +297,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.confident@male": {
       "kind": "posture",
@@ -287,7 +313,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.shy@male": {
       "kind": "posture",
@@ -301,7 +329,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "stand.playful@male": {
       "kind": "posture",
@@ -315,7 +345,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false,
+      "mask": "full"
     },
     "sit.rest@male": {
       "kind": "posture",
@@ -330,7 +362,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "sit.doze@male": {
       "kind": "posture",
@@ -357,7 +391,9 @@
       "by": "base",
       "duration": 0.033,
       "enter": "sit",
-      "exit": "sit"
+      "exit": "sit",
+      "loop": false,
+      "mask": "full"
     },
     "idle.happy@female": {
       "kind": "idle",
@@ -379,7 +415,8 @@
       "by": "base",
       "duration": 8.767,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.happy@neutral": {
       "kind": "idle",
@@ -401,7 +438,8 @@
       "by": "base-neutral",
       "duration": 8.767,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.variant2@female": {
       "kind": "idle",
@@ -429,7 +467,8 @@
       "by": "base",
       "duration": 16.633,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.variant2@neutral": {
       "kind": "idle",
@@ -457,7 +496,8 @@
       "by": "base-neutral",
       "duration": 16.633,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.posture-cycle@female": {
       "kind": "idle",
@@ -472,7 +512,12 @@
       "group": "idle",
       "pack": null,
       "srcStyle": "female",
-      "by": "base"
+      "by": "base",
+      "loop": true,
+      "mask": "full",
+      "duration": 32,
+      "enter": "stand",
+      "exit": "stand"
     },
     "idle.posture-cycle@neutral": {
       "kind": "idle",
@@ -487,7 +532,12 @@
       "group": "idle",
       "pack": null,
       "srcStyle": "female",
-      "by": "base-neutral"
+      "by": "base-neutral",
+      "loop": true,
+      "mask": "full",
+      "duration": 32,
+      "enter": "stand",
+      "exit": "stand"
     },
     "idle.happy@male": {
       "kind": "idle",
@@ -503,7 +553,8 @@
       "by": "base",
       "duration": 18.533,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.variant2@male": {
       "kind": "idle",
@@ -523,7 +574,8 @@
       "by": "base",
       "duration": 33.133,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "mask": "full"
     },
     "idle.posture-cycle@male": {
       "kind": "idle",
@@ -539,7 +591,12 @@
       "group": "idle",
       "pack": null,
       "srcStyle": "male",
-      "by": "base"
+      "by": "base",
+      "loop": true,
+      "mask": "full",
+      "duration": 42,
+      "enter": "stand",
+      "exit": "stand"
     },
     "react.touch-head@female": {
       "kind": "reaction",
@@ -563,7 +620,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-head@neutral": {
       "kind": "reaction",
@@ -587,7 +645,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-face@female": {
       "kind": "reaction",
@@ -616,7 +675,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-face@neutral": {
       "kind": "reaction",
@@ -645,7 +705,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-hands@female": {
       "kind": "reaction",
@@ -669,7 +730,8 @@
       "by": "base",
       "duration": 4.367,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-hands@neutral": {
       "kind": "reaction",
@@ -693,7 +755,8 @@
       "by": "base-neutral",
       "duration": 4.367,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.shy@female": {
       "kind": "reaction",
@@ -722,7 +785,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.shy@neutral": {
       "kind": "reaction",
@@ -751,7 +815,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.angry@female": {
       "kind": "reaction",
@@ -775,7 +840,8 @@
       "by": "base",
       "duration": 19.167,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.angry@neutral": {
       "kind": "reaction",
@@ -799,7 +865,8 @@
       "by": "base-neutral",
       "duration": 19.167,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.annoyed@female": {
       "kind": "reaction",
@@ -827,7 +894,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.annoyed@neutral": {
       "kind": "reaction",
@@ -855,7 +923,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.ticklish@female": {
       "kind": "reaction",
@@ -880,7 +949,8 @@
       "by": "base",
       "duration": 6.567,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.ticklish@neutral": {
       "kind": "reaction",
@@ -905,7 +975,8 @@
       "by": "base-neutral",
       "duration": 6.567,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.drop@female": {
       "kind": "reaction",
@@ -927,7 +998,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.drop@neutral": {
       "kind": "reaction",
@@ -949,7 +1021,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.greet@female": {
       "kind": "reaction",
@@ -969,7 +1042,8 @@
       "by": "base",
       "duration": 5.1,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.greet@neutral": {
       "kind": "reaction",
@@ -989,7 +1063,8 @@
       "by": "base-neutral",
       "duration": 5.1,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.cheer@female": {
       "kind": "reaction",
@@ -1013,7 +1088,8 @@
       "by": "base",
       "duration": 6.567,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.cheer@neutral": {
       "kind": "reaction",
@@ -1037,7 +1113,8 @@
       "by": "base-neutral",
       "duration": 6.567,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.lift@female": {
       "kind": "hold",
@@ -1139,7 +1216,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.lift@neutral": {
       "kind": "hold",
@@ -1241,7 +1319,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.think@female": {
       "kind": "hold",
@@ -1267,7 +1346,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.think@neutral": {
       "kind": "hold",
@@ -1293,7 +1373,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.eat@female": {
       "kind": "hold",
@@ -1319,7 +1400,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.eat@neutral": {
       "kind": "hold",
@@ -1345,7 +1427,8 @@
       "by": "base-neutral",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.talk@female": {
       "kind": "hold",
@@ -1578,7 +1661,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-face@male": {
       "kind": "reaction",
@@ -1608,7 +1692,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.touch-hands@male": {
       "kind": "reaction",
@@ -1632,7 +1717,8 @@
       "by": "base",
       "duration": 4.367,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.shy@male": {
       "kind": "reaction",
@@ -1673,7 +1759,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.angry@male": {
       "kind": "reaction",
@@ -1699,7 +1786,8 @@
       "by": "base",
       "duration": 2.433,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.annoyed@male": {
       "kind": "reaction",
@@ -1731,7 +1819,8 @@
       "by": "base",
       "duration": 33.133,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.ticklish@male": {
       "kind": "reaction",
@@ -1755,7 +1844,8 @@
       "by": "base",
       "duration": 6.267,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.drop@male": {
       "kind": "reaction",
@@ -1777,7 +1867,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.greet@male": {
       "kind": "reaction",
@@ -1797,7 +1888,8 @@
       "by": "base",
       "duration": 3.533,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "react.cheer@male": {
       "kind": "reaction",
@@ -1817,7 +1909,8 @@
       "by": "base",
       "duration": 3.167,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.lift@male": {
       "kind": "hold",
@@ -1919,7 +2012,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.think@male": {
       "kind": "hold",
@@ -1949,7 +2043,8 @@
       "by": "base",
       "duration": 4.567,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.eat@male": {
       "kind": "hold",
@@ -1975,7 +2070,8 @@
       "by": "base",
       "duration": 0.033,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "loop": false
     },
     "hold.talk@male": {
       "kind": "hold",

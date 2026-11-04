@@ -97,6 +97,11 @@ function build({ assets, scan }) {
     const f = e.src ? feats[e.src] : null;
     const entry = { ...e, category, group, pack: e.src ? e.src.split('/')[0] : null, srcStyle: style, by: 'base', ...(f && !f.error ? { duration: f.duration, enter: f.start, exit: f.end } : {}) };
     delete entry.note;
+    // every entry carries the same fields: a cycle (idle.posture-cycle) lasts its postures × every seconds, standing
+    if (entry.loop === undefined) entry.loop = category === 'idle' || category === 'talk' || category === 'walk';
+    if (entry.mask === undefined) entry.mask = 'full';
+    if (e.cycle) Object.assign(entry, { pack: null, duration: e.cycle.length * e.every, enter: 'stand', exit: 'stand' });
+    if (entry.enter === undefined && f && !f.error) Object.assign(entry, { enter: f.start, exit: f.end });
     clips[id] = entry;
     if (style === 'female') {
       const n = { ...entry, style: 'neutral', by: 'base-neutral' };
