@@ -172,9 +172,12 @@ module.exports = ({ ROOT, OUT, FAKE_LH, step, launch, say }) => async function q
       assert.equal(a1, 'row-check-update');
       await q.keyboard.press('ArrowUp');
       assert.equal(await q.evaluate(() => (document.querySelector('.row.active') || {}).id), 'row-about');
+      const top0 = (await state(page)).bounds;
       await q.keyboard.type('更新');
       await sleep(150);
       const f1 = await rowsOf(q);
+      const top1 = (await state(page)).bounds;
+      assert.equal(top1.y, top0.y, `filtering keeps the panel's top edge (${JSON.stringify(top0)} → ${JSON.stringify(top1)})`);
       assert.deepEqual(f1, ['检查更新…'], `typed 「${await q.inputValue('#q')}」, list 「${await q.textContent('#list')}」`);
       assert.equal(await q.evaluate(() => (document.querySelector('.row.active') || {}).id), 'row-check-update', 'the first match is highlighted');
       await q.screenshot({ path: path.join(DIR, 'q3-filter.png') });

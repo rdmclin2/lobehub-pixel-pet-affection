@@ -6426,6 +6426,7 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const quickPanelScenario = () => require('./quick-panel')({ ROOT, OUT, FAKE_LH, step, launch, say })();
+const quickPanelDemo = () => require('./quick-panel-demo')({ OUT, FAKE_LH, step, launch, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
 const spriteFrameScenarios = () => require('./sprite-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
@@ -10793,6 +10794,7 @@ async function interjectScenario() {
   if (which === 'charpage' || which === 'all') await charpage();
   if (which === 'update' || which === 'all') await update();
   if (which === 'quickpanel' || which === 'all') await quickPanelScenario(); // T-2849 快捷调用面板 (docs/quick-panel.md)
+  if (which === 'quickdemo') await quickPanelDemo(); // T-2849: slow narrated recordings for reviewers (not in `all`)
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
   if (which === 'touch' || which === 'all') await touch();

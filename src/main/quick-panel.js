@@ -122,7 +122,12 @@ class QuickPanel {
     if (!Number.isFinite(h) || h < 40 || h > 1200) return;
     this.size = { w: WIDTH, h };
     if (this._onSized) { this._onSized(); this._onSized = null; }
-    if (this.visible) this._place();
+    // open already (typing filters it, an update answer adds a block): the top edge stays where it is, only kept
+    // inside the screen — no jump to the other side of the anchor
+    if (this.visible) {
+      const cur = this.win.getBounds();
+      this.win.setBounds(Q.placePanel({ anchor: { x: cur.x, y: cur.y }, size: this.size, area: this.area }));
+    }
   }
 
   close(reason = 'esc') {
