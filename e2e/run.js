@@ -9887,21 +9887,22 @@ async function titlebarScenario() {
         if (!el) return null;
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
-        return { region: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region') || cs.getPropertyValue('app-region'), top: r.top, left: r.left, width: r.width, height: r.height, vw: window.innerWidth, hits: [8, 200, window.innerWidth / 2, window.innerWidth - 8].map((x) => document.elementFromPoint(x, 16)?.hasAttribute('data-titlebar')) };
+        return { region: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region') || cs.getPropertyValue('app-region'), top: r.top, left: r.left, width: r.width, height: r.height, vw: window.innerWidth, hits: [8, 200, window.innerWidth / 2, window.innerWidth - 8].map((x) => document.elementFromPoint(x, 16)?.hasAttribute('data-titlebar')), main: Math.round(document.querySelector('main').getBoundingClientRect().top) };
       });
       assert.ok(t, 'no [data-titlebar] in the darwin window');
       assert.equal(t.region, 'drag', `-webkit-app-region: ${t.region}`);
-      assert.deepEqual([t.top, t.left, t.width, t.height], [0, 0, t.vw, 32]);
+      assert.deepEqual([t.top, t.left, t.width, t.height], [0, 0, t.vw, 40]);
+      assert.ok(t.main >= 40, `the page panel starts at ${t.main}, under the drag bar`);
       assert.deepEqual(t.hits, [true, true, true, true], 'the strip is what the pointer meets across the top (rail, page, right edge)');
       await admin.screenshot({ path: path.join(SHOTS, 'mac-overview.png') });
-      return `app-region ${t.region}, ${t.width}×${t.height} at 0,0; topmost at x=8/200/mid/right`;
+      return `app-region ${t.region}, ${t.width}×${t.height} at 0,0; topmost at x=8/200/mid/right; page panel top=${t.main}`;
     }, () => run.admin);
 
     await step(S, 'T2 macOS: on every page nothing clickable sits under the strip (back link, rail, tabs start below it)', async () => {
       const out = [];
       for (const r of ROUTES) {
         await go(r);
-        const bad = await underStrip(admin, 32);
+        const bad = await underStrip(admin, 40);
         assert.deepEqual(bad, [], `${r}: clickable under the drag strip`);
         const back = await admin.evaluate(() => { const b = document.querySelector('[data-back]'); return b ? Math.round(b.getBoundingClientRect().top) : null; });
         out.push(`${r}${back !== null ? ` (back top=${back})` : ''}`);
@@ -9920,7 +9921,7 @@ async function titlebarScenario() {
         return { scrolled: m.scrollTop, stageTop: stage ? Math.round(stage.getBoundingClientRect().top) : null, hit: document.elementFromPoint(window.innerWidth / 2, 16)?.hasAttribute('data-titlebar') };
       });
       assert.ok(r.scrolled > 0, 'her page did not scroll');
-      assert.ok(r.stageTop === null || r.stageTop >= 32, `stage top ${r.stageTop} under the strip`);
+      assert.ok(r.stageTop === null || r.stageTop >= 40, `stage top ${r.stageTop} under the strip`);
       assert.equal(r.hit, true);
       await admin.screenshot({ path: path.join(SHOTS, 'mac-characters-grok-scrolled.png') });
       await admin.evaluate(() => { document.querySelector('main').scrollTop = 0; });

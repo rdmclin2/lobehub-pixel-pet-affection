@@ -1093,7 +1093,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   showcase: css`
     position: sticky;
     z-index: 1;
-    inset-block-start: calc(16px + var(--pet-titlebar, 0px));
+    inset-block-start: 16px;
 
     display: flex;
     flex-direction: column;

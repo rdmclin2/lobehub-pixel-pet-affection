@@ -7,12 +7,24 @@ import { ICONS } from './icons';
 import { SpriteStage } from './stage/SpriteStage';
 import { useSave, useStore } from './store';
 
+/** Height of the drag bar on macOS: the hiddenInset traffic lights sit centred in it. */
+const TITLEBAR_MAC = 40;
+
 const styles = createStaticStyles(({ css }) => ({
+  // LobeHub desktop's frame: one surface (title bar + rail) around the page, which sits inset as a rounded panel
   shell: css`
     display: flex;
+    flex-direction: column;
+
     width: 100vw;
     height: 100vh;
-    background: ${cssVar.colorBgLayout};
+
+    background: ${cssVar.colorBgContainer};
+  `,
+  body: css`
+    display: flex;
+    flex: 1;
+    min-height: 0;
   `,
   rail: css`
     display: flex;
@@ -23,25 +35,17 @@ const styles = createStaticStyles(({ css }) => ({
 
     width: 80px;
     padding-block: 16px;
-    border-inline-end: 1px solid ${cssVar.colorBorderSecondary};
-
-    background: ${cssVar.colorBgContainer};
   `,
   railMac: css`
-    padding-block-start: 40px;
+    padding-block-start: 8px;
   `,
   // macOS draws the window with titleBarStyle 'hiddenInset' (no native title bar), so the window only moves by
-  // what the page marks draggable: this strip across the top, over the traffic lights, the rail and the page.
+  // what the page marks draggable: this bar across the top, around the traffic lights, above the rail and the panel.
   titlebar: css`
     -webkit-app-region: drag;
     user-select: none;
-
-    position: fixed;
-    z-index: 10;
-    inset-block-start: 0;
-    inset-inline: 0;
-
-    height: var(--pet-titlebar);
+    flex: none;
+    height: ${TITLEBAR_MAC}px;
   `,
   me: css`
     overflow: hidden;
@@ -99,6 +103,15 @@ const styles = createStaticStyles(({ css }) => ({
     overflow: auto;
     flex: 1;
     min-width: 0;
+    margin-block: 8px;
+    margin-inline-end: 8px;
+    border: 1px solid ${cssVar.colorBorderSecondary};
+    border-radius: ${cssVar.borderRadiusLG};
+
+    background: ${cssVar.colorBgLayout};
+  `,
+  mainMac: css`
+    margin-block-start: 0;
   `,
   // her colour, faintly, at the top of every page: the window belongs to whoever is with you now
   glow: css`
@@ -119,24 +132,23 @@ const styles = createStaticStyles(({ css }) => ({
     position: relative;
     width: 100%;
     height: 100%;
-    /* keep the chat columns below the macOS drag strip (no breadcrumb row fills it any more) */
-    padding-block-start: var(--pet-titlebar);
   `,
   page: css`
     position: relative;
     width: 100%;
     max-width: 1120px;
     margin-inline: auto;
-    padding-block: calc(24px + var(--pet-titlebar)) 48px;
+    padding-block: 24px 48px;
     padding-inline: 32px;
   `,
 }));
 
-/** Height of the drag strip on macOS: the hiddenInset traffic lights sit in it. */
-const TITLEBAR_MAC = 32;
-
 const THEME_NEXT: Record<string, { icon: typeof Sun; label: string; next: string }> = {
-  auto: { icon: Monitor, label: '外观：跟随系统（点按切到亮色）', next: 'light' },
+  auto: {
+    icon: Monitor,
+    label: '外观：跟随系统（点按切到亮色）',
+    next: 'light',
+  },
   light: { icon: Sun, label: '外观：亮色（点按切到暗色）', next: 'dark' },
   dark: { icon: Moon, label: '外观：暗色（点按切回跟随系统）', next: 'auto' },
 };
@@ -164,59 +176,55 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const mac = platform === 'darwin';
   const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
   return (
-    <div
-      className={styles.shell}
-      style={{ ['--pet-accent' as string]: cur?.accent ?? cssVar.colorPrimary, ['--pet-titlebar' as string]: mac ? `${TITLEBAR_MAC}px` : '0px' }}
-    >
+    <div className={styles.shell} style={{ ['--pet-accent' as string]: cur?.accent ?? cssVar.colorPrimary }}>
       {mac && <div aria-hidden className={styles.titlebar} data-titlebar />}
-      <nav aria-label="主导航" className={`${styles.rail} ${mac ? styles.railMac : ''}`}>
-        <div className={styles.me} title={cur ? `正在陪你：${cur.met?.name ?? cur.nameZh}` : 'Pixel Pet'}>
-          {cur ? <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} /> : <Icon icon={PawPrint} size={20} />}
-        </div>
-        {schema.rail.map((r) => (
-          <a aria-current={place === r.key ? 'page' : undefined} className={styles.link} data-rail={r.key} href={`#/${r.page}`} key={r.key}>
-            <Icon icon={ICONS[r.icon]} size={20} />
-            {r.label}
-          </a>
-        ))}
-        <Flexbox flex={1} />
-        <ActionIcon icon={PawPrint} onClick={() => api().showPet()} title="把桌宠叫到前面" />
-        <ActionIcon data-theme-toggle icon={theme.icon} onClick={() => save('ui.theme', theme.next)} title={theme.label} />
-      </nav>
-      <main className={`${styles.main} ${full ? styles.mainFull : ''}`}>
-        {!full && <div className={styles.glow} />}
-        <Flexbox className={full ? styles.pageFull : styles.page} data-admin-page={page} data-path={path} gap={full ? 0 : 16}>
-          {back && (
-            <Flexbox align="center" gap={4} horizontal>
-              <Button data-back={back.key} href={`#/${back.page}`} icon={ChevronLeft} size="small" type="text">
-                {schema.pages[back.page]?.title ?? back.label}
-              </Button>
-              <Text type="secondary">/</Text>
-              <Text type="secondary">{here}</Text>
-            </Flexbox>
-          )}
-          {pendingRestart.length > 0 && (
-            <Alert
-              action={
-                <Button onClick={() => api().relaunch()} size="small" type="primary">
-                  立即重启
+      <div className={styles.body}>
+        <nav aria-label="主导航" className={`${styles.rail} ${mac ? styles.railMac : ''}`}>
+          <div className={styles.me} title={cur ? `正在陪你：${cur.met?.name ?? cur.nameZh}` : 'Pixel Pet'}>
+            {cur ? <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} /> : <Icon icon={PawPrint} size={20} />}
+          </div>
+          {schema.rail.map((r) => (
+            <a aria-current={place === r.key ? 'page' : undefined} className={styles.link} data-rail={r.key} href={`#/${r.page}`} key={r.key}>
+              <Icon icon={ICONS[r.icon]} size={20} />
+              {r.label}
+            </a>
+          ))}
+          <Flexbox flex={1} />
+          <ActionIcon icon={PawPrint} onClick={() => api().showPet()} title="把桌宠叫到前面" />
+          <ActionIcon data-theme-toggle icon={theme.icon} onClick={() => save('ui.theme', theme.next)} title={theme.label} />
+        </nav>
+        <main className={`${styles.main} ${mac ? styles.mainMac : ''} ${full ? styles.mainFull : ''}`}>
+          {!full && <div className={styles.glow} />}
+          <Flexbox className={full ? styles.pageFull : styles.page} data-admin-page={page} data-path={path} gap={full ? 0 : 16}>
+            {back && (
+              <Flexbox align="center" gap={4} horizontal>
+                <Button data-back={back.key} href={`#/${back.page}`} icon={ChevronLeft} size="small" type="text">
+                  {schema.pages[back.page]?.title ?? back.label}
                 </Button>
-              }
-              data-restart-banner
-              showIcon
-              title={`${names}：重启应用后生效`}
-              type="warning"
-            />
-          )}
-          {/* a page that fails shows why, the rail stays usable */}
-          <ErrorBoundary
-            fallbackRender={({ error }) => <Alert description={String((error as Error)?.message ?? error)} showIcon title="这一页没有显示出来" type="error" />}
-            resetKeys={[path]}
-          >
-            {children}
-          </ErrorBoundary>
-        </Flexbox>
-      </main>
+                <Text type="secondary">/</Text>
+                <Text type="secondary">{here}</Text>
+              </Flexbox>
+            )}
+            {pendingRestart.length > 0 && (
+              <Alert
+                action={
+                  <Button onClick={() => api().relaunch()} size="small" type="primary">
+                    立即重启
+                  </Button>
+                }
+                data-restart-banner
+                showIcon
+                title={`${names}：重启应用后生效`}
+                type="warning"
+              />
+            )}
+            {/* a page that fails shows why, the rail stays usable */}
+            <ErrorBoundary fallbackRender={({ error }) => <Alert description={String((error as Error)?.message ?? error)} showIcon title="这一页没有显示出来" type="error" />} resetKeys={[path]}>
+              {children}
+            </ErrorBoundary>
+          </Flexbox>
+        </main>
+      </div>
     </div>
   );
 };
