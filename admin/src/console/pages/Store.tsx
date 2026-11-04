@@ -1,14 +1,17 @@
 /**
  * 商店 (docs/characters.md 「内置与下载」, docs/vrm-dance.md §11): what can be downloaded. One tab per kind of
- * thing — 角色 (pixel / Live2D / VRM characters) and 舞蹈. Downloaded characters stay listed here as 已下载
- * (→ her page) and show up in 角色图鉴; downloaded dances go into 舞蹈 (玩法 → 舞蹈) and can be danced from here.
+ * thing — 角色 (pixel / Live2D / VRM characters), 舞蹈 and 语音包. Downloaded characters stay listed here as 已下载
+ * (→ her page) and show up in 角色图鉴; downloaded dances go into 舞蹈 (玩法 → 舞蹈) and can be danced from here;
+ * downloaded 语音包 (core/voice-store.js, docs/voice-packs.md §7) go into userData/voicepacks/ and are listed in
+ * 设置 → 语音包, where they can be picked.
  */
 import { Alert, Button, Flexbox, Progress, Segmented, Tag, Text, toast } from "@lobehub/ui";
 import { PageHeader, PageTabs } from "@lobehub/ui/dashboard";
-import { Download, Music, Play } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Download, Music, Play, Square, Trash2, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, type DownloadProgress, type StoreDanceRow } from "../api";
+import { api, type DownloadProgress, type StoreDanceRow, type StoreVoiceRow } from "../api";
+import { ask } from "../fields";
 import { useStore } from "../store";
 import { SpriteStage } from "../stage/SpriteStage";
 import { CatalogGrid, downloading, KIND_NAME, storeStyles } from "./Characters";
@@ -286,15 +289,254 @@ const DancesShelf = () => {
   );
 };
 
-type Shelf = "characters" | "dances";
+const GENDER_NAME: Record<string, string> = { female: "女声", male: "男声" };
+
+/**
+ * One 风格语音包 in 商店 → 语音包: name, 风格, 音色说明 (description + engine voice), size, lines, 署名, 试听; and its
+ * state — 未下载 (下载) / 下载中 (progress, 取消) / 已下载 (删除). The state is main's (core/voice-store.js
+ * deriveState, 已下载 read from disk), overlaid with the live `catalog-progress` while a download runs.
+ */
+const VoiceCard = ({
+  v,
+  p,
+  playing,
+  onDownload,
+  onPlay,
+  onRemove,
+}: {
+  onDownload: () => void;
+  onPlay: () => void;
+  onRemove: () => void;
+  p?: DownloadProgress;
+  playing: boolean;
+  v: StoreVoiceRow;
+}) => {
+  const live = downloading(p);
+  const state = live ? "downloading" : v.state;
+  const pct = live
+    ? p && p.total
+      ? Math.min(100, Math.floor(((p.received ?? 0) / p.total) * 100))
+      : 0
+    : (v.percent ?? 0);
+  const installing = live ? p?.state === "installing" : !!v.installing;
+  return (
+    <article className={storeStyles.card} data-store-voice={v.id} data-voice-state={state}>
+      <Flexbox flex={1} gap={8} padding={12}>
+        <Flexbox align="flex-start" gap={8} horizontal justify="space-between">
+          <Flexbox gap={2} style={{ minWidth: 0 }}>
+            <Text ellipsis strong>
+              {v.name}
+            </Text>
+            <Text data-store-voice-meta={v.id} fontSize={12} type="secondary">
+              {[`${v.lines} 句`, v.sizeLabel, v.version && `v${v.version}`].filter(Boolean).join(" · ")}
+            </Text>
+          </Flexbox>
+          {state === "installed" ? (
+            <Tag color="success" data-voice-downloaded={v.id}>
+              已下载
+            </Tag>
+          ) : state === "downloading" ? (
+            <Tag color="processing" data-voice-downloading={v.id}>
+              下载中
+            </Tag>
+          ) : (
+            <Tag data-voice-not-downloaded={v.id}>未下载</Tag>
+          )}
+        </Flexbox>
+        <Flexbox align="center" gap={6} horizontal wrap="wrap">
+          <Tag color="purple" data-store-voice-style={v.id}>
+            {v.styleLabel}
+          </Tag>
+          {v.gender && <Tag>{GENDER_NAME[v.gender] ?? v.gender}</Tag>}
+        </Flexbox>
+        <Text data-store-voice-desc={v.id} fontSize={13}>
+          {v.description}
+        </Text>
+        <Text data-store-voice-timbre={v.id} fontSize={12} type="secondary">
+          {`音色：${v.engine === "minimax" ? "MiniMax" : v.engine} ${v.voiceId}`}
+        </Text>
+        <Text data-store-voice-credit={v.id} ellipsis fontSize={12} title={v.credit} type="secondary">
+          {v.credit || "署名见语音包说明"}
+        </Text>
+        {!live && state === "remote" && p?.state === "failed" && p.reason !== "canceled" && (
+          <Text data-voice-download-error={v.id} fontSize={12} type="danger">
+            {p.text ?? "下载失败，请重试"}
+          </Text>
+        )}
+        {state === "downloading" && (
+          <Flexbox data-voice-download-progress={v.id} gap={4}>
+            <Progress percent={pct} showInfo={false} size="small" />
+            <Text fontSize={12} type="secondary">
+              {installing ? "正在安装…" : `已下载 ${pct}%`}
+            </Text>
+          </Flexbox>
+        )}
+        <Flexbox
+          align="center"
+          gap={8}
+          horizontal
+          justify="space-between"
+          style={{ marginBlockStart: "auto" }}
+        >
+          <Button
+            data-voice-sample={v.id}
+            icon={playing ? Square : Volume2}
+            onClick={onPlay}
+            size="small"
+            title={`试听：${v.sample.text}`}
+          >
+            {playing ? "停止" : "试听"}
+          </Button>
+          {state === "installed" ? (
+            <Button data-voice-remove={v.id} icon={Trash2} onClick={onRemove} size="small">
+              删除
+            </Button>
+          ) : state === "downloading" ? (
+            <Button
+              data-voice-download-cancel={v.id}
+              disabled={installing}
+              onClick={() => api().voiceDownloadCancel(v.id)}
+              size="small"
+            >
+              取消
+            </Button>
+          ) : (
+            <Button data-voice-download={v.id} icon={Download} onClick={onDownload} size="small">
+              下载
+            </Button>
+          )}
+        </Flexbox>
+      </Flexbox>
+    </article>
+  );
+};
+
+const VoicesShelf = () => {
+  const { merge } = useStore();
+  const [rows, setRows] = useState<StoreVoiceRow[] | null>(null);
+  const [map, setMap] = useState<Record<string, DownloadProgress>>({});
+  const [show, setShow] = useState<"all" | "remote" | "installed">("all");
+  const [playing, setPlaying] = useState<string | null>(null);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const load = useCallback(async () => {
+    const r = await api().voiceStore();
+    setRows(r.voicePacks);
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  useEffect(
+    () =>
+      api().onCatalogProgress((p) => {
+        if (!p.id.startsWith("style-")) return;
+        setMap((m) => ({ ...m, [p.id]: p }));
+        if (p.state === "done" || p.state === "failed") load();
+      }),
+    [load],
+  );
+  useEffect(() => () => audio.current?.pause(), []);
+  const play = (v: StoreVoiceRow) => {
+    audio.current?.pause();
+    if (playing === v.id) {
+      setPlaying(null);
+      return;
+    }
+    const a = new Audio(`../renderer/${v.sample.file}`);
+    audio.current = a;
+    a.onended = () => setPlaying((x) => (x === v.id ? null : x));
+    a.play().then(
+      () => setPlaying(v.id),
+      () => {
+        setPlaying(null);
+        toast.error({ description: "试听文件读不出来，请重新安装应用后再试。", title: "没能试听" });
+      },
+    );
+  };
+  const done = (r: Awaited<ReturnType<ReturnType<typeof api>["voiceDownload"]>>) => {
+    if (r.store) setRows(r.store.voicePacks);
+    if (r.settings) merge({ settings: r.settings });
+  };
+  const start = async (v: StoreVoiceRow) => {
+    setMap((m) => ({ ...m, [v.id]: { id: v.id, received: 0, state: "downloading", total: v.bytes } }));
+    const r = await api().voiceDownload(v.id);
+    done(r);
+    if (r.ok) toast.success({ description: "在 设置 → 语音包 里可以选用它。", title: `「${v.name}」下载好了` });
+    else if (r.reason !== "canceled") toast.error({ description: r.text, title: `没能下载「${v.name}」` });
+  };
+  const remove = async (v: StoreVoiceRow) => {
+    const ok = await ask(
+      `删除语音包「${v.name}」？`,
+      "删除后用到它的角色会自动改回默认语音包；之后可以在商店重新下载。",
+      "删除语音包",
+      true,
+    );
+    if (!ok) return;
+    const r = await api().voiceRemove(v.id);
+    done(r);
+    setMap((m) => {
+      const { [v.id]: _gone, ...rest } = m;
+      return rest;
+    });
+    if (r.ok) toast.success(`已删除语音包「${v.name}」`);
+    else toast.error({ description: r.text, title: `没能删除「${v.name}」` });
+  };
+  if (!rows) return null;
+  if (!rows.length)
+    return <Alert description="目前没有可以下载的语音包。" title="商店里还没有语音包" type="info" />;
+  const isInstalled = (v: StoreVoiceRow) => v.state === "installed" && !downloading(map[v.id]);
+  const installed = rows.filter(isInstalled).length;
+  const items = rows.filter(
+    (v) => show === "all" || (show === "installed" ? isInstalled(v) : !isInstalled(v)),
+  );
+  return (
+    <Flexbox gap={16}>
+      <div data-store-voice-filter>
+        <Segmented
+          onChange={(x) => setShow(x as typeof show)}
+          options={[
+            { label: `全部 ${rows.length}`, value: "all" },
+            { label: `未下载 ${rows.length - installed}`, value: "remote" },
+            { label: `已下载 ${installed}`, value: "installed" },
+          ]}
+          size="small"
+          value={show}
+        />
+      </div>
+      <Text fontSize={12} type="secondary">
+        风格语音包是提前录好的通用台词，任何角色都能用。试听不用下载；下载好的语音包会出现在 设置 → 语音包，在那里或角色的语音页选用。
+      </Text>
+      {items.length ? (
+        <div className={storeStyles.grid} data-store-voices>
+          {items.map((v) => (
+            <VoiceCard
+              key={v.id}
+              onDownload={() => start(v)}
+              onPlay={() => play(v)}
+              onRemove={() => remove(v)}
+              p={map[v.id]}
+              playing={playing === v.id}
+              v={v}
+            />
+          ))}
+        </div>
+      ) : (
+        <Text data-store-voice-empty type="secondary">
+          {show === "installed" ? "还没有下载语音包。" : "全部语音包都下载好了。"}
+        </Text>
+      )}
+    </Flexbox>
+  );
+};
+
+type Shelf = "characters" | "dances" | "voices";
 
 export const StorePage = () => {
-  // one tab per kind of thing on sale; add 声音包 etc. here
+  // one tab per kind of thing on sale
   const [tab, setTab] = useState<Shelf>("characters");
   return (
     <>
       <PageHeader
-        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈；不需要了可以在她的页面或舞蹈页删除。"
+        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈，语音包会出现在 设置 → 语音包；不需要了可以在她的页面、舞蹈页或这里删除。"
         title="商店"
       />
       <PageTabs
@@ -303,6 +545,7 @@ export const StorePage = () => {
         tabs={[
           { content: <CharactersShelf />, label: "角色", value: "characters" },
           { content: <DancesShelf />, label: "舞蹈", value: "dances" },
+          { content: <VoicesShelf />, label: "语音包", value: "voices" },
         ]}
         value={tab}
       />

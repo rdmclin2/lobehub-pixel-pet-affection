@@ -9679,6 +9679,252 @@ async function storeScenario() {
   }
 }
 
+// ---------------------------------------------------------------- voicestore (商店 → 语音包: 浏览、下载、三态)
+// 商店 → 语音包 lists the 风格语音包 of src/core/voice-catalog.json: name, 风格, 音色说明, size, 署名, 试听. From a
+// local server playing the release host (the archives rebuilt by scripts/build-voice-catalog.js --check, throttled so
+// 下载中 shows): 未下载 → 下载中 (progress) → 已下载; the pack is unpacked into userData/voicepacks/<id>/ and listed
+// in 设置 → 语音包 (来源 商店下载). A corrupted archive is refused by its sha256 and leaves nothing behind. After a
+// restart 已下载 is still right (read from disk); 删除 brings it back to 未下载 and out of the local list.
+// Free: fake lh, no network. Evidence in out/e2e/voicestore/.
+async function voiceStoreScenario() {
+  const S = 'voicestore';
+  const SHOTS = path.join(OUT, 'voicestore');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const IDS = index.voicePacks.map((v) => v.id);
+  const CUTE = 'style-cute';
+  const BAD = 'style-yujie';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicezips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const corrupt = new Set();
+  const served = [];
+  const server = http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = path.join(zips, name);
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    let buf = fs.readFileSync(file);
+    if (corrupt.has(name)) { buf = Buffer.from(buf); buf[Math.floor(buf.length / 2)] ^= 0xff; } // same size, other bytes
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~300 KB/s, so 下载中 and the bar are seen
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 32 * 1024)); i += 32 * 1024; setTimeout(tick, 100); };
+    tick();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/voices`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestore-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestorefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: base };
+  const VDIR = path.join(data, 'voicepacks');
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  record('v0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\nserved from ${base} (throttled ~300 KB/s)\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (label) => {
+    await admin.evaluate((l) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === l); if (!t) throw new Error(`no tab ${l}`); t.click(); }, label);
+    await admin.waitForTimeout(400);
+  };
+  const openVoices = async () => { await go('/store'); await tab('语音包'); await attached('[data-store-voices]'); await admin.waitForTimeout(300); };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 20000 });
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(450);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const viewShot = async (name) => { await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  // each card's state as the page shows it
+  const states = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+  const leftovers = () => (fs.existsSync(VDIR) ? fs.readdirSync(VDIR).filter((n) => n.startsWith('.') || n.includes('.old-')) : []);
+  // 设置 → 语音包: the rows of the local list (antd sets data-row-key)
+  const localRows = async () => {
+    await go('/voicepacks');
+    await admin.waitForTimeout(400);
+    return admin.$$eval('[data-admin-page] tr[data-row-key]', (els) => els.map((e) => ({ id: e.dataset.rowKey, text: e.textContent })));
+  };
+  const openAdmin = async () => {
+    admin = await openAdminWindow(app, page, 'overview');
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+  };
+
+  try {
+    await step(S, 'V0 唤醒桌宠，打开配置窗口', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').first().click();
+      await page.fill('#pet-name', '小鱼');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      return 'ok';
+    }, page);
+
+    await step(S, 'V1 商店 → 语音包：5 个风格语音包，每张卡有名称、风格、音色说明、体积、署名、试听，全部「未下载」', async () => {
+      await openVoices();
+      const tabs = await admin.$$eval('[role="tab"]', (els) => els.map((e) => e.textContent.trim()));
+      assert.ok(tabs.includes('语音包'), tabs.join(','));
+      const cards = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => {
+        const q = (a) => (e.querySelector(`[${a}]`) || {}).textContent || '';
+        return { id: e.dataset.storeVoice, state: e.dataset.voiceState, name: e.querySelector('strong, [class*="strong"]')?.textContent || e.textContent.slice(0, 20), style: q('data-store-voice-style'), desc: q('data-store-voice-desc'), timbre: q('data-store-voice-timbre'), meta: q('data-store-voice-meta'), credit: q('data-store-voice-credit'), sample: !!e.querySelector('[data-voice-sample]'), tag: q('data-voice-not-downloaded'), btn: q('data-voice-download') };
+      }));
+      assert.deepEqual(cards.map((c) => c.id), IDS);
+      for (const c of cards) {
+        const e = index.voicePacks.find((v) => v.id === c.id);
+        assert.equal(c.state, 'remote', c.id);
+        assert.equal(c.tag, '未下载');
+        assert.equal(c.btn, '下载');
+        assert.equal(c.style, e.styleLabel);
+        assert.equal(c.desc, e.description);
+        assert.equal(c.timbre, `音色：MiniMax ${e.voiceId}`);
+        assert.match(c.meta, new RegExp(`${e.lines} 句 · ${Catalog.sizeLabel(e.bytes).replace('.', '\\.')}`));
+        assert.equal(c.credit, e.credit);
+        assert.ok(c.sample);
+      }
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 5.*已下载 0/);
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      record('v1-cards.json', JSON.stringify(cards, null, 2));
+      return `${cards.map((c) => `${c.id}「${c.style}」${c.meta}`).join('；')} → ${await shot('v1-store-voices-not-downloaded')}`;
+    }, page);
+
+    await step(S, 'V2 试听（不用下载）：点「试听」播放随应用附带的试听句，按钮变「停止」', async () => {
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('playing', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('停止')), 8000);
+      const shotName = await viewShot('v2-sample-playing');
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('stopped', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('试听')), 5000);
+      return `试听 ${index.voicePacks[0].sample.file} 播放中 → ${shotName}`;
+    }, page);
+
+    let mid = '';
+    await step(S, 'V3 下载「可爱 · 甜心少女」：卡片变「下载中」，进度条与百分比走动', async () => {
+      await admin.click(`[data-voice-download="${CUTE}"]`);
+      await attached(`[data-voice-download-progress="${CUTE}"]`);
+      await admin.waitForFunction((id) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${id}"]`)?.textContent || ''), CUTE, { timeout: 15000 });
+      mid = await admin.$eval(`[data-voice-download-progress="${CUTE}"]`, (el) => el.textContent);
+      const st = await states();
+      assert.equal(st[CUTE], 'downloading');
+      assert.equal(await admin.$eval(`[data-voice-downloading="${CUTE}"]`, (el) => el.textContent), '下载中');
+      assert.ok(await admin.$(`[data-voice-download-cancel="${CUTE}"]`));
+      const main = await call('voiceStore');
+      const row = main.voicePacks.find((v) => v.id === CUTE);
+      assert.equal(row.state, 'downloading', 'main says 下载中 too');
+      return `进度「${mid}」；主进程 state=${row.state} percent=${row.percent} → ${await viewShot('v3-downloading')}`;
+    }, page);
+
+    await step(S, 'V4 下载完成：卡片「已下载」，文件在 userData/voicepacks/style-cute/（manifest 校验通过 + 标记），已下载筛选里有它', async () => {
+      await toast(/「可爱 · 甜心少女」下载好了/);
+      await until('installed', async () => (await states())[CUTE] === 'installed');
+      assert.equal(await admin.$eval(`[data-voice-downloaded="${CUTE}"]`, (el) => el.textContent), '已下载');
+      const m = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, 'manifest.json'), 'utf8'));
+      const marker = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, '.catalog.json'), 'utf8'));
+      const VP = require('../src/core/voice-pack');
+      assert.deepEqual(VP.validateManifest(m, path.join(VDIR, CUTE)), []);
+      assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === CUTE).sha256);
+      assert.deepEqual(leftovers(), []);
+      const all = await shot('v4a-store-downloaded');
+      await admin.locator('[data-store-voice-filter]').getByText(/^已下载 1$/).click();
+      await admin.waitForTimeout(400);
+      const shown = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => e.dataset.storeVoice));
+      assert.deepEqual(shown, [CUTE]);
+      const filtered = await shot('v4b-store-filter-downloaded');
+      const files = fs.readdirSync(path.join(VDIR, CUTE));
+      record('v4-installed.txt', `${path.join('<userData>', 'voicepacks', CUTE)}: ${files.length} files (manifest.json, .catalog.json, ${files.length - 2} audio)\nmanifest: id=${m.id} kind=${m.kind} style=${m.style} version=${m.version} lines=${Object.keys(m.lines).length}\nvalidateManifest: OK\nmarker: ${JSON.stringify(marker)}\n`);
+      return `已下载；${files.length} 个文件；marker ${JSON.stringify(marker)}；已下载筛选: ${shown.join(',')} → ${all}, ${filtered}`;
+    }, page);
+
+    await step(S, 'V5 本地可用列表：设置 → 语音包 列出 style-cute（任意角色 · 138 句 · 来源「商店下载」），主进程已加载为 style 包', async () => {
+      const rows = await localRows();
+      const row = rows.find((r) => r.id === CUTE);
+      assert.ok(row, rows.map((r) => r.id).join(','));
+      assert.match(row.text, /可爱 · 甜心少女/);
+      assert.match(row.text, /商店下载/);
+      assert.match(row.text, /138 句/);
+      const st = await call('state');
+      assert.ok(st.settings.ttsStatus.packs.some((p) => p.id === CUTE && p.kind === 'style' && p.store));
+      return `本地列表: ${rows.map((r) => r.id).join(', ')} → ${await shot('v5-settings-voicepacks-local-list')}`;
+    }, page);
+
+    await step(S, 'V6 下载的文件被篡改：sha256 校验不通过，提示可读的失败原因，本机不留文件，卡片回到「未下载」', async () => {
+      corrupt.add(`${BAD}.zip`);
+      await openVoices();
+      await admin.click(`[data-voice-download="${BAD}"]`);
+      await toast(/没能下载「御姐 · 妩媚姐姐」/);
+      await toast(/校验没通过/);
+      const failShot = await viewShot('v6-checksum-failed');
+      await until('remote again', async () => (await states())[BAD] === 'remote');
+      const cardErr = await admin.$eval(`[data-voice-download-error="${BAD}"]`, (el) => el.textContent);
+      assert.match(cardErr, /校验没通过/);
+      assert.ok(!fs.existsSync(path.join(VDIR, BAD)));
+      assert.deepEqual(leftovers(), []);
+      corrupt.delete(`${BAD}.zip`);
+      return `篡改后: 未安装、无残留，卡片仍是未下载，卡上提示「${cardErr}」 → ${failShot}`;
+    }, page);
+
+    await step(S, 'V7 重启应用：已下载状态以磁盘为准，style-cute 仍是「已下载」，其余「未下载」', async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      await openVoices();
+      const st = await states();
+      assert.deepEqual(st, Object.fromEntries(IDS.map((id) => [id, id === CUTE ? 'installed' : 'remote'])));
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 4.*已下载 1/);
+      return `重启后: ${JSON.stringify(st)} → ${await shot('v7-after-restart')}`;
+    }, page);
+
+    await step(S, 'V8 删除已下载的语音包：确认后回到「未下载」，文件夹删除，本地列表不再有它', async () => {
+      await admin.click(`[data-voice-remove="${CUTE}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await toast(/已删除语音包「可爱 · 甜心少女」/);
+      await until('remote', async () => (await states())[CUTE] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      const storeShot = await viewShot('v8a-removed');
+      const rows = await localRows();
+      assert.ok(!rows.some((r) => r.id === CUTE));
+      return `删除后本地列表: ${rows.map((r) => r.id).join(', ')} → ${storeShot}, ${await shot('v8b-settings-after-remove')}`;
+    }, page);
+
+    await step(S, 'V9 没有渲染错误、没有遗留的临时目录', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      assert.deepEqual(leftovers(), []);
+      record('served.txt', `served from ${base}\n${served.join('\n')}\n`);
+      return `no console errors; served: ${served.join(', ')}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
 // ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
 // A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
 // other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
@@ -11520,6 +11766,7 @@ async function interjectScenario() {
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   if (which === 'store' || which === 'all') await storeScenario();
+  if (which === 'voicestore' || which === 'all') await voiceStoreScenario();
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

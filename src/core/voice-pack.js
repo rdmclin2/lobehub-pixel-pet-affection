@@ -176,7 +176,7 @@ class VoicePacks {
     this.errors = [];
     for (const root of this.dirs) {
       let names = [];
-      try { names = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { continue; }
+      try { names = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name); } catch { continue; } // .<id>-… = a store download being unpacked (core/voice-store.js)
       for (const name of names.sort()) {
         const dir = path.join(root, name);
         try {
@@ -184,7 +184,7 @@ class VoicePacks {
           const errors = validateManifest(m, dir);
           if (errors.length) { this.errors.push({ dir, errors }); this.log(new Error(`voice pack ${dir}: ${errors.join('; ')}`)); continue; }
           const lines = new Map(Object.entries(m.lines).map(([t, f]) => [norm(t), f]));
-          const pack = { ...m, kind: kindOf(m), gender: m.gender || null, dir, lines, builtIn: root === this.dirs[0] };
+          const pack = { ...m, kind: kindOf(m), gender: m.gender || null, dir, lines, builtIn: root === this.dirs[0], store: fs.existsSync(path.join(dir, '.catalog.json')) };
           if (pack.kind !== 'character') pack.character = null;
           // a later pack with the same id (the owner's) replaces the earlier one everywhere
           const old = this.byId[pack.id];
@@ -218,7 +218,7 @@ class VoicePacks {
   list() {
     const live = Object.values(this.byId).filter((p) => (p.kind === 'style' ? true : p.kind === 'generic' ? this.generic[p.gender] === p : this.byCharacter[p.character] === p));
     return ['character', 'generic', 'style'].flatMap((k) => live.filter((p) => p.kind === k))
-      .map((p) => ({ id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, credit: p.credit || '', lines: p.lines.size, builtIn: p.builtIn,
+      .map((p) => ({ id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, credit: p.credit || '', lines: p.lines.size, builtIn: p.builtIn, store: !!p.store,
         ...(p.kind === 'style' ? { style: p.style, version: p.version, lineSet: p.lineSet, appliesTo: p.appliesTo || null, description: p.description || '', sample: p.sample.text } : {}) }));
   }
 

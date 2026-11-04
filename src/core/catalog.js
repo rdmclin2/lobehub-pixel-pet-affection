@@ -101,7 +101,7 @@ function loadVoiceIndex(file = VOICE_INDEX_FILE) {
 }
 const voicePackEntry = (id, index = loadVoiceIndex()) => index.voicePacks.find((v) => v.id === id) || null;
 // 商店 → 语音包: every voice pack of the store, each with `installed` (its id is loaded in VoicePacks now).
-const voiceRow = (v, installed) => ({ id: v.id, name: v.name, style: v.style, styleLabel: v.styleLabel || v.style, gender: v.gender || null, version: v.version || '', description: v.description || '', credit: v.credit || '', lines: v.lines, seconds: v.seconds || 0, sample: v.sample, bytes: v.bytes, sizeLabel: sizeLabel(v.bytes), installed });
+const voiceRow = (v, installed) => ({ id: v.id, name: v.name, style: v.style, styleLabel: v.styleLabel || v.style, gender: v.gender || null, version: v.version || '', description: v.description || '', credit: v.credit || '', engine: v.engine || '', voiceId: v.voiceId || '', lines: v.lines, seconds: v.seconds || 0, sample: v.sample, bytes: v.bytes, sizeLabel: sizeLabel(v.bytes), installed });
 function listVoicePacks(installed, { index = loadVoiceIndex() } = {}) {
   return index.voicePacks.map((v) => voiceRow(v, !!installed(v.id)));
 }

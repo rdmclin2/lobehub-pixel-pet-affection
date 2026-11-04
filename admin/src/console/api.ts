@@ -285,6 +285,43 @@ export interface StoreDanceRow {
   sizeLabel: string;
 }
 
+/** 商店 → 语音包 (core/catalog.js listVoicePacks + core/voice-store.js storeRows) */
+export interface StoreVoiceRow {
+  bytes: number;
+  credit: string;
+  description: string;
+  engine: string;
+  error?: string;
+  gender: 'female' | 'male' | null;
+  id: string;
+  installed: boolean;
+  installing?: boolean;
+  lines: number;
+  name: string;
+  percent?: number;
+  /** relative to src/renderer: catalog/voices/<id>.ogg (the 试听 line, ships with the app) */
+  sample: { file: string; seconds?: number; text: string };
+  seconds: number;
+  sizeLabel: string;
+  state: 'downloading' | 'installed' | 'remote';
+  stateLabel: string;
+  style: string;
+  styleLabel: string;
+  version: string;
+  voiceId: string;
+}
+
+export interface VoiceStoreResult {
+  errors?: string[];
+  id?: string;
+  name?: string;
+  ok: boolean;
+  reason?: string;
+  settings?: any;
+  store?: { dir: string; voicePacks: StoreVoiceRow[] };
+  text?: string;
+}
+
 /** `catalog-progress` (src/main/catalog.js) */
 export interface DownloadProgress {
   id: string;
@@ -417,6 +454,10 @@ export interface PetAdminApi {
   danceStore: () => Promise<{ dances: StoreDanceRow[]; downloads: DownloadProgress[]; vrm: boolean }>;
   danceDownload: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   danceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  voiceStore: () => Promise<{ dir: string; voicePacks: StoreVoiceRow[] }>;
+  voiceDownload: (id: string) => Promise<VoiceStoreResult>;
+  voiceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  voiceRemove: (id: string) => Promise<VoiceStoreResult>;
   whoami: () => Promise<any>;
   /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;

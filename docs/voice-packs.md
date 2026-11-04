@@ -245,3 +245,29 @@ node scripts/upload-character-catalog.js --voices [--dry-run]            # 上�
 | `style-gaoxiao` | 搞笑 | 男 | `Chinese (Mandarin)_Humorous_Elder`（搞笑大爷） | speed 1, happy | 哎哟喂，我来啦！听我说话保准你乐呵一整天，哈哈哈！ |
 
 每包的句数、时长、大小与 sha256 以 `src/core/voice-catalog.json` 为准。
+
+## 7. 商店 → 语音包：浏览、下载与状态（T-5094）
+
+设置窗口 **商店 → 语音包**（`admin/src/console/pages/Store.tsx` `VoicesShelf`）列出 `src/core/voice-catalog.json` 里的每个风格语音包：名称、风格（Tag）、性别、音色说明（`description` + `音色：MiniMax <voiceId>`）、句数 · 体积 · 版本、署名（`credit`），以及 **试听**（播放随应用附带的 `src/renderer/catalog/voices/<id>.ogg`，不用下载）。
+
+**下载**（`src/main/main.js` `voice-download` → `src/main/catalog.js` `CatalogDownloader` → `src/core/voice-store.js` `installArchive`）：
+
+1. 从 `PIXELPET_CATALOG_URL` / `settings.catalogUrl` / CDN（`dc/ops-assets/archives/pixel-pet/voices-v1/<id>.zip`）下载归档，边下边算 sha256；大小或 sha256 与目录条目不一致就丢弃（`size` / `checksum`）。
+2. 解压到 `userData/voicepacks/.<id>-XXXX/`（点开头的文件夹 `VoicePacks` 不读），检查：`manifest.json` 存在、`id` 与条目一致、`kind: "style"`、`validateManifest` 通过（每个音频都在）、除 manifest 与它列出的音频外没有别的文件或文件夹。
+3. 通过后写标记 `.catalog.json`（id / version / sha256 / bytes / installedAt），改名为 `userData/voicepacks/<id>/`，`tts.packs.reload()`，立即可选。任何一步失败都删掉临时文件夹，原有的同名包不受影响；错误文案可读，例如「下载的文件校验没通过，已丢弃，请重试」「下载的语音包文件有问题，已丢弃：下载的语音包和商店条目对不上」。
+
+**三态**（`voice-store.js` `deriveState` / `storeRows`，界面卡片 `data-voice-state`）：
+
+| 状态 | 条件 | 卡片 |
+| --- | --- | --- |
+| 未下载 `remote` | 磁盘上没有合格的 `<id>/` | Tag「未下载」+「下载」；上次失败时卡上显示原因 |
+| 下载中 `downloading` | 有进行中的下载（`catalog-progress` downloading / installing） | Tag「下载中」+ 进度条「已下载 N%」/「正在安装…」+「取消」 |
+| 已下载 `installed` | `installedIds(userData/voicepacks)` 含它 | Tag「已下载」+「删除」 |
+
+已下载**只看磁盘**，设置里不存下载记录：重启后、手动删掉文件夹后都如实显示。**删除**（`voice-remove`）只删带 `.catalog.json` 标记的文件夹（自己手放的语音包不会被商店删掉）；用到它的角色自动回到「自动」（`resolvePack` 把不存在的选择当 auto）。
+
+**本地可用列表**：① 商店 → 语音包 的「已下载」筛选；② **设置 → 语音包** 表格（`Pages.tsx` `VoicePacksPage`）列出已加载的包，风格包的角色列为「任意角色」，来源列为「商店下载」；在「我的语音包」或 角色详情 → 语音 里选用。
+
+IPC（`src/main/admin-preload.js`）：`voiceStore()` → `{ voicePacks: StoreVoiceRow[], dir }`；`voiceDownload(id)` / `voiceRemove(id)` → `{ ok, reason?, text?, store, settings }`；`voiceDownloadCancel(id)`；进度走 `onCatalogProgress`（id 以 `style-` 开头）。
+
+验证：`node --test test/voice-store.test.js`（安装校验、回滚、磁盘状态、状态推导、下载器 + 本地 HTTP 服务器）；`xvfb-run -a node e2e/run.js voicestore`（本地服务器限速模拟 CDN，截图在 `out/e2e/voicestore/`）。
