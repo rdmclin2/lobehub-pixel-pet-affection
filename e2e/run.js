@@ -9988,11 +9988,11 @@ async function voiceSelectScenario() {
   const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
   const PANEL = '[role="tabpanel"]:not([inert])';
   const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
-  const voiceTab = async () => {
+  const voiceTab = async (id = 'dafeiyu-pixel') => {
     await admin.bringToFront();
     if (await admin.$('[role="option"]')) await closePicker();
-    await admin.evaluate(() => { location.hash = '/characters/dafeiyu-pixel'; });
-    await admin.waitForSelector('[data-path="/characters/dafeiyu-pixel"]');
+    await admin.evaluate((x) => { location.hash = `/characters/${x}`; }, id);
+    await admin.waitForSelector(`[data-path="/characters/${id}"]`);
     await admin.getByRole('tab', { name: '语音' }).click();
     await combo().waitFor();
     await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
@@ -10206,6 +10206,21 @@ async function voiceSelectScenario() {
       assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·御姐`));
       const s = await ashot('s7b-voice-tab-after-restart');
       return note(`S7 after restart: settings.json=${JSON.stringify(saved())}; picker「${cb}」; ${cur}\n  ${fmt(r)} → ${p}, ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7c 选择按角色绑定：另一个角色（克洛蒂）的语音页显示她自己的选择「内置」，不受大肥鱼的 B 影响', async () => {
+      const other = (await admin.evaluate(() => window.petAdmin.state())).roster.find((x) => x.base === 'claude');
+      await voiceTab(other.id);
+      const cb = await comboText();
+      const cur = await current();
+      const choice = await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice, PANEL);
+      assert.equal(choice, 'auto');
+      assert.match(cb, /^内置（自动/);
+      assert.match(cur, /专属/);
+      assert.deepEqual(saved(), { dafeiyu: B }, 'only her pick is saved');
+      const s = await ashot('s7c-other-character-own-choice');
+      await voiceTab();
+      return note(`S7c ${other.id} (base claude): choice=${choice}; picker「${cb}」; ${cur}; settings.json=${JSON.stringify(saved())} → ${s}`);
     }, () => admin || page);
 
     await step(S, 'S8 删除正在使用的 B：安全回退到内置（她的专属语音包），设置页提示；选择仍保存，重新下载后恢复', async () => {
