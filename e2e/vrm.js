@@ -1026,11 +1026,12 @@ module.exports = function vrmScenarios(ctx) {
         const f = await H.fig();
         assert.equal(b.library, 'none');
         assert.ok(Number(b.frame) > Number(a.frame));
-        assert.equal(b.layers, '');
+        assert.equal(b.layers, 'rest.pose:1.00', 'no clip: the rest clip is the base (T-2829), so a dance or posture fades back to it');
+        assert.equal(b.action, 'idle');
         assert.ok(f.bones.leftUpperArm[2] < -50 && f.bones.rightUpperArm[2] > 50, `arms down, not a T-pose: ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
         await H.shot('12c-no-library');
         fs.renameSync(path.join(data, 'vrm-motions', 'library.off'), path.join(data, 'vrm-motions', 'library.json'));
-        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, data-layers=${b.layers}, data-action=${b.action}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
       }, page);
 
       await step(S, 'packaging guard: no .vrm / .vrma / .fbx / .vmd in git ls-files nor in the files package.json build.files ships', async () => {

@@ -64,7 +64,7 @@
   //   lifted → pause (and hold.lift); put down → resume after resumeAfter s; lifted longer than pauseMax → stop;
   //   a touch → only its face, no reaction; talking → keep dancing, the music ducked to duckTalk (recording:
   //   duckMic); eating (fed) → stop; celebrations and cues → dropped.
-  const DANCE = { fadeIn: 0.6, fadeOut: 0.8, resumeAfter: 0.6, pauseMax: 10, duckTalk: 0.3, duckMic: 0.15, touchFace: 1.2, face: { happy: 0.25 } };
+  const DANCE = { fadeIn: 0.6, fadeOut: 0.5, resumeAfter: 0.6, pauseMax: 10, duckTalk: 0.3, duckMic: 0.15, touchFace: 1.2, face: { happy: 0.25 } };
   const DANCE_ON = ['cueing', 'in', 'on', 'paused'];
 
   // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
@@ -99,6 +99,18 @@
     talk: { face: { happy: 0.2 }, gaze: null },
     walk: { face: { happy: 0.25 }, gaze: null },
   };
+
+  // ---------- the action state (T-2829) ----------
+  // What she is doing, as one explicit state, every frame: idle ↔ an action (dance, lift, a reaction — touch,
+  // celebrate, play, drop —, a hold — eat, think, talk, walk —, sleep) → returning (whatever ended or was
+  // stopped still fading out, ≤ the fade) → idle. Derived from the layers each frame, so it cannot drift from
+  // them: an action is over exactly when nothing of it is left on her (no dance base, no overlay, no hold).
+  // plan.action = { state, since, from, exclusive }; director.actions() the transitions (tests, debug).
+  // stop(): the user's "stop" — the dance is asked to stop, the reaction cut (CUT), the waiting celebration,
+  // the face and the looking-about dropped; she fades back to the idle. The app's own holds (a meal, sleep, the
+  // chat) are the app's to end.
+  const REACTION_ACTION = { 'react.cheer': 'celebrate', 'react.greet': 'celebrate', 'react.drop': 'drop' };
+  const ACTIONS = ['idle', 'returning', 'dance', 'lift', 'touch', 'celebrate', 'play', 'drop', 'eat', 'think', 'talk', 'walk', 'sleep'];
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const scaleFace = (f, k) => Object.fromEntries(Object.entries(f || {}).map(([n, w]) => [n, n.startsWith('blink') ? w : clamp(w * k, 0, 1)]));
@@ -155,6 +167,10 @@
       gait: { phase: 0, rate: 0, wanted: 0, on: false, steps: 0 }, // the walk cycle's clock
       talk: { cur: null, prev: null, n: 0, last: null, segments: [] }, // the talk segment playing, the one fading out
       dance: { state: 'off', id: null, since: 0, started: false, liftAt: null, dropAt: null, key: 0, n: 0 }, // the dance layer D
+      baseFadeUntil: 0, // the base cross-fade in the renderer lasts until then
+      action: { state: 'idle', since: 0, from: null }, // T-2829: what she is doing (ACTIONS)
+      actions: [], // transitions, newest last: { t, from, to, why }
+      stopAsked: null, // stop(): the dance is asked to stop on the next frame
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
@@ -219,6 +235,7 @@
       const sitChange = S.base && clip && !!clip.sit !== !!S.base.sit;
       const fromDance = !!(S.base && S.base.dance);
       S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), fade: first ? FADE.first : fromDance ? DANCE.fadeOut : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
+      if (fromDance) S.baseFadeUntil = S.t + S.base.fade;
       S.posture = posture;
       S.postureSource = source;
     }
@@ -425,11 +442,13 @@
           if (holds.eat) request = 'stop'; // fed while dancing: the new order wins
           D.state = wantPause || h.paused ? 'paused' : 'on';
         }
+        if (S.stopAsked) request = 'stop'; // stop(): the user's stop, also while it cues in
       } else if (DANCE_ON.includes(D.state)) {
         D.state = 'out';
         D.since = S.t;
       }
       if (D.state === 'out' && S.t - D.since >= DANCE.fadeOut) { D.state = 'off'; D.id = null; }
+      if (!h) S.stopAsked = null; // the app let the dance go (or there was none): the stop is done
       const on = DANCE_ON.includes(D.state);
       return {
         state: D.state,
@@ -442,6 +461,43 @@
         exclusive: on,
         n: D.n,
       };
+    }
+
+    // The action state this frame (ACTIONS above), from the layers: the strongest thing on her now, else
+    // `returning` while anything that ended is still fading out, else idle.
+    function actionNow(dance, hold, R, holds) {
+      if (dance.on) return 'dance';
+      if (hold === 'lift') return 'lift';
+      if (R) return R.why && /^cue:play/.test(R.why) ? 'play' : REACTION_ACTION[R.slot] || 'touch';
+      if (hold) return hold;
+      if (holds.mood === 'sleep') return 'sleep';
+      const fadingHold = [...S.holds.values()].some((h) => h.w > 0);
+      if (dance.state === 'out' || S.fading.length || fadingHold || S.t < S.baseFadeUntil) return 'returning';
+      return 'idle';
+    }
+    function stepAction(dance, hold, R, holds) {
+      const A = S.action;
+      const now = actionNow(dance, hold, R, holds);
+      if (now !== A.state) {
+        S.actions.push({ t: +S.t.toFixed(3), from: A.state, to: now });
+        if (S.actions.length > 50) S.actions.shift();
+        S.action = { state: now, since: S.t, from: A.state };
+      }
+      return { state: S.action.state, since: +S.action.since.toFixed(3), from: S.action.from, exclusive: now === 'dance' };
+    }
+
+    // The user's stop (T-2829): whatever she does fades back to the idle. → what was stopped.
+    function stop(why = 'stop') {
+      const was = S.action.state;
+      if (DANCE_ON.includes(S.dance.state)) S.stopAsked = why;
+      if (S.react) cutReaction();
+      S.queued = null;
+      S.faceUntil = -1;
+      S.scanUntil = -1;
+      S.gazeUntil = -1;
+      S.noBlinkUntil = -1;
+      S.shyUntil = -1;
+      return { stopped: was, why };
     }
 
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
@@ -536,6 +592,8 @@
       // dancing she looks at you (the camera), only her eyes move: the head is the dance's
       if (dance.on) gaze = hold === 'lift' && holdGaze ? { mode: 'fixed', kind: 'hold', x: holdGaze.x, y: holdGaze.y } : { mode: 'fixed', kind: 'dance', x: 0, y: 0.05 };
 
+      const action = stepAction(dance, hold, R, holds);
+
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
       const standing = !(S.base && S.base.sit) && holds.mood !== 'sleep';
       const talkOn = S.holds.get('hold.talk');
@@ -557,6 +615,7 @@
         gaze,
         noBlink: S.t < S.noBlinkUntil,
         dance,
+        action,
         life: { dance: dance.on, sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
         facingYaw: +S.yaw.toFixed(3),
         turnLead: dance.on ? 0 : +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
@@ -569,6 +628,9 @@
 
     return {
       update,
+      stop,
+      action: () => ({ ...S.action }),
+      actions: () => S.actions.slice(),
       setPosture: setSetting,
       get posture() { return setting; },
       setPackIdle: (v) => { packIdle = !!v; },
@@ -579,5 +641,5 @@
     };
   }
 
-  return { DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

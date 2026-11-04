@@ -20,7 +20,8 @@
 // the last second), data-mode (active | idle | paused), data-state (the semantic events), data-expr
 // (expression weights), data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y),
 // data-springs (joints), data-vrm (1.0 | 0.x), data-anim (vrma | none | failed), data-style (female |
-// male | neutral (pack | meta | default)), data-posture, data-idle, data-reaction, data-hold, data-layers
+// male | neutral (pack | meta | default)), data-posture, data-idle, data-reaction, data-hold, data-action (the
+// director's action state, T-2829: idle | returning | dance | eat | touch …), data-layers
 // (clip:weight…), data-library (loaded | partial:<n> | none), data-overlays (layer:clip:weight of the holds and
 // reactions laid over the base), data-framing (full | half, what the camera frames now), data-cut (half: the
 // share of her height shown), data-band (bones | box | pack: what the half-body band was measured from).
@@ -288,6 +289,7 @@
       measure();
       fit(true);
       anim = window.PetVrmAnim.createAnimLayers(R, vrm, Life.BONES);
+      anim.setRest(restQuats()); // the base to fall back to (T-2829): a dance or a posture always fades back to it
       await loadClips(own);
       if (disposed) return false;
       startDirector();
@@ -382,15 +384,26 @@
       rest = { hipsY: y('hips') || 1, feetY: feet.length ? Math.min(...feet) : 0 };
     }
 
-    // arms down from the T-pose: what she shows before (or without) any clip
+    // arms down from the T-pose: what she shows before any clip (and the rest clip's pose). VRM 0.x mirrors x / z
+    // (M.restPoseFor): without it a 0.x model raised both arms instead of lowering them (T-2829)
+    const metaVersion = () => (vrm && vrm.meta && vrm.meta.metaVersion === '0' ? '0' : '1');
     function restPose() {
       const h = vrm.humanoid;
       if (!h) return;
       for (const n of Life.BONES) { const b = h.getNormalizedBoneNode(n); if (b) b.quaternion.identity(); }
-      for (const [name, r] of Object.entries(M.REST_POSE)) {
+      for (const [name, r] of Object.entries(M.restPoseFor(metaVersion()))) {
         const n = h.getNormalizedBoneNode(name);
         if (n) n.rotation.set(r.x * DEG, r.y * DEG, r.z * DEG);
       }
+    }
+    // the rest pose as quaternions per bone, for the rest clip (vrm-anim.js setRest)
+    function restQuats() {
+      const T = R.THREE;
+      const out = {};
+      const e = new T.Euler();
+      const q = new T.Quaternion();
+      for (const [name, r] of Object.entries(M.restPoseFor(metaVersion()))) out[name] = q.setFromEuler(e.set(r.x * DEG, r.y * DEG, r.z * DEG)).toArray();
+      return out;
     }
     function measure() {
       const T = R.THREE;
@@ -717,7 +730,8 @@
         // an idle clip starts somewhere in its loop at a slightly different pace each time: the same idle
         // never beats on the same clock twice (T-2691)
         const idleClip = plan.idleKind === 'clip' && plan.posture === null;
-        if (plan.base.dance) { if (anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade, { clock: 'external', time: DP.t }); } else if (plan.base.id && anim.has(plan.base.id)) anim.setBase(plan.base.id, lastBaseKey < 0 ? 0 : plan.base.fade, idleClip ? { phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
+        // (no clip for it — no motion library, a slot it lacks — is the rest clip, cross-faded: T-2829)
+        anim.playBase(plan.base, lastBaseKey < 0 ? 0 : plan.base.fade, plan.base.dance ? { clock: 'external', time: DP.t } : idleClip ? { phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
         lastBaseKey = plan.base.key;
       }
       // the dance: its time from the app's clock (the music), every frame (§4.1)
@@ -845,6 +859,7 @@
       d.idle = plan.idle || '';
       d.reaction = plan.reaction || '';
       d.hold = plan.hold || '';
+      d.action = plan.action ? plan.action.state : '';
       d.layers = anim.summary();
       d.overlays = anim.overlays();
       d.library = libState;
@@ -966,6 +981,7 @@
         director: () => director,
         plan: () => plan,
         setPosture: (p) => { if (director) director.setPosture(p); },
+        stopAction: (why) => (director ? director.stop(why) : null),
         loadDance,
         danceInfo: () => ({ ...danceInfo }),
         zoneAt,
@@ -1090,6 +1106,8 @@
       setFraming,
       loadDance,
       plan: () => plan,
+      // the user's stop (T-2829): whatever she does fades back to the idle (core/vrm-director.js stop)
+      stopAction: (why = 'stop') => (director ? director.stop(why) : null),
       danceInfo: () => ({ ...danceInfo }),
       isReady: () => !!(vrm && director && !disposed),
       framing: () => framing,

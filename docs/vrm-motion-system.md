@@ -132,6 +132,10 @@ r.figure.draw(snap);                  // rig/live2d 仍是 r.figure.draw({ t, st
 | L6 | **口型层 lip** | aa/ih/ou/ee/oh | 现有 lip（音频频谱 / 合成节奏） | 直接写入；与情绪表情冲突时压低情绪的嘴部影响（§3.5） |
 | — | 视线 lookAt | 光标 / 触摸点 / 思考向上 / 害羞看旁边 / 生气瞪人 | 导演给目标，`aim()` 实现 | three-vrm lookAt + 头颈跟随（L4） |
 
+**动作状态机与回 Idle（T-2829）**：导演每帧给出一个明确的动作状态 `plan.action = { state, since, from, exclusive }`（画布 `data-action`）：`idle` ↔ 动作（`dance` / `lift` / `touch` / `celebrate` / `play` / `drop` / `eat` / `think` / `talk` / `walk` / `sleep`）→ `returning`（结束或被停止的动作仍在淡出，≤ 淡出时长）→ `idle`。状态由各层**推导**而来（舞蹈基底、叠加片段、hold 权重、基底淡化），不会与层脱节：一个动作只有在她身上什么都不剩时才算结束。`director.stop(why)`（渲染器 `figure.stopAction()`）是通用的「停止」：请求停舞、反应按 `CUT` 淡出、清掉排队的庆祝 / 表情 / 张望；应用自己持有的状态（吃饭、睡觉、聊天）由应用结束。
+
+**基底永远有地方可回**：`vrm-anim.js` 用 rest pose（双臂下垂，VRM 0.x 镜像 x/z，`vrm-motion.js restPoseFor`）生成一个常量片段 `rest.pose`，键住所有骨骼；导演要求的基底没有片段（无动作库，或缺某个槽位，`base.id = null`）时，渲染器 `anim.playBase()` 交叉淡化到它。修复前这种情况直接跳过，上一个基底（尤其是外部时钟冻结的舞蹈片段）以权重 1 永远留着——舞蹈定格在最后一帧、之后所有交互只剩表情。舞蹈退出淡化为 0.5 s。
+
 **上下半身拆分**：three 的 `PropertyMixer` 对同一骨骼的多个动作按权重归一化混合，直接把「上半身反应」叠在「全身姿势」上会得到 50/50 的平均。因此 `vrm-anim.js` 对每个基础片段生成两个动作：`base.lower`（hips 位移/旋转 + 腿）与 `base.upper`（脊柱以上 + 手臂 + 手指），带 mask 的 L2/L3 只与对应半身做 `crossFadeTo`（例如 upper 反应淡入时，`base.upper` 同步淡出到 0，结束后再淡回），下半身不受影响。mask 取值：`full` / `upper`（spine 起）/ `arms`（shoulder 起 + 手指）/ `head`（neck、head）。
 
 ### 3.2 idle 层：调度与「活人感」
@@ -378,7 +382,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 
 - `figure.draw(snap)`：VRM 专用快照（§2.2）。为兼容 `picture()` 与旧调用，`draw({ t, state })` 仍可用：`state` 被包装为 `snap.status`/`snap.shot` 交给 intent。
 - `figure.zoneRects()`（P1）：投影后的触摸区域矩形。
-- 画布调试字段（e2e 读取）：保留 `data-frame/fps/mode/expr/mouth/lip/gaze/vrm/anim`；新增 `data-style`（female/male/neutral + 来源 pack|meta|default）、`data-posture`、`data-idle`、`data-reaction`（当前反应 id 或空）、`data-hold`（talk/think/eat/lift/…）、`data-layers`（各层权重摘要）、`data-library`（loaded/none/partial:<n>）；`data-state` 改为语义事件摘要。
+- 画布调试字段（e2e 读取）：保留 `data-frame/fps/mode/expr/mouth/lip/gaze/vrm/anim`；新增 `data-style`（female/male/neutral + 来源 pack|meta|default）、`data-posture`、`data-idle`、`data-reaction`（当前反应 id 或空）、`data-hold`（talk/think/eat/lift/…）、`data-action`（动作状态机，T-2829）、`data-layers`（各层权重摘要）、`data-library`（loaded/none/partial:<n>）；`data-state` 改为语义事件摘要。
 - `window.__pet.vrmDirector`（仅测试/调试）：`speed(k)` 加速调度时钟、`seed(n)` 固定随机数、`plan()` 当前 Plan。
 
 ---
