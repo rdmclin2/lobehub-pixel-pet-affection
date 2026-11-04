@@ -9,6 +9,7 @@
 //   scenario "store" -> 商店 → 舞蹈 / VRM 角色: every store dance (cover, credit, 有音乐), downloading one; the VRM models with their license; a VRM in parts (sha256 refusal), worn; dancing the store dance with its music
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
+//   scenario "music"  -> 音乐创作 (T-5088): 设置 → 音乐创作 page, its settings saved into settings.json `music`, http endpoint refused
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
@@ -10635,6 +10636,104 @@ async function titlebarScenario() {
   }
 }
 
+// 音乐创作 (T-5088, core/music.js): 设置 → 音乐创作 shows the music settings from the schema; a change is saved into
+// settings.json `music`, an http endpoint is refused; the key is the 朗读 → MiniMax one (no music key field of its own).
+async function musicSettingsScenario() {
+  const S = 'music';
+  const SHOTS = path.join(OUT, 'music');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-music-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-musicfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  let admin = null;
+  const shot = (name) => admin.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
+  try {
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    await hover(page);
+    await page.click('[data-act="settings"]');
+    for (let i = 0; i < 100 && !admin; i++) {
+      admin = app.windows().find((w) => w.url().includes('admin-ui')) || null;
+      if (!admin) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!admin) throw new Error('the settings window did not open');
+    await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1300); });
+
+    await step(S, 'M1 设置 → 声音 has the 音乐创作 tile (model · format · key status); it opens the 音乐创作 page with its 3 cards', async () => {
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-tile="music"]');
+      const tile = (await admin.textContent('[data-tile="music"]')).replace(/\s+/g, ' ').trim();
+      assert.match(tile, /音乐创作/);
+      assert.match(tile, /music-3\.0 · mp3 · 未设置 MiniMax Key/);
+      await shot('m1-settings-hub');
+      await admin.click('[data-tile="music"]');
+      await admin.waitForSelector('[data-path="/music"]');
+      const keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.endpoint', 'music.model', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputFormat', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec']) assert.ok(keys.includes(k), `${k} on the page (${keys.join(',')})`);
+      const text = await admin.textContent('[data-path="/music"]');
+      assert.match(text, /MiniMax 音乐/);
+      assert.match(text, /MINIMAX_API_KEY/);
+      await shot('m1-music-page-light');
+      return `tile "${tile}"; fields ${keys.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'M2 an http endpoint is refused and not saved; an https one is saved into settings.json music.endpoint', async () => {
+      const ep = admin.locator('input[data-key="music.endpoint"]');
+      await ep.fill('http://api.minimax.io');
+      await ep.press('Enter');
+      await admin.waitForSelector('input[data-key="music.endpoint"][aria-invalid="true"]', { timeout: 5000 });
+      await shot('m2-endpoint-http-refused');
+      assert.match(await admin.textContent('[data-path="/music"]'), /地址不合法：必须是 https/);
+      assert.equal((saved().music || {}).endpoint || '', '', 'nothing saved');
+      await ep.fill('https://api.minimax.io');
+      await ep.press('Enter');
+      await page.waitForTimeout(300);
+      for (let i = 0; i < 30 && (saved().music || {}).endpoint !== 'https://api.minimax.io'; i++) await page.waitForTimeout(100);
+      assert.equal(saved().music.endpoint, 'https://api.minimax.io');
+      await shot('m2-endpoint-https-saved');
+      return `http refused (aria-invalid); settings.json music.endpoint = ${saved().music.endpoint}`;
+    }, () => admin);
+
+    await step(S, 'M3 format wav (segmented), model music-2.6, timeout 900 s and a folder are saved; a relative folder / 10 s timeout are refused', async () => {
+      await admin.click('[data-key="music.format"] >> text=wav');
+      for (let i = 0; i < 30 && saved().music.format !== 'wav'; i++) await page.waitForTimeout(100);
+      const set = (k, v) => admin.evaluate(([kk, vv]) => window.petAdmin.set(kk, vv), [k, v]);
+      const m = await set('music.model', 'music-2.6');
+      const t = await set('music.timeoutSec', 900);
+      const d = await set('music.outputDir', path.join(data, 'songs'));
+      const badDir = await set('music.outputDir', 'relative/songs');
+      const badT = await set('music.timeoutSec', 10);
+      assert.equal(m.ok && t.ok && d.ok, true);
+      assert.equal(badDir.ok, false);
+      assert.equal(badT.ok, false);
+      await admin.reload();
+      await admin.waitForSelector('[data-path="/music"]');
+      await shot('m3-music-page-after-save');
+      const mu = saved().music;
+      assert.deepEqual({ format: mu.format, model: mu.model, timeoutSec: mu.timeoutSec, outputDir: mu.outputDir }, { format: 'wav', model: 'music-2.6', timeoutSec: 900, outputDir: path.join(data, 'songs') });
+      return `settings.json music = ${JSON.stringify(mu)}; refused: outputDir relative (${badDir.message}), timeoutSec 10 (${badT.message})`;
+    }, () => admin);
+
+    await step(S, 'M4 dark theme: the 音乐创作 page renders in dark', async () => {
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'dark'));
+      await admin.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+      await admin.waitForTimeout(300);
+      await shot('m4-music-page-dark');
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      return 'data-theme=dark';
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function adminScenario() {
   const S = 'admin';
   const SHOTS = path.join(OUT, 'admin');
@@ -11509,6 +11608,7 @@ async function interjectScenario() {
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'music' || which === 'all') await musicSettingsScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();

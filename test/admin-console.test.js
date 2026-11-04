@@ -64,7 +64,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 21, '21 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog; 舞蹈 since T-2801)');
+  assert.equal(navPages.length, 22, '22 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog; 舞蹈 since T-2801; 音乐创作 since T-5088)');
   assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);

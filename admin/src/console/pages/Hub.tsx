@@ -68,6 +68,7 @@ const useStatus = () => {
       tts: `朗读 ${yes(p.voice)}${settings.tts?.engine ? ` · ${settings.tts.engine}` : ''}`,
       asr: `语音输入 ${yes(settings.asr?.enabled)}`,
       voicepacks: `${(settings.ttsStatus?.packs ?? []).length} 个语音包`,
+      music: `${settings.music?.model ?? 'music-3.0'} · ${settings.music?.format ?? 'mp3'} · ${settings.ttsStatus?.engines?.minimax?.hasKey ? 'MiniMax Key 已设置' : '未设置 MiniMax Key'}`,
       packs: `${packs.length} 个角色包（导入 ${packs.filter((x) => x.source === 'user').length} 个）`,
       appearance: theme[settings.ui?.theme ?? 'auto'] ?? '跟随系统',
       connection: view?.space ? (view.space.personal ? '个人空间' : view.space.name) : '还没唤醒',

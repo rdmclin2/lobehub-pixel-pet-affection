@@ -159,6 +159,7 @@ const RUNTIME = [
   { id: 'affection', label: '好感', where: '玩法 → 主动搭话与好感；角色详情 → 好感', keys: ['affectionRules.dailyCap', 'affectionRules.decay'], actions: ['unlock-all'] },
   { id: 'visitors', label: '同屏伙伴', where: '玩法 → 同屏伙伴', keys: ['visitors', 'prefs.collide'] },
   { id: 'tts', label: '语音（朗读 / TTS）', where: '设置 → 朗读', keys: ['prefs.muted', 'prefs.voice', 'prefs.voiceInteractions', 'prefs.voiceMurmurs', 'tts.provider', 'tts.fallback', 'tts.packs', 'tts.endpoints.fish', 'tts.endpoints.minimax', 'tts.endpoints.local', 'tts.local.api', 'tts.local.model', 'tts.local.voice', 'keys.fish', 'keys.minimax', 'keys.local'], actions: ['tts-clear-cache'] },
+  { id: 'music', label: '音乐创作（MiniMax）', where: '设置 → 音乐创作；Key 在 设置 → 朗读 → MiniMax', keys: ['music.endpoint', 'music.model', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputFormat', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec', 'keys.minimax'] },
   { id: 'voicepacks', label: '语音包', where: '设置 → 语音包', keys: ['tts.packs'], actions: ['voicepacks-reload', 'open-voicepacks-folder'] },
   { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.hotkey', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },

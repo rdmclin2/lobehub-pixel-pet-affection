@@ -59,6 +59,7 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <ProactivePage />;
     case 'visitors':
     case 'appearance':
+    case 'music':
       return <SimpleSettingsPage page={page} />;
     default:
       return <OverviewPage navigate={navigate} />;
