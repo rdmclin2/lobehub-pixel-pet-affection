@@ -2717,5 +2717,210 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal };
+
+  // ------------------------------------------------------------------ vrmreset
+  // 重置姿势 (T-2830, docs/usage.md): the homemade VRM with the motion library and a dance library, the local API
+  // and the tray on. The ↺ toolbar button (VRM only), 托盘 → 重置姿势, Ctrl/⌘+Shift+R and POST /reset-pose each bring
+  // her back to the idle — from dancing, eating, asleep, playing and a lift left stuck — through the T-2829 action
+  // states (… → returning → idle), with nothing of the action left (layers, overlays, hold, reaction); already
+  // idle it changes nothing. Screenshots before / after each, a video with chapters (vrmreset-evidence.json).
+  async function vrmReset() {
+    const S = 'vrmreset';
+    const PORT = 7800 + Math.floor(Math.random() * 400);
+    const TOKEN = `e2e-reset-${Math.random().toString(36).slice(2, 12)}-token`;
+    const { data, env } = dataDir('vrmreset', { ageConfirmed: true, ageConfirmedAt: Date.now(), api: { enabled: true, port: PORT, token: TOKEN } }, { motions: true });
+    env.PIXELPET_TRAY = '1';
+    const { writeTestDances } = require('../scripts/make-test-dance');
+    writeTestDances(path.join(data, 'vrm-dances'));
+    const model = makeModel(ROOT, 'vrmreset');
+    const VIDEO = path.join(SHOTS, 'vrmreset-video');
+    fs.rmSync(VIDEO, { recursive: true, force: true });
+    fs.mkdirSync(VIDEO, { recursive: true });
+    const evidence = [];
+    const chapters = [];
+    const t0 = Date.now();
+    const { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'], video: VIDEO });
+    const errors = watchErrors(page);
+    const H = helpers(page, 'reset', evidence, app);
+    const api = async (method, p, body) => {
+      const r = await fetch(`http://127.0.0.1:${PORT}/pixel-pet${p}`, { method, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, json: await r.json() };
+    };
+    const ds = H.ds;
+    const hover = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
+    const waitAction = (want, ms = 8000) => page.waitForFunction((w) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(`^(${w})$`).test(c.dataset.action || ''); }, want, { timeout: ms }).catch(async () => { throw new Error(`data-action stays ${(await ds()).action}, wanted ${want}`); });
+    // data-action every 40 ms for `ms`, deduplicated: the path she takes back
+    const trace = async (ms = 2500) => { const out = []; const s0 = Date.now(); while (Date.now() - s0 < ms) { const a = (await ds()).action; if (out[out.length - 1] !== a) out.push(a); await sleep(40); } return out; };
+    const clean = (d, label) => {
+      assert.equal(d.action, 'idle', `${label}: action ${d.action}`);
+      assert.ok(!/dance:/.test(d.layers), `${label}: layers ${d.layers}`);
+      assert.equal(d.overlays, '', `${label}: overlays ${d.overlays}`);
+      assert.equal(d.hold, '', `${label}: hold ${d.hold}`);
+      assert.equal(d.reaction, '', `${label}: reaction ${d.reaction}`);
+      assert.ok(!/angry/.test(d.expr || ''), `${label}: expr ${d.expr}`);
+    };
+    // one reset from `state`: before shot, `doReset`, the path back, after shot
+    const resetFrom = async (name, state, doReset, how) => {
+      await waitAction(state);
+      await sleep(600);
+      const before = await ds();
+      await hover();
+      const shotBefore = await H.shot(`${name}-before`);
+      const n0 = Number(before.reset || 0);
+      const rr = await doReset();
+      const path1 = await trace(2500);
+      await waitAction('idle', 6000);
+      await sleep(700);
+      const after = await ds();
+      clean(after, name);
+      assert.equal(Number(after.reset || 0), n0 + 1, `${name}: one reset on the figure (data-reset ${after.reset})`);
+      assert.ok(path1[path1.length - 1] === 'idle', `${name}: ends idle (${path1.join(' → ')})`);
+      const lr = await page.evaluate(() => window.petFx.lastReset());
+      await hover();
+      const shotAfter = await H.shot(`${name}-after`);
+      return H.note(`${name} (${how}): before data-action=${before.action} layers=${before.layers} hold='${before.hold}' overlays='${before.overlays}' → reset ${JSON.stringify(rr)} → path ${[before.action, ...path1].filter((x, i, a) => a[i - 1] !== x).join(' → ')} → after data-action=${after.action} layers=${after.layers} overlays='${after.overlays}' hold='${after.hold}' reaction='${after.reaction}' expr=${after.expr}; app.lastReset=${JSON.stringify({ source: lr.source, before: lr.before, cleared: lr.cleared, figures: lr.figures })}; shots ${shotBefore}, ${shotAfter}`);
+    };
+    let ID = null;
+    const ST = async (name, fn) => { chapters.push({ at: (Date.now() - t0) / 1000, title: name }); return step(S, name, fn, page); };
+    try {
+      await ST('穿上自制 VRM（动作库已载入）：工具栏出现 ↺ 重置姿势；托盘菜单有“重置姿势”', async () => {
+        await H.hatch();
+        assert.equal(await page.evaluate(() => document.getElementById('btn-reset').classList.contains('hidden')), true, 'pixel look: no ↺');
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        ID = imp.pack.id;
+        await page.evaluate((x) => window.pet.switchCharacter(x), ID);
+        await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), ID, { timeout: 15000 });
+        await H.drawing(3);
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
+        for (let i = 0; i < 50; i++) { try { if ((await api('GET', '/state')).status === 200) break; } catch { /* not listening yet */ } await sleep(200); }
+        await waitAction('idle');
+        await hover();
+        await page.waitForSelector('#btn-reset:not(.hidden)', { timeout: 5000 });
+        const btn = await page.evaluate(() => { const b = document.getElementById('btn-reset'); const r = b.getBoundingClientRect(); const tb = document.getElementById('toolbar').getBoundingClientRect(); return { label: b.getAttribute('aria-label'), title: b.title, w: r.width, h: r.height, inToolbar: r.top >= tb.top - 1 && r.bottom <= tb.bottom + 1, rows: [...new Set([...document.querySelectorAll('#toolbar .btn:not(.hidden)')].map((x) => Math.round(x.getBoundingClientRect().top)))].length }; });
+        assert.equal(btn.label, '重置姿势');
+        assert.match(btn.title, /Ctrl\/⌘ \+ Shift \+ R/);
+        await H.shot('0-entry');
+        await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'reset-0-entry-toolbar.png') });
+        const tray = await page.evaluate(() => window.pet.debugTray());
+        assert.ok(tray.items.includes('重置姿势'), tray.items.join(' / '));
+        // the real tray menu, rendered by the OS as a native menu (a test display has no tray area): grab the display
+        let trayShot = 'n/a';
+        if (process.env.DISPLAY) {
+          assert.equal(await page.evaluate(() => window.pet.debugTrayPopup({ x: 20, y: 300 })), true);
+          await sleep(700);
+          const file = path.join(SHOTS, 'reset-0-tray-menu.png');
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-i', process.env.DISPLAY, '-frames:v', '1', file]);
+          await page.evaluate(() => window.pet.debugTrayPopup({ close: true }));
+          await sleep(300);
+          trayShot = 'vrm/reset-0-tray-menu.png (whole X display)';
+        }
+        const routes = (await api('GET', '/nope')).json.routes;
+        assert.ok(routes.includes('POST /pixel-pet/reset-pose'), routes.join(' '));
+        return H.note(`VRM ${ID}: ↺ ${JSON.stringify(btn)}; tray items ${JSON.stringify(tray.items)}; API routes include POST /pixel-pet/reset-pose; shots vrm/reset-0-entry.png, vrm/reset-0-entry-toolbar.png, ${trayShot}`);
+      });
+
+      await ST('已在 Idle：点 ↺ 不产生任何变化（no-op）', async () => {
+        await waitAction('idle');
+        await sleep(400);
+        const before = await ds();
+        await page.click('#btn-reset');
+        await sleep(200);
+        const lr = await page.evaluate(() => window.petFx.lastReset());
+        const tr = await trace(1200);
+        const after = await ds();
+        assert.equal(lr.source, 'button');
+        assert.deepEqual(lr.before, ['idle']);
+        assert.deepEqual(lr.cleared, []);
+        assert.equal(lr.figures[0].noop, true, JSON.stringify(lr.figures));
+        assert.deepEqual(tr, ['idle'], tr.join(' → '));
+        assert.equal(after.reset || '0', before.reset || '0', 'no reset counted on the figure');
+        assert.equal(after.posture, before.posture);
+        return H.note(`idle → ↺: lastReset ${JSON.stringify(lr)}; data-action path ${tr.join(' → ')}; data-reset ${before.reset || 0} → ${after.reset || 0}; posture ${before.posture} → ${after.posture}`);
+      });
+
+      await ST('跳舞中 → 点工具栏 ↺ → 平滑回到 Idle（舞蹈层淡出、音乐停止）', async () => {
+        const r = await api('POST', '/dance', { id: 'e2e-test', loop: true });
+        assert.equal(r.status, 200, JSON.stringify(r.json));
+        await waitAction('dance');
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.layers === 'dance:e2e-test:1.00', null, { timeout: 5000 });
+        const note = await resetFrom('1-dance', 'dance', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        const st = await api('GET', '/state');
+        assert.equal(st.json.dance, null, 'the dance is over');
+        return `${note}; /state.dance ${JSON.stringify(st.json.dance)}`;
+      });
+
+      await ST('吃饭中 → Ctrl/⌘+Shift+R → 回到 Idle', async () => {
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        const key = process.platform === 'darwin' ? 'Meta+Shift+KeyR' : 'Control+Shift+KeyR';
+        const note = await resetFrom('2-eat', 'eat', async () => { await page.keyboard.press(key); return key; }, `快捷键 ${key}`);
+        assert.equal((await page.evaluate(() => window.petFx.lastReset())).source, 'key', 'reset by the shortcut');
+        assert.equal(await page.evaluate(() => document.getElementById('pet-screen').classList.contains('hidden')), false, 'the window was not reloaded');
+        return note;
+      });
+
+      await ST('睡觉中 → 托盘“重置姿势” → 醒来并回到 Idle（不扣好感）', async () => {
+        const aff0 = (await api('GET', '/state')).json.pet.affection;
+        await clickAct(page, 'sleep');
+        await page.waitForFunction(() => window.petFx.state().state === 'sleep', null, { timeout: 5000 });
+        const aff1 = (await api('GET', '/state')).json.pet.affection;
+        const note = await resetFrom('3-sleep', 'sleep', async () => page.evaluate(() => window.pet.debugTrayClick('重置姿势')), '托盘 → 重置姿势');
+        const st = (await api('GET', '/state')).json.pet;
+        assert.equal(st.sleeping, false, 'awake');
+        assert.equal(st.affection, aff1, 'no affection lost by the reset');
+        return `${note}; /state.pet.sleeping ${st.sleeping}; affection before sleep ${aff0}, asleep ${aff1}, after reset ${st.affection}`;
+      });
+
+      await ST('玩耍 / 一次性反应中（点玩耍；没触发欢呼时用同层的庆祝反应）→ 本地 API POST /reset-pose → 回到 Idle', async () => {
+        let got = false;
+        for (let i = 0; i < 12 && !got; i++) {
+          await clickAct(page, 'play');
+          got = await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.action === 'play', null, { timeout: 1500 }).then(() => true, () => false);
+          if (!got) await sleep(2600); // the play cue cheers now and then (else a smile): try again
+        }
+        if (!got) { // the cheer did not come up: a celebration plays the same way (a one-shot reaction)
+          await page.evaluate(() => window.PetVRM.director.inject({ type: 'celebrate', name: 'evolve' }));
+        }
+        const state = got ? 'play' : 'celebrate'; // 玩耍 on a VRM look: a cheer now and then (else only a smile + her line) — the same reaction layer as a celebration
+        let res = null;
+        const note = await resetFrom('4-play', state, async () => { res = await api('POST', '/reset-pose'); return res; }, 'POST /reset-pose');
+        assert.equal(res.status, 200);
+        assert.equal(res.json.ok, true);
+        return note;
+      });
+
+      await ST('拖起后卡在举起状态 → ↺ → 回到 Idle', async () => {
+        await page.evaluate(() => window.petFx.lift(true));
+        const note = await resetFrom('5-lift', 'lift', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        assert.notEqual(await page.evaluate(() => window.petFx.state().state), 'lifted', 'let go');
+        return note;
+      });
+
+      await ST('重置后仍能正常交互：再跳舞、再吃饭都能播放（不卡死）', async () => {
+        const r = await api('POST', '/dance', { id: 'e2e-test' });
+        assert.equal(r.status, 200);
+        await waitAction('dance');
+        await api('POST', '/reset-pose');
+        await waitAction('idle');
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        await waitAction('eat');
+        await page.evaluate(() => window.pet.resetPose('test'));
+        await waitAction('idle');
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        return H.note('dance → POST /reset-pose → idle → 喂食 → eat → IPC resetPose → idle; console errors: none');
+      });
+    } finally {
+      const vpath = await page.video() ? await page.video().path().catch(() => null) : null;
+      await app.close().catch(() => {});
+      let video = null;
+      if (vpath && fs.existsSync(vpath)) { video = path.join(SHOTS, 'vrmreset.webm'); fs.copyFileSync(vpath, video); }
+      fs.writeFileSync(path.join(SHOTS, 'vrmreset-evidence.json'), JSON.stringify({ chapters, evidence, video }, null, 2));
+    }
+  }
+
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset };
 };

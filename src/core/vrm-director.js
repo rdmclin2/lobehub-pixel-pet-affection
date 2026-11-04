@@ -171,6 +171,9 @@
       action: { state: 'idle', since: 0, from: null }, // T-2829: what she is doing (ACTIONS)
       actions: [], // transitions, newest last: { t, from, to, why }
       stopAsked: null, // stop(): the dance is asked to stop on the next frame
+      resets: [], // T-2830 reset(): { t, was, why }, newest last
+      resetWhy: null, // the reset's reason, written on the transitions it causes
+      resetAt: -1, // when the last reset was
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
@@ -235,7 +238,7 @@
       const sitChange = S.base && clip && !!clip.sit !== !!S.base.sit;
       const fromDance = !!(S.base && S.base.dance);
       S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), fade: first ? FADE.first : fromDance ? DANCE.fadeOut : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
-      if (fromDance) S.baseFadeUntil = S.t + S.base.fade;
+      if (fromDance || S.resetWhy) S.baseFadeUntil = S.t + S.base.fade; // a reset (T-2830) from a posture (asleep: sit.doze) fades too
       S.posture = posture;
       S.postureSource = source;
     }
@@ -315,6 +318,7 @@
         const slot = e.mood === 'happy' || !MOOD_REACTION[e.mood] ? ZONE_REACTION[e.zone] || 'react.touch-head' : MOOD_REACTION[e.mood];
         startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}` });
       } else if (e.type === 'drag') {
+        if (e.what !== 'lift' && S.t - S.resetAt < 0.5) return; // a reset let her go (T-2830): no landing reaction
         if (e.what === 'lift') cutReaction(); // the lift hold takes over at once
         else startReaction('react.drop', { prio: PRIORITY.drop, hold: e.what === 'thrown' ? 0.7 : undefined, amp: 1, why: `drag:${e.what}` });
       } else if (e.type === 'celebrate') {
@@ -479,7 +483,8 @@
       const A = S.action;
       const now = actionNow(dance, hold, R, holds);
       if (now !== A.state) {
-        S.actions.push({ t: +S.t.toFixed(3), from: A.state, to: now });
+        S.actions.push({ t: +S.t.toFixed(3), from: A.state, to: now, ...(S.resetWhy ? { why: S.resetWhy } : {}) });
+        if (now === 'idle') S.resetWhy = null;
         if (S.actions.length > 50) S.actions.shift();
         S.action = { state: now, since: S.t, from: A.state };
       }
@@ -498,6 +503,27 @@
       S.noBlinkUntil = -1;
       S.shyUntil = -1;
       return { stopped: was, why };
+    }
+
+    // 重置姿势 (T-2830): the user's "back to the idle, whatever she is doing" — stop() (the dance asked to stop, the
+    // reaction cut and fading, the waiting celebration, face, glances dropped) plus the flags stop() keeps: the
+    // anger of a touch streak, the dance's touch face, the boredom clock (she stands in her idle instead of
+    // sitting down to rest). The layers then fade out by their own fades (no snap) and stepAction walks
+    // … → returning → idle. The app ends its own holds (the meal, sleep, the lift: renderer/app.js resetPose).
+    // Already idle with nothing waiting: nothing changes (no new idle, no cut glance) → { reset: false, noop }.
+    function reset(why = 'reset') {
+      const was = S.action.state;
+      if (was === 'idle' && !S.react && !S.queued && !S.fading.length && !DANCE_ON.includes(S.dance.state)) return { reset: false, noop: true, was, why };
+      stop(why);
+      S.angryUntil = -1;
+      S.danceTouch = null;
+      S.face = null;
+      S.lastEvent = S.t;
+      S.resetWhy = why;
+      S.resetAt = S.t;
+      S.resets.push({ t: +S.t.toFixed(3), was, why });
+      if (S.resets.length > 20) S.resets.shift();
+      return { reset: true, noop: false, was, why };
     }
 
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
@@ -616,6 +642,7 @@
         noBlink: S.t < S.noBlinkUntil,
         dance,
         action,
+        resets: S.resets.length,
         life: { dance: dance.on, sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
         facingYaw: +S.yaw.toFixed(3),
         turnLead: dance.on ? 0 : +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
@@ -629,6 +656,8 @@
     return {
       update,
       stop,
+      reset,
+      resets: () => S.resets.slice(),
       action: () => ({ ...S.action }),
       actions: () => S.actions.slice(),
       setPosture: setSetting,

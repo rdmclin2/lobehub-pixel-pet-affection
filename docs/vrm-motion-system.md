@@ -134,6 +134,8 @@ r.figure.draw(snap);                  // rig/live2d 仍是 r.figure.draw({ t, st
 
 **动作状态机与回 Idle（T-2829）**：导演每帧给出一个明确的动作状态 `plan.action = { state, since, from, exclusive }`（画布 `data-action`）：`idle` ↔ 动作（`dance` / `lift` / `touch` / `celebrate` / `play` / `drop` / `eat` / `think` / `talk` / `walk` / `sleep`）→ `returning`（结束或被停止的动作仍在淡出，≤ 淡出时长）→ `idle`。状态由各层**推导**而来（舞蹈基底、叠加片段、hold 权重、基底淡化），不会与层脱节：一个动作只有在她身上什么都不剩时才算结束。`director.stop(why)`（渲染器 `figure.stopAction()`）是通用的「停止」：请求停舞、反应按 `CUT` 淡出、清掉排队的庆祝 / 表情 / 张望；应用自己持有的状态（吃饭、睡觉、聊天）由应用结束。
 
+**重置姿势（T-2830）**：`director.reset(why)` = `stop(why)` 再清掉 stop 保留的标志（连击后的生气 `angryUntil`、跳舞中的触摸表情、无聊计时 `lastEvent`），把 `why` 记在随后的状态转移上（`actions()[i].why`），重置后 0.5 s 内的放下事件不再触发落地反应；已在 `idle` 且无排队 / 淡出 / 舞蹈时返回 `{ reset: false, noop: true }`，逐帧不变。渲染器 `figure.resetToIdle()`（画布 `data-reset` 计数），应用层 `app.js resetPose()` 先结束应用自己持有的状态（停舞、吃饭、玩耍一次性动作、举起、走路、台词口型），主进程再叫醒睡着的她（`core/reset-wake.js` 的 `wakeForReset`，不扣好感；服务改用其 `tick` 包装，15 分钟内不自动入睡——冻结的 `pet-state.js` 不动）。入口：工具栏 ↺、Ctrl/⌘+Shift+R、托盘「重置姿势」、IPC `reset-pose`、本地 API `POST /pixel-pet/reset-pose`（docs/usage.md「重置姿势」）。
+
 **基底永远有地方可回**：`vrm-anim.js` 用 rest pose（双臂下垂，VRM 0.x 镜像 x/z，`vrm-motion.js restPoseFor`）生成一个常量片段 `rest.pose`，键住所有骨骼；导演要求的基底没有片段（无动作库，或缺某个槽位，`base.id = null`）时，渲染器 `anim.playBase()` 交叉淡化到它。修复前这种情况直接跳过，上一个基底（尤其是外部时钟冻结的舞蹈片段）以权重 1 永远留着——舞蹈定格在最后一帧、之后所有交互只剩表情。舞蹈退出淡化为 0.5 s。
 
 **上下半身拆分**：three 的 `PropertyMixer` 对同一骨骼的多个动作按权重归一化混合，直接把「上半身反应」叠在「全身姿势」上会得到 50/50 的平均。因此 `vrm-anim.js` 对每个基础片段生成两个动作：`base.lower`（hips 位移/旋转 + 腿）与 `base.upper`（脊柱以上 + 手臂 + 手指），带 mask 的 L2/L3 只与对应半身做 `crossFadeTo`（例如 upper 反应淡入时，`base.upper` 同步淡出到 0，结束后再淡回），下半身不受影响。mask 取值：`full` / `upper`（spine 起）/ `arms`（shoulder 起 + 手指）/ `head`（neck、head）。

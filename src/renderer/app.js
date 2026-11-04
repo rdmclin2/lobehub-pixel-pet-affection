@@ -1314,6 +1314,36 @@ async function doAct(kind, food) {
   }
 }
 
+// ---------- 重置姿势 (T-2830, docs/usage.md) ----------
+// The toolbar's ↺ (a VRM look), Ctrl/⌘+Shift+R in her window, 托盘 → 重置姿势 and the local API POST /reset-pose
+// all go through main (main.js resetPose: asleep, she wakes up there first), which then asks this window
+// (api-cmd 'reset-pose'): the app's own holds end here — the dance stops (its usual fade), the meal and a play /
+// cue one-shot are cleared, a stuck lift let go, a walk stopped — and every VRM figure resets its director (the
+// T-2829 action states: … → returning → idle, every layer fading out by its own fade). A reply being thought or
+// read keeps its pose: that is not stuck. Already idle: nothing changes. → what she was doing, what was ended.
+function resetPose(source = 'button') {
+  const figs = [...rigs].filter((r) => r.kind === 'vrm' && r.figure.resetToIdle);
+  const before = figs.map((r) => { const p = r.figure.plan(); return p && p.action ? p.action.state : null; });
+  const cleared = [];
+  if (dance && dance.active()) { dance.stop({ reason: 'reset' }); cleared.push('dance'); }
+  if (eating) { eating = null; cleared.push('eat'); }
+  if (fx.current(performance.now())) { fx.clear(); cleared.push('one-shot'); }
+  if (fx.lifted) { fx.setLifted(false); cleared.push('lift'); }
+  if (fx.walking) { fx.stopWalk(); cleared.push('walk'); }
+  if (talkUntil > performance.now() && !voiceNow()) { talkUntil = 0; cleared.push('talk'); } // a line's lip flap (the bubble stays); a voice playing keeps hers
+  const figures = figs.map((r) => r.figure.resetToIdle(`reset:${source}`));
+  syncDanceButton();
+  lastReset = { at: Date.now(), source, before, cleared, figures };
+  return { ok: true, source, before, cleared, figures };
+}
+let lastReset = null;
+// the ↺ button: shown for a VRM look only (the pixel and Live2D looks have no pose to get stuck in)
+function syncResetButton() {
+  const b = $('btn-reset');
+  const show = !!(view && view.look && view.look.kind === 'vrm');
+  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
+}
+
 function buildFoodMenu() {
   const m = $('food-menu');
   m.innerHTML = '';
@@ -1528,6 +1558,7 @@ function bindPetUi() {
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
     } else if (act === 'settings') openSettings();
     else if (act === 'mute') toggleMute();
+    else if (act === 'reset') window.pet.resetPose('button');
   });
   const send = async () => {
     const input = $('chat-input');
@@ -1592,6 +1623,13 @@ function bindPetUi() {
   bindMic();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); else if (e.key === 'Escape' && dance && dance.active()) dance.stop({ reason: 'esc' }); });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
+  // 重置姿势 Ctrl/⌘+Shift+R: main catches it first (before-input-event, which also keeps Electron's force reload
+  // off it); a key event main did not see (synthetic input) lands here
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyR' || !e.shiftKey || e.altKey || !(navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey)) return;
+    e.preventDefault();
+    window.pet.resetPose('key');
+  });
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
@@ -2378,6 +2416,8 @@ window.petFx = {
   vrm: () => (window.PetVRM ? window.PetVRM.debug() : null),
   // dancing: the controller's state (id, time, music, gain…) and counters
   dance: () => (dance ? { state: dance.state(), stats: dance.stats() } : null),
+  // 重置姿势 (T-2830): the last reset this window carried out
+  lastReset: () => lastReset && { ...lastReset },
   // the Live2D figures drawn now: framing, half-body band (and where it came from), placement, gaze
   live2d: () => [...rigs].filter((r) => r.canvas.classList.contains('live2d') && r.figure.debug).map((r) => r.figure.debug()),
   // the desktop pet's pixel sprite: framing, half-body band (pack / default), measured reference, crop, canvas size
@@ -2422,6 +2462,7 @@ async function onApiCmd({ id, cmd, args }) {
     if (cmd === 'dance') result = dance ? await dance.play({ id: args.id || null, name: args.name || null, loop: args.loop }) : { ok: false, reason: 'no-pet' };
     if (cmd === 'dance-stop') result = dance ? dance.stop({ reason: args.immediate ? 'removed' : 'api', immediate: !!args.immediate }) : { ok: false, reason: 'no-pet' };
     if (cmd === 'dance-loop') result = dance && dance.active() ? { ok: true, loop: dance.setLoop(args.on) } : { ok: false, reason: 'not-dancing' };
+    if (cmd === 'reset-pose') result = resetPose(args.source);
     if (cmd === 'dance-state') result = { ok: true, dance: dance ? dance.state() : null };
     if (cmd === 'anim') {
       if (thinking) result = { ok: false, reason: 'busy' };
@@ -2449,7 +2490,7 @@ async function onApiCmd({ id, cmd, args }) {
 const spriteGliding = () => { for (const s of sprites) if (s.glide) return true; return false; }; // a framing glide wants every frame
 function frameLoop() {
   if (dance) dance.tick(performance.now()); // before the figure draws: the clock, the music, the director's asks
-  if (view && !VISITOR) syncDanceButton();
+  if (view && !VISITOR) { syncDanceButton(); syncResetButton(); }
   tickSprites(performance.now());
   tickRigs(performance.now());
   if (!$('hatching').classList.contains('hidden')) {

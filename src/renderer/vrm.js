@@ -973,6 +973,17 @@
       return { total: seen.size, loaded: loadedN };
     }
 
+    // 重置姿势 (T-2830): the director's reset (the same action state machine as stop(), T-2829) plus what only
+    // this figure keeps: debug events not read yet. The bone overlays, expressions and the base are all redrawn
+    // from the plan every frame, so they fade back with it — nothing is snapped here.
+    function resetToIdle(why = 'reset') {
+      if (!director) return { reset: false, reason: 'not-ready' };
+      injected.length = 0;
+      const r = director.reset(why);
+      canvas.dataset.reset = String((Number(canvas.dataset.reset) || 0) + (r.reset ? 1 : 0));
+      return r;
+    }
+
     function fig() {
       return {
         canvas,
@@ -982,6 +993,7 @@
         plan: () => plan,
         setPosture: (p) => { if (director) director.setPosture(p); },
         stopAction: (why) => (director ? director.stop(why) : null),
+        resetToIdle: (why) => resetToIdle(why),
         loadDance,
         danceInfo: () => ({ ...danceInfo }),
         zoneAt,
@@ -1108,6 +1120,8 @@
       plan: () => plan,
       // the user's stop (T-2829): whatever she does fades back to the idle (core/vrm-director.js stop)
       stopAction: (why = 'stop') => (director ? director.stop(why) : null),
+      // 重置姿势 (T-2830): back to the idle from anything, faded (core/vrm-director.js reset)
+      resetToIdle: (why = 'reset') => resetToIdle(why),
       danceInfo: () => ({ ...danceInfo }),
       isReady: () => !!(vrm && director && !disposed),
       framing: () => framing,
@@ -1164,6 +1178,8 @@
     postures: () => Object.fromEntries(postures),
     // a semantic event as if the app had sent it ({ type: 'celebrate', name: 'evolve' }…), and the zones on screen
     inject: (e) => { for (const f of figures) f.inject(e); return true; },
+    // 重置姿势 (T-2830): every figure back to the idle; what each was doing
+    reset: (why = 'reset') => [...figures].map((f) => f.resetToIdle(why)),
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
     // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)

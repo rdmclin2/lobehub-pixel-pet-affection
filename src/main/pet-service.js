@@ -2,6 +2,7 @@
 
 const { EventEmitter } = require('node:events');
 const state = require('../core/pet-state');
+const resetWake = require('../core/reset-wake'); // 重置姿势: wake + no-auto-sleep grace, outside the frozen pet-state
 const persona = require('../core/persona');
 const { adultAllowed, stageName, setRules: setAffectionRules } = require('../core/affection');
 const dialogue = require('../core/dialogue');
@@ -197,7 +198,7 @@ class PetService extends EventEmitter {
     this.lh.setWorkspace(this.pet && this.pet.space ? this.pet.space.workspaceId : this.pet ? undefined : null);
     if (this.pet) {
       // only the current character lives on while the app is closed; the others stay where they were
-      const { decay } = state.tick(this._c(), t);
+      const { decay } = resetWake.tick(this._c(), t);
       // The settings may have changed while the app was closed (e.g. a re-asked age gate).
       const { changed } = this._enforce();
       if (migrated || remapped || cm.changed || decay > 0 || changed) this.store.save(this.pet);
@@ -885,7 +886,7 @@ class PetService extends EventEmitter {
       this.pet.characters[speciesId] = next;
     } else state.resume(next, this.now());
     // the one leaving stops here; her needs wait for her return
-    state.tick(this._c(), this.now());
+    resetWake.tick(this._c(), this.now());
     this.pet.speciesId = speciesId;
     this.pet.characterId = e.id;
     // her pack's wardrobe applies on arrival: an outfit it has no art for is taken off and saved (T-2752)
@@ -1768,6 +1769,15 @@ class PetService extends EventEmitter {
     return r;
   }
 
+  // 重置姿势 (T-2830): asleep, she wakes up (no affection lost, no line); the pose itself is the pet window's
+  // (main.js resetPose). Allowed while busy: it changes nothing of the chat. → { ok, woke }
+  resetPose() {
+    if (!this.pet) return { ok: false, woke: false };
+    const woke = resetWake.wakeForReset(this._c(), this.now());
+    if (woke) this._save();
+    return { ok: true, woke };
+  }
+
   // Touch one body part: instant, offline, no LLM cost. `target` is a zone id ('head', 'chest', …) or
   // the click point in the sprite's visible box, { x, y } in 0..1 (+ `pose`, and `opaque: false` for a
   // transparent pixel), resolved with the character's zone table. No target = the head, like a pat.
@@ -1825,7 +1835,7 @@ class PetService extends EventEmitter {
     if (!this.pet) return;
     const t = this.now();
     const c = this._c();
-    const { events, decay } = state.tick(c, t);
+    const { events, decay } = resetWake.tick(c, t);
     this._save();
     const lost = decay + (this._pendingDecay || 0);
     this._pendingDecay = 0;
