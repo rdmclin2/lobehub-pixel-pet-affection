@@ -112,6 +112,17 @@
   const REACTION_ACTION = { 'react.cheer': 'celebrate', 'react.greet': 'celebrate', 'react.drop': 'drop' };
   const ACTIONS = ['idle', 'returning', 'dance', 'lift', 'touch', 'celebrate', 'play', 'drop', 'eat', 'think', 'talk', 'walk', 'sleep'];
 
+  // ---------- the body of eat / play / sleep (T-2831, docs §14) ----------
+  // The library has no clip that moves her body for these (hold.eat is a still stand, sleep a posture only with the
+  // library, play a cue): core/vrm-acts.js makes them procedurally and the renderer lays them over the clips. Here:
+  // when each plays and with what weight (plan.acts: [{ name, w, time }]). eat while the app's meal lasts (the eat
+  // hold), sleep while she is asleep, play a one-shot of ACT.play.dur s from the 玩耍 button (event `play`). They
+  // fade in / out by ACT (no snap), give way to a reaction on top (the weight × 1 − the reaction's), and are
+  // interrupted: play by a touch, a drop, a celebration, a lift, a meal, thinking or a dance; eat and sleep by the
+  // lift and a dance. stop() ends play, and eat / sleep until the app's meal / sleep ends (the next one plays again).
+  const ACT = { eat: { fadeIn: 0.35, fadeOut: 0.45 }, play: { fadeIn: 0.25, fadeOut: 0.45, dur: 3.2, face: { happy: 0.8 } }, sleep: { fadeIn: 1.2, fadeOut: 0.7 } };
+  const ACT_NAMES = Object.keys(ACT);
+
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const scaleFace = (f, k) => Object.fromEntries(Object.entries(f || {}).map(([n, w]) => [n, n.startsWith('blink') ? w : clamp(w * k, 0, 1)]));
   // a seeded generator (mulberry32) for tests and the debug seed
@@ -174,6 +185,11 @@
       resets: [], // T-2830 reset(): { t, was, why }, newest last
       resetWhy: null, // the reset's reason, written on the transitions it causes
       resetAt: -1, // when the last reset was
+      acts: Object.fromEntries(ACT_NAMES.map((n) => [n, { w: 0, start: 0, on: false }])), // T-2831: eat / play / sleep
+      play: null, // the play one-shot: { start, until, n }
+      playN: 0,
+      suppress: { eat: false, sleep: false }, // stop(): the app's meal / sleep shown as idle until it ends
+      rawHolds: null, // the holds of the last frame, before stop()'s suppression
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
@@ -270,6 +286,8 @@
         }
       }
       if (cur) cutReaction();
+      // a touch, a drop, a celebration ends the play one-shot (a cue's small cheer never starts over it)
+      if (S.play && (opts.prio !== undefined ? opts.prio : PRIORITY.touch) > PRIORITY.cue) endPlay();
       const fadeIn = clip ? clip.fadeIn : 0.2;
       const fadeOut = clip ? clip.fadeOut : 0.5;
       const hold = opts.hold !== undefined ? opts.hold : clip ? (clip.hold || look.hold || 0) : 0;
@@ -325,11 +343,17 @@
         const slot = e.name === 'hatch' ? 'react.greet' : 'react.cheer';
         if (busy > PRIORITY.celebrate || holds.lift) S.queued = { slot, why: `celebrate:${e.name}` }; // one waits, more are dropped
         else startReaction(slot, { prio: PRIORITY.celebrate, why: `celebrate:${e.name}` });
+      } else if (e.type === 'play') {
+        // 玩耍 (T-2831): the user's order — a one-shot of hops and waves; held up in the air there is none
+        if (holds.lift) return;
+        if (S.react) cutReaction();
+        S.queued = null;
+        S.play = { start: S.t, until: S.t + ACT.play.dur, n: ++S.playN };
       } else if (e.type === 'cue') {
         if (e.name === 'look') S.scanUntil = S.t + 2.6;
         else if (e.name === 'play' || e.name === 'happy') {
           // a hint, not an order: now and then a small cheer, else a smile; never over anything else
-          if (busy < 0 && !holds.lift && !holds.think && !holds.eat && !holds.talk && rand() < 0.35) startReaction('react.cheer', { prio: PRIORITY.cue, amp: 0.6, why: `cue:${e.name}` });
+          if (busy < 0 && !playing() && !holds.lift && !holds.think && !holds.eat && !holds.talk && rand() < 0.35) startReaction('react.cheer', { prio: PRIORITY.cue, amp: 0.6, why: `cue:${e.name}` });
           else { S.face = { happy: 0.6 }; S.faceUntil = S.t + 1.6; }
         }
       }
@@ -473,10 +497,12 @@
       if (dance.on) return 'dance';
       if (hold === 'lift') return 'lift';
       if (R) return R.why && /^cue:play/.test(R.why) ? 'play' : REACTION_ACTION[R.slot] || 'touch';
+      if (S.acts.play.on) return 'play';
       if (hold) return hold;
       if (holds.mood === 'sleep') return 'sleep';
       const fadingHold = [...S.holds.values()].some((h) => h.w > 0);
-      if (dance.state === 'out' || S.fading.length || fadingHold || S.t < S.baseFadeUntil) return 'returning';
+      const fadingAct = ACT_NAMES.some((n) => S.acts[n].w > 0);
+      if (dance.state === 'out' || S.fading.length || fadingHold || fadingAct || S.t < S.baseFadeUntil) return 'returning';
       return 'idle';
     }
     function stepAction(dance, hold, R, holds) {
@@ -491,6 +517,26 @@
       return { state: S.action.state, since: +S.action.since.toFixed(3), from: S.action.from, exclusive: now === 'dance' };
     }
 
+    // ---------- eat / play / sleep (ACT, T-2831) ----------
+    const playing = () => !!(S.play && S.t < S.play.until);
+    function endPlay() { if (S.play && S.play.until > S.t) S.play.until = S.t; }
+    // the weights of the three this frame: on / off from the app and the layers above, faded by ACT; a
+    // reaction on top takes over (× 1 − its weight). → plan.acts
+    function stepActs(dt, hold, holds, dance, rw) {
+      const free = !dance.on && !holds.lift;
+      if (!free || (hold && hold !== 'talk' && hold !== 'walk')) endPlay(); // thinking, a meal, the lift, a dance
+      const want = { eat: free && hold === 'eat', play: free && playing(), sleep: free && holds.mood === 'sleep' && (!hold || hold === 'walk') };
+      const out = [];
+      for (const n of ACT_NAMES) {
+        const a = S.acts[n];
+        if (want[n] && a.w <= 0) a.start = n === 'play' ? S.play.start : S.t;
+        a.on = want[n];
+        a.w = clamp(a.w + (a.on ? 1 : -1) * (dt / Math.max(0.05, a.on ? ACT[n].fadeIn : ACT[n].fadeOut)), 0, 1);
+        if (a.w > 0) out.push({ name: n, w: +(a.w * a.w * (3 - 2 * a.w) * (1 - rw)).toFixed(4), time: +(S.t - a.start).toFixed(3) });
+      }
+      return out;
+    }
+
     // The user's stop (T-2829): whatever she does fades back to the idle. → what was stopped.
     function stop(why = 'stop') {
       const was = S.action.state;
@@ -502,6 +548,11 @@
       S.gazeUntil = -1;
       S.noBlinkUntil = -1;
       S.shyUntil = -1;
+      // T-2831: play ends; a meal or sleep the app still holds shows as idle until it ends
+      endPlay();
+      const raw = S.rawHolds || {};
+      if (raw.eat) S.suppress.eat = true;
+      if (raw.mood === 'sleep') S.suppress.sleep = true;
       return { stopped: was, why };
     }
 
@@ -529,6 +580,11 @@
     // One frame: dt (seconds, already sped up), { holds, events } from vrm-intent → the plan.
     function update(dt, { holds, events = [] }) {
       S.t += dt;
+      // stop() on a meal / sleep the app still holds: shown as idle until it ends (T-2831)
+      S.rawHolds = holds;
+      if (!holds.eat) S.suppress.eat = false;
+      if (holds.mood !== 'sleep') S.suppress.sleep = false;
+      if (S.suppress.eat || S.suppress.sleep) holds = { ...holds, eat: S.suppress.eat ? null : holds.eat, mood: S.suppress.sleep ? 'idle' : holds.mood };
       if (holds.attention) S.lastEvent = S.t;
       const dance = stepDance(holds);
       for (const e of events) onEvent(e, holds);
@@ -580,6 +636,7 @@
       S.fading = S.fading.filter((r) => reactWeight(r, S.t) > 0.001);
       const R = S.react;
       const rw = R ? reactWeight(R, S.t) : 0;
+      const acts = stepActs(dt, hold, holds, dance, rw);
 
       // the clip overlays, bottom to top: the hold, the fading reactions, the reaction (time in the clip, weight)
       const overlays = [];
@@ -596,6 +653,7 @@
       if (S.t < S.angryUntil && !(R && R.slot === 'react.angry')) face = { ...face, angry: 0.3, sad: 0.1 };
       const hc = hold && S.holds.get(`hold.${hold}`);
       if (hold) face = { ...face, ...((hc && hc.clip && hc.clip.face) || (HOLD_LOOK[hold] || {}).face || HOLD_FACE[hold] || {}) };
+      if (S.acts.play.on) face = { ...face, ...ACT.play.face };
       if (S.t < S.faceUntil) face = { ...face, ...S.face };
       if (R && S.t < R.end - R.fadeOut * 0.5) face = { ...face, ...R.face }; // from the first frame (the renderer eases it in)
       if (dance.on) {
@@ -643,13 +701,15 @@
         dance,
         action,
         resets: S.resets.length,
+        acts, // T-2831: the procedural eat / play / sleep bodies (core/vrm-acts.js), [{ name, w, time }]
+        actSit: !!(S.base && S.base.sit),
         life: { dance: dance.on, sleep: holds.mood === 'sleep', sad: holds.mood === 'sad' ? 1 : holds.mood === 'hungry' ? 0.5 : 0, standing, lifted: holds.lift, idle: !hold && !R && S.t >= S.faceUntil, sway: R ? micro.sway * 0.4 : micro.sway, lookAway: micro.lookAway, landKey: S.landKey, nod: hold === 'eat' ? 1 : 0, talk: talkOn ? +(talkOn.w * talkOn.w * (3 - 2 * talkOn.w)).toFixed(3) : 0, walking: S.gait.on },
         facingYaw: +S.yaw.toFixed(3),
         turnLead: dance.on ? 0 : +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
         walk: { on: S.gait.on, rate: +S.gait.rate.toFixed(3), wanted: +S.gait.wanted.toFixed(3), phase: +S.gait.phase.toFixed(3), target: turn.target, turning: turn.turning },
         talkSegment: S.talk.cur ? S.talk.cur.slot : null,
         talkSegments: S.talk.n,
-        busy: dance.on || dance.state === 'out' || !!hold || !!R || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
+        busy: dance.on || dance.state === 'out' || !!hold || !!R || acts.length > 0 || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
       };
     }
 
@@ -670,5 +730,5 @@
     };
   }
 
-  return { ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { ACT, ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

@@ -29,6 +29,7 @@ let selected = null;
 let thinking = false;
 let arriving = null; // nameZh of a character on her way (her agent is being created), shown instead of 思考中
 let eating = null;
+let plays = 0; // 玩耍 pressed (and done): a VRM figure plays her play one-shot on each new count (T-2831)
 let talkUntil = 0;
 let flashUntil = 0;
 let revealSpecies = null;
@@ -486,6 +487,7 @@ function vrmSnapshot(now) {
     flying: fx.flying,
     thinking,
     eating,
+    play: plays,
     talking: now < talkUntil,
     voice: voiceNow(),
     walking: fx.walking,
@@ -1310,7 +1312,7 @@ async function doAct(kind, food) {
   }
   if (r.ok) {
     if (kind === 'pat') fx.click(video);
-    if (kind === 'play') fx.play('play', Fx.oneShotMs(video, 'play'));
+    if (kind === 'play') { plays++; fx.play('play', Fx.oneShotMs(video, 'play')); }
   }
 }
 

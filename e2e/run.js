@@ -10795,6 +10795,7 @@ async function interjectScenario() {
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'vrmacts' || which === 'all') await vrmScenarios().vrmActs();
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
   if (which === 'vrmreset' || which === 'all') await vrmScenarios().vrmReset();
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();

@@ -58,6 +58,9 @@
     const tn = s.touch && Number.isFinite(s.touch.n) ? s.touch.n : null;
     const pn = p.touch && Number.isFinite(p.touch.n) ? p.touch.n : null;
     if (tn !== null && tn !== pn && prev) events.push({ type: 'touch', zone: String(s.touch.zone || 'head'), mood: s.touch.mood || 'happy', streak: s.touch.streak || 0 });
+    // 玩耍 (T-2831): the app counts the user's plays (snap.play goes up by one each time): the order to play, apart
+    // from the idle cue 'play' (a hint). Before the cue of the same frame, so the cue only smiles.
+    if (Number.isFinite(s.play) && s.play !== p.play && prev) events.push({ type: 'play', n: s.play });
     // fx one-shots start on their rising edge
     if (s.shot && s.shot !== p.shot) {
       if (s.shot === 'pat') events.push({ type: 'touch', zone: 'pat', mood: 'happy', streak: 0 });
@@ -73,7 +76,7 @@
     for (const k of ['talk', 'think', 'walk', 'lift', 'attention']) if (holds[k]) h.push(k);
     if (holds.eat) h.push(`eat:${holds.eat}`);
     if (holds.dance) h.push(`dance:${holds.dance.id}`);
-    for (const e of events) h.push(e.type === 'touch' ? `touch:${e.zone}` : e.type === 'drag' || e.type === 'dance' ? `${e.type}:${e.what}` : `${e.type}:${e.name}`);
+    for (const e of events) h.push(e.type === 'touch' ? `touch:${e.zone}` : e.type === 'drag' || e.type === 'dance' ? `${e.type}:${e.what}` : e.type === 'play' ? 'play' : `${e.type}:${e.name}`);
     return h.join(' ');
   }
 

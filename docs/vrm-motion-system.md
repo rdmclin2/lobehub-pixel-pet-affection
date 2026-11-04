@@ -328,9 +328,9 @@ P2 备用（不进本期验收）：蹲 `crouch.peek` F `postures/223e0cef-b9c0-
 | `hold.talk` / `hold.talk-2` / `hold.talk-3` 说话（三段轮换，T-2711） | `talk`（持续；流式回复时 think 与 talk 同时为真 → 说话） | `mixamo/c9c88301-b96c-11e4-a802-0aaa78deedf9.fbx`（摊掌讲解，1.0–6.5 s）、`mixamo/c9c92388-b96c-11e4-a802-0aaa78deedf9.fbx`（双手交握点头，1.5–7.5 s）、`mixamo/c9c8fdad-b96c-11e4-a802-0aaa78deedf9.fbx`（双手递出，0.4–2.7 s） | `mixamo/c9c6fcc0-b96c-11e4-a802-0aaa78deedf9.fbx`（张臂讲解，0.6–6.6 s，amplitude 0.8）、`mixamo/c9cc660c-b96c-11e4-a802-0aaa78deedf9.fbx`（单手比划，0.3–6.3 s）、`mixamo/c9c90cbb-b96c-11e4-a802-0aaa78deedf9.fbx`（抬手解释，0.4–4.8 s） | upper，F 0.9 / M 1.0；in 0.35 / out 0.5；每段播完换下一段（不连续重复），0.6 s 交叉淡化；life 层轻点头 | 维持基线 + happy 0.25 |
 | `hold.think` 思考 | `think`（持续） | `postures/0aef00f5-ea18-4e7c-a12d-6c92a08a9033.fbx`（Leaning Back, Left Hand On Hip）+ 视线右上 + 歪头 6° | `mixamo/670efeec-dabc-492d-a713-a8a28a959249.fbx`（Looking Right）+ 视线右上 | upper；in 0.4 / out 0.5 | neutral 0.3 |
 | `react.greet` 打招呼 | `celebrate:hatch`、窗口首次显示、从 sleep 醒来 | `mixamo/c9c7996a-b96c-11e4-a802-0aaa78deedf9.fbx`（Greeting While Standing，5.1 s） | `mixamo/c9c9f57a-b96c-11e4-a802-0aaa78deedf9.fbx`（Quick Informal Bow，2.7 s）；备选 `mixamo/c9c9f4bc-b96c-11e4-a802-0aaa78deedf9.fbx`（Quick Formal Bow） | full；in 0.3 / out 0.6 | happy 0.8 |
-| `react.cheer` 开心 | `celebrate:evolve`、`cue:play`/`cue:happy`（小概率、amplitude 0.6） | `mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx`（Super Excited，trim 0–3.0 s） | `mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Forward Hand Gesture） | full；in 0.25 / out 0.6 | happy 1.0 |
+| `react.cheer` 开心 | `celebrate:evolve`、`cue:play`/`cue:happy`（idle 提示，小概率、amplitude 0.6；用户点「玩耍」走程序化 `play`，§14） | `mixamo/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx`（Super Excited，trim 0–3.0 s） | `mixamo/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx`（Happy Forward Hand Gesture） | full；in 0.25 / out 0.6 | happy 1.0 |
 | `react.sad-sink` 失落坐下 | `mood:sad` 持续 > 60 s | `motions/casual/へなへなと座り込む_gumi.vmd`（瘫坐，3.3 s，P1，需腿部 IK）→ `sit.rest`；起身 `motions/casual/女の子座り→立ち上がる_gumi_v01.vmd`；P0：`stand.shy` → `sit.rest` 1.2 s 交叉淡化 | `stand.shy`（`mixamo/08f3514a-0d3b-469d-9f27-57f97d9fcb9b.fbx`）→ `sit.rest`；P1 起身 `motions/casual/OTL→立ち上がり.vmd` | full | sad 0.5 |
-| `hold.eat` 吃东西 | `eat:*`（持续） | `stand.relaxed`（`postures/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx`）+ 口型层咀嚼 + 头部小点头 | `stand.relaxed`（`mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx`）+ 口型层咀嚼（幅度 ×0.8）+ 头部小点头 | — | happy 0.7 |
+| `hold.eat` 吃东西 | `eat:*`（持续） | `stand.relaxed`（`postures/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx`）+ 口型层咀嚼 + 头部小点头；**手送到嘴边由程序化 `eat` 动作完成（§14）** | `stand.relaxed`（`mixamo/c6c4ddd1-3bfa-439d-aabb-bb80d03e4388.fbx`）+ 口型层咀嚼（幅度 ×0.8）+ 头部小点头；程序化 `eat`（§14） | — | happy 0.7 |
 | `hold.walk` 走路（T-2711） | `walk` 且窗口在移动（或正在转身） | `mixamo/c9c66731-b96c-11e4-a802-0aaa78deedf9.fbx`（轻盈窄步、柔和摆臂，1.37 s/两步，原速 1.05 m/s） | `mixamo/c9c609a9-b96c-11e4-a802-0aaa78deedf9.fbx`（步幅大、双脚与髋同宽、放松摆臂，1.4 s/两步，原速 1.12 m/s） | full，loop + detrend；in 0.3 / out 0.5；步频随窗口速度（§3.6） | F happy 0.25 / M 0.15 |
 
 **本期验收最小集（P0，只依赖 Mixamo FBX）**：姿势 `stand.relaxed / stand.confident / stand.shy / stand.playful / sit.rest`（5 种）；idle `idle.happy / idle.variant2(M) 或 idle.posture-cycle(F) / idle.posture-cycle`（每套 ≥ 3 段）；反应 `touch-head / touch-face / touch-hands / shy(降级) / angry / annoyed / ticklish(降级) / lift / greet / cheer / talk / think`（≥ 6 种，男女各一套）。VMD 条目（P1）在 VMD 烘焙完成后替换降级素材，无需改导演逻辑。
@@ -356,7 +356,7 @@ INVENTORY §7.2 有 1895 个无名 Mixamo UUID 片段（410 个「中长片段 �
 
 - 新增协议 `vrmlib://<style>/<file>.vrma`（`src/main/vrm-library.js`，与 `pack://` 同样 `registerSchemesAsPrivileged`），只服务 `<userData>/vrm-motions/`（或开发覆盖目录）下的 `.vrma` / `library.json`，路径必须落在该目录内（`path.resolve` + 前缀检查，同 `src/main/packs.js` 的做法）；CSP `connect-src` 增加 `vrmlib:`；渲染进程的 GLTFLoader URL 白名单对动画加载器放行 `vrmlib://`（模型加载器仍只允许 `pack://<自己的包>/`）。
 - 片段懒加载：先加载当前 style 的 posture + idle（< 1 MB 级），反应在首次触发前 2 s 预取（hover 进入窗口时预取触摸类反应），LRU 保留 24 个 clip。
-- **无素材库时的降级**：`library.json` 不存在或某条缺失 → 导演改用 `vrm.idle`（包内 `.vrma`，现有功能）或纯 L4 微动 + 表情；不报错、不回退到旧的 hop/spin。e2e 覆盖这条路径。
+- **无素材库时的降级**：`library.json` 不存在或某条缺失 → 导演改用 `vrm.idle`（包内 `.vrma`，现有功能）或纯 L4 微动 + 表情；不报错、不回退到旧的 hop/spin。e2e 覆盖这条路径。吃饭 / 玩耍 / 睡觉的肢体动作不依赖素材库，有没有库都由程序化动作层给出（§14）。
 
 ### 6.3 开发时指向 `~/vrm-assets`
 
@@ -451,6 +451,7 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked npm start
 | `src/core/vrm-director.js` | VRM 导演状态机：姿势/idle 调度、反应生命周期、优先级、表情与视线目标 |
 | `src/core/vrm-style.js` | 风格档案、`pack.json` style 解析、meta 推断规则、夹值 |
 | `src/core/vrm-life.js` | 活人感微动层（呼吸、重心、头部微动、手指、视线跳动、拎起腿下垂），带上限 |
+| `src/core/vrm-acts.js` | 吃饭 / 玩耍 / 睡觉的程序化肢体动作（T-2831，§14）：关键帧 + 曲线，无动画文件 |
 | `src/core/vrm-library.js` | 库索引读取/校验、按 style 与槽位解析条目、降级逻辑 |
 | `src/core/vrm-library.json` | 烘焙清单（元数据：id、kind、style、`src` 相对路径、trim/mask/amplitude/fade/face） |
 | `src/renderer/vrm-anim.js` | three AnimationMixer 分层（base.lower/base.upper、hold、reaction、mask、交叉淡化、LRU） |
@@ -606,7 +607,7 @@ L2 持续活动片段（说话手势、思考、被拎起的上半身）、L3 �
 
 ### 13.2 评审后保留（已知问题）
 
-- `hold.eat`（吃东西）：只有表情、看向下方、咀嚼口型和点头，手不会送到嘴边。素材包里没有进食或拿东西吃的动作，现用片段是放松站姿上半身（权重 0.5），叠加后手臂角度与底层几乎相同。需要 P1 用 VMD 或自制片段补上。
+- `hold.eat`（吃东西）：只有表情、看向下方、咀嚼口型和点头，手不会送到嘴边。素材包里没有进食或拿东西吃的动作，现用片段是放松站姿上半身（权重 0.5），叠加后手臂角度与底层几乎相同。需要 P1 用 VMD 或自制片段补上。**T-2831 已补：程序化 `eat` 动作把食物送到嘴边（§14）。**
 - liliya `sit.rest` 交叉的腿有一部分被毛衣下摆和长发遮住，没有可见的穿插，但轮廓不够清楚。
 - `react.touch-hands@female`（牵手）伸手幅度较小，峰值只有约 1 s。
 - e2e `vrmui` 13/17：4 个衣柜步骤失败。单模型 VRM 外观会隐藏衣柜按钮，这个问题在本分支之前就存在，与动作系统无关。
@@ -636,3 +637,45 @@ T-2698 复核的剩余问题。架构不变（intent → director → anim/life�
 - **男性打盹膝盖**：`sit.doze@male` 小腿 `offset` +14°（原素材膝角约 −9°，过伸）。
 - **其他**：反应的优先级 0（cue 的小欢呼）此前被 `opts.prio || PRIORITY.touch` 当成触摸优先级；改正后，开始思考/说话/吃/被拎时小欢呼即淡出。调试接口新增 `PetVRM.director.pose()`（只取腿部/脚踝/头胯偏航，便于高频采样），`pose.legs.*.ankleFwd`（脚踝在身体朝向上相对髋的前后位置）与 `ankleClientX`（脚踝在屏幕上的 x）。
 - **实测（liliya 女 / vroid 男，真实导入，`vrm-walk-talk-real-acceptance.js` 最终一轮 37/37）**：转身 \|yaw\| 最大 50.8°，10%→90% 用时 0.42–0.97 s，头胸领先 14–22°；走路时左右脚踝前后交替 3–4 次（1.25–1.49 步/秒），片段按自身 0.97–1.06 倍速播放；稳定行走时支撑脚每次支撑期在屏幕上的净滑移为窗口位移的 7–19%（含起步/收步 8–39%；整身滑行为 100%）；停下 0.74–0.85 s 内走路权重单调降到 0。说话手臂峰值偏转女 69–72°、男 90–104°（T-2698 女 18°/9°），14.8 s 长回复内轮换 4 段、手臂从未定格；思考手臂角速度 0°/s、视线固定向上。男性拖动大腿摆幅为女性的 99%（多轮 99–280%，随拖动轨迹而变）；戳脸峰值女 43.4°（head）/ 男 44.0°（neck）（原 21° / 25°）；vroid 打盹膝角 23.7° / 22.5°。
+
+## 14. 吃饭 / 玩耍 / 睡觉的肢体动作（T-2831：程序化动作与降级）
+
+### 14.1 资源盘点（为什么要程序化）
+
+| 交互 | 动作库里有的 | 实际效果（T-2831 之前） | 安装版（不带动作库，§6.2） |
+|---|---|---|---|
+| 吃饭（喂食） | `hold.eat@female/male`：放松站上半身，`still`、权重 0.5 | 叠加后手臂与底层几乎一样；只有 happy 表情、看下方、咀嚼口型（aa）和 life 层小点头 | 只有表情和口型 |
+| 玩耍 | 没有专门片段；`cue:play` 有 35% 概率借用 `react.cheer`（amplitude 0.6） | 多数时候只是笑一下 | 只有表情 |
+| 睡觉 | `sit.doze@female/male`（坐姿） | 有库时坐下打盹（姿势片段） | 只有闭眼表情 + 慢呼吸 |
+
+动作库的源素材（Mixamo / VMD，`~/vrm-assets`）仅限个人使用，不随应用分发（§6.4）；素材包里也没有进食、玩耍类动作。本任务**不引入任何外部动作资源**，三种交互的肢体动作全部由代码生成：`src/core/vrm-acts.js` 用关键帧 + 曲线（smoothstep、正弦）逐帧算出骨骼姿势，没有动画文件，也没有版权问题。
+
+### 14.2 动作清单
+
+| 动作 | 触发 | 时长 / 淡入淡出 | 肢体（female · neutral） | 肢体（male） | 表情 / 其他层 |
+|---|---|---|---|---|---|
+| `eat` 吃饭 | 应用的 `eating`（喂食后持续 `ONE_SHOT_MS.eat`）→ `hold.eat` | 跟随进食；in 0.35 s / out 0.45 s | 每 2.4 s 一口：0–30% 双手把食物送到嘴边（手离嘴约 7 cm），30–50% 咬住，50–75% 放低到胸前，之后咀嚼；头前倾低头、随咀嚼点头，胸微前倾 | 只用右手送到嘴边，左臂交给姿势；前倾更多 | happy 0.7、看下方、咀嚼口型（原有） |
+| `play` 玩耍 | 工具栏「玩耍」成功（`snap.play` 计数 +1 → 事件 `play`） | 一次性 3.2 s；in 0.25 s / out 0.45 s | 2 Hz 小跳（离地最多 5% 胯高）+ 落地屈膝（大腿 −20°、小腿 +38°）、左右摇摆（脊柱 ±5°、头 ±7°），双臂举过肩轮流挥手（前臂 ±28°，2.6 Hz） | 右臂举高挥手，左臂交给姿势；跳跃幅度 ×0.6 | happy 0.8；同帧的 `cue:play` 只微笑，不再叠加欢呼片段 |
+| `sleep` 睡觉 | `status: sleep`（`pet.sleeping`） | 持续到醒来；in 1.2 s / out 0.7 s | 低头（头 16–25° 并随 7 s 周期"打瞌睡"点一下）、向一侧歪 9°、颈 / 胸 / 脊柱塌下、双肩下沉、0.16 Hz 深呼吸；**站着**（无坐姿片段）时膝盖微屈（大腿 −16°、小腿 +30°）、双臂放松下垂，脚由贴地逻辑固定，身体整体下沉；**坐着**（有库时 `sit.doze`）只动头颈和背，手脚留给坐姿 | 同左，幅度 ×0.85、歪头 4° | 闭眼 + relaxed（原有），视线向下，life 层睡眠呼吸率（原有） |
+
+姿势写法：`{ abs, add, air }`，角度为 VRM 1.0 / VRMA 归一化骨骼坐标（她面向 +Z，左臂指向 +X）。`abs` 是骨骼要转到的目标（按权重 slerp），`add` 是叠在下层姿势上的偏移（按权重缩放后右乘），`air` 是整身抬起量（× 胯高）。VRM 0.x 由 `apply(..., { v0: -1 })` 镜像 x、z（与 life 层、rest pose 同一约定，T-2691 / T-2829）。
+
+### 14.3 接入状态机（T-2829 的 `plan.action`）
+
+- 导演（`core/vrm-director.js` 的 `ACT`、`stepActs`）每帧给出 `plan.acts: [{ name, w, time }]` 与 `plan.actSit`；渲染器在片段层（`anim.update`：基底 + hold / 反应叠加）之后、life 层之前调用 `PetVrmActs.apply` 把它们叠上去，`air` 加到身体高度上。片段层每帧把所有骨骼恢复到片段姿势（`overClip` 的 memo），所以动作层不会累积，权重为 0 时骨骼就是 idle。
+- 动作状态：`play` 进行中为 `play`；`eat` / `sleep` 沿用原有 `eat`（hold）/ `sleep`（mood）；任何一个动作还在淡出时为 `returning`，完全淡出后回到 `idle`。
+- **结束**：吃完（应用清掉 `eating`）、玩耍 3.2 s 到时、醒来（`sleeping=false`）→ 按 ACT 的淡出时间平滑回 idle。
+- **停止 / 重置**：`director.stop()`（渲染器 `figure.stopAction()`、调试 `PetVRM.director.stop()`）立即结束 `play`；应用仍在进食 / 睡觉时，把这次进食 / 睡眠当作 idle 显示，直到应用那边结束（下一次喂食 / 睡觉照常播放）。
+- **打断**：触摸、放下、庆祝反应开始时结束 `play`；进食、思考、被拎起、跳舞也结束 `play`。被拎起、跳舞时 `eat` / `sleep` 淡出，放下后恢复。反应片段播放期间，三种动作的权重乘以 `1 − 反应权重`，反应结束后回来。
+
+### 14.4 降级方案
+
+- **没有动作库**（安装版默认）：基底是 rest 片段（T-2829），三种动作完全由程序化层给出；睡觉是站着打盹。e2e `vrmacts:test`、`vrmacts:real0x` 覆盖这条路径。
+- **有动作库**（开发机 `~/vrm-assets/baked`）：`hold.eat` 片段 + 程序化 `eat`；睡觉先切到 `sit.doze` 坐姿，程序化 `sleep` 只叠加头颈和背；`play` 不用片段。e2e `vrmacts:real0xlib` 覆盖。
+- **以后若要换成真实动作素材**：在 `vrm-library.json` 加 `hold.eat` / 新的 `hold.play` 等条目并烘焙；导演可以按片段是否存在来降低或关闭对应的程序化动作。新素材必须注明来源和许可，不能用版权不明的素材；没有素材时继续用本节的程序化动作。
+
+### 14.5 调试字段与测试
+
+- 画布 `data-acts`（`eat:1.00` 等）；`PetVRM.director.pose()` 新增 `arms.*.toHead`（手到头的距离 × 胯高）、`arms.*.aboveShoulder`、`headDown`（脸朝下的角度）、`headY`；`figures[0].acts`（本帧 `air` 与动到的骨骼）。
+- 单测 `test/vrm-acts.test.js`（15 项，用 vendor 里的 three 搭一副人体比例骨骼）：吃饭咬口时手离嘴 < 15 cm（idle 时 > 50 cm）、上臂 > 40°、肘 > 90°；玩耍离地、屈膝 > 25°、双手过肩、左右挥动、男性只举右手且跳得低；睡觉脸朝下 > 30°、头变低、站姿屈膝、胸口慢起伏，坐姿不动手脚；权重 0 等于 idle、0.x 镜像；导演里（有库 / 无库各一遍）触发吃 / 玩 / 睡后骨骼偏离 idle > 20–60°，结束、`stop()`、被打断后 `action` 回到 `idle`、`acts` 为空、所有骨骼回到 idle（< 0.01°）。
+- e2e `xvfb-run -a node e2e/run.js vrmacts`（启动前 `unset ELECTRON_RUN_AS_NODE`）：点工具栏的喂食 / 玩耍 / 睡觉，截下 idle、动作峰值、结束后三组图，以及 `vrm/acts-<run>-contact.png` 拼图与录屏 `vrm/acts-<run>.webm`。

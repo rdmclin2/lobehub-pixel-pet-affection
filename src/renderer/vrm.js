@@ -21,7 +21,8 @@
 // (expression weights), data-mouth (aa/ih/ou/ee/oh), data-lip (audio | synthetic | off), data-gaze (x,y),
 // data-springs (joints), data-vrm (1.0 | 0.x), data-anim (vrma | none | failed), data-style (female |
 // male | neutral (pack | meta | default)), data-posture, data-idle, data-reaction, data-hold, data-action (the
-// director's action state, T-2829: idle | returning | dance | eat | touch …), data-layers
+// director's action state, T-2829: idle | returning | dance | eat | touch …), data-acts (the procedural eat / play /
+// sleep bodies laid on her, T-2831: name:weight), data-layers
 // (clip:weight…), data-library (loaded | partial:<n> | none), data-overlays (layer:clip:weight of the holds and
 // reactions laid over the base), data-framing (full | half, what the camera frames now), data-cut (half: the
 // share of her height shown), data-band (bones | box | pack: what the half-body band was measured from).
@@ -152,6 +153,7 @@
   const S = window.PetVrmStyle;
   const Lib = window.PetVrmLibrary;
   const Life = window.PetVrmLife;
+  const Acts = window.PetVrmActs; // T-2831: the bodies of eat / play / sleep (procedural, no clip)
   const Hit = window.PetVrmHit;
   // the posture the user chose per pack (settings.vrmPostures, set by app.js), and the debug clock / seed
   const postures = new Map();
@@ -235,6 +237,7 @@
     let prevSnap = null;
     let dirT = null;
     let plan = null;
+    let actOut = null; // what the eat / play / sleep bodies did this frame ({ air, bones }), T-2831
     let intent = null;
     let lastBaseKey = -1;
     const injected = []; // semantic events from window.PetVRM.director.inject (tests, debugging)
@@ -752,6 +755,9 @@
       if (DP.state !== 'off' && danceRelease) { clearTimeout(danceRelease); danceRelease = null; }
       const clips = anim.update(dt, plan.overlays); // the base, then the holds (L2) and reactions (L3) over it
       if (!clips) restPose(); // no clip: arms down, absolute every frame (nothing accumulates)
+      // eat / play / sleep (T-2831): procedural poses over the clips (core/vrm-acts.js), weighted by the director;
+      // under the alive layer, which still breathes and blinks on top
+      actOut = Acts && plan.acts && plan.acts.length ? Acts.apply(R.THREE, (n) => vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(n), plan.acts, { set: style.set, amplitude: style.amplitude, sit: plan.actSit, v0: metaVersion() === '0' ? -1 : 1 }) : null;
 
       // L4: alive
       // 走神 / 瞥视 wait for a still cursor (vrm-life GLANCE_AFTER): while it moves near her she follows it
@@ -775,7 +781,8 @@
       floorLift = lerp(floorLift, seatLift, gk);
       // lifted: held up off the floor (her shadow stays down there), she sinks back when put down
       liftK = lerp(liftK, plan.life.lifted ? 1 : 0, approach(plan.life.lifted ? 5 : 7, dt));
-      const air = liftK * LIFT_UP * (size.h / share);
+      // (a play hop lifts her off the floor too: × her hip height)
+      const air = liftK * LIFT_UP * (size.h / share) + (actOut ? actOut.air * rest.hipsY : 0);
       vrm.scene.position.set(base.x + shiftX, base.y + ground + air, 0);
       vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
       placeProps(dt, !!(plan.base && plan.base.sit));
@@ -860,6 +867,8 @@
       d.reaction = plan.reaction || '';
       d.hold = plan.hold || '';
       d.action = plan.action ? plan.action.state : '';
+      // the procedural bodies on now (T-2831): name:weight
+      d.acts = (plan.acts || []).map((a) => `${a.name}:${a.w.toFixed(2)}`).join(',');
       d.layers = anim.summary();
       d.overlays = anim.overlays();
       d.library = libState;
@@ -1004,7 +1013,8 @@
         debug: () => ({
           loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
-          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw, turnLead: plan.turnLead, walk: plan.walk, talkSegment: plan.talkSegment, talkSegments: plan.talkSegments },
+          plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw, turnLead: plan.turnLead, walk: plan.walk, talkSegment: plan.talkSegment, talkSegments: plan.talkSegments, action: plan.action, acts: plan.acts, actSit: plan.actSit },
+          acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
           vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
           reactions: director ? director.reactions() : [],
@@ -1068,6 +1078,9 @@
         if (!sh || !el) continue;
         const v = el.clone().sub(sh);
         arms[s] = { elev: +(Math.atan2(v.y, Math.hypot(v.x, v.z)) / DEG).toFixed(1) };
+        // the hand: how far from the head (× her hip height: the food at her mouth is close) and above the shoulder
+        const hd = w(`${s}Hand`), hp = w('head');
+        if (hd && hp) Object.assign(arms[s], { toHead: +(hd.distanceTo(hp) / Math.max(0.1, rest.hipsY)).toFixed(3), aboveShoulder: +((hd.y - sh.y) / Math.max(0.1, rest.hipsY)).toFixed(3) });
       }
       // head yaw against the body's facing (the scene's turn)
       const hq = hm.getNormalizedBoneNode('head').getWorldQuaternion(new T.Quaternion());
@@ -1077,7 +1090,12 @@
       const fh = new T.Vector3(0, 0, 1).applyQuaternion(hipq);
       const hipsYaw = Math.atan2(fh.x, fh.z) / DEG - vrm.scene.rotation.y / DEG;
       const wrap = (x) => ((((x + 180) % 360) + 360) % 360) - 180;
-      return { q, legs, arms, headYaw: +wrap(headYaw).toFixed(2), hipsYaw: +wrap(hipsYaw).toFixed(2), rootY: +vrm.scene.position.y.toFixed(4) };
+      // how far her face is turned down (deg, + = down: asleep the head drops, T-2831); 0.x bones face −Z
+      const hd = f.clone();
+      if (vrm.meta && vrm.meta.metaVersion === '0') hd.negate();
+      const headDown = Math.asin(Math.max(-1, Math.min(1, -hd.y))) / DEG;
+      const headY = hm.getNormalizedBoneNode('head').getWorldPosition(new T.Vector3()).y;
+      return { q, legs, arms, headYaw: +wrap(headYaw).toFixed(2), hipsYaw: +wrap(hipsYaw).toFixed(2), headDown: +headDown.toFixed(2), headY: +headY.toFixed(4), rootY: +vrm.scene.position.y.toFixed(4) };
     }
 
     // where her head, hands and feet are in the canvas now (NDC: −1..1 is inside), for the dance framing check
@@ -1180,6 +1198,8 @@
     inject: (e) => { for (const f of figures) f.inject(e); return true; },
     // 重置姿势 (T-2830): every figure back to the idle; what each was doing
     reset: (why = 'reset') => [...figures].map((f) => f.resetToIdle(why)),
+    // the user's stop on every figure (T-2829 / T-2831): whatever she does fades back to the idle
+    stop: (why = 'stop') => [...figures].map((f) => f.stopAction(why)),
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
     // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)
