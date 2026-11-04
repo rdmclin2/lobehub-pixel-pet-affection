@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   reset: (keys) => ipcRenderer.invoke('admin-reset', { keys }),
   relaunch: () => ipcRenderer.invoke('admin-relaunch'),
   whoami: () => ipcRenderer.invoke('whoami'),
+  // { name, avatar }: the LobeHub account's avatar as a data: URL, or null (T-2839)
+  userAvatar: () => ipcRenderer.invoke('user-avatar'),
   apiStatus: () => ipcRenderer.invoke('api-status'),
   newApiToken: () => ipcRenderer.invoke('set-api', { newToken: true }),
   // characters (角色列表 / 角色详情)

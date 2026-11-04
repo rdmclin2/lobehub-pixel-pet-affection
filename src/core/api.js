@@ -24,6 +24,7 @@ const ROUTES = [
   ['GET', '/dances', '列出舞蹈（内置示例 + 舞蹈库）：[{ id, name, duration, music, loop… }]；vrm 表示她现在能不能跳'],
   ['POST', '/dance', '让她跳舞（只有 VRM 外观能跳）：{ "id"?: "…", "name"?: "…", "loop"?: true|false }；都不给就随机一支'],
   ['POST', '/dance/stop', '让她停下不跳'],
+  ['POST', '/reset-pose', '重置姿势：不管她在跳舞、吃饭、玩耍、睡觉还是动作卡住，都停下并平滑回到待机（睡着会叫醒，不扣好感）'],
   ['POST', '/observe', '插个嘴：告诉她主人正在做/写的事（不是对她说的），由她判断要不要插一句：{ "text": "…" }（需开启插个嘴和“外部程序”来源）'],
 ];
 
@@ -45,7 +46,7 @@ function throwVelocity(angle, power) {
 }
 
 // One request → { status, json }. `ctx`: { token, state(), say(text), anim(state, facing), throw(v), chat(text), observe(text),
-// dances(), dance({ id, name, loop }), danceStop() }.
+// dances(), dance({ id, name, loop }), danceStop(), resetPose() }.
 async function handle(req, ctx) {
   if (!LOCAL_HOSTS.test(String((req.headers && req.headers.host) || ''))) return fail(403, 'bad-host');
   const auth = String((req.headers && req.headers.authorization) || '');
@@ -100,6 +101,11 @@ async function handle(req, ctx) {
     if (!ctx.danceStop) return fail(404, 'not-found');
     const r = await ctx.danceStop();
     return r && r.ok ? { status: 200, json: { ok: true, id: r.id } } : r && r.reason === 'not-dancing' ? { status: 200, json: { ok: true, id: null, dancing: false } } : fail(409, (r && r.reason) || 'no-pet');
+  }
+  if (route === '/reset-pose') {
+    if (!ctx.resetPose) return fail(404, 'not-found');
+    const r = await ctx.resetPose();
+    return r && r.ok ? { status: 200, json: { ok: true, before: r.before || [], cleared: r.cleared || [], woke: !!r.woke } } : fail(409, (r && r.reason) || 'no-pet');
   }
   if (route === '/observe') {
     const text = String(body.text || '').trim().slice(0, 2000);

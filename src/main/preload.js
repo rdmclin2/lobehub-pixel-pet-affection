@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('pet', {
   // `characterId`: who she is (T-2764: one character per look, e.g. dafeiyu-pixel)
   hatch: (characterId, name, localAbilities, space) => ipcRenderer.invoke('hatch', { characterId, name, localAbilities, space }),
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
+  // 重置姿势 (T-2830): whatever she does, back to the idle (wakes her if asleep) → { ok, source, before, cleared, figures, woke }
+  resetPose: (source) => ipcRenderer.invoke('reset-pose', { source }),
   // Touch a body part: a zone id ('head', 'chest', …) or { x, y } in the sprite's visible box (0..1).
   touch: (target) => ipcRenderer.invoke('touch', target === undefined ? null : target),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
@@ -133,6 +135,7 @@ contextBridge.exposeInMainWorld('pet', {
   debugAdmin: () => ipcRenderer.invoke('debug-admin'),
   debugTray: () => ipcRenderer.invoke('debug-tray'),
   debugTrayClick: (label) => ipcRenderer.invoke('debug-tray-click', { label }),
+  debugTrayPopup: (opts) => ipcRenderer.invoke('debug-tray-popup', opts || {}),
   debugHeartbeat: () => ipcRenderer.invoke('debug-heartbeat'),
   debugInterjectFlush: () => ipcRenderer.invoke('debug-interject-flush'),
   debugInterjectResetCooldown: () => ipcRenderer.invoke('debug-interject-reset-cooldown'),

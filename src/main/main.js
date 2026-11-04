@@ -8,7 +8,8 @@ const { LhClient } = require('../core/lh-client');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 // 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
 const ADMIN_CUES = [...CUE_STATES, 'turn'];
-const { ResponsesClient } = require('../core/responses-client');
+const { ResponsesClient, serverUrl } = require('../core/responses-client');
+const { userAvatar } = require('../core/user-avatar');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
@@ -213,6 +214,7 @@ function createTray() {
     trayMenu = Menu.buildFromTemplate([
       { label: '打开设置…', click: () => openAdmin() },
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
+      { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
       { label: '检查更新', click: () => updater.checkNow() },
       { label: '退出', click: () => app.quit() },
@@ -291,6 +293,16 @@ async function dancePlay({ id, name, loop } = {}) {
   return askRenderer('dance', { id: id || null, name: name || null, loop }, 15000);
 }
 const danceStop = () => askRenderer('dance-stop', {});
+// 重置姿势 (T-2830, docs/usage.md): 托盘 → 重置姿势, Ctrl/⌘+Shift+R in her window, the toolbar's ↺ (IPC reset-pose)
+// and the local API POST /reset-pose all come here. The pet window ends what is its own and resets her director
+// (app.js resetPose), then main ends what is main's — asleep, she wakes up (no affection lost: a fix, not a nudge).
+// In that order: the director already knows it is a reset when the wake comes in, so sit.doze fades back too.
+async function resetPose(source = 'ipc') {
+  if (!service || !service.pet) return { ok: false, reason: 'no-pet' };
+  const r = await askRenderer('reset-pose', { source });
+  const woke = service.resetPose();
+  return { ...r, woke: woke.woke };
+}
 const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
 // 导入舞蹈 (settings → 舞蹈, docs/vrm-dance.md §5.5): pick (a dialog; e2e: debug-next-open, several paths split by
 // newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
@@ -330,6 +342,11 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === ',' && (process.platform === 'darwin' ? input.meta : input.control) && !input.alt && !input.shift) {
       e.preventDefault();
       openAdmin();
+    }
+    // Ctrl/⌘+Shift+R while the pet window has focus: 重置姿势 (also keeps Electron's force-reload off this key)
+    if (input.type === 'keyDown' && input.code === 'KeyR' && (process.platform === 'darwin' ? input.meta : input.control) && input.shift && !input.alt) {
+      e.preventDefault();
+      resetPose('key');
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -381,6 +398,7 @@ function wire() {
     }
   });
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
+  ipcMain.handle('reset-pose', (_e, p) => resetPose(['button', 'key', 'test'].includes(p && p.source) ? p.source : 'ipc'));
   ipcMain.handle('touch', (_e, target) => service.touch(target));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
@@ -786,6 +804,16 @@ function wire() {
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData.
+  // Every visit to 聊天 asks; one `lh whoami` answers them for 10 minutes (30 s while there is none: a login shows soon)
+  let faceMemo = null;
+  ipcMain.handle('user-avatar', adminOnly(() => {
+    if (faceMemo && Date.now() < faceMemo.until) return faceMemo.p;
+    const p = userAvatar({ whoami: () => service.lh.whoami(), server: serverUrl(), cacheFile: path.join(app.getPath('userData'), 'user-avatar.json') });
+    faceMemo = { p, until: Date.now() + 30000 };
+    p.then((r) => { if (faceMemo && faceMemo.p === p) faceMemo.until = Date.now() + (r && r.avatar ? 600000 : 30000); }, () => { faceMemo = null; });
+    return p;
+  }));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -894,6 +922,14 @@ function wire() {
       const item = trayMenu && trayMenu.items.find((i) => i.label === label);
       if (!item) return false;
       item.click();
+      return true;
+    });
+    // e2e: the real tray menu popped up as a native menu at (x, y) of the pet window (a test display has no tray
+    // area to click), so a screenshot of the display shows it; closed again by debug-tray-popup { close: true }
+    ipcMain.handle('debug-tray-popup', (_e, { x = 10, y = 10, close = false } = {}) => {
+      if (!trayMenu || !win || win.isDestroyed()) return false;
+      if (close) { trayMenu.closePopup(win); return true; }
+      trayMenu.popup({ window: win, x, y });
       return true;
     });
     ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
@@ -1013,6 +1049,7 @@ app.whenReady().then(() => {
     dances: async () => danceList(),
     dance: (opts) => dancePlay(opts),
     danceStop: () => danceStop(),
+    resetPose: () => resetPose('api'),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),

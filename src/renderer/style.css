@@ -414,6 +414,9 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 /* with ♪ the row holds 4 interactions + 3 icon buttons: tighter gaps keep it on one line (4×42 + 3×24 + 6×2 = 252px) */
 .toolbar:has(#btn-dance:not(.hidden)) { gap: 2px; max-width: 260px; }
 .toolbar:has(#btn-dance:not(.hidden)) .btn.icon-btn { min-width: 24px; }
+/* 重置姿势 ↺ (T-2830, a VRM look only) adds a fourth icon button: the interactions take the small padding so the row
+   still fits on one line (4×34 + 4×24 + 7×2 = 246px) */
+.toolbar:has(#btn-reset:not(.hidden)) .btn:not(.icon-btn) { padding: 0 var(--pet-space-xs); }
 #btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); border-color: var(--lobe-color-primary); background: var(--lobe-color-fill-secondary); }
 #btn-dance.loading .ico { animation: dance-spin 1s linear infinite; }
 @keyframes dance-spin { to { transform: rotate(360deg); } }
