@@ -34,11 +34,14 @@ const GENDER_LABEL = { male: '男', female: '女' };
 function packLabel(p, base) {
   if (!p) return '';
   if (p.kind === 'generic') return `通用·${GENDER_LABEL[p.gender] || '女'}`;
+  if (p.kind === 'style') return `风格·${STYLE_LABEL[p.style] || p.style || '风格'}`;
   if (p.character === base) return '专属';
   const sp = SPECIES[p.character];
   return `${sp ? sp.nameZh : p.character} 的专属`;
 }
-const PICK_SOURCE_LABEL = { user: '手动指定', default: '我的语音包', own: '自动', generic: '自动回退' };
+const PICK_SOURCE_LABEL = { user: '手动指定', none: '不使用', default: '我的语音包', own: '自动', generic: '自动回退' };
+// 风格语音包 (core/voice-styles.js): style id → 可爱 / 御姐 …
+const STYLE_LABEL = Object.fromEntries(require('./voice-styles').STYLES.map((v) => [v.style, v.label]));
 
 // Her 语音包 now: `state` is main.js voicePackState(her base) — the owner's pick > her own > the generic one of
 // her gender; without it (no app around: tests, the roster before the first hatch) her own pack, as before.
@@ -49,16 +52,19 @@ function voicePackFor(id, packs, state = null) {
   if (!ref) return null;
   const p = { ...(list.find((x) => x.id === ref.id) || {}), ...ref };
   const source = state ? state.source : 'own';
-  return { id: p.id, name: p.name, engine: p.engine, engineLabel: ENGINE_LABEL[p.engine] || p.engine, lines: p.lines, builtIn: !!p.builtIn, credit: p.credit || '', kind: p.kind || 'character', gender: p.gender || null, label: packLabel(p, id), source, sourceLabel: PICK_SOURCE_LABEL[source] || '' };
+  return { id: p.id, name: p.name, engine: p.engine, engineLabel: ENGINE_LABEL[p.engine] || p.engine, lines: p.lines, builtIn: !!p.builtIn, store: !!p.store, credit: p.credit || '', kind: p.kind || 'character', gender: p.gender || null, label: packLabel(p, id), source, sourceLabel: PICK_SOURCE_LABEL[source] || '' };
 }
 
-// What the 语音包 picker offers her: 自动（按性别）, her own pack, the generic male / female ones (the owner's from
-// userData/voicepacks included: VoicePacks.list() keeps the one in use per id), then other characters' own ones.
+// What the 语音包 picker offers her: 不使用 / 内置（自动） (the page adds both), the 风格语音包 downloaded from 商店,
+// her own pack, the generic male / female ones (the owner's from userData/voicepacks included: VoicePacks.list() keeps
+// the one in use per id), then other characters' own ones. `notDownloaded`: the store's style packs not on this machine
+// (state.notDownloaded), listed but not pickable.
 function voicePackPick(id, packs, state = null) {
   const list = Array.isArray(packs) ? packs : [];
-  const rank = (p) => (p.kind === 'generic' ? (p.gender === 'male' ? 1 : 2) : p.character === id ? 0 : 3);
+  const rank = (p) => (p.kind === 'style' ? -1 : p.kind === 'generic' ? (p.gender === 'male' ? 1 : 2) : p.character === id ? 0 : 3);
+  const group = (r) => (r === -1 ? 'style' : r === 0 ? 'own' : r < 3 ? 'generic' : 'other');
   const options = list
-    .map((p) => ({ id: p.id, name: p.name, kind: p.kind || 'character', gender: p.gender || null, character: p.character || null, lines: p.lines, builtIn: !!p.builtIn, label: packLabel(p, id), group: rank(p) === 0 ? 'own' : rank(p) < 3 ? 'generic' : 'other' }))
+    .map((p) => ({ id: p.id, name: p.name, kind: p.kind || 'character', gender: p.gender || null, character: p.character || null, style: p.style || null, lines: p.lines, builtIn: !!p.builtIn, store: !!p.store, label: packLabel(p, id), group: group(rank(p)) }))
     .sort((a, b) => rank(a) - rank(b));
   return {
     choice: state ? state.choice : 'auto',
@@ -68,6 +74,7 @@ function voicePackPick(id, packs, state = null) {
     genderSource: state ? state.genderSource || null : null,
     engineVoice: state ? state.engineVoice || null : null,
     options,
+    notDownloaded: state && Array.isArray(state.notDownloaded) ? state.notDownloaded : [],
   };
 }
 

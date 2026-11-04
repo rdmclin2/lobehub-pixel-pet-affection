@@ -4765,19 +4765,20 @@ async function voicePackSwitch() {
     }, () => admin || page);
 
     let opts = [];
-    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 自动（按性别）/ 专属 / 通用·男 / 通用·女', async () => {
+    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 不使用 / 内置（自动）/ 专属 / 通用·男 / 通用·女', async () => {
       await voiceTab('dafeiyu-pixel');
       const cur = await current();
       assert.match(cur, /正在用 大肥鱼.* 专属/);
       assert.match(cur, /来源 自动 · 她有专属语音包/);
-      assert.match(await comboText(), /自动（按性别） · 现在是 专属/);
+      assert.match(await comboText(), /内置（自动 · 专属或按性别） · 现在是 专属/);
       await shot('v2-voice-tab-auto');
       await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
       await admin.waitForSelector('[role="option"]');
       opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
       await shot('v2-picker-open');
       await admin.keyboard.press('Escape');
-      assert.match(opts[0], /^自动（按性别）/);
+      assert.match(opts[0], /^不使用（全部用引擎朗读）/);
+      assert.match(opts[1], /^内置（自动 · 专属或按性别）/);
       assert.ok(opts.some((o) => /^专属 · 大肥鱼/.test(o)), 'her own');
       assert.ok(opts.some((o) => /^通用·男 · 通用男声.* · 1 句$/.test(o)), 'the owner\'s generic-male (userData/voicepacks, 1 line)');
       assert.ok(opts.some((o) => /^通用·女 · 通用女声/.test(o)), 'generic-female');
@@ -4831,7 +4832,7 @@ async function voicePackSwitch() {
       return note(`after restart: settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n语音 tab: ${cur}\n${fmtSynth(CATCH, a)}`);
     }, () => admin || page);
 
-    await step(S, 'V6 pick 通用·女, then 自动（按性别）: each in force at once; auto brings her own pack back', async () => {
+    await step(S, 'V6 pick 通用·女, then 内置（自动）: each in force at once; auto brings her own pack back', async () => {
       await pickInUi(/^通用·女/);
       await adminUntil(admin, () => /通用·女/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·女');
       assert.deepEqual(saved(), { dafeiyu: 'generic-female' });
@@ -4839,7 +4840,7 @@ async function voicePackSwitch() {
       assert.deepEqual([f.provider, f.voiceId], ['minimax', 'female-tianmei']);
       const c1 = await current();
       await shot('v6-picked-generic-female');
-      await pickInUi(/^自动（按性别）/);
+      await pickInUi(/^内置（自动/);
       await adminUntil(admin, () => /专属/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 专属');
       assert.deepEqual(saved(), {});
       const a = await synth(OWN);
@@ -4973,7 +4974,7 @@ async function userVoicePack() {
       const cb = (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
       assert.match(cur, /通用·男/);
       assert.match(cur, /来源 自动 · 跟随我的语音包/);
-      assert.match(cb, /^自动（跟随我的语音包） · 现在是 通用·男/);
+      assert.match(cb, /^内置（自动 · 跟随我的语音包） · 现在是 通用·男/);
       await shot('u3-character-follows');
       return note(`大肥鱼 语音 tab: ${cur}\npicker: ${cb}`);
     }, () => admin || page);
@@ -9925,6 +9926,319 @@ async function voiceStoreScenario() {
   }
 }
 
+// ---------------------------------------------------------------- voiceselect (按角色选择语音包：不使用 / 内置 / 已下载的风格包)
+// T-5095. 角色详情 → 语音 → 语音包 offers 不使用 / 内置（自动） / the 风格语音包 downloaded from 商店 (the store's others
+// are listed disabled, 去商店下载 opens 商店 → 语音包). Picking 可爱 (A), feeding her when she is full makes her say
+// 「呃……肚子圆滚滚的，吃不下了。」 — the pet window plays userData/voicepacks/style-cute/<file>; picking 御姐 (B) the
+// same line plays from style-yujie at once, no restart; a line B has not recorded (摸摸: her own line) goes to the
+// engine; 不使用 plays nothing from a pack. After a restart she is still on B. Deleting B while she uses it puts her on
+// 内置 (her own pack) with a notice. Free: fake lh, no key, store served from a local server. Evidence in out/e2e/voiceselect/.
+async function voiceSelectScenario() {
+  const S = 'voiceselect';
+  const SHOTS = path.join(OUT, 'voiceselect');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const A = 'style-cute';
+  const B = 'style-yujie';
+  const nameOf = (id) => index.voicePacks.find((v) => v.id === id).name;
+  const FULL = '呃……肚子圆滚滚的，吃不下了。';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselzips-'));
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const server = http.createServer((req, res) => {
+    const file = path.join(zips, path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname)));
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    res.end(buf);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vsel-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/voices` };
+  const VDIR = path.join(data, 'voicepacks');
+  const crypto = require('node:crypto');
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const openAdmin = async (route) => {
+    admin = await openAdminWindow(app, page, route);
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 900); }, W);
+  };
+  const ashot = async (name) => { await admin.bringToFront(); await admin.waitForTimeout(350); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const PANEL = '[role="tabpanel"]:not([inert])';
+  const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
+  const voiceTab = async () => {
+    await admin.bringToFront();
+    if (await admin.$('[role="option"]')) await closePicker();
+    await admin.evaluate(() => { location.hash = '/characters/dafeiyu-pixel'; });
+    await admin.waitForSelector('[data-path="/characters/dafeiyu-pixel"]');
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await combo().waitFor();
+    await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
+    await admin.waitForTimeout(300);
+  };
+  const current = async () => (await admin.locator(`${PANEL} [data-voice-pack-current]`).innerText()).replace(/\s+/g, ' ').trim();
+  const comboText = async () => (await combo().innerText()).replace(/\s+/g, ' ').trim();
+  // the open picker (@lobehub/ui Select on base-ui): group labels and options in order, disabled ones marked
+  const options = () => admin.$$eval('.lobe-select__group-label, [role="option"]', (els) => els.map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), group: e.classList.contains('lobe-select__group-label'), disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' })));
+  const openPicker = async () => {
+    await combo().click();
+    await admin.waitForSelector('[role="option"]');
+    await admin.waitForTimeout(300);
+  };
+  const closePicker = async () => {
+    await admin.keyboard.press('Escape');
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+  };
+  const pickInUi = async (rx, shotName = null) => {
+    await openPicker();
+    const opts = await options();
+    const s = shotName ? await ashot(shotName) : null;
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+    return { opts, shot: s };
+  };
+  const choiceIs = (choice) => until(`picker = ${choice}`, () => admin.evaluate(([p, c]) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice === c, [PANEL, choice]), 10000);
+  // the line she says when fed while full, as the pet window reads it: what it played and from which file
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600);
+  };
+  const said = async (kindRe, fn) => {
+    await page.bringToFront();
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await fn();
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind) && e.n), [n0, kindRe.source], { timeout: 20000 });
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => kindRe.test(e.kind));
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 });
+    const sp = await page.evaluate(() => window.petFx.lastSpeech());
+    return { text: entry.text, provider: sp.provider, packId: sp.packId, packFile: sp.packFile, bytes: sp.bytes || 0, mime: sp.mime || null, started: !!sp.started, status: sp.status };
+  };
+  const feedFull = async () => said(/^feed$/, async () => { await page.evaluate(() => window.pet.debugSet({ hunger: 0 })); await clickAct(page, 'feed'); await page.click('#food-menu button'); });
+  const pat = async () => {
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+    const b = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+    const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+    return r;
+  };
+  // the folder of a pack by id: the store's in userData/voicepacks/<id>, a built-in one in src/voicepacks/<folder>
+  const packDir = (id) => {
+    if (fs.existsSync(path.join(VDIR, id || '', 'manifest.json'))) return path.join(VDIR, id);
+    const b = path.join(ROOT, 'src', 'voicepacks');
+    const d = fs.readdirSync(b).find((n) => { try { return JSON.parse(fs.readFileSync(path.join(b, n, 'manifest.json'), 'utf8')).id === id; } catch { return false; } });
+    return d ? path.join(b, d) : path.join(VDIR, id || '');
+  };
+  const fileOf = (r) => {
+    const f = path.join(packDir(r.packId), r.packFile || '');
+    if (!r.packFile || !fs.existsSync(f)) return { path: f, exists: false };
+    const buf = fs.readFileSync(f);
+    return { path: f, exists: true, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) };
+  };
+  const fmt = (r) => { const f = fileOf(r); return `「${r.text}」 → provider=${r.provider} packId=${r.packId} packFile=${r.packFile} played bytes=${r.bytes} mime=${r.mime} started=${r.started} status=${r.status}${f.exists ? ` | file ${f.path.replace(data, '<userData>').replace(ROOT, '<repo>')} size=${f.size} sha256=${f.sha256}` : ''}`; };
+  const assertFrom = (r, packId) => {
+    const f = fileOf(r);
+    assert.equal(r.text, FULL);
+    assert.deepEqual([r.provider, r.packId, r.status, r.started], ['pack', packId, 'done', true], fmt(r));
+    assert.ok(f.exists, `file ${f.path}`);
+    assert.equal(r.bytes, f.size, 'the audio played is that file');
+  };
+  const storeStates = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+
+  try {
+    await step(S, 'S0 唤醒大肥鱼（朗读开，没有任何引擎 Key）；初始 settings.json 无按角色选择', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), {});
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await pshot('s0-pet');
+      return note(`S0 before any pick: tts.voicePackByCharacter=${JSON.stringify(saved())}\n  ${fmt(r)}`);
+    }, page);
+
+    await step(S, 'S1 角色详情 → 语音 → 语音包：选项为「不使用 / 内置（自动）/ …」，商店里没下载的风格包列在「未下载」里且不可选，旁边有「去商店下载」', async () => {
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      assert.match(cb, /^内置（自动 · 专属或按性别） · 现在是 专属/);
+      const shotTab = await ashot('s1a-voice-tab-builtin');
+      await openPicker();
+      const head = await options();
+      const shotHead = await ashot('s1b-picker-top');
+      await admin.evaluate(() => { const o = [...document.querySelectorAll('[role="option"]')].at(-1); o && o.scrollIntoView({ block: 'end' }); });
+      await admin.waitForTimeout(300);
+      const tail = head;
+      const shotTail = await ashot('s1c-picker-not-downloaded');
+      await closePicker();
+      assert.match(head.find((o) => !o.group).text, /^不使用（全部用引擎朗读）/);
+      assert.ok(head.some((o) => /^内置（自动/.test(o.text)));
+      const remote = tail.filter((o) => /· 未下载$/.test(o.text));
+      assert.equal(remote.length, index.voicePacks.length, JSON.stringify(tail));
+      assert.ok(remote.every((o) => o.disabled), 'not downloaded = not pickable');
+      assert.ok(tail.some((o) => o.group && /未下载/.test(o.text)));
+      const btn = await admin.locator(`${PANEL} [data-voice-pack-store]`).innerText();
+      assert.match(btn, /去商店下载（5 个未下载）/);
+      return note(`S1 picker: ${cb}\n  top: ${head.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  bottom: ${tail.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  button: ${btn} → ${shotTab}, ${shotHead}, ${shotTail}`);
+    }, () => admin || page);
+
+    await step(S, 'S2 点「去商店下载」进入 商店 → 语音包，下载 可爱（A）与 御姐（B）', async () => {
+      await admin.locator(`${PANEL} [data-voice-pack-store]`).click();
+      await admin.waitForSelector('[data-path="/store/voices"]');
+      await admin.waitForSelector('[data-store-voices]');
+      for (const id of [A, B]) {
+        await admin.click(`[data-voice-download="${id}"]`);
+        await until(`${id} installed`, async () => (await storeStates())[id] === 'installed', 60000);
+      }
+      const st = await storeStates();
+      const s = await ashot('s2-store-downloaded');
+      return note(`S2 via 去商店下载 → #/store/voices; states ${JSON.stringify(st)} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S3 回到角色语音页：已下载的 A、B 出现在「风格语音包（已下载）」组，选 A（可爱）→ 持久化到 settings.json', async () => {
+      await voiceTab();
+      const { opts, shot: s } = await pickInUi(new RegExp(nameOf(A)), 's3a-picker-downloaded');
+      await choiceIs(A);
+      await admin.waitForTimeout(300);
+      const cur = await current();
+      assert.ok(opts.some((o) => o.group && o.text === '风格语音包（已下载）'));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·可爱 · ${nameOf(A)}`)));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·御姐 · ${nameOf(B)}`)));
+      assert.match(cur, new RegExp(`正在用 ${nameOf(A)} 风格·可爱`));
+      assert.match(cur, /来源 手动指定/);
+      assert.deepEqual(saved(), { dafeiyu: A });
+      const s2 = await ashot('s3b-picked-A');
+      return note(`S3 options: ${opts.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  正在用: ${cur}\n  settings.json tts.voicePackByCharacter=${JSON.stringify(saved())} → ${s}, ${s2}`);
+    }, () => admin || page);
+
+    await step(S, 'S4 A 生效：桌宠喂食（已经吃饱）说固定台词，播放的是 userData/voicepacks/style-cute 里的文件；她的专属台词（摸摸）A 包没有 → 回退引擎', async () => {
+      const r = await feedFull();
+      assertFrom(r, A);
+      const p = await pshot('s4-pet-said-A');
+      // 摸摸: her lines are random — a generic one A has recorded plays from A, one of her own goes to the engine
+      const VPk = require('../src/core/voice-pack');
+      const inA = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(VDIR, A, 'manifest.json'), 'utf8')).lines).map(VPk.norm));
+      const pats = [];
+      let q = null;
+      for (let i = 0; i < 8 && !q; i++) {
+        const x = await pat();
+        pats.push(x);
+        const recorded = inA.has(VPk.norm(x.text));
+        if (recorded) assert.deepEqual([x.provider, x.packId], ['pack', A], fmt(x));
+        else { assert.notEqual(x.provider, 'pack', fmt(x)); assert.ok(!x.packId, 'not from any pack'); q = x; }
+      }
+      assert.ok(q, `a line A has not recorded: ${pats.map(fmt).join(' / ')}`);
+      return note(`S4 (A=${A}):\n  ${fmt(r)}\n  摸摸 lines: ${pats.map((x) => `${inA.has(VPk.norm(x.text)) ? '[in A] ' : '[not in A → engine] '}${fmt(x)}`).join('\n    ')}\n  (no key on this box → 原引擎链 → 系统语音) → ${p}`);
+    }, page);
+
+    let fileA = null;
+    await step(S, 'S5 切到 B（御姐）：不用重启，同一句台词立刻来自 style-yujie 的文件', async () => {
+      fileA = fileOf(await feedFull());
+      assert.ok(fileA.path.includes(path.join('voicepacks', A)), fileA.path);
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const s = await ashot('s5a-picked-B');
+      const r = await feedFull();
+      assertFrom(r, B);
+      const f = fileOf(r);
+      assert.notEqual(f.sha256, fileA.sha256, 'another recording');
+      const p = await pshot('s5b-pet-said-B');
+      return note(`S5 (B=${B}): settings.json=${JSON.stringify(saved())}\n  ${fmt(r)}\n  A's file was ${fileA.path.replace(data, '<userData>')} sha256=${fileA.sha256} → ${s}, ${p}`);
+    }, () => admin || page);
+
+    await step(S, 'S6 选「不使用」：同一句不再从语音包播放（走引擎链）；再切回 B', async () => {
+      await voiceTab();
+      await pickInUi(/^不使用/);
+      await choiceIs('none');
+      assert.deepEqual(saved(), { dafeiyu: 'none' });
+      const cur = await current();
+      assert.match(cur, /不使用语音包/);
+      const s = await ashot('s6-none');
+      const r = await feedFull();
+      assert.notEqual(r.provider, 'pack', fmt(r));
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      return note(`S6 不使用: 正在用「${cur}」; ${fmt(r)}\n  back to B: settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7 重启应用：settings.json 仍是 B，设置页显示 B，固定台词仍来自 style-yujie', async () => {
+      await app.close();
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const r = await feedFull();
+      assertFrom(r, B);
+      const p = await pshot('s7a-pet-after-restart');
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·御姐`));
+      const s = await ashot('s7b-voice-tab-after-restart');
+      return note(`S7 after restart: settings.json=${JSON.stringify(saved())}; picker「${cb}」; ${cur}\n  ${fmt(r)} → ${p}, ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S8 删除正在使用的 B：安全回退到内置（她的专属语音包），设置页提示；选择仍保存，重新下载后恢复', async () => {
+      await admin.evaluate(() => { location.hash = '/store/voices'; });
+      await admin.waitForSelector('[data-store-voices]');
+      await admin.click(`[data-voice-remove="${B}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await until('B removed', async () => (await storeStates())[B] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, B)));
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await voiceTab();
+      await admin.locator(`${PANEL} [data-voice-pack-missing="${B}"]`).waitFor();
+      const warn = (await admin.locator(`${PANEL} [data-voice-pack-missing]`).innerText()).replace(/\s+/g, ' ').trim();
+      const cur = await current();
+      assert.match(cur, /专属/);
+      const s = await ashot('s8-removed-in-use');
+      assert.deepEqual(saved(), { dafeiyu: B }, 'the pick is kept');
+      return note(`S8 B deleted while in use: ${fmt(r)}\n  正在用: ${cur}\n  notice: ${warn}\n  settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S9 没有渲染错误', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      return 'no console errors';
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voiceselect-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
 // ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
 // A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
 // other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
@@ -11767,6 +12081,7 @@ async function interjectScenario() {
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   if (which === 'store' || which === 'all') await storeScenario();
   if (which === 'voicestore' || which === 'all') await voiceStoreScenario();
+  if (which === 'voiceselect' || which === 'all') await voiceSelectScenario();
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

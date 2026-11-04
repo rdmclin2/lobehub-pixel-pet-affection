@@ -65,7 +65,7 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 
 ## 3. 用哪个语音包（`resolvePack`，纯函数）
 
-1. 用户为这个角色选的包：`settings.tts.voicePackByCharacter[角色 id]`，可以选任何一个已加载的包 → `source: 'user'`
+1. 用户为这个角色选的包：`settings.tts.voicePackByCharacter[角色 id]`，可以选任何一个已加载的包（包括商店下载的风格包）→ `source: 'user'`；选 `none`（**不使用**）→ 不用任何语音包，`source: 'none'`，全部交给引擎、用她自己的音色（它也盖过「我的语音包」）
 2. **我的语音包**（用户自己的语音包）：`settings.tts.voicePack`，可以选通用男声 / 通用女声或任何一个已加载的包，所有没有单独指定的角色都用它 → `'default'`
 3. 她自己的专属包 → `'own'`
 4. 她这个性别对应的通用包 → `'generic'`
@@ -85,13 +85,14 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 - 角色 id 要匹配 `^[a-z][a-z0-9]{1,19}$`（包括 `vrmx…` 开头的通用伙伴 id）。
 - 包 id 要匹配 `^[a-z0-9][a-z0-9-]{0,63}$`。
 - 最多保存 200 项。
-- 值为 `auto` 或格式不对的项会被丢掉，等于「自动」。
+- 值为 `auto` 或格式不对的项会被丢掉，等于「自动」（界面叫 **内置（自动）**）；`none` 保留，表示「不使用」（`none` / `auto` 是保留 id，语音包不能用）。
+- 选的包不在本机（商店包被删）时这一项**保留**，按内置处理，重新下载后自动恢复。
 
 `PetService.setTts({ voicePackByCharacter: { id: packId | 'auto' | null } })` 只把这一项合并进去，`auto` 或 `null` 表示删除这一项。
 
 | 通道 | 载荷 | 返回 |
 | --- | --- | --- |
-| `set-voice-pack`（preload：`setVoicePack(characterId, packId)`，桌宠窗口和设置窗口都有） | `{ characterId, packId: <包 id> \| 'auto' }` | `{ ok, state, settings }`；`{ ok: false, reason: 'unknown-character' \| 'unknown-pack' }` |
+| `set-voice-pack`（preload：`setVoicePack(characterId, packId)`，桌宠窗口和设置窗口都有） | `{ characterId, packId: <包 id> \| 'auto' \| 'none' }` | `{ ok, state, settings }`；`{ ok: false, reason: 'unknown-character' \| 'unknown-pack' }` |
 | `voice-pack-state`（`voicePackState(characterId)`） | `{ characterId? }`（不传就是当前角色） | `{ ok, state }` |
 
 `state` 的结构：
@@ -100,14 +101,17 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 { characterId, choice, missing, source, gender, genderSource,
   pack: { id, name, kind, gender, character, engine, voiceId, lines },
   engineVoice: { engine, voiceId, fromPack },
-  options: [{ id: 'auto' }, …list()] }
+  options: [{ id: 'none' }, { id: 'auto' }, …list()],
+  notDownloaded: [{ id, name, style, styleLabel, gender }] }   // 商店里还没下载的风格包（只列出，不能选）
 ```
 
 切换后立即生效：
 
 - 停掉正在进行的预合成（`endPrewarm`，它还在用旧包的音色），并丢掉正在获取的那一句（`cancel`）。
 - 设置保存后会推送 `settings`。桌宠窗口的预合成签名里包含这个角色当前选的包，所以会按新包重新预合成。
-- 下一句 `tts-synthesize` 按新的解析结果先查新包的台词，没命中就用新音色合成。
+- 下一句 `tts-synthesize` 按新的解析结果先查新包的台词，没命中就用新音色合成（不会去别的包里找，避免一句话换个声音）。
+- **手动选的包优先**（`packApplies(..., source)`）：`source` 是 `user`（为她选的）或 `default`（我的语音包）时，不管哪个引擎会朗读，录好的台词都先播放；自动解析到的包仍只在引擎一致或没有可用引擎时播放。语音包开关关掉或选了系统语音时都不用。
+- 渲染端 `petFx.lastSpeech()` 带 `packId` / `packFile`：播放的是哪个包的哪个文件（引擎合成的为空）。
 - 磁盘上的 TTS 缓存不用清：缓存键里包含音色，换了音色自然就是新的键。
 
 `settings.tts.voicePack`（我的语音包）：`'auto'` 或包 id，默认 `'auto'`；不合格式的值按 `auto`（`tts.js normalizeVoicePackId`）。`PetService.setTts({ voicePack: packId | 'auto' | null })`。
@@ -126,7 +130,7 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 
 `admin/src/console/pages/Characters.tsx` `VoiceTab`：
 
-- 下拉「语音包」：**自动（按性别）**（后面写出现在解析到的包，如「现在是 通用·男」）、**专属语音包**（她自己的）、**通用语音包**（通用·男 / 通用·女，用户放进 `userData/voicepacks` 的同 id 包会替换内置的，「重新读取」后出现）、**其他角色的语音包**。选中即调用 `setVoicePack(base, packId | 'auto')`，写入 `settings.tts.voicePackByCharacter`，下一句起生效；重启后保持。
+- 下拉「语音包」（T-5095 起）：**不使用（全部用引擎朗读）**、**内置（自动 · 专属或按性别）**（后面写出现在解析到的包，如「现在是 通用·男」）、**风格语音包（已下载）**（商店下载的，标签「风格·可爱」等）、**未下载（先去 商店 → 语音包 下载）**（商店里其余的包，灰掉不能选）、旁边按钮「去商店下载（N 个未下载）」打开 `#/store/voices`；然后是 **专属语音包**（她自己的）、**通用语音包**（通用·男 / 通用·女，用户放进 `userData/voicepacks` 的同 id 包会替换内置的，「重新读取」后出现）、**其他角色的语音包**。选中即调用 `setVoicePack(base, packId | 'auto')`，写入 `settings.tts.voicePackByCharacter`，下一句起生效；重启后保持。
 - 「正在用」：包名 + 标签（专属 / 通用·男 / 通用·女 /「某某 的专属」）；「来源」：手动指定 / 自动 · 她有专属语音包 / 自动回退 · 按性别（男/女）用通用语音包；另列台词数、朗读音色（`engineVoice`，标明来自语音包还是她自己的）、音色署名。选的包已不在时显示警告并按自动处理。
 - 数据来自角色列表行（`core/roster.js`）：`voicePack`（生效包：`label` `source` `sourceLabel` …）与 `voicePackPick`（`choice` `missing` `gender` `engineVoice` `options[]`，按 专属 → 通用·男 → 通用·女 → 其他 排序）。`main.js adminState` 每次推送都对每个角色调用 `voicePackState`，所以列表卡片的摘要「语音包 通用·男」与详情一致（悬停看包名和句数）。
 - e2e：`xvfb-run -a node e2e/run.js voice-pack-switch`（界面切换 → settings.json → 桌宠下一句的 packId → 重启后保持 → 切回自动）。
@@ -271,3 +275,23 @@ node scripts/upload-character-catalog.js --voices [--dry-run]            # 上�
 IPC（`src/main/admin-preload.js`）：`voiceStore()` → `{ voicePacks: StoreVoiceRow[], dir }`；`voiceDownload(id)` / `voiceRemove(id)` → `{ ok, reason?, text?, store, settings }`；`voiceDownloadCancel(id)`；进度走 `onCatalogProgress`（id 以 `style-` 开头）。
 
 验证：`node --test test/voice-store.test.js`（安装校验、回滚、磁盘状态、状态推导、下载器 + 本地 HTTP 服务器）；`xvfb-run -a node e2e/run.js voicestore`（本地服务器限速模拟 CDN，截图在 `out/e2e/voicestore/`）。
+
+## 8. 按角色选择 / 切换语音包（T-5095）
+
+设置窗口 → 角色 → 某个角色 → **语音** → **语音包**：
+
+| 选项 | 存到 `settings.tts.voicePackByCharacter[角色]` | 效果 |
+| --- | --- | --- |
+| 不使用（全部用引擎朗读） | `'none'` | 不查任何语音包，每句都交给引擎，用她自己的音色 |
+| 内置（自动 · 专属或按性别） | 删掉这一项（= `auto`） | 我的语音包 > 她的专属包 > 按性别的通用包（和以前一样） |
+| 风格语音包（已下载） | 包 id，例如 `style-cute` | 固定台词先播放这个包的录音；包里没有的台词交给引擎（用这个包的音色），不会混用别的包 |
+| 未下载 | —（灰掉，不能选） | 点旁边「去商店下载」到 商店 → 语音包 下载，下载完就出现在「已下载」组 |
+
+- **持久化**：写在 `settings.json`，默认 `{}`（每个角色都是内置）；旧设置文件没有这个字段时迁移为 `{}`；重启后保持。
+- **即时生效**：选中后桌宠的下一句就按新选择查找（`set-voice-pack` 停预合成、丢掉正在获取的一句，桌宠窗口按新包重新预合成），不用重启。
+- **删除正在用的包**：商店里删除后马上回到内置（她的专属包或通用包），角色语音页显示「你选的语音包「…」已经不在了…」并给出「去商店」；选择本身保留，重新下载后自动恢复。删除时会停掉正在获取的那一句和旧包的预合成。
+
+验证：
+
+- 单测 `node --test test/voice-pack-select.test.js`：不使用、查找优先级（A → B 各取各的文件）、手动选的包优先于引擎匹配、未命中回退引擎、删除后回退与恢复、持久化与重启、选择器分组。
+- e2e `xvfb-run -a node e2e/run.js voiceselect`（本地服务器充当商店 CDN，不用 Key）：选项 → 去商店下载 A/B → 选 A，喂饱后再喂（「呃……肚子圆滚滚的，吃不下了。」）播放 `userData/voicepacks/style-cute/<文件>` → 切 B 立即来自 `style-yujie` → 不使用 → 重启后仍是 B → 删除 B 回到内置。截图、录屏和日志在 `out/e2e/voiceselect/`。

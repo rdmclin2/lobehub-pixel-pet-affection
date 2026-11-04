@@ -530,9 +530,12 @@ const VoicesShelf = () => {
 
 type Shelf = "characters" | "dances" | "voices";
 
-export const StorePage = () => {
+const SHELVES: Shelf[] = ["characters", "dances", "voices"];
+
+/** `initial`: the shelf a link opens (`#/store/voices`, e.g. from a character's 语音包 picker). */
+export const StorePage = ({ initial }: { initial?: string }) => {
   // one tab per kind of thing on sale
-  const [tab, setTab] = useState<Shelf>("characters");
+  const [tab, setTab] = useState<Shelf>(SHELVES.includes(initial as Shelf) ? (initial as Shelf) : "characters");
   return (
     <>
       <PageHeader

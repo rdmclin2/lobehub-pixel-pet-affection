@@ -483,7 +483,7 @@ const ModelTab = ({ c }: { c: RosterRow }) => {
 };
 
 const GENDER_ZH: Record<string, string> = { female: '女', male: '男' };
-const GROUP_LABEL: Record<VoicePackOption['group'], string> = { generic: '通用语音包', other: '其他角色的语音包', own: '专属语音包' };
+const GROUP_LABEL: Record<VoicePackOption['group'], string> = { generic: '通用语音包', other: '其他角色的语音包', own: '专属语音包', style: '风格语音包（已下载）' };
 
 /** One pack as the picker and her page name it: 「专属 · 克洛蒂语音 · 219 句」. */
 const packText = (p: { label: string; lines: number; name: string }) => [p.label, p.name, p.lines ? `${p.lines} 句` : '还没有录好的台词'].join(' · ');
@@ -499,8 +499,10 @@ const sourceText = (c: RosterRow) => {
 };
 
 /**
- * 语音: which 语音包 she uses. 自动 = her own one, else the generic pack of her gender; or one picked here.
- * A pick is saved (settings.tts.voicePackByCharacter) and is in force from her next line (main.js set-voice-pack).
+ * 语音: which 语音包 she uses. 不使用 = none, every line read by the engine; 内置 (auto) = her own one, else the
+ * generic pack of her gender; or one picked here — the 风格语音包 downloaded from 商店 first. Store packs not on this
+ * machine are listed disabled with a link to 商店 → 语音包. A pick is saved (settings.tts.voicePackByCharacter) and is
+ * in force from her next line (main.js set-voice-pack); deleting the pack she uses puts her back on 内置.
  */
 const VoiceTab = ({ c }: { c: RosterRow }) => {
   const { merge } = useStore();
@@ -508,17 +510,26 @@ const VoiceTab = ({ c }: { c: RosterRow }) => {
   const pick = c.voicePackPick;
   const v = c.voicePack;
   const tts = c.voice?.tts;
-  const groups = (['own', 'generic', 'other'] as const)
+  const remote = pick.notDownloaded ?? [];
+  type Opt = { disabled?: boolean; label: string; value: string };
+  const groups: { label: string; options: Opt[] }[] = (['style', 'own', 'generic', 'other'] as const)
     .map((g) => ({ label: GROUP_LABEL[g], options: pick.options.filter((o) => o.group === g).map((o) => ({ label: packText(o), value: o.id })) }))
     .filter((g) => g.options.length > 0);
-  const autoText = pick.userChoice && pick.userChoice !== 'auto' ? '自动（跟随我的语音包）' : '自动（按性别）';
-  const options = [{ label: `${autoText}${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' }, ...groups];
+  if (remote.length) groups.push({ label: '未下载（先去 商店 → 语音包 下载）', options: remote.map((o) => ({ disabled: true, label: `${o.name} · 未下载`, value: `remote:${o.id}` })) });
+  const autoText = pick.userChoice && pick.userChoice !== 'auto' ? '内置（自动 · 跟随我的语音包）' : '内置（自动 · 专属或按性别）';
+  const options = [
+    { label: '不使用（全部用引擎朗读）', value: 'none' },
+    { label: `${autoText}${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' },
+    ...groups,
+  ];
+  const nameOf = (id: string) => (id === 'none' ? '不使用' : id === 'auto' ? '内置（自动）' : pick.options.find((o) => o.id === id)?.name ?? id);
   const onPick = async (id: string) => {
+    if (id.startsWith('remote:')) return;
     setBusy(true);
     try {
       const r = await api().setVoicePack(c.base, id);
       if (r && r.settings) merge({ settings: r.settings });
-      if (r && r.ok) toast.success(id === 'auto' ? `${c.nameZh} 的语音包：自动` : `${c.nameZh} 的语音包：${pick.options.find((o) => o.id === id)?.name ?? id}`);
+      if (r && r.ok) toast.success(`${c.nameZh} 的语音包：${nameOf(id)}`);
       else toast.error({ description: reasonText(r), title: '没能切换语音包' });
     } finally {
       setBusy(false);
@@ -526,22 +537,27 @@ const VoiceTab = ({ c }: { c: RosterRow }) => {
   };
   return (
     <Flexbox gap={16}>
-      <Surface description="她说话用哪个语音包。录好的台词直接播放，其余的用语音包的音色朗读。切换后她的下一句就用新的语音包。" title="语音包">
+      <Surface description="她说话用哪个语音包。录好的台词直接播放，其余的用语音包的音色朗读。切换后她的下一句就用新的语音包，不用重启。" title="语音包">
         <Flexbox gap={12}>
-          <div data-voice-pack-select={c.base}>
-            <Select aria-label="语音包" disabled={busy || !pick.options.length} loading={busy} onChange={(x) => x && onPick(String(x))} options={options} style={{ maxWidth: 420, width: '100%' }} value={pick.choice} />
-          </div>
+          <Flexbox align="center" gap={8} horizontal wrap="wrap">
+            <div data-voice-pack-choice={pick.choice} data-voice-pack-select={c.base} style={{ flex: '1 1 320px', maxWidth: 420 }}>
+              <Select aria-label="语音包" disabled={busy} loading={busy} onChange={(x) => x && onPick(String(x))} options={options} style={{ width: '100%' }} value={pick.choice} />
+            </div>
+            <Button data-voice-pack-store icon={Store} onClick={() => { location.hash = '#/store/voices'; }}>
+              {remote.length ? `去商店下载（${remote.length} 个未下载）` : '去商店看看'}
+            </Button>
+          </Flexbox>
           <Flexbox data-voice-pack-current={c.base} gap={12}>
             <Info label="正在用">
               {v ? (
                 <Flexbox align="center" gap={6} horizontal wrap="wrap">
                   <Text>{v.name}</Text>
-                  <Tag color={v.kind === 'generic' ? 'processing' : 'success'} data-voice-pack-label>
+                  <Tag color={v.kind === 'generic' ? 'processing' : v.kind === 'style' ? 'purple' : 'success'} data-voice-pack-label>
                     {v.label}
                   </Tag>
                 </Flexbox>
               ) : (
-                '没有语音包，用她自己的音色朗读'
+                <Text data-voice-pack-none>{pick.choice === 'none' ? '不使用语音包，全部用她自己的音色朗读' : '没有语音包，用她自己的音色朗读'}</Text>
               )}
             </Info>
             {v && (
@@ -549,7 +565,7 @@ const VoiceTab = ({ c }: { c: RosterRow }) => {
                 <Text data-voice-pack-source={v.source}>{sourceText(c)}</Text>
               </Info>
             )}
-            {v && <Info label="台词">{v.lines ? `${v.lines} 句录好的台词 · ${v.engineLabel} · ${v.builtIn ? '内置' : '自定义'}` : `还没有录好的台词，全部用 ${v.engineLabel} 朗读`}</Info>}
+            {v && <Info label="台词">{v.lines ? `${v.lines} 句录好的台词 · ${v.engineLabel} · ${v.store ? '商店下载' : v.builtIn ? '内置' : '自定义'}；没录到的台词用 ${v.engineLabel} 朗读` : `还没有录好的台词，全部用 ${v.engineLabel} 朗读`}</Info>}
             {pick.engineVoice && (
               <Info label="朗读音色">
                 {`${pick.engineVoice.engine} · ${pick.engineVoice.voiceId ?? '默认'}${pick.engineVoice.fromPack ? '（来自语音包）' : '（她自己的）'}`}
@@ -557,7 +573,15 @@ const VoiceTab = ({ c }: { c: RosterRow }) => {
             )}
             {v?.credit && <Info label="音色署名">{v.credit}</Info>}
           </Flexbox>
-          {pick.missing && <Alert showIcon title={`你选的语音包「${pick.missing}」已经不在了，先按自动选择。`} type="warning" />}
+          {pick.missing && (
+            <Alert
+              action={<Button onClick={() => { location.hash = '#/store/voices'; }} size="small">去商店</Button>}
+              data-voice-pack-missing={pick.missing}
+              showIcon
+              title={`你选的语音包「${remote.find((o) => o.id === pick.missing)?.name ?? pick.missing}」已经不在了（可能被删除），先用内置语音包；重新下载后自动恢复。`}
+              type="warning"
+            />
+          )}
         </Flexbox>
       </Surface>
       <Surface title="角色音色">

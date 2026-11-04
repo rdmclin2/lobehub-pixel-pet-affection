@@ -174,11 +174,13 @@ export interface VoicePackRef {
   engineLabel: string;
   gender: 'female' | 'male' | null;
   id: string;
-  kind: 'character' | 'generic';
-  /** 专属 / 通用·男 / 通用·女 / 「某某 的专属」 */
+  kind: 'character' | 'generic' | 'style';
+  /** 专属 / 通用·男 / 通用·女 / 风格·可爱 / 「某某 的专属」 */
   label: string;
   lines: number;
   name: string;
+  /** downloaded from 商店 → 语音包 */
+  store: boolean;
   /** user: picked for her · default: 我的语音包 (settings.tts.voicePack) · own: her own (自动) · generic: 自动回退 to the generic pack of her gender */
   source: 'default' | 'generic' | 'own' | 'user';
   sourceLabel: string;
@@ -188,15 +190,27 @@ export interface VoicePackOption {
   builtIn: boolean;
   character: string | null;
   gender: 'female' | 'male' | null;
-  group: 'generic' | 'other' | 'own';
+  group: 'generic' | 'other' | 'own' | 'style';
   id: string;
-  kind: 'character' | 'generic';
+  kind: 'character' | 'generic' | 'style';
   label: string;
   lines: number;
   name: string;
+  store: boolean;
+  style: string | null;
+}
+
+/** a 商店 → 语音包 entry not downloaded yet: listed in the picker, not pickable */
+export interface VoicePackRemote {
+  gender: 'female' | 'male' | null;
+  id: string;
+  name: string;
+  style: string | null;
+  styleLabel: string;
 }
 
 export interface VoicePackPick {
+  /** 'none' (不使用) · 'auto' (内置) · a pack id */
   choice: string;
   /** 我的语音包 in force ('auto' or a pack id): the default of every character without a pick of her own */
   userChoice: string;
@@ -205,6 +219,7 @@ export interface VoicePackPick {
   genderSource: string | null;
   /** a pick whose pack is gone (counts as 自动) */
   missing: string | null;
+  notDownloaded: VoicePackRemote[];
   options: VoicePackOption[];
 }
 

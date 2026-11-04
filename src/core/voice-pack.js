@@ -31,7 +31,10 @@
 //   format stays 1 because character / generic manifests are read exactly as before.
 // Which pack a character uses (resolvePack): the one the owner picked for her (settings.tts.voicePackByCharacter)
 // > the owner's own 语音包 for everyone (我的语音包, settings.tts.voicePack) > her own (专属) > the generic pack of
-// her gender (core/voice-gender.js).
+// her gender (core/voice-gender.js). Her pick may also be 'none' (不使用): no pack at all, every line goes to the
+// engine in her own voice. A pick whose pack is gone (a store pack deleted) counts as 'auto' (内置) until it is back.
+// The pack the owner picked (her pick or 我的语音包) is looked up first whatever engine would read the line
+// (packApplies); a line it has no recording of goes to the engine, never to another pack.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,6 +55,7 @@ const PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // engines a generic pack's default voice may be on (the local server's voice is the owner's, not a pack's)
 const VOICE_ENGINES = ['fish', 'minimax', 'elevenlabs'];
 const AUTO = 'auto';
+const NONE = 'none'; // 不使用: her pick when she should use no 语音包 (settings.tts.voicePackByCharacter)
 const MIME = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/opus' };
 // what main.js does to a line before it reaches an engine (core/tts.js synthesize)
 const norm = (text) => String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
@@ -124,7 +128,7 @@ function validateManifest(m, dir = null) {
   const what = kind === 'style' ? 'style' : 'generic';
   for (const k of generic ? ['id', 'name'] : ['id', 'name', 'character']) if (typeof m[k] !== 'string' || !m[k].trim()) errors.push(`${k} is required`);
   if (m.id && !PACK_ID_RE.test(m.id)) errors.push('id: lowercase letters, digits and -');
-  if (m.id === AUTO) errors.push(`id ${AUTO} is reserved`);
+  if (m.id === AUTO || m.id === NONE) errors.push(`id ${m.id} is reserved`);
   if (generic) {
     if (!Gender.isGender(m.gender)) errors.push(`gender is required for a ${what} pack (one of ${Gender.GENDERS.join(', ')})`);
     if (m.character !== undefined) errors.push(`a ${what} pack belongs to no character (leave character out)`);
@@ -244,7 +248,7 @@ class VoicePacks {
     if (!file) return null;
     try {
       const audio = fs.readFileSync(path.join(p.dir, file));
-      return { audio, mime: MIME[path.extname(file).slice(1)] || 'audio/mpeg', provider: 'pack', packId: p.id, engine: p.engine || null, voiceId: p.voiceId || null };
+      return { audio, mime: MIME[path.extname(file).slice(1)] || 'audio/mpeg', provider: 'pack', packId: p.id, packFile: file, engine: p.engine || null, voiceId: p.voiceId || null };
     } catch {
       return null;
     }
@@ -253,23 +257,30 @@ class VoicePacks {
 
 // Whether a recorded line should be played instead of asking an engine: packs on, and the engine that
 // would read this line is the one the pack was recorded with — or there is no engine she could use at
-// all (a recorded line beats the system voice). With 系统语音 chosen, never.
-function packApplies(tts, pack, firstEngine) {
+// all (a recorded line beats the system voice), or the owner picked this pack (source 'user' — for her — or
+// 'default' — 我的语音包): a pack chosen by hand always plays its recordings first. With 系统语音 chosen, never.
+function packApplies(tts, pack, firstEngine, source = null) {
   if (!pack || !tts || tts.packs === false || tts.provider === 'system') return false;
+  if (source === 'user' || source === 'default') return true;
   return !firstEngine || !pack.engine || firstEngine === pack.engine;
 }
 
 // Which pack a character uses. Pure: `packs` is anything with get(id) / packFor(character) / genericFor(gender)
-// (a VoicePacks). choice: the owner's pick for her (settings.tts.voicePackByCharacter[id]: a pack id, or 'auto'
-// / missing); a pick whose pack is gone counts as 'auto'. userChoice: the owner's own 语音包 (我的语音包,
+// (a VoicePacks). choice: the owner's pick for her (settings.tts.voicePackByCharacter[id]: a pack id, 'none'
+// (不使用) or 'auto' / missing); a pick whose pack is gone counts as 'auto'. userChoice: the owner's own 语音包 (我的语音包,
 // settings.tts.voicePack: a pack id or 'auto'), the default for every character without a pick of her own.
 // gender: hers (core/voice-gender.js genderOf).
-// Order: her pick (source 'user') > 我的语音包 ('default') > her own (专属, 'own') > the generic pack of her gender ('generic').
-// → { pack, source: 'user' | 'default' | 'own' | 'generic' | null, choice: packId | 'auto', missing: packId | null,
+// Order: her pick (source 'user'; 'none' → no pack, source 'none') > 我的语音包 ('default') > her own (专属, 'own') >
+// the generic pack of her gender ('generic').
+// → { pack, source: 'user' | 'none' | 'default' | 'own' | 'generic' | null, choice: packId | 'auto' | 'none', missing: packId | null,
 //     userChoice: packId | 'auto', userMissing: packId | null }
 function resolvePack({ characterId, gender, choice, userChoice } = {}, packs) {
+  const mine = typeof userChoice === 'string' && userChoice !== AUTO && userChoice !== NONE ? userChoice : null;
+  if (choice === NONE) {
+    const mp = mine && packs ? packs.get(mine) : null;
+    return { pack: null, source: 'none', choice: NONE, missing: null, userChoice: mp ? mine : AUTO, userMissing: mine && !mp ? mine : null };
+  }
   const picked = typeof choice === 'string' && choice !== AUTO ? choice : null;
-  const mine = typeof userChoice === 'string' && userChoice !== AUTO ? userChoice : null;
   const chosen = picked && packs ? packs.get(picked) : null;
   const minePack = mine && packs ? packs.get(mine) : null;
   const u = { userChoice: minePack ? mine : AUTO, userMissing: mine && !minePack ? mine : null };
@@ -308,4 +319,4 @@ function voiceForPack(species, resolved) {
   return { ...species, voice: { ...(v || {}), tts } };
 }
 
-module.exports = { FORMAT, KINDS, LINE_SETS, AUTO, PACK_ID_RE, VOICE_ENGINES, APP_LINES, norm, fileFor, packLines, genericPackLines, validateManifest, VoicePacks, packApplies, resolvePack, packVoiceTts, voiceForPack };
+module.exports = { FORMAT, KINDS, LINE_SETS, AUTO, NONE, PACK_ID_RE, VOICE_ENGINES, APP_LINES, norm, fileFor, packLines, genericPackLines, validateManifest, VoicePacks, packApplies, resolvePack, packVoiceTts, voiceForPack };
