@@ -171,7 +171,7 @@ for (const lib of [true, false]) {
     A.run(3);
     assert.equal(A.last.action.state, 'sleep');
     assert.equal(A.last.life.sleep, true);
-    assertResetsToIdle(d, A, 'sleep', 3, { fades: lib }); // with a library: sit.doze cross-fades back to the idle clip
+    assertResetsToIdle(d, A, 'sleep', 3); // with a library sit.doze cross-fades back to the idle clip; without one the procedural sleep body (T-2831) fades out
     assert.notEqual(A.last.posture, 'sit.doze');
     assert.equal(A.last.life.standing, true, 'standing again');
   });
