@@ -27,6 +27,9 @@ function args(argv) {
 
 // The MMD motions (motions pack): the rules are not trusted on them (their names say more), every one used is named
 // here with its group and the styles it suits. Anything in motions/ not listed is out.
+// the longest a one-shot reaction / emotion plays (s); a longer source is trimmed to its busiest window
+const REACT_MAX = 6;
+
 const REVIEW = {
   'motions/tsuna/tsuna_standby.vmd': { group: 'idle', note: 'つな 待機 (standby loop)' },
   'motions/penguin_stand.vmd': { group: 'idle', note: 'penguin stand: a calm standing idle' },
@@ -187,6 +190,26 @@ function build({ assets, scan }) {
     const slug = path.basename(folder).normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || `d${Object.keys(dances).length}`;
     const id = slug.startsWith('vidol-dance-') ? slug : `vmd-${slug}`.slice(0, 48);
     dances[id] = { kind: 'dance', category: 'dance', group: 'dance', pack: 'dances', src: f.path, folder: path.dirname(f.path), name: path.basename(folder).slice(0, 40), duration: f.duration_s, loop: false, mask: 'full', enter: 'stand', exit: 'stand', srcStyle: 'unlabelled', by: 'folder', styles: ['female', 'male', 'neutral'] };
+  }
+  // 5. a one-shot reaction / emotion longer than REACT_MAX plays only its busiest REACT_MAX seconds (some rule-picked
+  // Mixamo takes are 20+ s of nodding or fidgeting); `duration` is what plays (after trim), `srcDuration` the source
+  for (const e of Object.values(clips)) {
+    if (!e.trim && !e.loop && (e.category === 'reaction' || e.category === 'emotion') && e.duration > REACT_MAX) {
+      const f = e.src ? feats[e.src] : null;
+      const peak = f && f.burst ? f.burst.at * e.duration : 0;
+      const t0 = Math.max(0, Math.min(e.duration - REACT_MAX, peak - REACT_MAX / 3));
+      e.trim = [+t0.toFixed(2), +(t0 + REACT_MAX).toFixed(2)];
+      e.autoTrim = true;
+    }
+    if (Array.isArray(e.trim) && e.duration > 0) {
+      e.srcDuration = e.duration;
+      e.duration = +(Math.min(e.trim[1], e.duration) - e.trim[0]).toFixed(3);
+    }
+    // a pose (posture, a hold: true / still clip) is baked as one held second (vrm-bake-core bakeParams holdClip)
+    if (e.src && (e.kind === 'posture' || e.hold === true || e.still)) {
+      if (e.srcDuration === undefined) e.srcDuration = e.duration;
+      e.duration = 1;
+    }
   }
   return {
     schema: 2,

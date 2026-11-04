@@ -75,11 +75,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.relaxed@neutral": {
       "kind": "posture",
@@ -91,11 +92,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.confident@female": {
       "kind": "posture",
@@ -119,11 +121,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.confident@neutral": {
       "kind": "posture",
@@ -147,11 +150,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.shy@female": {
       "kind": "posture",
@@ -163,11 +167,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.shy@neutral": {
       "kind": "posture",
@@ -179,11 +184,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.playful@female": {
       "kind": "posture",
@@ -195,11 +201,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.playful@neutral": {
       "kind": "posture",
@@ -211,11 +218,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.rest@female": {
       "kind": "posture",
@@ -228,11 +236,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.rest@neutral": {
       "kind": "posture",
@@ -245,11 +254,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.doze@female": {
       "kind": "posture",
@@ -262,11 +272,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.doze@neutral": {
       "kind": "posture",
@@ -279,11 +290,12 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.relaxed@male": {
       "kind": "posture",
@@ -295,11 +307,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.confident@male": {
       "kind": "posture",
@@ -311,11 +324,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.shy@male": {
       "kind": "posture",
@@ -327,11 +341,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "stand.playful@male": {
       "kind": "posture",
@@ -343,11 +358,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.rest@male": {
       "kind": "posture",
@@ -360,11 +376,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "sit.doze@male": {
       "kind": "posture",
@@ -389,11 +406,12 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "sit",
       "exit": "sit",
       "loop": false,
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 0.033
     },
     "idle.happy@female": {
       "kind": "idle",
@@ -572,10 +590,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 33.133,
+      "duration": 19.75,
       "enter": "stand",
       "exit": "stand",
-      "mask": "full"
+      "mask": "full",
+      "srcDuration": 33.133
     },
     "idle.posture-cycle@male": {
       "kind": "idle",
@@ -618,10 +637,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-head@neutral": {
       "kind": "reaction",
@@ -643,10 +663,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-face@female": {
       "kind": "reaction",
@@ -673,10 +694,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-face@neutral": {
       "kind": "reaction",
@@ -703,10 +725,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-hands@female": {
       "kind": "reaction",
@@ -728,10 +751,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 4.367,
+      "duration": 2.3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 4.367
     },
     "react.touch-hands@neutral": {
       "kind": "reaction",
@@ -753,10 +777,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 4.367,
+      "duration": 2.3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 4.367
     },
     "react.shy@female": {
       "kind": "reaction",
@@ -783,10 +808,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.shy@neutral": {
       "kind": "reaction",
@@ -813,10 +839,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.angry@female": {
       "kind": "reaction",
@@ -838,10 +865,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 19.167,
+      "duration": 3.5,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 19.167
     },
     "react.angry@neutral": {
       "kind": "reaction",
@@ -863,10 +891,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 19.167,
+      "duration": 3.5,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 19.167
     },
     "react.annoyed@female": {
       "kind": "reaction",
@@ -892,10 +921,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.annoyed@neutral": {
       "kind": "reaction",
@@ -921,10 +951,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.ticklish@female": {
       "kind": "reaction",
@@ -947,10 +978,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 6.567,
+      "duration": 2.5,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 6.567
     },
     "react.ticklish@neutral": {
       "kind": "reaction",
@@ -973,10 +1005,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 6.567,
+      "duration": 2.5,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 6.567
     },
     "react.drop@female": {
       "kind": "reaction",
@@ -996,10 +1029,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.drop@neutral": {
       "kind": "reaction",
@@ -1019,10 +1053,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.greet@female": {
       "kind": "reaction",
@@ -1086,10 +1121,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 6.567,
+      "duration": 3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 6.567
     },
     "react.cheer@neutral": {
       "kind": "reaction",
@@ -1111,10 +1147,11 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 6.567,
+      "duration": 3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 6.567
     },
     "hold.lift@female": {
       "kind": "hold",
@@ -1214,10 +1251,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.lift@neutral": {
       "kind": "hold",
@@ -1317,10 +1355,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.think@female": {
       "kind": "hold",
@@ -1344,10 +1383,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.think@neutral": {
       "kind": "hold",
@@ -1371,10 +1411,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.eat@female": {
       "kind": "hold",
@@ -1398,10 +1439,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.eat@neutral": {
       "kind": "hold",
@@ -1425,10 +1467,11 @@
       "pack": "postures",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.talk@female": {
       "kind": "hold",
@@ -1452,9 +1495,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 10.267,
+      "duration": 5.5,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 10.267
     },
     "hold.talk@neutral": {
       "kind": "hold",
@@ -1478,9 +1522,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 10.267,
+      "duration": 5.5,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 10.267
     },
     "hold.talk-2@female": {
       "kind": "hold",
@@ -1504,9 +1549,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 9,
+      "duration": 6,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 9
     },
     "hold.talk-2@neutral": {
       "kind": "hold",
@@ -1530,9 +1576,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 9,
+      "duration": 6,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 9
     },
     "hold.talk-3@female": {
       "kind": "hold",
@@ -1556,9 +1603,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base",
-      "duration": 3.733,
+      "duration": 2.3,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 3.733
     },
     "hold.talk-3@neutral": {
       "kind": "hold",
@@ -1582,9 +1630,10 @@
       "pack": "mixamo",
       "srcStyle": "female",
       "by": "base-neutral",
-      "duration": 3.733,
+      "duration": 2.3,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 3.733
     },
     "hold.walk@female": {
       "kind": "hold",
@@ -1659,10 +1708,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-face@male": {
       "kind": "reaction",
@@ -1690,10 +1740,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.touch-hands@male": {
       "kind": "reaction",
@@ -1715,10 +1766,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 4.367,
+      "duration": 2.3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 4.367
     },
     "react.shy@male": {
       "kind": "reaction",
@@ -1757,10 +1809,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.angry@male": {
       "kind": "reaction",
@@ -1784,10 +1837,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 2.433,
+      "duration": 0.33,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 2.433
     },
     "react.annoyed@male": {
       "kind": "reaction",
@@ -1817,10 +1871,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 33.133,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 33.133
     },
     "react.ticklish@male": {
       "kind": "reaction",
@@ -1842,10 +1897,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 6.267,
+      "duration": 2.3,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 6.267
     },
     "react.drop@male": {
       "kind": "reaction",
@@ -1865,10 +1921,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "react.greet@male": {
       "kind": "reaction",
@@ -2010,10 +2067,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.think@male": {
       "kind": "hold",
@@ -2041,10 +2099,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 4.567,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 4.567
     },
     "hold.eat@male": {
       "kind": "hold",
@@ -2068,10 +2127,11 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 0.033,
+      "duration": 1,
       "enter": "stand",
       "exit": "stand",
-      "loop": false
+      "loop": false,
+      "srcDuration": 0.033
     },
     "hold.talk@male": {
       "kind": "hold",
@@ -2096,9 +2156,10 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 7.833,
+      "duration": 6,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 7.833
     },
     "hold.talk-2@male": {
       "kind": "hold",
@@ -2122,9 +2183,10 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 7.533,
+      "duration": 6,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 7.533
     },
     "hold.talk-3@male": {
       "kind": "hold",
@@ -2148,9 +2210,10 @@
       "pack": "mixamo",
       "srcStyle": "male",
       "by": "base",
-      "duration": 8.867,
+      "duration": 4.4,
       "enter": "stand",
-      "exit": "stand"
+      "exit": "stand",
+      "srcDuration": 8.867
     },
     "hold.walk@male": {
       "kind": "hold",
@@ -2309,7 +2372,7 @@
       "pack": "mixamo",
       "src": "mixamo/42549f6f-15f4-41f1-856d-65705ff2d995.fbx",
       "label": "蹲姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -2317,7 +2380,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Examine Forwards"
+      "about": "Examine Forwards",
+      "srcDuration": 0.033
     },
     "crouch.v02@female": {
       "kind": "posture",
@@ -2327,7 +2391,7 @@
       "pack": "mixamo",
       "src": "mixamo/6141db9f-01ac-4038-a0df-8f8f7f23311a.fbx",
       "label": "蹲姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "crouch",
@@ -2335,7 +2399,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Examine Backwards"
+      "about": "Examine Backwards",
+      "srcDuration": 0.033
     },
     "crouch.v03@female": {
       "kind": "posture",
@@ -2345,7 +2410,7 @@
       "pack": "mixamo",
       "src": "mixamo/e3543986-d43d-4ec1-bac8-5cf7f5ec003b.fbx",
       "label": "蹲姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "lay",
@@ -2353,7 +2418,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Sneaking"
+      "about": "Sneaking",
+      "srcDuration": 0.033
     },
     "emote.excited-01@female": {
       "kind": "reaction",
@@ -2447,7 +2513,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "开心1",
-      "duration": 10,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -2459,7 +2525,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 10
     },
     "emote.happy-02@female": {
       "kind": "reaction",
@@ -2491,7 +2563,7 @@
       "pack": "motions",
       "src": "motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd",
       "label": "待机1",
-      "duration": 36.167,
+      "duration": 20,
       "loop": true,
       "mask": "full",
       "enter": "stand",
@@ -2504,7 +2576,8 @@
         0,
         20
       ],
-      "faceFront": true
+      "faceFront": true,
+      "srcDuration": 36.167
     },
     "idle.v02@female": {
       "kind": "idle",
@@ -2664,7 +2737,7 @@
       "pack": "postures",
       "src": "postures/20d24be0-b948-477b-9a24-4b562d83687c.fbx",
       "label": "躺姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "lay",
@@ -2672,7 +2745,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "On Right Side, Right Hand Supporting Head"
+      "about": "On Right Side, Right Hand Supporting Head",
+      "srcDuration": 0.033
     },
     "lay.v02@female": {
       "kind": "posture",
@@ -2682,7 +2756,7 @@
       "pack": "postures",
       "src": "postures/401a9a92-26dc-4b13-962f-d8b509305909.fbx",
       "label": "躺姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -2690,7 +2764,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Back Arched, Arms Supporting"
+      "about": "Back Arched, Arms Supporting",
+      "srcDuration": 0.033
     },
     "lay.v03@female": {
       "kind": "posture",
@@ -2700,7 +2775,7 @@
       "pack": "postures",
       "src": "postures/533dc8c1-5910-47e2-913b-d075f756f9f7.fbx",
       "label": "躺姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -2708,7 +2783,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Right Arm Supporting, Left Arm Raised"
+      "about": "Right Arm Supporting, Left Arm Raised",
+      "srcDuration": 0.033
     },
     "react.look-01@female": {
       "kind": "reaction",
@@ -2781,7 +2857,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c9fa4d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头1",
-      "duration": 23.567,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -2792,7 +2868,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 23.567
     },
     "react.nod-02@female": {
       "kind": "reaction",
@@ -2802,7 +2884,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c95a6d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头2",
-      "duration": 7.067,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -2813,7 +2895,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 7.067
     },
     "react.nod-03@female": {
       "kind": "reaction",
@@ -2972,7 +3060,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c900c8-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头1",
-      "duration": 6.267,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -2983,7 +3071,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 6.267
     },
     "react.shake-02@female": {
       "kind": "reaction",
@@ -3014,7 +3108,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9cd5052-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头3",
-      "duration": 10.633,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -3025,7 +3119,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 10.633
     },
     "emote.shy-01@female": {
       "kind": "reaction",
@@ -3100,7 +3200,7 @@
       "pack": "mixamo",
       "src": "mixamo/9649e88e-b287-4025-a7d3-e890c67bacee.fbx",
       "label": "坐姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3109,7 +3209,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Holding Right Knee",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v02@female": {
       "kind": "posture",
@@ -3119,7 +3220,7 @@
       "pack": "mixamo",
       "src": "mixamo/abe202be-9b63-49e8-9617-9c6ab94136de.fbx",
       "label": "坐姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3128,7 +3229,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Supporting",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v03@female": {
       "kind": "posture",
@@ -3138,7 +3240,7 @@
       "pack": "mixamo",
       "src": "mixamo/e84e677b-c981-4333-8242-3ff820f8cf7f.fbx",
       "label": "坐姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3147,7 +3249,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Raised",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v04@female": {
       "kind": "posture",
@@ -3157,7 +3260,7 @@
       "pack": "postures",
       "src": "postures/25c19dfb-999a-44dc-9140-b11a6c646226.fbx",
       "label": "坐姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3166,7 +3269,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Holding Left Knee, Reclining",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "stand.v01@female": {
       "kind": "posture",
@@ -3176,7 +3280,7 @@
       "pack": "mixamo",
       "src": "mixamo/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx",
       "label": "站姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3184,7 +3288,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Arms Down"
+      "about": "Arms Down",
+      "srcDuration": 0.033
     },
     "stand.v02@female": {
       "kind": "posture",
@@ -3194,7 +3299,7 @@
       "pack": "mixamo",
       "src": "mixamo/5a2b8fe8-de70-4820-8591-c3a5f77d5612.fbx",
       "label": "站姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3202,7 +3307,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Right Foot Raised"
+      "about": "Right Foot Raised",
+      "srcDuration": 0.033
     },
     "stand.v03@female": {
       "kind": "posture",
@@ -3212,7 +3318,7 @@
       "pack": "mixamo",
       "src": "mixamo/ba625166-2370-4260-ae47-0c49e3616309.fbx",
       "label": "站姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3220,7 +3326,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Looking Down To The Right"
+      "about": "Looking Down To The Right",
+      "srcDuration": 0.033
     },
     "stand.v04@female": {
       "kind": "posture",
@@ -3230,7 +3337,7 @@
       "pack": "mixamo",
       "src": "mixamo/bf65f0a2-236a-475c-a56e-687d5b07998f.fbx",
       "label": "站姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3238,7 +3345,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Hands On Hips Looking Over Shoulder"
+      "about": "Hands On Hips Looking Over Shoulder",
+      "srcDuration": 0.033
     },
     "stand.v05@female": {
       "kind": "posture",
@@ -3248,7 +3356,7 @@
       "pack": "mixamo",
       "src": "mixamo/dc356979-2ddd-4ab4-a14f-e740db3102a4.fbx",
       "label": "站姿5",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3256,7 +3364,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Left Hand On Hip"
+      "about": "Left Hand On Hip",
+      "srcDuration": 0.033
     },
     "react.stretch-01@female": {
       "kind": "reaction",
@@ -3671,7 +3780,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c98361-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠1",
-      "duration": 8.333,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3682,7 +3791,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        2.33,
+        8.33
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.333
     },
     "react.yawn-02@female": {
       "kind": "reaction",
@@ -3692,7 +3807,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c63255-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠2",
-      "duration": 8.867,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -3703,7 +3818,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0.52,
+        6.52
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.867
     },
     "emote.angry-01@male": {
       "kind": "reaction",
@@ -3885,7 +4006,7 @@
       "pack": "mixamo",
       "src": "mixamo/2f6d96c7-c5a3-4ba4-8ed3-bd9f6b4eb461.fbx",
       "label": "蹲姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3893,7 +4014,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Looking Forward"
+      "about": "Looking Forward",
+      "srcDuration": 0.033
     },
     "crouch.v02@male": {
       "kind": "posture",
@@ -3903,7 +4025,7 @@
       "pack": "mixamo",
       "src": "mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx",
       "label": "蹲姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3911,7 +4033,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Arms Spread Looking Upwards"
+      "about": "Arms Spread Looking Upwards",
+      "srcDuration": 0.033
     },
     "crouch.v03@male": {
       "kind": "posture",
@@ -3921,7 +4044,7 @@
       "pack": "postures",
       "src": "postures/Male Crouch Pose (1).fbx",
       "label": "蹲姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -3929,7 +4052,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Crouch Pose (1)"
+      "about": "Male Crouch Pose (1)",
+      "srcDuration": 0.033
     },
     "emote.excited-01@male": {
       "kind": "reaction",
@@ -4128,7 +4252,7 @@
       "pack": "motions",
       "src": "motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd",
       "label": "待机3",
-      "duration": 36.167,
+      "duration": 20,
       "loop": true,
       "mask": "full",
       "enter": "stand",
@@ -4141,7 +4265,8 @@
         0,
         20
       ],
-      "faceFront": true
+      "faceFront": true,
+      "srcDuration": 36.167
     },
     "idle.v04@male": {
       "kind": "idle",
@@ -4265,7 +4390,7 @@
       "pack": "postures",
       "src": "postures/Male Laying Pose (1).fbx",
       "label": "躺姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -4273,7 +4398,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Laying Pose (1)"
+      "about": "Male Laying Pose (1)",
+      "srcDuration": 0.033
     },
     "lay.v02@male": {
       "kind": "posture",
@@ -4283,7 +4409,7 @@
       "pack": "postures",
       "src": "postures/Male Laying Pose (2).fbx",
       "label": "躺姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -4291,7 +4417,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Laying Pose (2)"
+      "about": "Male Laying Pose (2)",
+      "srcDuration": 0.033
     },
     "lay.v03@male": {
       "kind": "posture",
@@ -4301,7 +4428,7 @@
       "pack": "postures",
       "src": "postures/Male Laying Pose (3).fbx",
       "label": "躺姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "lay",
@@ -4309,7 +4436,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Laying Pose (3)"
+      "about": "Male Laying Pose (3)",
+      "srcDuration": 0.033
     },
     "react.look-01@male": {
       "kind": "reaction",
@@ -4382,7 +4510,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c9fa4d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头1",
-      "duration": 23.567,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -4393,7 +4521,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 23.567
     },
     "react.nod-02@male": {
       "kind": "reaction",
@@ -4403,7 +4537,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c95a6d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头2",
-      "duration": 7.067,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -4414,7 +4548,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 7.067
     },
     "react.nod-03@male": {
       "kind": "reaction",
@@ -4551,7 +4691,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c900c8-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头1",
-      "duration": 6.267,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -4562,7 +4702,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 6.267
     },
     "react.shake-02@male": {
       "kind": "reaction",
@@ -4593,7 +4739,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9cd5052-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头3",
-      "duration": 10.633,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -4604,7 +4750,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 10.633
     },
     "emote.shy-01@male": {
       "kind": "reaction",
@@ -4656,7 +4808,7 @@
       "pack": "mixamo",
       "src": "mixamo/14ee62b6-eb89-4753-9544-ea8921e18ed7.fbx",
       "label": "坐姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -4665,7 +4817,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Reclined Looking Downwards",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v02@male": {
       "kind": "posture",
@@ -4675,7 +4828,7 @@
       "pack": "mixamo",
       "src": "mixamo/4a332831-d65a-45a3-a330-5463db336c3b.fbx",
       "label": "坐姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "crouch",
@@ -4684,7 +4837,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Elbows On Legs Leaning Left",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v03@male": {
       "kind": "posture",
@@ -4694,7 +4848,7 @@
       "pack": "mixamo",
       "src": "mixamo/6630659d-ac80-4087-bc82-d393183fa7c5.fbx",
       "label": "坐姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -4703,7 +4857,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Leaning Forwards Hands In Front",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v04@male": {
       "kind": "posture",
@@ -4713,7 +4868,7 @@
       "pack": "mixamo",
       "src": "mixamo/7acd6eb0-c2ee-4fde-bf33-95f51372b3cb.fbx",
       "label": "坐姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "crouch",
@@ -4722,7 +4877,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Elbows On Legs Leaning Forward",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "stand.v01@male": {
       "kind": "posture",
@@ -4732,7 +4888,7 @@
       "pack": "mixamo",
       "src": "mixamo/64a05ff5-38ab-4b26-a925-808769f6b8bf.fbx",
       "label": "站姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -4740,7 +4896,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Arms Slightly Spread"
+      "about": "Arms Slightly Spread",
+      "srcDuration": 0.033
     },
     "stand.v02@male": {
       "kind": "posture",
@@ -4750,7 +4907,7 @@
       "pack": "mixamo",
       "src": "mixamo/670efeec-dabc-492d-a713-a8a28a959249.fbx",
       "label": "站姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -4758,7 +4915,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Looking Right"
+      "about": "Looking Right",
+      "srcDuration": 0.033
     },
     "stand.v03@male": {
       "kind": "posture",
@@ -4768,7 +4926,7 @@
       "pack": "postures",
       "src": "postures/Male Standing Pose (1).fbx",
       "label": "站姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -4776,7 +4934,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Standing Pose (1)"
+      "about": "Male Standing Pose (1)",
+      "srcDuration": 0.033
     },
     "stand.v04@male": {
       "kind": "posture",
@@ -4786,7 +4945,7 @@
       "pack": "postures",
       "src": "postures/Male Standing Pose (10).fbx",
       "label": "站姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -4794,7 +4953,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Standing Pose (10)"
+      "about": "Male Standing Pose (10)",
+      "srcDuration": 0.033
     },
     "stand.v05@male": {
       "kind": "posture",
@@ -4804,7 +4964,7 @@
       "pack": "postures",
       "src": "postures/Male Standing Pose (11).fbx",
       "label": "站姿5",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -4812,7 +4972,8 @@
       "srcStyle": "male",
       "by": "label",
       "score": 1.5,
-      "about": "Male Standing Pose (11)"
+      "about": "Male Standing Pose (11)",
+      "srcDuration": 0.033
     },
     "react.stretch-01@male": {
       "kind": "reaction",
@@ -5229,7 +5390,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c98361-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠1",
-      "duration": 8.333,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -5240,7 +5401,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        2.33,
+        8.33
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.333
     },
     "react.yawn-02@male": {
       "kind": "reaction",
@@ -5250,7 +5417,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c63255-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠2",
-      "duration": 8.867,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -5261,7 +5428,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0.52,
+        6.52
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.867
     },
     "emote.angry-01@neutral": {
       "kind": "reaction",
@@ -5397,7 +5570,7 @@
       "pack": "mixamo",
       "src": "mixamo/42549f6f-15f4-41f1-856d-65705ff2d995.fbx",
       "label": "蹲姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -5405,7 +5578,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Examine Forwards"
+      "about": "Examine Forwards",
+      "srcDuration": 0.033
     },
     "crouch.v02@neutral": {
       "kind": "posture",
@@ -5415,7 +5589,7 @@
       "pack": "mixamo",
       "src": "mixamo/6141db9f-01ac-4038-a0df-8f8f7f23311a.fbx",
       "label": "蹲姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "crouch",
@@ -5423,7 +5597,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Examine Backwards"
+      "about": "Examine Backwards",
+      "srcDuration": 0.033
     },
     "crouch.v03@neutral": {
       "kind": "posture",
@@ -5433,7 +5608,7 @@
       "pack": "mixamo",
       "src": "mixamo/e3543986-d43d-4ec1-bac8-5cf7f5ec003b.fbx",
       "label": "蹲姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "lay",
@@ -5441,7 +5616,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Sneaking"
+      "about": "Sneaking",
+      "srcDuration": 0.033
     },
     "emote.excited-01@neutral": {
       "kind": "reaction",
@@ -5557,7 +5733,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c98a38-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "开心2",
-      "duration": 10,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -5569,7 +5745,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 10
     },
     "idle.v01@neutral": {
       "kind": "idle",
@@ -5579,7 +5761,7 @@
       "pack": "motions",
       "src": "motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd",
       "label": "待机1",
-      "duration": 36.167,
+      "duration": 20,
       "loop": true,
       "mask": "full",
       "enter": "stand",
@@ -5592,7 +5774,8 @@
         0,
         20
       ],
-      "faceFront": true
+      "faceFront": true,
+      "srcDuration": 36.167
     },
     "idle.v02@neutral": {
       "kind": "idle",
@@ -5752,7 +5935,7 @@
       "pack": "postures",
       "src": "postures/20d24be0-b948-477b-9a24-4b562d83687c.fbx",
       "label": "躺姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "lay",
@@ -5760,7 +5943,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "On Right Side, Right Hand Supporting Head"
+      "about": "On Right Side, Right Hand Supporting Head",
+      "srcDuration": 0.033
     },
     "lay.v02@neutral": {
       "kind": "posture",
@@ -5770,7 +5954,7 @@
       "pack": "postures",
       "src": "postures/401a9a92-26dc-4b13-962f-d8b509305909.fbx",
       "label": "躺姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -5778,7 +5962,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Back Arched, Arms Supporting"
+      "about": "Back Arched, Arms Supporting",
+      "srcDuration": 0.033
     },
     "lay.v03@neutral": {
       "kind": "posture",
@@ -5788,7 +5973,7 @@
       "pack": "postures",
       "src": "postures/533dc8c1-5910-47e2-913b-d075f756f9f7.fbx",
       "label": "躺姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -5796,7 +5981,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Right Arm Supporting, Left Arm Raised"
+      "about": "Right Arm Supporting, Left Arm Raised",
+      "srcDuration": 0.033
     },
     "react.look-01@neutral": {
       "kind": "reaction",
@@ -5869,7 +6055,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c9fa4d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头1",
-      "duration": 23.567,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -5880,7 +6066,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 23.567
     },
     "react.nod-02@neutral": {
       "kind": "reaction",
@@ -5890,7 +6082,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c95a6d-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "点头2",
-      "duration": 7.067,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -5901,7 +6093,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 7.067
     },
     "react.nod-03@neutral": {
       "kind": "reaction",
@@ -6060,7 +6258,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c900c8-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头1",
-      "duration": 6.267,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -6071,7 +6269,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 6.267
     },
     "react.shake-02@neutral": {
       "kind": "reaction",
@@ -6102,7 +6306,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9cd5052-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "摇头3",
-      "duration": 10.633,
+      "duration": 6,
       "loop": false,
       "mask": "head",
       "enter": "stand",
@@ -6113,7 +6317,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0,
+        6
+      ],
+      "autoTrim": true,
+      "srcDuration": 10.633
     },
     "emote.shy-01@neutral": {
       "kind": "reaction",
@@ -6188,7 +6398,7 @@
       "pack": "mixamo",
       "src": "mixamo/9649e88e-b287-4025-a7d3-e890c67bacee.fbx",
       "label": "坐姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -6197,7 +6407,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Holding Right Knee",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v02@neutral": {
       "kind": "posture",
@@ -6207,7 +6418,7 @@
       "pack": "mixamo",
       "src": "mixamo/abe202be-9b63-49e8-9617-9c6ab94136de.fbx",
       "label": "坐姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -6216,7 +6427,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Supporting",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v03@neutral": {
       "kind": "posture",
@@ -6226,7 +6438,7 @@
       "pack": "mixamo",
       "src": "mixamo/e84e677b-c981-4333-8242-3ff820f8cf7f.fbx",
       "label": "坐姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -6235,7 +6447,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Raised",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "sit.v04@neutral": {
       "kind": "posture",
@@ -6245,7 +6458,7 @@
       "pack": "postures",
       "src": "postures/25c19dfb-999a-44dc-9140-b11a6c646226.fbx",
       "label": "坐姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "sit",
@@ -6254,7 +6467,8 @@
       "by": "label",
       "score": 1.5,
       "about": "Arms Holding Left Knee, Reclining",
-      "sit": true
+      "sit": true,
+      "srcDuration": 0.033
     },
     "stand.v01@neutral": {
       "kind": "posture",
@@ -6264,7 +6478,7 @@
       "pack": "mixamo",
       "src": "mixamo/2278ba9c-6878-472c-b329-a340c0ec29c1.fbx",
       "label": "站姿1",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6272,7 +6486,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Arms Down"
+      "about": "Arms Down",
+      "srcDuration": 0.033
     },
     "stand.v02@neutral": {
       "kind": "posture",
@@ -6282,7 +6497,7 @@
       "pack": "mixamo",
       "src": "mixamo/5a2b8fe8-de70-4820-8591-c3a5f77d5612.fbx",
       "label": "站姿2",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6290,7 +6505,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Right Foot Raised"
+      "about": "Right Foot Raised",
+      "srcDuration": 0.033
     },
     "stand.v03@neutral": {
       "kind": "posture",
@@ -6300,7 +6516,7 @@
       "pack": "mixamo",
       "src": "mixamo/ba625166-2370-4260-ae47-0c49e3616309.fbx",
       "label": "站姿3",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6308,7 +6524,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Looking Down To The Right"
+      "about": "Looking Down To The Right",
+      "srcDuration": 0.033
     },
     "stand.v04@neutral": {
       "kind": "posture",
@@ -6318,7 +6535,7 @@
       "pack": "mixamo",
       "src": "mixamo/bf65f0a2-236a-475c-a56e-687d5b07998f.fbx",
       "label": "站姿4",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6326,7 +6543,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Hands On Hips Looking Over Shoulder"
+      "about": "Hands On Hips Looking Over Shoulder",
+      "srcDuration": 0.033
     },
     "stand.v05@neutral": {
       "kind": "posture",
@@ -6336,7 +6554,7 @@
       "pack": "mixamo",
       "src": "mixamo/dc356979-2ddd-4ab4-a14f-e740db3102a4.fbx",
       "label": "站姿5",
-      "duration": 0.033,
+      "duration": 1,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6344,7 +6562,8 @@
       "srcStyle": "female",
       "by": "label",
       "score": 1.5,
-      "about": "Left Hand On Hip"
+      "about": "Left Hand On Hip",
+      "srcDuration": 0.033
     },
     "react.stretch-01@neutral": {
       "kind": "reaction",
@@ -6759,7 +6978,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c98361-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠1",
-      "duration": 8.333,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6770,7 +6989,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        2.33,
+        8.33
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.333
     },
     "react.yawn-02@neutral": {
       "kind": "reaction",
@@ -6780,7 +7005,7 @@
       "pack": "mixamo",
       "src": "mixamo/c9c63255-b96c-11e4-a802-0aaa78deedf9.fbx",
       "label": "打哈欠2",
-      "duration": 8.867,
+      "duration": 6,
       "loop": false,
       "mask": "full",
       "enter": "stand",
@@ -6791,7 +7016,13 @@
       "faceFront": true,
       "fadeIn": 0.3,
       "fadeOut": 0.5,
-      "weight": 1
+      "weight": 1,
+      "trim": [
+        0.52,
+        6.52
+      ],
+      "autoTrim": true,
+      "srcDuration": 8.867
     }
   },
   "dances": {

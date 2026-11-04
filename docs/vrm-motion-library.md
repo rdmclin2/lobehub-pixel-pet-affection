@@ -20,6 +20,8 @@ PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked-v2 PIXELPET_VRM_DANCES_DIR=~/vrm-ass
 ## 2. 索引结构（`src/core/vrm-motion-index.json`，schema 2）
 
 - `clips["<slot>@<style>"]`：`kind`（posture/idle/hold/reaction）、`category`（posture/idle/reaction/emotion/talk/walk）、`group`（stand/sit/crouch/lay、idle、greet/bow/nod/shake/think/stretch/yawn/clap/point/look/jump/fidget/hold、happy/angry/sad/surprised/shy/excited、talk、walk/run/turn）、`style`、`pack`、`src`（包内相对路径）、`label`、`duration`、`loop`、`mask`（可混合骨骼掩码 full/upper/arms/head）、`enter`/`exit`（起止姿势 stand/sit/crouch/lay）、`srcStyle`（来源本身的性别标签或 unlabelled）、`by`（base/label/rule/review）、`score`，以及烘焙参数（`trim`、`detrend`、`faceFront`、`fadeIn/fadeOut`…）。
+- `duration` 是**实际播放时长**（已扣除 `trim`；姿势和单帧 hold 烘成 1 s 保持帧，记为 1），与烘焙出的 `library.json` 一致；源文件长度另存为 `srcDuration`。
+- 一次性的反应/情绪片段最长播放 6 s（`REACT_MAX`）：规则选出、源长超过 6 s 且没有人工 `trim` 的片段，自动截取以动作能量峰值为中心的 6 s 窗口（`trim` + `autoTrim: true`），例如 23.6 s 的 `react.nod-01` → `trim [0, 6]`。单测 `the index: a one-shot reaction / emotion plays at most 6 s…` 检查这两条。
 - `dances[id]`：舞蹈（Mixamo 舞蹈 12 支 + dances 包 21 个文件夹各一支），带 `styles`。烘进舞蹈库，走现有的舞蹈播放（`vrmlib://dance/…`）。
 - 槽位命名：导演已在用的槽位（`stand.relaxed`、`react.touch-head`、`hold.talk`…，来自 `src/core/vrm-library.json`）原样保留；新增的按组编号：`idle.v03`、`react.nod-02`、`emote.shy-01`、`hold.talk-g04`、`hold.walk-02`、`crouch.v01`。所有 `idle.*` 立即进入导演的 idle 轮换。
 

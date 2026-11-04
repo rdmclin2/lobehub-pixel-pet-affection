@@ -103,6 +103,18 @@ test('degrade levels and root-hips models (standing clips only)', () => {
 });
 
 // ---------- the index ----------
+test('the index: a one-shot reaction / emotion plays at most 6 s, and duration is what plays (after trim)', () => {
+  for (const [id, e] of Object.entries(INDEX.clips)) {
+    if (Array.isArray(e.trim)) {
+      assert.ok(e.trim[0] >= 0 && e.trim[1] > e.trim[0], `${id}: trim`);
+      assert.ok(e.srcDuration >= e.duration, `${id}: srcDuration`);
+      const held = e.kind === 'posture' || e.hold === true || e.still;
+      assert.ok(held || Math.abs(e.duration - (Math.min(e.trim[1], e.srcDuration) - e.trim[0])) < 0.01, `${id}: duration = trimmed length`);
+    }
+    if (!e.loop && (e.category === 'reaction' || e.category === 'emotion')) assert.ok(e.duration <= 6.001, `${id}: ${e.duration} s`);
+  }
+});
+
 test('the index is metadata only: schema 2, valid entries, relative sources, no binaries', () => {
   assert.equal(INDEX.schema, 2);
   assert.deepEqual(L.validateManifest({ schema: 1, clips: INDEX.clips }), []);

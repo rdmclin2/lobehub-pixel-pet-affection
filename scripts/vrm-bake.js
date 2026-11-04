@@ -313,7 +313,7 @@ async function bakeV2(a) {
     try {
       if (!raws.has(e.src)) raws.set(e.src, sourceClip(three, assets, e.src));
       const raw = raws.get(e.src);
-      const params = Object.fromEntries(Object.entries(e).filter(([k]) => !['style', 'label', 'about', 'score', 'by', 'srcStyle', 'category', 'group', 'enter', 'exit', 'pack', 'duration', 'note'].includes(k)));
+      const params = Object.fromEntries(Object.entries(e).filter(([k]) => !['style', 'label', 'about', 'score', 'by', 'srcStyle', 'category', 'group', 'enter', 'exit', 'pack', 'duration', 'srcDuration', 'autoTrim', 'note'].includes(k)));
       const key = `${e.src}|${JSON.stringify(params)}`;
       if (!baked.has(key)) {
         const clip = B.bakeParams(raw, e);
