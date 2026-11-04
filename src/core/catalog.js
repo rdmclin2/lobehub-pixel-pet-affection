@@ -80,6 +80,32 @@ function loadDanceIndex(file = DANCE_INDEX_FILE) {
 }
 const danceEntry = (id, index = loadDanceIndex()) => index.dances.find((d) => d.id === id) || null;
 
+// 商店 → 语音包 (src/core/voice-catalog.json, voices-v1, written by scripts/build-voice-catalog.js; docs/voice-packs.md
+// §6): one archive per 风格语音包 (manifest.json + audio at the top level), to be unpacked into userData/voicepacks/<id>/
+// where core/voice-pack.js VoicePacks loads it. `sample.file` is the 试听 line shipped with the app (relative to
+// src/renderer/), playable before the archive is fetched.
+const VOICE_INDEX_FILE = path.join(__dirname, 'voice-catalog.json');
+const VOICE_ID_RE = /^[a-z0-9][a-z0-9-]{2,63}$/;
+let voiceCached = null;
+const okVoice = (v) => v && VOICE_ID_RE.test(v.id) && v.type === 'voice-pack' && typeof v.name === 'string' && typeof v.style === 'string'
+  && typeof v.file === 'string' && /^[a-z0-9-]+\.zip$/.test(v.file) && SHA_RE.test(v.sha256) && Number.isInteger(v.bytes) && v.bytes > 0
+  && Number.isInteger(v.lines) && v.lines > 0 && v.sample && typeof v.sample.text === 'string' && typeof v.sample.file === 'string';
+function loadVoiceIndex(file = VOICE_INDEX_FILE) {
+  if (file === VOICE_INDEX_FILE && voiceCached) return voiceCached;
+  const raw = readJson(file);
+  const release = (raw && typeof raw.release === 'string' && raw.release) || 'voices-v1';
+  const voicePacks = (raw && Array.isArray(raw.voicePacks) ? raw.voicePacks : []).filter(okVoice).map((v) => ({ ...v, release, ...okParts(v) }));
+  const index = { schema: (raw && raw.schema) || 1, release, voicePacks };
+  if (file === VOICE_INDEX_FILE) voiceCached = index;
+  return index;
+}
+const voicePackEntry = (id, index = loadVoiceIndex()) => index.voicePacks.find((v) => v.id === id) || null;
+// 商店 → 语音包: every voice pack of the store, each with `installed` (its id is loaded in VoicePacks now).
+const voiceRow = (v, installed) => ({ id: v.id, name: v.name, style: v.style, styleLabel: v.styleLabel || v.style, gender: v.gender || null, version: v.version || '', description: v.description || '', credit: v.credit || '', lines: v.lines, seconds: v.seconds || 0, sample: v.sample, bytes: v.bytes, sizeLabel: sizeLabel(v.bytes), installed });
+function listVoicePacks(installed, { index = loadVoiceIndex() } = {}) {
+  return index.voicePacks.map((v) => voiceRow(v, !!installed(v.id)));
+}
+
 const UPLOAD_PREFIX = `${UPLOAD_PREFIX_ROOT}/${loadIndex().release}`;
 const DEFAULT_BASE_URL = `${CDN_ORIGIN}/${UPLOAD_PREFIX}`;
 
@@ -136,4 +162,4 @@ function repoPacks({ catalog = true } = {}) {
   return r;
 }
 
-module.exports = { INDEX_FILE, VRM_INDEX_FILE, DANCE_INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX_ROOT, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, storeIndex, loadDanceIndex, danceEntry, listDances, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, listAll, repoPacks };
+module.exports = { VOICE_INDEX_FILE, loadVoiceIndex, voicePackEntry, listVoicePacks, INDEX_FILE, VRM_INDEX_FILE, DANCE_INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX_ROOT, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, storeIndex, loadDanceIndex, danceEntry, listDances, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, listAll, repoPacks };

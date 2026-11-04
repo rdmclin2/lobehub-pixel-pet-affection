@@ -7,6 +7,10 @@
 // the lines any companion may say (VP.genericPackLines) in the default voice of that gender (GENERIC_VOICES);
 // both genders when --gender is left out. --manifest-only writes / refreshes the manifest (voice, no audio) and
 // needs no key; --dry-run only prints what would be recorded.
+//        node scripts/voicepack-generate.js --style [cute,yujie,…] [--out <dir>] [--manifest-only] [--dry-run] …
+// --style records the 风格语音包 (kind "style", core/voice-styles.js STYLES) for the store: one folder per style
+// in catalog/voicepacks/style-<key>/ (or --out), the 通用台词 (VP.genericPackLines) in that style's MiniMax voice
+// plus its 试听 line (manifest `sample`); every style when no list follows. Then `node scripts/build-voice-catalog.js`.
 // MiniMax returns 128 kbps mp3 (~50 KB a line); with ffmpeg on the PATH every recorded line is turned
 // into 32 kbps Opus (.ogg, ~12 KB, plenty for a voice) once her lines are done, so a pack is ~3 MB.
 // The key: $MINIMAX_API_KEY or an `export MINIMAX_API_KEY=…` line (scripts/minimax-key.js); never printed.
@@ -20,6 +24,12 @@ const { SPECIES, SPECIES_IDS } = require('../src/core/species');
 const K = require('./minimax-key');
 
 const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  // the usage is the comment at the top of this file
+  const lines = require('node:fs').readFileSync(__filename, 'utf8').split('\n').slice(1);
+  console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith('//'))).map((l) => l.slice(3)).join('\n'));
+  process.exit(0);
+}
 const arg = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const only = arg('--only', '') ? arg('--only').split(',') : SPECIES_IDS;
 const rpm = Number(arg('--rpm', 10));
@@ -29,6 +39,11 @@ const generic = args.includes('--generic');
 const manifestOnly = args.includes('--manifest-only');
 const dryRun = args.includes('--dry-run');
 const genders = arg('--gender', '') ? arg('--gender').split(',') : ['female', 'male'];
+const S = require('../src/core/voice-styles');
+const styleIdx = args.indexOf('--style');
+const style = styleIdx >= 0;
+const styleKeys = style && args[styleIdx + 1] && !args[styleIdx + 1].startsWith('--') ? args[styleIdx + 1].split(',') : S.STYLE_KEYS;
+const STYLE_ROOT = path.resolve(arg('--out', path.join(__dirname, '..', 'catalog', 'voicepacks')));
 // The default engine voice of each generic pack (MiniMax system voices): what a character without a voice of
 // her own reads with when she falls back to that pack (core/voice-pack.js voiceForPack).
 const GENERIC_VOICES = {
@@ -43,6 +58,15 @@ const hasFfmpeg = (() => { try { execFileSync('ffmpeg', ['-version'], { stdio: '
 function transcode(dir, m, save) {
   if (!hasFfmpeg) { log(`${m.character || m.id}: no ffmpeg, lines stay mp3`); return; }
   let n = 0;
+  if (m.sample && m.sample.file && m.sample.file.endsWith('.mp3')) {
+    const src = path.join(dir, m.sample.file);
+    const out = VP.fileFor(m.sample.text, 'ogg');
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-ac', '1', '-ar', '24000', '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', path.join(dir, out)]);
+    m.sample.file = out;
+    save();
+    fs.unlinkSync(src);
+    n++;
+  }
   for (const [text, file] of Object.entries(m.lines)) {
     if (!file.endsWith('.mp3')) continue;
     const src = path.join(dir, file);
@@ -61,6 +85,23 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // What to record: one pack per character (her own voice) or, with --generic, one per gender.
 // -> [{ id, dir, cfg, lines, manifest(lines) }]
 function targets() {
+  if (style) {
+    return styleKeys.map((k) => {
+      const s = S.byStyle(k);
+      if (!s) throw new Error(`--style: one of ${S.STYLE_KEYS.join(', ')}`);
+      const v = s.voice;
+      const cfg = tts.PROVIDERS.minimax.config({ tts: { minimax: { voiceId: v.voiceId, model: v.model, ...v.params } } });
+      return {
+        id: s.id, dir: path.join(STYLE_ROOT, s.id), cfg, sampleText: s.sample, lines: () => VP.genericPackLines(),
+        manifest: (lines, old) => ({
+          format: VP.FORMAT, kind: 'style', style: s.style, id: s.id, name: s.name, gender: s.gender, version: S.VERSION, description: s.description,
+          engine: 'minimax', voiceId: cfg.voiceId, model: cfg.model, params: { speed: cfg.speed, pitch: cfg.pitch, vol: cfg.vol, emotion: cfg.emotion },
+          credit: `语音由 AI 合成：${v.label}（${cfg.voiceId}）`, lineSet: S.LINE_SET,
+          sample: { text: s.sample, file: old && old.sample && old.sample.text === s.sample ? old.sample.file : '' }, lines,
+        }),
+      };
+    });
+  }
   if (generic) {
     return genders.map((g) => {
       const v = GENERIC_VOICES[g];
@@ -88,13 +129,13 @@ async function main() {
   let made = 0;
   for (const t of targets()) {
     const { id, dir, cfg } = t;
-    if (dryRun) { const l = t.lines(); log(`${id}: ${l.length} lines (voice ${cfg.voiceId})`); for (const x of l) console.log(`  ${x}`); continue; }
+    if (dryRun) { const l = t.lines(); if (t.sampleText) log(`${id}: 试听 「${t.sampleText}」`); log(`${id}: ${l.length} lines (voice ${cfg.voiceId})`); for (const x of l) console.log(`  ${x}`); continue; }
     if (transcodeOnly && !fs.existsSync(path.join(dir, 'manifest.json'))) continue;
     fs.mkdirSync(dir, { recursive: true });
     const mfile = path.join(dir, 'manifest.json');
     let m = {};
     try { m = JSON.parse(fs.readFileSync(mfile, 'utf8')); } catch { /* new */ }
-    m = t.manifest(m.lines || {});
+    m = t.manifest(m.lines || {}, m);
     // pending: the lines not recorded yet (a generic pack written with --manifest-only lists what it will hold)
     const save = () => { const left = (m.pending || []).filter((x) => !m.lines[x]); if (left.length) m.pending = left; else delete m.pending; const tmp = `${mfile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(m, null, 1) + '\n'); fs.renameSync(tmp, mfile); };
     if (transcodeOnly) { if (Object.keys(m.lines).length) transcode(dir, m, save); continue; }
@@ -102,8 +143,11 @@ async function main() {
     // lines no longer in her file leave the pack
     for (const t of Object.keys(m.lines)) if (!lines.includes(t)) { try { fs.unlinkSync(path.join(dir, m.lines[t])); } catch { /* gone */ } delete m.lines[t]; }
     const todo = lines.filter((t) => !(m.lines[t] && fs.existsSync(path.join(dir, m.lines[t]))));
+    // a style pack's 试听 line goes first (the store plays it before anything is downloaded)
     log(`${id}: ${lines.length} lines, ${lines.length - todo.length} already recorded, ${todo.length} to go (voice ${cfg.voiceId})`);
-    if (generic) m.pending = todo;
+    const sampleDone = () => !!(m.sample && m.sample.file && fs.existsSync(path.join(dir, m.sample.file)));
+    if (t.sampleText && !sampleDone()) { todo.unshift(t.sampleText); log(`${id}: 试听 line to record first`); }
+    if (generic || style) m.pending = todo.filter((x) => x !== t.sampleText);
     save();
     if (manifestOnly) continue;
     for (const text of todo) {
@@ -116,7 +160,8 @@ async function main() {
           const r = await tts.PROVIDERS.minimax.synthesize(cfg, text, { key, endpoint, fetch, signal: AbortSignal.timeout(60000), wait: (p) => p });
           const file = VP.fileFor(text);
           fs.writeFileSync(path.join(dir, file), r.audio);
-          m.lines[text] = file;
+          if (text === t.sampleText) m.sample.file = file;
+          else m.lines[text] = file;
           save();
           made++;
           if (made % 10 === 0) log(`${id}: ${Object.keys(m.lines).length}/${lines.length} (${made} this run)`);

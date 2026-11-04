@@ -18,6 +18,17 @@
 //               pack and whose file names no voice.tts (voiceForPack), so her agent replies sound the same.
 //     { "format": 1, "kind": "generic", "gender": "male", "id": "generic-male", "name": "…",
 //       "engine": "minimax", "voiceId": "male-qn-qingse", "model": "…", "params": { … }, "lines": { … } }
+//   style     — 风格语音包 (docs/voice-packs.md §6, core/voice-styles.js): one voice style (可爱 / 御姐 / 少年 / 沉稳 /
+//               搞笑 …), downloaded from 商店 → 语音包. Same as generic (no `character`, `gender`, engine voice
+//               required) plus `style`, `version` (x.y.z), `lineSet` and a 试听 line `sample: { text, file }`.
+//               lineSet "generic" = the 通用台词 (genericPackLines), any character may use it; lineSet "character"
+//               = one character's own lines (packLines), `appliesTo: [<character id>]` names her. Never picked
+//               automatically: only when the owner chooses it (voicePackByCharacter / voicePack).
+//     { "format": 1, "kind": "style", "style": "cute", "id": "style-cute", "name": "可爱 · 甜心少女", "gender": "female",
+//       "version": "1.0.0", "engine": "minimax", "voiceId": "tianxin_xiaoling", "model": "…", "params": { … },
+//       "credit": "…", "lineSet": "generic", "sample": { "text": "…", "file": "<sha1>.ogg" }, "lines": { … } }
+//   An app older than style packs rejects kind "style" (validateManifest) and skips the folder, nothing else breaks;
+//   format stays 1 because character / generic manifests are read exactly as before.
 // Which pack a character uses (resolvePack): the one the owner picked for her (settings.tts.voicePackByCharacter)
 // > the owner's own 语音包 for everyone (我的语音包, settings.tts.voicePack) > her own (专属) > the generic pack of
 // her gender (core/voice-gender.js).
@@ -32,7 +43,11 @@ const IVoice = require('./interaction-voice');
 const Gender = require('./voice-gender');
 
 const FORMAT = 1;
-const KINDS = ['character', 'generic'];
+const KINDS = ['character', 'generic', 'style'];
+const LINE_SETS = ['generic', 'character'];
+const STYLE_RE = /^[a-z][a-z0-9-]{1,31}$/;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+const FILE_RE = /^[\w.-]+\.(mp3|wav|ogg|opus)$/;
 const PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // engines a generic pack's default voice may be on (the local server's voice is the owner's, not a pack's)
 const VOICE_ENGINES = ['fish', 'minimax', 'elevenlabs'];
@@ -96,7 +111,7 @@ function genericPackLines() {
   return [...out];
 }
 
-const kindOf = (m) => (m && m.kind === 'generic' ? 'generic' : 'character');
+const kindOf = (m) => (m && (m.kind === 'generic' || m.kind === 'style') ? m.kind : 'character');
 
 // Problems with a manifest (empty = valid). `dir` checks that every file is there.
 function validateManifest(m, dir = null) {
@@ -104,26 +119,45 @@ function validateManifest(m, dir = null) {
   if (!m || typeof m !== 'object') return ['manifest.json must be an object'];
   if (m.format !== FORMAT) errors.push(`format must be ${FORMAT}`);
   if (m.kind !== undefined && !KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
-  const generic = kindOf(m) === 'generic';
+  const kind = kindOf(m);
+  const generic = kind === 'generic' || kind === 'style'; // a style pack is a generic one with more fields
+  const what = kind === 'style' ? 'style' : 'generic';
   for (const k of generic ? ['id', 'name'] : ['id', 'name', 'character']) if (typeof m[k] !== 'string' || !m[k].trim()) errors.push(`${k} is required`);
   if (m.id && !PACK_ID_RE.test(m.id)) errors.push('id: lowercase letters, digits and -');
   if (m.id === AUTO) errors.push(`id ${AUTO} is reserved`);
   if (generic) {
-    if (!Gender.isGender(m.gender)) errors.push(`gender is required for a generic pack (one of ${Gender.GENDERS.join(', ')})`);
-    if (m.character !== undefined) errors.push('a generic pack belongs to no character (leave character out)');
-    if (!VOICE_ENGINES.includes(m.engine)) errors.push(`engine is required for a generic pack (one of ${VOICE_ENGINES.join(', ')}): its voice reads for characters without one`);
-    if (typeof m.voiceId !== 'string' || !m.voiceId.trim()) errors.push('voiceId is required for a generic pack');
+    if (!Gender.isGender(m.gender)) errors.push(`gender is required for a ${what} pack (one of ${Gender.GENDERS.join(', ')})`);
+    if (m.character !== undefined) errors.push(`a ${what} pack belongs to no character (leave character out)`);
+    if (!VOICE_ENGINES.includes(m.engine)) errors.push(`engine is required for a ${what} pack (one of ${VOICE_ENGINES.join(', ')}): its voice reads for characters without one`);
+    if (typeof m.voiceId !== 'string' || !m.voiceId.trim()) errors.push(`voiceId is required for a ${what} pack`);
     else if (VOICE_ENGINES.includes(m.engine) && (m.params === undefined || (m.params && typeof m.params === 'object' && !Array.isArray(m.params)))) {
       // the voice as a character file would name it (core/tts.js validateVoice): a real voice id, params in range
       errors.push(...require('./tts').validateVoice({ tts: packVoiceTts(m) }).map((e) => `engine voice: ${e}`));
     }
   } else if (m.gender !== undefined) errors.push(...Gender.validateGender(m.gender));
+  if (kind === 'style') errors.push(...validateStyleFields(m, dir));
   if (m.params !== undefined && (!m.params || typeof m.params !== 'object' || Array.isArray(m.params))) errors.push('params must be an object');
   if (!m.lines || typeof m.lines !== 'object' || Array.isArray(m.lines)) errors.push('lines must map each line to its audio file');
   else for (const [text, file] of Object.entries(m.lines)) {
-    if (!norm(text) || typeof file !== 'string' || !/^[\w.-]+\.(mp3|wav|ogg|opus)$/.test(file) || file.includes('..')) { errors.push(`lines: bad entry for "${text.slice(0, 20)}"`); break; }
+    if (!norm(text) || typeof file !== 'string' || !FILE_RE.test(file) || file.includes('..')) { errors.push(`lines: bad entry for "${text.slice(0, 20)}"`); break; }
     if (dir && !fs.existsSync(path.join(dir, file))) { errors.push(`lines: missing file ${file}`); break; }
   }
+  return errors;
+}
+
+// The fields only a style pack has (validateManifest calls it for kind "style").
+function validateStyleFields(m, dir) {
+  const errors = [];
+  if (typeof m.style !== 'string' || !STYLE_RE.test(m.style)) errors.push('style is required for a style pack (lowercase letters, digits and -, e.g. cute)');
+  if (typeof m.version !== 'string' || !VERSION_RE.test(m.version)) errors.push('version is required for a style pack (x.y.z)');
+  if (!LINE_SETS.includes(m.lineSet)) errors.push(`lineSet is required for a style pack (one of ${LINE_SETS.join(', ')})`);
+  if (m.lineSet === 'character') {
+    if (!Array.isArray(m.appliesTo) || !m.appliesTo.length || !m.appliesTo.every((c) => typeof c === 'string' && /^[a-z][a-z0-9]{1,19}$/.test(c))) errors.push('appliesTo must list the character ids a lineSet "character" pack was recorded for');
+  } else if (m.appliesTo !== undefined) errors.push('appliesTo is only for lineSet "character" (generic lines fit every character)');
+  if (m.description !== undefined && typeof m.description !== 'string') errors.push('description must be text');
+  const s = m.sample;
+  if (!s || typeof s !== 'object' || Array.isArray(s) || !norm(s.text) || typeof s.file !== 'string' || !FILE_RE.test(s.file)) errors.push('sample is required for a style pack ({ text, file }: the 试听 line)');
+  else if (dir && !fs.existsSync(path.join(dir, s.file))) errors.push(`sample: missing file ${s.file}`);
   return errors;
 }
 
@@ -151,14 +185,15 @@ class VoicePacks {
           if (errors.length) { this.errors.push({ dir, errors }); this.log(new Error(`voice pack ${dir}: ${errors.join('; ')}`)); continue; }
           const lines = new Map(Object.entries(m.lines).map(([t, f]) => [norm(t), f]));
           const pack = { ...m, kind: kindOf(m), gender: m.gender || null, dir, lines, builtIn: root === this.dirs[0] };
-          if (pack.kind === 'generic') pack.character = null;
+          if (pack.kind !== 'character') pack.character = null;
           // a later pack with the same id (the owner's) replaces the earlier one everywhere
           const old = this.byId[pack.id];
           if (old && old.kind === 'generic' && this.generic[old.gender] === old) delete this.generic[old.gender];
           if (old && old.kind === 'character' && this.byCharacter[old.character] === old) delete this.byCharacter[old.character];
           this.byId[pack.id] = pack;
           if (pack.kind === 'generic') this.generic[pack.gender] = pack;
-          else this.byCharacter[pack.character] = pack;
+          else if (pack.kind === 'character') this.byCharacter[pack.character] = pack;
+          // a style pack is only ever reached by id (the owner picks it)
         } catch (e) {
           this.errors.push({ dir, errors: [e.message] });
         }
@@ -179,11 +214,23 @@ class VoicePacks {
     return this.generic[gender] || null;
   }
 
-  // every pack in use (a replaced one is not listed): her own packs first, then the generic ones
+  // every pack in use (a replaced one is not listed): her own packs first, then the generic ones, then the style ones
   list() {
-    const live = Object.values(this.byId).filter((p) => (p.kind === 'generic' ? this.generic[p.gender] === p : this.byCharacter[p.character] === p));
-    return [...live.filter((p) => p.kind === 'character'), ...live.filter((p) => p.kind === 'generic')]
-      .map((p) => ({ id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, credit: p.credit || '', lines: p.lines.size, builtIn: p.builtIn }));
+    const live = Object.values(this.byId).filter((p) => (p.kind === 'style' ? true : p.kind === 'generic' ? this.generic[p.gender] === p : this.byCharacter[p.character] === p));
+    return ['character', 'generic', 'style'].flatMap((k) => live.filter((p) => p.kind === k))
+      .map((p) => ({ id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, credit: p.credit || '', lines: p.lines.size, builtIn: p.builtIn,
+        ...(p.kind === 'style' ? { style: p.style, version: p.version, lineSet: p.lineSet, appliesTo: p.appliesTo || null, description: p.description || '', sample: p.sample.text } : {}) }));
+  }
+
+  // A style pack's 试听 line { audio, mime, text, packId }, or null.
+  sample(packId) {
+    const p = this.get(packId);
+    if (!p || !p.sample || !p.sample.file) return null;
+    try {
+      return { audio: fs.readFileSync(path.join(p.dir, p.sample.file)), mime: MIME[path.extname(p.sample.file).slice(1)] || 'audio/mpeg', text: p.sample.text, packId: p.id };
+    } catch {
+      return null;
+    }
   }
 
   // The recorded line in her own pack, or null. { audio, mime, provider: 'pack', packId, engine, voiceId }
@@ -261,4 +308,4 @@ function voiceForPack(species, resolved) {
   return { ...species, voice: { ...(v || {}), tts } };
 }
 
-module.exports = { FORMAT, KINDS, AUTO, PACK_ID_RE, VOICE_ENGINES, APP_LINES, norm, fileFor, packLines, genericPackLines, validateManifest, VoicePacks, packApplies, resolvePack, packVoiceTts, voiceForPack };
+module.exports = { FORMAT, KINDS, LINE_SETS, AUTO, PACK_ID_RE, VOICE_ENGINES, APP_LINES, norm, fileFor, packLines, genericPackLines, validateManifest, VoicePacks, packApplies, resolvePack, packVoiceTts, voiceForPack };
