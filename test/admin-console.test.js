@@ -531,17 +531,19 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
 test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  // the toolbar: the four interactions, 🔈 and ⚙
-  const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings', 'quit']); // ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) and 🔈 静音 (T-2733) sit left of ⚙, ⏻ 退出 (T-2827) right of it
+  // her panel (right click on her): the four interactions as tiles, then 🔈 ♪ ↺ … ⚙ ⏻ in its footer
+  const panelHtml = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'panel', 'panel.html'), 'utf8');
+  const bar = panelHtml.match(/<div id="toolbar"[^>]*>([\s\S]*?)<script/)[1];
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'mute', 'dance', 'reset', 'settings', 'quit']); // 🔈 静音 (T-2733), ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) on the left of the footer; ⚙ and ⏻ 退出 (T-2827) on its right
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
   assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'history.js')));
-  // ⚙, a right click and a long press all open the settings window
+  // ⚙ in her panel opens the settings window; a right click and a long press open the panel itself
   assert.match(app, /else if \(act === 'settings'\) openSettings\(\);/);
-  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(\) => openSettings\(\) \}\)/);
-  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
+  assert.ok(!html.includes('data-act='), 'her window has no buttons of its own: they are in her panel');
+  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(\) => openPetPanel\('long-press'\) \}\)/);
+  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,300}togglePetPanel\('right-click'\);/);
   assert.match(app, /window\.pet\.openAdmin\(/);
   // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
   // T-2764: her page is the character's (one look), e.g. characters/dafeiyu-live2d
@@ -581,8 +583,8 @@ test('every item of the old ⋯ menu has its place in the settings window (T-271
 test('the pet window: ⏻ 退出 sits right of ⚙ and quits the app in one click (T-2827)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  const css = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'style.css'), 'utf8');
-  const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
+  const css = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'panel', 'panel.css'), 'utf8');
+  const bar = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'panel', 'panel.html'), 'utf8').match(/<div id="toolbar"[^>]*>([\s\S]*?)<script/)[1];
   const buttons = [...bar.matchAll(/<button\b[^>]*>/g)].map((m) => m[0]);
   assert.match(buttons[buttons.length - 1], /data-act="quit"/, '⏻ is the last button');
   assert.match(buttons[buttons.length - 2], /data-act="settings"/, '… right after ⚙');

@@ -126,3 +126,31 @@ test('a test feed replaces GitHub for both the update files and the latest-relea
     else process.env.PIXELPET_UPDATE_FEED = prev;
   }
 });
+
+test('检查更新… dialog: every answer has a visible message and the buttons main acts on', () => {
+  const { updateCheckDialog } = require('../src/core/update');
+  const st = (status, extra = {}) => updateCheckDialog({ status, current: '0.24.0', version: '0.25.0', url: 'https://example.test/r', error: null, ...extra });
+  assert.equal(updateCheckDialog({ status: 'checking' }), null, 'no answer yet while checking');
+  assert.equal(updateCheckDialog({ status: 'idle' }), null);
+  const latest = st('latest');
+  assert.equal(latest.message, '已是最新版本');
+  assert.match(latest.detail, /v0\.24\.0/);
+  assert.deepEqual(latest.buttons.map((b) => b.id), ['ok']);
+  const manual = st('manual');
+  assert.equal(manual.message, '发现新版本 v0.25.0');
+  assert.deepEqual(manual.buttons.map((b) => [b.id, b.label]), [['open', '前往下载页'], ['ok', '稍后']]);
+  const dl = st('downloading');
+  assert.match(dl.message, /v0\.25\.0/);
+  assert.match(dl.detail, /后台下载/);
+  const ready = st('ready');
+  assert.equal(ready.message, '新版本 v0.25.0 已下载好');
+  assert.deepEqual(ready.buttons.map((b) => b.id), ['install', 'ok']);
+  const err = st('error', { error: 'HTTP 500' });
+  assert.equal(err.type, 'warning');
+  assert.equal(err.message, '检查更新失败');
+  assert.match(err.detail, /HTTP 500/);
+  assert.deepEqual(err.buttons.map((b) => b.id), ['retry', 'ok']);
+  const off = st('disabled');
+  assert.equal(off.message, '当前版本不检查更新');
+  assert.match(off.detail, /v0\.24\.0/);
+});

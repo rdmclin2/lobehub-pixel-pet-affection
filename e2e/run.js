@@ -11,6 +11,7 @@
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
+//   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
@@ -90,8 +91,12 @@ async function launch(env, { gate = false, video = null, args = [] } = {}) {
 }
 
 // The controls only exist visually while the pointer is over the window.
+// The pet's buttons live in her panel now (a right click on her opens it): `hover` points at her and opens it.
 const hover = async (page) => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
-const clickAct = async (page, act) => { await hover(page); await page.click(`[data-act="${act}"]`); };
+// Her buttons are in her panel (its own window: a right click on her opens it; e2e/pet-panel.js)
+const { clickAct, pickFood } = require('./pet-panel');
+// what her panel shows, on one line (「小蓝 · 格萝可 · 像素 · 陌生 ♥14 · 距「熟悉」1」): app.js window.__petStatus
+const statusLine = (page) => page.evaluate(() => window.__petStatus().summary);
 // ⋯ → 角色列表, optionally opening `id`'s page (her model, look and affection), as a user clicks it.
 const openCharPage = async (page, id) => {
   await page.click(`.char-list .char-opt[data-species="${id}"] .char-open`);
@@ -169,7 +174,7 @@ async function adminRelease(app, page, deleteAgent = true) {
 // core/settings.js, broadcast to every window). -> { ok, reason?, message?, value, settings }
 const adminSet = (admin, key, value) => admin.evaluate(([k, v]) => window.petAdmin.set(k, v), [key, value]);
 // The pet window (BrowserWindow.getAllWindows() also lists the settings window once it is open)
-const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
 const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
@@ -261,7 +266,7 @@ async function fresh() {
 
     await step(S, 'after login the agent is created and the pet appears', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 像素 · 陌生 ♥\d+ · 距「熟悉」\d+/, 'her character name (T-2764)');
+      assert.match(await statusLine(page), /小蓝 · 格萝可 · 像素 · 陌生 ♥\d+ · 距「熟悉」\d+/, 'her character name (T-2764)');
       const text = await waitReply(page, 15000);
       assert.match(text, /echo:/);
       return `greeting: ${text.slice(0, 40)}`;
@@ -289,7 +294,7 @@ async function fresh() {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
       assert.equal(await page.locator('.char-card').count() >= 0, true);
       assert.equal(await page.locator('#onboarding').isHidden(), true);
-      assert.match(await page.textContent('#meta'), /小蓝/);
+      assert.match(await statusLine(page), /小蓝/);
     }, () => page);
 
     await step(S, 'at rest only the pet is shown, with no buttons, bars or text box', async () => {
@@ -311,8 +316,7 @@ async function fresh() {
 
     await step(S, 'feeding lowers hunger and shows food', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80, sleeping: false, energy: 90 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForTimeout(500);
       const v = await view(page);
       assert.ok(v.pet.hunger <= 50, `hunger ${v.pet.hunger}`);
@@ -322,13 +326,13 @@ async function fresh() {
     await step(S, 'affection crossing 15 by a pat moves the stage from 陌生 to 熟悉 and unlocks topics', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      assert.match(await page.textContent('#meta'), /陌生 ♥14 · 距「熟悉」1/);
+      assert.match(await statusLine(page), /陌生 ♥14 · 距「熟悉」1/);
       fs.writeFileSync(path.join(OUT, 'stage-before.png'), await page.screenshot());
       const events = [];
       await page.exposeFunction('__affLog', (e) => events.push(e));
       await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
       await clickHead(page);
-      await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
+      await page.waitForFunction(() => /熟悉 ♥15/.test(window.__petStatus().summary), null, { timeout: 5000 });
       await page.waitForTimeout(800);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
@@ -338,7 +342,7 @@ async function fresh() {
       assert.ok(up, JSON.stringify(events));
       assert.deepEqual(up.unlocks.topics.map((t) => t.id), ['hobby', 'gossip', 'riddle']);
       await hover(page);
-      return `meta: ${await page.textContent('#meta')}; stage-up event unlocks: ${up.unlocks.topics.map((t) => t.label).join('、')}`;
+      return `meta: ${await statusLine(page)}; stage-up event unlocks: ${up.unlocks.topics.map((t) => t.label).join('、')}`;
     }, () => page);
 
     await step(S, 'topics: a locked topic returns its unlock condition, an unlocked one is sent to the agent with [话题]', async () => {
@@ -366,8 +370,8 @@ async function fresh() {
       assert.equal(v.pet.relStage, 'familiar');
       assert.deepEqual(v.pet.unlockedTopics, before.pet.unlockedTopics);
       await hover(page);
-      assert.match(await page.textContent('#meta'), /熟悉 ♥\d+/);
-      return `after restart: ${await page.textContent('#meta')}`;
+      assert.match(await statusLine(page), /熟悉 ♥\d+/);
+      return `after restart: ${await statusLine(page)}`;
     }, () => page);
 
     // 成人向内容 lives in 设置 → 内容与安全 now (T-2718): without an 18+ answer, switching it on asks the same
@@ -456,18 +460,18 @@ async function wardrobe() {
       await waitReply(page, 15000);
       await idle();
       await hover(page);
-      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼/);
+      assert.match(await statusLine(page), /小蓝 · 大肥鱼/);
       const b = await shot('01c-new-pet-created');
       return `${a}, ${b} · settings.json: ${JSON.stringify(st)}`;
     });
 
     await step(S, 'initial state: affection bar, number, stage name and distance to the next stage', async () => {
       await hover(page);
-      assert.equal((await page.textContent('#aff-stage')).trim(), '陌生');
-      assert.equal((await page.textContent('#aff-num')).trim(), '♥0/100');
-      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15/);
+      assert.equal(await page.evaluate(() => window.__petStatus().stage), '陌生');
+      assert.equal(await page.evaluate(() => (() => { const a = window.__petStatus().affection; return `♥${a.value}/${a.max}`; })()), '♥0/100');
+      assert.match(await statusLine(page), /小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15/);
       assert.equal(petJson().equippedOutfit, 'daily');
-      return `${await shot('02-initial-state')} · meta: ${await page.textContent('#meta')}`;
+      return `${await shot('02-initial-state')} · meta: ${await statusLine(page)}`;
     });
 
     await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
@@ -475,11 +479,11 @@ async function wardrobe() {
       await page.waitForSelector('.float');
       const float = await page.textContent('.float');
       await hover(page);
-      await page.waitForFunction(() => !/♥0\//.test(document.getElementById('aff-num').textContent));
+      await page.waitForFunction(() => !/♥0\//.test((() => { const a = window.__petStatus().affection; return `♥${a.value}/${a.max}`; })()));
       const f = await shot('03-affection-up');
       assert.match(float, /^\+\d+(\.\d)? ♥$/); // first interaction of the day: +3 greet bonus, +1 pat (x1.2 when happy)
       assert.ok((await view(page)).pet.affection >= 4);
-      return `${f} · float "${float}" · meta: ${await page.textContent('#meta')}`;
+      return `${f} · float "${float}" · meta: ${await statusLine(page)}`;
     });
 
     await step(S, 'crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics and the three 熟悉 outfits', async () => {
@@ -612,7 +616,7 @@ async function wardrobe() {
       assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
       assert.equal(await page.locator('#outfit-badge').count(), 0, 'no outfit tag over the pet');
-      assert.match(await page.textContent('#meta'), /知己 ♥60/);
+      assert.match(await statusLine(page), /知己 ♥60/);
       const a = await shot('16-after-restart-pet');
       await openWardrobe();
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
@@ -690,7 +694,7 @@ async function migrate() {
       const bubble = await bubbleText(page);
       assert.match(bubble, /大肥鱼/);
       await hover(page);
-      const meta = await page.textContent('#meta');
+      const meta = await statusLine(page);
       assert.match(meta, /小蓝 · 大肥鱼 · 像素 · 熟悉 ♥25 · 距「亲近」10/);
       const v = await view(page);
       assert.equal(v.pet.speciesId, 'dafeiyu');
@@ -730,11 +734,11 @@ async function migrate() {
       assert.equal(v.outfit, 'daily');
       assert.equal(v.look.packId, 'claude-pixel');
       assert.equal(v.pet.affection, 70);
-      assert.match(await page.textContent('#meta'), /小火 · 克洛蒂 · 像素 · 知己 ♥70/);
+      assert.match(await statusLine(page), /小火 · 克洛蒂 · 像素 · 知己 ♥70/);
       assert.equal(await page.locator('#pet-look canvas.sprite').count(), 1);
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')).speciesId, 'bubbo', 'the backup is written once and never overwritten');
       assert.doesNotMatch(app.stderrBuf, /Unknown species|TypeError/);
-      return `meta: ${await page.textContent('#meta')}; outfit maid → ${v.outfit}`;
+      return `meta: ${await statusLine(page)}; outfit maid → ${v.outfit}`;
     }, page);
 
     // T-2764: 形象包 → 独立角色. A v0.21 settings.json (大肥鱼 wears her Live2D pack, half-body 取景 per persona,
@@ -760,7 +764,7 @@ async function migrate() {
       assert.equal(v.look.packId, 'dafeiyu-live2d');
       assert.equal(v.pet.agentId, 'agt_FISH', 'same agent, chat and affection');
       assert.equal(v.pet.affection, 40);
-      assert.match(await page.textContent('#meta'), /小鱼 · 大肥鱼 · Live2D · 亲近 ♥40/);
+      assert.match(await statusLine(page), /小鱼 · 大肥鱼 · Live2D · 亲近 ♥40/);
       await page.screenshot({ path: path.join(OUT, 't2764-migrated-live2d.png') });
       const petAfter = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
       const stAfter = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
@@ -836,7 +840,7 @@ async function characters() {
       assert.equal('agentId' in d, false);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v2.bak.json'), 'utf8')), old);
       await hover(page);
-      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 亲近 ♥40/);
+      assert.match(await statusLine(page), /小蓝 · 格萝可 · 亲近 ♥40/);
       fs.writeFileSync(path.join(SHOTS, 'migrate-files.txt'), `--- pet.v2.bak.json (before) ---\n${JSON.stringify(old, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify(d, null, 2)}\n`);
       return `characters=${Object.keys(d.characters)}; grok agent=${d.characters.grok.agentId} topic=${d.characters.grok.topicId} ♥${d.characters.grok.affection}`;
     }, page);
@@ -1007,8 +1011,7 @@ async function dafeiyu() {
 
     await step(S, 'hovering shows the controls; feeding rice plays the eating animation', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80, sleeping: false, energy: 90 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForFunction(() => document.getElementById('pet-video').dataset.key === 'eat_rice', null, { timeout: 5000 });
       await page.waitForTimeout(800);
     }, page);
@@ -1083,7 +1086,7 @@ async function busy() {
       await page.mouse.move(120, 160); // pointer is right over the pet
       await page.waitForTimeout(400);
       assert.equal(await hudOpacity(page), '0');
-      assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('toolbar')).visibility), 'hidden');
+      assert.equal((await require('./pet-panel').panelState(page)).visible, false, 'no panel while she thinks');
       assert.match(await page.textContent('#bubble'), /思考中/);
       const r = await page.evaluate(() => window.pet.act('feed', 'rice'));
       assert.deepEqual(r, { ok: false, reason: 'busy' });
@@ -1114,7 +1117,7 @@ async function busy() {
       await page.mouse.move(110, 150);
       await page.waitForFunction(() => getComputedStyle(document.getElementById('stop-btn')).display !== 'none', null, { timeout: 5000 });
       await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
-      assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('toolbar')).visibility), 'hidden');
+      assert.equal((await require('./pet-panel').panelState(page)).visible, false, 'no panel while she thinks');
       // pointer leaves: the button goes away with it
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
       await page.waitForFunction(() => getComputedStyle(document.getElementById('stop-btn')).display === 'none', null, { timeout: 5000 });
@@ -1374,8 +1377,7 @@ async function live() {
 
     await step(S, 'feeding lowers hunger and shows food', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForTimeout(500);
       const v = await view(page);
       assert.ok(v.pet.hunger <= 50, `hunger ${v.pet.hunger}`);
@@ -1454,7 +1456,7 @@ async function live() {
       await page.waitForTimeout(1200);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
-      assert.match(await page.textContent('#meta'), /熟悉 ♥15/);
+      assert.match(await statusLine(page), /熟悉 ♥15/);
     }, page);
 
     await step(S, 'release deletes the real agent and returns to character selection', async () => {
@@ -1554,7 +1556,7 @@ async function advanced() {
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
       assert.equal(await page.evaluate(() => document.getElementById('pet-look').dataset.key), 'dafeiyu-pixel/daily');
-      assert.match(await page.textContent('#meta'), /挚友 ♥100 · 已满级/);
+      assert.match(await statusLine(page), /挚友 ♥100 · 已满级/);
       return 'pet wears 招牌女仆装 (dafeiyu-pixel)';
     }, page);
 
@@ -2373,7 +2375,7 @@ async function update() {
       assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
       assert.match(text, /上次检查 \d/, 'the time of the check is shown');
       assert.equal(await admin.getByRole('button', { name: '立即更新' }).count(), 0, 'nothing to install');
-      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), '', 'no dot on ⚙ either');
+      assert.equal(await page.evaluate(() => window.__petStatus().news), '', 'no dot on ⚙ either');
       await admin.screenshot({ path: path.join(OUT, 'update-latest.png') });
       return text.slice(text.indexOf('当前版本'), text.lastIndexOf('检查更新')).trim();
     }, () => admin || page);
@@ -2388,7 +2390,7 @@ async function update() {
       await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const said = await bubbleText(page);
       await page.bringToFront();
-      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), 'update');
+      assert.equal(await page.evaluate(() => window.__petStatus().news), 'update');
       await hover(page);
       await page.screenshot({ path: path.join(OUT, 'update-menu.png') });
       await admin.evaluate(() => { location.hash = '/overview'; });
@@ -2436,7 +2438,7 @@ async function space() {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       assert.equal(createCall().env.workspace, null);
       assert.equal(fs.existsSync(path.join(fakeDir, 'pinned-workspace')), false);
-      assert.match(await page.getAttribute('#meta', 'title'), /放在：个人空间/);
+      assert.match(await page.evaluate(() => window.__petStatus().progressTitle), /放在：个人空间/);
     }, page);
 
     await step(S, 'choosing a workspace creates the agent there', async () => {
@@ -2450,7 +2452,7 @@ async function space() {
       await page.click('#space-go');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       assert.equal(createCall().env.workspace, 'ws_LAB');
-      assert.match(await page.getAttribute('#meta', 'title'), /放在：Lab/);
+      assert.match(await page.evaluate(() => window.__petStatus().progressTitle), /放在：Lab/);
     }, () => page);
   } finally {
     await app.close().catch(() => {});
@@ -2649,7 +2651,7 @@ async function rosterOne(ch) {
       await idle();
       await page.evaluate(() => window.pet.debugSet({ hunger: 30, mood: 55, energy: 90, sleeping: false }));
       await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 });
-      assert.match(await page.textContent('#meta'), new RegExp(ch.zh));
+      assert.match(await statusLine(page), new RegExp(ch.zh));
       return shows('idle');
     }, page);
     await step(S, 'E3a the idle chain starts a cue on its own (no input)', async () => {
@@ -2757,8 +2759,7 @@ async function rosterOne(ch) {
       await step(S, `E7 fed ${food}`, async () => {
         await idle();
         await page.evaluate(() => window.pet.debugSet({ hunger: 70, sleeping: false, energy: 90 }));
-        await clickAct(page, 'feed');
-        await page.click(`#food-menu .btn >> nth=${i}`);
+        await pickFood(page, i);
         return shows(`eat_${food}`);
       }, page);
       await page.waitForTimeout(3600);
@@ -2832,8 +2833,8 @@ async function rosterOne(ch) {
     // ---- the dsh-pet effects added in T-1163 (docs/dsh-pet-gap.md), for every character --------------
     if (await page.isVisible('#panel-close')) await page.click('#panel-close');
     const winOf = (pg) => app.evaluate(({ BrowserWindow }, t) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getTitle() === t || x.webContents.getURL().includes(t)); return w ? w.getBounds() : null; }, pg);
-    const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
-    const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x == null ? b.x : x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+    const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
+    const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x == null ? b.x : x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
     const waitLanded = () => page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
     await step(S, 'N1 roaming: she walks a few steps the way she faces, and the window moves', async () => {
       await idle();
@@ -2911,7 +2912,7 @@ async function rosterOne(ch) {
       await toFloor(0);
       await page.click('[data-menu="home"]');
       await page.waitForTimeout(300);
-      const home = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); return { b: w.getBounds(), wa: screen.getPrimaryDisplay().workArea }; });
+      const home = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); return { b: w.getBounds(), wa: screen.getPrimaryDisplay().workArea }; });
       assert.equal(home.b.x, home.wa.x + home.wa.width - home.b.width - 24, 'back in the bottom-right corner');
       return `contextmenu → ⋯ menu; 回到右下角 → window at ${home.b.x},${home.b.y}`;
     });
@@ -4285,7 +4286,7 @@ async function vpack() {
         rows.push(await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4)));
       }
       await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
-      rows.push(await said(/^feed$/, async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); }));
+      rows.push(await said(/^feed$/, async () => { await pickFood(page, 0); }));
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
       await page.waitForTimeout(300);
       // hover first so her pose settles, then click where her head is drawn now (as ivoice I2 does)
@@ -4474,8 +4475,7 @@ async function ivoice() {
     await step(S, 'I4 喂食: 喂食 → a food from the menu', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
       const r = await interact('喂食 feed', /^feed$/, async () => {
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
       });
       await shot('i4-feed');
       return r;
@@ -4628,9 +4628,11 @@ async function ivoice() {
       await page.evaluate(() => window.pet.setPrefs({ clickSound: true, touchZones: false }));
       await page.waitForTimeout(300);
       await hover(page);
-      const btn = page.locator('#btn-mute');
-      assert.equal(await btn.getAttribute('aria-pressed'), 'false', 'starts un-muted');
-      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
+      // 静音 is in her panel (a right click on her opens it); it switches in place, the panel stays open
+      const muteNow = () => page.evaluate(() => String(window.__petStatus().mute.pressed));
+      const btn = { click: async () => { await clickAct(page, 'mute'); } };
+      assert.equal(await muteNow(), 'false', 'starts un-muted');
+      await (await require('./pet-panel').openPetPanel(page)).screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
       // a long reply is being read when the speaker is clicked: it stops at once
       mock.perCharMs = 300; // long enough to click the speaker while she is still reading
       await page.evaluate(() => { window.petFx.speak('今天天气真好。我们一起出去走走吧。路上还可以买点好吃的。回来再一起看书。'); }); // not awaited: speak() resolves once she has finished
@@ -4644,7 +4646,7 @@ async function ivoice() {
       }
       const reading = await last();
       await btn.click();
-      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'true', null, { timeout: 3000, polling: 50 });
+      await page.waitForFunction(() => window.__petStatus().mute.pressed === true, null, { timeout: 3000, polling: 50 });
       const stopped = await page.evaluate((n) => ({ sp: window.petFx.lastSpeech(), audio: window.petFx.audioState(), stop: window.petFx.speechLog().find((e) => e.n === n && e.event === 'stop') }), reading.n);
       mock.perCharMs = 0;
       assert.equal(stopped.sp.status, 'interrupted', JSON.stringify(stopped.sp));
@@ -4652,8 +4654,8 @@ async function ivoice() {
       assert.equal(stopped.audio, null, 'nothing playing');
       assert.equal(await prefNow('muted'), true);
       assert.equal(await prefNow('voice'), true, '朗读回复 left as it was');
-      const label = await btn.getAttribute('aria-label');
-      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
+      const label = await page.evaluate(() => window.__petStatus().mute.label);
+      await require('./pet-panel').panelPage(page).screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
       // muted: pat + 玩耍 + a reply — the bubble shows each line, nothing is offered to the voice, no click sound
       await page.waitForTimeout(1600);
       const n0 = (await slog()).length;
@@ -4676,7 +4678,7 @@ async function ivoice() {
       // un-mute from the same button: the next interaction is read again and the click sound is back
       await hover(page);
       await btn.click();
-      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+      await page.waitForFunction(() => window.__petStatus().mute.pressed === false, null, { timeout: 3000 });
       assert.equal(await prefNow('muted'), false);
       await page.waitForTimeout(1600);
       const r = await interact('静音后恢复 pat', /^pat$/, async () => { const bb = await petBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height * 0.4); });
@@ -4705,7 +4707,7 @@ async function ivoice() {
       b = await petBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4); await sawLine('pat');
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
       await page.evaluate(() => window.pet.debugSet({ hunger: 60, energy: 80 }));
-      await clickAct(page, 'feed'); await page.click('#food-menu button'); await sawLine('feed');
+      await pickFood(page, 0); await sawLine('feed');
       await clickAct(page, 'play'); await sawLine('play');
       await page.mouse.move(300, 300); await page.waitForTimeout(400);
       b = await petBox();
@@ -5290,8 +5292,8 @@ async function outfitScenario() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const leave = () => page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
   const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')); return p.characters[p.speciesId]; };
-  const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
-  const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+  const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
+  const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
   // what the desktop pet draws right now: the sheet and frame up, the canvas box on screen, and the box of
   // her opaque pixels inside the frame (read back from the canvas, so a missing or broken sheet shows as 0 px)
   const drawn = () => page.evaluate(() => {
@@ -6412,6 +6414,7 @@ async function vrmUi() {
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
 // ⏻ 退出 on the toolbar (T-2827): e2e/quit-button.js
 const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, step, launch });
+const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step, launch });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -7891,16 +7894,19 @@ async function frontslimScenario() {
     await idle();
 
     await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + 🔊 静音 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
-      await hover(page);
-      await page.waitForTimeout(400);
-      await shotPet('f1-pet-toolbar');
-      const ui = await page.evaluate(() => ({
-        acts: [...document.querySelectorAll('#toolbar [data-act]')].map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
+      // the buttons live in her panel now (a right click on her)
+      const pp = await require('./pet-panel').openPetPanel(page);
+      await pp.screenshot({ path: path.join(SHOTS, 'f1-pet-toolbar.png') });
+      const gone = await page.evaluate(() => ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)).concat(document.querySelectorAll('[data-act="menu"], [data-menu]').length ? ['menu'] : []));
+      const ui = await pp.evaluate(() => ({
+        acts: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => !b.classList.contains('hidden')).map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
         visible: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => b.offsetParent).length,
-        gone: ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)),
+        gone: [],
         menuBtn: document.querySelectorAll('[data-act="menu"], [data-menu]').length,
         text: document.getElementById('toolbar').innerText.replace(/\s+/g, ' ').trim(),
       }));
+      ui.gone = gone;
+      await pp.keyboard.press('Escape');
       // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
       assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置', 'quit:退出']);
       assert.equal(ui.visible, 7);
@@ -7911,11 +7917,12 @@ async function frontslimScenario() {
     }, page);
 
     await step(S, 'F2 前台互动保留：喂食菜单、玩耍、聊天输入框都还在且可用', async () => {
-      await clickAct(page, 'feed');
-      await page.waitForSelector('#food-menu:not(.hidden)');
-      const foods = await page.$$eval('#food-menu .btn', (b) => b.map((x) => x.textContent.trim()));
-      await shotPet('f2-food-menu');
-      await page.click('#food-menu .btn');
+      // 喂食 opens its foods inside her panel (a right click on her)
+      const pp = await clickAct(page, 'feed');
+      await pp.waitForSelector('#food-menu:not(.hidden) .btn');
+      const foods = await pp.$$eval('#food-menu .btn', (b) => b.map((x) => x.textContent.trim()));
+      await pp.screenshot({ path: path.join(SHOTS, 'f2-food-menu.png') });
+      await pp.click('#food-menu .btn >> nth=0');
       await idle();
       await clickAct(page, 'chat');
       await page.waitForSelector('#chat-row:not(.hidden)');
@@ -7934,33 +7941,38 @@ async function frontslimScenario() {
       assert.equal(n, 1);
       await shotAdmin('f3-admin-from-gear');
       const d = desktop('f3-desktop-pet-and-admin');
-      map.push(['设置', '⚙ 设置按钮 / 右键 / Ctrl+, → 后台 小屋']);
+      map.push(['设置', '右键她 → 面板 ⚙ / Ctrl+, → 后台 小屋']);
       return `settings windows ${n}; path /overview; ${d}`;
     }, () => admin);
 
-    await step(S, 'F4 右键她 → 打开后台（不再弹菜单）；Ctrl+, 也打开后台', async () => {
+    await step(S, 'F4 右键她 → 打开她的面板（⚙ 在里面）；Ctrl+, 打开后台', async () => {
       await closeAdmin();
       await page.bringToFront();
       await hover(page);
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { id: el.id, x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       const hit = await page.evaluate(({ x, y }) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName}#${e.id}.${e.className}` : null; }, box);
       await page.mouse.click(box.x, box.y, { button: 'right' });
-      try { admin = await findAdmin(); } catch (e) { throw new Error(`${e.message} (right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit}, pet-hit ${box.id})`); }
-      await atPath('/overview');
+      const PP = require('./pet-panel');
+      for (let i = 0; i < 60 && !(await PP.panelState(page)).visible; i++) await page.waitForTimeout(50);
+      assert.equal((await PP.panelState(page)).visible, true, `right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit} opens her panel`);
       const popups = await page.evaluate(() => [...document.querySelectorAll('.popup')].filter((p) => !p.classList.contains('hidden')).map((p) => p.id));
       assert.deepEqual(popups, [], 'no menu pops up in the pet window');
+      // ⚙ in the panel → the settings window
+      await PP.panelPage(page).click('#btn-settings');
+      admin = await findAdmin();
+      await atPath('/overview');
       await closeAdmin();
       await page.bringToFront();
       // a real key press as the window receives it (before-input-event sees sendInputEvent, not CDP key events)
       await app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui'));
+        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/panel/'));
         w.focus();
         w.webContents.sendInputEvent({ type: 'keyDown', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
         w.webContents.sendInputEvent({ type: 'keyUp', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
       });
       admin = await findAdmin();
       await atPath('/overview');
-      return `right click → settings window (pet popups open: ${popups.length}); Ctrl+, → settings window (${await adminWins()})`;
+      return `right click → her panel, ⚙ → settings window (pet popups open: ${popups.length}); Ctrl+, → settings window (${await adminWins()})`;
     }, () => admin);
 
     await step(S, 'F5 升阶 Toast「去衣柜看看」→ 后台她的页（衣柜），点衣服立即换上', async () => {
@@ -8042,7 +8054,7 @@ async function frontslimScenario() {
     }, () => admin);
 
     await step(S, 'F9 回到右下角 → 后台 桌面上的她：被拖走的桌宠回到右下角', async () => {
-      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui')); w.setPosition(100, 100); });
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/panel/')); w.setPosition(100, 100); });
       const before = await petBounds(app);
       await admin.evaluate(() => document.querySelector('[data-desk-home]').click());
       await toastSeen(/回到右下角/);
@@ -8133,13 +8145,13 @@ async function frontslimScenario() {
       await shotAdmin('f14-admin-update-found');
       // the pet window: a dot on ⚙, and ⚙ goes straight to 版本与更新
       await page.bringToFront();
-      await page.waitForFunction(() => document.getElementById('btn-settings').dataset.news === 'update', null, { timeout: 5000 });
+      await page.waitForFunction(() => window.__petStatus().news === 'update', null, { timeout: 5000 });
       await hover(page);
       await page.waitForTimeout(300);
       await shotPet('f14-pet-gear-dot');
-      const title = await page.getAttribute('#btn-settings', 'title');
+      const title = await page.evaluate(() => window.__petStatus().newsTitle);
       await go('/overview');
-      await page.click('#btn-settings');
+      await clickAct(page, 'settings');
       await atPath('/update');
       const btn = await admin.evaluate(() => { const b = document.querySelector('[data-update-download]'); return b ? b.textContent.trim() : ''; });
       assert.match(btn, /下载新版本 v9\.9\.9/);
@@ -8284,27 +8296,29 @@ async function petuiScenario() {
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await idle();
-      await step(S, `${theme}: 悬停：气泡、状态条、好感度、工具栏`, async () => {
+      // 她的面板 (e2e/pet-panel.js covers it in full): hovering shows only the bubble; a right click opens the panel
+      // beside her — needs, affection and the name line on one card, then the buttons
+      const PP = require('./pet-panel');
+      await step(S, `${theme}: 悬停：只有气泡（状态与按钮在右键面板里）`, async () => {
         await page.waitForFunction(() => !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 10000 });
         await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        await page.waitForTimeout(300);
+        assert.equal(await page.locator('#status-panel, #toolbar').count(), 0, 'no status card or toolbar in her window');
         await shot('02-hover-hud-bubble');
         return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
       }, page);
-      // T-2726: the status bar is ONE panel — needs, affection and the name line share one surface (rows split by
-      // hairlines); values still update live, it fits the window at the smallest pet size, and it only shows on hover
-      const panelGeom = () => page.evaluate(() => {
+      const panelGeom = (pp) => pp.evaluate(() => {
         const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
-        const panel = document.getElementById('status-panel');
+        const panel = document.getElementById('pet-panel');
         const cs = getComputedStyle(panel);
-        const rows = ['bars', 'aff-row', 'meta'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, borderTop: c.borderTopWidth, ...r(el) }; });
-        const meta = document.getElementById('meta');
-        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), metaCut: meta.scrollWidth > meta.clientWidth, hudOpacity: getComputedStyle(document.getElementById('hud')).opacity };
+        const rows = ['aff-row', 'meta', 'bars'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, ...r(el) }; });
+        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), theme: document.documentElement.dataset.theme };
       });
-      await step(S, `${theme}: 状态栏是一个整体 Panel（需求 / 好感 / 信息行同一底板，分隔线分区）`, async () => {
-        await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
-        const g = await panelGeom();
+      await step(S, `${theme}: 右键她 → 面板：状态与按钮同一张卡片（分隔线分区），跟随主题`, async () => {
+        const pp = await PP.openPetPanel(page);
+        await pp.emulateMedia({ colorScheme: theme });
+        const g = await panelGeom(pp);
+        assert.equal(g.theme, theme);
         assert.equal(g.border, '1px'); assert.ok(g.shadow); assert.notEqual(g.bg, 'rgba(0, 0, 0, 0)');
         for (const row of g.rows) {
           assert.ok(row.in, `${row.id} inside the panel`);
@@ -8312,44 +8326,44 @@ async function petuiScenario() {
           assert.equal(row.shadow, 'none', `${row.id} has no own shadow`);
           assert.ok(row.x >= g.panel.x && row.r <= g.panel.r && row.y >= g.panel.y && row.b <= g.panel.b, `${row.id} within the panel box`);
         }
-        assert.deepEqual(g.rows.map((x) => x.borderTop), ['0px', '1px', '1px'], 'hairlines between the three rows');
-        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside the window');
-        assert.ok(g.toolbar.y >= g.panel.b, 'toolbar right under the panel');
-        await shot('02b-status-panel');
-        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y} top=${x.borderTop}`), toolbarY: g.toolbar.y });
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside its window');
+        assert.ok(g.toolbar.y >= g.rows[2].b, 'the buttons come after her state');
+        await pp.screenshot({ path: path.join(SHOTS, '02b-status-panel.png') });
+        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y}`), toolbarY: g.toolbar.y });
       }, page);
-      await step(S, `${theme}: Panel 内数值实时更新（饥饿 / 心情 / 体力 / 好感）`, async () => {
-        const vals = () => page.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), num: document.getElementById('aff-num').textContent, meta: document.getElementById('meta').textContent }));
+      await step(S, `${theme}: 面板内数值实时更新（饱腹 / 心情 / 体力 / 好感）`, async () => {
+        const pp = await PP.openPetPanel(page);
+        const vals = () => pp.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), needs: ['hunger', 'mood', 'energy'].map((k) => document.getElementById(`val-${k}`).textContent).join('/'), num: document.getElementById('aff-num').textContent }));
         const before = await vals();
         await page.evaluate(() => window.pet.debugSet({ hunger: 90, mood: 15, energy: 50, affection: 12 }));
-        await page.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' pushes the view
+        await pp.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' → the open panel is redrawn
         const after = await vals();
         assert.equal(after['bar-hunger'], '10%'); assert.equal(after['bar-mood'], '15%'); assert.equal(after['bar-energy'], '50%');
-        assert.match(after.meta, /♥12/);
-        await hover(page);
-        await shot('02c-status-panel-updated');
+        assert.equal(after.needs, '10/15/50');
+        assert.equal(after.num, '12/100');
+        await pp.screenshot({ path: path.join(SHOTS, '02c-status-panel-updated.png') });
         return `before ${JSON.stringify(before)} → after ${JSON.stringify(after)}`;
       }, page);
-      await step(S, `${theme}: 最小尺寸（50%）Panel 不溢出窗口；移开指针后隐藏`, async () => {
+      await step(S, `${theme}: 最小尺寸（50%）面板仍在她旁边、在屏幕内；Esc 关闭`, async () => {
+        let pp = await PP.openPetPanel(page);
+        await pp.keyboard.press('Escape');
         const k = await page.evaluate(() => window.pet.setPetScale(0.5));
         await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
         await page.waitForTimeout(300);
-        await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
-        const g = await panelGeom();
-        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, `panel ${g.panel.x}..${g.panel.r} inside window ${g.win}`);
-        for (const row of g.rows) assert.ok(row.r <= g.panel.r, `${row.id} inside the panel`);
+        pp = await PP.openPetPanel(page);
+        const st = await PP.panelState(page);
+        assert.ok(st.bounds.x >= st.area.x && st.bounds.x + st.bounds.width <= st.area.x + st.area.width, JSON.stringify(st));
         await shot('02d-status-panel-smallest');
-        await page.mouse.move(-20, -20);
-        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-        await page.waitForFunction(() => !document.body.classList.contains('hover') && getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+        await pp.keyboard.press('Escape');
+        assert.equal((await PP.panelState(page)).visible, false);
         await page.evaluate(() => window.pet.setPetScale(1.25));
         await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 1.25, null, { timeout: 8000 });
-        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: window ${g.win}px, panel ${g.panel.x}..${g.panel.r} (${g.panel.w}px), meta cut with … = ${g.metaCut}; hidden again off hover`;
+        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: panel ${JSON.stringify(st.bounds)} on her ${st.side}`;
       }, page);
       await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
         await clickAct(page, 'chat');
         await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
+        await hover(page);
         await shot('03a-chat-row-placeholder'); // empty and focused: the placeholder
         await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
         await shot('03-chat-row');
@@ -8358,29 +8372,25 @@ async function petuiScenario() {
         await idle();
         await hover(page);
         await shot('04-chat-reply');
-        await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
-        await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
+        await page.evaluate(() => document.getElementById('chat-row').classList.add('hidden'));
       }, page);
-      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
-        await hover(page);
-        await page.waitForTimeout(400);
-        await shot('05-toolbar');
-        // a pixel look: ♪ 跳舞 (VRM only, T-2801) is in the toolbar but hidden
-        const acts = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
+      await step(S, `${theme}: 面板按钮（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置 + ⏻ 退出，无 ⋯ 菜单）`, async () => {
+        const pp = await PP.openPetPanel(page);
+        await pp.screenshot({ path: path.join(SHOTS, '05-toolbar.png') });
+        // a pixel look: ♪ 跳舞 and ↺ (VRM only) are in the panel but hidden
+        const acts = await pp.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
         assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
-        assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true, '♪ hidden on a pixel look');
-        const rows = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
-        assert.equal(rows, 1, 'the toolbar fits on one row');
+        assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         return acts.join(' / ');
       }, page);
-      await step(S, `${theme}: 喂食菜单`, async () => {
-        await clickAct(page, 'feed');
-        await page.waitForSelector('#food-menu:not(.hidden)');
-        await page.waitForTimeout(400); // let the menu's open transition finish
-        await shot('06-food-menu');
-        await page.mouse.move(-20, -20);
-        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-        await page.waitForSelector('#food-menu.hidden', { state: 'attached' });
+      await step(S, `${theme}: 喂食菜单（在面板里展开）`, async () => {
+        const pp = await clickAct(page, 'feed');
+        await pp.waitForSelector('#food-menu:not(.hidden)');
+        await pp.waitForTimeout(300);
+        await pp.screenshot({ path: path.join(SHOTS, '06-food-menu.png') });
+        await pp.keyboard.press('Escape');
+        await pp.waitForSelector('#food-menu.hidden', { state: 'attached' });
+        await pp.keyboard.press('Escape');
       }, page);
       await step(S, `${theme}: 升阶提示 Toast`, async () => {
         await page.evaluate(() => window.pet.debugSet({ affection: 20 }));
@@ -8400,11 +8410,12 @@ async function petuiScenario() {
         await adminUntil(admin, (p) => !!document.querySelector(`[data-path="/${p}"]`), where, 15000, where);
         await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
         await page.bringToFront();
-        await hover(page);
-        await page.waitForTimeout(300);
-        await shot('08-toolbar-settings');
+        const pp = await require('./pet-panel').openPetPanel(page);
+        await pp.screenshot({ path: path.join(SHOTS, '08-toolbar-settings.png') });
         assert.equal(await page.locator('#btn-topics, #btn-wardrobe, #main-menu, #panel').count(), 0);
-        return `toast → #/${where}; toolbar: ${(await page.textContent('#toolbar')).replace(/\s+/g, ' ').trim()} + ⚙`;
+        const text = (await pp.textContent('#toolbar')).replace(/\s+/g, ' ').trim();
+        await pp.keyboard.press('Escape');
+        return `toast → #/${where}; panel: ${text} + ⚙`;
       }, page);
       await step(S, `${theme}: 无页面错误`, async () => {
         assert.deepEqual(errors, []);
@@ -9346,7 +9357,7 @@ async function charMigrateScenario() {
       const pl = await petLook();
       assert.deepEqual(pl, { kind: 'sprites', outfit: 'qipao' });
       await hover(page);
-      const meta = await page.textContent('#meta');
+      const meta = await statusLine(page);
       assert.match(meta, /小鱼 · 大肥鱼 · 像素 · 知己 ♥72/);
       petAfter1 = json('pet.json');
       settingsAfter1 = json('settings.json');
@@ -9573,7 +9584,7 @@ async function adminCoverageScenario() {
   };
   const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
   const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
-  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
   try {
     await step(S, 'B0 hatch 格萝可, ⚙ 设置 opens the settings window (the pet window has no ⋯ menu since T-2718)', async () => {
       await page.waitForSelector('.char-card');
@@ -9710,7 +9721,7 @@ async function adminCoverageScenario() {
       const petRoam = await page.evaluate(async () => (await window.pet.getSettings()).prefs.roam);
       assert.equal(petRoam, false);
       // 找回桌宠: she was dragged to the top-left corner
-      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('/panel/')).setPosition(10, 10); });
       const moved = await petBoundsNow();
       await admin.click('[data-place-pet]');
       await page.waitForTimeout(500);
@@ -9990,13 +10001,12 @@ async function adminScenario() {
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
-      await hover(page);
-      const items = await page.$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
+      const items = await (await require('./pet-panel').openPetPanel(page)).$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
       assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置', '退出']); // + 跳舞, hidden on this pixel look (VRM only, T-2801)
-      assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true);
+      assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
-      await page.click('[data-act="settings"]');
+      await clickAct(page, 'settings');
       admin = await adminPage();
       admin.on('request', (r) => { if (!/^(file|data|blob|devtools|pack):/.test(r.url())) remote.push(r.url()); });
       admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -10014,7 +10024,7 @@ async function adminScenario() {
     await step(S, 'A2 single instance: tray → 打开设置…, ⚙ 设置 again and Ctrl+, all reuse the same window', async () => {
       const tray = await page.evaluate(() => window.pet.debugTray());
       assert.equal(tray.created, true, 'tray created');
-      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '检查更新', '退出']);
+      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '重置姿势', '检查更新', '退出']); // 重置姿势: T-2830
       const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('admin-ui')).map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^.*\/src\//, 'src/') })));
       const seen = [];
       await admin.evaluate(() => { location.hash = '/about'; });
@@ -10437,22 +10447,26 @@ async function adminScenario() {
       return 'my-grok listed after import, removed (folder gone)';
     }, () => admin);
 
-    await step(S, 'A15 a right click on her brings the same settings window forward (no menu, no second window)', async () => {
+    await step(S, 'A15 a right click on her opens her panel; its ⚙ brings the same settings window forward (no second window)', async () => {
       await admin.evaluate(() => { location.hash = '/characters/grok-pixel'; });
       await page.bringToFront();
       await hover(page);
-      // ⚙ / a right click go to what is new (an update, an unlocked outfit or topic), else keep the window's page
-      const news = await page.getAttribute('#btn-settings', 'data-news');
+      // ⚙ (in her panel: a right click on her) goes to what is new (an update, an unlocked outfit or topic), else keeps the window's page
+      const news = await page.evaluate(() => window.__petStatus().news);
       const want = { update: '/update', outfit: '/characters/grok-pixel', topic: '/topics' }[news] || '/characters/grok-pixel';
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       await page.mouse.click(box.x, box.y, { button: 'right' });
-      await page.waitForTimeout(500);
+      const PP = require('./pet-panel');
+      for (let i = 0; i < 60 && !(await PP.panelState(page)).visible; i++) await page.waitForTimeout(50);
+      assert.equal((await PP.panelState(page)).visible, true, 'the right click opens her panel');
       assert.equal(await page.locator('#model-select, #role-input, #main-menu, #panel').count(), 0, 'no form, menu or panel in the pet window');
+      await PP.panelPage(page).click('#btn-settings');
+      await page.waitForTimeout(500);
       const info = await page.evaluate(() => window.pet.debugAdmin());
       assert.equal(info.opened, 1);
       await adminUntil(admin, (p) => !!document.querySelector(`[data-path="${p}"]`), want, 15000, want);
       await page.screenshot({ path: path.join(SHOTS, 'pet-char-page-jump.png') });
-      return `right click (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
+      return `right click → panel → ⚙ (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
     }, () => admin);
 
     await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
@@ -10527,7 +10541,7 @@ async function interjectScenario() {
   const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return b.classList.contains('hidden') ? '' : b.textContent.trim(); });
   const feedbackRow = () => page.evaluate(() => { const r = document.getElementById('ij-feedback'); return { shown: !r.classList.contains('hidden'), buttons: [...r.querySelectorAll('.ij-btn')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent.trim()), done: r.querySelector('.ij-done').classList.contains('hidden') ? '' : r.querySelector('.ij-done').textContent, decision: r.dataset.decision || null, result: r.dataset.result || null }; });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await page.click('[data-act="chat"]'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
+  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
   const typeDraft = async (text) => { await openChat(); await page.fill('#chat-input', ''); await page.type('#chat-input', text, { delay: 15 }); };
   const lastDecision = async () => (await page.evaluate(() => window.pet.interject.decisions())).decisions.pop();
   const rules = async () => (await page.evaluate(() => window.pet.interject.rules())).rules;
@@ -10813,6 +10827,7 @@ async function interjectScenario() {
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
+  if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();

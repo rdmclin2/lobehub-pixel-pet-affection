@@ -131,4 +131,31 @@ function writeSwapScript(dir) {
   return file;
 }
 
-module.exports = { REPO, LATEST_URL, RELEASES_API_URL, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };
+// 检查更新… (macOS 顶栏 → Pixel Pet, 托盘 → 检查更新): what the answer dialog says for an Updater state
+// (src/main/updater.js). null while there is no answer yet (idle / checking). Each button has an id main acts on:
+//   ok (close) · install (立即更新: a downloaded version) · open (前往下载页) · retry (检查更新 again)
+function updateCheckDialog(st) {
+  const s = st || {};
+  const cur = s.current ? `v${s.current}` : '';
+  const ver = s.version ? `v${s.version}` : '新版本';
+  const ok = { id: 'ok', label: '好' };
+  const later = { id: 'ok', label: '稍后' };
+  switch (s.status) {
+    case 'disabled':
+      return { type: 'info', message: '当前版本不检查更新', detail: `从源码运行的开发版，或关闭了更新时，不会检查更新。${cur ? `当前版本 ${cur}。` : ''}`, buttons: [ok] };
+    case 'latest':
+      return { type: 'info', message: '已是最新版本', detail: `Pixel Pet ${cur} 是目前最新的版本。`, buttons: [ok] };
+    case 'downloading':
+      return { type: 'info', message: `发现新版本 ${ver}`, detail: `正在后台下载，下载好后会提醒你立即更新。${cur ? `当前版本 ${cur}。` : ''}`, buttons: [ok] };
+    case 'ready':
+      return { type: 'info', message: `新版本 ${ver} 已下载好`, detail: '立即更新会重启 Pixel Pet（约 2 秒），她记得的一切都会保留。', buttons: [{ id: 'install', label: '立即更新' }, later] };
+    case 'manual':
+      return { type: 'info', message: `发现新版本 ${ver}`, detail: `这个版本需要到下载页下载安装。${cur ? `当前版本 ${cur}。` : ''}`, buttons: [{ id: 'open', label: '前往下载页' }, later] };
+    case 'error':
+      return { type: 'warning', message: '检查更新失败', detail: `${s.error ? `${String(s.error).slice(0, 200)}\n` : ''}请检查网络后重试。`, buttons: [{ id: 'retry', label: '重试' }, { id: 'ok', label: '取消' }] };
+    default:
+      return null;
+  }
+}
+
+module.exports = { updateCheckDialog, REPO, LATEST_URL, RELEASES_API_URL, parseUpdateInfo, compareVersions, isNewer, macZip, sha512Base64, macAppPath, stageMacApp, writeSwapScript, SWAP_SCRIPT };
