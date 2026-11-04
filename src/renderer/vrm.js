@@ -190,7 +190,8 @@
     const loaded = new Set();
     let libState = 'none';
     let libInfo = null; // T-5084: { state, reason, set, sets, wanted, loaded, failed: [{ id, error }], source } — debug() and the hint
-    let lifeInfo = null; // T-5084: the alive layer's offsets of the last frame (debug().life)
+    let lifeInfo = null;
+    const clipRepairs = { clips: 0, steps: 0 }; // T-5084: steps in clips' own keys spread at load (loadVrma) // T-5084: the alive layer's offsets of the last frame (debug().life)
     let boneFold = null; // the bones this model lacks and where their turns went (foldMissingBones)
     let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
@@ -322,7 +323,15 @@
       const a = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
       if (!a) throw new Error('not a VRM animation');
       foldMissingBones(a);
-      return R.createVRMAnimationClip(a, vrm);
+      const clip = R.createVRMAnimationClip(a, vrm);
+      // a step in the clip's own keys (a source glitch) would be a snap however it is faded in: spread it (T-5084)
+      const BM = window.PetVrmBoneMap;
+      if (BM && BM.smoothSteps) {
+        let n = 0;
+        for (const tr of clip.tracks) if (/\.quaternion$/.test(tr.name) && !/Thumb|Index|Middle|Ring|Little|Toes/.test(tr.name)) n += BM.smoothSteps(tr.times, tr.values);
+        if (n) { clipRepairs.clips++; clipRepairs.steps += n; }
+      }
+      return clip;
     }
 
     // A model without an optional bone (upperChest, neck, shoulders…) would lose that bone's turn and everything
@@ -1203,7 +1212,7 @@
           acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
           vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
-          libraryInfo: libInfo, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
+          libraryInfo: libInfo, clipRepairs: { ...clipRepairs }, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
           manual: plan ? plan.manual : null, manuals: director ? director.manuals() : [], variants: director ? director.variants() : [], poses: director ? director.poses() : [], poseGroup: plan ? plan.pose : null, rest: plan ? plan.rest : null, thinkSegment: plan ? plan.thinkSegment : null,
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',

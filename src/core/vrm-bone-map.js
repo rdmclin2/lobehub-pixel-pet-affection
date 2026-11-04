@@ -181,5 +181,79 @@
     return true;
   }
 
-  return { rootHips, allowsClip, LOW_GROUPS, VRM_PARENT, VRM_BONES, VRM_REQUIRED, VRM_OPTIONAL, CHILDREN, VRM0_THUMB, MIXAMO_TO_VRM, MIXAMO_IGNORED, MMD_TO_VRM, stripMixamo, vrmOfMixamo, foldMissing, degradeLevel, premultiply, at, qmul };
+  // ---------- steps in a clip's own keys (T-5084) ----------
+  // Some source clips have a moment where a bone turns in one frame what it otherwise turns in several (a mocap
+  // glitch, a flip: react.greet-01's hand 57° in 30 ms, emote.shy-02@male's forearm 32°) — played as is, that is a
+  // snap whatever the cross-fades do. The track is sampled the way it plays, at 30 fps: a step is a frame whose turn
+  // is above `limit` ° and more than `ratio` × the larger of the frames just before and after. Every key within
+  // `span` frames around it is replaced by the slerp, by time, between the poses `span` frames before and after —
+  // the step spread over 2·span + 1 frames; at the clip's start or end, where there is nothing to spread into, the
+  // keys beyond the step hold the pose on the other side. Repeated until none is left (≤ passes). times: seconds;
+  // values: flat [x, y, z, w]… (changed in place). → the number of steps spread.
+  function sampleQ(times, values, x, out) {
+    const n = times.length;
+    if (x <= times[0]) { for (let c = 0; c < 4; c++) out[c] = values[c]; return out; }
+    if (x >= times[n - 1]) { for (let c = 0; c < 4; c++) out[c] = values[(n - 1) * 4 + c]; return out; }
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (times[m] <= x) lo = m; else hi = m; }
+    return slerpQ(values.slice(lo * 4, lo * 4 + 4), values.slice(hi * 4, hi * 4 + 4), (x - times[lo]) / Math.max(1e-9, times[hi] - times[lo]), out);
+  }
+  function slerpQ(qa, qb, k, out) {
+    let d = 0;
+    for (let c = 0; c < 4; c++) d += qa[c] * qb[c];
+    const sg = d < 0 ? -1 : 1;
+    const th = Math.acos(Math.min(1, Math.abs(d)));
+    const s0 = th < 1e-6 ? 1 - k : Math.sin((1 - k) * th) / Math.sin(th);
+    const s1 = th < 1e-6 ? k : Math.sin(k * th) / Math.sin(th);
+    let n = 0;
+    for (let c = 0; c < 4; c++) { out[c] = s0 * qa[c] + sg * s1 * qb[c]; n += out[c] * out[c]; }
+    n = Math.sqrt(n) || 1;
+    for (let c = 0; c < 4; c++) out[c] /= n;
+    return out;
+  }
+  const qdeg = (a, b) => { let d = 0; for (let c = 0; c < 4; c++) d += a[c] * b[c]; return (2 * Math.acos(Math.min(1, Math.abs(d))) * 180) / Math.PI; };
+  function smoothSteps(times, values, { limit = 10, ratio = 1.4, span = 3, passes = 4, fps = 30 } = {}) {
+    const n = times.length;
+    if (n < 3 || values.length < n * 4) return 0;
+    const t0 = times[0];
+    const t1 = times[n - 1];
+    const frames = Math.floor((t1 - t0) * fps + 1e-6);
+    if (frames < 2) return 0;
+    let fixed = 0;
+    for (let p = 0; p < passes; p++) {
+      const g = [];
+      for (let i = 0; i <= frames; i++) g.push(sampleQ(times, values, t0 + i / fps, [0, 0, 0, 0]));
+      g.push(sampleQ(times, values, t1, [0, 0, 0, 0])); // the last key (a clip need not end on a frame)
+      const tg = (i) => (i >= g.length - 1 ? t1 : t0 + i / fps);
+      const d = [];
+      for (let i = 0; i + 1 < g.length; i++) d.push(qdeg(g[i], g[i + 1]));
+      let any = false;
+      for (let k = 0; k < d.length; k++) {
+        const nb = Math.max(k > 0 ? d[k - 1] : 0, k + 1 < d.length ? d[k + 1] : 0);
+        if (!(d[k] > limit && d[k] > ratio * nb)) continue;
+        const a = k - span;
+        const b = k + 1 + span;
+        const q = [0, 0, 0, 0];
+        if (a < 0 || b > g.length - 1) {
+          // at the start: everything before the step holds the pose after it; at the end: the pose before it
+          const start = a < 0;
+          const hold = start ? g[k + 1] : g[k];
+          const edge = start ? tg(k + 1) : tg(k);
+          for (let i = 0; i < n; i++) if (start ? times[i] < edge : times[i] > edge) for (let c = 0; c < 4; c++) values[i * 4 + c] = hold[c];
+        } else {
+          const A = tg(a);
+          const B = tg(b);
+          for (let i = 0; i < n; i++) if (times[i] > A && times[i] < B) { slerpQ(g[a], g[b], (times[i] - A) / (B - A), q); for (let c = 0; c < 4; c++) values[i * 4 + c] = q[c]; }
+        }
+        fixed++;
+        any = true;
+        k = b;
+      }
+      if (!any) break;
+    }
+    return fixed;
+  }
+
+  return { smoothSteps, _sampleQ: sampleQ, rootHips, allowsClip, LOW_GROUPS, VRM_PARENT, VRM_BONES, VRM_REQUIRED, VRM_OPTIONAL, CHILDREN, VRM0_THUMB, MIXAMO_TO_VRM, MIXAMO_IGNORED, MMD_TO_VRM, stripMixamo, vrmOfMixamo, foldMissing, degradeLevel, premultiply, at, qmul };
 });

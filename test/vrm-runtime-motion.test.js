@@ -371,3 +371,30 @@ test('HTTP API: GET /motions, POST /motion (id | slot | group, loop, hold), POST
   r = await api.handle(req('POST', '/motion/stop'), ctx);
   assert.deepEqual(r.json, { ok: true, stopped: true, id: 'react.nod-01@female' });
 });
+
+test('a step in a clip\'s own keys (a source glitch) is spread over the frames around it; a smooth fast turn is left alone (core/vrm-bone-map.js smoothSteps)', () => {
+  const BM = require('../src/core/vrm-bone-map');
+  const qz = (deg) => [0, 0, Math.sin((deg * Math.PI) / 360), Math.cos((deg * Math.PI) / 360)];
+  const track = (angles, dt = 1 / 30) => ({ times: Float32Array.from(angles.map((_, i) => i * dt)), values: Float32Array.from(angles.flatMap(qz)) });
+  const per30 = (t) => { const out = []; const a = [0, 0, 0, 0]; const b = [0, 0, 0, 0]; for (let x = t.times[0]; x + 1 / 30 <= t.times[t.times.length - 1] + 1e-6; x += 1 / 30) { BM._sampleQ(t.times, t.values, x, a); BM._sampleQ(t.times, t.values, x + 1 / 30, b); let d = 0; for (let c = 0; c < 4; c++) d += a[c] * b[c]; out.push((2 * Math.acos(Math.min(1, Math.abs(d))) * 180) / Math.PI); } return out; };
+  // a 60° step in one frame in the middle of a still pose → spread: no frame turns more than ~1/7 of it
+  const step = track([...Array(15).fill(0), ...Array(15).fill(60)]);
+  assert.ok(Math.max(...per30(step)) > 59);
+  assert.ok(BM.smoothSteps(step.times, step.values) >= 1);
+  const after = per30(step);
+  assert.ok(Math.max(...after) <= 10, `max after ${Math.max(...after).toFixed(1)}°`);
+  assert.ok(Math.abs((2 * Math.acos(step.values[step.values.length - 1]) * 180) / Math.PI - 60) < 0.01, 'the clip still ends at 60°');
+  // a glitch into the very last key: the key holds the pose before it
+  const end = track([...Array(10).fill(10), 80]);
+  BM.smoothSteps(end.times, end.values);
+  assert.ok(Math.max(...per30(end)) < 1);
+  // irregular key times (3 ms apart, then 30 ms) are sampled as they play
+  const irr = { times: Float32Array.from([0, 0.1, 0.103, 0.106, 0.136, 0.139, 0.3]), values: Float32Array.from([0, 0, 1, 2, 60, 61, 61].flatMap(qz)) };
+  BM.smoothSteps(irr.times, irr.values);
+  assert.ok(Math.max(...per30(irr)) <= 12, `irregular: ${Math.max(...per30(irr)).toFixed(1)}°`);
+  // a fast but smooth turn (20°/frame, steady) is not a step: untouched
+  const fast = track(Array.from({ length: 20 }, (_, i) => i * 20));
+  const before = Array.from(fast.values);
+  assert.equal(BM.smoothSteps(fast.times, fast.values), 0);
+  assert.deepEqual(Array.from(fast.values), before);
+});
