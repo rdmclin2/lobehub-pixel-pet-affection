@@ -247,6 +247,8 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 检查失败 | 检查更新失败 · 更新服务器返回 500 / 连不上更新服务器，检查一下网络（错误代码） | 原因写在第二行；点 **重试** 再检查一次 |
 | 更新不可用 | 当前版本不检查更新 · 开发版（从源码运行）或已关闭更新时不会检查；当前版本 v0.24.0 | 从源码运行（`npm start`）或设了 `PIXELPET_NO_UPDATE=1` 时不会检查；用发布包即可 |
 
+**版本从哪来、需要什么网络**：当前版本取自应用自身的版本号（`package.json` 的 `version`，打包后即 `app.getVersion()`，面板「关于」一行右侧显示的就是它）。新版本只来自本仓库的 GitHub Releases（`rdmclin2/lobehub-pixel-pet-affection`）：Linux 请求 `https://api.github.com/repos/rdmclin2/lobehub-pixel-pet-affection/releases/latest`，读 `tag_name`；macOS 读最新发布里的 `latest-mac.yml`；Windows 安装版由 electron-updater 读 `latest.yml`。两边按语义化版本比较（`src/core/update.js` 的 `compareVersions`，逐段比主 / 次 / 修订号，正式版高于同号预发布版），只有远端更高才显示「发现新版本」，相同或更旧都显示「已是最新版本」。请求走 Chromium 网络栈，自动使用系统代理；需要能访问 `api.github.com` / `github.com`，连不上或被限流时显示「检查更新失败」及原因，可点「重试」。不需要额外权限，也不需要登录 LobeHub。
+
 找到的新版本之后每次打开面板都还在，随时可以点「立即更新」「前往下载页」。结果出来之前就关掉了面板的话，她会在气泡里说结果（例如「（已是最新版本：当前版本 v0.24.0。）」）。设置窗口 → 版本与更新 → 检查更新、托盘 → 检查更新 仍然可用，三处是同一个检查。
 
 **右键行为的变化**：以前右键 / 长按她直接打开设置窗口；现在打开快捷调用面板，第三行 **偏好设置…** 再点一下才是设置窗口。想一步打开设置窗口，用工具栏 **⚙** 或 **Ctrl+,**（macOS ⌘,），它们没变。左键点她、拖动、甩出、双击弹弓等手势都不受影响。

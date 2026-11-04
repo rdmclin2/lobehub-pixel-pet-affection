@@ -25,8 +25,9 @@ body { padding: var(--lobe-padding-xxs); font-family: var(--lobe-font-family); f
 .row .hint { flex: none; color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); font-family: var(--lobe-font-family); }
 /* the highlighted row: the accent filled, light text on it (LobeHub macOS menu). Dark --lobe-color-info is a light
    sky blue that only reads with dark text, so in dark it is deepened toward the panel surface and keeps light text
-   (≈ the reference's deep blue + white; --lobe-color-text on it ≈ 4.9:1). */
-:root { --pet-quick-active-bg: var(--lobe-color-info); --pet-quick-active-fg: var(--lobe-color-bg-elevated); }
+   (≈ the reference's deep blue + white; --lobe-color-text on it ≈ 4.9:1). Light --lobe-color-info (#0076e3) with white
+   text is 4.47:1, just under WCAG AA 4.5, so it is darkened 6% toward --lobe-color-text (≈ 4.8:1). */
+:root { --pet-quick-active-bg: color-mix(in srgb, var(--lobe-color-info) 94%, var(--lobe-color-text)); --pet-quick-active-fg: var(--lobe-color-bg-elevated); }
 [data-theme='dark'] { --pet-quick-active-bg: color-mix(in srgb, var(--lobe-color-info) 50%, var(--lobe-color-bg-elevated)); --pet-quick-active-fg: var(--lobe-color-text); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) { --pet-quick-active-bg: color-mix(in srgb, var(--lobe-color-info) 50%, var(--lobe-color-bg-elevated)); --pet-quick-active-fg: var(--lobe-color-text); }

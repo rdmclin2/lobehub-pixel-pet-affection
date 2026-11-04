@@ -249,20 +249,24 @@ module.exports = ({ OUT, FAKE_LH, step, launch, say }) => async function quickAc
       const css = await q.evaluate(() => {
         const row = getComputedStyle(document.querySelector('#row-settings'));
         const probe = document.createElement('div');
-        probe.style.background = 'var(--lobe-color-info)';
+        probe.style.background = 'var(--pet-quick-active-bg)';
         document.body.appendChild(probe);
         const info = getComputedStyle(probe).backgroundColor;
         probe.remove();
         const other = getComputedStyle(document.querySelector('#row-quit')).backgroundColor;
         return { row: row.backgroundColor, color: row.color, info, other };
       });
-      assert.equal(css.row, css.info, 'hovered row uses --lobe-color-info');
+      assert.equal(css.row, css.info, 'hovered row uses the accent (--lobe-color-info, deepened 6% for AA)');
       assert.notEqual(css.other, css.row, 'other rows are not filled');
       assert.equal(css.color, 'rgb(255, 255, 255)', 'light text on the accent');
+      const lum = (rgb) => { const unit = /^color\(srgb/.test(rgb) ? 1 : 255; const [r, g, b] = rgb.replace(/^color\(srgb/, '').match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => { v /= unit; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const [hi, lo] = [lum(css.row), lum(css.color)].sort((m, n) => n - m);
+      css.contrast = ((hi + 0.05) / (lo + 0.05)).toFixed(2);
+      assert.ok(Number(css.contrast) >= 4.5, `light highlighted row contrast ${css.contrast} ≥ 4.5`);
       await shot(q, 'b1-hover');
       await q.hover('#row-quit');
       await until(() => q.evaluate(() => document.querySelector('#row-quit').classList.contains('active') && !document.querySelector('#row-settings').classList.contains('active')), 'highlight follows the pointer');
-      return `#row-settings hovered: bg ${css.row} (= --lobe-color-info ${css.info}), text ${css.color}; other row bg ${css.other}; pointer → 退出 moves the highlight`;
+      return `#row-settings hovered: bg ${css.row} (= accent ${css.info}), text ${css.color}, contrast ${css.contrast}:1; other row bg ${css.other}; pointer → 退出 moves the highlight`;
     });
 
     await step(S, 'B2 搜索过滤：「更新」「设置」「quit」只剩匹配项，「zzz」显示无结果', async () => {
