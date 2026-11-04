@@ -91,6 +91,15 @@
 - 下一句 `tts-synthesize` 按新的解析结果先查新包的台词，没命中就用新音色合成。
 - 磁盘上的 TTS 缓存不用清：缓存键里包含音色，换了音色自然就是新的键。
 
+### 4.1 设置窗口：角色详情 → 语音（T-4272）
+
+`admin/src/console/pages/Characters.tsx` `VoiceTab`：
+
+- 下拉「语音包」：**自动（按性别）**（后面写出现在解析到的包，如「现在是 通用·男」）、**专属语音包**（她自己的）、**通用语音包**（通用·男 / 通用·女，用户放进 `userData/voicepacks` 的同 id 包会替换内置的，「重新读取」后出现）、**其他角色的语音包**。选中即调用 `setVoicePack(base, packId | 'auto')`，写入 `settings.tts.voicePackByCharacter`，下一句起生效；重启后保持。
+- 「正在用」：包名 + 标签（专属 / 通用·男 / 通用·女 /「某某 的专属」）；「来源」：手动指定 / 自动 · 她有专属语音包 / 自动回退 · 按性别（男/女）用通用语音包；另列台词数、朗读音色（`engineVoice`，标明来自语音包还是她自己的）、音色署名。选的包已不在时显示警告并按自动处理。
+- 数据来自角色列表行（`core/roster.js`）：`voicePack`（生效包：`label` `source` `sourceLabel` …）与 `voicePackPick`（`choice` `missing` `gender` `engineVoice` `options[]`，按 专属 → 通用·男 → 通用·女 → 其他 排序）。`main.js adminState` 每次推送都对每个角色调用 `voicePackState`，所以列表卡片的摘要「语音包 通用·男」与详情一致（悬停看包名和句数）。
+- e2e：`xvfb-run -a node e2e/run.js voice-pack-switch`（界面切换 → settings.json → 桌宠下一句的 packId → 重启后保持 → 切回自动）。
+
 ## 5. 生成内置通用包
 
 ```bash

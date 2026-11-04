@@ -174,8 +174,7 @@ const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
   chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
-  setVoicePack: '按角色切换语音包的后端（`set-voice-pack`，docs/voice-packs.md）；切换控件由后续的 UI 任务接入',
-  voicePackState: '角色当前语音包的解析结果（`voice-pack-state`）；由后续的 UI 任务接入',
+  voicePackState: '角色当前语音包的解析结果（`voice-pack-state`）；设置窗口直接用角色列表里的 voicePack / voicePackPick（main.js adminState 每次推送时都会重新解析），不必再单独拉取',
 };
 
 const uniq = (a) => [...new Set(a)];

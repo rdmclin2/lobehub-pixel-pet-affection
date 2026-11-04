@@ -156,10 +156,52 @@ export interface RosterRow {
   title: string;
   vendor: string;
   voice: null | { lang?: string; tts?: any };
-  voicePack: null | { builtIn: boolean; credit: string; engine: string; engineLabel: string; id: string; lines: number; name: string };
+  /** the 语音包 in force for her base (main.js voicePackState): label 专属 / 通用·男 / 通用·女; source user | own | generic */
+  voicePack: null | VoicePackRef;
+  /** the 语音包 picker: her pick ('auto' or a pack id) and what can be picked */
+  voicePackPick: VoicePackPick;
   personality: string;
   packKinds: { builtin: number; kind: string; label: string; user: number }[];
   outfits: OutfitRow[] | null;
+}
+
+export interface VoicePackRef {
+  builtIn: boolean;
+  credit: string;
+  engine: string;
+  engineLabel: string;
+  gender: 'female' | 'male' | null;
+  id: string;
+  kind: 'character' | 'generic';
+  /** 专属 / 通用·男 / 通用·女 / 「某某 的专属」 */
+  label: string;
+  lines: number;
+  name: string;
+  /** user: picked by you · own: her own (自动) · generic: 自动回退 to the generic pack of her gender */
+  source: 'generic' | 'own' | 'user';
+  sourceLabel: string;
+}
+
+export interface VoicePackOption {
+  builtIn: boolean;
+  character: string | null;
+  gender: 'female' | 'male' | null;
+  group: 'generic' | 'other' | 'own';
+  id: string;
+  kind: 'character' | 'generic';
+  label: string;
+  lines: number;
+  name: string;
+}
+
+export interface VoicePackPick {
+  choice: string;
+  engineVoice: null | { engine: string; fromPack: boolean; voiceId: string | null };
+  gender: 'female' | 'male' | null;
+  genderSource: string | null;
+  /** a pick whose pack is gone (counts as 自动) */
+  missing: string | null;
+  options: VoicePackOption[];
 }
 
 export interface UserFace {
@@ -321,6 +363,9 @@ export interface PetAdminApi {
   relaunch: () => Promise<any>;
   release: (opts: { deleteAgent: boolean }) => Promise<any>;
   reloadVoicePacks: () => Promise<{ errors: string[]; settings: any }>;
+  /** 按角色切换语音包 (main.js set-voice-pack): a pack id or 'auto'; saved and in force for her next line */
+  setVoicePack: (characterId: string, packId: string) => Promise<{ ok: boolean; reason?: string; settings?: any; state?: any }>;
+  voicePackState: (characterId?: string) => Promise<{ ok: boolean; reason?: string; state?: any }>;
   removePack: (id: string) => Promise<any>;
   downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   cancelDownload: (id: string) => Promise<{ ok: boolean }>;
@@ -572,6 +617,7 @@ export const REASON: Record<string, string> = {
   unknown: '找不到这一项',
   'not-found': '找不到这一项（可能已经删掉了）',
   'unknown-character': '没有这个角色',
+  'unknown-pack': '这个语音包已经不在了，先重新读取语音包',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
   unavailable: '这位角色没有这套服饰',

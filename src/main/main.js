@@ -154,10 +154,12 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 
 // ---- the settings window (配置后台) ----------------------------------------------------------------------
 // Everything the console shows, derived again on every change: one source (PetService), no copies.
+// voicePackStateOf(base): her 语音包 in force (set in wire() next to set-voice-pack / voice-pack-state)
+let voicePackStateOf = null;
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id), voicePack: voicePackStateOf }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -757,6 +759,11 @@ function wire() {
     };
   }
   const speciesForId = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
+  // the console's roster rows (adminState) show the pack she really uses, not just her own one
+  voicePackStateOf = (id) => {
+    const sp = speciesForId(id);
+    return sp ? voicePackState(sp) : null;
+  };
   // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' }. Saved in settings.tts.voicePackByCharacter
   // and in force for her next line: the running prewarm (for the old pack's voice) stops, the line being
   // fetched is dropped, and the pet window prewarms again with the new pack (its signature includes the picks).

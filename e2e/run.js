@@ -4533,6 +4533,204 @@ async function gvpack() {
   }
 }
 
+// ---------------------------------------------------------------- voice-pack-switch
+// 管理台角色语音包切换 (T-4272, admin/src/console/pages/Characters.tsx VoiceTab): 角色详情 → 语音 lists 自动（按性别）,
+// her own pack, the generic male / female packs (the owner's generic-male from userData/voicepacks included) and the
+// pack in force with its source (专属 / 通用·男 / 通用·女 · 自动 / 自动回退 / 手动指定); a pick made there is written to
+// settings.json, the pet's next line uses the new pack (packId), the list card follows, and it survives a restart.
+async function voicePackSwitch() {
+  const S = 'voice-pack-switch';
+  const SHOTS = path.join(OUT, 'voice-pack-switch');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const G = require('../src/core/generic');
+  const { importVrm } = require('../src/core/vrm-import');
+  const { makeTestVrm } = require('../scripts/make-test-vrm');
+  const mock = await ttsMock();
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitch-'));
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
+  // a model imported as a 通用设定 companion, male in pack.json, without a pack of his own (自动回退 → 通用·男)
+  const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitch-src-')), 'Kaito Test.vrm');
+  fs.writeFileSync(src, makeTestVrm({ name: 'Kaito Test', meta: { allowRedistribution: true, avatarPermission: 'everyone', commercialUsage: 'personalNonProfit' } }));
+  const imp = await importVrm({ src, speciesId: G.GENERIC_BASE, userDir: path.join(data, 'packs') });
+  if (!imp.ok) throw new Error(`import: ${JSON.stringify(imp.errors)}`);
+  const pj = path.join(imp.pack.dir, 'pack.json');
+  fs.writeFileSync(pj, JSON.stringify({ ...JSON.parse(fs.readFileSync(pj, 'utf8')), gender: 'male' }, null, 1));
+  const male = { packId: imp.pack.id, base: G.baseIdOf(imp.pack.id) };
+  // the owner's generic-male in userData/voicepacks (replaces the built-in one) with one recorded line
+  const CATCH = '接住啦！';
+  const gm = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'generic-male', 'manifest.json'), 'utf8'));
+  const gmDir = path.join(data, 'voicepacks', 'generic-male');
+  fs.mkdirSync(gmDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'test', 'fixtures', 'voicepack', 'tone.mp3'), path.join(gmDir, 'tone.mp3'));
+  fs.writeFileSync(path.join(gmDir, 'manifest.json'), JSON.stringify({ ...gm, pending: undefined, lines: { [CATCH]: 'tone.mp3' } }));
+  const ownManifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'voicepacks', 'dafeiyu', 'manifest.json'), 'utf8'));
+  const OWN = Object.keys(ownManifest.lines).find((t) => t !== CATCH);
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vpswitchfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const shot = async (name, pg = admin || page) => { await pg.waitForTimeout(300); await pg.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+  // one line the way the pet window says it (tts-synthesize): which pack / voice it came from
+  const synth = async (text) => {
+    const n0 = mock.log.length;
+    const r = await page.evaluate((t) => window.pet.ttsSynthesize(t, '').then((x) => ({ ok: x.ok, provider: x.provider, packId: x.packId || null, voiceId: x.voiceId || null })), text);
+    const req = mock.log.slice(n0).at(-1) || null;
+    return { ...r, request: req ? `${req.path} voice_id=${req.voice}` : 'no request' };
+  };
+  const fmtSynth = (t, r) => `桌宠 tts-synthesize「${t}」 → provider=${r.provider} packId=${r.packId} voiceId=${r.voiceId} | ${r.request}`;
+  // 角色详情 → 语音 tab of one character (by id), the live panel's text
+  const voiceTab = async (id) => {
+    if (!admin || admin.isClosed()) admin = await openAdminWindow(app, page, `characters/${id}`);
+    else {
+      await admin.evaluate((r) => { location.hash = r; }, `/characters/${id}`);
+      await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    }
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await admin.waitForFunction(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '语音'); return t && t.getAttribute('aria-selected') === 'true' && document.querySelectorAll('[role="tabpanel"]').length === 1; }, null, { timeout: 5000 });
+    await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').waitFor();
+  };
+  // (scrolled into view: the screenshots show the whole 语音包 card, picker to 音色署名)
+  const current = async () => {
+    await admin.evaluate(() => document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.scrollIntoView({ block: 'end' }));
+    return (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-current]').innerText()).replace(/\s+/g, ' ').trim();
+  };
+  const comboText = async () => (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
+  const pickInUi = async (rx) => {
+    await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
+    await admin.waitForSelector('[role="option"]');
+    const opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    return opts;
+  };
+  const cardMeta = async (base) => {
+    await admin.evaluate(() => { location.hash = '/characters'; });
+    await admin.waitForSelector('[data-path="/characters"]');
+    const id = base === 'dafeiyu' ? 'dafeiyu-pixel' : base;
+    const loc = admin.locator(`[data-row-meta="${id}"]`).first();
+    await loc.waitFor();
+    return (await loc.innerText()).trim();
+  };
+  try {
+    await step(S, 'V0 hatch 大肥鱼; MiniMax key (local stand-in); before: her own pack, auto', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      const r = await page.evaluate(([k, u]) => window.pet.setTts({ key: { id: 'minimax', value: k }, endpoints: { minimax: u } }), [mock.MM_KEY, mock.url]);
+      assert.equal(r.ok, true);
+      assert.deepEqual(saved(), {});
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      return note(`settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n${fmtSynth(OWN, a)}`);
+    }, page);
+
+    await step(S, 'V1 角色列表: the card summary shows the pack in force (语音包 专属)', async () => {
+      admin = await openAdminWindow(app, page, 'characters');
+      const t = await cardMeta('dafeiyu');
+      assert.match(t, /语音包 专属$/);
+      await admin.locator('[data-row-meta="dafeiyu-pixel"]').first().scrollIntoViewIfNeeded();
+      await shot('v1-list-own');
+      return note(`list card dafeiyu-pixel: ${t}`);
+    }, () => admin || page);
+
+    let opts = [];
+    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 自动（按性别）/ 专属 / 通用·男 / 通用·女', async () => {
+      await voiceTab('dafeiyu-pixel');
+      const cur = await current();
+      assert.match(cur, /正在用 大肥鱼.* 专属/);
+      assert.match(cur, /来源 自动 · 她有专属语音包/);
+      assert.match(await comboText(), /自动（按性别） · 现在是 专属/);
+      await shot('v2-voice-tab-auto');
+      await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
+      await admin.waitForSelector('[role="option"]');
+      opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
+      await shot('v2-picker-open');
+      await admin.keyboard.press('Escape');
+      assert.match(opts[0], /^自动（按性别）/);
+      assert.ok(opts.some((o) => /^专属 · 大肥鱼/.test(o)), 'her own');
+      assert.ok(opts.some((o) => /^通用·男 · 通用男声.* · 1 句$/.test(o)), 'the owner\'s generic-male (userData/voicepacks, 1 line)');
+      assert.ok(opts.some((o) => /^通用·女 · 通用女声/.test(o)), 'generic-female');
+      return note(`语音 tab: ${cur}\npicker options:\n  ${opts.join('\n  ')}`);
+    }, () => admin || page);
+
+    await step(S, 'V3 pick 通用·男 in the UI: settings.json written, the pet\'s next line comes from generic-male, the card follows', async () => {
+      await pickInUi(/^通用·男/);
+      await adminUntil(admin, () => /通用·男/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·男');
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 手动指定/);
+      assert.deepEqual(saved(), { dafeiyu: 'generic-male' });
+      const a = await synth(CATCH);
+      const b = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId, a.request], ['pack', 'generic-male', 'no request']);
+      assert.deepEqual([b.provider, b.voiceId], ['minimax', 'male-qn-qingse'], 'her own recorded line is no longer used; read in the pack\'s voice');
+      await shot('v3-picked-generic-male');
+      const t = await cardMeta('dafeiyu');
+      assert.match(t, /语音包 通用·男$/);
+      assert.match(await admin.locator('[data-row-meta="dafeiyu-pixel"]').first().getAttribute('title'), /^语音包：通用·男 · 通用男声.* · 1 句（手动指定）$/);
+      await shot('v3-list-generic-male');
+      return note(`UI → set-voice-pack(dafeiyu, generic-male)\n语音 tab: ${cur}\nsettings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n${fmtSynth(CATCH, a)}\n${fmtSynth(OWN, b)}\nlist card dafeiyu-pixel: ${t}`);
+    }, () => admin || page);
+
+    await step(S, 'V4 imported male model without a pack: 正在用 通用·男 · 来源 自动回退 (按性别 男)', async () => {
+      await voiceTab(male.packId);
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 自动回退 · 按性别（男）用通用语音包/);
+      assert.match(cur, /朗读音色 minimax · male-qn-qingse（来自语音包）/);
+      await shot('v4-male-model-fallback');
+      const t = await cardMeta(male.packId);
+      return note(`${male.packId} 语音 tab: ${cur}\nlist card: ${t}`);
+    }, () => admin || page);
+
+    await step(S, 'V5 restart: the pick is kept (settings.json, 语音 tab, the pet\'s next line)', async () => {
+      await app.close().catch(() => {});
+      admin = null;
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      assert.deepEqual(saved(), { dafeiyu: 'generic-male' });
+      const a = await synth(CATCH);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'generic-male']);
+      await voiceTab('dafeiyu-pixel');
+      const cur = await current();
+      assert.match(cur, /通用·男/);
+      assert.match(cur, /来源 手动指定/);
+      assert.match(await comboText(), /^通用·男/);
+      await shot('v5-after-restart');
+      return note(`after restart: settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n语音 tab: ${cur}\n${fmtSynth(CATCH, a)}`);
+    }, () => admin || page);
+
+    await step(S, 'V6 pick 通用·女, then 自动（按性别）: each in force at once; auto brings her own pack back', async () => {
+      await pickInUi(/^通用·女/);
+      await adminUntil(admin, () => /通用·女/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·女');
+      assert.deepEqual(saved(), { dafeiyu: 'generic-female' });
+      const f = await synth(OWN);
+      assert.deepEqual([f.provider, f.voiceId], ['minimax', 'female-tianmei']);
+      const c1 = await current();
+      await shot('v6-picked-generic-female');
+      await pickInUi(/^自动（按性别）/);
+      await adminUntil(admin, () => /专属/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 专属');
+      assert.deepEqual(saved(), {});
+      const a = await synth(OWN);
+      assert.deepEqual([a.provider, a.packId], ['pack', 'dafeiyu-minimax']);
+      const c2 = await current();
+      await shot('v6-back-to-auto');
+      return note(`通用·女: ${c1}\n  settings → {dafeiyu:'generic-female'}; ${fmtSynth(OWN, f)}\n自动: ${c2}\n  settings → ${JSON.stringify(saved())}; ${fmtSynth(OWN, a)}`);
+    }, () => admin || page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voice-pack-switch-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    mock.server.close();
+  }
+}
+
 // ---------------------------------------------------------------- ivoice
 // 互动语音 (core/interaction-voice.js): with 朗读 on, every interaction — 初次见面, 摸摸, 部位触摸, 喂食,
 // 玩耍, 哄睡, 拖拽, 甩出, 接住, 关系升级, 切换角色 — asks the engine (the local Fish stand-in) for her line;
@@ -10979,6 +11177,7 @@ async function interjectScenario() {
   if (which === 'history' || which === 'all') await history();
   if (which === 'vpack' || which === 'all') await vpack();
   if (which === 'gvpack' || which === 'all') await gvpack();
+  if (which === 'voice-pack-switch' || which === 'all') await voicePackSwitch();
   if (which === 'outfit' || which === 'all') await outfitScenario();
   if (which === 'adultlook' || which === 'all') await adultLook();
   if (which === 'rig' || which === 'all') await rigScenario();

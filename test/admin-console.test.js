@@ -360,7 +360,9 @@ test('roster rows: name, preview, type, source, voice pack, model and the curren
   assert.equal(grok.preview.type, 'sprite');
   assert.match(grok.preview.url, /^pack:\/\/grok-pixel\//);
   assert.ok(grok.preview.frame.width > 0);
-  assert.deepEqual(grok.voicePack, { id: 'grok-minimax', name: '格萝可语音', engine: 'minimax', engineLabel: 'MiniMax', lines: 120, builtIn: true, credit: 'MiniMax' });
+  assert.deepEqual(grok.voicePack, { id: 'grok-minimax', name: '格萝可语音', engine: 'minimax', engineLabel: 'MiniMax', lines: 120, builtIn: true, credit: 'MiniMax', kind: 'character', gender: null, label: '专属', source: 'own', sourceLabel: '自动' });
+  assert.equal(grok.voicePackPick.choice, 'auto');
+  assert.deepEqual(grok.voicePackPick.options.map((o) => [o.id, o.group, o.label]), [['grok-minimax', 'own', '专属']]);
   assert.equal(grok.met.name, '小格');
   assert.equal(rows.filter((r) => r.current).length, 1);
   const fish = rows.find((r) => r.id === 'dafeiyu-pixel');

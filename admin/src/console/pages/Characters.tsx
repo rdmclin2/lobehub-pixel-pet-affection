@@ -7,7 +7,7 @@ import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Store, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow, type VoicePackOption } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -380,8 +380,9 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
                 </Text>
               </Flexbox>
               <HeartMeter c={c} compact />
-              <Text data-row-meta={c.id} ellipsis fontSize={12} type="secondary">
-                {[c.sourceLabel, c.pack?.outfits ? `${c.pack.outfits} 套服饰` : '', c.voicePack ? `语音包 ${c.voicePack.lines} 句` : ''].filter(Boolean).join(' · ')}
+              {/* the 语音包 in force (专属 / 通用·男 / 通用·女), its name and lines on hover: the card line is short */}
+              <Text data-row-meta={c.id} ellipsis fontSize={12} title={c.voicePack ? `语音包：${packText(c.voicePack)}（${c.voicePack.sourceLabel}）` : undefined} type="secondary">
+                {[c.sourceLabel, c.pack?.outfits ? `${c.pack.outfits} 套服饰` : '', c.voicePack ? `语音包 ${c.voicePack.label}` : ''].filter(Boolean).join(' · ')}
               </Text>
               <Flexbox align="center" gap={8} horizontal justify="space-between" style={{ marginBlockStart: 'auto' }}>
                 <Button data-detail={c.id} href={`#/characters/${c.id}`} size="small" type="text">
@@ -473,6 +474,98 @@ const ModelTab = ({ c }: { c: RosterRow }) => {
         {m.pending && <Alert title={`待应用：她的 agent 还在用 ${modelLabel(c, m.applied)}，下次她说话前切到 ${modelLabel(c, m.current)}`} type="warning" />}
       </Flexbox>
     </Surface>
+  );
+};
+
+const GENDER_ZH: Record<string, string> = { female: '女', male: '男' };
+const GROUP_LABEL: Record<VoicePackOption['group'], string> = { generic: '通用语音包', other: '其他角色的语音包', own: '专属语音包' };
+
+/** One pack as the picker and her page name it: 「专属 · 克洛蒂语音 · 219 句」. */
+const packText = (p: { label: string; lines: number; name: string }) => [p.label, p.name, p.lines ? `${p.lines} 句` : '还没有录好的台词'].join(' · ');
+
+/** Why this pack: 手动指定 / 自动（专属）/ 自动回退（按性别：男）. */
+const sourceText = (c: RosterRow) => {
+  const v = c.voicePack;
+  if (!v) return '';
+  if (v.source === 'user') return '手动指定';
+  if (v.source === 'own') return '自动 · 她有专属语音包';
+  return `自动回退 · 按性别（${GENDER_ZH[c.voicePackPick.gender ?? 'female']}）用通用语音包`;
+};
+
+/**
+ * 语音: which 语音包 she uses. 自动 = her own one, else the generic pack of her gender; or one picked here.
+ * A pick is saved (settings.tts.voicePackByCharacter) and is in force from her next line (main.js set-voice-pack).
+ */
+const VoiceTab = ({ c }: { c: RosterRow }) => {
+  const { merge } = useStore();
+  const [busy, setBusy] = useState(false);
+  const pick = c.voicePackPick;
+  const v = c.voicePack;
+  const tts = c.voice?.tts;
+  const groups = (['own', 'generic', 'other'] as const)
+    .map((g) => ({ label: GROUP_LABEL[g], options: pick.options.filter((o) => o.group === g).map((o) => ({ label: packText(o), value: o.id })) }))
+    .filter((g) => g.options.length > 0);
+  const options = [{ label: `自动（按性别）${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' }, ...groups];
+  const onPick = async (id: string) => {
+    setBusy(true);
+    try {
+      const r = await api().setVoicePack(c.base, id);
+      if (r && r.settings) merge({ settings: r.settings });
+      if (r && r.ok) toast.success(id === 'auto' ? `${c.nameZh} 的语音包：自动` : `${c.nameZh} 的语音包：${pick.options.find((o) => o.id === id)?.name ?? id}`);
+      else toast.error({ description: reasonText(r), title: '没能切换语音包' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Flexbox gap={16}>
+      <Surface description="她说话用哪个语音包。录好的台词直接播放，其余的用语音包的音色朗读。切换后她的下一句就用新的语音包。" title="语音包">
+        <Flexbox gap={12}>
+          <div data-voice-pack-select={c.base}>
+            <Select aria-label="语音包" disabled={busy || !pick.options.length} loading={busy} onChange={(x) => x && onPick(String(x))} options={options} style={{ maxWidth: 420, width: '100%' }} value={pick.choice} />
+          </div>
+          <Flexbox data-voice-pack-current={c.base} gap={12}>
+            <Info label="正在用">
+              {v ? (
+                <Flexbox align="center" gap={6} horizontal wrap="wrap">
+                  <Text>{v.name}</Text>
+                  <Tag color={v.kind === 'generic' ? 'processing' : 'success'} data-voice-pack-label>
+                    {v.label}
+                  </Tag>
+                </Flexbox>
+              ) : (
+                '没有语音包，用她自己的音色朗读'
+              )}
+            </Info>
+            {v && (
+              <Info label="来源">
+                <Text data-voice-pack-source={v.source}>{sourceText(c)}</Text>
+              </Info>
+            )}
+            {v && <Info label="台词">{v.lines ? `${v.lines} 句录好的台词 · ${v.engineLabel} · ${v.builtIn ? '内置' : '自定义'}` : `还没有录好的台词，全部用 ${v.engineLabel} 朗读`}</Info>}
+            {pick.engineVoice && (
+              <Info label="朗读音色">
+                {`${pick.engineVoice.engine} · ${pick.engineVoice.voiceId ?? '默认'}${pick.engineVoice.fromPack ? '（来自语音包）' : '（她自己的）'}`}
+              </Info>
+            )}
+            {v?.credit && <Info label="音色署名">{v.credit}</Info>}
+          </Flexbox>
+          {pick.missing && <Alert showIcon title={`你选的语音包「${pick.missing}」已经不在了，先按自动选择。`} type="warning" />}
+        </Flexbox>
+      </Surface>
+      <Surface title="角色音色">
+        <Flexbox gap={12}>
+          <Info label="引擎">
+            <Flexbox gap={4} horizontal wrap="wrap">
+              {tts ? Object.keys(tts).map((k) => <Tag key={k}>{k}</Tag>) : '--'}
+            </Flexbox>
+          </Info>
+          <Text fontSize={12} type="secondary">
+            角色音色写在角色文件里，只读。导入的通用语音包放进 设置 → 语音包 的文件夹，重新读取后就能在这里选。
+          </Text>
+        </Flexbox>
+      </Surface>
+    </Flexbox>
   );
 };
 
@@ -1186,7 +1279,6 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
   // 试穿: one of her outfits on her stage, not saved until 穿上
   const tryOpt: OutfitRow | undefined = trying ? (c.outfits ?? []).find((o) => o.id === trying && !o.locked) : undefined;
   const outfit: OutfitRow | undefined = (c.outfits ?? []).find((o) => o.equipped);
-  const tts = c.voice?.tts;
   const wearing = c.pack ? c.pack.name : c.kind === 'video' ? '原版动画' : c.kindLabel;
   return (
     <>
@@ -1250,22 +1342,7 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
               { content: <ModelTab c={c} />, label: '模型', value: 'model' },
               { content: <RoleTab c={c} />, label: '个性化设定', value: 'role' },
               {
-                content: (
-                  <Surface title="语音">
-                    <Flexbox gap={12}>
-                      <Info label="语音包">{c.voicePack ? `${c.voicePack.name} · ${c.voicePack.engineLabel} · ${c.voicePack.lines} 句 · ${c.voicePack.builtIn ? '内置' : '自定义'}` : '没有语音包'}</Info>
-                      {c.voicePack?.credit && <Info label="音色署名">{c.voicePack.credit}</Info>}
-                      <Info label="角色音色">
-                        <Flexbox gap={4} horizontal wrap="wrap">
-                          {tts ? Object.keys(tts).map((k) => <Tag key={k}>{k}</Tag>) : '--'}
-                        </Flexbox>
-                      </Info>
-                      <Text fontSize={12} type="secondary">
-                        角色音色写在角色文件里，只读。语音包可以在 设置 → 语音包 里重新读取或替换。
-                      </Text>
-                    </Flexbox>
-                  </Surface>
-                ),
+                content: <VoiceTab c={c} />,
                 label: '语音',
                 value: 'voice',
               },

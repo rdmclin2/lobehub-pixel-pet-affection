@@ -92,7 +92,7 @@
 | `tts.providerSet` | boolean | `false` | 内部标记：主人选过引擎。没有这个标记的旧设置迁移成 `auto` | 不直接编辑（`set-tts {provider}` 时置 true） | — |
 | `tts.fallback` | enum | `'system'` | `system` \| `silent`（`FALLBACKS`） | 语音 → 用不了时 · `set-tts` | 即时 |
 | `tts.packs` | boolean | `true` | — | 语音 → 语音包 · `set-tts` | 即时 |
-| `tts.voicePackByCharacter` | `{[characterId]: packId}` | `{}`（没有这一项 = 自动：她的专属语音包，没有时按性别用 `generic-male` / `generic-female`） | 角色 id `^[a-z][a-z0-9]{1,19}$`、包 id `^[a-z0-9][a-z0-9-]{0,63}$`，最多 200 项；`auto` 删除这一项（`normalizeVoicePackPicks`） | 角色详情 → 语音包（UI 由后续任务接入）· `set-voice-pack` `{ characterId, packId }`，状态 `voice-pack-state` | 即时：下一句就用新包（停掉旧的预合成，桌宠窗口重新预合成）；见 `docs/voice-packs.md` |
+| `tts.voicePackByCharacter` | `{[characterId]: packId}` | `{}`（没有这一项 = 自动：她的专属语音包，没有时按性别用 `generic-male` / `generic-female`） | 角色 id `^[a-z][a-z0-9]{1,19}$`、包 id `^[a-z0-9][a-z0-9-]{0,63}$`，最多 200 项；`auto` 删除这一项（`normalizeVoicePackPicks`） | 角色详情 → 语音 → 语音包（下拉：自动（按性别）/ 专属 / 通用·男 / 通用·女 / 其他角色的；显示正在用的包与来源）· `set-voice-pack` `{ characterId, packId }`，状态 `voice-pack-state` | 即时：下一句就用新包（停掉旧的预合成，桌宠窗口重新预合成）；见 `docs/voice-packs.md` |
 | `tts.endpoints.fish` | URL string | `''`（为空时用官方地址 `https://api.fish.audio`） | 必须是 https；只有本机调试可以用 http://127.0.0.1 / localhost / [::1]；不能带用户名和密码 | 语音 → Fish Audio → 端点 · `set-tts` | 即时；不合法时 `reason:'bad-endpoint'` |
 | `tts.endpoints.minimax` | URL string | `''`（官方 `https://api.minimax.cn`） | 同上 | 语音 → MiniMax → 端点 · `set-tts` | 即时 |
 | `tts.endpoints.elevenlabs` | URL string | `''`（官方 `https://api.elevenlabs.io`） | 同上 | 语音 → ElevenLabs → 端点 · `set-tts` | 即时 |

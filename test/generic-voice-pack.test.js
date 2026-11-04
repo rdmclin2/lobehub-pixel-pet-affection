@@ -303,3 +303,36 @@ test('PetService.setTts merges one character\'s pick, \'auto\' removes it, and i
   assert.deepEqual(again.settings.tts.voicePackByCharacter, { vrmxabcdefghijkl: 'generic-female' }, 'read back from settings.json');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).tts.voicePackByCharacter, { vrmxabcdefghijkl: 'generic-female' });
 });
+
+// ---- 管理台角色语音包切换 (T-4272): the roster rows show the pack in force and what can be picked
+test('roster voicePackFor / voicePackPick: the pack in force with its label and source, the picker grouped', () => {
+  const { voicePackFor, voicePackPick, buildRoster } = require('../src/core/roster');
+  const packs = [
+    { id: 'dafeiyu-minimax', name: '大肥鱼语音', kind: 'character', character: 'dafeiyu', engine: 'minimax', lines: 150, builtIn: true, credit: 'MiniMax' },
+    { id: 'claude-minimax', name: '克洛蒂语音', kind: 'character', character: 'claude', engine: 'minimax', lines: 219, builtIn: true, credit: '' },
+    { id: 'generic-female', name: '通用女声', kind: 'generic', gender: 'female', character: null, engine: 'minimax', lines: 0, builtIn: true },
+    { id: 'generic-male', name: '通用男声（我的）', kind: 'generic', gender: 'male', character: null, engine: 'minimax', lines: 3, builtIn: false },
+  ];
+  const st = (pack, source, choice = 'auto', extra = {}) => ({ characterId: 'x', choice, missing: null, source, gender: 'male', genderSource: 'pack', pack: { id: pack.id, name: pack.name, kind: pack.kind, gender: pack.gender || null, character: pack.character, engine: pack.engine, lines: pack.lines }, engineVoice: { engine: 'minimax', voiceId: 'male-qn-qingse', fromPack: true }, ...extra });
+  // no app (tests / before the first hatch): her own pack, auto
+  assert.equal(voicePackFor('dafeiyu', packs).label, '专属');
+  assert.equal(voicePackFor('vrmxabcdefghijkl', packs), null, 'a generic pack is never "her own"');
+  // 自动回退 to the generic male pack: label 通用·男, source generic, the owner's pack (builtIn false) with its credit fields
+  const g = voicePackFor('vrmxabcdefghijkl', packs, st(packs[3], 'generic'));
+  assert.deepEqual([g.id, g.label, g.source, g.sourceLabel, g.builtIn, g.lines], ['generic-male', '通用·男', 'generic', '自动回退', false, 3]);
+  // picked by the owner: generic female for 大肥鱼, another character's own pack
+  assert.deepEqual(['label', 'source', 'sourceLabel'].map((k) => voicePackFor('dafeiyu', packs, st(packs[2], 'user', 'generic-female'))[k]), ['通用·女', 'user', '手动指定']);
+  assert.equal(voicePackFor('dafeiyu', packs, st(packs[1], 'user', 'claude-minimax')).label, '克洛蒂 的专属');
+  // the picker: her own first, then 通用·男, 通用·女, then the others
+  const pick = voicePackPick('dafeiyu', packs, st(packs[2], 'user', 'generic-female'));
+  assert.deepEqual(pick.options.map((o) => [o.id, o.group]), [['dafeiyu-minimax', 'own'], ['generic-male', 'generic'], ['generic-female', 'generic'], ['claude-minimax', 'other']]);
+  assert.deepEqual([pick.choice, pick.gender, pick.engineVoice.voiceId], ['generic-female', 'male', 'male-qn-qingse']);
+  assert.equal(voicePackPick('dafeiyu', packs).choice, 'auto');
+  // buildRoster asks main for each base's state (voicePack option)
+  const asked = [];
+  const rows = buildRoster(null, { ttsStatus: { packs } }, { voicePack: (base) => { asked.push(base); return base === 'dafeiyu' ? st(packs[3], 'user', 'generic-male') : null; } });
+  const fish = rows.find((r) => r.base === 'dafeiyu');
+  assert.deepEqual([fish.voicePack.id, fish.voicePack.label, fish.voicePackPick.choice], ['generic-male', '通用·男', 'generic-male']);
+  assert.ok(asked.includes('dafeiyu') && asked.includes('claude'));
+  assert.equal(rows.find((r) => r.base === 'claude').voicePack.label, '专属', 'no state: her own, as before');
+});
