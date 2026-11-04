@@ -1502,6 +1502,9 @@ function vrmLibraryHint(figure, look) {
   const show = () => {
     const b = $('bubble');
     if (tries++ < 30 && (thinking || !b.classList.contains('hidden'))) { setTimeout(show, 1000); return; }
+    // (T-5098: still so? a library linked or another character worn meanwhile: nothing to say any more)
+    const now = vrmFigure() === figure && figure.libraryInfo ? figure.libraryInfo() : null;
+    if (!now || now.reason !== info.reason) return;
     say(text, 'fallback', 'fallback', `vrm-library:${info.reason}`);
   };
   setTimeout(show, 1200);
@@ -1895,9 +1898,9 @@ function vrmFigure() {
 }
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
 // A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
-function zoneAtClient(cx, cy) {
+function zoneAtClient(cx, cy, opts) {
   const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
-  if (vf) return vf.zoneAt(cx, cy);
+  if (vf) return vf.zoneAt(cx, cy, opts); // (a click: { precise } — the part drawn under it, T-5098)
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -1908,7 +1911,7 @@ function zoneAtClient(cx, cy) {
 async function touchAt(e) {
   if (thinking || !view) return;
   if (!touchOn() || !e || !Number.isFinite(e.clientX)) return doAct('pat');
-  const { zone, pt } = zoneAtClient(e.clientX, e.clientY);
+  const { zone, pt } = zoneAtClient(e.clientX, e.clientY, { precise: true });
   if (!zone) return doAct('pat');
   const r = await window.pet.touch(zone);
   if (r.ok) showTouch(r, pt, { x: e.clientX, y: e.clientY });

@@ -33,7 +33,7 @@ function args(argv) {
 const ARMS_OUT = {
   'mx-c9c650df': { maxS: 0.6, why: 'Mixamo dance: arms swung out level on the beat' },
   'mx-c9c65b7c': { maxS: 0.5, why: 'Mixamo dance: arms swung out level on the beat' },
-  'mx-c9c6ed9e': { maxS: 1.1, why: 'Mixamo dance: opens with both arms spread' },
+  'mx-c9c6ed9e': { maxS: 1.1, stiffS: 2.4, why: 'Mixamo dance: opens with both arms spread, and holds the spread 2 s on a beat at 13.3 s' },
   'vmd-g-i-dle-tomboy': { maxS: 2.0, why: 'TOMBOY: arms-spread figures (120 s, 168 s)' },
   'vmd-aoa-miniskirt-queendom-ver': { maxS: 0.7, why: 'Miniskirt: arms out to the side' },
   'vmd-brown-eyed-girls-abracadabra': { maxS: 0.7, why: 'Abracadabra: arms out level' },
@@ -53,15 +53,28 @@ const ARMS_OUT = {
 };
 // Reactions (by source) that throw the arms out on purpose: a jump's arm swing, a yawn's stretch
 const ARMS_OUT_SRC = {
-  'motions/tsuna/tsuna_small_jump.vmd': { maxS: 0.6, why: 'a small jump: the arms swing up level for a moment' },
   'mixamo/c9c98361-b96c-11e4-a802-0aaa78deedf9.fbx': { maxS: 0.6, why: 'a yawn: both arms stretched out' },
 };
+// T-5098: sources too fast to draw at the 9–15 fps of a machine without a GPU — the renderer's jerk limit
+// (core/vrm-bone-map.js limitAccel jMax, renderer/vrm.js loadVrma) would have to move a bone > 35° to keep their
+// spike ≤ 10°/frame@30 (scripts/vrm-spike-scan.js), i.e. the clip would no longer be itself: out of the index,
+// the next candidate by score takes the slot
+const TOO_FAST = {
+  'mixamo/0635e50a-9988-4d8e-9d85-1db01c9c342c.fbx': 'a wave flapping the hand at ~4 Hz (greet-01/02: 60° to cut)',
+  'motions/tsuna/tsuna_small_jump.vmd': 'a hop kicking the lower legs (jump-01: 49° to cut)',
+  'mixamo/c9c7a268-b96c-11e4-a802-0aaa78deedf9.fbx': 'a shy shake of the forearms (emote.shy-02@male: 38° to cut)',
+  'mixamo/c9cd9927-b96c-11e4-a802-0aaa78deedf9.fbx': 'an excited shake of the hands (emote.excited-01: 35° to cut)',
+};
+// T-5098: not a rest pose — kneeling with both arms spread out, still (the pose guard's stiff-out check): crouch.v02@male
+TOO_FAST['mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx'] = 'kneels with both arms spread out wide (crouch.v02@male: stiff arms out)';
 // the longest a one-shot reaction / emotion plays (s); a longer source is trimmed to its busiest window
 const REACT_MAX = 6;
 
 const REVIEW = {
   'motions/tsuna/tsuna_standby.vmd': { group: 'idle', note: 'つな 待機 (standby loop)' },
-  'motions/penguin_stand.vmd': { group: 'idle', note: 'penguin stand: a calm standing idle' },
+  // T-5098: penguin_stand.vmd is out of the idle rotation — both arms held out ~50° to the side, still for its whole
+  // 10 s (the pose guard's stiff-out check; T-5097 saw it as a coat-hanger stance on Vrchat Avatar). Its slot goes to
+  // the next idle by score (every style keeps ≥ 6 idles).
   'motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd': { group: 'idle', trim: [7.4, 36.1], note: 'standmix2: a long mixed standing idle from 7.4 s (T-5092: 3.2–7.3 s is a stretch with both arms held level in front, read as a T-pose in an idle)' },
   'motions/_kiss_blush.vmd': { group: 'shy', gender: 'female', note: 'kiss blush: a shy lean in' },
   'motions/_kiss2_blush.vmd': { group: 'shy', gender: 'female', note: 'kiss blush 2' },
@@ -71,7 +84,7 @@ const REVIEW = {
   'motions/casual/へなへなと座り込む_gumi.vmd': { group: 'sad', gender: 'female', note: 'へなへな座り込む: sinks to the floor (ends sitting)' },
   'motions/walk_n_run/walk_A01_f0-40_s9.85.vmd': { group: 'walk', note: 'walk cycle A01 (in place)' },
   'motions/walk_n_run/walk_A34_f0-42.vmd': { group: 'walk', note: 'walk cycle A34' },
-  'motions/tsuna/tsuna_small_jump.vmd': { group: 'jump', note: 'small hop' },
+  // T-5098: tsuna_small_jump.vmd is out (TOO_FAST below)
   'motions/hit/h01_何かにぶつかる小.vmd': { group: 'surprised', note: 'bumps into something: a flinch' },
 };
 
@@ -151,6 +164,7 @@ function build({ assets, scan }) {
     const inf = files.get(src) || {};
     const review = REVIEW[src] || null;
     if (pack === 'motions' && !review) continue;
+    if (TOO_FAST[src]) continue;
     // a _TEMP copy of a motion that is also outside _TEMP: the same clip twice
     const key = `${pack}:${path.basename(src)}:${f.duration}`;
     if (seen.has(key)) continue;

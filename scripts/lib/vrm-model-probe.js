@@ -84,6 +84,8 @@ function probeModel(buf) {
     hipsY: +hipsY.toFixed(3),
     headY: +headY.toFixed(3),
     rootHips: BM.rootHips(hipsY, headY),
+    // T-5098: a hips-on-floor model is retargeted on her leg chain (core/vrm-bone-map.js legRig)
+    legRig: BM.rootHips(hipsY, headY) ? BM.legRig(Object.fromEntries(['leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'].filter((b) => has.has(b)).map((b) => [b, pos(h.bones[b])])), 0) : undefined,
   };
 }
 
@@ -114,7 +116,7 @@ function probeModels(modelsDir, clips) {
     if (p.rootHips) res.summary.rootHips++;
     if (p.level !== 'unusable') {
       p.playable = {};
-      for (const s of styles) p.playable[s] = Object.values(clips).filter((c) => c.style === s && BM.allowsClip(c, { rootHips: p.rootHips })).length;
+      for (const s of styles) p.playable[s] = Object.values(clips).filter((c) => c.style === s && BM.allowsClip(c, { rootHips: p.rootHips, legRig: p.legRig })).length;
     }
     res.models[rel] = p;
   }

@@ -22,6 +22,7 @@ const path = require('node:path');
 const http = require('node:http');
 const assert = require('node:assert/strict');
 const M = require('./vrm-verify-metrics');
+const { visibleParts } = require('./vrm-hit-truth');
 
 module.exports = async function vrmVerify(ctx) {
   const { ROOT, SHOTS, step, launch, sleep, dataDir, helpers, watchErrors, realErrors } = ctx;
@@ -254,8 +255,13 @@ module.exports = async function vrmVerify(ctx) {
         await idleNow();
         await bubbleGone();
         await sleep(400);
-        const z = (await page.evaluate(() => window.PetVRM.director.zoneCenters()))[zone];
-        if (!z) return { zone, error: 'no zone on screen' };
+        // T-5098: the click goes to where that part of her is actually drawn (e2e/vrm-hit-truth.js: the rasterised
+        // mesh, its visible centre), not to the touch zone's own centre — the zone is what is being checked
+        await page.mouse.move(230, 30);
+        let truth = await page.evaluate(visibleParts, { parts: [zone] });
+        for (let k = 0; k < 20 && !(truth && truth.centres && truth.centres[zone] && truth.centres[zone].px >= 12); k++) { await sleep(1000); truth = await page.evaluate(visibleParts, { parts: [zone] }); }
+        const z = truth && truth.centres && truth.centres[zone];
+        if (!z) return { zone, error: `no visible ${zone} on screen (${JSON.stringify(truth && truth.counts)})` };
         const topEl = await page.evaluate((q) => { const e = document.elementFromPoint(q.x, q.y); return e ? `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${e.classList.length ? `.${[...e.classList].join('.')}` : ''}` : null; }, z);
         const n0 = ((await page.evaluate(() => window.petFx && window.petFx.lastTouch && window.petFx.lastTouch())) || { n: 0 }).n;
         // T-5092: where the click lands, marked on the screenshot (a ring that takes no clicks), and the zone the hit
@@ -287,7 +293,7 @@ module.exports = async function vrmVerify(ctx) {
         let back = true;
         try { await idleNow(); } catch { back = false; }
         await sleep(300);
-        return { zone, at: [Math.round(z.x), Math.round(z.y)], hitZone: probe && probe.zone, headBox: zone === 'head' && probe ? probe.headBox : undefined, t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
+        return { zone, at: [Math.round(z.x), Math.round(z.y)], visiblePx: z.px, hitZone: probe && probe.zone, recognised: last.n > n0 ? last.zone || null : null, headBox: zone === 'head' && probe ? probe.headBox : undefined, t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
       };
       await ST(`${id}：触摸头 / 手 / 肚子（真实点击）→ 反应片段 → 回待机`, async () => {
         const out = [];
@@ -303,9 +309,12 @@ module.exports = async function vrmVerify(ctx) {
         }
         row.touch = out;
         const withClip = out.filter((o) => o.reaction && o.reaction.id);
-        row.steps.touch = withClip.length === ZONES.length && out.every((o) => o.back);
+        row.steps.touch = withClip.length === ZONES.length && out.every((o) => o.back && o.recognised === o.zone);
+        // T-5098: the part the app recognised (petFx.lastTouch().zone: what she reacts to) must be the part clicked
+        for (const o of out) if (!o.error && o.recognised !== o.zone) fail(`touch ${o.zone}: recognised as ${o.recognised} (clicked the visible centre of ${o.zone} at ${o.at})`);
+        for (const o of out) if (o.error) fail(`touch ${o.zone}: ${o.error}`);
         for (const o of out) { if (!o.reaction) fail(`touch ${o.zone}: no reaction`); else if (!o.reaction.id) fail(`touch ${o.zone}: ${o.reaction.slot} without a clip (face only)`); if (!o.back) fail(`touch ${o.zone}: not back to the idle`); }
-        const note = H.note(`${id}: ${out.map((o) => `${o.zone}@${o.at} (element ${o.topElement}, touch registered ${o.touchRegistered}${o.retry ? `; the zone centre is ${o.onFigure ? 'on her but missed' : 'off the figure'}: a second click at ${o.retry.at} → ${o.retry.reaction ? `${o.retry.reaction.slot} ${o.retry.reaction.id}` : 'nothing'}${o.retry.counts ? ' (counts as the touch)' : ' (diagnosis only)'}` : ''}) → ${o.reaction ? `${o.reaction.slot} plays ${o.reaction.id || '(no clip)'} [${o.reaction.mask}]` : 'no reaction'}, reaction after ${o.reactS}s, overlay gone ${o.reactionEndS}s, idle ${o.backToIdleS}s after the click`).join(' | ')}`);
+        const note = H.note(`${id}: ${out.map((o) => `${o.zone}@${o.at} → recognised ${o.recognised}${o.recognised === o.zone ? ' ✓' : ' ✗'} (element ${o.topElement}, touch registered ${o.touchRegistered}${o.retry ? `; the zone centre is ${o.onFigure ? 'on her but missed' : 'off the figure'}: a second click at ${o.retry.at} → ${o.retry.reaction ? `${o.retry.reaction.slot} ${o.retry.reaction.id}` : 'nothing'}${o.retry.counts ? ' (counts as the touch)' : ' (diagnosis only)'}` : ''}) → ${o.reaction ? `${o.reaction.slot} plays ${o.reaction.id || '(no clip)'} [${o.reaction.mask}]` : 'no reaction'}, reaction after ${o.reactS}s, overlay gone ${o.reactionEndS}s, idle ${o.backToIdleS}s after the click`).join(' | ')}`);
         assert.ok(row.steps.touch, row.failures.join('; '));
         return note;
       });
@@ -424,11 +433,16 @@ module.exports = async function vrmVerify(ctx) {
         for (const w of tr) { const k = kindOf(w); const e = byKind[k] || (byKind[k] = { n: 0, spikeMax: 0, speedMax: 0, worst: null }); e.n++; if (w.spike >= e.spikeMax) { e.spikeMax = w.spike; e.worst = `${w.what} ${w.spikeBone}`; } e.speedMax = Math.max(e.speedMax, w.speed); }
         const mx = tr.length ? Math.max(...tr.map((w) => w.spike)) : 0;
         const worst = tr.slice().sort((a, b) => b.spike - a.spike).slice(0, 3);
-        row.jump = { unit: j.unit, frames: j.frames, late: j.late, transitions: tr.length, spikeMax: mx, bodySpikeMax: tr.length ? Math.max(...tr.map((w) => w.bodySpike)) : 0, speedMaxInWindows: tr.length ? Math.max(...tr.map((w) => w.speed)) : 0, steadyP99: j.p99, byKind, worst: worst.map((w) => ({ what: w.what, spike: w.spike, bone: w.spikeBone, speed: w.speed, before: w.before })) };
+        // T-5098: the same spike on the pose before the output limiter (rawSpike): a source snap the limiter hides
+        const rawMx = tr.length ? Math.max(...tr.map((w) => w.rawSpike || 0)) : 0;
+        const rawWorst = tr.slice().sort((a, b) => (b.rawSpike || 0) - (a.rawSpike || 0)).slice(0, 3);
+        for (const w of tr) { const k = kindOf(w); const e = byKind[k]; e.rawSpikeMax = Math.max(e.rawSpikeMax || 0, w.rawSpike || 0); }
+        row.jump = { unit: j.unit, frames: j.frames, late: j.late, transitions: tr.length, spikeMax: mx, rawSpikeMax: rawMx, rawWorst: rawWorst.map((w) => ({ what: w.what, rawSpike: w.rawSpike, bone: w.rawSpikeBone, spike: w.spike })), limiter: (await fig()).smooth, clipRepairs: (await fig()).clipRepairs, bodySpikeMax: tr.length ? Math.max(...tr.map((w) => w.bodySpike)) : 0, speedMaxInWindows: tr.length ? Math.max(...tr.map((w) => w.speed)) : 0, steadyP99: j.p99, byKind, worst: worst.map((w) => ({ what: w.what, spike: w.spike, bone: w.spikeBone, speed: w.speed, before: w.before })) };
         row.transitionsRaw = tr;
-        row.steps.jump = tr.length >= 6 && mx <= SPIKE_MAX;
+        row.steps.jump = tr.length >= 6 && mx <= SPIKE_MAX && rawMx <= SPIKE_MAX;
         for (const w of tr) if (w.spike > SPIKE_MAX) fail(`snap: ${w.what} spike ${w.spike}°/frame on ${w.spikeBone}`);
-        const note = H.note(`${id}: ${tr.length} transitions, spike max ${mx}° (body ${row.jump.bodySpikeMax}°) / limit ${SPIKE_MAX}°/frame@30fps; by kind ${Object.entries(byKind).map(([k, e]) => `${k} ×${e.n} spike≤${e.spikeMax}° speed≤${e.speedMax}°`).join('; ')}; worst ${worst.map((w) => `${w.what} ${w.spike}° ${w.spikeBone}`).join(' | ')}`);
+        for (const w of tr) if ((w.rawSpike || 0) > SPIKE_MAX) fail(`snap before the limiter: ${w.what} raw spike ${w.rawSpike}°/frame on ${w.rawSpikeBone}`);
+        const note = H.note(`${id}: ${tr.length} transitions, raw spike max (before the limiter) ${rawMx}° on ${rawWorst[0] ? `${rawWorst[0].rawSpikeBone} (${rawWorst[0].what})` : '-'}, spike max ${mx}° (body ${row.jump.bodySpikeMax}°) / limit ${SPIKE_MAX}°/frame@30fps; by kind ${Object.entries(byKind).map(([k, e]) => `${k} ×${e.n} spike≤${e.spikeMax}° speed≤${e.speedMax}°`).join('; ')}; worst ${worst.map((w) => `${w.what} ${w.spike}° ${w.spikeBone}`).join(' | ')}`);
         assert.ok(row.steps.jump, `${tr.length} transitions; ${row.failures.join('; ')}`);
         return note;
       });
@@ -455,7 +469,7 @@ module.exports = async function vrmVerify(ctx) {
     }
 
     await ST(`全部模型的结论（失败的模型记为失败，不略过）；无控制台错误`, async () => {
-      const lines = summary.map((r) => `${r.id}: ${r.passed ? 'PASS' : 'FAIL'} — vrm ${r.vrm}, style ${r.style && r.style.name}, ${r.clips} clips; idle ${r.idle ? `${(r.idle.hitRatio * 100).toFixed(1)}% / ${r.idle.distinctClips} clips` : '-'}; spike max ${r.jump ? r.jump.spikeMax : '-'}°${r.failures.length ? `; failures: ${r.failures.join('; ')}` : ''}`);
+      const lines = summary.map((r) => `${r.id}: ${r.passed ? 'PASS' : 'FAIL'} — vrm ${r.vrm}, style ${r.style && r.style.name}, ${r.clips} clips; idle ${r.idle ? `${(r.idle.hitRatio * 100).toFixed(1)}% / ${r.idle.distinctClips} clips` : '-'}; spike max raw ${r.jump ? r.jump.rawSpikeMax : '-'}° / limited ${r.jump ? r.jump.spikeMax : '-'}°${r.failures.length ? `; failures: ${r.failures.join('; ')}` : ''}`);
       const real = realErrors(errors).filter((e) => !/\[vrm\]/.test(e));
       const note = H.note(`${lines.join('\n')}\nconsole errors: ${real.length}`);
       assert.ok(summary.length >= Math.min(5, IDS.length), `${summary.length} models`); // (a PIXELPET_E2E_VERIFY_IDS subset: all of them)

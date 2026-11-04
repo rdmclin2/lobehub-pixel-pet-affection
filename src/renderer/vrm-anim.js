@@ -55,6 +55,17 @@
     return 1;
   }
 
+  // T-5098: |cos(half angle)| below which two rotations are ~180° apart (> 150°): the slerp keeps last frame's side
+  const FLIP_DOT = Math.cos((75 * Math.PI) / 180);
+  // q ← slerp(q, b, t) along the path b's sign gives (no shortest-path flip), in place
+  function slerpKeep(q, b, t) {
+    const d = Math.max(-1, Math.min(1, q.x * b.x + q.y * b.y + q.z * b.z + q.w * b.w));
+    let ka; let kb;
+    if (d > 0.9995) { ka = 1 - t; kb = t; } else { const th = Math.acos(d); const s = Math.sin(th); ka = Math.sin((1 - t) * th) / s; kb = Math.sin(t * th) / s; }
+    q.set(q.x * ka + b.x * kb, q.y * ka + b.y * kb, q.z * ka + b.z * kb, q.w * ka + b.w * kb).normalize();
+    return q;
+  }
+
   // R: the runtime (window.PetVrmRuntime), vrm: the loaded VRM, keep: bone names the alive layer moves
   function createAnimLayers(R, vrm, keepLife) {
     const T = R.THREE;
@@ -105,7 +116,18 @@
           const k = (o.limb !== undefined && LIMB.test(tr.bone) ? Math.min(o.weight, o.limb) : o.weight) * maskWeight(o.mask || 'upper', tr.bone);
           if (!(k > 0)) continue;
           const v = tr.interp.evaluate(Math.max(0, Math.min(tr.duration, o.time || 0)));
-          if (tr.q) { qa.fromArray(v).normalize(); tr.node.quaternion.slerp(qa, Math.min(1, k)); } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
+          if (tr.q) {
+            qa.fromArray(v).normalize();
+            // T-5098: the way round kept from frame to frame. Two poses of a bone ~180° apart (standmix2's hand turned
+            // 158°, a talk gesture's the other way) have no stable shortest path: the slerp flipped sides mid-fade
+            // and the hand lurched 62° in a frame. Near 180° the side taken last frame is kept.
+            const q0 = tr.node.quaternion;
+            const d = q0.x * qa.x + q0.y * qa.y + q0.z * qa.z + q0.w * qa.w;
+            const sign = Math.abs(d) < FLIP_DOT && tr.side ? tr.side : d < 0 ? -1 : 1;
+            tr.side = sign;
+            if (sign < 0) qa.set(-qa.x, -qa.y, -qa.z, -qa.w);
+            slerpKeep(q0, qa, Math.min(1, k));
+          } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
         }
       }
       lastOverlays = shown.join(',');

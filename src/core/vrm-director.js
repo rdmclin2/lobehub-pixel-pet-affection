@@ -71,6 +71,7 @@
   // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle (think and talk at once — a reply
   // streaming in — is talk)
   const PRIORITY = { lift: 6, drop: 5, touch: 5, manual: 5, celebrate: 4, sleep: 1, cue: 0 };
+  const HOLD_FULL_IN = 0.4; // T-5098: the shortest fade-in of a full-body hold (s)
   const DEBOUNCE = 0.6; // the same reaction is not started again within this (no twitching on fast clicks)
   const CUT = 0.2; // an interrupted reaction fades out this fast under the new one
   // T-5092: a touch no longer changes three layers on one frame (T-5089: the idle / posture switched, the reaction
@@ -389,7 +390,7 @@
     }
 
     // Start reaction `slot` now (a new one cuts the old: it fades out under the new one, no snap). opts:
-    // { prio, amp (0..1, e.g. a cue's small cheer), hold (s, overrides the clip's), why }
+    // { prio, amp (0..1, e.g. a cue's small cheer: its face, T-5098), hold (s, overrides the clip's), why }
     function startReaction(slot, opts = {}) {
       const cur0 = S.react;
       // the same reaction going on keeps its clip (below); a new one draws its variant (T-5084)
@@ -419,8 +420,11 @@
       const end = opts.loop && clip ? Infinity : clip ? Math.max(playEnd + hold, S.t + fadeIn) + fadeOut : S.t + NO_CLIP;
       const r = {
         slot, clip: clip || null, prio: opts.prio !== undefined ? opts.prio : PRIORITY.touch, start: S.t, playEnd, end, hold, fadeIn, fadeOut,
-        weight: clip ? clamp(clip.weight * (opts.amp || 1) * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
-        face: (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
+        // T-5098: `amp` (a cue's small cheer) no longer scales the body's weight: a full-body clip at 0.6 is a pose
+        // 60 % of the way from the idle's to the clip's — the cheer's fists overhead (+60°) over arms hanging (−75°)
+        // came out as both arms held level for 1.5 s (Wanderer, T-5097). The clip plays as it is; amp softens the face
+        weight: clip ? clamp(clip.weight * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
+        face: opts.amp !== undefined && opts.amp < 1 ? scaleFace((clip && clip.face) || look.face || {}, opts.amp) : (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
         noBlink: look.noBlink || 0, key: ++S.reactKey, why: opts.why || null,
         mask: opts.mask || (clip && clip.mask) || 'upper', loop: !!(opts.loop && clip), manual: !!opts.manual,
         // T-5092: a touch holds the base still while its clip plays (≤ TOUCH_SETTLE.base s)
@@ -493,7 +497,9 @@
       if (slot && !S.holds.has(slot)) S.holds.set(slot, { slot, clip: reactionClip(slot), start: S.t, w: 0 });
       for (const [k, h] of S.holds) {
         const on = k === slot;
-        const fade = h.clip ? (on ? h.clip.fadeIn : h.clip.fadeOut) : 0.3;
+        // (T-5098: a full-body hold comes in over ≥ HOLD_FULL_IN s — hold.lift's 0.2 s was two frames at 9 fps, one of
+        // them a lurch of the forearms the limiter had to cap)
+        const fade = h.clip ? (on ? Math.max(h.clip.fadeIn || 0, h.clip.mask === 'full' ? HOLD_FULL_IN : 0) : h.clip.fadeOut) : 0.3;
         h.w = clamp(h.w + (on ? 1 : -1) * (dt / Math.max(0.05, fade)), 0, 1);
         if (!on && h.w <= 0) S.holds.delete(k);
       }
