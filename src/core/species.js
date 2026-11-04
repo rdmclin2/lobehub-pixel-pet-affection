@@ -64,6 +64,8 @@ function validateCharacter(c) {
   }
   // voice: { lang, pitch, rate, prefer } for the system voice, plus optional engines in voice.tts (core/tts.js)
   if (c.voice !== undefined) errors.push(...require('./tts').validateVoice(c.voice));
+  // gender: which 通用语音包 / default engine voice she falls back to (core/voice-gender.js); optional
+  errors.push(...require('./voice-gender').validateGender(c.gender));
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
   // art.avatar: her face for lists and chat bubbles, a picture in her default pack's folder (scripts/art/make_avatars.py)
   if (art.avatar !== undefined && (!str(art.avatar) || !AVATAR_RE.test(art.avatar) || !Array.isArray(art.packs) || !art.packs.length)) errors.push('art.avatar must be a .webp / .png file name in her default pack (art.packs[0])');

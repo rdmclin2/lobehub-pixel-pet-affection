@@ -2,6 +2,11 @@
 // Record the built-in voice packs (语音包, core/voice-pack.js): every fixed line of each character in
 // her MiniMax voice, into src/voicepacks/<character>/ (manifest.json + one mp3 per line).
 // Usage: node scripts/voicepack-generate.js [--only dafeiyu,claude] [--rpm 10] [--limit N] [--transcode-only]
+//        node scripts/voicepack-generate.js --generic [--gender male|female] [--manifest-only] [--dry-run] …
+// --generic records the 通用语音包 (core/voice-pack.js kind "generic") instead: src/voicepacks/generic-<gender>/,
+// the lines any companion may say (VP.genericPackLines) in the default voice of that gender (GENERIC_VOICES);
+// both genders when --gender is left out. --manifest-only writes / refreshes the manifest (voice, no audio) and
+// needs no key; --dry-run only prints what would be recorded.
 // MiniMax returns 128 kbps mp3 (~50 KB a line); with ffmpeg on the PATH every recorded line is turned
 // into 32 kbps Opus (.ogg, ~12 KB, plenty for a voice) once her lines are done, so a pack is ~3 MB.
 // The key: $MINIMAX_API_KEY or an `export MINIMAX_API_KEY=…` line (scripts/minimax-key.js); never printed.
@@ -20,13 +25,23 @@ const only = arg('--only', '') ? arg('--only').split(',') : SPECIES_IDS;
 const rpm = Number(arg('--rpm', 10));
 const limit = Number(arg('--limit', Infinity));
 const transcodeOnly = args.includes('--transcode-only');
+const generic = args.includes('--generic');
+const manifestOnly = args.includes('--manifest-only');
+const dryRun = args.includes('--dry-run');
+const genders = arg('--gender', '') ? arg('--gender').split(',') : ['female', 'male'];
+// The default engine voice of each generic pack (MiniMax system voices): what a character without a voice of
+// her own reads with when she falls back to that pack (core/voice-pack.js voiceForPack).
+const GENERIC_VOICES = {
+  female: { name: '通用女声', voiceId: 'female-tianmei', label: 'MiniMax 甜美女性', model: 'speech-2.8-turbo', params: { speed: 1, pitch: 0, vol: 1, emotion: 'happy' } },
+  male: { name: '通用男声', voiceId: 'male-qn-qingse', label: 'MiniMax 青涩青年', model: 'speech-2.8-turbo', params: { speed: 1, pitch: 0, vol: 1, emotion: 'happy' } },
+};
 const ROOT = path.join(__dirname, '..', 'src', 'voicepacks');
 const { execFileSync } = require('node:child_process');
 const hasFfmpeg = (() => { try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 // Every .mp3 line of the pack in `dir` to 32 kbps mono Opus; the manifest follows file by file.
 function transcode(dir, m, save) {
-  if (!hasFfmpeg) { log(`${m.character}: no ffmpeg, lines stay mp3`); return; }
+  if (!hasFfmpeg) { log(`${m.character || m.id}: no ffmpeg, lines stay mp3`); return; }
   let n = 0;
   for (const [text, file] of Object.entries(m.lines)) {
     if (!file.endsWith('.mp3')) continue;
@@ -38,38 +53,59 @@ function transcode(dir, m, save) {
     fs.unlinkSync(src);
     n++;
   }
-  log(`${m.character}: ${n} lines to Opus`);
+  log(`${m.character || m.id}: ${n} lines to Opus`);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
+// What to record: one pack per character (her own voice) or, with --generic, one per gender.
+// -> [{ id, dir, cfg, lines, manifest(lines) }]
+function targets() {
+  if (generic) {
+    return genders.map((g) => {
+      const v = GENERIC_VOICES[g];
+      if (!v) throw new Error(`--gender: one of ${Object.keys(GENERIC_VOICES).join(', ')}`);
+      const cfg = tts.PROVIDERS.minimax.config({ tts: { minimax: { voiceId: v.voiceId, model: v.model, ...v.params } } });
+      const id = `generic-${g}`;
+      return { id, dir: path.join(ROOT, id), cfg, lines: () => VP.genericPackLines(), manifest: (lines) => ({ format: VP.FORMAT, kind: 'generic', gender: g, id, name: `${v.name}（${v.label}）`, engine: 'minimax', voiceId: cfg.voiceId, model: cfg.model, params: { speed: cfg.speed, pitch: cfg.pitch, vol: cfg.vol, emotion: cfg.emotion }, credit: `语音由 AI 合成：${v.label}（${cfg.voiceId}）`, lines }) };
+    });
+  }
+  return only.map((id) => {
+    const sp = SPECIES[id];
+    const cfg = tts.PROVIDERS.minimax.config(sp && sp.voice);
+    if (!cfg) { log(`${id}: no MiniMax voice in her file, skipped`); return null; }
+    const credit = (sp.voice.tts.minimax && sp.voice.tts.minimax.credit) || `MiniMax ${cfg.voiceId}`;
+    return { id, dir: path.join(ROOT, id), cfg, lines: () => VP.packLines(sp), manifest: (lines) => ({ format: VP.FORMAT, id: `${id}-minimax`, name: `${sp.nameZh}（${credit.replace(/^MiniMax 系统音色/, 'MiniMax ')}）`, character: id, engine: 'minimax', voiceId: cfg.voiceId, model: cfg.model, params: { speed: cfg.speed, pitch: cfg.pitch, vol: cfg.vol, emotion: cfg.emotion }, credit: `语音由 AI 合成：${credit}`, lines }) };
+  }).filter(Boolean);
+}
+
 async function main() {
   const { value: key } = K.key();
-  if (!key && !transcodeOnly) throw new Error('no MINIMAX_API_KEY (env, ~/.config/pixel-pet/minimax.env or an export line in ~/.zshrc)');
+  if (!key && !transcodeOnly && !manifestOnly && !dryRun) throw new Error('no MINIMAX_API_KEY (env, ~/.config/pixel-pet/minimax.env or an export line in ~/.zshrc); --manifest-only writes the manifest without audio');
   const endpoint = K.endpoint();
   const gap = Math.ceil(60000 / rpm) + 200;
   let last = 0;
   let made = 0;
-  for (const id of only) {
-    const sp = SPECIES[id];
-    const cfg = tts.PROVIDERS.minimax.config(sp && sp.voice);
-    if (!cfg) { log(`${id}: no MiniMax voice in her file, skipped`); continue; }
-    const dir = path.join(ROOT, id);
+  for (const t of targets()) {
+    const { id, dir, cfg } = t;
+    if (dryRun) { const l = t.lines(); log(`${id}: ${l.length} lines (voice ${cfg.voiceId})`); for (const x of l) console.log(`  ${x}`); continue; }
     if (transcodeOnly && !fs.existsSync(path.join(dir, 'manifest.json'))) continue;
     fs.mkdirSync(dir, { recursive: true });
     const mfile = path.join(dir, 'manifest.json');
     let m = {};
     try { m = JSON.parse(fs.readFileSync(mfile, 'utf8')); } catch { /* new */ }
-    const credit = (sp.voice.tts.minimax && sp.voice.tts.minimax.credit) || `MiniMax ${cfg.voiceId}`;
-    m = { format: VP.FORMAT, id: `${id}-minimax`, name: `${sp.nameZh}（${credit.replace(/^MiniMax 系统音色/, 'MiniMax ')}）`, character: id, engine: 'minimax', voiceId: cfg.voiceId, model: cfg.model, params: { speed: cfg.speed, pitch: cfg.pitch, vol: cfg.vol, emotion: cfg.emotion }, credit: `语音由 AI 合成：${credit}`, lines: m.lines || {} };
-    const save = () => { const tmp = `${mfile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(m, null, 1) + '\n'); fs.renameSync(tmp, mfile); };
+    m = t.manifest(m.lines || {});
+    // pending: the lines not recorded yet (a generic pack written with --manifest-only lists what it will hold)
+    const save = () => { const left = (m.pending || []).filter((x) => !m.lines[x]); if (left.length) m.pending = left; else delete m.pending; const tmp = `${mfile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(m, null, 1) + '\n'); fs.renameSync(tmp, mfile); };
     if (transcodeOnly) { if (Object.keys(m.lines).length) transcode(dir, m, save); continue; }
-    const lines = VP.packLines(sp);
+    const lines = t.lines();
     // lines no longer in her file leave the pack
     for (const t of Object.keys(m.lines)) if (!lines.includes(t)) { try { fs.unlinkSync(path.join(dir, m.lines[t])); } catch { /* gone */ } delete m.lines[t]; }
     const todo = lines.filter((t) => !(m.lines[t] && fs.existsSync(path.join(dir, m.lines[t]))));
     log(`${id}: ${lines.length} lines, ${lines.length - todo.length} already recorded, ${todo.length} to go (voice ${cfg.voiceId})`);
+    if (generic) m.pending = todo;
     save();
+    if (manifestOnly) continue;
     for (const text of todo) {
       if (made >= limit) break;
       for (let attempt = 1; ; attempt++) {
