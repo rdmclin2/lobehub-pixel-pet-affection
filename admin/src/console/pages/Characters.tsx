@@ -29,7 +29,9 @@ export const modelLabel = (c: RosterRow, key: string | null | undefined): string
   if (!key) return '默认';
   const o = c.model?.options.find((x) => x.key === key);
   if (!o) return key;
-  return o.hosted ? String(o.label ?? o.key) : `${o.label ?? o.key}（自己的 ${c.vendor} Key）`;
+  // a 通用设定 character belongs to no vendor: name the provider whose key it is
+  const owner = c.vendor === '通用' ? String(o.providerId) : c.vendor;
+  return o.hosted ? String(o.label ?? o.key) : `${o.label ?? o.key}（自己的 ${owner} Key）`;
 };
 
 
@@ -429,7 +431,10 @@ const ModelTab = ({ c }: { c: RosterRow }) => {
   }, [m?.loaded]);
   if (!m) return <Alert title="唤醒桌宠后可以给她选模型" type="info" />;
   return (
-    <Surface description="她的 agent 用哪个模型。只列她所属厂商的模型；当前角色改动后立即在后台应用。" title="模型">
+    <Surface
+      description={`她的 agent 用哪个模型。${c.vendor === '通用' ? '她用通用设定，不限厂商，列出所有可用的模型' : '只列她所属厂商的模型'}；当前角色改动后立即在后台应用。`}
+      title="模型"
+    >
       <Flexbox gap={12}>
         <Flexbox align="center" gap={8} horizontal>
           <Select
