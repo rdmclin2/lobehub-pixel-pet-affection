@@ -316,8 +316,10 @@ function defaultEngine(species) {
 // local: the user's own voice server — its API shape (openai / whale), model and voice name.
 // elevenlabs: the voice and model used for a character whose file names no ElevenLabs voice.
 // voicePackByCharacter: the 语音包 the owner picked per character ({ characterId: packId }; 'auto' / missing =
-// her own pack, else the generic pack of her gender — core/voice-pack.js resolvePack).
-const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, voicePackByCharacter: {}, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: ELEVENLABS_MODEL } };
+// 我的语音包 below, else her own pack, else the generic pack of her gender — core/voice-pack.js resolvePack).
+// voicePack: 我的语音包 — the pack the owner picked for themself ('auto' or a pack id, e.g. generic-male), used by
+// every character without a pick of her own.
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, voicePack: 'auto', voicePackByCharacter: {}, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: ELEVENLABS_MODEL } };
 
 // https anywhere; plain http only to this machine — or, for the local engine (`lan`), to a machine on the
 // home network (a GPU box next to the Mac): only the text of her lines goes there.
@@ -337,6 +339,8 @@ const name80 = (v) => (str(v) ? String(v).trim().slice(0, 80) : '');
 const CHARACTER_ID_RE = /^[a-z][a-z0-9]{1,19}$/;
 const VOICE_PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const VOICE_PACK_PICKS = 200;
+// settings.tts.voicePack (我的语音包): a pack id, else 'auto'
+const normalizeVoicePackId = (v) => (typeof v === 'string' && v !== 'auto' && VOICE_PACK_ID_RE.test(v) ? v : 'auto');
 function normalizeVoicePackPicks(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -358,6 +362,7 @@ function normalizeTts(raw) {
     providerSet: r.providerSet === true,
     fallback: FALLBACKS.includes(r.fallback) ? r.fallback : TTS_DEFAULTS.fallback,
     packs: r.packs !== false, // 语音包: her recorded fixed lines first (core/voice-pack.js)
+    voicePack: normalizeVoicePackId(r.voicePack),
     voicePackByCharacter: normalizeVoicePackPicks(r.voicePackByCharacter),
     endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOkFor(id, ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
     local: { api: LOCAL_APIS.includes(lo.api) ? lo.api : 'openai', model: name80(lo.model), voice: name80(lo.voice) },
@@ -623,4 +628,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { CHARACTER_ID_RE, VOICE_PACK_ID_RE, VOICE_PACK_PICKS, normalizeVoicePackPicks, ENGINES, NEURAL, ELEVENLABS_MODEL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { CHARACTER_ID_RE, VOICE_PACK_ID_RE, VOICE_PACK_PICKS, normalizeVoicePackPicks, normalizeVoicePackId, ENGINES, NEURAL, ELEVENLABS_MODEL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };

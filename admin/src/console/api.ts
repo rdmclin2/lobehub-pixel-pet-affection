@@ -18,7 +18,9 @@ export type FieldType =
   | 'visitors'
   | 'adult'
   | 'local'
-  | 'perCharacter';
+  | 'perCharacter'
+  /** 我的语音包 (settings.tts.voicePack): set through set-user-voice-pack */
+  | 'voicePack';
 
 export interface FieldOption {
   label: string;
@@ -177,8 +179,8 @@ export interface VoicePackRef {
   label: string;
   lines: number;
   name: string;
-  /** user: picked by you · own: her own (自动) · generic: 自动回退 to the generic pack of her gender */
-  source: 'generic' | 'own' | 'user';
+  /** user: picked for her · default: 我的语音包 (settings.tts.voicePack) · own: her own (自动) · generic: 自动回退 to the generic pack of her gender */
+  source: 'default' | 'generic' | 'own' | 'user';
   sourceLabel: string;
 }
 
@@ -196,6 +198,8 @@ export interface VoicePackOption {
 
 export interface VoicePackPick {
   choice: string;
+  /** 我的语音包 in force ('auto' or a pack id): the default of every character without a pick of her own */
+  userChoice: string;
   engineVoice: null | { engine: string; fromPack: boolean; voiceId: string | null };
   gender: 'female' | 'male' | null;
   genderSource: string | null;
@@ -366,6 +370,8 @@ export interface PetAdminApi {
   /** 按角色切换语音包 (main.js set-voice-pack): a pack id or 'auto'; saved and in force for her next line */
   setVoicePack: (characterId: string, packId: string) => Promise<{ ok: boolean; reason?: string; settings?: any; state?: any }>;
   voicePackState: (characterId?: string) => Promise<{ ok: boolean; reason?: string; state?: any }>;
+  /** 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto'; saved in settings.tts.voicePack */
+  setUserVoicePack: (packId: string) => Promise<{ choice?: string; ok: boolean; reason?: string; settings?: any; state?: any }>;
   removePack: (id: string) => Promise<any>;
   downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   cancelDownload: (id: string) => Promise<{ ok: boolean }>;

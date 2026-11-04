@@ -720,7 +720,7 @@ function wire() {
   // 语音包: her recorded line for this text, when packs are on and the engine that would read it is the
   // one the pack was recorded with (or none can): played from disk, no request (core/voice-pack.js).
   // The pack is the one she resolves to (core/voice-pack.js resolvePack): the owner's pick for her >
-  // her own (专属) > the generic pack of her gender (core/voice-gender.js).
+  // 我的语音包 (settings.tts.voicePack) > her own (专属) > the generic pack of her gender (core/voice-gender.js).
   function recordedLine(sp, text, probe = false, vp = voicePackOf(sp)) {
     const pack = vp.pack;
     if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts))) return null;
@@ -737,7 +737,8 @@ function wire() {
   function voicePackOf(sp) {
     const g = VoiceGender.genderOf(sp, genderPackOf(sp));
     const picks = (service.settings.tts && service.settings.tts.voicePackByCharacter) || {};
-    const r = resolvePack({ characterId: sp.id, gender: g.gender, choice: Object.hasOwn(picks, sp.id) ? picks[sp.id] : PACK_AUTO }, tts.packs);
+    const mine = (service.settings.tts && service.settings.tts.voicePack) || PACK_AUTO; // 我的语音包
+    const r = resolvePack({ characterId: sp.id, gender: g.gender, choice: Object.hasOwn(picks, sp.id) ? picks[sp.id] : PACK_AUTO, userChoice: mine }, tts.packs);
     return { ...r, gender: g.gender, genderSource: g.source, voiced: voiceForPack(sp, r) };
   }
   const engineVoiceOf = (voiced, t, fromPack) => { const e = defaultEngine(voiced); const c = t[e] || {}; return { engine: e, voiceId: c.voiceId || c.referenceId || null, fromPack }; };
@@ -750,6 +751,8 @@ function wire() {
       characterId: sp.id,
       choice: vp.choice,
       missing: vp.missing,
+      userChoice: vp.userChoice,
+      userMissing: vp.userMissing,
       source: vp.source,
       gender: vp.gender,
       genderSource: vp.genderSource,
@@ -777,6 +780,19 @@ function wire() {
     tts.engine.cancel();
     const r = service.setTts({ voicePackByCharacter: { [sp.id]: pick } });
     return { ok: r.ok !== false, state: voicePackState(sp), settings: r.settings };
+  });
+  // 我的语音包 (用户语音包): { packId: <pack id> | 'auto' }. Saved in settings.tts.voicePack; every character without
+  // a pick of her own uses it from her next line (a 通用语音包 — generic-male / generic-female — or any loaded pack).
+  // -> { ok, choice, state (the current character's), settings } | { ok: false, reason: 'unknown-pack' }
+  ipcMain.handle('set-user-voice-pack', (_e, payload) => {
+    const { packId } = payload && typeof payload === 'object' ? payload : {};
+    const pick = packId === null || packId === undefined || packId === '' ? PACK_AUTO : packId;
+    if (pick !== PACK_AUTO && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack' };
+    tts.engine.endPrewarm();
+    tts.engine.cancel();
+    const r = service.setTts({ voicePack: pick });
+    const sp = service.pet ? speciesForId(service.pet.speciesId) : null;
+    return { ok: r.ok !== false, choice: r.settings.tts.voicePack, state: sp ? voicePackState(sp) : null, settings: r.settings };
   });
   ipcMain.handle('voice-pack-state', (_e, payload) => {
     const id = payload && typeof payload === 'object' && payload.characterId ? payload.characterId : service.pet && service.pet.speciesId;

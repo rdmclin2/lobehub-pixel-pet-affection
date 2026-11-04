@@ -65,15 +65,16 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 ## 3. 用哪个语音包（`resolvePack`，纯函数）
 
 1. 用户为这个角色选的包：`settings.tts.voicePackByCharacter[角色 id]`，可以选任何一个已加载的包 → `source: 'user'`
-2. 她自己的专属包 → `'own'`
-3. 她这个性别对应的通用包 → `'generic'`
+2. **我的语音包**（用户自己的语音包）：`settings.tts.voicePack`，可以选通用男声 / 通用女声或任何一个已加载的包，所有没有单独指定的角色都用它 → `'default'`
+3. 她自己的专属包 → `'own'`
+4. 她这个性别对应的通用包 → `'generic'`
 
-如果选的包已经不在了（比如被删了），就按「自动」处理，同时在 `missing` 里返回那个包的 id。新导入、没有专属包的模型会自动用上 `generic-male` 或 `generic-female`。5 个内置角色在「自动」下仍然用各自的专属包，引擎音色也不变（单测 `the five built-in characters resolve exactly as before`）。
+如果选的包已经不在了（比如被删了），就按「自动」处理，同时在 `missing`（角色的）/ `userMissing`（我的语音包）里返回那个包的 id。`voicePack` 是 `auto`（默认）时，解析结果和没有这一项时完全一样。新导入、没有专属包的模型会自动用上 `generic-male` 或 `generic-female`。5 个内置角色在「自动」下仍然用各自的专属包，引擎音色也不变（单测 `the five built-in characters resolve exactly as before`）。
 
 引擎音色（`voiceForPack`）的规则：
 
 - 角色文件写了 `voice.tts`：在「自动」下保持不变。
-- 用户为她选了别的包：改用那个包的音色，这样录好的台词和引擎合成的话是同一个声音。
+- 用户为她选了别的包，或者她跟随「我的语音包」用了别的包：改用那个包的音色，这样录好的台词和引擎合成的话是同一个声音。
 - 没有 `voice.tts` 并且回退到了通用包：用通用包的音色。
 
 ## 4. 设置与 IPC
@@ -107,6 +108,18 @@ VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`
 - 设置保存后会推送 `settings`。桌宠窗口的预合成签名里包含这个角色当前选的包，所以会按新包重新预合成。
 - 下一句 `tts-synthesize` 按新的解析结果先查新包的台词，没命中就用新音色合成。
 - 磁盘上的 TTS 缓存不用清：缓存键里包含音色，换了音色自然就是新的键。
+
+`settings.tts.voicePack`（我的语音包）：`'auto'` 或包 id，默认 `'auto'`；不合格式的值按 `auto`（`tts.js normalizeVoicePackId`）。`PetService.setTts({ voicePack: packId | 'auto' | null })`。
+
+| 通道 | 载荷 | 返回 |
+| --- | --- | --- |
+| `set-user-voice-pack`（preload：`setUserVoicePack(packId)`，桌宠窗口和设置窗口都有） | `{ packId: <包 id> \| 'auto' }` | `{ ok, choice, state（当前角色的）, settings }`；`{ ok: false, reason: 'unknown-pack' }` |
+
+`voice-pack-state` 的 `state` 另带 `userChoice`（生效的我的语音包，`auto` 或包 id）和 `userMissing`。切换后同样立即生效（停预合成、丢掉正在获取的一句；桌宠窗口的预合成签名包含 `voicePack`）。
+
+### 4.0 设置窗口：设置 → 语音包 → 我的语音包
+
+`admin/src/console/pages/Pages.tsx` `MyVoicePack`：下拉「我的语音包」：**自动**（每个角色用自己的专属语音包，没有时按性别用通用男声 / 女声）、**通用语音包**（通用男声 / 通用女声，句数、内置 / 自定义）、**角色的专属语音包**。选中即调用 `setUserVoicePack(packId | 'auto')`，写入 `settings.tts.voicePack`，下一句起生效，重启后保持。下面显示选中的包和「现在陪你的 某某 正在用 …（通用·男 · 我的语音包）」。角色详情 → 语音 里，跟随它的角色「来源」显示「自动 · 跟随我的语音包」，自动项写作「自动（跟随我的语音包）」。e2e：`xvfb-run -a node e2e/run.js user-voice-pack`。
 
 ### 4.1 设置窗口：角色详情 → 语音（T-4272）
 

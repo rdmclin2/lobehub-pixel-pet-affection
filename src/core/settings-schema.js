@@ -171,6 +171,7 @@ add('prefs.voiceMurmurs', 'tts', '朗读', '朗读碎碎念', 'switch', { desc: 
 add('tts.provider', 'tts', '引擎', '朗读引擎', 'select', { desc: '自动 = 用角色自己配好的引擎。', options: opts([['auto', '自动（跟随角色）'], ['fish', 'Fish Audio'], ['minimax', 'MiniMax'], ['elevenlabs', 'ElevenLabs'], ['local', '本地语音服务'], ['system', '系统语音']]) });
 add('tts.fallback', 'tts', '引擎', '引擎用不了时', 'segmented', { desc: '选的引擎失败（没 Key、超时、额度用完）时怎么办。', options: opts([['system', '改用系统语音'], ['silent', '不出声']]) });
 add('tts.packs', 'tts', '引擎', '使用语音包', 'switch', { desc: '命中录好的台词时直接播放，不请求引擎。' });
+add('tts.voicePack', 'voicepacks', '我的语音包', '我的语音包', 'voicePack', { desc: '你自己用的语音包：选一个通用语音包（通用男声 / 通用女声）或任意语音包，所有没有单独指定语音包的角色都用它。自动 = 每个角色用自己的专属语音包，没有时按性别用通用男声 / 女声。切换后下一句就用新的语音包。' });
 add('tts.voicePackByCharacter.<id>', 'character', '语音', '语音包', 'perCharacter', { desc: '这个角色用哪个语音包：自动（她的专属语音包；没有时按性别用通用男声 / 女声语音包）或指定一个语音包。切换后下一句就用新的语音包。' });
 add('tts.providerSet', 'tts', '引擎', '手动选过引擎', 'readonly', { internal: true, desc: '内部标记：选过引擎后不再迁移成「自动」。' });
 add('tts.endpoints.fish', 'tts', 'Fish Audio', '端点', 'url', { desc: '留空使用官方地址 https://api.fish.audio。必须是 https。', placeholder: 'https://api.fish.audio', validator: 'tts:fish' });
@@ -278,7 +279,7 @@ function validate(key, value) {
   const f = byKey.get(key);
   const no = (reason, extra = '') => ({ ok: false, reason, message: MESSAGES[reason] + extra });
   if (!f || f.store !== 'settings' || f.type === 'perCharacter') return no('unknown');
-  if (f.type === 'readonly' || f.type === 'token' || f.type === 'adult') return no('readonly');
+  if (f.type === 'readonly' || f.type === 'token' || f.type === 'adult' || f.type === 'voicePack') return no('readonly'); // voicePack: set-user-voice-pack
   switch (f.type) {
     case 'switch':
       return typeof value === 'boolean' ? { ok: true, value } : no('type');

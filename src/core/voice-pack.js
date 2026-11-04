@@ -19,7 +19,8 @@
 //     { "format": 1, "kind": "generic", "gender": "male", "id": "generic-male", "name": "…",
 //       "engine": "minimax", "voiceId": "male-qn-qingse", "model": "…", "params": { … }, "lines": { … } }
 // Which pack a character uses (resolvePack): the one the owner picked for her (settings.tts.voicePackByCharacter)
-// > her own (专属) > the generic pack of her gender (core/voice-gender.js).
+// > the owner's own 语音包 for everyone (我的语音包, settings.tts.voicePack) > her own (专属) > the generic pack of
+// her gender (core/voice-gender.js).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -213,19 +214,27 @@ function packApplies(tts, pack, firstEngine) {
 
 // Which pack a character uses. Pure: `packs` is anything with get(id) / packFor(character) / genericFor(gender)
 // (a VoicePacks). choice: the owner's pick for her (settings.tts.voicePackByCharacter[id]: a pack id, or 'auto'
-// / missing); a pick whose pack is gone counts as 'auto'. gender: hers (core/voice-gender.js genderOf).
-// → { pack, source: 'user' | 'own' | 'generic' | null, choice: packId | 'auto', missing: packId | null }
-function resolvePack({ characterId, gender, choice } = {}, packs) {
+// / missing); a pick whose pack is gone counts as 'auto'. userChoice: the owner's own 语音包 (我的语音包,
+// settings.tts.voicePack: a pack id or 'auto'), the default for every character without a pick of her own.
+// gender: hers (core/voice-gender.js genderOf).
+// Order: her pick (source 'user') > 我的语音包 ('default') > her own (专属, 'own') > the generic pack of her gender ('generic').
+// → { pack, source: 'user' | 'default' | 'own' | 'generic' | null, choice: packId | 'auto', missing: packId | null,
+//     userChoice: packId | 'auto', userMissing: packId | null }
+function resolvePack({ characterId, gender, choice, userChoice } = {}, packs) {
   const picked = typeof choice === 'string' && choice !== AUTO ? choice : null;
+  const mine = typeof userChoice === 'string' && userChoice !== AUTO ? userChoice : null;
   const chosen = picked && packs ? packs.get(picked) : null;
-  if (chosen) return { pack: chosen, source: 'user', choice: picked, missing: null };
+  const minePack = mine && packs ? packs.get(mine) : null;
+  const u = { userChoice: minePack ? mine : AUTO, userMissing: mine && !minePack ? mine : null };
+  if (chosen) return { pack: chosen, source: 'user', choice: picked, missing: null, ...u };
   const missing = picked;
+  if (minePack) return { pack: minePack, source: 'default', choice: AUTO, missing, ...u };
   const own = packs && characterId ? packs.packFor(characterId) : null;
-  if (own) return { pack: own, source: 'own', choice: AUTO, missing };
+  if (own) return { pack: own, source: 'own', choice: AUTO, missing, ...u };
   const g = Gender.isGender(gender) ? gender : Gender.DEFAULT_GENDER;
   const generic = packs ? packs.genericFor(g) : null;
-  if (generic) return { pack: generic, source: 'generic', choice: AUTO, missing };
-  return { pack: null, source: null, choice: AUTO, missing };
+  if (generic) return { pack: generic, source: 'generic', choice: AUTO, missing, ...u };
+  return { pack: null, source: null, choice: AUTO, missing, ...u };
 }
 
 // A pack's voice as a character file's voice.tts (core/tts.js PROVIDERS[engine].config reads it).
@@ -247,7 +256,7 @@ function voiceForPack(species, resolved) {
   if (!species || !tts) return species;
   const v = species.voice && typeof species.voice === 'object' ? species.voice : null;
   const hasOwn = !!(v && v.tts && typeof v.tts === 'object' && Object.keys(v.tts).length);
-  const userPicked = resolved.source === 'user' && pack.character !== species.id;
+  const userPicked = (resolved.source === 'user' || resolved.source === 'default') && pack.character !== species.id;
   if (!userPicked && (hasOwn || pack.kind !== 'generic')) return species;
   return { ...species, voice: { ...(v || {}), tts } };
 }

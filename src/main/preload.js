@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld('pet', {
   // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
   setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
   voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
+  // 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto' -> { ok, choice, state, settings }
+  setUserVoicePack: (packId) => ipcRenderer.invoke('set-user-voice-pack', { packId }),
   // 语音输入 (core/asr.js): recognition runs in main (keys and lh never come here). transcribe takes the recorder's
   // bytes (ArrayBuffer / Uint8Array) and its mime type; ms = how long the clip is.
   asr: {

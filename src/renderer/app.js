@@ -1204,7 +1204,7 @@ function syncPrewarm() {
   const t = settings.tts || {};
   const keys = settings.ttsStatus ? Object.entries(settings.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}:${e.ready}`).join(',') : '';
   // the 语音包 picked for her (set-voice-pack): another pack means other recorded lines and maybe another voice
-  const pick = (t.voicePackByCharacter || {})[view.pet.speciesId] || 'auto';
+  const pick = `${(t.voicePackByCharacter || {})[view.pet.speciesId] || 'auto'}/${t.voicePack || 'auto'}`; // hers / 我的语音包
   const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, pick, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
   if (sig === prewarmSig) return;
   prewarmSig = sig;

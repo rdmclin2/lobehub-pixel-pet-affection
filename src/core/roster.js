@@ -38,7 +38,7 @@ function packLabel(p, base) {
   const sp = SPECIES[p.character];
   return `${sp ? sp.nameZh : p.character} 的专属`;
 }
-const PICK_SOURCE_LABEL = { user: '手动指定', own: '自动', generic: '自动回退' };
+const PICK_SOURCE_LABEL = { user: '手动指定', default: '我的语音包', own: '自动', generic: '自动回退' };
 
 // Her 语音包 now: `state` is main.js voicePackState(her base) — the owner's pick > her own > the generic one of
 // her gender; without it (no app around: tests, the roster before the first hatch) her own pack, as before.
@@ -62,6 +62,7 @@ function voicePackPick(id, packs, state = null) {
     .sort((a, b) => rank(a) - rank(b));
   return {
     choice: state ? state.choice : 'auto',
+    userChoice: state ? state.userChoice || 'auto' : 'auto',
     missing: state ? state.missing || null : null,
     gender: state ? state.gender || null : null,
     genderSource: state ? state.genderSource || null : null,

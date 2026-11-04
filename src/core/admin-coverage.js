@@ -36,6 +36,7 @@ const SPECIAL_SETTINGS = {
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
   'tts.voicePackByCharacter.<id>': '角色详情 → 语音包（自动 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
 
@@ -203,7 +204,7 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     }
     if (INTERNAL_SETTINGS[key]) problems.push(`\`${key}\` 在 INTERNAL_SETTINGS 里，但 schema 没标 internal`);
     if (f.type === 'readonly') problems.push(`\`${key}\` 是用户设置，却是只读字段`);
-    if (['token', 'adult', 'perCharacter'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
+    if (['token', 'adult', 'perCharacter', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
     if (f.type === 'switch' || f.type === 'select' || f.type === 'segmented' || f.type === 'slider' || f.type === 'number' || f.type === 'text' || f.type === 'url' || f.type === 'visitors') {
       if (!f.live && !f.restart) problems.push(`\`${key}\` 既不是即时生效也不是重启生效`);
     }

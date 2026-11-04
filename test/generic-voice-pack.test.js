@@ -182,7 +182,38 @@ test('resolvePack: the owner\'s pick > her own pack > the generic pack of her ge
   // a pick whose pack is gone: as auto, and says which
   const gone = VP.resolvePack({ characterId: 'gpt', gender: 'female', choice: 'deleted-pack' }, packs);
   assert.deepEqual([gone.pack.id, gone.source, gone.missing], ['gpt-minimax', 'own', 'deleted-pack']);
-  assert.deepEqual(VP.resolvePack({ characterId: 'x' }, new VP.VoicePacks([])), { pack: null, source: null, choice: 'auto', missing: null });
+  assert.deepEqual(VP.resolvePack({ characterId: 'x' }, new VP.VoicePacks([])), { pack: null, source: null, choice: 'auto', missing: null, userChoice: 'auto', userMissing: null });
+});
+
+test('我的语音包 (settings.tts.voicePack): a generic pack picked as the owner\'s own is every character\'s default; her own pick still wins', () => {
+  const packs = new VP.VoicePacks([BUILTIN]);
+  // the owner picks 通用男声 for themself: a built-in character with a 专属 pack and a new imported female model both use it
+  const d = VP.resolvePack({ characterId: 'dafeiyu', gender: 'female', choice: 'auto', userChoice: 'generic-male' }, packs);
+  assert.deepEqual([d.pack.id, d.source, d.choice, d.userChoice, d.userMissing], ['generic-male', 'default', 'auto', 'generic-male', null]);
+  const f = VP.resolvePack({ characterId: 'vrmxabcdefghijkl', gender: 'female', userChoice: 'generic-male' }, packs);
+  assert.deepEqual([f.pack.id, f.source], ['generic-male', 'default']);
+  // 通用女声 too, and any loaded pack
+  assert.equal(VP.resolvePack({ characterId: 'vrmxabcdefghijkl', gender: 'male', userChoice: 'generic-female' }, packs).pack.id, 'generic-female');
+  assert.equal(VP.resolvePack({ characterId: 'gpt', gender: 'female', userChoice: 'claude-minimax' }, packs).pack.id, 'claude-minimax');
+  // a pick for her beats 我的语音包
+  const p = VP.resolvePack({ characterId: 'dafeiyu', gender: 'female', choice: 'generic-female', userChoice: 'generic-male' }, packs);
+  assert.deepEqual([p.pack.id, p.source], ['generic-female', 'user']);
+  // 我的语音包 gone: as auto, and says which
+  const g = VP.resolvePack({ characterId: 'dafeiyu', gender: 'female', userChoice: 'deleted-pack' }, packs);
+  assert.deepEqual([g.pack.id, g.source, g.userChoice, g.userMissing], ['dafeiyu-minimax', 'own', 'auto', 'deleted-pack']);
+  // auto: exactly as without it
+  for (const id of ['dafeiyu', 'claude', 'vrmxabcdefghijkl']) assert.deepEqual(VP.resolvePack({ characterId: id, gender: 'male', userChoice: 'auto' }, packs), VP.resolvePack({ characterId: id, gender: 'male' }, packs));
+  // the engine reads her replies in the pack's voice, so recorded and synthesised lines match
+  const voiced = VP.voiceForPack(S.SPECIES.dafeiyu, d);
+  assert.equal(voiced.voice.tts.default, 'minimax');
+  assert.equal(voiced.voice.tts.minimax.voiceId, packs.get('generic-male').voiceId);
+  // settings: saved as a pack id, anything else is auto
+  const tts = require('../src/core/tts');
+  assert.equal(tts.normalizeTts({ voicePack: 'generic-male' }).voicePack, 'generic-male');
+  for (const bad of [undefined, null, '', 'auto', 'Bad Id', 7, {}]) assert.equal(tts.normalizeTts({ voicePack: bad }).voicePack, 'auto', String(bad));
+  const schema = require('../src/core/settings-schema');
+  assert.equal(schema.field('tts.voicePack').page, 'voicepacks');
+  assert.equal(schema.validate('tts.voicePack', 'generic-male').reason, 'readonly', 'set through set-user-voice-pack only');
 });
 
 test('the five built-in characters resolve exactly as before (own pack, own voice, same recorded lines)', () => {

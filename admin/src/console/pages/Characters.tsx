@@ -488,6 +488,7 @@ const sourceText = (c: RosterRow) => {
   const v = c.voicePack;
   if (!v) return '';
   if (v.source === 'user') return '手动指定';
+  if (v.source === 'default') return '自动 · 跟随我的语音包（设置 → 语音包）';
   if (v.source === 'own') return '自动 · 她有专属语音包';
   return `自动回退 · 按性别（${GENDER_ZH[c.voicePackPick.gender ?? 'female']}）用通用语音包`;
 };
@@ -505,7 +506,8 @@ const VoiceTab = ({ c }: { c: RosterRow }) => {
   const groups = (['own', 'generic', 'other'] as const)
     .map((g) => ({ label: GROUP_LABEL[g], options: pick.options.filter((o) => o.group === g).map((o) => ({ label: packText(o), value: o.id })) }))
     .filter((g) => g.options.length > 0);
-  const options = [{ label: `自动（按性别）${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' }, ...groups];
+  const autoText = pick.userChoice && pick.userChoice !== 'auto' ? '自动（跟随我的语音包）' : '自动（按性别）';
+  const options = [{ label: `${autoText}${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' }, ...groups];
   const onPick = async (id: string) => {
     setBusy(true);
     try {

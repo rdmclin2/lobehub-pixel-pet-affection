@@ -1,5 +1,5 @@
 /** Every settings page (P-05): PageHeader + SettingsForm cards from the schema + page extras. */
-import { Alert, Button, Flexbox, Table, Tag, Text, toast } from '@lobehub/ui';
+import { Alert, Button, Flexbox, Select, Table, Tag, Text, toast } from '@lobehub/ui';
 import { PageHeader, Surface } from '@lobehub/ui/dashboard';
 import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -199,6 +199,70 @@ export const AsrPage = () => {
 };
 
 // ---- 语音包 -----------------------------------------------------------------------------------------------
+const GENDER_PACK: Record<string, string> = { female: '通用女声', male: '通用男声' };
+
+/**
+ * 我的语音包 (settings.tts.voicePack, main.js set-user-voice-pack): the pack you use yourself — a 通用语音包
+ * (通用男声 / 通用女声) or any loaded pack — for every character without a pick of her own (角色详情 → 语音).
+ * 自动 = each character's own pack, else the generic pack of her gender. In force from her next line, kept on restart.
+ */
+const MyVoicePack = () => {
+  const { settings, roster, merge } = useStore();
+  const [busy, setBusy] = useState(false);
+  const packs: any[] = settings.ttsStatus?.packs ?? [];
+  const choice: string = settings.tts?.voicePack ?? 'auto';
+  const nameOf = (p: any) => roster.find((c) => c.base === p.character)?.nameZh ?? p.character;
+  const text = (p: any) => [p.kind === 'generic' ? GENDER_PACK[p.gender] ?? '通用' : `${nameOf(p)} 的专属`, p.name, `${p.lines} 句`, p.builtIn ? '内置' : '自定义'].join(' · ');
+  const generic = packs.filter((p) => p.kind === 'generic').sort((a, b) => (a.gender === 'male' ? -1 : 1) - (b.gender === 'male' ? -1 : 1));
+  const own = packs.filter((p) => p.kind !== 'generic');
+  const options = [
+    { label: '自动（每个角色用自己的专属语音包，没有时按性别用通用男声 / 女声）', value: 'auto' },
+    ...(generic.length ? [{ label: '通用语音包', options: generic.map((p) => ({ label: text(p), value: p.id })) }] : []),
+    ...(own.length ? [{ label: '角色的专属语音包', options: own.map((p) => ({ label: text(p), value: p.id })) }] : []),
+  ];
+  const picked = packs.find((p) => p.id === choice);
+  const cur = roster.find((c) => c.current);
+  const onPick = async (id: string) => {
+    setBusy(true);
+    try {
+      const r = await api().setUserVoicePack(id);
+      if (r && r.settings) merge({ settings: r.settings });
+      if (r && r.ok) toast.success(id === 'auto' ? '我的语音包：自动' : `我的语音包：${packs.find((p) => p.id === id)?.name ?? id}`);
+      else toast.error({ description: reasonText(r), title: '没能切换语音包' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Surface description="你自己用的语音包。选一个通用语音包（或任意语音包）后，所有没有单独指定语音包的角色都用它说话；在 角色详情 → 语音 里单独指定的优先。切换后下一句就用新的语音包，重启后保持。" title="我的语音包">
+      <Flexbox gap={12}>
+        <div data-user-voice-pack-select>
+          <Select aria-label="我的语音包" disabled={busy || !packs.length} loading={busy} onChange={(x) => x && onPick(String(x))} options={options} style={{ maxWidth: 520, width: '100%' }} value={choice} />
+        </div>
+        <Flexbox data-user-voice-pack-current gap={8}>
+          <Row label="我的语音包">
+            {picked ? (
+              <Flexbox align="center" gap={6} horizontal wrap="wrap">
+                <Text>{picked.name}</Text>
+                <Tag color={picked.kind === 'generic' ? 'processing' : 'success'} data-user-voice-pack-label>
+                  {picked.kind === 'generic' ? GENDER_PACK[picked.gender] ?? '通用' : `${nameOf(picked)} 的专属`}
+                </Tag>
+              </Flexbox>
+            ) : (
+              <Text data-user-voice-pack-label>自动</Text>
+            )}
+          </Row>
+          {cur?.voicePack && (
+            <Row label="现在陪你的">
+              <Text data-user-voice-pack-now={cur.base}>{`${cur.nameZh} 正在用 ${cur.voicePack.name}（${cur.voicePack.label} · ${cur.voicePack.sourceLabel}）`}</Text>
+            </Row>
+          )}
+        </Flexbox>
+      </Flexbox>
+    </Surface>
+  );
+};
+
 export const VoicePacksPage = () => {
   const { settings, roster, merge } = useStore();
   const [errors, setErrors] = useState<string[]>([]);
@@ -228,6 +292,7 @@ export const VoicePacksPage = () => {
         title="语音包"
       />
       {errors.length > 0 && <Alert description={errors.join('\n')} title="有语音包没读进来" type="warning" />}
+      <MyVoicePack />
       <Surface bleed title={`共 ${packs.length} 个`}>
         <Table
           columns={[
