@@ -46,7 +46,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   else console.log(JSON.stringify({ answers: { [name]: cfg.mode === 'refusal' ? { type: 'refusal' } : { probability: cfg.probability, type: 'boolean' } }, model: 'jev-1.14.0', usage: { totalTokens: 400 } }, null, 2));
 } else if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
-  console.log(JSON.stringify({ fullName: 'Test Owner', username: 'tester', email: 't@example.com' }));
+  console.log(JSON.stringify({ fullName: 'Test Owner', username: 'tester', email: 't@example.com', ...(process.env.FAKE_LH_AVATAR ? { avatar: process.env.FAKE_LH_AVATAR } : {}) }));
 } else if (args[0] === 'login') {
   // Mirrors the real CLI: URL and code arrive as separate writes.
   console.log('  Open this URL in your browser:');

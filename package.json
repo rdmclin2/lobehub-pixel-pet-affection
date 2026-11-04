@@ -80,6 +80,7 @@
       "!**/*.pmx",
       "package.json"
     ],
+    "afterSign": "scripts/mac-sign.js",
     "directories": {
       "buildResources": "build",
       "output": "dist"

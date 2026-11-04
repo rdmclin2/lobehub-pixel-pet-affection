@@ -11,8 +11,8 @@ import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X }
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import ChatLive from '../../../../src/core/chat-live.js';
-import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow } from '../api';
-import { SpriteStage } from '../stage/SpriteStage';
+import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow, type UserFace } from '../api';
+import { CharacterAvatar, UserAvatar } from '../stage/CharacterAvatar';
 import { useStore } from '../store';
 
 const MAX_IMAGES = 4;
@@ -46,7 +46,7 @@ const styles = createStaticStyles(({ css }) => ({
     overflow-y: auto;
     flex: 1;
     min-height: 0;
-    padding-block: 4px 12px;
+    padding-block: 12px;
     padding-inline: 8px;
   `,
   session: css`
@@ -275,11 +275,8 @@ const modelLabel = (row: RosterRow | undefined, key: string | null | undefined) 
 const rowOf = (roster: RosterRow[], base: string | null): RosterRow | undefined =>
   base ? (roster.find((c) => c.base === base && c.current) ?? roster.find((c) => c.base === base)) : undefined;
 
-const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) => (
-  <span className={styles.avatar} style={{ height: size, width: size }}>
-    {row ? <SpriteStage animate={false} height={size} name={row.nameZh} preview={row.preview} silhouette={!row.met} /> : null}
-  </span>
-);
+const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) =>
+  row ? <CharacterAvatar avatar={row.avatar} name={row.nameZh} preview={row.preview} silhouette={!row.met} size={size} /> : <span className={styles.avatar} style={{ height: size, width: size }} />;
 
 export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) => void }) => {
   const { roster, merge } = useStore();
@@ -294,6 +291,17 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // the owner's LobeHub avatar (T-2839), fetched by main once per visit; until then (and without one) the person icon
+  const [me, setMe] = useState<UserFace | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const ask = api().userAvatar();
+    ask.then((r) => alive && r && 'avatar' in r && setMe(r), () => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const dropMe = useCallback(() => setMe(null), []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -594,6 +602,8 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     if (m && !m.loaded) api().refreshModels().then((r) => r && r.view && merge({ view: r.view }), () => {});
   }, [m?.loaded, merge]);
 
+  // a 通用设定 character belongs to no vendor and may use every model (core/models.js optionsFor)
+  const generic = row?.vendor === '通用';
   const modelOptions = useMemo(() => {
     const opts = m?.options ?? [];
     // the same name from two providers: say whose it is
@@ -622,6 +632,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const visionBlocked = pending.length > 0 && !vision;
   const canSend = met && !busy && (!!input.trim() || pending.length > 0) && !visionBlocked;
   const herAvatar = { avatar: <CharAvatar row={row} size={32} />, backgroundColor: 'transparent', title: name };
+  const userAvatar = me?.avatar ? { avatar: <UserAvatar name={me.name || '你'} onFail={dropMe} size={32} src={me.avatar} />, backgroundColor: 'transparent', title: me.name || '你' } : USER_AVATAR;
 
   const renderMessage = (x: ChatMessage, i: number) => {
     const isUser = x.role === 'user';
@@ -642,7 +653,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     return (
       <ChatItem
         aboveMessage={isUser ? pictures : undefined}
-        avatar={isUser ? USER_AVATAR : herAvatar}
+        avatar={isUser ? userAvatar : herAvatar}
         belowMessage={
           <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'} paddingBlock={4}>
             {!isUser && x.model && (
@@ -697,12 +708,6 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   return (
     <div className={styles.root} data-chat-page>
       <aside aria-label="角色" className={styles.side}>
-        <Flexbox paddingBlock={12} paddingInline={16}>
-          <Text strong>角色</Text>
-          <Text fontSize={12} type="secondary">
-            一个角色一段对话，和桌面上共用
-          </Text>
-        </Flexbox>
         <div className={styles.sideList} data-character-list>
           {ordered.map((c) => {
             const r = rowOf(roster, c.id);
@@ -778,7 +783,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                   loading={!!m && !m.loaded}
                   onChange={(v) => changeModel(v as string)}
                   options={modelOptions}
-                  placeholder={m?.loaded ? `没有可用的 ${row?.vendor ?? ''} 模型` : '正在读取模型…'}
+                  placeholder={m?.loaded ? (generic ? '没有可用的模型' : `没有可用的 ${row?.vendor ?? ''} 模型`) : '正在读取模型…'}
                   popupMatchSelectWidth={false}
                   style={{ width: 240 }}
                   value={m?.current ?? undefined}
@@ -791,7 +796,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
 
         {met && m?.loaded && !m.options.length && (
           <Flexbox paddingBlock={8} paddingInline={16}>
-            <Alert data-model-error description={`只能选 ${row?.vendor} 的模型；你还没有启用任何一个，她先用原来的模型。`} showIcon title="没有可选的模型" type="warning" />
+            <Alert data-model-error description={generic ? '你还没有启用任何对话模型，她先用原来的模型。' : `只能选 ${row?.vendor} 的模型；你还没有启用任何一个，她先用原来的模型。`} showIcon title="没有可选的模型" type="warning" />
           </Flexbox>
         )}
 

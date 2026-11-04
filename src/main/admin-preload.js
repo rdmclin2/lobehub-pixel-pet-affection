@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('petAdmin', {
   reset: (keys) => ipcRenderer.invoke('admin-reset', { keys }),
   relaunch: () => ipcRenderer.invoke('admin-relaunch'),
   whoami: () => ipcRenderer.invoke('whoami'),
+  // { name, avatar }: the LobeHub account's avatar as a data: URL, or null (T-2839)
+  userAvatar: () => ipcRenderer.invoke('user-avatar'),
   apiStatus: () => ipcRenderer.invoke('api-status'),
   newApiToken: () => ipcRenderer.invoke('set-api', { newToken: true }),
   // characters (角色列表 / 角色详情)
@@ -54,6 +56,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
+  setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
+  voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
+  // 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto' -> { ok, choice, state, settings }
+  setUserVoicePack: (packId) => ipcRenderer.invoke('set-user-voice-pack', { packId }),
   asrTest: (provider) => ipcRenderer.invoke('asr-test', { provider }),
   // content & safety: adult content on only through the 18+ confirmation (confirmAge(true))
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),

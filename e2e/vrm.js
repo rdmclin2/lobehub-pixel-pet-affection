@@ -3545,3 +3545,5 @@ module.exports = function vrmScenarios(ctx) {
 
   return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim };
 };
+// the homemade test model, for scenarios outside this file (e2e/quit-button.js)
+module.exports.makeModel = makeModel;

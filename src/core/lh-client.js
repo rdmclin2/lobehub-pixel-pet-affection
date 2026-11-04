@@ -100,8 +100,10 @@ function runLh(bin, args, { timeoutMs = 120000, env, onStdout, onStderr, signal,
 }
 
 class LhClient {
-  constructor({ bin, env } = {}) {
-    this.bin = bin || findLh() || 'lh';
+  // lhCache: where findLh remembers a login-shell answer (lh-path.js fileCache), so that later launches
+  // do not run the owner's shell setup again.
+  constructor({ bin, env, lhCache = null } = {}) {
+    this.bin = bin || findLh({ cache: lhCache }) || 'lh';
     this.env = env;
     // null = the personal space; a string = that workspace; undefined = whatever `lh` defaults to
     // (pets created before the choice existed live wherever lh pointed at the time).
@@ -332,7 +334,7 @@ class LhClient {
     if (r.code !== 0) return null;
     try {
       const u = JSON.parse(r.stdout);
-      return { name: u.fullName || u.username || u.email || 'unknown', username: u.username, email: u.email };
+      return { name: u.fullName || u.username || u.email || 'unknown', username: u.username, email: u.email, avatar: u.avatar || null };
     } catch {
       return null;
     }

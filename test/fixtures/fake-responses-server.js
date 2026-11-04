@@ -30,6 +30,9 @@ async function startFakeResponses(plan = () => ({ pieces: ['好的'] })) {
       try { body = JSON.parse(raw || '{}'); } catch { /* keep {} */ }
       srv.requests.push({ url: req.url, body, headers: req.headers, at: Date.now() });
       const n = srv.requests.length;
+      // static files the app fetches from the server (srv.files[path] = { type, body }), e.g. the account avatar
+      const file = req.method === 'GET' && srv.files && srv.files[req.url];
+      if (file) { res.writeHead(200, { 'content-type': file.type }).end(file.body); return; }
       if (req.method !== 'POST' || req.url !== '/api/v1/responses') { res.writeHead(404).end('not found'); return; }
       const p = srv.plan(body, n) || {};
       if (p.status) { res.writeHead(p.status, { 'content-type': 'text/plain' }).end(p.body || 'error'); return; }

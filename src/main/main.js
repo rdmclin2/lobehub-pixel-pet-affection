@@ -5,21 +5,23 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const { fileCache } = require('../core/lh-path');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 // 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
 const ADMIN_CUES = [...CUE_STATES, 'turn'];
-const { ResponsesClient } = require('../core/responses-client');
+const { ResponsesClient, serverUrl } = require('../core/responses-client');
+const { userAvatar } = require('../core/user-avatar');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
 const { Updater } = require('./updater');
-const { SPECIES, SPECIES_IDS } = require('../core/species');
+const { SPECIES, SPECIES_IDS, getSpecies } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
-const { GENERIC_BASE } = require('../core/generic');
+const { GENERIC_BASE, isGenericBase } = require('../core/generic');
 const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
@@ -27,11 +29,12 @@ const danceImport = require('./dance-import');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
-const { TtsEngine, NEURAL } = require('../core/tts');
+const { TtsEngine, NEURAL, defaultEngine } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
-const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack');
+const { VoicePacks, packApplies, resolvePack, voiceForPack, AUTO: PACK_AUTO, norm: packNorm } = require('../core/voice-pack');
+const VoiceGender = require('../core/voice-gender');
 const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
@@ -152,10 +155,12 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 
 // ---- the settings window (配置后台) ----------------------------------------------------------------------
 // Everything the console shows, derived again on every change: one source (PetService), no copies.
+// voicePackStateOf(base): her 语音包 in force (set in wire() next to set-voice-pack / voice-pack-state)
+let voicePackStateOf = null;
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id) }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id), voicePack: voicePackStateOf }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -704,21 +709,97 @@ function wire() {
     const sp = service.pet ? SPECIES[service.pet.speciesId] : null;
     if (!sp) return { ok: false, reason: 'no-pet', fallback: service.settings.tts.fallback, fellBackFrom: [] };
     if (!IVoice.voiceOn(service.settings.prefs)) return { ok: false, reason: 'off', fallback: 'silent', fellBackFrom: [] };
-    const hit = recordedLine(sp, text);
+    const vp = voicePackOf(sp);
+    const hit = recordedLine(sp, text, false, vp);
     if (hit) { tts.engine.cancel(); tts.engine.stats.packHits = (tts.engine.stats.packHits || 0) + 1; return { ok: true, ...hit, cached: true, fellBackFrom: [], fallback: service.settings.tts.fallback, latencyMs: 0 }; }
-    const r = await tts.engine.synthesize({ text: String(text || ''), species: sp, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
+    // her engine voice: her own, or the voice of the 语音包 she resolved to (a generic pack for a model without one)
+    const r = await tts.engine.synthesize({ text: String(text || ''), species: vp.voiced, mood: typeof mood === 'string' ? mood : '' }, service.settings.tts);
     if (r.fellBackFrom.length) service.emit('settings', service.settingsView()); // the 语音 section shows the last error
     return r;
   });
   ipcMain.on('tts-cancel', () => tts.engine.cancel());
   // 语音包: her recorded line for this text, when packs are on and the engine that would read it is the
   // one the pack was recorded with (or none can): played from disk, no request (core/voice-pack.js).
-  function recordedLine(sp, text, probe = false) {
-    const pack = tts.packs.packFor(sp.id);
-    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(sp, service.settings.tts))) return null;
+  // The pack is the one she resolves to (core/voice-pack.js resolvePack): the owner's pick for her >
+  // 我的语音包 (settings.tts.voicePack) > her own (专属) > the generic pack of her gender (core/voice-gender.js).
+  function recordedLine(sp, text, probe = false, vp = voicePackOf(sp)) {
+    const pack = vp.pack;
+    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts))) return null;
     if (probe) return pack.lines.has(packNorm(text));
-    return tts.packs.lookup(sp.id, text);
+    return tts.packs.lookupIn(pack, text);
   }
+  // The pack she is (a generic VRM companion) or her default one: where her gender is read when her file has none.
+  function genderPackOf(sp) {
+    const id = (sp && sp.generic && sp.generic.pack) || (sp && sp.defaultPack);
+    return (id && packStore && packStore.packs.get(id)) || null;
+  }
+  // { pack, source, choice, missing, gender, genderSource, voiced }: which 语音包 character `sp` uses now and the
+  // species her engine lines are read for (voiced: her own voice, or the pack's — core/voice-pack.js voiceForPack).
+  function voicePackOf(sp) {
+    const g = VoiceGender.genderOf(sp, genderPackOf(sp));
+    const picks = (service.settings.tts && service.settings.tts.voicePackByCharacter) || {};
+    const mine = (service.settings.tts && service.settings.tts.voicePack) || PACK_AUTO; // 我的语音包
+    const r = resolvePack({ characterId: sp.id, gender: g.gender, choice: Object.hasOwn(picks, sp.id) ? picks[sp.id] : PACK_AUTO, userChoice: mine }, tts.packs);
+    return { ...r, gender: g.gender, genderSource: g.source, voiced: voiceForPack(sp, r) };
+  }
+  const engineVoiceOf = (voiced, t, fromPack) => { const e = defaultEngine(voiced); const c = t[e] || {}; return { engine: e, voiceId: c.voiceId || c.referenceId || null, fromPack }; };
+  // What the console / pet window shows for one character: plain data, no audio.
+  function voicePackState(sp) {
+    const vp = voicePackOf(sp);
+    const p = vp.pack;
+    const voiceTts = vp.voiced && vp.voiced.voice ? vp.voiced.voice.tts || null : null;
+    return {
+      characterId: sp.id,
+      choice: vp.choice,
+      missing: vp.missing,
+      userChoice: vp.userChoice,
+      userMissing: vp.userMissing,
+      source: vp.source,
+      gender: vp.gender,
+      genderSource: vp.genderSource,
+      pack: p ? { id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, lines: p.lines.size } : null,
+      engineVoice: voiceTts ? engineVoiceOf(vp.voiced, voiceTts, vp.voiced !== sp) : null,
+      options: [{ id: PACK_AUTO, name: '自动' }, ...tts.packs.list().map((x) => ({ id: x.id, name: x.name, kind: x.kind, gender: x.gender, character: x.character }))],
+    };
+  }
+  const speciesForId = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
+  // the console's roster rows (adminState) show the pack she really uses, not just her own one
+  voicePackStateOf = (id) => {
+    const sp = speciesForId(id);
+    return sp ? voicePackState(sp) : null;
+  };
+  // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' }. Saved in settings.tts.voicePackByCharacter
+  // and in force for her next line: the running prewarm (for the old pack's voice) stops, the line being
+  // fetched is dropped, and the pet window prewarms again with the new pack (its signature includes the picks).
+  ipcMain.handle('set-voice-pack', (_e, payload) => {
+    const { characterId, packId } = payload && typeof payload === 'object' ? payload : {};
+    const sp = speciesForId(characterId);
+    if (!sp) return { ok: false, reason: 'unknown-character' };
+    const pick = packId === null || packId === undefined || packId === '' ? PACK_AUTO : packId;
+    if (pick !== PACK_AUTO && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack', state: voicePackState(sp) };
+    tts.engine.endPrewarm();
+    tts.engine.cancel();
+    const r = service.setTts({ voicePackByCharacter: { [sp.id]: pick } });
+    return { ok: r.ok !== false, state: voicePackState(sp), settings: r.settings };
+  });
+  // 我的语音包 (用户语音包): { packId: <pack id> | 'auto' }. Saved in settings.tts.voicePack; every character without
+  // a pick of her own uses it from her next line (a 通用语音包 — generic-male / generic-female — or any loaded pack).
+  // -> { ok, choice, state (the current character's), settings } | { ok: false, reason: 'unknown-pack' }
+  ipcMain.handle('set-user-voice-pack', (_e, payload) => {
+    const { packId } = payload && typeof payload === 'object' ? payload : {};
+    const pick = packId === null || packId === undefined || packId === '' ? PACK_AUTO : packId;
+    if (pick !== PACK_AUTO && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack' };
+    tts.engine.endPrewarm();
+    tts.engine.cancel();
+    const r = service.setTts({ voicePack: pick });
+    const sp = service.pet ? speciesForId(service.pet.speciesId) : null;
+    return { ok: r.ok !== false, choice: r.settings.tts.voicePack, state: sp ? voicePackState(sp) : null, settings: r.settings };
+  });
+  ipcMain.handle('voice-pack-state', (_e, payload) => {
+    const id = payload && typeof payload === 'object' && payload.characterId ? payload.characterId : service.pet && service.pet.speciesId;
+    const sp = speciesForId(id);
+    return sp ? { ok: true, state: voicePackState(sp) } : { ok: false, reason: 'unknown-character' };
+  });
   // 互动语音: synthesise her common short lines ahead (pet-service.js voiceLines) so they play at once.
   // Only with 朗读 and 互动语音 on; a newer call (another character, a new key) replaces a running one.
   ipcMain.handle('tts-prewarm', async () => {
@@ -726,8 +807,9 @@ function wire() {
     if (!service.pet || !IVoice.voiceOn(p) || p.voiceInteractions === false) return { skipped: 'off' };
     const sp = SPECIES[service.pet.speciesId];
     const all = service.voiceLines();
-    const lines = all.filter((l) => !recordedLine(sp, l.text, true)); // the 语音包 already has these
-    const r = await tts.engine.prewarm(lines, sp, service.settings.tts);
+    const vp = voicePackOf(sp);
+    const lines = all.filter((l) => !recordedLine(sp, l.text, true, vp)); // the 语音包 already has these
+    const r = await tts.engine.prewarm(lines, vp.voiced, service.settings.tts);
     return { ...r, lines: all.length, recorded: all.length - lines.length };
   });
   ipcMain.handle('set-tts', (_e, patch) => {
@@ -803,6 +885,16 @@ function wire() {
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData.
+  // Every visit to 聊天 asks; one `lh whoami` answers them for 10 minutes (30 s while there is none: a login shows soon)
+  let faceMemo = null;
+  ipcMain.handle('user-avatar', adminOnly(() => {
+    if (faceMemo && Date.now() < faceMemo.until) return faceMemo.p;
+    const p = userAvatar({ whoami: () => service.lh.whoami(), server: serverUrl(), cacheFile: path.join(app.getPath('userData'), 'user-avatar.json') });
+    faceMemo = { p, until: Date.now() + 30000 };
+    p.then((r) => { if (faceMemo && faceMemo.p === p) faceMemo.until = Date.now() + (r && r.avatar ? 600000 : 30000); }, () => { faceMemo = null; });
+    return p;
+  }));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));
@@ -1018,7 +1110,7 @@ app.whenReady().then(() => {
   const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
-  const lh = new LhClient();
+  const lh = new LhClient({ lhCache: fileCache(path.join(app.getPath('userData'), 'lh-path.json')) });
   // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text
   const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them

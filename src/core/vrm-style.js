@@ -3,7 +3,8 @@
 // postures and idles a model plays and how big she moves (sway, breathing, head, hands, emotion), the
 // pack.json `vrm.style` field (a name, or { base, …overrides } clamped to VRM_STYLE_LIMITS), and the guess
 // from the model file when the pack says nothing (VRM meta has no gender: SpringBone on bust bones → female,
-// broad shoulders against hips → male, else neutral). Pure; UMD (window.PetVrmStyle / require()).
+// broad shoulders against hips and no breast bones → male, else neutral). The voice gender (core/voice-gender.js)
+// reads the same body with a stricter rule of its own (inferVoiceGender). Pure; UMD (window.PetVrmStyle / require()).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PetVrmStyle = factory();
@@ -45,7 +46,16 @@
 
   // ---------- guessing from the model ----------
   const BUST_RE = /bust|breast|oppai|胸/i;
-  // { bustSpring, shoulderHip } from a VRM glTF JSON (1.0 or 0.x), read only from the JSON header.
+  const COLLIDER_RE = /collid/i; // Breast_L_Collider, BreastUnder_Collider: collision helpers, not breast bones
+  const VROID_BUST_RE = /^J_Sec_[LR]_Bust/; // VRoid Studio's skeleton has these on every figure, male or female
+  // Shoulder-to-hip ratios (VRM_GENDER_RULES): the motion style calls ≥ 1.5 male; the voice gender asks for
+  // more. Across the 73 models of the store (docs/voice-packs.md §性别推断) every male stood at 1.90–2.30, the
+  // female Elysia at 1.54 (breast bones without a spring) and two more girls at 1.60 / 1.64 (bust on a spring).
+  const VRM_GENDER_RULES = { styleMaleShoulderHip: 1.5, voiceMaleShoulderHip: 1.8, vroidMaleShoulderHip: 1.5 };
+  // { bustSpring, bustBones, vroidBust, shoulderHip } from a VRM glTF JSON (1.0 or 0.x), read only from the
+  // JSON header. bustSpring: bust-named bones on a SpringBone; bustBones: bust-named bones outside VRoid's
+  // template skeleton (spring or not, colliders left out) — a rig only has them when the figure was made with
+  // breasts; vroidBust: VRoid's J_Sec_*_Bust template bones (present on male VRoid figures too).
   function bodyFromJson(json) {
     const nodes = (json && json.nodes) || [];
     const ext = (json && json.extensions) || {};
@@ -61,6 +71,14 @@
     }
     let bustSpring = 0;
     for (const i of springNodes) if (nodes[i] && BUST_RE.test(String(nodes[i].name || ''))) bustSpring++;
+    let bustBones = 0;
+    let vroidBust = 0;
+    for (const n of nodes) {
+      const name = String((n && n.name) || '');
+      if (!BUST_RE.test(name) || COLLIDER_RE.test(name)) continue;
+      if (VROID_BUST_RE.test(name)) vroidBust++;
+      else bustBones++;
+    }
     // humanoid: bone name → node index
     const hb = {};
     if (ext.VRMC_vrm && ext.VRMC_vrm.humanoid && ext.VRMC_vrm.humanoid.humanBones) for (const [n, b] of Object.entries(ext.VRMC_vrm.humanoid.humanBones)) if (b && Number.isInteger(b.node)) hb[n] = b.node;
@@ -73,14 +91,37 @@
     const shoulders = dist('leftUpperArm', 'rightUpperArm');
     const hips = dist('leftUpperLeg', 'rightUpperLeg');
     const shoulderHip = shoulders && hips ? shoulders / hips : null;
-    return { bustSpring, shoulderHip: shoulderHip === null ? null : Math.round(shoulderHip * 100) / 100 };
+    return { bustSpring, bustBones, vroidBust, shoulderHip: shoulderHip === null ? null : Math.round(shoulderHip * 100) / 100 };
   }
 
-  // The style a body reading suggests.
+  const ratio = (body) => (body && typeof body.shoulderHip === 'number' && Number.isFinite(body.shoulderHip) ? body.shoulderHip : null);
+  const count = (v) => (Number.isInteger(v) && v > 0 ? v : 0); // a body read before T-5076 has no bustBones / vroidBust
+
+  // The motion style a body reading suggests: bust on a spring → female; broad shoulders (≥ 1.5× the hips)
+  // → male, unless the rig has breast bones (Elysia: 1.54, breast bones without a spring — T-5076), then neutral.
   function inferFromBody(body) {
     if (!body) return 'neutral';
-    if (body.bustSpring > 0) return 'female';
-    if (body.shoulderHip !== null && body.shoulderHip >= 1.5) return 'male';
+    if (count(body.bustSpring) > 0) return 'female';
+    const r = ratio(body);
+    if (r !== null && r >= VRM_GENDER_RULES.styleMaleShoulderHip && count(body.bustBones) === 0) return 'male';
+    return 'neutral';
+  }
+
+  // The voice gender a body reading suggests (core/voice-gender.js step 4) — stricter than the motion style,
+  // since a girl read with a man's voice is the worse mistake; 'neutral' = not enough to say (the caller then
+  // falls back to its default, female):
+  //   bust on a spring, or breast bones outside VRoid's template          → female
+  //   shoulders ≥ 1.8× the hips (and no breast bones)                     → male
+  //   a VRoid skeleton whose bust bones are on no spring, shoulders ≥ 1.5 → male (VRoid Studio springs the bust
+  //                                                                          of a female figure; vroid.vrm: 1.57)
+  //   else                                                                → neutral
+  function inferVoiceGender(body) {
+    if (!body) return 'neutral';
+    if (count(body.bustSpring) > 0 || count(body.bustBones) > 0) return 'female';
+    const r = ratio(body);
+    if (r === null) return 'neutral';
+    if (r >= VRM_GENDER_RULES.voiceMaleShoulderHip) return 'male';
+    if (count(body.vroidBust) > 0 && r >= VRM_GENDER_RULES.vroidMaleShoulderHip) return 'male';
     return 'neutral';
   }
 
@@ -97,5 +138,5 @@
     return { ...p, ...overrides, breath: { ...p.breath }, shiftEvery: p.shiftEvery.slice(), name: base, set: p.set, source };
   }
 
-  return { PROFILES, NAMES, VRM_STYLE_LIMITS, parsePackStyle, bodyFromJson, inferFromBody, resolveStyle };
+  return { PROFILES, NAMES, VRM_STYLE_LIMITS, VRM_GENDER_RULES, parsePackStyle, bodyFromJson, inferFromBody, inferVoiceGender, resolveStyle };
 });

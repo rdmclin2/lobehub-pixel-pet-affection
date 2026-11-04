@@ -36,6 +36,8 @@ const SPECIAL_SETTINGS = {
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
+  'tts.voicePackByCharacter.<id>': '角色详情 → 语音包（自动 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -92,7 +94,7 @@ const PET_ONLY = {
   'asr-mic-access': '麦克风权限请求',
   'api-reply': '对外接口请求的回执',
   'save-pack-preview': '桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）',
-  quit: '退出程序（托盘 / 应用菜单）',
+  quit: '退出程序（桌宠工具栏 ⏻ 退出 / 托盘 / 应用菜单）',
   'debug-set': '测试钩子（只在 PIXELPET_TEST=1）',
   'debug-expire-models': '测试钩子（测速脚本 e2e/chat-latency.js 让模型目录缓存过期）',
   'debug-import-pack': '测试钩子',
@@ -133,7 +135,7 @@ const MENU = {
   'menu:forget': '数据与关于 → 危险操作 → 仅重置本地',
   'menu:log': '数据与关于 → 数据目录 → 打开错误日志',
   'menu:credits': '数据与关于 → 素材署名；角色详情 → 资料',
-  'menu:quit': '玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有',
+  'menu:quit': '玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；桌宠工具栏 ⚙ 右边的 ⏻、托盘和应用菜单也有',
   'toolbar:topics': '玩法 → 和她一起 → 话题（聊聊，`talk-topic`）',
   'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
   'tray:打开设置…': '打开设置窗口',
@@ -173,6 +175,7 @@ const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
   chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
+  voicePackState: '角色当前语音包的解析结果（`voice-pack-state`）；设置窗口直接用角色列表里的 voicePack / voicePackPick（main.js adminState 每次推送时都会重新解析），不必再单独拉取',
 };
 
 const uniq = (a) => [...new Set(a)];
@@ -201,7 +204,7 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     }
     if (INTERNAL_SETTINGS[key]) problems.push(`\`${key}\` 在 INTERNAL_SETTINGS 里，但 schema 没标 internal`);
     if (f.type === 'readonly') problems.push(`\`${key}\` 是用户设置，却是只读字段`);
-    if (['token', 'adult', 'perCharacter'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
+    if (['token', 'adult', 'perCharacter', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
     if (f.type === 'switch' || f.type === 'select' || f.type === 'segmented' || f.type === 'slider' || f.type === 'number' || f.type === 'text' || f.type === 'url' || f.type === 'visitors') {
       if (!f.live && !f.restart) problems.push(`\`${key}\` 既不是即时生效也不是重启生效`);
     }

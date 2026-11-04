@@ -414,12 +414,12 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - Linux 从源码运行时如果提示 `chrome-sandbox ... is not configured correctly`，见 [使用说明 · 运行](docs/usage.md#二运行) 的处理办法（设置沙盒助手权限，或 `npm run start:no-sandbox`）。
 - 不登录 LobeHub 先看看：`npm run demo`（无显示器：`xvfb-run -a npm run demo`）用测试里的假 `lh` 直接启动到一只已唤醒的桌宠，见 [使用说明 · 运行](docs/usage.md#二运行)。
 
-- 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。未签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。
+- 预编译包：在 [Releases](https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases) 页面下载（macOS / Windows 由 GitHub Actions 构建；Linux x64 `tar.gz` 解压后运行 `pixel-pet-affection`）。没有 Apple 开发者签名，首次打开请参考下文上游 README 中的说明，应用名换成 **Pixel Pet Affection**。macOS 版用项目固定的自签名证书签名（`scripts/mac-sign.js`，证书在仓库 secret `PIXELPET_MAC_CERT_P12` / `PIXELPET_MAC_CERT_PASSWORD` 里），系统按证书记住你给的权限，更新后不再重新询问；从旧的 ad-hoc 版本升级上来时会最后再问一次。
 - **一键解锁**（⚙ 设置 → 角色 → 角色页面）：直接把这位角色的好感度加满（♥100），所有阶段、话题和服饰立刻解锁，适合想先看全部内容或不想慢慢攒好感的玩家，不能撤销。成人向话题和服饰仍然只在确认年满 18 岁并开启“成人向内容”后出现。
 - **像素风与角色包**：五位模型娘默认用高清像素画（每帧 664×904，全彩、平滑绘制，Retina 屏上放大到 2.5 倍也清楚），每人 16 个动作（大肥鱼视频的全部 15 个状态 + 被拎起）。画风由**角色包**决定：⚙ 设置 → 角色 → 角色页面 → 装扮里可以切换（每位角色：像素 / 旧版像素；大肥鱼另有 Live2D、全动态和原版动画），也能导入别人做的角色包（文件夹或 `.zip`），或者直接导入**自己的 Live2D 模型**（Cubism 3 / 4 / 5 的 `.model3.json` 或 `.zip`，不用写 `pack.json`：应用自动生成角色包、识别模型的表情、画出预览图并换上，可以调模型大小）。格式见 [docs/pet-packs.md](docs/pet-packs.md)（schema 2，旧的 schema 1 包仍可用）。
 - **宠物大小随意调**：悬停时拖宠物左上角的 ⤡ 手柄，或按住 Ctrl/⌘ 在宠物上滚动滚轮，也可以在设置窗口 → 桌宠行为里拖滑块。范围 50%–250%，默认 125%，窗口跟着变，右下角位置不变，最大不会超出屏幕；大小会保存，重启和换宠物后都保留。
 - **自动更新**（v0.4.1 起）：⚙ 设置 → 版本与更新 → “检查更新”可以随时手动检查，那里也显示当前版本和上次检查时间。平时应用启动后和之后每 4 小时自动检查一次 GitHub Releases，发现新版本就在后台下载（macOS 会校验 sha512）。下载好后宠物会提示一句；你离开电脑 10 分钟后它会自己重启更新，大约两秒，状态都保存在本地，不会丢。有新版本时 ⚙ 上会出现小红点，点它直达「版本与更新」，可以点“立即更新”，或者等下次退出时自动安装。
-  - macOS：应用要放在“应用程序”（或任意可写的文件夹）里才能自己更新。直接从 DMG 或“下载”文件夹打开时没法替换自己，会提示你先挪过去。
+  - macOS：应用要放在“应用程序”（或任意可写的文件夹）里才能自己更新。直接从 DMG 打开，或者放在“下载”/“桌面”/“文稿”里（这几个文件夹受系统隐私保护，往里写东西会弹“想要访问‘下载’文件夹中的文件”）时，它不会替换自己，只会提示你先挪到“应用程序”。
   - Windows：用安装包（`-setup.exe`）装的版本可以自动更新；zip 版和 Linux 的 tar.gz 只会提示有新版本，并在菜单里给出下载页。
   - 不想自动更新的话，设置环境变量 `PIXELPET_NO_UPDATE=1`。
 - 与上游共存：本版的应用 ID 是 `com.rdmclin2.pixelpet.affection`、应用名 **Pixel Pet Affection**，和上游 Pixel Pet（`com.onlyyours.pixelpet`）是两个独立应用，可以同时安装，数据也互不影响。
@@ -503,7 +503,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) on a macO
 
 1. Open the repository's **Releases** page and download `PixelPet-<version>-mac-universal.dmg` (or the `.zip`).
 2. Drag **Pixel Pet** into Applications.
-3. The app is **not signed or notarized** (no Apple developer certificate), so macOS will refuse the first launch. Either right-click the app and choose **Open**, or run:
+3. The app has **no Apple Developer ID and is not notarized**: release builds are signed with the project's own fixed self-signed certificate (`scripts/mac-sign.js`), so macOS remembers your permission answers (microphone, folders) across updates, but Gatekeeper does not know the certificate and refuses the first launch. Either right-click the app and choose **Open**, or run:
    ```bash
    xattr -cr "/Applications/Pixel Pet.app"
    ```

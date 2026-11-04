@@ -265,7 +265,7 @@ r.figure.draw(snap);                  // rig/live2d 仍是 r.figure.draw({ t, st
 3. **从 VRM 文件推断**（VRM meta 本身**没有性别字段**，0.x 与 1.0 都没有；仓库中角色/人设也没有性别字段）。`src/core/vrm.js` 的 `inspectVrmJson` 增加 `body` 读数：
    - `bustSpring`：SpringBone（0.x `secondaryAnimation.boneGroups` / 1.0 `VRMC_springBone`）里引用的名称含 bust/breast 的骨骼数；
    - `shoulderHip`：左右 upperArm 间距 ÷ 左右 upperLeg 间距（由 humanoid 骨骼节点平移累加得出）。
-   - 规则：`bustSpring > 0 → female`；否则 `shoulderHip ≥ 1.5 → male`；否则 `neutral`。
+   - 规则：`bustSpring > 0 → female`；否则 `shoulderHip ≥ 1.5` 且没有 `bustBones`（VRoid 模板 `J_Sec_*_Bust` 以外的乳房骨骼）→ `male`；否则 `neutral`。`bustBones` 这条是 T-5076 加的：Elysia 的 1.54 有乳房骨骼（没挂 SpringBone），原来被判成 male。语音性别用更严的 `inferVoiceGender`（docs/voice-packs.md §2「性别推断」）。
    - **用清单中的真实模型实测**（脚本只读 GLB JSON 头）：
 
      | 模型（目录 models/模型文件/） | 角色 | bustSpring | shoulderHip | 推断 |

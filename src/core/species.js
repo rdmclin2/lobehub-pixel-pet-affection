@@ -23,6 +23,7 @@ const DEFAULT_SPECIES = 'dafeiyu';
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
 const MEME_ID_RE = /^[a-z0-9_-]{1,40}$/;
 const ASSETS = path.join(__dirname, '..', 'renderer');
+const AVATAR_RE = /^[\w.-]+\.(webp|png)$/;
 // A clip is a file name, or a list of variants played in turn (e.g. several click reactions).
 const clipOk = (v) => str(v) || (Array.isArray(v) && v.length > 0 && v.every(str));
 
@@ -63,7 +64,11 @@ function validateCharacter(c) {
   }
   // voice: { lang, pitch, rate, prefer } for the system voice, plus optional engines in voice.tts (core/tts.js)
   if (c.voice !== undefined) errors.push(...require('./tts').validateVoice(c.voice));
+  // gender: which 通用语音包 / default engine voice she falls back to (core/voice-gender.js); optional
+  errors.push(...require('./voice-gender').validateGender(c.gender));
   if (!Array.isArray(art.packs) || (art.kind === 'pack' && !art.packs.length)) errors.push('art.packs must list its pet packs');
+  // art.avatar: her face for lists and chat bubbles, a picture in her default pack's folder (scripts/art/make_avatars.py)
+  if (art.avatar !== undefined && (!str(art.avatar) || !AVATAR_RE.test(art.avatar) || !Array.isArray(art.packs) || !art.packs.length)) errors.push('art.avatar must be a .webp / .png file name in her default pack (art.packs[0])');
   if (!Array.isArray(c.credits) || !c.credits.length) errors.push('credits are required');
   if (c.touch !== undefined) errors.push(...require('./touch-zones').validateTouch(c.touch));
   if (RETIRED[c.id]) errors.push(`${c.id} is a retired character id`);
@@ -84,6 +89,8 @@ function toSpecies(c) {
     packs: [...art.packs],
     // a video character with a pack starts in that pack; its clips are picked under 外观 (clipsLook)
     defaultPack: art.packs[0] || null,
+    // her face (art.avatar), served by the pack: protocol from her default pack's folder; null = none drawn
+    avatar: art.avatar && art.packs[0] ? `pack://${art.packs[0]}/${encodeURIComponent(art.avatar)}` : null,
     clipsLook: art.kind === 'video' ? { name: `${c.nameZh} · 视频`, author: '', license: '', description: '', ...(art.clipsLook || {}) } : null,
     fallbackPack: art.fallbackPack || art.packs[0] || null,
     fx: { noMirror: [], ...(c.fx || {}) },
@@ -99,6 +106,7 @@ function missingFiles(c, root = ASSETS) {
   const out = [];
   const art = c.art || {};
   // (her clips are not here: they are downloaded, see scripts/build-character-catalog.js)
+  if (art.avatar && Array.isArray(art.packs) && art.packs[0] && !fs.existsSync(path.join(root, 'packs', art.packs[0], art.avatar))) out.push(`packs/${art.packs[0]}/${art.avatar}`);
   for (const m of c.memes || []) if (!fs.existsSync(path.join(root, 'assets', 'memes', c.id, `${m.id}.webp`))) out.push(`assets/memes/${c.id}/${m.id}.webp`);
   return out;
 }

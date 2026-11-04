@@ -251,9 +251,11 @@ body.busy.over .stop-btn { display: flex; }
 .toast-x .ico { width: 13px; height: 13px; }
 .toast-btn { margin-top: var(--pet-space-xs); font-size: 11px; padding: 1px var(--pet-space-sm); }
 
-/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天, 🔈 静音 and ⚙ 设置 (a dot on it: something new waiting in the settings window) */
-/* 4 interactions + 🔈 + ⚙ on one row (4×42 + 2×26 + 5×4 = 240px); the window leaves ~264px */
-.toolbar { flex-wrap: wrap; justify-content: center; max-width: 248px; }
+/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天, 🔈 静音, ⚙ 设置 (a dot on it: something new waiting in the settings window) and ⏻ 退出 */
+/* 4 interactions + 🔈 + ⚙ + ⏻ on one row (4×42 + 3×26 + 6×2 = 258px); the window at the default size leaves ~264px */
+.toolbar { flex-wrap: wrap; justify-content: center; gap: 2px; max-width: 264px; }
+/* ⏻ quits at once (T-2827): hover tints it with the error colour so it does not read as one more interaction */
+.toolbar .btn.quit-btn:hover:not(:disabled) { color: var(--lobe-color-error); border-color: var(--lobe-color-error); }
 .toolbar .btn { position: relative; }
 .new-dot.dot { top: -3px; right: -3px; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; }
 .new-dot { position: absolute; top: -8px; right: -8px; font-size: 9px; font-weight: 500; line-height: 14px; min-width: 14px; color: var(--pet-on-solid); background: var(--lobe-color-error); border-radius: 7px; padding: 0 3px; box-shadow: 0 0 0 1.5px var(--pet-surface); }
@@ -411,12 +413,15 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .char-wrap .vrm-look.char { width: 60%; height: 80%; margin: auto; }
 
 /* ---- 跳舞 (docs/vrm-dance.md §6.2): the toolbar's ♪ button (a VRM look only) and its menu (对照 Dropdown) ---- */
-/* with ♪ the row holds 4 interactions + 3 icon buttons: tighter gaps keep it on one line (4×42 + 3×24 + 6×2 = 252px) */
-.toolbar:has(#btn-dance:not(.hidden)) { gap: 2px; max-width: 260px; }
+/* with ♪ the row holds 4 interactions + 4 icon buttons: narrower buttons keep it on one line (4×38 + 4×24 + 7×2 = 262px) */
+.toolbar:has(#btn-dance:not(.hidden)) .btn:not(.icon-btn) { padding: 0 6px; }
 .toolbar:has(#btn-dance:not(.hidden)) .btn.icon-btn { min-width: 24px; }
 /* 重置姿势 ↺ (T-2830, a VRM look only) adds a fourth icon button: the interactions take the small padding so the row
    still fits on one line (4×34 + 4×24 + 7×2 = 246px) */
 .toolbar:has(#btn-reset:not(.hidden)) .btn:not(.icon-btn) { padding: 0 var(--pet-space-xs); }
+/* with ⏻ 退出 (T-2827) that is 5 icon buttons: they go to 20px (the 14px glyph keeps 3px a side) so the row stays one line
+   (4×34 + 5×22 incl. border + 8×2 = 262px) */
+.toolbar:has(#btn-reset:not(.hidden)) .btn.icon-btn { min-width: 20px; padding: 0 3px; }
 #btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); border-color: var(--lobe-color-primary); background: var(--lobe-color-fill-secondary); }
 #btn-dance.loading .ico { animation: dance-spin 1s linear infinite; }
 @keyframes dance-spin { to { transform: rotate(360deg); } }
