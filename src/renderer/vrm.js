@@ -191,6 +191,10 @@
     let libState = 'none';
     let libInfo = null; // T-5084: { state, reason, set, sets, wanted, loaded, failed: [{ id, error }], source } — debug() and the hint
     let lifeInfo = null;
+    let headBox = null; // T-5092: her drawn head for the touch zone (measureHeadBox)
+    // T-5092: a model whose humanoid hips bone sits on the floor (Wanderer): where her real hip joints are, so the
+    // hips turn about them and the hips travel scales with their height (loadClips sets it; null for other models)
+    let hipsRig = null;
     const clipRepairs = { clips: 0, steps: 0 }; // T-5084: steps in clips' own keys spread at load (loadVrma) // T-5084: the alive layer's offsets of the last frame (debug().life)
     let boneFold = null; // the bones this model lacks and where their turns went (foldMissingBones)
     let animState = 'none'; // none | vrma | failed
@@ -324,6 +328,7 @@
       if (!a) throw new Error('not a VRM animation');
       foldMissingBones(a);
       const clip = R.createVRMAnimationClip(a, vrm);
+      if (hipsRig) rescaleHipsTravel(a, clip);
       // a step in the clip's own keys (a source glitch) would be a snap however it is faded in: spread it (T-5084)
       const BM = window.PetVrmBoneMap;
       if (BM && BM.smoothSteps) {
@@ -332,6 +337,52 @@
         if (n) { clipRepairs.clips++; clipRepairs.steps += n; }
       }
       return clip;
+    }
+
+    // T-5092: the hips of a model whose hips bone is on the floor. three-vrm scales a clip's hips travel by the
+    // model's hips height / the clip's: ~0 here, so every bounce and step of a dance was lost, and the hips rotation
+    // turned her whole body about her feet (a dance's lean became a fall or a squat). → { pivot (the upper legs'
+    // midpoint from the hips bone, in its parent's axes), height (of that point above the hips bone), restY }
+    function measureHipsRig() {
+      const T = R.THREE;
+      const h = vrm.humanoid;
+      const hips = h.getNormalizedBoneNode('hips');
+      const l = h.getNormalizedBoneNode('leftUpperLeg');
+      const r = h.getNormalizedBoneNode('rightUpperLeg');
+      if (!hips || !l || !r || !hips.parent) return null;
+      vrm.scene.updateMatrixWorld(true);
+      const mid = l.getWorldPosition(new T.Vector3()).add(r.getWorldPosition(new T.Vector3())).multiplyScalar(0.5);
+      const local = hips.parent.worldToLocal(mid.clone()).sub(h.normalizedRestPose.hips.position ? new T.Vector3(...h.normalizedRestPose.hips.position) : hips.position);
+      if (!(local.y > 0.2)) return null;
+      return { pivot: local.toArray(), height: local.y, restY: h.normalizedRestPose.hips.position[1] };
+    }
+    // the clip's hips travel scaled by her hip joints' height instead (rest + (raw − clip rest) × k, VRM 0.x x / z
+    // mirrored like three-vrm does)
+    function rescaleHipsTravel(a, clip) {
+      const raw = a.humanoidTracks && a.humanoidTracks.translation && a.humanoidTracks.translation.get('hips');
+      const node = vrm.humanoid.getNormalizedBoneNode('hips');
+      const tr = raw && node && clip.tracks.find((t) => t.name === `${node.name}.position`);
+      const u = a.restHipsPosition && a.restHipsPosition.y;
+      if (!tr || !(u > 0.05) || tr.values.length !== raw.values.length) return;
+      const k = hipsRig.height / u;
+      const v0 = metaVersion() === '0';
+      for (let i = 0; i < raw.values.length; i++) {
+        const c = i % 3;
+        const val = c === 1 ? hipsRig.restY + (raw.values[i] - u) * k : raw.values[i] * k;
+        tr.values[i] = v0 && c !== 1 ? -val : val;
+      }
+      hipsRig.rescaled = (hipsRig.rescaled || 0) + 1;
+    }
+    // every frame (after all rotations): the hips turned about the hip joints, not the bone on the floor
+    function pivotHips() {
+      if (!hipsRig || !vrm || !vrm.humanoid) return;
+      const n = vrm.humanoid.getNormalizedBoneNode('hips');
+      if (!n) return;
+      const T = R.THREE;
+      tmp.pv = tmp.pv || new T.Vector3();
+      const p = tmp.pv.fromArray(hipsRig.pivot);
+      const rotated = p.clone().applyQuaternion(n.quaternion);
+      n.position.add(p.sub(rotated));
     }
 
     // A model without an optional bone (upperChest, neck, shoulders…) would lose that bone's turn and everything
@@ -366,6 +417,7 @@
         const hy = head ? head.getWorldPosition(new R.THREE.Vector3()).y : 1;
         rootHips = BM.rootHips(vrm.humanoid.normalizedRestPose.hips.position[1], hy);
         if (rootHips) boneFold = { ...(boneFold || {}), rootHips: true };
+        hipsRig = rootHips ? measureHipsRig() : null;
       }
       const allowed = (c) => !BM || BM.allowsClip(c, { rootHips });
       const failed = [];
@@ -480,6 +532,65 @@
       }
       band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y }, { head: headExtent(T), waist: look.halfBody && look.halfBody.waist }); // pack.json halfBody.waist overrides the hips
       canvas.dataset.band = band.source;
+      headBox = measureHeadBox(T);
+    }
+
+    // T-5092: her head as drawn, for the touch zone (core/vrm-hit.js opts.head): the vertices that move with the head
+    // bone or its children (skull, face, ears, hair, a hat) in the rest pose, from 1.3 × the neck→head length below
+    // the head bone up (hair hanging down her back is not her head), 2–98th percentile per world axis (a stray strand
+    // does not stretch it) → an ellipsoid kept in the head bone's frame: { c, axes, r } (head-bone local, for
+    // headShape) | null (no head bone, no skinned head: the zone falls back to the sphere on the bone)
+    function measureHeadBox(T) {
+      const head = vrm.humanoid && vrm.humanoid.getRawBoneNode('head');
+      if (!head) return null;
+      const neck = vrm.humanoid.getRawBoneNode('neck');
+      vrm.scene.updateMatrixWorld(true);
+      const hp = head.getWorldPosition(new T.Vector3());
+      const dn = neck ? Math.max(0.03, hp.distanceTo(neck.getWorldPosition(new T.Vector3()))) : 0.08;
+      const floor = hp.y - 1.3 * dn;
+      const under = (o) => { for (let p = o; p; p = p.parent) if (p === head) return true; return false; };
+      const xs = []; const ys = []; const zs = [];
+      const v = new T.Vector3();
+      vrm.scene.traverse((o) => {
+        if (!o.isSkinnedMesh || !o.visible || !o.skeleton || !o.geometry) return;
+        const g = o.geometry;
+        const pos = g.attributes.position;
+        const si = g.attributes.skinIndex;
+        const sw = g.attributes.skinWeight;
+        if (!pos || !si || !sw) return;
+        const inHead = o.skeleton.bones.map(under);
+        if (!inHead.some(Boolean)) return;
+        const step = Math.max(1, Math.floor(pos.count / 60000)); // a dense mesh: every n-th vertex is plenty
+        for (let i = 0; i < pos.count; i += step) {
+          let best = 0; let bw = -1;
+          for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+          if (!inHead[best]) continue;
+          o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+          if (v.y < floor) continue;
+          xs.push(v.x); ys.push(v.y); zs.push(v.z);
+        }
+      });
+      if (xs.length < 20) return null;
+      const pc = (a, q) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.max(0, Math.round(q * (b.length - 1))))]; };
+      const lo = [pc(xs, 0.02), pc(ys, 0.02), pc(zs, 0.02)];
+      const hi = [pc(xs, 0.98), pc(ys, 0.98), pc(zs, 0.98)];
+      const cw = new T.Vector3((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+      // a box's corner sticks out of the ellipsoid through its faces' centres: × 1.1 gets most of the corners in
+      const r = [0, 1, 2].map((i) => Math.max(0.02, ((hi[i] - lo[i]) / 2) * 1.1));
+      const inv = head.matrixWorld.clone().invert();
+      const qInv = head.getWorldQuaternion(new T.Quaternion()).invert();
+      const c = cw.clone().applyMatrix4(inv).toArray();
+      const axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((a) => new T.Vector3(...a).applyQuaternion(qInv).toArray());
+      return { c, axes, r, verts: xs.length, world: { c: cw.toArray().map((x) => +x.toFixed(3)), r: r.map((x) => +x.toFixed(3)), headBone: hp.toArray().map((x) => +x.toFixed(3)) } };
+    }
+    // the head ellipsoid now (world): headBox carried by the head bone as it is drawn
+    function headShape() {
+      if (!headBox || !vrm || !vrm.humanoid) return null;
+      const head = vrm.humanoid.getRawBoneNode('head');
+      if (!head) return null;
+      const T = R.THREE;
+      const q = head.getWorldQuaternion(new T.Quaternion());
+      return { c: new T.Vector3(...headBox.c).applyMatrix4(head.matrixWorld).toArray(), axes: headBox.axes.map((a) => new T.Vector3(...a).applyQuaternion(q).toArray()), r: headBox.r };
     }
 
     // Her head: the top and sides of the vertices that move with the head bone or its children (skull, hair, ears,
@@ -742,6 +853,19 @@
     const JUMP_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'];
     const EXTREMITY = /Hand$|Foot$/;
     const JUMP_WIN = 1.6;
+    // T-5092: the bones' angular acceleration limited right before the frame is shown (core/vrm-smooth.js): however
+    // many layers change on one frame (a touch: reaction + talk gesture + idle), no bone lurches further than the
+    // frames around it by more than PetVrmSmooth.ACCEL (°/frame@30) — the jump meter's spike is bounded by it
+    const smoother = window.PetVrmSmooth ? window.PetVrmSmooth.createLimiter() : null;
+    function smoothBones(dt) {
+      if (!smoother || !vrm || !vrm.humanoid) return;
+      for (const b of JUMP_BONES) {
+        const n = vrm.humanoid.getNormalizedBoneNode(b);
+        if (!n) continue;
+        const q = smoother.step(b, n.quaternion.toArray(), dt);
+        n.quaternion.fromArray(q);
+      }
+    }
     const jm = { masks: new Map(), prev: new Map(), d1: new Map(), d2: new Map(), frames: 0, max: 0, maxBone: null, maxAt: 0, spikeMax: 0, spikeBone: null, sig: null, open: [], done: [], recent: [], recentSpike: [], hist: [], t: 0 };
     function jumpSig() {
       if (!plan) return '';
@@ -1022,6 +1146,8 @@
         vrm.expressionManager.setValue(n, face[n]);
       }
 
+      smoothBones(realDt);
+      if (clips) pivotHips(); // (the base layer put the hips position back from its memo this frame: nothing adds up)
       meterJump(realDt);
       vrm.update(dt); // humanoid, look-at, expressions, SpringBone, constraints
       renderer.render(scene, camera);
@@ -1087,7 +1213,7 @@
       const v = new T.Vector3();
       for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
       const ry = vrm.scene.rotation.y;
-      const list = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]);
+      const list = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)], { head: headShape() });
       const nx = ((cx - rect.left) / rect.width) * 2 - 1;
       const ny = -((cy - rect.top) / rect.height) * 2 + 1;
       const p = new T.Vector3(nx, ny, 0.5).unproject(camera);
@@ -1098,7 +1224,7 @@
       const toClient = (w) => { v.fromArray(w).project(camera); return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height }; };
       const pxPerM = pxPerMetre(rect.height);
       let box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
-      for (const sh of list) for (const c of sh.kind === 'sphere' ? [sh.c] : [sh.a, sh.b]) {
+      for (const sh of list) for (const c of sh.a ? [sh.a, sh.b] : [sh.c]) {
         const q = toClient(c);
         const r = sh.r * pxPerM;
         box = { left: Math.min(box.left, q.x - r), right: Math.max(box.right, q.x + r), top: Math.min(box.top, q.y - r), bottom: Math.max(box.bottom, q.y + r) };
@@ -1126,15 +1252,16 @@
       for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
       const ry = vrm.scene.rotation.y;
       const out = {};
-      for (const sh of Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)])) {
+      const shapesNow = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)], { head: headShape() });
+      for (const sh of shapesNow) {
         if (!sh.zone || out[sh.zone]) continue;
-        let c = sh.kind === 'sphere' ? sh.c : sh.a.map((x, i) => (x + sh.b[i]) / 2);
+        let c = sh.a ? sh.a.map((x, i) => (x + sh.b[i]) / 2) : sh.c;
         if (sh.zone === 'head') c = [c[0], c[1] + sh.r * 0.8, c[2]]; // the top (the front of the sphere is the face)
         v.fromArray(c).project(camera);
         out[sh.zone] = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
       }
       if (out.head) {
-        const hd = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]).find((sh) => sh.zone === 'head');
+        const hd = shapesNow.find((sh) => sh.zone === 'head');
         v.fromArray([hd.c[0] + hd.front[0] * hd.r * 0.5, hd.c[1] - hd.r * 0.35, hd.c[2] + hd.front[2] * hd.r * 0.5]).project(camera);
         out.face = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
       }
@@ -1212,7 +1339,7 @@
           acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
           vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
-          libraryInfo: libInfo, clipRepairs: { ...clipRepairs }, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
+          libraryInfo: libInfo, clipRepairs: { ...clipRepairs }, headBox: headBox ? { verts: headBox.verts, ...headBox.world } : null, hipsRig: hipsRig ? { height: +hipsRig.height.toFixed(3), restY: +hipsRig.restY.toFixed(3), rescaled: hipsRig.rescaled || 0 } : null, smooth: smoother ? smoother.stats() : null, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
           manual: plan ? plan.manual : null, manuals: director ? director.manuals() : [], variants: director ? director.variants() : [], poses: director ? director.poses() : [], poseGroup: plan ? plan.pose : null, rest: plan ? plan.rest : null, thinkSegment: plan ? plan.thinkSegment : null,
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',
@@ -1406,6 +1533,7 @@
     // the user's stop on every figure (T-2829 / T-2831): whatever she does fades back to the idle
     stop: (why = 'stop') => [...figures].map((f) => f.stopAction(why)),
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
+    zoneAt: (x, y) => { const f = [...figures][0]; return f && f.zoneAt ? f.zoneAt(x, y) : null; }, // T-5092: the zone at a client point (e2e)
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
     // the action-state transitions (T-2829 plan.action: { t, from, to, why }), newest last — acceptance evidence (T-2832)
     actions: () => { const f = [...figures][0]; const d = f && f.director(); return d && d.actions ? d.actions() : []; },

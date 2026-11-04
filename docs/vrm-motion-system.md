@@ -850,3 +850,71 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmstore
 2. **触摸时的相邻帧尖峰略超阈值（3/6）**：莉莉雅 11.32°、試作1 10.91°、paimon 15.34°（°/帧@30fps，阈值 10）。都出现在触摸那一刻：底层 idle、反应片段、说话手势三层同时切换。骨骼多为手和脚，試作1 是前臂，莉莉雅拎起那一刻前臂 11.14°。同一时刻 xvfb 下帧率只有 9–15 fps。建议触摸时不同时换底层 idle，反应片段对四肢再加一点淡入，并在 30 fps 的真机上复测。
 
 逐模型表格与证据见 T-5089 验收报告。
+
+## 17. T-pose、触摸跳变与姿态守卫（T-5092）
+
+T-5089 的多模型实测（§16.8）判 6 个商店 VRM 全部失败，原因有两类：standmix2 烘焙出的 idle 双臂平举；触摸瞬间相邻帧尖峰 11–15°/帧。本节说明这两项的修复，以及顺带处理的 Wanderer 头部触摸判定和 hips 贴地模型的髋部。素材和烘焙产物仍然不进 git。
+
+### 17.1 T-pose：手臂转换核对与两处修复
+
+**先核对转换，不靠猜。** `scripts/lib/vrm-pose-guard.js vmdArmCheck` 用一套独立的 MMD 正向运动学重算手臂：直接读 VMD 原始关键帧（左手系、不做镜像），用参考骨架 `MMD_REF` 的静止偏移，按 MMD 层级 `上半身2 → 上半身3 → 肩P → 肩 → 肩C(=肩P⁻¹) → 腕 → 腕捩 → ひじ → 手捩 → 手首` 计算。得到的上臂、前臂方向镜像到我们的坐标系后，必须和烘焙结果（`chest·upperChest·shoulder·upperArm[·lowerArm]` 作用在 VRM 静止偏移上）一致。它能抓住 A-pose 角度错误、丢失的捩骨、漏掉的肩C 抵消、左右手系错误。
+
+1. **缺陷：漏了肩C 抵消（`src/core/vmd-retarget.js`，`BAKED_WITH` 升到 `vmd-retarget@2`）。** MMD 里 `肩C` 被赋予 −1×`肩P`，手臂实际看到的是 `肩P·肩·肩P⁻¹`。旧代码把 `肩P·肩` 整个交给 shoulder，上臂却没有乘 `肩P⁻¹`，所以每个 肩P 关键帧都会把整条手臂一起抬起来。7 支 VMD 舞蹈给 肩P 打了大量关键帧，最大 94°。修复后上臂起始为 `肩P⁻¹·腕·腕捩·A`。用旧代码跑一致性检查：TOMBOY 在 88.2 s 处偏差 **87°**（正是旧守卫报 2.4 s 平举的位置），KX-YAO 偏差 27°；修复后 33 个 VMD 来源、102928 个手臂采样，最大偏差 3.64°，多数 < 0.5°。
+2. **standmix2 本身的问题（`scripts/vrm-motion-select.js` REVIEW，重建 `src/core/vrm-motion-index.json`）。** 一致性检查显示 standmix2 的手臂转换是对的（最大偏差 0.15°）。双臂平举是素材本身的：3.2–7.3 s 有一段双臂向前平举的伸展，躯干同时前倾 14°，相对竖直方向约 85°。在 idle 里这就像僵尸 / T-pose。三条 idle（`idle.v01@female`、`idle.v01@neutral`、`idle.v03@male`）的截取区间从 `[0, 20]` 改为 `[7.4, 36.1]`（28.7 s 的平稳站姿，循环接缝 0°），没有撤下，所以每个风格的 idle 数量不变：带文件的 idle 每风格 10 个，加上程序化姿势轮换共 11 个。
+
+修复前后同一守卫的对比（`--out ~/vrm-assets/baked-v2-pre-t5092` 是修复前的备份）：
+
+| 片段 | 修复前：双臂同时最大夹角 / T-pose 帧 / 最长 | 修复后 |
+|---|---|---|
+| idle.v01@female | 88.8° / 60 帧 / 2.0 s @ 4.37 s（命中） | 14.7° / 0 / 0 |
+| idle.v01@neutral | 88.8° / 60 帧 / 2.0 s（命中） | 14.7° / 0 / 0 |
+| idle.v03@male | 88.8° / 60 帧 / 2.0 s（命中） | 14.7° / 0 / 0 |
+| 全库 | 28 个命中（3 个 idle、6 个反应、19 支舞） | 0 个命中（白名单内的 25 个——19 支舞、2 个来源的 6 个反应片段——单独列出，均在 maxS 以内） |
+
+### 17.2 全库姿态守卫
+
+- **位置**：`scripts/lib/vrm-pose-guard.js`（纯 JS），由 `scripts/vrm-bake.js` 调用：`--v2` 烘焙结束时自动执行，命中即失败、退出码 1；`node scripts/vrm-bake.js --v2 --check [--out <库目录>]` 只做检查，不烘焙。单测：`test/vrm-pose-guard.test.js`（构造片段，不依赖素材；本机有 `~/vrm-assets/baked-v2` 时还会扫全库）。
+- **范围**：`library.json` 里所有带文件的片段，加上 `dances/library.json` 里所有舞蹈，共 334 个，覆盖 posture / idle / reaction / emotion（索引中「emote」对应的类别）/ talk / walk / dance，来源 VMD 和 Mixamo 都有。输出按类别分别列出 vmd / mixamo 数量。
+- **算法**：每 1/30 s 一帧，从 hips 起做正向运动学：VRM 归一化骨骼的静止姿态是 T-pose，上臂沿 ±X。每条上臂计算三个量：与竖直方向的夹角 `vert`（「与竖直方向夹角」，与 vrmverify 的仰角判定一致）、与躯干下方向 `upperChest·(−Y)` 的夹角 `down`、肘部弯曲 `elbow`。**两条上臂都满足 `vert` 在 75°–115° 且 `elbow` < 35°，并持续 ≥ 0.2 s**，就判为 T-pose 嫌疑。这些情况不算：举过头顶（> 115°）、上臂水平但前臂折回（手到头 / 胸前，或鼓掌）、深鞠躬时手臂下垂（相对躯干接近水平，但相对竖直方向约 35°）、只有一侧手臂（挥手）、一闪而过（< 0.2 s）。另外单独统计「双臂同时 > 75°」的帧数作为参考。
+- **张臂白名单**：`scripts/vrm-motion-select.js` 的 `ARMS_OUT`（19 支舞，按舞蹈 id）和 `ARMS_OUT_SRC`（2 个反应来源：tsuna 小跳的甩臂、Mixamo 哈欠伸展）。写入索引的 `armsOut: { maxS, why }`，烘焙时复制到 library.json。**白名单有上限**：只放过不超过 `maxS` 的平举（实测最长 + 0.3 s），更长的照样命中。idle、posture、talk、walk 一律不能加白名单（单测守住）。VMD 舞蹈先经过上面的手臂一致性检查（≤ 5°），所以放过的是编舞本身，不是转换错误。
+- **idle 数量**：`--check` 会列出每个 idle 片段的双臂同时最大夹角、T-pose 帧数，以及每风格 idle 计数；少于 6 个即失败。
+
+### 17.3 触摸切换跳变
+
+T-5089 的尖峰都出现在触摸那一刻：底层 idle / 姿势切换（无聊或休息的姿势结束、idle 到期）、反应片段、说话手势（触摸后会说一句台词）三层在同一帧变化。改动：
+
+| 层 | 改动（`src/core/vrm-director.js TOUCH_SETTLE`） |
+|---|---|
+| 底层 | 触摸反应播放期间（直到片段结束，最多 `base` 3 s，`plan.settling`），底层 idle / 姿势保持触摸那一帧的状态。它引起的切换（坐着被摸后站起、idle 到期）排到反应之后，再按原有淡化时长切换：坐→站 1.2 s，蹲 / 躺 1.4 s。蹲换蹲、躺换躺也改用 1.4 s。 |
+| 说话手势 | 触摸反应进来时才开始的说话手势，要排在反应后面：等到反应片段结束，最多等 `talk` 1.2 s（`plan.talkQueued`），再按自己的淡入进来。已经在说话的手势不受影响；口型照常。 |
+| 四肢 | 反应叠加层多给一个 `limb` 权重：手、前臂、脚、脚趾、手指的淡入时长 × `limbFade` 1.8（`renderer/vrm-anim.js LIMB`），之后与身体其余部分一致。 |
+| 输出限幅 | `src/core/vrm-smooth.js`：渲染端在所有层（底层、持续层、反应、程序化动作、活人感、视线）写完骨骼之后、跳变计测量之前（`renderer/vrm.js smoothBones`），限制 20 根被测骨骼的角加速度：本帧转角 ≤ 上一帧转角 + `ACCEL` 8°/帧@30fps（按真实帧间隔归一，与跳变计一致）。尖峰定义是 `d_i − max(d_{i−1}, d_{i+1}) ≤ d_i − d_{i−1}`，所以**任何一帧的尖峰都 ≤ 8°/帧**，不管上游怎么叠加，也不管 xvfb 下只有 9–15 fps。减速不受限制（停住不会拖）；平滑的片段动作基本原样通过（单测：30°/帧的说话手势最多被拉回 < 0.5°）。`debug().figures[0].smooth` 给出限幅生效的骨骼帧数。 |
+
+`createDirector({ settle: false })` 只用于回放修复前的行为做对照。
+
+**离线回放**（`scripts/lib/vrm-replay.js`，单测 `test/vrm-touch-settle.test.js`）：真实导演 + 本机烘焙库的 .vrma 片段，按渲染端规则混合（底层交叉淡化，权重和为 1，含相位对齐；叠加层按 mask 和四肢权重 slerp；加载时摊平台阶），然后经过限幅器，再用 meterJump 的尖峰定义测量。没有包含活人感层、视线和程序化动作，因为它们不随触摸切换。场景：找到 idle 将要切换的那一帧，在同一帧触摸（头 / 手 / 肚子）并开始说话，30 fps 和 9–15 fps 抖动帧率各跑一遍，三个风格都覆盖。断言：修复前三层确实同帧切换；修复后底层不和反应同帧切换，全程尖峰 ≤ 10°/帧。
+
+### 17.4 Wanderer 头部触摸区
+
+Wanderer 的 humanoid hips 骨骼在地面（y = 0，头在 1.39 m）。`core/vrm-hit.js` 用 `|head − hips|` 作为尺寸单位，结果所有形状都大了约 3 倍：头部球心在头骨上方 0.22 m、半径 0.33 m，「头」的点击点（中心 + 0.8r）在 1.88 m，比头和帽子还高半个头；胸部胶囊半径 0.24 m，挡在脸前。
+
+- **头部 = 画出来的头**：`renderer/vrm.js measureHeadBox` 在加载时（静止姿态）收集蒙皮主权重在头骨及其子骨骼上的顶点（头、脸、耳朵、头发、帽子），只取头骨以下 1.3 倍颈→头长度以上的部分（垂到背后的长发不算头），每个世界轴取 2–98 百分位，得到一个包围盒，×1.1 后作为椭球，存在头骨的局部坐标里。之后每帧随头骨移动（`headShape`），作为 `Hit.shapes(…, { head })` 的头部区域（`kind: 'ellipsoid'`，`source: 'mesh'`）。脸的判定按椭球在各方向的伸展量归一。没有蒙皮头部时，退回原来骨骼上的球。`debug().figures[0].headBox` 给出顶点数、中心和半径。
+- **hips 贴地的模型用大腿根中点当髋部**：如果 hips 骨骼沿身体轴线比两侧大腿根中点低出 ≥ 25%（大腿根→头的距离），就用大腿根中点作为髋部计算尺寸。普通模型不受影响（单测守住）。
+- e2e：`vrmverify` 在点击前用 `PetVRM.director.zoneAt(x, y)` 记录该点的判定结果（`hitZone`），截图上用红圈标出点击点。
+
+### 17.5 hips 贴地模型跳舞时的髋部（顺带处理）
+
+three-vrm 按「模型 hips 高 / 片段 hips 高」缩放 hips 位移。Wanderer 的 hips 高约 0，所以舞蹈的起伏和走位全没了；hips 的旋转又绕着脚下的点转，舞蹈里的前倾看起来像摔倒或下蹲。修复（`renderer/vrm.js`，只对 `rootHips` 模型生效）：`measureHipsRig` 记下大腿根中点相对 hips 骨骼的位置；`rescaleHipsTravel` 在创建片段时按大腿根高度重新缩放 hips 位移（VRM 0.x 的 x / z 与 three-vrm 一样取反）；`pivotHips` 每帧在所有旋转之后把 hips 平移 `p − R·p`，让 hips 绕真实的髋关节转。坐 / 蹲 / 躺片段仍然只给站姿模型（`allowsClip` 不变）。`debug().figures[0].hipsRig` 给出髋关节高度和重缩放的片段数。
+
+### 17.6 验证
+
+```bash
+npm test                                         # 全部单测（新增 test/vrm-pose-guard.test.js、test/vrm-touch-settle.test.js）
+node scripts/vrm-motion-select.js --check        # 索引是最新的
+node scripts/vrm-bake.js --v2                    # 重新烘焙；结束时自动执行姿态守卫与手臂一致性检查
+node scripts/vrm-bake.js --v2 --check            # 只检查（默认 ~/vrm-assets/baked-v2）
+PIXELPET_E2E_VERIFY_IDS=vrm-d8789c38,vrm-a185cf3a,vrm-paimon,vrm-wanderer \
+  env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmverify
+```
+
+`verify-summary.json` 里每个模型新增 `tposeSamples`（100 ms 采样中双臂平举、且不在舞蹈 / 反应 / 持续层的采样数，不限时长）和 `touch[].hitZone`。实测结果见 T-5092 的任务文档。

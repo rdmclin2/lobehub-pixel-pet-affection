@@ -33,6 +33,23 @@
     const t = -b - Math.sqrt(h);
     return t >= 0 ? t : (-b + Math.sqrt(h) >= 0 ? 0 : null);
   }
+  // ray × ellipsoid (centre c, unit axes [a0, a1, a2], radii [r0, r1, r2]) → distance or null: the ray in the
+  // ellipsoid's unit-sphere space (the distance along it is the same t)
+  function rayEllipsoid(o, d, c, axes, radii) {
+    const oc = sub(o, c);
+    const o2 = axes.map((a, i) => dot(oc, a) / radii[i]);
+    const d2 = axes.map((a, i) => dot(d, a) / radii[i]);
+    const A = dot(d2, d2);
+    const B = dot(o2, d2);
+    const C = dot(o2, o2) - 1;
+    const h = B * B - A * C;
+    if (h < 0 || A < 1e-12) return null;
+    const t = (-B - Math.sqrt(h)) / A;
+    return t >= 0 ? t : ((-B + Math.sqrt(h)) / A >= 0 ? 0 : null);
+  }
+  // how far an ellipsoid reaches along unit direction u from its centre
+  const support = (axes, radii, u) => Math.sqrt(axes.reduce((s, a, i) => s + (dot(a, u) * radii[i]) ** 2, 0));
+
   // ray × capsule (segment a–b, radius r) → distance or null (the cylinder, then the end caps)
   function rayCapsule(o, d, a, b, r) {
     const ba = sub(b, a);
@@ -59,11 +76,26 @@
   // the face from the back of the head) comes from the skeleton: (right shoulder → left shoulder) × up — a
   // VRM 0.x model turned round by the loader faces the camera all the same; `front` is only the fallback
   // without shoulders. → [{ zone, kind, … }]
-  function shapes(bones, front = [0, 0, 1]) {
+  //
+  // T-5092: opts.head = { c, axes, r: [r0, r1, r2] } — her head as she is drawn: the box of the vertices that move
+  // with the head bone (skull, face, hair, a hat) measured at load, carried by the head bone (renderer/vrm.js
+  // headShape) — becomes the head zone (an ellipsoid) instead of a sphere at a fixed offset above the head bone.
+  // And a model whose humanoid hips bone sits on the floor (Wanderer: hips at 0 m, head at 1.39 m) is measured
+  // from her real hip joints (the upper legs' midpoint): with the bone on the floor every shape was ~3× too big
+  // and the chest capsule covered her face, so a click on the head never reached the head.
+  function shapes(bones, front = [0, 0, 1], opts = {}) {
     const B = (n) => (Array.isArray(bones[n]) ? bones[n] : null);
-    const hips = B('hips');
+    let hips = B('hips');
     const head = B('head');
     if (!hips || !head) return [];
+    const lu = B('leftUpperLeg');
+    const ru = B('rightUpperLeg');
+    if (lu && ru) {
+      const mid = lerp3(lu, ru, 0.5);
+      const L = len(sub(head, mid));
+      // the hips bone far below the hip joints along the body (≥ 25% of hip-joints → head): the joints are her hips
+      if (L > 1e-6 && dot(sub(mid, hips), norm(sub(head, mid))) > 0.25 * L) hips = mid;
+    }
     const unit = Math.max(0.05, len(sub(head, hips))); // ≈ 0.5 m on a 1.5 m model
     const neck = B('neck') || lerp3(hips, head, 0.88);
     const spine = B('spine') || lerp3(hips, neck, 0.25);
@@ -75,9 +107,15 @@
     const fr = la && ra ? cross(sub(la, ra), up) : null;
     if (fr && len(fr) > 1e-6) front = norm(fr);
     const out = [];
-    // the head: a sphere a little above the head bone (hair included); the face is its front, lower part
-    const hc = add(head, mul(up, unit * 0.16));
-    out.push({ zone: 'head', kind: 'sphere', c: hc, r: unit * 0.24, front: norm(front), up });
+    // the head: the drawn head (opts.head, an ellipsoid), else a sphere a little above the head bone (hair
+    // included); the face is its front, lower part
+    const hb = opts.head;
+    if (hb && Array.isArray(hb.c) && Array.isArray(hb.axes) && Array.isArray(hb.r) && hb.r.every((x) => x > 1e-4)) {
+      out.push({ zone: 'head', kind: 'ellipsoid', c: hb.c, axes: hb.axes, radii: hb.r, r: support(hb.axes, hb.r, up), front: norm(front), up, source: 'mesh' });
+    } else {
+      const hc = add(head, mul(up, unit * 0.16));
+      out.push({ zone: 'head', kind: 'sphere', c: hc, r: unit * 0.24, front: norm(front), up, source: 'bone' });
+    }
     // the trunk, top to bottom
     out.push({ zone: 'chest', kind: 'capsule', a: lerp3(chest, upper, 0.4), b: lerp3(upper, neck, 0.6), r: unit * 0.17 });
     out.push({ zone: 'belly', kind: 'capsule', a: lerp3(hips, spine, 0.6), b: lerp3(spine, chest, 0.7), r: unit * 0.155 });
@@ -106,7 +144,7 @@
     const d = norm(dir);
     let best = null;
     for (const s of list) {
-      const t = s.kind === 'sphere' ? raySphere(origin, d, s.c, s.r) : rayCapsule(origin, d, s.a, s.b, s.r);
+      const t = s.kind === 'sphere' ? raySphere(origin, d, s.c, s.r) : s.kind === 'ellipsoid' ? rayEllipsoid(origin, d, s.c, s.axes, s.radii) : rayCapsule(origin, d, s.a, s.b, s.r);
       if (t !== null && (!best || t < best.t)) best = { t, s };
     }
     if (!best) return { zone: null, t: null, point: null, shape: null };
@@ -114,14 +152,18 @@
     let zone = best.s.zone;
     if (zone === 'head') {
       // the face: the front of the head sphere, from the brows down to the chin, not too far to the sides
-      const rel = sub(point, best.s.c);
-      const f = dot(rel, best.s.front) / best.s.r;
-      const v = dot(rel, best.s.up) / best.s.r;
-      const side = len(sub(rel, add(mul(best.s.front, dot(rel, best.s.front)), mul(best.s.up, dot(rel, best.s.up))))) / best.s.r;
+      // (an ellipsoid: each direction measured against how far it reaches that way)
+      const s0 = best.s;
+      const reach = (u) => (s0.kind === 'ellipsoid' ? support(s0.axes, s0.radii, u) : s0.r);
+      const rel = sub(point, s0.c);
+      const f = dot(rel, s0.front) / reach(s0.front);
+      const v = dot(rel, s0.up) / reach(s0.up);
+      const lat = sub(rel, add(mul(s0.front, dot(rel, s0.front)), mul(s0.up, dot(rel, s0.up))));
+      const side = len(lat) / (len(lat) > 1e-9 ? reach(norm(lat)) : s0.r);
       if (f > 0.35 && v < 0.05 && v > -1 && side < 0.6) zone = 'face';
     }
     return { zone, t: best.t, point, shape: best.s };
   }
 
-  return { BONES, raySphere, rayCapsule, shapes, hit };
+  return { BONES, raySphere, rayCapsule, rayEllipsoid, support, shapes, hit };
 });

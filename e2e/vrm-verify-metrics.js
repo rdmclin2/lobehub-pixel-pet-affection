@@ -141,7 +141,11 @@ function tposeIntervals(samples, { minS = 0.3, elev = -15 } = {}) {
   return out;
 }
 
-module.exports = { IDLE_BONES, qAngle, boneStats, idleMetrics, dominantShare, tposeIntervals };
+// T-5092: the samples (frames of the 100 ms series) with both arms level outside a dance / reaction / hold, however
+// short — the "T-pose frames" count (tposeIntervals keeps only runs ≥ 0.3 s)
+const tposeSamples = (samples, { elev = -15 } = {}) => samples.filter((x) => x.arms && x.arms[0] > elev && x.arms[1] > elev && !x.dance && !x.reaction && !x.hold).length;
+
+module.exports = { IDLE_BONES, qAngle, boneStats, idleMetrics, dominantShare, tposeIntervals, tposeSamples };
 
 if (require.main === module) {
   const fs = require('node:fs');
