@@ -18,6 +18,7 @@
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 //   scenario "interject" -> 插个嘴: off → no jev call; on + mock jev 0.86 → a remark with 别插嘴 / 说得好; 别插嘴 → rule → same kind skipped; rules UI
 //   scenario "quickpanel" -> 快捷调用面板 (T-2849): right click / Ctrl+Alt+P, filter + ↑↓, 检查更新 in every state, edges, gestures, every row (records the display: out/e2e/quick/)
+//   scenario "quick-actions" -> 快捷调用面板独立验收 (T-2852): 唤出 / 关闭 ×10、筛选、↑↓↩、悬停、检查更新四类反馈截图、原有手势 (out/e2e/quick-actions/; not in `all`)
 //   scenario "voicehotkey" -> 快捷键唤起语音对话: the global shortcut → pet shown, listening, recognised; settings window records / refuses combinations
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -6426,6 +6427,7 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const quickPanelScenario = () => require('./quick-panel')({ ROOT, OUT, FAKE_LH, step, launch, say })();
+const quickActionsScenario = () => require('./quick-actions')({ OUT, FAKE_LH, step, launch, say })();
 const quickPanelDemo = () => require('./quick-panel-demo')({ OUT, FAKE_LH, step, launch, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
@@ -10794,6 +10796,7 @@ async function interjectScenario() {
   if (which === 'charpage' || which === 'all') await charpage();
   if (which === 'update' || which === 'all') await update();
   if (which === 'quickpanel' || which === 'all') await quickPanelScenario(); // T-2849 快捷调用面板 (docs/quick-panel.md)
+  if (which === 'quick-actions') await quickActionsScenario(); // T-2852 快捷调用面板独立验收（不在 all 里：与 quickpanel 覆盖重叠）
   if (which === 'quickdemo') await quickPanelDemo(); // T-2849: slow narrated recordings for reviewers (not in `all`)
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();

@@ -23,8 +23,16 @@ body { padding: var(--lobe-padding-xxs); font-family: var(--lobe-font-family); f
 .row .ico { color: var(--lobe-color-text-secondary); }
 .row .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .hint { flex: none; color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); font-family: var(--lobe-font-family); }
-.row.active { background: var(--lobe-color-info); color: var(--lobe-color-bg-elevated); }
-.row.active .ico, .row.active .hint { color: var(--lobe-color-bg-elevated); }
+/* the highlighted row: the accent filled, light text on it (LobeHub macOS menu). Dark --lobe-color-info is a light
+   sky blue that only reads with dark text, so in dark it is deepened toward the panel surface and keeps light text
+   (≈ the reference's deep blue + white; white on it ≈ 5:1). */
+:root { --pet-quick-active-bg: var(--lobe-color-info); --pet-quick-active-fg: var(--lobe-color-bg-elevated); }
+[data-theme='dark'] { --pet-quick-active-bg: color-mix(in srgb, var(--lobe-color-info) 55%, var(--lobe-color-bg-elevated)); --pet-quick-active-fg: var(--lobe-color-text); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) { --pet-quick-active-bg: color-mix(in srgb, var(--lobe-color-info) 55%, var(--lobe-color-bg-elevated)); --pet-quick-active-fg: var(--lobe-color-text); }
+}
+.row.active { background: var(--pet-quick-active-bg); color: var(--pet-quick-active-fg); }
+.row.active .ico, .row.active .hint { color: var(--pet-quick-active-fg); }
 .row[aria-disabled='true'] { color: var(--lobe-color-text-quaternary); }
 .sep { height: 1px; margin: var(--lobe-padding-xxs) var(--lobe-padding-xs); background: var(--lobe-color-fill-secondary); }
 .none { padding: var(--lobe-padding-xs); color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); }
