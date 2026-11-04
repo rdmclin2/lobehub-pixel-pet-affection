@@ -9846,7 +9846,7 @@ async function titlebarScenario() {
   const SHOTS = path.join(OUT, 'titlebar');
   fs.mkdirSync(SHOTS, { recursive: true });
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
-  const ROUTES = ['/overview', '/characters', '/characters/grok', '/store', '/play', '/settings', '/tts'];
+  const ROUTES = ['/overview', '/characters', '/characters/grok', '/store', '/play', '/settings', '/tts', '/chat'];
   const open = async (platform) => {
     const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebar-'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-titlebarfake-'));

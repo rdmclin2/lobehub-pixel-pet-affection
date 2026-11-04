@@ -119,6 +119,8 @@ const styles = createStaticStyles(({ css }) => ({
     position: relative;
     width: 100%;
     height: 100%;
+    /* keep the chat columns below the macOS drag strip (no breadcrumb row fills it any more) */
+    padding-block-start: var(--pet-titlebar);
   `,
   page: css`
     position: relative;
@@ -154,10 +156,11 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const place = placeOf(page, schema.nav);
   const rail = schema.rail.find((r) => r.key === place);
   const isTop = schema.rail.some((r) => r.page === page) && !sub;
-  const back = !isTop && rail ? rail : null;
+  const full = page === 'chat';
+  // the chat page is a full-bleed workspace with its own character list: no "聊天 / 聊天" trail above it (T-2836)
+  const back = !isTop && !full && rail ? rail : null;
   const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
-  const full = page === 'chat';
   const mac = platform === 'darwin';
   const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
   return (
