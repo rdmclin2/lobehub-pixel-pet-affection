@@ -191,6 +191,7 @@ module.exports = ({ ROOT, OUT, FAKE_LH, step, launch, say }) => async function q
       await q.dispatchEvent('#q', 'input');
       const none = await q.textContent('#list');
       assert.match(none, /没有匹配“zzz”的操作/);
+      await q.screenshot({ path: path.join(DIR, 'q3-filter-empty.png') });
       await q.keyboard.press('Escape');
       assert.equal(await q.inputValue('#q'), '', 'first Esc clears the filter');
       assert.equal((await state(page)).visible, true);
