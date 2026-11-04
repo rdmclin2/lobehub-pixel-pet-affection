@@ -185,7 +185,9 @@ test('limited list: no direct way → the turn goes without tools (never through
   await svc.setLocalAbilities(true);
   assert.notEqual(svc.localVia, 'direct');
   svc.setAiFolders({ add: ['/tmp'] });
-  assert.equal((await svc.chat('看看')).ok, true);
+  const said = await svc.chat('看看');
+  assert.equal(said.ok, true);
+  assert.match(said.localNote, /这次用不了本机工具/, 'the pet window is told (a notice)');
   const run = runs(dir).pop();
   assert.deepEqual(run.tools || [], [], 'no --tool');
   assert.ok(!run.device, 'no --device');

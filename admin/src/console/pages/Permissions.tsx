@@ -110,6 +110,7 @@ export const PermissionsCard = () => {
                 添加文件夹…
               </Button>
             </Flexbox>
+            {view?.local?.warning && <Alert title={view.local.warning} type="warning" />}
             {!limited && <Alert title="目前不限制：她能读写你账号能访问的所有文件。添加第一个文件夹后，就只能用列表里的文件夹。" type="warning" />}
             {limited && folders.length === 0 && <Empty description="还没有文件夹：她暂时读不了任何文件。" />}
             {folders.map((f) => (

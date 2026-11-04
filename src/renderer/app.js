@@ -1678,6 +1678,8 @@ function bindPetUi() {
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
+    // AI 可读的文件夹 (T-5075): the folders could not be enforced this turn, so she answered without her tools
+    if (r.ok && r.localNote) showNotice('这次用不了本机工具', r.localNote.replace(/^这次用不了本机工具：/, ''), { label: '去设置', admin: 'connection' });
     if (!r.ok && r.reason === 'error') say(errorLine(r), 'error', 'error', r.message);
     if (!r.ok && r.reason === 'local-error') say(`（这台电脑现在连不上，读不了文件：${String(r.message || '').slice(0, 60)}）`, 'error', 'fallback', r.message);
     if (!r.ok && r.reason === 'local-off') say('（要先开启本机能力才能读文件。）', 'error', 'fallback');

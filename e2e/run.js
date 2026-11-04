@@ -9876,7 +9876,7 @@ async function permissionsScenario() {
     const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, ...env }, { perms: true });
     await page.waitForSelector('.char-card');
     await page.click('.char-card[data-species="grok"]');
-    return { app, page, data };
+    return { app, page, data, fakeDir };
   };
   const tags = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#perm-system .perm-row')].map((r) => [r.dataset.perm, r.querySelector('.perm-tag').textContent])));
   const listed = (page) => page.evaluate(() => [...document.querySelectorAll('#perm-folder-list li[data-folder]')].map((li) => li.dataset.folder));
@@ -9963,6 +9963,22 @@ async function permissionsScenario() {
       await admin.screenshot({ path: path.join(SHOTS, 'a5-settings-card.png') });
       return JSON.stringify(st);
     }, () => admin);
+
+    await step(S, 'P8 the list is in effect but there is no direct way (fake lh): she answers without tools and the pet window says why', async () => {
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '看看下载里有什么');
+      await page.click('#chat-send');
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)', { timeout: 20000 });
+      const t = await page.evaluate(() => ({ title: document.getElementById('toast-title').textContent, body: document.getElementById('toast-body').textContent, action: document.getElementById('toast-open').textContent }));
+      assert.equal(t.title, '这次用不了本机工具');
+      assert.match(t.body, /lh connect 没法限制/);
+      assert.equal(t.action, '去设置');
+      const last = fs.readFileSync(path.join(run.fakeDir, 'runs.log'), 'utf8').trim().split('\n').map(JSON.parse).pop();
+      assert.deepEqual(last.tools || [], [], 'no --tool');
+      await page.waitForTimeout(700); // the notice has faded in
+      await page.screenshot({ path: path.join(SHOTS, 'a8-pet-notice.png') });
+      return `${t.title}: ${t.body}`;
+    }, page);
   } finally {
     if (run) await run.app.close().catch(() => {});
   }

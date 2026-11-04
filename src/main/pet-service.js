@@ -1004,6 +1004,7 @@ class PetService extends EventEmitter {
     if (tools.length && scope && this.localVia !== 'direct') {
       trace.set('toolsDropped', 'folders limited, no direct way');
       this.localWarning = NO_LOCAL_TOOLS_LINE;
+      this._toolsDropped = true;
       tools = [];
     }
     if (tools.length) {
@@ -1024,6 +1025,7 @@ class PetService extends EventEmitter {
           this.emit('error', e);
           this._responsesFailedAt = this.now();
           this.localWarning = NO_LOCAL_TOOLS_LINE;
+          this._toolsDropped = true;
           if (stream) stream.restart();
           return this.lh.run({ ...args, tools: [], device: null });
         }
@@ -1154,6 +1156,7 @@ class PetService extends EventEmitter {
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
       trace.mark('runStart');
+      this._toolsDropped = false;
       const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace, extraRead: paths });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
@@ -1164,7 +1167,8 @@ class PetService extends EventEmitter {
       trace.mark('doneSent');
       this._reportAffection(affection);
       ok = true;
-      return { ok: true, text, cost: res.cost, affection };
+      // 本机能力 on but this turn went without tools (folders limited, no direct way): the pet window says so
+      return { ok: true, text, cost: res.cost, affection, ...(this._toolsDropped ? { localNote: NO_LOCAL_TOOLS_LINE } : {}) };
     } catch (e) {
       this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code !== 'ECANCELED') this.emit('error', e);
