@@ -557,7 +557,7 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`lifted: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, canvas css ${JSON.stringify(s.css)}, legs ${JSON.stringify(legs)} (gravity, ≤ 8°/12°); released → ${after.state}`);
       }, page);
 
-      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing with the mouth (aa), not the bones', async () => {
+      await step(S, '喂食 (喂食 → a food): eating → happy face, chewing with the mouth (aa) and the eat body (the food to her mouth, T-2831)', async () => {
         await rest();
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
         await clickAct(page, 'feed');
@@ -567,17 +567,19 @@ module.exports = function vrmScenarios(ctx) {
         assert.match(s.state, /^eat/);
         assert.equal(s.hold, 'eat');
         assert.match(s.expr, /happy:/);
-        assert.match(s.mouth, /aa:0\.[2-9]/, 'chewing is the mouth (aa), not a bone');
+        assert.match(s.mouth, /aa:0\.[2-9]/, 'chewing is the mouth (aa)');
+        assert.match((await H.ds()).acts, /eat:/, 'and the procedural eat body (T-2831)');
         assert.match(s.overlays, /hold:hold\.eat@\w+:/, `the eating hold is laid over the base: ${s.overlays}`);
         assert.deepEqual(s.motion, {});
         return H.note(`feed: app state ${s.state}, VRM ${s.events}, data-hold ${s.hold}, expr ${s.expr}, mouth ${s.mouth}`);
       }, page);
 
-      await step(S, '玩耍: play → happy face; she does not spin round (the pixel play), body stays turned to the user', async () => {
+      await step(S, '玩耍: play → happy face and the play body (hops, waves; T-2831); she does not spin round (the pixel play), body stays turned to the user', async () => {
         await page.waitForFunction(() => !/^eat/.test(window.petFx.state().state), null, { timeout: 8000 });
         await rest();
         await clickAct(page, 'play');
         const s = await peak('play', (x) => x.state === 'play' && /happy:/.test(x.expr), 3000);
+        const playActs = (await H.ds()).acts;
         const yaws = [];
         for (let i = 0; i < 12; i++) { yaws.push(Math.abs((await H.fig()).root.yaw)); await sleep(100); }
         await H.shot('8-play');
@@ -585,6 +587,7 @@ module.exports = function vrmScenarios(ctx) {
         assert.match(s.expr, /happy:/);
         // the pixel play spun her round every 3 s; a VRM smiles and stays turned to the user (≤ the facing yaw)
         assert.ok(Math.max(...yaws) <= 25, `body yaw ${Math.max(...yaws).toFixed(1)}°`);
+        assert.match(playActs, /play:/, `the play body (T-2831): data-acts ${playActs}`);
         assert.deepEqual(s.motion, {});
         assert.equal(s.css.animationName, 'none', 'no CSS char-hop');
         return H.note(`play: app state ${s.state}, VRM ${s.events}, expr ${s.expr}, body yaw ≤ ${Math.max(...yaws).toFixed(1)}° over 1.2 s (no spin), canvas animation ${s.css.animationName}`);
@@ -1026,11 +1029,12 @@ module.exports = function vrmScenarios(ctx) {
         const f = await H.fig();
         assert.equal(b.library, 'none');
         assert.ok(Number(b.frame) > Number(a.frame));
-        assert.equal(b.layers, '');
+        assert.equal(b.layers, 'rest.pose:1.00', 'no clip: the rest clip is the base (T-2829), so a dance or posture fades back to it');
+        assert.equal(b.action, 'idle');
         assert.ok(f.bones.leftUpperArm[2] < -50 && f.bones.rightUpperArm[2] > 50, `arms down, not a T-pose: ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
         await H.shot('12c-no-library');
         fs.renameSync(path.join(data, 'vrm-motions', 'library.off'), path.join(data, 'vrm-motions', 'library.json'));
-        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
+        return H.note(`library.json removed: data-library=${b.library}, data-anim=${b.anim}, data-layers=${b.layers}, data-action=${b.action}, frames ${a.frame} → ${b.frame}, idle ${b.idle}, arms ${f.bones.leftUpperArm} / ${f.bones.rightUpperArm}`);
       }, page);
 
       await step(S, 'packaging guard: no .vrm / .vrma / .fbx / .vmd in git ls-files nor in the files package.json build.files ships', async () => {
@@ -2716,7 +2720,830 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal };
+
+  // ------------------------------------------------------------------ vrmreset
+  // 重置姿势 (T-2830, docs/usage.md): the homemade VRM with the motion library and a dance library, the local API
+  // and the tray on. The ↺ toolbar button (VRM only), 托盘 → 重置姿势, Ctrl/⌘+Shift+R and POST /reset-pose each bring
+  // her back to the idle — from dancing, eating, asleep, playing and a lift left stuck — through the T-2829 action
+  // states (… → returning → idle), with nothing of the action left (layers, overlays, hold, reaction); already
+  // idle it changes nothing. Screenshots before / after each, a video with chapters (vrmreset-evidence.json).
+  async function vrmReset() {
+    const S = 'vrmreset';
+    const PORT = 7800 + Math.floor(Math.random() * 400);
+    const TOKEN = `e2e-reset-${Math.random().toString(36).slice(2, 12)}-token`;
+    const { data, env } = dataDir('vrmreset', { ageConfirmed: true, ageConfirmedAt: Date.now(), api: { enabled: true, port: PORT, token: TOKEN } }, { motions: true });
+    env.PIXELPET_TRAY = '1';
+    const { writeTestDances } = require('../scripts/make-test-dance');
+    writeTestDances(path.join(data, 'vrm-dances'));
+    const model = makeModel(ROOT, 'vrmreset');
+    const VIDEO = path.join(SHOTS, 'vrmreset-video');
+    fs.rmSync(VIDEO, { recursive: true, force: true });
+    fs.mkdirSync(VIDEO, { recursive: true });
+    const evidence = [];
+    const chapters = [];
+    const t0 = Date.now();
+    const { app, page } = await launch(env, { args: ['--autoplay-policy=no-user-gesture-required'], video: VIDEO });
+    const errors = watchErrors(page);
+    const H = helpers(page, 'reset', evidence, app);
+    const api = async (method, p, body) => {
+      const r = await fetch(`http://127.0.0.1:${PORT}/pixel-pet${p}`, { method, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, json: await r.json() };
+    };
+    const ds = H.ds;
+    const hover = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
+    const waitAction = (want, ms = 8000) => page.waitForFunction((w) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(`^(${w})$`).test(c.dataset.action || ''); }, want, { timeout: ms }).catch(async () => { throw new Error(`data-action stays ${(await ds()).action}, wanted ${want}`); });
+    // data-action every 40 ms for `ms`, deduplicated: the path she takes back
+    const trace = async (ms = 2500) => { const out = []; const s0 = Date.now(); while (Date.now() - s0 < ms) { const a = (await ds()).action; if (out[out.length - 1] !== a) out.push(a); await sleep(40); } return out; };
+    const clean = (d, label) => {
+      assert.equal(d.action, 'idle', `${label}: action ${d.action}`);
+      assert.ok(!/dance:/.test(d.layers), `${label}: layers ${d.layers}`);
+      assert.equal(d.overlays, '', `${label}: overlays ${d.overlays}`);
+      assert.equal(d.hold, '', `${label}: hold ${d.hold}`);
+      assert.equal(d.reaction, '', `${label}: reaction ${d.reaction}`);
+      assert.ok(!/angry/.test(d.expr || ''), `${label}: expr ${d.expr}`);
+    };
+    // one reset from `state`: before shot, `doReset`, the path back, after shot
+    const resetFrom = async (name, state, doReset, how) => {
+      await waitAction(state);
+      await sleep(600);
+      const before = await ds();
+      await hover();
+      const shotBefore = await H.shot(`${name}-before`);
+      const n0 = Number(before.reset || 0);
+      const rr = await doReset();
+      const path1 = await trace(2500);
+      await waitAction('idle', 6000);
+      await sleep(700);
+      const after = await ds();
+      clean(after, name);
+      assert.equal(Number(after.reset || 0), n0 + 1, `${name}: one reset on the figure (data-reset ${after.reset})`);
+      assert.ok(path1[path1.length - 1] === 'idle', `${name}: ends idle (${path1.join(' → ')})`);
+      const lr = await page.evaluate(() => window.petFx.lastReset());
+      await hover();
+      const shotAfter = await H.shot(`${name}-after`);
+      return H.note(`${name} (${how}): before data-action=${before.action} layers=${before.layers} hold='${before.hold}' overlays='${before.overlays}' → reset ${JSON.stringify(rr)} → path ${[before.action, ...path1].filter((x, i, a) => a[i - 1] !== x).join(' → ')} → after data-action=${after.action} layers=${after.layers} overlays='${after.overlays}' hold='${after.hold}' reaction='${after.reaction}' expr=${after.expr}; app.lastReset=${JSON.stringify({ source: lr.source, before: lr.before, cleared: lr.cleared, figures: lr.figures })}; shots ${shotBefore}, ${shotAfter}`);
+    };
+    let ID = null;
+    const ST = async (name, fn) => { chapters.push({ at: (Date.now() - t0) / 1000, title: name }); return step(S, name, fn, page); };
+    try {
+      await ST('穿上自制 VRM（动作库已载入）：工具栏出现 ↺ 重置姿势；托盘菜单有“重置姿势”', async () => {
+        await H.hatch();
+        assert.equal(await page.evaluate(() => document.getElementById('btn-reset').classList.contains('hidden')), true, 'pixel look: no ↺');
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        ID = imp.pack.id;
+        await page.evaluate((x) => window.pet.switchCharacter(x), ID);
+        await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), ID, { timeout: 15000 });
+        await H.drawing(3);
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.library === 'loaded', null, { timeout: 20000 });
+        for (let i = 0; i < 50; i++) { try { if ((await api('GET', '/state')).status === 200) break; } catch { /* not listening yet */ } await sleep(200); }
+        await waitAction('idle');
+        await hover();
+        await page.waitForSelector('#btn-reset:not(.hidden)', { timeout: 5000 });
+        const btn = await page.evaluate(() => { const b = document.getElementById('btn-reset'); const r = b.getBoundingClientRect(); const tb = document.getElementById('toolbar').getBoundingClientRect(); return { label: b.getAttribute('aria-label'), title: b.title, w: r.width, h: r.height, inToolbar: r.top >= tb.top - 1 && r.bottom <= tb.bottom + 1, rows: [...new Set([...document.querySelectorAll('#toolbar .btn:not(.hidden)')].map((x) => Math.round(x.getBoundingClientRect().top)))].length }; });
+        assert.equal(btn.label, '重置姿势');
+        assert.match(btn.title, /Ctrl\/⌘ \+ Shift \+ R/);
+        await H.shot('0-entry');
+        await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'reset-0-entry-toolbar.png') });
+        const tray = await page.evaluate(() => window.pet.debugTray());
+        assert.ok(tray.items.includes('重置姿势'), tray.items.join(' / '));
+        // the real tray menu, rendered by the OS as a native menu (a test display has no tray area): grab the display
+        let trayShot = 'n/a';
+        if (process.env.DISPLAY) {
+          assert.equal(await page.evaluate(() => window.pet.debugTrayPopup({ x: 20, y: 300 })), true);
+          await sleep(700);
+          const file = path.join(SHOTS, 'reset-0-tray-menu.png');
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-i', process.env.DISPLAY, '-frames:v', '1', file]);
+          await page.evaluate(() => window.pet.debugTrayPopup({ close: true }));
+          await sleep(300);
+          trayShot = 'vrm/reset-0-tray-menu.png (whole X display)';
+        }
+        const routes = (await api('GET', '/nope')).json.routes;
+        assert.ok(routes.includes('POST /pixel-pet/reset-pose'), routes.join(' '));
+        return H.note(`VRM ${ID}: ↺ ${JSON.stringify(btn)}; tray items ${JSON.stringify(tray.items)}; API routes include POST /pixel-pet/reset-pose; shots vrm/reset-0-entry.png, vrm/reset-0-entry-toolbar.png, ${trayShot}`);
+      });
+
+      await ST('已在 Idle：点 ↺ 不产生任何变化（no-op）', async () => {
+        await waitAction('idle');
+        await sleep(400);
+        const before = await ds();
+        const num = (p) => ({ affection: p.affection, mood: p.mood, energy: p.energy, hunger: p.hunger, sleeping: p.sleeping });
+        const pet0 = num((await api('GET', '/state')).json.pet);
+        await page.click('#btn-reset');
+        await sleep(200);
+        const lr = await page.evaluate(() => window.petFx.lastReset());
+        const tr = await trace(1200);
+        const after = await ds();
+        assert.equal(lr.source, 'button');
+        assert.deepEqual(lr.before, ['idle']);
+        assert.deepEqual(lr.cleared, []);
+        assert.equal(lr.figures[0].noop, true, JSON.stringify(lr.figures));
+        assert.deepEqual(tr, ['idle'], tr.join(' → '));
+        assert.equal(after.reset || '0', before.reset || '0', 'no reset counted on the figure');
+        assert.equal(after.posture, before.posture);
+        const pet1 = num((await api('GET', '/state')).json.pet);
+        assert.equal(pet1.affection, pet0.affection, 'no affection change');
+        assert.equal(pet1.sleeping, pet0.sleeping);
+        assert.ok(pet1.mood <= pet0.mood && pet0.mood - pet1.mood < 0.5, `mood only drifts with time (${pet0.mood} → ${pet1.mood})`);
+        return H.note(`idle → ↺: lastReset ${JSON.stringify(lr)}; data-action path ${tr.join(' → ')}; data-reset ${before.reset || 0} → ${after.reset || 0}; posture ${before.posture} → ${after.posture}; /state.pet before ${JSON.stringify(pet0)} after ${JSON.stringify(pet1)}`);
+      });
+
+      await ST('跳舞中 → 点工具栏 ↺ → 平滑回到 Idle（舞蹈层淡出、音乐停止）', async () => {
+        const r = await api('POST', '/dance', { id: 'e2e-test', loop: true });
+        assert.equal(r.status, 200, JSON.stringify(r.json));
+        await waitAction('dance');
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.layers === 'dance:e2e-test:1.00', null, { timeout: 5000 });
+        const note = await resetFrom('1-dance', 'dance', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        const st = await api('GET', '/state');
+        assert.equal(st.json.dance, null, 'the dance is over');
+        return `${note}; /state.dance ${JSON.stringify(st.json.dance)}`;
+      });
+
+      await ST('吃饭中 → Ctrl/⌘+Shift+R → 回到 Idle', async () => {
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        const key = process.platform === 'darwin' ? 'Meta+Shift+KeyR' : 'Control+Shift+KeyR';
+        const note = await resetFrom('2-eat', 'eat', async () => { await page.keyboard.press(key); return key; }, `快捷键 ${key}`);
+        assert.equal((await page.evaluate(() => window.petFx.lastReset())).source, 'key', 'reset by the shortcut');
+        assert.equal(await page.evaluate(() => document.getElementById('pet-screen').classList.contains('hidden')), false, 'the window was not reloaded');
+        return note;
+      });
+
+      await ST('睡觉中 → 托盘“重置姿势” → 醒来并回到 Idle（不扣好感）', async () => {
+        const aff0 = (await api('GET', '/state')).json.pet.affection;
+        await clickAct(page, 'sleep');
+        await page.waitForFunction(() => window.petFx.state().state === 'sleep', null, { timeout: 5000 });
+        const asleep = (await api('GET', '/state')).json.pet;
+        const aff1 = asleep.affection;
+        const moodAsleep = asleep.mood;
+        const note = await resetFrom('3-sleep', 'sleep', async () => page.evaluate(() => window.pet.debugTrayClick('重置姿势')), '托盘 → 重置姿势');
+        const st = (await api('GET', '/state')).json.pet;
+        assert.equal(st.sleeping, false, 'awake');
+        assert.equal(st.affection, aff1, 'no affection lost by the reset');
+        assert.ok(st.mood > moodAsleep - 0.5, `no grumpy-wake mood (−8): ${moodAsleep} → ${st.mood}`);
+        return `${note}; /state.pet.sleeping ${st.sleeping}; affection before sleep ${aff0}, asleep ${aff1}, after reset ${st.affection}; mood asleep ${moodAsleep} → after reset ${st.mood}`;
+      });
+
+      await ST('玩耍 / 一次性反应中（点玩耍；没触发欢呼时用同层的庆祝反应）→ 本地 API POST /reset-pose → 回到 Idle', async () => {
+        let got = false;
+        for (let i = 0; i < 12 && !got; i++) {
+          await clickAct(page, 'play');
+          got = await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.action === 'play', null, { timeout: 1500 }).then(() => true, () => false);
+          if (!got) await sleep(2600); // the play cue cheers now and then (else a smile): try again
+        }
+        if (!got) { // the cheer did not come up: a celebration plays the same way (a one-shot reaction)
+          await page.evaluate(() => window.PetVRM.director.inject({ type: 'celebrate', name: 'evolve' }));
+        }
+        const state = got ? 'play' : 'celebrate'; // 玩耍 on a VRM look: a cheer now and then (else only a smile + her line) — the same reaction layer as a celebration
+        let res = null;
+        const note = await resetFrom('4-play', state, async () => { res = await api('POST', '/reset-pose'); return res; }, 'POST /reset-pose');
+        assert.equal(res.status, 200);
+        assert.equal(res.json.ok, true);
+        return note;
+      });
+
+      await ST('拖起后卡在举起状态 → ↺ → 回到 Idle', async () => {
+        await page.evaluate(() => window.petFx.lift(true));
+        const note = await resetFrom('5-lift', 'lift', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        assert.notEqual(await page.evaluate(() => window.petFx.state().state), 'lifted', 'let go');
+        return note;
+      });
+
+      await ST('重置后仍能正常交互：再跳舞、再吃饭都能播放（不卡死）', async () => {
+        const r = await api('POST', '/dance', { id: 'e2e-test' });
+        assert.equal(r.status, 200);
+        await waitAction('dance');
+        await api('POST', '/reset-pose');
+        await waitAction('idle');
+        // 喂食 is refused while she is still full (hunger < 8, pet-state.feed): since T-2831 the play step above
+        // plays on the first press, so the earlier meal may leave her full — play until she can eat again
+        for (let i = 0; i < 4 && (await api('GET', '/state')).json.pet.hunger < 8; i++) {
+          await clickAct(page, 'play');
+          await sleep(300);
+          await page.evaluate(() => window.pet.resetPose('test'));
+          await waitAction('idle');
+        }
+        const hunger = (await api('GET', '/state')).json.pet.hunger;
+        assert.ok(hunger >= 8, `hungry enough to eat (${hunger})`);
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        await waitAction('eat');
+        await page.evaluate(() => window.pet.resetPose('test'));
+        await waitAction('idle');
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        return H.note(`dance → POST /reset-pose → idle → (hunger ${hunger}) 喂食 → eat → IPC resetPose → idle; console errors: none`);
+      });
+    } finally {
+      const vpath = await page.video() ? await page.video().path().catch(() => null) : null;
+      await app.close().catch(() => {});
+      let video = null;
+      if (vpath && fs.existsSync(vpath)) { video = path.join(SHOTS, 'vrmreset.webm'); fs.copyFileSync(vpath, video); }
+      fs.writeFileSync(path.join(SHOTS, 'vrmreset-evidence.json'), JSON.stringify({ chapters, evidence, video }, null, 2));
+    }
+  }
+
+  // ------------------------------------------------------------------ vrmacts (T-2831)
+  // 吃饭 / 玩耍 / 睡觉 have a body: through the real toolbar (喂食 → a food, 玩耍, 睡觉) the figure leaves the idle
+  // pose — the food to her mouth, hops with the arms up waving, the head dropped and the body sunk — and comes back
+  // to the idle on its own (the meal / play ends, she wakes up) and on the user's stop. Run on the homemade model
+  // without a motion library (the installed app: the procedural bodies alone, docs §14 降级) and, when this
+  // machine has them, on a real 0.x model (PIXELPET_E2E_ACTS_VRM0, default ~/vrm-assets/models/模型文件/
+  // 1107988908595443287.vrm) without and with the local baked library (~/vrm-assets/baked, as
+  // PIXELPET_VRM_MOTIONS_DIR), and on a real VRM 1.0 when named (PIXELPET_E2E_ACTS_VRM). Models stay outside the
+  // repository. Shots vrm/acts-<run>-*.png, a contact sheet
+  // vrm/acts-<run>-contact.png, a video vrm/acts-<run>.webm with chapters (acts-<run>-evidence.json).
+  async function vrmActs() {
+    const home = os.homedir();
+    const pick = (env, dflt) => (process.env[env] !== undefined ? process.env[env] : dflt).split(path.delimiter).filter((f) => f && fs.existsSync(f));
+    const runs = [{ tag: 'test', label: '自制测试模型 · 无动作库（降级：纯程序化动作）', file: null, motions: null }];
+    const baked = path.join(home, 'vrm-assets', 'baked');
+    const lib = fs.existsSync(path.join(baked, 'library.json')) ? baked : null;
+    // a real VRM 1.0 only when named (the ones on this machine draw without their clothes under SwiftShader)
+    for (const f of pick('PIXELPET_E2E_ACTS_VRM', '').slice(0, 1)) runs.push({ tag: 'real', label: `真实 VRM 1.0 · ${lib ? '本机动作库' : '无动作库'}`, file: f, motions: lib });
+    for (const f of pick('PIXELPET_E2E_ACTS_VRM0', path.join(home, 'vrm-assets', 'models', '模型文件', '1107988908595443287.vrm')).slice(0, 1)) {
+      runs.push({ tag: 'real0x', label: 'VRM 0.x · 无动作库（降级：纯程序化动作，坐标镜像）', file: f, motions: null });
+      if (lib) runs.push({ tag: 'real0xlib', label: 'VRM 0.x · 本机动作库（hold.eat / sit.doze 片段 + 程序化动作）', file: f, motions: lib });
+    }
+    for (const r of runs) if (r.file) { const rel = path.relative(ROOT, r.file); assert.ok(rel.startsWith('..') || path.isAbsolute(rel), `a real model must stay outside the repository: ${r.file}`); }
+    const only = process.env.PIXELPET_E2E_ACTS_ONLY ? process.env.PIXELPET_E2E_ACTS_ONLY.split(',') : null;
+    for (const r of runs) if (!only || only.includes(r.tag)) await vrmActsRun(r);
+  }
+  async function vrmActsRun(run) {
+    const S = `vrmacts:${run.tag}`;
+    const prefix = `acts-${run.tag}`;
+    const { env } = dataDir(prefix, { ageConfirmed: true, ageConfirmedAt: Date.now(), prefs: { roam: false } });
+    if (run.motions) env.PIXELPET_VRM_MOTIONS_DIR = run.motions;
+    const model = run.file ? { file: run.file } : makeModel(ROOT, prefix);
+    const gitBefore = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
+    const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${prefix}-video-`));
+    const evidence = [];
+    const chapters = [];
+    const shots = {};
+    const t0 = Date.now();
+    const chapter = (title) => chapters.push({ t: +((Date.now() - t0) / 1000).toFixed(1), title });
+    const { app, page } = await launch(env, { video: videoDir, args: ['--autoplay-policy=no-user-gesture-required'] });
+    const errors = watchErrors(page);
+    const H = helpers(page, prefix, evidence, app);
+    const ST = (name, fn) => step(S, name, fn, page);
+    const pose = () => page.evaluate(() => window.PetVRM.director.pose());
+    const ds = H.ds;
+    const away = () => page.mouse.move(5, 5);
+    // the pose in a few numbers: each hand's distance to the head and height over the shoulder (× hip height),
+    // the arms' elevation, how far the face is turned down, the knees, how high her root is
+    const brief = (p) => ({ rToHead: p.arms.right.toHead, lToHead: p.arms.left.toHead, rUp: p.arms.right.aboveShoulder, lUp: p.arms.left.aboveShoulder, rElev: p.arms.right.elev, lElev: p.arms.left.elev, headDown: p.headDown, knee: Math.max(p.legs.left ? p.legs.left.knee : 0, p.legs.right ? p.legs.right.knee : 0), rootY: p.rootY, headY: p.headY });
+    // how far (deg) the pose is from another, bone by bone (quaternions): the largest turn and which bone
+    const qOff = (a, b) => { let m = 0; let at = null; for (const [n, q] of Object.entries(a.q)) { const r = b.q[n]; if (!r) continue; const d = (2 * Math.acos(Math.min(1, Math.abs(q[0] * r[0] + q[1] * r[1] + q[2] * r[2] + q[3] * r[3])))) * 180 / Math.PI; if (d > m) { m = d; at = n; } } return { deg: +m.toFixed(1), bone: at }; };
+    const waitAction = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(src).test(c.dataset.action || ''); }, re.source, { timeout: ms });
+    const idleNow = async () => { await away(); await waitAction(/^idle$/, 20000); await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && !c.dataset.acts && !c.dataset.reaction; }, null, { timeout: 15000 }); await sleep(600); };
+    const shot = async (name) => { const f = await H.shot(name); shots[name] = f; return f; };
+    let idle = null;
+    try {
+      chapter('启动、导入模型并切换为 VRM 角色');
+      await ST('hatching, importing the model (real import-vrm IPC) and switching to it', async () => {
+        await H.hatch();
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        await H.switchTo(imp.pack.id);
+        await H.drawing(5, 60000);
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && c.dataset.library && c.dataset.anim; }, null, { timeout: 30000 });
+        const d = await ds();
+        return H.note(`${run.label}: ${run.file ? path.basename(run.file) : 'homemade e2e model'} → pack ${imp.pack.id}; data-vrm ${d.vrm}, data-library ${d.library}, data-anim ${d.anim}, data-style ${d.style}`);
+      });
+
+      chapter('Idle：默认待机');
+      await ST('idle: the default state, nothing on her (data-action idle, no acts)', async () => {
+        await idleNow();
+        idle = await pose();
+        const d = await ds();
+        await shot('0-idle');
+        assert.equal(d.action, 'idle');
+        assert.equal(d.acts, '');
+        return H.note(`idle: data-action ${d.action}, data-acts '${d.acts}', data-layers ${d.layers}; pose ${JSON.stringify(brief(idle))}`);
+      });
+
+      chapter('吃饭：喂食 → 食物送到嘴边、咀嚼');
+      await ST('吃饭 (喂食 → a food): the food goes to her mouth (the hand within reach of the head), not only the face; then back to the idle', async () => {
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        await away();
+        await waitAction(/^eat$/, 5000);
+        // at the bite: the hand nearest the head
+        let best = null;
+        let d = null;
+        const tEnd = Date.now() + 3000;
+        while (Date.now() < tEnd) {
+          const p = await pose();
+          if (!best || p.arms.right.toHead < best.arms.right.toHead) { best = p; d = await ds(); }
+          if (p.arms.right.toHead < idle.arms.right.toHead * 0.45 && /eat:1/.test((await ds()).acts)) { best = p; d = await ds(); break; }
+          await sleep(50);
+        }
+        await shot('1-eat');
+        const b = brief(best);
+        const off = qOff(best, idle);
+        assert.match(d.acts, /eat:/, `data-acts ${d.acts}`);
+        assert.ok(b.rToHead < idle.arms.right.toHead * 0.55, `the right hand at her mouth: ${b.rToHead} vs ${idle.arms.right.toHead} idle`);
+        assert.ok(off.deg > 45, `a bone is ${off.deg}° off the idle (${off.bone})`);
+        await page.waitForFunction(() => !/^eat/.test(window.petFx.state().state), null, { timeout: 10000 });
+        await idleNow();
+        const after = await pose();
+        const back = qOff(after, idle);
+        await shot('2-eat-after');
+        assert.ok(Math.abs(after.arms.right.toHead - idle.arms.right.toHead) < 0.12, `back down: ${after.arms.right.toHead} vs ${idle.arms.right.toHead}`);
+        return H.note(`eat: data-action ${d.action}, data-hold ${d.hold}, data-acts ${d.acts}, expr ${d.expr}; pose ${JSON.stringify(b)} (idle ${JSON.stringify(brief(idle))}); max bone off the idle ${off.deg}° (${off.bone})\nafter the meal: data-action idle, data-acts '', right hand to head ${after.arms.right.toHead}; max bone off the idle ${back.deg}° (${back.bone})`);
+      });
+
+      chapter('玩耍：蹦跳、摆动、挥手');
+      await ST('玩耍: hops (root up), the arm(s) up waving above the shoulder, swaying; the one-shot ends in the idle by itself', async () => {
+        await clickAct(page, 'play');
+        await away();
+        await waitAction(/^play$/, 5000);
+        let best = null;
+        let d = null;
+        let maxRoot = -Infinity;
+        const tEnd = Date.now() + 2500;
+        while (Date.now() < tEnd) {
+          const p = await pose();
+          maxRoot = Math.max(maxRoot, p.rootY);
+          const score = p.arms.right.aboveShoulder + (p.rootY - idle.rootY) * 4;
+          if (!best || score > best.score) { best = { ...p, score }; d = await ds(); if (p.arms.right.aboveShoulder > 0.25 && p.rootY > idle.rootY + 0.005) break; }
+          await sleep(40);
+        }
+        await shot('3-play');
+        const b = brief(best);
+        const off = qOff(best, idle);
+        assert.match(d.acts, /play:/, `data-acts ${d.acts}`);
+        assert.ok(b.rUp > 0.1, `the right hand above the shoulder: ${b.rUp}`);
+        assert.ok(maxRoot > idle.rootY + 0.003, `she hops: root ${idle.rootY} → ${maxRoot}`);
+        assert.ok(off.deg > 60, `a bone is ${off.deg}° off the idle (${off.bone})`);
+        await idleNow();
+        const after = await pose();
+        await shot('4-play-after');
+        assert.ok(after.arms.right.aboveShoulder < 0, 'the arm is down again');
+        return H.note(`play: data-action ${d.action}, data-acts ${d.acts}, expr ${d.expr}; pose ${JSON.stringify(b)}; root up to ${maxRoot.toFixed(4)} (idle ${idle.rootY}); max bone off the idle ${off.deg}° (${off.bone})\nafter (by itself, ${chapters.length ? '' : ''}~3.2 s one-shot): data-action idle, data-acts '', right hand above shoulder ${after.arms.right.aboveShoulder}`);
+      });
+
+      chapter('睡觉：低头、身体下沉、呼吸放缓');
+      await ST('睡觉: the head drops, she sinks (head lower), slow breath; woken she is back in the idle', async () => {
+        await clickAct(page, 'sleep');
+        await away();
+        await waitAction(/^sleep$/, 5000);
+        await page.waitForFunction(() => /sleep:(0\.9|1)/.test(document.querySelector('#pet-look canvas.vrm').dataset.acts || ''), null, { timeout: 8000 });
+        await sleep(2500); // she slumps in (and with a library sits down on sit.doze)
+        const p = await pose();
+        const d = await ds();
+        await shot('5-sleep');
+        const b = brief(p);
+        const off = qOff(p, idle);
+        assert.ok(b.headDown > idle.headDown + 12, `the head drops: ${idle.headDown}° → ${b.headDown}° down`);
+        assert.ok(b.headY < idle.headY * 0.985, `she sinks: head ${idle.headY} → ${b.headY} (≥ 1.5% of her head height)`);
+        assert.equal(d.action, 'sleep');
+        // a slow breath: the chest over 4 s
+        const chest = [];
+        for (let i = 0; i < 16; i++) { const q = (await pose()).q.chest; chest.push(q ? q[0] : 0); await sleep(250); }
+        await page.evaluate(() => window.pet.debugSet({ sleeping: false })); // she wakes up (the app's own wake-up)
+        await idleNow();
+        const after = await pose();
+        await shot('6-sleep-after');
+        // (the head is then the idle's and follows the cursor — parked top-left, she may look up at it — so it is
+        // compared with the sleep, not with the first idle to the degree)
+        const da = await ds();
+        assert.equal(da.action, 'idle');
+        assert.equal(da.acts, '');
+        assert.ok(after.headDown < b.headDown - 15 && after.headY > b.headY, `awake the head is up again: ${after.headDown}° down, y ${after.headY} (asleep ${b.headDown}°, y ${b.headY}; idle ${idle.headDown}°)`);
+        return H.note(`sleep: data-action ${d.action}, data-posture ${d.posture}, data-acts ${d.acts}, expr ${d.expr}; pose ${JSON.stringify(b)} (idle headDown ${idle.headDown}°, headY ${idle.headY}); max bone off the idle ${off.deg}° (${off.bone}); chest quaternion x over 4 s ${chest.map((x) => x.toFixed(3)).join(' ')}\nwoken: data-action idle, data-acts '', headDown ${after.headDown}°`);
+      });
+
+      chapter('停止：玩耍 / 吃饭中途停止 → Idle');
+      await ST('stop (the user\'s stop) mid-play and mid-meal: she fades back to the idle at once, the meal may go on in the app', async () => {
+        await clickAct(page, 'play');
+        await away();
+        await waitAction(/^play$/, 5000);
+        await sleep(700);
+        const r1 = await page.evaluate(() => window.PetVRM.director.stop('user'));
+        const ta = Date.now();
+        await waitAction(/^idle$/, 3000);
+        const playBack = Date.now() - ta;
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+        await clickAct(page, 'feed');
+        await page.click('#food-menu button');
+        await away();
+        await waitAction(/^eat$/, 5000);
+        await sleep(900);
+        const r2 = await page.evaluate(() => window.PetVRM.director.stop('user'));
+        const tb = Date.now();
+        await waitAction(/^idle$/, 3000);
+        const eatBack = Date.now() - tb;
+        const st = await page.evaluate(() => window.petFx.state().state);
+        await sleep(300);
+        const d = await ds();
+        await shot('7-stopped');
+        assert.equal(d.acts, '');
+        return H.note(`stop mid-play: ${JSON.stringify(r1)} → idle in ${playBack} ms; stop mid-meal: ${JSON.stringify(r2)} → idle in ${eatBack} ms while the app still says ${st}; data-acts '${d.acts}'`);
+      });
+
+      await ST('contact sheet: idle | 吃饭 | 玩耍 | 睡觉 | after', async () => {
+        const order = ['0-idle', '1-eat', '3-play', '5-sleep', '6-sleep-after'];
+        const files = order.map((n) => path.join(SHOTS, `${prefix}-${n}.png`));
+        const out = path.join(SHOTS, `${prefix}-contact.png`);
+        const labels = ['Idle', '吃饭 eat', '玩耍 play', '睡觉 sleep', '结束→Idle'];
+        const font = ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc'].find((f) => fs.existsSync(f));
+        const draw = font ? (i) => `[${i}:v]drawtext=fontfile=${font}:text='${labels[i]}':x=10:y=10:fontsize=22:fontcolor=white:box=1:boxcolor=black@0.6[v${i}]` : (i) => `[${i}:v]null[v${i}]`;
+        const filter = `${order.map((_, i) => draw(i)).join(';')};${order.map((_, i) => `[v${i}]`).join('')}hstack=inputs=${order.length}`;
+        execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...files.flatMap((f) => ['-i', f]), '-filter_complex', filter, out]);
+        shots.contact = `vrm/${prefix}-contact.png`;
+        return H.note(`vrm/${prefix}-contact.png (${order.join(' | ')})`);
+      });
+
+      await ST('guards: no console / CSP errors, nothing written into the repository', async () => {
+        const gitAfter = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
+        assert.equal(gitAfter, gitBefore, 'nothing written into the repository');
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        assert.ok(!/Content Security Policy|Refused to/.test(app.stderrBuf), 'no CSP refusal');
+        return H.note('console errors: none; git status unchanged');
+      });
+    } finally {
+      chapter('结束');
+      const vpath = (await page.video()) ? await page.video().path().catch(() => null) : null;
+      await app.close().catch(() => {});
+      let video = null;
+      if (vpath && fs.existsSync(vpath)) { video = path.join(SHOTS, `${prefix}.webm`); fs.copyFileSync(vpath, video); }
+      fs.writeFileSync(path.join(SHOTS, `${prefix}-evidence.json`), JSON.stringify({ run: { tag: run.tag, label: run.label, model: run.file ? path.basename(run.file) : 'homemade', motions: run.motions ? 'local baked library' : 'none' }, chapters, evidence, shots, video }, null, 2));
+    }
+  }
+
+
+  // ------------------------------------------------------------------ vrmanim (T-2832)
+  // 端到端验收：前台 VRM 任意交互后处于合理、可见、可恢复的动画状态. Through the real pet window (toolbar 喂食 / 玩耍 /
+  // 睡觉 / ♪ dance menu / ↺, Ctrl/⌘+Shift+R, 托盘 → 重置姿势): the default idle (arms down, not raised), dance / eat /
+  // play / sleep each played and back to the idle when they end, an explicit stop mid-way, switching to another
+  // action mid-way, a burst of rapid triggers (no lock-up, still responsive), and 重置姿势 from every state (each
+  // action playing, a looping dance, a lift left stuck, already idle). Every step: a screenshot and a state record —
+  // data-action / layers / acts / hold, the action transitions (director.actions()) and the key bones' normalized
+  // rotations (quaternion + XYZ Euler °) with the upper-arm elevation — in vrm/anim-<run>-states.json; a video with
+  // chapters (vrm/anim-<run>.webm, anim-<run>-evidence.json). Runs on the homemade VRM 1.0 with the homemade motion
+  // library, and — when this machine has it (PIXELPET_E2E_ANIM_VRM0, default ~/vrm-assets/models/模型文件/
+  // 1107988908595443287.vrm) — on a real VRM 0.x without a library: the condition the raised arms and the frozen
+  // dance came from (T-2829). Models stay outside the repository.
+  async function vrmAnim() {
+    const home = os.homedir();
+    const runs = [{ tag: 'test', label: '自制 VRM 1.0 · 自制动作库 + 自制舞蹈', file: null, motions: true }];
+    const real0 = process.env.PIXELPET_E2E_ANIM_VRM0 !== undefined ? process.env.PIXELPET_E2E_ANIM_VRM0 : path.join(home, 'vrm-assets', 'models', '模型文件', '1107988908595443287.vrm');
+    if (real0 && fs.existsSync(real0)) runs.push({ tag: 'real0x', label: '真实 VRM 0.x · 无动作库（举手 / 跳舞定格的原触发条件）+ 自制舞蹈', file: real0, motions: false });
+    for (const r of runs) if (r.file) { const rel = path.relative(ROOT, r.file); assert.ok(rel.startsWith('..') || path.isAbsolute(rel), `a real model must stay outside the repository: ${r.file}`); }
+    const only = process.env.PIXELPET_E2E_ANIM_ONLY ? process.env.PIXELPET_E2E_ANIM_ONLY.split(',') : null;
+    for (const r of runs) if (!only || only.includes(r.tag)) await vrmAnimRun(r);
+  }
+  async function vrmAnimRun(run) {
+    const S = `vrmanim:${run.tag}`;
+    const prefix = `anim-${run.tag}`;
+    const { data, env } = dataDir(prefix, { ageConfirmed: true, ageConfirmedAt: Date.now(), prefs: { roam: false } }, { motions: run.motions });
+    env.PIXELPET_TRAY = '1';
+    const { writeTestDances } = require('../scripts/make-test-dance');
+    writeTestDances(path.join(data, 'vrm-dances'));
+    const model = run.file ? { file: run.file } : makeModel(ROOT, prefix);
+    const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${prefix}-video-`));
+    const evidence = [];
+    const chapters = [];
+    const records = [];
+    const t0 = Date.now();
+    const { app, page } = await launch(env, { video: videoDir, args: ['--autoplay-policy=no-user-gesture-required'] });
+    const errors = watchErrors(page);
+    const H = helpers(page, prefix, evidence, app);
+    const ds = H.ds;
+    const sec = () => +((Date.now() - t0) / 1000).toFixed(1);
+    const ST = (name, fn) => { chapters.push({ t: sec(), title: name }); return step(S, name, fn, page); };
+    const hover = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
+    const away = () => page.mouse.move(5, 5);
+    const action = async () => ((await ds()) || {}).action;
+    const waitAction = (re, ms = 15000) => page.waitForFunction((src) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(src).test(c.dataset.action || ''); }, re.source, { timeout: ms }).catch(async () => { throw new Error(`data-action stays ${await action()}, wanted ${re}`); });
+    // data-action every 40 ms, deduplicated, until `done` (a regexp it settles on) or `ms`
+    const trace = async (ms, done = null) => { const out = []; const s0 = Date.now(); let settled = 0; while (Date.now() - s0 < ms) { const a = await action(); if (out[out.length - 1] !== a) out.push(a); if (done && done.test(a)) { if (++settled > 6) break; } else settled = 0; await sleep(40); } return out; };
+    const idleClean = () => page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && c.dataset.action === 'idle' && !c.dataset.acts && !c.dataset.reaction && !/dance:/.test(c.dataset.layers || ''); }, null, { timeout: 20000 });
+    // quaternion [x, y, z, w] → XYZ Euler (deg)
+    const euler = ([x, y, z, w]) => {
+      const m11 = 1 - 2 * (y * y + z * z), m12 = 2 * (x * y - z * w), m13 = 2 * (x * z + y * w);
+      const m22 = 1 - 2 * (x * x + z * z), m23 = 2 * (y * z - x * w), m32 = 2 * (y * z + x * w), m33 = 1 - 2 * (x * x + y * y);
+      const D = 180 / Math.PI;
+      const ey = Math.asin(Math.max(-1, Math.min(1, m13)));
+      const ex = Math.abs(m13) < 0.9999999 ? Math.atan2(-m23, m33) : Math.atan2(m32, m22);
+      const ez = Math.abs(m13) < 0.9999999 ? Math.atan2(-m12, m11) : 0;
+      return [+(ex * D).toFixed(1), +(ey * D).toFixed(1), +(ez * D).toFixed(1)];
+    };
+    const KEY_BONES = ['hips', 'spine', 'chest', 'head', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm'];
+    let nShot = 0;
+    // one evidence point: screenshot + the state machine + the key bones, straight from the running renderer
+    const record = async (name, what) => {
+      const st = await page.evaluate(() => {
+        const c = document.querySelector('#pet-look canvas.vrm');
+        const d = c ? { ...c.dataset } : {};
+        return { ds: { action: d.action, layers: d.layers, acts: d.acts || '', hold: d.hold || '', reaction: d.reaction || '', posture: d.posture, expr: d.expr, danceState: d.danceState, library: d.library, reset: d.reset || '0' }, pose: window.PetVRM.director.pose(), transitions: window.PetVRM.director.actions().slice(-6), fx: window.petFx.state() };
+      });
+      const file = await H.shot(`${String(++nShot).padStart(2, '0')}-${name}`);
+      const p = st.pose;
+      const bones = {};
+      for (const b of KEY_BONES) if (p.q[b]) bones[b] = { quat: p.q[b], eulerXYZdeg: euler(p.q[b]) };
+      const rec = { step: name, what, t: sec(), shot: file, state: st.ds.action, ...st.ds, fxState: st.fx.state, transitions: st.transitions, arms: { leftElevDeg: p.arms.left.elev, rightElevDeg: p.arms.right.elev, leftHandToHead: p.arms.left.toHead, rightHandToHead: p.arms.right.toHead, leftAboveShoulder: p.arms.left.aboveShoulder, rightAboveShoulder: p.arms.right.aboveShoulder }, headDownDeg: p.headDown, rootY: p.rootY, bones };
+      records.push(rec);
+      fs.writeFileSync(path.join(SHOTS, `${prefix}-states.json`), JSON.stringify({ run: run.label, records }, null, 2));
+      return rec;
+    };
+    const line = (r) => `[${r.step}] state=${r.state} layers=${r.layers} acts='${r.acts}' hold='${r.hold}' arms elev L/R ${r.arms.leftElevDeg}°/${r.arms.rightElevDeg}° rUpperArm euler ${JSON.stringify(r.bones.rightUpperArm && r.bones.rightUpperArm.eulerXYZdeg)} headDown ${r.headDownDeg}° shot ${r.shot}`;
+    // the idle the scenario asks for: arms down (below −30°: the bug held them ~72° above the T-pose), nothing left on
+    const assertIdle = (r, label) => {
+      assert.equal(r.state, 'idle', `${label}: data-action ${r.state}`);
+      assert.equal(r.acts, '', `${label}: acts ${r.acts}`);
+      assert.ok(!/dance:/.test(r.layers || ''), `${label}: layers ${r.layers}`);
+      assert.ok(r.arms.leftElevDeg < -30 && r.arms.rightElevDeg < -30, `${label}: arms not down (L ${r.arms.leftElevDeg}°, R ${r.arms.rightElevDeg}°)`);
+    };
+    const toIdle = async () => { await away(); await idleClean(); await sleep(700); };
+    // each step starts from a calm idle: wait for it, else (an earlier step failed) the app's own reset
+    const settle = async () => { try { await toIdle(); } catch { await page.evaluate(() => window.pet.resetPose('test')); await toIdle(); } };
+    const startDance = async ({ loop = false } = {}) => {
+      await hover();
+      await page.click('#btn-dance');
+      await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
+      await page.click('#dance-menu .dance-row[data-dance="e2e-test"]');
+      await waitAction(/^dance$/, 10000);
+      if (loop) {
+        await hover();
+        await page.click('#btn-dance');
+        await page.waitForSelector('#dance-menu:not(.hidden) .dance-loop');
+        await page.click('#dance-menu .dance-loop');
+        await page.keyboard.press('Escape');
+      }
+      await away();
+    };
+    const feed = async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); await away(); };
+    // 玩耍 costs 10 energy and the app refuses it under 15 (pet-state play: 'tired', her 好累 line): topped up first,
+    // so a refusal there is never mistaken for a stuck figure
+    const play = async () => { await page.evaluate(() => window.pet.debugSet({ energy: 100 })); await clickAct(page, 'play'); await away(); };
+    const toSleep = async () => { await clickAct(page, 'sleep'); await away(); };
+    const resetKey = process.platform === 'darwin' ? 'Meta+Shift+KeyR' : 'Control+Shift+KeyR';
+    try {
+      await ST('启动：孵化、导入 VRM（真实 import-vrm IPC）并切换为该角色', async () => {
+        await H.hatch();
+        await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
+        const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
+        assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
+        await page.evaluate((x) => window.pet.switchCharacter(x), imp.pack.id); // the same IPC the console's 切换 calls
+        await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), imp.pack.id, { timeout: 15000 });
+        await H.drawing(5, 60000);
+        await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && c.dataset.library && c.dataset.action; }, null, { timeout: 30000 });
+        await page.bringToFront().catch(() => {});
+        const d = await ds();
+        return H.note(`${run.label}: ${run.file ? path.basename(run.file) : 'homemade e2e model'} → ${imp.pack.id}; data-vrm ${d.vrm}, data-library ${d.library}`);
+      });
+
+      await ST('(1) 启动默认 Idle：data-action=idle，双臂放下（非举手），3 秒内持续如此', async () => {
+        await toIdle();
+        const samples = [];
+        for (let i = 0; i < 6; i++) { const p = await page.evaluate(() => window.PetVRM.director.pose()); samples.push([p.arms.left.elev, p.arms.right.elev]); await sleep(500); }
+        const r = await record('idle-default', '启动后默认状态');
+        assertIdle(r, 'default');
+        assert.ok(samples.every(([l, rr]) => l < -30 && rr < -30), `arms over 3 s: ${JSON.stringify(samples)}`);
+        return H.note(`${line(r)}; arm elevation samples over 3 s (L,R °) ${JSON.stringify(samples)}`);
+      });
+
+      await ST('(2) 跳舞：舞蹈菜单点《自制小舞》→ 播放中 → 6 秒舞蹈结束后自动淡回 Idle', async () => {
+        await settle();
+        await startDance();
+        await sleep(1100); // t ≈ 1 s: the dance holds the right arm level
+        const a = await record('dance-playing', '跳舞播放中');
+        assert.equal(a.state, 'dance');
+        assert.match(a.layers, /dance:e2e-test/);
+        const path1 = await trace(14000, /^idle$/);
+        await toIdle();
+        const b = await record('dance-ended', '舞蹈自然结束后');
+        assertIdle(b, 'dance ended');
+        assert.equal(path1[path1.length - 1], 'idle', path1.join(' → '));
+        return H.note(`${line(a)}\npath ${path1.join(' → ')}\n${line(b)}; transitions ${JSON.stringify(b.transitions.slice(-3))}`);
+      });
+
+      await ST('(2)(4) 吃饭：喂食 → 食物送到嘴边（肢体动作）→ 吃完自动回 Idle', async () => {
+        await settle();
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+        await feed();
+        await waitAction(/^eat$/, 5000);
+        await page.waitForFunction(() => /eat:1/.test(document.querySelector('#pet-look canvas.vrm').dataset.acts || ''), null, { timeout: 3000 }).catch(() => {});
+        await sleep(300);
+        const a = await record('eat-playing', '吃饭播放中');
+        assert.equal(a.state, 'eat');
+        assert.match(a.acts, /eat:/);
+        const path1 = await trace(15000, /^idle$/);
+        await toIdle();
+        const b = await record('eat-ended', '吃完后');
+        assertIdle(b, 'eat ended');
+        return H.note(`${line(a)}; right hand→head ${a.arms.rightHandToHead}\npath ${path1.join(' → ')}\n${line(b)}; right hand→head ${b.arms.rightHandToHead}`);
+      });
+
+      await ST('(2)(4) 玩耍：点玩耍 → 蹦跳挥手（肢体动作）→ 一次性动作结束自动回 Idle', async () => {
+        await settle();
+        await play();
+        await waitAction(/^play$/, 5000);
+        let a = null;
+        for (let i = 0; i < 12; i++) { await sleep(120); const p = await page.evaluate(() => window.PetVRM.director.pose()); if (p.arms.right.aboveShoulder > 0.1 || p.arms.left.aboveShoulder > 0.1) break; }
+        a = await record('play-playing', '玩耍播放中');
+        assert.equal(a.state, 'play');
+        assert.match(a.acts, /play:/);
+        const path1 = await trace(12000, /^idle$/);
+        await toIdle();
+        const b = await record('play-ended', '玩耍结束后');
+        assertIdle(b, 'play ended');
+        return H.note(`${line(a)}; hand above shoulder L/R ${a.arms.leftAboveShoulder}/${a.arms.rightAboveShoulder}\npath ${path1.join(' → ')}\n${line(b)}`);
+      });
+
+      await ST('(2)(4) 睡觉：点睡觉 → 低头下沉（肢体动作）→ 醒来（应用自身的醒来）后回 Idle', async () => {
+        await settle();
+        await toSleep();
+        await waitAction(/^sleep$/, 5000);
+        await sleep(2500);
+        const a = await record('sleep-playing', '睡觉中');
+        assert.equal(a.state, 'sleep');
+        assert.match(a.acts, /sleep:/);
+        await page.evaluate(() => window.pet.debugSet({ sleeping: false }));
+        const path1 = await trace(12000, /^idle$/);
+        await toIdle();
+        const b = await record('sleep-ended', '醒来后');
+        assertIdle(b, 'sleep ended');
+        assert.ok(b.headDownDeg < a.headDownDeg - 10, `head up again: ${a.headDownDeg}° → ${b.headDownDeg}°`);
+        return H.note(`${line(a)}\npath ${path1.join(' → ')}\n${line(b)}`);
+      });
+
+      await ST('(2) 显式停止：跳舞中点舞蹈菜单「停止」→ 淡回 Idle（不定格在当前帧）', async () => {
+        await settle();
+        await startDance({ loop: true });
+        await sleep(1000);
+        const a = await record('stop-dance-before', '跳舞中（循环）、停止前');
+        assert.equal(a.state, 'dance');
+        await hover();
+        await page.click('#btn-dance');
+        await page.waitForSelector('#dance-menu:not(.hidden) .dance-stop');
+        await page.click('#dance-menu .dance-stop');
+        await away();
+        const path1 = await trace(5000, /^idle$/);
+        await toIdle();
+        const b = await record('stop-dance-after', '点「停止」后');
+        assertIdle(b, 'dance stopped');
+        assert.ok(path1.includes('returning') || path1[0] === 'idle', path1.join(' → '));
+        return H.note(`${line(a)}\nmenu 停止 → path ${path1.join(' → ')}\n${line(b)}`);
+      });
+
+      await ST('(2) 显式停止：玩耍中 / 吃饭中调用动作停止（figure.stopAction，T-2829）→ 立即淡回 Idle', async () => {
+        await settle();
+        await play();
+        await waitAction(/^play$/, 5000);
+        await sleep(600);
+        const a = await record('stop-play-before', '玩耍中、停止前');
+        await page.evaluate(() => window.PetVRM.director.stop('user'));
+        const p1 = await trace(3000, /^idle$/);
+        await toIdle();
+        const b = await record('stop-play-after', '玩耍被停止后');
+        assertIdle(b, 'play stopped');
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+        await feed();
+        await waitAction(/^eat$/, 5000);
+        await sleep(500);
+        const c = await record('stop-eat-before', '吃饭中、停止前');
+        await page.evaluate(() => window.PetVRM.director.stop('user'));
+        const p2 = await trace(3000, /^idle$/);
+        await sleep(500);
+        const d = await record('stop-eat-after', '吃饭被停止后（应用里的这顿饭仍在继续，前台显示为 Idle）');
+        assertIdle(d, 'eat stopped');
+        return H.note(`${line(a)}\nstop → ${p1.join(' → ')}\n${line(b)}\n${line(c)}\nstop → ${p2.join(' → ')}\n${line(d)}`);
+      });
+
+      await ST('(5) 播放中切换：跳舞中点玩耍 → 舞蹈让位、改为玩耍 → 结束回 Idle', async () => {
+        await settle();
+        await startDance();
+        await sleep(1000);
+        const a = await record('switch-dance', '跳舞中、切换前');
+        await play();
+        await waitAction(/^play$/, 5000);
+        await sleep(400);
+        const b = await record('switch-dance-to-play', '切到玩耍');
+        assert.equal(b.state, 'play');
+        assert.match(b.acts, /play:/);
+        const p = await trace(12000, /^idle$/);
+        await toIdle();
+        const c = await record('switch-dance-to-play-ended', '玩耍结束后');
+        assertIdle(c, 'after switch');
+        return H.note(`${line(a)}\n${line(b)}\npath ${p.join(' → ')}\n${line(c)}`);
+      });
+
+      await ST('(5) 播放中切换：玩耍中喂食 → 改为吃饭；吃饭中点跳舞 → 改为跳舞；最后都回 Idle', async () => {
+        await settle();
+        await play();
+        await waitAction(/^play$/, 5000);
+        await sleep(500);
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
+        await feed();
+        await waitAction(/^eat$/, 5000);
+        await sleep(500);
+        const a = await record('switch-play-to-eat', '玩耍中喂食 → 吃饭');
+        assert.equal(a.state, 'eat');
+        await startDance();
+        await sleep(800);
+        const b = await record('switch-eat-to-dance', '吃饭中点跳舞 → 跳舞');
+        assert.equal(b.state, 'dance');
+        const p = await trace(15000, /^idle$/);
+        await toIdle();
+        const c = await record('switch-chain-ended', '切换链结束后');
+        assertIdle(c, 'after chain');
+        return H.note(`${line(a)}\n${line(b)}\npath ${p.join(' → ')}\n${line(c)}`);
+      });
+
+      await ST('(5) 快速连续触发：约 3 秒内交替点 玩耍 / 喂食 / 跳舞 / 睡觉 共 16 次 → 不卡死，最终回到 Idle，之后仍能正常响应', async () => {
+        await settle();
+        await page.evaluate(() => window.pet.debugSet({ hunger: 60, energy: 100 }));
+        const seq = [];
+        const seen = new Set();
+        const s0 = Date.now();
+        for (let i = 0; i < 16; i++) {
+          const k = ['play', 'feed', 'dance', 'play', 'feed', 'sleep', 'play', 'dance'][i % 8];
+          try {
+            if (k === 'feed') { await clickAct(page, 'feed'); await page.click('#food-menu button', { timeout: 1000 }); }
+            else if (k === 'dance') { await hover(); await page.click('#btn-dance'); await page.click('#dance-menu .dance-row[data-dance="e2e-test"]', { timeout: 1500 }); }
+            else await clickAct(page, k);
+            seq.push(k);
+          } catch (e) { seq.push(`${k}(miss)`); await page.keyboard.press('Escape').catch(() => {}); }
+          seen.add(await action());
+          await sleep(60);
+        }
+        const burstMs = Date.now() - s0;
+        const petAfter = (await page.evaluate(async () => (await window.pet.boot()).view.pet));
+        await away();
+        const mid = await record('burst-end', '连点刚结束');
+        await page.evaluate(() => window.pet.debugSet({ sleeping: false })); // 睡觉 was among the clicks: she wakes the app's way
+        const p = await trace(20000, /^idle$/);
+        await toIdle();
+        const a = await record('burst-settled', '连点后自行稳定');
+        assertIdle(a, 'after burst');
+        await play();
+        await waitAction(/^play$/, 5000);
+        await sleep(400);
+        const b = await record('burst-responsive', '连点后再点玩耍：仍正常播放');
+        assert.equal(b.state, 'play');
+        await toIdle();
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        return H.note(`burst ${seq.join(',')} in ${burstMs} ms (energy after the burst ${petAfter.energy}, hunger ${petAfter.hunger}: 玩耍 under 15 energy is refused by the app, so it is topped up before the next 玩耍); states seen during ${[...seen].join(', ')}\n${line(mid)}\nthen ${p.join(' → ')}\n${line(a)}\n${line(b)}`);
+      });
+
+      const resetFrom = async (name, what, start, wantRe, doReset, how) => {
+        await settle();
+        await start();
+        await waitAction(wantRe, 8000);
+        await sleep(900);
+        const a = await record(`reset-${name}-before`, `${what}、重置前`);
+        const n0 = Number(a.reset || 0);
+        await doReset();
+        await away();
+        const p = await trace(6000, /^idle$/);
+        await toIdle();
+        const b = await record(`reset-${name}-after`, `${how} 重置后`);
+        assertIdle(b, `reset ${name}`);
+        assert.equal(Number(b.reset), n0 + 1, `one reset counted (data-reset ${b.reset})`);
+        const lr = await page.evaluate(() => window.petFx.lastReset());
+        return `${line(a)}\n${how} → ${p.join(' → ')}; lastReset ${JSON.stringify({ source: lr.source, before: lr.before, cleared: lr.cleared })}\n${line(b)}`;
+      };
+      const clickReset = async () => { await hover(); await page.click('#btn-reset'); };
+
+      await ST('(3) 重置：循环跳舞中（不会自己结束）→ 工具栏 ↺', async () => H.note(await resetFrom('dance-loop', '循环跳舞中', () => startDance({ loop: true }), /^dance$/, clickReset, '工具栏 ↺')));
+      await ST('(3) 重置：吃饭中 → Ctrl/⌘+Shift+R', async () => H.note(await resetFrom('eat', '吃饭中', async () => { await page.evaluate(() => window.pet.debugSet({ hunger: 60 })); await feed(); }, /^eat$/, () => page.keyboard.press(resetKey), `快捷键 ${resetKey}`)));
+      await ST('(3) 重置：玩耍中 → 工具栏 ↺', async () => H.note(await resetFrom('play', '玩耍中', play, /^play$/, clickReset, '工具栏 ↺')));
+      await ST('(3) 重置：睡觉中 → 托盘「重置姿势」（醒来回 Idle）', async () => H.note(await resetFrom('sleep', '睡觉中', toSleep, /^sleep$/, () => page.evaluate(() => window.pet.debugTrayClick('重置姿势')), '托盘 → 重置姿势')));
+      await ST('(3) 重置：拖起后卡在举起状态（定格）→ 工具栏 ↺', async () => H.note(await resetFrom('lift-stuck', '拖起后卡住', () => page.evaluate(() => window.petFx.lift(true)), /^lift$/, clickReset, '工具栏 ↺')));
+
+      await ST('(3) 重置：已在 Idle 时点 ↺ 不产生任何变化（no-op）', async () => {
+        await settle();
+        const a = await record('reset-idle-before', '已在 Idle、重置前');
+        await clickReset();
+        await away();
+        const p = await trace(1500);
+        const b = await record('reset-idle-after', '已在 Idle、点 ↺ 后');
+        assertIdle(b, 'noop');
+        assert.deepEqual(p, ['idle']);
+        assert.equal(b.reset, a.reset, 'no reset counted');
+        const real = realErrors(errors);
+        assert.deepEqual(real, [], real.join('\n'));
+        return H.note(`${line(a)}\n↺ → ${p.join(' → ')}; data-reset ${a.reset} → ${b.reset}\n${line(b)}; console errors: none`);
+      });
+    } finally {
+      const vpath = page.video() ? await page.video().path().catch(() => null) : null;
+      await app.close().catch(() => {});
+      let video = null;
+      if (vpath && fs.existsSync(vpath)) { video = `vrm/${prefix}.webm`; fs.copyFileSync(vpath, path.join(SHOTS, `${prefix}.webm`)); }
+      fs.writeFileSync(path.join(SHOTS, `${prefix}-states.json`), JSON.stringify({ run: run.label, records }, null, 2));
+      fs.writeFileSync(path.join(SHOTS, `${prefix}-evidence.json`), JSON.stringify({ run: run.label, chapters, evidence, video, errors: realErrors(errors) }, null, 2));
+    }
+  }
+
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim };
 };
 // the homemade test model, for scenarios outside this file (e2e/quit-button.js)
 module.exports.makeModel = makeModel;

@@ -26,6 +26,15 @@ python3 scripts/art/rig_build.py art/rig/dafeiyu-v2.json art/rig/dafeiyu-v2 cata
 
 得到 11 个身体图层（后发、尾巴、左右腿、身体、左右手臂、头、左右鳍、呆毛）和 10 个表情贴片，由 `src/renderer/rig.js` 实时弯折。
 
+## 头像（T-2839）
+
+聊天页的角色栏、气泡和设置窗口左上角用的是头像，不是全身图。每位的头像是默认包里的 `avatar.webp`（256×256），由 `scripts/art/make_avatars.py` 从 daily 图集的第一帧待机图裁出：以头顶为上沿、按头部所在区域的水平重心居中，取 220×220 的方框（头、发饰和一点肩膀），垫在她主题色 18% 的浅色底上再缩到 256。角色文件里的 `art.avatar` 指向它（`species.js` 校验文件存在）。重画 daily 后重新生成：
+
+```bash
+python3 scripts/art/make_avatars.py              # 全部五位；--char <id> 只做一位
+node --test test/user-avatar.test.js             # 每位都有头像、是 WebP
+```
+
 ## 像素包格式
 
 schema 2（见 `docs/pet-packs.md`）：RGBA WebP，单帧 664×904（全彩、软边，`pixelated: false`，应用里平滑绘制），一张 4 列 × 9 行（2656×8136），前 8 行是 16 个动作各 2 帧，动作名就是共享效果层的状态名（大肥鱼视频的 15 个状态 + `lifted`）；第 9 行是 `walk` 的 4 帧**侧身**步行循环（朝右走：左脚迈出、交叉、右脚迈出、交叉，5fps）。她在屏幕上是左右走的，所以走路画成侧面，朝左走时应用把它镜像；源图在 [`walk/`](walk/)（`model_chan_prompts.py --walk` 生成、抠好放进 332×452 格子的 4×2 宫格，两行是同一个循环画了两遍），`add_walk_frames.py --from` 取其中一行放进图集：每帧脚踩格子底边，头和上身居中，走起来身子平稳、只有腿、头发和裙子在动。5fps 时一步约 0.4 秒，在 100% 大小下约 44 px，和窗口的移动速度（`fx.js` `WALK.speed` 110 px/s）对上，脚不打滑。旧版像素包（`*-classic`，83×113）是另一套画（大肥鱼还是 Q 版），没有侧面图，仍用 `add_walk_frames.py` 从待机帧做的原地踏步。

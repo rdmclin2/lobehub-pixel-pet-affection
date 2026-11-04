@@ -416,6 +416,12 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 /* with ♪ the row holds 4 interactions + 4 icon buttons: narrower buttons keep it on one line (4×38 + 4×24 + 7×2 = 262px) */
 .toolbar:has(#btn-dance:not(.hidden)) .btn:not(.icon-btn) { padding: 0 6px; }
 .toolbar:has(#btn-dance:not(.hidden)) .btn.icon-btn { min-width: 24px; }
+/* 重置姿势 ↺ (T-2830, a VRM look only) adds a fourth icon button: the interactions take the small padding so the row
+   still fits on one line (4×34 + 4×24 + 7×2 = 246px) */
+.toolbar:has(#btn-reset:not(.hidden)) .btn:not(.icon-btn) { padding: 0 var(--pet-space-xs); }
+/* with ⏻ 退出 (T-2827) that is 5 icon buttons: they go to 20px (the 14px glyph keeps 3px a side) so the row stays one line
+   (4×34 + 5×22 incl. border + 8×2 = 262px) */
+.toolbar:has(#btn-reset:not(.hidden)) .btn.icon-btn { min-width: 20px; padding: 0 3px; }
 #btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); border-color: var(--lobe-color-primary); background: var(--lobe-color-fill-secondary); }
 #btn-dance.loading .ico { animation: dance-spin 1s linear infinite; }
 @keyframes dance-spin { to { transform: rotate(360deg); } }

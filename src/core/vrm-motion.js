@@ -34,6 +34,15 @@
   // she never stands in a T-pose. Left arm points +X: rolling it −z lowers it; right arm the other way.
   const ARM_DOWN = 72;
   const REST_POSE = { leftUpperArm: { x: 0, y: 0, z: -ARM_DOWN }, rightUpperArm: { x: 0, y: 0, z: ARM_DOWN }, leftLowerArm: { x: 0, y: -8, z: 0 }, rightLowerArm: { x: 0, y: 8, z: 0 } };
+  // The rest pose for a model (T-2829): REST_POSE is written in VRM 1.0 / VRMA terms (she faces +Z, her left
+  // arm points +X). A 0.x model's normalized bones face −Z (three-vrm's rotateVRM0 turns the whole scene), so
+  // her left arm points −X there and the same z = −72° raised both arms ~72° above the T-pose — the "hands up"
+  // every 0.x model held without a motion library. A half turn about Y mirrors x and z and keeps y (the same
+  // convention as the renderer's alive layer, T-2691). → { bone: { x, y, z } } deg.
+  function restPoseFor(metaVersion) {
+    const v0 = String(metaVersion) === '0' ? -1 : 1;
+    return Object.fromEntries(Object.entries(REST_POSE).map(([b, r]) => [b, { x: r.x * v0 || 0, y: r.y, z: r.z * v0 || 0 }]));
+  }
 
   // ---------- face: preset names → the model's names ----------
   // A preset the model lacks is tried as these, in order; none left → dropped (nothing breaks).
@@ -211,7 +220,7 @@
   }
 
   return {
-    overClip, PRESETS, EMOTIONS, VISEMES, FACE_FALLBACK, RESTING, isResting, ARM_DOWN, REST_POSE, expressionFor, resolveFace,
+    overClip, PRESETS, EMOTIONS, VISEMES, FACE_FALLBACK, RESTING, isResting, ARM_DOWN, REST_POSE, restPoseFor, expressionFor, resolveFace,
     BLINK_MS, nextBlinkIn, blinkWeight, screenToClient, gazeNdc, chewMouth,
     zeroVisemes, band, visemesFromSpectrum, syntheticVisemes, smoothVisemes, BUDGET, frameMode, shouldRender, FpsMeter,
   };

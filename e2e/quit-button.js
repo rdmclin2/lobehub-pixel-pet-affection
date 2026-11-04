@@ -71,7 +71,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         return JSON.stringify(c);
       }, page);
 
-      await step(S, 'Q3 VRM 外观（多一个 ♪ 跳舞）：8 个按钮仍在一行，⏻ 仍紧挨 ⚙ 右边', async () => {
+      await step(S, 'Q3 VRM 外观（多 ♪ 跳舞、↺ 重置姿势）：9 个按钮仍在一行，⏻ 仍紧挨 ⚙ 右边', async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('claude'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
@@ -82,7 +82,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         await hover();
         await page.waitForFunction(() => !document.getElementById('btn-dance').classList.contains('hidden'), null, { timeout: 5000 });
         const g = await geom();
-        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'dance', 'mute', 'settings', 'quit']);
+        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings', 'quit']);
         await shot('q3-vrm-pet');
         await barShot('q3-vrm-toolbar');
         return `window ${g.win}px, toolbar ${g.toolbar.w}×${g.toolbar.h}; ⚙ x${g.settings.x}–${g.settings.r}, ⏻ x${g.quit.x}–${g.quit.r}`;

@@ -332,7 +332,7 @@ class LhClient {
     if (r.code !== 0) return null;
     try {
       const u = JSON.parse(r.stdout);
-      return { name: u.fullName || u.username || u.email || 'unknown', username: u.username, email: u.email };
+      return { name: u.fullName || u.username || u.email || 'unknown', username: u.username, email: u.email, avatar: u.avatar || null };
     } catch {
       return null;
     }

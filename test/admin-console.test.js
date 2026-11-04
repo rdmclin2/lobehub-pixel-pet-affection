@@ -533,7 +533,7 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
   // the toolbar: the four interactions, 🔈 and ⚙
   const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'mute', 'settings', 'quit']); // ♪ 跳舞 (VRM only, T-2801) and 🔈 静音 (T-2733) sit left of ⚙, ⏻ 退出 (T-2827) right of it
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings', 'quit']); // ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) and 🔈 静音 (T-2733) sit left of ⚙, ⏻ 退出 (T-2827) right of it
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
