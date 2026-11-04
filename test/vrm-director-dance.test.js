@@ -4,7 +4,7 @@
 // it asks for the music and clock, and handles the interruptions of §3.4 — lifted (pause + hold.lift, back
 // 0.6 s after being put down, stop after 10 s), touched (a face, no reaction), talking (keeps dancing, music
 // ducked), the microphone, fed (stop), celebrations and cues (dropped) — then fades back to the idle over
-// 0.8 s. The app side is a small stand-in for renderer/vrm-dance.js that obeys plan.dance.request.
+// 0.5 s (T-2829). The app side is a small stand-in for renderer/vrm-dance.js that obeys plan.dance.request.
 // The renderer's clip layer on the real three mixer (external clock, loop seam, back to the idle) is at the end.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -189,7 +189,7 @@ test('fed while dancing: the dance stops first', () => {
   assert.deepEqual(A.stops, ['director']);
 });
 
-test('the end: out (the base fades back to the idle over 0.8 s) → off; the idle schedule takes over again', () => {
+test('the end: out (the base fades back to the idle over DANCE.fadeOut (0.5 s)) → off; the idle schedule takes over again', () => {
   const d = make();
   const A = app(d, { duration: 2 });
   A.play('test');

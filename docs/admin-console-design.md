@@ -651,7 +651,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 
-### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：24 项
+### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：25 项
 
 桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
 
@@ -676,13 +676,14 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
 | `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
+| `tray:重置姿势` | 不需要：互动操作，不是设置：桌宠工具栏 ↺、Ctrl+⌘+Shift+R、本地 API 同一功能（T-2830） |
 | `tray:检查更新` | 版本与更新 → 检查更新 |
 | `tray:退出` | 不需要：退出程序 |
 | `app:关于 Pixel Pet` | 不需要：系统「关于」面板；版本也在 版本与更新 |
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：103 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：106 个
 
 - 设置窗口有同一通道（46）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
@@ -697,11 +698,12 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（46）：
+- 不是配置，只在桌宠窗口（49）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
   - `act`：互动：喂食 / 玩耍 / 睡觉
+  - `reset-pose`：互动：重置姿势（桌宠工具栏 ↺ / Ctrl+⌘+Shift+R / 托盘 / 本地 API POST /pixel-pet/reset-pose 同一条路径，T-2830）；是一次性操作，不是设置
   - `touch`：互动：摸摸（部位触摸）
   - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
   - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
@@ -729,6 +731,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `api-reply`：对外接口请求的回执
   - `quit`：退出程序（托盘 / 应用菜单）
   - `debug-set`：测试钩子（只在 PIXELPET_TEST=1）
+  - `debug-expire-models`：测试钩子（测速脚本 e2e/chat-latency.js 让模型目录缓存过期）
   - `debug-import-pack`：测试钩子
   - `debug-next-open`：测试钩子
   - `debug-next-save`：测试钩子
@@ -736,6 +739,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `debug-admin`：测试钩子
   - `debug-tray`：测试钩子
   - `debug-tray-click`：测试钩子
+  - `debug-tray-popup`：测试钩子（把真实托盘菜单弹出在桌宠窗口上，便于截图）
   - `debug-heartbeat`：测试钩子
   - `debug-interject-flush`：测试钩子（插个嘴：立即判断）
   - `debug-interject-reset-cooldown`：测试钩子（插个嘴：清掉冷却）

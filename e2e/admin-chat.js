@@ -86,8 +86,12 @@ module.exports = function adminChatAcceptance(ctx) {
 
       await step(S, 'L1 聊天页打开小克的对话；模型选择器列出真实账号里她所属厂商的模型，选定一个', async () => {
         await until(() => !!document.querySelector('[data-chat-page] [data-chat-textarea]') && /小克/.test(document.querySelector('[data-chat-title]')?.innerText || ''), null, 30000, 'her chat');
-        await until(() => window.petAdmin.state().then((s) => !!s.roster.find((c) => c.id === 'claude')?.model?.loaded), null, 60000, 'model list');
-        const m = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => c.id === 'claude').model;
+        await until(() => window.petAdmin.state().then((s) => !!s.roster.find((c) => (c.base || c.id) === 'claude' && c.model)?.model?.loaded), null, 60000, 'model list').catch(async (e) => {
+          // say why: the model view's own error (an lh call that failed) instead of a bare timeout
+          const mv = await admin.evaluate(() => window.petAdmin.state().then((s) => s.roster.find((c) => (c.base || c.id) === 'claude' && c.model)?.model || null)).catch(() => null);
+          throw new Error(`${e.message}; model view: ${JSON.stringify(mv && { loaded: mv.loaded, error: mv.error, options: mv.options && mv.options.length })}`);
+        });
+        const m = (await admin.evaluate(() => window.petAdmin.state())).roster.find((c) => (c.base || c.id) === 'claude' && c.model).model;
         assert.ok(m.options.length > 0, 'no Claude model on the real account');
         picked = m.options.find((o) => o.id === 'claude-haiku-5-5') || m.options.find((o) => o.vision) || m.options[0];
         await admin.click('[data-model-select]');
@@ -96,7 +100,7 @@ module.exports = function adminChatAcceptance(ctx) {
         await shot('L1-real-model-picker');
         if (picked.key !== m.current) {
           await admin.click(`[role="option"] [data-model-option="${picked.key}"]`);
-          await until((k) => window.petAdmin.state().then((s) => s.roster.find((c) => c.id === 'claude').model.current === k), picked.key, 10000, 'picked');
+          await until((k) => window.petAdmin.state().then((s) => s.roster.find((c) => (c.base || c.id) === 'claude' && c.model).model.current === k), picked.key, 10000, 'picked');
         } else await admin.click('[data-model-select]');
         const label = (await admin.$eval('[data-model-select]', (el) => el.innerText.trim())).replace(/\s+/g, ' ');
         assert.ok(label.includes(picked.label), label);

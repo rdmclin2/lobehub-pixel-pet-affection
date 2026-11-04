@@ -23,8 +23,16 @@
 // music, so it never drifts from it whatever the frame rate. A jump back (the dance looping) is not a snap:
 // the frame it left keeps showing on a second action of the same clip (three keys clipAction by clip + root,
 // so a clone of the clip) and fades into the new time over LOOP_BLEND s, the weights still summing to 1.
+//
+// The rest clip (T-2829): REST_ID is a clip made here from the rest pose (arms down, renderer/vrm.js) that keys
+// every kept bone. It is the base whenever the director asks for none (no idle clip: no motion library, or a
+// slot it lacks) — so the base can always cross-fade *back* from a dance or a posture. Before it, a base
+// asked to be "nothing" was skipped and the last clip (a dance on its frozen external clock) stayed on at
+// weight 1 for good: the dance froze on its last frame and every later touch, meal or sleep only changed her
+// face. A base clip now always leaves through a cross-fade to the next base, the rest clip included.
 (function () {
   const LOOP_BLEND = 0.5;
+  const REST_ID = 'rest.pose';
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
   // how much of an overlay each bone takes, per mask (soft at the waist so an upper-body clip bends in)
@@ -103,6 +111,25 @@
       clips.set(id, { clip, fingers: !!(finger && names.has(finger.name)) });
     }
 
+    // The rest clip from a pose: { bone: [x, y, z, w] } (normalized bones; a bone not named is identity). Two
+    // equal keys a second apart (a constant clip, looped); the hips stay where they are now (the rest pose).
+    function setRest(pose) {
+      const tracks = [];
+      for (const name of keep) {
+        const n = nodeOf(name);
+        if (!n) continue;
+        const q = (pose && pose[name]) || [0, 0, 0, 1];
+        tracks.push(new T.QuaternionKeyframeTrack(`${n.name}.quaternion`, [0, 1], [...q, ...q]));
+      }
+      if (hipsNode) { const p = hipsNode.position.toArray(); tracks.push(new T.VectorKeyframeTrack(`${hipsNode.name}.position`, [0, 1], [...p, ...p])); }
+      const playing = layers.some((l) => l.id === REST_ID);
+      if (playing) return false; // only before it plays (the pose does not change while a model is loaded)
+      const old = clips.get(REST_ID);
+      if (old) { const a = mixer.existingAction(old.clip); if (a) a.stop(); mixer.uncacheClip(old.clip); }
+      add(REST_ID, new T.AnimationClip(REST_ID, 1, tracks));
+      return true;
+    }
+
     // Cross-fade the base to clip `id` over `dur` seconds (0: at once). Unknown id → false. opts: { phase (0..1:
     // where in the clip a newly started action begins), speed (its time scale) } — idles use them so a loop
     // never keeps the same beat.
@@ -133,6 +160,17 @@
       for (const l of layers) l.w0 = l.w;
       fade = { from: t, dur, to: L };
       return true;
+    }
+
+    // The director's base (plan.base: { id, dance }) on the layers. A dance clip not loaded yet: nothing (the
+    // dance cues in only once its clip is here). Any other base without a clip — id null (no motion library, a
+    // slot it lacks) or unknown — is the rest clip: before T-2829 nothing happened then, and whatever played last
+    // (a dance's frozen last frame, a posture) stayed on at weight 1 for good. → the id now cross-fading in.
+    function playBase(base, dur, opts = null) {
+      if (!base) return null;
+      if (base.dance) return clips.has(base.id) && setBase(base.id, dur, opts) ? base.id : null;
+      if (base.id && clips.has(base.id) && setBase(base.id, dur, opts)) return base.id;
+      return setBase(REST_ID, dur) ? REST_ID : null;
     }
 
     const clampT = (L, t) => Math.max(0, Math.min(Math.max(0, L.duration - 1e-3), Number(t) || 0));
@@ -200,6 +238,11 @@
       add,
       has: (id) => clips.has(id),
       setBase,
+      setRest,
+      playBase,
+      // the base back to the rest clip (cross-faded like any base); false before setRest
+      toRest: (dur = 0.4) => setBase(REST_ID, dur),
+      REST_ID,
       seekBase,
       remove,
       // the time the base clip shows now (a dance: what seekBase set)
@@ -217,5 +260,5 @@
     };
   }
 
-  window.PetVrmAnim = { createAnimLayers, maskWeight };
+  window.PetVrmAnim = { createAnimLayers, maskWeight, REST_ID };
 })();

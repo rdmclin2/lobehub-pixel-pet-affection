@@ -1,0 +1,51 @@
+met dafeiyu: agent agt_dUg0jV4DX5xQ
+model: DeepSeek V4.1 Flash (lobehub:deepseek-flash)
+#1 desktop cold via=direct prompt=498 ipcIn=40 prep=12 req→1st=2732 shown→paint=15 TTFT=2799 fullShown=2799 revealLag=8 streamEnd=6299 total=6358 reply=49 shown@end=49 deltas=2 ipcKB=0.3 fps=57
+#1 admin   cold via=direct prompt=498 ipcIn=7 prep=12 req→1st=2694 shown→paint=44 TTFT=2757 fullShown=2999 revealLag=213 streamEnd=6485 total=6550 reply=46 shown@end=46 deltas=2 ipcKB=0.2 fps=26
+#2 admin   warm via=direct prompt=501 ipcIn=8 prep=22 req→1st=2498 shown→paint=32 TTFT=2560 fullShown=2560 revealLag=32 streamEnd=6266 total=6348 reply=47 shown@end=47 deltas=1 ipcKB=0.1 fps=25
+#2 desktop warm via=direct prompt=501 ipcIn=41 prep=1 req→1st=2553 shown→paint=16 TTFT=2611 fullShown=2671 revealLag=33 streamEnd=5916 total=5953 reply=59 shown@end=59 deltas=2 ipcKB=0.3 fps=57
+#3 desktop cold via=direct prompt=499 ipcIn=34 prep=11 req→1st=3181 shown→paint=4 TTFT=3230 fullShown=3230 revealLag=4 streamEnd=7850 total=7881 reply=47 shown@end=47 deltas=1 ipcKB=0.1 fps=57
+#3 admin   cold via=direct prompt=499 ipcIn=10 prep=37 req→1st=2864 shown→paint=52 TTFT=2963 fullShown=2963 revealLag=52 streamEnd=6645 total=6742 reply=43 shown@end=43 deltas=1 ipcKB=0.1 fps=25
+#4 admin   warm via=direct prompt=498 ipcIn=5 prep=1 req→1st=2734 shown→paint=52 TTFT=2792 fullShown=2792 revealLag=52 streamEnd=7205 total=7285 reply=55 shown@end=55 deltas=1 ipcKB=0.2 fps=24
+#4 desktop warm via=direct prompt=498 ipcIn=32 prep=1 req→1st=3068 shown→paint=8 TTFT=3109 fullShown=3227 revealLag=6 streamEnd=8060 total=8095 reply=63 shown@end=63 deltas=2 ipcKB=0.3 fps=59
+#5 desktop cold via=direct prompt=499 ipcIn=28 prep=9 req→1st=3178 shown→paint=13 TTFT=3228 fullShown=3311 revealLag=10 streamEnd=7066 total=7096 reply=60 shown@end=60 deltas=2 ipcKB=0.3 fps=60
+#5 admin   cold via=direct prompt=499 ipcIn=2 prep=12 req→1st=2392 shown→paint=21 TTFT=2427 fullShown=2675 revealLag=181 streamEnd=6026 total=6072 reply=62 shown@end=62 deltas=2 ipcKB=0.3 fps=60
+#6 admin   warm via=direct prompt=498 ipcIn=3 prep=1 req→1st=2666 shown→paint=12 TTFT=2682 fullShown=2914 revealLag=184 streamEnd=6123 total=6155 reply=57 shown@end=57 deltas=2 ipcKB=0.3 fps=60
+#6 desktop warm via=direct prompt=498 ipcIn=7 prep=0 req→1st=2973 shown→paint=12 TTFT=2992 fullShown=3042 revealLag=11 streamEnd=6463 total=6493 reply=62 shown@end=62 deltas=2 ipcKB=0.3 fps=60
+#7 desktop cold via=direct prompt=498 ipcIn=28 prep=9 req→1st=2750 shown→paint=8 TTFT=2795 fullShown=2895 revealLag=5 streamEnd=6514 total=6546 reply=59 shown@end=59 deltas=2 ipcKB=0.3 fps=60
+#7 admin   cold via=direct prompt=498 ipcIn=2 prep=28 req→1st=2239 shown→paint=22 TTFT=2291 fullShown=2531 revealLag=235 streamEnd=6526 total=6570 reply=57 shown@end=57 deltas=2 ipcKB=0.3 fps=60
+#8 admin   warm via=direct prompt=498 ipcIn=2 prep=18 req→1st=3573 shown→paint=22 TTFT=3615 fullShown=3864 revealLag=247 streamEnd=7234 total=7274 reply=54 shown@end=54 deltas=2 ipcKB=0.3 fps=60
+#8 desktop warm via=direct prompt=498 ipcIn=29 prep=1 req→1st=2201 shown→paint=6 TTFT=2237 fullShown=2237 revealLag=6 streamEnd=6424 total=6457 reply=57 shown@end=57 deltas=1 ipcKB=0.2 fps=60
+#9 desktop cold via=direct prompt=498 ipcIn=25 prep=9 req→1st=3135 shown→paint=8 TTFT=3177 fullShown=3277 revealLag=6 streamEnd=7377 total=7412 reply=69 shown@end=55 deltas=2 ipcKB=0.3 fps=60
+#9 admin   cold via=direct prompt=498 ipcIn=2 prep=32 req→1st=3227 shown→paint=22 TTFT=3283 fullShown=3522 revealLag=176 streamEnd=6921 total=6967 reply=76 shown@end=62 deltas=2 ipcKB=0.3 fps=60
+#10 admin   warm via=direct prompt=501 ipcIn=2 prep=6 req→1st=2969 shown→paint=16 TTFT=2993 fullShown=3244 revealLag=184 streamEnd=6485 total=6528 reply=56 shown@end=56 deltas=2 ipcKB=0.3 fps=60
+#10 desktop warm via=direct prompt=501 ipcIn=16 prep=1 req→1st=2526 shown→paint=13 TTFT=2556 fullShown=2606 revealLag=6 streamEnd=5878 total=5907 reply=62 shown@end=62 deltas=2 ipcKB=0.3 fps=60
+#11 desktop cold via=direct prompt=499 ipcIn=14 prep=9 req→1st=2720 shown→paint=5 TTFT=2748 fullShown=2748 revealLag=5 streamEnd=6243 total=6283 reply=58 shown@end=58 deltas=1 ipcKB=0.2 fps=60
+#11 admin   cold via=direct prompt=499 ipcIn=2 prep=26 req→1st=3215 shown→paint=25 TTFT=3268 fullShown=3507 revealLag=243 streamEnd=6769 total=6819 reply=57 shown@end=57 deltas=2 ipcKB=0.3 fps=60
+#12 admin   warm via=direct prompt=498 ipcIn=1 prep=1 req→1st=3505 shown→paint=28 TTFT=3535 fullShown=3535 revealLag=28 streamEnd=6924 total=6963 reply=53 shown@end=53 deltas=1 ipcKB=0.2 fps=60
+#12 desktop warm via=direct prompt=498 ipcIn=24 prep=0 req→1st=2456 shown→paint=5 TTFT=2485 fullShown=2485 revealLag=5 streamEnd=6193 total=6220 reply=49 shown@end=49 deltas=1 ipcKB=0.1 fps=60
+   events: 1220ms response.created | 1220ms response.in_progress | 2731ms response.output_item.added | 2731ms response.content_part.added | 3502-3532ms response.output_text.delta×2(53字) | 7844ms response.output_text.done | 7844ms response.content_part.done | 7844ms response.output_item.done | 7845ms response.completed
+#13 raw     warm via=direct prompt=499 prep=30 req→hdr=1186 req→1st=3472 TTFT(no UI)=3502 end=7846 reply=53 pieces=3503ms:48,3532ms:5
+   events: 1425ms response.created | 1425ms response.in_progress | 3071ms response.output_item.added | 3071ms response.content_part.added | 3071-3086ms response.output_text.delta×2(42字) | 6502ms response.output_text.done | 6502ms response.content_part.done | 6502ms response.output_item.done | 6504ms response.completed
+#14 raw     warm via=direct prompt=502 prep=0 req→hdr=1421 req→1st=3071 TTFT(no UI)=3071 end=6504 reply=42 pieces=3071ms:41,3086ms:1
+   events: 1244ms response.created | 1244ms response.in_progress | 10716ms response.output_item.added | 10716ms response.content_part.added | 10716ms response.output_text.delta(37字) | 15274ms response.output_text.done | 15274ms response.content_part.done | 15274ms response.output_item.done | 15276ms response.completed
+#15 raw     warm via=direct prompt=500 prep=1 req→hdr=1202 req→1st=10715 TTFT(no UI)=10716 end=15276 reply=37 pieces=10716ms:37
+   events: 927ms response.created | 927ms response.in_progress | 2164ms response.output_item.added | 2164ms response.content_part.added | 2164ms response.output_text.delta(47字) | 6453ms response.output_text.done | 6453ms response.content_part.done | 6453ms response.output_item.done | 6453ms response.completed
+#16 raw     warm via=direct prompt=499 prep=1 req→hdr=920 req→1st=2163 TTFT(no UI)=2164 end=6454 reply=47 pieces=2164ms:47
+   events: 1305ms response.created | 1305ms response.in_progress | 2943ms response.output_item.added | 2943ms response.content_part.added | 3083ms response.output_text.delta(39字) | 7038ms response.output_text.done | 7038ms response.content_part.done | 7038ms response.output_item.done | 7039ms response.completed
+#17 raw     warm via=direct prompt=500 prep=0 req→hdr=1298 req→1st=3083 TTFT(no UI)=3083 end=7040 reply=39 pieces=3083ms:39
+
+summary (ms; p50 / p90):
+path/cond	n	via	ipcIn	prep	models	sendToReq	reqToHeaders	reqToFirstText	firstTextToShown	shownToPaint	ttft	streamEnd	endToDone	fullShown	revealLag	total	promptChars	replyChars	shownAtStreamEnd	deltas	ipcBytes	longtaskMs	fps
+desktop/cold	6	direct	28/37	9/12	9/11	37/49	1155/1326	2943/3180	0/0	8/14	2988/3229	6790/7614	34/50	3063/3294	6/9	6821/7647	499/499	59/65	57/60	2/2	276/306	0/0	60/60
+desktop/warm	6	direct	27/37	1/1	0/0	27/38	1057/1125	2540/3021	0/0	10/15	2584/3051	6309/7262	32/36	2639/3135	6/22	6339/7294	498/501	61/63	61/63	2/2	324/337	0/0	60/60
+desktop/all	12	direct	28/39	5/11	4/10	34/45	1077/1305	2741/3174	0/0	8/15	2797/3223	6444/7803	33/40	2847/3272	6/11	6475/7834	498/501	59/63	59/62	2/2	292/330	0/0	60/60
+admin/cold	6	direct	2/9	27/35	10/13	29/41	1145/1540	2779/3221	0/0	24/48	2860/3276	6586/6845	48/81	2981/3515	197/239	6656/6893	499/499	57/69	57/62	2/2	310/322	0/0	60/60
+admin/warm	6	direct	3/7	4/20	0/0	7/25	1086/1204	2852/3539	0/0	25/42	2893/3575	6705/7220	42/81	3079/3700	118/216	6746/7280	498/501	55/57	55/57	2/2	227/303	0/0	60/60
+admin/all	12	direct	2/8	15/32	5/10	20/34	1110/1301	2799/3477	0/0	24/51	2878/3510	6586/7177	46/82	2981/3534	183/242	6656/7243	498/501	56/62	56/62	2/2	297/313	0/0	60/60
+raw/warm	5	direct	null/null	1/18	null/null	null/null	1202/1372	3083/7818	null/null	null/null	3083/7830	7040/12304	null/null	null/null	null/null	7040/12304	500/501	42/51	null/null	1/2	null/null	null/null	null/null
+raw/all	5	direct	null/null	1/18	null/null	null/null	1202/1372	3083/7818	null/null	null/null	3083/7830	7040/12304	null/null	null/null	null/null	7040/12304	500/501	42/51	null/null	1/2	null/null	null/null	null/null
+→ out/e2e/chat-latency/after.json
+(deleted the agent agt_dUg0jV4DX5xQ)
+
+0/0 passed

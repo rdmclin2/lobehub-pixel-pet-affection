@@ -1,0 +1,25 @@
+met dafeiyu: agent agt_7rzTTINupRfY
+model: DeepSeek V4.1 Flash (lobehub:deepseek-flash)
+#1 desktop warm via=direct prompt=499 ipcIn=32 prep=52 req→1st=4393 shown→paint=7 TTFT=4484 fullShown=6351 revealLag=10 streamEnd=11049 total=11087 reply=420 shown@end=420 deltas=8 ipcKB=5.9 fps=60
+#1 admin   warm via=direct prompt=499 ipcIn=2 prep=42 req→1st=5387 shown→paint=33 TTFT=5465 fullShown=7904 revealLag=471 streamEnd=10811 total=10861 reply=405 shown@end=405 deltas=8 ipcKB=5.2 fps=60
+#2 admin   warm via=direct prompt=502 ipcIn=2 prep=71 req→1st=3568 shown→paint=16 TTFT=3657 fullShown=6052 revealLag=454 streamEnd=10418 total=10460 reply=368 shown@end=368 deltas=8 ipcKB=5.0 fps=60
+#2 desktop warm via=direct prompt=502 ipcIn=24 prep=48 req→1st=3087 shown→paint=10 TTFT=3169 fullShown=5285 revealLag=6 streamEnd=8667 total=8687 reply=423 shown@end=423 deltas=8 ipcKB=5.4 fps=60
+#3 desktop warm via=direct prompt=500 ipcIn=29 prep=43 req→1st=4104 shown→paint=16 TTFT=4192 fullShown=6126 revealLag=3 streamEnd=10933 total=10961 reply=430 shown@end=430 deltas=8 ipcKB=5.9 fps=60
+#3 admin   warm via=direct prompt=500 ipcIn=2 prep=50 req→1st=3443 shown→paint=17 TTFT=3512 fullShown=6048 revealLag=341 streamEnd=9055 total=9097 reply=478 shown@end=478 deltas=9 ipcKB=7.2 fps=60
+#4 admin   warm via=direct prompt=499 ipcIn=2 prep=65 req→1st=2992 shown→paint=21 TTFT=3080 fullShown=5333 revealLag=461 streamEnd=8061 total=8084 reply=407 shown@end=399 deltas=7 ipcKB=4.5 fps=60
+#4 desktop warm via=direct prompt=499 ipcIn=30 prep=26 req→1st=3411 shown→paint=8 TTFT=3475 fullShown=5292 revealLag=13 streamEnd=8734 total=8777 reply=410 shown@end=410 deltas=7 ipcKB=4.5 fps=60
+#5 desktop warm via=direct prompt=500 ipcIn=27 prep=25 req→1st=3909 shown→paint=12 TTFT=3973 fullShown=5507 revealLag=14 streamEnd=9297 total=9324 reply=384 shown@end=384 deltas=6 ipcKB=3.8 fps=60
+#5 admin   warm via=direct prompt=500 ipcIn=2 prep=65 req→1st=9022 shown→paint=20 TTFT=9109 fullShown=11180 revealLag=409 streamEnd=14948 total=14994 reply=427 shown@end=427 deltas=7 ipcKB=5.4 fps=60
+#6 admin   warm via=direct prompt=499 ipcIn=4 prep=66 req→1st=6274 shown→paint=23 TTFT=6367 fullShown=9098 revealLag=495 streamEnd=12079 total=12137 reply=418 shown@end=418 deltas=9 ipcKB=6.4 fps=60
+#6 desktop warm via=direct prompt=499 ipcIn=27 prep=48 req→1st=3222 shown→paint=12 TTFT=3309 fullShown=5326 revealLag=9 streamEnd=9004 total=9045 reply=405 shown@end=405 deltas=8 ipcKB=5.1 fps=60
+
+summary (ms; p50 / p90):
+path/cond	n	via	ipcIn	prep	models	sendToReq	reqToHeaders	reqToFirstText	firstTextToShown	shownToPaint	ttft	streamEnd	endToDone	fullShown	revealLag	total	promptChars	replyChars	shownAtStreamEnd	deltas	ipcBytes	longtaskMs	fps
+desktop/warm	6	direct	28/31	46/50	0/0	72/80	1040/1268	3660/4249	0/0	11/14	3724/4338	9151/10991	33/42	5417/6239	10/14	9185/11024	500/501	415/427	415/427	8/8	5379/6042	0/0	60/60
+desktop/all	6	direct	28/31	46/50	0/0	72/80	1040/1268	3660/4249	0/0	11/14	3724/4338	9151/10991	33/42	5417/6239	10/14	9185/11024	500/501	415/427	415/427	8/8	5379/6042	0/0	60/60
+admin/warm	6	direct	2/3	65/69	0/0	67/72	2290/5404	4478/7648	0/1	21/28	4561/7738	10615/13514	44/54	6978/10139	458/483	10661/13566	500/501	413/453	412/453	8/9	5431/6994	0/0	60/60
+admin/all	6	direct	2/3	65/69	0/0	67/72	2290/5404	4478/7648	0/1	21/28	4561/7738	10615/13514	44/54	6978/10139	458/483	10661/13566	500/501	413/453	412/453	8/9	5431/6994	0/0	60/60
+→ out/e2e/chat-latency/long-before.json
+(deleted the agent agt_7rzTTINupRfY)
+
+0/0 passed
