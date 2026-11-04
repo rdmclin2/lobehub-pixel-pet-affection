@@ -284,6 +284,13 @@ function sourceClip(three, assets, src) {
   return fbxToClip(three, file);
 }
 
+const Probe = require('./lib/vrm-model-probe');
+function countFiles(dir, re) {
+  let n = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) n += e.isDirectory() ? countFiles(path.join(dir, e.name), re) : re.test(e.name) ? 1 : 0;
+  return n;
+}
+
 const V2_META = ['category', 'group', 'enter', 'exit', 'pack', 'srcStyle', 'by'];
 
 async function bakeV2(a) {
@@ -298,6 +305,17 @@ async function bakeV2(a) {
   const only = typeof a.only === 'string' ? new Set(a.only.split(',')) : null;
   const three = await loadThree(threeDir(a.three));
   const t0 = Date.now();
+  // the five input packs (postures / mixamo / motions: clips; dances: the dance library; models: the per-model check)
+  const PACKS = ['postures', 'mixamo', 'motions', 'dances', 'models'];
+  const used = Object.fromEntries(PACKS.map((pk) => [pk, new Set()]));
+  for (const e of Object.values(idx.clips)) if (e.src) used[e.src.split('/')[0]].add(e.src);
+  for (const e of Object.values(idx.dances || {})) used[e.pack].add(e.src);
+  console.log(`inputs (${assets}):`);
+  for (const pk of PACKS) {
+    const dir = path.join(assets, pk);
+    const n = fs.existsSync(dir) ? countFiles(dir, pk === 'models' ? /\.vrm$/i : /\.(fbx|vmd)$/i) : 0;
+    console.log(`  ${pk.padEnd(8)} ${dir}  ${fs.existsSync(dir) ? `${n} ${pk === 'models' ? '.vrm models' : 'source files'}` : 'MISSING'}${pk === 'models' ? ' (probed after the bake)' : `, ${used[pk].size} used by the index`}`);
+  }
   const lib = { schema: 1, bakedAt: new Date().toISOString(), generator: 'scripts/vrm-bake.js --v2', index: 'src/core/vrm-motion-index.json', styleFallback: idx.styleFallback, clips: {} };
   const prev = fs.existsSync(path.join(out, 'library.json')) ? JSON.parse(fs.readFileSync(path.join(out, 'library.json'), 'utf8')) : null;
   const report = [];
@@ -332,6 +350,16 @@ async function bakeV2(a) {
     }
   }
   fs.mkdirSync(out, { recursive: true });
+  // ---- models pack: what every model there can play (the renderer's degrade rules) ----
+  const modelsDir = path.join(assets, 'models');
+  if (fs.existsSync(modelsDir)) {
+    lib.models = Probe.probeModels(modelsDir, lib.clips);
+    console.log(`models: probed ${lib.models.probed} VRM in ${modelsDir}: ${JSON.stringify(lib.models.summary)}`);
+    for (const [rel, m] of Object.entries(lib.models.models)) {
+      if (m.error) console.log(`  model ${rel}: ERROR ${m.error}`);
+      else if (m.level !== 'full' || m.rootHips) console.log(`  model ${rel}: VRM ${m.vrm}, ${m.level}${m.missingTrunk.length ? ` (missing ${m.missingTrunk.join('/')} → folded into children)` : ''}${m.missingRequired.length ? ` (missing required ${m.missingRequired.join('/')})` : ''}${m.rootHips ? `, hips at ${m.hipsY} m → standing clips only` : ''}${m.playable ? `, plays ${m.playable.female}/${m.playable.male}/${m.playable.neutral} clips (female/male/neutral)` : ''}`);
+    }
+  } else console.log(`models: ${modelsDir} missing — no per-model check`);
   lib.counts = {};
   for (const c of Object.values(lib.clips)) { const k = c.style; lib.counts[k] = lib.counts[k] || {}; lib.counts[k][c.category || c.kind] = (lib.counts[k][c.category || c.kind] || 0) + 1; }
   // ---- dances ----

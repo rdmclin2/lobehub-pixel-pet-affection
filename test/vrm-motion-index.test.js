@@ -331,3 +331,37 @@ test('install copies a baked library into <userData>/vrm-motions and <userData>/
   assert.deepEqual(libraryDir({ env: {}, userData: ud, packaged: true }), { dir: path.join(ud, 'vrm-motions'), source: 'userData' });
   assert.equal(path.basename(Bake.userDataDir()), require('../package.json').productName);
 });
+
+// ---------- the models pack probe (scripts/lib/vrm-model-probe.js) ----------
+test('model probe: reads a VRM 0.x / 1.0 humanoid from the glTF JSON, folds a missing upperChest, flags hips on the floor', () => {
+  const Probe = require('../scripts/lib/vrm-model-probe');
+  const BM = require('../src/core/vrm-bone-map');
+  const glb = (json) => {
+    let j = Buffer.from(JSON.stringify(json));
+    j = Buffer.concat([j, Buffer.alloc((4 - (j.length % 4)) % 4, 0x20)]);
+    const h = Buffer.alloc(20);
+    h.writeUInt32LE(0x46546c67, 0); h.writeUInt32LE(2, 4); h.writeUInt32LE(20 + j.length, 8); h.writeUInt32LE(j.length, 12); h.writeUInt32LE(0x4e4f534a, 16);
+    return Buffer.concat([h, j]);
+  };
+  // a chain: root(0) → hips(1, y = hipsY) → spine(2) → … every required bone; head 0.5 m above the hips
+  const model = (hipsY, { v1 = false, upperChest = true } = {}) => {
+    const bones = BM.VRM_BONES.filter((b) => upperChest || b !== 'upperChest');
+    const nodes = [{ children: [1], translation: [0, 0, 0] }];
+    bones.forEach((b, i) => nodes.push({ name: b, translation: b === 'hips' ? [0, hipsY, 0] : b === 'head' ? [0, 0.5, 0] : [0, 0, 0], children: i + 1 < bones.length ? [i + 2] : [] }));
+    const node = (b) => bones.indexOf(b) + 1;
+    if (v1) return glb({ nodes, extensions: { VRMC_vrm: { humanoid: { humanBones: Object.fromEntries(bones.map((b) => [b, { node: node(b) }])) }, meta: { name: 'v1' } } } });
+    const inv = Object.fromEntries(Object.entries(BM.VRM0_THUMB).map(([a, b]) => [b, a]));
+    return glb({ nodes, extensions: { VRM: { humanoid: { humanBones: bones.map((b) => ({ bone: inv[b] || b, node: node(b) })) }, meta: { title: 'v0' } } } });
+  };
+  const a = Probe.probeModel(model(0.9, { v1: true }));
+  assert.equal(a.vrm, '1.0'); assert.equal(a.level, 'full'); assert.equal(a.rootHips, false); assert.equal(a.hipsY, 0.9); assert.equal(a.headY, 1.4);
+  const b = Probe.probeModel(model(0.9, { upperChest: false }));
+  assert.equal(b.vrm, '0.x'); assert.equal(b.level, 'folded'); assert.deepEqual(b.missingTrunk, ['upperChest']); assert.equal(b.missingFingers, 0, '0.x thumbs renamed to 1.0 names');
+  const c = Probe.probeModel(model(0));
+  assert.equal(c.rootHips, true);
+  // a hips-on-the-floor model plays no sit / crouch / lay clip
+  const clips = { 'sit.v01@female': { style: 'female', group: 'sit', enter: 'sit', exit: 'sit' }, 'idle.v01@female': { style: 'female', group: 'idle', enter: 'stand', exit: 'stand' } };
+  assert.ok(!BM.allowsClip(clips['sit.v01@female'], { rootHips: c.rootHips }) && BM.allowsClip(clips['idle.v01@female'], { rootHips: c.rootHips }));
+  assert.throws(() => Probe.probeModel(Buffer.from('not a model')));
+  assert.equal(Probe.probeModel(glb({ nodes: [] })).error, 'no VRM humanoid extension');
+});

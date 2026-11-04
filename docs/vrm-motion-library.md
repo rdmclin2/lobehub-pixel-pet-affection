@@ -15,6 +15,8 @@ node scripts/vrm-bake.js --v2 --install            # 打包版直接可用
 PIXELPET_VRM_MOTIONS_DIR=~/vrm-assets/baked-v2 PIXELPET_VRM_DANCES_DIR=~/vrm-assets/baked-v2/dances npm start
 ```
 
+**五个输入包**：烘焙开头打印 `inputs`，逐个列出 `~/vrm-assets/{postures,mixamo,motions,dances,models}` 的文件数和被索引引用的数量。前三个包烘成动作片段，`dances` 烘成舞蹈库。`models` 包在烘焙后由 `scripts/lib/vrm-model-probe.js` 逐个读取：只解析 .vrm 的 glTF JSON 块，不写出任何模型数据，得到 VRM 版本（0.x/1.0，0.x 的拇指改为 1.0 命名）、humanoid 骨骼、静止姿势下的髋高和头高。然后套用渲染端同一套规则（`vrm-bone-map.js` 的 `degradeLevel`、`rootHips`、`allowsClip`），把每个模型能播哪些片段写进 `library.json` 的 `models` 段，并在日志里列出降级的模型。本次 75 个模型的结果：full 22、folded 53（缺 upperChest）、unusable 0、hips 在地面 4（只播站姿，88/89/88 个片段）。
+
 `--install` 默认装到 Electron 的 userData（`~/.config/Pixel Pet Affection`、`~/Library/Application Support/Pixel Pet Affection`、`%APPDATA%\Pixel Pet Affection`；设了 `PIXELPET_DATA_DIR` 就用它），也可以用 `--user-data <dir>` 指定。打包版 `src/main/vrm-library.js libraryDir()` 在 `<userData>/vrm-motions/library.json` 存在时直接用它（`source: userData`），舞蹈同理（`src/main/vrm-dances.js danceDir()`）。
 
 ## 2. 索引结构（`src/core/vrm-motion-index.json`，schema 2）
