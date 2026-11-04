@@ -18,6 +18,14 @@ test('whoami returns null when logged out, user when logged in', async () => {
   assert.equal(await lh.whoami(), null);
   fs.writeFileSync(path.join(dir, 'loggedin'), '1');
   assert.equal((await lh.whoami()).name, 'Test Owner');
+  assert.equal((await lh.whoami()).avatar, null);
+});
+
+test('whoami carries the account avatar as lh gives it (T-2839)', async () => {
+  const { dir } = setup();
+  fs.writeFileSync(path.join(dir, 'loggedin'), '1');
+  const lh = new LhClient({ bin: FAKE, env: { ...cleanEnv(), FAKE_LH_DIR: dir, FAKE_LH_AVATAR: '/webapi/user/avatar/u1/a.webp' } });
+  assert.equal((await lh.whoami()).avatar, '/webapi/user/avatar/u1/a.webp');
 });
 
 test('login surfaces the device URL and code, then confirms identity', async () => {

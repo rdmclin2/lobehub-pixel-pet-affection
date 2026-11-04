@@ -148,6 +148,8 @@ export interface RosterRow {
   nameZh: string;
   pack: null | { adult: boolean; author?: string; id: string; kind: string; license?: string; name: string; outfits?: number; source: string; vrm?: any };
   preview: Preview | null;
+  /** her face for lists and chat bubbles (a built-in character's drawn avatar, pack://…); null: use `preview` */
+  avatar: string | null;
   source: string;
   sourceLabel: string;
   systemRole: string;
@@ -158,6 +160,11 @@ export interface RosterRow {
   personality: string;
   packKinds: { builtin: number; kind: string; label: string; user: number }[];
   outfits: OutfitRow[] | null;
+}
+
+export interface UserFace {
+  avatar: string | null;
+  name: string;
 }
 
 export interface OutfitRow {
@@ -360,6 +367,8 @@ export interface PetAdminApi {
   danceDownload: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   danceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   whoami: () => Promise<any>;
+  /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
+  userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;
 }

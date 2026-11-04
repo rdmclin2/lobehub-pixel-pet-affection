@@ -1,6 +1,6 @@
 import { ActionIcon, Alert, Button, createStaticStyles, cssVar, ErrorBoundary, Flexbox, Icon, Text } from '@lobehub/ui';
 import { ChevronLeft, Monitor, Moon, PawPrint, Sun } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import { api, type NavGroupDef } from './api';
 import { ICONS } from './icons';
@@ -55,6 +55,11 @@ const styles = createStaticStyles(({ css }) => ({
     border-radius: ${cssVar.borderRadiusLG};
 
     background: color-mix(in srgb, var(--pet-accent) 18%, ${cssVar.colorFillTertiary});
+  `,
+  meFace: css`
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   `,
   link: css`
     display: flex;
@@ -148,6 +153,7 @@ export const placeOf = (page: string, nav: NavGroupDef[]) => (page === 'play' ||
  */
 export const Shell = ({ path, children }: { children: ReactNode; path: string }) => {
   const { schema, roster, settings, platform, pendingRestart } = useStore();
+  const [railFailed, setRailFailed] = useState<string | null>(null);
   const save = useSave();
   const cur = roster.find((c) => c.current) ?? null;
   const [, page = 'overview', sub] = path.split('/');
@@ -159,6 +165,10 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
   const full = page === 'chat';
   const mac = platform === 'darwin';
+  // her face (T-2839: a built-in character's drawn avatar), else a still of her look
+  let me = <Icon icon={PawPrint} size={20} />;
+  if (cur?.avatar && railFailed !== cur.avatar) me = <img alt={cur.nameZh} className={styles.meFace} data-rail-avatar draggable={false} onError={() => setRailFailed(cur.avatar)} src={cur.avatar} />;
+  else if (cur) me = <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} />;
   const names = pendingRestart.map((k) => schema.fields.find((f) => f.key === k)?.label ?? k).join('、');
   return (
     <div
@@ -168,7 +178,7 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
       {mac && <div aria-hidden className={styles.titlebar} data-titlebar />}
       <nav aria-label="主导航" className={`${styles.rail} ${mac ? styles.railMac : ''}`}>
         <div className={styles.me} title={cur ? `正在陪你：${cur.met?.name ?? cur.nameZh}` : 'Pixel Pet'}>
-          {cur ? <SpriteStage animate={false} height={44} name={cur.nameZh} preview={cur.preview} /> : <Icon icon={PawPrint} size={20} />}
+          {me}
         </div>
         {schema.rail.map((r) => (
           <a aria-current={place === r.key ? 'page' : undefined} className={styles.link} data-rail={r.key} href={`#/${r.page}`} key={r.key}>

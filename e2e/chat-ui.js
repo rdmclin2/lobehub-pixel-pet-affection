@@ -78,7 +78,13 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), `pp-${S}fake-`));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
     fs.writeFileSync(path.join(data, 'chat-log.json'), JSON.stringify(seedLog(Date.now())));
-    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir) };
+    // the account's avatar, as LobeHub serves it (lh whoami gives the path; T-2839). PIXELPET_CHATUI_AVATAR=<.png|.webp>
+    // serves a real picture instead of the 64 px fixture (acceptance screenshots)
+    const AVATAR_FILE = process.env.PIXELPET_CHATUI_AVATAR || null;
+    const AVATAR_TYPE = AVATAR_FILE && /\.webp$/i.test(AVATAR_FILE) ? 'image/webp' : 'image/png';
+    const AVATAR_PATH = `/webapi/user/avatar/user_e2e/face.${AVATAR_TYPE === 'image/webp' ? 'webp' : 'png'}`;
+    srv.files = { [AVATAR_PATH]: { type: AVATAR_TYPE, body: AVATAR_FILE ? fs.readFileSync(AVATAR_FILE) : png(64, 64, [250, 170, 40]) } };
+    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_AVATAR: AVATAR_PATH, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir) };
     const red = path.join(data, 'red.png');
     fs.writeFileSync(red, png(320, 200, [230, 40, 40]));
     const blue = png(96, 96, [40, 90, 230]).toString('base64');
@@ -192,6 +198,31 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
         assert.match(mine[0].all, /桌面/);
         await shot('02b-desktop-round');
         return note(`${n0} messages on open, 查看更早 → ${b.length} (oldest: 「${b[0].text}」); a round sent in the pet window appeared here tagged 「桌面」`);
+      }, admin);
+
+      await step(S, 'U2b 头像（T-2839）：默认角色在列表、标题和气泡里是头像（不是全身照），没见过的置灰；主人的气泡是 LobeHub 账号头像；左侧 rail 顶部也是她的头像', async () => {
+        await ensureChat();
+        await until(() => [...document.querySelectorAll('[data-chat-page] [data-role="user"] [data-user-avatar] img')].some((i) => i.complete && i.naturalWidth > 0), null, 10000, 'user avatar');
+        const faces = await admin.$$eval('[data-character]', (els) => els.map((e) => { const s = e.querySelector('[data-avatar]'); const i = s && s.querySelector('img'); return { id: e.dataset.character, met: e.dataset.met, kind: s && s.dataset.avatar, src: i ? i.getAttribute('src') : null, ok: !!i && i.complete && i.naturalWidth > 0, w: i ? i.naturalWidth : 0, filter: i ? getComputedStyle(i).filter : '', box: s ? Math.round(s.getBoundingClientRect().width) : 0 }; }));
+        assert.equal(faces.length, 5);
+        for (const f of faces) {
+          assert.equal(f.kind, 'face', `${f.id}: her drawn avatar`);
+          assert.equal(f.src, `pack://${f.id}-pixel/avatar.webp`, f.id);
+          assert.ok(f.ok && f.w === 256, `${f.id}: the 256 px avatar loaded (${f.w})`);
+          assert.equal(f.met === 'false', /grayscale/.test(f.filter), `${f.id}: greyed only when not met (${f.filter})`);
+        }
+        const title = await admin.$eval('[data-chat-page]', (p) => { const t = p.querySelector('[data-chat-title]'); const box = t && t.closest('header'); const i = box && box.querySelector('[data-avatar="face"] img'); return i ? i.getAttribute('src') : null; });
+        assert.equal(title, 'pack://claude-pixel/avatar.webp', 'the header shows her face');
+        const herBubble = await admin.$$eval('[data-chat-page] [data-role="assistant"] [data-avatar="face"] img, [data-chat-page] [data-role="pet"] [data-avatar="face"] img', (is) => is.length);
+        assert.ok(herBubble > 0, 'her bubbles show her face');
+        const me = await admin.$$eval('[data-chat-page] [data-role="user"]', (els, { t, fixed }) => els.map((e) => { const i = e.querySelector('[data-user-avatar] img'); return i ? { src: i.getAttribute('src').slice(0, 5 + t.length + 7), ok: i.complete && (fixed ? i.naturalWidth === 64 : i.naturalWidth > 0) } : null; }), { t: AVATAR_TYPE, fixed: !AVATAR_FILE });
+        assert.ok(me.length > 0 && me.every((x) => x && x.ok && x.src === `data:${AVATAR_TYPE};base64`), `every user bubble carries the account avatar: ${JSON.stringify(me.slice(0, 3))}`);
+        assert.ok(fs.existsSync(path.join(data, 'user-avatar.json')), 'cached for offline');
+        assert.ok(srv.requests.some((r) => r.url === AVATAR_PATH), 'fetched from the LobeHub server');
+        const rail = await admin.$eval('[data-rail-avatar]', (i) => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 }));
+        assert.deepEqual(rail, { src: 'pack://claude-pixel/avatar.webp', ok: true });
+        await shot('02c-avatars');
+        return note(`list: ${faces.map((f) => `${f.id}=${f.kind}${f.met === 'false' ? '(置灰)' : ''}`).join(' ')}; header + her ${herBubble} bubbles: her face; ${me.length} user bubbles: LobeHub avatar (data: URL from ${AVATAR_PATH}, cached in user-avatar.json); rail: ${rail.src}`);
       }, admin);
 
       let claudeModels = null;
