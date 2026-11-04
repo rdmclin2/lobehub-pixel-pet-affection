@@ -64,7 +64,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 20, '20 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog)');
+  assert.equal(navPages.length, 21, '21 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog; 舞蹈 since T-2801)');
   assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
@@ -533,7 +533,7 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
   // the toolbar: the four interactions, 🔈 and ⚙
   const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']); // 🔈 静音 (T-2733) sits left of ⚙
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'mute', 'settings']); // ♪ 跳舞 (VRM only, T-2801) and 🔈 静音 (T-2733) sit left of ⚙
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);

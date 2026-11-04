@@ -121,7 +121,7 @@ const SPECIES = loadCharacters();
 const SPECIES_IDS = Object.keys(SPECIES);
 
 function getSpecies(id) {
-  const s = SPECIES[id];
+  const s = SPECIES[id] || ensureGeneric(id);
   if (!s) throw new Error(`Unknown species: ${id}`);
   return s;
 }
@@ -129,6 +129,7 @@ function getSpecies(id) {
 // The character a saved id stands for now: itself, its successor if it was retired, else the default.
 function resolveSpeciesId(id) {
   if (SPECIES[id]) return id;
+  if (ensureGeneric(id)) return id; // a generic companion is never taken over by another character
   if (RETIRED[id] && SPECIES[RETIRED[id]]) return RETIRED[id];
   return DEFAULT_SPECIES;
 }
@@ -147,4 +148,26 @@ function unregisterCharacter(id) {
   if (i >= 0) SPECIES_IDS.splice(i, 1);
 }
 
-module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, resolveSpeciesId, validateCharacter, toSpecies, missingFiles, loadCharacters, registerCharacter, unregisterCharacter };
+// 通用设定 (core/generic.js): the base of one generic VRM pack, made from the template and her model's name.
+// Registered when the packs are loaded (core/packs.js loadPacks); the same pack always gets the same base.
+function registerGeneric(pack) {
+  const c = require('./generic').characterFor(pack);
+  const errors = validateCharacter(c);
+  if (errors.length) throw new Error(`${pack.id}: ${errors.join('; ')}`);
+  SPECIES[c.id] = { ...toSpecies(c), virtual: true };
+  if (!SPECIES_IDS.includes(c.id)) SPECIES_IDS.push(c.id);
+  return SPECIES[c.id];
+}
+
+// A generic base known only from a save (her pack is not loaded): registered from core/generic.js ghostFor.
+function ensureGeneric(id) {
+  const G = require('./generic');
+  if (!G.isGenericBase(id)) return null;
+  if (SPECIES[id]) return SPECIES[id];
+  const c = G.ghostFor(id);
+  SPECIES[id] = { ...toSpecies(c), virtual: true, ghost: true };
+  if (!SPECIES_IDS.includes(id)) SPECIES_IDS.push(id);
+  return SPECIES[id];
+}
+
+module.exports = { SPECIES, SPECIES_IDS, RETIRED, DEFAULT_SPECIES, getSpecies, registerGeneric, ensureGeneric, resolveSpeciesId, validateCharacter, toSpecies, missingFiles, loadCharacters, registerCharacter, unregisterCharacter };

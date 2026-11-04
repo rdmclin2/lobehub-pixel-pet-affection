@@ -39,7 +39,7 @@ const petScale = (s) => clampScale(s && s.petScale);
 // automatic murmurs are read only when 朗读碎碎念 is switched on as well.
 // 取景 (core/framing.js, docs/half-body-mode.md): 'full' (head to feet) or 'half' (半身, head to waist, bigger);
 // the one non-switch pref. A character's own choice (settings.framings) and a pack's default go before it.
-const PREFS = { roam: true, clickSound: false, muted: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT };
+const PREFS = { roam: true, clickSound: false, muted: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT, danceVolume: 60 };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
@@ -93,8 +93,10 @@ const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null,
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
-  const out = Object.fromEntries(Object.entries(PREFS).filter(([k]) => k !== 'framing').map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
+  const out = Object.fromEntries(Object.entries(PREFS).filter(([, d]) => typeof d === 'boolean').map(([k, d]) => [k, typeof p[k] === 'boolean' ? p[k] : d]));
   out.framing = framingLib.normalizeFraming(p.framing, PREFS.framing);
+  // the dance music's volume (docs/vrm-dance.md §4.2), 0–100 %
+  out.danceVolume = Number.isFinite(p.danceVolume) ? Math.round(Math.max(0, Math.min(100, p.danceVolume))) : PREFS.danceVolume;
   return out;
 }
 

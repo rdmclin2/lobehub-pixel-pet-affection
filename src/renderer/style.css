@@ -409,3 +409,33 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .vrm-look .vrm-badge { font-weight: var(--lobe-font-weight-strong); color: var(--lobe-color-info); font-size: 12px; }
 .vrm-look.locked { filter: grayscale(.7); }
 .char-wrap .vrm-look.char { width: 60%; height: 80%; margin: auto; }
+
+/* ---- 跳舞 (docs/vrm-dance.md §6.2): the toolbar's ♪ button (a VRM look only) and its menu (对照 Dropdown) ---- */
+/* with ♪ the row holds 4 interactions + 3 icon buttons: tighter gaps keep it on one line (4×42 + 3×24 + 6×2 = 252px) */
+.toolbar:has(#btn-dance:not(.hidden)) { gap: 2px; max-width: 260px; }
+.toolbar:has(#btn-dance:not(.hidden)) .btn.icon-btn { min-width: 24px; }
+#btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); border-color: var(--lobe-color-primary); background: var(--lobe-color-fill-secondary); }
+#btn-dance.loading .ico { animation: dance-spin 1s linear infinite; }
+@keyframes dance-spin { to { transform: rotate(360deg); } }
+.dance-menu { left: var(--pet-space-sm); right: var(--pet-space-sm); min-width: 200px; transform-origin: 50% 100%; }
+.dance-menu .ico { width: 14px; height: 14px; flex: none; }
+.dance-now { display: flex; align-items: center; gap: var(--pet-space-sm); padding: var(--pet-space-xs) var(--pet-space-xs) var(--pet-space-sm); margin-bottom: var(--pet-space-xs); border-bottom: 1px solid var(--pet-line-soft); }
+.dance-now-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; line-height: 1.4; }
+.dance-now-text b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dance-now-text small, .dance-meta { font-size: 11px; color: var(--lobe-color-text-secondary); white-space: nowrap; }
+.dance-menu .btn.dance-loop { min-width: 24px; padding: var(--pet-space-xxs); border-color: transparent; background: transparent; color: var(--lobe-color-text-secondary); }
+.dance-menu .btn.dance-loop[aria-pressed="true"] { color: var(--lobe-color-text); background: var(--lobe-color-fill-secondary); }
+.dance-menu .btn.dance-stop { font-size: 12px; padding: var(--pet-space-xxs) var(--pet-space-sm); border-color: var(--pet-line); background: var(--lobe-color-bg-container); }
+.dance-list { display: flex; flex-direction: column; gap: 1px; max-height: 180px; overflow-y: auto; }
+.dance-menu .btn.dance-row { display: flex; align-items: center; gap: var(--pet-space-sm); width: 100%; min-height: 36px; padding: var(--pet-space-xxs) var(--pet-space-xs); }
+.dance-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dance-row.loading .dance-meta { color: var(--lobe-color-primary); }
+.dance-meta { display: inline-flex; align-items: center; gap: var(--pet-space-xxs); }
+.dance-menu .dance-meta .ico { width: 11px; height: 11px; }
+.dance-cover { flex: none; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text-tertiary); }
+.dance-cover.s24 { width: 24px; height: 24px; }
+.dance-cover.s32 { width: 32px; height: 32px; }
+.dance-cover img { width: 100%; height: 100%; object-fit: cover; }
+.dance-menu .btn.dance-more { margin-top: var(--pet-space-xs); color: var(--lobe-color-text-secondary); border-top: 1px solid var(--pet-line-soft); border-radius: 0; }
+.dance-menu .btn:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { #btn-dance.loading .ico { animation: none; } }

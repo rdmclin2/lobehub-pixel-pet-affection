@@ -18,7 +18,12 @@ const { SPECIES, SPECIES_IDS } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const { CatalogDownloader } = require('./catalog');
+const Catalog = require('../core/catalog');
+const { GENERIC_BASE } = require('../core/generic');
 const { serveVrmLibrary } = require('./vrm-library');
+const vrmDances = require('./vrm-dances');
+const DancesLib = require('../core/vrm-dances');
+const danceImport = require('./dance-import');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
@@ -53,6 +58,7 @@ let service = null;
 let updater = null;
 let packStore = null;
 let catalog = null; // 下载角色 (src/main/catalog.js)
+let danceStore = null; // 商店 → 舞蹈: the same downloader, installing into the dance library
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -265,6 +271,37 @@ function askRenderer(cmd, args, timeoutMs = 8000) {
     win.webContents.send('api-cmd', { id, cmd, args });
   });
 }
+// ---- dancing (docs/vrm-dance.md): the list is main's (the folder on disk), playing is the pet window's ----
+function danceList() {
+  const r = vrmDances.listDances(vrmLibrary && vrmLibrary.dances);
+  const v = service.view();
+  const no = DancesLib.cannotDance(v && v.look);
+  // coverUrl / importedAt: for the lists (the pet window's 跳舞 menu, the settings window's 舞蹈 page)
+  const row = (e) => ({ ...DancesLib.publicEntry(e), coverUrl: e.cover ? `vrmlib://dance/${e.cover}` : null, ...(e.importedAt ? { importedAt: e.importedAt } : {}) });
+  return { dir: r.dir, source: r.source, ...(r.refused ? { refused: r.refused } : {}), ...(r.error ? { error: r.error } : {}), vrm: !no, ...(no ? { reason: no.reason, message: no.message, kind: no.kind } : {}), importing: danceImport.importing(), dances: r.dances.map(row) };
+}
+// Dance in the pet window: not a VRM look → the reason, without asking the window; an unknown id → no-dance.
+async function dancePlay({ id, name, loop } = {}) {
+  const v = service.view();
+  if (!v) return { ok: false, reason: 'no-pet' };
+  const no = DancesLib.cannotDance(v.look);
+  if (no) return { ok: false, ...no };
+  const list = vrmDances.listDances(vrmLibrary && vrmLibrary.dances).dances;
+  if ((id || name) && !DancesLib.findDance(list, { id, name })) return { ok: false, reason: 'no-dance', dances: list.map((d) => d.id) };
+  return askRenderer('dance', { id: id || null, name: name || null, loop }, 15000);
+}
+const danceStop = () => askRenderer('dance-stop', {});
+const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
+// 导入舞蹈 (settings → 舞蹈, docs/vrm-dance.md §5.5): pick (a dialog; e2e: debug-next-open, several paths split by
+// newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
+async function pickPaths(e, opts) {
+  if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
+  const r = await dialog.showOpenDialog(windowOf(e) || win, opts);
+  return r.canceled ? [] : r.filePaths || [];
+}
+const danceDirNow = () => (vrmLibrary && vrmLibrary.dances && vrmLibrary.dances.dir) || null;
+const danceState = async () => { const r = await askRenderer('dance-state', {}); return r && r.ok ? r.dance : null; };
+
 async function applyApi() {
   if (!apiServer) return;
   const a = service.settings.api;
@@ -398,6 +435,8 @@ function wire() {
     // whose base the new character stands on: the character asked for, else the companion's
     const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
+    // a generic VRM companion's base is made when her model loads (core/generic.js): nothing else may stand on it
+    if (SPECIES[sp] && SPECIES[sp].virtual) return { ok: false, errors: ['通用设定的 VRM 伙伴不能再导入 Live2D 形象，请到一位模型娘的页面导入'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 Live2D 模型', properties: props, filters: [{ name: 'Live2D 模型（.model3.json / .zip）', extensions: ['json', 'zip'] }] });
     nextOpenPath = null;
@@ -418,7 +457,9 @@ function wire() {
   ipcMain.handle('import-vrm', async (_e, { species } = {}) => {
     const parent = windowOf(_e) || win;
     const v = service.view();
-    const sp = (whose(species) && service._baseOf(species)) || (v && v.pet.speciesId);
+    // 通用设定 by default (core/generic.js): the model is a companion of her own; 导入确认 can make her a new look
+    // of a character instead (set-pack-base). A character id / base passed in keeps the old behaviour.
+    const sp = species === GENERIC_BASE || !whose(species) ? GENERIC_BASE : service._baseOf(species) || (v && v.pet.speciesId);
     if (!sp) return { ok: false, errors: ['先请一位角色来'] };
     const props = process.platform === 'darwin' ? ['openFile', 'openDirectory'] : ['openFile'];
     const r = nextOpenPath ? { filePaths: [nextOpenPath] } : await dialog.showOpenDialog(parent, { title: '导入 VRM 模型', properties: props, filters: [{ name: 'VRM 模型（.vrm / .zip）', extensions: ['vrm', 'zip'] }] });
@@ -432,6 +473,11 @@ function wire() {
       logError(e);
       return { ok: false, errors: [e.message] };
     }
+  });
+  ipcMain.handle('set-pack-base', (_e, { id, base } = {}) => {
+    const r = packStore.setBase(String(id || ''), String(base || ''));
+    if (r.ok) service.setPacks(packStore.packs);
+    return r;
   });
   // after the renderer drew the imported model (or found it would not load): its picture, then the list
   ipcMain.handle('save-pack-preview', (_e, { id, dataUrl }) => {
@@ -452,13 +498,18 @@ function wire() {
     return r;
   });
   ipcMain.handle('catalog-cancel', (_e, { id }) => catalog.cancel(String(id || '')));
+  // a generic companion (core/generic.js) has no other look to fall back on: she is not deleted while she is out
+  const removingCurrentGeneric = (id) => { const p = packStore.packs.get(id); return !!(p && p.generic && service.pet && service._cid() === id); };
+  const KEEP_CURRENT = { ok: false, reason: 'current-generic', text: '她正在桌面上陪你。先切换到别的角色，再删除她的模型。' };
   ipcMain.handle('catalog-remove', (_e, { id }) => {
+    if (removingCurrentGeneric(String(id || ''))) return KEEP_CURRENT;
     const r = packStore.removeDownload(String(id || ''));
     if (r.ok) service.setPacks(packStore.packs);
     pushAdmin();
     return r;
   });
   ipcMain.handle('remove-pack', (_e, { id }) => {
+    if (removingCurrentGeneric(String(id || ''))) return KEEP_CURRENT;
     const r = packStore.remove(String(id || ''));
     if (r.ok) service.setPacks(packStore.packs);
     return r;
@@ -588,6 +639,43 @@ function wire() {
   });
   ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
   ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
+  // dancing: list / play / stop / state — from any window (the settings page too), played by the pet window
+  ipcMain.handle('dances:list', () => danceList());
+  ipcMain.handle('dance:play', (_e, opts) => dancePlay(opts || {}));
+  ipcMain.handle('dance:stop', () => danceStop());
+  ipcMain.handle('dance:state', () => danceState());
+  ipcMain.handle('dance:loop', (_e, { on } = {}) => danceLoop(on));
+  ipcMain.handle('dance-import-pick', async (e, { folder } = {}) => {
+    if (danceImport.importing()) return DancesLib.importError('busy');
+    const paths = await pickPaths(e, folder
+      ? { title: '选择舞蹈文件夹', properties: ['openDirectory'] }
+      : { title: '选择舞蹈文件（.vmd，可同时选上音乐和封面）', properties: process.platform === 'darwin' ? ['openFile', 'openDirectory', 'multiSelections'] : ['openFile', 'multiSelections'], filters: [{ name: '舞蹈（.vmd、音乐、封面、readme）', extensions: ['vmd', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'json', 'ncm'] }] });
+    if (!paths.length) return { ok: false, reason: 'canceled' };
+    try { return danceImport.inspect(paths); } catch (err) { logError(err); return DancesLib.importError('bad-vmd'); }
+  });
+  ipcMain.handle('dance-import-extra', async (e, { token, kind } = {}) => {
+    const audio = kind === 'audio';
+    const paths = await pickPaths(e, { title: audio ? '选择舞蹈音乐' : '选择舞蹈封面', properties: ['openFile'], filters: [audio ? { name: '音乐（mp3 / wav / ogg / m4a / flac）', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'ncm'] } : { name: '图片（jpg / png / webp）', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] });
+    if (!paths.length) return { ok: false, reason: 'canceled' };
+    return danceImport.addExtra(String(token || ''), audio ? 'audio' : 'cover', paths[0]);
+  });
+  ipcMain.handle('dance-import-commit', async (_e, opts = {}) => {
+    try { return await danceImport.commit(opts, danceDirNow()); } catch (err) { logError(err); return DancesLib.importError('write-failed'); }
+  });
+  ipcMain.handle('dance-import-cancel', () => danceImport.cancel());
+  // 商店 → 舞蹈 (core/catalog.js loadDanceIndex): the store's dances, each 已下载 or not; download / cancel
+  ipcMain.handle('dance-store', () => {
+    const have = danceImport.installedIds(danceDirNow());
+    return { dances: Catalog.listDances((id) => have.has(id)), downloads: danceStore ? danceStore.state() : [], vrm: !DancesLib.cannotDance((service.view() || {}).look) };
+  });
+  ipcMain.handle('dance-download', (_e, { id } = {}) => danceStore.download(String(id || '')));
+  ipcMain.handle('dance-download-cancel', (_e, { id } = {}) => danceStore.cancel(String(id || '')));
+  // 删除舞蹈: the one she is dancing stops first (at once), then its folder and its entry go
+  ipcMain.handle('dance-remove', async (_e, { id } = {}) => {
+    const st = await danceState().catch(() => null);
+    if (st && st.id === id) await askRenderer('dance-stop', { immediate: true });
+    return danceImport.remove(danceDirNow(), String(id || ''));
+  });
   ipcMain.handle('set-prefs', (_e, patch) => {
     const r = service.setPrefs(patch);
     if (!IVoice.voiceOn(service.settings.prefs)) tts.engine.stopAll(); // 朗读 off or 静音: nothing more goes to an engine
@@ -825,7 +913,14 @@ function wire() {
     });
   }
 
-  service.on('update', (v) => { send('update', v); pushAdmin(); });
+  // 通用设定: a downloaded / imported generic VRM adds a base of her own; the pet window gets the new list
+  let speciesSig = SPECIES_IDS.join(',');
+  service.on('update', (v) => {
+    const sig = SPECIES_IDS.join(',');
+    send('update', sig === speciesSig || !v ? v : { ...v, speciesList: speciesInfo() });
+    speciesSig = sig;
+    pushAdmin();
+  });
   service.on('say', (m) => send('say', m));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
@@ -880,6 +975,13 @@ app.whenReady().then(() => {
   packStore = new PackStore();
   packStore.serve();
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
+  danceStore = new CatalogDownloader({
+    packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
+    lookup: (id) => Catalog.danceEntry(id),
+    isInstalled: (e) => danceImport.installedIds(danceDirNow()).has(e.id),
+    install: (e, zipFile) => danceImport.installStore(danceDirNow(), e, zipFile),
+    texts: { unknown: '商店里没有这支舞', installed: '这支舞已经下载好了', invalid: '下载的舞蹈文件有问题，已丢弃' },
+  });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
@@ -906,8 +1008,11 @@ app.whenReady().then(() => {
     state: async () => {
       const r = await askRenderer('state');
       const v = service.view();
-      return { pet: v ? { name: v.pet.name, species: v.pet.speciesId, affection: v.pet.affection, hunger: v.pet.hunger, mood: v.pet.mood, energy: v.pet.energy, sleeping: v.pet.sleeping, busy: v.busy } : null, fx: r && r.ok ? r.fx : null, bubble: r && r.ok ? r.bubble : null };
+      return { pet: v ? { name: v.pet.name, species: v.pet.speciesId, affection: v.pet.affection, hunger: v.pet.hunger, mood: v.pet.mood, energy: v.pet.energy, sleeping: v.pet.sleeping, busy: v.busy } : null, fx: r && r.ok ? r.fx : null, bubble: r && r.ok ? r.bubble : null, dance: r && r.ok ? r.dance || null : null };
     },
+    dances: async () => danceList(),
+    dance: (opts) => dancePlay(opts),
+    danceStop: () => danceStop(),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),

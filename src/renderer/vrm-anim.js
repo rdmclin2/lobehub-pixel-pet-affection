@@ -17,7 +17,14 @@
 // playing at full weight underneath, so whatever the overlays do, a bone they leave is the base pose, never
 // the T-pose, and an interrupted reaction simply loses weight. Every bone an overlay may move is kept in
 // the over-clip memo too (rotations, and the hips position), so nothing they write stays behind.
+//
+// The dance layer (docs/vrm-dance.md §3.1, §4.1) is a base clip on an external clock: setBase(id, fade,
+// { clock: 'external' }) starts it frozen (timeScale 0) and seekBase(t) sets its time every frame from the
+// music, so it never drifts from it whatever the frame rate. A jump back (the dance looping) is not a snap:
+// the frame it left keeps showing on a second action of the same clip (three keys clipAction by clip + root,
+// so a clone of the clip) and fades into the new time over LOOP_BLEND s, the weights still summing to 1.
 (function () {
+  const LOOP_BLEND = 0.5;
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
   // how much of an overlay each bone takes, per mask (soft at the waist so an upper-body clip bends in)
@@ -104,15 +111,17 @@
       if (!c) return false;
       if (fade.to && fade.to.id === id) return true;
       let L = layers.find((l) => l.id === id);
+      const external = !!(opts && opts.clock === 'external');
       if (!L) {
         const action = mixer.clipAction(c.clip);
         action.setLoop(T.LoopRepeat, Infinity);
         action.reset().play();
         if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
         if (opts && opts.speed > 0) action.timeScale = opts.speed;
-        L = { id, action, w: 0 };
+        L = { id, action, w: 0, external, duration: c.clip.duration };
         layers.push(L);
       }
+      if (external) { L.external = true; L.action.timeScale = 0; L.action.time = clampT(L, (opts && opts.time) || 0); }
       if (!(dur > 0) || layers.length === 1) {
         for (const l of layers) if (l !== L) l.action.stop();
         layers = [L];
@@ -123,6 +132,42 @@
       }
       for (const l of layers) l.w0 = l.w;
       fade = { from: t, dur, to: L };
+      return true;
+    }
+
+    const clampT = (L, t) => Math.max(0, Math.min(Math.max(0, L.duration - 1e-3), Number(t) || 0));
+    // The external clock (a dance): the time in the base clip now. opts.blend (the dance came round, a loop):
+    // the old frame stays on a twin action and fades into the new one (LOOP_BLEND); any other jump is a cut.
+    function seekBase(t, opts = null) {
+      const L = fade.to;
+      if (!L || !L.external) return false;
+      const want = clampT(L, t);
+      if (opts && opts.blend && want < L.action.time - 0.5) {
+        const c = clips.get(L.id);
+        if (!c.twin) c.twin = c.clip.clone();
+        const clip = L.action.getClip() === c.clip ? c.twin : c.clip;
+        const action = mixer.clipAction(clip);
+        action.setLoop(T.LoopRepeat, Infinity);
+        action.reset().play();
+        action.timeScale = 0;
+        action.time = want;
+        const N = { id: L.id, action, w: 0, external: true, duration: L.duration };
+        layers.push(N);
+        for (const l of layers) l.w0 = l.w;
+        fade = { from: t0(), dur: LOOP_BLEND, to: N };
+        return true;
+      }
+      L.action.time = want;
+      return true;
+    }
+    const t0 = () => t;
+    // Let a clip go (a dance some time after it stopped): its actions, the mixer's cache, the overlay sampler.
+    function remove(id) {
+      const c = clips.get(id);
+      if (!c || layers.some((l) => l.id === id)) return false;
+      for (const clip of [c.clip, c.twin].filter(Boolean)) { const a = mixer.existingAction(clip); if (a) a.stop(); mixer.uncacheAction(clip); mixer.uncacheClip(clip); }
+      clips.delete(id);
+      sampled.delete(id);
       return true;
     }
 
@@ -155,6 +200,11 @@
       add,
       has: (id) => clips.has(id),
       setBase,
+      seekBase,
+      remove,
+      // the time the base clip shows now (a dance: what seekBase set)
+      baseTime: () => (fade.to ? fade.to.action.time : null),
+      external: () => !!(fade.to && fade.to.external),
       update,
       fingers: () => { const top = fade.to && clips.get(fade.to.id); return !!(top && top.fingers); },
       current: () => (fade.to ? fade.to.id : null),
