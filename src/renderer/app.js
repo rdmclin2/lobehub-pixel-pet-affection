@@ -1595,6 +1595,10 @@ function bindPetUi() {
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
+  // leaving the window straight from the bubble (or the window losing focus) may not fire the bubble's
+  // mouseleave: without this the bubble would be held open for good
+  document.documentElement.addEventListener('mouseleave', () => { bubbleHold = false; });
+  window.addEventListener('blur', () => { bubbleHold = false; });
 
   // a right click (or a long press on a touch screen) on her opens the settings window, as ⚙ does: there is
   // no menu in the pet window any more
@@ -1643,6 +1647,7 @@ function bindPetPointer({ onClick, onMenu }) {
       fx.stopWalk();
       const sling = !caught && Fx.isSlingshot(lastPressAt, now);
       lastPressAt = now;
+      bubbleHold = false; // pressing her: the pointer is not on the bubble
       drag = { id: e.pointerId, type: e.pointerType, x0: e.screenX, y0: e.screenY, x: e.screenX, y: e.screenY, moved: false, caught, sling, travel: 0, samples: [{ x: e.screenX, y: e.screenY, t: now }] };
       if (caught) { fx.play('happy', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'happy')); localLine('catch'); }
       try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
@@ -1656,6 +1661,9 @@ function bindPetPointer({ onClick, onMenu }) {
   }
   window.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
+    // the button is no longer down but no pointerup came (released outside the window while it was still
+    // catching up with the cursor, macOS): put her down instead of keeping her in the air for good
+    if (e.pointerType !== 'touch' && e.buttons === 0) return end(e, true);
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
     drag.travel += Math.abs(dx) + Math.abs(dy);
@@ -1672,6 +1680,8 @@ function bindPetPointer({ onClick, onMenu }) {
   });
   window.addEventListener('pointerup', (e) => end(e, false));
   window.addEventListener('pointercancel', (e) => end(e, true));
+  // the window lost focus mid-drag (another app, a system dialog): no pointerup will come either
+  window.addEventListener('blur', () => { if (drag) end(null, true); });
 }
 
 // Behaviour switches for the effects layer.
