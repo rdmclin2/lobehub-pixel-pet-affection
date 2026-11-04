@@ -651,7 +651,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
 
-### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：25 项
+### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：26 项
 
 桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
 
@@ -675,6 +675,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
 | `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
+| `tray:快捷调用面板…` | 不需要：打开快捷调用面板（T-2849）：面板里的行都是已有操作，不是设置 |
 | `tray:显示桌宠` | 桌宠行为 → 位置 → 找回桌宠 |
 | `tray:重置姿势` | 不需要：互动操作，不是设置：桌宠工具栏 ↺、Ctrl+⌘+Shift+R、本地 API 同一功能（T-2830） |
 | `tray:检查更新` | 版本与更新 → 检查更新 |
@@ -683,7 +684,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：106 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：111 个
 
 - 设置窗口有同一通道（46）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
@@ -698,7 +699,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（49）：
+- 不是配置，只在桌宠窗口（54）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -748,6 +749,11 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `debug-voice-hotkey-status`：测试钩子：快捷键注册状态（设置窗口从 settings.hotkeyStatus 读同一份）
   - `debug-mic-access`：测试钩子：模拟系统拒绝麦克风
   - `debug-hide-pet`：测试钩子：先隐藏 / 最小化桌宠，再验证快捷键把她叫出来
+  - `quick-open`：互动：右键 / 长按她打开快捷调用面板（T-2849，docs/quick-panel.md）；面板里的行都是已有操作（偏好设置 / 检查更新 / 重置姿势 / 退出 …），不是设置
+  - `quick-dismiss`：互动：在桌宠窗口里按下时关闭已打开的快捷调用面板（T-2849），不是设置
+  - `debug-quick`：测试钩子：快捷调用面板的状态（显示 / 位置 / 打开关闭次数 / 快捷键注册状态，T-2849）
+  - `debug-quick-hotkey`：测试钩子：按一次快捷调用面板的全局快捷键（调用注册的处理函数）
+  - `debug-update-state`：测试钩子：把更新状态设为某一状态（下载中 / 已下载），模拟 Linux 上走不到的分支
 
 缺失：无
 

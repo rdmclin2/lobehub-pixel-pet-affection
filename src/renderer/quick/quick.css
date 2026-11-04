@@ -1,0 +1,46 @@
+/* 快捷调用面板 (T-2849): laid out like LobeHub's macOS application menu — groups split by thin lines, an icon on
+   the left, the shortcut on the right, the row under the pointer / the arrow keys filled with the accent colour.
+   Values are --lobe-* tokens (R-04); light / dark follow the OS. */
+html, body { margin: 0; overflow: hidden; background: transparent; user-select: none; }
+body { padding: var(--lobe-padding-xxs); font-family: var(--lobe-font-family); font-size: var(--lobe-font-size); line-height: var(--lobe-line-height); color: var(--lobe-color-text); -webkit-font-smoothing: antialiased; }
+
+.menu { display: flex; flex-direction: column; padding: var(--lobe-padding-xxs); background: var(--lobe-color-bg-elevated); border: 1px solid var(--lobe-color-fill); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-tertiary); overflow: hidden; }
+.menu.opening { animation: quick-in var(--lobe-motion-duration-fast) var(--lobe-motion-ease-out); }
+@keyframes quick-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .menu.opening { animation: none; } .spin { animation: none !important; } }
+
+.ico { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+/* filter: a quiet first line (only the placeholder) that fills in once something is typed. It is never collapsed:
+   growing an input from zero height resets its caret, and typed Chinese came out reversed. */
+.filter { display: flex; align-items: center; gap: var(--lobe-padding-xs); min-height: 28px; padding: 0 var(--lobe-padding-xs); margin-bottom: var(--lobe-padding-xxs); border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text-tertiary); transition: background-color var(--lobe-motion-duration-fast) var(--lobe-motion-ease-out); }
+.filter.empty { background: transparent; color: var(--lobe-color-text-quaternary); }
+.filter input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--lobe-color-text); padding: 0; }
+.filter input::placeholder { color: var(--lobe-color-text-quaternary); }
+
+.list { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; gap: var(--lobe-padding-xs); min-height: 28px; padding: 0 var(--lobe-padding-xs); border-radius: var(--lobe-border-radius-sm); color: var(--lobe-color-text); cursor: default; }
+.row .ico { color: var(--lobe-color-text-secondary); }
+.row .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .hint { flex: none; color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); font-family: var(--lobe-font-family); }
+.row.active { background: var(--lobe-color-info); color: var(--lobe-color-bg-elevated); }
+.row.active .ico, .row.active .hint { color: var(--lobe-color-bg-elevated); }
+.row[aria-disabled='true'] { color: var(--lobe-color-text-quaternary); }
+.sep { height: 1px; margin: var(--lobe-padding-xxs) var(--lobe-padding-xs); background: var(--lobe-color-fill-secondary); }
+.none { padding: var(--lobe-padding-xs); color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); }
+
+/* 检查更新 result: under 检查更新…, with its follow-up (立即更新 / 前往下载页 / 重试) as the next row */
+.status { display: flex; gap: var(--lobe-padding-xs); margin: var(--lobe-padding-xxs) 0; padding: var(--lobe-padding-xs); border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-tertiary); }
+.status .ico { margin-top: 2px; }
+.status .t { font-weight: var(--lobe-font-weight-strong); }
+.status .d { color: var(--lobe-color-text-secondary); font-size: var(--lobe-font-size-sm); line-height: var(--lobe-line-height-sm); word-break: break-word; }
+.status[data-tone='success'] .ico { color: var(--lobe-color-success); }
+.status[data-tone='info'] .ico { color: var(--lobe-color-info); }
+.status[data-tone='warning'] .ico { color: var(--lobe-color-warning); }
+.status[data-tone='error'] .ico { color: var(--lobe-color-error); }
+.status[data-tone='loading'] .ico { color: var(--lobe-color-text-secondary); }
+.spin { animation: quick-spin 1s linear infinite; }
+@keyframes quick-spin { to { transform: rotate(360deg); } }
+
+.foot { margin-top: var(--lobe-padding-xxs); padding: var(--lobe-padding-xxs) var(--lobe-padding-xs) 0; border-top: 1px solid var(--lobe-color-fill-secondary); color: var(--lobe-color-text-tertiary); font-size: var(--lobe-font-size-sm); line-height: var(--lobe-line-height-sm); }
+.foot kbd { font-family: var(--lobe-font-family); }

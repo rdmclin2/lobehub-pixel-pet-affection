@@ -93,6 +93,7 @@ function normalizeHotkey(raw) {
 // stop working in the app itself. `label` says what they do.
 const RESERVED = [
   { accelerator: 'CommandOrControl+,', label: '打开设置' },
+  { accelerator: 'CommandOrControl+Alt+P', label: '快捷调用面板' }, // T-2849 (core/quick-panel.js QUICK_HOTKEYS)
   { accelerator: 'CommandOrControl+Q', label: '退出（macOS）' },
   { accelerator: 'CommandOrControl+C', label: '复制' },
   { accelerator: 'CommandOrControl+V', label: '粘贴（聊天框里粘贴图片）' },

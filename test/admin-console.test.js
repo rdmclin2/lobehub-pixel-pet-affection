@@ -538,10 +538,12 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
   assert.ok(!fs.existsSync(path.join(ROOT, 'src', 'renderer', 'history.js')));
-  // ⚙, a right click and a long press all open the settings window
+  // ⚙ opens the settings window; a right click and a long press open the 快捷调用面板 (T-2849), whose 偏好设置…
+  // opens it in one more click (core/quick-panel.js buildItems, main.js quickActions.settings)
   assert.match(app, /else if \(act === 'settings'\) openSettings\(\);/);
-  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(\) => openSettings\(\) \}\)/);
-  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openSettings\(\);/);
+  assert.match(app, /bindPetPointer\(\{ onClick: touchAt, onMenu: \(at\) => openQuickPanel\(at, 'long-press'\) \}\)/);
+  assert.match(app, /addEventListener\('contextmenu'[\s\S]{0,160}openQuickPanel\(\{ x: e\.screenX, y: e\.screenY \}, 'right-click'\);/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8'), /settings: \(\) => openAdmin\(\),/);
   assert.match(app, /window\.pet\.openAdmin\(/);
   // the unlock toast goes to her page (衣柜) or 玩法 → 话题 in the settings window
   // T-2764: her page is the character's (one look), e.g. characters/dafeiyu-live2d

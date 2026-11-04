@@ -808,9 +808,10 @@ function refreshHud() {
   syncSettingsDot();
 }
 
-// The one way into the settings window (配置后台) from the pet: the ⚙ button, a right click or a long press
-// on her, and Ctrl/⌘+, (main.js). Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is
-// something new waiting in it: an outfit or topic just unlocked, or a new version.
+// The ways into the settings window (配置后台) from the pet: the ⚙ button, Ctrl/⌘+, (main.js), and 偏好设置… in
+// the 快捷调用面板 (a right click or a long press on her, or ⌘⌥P / Ctrl+Alt+P; T-2849, docs/quick-panel.md).
+// Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is something new waiting in it: an
+// outfit or topic just unlocked, or a new version.
 const SETTINGS_SECTION = { update: 'update', outfit: () => `characters/${view.pet.characterId || view.pet.speciesId}`, topic: 'topics' };
 function settingsNews() {
   if (updateState && ['ready', 'manual'].includes(updateState.status)) return 'update';
@@ -823,7 +824,14 @@ function syncSettingsDot() {
   const b = $('btn-settings');
   b.querySelector('.new-dot').classList.toggle('hidden', !news);
   b.dataset.news = news || '';
-  b.title = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,；也可以右键或在触屏上长按她）';
+  b.title = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,）；右键或长按她打开快捷调用面板';
+}
+// 快捷调用面板 (T-2849): main opens it at `at` (screen point), kept inside the screen's work area
+function openQuickPanel(at, source) {
+  hideToast();
+  $('food-menu').classList.add('hidden');
+  closeDanceMenu();
+  window.pet.openQuick(at && at.x, at && at.y, source).catch(() => {});
 }
 function openSettings(section) {
   if (thinking) return;
@@ -1636,15 +1644,20 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  // a right click (or a long press on a touch screen) on her opens the settings window, as ⚙ does: there is
-  // no menu in the pet window any more
-  bindPetPointer({ onClick: touchAt, onMenu: () => openSettings() });
+  // a right click (or a long press on a touch screen) on her opens the 快捷调用面板 at that point (T-2849,
+  // main/quick-panel.js): 检查更新… / 偏好设置… / 和她聊天 / 隐藏桌宠 / 退出 …; the settings stay one click away there
+  bindPetPointer({ onClick: touchAt, onMenu: (at) => openQuickPanel(at, 'long-press') });
   bindTouchHint();
   document.addEventListener('contextmenu', (e) => {
     if (!e.target.closest || !e.target.closest('.pet-hit')) return;
     e.preventDefault();
-    openSettings();
+    openQuickPanel({ x: e.screenX, y: e.screenY }, 'right-click');
   });
+  // 和她聊天 in the panel: the chat box opens; a 检查更新 answer that came after the panel closed: she says it
+  window.pet.onQuickChat(() => openChat());
+  // a press in her window closes an open panel (the right click that opens one comes after its own pointerdown)
+  document.addEventListener('pointerdown', () => window.pet.dismissQuick(), true);
+  window.pet.onQuickNote((m) => { if (m && m.text) say(m.text, 'update', 'fallback'); });
 }
 
 // Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
@@ -1653,7 +1666,7 @@ function bindPetUi() {
 //   screen edges); let go slowly and it is just put down;
 // - press twice quickly, pull and let go: the slingshot launches it the opposite way of the pull;
 // - press it while it flies: caught, with a score for a fast one;
-// - touch: a long press held still opens the settings window (`onMenu`), like a right click.
+// - touch: a long press held still opens the 快捷调用面板 (`onMenu`, given the screen point), like a right click.
 function bindPetPointer({ onClick, onMenu }) {
   let drag = null;
   let lastPressAt = null;
@@ -1689,7 +1702,7 @@ function bindPetPointer({ onClick, onMenu }) {
       if (e.pointerType === 'touch') {
         const d = drag;
         d.press = setTimeout(() => {
-          if (drag === d && Fx.isLongPress(performance.now() - now, d.travel)) { d.menu = true; drag = null; onMenu(); }
+          if (drag === d && Fx.isLongPress(performance.now() - now, d.travel)) { d.menu = true; drag = null; onMenu({ x: d.x, y: d.y }); }
         }, Fx.LONG_PRESS.ms);
       }
     });

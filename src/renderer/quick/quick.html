@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:" />
+  <title>Pixel Pet 快捷调用</title>
+  <!-- 快捷调用面板 (T-2849, docs/quick-panel.md): LobeHub tokens, light / dark follow the OS like the pet window -->
+  <link rel="stylesheet" href="../design/lobe-tokens.css" />
+  <link rel="stylesheet" href="quick.css" />
+</head>
+<body>
+  <div id="menu" class="menu" role="dialog" aria-label="快捷调用">
+    <!-- type to filter: a quiet first line with a placeholder; focus is in it as soon as the panel opens -->
+    <div id="filter" class="filter empty">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="list" aria-autocomplete="list" aria-label="筛选操作" placeholder="输入以筛选操作" autocomplete="off" spellcheck="false" />
+    </div>
+    <div id="list" class="list" role="listbox" aria-label="快捷操作"></div>
+    <div id="foot" class="foot"></div>
+  </div>
+  <script src="../../core/quick-panel.js"></script>
+  <script src="quick.js"></script>
+</body>
+</html>

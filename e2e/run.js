@@ -17,6 +17,7 @@
 //   scenario "admin-chat" -> 设置窗口 → 聊天 acceptance: the chatui walk (fake) + a real companion talked to through the same page
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
 //   scenario "interject" -> 插个嘴: off → no jev call; on + mock jev 0.86 → a remark with 别插嘴 / 说得好; 别插嘴 → rule → same kind skipped; rules UI
+//   scenario "quickpanel" -> 快捷调用面板 (T-2849): right click / Ctrl+Alt+P, filter + ↑↓, 检查更新 in every state, edges, gestures, every row (records the display: out/e2e/quick/)
 //   scenario "voicehotkey" -> 快捷键唤起语音对话: the global shortcut → pet shown, listening, recognised; settings window records / refuses combinations
 // Run on a headless box with:  xvfb-run -a node e2e/run.js [fresh|live|all]
 const { _electron } = require('playwright');
@@ -169,7 +170,17 @@ async function adminRelease(app, page, deleteAgent = true) {
 // core/settings.js, broadcast to every window). -> { ok, reason?, message?, value, settings }
 const adminSet = (admin, key, value) => admin.evaluate(([k, v]) => window.petAdmin.set(k, v), [key, value]);
 // The pet window (BrowserWindow.getAllWindows() also lists the settings window once it is open)
-const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('/quick/') && !w.webContents.getURL().includes('visitor=')).getBounds());
+// 快捷调用面板 (T-2849): wait for the panel a right click / the shortcut opened, then click one of its rows by id
+async function quickRow(app, page, id) {
+  for (let i = 0; i < 100; i++) {
+    const st = await page.evaluate(() => window.pet.debugQuick());
+    const q = app.windows().find((w) => w.url().includes('/quick/'));
+    if (st.visible && q) { await q.click(`#row-${id}`); return; }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error('the 快捷调用面板 did not open');
+}
 const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
@@ -6414,6 +6425,7 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
+const quickPanelScenario = () => require('./quick-panel')({ ROOT, OUT, FAKE_LH, step, launch, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
 const spriteFrameScenarios = () => require('./sprite-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
@@ -7936,13 +7948,14 @@ async function frontslimScenario() {
       return `settings windows ${n}; path /overview; ${d}`;
     }, () => admin);
 
-    await step(S, 'F4 右键她 → 打开后台（不再弹菜单）；Ctrl+, 也打开后台', async () => {
+    await step(S, 'F4 右键她 → 快捷调用面板 → 偏好设置… 打开后台（T-2849）；Ctrl+, 也打开后台', async () => {
       await closeAdmin();
       await page.bringToFront();
       await hover(page);
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { id: el.id, x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       const hit = await page.evaluate(({ x, y }) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName}#${e.id}.${e.className}` : null; }, box);
       await page.mouse.click(box.x, box.y, { button: 'right' });
+      await quickRow(app, page, 'settings'); // T-2849: the right click opens the 快捷调用面板; 偏好设置… is its row
       try { admin = await findAdmin(); } catch (e) { throw new Error(`${e.message} (right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit}, pet-hit ${box.id})`); }
       await atPath('/overview');
       const popups = await page.evaluate(() => [...document.querySelectorAll('.popup')].filter((p) => !p.classList.contains('hidden')).map((p) => p.id));
@@ -7951,7 +7964,7 @@ async function frontslimScenario() {
       await page.bringToFront();
       // a real key press as the window receives it (before-input-event sees sendInputEvent, not CDP key events)
       await app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui'));
+        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/quick/'));
         w.focus();
         w.webContents.sendInputEvent({ type: 'keyDown', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
         w.webContents.sendInputEvent({ type: 'keyUp', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
@@ -8040,7 +8053,7 @@ async function frontslimScenario() {
     }, () => admin);
 
     await step(S, 'F9 回到右下角 → 后台 桌面上的她：被拖走的桌宠回到右下角', async () => {
-      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui')); w.setPosition(100, 100); });
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/quick/')); w.setPosition(100, 100); });
       const before = await petBounds(app);
       await admin.evaluate(() => document.querySelector('[data-desk-home]').click());
       await toastSeen(/回到右下角/);
@@ -9571,7 +9584,7 @@ async function adminCoverageScenario() {
   };
   const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
   const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
-  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('/quick/') && !w.webContents.getURL().includes('visitor=')).getBounds());
   try {
     await step(S, 'B0 hatch 格萝可, ⚙ 设置 opens the settings window (the pet window has no ⋯ menu since T-2718)', async () => {
       await page.waitForSelector('.char-card');
@@ -10012,7 +10025,7 @@ async function adminScenario() {
     await step(S, 'A2 single instance: tray → 打开设置…, ⚙ 设置 again and Ctrl+, all reuse the same window', async () => {
       const tray = await page.evaluate(() => window.pet.debugTray());
       assert.equal(tray.created, true, 'tray created');
-      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '检查更新', '退出']);
+      assert.deepEqual(tray.items, ['打开设置…', '快捷调用面板…', '显示桌宠', '重置姿势', '检查更新', '退出']);
       const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('admin-ui')).map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^.*\/src\//, 'src/') })));
       const seen = [];
       await admin.evaluate(() => { location.hash = '/about'; });
@@ -10435,22 +10448,23 @@ async function adminScenario() {
       return 'my-grok listed after import, removed (folder gone)';
     }, () => admin);
 
-    await step(S, 'A15 a right click on her brings the same settings window forward (no menu, no second window)', async () => {
+    await step(S, 'A15 a right click on her → 快捷调用面板 → 偏好设置… brings the same settings window forward (no second window)', async () => {
       await admin.evaluate(() => { location.hash = '/characters/grok-pixel'; });
       await page.bringToFront();
       await hover(page);
-      // ⚙ / a right click go to what is new (an update, an unlocked outfit or topic), else keep the window's page
+      // 偏好设置… in the 快捷调用面板 (T-2849) brings the open window forward at its page (⚙ jumps to what is new)
       const news = await page.getAttribute('#btn-settings', 'data-news');
-      const want = { update: '/update', outfit: '/characters/grok-pixel', topic: '/topics' }[news] || '/characters/grok-pixel';
+      const want = '/characters/grok-pixel';
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       await page.mouse.click(box.x, box.y, { button: 'right' });
+      await quickRow(app, page, 'settings');
       await page.waitForTimeout(500);
       assert.equal(await page.locator('#model-select, #role-input, #main-menu, #panel').count(), 0, 'no form, menu or panel in the pet window');
       const info = await page.evaluate(() => window.pet.debugAdmin());
       assert.equal(info.opened, 1);
       await adminUntil(admin, (p) => !!document.querySelector(`[data-path="${p}"]`), want, 15000, want);
       await page.screenshot({ path: path.join(SHOTS, 'pet-char-page-jump.png') });
-      return `right click (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
+      return `right click → 偏好设置… (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
     }, () => admin);
 
     await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
@@ -10778,6 +10792,7 @@ async function interjectScenario() {
   if (which === 'models' || which === 'all') await models();
   if (which === 'charpage' || which === 'all') await charpage();
   if (which === 'update' || which === 'all') await update();
+  if (which === 'quickpanel' || which === 'all') await quickPanelScenario(); // T-2849 快捷调用面板 (docs/quick-panel.md)
   if (which === 'art' || which === 'all') await art();
   if (which === 'roster' || which === 'all') await roster();
   if (which === 'touch' || which === 'all') await touch();

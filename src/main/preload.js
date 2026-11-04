@@ -158,6 +158,14 @@ contextBridge.exposeInMainWorld('pet', {
   onUpdateStatus: on('update-status'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
   checkUpdate: () => ipcRenderer.invoke('update-check'),
+  // 快捷调用面板 (main/quick-panel.js): open it at a screen point (right click / long press on her)
+  openQuick: (x, y, source) => ipcRenderer.invoke('quick-open', { x, y, source }),
+  dismissQuick: () => ipcRenderer.send('quick-dismiss'),
+  onQuickChat: on('quick-chat'),
+  onQuickNote: on('quick-note'),
+  debugQuick: () => ipcRenderer.invoke('debug-quick'),
+  debugQuickHotkey: () => ipcRenderer.invoke('debug-quick-hotkey'),
+  debugUpdateState: (patch) => ipcRenderer.invoke('debug-update-state', patch),
   onHatchStep: on('hatch-step'),
   onLoginPrompt: on('login-prompt'),
 });

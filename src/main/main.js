@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut, nativeTheme } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -36,6 +36,8 @@ const { VoicePacks, packApplies, norm: packNorm } = require('../core/voice-pack'
 const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
+const { QuickHotkey } = require('./quick-hotkey');
+const { QuickPanel } = require('./quick-panel');
 const { createAdminSettings } = require('./admin-settings');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
@@ -72,6 +74,8 @@ let nextSavePath = null; // E2E only (debug-next-save): where the next 导出…
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
+let quickHotkey = null; // 快捷调用面板 (quick-hotkey.js): ⌘⌥P / Ctrl+Alt+P, or the fallback
+let quickPanel = null; // 快捷调用面板 (quick-panel.js, docs/quick-panel.md)
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
 // Each reports its character box and speed while flying, so a thrown pet can knock into the others.
@@ -201,7 +205,42 @@ function applyHotkey() {
   if (!voiceHotkey || !service) return false;
   const before = JSON.stringify(voiceHotkey.status());
   voiceHotkey.apply(service.settings.asr.hotkey);
+  // the panel's shortcut stays clear of the voice one (a fallback takes over when they would collide)
+  if (quickHotkey) quickHotkey.apply({ avoid: [voiceHotkey.current] });
   return JSON.stringify(voiceHotkey.status()) !== before;
+}
+// 快捷调用面板 (T-2849, docs/quick-panel.md): what it shows about the pet, and what each row does. The rows are the
+// tray's / the settings window's own actions: 检查更新… is the same Updater.checkNow() as 托盘 → 检查更新.
+const petShown = () => !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
+function quickContext() {
+  let look = null;
+  try { const v = service && service.pet ? service.view() : null; look = v && v.look; } catch { /* no view yet */ }
+  return {
+    hasPet: !!(service && service.pet),
+    petVisible: petShown(),
+    canReset: !!(look && look.kind === 'vrm'),
+    version: app.getVersion(),
+    petBounds: win && !win.isDestroyed() ? win.getBounds() : null,
+    platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform,
+    hotkey: quickHotkey ? quickHotkey.status() : null,
+    // light / dark as the pet window shows it: settings.ui.theme when pinned, else the OS
+    theme: ((t) => (t === 'light' || t === 'dark' ? t : nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))(service && service.settings.ui && service.settings.ui.theme),
+  };
+}
+const quickActions = {
+  about: () => openAdmin('update'), // 设置 → 版本与更新: the version, what changed, 自动更新
+  settings: () => openAdmin(),
+  chat: () => { showPet(); send('quick-chat'); },
+  'reset-pose': () => resetPose('panel'),
+  'hide-pet': () => { if (win && !win.isDestroyed()) win.hide(); },
+  'show-pet': () => { showPet(); },
+  quit: () => app.quit(),
+  install: () => updater.install(), // 立即更新 (a downloaded version)
+  // 前往下载页 (manual: install() opens the release page; e2e runs only record the link, as open-link does)
+  'open-download': () => (TEST_MODE && updater.state.status === 'manual' ? (openedLinks.push(updater.state.url), true) : updater.install()),
+};
+function onQuickHotkey() {
+  if (quickPanel) quickPanel.toggle({ source: 'hotkey' }).catch(logError);
 }
 // 托盘 (§5.3): the way back to the settings and to the pet when she is covered or off screen.
 function createTray() {
@@ -213,6 +252,7 @@ function createTray() {
     tray.setToolTip('Pixel Pet');
     trayMenu = Menu.buildFromTemplate([
       { label: '打开设置…', click: () => openAdmin() },
+      { label: '快捷调用面板…', click: () => { if (quickPanel) quickPanel.open({ source: 'tray', at: screen.getCursorScreenPoint() }).catch(logError); } },
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
       { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
@@ -799,6 +839,15 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
+  // 快捷调用面板: a right click / long press on her opens it at that point (screen coordinates)
+  // a press anywhere in her window while the panel is open closes it (as a click outside a menu does; the
+  // window manager's focus change does the same for clicks elsewhere — QuickPanel closes on blur)
+  ipcMain.on('quick-dismiss', (e) => { if (windowOf(e) === win && quickPanel) quickPanel.close('outside'); });
+  ipcMain.handle('quick-open', (e, p = {}) => {
+    if (windowOf(e) !== win || !quickPanel) return { ok: false };
+    const at = Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: Math.round(p.x) + 2, y: Math.round(p.y) + 2 } : null;
+    return quickPanel.open({ source: String(p.source || 'menu'), at });
+  });
   // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
@@ -940,6 +989,9 @@ function wire() {
     ipcMain.handle('debug-interject-input', (_e, p) => service.interjectInput(p && p.source, p && p.text));
     // 快捷键唤起语音对话: press it as the OS would (the registered handler), read its state, hide the pet first
     ipcMain.handle('debug-voice-hotkey', () => { voiceHotkey.trigger('test'); return voiceHotkey.status(); });
+    ipcMain.handle('debug-quick', () => ({ ...quickPanel.debugState(), hotkey: quickHotkey.status(), registered: quickHotkey.current ? globalShortcut.isRegistered(quickHotkey.current) : false, petVisible: petShown(), update: updater.state }));
+    ipcMain.handle('debug-quick-hotkey', async () => { quickHotkey.trigger('test'); await new Promise((r) => setTimeout(r, 450)); return quickPanel.debugState(); });
+    ipcMain.handle('debug-update-state', (_e, patch = {}) => { updater._set(patch); return updater.state; });
     ipcMain.handle('debug-voice-hotkey-status', () => ({ ...voiceHotkey.status(), registered: voiceHotkey.current ? globalShortcut.isRegistered(voiceHotkey.current) : false, petVisible: !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()), petFocused: !!(win && !win.isDestroyed() && win.isFocused()) }));
     ipcMain.handle('debug-mic-access', (_e, v) => { micAccessOverride = typeof v === 'string' && v ? v : null; return micAccessOverride; });
     ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
@@ -1035,6 +1087,7 @@ app.whenReady().then(() => {
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
+  quickHotkey = new QuickHotkey({ shortcuts: globalShortcut, onTrigger: onQuickHotkey, log: logError });
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
   service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
@@ -1080,6 +1133,7 @@ app.whenReady().then(() => {
     },
   });
   wire();
+  quickPanel = new QuickPanel({ context: quickContext, actions: quickActions, updater, notify: (line) => { if (line) send('quick-note', { text: line }); }, log: logError, testMode: TEST_MODE });
   createWindow();
   createTray();
   createAppMenu();
