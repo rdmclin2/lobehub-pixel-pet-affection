@@ -45,6 +45,9 @@
 
   // ---------- guessing from the model ----------
   const BUST_RE = /bust|breast|oppai|胸/i;
+  // a skirt / dress that sways (SpringBone) — T-5084: 20 of the 53 female store models have no bust spring; the
+  // skirt is the next most telling thing in the file (the hem of a robe on a male model is rare: 1 of 10)
+  const SKIRT_RE = /skirt|スカート|裙|dress|frill/i;
   // { bustSpring, shoulderHip } from a VRM glTF JSON (1.0 or 0.x), read only from the JSON header.
   function bodyFromJson(json) {
     const nodes = (json && json.nodes) || [];
@@ -60,7 +63,12 @@
       for (const g of ext.VRM.secondaryAnimation.boneGroups) for (const b of (g && g.bones) || []) if (Number.isInteger(b)) walk(b);
     }
     let bustSpring = 0;
-    for (const i of springNodes) if (nodes[i] && BUST_RE.test(String(nodes[i].name || ''))) bustSpring++;
+    let skirtSpring = 0;
+    for (const i of springNodes) {
+      const n = String((nodes[i] && nodes[i].name) || '');
+      if (BUST_RE.test(n)) bustSpring++;
+      else if (SKIRT_RE.test(n)) skirtSpring++;
+    }
     // humanoid: bone name → node index
     const hb = {};
     if (ext.VRMC_vrm && ext.VRMC_vrm.humanoid && ext.VRMC_vrm.humanoid.humanBones) for (const [n, b] of Object.entries(ext.VRMC_vrm.humanoid.humanBones)) if (b && Number.isInteger(b.node)) hb[n] = b.node;
@@ -73,14 +81,20 @@
     const shoulders = dist('leftUpperArm', 'rightUpperArm');
     const hips = dist('leftUpperLeg', 'rightUpperLeg');
     const shoulderHip = shoulders && hips ? shoulders / hips : null;
-    return { bustSpring, shoulderHip: shoulderHip === null ? null : Math.round(shoulderHip * 100) / 100 };
+    return { bustSpring, skirtSpring, shoulderHip: shoulderHip === null ? null : Math.round(shoulderHip * 100) / 100 };
   }
 
-  // The style a body reading suggests.
+  // The style a body reading suggests. Measured on the 75 models of the store / models pack (T-5084): male models
+  // have shoulders ≥ 1.57 × their hips (most ≥ 1.9), female ones ≤ 1.54 when they have no bust spring (Elysia 1.54,
+  // Liqu 1.52 were read as male with the old 1.5) — so male from MALE_SHOULDER_HIP up; a skirt spring on a narrow
+  // body is female; anything else is neutral, which has its own clip set (T-5081) and falls back like the others.
+  const MALE_SHOULDER_HIP = 1.55;
+  const NARROW_SHOULDER_HIP = 1.45;
   function inferFromBody(body) {
     if (!body) return 'neutral';
     if (body.bustSpring > 0) return 'female';
-    if (body.shoulderHip !== null && body.shoulderHip >= 1.5) return 'male';
+    if (body.shoulderHip !== null && body.shoulderHip !== undefined && body.shoulderHip >= MALE_SHOULDER_HIP) return 'male';
+    if (body.skirtSpring > 0 && (body.shoulderHip === null || body.shoulderHip === undefined || body.shoulderHip < NARROW_SHOULDER_HIP)) return 'female';
     return 'neutral';
   }
 
@@ -97,5 +111,5 @@
     return { ...p, ...overrides, breath: { ...p.breath }, shiftEvery: p.shiftEvery.slice(), name: base, set: p.set, source };
   }
 
-  return { PROFILES, NAMES, VRM_STYLE_LIMITS, parsePackStyle, bodyFromJson, inferFromBody, resolveStyle };
+  return { MALE_SHOULDER_HIP, NARROW_SHOULDER_HIP, PROFILES, NAMES, VRM_STYLE_LIMITS, parsePackStyle, bodyFromJson, inferFromBody, resolveStyle };
 });

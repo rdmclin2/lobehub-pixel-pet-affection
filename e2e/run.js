@@ -10802,6 +10802,7 @@ async function interjectScenario() {
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
   if (which === 'vrmreset' || which === 'all') await vrmScenarios().vrmReset();
   if (which === 'vrmanim' || which === 'all') await vrmScenarios().vrmAnim(); // T-2832 前台 VRM 动画状态端到端验收
+  if (which === 'vrmstore' || which === 'all') await vrmScenarios().vrmStore(); // T-5084 商店 VRM + 动作库 v2：idle 命中、无瞬跳、播放入口
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
   if (which === 'dance' || which === 'all') await vrmScenarios().danceE2e();
   if (which === 'dancefinal' || which === 'all') await vrmScenarios().danceFinal();

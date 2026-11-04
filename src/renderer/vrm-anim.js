@@ -32,6 +32,11 @@
 // face. A base clip now always leaves through a cross-fade to the next base, the rest clip included.
 (function () {
   const LOOP_BLEND = 0.5;
+  // phase alignment (T-5084): a new idle loop starts at the time of its clip whose pose is nearest to the pose she
+  // shows now (ALIGN_N candidates, shifted by a random offset so the same idle never beats on the same clock), so a
+  // cross-fade blends two similar poses instead of pulling her through a far one. Weights: the bones that show most.
+  const ALIGN_N = 16;
+  const ALIGN_W = { hips: 2, spine: 1, chest: 1, upperChest: 0.5, neck: 0.5, head: 0.7, leftUpperArm: 1.5, rightUpperArm: 1.5, leftLowerArm: 1, rightLowerArm: 1, leftUpperLeg: 1.5, rightUpperLeg: 1.5, leftLowerLeg: 1, rightLowerLeg: 1 };
   const REST_ID = 'rest.pose';
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
@@ -130,9 +135,36 @@
       return true;
     }
 
+    // The time in clip `id` whose pose is nearest the pose now (ALIGN above) → { time, dist, mean } (dist: the weighted
+    // 1 − |q·q'| at that time, mean: over all candidates — how much the alignment saved)
+    let lastAlign = null;
+    function alignedTime(id, jitter = Math.random()) {
+      const tracks = sampler(id);
+      const c = clips.get(id);
+      if (!tracks || !tracks.length || !c || !(c.clip.duration > 0.2)) return null;
+      const dur = c.clip.duration;
+      let best = 0;
+      let bestD = Infinity;
+      let sum = 0;
+      for (let i = 0; i < ALIGN_N; i++) {
+        const tt = ((i + jitter) / ALIGN_N) * dur;
+        let d = 0;
+        for (const tr of tracks) {
+          const w = tr.q && ALIGN_W[tr.bone];
+          if (!w) continue;
+          qa.fromArray(tr.interp.evaluate(tt)).normalize();
+          d += w * (1 - Math.abs(qa.dot(tr.node.quaternion)));
+        }
+        sum += d;
+        if (d < bestD) { bestD = d; best = tt; }
+      }
+      lastAlign = { id, time: +best.toFixed(3), dist: +bestD.toFixed(5), mean: +(sum / ALIGN_N).toFixed(5), duration: +dur.toFixed(3) };
+      return lastAlign;
+    }
+
     // Cross-fade the base to clip `id` over `dur` seconds (0: at once). Unknown id → false. opts: { phase (0..1:
-    // where in the clip a newly started action begins), speed (its time scale) } — idles use them so a loop
-    // never keeps the same beat.
+    // where in the clip a newly started action begins), align (start where the pose is nearest the pose now: the
+    // phase alignment above, T-5084), speed (its time scale) } — idles use them so a loop never keeps the same beat.
     function setBase(id, dur = 1, opts = null) {
       const c = clips.get(id);
       if (!c) return false;
@@ -143,7 +175,7 @@
         const action = mixer.clipAction(c.clip);
         action.setLoop(T.LoopRepeat, Infinity);
         action.reset().play();
-        if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
+        if (opts && opts.align) { const a = alignedTime(id); if (a) action.time = a.time; } else if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
         if (opts && opts.speed > 0) action.timeScale = opts.speed;
         L = { id, action, w: 0, external, duration: c.clip.duration };
         layers.push(L);
@@ -255,6 +287,8 @@
       // "id:weight" of every playing clip, for data-layers
       summary: () => layers.map((l) => `${l.id}:${l.w.toFixed(2)}`).join(','),
       overlays: () => lastOverlays,
+      lastAlign: () => lastAlign && { ...lastAlign },
+      alignedTime,
       weightSum: () => layers.reduce((s, l) => s + l.w, 0),
       dispose: () => { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); layers = []; clips.clear(); },
     };

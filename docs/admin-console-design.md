@@ -629,7 +629,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `petScaleSet` | behavior（内部） | 手动选过大小 | — | 内部标记：动过「宠物大小」后不再跟随默认大小（由 `petScale` 的修改写入） |
 | `characterModel` | about（内部） | 角色数据版本 | — | 角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读） |
 
-### 12.2 运行时行为控制：17 项
+### 12.2 运行时行为控制：18 项
 
 | 行为 | 后台位置 | 设置项 | 操作（admin-preload 通道） | 生效 |
 | --- | --- | --- | --- | --- |
@@ -647,6 +647,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | 更新 | 设置 → 版本与更新 | `update.autoCheck` | `update-check` `update-install` | 即时生效 |
 | 安全（成人向 / 本机能力） | 设置 → 内容与安全；LobeHub 与本机 | `adultContent` `localAbilities` | `confirm-age` `set-adult` | 即时生效 |
 | 角色（服饰 / 模型 / 设定） | 角色图鉴 → 角色详情 | `models.<id>` `systemRoles.<id>` `framings.<id>` `vrmPostures.<id>` | `switch-character` `equip-outfit` `set-model` `set-system-role` `set-live2d-height` `set-framing` `set-vrm-posture` | 即时生效 |
+| VRM 动作库与动作试播 | 角色详情 → 外观 → VRM 动作库（VRM 角色） | — | `vrm-library-info` `vrm-library-pick` `vrm-library-unlink` `vrm-motions:list` `vrm-motion:play` `vrm-motion:stop` | 即时生效 |
 | 角色包（导入 / 导出 / 删除） | 设置 → 角色包；角色详情 → 外观（导入的包成为新角色） | — | `import-pack` `import-live2d` `import-vrm` `set-pack-base` `export-pack` `remove-pack` `open-packs-folder` | 即时生效 |
 | 数据目录与重置 | 设置 → 数据与关于 | `system.hardwareAcceleration` | `open-data-folder` `open-log` `release` `new-topic` `admin-relaunch` | 即时生效（硬件加速需重启） |
 | 设置窗口外观 | 设置 → 外观主题 | `ui.theme` | — | 即时生效 |
@@ -685,7 +686,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 
 ### 12.4 桌宠窗口通道（src/main/preload.js）：106 个
 
-- 设置窗口有同一通道（46）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
+- 设置窗口有同一通道（47）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `new-topic` `release` `switch-character` `set-vrm-posture` `vrm-library-info` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
   - `get-settings` → `admin-boot` / `admin-state`（整份设置随广播推送）
   - `preview-pet-scale` → `admin-set` petScale（滑块松手即保存；拖动中的预览只在桌宠窗口）
@@ -698,7 +699,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（49）：
+- 不是配置，只在桌宠窗口（48）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -714,7 +715,6 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `move-to`：走动时移动窗口
   - `work-area`：走动时读屏幕边界
   - `cursor-point`：VRM 视线跟随鼠标
-  - `vrm-library-info`：VRM 动作库从哪里加载（只读诊断信息，给 e2e 和排查用，不是设置）
   - `tts-synthesize`：朗读一句（播放，不是配置）
   - `tts-cancel`：停止朗读
   - `tts-prewarm`：互动语音预合成

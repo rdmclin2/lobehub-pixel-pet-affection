@@ -679,3 +679,45 @@ T-2698 复核的剩余问题。架构不变（intent → director → anim/life�
 - 画布 `data-acts`（`eat:1.00` 等）；`PetVRM.director.pose()` 新增 `arms.*.toHead`（手到头的距离 × 胯高）、`arms.*.aboveShoulder`、`headDown`（脸朝下的角度）、`headY`；`figures[0].acts`（本帧 `air` 与动到的骨骼）。
 - 单测 `test/vrm-acts.test.js`（15 项，用 vendor 里的 three 搭一副人体比例骨骼）：吃饭咬口时手离嘴 < 15 cm（idle 时 > 50 cm）、上臂 > 40°、肘 > 90°；玩耍离地、屈膝 > 25°、双手过肩、左右挥动、男性只举右手且跳得低；睡觉脸朝下 > 30°、头变低、站姿屈膝、胸口慢起伏，坐姿不动手脚；权重 0 等于 idle、0.x 镜像；导演里（有库 / 无库各一遍）触发吃 / 玩 / 睡后骨骼偏离 idle > 20–60°，结束、`stop()`、被打断后 `action` 回到 `idle`、`acts` 为空、所有骨骼回到 idle（< 0.01°）。
 - e2e `xvfb-run -a node e2e/run.js vrmacts`（启动前 `unset ELECTRON_RUN_AS_NODE`）：点工具栏的喂食 / 玩耍 / 睡觉，截下 idle、动作峰值、结束后三组图，以及 `vrm/acts-<run>-contact.png` 拼图与录屏 `vrm/acts-<run>.webm`。
+
+## 15. 运行时接入素材库 v2：定位、风格、状态机与播放入口（T-5084）
+
+承接 T-5079 诊断（根因 R1 用户机器上没有动作库、R4 风格误判、R5 气泡尾巴挡住高个模型的头）和 T-5081 素材库 v2（`src/core/vrm-motion-index.json`，每风格约 100 个片段）。像素 / rig / Live2D 行为不变（§2.1）；素材不进仓库。
+
+### 15.1 定位素材库与可见失败（`src/main/vrm-library.js`）
+
+- 顺序：`PIXELPET_VRM_MOTIONS_DIR` → 控制台「选择动作库文件夹」记下的目录（`<userData>/vrm-library-link.json`，只存路径，不复制；打包版也可用）→ `<userData>/vrm-motions` → 开发运行时 `~/vrm-assets/baked-v2`、`~/vrm-assets/baked`。舞蹈库同理（`vrm-dances.js`：userData 优先，其次关联目录的 `dances/`）。
+- 什么都没有时 `source: 'none'`（以前报 `userData`，掩盖了没有库），主进程打印 `[vrm] no motion library (looked in: …)`，`vrmlib://index/library.json` 返回 `{ clips: {}, missing: true }`。
+- 渲染端 `loadClips()` 汇总原因 `libraryInfo.reason`：`ok | partial | no-library | empty-index | fetch-failed | all-failed | no-clip-for-model`，`console.warn` 一行；桌宠气泡说一次（等当前台词结束后），控制台「装扮 → VRM 动作库」显示黄色提示与「选择动作库文件夹」。关联后桌宠窗口立刻重建 VRM（api-cmd `vrm-reload`）。
+
+### 15.2 风格（`src/core/vrm-style.js`）
+
+`bodyFromJson` 增加 `skirtSpring`（裙摆 SpringBone）。`inferFromBody`：胸部 spring → female；肩/髋 ≥ 1.55 → male；有裙摆 spring 且肩/髋 < 1.45 → female；其余（含读不到）→ neutral。在 models 包 75 个模型上：女性被判男性 3 → 0，女性判对 33 → 38，男性 7/7。neutral 有自己的片段集，缺的按 `STYLE_FALLBACK`（neutral → female → male）借用，任何风格都能命中片段。
+
+### 15.3 导演（`src/core/vrm-director.js`）
+
+- **idle 轮换**：新 idle 不在最近 `min(4, ⌊n/2⌋)` 个里（以前只排除上一个）。
+- **姿势切换**（仅「自动」）：平静 idle 每 70–140 s 休息一次（坐 / 蹲 18–36 s，开心偏坐），无聊 180 s 坐下、360 s 躺下（库与模型允许时），难过蹲下；每次从该组（stand/sit/crouch/lay，索引 `group`）挑一个、不重复上一次；姿势变化用 `FADE.pose` 1.4 s 交叉淡化；hips 在地面的模型只载入站姿，自然保持站立。
+- **反应变体**：每个导演槽位从自身与 `REACTION_GROUPS`（摸头 → nod/happy，摸脸 → shy，摸手 → clap/greet，害羞 → shy，烦 → shake，生气 → angry，痒 → excited，落地 → surprised，庆祝 → excited/jump/clap）中挑选：优先有动作的片段、不连续重复、坐着时不选会把她拉起来的全身站姿片段。全身片段淡入 ≥ 0.4 s。
+- **持续层**：思考轮换 think 组手势，说话轮换 talk 组 9 个片段（`TALK.xfade` 交叉淡化）；入睡打哈欠、醒来伸懒腰（上半身遮罩叠在坐姿上）。
+- **手动播放** `director.play({ id | slot | group, loop, hold })`：姿势 / idle 片段替换底层（姿势默认 15 s，idle 播一遍），反应 / 持续片段作为叠加层（一次性或循环）；触摸、拖起、跳舞、`stop()` / `reset()`（重置姿势）、`stopManual()` 打断，全部交叉淡回 idle；动作状态 `manual`。
+
+### 15.4 渲染（`src/renderer/vrm-anim.js`、`vrm.js`）
+
+- **相位对齐**：新 idle 循环从与当前姿势最接近的时刻开始（16 个候选时刻，加随机偏移），`debug().align` 给出所选时刻与距离。
+- **微动层不变**：呼吸 / 重心 / 视线 / 眨眼仍在片段之上叠加，`debug().life` 记录每帧叠加量。
+- **跳变计**：每帧 20 根主要骨骼相对上一帧的转角（°/帧@30fps，按 dt 归一），以及「尖峰」= 该帧转角减去前后两帧的较大者（快速但连续的动作接近 0，硬切接近全部转角）。每次底层 / 叠加层 / 手动片段变化开 1.6 s 窗口，只统计这次变化影响的骨骼（底层变化 = 全部；叠加层 = 其遮罩骨骼）。`figure.debugCut(id)` 做一次无淡化硬切作为对照。
+
+### 15.5 播放入口
+
+| 入口 | 用法 |
+| --- | --- |
+| 控制台 | 角色 → 她的页 → 装扮 → VRM 动作库：动作试播（分组下拉 → 播放 / 停止），复用现有「装扮」页 |
+| HTTP | `GET /pixel-pet/motions`、`POST /pixel-pet/motion {id|slot|group, loop}`、`POST /pixel-pet/motion/stop`；`/reset-pose` 也会打断 |
+| 聊天 | `core/vrm-motion-intent.js`：点个头 / 鞠个躬 / 挥手 / 拍手 / 伸个懒腰 / 打哈欠 / 坐下 / 蹲下 / 躺下 …；「站起来」「别做了」停止 |
+| 舞蹈 | 现有 `/dance`、♪ 菜单；手动播放片段前会先停舞 |
+
+### 15.6 验证
+
+- `npm test`：`test/vrm-runtime-motion.test.js`（风格回退、库定位、idle 轮换不重复、交叉淡化、姿势切换、反应变体与回 idle、思考 / 说话 / 睡觉、手动播放与打断、聊天意图、HTTP 路由）。
+- `xvfb-run -a node e2e/run.js vrmstore`：从本地商店镜像下载 4 个 VRM（liliya 0.x 女、Wanderer 0.x 男且 hips 在地面、試作1 VRM 1.0、Elysia 旧规则误判为男），先验证无库提示，再关联 `~/vrm-assets/baked-v2`，逐个测 40 s idle 命中率、摸头、HTTP 播放 / 打断、控制台试播与聊天，跳变阈值 10°/帧@30fps（对照硬切 40–50°）。结果在 `out/e2e/vrm/store-summary.json`。

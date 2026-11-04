@@ -161,8 +161,13 @@
 
   // the motion library (vrmlib://, src/main/vrm-library.js): its index, read for each new figure (a bake or a
   // removed library shows on the next model drawn)
+  // (T-5084: with where it came from — main answers { missing, source } when there is none — and whether the fetch
+  // failed, for the hint shown when a VRM has to fall back to breathing only)
   function loadLibraryIndex() {
-    return fetch('vrmlib://index/library.json').then((r) => (r.ok ? r.json() : null)).then((j) => Lib.cleanIndex(j), () => Lib.cleanIndex(null));
+    return fetch('vrmlib://index/library.json').then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).then(
+      (j) => Object.assign(Lib.cleanIndex(j), { raw: { missing: !!(j && j.missing), source: (j && j.source) || null, entries: Object.keys((j && j.clips) || {}).length } }),
+      (e) => Object.assign(Lib.cleanIndex(null), { raw: { missing: true, source: null, entries: 0, error: String((e && e.message) || e) } }),
+    );
   }
 
   // `look` from core/packs.js resolveLook: { packId, model (pack:// URL of the .vrm), vrm: { height,
@@ -184,6 +189,8 @@
     let index = { clips: {} };
     const loaded = new Set();
     let libState = 'none';
+    let libInfo = null; // T-5084: { state, reason, set, sets, wanted, loaded, failed: [{ id, error }], source } — debug() and the hint
+    let lifeInfo = null; // T-5084: the alive layer's offsets of the last frame (debug().life)
     let boneFold = null; // the bones this model lacks and where their turns went (foldMissingBones)
     let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
@@ -352,6 +359,7 @@
         if (rootHips) boneFold = { ...(boneFold || {}), rootHips: true };
       }
       const allowed = (c) => !BM || BM.allowsClip(c, { rootHips });
+      const failed = [];
       const want = Object.values(index.clips).filter((c) => c.file && allowed(c) && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
       // fall back to any set when the style's own set is not baked
       const list = want.length ? want : Object.values(index.clips).filter((c) => c.file && allowed(c));
@@ -361,9 +369,16 @@
           if (disposed || !vrm) return;
           anim.add(c.id, clip);
           loaded.add(c.id);
-        } catch (e) { console.warn(`[vrm] motion ${c.id} off:`, e && e.message); }
+        } catch (e) { failed.push({ id: c.id, error: String((e && e.message) || e).slice(0, 120) }); console.warn(`[vrm] motion ${c.id} off:`, e && e.message); }
       }));
       libState = list.length ? (loaded.size === list.length ? 'loaded' : loaded.size ? `partial:${list.length - loaded.size}` : 'none') : 'none';
+      // T-5084: why, in one place — no library at all, an index whose clips do not suit her, clips that failed — in
+      // the console and in debug() / figure.libraryInfo() (the pet window shows a hint: renderer/app.js)
+      const raw = index.raw || {};
+      const reason = loaded.size ? (failed.length ? 'partial' : 'ok') : raw.error ? 'fetch-failed' : !Object.keys(index.clips).length ? (raw.missing ? 'no-library' : 'empty-index') : !list.length ? 'no-clip-for-model' : 'all-failed';
+      libInfo = { state: libState, reason, source: raw.source, set: style.set, style: `${style.name} (${style.source})`, sets: [...sets], wanted: list.length, loaded: loaded.size, failed: failed.slice(0, 20), rootHips };
+      if (reason === 'ok') console.log(`[vrm] ${look.packId}: ${loaded.size} motion clips (${[...sets].join('/')} set for style ${style.name}/${style.source})`);
+      else console.warn(`[vrm] ${look.packId}: motion library ${reason} — ${loaded.size}/${list.length} clips loaded${failed.length ? `, failed: ${failed.slice(0, 5).map((f) => f.id).join(', ')}` : ''}${raw.error ? ` (${raw.error})` : ''}; ${loaded.size ? 'the rest falls back' : 'she only breathes and looks about (procedural idle)'}`);
       if (cfg.idle) {
         try {
           if (typeof cfg.idle !== 'string' || !cfg.idle.startsWith(own)) throw new Error('an idle animation is loaded from its own pack only');
@@ -700,6 +715,119 @@
       return Math.hypot(gaze.x - before.x, gaze.y - before.y);
     }
 
+    // ---------- the jump meter (T-5084) ----------
+    // How far each main bone turned since the drawn frame before (the pose she shows, everything included), as °
+    // per frame at 30 fps (the turn × (1/30) / dt, dt the real time since the frame before, ≥ 1/120 s — not the clamped
+    // animation step: a frame that comes late shows that much more motion, not a jump; and the frame rate drops to 12 fps when she is calm,
+    // vrm-motion.js BUDGET, which must not read as a jump). That is a speed: a fast clip (a hand waving) is fast
+    // without any jump. A jump — a snap — is a turn one frame makes that its neighbours do not: `spike` = the
+    // frame's turn − the larger of the frames before and after it (per bone, ≥ 0); a smooth motion, however fast,
+    // keeps it near 0, a cut puts its whole turn in it. Every change of what plays — the base (idle, posture,
+    // dance), a reaction or hold coming in or going, a clip played by hand — opens a window of JUMP_WIN s keeping
+    // the largest speed and the largest spike in it (and the bone, and the body-only values without hands / feet,
+    // whose clips move fastest), next to the same numbers of the JUMP_WIN s before the change (`before`: the motion
+    // the clips had anyway). The spike of a window counts the bones the change moves: every bone for a new base (or
+    // a manual clip, a dance), the bones of the masks of the overlays that came or went otherwise (a nod ending moves
+    // the head and neck, not the hands an idle clip swings meanwhile). debug().jump; figure.debugCut(id) makes a cut
+    // on purpose (the meter's control).
+    const JUMP_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'];
+    const EXTREMITY = /Hand$|Foot$/;
+    const JUMP_WIN = 1.6;
+    const jm = { masks: new Map(), prev: new Map(), d1: new Map(), d2: new Map(), frames: 0, max: 0, maxBone: null, maxAt: 0, spikeMax: 0, spikeBone: null, sig: null, open: [], done: [], recent: [], recentSpike: [], hist: [], t: 0 };
+    function jumpSig() {
+      if (!plan) return '';
+      const ov = (plan.overlays || []).filter((o) => o.weight > 0.02).map((o) => o.id).sort().join('+');
+      return `${plan.base ? plan.base.key : 0}|${plan.reactionKey || 0}|${ov}|${plan.manual ? plan.manual.id : ''}|${plan.dance ? plan.dance.state : ''}`;
+    }
+    const top = (o, k, v, b) => { if (v > o[k]) { o[k] = +v.toFixed(2); o[`${k}Bone`] = b; } };
+    function meterJump(dt) {
+      if (!vrm || !vrm.humanoid) return;
+      jm.t += dt;
+      const k30 = (1 / 30) / Math.max(1 / 120, dt);
+      // this frame's speeds, and the spikes of the frame before (now that its next frame is known)
+      const f = { speed: 0, speedBone: null, body: 0, bodyBone: null, spike: 0, spikeBone: null, bodySpike: 0, bodySpikeBone: null, spikes: {} };
+      let any = false;
+      for (const b of JUMP_BONES) {
+        const n = vrm.humanoid.getNormalizedBoneNode(b);
+        if (!n) continue;
+        const p = jm.prev.get(b);
+        if (!p) { jm.prev.set(b, n.quaternion.clone()); continue; }
+        any = true;
+        const d = ((2 * Math.acos(Math.min(1, Math.abs(p.dot(n.quaternion))))) / DEG) * k30;
+        p.copy(n.quaternion);
+        top(f, 'speed', d, b);
+        if (!EXTREMITY.test(b)) top(f, 'body', d, b);
+        const d1 = jm.d1.get(b);
+        const d2 = jm.d2.get(b);
+        if (d1 !== undefined && d2 !== undefined) {
+          const sp = d1 - Math.max(d2, d);
+          if (sp > 0) { f.spikes[b] = sp; top(f, 'spike', sp, b); if (!EXTREMITY.test(b)) top(f, 'bodySpike', sp, b); }
+        }
+        if (d1 !== undefined) jm.d2.set(b, d1);
+        jm.d1.set(b, d);
+      }
+      if (!any) return;
+      jm.frames++;
+      if (dt > 0.15) jm.late = (jm.late || 0) + 1; // a late frame (the renderer was busy): counted, its turn is over its real time
+      if (f.speed > jm.max) { jm.max = f.speed; jm.maxBone = f.speedBone; jm.maxAt = +jm.t.toFixed(3); }
+      if (f.spike > jm.spikeMax) { jm.spikeMax = f.spike; jm.spikeBone = f.spikeBone; }
+      jm.recent.push(f.speed);
+      jm.recentSpike.push(f.spike);
+      if (jm.recent.length > 900) { jm.recent.shift(); jm.recentSpike.shift(); }
+      jm.hist.push({ t: jm.t, ...f });
+      while (jm.hist.length && jm.hist[0].t < jm.t - JUMP_WIN) jm.hist.shift();
+      const sig = jumpSig();
+      for (const o of (plan && plan.overlays) || []) jm.masks.set(o.id, o.mask || 'upper');
+      if (jm.sig !== null && sig !== jm.sig) {
+        const [b0, r0, o0, m0, d0] = jm.sig.split('|');
+        const [b1, r1, o1, m1, d1] = sig.split('|');
+        const what = [b0 !== b1 ? `base→${plan.base ? plan.base.id : 'rest'}` : null, r0 !== r1 ? `reaction→${plan.reaction || 'none'}` : null, o0 !== o1 ? `overlays ${o0 || '-'}→${o1 || '-'}` : null, m0 !== m1 ? `manual ${m0 || '-'}→${m1 || '-'}` : null, d0 !== d1 ? `dance ${d0}→${d1}` : null].filter(Boolean).join('; ') || 'cut (no cross-fade: the control)';
+        const before = { speed: 0, body: 0, spike: 0, bodySpike: 0 };
+        for (const h of jm.hist.slice(0, -1)) for (const key of Object.keys(before)) before[key] = Math.max(before[key], h[key]);
+        for (const key of Object.keys(before)) before[key] = +before[key].toFixed(2);
+        // the bones this change moves: all for a base / manual / dance change, else those of the overlays' masks
+        let bones = null;
+        if (!jm.cut && b0 === b1 && m0 === m1 && d0 === d1) {
+          const a = new Set(o0 ? o0.split('+') : []);
+          const c = new Set(o1 ? o1.split('+') : []);
+          const changed = [...a].filter((x) => !c.has(x)).concat([...c].filter((x) => !a.has(x)));
+          const MW = window.PetVrmAnim && window.PetVrmAnim.maskWeight;
+          bones = JUMP_BONES.filter((bn) => changed.some((idc) => !MW || MW(jm.masks.get(idc) || 'full', bn) > 0));
+        }
+        jm.open.push({ at: +jm.t.toFixed(3), what, action: plan.action ? plan.action.state : null, bones: bones ? (bones.length === JUMP_BONES.length ? 'all' : bones.join(',') || 'none') : 'all', set: bones ? new Set(bones) : null, until: jm.t + JUMP_WIN, frames: 0, speed: 0, speedBone: null, body: 0, bodyBone: null, spike: 0, spikeBone: null, bodySpike: 0, bodySpikeBone: null, anySpike: 0, anySpikeBone: null, before, first: null });
+      }
+      jm.sig = sig;
+      jm.cut = false;
+      for (const o of (plan && plan.overlays) || []) jm.masks.set(o.id, o.mask || 'upper');
+      // the spike just computed belongs to the frame before: windows opened on this frame do not take it
+      for (const w of jm.open) {
+        w.frames++;
+        for (const key of ['speed', 'body']) top(w, key, f[key], f[`${key}Bone`]);
+        if (w.frames > 1) {
+          // the spike on the bones this change moves (spike / bodySpike), and on any bone (anySpike: for the record)
+          for (const [bn, sp] of Object.entries(f.spikes)) {
+            top(w, 'anySpike', sp, bn);
+            if (w.set && !w.set.has(bn)) continue;
+            top(w, 'spike', sp, bn);
+            if (!EXTREMITY.test(bn)) top(w, 'bodySpike', sp, bn);
+          }
+        }
+        if (w.frames === 2) w.first = { speed: +f.speed.toFixed(2), bone: f.speedBone };
+      }
+      while (jm.open.length && jm.open[0].until <= jm.t) { const w = jm.open.shift(); delete w.until; delete w.set; w.max = w.speed; w.bone = w.speedBone; jm.done.push(w); if (jm.done.length > 80) jm.done.shift(); }
+    }
+    function jumpReport() {
+      const q = (arr, k) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? +s[Math.min(s.length - 1, Math.floor(k * s.length))].toFixed(2) : 0; };
+      return { unit: 'deg/frame@30fps', t: +jm.t.toFixed(3), frames: jm.frames, max: +jm.max.toFixed(2), maxBone: jm.maxBone, maxAt: jm.maxAt, p50: q(jm.recent, 0.5), p99: q(jm.recent, 0.99), spikeMax: +jm.spikeMax.toFixed(2), spikeBone: jm.spikeBone, spikeP99: q(jm.recentSpike, 0.99), lateFrames: jm.late || 0, transitions: jm.done.slice(), open: jm.open.map((w) => ({ ...w, until: undefined, set: undefined })) };
+    }
+    // the meter's control: the base cut to clip `id` with no cross-fade (what every change did before a fade existed)
+    function debugCut(id) {
+      if (!anim || !anim.has(id)) return false;
+      jm.sig = `${jm.sig}|cut`;
+      jm.cut = true;
+      return anim.setBase(id, 0);
+    }
+
     // snap: the app's read-only snapshot (docs §2.2) — or an old-style { t, state } (the picture, the hatch
     // screen), wrapped by core/vrm-intent.js. Every call feeds the director (events are not lost on a frame
     // that is not drawn); drawing follows the frame budget.
@@ -753,6 +881,7 @@
         return true;
       }
       const dt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
+      const realDt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 1 / 120, 0.5); // the jump meter's clock
       lastRender = now;
       if (glide) { lastActivity = now; fit(); } else if (frameN % 30 === 0) fit();
 
@@ -764,7 +893,8 @@
         // never beats on the same clock twice (T-2691)
         const idleClip = plan.idleKind === 'clip' && plan.posture === null;
         // (no clip for it — no motion library, a slot it lacks — is the rest clip, cross-faded: T-2829)
-        anim.playBase(plan.base, lastBaseKey < 0 ? 0 : plan.base.fade, plan.base.dance ? { clock: 'external', time: DP.t } : idleClip ? { phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
+        anim.playBase(plan.base, lastBaseKey < 0 ? 0 : plan.base.fade, plan.base.dance ? { clock: 'external', time: DP.t } : idleClip ? { align: lastBaseKey >= 0, phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
+        // (T-5084: started where its pose is nearest hers — the phase alignment of renderer/vrm-anim.js)
         lastBaseKey = plan.base.key;
       }
       // the dance: its time from the app's clock (the music), every frame (§4.1)
@@ -798,6 +928,10 @@
       if (Math.abs(lead) > 0.05) for (const [b, k] of TURN_LEAD) { const o = lifeOut.bones[b] || (lifeOut.bones[b] = { x: 0, y: 0, z: 0 }); o.y += lead * k; }
       // dancing: the dance has its own breath, weight shifts and fingers — the alive layer keeps only the eyes (§3.1)
       if (!plan.life.dance) applyLife(lifeOut.bones);
+      // T-5084: what the alive layer laid over the clips this frame (debug().life): breathing, weight shift, gaze, blink
+      const lb = lifeOut.bones || {};
+      const deg = (o) => (o ? +Math.hypot(o.x || 0, o.y || 0, o.z || 0).toFixed(3) : 0);
+      lifeInfo = { on: !plan.life.dance, overClip: !!clips, breath: +(Number(lifeOut.breath) || 0).toFixed(3), chest: deg(lb.chest), upperChest: deg(lb.upperChest), spine: deg(lb.spine), hips: deg(lb.hips), head: deg(lb.head), bones: Object.keys(lb).length, gaze: { x: +lifeOut.gaze.x.toFixed(3), y: +lifeOut.gaze.y.toFixed(3) }, away: !!lifeOut.away, blinks: (lifeInfo ? lifeInfo.blinks : 0) + (lifeOut.blink ? 1 : 0) };
 
       // the body: on the floor, turned (not mirrored) towards where she faces
       vrm.scene.position.set(base.x, 0, 0);
@@ -879,6 +1013,7 @@
         vrm.expressionManager.setValue(n, face[n]);
       }
 
+      meterJump(realDt);
       vrm.update(dt); // humanoid, look-at, expressions, SpringBone, constraints
       renderer.render(scene, camera);
       frameN++;
@@ -897,6 +1032,8 @@
       d.reaction = plan.reaction || '';
       d.hold = plan.hold || '';
       d.action = plan.action ? plan.action.state : '';
+      d.manual = plan.manual ? plan.manual.id : ''; // T-5084: a clip played by hand
+      d.pose = plan.pose || 'stand';
       // the procedural bodies on now (T-2831): name:weight
       d.acts = (plan.acts || []).map((a) => `${a.name}:${a.w.toFixed(2)}`).join(',');
       d.layers = anim.summary();
@@ -1023,6 +1160,18 @@
       return r;
     }
 
+    // The clips she can play by hand (loaded for her, after the style fallback): [{ id, slot, kind, category, group,
+    // label, duration, loop, mask }], grouped by category in the index's order.
+    function motionList() {
+      const out = [];
+      for (const c of Object.values((index && index.clips) || {})) {
+        if (!(c.file ? loaded.has(c.id) : c.cycle)) continue;
+        out.push({ id: c.id, slot: c.slot, style: c.style, kind: c.kind, category: c.category || (c.kind === 'posture' ? 'posture' : c.kind === 'idle' ? 'idle' : c.kind === 'hold' ? 'talk' : 'reaction'), group: c.group || null, label: c.label, duration: c.duration || null, loop: !!c.loop, mask: c.mask || 'full' });
+      }
+      const order = Lib.CATEGORIES || [];
+      return out.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || String(a.group).localeCompare(String(b.group)) || a.slot.localeCompare(b.slot));
+    }
+
     function fig() {
       return {
         canvas,
@@ -1033,6 +1182,13 @@
         setPosture: (p) => { if (director) director.setPosture(p); },
         stopAction: (why) => (director ? director.stop(why) : null),
         resetToIdle: (why) => resetToIdle(why),
+        // T-5084: the motion library in this figure, and playing one of its clips by hand (console 试播, POST /motion)
+        libraryInfo: () => (libInfo ? { ...libInfo } : null),
+        motions: () => motionList(),
+        playMotion: (req) => (director ? director.play(req || {}) : { ok: false, reason: 'not-ready' }),
+        stopMotion: (why) => (director ? director.stopManual(why || 'stop') : { stopped: false }),
+        jump: () => jumpReport(),
+        debugCut: (id) => debugCut(id),
         loadDance,
         danceInfo: () => ({ ...danceInfo }),
         zoneAt,
@@ -1047,6 +1203,8 @@
           acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
           vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
+          libraryInfo: libInfo, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
+          manual: plan ? plan.manual : null, manuals: director ? director.manuals() : [], variants: director ? director.variants() : [], poses: director ? director.poses() : [], poseGroup: plan ? plan.pose : null, rest: plan ? plan.rest : null, thinkSegment: plan ? plan.thinkSegment : null,
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',
           layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground, seatLift: +seatLift.toFixed(4), camDy: +camDy.toFixed(4), camDx: +camDx.toFixed(4),
@@ -1171,6 +1329,14 @@
       // 重置姿势 (T-2830): back to the idle from anything, faded (core/vrm-director.js reset)
       resetToIdle: (why = 'reset') => resetToIdle(why),
       danceInfo: () => ({ ...danceInfo }),
+      // T-5084: the motion library as this figure loaded it (why it fell back, if it did), the clips it can play by
+      // hand, playing / stopping one (the director's manual layer), the jump meter
+      libraryInfo: () => (libInfo ? { ...libInfo } : null),
+      motions: () => motionList(),
+      playMotion: (req) => (director ? director.play(req || {}) : { ok: false, reason: 'not-ready' }),
+      stopMotion: (why = 'stop') => (director ? director.stopManual(why) : { stopped: false }),
+      jump: () => jumpReport(),
+      debugCut: (id) => debugCut(id),
       isReady: () => !!(vrm && director && !disposed),
       framing: () => framing,
       dispose() {
@@ -1237,6 +1403,14 @@
     // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)
     pose: () => { const f = [...figures][0]; return f ? f.pose() : null; },
     framePoints: () => { const f = [...figures][0]; return f ? f.framePoints() : null; },
+    // T-5084: the jump meter, the motion library as she loaded it, playing a clip by hand
+    jump: () => { const f = [...figures][0]; return f ? f.jump() : null; },
+    // the jump meter's control (e2e): a cut to clip `id` with no cross-fade
+    cut: (id) => { const f = [...figures][0]; return f && f.debugCut ? f.debugCut(id) : false; },
+    library: () => { const f = [...figures][0]; return f ? f.libraryInfo() : null; },
+    motions: () => { const f = [...figures][0]; return f ? f.motions() : []; },
+    play: (req) => { const f = [...figures][0]; return f ? f.playMotion(req) : { ok: false, reason: 'no-vrm' }; },
+    stopMotion: (why) => [...figures].map((f) => f.stopMotion(why)),
     // the dance's clock (renderer/vrm-dance.js): jump to t s, speed up a dance without music (§7.1)
     dance: {
       seek: (t) => (window.PetDance && window.PetDance.current ? window.PetDance.current.seek(t) : false),

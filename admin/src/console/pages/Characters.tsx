@@ -4,10 +4,10 @@
  */
 import { Alert, Button, createStaticStyles, cssVar, Flexbox, Icon, Input, Modal, Progress, Segmented, Select, Slider, Table, Tag, Text, TextArea, toast } from '@lobehub/ui';
 import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
-import { Check, Download, FolderOpen, Heart, Import, Lock, Shirt, Store, Trash2 } from 'lucide-react';
+import { Check, Download, FolderOpen, Heart, Import, Lock, Play, Shirt, Square, Store, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type VrmFigureLibrary, type VrmLibraryStatus, type VrmMotionRow, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -791,6 +791,151 @@ const PostureRow = ({ c }: { c: RosterRow }) => {
 };
 
 /**
+ * VRM 动作库 (T-5084, src/main/vrm-library.js): where her motions come from — none means a VRM only breathes, so it
+ * says so and offers 选择文件夹 (a link to a baked library folder, nothing copied) — and 动作试播: play one of the clips
+ * she loaded (after her style's fallback) in the pet window, and stop it; she cross-fades back to her idle. Only for a
+ * VRM character; 试播 only for the one on the desktop now (the pet window plays it).
+ */
+const SOURCE_TEXT: Record<string, string> = { env: '环境变量 PIXELPET_VRM_MOTIONS_DIR', linked: '你选的文件夹', userData: '应用数据目录', dev: '开发机素材目录', none: '没有找到' };
+const CATEGORY_TEXT: Record<string, string> = { posture: '姿势', idle: '待机', reaction: '反应', emotion: '情绪', talk: '说话', walk: '行走' };
+const MotionLibrary = ({ c }: { c: RosterRow }) => {
+  const { view } = useStore();
+  const ch = view?.characters?.find((x: any) => x.id === c.id);
+  const isVrm = ch?.look?.kind === 'vrm';
+  const [status, setStatus] = useState<VrmLibraryStatus | null>(null);
+  const [fig, setFig] = useState<VrmFigureLibrary | null>(null);
+  const [motions, setMotions] = useState<VrmMotionRow[]>([]);
+  const [pick, setPick] = useState<string | undefined>();
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
+    const info = await api().vrmLibraryInfo();
+    setStatus(info?.status ?? null);
+    if (!c.current) return;
+    const r = await api().vrmMotions();
+    if (r && r.ok) {
+      setFig(r.library ?? null);
+      setMotions(r.motions ?? []);
+      setPlaying(r.manual ? r.manual.id : null);
+    }
+  };
+  useEffect(() => {
+    if (!isVrm) return;
+    refresh();
+  }, [isVrm, c.id, c.current]);
+  // while a clip plays: follow it until she is back in her idle
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(async () => {
+      const r = await api().vrmMotions();
+      setPlaying(r && r.ok && r.manual ? r.manual.id : null);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [playing]);
+  if (!isVrm) return null;
+  const files = status?.files ?? 0;
+  const label = (m: VrmMotionRow) => `${m.label}${m.duration && m.duration > 1 ? ` · ${m.duration.toFixed(1)} 秒` : ''}`;
+  const groups = Object.entries(CATEGORY_TEXT)
+    .map(([cat, name]) => ({ label: name, options: motions.filter((m) => m.category === cat).map((m) => ({ label: <span data-motion-option={m.id}>{label(m)}</span>, value: m.id })) }))
+    .filter((g) => g.options.length);
+  const nowLabel = playing ? (motions.find((m) => m.id === playing)?.label ?? playing) : null;
+  const relink = async (unlink: boolean) => {
+    setBusy(true);
+    try {
+      const r = unlink ? await api().vrmLibraryUnlink() : await api().vrmLibraryPick();
+      if (r && r.ok) {
+        toast.success(unlink ? '已取消关联动作库文件夹' : `已关联动作库：${r.status?.files ?? 0} 个动作`);
+        // the pet window redraws her with the new library: give it a moment, then read again
+        setTimeout(refresh, 2500);
+        await refresh();
+      } else if (r && r.reason !== 'canceled') toast.error({ description: reasonText(r), title: '没能关联这个文件夹' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const play = async () => {
+    if (!pick) return;
+    const r = await api().vrmMotionPlay({ id: pick });
+    if (r && r.ok) setPlaying(r.id ?? pick);
+    else toast.error({ description: reasonText(r), title: '没能播放这个动作' });
+  };
+  const stop = async () => {
+    const r = await api().vrmMotionStop();
+    if (r && r.ok) setPlaying(null);
+    else toast.error(reasonText(r));
+  };
+  return (
+    <Surface description="VRM 角色的姿势、待机、反应和说话动作都来自动作库。动作库不在应用安装包里，需要单独烘焙或选择文件夹。" title="VRM 动作库">
+      <Flexbox data-motion-lib={c.id} data-motion-files={files} data-motion-source={status?.source ?? ''} gap={12}>
+        {status && files > 0 && (
+          <Flexbox align="center" gap={8} horizontal wrap="wrap">
+            <Tag color="success">已接入 · {files} 个动作</Tag>
+            <Text type="secondary">来源：{SOURCE_TEXT[status.source] ?? status.source}</Text>
+            {status.dir && (
+              <Text code ellipsis style={{ maxWidth: 360 }} title={status.dir}>
+                {status.dir}
+              </Text>
+            )}
+          </Flexbox>
+        )}
+        {status && files === 0 && (
+          <Alert
+            data-motion-missing
+            description="选一个烘焙好的动作库文件夹（里面有 library.json，例如 ~/vrm-assets/baked-v2），她会立刻用上；也可以运行 node scripts/vrm-bake.js --v2 --install 装到应用数据目录。"
+            title="还没有动作库：VRM 角色现在只能站着呼吸、看看四周"
+            type="warning"
+          />
+        )}
+        {status?.error && <Alert description={status.error} title="动作库读取出错" type="error" />}
+        <Flexbox gap={8} horizontal wrap="wrap">
+          <Button data-motion-pick disabled={busy} icon={<Icon icon={FolderOpen} />} onClick={() => relink(false)}>
+            选择动作库文件夹
+          </Button>
+          {status?.source === 'linked' && (
+            <Button data-motion-unlink disabled={busy} onClick={() => relink(true)}>
+              取消关联
+            </Button>
+          )}
+        </Flexbox>
+        {c.current && fig && fig.reason !== 'ok' && fig.reason !== 'no-library' && (
+          <Alert
+            data-motion-figure={fig.reason}
+            description={fig.failed.length ? `没载入的：${fig.failed.slice(0, 5).map((f) => f.id).join('、')}${fig.failed.length > 5 ? ' 等' : ''}` : undefined}
+            title={fig.loaded ? `有 ${fig.wanted - fig.loaded} 个动作没载入，她先用其余 ${fig.loaded} 个` : '动作库里的动作没能载入，她只能站着呼吸'}
+            type="warning"
+          />
+        )}
+        {c.current ? (
+          motions.length > 0 && (
+            <Flexbox gap={8}>
+              <Text strong>动作试播</Text>
+              <Flexbox align="center" gap={8} horizontal wrap="wrap">
+                <div aria-label="选择要试播的动作" data-motion-select role="group">
+                  <Select aria-label="动作" data-motion-picker onChange={(v: string) => setPick(v)} options={groups} placeholder={`${motions.length} 个动作可选`} style={{ minWidth: 260 }} value={pick} />
+                </div>
+                <Button data-motion-play disabled={!pick} icon={<Icon icon={Play} />} onClick={play}>
+                  播放
+                </Button>
+                <Button data-motion-stop disabled={!playing} icon={<Icon icon={Square} />} onClick={stop}>
+                  停止
+                </Button>
+              </Flexbox>
+              <Text data-motion-status={playing ?? ''} fontSize={12} type="secondary">
+                {nowLabel ? `正在播：${nowLabel}。停止后她会平滑回到待机。` : `按她的风格（${fig?.style ?? '--'}）载入了 ${fig?.loaded ?? motions.length} 个动作；播完自动回到待机。`}
+              </Text>
+            </Flexbox>
+          )
+        ) : (
+          <Text fontSize={12} type="secondary">
+            切换到她之后，可以在这里试播动作。
+          </Text>
+        )}
+      </Flexbox>
+    </Surface>
+  );
+};
+
+/**
  * 装扮: her wardrobe as cards (T-2784), her framing and posture, the 角色包 she comes from, then 导入新角色 —
  * a Live2D / VRM model or a pack imported here becomes a new character on her base (same name, hearts and
  * chat as her) and you meet her at once. There is no 形象包 to choose any more: every pack is a character.
@@ -886,6 +1031,7 @@ const LookTab = ({ c, trying, onTry }: { c: RosterRow; onTry: (id: string | null
       <OutfitRack c={c} key={c.id} onTry={onTry} trying={trying} />
       <FramingRow c={c} />
       <PostureRow c={c} />
+      <MotionLibrary c={c} />
       <Live2dSize c={c} pack={p} />
       {p && (
         <Surface description="她来自这个角色包：形象、服饰和授权都写在包里。" title="角色包">

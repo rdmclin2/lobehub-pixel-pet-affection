@@ -103,6 +103,8 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 .bubble::-webkit-scrollbar-thumb { background: var(--lobe-color-fill); border-radius: 3px; }
 .bubble-tail { flex: none; position: relative; z-index: 1; width: 10px; height: 10px; margin: -6px auto 8px; background: var(--pet-surface); border-right: 1px solid var(--pet-line-soft); border-bottom: 1px solid var(--pet-line-soft); border-bottom-right-radius: 2px; transform: rotate(45deg); }
 .bubble.hidden + .bubble-tail { display: none; }
+/* T-5084 (T-5079 R5): a tall VRM's head is under the bubble's tail — the tail is decoration, a click goes through to her (VRM only: the other looks keep their hit area) */
+#pet-screen:has(#pet-body[data-kind='vrm']) .bubble-tail { pointer-events: none; }
 /* 插个嘴 feedback: two small buttons riding on the bubble's top edge, only while her own remark is shown */
 .ij-feedback { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--pet-space-xs); max-width: 210px; width: 100%; margin-bottom: var(--pet-space-xs); }
 .ij-feedback .ij-btn { padding: 0 var(--pet-space-sm); min-height: 20px; line-height: 18px; font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }

@@ -163,6 +163,7 @@ const RUNTIME = [
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
+  { id: 'vrm-motions', label: 'VRM 动作库与动作试播', where: '角色详情 → 外观 → VRM 动作库（VRM 角色）', actions: ['vrm-library-info', 'vrm-library-pick', 'vrm-library-unlink', 'vrm-motions:list', 'vrm-motion:play', 'vrm-motion:stop'] },
   { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'set-pack-base', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
