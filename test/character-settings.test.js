@@ -204,6 +204,8 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   // 配置后台 (v0.20): 主动行为, 好感度 rules, the console theme, 硬件加速 and 自动检查更新 are new sections with their defaults
   const { proactive, interject, affectionRules, ui, system, update } = require('../src/core/settings').normalizeSettings(null);
   const newSections = { proactive, interject, affectionRules, ui, system, update }; // 插个嘴 (interject) arrives switched off
+  // AI 可读的文件夹 (T-5075): her 本机能力 was off, so the list starts strict (no folder, no commands)
+  newSections.local = { folders: [], allowCommands: false, asked: [] };
   // 取景 (半身模式): no per-character framings, prefs.framing 'full' (she looks as before); 静音 off
   // 语音包 (v0.11), 个性化设定, the local voice server and 语音输入 (asr, off) and the VRM postures are new: an old file gets their defaults; the 18+ wording changed
   // (AGE_GATE_VERSION 2), so the old answer no longer counts and the user is asked again; everything else stays as it was

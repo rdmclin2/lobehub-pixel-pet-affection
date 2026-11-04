@@ -31,10 +31,33 @@
     <p class="sub">以 AI 模型厂商为主题的同人角色（非官方形象），选一位带回桌面。Live2D、旧版像素等更多形象，唤醒后可以在 设置 → 商店 里下载。</p>
     <div id="cards" class="cards" role="radiogroup" aria-label="角色"></div>
     <div id="card-info" class="card-info">点一位看看。</div>
-    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在 设置 → LobeHub 与本机 里随时关闭。</span></span></label>
+    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：在你允许的文件夹里读写文件、搜索内容来帮我办事。<span class="warn">下一步由你选它能读哪些文件夹；运行命令默认关闭，打开后命令不受文件夹限制。之后可在 设置 → LobeHub 与本机 里随时修改或关闭。</span></span></label>
     <div class="row">
       <input id="pet-name" maxlength="12" placeholder="给她起个名字（可选）" autocomplete="off" />
       <button id="hatch-btn" class="btn primary" disabled>唤醒</button>
+    </div>
+  </section>
+
+  <!-- 1b. 授权 (T-5075, main/permissions.js): system permissions one at a time + the folders she may read -->
+  <section id="perms" class="screen hidden" aria-labelledby="perms-title">
+    <h1 id="perms-title">授权</h1>
+    <p class="sub" id="perms-sub">她需要的权限在这里逐个给出，每一项都可以先跳过，之后在 设置 → LobeHub 与本机 里再改。</p>
+    <div class="perm-box">
+      <div id="perm-system" class="perm-group hidden" role="list" aria-label="系统权限"></div>
+      <div id="perm-folders" class="perm-group hidden">
+        <div class="perm-head">
+          <div class="perm-main">
+            <div class="perm-title">AI 可读的文件夹</div>
+            <div class="perm-desc">她的本机工具只能读写这些文件夹。没加的文件夹她碰不到。</div>
+          </div>
+          <button id="perm-add" class="btn" type="button">添加文件夹…</button>
+        </div>
+        <ul id="perm-folder-list" class="perm-list" aria-label="AI 可读的文件夹"></ul>
+      </div>
+    </div>
+    <div class="row">
+      <button id="perms-skip" class="btn" type="button">跳过</button>
+      <button id="perms-next" class="btn primary" type="button">下一步</button>
     </div>
   </section>
 

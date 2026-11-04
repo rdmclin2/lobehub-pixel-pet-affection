@@ -80,6 +80,22 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 #hatch-look.asleep[data-progress="2"] .look { filter: grayscale(.35) brightness(.9); }
 #hatch-look.asleep[data-progress="3"] .look { filter: grayscale(.15) brightness(.96); }
 #hatch-look.flash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,.95) 0, rgba(255,230,180,.5) 40%, transparent 70%); animation: char-sparkle .7s ease-out forwards; pointer-events: none; }
+/* 授权 (T-5075): one row per permission (Form 分组卡片的样子), then the folder list */
+#perms { background: var(--lobe-color-bg-layout); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-lg); }
+.perm-box { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: var(--pet-space-sm); overflow-y: auto; min-height: 0; flex: 1; }
+.perm-group { background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); padding: var(--pet-space-xs) var(--lobe-padding); }
+.perm-row, .perm-head { display: flex; align-items: center; gap: var(--pet-space-sm); padding: var(--pet-space-xs) 0; }
+.perm-row + .perm-row { border-top: 1px solid var(--pet-line-soft); }
+.perm-main { flex: 1; min-width: 0; }
+.perm-title { font-weight: var(--lobe-font-weight-strong); }
+.perm-desc { font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); }
+.perm-tag { font-size: var(--lobe-font-size-sm); padding: 0 var(--pet-space-xs); border-radius: var(--lobe-border-radius-sm); background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text-secondary); white-space: nowrap; }
+.perm-tag[data-state="granted"] { color: var(--lobe-color-success); }
+.perm-tag[data-state="denied"], .perm-tag[data-state="restricted"] { color: var(--lobe-color-error); }
+.perm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.perm-list li { display: flex; align-items: center; gap: var(--pet-space-sm); padding: var(--pet-space-xxs) 0; font-size: var(--lobe-font-size-sm); }
+.perm-list li .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.perm-list li.empty { color: var(--lobe-color-text-tertiary); }
 .space-box, .login-box { background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-tertiary); padding: var(--pet-space-md) var(--lobe-padding); width: 100%; }
 .space-box { max-width: 380px; }
 .space-title { font-weight: var(--lobe-font-weight-strong); }

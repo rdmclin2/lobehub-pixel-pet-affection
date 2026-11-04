@@ -30,6 +30,7 @@ const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
 const chatLive = require('../core/chat-live');
+const aiFolders = require('../core/ai-folders');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -40,6 +41,8 @@ const MODELS_TTL_MS = 10 * 60 * 1000; // how long the list of the user's models 
 const FULL_LINE = '呃……肚子圆滚滚的，吃不下了。';
 const TIRED_LINE = '好累……让我睡一会儿。';
 const PREWARM_MAX = 60; // lines synthesised ahead per character (互动语音)
+// 文件夹限制生效、直连又不可用时，这一轮不带本机工具 (T-5075)
+const NO_LOCAL_TOOLS_LINE = '这次用不了本机工具：直连 LobeHub 不可用，而 lh connect 没法限制在你允许的文件夹里。';
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
@@ -192,6 +195,7 @@ class PetService extends EventEmitter {
     if (cm.changed && !migrated) this.store.backupOnce('pet.characters.bak.json');
     const pet = cm.pet;
     this.pet = pet;
+    this._decideLocal();
     // told once, on the first heartbeat / warmup: who took over a retired character
     this._retiredNotice = remapped && pet ? { from: remapped, to: pet.speciesId } : null;
     // A pet's agent is reached in the space it was created in (no `space`: an older save, lh's default).
@@ -288,7 +292,7 @@ class PetService extends EventEmitter {
       }),
       space: this.pet.space ? { personal: !this.pet.space.workspaceId, name: this.pet.space.name } : null,
       busy: this.busy,
-      local: { enabled: !!this.pet.localAbilities, ok: this._localOk, error: this.localError, warning: this.localWarning },
+      local: { enabled: !!this.pet.localAbilities, ok: this._localOk, error: this.localError, warning: this.localWarning, limited: this.settings.local.folders !== null, folders: this.settings.local.folders || [], allowCommands: this.settings.local.allowCommands === true },
     };
   }
 
@@ -913,6 +917,43 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? LOCAL_TOOLS : [];
   }
 
+  // ---- AI 可读的文件夹 (core/ai-folders.js, T-5075, docs/permissions.md) ------------------------------------
+  // Once, the first time this version loads: owners who already had 本机能力 on keep no limit until they add a
+  // folder; everyone else starts with none (and no commands).
+  _decideLocal() {
+    const l = this.settings.local;
+    if (l.allowCommands !== null) return; // decided already
+    const next = aiFolders.decideLocal(l, { localOn: !!(this.pet && this.pet.localAbilities) });
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, local: next });
+    this.settingsStore.save(this.settings);
+  }
+
+  _setLocal(local) {
+    this.settings = settingsLib.normalizeSettings({ ...this.settings, local });
+    this.settingsStore.save(this.settings);
+    this.emit('settings', this.settingsView());
+    if (this.pet) this.emit('update', this.view());
+  }
+
+  // Where this turn's local tools may go (null: no limit). `extraRead`: what the owner handed her this turn.
+  _toolScope(extraRead = []) {
+    return aiFolders.toolScope(this.settings.local, { extraRead });
+  }
+
+  // The settings window / 授权 page: add folders (already picked in a system dialog), remove one, or switch
+  // 允许运行命令. Adding the first folder to an unlimited list starts the limit. `asked`: a macOS standard
+  // folder whose system prompt was triggered (permissions.js).
+  setAiFolders({ add = null, remove = null, allowCommands, asked = null } = {}) {
+    let l = this.settings.local;
+    if (add) l = aiFolders.addFolders(l, add);
+    if (remove) l = aiFolders.removeFolder(l, remove);
+    if (typeof allowCommands === 'boolean') l = { ...l, allowCommands };
+    if (asked && aiFolders.SYSTEM_FOLDERS.includes(asked)) l = { ...l, asked: [...new Set([...l.asked, asked])] };
+    if (l.allowCommands === null) l = { ...l, allowCommands: false };
+    this._setLocal(l);
+    return { ok: true, local: this.settings.local, settings: this.settingsView() };
+  }
+
   // Stop whatever the agent is doing right now.
   cancel() {
     if (!this.busy) return;
@@ -951,11 +992,20 @@ class PetService extends EventEmitter {
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
   // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
   // `trace` (core/latency.js): which way the turn went, and when a fallback started.
-  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP } = {}) {
+  // `extraRead`: paths the owner handed her this turn (dropped files): readable even outside her folders.
+  // AI 可读的文件夹 (T-5075): while the list is in effect her tools only run here, where the folders are enforced;
+  // `lh connect` runs them in its daemon, which has no way to limit them, so such a turn goes without tools.
+  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP, extraRead = [] } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
     if (trace.on) args = { ...args, trace };
-    const tools = plain ? [] : this._tools();
+    let tools = plain ? [] : this._tools();
+    const scope = tools.length ? this._toolScope(extraRead) : null;
     trace.set('tools', tools.length);
+    if (tools.length && scope && this.localVia !== 'direct') {
+      trace.set('toolsDropped', 'folders limited, no direct way');
+      this.localWarning = NO_LOCAL_TOOLS_LINE;
+      tools = [];
+    }
     if (tools.length) {
       if (this.localVia !== 'direct') {
         trace.set('via', 'lh-connect');
@@ -963,9 +1013,20 @@ class PetService extends EventEmitter {
       }
       trace.set('via', 'direct-tools');
       try {
-        return await this.responses.run({ ...args, tools });
+        return await this.responses.run({ ...args, tools, scope });
       } catch (e) {
         if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+        if (scope) {
+          // the folders cannot be enforced through lh connect: the same turn without tools, through lh agent run
+          trace.set('via', 'lh-run-no-tools');
+          trace.set('fallbackReason', String(e.message).slice(0, 200));
+          trace.mark('fallbackStart');
+          this.emit('error', e);
+          this._responsesFailedAt = this.now();
+          this.localWarning = NO_LOCAL_TOOLS_LINE;
+          if (stream) stream.restart();
+          return this.lh.run({ ...args, tools: [], device: null });
+        }
         trace.set('via', 'lh-connect-fallback');
         trace.set('fallbackReason', String(e.message).slice(0, 200));
         trace.mark('fallbackStart');
@@ -1088,12 +1149,12 @@ class PetService extends EventEmitter {
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings, localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '' });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
       trace.mark('runStart');
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace, extraRead: paths });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId) c.topicId = res.topicId;

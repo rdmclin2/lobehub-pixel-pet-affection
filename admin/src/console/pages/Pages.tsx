@@ -9,6 +9,7 @@ import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
 import { useStore } from '../store';
 import { InterjectData } from './Interject';
+import { PermissionsCard } from './Permissions';
 
 const Header = ({ page, action }: { action?: ReactNode; page: string }) => {
   const { schema } = useStore();
@@ -264,6 +265,7 @@ export const ConnectionPage = () => {
         </Flexbox>
       </Surface>
       <SettingsForm page="connection" />
+      <PermissionsCard />
       <Surface title="话题">
         <Flexbox align="center" gap={12} horizontal justify="space-between">
           <Text type="secondary">让当前角色在一个新的 LobeHub 话题里继续。旧话题保留在 LobeHub，好感和聊天记录不变。</Text>

@@ -38,6 +38,7 @@ const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { createAdminSettings } = require('./admin-settings');
+const { createPermissions, fakeMac } = require('./permissions');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
 const settingsSchema = require('../core/settings-schema');
@@ -588,6 +589,29 @@ function wire() {
     });
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
+  // 授权 (permissions.js, docs/permissions.md): the onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限.
+  // E2E: PIXELPET_E2E_PLATFORM=darwin + PIXELPET_E2E_PERMS (JSON, permissions.js fakeMac) play macOS's answers;
+  // 添加文件夹… picks debug-next-open's paths (several split by newlines).
+  const e2ePlatform = TEST_MODE && process.env.PIXELPET_E2E_PLATFORM;
+  const mac = e2ePlatform === 'darwin' ? fakeMac(JSON.parse(process.env.PIXELPET_E2E_PERMS || '{}')) : null;
+  const perms = createPermissions({
+    service,
+    platform: e2ePlatform || process.platform,
+    systemPreferences: mac ? mac.systemPreferences : systemPreferences,
+    shell: mac ? { openExternal: async (u) => { openedLinks.push(u); } } : TEST_MODE ? { openExternal: async (u) => { openedLinks.push(u); } } : shell,
+    getPath: mac ? mac.getPath : (id) => app.getPath(id),
+    ...(mac ? { readdir: mac.readdir } : {}),
+    pickFolders: async () => {
+      if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
+      const r = await dialog.showOpenDialog((admin && admin.win && admin.win.isFocused() ? admin.win : win) || undefined, { title: '添加让 AI 读取的文件夹', properties: ['openDirectory', 'multiSelections', 'createDirectory'] });
+      return r.canceled ? [] : r.filePaths || [];
+    },
+  });
+  ipcMain.handle('perm-status', () => perms.status());
+  ipcMain.handle('perm-request', (_e, { kind } = {}) => perms.request(String(kind || '')));
+  ipcMain.handle('perm-open-settings', (_e, { kind } = {}) => perms.openSettings(String(kind || '')));
+  ipcMain.handle('ai-folders-add', () => perms.addFolders());
+  ipcMain.handle('ai-folders-set', (_e, p) => perms.setFolders(p && typeof p === 'object' ? p : {}));
   ipcMain.on('cancel', () => service.cancel());
   ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {

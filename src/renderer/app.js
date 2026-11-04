@@ -614,6 +614,100 @@ function showOnboarding() {
   show('onboarding');
 }
 
+// ---------- 授权 (T-5075, main/permissions.js, docs/permissions.md) ----------
+// Between choosing her and waking her up. macOS: 麦克风 for everyone (语音输入); with 本机能力 ticked also
+// 下载 / 桌面 / 文稿 (one row each, asked only when the owner presses 授权) and the folders her tools may use.
+// Linux / Windows have no such prompts: only the folder list, and only with 本机能力 ticked; otherwise the page
+// is skipped. 下一步 and 跳过 both go on to waking her up (nothing here is required).
+const PERM_TEXT = { granted: '已授权', denied: '已拒绝', restricted: '受系统限制', 'not-determined': '未授权', unknown: '未授权 / 未知', missing: '找不到这个文件夹' };
+const PERM_DESC = {
+  microphone: '语音输入要用。只在你按住说话时录音。',
+  downloads: '让她读你放在“下载”里的文件。授权后自动加入下面的列表。',
+  desktop: '让她读桌面上的文件。授权后自动加入下面的列表。',
+  documents: '让她读“文稿”里的文件。授权后自动加入下面的列表。',
+};
+let permState = null;
+
+function permRow({ kind, label, state }) {
+  const row = document.createElement('div');
+  row.className = 'perm-row';
+  row.setAttribute('role', 'listitem');
+  row.dataset.perm = kind;
+  row.innerHTML = '<div class="perm-main"><div class="perm-title"></div><div class="perm-desc"></div></div><span class="perm-tag"></span>';
+  row.querySelector('.perm-title').textContent = label;
+  row.querySelector('.perm-desc').textContent = PERM_DESC[kind] || '';
+  const tag = row.querySelector('.perm-tag');
+  tag.dataset.state = state;
+  tag.textContent = PERM_TEXT[state] || state;
+  if (state === 'denied' || state === 'restricted') {
+    // a refusal can only be changed in System Settings
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.type = 'button';
+    b.dataset.permSettings = kind;
+    b.textContent = '去系统设置';
+    b.addEventListener('click', () => window.pet.permOpenSettings(kind));
+    row.appendChild(b);
+  } else if (state !== 'granted' && state !== 'missing') {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.type = 'button';
+    b.dataset.permAsk = kind;
+    b.textContent = '授权';
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      renderPerms(await window.pet.permRequest(kind));
+    });
+    row.appendChild(b);
+  }
+  return row;
+}
+
+function renderPerms(st) {
+  permState = st;
+  const local = $('local-opt').checked;
+  const sys = $('perm-system');
+  sys.innerHTML = '';
+  if (st.mac) {
+    sys.appendChild(permRow({ kind: 'microphone', label: '麦克风', state: st.mic || 'unknown' }));
+    if (local) for (const f of st.folders) sys.appendChild(permRow({ kind: f.id, label: `“${f.label}”文件夹`, state: f.status }));
+  }
+  sys.classList.toggle('hidden', !st.mac);
+  $('perm-folders').classList.toggle('hidden', !local);
+  const list = $('perm-folder-list');
+  list.innerHTML = '';
+  for (const f of st.local.folders) {
+    const li = document.createElement('li');
+    li.dataset.folder = f;
+    li.innerHTML = '<span class="path"></span><button class="btn icon-btn" type="button" aria-label="移除"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+    li.querySelector('.path').textContent = f;
+    li.querySelector('.path').title = f;
+    li.querySelector('button').setAttribute('aria-label', `移除 ${f}`);
+    li.querySelector('button').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersSet({ remove: f })));
+    list.appendChild(li);
+  }
+  if (!st.local.folders.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '还没有文件夹：她暂时读不了任何文件。';
+    list.appendChild(li);
+  }
+}
+
+// 唤醒 on the choose page: the 授权 page when there is something to ask, else straight to waking her up.
+async function showPerms() {
+  const st = await window.pet.permStatus();
+  if (!st.mac && !$('local-opt').checked) return startHatch();
+  renderPerms(st);
+  show('perms');
+}
+
+function bindPerms() {
+  $('perm-add').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersAdd()));
+  $('perms-next').addEventListener('click', startHatch);
+  $('perms-skip').addEventListener('click', startHatch);
+}
+
 // ---------- hatching ----------
 const STEP_ORDER = ['checking-login', 'login', 'choose-space', 'creating-agent', 'connecting-device', 'hatching'];
 
@@ -2535,7 +2629,8 @@ async function main() {
   bindPetUi();
   bindResize();
   bindHover();
-  $('hatch-btn').addEventListener('click', startHatch);
+  $('hatch-btn').addEventListener('click', showPerms);
+  bindPerms();
   $('hatch-retry').addEventListener('click', showOnboarding);
   $('age-yes').addEventListener('click', () => answerAgeGate(true));
   $('age-no').addEventListener('click', () => answerAgeGate(false));

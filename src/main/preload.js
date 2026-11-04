@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('pet', {
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
   pickImages: () => ipcRenderer.invoke('pick-images'),
   setLocal: (on) => ipcRenderer.invoke('set-local', { on }),
+  // 授权 (main/permissions.js): system permissions one at a time + the folders her local tools may use
+  permStatus: () => ipcRenderer.invoke('perm-status'),
+  permRequest: (kind) => ipcRenderer.invoke('perm-request', { kind }),
+  permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', { kind }),
+  aiFoldersAdd: () => ipcRenderer.invoke('ai-folders-add'),
+  aiFoldersSet: (patch) => ipcRenderer.invoke('ai-folders-set', patch),
   cancel: () => ipcRenderer.send('cancel'),
   // ⋯ → 重新开始: her next line opens a new LobeHub topic; the old one is kept, not deleted
   newTopic: () => ipcRenderer.invoke('new-topic'),

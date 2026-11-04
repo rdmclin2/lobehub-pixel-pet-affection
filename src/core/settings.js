@@ -6,6 +6,7 @@ const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
 const framingLib = require('./framing');
 const hotkeyLib = require('./hotkey');
+const aiFolders = require('./ai-folders');
 
 // a character id (core/characters.js: a pack id or `<base>-clips`), or an old per-persona id (2–20 letters)
 const CHARACTER_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
@@ -88,7 +89,7 @@ const UPDATE = { autoCheck: true };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -212,6 +213,8 @@ function normalizeSettings(raw) {
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
   s.update = normalizeUpdate(s.update);
+  // 本机能力 → AI 可读的文件夹 (core/ai-folders.js, T-5075): null folders = no limit (decided once by PetService.init)
+  s.local = aiFolders.normalizeLocal(s.local);
   return s;
 }
 

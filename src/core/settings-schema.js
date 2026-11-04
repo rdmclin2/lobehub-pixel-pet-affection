@@ -236,6 +236,10 @@ secret('keys.minimax', 'tts', 'MiniMax', 'API Key', { desc: '只写入，不回�
 secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。请求时放在 xi-api-key 头里。' });
 secret('keys.local', 'tts', '本地语音服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写。' });
 secret('keys.asrlocal', 'asr', '本地识别服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写；清除后不再发送。' });
+// AI 可读的文件夹 (core/ai-folders.js, T-5075): drawn by the connection page's own card (文件夹与系统权限), not the form
+add('local.folders', 'connection', '文件夹与系统权限', 'AI 可读的文件夹', 'aiFolders', { custom: true, desc: '她的本机工具只能读写这些文件夹（软链接和 .. 会先解析）。用系统选择框添加，可以删除。' });
+add('local.allowCommands', 'connection', '文件夹与系统权限', '允许运行命令', 'aiFolders', { custom: true, desc: '命令的工作目录必须在上面的文件夹里，但命令本身不受文件夹限制，能访问你账号能访问的所有文件。' });
+add('local.asked', 'connection', '文件夹与系统权限', '已请求过的系统文件夹', 'readonly', { internal: true });
 F.push({ key: 'localAbilities', page: 'connection', card: '本机能力', label: '本机能力', type: 'local', store: 'pet', desc: '允许她在这台电脑上读写文件、运行命令（工具调用）。高风险：开启前会再确认一次。' });
 
 for (const f of F) {
