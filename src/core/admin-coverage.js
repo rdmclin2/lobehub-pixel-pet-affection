@@ -93,6 +93,7 @@ const PET_ONLY = {
   'save-pack-preview': '桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）',
   quit: '退出程序（托盘 / 应用菜单）',
   'debug-set': '测试钩子（只在 PIXELPET_TEST=1）',
+  'debug-expire-models': '测试钩子（测速脚本 e2e/chat-latency.js 让模型目录缓存过期）',
   'debug-import-pack': '测试钩子',
   'debug-next-open': '测试钩子',
   'debug-next-save': '测试钩子',

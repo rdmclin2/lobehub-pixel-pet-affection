@@ -17,6 +17,7 @@ const Catalog = require('../core/catalog');
 const modelsLib = require('../core/models');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
+const latency = require('../core/latency');
 const { nextEvent, LlmBudget, fallbackLine, fallbackPool } = require('../core/proactive');
 const memes = require('../core/memes');
 const touchZones = require('../core/touch-zones');
@@ -27,6 +28,7 @@ const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
+const chatLive = require('../core/chat-live');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
 
@@ -337,7 +339,9 @@ class PetService extends EventEmitter {
   // still runs once, on the final text.
   _openStream(kind, turn = null) {
     const st = { id: `r${(this._streamSeq = (this._streamSeq || 0) + 1)}${this.now().toString(36)}`, kind, turnId: turn ? turn.turnId : null, n: 0, shown: '', withheld: false, closed: false };
+    st.trace = latency.NOOP; // chat() sets its turn's trace (core/latency.js, off by default)
     st.onDelta = (_chunk, soFar) => {
+      st.trace.mark('firstDelta');
       if (st.closed || st.withheld || this._cancelRequested) return; // Esc / 停止: nothing more is shown
       if (!contentGuard.checkReply(soFar).ok) {
         st.withheld = true;
@@ -348,6 +352,10 @@ class PetService extends EventEmitter {
       const text = memes.streamingText(soFar);
       if (!text || text === st.shown) return;
       st.shown = text;
+      st.trace.mark('firstShown');
+      st.trace.markLast('lastShown');
+      st.trace.add('deltas');
+      st.trace.add('ipcBytes', Buffer.byteLength(text));
       this.emit('chat-delta', { id: st.id, n: ++st.n, kind, turnId: st.turnId, text });
     };
     // The turn is sent again another way (_runTurn's fallback): what the first try showed goes, the bubble
@@ -512,9 +520,13 @@ class PetService extends EventEmitter {
   // LobeHub agent once whenever either changed (older pet, stage up/down, adult toggle).
   // A turn that starts while the launch warmup is still at it waits for that pass instead of running the same
   // lh calls next to it; its own pass then finds everything cached and only catches what changed meanwhile.
-  async _ensureReady() {
-    while (this._readying) await this._readying.catch(() => {});
-    this._readying = this._doEnsureReady();
+  // `trace` (core/latency.js): when each part finished, for the turn waiting on it.
+  async _ensureReady(trace = latency.NOOP) {
+    while (this._readying) {
+      trace.set('waitedReady', true);
+      await this._readying.catch(() => {});
+    }
+    this._readying = this._doEnsureReady(trace);
     try {
       await this._readying;
     } finally {
@@ -522,16 +534,26 @@ class PetService extends EventEmitter {
     }
   }
 
-  async _doEnsureReady() {
+  async _doEnsureReady(trace = latency.NOOP) {
     await this._ensurePersona(this._c());
+    trace.mark('persona');
     // the model follows the character: her pick or default among her own vendor's models
     try {
-      await this.refreshModels();
+      trace.set('modelsCached', this._modelsFresh());
+      await this._catalogForTurn();
+      trace.mark('models');
       await this._applyModel();
+      trace.mark('applyModel');
     } catch (e) {
       this.emit('error', e); // keep the agent's current model; retried on the next turn
     }
     if (this.pet.localAbilities) await this._verifyLocal();
+    trace.mark('local');
+  }
+
+  // Is the list of models still within MODELS_TTL_MS (no lh calls before the turn)?
+  _modelsFresh() {
+    return !!(this._catalogAt && this.now() - this._catalogAt < MODELS_TTL_MS);
   }
 
   // Her agent's system role follows her persona file, name and the owner's settings (updated once per change).
@@ -554,7 +576,7 @@ class PetService extends EventEmitter {
   // MODELS_TTL_MS; `force` reloads (the panel's 刷新). A failure (an older lh, offline) keeps the previous
   // list, or none, and is not retried before the TTL either; the agent then keeps the model it has.
   async refreshModels({ force = false } = {}) {
-    if (!force && this._catalogAt && this.now() - this._catalogAt < MODELS_TTL_MS) return this._catalog;
+    if (!force && this._modelsFresh()) return this._catalog;
     if (this._catalogLoading) return this._catalogLoading;
     this._catalogLoading = (async () => {
       try {
@@ -573,6 +595,24 @@ class PetService extends EventEmitter {
       return this._catalog;
     })();
     return this._catalogLoading;
+  }
+
+  // The list a turn picks her model from (docs/admin-chat-latency.md R2): stale-while-revalidate. A list already
+  // loaded is used right away, even past MODELS_TTL_MS; then it is reloaded in the background, and what changed
+  // is applied from the next turn (_applyModel). Only with no list yet (first launch) does the turn wait for it.
+  // Reloading costs several `lh` processes in a row (≈2.3 s), which used to sit before the request every time
+  // the list was older than 10 minutes.
+  async _catalogForTurn() {
+    if (!this._catalog) return this.refreshModels();
+    this.prewarmModels();
+    return this._catalog;
+  }
+
+  // Reload a list past MODELS_TTL_MS in the background (the chat page opening, a turn on a stale list), so the
+  // next turn does not wait for it. Never throws, never waits.
+  prewarmModels() {
+    if (this._modelsFresh() || this._catalogLoading) return;
+    this.refreshModels().catch(() => {});
   }
 
   _modelOptions(speciesId) {
@@ -909,15 +949,25 @@ class PetService extends EventEmitter {
   //   and saved to 聊天记录 once, by the caller, after this returns.
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
   // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
-  async _runTurn(args, stream = null, { plain = false } = {}) {
+  // `trace` (core/latency.js): which way the turn went, and when a fallback started.
+  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
+    if (trace.on) args = { ...args, trace };
     const tools = plain ? [] : this._tools();
+    trace.set('tools', tools.length);
     if (tools.length) {
-      if (this.localVia !== 'direct') return this.lh.run({ ...args, tools, device: this._device() });
+      if (this.localVia !== 'direct') {
+        trace.set('via', 'lh-connect');
+        return this.lh.run({ ...args, tools, device: this._device() });
+      }
+      trace.set('via', 'direct-tools');
       try {
         return await this.responses.run({ ...args, tools });
       } catch (e) {
         if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
+        trace.set('via', 'lh-connect-fallback');
+        trace.set('fallbackReason', String(e.message).slice(0, 200));
+        trace.mark('fallbackStart');
         this.emit('error', e);
         this._responsesFailedAt = this.now();
         await this._verifyLocal({ force: true });
@@ -927,12 +977,21 @@ class PetService extends EventEmitter {
         return this.lh.run({ ...args, tools: this._tools(), device: this._device() });
       }
     }
-    if (!this._directUp()) return this.lh.run({ ...args, tools: [], device: null });
+    if (!this._directUp()) {
+      trace.set('via', 'lh-run');
+      trace.set('fallbackReason', !this.responses ? 'no direct client' : this.now() - this._responsesFailedAt < LOCAL_RETRY_MS ? 'direct failed recently' : 'no lh login token for the direct way');
+      trace.mark('reqSent');
+      return this.lh.run({ ...args, tools: [], device: null });
+    }
+    trace.set('via', 'direct');
     try {
       return await this.responses.run({ ...args, tools: [] });
     } catch (e) {
       if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT') throw e;
       this._throwIfCanceled();
+      trace.set('via', 'lh-run-fallback');
+      trace.set('fallbackReason', String(e.message).slice(0, 200));
+      trace.mark('fallbackStart');
       this.emit('error', Object.assign(new Error(`直连流式失败，这次改用 lh agent run：${e.message}`), { code: e.code, cause: e }));
       this._responsesFailedAt = this.now();
       if (stream) stream.restart();
@@ -998,9 +1057,17 @@ class PetService extends EventEmitter {
     if (origin === 'user') this.interjector.userChatted(clean);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
     const stream = this._openStream('chat', turn);
+    const trace = latency.createTrace('desktop');
+    stream.trace = trace;
+    trace.set('speciesId', c.speciesId);
+    trace.set('turnId', turn ? turn.turnId : null);
+    trace.set('textChars', clean.length);
+    trace.mark('logged');
+    let ok = false;
     try {
       state.touch(c, t);
-      await this._ensureReady();
+      await this._ensureReady(trace);
+      trace.mark('ready');
       this._throwIfCanceled();
       if (paths.length && !this._localOk) {
         this._closeStream(stream, false, 'error');
@@ -1021,23 +1088,33 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings });
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream);
+      trace.set('bodyChars', body.length);
+      trace.set('promptChars', prompt.length);
+      trace.set('topicFresh', !c.topicId);
+      trace.mark('runStart');
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace });
+      trace.mark('runEnd');
+      trace.set('replyChars', (res.text || '').length);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
       this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream));
+      trace.mark('doneSent');
       this._reportAffection(affection);
+      ok = true;
       return { ok: true, text, cost: res.cost, affection };
     } catch (e) {
       this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code !== 'ECANCELED') this.emit('error', e);
       this._logPet('', 'chat', turn, e.code === 'ECANCELED' ? 'canceled' : 'error');
       this._save(); // touch() above may have woken the pet; keep the sprite in sync
+      trace.set('error', e.code || String(e.message).slice(0, 120));
       if (e.code === 'ECANCELED') return { ok: false, reason: 'canceled' };
       return { ok: false, reason: 'error', code: e.code || null, message: e.message };
     } finally {
       this.busy = false;
       this.emit('thinking', false);
+      trace.end({ ok });
     }
   }
 
@@ -1049,6 +1126,7 @@ class PetService extends EventEmitter {
   // The left column: every character, with how her conversation stands.
   chatCharacters() {
     if (!this.pet) return { ok: true, characters: [] };
+    this.prewarmModels(); // the chat page is open: have her model list fresh before the first message
     const all = this.log.list();
     return {
       ok: true,
@@ -1069,7 +1147,9 @@ class PetService extends EventEmitter {
     const id = this._target(speciesId);
     if (!id) return { ok: false, reason: 'unknown-character' };
     const page = adminChat.historyPage(adminChat.conversationOf(this.log.list(), id), { before, limit });
-    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!(this._consoleTurn && this._consoleTurn.speciesId === id), ...page };
+    const t = this._consoleTurn && this._consoleTurn.speciesId === id ? this._consoleTurn : null;
+    // live: the reply being written so far, for a page opened mid-reply (deltas are increments, core/chat-live.js)
+    return { ok: true, speciesId: id, met: !!this.pet.characters[id], streaming: !!t, live: t ? { turnId: t.turnId, text: t.text || '' } : null, ...page };
   }
 
   // Stop the reply the chat page is waiting for (only its own turn: the desktop's is stopped there).
@@ -1140,24 +1220,35 @@ class PetService extends EventEmitter {
     let userMessage = null;
     let partial = '';
     let modelKey = null;
+    const trace = latency.createTrace('admin');
+    trace.set('speciesId', id);
+    trace.set('turnId', turnId);
+    trace.set('textChars', clean.length);
+    let ok = false;
     try {
       // the model she runs on: hers, among her vendor's (the same pick as her page → 模型)
+      trace.set('modelsCached', this._modelsFresh());
       try {
-        await this.refreshModels();
+        await this._catalogForTurn();
       } catch { /* keep the agent's model */ }
+      trace.mark('models');
       const target = modelsLib.pick(id, this._modelOptions(id), this.settings.models[id]);
       modelKey = target ? target.key : c.modelApplied || null;
+      trace.set('model', modelKey);
       if (imgs.length && target && target.vision === false) return { ok: false, reason: 'no-vision', error: `「${target.label}」看不了图片：在模型里换一个标着「视觉」的，或者先移除图片` };
       const t = this.now();
       const conv = adminChat.conversationOf(this.log.list(), id);
       userMessage = this._logAs(id, { role: 'user', turnId, text: clean, ...(imgs.length ? { attachments: { images: imgs.length, refs: imgs.map((x) => x.ref).filter(Boolean) } } : {}) });
       this.emit('chat-log', { speciesId: id });
+      trace.mark('logged');
       await this._ensurePersona(c);
+      trace.mark('persona');
       try {
         await this._applyModel(c);
       } catch (e) {
         this.emit('error', e);
       }
+      trace.mark('applyModel');
       this._throwIfCanceled();
       const roll = this._rollTopic(c, conv, t);
       // 重新开始话题 (newTopic) asked for a clean start: nothing from before it is carried over
@@ -1179,24 +1270,42 @@ class PetService extends EventEmitter {
       this._throwIfCanceled();
       const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
       const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      trace.set('topicFresh', roll.fresh);
+      trace.set('recentMsgs', recent.length);
+      trace.set('recallMsgs', recall.length);
+      trace.set('convMsgs', conv.length);
+      trace.set('bodyChars', body.length);
+      trace.set('promptChars', prompt.length);
+      trace.mark('prompt');
       const stream = {
         onDelta: (_chunk, soFar) => {
+          trace.mark('firstDelta');
           if (this._cancelRequested) return;
           const shown = contentGuard.checkReply(soFar).ok ? adminChat.answerOnly(memes.streamingText(soFar), { streaming: true }) : '';
           if (shown === partial) return;
+          const piece = chatLive.encode(partial, shown); // only what was added goes over IPC (whole text when it is not an append)
           partial = shown;
+          if (this._consoleTurn) this._consoleTurn.text = shown;
+          trace.mark('firstShown');
+          trace.markLast('lastShown');
+          trace.add('deltas');
+          trace.add('ipcBytes', Buffer.byteLength(piece.append ?? piece.text));
           try {
-            onDelta({ speciesId: id, turnId, text: shown });
+            onDelta({ speciesId: id, turnId, ...piece });
           } catch { /* a display callback must not cost the turn */ }
         },
         restart: () => {
           partial = '';
+          if (this._consoleTurn) this._consoleTurn.text = '';
           try {
             onDelta({ speciesId: id, turnId, text: '', restart: true });
           } catch { /* as above */ }
         },
       };
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true });
+      trace.mark('runStart');
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true, trace });
+      trace.mark('runEnd');
+      trace.set('replyChars', (res.text || '').length);
       if (res.topicId && res.topicId !== c.topicId) {
         c.topicId = res.topicId;
         c.topicMeta = { id: res.topicId, startedAt: t };
@@ -1216,6 +1325,7 @@ class PetService extends EventEmitter {
       this._save();
       if (affection) this._reportAffection(affection);
       this.emit('update', this.view());
+      ok = true;
       return { ok: true, speciesId: id, turnId, userMessage, message, affection };
     } catch (e) {
       const canceled = e.code === 'ECANCELED' || this._cancelRequested;
@@ -1223,12 +1333,14 @@ class PetService extends EventEmitter {
       const error = canceled ? '已停止' : adminChat.readableError(e);
       const message = userMessage ? this._logAs(id, { role: 'pet', turnId, text: canceled ? partial : '', status: canceled ? 'canceled' : 'error', ...(canceled ? {} : { error }), ...(modelKey ? { model: modelKey } : {}) }) : null;
       this._save();
+      trace.set('error', e.code || String(e.message).slice(0, 120));
       return { ok: false, reason: canceled ? 'aborted' : 'error', code: e.code || null, error, speciesId: id, turnId, userMessage, message };
     } finally {
       this.busy = false;
       this._consoleTurn = null;
       if (isCur) this.emit('thinking', false);
       this.emit('chat-log', { speciesId: id });
+      trace.end({ ok });
     }
   }
 

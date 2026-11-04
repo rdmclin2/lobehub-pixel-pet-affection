@@ -125,7 +125,7 @@ test('an lh without model commands: chat still works and the agent keeps its mod
   assert.equal(runs(), n + 1);
 });
 
-test('the model list is reused for ten minutes, then read again', async () => {
+test('the model list is reused for ten minutes, then read again (in the background: the turn does not wait for it)', async () => {
   const { svc, clock, lists } = setup();
   await svc.hatch({ speciesId: 'dafeiyu', name: '小蓝' });
   const first = lists();
@@ -134,5 +134,7 @@ test('the model list is reused for ten minutes, then read again', async () => {
   assert.equal(lists(), first);
   clock.t += 11 * 60 * 1000;
   await svc.chat('二');
+  await svc._catalogLoading; // stale-while-revalidate (docs/admin-chat-latency.md §7)
   assert.equal(lists(), first * 2);
+  assert.equal(svc._modelsFresh(), true);
 });

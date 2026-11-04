@@ -877,6 +877,8 @@ function wire() {
   if (TEST_MODE) {
     // Test-only hooks used by the E2E suite to drive time-dependent behaviour.
     ipcMain.handle('debug-set', (_e, patch) => service.debugSet(patch));
+    // 测速 (e2e/chat-latency.js): the list of models counts as expired, as after MODELS_TTL_MS
+    ipcMain.handle('debug-expire-models', () => { service._catalogAt = 0; return true; });
     ipcMain.handle('debug-import-pack', async (_e, dir) => {
       const r = await packStore.importFrom(String(dir));
       if (r.ok) service.setPacks(packStore.packs);
@@ -997,6 +999,8 @@ app.whenReady().then(() => {
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them
   const responses = TEST_MODE && process.env.PIXELPET_DIRECT !== '1' ? null : new ResponsesClient({ lh });
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
+  // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
+  if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
   service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({

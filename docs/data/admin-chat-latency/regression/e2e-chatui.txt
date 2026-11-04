@@ -1,0 +1,19 @@
+PASS  [chatui] U1 左侧 rail 有「聊天」：点进去是角色列表（一个角色一个会话），默认打开桌面上的当前角色；原有入口不变 — rail: 小屋(#/overview) · 角色(#/characters) · 商店(#/store) · 玩法(#/play) · 设置(#/settings) · 聊天(#/chat); list: claude[见过,打开] gpt[见过] dafeiyu[没见过] grok[没见过] gemini[没见过]; no 新建 / 清空; 设置 / 小屋 → back to 聊天 ok
+PASS  [chatui] U2 她的历史与桌面共用：最近 40 条读出来，「查看更早的消息」往前翻；在桌宠聊天框说一句，聊天页自动出现并标「桌面」 — 40 messages on open, 查看更早 → 60 (oldest: 「记一下：我的暗号是青柠42」); a round sent in the pet window appeared here tagged 「桌面」
+PASS  [chatui] U3 模型选择器：只有她所属厂商的模型，与她的角色页同一个值；切换后她的 agent 换成这个模型 — 3 options, all Claude (Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5[视觉]); picked Claude Haiku 5.5 → select 「Claude Haiku 5.5 视觉」; lh agent edit agt_FAKE1793734671887523 -m claude-haiku-5-5 -p lobehub
+PASS  [chatui] U4 Enter 发送 / Shift+Enter 换行；发送中按钮变「停止」、显示「正在回复」，Markdown 逐段流式；请求走她自己的 agent 和话题 — Shift+Enter kept a newline; button 发送→停止→发送; 4 growing samples; markdown ok; request model=agt_FAKE1793734671887523 (小克's agent), previous_response_id=tpc_E2E_1 (her topic)
+PASS  [chatui] U5 多轮上下文：她的话题记得上一句 — last answer 「你叫小明。」 — from the topic's own history (the request carried only the new message)
+PASS  [chatui] U6 问起以前的事：从聊天记录里翻出更早的轮次一起发给她 — question about the past → request carried 【更早的聊天记录摘录】 with 「青柠42」 (seeded two days ago); answer 「你之前说过，暗号是青柠42。」; the next ordinary message carried none
+PASS  [chatui] U7 图片：文件选择 + 粘贴 + 拖入 → 输入区缩略图，可移除；发送后在消息里显示，并挂到她的话题里 — 3 thumbs (pick + paste + drop) → removed 2 → sent 1; user bubble shows 1 picture; lh file upload → message create --topic-id tpc_E2E_1 → add-files; answer 「图里是一块红色。」
+PASS  [chatui] U8 点击消息里的图片放大预览 — 128×128 thumb → preview 320×200; Esc closes
+PASS  [chatui] U9 模型看不了图：带图时输入区提示，不发送；她的角色页显示的是同一个模型 — Claude Opus 5.5 (no vision) + picture → 「「Claude Opus 5.5」看不了图片：换一个标着「视觉」的模型，或者移除图片。」, Enter sent nothing; 角色 → 小克 → 模型 shows 「正在用：Claude Opus 5.5」 (same value); back to Claude Haiku 5.5
+PASS  [chatui] U10 停止生成：回复中途点「停止」，已生成的部分保留并标「已停止」 — stopped mid-way: 「20:38:17 这一段会被 Claude Haiku 5.5 已停止」
+PASS  [chatui] U12 消息区可滚动：回复中上翻不被拉回，「回到最新消息」可回到底部 — while streaming 0px from the bottom; scrolled up → scrollTop=0 after 1.2 s; 回到最新消息 → 30px
+PASS  [chatui] U13 切到另一个角色：她自己的 agent 和历史；再切回来，之前的对话都在 — 小G: 0 messages before, own agent agt_FAKE1793734676597528, models offered: lobehub:gpt-6-sol, lobehub:gpt-6-luna, openai:gpt-6-luna, openai:o3; back to 小克 → 40 messages, last one is her long reply
+PASS  [chatui] U14 没见过面的角色：说明「还没见过面」并给出「去见她」，没有输入框 — grok: 「还没见过格萝可 和她初次见面之后，她才有自己的 agent，才能在这里聊天。 去见她」, no input box
+PASS  [chatui] U15 刷新窗口后：还是她的对话，历史（含图片）与所选模型都在，可以接着聊 — after reload: #/chat/claude, 80 messages, the picture is back, and 「我叫什么？」 → 「你叫小明。」
+PASS  [chatui] U15b 出错有可见提示，点「重试」重新发送这一轮 — error: 「20:38:29 回复没有完成 Agent run failed (exit 1): boom 重试 Claude Haiku 5.5」; 重试 → sent again → reply done
+PASS  [chatui] U16 设置窗口无报错（页面异常 / 控制台错误） — pageerror 0, console.error 0
+
+16/16 passed
+EXIT 0

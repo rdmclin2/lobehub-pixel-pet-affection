@@ -66,6 +66,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
       const last = text.split('\n').pop();
       if (mode === 'slow') return { pieces: ['这一段', '会被', '中途', '停止，', '后面', '不会', '出现', '。'], gapMs: 500, id };
       if (mode === 'fail') return { status: 502, body: 'upstream exploded' };
+      if (mode === 'hang') return { pieces: ['我想', '一想……'], gapMs: 200, hang: true, id };
       if (mode === 'long') return { pieces: Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 行：滚动测试。\n\n`), gapMs: 150, id };
       if (/颜色/.test(last)) return { pieces: ['图里是', '一块', '红色。'], gapMs: 150, id };
       if (/我叫什么/.test(last)) return { pieces: /我叫小明/.test(seen) ? ['你叫', '小明。'] : ['我不知道', '。'], gapMs: 150, id };
@@ -438,19 +439,43 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
         return note(`after reload: #/chat/claude, ${b.length} messages, the picture is back, and 「我叫什么？」 → 「${b[b.length - 1].text}」`);
       }, admin);
 
+      await step(S, 'U15c 超时：流式写了一半就不再有数据，到时（120 s）给出「模型回复超时」，不会退回到 lh 重发；点「重试」恢复', async () => {
+        await ensureChat();
+        mode = 'hang';
+        const t0 = Date.now();
+        await type('这次会超时');
+        await admin.keyboard.press('Enter');
+        await until(() => !!document.querySelector('[data-streaming]'), null, 15000, 'streaming bubble');
+        await until(() => [...document.querySelectorAll('[data-role="assistant"][data-status="error"]')].some((e) => /超时/.test(e.innerText)), null, 150000, 'timeout error bubble');
+        const waited = Date.now() - t0;
+        const err = await admin.evaluate(() => [...document.querySelectorAll('[data-role="assistant"][data-status="error"]')].pop().innerText.trim());
+        await shot('11b-timeout-retry');
+        mode = null;
+        const before = srv.requests.length;
+        await admin.locator('[data-retry]').last().click(); // the newest error bubble (an earlier step's may still be in the history)
+        await sleep(300);
+        await waitIdle();
+        const b = await bubbles();
+        assert.equal(b[b.length - 1].status, 'done');
+        assert.equal(b[b.length - 2].text, '这次会超时');
+        assert.ok(srv.requests.length > before, 'retry sent a new request');
+        return note(`after ${Math.round(waited / 1000)} s: 「${err.replace(/\s+/g, ' ').slice(0, 120)}」; 重试 → sent again → reply done (「${b[b.length - 1].text.slice(0, 40)}」)`);
+      }, admin);
+
       await step(S, 'U15b 出错有可见提示，点「重试」重新发送这一轮', async () => {
         await ensureChat();
         // the direct way fails, and so does the `lh agent run` it falls back to: a real failed round
         mode = 'fail';
         fs.writeFileSync(path.join(fakeDir, 'fail-run'), '1');
+        const errsBefore = await admin.evaluate(() => document.querySelectorAll('[data-role="assistant"][data-status="error"]').length);
         await type('这次会出错');
         await admin.keyboard.press('Enter');
-        await until(() => !!document.querySelector('[data-role="assistant"][data-status="error"]'), null, 30000, 'error bubble');
-        const err = await admin.$eval('[data-role="assistant"][data-status="error"]', (e) => e.innerText.trim());
+        await until((n) => document.querySelectorAll('[data-role="assistant"][data-status="error"]').length > n, errsBefore, 30000, 'error bubble');
+        const err = await admin.evaluate(() => [...document.querySelectorAll('[data-role="assistant"][data-status="error"]')].pop().innerText.trim());
         await shot('11-error-retry');
         mode = null;
         fs.rmSync(path.join(fakeDir, 'fail-run'), { force: true });
-        await admin.click('[data-retry]');
+        await admin.locator('[data-retry]').last().click(); // the newest error bubble (an earlier step's may still be in the history)
         await sleep(300);
         await waitIdle();
         const b = await bubbles();

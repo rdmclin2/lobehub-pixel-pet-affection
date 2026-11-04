@@ -1,0 +1,1149 @@
+{
+  "label": "events",
+  "startedAt": "2026-11-03T16:05:45.498Z",
+  "rounds": 1,
+  "coldEvery": 0,
+  "species": "dafeiyu",
+  "model": {
+    "key": "lobehub:deepseek-flash",
+    "label": "DeepSeek V4.1 Flash",
+    "options": [
+      "DeepSeek V4.1 Flash"
+    ]
+  },
+  "chromeArgs": [],
+  "turns": [
+    {
+      "round": 1,
+      "kind": "desktop",
+      "cond": "warm",
+      "text": "第1轮：请用大约 80 个字，和我聊聊「早餐吃什么」。",
+      "topicFresh": false,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 50,
+      "deltas": 2,
+      "ipcBytes": 294,
+      "ipcIn": 24,
+      "prep": 27,
+      "models": 0,
+      "sendToReq": 51,
+      "reqToHeaders": 1379,
+      "reqToFirstText": 3543,
+      "firstTextToShown": 0,
+      "shownToPaint": 6,
+      "ttft": 3600,
+      "streamEnd": 7171,
+      "total": 7219,
+      "endToDone": 48,
+      "fullShown": 3616,
+      "revealLag": 12,
+      "shownAtStreamEnd": 50,
+      "lastStreamChars": 50,
+      "finalChars": 50,
+      "frames": 433,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "logged": 0,
+        "persona": 0,
+        "models": 0,
+        "applyModel": 0,
+        "local": 0,
+        "ready": 0,
+        "runStart": 0,
+        "token": 27,
+        "reqSent": 27,
+        "headers": 1406,
+        "firstByte": 1414,
+        "firstText": 3570,
+        "firstDelta": 3570,
+        "firstShown": 3570,
+        "lastShown": 3580,
+        "runEnd": 7147,
+        "doneSent": 7177,
+        "end": 7177
+      },
+      "samples": [
+        [
+          3600,
+          48
+        ],
+        [
+          3616,
+          50
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 1,
+      "kind": "admin",
+      "cond": "warm",
+      "text": "第1轮：请用大约 80 个字，和我聊聊「早餐吃什么」。",
+      "topicFresh": false,
+      "recentMsgs": 0,
+      "via": "direct",
+      "modelsCached": true,
+      "waitedReady": false,
+      "promptChars": 498,
+      "bodyChars": 27,
+      "replyChars": 62,
+      "deltas": 2,
+      "ipcBytes": 336,
+      "ipcIn": 3,
+      "prep": 43,
+      "models": 0,
+      "sendToReq": 46,
+      "reqToHeaders": 1194,
+      "reqToFirstText": 3200,
+      "firstTextToShown": 0,
+      "shownToPaint": 27,
+      "ttft": 3273,
+      "streamEnd": 6901,
+      "total": 6925,
+      "endToDone": 24,
+      "fullShown": 3655,
+      "revealLag": 321,
+      "shownAtStreamEnd": 62,
+      "lastStreamChars": 62,
+      "finalChars": 62,
+      "frames": 416,
+      "longtasks": 0,
+      "longtaskMs": 0,
+      "marks": {
+        "models": 0,
+        "logged": 1,
+        "persona": 1,
+        "applyModel": 1,
+        "prompt": 2,
+        "runStart": 2,
+        "token": 43,
+        "reqSent": 43,
+        "headers": 1237,
+        "firstByte": 1245,
+        "firstText": 3243,
+        "firstDelta": 3243,
+        "firstShown": 3243,
+        "lastShown": 3331,
+        "runEnd": 6898,
+        "end": 6902
+      },
+      "samples": [
+        [
+          3273,
+          50
+        ],
+        [
+          3423,
+          53
+        ],
+        [
+          3489,
+          56
+        ],
+        [
+          3655,
+          62
+        ]
+      ],
+      "fps": 60
+    },
+    {
+      "round": 2,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 501,
+      "replyChars": 61,
+      "deltas": 2,
+      "prep": 30,
+      "reqToHeaders": 1022,
+      "reqToFirstText": 2952,
+      "ttft": 2982,
+      "streamEnd": 6413,
+      "total": 6413,
+      "pieces": [
+        [
+          2983,
+          44
+        ],
+        [
+          3072,
+          17
+        ]
+      ],
+      "marks": {
+        "token": 30,
+        "reqSent": 30,
+        "headers": 1052,
+        "firstByte": 1057,
+        "firstText": 2982,
+        "end": 6413
+      },
+      "events": [
+        [
+          1057,
+          "response.created",
+          null
+        ],
+        [
+          1057,
+          "response.in_progress",
+          null
+        ],
+        [
+          2480,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2480,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2982,
+          "response.output_text.delta",
+          44
+        ],
+        [
+          3072,
+          "response.output_text.delta",
+          17
+        ],
+        [
+          6411,
+          "response.output_text.done",
+          null
+        ],
+        [
+          6411,
+          "response.content_part.done",
+          null
+        ],
+        [
+          6411,
+          "response.output_item.done",
+          null
+        ],
+        [
+          6412,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          1057,
+          1057,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          1057,
+          1057,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2480,
+          2480,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2480,
+          2480,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2982,
+          3072,
+          "response.output_text.delta",
+          2,
+          61
+        ],
+        [
+          6411,
+          6411,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          6411,
+          6411,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          6411,
+          6411,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          6412,
+          6412,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 3,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 499,
+      "replyChars": 58,
+      "deltas": 2,
+      "prep": 29,
+      "reqToHeaders": 1232,
+      "reqToFirstText": 2894,
+      "ttft": 2923,
+      "streamEnd": 7564,
+      "total": 7564,
+      "pieces": [
+        [
+          2923,
+          53
+        ],
+        [
+          2943,
+          5
+        ]
+      ],
+      "marks": {
+        "token": 29,
+        "reqSent": 29,
+        "headers": 1261,
+        "firstByte": 1269,
+        "firstText": 2923,
+        "end": 7564
+      },
+      "events": [
+        [
+          1269,
+          "response.created",
+          null
+        ],
+        [
+          1270,
+          "response.in_progress",
+          null
+        ],
+        [
+          2923,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2923,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2923,
+          "response.output_text.delta",
+          53
+        ],
+        [
+          2943,
+          "response.output_text.delta",
+          5
+        ],
+        [
+          7564,
+          "response.output_text.done",
+          null
+        ],
+        [
+          7564,
+          "response.content_part.done",
+          null
+        ],
+        [
+          7564,
+          "response.output_item.done",
+          null
+        ],
+        [
+          7564,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          1269,
+          1269,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          1270,
+          1270,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2923,
+          2923,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2923,
+          2923,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2923,
+          2943,
+          "response.output_text.delta",
+          2,
+          58
+        ],
+        [
+          7564,
+          7564,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          7564,
+          7564,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          7564,
+          7564,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          7564,
+          7564,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "round": 4,
+      "kind": "raw",
+      "cond": "warm",
+      "via": "direct",
+      "promptChars": 498,
+      "replyChars": 51,
+      "deltas": 2,
+      "prep": 28,
+      "reqToHeaders": 1023,
+      "reqToFirstText": 2471,
+      "ttft": 2499,
+      "streamEnd": 5942,
+      "total": 5942,
+      "pieces": [
+        [
+          2499,
+          42
+        ],
+        [
+          2548,
+          9
+        ]
+      ],
+      "marks": {
+        "token": 28,
+        "reqSent": 28,
+        "headers": 1051,
+        "firstByte": 1058,
+        "firstText": 2499,
+        "end": 5942
+      },
+      "events": [
+        [
+          1058,
+          "response.created",
+          null
+        ],
+        [
+          1059,
+          "response.in_progress",
+          null
+        ],
+        [
+          2499,
+          "response.output_item.added",
+          null
+        ],
+        [
+          2499,
+          "response.content_part.added",
+          null
+        ],
+        [
+          2499,
+          "response.output_text.delta",
+          42
+        ],
+        [
+          2548,
+          "response.output_text.delta",
+          9
+        ],
+        [
+          5941,
+          "response.output_text.done",
+          null
+        ],
+        [
+          5941,
+          "response.content_part.done",
+          null
+        ],
+        [
+          5941,
+          "response.output_item.done",
+          null
+        ],
+        [
+          5942,
+          "response.completed",
+          null
+        ]
+      ],
+      "eventsFolded": [
+        [
+          1058,
+          1058,
+          "response.created",
+          1,
+          0
+        ],
+        [
+          1059,
+          1059,
+          "response.in_progress",
+          1,
+          0
+        ],
+        [
+          2499,
+          2499,
+          "response.output_item.added",
+          1,
+          0
+        ],
+        [
+          2499,
+          2499,
+          "response.content_part.added",
+          1,
+          0
+        ],
+        [
+          2499,
+          2548,
+          "response.output_text.delta",
+          2,
+          51
+        ],
+        [
+          5941,
+          5941,
+          "response.output_text.done",
+          1,
+          0
+        ],
+        [
+          5941,
+          5941,
+          "response.content_part.done",
+          1,
+          0
+        ],
+        [
+          5941,
+          5941,
+          "response.output_item.done",
+          1,
+          0
+        ],
+        [
+          5942,
+          5942,
+          "response.completed",
+          1,
+          0
+        ]
+      ]
+    }
+  ],
+  "summary": {
+    "desktop/warm": {
+      "n": 1,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 24,
+        "p90": 24
+      },
+      "prep": {
+        "p50": 27,
+        "p90": 27
+      },
+      "models": {
+        "p50": 0,
+        "p90": 0
+      },
+      "sendToReq": {
+        "p50": 51,
+        "p90": 51
+      },
+      "reqToHeaders": {
+        "p50": 1379,
+        "p90": 1379
+      },
+      "reqToFirstText": {
+        "p50": 3543,
+        "p90": 3543
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 6,
+        "p90": 6
+      },
+      "ttft": {
+        "p50": 3600,
+        "p90": 3600
+      },
+      "streamEnd": {
+        "p50": 7171,
+        "p90": 7171
+      },
+      "endToDone": {
+        "p50": 48,
+        "p90": 48
+      },
+      "fullShown": {
+        "p50": 3616,
+        "p90": 3616
+      },
+      "revealLag": {
+        "p50": 12,
+        "p90": 12
+      },
+      "total": {
+        "p50": 7219,
+        "p90": 7219
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 498
+      },
+      "replyChars": {
+        "p50": 50,
+        "p90": 50
+      },
+      "shownAtStreamEnd": {
+        "p50": 50,
+        "p90": 50
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 294,
+        "p90": 294
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "desktop/all": {
+      "n": 1,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 24,
+        "p90": 24
+      },
+      "prep": {
+        "p50": 27,
+        "p90": 27
+      },
+      "models": {
+        "p50": 0,
+        "p90": 0
+      },
+      "sendToReq": {
+        "p50": 51,
+        "p90": 51
+      },
+      "reqToHeaders": {
+        "p50": 1379,
+        "p90": 1379
+      },
+      "reqToFirstText": {
+        "p50": 3543,
+        "p90": 3543
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 6,
+        "p90": 6
+      },
+      "ttft": {
+        "p50": 3600,
+        "p90": 3600
+      },
+      "streamEnd": {
+        "p50": 7171,
+        "p90": 7171
+      },
+      "endToDone": {
+        "p50": 48,
+        "p90": 48
+      },
+      "fullShown": {
+        "p50": 3616,
+        "p90": 3616
+      },
+      "revealLag": {
+        "p50": 12,
+        "p90": 12
+      },
+      "total": {
+        "p50": 7219,
+        "p90": 7219
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 498
+      },
+      "replyChars": {
+        "p50": 50,
+        "p90": 50
+      },
+      "shownAtStreamEnd": {
+        "p50": 50,
+        "p90": 50
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 294,
+        "p90": 294
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "admin/warm": {
+      "n": 1,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 3,
+        "p90": 3
+      },
+      "prep": {
+        "p50": 43,
+        "p90": 43
+      },
+      "models": {
+        "p50": 0,
+        "p90": 0
+      },
+      "sendToReq": {
+        "p50": 46,
+        "p90": 46
+      },
+      "reqToHeaders": {
+        "p50": 1194,
+        "p90": 1194
+      },
+      "reqToFirstText": {
+        "p50": 3200,
+        "p90": 3200
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 27,
+        "p90": 27
+      },
+      "ttft": {
+        "p50": 3273,
+        "p90": 3273
+      },
+      "streamEnd": {
+        "p50": 6901,
+        "p90": 6901
+      },
+      "endToDone": {
+        "p50": 24,
+        "p90": 24
+      },
+      "fullShown": {
+        "p50": 3655,
+        "p90": 3655
+      },
+      "revealLag": {
+        "p50": 321,
+        "p90": 321
+      },
+      "total": {
+        "p50": 6925,
+        "p90": 6925
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 498
+      },
+      "replyChars": {
+        "p50": 62,
+        "p90": 62
+      },
+      "shownAtStreamEnd": {
+        "p50": 62,
+        "p90": 62
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 336,
+        "p90": 336
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "admin/all": {
+      "n": 1,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": 3,
+        "p90": 3
+      },
+      "prep": {
+        "p50": 43,
+        "p90": 43
+      },
+      "models": {
+        "p50": 0,
+        "p90": 0
+      },
+      "sendToReq": {
+        "p50": 46,
+        "p90": 46
+      },
+      "reqToHeaders": {
+        "p50": 1194,
+        "p90": 1194
+      },
+      "reqToFirstText": {
+        "p50": 3200,
+        "p90": 3200
+      },
+      "firstTextToShown": {
+        "p50": 0,
+        "p90": 0
+      },
+      "shownToPaint": {
+        "p50": 27,
+        "p90": 27
+      },
+      "ttft": {
+        "p50": 3273,
+        "p90": 3273
+      },
+      "streamEnd": {
+        "p50": 6901,
+        "p90": 6901
+      },
+      "endToDone": {
+        "p50": 24,
+        "p90": 24
+      },
+      "fullShown": {
+        "p50": 3655,
+        "p90": 3655
+      },
+      "revealLag": {
+        "p50": 321,
+        "p90": 321
+      },
+      "total": {
+        "p50": 6925,
+        "p90": 6925
+      },
+      "promptChars": {
+        "p50": 498,
+        "p90": 498
+      },
+      "replyChars": {
+        "p50": 62,
+        "p90": 62
+      },
+      "shownAtStreamEnd": {
+        "p50": 62,
+        "p90": 62
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": 336,
+        "p90": 336
+      },
+      "longtaskMs": {
+        "p50": 0,
+        "p90": 0
+      },
+      "fps": {
+        "p50": 60,
+        "p90": 60
+      }
+    },
+    "raw/warm": {
+      "n": 3,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": null,
+        "p90": null
+      },
+      "prep": {
+        "p50": 29,
+        "p90": 30
+      },
+      "models": {
+        "p50": null,
+        "p90": null
+      },
+      "sendToReq": {
+        "p50": null,
+        "p90": null
+      },
+      "reqToHeaders": {
+        "p50": 1023,
+        "p90": 1190
+      },
+      "reqToFirstText": {
+        "p50": 2894,
+        "p90": 2940
+      },
+      "firstTextToShown": {
+        "p50": null,
+        "p90": null
+      },
+      "shownToPaint": {
+        "p50": null,
+        "p90": null
+      },
+      "ttft": {
+        "p50": 2923,
+        "p90": 2970
+      },
+      "streamEnd": {
+        "p50": 6413,
+        "p90": 7334
+      },
+      "endToDone": {
+        "p50": null,
+        "p90": null
+      },
+      "fullShown": {
+        "p50": null,
+        "p90": null
+      },
+      "revealLag": {
+        "p50": null,
+        "p90": null
+      },
+      "total": {
+        "p50": 6413,
+        "p90": 7334
+      },
+      "promptChars": {
+        "p50": 499,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 58,
+        "p90": 60
+      },
+      "shownAtStreamEnd": {
+        "p50": null,
+        "p90": null
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": null,
+        "p90": null
+      },
+      "longtaskMs": {
+        "p50": null,
+        "p90": null
+      },
+      "fps": {
+        "p50": null,
+        "p90": null
+      }
+    },
+    "raw/all": {
+      "n": 3,
+      "via": [
+        "direct"
+      ],
+      "ipcIn": {
+        "p50": null,
+        "p90": null
+      },
+      "prep": {
+        "p50": 29,
+        "p90": 30
+      },
+      "models": {
+        "p50": null,
+        "p90": null
+      },
+      "sendToReq": {
+        "p50": null,
+        "p90": null
+      },
+      "reqToHeaders": {
+        "p50": 1023,
+        "p90": 1190
+      },
+      "reqToFirstText": {
+        "p50": 2894,
+        "p90": 2940
+      },
+      "firstTextToShown": {
+        "p50": null,
+        "p90": null
+      },
+      "shownToPaint": {
+        "p50": null,
+        "p90": null
+      },
+      "ttft": {
+        "p50": 2923,
+        "p90": 2970
+      },
+      "streamEnd": {
+        "p50": 6413,
+        "p90": 7334
+      },
+      "endToDone": {
+        "p50": null,
+        "p90": null
+      },
+      "fullShown": {
+        "p50": null,
+        "p90": null
+      },
+      "revealLag": {
+        "p50": null,
+        "p90": null
+      },
+      "total": {
+        "p50": 6413,
+        "p90": 7334
+      },
+      "promptChars": {
+        "p50": 499,
+        "p90": 501
+      },
+      "replyChars": {
+        "p50": 58,
+        "p90": 60
+      },
+      "shownAtStreamEnd": {
+        "p50": null,
+        "p90": null
+      },
+      "deltas": {
+        "p50": 2,
+        "p90": 2
+      },
+      "ipcBytes": {
+        "p50": null,
+        "p90": null
+      },
+      "longtaskMs": {
+        "p50": null,
+        "p90": null
+      },
+      "fps": {
+        "p50": null,
+        "p90": null
+      }
+    }
+  },
+  "mainStdoutLatencyLines": 2
+}

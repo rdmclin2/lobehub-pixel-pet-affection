@@ -2,6 +2,7 @@
 // End-to-end suite: drives the real Electron app with Playwright.
 //   scenario "fresh"  -> fake `lh` that starts logged-out (exercises the login flow)
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
+//   scenario "latency" -> 聊天窗口 vs 桌面 测速 (e2e/chat-latency.js, real LobeHub, not in `all`): `node e2e/run.js latency <label>`
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
 //   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 商店 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
@@ -10768,6 +10769,8 @@ async function interjectScenario() {
   if (which === 'dafeiyu' || which === 'all') await dafeiyu();
   if (which === 'busy' || which === 'all') { await busy(); await longreply(); await daemonlaunch(); await oldlh(); }
   if (which === 'live' || which === 'all') await live();
+  // 测速 (docs/admin-chat-latency.md): real LobeHub, not part of `all`; label = argv[3]
+  if (which === 'latency') await require('./chat-latency').run(process.argv[3] || 'baseline');
   if (which === 'space' || which === 'all') await space();
   if (which === 'advanced' || which === 'all') await advanced();
   if (which === 'packs' || which === 'all') await packs();
