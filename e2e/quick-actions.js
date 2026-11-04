@@ -326,7 +326,7 @@ module.exports = ({ OUT, FAKE_LH, step, launch, say }) => async function quickAc
       await until(() => q.evaluate(() => document.querySelector('#row-check-update').classList.contains('active')), 'hover → active');
       const c = await q.evaluate(() => ({ menu: getComputedStyle(document.getElementById('menu')).backgroundColor, row: getComputedStyle(document.querySelector('#row-check-update')).backgroundColor, rowText: getComputedStyle(document.querySelector('#row-check-update')).color, text: getComputedStyle(document.querySelector('#row-about')).color, seps: document.querySelectorAll('.sep').length }));
       // WCAG relative luminance / contrast
-      const lum = (rgb) => { const [r, g, b] = rgb.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const lum = (rgb) => { const unit = /^color\(srgb/.test(rgb) ? 1 : 255; const [r, g, b] = rgb.replace(/^color\(srgb/, '').match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => { v /= unit; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
       const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
       assert.ok(lum(c.menu) < 0.05, `dark menu background ${c.menu}`);
       assert.ok(lum(c.text) > 0.6, `light text ${c.text}`);

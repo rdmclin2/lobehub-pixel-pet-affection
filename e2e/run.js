@@ -7908,7 +7908,8 @@ async function frontslimScenario() {
       await page.waitForTimeout(400);
       await shotPet('f1-pet-toolbar');
       const ui = await page.evaluate(() => ({
-        acts: [...document.querySelectorAll('#toolbar [data-act]')].map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
+        // shown buttons only: 跳舞 / ↺ 重置姿势 (T-2830) exist hidden and appear for VRM looks only
+        acts: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => b.offsetParent).map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
         visible: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => b.offsetParent).length,
         gone: ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)),
         menuBtn: document.querySelectorAll('[data-act="menu"], [data-menu]').length,
@@ -7947,7 +7948,7 @@ async function frontslimScenario() {
       assert.equal(n, 1);
       await shotAdmin('f3-admin-from-gear');
       const d = desktop('f3-desktop-pet-and-admin');
-      map.push(['设置', '⚙ 设置按钮 / 右键 / Ctrl+, → 后台 小屋']);
+      map.push(['设置', '⚙ 设置按钮 / Ctrl+, / 快捷调用面板 → 偏好设置… → 后台 小屋']);
       return `settings windows ${n}; path /overview; ${d}`;
     }, () => admin);
 
