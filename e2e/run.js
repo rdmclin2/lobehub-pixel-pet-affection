@@ -10795,7 +10795,10 @@ async function interjectScenario() {
   if (which === 'vrmimport' || which === 'all') await vrmScenarios().vrmImport();
   if (which === 'vrm' || which === 'all') await vrmScenarios().vrmScenario();
   if (which === 'vrmframe' || which === 'all') await vrmScenarios().vrmFraming();
+  if (which === 'vrmacts' || which === 'all') await vrmScenarios().vrmActs();
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
+  if (which === 'vrmreset' || which === 'all') await vrmScenarios().vrmReset();
+  if (which === 'vrmanim' || which === 'all') await vrmScenarios().vrmAnim(); // T-2832 前台 VRM 动画状态端到端验收
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
   if (which === 'dance' || which === 'all') await vrmScenarios().danceE2e();
   if (which === 'dancefinal' || which === 'all') await vrmScenarios().danceFinal();

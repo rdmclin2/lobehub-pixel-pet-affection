@@ -213,6 +213,7 @@ function createTray() {
     trayMenu = Menu.buildFromTemplate([
       { label: '打开设置…', click: () => openAdmin() },
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
+      { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
       { label: '检查更新', click: () => updater.checkNow() },
       { label: '退出', click: () => app.quit() },
@@ -291,6 +292,16 @@ async function dancePlay({ id, name, loop } = {}) {
   return askRenderer('dance', { id: id || null, name: name || null, loop }, 15000);
 }
 const danceStop = () => askRenderer('dance-stop', {});
+// 重置姿势 (T-2830, docs/usage.md): 托盘 → 重置姿势, Ctrl/⌘+Shift+R in her window, the toolbar's ↺ (IPC reset-pose)
+// and the local API POST /reset-pose all come here. The pet window ends what is its own and resets her director
+// (app.js resetPose), then main ends what is main's — asleep, she wakes up (no affection lost: a fix, not a nudge).
+// In that order: the director already knows it is a reset when the wake comes in, so sit.doze fades back too.
+async function resetPose(source = 'ipc') {
+  if (!service || !service.pet) return { ok: false, reason: 'no-pet' };
+  const r = await askRenderer('reset-pose', { source });
+  const woke = service.resetPose();
+  return { ...r, woke: woke.woke };
+}
 const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
 // 导入舞蹈 (settings → 舞蹈, docs/vrm-dance.md §5.5): pick (a dialog; e2e: debug-next-open, several paths split by
 // newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
@@ -330,6 +341,11 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === ',' && (process.platform === 'darwin' ? input.meta : input.control) && !input.alt && !input.shift) {
       e.preventDefault();
       openAdmin();
+    }
+    // Ctrl/⌘+Shift+R while the pet window has focus: 重置姿势 (also keeps Electron's force-reload off this key)
+    if (input.type === 'keyDown' && input.code === 'KeyR' && (process.platform === 'darwin' ? input.meta : input.control) && input.shift && !input.alt) {
+      e.preventDefault();
+      resetPose('key');
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -381,6 +397,7 @@ function wire() {
     }
   });
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
+  ipcMain.handle('reset-pose', (_e, p) => resetPose(['button', 'key', 'test'].includes(p && p.source) ? p.source : 'ipc'));
   ipcMain.handle('touch', (_e, target) => service.touch(target));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
@@ -896,6 +913,14 @@ function wire() {
       item.click();
       return true;
     });
+    // e2e: the real tray menu popped up as a native menu at (x, y) of the pet window (a test display has no tray
+    // area to click), so a screenshot of the display shows it; closed again by debug-tray-popup { close: true }
+    ipcMain.handle('debug-tray-popup', (_e, { x = 10, y = 10, close = false } = {}) => {
+      if (!trayMenu || !win || win.isDestroyed()) return false;
+      if (close) { trayMenu.closePopup(win); return true; }
+      trayMenu.popup({ window: win, x, y });
+      return true;
+    });
     ipcMain.handle('debug-admin', () => ({ alive: !!(admin && admin.alive), opened: admin ? admin.opened : 0, windows: BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length }));
     // 插个嘴: judge what is waiting now instead of after the debounce, and feed any listed source
     ipcMain.handle('debug-interject-flush', async () => service.interjector.flush());
@@ -1013,6 +1038,7 @@ app.whenReady().then(() => {
     dances: async () => danceList(),
     dance: (opts) => dancePlay(opts),
     danceStop: () => danceStop(),
+    resetPose: () => resetPose('api'),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
