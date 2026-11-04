@@ -36,7 +36,10 @@ for f in sorted(os.listdir(os.path.join(root, 'src/characters'))):
     top = int(ys.min())
     # centre on her face: the middle of what is drawn in the band below the top of her head
     band = a[top + 40:top + 170]
+    if not band.any():  # a figure too short or thin for the face band: centre on all of her
+        band = a
     cx = int(round((np.arange(FW) * band.sum(0)).sum() / band.sum()))
+    cx = min(max(cx, BOX // 2), FW - BOX // 2)  # keep the box inside the cell
     box = (cx - BOX // 2, top - 8, cx + BOX // 2, top - 8 + BOX)
     h = c['accent'].lstrip('#')
     r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))

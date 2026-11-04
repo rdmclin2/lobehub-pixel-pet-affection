@@ -301,6 +301,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
       alive = false;
     };
   }, []);
+  const dropMe = useCallback(() => setMe(null), []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -629,7 +630,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const visionBlocked = pending.length > 0 && !vision;
   const canSend = met && !busy && (!!input.trim() || pending.length > 0) && !visionBlocked;
   const herAvatar = { avatar: <CharAvatar row={row} size={32} />, backgroundColor: 'transparent', title: name };
-  const userAvatar = me?.avatar ? { avatar: <UserAvatar fallback={USER_AVATAR.avatar} name={me.name || '你'} size={32} src={me.avatar} />, backgroundColor: 'transparent', title: me.name || '你' } : USER_AVATAR;
+  const userAvatar = me?.avatar ? { avatar: <UserAvatar name={me.name || '你'} onFail={dropMe} size={32} src={me.avatar} />, backgroundColor: 'transparent', title: me.name || '你' } : USER_AVATAR;
 
   const renderMessage = (x: ChatMessage, i: number) => {
     const isUser = x.role === 'user';

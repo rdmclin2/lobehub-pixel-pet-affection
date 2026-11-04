@@ -50,14 +50,11 @@ export const CharacterAvatar = memo(
 );
 CharacterAvatar.displayName = 'CharacterAvatar';
 
-/** The owner's face: the LobeHub account's avatar (a data: URL from main), else `fallback` (the generic person icon). */
-export const UserAvatar = memo(({ fallback, name, size = 32, src }: { fallback: React.ReactNode; name: string; size?: number; src: string | null }) => {
-  const [failed, setFailed] = useState<string | null>(null);
-  if (!src || failed === src) return <>{fallback}</>;
-  return (
-    <span className={styles.root} data-user-avatar style={{ height: size, width: size }}>
-      <img alt={name} className={styles.img} decoding="async" draggable={false} onError={() => setFailed(src)} src={src} />
-    </span>
-  );
-});
+/** The owner's face: the LobeHub account's avatar (a data: URL from main). `onFail`: it cannot be shown (the page then
+ * goes back to the generic person icon, with its own background). */
+export const UserAvatar = memo(({ name, onFail, size = 32, src }: { name: string; onFail: () => void; size?: number; src: string }) => (
+  <span className={styles.root} data-user-avatar style={{ height: size, width: size }}>
+    <img alt={name} className={styles.img} decoding="async" draggable={false} onError={onFail} src={src} />
+  </span>
+));
 UserAvatar.displayName = 'UserAvatar';

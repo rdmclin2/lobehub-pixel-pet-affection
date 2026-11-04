@@ -37,16 +37,21 @@ test('userAvatar fetches the account avatar once, as a data: URL, and caches it 
   assert.equal(urls.length, 2, 'a new picture is fetched');
 });
 
-test('userAvatar keeps the last one while lh or the server cannot be reached, and drops it when the account has none', async () => {
+test('userAvatar: the cached face only for the same avatar URL; never another account\'s, never after logout', async () => {
   const cacheFile = tmpFile();
+  const down = async () => { throw new Error('ENOTFOUND'); };
   const first = await userAvatar({ whoami: async () => ME, server: 'https://s', cacheFile, fetchImpl: image() });
   assert.ok(first.avatar);
-  const lhDown = await userAvatar({ whoami: async () => { throw new Error('lh not found'); }, server: 'https://s', cacheFile, fetchImpl: image() });
-  assert.equal(lhDown.avatar, first.avatar);
-  const offline = await userAvatar({ whoami: async () => ({ ...ME, avatar: '/new.webp' }), server: 'https://s', cacheFile, fetchImpl: async () => { throw new Error('ENOTFOUND'); } });
-  assert.equal(offline.avatar, first.avatar);
-  const none = await userAvatar({ whoami: async () => ({ name: 'Lin', avatar: null }), server: 'https://s', cacheFile, fetchImpl: image() });
-  assert.equal(none.avatar, null);
+  // the same account while the server is down: the cached picture (no fetch needed)
+  assert.equal((await userAvatar({ whoami: async () => ME, server: 'https://s', cacheFile, fetchImpl: down })).avatar, first.avatar);
+  // lh cannot run at all: the last one
+  assert.equal((await userAvatar({ whoami: async () => { throw new Error('lh not found'); }, server: 'https://s', cacheFile, fetchImpl: down })).avatar, first.avatar);
+  // another account (another avatar URL) and its picture cannot be fetched: nobody's face, not the old one
+  assert.equal((await userAvatar({ whoami: async () => ({ name: 'B', avatar: '/webapi/user/avatar/u2/b.webp' }), server: 'https://s', cacheFile, fetchImpl: down })).avatar, null);
+  // logged out: nobody's face
+  assert.deepEqual(await userAvatar({ whoami: async () => null, server: 'https://s', cacheFile, fetchImpl: image() }), { name: '', avatar: null });
+  // the account has no avatar (any more)
+  assert.equal((await userAvatar({ whoami: async () => ({ name: 'Lin', avatar: null }), server: 'https://s', cacheFile, fetchImpl: image() })).avatar, null);
 });
 
 test('userAvatar refuses what is not a picture, too big, or an error page; never throws', async () => {
@@ -55,6 +60,12 @@ test('userAvatar refuses what is not a picture, too big, or an error page; never
   assert.equal((await run(image(Buffer.alloc(3 * 1024 * 1024), 'image/png'))).avatar, null);
   assert.equal((await run(async () => new Response('no', { status: 404 }))).avatar, null);
   assert.deepEqual(await userAvatar({ whoami: async () => null, server: 'https://s', cacheFile: tmpFile(), fetchImpl: image() }), { name: '', avatar: null });
+  // a data: URL from whoami gets the same type and size checks
+  const asData = (avatar) => userAvatar({ whoami: async () => ({ name: 'Lin', avatar }), server: 'https://s', cacheFile: tmpFile(), fetchImpl: image() });
+  const ok = `data:image/png;base64,${PNG.toString('base64')}`;
+  assert.equal((await asData(ok)).avatar, ok);
+  assert.equal((await asData(`data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}`)).avatar, null);
+  assert.equal((await asData(`data:image/png;base64,${Buffer.alloc(3 * 1024 * 1024).toString('base64')}`)).avatar, null);
 });
 
 test('every built-in character has a drawn avatar in her default pack (scripts/art/make_avatars.py)', () => {
@@ -77,11 +88,16 @@ test('art.avatar is checked: a file name in her default pack that exists', () =>
   assert.deepEqual(missingFiles({ ...c, art: { ...c.art, avatar: 'nope.webp' } }), ['packs/claude-pixel/nope.webp']);
 });
 
-test('roster rows: her own looks show her drawn face; an imported look keeps its own picture', () => {
+test('roster rows: the looks her character file lists (and her clips) show her drawn face; any other look its own picture', () => {
   const rows = buildRoster(null, null);
   for (const r of rows.filter((x) => SPECIES[x.base] && SPECIES[x.base].avatar)) assert.equal(r.avatar, SPECIES[r.base].avatar, r.id);
-  const look = { kind: 'vrm', url: 'pack://my-vrm/preview.png' };
-  const [mine] = buildRoster(null, null, { characters: [{ id: 'my-vrm', base: 'claude', kind: 'vrm', pack: { id: 'my-vrm', name: 'x', kind: 'vrm', source: 'user' }, look }] });
-  assert.equal(mine.avatar, null);
-  assert.equal(mine.preview.url, 'pack://my-vrm/preview.png');
+  const row = (id, source, kind = 'pictures') => buildRoster(null, null, { characters: [{ id, base: 'claude', kind, pack: { id, name: id, kind, source }, look: { kind, url: `pack://${id}/preview.png` } }] })[0];
+  assert.equal(row('claude-classic', 'download').avatar, SPECIES.claude.avatar, 'her classic pack (art.packs)');
+  assert.equal(row('claude-adult', 'download').avatar, SPECIES.claude.avatar, 'her 18+ pack (art.packs)');
+  const imported = row('my-vrm', 'user', 'vrm');
+  assert.equal(imported.avatar, null, 'an imported look');
+  assert.equal(imported.preview.url, 'pack://my-vrm/preview.png');
+  assert.equal(row('vrm-store-girl', 'download', 'vrm').avatar, null, 'a store VRM on her base is not drawn after her');
+  const dafeiyuClips = buildRoster(null, null, { characters: [{ id: 'dafeiyu-clips', base: 'dafeiyu', kind: 'video', pack: { id: 'dafeiyu-clips', name: 'x', kind: 'video', source: 'download' }, look: null }] })[0];
+  assert.equal(dafeiyuClips.avatar, SPECIES.dafeiyu.avatar, 'her clips');
 });

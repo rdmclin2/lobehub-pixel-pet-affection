@@ -23,8 +23,8 @@ const DEFAULT_SPECIES = 'dafeiyu';
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
 const MEME_ID_RE = /^[a-z0-9_-]{1,40}$/;
 const ASSETS = path.join(__dirname, '..', 'renderer');
-// A clip is a file name, or a list of variants played in turn (e.g. several click reactions).
 const AVATAR_RE = /^[\w.-]+\.(webp|png)$/;
+// A clip is a file name, or a list of variants played in turn (e.g. several click reactions).
 const clipOk = (v) => str(v) || (Array.isArray(v) && v.length > 0 && v.every(str));
 
 // Check one character file. Returns a list of problems (empty = valid).
