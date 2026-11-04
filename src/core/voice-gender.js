@@ -6,8 +6,9 @@
 //   1. her character file: `gender` ("female" | "male"), or `voice.gender`            → source 'character'
 //   2. the pack she is (a generic VRM companion, core/generic.js) or wears: pack.json `gender` / `voice.gender` → 'pack'
 //   3. that pack's VRM motion style, pack.json `vrm.style` ("female" / "male", or { base })                   → 'style'
-//   4. the guess from her model's body (core/vrm-style.js inferFromBody: bust SpringBones → female,
-//      broad shoulders → male)                                                                                → 'model'
+//   4. the guess from her model's body (core/vrm-style.js inferVoiceGender — stricter than the motion style's
+//      inferFromBody: bust SpringBones or breast bones → female, shoulders ≥ 1.8× the hips → male, a VRoid
+//      rig with an unsprung bust and shoulders ≥ 1.5 → male, else nothing)                                 → 'model'
 //   5. DEFAULT_GENDER ("female")                                                                               → 'default'
 // A neutral style or a neutral body reading says nothing about the voice, so it falls through to the next
 // step and finally to the default. The default is female: every character the app ships and the template of a
@@ -64,7 +65,7 @@ function genderOf(species, pack = null) {
   if (isGender(style)) return { gender: style, source: 'style' };
   const body = bodyOf(pack);
   if (body) {
-    const guess = VrmStyle.inferFromBody(body);
+    const guess = VrmStyle.inferVoiceGender(body);
     if (isGender(guess)) return { gender: guess, source: 'model' };
   }
   return { gender: DEFAULT_GENDER, source: 'default' };

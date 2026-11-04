@@ -135,7 +135,13 @@ test('genderOf: character file > pack.json gender > vrm.style > the model\'s bod
   assert.deepEqual(Gender.genderOf({}, { vrm: { style: 'male' } }), { gender: 'male', source: 'style' });
   const body = (b) => ({ outfits: { daily: 'models/a.vrm' }, vrm: { style: null, models: { 'models/a.vrm': { body: b } } } });
   assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 2, shoulderHip: 1.2 })), { gender: 'female', source: 'model' });
-  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, shoulderHip: 1.7 })), { gender: 'male', source: 'model' });
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: 1.96 })), { gender: 'male', source: 'model' }, 'Kazuha');
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 2, bustBones: 2, vroidBust: 0, shoulderHip: 1.34 })), { gender: 'female', source: 'model' }, 'Layla');
+  // T-5076: the voice reads the body more strictly than the motion style does
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, bustBones: 6, vroidBust: 0, shoulderHip: 1.54 })), { gender: 'female', source: 'model' }, 'Elysia: breast bones, no spring — female, not male');
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: 1.52 })), { gender: 'female', source: 'default' }, 'Liqu: 1.5–1.8 and nothing else is not enough for male');
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, bustBones: 0, vroidBust: 4, shoulderHip: 1.57 })), { gender: 'male', source: 'model' }, 'vroid.vrm: a VRoid rig with an unsprung bust');
+  assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, shoulderHip: 1.7 })), { gender: 'female', source: 'default' }, 'an older body reading (no bustBones / vroidBust) under 1.8');
   // neutral says nothing about the voice: on to the default
   assert.deepEqual(Gender.genderOf({}, body({ bustSpring: 0, shoulderHip: 1.2 })), { gender: 'female', source: 'default' });
   assert.deepEqual(Gender.genderOf({}, { vrm: { style: { base: 'neutral', overrides: {} } } }), { gender: 'female', source: 'default' });
@@ -265,8 +271,9 @@ test('an imported VRM (通用设定) gets her gender from pack.json, else vrm.st
   assert.deepEqual(resolved, {
     'Kaito Test': ['male', 'style', 'generic-male', 'generic'],
     'Mika Test': ['female', 'pack', 'generic-female', 'generic'],
-    // nothing in pack.json: the guess from the model (the test model has broad shoulders, shoulderHip ≥ 1.5)
-    'Plain Test': ['male', 'model', 'generic-male', 'generic'],
+    // nothing in pack.json: the guess from the model — the test model's shoulderHip is 1.57 with no other
+    // evidence, male for the motion style but not enough for the voice (T-5076: ≥ 1.8), so the default
+    'Plain Test': ['female', 'default', 'generic-female', 'generic'],
   });
   for (const id of Object.values(ids)) S.unregisterCharacter(loaded.packs.get(id).species);
 });

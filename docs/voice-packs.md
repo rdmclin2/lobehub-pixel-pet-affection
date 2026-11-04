@@ -38,10 +38,27 @@
 1. 角色文件 `src/characters/<id>.json` 的 `gender`，没有时看 `voice.gender` → `source: 'character'`（5 个内置角色都写了 `"gender": "female"`）
 2. 她本身对应的包，或者她默认穿的包：`pack.json` 的 `gender`，没有时看 `voice.gender` → `'pack'`
 3. 同一个包的 VRM 动作风格 `vrm.style`（`"male"` / `"female"`，或者 `{ "base": … }`）→ `'style'`
-4. 从模型推断（`vrm-style.js` `inferFromBody`：胸部有 SpringBone 判为女，肩宽和髋宽之比 ≥ 1.5 判为男）→ `'model'`
+4. 从模型推断（`vrm-style.js` `inferVoiceGender`，比动作风格用的 `inferFromBody` 更严，见下方「性别推断」）→ `'model'`
 5. **默认 `female`** → `'default'`
 
 `neutral` 风格或者推断结果是 neutral 时，都说明不了声音该用男声还是女声，所以继续往下一步走，最后落到默认的 `female`。默认取女声的原因：应用自带的所有角色，以及通用伙伴模板（`core/generic.js`）都用「她」来写，女声和文字对得上的可能性更大。
+
+### 性别推断（模型 → 声音，T-5076）
+
+VRM meta 没有性别字段，只能从骨骼读（`vrm-style.js` `bodyFromJson`）：`bustSpring`（挂在 SpringBone 上、名字含 bust/breast/胸 的骨骼数）、`bustBones`（名字含 bust/breast/胸、但不是 VRoid 模板 `J_Sec_*_Bust*` 的骨骼数，不管有没有挂 SpringBone，碰撞体 `*Collider` 不算）、`vroidBust`（VRoid 模板的 `J_Sec_*_Bust*` 数，男性 VRoid 模型也有）、`shoulderHip`（肩宽 ÷ 髋宽）。
+
+声音用 `inferVoiceGender`，按顺序：
+
+| 条件 | 结果 |
+|---|---|
+| `bustSpring > 0` 或 `bustBones > 0` | female |
+| `shoulderHip ≥ 1.8` | male |
+| `vroidBust > 0`（VRoid 骨架，胸部没挂 SpringBone）且 `shoulderHip ≥ 1.5` | male（VRoid Studio 给女性角色的胸部挂 SpringBone） |
+| 其他 | neutral → 默认 female |
+
+原来声音直接用动作风格的规则（胸部有 SpringBone → 女，`shoulderHip ≥ 1.5` → 男）。对商店 73 个模型离线扫描时，Elysia（女，`shoulderHip` 1.54，有 `joint_LeftBreast` 等乳房骨骼但没挂 SpringBone）和 Liqu（女，1.52，没有任何乳房骨骼）都被判成了男声。扫描结果里所有男性非 VRoid 模型的 `shoulderHip` 都在 1.90–2.30，没有一个带乳房骨骼；女性模型最高 1.64（胸部挂了 SpringBone）。所以把男声门槛提到 1.8，并且有乳房骨骼时直接判女。
+
+动作风格（`inferFromBody`）只加了一条：有 `bustBones` 时不再判 male（落到 neutral）。73 个模型中只有 Elysia 的动作风格变了（male → neutral）；Liqu 的动作风格仍是 male，因为 1.5 门槛没动。
 
 校验：角色文件的 `gender` / `voice.gender`（`species.js validateCharacter`，`tts.js validateVoice`），以及 `pack.json` 的 `gender` / `voice.gender`（`packs.js validatePack`，这里 `voice` 只能写 `{ "gender" }`）都只接受 `female` / `male`，这几个字段都可以不写。
 

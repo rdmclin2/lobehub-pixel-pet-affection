@@ -4270,10 +4270,14 @@ async function vpack() {
       const st = await page.evaluate(() => window.pet.getSettings());
       assert.equal(st.tts.provider, 'auto');
       assert.equal(st.tts.packs, true);
-      assert.deepEqual(Object.entries(st.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`), ['fish:false', 'minimax:false', 'local:false']); // 本地语音服务 is the third engine
+      // every neural engine (core/tts.js NEURAL: fish, minimax, elevenlabs, local…), none with a key — read from
+      // the code so a new engine does not leave this list behind (T-5076: elevenlabs was missing)
+      const { NEURAL } = require('../src/core/tts');
+      const engines = Object.entries(st.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}`);
+      assert.deepEqual(engines, NEURAL.map((id) => `${id}:false`));
       const pack = st.ttsStatus.packs.find((p) => p.character === 'dafeiyu');
       assert.ok(pack && pack.builtIn && pack.lines > 150, `built-in pack: ${JSON.stringify(pack)}`);
-      return note(`no keys; built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
+      return note(`no keys (engines ${engines.join(' ')}); built-in pack ${pack.id} 「${pack.name}」 ${pack.lines} lines; all packs: ${st.ttsStatus.packs.map((p) => `${p.character}:${p.lines}`).join(' ')}`);
     }, page);
 
     const rows = [];
