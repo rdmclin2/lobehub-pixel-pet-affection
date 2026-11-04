@@ -1528,6 +1528,7 @@ function bindPetUi() {
       if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
     } else if (act === 'settings') openSettings();
     else if (act === 'mute') toggleMute();
+    else if (act === 'quit') window.pet.quit();
   });
   const send = async () => {
     const input = $('chat-input');

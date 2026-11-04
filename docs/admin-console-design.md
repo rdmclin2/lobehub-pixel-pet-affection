@@ -671,7 +671,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `menu:forget` | 数据与关于 → 危险操作 → 仅重置本地 |
 | `menu:log` | 数据与关于 → 数据目录 → 打开错误日志 |
 | `menu:credits` | 数据与关于 → 素材署名；角色详情 → 资料 |
-| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；托盘和应用菜单也有 |
+| `menu:quit` | 玩法 → 和她一起 → 桌面上的她 → 退出（`admin-quit`）；桌宠工具栏 ⚙ 右边的 ⏻、托盘和应用菜单也有 |
 | `toolbar:topics` | 玩法 → 和她一起 → 话题（聊聊，`talk-topic`） |
 | `toolbar:wardrobe` | 角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`） |
 | `tray:打开设置…` | 打开设置窗口 |
@@ -727,7 +727,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `peers`：同屏伙伴的位置（碰撞）
   - `kick`：碰撞把别人撞开
   - `api-reply`：对外接口请求的回执
-  - `quit`：退出程序（托盘 / 应用菜单）
+  - `quit`：退出程序（桌宠工具栏 ⏻ 退出 / 托盘 / 应用菜单）
   - `debug-set`：测试钩子（只在 PIXELPET_TEST=1）
   - `debug-expire-models`：测试钩子（测速脚本 e2e/chat-latency.js 让模型目录缓存过期）
   - `debug-import-pack`：测试钩子
