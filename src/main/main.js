@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { LhClient } = require('../core/lh-client');
+const { fileCache } = require('../core/lh-path');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 // 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
 const ADMIN_CUES = [...CUE_STATES, 'turn'];
@@ -1029,7 +1030,7 @@ app.whenReady().then(() => {
   const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
-  const lh = new LhClient();
+  const lh = new LhClient({ lhCache: fileCache(path.join(app.getPath('userData'), 'lh-path.json')) });
   // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text
   const asr = new AsrEngine({ lh, keys, tmpDir: path.join(app.getPath('temp'), 'pixel-pet-asr'), log: (r) => { if (!r.ok) logError(new Error(`asr ${r.asr} failed: ${r.reason} (${r.ms}ms, ${r.bytes} bytes)`)); } });
   // E2E runs use a fake lh; the real CLI login on the machine must not be used for them

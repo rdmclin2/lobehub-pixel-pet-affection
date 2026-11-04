@@ -89,3 +89,35 @@ test('Windows: an .exe shim or a non-Windows lh is started directly', () => {
 test('Windows: a shim we cannot understand gives a clear error instead of a failing shell call', () => {
   assert.throws(() => spawnTarget(CMD, { platform: 'win32', read: () => 'garbage', io: winIo([]) }), /without a shell.*Reinstall the CLI/);
 });
+
+// ---------------------------------------------------------------- T-3386: the login shell runs once
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { fileCache } = require('../src/core/lh-path');
+
+test("the login-shell answer is remembered: later launches do not run the owner's shell setup again", () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lh-cache-')), 'sub', 'lh-path.json');
+  const cache = fileCache(file);
+  let shells = 0;
+  const lookup = () => { shells += 1; return '/Users/me/odd/bin/lh'; };
+  const present = fakeIo({ files: ['/Users/me/odd/bin/lh'] });
+  assert.equal(findLh({ env: { PATH: '' }, home: HOME, io: present, lookup, cache }), '/Users/me/odd/bin/lh');
+  assert.equal(findLh({ env: { PATH: '' }, home: HOME, io: present, lookup, cache }), '/Users/me/odd/bin/lh');
+  assert.equal(fileCache(file).get(), '/Users/me/odd/bin/lh', 'kept on disk for the next launch');
+  assert.equal(shells, 1, 'the shell ran once');
+  // the remembered lh is gone (uninstalled, moved): ask the shell again
+  assert.equal(findLh({ env: { PATH: '' }, home: HOME, io: fakeIo({}), lookup, cache }), '/Users/me/odd/bin/lh');
+  assert.equal(shells, 2);
+  // a broken or missing file is just "nothing remembered"
+  fs.writeFileSync(file, '{not json');
+  assert.equal(fileCache(file).get(), null);
+  assert.equal(fileCache(path.join(path.dirname(file), 'none.json')).get(), null);
+});
+
+test('pnpm global bins are searched before falling back to the login shell', () => {
+  for (const dir of [`${HOME}/Library/pnpm`, `${HOME}/.local/share/pnpm`]) {
+    const io = fakeIo({ files: [`${dir}/lh`], dirs: { [dir]: [] } });
+    assert.equal(findLh({ env: { PATH: '' }, home: HOME, io, lookup: () => assert.fail('no shell needed') }), `${dir}/lh`);
+  }
+});

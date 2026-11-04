@@ -2514,7 +2514,7 @@ function onUpdateStatus(u) {
   // 新版本 (the old ⋯ menu's first item): a dot on ⚙, which then opens 设置 → 版本与更新 (立即更新 / 下载新版本)
   if (view) syncSettingsDot();
   if (!view || updateAnnounced === `${u.status}:${u.version}`) return;
-  const moveFirst = ['translocated', 'dmg', 'read-only'].includes(u.error);
+  const moveFirst = ['translocated', 'dmg', 'read-only', 'protected-folder'].includes(u.error);
   if (u.status === 'ready') say(`（新版本 v${u.version} 已经下载好了。你离开电脑一会儿时我会自己重启更新，也可以在 设置 → 版本与更新 里立即更新。）`, 'update', 'fallback');
   else if (u.status === 'manual') say(moveFirst ? `（有新版本 v${u.version}。先把我拖进“应用程序”文件夹再打开，以后就能自动更新了；这次可以在 设置 → 版本与更新 里下载。）` : `（有新版本 v${u.version}，可以在 设置 → 版本与更新 里下载。）`, 'update', 'fallback');
   else return;
