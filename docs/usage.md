@@ -184,7 +184,13 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
    ```
    `lines` 的键是这句念出来的文字（去掉表情、括号里的动作、链接后的样子）；`engine` 写录音所用的引擎（手工录音可以不写，此时总是使用）。要用哪些台词，可以照 `node -e "console.log(require('./src/core/voice-pack').packLines(require('./src/core/species').SPECIES.dafeiyu))"` 列出来。
 11. **重新生成内置语音包**：台词改了以后运行 `node scripts/voicepack-generate.js [--only dafeiyu]`。Key 从 `MINIMAX_API_KEY` 环境变量读，或者从 `~/.config/pixel-pet/minimax.env`、`~/.zshrc`、`~/.bashrc` 里的 `export MINIMAX_API_KEY=…` 读，脚本不会打印 Key。已录的句子会跳过，台词表里已经没有的句子会删掉；按每分钟 10 次节流，一个角色约 25 分钟。
-12. **隐私与授权**：开云端引擎时，只有要念的那句文字发给所选服务商；选系统语音时什么都不发。所有语音都是 AI 合成；内置语音包是用 MiniMax 官方系统音色生成的音频，仓库里收录的是这些合成音频和音色署名，没有收录任何真人录音。B 站参考音色（UP 主 星落落_oi 的“ssr大肥鱼音色”）没有被复刻或收录，想复刻需先取得作者许可。录屏公开或商用前请标注 AI 生成并取得相应授权。详见 [README](../README.md#隐私与音色授权) 和 [tts-voice-research.md](tts-voice-research.md)。
+12. **风格语音包（商店下载）**：设置窗口 → **商店 → 语音包** 有 5 个用 MiniMax 录制的风格包：可爱（甜心少女，女）、御姐（妩媚姐姐，女）、少年（纯真学弟，男）、沉稳（可靠前辈，男）、搞笑（幽默大爷，男）。每个包 138 句通用台词，任何角色都能用。
+   - **试听**不用下载；点 **下载** 后卡片依次显示「未下载 → 下载中（进度条、取消）→ 已下载」。归档按 sha256 校验，校验不通过就丢弃。
+   - 下载好的包在商店的「已下载」筛选和 **设置 → 语音包** 表格（来源「商店下载」）里，文件在 `userData/voicepacks/<id>/`。
+   - **给角色选**：设置窗口 → 角色 → 她 → **语音** → **语音包**，可以选「不使用」「内置（自动）」或已下载的风格包，选中后下一句就生效，重启后保持（`settings.json` 的 `tts.voicePackByCharacter`）。没下载的包灰掉，点「去商店下载」去商店。所有角色统一用一个包时，在 设置 → 语音包 → **我的语音包** 选。
+   - **删除**：在商店卡片上点 删除。正在用它的角色回到内置，重新下载后自动恢复。
+   - **生成 / 新增风格**：`MINIMAX_API_KEY=… node scripts/voicepack-generate.js --style [cute,yujie]` 录音（每分钟 10 次，可断点续录，需要 ffmpeg 转成 Opus），`node scripts/build-voice-catalog.js` 打包并更新商店目录，`node scripts/upload-character-catalog.js --voices` 上传到 CDN。完整步骤见 [voice-packs.md §6–§9](voice-packs.md)。
+13. **隐私与授权**：开云端引擎时，只有要念的那句文字发给所选服务商；选系统语音时什么都不发。所有语音都是 AI 合成；内置语音包是用 MiniMax 官方系统音色生成的音频，仓库里收录的是这些合成音频和音色署名，没有收录任何真人录音。B 站参考音色（UP 主 星落落_oi 的“ssr大肥鱼音色”）没有被复刻或收录，想复刻需先取得作者许可。录屏公开或商用前请标注 AI 生成并取得相应授权。详见 [README](../README.md#隐私与音色授权) 和 [tts-voice-research.md](tts-voice-research.md)。
 
 ### 跳舞（VRM 外观）
 
@@ -237,7 +243,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 | 玩法 · 和她一起 | 桌面上的她 | 动作（9 个）、回到右下角、退出（确认） | — |
 | 设置 · 声音 | 朗读 | 朗读回复 / 互动语音 / 朗读碎碎念（E23）、引擎、用不了时、使用语音包；Fish Audio / MiniMax / ElevenLabs / 本地语音服务各一张卡片（端点、Key、ElevenLabs 默认音色 ID / 模型、本地接口 / 模型 / 音色名）；缓存与统计、清空缓存 | 关，按角色，改用系统语音 |
 | 设置 · 声音 | 语音输入 | 开关、引擎、语言、识别后直接发送、快捷键（唤起语音对话）、用不了时换另一个引擎、单次最长录音、LobeHub 模型、本地服务的地址 / 接口 / 模型 / 超时 / Key、测试连接；详见 [asr.md](asr.md) | 关；LobeHub、`gpt-4o-mini-transcribe`，本地 `http://127.0.0.1:8179` |
-| 设置 · 声音 | 语音包 | 每个语音包的角色、引擎、句数、来源和署名；打开文件夹、重新读取 | — |
+| 设置 · 声音 | 语音包 | 我的语音包（所有角色统一用哪个）；每个语音包的角色、引擎、句数、来源（内置 / 自定义 / 商店下载）和署名；打开文件夹、重新读取 | 自动 |
 | 设置 · 资源与外观 | 角色包 | 所有角色包；导入角色包，导出 / 删除导入的包，打开角色包文件夹（导入的每个包都是一位独立角色，在角色图鉴里切换） | — |
 | 设置 · 资源与外观 | 外观主题 | 设置窗口的亮色 / 暗色 / 跟随系统 | 跟随系统 |
 | 设置 · 连接 | LobeHub 与本机 | 登录账号、空间（只读）、本机能力（开启前确认）、重新开始话题 | — |

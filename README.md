@@ -250,6 +250,39 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 
 > **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax / ElevenLabs 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
 
+### 风格语音包（商店下载 · 按角色选择）
+
+除了 5 位角色自带的专属语音包，商店里还有 5 个用 MiniMax 录制的**风格语音包**：
+
+| 风格 | 包 | 性别 | MiniMax 音色 |
+| --- | --- | --- | --- |
+| 可爱 | `style-cute` 可爱 · 甜心少女 | 女 | `tianxin_xiaoling` |
+| 御姐 | `style-yujie` 御姐 · 妩媚姐姐 | 女 | `wumei_yujie` |
+| 少年 | `style-shaonian` 少年 · 纯真学弟 | 男 | `chunzhen_xuedi` |
+| 沉稳 | `style-chenwen` 沉稳 · 可靠前辈 | 男 | `Chinese (Mandarin)_Reliable_Executive` |
+| 搞笑 | `style-gaoxiao` 搞笑 · 幽默大爷 | 男 | `Chinese (Mandarin)_Humorous_Elder` |
+
+每个包都是同一套 138 句通用台词（喂食、摸摸、玩耍、拖拽、阶段台词等，任何角色都能用），约 1.1–1.5 MB。
+
+1. **浏览与下载**：设置窗口 → **商店 → 语音包**。每张卡片写着风格、性别、音色说明、句数 · 大小 · 版本和署名，点 **试听** 不用下载就能听。点 **下载** 后卡片从「未下载」变成「下载中」（有进度条和取消按钮），完成后变成「已下载」。下载的归档会按 sha256 校验，校验不通过就丢弃，本机不留文件。
+2. **本地可用列表**：下载好的包出现在商店的「已下载」筛选、**设置 → 语音包** 表格（来源「商店下载」），文件在 `userData/voicepacks/<id>/`。是否已下载以磁盘为准，重启后照样正确。
+3. **为角色选择**：设置窗口 → **角色** → 某个角色 → **语音** → **语音包**：可以选 **不使用**、**内置（自动）** 或任一已下载的风格包。没下载的包灰掉，旁边的「去商店下载」打开商店。选中后她的下一句固定台词就播放这个包的录音，不用重启；不在包里的台词（例如 agent 回复）用这个包的 MiniMax 音色合成。选择保存在 `settings.json` 的 `tts.voicePackByCharacter`，重启后保持；每个角色分开设置。也可以在 设置 → 语音包 → **我的语音包** 给所有角色统一选一个。
+4. **删除**：在商店卡片上点 **删除**。正在用这个包的角色自动回到「内置」；选择会保留，重新下载后自动恢复。
+
+**下载地址与镜像**：默认从 `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/<id>.zip` 下载；设置 `PIXELPET_CATALOG_URL`（或 `settings.catalogUrl`）可以改为镜像或本地 `file://` 目录。
+
+**自己生成或新增风格**（需要 MiniMax Key 和 ffmpeg）：
+
+```bash
+export MINIMAX_API_KEY=…                                   # 或写进 ~/.config/pixel-pet/minimax.env
+node scripts/voicepack-generate.js --style --dry-run       # 列出要录的台词，不调用接口
+node scripts/voicepack-generate.js --style cute,yujie      # 录音到 catalog/voicepacks/style-*/（每分钟 10 次，可断点续录）
+node scripts/build-voice-catalog.js                        # 打包 zip，更新 src/core/voice-catalog.json 和试听文件
+node scripts/upload-character-catalog.js --voices          # 上传到 CDN（需要 dc CLI 登录）
+```
+
+完整说明（manifest 格式、限速、ffmpeg 转码、托管与发布、新增风格的步骤）见 [docs/voice-packs.md](docs/voice-packs.md) §6–§9；端到端验证：`xvfb-run -a node e2e/run.js voiceflow`。
+
 ### 互动语音
 
 开着 **朗读回复** 时，下面每种互动都会把她气泡里的那句台词用她的音色念出来（**互动语音** 开关，默认开）。台词复用各自已有的离线台词与人设；喂食 / 摸摸 / 玩耍原来只有各阶段共用的台词，现在每位角色在 `fallback.fed / patted / played` 里各有两句自己的（和阶段台词一起抽）；拖拽 / 甩出 / 接住原来没有台词，新加在角色文件的 `voice.lines` 里（每位两句，短句为主）。分类逻辑在 `src/core/interaction-voice.js`。

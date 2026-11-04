@@ -1,5 +1,7 @@
 # 语音包：专属语音包、通用男女语音包与风格语音包
 
+> 用户怎么用（商店下载、按角色选择）：[README「风格语音包」](../README.md#风格语音包商店下载--按角色选择)、[usage.md 语音（TTS）第 12 条](usage.md#语音tts)。生成：§5、§6.3；托管与发布、新增风格：§9。
+
 语音包是一组提前录好的固定台词（`manifest.json` + 音频文件）。命中台词时直接从磁盘播放，不请求引擎（代码：`src/core/voice-pack.js`）。agent 回复这类不固定的话仍然交给引擎朗读。
 
 ## 1. 两种语音包
@@ -295,3 +297,56 @@ IPC（`src/main/admin-preload.js`）：`voiceStore()` → `{ voicePacks: StoreVo
 
 - 单测 `node --test test/voice-pack-select.test.js`：不使用、查找优先级（A → B 各取各的文件）、手动选的包优先于引擎匹配、未命中回退引擎、删除后回退与恢复、持久化与重启、选择器分组。
 - e2e `xvfb-run -a node e2e/run.js voiceselect`（本地服务器充当商店 CDN，不用 Key）：选项 → 去商店下载 A/B → 选 A，喂饱后再喂（「呃……肚子圆滚滚的，吃不下了。」）播放 `userData/voicepacks/style-cute/<文件>` → 切 B 立即来自 `style-yujie` → 不使用 → 重启后仍是 B → 删除 B 回到内置。截图、录屏和日志在 `out/e2e/voiceselect/`。
+
+## 9. 托管、发布与新增风格（T-5096）
+
+### 9.1 资源放在哪
+
+| 内容 | 位置 | 是否进仓库 |
+| --- | --- | --- |
+| 录音源文件（manifest + 138 句 `.ogg` + 试听句） | `catalog/voicepacks/style-<风格>/` | 是（每包约 1.1–1.5 MB，生成一次后不再改） |
+| 商店目录（每包的版本、句数、大小、sha256、下载地址） | `src/core/voice-catalog.json` | 是，随应用发布 |
+| 试听音频（下载前就能听） | `src/renderer/catalog/voices/style-<风格>.ogg` | 是，随应用发布 |
+| 下载归档 `style-<风格>.zip` | 构建产物 `out/voice-catalog/`；发布后在 CDN `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/<release>/` | 否（可复现：同样的源文件总是得到同一个 sha256） |
+
+应用只从目录里写的地址下载，并按 `bytes` + `sha256` 校验。地址的优先级：`PIXELPET_CATALOG_URL`（测试 / 镜像）> `settings.catalogUrl`（手动写进 settings.json）> 默认 CDN。镜像只要按 `<镜像根>/<file>` 提供同样的 zip 即可，也可以是 `file://` 目录。
+
+### 9.2 发布一版
+
+```bash
+node scripts/build-voice-catalog.js --check                  # 从 catalog/voicepacks 重新打包，核对与 voice-catalog.json 一致
+node scripts/upload-character-catalog.js --voices --dry-run  # 只打包核对，列出要上传的文件和地址
+dc auth login --token <DC_CLI_TOKEN> --base-url <DC 地址>    # 或设 DC_CLI=<develop-center>/packages/cli/dist/index.js
+node scripts/upload-character-catalog.js --voices            # 上传到 dc/ops-assets/archives/pixel-pet/voices-v1/，再逐个下载回来核对
+```
+
+- 上传用 Develop Center CLI 的 `dc ops-assets upload --skip-existing`（同 [characters.md](characters.md) 的角色包）。已存在且大小相同的文件跳过；大小不同会报错，不会悄悄覆盖已发布的归档。
+- **内容变了（换音色、改台词）就升版本**：改 `src/core/voice-styles.js` 的 `VERSION`，并把 `scripts/build-voice-catalog.js` 的 `RELEASE`（`voices-v1`）改成新的目录（如 `voices-v2`），重新打包、上传，再提交新的 `voice-catalog.json`。旧版应用继续从旧目录下载旧归档。
+- 上传后，`curl -I <url>` 应返回 200；然后在应用里用默认地址（不设 `PIXELPET_CATALOG_URL`）下载一次确认。
+
+### 9.3 新增一种风格
+
+1. 在 MiniMax 音色列表里挑一个系统音色（`voiceId`）；运行 `node scripts/minimax-key.js` 确认能找到 Key（只显示位置和长度）。
+2. 在 `src/core/voice-styles.js` 的 `STYLES` 末尾加一项：`style`（键，`^[a-z][a-z0-9-]{1,31}$`）、`id`（`style-<键>`）、`label`（商店显示的风格名）、`name`、`gender`（`female` / `male`）、`description`、`voice: { engine: 'minimax', voiceId, label, model, params: { speed, pitch, vol, emotion } }`、`sample`（试听句）。
+3. `node scripts/voicepack-generate.js --style <键> --dry-run` 看要录的句子；`node scripts/voicepack-generate.js --style <键>` 录音：
+   - 写到 `catalog/voicepacks/style-<键>/`，试听句最先录。
+   - 默认每分钟 10 次（`--rpm`），139 次请求约 15 分钟。
+   - 中断后再运行会接着录。
+   - 有 ffmpeg 时转成 32 kbps Opus。
+4. `node scripts/build-voice-catalog.js`：打包 zip，把新条目写进 `src/core/voice-catalog.json`，复制试听文件到 `src/renderer/catalog/voices/`。
+5. `npm test`（`test/style-voice-pack.test.js` 校验每个包的 manifest、目录条目和风格表一致），`xvfb-run -a node e2e/run.js voicestore` 看商店卡片。
+6. 按 §9.2 上传；提交 `catalog/voicepacks/style-<键>/`、`src/core/voice-styles.js`、`src/core/voice-catalog.json`、`src/renderer/catalog/voices/style-<键>.ogg`。
+
+### 9.4 端到端验证
+
+`xvfb-run -a node e2e/run.js voiceflow` 从空 userData 跑完整流程，本地服务器限速模拟 CDN，不用 Key：
+
+1. 打开朗读。
+2. 商店 → 语音包：5 个包都是「未下载」。
+3. 下载 可爱 和 少年，每个都经过「下载中」（进度条）再到「已下载」。
+4. 本地可用列表：「已下载」筛选、设置 → 语音包、`userData/voicepacks/`。
+5. 大肥鱼选 可爱：喂食台词播放 `style-cute` 的录音。
+6. 切到 少年：同一句立刻来自 `style-shaonian`。
+7. 重启：选择、已下载状态、播放来源都保持。
+
+截图、两段录屏、播放的两段 `.ogg` 和日志在 `out/e2e/voiceflow/`。另有 `voicestore`（试听、校验失败、删除）和 `voiceselect`（不使用、删除正在用的包、其他角色不受影响）两个场景覆盖分支情况。
