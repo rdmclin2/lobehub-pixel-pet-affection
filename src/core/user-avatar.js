@@ -5,8 +5,8 @@
 // fetched here, in main, and handed to the console as a data: URL, so the console's CSP keeps allowing no remote
 // images. The last one fetched is kept in <userData>/user-avatar.json with the URL it came from: it is not fetched
 // again while the account's avatar URL stays the same, and only that same URL may fall back to it when the server
-// cannot be reached (another account's face is never shown). Logged out, an account without an avatar, or one that
-// cannot be fetched and was never cached → null: the console draws the generic person icon.
+// cannot be reached (another account's face is never shown). Logged out, lh not runnable, an account without an
+// avatar, or one that cannot be fetched and was never cached → null: the console draws the generic person icon.
 
 const fs = require('node:fs');
 
@@ -75,7 +75,7 @@ async function userAvatar({ whoami, server, cacheFile, fetchImpl = globalThis.fe
   try {
     user = await whoami();
   } catch {
-    return { name: '', avatar: cached ? cached.dataUrl : null }; // lh cannot run (not installed …): keep the last one
+    return { name: '', avatar: null }; // lh cannot run (not installed …): whose face it would be is unknown
   }
   if (!user) return { name: '', avatar: null }; // logged out (or whoami failed): nobody's face
   const name = user.name || '';

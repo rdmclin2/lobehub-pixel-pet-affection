@@ -44,8 +44,8 @@ test('userAvatar: the cached face only for the same avatar URL; never another ac
   assert.ok(first.avatar);
   // the same account while the server is down: the cached picture (no fetch needed)
   assert.equal((await userAvatar({ whoami: async () => ME, server: 'https://s', cacheFile, fetchImpl: down })).avatar, first.avatar);
-  // lh cannot run at all: the last one
-  assert.equal((await userAvatar({ whoami: async () => { throw new Error('lh not found'); }, server: 'https://s', cacheFile, fetchImpl: down })).avatar, first.avatar);
+  // lh cannot run at all: who is logged in is unknown, so nobody's face
+  assert.equal((await userAvatar({ whoami: async () => { throw new Error('lh not found'); }, server: 'https://s', cacheFile, fetchImpl: down })).avatar, null);
   // another account (another avatar URL) and its picture cannot be fetched: nobody's face, not the old one
   assert.equal((await userAvatar({ whoami: async () => ({ name: 'B', avatar: '/webapi/user/avatar/u2/b.webp' }), server: 'https://s', cacheFile, fetchImpl: down })).avatar, null);
   // logged out: nobody's face
