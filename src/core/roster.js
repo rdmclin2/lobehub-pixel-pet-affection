@@ -92,6 +92,9 @@ function buildRoster(view, settings, { characters = null, look = null, outfitsOf
       current: !!c.current,
       met: c.met,
       preview: previewOf(sp, c.look, kind === 'video'),
+      // her face for lists and chat bubbles (T-2839): the drawn avatar of a built-in character for any of her
+      // own looks (built-in or downloaded from the catalog); an imported look keeps its own picture (null here)
+      avatar: sp && sp.avatar && !(opt && opt.source === 'user') ? sp.avatar : null,
       pack: opt ? { id: opt.id, name: opt.name, kind: opt.kind, adult: !!opt.adult, source: opt.source, author: opt.author, license: opt.license, outfits: opt.outfits || 0, vrm: opt.vrm || null } : null,
       kind,
       kindLabel: KIND_LABEL[kind] || '--',

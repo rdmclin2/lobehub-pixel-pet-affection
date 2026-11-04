@@ -8,7 +8,8 @@ const { LhClient } = require('../core/lh-client');
 const CUE_STATES = require('../core/fx').STATES.filter((x) => x !== 'lifted');
 // 动作 in the settings window (the old ⋯ → 动作… list): every cue, plus `turn` (she faces the other way)
 const ADMIN_CUES = [...CUE_STATES, 'turn'];
-const { ResponsesClient } = require('../core/responses-client');
+const { ResponsesClient, serverUrl } = require('../core/responses-client');
+const { userAvatar } = require('../core/user-avatar');
 const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
@@ -803,6 +804,8 @@ function wire() {
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
+  // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData
+  ipcMain.handle('user-avatar', adminOnly(() => userAvatar({ whoami: () => service.lh.whoami(), server: serverUrl(), cacheFile: path.join(app.getPath('userData'), 'user-avatar.json') })));
   ipcMain.handle('admin-state', adminOnly(() => adminState()));
   ipcMain.handle('admin-set', adminOnly(({ key, value }) => adminSettings.set(key, value)));
   ipcMain.handle('admin-reset', adminOnly(({ keys }) => adminSettings.reset(keys)));

@@ -11,8 +11,8 @@ import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, RotateCw, User, X }
 import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import ChatLive from '../../../../src/core/chat-live.js';
-import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow } from '../api';
-import { SpriteStage } from '../stage/SpriteStage';
+import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type RosterRow, type UserFace } from '../api';
+import { CharacterAvatar, UserAvatar } from '../stage/CharacterAvatar';
 import { useStore } from '../store';
 
 const MAX_IMAGES = 4;
@@ -275,11 +275,8 @@ const modelLabel = (row: RosterRow | undefined, key: string | null | undefined) 
 const rowOf = (roster: RosterRow[], base: string | null): RosterRow | undefined =>
   base ? (roster.find((c) => c.base === base && c.current) ?? roster.find((c) => c.base === base)) : undefined;
 
-const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) => (
-  <span className={styles.avatar} style={{ height: size, width: size }}>
-    {row ? <SpriteStage animate={false} height={size} name={row.nameZh} preview={row.preview} silhouette={!row.met} /> : null}
-  </span>
-);
+const CharAvatar = ({ row, size = 40 }: { row: RosterRow | undefined; size?: number }) =>
+  row ? <CharacterAvatar avatar={row.avatar} name={row.nameZh} preview={row.preview} silhouette={!row.met} size={size} /> : <span className={styles.avatar} style={{ height: size, width: size }} />;
 
 export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) => void }) => {
   const { roster, merge } = useStore();
@@ -294,6 +291,16 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // the owner's LobeHub avatar (T-2839), fetched by main once per visit; until then (and without one) the person icon
+  const [me, setMe] = useState<UserFace | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const ask = api().userAvatar();
+    ask.then((r) => alive && r && 'avatar' in r && setMe(r), () => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -622,6 +629,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const visionBlocked = pending.length > 0 && !vision;
   const canSend = met && !busy && (!!input.trim() || pending.length > 0) && !visionBlocked;
   const herAvatar = { avatar: <CharAvatar row={row} size={32} />, backgroundColor: 'transparent', title: name };
+  const userAvatar = me?.avatar ? { avatar: <UserAvatar fallback={USER_AVATAR.avatar} name={me.name || '你'} size={32} src={me.avatar} />, backgroundColor: 'transparent', title: me.name || '你' } : USER_AVATAR;
 
   const renderMessage = (x: ChatMessage, i: number) => {
     const isUser = x.role === 'user';
@@ -642,7 +650,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     return (
       <ChatItem
         aboveMessage={isUser ? pictures : undefined}
-        avatar={isUser ? USER_AVATAR : herAvatar}
+        avatar={isUser ? userAvatar : herAvatar}
         belowMessage={
           <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'} paddingBlock={4}>
             {!isUser && x.model && (
