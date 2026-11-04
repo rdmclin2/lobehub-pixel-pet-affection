@@ -231,7 +231,8 @@ export const VoicePacksPage = () => {
       <Surface bleed title={`共 ${packs.length} 个`}>
         <Table
           columns={[
-            { key: 'c', render: (_: unknown, p: any) => roster.find((c) => c.base === p.character)?.nameZh ?? p.character, title: '角色', width: 100 },
+            // 通用语音包 (kind generic) belong to no character: show which gender they stand in for
+            { key: 'c', render: (_: unknown, p: any) => (p.kind === 'generic' ? (p.gender === 'male' ? '通用男声' : '通用女声') : roster.find((c) => c.base === p.character)?.nameZh ?? p.character), title: '角色', width: 110 },
             { dataIndex: 'name', key: 'name', title: '名称' },
             { dataIndex: 'engine', key: 'engine', render: (v: string) => <Tag>{v}</Tag>, title: '引擎', width: 110 },
             { dataIndex: 'lines', key: 'lines', render: (v: number) => `${v} 句`, title: '句数', width: 90 },

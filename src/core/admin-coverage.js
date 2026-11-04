@@ -36,6 +36,7 @@ const SPECIAL_SETTINGS = {
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'tts.voicePackByCharacter.<id>': '角色详情 → 语音包（自动 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -173,6 +174,8 @@ const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
   chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
+  setVoicePack: '按角色切换语音包的后端（`set-voice-pack`，docs/voice-packs.md）；切换控件由后续的 UI 任务接入',
+  voicePackState: '角色当前语音包的解析结果（`voice-pack-state`）；由后续的 UI 任务接入',
 };
 
 const uniq = (a) => [...new Set(a)];

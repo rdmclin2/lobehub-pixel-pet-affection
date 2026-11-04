@@ -1560,11 +1560,18 @@ class PetService extends EventEmitter {
 
   // 高级设置 → 语音: the engine that reads (auto = each character's own / fish / minimax / elevenlabs / local / system), the fallback (system / silent),
   // the endpoints, the local server's API / model / voice and the ElevenLabs default voice / model. API keys go through main.js into tts-keys.json, never into settings.json.
+  // voicePackByCharacter: { id: packId | 'auto' } merged into the saved picks ('auto' / null removes hers).
   setTts(patch) {
     const p = patch && typeof patch === 'object' ? patch : {};
+    const mergePicks = (cur, add) => {
+      if (!add || typeof add !== 'object' || Array.isArray(add)) return { ...(cur || {}) };
+      const next = { ...(cur || {}) };
+      for (const [id, v] of Object.entries(add)) if (v === null || v === 'auto') delete next[id]; else next[id] = v;
+      return next;
+    };
     const cur = this.settings.tts;
     const picked = p.provider !== undefined;
-    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) }, elevenlabs: { ...cur.elevenlabs, ...(p.elevenlabs && typeof p.elevenlabs === 'object' ? p.elevenlabs : {}) } };
+    const next = { provider: picked ? p.provider : cur.provider, providerSet: picked || cur.providerSet, fallback: p.fallback === undefined ? cur.fallback : p.fallback, packs: p.packs === undefined ? cur.packs : p.packs !== false, voicePackByCharacter: mergePicks(cur.voicePackByCharacter, p.voicePackByCharacter), endpoints: { ...cur.endpoints }, local: { ...cur.local, ...(p.local && typeof p.local === 'object' ? p.local : {}) }, elevenlabs: { ...cur.elevenlabs, ...(p.elevenlabs && typeof p.elevenlabs === 'object' ? p.elevenlabs : {}) } };
     let ok = true;
     for (const [id, u] of Object.entries(p.endpoints && typeof p.endpoints === 'object' ? p.endpoints : {})) {
       if (!(id in next.endpoints)) continue;

@@ -56,6 +56,9 @@ contextBridge.exposeInMainWorld('petAdmin', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
+  setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
+  voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
   asrTest: (provider) => ipcRenderer.invoke('asr-test', { provider }),
   // content & safety: adult content on only through the 18+ confirmation (confirmAge(true))
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),

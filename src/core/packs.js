@@ -494,6 +494,11 @@ function validatePack(manifest, dir) {
   if (!KINDS.includes(m.kind)) errors.push(`kind must be one of ${KINDS.join(', ')}`);
   // 取景 default for whoever wears this pack (core/framing.js): 'full' | 'half'; a character's own choice goes first
   if (m.framing !== undefined && !FRAMINGS.includes(m.framing)) errors.push(`framing must be one of ${FRAMINGS.join(', ')}`);
+  // 角色性别 for her voice (core/voice-gender.js): `gender` or `voice.gender`, "female" | "male"; optional
+  const Gender = require('./voice-gender');
+  errors.push(...Gender.validateGender(m.gender));
+  if (m.voice !== undefined && (!m.voice || typeof m.voice !== 'object' || Array.isArray(m.voice) || Object.keys(m.voice).some((k) => k !== 'gender'))) errors.push('voice must be { "gender": "female" | "male" }');
+  else if (m.voice) errors.push(...Gender.validateGender(m.voice.gender, 'voice.gender'));
   // 半身 cut for this pack's model (Live2D / VRM): halfBody.waist = share of her height from the top of her head (0)
   // to her soles (1); without it the renderer measures (VRM bones) or infers (Live2D hit area / eyes)
   const halfBody = m.halfBody === undefined ? null : m.halfBody && typeof m.halfBody === 'object' && !Array.isArray(m.halfBody) && Object.keys(m.halfBody).every((k) => k === 'waist') && isWaist(m.halfBody.waist) ? { waist: m.halfBody.waist } : null;
@@ -561,6 +566,7 @@ function validatePack(manifest, dir) {
       vrm: vrmPack,
       ...(FRAMINGS.includes(m.framing) ? { framing: m.framing } : {}),
       ...(halfBody ? { halfBody } : {}),
+      ...(Gender.explicitOf(m) ? { gender: Gender.explicitOf(m) } : {}),
       outfits: vrm ? { ...vrm.outfits } : outfits,
       dir: path.resolve(dir),
     },
