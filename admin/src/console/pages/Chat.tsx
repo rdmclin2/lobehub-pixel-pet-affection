@@ -46,7 +46,7 @@ const styles = createStaticStyles(({ css }) => ({
     overflow-y: auto;
     flex: 1;
     min-height: 0;
-    padding-block: 4px 12px;
+    padding-block: 12px;
     padding-inline: 8px;
   `,
   session: css`
@@ -706,12 +706,6 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   return (
     <div className={styles.root} data-chat-page>
       <aside aria-label="角色" className={styles.side}>
-        <Flexbox paddingBlock={12} paddingInline={16}>
-          <Text strong>角色</Text>
-          <Text fontSize={12} type="secondary">
-            一个角色一段对话，和桌面上共用
-          </Text>
-        </Flexbox>
         <div className={styles.sideList} data-character-list>
           {ordered.map((c) => {
             const r = rowOf(roster, c.id);
