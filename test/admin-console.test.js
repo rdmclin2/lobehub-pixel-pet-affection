@@ -533,7 +533,7 @@ test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ me
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
   // the toolbar: the four interactions, 🔈 and ⚙
   const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
-  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings']); // ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) and 🔈 静音 (T-2733) sit left of ⚙
+  assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings', 'quit']); // ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) and 🔈 静音 (T-2733) sit left of ⚙, ⏻ 退出 (T-2827) right of it
   assert.match(bar, /id="btn-settings"[^>]*aria-label="设置"/);
   for (const gone of ['id="btn-topics"', 'id="btn-wardrobe"', 'data-act="menu"', 'id="main-menu"', 'id="action-menu"', 'data-menu=', 'id="panel"', 'history.js']) assert.ok(!html.includes(gone), gone);
   for (const gone of ['function openPanel', 'function renderWardrobe', 'function renderTopics', 'function renderCharacters', 'function openMenuAtPet', "$('main-menu')", 'PetHistory', 'panelKind']) assert.ok(!app.includes(gone), gone);
@@ -576,6 +576,23 @@ test('every item of the old ⋯ menu has its place in the settings window (T-271
   assert.match(together, /const CUES = \['look', 'turn', 'walk', 'happy', 'pat', 'play', 'think', 'sad', 'evolve'\];/);
   assert.match(pages, /素材署名/);
   assert.match(pages, /打开错误日志/);
+});
+
+test('the pet window: ⏻ 退出 sits right of ⚙ and quits the app in one click (T-2827)', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'style.css'), 'utf8');
+  const bar = html.match(/<div id="toolbar"[^>]*>([\s\S]*?)<\/div>/)[1];
+  const buttons = [...bar.matchAll(/<button\b[^>]*>/g)].map((m) => m[0]);
+  assert.match(buttons[buttons.length - 1], /data-act="quit"/, '⏻ is the last button');
+  assert.match(buttons[buttons.length - 2], /data-act="settings"/, '… right after ⚙');
+  assert.match(bar, /id="btn-quit"[^>]*title="退出：[^"]+"[^>]*aria-label="退出"/);
+  // the toolbar → the preload's quit → ipcMain 'quit' → app.quit(): no dialog, the save is already on disk
+  assert.match(app, /else if \(act === 'quit'\) window\.pet\.quit\(\);/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'preload.js'), 'utf8'), /quit: \(\) => ipcRenderer\.send\('quit'\)/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'main', 'main.js'), 'utf8'), /ipcMain\.on\('quit', \(\) => app\.quit\(\)\);/);
+  // hover marks it apart from the interactions, with a token colour
+  assert.match(css, /\.quit-btn:hover[^{]*\{[^}]*color: var\(--lobe-color-error\)/);
 });
 
 test('docs/admin-console-design.md names every settings.json key and settings IPC channel (scripts/check-admin-console-doc.js)', () => {

@@ -1561,6 +1561,7 @@ function bindPetUi() {
     } else if (act === 'settings') openSettings();
     else if (act === 'mute') toggleMute();
     else if (act === 'reset') window.pet.resetPose('button');
+    else if (act === 'quit') window.pet.quit();
   });
   const send = async () => {
     const input = $('chat-input');

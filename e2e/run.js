@@ -6410,6 +6410,8 @@ async function vrmUi() {
 
 // ------------------------------------------------------------------ vrm / vrmimport
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
+// ⏻ 退出 on the toolbar (T-2827): e2e/quit-button.js
+const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, step, launch });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -7900,8 +7902,8 @@ async function frontslimScenario() {
         text: document.getElementById('toolbar').innerText.replace(/\s+/g, ' ').trim(),
       }));
       // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
-      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置']);
-      assert.equal(ui.visible, 6);
+      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置', 'quit:退出']);
+      assert.equal(ui.visible, 7);
       assert.deepEqual(ui.gone, []);
       assert.equal(ui.menuBtn, 0);
       assert.doesNotMatch(ui.text, /话题|衣柜/);
@@ -8365,7 +8367,7 @@ async function petuiScenario() {
         await shot('05-toolbar');
         // a pixel look: ♪ 跳舞 (VRM only, T-2801) is in the toolbar but hidden
         const acts = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
-        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings']);
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
         assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true, '♪ hidden on a pixel look');
         const rows = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
         assert.equal(rows, 1, 'the toolbar fits on one row');
@@ -9990,7 +9992,7 @@ async function adminScenario() {
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
       await hover(page);
       const items = await page.$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
-      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置']); // + 跳舞, hidden on this pixel look (VRM only, T-2801)
+      assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置', '退出']); // + 跳舞, hidden on this pixel look (VRM only, T-2801)
       assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
@@ -10810,6 +10812,7 @@ async function interjectScenario() {
   if (which === 'stream' || which === 'all') await streamScenario();
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
+  if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
