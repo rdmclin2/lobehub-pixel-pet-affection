@@ -421,3 +421,49 @@ test('Esc while fal is composing: the turn ends ECANCELED, the polling stops and
   await new Promise((r) => setTimeout(r, 120));
   assert.equal(ms.fal.polls, polls, 'no more polling after the cancel');
 });
+
+// T-6168 (after merging canary's AI 可读的文件夹, T-5075): 本机能力 on with a folder limit and 音乐创作 on — one turn
+// offers read_file (with the folder hint) and compose_music together, and one model answer calling both runs both:
+// the file inside the folder is read, one outside is refused, the song is made and saved, and run_command (commands
+// not allowed) is not offered at all.
+test('local abilities on + folder limit + music: read_file and compose_music in the same turn; the limit still holds for read_file, the song is saved', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'petmusic-scope-'));
+  const allowed = path.join(root, 'allowed');
+  fs.mkdirSync(allowed);
+  fs.writeFileSync(path.join(allowed, 'poem.txt'), '萤火虫提着小灯笼');
+  fs.writeFileSync(path.join(root, 'secret.txt'), 'outside the folder');
+  const s = await setup({
+    plan: (body, n) => (n === 1 ? { pieces: ['你好'], id: 'tpc_MIX' }
+      : n === 2 ? { pieces: ['我先看看诗～'], calls: [['call_r1', 'read_file', { path: path.join(allowed, 'poem.txt') }], ['call_r2', 'read_file', { path: path.join(root, 'secret.txt') }], ['call_m1', 'compose_music', { ...SONG_ARGS, title: '萤火' }]], id: 'tpc_MIX' }
+        : { pieces: ['诗读到了，歌也写好啦～'], id: 'tpc_MIX' }),
+    musicPlan: () => ({ delayMs: 30 }),
+    settings: { local: { folders: [allowed], allowCommands: false } },
+  });
+  t.after(s.close);
+  await s.svc.hatch({ speciesId: 'testchan', name: 'E' });
+  Object.assign(s.svc.pet, { localAbilities: true });
+  Object.assign(s.svc, { _localOk: true, localVia: 'direct' });
+  assert.ok(s.svc._toolScope() && s.svc._toolScope().folders.includes(allowed), 'the folder limit is in effect');
+  assert.deepEqual(s.svc._musicStatus(), { on: true, provider: 'minimax', reason: null }, 'music stays on with local tools direct + folders');
+  const r = await s.svc.chat('读一下 allowed/poem.txt，照着它写首歌');
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.text, '诗读到了，歌也写好啦～');
+  // one request lists both kinds: the local tools (no run_command: commands are off) and compose_music
+  const names = s.srv.requests[1].body.tools.map((x) => x.name);
+  assert.ok(names.includes('read_file') && names.includes('compose_music'), names.join(','));
+  assert.ok(!names.includes('run_command'), 'run_command is not offered when commands are not allowed');
+  assert.match(s.srv.requests[1].body.tools.find((x) => x.name === 'read_file').description, new RegExp(allowed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  // the three outputs go back in one follow-up request
+  const outs = Object.fromEntries(s.srv.requests[2].body.input.map((o) => [o.call_id, o.output]));
+  assert.equal(outs.call_r1, '萤火虫提着小灯笼');
+  assert.match(outs.call_r2, /^Error:/, 'outside the folder: refused');
+  assert.doesNotMatch(outs.call_r2, /outside the folder$/, 'the secret is not read');
+  const song = JSON.parse(outs.call_m1);
+  assert.equal(song.ok, true);
+  assert.equal(s.mm.requests.length, 1, 'MiniMax once');
+  assert.equal(r.music.length, 1);
+  assert.equal(r.music[0].filePath, song.filePath);
+  assert.deepEqual(fs.readFileSync(song.filePath), fs.readFileSync(SAMPLE));
+  assert.ok(!s.svc._toolsDropped, 'the local tools were not dropped');
+  assert.equal(agentRuns(s.dir).length, 0, 'no lh agent run');
+});

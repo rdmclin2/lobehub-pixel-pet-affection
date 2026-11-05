@@ -10,7 +10,7 @@
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "music"  -> 音乐创作 (T-5088): 设置 → 音乐创作 page, its settings saved into settings.json `music`, http endpoint refused; then (T-5090, also alone as "musicchat") 「来段轻松的纯音乐」→ compose_music → 作曲中… → a playable song in the bubble and in 聊天 (fake Responses + fake MiniMax, no tokens)
-//   scenario "musiclive" -> 音乐创作 with the REAL model (T-5091, tokens; not in "all"): real lh + Responses API, the model calls compose_music by itself; MUSIC_LIVE_PROVIDER=fal (default) | minimax, MUSIC_LIVE_MODE=fake (local stand-in, a playable mp3) | real (the real service with the local key); T-6158
+//   scenario "musiclive" -> 音乐创作 with the REAL model (T-5091, tokens; not in "all"): real lh + Responses API, the model calls compose_music by itself; MUSIC_LIVE_PROVIDER=fal (default) | elevenlabs | minimax, MUSIC_LIVE_MODE=fake (local stand-in, a playable mp3) | real (the real service with the local key); T-6158
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar

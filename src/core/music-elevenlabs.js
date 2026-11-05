@@ -75,6 +75,7 @@ function elDetail(body) {
 }
 
 const CONTENT_CODES = /bad_prompt|bad_composition_plan|content|copyright|moderation|tos|violat|blocked/i;
+const PLAN_CODES = /paid_plan|plan_required|subscription_required|limited_access/i;
 const BALANCE_CODES = /quota|credit|payment|insufficient|balance/i;
 const LIMIT_CODES = /rate_limit|too_many|system_busy|concurrent/i;
 
@@ -82,6 +83,9 @@ function httpError(status, body) {
   const { code, message, suggestion } = elDetail(body);
   const opt = (reason, text, retryable) => new MusicError(reason, text, { code: code || `http-${status}`, status, detail: message || null, retryable, provider: ID });
   if (code && CONTENT_CODES.test(code)) return opt('sensitive', `ElevenLabs 拒绝了这个描述（可能提到了受版权保护的歌手 / 歌曲，或没有通过内容审核）${suggestion ? `；它建议改成：${suggestion}` : ''}`, false);
+  // a free account: 402 payment_required / paid_plan_required ("Music API is not available for free users"), seen
+  // on a real free-tier key 2026-11-05 — the plan, not the balance, so topping up would not help
+  if ((code && PLAN_CODES.test(code)) || /free users|paid plan/i.test(message)) return opt('unavailable', 'ElevenLabs 免费套餐不能用音乐接口（Music API 只对付费套餐开放），请升级到付费套餐，或在 设置 → 音乐创作 改用 fal.ai', false);
   if (status === 402 || (code && BALANCE_CODES.test(code))) return opt('balance', 'ElevenLabs 额度或余额不足（音乐按生成时长计费），请到 ElevenLabs 后台充值或升级套餐', false);
   if (status === 401) return opt('auth', 'ElevenLabs API Key 无效或未授权，请在 设置 → 朗读 → ElevenLabs 检查 Key，或设置环境变量 ELEVENLABS_API_KEY', false);
   if (status === 403) return opt('unavailable', 'ElevenLabs 拒绝访问：音乐接口只对付费套餐开放，或这个 Key 没有 Music 权限', false);

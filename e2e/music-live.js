@@ -4,10 +4,10 @@
 // The real app, the real `lh` login and LobeHub's real Responses API: a real agent is created, the owner types a
 // natural-language request, and the model itself decides to call compose_music (nothing scripts the call).
 // The music service (T-6158; settings.json music.provider, written before launch):
-//   MUSIC_LIVE_PROVIDER=fal (default) | minimax     MUSIC_LIVE_MODE=fake (default) | real
-//   fake  the service is a local stand-in on 127.0.0.1 (fal: test/fixtures/fake-music-services.js, MiniMax:
+//   MUSIC_LIVE_PROVIDER=fal (default) | elevenlabs | minimax     MUSIC_LIVE_MODE=fake (default) | real
+//   fake  the service is a local stand-in on 127.0.0.1 (fal / ElevenLabs: test/fixtures/fake-music-services.js, MiniMax:
 //         test/fixtures/fake-minimax-music.js; both serve a real 3 s mp3): tool choice → saved file → playable card
-//   real  the real service with the local key (FAL_KEY / MINIMAX_API_KEY, env or ~/.zshrc via scripts/minimax-key.js,
+//   real  the real service with the local key (FAL_KEY / ELEVENLABS_API_KEY / MINIMAX_API_KEY, env or ~/.zshrc via scripts/minimax-key.js,
 //         never printed): whatever the service answers is shown (a song card, or her reason)
 //   MUSIC_LIVE_MINIMAX=fake|real is the old spelling of MUSIC_LIVE_PROVIDER=minimax MUSIC_LIVE_MODE=fake|real.
 //   L1 hatch with real lh (local abilities off: no tools on this computer) → a real agent
@@ -26,23 +26,28 @@ module.exports = function musicLiveScenario(ctx) {
   const { ROOT, OUT, step, launch, hover, clickAct } = ctx;
   return async function musicLive() {
     const legacy = process.env.MUSIC_LIVE_MINIMAX;
-    const PROVIDER = legacy ? 'minimax' : process.env.MUSIC_LIVE_PROVIDER === 'minimax' ? 'minimax' : 'fal';
+    const PROVIDER = legacy ? 'minimax' : ['minimax', 'elevenlabs'].includes(process.env.MUSIC_LIVE_PROVIDER) ? process.env.MUSIC_LIVE_PROVIDER : 'fal';
     const MODE = (legacy || process.env.MUSIC_LIVE_MODE) === 'real' ? 'real' : 'fake';
-    const LABEL = PROVIDER === 'fal' ? 'fal.ai' : 'MiniMax';
+    const LABEL = { fal: 'fal.ai', elevenlabs: 'ElevenLabs', minimax: 'MiniMax' }[PROVIDER];
     const S = `musiclive-${PROVIDER}-${MODE}`;
     const SHOTS = path.join(OUT, `music-live-${PROVIDER}-${MODE}`);
     fs.mkdirSync(SHOTS, { recursive: true });
     const VIDEO = path.join(SHOTS, 'video');
     const lhEnv = { ...process.env, LOBEHUB_JWT: '' };
     const { SAMPLE } = require('../test/fixtures/fake-music-services');
-    const KEY_ENV = PROVIDER === 'fal' ? 'FAL_KEY' : 'MINIMAX_API_KEY';
-    const EP_ENV = PROVIDER === 'fal' ? 'FAL_MUSIC_ENDPOINT' : 'MINIMAX_MUSIC_ENDPOINT';
+    const KEY_ENV = { fal: 'FAL_KEY', elevenlabs: 'ELEVENLABS_API_KEY', minimax: 'MINIMAX_API_KEY' }[PROVIDER];
+    const EP_ENV = { fal: 'FAL_MUSIC_ENDPOINT', elevenlabs: 'ELEVENLABS_MUSIC_ENDPOINT', minimax: 'MINIMAX_MUSIC_ENDPOINT' }[PROVIDER];
+    const REAL_HOST = { fal: 'https://queue.fal.run', elevenlabs: 'https://api.elevenlabs.io', minimax: 'https://api.minimax.cn' }[PROVIDER];
     // fake: the stand-in answers after a few seconds so 作曲中… stays on screen long enough to be seen
     let mm = null;
     if (MODE === 'fake' && PROVIDER === 'fal') {
       const { startFakeMusicServices, FAL_OK } = require('../test/fixtures/fake-music-services');
       mm = await startFakeMusicServices({ falPlan: () => ({ statuses: [FAL_OK[0], FAL_OK[0], FAL_OK[1], FAL_OK[1], FAL_OK[2]] }) });
       mm.bodies = () => mm.fal.submits.map((q) => ({ model: q.model, input: q.input }));
+    } else if (MODE === 'fake' && PROVIDER === 'elevenlabs') {
+      const { startFakeMusicServices } = require('../test/fixtures/fake-music-services');
+      mm = await startFakeMusicServices({ elPlan: () => ({ delayMs: 4000 }) });
+      mm.bodies = () => mm.el.requests.map((q) => ({ query: q.query, body: q.body }));
     } else if (MODE === 'fake') {
       const { startFakeMiniMaxMusic } = require('../test/fixtures/fake-minimax-music');
       mm = await startFakeMiniMaxMusic(() => ({ delayMs: 4000 }));
@@ -57,8 +62,12 @@ module.exports = function musicLiveScenario(ctx) {
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, music: { provider: PROVIDER, ...(PROVIDER === 'fal' ? { pollIntervalSec: 2 } : {}) } }));
     const env = { PIXELPET_DATA_DIR: data, LH_BIN: 'lh', PIXELPET_NO_CONNECT: '1', PIXELPET_DIRECT: '1', FAL_KEY: '', ELEVENLABS_API_KEY: '', MINIMAX_API_KEY: '', [KEY_ENV]: MODE === 'fake' ? `e2e-fake-${PROVIDER}-key` : key, [EP_ENV]: mm ? mm.url : '' };
     const { app, page } = await launch(env, { video: VIDEO });
+    // never accept 「开启本机能力」 on the owner's behalf (launch() accepts every dialog): dismiss it and note it
+    const dialogs = [];
+    page.removeAllListeners('dialog');
+    page.on('dialog', (d) => { dialogs.push(d.message()); if (/本机能力/.test(d.message())) d.dismiss().catch(() => {}); else d.accept().catch(() => {}); });
     let agentId = null;
-    const evidence = [`service: ${LABEL} ${MODE === 'fake' ? `stand-in ${mm.url}` : `real (${PROVIDER === 'fal' ? 'https://queue.fal.run' : 'https://api.minimax.cn'}; ${KEY_ENV} from local config, ${key.length} chars, not shown)`}; settings music.provider=${PROVIDER}; model: real LobeHub Responses API`];
+    const evidence = [`service: ${LABEL} ${MODE === 'fake' ? `stand-in ${mm.url}` : `real (${REAL_HOST}; ${KEY_ENV} from local config, ${key.length} chars, not shown)`}; settings music.provider=${PROVIDER}; model: real LobeHub Responses API`];
     const note = (s) => { evidence.push(s); return s.length > 400 ? `${s.slice(0, 397)}…` : s; };
     const shot = (name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
     const idle = (ms = 400000) => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: ms });
@@ -134,6 +143,9 @@ module.exports = function musicLiveScenario(ctx) {
           assert.equal(st.state, 'playing');
           await shot('l3-playing');
           assert.equal(pet.attachments.music[0].filePath, file);
+          const v = await page.evaluate(async () => (await window.pet.boot()).view);
+          assert.equal(v.local.enabled, false, 'local abilities still off');
+          note(`dialogs seen: ${JSON.stringify(dialogs)} (本机能力 ones dismissed, never accepted); local abilities still off`);
           return note(`reply ${JSON.stringify(bubble)}; card ${JSON.stringify(st)}; file ${file} (${fs.statSync(file).size} bytes); chat-log pet message ${JSON.stringify(pet)}`);
         }
         assert.ok(failed, `a failed event (${JSON.stringify(musicLog)})`);

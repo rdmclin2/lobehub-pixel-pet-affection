@@ -213,13 +213,14 @@ App 内验证（e2e，假 LobeHub + 三个服务的本地替身，不花钱）�
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js music       # 设置页 M1–M4（服务切换、fal Key 只写不回显）+ 聊天作曲 C1–C9（fal 默认、fal 403、切到 ElevenLabs / MiniMax）
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js musicchat   # 只跑聊天作曲 C1–C9
 # 真实模型（花 LobeHub token，需要 lh login；不在 all 里）：用户说「给我写一首关于…的歌」，模型自己决定调用 compose_music
-# MUSIC_LIVE_PROVIDER=fal（默认）| minimax 选服务；MUSIC_LIVE_MODE=fake（默认，本地替身，不花音乐钱）| real（真实服务，扣费）
+# MUSIC_LIVE_PROVIDER=fal（默认）| elevenlabs | minimax 选服务；MUSIC_LIVE_MODE=fake（默认，本地替身，不花音乐钱）| real（真实服务，扣费）
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js musiclive                                   # 真实模型 + fal 本地替身
 env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_MODE=real xvfb-run -a node e2e/run.js musiclive              # 真实模型 + 真实 fal（FAL_KEY）
+env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_PROVIDER=elevenlabs MUSIC_LIVE_MODE=real xvfb-run -a node e2e/run.js musiclive  # 真实模型 + 真实 ElevenLabs（ELEVENLABS_API_KEY，需付费套餐）
 env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_PROVIDER=minimax MUSIC_LIVE_MODE=real xvfb-run -a node e2e/run.js musiclive
 ```
 
-musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）用 `LOBEHUB_WORKSPACE_ID=personal lh agent delete <id> --yes` 删掉；孵化时会取消「本机能力」，不会自动接受开启本机能力的确认。证据在 `out/e2e/music-live-<服务>-<fake|real>/`。真实模式下服务拒绝（例如 fal 余额不足 403）时，场景记录她转述的原因，不保存文件、不出歌曲卡片。
+musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）用 `LOBEHUB_WORKSPACE_ID=personal lh agent delete <id> --yes` 删掉；孵化时会取消「本机能力」；场景里出现的「开启本机能力」确认框一律点取消（不会替你接受），结束时再确认本机能力仍是关闭。证据在 `out/e2e/music-live-<服务>-<fake|real>/`。真实模式下服务拒绝（例如 fal 余额不足 403、ElevenLabs 免费账号 402 `paid_plan_required`）时，场景记录她转述的原因，不保存文件、不出歌曲卡片。
 
 单测：`node --test test/music.test.js test/music-tool.test.js`（fetch 全部 mock / 本地替身：fal 与 ElevenLabs 的成功、多次轮询后成功、失败、超时、取消、鉴权错误、余额、限流、内容审核、网络）。截图和日志在 `out/e2e/music/`。
 
@@ -234,7 +235,7 @@ musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）
 | 没有 Key | `no-key` | 否 | 没有 `keys.fal` / `FAL_KEY` | 没有 `keys.elevenlabs` / `ELEVENLABS_API_KEY` | 没有 `keys.minimax` / `MINIMAX_API_KEY` | 这一轮不提供工具，她说缺哪个服务的 Key、去哪填 |
 | 鉴权失败 | `auth` | 否 | HTTP 401；403（非余额原因） | 401 `invalid_api_key` | 1004、2049、HTTP 401/403 | 「fal.ai API Key 无效或未授权，请在 设置 → 音乐创作 → fal.ai 检查 Key，或设置环境变量 FAL_KEY」 |
 | 余额 / 额度不足 | `balance` | 否 | 403 `User is locked. Reason: Exhausted balance`、402 | 402 `insufficient_credits` / `payment_required`、401 `quota_exceeded` | 1008、2053、2067 | 「fal.ai 账户余额不足或已被锁定，请到 fal.ai/dashboard/billing 充值后再试」 |
-| 套餐 / 账号不可用 | `unavailable` | 否 | — | 403（Music API 只对付费套餐开放） | 2153（HTTP 410，停售） | 「ElevenLabs 拒绝访问：音乐接口只对付费套餐开放…」「MiniMax 音乐接口已不再向新用户开放…可改用 fal.ai 或 ElevenLabs」 |
+| 套餐 / 账号不可用 | `unavailable` | 否 | — | 402 `paid_plan_required`（免费账号，2026-11-05 实测：`Music API is not available for free users`）、403（Key 没有 Music 权限） | 2153（HTTP 410，停售） | 「ElevenLabs 免费套餐不能用音乐接口（Music API 只对付费套餐开放），请升级到付费套餐，或在 设置 → 音乐创作 改用 fal.ai」「ElevenLabs 拒绝访问：音乐接口只对付费套餐开放…」「MiniMax 音乐接口已不再向新用户开放…可改用 fal.ai 或 ElevenLabs」 |
 | 限流 | `rate-limit` | 是 | 429 | 429 `rate_limit_exceeded` / `system_busy` / `concurrent_limit_exceeded` | 1002、1039 等、HTTP 429 | 「请求太频繁（触发限流），请稍后再试」 |
 | 内容审核 | `sensitive` | 否 | 422 `content_policy_violation`（提交 / 结果 / 完成状态里） | 400/422 `bad_prompt` / `bad_composition_plan`（带官方的改写建议） | 1026、1027、1040、1046 | 「内容没有通过 fal.ai 的内容审核…」「ElevenLabs 拒绝了这个描述（可能提到了受版权保护的歌手 / 歌曲）；它建议改成：…」 |
 | 参数不合法 | `bad-params` | 否 | 本地校验，或 422 其他类型、400 `bad_request` | 本地校验，或 400/422 | 本地校验，或 2013、2014、1042 | 指出是哪个参数 |
