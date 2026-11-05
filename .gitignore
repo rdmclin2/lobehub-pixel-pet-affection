@@ -10,6 +10,8 @@ tts-cache/
 *.vrm
 *.VRM
 *.vrma
+# the Mixamo motions that ship with the app (scripts/vrm-bundle-motions.js)
+!resources/vrm-motions/*/*.vrma
 *.VRMA
 # VRM motion sources and baked motions (personal use only, docs/vrm-motion-system.md §6.4)
 *.fbx

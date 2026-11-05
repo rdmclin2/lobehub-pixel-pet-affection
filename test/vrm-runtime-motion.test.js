@@ -97,33 +97,33 @@ test('the library folder (src/main/vrm-library.js): env › the linked folder �
   const ud = fs.mkdtempSync(path.join(os.tmpdir(), 't5084-ud-'));
   const lib = (d) => { fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'library.json'), JSON.stringify({ clips: { 'idle.v01@female': { kind: 'idle', file: 'female/idle.v01.vrma' } } })); return d; };
   // nothing anywhere: none, not "userData" (T-5079 R1 hid the missing library behind it)
-  let w = VL.libraryDir({ env: {}, userData: ud, home });
+  let w = VL.libraryDir({ builtin: null, env: {}, userData: ud, home });
   assert.equal(w.source, 'none');
   assert.equal(w.dir, path.join(ud, 'vrm-motions'));
   assert.ok(w.looked.includes(path.join(home, 'vrm-assets', 'baked-v2')));
   assert.match(VL.describe(VL.libraryStatus(w)), /no motion library \(looked in: .*vrm-motions.*baked-v2/);
   // the v2 bake before the old one on a dev run; never in a test run or the package
   lib(path.join(home, 'vrm-assets', 'baked'));
-  assert.equal(VL.libraryDir({ env: {}, userData: ud, home }).dir, path.join(home, 'vrm-assets', 'baked'));
+  assert.equal(VL.libraryDir({ builtin: null, env: {}, userData: ud, home }).dir, path.join(home, 'vrm-assets', 'baked'));
   lib(path.join(home, 'vrm-assets', 'baked-v2'));
-  assert.deepEqual(VL.libraryDir({ env: {}, userData: ud, home }), { dir: path.join(home, 'vrm-assets', 'baked-v2'), source: 'dev' });
-  assert.equal(VL.libraryDir({ env: { PIXELPET_TEST: '1' }, userData: ud, home }).source, 'none');
-  assert.equal(VL.libraryDir({ env: {}, userData: ud, home, packaged: true }).source, 'none');
+  assert.deepEqual(VL.libraryDir({ builtin: null, env: {}, userData: ud, home }), { dir: path.join(home, 'vrm-assets', 'baked-v2'), source: 'dev' });
+  assert.equal(VL.libraryDir({ builtin: null, env: { PIXELPET_TEST: '1' }, userData: ud, home }).source, 'none');
+  assert.equal(VL.libraryDir({ builtin: null, env: {}, userData: ud, home, packaged: true }).source, 'none');
   // 选择文件夹: a pointer in userData; a parent of baked-v2 is taken as baked-v2; a folder without an index is refused
   const mine = lib(path.join(home, 'elsewhere', 'baked-v2'));
   assert.deepEqual(VL.writeLink(ud, path.join(home, 'nothing-here')), { ok: false, reason: 'no-index' });
   assert.deepEqual(VL.writeLink(ud, path.join(ROOT, 'src')), { ok: false, reason: 'inside-repo' });
   assert.deepEqual(VL.writeLink(ud, path.join(home, 'elsewhere')), { ok: true, dir: mine });
   assert.equal(VL.readLink(ud), mine);
-  assert.deepEqual(VL.libraryDir({ env: {}, userData: ud, home, packaged: true }), { dir: mine, source: 'linked' }, 'the packaged app too');
-  const st = VL.libraryStatus(VL.libraryDir({ env: {}, userData: ud, home, packaged: true }));
+  assert.deepEqual(VL.libraryDir({ builtin: null, env: {}, userData: ud, home, packaged: true }), { dir: mine, source: 'linked' }, 'the packaged app too');
+  const st = VL.libraryStatus(VL.libraryDir({ builtin: null, env: {}, userData: ud, home, packaged: true }));
   assert.equal(st.files, 1);
   assert.deepEqual(st.styles, { female: 1 });
   // the linked folder's dances/ when the user has none of their own
   lib(path.join(mine, 'dances'));
   assert.deepEqual(VD.danceDir({ env: {}, userData: ud, home, packaged: true, link: mine }), { dir: path.join(mine, 'dances'), source: 'linked' });
   // env still wins; the link can be forgotten
-  assert.equal(VL.libraryDir({ env: { PIXELPET_VRM_MOTIONS_DIR: home }, userData: ud, home }).source, 'env');
+  assert.equal(VL.libraryDir({ builtin: null, env: { PIXELPET_VRM_MOTIONS_DIR: home }, userData: ud, home }).source, 'env');
   assert.deepEqual(VL.writeLink(ud, null), { ok: true, dir: null });
   assert.equal(VL.readLink(ud), null);
 });

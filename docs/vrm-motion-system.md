@@ -725,7 +725,7 @@ T-2698 复核的剩余问题。架构不变（intent → director → anim/life�
 
 ## 16. 实现说明总览与可复现验证（最终代码：T-5081 / T-5084 / T-5092 / T-5098，T-5099 终版复测）
 
-这一节把素材库 v2（T-5081）、运行时（T-5084）、T-5092 和 T-5098 的修复汇总成一页，内容与当前代码一致，命令可以直接复制执行。细节见 [`docs/vrm-motion-library.md`](vrm-motion-library.md)（索引、筛选、骨骼映射、烘焙）、本文 §15（运行时）；修复过程与修复前后的数值在 §17（T-5092：T-pose、触摸跳变、姿态守卫）和 §18（T-5098：Q 版触摸判定、hips 贴地模型的休息姿势、僵硬片段、源动作突变）。**素材与模型都不进 git、不进安装包**：仓库里只有元数据（`src/core/vrm-motion-index.json`）和脚本。
+这一节把素材库 v2（T-5081）、运行时（T-5084）、T-5092 和 T-5098 的修复汇总成一页，内容与当前代码一致，命令可以直接复制执行。细节见 [`docs/vrm-motion-library.md`](vrm-motion-library.md)（索引、筛选、骨骼映射、烘焙）、本文 §15（运行时）；修复过程与修复前后的数值在 §17（T-5092：T-pose、触摸跳变、姿态守卫）和 §18（T-5098：Q 版触摸判定、hips 贴地模型的休息姿势、僵硬片段、源动作突变）。**模型、原始素材、MMD 动作和舞蹈都不进 git、不进安装包**：仓库里有元数据（`src/core/vrm-motion-index.json`）、脚本，以及随应用分发的 Mixamo 动作（`resources/vrm-motions`，见 §16.5）。
 
 ### 16.1 资源索引（五个包 → `src/core/vrm-motion-index.json`）
 
@@ -781,7 +781,9 @@ node scripts/vrm-bake.js --install         # 不烘焙，只把 --out（默认 ~
 
 ### 16.5 库的安装位置与加载
 
-`src/main/vrm-library.js libraryDir()` 依次找（第一个有 `library.json` 的）：`$PIXELPET_VRM_MOTIONS_DIR` → 控制台「角色 → 她的页 → 装扮 → VRM 动作库 → 选择动作库文件夹」记下的目录（`<userData>/vrm-library-link.json`，只记路径；选中的目录下一层有 `baked-v2/` 也认）→ `<userData>/vrm-motions`（`--install` 的位置；Linux `~/.config/Pixel Pet Affection`，macOS `~/Library/Application Support/Pixel Pet Affection`，Windows `%APPDATA%\Pixel Pet Affection`）→ 开发运行时（未打包、非测试）`~/vrm-assets/baked-v2`、`~/vrm-assets/baked`。仓库内的目录一律拒绝。舞蹈（`src/main/vrm-dances.js`）同理，关联目录的 `dances/` 也会用。主进程注册 `vrmlib://` 协议（`src/main/packs.js` 声明，`vrm-library.js` 处理），渲染端经 `vrmlib://index/library.json` 读取，按风格（`core/vrm-style.js`：female / male / neutral，缺的按 `STYLE_FALLBACK` 借用）和 `allowsClip` 加载片段。找不到库时 `source: 'none'`、`data-library=none`，日志、气泡和控制台都会提示，不会静默退回程序化动作。
+`src/main/vrm-library.js libraryDir()` 依次找（第一个有 `library.json` 的）：`$PIXELPET_VRM_MOTIONS_DIR` → 控制台「角色 → 她的页 → 装扮 → VRM 动作库 → 选择动作库文件夹」记下的目录（`<userData>/vrm-library-link.json`，只记路径；选中的目录下一层有 `baked-v2/` 也认）→ `<userData>/vrm-motions`（`--install` 的位置；Linux `~/.config/Pixel Pet Affection`，macOS `~/Library/Application Support/Pixel Pet Affection`，Windows `%APPDATA%\Pixel Pet Affection`）→ 开发运行时（未打包、非测试）`~/vrm-assets/baked-v2`、`~/vrm-assets/baked` → **应用内置**（`source: 'builtin'`：打包后是 `<app>/resources/vrm-motions`，仓库里是 `resources/vrm-motions`；`$PIXELPET_VRM_BUILTIN_DIR` 可替换，设为空则视为没有，e2e `vrmstore` 用它测「安装不完整」）。除内置库外，仓库内的目录一律拒绝。舞蹈（`src/main/vrm-dances.js`）同理，关联目录的 `dances/` 也会用。主进程注册 `vrmlib://` 协议（`src/main/packs.js` 声明，`vrm-library.js` 处理），渲染端经 `vrmlib://index/library.json` 读取，按风格（`core/vrm-style.js`：female / male / neutral，缺的按 `STYLE_FALLBACK` 借用）和 `allowsClip` 加载片段。找不到库时 `source: 'none'`、`data-library=none`，日志、气泡和控制台都会提示，不会静默退回程序化动作。
+
+**内置动作库（v0.25.1 起）**：安装包自带烘焙库里 Mixamo 来源的片段（`mixamo`、`postures` 两个包，都是 Mixamo 骨骼），272 个片段、约 21 MB，三种风格都有姿势、待机（各 9 个）、反应、情绪、说话和行走，商店导入的 VRM 开箱就有完整动作。MMD 动作（`motions` 包）和舞蹈各有自己的授权，不内置；要用它们，仍然在控制台关联完整的烘焙库。内置库由 `node scripts/vrm-bundle-motions.js [--from ~/vrm-assets/baked-v2]` 从完整烘焙库筛出，写进 `resources/vrm-motions/`（`.gitignore` 只对这个目录放行 `.vrma`），`package.json` 的 `build.extraResources` 把它带进安装包；`--check` 和单测（`test/vrm.test.js` 打包守卫）确认每个片段都来自 Mixamo、目录和 `library.json` 一致。重新烘焙后要重新运行这个脚本并提交。
 
 ### 16.6 状态机与混合规则（`src/core/vrm-director.js`、`src/renderer/vrm-anim.js`、`src/core/vrm-smooth.js`）
 

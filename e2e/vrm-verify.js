@@ -30,6 +30,9 @@ module.exports = async function vrmVerify(ctx) {
   const home = os.homedir();
   const STORE = process.env.PIXELPET_E2E_STORE_DIR || path.join(home, 'vrm-assets', 'store', 'vrm');
   const LIB = process.env.PIXELPET_E2E_MOTIONS || path.join(home, 'vrm-assets', 'baked-v2');
+  // PIXELPET_E2E_LIBRARY=builtin: the motions the app ships (resources/vrm-motions), nothing linked — a fresh
+  // install; the dances (not bundled) still come from LIB/dances, so the dance step has one to play
+  const BUILTIN = process.env.PIXELPET_E2E_LIBRARY === 'builtin';
   const BASE = process.env.PIXELPET_E2E_BASELINE || path.join(home, 't5079-diag', 'out');
   // T-5099: a click aims at least HIT_DEPTH px inside the part's visible area (a 2 px sliver of belly between the
   // coat and the arms moves onto the chest with the idle's next frame); waits ≤ 20 s for it like for a hidden part
@@ -58,7 +61,7 @@ module.exports = async function vrmVerify(ctx) {
   const PORT = 7800 + Math.floor(Math.random() * 400);
   const TOKEN = `e2e-verify-${Math.random().toString(36).slice(2, 12)}-token`;
   const { env } = dataDir('vrmverify', { ageConfirmed: true, ageConfirmedAt: Date.now(), prefs: { roam: false }, api: { enabled: true, port: PORT, token: TOKEN } });
-  Object.assign(env, { PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/vrm`, PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_VRM_MOTIONS_DIR: '', PIXELPET_VRM_DANCES_DIR: '' });
+  Object.assign(env, { PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/vrm`, PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_VRM_MOTIONS_DIR: '', PIXELPET_VRM_DANCES_DIR: BUILTIN ? path.join(LIB, 'dances') : '' });
   const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmverify-video-'));
   const evidence = [];
   const chapters = [];
@@ -152,8 +155,19 @@ module.exports = async function vrmVerify(ctx) {
       return cid;
     };
 
-    await ST('设置 → 角色 → 装扮 → VRM 动作库 → 选择动作库文件夹（关联 baked-v2，含 dances/）', async () => {
+    await ST(BUILTIN ? '应用内置动作库（不关联任何文件夹）：来源 builtin，载入 Mixamo 片段；舞蹈来自 baked-v2/dances' : '设置 → 角色 → 装扮 → VRM 动作库 → 选择动作库文件夹（关联 baked-v2，含 dances/）', async () => {
       const cid = await switchTo(IDS[0]);
+      if (BUILTIN) {
+        await until('drawn with the bundled library', () => { const f = window.PetVRM && window.PetVRM.debug().figures[0]; return f && f.loaded && /^(loaded|partial)/.test(f.library) && f.clips.length > 20; }, null, 120000);
+        const info = await page.evaluate(() => window.pet.vrmLibraryInfo());
+        assert.equal(info.source, 'builtin', JSON.stringify(info));
+        await A.lookTab(cid);
+        await A.until(() => (document.querySelector('[data-motion-lib]') || {}).dataset?.motionSource === 'builtin' && /应用内置/.test(document.querySelector('[data-motion-lib]').textContent), null, 20000, '来源：应用内置');
+        await A.win.evaluate(() => document.querySelector('[data-motion-lib]').scrollIntoView({ block: 'center' }));
+        const con = await H.adminShot(`${String(++nShot).padStart(2, '0')}-library-builtin`);
+        const dances = await api('GET', '/dances');
+        return H.note(`vrm-library-info ${JSON.stringify({ source: info.source, dir: info.dir, files: info.status && info.status.files, styles: info.status && info.status.styles })}; GET /dances → ${dances.json.dances ? dances.json.dances.length : 0} dances (source ${dances.json.source}); ${con}`);
+      }
       await page.evaluate((p) => window.pet.debugNextOpen(p), LIB);
       await A.lookTab(cid);
       await A.until(() => !!document.querySelector('[data-motion-pick]'), null, 20000, '选择动作库文件夹');

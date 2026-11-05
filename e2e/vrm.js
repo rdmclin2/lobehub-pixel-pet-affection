@@ -1077,8 +1077,8 @@ module.exports = function vrmScenarios(ctx) {
       }, page);
 
       await step(S, 'packaging guard: no .vrm / .vrma / .fbx / .vmd in git ls-files nor in the files package.json build.files ships', async () => {
-        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx|vroid)$/i.test(f));
-        assert.deepEqual(tracked, []);
+        const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter((f) => /\.(vrma?|fbx|vmd|bvh|pmx|vroid)$/i.test(f) && !require('../scripts/vrm-bundle-motions').isBundledMotion(f));
+        assert.deepEqual(tracked, [], 'only the bundled Mixamo motions (resources/vrm-motions) are tracked');
         const build = require('../package.json').build.files;
         assert.ok(build.includes('!**/*.vrm') && build.includes('!**/*.VRM') && build.includes('!**/*.vrma') && build.includes('!**/*.VRMA'), JSON.stringify(build));
         for (const ext of ['fbx', 'vmd', 'bvh', 'pmx']) assert.ok(build.includes(`!**/*.${ext}`), ext);

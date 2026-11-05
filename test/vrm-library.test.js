@@ -64,25 +64,33 @@ test('the runtime index is cleaned: only <style>/<slot>.vrma files and cycles; r
 test('vrmlib://: the motion folder (env, userData, dev ~/vrm-assets/baked) — never inside the repository; URLs stay inside it', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vrmlib-'));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vrmlib-home-'));
-  assert.deepEqual(VL.libraryDir({ env: { PIXELPET_VRM_MOTIONS_DIR: tmp }, userData: '/u', home }), { dir: tmp, source: 'env' });
-  const inRepo = VL.libraryDir({ env: { PIXELPET_VRM_MOTIONS_DIR: path.join(ROOT, 'baked') }, userData: '/u', home });
+  assert.deepEqual(VL.libraryDir({ builtin: null, env: { PIXELPET_VRM_MOTIONS_DIR: tmp }, userData: '/u', home }), { dir: tmp, source: 'env' });
+  const inRepo = VL.libraryDir({ builtin: null, env: { PIXELPET_VRM_MOTIONS_DIR: path.join(ROOT, 'baked') }, userData: '/u', home });
   assert.equal(inRepo.dir, null);
   assert.ok(inRepo.refused);
   // nothing anywhere: userData's folder (empty) — the dev folder only for a development run, not a test or the package
   fs.mkdirSync(path.join(home, 'vrm-assets', 'baked'), { recursive: true });
   fs.writeFileSync(path.join(home, 'vrm-assets', 'baked', 'library.json'), '{}');
-  assert.equal(VL.libraryDir({ env: {}, userData: tmp, home }).source, 'dev');
-  assert.equal(VL.libraryDir({ env: { PIXELPET_TEST: '1' }, userData: tmp, home }).dir, path.join(tmp, 'vrm-motions'));
-  assert.equal(VL.libraryDir({ env: {}, userData: tmp, home, packaged: true }).dir, path.join(tmp, 'vrm-motions'));
+  assert.equal(VL.libraryDir({ builtin: null, env: {}, userData: tmp, home }).source, 'dev');
+  assert.equal(VL.libraryDir({ builtin: null, env: { PIXELPET_TEST: '1' }, userData: tmp, home }).dir, path.join(tmp, 'vrm-motions'));
+  assert.equal(VL.libraryDir({ builtin: null, env: {}, userData: tmp, home, packaged: true }).dir, path.join(tmp, 'vrm-motions'));
   fs.mkdirSync(path.join(tmp, 'vrm-motions'));
   fs.writeFileSync(path.join(tmp, 'vrm-motions', 'library.json'), '{}');
-  assert.equal(VL.libraryDir({ env: {}, userData: tmp, home }).source, 'userData', 'userData wins over dev');
+  assert.equal(VL.libraryDir({ builtin: null, env: {}, userData: tmp, home }).source, 'userData', 'userData wins over dev');
   const d = path.join(tmp, 'vrm-motions');
   assert.equal(VL.resolveUrl(d, 'vrmlib://index/library.json'), path.join(d, 'library.json'));
   assert.equal(VL.resolveUrl(d, 'vrmlib://female/stand.relaxed.vrma'), path.join(d, 'female', 'stand.relaxed.vrma'));
   // the URL parser folds ../ away; whatever is left still lands inside the folder
   for (const u of ['vrmlib://female/../../../etc/passwd.vrma', 'vrmlib://female/%2e%2e/%2e%2e/x.vrma']) { const f = VL.resolveUrl(d, u); assert.ok(f === null || f.startsWith(d + path.sep), `${u} → ${f}`); }
   for (const bad of ['vrmlib://female/..%2f..%2f..%2fx.vrma', 'vrmlib://female/%2e%2e%2f%2e%2e%2fx.vrma', 'vrmlib://index/other.json', 'vrmlib://female/x.fbx', 'vrmlib://etc/x.vrma', 'pack://female/x.vrma']) assert.equal(VL.resolveUrl(d, bad), null, bad);
+  // the library that ships with the app: after every other folder, before nothing; inside the repository only that one
+  const bi = path.join(tmp, 'builtin');
+  fs.mkdirSync(bi); fs.writeFileSync(path.join(bi, 'library.json'), '{}');
+  const ud2 = fs.mkdtempSync(path.join(os.tmpdir(), 'vrmlib-ud-'));
+  assert.deepEqual(VL.libraryDir({ env: {}, userData: ud2, home: ud2, packaged: true, builtin: bi }), { dir: bi, source: 'builtin' });
+  assert.equal(VL.libraryDir({ env: {}, userData: tmp, home, builtin: bi }).source, 'userData', 'a library of her own wins over the bundled one');
+  assert.equal(VL.builtinDir(false), path.join(ROOT, 'resources', 'vrm-motions'));
+  assert.equal(VL.libraryDir({ env: { PIXELPET_TEST: '1' }, userData: ud2, home: ud2 }).source, 'builtin', 'the repository copy is found by default');
 });
 
 test('motions and models stay out of git and the package: ignored, excluded from build.files, none tracked', () => {
@@ -91,7 +99,7 @@ test('motions and models stay out of git and the package: ignored, excluded from
   const files = require('../package.json').build.files;
   for (const ext of ['fbx', 'vmd', 'bvh', 'pmx', 'vrm', 'vrma']) assert.ok(files.includes(`!**/*.${ext}`), `build.files !**/*.${ext}`);
   const tracked = require('node:child_process').execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n');
-  assert.deepEqual(tracked.filter((f) => /\.(fbx|vmd|bvh|pmx|vroid|vrma?)$/i.test(f)), []);
+  assert.deepEqual(tracked.filter((f) => /\.(fbx|vmd|bvh|pmx|vroid|vrma?)$/i.test(f) && !require('../scripts/vrm-bundle-motions').isBundledMotion(f)), []);
 });
 
 test('T-2691: idle variants come from different motion files; lift is a full-body hold with hanging legs', () => {

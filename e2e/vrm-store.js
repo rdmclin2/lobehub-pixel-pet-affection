@@ -5,7 +5,7 @@
 // the CDN; the models are downloaded in 设置 → 商店 like a user does and switched to on her page. Nothing of them,
 // nor of the library, is in the repository (they stay in the temp data dir and ~/vrm-assets).
 //
-//   1. no library (the packaged user's case, T-5079 R1): data-library none, the figure says why (no-library), she says
+//   1. no library (a broken install — the bundled one switched off with PIXELPET_VRM_BUILTIN_DIR='' — T-5079 R1): data-library none, the figure says why (no-library), she says
 //      it in her bubble, and her page → 装扮 → VRM 动作库 shows the warning — not a silent procedural idle;
 //   2. 选择动作库文件夹 (PIXELPET_E2E_MOTIONS, default ~/vrm-assets/baked-v2) links it: she is redrawn with it at once;
 //   3. per store VRM (PIXELPET_E2E_STORE_IDS, default four: female 0.x, male whose hips sit on the floor, VRM 1.0,
@@ -54,7 +54,7 @@ module.exports = async function vrmStore(ctx) {
   const PORT = 7400 + Math.floor(Math.random() * 400);
   const TOKEN = `e2e-store-${Math.random().toString(36).slice(2, 12)}-token`;
   const { env } = dataDir('vrmstore', { ageConfirmed: true, ageConfirmedAt: Date.now(), prefs: { roam: false }, api: { enabled: true, port: PORT, token: TOKEN } });
-  Object.assign(env, { PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/vrm`, PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_VRM_MOTIONS_DIR: '', PIXELPET_VRM_DANCES_DIR: '' });
+  Object.assign(env, { PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/vrm`, PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_VRM_MOTIONS_DIR: '', PIXELPET_VRM_DANCES_DIR: '', PIXELPET_VRM_BUILTIN_DIR: '' }); // no bundled library either: the broken-install case
   const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vrmstore-video-'));
   const evidence = [];
   const chapters = [];

@@ -915,7 +915,7 @@ const PostureRow = ({ c }: { c: RosterRow }) => {
  * she loaded (after her style's fallback) in the pet window, and stop it; she cross-fades back to her idle. Only for a
  * VRM character; 试播 only for the one on the desktop now (the pet window plays it).
  */
-const SOURCE_TEXT: Record<string, string> = { env: '环境变量 PIXELPET_VRM_MOTIONS_DIR', linked: '你选的文件夹', userData: '应用数据目录', dev: '开发机素材目录', none: '没有找到' };
+const SOURCE_TEXT: Record<string, string> = { env: '环境变量 PIXELPET_VRM_MOTIONS_DIR', linked: '你选的文件夹', userData: '应用数据目录', dev: '开发机素材目录', builtin: '应用内置', none: '没有找到' };
 const CATEGORY_TEXT: Record<string, string> = { posture: '姿势', idle: '待机', reaction: '反应', emotion: '情绪', talk: '说话', walk: '行走' };
 const MotionLibrary = ({ c }: { c: RosterRow }) => {
   const { view } = useStore();
@@ -984,13 +984,13 @@ const MotionLibrary = ({ c }: { c: RosterRow }) => {
     else toast.error(reasonText(r));
   };
   return (
-    <Surface description="VRM 角色的姿势、待机、反应和说话动作都来自动作库。动作库不在应用安装包里，需要单独烘焙或选择文件夹。" title="VRM 动作库">
+    <Surface description="VRM 角色的姿势、待机、反应和说话动作都来自动作库。应用自带一套 Mixamo 动作，开箱即用；有烘焙好的完整动作库（含 MMD 动作）时，可以选它的文件夹替换。" title="VRM 动作库">
       <Flexbox data-motion-lib={c.id} data-motion-files={files} data-motion-source={status?.source ?? ''} gap={12}>
         {status && files > 0 && (
           <Flexbox align="center" gap={8} horizontal wrap="wrap">
             <Tag color="success">已接入 · {files} 个动作</Tag>
             <Text type="secondary">来源：{SOURCE_TEXT[status.source] ?? status.source}</Text>
-            {status.dir && (
+            {status.dir && status.source !== 'builtin' && (
               <Text code ellipsis style={{ maxWidth: 360 }} title={status.dir}>
                 {status.dir}
               </Text>
@@ -1000,8 +1000,8 @@ const MotionLibrary = ({ c }: { c: RosterRow }) => {
         {status && files === 0 && (
           <Alert
             data-motion-missing
-            description="选一个烘焙好的动作库文件夹（里面有 library.json，例如 ~/vrm-assets/baked-v2），她会立刻用上；也可以运行 node scripts/vrm-bake.js --v2 --install 装到应用数据目录。"
-            title="还没有动作库：VRM 角色现在只能站着呼吸、看看四周"
+            description="应用自带的动作库没找到，可能是安装不完整，重新安装应用即可恢复；也可以选一个烘焙好的动作库文件夹（里面有 library.json），她会立刻用上。"
+            title="没有找到动作库：VRM 角色现在只能站着呼吸、看看四周"
             type="warning"
           />
         )}

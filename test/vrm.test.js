@@ -345,10 +345,14 @@ test('packaging guard: a VRM animation (.vrma, often from the same licensed sour
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (/\.vrma$/i.test(e.name)) found.push(f); } };
   walk(path.join(ROOT, 'src'));
   assert.deepEqual(found, [], 'no .vrma inside src/ (it would ship in the app)');
+  const build = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).build;
   let tracked = '';
   try { tracked = execFileSync('git', ['ls-files', '*.vrma', '*.VRMA', '**/*.vrma', '**/*.VRMA'], { cwd: ROOT, encoding: 'utf8' }); } catch { /* not a git checkout */ }
-  assert.equal(tracked.trim(), '', 'no .vrma tracked by git');
-  const build = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).build;
+  // the one exception: the bundled Mixamo motions (scripts/vrm-bundle-motions.js), each listed in its index
+  const strays = tracked.split('\n').filter((f) => f && !require('../scripts/vrm-bundle-motions').isBundledMotion(f));
+  assert.deepEqual(strays, [], 'no .vrma tracked by git outside resources/vrm-motions');
+  assert.deepEqual(require('../scripts/vrm-bundle-motions').check(), [], 'the bundled library is Mixamo only and matches its index');
+  assert.ok((build.extraResources || []).some((r) => r.from === 'resources/vrm-motions' && r.to === 'vrm-motions'), 'the bundled library ships as a resource');
   assert.ok(build.files.includes('!**/*.vrma') && build.files.includes('!**/*.VRMA'), 'electron-builder files exclude .vrma');
   assert.ok(build.files.indexOf('!**/*.vrma') > build.files.indexOf('src/**/*'), 'the exclusion comes after the include so it applies');
   assert.equal(/^\*\.vrma$/m.test(fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8')), true, '.gitignore keeps .vrma out of commits');
