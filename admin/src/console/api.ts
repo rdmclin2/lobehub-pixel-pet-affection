@@ -18,9 +18,28 @@ export type FieldType =
   | 'visitors'
   | 'adult'
   | 'local'
+  | 'aiFolders'
   | 'perCharacter'
   /** 我的语音包 (settings.tts.voicePack): set through set-user-voice-pack */
   | 'voicePack';
+
+export interface PermFolder {
+  id: 'desktop' | 'documents' | 'downloads';
+  inList: boolean;
+  label: string;
+  path: string | null;
+  status: 'denied' | 'granted' | 'missing' | 'unknown';
+}
+
+export interface PermStatus {
+  folders: PermFolder[];
+  local: { allowCommands: boolean; folders: string[]; limited: boolean };
+  localOn: boolean;
+  mac: boolean;
+  mic: 'denied' | 'granted' | 'not-determined' | 'restricted' | 'unknown' | null;
+  ok: boolean;
+  platform: string;
+}
 
 export interface FieldOption {
   label: string;
@@ -36,6 +55,8 @@ export interface FieldDef {
   desc?: string;
   format?: 'percent' | 'time';
   internal?: boolean;
+  /** drawn by its page's own card, not the generic form */
+  custom?: boolean;
   key: string;
   label: string;
   live?: boolean;
@@ -558,6 +579,12 @@ export interface PetAdminApi {
   /** 开始玩: opens the game window with her in it (main.js openScene) */
   gamePlay: (id: string) => Promise<{ ok: boolean; reason?: string; game?: string }>;
   whoami: () => Promise<any>;
+  /** 文件夹与系统权限 (main/permissions.js): every call answers with the current PermStatus */
+  permStatus: () => Promise<PermStatus>;
+  permRequest: (kind: string) => Promise<PermStatus & { result?: string }>;
+  permOpenSettings: (kind: string) => Promise<{ ok: boolean; url?: string }>;
+  aiFoldersAdd: () => Promise<PermStatus & { added: string[] }>;
+  aiFoldersSet: (patch: { allowCommands?: boolean; remove?: string }) => Promise<PermStatus>;
   /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */

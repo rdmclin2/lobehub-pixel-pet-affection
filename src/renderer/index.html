@@ -31,10 +31,40 @@
     <p class="sub">以 AI 模型厂商为主题的同人角色（非官方形象），选一位带回桌面。Live2D、旧版像素等更多形象，唤醒后可以在 设置 → 商店 里下载。</p>
     <div id="cards" class="cards" role="radiogroup" aria-label="角色"></div>
     <div id="card-info" class="card-info">点一位看看。</div>
-    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：读写文件、搜索内容、运行命令来帮我办事。<span class="warn">它能碰到你账号权限内的所有文件和命令，不是沙盒；之后可在 设置 → LobeHub 与本机 里随时关闭。</span></span></label>
+    <label class="opt"><input id="local-opt" type="checkbox" checked /><span>让它能使用这台电脑：在你允许的文件夹里读写文件、搜索内容来帮我办事。<span class="warn">下一步由你选它能读哪些文件夹；运行命令默认关闭，打开后命令不受文件夹限制。之后可在 设置 → LobeHub 与本机 里随时修改或关闭。</span></span></label>
     <div class="row">
       <input id="pet-name" maxlength="12" placeholder="给她起个名字（可选）" autocomplete="off" />
       <button id="hatch-btn" class="btn primary" disabled>唤醒</button>
+    </div>
+  </section>
+
+  <!-- 1b. 授权 (T-5075, main/permissions.js): laid out like LobeHub Desktop's onboarding permissions step —
+       a left-aligned head (her portrait as the logo), one outlined list of permission rows, a sticky footer -->
+  <section id="perms" class="screen hidden" aria-labelledby="perms-title">
+    <div class="perm-page">
+      <div class="perm-scroll">
+        <div class="perm-head">
+          <div id="perm-logo" class="perm-logo" aria-hidden="true"></div>
+          <h1 id="perms-title">授予权限</h1>
+          <p class="perm-lead" id="perms-sub">她要用到的权限在这里逐个给出，都可以先跳过，之后在设置里随时管理。</p>
+        </div>
+        <div id="perm-system" class="perm-list hidden" role="list" aria-label="系统权限"></div>
+        <div id="perm-folders" class="perm-list hidden" aria-labelledby="perm-folders-title">
+          <div class="perm-row perm-folders-head">
+            <span class="perm-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span>
+            <div class="perm-main">
+              <div class="perm-title" id="perm-folders-title">AI 可读的文件夹</div>
+              <div class="perm-desc">她的本机工具只能读写这些文件夹，没加的她碰不到。</div>
+            </div>
+            <button id="perm-add" class="btn btn-sm" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>添加文件夹</button>
+          </div>
+          <ul id="perm-folder-list" class="perm-folder-list" aria-label="AI 可读的文件夹"></ul>
+        </div>
+      </div>
+      <div class="perm-footer">
+        <button id="perms-back" class="btn btn-text" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>返回</button>
+        <button id="perms-next" class="btn primary" type="button">下一步</button>
+      </div>
     </div>
   </section>
 

@@ -45,6 +45,7 @@ const { GameLibrary, GameIndex } = require('./games');
 const GameIndexLib = require('../core/game-index');
 const GameStore = require('../core/game-store');
 const { createAdminSettings } = require('./admin-settings');
+const { createPermissions, fakeMac } = require('./permissions');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
 const U = require('../core/update');
@@ -53,7 +54,8 @@ const { buildRoster, packRows, adminView } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
-const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
+// perms: the onboarding's 授权 page (T-5075) is taller: its permission list and folders fit without scrolling
+const SIZES = { onboarding: { w: 680, h: 480 }, perms: { w: 680, h: 600 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
@@ -119,9 +121,10 @@ function resizePet(k) {
 }
 
 function place(mode) {
-  const { w, h } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
   const wa = screen.getPrimaryDisplay().workArea;
-  if (mode === 'onboarding') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
+  const { w, h: want } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
+  const h = mode === 'perms' ? Math.min(want, wa.height - 48) : want; // a short screen: the page scrolls instead
+  if (mode === 'onboarding' || mode === 'perms') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
 }
 
@@ -785,6 +788,29 @@ function wire() {
     });
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
+  // 授权 (permissions.js, docs/permissions.md): the onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限.
+  // E2E: PIXELPET_E2E_PLATFORM=darwin + PIXELPET_E2E_PERMS (JSON, permissions.js fakeMac) play macOS's answers;
+  // 添加文件夹… picks debug-next-open's paths (several split by newlines).
+  const e2ePlatform = TEST_MODE && process.env.PIXELPET_E2E_PLATFORM;
+  const mac = e2ePlatform === 'darwin' ? fakeMac(JSON.parse(process.env.PIXELPET_E2E_PERMS || '{}')) : null;
+  const perms = createPermissions({
+    service,
+    platform: e2ePlatform || process.platform,
+    systemPreferences: mac ? mac.systemPreferences : systemPreferences,
+    shell: mac ? { openExternal: async (u) => { openedLinks.push(u); } } : TEST_MODE ? { openExternal: async (u) => { openedLinks.push(u); } } : shell,
+    getPath: mac ? mac.getPath : (id) => app.getPath(id),
+    ...(mac ? { readdir: mac.readdir } : {}),
+    pickFolders: async () => {
+      if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
+      const r = await dialog.showOpenDialog((admin && admin.win && admin.win.isFocused() ? admin.win : win) || undefined, { title: '添加让 AI 读取的文件夹', properties: ['openDirectory', 'multiSelections', 'createDirectory'] });
+      return r.canceled ? [] : r.filePaths || [];
+    },
+  });
+  ipcMain.handle('perm-status', () => perms.status());
+  ipcMain.handle('perm-request', (_e, { kind } = {}) => perms.request(String(kind || '')));
+  ipcMain.handle('perm-open-settings', (_e, { kind } = {}) => perms.openSettings(String(kind || '')));
+  ipcMain.handle('ai-folders-add', () => perms.addFolders());
+  ipcMain.handle('ai-folders-set', (_e, p) => perms.setFolders(p && typeof p === 'object' ? p : {}));
   ipcMain.on('cancel', () => service.cancel());
   ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {

@@ -614,6 +614,132 @@ function showOnboarding() {
   show('onboarding');
 }
 
+// ---------- 授权 (T-5075, main/permissions.js, docs/permissions.md) ----------
+// Between choosing her and waking her up. macOS: 麦克风 for everyone (语音输入); with 本机能力 ticked also
+// 下载 / 桌面 / 文稿 (one row each, asked only when the owner presses 授权) and the folders her tools may use.
+// Linux / Windows have no such prompts: only the folder list, and only with 本机能力 ticked; otherwise the page
+// is skipped. 下一步 and 跳过 both go on to waking her up (nothing here is required).
+const PERM_ICONS = {
+  microphone: '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
+  downloads: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="m15 13-3 3-3-3"/>',
+  desktop: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  documents: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+const permIco = (k, cls = '') => `<svg class="ico${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" aria-hidden="true">${PERM_ICONS[k]}</svg>`;
+const PERM_DESC = {
+  microphone: '用于语音输入：按住说话时才录音',
+  downloads: '让她读你放在“下载”里的文件，授权后自动加入下面的列表',
+  desktop: '让她读桌面上的文件，授权后自动加入下面的列表',
+  documents: '让她读“文稿”里的文件，授权后自动加入下面的列表',
+};
+// what the description says instead, by state (granted keeps the plain one)
+const PERM_HINT = { pending: '在系统弹窗中选择允许', denied: '已拒绝：只能在系统设置里打开', restricted: '受系统限制：只能在系统设置里打开', missing: '这台电脑上没有这个文件夹' };
+let permState = null;
+let permPending = null; // the permission whose system prompt is open
+
+function permRow({ kind, label, state }) {
+  const shown = permPending === kind ? 'pending' : state;
+  const actionable = !['granted', 'missing', 'pending', 'denied', 'restricted'].includes(shown);
+  const row = document.createElement('div');
+  row.className = `perm-row${actionable ? ' clickable' : ''}`;
+  row.setAttribute('role', 'listitem');
+  row.dataset.perm = kind;
+  row.dataset.state = shown;
+  row.innerHTML = `<span class="perm-icon">${permIco(kind)}</span><div class="perm-main"><div class="perm-title"></div><div class="perm-desc"></div></div>`;
+  row.querySelector('.perm-title').textContent = label;
+  row.querySelector('.perm-desc').textContent = PERM_HINT[shown] || PERM_DESC[kind] || '';
+  const ask = async () => {
+    if (permPending) return;
+    permPending = kind;
+    renderPerms(permState);
+    let st = permState;
+    try {
+      st = await window.pet.permRequest(kind);
+    } finally {
+      permPending = null;
+      renderPerms(st);
+    }
+  };
+  if (shown === 'granted') {
+    row.insertAdjacentHTML('beforeend', `<span class="perm-done" aria-label="已授权" role="img">${permIco('check')}</span>`);
+  } else if (shown === 'pending') {
+    row.insertAdjacentHTML('beforeend', `<span class="perm-wait">${permIco('loader')}等待授权</span>`);
+  } else if (shown === 'denied' || shown === 'restricted') {
+    // a refusal can only be changed in System Settings
+    const b = document.createElement('button');
+    b.className = 'btn btn-sm';
+    b.type = 'button';
+    b.dataset.permSettings = kind;
+    b.textContent = '去系统设置';
+    b.addEventListener('click', () => window.pet.permOpenSettings(kind));
+    row.appendChild(b);
+  } else if (actionable) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-sm';
+    b.type = 'button';
+    b.dataset.permAsk = kind;
+    b.textContent = '授权';
+    b.addEventListener('click', (e) => { e.stopPropagation(); ask(); });
+    row.addEventListener('click', ask);
+    row.appendChild(b);
+  }
+  return row;
+}
+
+function renderPerms(st) {
+  permState = st;
+  const local = $('local-opt').checked;
+  const sys = $('perm-system');
+  sys.innerHTML = '';
+  if (st.mac) {
+    sys.appendChild(permRow({ kind: 'microphone', label: '麦克风', state: st.mic || 'unknown' }));
+    if (local) for (const f of st.folders) sys.appendChild(permRow({ kind: f.id, label: `“${f.label}”文件夹`, state: f.status }));
+  }
+  sys.classList.toggle('hidden', !st.mac);
+  $('perm-folders').classList.toggle('hidden', !local);
+  const list = $('perm-folder-list');
+  list.innerHTML = '';
+  for (const f of st.local.folders) {
+    const li = document.createElement('li');
+    li.dataset.folder = f;
+    li.innerHTML = `${permIco('folder', 'folder')}<span class="path"></span><button class="btn icon-btn btn-text" type="button">${permIco('x')}</button>`;
+    li.querySelector('.path').textContent = f;
+    li.querySelector('.path').title = f;
+    li.querySelector('button').setAttribute('aria-label', `移除 ${f}`);
+    li.querySelector('button').title = '移除';
+    li.querySelector('button').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersSet({ remove: f })));
+    list.appendChild(li);
+  }
+  if (!st.local.folders.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '还没有文件夹：她暂时读不了任何文件';
+    list.appendChild(li);
+  }
+}
+
+// 唤醒 on the choose page: the 授权 page when there is something to ask, else straight to waking her up.
+async function showPerms() {
+  const st = await window.pet.permStatus();
+  if (!st.mac && !$('local-opt').checked) return startHatch();
+  // her portrait where LobeHub's onboarding has its logo
+  const ch = characterOf(selected);
+  setLook($('perm-logo'), ch.portrait, { className: 'perm-look', alt: ch.name, action: () => 'idle', speciesId: ch.base });
+  renderPerms(st);
+  window.pet.place('perms');
+  show('perms');
+}
+
+function bindPerms() {
+  $('perm-add').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersAdd()));
+  $('perms-next').addEventListener('click', () => { window.pet.place('onboarding'); startHatch(); });
+  $('perms-back').addEventListener('click', () => { window.pet.place('onboarding'); show('onboarding'); });
+}
+
 // ---------- hatching ----------
 const STEP_ORDER = ['checking-login', 'login', 'choose-space', 'creating-agent', 'connecting-device', 'hatching'];
 
@@ -1638,6 +1764,8 @@ function bindPetUi() {
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
+    // AI 可读的文件夹 (T-5075): the folders could not be enforced this turn, so she answered without her tools
+    if (r.ok && r.localNote) showNotice('这次用不了本机工具', r.localNote.replace(/^这次用不了本机工具：/, ''), { label: '去设置', admin: 'connection' });
     if (!r.ok && r.reason === 'error') say(errorLine(r), 'error', 'error', r.message);
     if (!r.ok && r.reason === 'local-error') say(`（这台电脑现在连不上，读不了文件：${String(r.message || '').slice(0, 60)}）`, 'error', 'fallback', r.message);
     if (!r.ok && r.reason === 'local-off') say('（要先开启本机能力才能读文件。）', 'error', 'fallback');
@@ -2675,7 +2803,8 @@ async function main() {
   bindPetUi();
   bindResize();
   bindHover();
-  $('hatch-btn').addEventListener('click', startHatch);
+  $('hatch-btn').addEventListener('click', showPerms);
+  bindPerms();
   $('hatch-retry').addEventListener('click', showOnboarding);
   $('age-yes').addEventListener('click', () => answerAgeGate(true));
   $('age-no').addEventListener('click', () => answerAgeGate(false));
