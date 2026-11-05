@@ -64,7 +64,12 @@
     const ri = roomIntents && typeof roomIntents === 'object' ? roomIntents : {};
     for (const [k, ws] of Object.entries(ri)) {
       if (k === 'screen') { for (const [c, list] of Object.entries(ws || {})) if (Array.isArray(list)) screens[c] = [...new Set([...(screens[c] || []), ...list.map(norm)])]; continue; }
-      if (Array.isArray(ws)) states[k] = [...new Set([...(states[k] || []), ...ws.map(norm)])];
+      if (!Array.isArray(ws)) continue;
+      const own = ws.map(norm);
+      // a word the room gives to one of its states is that state's, even when it is a common word of another
+      // (犯懒 is a common word for 发呆; a room with its own 犯懒 picture takes it)
+      for (const other of Object.keys(states)) if (other !== k) states[other] = states[other].filter((w) => !own.includes(w));
+      states[k] = [...new Set([...(states[k] || []), ...own])];
     }
     return { states, screens };
   }

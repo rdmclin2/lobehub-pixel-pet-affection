@@ -31,7 +31,9 @@ const { spawn } = require('node:child_process');
 const isGame = (p) => p.url().includes('/renderer/game/game.html');
 const isAdmin = (p) => p.url().includes('admin-ui');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const ID = 'her-room-sample';
+// PIXELPET_ROOM_PACK=<games/her-room/pack>: the same run on the real game pack, plus I4b (every state × lamp off / on)
+const REAL_PACK = process.env.PIXELPET_ROOM_PACK || null;
+const ID = REAL_PACK ? 'her-room' : 'her-room-sample';
 // PIXELPET_ROOM_LIVE=1: her replies come from the real LobeHub agent (the logged-in `lh`; a few chat turns of tokens),
 // the agent made for the run is deleted at the end. Otherwise the fake lh echoes the owner's words.
 const LIVE = process.env.PIXELPET_ROOM_LIVE === '1';
@@ -41,10 +43,10 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
     const S = 'illustrated';
     const SHOTS = path.join(OUT, 'illustrated-room');
     fs.mkdirSync(SHOTS, { recursive: true });
-    const SRC_PACK = path.join(ROOT, 'test', 'fixtures', 'games', 'her-room');
+    const SRC_PACK = REAL_PACK || path.join(ROOT, 'test', 'fixtures', 'games', 'her-room');
     const PACK = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-irpack-'));
     for (const f of fs.readdirSync(SRC_PACK)) fs.copyFileSync(path.join(SRC_PACK, f), path.join(PACK, f));
-    const M = { ...JSON.parse(fs.readFileSync(path.join(SRC_PACK, 'manifest.json'), 'utf8')), id: ID, name: '她的房间（小样）' };
+    const M = { ...JSON.parse(fs.readFileSync(path.join(SRC_PACK, 'manifest.json'), 'utf8')), id: ID, name: REAL_PACK ? '她的房间' : '她的房间（小样）' };
     fs.writeFileSync(path.join(PACK, 'manifest.json'), JSON.stringify(M, null, 2));
     const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ircdn-'));
     const { zip } = require(path.join(ROOT, 'scripts', 'build-character-catalog'));
@@ -263,6 +265,63 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
         await shot('i4-phone-next-clip');
         mark('check', `短视频上滑：「${c1.caption}」→「${c2.caption}」`);
         return order.map((k) => `${k}: ${SEEN[k].screens.map((x) => `${x.id}=${x.kind}`).join(',')} ${SEEN[k].pip.caption || ''}`).join('; ') + `; song ${m1}→${m2} s; clip ${c1.id} → ${c2.id}`;
+      });
+
+      if (REAL_PACK) await step(S, 'I4b 整包：8 个状态各有专门的插画，每个状态台灯关 / 开两版；床 ↔ 书桌先起身；眨眼贴片；光斑在画好的灯位', async () => {
+        const lampTo = async (on) => {
+          if ((await g()).lamp.on !== on) await press('#ir-lamp');
+          await until(async () => { const l = (await g()).lamp; return l.on === on && (on ? l.level >= 0.9 : l.level <= 0.02) ? l : null; }, 3000, `lamp ${on}`);
+          await gp.waitForTimeout(450);
+        };
+        const out = [];
+        const R = M.rooms[0];
+        assert.equal((await g()).window.bokeh, R.window.bokeh.spots.length, 'a bokeh light per painted spot');
+        for (const key of ['idle', 'idle-lazy', 'phone', 'music', 'sleep', 'work', 'game']) {
+          const def = R.states[key];
+          mark('step', `${def.label}：专门的姿势，台灯关 / 开`);
+          if (key === 'idle-lazy') {
+            await typeChat('好懒啊，犯懒吧');
+            await settledIn('idle-lazy', 8000);
+          } else if (R.states[(await g()).state].zone !== def.zone) {
+            // 床 ↔ 书桌 goes through 起身: she is seen standing on the way
+            await pressAct(key);
+            await until(async () => { const v = await g(); return v.shown === 'stand' && !v.fading ? v : null; }, 6000, 'she stands up on the way');
+            if (key === 'work') await shot('i4b-stand');
+            await settledIn(key, 8000);
+          } else {
+            await pressAct(key);
+            await settledIn(key, 8000);
+          }
+          await lampTo(false);
+          await gp.waitForTimeout(3500); // the toast and the bubble of the switch have gone: these are the store's screenshots
+          await shot(`i4b-${key}-off`);
+          const a = await g();
+          await lampTo(true);
+          await gp.waitForTimeout(3000);
+          await shot(`i4b-${key}-lit`);
+          const b = await g();
+          assert.equal(b.lamp.litAlpha, 1, `${key}: the lit picture`);
+          assert.deepEqual(a.errors, []);
+          const scr = Object.entries(def.screens || {}).map(([id, c]) => `${id}=${c.content}`).join(' ');
+          for (const [id] of Object.entries(def.screens || {})) assert.ok(b.screens.find((x) => x.id === id), `${key}: screen ${id}`);
+          assert.equal(b.blink.has, !!def.blink, `${key}: blink`);
+          if (def.blink) {
+            assert.equal(b.blink.patch, true, `${key}: the pack's patch`);
+            await gp.evaluate(() => window.__gameTest.holdBlink(1.2));
+            await gp.waitForTimeout(120);
+            assert.equal((await g()).blink.closed, true);
+            await shot(`i4b-${key}-blink-lit`);
+            await gp.waitForTimeout(1300);
+          }
+          out.push(`${key}: ${scr || 'no screen'}; breath ${b.breath ? b.breath.phase : '-'}; blink ${def.blink ? 'patch' : 'none'}`);
+          mark('check', `${def.label}：台灯关 / 开两版、屏幕 ${scr || '无'}、${def.blink ? '眨眼贴片' : '不眨眼'}`);
+          await lampTo(false);
+        }
+        await pressAct('idle');
+        await settledIn('idle', 8000);
+        const end = await g();
+        assert.deepEqual(end.errors, []);
+        return `${out.join(' | ')}; ${end.fps} fps; bokeh ${end.window.bokeh} spots`;
       });
 
       await step(S, 'I5 画面热点：悬停床显示「睡觉 · 床」并描边；真实鼠标点床 → 睡觉，点书桌 → 工作', async () => {

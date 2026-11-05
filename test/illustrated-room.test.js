@@ -82,6 +82,8 @@ test('manifest: states — every activity has one, the default is not transient,
   bad((r) => { r.states.phone.breath.amp = 9; }, /breath: rect .* amp 0–4/);
   bad((r) => { r.states.phone.blink = { eyes: [] }; }, /blink: eyes/);
   bad((r) => { r.states.phone.blink.every = [0, 3]; }, /blink\.every/);
+  bad((r) => { r.window.bokeh.spots = [[-5, 10, 8]]; }, /bokeh\.spots/);
+  bad((r) => { r.window.bokeh.spots = [[300, 100, 500]]; }, /bokeh\.spots/);
   bad((r) => { r.states.phone.bubble = [3000, 10]; }, /bubble must be a point in the world/);
   bad((r) => { r.transition = { seconds: 9 }; }, /transition\.seconds must be 0\.3–4/);
 });
@@ -140,6 +142,12 @@ test('game-store: the sample pack installs from an archive folder (no stray file
 // ---- room-intent ----------------------------------------------------------------------------------------------
 const intents = () => fixture().rooms[0].intents;
 const m = (t, ctx) => RI.matchRoomIntent(t, intents(), ctx);
+
+test('intent: a word the room gives to one of its states wins over the common word of another', () => {
+  assert.equal(RI.matchRoomIntent('犯懒吧', null).state, 'idle');
+  assert.equal(RI.matchRoomIntent('犯懒吧', { 'idle-lazy': ['犯懒'] }).state, 'idle-lazy');
+  assert.equal(RI.matchRoomIntent('发会儿呆吧', { 'idle-lazy': ['犯懒'] }).state, 'idle');
+});
 test('room-intent: the reference video’s own sentences', () => {
   assert.deepEqual(pickI(m('回床上休息吧')), { state: 'sleep', lamp: null, screen: null, stop: false });
   assert.deepEqual(pickI(m('现在去试一下打开电脑刷抖音吧')), { state: 'work', lamp: null, screen: 'clips', stop: false });

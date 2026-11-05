@@ -199,17 +199,21 @@
     const B = WIN.bokeh;
     const [r0, r1] = B.r || [6, 20];
     const [p0, p1] = B.period || [2, 6];
-    for (let i = 0; i < B.count; i++) {
+    // the pack's `spots` ([x, y, r, warm?]: where the lights are painted, so they twinkle in place) or random ones
+    const spots = Array.isArray(B.spots) ? B.spots : null;
+    for (let i = 0; i < (spots ? spots.length : B.count); i++) {
       const s = new P.Sprite(BOKEH);
       s.anchor.set(0.5);
       s.blendMode = 'add';
-      const warm = rnd() < (B.warmRatio || 0);
+      const spot = spots && spots[i];
+      const warm = spot ? !!spot[3] : rnd() < (B.warmRatio || 0);
       s.tint = warm ? 0xffc98a : [0x9fc8ff, 0xcfe3ff, 0x7fb0ff][i % 3];
-      const r = r0 + rnd() * (r1 - r0);
+      const r = spot ? spot[2] : r0 + rnd() * (r1 - r0);
       s.width = s.height = r * 2;
-      s.position.set(winBox[0] + rnd() * (winBox[2] - winBox[0]), winBox[1] + (winBox[3] - winBox[1]) * (0.25 + rnd() * 0.75));
+      if (spot) s.position.set(spot[0], spot[1]);
+      else s.position.set(winBox[0] + rnd() * (winBox[2] - winBox[0]), winBox[1] + (winBox[3] - winBox[1]) * (0.25 + rnd() * 0.75));
       bokehLayer.addChild(s);
-      bokeh.push({ s, base: 0.25 + rnd() * 0.35, amp: 0.15 + rnd() * 0.3, w: (Math.PI * 2) / (p0 + rnd() * (p1 - p0)), ph: rnd() * 6.28, vx: (rnd() - 0.5) * 2 });
+      bokeh.push({ s, base: 0.25 + rnd() * 0.35, amp: 0.15 + rnd() * 0.3, w: (Math.PI * 2) / (p0 + rnd() * (p1 - p0)), ph: rnd() * 6.28, vx: spot ? 0 : (rnd() - 0.5) * 2 });
     }
   }
   const rain = [];
@@ -361,6 +365,17 @@
     buf.update();
   }
 
+  // the room's parts atlas (blink patches …): `sprites` is its index { name: { x, y, w, h } }
+  let partsLoad = null;
+  function partsAtlas() {
+    if (!partsLoad) {
+      const file = room.images && room.images.parts;
+      const index = room.sprites && boot.game.sprites ? boot.game.sprites[room.sprites] : null;
+      partsLoad = file && index ? load(file).then((a) => ({ tex: a.tex, index })) : Promise.resolve(null);
+    }
+    return partsLoad;
+  }
+
   async function buildScene(key) {
     const def = room.states[key];
     const [off, lit] = await Promise.all([load(def.images.off), def.images.lit ? load(def.images.lit) : Promise.resolve(null)]);
@@ -383,6 +398,26 @@
       const skin = def.blink.eyes.map(([x, y, , ry]) => ({ off: colourAt(off.bmp, x, y + ry * 1.25), lit: lit ? colourAt(lit.bmp, x, y + ry * 1.25) : null }));
       sc.blink = { g, eyes: def.blink.eyes, skin, every: def.blink.every || [3, 6] };
       c.addChild(g);
+    } else if (def.blink && def.blink.sprite) {
+      // her eyes closed: the pack's patches (cut from the same illustration with only the eyes redrawn), one per lamp
+      const atlas = await partsAtlas();
+      const patch = (name) => {
+        const f = name && atlas && atlas.index[name];
+        if (!f) return null;
+        const sp = new P.Sprite(new P.Texture({ source: atlas.tex.source, frame: new P.Rectangle(f.x, f.y, f.w, f.h) }));
+        sp.position.set(def.blink.at[0], def.blink.at[1]);
+        sp.width = f.w; sp.height = f.h;
+        return sp;
+      };
+      const pOff = patch(def.blink.sprite.off), pLit = patch(def.blink.sprite.lit);
+      if (pOff) {
+        const g = new P.Container();
+        g.visible = false;
+        g.addChild(pOff);
+        if (pLit) g.addChild(pLit);
+        sc.blink = { g, pLit, every: def.blink.every || [3, 6] };
+        c.addChild(g);
+      }
     }
     // screens
     const screens = st.view.state === key && st.view.screens ? st.view.screens : IRP.screensFor(room, key);
@@ -420,6 +455,7 @@
   }
   function drawBlink(sc) {
     const b = sc.blink;
+    if (!b.eyes) { if (b.pLit) b.pLit.alpha = st.lamp; return; }
     b.g.clear();
     b.eyes.forEach(([x, y, rx, ry], i) => {
       const s = b.skin[i];
@@ -644,6 +680,8 @@
   function renderPip() {
     const s = mainScreen();
     $('ir-pip').classList.toggle('hidden', !st.pipOpen || !s);
+    // the card sits on the side she is not on: right while she is in bed (left of the picture), left at the desk
+    $('ir-pip').classList.toggle('right', IRP.zoneOf(room, st.view.state) !== 'desk');
     if (!s || !st.pipOpen) return;
     const portrait = s.content.canvas.height > s.content.canvas.width;
     const key = `${s.id}:${s.kind}:${portrait}`;
@@ -815,7 +853,7 @@
       lamp: { on: st.lampTarget === 1, level: Math.round(st.lamp * 1000) / 1000, glowAlpha: Math.round(lampGlow.alpha * 1000) / 1000, litAlpha: sc && sc.litS ? Math.round(sc.litS.alpha * 1000) / 1000 : null, grade: grade.matrix.slice(0, 15).filter((_, i) => i % 6 === 0).map((v) => Math.round(v * 1000) / 1000) },
       window: { rain: rain.length, drops: drops.length, bokeh: bokeh.length, bokehAlpha: bokeh.slice(0, 6).map((x) => Math.round(x.s.alpha * 100) / 100), rainY: rain.slice(0, 3).map((d) => Math.round(d.y)) },
       breath: b ? { offset: Math.round((b.buf.data[(4 * 9 + 4) * 2 + 1] - b.base[(4 * 9 + 4) * 2 + 1]) * 100) / 100, phase: Math.round(sc.phase * 100) / 100 } : null,
-      blink: { count: st.blinks, closed: !!(sc && sc.blink && sc.blink.g.visible), has: !!(sc && sc.blink) },
+      blink: { count: st.blinks, closed: !!(sc && sc.blink && sc.blink.g.visible), has: !!(sc && sc.blink), patch: !!(sc && sc.blink && !sc.blink.eyes) },
       screens: sc ? sc.screens.map((s) => ({ id: s.id, kind: s.kind, corners: s.corners, glow: Math.round(s.glow.alpha * 100) / 100, ...s.content.info() })) : [],
       fx: fxLayer.children.map((t) => t.text),
       transitions: st.transitions.map((t) => ({ ...t })), fading: st.fades.length > 0, scenesOnStage: scenes.children.length,
@@ -836,5 +874,6 @@
     nextClip: () => { if (st.scene) for (const s of st.scene.screens) if (s.kind === 'clips') s.content.next(); },
     refresh: async () => { const r = await window.game.room({ cmd: 'state' }); setView(r); return r; },
     openStats,
+    holdBlink: (seconds) => { const sc = st.scene; if (sc && sc.blink) { drawBlink(sc); sc.blink.g.visible = true; sc.blinkLeft = seconds; } },
   };
 })();

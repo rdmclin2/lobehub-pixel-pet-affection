@@ -161,6 +161,7 @@ function validateOpenRoom(r, at, { files, sprites, fileRe }) {
     if (win.bokeh !== undefined && win.bokeh !== null) {
       const b = win.bokeh;
       if (!isObj(b) || !inRange(b.count, 0, 200) || (b.r !== undefined && !pair(b.r, 1, 120)) || (b.period !== undefined && !pair(b.period, 0.5, 30)) || (b.warmRatio !== undefined && !inRange(b.warmRatio, 0, 1))) e.push(`${at}.window.bokeh: count 0–200, r [a, b] 1–120, period [a, b] 0.5–30, warmRatio 0–1`);
+      else if (b.spots !== undefined && !(Array.isArray(b.spots) && b.spots.length <= 200 && b.spots.every((q) => Array.isArray(q) && q.length >= 3 && inWorld([q[0], q[1]]) && inRange(q[2], 1, 120)))) e.push(`${at}.window.bokeh.spots: up to 200 [x, y, r, warm?] in the world, r 1–120`);
     }
   }
   // screens
