@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('pet', {
     close: (reason) => ipcRenderer.send('pet-panel:close', { reason }),
     update: (payload) => ipcRenderer.send('pet-panel:update', payload),
     restore: (text) => ipcRenderer.send('pet-panel:restore', { text }), // a panel message she did not send goes back (T-6162)
+    mic: (m) => ipcRenderer.send('pet-panel:mic', m), // the panel's 🎤: how the recording goes, then the recognised text
     onAct: on('panel-act'),
     onClosed: on('panel-closed'),
   },

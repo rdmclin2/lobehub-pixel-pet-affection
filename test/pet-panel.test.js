@@ -105,3 +105,37 @@ test('the panel chat box: a message her window did not send (she was busy) goes 
   p.win = null;
   assert.doesNotThrow(() => p.restore({ text: 'no window yet' }));
 });
+
+// 语音输入 in the panel (T-6162): its 🎤 records in her window with the panel left open; main relays how it goes
+test('the panel 🎤: voice / voice-cancel keep the panel open and reach her window', () => {
+  const { PetPanel } = require('../src/main/pet-panel');
+  const got = [];
+  const p = new PetPanel({ onAct: (m) => got.push(m) });
+  const closes = [];
+  p.close = (r) => { closes.push(r); return true; };
+  p.act({ act: 'voice' });
+  p.act({ act: 'voice-cancel' });
+  assert.deepEqual(got.map((m) => m.act), ['voice', 'voice-cancel']);
+  assert.deepEqual(closes, [], 'the panel stays open while it listens');
+  p.act({ act: 'attach', text: '草稿' });
+  assert.deepEqual(closes, ['act'], '📎 still closes it (her chat bar opens)');
+});
+
+test('the panel 🎤: how the recording goes and the recognised text go to the panel page, cleaned', () => {
+  const { PetPanel } = require('../src/main/pet-panel');
+  const p = new PetPanel();
+  const sent = [];
+  p.win = { isDestroyed: () => false, webContents: { send: (ch, m) => sent.push([ch, m]) } };
+  p.mic({ state: 'recording', sec: 3.4, max: 60, engine: 'LobeHub 云端识别' });
+  p.mic({ state: 'idle', text: 'z'.repeat(2100), autoSend: 1 });
+  p.mic({ state: 'idle', text: '', note: '她还在回上一句' });
+  p.mic(null);
+  assert.deepEqual(sent.map(([ch]) => ch), ['pet-panel:mic', 'pet-panel:mic', 'pet-panel:mic']);
+  assert.deepEqual(sent[0][1], { state: 'recording', sec: 3, max: 60, engine: 'LobeHub 云端识别' });
+  assert.equal(sent[1][1].text.length, 2000);
+  assert.equal(sent[1][1].autoSend, true);
+  assert.equal(sent[2][1].text, undefined);
+  assert.equal(sent[2][1].note, '她还在回上一句');
+  p.win = null;
+  assert.doesNotThrow(() => p.mic({ state: 'idle' }));
+});

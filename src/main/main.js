@@ -1222,6 +1222,7 @@ function wire() {
   ipcMain.on('pet-panel:close', (e, { reason } = {}) => { if (fromPet(e)) petPanel.close(String(reason || 'pet')); });
   ipcMain.on('pet-panel:update', (e, payload) => { if (fromPet(e)) petPanel.update(payload); });
   ipcMain.on('pet-panel:restore', (e, m) => { if (fromPet(e)) petPanel.restore(m); });
+  ipcMain.on('pet-panel:mic', (e, m) => { if (fromPet(e)) petPanel.mic(m); });
   ipcMain.on('pet-panel:act', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.act(m); });
   ipcMain.on('pet-panel:chat', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.chat(m); });
   ipcMain.on('pet-panel:draft', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.draft(m); });
@@ -1614,12 +1615,13 @@ app.whenReady().then(() => {
   });
   wire();
   // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there, so her
-  // window gets the keyboard, as for 📎 / 🎤 (her chat bar opens there). What is typed in its chat box goes there
-  // too (act chat / draft) and is sent from there.
+  // window gets the keyboard, as for 📎 (her chat bar opens there). Its 🎤 records in her window too, but the panel
+  // keeps the focus (it stays open and gets the text). What is typed in its chat box goes there too (act chat /
+  // draft) and is sent from there.
   petPanel = new PetPanel({
     onAct: (m) => {
       if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小游戏: main opens it, her window hides
-      if (['dance', 'attach', 'voice'].includes(m.act) && win && !win.isDestroyed()) win.focus();
+      if (['dance', 'attach'].includes(m.act) && win && !win.isDestroyed()) win.focus();
       send('panel-act', m);
     },
     onClosed: (m) => send('panel-closed', m),

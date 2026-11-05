@@ -7744,24 +7744,49 @@ async function asrScenario() {
       // the engine back to 本地: 🎤 is there again in the restarted app
       await pickSeg('识别引擎', '本地服务');
       await toast(/已保存：识别引擎 → 本地服务/);
+      // the panel's 🎤 below waits in the box for the words (识别后直接发送 is A7's)
+      assert.equal((await adminSet(admin, 'asr.autoSend', false)).ok, true);
       await admin.close().catch(() => {});
       admin = null;
       await p.bringToFront();
       await hover(p);
       // 🎤 in her panel's chat box (T-6162) and in her window's chat bar
+      let closes0 = 0;
       const pp = await openPanelPage(p);
       await pp.waitForSelector('#pp-chat-mic:not(.hidden)', { timeout: 5000 });
-      // the panel's 🎤: the draft goes to her chat bar and she starts listening (as the voice hotkey); Esc cancels
+      // the panel's 🎤 records right here: the panel stays open (■ Ns, 正在听), the words land after the draft
       await pp.fill('#pp-chat-input', '帮我记一下');
+      const before = mock.log.length;
       await pp.click('#pp-chat-mic');
       await p.waitForFunction(() => window.petFx.micState() === 'recording', null, { timeout: 10000 });
-      const handed = await p.inputValue('#chat-input');
-      assert.equal(handed, '帮我记一下', 'the draft moved into her chat bar');
-      assert.equal(await p.isVisible('#chat-mic'), true);
-      await p.keyboard.press('Escape');
+      await pp.waitForFunction(() => /^■ \d+s$/.test(document.getElementById('pp-chat-mic').textContent.trim()), null, { timeout: 5000 });
+      await pp.waitForTimeout(1600);
+      const recHint = (await pp.textContent('#pp-chat-hint')).trim();
+      assert.match(recHint, /^正在听 \d+s \/ \d+s$/);
+      assert.equal(await pp.getAttribute('#pp-chat-input', 'placeholder'), '正在听…');
+      closes0 = await p.evaluate(() => window.__panel.closes.length);
+      await pp.screenshot({ path: path.join(SHOTS, 'a10-panel-recording.png') });
+      await pp.click('#pp-chat-mic');
+      await pp.waitForFunction((t) => document.getElementById('pp-chat-input').value === `帮我记一下 ${t}`, mock.TEXT, { timeout: 15000 });
+      await pp.waitForFunction(() => document.getElementById('pp-chat-mic').dataset.state === 'idle');
+      assert.equal(mock.log.length, before + 1, 'one clip recognised');
+      assert.equal(await p.inputValue('#chat-input'), '', 'her own chat bar is untouched');
+      assert.equal(await pp.evaluate(() => document.activeElement && document.activeElement.id), 'pp-chat-input', 'the box has the focus to go on typing');
+      const filled = await pp.inputValue('#pp-chat-input');
+      await pp.screenshot({ path: path.join(SHOTS, 'a10-panel-text-in-box.png') });
+      // Esc while it listens throws the recording away and the panel stays open
+      await pp.click('#pp-chat-mic');
+      await p.waitForFunction(() => window.petFx.micState() === 'recording', null, { timeout: 10000 });
+      await pp.keyboard.press('Escape');
       await p.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 10000 });
-      await p.fill('#chat-input', '');
-      return note(`relaunched with the same data dir → 语音输入 controls ${JSON.stringify(ui)}; engine → local shows 🎤 again (panel chat box and her chat bar); panel 🎤 → recording with 「${handed}」 in her chat bar, Esc → idle`);
+      await pp.waitForFunction(() => document.getElementById('pp-chat-mic').dataset.state === 'idle');
+      assert.equal(await pp.inputValue('#pp-chat-input'), filled, 'Esc keeps what is in the box');
+      assert.equal(mock.log.length, before + 1, 'the canceled clip is not sent');
+      const closes1 = await p.evaluate(() => window.__panel.closes.length);
+      assert.equal(closes1, closes0, 'the panel stayed open the whole time');
+      await pp.keyboard.press('Escape');
+      await pp.fill('#pp-chat-input', '').catch(() => {});
+      return note(`relaunched with the same data dir → 语音输入 controls ${JSON.stringify(ui)}; engine → local shows 🎤 again (panel chat box and her chat bar); panel 🎤 → 「${recHint}」 with the panel open → 「${filled}」 in the panel box (her chat bar empty); Esc while listening → idle, nothing sent, panel still open`);
     }, () => again && again.page);
     if (again) await again.app.close().catch(() => {});
   } finally {

@@ -937,7 +937,7 @@ function panelPayload() {
     needs: [need('hunger', '饱腹', p.hunger, true), need('mood', '心情', p.mood, false), need('energy', '体力', p.energy, false)],
     foods: Object.entries(info.foods).map(([id, f]) => ({ id, label: f.label })),
     reset: !!(view.look && view.look.kind === 'vrm'),
-    voice: asrOn() && !VISITOR, // 🎤 in the panel's chat box (T-6162)
+    voice: VISITOR ? null : asrOn() ? 'on' : 'off', // 🎤 in the panel's chat box (T-6162): 'off' leads to 设置 → 语音输入
     dance: { ...panelUi.dance },
     mute: { ...panelUi.mute },
     news: panelUi.news,
@@ -1919,15 +1919,17 @@ function syncDanceButton() {
 // A button in her panel (main forwards it here: panel-act): what each one does in her window. The panel closes
 // itself for everything but 静音 (switches in place) and 喂食 (its foods open in the panel; picking one sends
 // feed with that food). Its chat box (T-6162) sends `chat` with the text, sent from here like her own chat box,
-// and `draft` while typing (插个嘴); its 📎 / 🎤 (attach / voice) open her own chat bar here with the draft in it,
-// since pictures, files and the microphone live in this window.
+// and `draft` while typing (插个嘴); its 📎 (attach) opens her own chat bar here with the draft in it,
+// since pictures and files live in this window; its 🎤 (voice) records here and the text goes back into the
+// panel's box (panelVoice).
 let sendChat = null; // bindPetUi: send(text) — the text typed in her panel, or her own chat box when none is given
 function runAct(act, food, text) {
   if (act === 'draft') { sendDraft(text); return; }
   if (act === 'chat') { if (sendChat) sendChat(text); return; }
-  if (act === 'attach' || act === 'voice') {
+  if (act === 'voice') { panelVoice(); return; }
+  if (act === 'voice-cancel') { if (mic.target === 'panel') micStop(true); return; }
+  if (act === 'attach') {
     takeDraft(text);
-    if (act === 'voice') { onVoiceHotkey({ source: 'panel' }); return; } // as the voice hotkey: she starts listening
     pointerInside = true; // the panel was beside her: her chat bar shows at once
     openChat();
     $('attach-btn').click();
@@ -2123,6 +2125,7 @@ function bindPanel() {
   // main says when it closed (and why): Esc in it, a click elsewhere, a button, her window moving …
   window.pet.panel.onClosed((m) => {
     petPanelShown = false;
+    micToBar(); // its 🎤 was recording: that goes on in her chat bar
     panelLog.closes.push((m && m.reason) || 'closed');
     if (panelLog.closes.length > 50) panelLog.closes.shift();
   });
@@ -2658,7 +2661,7 @@ const ASR_REASON = {
   'mic-error': '麦克风打不开',
   canceled: '已取消。',
 };
-let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, timer: null, tick: null, pressAt: 0, cancel: false };
+let mic = { state: 'idle', target: 'bar', rec: null, stream: null, chunks: [], t0: 0, ms: 0, timer: null, tick: null, pressAt: 0, cancel: false };
 let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
@@ -2681,10 +2684,14 @@ function asrReasonText(r) {
   return base;
 }
 
-// The 🎤 button, the status line above the box and the box itself follow mic.state.
+// The 🎤 button, the status line above the box and the box itself follow mic.state (and the panel's 🎤, when
+// it was pressed there).
 function paintMic() {
   const b = $('chat-mic');
   if (!b) return;
+  if (mic.target === 'panel') {
+    window.pet.panel.mic({ state: mic.state, sec: mic.state === 'recording' ? Math.floor((performance.now() - mic.t0) / 1000) : 0, max: (settings && settings.asr && settings.asr.maxSeconds) || 60, engine: settings && settings.asr ? ASR_NAME[settings.asr.engine] || '' : '' });
+  }
   const input = $('chat-input');
   const st = $('mic-status');
   const s = mic.state;
@@ -2739,6 +2746,30 @@ function syncMic() {
   const on = asrOn() && !VISITOR;
   b.classList.toggle('hidden', !on);
   if (!on && micActive()) micStop(true);
+  pushPanel(); // the panel's 🎤 follows 语音输入 too
+}
+
+// The 🎤 in her panel's chat box (T-6162): the same recorder as her own 🎤, the microphone in this window, but
+// the panel stays open — it shows the recording (paintMic) and gets the recognised text in its box (micDone).
+// Pressed again it stops and recognises; Esc there cancels (voice-cancel). With 语音输入 off it opens
+// 设置 → 语音输入. If the panel closes meanwhile (a click elsewhere, a system microphone prompt took its
+// focus), the recording carries on in her own chat bar.
+function panelVoice() {
+  if (VISITOR) return;
+  if (!asrOn()) { openSettings('asr'); return; }
+  if (mic.state === 'recording') { micStop(); return; }
+  if (mic.state !== 'idle') return; // opening the microphone / recognising
+  if (thinking) { window.pet.panel.mic({ state: 'idle', note: '她还在回上一句，等她说完再说' }); return; }
+  micStart('panel');
+}
+function micToBar() {
+  if (mic.target !== 'panel') return;
+  mic.target = 'bar';
+  if (!micActive()) return;
+  pointerInside = true; // her chat bar shows at once, with the recording in it
+  openChat();
+  paintMic();
+  syncHover();
 }
 
 function micRelease() {
@@ -2750,8 +2781,9 @@ function micRelease() {
   mic.chunks = [];
 }
 
-async function micStart() {
+async function micStart(target = 'bar') {
   if (mic.state !== 'idle' || !asrOn() || thinking) return;
+  mic.target = target;
   mic.state = 'starting';
   paintMic();
   syncHover();
@@ -2824,6 +2856,14 @@ async function micDone(rec) {
   syncHover();
   lastAsr = { ...r, bytes: blob.size, mime, clipMs: ms, at: Date.now() };
   if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); else endVoiceCall('canceled'); return; }
+  if (mic.target === 'panel' && petPanelShown) {
+    // the panel's 🎤: the text goes into the panel's box (it sends at once with 识别后直接发送)
+    lastAsr.sent = !!settings.asr.autoSend && !thinking;
+    window.pet.panel.mic({ state: 'idle', text: r.text, autoSend: lastAsr.sent });
+    if (settings.asr.autoSend && thinking) showNotice('🎤 已填进输入框', '她还在回上一句，等她说完再发送。');
+    endVoiceCall('ok', lastAsr);
+    return;
+  }
   const input = $('chat-input');
   const cur = input.value.trimEnd();
   input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 400);

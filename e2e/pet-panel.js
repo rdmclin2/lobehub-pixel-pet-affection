@@ -392,11 +392,13 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         return `box ${h0} → ${h1}px, window ${win0} → ${win1}px for 4 lines; IME Enter kept the text; Enter → panel closed (${st.closes[st.closes.length - 1]}), she answered 「${bubble.text.slice(0, 60)}」 (source ${bubble.source}); her agent got all four lines (with the line breaks); box empty on reopening`;
       }, page);
 
-      await step(S, 'P9 面板聊天框的 📎：草稿带到她身边的聊天条（图片 / 文件 / 🎤 在那里），并打开选图；语音输入没开时没有 🎤', async () => {
+      await step(S, 'P9 面板聊天框的 📎：草稿带到她身边的聊天条（图片 / 文件在那里），并打开选图；语音输入没开时 🎤 引导去设置', async () => {
         // the native picker: answer 「取消」 and count the asks
         await app.evaluate(({ dialog }) => { global.__picks = 0; dialog.showOpenDialog = async () => { global.__picks += 1; return { canceled: true, filePaths: [] }; }; });
         const pp = await openPetPanel(page);
-        assert.equal(await pp.isVisible('#pp-chat-mic'), false, '🎤 hidden while 语音输入 is off');
+        // 🎤 is there with 语音输入 off too: it leads to 设置 → 语音输入 (the asr run records with it)
+        assert.equal(await pp.isVisible('#pp-chat-mic'), true, '🎤 shown while 语音输入 is off');
+        assert.match(await pp.getAttribute('#pp-chat-mic', 'title'), /语音输入还没开/);
         await pp.fill('#pp-chat-input', '看看这张图\n是我拍的');
         await pshot(pp, 'p9-attach-draft');
         await pp.click('#pp-chat-attach');
@@ -414,7 +416,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await reopened.keyboard.press('Escape');
         await waitPanel(page, false);
         await page.fill('#chat-input', '');
-        return `📎 → panel closed, her chat bar open with 「${moved}」, picker asked ${picks}×; 🎤 hidden (语音输入 off)`;
+        return `📎 → panel closed, her chat bar open with 「${moved}」, picker asked ${picks}×; 🎤 shown, titled 语音输入还没开 (语音输入 off)`;
       }, page);
 
       // ---- 检查更新… in the Pixel Pet menu (built on Linux for the run: PIXELPET_E2E_APP_MENU=1) ----

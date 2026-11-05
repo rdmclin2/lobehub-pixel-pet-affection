@@ -2,7 +2,7 @@
 
 // 她的面板 (src/main/pet-panel.js): the panel page's whole bridge — it can press one of its buttons, report its
 // height, send what was typed in its chat box (and the draft, for 插个嘴) and ask to close; it hears what to
-// show (when it opens and whenever that changes) and when it closed.
+// show (when it opens and whenever that changes), when it closed, and how its 🎤 recording goes (onMic).
 const { contextBridge, ipcRenderer } = require('electron');
 
 const on = (channel) => (cb) => {
@@ -20,4 +20,5 @@ contextBridge.exposeInMainWorld('petPanel', {
   onShow: on('pet-panel:show'),
   onClosed: on('pet-panel:closed'),
   onRestore: on('pet-panel:restore'),
+  onMic: on('pet-panel:mic'),
 });

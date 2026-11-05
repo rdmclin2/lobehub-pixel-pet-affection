@@ -38,14 +38,15 @@
       <div id="food-menu" class="pp-foods hidden" role="group" aria-label="喂她吃什么"></div>
       <!-- 和她聊天 (T-6162): the chat box lives here, a multi-line box — Enter sends, Shift+Enter starts a new line.
            The text goes to her window (pet-panel:chat → panel-act chat), which sends it as her own chat box did;
-           she starts thinking, so the panel closes and her reply shows in the bubble over her. 📎 / 🎤 hand the
-           draft over to her window's own chat bar, where pictures, files and the microphone live. -->
+           she starts thinking, so the panel closes and her reply shows in the bubble over her. 🎤 records right here:
+           press, speak, press again, and the words land in the box. 📎 hands the draft over to her window's own
+           chat bar, where pictures and files live. -->
       <form id="pp-chat" class="pp-chat" autocomplete="off">
         <textarea id="pp-chat-input" class="pp-chat-input" rows="2" maxlength="2000" placeholder="和她说点什么…" aria-label="和她聊天" title="Enter 发送，Shift+Enter 换行"></textarea>
         <div class="pp-chat-bar">
           <button id="pp-chat-attach" type="button" class="btn icon-btn pp-chat-tool" title="添加图片或文件（也可以把图片粘贴、文件拖到她身上）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
-          <button id="pp-chat-mic" type="button" class="btn icon-btn pp-chat-tool hidden" title="语音输入：她开始听，说完再点她身边的 🎤 结束" aria-label="语音输入"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
-          <span class="pp-chat-hint">Shift+Enter 换行</span>
+          <button id="pp-chat-mic" type="button" class="btn icon-btn pp-chat-tool pp-chat-mic hidden" data-state="idle" title="语音输入：点一下开始说，再点一下结束" aria-label="语音输入" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
+          <span id="pp-chat-hint" class="pp-chat-hint" role="status" aria-live="polite">Shift+Enter 换行</span>
           <button id="pp-chat-send" type="submit" class="btn primary pp-chat-send" disabled>发送</button>
         </div>
       </form>

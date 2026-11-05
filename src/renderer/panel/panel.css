@@ -72,4 +72,10 @@ body { padding: 12px; overflow: hidden; }
 .pp-chat-bar .pp-chat-tool .ico { width: 14px; height: 14px; }
 .pp-chat-bar .pp-chat-tool:hover:not(:disabled) { border-color: transparent; background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text); }
 .pp-chat-bar .pp-chat-tool.hidden { display: none; }
+/* its 🎤 (T-6162) records right here: red and pulsing while it listens (as her own 🎤), a spinner while it is recognised */
+.pp-chat-bar .pp-chat-mic[data-state="recording"], .pp-chat-bar .pp-chat-mic[data-state="recording"]:hover:not(:disabled) { min-width: 40px; padding: 2px var(--pet-space-xxs); font-size: 11px; font-variant-numeric: tabular-nums; background: var(--lobe-color-error); border-color: var(--lobe-color-error); color: var(--pet-on-solid); animation: mic-pulse 1s ease-in-out infinite; }
+.pp-chat-bar .pp-chat-mic[data-state="starting"], .pp-chat-bar .pp-chat-mic[data-state="stopping"], .pp-chat-bar .pp-chat-mic[data-state="transcribing"] { cursor: progress; }
+.pp-chat-bar .pp-chat-mic .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: mic-spin .7s linear infinite; }
+.pp-chat-hint[data-mic="recording"] { color: var(--lobe-color-error); }
+.pp-chat-hint[data-mic="transcribing"], .pp-chat-hint[data-mic="note"] { color: var(--lobe-color-text-tertiary); }
 .pp-chat-send { flex: none; min-height: 24px; padding: 2px var(--pet-space-sm); font-size: 12px; }
