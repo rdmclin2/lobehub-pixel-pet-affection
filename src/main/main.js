@@ -46,7 +46,8 @@ const { buildRoster, packRows, adminView } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
-const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
+// perms: the onboarding's 授权 page (T-5075) is taller: its permission list and folders fit without scrolling
+const SIZES = { onboarding: { w: 680, h: 480 }, perms: { w: 680, h: 600 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
@@ -105,9 +106,10 @@ function resizePet(k) {
 }
 
 function place(mode) {
-  const { w, h } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
   const wa = screen.getPrimaryDisplay().workArea;
-  if (mode === 'onboarding') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
+  const { w, h: want } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
+  const h = mode === 'perms' ? Math.min(want, wa.height - 48) : want; // a short screen: the page scrolls instead
+  if (mode === 'onboarding' || mode === 'perms') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
 }
 

@@ -9878,7 +9878,7 @@ async function permissionsScenario() {
     await page.click('.char-card[data-species="grok"]');
     return { app, page, data, fakeDir };
   };
-  const tags = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#perm-system .perm-row')].map((r) => [r.dataset.perm, r.querySelector('.perm-tag').textContent])));
+  const tags = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#perm-system .perm-row')].map((r) => [r.dataset.perm, r.dataset.state])));
   const listed = (page) => page.evaluate(() => [...document.querySelectorAll('#perm-folder-list li[data-folder]')].map((li) => li.dataset.folder));
 
   // ---- A: macOS (faked) --------------------------------------------------------------------------------------
@@ -9893,23 +9893,31 @@ async function permissionsScenario() {
       await page.check('#local-opt');
       await page.click('#hatch-btn');
       await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
-      assert.deepEqual(await tags(page), { microphone: '未授权', downloads: '未授权 / 未知', desktop: '未授权 / 未知', documents: '未授权 / 未知' });
+      assert.deepEqual(await tags(page), { microphone: 'not-determined', downloads: 'unknown', desktop: 'unknown', documents: 'unknown' });
+      assert.equal(await page.textContent('#perms-title'), '授予权限');
+      assert.equal(await page.locator('#perm-logo .perm-look').count(), 1, 'her portrait where LobeHub has its logo');
       assert.equal(await page.locator('#perm-folders').isVisible(), true);
       assert.deepEqual(await listed(page), []);
       assert.match(await page.textContent('#perm-folder-list'), /还没有文件夹/);
       assert.equal(await page.locator('#perm-system [data-perm-ask]').count(), 4, 'one 授权 button per row');
+      const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+      assert.deepEqual(size, { w: 680, h: 600 }, 'the 授权 page has a taller window');
+      assert.equal(await page.evaluate(() => { const el = document.querySelector('.perm-scroll'); return el.scrollHeight <= el.clientHeight + 1; }), true, 'everything fits without scrolling');
+      await page.waitForTimeout(700); // her portrait has loaded
       await page.screenshot({ path: path.join(SHOTS, 'a1-mac-before.png') });
       return JSON.stringify(await tags(page));
     }, page);
 
     await step(S, 'P2 macOS: 授权 asks one at a time — 麦克风 granted; 下载 granted and added to the list; 桌面 refused → 去系统设置 opens 文件与文件夹', async () => {
       await page.click('[data-perm-ask="microphone"]');
-      await page.waitForFunction(() => document.querySelector('[data-perm="microphone"] .perm-tag').textContent === '已授权');
-      await page.click('[data-perm-ask="downloads"]');
-      await page.waitForFunction(() => document.querySelector('[data-perm="downloads"] .perm-tag').textContent === '已授权');
+      await page.waitForFunction(() => document.querySelector('[data-perm="microphone"]').dataset.state === 'granted');
+      assert.equal(await page.locator('[data-perm="microphone"] .perm-done').count(), 1, 'a check instead of the button');
+      await page.click('[data-perm="downloads"] .perm-title'); // the whole row asks, as in LobeHub
+      await page.waitForFunction(() => document.querySelector('[data-perm="downloads"]').dataset.state === 'granted');
       assert.deepEqual(await listed(page), [path.join(home, 'Downloads')]);
       await page.click('[data-perm-ask="desktop"]');
-      await page.waitForFunction(() => document.querySelector('[data-perm="desktop"] .perm-tag').textContent === '已拒绝');
+      await page.waitForFunction(() => document.querySelector('[data-perm="desktop"]').dataset.state === 'denied');
+      assert.match(await page.textContent('[data-perm="desktop"] .perm-desc'), /已拒绝/);
       assert.deepEqual(await listed(page), [path.join(home, 'Downloads')], 'a refused folder is not added');
       assert.equal(await page.locator('[data-perm="desktop"] [data-perm-ask]').count(), 0);
       await page.click('[data-perm-settings="desktop"]');
@@ -9947,8 +9955,9 @@ async function permissionsScenario() {
       await page.evaluate(() => window.pet.debugSet({ localAbilities: true }));
       admin = await openAdminWindow(run.app, page, 'connection');
       await adminUntil(admin, () => !!document.querySelector('[data-card="permissions"] [data-perm="desktop"]'), null, 15000, 'permissions card');
-      const st = await admin.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-card="permissions"] [data-perm]')].map((r) => [r.dataset.perm, `${r.dataset.state}:${['已授权', '已拒绝', '未授权 / 未知'].find((t) => r.textContent.includes(t))}`])));
-      assert.deepEqual(st, { microphone: 'granted:已授权', downloads: 'granted:已授权', desktop: 'denied:已拒绝', documents: 'unknown:未授权 / 未知' });
+      const st = await admin.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-card="permissions"] [data-perm]')].map((r) => [r.dataset.perm, r.dataset.state])));
+      assert.deepEqual(st, { microphone: 'granted', downloads: 'granted', desktop: 'denied', documents: 'unknown' });
+      assert.match(await admin.textContent('[data-card="permissions"] [data-perm="desktop"]'), /已拒绝：只能在系统设置里打开/);
       assert.equal(await admin.locator('[data-card="permissions"] [data-perm-settings="desktop"]').count(), 1, '去系统设置 for the refused one');
       await admin.evaluate((p) => document.querySelector(`[data-card="permissions"] [data-folder="${p}"] button`).click(), extra);
       await adminUntil(admin, (p) => !document.querySelector(`[data-card="permissions"] [data-folder="${p}"]`), extra, 8000, 'removed');
@@ -9988,17 +9997,22 @@ async function permissionsScenario() {
   try {
     run = await start();
     const { page } = run;
-    await step(S, 'P6 Linux / Windows with 本机能力: 授权 shows only the folder list (no system rows); 跳过 goes on', async () => {
+    await step(S, 'P6 Linux / Windows with 本机能力: 授权 shows only the folder list (no system rows); 返回 goes back, 下一步 goes on', async () => {
       await page.check('#local-opt');
       await page.click('#hatch-btn');
       await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
       assert.equal(await page.locator('#perm-system').isHidden(), true);
       assert.equal(await page.locator('#perm-folders').isVisible(), true);
       await page.screenshot({ path: path.join(SHOTS, 'b1-linux.png') });
-      await page.click('#perms-skip');
+      await page.click('#perms-back');
+      await page.waitForSelector('#onboarding:not(.hidden)');
+      assert.equal(await page.locator('.char-card.selected[data-species="grok"]').count(), 1, '返回 keeps her chosen');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)');
+      await page.click('#perms-next');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
       assert.deepEqual(settingsOf(run.data).local.folders, []);
-      return 'folder list only; skipped';
+      return 'folder list only; 返回 / 下一步';
     }, page);
   } finally {
     if (run) await run.app.close().catch(() => {});
