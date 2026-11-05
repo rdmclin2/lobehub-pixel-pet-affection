@@ -495,6 +495,8 @@ export interface RoomTheme {
   outfit?: string;
   palette: { accent: string; base: string; primary: string; trim: string };
   props?: Record<string, RoomBox>;
+  /** 窗外的天色 (src/core/room-sky.js), picture pixels: the arched window glass, the lamps, her lines about the sky */
+  sky?: { colors: { moon: string; rain: string; snowEdge: string; star: string; sun: string; sunLow: string }; lamps: { r: number; x: number; y: number }[]; lines?: Record<string, string>; window: { bottom: number; spring: number; x0: number; x1: number } };
   spots?: Record<string, RoomSpot>;
   status: 'open' | 'soon';
 }

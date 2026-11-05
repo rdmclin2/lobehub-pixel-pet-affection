@@ -9,6 +9,8 @@
 //   R11 relaunch: the room, her numbers and the totals are still there
 //   R12 closed for longer than a round while she sleeps: on relaunch the round is settled at once (a whole
 //       round, the numbers exactly so), before the room is even opened
+//   R13 窗外的天色 (docs/room.md §5): ‹ › through the four phases (sun / moon, stars, lamps, the glass darker at
+//       night, her line), the six weathers (clouds, rain, lightning, snow, fog), saved in settings.scene; flow, clock
 // In every R5 step: no hotspot label is under her (P3); 睡觉 tucks her in under a cover inside the bed (P1);
 // 工作 types line after line on the monitor's screen (P2); 打游戏's TV is wholly in the picture with a game on it (P4).
 // Screenshots: out/e2e/room/*.png (+ video/ and chapters.json for the acceptance report).
@@ -332,7 +334,7 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
         await app.close();
         admin = null;
         await new Promise((r) => setTimeout(r, ROUND_MS + 2500)); // closed for longer than a whole round
-        ({ app, page } = await launch(env));
+        ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-sky'), videoSize: { width: 1360, height: 860 } })); // recorded: R12's page and R13 窗外
         await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
         // settled by main at start — the room page has not been opened yet
         const a = mine();
@@ -359,6 +361,138 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
         const r = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 10) / 10]));
         const msg = `关闭前 ${JSON.stringify(r(before))}；关闭 ${(ROUND_MS + 2500) / 1000}s 后重开，未打开房间时 pet.json：activity=null，last=${JSON.stringify(a.room.last.deltas)} complete=${a.room.last.complete}；期望 ${JSON.stringify(r(want))}，实际 ${JSON.stringify(r(got))}；页面「${res}」`;
         note(`R12 ${msg}`);
+        return msg;
+      }, () => admin || page);
+
+      await step(S, 'R13 窗外的天色: 时段 ‹ › through dawn / day / dusk / night, the six weathers, flow, clock, saved', async () => {
+        chapter('R13 窗外的时间与天气');
+        const settings = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).scene;
+        await admin.waitForSelector('[data-room-sky] [data-room-sky-phase]', { timeout: 10000 });
+        await admin.waitForSelector('[data-room-prop="window"] [data-room-glass] image', { timeout: 10000 });
+        const sky = () => admin.evaluate(() => {
+          const sc = document.querySelector('[data-room-scene]');
+          const win = document.querySelector('[data-room-prop="window"]');
+          const matrix = [...win.querySelectorAll('feColorMatrix')].map((m) => m.getAttribute('values'));
+          return {
+            phase: sc.dataset.roomPhase, hour: Number(sc.dataset.roomHour), weather: sc.dataset.roomWeather,
+            card: document.querySelector('[data-room-sky-now]').textContent,
+            body: win.dataset.roomBody, lights: Number(win.dataset.roomLights), stars: Number(win.dataset.roomStars),
+            rain: !!win.querySelector('[data-room-rain]'), snow: !!win.querySelector('[data-room-snow]'), fog: !!win.querySelector('[data-room-fog]'), flash: !!win.querySelector('[data-room-flash]'),
+            clouds: Number(win.querySelector('[data-room-clouds]').getAttribute('opacity')),
+            outside: matrix[0], inside: matrix[1],
+            line: document.querySelector('[data-room-line]')?.textContent ?? null,
+          };
+        });
+        // the window's mean brightness on screen (0..255): the sky in the top of the glass (above where her line is said)
+        const glassLuma = async () => {
+          const box = await admin.evaluate(() => {
+            const win = document.querySelector('[data-room-prop="window"]');
+            const [x0, top, x1, bottom] = win.dataset.roomGlassBox.split(',').map(Number);
+            const vb = win.viewBox.baseVal;
+            const r = win.getBoundingClientRect();
+            const sx = r.width / vb.width;
+            const sy = r.height / vb.height;
+            return { l: r.left + x0 * sx, t: r.top + top * sy, w: (x1 - x0) * sx, h: (bottom - top) * sy };
+          });
+          const png = await admin.screenshot({ clip: { x: box.l + box.w * 0.15, y: box.t + box.h * 0.08, width: box.w * 0.7, height: box.h * 0.3 } });
+          return admin.evaluate(async (b64) => {
+            const img = new Image();
+            img.src = `data:image/png;base64,${b64}`;
+            await img.decode();
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            const x = c.getContext('2d');
+            x.drawImage(img, 0, 0);
+            const d = x.getImageData(0, 0, c.width, c.height).data;
+            let sum = 0;
+            for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+            return Math.round(sum / (d.length / 4));
+          }, png.toString('base64'));
+        };
+        // time stands still while we look at each phase
+        if (await admin.evaluate(() => document.querySelector('[data-room-sky-toggle="flow"]').getAttribute('aria-checked') === 'true')) await admin.click('[data-room-sky-toggle="flow"]');
+        await until(() => document.querySelector('[data-room-sky-toggle="flow"]').getAttribute('aria-checked') === 'false', null, 5000, 'flow off');
+        await admin.locator('[data-room-sky]').scrollIntoViewIfNeeded();
+        await admin.evaluate(() => document.querySelector('[data-room-scene]').scrollIntoView({ block: 'start' }));
+        const rows = [];
+        const seen = new Set();
+        for (let i = 0; i < 4; i++) {
+          await admin.click('[data-room-sky-phase-step="1"]');
+          await admin.waitForTimeout(1500); // the ‹ › jump eases over a second
+          const s = await sky();
+          seen.add(s.phase);
+          const luma = await glassLuma();
+          rows.push({ ...s, luma });
+          await shot(`r13-phase-${s.phase}`);
+        }
+        assert.deepEqual([...seen].sort(), ['dawn', 'day', 'dusk', 'night'], 'four phases');
+        const by = Object.fromEntries(rows.map((r) => [r.phase, r]));
+        assert.equal(by.day.body, 'sun');
+        assert.equal(by.night.body, 'moon');
+        assert.ok(by.night.lights > 0.8, `lamps on at night (${by.night.lights})`);
+        assert.ok(by.day.lights < 0.05, `lamps off by day (${by.day.lights})`);
+        assert.ok(by.night.stars > 0.5 && by.day.stars === 0, 'stars at night only');
+        assert.ok(by.night.luma < by.day.luma * 0.7, `the window is darker at night (${by.night.luma} vs ${by.day.luma})`);
+        assert.notEqual(by.night.inside, by.day.inside, 'the room is graded too');
+        assert.match(by.night.line, /夜深了/, 'her line about the night');
+        // to 白天 for the weathers
+        while ((await sky()).phase !== 'day') { await admin.click('[data-room-sky-phase-step="1"]'); await admin.waitForTimeout(1300); }
+        const weathers = [];
+        for (let i = 0; i < 6; i++) {
+          await admin.click('[data-room-sky-weather-step="1"]');
+          await admin.waitForTimeout(3400); // a weather fades in over 3 seconds
+          const s = await sky();
+          weathers.push({ ...s, luma: await glassLuma() });
+          await shot(`r13-weather-${s.weather}`);
+        }
+        const w = Object.fromEntries(weathers.map((r) => [r.weather, r]));
+        assert.deepEqual(Object.keys(w).sort(), ['clear', 'cloudy', 'fog', 'rain', 'snow', 'storm']);
+        assert.ok(w.rain.rain && w.storm.rain && w.storm.flash && w.snow.snow && w.fog.fog, 'rain, lightning, snow and fog are drawn');
+        assert.ok(!w.clear.rain && !w.clear.snow && !w.clear.fog && w.clear.clouds === 0, 'clear: nothing');
+        assert.ok(w.cloudy.clouds > 0.6 && w.rain.clouds > 0.9, 'clouds');
+        assert.ok(w.storm.luma < w.clear.luma, `a storm is darker (${w.storm.luma} vs ${w.clear.luma})`);
+        assert.match(w.rain.line, /下雨了/, 'her line about the rain');
+        assert.match(w.snow.line, /下雪了/, 'her line about the snow');
+        // back to 小雨 and 18:00 (黄昏), then saved for every mini game
+        while ((await sky()).weather !== 'rain') { await admin.click('[data-room-sky-weather-step="1"]'); await admin.waitForTimeout(400); }
+        while ((await sky()).phase !== 'dusk') { await admin.click('[data-room-sky-phase-step="1"]'); await admin.waitForTimeout(1300); }
+        await admin.waitForTimeout(3400);
+        await shot('r13-dusk-rain');
+        await admin.waitForTimeout(500); // the save lands in settings.json
+        const saved = settings();
+        assert.equal(saved.weather, 'rain');
+        assert.equal(saved.hour, 18);
+        assert.equal(saved.autoWeather, false);
+        // 随时间流动: an hour a minute
+        await admin.click('[data-room-sky-toggle="flow"]');
+        const h0 = (await sky()).hour;
+        await admin.waitForTimeout(6000);
+        const h1 = (await sky()).hour;
+        assert.ok(h1 - h0 > 0.07 && h1 - h0 < 0.14, `flows an hour a minute (${h0} → ${h1})`);
+        // 对齐本机时间
+        await admin.click('[data-room-sky-toggle="clock"]');
+        await admin.waitForTimeout(1500);
+        const now = new Date();
+        const clock = now.getHours() + now.getMinutes() / 60;
+        const hc = (await sky()).hour;
+        const off = Math.abs(hc - clock);
+        assert.ok(Math.min(off, 24 - off) < 0.1, `follows the clock (${hc} vs ${clock})`);
+        await admin.waitForTimeout(500); // the save lands in settings.json
+        assert.equal(settings().followClock, true);
+        // 天气自己变 (on: saved; a manual pick turns it off again)
+        await admin.click('[data-room-sky-toggle="auto"]');
+        await admin.waitForTimeout(500);
+        assert.equal(settings().autoWeather, true);
+        await admin.click('[data-room-sky-toggle="clock"]');
+        await admin.click('[data-room-sky-toggle="flow"]');
+        await admin.waitForTimeout(500);
+        await admin.click('[data-room-sky-weather-step="-1"]');
+        await admin.waitForTimeout(600);
+        const last = settings();
+        assert.equal(last.autoWeather, false, 'a manual pick turns 天气自己变 off');
+        await noErrorPage();
+        const msg = `时段：${rows.map((r) => `${r.card}（窗内亮度 ${r.luma}，灯 ${r.lights}，星星 ${r.stars}，${r.body === 'sun' ? '太阳' : '月亮'}）`).join('；')}。天气：${weathers.map((r) => `${r.card}（雨 ${r.rain ? '有' : '无'}，雪 ${r.snow ? '有' : '无'}，雾 ${r.fog ? '有' : '无'}，闪电 ${r.flash ? '有' : '无'}，云 ${r.clouds.toFixed(2)}，亮度 ${r.luma}，台词「${r.line}」）`).join('；')}。保存 settings.json scene：${JSON.stringify(saved)}；随时间流动 6 秒 ${h0.toFixed(3)} → ${h1.toFixed(3)}；对齐本机时间 ${hc.toFixed(2)}（本机 ${clock.toFixed(2)}）；手动选天气后 autoWeather=${last.autoWeather}`;
+        note(`R13 ${msg}`);
         return msg;
       }, () => admin || page);
     } finally {

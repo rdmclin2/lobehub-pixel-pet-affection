@@ -8,9 +8,12 @@ import { BatteryLow, Clock3, DoorOpen, Lock, Square } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, type RoomResult, type RoomSettled, type RoomState, type RoomTheme, type RosterRow } from '../api';
+import RoomSky from '../../../../src/core/room-sky.js';
 import { ACTIVITY_ICON, RoomScene, roomVars, typedLines, WORK_LINES } from '../stage/RoomScene';
 import { SpriteStage } from '../stage/SpriteStage';
-import { useStore } from '../store';
+import { useRoomSky } from '../stage/useRoomSky';
+import { useSave, useStore } from '../store';
+import { RoomSkyCard } from './RoomSkyCard';
 
 const styles = createStaticStyles(({ css }) => ({
   picker: css`
@@ -188,7 +191,9 @@ const RoomPreview = ({ theme, roster, onBack, open }: { onBack: () => void; open
 };
 
 export const RoomPage = () => {
-  const { room: pushed, roster } = useStore();
+  const { room: pushed, roster, settings } = useStore();
+  const save = useSave();
+  const [sky, skyOn] = useRoomSky(settings?.scene, save);
   const [local, setLocal] = useState<RoomState | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -266,6 +271,8 @@ export const RoomPage = () => {
   const open = room.themes.find((t) => t.status === 'open');
   const act = room.activities.find((a) => a.id === running?.kind) ?? null;
   const idleLines = (theme.lines?.idle as string[] | undefined) ?? [];
+  // standing about, she talks about what is outside: rain, snow … or dawn, dusk, night (else her idle line)
+  const skyLine = RoomSky.lineFor(theme.sky?.lines, sky.phase, sky.weather);
 
   return (
     <Flexbox data-room={theme.id} gap={16}>
@@ -282,7 +289,7 @@ export const RoomPage = () => {
       ) : (
         <div className={styles.layout}>
           <Flexbox gap={8}>
-            <RoomScene activities={room.activities} current={running?.kind ?? null} disabled={tired} line={line ?? (running ? null : (idleLines[0] ?? null))} name={name} onHotspot={startOrStop} preview={occupant?.preview} progress={progress} readOnly={!room.owner.met} theme={theme} />
+            <RoomScene activities={room.activities} current={running?.kind ?? null} disabled={tired} line={line ?? (running ? null : (skyLine ?? idleLines[0] ?? null))} name={name} onHotspot={startOrStop} preview={occupant?.preview} progress={progress} readOnly={!room.owner.met} sky={sky} theme={theme} />
             <Flexbox align="center" gap={8} horizontal justify="space-between" wrap="wrap">
               <Text fontSize={12} type="secondary">
                 {theme.name} · {theme.motifs.join(' · ')}
@@ -291,6 +298,7 @@ export const RoomPage = () => {
                 点床、手机、书桌、唱片机或游戏机开始；再点一次结束
               </Text>
             </Flexbox>
+            <RoomSkyCard on={skyOn} sky={sky} />
           </Flexbox>
 
           <Flexbox gap={12}>

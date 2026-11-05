@@ -9,7 +9,9 @@ import { BedDouble, Disc3, Gamepad2, Laptop, Moon, Music, Smartphone, Sparkles, 
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import type { Grade } from '../../../../src/core/game-sky.js';
 import type { Preview, RoomActivity, RoomBox, RoomTheme } from '../api';
+import { RoomWindow } from './RoomWindow';
 import { SpriteStage } from './SpriteStage';
 
 export const ACTIVITY_ICON: Record<string, LucideIcon> = { sleep: BedDouble, work: Laptop, phone: Smartphone, music: Disc3, game: Gamepad2 };
@@ -497,7 +499,7 @@ export const roomVars = (t: RoomTheme) => ({
 const points = (p: [number, number][]) => p.map(([x, y]) => `${x},${y}`).join(' ');
 
 /** 睡觉: the cover tucked over the mattress and the foot of the bed redrawn in front of her (picture pixels). */
-const BedCover = ({ theme, src }: { src: string; theme: RoomTheme }) => {
+const BedCover = ({ theme, src, filter }: { filter?: string; src: string; theme: RoomTheme }) => {
   const id = useId().replaceAll(':', '');
   const bed = theme.bed!;
   const { width, height } = theme.art!;
@@ -506,7 +508,7 @@ const BedCover = ({ theme, src }: { src: string; theme: RoomTheme }) => {
   const scallops = Array.from({ length: Math.floor((x1 - x0) / (r * 2)) }, (_, i) => x0 + r + i * r * 2);
   const [bx, by] = bed.bow ?? [(x0 + x1) / 2, top + 14];
   return (
-    <svg aria-hidden className={styles.bedLayer} data-room-prop="blanket" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+    <svg aria-hidden className={styles.bedLayer} data-room-prop="blanket" preserveAspectRatio="none" style={{ filter }} viewBox={`0 0 ${width} ${height}`}>
       <defs>
         <clipPath id={`${id}-front`}>
           {bed.front.map((f, i) => (
@@ -603,11 +605,14 @@ export interface RoomSceneProps {
   progress?: number;
   /** read-only (not met yet): hotspots do nothing */
   readOnly?: boolean;
+  /** 窗外的天色 (useRoomSky): the hour and its grade × the weather; none → the room as painted */
+  sky?: { grade: Grade; hour: number; weather: string } | null;
   theme: RoomTheme;
 }
 
-export const RoomScene = ({ theme, activities, current, line, name, preview, onHotspot, disabled = {}, readOnly, progress = 0 }: RoomSceneProps) => {
+export const RoomScene = ({ theme, activities, current, line, name, preview, onHotspot, disabled = {}, readOnly, progress = 0, sky }: RoomSceneProps) => {
   const ref = useRef<HTMLDivElement>(null);
+  const skyId = `room-sky-${useId().replaceAll(':', '')}`;
   const [h, setH] = useState(0);
   useEffect(() => {
     const el = ref.current;
@@ -636,9 +641,21 @@ export const RoomScene = ({ theme, activities, current, line, name, preview, onH
   const headY = tucked ? spot.y - spot.h * (CHIN - HAIR_TOP) : spot.y - spot.h * (1 - HAIR_TOP);
   const bubbleAt = spot.bubble ?? { x: Math.min(80, Math.max(18, spot.x)), y: Math.max(14, headY - 1) };
   const rec = props.record;
+  // the room under part of the outside grade (the picture, her, the bed); the window draws the rest
+  const lit = sky && theme.sky ? `url(#${skyId}-in)` : undefined;
   return (
-    <div className={styles.scene} data-room-scene={theme.id} data-room-activity={current ?? 'idle'} ref={ref} style={{ ...roomVars(theme), aspectRatio: `${art.width} / ${art.height}` }}>
-      <img alt={`${theme.name}：${theme.motifs.join('、')}`} className={styles.bg} draggable={false} src={src} />
+    <div
+      className={styles.scene}
+      data-room-activity={current ?? 'idle'}
+      data-room-hour={sky ? sky.hour.toFixed(2) : undefined}
+      data-room-phase={sky?.grade.phase}
+      data-room-scene={theme.id}
+      data-room-weather={sky?.weather}
+      ref={ref}
+      style={{ ...roomVars(theme), aspectRatio: `${art.width} / ${art.height}` }}
+    >
+      <img alt={`${theme.name}：${theme.motifs.join('、')}`} className={styles.bg} draggable={false} src={src} style={{ filter: lit }} />
+      {sky && theme.sky && <RoomWindow grade={sky.grade} hour={sky.hour} id={skyId} src={src} theme={theme} />}
       {props.monitor && (
         <div className={cx(styles.glow, styles.monitor)} data-on={current === 'work'} data-room-prop="monitor" data-room-typed={current === 'work' ? typedLines(progress) : undefined} style={box(props.monitor)}>
           {current === 'work' && <MonitorPage progress={progress} />}
@@ -683,15 +700,15 @@ export const RoomScene = ({ theme, activities, current, line, name, preview, onH
         );
       })}
       {tucked ? (
-        <div className={styles.tucked} data-room-her="sleep" data-tucked style={{ height: Math.round(herH * TUCK_SHOWN), insetBlockStart: `calc(${spot.y}% - ${Math.round(herH * CHIN)}px)`, insetInlineStart: `${spot.x}%`, width: herW }}>
+        <div className={styles.tucked} data-room-her="sleep" data-tucked style={{ filter: lit, height: Math.round(herH * TUCK_SHOWN), insetBlockStart: `calc(${spot.y}% - ${Math.round(herH * CHIN)}px)`, insetInlineStart: `${spot.x}%`, width: herW }}>
           <div className={styles.breathe}>{h > 0 && <SpriteStage action={act?.action ?? 'sleep'} height={herH} name={name} preview={preview} />}</div>
         </div>
       ) : (
-        <div className={styles.her} data-room-her={current ?? 'idle'} style={{ insetBlockStart: `${spot.y}%`, insetInlineStart: `${spot.x}%` }}>
+        <div className={styles.her} data-room-her={current ?? 'idle'} style={{ filter: lit, insetBlockStart: `${spot.y}%`, insetInlineStart: `${spot.x}%` }}>
           <div className={current === 'sleep' ? styles.breathe : undefined}>{h > 0 && <SpriteStage action={act?.action ?? 'idle'} height={herH} name={name} preview={preview} />}</div>
         </div>
       )}
-      {tucked && <BedCover src={src} theme={theme} />}
+      {tucked && <BedCover filter={lit} src={src} theme={theme} />}
       {current === 'phone' && (
         <div className={cx(styles.phone, styles.phoneLit, styles.heldPhone)} data-room-prop="held-phone" style={{ height: herH * 0.11, insetBlockStart: `calc(${spot.y}% - ${herH * 0.5}px)`, insetInlineStart: `calc(${spot.x}% + ${herH * 0.04}px)`, width: herH * 0.07 }} />
       )}

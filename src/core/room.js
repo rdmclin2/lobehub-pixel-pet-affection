@@ -68,7 +68,7 @@ const THEMES = [
     // `tucked`: in bed under the blanket — x = her middle, y = the blanket's top edge (her chin), only her
     // head and shoulders show. `bubble`: where her line is said (its bottom middle), when not above her head
     spots: {
-      idle: { x: 44, y: 86, h: 52 },
+      idle: { x: 44, y: 86, h: 52, bubble: { x: 61, y: 57 } },
       sleep: { x: 21.5, y: 52.1, h: 50, tucked: true },
       work: { x: 60.5, y: 92, h: 50, bubble: { x: 44, y: 48 } },
       phone: { x: 38.5, y: 80, h: 50 },
@@ -94,6 +94,31 @@ const THEMES = [
         [[14, 717], [50, 717], [160, 697], [280, 735], [344, 755], [344, 885], [14, 885]],
       ],
       bow: [252, 612],
+    },
+    // 窗外的天色 (core/room-sky.js, docs/room.md §5), in picture pixels: `window` = the arched glass (a
+    // rectangle from `spring` down to `bottom` under a half circle across x0 … x1); `lamps` = the lights that
+    // come on at night (the chandelier, the desk lamp, the wall lamp, the lantern); `lines` = what she says
+    // about the weather (by weather id) or the hour (by phase id) while she is not doing anything
+    sky: {
+      window: { x0: 742, x1: 978, spring: 330, bottom: 572 },
+      // the sky's own colours (room art, like `palette`): the sun high and low, the moon, the stars, the rain
+      colors: { sun: '#FFF6D6', sunLow: '#FFC882', moon: '#FAF4D6', star: '#FFF8DC', rain: '#E2EEFF', snowEdge: '#9FB4D6' },
+      lamps: [
+        { x: 948, y: 92, r: 150 },
+        { x: 1136, y: 446, r: 120 },
+        { x: 1762, y: 244, r: 100 },
+        { x: 236, y: 978, r: 110 },
+      ],
+      lines: {
+        rain: '下雨了……鱼片出门记得带伞。',
+        storm: '打、打雷了！……女仆才没有害怕。',
+        snow: '下雪了！想在窗台上堆一只小雪鲸。',
+        fog: '外面起雾了，像在海底一样~',
+        cloudy: '云好厚，今天适合在房间里摸鱼。',
+        dawn: '早上好，鱼片~窗外的海在发光。',
+        dusk: '晚霞是橘子味的……女仆想吃点心了。',
+        night: '夜深了，要不要让我去床上睡一会儿？',
+      },
     },
     lines: {
       idle: ['咕噜~鱼片，今天想让我做什么？', '房间收拾得干干净净，女仆的本分~'],
