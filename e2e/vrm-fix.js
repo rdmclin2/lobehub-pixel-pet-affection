@@ -31,6 +31,9 @@ module.exports = async function vrmFix(ctx) {
   const home = os.homedir();
   const STORE = process.env.PIXELPET_E2E_STORE_DIR || path.join(home, 'vrm-assets', 'store', 'vrm');
   const LIB = process.env.PIXELPET_E2E_MOTIONS || path.join(home, 'vrm-assets', 'baked-v2');
+  // T-5099: a click aims at least HIT_DEPTH px inside the part's visible area (a 2 px sliver of belly between the
+  // coat and the arms moves onto the chest with the idle's next frame); waits ≤ 20 s for it like for a hidden part
+  const HIT_DEPTH = Number(process.env.PIXELPET_E2E_HIT_DEPTH || 4);
   const IDS = (process.env.PIXELPET_E2E_VERIFY_IDS || 'vrm-d8789c38,vrm-wanderer,vrm-a185cf3a,vrm-paimon,vrm-diona,vrm-vrchat-avatar').split(',').filter(Boolean);
   const DO = new Set((process.env.PIXELPET_E2E_FIX_PARTS || 'hit,rest,cheer,spikes').split(','));
   if (!fs.existsSync(STORE) || !fs.existsSync(path.join(LIB, 'library.json'))) {
@@ -118,6 +121,31 @@ module.exports = async function vrmFix(ctx) {
         return `VRM ${(await H.ds()).vrm}, style ${JSON.stringify(f.style)}, ${f.clips.length} clips, rootHips ${!!(f.boneFold && f.boneFold.rootHips)}, hipsRig ${JSON.stringify(f.hipsRig)}, partBoxes ${Object.keys(f.partBoxes || {}).length}`;
       });
 
+      // T-5099: the head's visible centre against the app's zone over a stretch of idle (no click): the head/face
+      // split on every pose of the idle, not one moment
+      if (DO.has('headprobe')) {
+        await ST(`${name}：头部可见中心逐帧判定（idle ${process.env.PIXELPET_E2E_PROBE_S || 60} s，不点击）`, async () => {
+          await idleNow(40000).catch(() => {});
+          await bubbleGone();
+          await page.mouse.move(230, 30);
+          const rows = [];
+          const s0 = Date.now();
+          while (Date.now() - s0 < Number(process.env.PIXELPET_E2E_PROBE_S || 60) * 1000) {
+            // the truth and the app's zone in one task: the same frame (no render, no spring-bone step in between)
+            const both = await page.evaluate(`(() => { const truth = (${visibleParts.toString()})({ parts: ['head', 'face'] }); const out = [];
+              for (const part of ['head', 'face']) { const c = truth.centres && truth.centres[part]; if (!c) continue;
+                const r = window.PetVRM.director.zoneAt(c.x, c.y, { precise: true }); const c2 = document.querySelector('#pet-look canvas.vrm');
+                out.push({ part, at: [c.x, c.y], px: c.px, depth: c.depth, ...(r ? { zone: r.zone, mesh: r.mesh, via: r.via, dbg: r.dbg, base: c2 && c2.dataset.layers } : {}) }); }
+              return out; })()`);
+            for (const x of both) rows.push({ t: +((Date.now() - s0) / 1000).toFixed(1), ...x });
+            await sleep(400);
+          }
+          writeJson(`fix-headprobe-${id}.json`, rows);
+          const bad = rows.filter((r) => r.zone !== r.part);
+          return `${name}: ${rows.length} probes, wrong ${bad.length}: ${bad.slice(0, 6).map((r) => `${r.part}@${r.at}→${r.zone} q${JSON.stringify(r.dbg && r.dbg.faceQ)} box${JSON.stringify(r.dbg && r.dbg.faceBox)}`).join(' | ')}`;
+        });
+      }
+
       if (DO.has('hit')) {
         await ST(`${name}：在头 / 脸 / 手 / 肚子 / 腿 / 屁股的可见中心各真实点击一次 → 识别出的部位必须等于点击的部位`, async () => {
           const row = {};
@@ -135,7 +163,7 @@ module.exports = async function vrmFix(ctx) {
             if (back) await until('facing settled', () => Math.abs((window.PetVRM.director.plan() || {}).facingYaw || 0) < 8, null, 8000).catch(() => {});
             // (a part can be hidden for a moment — hands clasped behind a prop, under a sleeve: wait until it shows, ≤ 20 s)
             let truth = await page.evaluate(visibleParts, { parts: [part] });
-            for (let k = 0; k < 20 && !(truth.centres && truth.centres[part] && truth.centres[part].px >= 12); k++) { await sleep(1000); truth = await page.evaluate(visibleParts, { parts: [part] }); }
+            for (let k = 0; k < 20 && !(truth.centres && truth.centres[part] && truth.centres[part].px >= 12 && truth.centres[part].depth >= HIT_DEPTH); k++) { await sleep(1000); truth = await page.evaluate(visibleParts, { parts: [part] }); }
             const c = truth.centres && truth.centres[part];
             if (!c) { row[part] = { clicked: part, recognised: null, error: `no visible ${part} (${JSON.stringify(truth.counts)}; body ${JSON.stringify(truth.countsB)}; ${JSON.stringify(truth.band)}; why ${JSON.stringify(truth.centres.buttWhy || null)})` }; await page.evaluate(() => window.PetVRM.director.yaw(0)); continue; }
             const probe = await page.evaluate((q) => { const h = window.PetVRM.director.zoneAt(q.x, q.y, { precise: true }); return h ? `${h.zone} (${h.via}${h.mesh ? `: ${h.mesh}` : ''}${h.dbg ? ` ${JSON.stringify(h.dbg)}` : ''})` : null; }, c);

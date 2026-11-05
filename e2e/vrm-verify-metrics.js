@@ -145,7 +145,81 @@ function tposeIntervals(samples, { minS = 0.3, elev = -15 } = {}) {
 // short — the "T-pose frames" count (tposeIntervals keeps only runs ≥ 0.3 s)
 const tposeSamples = (samples, { elev = -15 } = {}) => samples.filter((x) => x.arms && x.arms[0] > elev && x.arms[1] > elev && !x.dance && !x.reaction && !x.hold).length;
 
-module.exports = { IDLE_BONES, qAngle, boneStats, idleMetrics, dominantShare, tposeIntervals, tposeSamples };
+
+// T-5099: held stiff with the arms out, on the running app (the same definition as the bake guard
+// scripts/lib/vrm-pose-guard.js STIFF): both upper arms spread out sideways by ≥ 35° (abduction in her torso's
+// frontal plane: asin |upper arm · torso X|), both elbows bent < 75°, and over a 0.5 s window neither arm's direction
+// moved faster than 12 °/s; a run of such samples lasting ≥ 2 s is "stiff". From the sampled normalized bone rotations
+// (pose().q); a VRM 0.x model's normalized rig is turned 180° about Y, so its quaternions are mapped back to the VRMA
+// frame first (x, z negated). Dance samples are counted apart (choreography may hold the arms out on purpose).
+const STIFF = { deg: 35, elbow: 75, speed: 12, win: 0.5, holdS: 2 };
+const CHAIN = {
+  left: ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'leftUpperArm'],
+  right: ['hips', 'spine', 'chest', 'upperChest', 'rightShoulder', 'rightUpperArm'],
+};
+const TORSO = ['hips', 'spine', 'chest', 'upperChest'];
+const qmul = (a, b) => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+const qrot = (q, v) => { const p = qmul(qmul(q, [v[0], v[1], v[2], 0]), [-q[0], -q[1], -q[2], q[3]]); return [p[0], p[1], p[2]]; };
+const vang = (a, b) => { const d = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / ((Math.hypot(...a) * Math.hypot(...b)) || 1); return Math.acos(Math.max(-1, Math.min(1, d))) * DEG; };
+function armsOfSample(x, v0) {
+  const g = (b) => { const q = x.q && x.q[b]; if (!q) return [0, 0, 0, 1]; return unit(v0 ? [-q[0], q[1], -q[2], q[3]] : q); };
+  const world = (chain) => chain.reduce((q, b) => unit(qmul(q, g(b))), [0, 0, 0, 1]);
+  const lateral = qrot(world(TORSO), [1, 0, 0]);
+  const out = {};
+  for (const s of ['left', 'right']) {
+    const axis = [s === 'left' ? 1 : -1, 0, 0];
+    const up = world(CHAIN[s]);
+    const arm = qrot(up, axis);
+    const fore = qrot(unit(qmul(up, g(`${s}LowerArm`))), axis);
+    const side = Math.abs(arm[0] * lateral[0] + arm[1] * lateral[1] + arm[2] * lateral[2]);
+    out[s] = { abd: Math.asin(Math.min(1, side)) * DEG, elbow: vang(arm, fore), dir: arm };
+  }
+  return out;
+}
+function stiffSplay(samples, { v0 = false, st = STIFF } = {}) {
+  const A = samples.map((x) => (x.q ? armsOfSample(x, v0) : null));
+  const speed = (i, s) => {
+    let a = i; let b = i;
+    while (a > 0 && samples[i].t - samples[a - 1].t <= st.win / 2) a--;
+    while (b < samples.length - 1 && samples[b + 1].t - samples[i].t <= st.win / 2) b++;
+    if (a === b || !A[a] || !A[b]) return Infinity;
+    return vang(A[a][s].dir, A[b][s].dir) / ((samples[b].t - samples[a].t) || 1);
+  };
+  const cand = samples.map((x, i) => {
+    const r = A[i];
+    if (!r) return false;
+    return Math.min(r.left.abd, r.right.abd) >= st.deg && r.left.elbow < st.elbow && r.right.elbow < st.elbow;
+  });
+  const still = samples.map((x, i) => cand[i] && speed(i, 'left') < st.speed && speed(i, 'right') < st.speed);
+  const runs = [];
+  const scan = (pick, tag) => {
+    let from = -1;
+    const close = (end) => { if (from < 0) return; const s0 = samples[from]; const s1 = samples[end]; const dur = s1.t - s0.t + 0.1; if (dur >= st.holdS) runs.push({ tag, from: s0.t, seconds: +dur.toFixed(1), n: end - from + 1, base: s0.base, action: s0.action, dance: s0.dance || '', reaction: s0.reaction || '', hold: s0.hold || '' }); from = -1; };
+    for (let i = 0; i < samples.length; i++) { if (pick(i)) { if (from < 0) from = i; } else close(i - 1); }
+    close(samples.length - 1);
+  };
+  scan((i) => still[i] && !samples[i].dance, 'body');
+  scan((i) => still[i] && !!samples[i].dance, 'dance');
+  const body = runs.filter((r) => r.tag === 'body');
+  const absMax = samples.reduce((m, x, i) => (A[i] && !x.dance ? Math.max(m, Math.min(A[i].left.abd, A[i].right.abd)) : m), 0);
+  const idleAbd = samples.filter((x, i) => A[i] && x.action === 'idle' && !x.dance && !x.reaction && !x.hold).map((x, i) => x);
+  return {
+    frames: body.reduce((n, r) => n + r.n, 0), // the samples inside a ≥ 2 s stiff run, outside a dance: must be 0
+    runs: body,
+    danceRuns: runs.filter((r) => r.tag === 'dance'),
+    armsOutSamples: cand.filter((c, i) => c && !samples[i].dance).length, // arms that far out at all (moving or not)
+    stillOutSamples: still.filter((c, i) => c && !samples[i].dance).length, // … and still, before the 2 s rule
+    bothArmsMaxAbd: +absMax.toFixed(1),
+    idleSamples: idleAbd.length,
+  };
+}
+
+module.exports = { IDLE_BONES, qAngle, boneStats, idleMetrics, dominantShare, tposeIntervals, tposeSamples, stiffSplay, armsOfSample, STIFF };
 
 if (require.main === module) {
   const fs = require('node:fs');

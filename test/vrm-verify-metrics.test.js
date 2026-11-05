@@ -47,3 +47,23 @@ test('tposeIntervals: both arms level for a while outside reactions is reported 
   assert.equal(v[0].base, 'idle.v01@female');
   assert.ok(Math.abs(v[0].seconds - 2) < 0.01, JSON.stringify(v));
 });
+
+// T-5099: the runtime stiff arms-out count (the bake guard's STIFF on sampled normalized rotations)
+test('stiffSplay: arms held out ≥ 35° and still for ≥ 2 s is stiff; hanging or moving arms are not', () => {
+  const rz = (deg) => { const h = (deg * Math.PI) / 360; return [0, 0, Math.sin(h), Math.cos(h)]; };
+  // VRMA frame: the left arm points +X at rest (T-pose); rotating it −Z by 90° hangs it, by 50° spreads it 40° out
+  const sample = (t, out, extra = {}) => ({ t, action: 'idle', base: 'idle.x', q: { leftUpperArm: rz(-(90 - out)), rightUpperArm: rz(90 - out) }, ...extra });
+  const series = (out, n, f = () => ({})) => Array.from({ length: n }, (_, i) => sample(+(i * 0.1).toFixed(1), typeof out === 'function' ? out(i) : out, f(i)));
+  const held = M.stiffSplay(series(40, 30)); // 3 s at 40° out, still
+  assert.equal(held.runs.length, 1);
+  assert.ok(held.frames >= 20);
+  assert.equal(M.stiffSplay(series(10, 30)).frames, 0); // hanging
+  assert.equal(M.stiffSplay(series(40, 15)).frames, 0); // only 1.5 s
+  assert.equal(M.stiffSplay(series((i) => 36 + 20 * Math.abs(Math.sin(i / 3)), 30)).frames, 0); // out but moving
+  const danced = M.stiffSplay(series(40, 30, () => ({ dance: 'd' })));
+  assert.equal(danced.frames, 0); // a dance counts apart
+  assert.equal(danced.danceRuns.length, 1);
+  // a VRM 0.x rig (turned 180° about Y): the same pose with x, z negated reads the same
+  const v0 = series(40, 30).map((x) => ({ ...x, q: Object.fromEntries(Object.entries(x.q).map(([k, q]) => [k, [-q[0], q[1], -q[2], q[3]]])) }));
+  assert.equal(M.stiffSplay(v0, { v0: true }).runs.length, 1);
+});

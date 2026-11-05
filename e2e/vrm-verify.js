@@ -12,8 +12,8 @@
 // six: female 0.x, male whose hips sit on the floor, VRM 1.0, a chibi, a child, a VRoid male), PIXELPET_E2E_IDLE_S
 // (60), PIXELPET_E2E_SPIKE_MAX (10 °/frame@30fps), PIXELPET_E2E_BASELINE (~/t5079-diag/out: before the fix).
 //
-// A model fails (it is not skipped) when: its idle is not on library clips (procedural), fewer than 2 idle clips in
-// 60 s, a touch / the drop / talking / the dance shows no clip, a change of what plays snaps (spike over the limit),
+// A model fails (it is not skipped) when: its idle is not 100 % on library clips, fewer than 4 idle clips in 60 s
+// (T-5099), no sit / crouch rest within REST_S, any T-pose sample or a ≥ 2 s stiff arms-out run (M.stiffSplay), a touch / the drop / talking / the dance shows no clip, a change of what plays snaps (spike over the limit),
 // a knee bends backwards, or it does not get back to the idle after a reaction / the dance.
 // Evidence: out/e2e/vrm/verify-*.png, verify-summary.json, verify-<id>-series.json, verify-evidence.json, verify.webm.
 const fs = require('node:fs');
@@ -31,12 +31,19 @@ module.exports = async function vrmVerify(ctx) {
   const STORE = process.env.PIXELPET_E2E_STORE_DIR || path.join(home, 'vrm-assets', 'store', 'vrm');
   const LIB = process.env.PIXELPET_E2E_MOTIONS || path.join(home, 'vrm-assets', 'baked-v2');
   const BASE = process.env.PIXELPET_E2E_BASELINE || path.join(home, 't5079-diag', 'out');
+  // T-5099: a click aims at least HIT_DEPTH px inside the part's visible area (a 2 px sliver of belly between the
+  // coat and the arms moves onto the chest with the idle's next frame); waits ≤ 20 s for it like for a hidden part
+  const HIT_DEPTH = Number(process.env.PIXELPET_E2E_HIT_DEPTH || 4);
   const IDS = (process.env.PIXELPET_E2E_VERIFY_IDS || 'vrm-d8789c38,vrm-wanderer,vrm-a185cf3a,vrm-paimon,vrm-diona,vrm-vrchat-avatar').split(',').filter(Boolean);
   const IDLE_S = Number(process.env.PIXELPET_E2E_IDLE_S || 60);
   const SPIKE_MAX = Number(process.env.PIXELPET_E2E_SPIKE_MAX || 10);
   const ZONES = ['head', 'hands', 'belly'];
   // after the 60 s window: wait for the first rest bout (sit / crouch) up to REST_S s (0 = skip)
   const REST_S = Number(process.env.PIXELPET_E2E_REST_S ?? 150);
+  // T-5099: the final retest's pass line — idle 100 % on library clips, ≥ 4 different clips in the 60 s window, and
+  // every model rests (a hips-on-the-floor model sits / crouches through its leg rig since T-5098, no exemption)
+  const IDLE_HIT = Number(process.env.PIXELPET_E2E_IDLE_HIT || 1);
+  const IDLE_CLIPS = Number(process.env.PIXELPET_E2E_IDLE_CLIPS || 4);
   if (!fs.existsSync(STORE) || !fs.existsSync(path.join(LIB, 'library.json'))) {
     await step(S, 'store mirror and motion library present', async () => { throw new Error(`needs ${STORE} and ${LIB}/library.json (outside the repository)`); }, null);
     return;
@@ -208,9 +215,10 @@ module.exports = async function vrmVerify(ctx) {
         const kneesMin = Math.min(...w.flatMap((x) => x.knees).filter((x) => typeof x === 'number'));
         const f = await fig();
         row.idle = { ...m, bones: undefined, boneStats: m.bones, kneesMin, idleHistory: f.idleHistory, shots };
-        row.steps.idle = m.hitRatio >= 0.95 && m.distinctClips >= 3;
-        if (m.hitRatio < 0.95) fail(`idle on library clips ${(m.hitRatio * 100).toFixed(1)}% (< 95%): procedural`);
-        if (m.distinctClips < 3) fail(`only ${m.distinctClips} idle clip(s) in ${IDLE_S} s (< 3)`);
+        // T-5099 (the final retest's contract): every idle sample on a library clip (100 %), ≥ 4 different clips
+        row.steps.idle = m.hitRatio >= IDLE_HIT && m.distinctClips >= IDLE_CLIPS;
+        if (m.hitRatio < IDLE_HIT) fail(`idle on library clips ${(m.hitRatio * 100).toFixed(1)}% (< ${IDLE_HIT * 100}%): procedural`);
+        if (m.distinctClips < IDLE_CLIPS) fail(`only ${m.distinctClips} idle clip(s) in ${IDLE_S} s (< ${IDLE_CLIPS})`);
         if (kneesMin < -10) fail(`a knee bends backwards in the idle (${kneesMin}°)`);
         const top = Object.entries(m.bones).sort((a, b) => b[1].speedMean - a[1].speedMean).slice(0, 4).map(([b, v]) => `${b} ${v.speedMean}°/s (p95 ${v.speedP95}, range ${v.range}°)`).join(', ');
         const note = H.note(`${id}: ${m.samples} samples / ${m.seconds} s; on library clips ${m.hits}/${m.samples} = ${(m.hitRatio * 100).toFixed(1)}%; ${m.distinctClips} different clips: ${m.clipSequence.join(' → ')}; postures ${m.postures.join('/')}; moving bones ${m.movingBones}/18, mean speed ${m.meanSpeedAll}°/s, 9-bone range sum ${m.key9RangeSum}°; dominant-frequency share median ${m.dominantShareMedian} (max ${m.dominantShareMax}; single-sine bones: ${m.singleSineBones.join(',') || 'none'}); knees min ${kneesMin}°; pose change between clips ${m.poseDelta.map((d) => `${d.from}→${d.to} max ${d.maxDeg}° (${d.maxBone}) mean ${d.meanDeg}°`).join('; ')}; fastest ${top}`);
@@ -233,8 +241,8 @@ module.exports = async function vrmVerify(ctx) {
           const rootHips = !!(row.boneFold && row.boneFold.rootHips);
           if (!got) {
             row.rest = { seen: false, waitedS: +((Date.now() - s0) / 1000).toFixed(1), rootHips };
-            const why = rootHips ? 'hips on the floor: only standing clips are loaded (by design)' : 'no rest bout';
-            if (!rootHips) fail(`no posture bout within ${REST_S} s`);
+            const why = rootHips ? 'hips on the floor (sits / crouches through the leg rig since T-5098): a failure' : 'no rest bout';
+            fail(`no posture bout within ${REST_S} s${rootHips ? ' (hips on the floor)' : ''}`);
             return H.note(`${id}: no sit / crouch within ${row.rest.waitedS}s — ${why}; ${await shot(`${id}-rest-none`)}`);
           }
           const tAt = +((Date.now() - s0) / 1000).toFixed(1);
@@ -259,7 +267,7 @@ module.exports = async function vrmVerify(ctx) {
         // mesh, its visible centre), not to the touch zone's own centre — the zone is what is being checked
         await page.mouse.move(230, 30);
         let truth = await page.evaluate(visibleParts, { parts: [zone] });
-        for (let k = 0; k < 20 && !(truth && truth.centres && truth.centres[zone] && truth.centres[zone].px >= 12); k++) { await sleep(1000); truth = await page.evaluate(visibleParts, { parts: [zone] }); }
+        for (let k = 0; k < 20 && !(truth && truth.centres && truth.centres[zone] && truth.centres[zone].px >= 12 && truth.centres[zone].depth >= HIT_DEPTH); k++) { await sleep(1000); truth = await page.evaluate(visibleParts, { parts: [zone] }); }
         const z = truth && truth.centres && truth.centres[zone];
         if (!z) return { zone, error: `no visible ${zone} on screen (${JSON.stringify(truth && truth.counts)})` };
         const topEl = await page.evaluate((q) => { const e = document.elementFromPoint(q.x, q.y); return e ? `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${e.classList.length ? `.${[...e.classList].join('.')}` : ''}` : null; }, z);
@@ -293,7 +301,7 @@ module.exports = async function vrmVerify(ctx) {
         let back = true;
         try { await idleNow(); } catch { back = false; }
         await sleep(300);
-        return { zone, at: [Math.round(z.x), Math.round(z.y)], visiblePx: z.px, hitZone: probe && probe.zone, recognised: last.n > n0 ? last.zone || null : null, headBox: zone === 'head' && probe ? probe.headBox : undefined, t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
+        return { zone, at: [Math.round(z.x), Math.round(z.y)], visiblePx: z.px, edgeDepthPx: z.depth, hitZone: probe && probe.zone, recognised: last.n > n0 ? last.zone || null : null, headBox: zone === 'head' && probe ? probe.headBox : undefined, t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
       };
       await ST(`${id}：触摸头 / 手 / 肚子（真实点击）→ 反应片段 → 回待机`, async () => {
         const out = [];
@@ -454,6 +462,11 @@ module.exports = async function vrmVerify(ctx) {
         // T-5092: every 100 ms sample with both arms level (outside dance / reaction / hold), however short
         row.tposeSamples = M.tposeSamples(series.samples);
         for (const v of row.tpose) fail(`T-pose arms for ${v.seconds}s on ${v.base} (elevation ${v.maxElev}°)`);
+        // T-5099: any T-pose sample at all fails (not only ≥ 0.3 s runs); and held stiff with the arms out
+        // (M.stiffSplay, the bake guard's STIFF on the running pose) for ≥ 2 s outside a dance
+        if (row.tposeSamples > 0 && !row.tpose.length) fail(`${row.tposeSamples} T-pose sample(s)`);
+        row.stiff = M.stiffSplay(series.samples, { v0: row.vrm !== '1.0' && row.vrm !== 1 });
+        for (const v of row.stiff.runs) fail(`held stiff, arms out, ${v.seconds}s from ${v.from}s on ${v.base} (${v.action}${v.reaction ? ` ${v.reaction}` : ''}${v.hold ? ` ${v.hold}` : ''})`);
       }
       // before the fix: the same metrics on the T-5079 series of this model (none = a user's machine; env = the
       // old 22-clip library linked by hand), when the diagnosis had it
@@ -469,7 +482,7 @@ module.exports = async function vrmVerify(ctx) {
     }
 
     await ST(`全部模型的结论（失败的模型记为失败，不略过）；无控制台错误`, async () => {
-      const lines = summary.map((r) => `${r.id}: ${r.passed ? 'PASS' : 'FAIL'} — vrm ${r.vrm}, style ${r.style && r.style.name}, ${r.clips} clips; idle ${r.idle ? `${(r.idle.hitRatio * 100).toFixed(1)}% / ${r.idle.distinctClips} clips` : '-'}; spike max raw ${r.jump ? r.jump.rawSpikeMax : '-'}° / limited ${r.jump ? r.jump.spikeMax : '-'}°${r.failures.length ? `; failures: ${r.failures.join('; ')}` : ''}`);
+      const lines = summary.map((r) => `${r.id}: ${r.passed ? 'PASS' : 'FAIL'} — vrm ${r.vrm}, style ${r.style && r.style.name}, ${r.clips} clips; idle ${r.idle ? `${(r.idle.hitRatio * 100).toFixed(1)}% / ${r.idle.distinctClips} clips` : '-'}; spike max raw ${r.jump ? r.jump.rawSpikeMax : '-'}° / limited ${r.jump ? r.jump.spikeMax : '-'}°; T-pose samples ${r.tposeSamples}; stiff arms-out samples ${r.stiff ? r.stiff.frames : '-'}; rest ${r.rest ? (r.rest.seen ? r.rest.pose : 'none') : '-'}; touch ${(r.touch || []).map((t) => `${t.zone}→${t.recognised || t.lastTouch || '?'}`).join(' ')}${r.failures.length ? `; failures: ${r.failures.join('; ')}` : ''}`);
       const real = realErrors(errors).filter((e) => !/\[vrm\]/.test(e));
       const note = H.note(`${lines.join('\n')}\nconsole errors: ${real.length}`);
       assert.ok(summary.length >= Math.min(5, IDS.length), `${summary.length} models`); // (a PIXELPET_E2E_VERIFY_IDS subset: all of them)
