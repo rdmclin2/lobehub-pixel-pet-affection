@@ -721,6 +721,14 @@ export interface ChatMusicEvent {
 
 export type MusicFileResult = { ok: true } | { message?: string; ok: false; reason: string };
 
+/** 表情包 sent as (or with) a message (docs/stickers-design.md §3.2): url is sticker://…; it may fail to load (gone). */
+export interface ChatSticker {
+  id: string | null;
+  label: string;
+  set: string | null;
+  url: string;
+}
+
 export interface ChatMessage {
   attachments: ChatAttachment[];
   createdAt: number;
@@ -731,6 +739,7 @@ export interface ChatMessage {
   music?: ChatMusic[];
   role: 'user' | 'assistant';
   status: 'done' | 'error' | 'aborted';
+  sticker?: ChatSticker | null;
   text: string;
   turnId: string | null;
   /** pictures sent on the desktop: only their count was kept */
@@ -803,7 +812,8 @@ export interface ChatApi {
   onDelta: (cb: (d: ChatDelta) => void) => () => void;
   onDone: (cb: (d: ChatDone) => void) => () => void;
   pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
-  send: (req: { images?: ChatImageInput[]; speciesId: string; text?: string }) => Promise<ChatSendResult>;
+  /** `sticker`: one of hers from the 表情包 panel ({ set, id }); sent as its own message */
+  send: (req: { images?: ChatImageInput[]; speciesId: string; sticker?: { id: string; set: string }; text?: string }) => Promise<ChatSendResult>;
 }
 
 /** 插个嘴 (core/interject.js): a rule settled from the owner's reactions, and one decision record. */
@@ -850,6 +860,8 @@ export interface HistoryMessage {
   attachments?: { files?: string[]; images?: number; music?: ChatMusic[] } | null;
   role: 'user' | 'pet';
   status?: string | null;
+  /** 表情包 (docs/stickers-design.md §3.3): url is sticker://… or null when the ref is not loadable */
+  sticker?: { id?: string; label: string; ref: string; set?: string; url: string | null } | null;
   text?: string;
   turnId?: string;
 }

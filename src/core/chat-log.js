@@ -8,7 +8,11 @@ const path = require('node:path');
 // `userSessions()` is the one filter, and main.js hands its result to the window as is (the window never
 // sees a system line, so it cannot show one). See docs/chat-history.md for the rules.
 //
-// A message: { id, at, speciesId, role: 'user' | 'pet', origin, kind, turnId, text, attachments?, status? }
+// A message: { id, at, speciesId, role: 'user' | 'pet', origin, kind, turnId, text, attachments?, sticker?, status? }
+//   sticker — a 表情包 sent as (or with) the message (docs/stickers-design.md §3.2):
+//             { ref: 'blob:<sha256>.<ext>' | 'builtin:<speciesId>/<id>.webp', set, id, label }. A message
+//             that is only a sticker has text ''. Records from before stickers have none and read as before;
+//             a malformed one is dropped from the message (the message itself stays).
 //   turnId  — one round: the owner's message and her reply to it share it; a system line has its own.
 //   status  — only on a reply that never came: 'error' | 'canceled' (text is empty then).
 //   topicEpoch — how many times the owner chose 重新开始话题 for this character before it (absent = 0).
@@ -49,6 +53,14 @@ function originOfKind(kind) {
   return KIND_ORIGIN[k] || 'system';
 }
 
+// The sticker field as kept: only a ref a window can load (core/stickers.js REF_RE), a short label. -> or null.
+const STICKER_REF_RE = /^(?:blob:[0-9a-f]{64}\.(?:png|webp|gif|jpg)|builtin:[a-z0-9][a-z0-9_.-]{0,80}\/[a-z0-9_-]{1,40}\.webp)$/i;
+function cleanSticker(s) {
+  if (!s || typeof s !== 'object' || !STICKER_REF_RE.test(String(s.ref || ''))) return null;
+  const str = (v, n) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n) : '');
+  return { ref: String(s.ref), set: str(s.set, 120), id: str(s.id, 40), label: str(s.label, 20) || '表情包' };
+}
+
 // Old or hand-edited records: a missing or unknown origin becomes 'unknown' and is never shown
 // (nothing proves the owner started it); a record without text or role is dropped.
 function normalize(m) {
@@ -56,8 +68,11 @@ function normalize(m) {
   const role = m.role === 'user' || m.role === 'pet' ? m.role : null;
   if (!role || typeof m.text !== 'string') return null;
   const at = Number(m.at);
+  const { sticker: rawSticker, ...rest } = m;
+  const sticker = rawSticker === undefined ? null : cleanSticker(rawSticker);
   return {
-    ...m,
+    ...rest,
+    ...(sticker ? { sticker } : {}),
     role,
     at: Number.isFinite(at) ? at : 0,
     origin: Object.prototype.hasOwnProperty.call(ORIGINS, m.origin) ? m.origin : 'unknown',
@@ -116,10 +131,12 @@ function epochOf(m) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+// How a message without words reads in a preview: ［表情包：超开心］, 2 张图片, …
+const stickerLabel = (m) => (m && m.sticker && m.sticker.label ? `［表情包：${m.sticker.label}］` : '');
 function attachmentLabel(m) {
   const a = m && m.attachments;
-  if (!a) return '';
-  return [a.images ? `${a.images} 张图片` : '', a.files && a.files.length ? `${a.files.length} 个文件` : ''].filter(Boolean).join('、');
+  if (!a) return stickerLabel(m);
+  return [stickerLabel(m), a.images ? `${a.images} 张图片` : '', a.files && a.files.length ? `${a.files.length} 个文件` : ''].filter(Boolean).join('、');
 }
 
 // In memory (tests, and PetService without a folder).
@@ -136,7 +153,9 @@ class MemoryChatLog {
   append(msg, now = Date.now()) {
     const d = this._read();
     const seq = (Number(d.seq) || d.messages.length) + 1;
-    const m = { id: `m${seq}`, at: now, ...msg };
+    const { sticker: raw, ...rest } = msg || {};
+    const sticker = raw ? cleanSticker(raw) : null; // only a picture a window can load is kept
+    const m = { id: `m${seq}`, at: now, ...rest, ...(sticker ? { sticker } : {}) };
     const messages = [...d.messages, m].slice(-MAX_MESSAGES);
     this._write({ schema: SCHEMA, seq, messages });
     return m;
@@ -176,4 +195,4 @@ class ChatLog extends MemoryChatLog {
   }
 }
 
-module.exports = { ChatLog, MemoryChatLog, userSessions, originOfKind, normalize, ORIGINS, USER_ORIGIN, SESSION_GAP_MS, MAX_MESSAGES };
+module.exports = { ChatLog, MemoryChatLog, userSessions, originOfKind, normalize, cleanSticker, stickerLabel, attachmentLabel, ORIGINS, USER_ORIGIN, SESSION_GAP_MS, MAX_MESSAGES };

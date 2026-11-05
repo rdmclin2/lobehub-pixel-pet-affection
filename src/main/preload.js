@@ -54,7 +54,9 @@ contextBridge.exposeInMainWorld('pet', {
   previewPetScale: (scale) => ipcRenderer.invoke('preview-pet-scale', { scale }),
   setPetScale: (scale) => ipcRenderer.invoke('set-pet-scale', { scale }),
   panel: (open) => ipcRenderer.send('panel', !!open),
-  chat: (text, images, files) => ipcRenderer.invoke('chat', { text, images, files }),
+  chat: (text, images, files, opts = {}) => ipcRenderer.invoke('chat', { text, images, files, sticker: opts.sticker }),
+  // 表情包 (docs/stickers-design.md §3.1): the companion's sets for the chat box panel
+  stickers: { list: () => ipcRenderer.invoke('pet-stickers-list') },
   // Absolute path of a dropped/pasted File (empty for in-memory data such as screenshots).
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
   pickImages: () => ipcRenderer.invoke('pick-images'),

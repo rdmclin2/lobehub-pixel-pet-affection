@@ -7,7 +7,7 @@ import { PageHeader, Surface } from '@lobehub/ui/dashboard';
 import { ArrowLeft, Lock, LogOut, MessageCircle, MoveDownRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type HistorySession, type HistorySummary, type TopicRow } from '../api';
+import { api, reasonText, type HistoryMessage, type HistorySession, type HistorySummary, type TopicRow } from '../api';
 import { ask } from '../fields';
 import { ACTION_LABEL } from '../stage/CharacterStage';
 import { useStore } from '../store';
@@ -100,6 +100,25 @@ export const TopicsPage = () => {
 };
 
 // ---- 聊天记录 -----------------------------------------------------------------------------------------------
+/** A 表情包 in the history (docs/stickers-design.md §3.3): a thumbnail, its name when the picture is gone. */
+const HistorySticker = ({ sticker }: { sticker: NonNullable<HistoryMessage['sticker']> }) => {
+  const [failed, setFailed] = useState(false);
+  if (!sticker.url || failed) return <Tag data-history-sticker-missing>［表情包：{sticker.label}］</Tag>;
+  return (
+    <img
+      alt={sticker.label}
+      data-history-sticker={sticker.id ?? ''}
+      height={64}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={sticker.url}
+      style={{ display: 'block', marginTop: 4, objectFit: 'contain' }}
+      title={sticker.label}
+      width={64}
+    />
+  );
+};
+
 export const HistoryPage = () => {
   const { view } = useStore();
   const [list, setList] = useState<HistorySummary[] | null>(null);
@@ -136,9 +155,12 @@ export const HistoryPage = () => {
                 <Text fontSize={12} type="secondary">
                   {m.role === 'user' ? '我' : open.name} · {fmt(m.at)}
                 </Text>
-                <Text data-history-text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} type={m.status ? 'secondary' : undefined}>
-                  {m.status ? (m.status === 'canceled' ? '（这句被打断了，她没有回复）' : '（出错了，她没有回复）') : m.text || ''}
-                </Text>
+                {(m.status || m.text || !m.sticker) && (
+                  <Text data-history-text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} type={m.status ? 'secondary' : undefined}>
+                    {m.status ? (m.status === 'canceled' ? '（这句被打断了，她没有回复）' : '（出错了，她没有回复）') : m.text || ''}
+                  </Text>
+                )}
+                {m.sticker && <HistorySticker sticker={m.sticker} />}
                 {m.attachments && (m.attachments.images || m.attachments.files?.length) ? (
                   <Text fontSize={12} type="secondary">
                     {[m.attachments.images ? `📷 ${m.attachments.images} 张图片` : '', ...(m.attachments.files ?? []).map((f) => `📄 ${f}`)].filter(Boolean).join('  ')}

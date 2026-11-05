@@ -745,7 +745,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：128 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：129 个
 
 - 设置窗口有同一通道（55）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `perm-status` `perm-request` `perm-open-settings` `ai-folders-add` `ai-folders-set` `new-topic` `release` `switch-character` `set-vrm-posture` `vrm-library-info` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `set-voice-pack` `voice-pack-state` `set-user-voice-pack` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
@@ -760,7 +760,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（62）：
+- 不是配置，只在桌宠窗口（63）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -771,6 +771,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
   - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
   - `chat`：聊天
+  - `pet-stickers-list`：聊天：聊天框的表情包面板读她的表情包（只读；管理在 角色 → 表情包，docs/stickers-design.md §3.1）
   - `pick-images`：聊天：选图片
   - `cancel`：聊天：停止生成
   - `move-by`：拖动她

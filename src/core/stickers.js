@@ -97,6 +97,15 @@ function labelFromName(name) {
 
 const cleanText = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
+// A 聊天记录 sticker's `ref`: `blob:<sha256>.<ext>` (an imported picture) or `builtin:<speciesId>/<id>.webp`.
+const REF_RE = /^(?:blob:([0-9a-f]{64}\.(?:png|webp|gif|jpg))|builtin:([a-z0-9][a-z0-9_.-]{0,80}\/[a-z0-9_-]{1,40}\.webp))$/i;
+// Where a window loads it from (sticker://, src/main/stickers.js); null for anything else.
+function refUrl(ref) {
+  const m = REF_RE.exec(String(ref || ''));
+  if (!m) return null;
+  return m[1] ? `sticker://blob/${m[1]}` : `sticker://builtin/${m[2]}`;
+}
+
 const blobUrl = (blob) => `sticker://blob/${blob}`;
 const builtinUrl = (speciesId, id) => `sticker://builtin/${speciesId}/${id}.webp`;
 const mineId = (speciesId) => `mine-${speciesId}`;
@@ -225,6 +234,39 @@ class StickerLibrary {
     return { ok: added.length > 0, ...(added.length ? {} : { reason: 'all-rejected', message: '没有可以添加的图片' }), added, rejected, count: set.stickers.length };
   }
 
+  // One sticker of hers as 聊天记录 keeps it (docs/stickers-design.md §3.2): only a set she holds (built-in or
+  // her own), so a message cannot name a picture that is not hers. `ref` is all a later view needs to find
+  // the picture (a blob is content-addressed: deleting the sticker or its set leaves old messages showing it);
+  // `label` / `desc` go along for the text the agent gets and for a picture that has gone missing.
+  // -> { ok, sticker: { ref, set, id, label, desc } } | { ok: false, reason, message }
+  resolve(species, setId, id) {
+    if (!species || !SPECIES_RE.test(species.id || '')) return bad('bad-species', '没有这位角色');
+    const sid = String(setId || '');
+    const key = String(id || '');
+    if (!ID_RE.test(key)) return bad('not-found', '没有这张表情包');
+    if (sid === builtinId(species.id)) {
+      const m = (Array.isArray(species.memes) ? species.memes : []).find((x) => x.id === key);
+      return m ? { ok: true, sticker: { ref: `builtin:${species.id}/${m.id}.webp`, set: sid, id: m.id, label: m.label, desc: m.desc || '' } } : bad('not-found', '没有这张表情包');
+    }
+    if (sid === mineId(species.id)) {
+      const s = this._readMine(species.id).stickers.find((x) => x.id === key);
+      return s ? { ok: true, sticker: { ref: `blob:${s.blob}`, set: sid, id: s.id, label: s.label, desc: s.desc || '' } } : bad('not-found', '这张表情包已经不在了');
+    }
+    return bad('not-found', '她没有这组表情包');
+  }
+
+  // The sticker an unprefixed [梗图:<id>] in her reply names, the way catalog() offers them: built-in first,
+  // then the owner's. -> the same sticker as resolve(), or null.
+  resolveTag(species, id) {
+    if (!species) return null;
+    const key = String(id || '').toLowerCase();
+    for (const setId of [builtinId(species.id), mineId(species.id)]) {
+      const r = this.resolve(species, setId, key);
+      if (r.ok) return r.sticker;
+    }
+    return null;
+  }
+
   // Delete stickers from her own set by id. Built-in ones cannot be deleted. The blobs stay until gc().
   remove(species, ids) {
     if (!species || !SPECIES_RE.test(species.id || '')) return bad('bad-species', '没有这位角色');
@@ -292,6 +334,8 @@ module.exports = {
   builtinSet,
   blobUrl,
   builtinUrl,
+  refUrl,
+  REF_RE,
   BLOB_RE,
   ID_RE,
   MAX_STICKER_BYTES,
