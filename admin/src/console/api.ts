@@ -551,7 +551,7 @@ export interface PetAdminApi {
   gameStore: (opts?: { refresh?: boolean }) => Promise<GameStoreState>;
   onGameUpdates: (cb: (u: GameUpdate[]) => void) => () => void;
   /** 商店 → 小游戏 → 详情: the game's row and, when installed, her progress in it */
-  gameDetail: (id: string) => Promise<{ checkedAt: number | null; game?: StoreGameRow; last: string | null; ok: boolean; progress: GameProgress | null; reason?: string }>;
+  gameDetail: (id: string) => Promise<{ checkedAt: number | null; game?: StoreGameRow; last: string | null; ok: boolean; progress: GameProgress | null; reason?: string; shots?: { caption: string; src: string }[] }>;
   gameDownload: (id: string) => Promise<GameStoreResult>;
   gameDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   gameRemove: (id: string) => Promise<GameStoreResult>;

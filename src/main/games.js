@@ -165,18 +165,39 @@ class GameIndex {
   }
 
   coverFile(g) { return path.join(this.coverDir, `${g.id}-${g.version}${path.extname(g.picture || '.webp')}`); }
+  // a remote screenshot's cache file: named after the file in the repository, so a new picture is a new file
+  shotFile(g, url) { return path.join(this.coverDir, `${g.id}-shot-${path.basename(url)}`); }
+  async _fetchTo(url, file) {
+    if (fs.existsSync(file)) return;
+    try {
+      const res = await this.fetch(url);
+      if (!res.ok) return;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 2 * 1024 * 1024) return;
+      fs.mkdirSync(this.coverDir, { recursive: true });
+      fs.writeFileSync(file, buf);
+    } catch { /* not shown */ }
+  }
   async _covers() {
     for (const g of this.index().games) {
-      if (g.source !== 'remote' || !g.picture || g.bundledPicture || fs.existsSync(this.coverFile(g))) continue;
-      try {
-        const res = await this.fetch(g.picture);
-        if (!res.ok) continue;
-        const buf = Buffer.from(await res.arrayBuffer());
-        if (buf.length > 2 * 1024 * 1024) continue;
-        fs.mkdirSync(this.coverDir, { recursive: true });
-        fs.writeFileSync(this.coverFile(g), buf);
-      } catch { /* the card shows no picture */ }
+      if (g.source === 'remote' && g.picture && !g.bundledPicture) await this._fetchTo(g.picture, this.coverFile(g));
+      for (const s of g.screenshots || []) if (/^https:/.test(s.url)) await this._fetchTo(s.url, this.shotFile(g, s.url));
     }
+  }
+  _dataUrl(file) {
+    return `data:image/${path.extname(file) === '.png' ? 'png' : 'webp'};base64,${fs.readFileSync(file).toString('base64')}`;
+  }
+  // 详情页的预览: [{ src, caption }] — shipped ones from src/renderer, remote ones from the cache; one not fetched
+  // yet falls back to the shipped screenshot in its place, if there is one
+  shots(row) {
+    const out = [];
+    (row.screenshots || []).forEach((s, i) => {
+      if (!/^https:/.test(s.url)) { out.push({ src: `../renderer/${s.url}`, caption: s.caption }); return; }
+      const f = this.shotFile(row, s.url);
+      if (fs.existsSync(f)) out.push({ src: this._dataUrl(f), caption: s.caption });
+      else if (row.bundledScreenshots && row.bundledScreenshots[i]) out.push({ src: `../renderer/${row.bundledScreenshots[i].url}`, caption: s.caption });
+    });
+    return out;
   }
   // what <img src> the settings window gets: the shipped picture, else the cached remote one, else none
   pictureSrc(row) {
@@ -184,8 +205,7 @@ class GameIndex {
     if (row.bundledPicture) return `../renderer/${row.bundledPicture}`;
     if (!row.picture) return null;
     const f = this.coverFile(row);
-    if (!fs.existsSync(f)) return null;
-    return `data:image/${path.extname(f) === '.png' ? 'png' : 'webp'};base64,${fs.readFileSync(f).toString('base64')}`;
+    return fs.existsSync(f) ? this._dataUrl(f) : null;
   }
 
   rows(installed, downloads) {

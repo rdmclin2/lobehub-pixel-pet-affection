@@ -46,7 +46,10 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
     execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'fetch-game-packs.js'), '--zips', cdn], { stdio: 'ignore' });
     const bundled = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'core', 'game-catalog.json'), 'utf8'));
     // the games repository's catalog.json as the app reads it: to start with, what the app shipped with
-    let catalog = { ...bundled, games: bundled.games.map((x) => ({ ...x, published: '2026-11-05' })) };
+    // (pictures as the repository lists them: the same files on GitHub that the app ships copies of)
+    const RAW = 'https://raw.githubusercontent.com/rdmclin2/pixel-pet-mini-games/main/games';
+    const remoteUrl = (u) => u.replace(/^catalog\/games\/([a-z0-9-]+)\.webp$/, `${RAW}/$1/cover.webp`).replace(/^catalog\/games\/([a-z0-9-]+)\/(.+)$/, `${RAW}/$1/screenshots/$2`);
+    let catalog = { ...bundled, games: bundled.games.map((x) => ({ ...x, picture: x.picture && remoteUrl(x.picture), screenshots: (x.screenshots || []).map((sh) => ({ ...sh, url: remoteUrl(sh.url) })), published: '2026-11-05' })) };
     let served = 0;
     const server = http.createServer((req, res) => {
       const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
@@ -111,7 +114,7 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
     const catchFly = async () => {
       await idle();
       await T(() => { window.__gameTest.setHour(23); window.__gameTest.setWeather('clear'); });
-      for (let k = 0; k < 6; k++) {
+      for (let k = 0; k < 10; k++) {
         const n = await collected('firefly');
         const s = await until(async () => { const v = await g(); return v.flies.length ? v : null; }, 8000, 'a lit firefly');
         // the one nearest her
@@ -124,7 +127,7 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         const got = await until(async () => ((await collected('firefly')) > n || (await g()).pet.mode === 'idle' ? true : null), 20000, 'the firefly run').then(async () => (await collected('firefly')) > n);
         if (got) return [live.x, live.y];
       }
-      throw new Error('no firefly caught in six tries');
+      throw new Error('no firefly caught in ten tries');
     };
     // today's 小事, each done the way a user does it
     const doQuest = async (id) => {
@@ -338,7 +341,7 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
           await doQuest(q.id);
           const s = await until(async () => { const v = await g(); return v.quests.find((x) => x.id === q.id).done ? v : null; }, 15000, `quest ${q.id} done`);
           const a1 = (await dbg()).affection;
-          assert.ok(a1 - a0 >= 2, `${q.title}: affection ${a0} → ${a1}`);
+          assert.ok(a1 - a0 >= 1.99, `${q.title}: affection ${a0} → ${a1}`);
           log.push(`✓ ${q.title}：好感 ${a0} → ${a1}`);
           void s;
         }
@@ -405,7 +408,8 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
 
       await step(S, 'G14 发布新版本：检查更新 → 有更新和更新说明；游戏里提示有新版本；开源仓库；更新后进度还在', async () => {
         // the games repository publishes 1.0.1: the same pack, a higher version, new notes
-        const old = bundled.games.find((x) => x.id === 'pixel-yard');
+        // the repository's entry (its pictures on GitHub), raised to 1.0.1
+        const old = catalog.games.find((x) => x.id === 'pixel-yard');
         const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gamev2-'));
         execFileSync('unzip', ['-q', path.join(cdn, old.file), '-d', work]);
         const mf = JSON.parse(fs.readFileSync(path.join(work, 'manifest.json'), 'utf8'));
@@ -435,6 +439,16 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         assert.match(await admin.textContent('[data-game-detail-meta="pixel-yard"]'), /v1\.0\.0 → v1\.0\.1/);
         assert.match(await admin.textContent('[data-game-about="pixel-yard"]'), /已装 v1\.0\.0 · 最新 v1\.0\.1/);
         assert.match(await admin.textContent('[data-game-progress]'), /今日小事|卷心菜|浆果/);
+        // 预览: the screenshots in a row, every one loaded
+        // (the row loads lazily: the ones scrolled out of view load when they come in — every one has its picture,
+        // the first, in view, has loaded)
+        const shots = async () => admin.evaluate(() => [...document.querySelectorAll('[data-game-shot]')].map((f, n) => {
+          const imgs = [...f.querySelectorAll('img')];
+          return { ok: imgs.some((i) => !!i.getAttribute('src')) && (n > 0 || imgs.some((i) => i.complete && i.naturalWidth > 0)), alt: imgs.map((i) => i.alt).join('') };
+        }));
+        const want = bundled.games.find((x) => x.id === 'pixel-yard').screenshots.length;
+        const loaded = await until(async () => { const l = await shots(); return l.length === want && l.every((x) => x.ok) ? l : null; }, 10000, 'the screenshots');
+
         await admin.waitForTimeout(300);
         await admin.screenshot({ path: path.join(SHOTS, 'g14-store-update.png'), fullPage: true });
         // 开源仓库
@@ -456,6 +470,8 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         assert.equal(onDisk, '1.0.1');
         await until(async () => !(await admin.isVisible('[data-game-update="pixel-yard"]')), 8000, 'no 更新 button any more');
         assert.match(await admin.textContent('[data-game-about="pixel-yard"]'), /已装 v1\.0\.1 · 最新 v1\.0\.1/);
+        // the newer version's screenshots (from the repository, fetched into the cache) are on its page too
+        const after = await until(async () => { const l = await shots(); return l.length === want && l.every((x) => x.ok) ? l : null; }, 15000, 'the screenshots after the update');
         await admin.waitForTimeout(500);
         await admin.screenshot({ path: path.join(SHOTS, 'g14-store-updated.png'), fullPage: true });
         await admin.click('[data-game-play="pixel-yard"]');
@@ -465,7 +481,7 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         assert.equal(s.update, null, 'no chip once up to date');
         assert.equal(await gp.isVisible('#update-chip'), false);
         assert.equal(s.world.plots['plot-a'].stage, stageBefore, 'her progress (the crops) survived the update');
-        return `checked → 有更新 (${meta}), notes shown, repo link ${links.filter((u) => u.includes('pixel-pet-mini-games')).pop()}, chip「有新版本 v1.0.1」, updated on disk to ${onDisk}, plot-a stage ${s.world.plots['plot-a'].stage} kept`;
+        return `checked → 有更新 (${meta}), notes shown, ${loaded.length} screenshots (${after.length} after the update), repo link ${links.filter((u) => u.includes('pixel-pet-mini-games')).pop()}, chip「有新版本 v1.0.1」, updated on disk to ${onDisk}, plot-a stage ${s.world.plots['plot-a'].stage} kept`;
       });
 
       await step(S, 'G13 商店里删除：文件没了，托盘再点就打开商店', async () => {

@@ -1020,7 +1020,8 @@
           const f = st.flyTarget;
           st.flyTarget = null;
           f.targeted = false;
-          if (Math.hypot(f.x - ev.x, f.y + 4 - ev.y) < 28) { f.caught = true; pet.touch(); say(pick('firefly')); report({ type: 'collect', item: 'firefly' }); }
+          // within her reach (a firefly over the pond is not)
+          if (Math.hypot(f.x - ev.x, f.y + 4 - ev.y) < Math.max(28, PET_H * 0.8)) { f.caught = true; pet.touch(); say(pick('firefly')); report({ type: 'collect', item: 'firefly' }); }
         } else if (ev.why === 'click' && !ev.obj && rnd() < 0.3) say(pick('arrive'));
       }
     }

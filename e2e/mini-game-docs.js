@@ -102,6 +102,17 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
         await admin.waitForTimeout(800);
         await admin.screenshot({ path: path.join(DIR, 'store-detail.png') });
         webp(path.join(DIR, 'store-detail.png'));
+        // 预览: scrolled into view, then one opened large
+        await admin.locator('[data-game-shots]').scrollIntoViewIfNeeded();
+        await admin.waitForTimeout(600);
+        await admin.screenshot({ path: path.join(DIR, 'store-shots.png') });
+        webp(path.join(DIR, 'store-shots.png'));
+        await admin.click('[data-game-shot="2"] img');
+        await admin.waitForTimeout(1200);
+        await admin.screenshot({ path: path.join(DIR, 'store-shot-open.png') });
+        webp(path.join(DIR, 'store-shot-open.png'));
+        await admin.keyboard.press('Escape');
+        await admin.waitForTimeout(400);
         await admin.evaluate(() => { location.hash = '/store/games'; });
         await admin.waitForSelector('[data-game-play="pixel-yard"]', { timeout: 10000 });
         await admin.click('[data-game-play="pixel-yard"]');
@@ -111,7 +122,7 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
         if ((await g()).scene.dayFlow) await gp.click('#day-flow');
         await T(([x, y]) => window.__gameTest.goTo(x, y), [600, 330]);
         await until(async () => { const v = await g(); return v.pet.mode === 'idle' && Math.hypot(v.pet.x - 600, v.pet.y - 330) < 10 ? v : null; }, 20000, 'her on the lawn');
-        return 'store-remote store-installed store-detail';
+        return 'store-remote store-installed store-detail store-shots store-shot-open';
       });
 
       const only = process.env.GAMEDOCS_ONLY || '';

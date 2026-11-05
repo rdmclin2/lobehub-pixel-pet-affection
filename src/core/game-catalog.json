@@ -20,6 +20,32 @@
       "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/pixel-yard",
       "changelog": "第一版：一座漂在空中的等距像素小院（小屋、木棚、鸡舍、菜地、池塘和瀑布）。她会自己逛、坐长椅、浇菜收菜、摘浆果、开关路灯、夜里抓萤火虫；时段和天气可调；每天三件小事，完成加好感。",
       "picture": "catalog/games/pixel-yard.webp",
+      "screenshots": [
+        {
+          "url": "catalog/games/pixel-yard/01-day-clear.webp",
+          "caption": "白天 · 晴朗：她在小院里自己逛"
+        },
+        {
+          "url": "catalog/games/pixel-yard/02-dusk-cloudy.webp",
+          "caption": "黄昏 · 多云：画面整体偏暖、云团飘过"
+        },
+        {
+          "url": "catalog/games/pixel-yard/03-night-rain.webp",
+          "caption": "夜晚 · 小雨：窗户和路灯亮起暖光"
+        },
+        {
+          "url": "catalog/games/pixel-yard/04-snow.webp",
+          "caption": "下雪：冷色调，雪花飘落"
+        },
+        {
+          "url": "catalog/games/pixel-yard/05-act-ripe.webp",
+          "caption": "种菜：浇三次水就熟了，再点一下收菜"
+        },
+        {
+          "url": "catalog/games/pixel-yard/06-quests.webp",
+          "caption": "今日小事：每天三件，完成加好感"
+        }
+      ],
       "file": "pixel-yard-1.0.0.zip",
       "bytes": 1183523,
       "sha256": "3ffe6ccb50ea3f916cf825cafbfe551a48514dcf37828efdd8b2f56f454002b3"

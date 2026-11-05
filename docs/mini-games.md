@@ -22,11 +22,17 @@
 | --- | --- | --- | --- | --- |
 | ![浇菜](img/mini-games/act-water.webp) | ![菜熟了](img/mini-games/act-ripe.webp) | ![坐长椅](img/mini-games/act-bench.webp) | ![拍路灯](img/mini-games/act-lamp.webp) | ![抓萤火虫](img/mini-games/act-firefly.webp) |
 
-商店 → 小游戏。卡片上只放封面、名字、状态、版本、一句介绍和一个主按钮；点卡片进入详情页（`#/store/game/<id>`）。详情页里有状态和全部操作、玩法要点、更新说明、你们的进度、来源和开源仓库：
+商店 → 小游戏。卡片上只放封面、名字、状态、版本、一句介绍和一个主按钮；点卡片进入详情页（`#/store/game/<id>`）。详情页里有状态和全部操作、玩法要点、预览截图、更新说明、你们的进度、来源和开源仓库：
 
 | 未下载 | 已下载 | 详情页 |
 | --- | --- | --- |
 | ![商店：像素小院未下载](img/mini-games/store-remote.webp) | ![商店：像素小院已下载，可以开始玩](img/mini-games/store-installed.webp) | ![详情页：大封面、状态、开始玩、开源仓库、更新说明、你们的进度、关于](img/mini-games/store-detail.webp) |
+
+详情页的「预览」像 App Store 那样排成一行，可以横向滑动，右上角 ‹ › 翻页，点开是大图，能左右切换和缩放。截图在游戏仓库的 `games/<id>/screenshots/` 里，说明文字写在 `store.json`。应用自带一份（`scripts/sync-game-catalog.js` 复制到 `src/renderer/catalog/games/<id>/`），仓库后来新加或更换的截图会自动下载并缓存：
+
+| 预览 | 点开 |
+| --- | --- |
+| ![详情页的预览：一排截图，每张下面有说明](img/mini-games/store-shots.webp) | ![点开一张：大图，3 / 6，左右切换](img/mini-games/store-shot-open.webp) |
 
 发布新版本之后（e2e G14 发布的测试版本 1.0.1）：
 
@@ -247,7 +253,7 @@ screen         屏幕空间：雨、雪、雾、闪电
 ```
 games/<id>/pack/         安装包里的全部内容（manifest.json、sprites.json、terrain.webp、atlas.webp）
 games/<id>/art/          美术源：prompts.json（GPT Image 提示词）、layout.json（切图排布）、raw/（原图，无损 WebP）
-games/<id>/cover.webp    商店封面　· store.json 商店卡片上的玩法要点 · CHANGELOG.md 每个版本的更新说明
+games/<id>/cover.webp    商店封面　· screenshots/ 详情页的预览截图 · store.json 玩法要点和截图说明 · CHANGELOG.md 每个版本的更新说明
 catalog.json             商店目录：应用读这份文件得知有哪些游戏、最新版本、安装包大小和 sha256
 scripts/                 build.js（校验 + 打包 + 更新目录）· publish.js（传 CDN、下载回来比对）· game_sprites.py · generate.sh
 tools/game-pack.js       本应用 src/core/game-pack.js 的副本：打包前就按应用的规则校验

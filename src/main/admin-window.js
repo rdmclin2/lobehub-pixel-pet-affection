@@ -9,7 +9,7 @@ const path = require('node:path');
 const { BrowserWindow, nativeTheme, shell } = require('electron');
 
 const INDEX = path.join(__dirname, '..', 'admin-ui', 'index.html');
-const SECTION_RE = /^[a-z][a-z0-9-]{0,30}(\/[a-z0-9-]{1,40})?$/;
+const SECTION_RE = /^[a-z][a-z0-9-]{0,30}(\/[a-z0-9-]{1,40}){0,2}$/; // up to two levels: store/game/<id>
 
 class AdminWindow {
   constructor({ testMode = false, index = INDEX } = {}) {

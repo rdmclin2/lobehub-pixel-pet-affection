@@ -25,6 +25,8 @@ const RELEASE_RE = /^games-v\d+$/;
 // a remote picture / repository link may only point into the games repository
 const PICTURE_RE = /^https:\/\/raw\.githubusercontent\.com\/rdmclin2\/pixel-pet-mini-games\/[\w./-]+\.(webp|png)$/;
 const REPO_RE = /^https:\/\/github\.com\/rdmclin2\/pixel-pet-mini-games(\/[\w./-]*)?$/;
+// a shipped picture: catalog/games/<id>.webp (the cover) or catalog/games/<id>/<file> (a screenshot), under src/renderer
+const LOCAL_PIC_RE = /^catalog\/games\/[a-z0-9-]+(\/[a-z0-9][a-z0-9._-]*)?\.(webp|png)$/;
 
 // "1.10.0" > "1.9.3"
 function compareVersions(a, b) {
@@ -40,14 +42,17 @@ function cleanEntry(g, release, { bundled = false } = {}) {
   if (!g || typeof g !== 'object' || g.type !== 'game' || !GP.ID_RE.test(String(g.id))) return null;
   if (!VER_RE.test(String(g.version)) || typeof g.name !== 'string' || !g.name.trim()) return null;
   if (!FILE_RE.test(String(g.file)) || !SHA_RE.test(String(g.sha256)) || !Number.isInteger(g.bytes) || g.bytes <= 0 || g.bytes > 200 * 1024 * 1024) return null;
-  const picture = typeof g.picture === 'string' && (bundled ? /^catalog\/games\/[a-z0-9-]+\.(webp|png)$/.test(g.picture) : PICTURE_RE.test(g.picture)) ? g.picture : null;
+  const okPic = (u) => typeof u === 'string' && (bundled ? LOCAL_PIC_RE.test(u) : PICTURE_RE.test(u));
+  const picture = okPic(g.picture) ? g.picture : null;
+  // 商店详情页的预览截图: [{ url, caption }], at most 8
+  const screenshots = (Array.isArray(g.screenshots) ? g.screenshots : []).filter((x) => x && okPic(x.url)).slice(0, 8).map((x) => ({ url: x.url, caption: str(x.caption, 60) }));
   return {
     id: g.id, type: 'game', name: str(g.name, 40), version: g.version, engine: str(g.engine, 20) || 'yard@1',
     minAppVersion: VER_RE.test(String(g.minAppVersion)) ? g.minAppVersion : null,
     description: str(g.description, 400), credit: str(g.credit, 200),
     features: Array.isArray(g.features) ? g.features.filter((f) => typeof f === 'string').slice(0, 8).map((f) => f.slice(0, 40)) : [],
     repo: typeof g.repo === 'string' && REPO_RE.test(g.repo) ? g.repo : REPO_URL,
-    changelog: str(g.changelog, 2000), picture,
+    changelog: str(g.changelog, 2000), picture, screenshots,
     file: g.file, bytes: g.bytes, sha256: g.sha256, release,
   };
 }
@@ -75,8 +80,12 @@ function merge(bundled, remote) {
   for (const g of (bundled && bundled.games) || []) out.set(g.id, { ...g, source: 'bundled' });
   for (const g of (remote && remote.games) || []) {
     const b = out.get(g.id);
-    if (!b || compareVersions(g.version, b.version) > 0) out.set(g.id, { ...g, source: 'remote', bundledPicture: b ? b.picture : null });
-    else if (b && compareVersions(g.version, b.version) === 0) out.set(g.id, { ...b, repo: g.repo || b.repo, changelog: g.changelog || b.changelog });
+    if (!b || compareVersions(g.version, b.version) > 0) out.set(g.id, { ...g, source: 'remote', bundledPicture: b ? b.picture : null, bundledScreenshots: b ? b.screenshots : [] });
+    // the same version: the shipped entry, with what the repository may have added since (notes, screenshots)
+    else if (b && compareVersions(g.version, b.version) === 0) {
+      const sameShots = g.screenshots.length === b.screenshots.length && g.screenshots.every((x, i) => x.caption === b.screenshots[i].caption && x.url.split('/').pop() === b.screenshots[i].url.split('/').pop());
+      out.set(g.id, { ...b, repo: g.repo || b.repo, changelog: g.changelog || b.changelog, ...(sameShots ? {} : { screenshots: g.screenshots, bundledScreenshots: b.screenshots }) });
+    }
   }
   return { games: [...out.values()] };
 }
@@ -108,6 +117,7 @@ function storeRows(index, installed = new Map(), downloads = [], ctx = {}) {
       id: g.id, name: g.name, version: g.version, installedVersion: have, engine: g.engine, minAppVersion: g.minAppVersion,
       description: g.description, credit: g.credit, features: g.features, repo: g.repo, changelog: g.changelog,
       picture: g.picture, bundledPicture: g.bundledPicture || null, source: g.source || 'bundled',
+      screenshots: g.screenshots || [], bundledScreenshots: g.bundledScreenshots || [],
       bytes: g.bytes, sizeLabel: sizeLabel(g.bytes), supported: ok.ok, unsupportedReason: ok.ok ? null : ok.reason,
       ...s, stateLabel: STATE_LABEL[s.state],
     };

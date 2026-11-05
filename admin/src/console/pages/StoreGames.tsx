@@ -12,10 +12,10 @@
  * version (her progress stays), 删除 takes it away. Progress arrives as `catalog-progress`.
  */
 import { Github } from "@lobehub/icons";
-import { Alert, Button, createStaticStyles, cssVar, Flexbox, Progress, Tag, Text, toast } from "@lobehub/ui";
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Flexbox, Image, Progress, Tag, Text, toast } from "@lobehub/ui";
 import { Surface } from "@lobehub/ui/dashboard";
-import { Check, ChevronLeft, Download, Gamepad2, RefreshCw, Trash2 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Download, Gamepad2, RefreshCw, Trash2 } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type DownloadProgress, type GameProgress, type GameStoreState, type StoreGameRow } from "../api";
 import { ask } from "../fields";
@@ -81,20 +81,19 @@ const styles = createStaticStyles(({ css }) => ({
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   `,
-  // the detail page: the cover on the left (stays in view), the rest on the right; one column when narrow
-  layout: css`
+  // the detail page, top to bottom: the cover and who it is / what to do with it side by side; a row of
+  // screenshots (App Store style, scrolls sideways, opens large); then its notes, her progress and 关于
+  head: css`
     display: grid;
-    grid-template-columns: minmax(280px, 440px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 400px) minmax(0, 1fr);
     gap: 32px;
     align-items: start;
 
-    @media (width <= 900px) {
+    @media (width <= 860px) {
       grid-template-columns: minmax(0, 1fr);
     }
   `,
   cover: css`
-    position: sticky;
-    inset-block-start: 16px;
     overflow: hidden;
     aspect-ratio: 16 / 10;
     border-radius: ${cssVar.borderRadiusLG};
@@ -106,9 +105,40 @@ const styles = createStaticStyles(({ css }) => ({
       height: 100%;
       object-fit: cover;
     }
+  `,
+  shots: css`
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 2px;
+    overflow-x: auto;
+    display: flex;
+    gap: 16px;
 
-    @media (width <= 900px) {
-      position: static;
+    padding-block-end: 8px;
+
+    scrollbar-width: thin;
+  `,
+  shot: css`
+    scroll-snap-align: start;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 8px;
+
+    width: 352px;
+    margin: 0;
+
+    img {
+      border-radius: ${cssVar.borderRadiusLG};
+    }
+  `,
+  sections: css`
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+
+    @media (width <= 860px) {
+      grid-template-columns: minmax(0, 1fr);
     }
   `,
   notes: css`
@@ -388,6 +418,37 @@ const ProgressPanel = ({ progress }: { progress: GameProgress }) => {
   );
 };
 
+/** 预览: the game's screenshots in a row that scrolls sideways (‹ › or a swipe); a click opens them large. */
+const Gallery = ({ shots }: { shots: { caption: string; src: string }[] }) => {
+  const row = useRef<HTMLDivElement>(null);
+  const page = (dir: number) => row.current?.scrollBy({ behavior: "smooth", left: dir * (352 + 16) });
+  return (
+    <Flexbox data-game-shots={shots.length} gap={12}>
+      <Flexbox align="center" horizontal justify="space-between">
+        <Text strong>预览</Text>
+        <Flexbox gap={4} horizontal>
+          <ActionIcon icon={ChevronLeft} onClick={() => page(-1)} size="small" title="上一张" />
+          <ActionIcon icon={ChevronRight} onClick={() => page(1)} size="small" title="下一张" />
+        </Flexbox>
+      </Flexbox>
+      <Image.PreviewGroup>
+        <div className={styles.shots} ref={row}>
+          {shots.map((x, i) => (
+            <figure className={styles.shot} data-game-shot={i} key={x.src.slice(-80) + i}>
+              <Image alt={x.caption || `预览 ${i + 1}`} height={220} objectFit="cover" preview src={x.src} variant="borderless" width={352} />
+              {x.caption && (
+                <Text as="figcaption" fontSize={12} type="secondary">
+                  {x.caption}
+                </Text>
+              )}
+            </figure>
+          ))}
+        </div>
+      </Image.PreviewGroup>
+    </Flexbox>
+  );
+};
+
 /** 商店 → 小游戏 → one game (#/store/game/<id>). */
 export const GameDetailPage = ({ id }: { id: string }) => {
   const [d, setD] = useState<Awaited<ReturnType<ReturnType<typeof api>["gameDetail"]>> | null>(null);
@@ -418,9 +479,9 @@ export const GameDetailPage = ({ id }: { id: string }) => {
   const s = live(g, p);
   const source = g.source === "remote" ? "开源仓库（应用发布后上架或更新的版本）" : "随应用一起发布的商店目录";
   return (
-    <Flexbox data-game-detail={g.id} gap={20}>
+    <Flexbox data-game-detail={g.id} gap={28}>
       {back}
-      <div className={styles.layout}>
+      <div className={styles.head}>
         <div className={styles.cover}>
           {g.pictureSrc ? (
             <img alt={g.name} src={g.pictureSrc} />
@@ -463,6 +524,11 @@ export const GameDetailPage = ({ id }: { id: string }) => {
               开源仓库
             </Button>
           </Flexbox>
+        </Flexbox>
+      </div>
+      {d.shots && d.shots.length > 0 && <Gallery shots={d.shots} />}
+      <div className={styles.sections}>
+        <Flexbox gap={20} style={{ minWidth: 0 }}>
           {g.changelog && (
             <Surface title={s.state === "update" ? `v${g.version} 更新了什么` : `v${g.version} 更新说明`}>
               <Text className={styles.notes} data-game-changelog={g.id} fontSize={13}>
@@ -471,6 +537,8 @@ export const GameDetailPage = ({ id }: { id: string }) => {
             </Surface>
           )}
           {d.progress && <ProgressPanel progress={d.progress} />}
+        </Flexbox>
+        <Flexbox gap={20} style={{ minWidth: 0 }}>
           <Surface title="关于">
             <div className={styles.info} data-game-about={g.id}>
               <Info label="版本">{g.installedVersion ? `已装 v${g.installedVersion} · 最新 v${g.version}` : `最新 v${g.version}`}</Info>

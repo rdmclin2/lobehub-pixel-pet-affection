@@ -532,7 +532,8 @@ function wire() {
     const update = game ? gameIndex.updates(installedGames()).find((u) => u.id === id) || null : null;
     return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update };
   });
-  ipcMain.on('game:open-store', (e) => { if (fromScene(e)) openAdmin('store/games'); });
+  // 有新版本 · 去更新: straight to this game's page in 商店
+  ipcMain.on('game:open-store', (e) => { if (fromScene(e)) openAdmin(scene.gameId ? `store/game/${scene.gameId}` : 'store/games'); });
   ipcMain.handle('game:set', (e, patch) => {
     if (!fromScene(e) || !patch || typeof patch !== 'object') return { ok: false, reason: 'invalid' };
     const clean = {};
@@ -574,7 +575,7 @@ function wire() {
     const row = st.games.find((g) => g.id === String(id || '')) || null;
     if (!row) return { ok: false, reason: 'not-found' };
     const installed = installedGames().has(row.id);
-    return { ok: true, game: row, progress: installed ? games.progress(row.id) : null, last: st.last, checkedAt: st.checkedAt };
+    return { ok: true, game: row, shots: gameIndex.shots(row), progress: installed ? games.progress(row.id) : null, last: st.last, checkedAt: st.checkedAt };
   });
   ipcMain.handle('game-download', async (_e, { id } = {}) => {
     const e = gameIndex.entry(String(id || ''));

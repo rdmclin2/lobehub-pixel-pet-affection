@@ -3,7 +3,8 @@
 
 // 商店 → 小游戏 (docs/mini-games.md §7): the store's games ship with the app as src/core/game-catalog.json — a
 // copy of the published entries of the games repository's catalog.json (rdmclin2/pixel-pet-mini-games), with
-// each cover picture downloaded to src/renderer/catalog/games/<id>.webp so the store shows them offline. The
+// each cover picture downloaded to src/renderer/catalog/games/<id>.webp and its screenshots to
+// src/renderer/catalog/games/<id>/, so the store shows them offline. The
 // app also reads the repository's catalog.json itself now and then (core/game-index.js), so a game published
 // after a release still shows up; run this before a release so the bundled copy is current.
 //
@@ -41,8 +42,21 @@ async function main() {
       }
       picture = `catalog/games/${g.id}.webp`;
     }
+    // the detail page's screenshots: src/renderer/catalog/games/<id>/<file>
+    const screenshots = [];
+    if (!CHECK) fs.rmSync(path.join(PICS, g.id), { recursive: true, force: true });
+    for (const s of g.screenshots) {
+      const name = path.basename(s.url);
+      if (!CHECK) {
+        const r = await fetch(s.url);
+        if (!r.ok) throw new Error(`${g.id}: screenshot ${s.url} HTTP ${r.status}`);
+        fs.mkdirSync(path.join(PICS, g.id), { recursive: true });
+        fs.writeFileSync(path.join(PICS, g.id, name), Buffer.from(await r.arrayBuffer()));
+      }
+      screenshots.push({ url: `catalog/games/${g.id}/${name}`, caption: s.caption });
+    }
     const { source: _s, bundledPicture: _b, release: _r, ...entry } = g;
-    games.push({ ...entry, picture });
+    games.push({ ...entry, picture, screenshots });
     console.log(`  ${g.id} ${g.version}  ${g.file}  ${g.bytes} bytes`);
   }
   const text = `${JSON.stringify({ schema: 1, release: remote.release, games }, null, 2)}\n`;
