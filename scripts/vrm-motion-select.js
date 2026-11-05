@@ -67,6 +67,11 @@ const TOO_FAST = {
 };
 // T-5098: not a rest pose — kneeling with both arms spread out, still (the pose guard's stiff-out check): crouch.v02@male
 TOO_FAST['mixamo/ede8954e-5272-46c2-b3c5-c701e5ee887c.fbx'] = 'kneels with both arms spread out wide (crouch.v02@male: stiff arms out)';
+// T-5099: base poses holding both upper arms above level (the pose guard's RAISED check; the runtime counts such a
+// pose's samples as T-pose frames): "Sitting, Arms Raised" (sit.v03@female/@neutral, hands behind the head, 20 s still
+// in the final retest), from both the mixamo and the postures pack
+TOO_FAST['mixamo/e84e677b-c981-4333-8242-3ff820f8cf7f.fbx'] = 'sits with both arms raised behind the head (sit.v03: raised-arms base pose)';
+TOO_FAST['postures/e84e677b-c981-4333-8242-3ff820f8cf7f.fbx'] = 'the same Sitting, Arms Raised in the postures pack';
 // the longest a one-shot reaction / emotion plays (s); a longer source is trimmed to its busiest window
 const REACT_MAX = 6;
 

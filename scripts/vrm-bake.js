@@ -428,6 +428,7 @@ function poseGuard(out, assets, idx) {
   const lines = Guard.formatReport(s2).map((l) => l.replace(/— armsOut: \[object Object\]/, ''));
   for (const r of s2.allowedList) { const i = lines.findIndex((l) => l.startsWith(`  allowed  ${r.id}:`)); if (i >= 0) lines[i] = `  allowed  ${r.id}: ${r.longestS} s @ ${r.at} s ≤ armsOut ${r.armsOut.maxS} s (${r.armsOut.why})`; }
   const failed = s2.hitList.map((r) => `pose guard: ${r.id} holds a T-pose ${r.longestS} s @ ${r.at} s (${r.src})`);
+  for (const r of s2.raisedList || []) failed.push(`pose guard: ${r.id} is a ${r.kind} holding both arms raised above level (${r.raisedFrames}/${r.frames} frames, ${r.src})`);
   for (const r of s2.stiffList) failed.push(`pose guard: ${r.id} holds both arms out stiff (${r.stiffOutDeg}° to the side) ${r.stiffS} s @ ${r.stiffAt} s (${r.src})`);
   const vmds = new Set();
   for (const e of Object.values(idx.clips)) if (e.src && /\.vmd$/i.test(e.src)) vmds.add(e.src);

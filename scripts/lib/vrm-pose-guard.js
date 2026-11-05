@@ -38,6 +38,11 @@ const TPOSE = { min: 75, max: 115, elbow: 35, holdS: 0.2 };
 // chin, a seated pose leaning back on its hands bend the elbow 80°+ and are rest poses). Every posture is checked —
 // a kneeling crouch holding both arms spread (crouch.v02@male) is the same coat hanger as penguin_stand.
 const STIFF = { deg: 35, elbow: 75, speed: 12, win: 0.5, holdS: 2 };
+// T-5099: a base pose held with both upper arms raised above level (both > RAISED.vert from hanging, i.e. the
+// elevation the runtime T-pose count uses: > −15°), whatever the elbows do — a posture or an idle is her base layer
+// for seconds to minutes, so it is a hit on any frame: "Sitting, Arms Raised" (sit.v03, hands behind the head) sat 20 s
+// with both upper arms 35–43° above level, motionless. Reactions / emotions / dances lift the arms on purpose: not checked; nor lying poses (group lay).
+const RAISED = { vert: 75, kinds: ['posture', 'idle'] };
 const KINDS = ['posture', 'idle', 'reaction', 'emotion', 'talk', 'walk', 'dance'];
 const CHAIN = {
   left: ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'leftUpperArm'],
@@ -122,7 +127,9 @@ function checkClip(clip, { fps = 30, th = TPOSE, st = STIFF, kind = null, group 
   }
   const longestS = best / fps;
   const bothVert = Math.max(...arms.map((a) => Math.min(a.left.vert, a.right.vert)));
-  return { frames: n + 1, bothArmsMaxDeg: +both.toFixed(1), bothArmsVertDeg: +bothVert.toFixed(1), tposeFrames: frames, longestS: +longestS.toFixed(2), at: bestAt, level, suspect: longestS >= th.holdS, stiffS: Number.isFinite(stiffS) ? +stiffS.toFixed(2) : 'held', stiffAt: sAt, stiffOutDeg: +outMax.toFixed(1), stiff: stiffS >= st.holdS };
+  // (lying down the arms are level by nature — beside her or over her head: not a raised-arms pose, group lay is not checked)
+  const raisedFrames = RAISED.kinds.includes(kind) && group !== 'lay' ? arms.filter((a) => Math.min(a.left.vert, a.right.vert) > RAISED.vert).length : 0;
+  return { raisedFrames, raised: raisedFrames > 0, frames: n + 1, bothArmsMaxDeg: +both.toFixed(1), bothArmsVertDeg: +bothVert.toFixed(1), tposeFrames: frames, longestS: +longestS.toFixed(2), at: bestAt, level, suspect: longestS >= th.holdS, stiffS: Number.isFinite(stiffS) ? +stiffS.toFixed(2) : 'held', stiffAt: sAt, stiffOutDeg: +outMax.toFixed(1), stiff: stiffS >= st.holdS };
 }
 
 // a .vrma (Buffer) → the clip shape checkClip reads
@@ -179,7 +186,8 @@ function summarize(rows) {
   const stiffAllowed = rows.filter((r) => r.stiff && r.armsOut && r.armsOut.stiffS >= r.stiffS);
   const allowed = rows.filter((r) => r.suspect && r.armsOut);
   const stiff = rows.filter((r) => r.stiff && !stiffAllowed.includes(r));
-  return { clips: rows.length, frames: rows.reduce((s, r) => s + r.frames, 0), hits: hits.length, allowed: allowed.length, stiffHits: stiff.length, byKind, hitList: hits, allowedList: allowed, stiffList: stiff, stiffAllowedList: stiffAllowed, rows };
+  const raised = rows.filter((r) => r.raised);
+  return { raisedHits: raised.length, raisedList: raised, clips: rows.length, frames: rows.reduce((s, r) => s + r.frames, 0), hits: hits.length, allowed: allowed.length, stiffHits: stiff.length, byKind, hitList: hits, allowedList: allowed, stiffList: stiff, stiffAllowedList: stiffAllowed, rows };
 }
 
 // the report lines (scripts/vrm-bake.js --v2 --check prints them)
@@ -196,7 +204,8 @@ function formatReport(sum, th = TPOSE) {
   for (const r of sum.hitList) lines.push(`  HIT      ${r.id} (${r.src}): ${r.tposeFrames} frames, longest ${r.longestS} s @ ${r.at} s`);
   for (const r of sum.stiffAllowedList || []) lines.push(`  allowed  ${r.id}: stiff arms out ${r.stiffS} s @ ${r.stiffAt} s ≤ armsOut.stiffS ${r.armsOut.stiffS} s (${r.armsOut.why})`);
   for (const r of sum.stiffList || []) lines.push(`  STIFF    ${r.id} (${r.src}): both arms out ≥ ${STIFF.deg}° (up to ${r.stiffOutDeg}°) and still for ${r.stiffS} s @ ${r.stiffAt} s`);
-  lines.push(`pose guard: ${sum.hits} T-pose hit${sum.hits === 1 ? '' : 's'}, ${sum.stiffHits || 0} stiff hit${sum.stiffHits === 1 ? '' : 's'} in ${sum.clips} clips${sum.hits || sum.stiffHits ? ' — FAILED' : ''}`);
+  for (const r of sum.raisedList || []) lines.push(`  RAISED   ${r.id} (${r.src}): a ${r.kind} holding both upper arms above level on ${r.raisedFrames}/${r.frames} frames (up to ${r.bothArmsVertDeg}° from hanging)`);
+  lines.push(`pose guard: ${sum.hits} T-pose hit${sum.hits === 1 ? '' : 's'}, ${sum.stiffHits || 0} stiff hit${sum.stiffHits === 1 ? '' : 's'}, ${sum.raisedHits || 0} raised-arms base pose${sum.raisedHits === 1 ? '' : 's'} in ${sum.clips} clips${sum.hits || sum.stiffHits || sum.raisedHits ? ' — FAILED' : ''}`);
   return lines;
 }
 
@@ -246,4 +255,4 @@ function vmdArmCheck(buf, { step = 2 } = {}) {
   return { samples: n, fps, maxUpperDeg: +maxUpper.toFixed(2), maxForeDeg: +maxFore.toFixed(2), at: +at.toFixed(2) };
 }
 
-module.exports = { vmdArmCheck, TPOSE, STIFF, KINDS, armsAt, levelFrame, tposeFrame, checkClip, clipOfVrma, checkLibrary, summarize, formatReport, sampleQ };
+module.exports = { RAISED, vmdArmCheck, TPOSE, STIFF, KINDS, armsAt, levelFrame, tposeFrame, checkClip, clipOfVrma, checkLibrary, summarize, formatReport, sampleQ };
