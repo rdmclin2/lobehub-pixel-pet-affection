@@ -1,0 +1,599 @@
+{
+ "terrain": {
+  "sheet": "terrain",
+  "scale": 0.5,
+  "key": "black"
+ },
+ "sprites": {
+  "cottage": {
+   "sheet": "buildings",
+   "box": [
+    36,
+    152,
+    564,
+    608
+   ],
+   "scale": 0.31
+  },
+  "shed": {
+   "sheet": "buildings",
+   "box": [
+    660,
+    336,
+    412,
+    412
+   ],
+   "scale": 0.31
+  },
+  "coop": {
+   "sheet": "buildings",
+   "box": [
+    1184,
+    416,
+    316,
+    320
+   ],
+   "scale": 0.31
+  },
+  "oak1": {
+   "sheet": "trees",
+   "box": [
+    68,
+    80,
+    528,
+    492
+   ],
+   "scale": 0.255
+  },
+  "oak2": {
+   "sheet": "trees",
+   "box": [
+    776,
+    80,
+    496,
+    496
+   ],
+   "scale": 0.255
+  },
+  "oak3": {
+   "sheet": "trees",
+   "box": [
+    1448,
+    80,
+    540,
+    500
+   ],
+   "scale": 0.255
+  },
+  "oak4": {
+   "sheet": "trees",
+   "box": [
+    68,
+    744,
+    552,
+    512
+   ],
+   "scale": 0.255
+  },
+  "oak5": {
+   "sheet": "trees",
+   "box": [
+    776,
+    732,
+    496,
+    524
+   ],
+   "scale": 0.255
+  },
+  "oak6": {
+   "sheet": "trees",
+   "box": [
+    1444,
+    752,
+    552,
+    504
+   ],
+   "scale": 0.255
+  },
+  "pine1": {
+   "sheet": "trees",
+   "box": [
+    128,
+    1356,
+    408,
+    624
+   ],
+   "scale": 0.255
+  },
+  "pine2": {
+   "sheet": "trees",
+   "box": [
+    828,
+    1360,
+    396,
+    620
+   ],
+   "scale": 0.255
+  },
+  "sapling": {
+   "sheet": "trees",
+   "box": [
+    1616,
+    1540,
+    232,
+    336
+   ],
+   "scale": 0.255
+  },
+  "bench": {
+   "sheet": "props",
+   "box": [
+    84,
+    164,
+    376,
+    352
+   ],
+   "scale": 0.17
+  },
+  "lamp": {
+   "sheet": "props",
+   "box": [
+    704,
+    64,
+    128,
+    460
+   ],
+   "scale": 0.17
+  },
+  "well": {
+   "sheet": "props",
+   "box": [
+    1104,
+    56,
+    332,
+    472
+   ],
+   "scale": 0.2
+  },
+  "mailbox": {
+   "sheet": "props",
+   "box": [
+    1688,
+    164,
+    176,
+    324
+   ],
+   "scale": 0.15
+  },
+  "barrels": {
+   "sheet": "props",
+   "box": [
+    76,
+    668,
+    356,
+    328
+   ],
+   "scale": 0.14
+  },
+  "crates": {
+   "sheet": "props",
+   "box": [
+    600,
+    648,
+    340,
+    360
+   ],
+   "scale": 0.15
+  },
+  "fence": {
+   "sheet": "props",
+   "box": [
+    1116,
+    672,
+    332,
+    348
+   ],
+   "scale": 0.15
+  },
+  "bridge": {
+   "sheet": "props",
+   "box": [
+    1560,
+    644,
+    444,
+    368
+   ],
+   "scale": 0.2
+  },
+  "stump": {
+   "sheet": "props",
+   "box": [
+    80,
+    1168,
+    352,
+    288
+   ],
+   "scale": 0.13
+  },
+  "rocks": {
+   "sheet": "props",
+   "box": [
+    592,
+    1184,
+    360,
+    276
+   ],
+   "scale": 0.13
+  },
+  "boulder": {
+   "sheet": "props",
+   "box": [
+    1060,
+    1136,
+    436,
+    340
+   ],
+   "scale": 0.15
+  },
+  "pot": {
+   "sheet": "props",
+   "box": [
+    1664,
+    1140,
+    256,
+    320
+   ],
+   "scale": 0.11
+  },
+  "sign": {
+   "sheet": "props",
+   "box": [
+    1640,
+    1564,
+    292,
+    404
+   ],
+   "scale": 0.14
+  },
+  "bush": {
+   "sheet": "props",
+   "box": [
+    68,
+    1608,
+    372,
+    336
+   ],
+   "scale": 0.15
+  },
+  "bush-pink": {
+   "sheet": "props",
+   "box": [
+    572,
+    1616,
+    380,
+    348
+   ],
+   "scale": 0.15
+  },
+  "bush-berry": {
+   "sheet": "props",
+   "box": [
+    1096,
+    1616,
+    372,
+    348
+   ],
+   "scale": 0.15
+  },
+  "cloud1": {
+   "sheet": "clouds",
+   "box": [
+    52,
+    72,
+    632,
+    384
+   ],
+   "scale": 0.4
+  },
+  "cloud2": {
+   "sheet": "clouds",
+   "box": [
+    1020,
+    164,
+    460,
+    280
+   ],
+   "scale": 0.4
+  },
+  "cloud3": {
+   "sheet": "clouds",
+   "box": [
+    668,
+    448,
+    288,
+    188
+   ],
+   "scale": 0.4
+  },
+  "cloud4": {
+   "sheet": "clouds",
+   "box": [
+    116,
+    636,
+    560,
+    300
+   ],
+   "scale": 0.4
+  },
+  "cloud5": {
+   "sheet": "clouds",
+   "box": [
+    980,
+    660,
+    448,
+    280
+   ],
+   "scale": 0.4
+  },
+  "cabbage3": {
+   "sheet": "garden",
+   "box": [
+    712,
+    148,
+    260,
+    236
+   ],
+   "scale": 0.12
+  },
+  "carrot2": {
+   "sheet": "garden",
+   "box": [
+    1412,
+    160,
+    196,
+    216
+   ],
+   "scale": 0.12
+  },
+  "carrot3": {
+   "sheet": "garden",
+   "box": [
+    1736,
+    136,
+    224,
+    248
+   ],
+   "scale": 0.12
+  },
+  "cabbage1": {
+   "sheet": "garden",
+   "box": [
+    104,
+    256,
+    132,
+    104
+   ],
+   "scale": 0.12
+  },
+  "cabbage2": {
+   "sheet": "garden",
+   "box": [
+    416,
+    200,
+    192,
+    172
+   ],
+   "scale": 0.12
+  },
+  "carrot1": {
+   "sheet": "garden",
+   "box": [
+    1104,
+    236,
+    140,
+    140
+   ],
+   "scale": 0.12
+  },
+  "seedlings": {
+   "sheet": "garden",
+   "box": [
+    72,
+    560,
+    228,
+    160
+   ],
+   "scale": 0.1
+  },
+  "flowers-red": {
+   "sheet": "garden",
+   "box": [
+    388,
+    520,
+    232,
+    224
+   ],
+   "scale": 0.1
+  },
+  "flowers-white": {
+   "sheet": "garden",
+   "box": [
+    720,
+    516,
+    224,
+    236
+   ],
+   "scale": 0.1
+  },
+  "flowers-yellow": {
+   "sheet": "garden",
+   "box": [
+    1060,
+    528,
+    252,
+    224
+   ],
+   "scale": 0.1
+  },
+  "grass-tall": {
+   "sheet": "garden",
+   "box": [
+    1404,
+    492,
+    248,
+    268
+   ],
+   "scale": 0.1
+  },
+  "grass-short": {
+   "sheet": "garden",
+   "box": [
+    1764,
+    592,
+    192,
+    156
+   ],
+   "scale": 0.1
+  },
+  "pebbles": {
+   "sheet": "garden",
+   "box": [
+    104,
+    996,
+    148,
+    116
+   ],
+   "scale": 0.1
+  },
+  "mushrooms": {
+   "sheet": "garden",
+   "box": [
+    388,
+    940,
+    200,
+    176
+   ],
+   "scale": 0.09
+  },
+  "log": {
+   "sheet": "garden",
+   "box": [
+    688,
+    924,
+    296,
+    212
+   ],
+   "scale": 0.13
+  },
+  "can": {
+   "sheet": "garden",
+   "box": [
+    1048,
+    900,
+    256,
+    232
+   ],
+   "scale": 0.07
+  },
+  "apples": {
+   "sheet": "garden",
+   "box": [
+    1420,
+    932,
+    200,
+    188
+   ],
+   "scale": 0.09
+  },
+  "wheelbarrow": {
+   "sheet": "garden",
+   "box": [
+    1716,
+    888,
+    292,
+    252
+   ],
+   "scale": 0.14
+  },
+  "hay": {
+   "sheet": "garden",
+   "box": [
+    60,
+    1280,
+    268,
+    264
+   ],
+   "scale": 0.13
+  },
+  "stone-lantern": {
+   "sheet": "garden",
+   "box": [
+    420,
+    1252,
+    192,
+    304
+   ],
+   "scale": 0.13
+  },
+  "sign2": {
+   "sheet": "garden",
+   "box": [
+    752,
+    1264,
+    200,
+    280
+   ],
+   "scale": 0.12
+  },
+  "fence-corner": {
+   "sheet": "garden",
+   "box": [
+    1064,
+    1320,
+    264,
+    216
+   ],
+   "scale": 0.13
+  },
+  "step-stone": {
+   "sheet": "garden",
+   "box": [
+    1420,
+    1356,
+    236,
+    160
+   ],
+   "scale": 0.12
+  },
+  "rocks3": {
+   "sheet": "garden",
+   "box": [
+    1740,
+    1320,
+    240,
+    212
+   ],
+   "scale": 0.11
+  },
+  "flowers-blue": {
+   "sheet": "garden",
+   "box": [
+    708,
+    1660,
+    268,
+    244
+   ],
+   "scale": 0.1
+  },
+  "pumpkin": {
+   "sheet": "garden",
+   "box": [
+    1064,
+    1660,
+    292,
+    240
+   ],
+   "scale": 0.11
+  }
+ }
+}

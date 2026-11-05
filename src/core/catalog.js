@@ -106,6 +106,29 @@ function listVoicePacks(installed, { index = loadVoiceIndex() } = {}) {
   return index.voicePacks.map((v) => voiceRow(v, !!installed(v.id)));
 }
 
+// 商店 → 小游戏 (docs/mini-games.md §7): the store's game packs (src/core/game-catalog.json, written by
+// scripts/build-game-packs.js): id, name, description, picture (shipped with the app, relative to src/renderer/),
+// size and sha256 of the archive. core/game-store.js unpacks a download into userData/games/<id>/.
+const GAME_INDEX_FILE = path.join(__dirname, 'game-catalog.json');
+const GAME_ID_RE = /^[a-z0-9][a-z0-9-]{2,63}$/;
+let gameCached = null;
+const okGame = (g) => g && GAME_ID_RE.test(g.id) && g.type === 'game' && typeof g.name === 'string'
+  && typeof g.file === 'string' && /^[a-z0-9-]+\.zip$/.test(g.file) && SHA_RE.test(g.sha256) && Number.isInteger(g.bytes) && g.bytes > 0;
+function loadGameIndex(file = GAME_INDEX_FILE) {
+  if (file === GAME_INDEX_FILE && gameCached) return gameCached;
+  const raw = readJson(file);
+  const release = (raw && typeof raw.release === 'string' && raw.release) || 'games-v1';
+  const games = (raw && Array.isArray(raw.games) ? raw.games : []).filter(okGame).map((g) => ({ ...g, release, ...okParts(g) }));
+  const index = { schema: (raw && raw.schema) || 1, release, games };
+  if (file === GAME_INDEX_FILE) gameCached = index;
+  return index;
+}
+const gameEntry = (id, index = loadGameIndex()) => index.games.find((g) => g.id === id) || null;
+const gameRow = (g, installed) => ({ id: g.id, name: g.name, version: g.version || '', description: g.description || '', credit: g.credit || '', features: Array.isArray(g.features) ? g.features : [], picture: g.picture || null, bytes: g.bytes, sizeLabel: sizeLabel(g.bytes), installed });
+function listGames(installed, { index = loadGameIndex() } = {}) {
+  return index.games.map((g) => gameRow(g, !!installed(g.id)));
+}
+
 const UPLOAD_PREFIX = `${UPLOAD_PREFIX_ROOT}/${loadIndex().release}`;
 const DEFAULT_BASE_URL = `${CDN_ORIGIN}/${UPLOAD_PREFIX}`;
 
@@ -162,4 +185,4 @@ function repoPacks({ catalog = true } = {}) {
   return r;
 }
 
-module.exports = { VOICE_INDEX_FILE, loadVoiceIndex, voicePackEntry, listVoicePacks, INDEX_FILE, VRM_INDEX_FILE, DANCE_INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX_ROOT, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, storeIndex, loadDanceIndex, danceEntry, listDances, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, listAll, repoPacks };
+module.exports = { GAME_INDEX_FILE, loadGameIndex, gameEntry, listGames, VOICE_INDEX_FILE, loadVoiceIndex, voicePackEntry, listVoicePacks, INDEX_FILE, VRM_INDEX_FILE, DANCE_INDEX_FILE, MARKER, CDN_ORIGIN, UPLOAD_PREFIX_ROOT, UPLOAD_PREFIX, DEFAULT_BASE_URL, loadIndex, storeIndex, loadDanceIndex, danceEntry, listDances, baseUrl, entry, downloadUrl, sizeLabel, notInstalled, listAll, repoPacks };

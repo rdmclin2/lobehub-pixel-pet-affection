@@ -100,13 +100,14 @@ test('tts.elevenlabs and tts.endpoints.elevenlabs: defaults, cleaning, and a bad
   assert.equal(s.normalizeSettings({ tts: { endpoints: { elevenlabs: 'http://el.example.com' } } }).tts.endpoints.elevenlabs, '');
 });
 
-// 像素小院 (docs/pixel-scene-design.md §7): the yard's time and weather in settings.json
+// 小游戏 (docs/mini-games.md §5): the game world's time and weather in settings.json
 test('scene: defaults, wrap-round hour in quarter hours, unknown weather → clear, old files get the defaults', () => {
   const S = require('../src/core/settings');
-  assert.deepEqual(S.normalizeSettings(null).scene, { followClock: true, hour: 12, weather: 'clear', autoWeather: false });
+  assert.deepEqual(S.normalizeSettings(null).scene, { followClock: false, dayFlow: true, hour: 8, weather: 'clear', autoWeather: false, game: '' });
   assert.deepEqual(S.normalizeSettings({ ageGateVersion: 2 }).scene, S.SCENE);
-  const s = S.normalizeSettings({ scene: { followClock: false, hour: 25.1, weather: 'hail', autoWeather: 'yes' } }).scene;
-  assert.deepEqual(s, { followClock: false, hour: 1, weather: 'clear', autoWeather: false });
+  const s = S.normalizeSettings({ scene: { followClock: false, hour: 25.1, weather: 'hail', autoWeather: 'yes', dayFlow: 'no', game: '../x' } }).scene;
+  assert.deepEqual(s, { followClock: false, dayFlow: true, hour: 1, weather: 'clear', autoWeather: false, game: '' });
+  assert.equal(S.normalizeScene({ game: 'pixel-yard' }).game, 'pixel-yard');
   assert.equal(S.normalizeScene({ hour: 18.6 }).hour, 18.5);
   assert.equal(S.normalizeScene({ hour: -0.25 }).hour, 23.75);
   assert.equal(S.normalizeScene({ hour: 23.9 }).hour, 0);

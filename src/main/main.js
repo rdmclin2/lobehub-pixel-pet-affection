@@ -40,7 +40,9 @@ const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { PetPanel } = require('./pet-panel');
-const { SceneWindow } = require('./scene-window');
+const { GameWindow } = require('./game-window');
+const { GameLibrary } = require('./games');
+const GameStore = require('../core/game-store');
 const { createAdminSettings } = require('./admin-settings');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
@@ -79,8 +81,10 @@ let nextSavePath = null; // E2E only (debug-next-save): where the next 导出…
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in its own window beside her
-let scene = null; // 像素小院 (scene-window.js): the pixel yard she walks about in; her desktop window hides meanwhile
-const sceneActs = []; // E2E only: what she did in the yard (scene:act)
+let scene = null; // 小游戏 (game-window.js): the window she plays a game pack in; her desktop window hides meanwhile
+let games = null; // 小游戏 packs on disk (games.js): userData/games, plus catalog/games with PIXELPET_DEV_GAMES=1
+let gameStore = null; // 商店 → 小游戏: the downloader, unpacking into userData/games/<id>/ (core/game-store.js)
+const sceneActs = []; // E2E only: what she did in the game (game:event)
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
@@ -197,21 +201,25 @@ function openAdmin(section) {
 }
 function showPet() {
   if (!win || win.isDestroyed()) return;
-  // she cannot be in the yard and on the desktop at once: whatever needs her here closes the yard first
+  // she cannot be in a game and on the desktop at once: whatever needs her here closes the game first
   if (scene && scene.visible) scene.close('pet-needed');
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
 }
-// 像素小院: open / close the yard. She has to have hatched; her desktop window hides while it is open
-// (SceneWindow onOpen) and comes back when it closes (onClosed).
-function openScene(source = 'tray') {
+// 小游戏: open / close the game window. She has to have hatched; her desktop window hides while it is open
+// (GameWindow onOpen) and comes back when it closes (onClosed). Which game: the one asked for, else the one played
+// last (settings.scene.game), else the first downloaded; with none downloaded 商店 → 小游戏 opens instead.
+function openScene(source = 'tray', gameId = null) {
   if (!scene || !service || !service.pet) return Promise.resolve({ ok: false, reason: 'no-pet' });
-  return scene.open(source);
+  const g = games.pick(gameId, service.settings.scene.game);
+  if (!g) { openAdmin('store/games'); return Promise.resolve({ ok: false, reason: 'no-game', store: true }); }
+  if (service.settings.scene.game !== g.id) service.setSection('scene', { game: g.id });
+  return scene.open(source, { id: g.id, name: g.name });
 }
-function toggleScene(source = 'tray') {
-  if (scene && scene.visible) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
-  return openScene(source);
+function toggleScene(source = 'tray', gameId = null) {
+  if (scene && scene.visible && (!gameId || gameId === scene.gameId)) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
+  return openScene(source, gameId);
 }
 // 快捷键唤起语音对话: wherever the owner is, the pet comes up (shown, restored, focused so Esc works) and her
 // window starts listening — or, while she listens, stops and recognises (renderer onVoiceHotkey → micStart /
@@ -238,7 +246,7 @@ function createTray() {
     trayMenu = Menu.buildFromTemplate([
       { label: '打开设置…', click: () => openAdmin() },
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
-      { label: '像素小院', click: () => { toggleScene('tray').catch(logError); } },
+      { label: '小游戏', click: () => { toggleScene('tray').catch(logError); } },
       { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
       { label: '检查更新', click: () => { checkUpdatesWithDialog('tray').catch(logError); } },
@@ -442,7 +450,7 @@ function createWindow() {
       e.preventDefault();
       resetPose('key');
     }
-    // Ctrl/⌘+Shift+H (home) while the pet window has focus: 像素小院 (the same keys in the yard close it)
+    // Ctrl/⌘+Shift+H (home) while the pet window has focus: 小游戏 (the same keys in the game close it)
     if (input.type === 'keyDown' && input.code === 'KeyH' && (process.platform === 'darwin' ? input.meta : input.control) && input.shift && !input.alt) {
       e.preventDefault();
       toggleScene('key').catch(logError);
@@ -499,15 +507,23 @@ function wire() {
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
   ipcMain.handle('reset-pose', (_e, p) => resetPose(['button', 'key', 'test'].includes(p && p.source) ? p.source : 'ipc'));
   ipcMain.handle('touch', (_e, target) => service.touch(target));
-  // 像素小院 (scene-window.js, src/renderer/scene/): the pet window opens it; the yard page boots, saves its
-  // time / weather (checked by the schema like the settings window's, saved in settings.json, broadcast), pats her
+  // 小游戏 (game-window.js, src/renderer/game/): the pet window opens it; the game page boots (the game, her look,
+  // the shared time / weather, its progress), saves its time / weather (checked by the schema like the settings
+  // window's, saved in settings.json, broadcast), reports what she did (today's quests → affection), saves its
+  // world state, pats her and closes itself
   ipcMain.handle('scene-open', (e, p) => (windowOf(e) === win ? openScene(['panel', 'key', 'test'].includes(p && p.source) ? p.source : 'pet') : { ok: false }));
   const fromScene = (e) => !!scene && scene.isSender(e);
-  ipcMain.handle('scene:boot', (e) => (fromScene(e) ? { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE } : null));
-  ipcMain.handle('scene:set', (e, patch) => {
+  ipcMain.handle('game:boot', (e, p) => {
+    if (!fromScene(e)) return null;
+    const id = String((p && p.game) || scene.gameId || '');
+    const game = games.boot(id);
+    return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null };
+  });
+  ipcMain.handle('game:set', (e, patch) => {
     if (!fromScene(e) || !patch || typeof patch !== 'object') return { ok: false, reason: 'invalid' };
     const clean = {};
     for (const [k, v] of Object.entries(patch)) {
+      if (k === 'game') continue;
       const r = settingsSchema.validate(`scene.${k}`, v);
       if (!r.ok) return { ok: false, reason: r.reason, key: k };
       clean[k] = r.value;
@@ -515,13 +531,42 @@ function wire() {
     const r = service.setSection('scene', clean);
     return r.ok ? { ok: true, scene: service.settings.scene } : r;
   });
-  ipcMain.handle('scene:touch', (e) => (fromScene(e) ? service.touch('head') : { ok: false }));
-  ipcMain.on('scene:act', (e, m) => {
-    if (!fromScene(e) || !m) return;
-    sceneActs.push({ act: String(m.act || ''), prop: String(m.prop || ''), at: Date.now() });
-    if (sceneActs.length > 50) sceneActs.shift();
+  ipcMain.handle('game:touch', (e) => (fromScene(e) ? service.touch('head') : { ok: false }));
+  ipcMain.handle('game:event', (e, p) => {
+    if (!fromScene(e) || !p || !p.ev) return { ok: false };
+    const id = String(p.game || scene.gameId || '');
+    sceneActs.push({ game: id, type: String(p.ev.type || ''), obj: String(p.ev.obj || ''), item: String(p.ev.item || ''), at: Date.now() });
+    if (sceneActs.length > 80) sceneActs.shift();
+    const r = games.record(id, p.ev, p.ctx);
+    if (!r.ok) return r;
+    const completed = r.completed.map((q) => ({ id: q.id, title: q.title, affection: (service.gameQuest(q.title).affection) || null }));
+    return { ...r, completed };
   });
-  ipcMain.on('scene:close', (e, p) => { if (fromScene(e)) scene.close(p && p.reason === 'key' ? 'key' : 'button'); });
+  ipcMain.on('game:state', (e, p) => { if (fromScene(e) && p) games.saveState(String(p.game || ''), p.state); });
+  ipcMain.on('game:close', (e, p) => { if (fromScene(e)) scene.close(p && p.reason === 'key' ? 'key' : 'button'); });
+  // 商店 → 小游戏 (core/game-store.js, docs/mini-games.md §7): the store's games, each 未下载 / 下载中 / 已下载 (read
+  // from the disk every time); download (progress as `catalog-progress`), cancel, delete, and 开始玩
+  const gameStoreState = () => {
+    const have = games.installedIds();
+    return { games: GameStore.storeRows(Catalog.listGames((id) => have.has(id)), gameStore ? gameStore.state() : []), dir: games.userDir, last: service.settings.scene.game || null };
+  };
+  ipcMain.handle('game-store', () => gameStoreState());
+  ipcMain.handle('game-download', async (_e, { id } = {}) => {
+    const r = await gameStore.download(String(id || ''));
+    if (r.ok) scene.forget(r.id);
+    pushAdmin();
+    return { ...r, store: gameStoreState() };
+  });
+  ipcMain.handle('game-download-cancel', (_e, { id } = {}) => gameStore.cancel(String(id || '')));
+  ipcMain.handle('game-remove', (_e, { id } = {}) => {
+    const gid = String(id || '');
+    if (scene.visible && scene.gameId === gid) scene.close('removed');
+    const r = GameStore.remove(games.userDir, gid);
+    if (r.ok) scene.forget(gid);
+    pushAdmin();
+    return { ...r, store: gameStoreState() };
+  });
+  ipcMain.handle('game-play', (_e, { id } = {}) => openScene('store', String(id || '')));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
   // 插个嘴 (core/interject.js, docs/interject.md): the chat box's unsent draft (the renderer sends it only while
@@ -1218,8 +1263,8 @@ function wire() {
     ipcMain.handle('debug-update-answer', (_e, id) => { updateAnswers.push(String(id)); return updateAnswers.slice(); });
     ipcMain.handle('debug-update-state', (_e, patch = {}) => { updater._set(patch); return updater.state; });
     ipcMain.handle('debug-pet-panel', () => petPanel.debugState());
-    ipcMain.handle('debug-scene', () => ({ ...scene.debugState(), acts: sceneActs.slice(), petVisible: !!(win && !win.isDestroyed() && win.isVisible()), petBounds: win && !win.isDestroyed() ? win.getBounds() : null, settings: service.settings.scene }));
-    ipcMain.handle('debug-scene-toggle', (_e, p) => toggleScene((p && p.source) || 'test'));
+    ipcMain.handle('debug-scene', () => ({ ...scene.debugState(), games: games.list().map((g) => ({ id: g.id, source: g.source, version: g.version })), affection: service.pet ? service._c().affection : null, acts: sceneActs.slice(), petVisible: !!(win && !win.isDestroyed() && win.isVisible()), petBounds: win && !win.isDestroyed() ? win.getBounds() : null, settings: service.settings.scene }));
+    ipcMain.handle('debug-scene-toggle', (_e, p) => toggleScene((p && p.source) || 'test', (p && p.game) || null));
     ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
@@ -1250,9 +1295,9 @@ function wire() {
     if (admin && admin.alive) admin.send('interject', m);
   });
   // a new shortcut is registered before anyone is told, so the status that goes out is the new one
-  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); if (scene) scene.send('scene:settings', { scene: service.settings.scene, roam: service.settings.prefs.roam }); });
-  // her look changed (another character, an outfit): the yard redraws her
-  service.on('update', (v) => { if (scene && v) scene.send('scene:view', v); });
+  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); if (scene) scene.send('game:settings', { scene: service.settings.scene, roam: service.settings.prefs.roam }); });
+  // her look changed (another character, an outfit): the game redraws her
+  service.on('update', (v) => { if (scene && v) scene.send('game:view', v); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
@@ -1299,6 +1344,9 @@ app.whenReady().then(() => {
     texts: { unknown: '商店里没有这支舞', installed: '这支舞已经下载好了', invalid: '下载的舞蹈文件有问题，已丢弃' },
   });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
+  // 小游戏 (games.js): downloaded games in userData/games; a checkout's catalog/games too with PIXELPET_DEV_GAMES=1
+  games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? path.join(__dirname, '..', '..', 'catalog', 'games') : null });
+  games.registerProtocol();
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
   // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.
@@ -1314,6 +1362,13 @@ app.whenReady().then(() => {
     isInstalled: (e) => VoiceStore.installedIds(packs.dirs[1], new Set([e.id])).has(e.id),
     install: (e, zipFile) => VoiceStore.installArchive(packs.dirs[1], e, zipFile),
     texts: { unknown: '商店里没有这个语音包', installed: '这个语音包已经下载好了', invalid: '下载的语音包文件有问题，已丢弃' },
+  });
+  gameStore = new CatalogDownloader({
+    packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
+    lookup: (id) => Catalog.gameEntry(id),
+    isInstalled: (e) => GameStore.listInstalled([{ dir: games.userDir, source: 'download' }]).some((g) => g.id === e.id),
+    install: (e, zipFile) => GameStore.installArchive(games.userDir, e, zipFile),
+    texts: { unknown: '商店里没有这个小游戏', installed: '这个小游戏已经下载好了', invalid: '下载的小游戏文件有问题，已丢弃' },
   });
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient({ lhCache: fileCache(path.join(app.getPath('userData'), 'lh-path.json')) });
@@ -1374,7 +1429,7 @@ app.whenReady().then(() => {
   // the chat box, so her window gets the keyboard
   petPanel = new PetPanel({
     onAct: (m) => {
-      if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小院: main opens it, her window hides
+      if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小游戏: main opens it, her window hides
       if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus();
       send('panel-act', m);
     },
@@ -1382,7 +1437,7 @@ app.whenReady().then(() => {
     log: logError,
     testMode: TEST_MODE,
   });
-  scene = new SceneWindow({
+  scene = new GameWindow({
     onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); },
     onClosed: () => { if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,

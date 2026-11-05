@@ -1,0 +1,35 @@
+{
+  "style": "High-detail isometric pixel art for a cozy indie life-sim game, 3/4 top-down view at a true 2:1 isometric angle, crisp hard-edged square pixels (every art pixel is a clean 4x4 block, no anti-aliasing, no blur), limited palette with 3 to 4 shades per material, chunky blocky highlight clusters on foliage, lush saturated greens, soft warm daylight coming from the top-left. No text, no letters, no UI, no characters, no people, no animals.",
+  "jobs": [
+    {
+      "name": "terrain",
+      "size": "2048x2048",
+      "prompt": "A single floating square chunk of land shown in isometric view as a large diamond that fills almost the whole frame, like a miniature diorama on a table, on a pure flat black (#000000) background. The two front faces show thick layered earth and grey stone cliff walls with darker shading. The top surface is a lush open grass meadow with fine grass texture, small grass tufts and scattered tiny wildflowers in red, white and yellow and a few pebbles. A winding path of light beige flagstones goes from the top corner down through the middle to the bottom-left edge. Near the center there are two small empty rectangular plots of tilled brown soil with rows. In the right part of the top surface there is a small pond with turquoise water, light ripples and a few lily pads, and the pond spills over the right front cliff edge as a narrow white-and-pale-blue waterfall running down the cliff wall. Leave the rest of the grass empty: no trees, no buildings, no fences, no props."
+    },
+    {
+      "name": "buildings",
+      "size": "1536x1024",
+      "prompt": "Three separate isometric buildings arranged left to right with wide empty space between them, each standing on nothing, on a perfectly flat solid magenta (#FF00FF) background with no ground and no shadow. 1) A small cozy cottage with a steep red-brown clay tile roof, white plaster walls with dark timber framing, a stone chimney, two small square windows with dark glass and a wooden front door, facing front-left. 2) A small wooden storage shed with an orange-brown shingle roof and plank walls, one small window. 3) A slightly smaller wooden chicken-coop shed with a little wooden ramp. Same scale for all three: the cottage is about 1.6 times wider than each shed."
+    },
+    {
+      "name": "trees",
+      "size": "2048x2048",
+      "prompt": "A sprite sheet of 9 separate isometric trees in a 3 by 3 grid with wide empty space between them, on a perfectly flat solid magenta (#FF00FF) background, no ground, no shadows. Row 1 and row 2: big round leafy oak-like deciduous trees with dense blocky canopies made of chunky leaf clusters (deep green, mid green, bright yellow-green highlights), short brown trunks, slightly different shapes and sizes. Row 3: two tall dark green spruce trees and one smaller young tree. Every tree is complete and not cut off."
+    },
+    {
+      "name": "props",
+      "size": "2048x2048",
+      "prompt": "A sprite sheet of separate small isometric props in a loose 4 by 4 grid with wide empty space between them, on a perfectly flat solid magenta (#FF00FF) background, no ground, no shadows: a wooden park bench, a black iron street lamp post with a glass lantern on top, a round stone water well with a little wooden roof, a wooden mailbox on a post, two wooden barrels, a stack of wooden crates, a short wooden picket fence section, a small arched wooden footbridge with railings, a tree stump, a pile of grey rocks, a big mossy boulder, a clay flower pot with red flowers, a round green bush, a flowering bush with pink flowers, a small bush with red berries, a wooden signpost."
+    },
+    {
+      "name": "clouds",
+      "size": "1536x1024",
+      "prompt": "Five separate fluffy cumulus clouds in pixel art, opaque, soft rounded shapes, light grey-white with chunky dithered grey shading on the bottom, varying sizes, spaced widely apart, on a perfectly flat solid magenta (#FF00FF) background."
+    },
+    {
+      "name": "garden",
+      "size": "2048x2048",
+      "prompt": "A sprite sheet of separate small isometric garden sprites in a loose 5 by 5 grid with wide empty space between them, on a perfectly flat solid magenta (#FF00FF) background, no ground, no shadows: three growth stages of a cabbage plant (tiny sprout, half grown, big ripe cabbage), three growth stages of a carrot plant (sprout, leafy, leafy with orange carrot top showing), a row of small green seedlings, a cluster of red wildflowers, a cluster of white daisies, a cluster of yellow flowers, a clump of tall grass, a small clump of short grass, a few small grey pebbles, a red-capped mushroom pair, a fallen log with moss, a wooden watering can, a small pile of red apples, a wooden wheelbarrow, a hay bale, a small stone lantern, a wooden garden sign, a short wooden fence corner, a flat stepping stone, a group of three small rocks, a small blue flower cluster, a pumpkin."
+    }
+  ]
+}

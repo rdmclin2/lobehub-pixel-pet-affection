@@ -85,9 +85,11 @@ const SYSTEM = { hardwareAcceleration: true };
 // 检查更新 (tray, ⋯ menu, settings window) checks. Before this switch it could only be turned off with
 // PIXELPET_NO_UPDATE=1; a version already downloaded is still installed on quit.
 const UPDATE = { autoCheck: true };
-// 像素小院 (docs/pixel-scene-design.md §7): the yard's time and weather. followClock = the yard's hour follows this
-// computer's clock; off = `hour` (0–23.75, quarter hours). autoWeather = 「天气自己变」 (a manual pick turns it off).
-const SCENE = { followClock: true, hour: 12, weather: 'clear', autoWeather: false };
+// 小游戏 (docs/mini-games.md §5): the game world's time and weather, shared by every game. dayFlow = 「随时间流动」
+// (one game day lasts 24 real minutes, from `hour`); followClock = 「对齐本机时间」 (the hour is this computer's
+// clock, it wins over dayFlow); both off = `hour` stands (0–23.75, quarter hours). autoWeather = 「天气自己变」 (a
+// manual pick turns it off). game = the game opened last (its id), so the tray / ⌂ opens that one again.
+const SCENE = { followClock: false, dayFlow: true, hour: 8, weather: 'clear', autoWeather: false, game: '' };
 const SCENE_WEATHERS = ['clear', 'cloudy', 'rain', 'snow', 'storm', 'fog'];
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
@@ -162,7 +164,7 @@ function normalizeUpdate(raw) {
   return { autoCheck: typeof u.autoCheck === 'boolean' ? u.autoCheck : UPDATE.autoCheck };
 }
 
-// Files from before 像素小院 have no `scene` (→ the defaults). An hour outside 0–24 wraps round; quarter hours.
+// Files from before 小游戏 have no `scene` (→ the defaults). An hour outside 0–24 wraps round; quarter hours.
 function normalizeScene(raw) {
   const s = raw && typeof raw === 'object' ? raw : {};
   const h = typeof s.hour === 'number' && Number.isFinite(s.hour) ? ((s.hour % 24) + 24) % 24 : SCENE.hour;
@@ -171,6 +173,8 @@ function normalizeScene(raw) {
     hour: (Math.round(h * 4) / 4) % 24,
     weather: SCENE_WEATHERS.includes(s.weather) ? s.weather : SCENE.weather,
     autoWeather: typeof s.autoWeather === 'boolean' ? s.autoWeather : SCENE.autoWeather,
+    dayFlow: typeof s.dayFlow === 'boolean' ? s.dayFlow : SCENE.dayFlow,
+    game: typeof s.game === 'string' && /^[a-z0-9][a-z0-9-]{2,63}$/.test(s.game) ? s.game : SCENE.game,
   };
 }
 

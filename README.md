@@ -463,9 +463,11 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⚙ 设置 → 数据与关于 → “放生并删除 agent”会删除宠物和每位角色的 LobeHub agent（会再确认一次）。
 
-## 像素小院（像素风小游戏场景）
+## 小游戏（像素小院）
 
-她的家：一块整数缩放的像素庭院（独立窗口）。她在里面自己游走，也会走到你点的地方，和长椅、花坛、路灯、池塘互动；「天色」卡片连续调节时段（可跟随系统时间）和天气（晴 / 多云 / 小雨 / 雪 / 雷雨 / 雾），设置保存在 `settings.json`。打开：右键她 → ⌂，或桌宠窗口里 `Ctrl/⌘ + Shift + H`，或托盘「像素小院」。详见 [`docs/pixel-scene.md`](docs/pixel-scene.md)。
+![像素小院：夜晚小雨，窗户与路灯亮起暖光](docs/img/mini-games/night-rain.webp)
+
+商店里可以下载的小游戏，用 PixiJS 引擎在独立窗口里玩。第一款「像素小院」是一座漂在空中的等距像素小院（美术由 GPT Image 生成），她在里面自己逛、坐长椅、浇菜收菜、摘浆果、夜里抓萤火虫，你点哪她走到哪；「天色」卡片切换清晨 / 白天 / 黄昏 / 夜晚（可让时间自己流动，一天 24 分钟）和晴朗 / 多云 / 小雨 / 雷雨 / 下雪 / 起雾；每天三件「今日小事」，完成加好感。下载：⚙ 设置 → 商店 → 小游戏；打开：托盘「小游戏」、右键她 → ⌂，或桌宠窗口里 `Ctrl/⌘ + Shift + H`。小游戏包只有图片和配置，不含代码。详见 [`docs/mini-games.md`](docs/mini-games.md)。
 
 ## 配置后台（设置窗口）
 

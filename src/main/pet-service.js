@@ -4,7 +4,7 @@ const { EventEmitter } = require('node:events');
 const state = require('../core/pet-state');
 const resetWake = require('../core/reset-wake'); // 重置姿势: wake + no-auto-sleep grace, outside the frozen pet-state
 const persona = require('../core/persona');
-const { adultAllowed, stageName, setRules: setAffectionRules } = require('../core/affection');
+const { adultAllowed, stageName, setRules: setAffectionRules, gainAffection } = require('../core/affection');
 const dialogue = require('../core/dialogue');
 const outfits = require('../core/outfits');
 const { migratePet, SHARED_KEYS } = require('../core/migrate');
@@ -1791,6 +1791,19 @@ class PetService extends EventEmitter {
   // transparent pixel), resolved with the character's zone table. No target = the head, like a pat.
   // Returns { ok, zone, reaction, line, affection, woken }; a point on no body part is
   // { ok: false, reason: 'miss', zone: null } and changes nothing.
+  // 小游戏 (docs/mini-games.md §6): one of today's quests was done in a game → affection (source `game`, at most
+  // three a day) and her line for it. Returns the affection result.
+  gameQuest(title) {
+    if (!this.pet) return { ok: false, reason: 'empty' };
+    const c = this._c();
+    // scored the way core/pet-state.js score() does (that file stays as it is, test/vrm-pack-style.test.js)
+    const r = gainAffection(c, 'game', this.now());
+    if (r.unlockedStages.length) c.unlockedTopics = dialogue.unlockedTopicIds(c.peakStage);
+    this._save();
+    this._reportAffection(r);
+    return { ok: true, title: String(title || ''), affection: r };
+  }
+
   touch(target) {
     if (!this.pet) return { ok: false, reason: 'empty' };
     if (this.busy) return { ok: false, reason: 'busy' };

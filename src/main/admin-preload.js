@@ -112,6 +112,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   voiceDownload: (id) => ipcRenderer.invoke('voice-download', { id }),
   voiceDownloadCancel: (id) => ipcRenderer.invoke('voice-download-cancel', { id }),
   voiceRemove: (id) => ipcRenderer.invoke('voice-remove', { id }),
+  // 商店 → 小游戏 (core/game-store.js, docs/mini-games.md §7): the store's games, download / cancel / delete, and
+  // 开始玩 (opens the game window with her in it); progress arrives as `catalog-progress`
+  gameStore: () => ipcRenderer.invoke('game-store'),
+  gameDownload: (id) => ipcRenderer.invoke('game-download', { id }),
+  gameDownloadCancel: (id) => ipcRenderer.invoke('game-download-cancel', { id }),
+  gameRemove: (id) => ipcRenderer.invoke('game-remove', { id }),
+  gamePlay: (id) => ipcRenderer.invoke('game-play', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

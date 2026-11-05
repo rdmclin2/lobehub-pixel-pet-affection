@@ -337,6 +337,36 @@ export interface VoiceStoreResult {
   text?: string;
 }
 
+/** 商店 → 小游戏 (core/catalog.js listGames + core/game-store.js storeRows) */
+export interface StoreGameRow {
+  bytes: number;
+  credit: string;
+  description: string;
+  error?: string;
+  features: string[];
+  id: string;
+  installed: boolean;
+  installing?: boolean;
+  name: string;
+  percent?: number;
+  /** relative to src/renderer: catalog/games/<id>.webp (ships with the app) */
+  picture: string | null;
+  sizeLabel: string;
+  state: 'downloading' | 'installed' | 'remote';
+  stateLabel: string;
+  version: string;
+}
+
+export interface GameStoreResult {
+  errors?: string[];
+  id?: string;
+  name?: string;
+  ok: boolean;
+  reason?: string;
+  store?: { dir: string; games: StoreGameRow[]; last: string | null };
+  text?: string;
+}
+
 /** `catalog-progress` (src/main/catalog.js) */
 export interface DownloadProgress {
   id: string;
@@ -480,6 +510,12 @@ export interface PetAdminApi {
   voiceDownload: (id: string) => Promise<VoiceStoreResult>;
   voiceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   voiceRemove: (id: string) => Promise<VoiceStoreResult>;
+  gameStore: () => Promise<{ dir: string; games: StoreGameRow[]; last: string | null }>;
+  gameDownload: (id: string) => Promise<GameStoreResult>;
+  gameDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  gameRemove: (id: string) => Promise<GameStoreResult>;
+  /** 开始玩: opens the game window with her in it (main.js openScene) */
+  gamePlay: (id: string) => Promise<{ ok: boolean; reason?: string; game?: string }>;
   whoami: () => Promise<any>;
   /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
