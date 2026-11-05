@@ -723,9 +723,9 @@ T-2698 复核的剩余问题。架构不变（intent → director → anim/life�
 - `npm test`：`test/vrm-runtime-motion.test.js`（风格回退、库定位、idle 轮换不重复、交叉淡化、姿势切换、反应变体与回 idle、思考 / 说话 / 睡觉、手动播放与打断、聊天意图、HTTP 路由）。
 - `xvfb-run -a node e2e/run.js vrmstore`：从本地商店镜像下载 4 个 VRM（liliya 0.x 女、Wanderer 0.x 男且 hips 在地面、試作1 VRM 1.0、Elysia 旧规则误判为男），先验证无库提示，再关联 `~/vrm-assets/baked-v2`，逐个测 40 s idle 命中率、摸头、HTTP 播放 / 打断、控制台试播与聊天，跳变阈值 10°/帧@30fps（对照硬切 40–50°）。结果在 `out/e2e/vrm/store-summary.json`。
 
-## 16. 实现说明总览与可复现验证（T-5089：多模型真实运行）
+## 16. 实现说明总览与可复现验证（最终代码：T-5081 / T-5084 / T-5092，T-5097 复测）
 
-这一节把 T-5081（素材库 v2）和 T-5084（运行时）的实现汇总成一页，给出能直接复制执行的命令。细节见 [`docs/vrm-motion-library.md`](vrm-motion-library.md)（索引、筛选、骨骼映射、烘焙）和本文 §15（运行时）。**素材与模型都不进 git、不进安装包**：仓库里只有元数据（`src/core/vrm-motion-index.json`）和脚本。
+这一节把素材库 v2（T-5081）、运行时（T-5084）和 T-5092 的修复汇总成一页，内容与当前代码一致，命令可以直接复制执行。细节见 [`docs/vrm-motion-library.md`](vrm-motion-library.md)（索引、筛选、骨骼映射、烘焙）、本文 §15（运行时）和 §17（T-pose、触摸跳变、姿态守卫的修复过程）。**素材与模型都不进 git、不进安装包**：仓库里只有元数据（`src/core/vrm-motion-index.json`）和脚本。
 
 ### 16.1 资源索引（五个包 → `src/core/vrm-motion-index.json`）
 
@@ -733,84 +733,99 @@ T-2698 复核的剩余问题。架构不变（intent → director → anim/life�
 |---|---|---|
 | `postures/`（FBX，Mixamo 骨架） | `fbxToClip` | 站 / 坐 / 蹲 / 躺姿势（`kind: posture`，`group` = stand/sit/crouch/lay），文件名里的 Male/Female 作风格标签 |
 | `mixamo/`（FBX） | `fbxToClip` | idle、反应（nod/bow/greet/clap/shake/stretch/yawn/jump…）、情绪（happy/angry/sad/surprised/shy/excited）、说话手势（talk）、行走；Mixamo 舞蹈 12 支进 `dances` |
-| `motions/`（VMD，MMD 骨架） | `vmd-retarget.retargetVmd` | 只用 `scripts/lib/vrm-motion-rules.js REVIEW` 里逐个点名的片段 |
+| `motions/`（VMD，MMD 骨架） | `vmd-retarget.retargetVmd` | 只用 `scripts/lib/vrm-motion-rules.js REVIEW` 里逐个点名的片段；`standmix2_modified.vmd` 的三条 idle（`idle.v01@female/@neutral`、`idle.v03@male`）截取 `[7.4, 36.1]` s，跳过素材自带的 3.2–7.3 s 双臂前平举 |
 | `dances/`（VMD + 音频） | 舞蹈烘焙 | 21 个文件夹各一支舞（`dances[id]`） |
 | `models/`（VRM） | `scripts/lib/vrm-model-probe.js` 只读 glTF JSON | 每个模型的 VRM 版本、humanoid 骨骼、髋高/头高 → `library.json models` 段（能播哪些片段、是否降级） |
 
-流水线：`scripts/vrm-motion-scan.js`（前向运动学特征）→ `scripts/lib/vrm-motion-rules.js`（人工 review > 标签 > 特征规则，排除战斗/摔倒/成人向）→ `scripts/vrm-motion-select.js`（每风格每组配额，写索引）。索引条目：`clips["<slot>@<style>"] = { kind, category, group, style, pack, src, duration, loop, mask, enter, exit, … }`。
+流水线：`scripts/vrm-motion-scan.js`（前向运动学特征）→ `scripts/lib/vrm-motion-rules.js`（人工 review > 标签 > 特征规则，排除战斗/摔倒/成人向）→ `scripts/vrm-motion-select.js`（每风格每组配额，写索引；张臂白名单 `ARMS_OUT` 19 支舞、`ARMS_OUT_SRC` 2 个反应来源，写成 `armsOut: { maxS, why }`）。索引条目：`clips["<slot>@<style>"] = { kind, category, group, style, pack, src, duration, loop, mask, enter, exit, trim?, armsOut? }`。当前每风格带文件的 idle 10 个（加程序化姿势轮换共 11 个），female / neutral 各 100 个片段、male 101 个。
 
-### 16.2 骨骼映射与比例差异（`src/core/vrm-bone-map.js`）
+### 16.2 骨骼映射与比例差异（`src/core/vrm-bone-map.js`、`src/core/vmd-retarget.js`）
 
 - **Mixamo → VRM humanoid**：`MIXAMO_TO_VRM`（`mixamorig:Hips → hips`、`Spine → spine`、`Spine1 → chest`、`Spine2 → upperChest`、`Neck → neck`、`Head → head`、`LeftShoulder → leftShoulder`、`LeftArm → leftUpperArm`、`LeftForeArm → leftLowerArm`、`LeftHand → leftHand`、`LeftUpLeg → leftUpperLeg`、`LeftLeg → leftLowerLeg`、`LeftFoot → leftFoot`、`LeftToeBase → leftToes`，右侧同理，手指 15×2）。关键帧换到 VRM 归一化骨骼：`q_vrm = Q_parentWorldRest · q · Q_worldRest⁻¹`。
-- **MMD → VRM**：`MMD_TO_VRM`（与 `vmd-retarget.js BONE_ROLE` 一致）：捩骨并入上臂/前臂，根链并入 hips，足 IK 解成腿部旋转，A-pose 手臂转成 T-pose。
+- **MMD → VRM**：`MMD_TO_VRM`（与 `vmd-retarget.js BONE_ROLE` 一致）：捩骨并入上臂/前臂，根链并入 hips，足 IK 解成腿部旋转，A-pose 手臂转成 T-pose。`BAKED_WITH = 'vmd-retarget@2'`：`肩C`（= `肩P⁻¹`）抵消 `肩P`，上臂起始为 `肩P⁻¹·腕·腕捩·A`（修复前 肩P 关键帧会把整条手臂抬起，§17.1）。
 - **VRM 0.x / 1.0**：烘出的 `.vrma` 是 1.0 坐标；three-vrm 对 0.x 模型翻转 x/z，拇指按 `VRM0_THUMB` 改名。
-- **比例差异**：片段只带旋转，臂长、腿长、头身比不影响姿态；髋部位移按「模型髋高 / 片段髋高」缩放（矮模型步子也短）。缺骨（常见缺 `upperChest`）时 `foldMissing()` 把缺失骨骼的旋转并进仍存在的子骨骼，世界旋转不变；humanoid hips 在地面的模型（如 Wanderer）只加载站姿片段（`allowsClip`，`debug().boneFold.rootHips`），因为坐、蹲、躺会绕脚踝翻倒。
+- **比例差异**：片段只带旋转，臂长、腿长、头身比不影响姿态；髋部位移按「模型髋高 / 片段髋高」缩放（矮模型步子也短）。缺骨（常见缺 `upperChest`）时 `foldMissing()` 把缺失骨骼的旋转并进仍存在的子骨骼，世界旋转不变。
+- **hips 贴地的模型（如 Wanderer）**：只加载站姿片段（`allowsClip`，`debug().boneFold.rootHips`），因为坐、蹲、躺会绕脚踝翻倒；触摸判定用两侧大腿根中点当髋部（`core/vrm-hit.js`）；舞蹈时 `renderer/vrm.js rescaleHipsTravel` 按大腿根高度重新缩放 hips 位移，`pivotHips` 让 hips 绕真实髋关节旋转（`debug().figures[0].hipsRig`）。
+- **头部触摸区**：`renderer/vrm.js measureHeadBox` 用蒙皮在头骨及其子骨骼上的顶点（头、脸、头发、帽子）算出椭球，随头骨移动；没有蒙皮头部时退回骨骼球（`debug().figures[0].headBox`）。
 
-### 16.3 烘焙命令与产物
+### 16.3 姿态守卫（`scripts/lib/vrm-pose-guard.js`）
+
+`--v2` 烘焙结束时自动执行，命中即退出码 1；`--v2 --check` 只检查。范围：`library.json` 全部带文件的片段 + `dances/library.json` 全部舞蹈（共 334 个）。每 1/30 s 一帧做正向运动学，两条上臂与竖直方向夹角都在 75°–115°、肘弯 < 35°、持续 ≥ 0.2 s 即判为 T-pose 嫌疑；白名单（只有舞蹈和 2 个反应来源）只放过不超过 `maxS` 的平举，idle / posture / talk / walk 不能加白名单。另外用一套独立的 MMD 正向运动学核对每个 VMD 来源的手臂（容差 5°）。`--check` 还列出每个 idle 的双臂同时最大夹角、T-pose 帧数和每风格 idle 数（< 6 失败）。
+
+### 16.4 烘焙命令与产物
 
 ```bash
 node scripts/vrm-motion-scan.js            # 素材变了才需要：特征写到 ~/vrm-assets/_scan/
 node scripts/vrm-motion-select.js          # 重建索引；--check 只校验仓库里的是否最新
-node scripts/vrm-bake.js --v2              # 烘到 ~/vrm-assets/baked-v2（library.json、female/ male/ neutral/<slot>.vrma、dances/）
-node scripts/vrm-bake.js --v2 --install    # 同上，并复制到 <userData>/vrm-motions、<userData>/vrm-dances
+node scripts/vrm-bake.js --v2              # 烘到 ~/vrm-assets/baked-v2（library.json、female/ male/ neutral/<slot>.vrma、dances/），结束时跑姿态守卫
+node scripts/vrm-bake.js --v2 --check      # 只跑姿态守卫和 MMD 手臂核对（默认 ~/vrm-assets/baked-v2，--out 指定别的库）
+node scripts/vrm-bake.js --v2 --install    # 烘焙并复制到 <userData>/vrm-motions、<userData>/vrm-dances
 ```
 
-产物：`library.json`（运行时索引，`counts` 给出每风格每类别数量）、`<style>/<slot>.vrma`（每风格约 100 个片段）、`dances/library.json` + `dances/<id>/dance.vrma`（34 支）。循环片段首尾接缝角超过 2° 时烘焙返回 1。
+产物：`library.json`（运行时索引，`counts` 给出每风格每类别数量）、`<style>/<slot>.vrma`（female 100 / neutral 100 / male 101，共 301 个文件）、`dances/library.json` + `dances/<id>/dance.vrma`（33 支；加内置演示舞，`GET /pixel-pet/dances` 共 34 支）。循环片段首尾接缝角超过 2° 时烘焙返回 1。本机全量烘焙约 50 s。
 
-### 16.4 库的安装位置与加载
+### 16.5 库的安装位置与加载
 
-`src/main/vrm-library.js libraryDir()` 依次找：`$PIXELPET_VRM_MOTIONS_DIR` → 控制台「设置 → 角色 → 她的页 → 装扮 → VRM 动作库 → 选择动作库文件夹」记下的目录（`<userData>/vrm-library-link.json`，只记路径）→ `<userData>/vrm-motions`（`--install` 的位置；Linux `~/.config/Pixel Pet Affection`，macOS `~/Library/Application Support/Pixel Pet Affection`，Windows `%APPDATA%\Pixel Pet Affection`）→ 开发运行时 `~/vrm-assets/baked-v2`、`~/vrm-assets/baked`。舞蹈（`src/main/vrm-dances.js`）同理，关联目录的 `dances/` 也会用。渲染端经 `vrmlib://index/library.json` 读取，按风格（`core/vrm-style.js`：female / male / neutral，缺的按 `STYLE_FALLBACK` 借用）加载片段。找不到库时 `data-library=none`，日志、气泡和控制台都会提示，不会静默退回程序化动作。
+`src/main/vrm-library.js libraryDir()` 依次找：`$PIXELPET_VRM_MOTIONS_DIR` → 控制台「设置 → 角色 → 她的页 → 装扮 → VRM 动作库 → 选择动作库文件夹」记下的目录（`<userData>/vrm-library-link.json`，只记路径）→ `<userData>/vrm-motions`（`--install` 的位置；Linux `~/.config/Pixel Pet Affection`，macOS `~/Library/Application Support/Pixel Pet Affection`，Windows `%APPDATA%\Pixel Pet Affection`）→ 开发运行时（未打包、非测试）`~/vrm-assets/baked-v2`、`~/vrm-assets/baked`。仓库内的目录一律拒绝。舞蹈（`src/main/vrm-dances.js`）同理，关联目录的 `dances/` 也会用。渲染端经 `vrmlib://index/library.json` 读取，按风格（`core/vrm-style.js`：female / male / neutral，缺的按 `STYLE_FALLBACK` 借用）加载片段。找不到库时 `data-library=none`，日志、气泡和控制台都会提示，不会静默退回程序化动作。
 
-### 16.5 状态机与混合规则（`src/core/vrm-director.js`、`src/renderer/vrm-anim.js`）
+### 16.6 状态机与混合规则（`src/core/vrm-director.js`、`src/renderer/vrm-anim.js`、`src/core/vrm-smooth.js`）
 
-分层：**L0/L1 底层**（姿势 / idle 片段，交叉淡化）→ **L2 持续层**（`hold.lift`、`hold.talk*`、think、eat、walk）→ **L3 反应层**（触摸 / 落地 / 庆祝，一次性，按 `mask` 只作用于 head / upper / arms / full）→ **舞蹈层 D**（替换底层）→ **L4 微动层**（呼吸、重心、视线、眨眼，叠加在最上面）。
+分层：**L0/L1 底层**（姿势 / idle 片段，交叉淡化）→ **L2 持续层**（`hold.lift`、`hold.talk*`、think、eat、walk）→ **L3 反应层**（触摸 / 落地 / 庆祝，一次性，按 `mask` 只作用于 head / upper / arms / full）→ **舞蹈层 D**（替换底层）→ **L4 微动层**（呼吸、重心、视线、眨眼，叠加在最上面）→ **输出限幅**（所有层写完之后）。
 
 | 状态（`plan.action`） | 进入条件 | 播放 | 退出 / 混合参数 |
 |---|---|---|---|
-| idle | 没有别的事 | idle 片段轮换：每段 8–20 s（`IDLE_MIN/MAX`），新片段不在最近 `min(4, ⌊n/2⌋)` 个里；从与当前姿势最接近的相位开始 | 交叉淡化 `FADE.idle` 1.0 s；姿势切换 `FADE.pose` 1.4 s |
-| 姿势休息 | 平静 idle 每 70–140 s（`REST.after`）；无聊 180 s 坐、360 s 躺；难过蹲 | stand/sit/crouch/lay 组里挑一个，不重复上次，持续 18–36 s | `FADE.pose` 1.4 s |
-| touch | 点击命中骨骼形状（`core/vrm-hit.js`：head / chest / belly / butt / hands / legs / feet） | `ZONE_REACTION`（头 → `react.touch-head`，手 → `react.touch-hands`…）或心情（害羞 / 烦 / 生气 / 痒）→ `REACTION_GROUPS` 里的变体，不连续重复 | 全身片段淡入 ≥ 0.4 s；被打断时 `CUT` 0.2 s 淡出；同一反应 0.6 s 内不重复（`DEBOUNCE`） |
+| idle | 没有别的事 | idle 片段轮换：每段 8–20 s（`IDLE_MIN/MAX`），新片段不在最近 `min(4, ⌊n/2⌋)` 个里（`IDLE_RECENT`）；从与当前姿势最接近的相位开始 | 交叉淡化 `FADE.idle` 1.0 s；姿势切换 `FADE.pose` 1.4 s（坐→站 `FADE.sit` 1.2 s） |
+| 姿势休息 | 平静 idle 每 70–140 s（`REST.after`）；无聊 180 s 坐（`BORED_AFTER`）、360 s 躺；难过蹲。指针在窗口内算 attention，不休息 | stand/sit/crouch/lay 组里挑一个，不重复上次，持续 18–36 s（`REST.dur`） | `FADE.pose` 1.4 s |
+| touch | 点击命中形状（`core/vrm-hit.js`：head（网格椭球）/ chest / belly / butt / hands / legs / feet） | `ZONE_REACTION`（头 → `react.touch-head`，手 → `react.touch-hands`…）或心情（害羞 / 烦 / 生气 / 痒）→ `REACTION_GROUPS` 里的变体，不连续重复 | 全身片段淡入 ≥ 0.4 s；被打断时 `CUT` 0.2 s 淡出；同一反应 0.6 s 内不重复（`DEBOUNCE`）。**`TOUCH_SETTLE`**：反应期间（最多 3 s，`plan.settling`）底层保持不变，它引起的切换排到反应之后；反应进来时才开始的说话手势排在反应后（最多 1.2 s，`plan.talkQueued`）；反应层的手、前臂、脚、脚趾、手指淡入 × 1.8（`LIMB`） |
 | lift / drop | 按住拖动 | `hold.lift`（腿自然下垂）；松手 → `react.drop`（surprised 组） | 优先级 lift 6 > drop/touch/manual 5 > celebrate 4 > sleep 1 > cue 0 |
 | talk | 她在说话（台词气泡 / TTS） | 说话手势组轮换（`hold.talk*`），每段播一遍后换下一个 | `TALK.xfade` 0.6 s |
 | dance | ♪ 菜单 / `POST /dance` / 聊天「跳个舞」 | off → cueing → in → on ⇄ paused → out → off；舞蹈替换底层 | 淡入 `DANCE.fadeIn` 0.6 s，淡出 0.5 s；拎起暂停，Esc / 停止 / 喂食打断后淡回 idle |
 | manual | 控制台试播 / `POST /motion` / 聊天「点个头」 | 姿势、idle 替换底层（姿势默认 15 s）；反应、持续片段叠加 | 触摸、拎起、跳舞、`stop()` 打断，交叉淡回 idle |
 
-渲染端 `vrm.js meterJump` 每帧量 20 根主要骨骼相对上一帧的转角（°/帧@30fps）和「尖峰」（该帧转角减去前后两帧的较大者）。每次底层、叠加层、舞蹈或手动片段变化，都开一个 1.6 s 的窗口记录。
+**输出限幅**（`core/vrm-smooth.js createLimiter`，`renderer/vrm.js smoothBones`）：每帧所有层写完、跳变计测量之前，限制 20 根被测骨骼的角加速度：本帧转角 ≤ 上一帧转角 + `ACCEL` 8°/帧@30fps（按真实帧间隔归一）。减速不受限。`debug().figures[0].smooth` 给出限幅生效的骨骼帧数。
 
-### 16.6 播放入口
+**跳变计**（`renderer/vrm.js meterJump`）：每帧量 20 根主要骨骼相对上一帧的转角（°/帧@30fps）和「尖峰」（该帧转角减去前后两帧的较大者）。每次底层、叠加层、舞蹈或手动片段变化都开一个 1.6 s 的窗口记录。注意：跳变计在限幅之后测量，所以它读到的尖峰按构造 ≤ 8°/帧；尖峰判定之外，还要看 100 ms 采样序列的角速度、T-pose 采样数和录屏（§16.8）。
+
+### 16.7 播放入口
 
 | 入口 | 调用 |
 |---|---|
-| 真实交互 | 点击身体部位（`director.inject({ type: 'touch', zone })`）、按住拖动、说话、♪ 菜单 |
+| 真实交互 | 点击身体部位（`director.inject({ type: 'touch', zone })`）、按住拖动、说话、♪ 菜单、Esc 打断舞蹈 |
 | HTTP（设置 → 本地 API 打开后） | `GET /pixel-pet/motions`；`POST /pixel-pet/motion {id\|slot\|group, loop}`；`POST /pixel-pet/motion/stop`；`POST /pixel-pet/say {text}`；`GET /pixel-pet/dances`；`POST /pixel-pet/dance {id?}`；`POST /pixel-pet/dance/stop`；`POST /pixel-pet/reset-pose` |
 | 控制台 | 角色 → 她的页 → 装扮 → VRM 动作库 → 动作试播（分组下拉 → 播放 / 停止） |
 | 聊天 | `core/vrm-motion-intent.js`：点个头 / 鞠个躬 / 挥手 / 拍手 / 伸个懒腰 / 坐下 / 蹲下 / 躺下…；「站起来」「别做了」停止 |
-| 调试（渲染进程） | `PetVRM.director.play({ id\|slot\|group, loop })`、`stopMotion()`、`motions()`、`plan()`、`pose()`、`jump()`、`zoneCenters()` |
+| 调试（渲染进程） | `PetVRM.director.play({ id\|slot\|group, loop })`、`stopMotion()`、`motions()`、`plan()`、`pose()`、`jump()`、`zoneCenters()`、`zoneAt(x, y)`；`PetVRM.debug()` |
 
-### 16.7 可复现验证（命令）
+### 16.8 可复现验证（命令与判定）
 
 ```bash
-# 0) 素材：~/vrm-assets/store/vrm（商店镜像 zip）与 ~/vrm-assets/baked-v2（16.3 的产物）
+# 0) 素材：~/vrm-assets/store/vrm（商店镜像 zip）与 ~/vrm-assets/baked-v2（16.4 的产物）
 npm run build:admin
 npm test
+node scripts/vrm-motion-select.js --check        # 索引是最新的
+node scripts/vrm-bake.js --v2                    # 用当前代码重烘（结束时姿态守卫）
+node scripts/vrm-bake.js --v2 --check            # 姿态守卫 0 命中、MMD 手臂核对 ok、每风格 idle ≥ 6
 # 1) 多模型全流程（约 20 分钟）：从商店下载 6 个 VRM，控制台关联 baked-v2，每个模型依次跑
-#    60 s idle → 摸头 / 手 / 肚子 → 拖拽拎起放下 → 说话 → 跳舞并 Esc 打断 → 跳变计统计
+#    60 s idle → 等坐 / 蹲休息 → 摸头 / 手 / 肚子 → 拖拽拎起放下 → 说话 → 跳舞并 Esc 打断 → 跳变计统计
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmverify
 #    可选：PIXELPET_E2E_VERIFY_IDS=vrm-d8789c38,vrm-wanderer,…  PIXELPET_E2E_IDLE_S=60  PIXELPET_E2E_SPIKE_MAX=10
-#          PIXELPET_E2E_BASELINE=~/t5079-diag/out（修复前 T-5079 的 idle 序列，逐模型对比用）
-# 2) 指标（同一套函数算修复前和修复后）
+#          PIXELPET_E2E_REST_S=150（等休息的上限）  PIXELPET_E2E_BASELINE=~/t5079-diag/out（修复前 T-5079 的 idle 序列）
+# 2) 指标与表格（同一套函数算修复前和修复后）
+node e2e/vrm-verify-report.js out/e2e/vrm/verify-summary.json > tables.md
 node e2e/vrm-verify-metrics.js out/e2e/vrm/verify-vrm-d8789c38-series.json 0 9999     # 修复后（整段，含交互）
 node e2e/vrm-verify-metrics.js ~/t5079-diag/out/none/vrm-d8789c38/idle-series.json    # 修复前：用户机器（无库）
 node e2e/vrm-verify-metrics.js ~/t5079-diag/out/env/vrm-d8789c38/idle-series.json     # 修复前：旧 22 片段库
 # 3) 4 个模型的快速回归（无库提示、关联、播放入口、硬切对照）
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmstore
+# 4) 逐模型商店导入截图（卡片 未下载 → 已下载 → 切换 → 桌宠窗口，约 2 分钟，不算指标）
+env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmstoreshots
 ```
 
 产物在 `out/e2e/vrm/`：
-- `verify-NN-<模型>-<阶段>.png`：截图序列，idle 每 6 s 一张。
+- `verify-NN-<模型>-<阶段>.png`：截图序列，idle 每 6 s 一张；触摸截图上红圈是点击点。
 - `verify.webm`：整段录屏，章节在 `verify-evidence.json`。
-- `verify-summary.json`：每模型的指标与判定。
-- `verify-<模型>-series.json`：每 100 ms 一次的 plan 和 18 根骨骼四元数。
+- `verify-summary.json`：每模型的指标与判定（含 `tposeSamples`、`touch[].hitZone`）。
+- `verify-<模型>-series.json`：每 100 ms 一次的 plan、18 根骨骼四元数、双臂仰角和当时的帧率（`fps`）。
 - `verify-transitions.json`：每次切换的跳变窗口。
 
 判定：下面任一条成立就判该模型失败，不略过：
@@ -819,8 +834,9 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmstore
 - 触摸、落地、说话、舞蹈中任一项没有片段；
 - 任一切换的尖峰 > 10°/帧@30fps；
 - 膝盖反折超过 10°；
-- 双臂平举像 T-pose：两侧上臂仰角都 > −15°，持续 ≥ 0.3 s，且不在舞蹈、反应、持续层期间（`tposeIntervals`）；
-- 反应或舞蹈后没有回到 idle。
+- 双臂平举像 T-pose：两侧上臂仰角都 > −15°，持续 ≥ 0.3 s，且不在舞蹈、反应、持续层期间（`tposeIntervals`）；**T-pose 采样数**（同样条件、不限时长的 100 ms 采样数，`tposeSamples`）必须为 0；
+- 反应或舞蹈后没有回到 idle；
+- 人工抽看截图与录屏发现扭曲、穿模或 T-pose。
 
 指标的含义：
 - **命中率**：分母是 idle 窗口内全部 100 ms 采样，分子是底层为库片段（不是 `rest.pose`，也不是 micro idle）的采样。
@@ -828,32 +844,22 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js vrmstore
 - **主频占比**：骨骼相对平均姿态的转角序列，取 0.05–5 Hz 功率谱，最强频点（±1 档）占总功率的比例。单一正弦接近 1。
 - **回 idle 时间**：从点击（或松手、Esc）到 `data-action=idle` 且没有反应、持续层、舞蹈的时间。
 
-### 16.8 T-5089 实测结果（2026-11-04，`vrmverify` 第 4 次运行）
+### 16.9 实测记录
 
-6 个商店 VRM 全部失败，没有略过任何模型：
-- 莉莉雅：0.x，女；
-- Wanderer：0.x，男，hips 在地面；
-- 試作1：VRM 1.0；
-- paimon：Q 版，头高 0.53 m；
-- Diona：儿童体型，0.86 m；
-- Vrchat Avatar：0.x，男。
-
-已经做到的：
-- idle 片段命中率 6/6 都是 100%（600/600），每个模型 60 s 内有 4–5 个不同片段，18 根骨骼都在动，没有单一正弦骨骼；
-- 三处触摸都播出了反应片段；拎起、落地、说话手势正常；
-- 舞蹈 Esc 打断后 0.56–2.12 s 回到 idle；
-- 除 hips 在地面的 Wanderer（设计上只站着）外，都出现了坐 / 蹲休息。
-
-两类问题导致失败：
-
-1. **双臂平举像 T-pose（6/6）**：`idle.v01@female/@neutral`、`idle.v03@male` 都来自 `motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd`，其中有 2–3 s 双臂水平张开。骨骼并没有停在静止姿势（上臂偏离 90°），是片段本身重定向后的结果，看起来就是 T-pose。建议把这条从索引里去掉，或修正 MMD 捩骨 / 手臂重定向后重新烘焙。
-2. **触摸时的相邻帧尖峰略超阈值（3/6）**：莉莉雅 11.32°、試作1 10.91°、paimon 15.34°（°/帧@30fps，阈值 10）。都出现在触摸那一刻：底层 idle、反应片段、说话手势三层同时切换。骨骼多为手和脚，試作1 是前臂，莉莉雅拎起那一刻前臂 11.14°。同一时刻 xvfb 下帧率只有 9–15 fps。建议触摸时不同时换底层 idle，反应片段对四肢再加一点淡入，并在 30 fps 的真机上复测。
-
-逐模型表格与证据见 T-5089 验收报告。
+- **T-5089（2026-11-04，修复前一轮）**：6 个模型全部失败。原因：standmix2 的三条 idle 双臂平举 0.4–3.1 s（6/6）；触摸瞬间尖峰 10.91–15.34°/帧（莉莉雅、試作1、paimon）。
+- **T-5092（修复）**：见 §17。
+- **T-5097（2026-11-04，修复后独立复测，提交 a208172 的代码，重烘 baked-v2，同一命令跑两轮，每轮约 22 分钟，52/52 步通过）**：
+  - 6/6 模型 idle 命中率 100%（600/600），60 s 内 4–7 个不同片段，16–18 根骨骼在动；
+  - **T-pose 采样数 6/6 都是 0**（两轮都是；T-5089 为 4–31）；
+  - 所有切换的最大尖峰 4.02–8°/帧（T-5089 为 6.16–15.34），触摸瞬间 1.49–8°/帧；注意 8° 是输出限幅的上限（§16.6）；
+  - 回 idle：触摸 1.7–8.3 s，落地 3.1–4.5 s，舞蹈 Esc 0.5–2.2 s；除 Wanderer（hips 贴地，按设计只站）外都出现了坐 / 蹲休息；
+  - **paimon 判为失败**：点击「肚子」中心点被判成 `butt`（生气反应），T-5089、T-5092 和本次两轮共 4/4 次复现；第 1 轮点击「手」被判成 `legs`。推测原因在 `core/vrm-hit.js`：Q 版躯干短，`butt` 胶囊（半径 0.19u，hips 下 0.1u 到 hips→spine 40%）比 `belly`（0.155u）粗，在镜头方向先被射线命中（未单独验证）；
+  - 测试机：12 核 CPU、无 GPU，xvfb 软件渲染；渲染帧率中位 10–30 fps（paimon、Diona 中位 30，其余 10–24），无法做全部模型 ≥ 30 fps 的复测；
+  - 逐模型表格、截图拼图、录屏与原始输出见 T-5097 验收报告。
 
 ## 17. T-pose、触摸跳变与姿态守卫（T-5092）
 
-T-5089 的多模型实测（§16.8）判 6 个商店 VRM 全部失败，原因有两类：standmix2 烘焙出的 idle 双臂平举；触摸瞬间相邻帧尖峰 11–15°/帧。本节说明这两项的修复，以及顺带处理的 Wanderer 头部触摸判定和 hips 贴地模型的髋部。素材和烘焙产物仍然不进 git。
+T-5089 的多模型实测（§16.9）判 6 个商店 VRM 全部失败，原因有两类：standmix2 烘焙出的 idle 双臂平举；触摸瞬间相邻帧尖峰 11–15°/帧。本节说明这两项的修复，以及顺带处理的 Wanderer 头部触摸判定和 hips 贴地模型的髋部。素材和烘焙产物仍然不进 git。
 
 ### 17.1 T-pose：手臂转换核对与两处修复
 
