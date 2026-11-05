@@ -188,6 +188,8 @@ function checkOpen(t, at, { files, sprites, anims, kinds }) {
     if (!onFloor(walk, a.spot)) e.push(`${aa}.spot must be [x, y] on the floor (walk.area)`);
     if (a.face !== undefined && !['left', 'right'].includes(a.face)) e.push(`${aa}.face must be left / right`);
     if (a.pose !== undefined && !POSES.includes(a.pose)) e.push(`${aa}.pose must be ${POSES.join(' / ')}`);
+    // lying down needs the place to lie: without `lie` she would lie where she stands, on the floor beside the bed
+    if (a.pose === 'tucked' && a.lie === undefined) e.push(`${aa}: pose "tucked" needs lie [x, y] (where her feet go on the bed)`);
     if (a.anim !== undefined && !anims.includes(a.anim)) e.push(`${aa}.anim "${a.anim}"`);
     if (a.bubble !== undefined && !pt(a.bubble)) e.push(`${aa}.bubble must be [x, y]`);
     if (a.lie !== undefined && !(pt(a.lie) && a.lie[0] >= 0 && a.lie[1] >= 0 && a.lie[0] <= world.width && a.lie[1] <= world.height)) e.push(`${aa}.lie must be [x, y] in the world`);
