@@ -87,7 +87,7 @@ test('style guess (core/vrm-style.js): unknown → neutral; a bust or a skirt sp
   assert.equal(S.resolveStyle({ packStyle: { base: 'male', overrides: {} }, body: { bustSpring: 4 } }).name, 'male', 'pack.json wins');
   // the spring reading itself, from a VRM 1.0 and a 0.x JSON
   const j1 = { nodes: [{ name: 'Skirt_01' }, { name: 'J_Sec_L_Bust1' }, { name: 'Hair' }], extensions: { VRMC_springBone: { springs: [{ joints: [{ node: 0 }, { node: 2 }] }] } } };
-  assert.deepEqual(S.bodyFromJson(j1), { bustSpring: 0, skirtSpring: 1, shoulderHip: null });
+  assert.deepEqual(S.bodyFromJson(j1), { bustSpring: 0, skirtSpring: 1, bustBones: 0, vroidBust: 1, shoulderHip: null });
   const j0 = { nodes: [{ name: 'root', children: [1] }, { name: 'スカート', children: [2] }, { name: 'スカート_end' }], extensions: { VRM: { secondaryAnimation: { boneGroups: [{ bones: [1] }] } } } };
   assert.equal(S.bodyFromJson(j0).skirtSpring, 2);
 });

@@ -48,16 +48,17 @@
 | `input` `select` `textarea` | `Input` / `Select` / `TextArea` filled | `colorBorder` `borderRadiusSM`，focus 用 `colorFillSecondary` 光圈 |
 | `.bubble` `.bubble-tail` | 聊天气泡（`ChatItem` 的消息卡片） | `colorBgElevated` `borderRadiusLG` `boxShadowSecondary` |
 | `.chat-row` | `ChatInputArea`：一张卡片里放附件、输入、麦克风、发送 | `colorBgElevated` `borderRadiusLG` `boxShadowSecondary`，发送 = primary |
-| `.popup`（⋯ 菜单 / 喂食 / 动作） | `Dropdown` 菜单 | `colorBgElevated` `boxShadow` `borderRadiusLG`，危险项 `colorError` |
+| `.popup`（跳舞菜单） | `Dropdown` 菜单 | `colorBgElevated` `boxShadow` `borderRadiusLG`，危险项 `colorError` |
 | `.unlock-toast` | `toast`（标题 + 正文 + 操作 + 关闭） | `colorBgElevated` `boxShadow` |
-| `.bars` `.aff-row` `.meta` | 状态胶囊 + `Progress` 细条 | `colorFillSecondary` 轨道，`colorSuccess` / `colorWarning` / `colorError`（`app.js barColor`）；好感阶段色来自 `core/affection.js` |
+| 她的面板 `.pet-panel`（`src/renderer/panel/`，右键她打开的独立小窗口） | `Popover` 卡片：分隔线分区；`Tag`（好感阶段）；`Progress` 细条；操作块 = `ActionIcon` + 文字的网格；底栏 = 一排 `ActionIcon` | `colorBgElevated` `borderRadiusLG` `boxShadowSecondary`，分隔 `colorBorderSecondary`，悬浮 `colorFillTertiary`，⏻ 悬浮 `colorError`；进度条用 transform 填充 |
+| `.bars` `.aff-row` `.meta`（在她的面板里） | 状态胶囊 + `Progress` 细条 | `colorFillSecondary` 轨道，`colorSuccess` / `colorWarning` / `colorError`（`app.js barColor`）；好感阶段色来自 `core/affection.js` |
 | `.panel`、`.adv-section`、`.card`、`.topic`、`.pack-opt`、`.history-*` | 设置页 `Form` 分组卡片、列表项、`Tag` | `colorBgLayout` 页面底，`colorBgContainer` 卡片，`borderRadiusLG`，选中用 `colorPrimary` 描边 |
 | `.zone-hint` / `.mic-status` | `Tooltip` | `colorText` 底 + `colorBgContainer` 字 |
 | `.stop-btn` | danger `Button`（胶囊） | `colorError` |
 | `.vrm-confirm` | `Modal`（遮罩 + 卡片） | `colorBgMask` `boxShadow` |
 | 图标（⋯、×、📎、麦克风、状态图标） | `lucide-react` | 内联 lucide 路径 `<svg class="ico">`，`currentColor` 描边 |
 
-验证：`xvfb-run -a node e2e/run.js petui`（亮 / 暗各 14 张截图，`out/e2e/petui/`）。
+验证：`xvfb-run -a node e2e/run.js petui`（亮 / 暗各 14 张截图，`out/e2e/petui/`）；她的面板：`xvfb-run -a node e2e/run.js petpanel`（`out/e2e/petpanel/`）。
 
 ## 业务组件（后台页面开发时新增，按方案 §6 规划）
 

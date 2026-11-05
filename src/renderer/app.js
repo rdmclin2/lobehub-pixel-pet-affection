@@ -781,33 +781,49 @@ function barColor(v, invert) {
 
 function refreshHud() {
   if (!view) return;
-  const p = view.pet;
-  const set = (id, v, invert) => {
-    const el = $(id);
-    el.style.setProperty('--v', `${invert ? 100 - v : v}%`);
-    el.style.setProperty('--c', barColor(v, invert));
-  };
-  set('bar-hunger', p.hunger, true);
-  set('bar-mood', p.mood, false);
-  set('bar-energy', p.energy, false);
-  const a = view.affection;
-  const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
-  // who she is: her character's name (「大肥鱼 · Live2D」, T-2764)
-  $('meta').textContent = `${p.name} · ${view.character ? view.character.name : view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
   $('pet-body').style.setProperty('--accent', view.species.accent);
-  $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`;
-  // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
-  $('aff-stage').textContent = a.stageName;
-  $('aff-stage').style.setProperty('--sc', a.color);
-  $('bar-affection').style.setProperty('--v', `${a.value}%`);
-  $('bar-affection').style.setProperty('--c', a.color);
-  $('aff-num').textContent = `♥${a.value}/${a.max}`;
-  $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
-  $('aff-row').setAttribute('aria-label', $('aff-row').title);
   setSettings(view.settings);
   syncSettingsDot();
+  pushPanel();
 }
-
+// What her panel shows (src/renderer/panel/panel.js draws it): who she is, the affection, the three needs, and
+// the state of its buttons. Sent when it opens and again whenever something in it changes while it is open.
+const panelUi = { news: '', newsTitle: '设置（Ctrl/⌘ + ,）', dance: { show: false, pressed: false, loading: false, title: '跳舞' }, mute: { pressed: false, label: '静音', title: '静音：让她不出声' } };
+function panelPayload() {
+  const p = view.pet;
+  const a = view.affection;
+  const need = (key, label, v, invert) => ({ key, label, value: Math.round(invert ? 100 - v : v), color: barColor(v, invert) });
+  return {
+    theme: document.documentElement.dataset.theme,
+    name: p.name,
+    // who she is: her character's name (「大肥鱼 · Live2D」, T-2764)
+    character: view.character ? view.character.name : view.species.nameZh,
+    stage: a.stageName,
+    stageColor: a.color,
+    affection: { value: a.value, max: a.max, title: a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级` },
+    // where the affection is heading: the next stage and how much is left, or 已满级; today's gain and its cap
+    // today's gain can be fractional (touch zones add parts of a point): whole points here, the exact one in the title
+    progress: `${a.next ? `距「${a.nextName}」还差 ${Math.ceil(a.need)}` : '已满级'} · 今天 +${Math.floor(a.today)}/${a.dailyCap}`,
+    progressTitle: `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`,
+    // all of it on one line: the panel's accessible name (and what e2e runs read, window.__petStatus)
+    summary: `${p.name} · ${view.character ? view.character.name : view.species.nameZh} · ${a.stageName} ♥${a.value}${a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级'}`,
+    // hunger counts up, so the panel shows 饱腹 (its inverse)
+    needs: [need('hunger', '饱腹', p.hunger, true), need('mood', '心情', p.mood, false), need('energy', '体力', p.energy, false)],
+    foods: Object.entries(info.foods).map(([id, f]) => ({ id, label: f.label })),
+    reset: !!(view.look && view.look.kind === 'vrm'),
+    dance: { ...panelUi.dance },
+    mute: { ...panelUi.mute },
+    news: panelUi.news,
+    newsTitle: panelUi.newsTitle,
+  };
+}
+window.__petStatus = () => (view ? panelPayload() : null); // e2e: what the panel would show now
+let panelPushQueued = false;
+function pushPanel() {
+  if (!petPanelShown || panelPushQueued || !view || VISITOR) return;
+  panelPushQueued = true;
+  queueMicrotask(() => { panelPushQueued = false; if (petPanelShown && view) window.pet.panel.update(panelPayload()); });
+}
 // The one way into the settings window (配置后台) from the pet: the ⚙ button, a right click or a long press
 // on her, and Ctrl/⌘+, (main.js). Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is
 // something new waiting in it: an outfit or topic just unlocked, or a new version.
@@ -820,15 +836,13 @@ function settingsNews() {
 }
 function syncSettingsDot() {
   const news = settingsNews();
-  const b = $('btn-settings');
-  b.querySelector('.new-dot').classList.toggle('hidden', !news);
-  b.dataset.news = news || '';
-  b.title = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,；也可以右键或在触屏上长按她）';
+  panelUi.news = news || '';
+  panelUi.newsTitle = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,）';
+  pushPanel();
 }
 function openSettings(section) {
   if (thinking) return;
-  $('food-menu').classList.add('hidden');
-  closeDanceMenu();
+  closePetPanel('settings');
   hideToast();
   const news = section === undefined ? settingsNews() : null;
   const s = section !== undefined ? section : news ? SETTINGS_SECTION[news] : undefined;
@@ -1194,7 +1208,7 @@ function localLine(kind) {
   speak({ text, source: 'fallback', kind });
 }
 // Her common short lines are synthesised ahead (main.js tts-prewarm) whenever what they depend on
-// changes: 朗读 / 互动语音 switched on, the engine or its key, her character or relationship stage.
+// changes: 朗读 / 互动语音 switched on, the engine or its key, her character, her 语音包 or relationship stage.
 let prewarmSig = null;
 let prewarmTimer = null;
 let lastPrewarm = null;
@@ -1203,7 +1217,9 @@ function syncPrewarm() {
   if (!IVoice.voiceOn(p) || p.voiceInteractions === false || !view || !view.pet || VISITOR) { prewarmSig = null; return; }
   const t = settings.tts || {};
   const keys = settings.ttsStatus ? Object.entries(settings.ttsStatus.engines).map(([id, e]) => `${id}:${e.hasKey}:${e.ready}`).join(',') : '';
-  const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
+  // the 语音包 picked for her (set-voice-pack): another pack means other recorded lines and maybe another voice
+  const pick = `${(t.voicePackByCharacter || {})[view.pet.speciesId] || 'auto'}/${t.voicePack || 'auto'}`; // hers / 我的语音包
+  const sig = [t.provider, t.fallback, JSON.stringify(t.endpoints || {}), JSON.stringify(t.local || {}), keys, view.pet.speciesId, pick, view.pet.relStage, p.touchZones, settings.adultContent].join('|');
   if (sig === prewarmSig) return;
   prewarmSig = sig;
   clearTimeout(prewarmTimer);
@@ -1215,8 +1231,9 @@ function syncPrewarm() {
   }, 400);
 }
 function playAudio(rec, s, r, end) {
-  Object.assign(s, { provider: r.provider, cached: r.cached, status: 'playing' });
-  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
+  // packId / packFile: the 语音包 and the recording played (provider 'pack'), null for an engine's audio
+  Object.assign(s, { provider: r.provider, cached: r.cached, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
+  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
   if (window.PetVRM && window.PetVRM.active()) window.PetVRM.lip.attach(a); // a VRM figure's mouth follows the voice
@@ -1275,9 +1292,8 @@ function setThinking(on) {
   clearInterval(thinkTimer);
   const b = $('bubble');
   if (on) {
-    // nothing but the pet and this bubble while it works; controls come back when it is done
-    $('food-menu').classList.add('hidden');
-    closeDanceMenu();
+    // nothing but the pet and this bubble while it works; the panel closes (a right click opens it again after)
+    closePetPanel('busy');
     clearTimeout(bubbleTimer);
     $('meme-sticker').classList.add('hidden');
     b.classList.remove('hidden');
@@ -1341,21 +1357,7 @@ function resetPose(source = 'button') {
 let lastReset = null;
 // the ↺ button: shown for a VRM look only (the pixel and Live2D looks have no pose to get stuck in)
 function syncResetButton() {
-  const b = $('btn-reset');
-  const show = !!(view && view.look && view.look.kind === 'vrm');
-  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
-}
-
-function buildFoodMenu() {
-  const m = $('food-menu');
-  m.innerHTML = '';
-  for (const [id, f] of Object.entries(info.foods)) {
-    const b = document.createElement('button');
-    b.className = 'btn';
-    b.textContent = f.label;
-    b.addEventListener('click', () => { m.classList.add('hidden'); doAct('feed', id); });
-    m.appendChild(b);
-  }
+  pushPanel(); // the panel reads view.look itself
 }
 
 // ---------- 跳舞 (docs/vrm-dance.md §6.2 L2 / L4, §6.3) ----------
@@ -1390,7 +1392,6 @@ function closeDanceMenu() {
 async function openDanceMenu() {
   const m = $('dance-menu');
   if (!m.classList.contains('hidden')) return closeDanceMenu();
-  $('food-menu').classList.add('hidden');
   m.classList.remove('hidden');
   await renderDanceMenu();
   const first = m.querySelector('[role="menuitem"]:not([disabled])');
@@ -1502,6 +1503,9 @@ function vrmLibraryHint(figure, look) {
   const show = () => {
     const b = $('bubble');
     if (tries++ < 30 && (thinking || !b.classList.contains('hidden'))) { setTimeout(show, 1000); return; }
+    // (T-5098: still so? a library linked or another character worn meanwhile: nothing to say any more)
+    const now = vrmFigure() === figure && figure.libraryInfo ? figure.libraryInfo() : null;
+    if (!now || now.reason !== info.reason) return;
     say(text, 'fallback', 'fallback', `vrm-library:${info.reason}`);
   };
   setTimeout(show, 1200);
@@ -1571,19 +1575,15 @@ async function startDance(d) {
 }
 // the button: shown for a VRM look only; pressed while she dances; spinning while a dance loads
 function syncDanceButton() {
-  const b = $('btn-dance');
   const show = canDanceNow();
-  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
   if (!show && !$('dance-menu').classList.contains('hidden')) closeDanceMenu();
   const st = dance && dance.active() ? dance.state() : null;
-  const pressed = String(!!st);
-  if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
   const title = danceLoading ? '正在准备舞蹈…' : st ? `正在跳《${st.name}》，点一下可以停止或换一支` : '跳舞';
-  if (b.title !== title) b.title = title;
-  b.classList.toggle('loading', !!danceLoading);
-  b.disabled = !!danceLoading;
-}
-function bindDanceMenu() {
+  const next = { show, pressed: !!st, loading: !!danceLoading, title };
+  if (JSON.stringify(next) === JSON.stringify(panelUi.dance)) return;
+  panelUi.dance = next;
+  pushPanel();
+}function bindDanceMenu() {
   const m = $('dance-menu');
   m.addEventListener('keydown', (e) => {
     const items = [...m.querySelectorAll('[role^="menuitem"]:not([disabled])')];
@@ -1595,31 +1595,28 @@ function bindDanceMenu() {
     } else if (e.key === 'Escape') {
       e.stopPropagation(); // Esc closes the menu here; it does not stop the dance
       closeDanceMenu();
-      $('btn-dance').focus();
     }
   });
 }
 
+// A button in her panel (main forwards it here: panel-act): what each one does in her window. The panel closes
+// itself for everything but 静音 (switches in place) and 喂食 (its foods open in the panel; picking one sends
+// feed with that food).
+function runAct(act, food) {
+  if (act !== 'dance') closeDanceMenu();
+  if (act === 'dance') openDanceMenu();
+  else if (act === 'feed') doAct('feed', food);
+  else if (act === 'play' || act === 'sleep') doAct(act);
+  else if (act === 'chat') { pointerInside = true; openChat(); } // the panel was beside her: the box shows at once
+  else if (act === 'settings') openSettings();
+  else if (act === 'mute') toggleMute();
+  else if (act === 'reset') window.pet.resetPose('button');
+  else if (act === 'quit') window.pet.quit();
+}
+
 function bindPetUi() {
-  buildFoodMenu();
   bindDanceMenu();
-  $('toolbar').addEventListener('click', (e) => {
-    const btn = e.target.closest && e.target.closest('[data-act]');
-    const act = btn && btn.dataset.act;
-    if (!act) return;
-    if (act !== 'feed') $('food-menu').classList.add('hidden');
-    if (act !== 'dance') closeDanceMenu();
-    if (act === 'dance') openDanceMenu();
-    else if (act === 'feed') $('food-menu').classList.toggle('hidden');
-    else if (act === 'play' || act === 'sleep') doAct(act);
-    else if (act === 'chat') {
-      $('chat-row').classList.toggle('hidden');
-      if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
-    } else if (act === 'settings') openSettings();
-    else if (act === 'mute') toggleMute();
-    else if (act === 'reset') window.pet.resetPose('button');
-    else if (act === 'quit') window.pet.quit();
-  });
+  window.pet.panel.onAct((m) => { if (m && m.act) runAct(String(m.act), m.food ? String(m.food) : undefined); });
   const send = async () => {
     const input = $('chat-input');
     const text = input.value.trim();
@@ -1694,15 +1691,81 @@ function bindPetUi() {
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
 
-  // a right click (or a long press on a touch screen) on her opens the settings window, as ⚙ does: there is
-  // no menu in the pet window any more
-  bindPetPointer({ onClick: touchAt, onMenu: () => openSettings() });
+  // a right click (or a long press on a touch screen) on her opens her panel (her state and what to do with
+  // her); a right click while it is open closes it. Nothing shows on hover any more.
+  bindPetPointer({ onClick: touchAt, onMenu: () => openPetPanel('long-press') });
   bindTouchHint();
   document.addEventListener('contextmenu', (e) => {
-    if (!e.target.closest || !e.target.closest('.pet-hit')) return;
-    e.preventDefault();
-    openSettings();
+    e.preventDefault(); // no browser menu anywhere in her window
+    if (!e.target.closest || !e.target.closest('.pet-hit')) { closePetPanel('outside'); return; }
+    togglePetPanel('right-click');
   });
+  bindPanel();
+}
+
+// ---------- 她的面板 (right click / long press on her) ----------
+// Its own small window beside her (src/main/pet-panel.js, src/renderer/panel/): her name, character and stage,
+// the affection meter, the three needs, then 喂食 / 玩耍 / 睡觉 / 聊天 and the quiet icon buttons (静音, 跳舞 / 重置
+// for a VRM look, ⚙, ⏻). Nothing shows on hover any more. It closes on Esc, a click anywhere else (it loses
+// focus; a press in her window tells main), a right click on her again, after a button, when her window hides,
+// and when she starts thinking (while she thinks a right click does not open it); when her window moves (she
+// walks) it follows her. What it did is kept for the e2e runs (window.__panel).
+let petPanelShown = false;
+const panelLog = { opens: 0, closes: [] };
+window.__panel = panelLog;
+// where she is on the screen (her picture's box), so the panel opens beside her and not over her
+function petPanelAnchor() {
+  const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')) || $('stage');
+  const b = el.getBoundingClientRect(); // already scaled by the stage's zoom (宠物大小)
+  return { x: Math.round(window.screenX + b.left), y: Math.round(window.screenY + b.top), width: Math.round(b.width), height: Math.round(b.height) };
+}
+async function openPetPanel(source = 'right-click') {
+  if (thinking || !view || VISITOR) return false;
+  hideToast();
+  closeDanceMenu();
+  syncDanceButton();
+  syncMute();
+  syncSettingsDot();
+  const r = await window.pet.panel.open({ source, anchor: petPanelAnchor(), payload: panelPayload() });
+  if (r && r.visible) { petPanelShown = true; panelLog.opens += 1; panelLog.lastOpen = source; }
+  return !!(r && r.visible);
+}
+function closePetPanel(reason = 'esc') {
+  if (!petPanelShown) return false;
+  window.pet.panel.close(reason);
+  return true;
+}
+// wasShown: the panel was open when this right click went down — clicking her took the focus from it, so it may
+// have closed on blur already; the click was meant to close it, so it does not open again
+let rightDownShown = false;
+async function togglePetPanel(source) {
+  if (thinking || !view || VISITOR) { rightDownShown = false; closePetPanel('busy'); return false; }
+  const r = await window.pet.panel.toggle({ source, wasShown: rightDownShown, anchor: petPanelAnchor(), payload: panelPayload() });
+  rightDownShown = false;
+  if (r && r.visible) { petPanelShown = true; panelLog.opens += 1; panelLog.lastOpen = source; }
+  return !!(r && r.visible);
+}
+function bindPanel() {
+  // main says when it closed (and why): Esc in it, a click elsewhere, a button, her window moving …
+  window.pet.panel.onClosed((m) => {
+    petPanelShown = false;
+    panelLog.closes.push((m && m.reason) || 'closed');
+    if (panelLog.closes.length > 50) panelLog.closes.shift();
+  });
+  // a press in her window closes it (a right click on her toggles it in the contextmenu handler instead)
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) rightDownShown = petPanelShown;
+    if (!petPanelShown) return;
+    if (e.button === 2 && e.target.closest && e.target.closest('.pet-hit')) return;
+    closePetPanel('outside');
+  }, true);
+  // the dance menu (opened from ♪ in the panel) lies over her: a press outside it or Esc closes it
+  document.addEventListener('pointerdown', (e) => {
+    const m = $('dance-menu');
+    if (m.classList.contains('hidden') || (e.target.closest && e.target.closest('#dance-menu'))) return;
+    closeDanceMenu();
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('dance-menu').classList.contains('hidden')) { e.stopImmediatePropagation(); closeDanceMenu(); } }, true);
 }
 
 // Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
@@ -1895,9 +1958,9 @@ function vrmFigure() {
 }
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
 // A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
-function zoneAtClient(cx, cy) {
+function zoneAtClient(cx, cy, opts) {
   const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
-  if (vf) return vf.zoneAt(cx, cy);
+  if (vf) return vf.zoneAt(cx, cy, opts); // (a click: { precise } — the part drawn under it, T-5098)
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -1908,7 +1971,7 @@ function zoneAtClient(cx, cy) {
 async function touchAt(e) {
   if (thinking || !view) return;
   if (!touchOn() || !e || !Number.isFinite(e.clientX)) return doAct('pat');
-  const { zone, pt } = zoneAtClient(e.clientX, e.clientY);
+  const { zone, pt } = zoneAtClient(e.clientX, e.clientY, { precise: true });
   if (!zone) return doAct('pat');
   const r = await window.pet.touch(zone);
   if (r.ok) showTouch(r, pt, { x: e.clientX, y: e.clientY });
@@ -1983,8 +2046,6 @@ function syncHover() {
   document.body.classList.toggle('hover', !thinking && (pointerInside || micActive() || voiceHeld())); // listening (or a hotkey call) keeps 🎤 in reach
   if (!pointerInside && !micActive() && !voiceHeld()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
-    $('food-menu').classList.add('hidden');
-    closeDanceMenu();
   }
 }
 function bindHover() {
@@ -2185,14 +2246,15 @@ function paintMic() {
 // 静音 (toolbar speaker): one switch over everything she sounds — 朗读, 互动语音 and the click sound.
 // It is its own pref (prefs.muted), so un-muting brings back exactly what 朗读 / 点击音效 were set to.
 function syncMute() {
-  const b = $('btn-mute');
-  if (!b || !settings || !settings.prefs) return;
+  if (!settings || !settings.prefs) return;
   const p = settings.prefs;
   const muted = p.muted === true;
-  b.setAttribute('aria-pressed', String(muted));
-  b.setAttribute('aria-label', muted ? '取消静音' : '静音');
-  b.title = muted ? '已静音：点一下恢复她的声音'
-    : p.voice || p.clickSound ? '静音：让她不出声' : '静音（朗读回复和点击音效现在都没开，可在设置里打开）';
+  panelUi.mute = {
+    pressed: muted,
+    label: muted ? '取消静音' : '静音',
+    title: muted ? '已静音：点一下恢复她的声音' : p.voice || p.clickSound ? '静音：让她不出声' : '静音（朗读回复和点击音效现在都没开，可在设置里打开）',
+  };
+  pushPanel();
 }
 async function toggleMute() {
   if (!settings || !settings.prefs) return;

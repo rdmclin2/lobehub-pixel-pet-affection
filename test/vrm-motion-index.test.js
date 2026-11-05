@@ -102,6 +102,24 @@ test('degrade levels and root-hips models (standing clips only)', () => {
   assert.equal(BM.allowsClip(sit, { rootHips: false }), true);
 });
 
+test('T-5098: a hips-on-floor model retargeted on her leg chain (legRig) — hips height = chain + ankle, every posture plays', () => {
+  // Wanderer-like: hips bone at 0, hip joints at 0.74 m, knees 0.40, ankles 0.07, floor 0
+  const pos = { leftUpperLeg: [0.08, 0.74, 0], rightUpperLeg: [-0.08, 0.74, 0], leftLowerLeg: [0.08, 0.40, 0.01], rightLowerLeg: [-0.08, 0.40, 0.01], leftFoot: [0.08, 0.07, 0], rightFoot: [-0.08, 0.07, 0] };
+  const r = BM.legRig(pos, 0);
+  assert.ok(r.ok);
+  assert.ok(Math.abs(r.chain - (Math.hypot(0.34, 0.01) + Math.hypot(0.33, 0.01))) < 1e-3, `chain ${r.chain}`);
+  assert.ok(Math.abs(r.height - (r.chain + 0.07)) < 1e-3 && Math.abs(r.height - 0.74) < 0.01, `height ${r.height}`);
+  assert.deepEqual(r.joints, [0, 0.74, 0]);
+  // a floor below the origin (the mesh's lowest point) raises the ankle height
+  assert.ok(Math.abs(BM.legRig(pos, -0.02).ankle - 0.09) < 1e-9);
+  // no legs, or a chain that does not match where the joints stand (a broken rig): no rig
+  assert.equal(BM.legRig({ leftUpperLeg: [0, 1, 0] }), null);
+  assert.equal(BM.legRig({ ...pos, leftUpperLeg: [0.08, 0.2, 0], rightUpperLeg: [-0.08, 0.2, 0] }).ok, false);
+  const sit = { group: 'sit', enter: 'sit', exit: 'sit' };
+  assert.equal(BM.allowsClip(sit, { rootHips: true, legRig: r }), true, 'with the leg rig she sits');
+  assert.equal(BM.allowsClip(sit, { rootHips: true, legRig: { ...r, ok: false } }), false);
+});
+
 // ---------- the index ----------
 test('the index: a one-shot reaction / emotion plays at most 6 s, and duration is what plays (after trim)', () => {
   for (const [id, e] of Object.entries(INDEX.clips)) {
@@ -303,8 +321,8 @@ test('the index is reproducible from the scan (when the assets are on this machi
 test('no model, animation or audio is tracked by git or allowed into the package', () => {
   let files = [];
   try { files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n'); } catch { return; }
-  // (the app's own voice packs and test tones are its own recordings, not pack material)
-  const bad = files.filter((f) => /\.(vrm|vrma|fbx|vmd|pmx|bvh|vroid|ncm)$/i.test(f) || (/\.(mp3|wav|ogg|m4a|flac)$/i.test(f) && !/^(src\/voicepacks|test\/fixtures)\//.test(f)));
+  // (the app's own voice packs, store voice previews and test tones are its own recordings, not pack material)
+  const bad = files.filter((f) => /\.(vrm|vrma|fbx|vmd|pmx|bvh|vroid|ncm)$/i.test(f) || (/\.(mp3|wav|ogg|m4a|flac)$/i.test(f) && !/^(src\/voicepacks|src\/renderer\/catalog\/voices|test\/fixtures)\//.test(f)));
   assert.deepEqual(bad, []);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   for (const ex of ['!**/*.vrm', '!**/*.vrma', '!**/*.fbx', '!**/*.vmd', '!**/*.pmx']) assert.ok(pkg.build.files.includes(ex), ex);
@@ -359,6 +377,7 @@ test('model probe: reads a VRM 0.x / 1.0 humanoid from the glTF JSON, folds a mi
   assert.equal(b.vrm, '0.x'); assert.equal(b.level, 'folded'); assert.deepEqual(b.missingTrunk, ['upperChest']); assert.equal(b.missingFingers, 0, '0.x thumbs renamed to 1.0 names');
   const c = Probe.probeModel(model(0));
   assert.equal(c.rootHips, true);
+  assert.equal(c.legRig.ok, false, 'the test chain has its legs on one point: no leg rig, standing clips only');
   // a hips-on-the-floor model plays no sit / crouch / lay clip
   const clips = { 'sit.v01@female': { style: 'female', group: 'sit', enter: 'sit', exit: 'sit' }, 'idle.v01@female': { style: 'female', group: 'idle', enter: 'stand', exit: 'stand' } };
   assert.ok(!BM.allowsClip(clips['sit.v01@female'], { rootHips: c.rootHips }) && BM.allowsClip(clips['idle.v01@female'], { rootHips: c.rootHips }));

@@ -358,7 +358,7 @@ async function bakeV2(a) {
     console.log(`models: probed ${lib.models.probed} VRM in ${modelsDir}: ${JSON.stringify(lib.models.summary)}`);
     for (const [rel, m] of Object.entries(lib.models.models)) {
       if (m.error) console.log(`  model ${rel}: ERROR ${m.error}`);
-      else if (m.level !== 'full' || m.rootHips) console.log(`  model ${rel}: VRM ${m.vrm}, ${m.level}${m.missingTrunk.length ? ` (missing ${m.missingTrunk.join('/')} → folded into children)` : ''}${m.missingRequired.length ? ` (missing required ${m.missingRequired.join('/')})` : ''}${m.rootHips ? `, hips at ${m.hipsY} m → standing clips only` : ''}${m.playable ? `, plays ${m.playable.female}/${m.playable.male}/${m.playable.neutral} clips (female/male/neutral)` : ''}`);
+      else if (m.level !== 'full' || m.rootHips) console.log(`  model ${rel}: VRM ${m.vrm}, ${m.level}${m.missingTrunk.length ? ` (missing ${m.missingTrunk.join('/')} → folded into children)` : ''}${m.missingRequired.length ? ` (missing required ${m.missingRequired.join('/')})` : ''}${m.rootHips ? `, hips at ${m.hipsY} m → ${m.legRig && m.legRig.ok ? `retargeted on the leg chain (hip joints ${m.legRig.height} m: chain ${m.legRig.chain} + ankle ${m.legRig.ankle})` : 'standing clips only (no leg chain)'}` : ''}${m.playable ? `, plays ${m.playable.female}/${m.playable.male}/${m.playable.neutral} clips (female/male/neutral)` : ''}`);
     }
   } else console.log(`models: ${modelsDir} missing — no per-model check`);
   lib.counts = {};
@@ -428,6 +428,8 @@ function poseGuard(out, assets, idx) {
   const lines = Guard.formatReport(s2).map((l) => l.replace(/— armsOut: \[object Object\]/, ''));
   for (const r of s2.allowedList) { const i = lines.findIndex((l) => l.startsWith(`  allowed  ${r.id}:`)); if (i >= 0) lines[i] = `  allowed  ${r.id}: ${r.longestS} s @ ${r.at} s ≤ armsOut ${r.armsOut.maxS} s (${r.armsOut.why})`; }
   const failed = s2.hitList.map((r) => `pose guard: ${r.id} holds a T-pose ${r.longestS} s @ ${r.at} s (${r.src})`);
+  for (const r of s2.raisedList || []) failed.push(`pose guard: ${r.id} is a ${r.kind} holding both arms raised above level (${r.raisedFrames}/${r.frames} frames, ${r.src})`);
+  for (const r of s2.stiffList) failed.push(`pose guard: ${r.id} holds both arms out stiff (${r.stiffOutDeg}° to the side) ${r.stiffS} s @ ${r.stiffAt} s (${r.src})`);
   const vmds = new Set();
   for (const e of Object.values(idx.clips)) if (e.src && /\.vmd$/i.test(e.src)) vmds.add(e.src);
   for (const e of Object.values(idx.dances || {})) if (/\.vmd$/i.test(e.src)) vmds.add(e.src);
@@ -457,7 +459,7 @@ function checkV2(a) {
   for (const l of g.lines) console.log(l);
   // every idle clip: the largest angle both upper arms reach together (from the torso's down axis) and its T-pose frames
   console.log('idle clips (both upper arms together: max angle from the torso\'s down axis; T-pose frames; longest run):');
-  for (const r of g.sum.rows.filter((x) => x.kind === 'idle').sort((a, b) => a.id.localeCompare(b.id))) console.log(`  ${r.id.padEnd(22)} ${(r.src || '').slice(0, 58).padEnd(58)} max ${String(r.bothArmsMaxDeg).padStart(5)}°  T-pose frames ${r.tposeFrames}  longest ${r.longestS} s${r.suspect ? '  HIT' : ''}`);
+  for (const r of g.sum.rows.filter((x) => x.kind === 'idle').sort((a, b) => a.id.localeCompare(b.id))) console.log(`  ${r.id.padEnd(22)} ${(r.src || '').slice(0, 58).padEnd(58)} max ${String(r.bothArmsMaxDeg).padStart(5)}°  T-pose frames ${r.tposeFrames}  longest ${r.longestS} s  stiff-out ${r.stiffS} s${r.suspect ? '  HIT' : ''}${r.stiff ? '  STIFF' : ''}`);
   const short = Object.entries(idles).filter(([, n]) => n < 6);
   console.log(`idle clips per style: ${JSON.stringify(idles)}${short.length ? ' — FAILED (< 6)' : ' (≥ 6 each)'}`);
   for (const [st] of short) g.failed.push(`idle: ${st} has fewer than 6 idle clips`);

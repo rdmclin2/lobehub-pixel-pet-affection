@@ -27,6 +27,16 @@ const W = require('../../src/core/vrma-write');
 
 const JUMP_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'];
 const JUMP_WIN = 1.6;
+const JERK_MAX = 90000; // renderer/vrm.js JERK_MAX (T-5098)
+const FLIP_DOT = Math.cos((75 * Math.PI) / 180); // renderer/vrm-anim.js FLIP_DOT (T-5098)
+function slerpKeep(a, b, t) {
+  const d = Math.max(-1, Math.min(1, W.qdot(a, b)));
+  let ka; let kb;
+  if (d > 0.9995) { ka = 1 - t; kb = t; } else { const th = Math.acos(d); const s = Math.sin(th); ka = Math.sin((1 - t) * th) / s; kb = Math.sin(t * th) / s; }
+  const q = [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb, a[3] * ka + b[3] * kb];
+  const n = Math.hypot(...q) || 1;
+  return q.map((x) => x / n);
+}
 const ALIGN_N = 16;
 const ALIGN_W = { hips: 2, spine: 1, chest: 1, upperChest: 0.5, neck: 0.5, head: 0.7, leftUpperArm: 1.5, rightUpperArm: 1.5, leftLowerArm: 1, rightLowerArm: 1, leftUpperLeg: 1.5, rightUpperLeg: 1.5, leftLowerLeg: 1, rightLowerLeg: 1 };
 const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
@@ -42,7 +52,7 @@ function anim() {
 }
 
 // a .vrma → { duration, tracks: { bone: { times, values: [q…] } } }, steps spread like loadVrma (T-5084)
-function readClip(buf) {
+function readClip(buf, opts = {}) {
   const { tracks } = W.readVrma(buf);
   const out = {};
   let duration = 0;
@@ -51,10 +61,19 @@ function readClip(buf) {
     if (!m) continue;
     const times = Float32Array.from(tr.times);
     const flat = Float32Array.from(tr.values);
-    if (!/Thumb|Index|Middle|Ring|Little|Toes/.test(m[1])) BM.smoothSteps(times, flat);
+    let T = times; let V = flat;
+    if (!/Thumb|Index|Middle|Ring|Little|Toes/.test(m[1])) {
+      BM.smoothSteps(times, flat);
+      // T-5098: the angular acceleration limited like loadVrma (unless the caller replays the clips as baked)
+      // (the renderer's jerk limit on reactions and holds, renderer/vrm.js JERK_MAX; opts.accel: false = as baked,
+      // an object = another limit to try)
+      const acc = opts.accel === false ? null : opts.accel || (opts.kind === 'reaction' || opts.kind === 'hold' ? { jMax: JERK_MAX } : null);
+      const a = !acc ? null : acc.passes ? BM.smoothKeys(times, flat, acc) : BM.limitAccel(times, flat, acc);
+      if (a) { T = a.times; V = a.values; }
+    }
     const values = [];
-    for (let i = 0; i < flat.length; i += 4) values.push([flat[i], flat[i + 1], flat[i + 2], flat[i + 3]]);
-    out[m[1]] = { times: Array.from(times), values };
+    for (let i = 0; i < V.length; i += 4) values.push([V[i], V[i + 1], V[i + 2], V[i + 3]]);
+    out[m[1]] = { times: Array.from(T), values };
     duration = Math.max(duration, times[times.length - 1] || 0);
   }
   return { duration, tracks: out };
@@ -69,13 +88,13 @@ function sampleQ(tr, t) {
   return Sm.slerp(values[lo], values[hi], (t - times[lo]) / (times[hi] - times[lo] || 1));
 }
 
-function loadLibrary(dir, styleSet) {
+function loadLibrary(dir, styleSet, opts = {}) {
   const index = Lib.cleanIndex(JSON.parse(fs.readFileSync(path.join(dir, 'library.json'), 'utf8')));
   const sets = new Set(Lib.loadSets(index, styleSet));
   const clips = new Map();
   for (const c of Object.values(index.clips)) {
     if (!c.file || !sets.has(c.style)) continue;
-    clips.set(c.id, readClip(fs.readFileSync(path.join(dir, c.file))));
+    clips.set(c.id, readClip(fs.readFileSync(path.join(dir, c.file)), { ...opts, kind: c.kind }));
   }
   return { index, clips, loaded: new Set(clips.keys()) };
 }
@@ -94,8 +113,8 @@ function frameTimes(kind, seconds, rand) {
 const libCache = new Map();
 function replay(o) {
   const style = St.resolveStyle({ packStyle: { base: o.style || 'female' } });
-  const key = `${o.dir}|${style.set}`;
-  if (!libCache.has(key)) libCache.set(key, loadLibrary(o.dir, style.set));
+  const key = `${o.dir}|${style.set}|${JSON.stringify(o.accel === undefined ? null : o.accel)}`;
+  if (!libCache.has(key)) libCache.set(key, loadLibrary(o.dir, style.set, { accel: o.accel }));
   const lib = libCache.get(key);
   const A = anim();
   const director = D.createDirector({ style, index: lib.index, loaded: lib.loaded, rand: D.seeded(o.seed || 7), boredAfter: o.boredAfter, settle: o.settle !== false });
@@ -108,6 +127,7 @@ function replay(o) {
   let lastBaseKey = -1;
   let pose = Object.fromEntries(JUMP_BONES.map((b) => [b, [0, 0, 0, 1]]));
   const jm = { prev: new Map(), d1: new Map(), d2: new Map() };
+  const sides = new Map();
   let sig = null;
   const windows = [];
   const open = [];
@@ -179,7 +199,14 @@ function replay(o) {
         if (!tr) continue;
         const k = (ov.limb !== undefined && A.LIMB.test(b) ? Math.min(ov.weight, ov.limb) : ov.weight) * A.maskWeight(ov.mask || 'upper', b);
         if (!(k > 0)) continue;
-        next[b] = Sm.slerp(next[b], sampleQ(tr, Math.max(0, Math.min(c.duration, ov.time || 0))), Math.min(1, k));
+        // (renderer/vrm-anim.js applyOverlays: near 180° the side taken last frame is kept, T-5098)
+        let q = sampleQ(tr, Math.max(0, Math.min(c.duration, ov.time || 0)));
+        const d = W.qdot(next[b], q);
+        const key = `${ov.id}|${b}`;
+        const sign = Math.abs(d) < FLIP_DOT && sides.get(key) ? sides.get(key) : d < 0 ? -1 : 1;
+        sides.set(key, sign);
+        if (sign < 0) q = q.map((x) => -x);
+        next[b] = slerpKeep(next[b], q, Math.min(1, k));
       }
     }
     // ---- the limiter, then the jump meter (vrm.js smoothBones / meterJump) ----
@@ -221,4 +248,4 @@ function replay(o) {
   };
 }
 
-module.exports = { replay, loadLibrary, readClip, JUMP_BONES };
+module.exports = { replay, loadLibrary, readClip, JUMP_BONES, JERK_MAX };

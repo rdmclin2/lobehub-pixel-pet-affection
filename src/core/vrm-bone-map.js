@@ -173,9 +173,31 @@
   // feet. Standing clips still read right; a sit / crouch / lay (or a clip that starts or ends in one) would tip her
   // over around her ankles, so such a model plays standing clips only (renderer loadClips, T-5081).
   const rootHips = (restHipsY, headY) => !(restHipsY > 0.25 * (headY || 1));
+  // T-5098: such a model's real hips, from her legs: the hip joints (the upper legs' midpoint) and how high they
+  // stand — the leg chain (upper leg → knee → ankle, both sides averaged) plus the ankle's height over the floor,
+  // which is what a clip's hips travel is scaled by (three-vrm: the model's hips height / the clip's) and where her
+  // hips turn about (renderer/vrm.js measureHipsRig / pivotHips). With it she sits and crouches like any model; a
+  // model without the leg bones keeps standing clips only. pos: { bone: [x, y, z] } world, rest pose; floorY: the
+  // floor (the mesh's lowest point, 0 for a model standing on the origin). → { joints, chain, ankle, height,
+  // jointsY, ok } | null
+  function legRig(pos, floorY = 0) {
+    const P = (n) => (Array.isArray(pos[n]) ? pos[n] : null);
+    const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const sides = ['left', 'right'].map((s) => [P(`${s}UpperLeg`), P(`${s}LowerLeg`), P(`${s}Foot`)]).filter((x) => x.every(Boolean));
+    if (sides.length < 2) return null;
+    const chain = sides.reduce((a, [u, l, f]) => a + d(u, l) + d(l, f), 0) / sides.length;
+    const ankle = sides.reduce((a, [, , f]) => a + (f[1] - floorY), 0) / sides.length;
+    const joints = [0, 1, 2].map((i) => (sides[0][0][i] + sides[1][0][i]) / 2);
+    const height = chain + Math.max(0, ankle);
+    // the chain is the legs straight: a rest pose with bent knees would read shorter than the joints stand
+    const jointsY = joints[1] - floorY;
+    const ok = height > 0.1 && chain > 0.5 * height && jointsY > 0.5 * height && Math.abs(jointsY - height) < 0.25 * height;
+    return { joints, chain: +chain.toFixed(4), ankle: +ankle.toFixed(4), height: +height.toFixed(4), jointsY: +jointsY.toFixed(4), ok };
+  }
   const LOW_GROUPS = ['sit', 'crouch', 'lay'];
-  function allowsClip(clip, { rootHips: rh = false } = {}) {
+  function allowsClip(clip, { rootHips: rh = false, legRig: rig = null } = {}) {
     if (!rh || !clip) return true;
+    if (rig && rig.ok) return true; // T-5098: retargeted on her leg chain (legRig): every posture plays
     if (clip.sit || LOW_GROUPS.includes(clip.group)) return false;
     for (const k of ['enter', 'exit']) if (clip[k] && clip[k] !== 'stand') return false;
     return true;
@@ -255,5 +277,86 @@
     return fixed;
   }
 
-  return { smoothSteps, _sampleQ: sampleQ, rootHips, allowsClip, LOW_GROUPS, VRM_PARENT, VRM_BONES, VRM_REQUIRED, VRM_OPTIONAL, CHILDREN, VRM0_THUMB, MIXAMO_TO_VRM, MIXAMO_IGNORED, MMD_TO_VRM, stripMixamo, vrmOfMixamo, foldMissing, degradeLevel, premultiply, at, qmul };
+  // ---------- too fast to show at a low frame rate (T-5098) ----------
+  // The renderer draws 9–15 fps on a machine without a GPU (and 12 fps when she is calm). The jump meter's spike —
+  // a frame's turn minus the larger of its neighbours' — of a smooth motion sampled every h seconds is about
+  // |angular acceleration| × h / 30 (°/frame@30): a clap or a wave reversing a hand at ~8000°/s² read 15–23 there
+  // (T-5097: the output limiter capped them at 8). This limits a track's angular acceleration to `aMax` (°/s²) at
+  // the source: the track is resampled at `fps` and wherever the change of angular velocity between two frames is
+  // above aMax / fps² the key is pulled towards its neighbours' midpoint (a local Laplacian step), repeated until
+  // none is left (≤ passes): the fast reversals are rounded, the rest of the clip is untouched (a clip that never
+  // goes over comes back null). → null | { times, values (new arrays at fps), fixed (key moves), maxCutDeg }
+  function qmulA(a, b) { return [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]]; }
+  // the turn from a to b as a rotation vector (deg, in a's frame)
+  function rotVec(a, b) {
+    let r = qmulA([-a[0], -a[1], -a[2], a[3]], b);
+    if (r[3] < 0) r = r.map((x) => -x);
+    const s = Math.hypot(r[0], r[1], r[2]);
+    if (s < 1e-9) return [0, 0, 0];
+    const ang = (2 * Math.atan2(s, r[3]) * 180) / Math.PI;
+    return [(r[0] / s) * ang, (r[1] / s) * ang, (r[2] / s) * ang];
+  }
+  function limitAccel(times, values, { aMax = 2700, jMax = 0, fps = 30, passes = 400 } = {}) {
+    const n = times.length;
+    if (n < 3 || values.length < n * 4) return null;
+    const t0 = times[0];
+    const t1 = times[n - 1];
+    const frames = Math.floor((t1 - t0) * fps + 1e-6);
+    if (frames < 3) return null;
+    const g = [];
+    for (let i = 0; i <= frames; i++) g.push(sampleQ(times, values, t0 + i / fps, [0, 0, 0, 0]));
+    for (let i = 1; i < g.length; i++) if (g[i][0] * g[i - 1][0] + g[i][1] * g[i - 1][1] + g[i][2] * g[i - 1][2] + g[i][3] * g[i - 1][3] < 0) g[i] = g[i].map((x) => -x);
+    const orig = g.map((q) => q.slice());
+    const lim = jMax > 0 ? jMax / (fps * fps * fps) : aMax / (fps * fps); // °/frame per frame (per frame)
+    // jMax: the change of the angular acceleration (the jerk, °/s³) instead — the spike's own measure — checked on
+    // the three frame-to-frame turns around key i
+    const over = jMax > 0
+      ? (i) => { if (i < 2 || i > g.length - 3) return false; const a = rotVec(g[i - 2], g[i - 1]); const b = rotVec(g[i - 1], g[i]); const c = rotVec(g[i], g[i + 1]); const d = rotVec(g[i + 1], g[i + 2]); const j1 = [0, 1, 2].map((k) => c[k] - 2 * b[k] + a[k]); const j2 = [0, 1, 2].map((k) => d[k] - 2 * c[k] + b[k]); return Math.max(Math.hypot(...j1), Math.hypot(...j2)) > lim; }
+      : (i) => { const w0 = rotVec(g[i - 1], g[i]); const w1 = rotVec(g[i], g[i + 1]); return Math.hypot(w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]) > lim; };
+    let fixed = 0;
+    const m = [0, 0, 0, 0];
+    for (let p = 0; p < passes; p++) {
+      const bad = [];
+      for (let i = 1; i < g.length - 1; i++) if (over(i)) bad.push(i);
+      if (!bad.length) break;
+      for (const i of bad) { slerpQ(g[i - 1], g[i + 1], 0.5, m); slerpQ(g[i], m, 0.5, g[i]); fixed++; }
+    }
+    if (!fixed) return null;
+    let maxCut = 0;
+    for (let i = 0; i < g.length; i++) maxCut = Math.max(maxCut, qdeg(orig[i], g[i]));
+    const T = new Float32Array(g.length);
+    const V = new Float32Array(g.length * 4);
+    for (let i = 0; i < g.length; i++) { T[i] = Math.min(t1, t0 + i / fps); for (let c = 0; c < 4; c++) V[i * 4 + c] = g[i][c]; }
+    T[g.length - 1] = t1;
+    return { times: T, values: V, fixed, maxCutDeg: +maxCut.toFixed(2) };
+  }
+
+  // the keys smoothed in time: resampled at fps, then `passes` rounds of each key pulled half-way to its
+  // neighbours' midpoint (≈ a Gaussian of σ ≈ 0.5·√passes / fps s; the ends stay) → { times, values, maxCutDeg }
+  function smoothKeys(times, values, { passes = 4, fps = 30 } = {}) {
+    const n = times.length;
+    if (n < 3 || values.length < n * 4 || !(passes > 0)) return null;
+    const t0 = times[0];
+    const t1 = times[n - 1];
+    const frames = Math.floor((t1 - t0) * fps + 1e-6);
+    if (frames < 3) return null;
+    let g = [];
+    for (let i = 0; i <= frames; i++) g.push(sampleQ(times, values, t0 + i / fps, [0, 0, 0, 0]));
+    g.push(sampleQ(times, values, t1, [0, 0, 0, 0]));
+    const orig = g.map((q) => q.slice());
+    const m = [0, 0, 0, 0];
+    for (let p = 0; p < passes; p++) {
+      const next = g.map((q) => q.slice());
+      for (let i = 1; i < g.length - 1; i++) { slerpQ(g[i - 1], g[i + 1], 0.5, m); slerpQ(g[i], m, 0.5, next[i]); }
+      g = next;
+    }
+    let maxCut = 0;
+    for (let i = 0; i < g.length; i++) maxCut = Math.max(maxCut, qdeg(orig[i], g[i]));
+    const T = new Float32Array(g.length);
+    const V = new Float32Array(g.length * 4);
+    for (let i = 0; i < g.length; i++) { T[i] = i === g.length - 1 ? t1 : t0 + i / fps; for (let c = 0; c < 4; c++) V[i * 4 + c] = g[i][c]; }
+    return { times: T, values: V, maxCutDeg: +maxCut.toFixed(2) };
+  }
+
+  return { smoothSteps, limitAccel, smoothKeys, _sampleQ: sampleQ, rootHips, legRig, allowsClip, LOW_GROUPS, VRM_PARENT, VRM_BONES, VRM_REQUIRED, VRM_OPTIONAL, CHILDREN, VRM0_THUMB, MIXAMO_TO_VRM, MIXAMO_IGNORED, MMD_TO_VRM, stripMixamo, vrmOfMixamo, foldMissing, degradeLevel, premultiply, at, qmul };
 });

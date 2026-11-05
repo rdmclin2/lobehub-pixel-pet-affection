@@ -28,6 +28,21 @@ const W = require('../../src/core/vrma-write');
 const { qmul, qnorm, qrot } = W;
 const DEG = 180 / Math.PI;
 const TPOSE = { min: 75, max: 115, elbow: 35, holdS: 0.2 };
+// T-5098: held stiff with the arms out — both upper arms spread out to the side by ≥ STIFF.deg (the abduction:
+// asin |upper arm · torso X|, 0° hanging or reaching forward, 90° straight out sideways; "与竖直方向夹角大" measured
+// in her frontal plane, so a sitting pose's hands forward on the knees is not "out") while neither moves more than
+// STIFF.speed (°/s, the arm's direction, over a STIFF.win s window) for ≥ STIFF.holdS: penguin_stand (idle.v04@male)
+// stood 9 s with both arms out at ~45° like a coat hanger. A posture clip (one held pose, ≤ 1 s) is still by
+// nature: it is a hit when its arms are that far out at all (the director holds it for minutes).
+// The arm must be held out, not folded: both elbows < STIFF.elbow (hands on the hips, arms crossed or a hand at the
+// chin, a seated pose leaning back on its hands bend the elbow 80°+ and are rest poses). Every posture is checked —
+// a kneeling crouch holding both arms spread (crouch.v02@male) is the same coat hanger as penguin_stand.
+const STIFF = { deg: 35, elbow: 75, speed: 12, win: 0.5, holdS: 2 };
+// T-5099: a base pose held with both upper arms raised above level (both > RAISED.vert from hanging, i.e. the
+// elevation the runtime T-pose count uses: > −15°), whatever the elbows do — a posture or an idle is her base layer
+// for seconds to minutes, so it is a hit on any frame: "Sitting, Arms Raised" (sit.v03, hands behind the head) sat 20 s
+// with both upper arms 35–43° above level, motionless. Reactions / emotions / dances lift the arms on purpose: not checked; nor lying poses (group lay).
+const RAISED = { vert: 75, kinds: ['posture', 'idle'] };
 const KINDS = ['posture', 'idle', 'reaction', 'emotion', 'talk', 'walk', 'dance'];
 const CHAIN = {
   left: ['hips', 'spine', 'chest', 'upperChest', 'leftShoulder', 'leftUpperArm'],
@@ -63,7 +78,8 @@ function armsAt(bones, t) {
     const upperW = world(CHAIN[s]);
     const arm = qrot(upperW, axis);
     const fore = qrot(qnorm(qmul(upperW, sampleQ(bones[FORE[s]], t))), axis);
-    out[s] = { down: angle(arm, down), vert: angle(arm, [0, -1, 0]), elbow: angle(arm, fore), side: Math.abs(dot(arm, lateral)) };
+    const side = Math.abs(dot(arm, lateral));
+    out[s] = { down: angle(arm, down), vert: angle(arm, [0, -1, 0]), elbow: angle(arm, fore), side, abd: Math.asin(Math.min(1, side)) * DEG, dir: arm };
   }
   return out;
 }
@@ -72,13 +88,34 @@ const levelFrame = (a, th = TPOSE) => a.left.down > th.min && a.right.down > th.
 const near = (x, th) => x >= th.min && x <= th.max;
 const tposeFrame = (a, th = TPOSE) => ['left', 'right'].every((s) => near(a[s].vert, th) && a[s].elbow < th.elbow);
 
-// a whole clip at `fps`: frames, T-pose-like frames, the longest run (s) and where it starts, `level` frames
-function checkClip(clip, { fps = 30, th = TPOSE } = {}) {
+// a whole clip at `fps`: frames, T-pose-like frames, the longest run (s) and where it starts, `level` frames; and
+// (T-5098) the longest run held stiff with both arms out (STIFF) — `stiffS`, where, how far out
+function checkClip(clip, { fps = 30, th = TPOSE, st = STIFF, kind = null, group = null } = {}) {
   const n = Math.max(1, Math.round(clip.duration * fps));
   let run = 0; let best = 0; let bestAt = null; let runFrom = 0; let frames = 0; let level = 0; let both = 0;
+  const arms = [];
+  for (let i = 0; i <= n; i++) arms.push(armsAt(clip.bones, Math.min(clip.duration, i / fps)));
+  // stiff: both arms out, and over the window around each frame neither arm's direction moved faster than st.speed
+  const half = Math.max(1, Math.round((st.win * fps) / 2));
+  const moved = (s, i) => { const a = arms[Math.max(0, i - half)][s].dir; const b = arms[Math.min(n, i + half)][s].dir; return angle(a, b) / ((Math.min(n, i + half) - Math.max(0, i - half)) / fps || 1); };
+  let sRun = 0; let sBest = 0; let sAt = null; let sFrom = 0; let outMax = 0;
+  for (let i = 0; i <= n; i++) {
+    const a = arms[i];
+    const out = Math.min(a.left.abd, a.right.abd);
+    const still = n < 2 || (moved('left', i) < st.speed && moved('right', i) < st.speed);
+    const held = a.left.elbow < st.elbow && a.right.elbow < st.elbow;
+    if (out >= st.deg && held && still) {
+      if (!sRun) sFrom = i / fps;
+      sRun++;
+      if (sRun > sBest) { sBest = sRun; sAt = +sFrom.toFixed(2); }
+      outMax = Math.max(outMax, out);
+    } else sRun = 0;
+  }
+  const posture = kind === 'posture';
+  const stiffS = posture && sBest ? Infinity : sBest / fps;
   for (let i = 0; i <= n; i++) {
     const t = Math.min(clip.duration, i / fps);
-    const a = armsAt(clip.bones, t);
+    const a = arms[i];
     both = Math.max(both, Math.min(a.left.down, a.right.down));
     if (levelFrame(a, th)) level++;
     if (tposeFrame(a, th)) {
@@ -89,7 +126,10 @@ function checkClip(clip, { fps = 30, th = TPOSE } = {}) {
     } else run = 0;
   }
   const longestS = best / fps;
-  return { frames: n + 1, bothArmsMaxDeg: +both.toFixed(1), tposeFrames: frames, longestS: +longestS.toFixed(2), at: bestAt, level, suspect: longestS >= th.holdS };
+  const bothVert = Math.max(...arms.map((a) => Math.min(a.left.vert, a.right.vert)));
+  // (lying down the arms are level by nature — beside her or over her head: not a raised-arms pose, group lay is not checked)
+  const raisedFrames = RAISED.kinds.includes(kind) && group !== 'lay' ? arms.filter((a) => Math.min(a.left.vert, a.right.vert) > RAISED.vert).length : 0;
+  return { raisedFrames, raised: raisedFrames > 0, frames: n + 1, bothArmsMaxDeg: +both.toFixed(1), bothArmsVertDeg: +bothVert.toFixed(1), tposeFrames: frames, longestS: +longestS.toFixed(2), at: bestAt, level, suspect: longestS >= th.holdS, stiffS: Number.isFinite(stiffS) ? +stiffS.toFixed(2) : 'held', stiffAt: sAt, stiffOutDeg: +outMax.toFixed(1), stiff: stiffS >= st.holdS };
 }
 
 // a .vrma (Buffer) → the clip shape checkClip reads
@@ -115,13 +155,13 @@ function checkLibrary(dir, { fs = require('node:fs'), path = require('node:path'
   const rows = [];
   for (const [id, c] of Object.entries(lib.clips)) {
     if (!c.file) continue;
-    rows.push({ id, kind: c.category || c.kind, src: c.src, armsOut: c.armsOut || null, ...checkClip(clipOfVrma(fs.readFileSync(path.join(dir, c.file)))) });
+    rows.push({ id, kind: c.category || c.kind, src: c.src, armsOut: c.armsOut || null, ...checkClip(clipOfVrma(fs.readFileSync(path.join(dir, c.file))), { kind: c.category || c.kind, group: c.group }) });
   }
   const dfile = path.join(dir, 'dances', 'library.json');
   if (fs.existsSync(dfile)) {
     const d = JSON.parse(fs.readFileSync(dfile, 'utf8'));
     for (const [id, c] of Object.entries(d.dances || {})) {
-      rows.push({ id, kind: 'dance', src: c.src && c.src.motion, armsOut: c.armsOut || null, ...checkClip(clipOfVrma(fs.readFileSync(path.join(dir, 'dances', c.file)))) });
+      rows.push({ id, kind: 'dance', src: c.src && c.src.motion, armsOut: c.armsOut || null, ...checkClip(clipOfVrma(fs.readFileSync(path.join(dir, 'dances', c.file))), { kind: 'dance' }) });
     }
   }
   return summarize(rows);
@@ -137,24 +177,35 @@ function summarize(rows) {
     k.levelFrames += r.level;
     if (r.suspect && r.armsOut) k.allowed++;
     else if (r.suspect) k.hits++;
+    const stiffOk = (x) => x.stiff && x.armsOut && x.armsOut.stiffS >= x.stiffS;
+    if (r.stiff && !stiffOk(r)) k.stiff = (k.stiff || 0) + 1;
+    if (stiffOk(r)) k.allowed++;
   }
   const hits = rows.filter((r) => r.suspect && !r.armsOut);
+  // a dance whose choreography holds the arms out on purpose: annotated armsOut.stiffS (reported, not skipped)
+  const stiffAllowed = rows.filter((r) => r.stiff && r.armsOut && r.armsOut.stiffS >= r.stiffS);
   const allowed = rows.filter((r) => r.suspect && r.armsOut);
-  return { clips: rows.length, frames: rows.reduce((s, r) => s + r.frames, 0), hits: hits.length, allowed: allowed.length, byKind, hitList: hits, allowedList: allowed, rows };
+  const stiff = rows.filter((r) => r.stiff && !stiffAllowed.includes(r));
+  const raised = rows.filter((r) => r.raised);
+  return { raisedHits: raised.length, raisedList: raised, clips: rows.length, frames: rows.reduce((s, r) => s + r.frames, 0), hits: hits.length, allowed: allowed.length, stiffHits: stiff.length, byKind, hitList: hits, allowedList: allowed, stiffList: stiff, stiffAllowedList: stiffAllowed, rows };
 }
 
 // the report lines (scripts/vrm-bake.js --v2 --check prints them)
 function formatReport(sum, th = TPOSE) {
   const lines = [`pose guard (T-pose): both upper arms ${th.min}°–${th.max}° from the vertical, with the elbows < ${th.elbow}°, for ≥ ${th.holdS} s @30fps`];
+  lines.push(`pose guard (stiff arms out, T-5098): both upper arms spread ≥ ${STIFF.deg}° out to the side (abduction from the vertical, in her frontal plane), elbows < ${STIFF.elbow}°, neither arm moving faster than ${STIFF.speed}°/s (over ${STIFF.win} s), for ≥ ${STIFF.holdS} s; a posture (one held pose) whenever so`);
   lines.push(`  ${sum.clips} clips, ${sum.frames} frames checked`);
   for (const k of KINDS.concat(Object.keys(sum.byKind).filter((x) => !KINDS.includes(x)))) {
     const b = sum.byKind[k];
     if (!b) continue;
-    lines.push(`  ${k.padEnd(9)} ${String(b.clips).padStart(3)} clips (vmd ${b.vmd}, mixamo ${b.mixamo}), ${String(b.frames).padStart(6)} frames, both arms >${th.min}°: ${b.levelFrames} frames, T-pose hits ${b.hits}${b.allowed ? `, allowed (armsOut) ${b.allowed}` : ''}`);
+    lines.push(`  ${k.padEnd(9)} ${String(b.clips).padStart(3)} clips (vmd ${b.vmd}, mixamo ${b.mixamo}), ${String(b.frames).padStart(6)} frames, both arms >${th.min}°: ${b.levelFrames} frames, T-pose hits ${b.hits}${b.allowed ? `, allowed (armsOut) ${b.allowed}` : ''}, stiff hits ${b.stiff || 0}`);
   }
   for (const r of sum.allowedList) lines.push(`  allowed  ${r.id}: ${r.longestS} s @ ${r.at} s — armsOut: ${r.armsOut}`);
   for (const r of sum.hitList) lines.push(`  HIT      ${r.id} (${r.src}): ${r.tposeFrames} frames, longest ${r.longestS} s @ ${r.at} s`);
-  lines.push(`pose guard: ${sum.hits} hit${sum.hits === 1 ? '' : 's'} in ${sum.clips} clips${sum.hits ? ' — FAILED' : ''}`);
+  for (const r of sum.stiffAllowedList || []) lines.push(`  allowed  ${r.id}: stiff arms out ${r.stiffS} s @ ${r.stiffAt} s ≤ armsOut.stiffS ${r.armsOut.stiffS} s (${r.armsOut.why})`);
+  for (const r of sum.stiffList || []) lines.push(`  STIFF    ${r.id} (${r.src}): both arms out ≥ ${STIFF.deg}° (up to ${r.stiffOutDeg}°) and still for ${r.stiffS} s @ ${r.stiffAt} s`);
+  for (const r of sum.raisedList || []) lines.push(`  RAISED   ${r.id} (${r.src}): a ${r.kind} holding both upper arms above level on ${r.raisedFrames}/${r.frames} frames (up to ${r.bothArmsVertDeg}° from hanging)`);
+  lines.push(`pose guard: ${sum.hits} T-pose hit${sum.hits === 1 ? '' : 's'}, ${sum.stiffHits || 0} stiff hit${sum.stiffHits === 1 ? '' : 's'}, ${sum.raisedHits || 0} raised-arms base pose${sum.raisedHits === 1 ? '' : 's'} in ${sum.clips} clips${sum.hits || sum.stiffHits || sum.raisedHits ? ' — FAILED' : ''}`);
   return lines;
 }
 
@@ -204,4 +255,4 @@ function vmdArmCheck(buf, { step = 2 } = {}) {
   return { samples: n, fps, maxUpperDeg: +maxUpper.toFixed(2), maxForeDeg: +maxFore.toFixed(2), at: +at.toFixed(2) };
 }
 
-module.exports = { vmdArmCheck, TPOSE, KINDS, armsAt, levelFrame, tposeFrame, checkClip, clipOfVrma, checkLibrary, summarize, formatReport, sampleQ };
+module.exports = { RAISED, vmdArmCheck, TPOSE, STIFF, KINDS, armsAt, levelFrame, tposeFrame, checkClip, clipOfVrma, checkLibrary, summarize, formatReport, sampleQ };
