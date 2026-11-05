@@ -1815,6 +1815,12 @@ function bindPetUi() {
     e.preventDefault();
     window.pet.resetPose('key');
   });
+  // 小游戏 Ctrl/⌘+Shift+H: the same way (main's before-input-event first, synthetic input here)
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyH' || !e.shiftKey || e.altKey || !(navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey)) return;
+    e.preventDefault();
+    window.pet.openScene('key');
+  });
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });

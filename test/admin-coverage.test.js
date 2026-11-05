@@ -32,7 +32,7 @@ test('coverage audit on this tree: no gaps — every settings.json leaf, pet cha
   assert.ok(r.settings.length >= 54, `${r.settings.length} leaves`);
   assert.ok(i.petChannels.length >= 70, `${i.petChannels.length} pet channels`);
   assert.ok(i.adminChannels.length >= 35, `${i.adminChannels.length} admin channels`);
-  assert.deepEqual(i.trayItems, ['打开设置…', '显示桌宠', '重置姿势', '检查更新', '退出']);
+  assert.deepEqual(i.trayItems, ['打开设置…', '显示桌宠', '小游戏', '重置姿势', '检查更新', '退出']);
   // the pet window has no ⋯ menu any more (T-2718: only ⚙); each former item and toolbar button has its place
   assert.deepEqual(i.menuItems, []);
   const former = r.menu.filter((m) => /^(menu|toolbar):/.test(m.id));

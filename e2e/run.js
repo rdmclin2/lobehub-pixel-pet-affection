@@ -12,6 +12,8 @@
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
+//   scenario "gamedocs" -> 小游戏 docs pictures (time × weather, her places, interactions, the store) and the demo clip, written to docs/img/mini-games/
+//   scenario "game"     -> 小游戏 (docs/mini-games.md): 商店 → 小游戏 downloads 像素小院 (a local mirror), tray / panel ⌂ / Ctrl+Shift+H open it; Pixi renders; time and weather; she roams, walks to a click, uses things; quests give affection; persists
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
@@ -7129,6 +7131,9 @@ async function vrmUi() {
 // ⏻ 退出 on the toolbar (T-2827): e2e/quit-button.js
 const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, step, launch });
 const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step, launch });
+// 小游戏 (docs/mini-games.md): the store's game packs played in the game window — download, entry, rendering, time / weather, her walking, things, quests, persistence
+const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
+const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -8622,7 +8627,7 @@ async function frontslimScenario() {
       ui.gone = gone;
       await pp.keyboard.press('Escape');
       // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
-      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置', 'quit:退出']);
+      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'scene:小游戏', 'settings:设置', 'quit:退出']);
       assert.equal(ui.visible, 7);
       assert.deepEqual(ui.gone, []);
       assert.equal(ui.menuBtn, 0);
@@ -9093,7 +9098,7 @@ async function petuiScenario() {
         await pp.screenshot({ path: path.join(SHOTS, '05-toolbar.png') });
         // a pixel look: ♪ 跳舞 and ↺ (VRM only) are in the panel but hidden
         const acts = await pp.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
-        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
         assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         return acts.join(' / ');
       }, page);
@@ -12739,6 +12744,8 @@ async function interjectScenario() {
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'petpanel' || which === 'all') await petPanelScenario()();
+  if (which === 'game' || which === 'all') await miniGameScenario()();
+  if (which === 'gamedocs') await gameDocsScenario()(); // 小游戏 docs pictures + demo clip into docs/img/mini-games/ (ffmpeg x11grab; xvfb-run -s "-screen 0 1280x800x24"), not in `all`
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'permissions' || which === 'all') await permissionsScenario();

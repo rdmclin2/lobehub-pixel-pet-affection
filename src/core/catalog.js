@@ -106,6 +106,8 @@ function listVoicePacks(installed, { index = loadVoiceIndex() } = {}) {
   return index.voicePacks.map((v) => voiceRow(v, !!installed(v.id)));
 }
 
+// 商店 → 小游戏: its index (bundled + the games repository's) is core/game-index.js.
+
 const UPLOAD_PREFIX = `${UPLOAD_PREFIX_ROOT}/${loadIndex().release}`;
 const DEFAULT_BASE_URL = `${CDN_ORIGIN}/${UPLOAD_PREFIX}`;
 
