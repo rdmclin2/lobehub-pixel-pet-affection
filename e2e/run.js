@@ -12,6 +12,7 @@
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
+//   scenario "scenedocs" -> 像素小院 docs pictures (four time × weather combos, positions, interactions) and the demo clip, written to docs/img/pixel-scene/
 //   scenario "scene"    -> 像素小院 (T-5550): her panel ⌂ / tray / Ctrl+Shift+H open the pixel yard; integer-scaled layers; time and weather; she roams, walks to a click, uses the bench / flowers / lamp / pond; persists; a recording
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
@@ -7111,6 +7112,7 @@ const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step
 // 像素小院 (T-5550, docs/pixel-scene.md): the pixel yard — entry, rendering, time / weather, her walking and props, persistence
 const pixelSceneScenario = () => require('./pixel-scene')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
 const sceneRecordScenario = () => require('./pixel-scene-record')({ ROOT, OUT, FAKE_LH, step, launch });
+const sceneDocsScenario = () => require('./pixel-scene-docs')({ ROOT, FAKE_LH, step, launch });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -12539,6 +12541,7 @@ async function interjectScenario() {
   if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'scene' || which === 'all') await pixelSceneScenario()();
   if (which === 'scenerec') await sceneRecordScenario()(); // 像素小院 whole-screen recording (ffmpeg x11grab; run with xvfb-run -s "-screen 0 1280x800x24"), not in `all`
+  if (which === 'scenedocs') await sceneDocsScenario()(); // 像素小院 docs pictures + demo clip into docs/img/pixel-scene/ (ffmpeg x11grab, same xvfb screen), not in `all`
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
