@@ -155,6 +155,15 @@ contextBridge.exposeInMainWorld('petAdmin', {
     update: (speciesId, id, patch = {}) => ipcRenderer.invoke('stickers-update', { speciesId, id, label: patch.label, desc: patch.desc }),
     onChanged: on('stickers-changed'),
   },
+  // 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B): the official sets on the CDN; 获取 for a character
+  // (progress arrives as `catalog-progress`), cancel, 移除
+  stickerStore: {
+    list: (opts = {}) => ipcRenderer.invoke('sticker-store', { refresh: !!opts.refresh }),
+    detail: (id) => ipcRenderer.invoke('sticker-store-detail', { id }),
+    get: (id, speciesId) => ipcRenderer.invoke('sticker-store-get', { id, speciesId }),
+    cancel: (id) => ipcRenderer.invoke('sticker-store-cancel', { id }),
+    remove: (id) => ipcRenderer.invoke('sticker-store-remove', { id }),
+  },
   chat: {
     listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),
     history: (speciesId, opts = {}) => ipcRenderer.invoke('admin-chat-history', { speciesId, before: opts.before, limit: opts.limit }),

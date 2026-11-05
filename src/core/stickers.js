@@ -3,11 +3,14 @@
 // 表情包集合 (docs/stickers-design.md §2): every character (speciesId — the same id as her 聊天记录 and agent)
 // holds an ordered list of sticker sets: her own built-in memes (`builtin:<speciesId>`, made at run time from
 // her character file, read-only, never written to disk) and the owner's own set (`mine-<speciesId>`, pictures
-// the owner imported: add several at once, delete). Store sets come later (§5).
+// the owner imported: add several at once, delete) and the sets fetched from 商店 → 表情包 (`store-<id>`, an
+// official set from the CDN, read-only, attached to the characters it was fetched for; §5.2 方案 B).
 //
 // On disk, under <userData>/stickers/:
 //   sets/<setId>.json      one `mine` set: its stickers in grid order
+//   sets/store-<id>.json   one set from the store: which version, sha256, who it is attached to, its stickers
 //   blobs/<sha256>.<ext>   every imported picture, content-addressed (the same picture is stored once)
+//   store-cache/           what the store shows before a set is fetched (src/main/sticker-store.js)
 // A removed sticker leaves its blob behind (a chat message may still show it); gc() drops the blobs nothing
 // refers to any more.
 //
@@ -110,6 +113,9 @@ const blobUrl = (blob) => `sticker://blob/${blob}`;
 const builtinUrl = (speciesId, id) => `sticker://builtin/${speciesId}/${id}.webp`;
 const mineId = (speciesId) => `mine-${speciesId}`;
 const builtinId = (speciesId) => `builtin:${speciesId}`;
+const storeSetId = (storeId) => `store-${storeId}`;
+const STORE_FILE_RE = /^store-([a-z0-9][a-z0-9-]{2,39})\.json$/;
+const CACHE_RE = /^[0-9a-f]{64}\.(png|webp|gif|jpg)$/;
 
 // A character's built-in memes as a read-only set (§2.4): the pictures stay in src/renderer/assets/memes/.
 function builtinSet(species) {
@@ -129,6 +135,7 @@ class StickerLibrary {
     this.dir = dir;
     this.setsDir = path.join(dir, 'sets');
     this.blobsDir = path.join(dir, 'blobs');
+    this.cacheDir = path.join(dir, 'store-cache');
     this.now = now;
   }
 
@@ -170,6 +177,7 @@ class StickerLibrary {
     if (b.stickers.length) sets.push(b);
     const mine = this._readMine(species.id);
     sets.push({ id: mine.id, kind: 'mine', name: mine.name, readOnly: false, stickers: mine.stickers.map((s) => this._sticker(s)) });
+    for (const st of this._storeFor(species.id)) sets.push(this._storeView(st));
     return { ok: true, speciesId: species.id, sets, limits: { maxBytes: MAX_STICKER_BYTES, minSide: MIN_SIDE, maxSide: MAX_SIDE, perSet: MAX_PER_SET } };
   }
 
@@ -180,8 +188,15 @@ class StickerLibrary {
     const builtin = (Array.isArray(species.memes) ? species.memes : []).map((m) => ({ id: m.id, label: m.label, desc: m.desc, url: `assets/memes/${species.id}/${m.id}.webp` }));
     if (!SPECIES_RE.test(species.id || '')) return builtin;
     const seen = new Set(builtin.map((m) => m.id));
-    const mine = this._readMine(species.id).stickers.filter((s) => !seen.has(s.id)).map((s) => ({ id: s.id, label: s.label, desc: s.desc || s.label, url: blobUrl(s.blob) }));
-    return [...builtin, ...mine];
+    const out = [...builtin];
+    const take = (s) => {
+      if (seen.has(s.id)) return;
+      seen.add(s.id);
+      out.push({ id: s.id, label: s.label, desc: s.desc || s.label, url: blobUrl(s.blob) });
+    };
+    this._readMine(species.id).stickers.forEach(take);
+    for (const st of this._storeFor(species.id)) st.stickers.forEach(take);
+    return out;
   }
 
   _totalMine() {
@@ -252,6 +267,13 @@ class StickerLibrary {
       const s = this._readMine(species.id).stickers.find((x) => x.id === key);
       return s ? { ok: true, sticker: { ref: `blob:${s.blob}`, set: sid, id: s.id, label: s.label, desc: s.desc || '' } } : bad('not-found', '这张表情包已经不在了');
     }
+    const sm = /^store-(.+)$/.exec(sid);
+    if (sm) {
+      const st = this._readStore(sm[1]);
+      if (!st || !st.attached.includes(species.id)) return bad('not-found', '她没有这组表情包');
+      const s = st.stickers.find((x) => x.id === key);
+      return s ? { ok: true, sticker: { ref: `blob:${s.blob}`, set: sid, id: s.id, label: s.label, desc: s.desc || '' } } : bad('not-found', '这张表情包已经不在了');
+    }
     return bad('not-found', '她没有这组表情包');
   }
 
@@ -260,7 +282,7 @@ class StickerLibrary {
   resolveTag(species, id) {
     if (!species) return null;
     const key = String(id || '').toLowerCase();
-    for (const setId of [builtinId(species.id), mineId(species.id)]) {
+    for (const setId of [builtinId(species.id), mineId(species.id), ...this._storeFor(species.id).map((st) => st.id)]) {
       const r = this.resolve(species, setId, key);
       if (r.ok) return r.sticker;
     }
@@ -295,6 +317,94 @@ class StickerLibrary {
     if (desc !== undefined) s.desc = cleanText(desc, MAX_DESC);
     this._writeMine(set);
     return { ok: true, sticker: this._sticker(s) };
+  }
+
+  // ---- 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B) -------------------------------------------------
+  // A set fetched from the store, as stored; null when there is none or it cannot be read.
+  _readStore(storeId) {
+    if (!/^[a-z0-9][a-z0-9-]{2,39}$/.test(String(storeId || ''))) return null;
+    let raw;
+    try { raw = JSON.parse(fs.readFileSync(this._setFile(storeSetId(storeId)), 'utf8')); } catch { return null; }
+    if (!raw || raw.kind !== 'store' || raw.storeId !== storeId || !Array.isArray(raw.stickers)) return null;
+    const stickers = raw.stickers.filter((s) => s && ID_RE.test(s.id || '') && BLOB_RE.test(s.blob || '') && typeof s.label === 'string');
+    const attached = (Array.isArray(raw.attached) ? raw.attached : []).filter((x) => SPECIES_RE.test(String(x)));
+    return { ...raw, id: storeSetId(storeId), stickers, attached };
+  }
+
+  // every set fetched from the store, in the order they were fetched
+  storeSets() {
+    let files = [];
+    try { files = fs.readdirSync(this.setsDir); } catch { return []; }
+    return files.map((f) => STORE_FILE_RE.exec(f)).filter(Boolean).map((m) => this._readStore(m[1])).filter(Boolean).sort((a, b) => (a.installedAt || 0) - (b.installedAt || 0));
+  }
+
+  _storeFor(speciesId) { return this.storeSets().filter((st) => st.attached.includes(speciesId)); }
+
+  _storeView(st) {
+    return { id: st.id, kind: 'store', name: `商店 · ${st.name}`, readOnly: true, storeId: st.storeId, author: st.author, license: st.license, version: st.version, stickers: st.stickers.map((s) => this._sticker(s)) };
+  }
+
+  // storeId → { version, attached }: what 商店 → 表情包 marks 已获取
+  storeInstalled() {
+    return new Map(this.storeSets().map((st) => [st.storeId, { version: st.version, attached: st.attached, sha256: st.sha256 }]));
+  }
+
+  // Put a downloaded set zip in place (its size and sha256 already checked against the index, src/main/
+  // catalog.js) and attach it to `speciesId`. Validated as core/sticker-set.js says; the pictures go into
+  // blobs/ like the owner's own, so a chat message keeps showing one after the set is removed. A newer version
+  // replaces the stickers and keeps who it is attached to.
+  // -> { ok, id, set } | { ok: false, reason, text, errors }
+  installStore(entry, zip, speciesId) {
+    const SS = require('./sticker-set');
+    const no = (reason, text, errors = []) => ({ ok: false, reason, text, errors });
+    if (!entry || !SS.SET_ID_RE.test(String(entry.id || ''))) return no('bad-id', '商店里没有这组表情包');
+    if (!SPECIES_RE.test(String(speciesId || ''))) return no('bad-species', '没有这位角色');
+    const v = SS.validateSetZip(zip);
+    if (!v.ok) return no(v.reason, v.errors[0] || '表情包文件有问题', v.errors);
+    if (v.manifest.id !== entry.id) return no('wrong-id', `下载的表情包是「${v.manifest.id}」，不是「${entry.id}」`);
+    fs.mkdirSync(this.blobsDir, { recursive: true });
+    const stickers = v.stickers.map((s) => {
+      const blob = `${s.sha256}.${s.ext}`;
+      const file = path.join(this.blobsDir, blob);
+      if (!fs.existsSync(file)) fs.writeFileSync(file, s.buffer);
+      return { id: s.id, label: s.label, desc: s.desc, blob, mime: s.info.mime, bytes: s.buffer.length, width: s.info.width, height: s.info.height, animated: !!s.info.animated, addedAt: this.now() };
+    });
+    const old = this._readStore(entry.id);
+    const set = {
+      schema: SCHEMA, id: storeSetId(entry.id), kind: 'store', storeId: entry.id, name: v.manifest.name, description: v.manifest.description,
+      author: v.manifest.author, license: v.manifest.license, version: v.manifest.version, sha256: entry.sha256 || null,
+      forSpecies: v.manifest.forSpecies || [], attached: [...new Set([...(old ? old.attached : []), speciesId])],
+      installedAt: old && old.installedAt ? old.installedAt : this.now(), updatedAt: this.now(), stickers,
+    };
+    this._writeMine(set);
+    return { ok: true, id: entry.id, set: this._storeView(this._readStore(entry.id)) };
+  }
+
+  // Attach a fetched set to one more character (获取 again, for someone else: nothing is downloaded).
+  attachStore(storeId, speciesId) {
+    const st = this._readStore(storeId);
+    if (!st) return bad('not-found', '还没有获取这组表情包');
+    if (!SPECIES_RE.test(String(speciesId || ''))) return bad('bad-species', '没有这位角色');
+    if (!st.attached.includes(speciesId)) {
+      const { id: _id, ...raw } = st;
+      this._writeMine({ ...raw, id: st.id, attached: [...st.attached, speciesId], updatedAt: this.now() });
+    }
+    return { ok: true, id: storeId, attached: [...new Set([...st.attached, speciesId])] };
+  }
+
+  // 移除: the set goes from every character it was attached to. Its blobs stay until gc() (old messages).
+  removeStore(storeId) {
+    const st = this._readStore(storeId);
+    if (!st) return bad('not-found', '这组表情包已经移除了');
+    fs.rmSync(this._setFile(st.id), { force: true });
+    return { ok: true, id: storeId, attached: st.attached };
+  }
+
+  // The file behind sticker://store/<sha256>.<ext> (a store preview main cached); null for anything else.
+  cachePath(name) {
+    if (!CACHE_RE.test(String(name || ''))) return null;
+    const file = path.join(this.cacheDir, name);
+    return fs.existsSync(file) ? file : null;
   }
 
   // The file behind sticker://blob/<name>; null for anything that is not a stored picture's name.

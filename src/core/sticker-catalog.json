@@ -1,0 +1,307 @@
+{
+  "schema": 1,
+  "release": "stickers-v1",
+  "updatedAt": "2026-11-05T13:56:08.392Z",
+  "sets": [
+    {
+      "id": "dafeiyu-memes",
+      "type": "sticker-set",
+      "name": "大肥鱼的梗图",
+      "description": "大肥鱼的官方梗图合集（9 张）：因为我是吃白饭的蓝色大肥鱼、大的要来啦、deepsleep、先养着吧、吃饱饱摸摸肚子、可爱、哦鲸鲸…、就一碗、Ciallo～。",
+      "author": "Pixel Pet 官方（梗图出自 PC2005-cloud/dsh-pet）",
+      "official": true,
+      "license": "dsh-pet 素材：可开源使用，禁止商用",
+      "version": "1.0.0",
+      "forSpecies": [
+        "dafeiyu"
+      ],
+      "count": 9,
+      "cover": "rice",
+      "previews": [
+        {
+          "id": "rice",
+          "label": "因为我是吃白饭的蓝色大肥鱼",
+          "desc": "躺平扒白饭，被吐槽、偷懒、吃白饭自嘲时",
+          "file": "previews/9d7e3beaa466d4f256d1e32ec656fd660bc4347beffd48439814ac8e66671f76.webp",
+          "bytes": 24918,
+          "sha256": "9d7e3beaa466d4f256d1e32ec656fd660bc4347beffd48439814ac8e66671f76"
+        },
+        {
+          "id": "bignews",
+          "label": "大的要来啦",
+          "desc": "举喇叭大喊，有大事、大更新要来时",
+          "file": "previews/f95426e7c4f424445abcd123fbf6a6a00bb1aa0d41ebac89bbe336dcd8b800ac.webp",
+          "bytes": 16108,
+          "sha256": "f95426e7c4f424445abcd123fbf6a6a00bb1aa0d41ebac89bbe336dcd8b800ac"
+        },
+        {
+          "id": "deepsleep",
+          "label": "deepsleep",
+          "desc": "趴着呼呼大睡，困了、要睡了、很久没动静时",
+          "file": "previews/61434fd2ebdff564065ed4bca7f6b21926aba537af5d847526cdc1c5beb6c66c.webp",
+          "bytes": 11868,
+          "sha256": "61434fd2ebdff564065ed4bca7f6b21926aba537af5d847526cdc1c5beb6c66c"
+        },
+        {
+          "id": "keep",
+          "label": "先养着吧",
+          "desc": "搂着一群小鲸鱼，开玩笑说主人没用但还是养着",
+          "file": "previews/5eff59dad4ffa010affc3fb08fd81a63d34d11a3c696daa50e42cf9e8514a36c.webp",
+          "bytes": 16214,
+          "sha256": "5eff59dad4ffa010affc3fb08fd81a63d34d11a3c696daa50e42cf9e8514a36c"
+        },
+        {
+          "id": "full",
+          "label": "吃饱饱摸摸肚子",
+          "desc": "吃饱满足、惬意、收工时",
+          "file": "previews/17fedb6dacdd5f2d971bd7ae3c739a37c9ad06dca7a1fea2e835e80762feba9b.webp",
+          "bytes": 14374,
+          "sha256": "17fedb6dacdd5f2d971bd7ae3c739a37c9ad06dca7a1fea2e835e80762feba9b"
+        },
+        {
+          "id": "cute",
+          "label": "可爱",
+          "desc": "正面卖萌，开心问候时",
+          "file": "previews/44067b209cf021831ddb495bba0f47603c70941e5041fdb7a0bc6eecc7ce8f57.webp",
+          "bytes": 11936,
+          "sha256": "44067b209cf021831ddb495bba0f47603c70941e5041fdb7a0bc6eecc7ce8f57"
+        },
+        {
+          "id": "ohwhale",
+          "label": "哦鲸鲸…",
+          "desc": "死鱼眼无语、敷衍应答时",
+          "file": "previews/6ed59111565029eb1a27f02e4b72653d9ae7f0db081fa3e332332be54038c3e6.webp",
+          "bytes": 10668,
+          "sha256": "6ed59111565029eb1a27f02e4b72653d9ae7f0db081fa3e332332be54038c3e6"
+        },
+        {
+          "id": "onebowl",
+          "label": "就一碗",
+          "desc": "抱着大碗蹭饭，饿了、要吃的时",
+          "file": "previews/60c2bbc0e8275cb1f24f3340da99e143f1f91ff92d1b9289a4030dc247aa6146.webp",
+          "bytes": 16000,
+          "sha256": "60c2bbc0e8275cb1f24f3340da99e143f1f91ff92d1b9289a4030dc247aa6146"
+        },
+        {
+          "id": "ciallo",
+          "label": "Ciallo～",
+          "desc": "比耶眨眼打招呼时",
+          "file": "previews/f56d6ad605268b41ecb35c7b2081fdbc1e0de5a281b7cf270f605615e18ca0a4.webp",
+          "bytes": 14166,
+          "sha256": "f56d6ad605268b41ecb35c7b2081fdbc1e0de5a281b7cf270f605615e18ca0a4"
+        }
+      ],
+      "file": "dafeiyu-memes-1-0-0.zip",
+      "bytes": 138325,
+      "sha256": "35dddffec0f7d351e16a0882a5462691f17c21e01ba28735dd2fc821fb13a7a4"
+    },
+    {
+      "id": "claude-memes",
+      "type": "sticker-set",
+      "name": "克洛蒂的梗图",
+      "description": "克洛蒂的官方梗图合集（4 张）：让我想想、整理笔记中、谢谢你、我不太确定。",
+      "author": "Pixel Pet 官方（rdmclin2，gpt-image-2.5 生成）",
+      "official": true,
+      "license": "CC BY-NC-SA 4.0",
+      "version": "1.0.0",
+      "forSpecies": [
+        "claude"
+      ],
+      "count": 4,
+      "cover": "think",
+      "previews": [
+        {
+          "id": "think",
+          "label": "让我想想",
+          "desc": "手指抵下巴抱着书思考，问题需要想一想时",
+          "file": "previews/c3661cf745df7c5da1c463ae4e7f4880610899644011c37d9ed35e86a7f93ce5.webp",
+          "bytes": 15760,
+          "sha256": "c3661cf745df7c5da1c463ae4e7f4880610899644011c37d9ed35e86a7f93ce5"
+        },
+        {
+          "id": "notes",
+          "label": "整理笔记中",
+          "desc": "伏案写笔记配红茶，在整理、记录、认真做事时",
+          "file": "previews/e210a0c9a5b22f5bac1da070f09a9a529a2bbbc25719a684d484de4f1e00b2cb.webp",
+          "bytes": 17088,
+          "sha256": "e210a0c9a5b22f5bac1da070f09a9a529a2bbbc25719a684d484de4f1e00b2cb"
+        },
+        {
+          "id": "thanks",
+          "label": "谢谢你",
+          "desc": "害羞地小鞠躬，被夸、道谢时",
+          "file": "previews/189a715c416add2b8a969c1599b2cf7ee796c3bc1ac140a742617c6e26af2a49.webp",
+          "bytes": 13762,
+          "sha256": "189a715c416add2b8a969c1599b2cf7ee796c3bc1ac140a742617c6e26af2a49"
+        },
+        {
+          "id": "unsure",
+          "label": "我不太确定",
+          "desc": "冒汗摊手，不确定、不知道时",
+          "file": "previews/964c97554318b92600b1db7e1b5af54686e5bcf99a270573774f0ba0715386f4.webp",
+          "bytes": 17644,
+          "sha256": "964c97554318b92600b1db7e1b5af54686e5bcf99a270573774f0ba0715386f4"
+        }
+      ],
+      "file": "claude-memes-1-0-0.zip",
+      "bytes": 65472,
+      "sha256": "03e066af99f2932fc55384454c95e79230e0be11e19fce7b4ecda0e6d3c62f1a"
+    },
+    {
+      "id": "gemini-memes",
+      "type": "sticker-set",
+      "name": "杰米的梗图",
+      "description": "杰米的官方梗图合集（4 张）：让我看看！、好奇心爆棚、多模态全开、喵？。",
+      "author": "Pixel Pet 官方（rdmclin2，gpt-image-2.5 生成）",
+      "official": true,
+      "license": "CC BY-NC-SA 4.0",
+      "version": "1.0.0",
+      "forSpecies": [
+        "gemini"
+      ],
+      "count": 4,
+      "cover": "peek",
+      "previews": [
+        {
+          "id": "peek",
+          "label": "让我看看！",
+          "desc": "举放大镜凑近看，好奇、想看看时",
+          "file": "previews/9a7e0a1f62fe3533d49bf0366fd1371e01172fec6d60e9ef58b6c64b19adc256.webp",
+          "bytes": 15956,
+          "sha256": "9a7e0a1f62fe3533d49bf0366fd1371e01172fec6d60e9ef58b6c64b19adc256"
+        },
+        {
+          "id": "curious",
+          "label": "好奇心爆棚",
+          "desc": "星星眼握拳，兴奋、期待时",
+          "file": "previews/ea8946ba5c0c1ef89d2f0d21124a4f469a18c1b4b6c019495b99f3787bc3d0d7.webp",
+          "bytes": 17130,
+          "sha256": "ea8946ba5c0c1ef89d2f0d21124a4f469a18c1b4b6c019495b99f3787bc3d0d7"
+        },
+        {
+          "id": "multimodal",
+          "label": "多模态全开",
+          "desc": "拿相机、音符和图片环绕，看图听歌拍照时",
+          "file": "previews/7ecfb299a381974057c76e1dac87dcb59f1a5b4ee712c0d17c035bbc3a3d5683.webp",
+          "bytes": 16402,
+          "sha256": "7ecfb299a381974057c76e1dac87dcb59f1a5b4ee712c0d17c035bbc3a3d5683"
+        },
+        {
+          "id": "nya",
+          "label": "喵？",
+          "desc": "歪头冒问号，疑惑、没听懂时",
+          "file": "previews/1173eaec595af9f3bf504a4820181814c69cea2bd604bdb1babaf2515ef91240.webp",
+          "bytes": 13198,
+          "sha256": "1173eaec595af9f3bf504a4820181814c69cea2bd604bdb1babaf2515ef91240"
+        }
+      ],
+      "file": "gemini-memes-1-0-0.zip",
+      "bytes": 63882,
+      "sha256": "c48790b6a2f294677b57576eac4196fc8e31b011d5a158132afbbffcd623187b"
+    },
+    {
+      "id": "gpt-memes",
+      "type": "sticker-set",
+      "name": "吉皮缇的梗图",
+      "description": "吉皮缇的官方梗图合集（4 张）：很乐意帮忙！、以下是要点、让我重新生成、知识截止到……。",
+      "author": "Pixel Pet 官方（rdmclin2，gpt-image-2.5 生成）",
+      "official": true,
+      "license": "CC BY-NC-SA 4.0",
+      "version": "1.0.0",
+      "forSpecies": [
+        "gpt"
+      ],
+      "count": 4,
+      "cover": "glad",
+      "previews": [
+        {
+          "id": "glad",
+          "label": "很乐意帮忙！",
+          "desc": "笑着挥手，答应帮忙、打招呼时",
+          "file": "previews/bd2c985f50c038885c1e8eb8fcd473e890e8007a0320c77ac2f62898ce896be0.webp",
+          "bytes": 14938,
+          "sha256": "bd2c985f50c038885c1e8eb8fcd473e890e8007a0320c77ac2f62898ce896be0"
+        },
+        {
+          "id": "points",
+          "label": "以下是要点",
+          "desc": "拿着清单卷轴，总结、列要点时",
+          "file": "previews/40b7b2fd87ab378b4732ba9383fdd99162afb3d729c6a0863ff58624dc298e64.webp",
+          "bytes": 13616,
+          "sha256": "40b7b2fd87ab378b4732ba9383fdd99162afb3d729c6a0863ff58624dc298e64"
+        },
+        {
+          "id": "regen",
+          "label": "让我重新生成",
+          "desc": "头顶转着刷新箭头，说错了、想重来时",
+          "file": "previews/fe15e1c61aced42e7a4e50c45913290f3313f903c57e78c4f1a994e05fc6c212.webp",
+          "bytes": 15348,
+          "sha256": "fe15e1c61aced42e7a4e50c45913290f3313f903c57e78c4f1a994e05fc6c212"
+        },
+        {
+          "id": "cutoff",
+          "label": "知识截止到……",
+          "desc": "对着日历发愣，不知道最新消息时",
+          "file": "previews/f44659a9a9963f44f6feaa7dee8a188a992db43deb125143a4cc23f70255bc2b.webp",
+          "bytes": 14748,
+          "sha256": "f44659a9a9963f44f6feaa7dee8a188a992db43deb125143a4cc23f70255bc2b"
+        }
+      ],
+      "file": "gpt-memes-1-0-0.zip",
+      "bytes": 59857,
+      "sha256": "2b8b189031741403643ed4c0cf2dfcde74a9baccc85f6736510cb011749cf31d"
+    },
+    {
+      "id": "grok-memes",
+      "type": "sticker-set",
+      "name": "格萝可的梗图",
+      "description": "格萝可的官方梗图合集（4 张）：哈！有意思、就这？、夜猫子上线、吐槽模式启动。",
+      "author": "Pixel Pet 官方（rdmclin2，gpt-image-2.5 生成）",
+      "official": true,
+      "license": "CC BY-NC-SA 4.0",
+      "version": "1.0.0",
+      "forSpecies": [
+        "grok"
+      ],
+      "count": 4,
+      "cover": "interesting",
+      "previews": [
+        {
+          "id": "interesting",
+          "label": "哈！有意思",
+          "desc": "露小尖牙指着前方大笑，觉得有趣、来劲时",
+          "file": "previews/785423856a9bafc48cf22f0c73d145a650a16f8c4950ce707973fb294da0be82.webp",
+          "bytes": 14448,
+          "sha256": "785423856a9bafc48cf22f0c73d145a650a16f8c4950ce707973fb294da0be82"
+        },
+        {
+          "id": "thatsit",
+          "label": "就这？",
+          "desc": "抱臂挑眉的得意脸，吐槽、不以为然时",
+          "file": "previews/5b0c5c3a8296c796c72db5e321f17920ad0da4811ace7511a5fdb13906a68f34.webp",
+          "bytes": 13292,
+          "sha256": "5b0c5c3a8296c796c72db5e321f17920ad0da4811ace7511a5fdb13906a68f34"
+        },
+        {
+          "id": "nightowl",
+          "label": "夜猫子上线",
+          "desc": "月亮和小蝙蝠前挥手，晚上、熬夜时",
+          "file": "previews/71caed6a58d94b8ff4b756d22fe52d82dda79e7faa02f3bb49105e9917b68f5a.webp",
+          "bytes": 16024,
+          "sha256": "71caed6a58d94b8ff4b756d22fe52d82dda79e7faa02f3bb49105e9917b68f5a"
+        },
+        {
+          "id": "roast",
+          "label": "吐槽模式启动",
+          "desc": "拿麦克风开喷（玩笑），要吐槽时",
+          "file": "previews/571a563a9b2b27341bbd869ff19f545d7c736a5d8094929b6d6bcca5950dd9ad.webp",
+          "bytes": 16792,
+          "sha256": "571a563a9b2b27341bbd869ff19f545d7c736a5d8094929b6d6bcca5950dd9ad"
+        }
+      ],
+      "file": "grok-memes-1-0-0.zip",
+      "bytes": 61805,
+      "sha256": "9446c35d383e741592ff7f966b127d40f07bbd3b4352c1f1f74e2dfdf166f3dc"
+    }
+  ]
+}
