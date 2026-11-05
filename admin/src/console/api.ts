@@ -591,6 +591,7 @@ export interface PetAdminApi {
   chat: ChatApi;
   /** 角色 → 表情包 (docs/stickers-design.md §4): her sticker sets (built-in + 我的). */
   stickers: StickersApi;
+  stickerStore: StickerStoreApi;
 }
 
 // --- 表情包集合 (docs/stickers-design.md §2, §4) ------------------------------------------------------------
@@ -623,6 +624,50 @@ export interface StickerRejected {
 }
 
 export type StickerList = { ok: true; sets: StickerSet[]; speciesId: string; limits: { maxBytes: number; maxSide: number; minSide: number; perSet: number } } | { message?: string; ok: false; reason: string };
+
+// --- 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B) -----------------------------------------------------
+export interface StoreStickerRow {
+  attached: { id: string; name: string }[];
+  author: string;
+  bytes: number;
+  count: number;
+  coverUrl: string | null;
+  description: string;
+  forSpecies: { id: string; name: string }[];
+  id: string;
+  installed: boolean;
+  installedVersion: string | null;
+  license: string;
+  name: string;
+  official: boolean;
+  sizeLabel: string;
+  update: boolean;
+  version: string;
+}
+
+export interface StickerStoreState {
+  checkedAt: number | null;
+  downloads: DownloadProgress[];
+  /** the CDN's index could not be read just now (the shelf shows the last good one or the shipped copy) */
+  error: string | null;
+  ok: true;
+  release: string;
+  sets: StoreStickerRow[];
+  /** remote: read from the CDN now; cache: the last good read; bundled: the copy shipped with the app */
+  source: 'remote' | 'cache' | 'bundled';
+  updatedAt: string | null;
+  url: string | null;
+}
+
+export type StickerStoreResult = { attachedOnly?: boolean; id?: string; name?: string; ok: boolean; reason?: string; speciesId?: string; text?: string };
+
+export interface StickerStoreApi {
+  cancel: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  detail: (id: string) => Promise<{ ok: true; set: StoreStickerRow; stickers: { desc: string; id: string; label: string; url: string | null }[] } | { ok: false; reason: string; text?: string }>;
+  get: (id: string, speciesId: string) => Promise<StickerStoreResult>;
+  list: (opts?: { refresh?: boolean }) => Promise<StickerStoreState>;
+  remove: (id: string) => Promise<{ attached?: string[]; ok: boolean; reason?: string; text?: string }>;
+}
 
 export interface StickersApi {
   list: (speciesId: string) => Promise<StickerList>;

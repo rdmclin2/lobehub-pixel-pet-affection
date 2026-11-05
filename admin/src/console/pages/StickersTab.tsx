@@ -355,7 +355,11 @@ export const StickersTab = ({ c }: { c: RosterRow }) => {
               ))}
             </div>
           )}
-          {set?.readOnly && <Text type="secondary">内置表情包随角色提供，不能删除或修改。</Text>}
+          {set?.readOnly && (
+            <Text data-sticker-readonly={set.kind} type="secondary">
+              {set.kind === 'store' ? '这组来自商店，只能使用，不能删除或修改其中的图片；不需要了可以在 商店 → 表情包 里移除。' : '内置表情包随角色提供，不能删除或修改。'}
+            </Text>
+          )}
         </Flexbox>
       </Surface>
       <Modal cancelText="取消" destroyOnHidden okText="保存" onCancel={() => setEditing(null)} onOk={saveEdit} open={!!editing} title="编辑表情包">

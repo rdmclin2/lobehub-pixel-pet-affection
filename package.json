@@ -31,7 +31,8 @@
     "catalog:build": "node scripts/build-character-catalog.js",
     "catalog:upload": "node scripts/upload-character-catalog.js",
     "store:build": "node scripts/build-store-assets.js",
-    "store:upload": "node scripts/upload-store-assets.js"
+    "store:upload": "node scripts/upload-store-assets.js",
+    "stickers:publish": "node scripts/publish-sticker-set.mjs"
   },
   "devDependencies": {
     "@lobehub/fluent-emoji": "^5.0.1",
