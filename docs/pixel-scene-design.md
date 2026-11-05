@@ -1,6 +1,6 @@
 # 像素小院（像素风小游戏场景）· 参考分析与技术方案
 
-> T-5549 · 分支 `feat/pixel-scene`（基于 `origin/canary` d63d3ca）· 2026-11-05
+> T-5549 · 分支 `feat/pixel-scene`（基于 `origin/canary` 4fcfa6a）· 2026-11-05
 > 本文只做方案，不含实现。实现、使用文档和截图 / 录屏由后续任务交付。
 > 文中「新增」表示仓库里还没有的文件；没有标注的路径都已在 `canary` 上存在（§8 末尾附核对命令）。
 
@@ -15,7 +15,7 @@
 ### 1.1 参考来源与获取情况
 
 - 链接：<https://x.com/daniildesigns/status/2117571497665663044>（Daniil Ch. @daniildesigns，2026-11-03）。
-- `x.com` 页面直接抓取返回 HTTP 402，改用公开的 fxtwitter 镜像接口 `api.fxtwitter.com/daniildesigns/status/2117571497665663044` 拿到了帖子内容和媒体地址：
+- 抓取过程：用网页抓取工具（WebFetch）打开 `x.com` 链接返回 HTTP 402，拿不到内容。改用浏览器 UA 的 `curl` 能拿到 200 的页面外壳，`<title>` 里有帖子原文，但视频是前端脚本加载的，页面里没有。最后用公开的 fxtwitter 镜像接口 `api.fxtwitter.com/daniildesigns/status/2117571497665663044` 拿到了完整的帖子数据和媒体直链：
   - 帖子文字：“Working on my first game. Creating games is actually much more fun than playing them for some reason 🫣”
   - 媒体：一段 12 秒视频（2306×1974，无 alt 文本）。下载 1260×1080 档，每秒抽 1 帧共 12 帧，加上封面图逐帧看过。
 - **下面的拆解来自真实视频帧，不是推断。** 视频版权归原作者，素材不进仓库（只作为验收证据附在任务里）。本项目只借鉴构图、分层和交互方式，美术自己画，不复刻原作的地图、建筑和 UI 文案。
@@ -84,7 +84,7 @@
 | 方案 | 优点 | 问题 |
 | --- | --- | --- |
 | **A. 独立场景窗口（选这个）** | 和桌宠窗口完全隔离：不碰 `place()` / `SIZES` / 拖拽抛掷移动窗口的逻辑；可以放大、缩放、有自己的 CSP 与渲染循环；关掉就干净 | 同一个角色在两处出现要处理（见 2.3）；多一个 BrowserWindow 的内存（约 60–90 MB） |
-| B. 宠物窗口内"场景模式" | 不新增窗口，角色就是现成的那个 | 宠物窗口是 `transparent` + `alwaysOnTop` 的小窗，大小由 `petScale` 决定，走动 / 抛掷是**移动窗口本身**（`src/renderer/fx.js` `walkPet` 用 `workArea` + `moveBy`），面板 `petPanel.follow` 跟着窗口走，同屏伙伴按窗口碰撞。场景模式下这些都要分支；`src/renderer/app.js` 已有 2656 行，风险高，回归面大 |
+| B. 宠物窗口内"场景模式" | 不新增窗口，角色就是现成的那个 | 宠物窗口是 `transparent` + `alwaysOnTop` 的小窗，大小由 `petScale` 决定，走动 / 抛掷是**移动窗口本身**（`src/renderer/fx.js` `walkPet` 用 `workArea` + `moveBy`），面板 `petPanel.follow` 跟着窗口走，同屏伙伴按窗口碰撞。场景模式下这些都要分支；`src/renderer/app.js` 已有约 2700 行，风险高，回归面大 |
 | C. 设置窗口（admin）里的一页 | 有 React 和 `@lobehub/ui` | 设置窗口是"偶尔调一次"的设置管理界面（`.agents/ux/product.md`），不是游戏空间；关设置窗口就没了 |
 
 选 A 的理由：
@@ -480,7 +480,7 @@ add('scene.bounds', 'scene', '时段', '窗口位置', 'readonly', { internal: t
 
 ### 8.5 路径核对
 
-本文"已存在"的路径在 `feat/pixel-scene`（= `origin/canary` d63d3ca）上用下面的命令核对过（输出见任务证据）：
+本文"已存在"的路径在 `feat/pixel-scene`（= `origin/canary` 4fcfa6a）上用下面的命令核对过（输出见任务证据）：
 
 ```bash
 for f in README.md docs/usage.md docs/pet-packs.md src/main/main.js src/main/preload.js src/main/admin-preload.js \
