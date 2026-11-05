@@ -321,8 +321,8 @@ test('the index is reproducible from the scan (when the assets are on this machi
 test('no model, animation or audio is tracked by git or allowed into the package', () => {
   let files = [];
   try { files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n'); } catch { return; }
-  // (the app's own voice packs and test tones are its own recordings, not pack material)
-  const bad = files.filter((f) => /\.(vrm|vrma|fbx|vmd|pmx|bvh|vroid|ncm)$/i.test(f) || (/\.(mp3|wav|ogg|m4a|flac)$/i.test(f) && !/^(src\/voicepacks|test\/fixtures)\//.test(f)));
+  // (the app's own voice packs, store voice previews and test tones are its own recordings, not pack material)
+  const bad = files.filter((f) => /\.(vrm|vrma|fbx|vmd|pmx|bvh|vroid|ncm)$/i.test(f) || (/\.(mp3|wav|ogg|m4a|flac)$/i.test(f) && !/^(src\/voicepacks|src\/renderer\/catalog\/voices|test\/fixtures)\//.test(f)));
   assert.deepEqual(bad, []);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   for (const ex of ['!**/*.vrm', '!**/*.vrma', '!**/*.fbx', '!**/*.vmd', '!**/*.pmx']) assert.ok(pkg.build.files.includes(ex), ex);

@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
+  setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
+  voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
+  // 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto' -> { ok, choice, state, settings }
+  setUserVoicePack: (packId) => ipcRenderer.invoke('set-user-voice-pack', { packId }),
   asrTest: (provider) => ipcRenderer.invoke('asr-test', { provider }),
   // content & safety: adult content on only through the 18+ confirmation (confirmAge(true))
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
@@ -101,6 +106,12 @@ contextBridge.exposeInMainWorld('petAdmin', {
   danceStore: () => ipcRenderer.invoke('dance-store'),
   danceDownload: (id) => ipcRenderer.invoke('dance-download', { id }),
   danceDownloadCancel: (id) => ipcRenderer.invoke('dance-download-cancel', { id }),
+  // 商店 → 语音包 (core/voice-store.js): the store's style packs with their state, download / cancel / delete;
+  // progress arrives as `catalog-progress`
+  voiceStore: () => ipcRenderer.invoke('voice-store'),
+  voiceDownload: (id) => ipcRenderer.invoke('voice-download', { id }),
+  voiceDownloadCancel: (id) => ipcRenderer.invoke('voice-download-cancel', { id }),
+  voiceRemove: (id) => ipcRenderer.invoke('voice-remove', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

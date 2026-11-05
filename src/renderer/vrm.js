@@ -644,7 +644,9 @@
           if (l === P.head && morph.length) for (const ma of morph) if (Math.abs(ma.getX(i)) + Math.abs(ma.getY(i)) + Math.abs(ma.getZ(i)) > 1e-5) { l = P.face; break; }
           lab[i] = l;
         }
-        meshes.push({ o, lab, pos: new Float32Array(n * 3), frame: -1, box: null });
+        // (T-5099) whether an expression moves any of its vertices: the face skin (and the eyes, brows, mouth on it).
+        // Only such a mesh can be her face — hair or a hat in front of the brows is her head even inside the face box
+        meshes.push({ o, lab, pos: new Float32Array(n * 3), frame: -1, box: null, faceSkin: lab.includes(P.face) });
       });
       // her face: the box of the vertices an expression moves, in the head bone's frame (a click on head skin inside
       // it — a cheek, the nose — is her face; the forehead and the hair above the brows are her head)
@@ -674,6 +676,7 @@
       const head = f && vrm.humanoid.getRawBoneNode('head');
       if (!head) return false;
       const q = head.worldToLocal(new R.THREE.Vector3(...p)).toArray();
+      tmp.faceQ = q; // (the last point tested, head-bone frame: the hit's dbg)
       return q.every((x, k) => x >= f.lo[k] && x <= f.hi[k]);
     }
     // the camera ray (origin, unit dir: arrays) against the drawn triangles → { t, point, label } | null
@@ -732,7 +735,7 @@
           const la = m.lab[a]; const lb = m.lab[b]; const lc = m.lab[c];
           let l = lb === lc ? lb : la;
           if (l === pickData.P.face && la !== pickData.P.face && lb !== pickData.P.face) l = pickData.P.head;
-          best = { t, label: PICK[l] || 'none' };
+          best = { t, label: PICK[l] || 'none', faceSkin: m.faceSkin };
         }
       }
       if (!best) return null;
@@ -1543,6 +1546,7 @@
     // The touch zone under client point (cx, cy): the camera ray through it against spheres and capsules on
     // this frame's skeleton (core/vrm-hit.js). → { zone, pt } like app.js zoneAtClient: pt.x / pt.y in her
     // on-screen box (0..1), pt.box (client px), pt.faceRect (the face in the box, for the blush). A miss: nulls.
+    const TOUCH_SLOP_PX = [4, 8];
     function zoneAt(cx, cy, opts = {}) {
       if (!vrm || !camera || !vrm.humanoid || !Hit) return { zone: null, pt: null };
       const T = R.THREE;
@@ -1562,7 +1566,23 @@
       // T-5098: a click (opts.precise): the part drawn under it (meshPick), the boxes only under cloth
       let via = 'boxes';
       if (opts.precise) {
-        const m = meshPick(camera.position.toArray(), dir);
+        let m = meshPick(camera.position.toArray(), dir);
+        // T-5099: touch slop — a click that misses her drawn mesh and every box by a few px (her hand moved on with
+        // the idle between seeing it and clicking: the smallest, fastest part) takes the nearest of the rays 4 / 8 px
+        // around it, the closest hit on the nearest ring; a click farther off stays a miss
+        if (!(m && m.label !== 'none') && !h.zone) {
+          const o0 = camera.position.toArray();
+          const rayAt = (x, y) => new T.Vector3(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize().toArray();
+          for (const r of TOUCH_SLOP_PX) {
+            let near = null;
+            for (let k = 0; k < 8; k++) {
+              const d2 = rayAt(cx + r * Math.cos((k * Math.PI) / 4), cy + r * Math.sin((k * Math.PI) / 4));
+              const m2 = meshPick(o0, d2);
+              if (m2 && m2.label !== 'none' && (!near || m2.t < near.m.t)) near = { m: m2, d: d2 };
+            }
+            if (near) { m = near.m; h = Hit.hit(list, o0, near.d); h.slopPx = r; break; }
+          }
+        }
         if (m && m.label !== 'none') {
           // her hip joints, her front (horizontal), the crotch line and the waist (the spine bone), in world terms
           const pel = list.find((sh) => sh.zone === 'pelvis') || {};
@@ -1584,14 +1604,15 @@
           const label = m.label === 'head' && neckY !== null && p[1] < neckY ? 'cloth' : m.label;
           const Z = { face: 'face', chest: 'chest', belly: 'belly', hands: 'hands', shin: 'legs', feet: 'feet', arm: h.zone === 'hands' ? 'hands' : null, neck: h.zone === 'face' || h.zone === 'head' ? h.zone : 'chest' };
           let zone = Z[label];
-          if (label === 'head') zone = inFace(p) ? 'face' : pickData.face ? 'head' : h.zone === 'face' ? 'face' : 'head';
+          if (label === 'head' && !m.faceSkin) inFace(p); // (only for the dbg: where in the face box)
+          if (label === 'head') zone = m.faceSkin && inFace(p) ? 'face' : pickData.face ? 'head' : h.zone === 'face' ? 'face' : 'head';
           else if (label === 'pelvis') zone = below ? 'legs' : behind ? 'butt' : 'belly';
           else if (label === 'thigh') zone = inButt ? 'butt' : 'legs';
           // (an arm: a pat, except where its sleeve cuff overlaps the hand coming out of it — the boxes' hand rule)
           // on cloth or hair: over her butt it is her butt; elsewhere the boxes underneath decide
           else if (label === 'cloth') zone = inButt ? 'butt' : h.zone;
-          h = { ...h, zone: zone === undefined ? h.zone : zone, point: m.point, shape: h.shape || { zone }, mesh: m.label, dbg: { below, behind, inButt, j: j.map((x) => +x.toFixed(3)), p: p.map((x) => +x.toFixed(3)), waist: +waist.toFixed(3) } };
-          via = label === 'cloth' && !inButt ? 'mesh: cloth → boxes' : 'mesh';
+          h = { ...h, zone: zone === undefined ? h.zone : zone, point: m.point, shape: h.shape || { zone }, mesh: m.label, dbg: { faceQ: label === 'head' && tmp.faceQ ? tmp.faceQ.map((x) => +x.toFixed(3)) : undefined, faceBox: label === 'head' && pickData.face ? { lo: pickData.face.lo.map((x) => +x.toFixed(3)), hi: pickData.face.hi.map((x) => +x.toFixed(3)), n: pickData.face.n } : undefined, below, behind, inButt, j: j.map((x) => +x.toFixed(3)), p: p.map((x) => +x.toFixed(3)), waist: +waist.toFixed(3) } };
+          via = `${label === 'cloth' && !inButt ? 'mesh: cloth → boxes' : 'mesh'}${h.slopPx ? ` (slop ${h.slopPx} px)` : ''}`;
         }
       }
       if (!h.zone) return { zone: null, pt: null, miss: !h.shape, via };

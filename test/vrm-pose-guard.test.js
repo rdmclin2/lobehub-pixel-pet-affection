@@ -75,7 +75,7 @@ test('pose guard reads clips back from .vrma and sums a library: hits, armsOut w
   assert.equal(sum.byKind.idle.vmd, 1);
   assert.equal(sum.byKind.idle.mixamo, 1);
   const lines = G.formatReport(sum);
-  assert.match(lines[lines.length - 1], /1 T-pose hit, 1 stiff hit in 3 clips — FAILED/, 'a held T-pose is stiff with its arms out too');
+  assert.match(lines[lines.length - 1], /1 T-pose hit, 1 stiff hit, 1 raised-arms base pose in 3 clips — FAILED/, 'a held T-pose is stiff with its arms out too');
   // the bake's guard: armsOut covers runs up to its maxS only
   const { poseGuard } = require('../scripts/vrm-bake');
   const g = poseGuard(dir, dir, { clips: {}, dances: {} });
@@ -179,4 +179,19 @@ test('the baked library on this machine: 0 T-pose hits over every clip and dance
   assert.equal(s2.hits, 0, G.formatReport(s2).join('\n'));
   for (const k of ['posture', 'idle', 'reaction', 'emotion', 'talk', 'walk', 'dance']) assert.ok(s2.byKind[k] && s2.byKind[k].clips > 0, k);
   assert.equal(s2.byKind.idle.levelFrames, 0, 'no idle frame with both arms over 75° from the vertical');
+});
+
+test('T-5099 pose guard: a posture / idle holding both upper arms above level (hands behind the head) is a hit; reactions, lying poses and hanging arms are not', () => {
+  // upper arms raised 40° above level, forearms folded back (Sitting, Arms Raised): elbows bent, so not a T-pose
+  const behindHead = arms(-40, { leftLowerArm: qz(120), rightLowerArm: qz(-120) });
+  const sit = G.checkClip(held(behindHead), { kind: 'posture', group: 'sit' });
+  assert.equal(sit.suspect, false, 'not a T-pose (elbows bent)');
+  assert.equal(sit.raised, true, 'a raised-arms base pose');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'idle' }).raised, true, 'an idle too');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'reaction' }).raised, false, 'a reaction may raise the arms');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'posture', group: 'lay' }).raised, false, 'lying: level arms by nature');
+  assert.equal(G.checkClip(held(arms(75)), { kind: 'posture', group: 'sit' }).raised, false, 'arms down');
+  const sum = G.summarize([{ id: 'sit.v03@female', kind: 'posture', src: 'x.fbx', frames: 31, ...sit }]);
+  assert.equal(sum.raisedHits, 1);
+  assert.match(G.formatReport(sum).join('\n'), /1 raised-arms base pose .*FAILED/);
 });
