@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('pet', {
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } },
   pickImages: () => ipcRenderer.invoke('pick-images'),
   setLocal: (on) => ipcRenderer.invoke('set-local', { on }),
+  // 授权 (main/permissions.js): system permissions one at a time + the folders her local tools may use
+  permStatus: () => ipcRenderer.invoke('perm-status'),
+  permRequest: (kind) => ipcRenderer.invoke('perm-request', { kind }),
+  permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', { kind }),
+  aiFoldersAdd: () => ipcRenderer.invoke('ai-folders-add'),
+  aiFoldersSet: (patch) => ipcRenderer.invoke('ai-folders-set', patch),
   cancel: () => ipcRenderer.send('cancel'),
   // ⋯ → 重新开始: her next line opens a new LobeHub topic; the old one is kept, not deleted
   newTopic: () => ipcRenderer.invoke('new-topic'),
@@ -126,6 +132,17 @@ contextBridge.exposeInMainWorld('pet', {
     state: () => ipcRenderer.invoke('dance:state'),
   },
   onApiStatus: on('api-status'),
+  // 她的面板 (src/main/pet-panel.js): its own small window beside her. open / toggle get { source, anchor (her box
+  // on the screen), payload (what it shows) } and answer { visible }; update re-draws it while open; onAct hears
+  // a button pressed in it ({ act, food? }), onClosed when and why it closed
+  panel: {
+    open: (p) => ipcRenderer.invoke('pet-panel:open', p),
+    toggle: (p) => ipcRenderer.invoke('pet-panel:toggle', p),
+    close: (reason) => ipcRenderer.send('pet-panel:close', { reason }),
+    update: (payload) => ipcRenderer.send('pet-panel:update', payload),
+    onAct: on('panel-act'),
+    onClosed: on('panel-closed'),
+  },
   quit: () => ipcRenderer.send('quit'),
   place: (mode) => ipcRenderer.send('place', mode),
   openLog: () => ipcRenderer.send('open-log'),
@@ -149,7 +166,12 @@ contextBridge.exposeInMainWorld('pet', {
   debugVoiceHotkey: () => ipcRenderer.invoke('debug-voice-hotkey'),
   debugVoiceHotkeyStatus: () => ipcRenderer.invoke('debug-voice-hotkey-status'),
   debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
+  debugPetPanel: () => ipcRenderer.invoke('debug-pet-panel'),
   debugHidePet: (minimize) => ipcRenderer.invoke('debug-hide-pet', { minimize }),
+  // 检查更新… (顶栏菜单 / 托盘): the dialogs it showed, the button the next one answers with, a forced Updater state
+  debugUpdateDialogs: () => ipcRenderer.invoke('debug-update-dialogs'),
+  debugUpdateAnswer: (id) => ipcRenderer.invoke('debug-update-answer', id),
+  debugUpdateState: (patch) => ipcRenderer.invoke('debug-update-state', patch),
   onUpdate: on('update'),
   onWindowShown: on('window-shown'),
   onSay: on('say'),

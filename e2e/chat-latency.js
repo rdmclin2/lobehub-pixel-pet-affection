@@ -186,7 +186,7 @@ async function main(name = 'baseline') {
       if (!(await page.isVisible('#chat-input'))) {
         await page.mouse.move(110, 150);
         await page.waitForSelector('body.hover', { timeout: 5000 });
-        await page.click('[data-act="chat"]');
+        await require('./pet-panel').clickAct(page, 'chat');
       }
       await page.fill('#chat-input', text);
       await page.evaluate(() => window.__latArm('desktop'));

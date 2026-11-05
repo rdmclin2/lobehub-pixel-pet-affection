@@ -26,6 +26,7 @@ const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
 const danceImport = require('./dance-import');
+const VoiceStore = require('../core/voice-store');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
@@ -33,20 +34,24 @@ const { TtsEngine, NEURAL, defaultEngine } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
-const { VoicePacks, packApplies, resolvePack, voiceForPack, AUTO: PACK_AUTO, norm: packNorm } = require('../core/voice-pack');
+const { VoicePacks, packApplies, resolvePack, voiceForPack, AUTO: PACK_AUTO, NONE: PACK_NONE, norm: packNorm } = require('../core/voice-pack');
 const VoiceGender = require('../core/voice-gender');
 const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
+const { PetPanel } = require('./pet-panel');
 const { createAdminSettings } = require('./admin-settings');
+const { createPermissions, fakeMac } = require('./permissions');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
+const U = require('../core/update');
 const settingsSchema = require('../core/settings-schema');
 const { buildRoster, packRows, adminView } = require('../core/roster');
 
 const TEST_MODE = process.env.PIXELPET_TEST === '1';
 const HEARTBEAT_MS = TEST_MODE ? 2000 : 30 * 1000;
-const SIZES = { onboarding: { w: 680, h: 480 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
+// perms: the onboarding's 授权 page (T-5075) is taller: its permission list and folders fit without scrolling
+const SIZES = { onboarding: { w: 680, h: 480 }, perms: { w: 680, h: 600 }, pet: { w: 230, h: 340 }, panel: { w: 460, h: 540 } };
 
 if (process.env.PIXELPET_DATA_DIR) app.setPath('userData', process.env.PIXELPET_DATA_DIR);
 if (TEST_MODE) app.commandLine.appendSwitch('no-sandbox');
@@ -62,6 +67,7 @@ let updater = null;
 let packStore = null;
 let catalog = null; // 下载角色 (src/main/catalog.js)
 let danceStore = null; // 商店 → 舞蹈: the same downloader, installing into the dance library
+let voiceStore = null; // 商店 → 语音包: the same downloader, unpacking into userData/voicepacks/<id>/ (core/voice-store.js)
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -74,6 +80,7 @@ let nextSavePath = null; // E2E only (debug-next-save): where the next 导出…
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 const openedMusic = []; // E2E only: songs a window asked to open with the system player / show in the folder
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
+let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in its own window beside her
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
@@ -106,9 +113,10 @@ function resizePet(k) {
 }
 
 function place(mode) {
-  const { w, h } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
   const wa = screen.getPrimaryDisplay().workArea;
-  if (mode === 'onboarding') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
+  const { w, h: want } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
+  const h = mode === 'perms' ? Math.min(want, wa.height - 48) : want; // a short screen: the page scrolls instead
+  if (mode === 'onboarding' || mode === 'perms') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
 }
 
@@ -259,7 +267,7 @@ function createTray() {
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
       { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
-      { label: '检查更新', click: () => updater.checkNow() },
+      { label: '检查更新', click: () => { checkUpdatesWithDialog('tray').catch(logError); } },
       { label: '退出', click: () => app.quit() },
     ]);
     tray.setContextMenu(trayMenu);
@@ -268,13 +276,73 @@ function createTray() {
     logError(e); // no tray on this desktop: the ⚙ button, a right click on her and Ctrl+, still open the settings
   }
 }
-// macOS application menu: 偏好设置… ⌘, and 退出 ⌘Q (there was no app menu before)
+// macOS application menu: 关于 / 检查更新… / 偏好设置… ⌘, / 退出 ⌘Q. e2e runs build it on Linux too
+// (PIXELPET_E2E_APP_MENU=1) to click 检查更新… the way the menu does.
 function createAppMenu() {
-  if (process.platform !== 'darwin') return;
+  if (process.platform !== 'darwin' && !(TEST_MODE && process.env.PIXELPET_E2E_APP_MENU === '1')) return;
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: app.name, submenu: [{ role: 'about', label: '关于 Pixel Pet' }, { type: 'separator' }, { label: '偏好设置…', accelerator: 'CmdOrCtrl+,', click: () => openAdmin() }, { type: 'separator' }, { role: 'quit', label: '退出' }] },
+    { label: app.name, submenu: [{ role: 'about', label: '关于 Pixel Pet' }, { label: '检查更新…', click: () => { checkUpdatesWithDialog('app-menu').catch(logError); } }, { type: 'separator' }, { label: '偏好设置…', accelerator: 'CmdOrCtrl+,', click: () => openAdmin() }, { type: 'separator' }, { role: 'quit', label: '退出' }] },
     { role: 'editMenu' },
   ]));
+}
+
+// 检查更新… (顶栏菜单 / 托盘): the same Updater.checkNow() the settings window uses, answered in a native dialog —
+// 已是最新 / 发现新版本（前往下载页 · 下载中）/ 已下载好（立即更新）/ 失败（重试）/ 开发版不检查. A version that
+// was still downloading gets a second dialog once it is ready. One check at a time: a second click while one is
+// on its way waits for the same answer. e2e runs record each dialog (debug-update-dialogs) and answer it
+// with the next queued button id (debug-update-answer), or close it.
+const updateDialogs = []; // E2E only
+const updateAnswers = []; // E2E only
+let updateCheckRun = null;
+async function showUpdateDialog(d, source) {
+  const buttons = d.buttons.map((b) => b.label);
+  const cancelId = Math.max(0, d.buttons.findIndex((b) => b.id === 'ok'));
+  if (TEST_MODE) {
+    const want = updateAnswers.shift();
+    const i = want ? d.buttons.findIndex((b) => b.id === want) : -1;
+    updateDialogs.push({ ...d, source, at: Date.now(), answered: i >= 0 ? d.buttons[i].id : 'ok' });
+    return i >= 0 ? d.buttons[i].id : 'ok';
+  }
+  const opts = { type: d.type, title: '检查更新', message: d.message, detail: d.detail, buttons, defaultId: 0, cancelId, noLink: true };
+  const r = await dialog.showMessageBox(opts);
+  return (d.buttons[r.response] || d.buttons[cancelId]).id;
+}
+const updateDecided = () => new Promise((resolve) => {
+  if (updater.state.status !== 'checking') return resolve(updater.state);
+  const h = (st) => { if (st.status !== 'checking') { updater.off('status', h); resolve(st); } };
+  updater.on('status', h);
+});
+function checkUpdatesWithDialog(source = 'menu') {
+  if (updateCheckRun) return updateCheckRun;
+  updateCheckRun = (async () => {
+    try {
+      for (;;) {
+        if (!updater.enabled() && updater.state.status !== 'disabled') updater._set({ status: 'disabled' });
+        Promise.resolve(updater.checkNow()).catch(logError);
+        const st = await updateDecided();
+        const d = U.updateCheckDialog(st);
+        if (!d) return st;
+        const pick = await showUpdateDialog(d, source);
+        if (pick === 'retry') continue;
+        if (pick === 'install') updater.install();
+        else if (pick === 'open') { if (TEST_MODE) openedLinks.push(st.url); else updater.install(); }
+        else if (st.status === 'downloading') {
+          // the download goes on: say so again once it is ready (立即更新 / 稍后)
+          const h = (s2) => {
+            if (s2.status === 'downloading' || s2.status === 'checking') return;
+            updater.off('status', h);
+            const d2 = s2.status === 'ready' ? U.updateCheckDialog(s2) : null;
+            if (d2) showUpdateDialog(d2, source).then((p2) => { if (p2 === 'install') updater.install(); }).catch(logError);
+          };
+          updater.on('status', h);
+        }
+        return st;
+      }
+    } finally {
+      updateCheckRun = null;
+    }
+  })();
+  return updateCheckRun;
 }
 
 // ---- visitors (同屏伙伴): other model-chan on the desktop, each in its own small window -------------
@@ -380,6 +448,15 @@ function createWindow() {
   });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // 她的面板 goes with her: it follows when her window moves (she walks, the window grows), closes when it hides
+  let lastPetBounds = win.getBounds();
+  win.on('move', () => {
+    const b = win.getBounds();
+    if (petPanel) petPanel.follow(b.x - lastPetBounds.x, b.y - lastPetBounds.y);
+    lastPetBounds = b;
+  });
+  win.on('hide', () => { if (petPanel) petPanel.close('hidden'); });
+  win.on('minimize', () => { if (petPanel) petPanel.close('hidden'); });
   // CmdOrCtrl+, while the pet window has focus opens the settings (no global shortcut: no clash with other apps)
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === ',' && (process.platform === 'darwin' ? input.meta : input.control) && !input.alt && !input.shift) {
@@ -634,6 +711,29 @@ function wire() {
   // blob:) and 打开 / 在文件夹中显示. Only files inside the music folder (realpath, so no ../ or symlink out of it).
   ipcMain.handle('music-audio', (_e, p) => musicAudio(p));
   ipcMain.handle('music-open', (_e, p) => musicOpen(p));
+  // 授权 (permissions.js, docs/permissions.md): the onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限.
+  // E2E: PIXELPET_E2E_PLATFORM=darwin + PIXELPET_E2E_PERMS (JSON, permissions.js fakeMac) play macOS's answers;
+  // 添加文件夹… picks debug-next-open's paths (several split by newlines).
+  const e2ePlatform = TEST_MODE && process.env.PIXELPET_E2E_PLATFORM;
+  const mac = e2ePlatform === 'darwin' ? fakeMac(JSON.parse(process.env.PIXELPET_E2E_PERMS || '{}')) : null;
+  const perms = createPermissions({
+    service,
+    platform: e2ePlatform || process.platform,
+    systemPreferences: mac ? mac.systemPreferences : systemPreferences,
+    shell: mac ? { openExternal: async (u) => { openedLinks.push(u); } } : TEST_MODE ? { openExternal: async (u) => { openedLinks.push(u); } } : shell,
+    getPath: mac ? mac.getPath : (id) => app.getPath(id),
+    ...(mac ? { readdir: mac.readdir } : {}),
+    pickFolders: async () => {
+      if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
+      const r = await dialog.showOpenDialog((admin && admin.win && admin.win.isFocused() ? admin.win : win) || undefined, { title: '添加让 AI 读取的文件夹', properties: ['openDirectory', 'multiSelections', 'createDirectory'] });
+      return r.canceled ? [] : r.filePaths || [];
+    },
+  });
+  ipcMain.handle('perm-status', () => perms.status());
+  ipcMain.handle('perm-request', (_e, { kind } = {}) => perms.request(String(kind || '')));
+  ipcMain.handle('perm-open-settings', (_e, { kind } = {}) => perms.openSettings(String(kind || '')));
+  ipcMain.handle('ai-folders-add', () => perms.addFolders());
+  ipcMain.handle('ai-folders-set', (_e, p) => perms.setFolders(p && typeof p === 'object' ? p : {}));
   ipcMain.on('cancel', () => service.cancel());
   ipcMain.handle('new-topic', () => service.newTopic());
   ipcMain.handle('release', async (_e, opts) => {
@@ -703,7 +803,27 @@ function wire() {
     return { speciesId: p.speciesId, characterId: p.characterId, name: (service.characterList().find((e) => e.id === p.characterId) || {}).name || SPECIES[p.speciesId].nameZh, species: speciesInfo(), look: service.lookFor(p.characterId, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
   ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
-  ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
+  // the VRM motion library (T-5084): where it is and what is in it; 选择文件夹 links another one (nothing is copied),
+  // 取消关联 forgets it — the pet window redraws her with the new library at once
+  ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source, ...(vrmLibrary.status ? { status: vrmLibrary.status() } : {}) } : null));
+  ipcMain.handle('vrm-library-pick', async (e) => {
+    if (!vrmLibrary || !vrmLibrary.relink) return { ok: false, reason: 'no-library' };
+    const [dir] = await pickPaths(e, { title: '选择 VRM 动作库文件夹（含 library.json）', properties: ['openDirectory'] });
+    if (!dir) return { ok: false, reason: 'canceled' };
+    const r = vrmLibrary.relink(dir);
+    if (r.ok) await askRenderer('vrm-reload', {});
+    return r;
+  });
+  ipcMain.handle('vrm-library-unlink', async () => {
+    if (!vrmLibrary || !vrmLibrary.relink) return { ok: false, reason: 'no-library' };
+    const r = vrmLibrary.relink(null);
+    if (r.ok) await askRenderer('vrm-reload', {});
+    return r;
+  });
+  // 动作试播 (设置 → 角色 → VRM 动作库): the clips she has loaded, play one, stop it (played by the pet window)
+  ipcMain.handle('vrm-motions:list', () => askRenderer('motions', {}));
+  ipcMain.handle('vrm-motion:play', (_e, opts) => askRenderer('motion', { ...(opts || {}), why: 'console' }));
+  ipcMain.handle('vrm-motion:stop', () => askRenderer('motion-stop', { why: 'console' }));
   // dancing: list / play / stop / state — from any window (the settings page too), played by the pet window
   ipcMain.handle('dances:list', () => danceList());
   ipcMain.handle('dance:play', (_e, opts) => dancePlay(opts || {}));
@@ -767,7 +887,7 @@ function wire() {
   // 我的语音包 (settings.tts.voicePack) > her own (专属) > the generic pack of her gender (core/voice-gender.js).
   function recordedLine(sp, text, probe = false, vp = voicePackOf(sp)) {
     const pack = vp.pack;
-    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts))) return null;
+    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts), vp.source)) return null;
     if (probe) return pack.lines.has(packNorm(text));
     return tts.packs.lookupIn(pack, text);
   }
@@ -802,8 +922,18 @@ function wire() {
       genderSource: vp.genderSource,
       pack: p ? { id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, lines: p.lines.size } : null,
       engineVoice: voiceTts ? engineVoiceOf(vp.voiced, voiceTts, vp.voiced !== sp) : null,
-      options: [{ id: PACK_AUTO, name: '自动' }, ...tts.packs.list().map((x) => ({ id: x.id, name: x.name, kind: x.kind, gender: x.gender, character: x.character }))],
+      options: [{ id: PACK_NONE, name: '不使用' }, { id: PACK_AUTO, name: '内置（自动）' }, ...tts.packs.list().map((x) => ({ id: x.id, name: x.name, kind: x.kind, gender: x.gender, character: x.character }))],
+      // 商店 → 语音包 entries not on this machine: shown in the picker, not pickable, with a link to the store
+      notDownloaded: notDownloadedPacks(),
     };
+  }
+  function notDownloadedPacks() {
+    try {
+      return Catalog.listVoicePacks((id) => !!tts.packs.get(id)).filter((v) => !v.installed).map((v) => ({ id: v.id, name: v.name, style: v.style || null, styleLabel: v.styleLabel || '', gender: v.gender || null }));
+    } catch (e) {
+      logError(e);
+      return [];
+    }
   }
   const speciesForId = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
   // the console's roster rows (adminState) show the pack she really uses, not just her own one
@@ -811,7 +941,7 @@ function wire() {
     const sp = speciesForId(id);
     return sp ? voicePackState(sp) : null;
   };
-  // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' }. Saved in settings.tts.voicePackByCharacter
+  // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' (内置) | 'none' (不使用) }. Saved in settings.tts.voicePackByCharacter
   // and in force for her next line: the running prewarm (for the old pack's voice) stops, the line being
   // fetched is dropped, and the pet window prewarms again with the new pack (its signature includes the picks).
   ipcMain.handle('set-voice-pack', (_e, payload) => {
@@ -819,7 +949,7 @@ function wire() {
     const sp = speciesForId(characterId);
     if (!sp) return { ok: false, reason: 'unknown-character' };
     const pick = packId === null || packId === undefined || packId === '' ? PACK_AUTO : packId;
-    if (pick !== PACK_AUTO && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack', state: voicePackState(sp) };
+    if (pick !== PACK_AUTO && pick !== PACK_NONE && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack', state: voicePackState(sp) };
     tts.engine.endPrewarm();
     tts.engine.cancel();
     const r = service.setTts({ voicePackByCharacter: { [sp.id]: pick } });
@@ -867,6 +997,38 @@ function wire() {
   ipcMain.handle('tts-clear-cache', () => { tts.cache.clear(); return service.getSettings(); });
   // 语音包: the owner's own packs go in userData/voicepacks/<id>/ (core/voice-pack.js); read again on request
   ipcMain.on('open-voicepacks-folder', () => { const d = tts.packs.dirs[1]; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); });
+  // 商店 → 语音包 (core/voice-store.js, docs/voice-packs.md §7): the store's style packs, each 未下载 / 下载中 / 已下载 —
+  // 已下载 read from the disk every time, so a restart or a folder deleted by hand shows as it is. Download (progress
+  // as `catalog-progress`), cancel, delete; after each the packs are read again, so the pack can be picked at once
+  // (设置 → 语音包 lists it).
+  const voiceDir = () => tts.packs.dirs[1];
+  const voiceStoreState = () => {
+    const have = VoiceStore.installedIds(voiceDir());
+    return { voicePacks: VoiceStore.storeRows(Catalog.listVoicePacks((id) => have.has(id)), voiceStore ? voiceStore.state() : []), dir: voiceDir() };
+  };
+  ipcMain.handle('voice-store', () => voiceStoreState());
+  ipcMain.handle('voice-download', async (_e, { id } = {}) => {
+    const r = await voiceStore.download(String(id || ''));
+    if (r.ok) tts.packs.reload();
+    pushAdmin();
+    return { ...r, store: voiceStoreState(), settings: service.getSettings() };
+  });
+  ipcMain.handle('voice-download-cancel', (_e, { id } = {}) => voiceStore.cancel(String(id || '')));
+  // Deleting a pack someone uses is safe: her pick stays saved (it comes back if the pack is downloaded again) but
+  // counts as 内置（自动） at once (resolvePack `missing`); the line being fetched and the prewarm for its voice stop.
+  ipcMain.handle('voice-remove', (_e, { id } = {}) => {
+    const packId = String(id || '');
+    const t = service.settings.tts || {};
+    const usedBy = Object.entries(t.voicePackByCharacter || {}).filter(([, p]) => p === packId).map(([c]) => c);
+    const r = VoiceStore.remove(voiceDir(), packId);
+    if (r.ok) {
+      tts.packs.reload();
+      if (usedBy.length || t.voicePack === packId) { tts.engine.endPrewarm(); tts.engine.cancel(); }
+      service.emit('settings', service.settingsView()); // the pet window prewarms again for the pack she falls back to
+    }
+    pushAdmin();
+    return { ...r, usedBy, store: voiceStoreState(), settings: service.getSettings() };
+  });
   ipcMain.handle('voicepacks-reload', () => { tts.packs.reload(); return { settings: service.getSettings(), errors: tts.packs.errors.map((e) => `${path.basename(e.dir)}：${e.errors.join('；')}`) }; });
   // 语音输入 (core/asr.js). The bytes are checked here before anything is written or sent anywhere.
   ipcMain.handle('asr-transcribe', (_e, p) => {
@@ -923,6 +1085,15 @@ function wire() {
     }
   });
   ipcMain.on('quit', () => app.quit());
+  // 她的面板: the pet window opens / closes it and keeps it up to date; the panel presses buttons and sizes itself
+  const fromPet = (e) => windowOf(e) === win && !!petPanel;
+  ipcMain.handle('pet-panel:open', (e, p = {}) => (fromPet(e) ? petPanel.open(p) : { ok: false, visible: false }));
+  ipcMain.handle('pet-panel:toggle', (e, p = {}) => (fromPet(e) ? petPanel.toggle(p) : { ok: false, visible: false }));
+  ipcMain.on('pet-panel:close', (e, { reason } = {}) => { if (fromPet(e)) petPanel.close(String(reason || 'pet')); });
+  ipcMain.on('pet-panel:update', (e, payload) => { if (fromPet(e)) petPanel.update(payload); });
+  ipcMain.on('pet-panel:act', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.act(m); });
+  ipcMain.on('pet-panel:size', (e, s) => { if (petPanel && petPanel.isSender(e)) petPanel.resize(s); });
+  ipcMain.on('pet-panel:close-self', (e, { reason } = {}) => { if (petPanel && petPanel.isSender(e)) petPanel.close(String(reason || 'esc')); });
   // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
@@ -1070,6 +1241,12 @@ function wire() {
     ipcMain.handle('debug-voice-hotkey', () => { voiceHotkey.trigger('test'); return voiceHotkey.status(); });
     ipcMain.handle('debug-voice-hotkey-status', () => ({ ...voiceHotkey.status(), registered: voiceHotkey.current ? globalShortcut.isRegistered(voiceHotkey.current) : false, petVisible: !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()), petFocused: !!(win && !win.isDestroyed() && win.isFocused()) }));
     ipcMain.handle('debug-mic-access', (_e, v) => { micAccessOverride = typeof v === 'string' && v ? v : null; return micAccessOverride; });
+    // 检查更新…: run it as the menu does, read the dialogs it showed, queue the button the next one answers with
+    ipcMain.handle('debug-update-check', async (_e, { source } = {}) => { const st = await checkUpdatesWithDialog(source || 'app-menu'); return { state: st, dialogs: updateDialogs.slice() }; });
+    ipcMain.handle('debug-update-dialogs', () => updateDialogs.slice());
+    ipcMain.handle('debug-update-answer', (_e, id) => { updateAnswers.push(String(id)); return updateAnswers.slice(); });
+    ipcMain.handle('debug-update-state', (_e, patch = {}) => { updater._set(patch); return updater.state; });
+    ipcMain.handle('debug-pet-panel', () => petPanel.debugState());
     ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
@@ -1159,6 +1336,13 @@ app.whenReady().then(() => {
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
+  voiceStore = new CatalogDownloader({
+    packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
+    lookup: (id) => Catalog.voicePackEntry(id),
+    isInstalled: (e) => VoiceStore.installedIds(packs.dirs[1], new Set([e.id])).has(e.id),
+    install: (e, zipFile) => VoiceStore.installArchive(packs.dirs[1], e, zipFile),
+    texts: { unknown: '商店里没有这个语音包', installed: '这个语音包已经下载好了', invalid: '下载的语音包文件有问题，已丢弃' },
+  });
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient({ lhCache: fileCache(path.join(app.getPath('userData'), 'lh-path.json')) });
   // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text
@@ -1186,6 +1370,9 @@ app.whenReady().then(() => {
     dance: (opts) => dancePlay(opts),
     danceStop: () => danceStop(),
     resetPose: () => resetPose('api'),
+    motions: () => askRenderer('motions', {}),
+    motion: (opts) => askRenderer('motion', { ...opts, why: 'api' }),
+    motionStop: () => askRenderer('motion-stop', { why: 'api' }),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),
@@ -1216,6 +1403,14 @@ app.whenReady().then(() => {
     },
   });
   wire();
+  // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there and 聊天
+  // the chat box, so her window gets the keyboard
+  petPanel = new PetPanel({
+    onAct: (m) => { if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus(); send('panel-act', m); },
+    onClosed: (m) => send('panel-closed', m),
+    log: logError,
+    testMode: TEST_MODE,
+  });
   createWindow();
   createTray();
   createAppMenu();

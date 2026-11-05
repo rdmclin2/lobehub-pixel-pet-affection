@@ -70,6 +70,7 @@ function makeModel(root, tag, opts = {}) {
 
 module.exports = function vrmScenarios(ctx) {
   const { ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds } = ctx;
+  const { pickFood, openPetPanel } = require('./pet-panel');
   const SHOTS = path.join(OUT, 'vrm');
   fs.mkdirSync(SHOTS, { recursive: true });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -560,8 +561,7 @@ module.exports = function vrmScenarios(ctx) {
       await step(S, '喂食 (喂食 → a food): eating → happy face, chewing with the mouth (aa) and the eat body (the food to her mouth, T-2831)', async () => {
         await rest();
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         const s = await peak('feed', (x) => /^eat/.test(x.state) && x.hold === 'eat' && /happy:/.test(x.expr) && /aa:0\.[2-9]/.test(x.mouth), 3000);
         await H.shot('7-feed');
         assert.match(s.state, /^eat/);
@@ -811,6 +811,45 @@ module.exports = function vrmScenarios(ctx) {
         assert.ok(Math.abs(up.bones.leftUpperArm[2] - expectArm(up.d.overlays)) < 4);
         reactionLog.push({ want: 'hold.lift / react.drop', lift: up.d.overlays, drop: r.peak.d.overlays });
         return H.note(`lifted: data-hold ${up.d.hold}, overlays ${up.d.overlays}, expr ${up.d.expr}, left arm ${up.bones.leftUpperArm[2].toFixed(1)}°, legs ${JSON.stringify(up.bones.leftUpperLeg)}\nreleased → ${r.peak.d.reaction}: overlays ${r.peak.d.overlays}, expr ${r.peak.d.expr}; then reaction '${r.end.reaction}', base ${r.end.layers}`);
+      }, page);
+
+      await step(S, '松手丢了 pointerup (T-2835): released outside the window, the next move with no button down puts her down; the lift line\'s bubble does not stay up for good', async () => {
+        await page.evaluate(() => window.pet.setPrefs({ voice: true, voiceInteractions: true, muted: false }));
+        await settle();
+        await sleep(4200); // past the lift line's gap since the step before
+        const b = await petBox();
+        const x0 = b.x + b.width / 2;
+        const y0 = b.y + b.height * 0.45;
+        await page.mouse.move(x0, y0);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.hold === 'lift', null, { timeout: 5000 });
+        await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'lift' && !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 3000 }).catch(() => {});
+        const line = await page.evaluate(() => { const el = document.getElementById('bubble'); return { shown: !el.classList.contains('hidden'), kind: el.dataset.kind, text: el.textContent }; });
+        await H.shot('13b-lifted-with-line');
+        // what happens on macOS when the window is still catching up with the cursor: the button comes up
+        // outside it (no pointerup at all), and the pointer that had been over the bubble leaves the window
+        // without the bubble's own mouseleave. The next move inside has no button down.
+        const t0 = await page.evaluate(() => {
+          window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', buttons: 0, screenX: 10, screenY: 10 }));
+          document.getElementById('bubble').dispatchEvent(new MouseEvent('mouseenter'));
+          document.documentElement.dispatchEvent(new MouseEvent('mouseleave'));
+          return performance.now();
+        });
+        const putDown = await page.waitForFunction(() => window.petFx.state().state !== 'lifted' && document.querySelector('#pet-look canvas.vrm').dataset.hold !== 'lift', null, { timeout: 5000 }).then(() => true, () => false);
+        const down = await frameNow();
+        const st = await page.evaluate(() => window.petFx.state());
+        await H.shot('13b-after-release-5s');
+        const gone = await page.waitForFunction(() => document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 25000 }).then(() => true, () => false);
+        const hiddenAfter = Math.round((await page.evaluate(() => performance.now())) - t0);
+        await H.shot('13b-after-bubble-wait');
+        await page.mouse.up(); // Playwright's own button state back up (no drag any more: nothing happens)
+        const note = `lifted: data-hold lift, bubble 「${line.text}」 (kind ${line.kind}, shown ${line.shown})\nno pointerup, then a move with buttons 0: app state ${st.state}, data-hold '${down.d.hold || ''}', overlays ${down.d.overlays} → put down: ${putDown}\nbubble ${gone ? `hidden ${hiddenAfter} ms after` : `still shown ${hiddenAfter} ms after`}`;
+        fs.writeFileSync(path.join(SHOTS, 't2835-lost-pointerup.txt'), note + '\n');
+        assert.ok(line.shown && line.kind === 'lift', `the lift line is in the bubble: ${JSON.stringify(line)}`);
+        assert.ok(putDown, `put down without a pointerup: ${note}`);
+        assert.ok(gone, `the bubble goes away: ${note}`);
+        return H.note(note);
       }, page);
 
       await step(S, '思考/等待回复 → 说话: the chat waits (hold.think, eyes up), the reply talks (hold.talk + the mouth moving together)', async () => {
@@ -1753,8 +1792,7 @@ module.exports = function vrmScenarios(ctx) {
         let r = await api('POST', '/dance', { id: 'e2e-test', loop: true });
         assert.equal(r.status, 200);
         await waitState('on');
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         await waitState('out|off', 1500);
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.hold === 'eat', null, { timeout: 4000 });
         const c1 = await ctl();
@@ -1891,7 +1929,7 @@ module.exports = function vrmScenarios(ctx) {
       await ST('像素外观：工具栏没有「跳舞」；设置 → 舞蹈 说明原因、「让她跳」全部禁用', async () => {
         await H.hatch();
         await hoverPet();
-        assert.equal(await page.evaluate(() => document.getElementById('btn-dance').classList.contains('hidden')), true, '♪ hidden on a pixel look');
+        assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         await petShot('1-pixel-toolbar');
         await A.go('/play');
         const tile = await A.text('[data-tile="dances"] [data-tile-status]');
@@ -1954,11 +1992,13 @@ module.exports = function vrmScenarios(ctx) {
         await page.waitForFunction((x) => document.getElementById('pet-look').dataset.key.startsWith(`${x}/`), imp.pack.id, { timeout: 15000 });
         await H.drawing(3);
         await hoverPet();
-        await page.waitForFunction(() => !document.getElementById('btn-dance').classList.contains('hidden'), null, { timeout: 5000 });
-        const bar = await page.evaluate(() => { const r = document.getElementById('toolbar').getBoundingClientRect(); const b = document.getElementById('btn-dance').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), btn: [Math.round(b.left), Math.round(b.top)] }; });
-        assert.ok(bar.h < 30, `the toolbar stays on one row: ${JSON.stringify(bar)}`);
+        await page.waitForFunction(() => !!window.__petStatus().dance.show, null, { timeout: 5000 });
+        const pp = await openPetPanel(page);
+        const bar = await pp.evaluate(() => { const r = document.getElementById('toolbar').getBoundingClientRect(); const b = document.getElementById('btn-dance').getBoundingClientRect(); const foot = document.querySelector('.pp-foot').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), btn: [Math.round(b.left), Math.round(b.top)], inFooter: b.top >= foot.top - 1 && b.bottom <= foot.bottom + 1 }; });
+        assert.ok(bar.inFooter, `♪ sits in the panel's footer: ${JSON.stringify(bar)}`);
+        await pp.screenshot({ path: path.join(SHOTS, 'dance-6-vrm-panel.png') });
         await petShot('6-vrm-toolbar');
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
         const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => ({ id: r.dataset.dance, name: r.querySelector('.dance-name').textContent, meta: r.querySelector('.dance-meta').textContent, music: !!r.querySelector('.dance-meta .ico'), img: !!r.querySelector('img') })));
         assert.deepEqual(rows.map((r) => r.id), [IMPORTED, 'e2e-silent', 'demo']);
@@ -1977,14 +2017,14 @@ module.exports = function vrmScenarios(ctx) {
 
       await ST('播放中：点一支 → 她开跳，按钮按下；浮层顶部「正在跳」+ 进度 + 循环播放 + 停止；设置页同样显示', async () => {
         await hoverPet();
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
         await page.click(`#dance-menu .dance-row[data-dance="${IMPORTED}"]`);
         await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && c.dataset.danceState === 'on'; }, null, { timeout: 8000 });
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'true');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'true');
         await sleep(1200);
         await hoverPet();
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-now');
         await sleep(400);
         const now = await page.evaluate(() => ({ title: document.querySelector('.dance-now b').textContent, progress: document.querySelector('.dance-progress').textContent, row: document.querySelector('#dance-menu .dance-row .dance-meta').textContent }));
@@ -2026,7 +2066,7 @@ module.exports = function vrmScenarios(ctx) {
         await A.click('[data-dance-stop]');
         await page.waitForFunction(() => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /^(out|off)$/.test(c.dataset.danceState); }, null, { timeout: 3000 });
         await A.until(() => !document.querySelector('[data-dance-now]'), null, 3000, '正在跳 gone');
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'false');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'false');
         await setShot('11-stopped-volume');
         return H.note(`loop off from settings; volume 30 → controller volume ${st.volume}; 停止 → dance state out/off, ♪ not pressed`);
       });
@@ -2050,7 +2090,7 @@ module.exports = function vrmScenarios(ctx) {
         const st = (await page.evaluate(() => window.petFx.dance())).state;
         assert.equal(st, null, 'she stopped');
         await hoverPet();
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
         const rows = await page.evaluate(() => [...document.querySelectorAll('#dance-menu .dance-row')].map((r) => r.dataset.dance));
         assert.deepEqual(rows, ['e2e-silent', 'demo']);
@@ -2065,7 +2105,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.evaluate(() => window.pet.switchCharacter('dafeiyu-pixel'));
         await page.waitForFunction(() => document.getElementById('pet-look').dataset.key.startsWith('dafeiyu-pixel/'), null, { timeout: 10000 });
         await hoverPet();
-        await page.waitForFunction(() => document.getElementById('btn-dance').classList.contains('hidden'), null, { timeout: 3000 });
+        await page.waitForFunction(() => !window.__petStatus().dance.show, null, { timeout: 3000 });
         await A.go('/dances');
         await A.until(() => !!document.querySelector('[data-dance-notvrm]'), null, 8000, 'not-vrm alert');
         assert.equal(await A.text('[data-dance-notvrm] .ant-alert-description, [data-dance-notvrm] [class*="description"]').catch(() => null) !== null, true);
@@ -2140,7 +2180,7 @@ module.exports = function vrmScenarios(ctx) {
     const petShot = async (name) => { const p = await H.shot(name); shots.push(p); return p; };
     const setShot = async (name) => { const p = await H.adminShot(name); shots.push(p); return p; };
     const hoverPet = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); await sleep(150); };
-    const openMenu = async () => { await hoverPet(); await page.click('#btn-dance'); await page.waitForSelector('#dance-menu:not(.hidden) .dance-row', { timeout: 5000 }); };
+    const openMenu = async () => { await hoverPet(); await clickAct(page, 'dance'); await page.waitForSelector('#dance-menu:not(.hidden) .dance-row', { timeout: 5000 }); };
     const closeMenu = async () => { await page.evaluate(() => document.getElementById('dance-menu').classList.add('hidden')); await page.mouse.move(115, 120); };
     // the angle between two quaternions (deg): how far a bone turned
     const qAng = (a, b) => { if (!a || !b) return 0; const d = Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]); return +(2 * Math.acos(Math.min(1, d)) * 180 / Math.PI).toFixed(1); };
@@ -2342,7 +2382,7 @@ module.exports = function vrmScenarios(ctx) {
         await page.click(`#dance-menu .dance-row[data-dance="${IMPORTED}"]`);
         await closeMenu();
         await waitState('on', 8000);
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'true');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'true');
         await sleep(1200);
         await openMenu();
         await page.waitForSelector('#dance-menu .dance-now');
@@ -2356,7 +2396,7 @@ module.exports = function vrmScenarios(ctx) {
         await waitState('off', 3000);
         const c = await ctl();
         assert.equal(c.state, null);
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'false');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'false');
         const st = await api('GET', '/state');
         assert.equal(st.json.dance, null);
         await closeMenu();
@@ -2383,7 +2423,7 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(ipc.reason, 'not-vrm');
         assert.match(ipc.message || '', /只有 VRM 外观/);
         await hoverPet();
-        assert.equal(await page.evaluate(() => document.getElementById('btn-dance').classList.contains('hidden')), true, '♪ hidden on a pixel look');
+        assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         await petShot('11-pixel-no-dance');
         await A.go('/dances');
         await A.until(() => !!document.querySelector('[data-dance-notvrm]') && document.querySelectorAll('[data-dance-play]').length > 0, null, 10000, 'not-vrm alert');
@@ -2464,7 +2504,7 @@ module.exports = function vrmScenarios(ctx) {
     };
     const waitState = (want, ms = 4000) => page.waitForFunction((w) => { const c = document.querySelector('#pet-look canvas.vrm'); return c && new RegExp(`^(${w})$`).test(c.dataset.danceState || ''); }, want, { timeout: ms });
     const hoverPet = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); await sleep(150); };
-    const openMenu = async () => { await hoverPet(); await page.click('#btn-dance'); await page.waitForSelector('#dance-menu:not(.hidden) .dance-row', { timeout: 5000 }); };
+    const openMenu = async () => { await hoverPet(); await clickAct(page, 'dance'); await page.waitForSelector('#dance-menu:not(.hidden) .dance-row', { timeout: 5000 }); };
     const closeMenu = async () => { await page.evaluate(() => document.getElementById('dance-menu').classList.add('hidden')); await page.mouse.move(115, 120); };
     const qAng = (a, b) => { if (!a || !b) return 0; const d = Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]); return +(2 * Math.acos(Math.min(1, d)) * 180 / Math.PI).toFixed(1); };
     const mark = (title, kind = 'step') => chapters.push({ at: +((Date.now() - t0) / 1000).toFixed(2), kind, title });
@@ -2557,7 +2597,7 @@ module.exports = function vrmScenarios(ctx) {
         const r = residue(after);
         assertBack(r, 'natural end');
         await petShot('2-idle-after-end');
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'false');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'false');
         return H.note(`mid-dance knee ${mid.knee.toFixed(1)}°; last stop ${JSON.stringify(c.stats.lastStop)}; after: layers ${after[0].layers}; ${res(r)}`);
       });
 
@@ -2603,7 +2643,7 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(c.stats.lastStop.reason, 'menu');
         const r = residue(after);
         assertBack(r, 'manual stop');
-        assert.equal(await page.getAttribute('#btn-dance', 'aria-pressed'), 'false');
+        assert.equal(await page.evaluate(() => String(window.__petStatus().dance.pressed)), 'false');
         await petShot('4-idle-after-stop');
         return H.note(`停止 → out in ${ms} ms; last stop ${JSON.stringify(c.stats.lastStop)}; after: layers ${after[0].layers}; ${res(r)}`);
       });
@@ -2788,7 +2828,7 @@ module.exports = function vrmScenarios(ctx) {
     try {
       await ST('穿上自制 VRM（动作库已载入）：工具栏出现 ↺ 重置姿势；托盘菜单有“重置姿势”', async () => {
         await H.hatch();
-        assert.equal(await page.evaluate(() => document.getElementById('btn-reset').classList.contains('hidden')), true, 'pixel look: no ↺');
+        assert.equal(await page.evaluate(() => !window.__petStatus().reset), true, 'pixel look: no ↺');
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('dafeiyu'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
@@ -2800,12 +2840,14 @@ module.exports = function vrmScenarios(ctx) {
         for (let i = 0; i < 50; i++) { try { if ((await api('GET', '/state')).status === 200) break; } catch { /* not listening yet */ } await sleep(200); }
         await waitAction('idle');
         await hover();
-        await page.waitForSelector('#btn-reset:not(.hidden)', { timeout: 5000 });
-        const btn = await page.evaluate(() => { const b = document.getElementById('btn-reset'); const r = b.getBoundingClientRect(); const tb = document.getElementById('toolbar').getBoundingClientRect(); return { label: b.getAttribute('aria-label'), title: b.title, w: r.width, h: r.height, inToolbar: r.top >= tb.top - 1 && r.bottom <= tb.bottom + 1, rows: [...new Set([...document.querySelectorAll('#toolbar .btn:not(.hidden)')].map((x) => Math.round(x.getBoundingClientRect().top)))].length }; });
+        await page.waitForFunction(() => window.__petStatus() && window.__petStatus().reset, null, { timeout: 5000 });
+        const pp = await openPetPanel(page);
+        const btn = await pp.evaluate(() => { const b = document.getElementById('btn-reset'); const r = b.getBoundingClientRect(); const tb = document.querySelector('.pp-foot').getBoundingClientRect(); return { label: b.getAttribute('aria-label'), title: b.title, w: r.width, h: r.height, inToolbar: r.top >= tb.top - 1 && r.bottom <= tb.bottom + 1 }; });
         assert.equal(btn.label, '重置姿势');
         assert.match(btn.title, /Ctrl\/⌘ \+ Shift \+ R/);
         await H.shot('0-entry');
-        await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'reset-0-entry-toolbar.png') });
+        await pp.screenshot({ path: path.join(SHOTS, 'reset-0-entry-toolbar.png') });
+        await pp.keyboard.press('Escape');
         const tray = await page.evaluate(() => window.pet.debugTray());
         assert.ok(tray.items.includes('重置姿势'), tray.items.join(' / '));
         // the real tray menu, rendered by the OS as a native menu (a test display has no tray area): grab the display
@@ -2830,7 +2872,7 @@ module.exports = function vrmScenarios(ctx) {
         const before = await ds();
         const num = (p) => ({ affection: p.affection, mood: p.mood, energy: p.energy, hunger: p.hunger, sleeping: p.sleeping });
         const pet0 = num((await api('GET', '/state')).json.pet);
-        await page.click('#btn-reset');
+        await clickAct(page, 'reset');
         await sleep(200);
         const lr = await page.evaluate(() => window.petFx.lastReset());
         const tr = await trace(1200);
@@ -2854,15 +2896,14 @@ module.exports = function vrmScenarios(ctx) {
         assert.equal(r.status, 200, JSON.stringify(r.json));
         await waitAction('dance');
         await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.layers === 'dance:e2e-test:1.00', null, { timeout: 5000 });
-        const note = await resetFrom('1-dance', 'dance', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        const note = await resetFrom('1-dance', 'dance', async () => { await hover(); await clickAct(page, 'reset'); return 'click ↺'; }, '工具栏 ↺');
         const st = await api('GET', '/state');
         assert.equal(st.json.dance, null, 'the dance is over');
         return `${note}; /state.dance ${JSON.stringify(st.json.dance)}`;
       });
 
       await ST('吃饭中 → Ctrl/⌘+Shift+R → 回到 Idle', async () => {
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         const key = process.platform === 'darwin' ? 'Meta+Shift+KeyR' : 'Control+Shift+KeyR';
         const note = await resetFrom('2-eat', 'eat', async () => { await page.keyboard.press(key); return key; }, `快捷键 ${key}`);
         assert.equal((await page.evaluate(() => window.petFx.lastReset())).source, 'key', 'reset by the shortcut');
@@ -2905,7 +2946,7 @@ module.exports = function vrmScenarios(ctx) {
 
       await ST('拖起后卡在举起状态 → ↺ → 回到 Idle', async () => {
         await page.evaluate(() => window.petFx.lift(true));
-        const note = await resetFrom('5-lift', 'lift', async () => { await hover(); await page.click('#btn-reset'); return 'click ↺'; }, '工具栏 ↺');
+        const note = await resetFrom('5-lift', 'lift', async () => { await hover(); await clickAct(page, 'reset'); return 'click ↺'; }, '工具栏 ↺');
         assert.notEqual(await page.evaluate(() => window.petFx.state().state), 'lifted', 'let go');
         return note;
       });
@@ -2926,8 +2967,7 @@ module.exports = function vrmScenarios(ctx) {
         }
         const hunger = (await api('GET', '/state')).json.pet.hunger;
         assert.ok(hunger >= 8, `hungry enough to eat (${hunger})`);
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         await waitAction('eat');
         await page.evaluate(() => window.pet.resetPose('test'));
         await waitAction('idle');
@@ -3027,8 +3067,7 @@ module.exports = function vrmScenarios(ctx) {
       chapter('吃饭：喂食 → 食物送到嘴边、咀嚼');
       await ST('吃饭 (喂食 → a food): the food goes to her mouth (the hand within reach of the head), not only the face; then back to the idle', async () => {
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         await away();
         await waitAction(/^eat$/, 5000);
         // at the bite: the hand nearest the head
@@ -3128,8 +3167,7 @@ module.exports = function vrmScenarios(ctx) {
         await waitAction(/^idle$/, 3000);
         const playBack = Date.now() - ta;
         await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
         await away();
         await waitAction(/^eat$/, 5000);
         await sleep(900);
@@ -3265,20 +3303,20 @@ module.exports = function vrmScenarios(ctx) {
     const settle = async () => { try { await toIdle(); } catch { await page.evaluate(() => window.pet.resetPose('test')); await toIdle(); } };
     const startDance = async ({ loop = false } = {}) => {
       await hover();
-      await page.click('#btn-dance');
+      await clickAct(page, 'dance');
       await page.waitForSelector('#dance-menu:not(.hidden) .dance-row');
       await page.click('#dance-menu .dance-row[data-dance="e2e-test"]');
       await waitAction(/^dance$/, 10000);
       if (loop) {
         await hover();
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-loop');
         await page.click('#dance-menu .dance-loop');
         await page.keyboard.press('Escape');
       }
       await away();
     };
-    const feed = async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); await away(); };
+    const feed = async () => { await pickFood(page, 0); await away(); };
     // 玩耍 costs 10 energy and the app refuses it under 15 (pet-state play: 'tired', her 好累 line): topped up first,
     // so a refusal there is never mistaken for a stuck figure
     const play = async () => { await page.evaluate(() => window.pet.debugSet({ energy: 100 })); await clickAct(page, 'play'); await away(); };
@@ -3381,7 +3419,7 @@ module.exports = function vrmScenarios(ctx) {
         const a = await record('stop-dance-before', '跳舞中（循环）、停止前');
         assert.equal(a.state, 'dance');
         await hover();
-        await page.click('#btn-dance');
+        await clickAct(page, 'dance');
         await page.waitForSelector('#dance-menu:not(.hidden) .dance-stop');
         await page.click('#dance-menu .dance-stop');
         await away();
@@ -3466,8 +3504,8 @@ module.exports = function vrmScenarios(ctx) {
         for (let i = 0; i < 16; i++) {
           const k = ['play', 'feed', 'dance', 'play', 'feed', 'sleep', 'play', 'dance'][i % 8];
           try {
-            if (k === 'feed') { await clickAct(page, 'feed'); await page.click('#food-menu button', { timeout: 1000 }); }
-            else if (k === 'dance') { await hover(); await page.click('#btn-dance'); await page.click('#dance-menu .dance-row[data-dance="e2e-test"]', { timeout: 1500 }); }
+            if (k === 'feed') { await pickFood(page, 0); }
+            else if (k === 'dance') { await hover(); await clickAct(page, 'dance'); await page.click('#dance-menu .dance-row[data-dance="e2e-test"]', { timeout: 1500 }); }
             else await clickAct(page, k);
             seq.push(k);
           } catch (e) { seq.push(`${k}(miss)`); await page.keyboard.press('Escape').catch(() => {}); }
@@ -3511,7 +3549,7 @@ module.exports = function vrmScenarios(ctx) {
         const lr = await page.evaluate(() => window.petFx.lastReset());
         return `${line(a)}\n${how} → ${p.join(' → ')}; lastReset ${JSON.stringify({ source: lr.source, before: lr.before, cleared: lr.cleared })}\n${line(b)}`;
       };
-      const clickReset = async () => { await hover(); await page.click('#btn-reset'); };
+      const clickReset = async () => { await hover(); await clickAct(page, 'reset'); };
 
       await ST('(3) 重置：循环跳舞中（不会自己结束）→ 工具栏 ↺', async () => H.note(await resetFrom('dance-loop', '循环跳舞中', () => startDance({ loop: true }), /^dance$/, clickReset, '工具栏 ↺')));
       await ST('(3) 重置：吃饭中 → Ctrl/⌘+Shift+R', async () => H.note(await resetFrom('eat', '吃饭中', async () => { await page.evaluate(() => window.pet.debugSet({ hunger: 60 })); await feed(); }, /^eat$/, () => page.keyboard.press(resetKey), `快捷键 ${resetKey}`)));
@@ -3543,7 +3581,13 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim };
+  // T-5084: store-imported VRMs on the motion library v2 (e2e/vrm-store.js), with this file's helpers
+  const vrmStore = () => require('./vrm-store')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  // T-5089: several store VRMs through a whole day each (idle, touches, drag, talk, a dance), with numbers
+  const vrmVerify = () => require('./vrm-verify')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  const vrmStoreShots = () => require('./vrm-store-shots')({ ...ctx, SHOTS, sleep, dataDir, helpers });
+  const vrmFix = () => require('./vrm-fix')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim, vrmStore, vrmVerify, vrmStoreShots, vrmFix };
 };
 // the homemade test model, for scenarios outside this file (e2e/quit-button.js)
 module.exports.makeModel = makeModel;

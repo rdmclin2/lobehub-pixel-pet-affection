@@ -176,7 +176,7 @@ add('tts.provider', 'tts', '引擎', '朗读引擎', 'select', { desc: '自动 =
 add('tts.fallback', 'tts', '引擎', '引擎用不了时', 'segmented', { desc: '选的引擎失败（没 Key、超时、额度用完）时怎么办。', options: opts([['system', '改用系统语音'], ['silent', '不出声']]) });
 add('tts.packs', 'tts', '引擎', '使用语音包', 'switch', { desc: '命中录好的台词时直接播放，不请求引擎。' });
 add('tts.voicePack', 'voicepacks', '我的语音包', '我的语音包', 'voicePack', { desc: '你自己用的语音包：选一个通用语音包（通用男声 / 通用女声）或任意语音包，所有没有单独指定语音包的角色都用它。自动 = 每个角色用自己的专属语音包，没有时按性别用通用男声 / 女声。切换后下一句就用新的语音包。' });
-add('tts.voicePackByCharacter.<id>', 'character', '语音', '语音包', 'perCharacter', { desc: '这个角色用哪个语音包：自动（她的专属语音包；没有时按性别用通用男声 / 女声语音包）或指定一个语音包。切换后下一句就用新的语音包。' });
+add('tts.voicePackByCharacter.<id>', 'character', '语音', '语音包', 'perCharacter', { desc: '这个角色用哪个语音包：不使用（全部用引擎朗读）、内置（自动：她的专属语音包；没有时按性别用通用男声 / 女声语音包），或指定一个语音包（商店下载的风格语音包也在这里）。没下载的语音包要先去 商店 → 语音包 下载。切换后下一句就用新的语音包；正在用的语音包被删除时自动回到内置。' });
 add('tts.providerSet', 'tts', '引擎', '手动选过引擎', 'readonly', { internal: true, desc: '内部标记：选过引擎后不再迁移成「自动」。' });
 add('tts.endpoints.fish', 'tts', 'Fish Audio', '端点', 'url', { desc: '留空使用官方地址 https://api.fish.audio。必须是 https。', placeholder: 'https://api.fish.audio', validator: 'tts:fish' });
 add('tts.endpoints.minimax', 'tts', 'MiniMax', '端点', 'url', { desc: '留空使用官方地址 https://api.minimax.cn。必须是 https。', placeholder: 'https://api.minimax.cn', validator: 'tts:minimax' });
@@ -265,6 +265,10 @@ secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，�
 secret('keys.fal', 'music', 'fal.ai', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。在 fal.ai/dashboard/keys 创建；也可以用环境变量 FAL_KEY。请求时放在 Authorization: Key … 头里。', dependsOn: { key: 'music.provider', value: 'fal' } });
 secret('keys.local', 'tts', '本地语音服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写。' });
 secret('keys.asrlocal', 'asr', '本地识别服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写；清除后不再发送。' });
+// AI 可读的文件夹 (core/ai-folders.js, T-5075): drawn by the connection page's own card (文件夹与系统权限), not the form
+add('local.folders', 'connection', '文件夹与系统权限', 'AI 可读的文件夹', 'aiFolders', { custom: true, desc: '她的本机工具只能读写这些文件夹（软链接和 .. 会先解析）。用系统选择框添加，可以删除。' });
+add('local.allowCommands', 'connection', '文件夹与系统权限', '允许运行命令', 'aiFolders', { custom: true, desc: '命令的工作目录必须在上面的文件夹里，但命令本身不受文件夹限制，能访问你账号能访问的所有文件。' });
+add('local.asked', 'connection', '文件夹与系统权限', '已请求过的系统文件夹', 'readonly', { internal: true });
 F.push({ key: 'localAbilities', page: 'connection', card: '本机能力', label: '本机能力', type: 'local', store: 'pet', desc: '允许她在这台电脑上读写文件、运行命令（工具调用）。高风险：开启前会再确认一次。' });
 
 for (const f of F) {

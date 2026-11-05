@@ -1,5 +1,5 @@
-// ⏻ 退出 on the pet toolbar (T-2827), driven as a user does: hover her, ⏻ sits right of ⚙ on the same row (a
-// pixel look: 7 buttons; a VRM look adds ♪: 8 buttons, still one row), hovering it tints it with the error colour,
+// ⏻ 退出 in her panel (T-2827; the panel opens on a right click on her, e2e/pet-panel.js), driven as a user does:
+// ⏻ sits right of ⚙ in the panel's footer (a pixel look: 7 buttons; a VRM look adds ♪ and ↺), hovering it tints it with the error colour,
 // one click quits the whole app (the Electron process exits on its own), and a relaunch finds her as she was.
 // Screenshots: out/e2e/quitbtn/*.png.
 const fs = require('node:fs');
@@ -21,16 +21,17 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
     let { app, page } = await launch(env);
     let look = null;
     const shot = (n) => page.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-    const barShot = (n) => page.locator('#toolbar').screenshot({ path: path.join(SHOTS, `${n}.png`) });
-    const hover = async () => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); await page.waitForTimeout(400); };
-    const geom = () => page.evaluate(() => {
+    const PP = require('./pet-panel');
+    let pp = null;
+    const barShot = (n) => pp.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+    const hover = async () => { pp = await PP.openPetPanel(page); };
+    const geom = () => pp.evaluate(() => {
       const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), r: Math.round(b.right), w: Math.round(b.width), h: Math.round(b.height) }; };
       const shown = [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => !b.classList.contains('hidden'));
       return { win: innerWidth, toolbar: r(document.getElementById('toolbar')), acts: shown.map((b) => b.dataset.act), rows: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size, settings: r(document.getElementById('btn-settings')), quit: r(document.getElementById('btn-quit')), label: document.getElementById('btn-quit').getAttribute('aria-label'), title: document.getElementById('btn-quit').title };
     });
     const checkRow = (g, acts) => {
       assert.deepEqual(g.acts, acts);
-      assert.equal(g.rows, 1, `the toolbar stays on one row: ${JSON.stringify(g)}`);
       assert.equal(g.quit.y, g.settings.y, '⏻ on the same row as ⚙');
       assert.ok(g.quit.x >= g.settings.r && g.quit.x - g.settings.r <= 4, `⏻ right next to ⚙: ${JSON.stringify([g.settings, g.quit])}`);
       assert.ok(g.toolbar.x >= 0 && g.toolbar.r <= g.win, `the toolbar fits the window: ${JSON.stringify(g)}`);
@@ -44,7 +45,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-      await step(S, 'Q1 像素外观：⏻ 退出在 ⚙ 设置右边、同一行（7 个按钮一行放下）', async () => {
+      await step(S, 'Q1 像素外观：面板底栏 ⏻ 退出紧挨 ⚙ 设置右边（共 7 个按钮）', async () => {
         await hover();
         const g = await geom();
         checkRow(g, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
@@ -55,34 +56,33 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         return `window ${g.win}px, toolbar ${g.toolbar.w}×${g.toolbar.h} @x${g.toolbar.x}; ⚙ x${g.settings.x}–${g.settings.r}, ⏻ x${g.quit.x}–${g.quit.r} (y ${g.quit.y}); title 「${g.title}」`;
       }, page);
 
-      await step(S, 'Q2 悬停 ⏻：文字和描边变成错误色（--lobe-color-error），和互动按钮区分开', async () => {
-        await page.hover('#btn-quit');
-        await page.waitForTimeout(300);
-        const c = await page.evaluate(() => {
+      await step(S, 'Q2 悬停 ⏻：图标变成错误色（--lobe-color-error）、底色淡红，和其它按钮区分开', async () => {
+        await pp.hover('#btn-quit');
+        await pp.waitForTimeout(300);
+        const c = await pp.evaluate(() => {
           const b = getComputedStyle(document.getElementById('btn-quit'));
           const probe = document.createElement('i'); probe.style.color = 'var(--lobe-color-error)'; document.body.appendChild(probe);
           const err = getComputedStyle(probe).color; probe.remove();
-          return { color: b.color, border: b.borderTopColor, err, settings: getComputedStyle(document.getElementById('btn-settings')).color };
+          return { color: b.color, bg: b.backgroundColor, err, settings: getComputedStyle(document.getElementById('btn-settings')).color };
         });
         assert.equal(c.color, c.err);
-        assert.equal(c.border, c.err);
+        assert.notEqual(c.bg, 'rgba(0, 0, 0, 0)', 'a tinted fill behind it');
         assert.notEqual(c.settings, c.err, '⚙ keeps its own colour');
         await barShot('q2-quit-hover');
         return JSON.stringify(c);
       }, page);
 
-      await step(S, 'Q3 VRM 外观（多 ♪ 跳舞、↺ 重置姿势）：9 个按钮仍在一行，⏻ 仍紧挨 ⚙ 右边', async () => {
+      await step(S, 'Q3 VRM 外观（多 ♪ 跳舞、↺ 重置姿势）：9 个按钮，⏻ 仍紧挨 ⚙ 右边', async () => {
         await page.evaluate((x) => window.pet.debugNextOpen(x), model.file);
         const imp = await page.evaluate(() => window.pet.importVrm('claude'));
         assert.equal(imp.ok, true, JSON.stringify(imp).slice(0, 300));
         await page.evaluate((x) => window.pet.switchCharacter(x), imp.pack.id);
         look = imp.pack.id;
         await page.waitForFunction((x) => (document.getElementById('pet-look').dataset.key || '').startsWith(`${x}/`), imp.pack.id, { timeout: 15000 });
-        await page.mouse.move(5, 5);
+        await page.waitForFunction(() => window.__petStatus().dance.show && window.__petStatus().reset, null, { timeout: 5000 });
         await hover();
-        await page.waitForFunction(() => !document.getElementById('btn-dance').classList.contains('hidden'), null, { timeout: 5000 });
         const g = await geom();
-        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'dance', 'reset', 'mute', 'settings', 'quit']);
+        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'mute', 'dance', 'reset', 'settings', 'quit']);
         await shot('q3-vrm-pet');
         await barShot('q3-vrm-toolbar');
         return `window ${g.win}px, toolbar ${g.toolbar.w}×${g.toolbar.h}; ⚙ x${g.settings.x}–${g.settings.r}, ⏻ x${g.quit.x}–${g.quit.r}`;
@@ -93,7 +93,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         const proc = app.process();
         const exited = new Promise((resolve) => proc.once('exit', (code, signal) => resolve({ code, signal })));
         const t0 = Date.now();
-        await page.click('#btn-quit', { noWaitAfter: true }).catch(() => {}); // the page goes away under the click
+        await pp.click('#btn-quit', { noWaitAfter: true }).catch(() => {}); // the page goes away under the click
         const r = await Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve(null), 10000))]);
         assert.ok(r, 'the app did not exit within 10 s');
         assert.equal(r.code, 0, `clean exit: ${JSON.stringify(r)}`);
@@ -109,7 +109,6 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         assert.equal(v.pet.name, '小克');
         assert.equal(v.pet.characterId, look, 'still in the VRM look she wore when ⏻ was clicked');
         await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-        await hover();
         await shot('q5-relaunched');
         return `name 「${v.pet.name}」, look ${v.pet.characterId}`;
       }, page);

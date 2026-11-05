@@ -16,6 +16,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const musicLib = require('./music');
+const aiFolders = require('./ai-folders');
 
 const OFFICIAL_SERVER = 'https://app.lobehub.com';
 const MAX_STEPS = 12; // tool round trips in one turn
@@ -183,12 +184,22 @@ const expand = (p) => {
   if (!s) throw new Error('path is required');
   return s === '~' || s.startsWith('~/') ? path.join(os.homedir(), s.slice(1)) : s;
 };
+// The tools offered in a turn: the folder limit (core/ai-folders.js toolScope; null = none) goes into their
+// descriptions, and run_command is left out when the owner has not allowed commands.
+function functionToolsFor(scope) {
+  if (!scope) return LOCAL_FUNCTION_TOOLS;
+  const hint = aiFolders.scopeHint(scope);
+  return LOCAL_FUNCTION_TOOLS.filter((t) => t.name !== 'run_command' || scope.allowCommands).map((t) => ({
+    ...t,
+    description: t.name === 'run_command' ? `${t.description} cwd must be inside an allowed folder (default: ${scope.folders[0] || 'none'}).` : `${t.description} ${hint}`,
+  }));
+}
 
 function runCommand({ command, cwd }, signal) {
   return new Promise((resolve, reject) => {
     // the command must not act inside the pet's own LobeHub session
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('LOBEHUB_')));
-    const child = spawn(String(command), { cwd: cwd ? expand(cwd) : os.homedir(), shell: true, windowsHide: true, detached: process.platform !== 'win32', env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(String(command), { cwd, shell: true, windowsHide: true, detached: process.platform !== 'win32', env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     let killed = null;
     const stop = (why) => {
@@ -214,26 +225,34 @@ function runCommand({ command, cwd }, signal) {
   });
 }
 
-async function runLocalTool(name, args, signal) {
+// `scope` (core/ai-folders.js toolScope): null = anywhere the account can reach (the old behaviour); otherwise
+// files stay inside the owner's folders (symlinks and `..` resolved first) and a command needs allowCommands
+// and a cwd inside one of them. A refusal is an Error the model reads back as the tool's output.
+async function runLocalTool(name, args, signal, scope = null) {
+  const at = (p, write = false) => aiFolders.checkPath(p, scope, { write });
   if (name === 'read_file') {
-    const p = expand(args.path);
+    const p = await at(args.path);
     const st = await fs.promises.stat(p);
     if (!st.isFile()) throw new Error('not a regular file');
     if (st.size > 1024 * 1024) throw new Error(`file is ${st.size} bytes; only files up to 1 MB can be read`);
     return (await fs.promises.readFile(p, 'utf8')).slice(0, OUTPUT_LIMIT);
   }
   if (name === 'list_directory') {
-    const entries = await fs.promises.readdir(expand(args.path), { withFileTypes: true });
+    const entries = await fs.promises.readdir(await at(args.path), { withFileTypes: true });
     const shown = entries.slice(0, 500).map((e) => `${e.name}${e.isDirectory() ? '/' : ''}`);
     return entries.length > shown.length ? `${shown.join('\n')}\n… ${entries.length - shown.length} more` : shown.join('\n') || '(empty)';
   }
   if (name === 'write_file') {
-    const p = expand(args.path);
+    const p = await at(args.path, true);
     await fs.promises.mkdir(path.dirname(p), { recursive: true });
     await fs.promises.writeFile(p, String(args.content ?? ''), 'utf8');
     return `wrote ${Buffer.byteLength(String(args.content ?? ''))} bytes to ${p}`;
   }
-  if (name === 'run_command') return runCommand(args, signal);
+  if (name === 'run_command') {
+    if (scope && !scope.allowCommands) throw new aiFolders.OutsideError('running commands is turned off by the owner (设置 → LobeHub 与本机 → 允许运行命令)');
+    const cwd = args.cwd ? await at(args.cwd, true) : scope ? await at(scope.folders[0] || '', true) : os.homedir();
+    return runCommand({ command: args.command, cwd }, signal);
+  }
   throw new Error(`unknown tool ${name}`);
 }
 
@@ -413,7 +432,8 @@ class ResponsesClient {
   // offered with or without `tools`. One marked `long` (a song takes minutes) stops the turn's clock while it runs:
   // `timeoutMs` is for waiting on LobeHub, so a long generation never fails the round half-way (the tool has its own
   // limit, 设置 → 音乐创作 → 超时); the clock starts again, full, for the model's answer after it.
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], extraTools = [], onDelta = null, signal = null, trace = null }) {
+  // `scope` (core/ai-folders.js toolScope): where the local tools may go this turn; null = no limit.
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], scope = null, extraTools = [], onDelta = null, signal = null, trace = null }) {
     const tr = trace || { mark() {}, set() {}, add() {} };
     const ac = new AbortController();
     this._active.add(ac);
@@ -446,7 +466,7 @@ class ResponsesClient {
       if (ws) headers['X-Workspace-Id'] = ws;
       const url = `${serverUrl(this.env)}/api/v1/responses`;
       const extra = (extraTools || []).filter((t) => t && t.def && typeof t.run === 'function');
-      const functionTools = [...(tools.length ? LOCAL_FUNCTION_TOOLS : []), ...extra.map((t) => t.def)];
+      const functionTools = [...(tools.length ? functionToolsFor(scope) : []), ...extra.map((t) => t.def)];
       const stream = !!onDelta;
       let body = { model: agentId, input: prompt, previous_response_id: topicId || undefined };
       let cost = null;
@@ -492,7 +512,7 @@ class ResponsesClient {
             const args = JSON.parse(call.arguments || '{}');
             if (own && own.long) clearTimeout(timer);
             try {
-              output = own ? await own.run(args, ac.signal) : await this.runTool(call.name, args, ac.signal);
+              output = own ? await own.run(args, ac.signal) : await this.runTool(call.name, args, ac.signal, scope);
             } finally {
               if (own && own.long && !ac.signal.aborted) arm();
             }
@@ -520,4 +540,4 @@ class ResponsesClient {
   }
 }
 
-module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, MUSIC_TOOL, MUSIC_TOOL_NAME, createMusicTool, musicToolOutput, runLocalTool, readCliCredentials, serverUrl, createSseParser, readResponseStream };
+module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, functionToolsFor, MUSIC_TOOL, MUSIC_TOOL_NAME, createMusicTool, musicToolOutput, runLocalTool, readCliCredentials, serverUrl, createSseParser, readResponseStream };

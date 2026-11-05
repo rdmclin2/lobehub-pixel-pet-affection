@@ -13,6 +13,7 @@
 //   scenario "musiclive" -> 音乐创作 with the REAL model (T-5091, tokens; not in "all"): real lh + Responses API, the model calls compose_music by itself; MUSIC_LIVE_PROVIDER=fal (default) | minimax, MUSIC_LIVE_MODE=fake (local stand-in, a playable mp3) | real (the real service with the local key); T-6158
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
+//   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
@@ -74,7 +75,23 @@ function retiredScenario(scenario, instead) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
-async function launch(env, { gate = false, video = null, args = [] } = {}) {
+// An owner from before AI 可读的文件夹 (T-5075) who had 本机能力 on: no folder limit, so her tools still go through
+// lh connect when there is no direct way (the fake lh). For the scenarios that check that path.
+const legacyLocal = (data) => {
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, local: { folders: null, allowCommands: true } }));
+};
+// 授权 (T-5075): scenarios that are not about it go on past the 授权 page by themselves (下一步, nothing granted),
+// as before it existed; `perms: true` leaves it for the `permissions` scenario.
+const passPerms = () => {
+  const go = () => {
+    const s = document.getElementById('perms');
+    if (s && !s.classList.contains('hidden') && !s.dataset.e2ePassed) { s.dataset.e2ePassed = '1'; document.getElementById('perms-next').click(); }
+    if (s && s.classList.contains('hidden')) delete s.dataset.e2ePassed;
+  };
+  new MutationObserver(go).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class'] });
+};
+async function launch(env, { gate = false, video = null, args = [], videoSize = { width: 460, height: 540 }, perms = false } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
@@ -83,17 +100,25 @@ async function launch(env, { gate = false, video = null, args = [] } = {}) {
   // software WebGL: xvfb has no GPU, and 全动态 looks (rig.js) need WebGL (without it they show a still picture)
   // only the five pixel characters ship (core/catalog.js); the scenarios that are not about downloading find
   // every other look already downloaded (src/main/packs.js PIXELPET_CATALOG_PREINSTALLED). `catalogdl` passes ''.
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), ...env }, ...(video ? { recordVideo: { dir: video, size: videoSize } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
   page.on('dialog', (d) => { page.lastDialog = d.message(); d.accept(); });
+  if (!perms) {
+    await page.addInitScript(passPerms).catch(() => {});
+    await page.evaluate(passPerms).catch(() => {});
+  }
   return { app, page };
 }
 
 // The controls only exist visually while the pointer is over the window.
+// The pet's buttons live in her panel now (a right click on her opens it): `hover` points at her and opens it.
 const hover = async (page) => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
-const clickAct = async (page, act) => { await hover(page); await page.click(`[data-act="${act}"]`); };
+// Her buttons are in her panel (its own window: a right click on her opens it; e2e/pet-panel.js)
+const { clickAct, pickFood } = require('./pet-panel');
+// what her panel shows, on one line (「小蓝 · 格萝可 · 像素 · 陌生 ♥14 · 距「熟悉」1」): app.js window.__petStatus
+const statusLine = (page) => page.evaluate(() => window.__petStatus().summary);
 // ⋯ → 角色列表, optionally opening `id`'s page (her model, look and affection), as a user clicks it.
 const openCharPage = async (page, id) => {
   await page.click(`.char-list .char-opt[data-species="${id}"] .char-open`);
@@ -171,7 +196,7 @@ async function adminRelease(app, page, deleteAgent = true) {
 // core/settings.js, broadcast to every window). -> { ok, reason?, message?, value, settings }
 const adminSet = (admin, key, value) => admin.evaluate(([k, v]) => window.petAdmin.set(k, v), [key, value]);
 // The pet window (BrowserWindow.getAllWindows() also lists the settings window once it is open)
-const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
 const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
@@ -263,7 +288,7 @@ async function fresh() {
 
     await step(S, 'after login the agent is created and the pet appears', async () => {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 像素 · 陌生 ♥\d+ · 距「熟悉」\d+/, 'her character name (T-2764)');
+      assert.match(await statusLine(page), /小蓝 · 格萝可 · 像素 · 陌生 ♥\d+ · 距「熟悉」\d+/, 'her character name (T-2764)');
       const text = await waitReply(page, 15000);
       assert.match(text, /echo:/);
       return `greeting: ${text.slice(0, 40)}`;
@@ -291,7 +316,7 @@ async function fresh() {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 15000 });
       assert.equal(await page.locator('.char-card').count() >= 0, true);
       assert.equal(await page.locator('#onboarding').isHidden(), true);
-      assert.match(await page.textContent('#meta'), /小蓝/);
+      assert.match(await statusLine(page), /小蓝/);
     }, () => page);
 
     await step(S, 'at rest only the pet is shown, with no buttons, bars or text box', async () => {
@@ -313,8 +338,7 @@ async function fresh() {
 
     await step(S, 'feeding lowers hunger and shows food', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80, sleeping: false, energy: 90 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForTimeout(500);
       const v = await view(page);
       assert.ok(v.pet.hunger <= 50, `hunger ${v.pet.hunger}`);
@@ -324,13 +348,13 @@ async function fresh() {
     await step(S, 'affection crossing 15 by a pat moves the stage from 陌生 to 熟悉 and unlocks topics', async () => {
       await page.evaluate(() => window.pet.debugSet({ affection: 14, mood: 50, hunger: 30, sleeping: false, dailyCounts: { greet: 1 }, lastAffectionAt: {}, affectionToday: 0 }));
       await hover(page);
-      assert.match(await page.textContent('#meta'), /陌生 ♥14 · 距「熟悉」1/);
+      assert.match(await statusLine(page), /陌生 ♥14 · 距「熟悉」1/);
       fs.writeFileSync(path.join(OUT, 'stage-before.png'), await page.screenshot());
       const events = [];
       await page.exposeFunction('__affLog', (e) => events.push(e));
       await page.evaluate(() => window.pet.onAffection((e) => window.__affLog({ type: e.type, stage: e.stage, delta: e.delta, unlocks: e.unlocks })));
       await clickHead(page);
-      await page.waitForFunction(() => /熟悉 ♥15/.test(document.getElementById('meta').textContent), null, { timeout: 5000 });
+      await page.waitForFunction(() => /熟悉 ♥15/.test(window.__petStatus().summary), null, { timeout: 5000 });
       await page.waitForTimeout(800);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
@@ -340,7 +364,7 @@ async function fresh() {
       assert.ok(up, JSON.stringify(events));
       assert.deepEqual(up.unlocks.topics.map((t) => t.id), ['hobby', 'gossip', 'riddle']);
       await hover(page);
-      return `meta: ${await page.textContent('#meta')}; stage-up event unlocks: ${up.unlocks.topics.map((t) => t.label).join('、')}`;
+      return `meta: ${await statusLine(page)}; stage-up event unlocks: ${up.unlocks.topics.map((t) => t.label).join('、')}`;
     }, () => page);
 
     await step(S, 'topics: a locked topic returns its unlock condition, an unlocked one is sent to the agent with [话题]', async () => {
@@ -368,8 +392,8 @@ async function fresh() {
       assert.equal(v.pet.relStage, 'familiar');
       assert.deepEqual(v.pet.unlockedTopics, before.pet.unlockedTopics);
       await hover(page);
-      assert.match(await page.textContent('#meta'), /熟悉 ♥\d+/);
-      return `after restart: ${await page.textContent('#meta')}`;
+      assert.match(await statusLine(page), /熟悉 ♥\d+/);
+      return `after restart: ${await statusLine(page)}`;
     }, () => page);
 
     // 成人向内容 lives in 设置 → 内容与安全 now (T-2718): without an 18+ answer, switching it on asks the same
@@ -458,18 +482,18 @@ async function wardrobe() {
       await waitReply(page, 15000);
       await idle();
       await hover(page);
-      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼/);
+      assert.match(await statusLine(page), /小蓝 · 大肥鱼/);
       const b = await shot('01c-new-pet-created');
       return `${a}, ${b} · settings.json: ${JSON.stringify(st)}`;
     });
 
     await step(S, 'initial state: affection bar, number, stage name and distance to the next stage', async () => {
       await hover(page);
-      assert.equal((await page.textContent('#aff-stage')).trim(), '陌生');
-      assert.equal((await page.textContent('#aff-num')).trim(), '♥0/100');
-      assert.match(await page.textContent('#meta'), /小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15/);
+      assert.equal(await page.evaluate(() => window.__petStatus().stage), '陌生');
+      assert.equal(await page.evaluate(() => (() => { const a = window.__petStatus().affection; return `♥${a.value}/${a.max}`; })()), '♥0/100');
+      assert.match(await statusLine(page), /小蓝 · 大肥鱼 · 陌生 ♥0 · 距「熟悉」15/);
       assert.equal(petJson().equippedOutfit, 'daily');
-      return `${await shot('02-initial-state')} · meta: ${await page.textContent('#meta')}`;
+      return `${await shot('02-initial-state')} · meta: ${await statusLine(page)}`;
     });
 
     await step(S, 'a pat raises affection: the number goes up and +♥ floats over the pet', async () => {
@@ -477,11 +501,11 @@ async function wardrobe() {
       await page.waitForSelector('.float');
       const float = await page.textContent('.float');
       await hover(page);
-      await page.waitForFunction(() => !/♥0\//.test(document.getElementById('aff-num').textContent));
+      await page.waitForFunction(() => !/♥0\//.test((() => { const a = window.__petStatus().affection; return `♥${a.value}/${a.max}`; })()));
       const f = await shot('03-affection-up');
       assert.match(float, /^\+\d+(\.\d)? ♥$/); // first interaction of the day: +3 greet bonus, +1 pat (x1.2 when happy)
       assert.ok((await view(page)).pet.affection >= 4);
-      return `${f} · float "${float}" · meta: ${await page.textContent('#meta')}`;
+      return `${f} · float "${float}" · meta: ${await statusLine(page)}`;
     });
 
     await step(S, 'crossing 15 moves 陌生 -> 熟悉 and a notice names the unlocked topics and the three 熟悉 outfits', async () => {
@@ -614,7 +638,7 @@ async function wardrobe() {
       assert.deepEqual(v.outfits.map((o) => [o.id, o.unlocked]), before.outfits.map((o) => [o.id, o.unlocked]));
       await hover(page);
       assert.equal(await page.locator('#outfit-badge').count(), 0, 'no outfit tag over the pet');
-      assert.match(await page.textContent('#meta'), /知己 ♥60/);
+      assert.match(await statusLine(page), /知己 ♥60/);
       const a = await shot('16-after-restart-pet');
       await openWardrobe();
       assert.equal(await cardStatus('daily'), '✓ 穿着中');
@@ -692,7 +716,7 @@ async function migrate() {
       const bubble = await bubbleText(page);
       assert.match(bubble, /大肥鱼/);
       await hover(page);
-      const meta = await page.textContent('#meta');
+      const meta = await statusLine(page);
       assert.match(meta, /小蓝 · 大肥鱼 · 像素 · 熟悉 ♥25 · 距「亲近」10/);
       const v = await view(page);
       assert.equal(v.pet.speciesId, 'dafeiyu');
@@ -732,11 +756,11 @@ async function migrate() {
       assert.equal(v.outfit, 'daily');
       assert.equal(v.look.packId, 'claude-pixel');
       assert.equal(v.pet.affection, 70);
-      assert.match(await page.textContent('#meta'), /小火 · 克洛蒂 · 像素 · 知己 ♥70/);
+      assert.match(await statusLine(page), /小火 · 克洛蒂 · 像素 · 知己 ♥70/);
       assert.equal(await page.locator('#pet-look canvas.sprite').count(), 1);
       assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'pet.retired.bak.json'), 'utf8')).speciesId, 'bubbo', 'the backup is written once and never overwritten');
       assert.doesNotMatch(app.stderrBuf, /Unknown species|TypeError/);
-      return `meta: ${await page.textContent('#meta')}; outfit maid → ${v.outfit}`;
+      return `meta: ${await statusLine(page)}; outfit maid → ${v.outfit}`;
     }, page);
 
     // T-2764: 形象包 → 独立角色. A v0.21 settings.json (大肥鱼 wears her Live2D pack, half-body 取景 per persona,
@@ -762,7 +786,7 @@ async function migrate() {
       assert.equal(v.look.packId, 'dafeiyu-live2d');
       assert.equal(v.pet.agentId, 'agt_FISH', 'same agent, chat and affection');
       assert.equal(v.pet.affection, 40);
-      assert.match(await page.textContent('#meta'), /小鱼 · 大肥鱼 · Live2D · 亲近 ♥40/);
+      assert.match(await statusLine(page), /小鱼 · 大肥鱼 · Live2D · 亲近 ♥40/);
       await page.screenshot({ path: path.join(OUT, 't2764-migrated-live2d.png') });
       const petAfter = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8'));
       const stAfter = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
@@ -838,7 +862,7 @@ async function characters() {
       assert.equal('agentId' in d, false);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(data, 'pet.v2.bak.json'), 'utf8')), old);
       await hover(page);
-      assert.match(await page.textContent('#meta'), /小蓝 · 格萝可 · 亲近 ♥40/);
+      assert.match(await statusLine(page), /小蓝 · 格萝可 · 亲近 ♥40/);
       fs.writeFileSync(path.join(SHOTS, 'migrate-files.txt'), `--- pet.v2.bak.json (before) ---\n${JSON.stringify(old, null, 2)}\n\n--- pet.json (after) ---\n${JSON.stringify(d, null, 2)}\n`);
       return `characters=${Object.keys(d.characters)}; grok agent=${d.characters.grok.agentId} topic=${d.characters.grok.topicId} ♥${d.characters.grok.affection}`;
     }, page);
@@ -1009,8 +1033,7 @@ async function dafeiyu() {
 
     await step(S, 'hovering shows the controls; feeding rice plays the eating animation', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80, sleeping: false, energy: 90 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForFunction(() => document.getElementById('pet-video').dataset.key === 'eat_rice', null, { timeout: 5000 });
       await page.waitForTimeout(800);
     }, page);
@@ -1045,6 +1068,7 @@ async function busy() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-busyfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_RUN_DELAY_MS: '3500' };
+  legacyLocal(data); // dropped files go through lh connect: an owner without the folder limit
   const { app, page } = await launch(env);
   const calls = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -1085,7 +1109,7 @@ async function busy() {
       await page.mouse.move(120, 160); // pointer is right over the pet
       await page.waitForTimeout(400);
       assert.equal(await hudOpacity(page), '0');
-      assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('toolbar')).visibility), 'hidden');
+      assert.equal((await require('./pet-panel').panelState(page)).visible, false, 'no panel while she thinks');
       assert.match(await page.textContent('#bubble'), /思考中/);
       const r = await page.evaluate(() => window.pet.act('feed', 'rice'));
       assert.deepEqual(r, { ok: false, reason: 'busy' });
@@ -1116,7 +1140,7 @@ async function busy() {
       await page.mouse.move(110, 150);
       await page.waitForFunction(() => getComputedStyle(document.getElementById('stop-btn')).display !== 'none', null, { timeout: 5000 });
       await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
-      assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('toolbar')).visibility), 'hidden');
+      assert.equal((await require('./pet-panel').panelState(page)).visible, false, 'no panel while she thinks');
       // pointer leaves: the button goes away with it
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
       await page.waitForFunction(() => getComputedStyle(document.getElementById('stop-btn')).display === 'none', null, { timeout: 5000 });
@@ -1260,6 +1284,7 @@ async function oldlh() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-oldfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_OLD', hostname: '192.168.101.156', platform: process.platform, online: true, channels: [{ hostname: '192.168.101.156', connectedAt: new Date().toISOString() }] }]));
+  legacyLocal(data); // the device is named on each lh connect run: an owner without the folder limit
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_NO_AGENCY: '1' });
   try {
     await page.waitForSelector('.char-card');
@@ -1376,8 +1401,7 @@ async function live() {
 
     await step(S, 'feeding lowers hunger and shows food', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 80 }));
-      await clickAct(page, 'feed');
-      await page.click('#food-menu .btn >> nth=0');
+      await pickFood(page, 0);
       await page.waitForTimeout(500);
       const v = await view(page);
       assert.ok(v.pet.hunger <= 50, `hunger ${v.pet.hunger}`);
@@ -1456,7 +1480,7 @@ async function live() {
       await page.waitForTimeout(1200);
       const v = await view(page);
       assert.equal(v.pet.relStage, 'familiar');
-      assert.match(await page.textContent('#meta'), /熟悉 ♥15/);
+      assert.match(await statusLine(page), /熟悉 ♥15/);
     }, page);
 
     await step(S, 'release deletes the real agent and returns to character selection', async () => {
@@ -1556,7 +1580,7 @@ async function advanced() {
       await page.screenshot({ path: path.join(OUT, 'advanced-wardrobe-all-unlocked.png') });
       await page.click('#panel-close');
       assert.equal(await page.evaluate(() => document.getElementById('pet-look').dataset.key), 'dafeiyu-pixel/daily');
-      assert.match(await page.textContent('#meta'), /挚友 ♥100 · 已满级/);
+      assert.match(await statusLine(page), /挚友 ♥100 · 已满级/);
       return 'pet wears 招牌女仆装 (dafeiyu-pixel)';
     }, page);
 
@@ -2375,7 +2399,7 @@ async function update() {
       assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
       assert.match(text, /上次检查 \d/, 'the time of the check is shown');
       assert.equal(await admin.getByRole('button', { name: '立即更新' }).count(), 0, 'nothing to install');
-      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), '', 'no dot on ⚙ either');
+      assert.equal(await page.evaluate(() => window.__petStatus().news), '', 'no dot on ⚙ either');
       await admin.screenshot({ path: path.join(OUT, 'update-latest.png') });
       return text.slice(text.indexOf('当前版本'), text.lastIndexOf('检查更新')).trim();
     }, () => admin || page);
@@ -2390,7 +2414,7 @@ async function update() {
       await page.waitForFunction(() => /有新版本 v9\.9\.9/.test(document.getElementById('bubble').textContent), null, { timeout: 5000 });
       const said = await bubbleText(page);
       await page.bringToFront();
-      assert.equal(await page.getAttribute('#btn-settings', 'data-news'), 'update');
+      assert.equal(await page.evaluate(() => window.__petStatus().news), 'update');
       await hover(page);
       await page.screenshot({ path: path.join(OUT, 'update-menu.png') });
       await admin.evaluate(() => { location.hash = '/overview'; });
@@ -2438,7 +2462,7 @@ async function space() {
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       assert.equal(createCall().env.workspace, null);
       assert.equal(fs.existsSync(path.join(fakeDir, 'pinned-workspace')), false);
-      assert.match(await page.getAttribute('#meta', 'title'), /放在：个人空间/);
+      assert.match(await page.evaluate(() => window.__petStatus().progressTitle), /放在：个人空间/);
     }, page);
 
     await step(S, 'choosing a workspace creates the agent there', async () => {
@@ -2452,7 +2476,7 @@ async function space() {
       await page.click('#space-go');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       assert.equal(createCall().env.workspace, 'ws_LAB');
-      assert.match(await page.getAttribute('#meta', 'title'), /放在：Lab/);
+      assert.match(await page.evaluate(() => window.__petStatus().progressTitle), /放在：Lab/);
     }, () => page);
   } finally {
     await app.close().catch(() => {});
@@ -2651,7 +2675,7 @@ async function rosterOne(ch) {
       await idle();
       await page.evaluate(() => window.pet.debugSet({ hunger: 30, mood: 55, energy: 90, sleeping: false }));
       await page.waitForFunction(() => window.petFx.state().state === 'idle', null, { timeout: 15000 });
-      assert.match(await page.textContent('#meta'), new RegExp(ch.zh));
+      assert.match(await statusLine(page), new RegExp(ch.zh));
       return shows('idle');
     }, page);
     await step(S, 'E3a the idle chain starts a cue on its own (no input)', async () => {
@@ -2759,8 +2783,7 @@ async function rosterOne(ch) {
       await step(S, `E7 fed ${food}`, async () => {
         await idle();
         await page.evaluate(() => window.pet.debugSet({ hunger: 70, sleeping: false, energy: 90 }));
-        await clickAct(page, 'feed');
-        await page.click(`#food-menu .btn >> nth=${i}`);
+        await pickFood(page, i);
         return shows(`eat_${food}`);
       }, page);
       await page.waitForTimeout(3600);
@@ -2834,8 +2857,8 @@ async function rosterOne(ch) {
     // ---- the dsh-pet effects added in T-1163 (docs/dsh-pet-gap.md), for every character --------------
     if (await page.isVisible('#panel-close')) await page.click('#panel-close');
     const winOf = (pg) => app.evaluate(({ BrowserWindow }, t) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getTitle() === t || x.webContents.getURL().includes(t)); return w ? w.getBounds() : null; }, pg);
-    const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
-    const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x == null ? b.x : x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+    const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
+    const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x == null ? b.x : x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
     const waitLanded = () => page.waitForFunction(() => !window.petFx.state().flying, null, { timeout: 15000 });
     await step(S, 'N1 roaming: she walks a few steps the way she faces, and the window moves', async () => {
       await idle();
@@ -2913,7 +2936,7 @@ async function rosterOne(ch) {
       await toFloor(0);
       await page.click('[data-menu="home"]');
       await page.waitForTimeout(300);
-      const home = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); return { b: w.getBounds(), wa: screen.getPrimaryDisplay().workArea }; });
+      const home = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); return { b: w.getBounds(), wa: screen.getPrimaryDisplay().workArea }; });
       assert.equal(home.b.x, home.wa.x + home.wa.width - home.b.width - 24, 'back in the bottom-right corner');
       return `contextmenu → ⋯ menu; 回到右下角 → window at ${home.b.x},${home.b.y}`;
     });
@@ -4291,7 +4314,7 @@ async function vpack() {
         rows.push(await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4)));
       }
       await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
-      rows.push(await said(/^feed$/, async () => { await clickAct(page, 'feed'); await page.click('#food-menu button'); }));
+      rows.push(await said(/^feed$/, async () => { await pickFood(page, 0); }));
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
       await page.waitForTimeout(300);
       // hover first so her pose settles, then click where her head is drawn now (as ivoice I2 does)
@@ -4767,19 +4790,20 @@ async function voicePackSwitch() {
     }, () => admin || page);
 
     let opts = [];
-    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 自动（按性别）/ 专属 / 通用·男 / 通用·女', async () => {
+    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 不使用 / 内置（自动）/ 专属 / 通用·男 / 通用·女', async () => {
       await voiceTab('dafeiyu-pixel');
       const cur = await current();
       assert.match(cur, /正在用 大肥鱼.* 专属/);
       assert.match(cur, /来源 自动 · 她有专属语音包/);
-      assert.match(await comboText(), /自动（按性别） · 现在是 专属/);
+      assert.match(await comboText(), /内置（自动 · 专属或按性别） · 现在是 专属/);
       await shot('v2-voice-tab-auto');
       await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
       await admin.waitForSelector('[role="option"]');
       opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
       await shot('v2-picker-open');
       await admin.keyboard.press('Escape');
-      assert.match(opts[0], /^自动（按性别）/);
+      assert.match(opts[0], /^不使用（全部用引擎朗读）/);
+      assert.match(opts[1], /^内置（自动 · 专属或按性别）/);
       assert.ok(opts.some((o) => /^专属 · 大肥鱼/.test(o)), 'her own');
       assert.ok(opts.some((o) => /^通用·男 · 通用男声.* · 1 句$/.test(o)), 'the owner\'s generic-male (userData/voicepacks, 1 line)');
       assert.ok(opts.some((o) => /^通用·女 · 通用女声/.test(o)), 'generic-female');
@@ -4833,7 +4857,7 @@ async function voicePackSwitch() {
       return note(`after restart: settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n语音 tab: ${cur}\n${fmtSynth(CATCH, a)}`);
     }, () => admin || page);
 
-    await step(S, 'V6 pick 通用·女, then 自动（按性别）: each in force at once; auto brings her own pack back', async () => {
+    await step(S, 'V6 pick 通用·女, then 内置（自动）: each in force at once; auto brings her own pack back', async () => {
       await pickInUi(/^通用·女/);
       await adminUntil(admin, () => /通用·女/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·女');
       assert.deepEqual(saved(), { dafeiyu: 'generic-female' });
@@ -4841,7 +4865,7 @@ async function voicePackSwitch() {
       assert.deepEqual([f.provider, f.voiceId], ['minimax', 'female-tianmei']);
       const c1 = await current();
       await shot('v6-picked-generic-female');
-      await pickInUi(/^自动（按性别）/);
+      await pickInUi(/^内置（自动/);
       await adminUntil(admin, () => /专属/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 专属');
       assert.deepEqual(saved(), {});
       const a = await synth(OWN);
@@ -4975,7 +4999,7 @@ async function userVoicePack() {
       const cb = (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
       assert.match(cur, /通用·男/);
       assert.match(cur, /来源 自动 · 跟随我的语音包/);
-      assert.match(cb, /^自动（跟随我的语音包） · 现在是 通用·男/);
+      assert.match(cb, /^内置（自动 · 跟随我的语音包） · 现在是 通用·男/);
       await shot('u3-character-follows');
       return note(`大肥鱼 语音 tab: ${cur}\npicker: ${cb}`);
     }, () => admin || page);
@@ -5167,8 +5191,7 @@ async function ivoice() {
     await step(S, 'I4 喂食: 喂食 → a food from the menu', async () => {
       await page.evaluate(() => window.pet.debugSet({ hunger: 60 }));
       const r = await interact('喂食 feed', /^feed$/, async () => {
-        await clickAct(page, 'feed');
-        await page.click('#food-menu button');
+        await pickFood(page, 0);
       });
       await shot('i4-feed');
       return r;
@@ -5321,9 +5344,11 @@ async function ivoice() {
       await page.evaluate(() => window.pet.setPrefs({ clickSound: true, touchZones: false }));
       await page.waitForTimeout(300);
       await hover(page);
-      const btn = page.locator('#btn-mute');
-      assert.equal(await btn.getAttribute('aria-pressed'), 'false', 'starts un-muted');
-      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
+      // 静音 is in her panel (a right click on her opens it); it switches in place, the panel stays open
+      const muteNow = () => page.evaluate(() => String(window.__petStatus().mute.pressed));
+      const btn = { click: async () => { await clickAct(page, 'mute'); } };
+      assert.equal(await muteNow(), 'false', 'starts un-muted');
+      await (await require('./pet-panel').openPetPanel(page)).screenshot({ path: path.join(SHOTS, 'i13b-toolbar-sound-on.png') });
       // a long reply is being read when the speaker is clicked: it stops at once
       mock.perCharMs = 300; // long enough to click the speaker while she is still reading
       await page.evaluate(() => { window.petFx.speak('今天天气真好。我们一起出去走走吧。路上还可以买点好吃的。回来再一起看书。'); }); // not awaited: speak() resolves once she has finished
@@ -5337,7 +5362,7 @@ async function ivoice() {
       }
       const reading = await last();
       await btn.click();
-      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'true', null, { timeout: 3000, polling: 50 });
+      await page.waitForFunction(() => window.__petStatus().mute.pressed === true, null, { timeout: 3000, polling: 50 });
       const stopped = await page.evaluate((n) => ({ sp: window.petFx.lastSpeech(), audio: window.petFx.audioState(), stop: window.petFx.speechLog().find((e) => e.n === n && e.event === 'stop') }), reading.n);
       mock.perCharMs = 0;
       assert.equal(stopped.sp.status, 'interrupted', JSON.stringify(stopped.sp));
@@ -5345,8 +5370,8 @@ async function ivoice() {
       assert.equal(stopped.audio, null, 'nothing playing');
       assert.equal(await prefNow('muted'), true);
       assert.equal(await prefNow('voice'), true, '朗读回复 left as it was');
-      const label = await btn.getAttribute('aria-label');
-      await page.locator('#toolbar').screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
+      const label = await page.evaluate(() => window.__petStatus().mute.label);
+      await require('./pet-panel').panelPage(page).screenshot({ path: path.join(SHOTS, 'i13b-toolbar-muted.png') });
       // muted: pat + 玩耍 + a reply — the bubble shows each line, nothing is offered to the voice, no click sound
       await page.waitForTimeout(1600);
       const n0 = (await slog()).length;
@@ -5369,7 +5394,7 @@ async function ivoice() {
       // un-mute from the same button: the next interaction is read again and the click sound is back
       await hover(page);
       await btn.click();
-      await page.waitForFunction(() => document.getElementById('btn-mute').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+      await page.waitForFunction(() => window.__petStatus().mute.pressed === false, null, { timeout: 3000 });
       assert.equal(await prefNow('muted'), false);
       await page.waitForTimeout(1600);
       const r = await interact('静音后恢复 pat', /^pat$/, async () => { const bb = await petBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height * 0.4); });
@@ -5398,7 +5423,7 @@ async function ivoice() {
       b = await petBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4); await sawLine('pat');
       await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
       await page.evaluate(() => window.pet.debugSet({ hunger: 60, energy: 80 }));
-      await clickAct(page, 'feed'); await page.click('#food-menu button'); await sawLine('feed');
+      await pickFood(page, 0); await sawLine('feed');
       await clickAct(page, 'play'); await sawLine('play');
       await page.mouse.move(300, 300); await page.waitForTimeout(400);
       b = await petBox();
@@ -5983,8 +6008,8 @@ async function outfitScenario() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   const leave = () => page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
   const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')); return p.characters[p.speciesId]; };
-  const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=')).getBounds());
-  const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
+  const mainBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
+  const toFloor = async (x) => app.evaluate(({ BrowserWindow, screen }, x) => { const w = BrowserWindow.getAllWindows().find((v) => !v.webContents.getURL().includes('visitor=') && !v.webContents.getURL().includes('/panel/')); const wa = screen.getDisplayMatching(w.getBounds()).workArea; const b = w.getBounds(); w.setPosition(Math.round(x), wa.y + wa.height - b.height); return w.getBounds(); }, x);
   // what the desktop pet draws right now: the sheet and frame up, the canvas box on screen, and the box of
   // her opaque pixels inside the frame (read back from the canvas, so a missing or broken sheet shows as 0 px)
   const drawn = () => page.evaluate(() => {
@@ -7105,6 +7130,7 @@ async function vrmUi() {
 // The three-vrm renderer with a homemade model made on the spot: e2e/vrm.js (run.js is over the size limit).
 // ⏻ 退出 on the toolbar (T-2827): e2e/quit-button.js
 const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, step, launch });
+const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step, launch });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -8588,16 +8614,19 @@ async function frontslimScenario() {
     await idle();
 
     await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + 🔊 静音 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
-      await hover(page);
-      await page.waitForTimeout(400);
-      await shotPet('f1-pet-toolbar');
-      const ui = await page.evaluate(() => ({
-        acts: [...document.querySelectorAll('#toolbar [data-act]')].map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
+      // the buttons live in her panel now (a right click on her)
+      const pp = await require('./pet-panel').openPetPanel(page);
+      await pp.screenshot({ path: path.join(SHOTS, 'f1-pet-toolbar.png') });
+      const gone = await page.evaluate(() => ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)).concat(document.querySelectorAll('[data-act="menu"], [data-menu]').length ? ['menu'] : []));
+      const ui = await pp.evaluate(() => ({
+        acts: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => !b.classList.contains('hidden')).map((b) => `${b.dataset.act}:${(b.getAttribute('aria-label') || b.textContent).trim()}`),
         visible: [...document.querySelectorAll('#toolbar [data-act]')].filter((b) => b.offsetParent).length,
-        gone: ['btn-topics', 'btn-wardrobe', 'main-menu', 'action-menu', 'panel'].filter((id) => document.getElementById(id)),
+        gone: [],
         menuBtn: document.querySelectorAll('[data-act="menu"], [data-menu]').length,
         text: document.getElementById('toolbar').innerText.replace(/\s+/g, ' ').trim(),
       }));
+      ui.gone = gone;
+      await pp.keyboard.press('Escape');
       // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
       assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'settings:设置', 'quit:退出']);
       assert.equal(ui.visible, 7);
@@ -8608,11 +8637,12 @@ async function frontslimScenario() {
     }, page);
 
     await step(S, 'F2 前台互动保留：喂食菜单、玩耍、聊天输入框都还在且可用', async () => {
-      await clickAct(page, 'feed');
-      await page.waitForSelector('#food-menu:not(.hidden)');
-      const foods = await page.$$eval('#food-menu .btn', (b) => b.map((x) => x.textContent.trim()));
-      await shotPet('f2-food-menu');
-      await page.click('#food-menu .btn');
+      // 喂食 opens its foods inside her panel (a right click on her)
+      const pp = await clickAct(page, 'feed');
+      await pp.waitForSelector('#food-menu:not(.hidden) .btn');
+      const foods = await pp.$$eval('#food-menu .btn', (b) => b.map((x) => x.textContent.trim()));
+      await pp.screenshot({ path: path.join(SHOTS, 'f2-food-menu.png') });
+      await pp.click('#food-menu .btn >> nth=0');
       await idle();
       await clickAct(page, 'chat');
       await page.waitForSelector('#chat-row:not(.hidden)');
@@ -8631,33 +8661,38 @@ async function frontslimScenario() {
       assert.equal(n, 1);
       await shotAdmin('f3-admin-from-gear');
       const d = desktop('f3-desktop-pet-and-admin');
-      map.push(['设置', '⚙ 设置按钮 / 右键 / Ctrl+, → 后台 小屋']);
+      map.push(['设置', '右键她 → 面板 ⚙ / Ctrl+, → 后台 小屋']);
       return `settings windows ${n}; path /overview; ${d}`;
     }, () => admin);
 
-    await step(S, 'F4 右键她 → 打开后台（不再弹菜单）；Ctrl+, 也打开后台', async () => {
+    await step(S, 'F4 右键她 → 打开她的面板（⚙ 在里面）；Ctrl+, 打开后台', async () => {
       await closeAdmin();
       await page.bringToFront();
       await hover(page);
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { id: el.id, x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       const hit = await page.evaluate(({ x, y }) => { const e = document.elementFromPoint(x, y); return e ? `${e.tagName}#${e.id}.${e.className}` : null; }, box);
       await page.mouse.click(box.x, box.y, { button: 'right' });
-      try { admin = await findAdmin(); } catch (e) { throw new Error(`${e.message} (right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit}, pet-hit ${box.id})`); }
-      await atPath('/overview');
+      const PP = require('./pet-panel');
+      for (let i = 0; i < 60 && !(await PP.panelState(page)).visible; i++) await page.waitForTimeout(50);
+      assert.equal((await PP.panelState(page)).visible, true, `right click at ${Math.round(box.x)},${Math.round(box.y)} on ${hit} opens her panel`);
       const popups = await page.evaluate(() => [...document.querySelectorAll('.popup')].filter((p) => !p.classList.contains('hidden')).map((p) => p.id));
       assert.deepEqual(popups, [], 'no menu pops up in the pet window');
+      // ⚙ in the panel → the settings window
+      await PP.panelPage(page).click('#btn-settings');
+      admin = await findAdmin();
+      await atPath('/overview');
       await closeAdmin();
       await page.bringToFront();
       // a real key press as the window receives it (before-input-event sees sendInputEvent, not CDP key events)
       await app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui'));
+        const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/panel/'));
         w.focus();
         w.webContents.sendInputEvent({ type: 'keyDown', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
         w.webContents.sendInputEvent({ type: 'keyUp', keyCode: ',', modifiers: [process.platform === 'darwin' ? 'meta' : 'control'] });
       });
       admin = await findAdmin();
       await atPath('/overview');
-      return `right click → settings window (pet popups open: ${popups.length}); Ctrl+, → settings window (${await adminWins()})`;
+      return `right click → her panel, ⚙ → settings window (pet popups open: ${popups.length}); Ctrl+, → settings window (${await adminWins()})`;
     }, () => admin);
 
     await step(S, 'F5 升阶 Toast「去衣柜看看」→ 后台她的页（衣柜），点衣服立即换上', async () => {
@@ -8739,7 +8774,7 @@ async function frontslimScenario() {
     }, () => admin);
 
     await step(S, 'F9 回到右下角 → 后台 桌面上的她：被拖走的桌宠回到右下角', async () => {
-      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui')); w.setPosition(100, 100); });
+      await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().includes('admin-ui') && !x.webContents.getURL().includes('/panel/')); w.setPosition(100, 100); });
       const before = await petBounds(app);
       await admin.evaluate(() => document.querySelector('[data-desk-home]').click());
       await toastSeen(/回到右下角/);
@@ -8830,13 +8865,13 @@ async function frontslimScenario() {
       await shotAdmin('f14-admin-update-found');
       // the pet window: a dot on ⚙, and ⚙ goes straight to 版本与更新
       await page.bringToFront();
-      await page.waitForFunction(() => document.getElementById('btn-settings').dataset.news === 'update', null, { timeout: 5000 });
+      await page.waitForFunction(() => window.__petStatus().news === 'update', null, { timeout: 5000 });
       await hover(page);
       await page.waitForTimeout(300);
       await shotPet('f14-pet-gear-dot');
-      const title = await page.getAttribute('#btn-settings', 'title');
+      const title = await page.evaluate(() => window.__petStatus().newsTitle);
       await go('/overview');
-      await page.click('#btn-settings');
+      await clickAct(page, 'settings');
       await atPath('/update');
       const btn = await admin.evaluate(() => { const b = document.querySelector('[data-update-download]'); return b ? b.textContent.trim() : ''; });
       assert.match(btn, /下载新版本 v9\.9\.9/);
@@ -8981,27 +9016,29 @@ async function petuiScenario() {
       await page.click('#hatch-btn');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await idle();
-      await step(S, `${theme}: 悬停：气泡、状态条、好感度、工具栏`, async () => {
+      // 她的面板 (e2e/pet-panel.js covers it in full): hovering shows only the bubble; a right click opens the panel
+      // beside her — needs, affection and the name line on one card, then the buttons
+      const PP = require('./pet-panel');
+      await step(S, `${theme}: 悬停：只有气泡（状态与按钮在右键面板里）`, async () => {
         await page.waitForFunction(() => !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 10000 });
         await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+        await page.waitForTimeout(300);
+        assert.equal(await page.locator('#status-panel, #toolbar').count(), 0, 'no status card or toolbar in her window');
         await shot('02-hover-hud-bubble');
         return `bubble 「${(await bubbleText(page)).slice(0, 30)}」`;
       }, page);
-      // T-2726: the status bar is ONE panel — needs, affection and the name line share one surface (rows split by
-      // hairlines); values still update live, it fits the window at the smallest pet size, and it only shows on hover
-      const panelGeom = () => page.evaluate(() => {
+      const panelGeom = (pp) => pp.evaluate(() => {
         const r = (el) => { const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
-        const panel = document.getElementById('status-panel');
+        const panel = document.getElementById('pet-panel');
         const cs = getComputedStyle(panel);
-        const rows = ['bars', 'aff-row', 'meta'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, borderTop: c.borderTopWidth, ...r(el) }; });
-        const meta = document.getElementById('meta');
-        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), metaCut: meta.scrollWidth > meta.clientWidth, hudOpacity: getComputedStyle(document.getElementById('hud')).opacity };
+        const rows = ['aff-row', 'meta', 'bars'].map((id) => { const el = document.getElementById(id); const c = getComputedStyle(el); return { id, in: panel.contains(el), bg: c.backgroundColor, shadow: c.boxShadow, ...r(el) }; });
+        return { win: innerWidth, panel: r(panel), bg: cs.backgroundColor, border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', rows, toolbar: r(document.getElementById('toolbar')), theme: document.documentElement.dataset.theme };
       });
-      await step(S, `${theme}: 状态栏是一个整体 Panel（需求 / 好感 / 信息行同一底板，分隔线分区）`, async () => {
-        await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
-        const g = await panelGeom();
+      await step(S, `${theme}: 右键她 → 面板：状态与按钮同一张卡片（分隔线分区），跟随主题`, async () => {
+        const pp = await PP.openPetPanel(page);
+        await pp.emulateMedia({ colorScheme: theme });
+        const g = await panelGeom(pp);
+        assert.equal(g.theme, theme);
         assert.equal(g.border, '1px'); assert.ok(g.shadow); assert.notEqual(g.bg, 'rgba(0, 0, 0, 0)');
         for (const row of g.rows) {
           assert.ok(row.in, `${row.id} inside the panel`);
@@ -9009,44 +9046,44 @@ async function petuiScenario() {
           assert.equal(row.shadow, 'none', `${row.id} has no own shadow`);
           assert.ok(row.x >= g.panel.x && row.r <= g.panel.r && row.y >= g.panel.y && row.b <= g.panel.b, `${row.id} within the panel box`);
         }
-        assert.deepEqual(g.rows.map((x) => x.borderTop), ['0px', '1px', '1px'], 'hairlines between the three rows');
-        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside the window');
-        assert.ok(g.toolbar.y >= g.panel.b, 'toolbar right under the panel');
-        await shot('02b-status-panel');
-        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y} top=${x.borderTop}`), toolbarY: g.toolbar.y });
+        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, 'panel inside its window');
+        assert.ok(g.toolbar.y >= g.rows[2].b, 'the buttons come after her state');
+        await pp.screenshot({ path: path.join(SHOTS, '02b-status-panel.png') });
+        return JSON.stringify({ win: g.win, panel: g.panel, radius: g.radius, rows: g.rows.map((x) => `${x.id}:${x.w}x${x.h}@${x.y}`), toolbarY: g.toolbar.y });
       }, page);
-      await step(S, `${theme}: Panel 内数值实时更新（饥饿 / 心情 / 体力 / 好感）`, async () => {
-        const vals = () => page.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), num: document.getElementById('aff-num').textContent, meta: document.getElementById('meta').textContent }));
+      await step(S, `${theme}: 面板内数值实时更新（饱腹 / 心情 / 体力 / 好感）`, async () => {
+        const pp = await PP.openPetPanel(page);
+        const vals = () => pp.evaluate(() => ({ ...Object.fromEntries(['bar-hunger', 'bar-mood', 'bar-energy', 'bar-affection'].map((id) => [id, document.getElementById(id).style.getPropertyValue('--v')])), needs: ['hunger', 'mood', 'energy'].map((k) => document.getElementById(`val-${k}`).textContent).join('/'), num: document.getElementById('aff-num').textContent }));
         const before = await vals();
         await page.evaluate(() => window.pet.debugSet({ hunger: 90, mood: 15, energy: 50, affection: 12 }));
-        await page.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' pushes the view
+        await pp.waitForFunction(() => document.getElementById('bar-hunger').style.getPropertyValue('--v') === '10%', null, { timeout: 8000 }); // debugSet saves → 'update' → the open panel is redrawn
         const after = await vals();
         assert.equal(after['bar-hunger'], '10%'); assert.equal(after['bar-mood'], '15%'); assert.equal(after['bar-energy'], '50%');
-        assert.match(after.meta, /♥12/);
-        await hover(page);
-        await shot('02c-status-panel-updated');
+        assert.equal(after.needs, '10/15/50');
+        assert.equal(after.num, '12/100');
+        await pp.screenshot({ path: path.join(SHOTS, '02c-status-panel-updated.png') });
         return `before ${JSON.stringify(before)} → after ${JSON.stringify(after)}`;
       }, page);
-      await step(S, `${theme}: 最小尺寸（50%）Panel 不溢出窗口；移开指针后隐藏`, async () => {
+      await step(S, `${theme}: 最小尺寸（50%）面板仍在她旁边、在屏幕内；Esc 关闭`, async () => {
+        let pp = await PP.openPetPanel(page);
+        await pp.keyboard.press('Escape');
         const k = await page.evaluate(() => window.pet.setPetScale(0.5));
         await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 0.5, null, { timeout: 8000 });
         await page.waitForTimeout(300);
-        await hover(page);
-        await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
-        const g = await panelGeom();
-        assert.ok(g.panel.x >= 0 && g.panel.r <= g.win, `panel ${g.panel.x}..${g.panel.r} inside window ${g.win}`);
-        for (const row of g.rows) assert.ok(row.r <= g.panel.r, `${row.id} inside the panel`);
+        pp = await PP.openPetPanel(page);
+        const st = await PP.panelState(page);
+        assert.ok(st.bounds.x >= st.area.x && st.bounds.x + st.bounds.width <= st.area.x + st.area.width, JSON.stringify(st));
         await shot('02d-status-panel-smallest');
-        await page.mouse.move(-20, -20);
-        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-        await page.waitForFunction(() => !document.body.classList.contains('hover') && getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+        await pp.keyboard.press('Escape');
+        assert.equal((await PP.panelState(page)).visible, false);
         await page.evaluate(() => window.pet.setPetScale(1.25));
         await page.waitForFunction(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) === 1.25, null, { timeout: 8000 });
-        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: window ${g.win}px, panel ${g.panel.x}..${g.panel.r} (${g.panel.w}px), meta cut with … = ${g.metaCut}; hidden again off hover`;
+        return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: panel ${JSON.stringify(st.bounds)} on her ${st.side}`;
       }, page);
       await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
         await clickAct(page, 'chat');
         await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
+        await hover(page);
         await shot('03a-chat-row-placeholder'); // empty and focused: the placeholder
         await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
         await shot('03-chat-row');
@@ -9055,29 +9092,25 @@ async function petuiScenario() {
         await idle();
         await hover(page);
         await shot('04-chat-reply');
-        await page.click('[data-act="chat"]'); // the chat box sits over the toolbar: close it again
-        await page.waitForSelector('#chat-row.hidden', { state: 'attached' });
+        await page.evaluate(() => document.getElementById('chat-row').classList.add('hidden'));
       }, page);
-      await step(S, `${theme}: 工具栏（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置，无 ⋯ 菜单）`, async () => {
-        await hover(page);
-        await page.waitForTimeout(400);
-        await shot('05-toolbar');
-        // a pixel look: ♪ 跳舞 (VRM only, T-2801) is in the toolbar but hidden
-        const acts = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
+      await step(S, `${theme}: 面板按钮（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置 + ⏻ 退出，无 ⋯ 菜单）`, async () => {
+        const pp = await PP.openPetPanel(page);
+        await pp.screenshot({ path: path.join(SHOTS, '05-toolbar.png') });
+        // a pixel look: ♪ 跳舞 and ↺ (VRM only) are in the panel but hidden
+        const acts = await pp.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
         assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
-        assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true, '♪ hidden on a pixel look');
-        const rows = await page.$$eval('#toolbar [data-act]:not(.hidden)', (b) => new Set(b.map((x) => Math.round(x.getBoundingClientRect().top))).size);
-        assert.equal(rows, 1, 'the toolbar fits on one row');
+        assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         return acts.join(' / ');
       }, page);
-      await step(S, `${theme}: 喂食菜单`, async () => {
-        await clickAct(page, 'feed');
-        await page.waitForSelector('#food-menu:not(.hidden)');
-        await page.waitForTimeout(400); // let the menu's open transition finish
-        await shot('06-food-menu');
-        await page.mouse.move(-20, -20);
-        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-        await page.waitForSelector('#food-menu.hidden', { state: 'attached' });
+      await step(S, `${theme}: 喂食菜单（在面板里展开）`, async () => {
+        const pp = await clickAct(page, 'feed');
+        await pp.waitForSelector('#food-menu:not(.hidden)');
+        await pp.waitForTimeout(300);
+        await pp.screenshot({ path: path.join(SHOTS, '06-food-menu.png') });
+        await pp.keyboard.press('Escape');
+        await pp.waitForSelector('#food-menu.hidden', { state: 'attached' });
+        await pp.keyboard.press('Escape');
       }, page);
       await step(S, `${theme}: 升阶提示 Toast`, async () => {
         await page.evaluate(() => window.pet.debugSet({ affection: 20 }));
@@ -9097,11 +9130,12 @@ async function petuiScenario() {
         await adminUntil(admin, (p) => !!document.querySelector(`[data-path="/${p}"]`), where, 15000, where);
         await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().includes('admin-ui')) w.destroy(); });
         await page.bringToFront();
-        await hover(page);
-        await page.waitForTimeout(300);
-        await shot('08-toolbar-settings');
+        const pp = await require('./pet-panel').openPetPanel(page);
+        await pp.screenshot({ path: path.join(SHOTS, '08-toolbar-settings.png') });
         assert.equal(await page.locator('#btn-topics, #btn-wardrobe, #main-menu, #panel').count(), 0);
-        return `toast → #/${where}; toolbar: ${(await page.textContent('#toolbar')).replace(/\s+/g, ' ').trim()} + ⚙`;
+        const text = (await pp.textContent('#toolbar')).replace(/\s+/g, ' ').trim();
+        await pp.keyboard.press('Escape');
+        return `toast → #/${where}; panel: ${text} + ⚙`;
       }, page);
       await step(S, `${theme}: 无页面错误`, async () => {
         assert.deepEqual(errors, []);
@@ -9685,6 +9719,1011 @@ async function storeScenario() {
   }
 }
 
+// ---------------------------------------------------------------- voicestore (商店 → 语音包: 浏览、下载、三态)
+// 商店 → 语音包 lists the 风格语音包 of src/core/voice-catalog.json: name, 风格, 音色说明, size, 署名, 试听. From a
+// local server playing the release host (the archives rebuilt by scripts/build-voice-catalog.js --check, throttled so
+// 下载中 shows): 未下载 → 下载中 (progress) → 已下载; the pack is unpacked into userData/voicepacks/<id>/ and listed
+// in 设置 → 语音包 (来源 商店下载). A corrupted archive is refused by its sha256 and leaves nothing behind. After a
+// restart 已下载 is still right (read from disk); 删除 brings it back to 未下载 and out of the local list.
+// Free: fake lh, no network. Evidence in out/e2e/voicestore/.
+async function voiceStoreScenario() {
+  const S = 'voicestore';
+  const SHOTS = path.join(OUT, 'voicestore');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const IDS = index.voicePacks.map((v) => v.id);
+  const CUTE = 'style-cute';
+  const BAD = 'style-yujie';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicezips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const corrupt = new Set();
+  const served = [];
+  const server = http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = path.join(zips, name);
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    let buf = fs.readFileSync(file);
+    if (corrupt.has(name)) { buf = Buffer.from(buf); buf[Math.floor(buf.length / 2)] ^= 0xff; } // same size, other bytes
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~300 KB/s, so 下载中 and the bar are seen
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 32 * 1024)); i += 32 * 1024; setTimeout(tick, 100); };
+    tick();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/voices`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestore-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestorefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: base };
+  const VDIR = path.join(data, 'voicepacks');
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  record('v0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\nserved from ${base} (throttled ~300 KB/s)\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (label) => {
+    await admin.evaluate((l) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === l); if (!t) throw new Error(`no tab ${l}`); t.click(); }, label);
+    await admin.waitForTimeout(400);
+  };
+  const openVoices = async () => { await go('/store'); await tab('语音包'); await attached('[data-store-voices]'); await admin.waitForTimeout(300); };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 20000 });
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(450);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const viewShot = async (name) => { await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  // each card's state as the page shows it
+  const states = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+  const leftovers = () => (fs.existsSync(VDIR) ? fs.readdirSync(VDIR).filter((n) => n.startsWith('.') || n.includes('.old-')) : []);
+  // 设置 → 语音包: the rows of the local list (antd sets data-row-key)
+  const localRows = async () => {
+    await go('/voicepacks');
+    await admin.waitForTimeout(400);
+    return admin.$$eval('[data-admin-page] tr[data-row-key]', (els) => els.map((e) => ({ id: e.dataset.rowKey, text: e.textContent })));
+  };
+  const openAdmin = async () => {
+    admin = await openAdminWindow(app, page, 'overview');
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+  };
+
+  try {
+    await step(S, 'V0 唤醒桌宠，打开配置窗口', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').first().click();
+      await page.fill('#pet-name', '小鱼');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      return 'ok';
+    }, page);
+
+    await step(S, 'V1 商店 → 语音包：5 个风格语音包，每张卡有名称、风格、音色说明、体积、署名、试听，全部「未下载」', async () => {
+      await openVoices();
+      const tabs = await admin.$$eval('[role="tab"]', (els) => els.map((e) => e.textContent.trim()));
+      assert.ok(tabs.includes('语音包'), tabs.join(','));
+      const cards = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => {
+        const q = (a) => (e.querySelector(`[${a}]`) || {}).textContent || '';
+        return { id: e.dataset.storeVoice, state: e.dataset.voiceState, name: e.querySelector('strong, [class*="strong"]')?.textContent || e.textContent.slice(0, 20), style: q('data-store-voice-style'), desc: q('data-store-voice-desc'), timbre: q('data-store-voice-timbre'), meta: q('data-store-voice-meta'), credit: q('data-store-voice-credit'), sample: !!e.querySelector('[data-voice-sample]'), tag: q('data-voice-not-downloaded'), btn: q('data-voice-download') };
+      }));
+      assert.deepEqual(cards.map((c) => c.id), IDS);
+      for (const c of cards) {
+        const e = index.voicePacks.find((v) => v.id === c.id);
+        assert.equal(c.state, 'remote', c.id);
+        assert.equal(c.tag, '未下载');
+        assert.equal(c.btn, '下载');
+        assert.equal(c.style, e.styleLabel);
+        assert.equal(c.desc, e.description);
+        assert.equal(c.timbre, `音色：MiniMax ${e.voiceId}`);
+        assert.match(c.meta, new RegExp(`${e.lines} 句 · ${Catalog.sizeLabel(e.bytes).replace('.', '\\.')}`));
+        assert.equal(c.credit, e.credit);
+        assert.ok(c.sample);
+      }
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 5.*已下载 0/);
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      record('v1-cards.json', JSON.stringify(cards, null, 2));
+      return `${cards.map((c) => `${c.id}「${c.style}」${c.meta}`).join('；')} → ${await shot('v1-store-voices-not-downloaded')}`;
+    }, page);
+
+    await step(S, 'V2 试听（不用下载）：点「试听」播放随应用附带的试听句，按钮变「停止」', async () => {
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('playing', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('停止')), 8000);
+      const shotName = await viewShot('v2-sample-playing');
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('stopped', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('试听')), 5000);
+      return `试听 ${index.voicePacks[0].sample.file} 播放中 → ${shotName}`;
+    }, page);
+
+    let mid = '';
+    await step(S, 'V3 下载「可爱 · 甜心少女」：卡片变「下载中」，进度条与百分比走动', async () => {
+      await admin.click(`[data-voice-download="${CUTE}"]`);
+      await attached(`[data-voice-download-progress="${CUTE}"]`);
+      await admin.waitForFunction((id) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${id}"]`)?.textContent || ''), CUTE, { timeout: 15000 });
+      mid = await admin.$eval(`[data-voice-download-progress="${CUTE}"]`, (el) => el.textContent);
+      const st = await states();
+      assert.equal(st[CUTE], 'downloading');
+      assert.equal(await admin.$eval(`[data-voice-downloading="${CUTE}"]`, (el) => el.textContent), '下载中');
+      assert.ok(await admin.$(`[data-voice-download-cancel="${CUTE}"]`));
+      const main = await call('voiceStore');
+      const row = main.voicePacks.find((v) => v.id === CUTE);
+      assert.equal(row.state, 'downloading', 'main says 下载中 too');
+      return `进度「${mid}」；主进程 state=${row.state} percent=${row.percent} → ${await viewShot('v3-downloading')}`;
+    }, page);
+
+    await step(S, 'V4 下载完成：卡片「已下载」，文件在 userData/voicepacks/style-cute/（manifest 校验通过 + 标记），已下载筛选里有它', async () => {
+      await toast(/「可爱 · 甜心少女」下载好了/);
+      await until('installed', async () => (await states())[CUTE] === 'installed');
+      assert.equal(await admin.$eval(`[data-voice-downloaded="${CUTE}"]`, (el) => el.textContent), '已下载');
+      const m = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, 'manifest.json'), 'utf8'));
+      const marker = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, '.catalog.json'), 'utf8'));
+      const VP = require('../src/core/voice-pack');
+      assert.deepEqual(VP.validateManifest(m, path.join(VDIR, CUTE)), []);
+      assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === CUTE).sha256);
+      assert.deepEqual(leftovers(), []);
+      const all = await shot('v4a-store-downloaded');
+      await admin.locator('[data-store-voice-filter]').getByText(/^已下载 1$/).click();
+      await admin.waitForTimeout(400);
+      const shown = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => e.dataset.storeVoice));
+      assert.deepEqual(shown, [CUTE]);
+      const filtered = await shot('v4b-store-filter-downloaded');
+      const files = fs.readdirSync(path.join(VDIR, CUTE));
+      record('v4-installed.txt', `${path.join('<userData>', 'voicepacks', CUTE)}: ${files.length} files (manifest.json, .catalog.json, ${files.length - 2} audio)\nmanifest: id=${m.id} kind=${m.kind} style=${m.style} version=${m.version} lines=${Object.keys(m.lines).length}\nvalidateManifest: OK\nmarker: ${JSON.stringify(marker)}\n`);
+      return `已下载；${files.length} 个文件；marker ${JSON.stringify(marker)}；已下载筛选: ${shown.join(',')} → ${all}, ${filtered}`;
+    }, page);
+
+    await step(S, 'V5 本地可用列表：设置 → 语音包 列出 style-cute（任意角色 · 138 句 · 来源「商店下载」），主进程已加载为 style 包', async () => {
+      const rows = await localRows();
+      const row = rows.find((r) => r.id === CUTE);
+      assert.ok(row, rows.map((r) => r.id).join(','));
+      assert.match(row.text, /可爱 · 甜心少女/);
+      assert.match(row.text, /商店下载/);
+      assert.match(row.text, /138 句/);
+      const st = await call('state');
+      assert.ok(st.settings.ttsStatus.packs.some((p) => p.id === CUTE && p.kind === 'style' && p.store));
+      return `本地列表: ${rows.map((r) => r.id).join(', ')} → ${await shot('v5-settings-voicepacks-local-list')}`;
+    }, page);
+
+    await step(S, 'V6 下载的文件被篡改：sha256 校验不通过，提示可读的失败原因，本机不留文件，卡片回到「未下载」', async () => {
+      corrupt.add(`${BAD}.zip`);
+      await openVoices();
+      await admin.click(`[data-voice-download="${BAD}"]`);
+      await toast(/没能下载「御姐 · 妩媚姐姐」/);
+      await toast(/校验没通过/);
+      const failShot = await viewShot('v6-checksum-failed');
+      await until('remote again', async () => (await states())[BAD] === 'remote');
+      const cardErr = await admin.$eval(`[data-voice-download-error="${BAD}"]`, (el) => el.textContent);
+      assert.match(cardErr, /校验没通过/);
+      assert.ok(!fs.existsSync(path.join(VDIR, BAD)));
+      assert.deepEqual(leftovers(), []);
+      corrupt.delete(`${BAD}.zip`);
+      return `篡改后: 未安装、无残留，卡片仍是未下载，卡上提示「${cardErr}」 → ${failShot}`;
+    }, page);
+
+    await step(S, 'V7 重启应用：已下载状态以磁盘为准，style-cute 仍是「已下载」，其余「未下载」', async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      await openVoices();
+      const st = await states();
+      assert.deepEqual(st, Object.fromEntries(IDS.map((id) => [id, id === CUTE ? 'installed' : 'remote'])));
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 4.*已下载 1/);
+      return `重启后: ${JSON.stringify(st)} → ${await shot('v7-after-restart')}`;
+    }, page);
+
+    await step(S, 'V8 删除已下载的语音包：确认后回到「未下载」，文件夹删除，本地列表不再有它', async () => {
+      await admin.click(`[data-voice-remove="${CUTE}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await toast(/已删除语音包「可爱 · 甜心少女」/);
+      await until('remote', async () => (await states())[CUTE] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      const storeShot = await viewShot('v8a-removed');
+      const rows = await localRows();
+      assert.ok(!rows.some((r) => r.id === CUTE));
+      return `删除后本地列表: ${rows.map((r) => r.id).join(', ')} → ${storeShot}, ${await shot('v8b-settings-after-remove')}`;
+    }, page);
+
+    await step(S, 'V9 没有渲染错误、没有遗留的临时目录', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      assert.deepEqual(leftovers(), []);
+      record('served.txt', `served from ${base}\n${served.join('\n')}\n`);
+      return `no console errors; served: ${served.join(', ')}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
+// ---------------------------------------------------------------- voiceselect (按角色选择语音包：不使用 / 内置 / 已下载的风格包)
+// T-5095. 角色详情 → 语音 → 语音包 offers 不使用 / 内置（自动） / the 风格语音包 downloaded from 商店 (the store's others
+// are listed disabled, 去商店下载 opens 商店 → 语音包). Picking 可爱 (A), feeding her when she is full makes her say
+// 「呃……肚子圆滚滚的，吃不下了。」 — the pet window plays userData/voicepacks/style-cute/<file>; picking 御姐 (B) the
+// same line plays from style-yujie at once, no restart; a line B has not recorded (摸摸: her own line) goes to the
+// engine; 不使用 plays nothing from a pack. After a restart she is still on B. Deleting B while she uses it puts her on
+// 内置 (her own pack) with a notice. Free: fake lh, no key, store served from a local server. Evidence in out/e2e/voiceselect/.
+async function voiceSelectScenario() {
+  const S = 'voiceselect';
+  const SHOTS = path.join(OUT, 'voiceselect');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const A = 'style-cute';
+  const B = 'style-yujie';
+  const nameOf = (id) => index.voicePacks.find((v) => v.id === id).name;
+  const FULL = '呃……肚子圆滚滚的，吃不下了。';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselzips-'));
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const server = http.createServer((req, res) => {
+    const file = path.join(zips, path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname)));
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    res.end(buf);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vsel-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/voices` };
+  const VDIR = path.join(data, 'voicepacks');
+  const crypto = require('node:crypto');
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const openAdmin = async (route) => {
+    admin = await openAdminWindow(app, page, route);
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 900); }, W);
+  };
+  const ashot = async (name) => { await admin.bringToFront(); await admin.waitForTimeout(350); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const PANEL = '[role="tabpanel"]:not([inert])';
+  const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
+  const voiceTab = async (id = 'dafeiyu-pixel') => {
+    await admin.bringToFront();
+    if (await admin.$('[role="option"]')) await closePicker();
+    await admin.evaluate((x) => { location.hash = `/characters/${x}`; }, id);
+    await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await combo().waitFor();
+    await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
+    await admin.waitForTimeout(300);
+  };
+  const current = async () => (await admin.locator(`${PANEL} [data-voice-pack-current]`).innerText()).replace(/\s+/g, ' ').trim();
+  const comboText = async () => (await combo().innerText()).replace(/\s+/g, ' ').trim();
+  // the open picker (@lobehub/ui Select on base-ui): group labels and options in order, disabled ones marked
+  const options = () => admin.$$eval('.lobe-select__group-label, [role="option"]', (els) => els.map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), group: e.classList.contains('lobe-select__group-label'), disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' })));
+  const openPicker = async () => {
+    await combo().click();
+    await admin.waitForSelector('[role="option"]');
+    await admin.waitForTimeout(300);
+  };
+  const closePicker = async () => {
+    await admin.keyboard.press('Escape');
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+  };
+  const pickInUi = async (rx, shotName = null) => {
+    await openPicker();
+    const opts = await options();
+    const s = shotName ? await ashot(shotName) : null;
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+    return { opts, shot: s };
+  };
+  const choiceIs = (choice) => until(`picker = ${choice}`, () => admin.evaluate(([p, c]) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice === c, [PANEL, choice]), 10000);
+  // the line she says when fed while full, as the pet window reads it: what it played and from which file
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600);
+  };
+  const said = async (kindRe, fn) => {
+    await page.bringToFront();
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await fn();
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind) && e.n), [n0, kindRe.source], { timeout: 20000 });
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => kindRe.test(e.kind));
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 });
+    const sp = await page.evaluate(() => window.petFx.lastSpeech());
+    return { text: entry.text, provider: sp.provider, packId: sp.packId, packFile: sp.packFile, bytes: sp.bytes || 0, mime: sp.mime || null, started: !!sp.started, status: sp.status };
+  };
+  const feedFull = async () => said(/^feed$/, async () => { await page.evaluate(() => window.pet.debugSet({ hunger: 0 })); await clickAct(page, 'feed'); await page.click('#food-menu button'); });
+  const pat = async () => {
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+    const b = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+    const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+    return r;
+  };
+  // the folder of a pack by id: the store's in userData/voicepacks/<id>, a built-in one in src/voicepacks/<folder>
+  const packDir = (id) => {
+    if (fs.existsSync(path.join(VDIR, id || '', 'manifest.json'))) return path.join(VDIR, id);
+    const b = path.join(ROOT, 'src', 'voicepacks');
+    const d = fs.readdirSync(b).find((n) => { try { return JSON.parse(fs.readFileSync(path.join(b, n, 'manifest.json'), 'utf8')).id === id; } catch { return false; } });
+    return d ? path.join(b, d) : path.join(VDIR, id || '');
+  };
+  const fileOf = (r) => {
+    const f = path.join(packDir(r.packId), r.packFile || '');
+    if (!r.packFile || !fs.existsSync(f)) return { path: f, exists: false };
+    const buf = fs.readFileSync(f);
+    return { path: f, exists: true, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) };
+  };
+  const fmt = (r) => { const f = fileOf(r); return `「${r.text}」 → provider=${r.provider} packId=${r.packId} packFile=${r.packFile} played bytes=${r.bytes} mime=${r.mime} started=${r.started} status=${r.status}${f.exists ? ` | file ${f.path.replace(data, '<userData>').replace(ROOT, '<repo>')} size=${f.size} sha256=${f.sha256}` : ''}`; };
+  const assertFrom = (r, packId) => {
+    const f = fileOf(r);
+    assert.equal(r.text, FULL);
+    assert.deepEqual([r.provider, r.packId, r.status, r.started], ['pack', packId, 'done', true], fmt(r));
+    assert.ok(f.exists, `file ${f.path}`);
+    assert.equal(r.bytes, f.size, 'the audio played is that file');
+  };
+  const storeStates = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+
+  try {
+    await step(S, 'S0 唤醒大肥鱼（朗读开，没有任何引擎 Key）；初始 settings.json 无按角色选择', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), {});
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await pshot('s0-pet');
+      return note(`S0 before any pick: tts.voicePackByCharacter=${JSON.stringify(saved())}\n  ${fmt(r)}`);
+    }, page);
+
+    await step(S, 'S1 角色详情 → 语音 → 语音包：选项为「不使用 / 内置（自动）/ …」，商店里没下载的风格包列在「未下载」里且不可选，旁边有「去商店下载」', async () => {
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      assert.match(cb, /^内置（自动 · 专属或按性别） · 现在是 专属/);
+      const shotTab = await ashot('s1a-voice-tab-builtin');
+      await openPicker();
+      const head = await options();
+      const shotHead = await ashot('s1b-picker-top');
+      await admin.evaluate(() => { const o = [...document.querySelectorAll('[role="option"]')].at(-1); o && o.scrollIntoView({ block: 'end' }); });
+      await admin.waitForTimeout(300);
+      const tail = head;
+      const shotTail = await ashot('s1c-picker-not-downloaded');
+      await closePicker();
+      assert.match(head.find((o) => !o.group).text, /^不使用（全部用引擎朗读）/);
+      assert.ok(head.some((o) => /^内置（自动/.test(o.text)));
+      const remote = tail.filter((o) => /· 未下载$/.test(o.text));
+      assert.equal(remote.length, index.voicePacks.length, JSON.stringify(tail));
+      assert.ok(remote.every((o) => o.disabled), 'not downloaded = not pickable');
+      assert.ok(tail.some((o) => o.group && /未下载/.test(o.text)));
+      const btn = await admin.locator(`${PANEL} [data-voice-pack-store]`).innerText();
+      assert.match(btn, /去商店下载（5 个未下载）/);
+      return note(`S1 picker: ${cb}\n  top: ${head.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  bottom: ${tail.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  button: ${btn} → ${shotTab}, ${shotHead}, ${shotTail}`);
+    }, () => admin || page);
+
+    await step(S, 'S2 点「去商店下载」进入 商店 → 语音包，下载 可爱（A）与 御姐（B）', async () => {
+      await admin.locator(`${PANEL} [data-voice-pack-store]`).click();
+      await admin.waitForSelector('[data-path="/store/voices"]');
+      await admin.waitForSelector('[data-store-voices]');
+      for (const id of [A, B]) {
+        await admin.click(`[data-voice-download="${id}"]`);
+        await until(`${id} installed`, async () => (await storeStates())[id] === 'installed', 60000);
+      }
+      const st = await storeStates();
+      const s = await ashot('s2-store-downloaded');
+      return note(`S2 via 去商店下载 → #/store/voices; states ${JSON.stringify(st)} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S3 回到角色语音页：已下载的 A、B 出现在「风格语音包（已下载）」组，选 A（可爱）→ 持久化到 settings.json', async () => {
+      await voiceTab();
+      const { opts, shot: s } = await pickInUi(new RegExp(nameOf(A)), 's3a-picker-downloaded');
+      await choiceIs(A);
+      await admin.waitForTimeout(300);
+      const cur = await current();
+      assert.ok(opts.some((o) => o.group && o.text === '风格语音包（已下载）'));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·可爱 · ${nameOf(A)}`)));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·御姐 · ${nameOf(B)}`)));
+      assert.match(cur, new RegExp(`正在用 ${nameOf(A)} 风格·可爱`));
+      assert.match(cur, /来源 手动指定/);
+      assert.deepEqual(saved(), { dafeiyu: A });
+      const s2 = await ashot('s3b-picked-A');
+      return note(`S3 options: ${opts.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  正在用: ${cur}\n  settings.json tts.voicePackByCharacter=${JSON.stringify(saved())} → ${s}, ${s2}`);
+    }, () => admin || page);
+
+    await step(S, 'S4 A 生效：桌宠喂食（已经吃饱）说固定台词，播放的是 userData/voicepacks/style-cute 里的文件；她的专属台词（摸摸）A 包没有 → 回退引擎', async () => {
+      const r = await feedFull();
+      assertFrom(r, A);
+      const p = await pshot('s4-pet-said-A');
+      // 摸摸: her lines are random — a generic one A has recorded plays from A, one of her own goes to the engine
+      const VPk = require('../src/core/voice-pack');
+      const inA = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(VDIR, A, 'manifest.json'), 'utf8')).lines).map(VPk.norm));
+      const pats = [];
+      let q = null;
+      for (let i = 0; i < 8 && !q; i++) {
+        const x = await pat();
+        pats.push(x);
+        const recorded = inA.has(VPk.norm(x.text));
+        if (recorded) assert.deepEqual([x.provider, x.packId], ['pack', A], fmt(x));
+        else { assert.notEqual(x.provider, 'pack', fmt(x)); assert.ok(!x.packId, 'not from any pack'); q = x; }
+      }
+      assert.ok(q, `a line A has not recorded: ${pats.map(fmt).join(' / ')}`);
+      return note(`S4 (A=${A}):\n  ${fmt(r)}\n  摸摸 lines: ${pats.map((x) => `${inA.has(VPk.norm(x.text)) ? '[in A] ' : '[not in A → engine] '}${fmt(x)}`).join('\n    ')}\n  (no key on this box → 原引擎链 → 系统语音) → ${p}`);
+    }, page);
+
+    let fileA = null;
+    await step(S, 'S5 切到 B（御姐）：不用重启，同一句台词立刻来自 style-yujie 的文件', async () => {
+      fileA = fileOf(await feedFull());
+      assert.ok(fileA.path.includes(path.join('voicepacks', A)), fileA.path);
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const s = await ashot('s5a-picked-B');
+      const r = await feedFull();
+      assertFrom(r, B);
+      const f = fileOf(r);
+      assert.notEqual(f.sha256, fileA.sha256, 'another recording');
+      const p = await pshot('s5b-pet-said-B');
+      return note(`S5 (B=${B}): settings.json=${JSON.stringify(saved())}\n  ${fmt(r)}\n  A's file was ${fileA.path.replace(data, '<userData>')} sha256=${fileA.sha256} → ${s}, ${p}`);
+    }, () => admin || page);
+
+    await step(S, 'S6 选「不使用」：同一句不再从语音包播放（走引擎链）；再切回 B', async () => {
+      await voiceTab();
+      await pickInUi(/^不使用/);
+      await choiceIs('none');
+      assert.deepEqual(saved(), { dafeiyu: 'none' });
+      const cur = await current();
+      assert.match(cur, /不使用语音包/);
+      const s = await ashot('s6-none');
+      const r = await feedFull();
+      assert.notEqual(r.provider, 'pack', fmt(r));
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      return note(`S6 不使用: 正在用「${cur}」; ${fmt(r)}\n  back to B: settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7 重启应用：settings.json 仍是 B，设置页显示 B，固定台词仍来自 style-yujie', async () => {
+      await app.close();
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const r = await feedFull();
+      assertFrom(r, B);
+      const p = await pshot('s7a-pet-after-restart');
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·御姐`));
+      const s = await ashot('s7b-voice-tab-after-restart');
+      return note(`S7 after restart: settings.json=${JSON.stringify(saved())}; picker「${cb}」; ${cur}\n  ${fmt(r)} → ${p}, ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7c 选择按角色绑定：另一个角色（克洛蒂）的语音页显示她自己的选择「内置」，不受大肥鱼的 B 影响', async () => {
+      const other = (await admin.evaluate(() => window.petAdmin.state())).roster.find((x) => x.base === 'claude');
+      await voiceTab(other.id);
+      const cb = await comboText();
+      const cur = await current();
+      const choice = await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice, PANEL);
+      assert.equal(choice, 'auto');
+      assert.match(cb, /^内置（自动/);
+      assert.match(cur, /专属/);
+      assert.deepEqual(saved(), { dafeiyu: B }, 'only her pick is saved');
+      const s = await ashot('s7c-other-character-own-choice');
+      await voiceTab();
+      return note(`S7c ${other.id} (base claude): choice=${choice}; picker「${cb}」; ${cur}; settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S8 删除正在使用的 B：安全回退到内置（她的专属语音包），设置页提示；选择仍保存，重新下载后恢复', async () => {
+      await admin.evaluate(() => { location.hash = '/store/voices'; });
+      await admin.waitForSelector('[data-store-voices]');
+      await admin.click(`[data-voice-remove="${B}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await until('B removed', async () => (await storeStates())[B] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, B)));
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await voiceTab();
+      await admin.locator(`${PANEL} [data-voice-pack-missing="${B}"]`).waitFor();
+      const warn = (await admin.locator(`${PANEL} [data-voice-pack-missing]`).innerText()).replace(/\s+/g, ' ').trim();
+      const cur = await current();
+      assert.match(cur, /专属/);
+      const s = await ashot('s8-removed-in-use');
+      assert.deepEqual(saved(), { dafeiyu: B }, 'the pick is kept');
+      return note(`S8 B deleted while in use: ${fmt(r)}\n  正在用: ${cur}\n  notice: ${warn}\n  settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S9 没有渲染错误', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      return 'no console errors';
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voiceselect-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
+// ---------------------------------------------------------------- voiceflow (语音包端到端：商店 → 下载 → 本地列表 → 角色选择 → 播放 → 重启)
+// T-5096. One user journey from an empty userData (only the age gate answered, as every scenario starts): turn 朗读
+// on in 设置 → 朗读; 商店 → 语音包 shows the 5 风格语音包 未下载; download 可爱 and 少年 from a throttled local server
+// playing the CDN (the archives rebuilt and sha256-checked by build-voice-catalog.js --check), seeing 未下载 → 下载中
+// (progress) → 已下载; both are in the local list (已下载 filter, 设置 → 语音包, userData/voicepacks/); 角色 → 大肥鱼 →
+// 语音 → 语音包 picks 可爱: the pet plays the line from style-cute; switching to 少年 plays it from style-shaonian at
+// once; after a restart she is still on 少年 and both packs are still 已下载. The played files are copied next to the
+// screenshots (played-*.ogg) so they can be listened to. Free: fake lh, no key. Evidence in out/e2e/voiceflow/.
+// `voiceflowcdn` (T-5104) is the same journey against the real CDN: no local server and no PIXELPET_CATALOG_URL, so
+// the app fetches the catalog's default ${CDN_ORIGIN}/…/voices-v1/<id>.zip. Every main-process net.fetch is logged
+// (url, status, bytes) to fetch-log.json; the first pack downloads at full speed (its 未下载 → 下载中 → 已下载 seen by a
+// MutationObserver on the card), the second one's CDN body is only paced (~250 KB/s, same bytes) so 下载中 can be
+// screenshotted. Needs network. Evidence in out/e2e/voiceflowcdn/.
+async function voiceFlowScenario({ cdn = false } = {}) {
+  const S = cdn ? 'voiceflowcdn' : 'voiceflow';
+  const SHOTS = path.join(OUT, S);
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const VPk = require('../src/core/voice-pack');
+  const crypto = require('node:crypto');
+  const index = Catalog.loadVoiceIndex();
+  const IDS = index.voicePacks.map((v) => v.id);
+  const A = 'style-cute';
+  const B = 'style-shaonian';
+  const nameOf = (id) => index.voicePacks.find((v) => v.id === id).name;
+  const labelOf = (id) => index.voicePacks.find((v) => v.id === id).styleLabel;
+  const FULL = '呃……肚子圆滚滚的，吃不下了。';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflowzips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const served = [];
+  const CDN_BASE = `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/${index.release}`;
+  if (cdn) assert.ok(!process.env.PIXELPET_CATALOG_URL, 'voiceflowcdn: unset PIXELPET_CATALOG_URL');
+  const server = cdn ? { address: () => ({ port: 0 }), close: () => {} } : http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = path.join(zips, name);
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~250 KB/s so 下载中 and its progress bar are on screen for a few seconds
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 24 * 1024)); i += 24 * 1024; setTimeout(tick, 100); };
+    tick();
+  });
+  if (!cdn) await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = cdn ? CDN_BASE : `http://127.0.0.1:${server.address().port}/voices`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflow-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflowfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', ...(cdn ? {} : { PIXELPET_CATALOG_URL: base }) };
+  const VDIR = path.join(data, 'voicepacks');
+  // voiceflowcdn: log every main-process net.fetch; `pace` (archive names) slows only those bodies to ~250 KB/s
+  const fetchLog = [];
+  const hookFetch = async (a) => {
+    if (!cdn) return;
+    await a.evaluate(({ net }) => {
+      if (global.__vfHooked) return;
+      global.__vfHooked = true;
+      global.__vfLog = [];
+      global.__vfPace = new Set();
+      const orig = net.fetch.bind(net);
+      net.fetch = async (url, opts) => {
+        const t0 = Date.now();
+        const e = { url: String(url), t0 };
+        global.__vfLog.push(e);
+        const res = await orig(url, opts);
+        e.status = res.status; e.contentLength = res.headers.get('content-length'); e.contentType = res.headers.get('content-type');
+        const paced = [...global.__vfPace].some((n) => String(url).endsWith('/' + n));
+        e.paced = paced;
+        const reader = res.body.getReader();
+        let bytes = 0;
+        const body = new ReadableStream({
+          async pull(c) {
+            const { done, value } = await reader.read();
+            if (done) { e.bytes = bytes; e.ms = Date.now() - t0; return c.close(); }
+            bytes += value.length;
+            if (paced) await new Promise((r) => setTimeout(r, Math.ceil(value.length / 256)));
+            c.enqueue(value);
+          },
+        });
+        return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
+    });
+  };
+  const pullFetchLog = async (a) => { if (cdn) fetchLog.push(...(await a.evaluate(() => (global.__vfLog || []).filter((e) => /^https?:/.test(e.url))).catch(() => []))); };
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  const settingsFile = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const picks = () => (settingsFile().tts || {}).voicePackByCharacter;
+  const ls = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).sort() : null);
+  record('f0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\n${cdn ? `real CDN: ${base}/ (no PIXELPET_CATALOG_URL, no local server)` : `served from ${base} (throttled ~250 KB/s, playing ${Catalog.CDN_ORIGIN}/…/${index.release}/)`}\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  const before = ls(data);
+  // video chapters: wall-clock marks, turned into seconds from each window's recording start (videos.json)
+  const marks = [];
+  const videos = [];
+  const mark = (kind, text) => { marks.push({ wall: Date.now() / 1000, kind, text }); };
+  const VS = { width: 1180, height: 900 };
+  const track = (p, name) => { videos.push({ name, start: Date.now() / 1000, page: p }); };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video'), videoSize: VS });
+  await hookFetch(app);
+  track(page, 'pet-1');
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const openAdmin = async (route = 'overview') => {
+    admin = await openAdminWindow(app, page, route);
+    track(admin, `admin-${videos.filter((v) => v.name.startsWith('admin')).length + 1}`);
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 900); }, W);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const go = async (route) => {
+    await admin.bringToFront();
+    if (await admin.$('[role="option"]')) await closePicker();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(400);
+  };
+  const ashot = async (name) => { await admin.bringToFront(); await admin.waitForTimeout(350); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const states = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+  const openVoices = async () => { await go('/store/voices'); await attached('[data-store-voices]'); await admin.waitForTimeout(300); };
+  const PANEL = '[role="tabpanel"]:not([inert])';
+  const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
+  const closePicker = async () => {
+    await admin.keyboard.press('Escape');
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+  };
+  const voiceTab = async (id = 'dafeiyu-pixel') => {
+    await go(`/characters/${id}`);
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await combo().waitFor();
+    await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
+    await admin.waitForTimeout(300);
+  };
+  const current = async () => (await admin.locator(`${PANEL} [data-voice-pack-current]`).innerText()).replace(/\s+/g, ' ').trim();
+  const options = () => admin.$$eval('.lobe-select__group-label, [role="option"]', (els) => els.map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), group: e.classList.contains('lobe-select__group-label'), disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' })));
+  const pick = async (rx, shotName) => {
+    await combo().click();
+    await admin.waitForSelector('[role="option"]');
+    await admin.waitForTimeout(300);
+    const opts = await options();
+    const s = shotName ? await ashot(shotName) : null;
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+    return { opts, shot: s };
+  };
+  const choiceIs = (choice) => until(`picker = ${choice}`, () => admin.evaluate(([p, c]) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice === c, [PANEL, choice]), 10000);
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600);
+  };
+  // feed her when she is full: she says FULL; what the pet window played, from which pack file
+  const feedFull = async (shotName) => {
+    await page.bringToFront();
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await page.evaluate(() => window.pet.debugSet({ hunger: 0 }));
+    await clickAct(page, 'feed');
+    await page.click('#food-menu button');
+    await page.waitForFunction((n) => window.petFx.offerLog().slice(n).some((e) => e.kind === 'feed' && e.n), n0, { timeout: 20000 });
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => e.kind === 'feed');
+    // the bubble while it plays
+    const shot = shotName ? await (async () => { await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && sp.started; }, entry.n, { timeout: 20000 }).catch(() => {}); return pshot(shotName); })() : null;
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 });
+    const sp = await page.evaluate(() => window.petFx.lastSpeech());
+    return { text: entry.text, provider: sp.provider, packId: sp.packId, packFile: sp.packFile, bytes: sp.bytes || 0, mime: sp.mime || null, started: !!sp.started, status: sp.status, shot };
+  };
+  const packDir = (id) => {
+    if (fs.existsSync(path.join(VDIR, id || '', 'manifest.json'))) return path.join(VDIR, id);
+    const b = path.join(ROOT, 'src', 'voicepacks');
+    const d = fs.readdirSync(b).find((n) => { try { return JSON.parse(fs.readFileSync(path.join(b, n, 'manifest.json'), 'utf8')).id === id; } catch { return false; } });
+    return d ? path.join(b, d) : path.join(VDIR, id || '');
+  };
+  const fileOf = (r) => {
+    const f = path.join(packDir(r.packId), r.packFile || '');
+    if (!r.packFile || !fs.existsSync(f)) return { path: f, exists: false };
+    const buf = fs.readFileSync(f);
+    return { path: f, exists: true, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) };
+  };
+  const fmt = (r) => { const f = fileOf(r); return `「${r.text}」 → provider=${r.provider} packId=${r.packId} packFile=${r.packFile} played bytes=${r.bytes} mime=${r.mime} started=${r.started} status=${r.status}${f.exists ? ` | file ${f.path.replace(data, '<userData>').replace(ROOT, '<repo>')} size=${f.size} sha256=${f.sha256}` : ''}`; };
+  const assertFrom = (r, packId, keep) => {
+    const f = fileOf(r);
+    assert.equal(r.text, FULL);
+    assert.deepEqual([r.provider, r.packId, r.status, r.started], ['pack', packId, 'done', true], fmt(r));
+    assert.ok(f.exists, `file ${f.path}`);
+    assert.equal(r.bytes, f.size, 'the audio played is that file');
+    if (keep) fs.copyFileSync(f.path, path.join(SHOTS, keep));
+    return f;
+  };
+
+  try {
+    await step(S, 'F0 全新 userData（只有年龄确认）：唤醒大肥鱼；本机没有 voicepacks/，settings.json 没有语音包选择', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      mark('step', '全新 userData：选大肥鱼、起名、唤醒');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      mark('check', '桌宠出现；userData 里没有 voicepacks/');
+      assert.ok(!fs.existsSync(VDIR) || ls(VDIR).filter((n) => n.startsWith('style-')).length === 0);
+      assert.equal(picks() === undefined || JSON.stringify(picks()) === '{}', true);
+      const s = await pshot('f0-pet-fresh');
+      return note(`F0 userData before launch: ${JSON.stringify(before)} (empty dir); after hatch: ${JSON.stringify(ls(data))}\n  voicepacks/: ${JSON.stringify(ls(VDIR))}; tts.voicePackByCharacter=${JSON.stringify(picks())} → ${s}`);
+    }, page);
+
+    await step(S, 'F1 设置 → 朗读：打开「朗读回复」开关（全新安装默认关），settings.json prefs.voice=true', async () => {
+      await openAdmin('tts');
+      assert.equal(settingsFile().prefs?.voice ?? false, false);
+      mark('step', '设置 → 朗读：打开「朗读回复」');
+      await adminFlip(admin, 'prefs.voice');
+      await until('prefs.voice saved', () => settingsFile().prefs?.voice === true, 8000);
+      const s = await ashot('f1-tts-voice-on');
+      return note(`F1 prefs.voice=${settingsFile().prefs.voice} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'F2 商店 → 语音包：5 个风格语音包（可爱/御姐/少年/沉稳/搞笑），全部「未下载」', async () => {
+      mark('step', '打开 商店 → 语音包');
+      await openVoices();
+      const st = await states();
+      mark('check', `5 张语音包卡片全部「未下载」：${Object.keys(st).join(', ')}`);
+      assert.deepEqual(Object.keys(st), IDS);
+      assert.ok(Object.values(st).every((x) => x === 'remote'), JSON.stringify(st));
+      const cards = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => `${e.dataset.storeVoice}「${(e.querySelector('[data-store-voice-style]') || {}).textContent}」${(e.querySelector('[data-store-voice-meta]') || {}).textContent} · ${(e.querySelector('[data-voice-not-downloaded]') || {}).textContent}`));
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 5.*已下载 0/);
+      const s = await ashot('f2-store-not-downloaded');
+      return note(`F2 cards: ${cards.join(' | ')}\n  filter: ${filter} → ${s}`);
+    }, () => admin || page);
+
+    const progress = {};
+    for (const [i, id] of [[3, A], [4, B]]) {
+      const fast = cdn && id === A;
+      await step(S, `F${i} 下载「${nameOf(id)}」${cdn ? (fast ? '（真实 CDN，全速）' : '（真实 CDN，仅放慢接收速度）') : ''}：未下载 → 下载中（进度条、百分比、取消）→ 已下载`, async () => {
+        const st0 = (await states())[id];
+        if (cdn && !fast) await app.evaluate((_e, n) => global.__vfPace.add(n), `${id}.zip`);
+        // every state the card goes through, as rendered
+        await admin.evaluate((x) => {
+          const el = document.querySelector(`[data-store-voice="${x}"]`);
+          window.__vfStates = [{ t: Date.now(), state: el.dataset.voiceState, text: '' }];
+          const obs = new MutationObserver(() => {
+            const c = document.querySelector(`[data-store-voice="${x}"]`);
+            if (!c) return;
+            const p = c.querySelector(`[data-voice-download-progress="${x}"]`);
+            const last = window.__vfStates[window.__vfStates.length - 1];
+            const cur = { t: Date.now(), state: c.dataset.voiceState, text: p ? p.textContent : '' };
+            if (cur.state !== last.state || cur.text !== last.text) window.__vfStates.push(cur);
+          });
+          obs.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+          window.__vfObs = obs;
+        }, id);
+        mark('step', `点「下载」：${nameOf(id)}`);
+        await admin.click(`[data-voice-download="${id}"]`);
+        if (fast) {
+          await until(`${id} installed`, async () => (await states())[id] === 'installed', 60000);
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          const seq = timeline.map((x) => x.state).filter((x, k, a) => x !== a[k - 1]);
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+          assert.equal(seq[0], 'remote');
+          assert.ok(seq.includes('downloading'), JSON.stringify(seq));
+          assert.equal(seq[seq.length - 1], 'installed');
+          assert.deepEqual(seq, ['remote', 'downloading', 'installed'], 'no flash back to 未下载');
+          assert.equal(await admin.$eval(`[data-voice-downloaded="${id}"]`, (el) => el.textContent), '已下载');
+          const marker = JSON.parse(fs.readFileSync(path.join(VDIR, id, '.catalog.json'), 'utf8'));
+          assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === id).sha256);
+          mark('check', `${id} 卡片 ${seq.join(' → ')}（全速真实 CDN）`);
+          const s2 = await ashot(`f${i}b-downloaded-${id}`);
+          progress[id] = timeline.filter((x) => x.text).map((x) => x.text).join(' / ');
+          return note(`F${i} ${id} (real CDN, full speed): card states ${seq.join(' → ')} in ${timeline[timeline.length - 1].t - timeline[0].t} ms; progress texts ${JSON.stringify(timeline.filter((x) => x.text).map((x) => x.text))}; marker ${JSON.stringify(marker)} → f${i}-states-${id}.json, ${s2}`);
+        }
+        await attached(`[data-voice-download-progress="${id}"]`);
+        await admin.waitForFunction((x) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${x}"]`)?.textContent || ''), id, { timeout: 15000 });
+        const st1 = (await states())[id];
+        const mid = await admin.$eval(`[data-voice-download-progress="${id}"]`, (el) => el.textContent);
+        assert.equal(st1, 'downloading');
+        assert.equal(await admin.$eval(`[data-voice-downloading="${id}"]`, (el) => el.textContent), '下载中');
+        mark('check', `${id} 卡片显示「下载中」与进度「${mid}」`);
+        const s1 = await ashot(`f${i}a-downloading-${id}`);
+        await until(`${id} installed`, async () => (await states())[id] === 'installed', 60000);
+        assert.equal(await admin.$eval(`[data-voice-downloaded="${id}"]`, (el) => el.textContent), '已下载');
+        const marker = JSON.parse(fs.readFileSync(path.join(VDIR, id, '.catalog.json'), 'utf8'));
+        assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === id).sha256);
+        mark('check', `${id} 卡片显示「已下载」`);
+        const s2 = await ashot(`f${i}b-downloaded-${id}`);
+        progress[id] = mid;
+        if (cdn) {
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+        }
+        return note(`F${i} ${id}${cdn ? ' (real CDN, body paced)' : ''}: ${st0} → ${st1}（${mid}）→ installed; marker ${JSON.stringify(marker)} → ${s1}, ${s2}`);
+      }, () => admin || page);
+    }
+
+    await step(S, 'F5 本地可用列表：商店「已下载」筛选、设置 → 语音包 表格（来源 商店下载）、磁盘 userData/voicepacks/ 都有两个包', async () => {
+      await admin.locator('[data-store-voice-filter]').getByText(/^已下载 2$/).click();
+      await admin.waitForTimeout(400);
+      const shown = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => e.dataset.storeVoice));
+      assert.deepEqual(shown.sort(), [A, B].sort());
+      const s1 = await ashot('f5a-store-filter-downloaded');
+      mark('check', `「已下载」筛选只显示 ${shown.join('、')}`);
+      mark('step', '打开 设置 → 语音包（本地可用列表）');
+      await go('/voicepacks');
+      const rows = await admin.$$eval('[data-admin-page] tr[data-row-key]', (els) => els.map((e) => ({ id: e.dataset.rowKey, text: e.textContent.replace(/\s+/g, ' ') })));
+      for (const id of [A, B]) {
+        const row = rows.find((r) => r.id === id);
+        assert.ok(row, rows.map((r) => r.id).join(','));
+        assert.match(row.text, /商店下载/);
+      }
+      await admin.evaluate((id) => document.querySelector(`[data-admin-page] tr[data-row-key="${id}"]`)?.scrollIntoView({ block: 'center' }), A);
+      mark('check', '设置 → 语音包 表格中 style-cute、style-shaonian 来源为「商店下载」');
+      const s2 = await ashot('f5b-settings-voicepacks-local-list');
+      const disk = ls(VDIR);
+      record('f5-disk.txt', `${disk.map((d) => `<userData>/voicepacks/${d}: ${(ls(path.join(VDIR, d)) || []).length} entries`).join('\n')}\n`);
+      return note(`F5 已下载筛选: ${shown.join(', ')}\n  设置 → 语音包: ${rows.filter((r) => /商店下载/.test(r.text)).map((r) => `${r.id}: ${r.text.slice(0, 80)}`).join(' | ')}\n  disk voicepacks/: ${JSON.stringify(disk)} → ${s1}, ${s2}`);
+    }, () => admin || page);
+
+    let fA = null;
+    await step(S, `F6 角色 → 大肥鱼 → 语音 → 语音包：选「${nameOf(A)}」，写入 settings.json；桌宠喂食台词播放 userData/voicepacks/${A} 里的录音`, async () => {
+      mark('step', '角色 → 大肥鱼 → 语音 → 打开「语音包」下拉');
+      await voiceTab();
+      const { opts, shot: s0 } = await pick(new RegExp(nameOf(A)), 'f6a-picker-downloaded');
+      await choiceIs(A);
+      mark('check', `已选「${nameOf(A)}」，settings.json=${JSON.stringify(picks())}`);
+      assert.ok(opts.some((o) => o.group && o.text === '风格语音包（已下载）'));
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(A)} 风格·${labelOf(A)}`));
+      assert.deepEqual(picks(), { dafeiyu: A });
+      const s1 = await ashot('f6b-picked-A');
+      mark('step', '桌宠：喂食（已吃饱）');
+      const r = await feedFull('f6c-pet-plays-A');
+      fA = assertFrom(r, A, `played-${A}.ogg`);
+      mark('check', `桌宠播放 ${A}/${r.packFile}（${r.bytes} 字节）`);
+      return note(`F6 picker: ${opts.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  正在用: ${cur}; settings.json tts.voicePackByCharacter=${JSON.stringify(picks())}\n  ${fmt(r)} → ${s0}, ${s1}, ${r.shot}, played-${A}.ogg`);
+    }, () => admin || page);
+
+    await step(S, `F7 切换到「${nameOf(B)}」：不用重启，同一句立刻来自 ${B}（另一段录音）`, async () => {
+      mark('step', `语音页切换到「${nameOf(B)}」`);
+      await voiceTab();
+      await pick(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      mark('check', `已切到「${nameOf(B)}」，settings.json=${JSON.stringify(picks())}`);
+      assert.deepEqual(picks(), { dafeiyu: B });
+      const cur = await current();
+      const s = await ashot('f7a-picked-B');
+      mark('step', '桌宠：再次喂食（不重启）');
+      const r = await feedFull('f7b-pet-plays-B');
+      const f = assertFrom(r, B, `played-${B}.ogg`);
+      mark('check', `同一句改为播放 ${B}/${r.packFile}（${r.bytes} 字节）`);
+      assert.notEqual(f.sha256, fA.sha256, 'another recording');
+      return note(`F7 正在用: ${cur}; settings.json=${JSON.stringify(picks())}\n  ${fmt(r)}\n  (A played ${fA.path.replace(data, '<userData>')} sha256=${fA.sha256}) → ${s}, ${r.shot}, played-${B}.ogg`);
+    }, () => admin || page);
+
+    await step(S, 'F8 重启应用：settings.json 仍是少年包；商店两个包仍「已下载」；角色语音页显示少年；喂食台词仍来自 style-shaonian', async () => {
+      await pullFetchLog(app);
+      await app.close();
+      mark('step', '重启应用（关闭后用同一个 userData 再启动）');
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart'), videoSize: VS }));
+      await hookFetch(app);
+      track(page, 'pet-2');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      mark('check', `重启后 settings.json tts.voicePackByCharacter=${JSON.stringify(picks())}`);
+      assert.deepEqual(picks(), { dafeiyu: B });
+      assert.equal(settingsFile().prefs.voice, true);
+      mark('step', '重启后喂食');
+      const r = await feedFull('f8a-pet-after-restart');
+      assertFrom(r, B);
+      mark('check', `重启后仍播放 ${B}/${r.packFile}`);
+      await openAdmin('overview');
+      await openVoices();
+      const st = await states();
+      assert.deepEqual(st, Object.fromEntries(IDS.map((id) => [id, id === A || id === B ? 'installed' : 'remote'])));
+      mark('check', `重启后商店：style-cute、style-shaonian 仍「已下载」`);
+      const s1 = await ashot('f8b-store-after-restart');
+      await voiceTab();
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·${labelOf(B)}`));
+      mark('check', `重启后大肥鱼语音页仍显示「${nameOf(B)}」`);
+      const s2 = await ashot('f8c-voice-tab-after-restart');
+      return note(`F8 after restart: settings.json tts.voicePackByCharacter=${JSON.stringify(picks())} prefs.voice=${settingsFile().prefs.voice}\n  store states ${JSON.stringify(st)}\n  正在用: ${cur}\n  ${fmt(r)} → ${r.shot}, ${s1}, ${s2}`);
+    }, () => admin || page);
+
+    await step(S, 'F9 没有渲染错误；下载请求只打到商店地址', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      if (cdn) {
+        await pullFetchLog(app);
+        record('fetch-log.json', JSON.stringify(fetchLog, null, 2));
+        const want = [A, B].map((id) => `${CDN_BASE}/${id}.zip`).sort();
+        assert.deepEqual(fetchLog.map((e) => e.url).sort(), want);
+        for (const e of fetchLog) {
+          const v = index.voicePacks.find((x) => e.url.endsWith('/' + x.file));
+          assert.deepEqual([e.status, e.bytes, Number(e.contentLength)], [200, v.bytes, v.bytes], JSON.stringify(e));
+        }
+        return note(`F9 no console errors; main-process downloads (real CDN, no local server):\n${fetchLog.map((e) => `  GET ${e.url} → ${e.status} ${e.contentType} ${e.bytes} bytes in ${e.ms} ms${e.paced ? ' (paced)' : ''}`).join('\n')}`);
+      }
+      assert.deepEqual([...new Set(served)].sort(), [`${A}.zip`, `${B}.zip`].sort());
+      return note(`F9 no console errors; served: ${served.join(', ')}`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voiceflow-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    server.close();
+    // chapters per window recording: marks inside [start, next window start of the same app run) count for every window open then
+    const out = [];
+    for (const v of videos) {
+      const file = await v.page.video()?.path().catch(() => null);
+      if (!file) continue;
+      const named = path.join(path.dirname(file), `${v.name}.webm`);
+      try { fs.renameSync(file, named); } catch { continue; }
+      out.push({ name: v.name, file: path.relative(SHOTS, named), start: v.start });
+    }
+    fs.writeFileSync(path.join(SHOTS, 'videos.json'), JSON.stringify(out, null, 1));
+    fs.writeFileSync(path.join(SHOTS, 'marks.jsonl'), marks.map((m) => JSON.stringify(m)).join('\n') + '\n');
+  }
+}
+
 // ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
 // A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
 // other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
@@ -10043,7 +11082,7 @@ async function charMigrateScenario() {
       const pl = await petLook();
       assert.deepEqual(pl, { kind: 'sprites', outfit: 'qipao' });
       await hover(page);
-      const meta = await page.textContent('#meta');
+      const meta = await statusLine(page);
       assert.match(meta, /小鱼 · 大肥鱼 · 像素 · 知己 ♥72/);
       petAfter1 = json('pet.json');
       settingsAfter1 = json('settings.json');
@@ -10270,7 +11309,7 @@ async function adminCoverageScenario() {
   };
   const attached = (sel) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel));
   const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
-  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=')).getBounds());
+  const petBoundsNow = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
   try {
     await step(S, 'B0 hatch 格萝可, ⚙ 设置 opens the settings window (the pet window has no ⋯ menu since T-2718)', async () => {
       await page.waitForSelector('.char-card');
@@ -10407,7 +11446,7 @@ async function adminCoverageScenario() {
       const petRoam = await page.evaluate(async () => (await window.pet.getSettings()).prefs.roam);
       assert.equal(petRoam, false);
       // 找回桌宠: she was dragged to the top-left corner
-      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui')).setPosition(10, 10); });
+      await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('/panel/')).setPosition(10, 10); });
       const moved = await petBoundsNow();
       await admin.click('[data-place-pet]');
       await page.waitForTimeout(500);
@@ -10528,6 +11567,190 @@ async function adminCoverageScenario() {
     }, () => admin);
   } finally {
     await app.close().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------- permissions (授权, T-5075)
+// The onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限 (main/permissions.js, docs/permissions.md).
+// Linux has no macOS prompts, so run A reports darwin (PIXELPET_E2E_PLATFORM) and plays the system's answers with
+// PIXELPET_E2E_PERMS (permissions.js fakeMac: 麦克风 asks and is granted, 下载 is granted, 桌面 is refused); the
+// folder picker answers through debug-next-open. Runs B / C are the real platform: only the folder list, and no
+// page at all without 本机能力. Free: fake lh. The real macOS prompts need a person on a Mac (docs/permissions.md §5).
+async function permissionsScenario() {
+  const S = 'permissions';
+  const SHOTS = path.join(OUT, 'permissions');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const settingsOf = (data) => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const start = async (env = {}) => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-perms-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permsfake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_E2E', hostname: os.hostname(), platform: process.platform, online: true, channels: [] }]));
+    const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, ...env }, { perms: true });
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    return { app, page, data, fakeDir };
+  };
+  const tags = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#perm-system .perm-row')].map((r) => [r.dataset.perm, r.dataset.state])));
+  const listed = (page) => page.evaluate(() => [...document.querySelectorAll('#perm-folder-list li[data-folder]')].map((li) => li.dataset.folder));
+
+  // ---- A: macOS (faked) --------------------------------------------------------------------------------------
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permshome-')));
+  for (const d of ['Downloads', 'Desktop', 'Documents']) fs.mkdirSync(path.join(home, d));
+  const extra = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permsextra-')));
+  let run = null;
+  try {
+    run = await start({ PIXELPET_E2E_PLATFORM: 'darwin', PIXELPET_E2E_PERMS: JSON.stringify({ mic: 'not-determined', micAnswer: true, folders: { downloads: 'grant', desktop: 'deny' }, home }) });
+    const { page } = run;
+    await step(S, 'P1 macOS: 唤醒 with 本机能力 opens 授权 — 麦克风 + 下载 / 桌面 / 文稿 one row each, folders unknown until asked, empty list', async () => {
+      await page.check('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
+      assert.deepEqual(await tags(page), { microphone: 'not-determined', downloads: 'unknown', desktop: 'unknown', documents: 'unknown' });
+      assert.equal(await page.textContent('#perms-title'), '授予权限');
+      assert.equal(await page.locator('#perm-logo .perm-look').count(), 1, 'her portrait where LobeHub has its logo');
+      assert.equal(await page.locator('#perm-folders').isVisible(), true);
+      assert.deepEqual(await listed(page), []);
+      assert.match(await page.textContent('#perm-folder-list'), /还没有文件夹/);
+      assert.equal(await page.locator('#perm-system [data-perm-ask]').count(), 4, 'one 授权 button per row');
+      const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+      assert.deepEqual(size, { w: 680, h: 600 }, 'the 授权 page has a taller window');
+      assert.equal(await page.evaluate(() => { const el = document.querySelector('.perm-scroll'); return el.scrollHeight <= el.clientHeight + 1; }), true, 'everything fits without scrolling');
+      await page.waitForTimeout(700); // her portrait has loaded
+      await page.screenshot({ path: path.join(SHOTS, 'a1-mac-before.png') });
+      return JSON.stringify(await tags(page));
+    }, page);
+
+    await step(S, 'P2 macOS: 授权 asks one at a time — 麦克风 granted; 下载 granted and added to the list; 桌面 refused → 去系统设置 opens 文件与文件夹', async () => {
+      await page.click('[data-perm-ask="microphone"]');
+      await page.waitForFunction(() => document.querySelector('[data-perm="microphone"]').dataset.state === 'granted');
+      assert.equal(await page.locator('[data-perm="microphone"] .perm-done').count(), 1, 'a check instead of the button');
+      await page.click('[data-perm="downloads"] .perm-title'); // the whole row asks, as in LobeHub
+      await page.waitForFunction(() => document.querySelector('[data-perm="downloads"]').dataset.state === 'granted');
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads')]);
+      await page.click('[data-perm-ask="desktop"]');
+      await page.waitForFunction(() => document.querySelector('[data-perm="desktop"]').dataset.state === 'denied');
+      assert.match(await page.textContent('[data-perm="desktop"] .perm-desc'), /已拒绝/);
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads')], 'a refused folder is not added');
+      assert.equal(await page.locator('[data-perm="desktop"] [data-perm-ask]').count(), 0);
+      await page.click('[data-perm-settings="desktop"]');
+      await page.waitForFunction(() => window.pet.debugOpenedLinks().then((l) => l.length > 0));
+      const links = await page.evaluate(() => window.pet.debugOpenedLinks());
+      assert.deepEqual(links, ['x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders']);
+      assert.equal(await page.locator('[data-perm="documents"] [data-perm-ask]').count(), 1, '文稿 untouched: still asks');
+      await page.screenshot({ path: path.join(SHOTS, 'a2-mac-after.png') });
+      return `${JSON.stringify(await tags(page))}; opened ${links[0]}`;
+    }, page);
+
+    await step(S, 'P3 添加文件夹… adds the picked folder (system picker; e2e: debug-next-open); × removes it', async () => {
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await page.click('#perm-add');
+      await page.waitForSelector(`#perm-folder-list li[data-folder="${extra}"]`);
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads'), extra]);
+      await page.click(`#perm-folder-list li[data-folder="${extra}"] button`);
+      await page.waitForFunction((p) => !document.querySelector(`#perm-folder-list li[data-folder="${p}"]`), extra);
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await page.click('#perm-add');
+      await page.waitForSelector(`#perm-folder-list li[data-folder="${extra}"]`);
+      return (await listed(page)).join(', ');
+    }, page);
+
+    await step(S, 'P4 下一步 wakes her up; settings.json keeps the list (no commands) and the folders asked about', async () => {
+      await page.click('#perms-next');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      const l = settingsOf(run.data).local;
+      assert.deepEqual(l, { folders: [path.join(home, 'Downloads'), extra], allowCommands: false, asked: ['downloads', 'desktop'] });
+      return JSON.stringify(l);
+    }, page);
+
+    let admin = null;
+    await step(S, 'P5 设置 → LobeHub 与本机 → 文件夹与系统权限: the same rows and list; remove, add, 允许运行命令 (asks first)', async () => {
+      await page.evaluate(() => window.pet.debugSet({ localAbilities: true }));
+      admin = await openAdminWindow(run.app, page, 'connection');
+      await adminUntil(admin, () => !!document.querySelector('[data-card="permissions"] [data-perm="desktop"]'), null, 15000, 'permissions card');
+      const st = await admin.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-card="permissions"] [data-perm]')].map((r) => [r.dataset.perm, r.dataset.state])));
+      assert.deepEqual(st, { microphone: 'granted', downloads: 'granted', desktop: 'denied', documents: 'unknown' });
+      assert.match(await admin.textContent('[data-card="permissions"] [data-perm="desktop"]'), /已拒绝：只能在系统设置里打开/);
+      assert.equal(await admin.locator('[data-card="permissions"] [data-perm-settings="desktop"]').count(), 1, '去系统设置 for the refused one');
+      await admin.evaluate((p) => document.querySelector(`[data-card="permissions"] [data-folder="${p}"] button`).click(), extra);
+      await adminUntil(admin, (p) => !document.querySelector(`[data-card="permissions"] [data-folder="${p}"]`), extra, 8000, 'removed');
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await admin.evaluate(() => document.querySelector('[data-folders-add]').click());
+      await adminUntil(admin, (p) => !!document.querySelector(`[data-card="permissions"] [data-folder="${p}"]`), extra, 8000, 'added');
+      await adminFlip(admin, 'local.allowCommands', '允许运行命令');
+      await adminUntil(admin, () => document.querySelector('[data-key="local.allowCommands"]')?.getAttribute('aria-checked') === 'true', null, 8000, 'commands on');
+      assert.equal(settingsOf(run.data).local.allowCommands, true);
+      await admin.evaluate(() => document.querySelector('[data-card="permissions"]').scrollIntoView());
+      await admin.waitForTimeout(800); // the confirm dialog has faded out
+      await admin.screenshot({ path: path.join(SHOTS, 'a5-settings-card.png') });
+      return JSON.stringify(st);
+    }, () => admin);
+
+    await step(S, 'P8 the list is in effect but there is no direct way (fake lh): she answers without tools and the pet window says why', async () => {
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '看看下载里有什么');
+      await page.click('#chat-send');
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)', { timeout: 20000 });
+      const t = await page.evaluate(() => ({ title: document.getElementById('toast-title').textContent, body: document.getElementById('toast-body').textContent, action: document.getElementById('toast-open').textContent }));
+      assert.equal(t.title, '这次用不了本机工具');
+      assert.match(t.body, /lh connect 没法限制/);
+      assert.equal(t.action, '去设置');
+      const last = fs.readFileSync(path.join(run.fakeDir, 'runs.log'), 'utf8').trim().split('\n').map(JSON.parse).pop();
+      assert.deepEqual(last.tools || [], [], 'no --tool');
+      await page.waitForTimeout(700); // the notice has faded in
+      await page.screenshot({ path: path.join(SHOTS, 'a8-pet-notice.png') });
+      return `${t.title}: ${t.body}`;
+    }, page);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+
+  // ---- B: this platform, 本机能力 ticked: only the folder list -----------------------------------------------
+  run = null;
+  try {
+    run = await start();
+    const { page } = run;
+    await step(S, 'P6 Linux / Windows with 本机能力: 授权 shows only the folder list (no system rows); 返回 goes back, 下一步 goes on', async () => {
+      await page.check('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
+      assert.equal(await page.locator('#perm-system').isHidden(), true);
+      assert.equal(await page.locator('#perm-folders').isVisible(), true);
+      await page.screenshot({ path: path.join(SHOTS, 'b1-linux.png') });
+      await page.click('#perms-back');
+      await page.waitForSelector('#onboarding:not(.hidden)');
+      assert.equal(await page.locator('.char-card.selected[data-species="grok"]').count(), 1, '返回 keeps her chosen');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)');
+      await page.click('#perms-next');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      assert.deepEqual(settingsOf(run.data).local.folders, []);
+      return 'folder list only; 返回 / 下一步';
+    }, page);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+
+  // ---- C: this platform, no 本机能力: no 授权 page, no card -----------------------------------------------------
+  run = null;
+  try {
+    run = await start();
+    const { page } = run;
+    let admin = null;
+    await step(S, 'P7 without 本机能力 (not macOS): 唤醒 goes straight to waking her up; the settings card is not drawn', async () => {
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#hatching:not(.hidden), #pet-screen:not(.hidden)', { timeout: 10000 });
+      assert.equal(await page.locator('#perms').isHidden(), true);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      admin = await openAdminWindow(run.app, page, 'connection');
+      await admin.waitForTimeout(800);
+      assert.equal(await admin.locator('[data-card="permissions"]').count(), 0);
+      return 'no 授权 page, no card';
+    }, () => admin);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
   }
 }
 
@@ -10662,14 +11885,8 @@ async function musicSettingsScenario() {
     await page.uncheck('#local-opt');
     await page.click('#hatch-btn');
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
-    await hover(page);
-    await page.click('[data-act="settings"]');
-    for (let i = 0; i < 100 && !admin; i++) {
-      admin = app.windows().find((w) => w.url().includes('admin-ui')) || null;
-      if (!admin) await new Promise((r) => setTimeout(r, 100));
-    }
-    if (!admin) throw new Error('the settings window did not open');
-    await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
+    // the pet window's 设置 button is gone (canary): open the settings window the way the other scenarios do
+    admin = await openAdminWindow(app, page, 'overview');
     await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1300); });
 
     await step(S, 'M1 设置 → 声音 has the 音乐创作 tile (service · model · key status); the page defaults to fal.ai with its own card (模型 / 队列端点 / API Key)', async () => {
@@ -10832,13 +12049,12 @@ async function adminScenario() {
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
     await step(S, 'A1 ⚙ 设置 opens the settings window (contextIsolation, only window.petAdmin); the pet window has no ⋯ menu', async () => {
-      await hover(page);
-      const items = await page.$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
+      const items = await (await require('./pet-panel').openPetPanel(page)).$$eval('#toolbar [data-act]:not(.hidden)', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
       assert.deepEqual(items, ['喂食', '玩耍', '睡觉', '聊天', '静音', '设置', '退出']); // + 跳舞, hidden on this pixel look (VRM only, T-2801)
-      assert.equal(await page.$eval('#btn-dance', (b) => b.classList.contains('hidden')), true);
+      assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true);
       assert.equal(await page.locator('#main-menu, [data-menu]').count(), 0, 'no ⋯ menu in the pet window');
       await page.screenshot({ path: path.join(SHOTS, 'pet-menu-settings.png') });
-      await page.click('[data-act="settings"]');
+      await clickAct(page, 'settings');
       admin = await adminPage();
       admin.on('request', (r) => { if (!/^(file|data|blob|devtools|pack):/.test(r.url())) remote.push(r.url()); });
       admin.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -10856,7 +12072,7 @@ async function adminScenario() {
     await step(S, 'A2 single instance: tray → 打开设置…, ⚙ 设置 again and Ctrl+, all reuse the same window', async () => {
       const tray = await page.evaluate(() => window.pet.debugTray());
       assert.equal(tray.created, true, 'tray created');
-      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '检查更新', '退出']);
+      assert.deepEqual(tray.items, ['打开设置…', '显示桌宠', '重置姿势', '检查更新', '退出']); // 重置姿势: T-2830
       const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().includes('admin-ui')).map((w) => ({ title: w.getTitle(), url: w.webContents.getURL().replace(/^.*\/src\//, 'src/') })));
       const seen = [];
       await admin.evaluate(() => { location.hash = '/about'; });
@@ -11279,22 +12495,26 @@ async function adminScenario() {
       return 'my-grok listed after import, removed (folder gone)';
     }, () => admin);
 
-    await step(S, 'A15 a right click on her brings the same settings window forward (no menu, no second window)', async () => {
+    await step(S, 'A15 a right click on her opens her panel; its ⚙ brings the same settings window forward (no second window)', async () => {
       await admin.evaluate(() => { location.hash = '/characters/grok-pixel'; });
       await page.bringToFront();
       await hover(page);
-      // ⚙ / a right click go to what is new (an update, an unlocked outfit or topic), else keep the window's page
-      const news = await page.getAttribute('#btn-settings', 'data-news');
+      // ⚙ (in her panel: a right click on her) goes to what is new (an update, an unlocked outfit or topic), else keeps the window's page
+      const news = await page.evaluate(() => window.__petStatus().news);
       const want = { update: '/update', outfit: '/characters/grok-pixel', topic: '/topics' }[news] || '/characters/grok-pixel';
       const box = await page.evaluate(() => { const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.6 }; });
       await page.mouse.click(box.x, box.y, { button: 'right' });
-      await page.waitForTimeout(500);
+      const PP = require('./pet-panel');
+      for (let i = 0; i < 60 && !(await PP.panelState(page)).visible; i++) await page.waitForTimeout(50);
+      assert.equal((await PP.panelState(page)).visible, true, 'the right click opens her panel');
       assert.equal(await page.locator('#model-select, #role-input, #main-menu, #panel').count(), 0, 'no form, menu or panel in the pet window');
+      await PP.panelPage(page).click('#btn-settings');
+      await page.waitForTimeout(500);
       const info = await page.evaluate(() => window.pet.debugAdmin());
       assert.equal(info.opened, 1);
       await adminUntil(admin, (p) => !!document.querySelector(`[data-path="${p}"]`), want, 15000, want);
       await page.screenshot({ path: path.join(SHOTS, 'pet-char-page-jump.png') });
-      return `right click (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
+      return `right click → panel → ⚙ (news: ${news || 'none'}) → admin ${await admin.evaluate(() => location.hash)} (created ${info.opened} time)`;
     }, () => admin);
 
     await step(S, 'A16 offline: no remote requests and no console errors in the settings window', async () => {
@@ -11369,7 +12589,7 @@ async function interjectScenario() {
   const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return b.classList.contains('hidden') ? '' : b.textContent.trim(); });
   const feedbackRow = () => page.evaluate(() => { const r = document.getElementById('ij-feedback'); return { shown: !r.classList.contains('hidden'), buttons: [...r.querySelectorAll('.ij-btn')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent.trim()), done: r.querySelector('.ij-done').classList.contains('hidden') ? '' : r.querySelector('.ij-done').textContent, decision: r.dataset.decision || null, result: r.dataset.result || null }; });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await page.click('[data-act="chat"]'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
+  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
   const typeDraft = async (text) => { await openChat(); await page.fill('#chat-input', ''); await page.type('#chat-input', text, { delay: 15 }); };
   const lastDecision = async () => (await page.evaluate(() => window.pet.interject.decisions())).decisions.pop();
   const rules = async () => (await page.evaluate(() => window.pet.interject.rules())).rules;
@@ -11648,6 +12868,10 @@ async function interjectScenario() {
   if (which === 'vrmdance' || which === 'all') await vrmScenarios().vrmDance();
   if (which === 'vrmreset' || which === 'all') await vrmScenarios().vrmReset();
   if (which === 'vrmanim' || which === 'all') await vrmScenarios().vrmAnim(); // T-2832 前台 VRM 动画状态端到端验收
+  if (which === 'vrmstore' || which === 'all') await vrmScenarios().vrmStore(); // T-5084 商店 VRM + 动作库 v2：idle 命中、无瞬跳、播放入口
+  if (which === 'vrmverify') await vrmScenarios().vrmVerify(); // T-5089 多模型实测：60 s idle、触摸、拖拽、说话、舞蹈打断与指标（不在 all 里：约 20 分钟）
+  if (which === 'vrmfix') await vrmScenarios().vrmFix(); // T-5098 6×6 部位识别矩阵（网格可见中心真实点击）、hips 贴地模型坐/蹲、欢呼与 idle 手臂、限幅前后尖峰（不在 all 里）
+  if (which === 'vrmstoreshots') await vrmScenarios().vrmStoreShots(); // T-5097 逐模型商店导入截图（卡片 未下载 → 已下载 → 切换 → 桌宠窗口）
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
   if (which === 'dance' || which === 'all') await vrmScenarios().danceE2e();
   if (which === 'dancefinal' || which === 'all') await vrmScenarios().danceFinal();
@@ -11659,11 +12883,13 @@ async function interjectScenario() {
   if (which === 'design' || which === 'all') await designScenario();
   if (which === 'petui' || which === 'all') await petuiScenario();
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
+  if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'music' || which === 'all') await musicSettingsScenario();
   if (which === 'music' || which === 'musicchat' || which === 'all') await musicChatScenario();
   if (which === 'musiclive') await musicLiveScenario(); // real LobeHub model: never in `all`
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
+  if (which === 'permissions' || which === 'all') await permissionsScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');
@@ -11674,6 +12900,10 @@ async function interjectScenario() {
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   if (which === 'store' || which === 'all') await storeScenario();
+  if (which === 'voicestore' || which === 'all') await voiceStoreScenario();
+  if (which === 'voiceselect' || which === 'all') await voiceSelectScenario();
+  if (which === 'voiceflow' || which === 'all') await voiceFlowScenario();
+  if (which === 'voiceflowcdn') await voiceFlowScenario({ cdn: true }); // network: the real CDN (T-5104), not in `all`
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

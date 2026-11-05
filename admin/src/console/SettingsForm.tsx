@@ -13,7 +13,7 @@ export const FORM_STYLE = { itemMinWidth: 'max(34%, 240px)', style: { maxWidth: 
 const visible = (f: FieldDef, settings: any) => !f.dependsOn || at(settings, f.dependsOn.key) === f.dependsOn.value;
 
 export const fieldsOf = (fields: FieldDef[], page: string, opts: { internal?: boolean } = {}) =>
-  fields.filter((f) => f.page === page && (opts.internal || !f.internal));
+  fields.filter((f) => f.page === page && !f.custom && (opts.internal || !f.internal));
 
 /**
  * The settings of one page as LobeHub-style form cards: `Form itemsType="group" variant="filled"`, one group

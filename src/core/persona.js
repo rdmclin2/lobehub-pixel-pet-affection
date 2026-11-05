@@ -186,9 +186,10 @@ function musicHint(music) {
   return why ? `[作曲] 这次不能作曲：${why}。主人要你写歌时如实简单说明原因，不要假装写好了，也不要编造文件。` : '';
 }
 
-function buildChatPrompt(text, pet, now, { local = false, settings = null, music = null } = {}) {
+// `localScope`: where her tools may go (core/ai-folders.js scopeHint), added after LOCAL_HINT.
+function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '', music = null } = {}) {
   const m = musicHint(music);
-  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}` : ''}${m ? `\n${m}` : ''}\n${text}`;
+  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}${m ? `\n${m}` : ''}\n${text}`;
 }
 
 module.exports = {

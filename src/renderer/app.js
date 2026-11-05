@@ -228,7 +228,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
       const figure = LIVE_KINDS[look.kind]().createFigure(c, look, { framing: framingOf(look).mode });
       c.petFigure = figure; // syncFraming re-frames it when the settings change
       const r = { canvas: c, figure, action, ok: false, kind: look.kind };
-      figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
+      figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); if (look.kind === 'vrm') vrmLibraryHint(figure, look); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
     }
@@ -614,6 +614,132 @@ function showOnboarding() {
   show('onboarding');
 }
 
+// ---------- 授权 (T-5075, main/permissions.js, docs/permissions.md) ----------
+// Between choosing her and waking her up. macOS: 麦克风 for everyone (语音输入); with 本机能力 ticked also
+// 下载 / 桌面 / 文稿 (one row each, asked only when the owner presses 授权) and the folders her tools may use.
+// Linux / Windows have no such prompts: only the folder list, and only with 本机能力 ticked; otherwise the page
+// is skipped. 下一步 and 跳过 both go on to waking her up (nothing here is required).
+const PERM_ICONS = {
+  microphone: '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
+  downloads: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="m15 13-3 3-3-3"/>',
+  desktop: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  documents: '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+const permIco = (k, cls = '') => `<svg class="ico${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" aria-hidden="true">${PERM_ICONS[k]}</svg>`;
+const PERM_DESC = {
+  microphone: '用于语音输入：按住说话时才录音',
+  downloads: '让她读你放在“下载”里的文件，授权后自动加入下面的列表',
+  desktop: '让她读桌面上的文件，授权后自动加入下面的列表',
+  documents: '让她读“文稿”里的文件，授权后自动加入下面的列表',
+};
+// what the description says instead, by state (granted keeps the plain one)
+const PERM_HINT = { pending: '在系统弹窗中选择允许', denied: '已拒绝：只能在系统设置里打开', restricted: '受系统限制：只能在系统设置里打开', missing: '这台电脑上没有这个文件夹' };
+let permState = null;
+let permPending = null; // the permission whose system prompt is open
+
+function permRow({ kind, label, state }) {
+  const shown = permPending === kind ? 'pending' : state;
+  const actionable = !['granted', 'missing', 'pending', 'denied', 'restricted'].includes(shown);
+  const row = document.createElement('div');
+  row.className = `perm-row${actionable ? ' clickable' : ''}`;
+  row.setAttribute('role', 'listitem');
+  row.dataset.perm = kind;
+  row.dataset.state = shown;
+  row.innerHTML = `<span class="perm-icon">${permIco(kind)}</span><div class="perm-main"><div class="perm-title"></div><div class="perm-desc"></div></div>`;
+  row.querySelector('.perm-title').textContent = label;
+  row.querySelector('.perm-desc').textContent = PERM_HINT[shown] || PERM_DESC[kind] || '';
+  const ask = async () => {
+    if (permPending) return;
+    permPending = kind;
+    renderPerms(permState);
+    let st = permState;
+    try {
+      st = await window.pet.permRequest(kind);
+    } finally {
+      permPending = null;
+      renderPerms(st);
+    }
+  };
+  if (shown === 'granted') {
+    row.insertAdjacentHTML('beforeend', `<span class="perm-done" aria-label="已授权" role="img">${permIco('check')}</span>`);
+  } else if (shown === 'pending') {
+    row.insertAdjacentHTML('beforeend', `<span class="perm-wait">${permIco('loader')}等待授权</span>`);
+  } else if (shown === 'denied' || shown === 'restricted') {
+    // a refusal can only be changed in System Settings
+    const b = document.createElement('button');
+    b.className = 'btn btn-sm';
+    b.type = 'button';
+    b.dataset.permSettings = kind;
+    b.textContent = '去系统设置';
+    b.addEventListener('click', () => window.pet.permOpenSettings(kind));
+    row.appendChild(b);
+  } else if (actionable) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-sm';
+    b.type = 'button';
+    b.dataset.permAsk = kind;
+    b.textContent = '授权';
+    b.addEventListener('click', (e) => { e.stopPropagation(); ask(); });
+    row.addEventListener('click', ask);
+    row.appendChild(b);
+  }
+  return row;
+}
+
+function renderPerms(st) {
+  permState = st;
+  const local = $('local-opt').checked;
+  const sys = $('perm-system');
+  sys.innerHTML = '';
+  if (st.mac) {
+    sys.appendChild(permRow({ kind: 'microphone', label: '麦克风', state: st.mic || 'unknown' }));
+    if (local) for (const f of st.folders) sys.appendChild(permRow({ kind: f.id, label: `“${f.label}”文件夹`, state: f.status }));
+  }
+  sys.classList.toggle('hidden', !st.mac);
+  $('perm-folders').classList.toggle('hidden', !local);
+  const list = $('perm-folder-list');
+  list.innerHTML = '';
+  for (const f of st.local.folders) {
+    const li = document.createElement('li');
+    li.dataset.folder = f;
+    li.innerHTML = `${permIco('folder', 'folder')}<span class="path"></span><button class="btn icon-btn btn-text" type="button">${permIco('x')}</button>`;
+    li.querySelector('.path').textContent = f;
+    li.querySelector('.path').title = f;
+    li.querySelector('button').setAttribute('aria-label', `移除 ${f}`);
+    li.querySelector('button').title = '移除';
+    li.querySelector('button').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersSet({ remove: f })));
+    list.appendChild(li);
+  }
+  if (!st.local.folders.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '还没有文件夹：她暂时读不了任何文件';
+    list.appendChild(li);
+  }
+}
+
+// 唤醒 on the choose page: the 授权 page when there is something to ask, else straight to waking her up.
+async function showPerms() {
+  const st = await window.pet.permStatus();
+  if (!st.mac && !$('local-opt').checked) return startHatch();
+  // her portrait where LobeHub's onboarding has its logo
+  const ch = characterOf(selected);
+  setLook($('perm-logo'), ch.portrait, { className: 'perm-look', alt: ch.name, action: () => 'idle', speciesId: ch.base });
+  renderPerms(st);
+  window.pet.place('perms');
+  show('perms');
+}
+
+function bindPerms() {
+  $('perm-add').addEventListener('click', async () => renderPerms(await window.pet.aiFoldersAdd()));
+  $('perms-next').addEventListener('click', () => { window.pet.place('onboarding'); startHatch(); });
+  $('perms-back').addEventListener('click', () => { window.pet.place('onboarding'); show('onboarding'); });
+}
+
 // ---------- hatching ----------
 const STEP_ORDER = ['checking-login', 'login', 'choose-space', 'creating-agent', 'connecting-device', 'hatching'];
 
@@ -781,33 +907,49 @@ function barColor(v, invert) {
 
 function refreshHud() {
   if (!view) return;
-  const p = view.pet;
-  const set = (id, v, invert) => {
-    const el = $(id);
-    el.style.setProperty('--v', `${invert ? 100 - v : v}%`);
-    el.style.setProperty('--c', barColor(v, invert));
-  };
-  set('bar-hunger', p.hunger, true);
-  set('bar-mood', p.mood, false);
-  set('bar-energy', p.energy, false);
-  const a = view.affection;
-  const prog = a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级';
-  // who she is: her character's name (「大肥鱼 · Live2D」, T-2764)
-  $('meta').textContent = `${p.name} · ${view.character ? view.character.name : view.species.nameZh} · ${a.stageName} ♥${a.value}${prog}`;
   $('pet-body').style.setProperty('--accent', view.species.accent);
-  $('meta').title = `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`;
-  // 💗 affection: stage name in its colour, the 0..100 bar and the number; the tooltip has the stage progress
-  $('aff-stage').textContent = a.stageName;
-  $('aff-stage').style.setProperty('--sc', a.color);
-  $('bar-affection').style.setProperty('--v', `${a.value}%`);
-  $('bar-affection').style.setProperty('--c', a.color);
-  $('aff-num').textContent = `♥${a.value}/${a.max}`;
-  $('aff-row').title = a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级`;
-  $('aff-row').setAttribute('aria-label', $('aff-row').title);
   setSettings(view.settings);
   syncSettingsDot();
+  pushPanel();
 }
-
+// What her panel shows (src/renderer/panel/panel.js draws it): who she is, the affection, the three needs, and
+// the state of its buttons. Sent when it opens and again whenever something in it changes while it is open.
+const panelUi = { news: '', newsTitle: '设置（Ctrl/⌘ + ,）', dance: { show: false, pressed: false, loading: false, title: '跳舞' }, mute: { pressed: false, label: '静音', title: '静音：让她不出声' } };
+function panelPayload() {
+  const p = view.pet;
+  const a = view.affection;
+  const need = (key, label, v, invert) => ({ key, label, value: Math.round(invert ? 100 - v : v), color: barColor(v, invert) });
+  return {
+    theme: document.documentElement.dataset.theme,
+    name: p.name,
+    // who she is: her character's name (「大肥鱼 · Live2D」, T-2764)
+    character: view.character ? view.character.name : view.species.nameZh,
+    stage: a.stageName,
+    stageColor: a.color,
+    affection: { value: a.value, max: a.max, title: a.next ? `好感 ${a.value} / ${a.max} · 距「${a.nextName}」还差 ${a.need}（本阶段进度 ${a.pct}%）` : `好感 ${a.value} / ${a.max} · 已满级` },
+    // where the affection is heading: the next stage and how much is left, or 已满级; today's gain and its cap
+    // today's gain can be fractional (touch zones add parts of a point): whole points here, the exact one in the title
+    progress: `${a.next ? `距「${a.nextName}」还差 ${Math.ceil(a.need)}` : '已满级'} · 今天 +${Math.floor(a.today)}/${a.dailyCap}`,
+    progressTitle: `好感 ${a.value} / ${a.max}（今天 +${a.today} / ${a.dailyCap}）${view.space ? ` · 放在：${view.space.name}` : ''}`,
+    // all of it on one line: the panel's accessible name (and what e2e runs read, window.__petStatus)
+    summary: `${p.name} · ${view.character ? view.character.name : view.species.nameZh} · ${a.stageName} ♥${a.value}${a.next ? ` · 距「${a.nextName}」${a.need}` : ' · 已满级'}`,
+    // hunger counts up, so the panel shows 饱腹 (its inverse)
+    needs: [need('hunger', '饱腹', p.hunger, true), need('mood', '心情', p.mood, false), need('energy', '体力', p.energy, false)],
+    foods: Object.entries(info.foods).map(([id, f]) => ({ id, label: f.label })),
+    reset: !!(view.look && view.look.kind === 'vrm'),
+    dance: { ...panelUi.dance },
+    mute: { ...panelUi.mute },
+    news: panelUi.news,
+    newsTitle: panelUi.newsTitle,
+  };
+}
+window.__petStatus = () => (view ? panelPayload() : null); // e2e: what the panel would show now
+let panelPushQueued = false;
+function pushPanel() {
+  if (!petPanelShown || panelPushQueued || !view || VISITOR) return;
+  panelPushQueued = true;
+  queueMicrotask(() => { panelPushQueued = false; if (petPanelShown && view) window.pet.panel.update(panelPayload()); });
+}
 // The one way into the settings window (配置后台) from the pet: the ⚙ button, a right click or a long press
 // on her, and Ctrl/⌘+, (main.js). Everything the old ⋯ menu held lives there now. A dot on ⚙ says there is
 // something new waiting in it: an outfit or topic just unlocked, or a new version.
@@ -820,15 +962,13 @@ function settingsNews() {
 }
 function syncSettingsDot() {
   const news = settingsNews();
-  const b = $('btn-settings');
-  b.querySelector('.new-dot').classList.toggle('hidden', !news);
-  b.dataset.news = news || '';
-  b.title = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,；也可以右键或在触屏上长按她）';
+  panelUi.news = news || '';
+  panelUi.newsTitle = news === 'update' ? `有新版本 v${updateState.version}：点此打开设置 → 版本与更新（Ctrl/⌘ + ,）` : news ? '设置：有新解锁的内容（Ctrl/⌘ + ,）' : '设置（Ctrl/⌘ + ,）';
+  pushPanel();
 }
 function openSettings(section) {
   if (thinking) return;
-  $('food-menu').classList.add('hidden');
-  closeDanceMenu();
+  closePetPanel('settings');
   hideToast();
   const news = section === undefined ? settingsNews() : null;
   const s = section !== undefined ? section : news ? SETTINGS_SECTION[news] : undefined;
@@ -1406,8 +1546,9 @@ function syncPrewarm() {
   }, 400);
 }
 function playAudio(rec, s, r, end) {
-  Object.assign(s, { provider: r.provider, cached: r.cached, status: 'playing' });
-  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
+  // packId / packFile: the 语音包 and the recording played (provider 'pack'), null for an engine's audio
+  Object.assign(s, { provider: r.provider, cached: r.cached, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
+  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
   if (window.PetVRM && window.PetVRM.active()) window.PetVRM.lip.attach(a); // a VRM figure's mouth follows the voice
@@ -1467,9 +1608,8 @@ function setThinking(on) {
   clearInterval(thinkTimer);
   const b = $('bubble');
   if (on) {
-    // nothing but the pet and this bubble while it works; controls come back when it is done
-    $('food-menu').classList.add('hidden');
-    closeDanceMenu();
+    // nothing but the pet and this bubble while it works; the panel closes (a right click opens it again after)
+    closePetPanel('busy');
     clearTimeout(bubbleTimer);
     $('meme-sticker').classList.add('hidden');
     b.classList.remove('hidden');
@@ -1533,21 +1673,7 @@ function resetPose(source = 'button') {
 let lastReset = null;
 // the ↺ button: shown for a VRM look only (the pixel and Live2D looks have no pose to get stuck in)
 function syncResetButton() {
-  const b = $('btn-reset');
-  const show = !!(view && view.look && view.look.kind === 'vrm');
-  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
-}
-
-function buildFoodMenu() {
-  const m = $('food-menu');
-  m.innerHTML = '';
-  for (const [id, f] of Object.entries(info.foods)) {
-    const b = document.createElement('button');
-    b.className = 'btn';
-    b.textContent = f.label;
-    b.addEventListener('click', () => { m.classList.add('hidden'); doAct('feed', id); });
-    m.appendChild(b);
-  }
+  pushPanel(); // the panel reads view.look itself
 }
 
 // ---------- 跳舞 (docs/vrm-dance.md §6.2 L2 / L4, §6.3) ----------
@@ -1582,7 +1708,6 @@ function closeDanceMenu() {
 async function openDanceMenu() {
   const m = $('dance-menu');
   if (!m.classList.contains('hidden')) return closeDanceMenu();
-  $('food-menu').classList.add('hidden');
   m.classList.remove('hidden');
   await renderDanceMenu();
   const first = m.querySelector('[role="menuitem"]:not([disabled])');
@@ -1669,6 +1794,66 @@ function updateDanceNow() {
   loop.setAttribute('aria-pressed', String(!!st.loop));
   loop.title = st.loop ? '循环播放：开（点一下关闭）' : '循环播放：关（点一下打开）';
 }
+// ---------- the VRM motion library (T-5084) ----------
+// A VRM drawn without its motion library — none found, the index unreadable, every clip failing — only breathes and
+// looks about (the procedural idle): before T-5084 that happened silently (T-5079 R1). Now the figure logs why
+// (renderer/vrm.js libraryInfo) and she says it once per model and reason in this session, with where to fix it.
+const libraryHinted = new Set();
+const LIBRARY_HINT = {
+  'no-library': '（我还没有动作库，只能站着呼吸……到 设置 → 角色 → VRM 动作库 选一下动作库文件夹吧）',
+  'empty-index': '（动作库是空的，我只能站着呼吸……到 设置 → 角色 → VRM 动作库 重新选一下吧）',
+  'fetch-failed': '（动作库读不出来，我先只能站着呼吸……）',
+  'all-failed': '（动作库里的动作都没载入成功，我先只能站着呼吸……）',
+  'no-clip-for-model': '（动作库里没有适合我这个模型的动作……）',
+};
+function vrmLibraryHint(figure, look) {
+  const info = figure.libraryInfo && figure.libraryInfo();
+  if (!info) return;
+  const text = LIBRARY_HINT[info.reason];
+  if (!text) return;
+  const key = `${look.packId}:${info.reason}`;
+  if (libraryHinted.has(key)) return;
+  libraryHinted.add(key);
+  // after whatever she is saying now (a greeting, a reply): the hint must be seen, not overwritten at once
+  let tries = 0;
+  const show = () => {
+    const b = $('bubble');
+    if (tries++ < 30 && (thinking || !b.classList.contains('hidden'))) { setTimeout(show, 1000); return; }
+    // (T-5098: still so? a library linked or another character worn meanwhile: nothing to say any more)
+    const now = vrmFigure() === figure && figure.libraryInfo ? figure.libraryInfo() : null;
+    if (!now || now.reason !== info.reason) return;
+    say(text, 'fallback', 'fallback', `vrm-library:${info.reason}`);
+  };
+  setTimeout(show, 1200);
+}
+// Play a clip of the library by hand (the console's 试播, POST /motion, a chat request): a dance stops first. → the
+// director's answer ({ ok, id, kind, layer, label, duration, loop } | { ok: false, reason })
+function playMotion(req = {}) {
+  const f = vrmFigure();
+  if (!f) return { ok: false, reason: view && view.look && view.look.kind === 'vrm' ? 'not-ready' : 'not-vrm' };
+  if (dance && dance.active()) dance.stop({ reason: 'motion' });
+  const r = f.playMotion(req);
+  // a dance still fading out: try again on the next frames
+  if (r && !r.ok && r.reason === 'dancing') return new Promise((res) => setTimeout(() => res(f.playMotion(req)), 700));
+  return r;
+}
+function stopMotion(why = 'stop') {
+  const f = vrmFigure();
+  if (!f) return { ok: false, reason: 'not-vrm' };
+  return { ok: true, ...f.stopMotion(why) };
+}
+// 聊天里说「点个头」「伸个懒腰」「坐下」「站起来」(core/vrm-motion-intent.js): local, the message still goes to her agent
+function chatMotionIntent(text) {
+  if (!window.PetMotionIntent) return;
+  const f = vrmFigure();
+  if (!f) return;
+  const plan = f.plan();
+  const m = window.PetMotionIntent.matchMotionIntent(text, { playing: !!(plan && plan.manual) });
+  if (!m) return;
+  if (m.action === 'stop') { stopMotion('chat'); return; }
+  playMotion({ group: m.group, why: 'chat' });
+}
+
 // 聊天里说「跳个舞」/「跳一下节拍摇摆」/「别跳了」(core/dance-intent.js): recognised locally, never by the model
 let danceRefusedAt = 0;
 async function chatDanceIntent(text) {
@@ -1706,19 +1891,15 @@ async function startDance(d) {
 }
 // the button: shown for a VRM look only; pressed while she dances; spinning while a dance loads
 function syncDanceButton() {
-  const b = $('btn-dance');
   const show = canDanceNow();
-  if (b.classList.contains('hidden') === show) b.classList.toggle('hidden', !show);
   if (!show && !$('dance-menu').classList.contains('hidden')) closeDanceMenu();
   const st = dance && dance.active() ? dance.state() : null;
-  const pressed = String(!!st);
-  if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
   const title = danceLoading ? '正在准备舞蹈…' : st ? `正在跳《${st.name}》，点一下可以停止或换一支` : '跳舞';
-  if (b.title !== title) b.title = title;
-  b.classList.toggle('loading', !!danceLoading);
-  b.disabled = !!danceLoading;
-}
-function bindDanceMenu() {
+  const next = { show, pressed: !!st, loading: !!danceLoading, title };
+  if (JSON.stringify(next) === JSON.stringify(panelUi.dance)) return;
+  panelUi.dance = next;
+  pushPanel();
+}function bindDanceMenu() {
   const m = $('dance-menu');
   m.addEventListener('keydown', (e) => {
     const items = [...m.querySelectorAll('[role^="menuitem"]:not([disabled])')];
@@ -1730,31 +1911,28 @@ function bindDanceMenu() {
     } else if (e.key === 'Escape') {
       e.stopPropagation(); // Esc closes the menu here; it does not stop the dance
       closeDanceMenu();
-      $('btn-dance').focus();
     }
   });
 }
 
+// A button in her panel (main forwards it here: panel-act): what each one does in her window. The panel closes
+// itself for everything but 静音 (switches in place) and 喂食 (its foods open in the panel; picking one sends
+// feed with that food).
+function runAct(act, food) {
+  if (act !== 'dance') closeDanceMenu();
+  if (act === 'dance') openDanceMenu();
+  else if (act === 'feed') doAct('feed', food);
+  else if (act === 'play' || act === 'sleep') doAct(act);
+  else if (act === 'chat') { pointerInside = true; openChat(); } // the panel was beside her: the box shows at once
+  else if (act === 'settings') openSettings();
+  else if (act === 'mute') toggleMute();
+  else if (act === 'reset') window.pet.resetPose('button');
+  else if (act === 'quit') window.pet.quit();
+}
+
 function bindPetUi() {
-  buildFoodMenu();
   bindDanceMenu();
-  $('toolbar').addEventListener('click', (e) => {
-    const btn = e.target.closest && e.target.closest('[data-act]');
-    const act = btn && btn.dataset.act;
-    if (!act) return;
-    if (act !== 'feed') $('food-menu').classList.add('hidden');
-    if (act !== 'dance') closeDanceMenu();
-    if (act === 'dance') openDanceMenu();
-    else if (act === 'feed') $('food-menu').classList.toggle('hidden');
-    else if (act === 'play' || act === 'sleep') doAct(act);
-    else if (act === 'chat') {
-      $('chat-row').classList.toggle('hidden');
-      if (!$('chat-row').classList.contains('hidden')) $('chat-input').focus();
-    } else if (act === 'settings') openSettings();
-    else if (act === 'mute') toggleMute();
-    else if (act === 'reset') window.pet.resetPose('button');
-    else if (act === 'quit') window.pet.quit();
-  });
+  window.pet.panel.onAct((m) => { if (m && m.act) runAct(String(m.act), m.food ? String(m.food) : undefined); });
   const send = async () => {
     const input = $('chat-input');
     const text = input.value.trim();
@@ -1769,13 +1947,15 @@ function bindPetUi() {
       if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
-    if (text && !imgs.length && !files.length) chatDanceIntent(text); // 「跳个舞」/「别跳了」: local, the message still goes to her agent
+    if (text && !imgs.length && !files.length) { chatDanceIntent(text); chatMotionIntent(text); } // 「跳个舞」/「别跳了」/「点个头」: local, the message still goes to her agent
     attachments = [];
     renderAttachments();
     input.value = '';
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
+    // AI 可读的文件夹 (T-5075): the folders could not be enforced this turn, so she answered without her tools
+    if (r.ok && r.localNote) showNotice('这次用不了本机工具', r.localNote.replace(/^这次用不了本机工具：/, ''), { label: '去设置', admin: 'connection' });
     if (!r.ok && r.reason === 'error') say(errorLine(r), 'error', 'error', r.message);
     if (!r.ok && r.reason === 'local-error') say(`（这台电脑现在连不上，读不了文件：${String(r.message || '').slice(0, 60)}）`, 'error', 'fallback', r.message);
     if (!r.ok && r.reason === 'local-off') say('（要先开启本机能力才能读文件。）', 'error', 'fallback');
@@ -1828,16 +2008,86 @@ function bindPetUi() {
   bindInterjectFeedback();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
+  // leaving the window straight from the bubble (or the window losing focus) may not fire the bubble's
+  // mouseleave: without this the bubble would be held open for good
+  document.documentElement.addEventListener('mouseleave', () => { bubbleHold = false; });
+  window.addEventListener('blur', () => { bubbleHold = false; });
 
-  // a right click (or a long press on a touch screen) on her opens the settings window, as ⚙ does: there is
-  // no menu in the pet window any more
-  bindPetPointer({ onClick: touchAt, onMenu: () => openSettings() });
+  // a right click (or a long press on a touch screen) on her opens her panel (her state and what to do with
+  // her); a right click while it is open closes it. Nothing shows on hover any more.
+  bindPetPointer({ onClick: touchAt, onMenu: () => openPetPanel('long-press') });
   bindTouchHint();
   document.addEventListener('contextmenu', (e) => {
-    if (!e.target.closest || !e.target.closest('.pet-hit')) return;
-    e.preventDefault();
-    openSettings();
+    e.preventDefault(); // no browser menu anywhere in her window
+    if (!e.target.closest || !e.target.closest('.pet-hit')) { closePetPanel('outside'); return; }
+    togglePetPanel('right-click');
   });
+  bindPanel();
+}
+
+// ---------- 她的面板 (right click / long press on her) ----------
+// Its own small window beside her (src/main/pet-panel.js, src/renderer/panel/): her name, character and stage,
+// the affection meter, the three needs, then 喂食 / 玩耍 / 睡觉 / 聊天 and the quiet icon buttons (静音, 跳舞 / 重置
+// for a VRM look, ⚙, ⏻). Nothing shows on hover any more. It closes on Esc, a click anywhere else (it loses
+// focus; a press in her window tells main), a right click on her again, after a button, when her window hides,
+// and when she starts thinking (while she thinks a right click does not open it); when her window moves (she
+// walks) it follows her. What it did is kept for the e2e runs (window.__panel).
+let petPanelShown = false;
+const panelLog = { opens: 0, closes: [] };
+window.__panel = panelLog;
+// where she is on the screen (her picture's box), so the panel opens beside her and not over her
+function petPanelAnchor() {
+  const el = [...document.querySelectorAll('.pet-hit')].find((e) => !e.classList.contains('hidden')) || $('stage');
+  const b = el.getBoundingClientRect(); // already scaled by the stage's zoom (宠物大小)
+  return { x: Math.round(window.screenX + b.left), y: Math.round(window.screenY + b.top), width: Math.round(b.width), height: Math.round(b.height) };
+}
+async function openPetPanel(source = 'right-click') {
+  if (thinking || !view || VISITOR) return false;
+  hideToast();
+  closeDanceMenu();
+  syncDanceButton();
+  syncMute();
+  syncSettingsDot();
+  const r = await window.pet.panel.open({ source, anchor: petPanelAnchor(), payload: panelPayload() });
+  if (r && r.visible) { petPanelShown = true; panelLog.opens += 1; panelLog.lastOpen = source; }
+  return !!(r && r.visible);
+}
+function closePetPanel(reason = 'esc') {
+  if (!petPanelShown) return false;
+  window.pet.panel.close(reason);
+  return true;
+}
+// wasShown: the panel was open when this right click went down — clicking her took the focus from it, so it may
+// have closed on blur already; the click was meant to close it, so it does not open again
+let rightDownShown = false;
+async function togglePetPanel(source) {
+  if (thinking || !view || VISITOR) { rightDownShown = false; closePetPanel('busy'); return false; }
+  const r = await window.pet.panel.toggle({ source, wasShown: rightDownShown, anchor: petPanelAnchor(), payload: panelPayload() });
+  rightDownShown = false;
+  if (r && r.visible) { petPanelShown = true; panelLog.opens += 1; panelLog.lastOpen = source; }
+  return !!(r && r.visible);
+}
+function bindPanel() {
+  // main says when it closed (and why): Esc in it, a click elsewhere, a button, her window moving …
+  window.pet.panel.onClosed((m) => {
+    petPanelShown = false;
+    panelLog.closes.push((m && m.reason) || 'closed');
+    if (panelLog.closes.length > 50) panelLog.closes.shift();
+  });
+  // a press in her window closes it (a right click on her toggles it in the contextmenu handler instead)
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) rightDownShown = petPanelShown;
+    if (!petPanelShown) return;
+    if (e.button === 2 && e.target.closest && e.target.closest('.pet-hit')) return;
+    closePetPanel('outside');
+  }, true);
+  // the dance menu (opened from ♪ in the panel) lies over her: a press outside it or Esc closes it
+  document.addEventListener('pointerdown', (e) => {
+    const m = $('dance-menu');
+    if (m.classList.contains('hidden') || (e.target.closest && e.target.closest('#dance-menu'))) return;
+    closeDanceMenu();
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('dance-menu').classList.contains('hidden')) { e.stopImmediatePropagation(); closeDanceMenu(); } }, true);
 }
 
 // Mouse, pen and touch on the pet (pointer events; dsh-pet drag.ts, drag-release.ts, touch-press.ts):
@@ -1876,6 +2126,7 @@ function bindPetPointer({ onClick, onMenu }) {
       fx.stopWalk();
       const sling = !caught && Fx.isSlingshot(lastPressAt, now);
       lastPressAt = now;
+      bubbleHold = false; // pressing her: the pointer is not on the bubble
       drag = { id: e.pointerId, type: e.pointerType, x0: e.screenX, y0: e.screenY, x: e.screenX, y: e.screenY, moved: false, caught, sling, travel: 0, samples: [{ x: e.screenX, y: e.screenY, t: now }] };
       if (caught) { fx.play('happy', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'happy')); localLine('catch'); }
       try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
@@ -1889,6 +2140,9 @@ function bindPetPointer({ onClick, onMenu }) {
   }
   window.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
+    // the button is no longer down but no pointerup came (released outside the window while it was still
+    // catching up with the cursor, macOS): put her down instead of keeping her in the air for good
+    if (e.pointerType !== 'touch' && e.buttons === 0) return end(e, true);
     const dx = e.screenX - drag.x;
     const dy = e.screenY - drag.y;
     drag.travel += Math.abs(dx) + Math.abs(dy);
@@ -1905,6 +2159,8 @@ function bindPetPointer({ onClick, onMenu }) {
   });
   window.addEventListener('pointerup', (e) => end(e, false));
   window.addEventListener('pointercancel', (e) => end(e, true));
+  // the window lost focus mid-drag (another app, a system dialog): no pointerup will come either
+  window.addEventListener('blur', () => { if (drag) end(null, true); });
 }
 
 // Behaviour switches for the effects layer.
@@ -2030,9 +2286,9 @@ function vrmFigure() {
 }
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
 // A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
-function zoneAtClient(cx, cy) {
+function zoneAtClient(cx, cy, opts) {
   const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
-  if (vf) return vf.zoneAt(cx, cy);
+  if (vf) return vf.zoneAt(cx, cy, opts); // (a click: { precise } — the part drawn under it, T-5098)
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -2043,7 +2299,7 @@ function zoneAtClient(cx, cy) {
 async function touchAt(e) {
   if (thinking || !view) return;
   if (!touchOn() || !e || !Number.isFinite(e.clientX)) return doAct('pat');
-  const { zone, pt } = zoneAtClient(e.clientX, e.clientY);
+  const { zone, pt } = zoneAtClient(e.clientX, e.clientY, { precise: true });
   if (!zone) return doAct('pat');
   const r = await window.pet.touch(zone);
   if (r.ok) showTouch(r, pt, { x: e.clientX, y: e.clientY });
@@ -2118,8 +2374,6 @@ function syncHover() {
   document.body.classList.toggle('hover', !thinking && (pointerInside || micActive() || voiceHeld())); // listening (or a hotkey call) keeps 🎤 in reach
   if (!pointerInside && !micActive() && !voiceHeld()) {
     if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
-    $('food-menu').classList.add('hidden');
-    closeDanceMenu();
   }
 }
 function bindHover() {
@@ -2320,14 +2574,15 @@ function paintMic() {
 // 静音 (toolbar speaker): one switch over everything she sounds — 朗读, 互动语音 and the click sound.
 // It is its own pref (prefs.muted), so un-muting brings back exactly what 朗读 / 点击音效 were set to.
 function syncMute() {
-  const b = $('btn-mute');
-  if (!b || !settings || !settings.prefs) return;
+  if (!settings || !settings.prefs) return;
   const p = settings.prefs;
   const muted = p.muted === true;
-  b.setAttribute('aria-pressed', String(muted));
-  b.setAttribute('aria-label', muted ? '取消静音' : '静音');
-  b.title = muted ? '已静音：点一下恢复她的声音'
-    : p.voice || p.clickSound ? '静音：让她不出声' : '静音（朗读回复和点击音效现在都没开，可在设置里打开）';
+  panelUi.mute = {
+    pressed: muted,
+    label: muted ? '取消静音' : '静音',
+    title: muted ? '已静音：点一下恢复她的声音' : p.voice || p.clickSound ? '静音：让她不出声' : '静音（朗读回复和点击音效现在都没开，可在设置里打开）',
+  };
+  pushPanel();
 }
 async function toggleMute() {
   if (!settings || !settings.prefs) return;
@@ -2660,6 +2915,11 @@ async function onApiCmd({ id, cmd, args }) {
     if (cmd === 'dance-loop') result = dance && dance.active() ? { ok: true, loop: dance.setLoop(args.on) } : { ok: false, reason: 'not-dancing' };
     if (cmd === 'reset-pose') result = resetPose(args.source);
     if (cmd === 'dance-state') result = { ok: true, dance: dance ? dance.state() : null };
+    // T-5084: the motion library's clips — list, play one by hand, stop it; and redraw the VRM after the library moved
+    if (cmd === 'motions') { const f = vrmFigure(); result = f ? { ok: true, library: f.libraryInfo(), motions: f.motions(), manual: (f.plan() || {}).manual || null } : { ok: false, reason: view && view.look && view.look.kind === 'vrm' ? 'not-ready' : 'not-vrm' }; }
+    if (cmd === 'motion') result = await playMotion({ id: args.id || undefined, slot: args.slot || undefined, group: args.group || undefined, loop: args.loop, hold: args.hold, why: args.why || 'api' });
+    if (cmd === 'motion-stop') result = stopMotion(args.why || 'api');
+    if (cmd === 'vrm-reload') { if (view && view.look && view.look.kind === 'vrm') { $('pet-look').dataset.key = ''; libraryHinted.clear(); applyArt(); result = { ok: true, reloaded: true }; } else result = { ok: true, reloaded: false }; }
     if (cmd === 'anim') {
       if (thinking) result = { ok: false, reason: 'busy' };
       else {
@@ -2728,7 +2988,8 @@ async function main() {
   bindPetUi();
   bindResize();
   bindHover();
-  $('hatch-btn').addEventListener('click', startHatch);
+  $('hatch-btn').addEventListener('click', showPerms);
+  bindPerms();
   $('hatch-retry').addEventListener('click', showOnboarding);
   $('age-yes').addEventListener('click', () => answerAgeGate(true));
   $('age-no').addEventListener('click', () => answerAgeGate(false));

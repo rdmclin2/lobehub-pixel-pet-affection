@@ -20,7 +20,7 @@
   const IDLE_MIN = 8;
   const IDLE_MAX = 20;
   const BORED_AFTER = 180;
-  const FADE = { posture: 1.0, sit: 1.2, idle: 1.0, cycle: 1.0, first: 0 };
+  const FADE = { posture: 1.0, sit: 1.2, pose: 1.4, idle: 1.0, cycle: 1.0, first: 0 };
   // idles that keep the posture she is in (a pinned posture, sad, sitting): the alive layer varies, the
   // clip does not. Used whenever the full-body idle clips would take her out of that posture.
   const MICRO_IDLES = {
@@ -70,9 +70,18 @@
   // ---------- reactions (L3) and holds (L2), docs §3.3 / §5.3 ----------
   // priority: drag:lift > touch > celebrate > think > eat > talk > cue > idle (think and talk at once — a reply
   // streaming in — is talk)
-  const PRIORITY = { lift: 6, drop: 5, touch: 5, celebrate: 4, cue: 0 };
+  const PRIORITY = { lift: 6, drop: 5, touch: 5, manual: 5, celebrate: 4, sleep: 1, cue: 0 };
+  const HOLD_FULL_IN = 0.4; // T-5098: the shortest fade-in of a full-body hold (s)
   const DEBOUNCE = 0.6; // the same reaction is not started again within this (no twitching on fast clicks)
   const CUT = 0.2; // an interrupted reaction fades out this fast under the new one
+  // T-5092: a touch no longer changes three layers on one frame (T-5089: the idle / posture switched, the reaction
+  // and a talk gesture came in together — 11–15°/frame spikes on hands, forearms and feet):
+  //   base   the idle or posture she is in stays while the touch reaction plays (≤ base s): a regime change it
+  //          causes (the bored / rest posture ending, the idle running out) waits for it;
+  //   talk   a talk gesture that starts while a touch reaction comes in waits ≤ talk s (or the reaction's clip
+  //          end) before it fades in — queued behind the reaction, not stacked on its first frames;
+  //   limbs  the reaction's hands, forearms and feet fade in limbFade × slower than the rest of the body.
+  const TOUCH_SETTLE = { base: 3, talk: 1.2, limbFade: 1.8 };
   const NO_CLIP = 1.8; // a reaction without a clip (no library): its face and gaze last this long
   const AFTER = { angry: 10, shy: 8 }; // seconds of annoyed face after angry, of the shy posture after shy
   // the touch → the reaction: core/touch-zones.js already chose the mood (zone default, affection tier, the
@@ -91,6 +100,8 @@
     'react.drop': { face: { surprised: 0.4 }, gaze: null, hold: 0.35 },
     'react.greet': { face: { happy: 0.8 }, gaze: null },
     'react.cheer': { face: { happy: 1 }, gaze: null },
+    'react.yawn': { face: { relaxed: 0.6 }, gaze: { x: 0, y: 0.4 } },
+    'react.stretch': { face: { relaxed: 0.5, happy: 0.2 }, gaze: null },
   };
   const HOLD_LOOK = {
     lift: { face: { surprised: 0.8 }, gaze: { x: 0, y: -0.4 } },
@@ -109,8 +120,8 @@
   // stop(): the user's "stop" — the dance is asked to stop, the reaction cut (CUT), the waiting celebration,
   // the face and the looking-about dropped; she fades back to the idle. The app's own holds (a meal, sleep, the
   // chat) are the app's to end.
-  const REACTION_ACTION = { 'react.cheer': 'celebrate', 'react.greet': 'celebrate', 'react.drop': 'drop' };
-  const ACTIONS = ['idle', 'returning', 'dance', 'lift', 'touch', 'celebrate', 'play', 'drop', 'eat', 'think', 'talk', 'walk', 'sleep'];
+  const REACTION_ACTION = { 'react.cheer': 'celebrate', 'react.greet': 'celebrate', 'react.drop': 'drop', 'react.yawn': 'sleep', 'react.stretch': 'sleep' };
+  const ACTIONS = ['idle', 'returning', 'dance', 'lift', 'touch', 'celebrate', 'play', 'drop', 'eat', 'think', 'talk', 'walk', 'sleep', 'manual'];
 
   // ---------- the body of eat / play / sleep (T-2831, docs §14) ----------
   // The library has no clip that moves her body for these (hold.eat is a still stand, sleep a posture only with the
@@ -122,6 +133,33 @@
   // lift and a dance. stop() ends play, and eat / sleep until the app's meal / sleep ends (the next one plays again).
   const ACT = { eat: { fadeIn: 0.35, fadeOut: 0.45 }, play: { fadeIn: 0.25, fadeOut: 0.45, dur: 3.2, face: { happy: 0.8 } }, sleep: { fadeIn: 1.2, fadeOut: 0.7 } };
   const ACT_NAMES = Object.keys(ACT);
+
+  // ---------- T-5084: variety from the motion library v2, posture bouts, playing a clip by hand ----------
+  // Idle rotation: a new idle is none of the last min(IDLE_RECENT, ⌊n/2⌋) ones (8–11 idle clips per style: no idle
+  // comes back within ~4 changes, ~1 min). Reactions: a director slot (react.touch-head…) plays one of the clips of
+  // its slot and of the index groups below (T-5081 docs/vrm-motion-library.md §2), never the same one twice in a row,
+  // a moving clip before a held frame; a clip that would take her out of the pose she is in (a full-body standing
+  // clip while she sits) is left out. Talk and think rotate through their groups' clips as segments (TALK.xfade).
+  // Falling asleep she yawns, waking up she stretches (upper body over the posture), when the library has those.
+  const IDLE_RECENT = 4;
+  const REACTION_GROUPS = {
+    'react.touch-head': ['nod', 'happy'], 'react.touch-face': ['shy'], 'react.touch-hands': ['clap', 'greet'],
+    'react.shy': ['shy'], 'react.angry': ['angry'], 'react.annoyed': ['shake'], 'react.ticklish': ['excited'],
+    'react.drop': ['surprised'], 'react.greet': ['greet', 'bow'], 'react.cheer': ['excited', 'jump', 'clap'],
+    'react.yawn': ['yawn'], 'react.stretch': ['stretch'],
+  };
+  const SEGMENT_GROUPS = { talk: 'talk', think: 'think' };
+  // Posture bouts (auto only): bored (BORED_AFTER s without anything) she sits, twice as long she lies down (when
+  // the library and the model allow it, else she keeps sitting); sad she crouches; and every REST.after s of a calm
+  // idle she takes a short rest — sitting or crouching for REST.dur s — then stands up again. Each bout picks one
+  // posture of its group (stand / sit / crouch / lay, the index's `group`), not the one of the last bout; every
+  // change of posture cross-fades (FADE.pose).
+  const REST = { after: [70, 140], dur: [18, 36] };
+  const POSE_GROUPS = ['stand', 'sit', 'crouch', 'lay'];
+  // playing a clip by hand (console 试播, POST /motion, a chat request): a posture or idle is the base for
+  // MANUAL.hold s (posture) or one play of the clip (≥ MANUAL.minIdle s), a reaction / hold an overlay (one-shot, or
+  // looped until stopped); a touch, the lift, a dance, stop() / reset() (重置姿势) interrupt it, back to the idle.
+  const MANUAL = { hold: 15, minIdle: 6 };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const scaleFace = (f, k) => Object.fromEntries(Object.entries(f || {}).map(([n, w]) => [n, n.startsWith('blink') ? w : clamp(w * k, 0, 1)]));
@@ -141,6 +179,9 @@
     const loaded = opts.loaded || new Set();
     const overrides = opts.overrides || null;
     const boredAfter = opts.boredAfter || BORED_AFTER;
+    // T-5092 TOUCH_SETTLE (the base held, a talk gesture queued, the limbs slower); settle: false only to replay
+    // the T-5089 behaviour (scripts/lib/vrm-replay.js, the before / after comparison)
+    const settleOn = opts.settle !== false;
     let packIdle = !!opts.packIdle;
     let setting = 'auto';
     const usable = (c) => !c.file || loaded.has(c.id);
@@ -190,10 +231,59 @@
       playN: 0,
       suppress: { eat: false, sleep: false }, // stop(): the app's meal / sleep shown as idle until it ends
       rawHolds: null, // the holds of the last frame, before stop()'s suppression
+      // T-5084
+      lastVariant: {}, // director reaction slot → the clip id it played last
+      variants: [], // reaction clips played, newest last: { t, slot, id }
+      lastPose: {}, // posture group → the slot of its last bout
+      bout: null, // the posture bout now: { key, clip }
+      rest: null, // a rest break: { group, until }
+      restAt: null, // when the next rest break may start
+      poses: [], // posture changes, newest last: { t, pose, slot, source }
+      seg: { think: { cur: null, prev: null, n: 0, last: null } }, // think segments (talk keeps S.talk)
+      prevMood: null,
+      manual: null, // a clip played by hand: { kind: 'base' | 'overlay', clip, start, until, key, why }
+      manualN: 0,
+      manuals: [], // { t, id, kind, end?: why }
     };
     const reactionClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
 
     const postureClip = (slot) => Lib.resolve(index, slot, style.set, overrides, usable);
+    const poseOf = (c) => (c && POSE_GROUPS.includes(c.group) ? c.group : c && c.sit ? 'sit' : 'stand');
+    const poseNow = () => (S.base && S.base.pose) || 'stand';
+    // a clip fits the pose she is in: anything but a full-body clip that starts in another pose
+    const fits = (c) => !c || c.mask !== 'full' || (c.enter || 'stand') === poseNow();
+
+    // The clip a reaction slot plays now (REACTION_GROUPS): its own and its groups', loaded, fitting her pose; moving
+    // ones first; never the one it played last. null: none (the reaction is then its face and gaze only).
+    // (mask: the mask it will be laid over with, when not its own — an upper-body yawn fits a seated pose)
+    function reactionVariant(slot, mask = null) {
+      const seen = new Set();
+      const cands = [];
+      const add = (c) => { if (c && !seen.has(c.id) && (mask ? mask !== 'full' || fits(c) : fits(c))) { seen.add(c.id); cands.push(c); } };
+      add(reactionClip(slot));
+      for (const g of REACTION_GROUPS[slot] || []) for (const c of Lib.variants(index, g, style.set, usable)) if (c.kind === 'reaction') add(c);
+      const moving = cands.filter((c) => !c.still && (c.duration || 1) > 1.05);
+      const list = moving.length ? moving : cands;
+      if (!list.length) return null;
+      const last = S.lastVariant[slot];
+      const pool = list.length > 1 ? list.filter((c) => c.id !== last) : list;
+      const c = pool[Math.floor(rand() * pool.length) % pool.length];
+      S.lastVariant[slot] = c.id;
+      return c;
+    }
+
+    // One posture of `group` for the bout `key` (kept for the whole bout; a new bout avoids the last one's posture).
+    function postureVariant(group, key) {
+      if (S.bout && S.bout.key === key && S.bout.clip && usable(S.bout.clip)) return S.bout.clip;
+      const list = Lib.variants(index, group, style.set, usable).filter((c) => c.kind === 'posture');
+      if (!list.length) return null;
+      const pool = list.length > 1 ? list.filter((c) => c.slot !== S.lastPose[group]) : list;
+      const c = pool[Math.floor(rand() * pool.length) % pool.length];
+      S.lastPose[group] = c.slot;
+      S.bout = { key, clip: c };
+      return c;
+    }
+    const hasPose = (group) => Lib.variants(index, group, style.set, usable).some((c) => c.kind === 'posture');
     const setSetting = (p) => { setting = p === 'auto' || Lib.POSTURES.includes(p) ? p : 'auto'; S.idle = null; };
     setSetting(opts.posture || 'auto');
 
@@ -201,10 +291,31 @@
     function heldPosture(holds) {
       if (holds.mood === 'sleep') return { slot: 'sit.doze', source: 'sleep' };
       if (setting !== 'auto') return { slot: setting, source: 'setting' };
-      if (S.t - S.lastEvent >= boredAfter && !holds.attention) return { slot: 'sit.rest', source: 'bored' };
+      const bout = (group, key, slot, source) => { const c = postureVariant(group, key); return c ? { slot: c.slot, clip: c, source } : slot ? { slot, source } : null; };
+      if (S.t - S.lastEvent >= boredAfter && !holds.attention) {
+        // bored: she sits down; twice as long, she lies down (T-5084) — the old sit.rest when the library has no group
+        if (S.t - S.lastEvent >= boredAfter * 2 && hasPose('lay')) return bout('lay', 'bored:lay', null, 'bored');
+        return bout('sit', 'bored:sit', 'sit.rest', 'bored');
+      }
       if (S.t < S.shyUntil) return { slot: 'stand.shy', source: 'shy' };
-      if (holds.mood === 'sad' || holds.mood === 'hungry') return { slot: 'stand.shy', source: 'mood' };
+      if (holds.mood === 'sad') return (hasPose('crouch') && bout('crouch', 'mood:sad', null, 'mood')) || { slot: 'stand.shy', source: 'mood' };
+      if (holds.mood === 'hungry') return { slot: 'stand.shy', source: 'mood' };
+      if (S.rest) return bout(S.rest.group, `rest:${S.rest.n}`, null, 'rest');
       return null;
+    }
+
+    // A rest break now and then (REST): only in auto, from a calm idle (nothing held, no reaction, no attention).
+    // calm: nothing going on (a break may start); keep: nothing that makes her stand up (a touch, a reaction does not)
+    function stepRest(holds, calm, keep) {
+      if (S.restAt === null) S.restAt = S.t + between(REST.after[0], REST.after[1]);
+      if (S.rest && (S.t >= S.rest.until || !keep || setting !== 'auto')) { S.rest = null; S.restAt = S.t + between(REST.after[0], REST.after[1]); }
+      if (!S.rest && calm && setting === 'auto' && S.t >= S.restAt) {
+        const groups = ['sit', 'crouch'].filter(hasPose);
+        if (!groups.length) { S.restAt = S.t + between(REST.after[0], REST.after[1]); return; }
+        const group = holds.mood === 'happy' && groups.includes('sit') ? 'sit' : groups[Math.floor(rand() * groups.length) % groups.length];
+        S.rest = { group, until: S.t + between(REST.dur[0], REST.dur[1]), n: (S.rest ? S.rest.n : S.restN || 0) + 1 };
+        S.restN = S.rest.n;
+      }
     }
 
     // the idle pool for now: full-body idle clips (and cycles) in auto, micro idles while a posture is held
@@ -217,7 +328,12 @@
     }
 
     function pickIdle(list) {
-      const choices = list.length > 1 ? list.filter((c) => c.slot !== S.lastIdle) : list;
+      // none of the last min(IDLE_RECENT, ⌊n/2⌋) idles again (T-5084; before, only the very last one)
+      const k = Math.max(1, Math.min(IDLE_RECENT, Math.floor(list.length / 2)));
+      const recent = new Set(S.history.slice(-k));
+      let choices = list.length > 1 ? list.filter((c) => !recent.has(c.slot)) : list;
+      if (!choices.length) choices = list.filter((c) => c.slot !== S.lastIdle);
+      if (!choices.length) choices = list;
       const total = choices.reduce((s, c) => s + c.weight, 0);
       let r = rand() * total;
       for (const c of choices) { r -= c.weight; if (r <= 0) return c; }
@@ -253,7 +369,11 @@
       const first = !S.base;
       const sitChange = S.base && clip && !!clip.sit !== !!S.base.sit;
       const fromDance = !!(S.base && S.base.dance);
-      S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), fade: first ? FADE.first : fromDance ? DANCE.fadeOut : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
+      const pose = poseOf(clip);
+      // (one crouch / lay for another is a whole-body change too: the same long fade, T-5092)
+      const poseChange = S.base && !fromDance && (pose === 'lay' || S.base.pose === 'lay' || pose === 'crouch' || S.base.pose === 'crouch');
+      S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), pose, fade: first ? FADE.first : fromDance ? DANCE.fadeOut : poseChange ? FADE.pose : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
+      if (!first && (pose !== 'stand' || (S.poses.length && S.poses[S.poses.length - 1].pose !== 'stand'))) { S.poses.push({ t: +S.t.toFixed(3), pose, slot: clip ? clip.slot : null, source }); if (S.poses.length > 30) S.poses.shift(); }
       if (fromDance || S.resetWhy) S.baseFadeUntil = S.t + S.base.fade; // a reset (T-2830) from a posture (asleep: sit.doze) fades too
       S.posture = posture;
       S.postureSource = source;
@@ -262,17 +382,19 @@
     // ---------- the reaction layer ----------
     // the weight (0..1, before the clip's own weight) of reaction r at time t: its fade-in, its fade-out at
     // the end, or the quick cut when another reaction took over
-    function reactWeight(r, t) {
+    function reactWeight(r, t, inScale = 1) {
       const smoothK = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
-      let w = Math.min(smoothK((t - r.start) / r.fadeIn), smoothK((r.end - t) / r.fadeOut));
+      let w = Math.min(smoothK((t - r.start) / (r.fadeIn * inScale)), smoothK((r.end - t) / r.fadeOut));
       if (r.cutAt !== undefined) w = Math.min(w, r.cutFrom * smoothK(1 - (t - r.cutAt) / CUT));
       return clamp(w, 0, 1);
     }
 
     // Start reaction `slot` now (a new one cuts the old: it fades out under the new one, no snap). opts:
-    // { prio, amp (0..1, e.g. a cue's small cheer), hold (s, overrides the clip's), why }
+    // { prio, amp (0..1, e.g. a cue's small cheer: its face, T-5098), hold (s, overrides the clip's), why }
     function startReaction(slot, opts = {}) {
-      const clip = reactionClip(slot);
+      const cur0 = S.react;
+      // the same reaction going on keeps its clip (below); a new one draws its variant (T-5084)
+      const clip = opts.clip || (cur0 && cur0.slot === slot && S.t < cur0.end && S.t < cur0.end - cur0.fadeOut ? cur0.clip : reactionVariant(slot));
       const look = REACTION_LOOK[slot] || {};
       const cur = S.react;
       // the same reaction again: within the debounce nothing; while it plays, the same reaction keeps going
@@ -288,21 +410,30 @@
       if (cur) cutReaction();
       // a touch, a drop, a celebration ends the play one-shot (a cue's small cheer never starts over it)
       if (S.play && (opts.prio !== undefined ? opts.prio : PRIORITY.touch) > PRIORITY.cue) endPlay();
-      const fadeIn = clip ? clip.fadeIn : 0.2;
-      const fadeOut = clip ? clip.fadeOut : 0.5;
+      // (T-5084: a full-body clip comes in over ≥ 0.4 s — its first frame can be far from her pose, and at the calm
+      // 12 fps a 0.25 s fade is two frames)
+      const fadeIn = clip ? Math.max(clip.fadeIn || 0.25, clip.mask === 'full' && (opts.mask || 'full') === 'full' ? 0.4 : 0) : 0.2;
+      const fadeOut = clip ? clip.fadeOut || 0.5 : 0.5;
       const hold = opts.hold !== undefined ? opts.hold : clip ? (clip.hold || look.hold || 0) : 0;
       const dur = clip ? (clip.still ? 0 : clip.duration || 1) : 0;
       const playEnd = S.t + dur;
-      const end = clip ? Math.max(playEnd + hold, S.t + fadeIn) + fadeOut : S.t + NO_CLIP;
+      const end = opts.loop && clip ? Infinity : clip ? Math.max(playEnd + hold, S.t + fadeIn) + fadeOut : S.t + NO_CLIP;
       const r = {
         slot, clip: clip || null, prio: opts.prio !== undefined ? opts.prio : PRIORITY.touch, start: S.t, playEnd, end, hold, fadeIn, fadeOut,
-        weight: clip ? clamp(clip.weight * (opts.amp || 1) * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
-        face: (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
+        // T-5098: `amp` (a cue's small cheer) no longer scales the body's weight: a full-body clip at 0.6 is a pose
+        // 60 % of the way from the idle's to the clip's — the cheer's fists overhead (+60°) over arms hanging (−75°)
+        // came out as both arms held level for 1.5 s (Wanderer, T-5097). The clip plays as it is; amp softens the face
+        weight: clip ? clamp(clip.weight * (style.amplitude >= 1 ? 1 : 0.85 + 0.15 * style.amplitude), 0, 1) : 0,
+        face: opts.amp !== undefined && opts.amp < 1 ? scaleFace((clip && clip.face) || look.face || {}, opts.amp) : (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
         noBlink: look.noBlink || 0, key: ++S.reactKey, why: opts.why || null,
+        mask: opts.mask || (clip && clip.mask) || 'upper', loop: !!(opts.loop && clip), manual: !!opts.manual,
+        // T-5092: a touch holds the base still while its clip plays (≤ TOUCH_SETTLE.base s)
+        settleUntil: opts.touch && settleOn ? Math.min(playEnd, S.t + TOUCH_SETTLE.base) : null,
       };
       S.react = r;
       S.reactions.push(slot);
       if (S.reactions.length > 50) S.reactions.shift();
+      if (clip) { S.variants.push({ t: +S.t.toFixed(3), slot, id: clip.id }); if (S.variants.length > 50) S.variants.shift(); }
       if (slot === 'react.drop') S.landKey++;
       if (slot === 'react.angry') S.angryUntil = r.end + AFTER.angry;
       if (slot === 'react.shy' && setting === 'auto') S.shyUntil = r.end + AFTER.shy;
@@ -334,7 +465,7 @@
       if (e.type === 'touch') {
         if (holds.lift) return; // held in the air: the lift wins
         const slot = e.mood === 'happy' || !MOOD_REACTION[e.mood] ? ZONE_REACTION[e.zone] || 'react.touch-head' : MOOD_REACTION[e.mood];
-        startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}` });
+        startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}`, touch: true });
       } else if (e.type === 'drag') {
         if (e.what !== 'lift' && S.t - S.resetAt < 0.5) return; // a reset let her go (T-2830): no landing reaction
         if (e.what === 'lift') cutReaction(); // the lift hold takes over at once
@@ -366,7 +497,9 @@
       if (slot && !S.holds.has(slot)) S.holds.set(slot, { slot, clip: reactionClip(slot), start: S.t, w: 0 });
       for (const [k, h] of S.holds) {
         const on = k === slot;
-        const fade = h.clip ? (on ? h.clip.fadeIn : h.clip.fadeOut) : 0.3;
+        // (T-5098: a full-body hold comes in over ≥ HOLD_FULL_IN s — hold.lift's 0.2 s was two frames at 9 fps, one of
+        // them a lurch of the forearms the limiter had to cap)
+        const fade = h.clip ? (on ? Math.max(h.clip.fadeIn || 0, h.clip.mask === 'full' ? HOLD_FULL_IN : 0) : h.clip.fadeOut) : 0.3;
         h.w = clamp(h.w + (on ? 1 : -1) * (dt / Math.max(0.05, fade)), 0, 1);
         if (!on && h.w <= 0) S.holds.delete(k);
       }
@@ -411,7 +544,9 @@
     function nextTalk() {
       const T = S.talk;
       const ids = new Set();
-      T.segments = Lib.TALK_SEGMENTS.map((s) => reactionClip(s)).filter((c) => c && !ids.has(c.id) && ids.add(c.id));
+      // every talk clip of the style (the index's talk group, T-5081: 9 per style), else the three talk slots
+      const group = Lib.variants(index, SEGMENT_GROUPS.talk, style.set, usable).filter((c) => c.kind === 'hold' && !c.still);
+      T.segments = (group.length ? group : Lib.TALK_SEGMENTS.map((s) => reactionClip(s))).filter((c) => c && !ids.has(c.id) && ids.add(c.id));
       if (!T.segments.length) return null;
       const pool = T.segments.length > 1 ? T.segments.filter((c) => c.id !== T.last) : T.segments;
       const c = pool[Math.floor(rand() * pool.length) % pool.length];
@@ -440,6 +575,87 @@
         overlays.push({ layer: 'hold', slot: T.prev.slot, id: T.prev.clip.id, mask: T.prev.clip.mask, time: clamp(S.t - T.prev.start, 0, len(T.prev)), weight: +a.toFixed(4) });
       }
       overlays.push({ layer: 'hold', slot: T.cur.slot, id: T.cur.clip.id, mask: T.cur.clip.mask, time: clamp(S.t - T.cur.start, 0, len(T.cur)), weight: +b.toFixed(4) });
+    }
+
+    // Thinking (T-5084): the think group's gestures (hand to the chin, a look up…) one after the other over the
+    // think hold, cross-faded like the talk segments; without them the hold's own clip (hold.think).
+    function thinkOverlays(h, overlays, on) {
+      const T = S.seg.think;
+      const list = Lib.variants(index, SEGMENT_GROUPS.think, style.set, usable).filter((c) => !c.still && (c.duration || 1) > 1.05 && fits(c));
+      if (!list.length) return false;
+      if (h.w <= 0) { T.cur = null; T.prev = null; return true; }
+      const next = () => { const pool = list.length > 1 ? list.filter((c) => c.id !== T.last) : list; const c = pool[Math.floor(rand() * pool.length) % pool.length]; T.last = c.id; T.n++; return { slot: c.slot, clip: c, start: S.t }; };
+      if (!T.cur) T.cur = next();
+      const len = (c) => Math.max(1, c.clip.duration || 1);
+      if (on && S.t - T.cur.start >= len(T.cur) - TALK.xfade * 0.5) { T.prev = T.cur; T.cur = next(); }
+      const w = h.w * h.w * (3 - 2 * h.w);
+      const x = clamp((S.t - T.cur.start) / TALK.xfade, 0, 1);
+      const k = T.prev ? x * x * (3 - 2 * x) : 1;
+      if (T.prev && k >= 1) T.prev = null;
+      const b = w * k * (T.cur.clip.weight || 1);
+      if (T.prev) overlays.push({ layer: 'hold', slot: T.prev.slot, id: T.prev.clip.id, mask: T.prev.clip.mask, time: clamp(S.t - T.prev.start, 0, len(T.prev)), weight: +clamp((w * (1 - k) * (T.prev.clip.weight || 1)) / Math.max(1e-3, 1 - b), 0, 1).toFixed(4) });
+      overlays.push({ layer: 'hold', slot: T.cur.slot, id: T.cur.clip.id, mask: T.cur.clip.mask, time: clamp(S.t - T.cur.start, 0, len(T.cur)), weight: +b.toFixed(4) });
+      return true;
+    }
+
+    // ---------- playing a clip by hand (MANUAL, T-5084) ----------
+    // req: { id (a clip id: idle.v03@female), slot (stand.v02, react.nod-01: resolved for her style), group (nod,
+    // stretch…: one of its clips), loop }. → { ok, id, kind, label, duration, loop } | { ok: false, reason }
+    function findClip(req) {
+      const clips = index.clips || {};
+      const ok = (c) => c && usable(c) && (c.file || c.cycle);
+      if (req.id && ok(clips[req.id])) return clips[req.id];
+      if (req.id && /@/.test(req.id)) { const slot = String(req.id).split('@')[0]; const c = Lib.resolve(index, slot, style.set, overrides, usable); if (ok(c)) return c; }
+      const slot = req.slot || (req.id && !/@/.test(req.id) ? req.id : null);
+      if (slot) { const c = Lib.resolve(index, slot, style.set, overrides, usable); if (ok(c)) return c; }
+      if (req.group) {
+        const list = Lib.variants(index, req.group, style.set, usable).filter(ok);
+        if (list.length) { const pool = list.length > 1 ? list.filter((c) => c.id !== S.lastVariant[`group:${req.group}`]) : list; const c = pool[Math.floor(rand() * pool.length) % pool.length]; S.lastVariant[`group:${req.group}`] = c.id; return c; }
+      }
+      return null;
+    }
+    function play(req = {}) {
+      const c = findClip(req || {});
+      if (!c) return { ok: false, reason: 'no-clip' };
+      if (DANCE_ON.includes(S.dance.state)) return { ok: false, reason: 'dancing' };
+      endManual('replaced');
+      const key = ++S.manualN;
+      const why = `manual:${req.why || 'play'}`;
+      if (c.kind === 'posture' || c.kind === 'idle') {
+        const len = c.kind === 'posture' ? Number(req.hold) > 0 ? clamp(Number(req.hold), 1, 600) : MANUAL.hold : Math.max(MANUAL.minIdle, c.cycle ? c.every * c.cycle.length : c.duration || 1);
+        S.manual = { kind: 'base', clip: c, start: S.t, until: req.loop ? Infinity : S.t + len, key, why };
+        S.idle = null;
+      } else {
+        if (S.react) cutReaction();
+        S.queued = null;
+        const loop = req.loop !== undefined ? !!req.loop : c.kind === 'hold' && c.loop;
+        const r = startReaction(c.slot, { clip: c, prio: PRIORITY.manual, loop, manual: true, why, amp: 1 });
+        S.manual = { kind: 'overlay', clip: c, start: S.t, until: r.end, key, why, react: r.key };
+      }
+      S.lastEvent = S.t;
+      S.manuals.push({ t: +S.t.toFixed(3), id: c.id, kind: S.manual.kind, why });
+      if (S.manuals.length > 30) S.manuals.shift();
+      return { ok: true, id: c.id, slot: c.slot, kind: c.kind, layer: S.manual.kind, label: c.label, duration: c.duration || null, loop: S.manual.until === Infinity };
+    }
+    function endManual(why) {
+      if (!S.manual) return null;
+      const m = S.manual;
+      S.manual = null;
+      if (m.kind === 'overlay' && S.react && S.react.key === m.react) cutReaction();
+      const rec = S.manuals.slice().reverse().find((x) => x.id === m.clip.id && !x.end);
+      if (rec) rec.end = why;
+      return m;
+    }
+    // the manual clip still on? (its overlay can be cut by a touch, a lift…)
+    function stepManual(dance, holds) {
+      const m = S.manual;
+      if (!m) return;
+      if (dance.on) return void endManual('dance');
+      if (m.kind === 'overlay') {
+        const live = S.react && S.react.key === m.react;
+        if (!live) endManual(S.react ? 'interrupted' : 'done');
+      } else if (S.t >= m.until) endManual('done');
+      else if (holds.lift) endManual('lift');
     }
 
     // The dance layer this frame (DANCE above): its state, and what the app is asked to do.
@@ -496,7 +712,9 @@
     function actionNow(dance, hold, R, holds) {
       if (dance.on) return 'dance';
       if (hold === 'lift') return 'lift';
+      if (R && R.manual) return 'manual';
       if (R) return R.why && /^cue:play/.test(R.why) ? 'play' : REACTION_ACTION[R.slot] || 'touch';
+      if (S.manual) return 'manual';
       if (S.acts.play.on) return 'play';
       if (hold) return hold;
       if (holds.mood === 'sleep') return 'sleep';
@@ -541,7 +759,9 @@
     function stop(why = 'stop') {
       const was = S.action.state;
       if (DANCE_ON.includes(S.dance.state)) S.stopAsked = why;
+      endManual(why);
       if (S.react) cutReaction();
+      S.rest = null;
       S.queued = null;
       S.faceUntil = -1;
       S.scanUntil = -1;
@@ -564,7 +784,7 @@
     // Already idle with nothing waiting: nothing changes (no new idle, no cut glance) → { reset: false, noop }.
     function reset(why = 'reset') {
       const was = S.action.state;
-      if (was === 'idle' && !S.react && !S.queued && !S.fading.length && !DANCE_ON.includes(S.dance.state)) return { reset: false, noop: true, was, why };
+      if (was === 'idle' && !S.react && !S.queued && !S.fading.length && !S.manual && !DANCE_ON.includes(S.dance.state)) return { reset: false, noop: true, was, why };
       stop(why);
       S.angryUntil = -1;
       S.danceTouch = null;
@@ -588,12 +808,28 @@
       if (holds.attention) S.lastEvent = S.t;
       const dance = stepDance(holds);
       for (const e of events) onEvent(e, holds);
+      stepManual(dance, holds);
+      // falling asleep she yawns, waking up she stretches (upper body over the posture; only with those clips)
+      if (S.prevMood !== null && (holds.mood === 'sleep') !== (S.prevMood === 'sleep') && !dance.on && !holds.lift && !(S.react && S.t < S.react.end)) {
+        const slot = holds.mood === 'sleep' ? 'react.yawn' : 'react.stretch';
+        const c = reactionVariant(slot, 'upper');
+        if (c) startReaction(slot, { clip: c, prio: PRIORITY.sleep, mask: 'upper', why: holds.mood === 'sleep' ? 'sleep:in' : 'sleep:out' });
+      }
+      S.prevMood = holds.mood || 'idle';
+      // a rest break: only from a calm idle (nothing held, no reaction, nobody busy with her)
+      const keep = !dance.on && !holds.lift && !holds.think && !holds.talk && !holds.eat && !holds.walk && !holds.attention && !S.manual && holds.mood !== 'sleep' && holds.mood !== 'sad';
+      stepRest(holds, keep && !(S.react && S.t < S.react.end), keep);
 
       const held = heldPosture(holds);
       const list = pool(held, holds);
-      // a change of regime (posture held / released, sit / stand) ends the idle at once
+      // a change of regime (posture held / released, sit / stand) ends the idle at once — unless a touch reaction
+      // is playing: then the base she is in stays until it settles (T-5092 TOUCH_SETTLE.base)
       const regime = held ? `held:${held.slot}` : 'auto';
-      if (!S.idle || S.t >= S.idle.until || S.idle.regime !== regime || !list.some((c) => c.slot === S.idle.slot)) {
+      const settling = !!(S.base && S.react && S.react.settleUntil !== null && S.react.settleUntil !== undefined && S.t < S.react.settleUntil && !dance.on && !(S.manual && S.manual.kind === 'base'));
+      S.settling = settling;
+      if (settling && S.idle) {
+        // nothing: the base of the frame the touch came in on (an idle is always kept: setSetting / play may clear it)
+      } else if (!S.idle || S.t >= S.idle.until || S.idle.regime !== regime || !list.some((c) => c.slot === S.idle.slot)) {
         startIdle(list);
         S.idle.regime = regime;
       }
@@ -602,8 +838,18 @@
       const I = S.idle;
       if (dance.on) {
         // nothing: the dance's clip stays the base
+      } else if (settling) {
+        // nothing: a touch reaction is playing over the base she was in (T-5092)
+      } else if (S.manual && S.manual.kind === 'base') {
+        // a clip played by hand (T-5084): a posture is held, an idle plays; cross-faded in and back out
+        const c = S.manual.clip;
+        if (c.cycle) {
+          const cyc = c.cycle.filter((s) => postureClip(s));
+          const slot = cyc[Math.floor((S.t - S.manual.start) / c.every) % cyc.length];
+          setBase(postureClip(slot), FADE.cycle, slot, 'manual');
+        } else setBase(c, c.kind === 'posture' ? FADE.posture : FADE.idle, c.kind === 'posture' ? c.slot : null, 'manual');
       } else if (held) {
-        const c = postureClip(held.slot) || postureClip('stand.relaxed');
+        const c = held.clip || postureClip(held.slot) || postureClip('stand.relaxed');
         setBase(c, FADE.posture, held.slot, held.source);
       } else if (I.kind === 'clip') {
         setBase(I.clip, FADE.idle, null, 'idle');
@@ -624,7 +870,12 @@
 
       // the activity she holds, by priority
       // (a reply streaming in keeps the app "thinking" while its words appear: then she talks — T-2711)
-      const hold = dance.on ? (holds.lift ? 'lift' : null) : holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      let hold = dance.on ? (holds.lift ? 'lift' : null) : holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      // a talk gesture starting with a touch waits for the reaction to come in (T-5092 TOUCH_SETTLE.talk); one
+      // already showing goes on
+      const talkW = S.holds.get('hold.talk') ? S.holds.get('hold.talk').w : 0;
+      S.talkQueued = settleOn && hold === 'talk' && talkW <= 0 && !!(S.react && /^touch:/.test(S.react.why || '') && S.t < Math.min(S.react.playEnd, S.react.start + TOUCH_SETTLE.talk));
+      if (S.talkQueued) hold = null;
       stepHolds(dt, hold);
       // a cue's small cheer is only for an idle moment: thinking, talking, eating or being lifted ends it (it
       // fades out under the hold; T-2711: one ran on over the thinking pose)
@@ -641,8 +892,9 @@
       // the clip overlays, bottom to top: the hold, the fading reactions, the reaction (time in the clip, weight)
       const overlays = [];
       const holdClip = (h) => h.clip && overlays.push({ layer: 'hold', slot: h.slot, id: h.clip.id, mask: h.clip.mask, time: h.clip.still ? 0 : (h.slot === 'hold.walk' ? S.gait.phase : S.t - h.start) % Math.max(0.01, h.clip.duration || 1), weight: +(h.w * h.w * (3 - 2 * h.w) * h.clip.weight).toFixed(4) });
-      for (const h of S.holds.values()) if (h.slot === 'hold.talk') talkOverlays(h, overlays, hold === 'talk'); else holdClip(h);
-      const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.clip.mask, time: r.clip.still ? 0 : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), key: r.key });
+      for (const h of S.holds.values()) if (h.slot === 'hold.talk') talkOverlays(h, overlays, hold === 'talk'); else if (!(h.slot === 'hold.think' && thinkOverlays(h, overlays, hold === 'think'))) holdClip(h);
+      // (limb: the weight for the hands, forearms and feet — they fade in TOUCH_SETTLE.limbFade × slower, T-5092)
+      const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.mask || r.clip.mask, time: r.clip.still ? 0 : r.loop ? (S.t - r.start) % Math.max(0.01, r.clip.duration || 1) : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), ...(settleOn ? { limb: +(reactWeight(r, S.t, TOUCH_SETTLE.limbFade) * r.weight).toFixed(4) } : {}), key: r.key });
       for (const r of S.fading) reactClip(r, 'fading');
       if (R) reactClip(R, 'reaction');
       // dancing: nothing over the dance but the lift (§3.1)
@@ -679,7 +931,7 @@
       const action = stepAction(dance, hold, R, holds);
 
       const micro = I.kind === 'micro' ? MICRO_IDLES[I.slot].life : { sway: 1, lookAway: 1 };
-      const standing = !(S.base && S.base.sit) && holds.mood !== 'sleep';
+      const standing = !(S.base && (S.base.sit || (S.base.pose && S.base.pose !== 'stand'))) && holds.mood !== 'sleep';
       const talkOn = S.holds.get('hold.talk');
       return {
         t: S.t,
@@ -707,9 +959,14 @@
         facingYaw: +S.yaw.toFixed(3),
         turnLead: dance.on ? 0 : +clamp((turn.target - S.yaw) * WALK.lead, -WALK.leadMax, WALK.leadMax).toFixed(3),
         walk: { on: S.gait.on, rate: +S.gait.rate.toFixed(3), wanted: +S.gait.wanted.toFixed(3), phase: +S.gait.phase.toFixed(3), target: turn.target, turning: turn.turning },
+        manual: S.manual ? { id: S.manual.clip.id, kind: S.manual.kind, left: S.manual.until === Infinity ? null : +Math.max(0, S.manual.until - S.t).toFixed(3) } : null,
+        pose: poseNow(),
+        rest: S.rest ? { group: S.rest.group, left: +Math.max(0, S.rest.until - S.t).toFixed(3) } : null,
+        thinkSegment: S.seg.think.cur ? S.seg.think.cur.slot : null,
         talkSegment: S.talk.cur ? S.talk.cur.slot : null,
         talkSegments: S.talk.n,
-        busy: dance.on || dance.state === 'out' || !!hold || !!R || acts.length > 0 || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
+        settling: !!S.settling, talkQueued: !!S.talkQueued, // T-5092: a touch holding the base still / a talk gesture waiting for it
+        busy: dance.on || dance.state === 'out' || !!hold || !!R || !!S.manual || acts.length > 0 || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
       };
     }
 
@@ -717,6 +974,11 @@
       update,
       stop,
       reset,
+      play,
+      stopManual: (why = 'stop') => { const m = endManual(why); return { stopped: !!m, id: m ? m.clip.id : null }; },
+      manuals: () => S.manuals.slice(),
+      variants: () => S.variants.slice(),
+      poses: () => S.poses.slice(),
       resets: () => S.resets.slice(),
       action: () => ({ ...S.action }),
       actions: () => S.actions.slice(),
@@ -730,5 +992,5 @@
     };
   }
 
-  return { ACT, ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { TOUCH_SETTLE, IDLE_RECENT, REACTION_GROUPS, SEGMENT_GROUPS, REST, MANUAL, POSE_GROUPS, ACT, ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });
