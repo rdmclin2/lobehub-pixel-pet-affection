@@ -32,10 +32,16 @@
 // face. A base clip now always leaves through a cross-fade to the next base, the rest clip included.
 (function () {
   const LOOP_BLEND = 0.5;
+  // phase alignment (T-5084): a new idle loop starts at the time of its clip whose pose is nearest to the pose she
+  // shows now (ALIGN_N candidates, shifted by a random offset so the same idle never beats on the same clock), so a
+  // cross-fade blends two similar poses instead of pulling her through a far one. Weights: the bones that show most.
+  const ALIGN_N = 16;
+  const ALIGN_W = { hips: 2, spine: 1, chest: 1, upperChest: 0.5, neck: 0.5, head: 0.7, leftUpperArm: 1.5, rightUpperArm: 1.5, leftLowerArm: 1, rightLowerArm: 1, leftUpperLeg: 1.5, rightUpperLeg: 1.5, leftLowerLeg: 1, rightLowerLeg: 1 };
   const REST_ID = 'rest.pose';
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
   // how much of an overlay each bone takes, per mask (soft at the waist so an upper-body clip bends in)
+  const LIMB = /Hand$|LowerArm$|Foot$|Toes$|Thumb|Index|Middle|Ring|Little/;
   const ARM_BONES = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand', 'Thumb', 'Index', 'Middle', 'Ring', 'Little'];
   function maskWeight(mask, bone) {
     if (mask === 'full') return 1;
@@ -47,6 +53,17 @@
     if (bone === 'spine') return 0.5;
     if (bone === 'chest') return 0.8;
     return 1;
+  }
+
+  // T-5098: |cos(half angle)| below which two rotations are ~180° apart (> 150°): the slerp keeps last frame's side
+  const FLIP_DOT = Math.cos((75 * Math.PI) / 180);
+  // q ← slerp(q, b, t) along the path b's sign gives (no shortest-path flip), in place
+  function slerpKeep(q, b, t) {
+    const d = Math.max(-1, Math.min(1, q.x * b.x + q.y * b.y + q.z * b.z + q.w * b.w));
+    let ka; let kb;
+    if (d > 0.9995) { ka = 1 - t; kb = t; } else { const th = Math.acos(d); const s = Math.sin(th); ka = Math.sin((1 - t) * th) / s; kb = Math.sin(t * th) / s; }
+    q.set(q.x * ka + b.x * kb, q.y * ka + b.y * kb, q.z * ka + b.z * kb, q.w * ka + b.w * kb).normalize();
+    return q;
   }
 
   // R: the runtime (window.PetVrmRuntime), vrm: the loaded VRM, keep: bone names the alive layer moves
@@ -95,10 +112,22 @@
         if (!tracks) continue;
         shown.push(`${o.layer || 'overlay'}:${o.id}:${o.weight.toFixed(2)}`);
         for (const tr of tracks) {
-          const k = o.weight * maskWeight(o.mask || 'upper', tr.bone);
+          // (a reaction's hands, forearms and feet come in slower: o.limb, T-5092 — the director's TOUCH_SETTLE)
+          const k = (o.limb !== undefined && LIMB.test(tr.bone) ? Math.min(o.weight, o.limb) : o.weight) * maskWeight(o.mask || 'upper', tr.bone);
           if (!(k > 0)) continue;
           const v = tr.interp.evaluate(Math.max(0, Math.min(tr.duration, o.time || 0)));
-          if (tr.q) { qa.fromArray(v).normalize(); tr.node.quaternion.slerp(qa, Math.min(1, k)); } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
+          if (tr.q) {
+            qa.fromArray(v).normalize();
+            // T-5098: the way round kept from frame to frame. Two poses of a bone ~180° apart (standmix2's hand turned
+            // 158°, a talk gesture's the other way) have no stable shortest path: the slerp flipped sides mid-fade
+            // and the hand lurched 62° in a frame. Near 180° the side taken last frame is kept.
+            const q0 = tr.node.quaternion;
+            const d = q0.x * qa.x + q0.y * qa.y + q0.z * qa.z + q0.w * qa.w;
+            const sign = Math.abs(d) < FLIP_DOT && tr.side ? tr.side : d < 0 ? -1 : 1;
+            tr.side = sign;
+            if (sign < 0) qa.set(-qa.x, -qa.y, -qa.z, -qa.w);
+            slerpKeep(q0, qa, Math.min(1, k));
+          } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
         }
       }
       lastOverlays = shown.join(',');
@@ -130,9 +159,36 @@
       return true;
     }
 
+    // The time in clip `id` whose pose is nearest the pose now (ALIGN above) → { time, dist, mean } (dist: the weighted
+    // 1 − |q·q'| at that time, mean: over all candidates — how much the alignment saved)
+    let lastAlign = null;
+    function alignedTime(id, jitter = Math.random()) {
+      const tracks = sampler(id);
+      const c = clips.get(id);
+      if (!tracks || !tracks.length || !c || !(c.clip.duration > 0.2)) return null;
+      const dur = c.clip.duration;
+      let best = 0;
+      let bestD = Infinity;
+      let sum = 0;
+      for (let i = 0; i < ALIGN_N; i++) {
+        const tt = ((i + jitter) / ALIGN_N) * dur;
+        let d = 0;
+        for (const tr of tracks) {
+          const w = tr.q && ALIGN_W[tr.bone];
+          if (!w) continue;
+          qa.fromArray(tr.interp.evaluate(tt)).normalize();
+          d += w * (1 - Math.abs(qa.dot(tr.node.quaternion)));
+        }
+        sum += d;
+        if (d < bestD) { bestD = d; best = tt; }
+      }
+      lastAlign = { id, time: +best.toFixed(3), dist: +bestD.toFixed(5), mean: +(sum / ALIGN_N).toFixed(5), duration: +dur.toFixed(3) };
+      return lastAlign;
+    }
+
     // Cross-fade the base to clip `id` over `dur` seconds (0: at once). Unknown id → false. opts: { phase (0..1:
-    // where in the clip a newly started action begins), speed (its time scale) } — idles use them so a loop
-    // never keeps the same beat.
+    // where in the clip a newly started action begins), align (start where the pose is nearest the pose now: the
+    // phase alignment above, T-5084), speed (its time scale) } — idles use them so a loop never keeps the same beat.
     function setBase(id, dur = 1, opts = null) {
       const c = clips.get(id);
       if (!c) return false;
@@ -143,7 +199,7 @@
         const action = mixer.clipAction(c.clip);
         action.setLoop(T.LoopRepeat, Infinity);
         action.reset().play();
-        if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
+        if (opts && opts.align) { const a = alignedTime(id); if (a) action.time = a.time; } else if (opts && opts.phase > 0) action.time = (opts.phase % 1) * c.clip.duration;
         if (opts && opts.speed > 0) action.timeScale = opts.speed;
         L = { id, action, w: 0, external, duration: c.clip.duration };
         layers.push(L);
@@ -255,10 +311,12 @@
       // "id:weight" of every playing clip, for data-layers
       summary: () => layers.map((l) => `${l.id}:${l.w.toFixed(2)}`).join(','),
       overlays: () => lastOverlays,
+      lastAlign: () => lastAlign && { ...lastAlign },
+      alignedTime,
       weightSum: () => layers.reduce((s, l) => s + l.w, 0),
       dispose: () => { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); layers = []; clips.clear(); },
     };
   }
 
-  window.PetVrmAnim = { createAnimLayers, maskWeight, REST_ID };
+  window.PetVrmAnim = { createAnimLayers, maskWeight, LIMB, REST_ID };
 })();

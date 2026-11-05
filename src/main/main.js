@@ -734,7 +734,27 @@ function wire() {
     return { speciesId: p.speciesId, characterId: p.characterId, name: (service.characterList().find((e) => e.id === p.characterId) || {}).name || SPECIES[p.speciesId].nameZh, species: speciesInfo(), look: service.lookFor(p.characterId, 'daily'), settings: service.getSettings(), testMode: TEST_MODE };
   });
   ipcMain.handle('set-vrm-posture', (_e, { packId, posture } = {}) => service.setVrmPosture(packId, posture));
-  ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source } : null));
+  // the VRM motion library (T-5084): where it is and what is in it; 选择文件夹 links another one (nothing is copied),
+  // 取消关联 forgets it — the pet window redraws her with the new library at once
+  ipcMain.handle('vrm-library-info', () => (vrmLibrary ? { dir: vrmLibrary.dir, source: vrmLibrary.source, ...(vrmLibrary.status ? { status: vrmLibrary.status() } : {}) } : null));
+  ipcMain.handle('vrm-library-pick', async (e) => {
+    if (!vrmLibrary || !vrmLibrary.relink) return { ok: false, reason: 'no-library' };
+    const [dir] = await pickPaths(e, { title: '选择 VRM 动作库文件夹（含 library.json）', properties: ['openDirectory'] });
+    if (!dir) return { ok: false, reason: 'canceled' };
+    const r = vrmLibrary.relink(dir);
+    if (r.ok) await askRenderer('vrm-reload', {});
+    return r;
+  });
+  ipcMain.handle('vrm-library-unlink', async () => {
+    if (!vrmLibrary || !vrmLibrary.relink) return { ok: false, reason: 'no-library' };
+    const r = vrmLibrary.relink(null);
+    if (r.ok) await askRenderer('vrm-reload', {});
+    return r;
+  });
+  // 动作试播 (设置 → 角色 → VRM 动作库): the clips she has loaded, play one, stop it (played by the pet window)
+  ipcMain.handle('vrm-motions:list', () => askRenderer('motions', {}));
+  ipcMain.handle('vrm-motion:play', (_e, opts) => askRenderer('motion', { ...(opts || {}), why: 'console' }));
+  ipcMain.handle('vrm-motion:stop', () => askRenderer('motion-stop', { why: 'console' }));
   // dancing: list / play / stop / state — from any window (the settings page too), played by the pet window
   ipcMain.handle('dances:list', () => danceList());
   ipcMain.handle('dance:play', (_e, opts) => dancePlay(opts || {}));
@@ -1269,6 +1289,9 @@ app.whenReady().then(() => {
     dance: (opts) => dancePlay(opts),
     danceStop: () => danceStop(),
     resetPose: () => resetPose('api'),
+    motions: () => askRenderer('motions', {}),
+    motion: (opts) => askRenderer('motion', { ...opts, why: 'api' }),
+    motionStop: () => askRenderer('motion-stop', { why: 'api' }),
     say: async (text) => service.sayExternal(text),
     anim: (state, facing) => askRenderer('anim', { state, facing }),
     throw: (v) => askRenderer('throw', v, 20000),

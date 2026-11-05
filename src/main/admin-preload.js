@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
   setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
+  // VRM 动作库 (T-5084): where the motions come from, link another folder / forget it, and 动作试播
+  vrmLibraryInfo: () => ipcRenderer.invoke('vrm-library-info'),
+  vrmLibraryPick: () => ipcRenderer.invoke('vrm-library-pick'),
+  vrmLibraryUnlink: () => ipcRenderer.invoke('vrm-library-unlink'),
+  vrmMotions: () => ipcRenderer.invoke('vrm-motions:list'),
+  vrmMotionPlay: (opts) => ipcRenderer.invoke('vrm-motion:play', opts),
+  vrmMotionStop: () => ipcRenderer.invoke('vrm-motion:stop'),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
   // 服饰: put on one of a character's unlocked outfits (none = the current one, as the pet window's 衣柜 did)
   equipOutfit: (id, species) => ipcRenderer.invoke('equip-outfit', { id, species }),

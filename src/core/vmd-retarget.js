@@ -24,7 +24,7 @@ const V = require('./vmd');
 const W = require('./vrma-write');
 
 const { qmul, qinv, qnorm, qslerp, qangle, qrot } = W;
-const BAKED_WITH = 'vmd-retarget@1';
+const BAKED_WITH = 'vmd-retarget@2'; // @2: 肩C cancels 肩P for the arm (T-5092)
 const UNIT = 0.08; // metres per MMD unit (a 158 cm model is about 20 units tall)
 const ID = [0, 0, 0, 1];
 
@@ -375,8 +375,13 @@ function retargetVmd(input, options = {}) {
       const A = A_POSE[s];
       const Ai = qinv(A);
       const conj = (q) => qnorm(qmul(qmul(Ai, q), A));
-      tracks[`${s}Shoulder`].push(qnorm(qmul(rot(`${j}肩P`, f), rot(`${j}肩`, f))));
-      tracks[`${s}UpperArm`].push(qnorm(qmul(qmul(rot(`${j}腕`, f), rot(`${j}腕捩`, f)), A)));
+      // 肩P (shoulder P) lifts the shoulder, and 肩C — its child, granted −1 × 肩P — cancels that rotation for the
+      // arm: in MMD the chain is 肩P → 肩 → 肩C → 腕, so the arm sees 肩P · 肩 · 肩P⁻¹. VRM has no cancel bone: the
+      // shoulder takes 肩P · 肩 and the upper arm starts with 肩P⁻¹ (T-5092: without it every 肩P key — up to 94° in
+      // the dances — lifted the whole arm too, which read as arms held out level)
+      const P = rot(`${j}肩P`, f);
+      tracks[`${s}Shoulder`].push(qnorm(qmul(P, rot(`${j}肩`, f))));
+      tracks[`${s}UpperArm`].push(qnorm(qmul(qmul(qmul(qinv(P), rot(`${j}腕`, f)), rot(`${j}腕捩`, f)), A)));
       tracks[`${s}LowerArm`].push(conj(qmul(rot(`${j}ひじ`, f), rot(`${j}手捩`, f))));
       tracks[`${s}Hand`].push(conj(rot(`${j}手首`, f)));
       for (const [m, v] of Object.entries(FINGER_MAP)) {

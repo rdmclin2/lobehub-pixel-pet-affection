@@ -437,6 +437,13 @@ export interface PetAdminApi {
   setSystemRole: (text: string, species: string) => Promise<any>;
   setFraming: (mode: 'auto' | 'full' | 'half', species: string) => Promise<any>;
   setVrmPosture: (packId: string, posture: string) => Promise<any>;
+  /** VRM 动作库 (T-5084, src/main/vrm-library.js): where the motions come from, and 动作试播 in the pet window */
+  vrmLibraryInfo: () => Promise<VrmLibraryInfo | null>;
+  vrmLibraryPick: () => Promise<{ ok: boolean; reason?: string; status?: VrmLibraryStatus }>;
+  vrmLibraryUnlink: () => Promise<{ ok: boolean; reason?: string; status?: VrmLibraryStatus }>;
+  vrmMotions: () => Promise<{ library?: VrmFigureLibrary | null; manual?: { id: string; kind: string; left: number | null } | null; motions?: VrmMotionRow[]; ok: boolean; reason?: string }>;
+  vrmMotionPlay: (opts: { group?: string; id?: string; loop?: boolean }) => Promise<{ id?: string; label?: string; layer?: string; ok: boolean; reason?: string }>;
+  vrmMotionStop: () => Promise<{ id?: string | null; ok: boolean; reason?: string; stopped?: boolean }>;
   placePet: () => Promise<any>;
   showPet: () => void;
   state: () => Promise<AdminState>;
@@ -683,6 +690,12 @@ export const REASON: Record<string, string> = {
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
   unavailable: '这位角色没有这套服饰',
+  'not-vrm': '她现在不是 VRM 外观，没有动作可播',
+  'not-ready': '她还在载入，稍后再试',
+  'no-clip': '动作库里没有这个动作',
+  dancing: '她正在跳舞，等舞停了再试',
+  'no-index': '这个文件夹里没有 library.json（选烘焙输出的文件夹，例如 baked-v2）',
+  'inside-repo': '动作库不能放在项目仓库里面',
 };
 export const reasonText = (r: any): string => (r && (r.message || r.text || REASON[r.reason] || (r.errors && r.errors.join('；')) || r.reason)) || '操作没有成功';
 
@@ -753,4 +766,44 @@ export interface DanceDraft {
   source: string;
   token: string;
   warnings: string[];
+}
+
+/** VRM 动作库 (T-5084): what is in the folder the app serves (src/main/vrm-library.js libraryStatus). */
+export interface VrmLibraryStatus {
+  bakedAt: string | null;
+  clips: number;
+  dir: string | null;
+  error?: string;
+  files: number;
+  looked?: string[];
+  source: 'env' | 'linked' | 'userData' | 'dev' | 'none';
+  styles: Record<string, number>;
+}
+export interface VrmLibraryInfo {
+  dir: string | null;
+  source: string;
+  status?: VrmLibraryStatus;
+}
+/** How the figure on screen loaded it (renderer/vrm.js libraryInfo). */
+export interface VrmFigureLibrary {
+  failed: { error: string; id: string }[];
+  loaded: number;
+  reason: 'ok' | 'partial' | 'no-library' | 'empty-index' | 'fetch-failed' | 'all-failed' | 'no-clip-for-model';
+  set: string;
+  sets: string[];
+  state: string;
+  style: string;
+  wanted: number;
+}
+export interface VrmMotionRow {
+  category: string;
+  duration: number | null;
+  group: string | null;
+  id: string;
+  kind: string;
+  label: string;
+  loop: boolean;
+  mask: string;
+  slot: string;
+  style: string;
 }

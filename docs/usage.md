@@ -169,7 +169,20 @@ curl -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 # POST /pixel-pet/throw {"angle":60,"power":1.2}           抛出去（0°=向右，90°=向上，power 0.2–3）
 # POST /pixel-pet/chat  {"text":"…"}                       和她的 agent 聊一句并等回复（会调用模型）
 # POST /pixel-pet/reset-pose                               重置姿势：停下一切动作回到待机（见下文「重置姿势」）
+# GET  /pixel-pet/motions                                  VRM 角色现在能播的动作片段（动作库，按她的风格回退后）
+# POST /pixel-pet/motion {"group":"bow"}                    播一个动作片段：id（idle.v03@female）/ slot（react.nod-01）/ group（nod、bow、stretch、sit…）任选其一，"loop":true 循环
+# POST /pixel-pet/motion/stop                               停下手动播放的动作，平滑回到待机
 ```
+
+### VRM 动作库与动作试播（T-5084）
+
+VRM 角色（包括从商店下载的）的姿势、待机、反应、说话和走路动作都来自**动作库**——烘焙好的 `.vrma` 片段和它的 `library.json`（[vrm-motion-library.md](vrm-motion-library.md)）。动作库不在安装包里，也不进仓库：
+
+- **找动作库的顺序**：环境变量 `PIXELPET_VRM_MOTIONS_DIR` → 你在设置里选的文件夹 → 应用数据目录下的 `vrm-motions`（`node scripts/vrm-bake.js --v2 --install` 装到这里）→ 开发运行时的 `~/vrm-assets/baked-v2`、`~/vrm-assets/baked`。
+- **没有动作库时**：她只能站着呼吸、看看四周。桌宠气泡会说一次「我还没有动作库……」，日志里有 `[vrm] no motion library (looked in: …)`，⚙ 设置 → **角色** → 她的页 → **装扮** → **VRM 动作库** 显示黄色提示。
+- **选择动作库文件夹**：同一处点「选择动作库文件夹」，选烘焙输出的文件夹（含 `library.json`，例如 `~/vrm-assets/baked-v2`；选它的上一级也行）。不会复制任何文件，只记下位置；她立刻按新动作库重新载入。「取消关联」恢复默认顺序。
+- **动作试播**：当前角色是 VRM 时，同一卡片里选一个动作（按姿势 / 待机 / 反应 / 情绪 / 说话 / 行走分组）点「播放」；「停止」或播完后她平滑回到待机。聊天里说「点个头」「鞠个躬」「伸个懒腰」「坐下」「躺下」也会播对应动作（「站起来」「别做了」停下），本地 API 见上面的 `/motion`。
+- **风格**：角色包没写 `vrm.style` 时按模型推断——胸部 SpringBone → 女性，裙摆 SpringBone 且肩窄 → 女性，肩宽 ≥ 1.55 × 髋宽 → 男性，其余 neutral（有自己的一套动作，缺的按 neutral → female → male 回退）。
 
 ### 语音输入（ASR）
 

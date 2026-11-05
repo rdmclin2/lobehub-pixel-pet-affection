@@ -813,6 +813,45 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`lifted: data-hold ${up.d.hold}, overlays ${up.d.overlays}, expr ${up.d.expr}, left arm ${up.bones.leftUpperArm[2].toFixed(1)}°, legs ${JSON.stringify(up.bones.leftUpperLeg)}\nreleased → ${r.peak.d.reaction}: overlays ${r.peak.d.overlays}, expr ${r.peak.d.expr}; then reaction '${r.end.reaction}', base ${r.end.layers}`);
       }, page);
 
+      await step(S, '松手丢了 pointerup (T-2835): released outside the window, the next move with no button down puts her down; the lift line\'s bubble does not stay up for good', async () => {
+        await page.evaluate(() => window.pet.setPrefs({ voice: true, voiceInteractions: true, muted: false }));
+        await settle();
+        await sleep(4200); // past the lift line's gap since the step before
+        const b = await petBox();
+        const x0 = b.x + b.width / 2;
+        const y0 = b.y + b.height * 0.45;
+        await page.mouse.move(x0, y0);
+        await page.mouse.down();
+        for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + i * 6, y0 - i * 3); await sleep(40); }
+        await page.waitForFunction(() => document.querySelector('#pet-look canvas.vrm').dataset.hold === 'lift', null, { timeout: 5000 });
+        await page.waitForFunction(() => document.getElementById('bubble').dataset.kind === 'lift' && !document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 3000 }).catch(() => {});
+        const line = await page.evaluate(() => { const el = document.getElementById('bubble'); return { shown: !el.classList.contains('hidden'), kind: el.dataset.kind, text: el.textContent }; });
+        await H.shot('13b-lifted-with-line');
+        // what happens on macOS when the window is still catching up with the cursor: the button comes up
+        // outside it (no pointerup at all), and the pointer that had been over the bubble leaves the window
+        // without the bubble's own mouseleave. The next move inside has no button down.
+        const t0 = await page.evaluate(() => {
+          window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', buttons: 0, screenX: 10, screenY: 10 }));
+          document.getElementById('bubble').dispatchEvent(new MouseEvent('mouseenter'));
+          document.documentElement.dispatchEvent(new MouseEvent('mouseleave'));
+          return performance.now();
+        });
+        const putDown = await page.waitForFunction(() => window.petFx.state().state !== 'lifted' && document.querySelector('#pet-look canvas.vrm').dataset.hold !== 'lift', null, { timeout: 5000 }).then(() => true, () => false);
+        const down = await frameNow();
+        const st = await page.evaluate(() => window.petFx.state());
+        await H.shot('13b-after-release-5s');
+        const gone = await page.waitForFunction(() => document.getElementById('bubble').classList.contains('hidden'), null, { timeout: 25000 }).then(() => true, () => false);
+        const hiddenAfter = Math.round((await page.evaluate(() => performance.now())) - t0);
+        await H.shot('13b-after-bubble-wait');
+        await page.mouse.up(); // Playwright's own button state back up (no drag any more: nothing happens)
+        const note = `lifted: data-hold lift, bubble 「${line.text}」 (kind ${line.kind}, shown ${line.shown})\nno pointerup, then a move with buttons 0: app state ${st.state}, data-hold '${down.d.hold || ''}', overlays ${down.d.overlays} → put down: ${putDown}\nbubble ${gone ? `hidden ${hiddenAfter} ms after` : `still shown ${hiddenAfter} ms after`}`;
+        fs.writeFileSync(path.join(SHOTS, 't2835-lost-pointerup.txt'), note + '\n');
+        assert.ok(line.shown && line.kind === 'lift', `the lift line is in the bubble: ${JSON.stringify(line)}`);
+        assert.ok(putDown, `put down without a pointerup: ${note}`);
+        assert.ok(gone, `the bubble goes away: ${note}`);
+        return H.note(note);
+      }, page);
+
       await step(S, '思考/等待回复 → 说话: the chat waits (hold.think, eyes up), the reply talks (hold.talk + the mouth moving together)', async () => {
         await settle();
         await clickAct(page, 'chat');
@@ -3542,7 +3581,13 @@ module.exports = function vrmScenarios(ctx) {
     }
   }
 
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim };
+  // T-5084: store-imported VRMs on the motion library v2 (e2e/vrm-store.js), with this file's helpers
+  const vrmStore = () => require('./vrm-store')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  // T-5089: several store VRMs through a whole day each (idle, touches, drag, talk, a dance), with numbers
+  const vrmVerify = () => require('./vrm-verify')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  const vrmStoreShots = () => require('./vrm-store-shots')({ ...ctx, SHOTS, sleep, dataDir, helpers });
+  const vrmFix = () => require('./vrm-fix')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim, vrmStore, vrmVerify, vrmStoreShots, vrmFix };
 };
 // the homemade test model, for scenarios outside this file (e2e/quit-button.js)
 module.exports.makeModel = makeModel;
