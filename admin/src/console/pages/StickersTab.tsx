@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type RosterRow, type Sticker, type StickerRejected, type StickerSet } from '../api';
 import { ask } from '../fields';
 import { useStore } from '../store';
+import { PublishButton } from './StickerPublish';
 
 const styles = createStaticStyles(({ css }) => ({
   grid: css`
@@ -297,6 +298,7 @@ export const StickersTab = ({ c }: { c: RosterRow }) => {
                     <Button data-stickers-add icon={ImagePlus} loading={adding} onClick={add}>
                       添加表情包
                     </Button>
+                    <PublishButton c={c} count={set.stickers.length} />
                   </>
                 )}
               </Flexbox>

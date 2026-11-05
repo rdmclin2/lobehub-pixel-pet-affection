@@ -34,6 +34,10 @@ const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'imag
 // what Finder / Explorer add when someone zips a folder by hand: skipped, never unpacked
 const JUNK_RE = /^(__MACOSX\/|.*(^|\/)\.DS_Store$|.*(^|\/)Thumbs\.db$)/;
 
+// what a set put on the community shelf may be licensed under (上架到商店, T-10796): the app's form offers these,
+// the sticker market accepts only these
+const COMMUNITY_LICENSES = ['CC BY 4.0', 'CC BY-NC 4.0', 'CC BY-NC-SA 4.0', 'CC0 1.0', '仅限个人使用，禁止商用'];
+
 const fail = (reason, errors) => ({ ok: false, reason, errors: Array.isArray(errors) ? errors : [errors] });
 const MB = (n) => `${Math.round(n / 1024 / 1024)} MB`;
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -268,4 +272,4 @@ function packSet(meta, pictures) {
   return { ok: true, zip, manifest: v.manifest, stickers: v.stickers };
 }
 
-module.exports = { SET_SCHEMA, MANIFEST, SET_ID_RE, FILE_RE, VER_RE, MAX_SET_BYTES, MAX_ENTRIES, readZip, buildZip, checkManifest, validateSetZip, packSet, sha256 };
+module.exports = { COMMUNITY_LICENSES, SET_SCHEMA, MANIFEST, SET_ID_RE, FILE_RE, VER_RE, MAX_SET_BYTES, MAX_ENTRIES, readZip, buildZip, checkManifest, validateSetZip, packSet, sha256 };

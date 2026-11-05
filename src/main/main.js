@@ -21,6 +21,7 @@ const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const Stickers = require('./stickers');
 const { StickerStore } = require('./sticker-store');
+const { StickerMarketClient } = require('./sticker-market');
 const StickerCatalog = require('../core/sticker-catalog');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
@@ -69,6 +70,8 @@ try { if (new SettingsStore(app.getPath('userData')).load().system.hardwareAccel
 // 表情包集合 (core/stickers.js, docs/stickers-design.md): <userData>/stickers/
 const stickerLib = new Stickers.StickerLibrary(path.join(app.getPath('userData'), 'stickers'));
 let stickerStore = null; // 商店 → 表情包 (sticker-store.js): the official sets on the CDN; made when the app is ready
+let communityStore = null; // 商店 → 表情包, the community shelf: what owners put up (sticker-market.js); null = off
+let stickerMarket = null; // 上架到商店 (sticker-market.js)
 
 let win = null;
 let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
@@ -1211,18 +1214,44 @@ function wire() {
     }));
     // 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B): the official sets (index from the CDN, falling back to the
     // shipped copy); 获取 downloads one for a character (progress as `catalog-progress`), 移除 drops it
-    ipcMain.handle('sticker-store', adminOnly(({ refresh }) => stickerStore.state({ refresh: !!refresh })));
-    ipcMain.handle('sticker-store-detail', adminOnly(({ id }) => stickerStore.detail(id)));
+    // the community shelf (T-10796) is merged in: its ids are u-…, so every call below goes to the shelf it came from
+    const shelfOf = (id) => (communityStore && String(id || '').startsWith('u-') ? communityStore : stickerStore);
+    ipcMain.handle('sticker-store', adminOnly(async ({ refresh }) => {
+      const [o, c] = await Promise.all([stickerStore.state({ refresh: !!refresh }), communityStore ? communityStore.state({ refresh: !!refresh }) : null]);
+      if (!c) return { ...o, community: { configured: false } };
+      return {
+        ...o, sets: [...o.sets, ...c.sets], downloads: [...o.downloads, ...c.downloads],
+        community: { configured: true, count: c.sets.length, source: c.source, error: c.error, url: c.url, checkedAt: c.checkedAt },
+      };
+    }));
+    ipcMain.handle('sticker-store-detail', adminOnly(({ id }) => shelfOf(id).detail(id)));
     ipcMain.handle('sticker-store-get', adminOnly(async ({ id, speciesId }) => {
       const sp = stickerSpecies(speciesId);
       if (!sp) return { ok: false, reason: 'bad-species', text: '请选择一位角色' };
-      const r = await stickerStore.get(id, sp.id);
+      const r = await shelfOf(id).get(id, sp.id);
       if (r.ok) stickersChanged(sp.id);
       return r;
     }));
-    ipcMain.handle('sticker-store-cancel', adminOnly(({ id }) => stickerStore.cancel(id)));
+    ipcMain.handle('sticker-store-cancel', adminOnly(({ id }) => shelfOf(id).cancel(id)));
+    // 上架到商店 (T-10796): her 「我的」 set to the community shelf; 我上架的 with review state; 下架
+    ipcMain.handle('sticker-publish-info', adminOnly(({ speciesId }) => ({ ok: true, configured: !!(stickerMarket && stickerMarket.configured), publishedId: stickerMarket ? stickerMarket.publishedId(String(speciesId || '')) : null, licenses: require('../core/sticker-set').COMMUNITY_LICENSES })));
+    ipcMain.handle('sticker-publish', adminOnly(async ({ speciesId, meta }) => {
+      const sp = stickerSpecies(speciesId);
+      if (!sp) return { ok: false, reason: 'bad-species', text: '没有这位角色' };
+      if (!stickerMarket || !stickerMarket.configured) return { ok: false, reason: 'off', text: '表情包社区商店还没有配置' };
+      const r = await stickerMarket.publish(sp, meta && typeof meta === 'object' ? meta : {});
+      if (r.ok && r.state === 'published' && communityStore) await communityStore.refresh({ maxAgeMs: 0 });
+      return r;
+    }));
+    ipcMain.handle('sticker-publish-mine', adminOnly(() => (stickerMarket && stickerMarket.configured ? stickerMarket.mine() : { ok: false, reason: 'off', text: '表情包社区商店还没有配置' })));
+    ipcMain.handle('sticker-unpublish', adminOnly(async ({ id }) => {
+      if (!stickerMarket || !stickerMarket.configured) return { ok: false, reason: 'off', text: '表情包社区商店还没有配置' };
+      const r = await stickerMarket.unpublish(String(id || ''));
+      if (r.ok && communityStore) await communityStore.refresh({ maxAgeMs: 0 });
+      return r;
+    }));
     ipcMain.handle('sticker-store-remove', adminOnly(({ id }) => {
-      const r = stickerStore.remove(id);
+      const r = shelfOf(id).remove(id);
       if (r.ok) for (const sid of r.attached || []) stickersChanged(sid);
       return r;
     }));
@@ -1455,6 +1484,18 @@ app.whenReady().then(() => {
     url: process.env.PIXELPET_STICKER_CATALOG_URL ?? (TEST_MODE ? '' : StickerCatalog.REMOTE_URL),
     base: process.env.PIXELPET_STICKER_BASE_URL || null,
   });
+  // the community shelf + 上架到商店 (T-10796): the sticker market (services/sticker-market) named by
+  // PIXELPET_STICKER_MARKET_URL; off when none is named (the 上架 button says so)
+  stickerMarket = new StickerMarketClient({
+    lib: stickerLib, base: process.env.PIXELPET_STICKER_MARKET_URL || null, fetch: (u, o) => net.fetch(u, o), log: logError,
+    token: () => new ResponsesClient({ lh })._token(),
+  });
+  communityStore = stickerMarket.configured ? new StickerStore({
+    lib: stickerLib, fetch: (u, o) => net.fetch(u, o), emit: (ch, p) => broadcast(ch, p), log: logError, community: true,
+    settings: () => (service ? service.getSettings() : {}),
+    names: () => Object.fromEntries(SPECIES_IDS.map((id) => { const sp = getSpecies(id); return [id, (sp && (sp.nameZh || sp.name)) || id]; })),
+    url: stickerMarket.catalogUrl, base: stickerMarket.filesBase,
+  }) : null;
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   danceStore = new CatalogDownloader({
     packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),

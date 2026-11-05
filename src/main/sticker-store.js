@@ -33,7 +33,9 @@ class StickerStore {
   // window; `names()`: speciesId → her name; `url`: the index (PIXELPET_STICKER_CATALOG_URL; '' = off: the
   // bundled index only); `base`: a folder holding every file of the release (PIXELPET_STICKER_BASE_URL), else
   // the CDN; `bundled`: the shipped index (tests pass their own).
-  constructor({ lib, fetch: fetchFn, emit = () => {}, log = () => {}, names = () => ({}), url = SC.REMOTE_URL, base = null, bundled = null, settings = () => ({}), now = () => Date.now() }) {
+  // `community`: the community shelf (src/main/sticker-market.js): its index lives on the sticker market, may be
+  // empty (nothing published yet is not an error), has no shipped copy, and nothing on it is ever 官方.
+  constructor({ lib, fetch: fetchFn, emit = () => {}, log = () => {}, names = () => ({}), url = SC.REMOTE_URL, base = null, bundled = null, settings = () => ({}), now = () => Date.now(), community = false }) {
     this.lib = lib;
     this.fetch = fetchFn;
     this.emit = emit;
@@ -43,8 +45,10 @@ class StickerStore {
     this.base = base || null;
     this.bundled = bundled;
     this.now = now;
+    this.community = !!community;
+    if (this.community) this.bundled = SC.parseIndex({ sets: [] });
     this.cacheDir = lib.cacheDir;
-    this.indexFile = path.join(this.cacheDir, 'index.json');
+    this.indexFile = path.join(this.cacheDir, this.community ? 'community-index.json' : 'index.json');
     this.remote = null; // read now (this run)
     this.cached = null; // the last good read, from disk
     this.checkedAt = 0;
@@ -53,7 +57,7 @@ class StickerStore {
     this.targets = new Map(); // set id → the character a running 获取 is for
     try {
       const c = JSON.parse(fs.readFileSync(this.indexFile, 'utf8'));
-      if (c && c.url === this.url) { this.cached = SC.parseRemote(c.index); this.checkedAt = c.checkedAt || 0; }
+      if (c && c.url === this.url) { this.cached = this._parse(c.index); this.checkedAt = c.checkedAt || 0; }
     } catch { /* first start */ }
     this.downloader = new CatalogDownloader({
       packStore: null, settings, emit, fetch: fetchFn, texts: TEXTS,
@@ -67,7 +71,20 @@ class StickerStore {
     });
   }
 
-  picked() { return SC.pick({ remote: this.remote, cached: this.cached, bundled: this.bundled || SC.loadBundled() }); }
+  // an index as read: the community one may be empty, and its sets are never 官方
+  _parse(body) {
+    if (!this.community) return SC.parseRemote(body);
+    let raw = body;
+    if (typeof body === 'string') { try { raw = JSON.parse(body); } catch { return null; } }
+    if (!raw || raw.schema !== 1 || !Array.isArray(raw.sets)) return null;
+    const index = SC.parseIndex(raw);
+    return { ...index, sets: index.sets.filter((s) => s.id.startsWith('u-')).map((s) => ({ ...s, official: false })) };
+  }
+
+  picked() {
+    if (this.community) return this.remote ? { index: this.remote, source: 'remote' } : this.cached ? { index: this.cached, source: 'cache' } : { index: this.bundled, source: 'none' };
+    return SC.pick({ remote: this.remote, cached: this.cached, bundled: this.bundled || SC.loadBundled() });
+  }
   index() { return this.picked().index; }
   entry(id) { return this.index().sets.find((s) => s.id === id) || null; }
 
@@ -82,8 +99,8 @@ class StickerStore {
         const t = setTimeout(() => ctrl.abort(), 10000);
         const res = await this.fetch(this.url, { signal: ctrl.signal, cache: 'no-store' }).finally(() => clearTimeout(t));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const index = SC.parseRemote(await res.text());
-        if (!index) throw new Error('the index has no valid sticker sets');
+        const index = this._parse(await res.text());
+        if (!index) throw new Error(this.community ? 'the community index is not valid' : 'the index has no valid sticker sets');
         this.remote = index;
         this.cached = index;
         this.checkedAt = this.now();

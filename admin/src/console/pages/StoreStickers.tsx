@@ -56,6 +56,7 @@ import {
 } from "../api";
 import { ask } from "../fields";
 import { useStore } from "../store";
+import { MyPublished } from "./StickerPublish";
 import { downloading, storeStyles } from "./Characters";
 
 const styles = createStaticStyles(({ css }) => ({
@@ -439,10 +440,12 @@ const StickerSetCard = ({
         </Text>
       </Flexbox>
       <Flexbox align="center" gap={6} horizontal wrap="wrap">
-        {s.official && (
+        {s.official ? (
           <Tag color="blue" data-sticker-official={s.id}>
             官方
           </Tag>
+        ) : (
+          <Tag data-sticker-community={s.id}>社区</Tag>
         )}
         <Text
           ellipsis
@@ -491,6 +494,9 @@ const SourceLine = ({ st }: { st: StickerStoreState }) => {
       : st.source === "cache"
         ? "目录来自上一次从 LobeHub CDN 读取的副本"
         : "目录来自随应用打包的副本";
+  const community = st.community?.configured
+    ? ` · 社区上架 ${st.community.count ?? 0} 组${st.community.source === "remote" ? "" : "（未连上）"}`
+    : "";
   return (
     <Text
       data-sticker-source={st.source}
@@ -499,6 +505,7 @@ const SourceLine = ({ st }: { st: StickerStoreState }) => {
       type="secondary"
     >
       {text}
+      {community}
     </Text>
   );
 };
@@ -515,7 +522,7 @@ export const StickersShelf = () => {
   const [st, setSt] = useState<StickerStoreState | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [show, setShow] = useState<"all" | "installed">("all");
+  const [show, setShow] = useState<"all" | "installed" | "mine">("all");
   const [query, setQuery] = useState("");
   const load = useCallback(async (refresh = false) => {
     try {
@@ -625,6 +632,9 @@ export const StickersShelf = () => {
               options={[
                 { label: `全部 ${st.sets.length}`, value: "all" },
                 { label: `已获取 ${installed}`, value: "installed" },
+                ...(st.community?.configured
+                  ? [{ label: "我上架的", value: "mine" }]
+                  : []),
               ]}
               size="small"
               value={show}
@@ -655,9 +665,32 @@ export const StickersShelf = () => {
         </Flexbox>
       </Flexbox>
       <Text fontSize={12} type="secondary">
-        官方整理的表情包合集。获取时选一位角色，之后在她的表情包页和聊天的表情包面板里就能发送；她回复时也会用上。
+        {st.community?.configured
+          ? "官方整理和其他主人上架的表情包合集。获取时选一位角色，之后在她的表情包页和聊天的表情包面板里就能发送；她回复时也会用上。"
+          : "官方整理的表情包合集。获取时选一位角色，之后在她的表情包页和聊天的表情包面板里就能发送；她回复时也会用上。"}
       </Text>
-      {!st.sets.length ? (
+      {st.community?.error && (
+        <div data-sticker-community-error>
+          <Alert
+            action={
+              <Button icon={RefreshCw} loading={checking} onClick={retry} size="small">
+                重试
+              </Button>
+            }
+            description={st.community.error}
+            showIcon
+            title="没能读取社区上架的表情包，下面只有官方的"
+            type="warning"
+          />
+        </div>
+      )}
+      {show === "mine" ? (
+        <MyPublished
+          onView={(id) => {
+            location.hash = detailHref(id);
+          }}
+        />
+      ) : !st.sets.length ? (
         <div data-sticker-empty>
           <Empty description="商店里还没有表情包，之后再来看看。" />
         </div>
@@ -801,7 +834,7 @@ export const StickerSetDetailPage = ({ id }: { id: string }) => {
                 {s.name}
               </Text>
               <StateTag p={p} s={s} />
-              {s.official && <Tag color="blue">官方</Tag>}
+              {s.official ? <Tag color="blue">官方</Tag> : <Tag>社区</Tag>}
             </Flexbox>
             <Text data-sticker-detail-meta={s.id} type="secondary">
               {[`${s.count} 张`, s.sizeLabel, `v${s.version}`].join(" · ")}

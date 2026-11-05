@@ -163,6 +163,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
     get: (id, speciesId) => ipcRenderer.invoke('sticker-store-get', { id, speciesId }),
     cancel: (id) => ipcRenderer.invoke('sticker-store-cancel', { id }),
     remove: (id) => ipcRenderer.invoke('sticker-store-remove', { id }),
+    // 上架到商店 (T-10796): her 「我的」 set to the community shelf; 我上架的 (review state); 下架
+    publishInfo: (speciesId) => ipcRenderer.invoke('sticker-publish-info', { speciesId }),
+    publish: (speciesId, meta) => ipcRenderer.invoke('sticker-publish', { speciesId, meta }),
+    mine: () => ipcRenderer.invoke('sticker-publish-mine'),
+    unpublish: (id) => ipcRenderer.invoke('sticker-unpublish', { id }),
   },
   chat: {
     listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),

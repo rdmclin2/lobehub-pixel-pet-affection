@@ -657,7 +657,29 @@ export interface StickerStoreState {
   source: 'remote' | 'cache' | 'bundled';
   updatedAt: string | null;
   url: string | null;
+  /** the community shelf (T-10796): sets owners put up through the sticker market; merged into `sets` (ids u-…) */
+  community?: { checkedAt?: number | null; configured: boolean; count?: number; error?: string | null; source?: 'remote' | 'cache' | 'none'; url?: string | null };
 }
+
+/** 上架到商店 (T-10796): one set this LobeHub account put on the community shelf */
+export interface MyStickerSet {
+  author: string;
+  count: number;
+  forSpecies: string[];
+  fromSpecies: string | null;
+  id: string;
+  license: string;
+  /** the version other users get now (an older one may be live while a newer one is in review) */
+  liveVersion: string | null;
+  name: string;
+  rejectReason: string | null;
+  state: 'pending' | 'published' | 'rejected' | 'removed';
+  submittedAt: number | null;
+  updatedAt: number;
+  version: string | null;
+}
+
+export type StickerPublishResult = { id: string; ok: true; set: MyStickerSet; state: MyStickerSet['state']; version: string } | { ok: false; reason: string; text?: string };
 
 export type StickerStoreResult = { attachedOnly?: boolean; id?: string; name?: string; ok: boolean; reason?: string; speciesId?: string; text?: string };
 
@@ -667,6 +689,10 @@ export interface StickerStoreApi {
   get: (id: string, speciesId: string) => Promise<StickerStoreResult>;
   list: (opts?: { refresh?: boolean }) => Promise<StickerStoreState>;
   remove: (id: string) => Promise<{ attached?: string[]; ok: boolean; reason?: string; text?: string }>;
+  mine: () => Promise<{ ok: true; sets: MyStickerSet[]; user: { name: string } | null } | { ok: false; reason: string; text?: string }>;
+  publish: (speciesId: string, meta: { description: string; license: string; name: string; rights: boolean }) => Promise<StickerPublishResult>;
+  publishInfo: (speciesId: string) => Promise<{ configured: boolean; licenses: string[]; ok: true; publishedId: string | null }>;
+  unpublish: (id: string) => Promise<{ id?: string; ok: boolean; reason?: string; text?: string }>;
 }
 
 export interface StickersApi {
