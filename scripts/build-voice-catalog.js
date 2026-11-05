@@ -9,10 +9,17 @@
 //   src/renderer/catalog/voices/<id>.ogg       the 试听 line, so the store can play it before anything is fetched
 //
 //   node scripts/build-voice-catalog.js [--out <dir>] [--check]
+//   node scripts/build-voice-catalog.js --fetch [--extract] [--out <dir>]
 //
 // --check rebuilds the zips and fails when one differs from the index (the archives are reproducible: sorted
 // entries, fixed timestamps). Upload the zips with `node scripts/upload-character-catalog.js --voices` to the
 // release named by the index (voices-v1, core/catalog.js voiceDownloadUrl).
+//
+// The recordings are not in the repository: the published archives on the CDN (Develop Center ops-assets) are
+// the source. catalog/voicepacks/ is a local working folder (git-ignored) that voicepack-generate.js records into.
+// --fetch downloads the published archives into --out and checks each against the index (bytes + sha256);
+// --extract also unpacks them into catalog/voicepacks/<id>/ to re-record or rebuild from. --check with no local
+// recordings does the same as --fetch: what the CDN serves must be what the index says.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,6 +37,35 @@ const CHECK = process.argv.includes('--check');
 const INDEX = path.join(ROOT, 'src', 'core', 'voice-catalog.json');
 const SAMPLES = path.join(ROOT, 'src', 'renderer', 'catalog', 'voices');
 const RELEASE = 'voices-v1';
+const FETCH = process.argv.includes('--fetch');
+const EXTRACT = process.argv.includes('--extract');
+
+// the recorded packs in the local working folder (empty when nothing was recorded or extracted here)
+const localDirs = () => (fs.existsSync(SRC) ? fs.readdirSync(SRC, { withFileTypes: true }).filter((d) => d.isDirectory() && fs.existsSync(path.join(SRC, d.name, 'manifest.json'))).map((d) => d.name) : []);
+
+// Every archive of the index from where the app downloads it (the CDN), checked against the index; with
+// `extract`, unpacked into catalog/voicepacks/<id>/.
+async function fetchPublished(extract) {
+  const index = JSON.parse(fs.readFileSync(INDEX, 'utf8'));
+  const bad = [];
+  for (const v of index.voicePacks) {
+    const res = await fetch(v.url);
+    if (!res.ok) { bad.push(`${v.id}: HTTP ${res.status} ${v.url}`); continue; }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const file = path.join(OUT, v.file);
+    fs.writeFileSync(file, buf);
+    if (buf.length !== v.bytes || sha256(file) !== v.sha256) { bad.push(`${v.id}: downloaded ${buf.length} bytes, sha256 ${sha256(file).slice(0, 12)} (index: ${v.bytes}, ${v.sha256.slice(0, 12)})`); continue; }
+    if (extract) {
+      const dir = path.join(SRC, v.id);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(dir, { recursive: true });
+      await require('../src/core/vrm-import').unzip(file, dir);
+    }
+    console.log(`${v.id.padEnd(16)} ${String(v.bytes).padStart(9)} bytes  sha256 ok  ${v.url}${extract ? `  → ${path.relative(ROOT, path.join(SRC, v.id))}/` : ''}`);
+  }
+  if (bad.length) { console.error(`published archives do not match the index:\n  ${bad.join('\n  ')}`); process.exit(1); }
+  console.log(`voice catalog published: ${index.voicePacks.length} packs match the index (${index.release})`);
+}
 
 // seconds of audio in a file (ffprobe), 0 when ffprobe is missing
 function duration(file) {
@@ -84,11 +120,16 @@ function entry(dir) {
   };
 }
 
-function main() {
+async function main() {
   if (OUT === ROOT || OUT.startsWith(path.join(ROOT, 'src'))) throw new Error('--out must not be the repository or src/');
   fs.mkdirSync(OUT, { recursive: true });
+  if (FETCH || (CHECK && !localDirs().length)) return fetchPublished(EXTRACT);
   const order = (id) => { const i = S.STYLES.findIndex((s) => s.id === id); return i < 0 ? 99 : i; };
-  const dirs = fs.readdirSync(SRC, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  const dirs = localDirs().sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  if (!dirs.length) throw new Error(`no recorded packs in ${path.relative(ROOT, SRC)}/ (record with voicepack-generate.js --style, or --fetch --extract the published ones)`);
+  // the index is written from the local folder: a published pack missing here would drop out of the store
+  const missing = JSON.parse(fs.readFileSync(INDEX, 'utf8')).voicePacks.map((v) => v.id).filter((id) => !dirs.includes(id));
+  if (missing.length) throw new Error(`${missing.join(', ')} not in ${path.relative(ROOT, SRC)}/ — run node scripts/build-voice-catalog.js --fetch --extract first`);
   const voicePacks = dirs.map((d) => entry(path.join(SRC, d)));
   const index = { schema: 1, release: RELEASE, voicePacks };
   if (CHECK) {
@@ -103,5 +144,5 @@ function main() {
   console.log(`wrote ${path.relative(ROOT, INDEX)} and ${voicePacks.length} archives in ${OUT}`);
 }
 
-if (require.main === module) main();
+if (require.main === module) main().catch((e) => { console.error(e.message || e); process.exit(1); });
 module.exports = { RELEASE, INDEX };

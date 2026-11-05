@@ -276,10 +276,13 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 ```bash
 export MINIMAX_API_KEY=…                                   # 或写进 ~/.config/pixel-pet/minimax.env
 node scripts/voicepack-generate.js --style --dry-run       # 列出要录的台词，不调用接口
+node scripts/build-voice-catalog.js --fetch --extract     # 先把已发布的包从 CDN 取回到 catalog/voicepacks/（不进仓库）
 node scripts/voicepack-generate.js --style cute,yujie      # 录音到 catalog/voicepacks/style-*/（每分钟 10 次，可断点续录）
 node scripts/build-voice-catalog.js                        # 打包 zip，更新 src/core/voice-catalog.json 和试听文件
 node scripts/upload-character-catalog.js --voices          # 上传到 CDN（需要 dc CLI 登录）
 ```
+
+录音源文件不放进仓库：已发布到 DC（ops-assets）CDN 的 zip 就是源，`catalog/voicepacks/` 只是本地工作目录（已加入 `.gitignore`）；仓库里只有商店目录 `src/core/voice-catalog.json` 和 5 条试听句。
 
 完整说明（manifest 格式、限速、ffmpeg 转码、托管与发布、新增风格的步骤）见 [docs/voice-packs.md](docs/voice-packs.md) §6–§9；端到端验证：`xvfb-run -a node e2e/run.js voiceflow`。
 

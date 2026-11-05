@@ -26,3 +26,5 @@ vrm-dances/
 baked-dances/
 # admin console build output (npm run build:admin; rebuilt by prestart / predist:*)
 src/admin-ui/
+# 风格语音包的录音工作目录：源是 CDN 上发布的归档（node scripts/build-voice-catalog.js --fetch --extract），docs/voice-packs.md §9
+catalog/voicepacks/

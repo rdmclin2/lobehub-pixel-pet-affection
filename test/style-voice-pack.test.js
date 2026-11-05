@@ -117,7 +117,7 @@ test('voice-styles: at least 3 styles, distinct voices, each a valid MiniMax voi
   }
 });
 
-test('store index (src/core/voice-catalog.json): ≥3 recorded style packs, each matching its folder in catalog/voicepacks', () => {
+test('store index (src/core/voice-catalog.json): ≥3 style packs, each with its 试听 line and CDN address', () => {
   const index = Catalog.loadVoiceIndex();
   assert.equal(index.release, 'voices-v1');
   assert.ok(index.voicePacks.length >= 3, `${index.voicePacks.length} packs`);
@@ -126,34 +126,52 @@ test('store index (src/core/voice-catalog.json): ≥3 recorded style packs, each
   assert.ok(new Set(index.voicePacks.map((v) => v.style)).size >= 3, 'at least 3 different styles');
   const genericLines = VP.genericPackLines();
   for (const v of index.voicePacks) {
-    const dir = path.join(ROOT, 'catalog', 'voicepacks', v.id);
-    const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
-    assert.deepEqual(VP.validateManifest(m, dir), [], v.id);
-    assert.equal(m.pending, undefined, `${v.id}: every line recorded`);
-    assert.deepEqual(Object.keys(m.lines).sort(), [...genericLines].sort(), `${v.id}: the whole 通用台词 set`);
-    assert.equal(v.lines, genericLines.length);
-    for (const k of ['style', 'name', 'gender', 'version', 'voiceId', 'model', 'engine']) assert.equal(v[k], m[k], `${v.id}.${k}`);
-    assert.deepEqual(v.params, m.params);
+    const s = VS.STYLES.find((x) => x.id === v.id);
+    assert.ok(s, `${v.id}: a style of core/voice-styles.js`);
+    assert.equal(v.style, s.style);
+    assert.equal(v.voiceId, s.voice.voiceId, `${v.id}: recorded in its style's MiniMax voice`);
+    assert.equal(v.engine, 'minimax');
+    assert.equal(v.lines, genericLines.length, `${v.id}: the whole 通用台词 set`);
     assert.match(v.sha256, /^[0-9a-f]{64}$/);
     assert.equal(v.file, `${v.id}.zip`);
     assert.ok(v.bytes > 100 * 1024, `${v.id}: ${v.bytes} bytes`);
-    // the 试听 line ships with the app, the same audio as in the pack
-    const sample = path.join(ROOT, 'src', 'renderer', v.sample.file);
-    assert.equal(v.sample.text, m.sample.text);
-    assert.equal(crypto.createHash('sha1').update(fs.readFileSync(sample)).digest('hex'), crypto.createHash('sha1').update(fs.readFileSync(path.join(dir, m.sample.file))).digest('hex'));
+    // the 试听 line ships with the app
+    assert.ok(fs.statSync(path.join(ROOT, 'src', 'renderer', v.sample.file)).size > 1024, `${v.id}: 试听 ${v.sample.file}`);
     // where the app will download it from
-    assert.equal(Catalog.downloadUrl(v, {}, {}), `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/voices-v1/${v.file}`);
+    assert.equal(v.url, `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/voices-v1/${v.file}`);
+    assert.equal(Catalog.downloadUrl(v, {}, {}), v.url);
     assert.equal(Catalog.downloadUrl(v, {}, { PIXELPET_CATALOG_URL: 'file:///mirror/' }), `file:///mirror/${v.file}`);
     assert.equal(Catalog.voicePackEntry(v.id), v);
   }
-  // a recorded pack loads as an owner's pack would after download
-  const packs = new VP.VoicePacks([BUILTIN, path.join(ROOT, 'catalog', 'voicepacks')]);
-  assert.deepEqual(packs.errors, []);
-  for (const v of index.voicePacks) assert.equal(packs.get(v.id).kind, 'style');
   const rows = Catalog.listVoicePacks((id) => id === index.voicePacks[0].id);
   assert.equal(rows[0].installed, true);
   assert.equal(rows[1].installed, false);
   assert.match(rows[0].sizeLabel, /KB|MB/);
+});
+
+// The recordings are not in the repository (the CDN archives are the source, docs/voice-packs.md §9); after
+// `node scripts/build-voice-catalog.js --fetch --extract` (or recording) they are checked against the index.
+const STYLE_SRC = path.join(ROOT, 'catalog', 'voicepacks');
+const haveRecordings = () => Catalog.loadVoiceIndex().voicePacks.every((v) => fs.existsSync(path.join(STYLE_SRC, v.id, 'manifest.json')));
+test('recorded style packs in catalog/voicepacks match the index', { skip: !haveRecordings() && 'catalog/voicepacks not here (node scripts/build-voice-catalog.js --fetch --extract)' }, () => {
+  const index = Catalog.loadVoiceIndex();
+  const genericLines = VP.genericPackLines();
+  for (const v of index.voicePacks) {
+    const dir = path.join(STYLE_SRC, v.id);
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+    assert.deepEqual(VP.validateManifest(m, dir), [], v.id);
+    assert.equal(m.pending, undefined, `${v.id}: every line recorded`);
+    assert.deepEqual(Object.keys(m.lines).sort(), [...genericLines].sort(), `${v.id}: the whole 通用台词 set`);
+    for (const k of ['style', 'name', 'gender', 'version', 'voiceId', 'model', 'engine']) assert.equal(v[k], m[k], `${v.id}.${k}`);
+    assert.deepEqual(v.params, m.params);
+    assert.equal(v.sample.text, m.sample.text);
+    const sample = path.join(ROOT, 'src', 'renderer', v.sample.file);
+    assert.equal(crypto.createHash('sha1').update(fs.readFileSync(sample)).digest('hex'), crypto.createHash('sha1').update(fs.readFileSync(path.join(dir, m.sample.file))).digest('hex'));
+  }
+  // a recorded pack loads as an owner's pack would after download
+  const packs = new VP.VoicePacks([BUILTIN, STYLE_SRC]);
+  assert.deepEqual(packs.errors, []);
+  for (const v of index.voicePacks) assert.equal(packs.get(v.id).kind, 'style');
 });
 
 test('store index loader drops a broken entry', () => {

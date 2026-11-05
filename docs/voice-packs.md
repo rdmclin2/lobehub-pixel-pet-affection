@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | `character`（省略 `kind` 时就是它，旧包都是这种） | 专属语音包：某一个角色自己的台词和声音 | `format` `id` `name` `character` `lines` | `src/voicepacks/{claude,dafeiyu,gemini,gpt,grok}` |
 | `generic` | 通用语音包：跟角色无关的通用台词，按性别分男声 / 女声 | `format` `kind` `gender`（`male` / `female`）`id` `name` `engine` `voiceId` `lines`；**不能有** `character` | `src/voicepacks/generic-male`、`src/voicepacks/generic-female` |
-| `style` | 风格语音包：一包 = 一种声音风格（可爱 / 御姐 / 少年 / 沉稳 / 搞笑），从商店下载，见 §6 | `generic` 的全部必填字段 + `style` `version` `lineSet` `sample` | 不内置；源文件在 `catalog/voicepacks/style-*`，商店目录 `src/core/voice-catalog.json` |
+| `style` | 风格语音包：一包 = 一种声音风格（可爱 / 御姐 / 少年 / 沉稳 / 搞笑），从商店下载，见 §6 | `generic` 的全部必填字段 + `style` `version` `lineSet` `sample` | 不内置；源是 CDN 上发布的归档（不进仓库，§9.1），商店目录 `src/core/voice-catalog.json` |
 
 ```json
 {
@@ -232,13 +232,14 @@ node scripts/voicepack-generate.js --style --dry-run                     # 列�
 node scripts/voicepack-generate.js --style                               # 录全部 5 种风格到 catalog/voicepacks/style-*/
 node scripts/voicepack-generate.js --style cute,yujie [--rpm 10]         # 只录部分风格
 node scripts/build-voice-catalog.js                                      # 打包 out/voice-catalog/*.zip，写 src/core/voice-catalog.json 和试听文件
-node scripts/build-voice-catalog.js --check                              # 重新打包并核对索引里的 sha256 / 大小
+node scripts/build-voice-catalog.js --check                              # 重新打包并核对索引里的 sha256 / 大小（本地没有录音时改为核对 CDN 上的归档）
+node scripts/build-voice-catalog.js --fetch [--extract]                  # 从 CDN 下载已发布的归档并核对；--extract 解压到 catalog/voicepacks/
 node scripts/upload-character-catalog.js --voices [--dry-run]            # 上传到 CDN 的 voices-v1（需要 dc CLI 登录）
 ```
 
 - 限速：默认 `--rpm 10`（MiniMax 国内站免费账号 10 次/分钟），两次请求间隔 ≥ 6.2 秒；遇 1002 / 1039 / 429 退避 20 秒重试，401 / 1008 / 402（key 错或余额不足）直接停止。5 个风格 × 139 次请求约 75 分钟。
 - 断点续跑：每录完一句就原子写一次 manifest（`pending` 列出还没录的句子），再次运行跳过已在磁盘上的句子；试听句最先录。
-- 加新风格：在 `src/core/voice-styles.js` 的 `STYLES` 加一项（`style` `id` `label` `name` `gender` `description` `voice` `sample`），录音、打包，提交 `catalog/voicepacks/<id>/`、`src/core/voice-catalog.json`、`src/renderer/catalog/voices/<id>.ogg`。
+- 加新风格：在 `src/core/voice-styles.js` 的 `STYLES` 加一项（`style` `id` `label` `name` `gender` `description` `voice` `sample`），先 `--fetch --extract` 取回已发布的包，再录音、打包、上传，提交 `src/core/voice-styles.js`、`src/core/voice-catalog.json`、`src/renderer/catalog/voices/<id>.ogg`（录音本身不提交，见 §9.1）。
 
 ### 6.4 现有风格（voices-v1）
 
@@ -304,17 +305,17 @@ IPC（`src/main/admin-preload.js`）：`voiceStore()` → `{ voicePacks: StoreVo
 
 | 内容 | 位置 | 是否进仓库 |
 | --- | --- | --- |
-| 录音源文件（manifest + 138 句 `.ogg` + 试听句） | `catalog/voicepacks/style-<风格>/` | 是（每包约 1.1–1.5 MB，生成一次后不再改） |
+| 录音源文件（manifest + 138 句 `.ogg` + 试听句） | 本地工作目录 `catalog/voicepacks/style-<风格>/`（`.gitignore`）；需要时 `node scripts/build-voice-catalog.js --fetch --extract` 从 CDN 取回 | 否：CDN 上的归档就是源。归档可复现，解压后重新打包得到同一个 sha256 |
 | 商店目录（每包的版本、句数、大小、sha256、下载地址） | `src/core/voice-catalog.json` | 是，随应用发布 |
 | 试听音频（下载前就能听） | `src/renderer/catalog/voices/style-<风格>.ogg` | 是，随应用发布 |
-| 下载归档 `style-<风格>.zip` | 构建产物 `out/voice-catalog/`；发布后在 CDN `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/<release>/` | 否（可复现：同样的源文件总是得到同一个 sha256） |
+| 下载归档 `style-<风格>.zip` | DC（Develop Center）ops-assets：`dc/ops-assets/archives/pixel-pet/<release>/`，公开地址 `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/<release>/`（`dc ops-assets list --prefix dc/ops-assets/archives/pixel-pet/voices-v1/` 可查）；本地构建产物在 `out/voice-catalog/` | 否 |
 
 应用只从目录里写的地址下载，并按 `bytes` + `sha256` 校验。地址的优先级：`PIXELPET_CATALOG_URL`（测试 / 镜像）> `settings.catalogUrl`（手动写进 settings.json）> 默认 CDN。镜像只要按 `<镜像根>/<file>` 提供同样的 zip 即可，也可以是 `file://` 目录。
 
 ### 9.2 发布一版
 
 ```bash
-node scripts/build-voice-catalog.js --check                  # 从 catalog/voicepacks 重新打包，核对与 voice-catalog.json 一致
+node scripts/build-voice-catalog.js --check                  # 从 catalog/voicepacks 重新打包核对 voice-catalog.json；本地没有录音时核对 CDN 上的归档
 node scripts/upload-character-catalog.js --voices --dry-run  # 只打包核对，列出要上传的文件和地址
 dc auth login --token <DC_CLI_TOKEN> --base-url <DC 地址>    # 或设 DC_CLI=<develop-center>/packages/cli/dist/index.js
 node scripts/upload-character-catalog.js --voices            # 上传到 dc/ops-assets/archives/pixel-pet/voices-v1/，再逐个下载回来核对
@@ -328,14 +329,15 @@ node scripts/upload-character-catalog.js --voices            # 上传到 dc/ops-
 
 1. 在 MiniMax 音色列表里挑一个系统音色（`voiceId`）；运行 `node scripts/minimax-key.js` 确认能找到 Key（只显示位置和长度）。
 2. 在 `src/core/voice-styles.js` 的 `STYLES` 末尾加一项：`style`（键，`^[a-z][a-z0-9-]{1,31}$`）、`id`（`style-<键>`）、`label`（商店显示的风格名）、`name`、`gender`（`female` / `male`）、`description`、`voice: { engine: 'minimax', voiceId, label, model, params: { speed, pitch, vol, emotion } }`、`sample`（试听句）。
-3. `node scripts/voicepack-generate.js --style <键> --dry-run` 看要录的句子；`node scripts/voicepack-generate.js --style <键>` 录音：
+3. `node scripts/build-voice-catalog.js --fetch --extract` 把已发布的包取回 `catalog/voicepacks/`（打包时目录按本地文件夹重写，缺了已发布的包会报错，以免把它们从商店里删掉）。
+4. `node scripts/voicepack-generate.js --style <键> --dry-run` 看要录的句子；`node scripts/voicepack-generate.js --style <键>` 录音：
    - 写到 `catalog/voicepacks/style-<键>/`，试听句最先录。
    - 默认每分钟 10 次（`--rpm`），139 次请求约 15 分钟。
    - 中断后再运行会接着录。
    - 有 ffmpeg 时转成 32 kbps Opus。
-4. `node scripts/build-voice-catalog.js`：打包 zip，把新条目写进 `src/core/voice-catalog.json`，复制试听文件到 `src/renderer/catalog/voices/`。
-5. `npm test`（`test/style-voice-pack.test.js` 校验每个包的 manifest、目录条目和风格表一致），`xvfb-run -a node e2e/run.js voicestore` 看商店卡片。
-6. 按 §9.2 上传；提交 `catalog/voicepacks/style-<键>/`、`src/core/voice-styles.js`、`src/core/voice-catalog.json`、`src/renderer/catalog/voices/style-<键>.ogg`。
+5. `node scripts/build-voice-catalog.js`：打包 zip，把新条目写进 `src/core/voice-catalog.json`，复制试听文件到 `src/renderer/catalog/voices/`。
+6. `npm test`（`test/style-voice-pack.test.js` 校验目录条目和风格表一致；本地有录音时再核对每个包的 manifest），`xvfb-run -a node e2e/run.js voicestore` 看商店卡片。
+7. 按 §9.2 上传；提交 `src/core/voice-styles.js`、`src/core/voice-catalog.json`、`src/renderer/catalog/voices/style-<键>.ogg`。
 
 ### 9.4 端到端验证
 
