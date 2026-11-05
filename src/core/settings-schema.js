@@ -129,7 +129,7 @@ add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: 
 add('prefs.touchHint', 'behavior', '触摸', '触摸提示', 'switch', { desc: '悬停时提示指针下是哪个部位。', dependsOn: { key: 'prefs.touchZones', value: true } });
 // 像素小院 (docs/pixel-scene.md): the yard's time and weather; the yard window has the same controls (天色 card)
 add('scene.followClock', 'behavior', '像素小院', '小院跟随时间', 'switch', { desc: '小院的时段跟着这台电脑的时间走。关掉后用下面的时刻。在小院里拖时间滑块也会关掉它。打开小院：托盘「像素小院」、她的面板 ⌂、或在她身上按 Ctrl/⌘ + Shift + H。' });
-add('scene.hour', 'behavior', '像素小院', '小院时刻', 'slider', { desc: '0 点到 23:45，15 分钟一档：6 点黎明、12 点白天、18 点黄昏、23 点夜晚。', min: 0, max: 23.75, step: 0.25, unit: '点', dependsOn: { key: 'scene.followClock', value: false } });
+add('scene.hour', 'behavior', '像素小院', '小院时刻', 'slider', { desc: '关掉「小院跟随时间」后用这个时刻：0 点到 23:45，15 分钟一档；6 点黎明、12 点白天、18 点黄昏、23 点夜晚。', min: 0, max: 23.75, step: 0.25, unit: '点' });
 add('scene.weather', 'behavior', '像素小院', '小院天气', 'segmented', { desc: '切换后雨、雪、云和画面色调立即跟着变。', options: opts([['clear', '晴'], ['cloudy', '多云'], ['rain', '小雨'], ['snow', '雪'], ['storm', '雷雨'], ['fog', '雾']]) });
 add('scene.autoWeather', 'behavior', '像素小院', '天气自己变', 'switch', { desc: '每隔 8–20 分钟自己换一次天气；手动选天气会关掉它。' });
 add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
