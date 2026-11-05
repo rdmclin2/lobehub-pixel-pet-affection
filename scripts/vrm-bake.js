@@ -8,6 +8,7 @@
 // as they are. The app never parses FBX: it only plays .vrma.
 //
 //   node scripts/vrm-bake.js [--assets ~/vrm-assets] [--out <dir>] [--only id,id] [--three <node_modules dir>]
+//   node scripts/vrm-bake.js --v2 --check [--out ~/vrm-assets/baked-v2]   → the pose guard + MMD arm check only (T-5092)
 //
 //   --assets  default $PIXELPET_VRM_ASSETS, else ~/vrm-assets
 //   --out     default $PIXELPET_VRM_MOTIONS_DIR, else ~/vrm-assets/baked; refused inside the repository
@@ -291,7 +292,7 @@ function countFiles(dir, re) {
   return n;
 }
 
-const V2_META = ['category', 'group', 'enter', 'exit', 'pack', 'srcStyle', 'by'];
+const V2_META = ['category', 'group', 'enter', 'exit', 'pack', 'srcStyle', 'by', 'armsOut'];
 
 async function bakeV2(a) {
   const assets = path.resolve(home(a.assets || process.env.PIXELPET_VRM_ASSETS || '~/vrm-assets'));
@@ -386,6 +387,7 @@ async function bakeV2(a) {
           dlib.dances[id] = { name: e.name, file: `${id}/dance.vrma`, duration: +clip.duration.toFixed(3), offset: 0, loop: true, face: false, ground: 0, source: 'vrma', src: { motion: path.basename(e.src) }, bakedWith: 'vrm-bake-core@mixamo', importedAt: new Date().toISOString() };
         }
         Object.assign(dlib.dances[id], { styles: e.styles, category: 'dance', pack: e.pack });
+        if (e.armsOut) dlib.dances[id].armsOut = e.armsOut; else delete dlib.dances[id].armsOut;
         fs.writeFileSync(dlibFile, `${JSON.stringify(dlib, null, 2)}\n`);
         report.push(`dance ${id}: ${e.src} → dances/${id}/dance.vrma (${dlib.dances[id].duration} s${dlib.dances[id].audio ? ', with music' : ''}; styles ${e.styles.join('/')})`);
       } catch (err) {
@@ -401,6 +403,10 @@ async function bakeV2(a) {
   if (failed.length) console.log(`FAILED (${failed.length}):\n  ${failed.join('\n  ')}`);
   console.log(`wrote ${path.join(out, 'library.json')}: ${Object.keys(lib.clips).length} clips in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   console.log(`counts ${JSON.stringify(lib.counts)}`);
+  // ---- T-5092: the pose guard over everything just baked (and the MMD arm check); a hit fails the bake ----
+  const guard = poseGuard(out, assets, idx);
+  for (const l of guard.lines) console.log(l);
+  failed.push(...guard.failed);
   if (a.install) {
     const r = installLibrary(out, typeof a['user-data'] === 'string' ? a['user-data'] : null);
     console.log(`installed: ${r.motions.dir} (${r.motions.files} files)${r.dances ? `, ${r.dances.dir} (${r.dances.files} files)` : ''}`);
@@ -408,8 +414,60 @@ async function bakeV2(a) {
   return { lib, failed };
 }
 
+// T-5092: the automatic posture guard (scripts/lib/vrm-pose-guard.js) over a baked library — every clip and dance
+// frame by frame (T-pose: both upper arms level with straight elbows for ≥ 0.2 s, unless annotated armsOut within
+// its maxS) — and the MMD → VRM arm check of every VMD source (an independent MMD forward kinematics, ≤ ARM_TOL°).
+// `--v2 --check` runs only this, on --out (default ~/vrm-assets/baked-v2), and exits 1 on any hit.
+const Guard = require('./lib/vrm-pose-guard');
+const ARM_TOL = 5;
+function poseGuard(out, assets, idx) {
+  const sum = Guard.checkLibrary(out);
+  // an armsOut annotation covers runs up to its maxS only
+  for (const r of sum.rows) if (r.suspect && r.armsOut && !(r.longestS <= r.armsOut.maxS)) r.armsOut = null;
+  const s2 = Guard.summarize(sum.rows);
+  const lines = Guard.formatReport(s2).map((l) => l.replace(/— armsOut: \[object Object\]/, ''));
+  for (const r of s2.allowedList) { const i = lines.findIndex((l) => l.startsWith(`  allowed  ${r.id}:`)); if (i >= 0) lines[i] = `  allowed  ${r.id}: ${r.longestS} s @ ${r.at} s ≤ armsOut ${r.armsOut.maxS} s (${r.armsOut.why})`; }
+  const failed = s2.hitList.map((r) => `pose guard: ${r.id} holds a T-pose ${r.longestS} s @ ${r.at} s (${r.src})`);
+  const vmds = new Set();
+  for (const e of Object.values(idx.clips)) if (e.src && /\.vmd$/i.test(e.src)) vmds.add(e.src);
+  for (const e of Object.values(idx.dances || {})) if (/\.vmd$/i.test(e.src)) vmds.add(e.src);
+  let worst = { maxUpperDeg: 0, maxForeDeg: 0 };
+  let samples = 0;
+  for (const src of [...vmds].sort()) {
+    const file = path.join(assets, src);
+    if (!fs.existsSync(file)) { failed.push(`arm check: ${src} missing`); continue; }
+    const r = Guard.vmdArmCheck(fs.readFileSync(file));
+    samples += r.samples;
+    if (r.maxUpperDeg > worst.maxUpperDeg) worst = { ...r, src };
+    if (r.maxUpperDeg > ARM_TOL || r.maxForeDeg > ARM_TOL) failed.push(`arm check: ${src} upper arm ${r.maxUpperDeg}° / forearm ${r.maxForeDeg}° off the MMD pose @ ${r.at} s`);
+  }
+  lines.push(`arm check (MMD → VRM): ${vmds.size} VMD sources, ${samples} arm samples, worst upper arm ${worst.maxUpperDeg}° (${worst.src || '-'} @ ${worst.at || 0} s), tolerance ${ARM_TOL}° — ${failed.some((f) => f.startsWith('arm check')) ? 'FAILED' : 'ok'}`);
+  return { sum: s2, lines, failed };
+}
+
+function checkV2(a) {
+  const assets = path.resolve(home(a.assets || process.env.PIXELPET_VRM_ASSETS || '~/vrm-assets'));
+  const out = path.resolve(home(typeof a.out === 'string' ? a.out : '~/vrm-assets/baked-v2'));
+  const idx = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'core', 'vrm-motion-index.json'), 'utf8'));
+  console.log(`pose guard on ${out}`);
+  const lib = JSON.parse(fs.readFileSync(path.join(out, 'library.json'), 'utf8'));
+  const idles = {};
+  for (const c of Object.values(lib.clips)) if (c.kind === 'idle' && c.file) idles[c.style] = (idles[c.style] || 0) + 1;
+  const g = poseGuard(out, assets, idx);
+  for (const l of g.lines) console.log(l);
+  // every idle clip: the largest angle both upper arms reach together (from the torso's down axis) and its T-pose frames
+  console.log('idle clips (both upper arms together: max angle from the torso\'s down axis; T-pose frames; longest run):');
+  for (const r of g.sum.rows.filter((x) => x.kind === 'idle').sort((a, b) => a.id.localeCompare(b.id))) console.log(`  ${r.id.padEnd(22)} ${(r.src || '').slice(0, 58).padEnd(58)} max ${String(r.bothArmsMaxDeg).padStart(5)}°  T-pose frames ${r.tposeFrames}  longest ${r.longestS} s${r.suspect ? '  HIT' : ''}`);
+  const short = Object.entries(idles).filter(([, n]) => n < 6);
+  console.log(`idle clips per style: ${JSON.stringify(idles)}${short.length ? ' — FAILED (< 6)' : ' (≥ 6 each)'}`);
+  for (const [st] of short) g.failed.push(`idle: ${st} has fewer than 6 idle clips`);
+  if (g.failed.length) console.log(`FAILED (${g.failed.length}):\n  ${g.failed.join('\n  ')}`);
+  return g;
+}
+
 async function main() {
   const a = args(process.argv.slice(2));
+  if (a.v2 && a.check) { const g = checkV2(a); if (g.failed.length) process.exitCode = 1; return; }
   if (a.v2) { const r = await bakeV2(a); if (r.failed.length) process.exitCode = 1; return; }
   if (a.install) { const out = path.resolve(home(typeof a.out === 'string' ? a.out : '~/vrm-assets/baked-v2')); const r = installLibrary(out, typeof a['user-data'] === 'string' ? a['user-data'] : null); console.log(JSON.stringify(r)); return; }
   if (a.dance) { bakeDance(a); return; }
@@ -456,4 +514,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { fbxToClip, loadThree, threeDir, runtimeMeta, danceSource, danceExtras, creditOf, bakeDance, bakeV2, installLibrary, userDataDir, LOOP_SEAM_MAX };
+module.exports = { poseGuard, checkV2, ARM_TOL, fbxToClip, loadThree, threeDir, runtimeMeta, danceSource, danceExtras, creditOf, bakeDance, bakeV2, installLibrary, userDataDir, LOOP_SEAM_MAX };

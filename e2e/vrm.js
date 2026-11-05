@@ -3545,7 +3545,10 @@ module.exports = function vrmScenarios(ctx) {
 
   // T-5084: store-imported VRMs on the motion library v2 (e2e/vrm-store.js), with this file's helpers
   const vrmStore = () => require('./vrm-store')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
-  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim, vrmStore };
+  // T-5089: several store VRMs through a whole day each (idle, touches, drag, talk, a dance), with numbers
+  const vrmVerify = () => require('./vrm-verify')({ ...ctx, SHOTS, sleep, dataDir, helpers, watchErrors, realErrors });
+  const vrmStoreShots = () => require('./vrm-store-shots')({ ...ctx, SHOTS, sleep, dataDir, helpers });
+  return { vrmScenario, vrmImport, vrmFraming, vrmDance, danceUi, danceE2e, danceFinal, vrmReset, vrmActs, vrmAnim, vrmStore, vrmVerify, vrmStoreShots };
 };
 // the homemade test model, for scenarios outside this file (e2e/quit-button.js)
 module.exports.makeModel = makeModel;

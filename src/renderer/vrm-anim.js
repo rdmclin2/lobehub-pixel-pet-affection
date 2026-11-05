@@ -41,6 +41,7 @@
   const smooth = (k) => { const x = Math.max(0, Math.min(1, k)); return x * x * (3 - 2 * x); };
 
   // how much of an overlay each bone takes, per mask (soft at the waist so an upper-body clip bends in)
+  const LIMB = /Hand$|LowerArm$|Foot$|Toes$|Thumb|Index|Middle|Ring|Little/;
   const ARM_BONES = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand', 'Thumb', 'Index', 'Middle', 'Ring', 'Little'];
   function maskWeight(mask, bone) {
     if (mask === 'full') return 1;
@@ -100,7 +101,8 @@
         if (!tracks) continue;
         shown.push(`${o.layer || 'overlay'}:${o.id}:${o.weight.toFixed(2)}`);
         for (const tr of tracks) {
-          const k = o.weight * maskWeight(o.mask || 'upper', tr.bone);
+          // (a reaction's hands, forearms and feet come in slower: o.limb, T-5092 — the director's TOUCH_SETTLE)
+          const k = (o.limb !== undefined && LIMB.test(tr.bone) ? Math.min(o.weight, o.limb) : o.weight) * maskWeight(o.mask || 'upper', tr.bone);
           if (!(k > 0)) continue;
           const v = tr.interp.evaluate(Math.max(0, Math.min(tr.duration, o.time || 0)));
           if (tr.q) { qa.fromArray(v).normalize(); tr.node.quaternion.slerp(qa, Math.min(1, k)); } else if (o.mask === 'full') tr.node.position.lerp(va.fromArray(v), Math.min(1, k));
@@ -294,5 +296,5 @@
     };
   }
 
-  window.PetVrmAnim = { createAnimLayers, maskWeight, REST_ID };
+  window.PetVrmAnim = { createAnimLayers, maskWeight, LIMB, REST_ID };
 })();

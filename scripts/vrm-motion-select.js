@@ -27,13 +27,42 @@ function args(argv) {
 
 // The MMD motions (motions pack): the rules are not trusted on them (their names say more), every one used is named
 // here with its group and the styles it suits. Anything in motions/ not listed is out.
+// Dances whose choreography holds both arms out straight and level (the pose guard's T-pose shape) for a moment:
+// the MMD ones checked against an independent MMD forward kinematics (vrm-pose-guard vmdArmCheck, < 4° apart),
+// so it is the dance, not the retarget. maxS: the longest such run the guard measured, plus 0.3 s.
+const ARMS_OUT = {
+  'mx-c9c650df': { maxS: 0.6, why: 'Mixamo dance: arms swung out level on the beat' },
+  'mx-c9c65b7c': { maxS: 0.5, why: 'Mixamo dance: arms swung out level on the beat' },
+  'mx-c9c6ed9e': { maxS: 1.1, why: 'Mixamo dance: opens with both arms spread' },
+  'vmd-g-i-dle-tomboy': { maxS: 2.0, why: 'TOMBOY: arms-spread figures (120 s, 168 s)' },
+  'vmd-aoa-miniskirt-queendom-ver': { maxS: 0.7, why: 'Miniskirt: arms out to the side' },
+  'vmd-brown-eyed-girls-abracadabra': { maxS: 0.7, why: 'Abracadabra: arms out level' },
+  'vmd-everglow-bon-bon-chocolat-full-ver': { maxS: 0.6, why: 'Bon Bon Chocolat: arms out level' },
+  'vmd-t-ara-bunny-style': { maxS: 0.6, why: 'Bunny Style: arms out level' },
+  'vmd-t-ara-number-nine': { maxS: 0.9, why: 'Number Nine: arms out level' },
+  'vmd-twice-like-ooh-ahh': { maxS: 0.6, why: 'Like OOH-AHH: arms out level' },
+  'vmd-addiction': { maxS: 0.6, why: 'addiction: arms out level' },
+  'vmd-galaxias': { maxS: 0.9, why: 'galaxias: arms out level' },
+  'vmd-kiss-me-aishiteru': { maxS: 0.6, why: 'kiss me 愛してる: arms out level' },
+  'vmd-magic-of-xyz': { maxS: 2.0, why: 'magic of xyz: arms held out (54 s)' },
+  'vmd-qsx': { maxS: 0.9, why: 'qsx: arms out level' },
+  'vmd-suki-yuki-maji-magic': { maxS: 1.0, why: 'suki yuki maji magic: arms held out in front' },
+  'vidol-dance-gokuraku': { maxS: 0.6, why: '極楽浄土: arms out level' },
+  'vidol-dance-last-surprise': { maxS: 2.0, why: 'Last Surprise: arms held out (77 s)' },
+  'vidol-dance-shujiwu': { maxS: 1.8, why: '书记舞: arms stretched out in front (13 s)' },
+};
+// Reactions (by source) that throw the arms out on purpose: a jump's arm swing, a yawn's stretch
+const ARMS_OUT_SRC = {
+  'motions/tsuna/tsuna_small_jump.vmd': { maxS: 0.6, why: 'a small jump: the arms swing up level for a moment' },
+  'mixamo/c9c98361-b96c-11e4-a802-0aaa78deedf9.fbx': { maxS: 0.6, why: 'a yawn: both arms stretched out' },
+};
 // the longest a one-shot reaction / emotion plays (s); a longer source is trimmed to its busiest window
 const REACT_MAX = 6;
 
 const REVIEW = {
   'motions/tsuna/tsuna_standby.vmd': { group: 'idle', note: 'つな 待機 (standby loop)' },
   'motions/penguin_stand.vmd': { group: 'idle', note: 'penguin stand: a calm standing idle' },
-  'motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd': { group: 'idle', trim: [0, 20], note: 'standmix2: a long mixed standing idle, first 20 s' },
+  'motions/_TEMP/_motion_basic_pack01/standmix2_modified.vmd': { group: 'idle', trim: [7.4, 36.1], note: 'standmix2: a long mixed standing idle from 7.4 s (T-5092: 3.2–7.3 s is a stretch with both arms held level in front, read as a T-pose in an idle)' },
   'motions/_kiss_blush.vmd': { group: 'shy', gender: 'female', note: 'kiss blush: a shy lean in' },
   'motions/_kiss2_blush.vmd': { group: 'shy', gender: 'female', note: 'kiss blush 2' },
   'motions/cover_chest_v01.vmd': { group: 'shy', gender: 'female', note: 'covers her chest, embarrassed' },
@@ -191,6 +220,10 @@ function build({ assets, scan }) {
     const id = slug.startsWith('vidol-dance-') ? slug : `vmd-${slug}`.slice(0, 48);
     dances[id] = { kind: 'dance', category: 'dance', group: 'dance', pack: 'dances', src: f.path, folder: path.dirname(f.path), name: path.basename(folder).slice(0, 40), duration: f.duration_s, loop: false, mask: 'full', enter: 'stand', exit: 'stand', srcStyle: 'unlabelled', by: 'folder', styles: ['female', 'male', 'neutral'] };
   }
+  // 4b. dance figures that hold both arms out straight on purpose (T-5092 pose guard, scripts/lib/vrm-pose-guard.js):
+  // `armsOut` lets the guard pass a level-arm run up to maxS seconds — a longer one (a broken retarget) still fails
+  for (const [id, a] of Object.entries(ARMS_OUT)) if (dances[id]) dances[id].armsOut = a;
+  for (const e of Object.values(clips)) if (e.src && ARMS_OUT_SRC[e.src]) e.armsOut = ARMS_OUT_SRC[e.src];
   // 5. a one-shot reaction / emotion longer than REACT_MAX plays only its busiest REACT_MAX seconds (some rule-picked
   // Mixamo takes are 20+ s of nodding or fidgeting); `duration` is what plays (after trim), `srcDuration` the source
   for (const e of Object.values(clips)) {
@@ -246,4 +279,4 @@ if (require.main === module) {
   }
   console.log(JSON.stringify(countsOf(index)));
 }
-module.exports = { build, countsOf, REVIEW, QUOTA, LABEL, slotOf, kindOf, loopOf, maskOf, baseGroup };
+module.exports = { build, countsOf, ARMS_OUT, ARMS_OUT_SRC, REVIEW, QUOTA, LABEL, slotOf, kindOf, loopOf, maskOf, baseGroup };

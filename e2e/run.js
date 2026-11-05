@@ -10803,6 +10803,8 @@ async function interjectScenario() {
   if (which === 'vrmreset' || which === 'all') await vrmScenarios().vrmReset();
   if (which === 'vrmanim' || which === 'all') await vrmScenarios().vrmAnim(); // T-2832 前台 VRM 动画状态端到端验收
   if (which === 'vrmstore' || which === 'all') await vrmScenarios().vrmStore(); // T-5084 商店 VRM + 动作库 v2：idle 命中、无瞬跳、播放入口
+  if (which === 'vrmverify') await vrmScenarios().vrmVerify(); // T-5089 多模型实测：60 s idle、触摸、拖拽、说话、舞蹈打断与指标（不在 all 里：约 20 分钟）
+  if (which === 'vrmstoreshots') await vrmScenarios().vrmStoreShots(); // T-5097 逐模型商店导入截图（卡片 未下载 → 已下载 → 切换 → 桌宠窗口）
   if (which === 'danceui' || which === 'all') await vrmScenarios().danceUi();
   if (which === 'dance' || which === 'all') await vrmScenarios().danceE2e();
   if (which === 'dancefinal' || which === 'all') await vrmScenarios().danceFinal();
