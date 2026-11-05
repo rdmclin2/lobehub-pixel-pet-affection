@@ -1,0 +1,60 @@
+/* 她的面板 (src/main/pet-panel.js): its own small transparent window beside her. The card is the whole page; the
+   body's padding is the room its shadow needs (PAD in pet-panel.js). Tokens: design/lobe-tokens.css; .btn / .ico
+   and the base type come from ../style.css, as in her window. */
+html, body { height: auto; }
+body { padding: 12px; overflow: hidden; }
+/* ---- 她的面板 (right click / long press on her): one card — who she is and how she is, then what to do ----
+   head (her name, her character, the stage tag) · affection meter · the three needs · four action tiles ·
+   a footer of quiet icon buttons (静音 / 跳舞 / 重置 … ⚙ 设置 / ⏻ 退出). The LobeHub popover: elevated surface,
+   radius lg, the secondary shadow; sections split by hairlines; tiles and icon buttons as quiet hover fills. */
+.pet-panel { width: 240px; transform-origin: 50% 100%; display: flex; flex-direction: column; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); font-size: 12px; animation: panel-in var(--lobe-motion-duration-mid) var(--pet-ease); }
+.pet-panel:focus { outline: none; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pet-panel { animation: none; } }
+.pp-status { display: flex; flex-direction: column; gap: var(--pet-space-xs); padding: var(--pet-space-sm) var(--pet-space-md) var(--pet-space-sm); }
+.pp-head { display: flex; align-items: center; gap: var(--pet-space-sm); min-width: 0; }
+.pp-who { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--pet-space-xs); white-space: nowrap; overflow: hidden; }
+.pp-name { font-size: 13px; line-height: 20px; font-weight: var(--lobe-font-weight-strong); color: var(--lobe-color-text); overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 60%; }
+.pp-char { font-size: 11px; color: var(--lobe-color-text-tertiary); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* the stage as a tag in its own colour (a tinted fill behind the coloured name) */
+.aff-stage { flex: none; font-size: 11px; line-height: 18px; padding: 0 var(--pet-space-sm); border-radius: var(--lobe-border-radius-sm); font-weight: var(--lobe-font-weight-strong); color: var(--sc, var(--lobe-color-text)); background: color-mix(in srgb, var(--sc, var(--lobe-color-text)) 12%, transparent); }
+.aff-row { display: flex; align-items: center; gap: var(--pet-space-sm); font-size: 11px; line-height: 16px; color: var(--lobe-color-text-secondary); }
+.aff-heart { display: inline-flex; color: var(--lobe-color-error); }
+.aff-heart .ico { width: 12px; height: 12px; fill: currentColor; stroke-width: 0; }
+.aff-bar { flex: 1; display: block; height: 6px; background: var(--lobe-color-fill-secondary); border-radius: 3px; position: relative; overflow: hidden; }
+.aff-bar::after { content: ""; position: absolute; inset: 0; background: var(--c, var(--lobe-color-error)); border-radius: 3px; transform: scaleX(var(--k, 0)); transform-origin: 0 50%; transition: transform var(--lobe-motion-duration-slow) var(--pet-ease); }
+.aff-num { font-weight: var(--lobe-font-weight-strong); color: var(--lobe-color-text); font-variant-numeric: tabular-nums; }
+.aff-num small { font-weight: 400; color: var(--lobe-color-text-tertiary); }
+.pet-panel .meta { font-size: 11px; line-height: 16px; color: var(--lobe-color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-top: calc(-1 * var(--pet-space-xxs)); }
+/* the needs: three columns, label + number over a thin meter (app.js colours it by how good it is) */
+.bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pet-space-sm); margin-top: var(--pet-space-xs); padding-top: var(--pet-space-sm); border-top: 1px solid var(--pet-line-soft); }
+.need { display: grid; grid-template-columns: 1fr auto; align-items: center; row-gap: var(--pet-space-xxs); min-width: 0; }
+.need-label { display: flex; align-items: center; gap: var(--pet-space-xxs); font-size: 11px; line-height: 16px; color: var(--lobe-color-text-secondary); white-space: nowrap; }
+.need-label .ico { width: 12px; height: 12px; color: var(--lobe-color-text-tertiary); }
+.need-val { font-size: 11px; line-height: 16px; font-weight: 500; color: var(--lobe-color-text); font-variant-numeric: tabular-nums; }
+.need-bar { grid-column: 1 / -1; display: block; height: 4px; background: var(--lobe-color-fill-secondary); border-radius: 2px; position: relative; overflow: hidden; }
+.need-bar::after { content: ""; position: absolute; inset: 0; background: var(--c, var(--lobe-color-success)); border-radius: 2px; transform: scaleX(var(--k, 0)); transform-origin: 0 50%; transition: transform var(--lobe-motion-duration-slow) var(--pet-ease); }
+/* what to do: four tiles (icon over label), then the footer */
+.pp-actions { display: flex; flex-direction: column; border-top: 1px solid var(--pet-line-soft); padding: var(--pet-space-xs); }
+.pp-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--pet-space-xxs); }
+.pp-tile { font: inherit; font-size: 12px; line-height: 16px; color: var(--lobe-color-text); display: flex; flex-direction: column; align-items: center; gap: var(--pet-space-xxs); padding: var(--pet-space-sm) 0 var(--pet-space-xs); border: none; border-radius: var(--lobe-border-radius); background: transparent; cursor: pointer; transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), color var(--lobe-motion-duration-mid) var(--pet-ease); }
+.pp-tile .ico { width: 18px; height: 18px; color: var(--lobe-color-text-secondary); transition: color var(--lobe-motion-duration-mid) var(--pet-ease); }
+.pp-tile:hover { background: var(--lobe-color-fill-tertiary); }
+.pp-tile:hover .ico { color: var(--lobe-color-text); }
+.pp-tile:active { background: var(--lobe-color-fill-secondary); }
+.pp-tile[aria-expanded="true"] { background: var(--lobe-color-fill-secondary); }
+.pp-tile:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
+.pp-foot { display: flex; align-items: center; gap: var(--pet-space-xxs); margin-top: var(--pet-space-xs); padding-top: var(--pet-space-xs); border-top: 1px solid var(--pet-line-soft); }
+.pp-spacer { flex: 1; }
+.pp-foot .pp-icon { position: relative; min-width: 28px; min-height: 28px; padding: var(--pet-space-xs); border-color: transparent; background: transparent; color: var(--lobe-color-text-secondary); }
+.pp-foot .pp-icon .ico { width: 16px; height: 16px; }
+.pp-foot .pp-icon:hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); border-color: transparent; color: var(--lobe-color-text); }
+.pp-foot .pp-icon[aria-pressed="true"]:not(#btn-mute) { background: var(--lobe-color-fill-secondary); color: var(--lobe-color-text); }
+/* ⏻ quits at once (T-2827): hover tints it with the error colour so it does not read as one more interaction */
+.pp-foot .quit-btn:hover:not(:disabled) { color: var(--lobe-color-error); background: color-mix(in srgb, var(--lobe-color-error) 10%, transparent); }
+/* 喂食: the foods open as a row of quiet chips under the tiles, inside the card (the window grows with it) */
+.pp-foods { display: flex; flex-wrap: wrap; gap: var(--pet-space-xxs); margin-top: var(--pet-space-xxs); padding: var(--pet-space-xs); border-radius: var(--lobe-border-radius); background: var(--lobe-color-fill-quaternary); }
+.pp-foods.hidden { display: none; }
+.pp-foods .btn { font-size: 12px; font-weight: 400; min-height: 24px; padding: 0 var(--pet-space-sm); border-color: transparent; background: transparent; }
+.pp-foods .btn:hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); border-color: transparent; }
+.pp-foods-title { width: 100%; font-size: 11px; line-height: 16px; color: var(--lobe-color-text-tertiary); padding: 0 var(--pet-space-xxs); }

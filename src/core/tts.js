@@ -272,6 +272,7 @@ function validateVoice(v) {
   for (const k of ['pitch', 'rate']) if (v[k] !== undefined && !Number.isFinite(v[k])) errors.push(`voice.${k} must be a number`);
   if (v.prefer !== undefined && (!Array.isArray(v.prefer) || !v.prefer.every(str))) errors.push('voice.prefer must be a list of system voice names');
   errors.push(...InteractionVoice.validateLines(v.lines)); // 拖拽 / 甩出 / 接住 lines (core/interaction-voice.js)
+  errors.push(...require('./voice-gender').validateGender(v.gender, 'voice.gender')); // core/voice-gender.js
   if (v.tts === undefined) return errors;
   if (!v.tts || typeof v.tts !== 'object' || Array.isArray(v.tts)) return [...errors, 'voice.tts must be an object ({ fish, minimax, elevenlabs, local })'];
   for (const [id, c] of Object.entries(v.tts)) {
@@ -314,7 +315,11 @@ function defaultEngine(species) {
 // saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
 // local: the user's own voice server — its API shape (openai / whale), model and voice name.
 // elevenlabs: the voice and model used for a character whose file names no ElevenLabs voice.
-const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: ELEVENLABS_MODEL } };
+// voicePackByCharacter: the 语音包 the owner picked per character ({ characterId: packId | 'none' (不使用) }; 'auto' / missing =
+// 我的语音包 below, else her own pack, else the generic pack of her gender — core/voice-pack.js resolvePack).
+// voicePack: 我的语音包 — the pack the owner picked for themself ('auto' or a pack id, e.g. generic-male), used by
+// every character without a pick of her own.
+const TTS_DEFAULTS = { provider: 'auto', providerSet: false, fallback: 'system', packs: true, voicePack: 'auto', voicePackByCharacter: {}, endpoints: { fish: '', minimax: '', elevenlabs: '', local: '' }, local: { api: 'openai', model: '', voice: '' }, elevenlabs: { voiceId: '', modelId: ELEVENLABS_MODEL } };
 
 // https anywhere; plain http only to this machine — or, for the local engine (`lan`), to a machine on the
 // home network (a GPU box next to the Mac): only the text of her lines goes there.
@@ -329,6 +334,25 @@ const endpointOk = (u, { lan = false } = {}) => {
 };
 const endpointOkFor = (id, u) => endpointOk(u, { lan: id === 'local' });
 const name80 = (v) => (str(v) ? String(v).trim().slice(0, 80) : '');
+// settings.tts.voicePackByCharacter: character ids (core/species.js, generic vrmx… bases included) to pack ids
+// (core/voice-pack.js) or 'none' (不使用: no pack, voice-pack.js NONE); 'auto' and anything malformed is dropped
+// (= auto), at most VOICE_PACK_PICKS entries. A settings.json from before per-character picks has none: all auto. A pick
+// of a pack that is not here (a store pack deleted) is kept, so it is in force again once the pack is downloaded back.
+const CHARACTER_ID_RE = /^[a-z][a-z0-9]{1,19}$/;
+const VOICE_PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const VOICE_PACK_PICKS = 200;
+// settings.tts.voicePack (我的语音包): a pack id, else 'auto'
+const normalizeVoicePackId = (v) => (typeof v === 'string' && v !== 'auto' && VOICE_PACK_ID_RE.test(v) ? v : 'auto');
+function normalizeVoicePackPicks(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [id, pack] of Object.entries(raw)) {
+    if (Object.keys(out).length >= VOICE_PACK_PICKS) break;
+    if (!CHARACTER_ID_RE.test(id) || typeof pack !== 'string' || pack === 'auto' || !VOICE_PACK_ID_RE.test(pack)) continue;
+    out[id] = pack;
+  }
+  return out;
+}
 
 function normalizeTts(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
@@ -340,6 +364,8 @@ function normalizeTts(raw) {
     providerSet: r.providerSet === true,
     fallback: FALLBACKS.includes(r.fallback) ? r.fallback : TTS_DEFAULTS.fallback,
     packs: r.packs !== false, // 语音包: her recorded fixed lines first (core/voice-pack.js)
+    voicePack: normalizeVoicePackId(r.voicePack),
+    voicePackByCharacter: normalizeVoicePackPicks(r.voicePackByCharacter),
     endpoints: Object.fromEntries(NEURAL.map((id) => [id, endpointOkFor(id, ep[id]) ? String(ep[id]).trim().replace(/\/+$/, '') : ''])),
     local: { api: LOCAL_APIS.includes(lo.api) ? lo.api : 'openai', model: name80(lo.model), voice: name80(lo.voice) },
     elevenlabs: { voiceId: name80(el.voiceId), modelId: name80(el.modelId) || ELEVENLABS_MODEL },
@@ -604,4 +630,4 @@ class TtsEngine {
   }
 }
 
-module.exports = { ENGINES, NEURAL, ELEVENLABS_MODEL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
+module.exports = { CHARACTER_ID_RE, VOICE_PACK_ID_RE, VOICE_PACK_PICKS, normalizeVoicePackPicks, normalizeVoicePackId, ENGINES, NEURAL, ELEVENLABS_MODEL, FALLBACKS, LOCAL_APIS, WHALE_EMO, endpointOkFor, ready, TIMEOUT_MS, BREAKER_MS, RATE_PAUSE_MS, TRANSIENT_PAUSE_MS, PREWARM_RESERVE, LIVE_WAIT_MS, pauseFor, timeoutFor, PROVIDERS, TTS_DEFAULTS, TtsError, validateVoice, voiceFor, defaultEngine, normalizeTts, endpointOk, providerChain, cacheKey, redact, TtsEngine };
