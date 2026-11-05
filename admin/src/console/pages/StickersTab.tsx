@@ -243,7 +243,7 @@ export const StickersTab = ({ c }: { c: RosterRow }) => {
     );
   if (!load.sets)
     return (
-      <Surface title="表情包">
+      <Surface title={`${c.nameZh}的表情包`}>
         <div aria-busy className={styles.grid} data-stickers-loading>
           {[0, 1, 2, 3].map((i) => (
             <Skeleton animated height={180} key={i} radius={cssVar.borderRadiusLG} />
@@ -262,7 +262,7 @@ export const StickersTab = ({ c }: { c: RosterRow }) => {
       {settings?.prefs?.memes === false && <Alert title="她现在不会主动发表情包（在 设置 → 桌宠行为 打开）" type="info" />}
       <Surface
         description={`她回复时会从这里挑一张合适的配上（共 ${total} 张）。图片支持 PNG、JPG、WebP、GIF，单张不超过 2 MB，边长 64–1024 px。`}
-        title="表情包"
+        title={`${c.nameZh}的表情包`}
       >
         <Flexbox gap={16}>
           <Flexbox align="center" gap={8} horizontal justify="space-between" wrap="wrap">
