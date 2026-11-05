@@ -66,6 +66,7 @@ module.exports = async function vrmVerify(ctx) {
     chapters.push({ t: sec(), title: name });
     let failed = false;
     await step(S, name, async () => { try { return await fn(); } catch (e) { failed = true; throw e; } }, page);
+    if (failed) { const recent = realErrors(errors).slice(-5); if (recent.length) console.log(`  page errors: ${recent.map((e) => String(e).slice(0, 300)).join(' | ')}`); }
     if (failed && setup) broken = name;
     return !failed;
   };
@@ -257,6 +258,9 @@ module.exports = async function vrmVerify(ctx) {
         if (!z) return { zone, error: 'no zone on screen' };
         const topEl = await page.evaluate((q) => { const e = document.elementFromPoint(q.x, q.y); return e ? `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${e.classList.length ? `.${[...e.classList].join('.')}` : ''}` : null; }, z);
         const n0 = ((await page.evaluate(() => window.petFx && window.petFx.lastTouch && window.petFx.lastTouch())) || { n: 0 }).n;
+        // T-5092: where the click lands, marked on the screenshot (a ring that takes no clicks), and the zone the hit
+        // test gives for that point before the click (core/vrm-hit.js over the drawn head: headBox)
+        const probe = await page.evaluate((q) => { const f = window.PetVRM.director; const h = f.zoneAt ? f.zoneAt(q.x, q.y) : null; const d = window.PetVRM.debug(); const fig = d && d.figures && d.figures[0]; const m = document.createElement('div'); m.id = 'e2e-click-mark'; Object.assign(m.style, { position: 'fixed', left: `${q.x - 7}px`, top: `${q.y - 7}px`, width: '14px', height: '14px', border: '2px solid #ff2d55', borderRadius: '50%', pointerEvents: 'none', zIndex: 99999, boxSizing: 'border-box' }); document.body.appendChild(m); return { zone: h ? h.zone : null, headBox: fig ? fig.headBox : null }; }, z).catch(() => null);
         const t = await mark(`touch-${zone}`);
         await page.mouse.click(z.x, z.y);
         const getR = () => until(`a reaction to ${zone}`, () => { const p = window.PetVRM.director.plan(); const o = (p.overlays || []).find((x) => x.layer === 'reaction'); return p.reaction ? { slot: p.reaction, id: o ? o.id : null, mask: o ? o.mask : null } : null; }, null, 4000).catch(() => null);
@@ -278,11 +282,12 @@ module.exports = async function vrmVerify(ctx) {
         }
         await sleep(600);
         const sh = await shot(`${id}-touch-${zone}`);
+        await page.evaluate(() => { const m = document.getElementById('e2e-click-mark'); if (m) m.remove(); }).catch(() => {});
         await away();
         let back = true;
         try { await idleNow(); } catch { back = false; }
         await sleep(300);
-        return { zone, at: [Math.round(z.x), Math.round(z.y)], t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
+        return { zone, at: [Math.round(z.x), Math.round(z.y)], hitZone: probe && probe.zone, headBox: zone === 'head' && probe ? probe.headBox : undefined, t, reaction: r, back, shot: sh, topElement: topEl, touchRegistered: last.n > n0, lastTouch: last.zone || last.part || null, onFigure, retry };
       };
       await ST(`${id}：触摸头 / 手 / 肚子（真实点击）→ 反应片段 → 回待机`, async () => {
         const out = [];
@@ -430,7 +435,12 @@ module.exports = async function vrmVerify(ctx) {
       if (!series) series = await takeSampler().catch(() => null);
       if (series) fs.writeFileSync(path.join(SHOTS, `verify-${id}-series.json`), JSON.stringify(series));
       // arms spread level like a T-pose, from any clip (not a dance / reaction): a distortion, the model fails
-      if (series) { row.tpose = M.tposeIntervals(series.samples); for (const v of row.tpose) fail(`T-pose arms for ${v.seconds}s on ${v.base} (elevation ${v.maxElev}°)`); }
+      if (series) {
+        row.tpose = M.tposeIntervals(series.samples);
+        // T-5092: every 100 ms sample with both arms level (outside dance / reaction / hold), however short
+        row.tposeSamples = M.tposeSamples(series.samples);
+        for (const v of row.tpose) fail(`T-pose arms for ${v.seconds}s on ${v.base} (elevation ${v.maxElev}°)`);
+      }
       // before the fix: the same metrics on the T-5079 series of this model (none = a user's machine; env = the
       // old 22-clip library linked by hand), when the diagnosis had it
       row.baseline = {};
@@ -448,7 +458,7 @@ module.exports = async function vrmVerify(ctx) {
       const lines = summary.map((r) => `${r.id}: ${r.passed ? 'PASS' : 'FAIL'} — vrm ${r.vrm}, style ${r.style && r.style.name}, ${r.clips} clips; idle ${r.idle ? `${(r.idle.hitRatio * 100).toFixed(1)}% / ${r.idle.distinctClips} clips` : '-'}; spike max ${r.jump ? r.jump.spikeMax : '-'}°${r.failures.length ? `; failures: ${r.failures.join('; ')}` : ''}`);
       const real = realErrors(errors).filter((e) => !/\[vrm\]/.test(e));
       const note = H.note(`${lines.join('\n')}\nconsole errors: ${real.length}`);
-      assert.ok(summary.length >= 5, `${summary.length} models`);
+      assert.ok(summary.length >= Math.min(5, IDS.length), `${summary.length} models`); // (a PIXELPET_E2E_VERIFY_IDS subset: all of them)
       assert.deepEqual(real, [], real.join('\n'));
       assert.ok(summary.every((r) => r.passed), summary.filter((r) => !r.passed).map((r) => r.id).join(', '));
       return note;

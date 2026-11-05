@@ -73,6 +73,14 @@
   const PRIORITY = { lift: 6, drop: 5, touch: 5, manual: 5, celebrate: 4, sleep: 1, cue: 0 };
   const DEBOUNCE = 0.6; // the same reaction is not started again within this (no twitching on fast clicks)
   const CUT = 0.2; // an interrupted reaction fades out this fast under the new one
+  // T-5092: a touch no longer changes three layers on one frame (T-5089: the idle / posture switched, the reaction
+  // and a talk gesture came in together — 11–15°/frame spikes on hands, forearms and feet):
+  //   base   the idle or posture she is in stays while the touch reaction plays (≤ base s): a regime change it
+  //          causes (the bored / rest posture ending, the idle running out) waits for it;
+  //   talk   a talk gesture that starts while a touch reaction comes in waits ≤ talk s (or the reaction's clip
+  //          end) before it fades in — queued behind the reaction, not stacked on its first frames;
+  //   limbs  the reaction's hands, forearms and feet fade in limbFade × slower than the rest of the body.
+  const TOUCH_SETTLE = { base: 3, talk: 1.2, limbFade: 1.8 };
   const NO_CLIP = 1.8; // a reaction without a clip (no library): its face and gaze last this long
   const AFTER = { angry: 10, shy: 8 }; // seconds of annoyed face after angry, of the shy posture after shy
   // the touch → the reaction: core/touch-zones.js already chose the mood (zone default, affection tier, the
@@ -170,6 +178,9 @@
     const loaded = opts.loaded || new Set();
     const overrides = opts.overrides || null;
     const boredAfter = opts.boredAfter || BORED_AFTER;
+    // T-5092 TOUCH_SETTLE (the base held, a talk gesture queued, the limbs slower); settle: false only to replay
+    // the T-5089 behaviour (scripts/lib/vrm-replay.js, the before / after comparison)
+    const settleOn = opts.settle !== false;
     let packIdle = !!opts.packIdle;
     let setting = 'auto';
     const usable = (c) => !c.file || loaded.has(c.id);
@@ -358,7 +369,8 @@
       const sitChange = S.base && clip && !!clip.sit !== !!S.base.sit;
       const fromDance = !!(S.base && S.base.dance);
       const pose = poseOf(clip);
-      const poseChange = S.base && !fromDance && pose !== (S.base.pose || 'stand') && (pose === 'lay' || S.base.pose === 'lay' || pose === 'crouch' || S.base.pose === 'crouch');
+      // (one crouch / lay for another is a whole-body change too: the same long fade, T-5092)
+      const poseChange = S.base && !fromDance && (pose === 'lay' || S.base.pose === 'lay' || pose === 'crouch' || S.base.pose === 'crouch');
       S.base = { id, file: clip ? clip.file || null : null, sit: !!(clip && clip.sit), pose, fade: first ? FADE.first : fromDance ? DANCE.fadeOut : poseChange ? FADE.pose : sitChange ? FADE.sit : fade, key: (S.base ? S.base.key : 0) + 1 };
       if (!first && (pose !== 'stand' || (S.poses.length && S.poses[S.poses.length - 1].pose !== 'stand'))) { S.poses.push({ t: +S.t.toFixed(3), pose, slot: clip ? clip.slot : null, source }); if (S.poses.length > 30) S.poses.shift(); }
       if (fromDance || S.resetWhy) S.baseFadeUntil = S.t + S.base.fade; // a reset (T-2830) from a posture (asleep: sit.doze) fades too
@@ -369,9 +381,9 @@
     // ---------- the reaction layer ----------
     // the weight (0..1, before the clip's own weight) of reaction r at time t: its fade-in, its fade-out at
     // the end, or the quick cut when another reaction took over
-    function reactWeight(r, t) {
+    function reactWeight(r, t, inScale = 1) {
       const smoothK = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
-      let w = Math.min(smoothK((t - r.start) / r.fadeIn), smoothK((r.end - t) / r.fadeOut));
+      let w = Math.min(smoothK((t - r.start) / (r.fadeIn * inScale)), smoothK((r.end - t) / r.fadeOut));
       if (r.cutAt !== undefined) w = Math.min(w, r.cutFrom * smoothK(1 - (t - r.cutAt) / CUT));
       return clamp(w, 0, 1);
     }
@@ -411,6 +423,8 @@
         face: (clip && clip.face) || look.face || {}, gaze: (clip && clip.gaze) || look.gaze || null, gazeFor: look.gaze && look.gaze.for,
         noBlink: look.noBlink || 0, key: ++S.reactKey, why: opts.why || null,
         mask: opts.mask || (clip && clip.mask) || 'upper', loop: !!(opts.loop && clip), manual: !!opts.manual,
+        // T-5092: a touch holds the base still while its clip plays (≤ TOUCH_SETTLE.base s)
+        settleUntil: opts.touch && settleOn ? Math.min(playEnd, S.t + TOUCH_SETTLE.base) : null,
       };
       S.react = r;
       S.reactions.push(slot);
@@ -447,7 +461,7 @@
       if (e.type === 'touch') {
         if (holds.lift) return; // held in the air: the lift wins
         const slot = e.mood === 'happy' || !MOOD_REACTION[e.mood] ? ZONE_REACTION[e.zone] || 'react.touch-head' : MOOD_REACTION[e.mood];
-        startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}` });
+        startReaction(slot, { prio: PRIORITY.touch, why: `touch:${e.zone}:${e.mood}`, touch: true });
       } else if (e.type === 'drag') {
         if (e.what !== 'lift' && S.t - S.resetAt < 0.5) return; // a reset let her go (T-2830): no landing reaction
         if (e.what === 'lift') cutReaction(); // the lift hold takes over at once
@@ -802,9 +816,14 @@
 
       const held = heldPosture(holds);
       const list = pool(held, holds);
-      // a change of regime (posture held / released, sit / stand) ends the idle at once
+      // a change of regime (posture held / released, sit / stand) ends the idle at once — unless a touch reaction
+      // is playing: then the base she is in stays until it settles (T-5092 TOUCH_SETTLE.base)
       const regime = held ? `held:${held.slot}` : 'auto';
-      if (!S.idle || S.t >= S.idle.until || S.idle.regime !== regime || !list.some((c) => c.slot === S.idle.slot)) {
+      const settling = !!(S.base && S.react && S.react.settleUntil !== null && S.react.settleUntil !== undefined && S.t < S.react.settleUntil && !dance.on && !(S.manual && S.manual.kind === 'base'));
+      S.settling = settling;
+      if (settling && S.idle) {
+        // nothing: the base of the frame the touch came in on (an idle is always kept: setSetting / play may clear it)
+      } else if (!S.idle || S.t >= S.idle.until || S.idle.regime !== regime || !list.some((c) => c.slot === S.idle.slot)) {
         startIdle(list);
         S.idle.regime = regime;
       }
@@ -813,6 +832,8 @@
       const I = S.idle;
       if (dance.on) {
         // nothing: the dance's clip stays the base
+      } else if (settling) {
+        // nothing: a touch reaction is playing over the base she was in (T-5092)
       } else if (S.manual && S.manual.kind === 'base') {
         // a clip played by hand (T-5084): a posture is held, an idle plays; cross-faded in and back out
         const c = S.manual.clip;
@@ -843,7 +864,12 @@
 
       // the activity she holds, by priority
       // (a reply streaming in keeps the app "thinking" while its words appear: then she talks — T-2711)
-      const hold = dance.on ? (holds.lift ? 'lift' : null) : holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      let hold = dance.on ? (holds.lift ? 'lift' : null) : holds.lift ? 'lift' : holds.think && !holds.talk ? 'think' : holds.eat ? 'eat' : holds.talk ? 'talk' : walkOn ? 'walk' : null;
+      // a talk gesture starting with a touch waits for the reaction to come in (T-5092 TOUCH_SETTLE.talk); one
+      // already showing goes on
+      const talkW = S.holds.get('hold.talk') ? S.holds.get('hold.talk').w : 0;
+      S.talkQueued = settleOn && hold === 'talk' && talkW <= 0 && !!(S.react && /^touch:/.test(S.react.why || '') && S.t < Math.min(S.react.playEnd, S.react.start + TOUCH_SETTLE.talk));
+      if (S.talkQueued) hold = null;
       stepHolds(dt, hold);
       // a cue's small cheer is only for an idle moment: thinking, talking, eating or being lifted ends it (it
       // fades out under the hold; T-2711: one ran on over the thinking pose)
@@ -861,7 +887,8 @@
       const overlays = [];
       const holdClip = (h) => h.clip && overlays.push({ layer: 'hold', slot: h.slot, id: h.clip.id, mask: h.clip.mask, time: h.clip.still ? 0 : (h.slot === 'hold.walk' ? S.gait.phase : S.t - h.start) % Math.max(0.01, h.clip.duration || 1), weight: +(h.w * h.w * (3 - 2 * h.w) * h.clip.weight).toFixed(4) });
       for (const h of S.holds.values()) if (h.slot === 'hold.talk') talkOverlays(h, overlays, hold === 'talk'); else if (!(h.slot === 'hold.think' && thinkOverlays(h, overlays, hold === 'think'))) holdClip(h);
-      const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.mask || r.clip.mask, time: r.clip.still ? 0 : r.loop ? (S.t - r.start) % Math.max(0.01, r.clip.duration || 1) : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), key: r.key });
+      // (limb: the weight for the hands, forearms and feet — they fade in TOUCH_SETTLE.limbFade × slower, T-5092)
+      const reactClip = (r, layer) => r.clip && overlays.push({ layer, slot: r.slot, id: r.clip.id, mask: r.mask || r.clip.mask, time: r.clip.still ? 0 : r.loop ? (S.t - r.start) % Math.max(0.01, r.clip.duration || 1) : clamp(S.t - r.start, 0, r.clip.duration || 1), weight: +(reactWeight(r, S.t) * r.weight).toFixed(4), ...(settleOn ? { limb: +(reactWeight(r, S.t, TOUCH_SETTLE.limbFade) * r.weight).toFixed(4) } : {}), key: r.key });
       for (const r of S.fading) reactClip(r, 'fading');
       if (R) reactClip(R, 'reaction');
       // dancing: nothing over the dance but the lift (§3.1)
@@ -932,6 +959,7 @@
         thinkSegment: S.seg.think.cur ? S.seg.think.cur.slot : null,
         talkSegment: S.talk.cur ? S.talk.cur.slot : null,
         talkSegments: S.talk.n,
+        settling: !!S.settling, talkQueued: !!S.talkQueued, // T-5092: a touch holding the base still / a talk gesture waiting for it
         busy: dance.on || dance.state === 'out' || !!hold || !!R || !!S.manual || acts.length > 0 || S.fading.length > 0 || S.t < S.faceUntil || S.t < S.scanUntil || turn.turning,
       };
     }
@@ -958,5 +986,5 @@
     };
   }
 
-  return { IDLE_RECENT, REACTION_GROUPS, SEGMENT_GROUPS, REST, MANUAL, POSE_GROUPS, ACT, ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
+  return { TOUCH_SETTLE, IDLE_RECENT, REACTION_GROUPS, SEGMENT_GROUPS, REST, MANUAL, POSE_GROUPS, ACT, ACTIONS, REACTION_ACTION, DANCE, DANCE_ON, WALK, TALK, IDLE_MIN, IDLE_MAX, BORED_AFTER, FADE, MICRO_IDLES, MOOD_FACE, TOUCH_FACE, PRIORITY, DEBOUNCE, CUT, AFTER, MOOD_REACTION, ZONE_REACTION, REACTION_LOOK, createDirector, seeded };
 });

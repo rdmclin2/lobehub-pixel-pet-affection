@@ -345,7 +345,7 @@ test('the .vrma: passes inspectVrmaJson, loads in the app runtime, the mixer pos
   assert.deepEqual(check.expressions, ['aa']);
   assert.equal(report.duration, 1);
   assert.equal(report.frames, 31);
-  assert.equal(report.bakedWith, 'vmd-retarget@1');
+  assert.equal(report.bakedWith, 'vmd-retarget@2');
   const back = W.readVrma(vrma);
   assert.ok(back.tracks['hips.translation'] && back.tracks['expression.aa.translation']);
   assert.ok(back.json.nodes.filter((n) => json.extensions.VRMC_vrm_animation.humanoid.humanBones[n.name]).every((n) => !n.rotation), 'rest = identity (VRMA T-pose)');
