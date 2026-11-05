@@ -133,24 +133,11 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 
 .hud { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.hover .hud { opacity: 1; pointer-events: auto; }
-/* status: three progress meters inside the status panel (lucide icons + LobeHub semantic colours from app.js) */
-/* T-2726: the three pieces (needs, affection, name line) share one panel — one surface, border, radius and shadow; rows split by hairlines */
-.status-panel { display: flex; flex-direction: column; align-items: stretch; max-width: calc(100% - 8px); min-width: 0; box-sizing: border-box; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); box-shadow: var(--pet-float-shadow); padding: 1px var(--pet-space-sm); overflow: hidden; }
-.status-panel > * + * { border-top: 1px solid var(--pet-line-soft); }
-.bars { display: flex; align-items: center; justify-content: center; min-height: 16px; gap: var(--pet-space-sm); font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); }
-.bars span { display: flex; align-items: center; gap: var(--pet-space-xs); }
-.bars .ico { width: 10px; height: 10px; }
-.bars i { display: inline-block; width: 30px; height: 5px; background: var(--lobe-color-fill-secondary); border-radius: 3px; position: relative; overflow: hidden; }
-.bars i::after { content: ""; position: absolute; inset: 0; width: var(--v, 0%); background: var(--c, var(--lobe-color-success)); border-radius: 3px; }
-.hud .meta { font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.toolbar { display: flex; gap: var(--pet-space-xs); }
-.toolbar .btn { padding: 0 var(--pet-space-sm); min-height: 21px; line-height: 19px; font-size: 12px; background: var(--pet-surface); border-color: var(--pet-line-soft); box-shadow: var(--lobe-box-shadow-tertiary); }
-.toolbar .btn:hover:not(:disabled) { background: var(--lobe-color-bg-container-secondary); border-color: var(--pet-line); }
-.toolbar .btn.icon-btn { padding: 0 var(--pet-space-xs); min-width: 26px; }
 /* 静音: the speaker shows what you'd hear now; muted = speaker crossed out, in the secondary text colour */
 #btn-mute .mute-off, #btn-mute[aria-pressed="true"] .mute-on { display: none; }
 #btn-mute[aria-pressed="true"] .mute-off { display: inline-block; }
 #btn-mute[aria-pressed="true"] { color: var(--lobe-color-text-tertiary); }
+
 /* chat input: the LobeHub chat input bar (one elevated card holding the attach, the text box, the mic and send) */
 .chat-row { position: absolute; left: 4px; right: 4px; bottom: 60px; margin: 0; gap: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); padding: var(--pet-space-xs); }
 .chat-row input { flex: 1; padding: 2px var(--pet-space-xs); border: none; background: transparent; box-shadow: none; font-size: 12px; }
@@ -218,14 +205,6 @@ body.busy.over .stop-btn { display: flex; }
 .gate-text { font-size: var(--lobe-font-size-lg); line-height: 1.6; margin: var(--pet-space-md) 0 var(--pet-space-sm); font-weight: var(--lobe-font-weight-strong); }
 .gate-list { text-align: left; color: var(--lobe-color-text-secondary); max-width: 520px; line-height: 1.6; margin: var(--pet-space-xs) 0 var(--pet-space-md); padding: var(--pet-space-md) var(--lobe-padding) var(--pet-space-md) 32px; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); }
 
-/* ---- affection: stage name in its colour, a thin meter and the number ---- */
-.aff-row { display: flex; align-items: center; justify-content: center; gap: var(--pet-space-xs); font-size: 10px; line-height: 16px; color: var(--lobe-color-text-secondary); }
-.aff-stage { font-weight: var(--lobe-font-weight-strong); color: var(--sc, var(--lobe-color-text)); }
-.aff-heart { display: inline-flex; color: var(--lobe-color-error); }
-.aff-heart .ico { width: 10px; height: 10px; fill: currentColor; stroke-width: 0; }
-.aff-bar { display: inline-block; width: 70px; height: 5px; background: var(--lobe-color-fill-secondary); border-radius: 3px; position: relative; overflow: hidden; }
-.aff-bar::after { content: ""; position: absolute; inset: 0; width: var(--v, 0%); background: var(--c, var(--lobe-color-error)); border-radius: 3px; }
-.aff-num { font-weight: var(--lobe-font-weight-strong); color: var(--lobe-color-text); font-variant-numeric: tabular-nums; }
 .float-layer { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; }
 .float { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); font-weight: var(--lobe-font-weight-strong); font-size: 13px; color: var(--lobe-color-error); text-shadow: 0 0 2px var(--pet-surface), 0 0 4px var(--pet-surface); white-space: nowrap; animation: float-up 1.4s ease-out forwards; }
 .float.minus { color: var(--lobe-color-text-secondary); }
@@ -251,12 +230,6 @@ body.busy.over .stop-btn { display: flex; }
 .toast-x .ico { width: 13px; height: 13px; }
 .toast-btn { margin-top: var(--pet-space-xs); font-size: 11px; padding: 1px var(--pet-space-sm); }
 
-/* toolbar: 喂食 / 玩耍 / 睡觉 / 聊天, 🔈 静音, ⚙ 设置 (a dot on it: something new waiting in the settings window) and ⏻ 退出 */
-/* 4 interactions + 🔈 + ⚙ + ⏻ on one row (4×42 + 3×26 + 6×2 = 258px); the window at the default size leaves ~264px */
-.toolbar { flex-wrap: wrap; justify-content: center; gap: 2px; max-width: 264px; }
-/* ⏻ quits at once (T-2827): hover tints it with the error colour so it does not read as one more interaction */
-.toolbar .btn.quit-btn:hover:not(:disabled) { color: var(--lobe-color-error); border-color: var(--lobe-color-error); }
-.toolbar .btn { position: relative; }
 .new-dot.dot { top: -3px; right: -3px; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; }
 .new-dot { position: absolute; top: -8px; right: -8px; font-size: 9px; font-weight: 500; line-height: 14px; min-width: 14px; color: var(--pet-on-solid); background: var(--lobe-color-error); border-radius: 7px; padding: 0 3px; box-shadow: 0 0 0 1.5px var(--pet-surface); }
 
@@ -412,20 +385,11 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .vrm-look.locked { filter: grayscale(.7); }
 .char-wrap .vrm-look.char { width: 60%; height: 80%; margin: auto; }
 
-/* ---- 跳舞 (docs/vrm-dance.md §6.2): the toolbar's ♪ button (a VRM look only) and its menu (对照 Dropdown) ---- */
-/* with ♪ the row holds 4 interactions + 4 icon buttons: narrower buttons keep it on one line (4×38 + 4×24 + 7×2 = 262px) */
-.toolbar:has(#btn-dance:not(.hidden)) .btn:not(.icon-btn) { padding: 0 6px; }
-.toolbar:has(#btn-dance:not(.hidden)) .btn.icon-btn { min-width: 24px; }
-/* 重置姿势 ↺ (T-2830, a VRM look only) adds a fourth icon button: the interactions take the small padding so the row
-   still fits on one line (4×34 + 4×24 + 7×2 = 246px) */
-.toolbar:has(#btn-reset:not(.hidden)) .btn:not(.icon-btn) { padding: 0 var(--pet-space-xs); }
-/* with ⏻ 退出 (T-2827) that is 5 icon buttons: they go to 20px (the 14px glyph keeps 3px a side) so the row stays one line
-   (4×34 + 5×22 incl. border + 8×2 = 262px) */
-.toolbar:has(#btn-reset:not(.hidden)) .btn.icon-btn { min-width: 20px; padding: 0 3px; }
-#btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); border-color: var(--lobe-color-primary); background: var(--lobe-color-fill-secondary); }
+/* ---- 跳舞 (docs/vrm-dance.md §6.2): the panel's ♪ button (a VRM look only) and its menu (对照 Dropdown) ---- */
+#btn-dance[aria-pressed="true"] { color: var(--lobe-color-text); background: var(--lobe-color-fill-secondary); }
 #btn-dance.loading .ico { animation: dance-spin 1s linear infinite; }
 @keyframes dance-spin { to { transform: rotate(360deg); } }
-.dance-menu { left: var(--pet-space-sm); right: var(--pet-space-sm); min-width: 200px; transform-origin: 50% 100%; }
+.dance-menu { left: var(--pet-space-sm); right: var(--pet-space-sm); bottom: var(--pet-space-sm); min-width: 200px; transform-origin: 50% 100%; }
 .dance-menu .ico { width: 14px; height: 14px; flex: none; }
 .dance-now { display: flex; align-items: center; gap: var(--pet-space-sm); padding: var(--pet-space-xs) var(--pet-space-xs) var(--pet-space-sm); margin-bottom: var(--pet-space-xs); border-bottom: 1px solid var(--pet-line-soft); }
 .dance-now-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; line-height: 1.4; }

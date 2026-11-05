@@ -62,3 +62,7 @@ lint-allow: LOBE-MOTION-DURATION admin/src/console/stage/**
 主进程创建窗口时的 `backgroundColor`（`src/main/main.js`：透明窗口 `#00000000`、e2e 截图用的不透明底色）在页面 CSS 加载之前生效，只能写字面色值，引用不了 `--lobe-*` 令牌；它不是界面样式（2026-11-03，T-2801 跑 lint 时发现的存量项）。
 
 lint-allow: LOBE-RAW-COLOR src/main/main.js
+
+她的面板的窗口（`src/main/pet-panel.js`，2026-11-04）同理：透明窗口的 `#00000000` 与 e2e 截图用的不透明底色在页面 CSS 之前生效，只能写字面色值。
+
+lint-allow: LOBE-RAW-COLOR src/main/pet-panel.js
