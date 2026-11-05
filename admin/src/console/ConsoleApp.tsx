@@ -7,6 +7,7 @@ import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
 import { DancesPage } from './pages/Dances';
 import { StorePage } from './pages/Store';
+import { GameDetailPage } from './pages/StoreGames';
 import { DeskPage, HistoryPage, TopicsPage } from './pages/Together';
 import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, ProactivePage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
 import { Shell } from './Shell';
@@ -20,7 +21,7 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'store':
-      return <StorePage initial={sub} key="store" />;
+      return sub === 'game' ? <GameDetailPage id={path.split('/')[3] ?? ''} key={path} /> : <StorePage initial={sub} key="store" />;
     case 'chat':
       return <ChatPage id={sub} key="chat" navigate={navigate} />;
     case 'play':

@@ -63,7 +63,7 @@ class GameLibrary {
     const day = GQ.dayKey();
     const quests = g ? GQ.view(g.manifest.quests || [], p.quests, day) : [];
     const items = (p.quests && p.quests.items) || {};
-    return { quests, items, state: p.state || {} };
+    return { quests, items, itemNames: (g && g.manifest.items) || {}, state: p.state || {} };
   }
 
   // one event from the page → today's quests; returns the quests that this event finished

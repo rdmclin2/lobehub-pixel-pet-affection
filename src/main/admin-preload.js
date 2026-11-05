@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('petAdmin', {
   gameStore: (opts) => ipcRenderer.invoke('game-store', { refresh: !!(opts && opts.refresh) }),
   // a newer version of an installed game came out (main read the games repository's catalog)
   onGameUpdates: on('game-updates'),
+  gameDetail: (id) => ipcRenderer.invoke('game-detail', { id }),
   gameDownload: (id) => ipcRenderer.invoke('game-download', { id }),
   gameDownloadCancel: (id) => ipcRenderer.invoke('game-download-cancel', { id }),
   gameRemove: (id) => ipcRenderer.invoke('game-remove', { id }),

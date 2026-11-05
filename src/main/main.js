@@ -568,6 +568,14 @@ function wire() {
     return { games: gameIndex.rows(installedGames(), gameStore ? gameStore.state() : []), dir: games.userDir, last: service.settings.scene.game || null, checkedAt: gameIndex.checkedAt || null, checkError: r.ok || r.reason === 'off' ? null : gameIndex.error };
   };
   ipcMain.handle('game-store', (_e, p) => gameStoreState({ refresh: !!(p && p.refresh) }));
+  // 商店 → 小游戏 → 详情: one game's row, and her progress in it when it is installed (today's 小事, what she collected)
+  ipcMain.handle('game-detail', async (_e, { id } = {}) => {
+    const st = await gameStoreState();
+    const row = st.games.find((g) => g.id === String(id || '')) || null;
+    if (!row) return { ok: false, reason: 'not-found' };
+    const installed = installedGames().has(row.id);
+    return { ok: true, game: row, progress: installed ? games.progress(row.id) : null, last: st.last, checkedAt: st.checkedAt };
+  });
   ipcMain.handle('game-download', async (_e, { id } = {}) => {
     const e = gameIndex.entry(String(id || ''));
     const ok = e ? GameIndexLib.supported(e, gameIndex.ctx()) : { ok: true };

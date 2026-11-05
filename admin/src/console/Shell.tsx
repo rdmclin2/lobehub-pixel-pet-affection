@@ -172,7 +172,9 @@ export const Shell = ({ path, children }: { children: ReactNode; path: string })
   const isTop = schema.rail.some((r) => r.page === page) && !sub;
   const full = page === 'chat';
   // the chat page is a full-bleed workspace with its own character list: no "聊天 / 聊天" trail above it (T-2836)
-  const back = !isTop && !full && rail ? rail : null;
+  // a game's page in 商店 (store/game/<id>) shows its own way back to 小游戏
+  const own = page === 'store' && sub === 'game';
+  const back = !isTop && !full && !own && rail ? rail : null;
   const here = page === 'characters' ? (roster.find((c) => c.id === sub)?.name ?? sub) : (schema.pages[page]?.title ?? page);
   const theme = THEME_NEXT[settings.ui?.theme ?? 'auto'] ?? THEME_NEXT.auto;
   const mac = platform === 'darwin';

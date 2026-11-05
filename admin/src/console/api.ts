@@ -356,6 +356,8 @@ export interface StoreGameRow {
   percent?: number;
   /** an <img> src: the shipped picture (../renderer/…) or a cached remote one (data:) */
   pictureSrc: string | null;
+  /** where this entry came from: the index shipped with the app, or the games repository's newer one */
+  source: 'bundled' | 'remote';
   /** the game's source in the games repository (rdmclin2/pixel-pet-mini-games) */
   repo: string;
   sizeLabel: string;
@@ -366,6 +368,14 @@ export interface StoreGameRow {
   /** installed, a newer version is out but this app cannot play it */
   updateBlocked?: 'app' | 'engine';
   version: string;
+}
+
+/** her progress in one game (src/main/games.js progress): today's 小事 and what she has collected */
+export interface GameProgress {
+  /** item id → its name in the game (manifest.items) */
+  itemNames: Record<string, string>;
+  items: Record<string, number>;
+  quests: { count: number; done: boolean; hint: string; id: string; n: number; title: string }[];
 }
 
 export interface GameUpdate {
@@ -540,6 +550,8 @@ export interface PetAdminApi {
   voiceRemove: (id: string) => Promise<VoiceStoreResult>;
   gameStore: (opts?: { refresh?: boolean }) => Promise<GameStoreState>;
   onGameUpdates: (cb: (u: GameUpdate[]) => void) => () => void;
+  /** 商店 → 小游戏 → 详情: the game's row and, when installed, her progress in it */
+  gameDetail: (id: string) => Promise<{ checkedAt: number | null; game?: StoreGameRow; last: string | null; ok: boolean; progress: GameProgress | null; reason?: string }>;
   gameDownload: (id: string) => Promise<GameStoreResult>;
   gameDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   gameRemove: (id: string) => Promise<GameStoreResult>;

@@ -22,17 +22,17 @@
 | --- | --- | --- | --- | --- |
 | ![浇菜](img/mini-games/act-water.webp) | ![菜熟了](img/mini-games/act-ripe.webp) | ![坐长椅](img/mini-games/act-bench.webp) | ![拍路灯](img/mini-games/act-lamp.webp) | ![抓萤火虫](img/mini-games/act-firefly.webp) |
 
-商店 → 小游戏（下载前 / 下载后）：
+商店 → 小游戏。卡片上只放封面、名字、状态、版本、一句介绍和一个主按钮；点卡片进入详情页（`#/store/game/<id>`）。详情页里有状态和全部操作、玩法要点、更新说明、你们的进度、来源和开源仓库：
 
-| 未下载 | 已下载 |
-| --- | --- |
-| ![商店：像素小院未下载](img/mini-games/store-remote.webp) | ![商店：像素小院已下载，可以开始玩](img/mini-games/store-installed.webp) |
+| 未下载 | 已下载 | 详情页 |
+| --- | --- | --- |
+| ![商店：像素小院未下载](img/mini-games/store-remote.webp) | ![商店：像素小院已下载，可以开始玩](img/mini-games/store-installed.webp) | ![详情页：大封面、状态、开始玩、开源仓库、更新说明、你们的进度、关于](img/mini-games/store-detail.webp) |
 
 发布新版本之后（e2e G14 发布的测试版本 1.0.1）：
 
-| 商店：有更新 | 游戏窗口：有新版本 | 更新后 |
-| --- | --- | --- |
-| ![商店卡片：有更新，v1.0.0 → v1.0.1，显示更新说明和「更新到 v1.0.1」](img/mini-games/store-update.webp) | ![游戏标题栏：有新版本 v1.0.1 · 去更新](img/mini-games/game-chip.webp) | ![更新后：已下载 v1.0.1](img/mini-games/store-updated.webp) |
+| 卡片：有更新 | 详情页：有更新 | 游戏窗口：有新版本 | 更新后 |
+| --- | --- | --- | --- |
+| ![卡片：角标「有更新」，v1.0.0 → v1.0.1](img/mini-games/card-update.webp) | ![详情页：有更新，v1.0.0 → v1.0.1，「v1.0.1 更新了什么」和「更新到 v1.0.1」](img/mini-games/store-update.webp) | ![游戏标题栏：有新版本 v1.0.1 · 去更新](img/mini-games/game-chip.webp) | ![更新后：已下载 v1.0.1](img/mini-games/store-updated.webp) |
 
 ### 录屏
 
@@ -171,7 +171,7 @@ src/main/game-preload.js   页面桥：boot / set / event / saveState / touch / 
 src/main/main.js           入口（托盘、⌂、快捷键）、game:* IPC、商店 IPC（game-store / -download / -remove / -play）
 src/renderer/game/         game.html · game.css · game.js（Pixi 场景、输入、卡片）· game-icons.js（抖动像素图标）
 src/renderer/vendor/pixi/  PixiJS 8.22.0 浏览器版 + unsafe-eval 包（页面 CSP 不开 'unsafe-eval'）
-admin/src/console/pages/StoreGames.tsx  商店 → 小游戏 标签页
+admin/src/console/pages/StoreGames.tsx  商店 → 小游戏：卡片列表（#/store/games）和详情页（#/store/game/<id>）
 scripts/sync-game-catalog.js  游戏仓库的 catalog.json（已发布的条目）+ 封面 → src/core/game-catalog.json、src/renderer/catalog/games/
 scripts/fetch-game-packs.js  从 CDN 取安装包（校验）→ catalog/games/<id>/（开发、测试用，不进仓库）
 test/fixtures/games/mini-yard/  单测用的最小小游戏包
@@ -275,7 +275,8 @@ git commit -am "🔖 <id> x.y.z" && git push    # 推上去就算上架 / 升级
 - 只认 `published` 的条目。读到的目录缓存在 `userData/games/.index.json`，离线时也算数；远端封面缓存在 `.covers/`。
 - 和随应用发布的目录合并，每个游戏取较高的版本。所以应用发布之后才上架的新游戏，也会出现在商店里。
 - 已安装的版本低于目录里的版本时：
-  - 商店卡片的角标变成「有更新」，版本写成「v1.0.0 → v1.0.1」，并显示这一版的更新说明，按钮是「更新到 v1.0.1」。
+  - 商店卡片的角标变成「有更新」，版本写成「v1.0.0 → v1.0.1」。
+  - 详情页显示「v1.0.1 更新了什么」和「更新到 v1.0.1」按钮。
   - 游戏窗口标题栏出现「有新版本 v1.0.1 · 去更新」，点一下打开商店。
 - 更新就是下载新包、校验后整个替换旧包。进度（今日小事、菜地、路灯、收集到的东西）存在包外面，会全部保留。正在玩的游戏会先关掉再更新。
 - 引擎兼容：包声明 `engine`（目前只有 `yard@1`），也可以在 `store.json` 里写 `minAppVersion`。应用不支持时：

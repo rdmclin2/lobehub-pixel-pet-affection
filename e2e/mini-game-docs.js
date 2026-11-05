@@ -96,6 +96,14 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
         await admin.waitForTimeout(600);
         await admin.screenshot({ path: path.join(DIR, 'store-installed.png') });
         webp(path.join(DIR, 'store-installed.png'));
+        // the game's page (a click on the card's picture)
+        await admin.click('[data-game-open="pixel-yard"]');
+        await admin.waitForSelector('[data-game-detail="pixel-yard"]', { timeout: 10000 });
+        await admin.waitForTimeout(800);
+        await admin.screenshot({ path: path.join(DIR, 'store-detail.png') });
+        webp(path.join(DIR, 'store-detail.png'));
+        await admin.evaluate(() => { location.hash = '/store/games'; });
+        await admin.waitForSelector('[data-game-play="pixel-yard"]', { timeout: 10000 });
         await admin.click('[data-game-play="pixel-yard"]');
         gp = await until(async () => app.windows().find(isGame) || null, 15000, 'the game window');
         await gp.waitForFunction(() => window.__game && window.__game().ready && window.__game().pet.sprite === 'sprites', null, { timeout: 30000 });
@@ -103,7 +111,7 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
         if ((await g()).scene.dayFlow) await gp.click('#day-flow');
         await T(([x, y]) => window.__gameTest.goTo(x, y), [600, 330]);
         await until(async () => { const v = await g(); return v.pet.mode === 'idle' && Math.hypot(v.pet.x - 600, v.pet.y - 330) < 10 ? v : null; }, 20000, 'her on the lawn');
-        return 'store-remote.png store-installed.png';
+        return 'store-remote store-installed store-detail';
       });
 
       const only = process.env.GAMEDOCS_ONLY || '';

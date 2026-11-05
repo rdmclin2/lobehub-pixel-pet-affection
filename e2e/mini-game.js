@@ -18,8 +18,9 @@
 //   G10 press and drag her: lifted, dropped on walkable ground
 //   G11 Ctrl+W closes the game; her desktop window comes back; her panel ⌂ opens it again
 //   G12 restart: time, weather, the crops and today's 小事 are kept
-//   G14 a newer version is published (the games repository's catalog.json): 检查更新 → 有更新 with its notes,
-//       the game window says 有新版本, 开源仓库 opens the repository; 更新 replaces it, her progress stays
+//   G14 a newer version is published (the games repository's catalog.json): 检查更新 → the card says 有更新; its
+//       page (a click on the card) has the notes, her progress and 开源仓库; the game window says 有新版本;
+//       更新 on the page replaces it, her progress stays
 //   G13 商店 → 小游戏 → 删除: gone from disk, the tray opens the store again
 // Screenshots: out/e2e/mini-game/.
 const fs = require('node:fs');
@@ -422,11 +423,20 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         await until(async () => (await admin.locator('[data-store-game="pixel-yard"]').getAttribute('data-game-state')) === 'update', 15000, '有更新');
         const meta = await admin.textContent('[data-store-game-meta="pixel-yard"]');
         assert.match(meta, /v1\.0\.0 → v1\.0\.1/);
-        assert.equal((await admin.textContent('[data-game-changelog="pixel-yard"]')).includes(notes), true, 'the notes are on the card');
         assert.equal(await admin.textContent('[data-game-tag="pixel-yard"]'), '有更新');
-        await admin.locator('[data-game-update="pixel-yard"]').scrollIntoViewIfNeeded();
-        await admin.waitForTimeout(400);
-        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-update.png') });
+        assert.equal(await admin.locator('[data-store-game="pixel-yard"] [data-game-changelog]').count(), 0, 'the card stays short: the notes are on its page');
+        await admin.waitForTimeout(300);
+        await admin.screenshot({ path: path.join(SHOTS, 'g14-card-update.png') });
+        // its page: a click on the card's picture
+        await admin.click('[data-game-open="pixel-yard"]');
+        await admin.waitForSelector('[data-game-detail="pixel-yard"]', { timeout: 10000 });
+        assert.equal(await admin.evaluate(() => location.hash), '#/store/game/pixel-yard');
+        assert.equal((await admin.textContent('[data-game-changelog="pixel-yard"]')).includes(notes), true, 'the notes are on its page');
+        assert.match(await admin.textContent('[data-game-detail-meta="pixel-yard"]'), /v1\.0\.0 → v1\.0\.1/);
+        assert.match(await admin.textContent('[data-game-about="pixel-yard"]'), /已装 v1\.0\.0 · 最新 v1\.0\.1/);
+        assert.match(await admin.textContent('[data-game-progress]'), /今日小事|卷心菜|浆果/);
+        await admin.waitForTimeout(300);
+        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-update.png'), fullPage: true });
         // 开源仓库
         await admin.click('[data-game-repo="pixel-yard"]');
         const links = await until(async () => { const l = await page.evaluate(() => window.pet.debugOpenedLinks()); return l.some((u) => u.includes('github.com/rdmclin2/pixel-pet-mini-games')) ? l : null; }, 5000, 'the repository link');
@@ -441,12 +451,13 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         await gp.keyboard.press('Control+KeyW');
         // 更新
         await admin.click('[data-game-update="pixel-yard"]');
-        await until(async () => (await admin.locator('[data-store-game="pixel-yard"]').getAttribute('data-game-state')) === 'installed', 30000, 'updated');
+        await until(async () => (await admin.textContent('[data-game-tag="pixel-yard"]')) === '已下载', 30000, 'updated');
         const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'pixel-yard', 'manifest.json'), 'utf8')).version;
         assert.equal(onDisk, '1.0.1');
-        await admin.locator('[data-game-play="pixel-yard"]').scrollIntoViewIfNeeded();
+        await until(async () => !(await admin.isVisible('[data-game-update="pixel-yard"]')), 8000, 'no 更新 button any more');
+        assert.match(await admin.textContent('[data-game-about="pixel-yard"]'), /已装 v1\.0\.1 · 最新 v1\.0\.1/);
         await admin.waitForTimeout(500);
-        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-updated.png') });
+        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-updated.png'), fullPage: true });
         await admin.click('[data-game-play="pixel-yard"]');
         gp = await findGame(app);
         await gp.waitForFunction(() => window.__game && window.__game().ready && window.__game().version === '1.0.1', null, { timeout: 20000 });
@@ -459,11 +470,13 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
 
       await step(S, 'G13 商店里删除：文件没了，托盘再点就打开商店', async () => {
         await gp.keyboard.press('Control+KeyW');
-        await admin.evaluate(() => { location.hash = '/store/games'; });
+        // 删除 is on the game's page, apart from the other actions
+        await admin.evaluate(() => { location.hash = '/store/game/pixel-yard'; });
         await admin.waitForSelector('[data-game-remove="pixel-yard"]', { timeout: 15000 });
         await admin.click('[data-game-remove="pixel-yard"]');
         await until(async () => admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === '删除小游戏')), 8000, 'the confirm dialog');
         await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === '删除小游戏').pop().click());
+        await until(async () => (await admin.evaluate(() => location.hash)) === '#/store/games', 10000, 'back on the shelf');
         await until(async () => (await admin.locator('[data-store-game="pixel-yard"]').getAttribute('data-game-state')) === 'remote', 10000, 'removed');
         assert.equal(fs.existsSync(path.join(dataDir, 'games', 'pixel-yard')), false);
         const r = await page.evaluate(() => window.pet.debugSceneToggle('test'));
