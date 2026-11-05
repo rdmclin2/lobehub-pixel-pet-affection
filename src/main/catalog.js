@@ -70,13 +70,16 @@ class CatalogDownloader {
     this.jobs.set(e.id, job);
     const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pixelpet-dl-')), e.file);
     let last = 0;
+    let out = null;
     const progress = (state) => this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state });
     try {
       progress('downloading');
       // one file, or the archive's parts in order (core/catalog.js: the CDN takes at most 20 MB per file)
       const parts = Array.isArray(e.parts) && e.parts.length ? e.parts : [{ file: e.file, bytes: e.bytes }];
       const hash = crypto.createHash('sha256');
-      const out = fs.createWriteStream(tmp);
+      // opened here, synchronously: a stream that opens its file on its own would still be opening it when a
+      // failed download (404, network) removes the folder below — ENOENT on a stream nobody listens to any more
+      out = fs.createWriteStream(tmp, { fd: fs.openSync(tmp, 'w') });
       for (const part of parts) {
         let res;
         try {
@@ -113,6 +116,10 @@ class CatalogDownloader {
       return { ok: true, id: e.id, name: e.name };
     } finally {
       this.jobs.delete(e.id);
+      if (out && !out.closed) {
+        out.destroy();
+        await new Promise((r) => out.once('close', r));
+      }
       fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
     }
   }
