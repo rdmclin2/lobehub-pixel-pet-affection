@@ -212,9 +212,14 @@ App 内验证（e2e，假 LobeHub + 三个服务的本地替身，不花钱）�
 ```bash
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js music       # 设置页 M1–M4（服务切换、fal Key 只写不回显）+ 聊天作曲 C1–C9（fal 默认、fal 403、切到 ElevenLabs / MiniMax）
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js musicchat   # 只跑聊天作曲 C1–C9
-# 真实模型（花 LobeHub token，需要 lh login；不在 all 里）：模型自己决定调用 compose_music（T-5091，MiniMax 直连）
-env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_MINIMAX=fake xvfb-run -a node e2e/run.js musiclive
+# 真实模型（花 LobeHub token，需要 lh login；不在 all 里）：用户说「给我写一首关于…的歌」，模型自己决定调用 compose_music
+# MUSIC_LIVE_PROVIDER=fal（默认）| minimax 选服务；MUSIC_LIVE_MODE=fake（默认，本地替身，不花音乐钱）| real（真实服务，扣费）
+env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js musiclive                                   # 真实模型 + fal 本地替身
+env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_MODE=real xvfb-run -a node e2e/run.js musiclive              # 真实模型 + 真实 fal（FAL_KEY）
+env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_PROVIDER=minimax MUSIC_LIVE_MODE=real xvfb-run -a node e2e/run.js musiclive
 ```
+
+musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）用 `LOBEHUB_WORKSPACE_ID=personal lh agent delete <id> --yes` 删掉；孵化时会取消「本机能力」，不会自动接受开启本机能力的确认。证据在 `out/e2e/music-live-<服务>-<fake|real>/`。真实模式下服务拒绝（例如 fal 余额不足 403）时，场景记录她转述的原因，不保存文件、不出歌曲卡片。
 
 单测：`node --test test/music.test.js test/music-tool.test.js`（fetch 全部 mock / 本地替身：fal 与 ElevenLabs 的成功、多次轮询后成功、失败、超时、取消、鉴权错误、余额、限流、内容审核、网络）。截图和日志在 `out/e2e/music/`。
 
