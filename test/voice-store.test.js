@@ -233,3 +233,29 @@ test('the shipped store archives (out/voice-catalog, when built) install as vali
   const p = new VoicePacksOf(root).get('style-cute');
   assert.equal(p.lines.size, e.lines);
 });
+
+test('a download that fails before its temp file is open (network error at once) leaves no stray ENOENT behind', async () => {
+  const uncaught = [];
+  const onErr = (err) => uncaught.push(err);
+  process.on('uncaughtException', onErr);
+  const orig = Module._load;
+  // fetch fails on the next microtask: the old asynchronously opened write stream was still opening its file
+  // when the folder was removed (Release run 41978905328: ENOENT /tmp/pixelpet-dl-…/style-test.zip)
+  Module._load = function (req, ...rest) {
+    if (req === 'electron') return { app: { getVersion: () => '0.0.0-test' }, net: { fetch: () => Promise.reject(new Error('offline')) } };
+    return orig.call(this, req, ...rest);
+  };
+  try {
+    delete require.cache[require.resolve('../src/main/catalog')];
+    const { CatalogDownloader } = require('../src/main/catalog');
+    const e = { id: 'style-net', name: '断网', file: 'style-net.zip', bytes: 10, sha256: 'a'.repeat(64), release: 'voices-v1' };
+    const dl = new CatalogDownloader({ packStore: null, settings: () => ({ catalogUrl: 'http://127.0.0.1:9' }), emit: () => {}, lookup: () => e, isInstalled: () => false, install: () => ({ ok: true }), texts: {} });
+    for (let i = 0; i < 20; i++) assert.equal((await dl.download(e.id)).reason, 'network');
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(uncaught.map((x) => x.message), []);
+  } finally {
+    Module._load = orig;
+    process.off('uncaughtException', onErr);
+    delete require.cache[require.resolve('../src/main/catalog')];
+  }
+});
