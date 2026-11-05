@@ -167,7 +167,7 @@ const GameCard = ({
         <Flexbox align="center" gap={8} horizontal justify="space-between" style={{ marginBlockStart: "auto" }}>
           <Button
             data-game-repo={g.id}
-            icon={Github}
+            icon={<Github size={14} />}
             onClick={() => api().openLink(g.repo)}
             size="small"
             title={g.repo}
