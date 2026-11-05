@@ -20,6 +20,8 @@ const { SPECIES, SPECIES_IDS, getSpecies } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
 const Stickers = require('./stickers');
+const { StickerStore } = require('./sticker-store');
+const StickerCatalog = require('../core/sticker-catalog');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
 const { GENERIC_BASE, isGenericBase } = require('../core/generic');
@@ -67,6 +69,7 @@ registerPackScheme();
 try { if (new SettingsStore(app.getPath('userData')).load().system.hardwareAcceleration === false) app.disableHardwareAcceleration(); } catch { /* defaults */ }
 // 表情包集合 (core/stickers.js, docs/stickers-design.md): <userData>/stickers/
 const stickerLib = new Stickers.StickerLibrary(path.join(app.getPath('userData'), 'stickers'));
+let stickerStore = null; // 商店 → 表情包 (sticker-store.js): the official sets on the CDN; made when the app is ready
 
 let win = null;
 let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
@@ -1251,6 +1254,23 @@ function wire() {
       if (r.ok) stickersChanged(String(speciesId));
       return r;
     }));
+    // 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B): the official sets (index from the CDN, falling back to the
+    // shipped copy); 获取 downloads one for a character (progress as `catalog-progress`), 移除 drops it
+    ipcMain.handle('sticker-store', adminOnly(({ refresh }) => stickerStore.state({ refresh: !!refresh })));
+    ipcMain.handle('sticker-store-detail', adminOnly(({ id }) => stickerStore.detail(id)));
+    ipcMain.handle('sticker-store-get', adminOnly(async ({ id, speciesId }) => {
+      const sp = stickerSpecies(speciesId);
+      if (!sp) return { ok: false, reason: 'bad-species', text: '请选择一位角色' };
+      const r = await stickerStore.get(id, sp.id);
+      if (r.ok) stickersChanged(sp.id);
+      return r;
+    }));
+    ipcMain.handle('sticker-store-cancel', adminOnly(({ id }) => stickerStore.cancel(id)));
+    ipcMain.handle('sticker-store-remove', adminOnly(({ id }) => {
+      const r = stickerStore.remove(id);
+      if (r.ok) for (const sid of r.attached || []) stickersChanged(sid);
+      return r;
+    }));
   }
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData.
@@ -1484,6 +1504,14 @@ app.whenReady().then(() => {
   packStore.serve();
   Stickers.serveStickers(stickerLib);
   try { stickerLib.gc(Stickers.blobsInChatLog(app.getPath('userData'))); } catch (e) { logError(e); }
+  // the CDN's sticker-catalog.json: off in tests unless PIXELPET_STICKER_CATALOG_URL names one ('' = off)
+  stickerStore = new StickerStore({
+    lib: stickerLib, fetch: (u, o) => net.fetch(u, o), emit: (ch, p) => broadcast(ch, p), log: logError,
+    settings: () => (service ? service.getSettings() : {}),
+    names: () => Object.fromEntries(SPECIES_IDS.map((id) => { const sp = getSpecies(id); return [id, (sp && (sp.nameZh || sp.name)) || id]; })),
+    url: process.env.PIXELPET_STICKER_CATALOG_URL ?? (TEST_MODE ? '' : StickerCatalog.REMOTE_URL),
+    base: process.env.PIXELPET_STICKER_BASE_URL || null,
+  });
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   danceStore = new CatalogDownloader({
     packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),

@@ -16,12 +16,14 @@ const BUILTIN_RE = /^\/?([a-z0-9][a-z0-9_.-]{0,80})\/([a-z0-9_-]{1,40})\.webp$/i
 
 // sticker://blob/<sha256>.<ext>   an imported picture (only names core/stickers.js stores)
 // sticker://builtin/<speciesId>/<id>.webp   a built-in meme from src/renderer/assets/memes/
+// sticker://store/<sha256>.<ext>   a 商店 → 表情包 preview main fetched and checked (store-cache/)
 function serveStickers(lib) {
   protocol.handle('sticker', (req) => {
     const u = new URL(req.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
     let file = null;
     if (u.hostname === 'blob') file = lib.blobPath(rel);
+    else if (u.hostname === 'store') file = lib.cachePath(rel); // 商店 → 表情包 previews (sticker-store.js)
     else if (u.hostname === 'builtin') {
       const m = BUILTIN_RE.exec(rel);
       const root = path.join(RENDERER, 'assets', 'memes');
