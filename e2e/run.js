@@ -2356,8 +2356,12 @@ async function update() {
   const http = require('node:http');
   const { version } = require('../package.json');
   let tag = `v${version}`;
+  let failFeed = false;
+  let feedHits = 0; // checks that reached the feed: opening 版本与更新 checks once on its own (T-6161)
   const server = http.createServer((req, res) => {
     if (req.url !== '/releases/latest') { res.writeHead(404); return res.end(); }
+    feedHits++;
+    if (failFeed) { res.writeHead(500); return res.end('down'); }
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ tag_name: tag, html_url: `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/tag/${tag}` }));
   });
@@ -2387,13 +2391,28 @@ async function update() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '⚙ 设置 → 版本与更新 → 检查更新 shows the version and says it is the newest one', async () => {
+    await step(S, '⚙ 设置 → 版本与更新 checks on its own when opened, shows the version and says it is the newest one; switching away and back does not check again (T-6161)', async () => {
       await clickAct(page, 'settings');
       admin = await adminWin();
       await admin.waitForSelector('[data-path="/overview"]', { timeout: 15000 });
+      assert.equal(feedHits, 0, 'no check before the page is opened');
       await admin.evaluate(() => { location.hash = '/update'; });
       await admin.waitForSelector('[data-path="/update"]', { timeout: 15000 });
+      await waitStatus(/状态 已是最新版本/); // nothing clicked
+      assert.equal(feedHits, 1, 'opening the page checked once');
+      const checkedAt = (await updateText()).match(/上次检查 (.+?) 检查更新/)[1];
+      for (const hop of ['/overview', '/update', '/about', '/update']) {
+        await admin.evaluate((h) => { location.hash = h; }, hop);
+        await admin.waitForSelector(`[data-path="${hop}"]`, { timeout: 15000 });
+      }
+      await admin.waitForTimeout(1500);
+      assert.equal(feedHits, 1, 'switching pages back and forth does not check again');
+      assert.equal((await updateText()).match(/上次检查 (.+?) 检查更新/)[1], checkedAt, 'the time of the check is unchanged');
+      await admin.screenshot({ path: path.join(OUT, 'update-auto.png') });
+      // the button still checks every time it is clicked
       await admin.getByRole('button', { name: '检查更新' }).click();
+      for (let i = 0; i < 100 && feedHits < 2; i++) await new Promise((r) => setTimeout(r, 100));
+      assert.equal(feedHits, 2, '检查更新 checks again');
       await waitStatus(/状态 已是最新版本/);
       const text = await updateText();
       assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
@@ -2424,6 +2443,20 @@ async function update() {
       assert.match(menu, /下载新版本 v9\.9\.9/);
       return `${text.slice(text.indexOf('状态'), text.indexOf('上次检查')).trim()} · bubble 「${said}」 · ⚙ → #/update: ${menu}`;
     }, page);
+
+    await step(S, 'a check that fails says so: 检查失败 in the card and a toast (T-6161)', async () => {
+      failFeed = true;
+      await admin.bringToFront();
+      await admin.getByRole('button', { name: '检查更新' }).click();
+      await waitStatus(/状态 检查失败/);
+      await admin.getByText('没能检查更新').first().waitFor({ state: 'visible', timeout: 5000 });
+      await admin.waitForTimeout(400); // the toast slides in
+      const status = (await updateText()).match(/状态 (.+?) 上次检查/)[1];
+      assert.equal(status, '检查失败', 'no version left over from the check before');
+      await admin.screenshot({ path: path.join(OUT, 'update-error.png') });
+      failFeed = false;
+      return (await updateText()).match(/状态 \S+/)[0] + ' · toast 没能检查更新';
+    }, () => admin);
   } finally {
     await app.close().catch(() => {});
     server.close();

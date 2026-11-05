@@ -27,3 +27,12 @@ declare module '*/core/chat-live.js' {
   };
   export default live;
 }
+
+// src/core/update-auto.js (UMD): whether opening 版本与更新 starts a check on its own (T-6161)
+declare module '*/core/update-auto.js' {
+  const auto: {
+    COOLDOWN_MS: number;
+    shouldAutoCheck: (state: { checkedAt?: number | null; status?: string } | null | undefined, opts: { lastAutoAt?: number; now: number }) => boolean;
+  };
+  export default auto;
+}
