@@ -937,6 +937,7 @@ function panelPayload() {
     needs: [need('hunger', '饱腹', p.hunger, true), need('mood', '心情', p.mood, false), need('energy', '体力', p.energy, false)],
     foods: Object.entries(info.foods).map(([id, f]) => ({ id, label: f.label })),
     reset: !!(view.look && view.look.kind === 'vrm'),
+    voice: asrOn() && !VISITOR, // 🎤 in the panel's chat box (T-6162)
     dance: { ...panelUi.dance },
     mute: { ...panelUi.mute },
     news: panelUi.news,
@@ -1917,30 +1918,66 @@ function syncDanceButton() {
 
 // A button in her panel (main forwards it here: panel-act): what each one does in her window. The panel closes
 // itself for everything but 静音 (switches in place) and 喂食 (its foods open in the panel; picking one sends
-// feed with that food).
-function runAct(act, food) {
+// feed with that food). Its chat box (T-6162) sends `chat` with the text, sent from here like her own chat box,
+// and `draft` while typing (插个嘴); its 📎 / 🎤 (attach / voice) open her own chat bar here with the draft in it,
+// since pictures, files and the microphone live in this window.
+let sendChat = null; // bindPetUi: send(text) — the text typed in her panel, or her own chat box when none is given
+function runAct(act, food, text) {
+  if (act === 'draft') { sendDraft(text); return; }
+  if (act === 'chat') { if (sendChat) sendChat(text); return; }
+  if (act === 'attach' || act === 'voice') {
+    takeDraft(text);
+    if (act === 'voice') { onVoiceHotkey({ source: 'panel' }); return; } // as the voice hotkey: she starts listening
+    pointerInside = true; // the panel was beside her: her chat bar shows at once
+    openChat();
+    $('attach-btn').click();
+    return;
+  }
   if (act !== 'dance') closeDanceMenu();
   if (act === 'dance') openDanceMenu();
   else if (act === 'feed') doAct('feed', food);
   else if (act === 'play' || act === 'sleep') doAct(act);
-  else if (act === 'chat') { pointerInside = true; openChat(); } // the panel was beside her: the box shows at once
   else if (act === 'settings') openSettings();
   else if (act === 'mute') toggleMute();
   else if (act === 'reset') window.pet.resetPose('button');
   else if (act === 'quit') window.pet.quit();
 }
 
+// the panel's draft moves into her chat bar (after anything already in it)
+function takeDraft(text) {
+  const t = String(text || '').replace(/\s*\n\s*/g, ' ').trim(); // her chat bar is one line
+  if (!t) return;
+  const input = $('chat-input');
+  const cur = input.value.trimEnd();
+  input.value = cur ? `${cur} ${t}` : t;
+  sendDraft(input.value); // set from code (no input event): 插个嘴 hears the box as it is now
+}
+// 插个嘴 source 聊天框: the unsent draft (her chat box, or the one in her panel) goes to main (debounced there)
+// only while 插个嘴 and this source are on. Only these boxes: nothing typed anywhere else is seen.
+function sendDraft(text) {
+  const ij = settings && settings.interject;
+  if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
+  window.pet.interject.draft(String(text || ''));
+}
+
 function bindPetUi() {
   bindDanceMenu();
-  window.pet.panel.onAct((m) => { if (m && m.act) runAct(String(m.act), m.food ? String(m.food) : undefined); });
-  const send = async () => {
+  window.pet.panel.onAct((m) => { if (m && m.act) runAct(String(m.act), m.food ? String(m.food) : undefined, typeof m.text === 'string' ? m.text : undefined); });
+  // `typed`: the text from her panel's chat box (already cleared there; T-6162). It goes alone: pictures and files
+  // belong to her own chat bar, sent with what is typed there. A panel message that is not sent (she is thinking,
+  // she is busy) goes back into the panel's box.
+  const send = async (typed) => {
     const input = $('chat-input');
-    const text = input.value.trim();
+    const fromPanel = typeof typed === 'string';
+    const text = (fromPanel ? typed : input.value).trim();
+    const pending = fromPanel ? [] : attachments;
+    const clearInput = () => { if (!fromPanel) input.value = ''; };
+    const giveBack = () => { if (fromPanel && text) window.pet.panel.restore(text); };
     // 「别跳了」 while she is still thinking about the last message: the dance part still happens
-    if (thinking && text && !attachments.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { input.value = ''; chatDanceIntent(text); return; }
-    if ((!text && attachments.length === 0) || thinking) return;
-    const imgs = attachments.filter((a) => a.kind === 'image');
-    const files = attachments.filter((a) => a.kind === 'path').map((a) => a.path);
+    if (thinking && text && !pending.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { clearInput(); chatDanceIntent(text); return; }
+    if ((!text && pending.length === 0) || thinking) { giveBack(); return; }
+    const imgs = pending.filter((a) => a.kind === 'image');
+    const files = pending.filter((a) => a.kind === 'path').map((a) => a.path);
     if (files.length && !(view && view.local && view.local.enabled)) {
       if (!confirm('读本机文件需要先开启“本机能力”（让宠物使用这台电脑）。现在开启吗？')) return;
       const on = await window.pet.setLocal(true);
@@ -1948,13 +1985,13 @@ function bindPetUi() {
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
     if (text && !imgs.length && !files.length) { chatDanceIntent(text); chatMotionIntent(text); } // 「跳个舞」/「别跳了」/「点个头」: local, the message still goes to her agent
-    attachments = [];
-    renderAttachments();
-    input.value = '';
+    if (!fromPanel) { attachments = []; renderAttachments(); }
+    clearInput();
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
     chatResult(r);
+    if (!r.ok && (r.reason === 'busy' || r.reason === 'empty')) giveBack(); // not sent: the text is not lost
   };
   // what the reply to a message (or a 表情包) from this box says when it did not go through
   const chatResult = (r) => {
@@ -1967,7 +2004,8 @@ function bindPetUi() {
     if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
     if (!r.ok && r.reason === 'bad-sticker') say('（这张表情包已经不在了。）', 'error', 'fallback');
   };
-  $('chat-send').addEventListener('click', send);
+  sendChat = send;
+  $('chat-send').addEventListener('click', () => send());
   bindStickers(async (set, st) => {
     if (thinking) return;
     stopSpeech('new-message');
@@ -1978,13 +2016,7 @@ function bindPetUi() {
     chatResult(r);
   });
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
-  // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
-  // Only this box: nothing typed anywhere else is seen.
-  $('chat-input').addEventListener('input', () => {
-    const ij = settings && settings.interject;
-    if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
-    window.pet.interject.draft($('chat-input').value);
-  });
+  $('chat-input').addEventListener('input', () => sendDraft($('chat-input').value));
 
   // ---- pictures: paste (Ctrl/⌘+V), drag in, or the 📎 button; Escape stops a running task
   document.addEventListener('paste', (e) => {

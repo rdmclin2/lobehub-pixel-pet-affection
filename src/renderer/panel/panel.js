@@ -3,9 +3,13 @@
 // 她的面板: draws what her window sends (app.js panelPayload) and hands each pressed button back to it (through
 // main: pet-panel:act → panel-act). The window is only as big as the card (it reports its size), so it sits
 // right beside her. Keyboard: Tab / Shift+Tab move between the buttons, ←→↑↓ too; Enter / Space press; Esc closes.
+// 和她聊天 (T-6162): the chat box is in the card; it has the focus when the panel opens, so typing starts at once.
 (() => {
   const $ = (id) => document.getElementById(id);
   const panel = $('pet-panel');
+  const input = $('pp-chat-input');
+  const sendBtn = $('pp-chat-send');
+  const INPUT_MAX_H = 132; // about six lines; past that the box scrolls
   let foods = [];
 
   // the meter fills by transform (no layout work); --v keeps the value as a percentage for anyone reading it
@@ -47,6 +51,7 @@
     dance.disabled = !!p.dance.loading;
     dance.title = p.dance.title;
     $('btn-reset').classList.toggle('hidden', !p.reset);
+    $('pp-chat-mic').classList.toggle('hidden', !p.voice); // 🎤 only while 语音输入 is on (as in her chat bar)
     const gear = $('btn-settings');
     gear.querySelector('.new-dot').classList.toggle('hidden', !p.news);
     gear.dataset.news = p.news || '';
@@ -90,6 +95,48 @@
     report();
   }
 
+  // the box grows with what is typed (up to INPUT_MAX_H) and the window with it
+  function fitInput() {
+    input.style.height = 'auto';
+    const h = Math.min(input.scrollHeight, INPUT_MAX_H);
+    input.style.height = `${h}px`;
+    input.style.overflowY = input.scrollHeight > INPUT_MAX_H ? 'auto' : 'hidden';
+    sendBtn.disabled = !input.value.trim();
+  }
+  function sendChat() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    fitInput();
+    window.petPanel.chat(text);
+  }
+  input.addEventListener('input', () => {
+    fitInput();
+    window.petPanel.draft(input.value); // 插个嘴 (its 聊天框草稿 source): her window decides whether it is heard
+  });
+  input.addEventListener('keydown', (e) => {
+    // Enter sends; Shift+Enter is a new line; an Enter that confirms an IME composition sends nothing
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    sendChat();
+  });
+  $('pp-chat').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+  // 📎 / 🎤: pictures, files and the microphone are in her window's chat bar; the draft goes along with them
+  const handOff = (act) => {
+    const text = input.value;
+    input.value = '';
+    fitInput();
+    window.petPanel.act(act, undefined, text);
+  };
+  // a message she did not send (she was busy) comes back, unless something new was typed meanwhile
+  window.petPanel.onRestore((m) => {
+    if (!m || !m.text || input.value.trim()) return;
+    input.value = m.text;
+    fitInput();
+  });
+  $('pp-chat-attach').addEventListener('click', () => handOff('attach'));
+  $('pp-chat-mic').addEventListener('click', () => handOff('voice'));
+
   window.petPanel.onShow((m) => {
     if (!m || !m.payload) return;
     paint(m.payload);
@@ -99,7 +146,8 @@
       panel.style.animation = 'none';
       void panel.offsetWidth;
       panel.style.animation = '';
-      panel.focus({ preventScroll: true }); // the keyboard works at once (←→ reach the buttons), with no ring on a tile
+      fitInput();
+      input.focus({ preventScroll: true }); // typing goes straight into the chat box; Tab reaches the buttons
     }
     lastSize = '';
     report();
@@ -120,12 +168,14 @@
   // keyboard: arrows move between the buttons in reading order; Esc closes the foods first, then the panel
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (e.isComposing || e.keyCode === 229) return; // Esc cancels the IME composition in the chat box first
       e.preventDefault();
       if (!$('food-menu').classList.contains('hidden')) { showFoods(false); document.querySelector('[data-act="feed"]').focus(); return; }
       window.petPanel.close('esc');
       return;
     }
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    if (e.target === input) return; // the arrows move the caret in the chat box
     const items = [...panel.querySelectorAll('button')].filter((b) => !b.disabled && b.offsetParent);
     const i = items.indexOf(document.activeElement);
     const step = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;

@@ -2,12 +2,15 @@
 // driven as a user does.
 //   P1  hovering her shows no status card or toolbar any more
 //   P2  a right click on her opens one card beside her (not over her): name · character · stage, affection, the
-//       three needs, 4 tiles, footer; light + dark
+//       three needs, 3 tiles, the chat box (no 聊天 tile, T-6162), footer; light + dark
 //   P3  tiles and footer buttons hover as quiet fills; ←→ move between them
 //   P4  it closes on a right click on her again, Esc, a press in her window, after a button; 10 rounds stay stable,
 //       one panel window
 //   P5  what each button does: 喂食 opens the foods in the card and picking one feeds her; 玩耍 closes it and she
-//       plays; 静音 switches in place; 聊天 opens the chat box; ⚙ opens the settings window
+//       plays; 静音 switches in place; ⚙ opens the settings window
+//   P8  the chat box in the card (T-6162): it has the focus on opening, takes several lines (Shift+Enter) and
+//       grows, an IME Enter does not send, Enter sends; she thinks, the panel closes, her reply shows in the bubble
+//   P9  its 📎 carries the draft to her window's chat bar (pictures / files / 🎤 live there) and opens the picker
 //   P6  a long press (touch) opens it; at the right screen edge it opens on her left
 //   P7  while she thinks it closes and a right click does not open it
 //   U1… 检查更新… (Pixel Pet menu): 已是最新 / 发现新版本 → 前往下载页 / 失败 → 重试 / 下载中 → 已下载好 / 开发版
@@ -57,6 +60,29 @@ async function clickAct(page, act) {
   const pp = await openPetPanel(page);
   await pp.click(`[data-act="${act}"]`);
   return pp;
+}
+// 和她聊天 (T-6162): type into the chat box in her panel and send it with Enter, as a user does
+async function chatFromPanel(page, text) {
+  const pp = await openPetPanel(page);
+  await pp.fill('#pp-chat-input', text);
+  await pp.press('#pp-chat-input', 'Enter');
+  return pp;
+}
+// her window's own chat bar (📎 / 🎤 / the one-line box): typing to her is in her panel now (T-6162), so the bar
+// opens the way a user still opens it there — a picture pasted onto her; the picture is taken off again
+async function openChatBar(page) {
+  await page.mouse.move(110, 150);
+  await page.waitForSelector('body.hover', { timeout: 5000 });
+  if (await page.isVisible('#chat-input')) return;
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    dt.items.add(new File([png], 'dot.png', { type: 'image/png' }));
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForSelector('#attach-row .attach-chip button');
+  await page.click('#attach-row .attach-chip button');
+  await page.waitForSelector('#chat-input', { state: 'visible' });
 }
 // 喂食 → a food (the i-th): opens the panel, the foods, and picks one
 async function pickFood(page, i = 0) {
@@ -143,7 +169,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
       }, page);
 
       for (const theme of ['light', 'dark']) {
-        await step(S, `P2 ${theme}: 右键她 → 旁边弹出一张卡片（不挡住她）：名字 · 角色 · 阶段、好感、三项状态、四个操作、底栏`, async () => {
+        await step(S, `P2 ${theme}: 右键她 → 旁边弹出一张卡片（不挡住她）：名字 · 角色 · 阶段、好感、三项状态、三个操作、聊天输入框（没有「聊天」按钮）、底栏`, async () => {
           await app.evaluate(({ nativeTheme }, t) => { nativeTheme.themeSource = t; }, theme);
           await page.emulateMedia({ colorScheme: theme });
           await page.waitForTimeout(250);
@@ -151,7 +177,9 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
           await pp.emulateMedia({ colorScheme: theme });
           const g = await geom(pp);
           assert.equal(g.theme, theme);
-          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
+          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'mute', 'scene', 'settings', 'quit']);
+          assert.equal(await pp.$$eval('[data-act="chat"]', (b) => b.length), 0, 'no 聊天 tile');
+          assert.equal(await pp.evaluate(() => { const t = document.getElementById('pp-chat-input'); return t.tagName === 'TEXTAREA' && !!t.offsetParent; }), true, 'the chat box (a textarea) shows in the card');
           assert.ok(g.card.x >= 0 && g.card.r <= g.win.w && g.card.b <= g.win.h, `the card fits its window: ${JSON.stringify(g)}`);
           assert.equal(g.name, '小克');
           assert.ok(g.char && g.stage && /^\d+\/100$/.test(g.aff), JSON.stringify(g));
@@ -179,6 +207,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
           const gear = await bg('#btn-settings');
           assert.notEqual(gear, 'rgba(0, 0, 0, 0)');
           await pshot(pp, `p3-${theme}-hover-gear`);
+          assert.equal(await pp.evaluate(() => document.activeElement.id), 'pp-chat-input', 'the chat box has the focus on opening');
           await pp.focus('[data-act="feed"]');
           await pp.keyboard.press('ArrowRight');
           const f1 = await pp.evaluate(() => document.activeElement.dataset.act);
@@ -225,7 +254,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         return `closed by ${ways.join(' / ')}; 10 rounds; opens ${st.opens}; last closes ${st.closes.slice(-8).join(',')}; panel windows ${st.windows}`;
       }, page);
 
-      await step(S, 'P5 按钮：喂食 在卡片里展开食物、点一个就喂；玩耍 关面板她去玩；静音 原地切换；聊天 打开输入框；⚙ 打开设置', async () => {
+      await step(S, 'P5 按钮：喂食 在卡片里展开食物、点一个就喂；玩耍 关面板她去玩；静音 原地切换；⚙ 打开设置', async () => {
         const notes = [];
         let pp = await clickAct(page, 'feed');
         await pp.waitForSelector('#food-menu:not(.hidden) .btn');
@@ -257,13 +286,6 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await pshot(pp, 'p5-muted');
         await pp.click('#btn-mute');
         notes.push(`静音 ${m0} → ${m1}, panel stays`);
-        await pp.click('[data-act="chat"]');
-        await waitPanel(page, false);
-        await page.waitForSelector('#chat-row:not(.hidden)');
-        await page.mouse.move(110, 150);
-        await shot('p5-chat-open');
-        notes.push('聊天 → panel closed, the chat box is open');
-        pp = await openPetPanel(page);
         await pp.click('#btn-settings');
         let admin = null;
         for (let i = 0; i < 300 && !admin; i++) { admin = app.windows().find((w) => w.url().includes('admin-ui')) || null; if (!admin) await page.waitForTimeout(100); }
@@ -318,6 +340,81 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         pp = await openPetPanel(page);
         await pp.keyboard.press('Escape');
         return `thinking → closed (${st1.closes[st1.closes.length - 1]}); right click while thinking → visible ${st2.visible}; after → opens again`;
+      }, page);
+
+      await step(S, 'P8 面板里的聊天框：打开就能打字，Shift+Enter 换行且框变高，输入法回车不发送，Enter 发送；她思考、面板收起，回复显示在气泡里', async () => {
+        await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+        const pp = await openPetPanel(page);
+        assert.equal(await pp.evaluate(() => document.activeElement.id), 'pp-chat-input', 'focus is in the chat box');
+        assert.equal(await pp.isDisabled('#pp-chat-send'), true, '发送 is off while the box is empty');
+        const h0 = await pp.evaluate(() => document.getElementById('pp-chat-input').offsetHeight);
+        const win0 = (await panelState(page)).bounds.height;
+        await pp.keyboard.type('今天好累呀');
+        await pp.keyboard.press('Shift+Enter');
+        await pp.keyboard.type('想听你讲个睡前故事');
+        await pp.keyboard.press('Shift+Enter');
+        await pp.keyboard.type('短一点就好');
+        await pp.keyboard.press('Shift+Enter');
+        await pp.keyboard.type('晚安');
+        const typed = await pp.inputValue('#pp-chat-input');
+        assert.equal(typed, '今天好累呀\n想听你讲个睡前故事\n短一点就好\n晚安');
+        await pp.waitForTimeout(250);
+        const h1 = await pp.evaluate(() => document.getElementById('pp-chat-input').offsetHeight);
+        const win1 = (await panelState(page)).bounds.height;
+        assert.ok(h1 > h0 && win1 > win0, `the box and the window grow: box ${h0} → ${h1}, window ${win0} → ${win1}`);
+        assert.equal(await pp.isDisabled('#pp-chat-send'), false);
+        await pshot(pp, 'p8-multiline');
+        await both(pp, 'p8-multiline-beside');
+        // an Enter that confirms an IME composition (keyCode 229) must not send
+        await pp.evaluate(() => document.getElementById('pp-chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true })));
+        await pp.waitForTimeout(300);
+        assert.equal(await pp.inputValue('#pp-chat-input'), typed, 'the IME Enter sent nothing');
+        assert.equal((await panelState(page)).visible, true);
+        const chatsBefore = (await panelState(page)).acts.filter((a) => a === 'chat').length;
+        await pp.press('#pp-chat-input', 'Enter');
+        await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 10000 });
+        const st = await waitPanel(page, false);
+        assert.equal(st.acts.filter((a) => a === 'chat').length, chatsBefore + 1, 'one message went from the panel');
+        await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+        await page.waitForFunction(() => { const b = document.getElementById('bubble'); return !b.classList.contains('hidden') && b.textContent.trim().length > 0; }, null, { timeout: 10000 });
+        const bubble = await page.evaluate(() => { const b = document.getElementById('bubble'); return { text: b.textContent.trim(), source: b.dataset.source || '' }; });
+        assert.ok(!/思考中/.test(bubble.text), `her reply, not the thinking line: ${bubble.text}`);
+        await shot('p8-reply-bubble');
+        // what reached her agent: the four lines, as typed
+        const runs = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args).filter((a) => a[0] === 'agent' && a[1] === 'run');
+        const sent = runs.map((a) => a.join(' ')).reverse().find((a) => a.includes('睡前故事')) || '';
+        assert.ok(['今天好累呀', '想听你讲个睡前故事', '短一点就好', '晚安'].every((l) => sent.includes(l)) && /睡前故事\s*\n\s*短一点就好/.test(sent), `her agent got the four lines: ${sent.slice(-300)}`);
+        const reopened = await openPetPanel(page);
+        const after = await reopened.inputValue('#pp-chat-input');
+        assert.equal(after, '', 'the box is empty after sending');
+        await reopened.keyboard.press('Escape');
+        await waitPanel(page, false);
+        return `box ${h0} → ${h1}px, window ${win0} → ${win1}px for 4 lines; IME Enter kept the text; Enter → panel closed (${st.closes[st.closes.length - 1]}), she answered 「${bubble.text.slice(0, 60)}」 (source ${bubble.source}); her agent got all four lines (with the line breaks); box empty on reopening`;
+      }, page);
+
+      await step(S, 'P9 面板聊天框的 📎：草稿带到她身边的聊天条（图片 / 文件 / 🎤 在那里），并打开选图；语音输入没开时没有 🎤', async () => {
+        // the native picker: answer 「取消」 and count the asks
+        await app.evaluate(({ dialog }) => { global.__picks = 0; dialog.showOpenDialog = async () => { global.__picks += 1; return { canceled: true, filePaths: [] }; }; });
+        const pp = await openPetPanel(page);
+        assert.equal(await pp.isVisible('#pp-chat-mic'), false, '🎤 hidden while 语音输入 is off');
+        await pp.fill('#pp-chat-input', '看看这张图\n是我拍的');
+        await pshot(pp, 'p9-attach-draft');
+        await pp.click('#pp-chat-attach');
+        await waitPanel(page, false);
+        await page.waitForSelector('#chat-row:not(.hidden)');
+        for (let i = 0; i < 40 && !(await app.evaluate(() => global.__picks)); i++) await page.waitForTimeout(50);
+        const picks = await app.evaluate(() => global.__picks);
+        assert.equal(picks, 1, 'the picture picker opened once');
+        const moved = await page.inputValue('#chat-input');
+        assert.equal(moved, '看看这张图 是我拍的', 'the draft moved into her chat bar (one line)');
+        await page.mouse.move(110, 150);
+        await shot('p9-chat-bar-with-draft');
+        const reopened = await openPetPanel(page);
+        assert.equal(await reopened.inputValue('#pp-chat-input'), '', 'the panel box gave its draft away');
+        await reopened.keyboard.press('Escape');
+        await waitPanel(page, false);
+        await page.fill('#chat-input', '');
+        return `📎 → panel closed, her chat bar open with 「${moved}」, picker asked ${picks}×; 🎤 hidden (语音输入 off)`;
       }, page);
 
       // ---- 检查更新… in the Pixel Pet menu (built on Linux for the run: PIXELPET_E2E_APP_MENU=1) ----
@@ -382,4 +479,4 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
     }
   };
 };
-Object.assign(module.exports, { openPetPanel, clickAct, pickFood, panelPage, panelState });
+Object.assign(module.exports, { openPetPanel, clickAct, chatFromPanel, openChatBar, pickFood, panelPage, panelState });

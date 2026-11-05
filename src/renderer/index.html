@@ -140,8 +140,9 @@
     <div id="dance-menu" class="popup dance-menu hidden" role="menu" aria-label="跳舞"></div>
     <!-- the owner's 表情包 from the chat box, risen over it for a moment (outside #hud: it shows while she is busy) -->
     <img id="sent-sticker" class="sent-sticker hidden" alt="" draggable="false" />
-    <!-- everything below is only shown while the pointer is over the window: the chat box (opened from her panel → 聊天).
-         Her state and the buttons are in her panel, its own small window beside her (src/renderer/panel/). -->
+    <!-- everything below is only shown while the pointer is over the window: the chat box for what reaches her window
+         itself — a picture pasted or a file dragged onto her, the voice hotkey / 🎤. Typing to her is in her panel
+         (its own small window beside her, src/renderer/panel/; T-6162), along with her state and the buttons. -->
     <div id="hud" class="hud">
       <div id="attach-row" class="attach-row hidden"></div>
       <!-- 表情包 (docs/stickers-design.md §3.1): her sets, opened from ☺ in the chat box; one click sends one -->

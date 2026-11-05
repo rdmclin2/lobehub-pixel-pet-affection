@@ -1,7 +1,8 @@
 'use strict';
 
 // 她的面板 (src/main/pet-panel.js): the panel page's whole bridge — it can press one of its buttons, report its
-// height and ask to close; it hears what to show (when it opens and whenever that changes) and when it closed.
+// height, send what was typed in its chat box (and the draft, for 插个嘴) and ask to close; it hears what to
+// show (when it opens and whenever that changes) and when it closed.
 const { contextBridge, ipcRenderer } = require('electron');
 
 const on = (channel) => (cb) => {
@@ -11,9 +12,12 @@ const on = (channel) => (cb) => {
 };
 
 contextBridge.exposeInMainWorld('petPanel', {
-  act: (act, food) => ipcRenderer.send('pet-panel:act', { act, food }),
+  act: (act, food, text) => ipcRenderer.send('pet-panel:act', { act, food, text }),
+  chat: (text) => ipcRenderer.send('pet-panel:chat', { text }),
+  draft: (text) => ipcRenderer.send('pet-panel:draft', { text }),
   size: (w, h) => ipcRenderer.send('pet-panel:size', { w, h }),
   close: (reason) => ipcRenderer.send('pet-panel:close-self', { reason }),
   onShow: on('pet-panel:show'),
   onClosed: on('pet-panel:closed'),
+  onRestore: on('pet-panel:restore'),
 });

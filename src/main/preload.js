@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld('pet', {
     toggle: (p) => ipcRenderer.invoke('pet-panel:toggle', p),
     close: (reason) => ipcRenderer.send('pet-panel:close', { reason }),
     update: (payload) => ipcRenderer.send('pet-panel:update', payload),
+    restore: (text) => ipcRenderer.send('pet-panel:restore', { text }), // a panel message she did not send goes back (T-6162)
     onAct: on('panel-act'),
     onClosed: on('panel-closed'),
   },

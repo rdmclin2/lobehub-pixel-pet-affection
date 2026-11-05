@@ -1221,7 +1221,10 @@ function wire() {
   ipcMain.handle('pet-panel:toggle', (e, p = {}) => (fromPet(e) ? petPanel.toggle(p) : { ok: false, visible: false }));
   ipcMain.on('pet-panel:close', (e, { reason } = {}) => { if (fromPet(e)) petPanel.close(String(reason || 'pet')); });
   ipcMain.on('pet-panel:update', (e, payload) => { if (fromPet(e)) petPanel.update(payload); });
+  ipcMain.on('pet-panel:restore', (e, m) => { if (fromPet(e)) petPanel.restore(m); });
   ipcMain.on('pet-panel:act', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.act(m); });
+  ipcMain.on('pet-panel:chat', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.chat(m); });
+  ipcMain.on('pet-panel:draft', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.draft(m); });
   ipcMain.on('pet-panel:size', (e, s) => { if (petPanel && petPanel.isSender(e)) petPanel.resize(s); });
   ipcMain.on('pet-panel:close-self', (e, { reason } = {}) => { if (petPanel && petPanel.isSender(e)) petPanel.close(String(reason || 'esc')); });
   // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
@@ -1610,12 +1613,13 @@ app.whenReady().then(() => {
     },
   });
   wire();
-  // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there and 聊天
-  // the chat box, so her window gets the keyboard
+  // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there, so her
+  // window gets the keyboard, as for 📎 / 🎤 (her chat bar opens there). What is typed in its chat box goes there
+  // too (act chat / draft) and is sent from there.
   petPanel = new PetPanel({
     onAct: (m) => {
       if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小游戏: main opens it, her window hides
-      if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus();
+      if (['dance', 'attach', 'voice'].includes(m.act) && win && !win.isDestroyed()) win.focus();
       send('panel-act', m);
     },
     onClosed: (m) => send('panel-closed', m),

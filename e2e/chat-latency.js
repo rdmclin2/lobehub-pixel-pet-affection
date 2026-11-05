@@ -182,15 +182,12 @@ async function main(name = 'baseline') {
     // the pet window opened before the init script was added: probe it by hand (the settings window got it)
     for (const p of [page, admin]) if (!(await p.evaluate(() => typeof window.__latArm === 'function'))) await p.evaluate(PROBE);
     const lines = () => (fs.existsSync(latFile) ? fs.readFileSync(latFile, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+    // the desktop chat box is in her panel (T-6162): open it, type, arm the probe, Enter
     const sendDesktop = async (text) => {
-      if (!(await page.isVisible('#chat-input'))) {
-        await page.mouse.move(110, 150);
-        await page.waitForSelector('body.hover', { timeout: 5000 });
-        await require('./pet-panel').clickAct(page, 'chat');
-      }
-      await page.fill('#chat-input', text);
+      const pp = await require('./pet-panel').openPetPanel(page);
+      await pp.fill('#pp-chat-input', text);
       await page.evaluate(() => window.__latArm('desktop'));
-      await page.press('#chat-input', 'Enter');
+      await pp.press('#pp-chat-input', 'Enter');
       return page;
     };
     const sendAdmin = async (text) => {

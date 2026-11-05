@@ -33,10 +33,22 @@
         <button class="pp-tile" data-act="feed" aria-expanded="false" aria-controls="food-menu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg><span>喂食</span></button>
         <button class="pp-tile" data-act="play"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="18" x2="18.01" y1="10" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/></svg><span>玩耍</span></button>
         <button class="pp-tile" data-act="sleep"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span>睡觉</span></button>
-        <button class="pp-tile" data-act="chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg><span>聊天</span></button>
       </div>
       <!-- 喂食: what she can eat; picking one feeds her -->
       <div id="food-menu" class="pp-foods hidden" role="group" aria-label="喂她吃什么"></div>
+      <!-- 和她聊天 (T-6162): the chat box lives here, a multi-line box — Enter sends, Shift+Enter starts a new line.
+           The text goes to her window (pet-panel:chat → panel-act chat), which sends it as her own chat box did;
+           she starts thinking, so the panel closes and her reply shows in the bubble over her. 📎 / 🎤 hand the
+           draft over to her window's own chat bar, where pictures, files and the microphone live. -->
+      <form id="pp-chat" class="pp-chat" autocomplete="off">
+        <textarea id="pp-chat-input" class="pp-chat-input" rows="2" maxlength="2000" placeholder="和她说点什么…" aria-label="和她聊天" title="Enter 发送，Shift+Enter 换行"></textarea>
+        <div class="pp-chat-bar">
+          <button id="pp-chat-attach" type="button" class="btn icon-btn pp-chat-tool" title="添加图片或文件（也可以把图片粘贴、文件拖到她身上）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
+          <button id="pp-chat-mic" type="button" class="btn icon-btn pp-chat-tool hidden" title="语音输入：她开始听，说完再点她身边的 🎤 结束" aria-label="语音输入"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
+          <span class="pp-chat-hint">Shift+Enter 换行</span>
+          <button id="pp-chat-send" type="submit" class="btn primary pp-chat-send" disabled>发送</button>
+        </div>
+      </form>
       <div class="pp-foot">
         <button class="btn icon-btn pp-icon" data-act="mute" id="btn-mute" title="静音：让她不出声" aria-label="静音" aria-pressed="false"><svg class="ico mute-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg><svg class="ico mute-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/></svg></button>
         <!-- 小游戏 (src/main/game-window.js): she goes into the game played last; her desktop window hides meanwhile -->

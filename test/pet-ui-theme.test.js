@@ -89,7 +89,10 @@ test('her panel (right click on her): its own window — one card, state on top,
   const body = panelHtml.match(/<div id="pet-panel" class="pet-panel"[^>]*>([\s\S]*?)<script/)[1];
   for (const id of ['status-panel', 'pp-name', 'pp-char', 'aff-stage', 'aff-row', 'bar-affection', 'aff-num', 'meta', 'bars', 'bar-hunger', 'bar-mood', 'bar-energy', 'val-hunger', 'val-mood', 'val-energy', 'toolbar', 'food-menu', 'btn-mute', 'btn-dance', 'btn-reset', 'btn-settings', 'btn-quit']) assert.match(body, new RegExp(`id="${id}"`), `#${id} is in the panel`);
   assert.ok(body.indexOf('id="status-panel"') < body.indexOf('id="toolbar"'), 'her state comes before what to do');
-  for (const act of ['feed', 'play', 'sleep', 'chat']) assert.match(body, new RegExp(`class="pp-tile" data-act="${act}"[^>]*><svg class="ico"`), `${act} is a tile with an icon`);
+  for (const act of ['feed', 'play', 'sleep']) assert.match(body, new RegExp(`class="pp-tile" data-act="${act}"[^>]*><svg class="ico"`), `${act} is a tile with an icon`);
+  // 和她聊天 (T-6162): no 聊天 tile; the chat box is in the card, under the tiles and above the footer
+  assert.ok(!body.includes('data-act="chat"'), 'no 聊天 tile');
+  assert.ok(body.indexOf('class="pp-tiles"') < body.indexOf('id="pp-chat"') && body.indexOf('id="pp-chat"') < body.indexOf('class="pp-foot"'), 'the chat box sits between the tiles and the footer');
   // same tokens and base stylesheet as her window; a strict CSP (no remote anything)
   assert.match(panelHtml, /href="\.\.\/design\/lobe-tokens\.css"[\s\S]*href="\.\.\/style\.css"[\s\S]*href="panel\.css"/);
   assert.match(panelHtml, /Content-Security-Policy" content="default-src 'self'/);
