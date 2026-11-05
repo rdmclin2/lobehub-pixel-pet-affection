@@ -53,9 +53,11 @@ class CatalogDownloader {
 
   async download(id) {
     const T = this.texts;
+    // `detail`: the installer's own readable reason (core/voice-store.js), after the generic text
     const fail = (reason, extra = {}) => {
-      this.emit('catalog-progress', { id, state: 'failed', reason, text: T[reason] || reason });
-      return { ok: false, reason, text: T[reason] || reason, ...extra };
+      const text = `${T[reason] || reason}${extra.detail ? `：${extra.detail}` : ''}`;
+      this.emit('catalog-progress', { id, state: 'failed', reason, text });
+      return { ok: false, reason, ...extra, text };
     };
     const e = this.lookup(String(id || ''));
     if (!e) return { ok: false, reason: 'unknown', text: T.unknown };
@@ -106,7 +108,7 @@ class CatalogDownloader {
       if (hash.digest('hex') !== e.sha256) return fail('checksum');
       progress('installing');
       const r = await this.install(e, tmp);
-      if (!r.ok) return fail(r.reason === 'builtin' ? 'installed' : 'invalid', { errors: r.errors });
+      if (!r.ok) return fail(r.reason === 'builtin' ? 'installed' : 'invalid', { errors: r.errors, ...(r.text ? { detail: r.text } : {}) });
       this.emit('catalog-progress', { id: e.id, received: job.received, total: job.total, state: 'done' });
       return { ok: true, id: e.id, name: e.name };
     } finally {

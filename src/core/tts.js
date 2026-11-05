@@ -315,7 +315,7 @@ function defaultEngine(species) {
 // saved settings without it, which always held 'fish' before 'auto' existed, to 'auto').
 // local: the user's own voice server — its API shape (openai / whale), model and voice name.
 // elevenlabs: the voice and model used for a character whose file names no ElevenLabs voice.
-// voicePackByCharacter: the 语音包 the owner picked per character ({ characterId: packId }; 'auto' / missing =
+// voicePackByCharacter: the 语音包 the owner picked per character ({ characterId: packId | 'none' (不使用) }; 'auto' / missing =
 // 我的语音包 below, else her own pack, else the generic pack of her gender — core/voice-pack.js resolvePack).
 // voicePack: 我的语音包 — the pack the owner picked for themself ('auto' or a pack id, e.g. generic-male), used by
 // every character without a pick of her own.
@@ -335,7 +335,9 @@ const endpointOk = (u, { lan = false } = {}) => {
 const endpointOkFor = (id, u) => endpointOk(u, { lan: id === 'local' });
 const name80 = (v) => (str(v) ? String(v).trim().slice(0, 80) : '');
 // settings.tts.voicePackByCharacter: character ids (core/species.js, generic vrmx… bases included) to pack ids
-// (core/voice-pack.js); 'auto' and anything malformed is dropped (= auto), at most VOICE_PACK_PICKS entries.
+// (core/voice-pack.js) or 'none' (不使用: no pack, voice-pack.js NONE); 'auto' and anything malformed is dropped
+// (= auto), at most VOICE_PACK_PICKS entries. A settings.json from before per-character picks has none: all auto. A pick
+// of a pack that is not here (a store pack deleted) is kept, so it is in force again once the pack is downloaded back.
 const CHARACTER_ID_RE = /^[a-z][a-z0-9]{1,19}$/;
 const VOICE_PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const VOICE_PACK_PICKS = 200;

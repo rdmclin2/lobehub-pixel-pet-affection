@@ -26,6 +26,7 @@ const { serveVrmLibrary } = require('./vrm-library');
 const vrmDances = require('./vrm-dances');
 const DancesLib = require('../core/vrm-dances');
 const danceImport = require('./dance-import');
+const VoiceStore = require('../core/voice-store');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
 const { screenPx } = require('../core/fx');
@@ -33,7 +34,7 @@ const { TtsEngine, NEURAL, defaultEngine } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
 const { TtsKeyStore } = require('../core/tts-keys');
 const { AsrEngine, KEY_ID: ASR_KEY_ID, MAX_BYTES: ASR_MAX_BYTES, mediaAllowed } = require('../core/asr');
-const { VoicePacks, packApplies, resolvePack, voiceForPack, AUTO: PACK_AUTO, norm: packNorm } = require('../core/voice-pack');
+const { VoicePacks, packApplies, resolvePack, voiceForPack, AUTO: PACK_AUTO, NONE: PACK_NONE, norm: packNorm } = require('../core/voice-pack');
 const VoiceGender = require('../core/voice-gender');
 const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
@@ -64,6 +65,7 @@ let updater = null;
 let packStore = null;
 let catalog = null; // 下载角色 (src/main/catalog.js)
 let danceStore = null; // 商店 → 舞蹈: the same downloader, installing into the dance library
+let voiceStore = null; // 商店 → 语音包: the same downloader, unpacking into userData/voicepacks/<id>/ (core/voice-store.js)
 let petBounds = null; // the pet window's bounds while a panel (wardrobe / topics) has it enlarged
 let apiServer = null;
 let admin = null; // the settings window (admin-window.js), single instance
@@ -796,7 +798,7 @@ function wire() {
   // 我的语音包 (settings.tts.voicePack) > her own (专属) > the generic pack of her gender (core/voice-gender.js).
   function recordedLine(sp, text, probe = false, vp = voicePackOf(sp)) {
     const pack = vp.pack;
-    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts))) return null;
+    if (!packApplies(service.settings.tts, pack, tts.engine.firstUsable(vp.voiced, service.settings.tts), vp.source)) return null;
     if (probe) return pack.lines.has(packNorm(text));
     return tts.packs.lookupIn(pack, text);
   }
@@ -831,8 +833,18 @@ function wire() {
       genderSource: vp.genderSource,
       pack: p ? { id: p.id, name: p.name, kind: p.kind, gender: p.gender || null, character: p.character || null, engine: p.engine || null, voiceId: p.voiceId || null, lines: p.lines.size } : null,
       engineVoice: voiceTts ? engineVoiceOf(vp.voiced, voiceTts, vp.voiced !== sp) : null,
-      options: [{ id: PACK_AUTO, name: '自动' }, ...tts.packs.list().map((x) => ({ id: x.id, name: x.name, kind: x.kind, gender: x.gender, character: x.character }))],
+      options: [{ id: PACK_NONE, name: '不使用' }, { id: PACK_AUTO, name: '内置（自动）' }, ...tts.packs.list().map((x) => ({ id: x.id, name: x.name, kind: x.kind, gender: x.gender, character: x.character }))],
+      // 商店 → 语音包 entries not on this machine: shown in the picker, not pickable, with a link to the store
+      notDownloaded: notDownloadedPacks(),
     };
+  }
+  function notDownloadedPacks() {
+    try {
+      return Catalog.listVoicePacks((id) => !!tts.packs.get(id)).filter((v) => !v.installed).map((v) => ({ id: v.id, name: v.name, style: v.style || null, styleLabel: v.styleLabel || '', gender: v.gender || null }));
+    } catch (e) {
+      logError(e);
+      return [];
+    }
   }
   const speciesForId = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
   // the console's roster rows (adminState) show the pack she really uses, not just her own one
@@ -840,7 +852,7 @@ function wire() {
     const sp = speciesForId(id);
     return sp ? voicePackState(sp) : null;
   };
-  // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' }. Saved in settings.tts.voicePackByCharacter
+  // 按角色切换语音包: { characterId, packId: <pack id> | 'auto' (内置) | 'none' (不使用) }. Saved in settings.tts.voicePackByCharacter
   // and in force for her next line: the running prewarm (for the old pack's voice) stops, the line being
   // fetched is dropped, and the pet window prewarms again with the new pack (its signature includes the picks).
   ipcMain.handle('set-voice-pack', (_e, payload) => {
@@ -848,7 +860,7 @@ function wire() {
     const sp = speciesForId(characterId);
     if (!sp) return { ok: false, reason: 'unknown-character' };
     const pick = packId === null || packId === undefined || packId === '' ? PACK_AUTO : packId;
-    if (pick !== PACK_AUTO && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack', state: voicePackState(sp) };
+    if (pick !== PACK_AUTO && pick !== PACK_NONE && !tts.packs.get(pick)) return { ok: false, reason: 'unknown-pack', state: voicePackState(sp) };
     tts.engine.endPrewarm();
     tts.engine.cancel();
     const r = service.setTts({ voicePackByCharacter: { [sp.id]: pick } });
@@ -896,6 +908,38 @@ function wire() {
   ipcMain.handle('tts-clear-cache', () => { tts.cache.clear(); return service.getSettings(); });
   // 语音包: the owner's own packs go in userData/voicepacks/<id>/ (core/voice-pack.js); read again on request
   ipcMain.on('open-voicepacks-folder', () => { const d = tts.packs.dirs[1]; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); });
+  // 商店 → 语音包 (core/voice-store.js, docs/voice-packs.md §7): the store's style packs, each 未下载 / 下载中 / 已下载 —
+  // 已下载 read from the disk every time, so a restart or a folder deleted by hand shows as it is. Download (progress
+  // as `catalog-progress`), cancel, delete; after each the packs are read again, so the pack can be picked at once
+  // (设置 → 语音包 lists it).
+  const voiceDir = () => tts.packs.dirs[1];
+  const voiceStoreState = () => {
+    const have = VoiceStore.installedIds(voiceDir());
+    return { voicePacks: VoiceStore.storeRows(Catalog.listVoicePacks((id) => have.has(id)), voiceStore ? voiceStore.state() : []), dir: voiceDir() };
+  };
+  ipcMain.handle('voice-store', () => voiceStoreState());
+  ipcMain.handle('voice-download', async (_e, { id } = {}) => {
+    const r = await voiceStore.download(String(id || ''));
+    if (r.ok) tts.packs.reload();
+    pushAdmin();
+    return { ...r, store: voiceStoreState(), settings: service.getSettings() };
+  });
+  ipcMain.handle('voice-download-cancel', (_e, { id } = {}) => voiceStore.cancel(String(id || '')));
+  // Deleting a pack someone uses is safe: her pick stays saved (it comes back if the pack is downloaded again) but
+  // counts as 内置（自动） at once (resolvePack `missing`); the line being fetched and the prewarm for its voice stop.
+  ipcMain.handle('voice-remove', (_e, { id } = {}) => {
+    const packId = String(id || '');
+    const t = service.settings.tts || {};
+    const usedBy = Object.entries(t.voicePackByCharacter || {}).filter(([, p]) => p === packId).map(([c]) => c);
+    const r = VoiceStore.remove(voiceDir(), packId);
+    if (r.ok) {
+      tts.packs.reload();
+      if (usedBy.length || t.voicePack === packId) { tts.engine.endPrewarm(); tts.engine.cancel(); }
+      service.emit('settings', service.settingsView()); // the pet window prewarms again for the pack she falls back to
+    }
+    pushAdmin();
+    return { ...r, usedBy, store: voiceStoreState(), settings: service.getSettings() };
+  });
   ipcMain.handle('voicepacks-reload', () => { tts.packs.reload(); return { settings: service.getSettings(), errors: tts.packs.errors.map((e) => `${path.basename(e.dir)}：${e.errors.join('；')}`) }; });
   // 语音输入 (core/asr.js). The bytes are checked here before anything is written or sent anywhere.
   ipcMain.handle('asr-transcribe', (_e, p) => {
@@ -1196,6 +1240,13 @@ app.whenReady().then(() => {
   const cache = new TtsCache(path.join(app.getPath('userData'), 'tts-cache'));
   const packs = new VoicePacks([path.join(__dirname, '..', 'voicepacks'), path.join(app.getPath('userData'), 'voicepacks')], { log: logError });
   tts = { keys, cache, packs, engine: new TtsEngine({ keys, cache, log: logError }) };
+  voiceStore = new CatalogDownloader({
+    packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
+    lookup: (id) => Catalog.voicePackEntry(id),
+    isInstalled: (e) => VoiceStore.installedIds(packs.dirs[1], new Set([e.id])).has(e.id),
+    install: (e, zipFile) => VoiceStore.installArchive(packs.dirs[1], e, zipFile),
+    texts: { unknown: '商店里没有这个语音包', installed: '这个语音包已经下载好了', invalid: '下载的语音包文件有问题，已丢弃' },
+  });
   const ttsStatus = () => ({ engines: tts.engine.status(service && service.settings.tts), encrypted: keys.encrypted(), cache: { count: cache.count(), bytes: cache.size() }, stats: { ...tts.engine.stats }, packs: packs.list() });
   const lh = new LhClient({ lhCache: fileCache(path.join(app.getPath('userData'), 'lh-path.json')) });
   // 语音输入: LobeHub through lh, or the owner's own server; logs say which provider, how long and how many bytes — never the audio or the text

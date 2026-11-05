@@ -1231,8 +1231,9 @@ function syncPrewarm() {
   }, 400);
 }
 function playAudio(rec, s, r, end) {
-  Object.assign(s, { provider: r.provider, cached: r.cached, status: 'playing' });
-  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, status: 'playing' });
+  // packId / packFile: the 语音包 and the recording played (provider 'pack'), null for an engine's audio
+  Object.assign(s, { provider: r.provider, cached: r.cached, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
+  Object.assign(rec, { provider: r.provider, voiceId: r.voiceId, model: r.model, cached: r.cached, mime: r.mime, bytes: r.audio.byteLength, packId: r.packId || null, packFile: r.packFile || null, status: 'playing' });
   const a = new Audio(URL.createObjectURL(new Blob([r.audio], { type: r.mime })));
   speechAudio = a;
   if (window.PetVRM && window.PetVRM.active()) window.PetVRM.lip.attach(a); // a VRM figure's mouth follows the voice

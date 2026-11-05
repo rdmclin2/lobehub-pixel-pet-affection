@@ -73,7 +73,7 @@ function retiredScenario(scenario, instead) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
-async function launch(env, { gate = false, video = null, args = [] } = {}) {
+async function launch(env, { gate = false, video = null, args = [], videoSize = { width: 460, height: 540 } } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
@@ -82,7 +82,7 @@ async function launch(env, { gate = false, video = null, args = [] } = {}) {
   // software WebGL: xvfb has no GPU, and 全动态 looks (rig.js) need WebGL (without it they show a still picture)
   // only the five pixel characters ship (core/catalog.js); the scenarios that are not about downloading find
   // every other look already downloaded (src/main/packs.js PIXELPET_CATALOG_PREINSTALLED). `catalogdl` passes ''.
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), ...env }, ...(video ? { recordVideo: { dir: video, size: { width: 460, height: 540 } } } : {}) });
+  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...args], cwd: ROOT, env: { ...process.env, PIXELPET_TEST: '1', PIXELPET_CLEAR_JWT: '1', PIXELPET_CATALOG_PREINSTALLED: path.join(ROOT, 'catalog'), ...env }, ...(video ? { recordVideo: { dir: video, size: videoSize } } : {}) });
   app.stderrBuf = '';
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
@@ -4766,19 +4766,20 @@ async function voicePackSwitch() {
     }, () => admin || page);
 
     let opts = [];
-    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 自动（按性别）/ 专属 / 通用·男 / 通用·女', async () => {
+    await step(S, 'V2 角色详情 → 语音: 正在用 专属 · 来源 自动; the picker lists 不使用 / 内置（自动）/ 专属 / 通用·男 / 通用·女', async () => {
       await voiceTab('dafeiyu-pixel');
       const cur = await current();
       assert.match(cur, /正在用 大肥鱼.* 专属/);
       assert.match(cur, /来源 自动 · 她有专属语音包/);
-      assert.match(await comboText(), /自动（按性别） · 现在是 专属/);
+      assert.match(await comboText(), /内置（自动 · 专属或按性别） · 现在是 专属/);
       await shot('v2-voice-tab-auto');
       await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').click();
       await admin.waitForSelector('[role="option"]');
       opts = (await admin.locator('[role="option"]').allTextContents()).map((x) => x.replace(/\s+/g, ' ').trim());
       await shot('v2-picker-open');
       await admin.keyboard.press('Escape');
-      assert.match(opts[0], /^自动（按性别）/);
+      assert.match(opts[0], /^不使用（全部用引擎朗读）/);
+      assert.match(opts[1], /^内置（自动 · 专属或按性别）/);
       assert.ok(opts.some((o) => /^专属 · 大肥鱼/.test(o)), 'her own');
       assert.ok(opts.some((o) => /^通用·男 · 通用男声.* · 1 句$/.test(o)), 'the owner\'s generic-male (userData/voicepacks, 1 line)');
       assert.ok(opts.some((o) => /^通用·女 · 通用女声/.test(o)), 'generic-female');
@@ -4832,7 +4833,7 @@ async function voicePackSwitch() {
       return note(`after restart: settings.json tts.voicePackByCharacter = ${JSON.stringify(saved())}\n语音 tab: ${cur}\n${fmtSynth(CATCH, a)}`);
     }, () => admin || page);
 
-    await step(S, 'V6 pick 通用·女, then 自动（按性别）: each in force at once; auto brings her own pack back', async () => {
+    await step(S, 'V6 pick 通用·女, then 内置（自动）: each in force at once; auto brings her own pack back', async () => {
       await pickInUi(/^通用·女/);
       await adminUntil(admin, () => /通用·女/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 通用·女');
       assert.deepEqual(saved(), { dafeiyu: 'generic-female' });
@@ -4840,7 +4841,7 @@ async function voicePackSwitch() {
       assert.deepEqual([f.provider, f.voiceId], ['minimax', 'female-tianmei']);
       const c1 = await current();
       await shot('v6-picked-generic-female');
-      await pickInUi(/^自动（按性别）/);
+      await pickInUi(/^内置（自动/);
       await adminUntil(admin, () => /专属/.test(document.querySelector('[role="tabpanel"]:not([inert]) [data-voice-pack-current]')?.textContent || ''), null, 10000, 'current = 专属');
       assert.deepEqual(saved(), {});
       const a = await synth(OWN);
@@ -4974,7 +4975,7 @@ async function userVoicePack() {
       const cb = (await admin.locator('[role="tabpanel"]:not([inert]) [data-voice-pack-select] [role="combobox"]').innerText()).replace(/\s+/g, ' ').trim();
       assert.match(cur, /通用·男/);
       assert.match(cur, /来源 自动 · 跟随我的语音包/);
-      assert.match(cb, /^自动（跟随我的语音包） · 现在是 通用·男/);
+      assert.match(cb, /^内置（自动 · 跟随我的语音包） · 现在是 通用·男/);
       await shot('u3-character-follows');
       return note(`大肥鱼 语音 tab: ${cur}\npicker: ${cb}`);
     }, () => admin || page);
@@ -9690,6 +9691,1011 @@ async function storeScenario() {
   }
 }
 
+// ---------------------------------------------------------------- voicestore (商店 → 语音包: 浏览、下载、三态)
+// 商店 → 语音包 lists the 风格语音包 of src/core/voice-catalog.json: name, 风格, 音色说明, size, 署名, 试听. From a
+// local server playing the release host (the archives rebuilt by scripts/build-voice-catalog.js --check, throttled so
+// 下载中 shows): 未下载 → 下载中 (progress) → 已下载; the pack is unpacked into userData/voicepacks/<id>/ and listed
+// in 设置 → 语音包 (来源 商店下载). A corrupted archive is refused by its sha256 and leaves nothing behind. After a
+// restart 已下载 is still right (read from disk); 删除 brings it back to 未下载 and out of the local list.
+// Free: fake lh, no network. Evidence in out/e2e/voicestore/.
+async function voiceStoreScenario() {
+  const S = 'voicestore';
+  const SHOTS = path.join(OUT, 'voicestore');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const IDS = index.voicePacks.map((v) => v.id);
+  const CUTE = 'style-cute';
+  const BAD = 'style-yujie';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicezips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const corrupt = new Set();
+  const served = [];
+  const server = http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = path.join(zips, name);
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    let buf = fs.readFileSync(file);
+    if (corrupt.has(name)) { buf = Buffer.from(buf); buf[Math.floor(buf.length / 2)] ^= 0xff; } // same size, other bytes
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~300 KB/s, so 下载中 and the bar are seen
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 32 * 1024)); i += 32 * 1024; setTimeout(tick, 100); };
+    tick();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}/voices`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestore-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-voicestorefake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: base };
+  const VDIR = path.join(data, 'voicepacks');
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  record('v0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\nserved from ${base} (throttled ~300 KB/s)\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  let { app, page } = await launch(env);
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const call = (fn, ...args) => admin.evaluate(([f, a]) => window.petAdmin[f](...a), [fn, args]);
+  const go = async (route) => {
+    await admin.bringToFront();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(300);
+  };
+  const tab = async (label) => {
+    await admin.evaluate((l) => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === l); if (!t) throw new Error(`no tab ${l}`); t.click(); }, label);
+    await admin.waitForTimeout(400);
+  };
+  const openVoices = async () => { await go('/store'); await tab('语音包'); await attached('[data-store-voices]'); await admin.waitForTimeout(300); };
+  const toast = (re) => admin.waitForFunction((src) => [...document.querySelectorAll('[data-sonner-toast], [role="status"], li, div')].some((el) => el.childElementCount < 6 && new RegExp(src).test(el.textContent || '')), re.source, { timeout: 20000 });
+  const shot = async (name) => {
+    const h = await admin.evaluate(() => { const el = document.querySelector('[data-admin-page]'); return Math.ceil(el.getBoundingClientRect().top + el.scrollHeight + 48); });
+    await app.evaluate(({ BrowserWindow }, [w, hh]) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, Math.min(Math.max(hh, 860), 3200)); }, [W, h]);
+    await admin.waitForTimeout(450);
+    await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) });
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 860); }, W);
+    return `${name}.png`;
+  };
+  const viewShot = async (name) => { await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  // each card's state as the page shows it
+  const states = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+  const leftovers = () => (fs.existsSync(VDIR) ? fs.readdirSync(VDIR).filter((n) => n.startsWith('.') || n.includes('.old-')) : []);
+  // 设置 → 语音包: the rows of the local list (antd sets data-row-key)
+  const localRows = async () => {
+    await go('/voicepacks');
+    await admin.waitForTimeout(400);
+    return admin.$$eval('[data-admin-page] tr[data-row-key]', (els) => els.map((e) => ({ id: e.dataset.rowKey, text: e.textContent })));
+  };
+  const openAdmin = async () => {
+    admin = await openAdminWindow(app, page, 'overview');
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+  };
+
+  try {
+    await step(S, 'V0 唤醒桌宠，打开配置窗口', async () => {
+      await page.waitForSelector('.char-card');
+      await page.locator('.char-card').first().click();
+      await page.fill('#pet-name', '小鱼');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      return 'ok';
+    }, page);
+
+    await step(S, 'V1 商店 → 语音包：5 个风格语音包，每张卡有名称、风格、音色说明、体积、署名、试听，全部「未下载」', async () => {
+      await openVoices();
+      const tabs = await admin.$$eval('[role="tab"]', (els) => els.map((e) => e.textContent.trim()));
+      assert.ok(tabs.includes('语音包'), tabs.join(','));
+      const cards = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => {
+        const q = (a) => (e.querySelector(`[${a}]`) || {}).textContent || '';
+        return { id: e.dataset.storeVoice, state: e.dataset.voiceState, name: e.querySelector('strong, [class*="strong"]')?.textContent || e.textContent.slice(0, 20), style: q('data-store-voice-style'), desc: q('data-store-voice-desc'), timbre: q('data-store-voice-timbre'), meta: q('data-store-voice-meta'), credit: q('data-store-voice-credit'), sample: !!e.querySelector('[data-voice-sample]'), tag: q('data-voice-not-downloaded'), btn: q('data-voice-download') };
+      }));
+      assert.deepEqual(cards.map((c) => c.id), IDS);
+      for (const c of cards) {
+        const e = index.voicePacks.find((v) => v.id === c.id);
+        assert.equal(c.state, 'remote', c.id);
+        assert.equal(c.tag, '未下载');
+        assert.equal(c.btn, '下载');
+        assert.equal(c.style, e.styleLabel);
+        assert.equal(c.desc, e.description);
+        assert.equal(c.timbre, `音色：MiniMax ${e.voiceId}`);
+        assert.match(c.meta, new RegExp(`${e.lines} 句 · ${Catalog.sizeLabel(e.bytes).replace('.', '\\.')}`));
+        assert.equal(c.credit, e.credit);
+        assert.ok(c.sample);
+      }
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 5.*已下载 0/);
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      record('v1-cards.json', JSON.stringify(cards, null, 2));
+      return `${cards.map((c) => `${c.id}「${c.style}」${c.meta}`).join('；')} → ${await shot('v1-store-voices-not-downloaded')}`;
+    }, page);
+
+    await step(S, 'V2 试听（不用下载）：点「试听」播放随应用附带的试听句，按钮变「停止」', async () => {
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('playing', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('停止')), 8000);
+      const shotName = await viewShot('v2-sample-playing');
+      await admin.click(`[data-voice-sample="${CUTE}"]`);
+      await until('stopped', () => admin.$eval(`[data-voice-sample="${CUTE}"]`, (b) => b.textContent.includes('试听')), 5000);
+      return `试听 ${index.voicePacks[0].sample.file} 播放中 → ${shotName}`;
+    }, page);
+
+    let mid = '';
+    await step(S, 'V3 下载「可爱 · 甜心少女」：卡片变「下载中」，进度条与百分比走动', async () => {
+      await admin.click(`[data-voice-download="${CUTE}"]`);
+      await attached(`[data-voice-download-progress="${CUTE}"]`);
+      await admin.waitForFunction((id) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${id}"]`)?.textContent || ''), CUTE, { timeout: 15000 });
+      mid = await admin.$eval(`[data-voice-download-progress="${CUTE}"]`, (el) => el.textContent);
+      const st = await states();
+      assert.equal(st[CUTE], 'downloading');
+      assert.equal(await admin.$eval(`[data-voice-downloading="${CUTE}"]`, (el) => el.textContent), '下载中');
+      assert.ok(await admin.$(`[data-voice-download-cancel="${CUTE}"]`));
+      const main = await call('voiceStore');
+      const row = main.voicePacks.find((v) => v.id === CUTE);
+      assert.equal(row.state, 'downloading', 'main says 下载中 too');
+      return `进度「${mid}」；主进程 state=${row.state} percent=${row.percent} → ${await viewShot('v3-downloading')}`;
+    }, page);
+
+    await step(S, 'V4 下载完成：卡片「已下载」，文件在 userData/voicepacks/style-cute/（manifest 校验通过 + 标记），已下载筛选里有它', async () => {
+      await toast(/「可爱 · 甜心少女」下载好了/);
+      await until('installed', async () => (await states())[CUTE] === 'installed');
+      assert.equal(await admin.$eval(`[data-voice-downloaded="${CUTE}"]`, (el) => el.textContent), '已下载');
+      const m = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, 'manifest.json'), 'utf8'));
+      const marker = JSON.parse(fs.readFileSync(path.join(VDIR, CUTE, '.catalog.json'), 'utf8'));
+      const VP = require('../src/core/voice-pack');
+      assert.deepEqual(VP.validateManifest(m, path.join(VDIR, CUTE)), []);
+      assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === CUTE).sha256);
+      assert.deepEqual(leftovers(), []);
+      const all = await shot('v4a-store-downloaded');
+      await admin.locator('[data-store-voice-filter]').getByText(/^已下载 1$/).click();
+      await admin.waitForTimeout(400);
+      const shown = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => e.dataset.storeVoice));
+      assert.deepEqual(shown, [CUTE]);
+      const filtered = await shot('v4b-store-filter-downloaded');
+      const files = fs.readdirSync(path.join(VDIR, CUTE));
+      record('v4-installed.txt', `${path.join('<userData>', 'voicepacks', CUTE)}: ${files.length} files (manifest.json, .catalog.json, ${files.length - 2} audio)\nmanifest: id=${m.id} kind=${m.kind} style=${m.style} version=${m.version} lines=${Object.keys(m.lines).length}\nvalidateManifest: OK\nmarker: ${JSON.stringify(marker)}\n`);
+      return `已下载；${files.length} 个文件；marker ${JSON.stringify(marker)}；已下载筛选: ${shown.join(',')} → ${all}, ${filtered}`;
+    }, page);
+
+    await step(S, 'V5 本地可用列表：设置 → 语音包 列出 style-cute（任意角色 · 138 句 · 来源「商店下载」），主进程已加载为 style 包', async () => {
+      const rows = await localRows();
+      const row = rows.find((r) => r.id === CUTE);
+      assert.ok(row, rows.map((r) => r.id).join(','));
+      assert.match(row.text, /可爱 · 甜心少女/);
+      assert.match(row.text, /商店下载/);
+      assert.match(row.text, /138 句/);
+      const st = await call('state');
+      assert.ok(st.settings.ttsStatus.packs.some((p) => p.id === CUTE && p.kind === 'style' && p.store));
+      return `本地列表: ${rows.map((r) => r.id).join(', ')} → ${await shot('v5-settings-voicepacks-local-list')}`;
+    }, page);
+
+    await step(S, 'V6 下载的文件被篡改：sha256 校验不通过，提示可读的失败原因，本机不留文件，卡片回到「未下载」', async () => {
+      corrupt.add(`${BAD}.zip`);
+      await openVoices();
+      await admin.click(`[data-voice-download="${BAD}"]`);
+      await toast(/没能下载「御姐 · 妩媚姐姐」/);
+      await toast(/校验没通过/);
+      const failShot = await viewShot('v6-checksum-failed');
+      await until('remote again', async () => (await states())[BAD] === 'remote');
+      const cardErr = await admin.$eval(`[data-voice-download-error="${BAD}"]`, (el) => el.textContent);
+      assert.match(cardErr, /校验没通过/);
+      assert.ok(!fs.existsSync(path.join(VDIR, BAD)));
+      assert.deepEqual(leftovers(), []);
+      corrupt.delete(`${BAD}.zip`);
+      return `篡改后: 未安装、无残留，卡片仍是未下载，卡上提示「${cardErr}」 → ${failShot}`;
+    }, page);
+
+    await step(S, 'V7 重启应用：已下载状态以磁盘为准，style-cute 仍是「已下载」，其余「未下载」', async () => {
+      await app.close();
+      ({ app, page } = await launch(env));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await openAdmin();
+      await openVoices();
+      const st = await states();
+      assert.deepEqual(st, Object.fromEntries(IDS.map((id) => [id, id === CUTE ? 'installed' : 'remote'])));
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 4.*已下载 1/);
+      return `重启后: ${JSON.stringify(st)} → ${await shot('v7-after-restart')}`;
+    }, page);
+
+    await step(S, 'V8 删除已下载的语音包：确认后回到「未下载」，文件夹删除，本地列表不再有它', async () => {
+      await admin.click(`[data-voice-remove="${CUTE}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await toast(/已删除语音包「可爱 · 甜心少女」/);
+      await until('remote', async () => (await states())[CUTE] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, CUTE)));
+      const storeShot = await viewShot('v8a-removed');
+      const rows = await localRows();
+      assert.ok(!rows.some((r) => r.id === CUTE));
+      return `删除后本地列表: ${rows.map((r) => r.id).join(', ')} → ${storeShot}, ${await shot('v8b-settings-after-remove')}`;
+    }, page);
+
+    await step(S, 'V9 没有渲染错误、没有遗留的临时目录', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      assert.deepEqual(leftovers(), []);
+      record('served.txt', `served from ${base}\n${served.join('\n')}\n`);
+      return `no console errors; served: ${served.join(', ')}`;
+    }, page);
+  } finally {
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
+// ---------------------------------------------------------------- voiceselect (按角色选择语音包：不使用 / 内置 / 已下载的风格包)
+// T-5095. 角色详情 → 语音 → 语音包 offers 不使用 / 内置（自动） / the 风格语音包 downloaded from 商店 (the store's others
+// are listed disabled, 去商店下载 opens 商店 → 语音包). Picking 可爱 (A), feeding her when she is full makes her say
+// 「呃……肚子圆滚滚的，吃不下了。」 — the pet window plays userData/voicepacks/style-cute/<file>; picking 御姐 (B) the
+// same line plays from style-yujie at once, no restart; a line B has not recorded (摸摸: her own line) goes to the
+// engine; 不使用 plays nothing from a pack. After a restart she is still on B. Deleting B while she uses it puts her on
+// 内置 (her own pack) with a notice. Free: fake lh, no key, store served from a local server. Evidence in out/e2e/voiceselect/.
+async function voiceSelectScenario() {
+  const S = 'voiceselect';
+  const SHOTS = path.join(OUT, 'voiceselect');
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const index = Catalog.loadVoiceIndex();
+  const A = 'style-cute';
+  const B = 'style-yujie';
+  const nameOf = (id) => index.voicePacks.find((v) => v.id === id).name;
+  const FULL = '呃……肚子圆滚滚的，吃不下了。';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselzips-'));
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const server = http.createServer((req, res) => {
+    const file = path.join(zips, path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname)));
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    res.end(buf);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vsel-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vselfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true } }));
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/voices` };
+  const VDIR = path.join(data, 'voicepacks');
+  const crypto = require('node:crypto');
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).tts.voicePackByCharacter;
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const openAdmin = async (route) => {
+    admin = await openAdminWindow(app, page, route);
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 900); }, W);
+  };
+  const ashot = async (name) => { await admin.bringToFront(); await admin.waitForTimeout(350); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const PANEL = '[role="tabpanel"]:not([inert])';
+  const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
+  const voiceTab = async (id = 'dafeiyu-pixel') => {
+    await admin.bringToFront();
+    if (await admin.$('[role="option"]')) await closePicker();
+    await admin.evaluate((x) => { location.hash = `/characters/${x}`; }, id);
+    await admin.waitForSelector(`[data-path="/characters/${id}"]`);
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await combo().waitFor();
+    await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
+    await admin.waitForTimeout(300);
+  };
+  const current = async () => (await admin.locator(`${PANEL} [data-voice-pack-current]`).innerText()).replace(/\s+/g, ' ').trim();
+  const comboText = async () => (await combo().innerText()).replace(/\s+/g, ' ').trim();
+  // the open picker (@lobehub/ui Select on base-ui): group labels and options in order, disabled ones marked
+  const options = () => admin.$$eval('.lobe-select__group-label, [role="option"]', (els) => els.map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), group: e.classList.contains('lobe-select__group-label'), disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' })));
+  const openPicker = async () => {
+    await combo().click();
+    await admin.waitForSelector('[role="option"]');
+    await admin.waitForTimeout(300);
+  };
+  const closePicker = async () => {
+    await admin.keyboard.press('Escape');
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+  };
+  const pickInUi = async (rx, shotName = null) => {
+    await openPicker();
+    const opts = await options();
+    const s = shotName ? await ashot(shotName) : null;
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+    return { opts, shot: s };
+  };
+  const choiceIs = (choice) => until(`picker = ${choice}`, () => admin.evaluate(([p, c]) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice === c, [PANEL, choice]), 10000);
+  // the line she says when fed while full, as the pet window reads it: what it played and from which file
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600);
+  };
+  const said = async (kindRe, fn) => {
+    await page.bringToFront();
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await fn();
+    await page.waitForFunction(([n, re]) => window.petFx.offerLog().slice(n).some((e) => new RegExp(re).test(e.kind) && e.n), [n0, kindRe.source], { timeout: 20000 });
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => kindRe.test(e.kind));
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 });
+    const sp = await page.evaluate(() => window.petFx.lastSpeech());
+    return { text: entry.text, provider: sp.provider, packId: sp.packId, packFile: sp.packFile, bytes: sp.bytes || 0, mime: sp.mime || null, started: !!sp.started, status: sp.status };
+  };
+  const feedFull = async () => said(/^feed$/, async () => { await page.evaluate(() => window.pet.debugSet({ hunger: 0 })); await clickAct(page, 'feed'); await page.click('#food-menu button'); });
+  const pat = async () => {
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: false }));
+    const b = await page.locator('#pet-body .pet-hit:not(.hidden)').boundingBox();
+    const r = await said(/^pat$/, () => page.mouse.click(b.x + b.width / 2, b.y + b.height * 0.4));
+    await page.evaluate(() => window.pet.setPrefs({ touchZones: true }));
+    return r;
+  };
+  // the folder of a pack by id: the store's in userData/voicepacks/<id>, a built-in one in src/voicepacks/<folder>
+  const packDir = (id) => {
+    if (fs.existsSync(path.join(VDIR, id || '', 'manifest.json'))) return path.join(VDIR, id);
+    const b = path.join(ROOT, 'src', 'voicepacks');
+    const d = fs.readdirSync(b).find((n) => { try { return JSON.parse(fs.readFileSync(path.join(b, n, 'manifest.json'), 'utf8')).id === id; } catch { return false; } });
+    return d ? path.join(b, d) : path.join(VDIR, id || '');
+  };
+  const fileOf = (r) => {
+    const f = path.join(packDir(r.packId), r.packFile || '');
+    if (!r.packFile || !fs.existsSync(f)) return { path: f, exists: false };
+    const buf = fs.readFileSync(f);
+    return { path: f, exists: true, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) };
+  };
+  const fmt = (r) => { const f = fileOf(r); return `「${r.text}」 → provider=${r.provider} packId=${r.packId} packFile=${r.packFile} played bytes=${r.bytes} mime=${r.mime} started=${r.started} status=${r.status}${f.exists ? ` | file ${f.path.replace(data, '<userData>').replace(ROOT, '<repo>')} size=${f.size} sha256=${f.sha256}` : ''}`; };
+  const assertFrom = (r, packId) => {
+    const f = fileOf(r);
+    assert.equal(r.text, FULL);
+    assert.deepEqual([r.provider, r.packId, r.status, r.started], ['pack', packId, 'done', true], fmt(r));
+    assert.ok(f.exists, `file ${f.path}`);
+    assert.equal(r.bytes, f.size, 'the audio played is that file');
+  };
+  const storeStates = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+
+  try {
+    await step(S, 'S0 唤醒大肥鱼（朗读开，没有任何引擎 Key）；初始 settings.json 无按角色选择', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), {});
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await pshot('s0-pet');
+      return note(`S0 before any pick: tts.voicePackByCharacter=${JSON.stringify(saved())}\n  ${fmt(r)}`);
+    }, page);
+
+    await step(S, 'S1 角色详情 → 语音 → 语音包：选项为「不使用 / 内置（自动）/ …」，商店里没下载的风格包列在「未下载」里且不可选，旁边有「去商店下载」', async () => {
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      assert.match(cb, /^内置（自动 · 专属或按性别） · 现在是 专属/);
+      const shotTab = await ashot('s1a-voice-tab-builtin');
+      await openPicker();
+      const head = await options();
+      const shotHead = await ashot('s1b-picker-top');
+      await admin.evaluate(() => { const o = [...document.querySelectorAll('[role="option"]')].at(-1); o && o.scrollIntoView({ block: 'end' }); });
+      await admin.waitForTimeout(300);
+      const tail = head;
+      const shotTail = await ashot('s1c-picker-not-downloaded');
+      await closePicker();
+      assert.match(head.find((o) => !o.group).text, /^不使用（全部用引擎朗读）/);
+      assert.ok(head.some((o) => /^内置（自动/.test(o.text)));
+      const remote = tail.filter((o) => /· 未下载$/.test(o.text));
+      assert.equal(remote.length, index.voicePacks.length, JSON.stringify(tail));
+      assert.ok(remote.every((o) => o.disabled), 'not downloaded = not pickable');
+      assert.ok(tail.some((o) => o.group && /未下载/.test(o.text)));
+      const btn = await admin.locator(`${PANEL} [data-voice-pack-store]`).innerText();
+      assert.match(btn, /去商店下载（5 个未下载）/);
+      return note(`S1 picker: ${cb}\n  top: ${head.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  bottom: ${tail.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  button: ${btn} → ${shotTab}, ${shotHead}, ${shotTail}`);
+    }, () => admin || page);
+
+    await step(S, 'S2 点「去商店下载」进入 商店 → 语音包，下载 可爱（A）与 御姐（B）', async () => {
+      await admin.locator(`${PANEL} [data-voice-pack-store]`).click();
+      await admin.waitForSelector('[data-path="/store/voices"]');
+      await admin.waitForSelector('[data-store-voices]');
+      for (const id of [A, B]) {
+        await admin.click(`[data-voice-download="${id}"]`);
+        await until(`${id} installed`, async () => (await storeStates())[id] === 'installed', 60000);
+      }
+      const st = await storeStates();
+      const s = await ashot('s2-store-downloaded');
+      return note(`S2 via 去商店下载 → #/store/voices; states ${JSON.stringify(st)} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S3 回到角色语音页：已下载的 A、B 出现在「风格语音包（已下载）」组，选 A（可爱）→ 持久化到 settings.json', async () => {
+      await voiceTab();
+      const { opts, shot: s } = await pickInUi(new RegExp(nameOf(A)), 's3a-picker-downloaded');
+      await choiceIs(A);
+      await admin.waitForTimeout(300);
+      const cur = await current();
+      assert.ok(opts.some((o) => o.group && o.text === '风格语音包（已下载）'));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·可爱 · ${nameOf(A)}`)));
+      assert.ok(opts.some((o) => !o.disabled && o.text.startsWith(`风格·御姐 · ${nameOf(B)}`)));
+      assert.match(cur, new RegExp(`正在用 ${nameOf(A)} 风格·可爱`));
+      assert.match(cur, /来源 手动指定/);
+      assert.deepEqual(saved(), { dafeiyu: A });
+      const s2 = await ashot('s3b-picked-A');
+      return note(`S3 options: ${opts.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  正在用: ${cur}\n  settings.json tts.voicePackByCharacter=${JSON.stringify(saved())} → ${s}, ${s2}`);
+    }, () => admin || page);
+
+    await step(S, 'S4 A 生效：桌宠喂食（已经吃饱）说固定台词，播放的是 userData/voicepacks/style-cute 里的文件；她的专属台词（摸摸）A 包没有 → 回退引擎', async () => {
+      const r = await feedFull();
+      assertFrom(r, A);
+      const p = await pshot('s4-pet-said-A');
+      // 摸摸: her lines are random — a generic one A has recorded plays from A, one of her own goes to the engine
+      const VPk = require('../src/core/voice-pack');
+      const inA = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(VDIR, A, 'manifest.json'), 'utf8')).lines).map(VPk.norm));
+      const pats = [];
+      let q = null;
+      for (let i = 0; i < 8 && !q; i++) {
+        const x = await pat();
+        pats.push(x);
+        const recorded = inA.has(VPk.norm(x.text));
+        if (recorded) assert.deepEqual([x.provider, x.packId], ['pack', A], fmt(x));
+        else { assert.notEqual(x.provider, 'pack', fmt(x)); assert.ok(!x.packId, 'not from any pack'); q = x; }
+      }
+      assert.ok(q, `a line A has not recorded: ${pats.map(fmt).join(' / ')}`);
+      return note(`S4 (A=${A}):\n  ${fmt(r)}\n  摸摸 lines: ${pats.map((x) => `${inA.has(VPk.norm(x.text)) ? '[in A] ' : '[not in A → engine] '}${fmt(x)}`).join('\n    ')}\n  (no key on this box → 原引擎链 → 系统语音) → ${p}`);
+    }, page);
+
+    let fileA = null;
+    await step(S, 'S5 切到 B（御姐）：不用重启，同一句台词立刻来自 style-yujie 的文件', async () => {
+      fileA = fileOf(await feedFull());
+      assert.ok(fileA.path.includes(path.join('voicepacks', A)), fileA.path);
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const s = await ashot('s5a-picked-B');
+      const r = await feedFull();
+      assertFrom(r, B);
+      const f = fileOf(r);
+      assert.notEqual(f.sha256, fileA.sha256, 'another recording');
+      const p = await pshot('s5b-pet-said-B');
+      return note(`S5 (B=${B}): settings.json=${JSON.stringify(saved())}\n  ${fmt(r)}\n  A's file was ${fileA.path.replace(data, '<userData>')} sha256=${fileA.sha256} → ${s}, ${p}`);
+    }, () => admin || page);
+
+    await step(S, 'S6 选「不使用」：同一句不再从语音包播放（走引擎链）；再切回 B', async () => {
+      await voiceTab();
+      await pickInUi(/^不使用/);
+      await choiceIs('none');
+      assert.deepEqual(saved(), { dafeiyu: 'none' });
+      const cur = await current();
+      assert.match(cur, /不使用语音包/);
+      const s = await ashot('s6-none');
+      const r = await feedFull();
+      assert.notEqual(r.provider, 'pack', fmt(r));
+      await voiceTab();
+      await pickInUi(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      assert.deepEqual(saved(), { dafeiyu: B });
+      return note(`S6 不使用: 正在用「${cur}」; ${fmt(r)}\n  back to B: settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7 重启应用：settings.json 仍是 B，设置页显示 B，固定台词仍来自 style-yujie', async () => {
+      await app.close();
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart') }));
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      assert.deepEqual(saved(), { dafeiyu: B });
+      const r = await feedFull();
+      assertFrom(r, B);
+      const p = await pshot('s7a-pet-after-restart');
+      await openAdmin('overview');
+      await voiceTab();
+      const cb = await comboText();
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·御姐`));
+      const s = await ashot('s7b-voice-tab-after-restart');
+      return note(`S7 after restart: settings.json=${JSON.stringify(saved())}; picker「${cb}」; ${cur}\n  ${fmt(r)} → ${p}, ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S7c 选择按角色绑定：另一个角色（克洛蒂）的语音页显示她自己的选择「内置」，不受大肥鱼的 B 影响', async () => {
+      const other = (await admin.evaluate(() => window.petAdmin.state())).roster.find((x) => x.base === 'claude');
+      await voiceTab(other.id);
+      const cb = await comboText();
+      const cur = await current();
+      const choice = await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice, PANEL);
+      assert.equal(choice, 'auto');
+      assert.match(cb, /^内置（自动/);
+      assert.match(cur, /专属/);
+      assert.deepEqual(saved(), { dafeiyu: B }, 'only her pick is saved');
+      const s = await ashot('s7c-other-character-own-choice');
+      await voiceTab();
+      return note(`S7c ${other.id} (base claude): choice=${choice}; picker「${cb}」; ${cur}; settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S8 删除正在使用的 B：安全回退到内置（她的专属语音包），设置页提示；选择仍保存，重新下载后恢复', async () => {
+      await admin.evaluate(() => { location.hash = '/store/voices'; });
+      await admin.waitForSelector('[data-store-voices]');
+      await admin.click(`[data-voice-remove="${B}"]`);
+      await admin.getByRole('button', { name: '删除语音包' }).last().click();
+      await until('B removed', async () => (await storeStates())[B] === 'remote');
+      assert.ok(!fs.existsSync(path.join(VDIR, B)));
+      const r = await feedFull();
+      assertFrom(r, 'dafeiyu-minimax');
+      await voiceTab();
+      await admin.locator(`${PANEL} [data-voice-pack-missing="${B}"]`).waitFor();
+      const warn = (await admin.locator(`${PANEL} [data-voice-pack-missing]`).innerText()).replace(/\s+/g, ' ').trim();
+      const cur = await current();
+      assert.match(cur, /专属/);
+      const s = await ashot('s8-removed-in-use');
+      assert.deepEqual(saved(), { dafeiyu: B }, 'the pick is kept');
+      return note(`S8 B deleted while in use: ${fmt(r)}\n  正在用: ${cur}\n  notice: ${warn}\n  settings.json=${JSON.stringify(saved())} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'S9 没有渲染错误', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      return 'no console errors';
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voiceselect-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    server.close();
+  }
+}
+
+// ---------------------------------------------------------------- voiceflow (语音包端到端：商店 → 下载 → 本地列表 → 角色选择 → 播放 → 重启)
+// T-5096. One user journey from an empty userData (only the age gate answered, as every scenario starts): turn 朗读
+// on in 设置 → 朗读; 商店 → 语音包 shows the 5 风格语音包 未下载; download 可爱 and 少年 from a throttled local server
+// playing the CDN (the archives rebuilt and sha256-checked by build-voice-catalog.js --check), seeing 未下载 → 下载中
+// (progress) → 已下载; both are in the local list (已下载 filter, 设置 → 语音包, userData/voicepacks/); 角色 → 大肥鱼 →
+// 语音 → 语音包 picks 可爱: the pet plays the line from style-cute; switching to 少年 plays it from style-shaonian at
+// once; after a restart she is still on 少年 and both packs are still 已下载. The played files are copied next to the
+// screenshots (played-*.ogg) so they can be listened to. Free: fake lh, no key. Evidence in out/e2e/voiceflow/.
+// `voiceflowcdn` (T-5104) is the same journey against the real CDN: no local server and no PIXELPET_CATALOG_URL, so
+// the app fetches the catalog's default ${CDN_ORIGIN}/…/voices-v1/<id>.zip. Every main-process net.fetch is logged
+// (url, status, bytes) to fetch-log.json; the first pack downloads at full speed (its 未下载 → 下载中 → 已下载 seen by a
+// MutationObserver on the card), the second one's CDN body is only paced (~250 KB/s, same bytes) so 下载中 can be
+// screenshotted. Needs network. Evidence in out/e2e/voiceflowcdn/.
+async function voiceFlowScenario({ cdn = false } = {}) {
+  const S = cdn ? 'voiceflowcdn' : 'voiceflow';
+  const SHOTS = path.join(OUT, S);
+  fs.rmSync(SHOTS, { recursive: true, force: true });
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const Catalog = require('../src/core/catalog');
+  const VPk = require('../src/core/voice-pack');
+  const crypto = require('node:crypto');
+  const index = Catalog.loadVoiceIndex();
+  const IDS = index.voicePacks.map((v) => v.id);
+  const A = 'style-cute';
+  const B = 'style-shaonian';
+  const nameOf = (id) => index.voicePacks.find((v) => v.id === id).name;
+  const labelOf = (id) => index.voicePacks.find((v) => v.id === id).styleLabel;
+  const FULL = '呃……肚子圆滚滚的，吃不下了。';
+  const zips = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflowzips-'));
+  const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
+  const http = require('node:http');
+  const served = [];
+  const CDN_BASE = `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/${index.release}`;
+  if (cdn) assert.ok(!process.env.PIXELPET_CATALOG_URL, 'voiceflowcdn: unset PIXELPET_CATALOG_URL');
+  const server = cdn ? { address: () => ({ port: 0 }), close: () => {} } : http.createServer((req, res) => {
+    const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const file = path.join(zips, name);
+    served.push(name);
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+    // ~250 KB/s so 下载中 and its progress bar are on screen for a few seconds
+    let i = 0;
+    const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 24 * 1024)); i += 24 * 1024; setTimeout(tick, 100); };
+    tick();
+  });
+  if (!cdn) await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = cdn ? CDN_BASE : `http://127.0.0.1:${server.address().port}/voices`;
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflow-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflowfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', ...(cdn ? {} : { PIXELPET_CATALOG_URL: base }) };
+  const VDIR = path.join(data, 'voicepacks');
+  // voiceflowcdn: log every main-process net.fetch; `pace` (archive names) slows only those bodies to ~250 KB/s
+  const fetchLog = [];
+  const hookFetch = async (a) => {
+    if (!cdn) return;
+    await a.evaluate(({ net }) => {
+      if (global.__vfHooked) return;
+      global.__vfHooked = true;
+      global.__vfLog = [];
+      global.__vfPace = new Set();
+      const orig = net.fetch.bind(net);
+      net.fetch = async (url, opts) => {
+        const t0 = Date.now();
+        const e = { url: String(url), t0 };
+        global.__vfLog.push(e);
+        const res = await orig(url, opts);
+        e.status = res.status; e.contentLength = res.headers.get('content-length'); e.contentType = res.headers.get('content-type');
+        const paced = [...global.__vfPace].some((n) => String(url).endsWith('/' + n));
+        e.paced = paced;
+        const reader = res.body.getReader();
+        let bytes = 0;
+        const body = new ReadableStream({
+          async pull(c) {
+            const { done, value } = await reader.read();
+            if (done) { e.bytes = bytes; e.ms = Date.now() - t0; return c.close(); }
+            bytes += value.length;
+            if (paced) await new Promise((r) => setTimeout(r, Math.ceil(value.length / 256)));
+            c.enqueue(value);
+          },
+        });
+        return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
+    });
+  };
+  const pullFetchLog = async (a) => { if (cdn) fetchLog.push(...(await a.evaluate(() => (global.__vfLog || []).filter((e) => /^https?:/.test(e.url))).catch(() => []))); };
+  const evidence = [];
+  const note = (x) => { evidence.push(x); return x; };
+  const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
+  const settingsFile = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const picks = () => (settingsFile().tts || {}).voicePackByCharacter;
+  const ls = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).sort() : null);
+  record('f0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\n${cdn ? `real CDN: ${base}/ (no PIXELPET_CATALOG_URL, no local server)` : `served from ${base} (throttled ~250 KB/s, playing ${Catalog.CDN_ORIGIN}/…/${index.release}/)`}\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  const before = ls(data);
+  // video chapters: wall-clock marks, turned into seconds from each window's recording start (videos.json)
+  const marks = [];
+  const videos = [];
+  const mark = (kind, text) => { marks.push({ wall: Date.now() / 1000, kind, text }); };
+  const VS = { width: 1180, height: 900 };
+  const track = (p, name) => { videos.push({ name, start: Date.now() / 1000, page: p }); };
+  let { app, page } = await launch(env, { video: path.join(SHOTS, 'video'), videoSize: VS });
+  await hookFetch(app);
+  track(page, 'pet-1');
+  let admin = null;
+  const errors = [];
+  const W = 1180;
+  const until = async (what, fn, ms = 20000) => {
+    for (let t = 0; t < ms; t += 100) {
+      if (await fn()) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`${what}: not within ${ms} ms`);
+  };
+  const openAdmin = async (route = 'overview') => {
+    admin = await openAdminWindow(app, page, route);
+    track(admin, `admin-${videos.filter((v) => v.name.startsWith('admin')).length + 1}`);
+    admin.on('pageerror', (e) => errors.push(String(e)));
+    admin.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+    await app.evaluate(({ BrowserWindow }, w) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(w, 900); }, W);
+  };
+  const attached = (sel, ms) => until(sel, () => admin.evaluate((x) => !!document.querySelector(x), sel), ms);
+  const go = async (route) => {
+    await admin.bringToFront();
+    if (await admin.$('[role="option"]')) await closePicker();
+    await admin.evaluate((r) => { location.hash = r; }, route);
+    await attached(`[data-path="${route}"]`);
+    await admin.waitForTimeout(400);
+  };
+  const ashot = async (name) => { await admin.bringToFront(); await admin.waitForTimeout(350); await admin.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const pshot = async (name) => { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); return `${name}.png`; };
+  const states = () => admin.$$eval('[data-store-voice]', (els) => Object.fromEntries(els.map((e) => [e.dataset.storeVoice, e.dataset.voiceState])));
+  const openVoices = async () => { await go('/store/voices'); await attached('[data-store-voices]'); await admin.waitForTimeout(300); };
+  const PANEL = '[role="tabpanel"]:not([inert])';
+  const combo = () => admin.locator(`${PANEL} [data-voice-pack-select] [role="combobox"]`);
+  const closePicker = async () => {
+    await admin.keyboard.press('Escape');
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+  };
+  const voiceTab = async (id = 'dafeiyu-pixel') => {
+    await go(`/characters/${id}`);
+    await admin.getByRole('tab', { name: '语音' }).click();
+    await combo().waitFor();
+    await admin.evaluate((p) => document.querySelector(`${p} [data-voice-pack-select]`)?.scrollIntoView({ block: 'center' }), PANEL);
+    await admin.waitForTimeout(300);
+  };
+  const current = async () => (await admin.locator(`${PANEL} [data-voice-pack-current]`).innerText()).replace(/\s+/g, ' ').trim();
+  const options = () => admin.$$eval('.lobe-select__group-label, [role="option"]', (els) => els.map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), group: e.classList.contains('lobe-select__group-label'), disabled: e.hasAttribute('data-disabled') || e.getAttribute('aria-disabled') === 'true' })));
+  const pick = async (rx, shotName) => {
+    await combo().click();
+    await admin.waitForSelector('[role="option"]');
+    await admin.waitForTimeout(300);
+    const opts = await options();
+    const s = shotName ? await ashot(shotName) : null;
+    await admin.locator('[role="option"]', { hasText: rx }).first().click();
+    await admin.waitForFunction(() => !document.querySelector('[role="option"]'), null, { timeout: 5000 }).catch(() => {});
+    return { opts, shot: s };
+  };
+  const choiceIs = (choice) => until(`picker = ${choice}`, () => admin.evaluate(([p, c]) => document.querySelector(`${p} [data-voice-pack-select]`)?.dataset.voicePackChoice === c, [PANEL, choice]), 10000);
+  const idle = async () => {
+    await page.waitForFunction(() => { const sp = window.petFx.lastSpeech(); return !sp || !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, null, { timeout: 15000 });
+    await page.waitForTimeout(1600);
+  };
+  // feed her when she is full: she says FULL; what the pet window played, from which pack file
+  const feedFull = async (shotName) => {
+    await page.bringToFront();
+    await idle();
+    const n0 = (await page.evaluate(() => window.petFx.offerLog())).length;
+    await page.evaluate(() => window.pet.debugSet({ hunger: 0 }));
+    await clickAct(page, 'feed');
+    await page.click('#food-menu button');
+    await page.waitForFunction((n) => window.petFx.offerLog().slice(n).some((e) => e.kind === 'feed' && e.n), n0, { timeout: 20000 });
+    const entry = (await page.evaluate(() => window.petFx.offerLog())).slice(n0).find((e) => e.kind === 'feed');
+    // the bubble while it plays
+    const shot = shotName ? await (async () => { await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && sp.started; }, entry.n, { timeout: 20000 }).catch(() => {}); return pshot(shotName); })() : null;
+    await page.waitForFunction((n) => { const sp = window.petFx.lastSpeech(); return sp && sp.n === n && !/^(queued|synthesizing|playing|speaking)$/.test(sp.status); }, entry.n, { timeout: 20000 });
+    const sp = await page.evaluate(() => window.petFx.lastSpeech());
+    return { text: entry.text, provider: sp.provider, packId: sp.packId, packFile: sp.packFile, bytes: sp.bytes || 0, mime: sp.mime || null, started: !!sp.started, status: sp.status, shot };
+  };
+  const packDir = (id) => {
+    if (fs.existsSync(path.join(VDIR, id || '', 'manifest.json'))) return path.join(VDIR, id);
+    const b = path.join(ROOT, 'src', 'voicepacks');
+    const d = fs.readdirSync(b).find((n) => { try { return JSON.parse(fs.readFileSync(path.join(b, n, 'manifest.json'), 'utf8')).id === id; } catch { return false; } });
+    return d ? path.join(b, d) : path.join(VDIR, id || '');
+  };
+  const fileOf = (r) => {
+    const f = path.join(packDir(r.packId), r.packFile || '');
+    if (!r.packFile || !fs.existsSync(f)) return { path: f, exists: false };
+    const buf = fs.readFileSync(f);
+    return { path: f, exists: true, size: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) };
+  };
+  const fmt = (r) => { const f = fileOf(r); return `「${r.text}」 → provider=${r.provider} packId=${r.packId} packFile=${r.packFile} played bytes=${r.bytes} mime=${r.mime} started=${r.started} status=${r.status}${f.exists ? ` | file ${f.path.replace(data, '<userData>').replace(ROOT, '<repo>')} size=${f.size} sha256=${f.sha256}` : ''}`; };
+  const assertFrom = (r, packId, keep) => {
+    const f = fileOf(r);
+    assert.equal(r.text, FULL);
+    assert.deepEqual([r.provider, r.packId, r.status, r.started], ['pack', packId, 'done', true], fmt(r));
+    assert.ok(f.exists, `file ${f.path}`);
+    assert.equal(r.bytes, f.size, 'the audio played is that file');
+    if (keep) fs.copyFileSync(f.path, path.join(SHOTS, keep));
+    return f;
+  };
+
+  try {
+    await step(S, 'F0 全新 userData（只有年龄确认）：唤醒大肥鱼；本机没有 voicepacks/，settings.json 没有语音包选择', async () => {
+      await page.waitForSelector('.char-card');
+      await page.click('.char-card[data-species="dafeiyu"]');
+      await page.fill('#pet-name', 'Fishy');
+      mark('step', '全新 userData：选大肥鱼、起名、唤醒');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      mark('check', '桌宠出现；userData 里没有 voicepacks/');
+      assert.ok(!fs.existsSync(VDIR) || ls(VDIR).filter((n) => n.startsWith('style-')).length === 0);
+      assert.equal(picks() === undefined || JSON.stringify(picks()) === '{}', true);
+      const s = await pshot('f0-pet-fresh');
+      return note(`F0 userData before launch: ${JSON.stringify(before)} (empty dir); after hatch: ${JSON.stringify(ls(data))}\n  voicepacks/: ${JSON.stringify(ls(VDIR))}; tts.voicePackByCharacter=${JSON.stringify(picks())} → ${s}`);
+    }, page);
+
+    await step(S, 'F1 设置 → 朗读：打开「朗读回复」开关（全新安装默认关），settings.json prefs.voice=true', async () => {
+      await openAdmin('tts');
+      assert.equal(settingsFile().prefs?.voice ?? false, false);
+      mark('step', '设置 → 朗读：打开「朗读回复」');
+      await adminFlip(admin, 'prefs.voice');
+      await until('prefs.voice saved', () => settingsFile().prefs?.voice === true, 8000);
+      const s = await ashot('f1-tts-voice-on');
+      return note(`F1 prefs.voice=${settingsFile().prefs.voice} → ${s}`);
+    }, () => admin || page);
+
+    await step(S, 'F2 商店 → 语音包：5 个风格语音包（可爱/御姐/少年/沉稳/搞笑），全部「未下载」', async () => {
+      mark('step', '打开 商店 → 语音包');
+      await openVoices();
+      const st = await states();
+      mark('check', `5 张语音包卡片全部「未下载」：${Object.keys(st).join(', ')}`);
+      assert.deepEqual(Object.keys(st), IDS);
+      assert.ok(Object.values(st).every((x) => x === 'remote'), JSON.stringify(st));
+      const cards = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => `${e.dataset.storeVoice}「${(e.querySelector('[data-store-voice-style]') || {}).textContent}」${(e.querySelector('[data-store-voice-meta]') || {}).textContent} · ${(e.querySelector('[data-voice-not-downloaded]') || {}).textContent}`));
+      const filter = await admin.$eval('[data-store-voice-filter]', (el) => el.textContent);
+      assert.match(filter, /全部 5.*未下载 5.*已下载 0/);
+      const s = await ashot('f2-store-not-downloaded');
+      return note(`F2 cards: ${cards.join(' | ')}\n  filter: ${filter} → ${s}`);
+    }, () => admin || page);
+
+    const progress = {};
+    for (const [i, id] of [[3, A], [4, B]]) {
+      const fast = cdn && id === A;
+      await step(S, `F${i} 下载「${nameOf(id)}」${cdn ? (fast ? '（真实 CDN，全速）' : '（真实 CDN，仅放慢接收速度）') : ''}：未下载 → 下载中（进度条、百分比、取消）→ 已下载`, async () => {
+        const st0 = (await states())[id];
+        if (cdn && !fast) await app.evaluate((_e, n) => global.__vfPace.add(n), `${id}.zip`);
+        // every state the card goes through, as rendered
+        await admin.evaluate((x) => {
+          const el = document.querySelector(`[data-store-voice="${x}"]`);
+          window.__vfStates = [{ t: Date.now(), state: el.dataset.voiceState, text: '' }];
+          const obs = new MutationObserver(() => {
+            const c = document.querySelector(`[data-store-voice="${x}"]`);
+            if (!c) return;
+            const p = c.querySelector(`[data-voice-download-progress="${x}"]`);
+            const last = window.__vfStates[window.__vfStates.length - 1];
+            const cur = { t: Date.now(), state: c.dataset.voiceState, text: p ? p.textContent : '' };
+            if (cur.state !== last.state || cur.text !== last.text) window.__vfStates.push(cur);
+          });
+          obs.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+          window.__vfObs = obs;
+        }, id);
+        mark('step', `点「下载」：${nameOf(id)}`);
+        await admin.click(`[data-voice-download="${id}"]`);
+        if (fast) {
+          await until(`${id} installed`, async () => (await states())[id] === 'installed', 60000);
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          const seq = timeline.map((x) => x.state).filter((x, k, a) => x !== a[k - 1]);
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+          assert.equal(seq[0], 'remote');
+          assert.ok(seq.includes('downloading'), JSON.stringify(seq));
+          assert.equal(seq[seq.length - 1], 'installed');
+          assert.deepEqual(seq, ['remote', 'downloading', 'installed'], 'no flash back to 未下载');
+          assert.equal(await admin.$eval(`[data-voice-downloaded="${id}"]`, (el) => el.textContent), '已下载');
+          const marker = JSON.parse(fs.readFileSync(path.join(VDIR, id, '.catalog.json'), 'utf8'));
+          assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === id).sha256);
+          mark('check', `${id} 卡片 ${seq.join(' → ')}（全速真实 CDN）`);
+          const s2 = await ashot(`f${i}b-downloaded-${id}`);
+          progress[id] = timeline.filter((x) => x.text).map((x) => x.text).join(' / ');
+          return note(`F${i} ${id} (real CDN, full speed): card states ${seq.join(' → ')} in ${timeline[timeline.length - 1].t - timeline[0].t} ms; progress texts ${JSON.stringify(timeline.filter((x) => x.text).map((x) => x.text))}; marker ${JSON.stringify(marker)} → f${i}-states-${id}.json, ${s2}`);
+        }
+        await attached(`[data-voice-download-progress="${id}"]`);
+        await admin.waitForFunction((x) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${x}"]`)?.textContent || ''), id, { timeout: 15000 });
+        const st1 = (await states())[id];
+        const mid = await admin.$eval(`[data-voice-download-progress="${id}"]`, (el) => el.textContent);
+        assert.equal(st1, 'downloading');
+        assert.equal(await admin.$eval(`[data-voice-downloading="${id}"]`, (el) => el.textContent), '下载中');
+        mark('check', `${id} 卡片显示「下载中」与进度「${mid}」`);
+        const s1 = await ashot(`f${i}a-downloading-${id}`);
+        await until(`${id} installed`, async () => (await states())[id] === 'installed', 60000);
+        assert.equal(await admin.$eval(`[data-voice-downloaded="${id}"]`, (el) => el.textContent), '已下载');
+        const marker = JSON.parse(fs.readFileSync(path.join(VDIR, id, '.catalog.json'), 'utf8'));
+        assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === id).sha256);
+        mark('check', `${id} 卡片显示「已下载」`);
+        const s2 = await ashot(`f${i}b-downloaded-${id}`);
+        progress[id] = mid;
+        if (cdn) {
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+        }
+        return note(`F${i} ${id}${cdn ? ' (real CDN, body paced)' : ''}: ${st0} → ${st1}（${mid}）→ installed; marker ${JSON.stringify(marker)} → ${s1}, ${s2}`);
+      }, () => admin || page);
+    }
+
+    await step(S, 'F5 本地可用列表：商店「已下载」筛选、设置 → 语音包 表格（来源 商店下载）、磁盘 userData/voicepacks/ 都有两个包', async () => {
+      await admin.locator('[data-store-voice-filter]').getByText(/^已下载 2$/).click();
+      await admin.waitForTimeout(400);
+      const shown = await admin.$$eval('[data-store-voice]', (els) => els.map((e) => e.dataset.storeVoice));
+      assert.deepEqual(shown.sort(), [A, B].sort());
+      const s1 = await ashot('f5a-store-filter-downloaded');
+      mark('check', `「已下载」筛选只显示 ${shown.join('、')}`);
+      mark('step', '打开 设置 → 语音包（本地可用列表）');
+      await go('/voicepacks');
+      const rows = await admin.$$eval('[data-admin-page] tr[data-row-key]', (els) => els.map((e) => ({ id: e.dataset.rowKey, text: e.textContent.replace(/\s+/g, ' ') })));
+      for (const id of [A, B]) {
+        const row = rows.find((r) => r.id === id);
+        assert.ok(row, rows.map((r) => r.id).join(','));
+        assert.match(row.text, /商店下载/);
+      }
+      await admin.evaluate((id) => document.querySelector(`[data-admin-page] tr[data-row-key="${id}"]`)?.scrollIntoView({ block: 'center' }), A);
+      mark('check', '设置 → 语音包 表格中 style-cute、style-shaonian 来源为「商店下载」');
+      const s2 = await ashot('f5b-settings-voicepacks-local-list');
+      const disk = ls(VDIR);
+      record('f5-disk.txt', `${disk.map((d) => `<userData>/voicepacks/${d}: ${(ls(path.join(VDIR, d)) || []).length} entries`).join('\n')}\n`);
+      return note(`F5 已下载筛选: ${shown.join(', ')}\n  设置 → 语音包: ${rows.filter((r) => /商店下载/.test(r.text)).map((r) => `${r.id}: ${r.text.slice(0, 80)}`).join(' | ')}\n  disk voicepacks/: ${JSON.stringify(disk)} → ${s1}, ${s2}`);
+    }, () => admin || page);
+
+    let fA = null;
+    await step(S, `F6 角色 → 大肥鱼 → 语音 → 语音包：选「${nameOf(A)}」，写入 settings.json；桌宠喂食台词播放 userData/voicepacks/${A} 里的录音`, async () => {
+      mark('step', '角色 → 大肥鱼 → 语音 → 打开「语音包」下拉');
+      await voiceTab();
+      const { opts, shot: s0 } = await pick(new RegExp(nameOf(A)), 'f6a-picker-downloaded');
+      await choiceIs(A);
+      mark('check', `已选「${nameOf(A)}」，settings.json=${JSON.stringify(picks())}`);
+      assert.ok(opts.some((o) => o.group && o.text === '风格语音包（已下载）'));
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(A)} 风格·${labelOf(A)}`));
+      assert.deepEqual(picks(), { dafeiyu: A });
+      const s1 = await ashot('f6b-picked-A');
+      mark('step', '桌宠：喂食（已吃饱）');
+      const r = await feedFull('f6c-pet-plays-A');
+      fA = assertFrom(r, A, `played-${A}.ogg`);
+      mark('check', `桌宠播放 ${A}/${r.packFile}（${r.bytes} 字节）`);
+      return note(`F6 picker: ${opts.map((o) => `${o.group ? '[组] ' : ''}${o.text}${o.disabled ? ' (disabled)' : ''}`).join(' | ')}\n  正在用: ${cur}; settings.json tts.voicePackByCharacter=${JSON.stringify(picks())}\n  ${fmt(r)} → ${s0}, ${s1}, ${r.shot}, played-${A}.ogg`);
+    }, () => admin || page);
+
+    await step(S, `F7 切换到「${nameOf(B)}」：不用重启，同一句立刻来自 ${B}（另一段录音）`, async () => {
+      mark('step', `语音页切换到「${nameOf(B)}」`);
+      await voiceTab();
+      await pick(new RegExp(nameOf(B)));
+      await choiceIs(B);
+      mark('check', `已切到「${nameOf(B)}」，settings.json=${JSON.stringify(picks())}`);
+      assert.deepEqual(picks(), { dafeiyu: B });
+      const cur = await current();
+      const s = await ashot('f7a-picked-B');
+      mark('step', '桌宠：再次喂食（不重启）');
+      const r = await feedFull('f7b-pet-plays-B');
+      const f = assertFrom(r, B, `played-${B}.ogg`);
+      mark('check', `同一句改为播放 ${B}/${r.packFile}（${r.bytes} 字节）`);
+      assert.notEqual(f.sha256, fA.sha256, 'another recording');
+      return note(`F7 正在用: ${cur}; settings.json=${JSON.stringify(picks())}\n  ${fmt(r)}\n  (A played ${fA.path.replace(data, '<userData>')} sha256=${fA.sha256}) → ${s}, ${r.shot}, played-${B}.ogg`);
+    }, () => admin || page);
+
+    await step(S, 'F8 重启应用：settings.json 仍是少年包；商店两个包仍「已下载」；角色语音页显示少年；喂食台词仍来自 style-shaonian', async () => {
+      await pullFetchLog(app);
+      await app.close();
+      mark('step', '重启应用（关闭后用同一个 userData 再启动）');
+      ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart'), videoSize: VS }));
+      await hookFetch(app);
+      track(page, 'pet-2');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
+      mark('check', `重启后 settings.json tts.voicePackByCharacter=${JSON.stringify(picks())}`);
+      assert.deepEqual(picks(), { dafeiyu: B });
+      assert.equal(settingsFile().prefs.voice, true);
+      mark('step', '重启后喂食');
+      const r = await feedFull('f8a-pet-after-restart');
+      assertFrom(r, B);
+      mark('check', `重启后仍播放 ${B}/${r.packFile}`);
+      await openAdmin('overview');
+      await openVoices();
+      const st = await states();
+      assert.deepEqual(st, Object.fromEntries(IDS.map((id) => [id, id === A || id === B ? 'installed' : 'remote'])));
+      mark('check', `重启后商店：style-cute、style-shaonian 仍「已下载」`);
+      const s1 = await ashot('f8b-store-after-restart');
+      await voiceTab();
+      const cur = await current();
+      assert.match(cur, new RegExp(`正在用 ${nameOf(B)} 风格·${labelOf(B)}`));
+      mark('check', `重启后大肥鱼语音页仍显示「${nameOf(B)}」`);
+      const s2 = await ashot('f8c-voice-tab-after-restart');
+      return note(`F8 after restart: settings.json tts.voicePackByCharacter=${JSON.stringify(picks())} prefs.voice=${settingsFile().prefs.voice}\n  store states ${JSON.stringify(st)}\n  正在用: ${cur}\n  ${fmt(r)} → ${r.shot}, ${s1}, ${s2}`);
+    }, () => admin || page);
+
+    await step(S, 'F9 没有渲染错误；下载请求只打到商店地址', async () => {
+      const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
+      assert.deepEqual(bad, []);
+      if (cdn) {
+        await pullFetchLog(app);
+        record('fetch-log.json', JSON.stringify(fetchLog, null, 2));
+        const want = [A, B].map((id) => `${CDN_BASE}/${id}.zip`).sort();
+        assert.deepEqual(fetchLog.map((e) => e.url).sort(), want);
+        for (const e of fetchLog) {
+          const v = index.voicePacks.find((x) => e.url.endsWith('/' + x.file));
+          assert.deepEqual([e.status, e.bytes, Number(e.contentLength)], [200, v.bytes, v.bytes], JSON.stringify(e));
+        }
+        return note(`F9 no console errors; main-process downloads (real CDN, no local server):\n${fetchLog.map((e) => `  GET ${e.url} → ${e.status} ${e.contentType} ${e.bytes} bytes in ${e.ms} ms${e.paced ? ' (paced)' : ''}`).join('\n')}`);
+      }
+      assert.deepEqual([...new Set(served)].sort(), [`${A}.zip`, `${B}.zip`].sort());
+      return note(`F9 no console errors; served: ${served.join(', ')}`);
+    }, page);
+  } finally {
+    fs.writeFileSync(path.join(SHOTS, 'voiceflow-log.txt'), evidence.join('\n\n') + '\n');
+    await app.close().catch(() => {});
+    server.close();
+    // chapters per window recording: marks inside [start, next window start of the same app run) count for every window open then
+    const out = [];
+    for (const v of videos) {
+      const file = await v.page.video()?.path().catch(() => null);
+      if (!file) continue;
+      const named = path.join(path.dirname(file), `${v.name}.webm`);
+      try { fs.renameSync(file, named); } catch { continue; }
+      out.push({ name: v.name, file: path.relative(SHOTS, named), start: v.start });
+    }
+    fs.writeFileSync(path.join(SHOTS, 'videos.json'), JSON.stringify(out, null, 1));
+    fs.writeFileSync(path.join(SHOTS, 'marks.jsonl'), marks.map((m) => JSON.stringify(m)).join('\n') + '\n');
+  }
+}
+
 // ---------------------------------------------------------------- catalogdl (内置 5 位像素角色，其他下载后使用)
 // A new install: the pet window offers only the five pixel characters that ship with the app; 角色图鉴 lists the
 // other looks under 可下载的角色 (size, picture, 未下载). Downloading one (from a local server playing the release
@@ -11535,6 +12541,10 @@ async function interjectScenario() {
   if (which === 'charmigrate' || which === 'all') await charMigrateScenario();
   if (which === 'catalogdl' || which === 'all') await catalogDownloadScenario();
   if (which === 'store' || which === 'all') await storeScenario();
+  if (which === 'voicestore' || which === 'all') await voiceStoreScenario();
+  if (which === 'voiceselect' || which === 'all') await voiceSelectScenario();
+  if (which === 'voiceflow' || which === 'all') await voiceFlowScenario();
+  if (which === 'voiceflowcdn') await voiceFlowScenario({ cdn: true }); // network: the real CDN (T-5104), not in `all`
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

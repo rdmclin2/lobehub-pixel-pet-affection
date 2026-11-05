@@ -225,7 +225,7 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 3. **模型 / 音色名**（OpenAI 兼容才要）：按你的服务填，不填时发 `tts-1` / `default`。角色文件也可以在 `voice.tts.local.voice` 里写她自己的音色名。服务要 Key 时再填 Key，以 `Authorization: Bearer` 发送。
 4. 本地合成慢，等待时间是云端的 4 倍：20 秒没响应（长句最多 40 秒）才降级；返回的不是音频（比如模型还没加载好时返回的 JSON 错误）也算失败。常说的短句会在后台预先合成缓存，点了马上响。音色要用自己的声音或已取得授权的声音。
 
-**语音包**（默认开）：5 位角色都自带用 MiniMax 系统音色录好的语音包，收录她所有固定台词（每位约 220 句）。摸头、喂食、部位触摸、碎碎念这些台词直接播放录音，不联网、不用 Key、不占每分钟次数。她的回复仍由引擎合成；引擎选了别家并且能用时（比如 Fish Audio），为了声音一致不用语音包。也可以放自己的语音包，格式和重新生成方法见 [使用说明](docs/usage.md)。
+**语音包**（默认开）：5 位角色都自带用 MiniMax 系统音色录好的语音包，收录她所有固定台词（每位约 220 句）。摸头、喂食、部位触摸、碎碎念这些台词直接播放录音，不联网、不用 Key、不占每分钟次数。她的回复仍由引擎合成；引擎选了别家并且能用时（比如 Fish Audio），为了声音一致不用语音包。也可以放自己的语音包，格式和重新生成方法见 [使用说明](docs/usage.md)。另有 5 个用 MiniMax 录制的**风格语音包**（可爱 / 御姐 / 少年 / 沉稳 / 搞笑），在 设置窗口 → **商店 → 语音包** 试听、下载（显示 未下载 / 下载中 / 已下载，可删除），下载好的出现在 设置 → 语音包，见 [docs/voice-packs.md §7](docs/voice-packs.md)。每个角色可以在 设置窗口 → 角色 → 她的 **语音** 页单独选语音包：**不使用** / **内置（自动）** / 任一已下载的风格包（没下载的灰掉，旁边有「去商店下载」），选中后下一句就生效、重启后保持；删掉正在用的包会自动回到内置，见 [§8](docs/voice-packs.md)。
 
 合成过的句子按“引擎 + 模型 + 音色 + 参数 + 文本”的哈希缓存在 `userData/tts-cache/`（LRU，上限 50MB），再说同一句直接播放、不再请求；**清空语音缓存** 按钮可以清掉。同一时间只播一段：新的一句会停掉正在播放或正在合成的上一句（互动台词例外：上一句没说完时直接丢掉，不会打断回复，见下方“互动语音”）。
 
@@ -249,6 +249,42 @@ xvfb-run -a node e2e/run.js roster claude   # 回归：拖拽（E5）、抛掷�
 `default` 是“按角色”时她用的引擎（`fish` / `minimax` / `elevenlabs` / `local`，省略为 `fish`）。`elevenlabs` 里只有 `voiceId` 必填（ElevenLabs 的 `voice_id`，10–40 位字母和数字）；`model` 省略时用设置里的模型（默认 `eleven_multilingual_v2`），`stability` / `similarityBoost` / `style` 取 0–1（默认 0.5 / 0.75 / 0），`speed` 取 0.7–1.2（默认 1.0），`speakerBoost` 是 true / false（默认 true），这几项作为请求体里的 `voice_settings` 发出。`src/core/species.js` 的 `validateCharacter` 会校验这些字段（音色 id 格式、参数范围、未知引擎）。
 
 > **LobeHub 能不能代为合成 MiniMax？** 目前不能（2026-10-30 实测，lh 0.0.62）：`lh gen tts` 固定请求服务端 `/webapi/tts/openai`（只有 OpenAI 接口形态），云端对它返回 404，默认的 `tts-1` 也一样；LobeHub 里的 MiniMax provider 只有对话 / 图片 / 视频模型，没有 `speech-*` 语音模型。所以 MiniMax 语音要用你自己的 MiniMax Key，填在 设置窗口 → 朗读 → MiniMax。代码：`src/core/tts.js`（provider 接口、选择链、引擎）、`src/core/tts-cache.js`、`src/core/tts-keys.js`、`src/core/voice.js`（Web Speech provider）。验证：`npm test`，以及 `xvfb-run -a node e2e/run.js voice`（本机假 Fish / MiniMax / ElevenLabs 服务，不花钱）。语音由 AI 合成；Fish 免费账号限个人非商业使用。
+
+### 风格语音包（商店下载 · 按角色选择）
+
+除了 5 位角色自带的专属语音包，商店里还有 5 个用 MiniMax 录制的**风格语音包**：
+
+| 风格 | 包 | 性别 | MiniMax 音色 |
+| --- | --- | --- | --- |
+| 可爱 | `style-cute` 可爱 · 甜心少女 | 女 | `tianxin_xiaoling` |
+| 御姐 | `style-yujie` 御姐 · 妩媚姐姐 | 女 | `wumei_yujie` |
+| 少年 | `style-shaonian` 少年 · 纯真学弟 | 男 | `chunzhen_xuedi` |
+| 沉稳 | `style-chenwen` 沉稳 · 可靠前辈 | 男 | `Chinese (Mandarin)_Reliable_Executive` |
+| 搞笑 | `style-gaoxiao` 搞笑 · 幽默大爷 | 男 | `Chinese (Mandarin)_Humorous_Elder` |
+
+每个包都是同一套 138 句通用台词（喂食、摸摸、玩耍、拖拽、阶段台词等，任何角色都能用），约 1.1–1.5 MB。
+
+1. **浏览与下载**：设置窗口 → **商店 → 语音包**。每张卡片写着风格、性别、音色说明、句数 · 大小 · 版本和署名，点 **试听** 不用下载就能听。点 **下载** 后卡片从「未下载」变成「下载中」（有进度条和取消按钮），完成后变成「已下载」。下载的归档会按 sha256 校验，校验不通过就丢弃，本机不留文件。
+2. **本地可用列表**：下载好的包出现在商店的「已下载」筛选、**设置 → 语音包** 表格（来源「商店下载」），文件在 `userData/voicepacks/<id>/`。是否已下载以磁盘为准，重启后照样正确。
+3. **为角色选择**：设置窗口 → **角色** → 某个角色 → **语音** → **语音包**：可以选 **不使用**、**内置（自动）** 或任一已下载的风格包。没下载的包灰掉，旁边的「去商店下载」打开商店。选中后她的下一句固定台词就播放这个包的录音，不用重启；不在包里的台词（例如 agent 回复）用这个包的 MiniMax 音色合成。选择保存在 `settings.json` 的 `tts.voicePackByCharacter`，重启后保持；每个角色分开设置。也可以在 设置 → 语音包 → **我的语音包** 给所有角色统一选一个。
+4. **删除**：在商店卡片上点 **删除**。正在用这个包的角色自动回到「内置」；选择会保留，重新下载后自动恢复。
+
+**下载地址与镜像**：默认从 `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/<id>.zip` 下载；设置 `PIXELPET_CATALOG_URL`（或 `settings.catalogUrl`）可以改为镜像或本地 `file://` 目录。
+
+**自己生成或新增风格**（需要 MiniMax Key 和 ffmpeg）：
+
+```bash
+export MINIMAX_API_KEY=…                                   # 或写进 ~/.config/pixel-pet/minimax.env
+node scripts/voicepack-generate.js --style --dry-run       # 列出要录的台词，不调用接口
+node scripts/build-voice-catalog.js --fetch --extract     # 先把已发布的包从 CDN 取回到 catalog/voicepacks/（不进仓库）
+node scripts/voicepack-generate.js --style cute,yujie      # 录音到 catalog/voicepacks/style-*/（每分钟 10 次，可断点续录）
+node scripts/build-voice-catalog.js                        # 打包 zip，更新 src/core/voice-catalog.json 和试听文件
+node scripts/upload-character-catalog.js --voices          # 上传到 CDN（需要 dc CLI 登录）
+```
+
+录音源文件不放进仓库：已发布到 DC（ops-assets）CDN 的 zip 就是源，`catalog/voicepacks/` 只是本地工作目录（已加入 `.gitignore`）；仓库里只有商店目录 `src/core/voice-catalog.json` 和 5 条试听句。
+
+完整说明（manifest 格式、限速、ffmpeg 转码、托管与发布、新增风格的步骤）见 [docs/voice-packs.md](docs/voice-packs.md) §6–§9；端到端验证：`xvfb-run -a node e2e/run.js voiceflow`。
 
 ### 互动语音
 

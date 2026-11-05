@@ -582,7 +582,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `tts.fallback` | tts | 引擎用不了时 | 即时生效 |  |
 | `tts.packs` | tts | 使用语音包 | 即时生效 |  |
 | `tts.voicePack` | voicepacks | 我的语音包 | 即时生效 | 设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`） |
-| `tts.voicePackByCharacter.<id>` | character | 语音包 | 即时生效 | 角色详情 → 语音包（自动 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`） |
+| `tts.voicePackByCharacter.<id>` | character | 语音包 | 即时生效 | 角色详情 → 语音 → 语音包（不使用 / 内置 / 已下载的风格包 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`） |
 | `tts.endpoints.fish` | tts | 端点 | 即时生效 |  |
 | `tts.endpoints.minimax` | tts | 端点 | 即时生效 |  |
 | `tts.endpoints.elevenlabs` | tts | 端点 | 即时生效 |  |

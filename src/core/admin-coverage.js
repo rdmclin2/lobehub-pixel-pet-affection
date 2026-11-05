@@ -37,7 +37,7 @@ const SPECIAL_SETTINGS = {
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
   'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
-  'tts.voicePackByCharacter.<id>': '角色详情 → 语音包（自动 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
+  'tts.voicePackByCharacter.<id>': '角色详情 → 语音 → 语音包（不使用 / 内置 / 已下载的风格包 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
