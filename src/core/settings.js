@@ -85,10 +85,14 @@ const SYSTEM = { hardwareAcceleration: true };
 // 检查更新 (tray, ⋯ menu, settings window) checks. Before this switch it could only be turned off with
 // PIXELPET_NO_UPDATE=1; a version already downloaded is still installed on quit.
 const UPDATE = { autoCheck: true };
+// 像素小院 (docs/pixel-scene-design.md §7): the yard's time and weather. followClock = the yard's hour follows this
+// computer's clock; off = `hour` (0–23.75, quarter hours). autoWeather = 「天气自己变」 (a manual pick turns it off).
+const SCENE = { followClock: true, hour: 12, weather: 'clear', autoWeather: false };
+const SCENE_WEATHERS = ['clear', 'cloudy', 'rain', 'snow', 'storm', 'fog'];
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -158,6 +162,18 @@ function normalizeUpdate(raw) {
   return { autoCheck: typeof u.autoCheck === 'boolean' ? u.autoCheck : UPDATE.autoCheck };
 }
 
+// Files from before 像素小院 have no `scene` (→ the defaults). An hour outside 0–24 wraps round; quarter hours.
+function normalizeScene(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const h = typeof s.hour === 'number' && Number.isFinite(s.hour) ? ((s.hour % 24) + 24) % 24 : SCENE.hour;
+  return {
+    followClock: typeof s.followClock === 'boolean' ? s.followClock : SCENE.followClock,
+    hour: (Math.round(h * 4) / 4) % 24,
+    weather: SCENE_WEATHERS.includes(s.weather) ? s.weather : SCENE.weather,
+    autoWeather: typeof s.autoWeather === 'boolean' ? s.autoWeather : SCENE.autoWeather,
+  };
+}
+
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
 function cleanSystemRole(v) {
   return String(v || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, SYSTEM_ROLE_MAX).trim();
@@ -212,6 +228,7 @@ function normalizeSettings(raw) {
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
   s.update = normalizeUpdate(s.update);
+  s.scene = normalizeScene(s.scene);
   return s;
 }
 
@@ -283,4 +300,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

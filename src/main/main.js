@@ -40,6 +40,7 @@ const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { PetPanel } = require('./pet-panel');
+const { SceneWindow } = require('./scene-window');
 const { createAdminSettings } = require('./admin-settings');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
 const { createBroadcast } = require('./broadcast');
@@ -78,6 +79,8 @@ let nextSavePath = null; // E2E only (debug-next-save): where the next 导出…
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in its own window beside her
+let scene = null; // 像素小院 (scene-window.js): the pixel yard she walks about in; her desktop window hides meanwhile
+const sceneActs = []; // E2E only: what she did in the yard (scene:act)
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
 // Every pet window on the desktop: the companion ('main') and visiting model-chan ('visitor:<id>').
@@ -194,9 +197,21 @@ function openAdmin(section) {
 }
 function showPet() {
   if (!win || win.isDestroyed()) return;
+  // she cannot be in the yard and on the desktop at once: whatever needs her here closes the yard first
+  if (scene && scene.visible) scene.close('pet-needed');
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+}
+// 像素小院: open / close the yard. She has to have hatched; her desktop window hides while it is open
+// (SceneWindow onOpen) and comes back when it closes (onClosed).
+function openScene(source = 'tray') {
+  if (!scene || !service || !service.pet) return Promise.resolve({ ok: false, reason: 'no-pet' });
+  return scene.open(source);
+}
+function toggleScene(source = 'tray') {
+  if (scene && scene.visible) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
+  return openScene(source);
 }
 // 快捷键唤起语音对话: wherever the owner is, the pet comes up (shown, restored, focused so Esc works) and her
 // window starts listening — or, while she listens, stops and recognises (renderer onVoiceHotkey → micStart /
@@ -223,6 +238,7 @@ function createTray() {
     trayMenu = Menu.buildFromTemplate([
       { label: '打开设置…', click: () => openAdmin() },
       { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
+      { label: '像素小院', click: () => { toggleScene('tray').catch(logError); } },
       { label: '重置姿势', click: () => { resetPose('tray'); } },
       { type: 'separator' },
       { label: '检查更新', click: () => { checkUpdatesWithDialog('tray').catch(logError); } },
@@ -426,6 +442,11 @@ function createWindow() {
       e.preventDefault();
       resetPose('key');
     }
+    // Ctrl/⌘+Shift+H (home) while the pet window has focus: 像素小院 (the same keys in the yard close it)
+    if (input.type === 'keyDown' && input.code === 'KeyH' && (process.platform === 'darwin' ? input.meta : input.control) && input.shift && !input.alt) {
+      e.preventDefault();
+      toggleScene('key').catch(logError);
+    }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -478,6 +499,29 @@ function wire() {
   ipcMain.handle('act', (_e, { kind, food }) => service.act(kind, food));
   ipcMain.handle('reset-pose', (_e, p) => resetPose(['button', 'key', 'test'].includes(p && p.source) ? p.source : 'ipc'));
   ipcMain.handle('touch', (_e, target) => service.touch(target));
+  // 像素小院 (scene-window.js, src/renderer/scene/): the pet window opens it; the yard page boots, saves its
+  // time / weather (checked by the schema like the settings window's, saved in settings.json, broadcast), pats her
+  ipcMain.handle('scene-open', (e, p) => (windowOf(e) === win ? openScene(['panel', 'key', 'test'].includes(p && p.source) ? p.source : 'pet') : { ok: false }));
+  const fromScene = (e) => !!scene && scene.isSender(e);
+  ipcMain.handle('scene:boot', (e) => (fromScene(e) ? { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE } : null));
+  ipcMain.handle('scene:set', (e, patch) => {
+    if (!fromScene(e) || !patch || typeof patch !== 'object') return { ok: false, reason: 'invalid' };
+    const clean = {};
+    for (const [k, v] of Object.entries(patch)) {
+      const r = settingsSchema.validate(`scene.${k}`, v);
+      if (!r.ok) return { ok: false, reason: r.reason, key: k };
+      clean[k] = r.value;
+    }
+    const r = service.setSection('scene', clean);
+    return r.ok ? { ok: true, scene: service.settings.scene } : r;
+  });
+  ipcMain.handle('scene:touch', (e) => (fromScene(e) ? service.touch('head') : { ok: false }));
+  ipcMain.on('scene:act', (e, m) => {
+    if (!fromScene(e) || !m) return;
+    sceneActs.push({ act: String(m.act || ''), prop: String(m.prop || ''), at: Date.now() });
+    if (sceneActs.length > 50) sceneActs.shift();
+  });
+  ipcMain.on('scene:close', (e, p) => { if (fromScene(e)) scene.close(p && p.reason === 'key' ? 'key' : 'button'); });
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
   ipcMain.handle('get-settings', () => service.getSettings());
   // 插个嘴 (core/interject.js, docs/interject.md): the chat box's unsent draft (the renderer sends it only while
@@ -1174,6 +1218,8 @@ function wire() {
     ipcMain.handle('debug-update-answer', (_e, id) => { updateAnswers.push(String(id)); return updateAnswers.slice(); });
     ipcMain.handle('debug-update-state', (_e, patch = {}) => { updater._set(patch); return updater.state; });
     ipcMain.handle('debug-pet-panel', () => petPanel.debugState());
+    ipcMain.handle('debug-scene', () => ({ ...scene.debugState(), acts: sceneActs.slice(), petVisible: !!(win && !win.isDestroyed() && win.isVisible()), petBounds: win && !win.isDestroyed() ? win.getBounds() : null, settings: service.settings.scene }));
+    ipcMain.handle('debug-scene-toggle', (_e, p) => toggleScene((p && p.source) || 'test'));
     ipcMain.handle('debug-hide-pet', (_e, { minimize } = {}) => { if (minimize) win.minimize(); else win.hide(); return { visible: win.isVisible(), minimized: win.isMinimized() }; });
     ipcMain.handle('debug-heartbeat', async () => {
       await service.heartbeat();
@@ -1204,7 +1250,9 @@ function wire() {
     if (admin && admin.alive) admin.send('interject', m);
   });
   // a new shortcut is registered before anyone is told, so the status that goes out is the new one
-  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); });
+  service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); if (scene) scene.send('scene:settings', { scene: service.settings.scene, roam: service.settings.prefs.roam }); });
+  // her look changed (another character, an outfit): the yard redraws her
+  service.on('update', (v) => { if (scene && v) scene.send('scene:view', v); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
@@ -1325,8 +1373,18 @@ app.whenReady().then(() => {
   // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there and 聊天
   // the chat box, so her window gets the keyboard
   petPanel = new PetPanel({
-    onAct: (m) => { if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus(); send('panel-act', m); },
+    onAct: (m) => {
+      if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小院: main opens it, her window hides
+      if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus();
+      send('panel-act', m);
+    },
     onClosed: (m) => send('panel-closed', m),
+    log: logError,
+    testMode: TEST_MODE,
+  });
+  scene = new SceneWindow({
+    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); },
+    onClosed: () => { if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,
     testMode: TEST_MODE,
   });
@@ -1344,5 +1402,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => { if (scene) scene.quit(); });
 // every global shortcut goes with the app (快捷键唤起语音对话)
 app.on('will-quit', () => { if (voiceHotkey) voiceHotkey.dispose(); else globalShortcut.unregisterAll(); });

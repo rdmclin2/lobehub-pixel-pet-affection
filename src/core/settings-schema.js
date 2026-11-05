@@ -92,7 +92,7 @@ const PAGES = {
   settings: { title: '设置', description: '声音、资源、连接和系统。' },
   packs: { title: '角色包', description: '每个角色包都是一位独立角色（像素 / 图片 / 全动态 / Live2D / VRM），都在角色图鉴里。导入角色在这里；导入的可以导出或删除。' },
   visitors: { title: '同屏伙伴', description: '让其他模型娘一起待在桌面上（她们不聊天，只陪玩）。' },
-  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸。改动立即生效。' },
+  behavior: { title: '桌宠行为', description: '桌面上的大小与取景（全身 / 半身）、走动、音效、梗图和触摸，以及像素小院的时段和天气。改动立即生效。' },
   proactive: { title: '主动搭话与好感', description: '她多久主动说一次话、每小时最多花几次模型调用；插个嘴（默认关闭）的来源、额度、阈值和沉淀的规则；以及好感度的每日上限和衰减。改动立即生效。' },
   topics: { title: '话题', description: '按好感度阶段解锁的话题：点「聊聊」，她就在桌面上开口。每个话题每天第一次聊会加好感。' },
   history: { title: '聊天记录', description: '你主动发起的聊天，只保存在这台电脑上；放生后会一起清除。' },
@@ -127,6 +127,11 @@ add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '�
 add('prefs.danceVolume', 'dances', '跳舞时', '音乐音量', 'slider', { desc: '跳舞时音乐的音量，跳舞中改动立即生效。她说话时会自动压低；桌宠工具栏静音时不出声，动作照跳。', min: 0, max: 100, step: 5, unit: '%' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });
 add('prefs.touchHint', 'behavior', '触摸', '触摸提示', 'switch', { desc: '悬停时提示指针下是哪个部位。', dependsOn: { key: 'prefs.touchZones', value: true } });
+// 像素小院 (docs/pixel-scene.md): the yard's time and weather; the yard window has the same controls (天色 card)
+add('scene.followClock', 'behavior', '像素小院', '小院跟随时间', 'switch', { desc: '小院的时段跟着这台电脑的时间走。关掉后用下面的时刻。在小院里拖时间滑块也会关掉它。打开小院：托盘「像素小院」、她的面板 ⌂、或在她身上按 Ctrl/⌘ + Shift + H。' });
+add('scene.hour', 'behavior', '像素小院', '小院时刻', 'slider', { desc: '0 点到 23:45，15 分钟一档：6 点黎明、12 点白天、18 点黄昏、23 点夜晚。', min: 0, max: 23.75, step: 0.25, unit: '点', dependsOn: { key: 'scene.followClock', value: false } });
+add('scene.weather', 'behavior', '像素小院', '小院天气', 'segmented', { desc: '切换后雨、雪、云和画面色调立即跟着变。', options: opts([['clear', '晴'], ['cloudy', '多云'], ['rain', '小雨'], ['snow', '雪'], ['storm', '雷雨'], ['fog', '雾']]) });
+add('scene.autoWeather', 'behavior', '像素小院', '天气自己变', 'switch', { desc: '每隔 8–20 分钟自己换一次天气；手动选天气会关掉它。' });
 add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
 
 // ---- 主动行为与好感度 ------------------------------------------------------------------------------------
@@ -337,7 +342,7 @@ function patchFor(key, value) {
   if (head === 'asr') return { setter: 'setAsr', patch: nest(parts.slice(1), value) };
   if (head === 'api') return { setter: 'setApi', patch: { [parts[1]]: value } };
   if (head === 'interject') return { setter: 'setSection', section: head, patch: nest(parts.slice(1), value) };
-  if (['proactive', 'affectionRules', 'ui', 'system', 'update'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
+  if (['proactive', 'affectionRules', 'ui', 'system', 'update', 'scene'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
   return null;
 }
 

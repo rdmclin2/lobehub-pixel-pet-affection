@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('pet', {
   act: (kind, food) => ipcRenderer.invoke('act', { kind, food }),
   // 重置姿势 (T-2830): whatever she does, back to the idle (wakes her if asleep) → { ok, source, before, cleared, figures, woke }
   resetPose: (source) => ipcRenderer.invoke('reset-pose', { source }),
+  // 像素小院 (src/main/scene-window.js): she goes home to the pixel yard (her desktop window hides meanwhile)
+  openScene: (source) => ipcRenderer.invoke('scene-open', { source }),
   // Touch a body part: a zone id ('head', 'chest', …) or { x, y } in the sprite's visible box (0..1).
   touch: (target) => ipcRenderer.invoke('touch', target === undefined ? null : target),
   talkTopic: (id) => ipcRenderer.invoke('talk-topic', { id }),
@@ -160,6 +162,8 @@ contextBridge.exposeInMainWorld('pet', {
   debugVoiceHotkeyStatus: () => ipcRenderer.invoke('debug-voice-hotkey-status'),
   debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
   debugPetPanel: () => ipcRenderer.invoke('debug-pet-panel'),
+  debugScene: () => ipcRenderer.invoke('debug-scene'),
+  debugSceneToggle: (source) => ipcRenderer.invoke('debug-scene-toggle', { source }),
   debugHidePet: (minimize) => ipcRenderer.invoke('debug-hide-pet', { minimize }),
   // 检查更新… (顶栏菜单 / 托盘): the dialogs it showed, the button the next one answers with, a forced Updater state
   debugUpdateDialogs: () => ipcRenderer.invoke('debug-update-dialogs'),

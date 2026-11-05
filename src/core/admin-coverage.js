@@ -120,6 +120,9 @@ const PET_ONLY = {
   'pet-panel:close': '— 她的面板：在她窗口里按一下就关闭',
   'pet-panel:update': '— 她的面板：打开时状态变化即时刷新',
   'debug-pet-panel': '测试钩子：面板窗口的位置、开关记录',
+  'scene-open': '互动：回像素小院（她的面板 ⌂ / Ctrl+⌘+Shift+H / 托盘「像素小院」同一功能）；是打开一个窗口，不是设置。小院的时段和天气在 玩法 → 桌宠行为 → 像素小院',
+  'debug-scene': '测试钩子：像素小院窗口的开关记录、她在小院里做过的互动、桌宠窗口是否可见',
+  'debug-scene-toggle': '测试钩子：像托盘那样开关像素小院',
   'debug-update-dialogs': '测试钩子：检查更新… 弹过的对话框（设置窗口的 版本与更新 显示同一个 Updater 状态）',
   'debug-update-answer': '测试钩子：下一个检查更新对话框点哪个按钮',
   'debug-update-state': '测试钩子：直接设定 Updater 状态（下载中 / 已下载好在 Linux 上走不到）',
@@ -148,6 +151,7 @@ const MENU = {
   'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
   'tray:打开设置…': '打开设置窗口',
   'tray:显示桌宠': '桌宠行为 → 位置 → 找回桌宠',
+  'tray:像素小院': '— 打开 / 关闭像素小院窗口（她的面板 ⌂、Ctrl+⌘+Shift+H 同一功能）；小院的时段与天气在 玩法 → 桌宠行为 → 像素小院',
   'tray:重置姿势': '— 互动操作，不是设置：桌宠工具栏 ↺、Ctrl+⌘+Shift+R、本地 API 同一功能（T-2830）',
   'tray:检查更新': '版本与更新 → 检查更新',
   'tray:退出': '— 退出程序',
@@ -161,6 +165,7 @@ const MENU = {
 // (settings.json, keys.*, localAbilities); actions = admin-preload channels.
 const RUNTIME = [
   { id: 'roam', label: '走动', where: '玩法 → 桌宠行为', keys: ['prefs.roam'], actions: ['admin-place-pet'] },
+  { id: 'scene', label: '像素小院（时段 / 天气）', where: '玩法 → 桌宠行为 → 像素小院；小院窗口的天色卡片', keys: ['scene.followClock', 'scene.hour', 'scene.weather', 'scene.autoWeather'] },
   { id: 'size', label: '大小', where: '玩法 → 桌宠行为', keys: ['petScale'] },
   { id: 'touch', label: '触摸与音效', where: '玩法 → 桌宠行为', keys: ['prefs.touchZones', 'prefs.touchHint', 'prefs.clickSound', 'prefs.memes', 'prefs.collide'] },
   { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 和她一起 → 舞蹈', keys: ['prefs.danceVolume', 'prefs.muted'], actions: ['dance:play', 'dance:stop', 'dance:loop', 'dance-import-pick', 'dance-import-extra', 'dance-import-commit', 'dance-import-cancel', 'dance-remove'] },

@@ -463,6 +463,10 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⚙ 设置 → 数据与关于 → “放生并删除 agent”会删除宠物和每位角色的 LobeHub agent（会再确认一次）。
 
+## 像素小院（像素风小游戏场景）
+
+她的家：一块整数缩放的像素庭院（独立窗口）。她在里面自己游走，也会走到你点的地方，和长椅、花坛、路灯、池塘互动；「天色」卡片连续调节时段（可跟随系统时间）和天气（晴 / 多云 / 小雨 / 雪 / 雷雨 / 雾），设置保存在 `settings.json`。打开：右键她 → ⌂，或桌宠窗口里 `Ctrl/⌘ + Shift + H`，或托盘「像素小院」。详见 [`docs/pixel-scene.md`](docs/pixel-scene.md)。
+
 ## 配置后台（设置窗口）
 
 桌宠的所有配置都在单独的**设置窗口**里：小屋（当前角色、关系、陪伴开关）、角色（角色图鉴 → 角色详情：装扮 / 衣柜、好感、模型、个性化设定、语音）、玩法（桌宠行为、主动搭话与好感、同屏伙伴）、设置（声音、资源与外观、连接、系统）。改动立即保存到 `settings.json` 并在桌宠上生效，重启后保留。

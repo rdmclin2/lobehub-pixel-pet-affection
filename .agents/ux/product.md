@@ -55,6 +55,8 @@ copy-profile: consumer
 lint-allow: LOBE-FONT-FAMILY LOBE-RAW-COLOR LOBE-SPACING-OFFGRID LOBE-LETTER-SPACING LOBE-MOTION-DURATION LOBE-BOUNCE LOBE-GLOW LOBE-EMOJI-ICON LOBE-NULLISH-RENDER src/renderer/**
 lint-allow: LOBE-SPACING-OFFGRID LOBE-NULLISH-RENDER src/renderer/vendor/**
 
+像素小院（`src/renderer/scene/**`，T-5550）同属美术：画布里的色板、光照和粒子是场景美术（裸色值），标题栏压在画面上的浅色文字与渐变、「天色」卡片随小院时段（不随系统主题）切换亮 / 暗，都是场景的一部分；卡片本身的控件仍用 `--lobe-*` 令牌和 ≤ 300ms 动效，已被上面的 `src/renderer/**` 放行覆盖，不另加规则。
+
 设置窗口里的角色舞台（`admin/src/console/stage/**`）同属角色美术：爱心飘起（1.4s）和她的光晕漂移（9s，`prefers-reduced-motion` 下停止）是角色的表演，不是界面反馈动效，放行时长检查；界面部分（按钮、卡片悬停）仍按 ≤ 300ms。
 
 lint-allow: LOBE-MOTION-DURATION admin/src/console/stage/**
@@ -66,3 +68,7 @@ lint-allow: LOBE-RAW-COLOR src/main/main.js
 她的面板的窗口（`src/main/pet-panel.js`，2026-11-04）同理：透明窗口的 `#00000000` 与 e2e 截图用的不透明底色在页面 CSS 之前生效，只能写字面色值。
 
 lint-allow: LOBE-RAW-COLOR src/main/pet-panel.js
+
+像素小院的窗口（`src/main/scene-window.js`，T-5550）同理：`backgroundColor` 是页面画出来之前窗口的底色，取小院画布外的深色（场景美术的背景色），在 CSS 之前生效，只能写字面色值。
+
+lint-allow: LOBE-RAW-COLOR src/main/scene-window.js

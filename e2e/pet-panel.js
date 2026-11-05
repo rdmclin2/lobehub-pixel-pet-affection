@@ -151,7 +151,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
           await pp.emulateMedia({ colorScheme: theme });
           const g = await geom(pp);
           assert.equal(g.theme, theme);
-          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'settings', 'quit']);
+          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
           assert.ok(g.card.x >= 0 && g.card.r <= g.win.w && g.card.b <= g.win.h, `the card fits its window: ${JSON.stringify(g)}`);
           assert.equal(g.name, '小克');
           assert.ok(g.char && g.stage && /^\d+\/100$/.test(g.aff), JSON.stringify(g));

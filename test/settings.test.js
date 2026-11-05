@@ -99,3 +99,22 @@ test('tts.elevenlabs and tts.endpoints.elevenlabs: defaults, cleaning, and a bad
   assert.deepEqual(n.elevenlabs, { voiceId: '21m00Tcm4TlvDq8ikWAM', modelId: 'eleven_flash_v2_5' });
   assert.equal(s.normalizeSettings({ tts: { endpoints: { elevenlabs: 'http://el.example.com' } } }).tts.endpoints.elevenlabs, '');
 });
+
+// 像素小院 (docs/pixel-scene-design.md §7): the yard's time and weather in settings.json
+test('scene: defaults, wrap-round hour in quarter hours, unknown weather → clear, old files get the defaults', () => {
+  const S = require('../src/core/settings');
+  assert.deepEqual(S.normalizeSettings(null).scene, { followClock: true, hour: 12, weather: 'clear', autoWeather: false });
+  assert.deepEqual(S.normalizeSettings({ ageGateVersion: 2 }).scene, S.SCENE);
+  const s = S.normalizeSettings({ scene: { followClock: false, hour: 25.1, weather: 'hail', autoWeather: 'yes' } }).scene;
+  assert.deepEqual(s, { followClock: false, hour: 1, weather: 'clear', autoWeather: false });
+  assert.equal(S.normalizeScene({ hour: 18.6 }).hour, 18.5);
+  assert.equal(S.normalizeScene({ hour: -0.25 }).hour, 23.75);
+  assert.equal(S.normalizeScene({ hour: 23.9 }).hour, 0);
+  assert.equal(S.normalizeScene({ weather: 'snow' }).weather, 'snow');
+  const schema = require('../src/core/settings-schema');
+  assert.equal(schema.validate('scene.hour', 18.5).ok, true);
+  assert.equal(schema.validate('scene.hour', 24).ok, false);
+  assert.equal(schema.validate('scene.weather', 'rain').ok, true);
+  assert.equal(schema.validate('scene.weather', 'hail').ok, false);
+  assert.deepEqual(schema.patchFor('scene.weather', 'rain'), { setter: 'setSection', section: 'scene', patch: { weather: 'rain' } });
+});
