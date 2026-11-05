@@ -146,6 +146,15 @@ contextBridge.exposeInMainWorld('petAdmin', {
   onApiStatus: on('api-status'),
   // 聊天 (docs/admin-chat.md): one conversation per character, her 聊天记录; a reply streams as onDelta events.
   // Her model is chosen with setModel(key, species) above (the same pick as her page → 模型).
+  // 角色 → 表情包 (docs/stickers-design.md §4): her sets (built-in + 我的); 添加 opens a file dialog (several
+  // pictures), each one checked in main; 删除 / 改名 only her own set.
+  stickers: {
+    list: (speciesId) => ipcRenderer.invoke('stickers-list', { speciesId }),
+    pickAndAdd: (speciesId) => ipcRenderer.invoke('stickers-pick-add', { speciesId }),
+    remove: (speciesId, ids) => ipcRenderer.invoke('stickers-remove', { speciesId, ids }),
+    update: (speciesId, id, patch = {}) => ipcRenderer.invoke('stickers-update', { speciesId, id, label: patch.label, desc: patch.desc }),
+    onChanged: on('stickers-changed'),
+  },
   chat: {
     listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),
     history: (speciesId, opts = {}) => ipcRenderer.invoke('admin-chat-history', { speciesId, before: opts.before, limit: opts.limit }),

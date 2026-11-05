@@ -15,6 +15,7 @@ import { SpriteStage } from '../stage/SpriteStage';
 import { LicenseRows, VrmLicense, vrmUi } from '../stage/VrmLicense';
 import { useStore } from '../store';
 import { MusicTab } from './MusicLibrary';
+import { StickersTab } from './StickersTab';
 
 const KIND_COLOR: Record<string, string> = { sprites: 'geekblue', pictures: 'cyan', rig: 'purple', live2d: 'magenta', vrm: 'volcano', video: 'gold' };
 
@@ -1394,7 +1395,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'music' | 'about';
+type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'music' | 'about' | 'stickers';
 
 const STAGE_MIN = 320;
 const STAGE_MAX = 640;
@@ -1516,6 +1517,7 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
             onChange={setTab}
             tabs={[
               { content: <LookTab c={c} onTry={setTrying} trying={trying} />, label: '装扮', value: 'looks' },
+              { content: <StickersTab c={c} />, label: '表情包', value: 'stickers' },
               { content: <AffectionTab c={c} />, label: '好感', value: 'affection' },
               { content: <ModelTab c={c} />, label: '模型', value: 'model' },
               { content: <RoleTab c={c} />, label: '个性化设定', value: 'role' },

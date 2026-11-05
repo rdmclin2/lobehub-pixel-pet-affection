@@ -591,6 +591,8 @@ export interface PetAdminApi {
   chat: ChatApi;
   /** 她的音乐库 (core/music-library.js): the songs each character composed. */
   musicLibrary: MusicLibraryApi;
+  /** 角色 → 表情包 (docs/stickers-design.md §4): her sticker sets (built-in + 我的). */
+  stickers: StickersApi;
 }
 
 // --- 她的音乐库 (core/music-library.js, docs/music.md) ----------------------------------------------------------
@@ -625,6 +627,46 @@ export interface MusicLibraryApi {
   onChanged: (cb: (e: { change: 'added' | 'deleted' | 'renamed'; id: string; speciesId: string }) => void) => () => void;
   remove: (id: string) => Promise<{ id: string; ok: true } | { message?: string; ok: false; reason: string }>;
   rename: (id: string, title: string) => Promise<{ ok: true; song: LibrarySong } | { ok: false; reason: string }>;
+}
+
+// --- 表情包集合 (docs/stickers-design.md §2, §4) ------------------------------------------------------------
+
+export interface Sticker {
+  addedAt?: number;
+  animated: boolean;
+  bytes?: number;
+  desc: string;
+  height?: number;
+  id: string;
+  label: string;
+  /** sticker://blob/<sha>.<ext> or sticker://builtin/<speciesId>/<id>.webp */
+  url: string;
+  width?: number;
+}
+
+export interface StickerSet {
+  id: string;
+  kind: 'builtin' | 'mine' | 'store';
+  name: string;
+  readOnly: boolean;
+  stickers: Sticker[];
+}
+
+export interface StickerRejected {
+  message: string;
+  name: string;
+  reason: string;
+}
+
+export type StickerList = { ok: true; sets: StickerSet[]; speciesId: string; limits: { maxBytes: number; maxSide: number; minSide: number; perSet: number } } | { message?: string; ok: false; reason: string };
+
+export interface StickersApi {
+  list: (speciesId: string) => Promise<StickerList>;
+  onChanged: (cb: (d: { speciesId: string }) => void) => () => void;
+  /** opens the file dialog (several pictures); each one is checked in main */
+  pickAndAdd: (speciesId: string) => Promise<{ added: Sticker[]; count?: number; message?: string; ok: boolean; picked?: number; reason?: string; rejected: StickerRejected[] }>;
+  remove: (speciesId: string, ids: string[]) => Promise<{ count?: number; message?: string; ok: boolean; reason?: string; removed?: number }>;
+  update: (speciesId: string, id: string, patch: { desc?: string; label?: string }) => Promise<{ message?: string; ok: boolean; reason?: string; sticker?: Sticker }>;
 }
 
 // --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
