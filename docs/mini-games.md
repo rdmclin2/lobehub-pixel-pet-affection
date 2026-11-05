@@ -241,7 +241,7 @@ screen         屏幕空间：雨、雪、雾、闪电
 **校验**（`validateManifest` 与 `checkFolder`）：
 - 文件夹里只能有 manifest 和它列出的文件，有多余的文件或子文件夹就拒绝安装。
 - 文件名只允许 `.webp` / `.png` / `.json`，所以下载的包里放不进脚本。
-- 引擎必须是这个应用会玩的（`yard@1` 像素小院、`room@1` 像素房间；`room@1` 的格式见 [pixel-room.md §3](pixel-room.md#3-游戏包格式engine-room1)）。
+- 引擎必须是这个应用会玩的（`yard@1` 像素小院、`room@1` 像素房间、`illustrated-room@1` 她的房间（插画版，[illustrated-room.md](illustrated-room.md)）；`room@1` 的格式见 [pixel-room.md §3](pixel-room.md#3-游戏包格式engine-room1)）。
 - 每个精灵名都要在 `sprites.json` 里，每件小事引用的物件都要存在。
 
 新的小游戏如果只是换一个场景，同样的 `yard@1` 就够了：另画一套图，写一个 manifest。需要新玩法时，要在应用里加一个新的引擎版本（比如 `yard@2`）。
@@ -334,3 +334,4 @@ e2e `game` 用本地 http 服务当商店的 CDN 和游戏仓库的目录。安�
 - 在 Xvfb 软件渲染（SwiftShader）下大约 40–60 fps；有 GPU 的机器会更流畅。
 
 商店第二款小游戏「像素房间」（engine `room@1`）的玩法、包格式、怎么加新房间和上架验收见 [pixel-room.md](pixel-room.md)。
+插画版「她的房间」（engine `illustrated-room@1`：分层插画、台灯光照、屏幕内容、聊天驱动）见 [illustrated-room.md](illustrated-room.md)。

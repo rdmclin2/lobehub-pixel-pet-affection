@@ -41,7 +41,7 @@ function checkFolder(dir, id) {
   try { names = fs.readdirSync(dir); } catch (e) { return { reason: 'no-dir', errors: [e.message] }; }
   // the sprites index: yard@1 has one (its JSON), room@1 one per open room ({ <file>: JSON })
   const read = (f) => (GP.FILE_RE.test(String(f)) && names.includes(f) ? readJson(path.join(dir, f)) : null);
-  const sprites = m.engine === 'room@1' ? Object.fromEntries(GP.spriteFiles(m).map((f) => [f, read(f)]).filter(([, v]) => v)) : m.sprites ? read(m.sprites) : null;
+  const sprites = GP.MULTI_INDEX.includes(m.engine) ? Object.fromEntries(GP.spriteFiles(m).map((f) => [f, read(f)]).filter(([, v]) => v)) : m.sprites ? read(m.sprites) : null;
   const errors = GP.validateManifest(m, { files: names, sprites });
   if (errors.length) return { reason: 'bad-manifest', errors };
   const named = new Set(['manifest.json', MARKER, ...GP.namedFiles(m)]);

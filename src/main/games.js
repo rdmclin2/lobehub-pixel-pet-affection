@@ -16,6 +16,8 @@ const GQ = require('../core/game-quests');
 const GP = require('../core/game-pack');
 const GI = require('../core/game-index');
 const RP = require('../core/room-play');
+const IRP = require('../core/illustrated-room-play');
+const IRPack = require('../core/illustrated-room-pack');
 
 class GameLibrary {
   constructor({ userDir, devDir = null }) {
@@ -47,7 +49,7 @@ class GameLibrary {
     const manifest = JSON.parse(fs.readFileSync(mf, 'utf8'));
     // yard@1: its one sprites index; room@1: { <file>: index } of every room's
     const readSprites = (f) => JSON.parse(fs.readFileSync(path.join(g.dir, f), 'utf8'));
-    const sprites = manifest.engine === 'room@1' ? Object.fromEntries(GP.spriteFiles(manifest).map((f) => [f, readSprites(f)])) : manifest.sprites ? readSprites(manifest.sprites) : {};
+    const sprites = GP.MULTI_INDEX.includes(manifest.engine) ? Object.fromEntries(GP.spriteFiles(manifest).map((f) => [f, readSprites(f)])) : manifest.sprites ? readSprites(manifest.sprites) : {};
     const out = { id, dir: g.dir, source: g.source, mtime, manifest, sprites };
     this._cache.set(id, out);
     return out;
@@ -90,6 +92,8 @@ class GameLibrary {
     // 像素房间: the page keeps only what it chose (the room); her focus, the running round, the last one and the
     // totals are main's (activity() below) and the page cannot write them
     const g = this.load(id);
+    // 她的房间: everything is main's (illustratedCommand); the page has nothing of its own to save
+    if (g && g.manifest.engine === IRP.ENGINE) return true;
     if (g && g.manifest.engine === 'room@1') {
       const st = this._roomState(p);
       const want = JSON.parse(json);
@@ -225,6 +229,112 @@ class GameLibrary {
     if (!g || g.manifest.engine !== 'room@1') return null;
     const r = this.activity(id, { cmd: 'stop' }, pet, { now });
     return r && r.settled ? r.settled : null;
+  }
+
+  // ---- 她的房间 (illustrated-room@1, docs/illustrated-room.md §3) -------------------------------------------
+  // Main is the only authority: a click on the status bar or the picture, a sentence in chat (core/room-intent.js
+  // through main.js) and the page's timer all come here; core/illustrated-room-play.js decides, the numbers are
+  // booked as 像素房间's (_book), and the page plays what comes back.
+  _illView(g, p, st, pet, now) {
+    return { ...IRP.view(st, { manifest: g.manifest, now }), stats: this._stats(st, pet), last: st.last, quests: GQ.view(g.manifest.quests || [], p.quests), totals: st.totals };
+  }
+  _illQuest(g, p, ev, pet) {
+    const r = GQ.record(g.manifest.quests || [], p.quests, ev, {});
+    p.quests = r.progress;
+    return r.completed.map((q) => ({ id: q.id, title: q.title, affection: (pet.quest(q.title) || {}).affection || null }));
+  }
+  // the game boots: a round left open by an app that went away is settled now (as 像素房间's), and she is where
+  // she was (the state, the lamp)
+  illustratedBoot(id, pet, { now = Date.now() } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== IRP.ENGINE) return null;
+    const p = GS.readProgress(this.userDir, id);
+    const st = IRP.restore(g.manifest, p.state, now);
+    if (!st) return null;
+    let recovered = null;
+    if (st.run) {
+      const settled = RP.recover(st.run, now, RP.defsOf(g.manifest));
+      st.run = null;
+      const room = IRP.roomOf(g.manifest, st.room);
+      st.state = room.defaultState;
+      st.since = now;
+      st.screen = null;
+      if (settled) recovered = this._book(id, g, p, st, settled, pet, {});
+    }
+    GS.writeProgress(this.userDir, id, { ...p, state: st });
+    return { ...this._illView(g, p, st, pet, now), recovered };
+  }
+  // cmd: { cmd: 'set', state?, lamp?, screen?, query?, stop?, next?, from } · { cmd: 'tick' } (the page's timer)
+  // · { cmd: 'seen' } · { cmd: 'state' }; with testMode also { cmd: 'scale', k }
+  // → { ok, … the room view, path, settled, started, lampChanged, completed, line } | { ok: false, reason, … }
+  illustratedCommand(id, cmd, pet, { now = Date.now(), testMode = false } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== IRP.ENGINE || !cmd || typeof cmd.cmd !== 'string') return { ok: false, reason: 'invalid' };
+    const p = GS.readProgress(this.userDir, id);
+    const st = IRP.restore(g.manifest, p.state, now);
+    if (!st) return { ok: false, reason: 'invalid' };
+    const room = IRP.roomOf(g.manifest, st.room);
+    const save = (next) => GS.writeProgress(this.userDir, id, { ...p, state: next });
+    const out = (next, extra) => ({ ok: true, ...extra, ...this._illView(g, p, next, pet, now) });
+    switch (cmd.cmd) {
+      case 'state': return out(st, {});
+      case 'seen': if (st.run) { st.run.seenAt = now; save(st); } return out(st, {});
+      case 'scale': {
+        if (!testMode) return { ok: false, reason: 'test-only' };
+        st.scale = Math.max(0.01, Math.min(1, Number(cmd.k) || 1));
+        save(st);
+        return out(st, { scale: st.scale });
+      }
+      case 'tick': {
+        const r = IRP.tick(st, { manifest: g.manifest, now });
+        if (!r) return out(st, { settled: null, early: !!st.run });
+        const settled = this._book(id, g, p, r.st, r.settled, pet, {});
+        save(r.st);
+        return out(r.st, { settled, path: r.path, from: r.from, to: r.to, line: IRP.line(room, 'done') || settled.summary });
+      }
+      case 'set': {
+        const from = ['chat', 'click', 'key', 'hotspot'].includes(cmd.from) ? cmd.from : 'click';
+        const c = { state: typeof cmd.state === 'string' ? cmd.state.slice(0, 32) : null, stop: !!cmd.stop, next: !!cmd.next, from };
+        if (typeof cmd.lamp === 'boolean') c.lamp = cmd.lamp;
+        if (typeof cmd.screen === 'string' && IRPack.CONTENT.includes(cmd.screen)) c.screen = cmd.screen;
+        if (typeof cmd.query === 'string' && cmd.query.trim()) c.query = cmd.query.trim().slice(0, 40);
+        const stats = this._stats(st, pet);
+        const r = IRP.command(st, c, { manifest: g.manifest, now, stats, scale: testMode && Number.isFinite(st.scale) ? st.scale : 1 });
+        if (!r.ok && r.reason !== 'tired') return { ...r, st: undefined, ...this._illView(g, p, st, pet, now) };
+        const next = r.st;
+        const settled = r.ok && r.settled ? this._book(id, g, p, next, r.settled, pet, {}) : null;
+        const completed = [];
+        if (r.lampChanged) completed.push(...this._illQuest(g, p, { type: 'lamp', to: next.lamp }, pet));
+        if (r.ok && from === 'chat' && !r.already) completed.push(...this._illQuest(g, p, { type: 'chat-command' }, pet));
+        if (r.ok && r.to !== r.from) completed.push(...this._illQuest(g, p, { type: 'state', kind: IRP.activityOf(room, r.to) || '' }, pet));
+        save(next);
+        if (!r.ok) return { ok: false, reason: r.reason, need: r.need, have: r.have, kind: r.kind, lampChanged: r.lampChanged, line: IRP.line(room, 'tired'), completed, ...this._illView(g, p, next, pet, now) };
+        const act = IRP.activityOf(room, next.state);
+        const line = r.to !== r.from ? IRP.line(room, 'ack', act) : r.lampChanged ? IRP.line(room, next.lamp ? 'lampOn' : 'lampOff') : '';
+        return out(next, { from: r.from, to: r.to, path: r.path, settled, started: r.started, lampChanged: r.lampChanged, already: r.already, completed, line, via: from });
+      }
+      default: return { ok: false, reason: 'invalid' };
+    }
+  }
+  // the note for this chat turn's prompt (core/illustrated-room-play.js chatNote); r: what the message did
+  illustratedNote(id, r, { now = Date.now() } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== IRP.ENGINE) return '';
+    const st = IRP.restore(g.manifest, GS.readProgress(this.userDir, id).state, now);
+    return IRP.chatNote(g.manifest, st, r, { now });
+  }
+  // the game window closed / the app quits with a round running: settled by how long it ran; she stays where she is
+  illustratedClose(id, pet, { now = Date.now() } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== IRP.ENGINE) return null;
+    const p = GS.readProgress(this.userDir, id);
+    const st = IRP.restore(g.manifest, p.state, now);
+    if (!st || !st.run) return null;
+    const s = RP.settle(st.run, now, RP.defsOf(g.manifest));
+    st.run = null;
+    const settled = s ? this._book(id, g, p, st, s, pet, {}) : null;
+    GS.writeProgress(this.userDir, id, { ...p, state: st });
+    return settled;
   }
 
   // game://<id>/<file>

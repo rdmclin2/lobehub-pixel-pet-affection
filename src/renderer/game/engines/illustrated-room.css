@@ -1,0 +1,64 @@
+/* 她的房间 (engines/illustrated-room.js). The room's own DOM on top of the PixiJS canvas: the status bar (六件事 +
+   台灯) and the chat bar at the bottom, the 屏幕 card (her screen enlarged), the folded stats capsule in the title bar
+   and its card. Frosted deep-blue glass with light text, tinted by the rainy night scene (.agents/ux/product.md);
+   type, radius, spacing and motion come from the --lobe-* tokens. */
+body.engine-illustrated { --glass: rgba(16, 26, 58, 0.62); --glass-edge: rgba(255, 255, 255, 0.18); --ink: #eef3ff; --ink-2: rgba(238, 243, 255, 0.74); --ink-3: rgba(238, 243, 255, 0.5); }
+/* the yard's toolbar and cards are not this engine's */
+body.engine-illustrated .toolbar, body.engine-illustrated #sky-card, body.engine-illustrated #quest-card { display: none !important; }
+body.engine-illustrated .bubble { max-width: 300px; background: rgba(255, 255, 255, 0.95); color: #1c2a4f; }
+body.engine-illustrated .tip { background: rgba(10, 18, 44, 0.86); color: var(--ink); }
+
+/* the capsule: her numbers, folded (title bar) */
+.ir-capsule { -webkit-app-region: no-drag; height: 24px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--glass-edge); border-radius: 12px; background: rgba(255, 255, 255, 0.1); color: var(--ink); font: inherit; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.ir-capsule:hover, .ir-capsule[aria-expanded="true"] { background: rgba(255, 255, 255, 0.2); }
+.ir-capsule.pulse { animation: ir-pulse 1s var(--lobe-motion-ease-out); }
+@keyframes ir-pulse { 0% { transform: scale(1); } 30% { transform: scale(1.12); background: rgba(255, 255, 255, 0.32); } 100% { transform: scale(1); } }
+.ir-stats { position: absolute; top: 42px; right: 46px; width: 220px; padding: 10px 12px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-edge); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3); z-index: 3; }
+.ir-stats ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ir-stats li { display: grid; grid-template-columns: 30px 1fr 26px; align-items: center; gap: 6px; font-size: 12px; }
+.ir-stats li em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
+.ir-track { position: relative; height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.ir-track b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.ir-stats small { display: block; margin: 6px 0 4px; font-size: 12px; }
+.ir-q-head { display: block; margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+.ir-quests li { display: flex; gap: 6px; grid-template-columns: none; }
+.ir-quests li i { width: 14px; height: 14px; flex: none; border: 1.5px solid var(--ink-2); border-radius: 4px; font-style: normal; font-size: 10px; line-height: 12px; text-align: center; }
+.ir-quests li.done { color: var(--ink-3); }
+
+/* the 屏幕 card: what her phone / laptop shows, enlarged (bottom left, over the foot of the bed) */
+.ir-pip { position: absolute; left: 12px; bottom: 12px; padding: 6px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--glass-edge); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; gap: 4px; max-width: 172px; }
+.ir-pip-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 0 4px; font-size: 12px; white-space: nowrap; }
+.ir-pip-head .ico { width: 14px; height: 14px; }
+.ir-pip-head .icon-btn { width: 22px; height: 22px; }
+.ir-pip canvas { display: block; border-radius: 9px; background: #000; }
+.ir-pip-cap { max-width: 160px; padding: 0 4px 2px; color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* bottom: what the owner just said, the chat bar, the status bar */
+.ir-said { align-self: flex-end; max-width: 80%; padding: 5px 12px; border-radius: 14px 14px 4px 14px; background: rgba(111, 168, 232, 0.92); color: #0c1a3a; font-size: var(--lobe-font-size-sm); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ir-bottom { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(600px, calc(100% - 380px)); min-width: 420px; }
+.ir-chat { width: 100%; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 4px 0 14px; border-radius: 19px; background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-edge); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28); }
+.ir-chat input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--lobe-font-size); }
+/* the input's own ring is off (data-lobe-focus-ring); the whole bar shows focus instead */
+.ir-chat:focus-within { border-color: rgba(255, 255, 255, 0.55); box-shadow: 0 0 0 2px rgba(111, 168, 232, 0.55), 0 8px 26px rgba(0, 0, 0, 0.28); }
+.ir-chat input::placeholder { color: var(--ink-3); }
+.ir-chat-note { flex: none; max-width: 52%; color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ir-chat.busy .ir-chat-note { animation: ir-breathe 1.4s ease-in-out infinite; }
+@keyframes ir-breathe { 50% { opacity: 0.45; } }
+.ir-send { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.92); color: #1c2f63; cursor: pointer; }
+.ir-send:disabled { opacity: 0.5; cursor: default; }
+.ir-send .ico { width: 15px; height: 15px; }
+.ir-bar { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 20px; background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-edge); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28); }
+.ir-act { position: relative; height: 34px; display: inline-flex; align-items: center; gap: 5px; padding: 0 11px; border: 0; border-radius: 17px; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; overflow: hidden; transition: background var(--lobe-motion-duration-fast) linear, color var(--lobe-motion-duration-fast) linear; }
+.ir-act .ico { width: 16px; height: 16px; }
+.ir-act:hover { background: rgba(255, 255, 255, 0.12); color: var(--ink); }
+.ir-act.current { background: rgba(255, 255, 255, 0.92); color: #1c2f63; font-weight: var(--lobe-font-weight-strong); }
+.ir-act.tired { color: var(--ink-3); }
+.ir-act.shake { animation: ir-shake 0.4s; }
+@keyframes ir-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.ir-prog { position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 1px; overflow: hidden; }
+.ir-prog b { display: block; height: 100%; width: 0; background: #6fa8e8; }
+.ir-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--glass-edge); }
+.ir-lamp.on { color: #ffd88a; background: rgba(255, 200, 110, 0.16); }
+@media (prefers-reduced-motion: reduce) {
+  .ir-capsule.pulse, .ir-act.shake, .ir-chat.busy .ir-chat-note { animation: none; }
+}

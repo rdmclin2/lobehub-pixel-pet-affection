@@ -1,0 +1,774 @@
+{
+  "schema": 1,
+  "kind": "game",
+  "engine": "illustrated-room@1",
+  "id": "her-room",
+  "name": "她的房间",
+  "version": "1.0.0",
+  "description": "深夜下雨的房间里，她躺在床上刷手机、坐在书桌前用电脑、听歌、打游戏、发呆。在聊天里叫她做什么，她就去做。",
+  "credit": "美术：GPT Image（gpt-image-2.5）；玩法与引擎：Pixel Pet Affection",
+  "defaultRoom": "dafeiyu",
+  "activities": {
+    "sleep": {
+      "label": "睡觉",
+      "seconds": 30,
+      "deltas": {
+        "energy": 35,
+        "mood": 6,
+        "focus": 8,
+        "fullness": -4
+      }
+    },
+    "work": {
+      "label": "工作",
+      "seconds": 30,
+      "deltas": {
+        "focus": 28,
+        "energy": -12,
+        "mood": -5,
+        "fullness": -8
+      },
+      "needs": {
+        "energy": 15
+      }
+    },
+    "phone": {
+      "label": "看手机",
+      "seconds": 20,
+      "deltas": {
+        "mood": 14,
+        "focus": -10,
+        "energy": -4
+      }
+    },
+    "music": {
+      "label": "听音乐",
+      "seconds": 25,
+      "deltas": {
+        "mood": 16,
+        "energy": 6,
+        "focus": 6
+      }
+    },
+    "game": {
+      "label": "打游戏",
+      "seconds": 30,
+      "deltas": {
+        "mood": 22,
+        "energy": -14,
+        "fullness": -8,
+        "focus": -6
+      },
+      "needs": {
+        "energy": 15
+      }
+    },
+    "idle": {
+      "label": "发呆",
+      "seconds": 0
+    }
+  },
+  "rooms": [
+    {
+      "id": "dafeiyu",
+      "character": "dafeiyu",
+      "status": "open",
+      "name": "鲸鱼女仆的雨夜小屋",
+      "blurb": "深夜、下雨、蓝色月光，台灯一开桌面就暖起来。",
+      "palette": {
+        "primary": "#2C4A8A",
+        "accent": "#6FA8E8",
+        "base": "#FFFFFF",
+        "trim": "#E8D6A0"
+      },
+      "world": {
+        "width": 1920,
+        "height": 1080,
+        "background": "#0B1430"
+      },
+      "lighting": {
+        "lamp": {
+          "default": false,
+          "at": [
+            1452,
+            210
+          ],
+          "glow": {
+            "sprite": "lamp-glow",
+            "r": 520,
+            "alpha": 0.6
+          },
+          "mask": "dafeiyu-light-mask.webp",
+          "rampOn": 0.17,
+          "rampOff": 0.25,
+          "flicker": 0.05
+        },
+        "grade": {
+          "saturation": 0.92,
+          "tint": "#9FB8FF",
+          "vignette": 0.35
+        }
+      },
+      "window": {
+        "poly": [
+          [
+            268,
+            40
+          ],
+          [
+            1010,
+            0
+          ],
+          [
+            1040,
+            330
+          ],
+          [
+            300,
+            420
+          ]
+        ],
+        "rain": {
+          "density": 110,
+          "angle": 12,
+          "speed": [
+            900,
+            1400
+          ],
+          "drops": 24
+        },
+        "bokeh": {
+          "count": 60,
+          "sprites": [
+            "bokeh-blue",
+            "bokeh-warm"
+          ],
+          "warmRatio": 0.15,
+          "r": [
+            6,
+            22
+          ],
+          "period": [
+            2,
+            6
+          ]
+        }
+      },
+      "sprites": "dafeiyu-parts.json",
+      "images": {
+        "parts": "dafeiyu-parts.webp",
+        "clips": "dafeiyu-clips.webp",
+        "media": "dafeiyu-media.webp"
+      },
+      "frames": {
+        "clips": "dafeiyu-clips.json",
+        "media": "dafeiyu-media.json"
+      },
+      "screens": {
+        "laptop": {
+          "corners": [
+            [
+              1500,
+              520
+            ],
+            [
+              1640,
+              470
+            ],
+            [
+              1662,
+              590
+            ],
+            [
+              1522,
+              646
+            ]
+          ],
+          "size": [
+            640,
+            400
+          ],
+          "glow": {
+            "r": 180,
+            "color": "#CFE3FF"
+          }
+        },
+        "phone": {
+          "corners": [
+            [
+              880,
+              690
+            ],
+            [
+              948,
+              668
+            ],
+            [
+              968,
+              760
+            ],
+            [
+              900,
+              784
+            ]
+          ],
+          "size": [
+            360,
+            640
+          ],
+          "glow": {
+            "r": 120,
+            "color": "#DDE9FF"
+          }
+        }
+      },
+      "states": {
+        "idle": {
+          "activity": "idle",
+          "label": "发呆",
+          "images": {
+            "off": "dafeiyu-idle-off.webp",
+            "lit": "dafeiyu-idle-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              700,
+              430,
+              260,
+              220
+            ],
+            "amp": 1.6,
+            "period": 3.8
+          },
+          "blink": {
+            "sprite": {
+              "off": "idle-blink-off",
+              "lit": "idle-blink-lit"
+            },
+            "at": [
+              776,
+              452
+            ],
+            "every": [
+              3,
+              6
+            ]
+          },
+          "screens": {
+            "phone": {
+              "content": "lock",
+              "on": true
+            }
+          },
+          "bubble": [
+            820,
+            360
+          ],
+          "variants": [
+            "idle-lazy"
+          ]
+        },
+        "idle-lazy": {
+          "activity": "idle",
+          "label": "犯懒",
+          "images": {
+            "off": "dafeiyu-idle-lazy-off.webp",
+            "lit": "dafeiyu-idle-lazy-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              700,
+              430,
+              260,
+              220
+            ],
+            "amp": 1.2,
+            "period": 4.6
+          },
+          "blink": {
+            "sprite": {
+              "off": "lazy-blink-off",
+              "lit": "lazy-blink-lit"
+            },
+            "at": [
+              776,
+              456
+            ],
+            "every": [
+              2,
+              4
+            ]
+          },
+          "bubble": [
+            820,
+            360
+          ]
+        },
+        "sleep": {
+          "activity": "sleep",
+          "label": "睡觉",
+          "images": {
+            "off": "dafeiyu-sleep-off.webp",
+            "lit": "dafeiyu-sleep-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              560,
+              520,
+              420,
+              200
+            ],
+            "amp": 2.2,
+            "period": 5.2
+          },
+          "blink": null,
+          "lampOnEnter": false,
+          "fx": [
+            {
+              "type": "emit",
+              "sprites": [
+                "z1",
+                "z2"
+              ],
+              "from": [
+                640,
+                470
+              ],
+              "every": 1.6,
+              "rise": 80
+            }
+          ]
+        },
+        "phone": {
+          "activity": "phone",
+          "label": "看手机",
+          "images": {
+            "off": "dafeiyu-phone-off.webp",
+            "lit": "dafeiyu-phone-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              620,
+              560,
+              320,
+              180
+            ],
+            "amp": 1.4,
+            "period": 3.6
+          },
+          "blink": {
+            "sprite": {
+              "off": "phone-blink-off",
+              "lit": "phone-blink-lit"
+            },
+            "at": [
+              702,
+              598
+            ],
+            "every": [
+              3,
+              6
+            ]
+          },
+          "screens": {
+            "phone": {
+              "content": "clips",
+              "on": true
+            }
+          },
+          "bubble": [
+            760,
+            470
+          ]
+        },
+        "work": {
+          "activity": "work",
+          "label": "工作",
+          "images": {
+            "off": "dafeiyu-work-off.webp",
+            "lit": "dafeiyu-work-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              1380,
+              430,
+              240,
+              260
+            ],
+            "amp": 1.2,
+            "period": 4
+          },
+          "blink": null,
+          "lampOnEnter": true,
+          "screens": {
+            "laptop": {
+              "content": "page",
+              "on": true
+            }
+          },
+          "bubble": [
+            1300,
+            300
+          ],
+          "enterVia": "stand"
+        },
+        "music": {
+          "activity": "music",
+          "label": "听音乐",
+          "images": {
+            "off": "dafeiyu-music-off.webp",
+            "lit": "dafeiyu-music-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              700,
+              420,
+              260,
+              240
+            ],
+            "amp": 1.6,
+            "period": 3.4
+          },
+          "sway": {
+            "amp": 2.5,
+            "bpm": 84
+          },
+          "blink": {
+            "sprite": {
+              "off": "music-blink-off",
+              "lit": "music-blink-lit"
+            },
+            "at": [
+              770,
+              448
+            ],
+            "every": [
+              4,
+              7
+            ]
+          },
+          "screens": {
+            "phone": {
+              "content": "player",
+              "on": true
+            }
+          },
+          "fx": [
+            {
+              "type": "emit",
+              "sprites": [
+                "note1",
+                "note2"
+              ],
+              "from": [
+                800,
+                420
+              ],
+              "every": 1.2,
+              "rise": 70
+            }
+          ]
+        },
+        "game": {
+          "activity": "game",
+          "label": "打游戏",
+          "images": {
+            "off": "dafeiyu-game-off.webp",
+            "lit": "dafeiyu-game-lit.webp"
+          },
+          "breath": {
+            "rect": [
+              1380,
+              430,
+              240,
+              260
+            ],
+            "amp": 1.2,
+            "period": 3.2
+          },
+          "blink": null,
+          "screens": {
+            "laptop": {
+              "content": "game",
+              "on": true
+            }
+          },
+          "bubble": [
+            1300,
+            300
+          ],
+          "enterVia": "stand"
+        },
+        "stand": {
+          "activity": null,
+          "transient": true,
+          "label": "起身",
+          "images": {
+            "off": "dafeiyu-stand-off.webp",
+            "lit": "dafeiyu-stand-lit.webp"
+          },
+          "hold": 0.6
+        }
+      },
+      "defaultState": "idle",
+      "transition": {
+        "seconds": 1.4,
+        "ease": "inOutSine"
+      },
+      "content": {
+        "clips": {
+          "frames": "clip",
+          "fps": 12,
+          "list": [
+            {
+              "id": "jellyfish",
+              "frames": 24,
+              "caption": "深海里的水母"
+            },
+            {
+              "id": "rain-window",
+              "frames": 24,
+              "caption": "雨夜窗边的台灯"
+            }
+          ],
+          "swipeEvery": [
+            8,
+            15
+          ]
+        },
+        "page": {
+          "templates": [
+            {
+              "id": "doc",
+              "title": "周报.docx",
+              "lines": 14
+            },
+            {
+              "id": "search",
+              "title": "搜索",
+              "query": "{query}"
+            }
+          ]
+        },
+        "player": {
+          "tracks": [
+            {
+              "title": "雨夜的鲸鱼",
+              "artist": "大肥鱼",
+              "cover": "cover-whale",
+              "seconds": 186
+            }
+          ]
+        },
+        "game": {
+          "frames": "game",
+          "fps": 10
+        }
+      },
+      "hotspots": [
+        {
+          "id": "bed",
+          "poly": [
+            [
+              240,
+              560
+            ],
+            [
+              980,
+              470
+            ],
+            [
+              1100,
+              760
+            ],
+            [
+              300,
+              960
+            ]
+          ],
+          "label": "床",
+          "state": "sleep"
+        },
+        {
+          "id": "phone",
+          "poly": [
+            [
+              870,
+              660
+            ],
+            [
+              980,
+              650
+            ],
+            [
+              990,
+              790
+            ],
+            [
+              880,
+              800
+            ]
+          ],
+          "label": "手机",
+          "state": "phone"
+        },
+        {
+          "id": "desk",
+          "poly": [
+            [
+              1260,
+              360
+            ],
+            [
+              1880,
+              300
+            ],
+            [
+              1900,
+              700
+            ],
+            [
+              1300,
+              760
+            ]
+          ],
+          "label": "书桌",
+          "state": "work"
+        },
+        {
+          "id": "lamp",
+          "poly": [
+            [
+              1400,
+              90
+            ],
+            [
+              1520,
+              90
+            ],
+            [
+              1530,
+              300
+            ],
+            [
+              1390,
+              300
+            ]
+          ],
+          "label": "台灯",
+          "toggle": "lamp"
+        }
+      ],
+      "intents": {
+        "sleep": [
+          "回床上",
+          "去睡觉",
+          "躺下",
+          "休息吧"
+        ],
+        "phone": [
+          "看手机",
+          "玩手机",
+          "刷手机"
+        ],
+        "work": [
+          "去工作",
+          "写代码",
+          "干活",
+          "打开电脑",
+          "上网",
+          "搜一下"
+        ],
+        "music": [
+          "听歌",
+          "听音乐",
+          "放首歌"
+        ],
+        "game": [
+          "打游戏",
+          "玩游戏",
+          "开一局"
+        ],
+        "idle": [
+          "发呆",
+          "歇会",
+          "犯懒",
+          "坐着"
+        ],
+        "screen": {
+          "clips": [
+            "刷抖音",
+            "刷视频",
+            "短视频"
+          ],
+          "page": [
+            "网页",
+            "搜一下",
+            "查一下"
+          ],
+          "player": [
+            "放歌",
+            "听歌"
+          ]
+        }
+      },
+      "lines": {
+        "enter": [
+          "今晚又在下雨……"
+        ],
+        "ack": {
+          "sleep": [
+            "回来了，躺下了。"
+          ],
+          "work": [
+            "开了，在弄呢。"
+          ],
+          "phone": [
+            "在刷呢，别催。"
+          ],
+          "music": [
+            "放上了。"
+          ],
+          "game": [
+            "来一局！"
+          ],
+          "idle": [
+            "……就发会儿呆。"
+          ]
+        },
+        "lampOn": [
+          "开灯啦。"
+        ],
+        "lampOff": [
+          "关了，屋里好蓝。"
+        ]
+      }
+    }
+  ],
+  "quests": [
+    {
+      "id": "sleep-full",
+      "title": "陪她睡一整觉",
+      "on": {
+        "type": "activity-end",
+        "kind": "sleep",
+        "complete": true
+      }
+    },
+    {
+      "id": "chat-move",
+      "title": "在聊天里叫她做一件事",
+      "on": {
+        "type": "chat-command"
+      }
+    },
+    {
+      "id": "lamp-night",
+      "title": "夜里帮她开一次台灯",
+      "on": {
+        "type": "lamp",
+        "to": true
+      }
+    }
+  ]
+}

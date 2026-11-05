@@ -41,6 +41,8 @@
     if (on.kind && ![].concat(on.kind).includes(ev.kind)) return false;
     if (on.theme && ![].concat(on.theme).includes(ev.theme)) return false;
     if (typeof on.complete === 'boolean' && on.complete !== !!ev.complete) return false;
+    // 她的房间 (illustrated-room@1): { type: 'lamp', to: true } — the desk lamp switched on
+    if (typeof on.to === 'boolean' && on.to !== !!ev.to) return false;
     return true;
   };
 

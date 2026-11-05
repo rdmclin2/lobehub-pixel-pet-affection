@@ -1324,6 +1324,14 @@ class PetService extends EventEmitter {
     }
   }
 
+  // 她的房间: main sets `roomHook(text) → note` while an illustrated room is open in the game window
+  // (main.js roomChat): it matches the message (core/room-intent.js), switches her there and returns the prompt note.
+  // A hook that throws never stops the chat.
+  _roomNote(text, origin, attachments) {
+    if (typeof this.roomHook !== 'function' || origin !== 'user' || !text) return '';
+    try { return String(this.roomHook(text, { attachments }) || ''); } catch (e) { this.emit('error', e); return ''; }
+  }
+
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
   // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them with her local
   // tools (run here, or through the bound device), so local abilities must be on.
@@ -1347,6 +1355,9 @@ class PetService extends EventEmitter {
     if (origin === 'user') this.interjector.userChatted(clean);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) }, sticker);
     if (sticker) this.emit('chat-log', { speciesId: c.speciesId }); // the settings window's chat shows it too
+    // 她的房间 (docs/illustrated-room.md §4): with her room open, 「回床上休息吧」 switches her state right away —
+    // before the model answers — and the note tells her agent what she just did there
+    const room = this._roomNote(clean, origin, images.length + paths.length);
     const stream = this._openStream('chat', turn);
     const trace = latency.createTrace('desktop');
     stream.trace = trace;
@@ -1383,7 +1394,7 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       if (sticker) body = [body, adminChat.stickerLine(sticker)].filter(Boolean).join('\n');
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus, room });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
@@ -1587,7 +1598,9 @@ class PetService extends EventEmitter {
       const musicStatus = this._musicStatus({ plain: true });
       trace.set('musicReason', musicStatus.reason);
       musicCtx = { kind: 'console', speciesId: id, turnId, streamId: null, results: [], errors: [] };
-      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings(), music: musicStatus });
+      // 她的房间: talking here to the companion whose room is open moves her there too
+      const room = id === this.pet.speciesId ? this._roomNote(clean, 'user', imgs.length) : '';
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings(), music: musicStatus, room });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
       trace.set('recallMsgs', recall.length);
