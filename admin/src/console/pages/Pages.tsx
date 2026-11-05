@@ -297,11 +297,12 @@ export const VoicePacksPage = () => {
         <Table
           columns={[
             // 通用语音包 (kind generic) belong to no character: show which gender they stand in for
-            { key: 'c', render: (_: unknown, p: any) => (p.kind === 'generic' ? (p.gender === 'male' ? '通用男声' : '通用女声') : roster.find((c) => c.base === p.character)?.nameZh ?? p.character), title: '角色', width: 110 },
+            // 风格语音包 (kind style, 商店 → 语音包) fit every character too
+            { key: 'c', render: (_: unknown, p: any) => (p.kind === 'style' ? '任意角色' : p.kind === 'generic' ? (p.gender === 'male' ? '通用男声' : '通用女声') : roster.find((c) => c.base === p.character)?.nameZh ?? p.character), title: '角色', width: 110 },
             { dataIndex: 'name', key: 'name', title: '名称' },
             { dataIndex: 'engine', key: 'engine', render: (v: string) => <Tag>{v}</Tag>, title: '引擎', width: 110 },
             { dataIndex: 'lines', key: 'lines', render: (v: number) => `${v} 句`, title: '句数', width: 90 },
-            { dataIndex: 'builtIn', key: 'b', render: (v: boolean) => (v ? '内置' : '自定义'), title: '来源', width: 90 },
+            { key: 'b', render: (_: unknown, p: any) => (p.store ? <Tag color="success" data-voicepack-store={p.id}>商店下载</Tag> : p.builtIn ? '内置' : '自定义'), title: '来源', width: 110 },
             { dataIndex: 'credit', key: 'credit', render: (v: string) => <Text ellipsis fontSize={12} type="secondary">{v || '--'}</Text>, title: '署名', width: 220 },
           ]}
           dataSource={packs}

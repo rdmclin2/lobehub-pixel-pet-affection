@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "release": "voices-v1",
+  "voicePacks": [
+    {
+      "id": "style-cute",
+      "type": "voice-pack",
+      "kind": "style",
+      "style": "cute",
+      "styleLabel": "可爱",
+      "name": "可爱 · 甜心少女",
+      "gender": "female",
+      "version": "1.0.0",
+      "description": "软糯甜美的少女音，句尾带点撒娇，适合元气、黏人的桌宠。",
+      "credit": "语音由 AI 合成：MiniMax 甜心小玲（tianxin_xiaoling）",
+      "engine": "minimax",
+      "voiceId": "tianxin_xiaoling",
+      "model": "speech-2.8-turbo",
+      "params": {
+        "speed": 1.05,
+        "pitch": 1,
+        "vol": 1,
+        "emotion": "happy"
+      },
+      "lineSet": "generic",
+      "lines": 138,
+      "seconds": 273,
+      "sample": {
+        "text": "嗨嗨～我是软糯糯的可爱语音，以后就由我陪着你啦！",
+        "file": "catalog/voices/style-cute.ogg",
+        "seconds": 4.8
+      },
+      "file": "style-cute.zip",
+      "url": "https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/style-cute.zip",
+      "bytes": 1208474,
+      "sha256": "15f51e2ececc5de5a2e457f0afa7a210359675301fac672c55c52c3b69f84635"
+    },
+    {
+      "id": "style-yujie",
+      "type": "voice-pack",
+      "kind": "style",
+      "style": "yujie",
+      "styleLabel": "御姐",
+      "name": "御姐 · 妩媚姐姐",
+      "gender": "female",
+      "version": "1.0.0",
+      "description": "低一点、慢一点的成熟女声，从容带笑，适合温柔可靠的大姐姐。",
+      "credit": "语音由 AI 合成：MiniMax 妩媚御姐（wumei_yujie）",
+      "engine": "minimax",
+      "voiceId": "wumei_yujie",
+      "model": "speech-2.8-turbo",
+      "params": {
+        "speed": 0.95,
+        "pitch": 0,
+        "vol": 1,
+        "emotion": "calm"
+      },
+      "lineSet": "generic",
+      "lines": 138,
+      "seconds": 313,
+      "sample": {
+        "text": "嗯，是我。累了就过来靠一会儿吧，姐姐在呢。",
+        "file": "catalog/voices/style-yujie.ogg",
+        "seconds": 4.4
+      },
+      "file": "style-yujie.zip",
+      "url": "https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/style-yujie.zip",
+      "bytes": 1242833,
+      "sha256": "225da23b1a0bae0b949f51b761b041fd7fbb8d06557d63b418c78f06139de7a2"
+    },
+    {
+      "id": "style-shaonian",
+      "type": "voice-pack",
+      "kind": "style",
+      "style": "shaonian",
+      "styleLabel": "少年",
+      "name": "少年 · 纯真学弟",
+      "gender": "male",
+      "version": "1.0.0",
+      "description": "清亮有活力的少年音，干净直率，适合阳光开朗的男孩子。",
+      "credit": "语音由 AI 合成：MiniMax 纯真学弟（chunzhen_xuedi）",
+      "engine": "minimax",
+      "voiceId": "chunzhen_xuedi",
+      "model": "speech-2.8-turbo",
+      "params": {
+        "speed": 1.05,
+        "pitch": 0,
+        "vol": 1,
+        "emotion": "happy"
+      },
+      "lineSet": "generic",
+      "lines": 138,
+      "seconds": 299,
+      "sample": {
+        "text": "嘿！我是元气少年音，走，今天也一起加油吧！",
+        "file": "catalog/voices/style-shaonian.ogg",
+        "seconds": 4.6
+      },
+      "file": "style-shaonian.zip",
+      "url": "https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/style-shaonian.zip",
+      "bytes": 1197706,
+      "sha256": "258249dae8ac090af5c3db5424349640bbf442baadd5fa050f47745535fe1f15"
+    },
+    {
+      "id": "style-chenwen",
+      "type": "voice-pack",
+      "kind": "style",
+      "style": "chenwen",
+      "styleLabel": "沉稳",
+      "name": "沉稳 · 可靠前辈",
+      "gender": "male",
+      "version": "1.0.0",
+      "description": "低沉平稳的成年男声，语速偏慢，适合冷静、靠谱的陪伴。",
+      "credit": "语音由 AI 合成：MiniMax 沉稳高管（Chinese (Mandarin)_Reliable_Executive）",
+      "engine": "minimax",
+      "voiceId": "Chinese (Mandarin)_Reliable_Executive",
+      "model": "speech-2.8-turbo",
+      "params": {
+        "speed": 0.92,
+        "pitch": -1,
+        "vol": 1,
+        "emotion": "calm"
+      },
+      "lineSet": "generic",
+      "lines": 138,
+      "seconds": 318,
+      "sample": {
+        "text": "你好，我是沉稳的声音。事情一件件来，不着急，我陪你。",
+        "file": "catalog/voices/style-chenwen.ogg",
+        "seconds": 5.6
+      },
+      "file": "style-chenwen.zip",
+      "url": "https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/style-chenwen.zip",
+      "bytes": 1240464,
+      "sha256": "a7005d15e350ff528027b86d67b9540517102a61113f36152ba4cb02e12f904e"
+    },
+    {
+      "id": "style-gaoxiao",
+      "type": "voice-pack",
+      "kind": "style",
+      "style": "gaoxiao",
+      "styleLabel": "搞笑",
+      "name": "搞笑 · 幽默大爷",
+      "gender": "male",
+      "version": "1.0.0",
+      "description": "抑扬顿挫的老顽童腔调，自带喜感，适合想天天被逗乐的你。",
+      "credit": "语音由 AI 合成：MiniMax 搞笑大爷（Chinese (Mandarin)_Humorous_Elder）",
+      "engine": "minimax",
+      "voiceId": "Chinese (Mandarin)_Humorous_Elder",
+      "model": "speech-2.8-turbo",
+      "params": {
+        "speed": 1,
+        "pitch": 0,
+        "vol": 1,
+        "emotion": "happy"
+      },
+      "lineSet": "generic",
+      "lines": 138,
+      "seconds": 370,
+      "sample": {
+        "text": "哎哟喂，我来啦！听我说话保准你乐呵一整天，哈哈哈！",
+        "file": "catalog/voices/style-gaoxiao.ogg",
+        "seconds": 6.5
+      },
+      "file": "style-gaoxiao.zip",
+      "url": "https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/voices-v1/style-gaoxiao.zip",
+      "bytes": 1569452,
+      "sha256": "88c553c8545360be69d4fd5102177694cb54d54934797c659b717013968f9e55"
+    }
+  ]
+}

@@ -10,13 +10,16 @@ const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const html = read('src/renderer/index.html');
 const css = read('src/renderer/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+// 她的面板: its own window (src/renderer/panel/), same tokens and base stylesheet
+const panelHtml = read('src/renderer/panel/panel.html');
+const panelCss = read('src/renderer/panel/panel.css').replace(/\/\*[\s\S]*?\*\//g, '');
 
 // every rule of a selector (the stylesheet is one rule per line, with a few continued on the next line)
-const rulesFor = (sel) => {
+const rulesFor = (sel, sheet = css) => {
   const out = [];
   const re = /([^{}]+)\{([^}]*)\}/g;
   let m;
-  while ((m = re.exec(css))) {
+  while ((m = re.exec(sheet))) {
     const sels = m[1].split(',').map((s) => s.trim());
     if (sels.includes(sel)) out.push(m[2]);
   }
@@ -32,7 +35,7 @@ test('index.html loads the LobeHub tokens before the pet stylesheet', () => {
 
 test('interface pieces read --lobe-* tokens, not the old pixel palette', () => {
   const ui = ['body', '.btn', '.btn.primary', 'input, select, textarea', '.bubble', '.bubble-tail', '.chat-row', '.popup', '.popup .btn',
-    '.unlock-toast', '.toast-title', '.status-panel', '.bars', '.aff-row', '.hud .meta',
+    '.unlock-toast', '.toast-title',
     '.stop-btn', '.zone-hint', '.mic-status', '.new-dot', '#age-gate'];
   for (const sel of ui) {
     const body = sel.includes(',') ? rulesFor(sel.split(',')[0].trim()) : rulesFor(sel);
@@ -40,6 +43,12 @@ test('interface pieces read --lobe-* tokens, not the old pixel palette', () => {
     assert.match(body, /var\(--(lobe|pet)-/, `${sel} uses tokens`);
     assert.doesNotMatch(body, /#2b2233|#f4efe6|#ffd23f|#ffe9a8|#fff6d6|Courier New/i, `${sel} has no pixel-palette colour`);
     assert.doesNotMatch(body, /\d+px \d+px 0 #/, `${sel} has no hard pixel drop shadow`);
+  }
+  for (const sel of ['.pet-panel', '.pp-tile', '.pp-foot', '.need-bar', '.aff-row', '.pet-panel .meta', '.pp-foods']) {
+    const body = rulesFor(sel, panelCss);
+    assert.ok(body, `panel ${sel} has a rule`);
+    assert.match(body, /var\(--(lobe|pet)-/, `panel ${sel} uses tokens`);
+    assert.doesNotMatch(body, /#[0-9a-f]{3,6}\b|Courier New/i, `panel ${sel} has no raw colour`);
   }
   assert.doesNotMatch(css, /Courier New/);
   // project aliases never redefine LobeHub tokens (lobe-design D-07)
@@ -67,23 +76,34 @@ test('HUD meters use semantic token colours; inline icons do not swallow toolbar
   assert.doesNotMatch(bar, /#[0-9a-f]{3,6}/i);
   // the toolbar picks its action from e.target.dataset: an <svg> inside a button must let the click through
   assert.match(rulesFor('.ico'), /pointer-events:\s*none/);
-  const gear = html.match(/<button[^>]*data-act="settings"[^>]*>([\s\S]*?)<\/button>/)[1];
+  const gear = panelHtml.match(/<button[^>]*data-act="settings"[^>]*>([\s\S]*?)<\/button>/)[1];
   assert.match(gear, /<svg class="ico"/);
-  // the selectors e2e and app.js rely on are still there
-  for (const id of ['bubble', 'chat-input', 'chat-send', 'chat-mic', 'attach-btn', 'btn-settings', 'food-menu', 'unlock-toast', 'toast-close', 'toast-open', 'stop-btn', 'aff-stage', 'bar-affection', 'bar-hunger']) {
+  // the selectors e2e and app.js rely on are still there: her window, and her panel
+  for (const id of ['bubble', 'chat-input', 'chat-send', 'chat-mic', 'attach-btn', 'dance-menu', 'unlock-toast', 'toast-close', 'toast-open', 'stop-btn']) {
     assert.match(html, new RegExp(`id="${id}"`), id);
   }
+  for (const id of ['btn-settings', 'food-menu', 'aff-stage', 'bar-affection', 'bar-hunger']) assert.match(panelHtml, new RegExp(`id="${id}"`), id);
 });
 
-test('status bar is one panel (T-2726): needs, affection and the name line share one surface, split by hairlines', () => {
-  const panel = html.match(/<div id="status-panel" class="status-panel">([\s\S]*?)<div id="toolbar"/);
-  assert.ok(panel, '#status-panel sits in the HUD, before the toolbar');
-  for (const id of ['bars', 'aff-row', 'meta']) assert.match(panel[1], new RegExp(`id="${id}"`), `#${id} is inside the panel`);
-  const p = rulesFor('.status-panel');
-  for (const prop of ['background', 'border', 'border-radius', 'box-shadow']) assert.match(p, new RegExp(`(^|;)\\s*${prop}:`), `.status-panel has its own ${prop}`);
-  assert.match(p, /max-width:\s*calc\(100% - /, 'never wider than the window');
-  assert.match(rulesFor('.status-panel > * + *'), /border-top:\s*1px solid var\(--pet-line-soft\)/, 'rows are split by a hairline');
-  // the rows no longer draw their own pill / card
-  for (const sel of ['.bars', '.aff-row', '.hud .meta']) assert.doesNotMatch(rulesFor(sel), /background:|box-shadow:|border-radius:/, `${sel} has no own surface`);
-  assert.match(rulesFor('.hud .meta'), /text-overflow:\s*ellipsis/, 'a long name line is cut, not overflowing');
+test('her panel (right click on her): its own window — one card, state on top, actions below, split by hairlines', () => {
+  const body = panelHtml.match(/<div id="pet-panel" class="pet-panel"[^>]*>([\s\S]*?)<script/)[1];
+  for (const id of ['status-panel', 'pp-name', 'pp-char', 'aff-stage', 'aff-row', 'bar-affection', 'aff-num', 'meta', 'bars', 'bar-hunger', 'bar-mood', 'bar-energy', 'val-hunger', 'val-mood', 'val-energy', 'toolbar', 'food-menu', 'btn-mute', 'btn-dance', 'btn-reset', 'btn-settings', 'btn-quit']) assert.match(body, new RegExp(`id="${id}"`), `#${id} is in the panel`);
+  assert.ok(body.indexOf('id="status-panel"') < body.indexOf('id="toolbar"'), 'her state comes before what to do');
+  for (const act of ['feed', 'play', 'sleep', 'chat']) assert.match(body, new RegExp(`class="pp-tile" data-act="${act}"[^>]*><svg class="ico"`), `${act} is a tile with an icon`);
+  // same tokens and base stylesheet as her window; a strict CSP (no remote anything)
+  assert.match(panelHtml, /href="\.\.\/design\/lobe-tokens\.css"[\s\S]*href="\.\.\/style\.css"[\s\S]*href="panel\.css"/);
+  assert.match(panelHtml, /Content-Security-Policy" content="default-src 'self'/);
+  // her window keeps none of it: hovering shows no status card or toolbar any more
+  for (const gone of ['id="status-panel"', 'id="toolbar"', 'data-act=', 'id="food-menu"']) assert.ok(!html.includes(gone), `${gone} left her window`);
+  const p = rulesFor('.pet-panel', panelCss);
+  for (const prop of ['background', 'border', 'border-radius', 'box-shadow']) assert.match(p, new RegExp(`(^|;)\\s*${prop}:`), `.pet-panel has its own ${prop}`);
+  assert.match(rulesFor('.pp-actions', panelCss), /border-top:\s*1px solid var\(--pet-line-soft\)/, 'state and actions are split by a hairline');
+  assert.match(rulesFor('.pp-tile:hover', panelCss), /background:\s*var\(--lobe-color-fill-tertiary\)/, 'tiles hover as a quiet fill');
+  for (const sel of ['.aff-row', '.pet-panel .meta', '.need']) assert.doesNotMatch(rulesFor(sel, panelCss), /background:|box-shadow:/, `${sel} has no own surface`);
+  assert.match(rulesFor('.pet-panel .meta', panelCss), /text-overflow:\s*ellipsis/, 'a long line is cut, not overflowing');
+  // app.js: a right click toggles it, a long press opens it; the buttons come back as panel-act
+  const app = read('src/renderer/app.js');
+  assert.match(app, /togglePetPanel\('right-click'\)/);
+  assert.match(app, /onMenu: \(\) => openPetPanel\('long-press'\)/);
+  assert.match(app, /window\.pet\.panel\.onAct\(/);
 });
