@@ -61,12 +61,24 @@
 | ~~`src/renderer/history.js`~~ | **已不存在**：聊天记录界面在 T-2765 之后移到设置窗口 `admin/src/console/pages/Together.tsx:109-145`。`docs/chat-history.md` §四 的文件引用已过期 | 在 `Together.tsx:138-145` 的消息行里显示缩略图 |
 | `admin/src/console/pages/Chat.tsx:517` `send`；`:637-695` `renderMessage`（`ChatItem`、`aboveMessage` 图片组）；`:908-943` 输入卡片（`:921` `leftAddons` = `ImagePlus`） | 截图里的聊天页 | 面板入口和气泡渲染（§3） |
 | `admin/src/console/api.ts:480-481`；`:530-537` `ChatAttachment`；`:539-552` `ChatMessage`；`:665` `HistorySession` | 前端类型 | 加 `sticker` 类型和 `stickers` API |
-| `admin/src/console/pages/Characters.tsx:1513-1545` 角色详情 `PageTabs`（装扮 / 好感 / 模型 / 个性化设定 / 语音 / 资料） | 角色详情页 | 新增「表情包」标签页（§4） |
+| `admin/src/console/pages/Characters.tsx:1513-1545` 角色详情 `PageTabs`（装扮 / 好感 / 模型 / 个性化设定 / 语音 / 资料）；`:1062` `LookTab`（衣柜卡片网格） | 角色详情页和衣柜 | 新增「表情包」标签页（§4） |
 | `admin/src/console/pages/Store.tsx:1-6`、`:17` `CatalogGrid`；`:547-556` 商店 `PageTabs`（角色 / 舞蹈 / 语音包） | 商店 | 新增「表情包」标签页（§5），按 R-05 只加标签页，不加 rail 入口 |
-| `src/main/packs.js:21-26` `registerPackScheme`（`registerSchemesAsPrivileged` 只能调用一次）；`:59-66` `PackStore`（`userData/packs`）；`:149-166` `serve()`（`pack://<id>/<file>`，限定在包目录内，并按后缀白名单过滤） | 角色包和 `pack://` 协议 | `sticker://` 注册在同一次调用里；`serve` 照搬路径校验的写法（§2.5） |
+| `src/main/packs.js:21-26` `registerPackScheme`（`registerSchemesAsPrivileged` 只能调用一次）；`:60-66` `PackStore`（`userData/packs`）；`:149-166` `serve()`（`pack://<id>/<file>`，限定在包目录内，并按后缀白名单过滤） | 角色包和 `pack://` 协议 | `sticker://` 注册在同一次调用里；`serve` 照搬路径校验的写法（§2.5） |
 | `src/core/catalog.js:9-20`（`CDN_ORIGIN`、Develop Center ops assets）；`src/main/catalog.js:86`（`net.fetch`、sha256 校验） | 商店里官方角色的下载：**索引随应用打包，静态文件放在 CDN** | 方案 B 的现成通道；下载、校验、解包的代码可以复用（§5） |
 | `src/core/api.js:20-23`、`:65`、`:81`；`src/main/api-server.js:3`、`:25`（只监听 127.0.0.1） | 本机 HTTP 接口 | 第一期不开放发表情包（§3.6） |
-| `src/core/lh-client.js:3-4`（「应用不直接请求 LobeHub API；换后端只需换这个文件」）；`:295` `uploadFile`；`:332` `whoami`；`:348` `login` | 账号与上传全部通过 `lh` CLI | 商店客户端也走 `lh`（§5.2） |
+| `src/core/lh-client.js:3-4`（「应用不直接请求 LobeHub API；换后端只需换这个文件」）；`:13-27` 清掉运行上下文变量；`:295` `uploadFile`；`:332` `whoami`；`:348` `login`；`src/core/lh-path.js:146` `LH_BIN`；`src/core/responses-client.js:68-75` `serverUrl`（`LOBEHUB_SERVER` 或 `lh` 的 `settings.json`） | 账号与上传全部通过 `lh` CLI | 商店客户端也走 `lh`（§5.2） |
+
+### 1.4 已读的项目文档与它们约束了什么
+
+| 文档 | 对本设计的约束 |
+| --- | --- |
+| `AGENTS.md` / `CLAUDE.md`（软链接） | 单元测试用 `npm test`，真机用 `xvfb-run -a node e2e/run.js <场景>`；UI 走 lobe-design，原子组件来自 `@lobehub/ui`、取值用 `cssVar`；验收按 `.agents/acceptance/PROJECT.md` |
+| `docs/characters.md` §四之二「内置与下载」 | 只内置 5 位像素角色，其余在商店下载，安装标记 `.catalog.json`；e2e 使用假 `lh`。表情包的「官方货架」沿用同一套下载和安装流程（§5.2 方案 B） |
+| `docs/chat-history.md` §一–§三 | 只有 `origin: 'user'` 的那一轮进入聊天记录，过滤只在数据层（`userSessions`）做。§3.2 不改这条规则；§四 的 `history.js` 引用已经过期（见 §1.3） |
+| `docs/pet-packs.md`「目录结构」「pack.json」 | 角色包只提供图片，规则由应用决定；导入时校验；文件不超过 8 MB。§5.3 的集合 zip 照此设计：图片由包提供，校验和上限由应用决定 |
+| `docs/admin-console-design.md` §5.2（preload 暴露 `window.petAdmin`）、§6.3（页面清单） | 新功能通过 `admin-preload.js` 加命名空间，挂在已有页面的下一层（§4） |
+| `docs/design-system.md` §2–§3 | 运行时依赖只有 `electron-updater`，所以不引入图像库（§2.5 自己解析图片头）；颜色只用 `cssVar` 令牌 |
+| `.agents/ux/product.md`、`components.md`、`lobe-design-rules.md` | `components.md`：`ChatPage` 用 `ChatItem`、`ChatInputActionBar`，图片用 `Image` + `PreviewGroup`；R-03：`confirmModal` 必须传 `okText`/`cancelText`；R-04：桌宠窗口只用 `--lobe-*` 令牌和 lucide 图标；R-05：商店新类别只加标签页，不加 rail 入口 |
 
 ## 2. 数据模型与存储
 
@@ -292,6 +304,21 @@ IPC（`admin-preload.js` 新增 `stickers:` 命名空间，main 端统一用 `ad
                                           lh sticker like <id>               ←──── ⑧ 点赞（可选）
                                                                                      ⑨ 聊天面板里出现这组，可以发送
 ```
+
+每一跳的调用方、接口和凭据：
+
+| 跳 | 调用方 → 被调方 | 接口 / 协议 | 凭据 / 环境 |
+| --- | --- | --- | --- |
+| ① 填写上架信息 | 设置窗口 → main | IPC `admin-stickers-publish`（`adminOnly`），参数 `{ setId, meta }` | 无（本机） |
+| ② 打包并发布 | main（`sticker-store.js`）→ `lh` 子进程 | `lh sticker publish --file <zip> [--id <已有 id>] --json`（`LhClient#_run`，`lh-client.js:131`） | `lh login` 保存的 LobeHub 账号令牌（`lh` 自己的凭据文件，应用不读取）；服务器地址取 `LOBEHUB_SERVER` 或 `lh` 的 `settings.json`（`responses-client.js:68`）；`lh` 的路径取 `LH_BIN`（`lh-path.js:146`） |
+| ②′ 写入存储 | `lh` → LobeHub Market API | HTTPS + 用户 OAuth access token；元数据进 Market 数据库，zip 和封面进对象存储，CDN 只提供已通过审核的版本 | Market 服务端的存储和审核配置（服务端负责，不进入本仓库） |
+| ③ 审核 | Market 审核流程 → 发布者 | 状态 `pending → published / rejected`；桌宠用 `lh sticker view <id> --json` 查询（打开页面时，加上每 10 分钟刷新一次） | 同 ② |
+| ④ 列表 | B 的 main → `lh` → Market | `lh sticker list [--q] [--sort recent\|likes] [--page] --json` → `{ items:[{ id, name, author, cover, count, likes, version, forSpecies, license }], total }` | B 已登录的 LobeHub 账号（只浏览是否允许匿名，由 Market 决定） |
+| ⑤ 详情 | 同上 | `lh sticker view <id> --json` → 包括每张的预览 URL（CDN） | 同上；预览图由 main 通过 `net.fetch` 缓存到 `store-cache/`，再通过 `sticker://` 提供，因为 CSP 不允许窗口直接加载外网图片 |
+| ⑥ 获取 | B 的 main → `lh` → CDN | `lh sticker download <id>@<ver> -o <tmp.zip> --json` → `{ sha256, bytes }`；main 校验 sha256 和大小（复用 `src/main/catalog.js:74-115`） | 同上 |
+| ⑦ 安装和挂接 | main | 按 §5.3 解包到 `<userData>/stickers/`，写入 `sets/store-<id>.json` 和 `bindings.json` | 本机 |
+| ⑧ 点赞 | B 的 main → `lh` → Market | `lh sticker like <id> [--undo]` | 同上 |
+| ⑨ 发送 | §3 的流程 | 和本地表情包一样，`ref` 指向 blob | 本机；发给 agent 的是文字（§3.4） |
 
 - **本仓库要做的**：`lh-client.js` 新增 `stickerList/stickerView/stickerDownload/stickerPublish/stickerUnpublish/stickerLike`，都调用 `lh … --json`，和现有写法一致；`src/main/sticker-store.js` 负责下载、校验、安装和进度事件，复用 `src/main/catalog.js:74-115` 的进度与失败处理；`Store.tsx` 新增「表情包」标签页（网格加筛选 `Segmented`「全部 / 已获取」+ 搜索 + 排序「最新 / 最多赞」，卡片复用 `CatalogGrid` 的视觉）；角色表情包页加上架表单。
 - **e2e**：e2e 已经使用假 `lh`（`test/fixtures/fake-lh.js`，由 `e2e/run.js:32`、`:260` 通过 `LH_BIN` / `FAKE_LH_DIR` 注入）。在假 `lh` 里实现 `sticker` 子命令，数据放在一个临时目录里作为「远端」。A、B 两个 `PIXELPET_DATA_DIR` 依次运行，就能在本仓库里跑通 ①→⑨ 的真实界面流程。**它只是测试替身，不是商店本身**；正式商店以接入真实 Market 为准。
