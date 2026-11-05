@@ -19,7 +19,8 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
     case 'overview':
       return <OverviewPage navigate={navigate} />;
     case 'characters':
-      return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
+      // `#/characters/<id>/stickers`: her page opened on a tab (the chat page's 去添加表情包)
+      return sub ? <CharacterDetailPage id={sub} initialTab={path.split('/')[3]} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'store':
       return sub === 'game' ? <GameDetailPage id={path.split('/')[3] ?? ''} key={path} /> : <StorePage initial={sub} key="store" />;
     case 'chat':
