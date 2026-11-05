@@ -1,5 +1,5 @@
 'use strict';
-// 她的房间 · 引擎 room@1 (docs/her-room-design.md §4). Plays a room pack (core/room-pack.js) in the game window
+// 像素房间 · 引擎 room@1 (docs/her-room-design.md §4). Plays a room pack (core/room-pack.js) in the game window
 // with PixiJS 8. The title bar, the 天色 / 今日小事 cards, the toolbar, her bubble, the tip and the toast are the
 // game window's (game.html); this file adds the room's own DOM — the stats card, the activity bar, the furniture
 // labels, the room picker and the 即将开放 preview — and draws the room:

@@ -12,7 +12,7 @@
 //                     lines: { <event>: [text…] } }
 //   <files>         the pictures (.webp / .png) and the sprites index (.json) named there; nothing else
 //
-// engine `room@1` (她的房间, docs/her-room-design.md): the common fields here, the rest in core/room-pack.js.
+// engine `room@1` (像素房间, docs/her-room-design.md): the common fields here, the rest in core/room-pack.js.
 //
 // Electron-free and DOM-free (main, the build script and the tests require() it).
 const Room = require('./room-pack');

@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('game', {
   set: (patch) => ipcRenderer.invoke('game:set', patch),
   touch: () => ipcRenderer.invoke('game:touch'),
   event: (ev, ctx) => ipcRenderer.invoke('game:event', { game: gameId, ev, ctx }),
-  // 她的房间 (room@1): { cmd: 'start' | 'stop' | 'tick' | 'seen' | 'theme' | 'state', … } — main settles the round
+  // 像素房间 (room@1): { cmd: 'start' | 'stop' | 'tick' | 'seen' | 'theme' | 'state', … } — main settles the round
   activity: (cmd) => ipcRenderer.invoke('game:activity', cmd),
   saveState: (state) => ipcRenderer.send('game:state', { game: gameId, state }),
   close: (reason) => ipcRenderer.send('game:close', { reason }),

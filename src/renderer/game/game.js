@@ -1,6 +1,6 @@
 'use strict';
 // 小游戏 · 页面 (docs/mini-games.md). Plays one yard@1 game pack (core/game-pack.js) with PixiJS (a room@1 pack,
-// 她的房间, is engines/room.js's):
+// 像素房间, is engines/room.js's):
 //
 //   cam            the camera: pan (drag), zoom (wheel, ＋ －), follows her when ⌖ is on
 //   ├ graded       everything painted, under one colour-matrix filter = the hour × the weather (core/game-sky.js)

@@ -1,5 +1,5 @@
 'use strict';
-// 她的房间 · 活动与结算 (docs/her-room-design.md §2). Five activities — 睡觉 / 工作 / 看手机 / 听音乐 / 打游戏 —
+// 像素房间 · 活动与结算 (docs/her-room-design.md §2). Five activities — 睡觉 / 工作 / 看手机 / 听音乐 / 打游戏 —
 // each one round long. A round ends one of three ways, and each one settles into her four numbers:
 //   done      the round's time is up (tick): fraction 1
 //   stopped   结束, another click on the same furniture, a click on the floor, lifting her, switching rooms,

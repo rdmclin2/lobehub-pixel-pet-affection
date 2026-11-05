@@ -1,5 +1,5 @@
 'use strict';
-// 她的房间 · PetService (docs/her-room-design.md §3.2): roomStats / roomSettle change only her energy, mood and
+// 像素房间 · PetService (docs/her-room-design.md §3.2): roomStats / roomSettle change only her energy, mood and
 // hunger, never put her to sleep on the desktop, save and push `update`; roomLooks gives the room's owner the
 // outfit her room asks for.
 const test = require('node:test');
@@ -52,7 +52,7 @@ test('roomSettle: only the three numbers, held to 0–100; not asleep; saved and
 
 test('roomLooks: each room’s character (her daily look) and, in her own room, the owner in the room’s outfit', async () => {
   const { svc } = await hatched();
-  const themes = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'games', 'her-room', 'manifest.json'), 'utf8')).themes;
+  const themes = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'games', 'pixel-room', 'manifest.json'), 'utf8')).themes;
   const r = svc.roomLooks(themes);
   assert.deepEqual(Object.keys(r.characters).sort(), ['claude', 'dafeiyu', 'gemini', 'gpt', 'grok']);
   assert.equal(r.characters.dafeiyu.name, '大肥鱼');

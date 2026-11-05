@@ -2136,7 +2136,7 @@ class PetService extends EventEmitter {
     return { ok: true, title: String(title || ''), affection: r };
   }
 
-  // 她的房间 (docs/her-room-design.md §2.1, §3.2): her three numbers the room shows and moves — 精力, 心情 and 饱腹
+  // 像素房间 (docs/her-room-design.md §2.1, §3.2): her three numbers the room shows and moves — 精力, 心情 and 饱腹
   // (100 − hunger) of her base. The room's 专注 is the game's own (src/main/games.js).
   roomStats() {
     if (!this.pet) return null;
@@ -2145,7 +2145,7 @@ class PetService extends EventEmitter {
     return { base: this.pet.speciesId, energy: n(c.energy, 50), mood: n(c.mood, 50), fullness: 100 - n(c.hunger, 50) };
   }
 
-  // 她的房间: how each room's character looks (her pack's daily outfit, for the room picker's avatars), and the
+  // 像素房间: how each room's character looks (her pack's daily outfit, for the room picker's avatars), and the
   // room's owner in the outfit her room asks for (`theme.outfit`) — only in her own room; without that outfit in
   // her pack she looks as she does now
   roomLooks(themes = []) {

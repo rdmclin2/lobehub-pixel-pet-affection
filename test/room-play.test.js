@@ -1,5 +1,5 @@
 'use strict';
-// 她的房间 · 活动与结算 (src/core/room-play.js, src/main/games.js GameLibrary.activity; docs/her-room-design.md §2–§3).
+// 像素房间 · 活动与结算 (src/core/room-play.js, src/main/games.js GameLibrary.activity; docs/her-room-design.md §2–§3).
 // Time is driven by hand: every call takes `now`.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +9,7 @@ const path = require('node:path');
 const RP = require('../src/core/room-play');
 const GQ = require('../src/core/game-quests');
 
-const SRC = path.join(__dirname, 'fixtures', 'games', 'her-room');
+const SRC = path.join(__dirname, 'fixtures', 'games', 'pixel-room');
 const M = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
 const DEFS = RP.defsOf(M);
 const T0 = new Date('2026-11-05T10:00:00').getTime();
@@ -135,7 +135,7 @@ test('game-quests: kind / theme / complete, and distinct kinds', () => {
 function lib() {
   const { GameLibrary } = require('../src/main/games');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-roomlib-'));
-  const dir = path.join(root, 'her-room');
+  const dir = path.join(root, 'pixel-room');
   fs.mkdirSync(dir);
   for (const f of fs.readdirSync(SRC)) fs.copyFileSync(path.join(SRC, f), path.join(dir, f));
   const L = new GameLibrary({ userDir: root });
@@ -148,19 +148,19 @@ test('GameLibrary.activity: main settles with its own clock and the installed nu
   const { L, root, pet, P } = lib();
   const GS = require('../src/core/game-store');
   // numbers sent by the page are ignored: only kind / theme count
-  let r = L.activity('her-room', { cmd: 'start', kind: 'sleep', theme: 'dafeiyu', seconds: 1, deltas: { energy: 40 } }, P, { now: T0 });
+  let r = L.activity('pixel-room', { cmd: 'start', kind: 'sleep', theme: 'dafeiyu', seconds: 1, deltas: { energy: 40 } }, P, { now: T0 });
   assert.ok(r.ok);
   assert.equal(r.run.seconds, 30);
-  assert.equal(GS.readProgress(root, 'her-room').state.run.kind, 'sleep');
+  assert.equal(GS.readProgress(root, 'pixel-room').state.run.kind, 'sleep');
   // the page says it is over too early: not settled
-  r = L.activity('her-room', { cmd: 'tick' }, P, { now: T0 + 10000 });
+  r = L.activity('pixel-room', { cmd: 'tick' }, P, { now: T0 + 10000 });
   assert.equal(r.settled, null);
   assert.equal(r.early, true);
-  r = L.activity('her-room', { cmd: 'tick', ctx: { phase: 'night', weather: 'clear' } }, P, { now: T0 + 30000 });
+  r = L.activity('pixel-room', { cmd: 'tick', ctx: { phase: 'night', weather: 'clear' } }, P, { now: T0 + 30000 });
   assert.equal(r.settled.complete, true);
   assert.deepEqual(r.settled.changed, { energy: 35, mood: 6, focus: 8, fullness: -4 });
   assert.deepEqual(pet.s, { base: 'dafeiyu', energy: 85, mood: 56, fullness: 46 });
-  const st = GS.readProgress(root, 'her-room').state;
+  const st = GS.readProgress(root, 'pixel-room').state;
   assert.equal(st.run, null);
   assert.equal(st.focus.dafeiyu, 58);
   assert.deepEqual(st.totals.dafeiyu.sleep, { count: 1, completed: 1, ms: 30000 });
@@ -168,61 +168,61 @@ test('GameLibrary.activity: main settles with its own clock and the installed nu
   // 小事: sleep-full / night-sleep are today's when picked; whatever finished went to PetService.gameQuest
   assert.equal(pet.quests.length, r.settled.completed.length);
   // switch: phone then work mid-round
-  L.activity('her-room', { cmd: 'start', kind: 'phone', theme: 'dafeiyu' }, P, { now: T0 + 40000 });
-  r = L.activity('her-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 50000 });
+  L.activity('pixel-room', { cmd: 'start', kind: 'phone', theme: 'dafeiyu' }, P, { now: T0 + 40000 });
+  r = L.activity('pixel-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 50000 });
   assert.equal(r.started, 'work');
   assert.equal(r.settled.kind, 'phone');
   assert.equal(r.settled.fraction, 0.5);
   // stop
-  r = L.activity('her-room', { cmd: 'stop' }, P, { now: T0 + 59000 });
+  r = L.activity('pixel-room', { cmd: 'stop' }, P, { now: T0 + 59000 });
   assert.equal(r.settled.kind, 'work');
   assert.equal(r.settled.fraction, 0.3);
   // tired: refused, nothing saved
   pet.s.energy = 10;
-  r = L.activity('her-room', { cmd: 'start', kind: 'game', theme: 'dafeiyu' }, P, { now: T0 + 60000 });
+  r = L.activity('pixel-room', { cmd: 'start', kind: 'game', theme: 'dafeiyu' }, P, { now: T0 + 60000 });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'tired');
-  assert.equal(GS.readProgress(root, 'her-room').state.run, null);
+  assert.equal(GS.readProgress(root, 'pixel-room').state.run, null);
   // a soon room cannot be played; scale is test-only
-  assert.equal(L.activity('her-room', { cmd: 'start', kind: 'sleep', theme: 'claude' }, P, { now: T0 }).reason, 'theme');
-  assert.equal(L.activity('her-room', { cmd: 'scale', k: 0.1 }, P, { now: T0 }).reason, 'test-only');
+  assert.equal(L.activity('pixel-room', { cmd: 'start', kind: 'sleep', theme: 'claude' }, P, { now: T0 }).reason, 'theme');
+  assert.equal(L.activity('pixel-room', { cmd: 'scale', k: 0.1 }, P, { now: T0 }).reason, 'test-only');
 });
 
 test('GameLibrary: closing settles by how long it ran; a boot after a crash settles the open round (done after a whole round)', () => {
   const { L, root, P } = lib();
   const GS = require('../src/core/game-store');
-  L.activity('her-room', { cmd: 'start', kind: 'music', theme: 'dafeiyu' }, P, { now: T0 });
-  const s = L.roomClose('her-room', P, { now: T0 + 5000 });
+  L.activity('pixel-room', { cmd: 'start', kind: 'music', theme: 'dafeiyu' }, P, { now: T0 });
+  const s = L.roomClose('pixel-room', P, { now: T0 + 5000 });
   assert.equal(s.kind, 'music');
   assert.equal(s.fraction, 0.25, 'at least MIN_FRACTION');
-  assert.equal(L.roomClose('her-room', P, { now: T0 + 6000 }), null, 'nothing running');
+  assert.equal(L.roomClose('pixel-room', P, { now: T0 + 6000 }), null, 'nothing running');
   // crash mid-round, back after more than a round
-  L.activity('her-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 10000 });
-  L.activity('her-room', { cmd: 'seen' }, P, { now: T0 + 15000 });
-  const b = L.roomBoot('her-room', P, { now: T0 + 10000 + 31000 });
+  L.activity('pixel-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 10000 });
+  L.activity('pixel-room', { cmd: 'seen' }, P, { now: T0 + 15000 });
+  const b = L.roomBoot('pixel-room', P, { now: T0 + 10000 + 31000 });
   assert.equal(b.recovered.kind, 'work');
   assert.equal(b.recovered.complete, true);
-  assert.equal(GS.readProgress(root, 'her-room').state.run, null);
+  assert.equal(GS.readProgress(root, 'pixel-room').state.run, null);
   // crash, back before a round is over: counted to the last save
-  L.activity('her-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 100000 });
-  L.activity('her-room', { cmd: 'seen' }, P, { now: T0 + 112000 });
-  const b2 = L.roomBoot('her-room', P, { now: T0 + 120000 });
+  L.activity('pixel-room', { cmd: 'start', kind: 'work', theme: 'dafeiyu' }, P, { now: T0 + 100000 });
+  L.activity('pixel-room', { cmd: 'seen' }, P, { now: T0 + 112000 });
+  const b2 = L.roomBoot('pixel-room', P, { now: T0 + 120000 });
   assert.equal(b2.recovered.complete, false);
   assert.equal(b2.recovered.fraction, 0.4);
-  assert.equal(L.roomBoot('her-room', P, { now: T0 + 130000 }).recovered, null);
+  assert.equal(L.roomBoot('pixel-room', P, { now: T0 + 130000 }).recovered, null);
 });
 
 test('GameLibrary.saveState: the page may only choose the room; focus, run and totals are main’s', () => {
   const { L, root, P } = lib();
   const GS = require('../src/core/game-store');
-  L.activity('her-room', { cmd: 'start', kind: 'sleep', theme: 'dafeiyu' }, P, { now: T0 });
-  L.activity('her-room', { cmd: 'stop' }, P, { now: T0 + 30000 });
-  assert.ok(L.saveState('her-room', { theme: 'dafeiyu', focus: { dafeiyu: 100 }, run: { kind: 'work', startedAt: 0 }, totals: {} }));
-  const st = GS.readProgress(root, 'her-room').state;
+  L.activity('pixel-room', { cmd: 'start', kind: 'sleep', theme: 'dafeiyu' }, P, { now: T0 });
+  L.activity('pixel-room', { cmd: 'stop' }, P, { now: T0 + 30000 });
+  assert.ok(L.saveState('pixel-room', { theme: 'dafeiyu', focus: { dafeiyu: 100 }, run: { kind: 'work', startedAt: 0 }, totals: {} }));
+  const st = GS.readProgress(root, 'pixel-room').state;
   assert.equal(st.theme, 'dafeiyu');
   assert.equal(st.focus.dafeiyu, 58);
   assert.equal(st.run, null);
   assert.equal(st.totals.dafeiyu.sleep.count, 1);
-  L.saveState('her-room', { theme: 'grok' }); // not open: ignored
-  assert.equal(GS.readProgress(root, 'her-room').state.theme, 'dafeiyu');
+  L.saveState('pixel-room', { theme: 'grok' }); // not open: ignored
+  assert.equal(GS.readProgress(root, 'pixel-room').state.theme, 'dafeiyu');
 });

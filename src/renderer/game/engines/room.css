@@ -1,4 +1,4 @@
-/* 她的房间 (engines/room.js). The room's own DOM on top of the PixiJS canvas: the stats card, the activity bar, the
+/* 像素房间 (engines/room.js). The room's own DOM on top of the PixiJS canvas: the stats card, the activity bar, the
    furniture labels, the room picker and the 即将开放 preview. Like the yard's cards it is frosted glass tinted by
    the scene (.agents/ux/product.md): here a deep-blue glass with light text, by day and by night; type, radius,
    spacing and motion come from the --lobe-* tokens. The room's palette (theme.palette) colours its bars and

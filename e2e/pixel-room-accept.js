@@ -1,14 +1,18 @@
-// 她的房间 · 上架验收 (T-10804): the real games-repository pack (rdmclin2/pixel-pet-mini-games games/her-room,
+// 像素房间 · 上架验收 (T-10804): the real games-repository pack (rdmclin2/pixel-pet-mini-games games/pixel-room,
 // built by its scripts/build.js) bought in the store and played in the real app, as a user does:
 //   xvfb-run -a -s "-screen 0 1600x1000x24" node e2e/run.js roomaccept
 // Unlike `room` (the minimal fixture, rounds shortened): a fresh save, no PIXELPET_CATALOG_PREINSTALLED, every
 // click and hover is a real X pointer event (xdotool on the Xvfb display, so the recording shows the pointer),
-// and the five rounds run their real length. The store's CDN is a local server holding the archive the games
-// repository built (PIXELPET_GAMES_REPO/out/<file>, checked against src/core/game-catalog.json, which
-// `node scripts/sync-game-catalog.js --repo <games checkout> --all` wrote) and playing the repository's
-// catalog.json; for the upgrade it publishes 1.0.1 (the same pack, version raised).
+// and the five rounds run their real length. The archives come from the real CDN (chat-cloud.lobeobjects.space,
+// dc/ops-assets/archives/pixel-pet/games-v1/, where the games repository's scripts/publish.js put them): no
+// PIXELPET_CATALOG_URL, so the app builds the same download URL it does for users. Before the app starts, the CDN
+// copy is fetched and checked against src/core/game-catalog.json (`node scripts/sync-game-catalog.js --repo <games
+// checkout>`, published entries only) and the archive the repository built. The games repository's catalog.json
+// is served from a local server (PIXELPET_GAME_INDEX_URL: its main branch has the entry only once the PR is
+// merged); for the upgrade that catalog lists 1.0.1 as pixel-room-1.0.1-acceptance.zip, already on the CDN (the
+// same pack, version raised; its own name, so a real 1.0.1 later is not blocked by it).
 //   A1  a new save: she is on the desktop
-//   A2  商店 → 小游戏: 她的房间 未下载 with its cover → 下载 → 已下载 · 开始玩; the detail page
+//   A2  商店 → 小游戏: 像素房间 未下载 with its cover → 下载 → 已下载 · 开始玩; the detail page
 //   A3  开始玩: the game window, she is in the room and gone from the desktop; ✕: she is back on the desktop
 //   A4  the room: panorama, her close-up (招牌女仆装), the colours measured
 //   A5  换房间: five rooms, 大肥鱼 可以玩, the other four 即将开放 (each preview), back to hers
@@ -16,7 +20,7 @@
 //       stop early (结束) and switch mid-round
 //   A7  restart (quit + start again): installed, last game, theme, numbers, last activity, today's quests kept
 //   A8  upgrade: 1.0.1 published → 有更新 in the store and the game, 更新 → v1.0.1, progress kept
-// Out: out/e2e/her-room-accept/ — shots/*.png, obs/*.json (each step's numbers), her-room-accept.mp4 +
+// Out: out/e2e/pixel-room-accept/ — shots/*.png, obs/*.json (each step's numbers), pixel-room-accept.mp4 +
 // .chapters.json (the whole screen, the whole run).
 const fs = require('node:fs');
 const os = require('node:os');
@@ -31,11 +35,11 @@ const isAdmin = (p) => p.url().includes('admin-ui');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const KINDS = ['sleep', 'work', 'phone', 'music', 'game'];
 
-module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: stepFn, launch }) {
-  return async function herRoomAccept() {
+module.exports = function pixelRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: stepFn, launch }) {
+  return async function pixelRoomAccept() {
     let step = stepFn;
     const S = 'roomaccept';
-    const DIR = path.join(OUT, 'her-room-accept');
+    const DIR = path.join(OUT, 'pixel-room-accept');
     const SHOTS = path.join(DIR, 'shots');
     const OBS = path.join(DIR, 'obs');
     fs.rmSync(DIR, { recursive: true, force: true });
@@ -43,32 +47,53 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
     fs.mkdirSync(OBS, { recursive: true });
     const REPO = path.resolve(process.env.PIXELPET_GAMES_REPO || path.join(ROOT, '..', 'rdmclin2', 'pixel-pet-mini-games'));
     const bundled = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'core', 'game-catalog.json'), 'utf8'));
-    const entry = bundled.games.find((x) => x.id === 'her-room');
-    assert.ok(entry, 'src/core/game-catalog.json has her-room (node scripts/sync-game-catalog.js --repo <games checkout> --all)');
+    const entry = bundled.games.find((x) => x.id === 'pixel-room');
+    assert.ok(entry, 'src/core/game-catalog.json has pixel-room (node scripts/sync-game-catalog.js --repo <games checkout> --all)');
     const sha256 = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
     const srcZip = path.join(REPO, 'out', entry.file);
     assert.equal(sha256(srcZip), entry.sha256, `${srcZip} is the archive the catalog lists`);
-    const M = JSON.parse(fs.readFileSync(path.join(REPO, 'games', 'her-room', 'pack', 'manifest.json'), 'utf8'));
+    const M = JSON.parse(fs.readFileSync(path.join(REPO, 'games', 'pixel-room', 'pack', 'manifest.json'), 'utf8'));
     const THEME = M.themes.find((t) => t.id === 'dafeiyu');
     const label = (kind) => M.activities[kind].label;
     const furnLabel = (kind) => THEME.furniture.find((x) => x.id === THEME.activities[kind].at).label;
     const at = (kind) => THEME.activities[kind].at;
 
-    // the store's CDN and the games repository's catalog.json
-    const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptcdn-'));
-    fs.copyFileSync(srcZip, path.join(cdn, entry.file));
+    // the real CDN: the archive the app will download, checked before it starts
+    const CAT = require(path.join(ROOT, 'src', 'core', 'catalog'));
+    const cdnFetch = async (file) => {
+      const url = CAT.downloadUrl({ file, release: bundled.release }, {}, {});
+      const res = await fetch(url);
+      assert.ok(res.ok, `${url}: HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { url, status: res.status, bytes: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), etag: res.headers.get('etag'), lastModified: res.headers.get('last-modified'), buf };
+    };
+    const cdn0 = await cdnFetch(entry.file);
+    assert.equal(cdn0.sha256, entry.sha256, `${cdn0.url} is the archive the catalog lists`);
+    assert.equal(cdn0.bytes, entry.bytes);
+    const UPGRADE_FILE = 'pixel-room-1.0.1-acceptance.zip';
+    const cdnUp = await cdnFetch(UPGRADE_FILE);
+    const upWork = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptv2-'));
+    fs.writeFileSync(path.join(upWork, UPGRADE_FILE), cdnUp.buf);
+    const upManifest = JSON.parse(execFileSync('unzip', ['-p', path.join(upWork, UPGRADE_FILE), 'manifest.json'], { encoding: 'utf8' }));
+    assert.equal(upManifest.version, '1.0.1', `${UPGRADE_FILE} on the CDN holds 1.0.1`);
+    // the files inside an archive: name → sha256 (the installed folder must hold exactly these)
+    const zipFiles = (z) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptzip-')); execFileSync('unzip', ['-q', z, '-d', d]); return Object.fromEntries(fs.readdirSync(d).sort().map((n) => [n, sha256(path.join(d, n))])); };
+    const dirFiles = (d) => Object.fromEntries(fs.readdirSync(d).filter((n) => !n.startsWith('.')).sort().map((n) => [n, sha256(path.join(d, n))]));
+    fs.writeFileSync(path.join(upWork, entry.file), cdn0.buf);
+    const cdnFiles0 = zipFiles(path.join(upWork, entry.file));
+    const cdnFilesUp = zipFiles(path.join(upWork, UPGRADE_FILE));
+    const cdnCheck = { [entry.file]: { ...cdn0, buf: undefined, catalogSha256: entry.sha256, catalogBytes: entry.bytes, repoBuildSha256: sha256(srcZip) }, [UPGRADE_FILE]: { ...cdnUp, buf: undefined, manifestVersion: upManifest.version } };
+    fs.writeFileSync(path.join(OBS, 'cdn-check.json'), JSON.stringify(cdnCheck, null, 1) + '\n');
     const repoCatalog = JSON.parse(fs.readFileSync(path.join(REPO, 'catalog.json'), 'utf8'));
-    const repoEntry = repoCatalog.games.find((x) => x.id === 'her-room');
-    let catalog = { ...repoCatalog, games: [{ ...repoEntry, published: repoEntry.published || '2026-11-05' }, ...repoCatalog.games.filter((x) => x.id !== 'her-room')] };
+    const repoEntry = repoCatalog.games.find((x) => x.id === 'pixel-room');
+    assert.ok(repoEntry && repoEntry.published, 'the games repository lists pixel-room as published (scripts/publish.js)');
+    let catalog = repoCatalog;
     const requests = [];
     const server = http.createServer((req, res) => {
       const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
       requests.push(name);
       if (name === 'catalog.json') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(catalog)); return; }
-      const f = path.join(cdn, name);
-      if (!fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
-      res.writeHead(200, { 'content-type': 'application/zip', 'content-length': fs.statSync(f).size });
-      fs.createReadStream(f).pipe(res);
+      res.writeHead(404); res.end();
     });
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptfake-'));
@@ -76,13 +101,13 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-accept-'));
     const base = `http://127.0.0.1:${server.address().port}`;
     // PIXELPET_CATALOG_PREINSTALLED '' — nothing counts as downloaded; a new, empty data dir
-    const env = { PIXELPET_DATA_DIR: dataDir, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_CATALOG_URL: `${base}/games`, PIXELPET_GAME_INDEX_URL: `${base}/catalog.json` };
+    const env = { PIXELPET_DATA_DIR: dataDir, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_PREINSTALLED: '', PIXELPET_GAME_INDEX_URL: `${base}/catalog.json` };
     const appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
-    fs.writeFileSync(path.join(DIR, 'launch.json'), JSON.stringify({ command: 'xvfb-run -a -s "-screen 0 1600x1000x24" node e2e/run.js roomaccept', appVersion, env: { ...env, PIXELPET_TEST: '1', PIXELPET_CATALOG_PREINSTALLED_set: Object.prototype.hasOwnProperty.call(env, 'PIXELPET_CATALOG_PREINSTALLED') ? JSON.stringify(env.PIXELPET_CATALOG_PREINSTALLED) : null }, dataDirBefore: fs.readdirSync(dataDir), pack: { file: entry.file, bytes: entry.bytes, sha256: entry.sha256, from: srcZip } }, null, 1));
+    fs.writeFileSync(path.join(DIR, 'launch.json'), JSON.stringify({ command: 'xvfb-run -a -s "-screen 0 1600x1000x24" node e2e/run.js roomaccept', appVersion, env: { ...env, PIXELPET_TEST: '1', PIXELPET_CATALOG_PREINSTALLED_set: Object.prototype.hasOwnProperty.call(env, 'PIXELPET_CATALOG_PREINSTALLED') ? JSON.stringify(env.PIXELPET_CATALOG_PREINSTALLED) : null }, dataDirBefore: fs.readdirSync(dataDir), pack: { file: entry.file, bytes: entry.bytes, sha256: entry.sha256, repoBuild: srcZip, downloadUrl: cdn0.url }, PIXELPET_CATALOG_URL_set: Object.prototype.hasOwnProperty.call(env, 'PIXELPET_CATALOG_URL'), cdnCheck: Object.fromEntries(Object.entries(cdnCheck).map(([k, v]) => [k, { url: v.url, status: v.status, bytes: v.bytes, sha256: v.sha256, lastModified: v.lastModified }])) }, null, 1));
 
     // ---- recording (the whole screen) + chapters, full-screen grabs ------------------------------------------
     const SCREEN = (process.env.PIXELPET_ACCEPT_SCREEN || '1600x1000');
-    const VIDEO = path.join(DIR, 'her-room-accept.mp4');
+    const VIDEO = path.join(DIR, 'pixel-room-accept.mp4');
     const rec = { ff: null, t0: 0, marks: [] };
     const mark = (kind, text) => { if (rec.ff) rec.marks.push({ kind, t: Math.round((Date.now() - rec.t0) / 100) / 10, [kind === 'step' ? 'label' : 'note']: text }); };
     const startRec = async () => {
@@ -131,7 +156,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
     const T = (fn, arg) => gp.evaluate(fn, arg);
     const dbg = () => page.evaluate(() => window.pet.debugScene());
     const shot = (n) => gp.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-    const progress = () => JSON.parse(fs.readFileSync(path.join(dataDir, 'games', '.progress', 'her-room.json'), 'utf8'));
+    const progress = () => JSON.parse(fs.readFileSync(path.join(dataDir, 'games', '.progress', 'pixel-room.json'), 'utf8'));
     const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(dataDir, 'pet.json'), 'utf8')); const c = p.characters[p.speciesId]; return { speciesId: p.speciesId, energy: c.energy, mood: c.mood, hunger: c.hunger, affection: c.affection }; };
     const until = async (fn, ms = 10000, what = 'condition') => {
       const t0 = Date.now();
@@ -195,11 +220,11 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
       await page.evaluate(() => window.pet.debugTrayClick('小游戏'));
       admin = await until(async () => app.windows().find(isAdmin) || null, 30000, 'the settings window');
       await admin.waitForSelector('[data-path="/store/games"]', { timeout: 20000 });
-      await admin.waitForSelector('[data-store-game="her-room"]', { timeout: 20000 });
+      await admin.waitForSelector('[data-store-game="pixel-room"]', { timeout: 20000 });
       await admin.bringToFront();
       return admin;
     };
-    const cardState = () => admin.locator('[data-store-game="her-room"]').getAttribute('data-game-state');
+    const cardState = () => admin.locator('[data-store-game="pixel-room"]').getAttribute('data-game-state');
 
     // PIXELPET_ACCEPT_ONLY=A1,A2,A3,A4,A6b runs just those (debugging; evidence runs run everything)
     const ONLY = process.env.PIXELPET_ACCEPT_ONLY ? process.env.PIXELPET_ACCEPT_ONLY.split(',') : null;
@@ -215,46 +240,47 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         const d = await dbg();
         assert.equal(d.petVisible, true);
         assert.deepEqual(d.games, [], 'no game installed');
-        assert.equal(fs.existsSync(path.join(dataDir, 'games', 'her-room')), false);
+        assert.equal(fs.existsSync(path.join(dataDir, 'games', 'pixel-room')), false);
         screen('a1-desktop-before');
         mark('check', '桌面上的大肥鱼可见，游戏窗口没有打开');
         return JSON.stringify(obs('a1-desktop-before', { petVisible: d.petVisible, petBounds: d.petBounds, gameWindowVisible: d.visible, installedGames: d.games, dataDirAppFiles: fs.readdirSync(dataDir).filter((f) => /\.json$/.test(f) || f === 'games').sort() }));
       });
 
-      await step(S, 'A2 商店 → 小游戏：她的房间「未下载」带封面 → 真实鼠标点「下载」→「已下载 · 开始玩」；详情页', async () => {
+      await step(S, 'A2 商店 → 小游戏：像素房间「未下载」带封面 → 真实鼠标点「下载」→「已下载 · 开始玩」；详情页', async () => {
         mark('step', '托盘「小游戏」→ 商店 → 小游戏');
         await openStore();
         await admin.waitForTimeout(800);
         assert.equal(await cardState(), 'remote');
-        const card = await admin.locator('[data-store-game="her-room"]').innerText();
-        const cover = await admin.evaluate(() => { const i = document.querySelector('[data-store-game="her-room"] img'); return i ? { src: i.getAttribute('src'), w: i.naturalWidth, h: i.naturalHeight, complete: i.complete } : null; });
+        const card = await admin.locator('[data-store-game="pixel-room"]').innerText();
+        const cover = await admin.evaluate(() => { const i = document.querySelector('[data-store-game="pixel-room"] img'); return i ? { src: i.getAttribute('src'), w: i.naturalWidth, h: i.naturalHeight, complete: i.complete } : null; });
         assert.ok(cover && cover.complete && cover.w > 0, `the cover is drawn (${JSON.stringify(cover)})`);
         await admin.screenshot({ path: path.join(SHOTS, 'a2-store-remote.png') });
-        mark('check', '商店卡片：她的房间，封面、未下载、下载按钮');
+        mark('check', '商店卡片：像素房间，封面、未下载、下载按钮');
         mark('step', '真实鼠标点「下载」');
-        await xsel(admin, '[data-game-download="her-room"]');
+        await xsel(admin, '[data-game-download="pixel-room"]');
         await until(async () => (await cardState()) === 'installed', 60000, 'installed');
-        const files = fs.readdirSync(path.join(dataDir, 'games', 'her-room')).sort();
+        const files = fs.readdirSync(path.join(dataDir, 'games', 'pixel-room')).sort();
         assert.deepEqual(files, ['.catalog.json', 'dafeiyu-atlas.webp', 'dafeiyu-room.webp', 'dafeiyu-sprites.json', 'manifest.json']);
+        assert.equal(JSON.stringify(dirFiles(path.join(dataDir, 'games', 'pixel-room'))), JSON.stringify(cdnFiles0), 'the installed files are the CDN archive\'s, byte for byte');
         await admin.waitForTimeout(400);
         await admin.screenshot({ path: path.join(SHOTS, 'a2-store-installed.png') });
-        mark('check', '下载完成：卡片变成「已下载」，出现「开始玩」');
-        const cardAfter = await admin.locator('[data-store-game="her-room"]').innerText();
+        mark('check', `下载完成（从 CDN：${cdn0.url}，安装的文件与 CDN 上的包逐字节一致）：卡片变成「已下载」，出现「开始玩」`);
+        const cardAfter = await admin.locator('[data-store-game="pixel-room"]').innerText();
         const stateAfter = await cardState();
         // its detail page
         mark('step', '点卡片封面进入详情页');
-        await xsel(admin, '[data-game-open="her-room"]');
-        await admin.waitForSelector('[data-game-detail="her-room"]', { timeout: 10000 });
+        await xsel(admin, '[data-game-open="pixel-room"]');
+        await admin.waitForSelector('[data-game-detail="pixel-room"]', { timeout: 10000 });
         await admin.waitForTimeout(600);
         await admin.screenshot({ path: path.join(SHOTS, 'a2-store-detail.png'), fullPage: true });
-        const detail = await admin.locator('[data-game-detail="her-room"]').innerText();
+        const detail = await admin.locator('[data-game-detail="pixel-room"]').innerText();
         mark('check', '详情页：大封面、已下载 v1.0.0、开始玩、玩法要点、更新说明');
-        return JSON.stringify(obs('a2-store', { before: { state: 'remote', text: card, cover }, after: { state: stateAfter, text: cardAfter }, installedFiles: files, cdnRequests: requests.slice(), detail: detail.slice(0, 600) }));
+        return JSON.stringify(obs('a2-store', { before: { state: 'remote', text: card, cover }, after: { state: stateAfter, text: cardAfter }, installedFiles: files, downloadUrl: cdn0.url, installedMatchesCdnZip: JSON.stringify(dirFiles(path.join(dataDir, 'games', 'pixel-room'))) === JSON.stringify(cdnFiles0), indexRequests: requests.slice(), detail: detail.slice(0, 600) }));
       });
 
       await step(S, 'A3 开始玩：游戏窗口打开、她进到游戏里、桌面上的她消失；✕ 关闭后她回到桌面', async () => {
         mark('step', '详情页点「开始玩」');
-        await xsel(admin, '[data-game-play="her-room"]');
+        await xsel(admin, '[data-game-play="pixel-room"]');
         gp = await findGame(app);
         await ready();
         await T(() => { window.__gameTest.roam(false); window.__gameTest.setHour(12); window.__gameTest.setWeather('clear'); });
@@ -262,7 +288,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         await gp.bringToFront();
         await wait(500);
         const d = await dbg();
-        assert.equal(d.visible, true); assert.equal(d.petVisible, false, 'her desktop window hid'); assert.equal(d.game, 'her-room');
+        assert.equal(d.visible, true); assert.equal(d.petVisible, false, 'her desktop window hid'); assert.equal(d.game, 'pixel-room');
         const r = await R();
         assert.equal(r.theme, 'dafeiyu'); assert.equal(r.owner, true); assert.match(String(r.lookUrl), /daily/);
         screen('a3-desktop-during');
@@ -279,7 +305,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
       });
 
       await step(S, 'A4 房间全景与角色特写；配色测量', async () => {
-        mark('step', '托盘「小游戏」再打开她的房间（上次玩的游戏）');
+        mark('step', '托盘「小游戏」再打开像素房间（上次玩的游戏）');
         await page.evaluate(() => window.pet.debugTrayClick('小游戏'));
         await until(async () => (await dbg()).visible, 8000, 'reopened');
         await gp.bringToFront();
@@ -420,15 +446,8 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         const st = progress();
         beforeRestart = { stats: r.stats, last: r.last, lastText: r.lastText, theme: r.theme, quests: (await g()).quests, progress: st, petJson: petJson(), settingsGame: (await dbg()).settings.game };
         mark('step', '退出应用（app.quit），用同一个存档重新启动');
-        // the games repository publishes 1.0.1 meanwhile (A8 uses it; the restart reads it)
-        const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptv2-'));
-        execFileSync('unzip', ['-q', path.join(cdn, entry.file), '-d', work]);
-        const mf = JSON.parse(fs.readFileSync(path.join(work, 'manifest.json'), 'utf8'));
-        fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify({ ...mf, version: '1.0.1' }, null, 2));
-        const { zip } = require(path.join(ROOT, 'scripts', 'build-character-catalog'));
-        const file = 'her-room-1.0.1.zip';
-        zip(work, path.join(cdn, file));
-        catalog = { ...catalog, games: catalog.games.map((x) => (x.id === 'her-room' ? { ...x, version: '1.0.1', file, bytes: fs.statSync(path.join(cdn, file)).size, sha256: sha256(path.join(cdn, file)), changelog: '验收用的测试版本：内容与 1.0.0 相同，只升版本号，用来走一遍商店升级。', published: '2026-11-06' } : x)) };
+        // the games repository publishes 1.0.1 meanwhile (A8 uses it; the restart reads it): on the CDN already
+        catalog = { ...catalog, games: catalog.games.map((x) => (x.id === 'pixel-room' ? { ...x, version: '1.0.1', file: UPGRADE_FILE, bytes: cdnUp.bytes, sha256: cdnUp.sha256, changelog: '验收用的测试版本：内容与 1.0.0 相同，只升版本号，用来走一遍商店升级。', published: '2026-11-05' } : x)) };
         await app.close();
         await wait(1500);
         ({ app, page } = await launch(env));
@@ -448,7 +467,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         await shot('a7-restored');
         const d = await dbg();
         const after = { stats: r2.stats, last: r2.last, lastText: r2.lastText, theme: r2.theme, quests: (await g()).quests, progress: progress(), petJson: petJson(), settingsGame: d.settings.game, installed: d.games, version: (await g()).version };
-        assert.equal(after.theme, 'dafeiyu'); assert.equal(d.game, 'her-room'); assert.equal(after.version, '1.0.0');
+        assert.equal(after.theme, 'dafeiyu'); assert.equal(d.game, 'pixel-room'); assert.equal(after.version, '1.0.0');
         // focus is the room's own number (the progress file): exactly kept. Energy / mood / fullness are hers
         // (pet.json) and live on in real time while the app is closed (PetService.load → resetWake.tick), so
         // they may only have drifted a little the way time moves them, never jumped back to defaults
@@ -466,38 +485,38 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         await shot('a8-game-chip');
         mark('check', '游戏标题栏：有新版本 v1.0.1 · 去更新');
         const before = await R();
-        mark('step', '点「有新版本 · 去更新」：打开商店里她的房间的详情页');
+        mark('step', '点「有新版本 · 去更新」：打开商店里像素房间的详情页');
         await xsel(gp, '#update-chip');
         admin = await until(async () => app.windows().find(isAdmin) || null, 30000, 'the settings window');
-        await admin.waitForSelector('[data-game-detail="her-room"]', { timeout: 20000 });
+        await admin.waitForSelector('[data-game-detail="pixel-room"]', { timeout: 20000 });
         await admin.bringToFront();
-        await until(async () => /v1\.0\.0 → v1\.0\.1/.test(await admin.textContent('[data-game-detail-meta="her-room"]')), 15000, 'v1.0.0 → v1.0.1 on its page');
-        const meta = await admin.textContent('[data-game-detail-meta="her-room"]');
-        const notes = await admin.textContent('[data-game-changelog="her-room"]');
+        await until(async () => /v1\.0\.0 → v1\.0\.1/.test(await admin.textContent('[data-game-detail-meta="pixel-room"]')), 15000, 'v1.0.0 → v1.0.1 on its page');
+        const meta = await admin.textContent('[data-game-detail-meta="pixel-room"]');
+        const notes = await admin.textContent('[data-game-changelog="pixel-room"]');
         await admin.waitForTimeout(500);
         await admin.screenshot({ path: path.join(SHOTS, 'a8-store-detail-update.png') });
         mark('check', `详情页：有更新 ${meta}，「v1.0.1 更新了什么」和「更新到 v1.0.1」`);
         // the card in the list too
         mark('step', '点「‹ 小游戏」回到卡片列表');
         await admin.evaluate(() => { location.hash = '#/store/games'; });
-        await admin.waitForSelector('[data-store-game="her-room"]', { timeout: 10000 });
+        await admin.waitForSelector('[data-store-game="pixel-room"]', { timeout: 10000 });
         await until(async () => (await cardState()) === 'update', 10000, '有更新 on the card');
-        const cardMeta = await admin.textContent('[data-store-game-meta="her-room"]');
+        const cardMeta = await admin.textContent('[data-store-game-meta="pixel-room"]');
         await admin.waitForTimeout(400);
         await admin.screenshot({ path: path.join(SHOTS, 'a8-store-card-update.png') });
         mark('check', `卡片：角标「有更新」，${cardMeta}`);
         mark('step', '进详情页，真实鼠标点「更新到 v1.0.1」');
-        await xsel(admin, '[data-game-open="her-room"]');
-        await admin.waitForSelector('[data-game-update="her-room"]', { timeout: 10000 });
-        await xsel(admin, '[data-game-update="her-room"]');
-        await until(async () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'her-room', 'manifest.json'), 'utf8')).version === '1.0.1'; } catch { return false; } }, 60000, 'updated on disk');
-        await until(async () => /已装 v1\.0\.1/.test(await admin.textContent('[data-game-about="her-room"]')), 15000, '已装 v1.0.1');
-        const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'her-room', 'manifest.json'), 'utf8')).version;
+        await xsel(admin, '[data-game-open="pixel-room"]');
+        await admin.waitForSelector('[data-game-update="pixel-room"]', { timeout: 10000 });
+        await xsel(admin, '[data-game-update="pixel-room"]');
+        await until(async () => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'pixel-room', 'manifest.json'), 'utf8')).version === '1.0.1'; } catch { return false; } }, 60000, 'updated on disk');
+        await until(async () => /已装 v1\.0\.1/.test(await admin.textContent('[data-game-about="pixel-room"]')), 15000, '已装 v1.0.1');
+        const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'pixel-room', 'manifest.json'), 'utf8')).version;
         await admin.waitForTimeout(500);
         await admin.screenshot({ path: path.join(SHOTS, 'a8-store-updated.png') });
         mark('check', '更新完成：已装 v1.0.1');
         mark('step', '点「开始玩」');
-        await xsel(admin, '[data-game-play="her-room"]');
+        await xsel(admin, '[data-game-play="pixel-room"]');
         gp = await findGame(app);
         await until(async () => { const v = await g().catch(() => null); return v && v.ready && v.version === '1.0.1' ? v : null; }, 20000, 'v1.0.1 in the game');
         await gp.bringToFront();
@@ -510,7 +529,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: step
         assert.equal(r.lastText, before.lastText);
         assert.deepEqual(r.stats, before.stats);
         mark('check', '游戏里显示 v1.0.1，没有更新提示，数值卡和「上一件」与更新前一致');
-        const out = obs('a8-upgrade', { chip, detailMeta: meta, cardMeta, changelog: notes, onDisk, before: { stats: before.stats, lastText: before.lastText }, after: { version: await gp.textContent('#game-version'), update: (await g()).update, stats: r.stats, lastText: r.lastText, theme: r.theme }, cdnRequests: requests.slice() });
+        const out = obs('a8-upgrade', { chip, detailMeta: meta, cardMeta, changelog: notes, onDisk, before: { stats: before.stats, lastText: before.lastText }, after: { version: await gp.textContent('#game-version'), update: (await g()).update, stats: r.stats, lastText: r.lastText, theme: r.theme }, downloadUrl: cdnUp.url, installedMatchesCdnZip: JSON.stringify(dirFiles(path.join(dataDir, 'games', 'pixel-room'))) === JSON.stringify(cdnFilesUp), indexRequests: requests.slice() });
         mark('step', '关闭游戏，她回到桌面');
         await xsel(gp, '#btn-close');
         await until(async () => { const x = await dbg(); return !x.visible && x.petVisible ? x : null; }, 8000, 'closed');

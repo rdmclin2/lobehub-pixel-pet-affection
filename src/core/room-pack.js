@@ -1,5 +1,5 @@
 'use strict';
-// 她的房间 · 游戏包校验 (engine `room@1`, docs/her-room-design.md §1). A room pack is a flat folder: manifest.json
+// 像素房间 · 游戏包校验 (engine `room@1`, docs/her-room-design.md §1). A room pack is a flat folder: manifest.json
 // with the five activities' defaults and a list of room themes, and per open theme three files named after it
 // (<theme>-room.webp the background, <theme>-atlas.webp the furniture / props, <theme>-sprites.json the atlas
 // index), optionally <theme>-preview.webp for a theme that is not open yet. Pictures and JSON only, like every

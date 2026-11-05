@@ -1,9 +1,11 @@
-# 她的房间（engine `room@1`）
+# 像素房间（engine `room@1`）
 
 > 商店第二款小游戏。每位角色有一间自己风格的房间，你陪她睡觉、工作、看手机、听音乐、打游戏：她走过去做事，家具和道具跟着变，做完改变她的精力、心情、专注和饱腹。本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」，另外四间可以预览，即将开放。
-> 和「像素小院」一样在独立的游戏窗口里用 PixiJS 8 渲染，游戏包只有图片和 JSON；美术和游戏包在开源仓库 **<https://github.com/rdmclin2/pixel-pet-mini-games>** 的 `games/her-room/`。技术方案见 `docs/her-room-design.md`（T-10799）。
+> 和「像素小院」一样在独立的游戏窗口里用 PixiJS 8 渲染，游戏包只有图片和 JSON；美术和游戏包在开源仓库 **<https://github.com/rdmclin2/pixel-pet-mini-games>** 的 `games/pixel-room/`。技术方案见 `docs/her-room-design.md`（T-10799，方案阶段的旧名）。
+>
+> **名字**：这款游戏开发时叫「她的房间」，上架前改名为「像素房间」（game id `pixel-room`），「她的房间」留给之后的插画风新游戏。id 一起改掉是因为旧 id 从没上过 CDN、也没进过任何发布的目录，没有用户装过 `her-room`；应用按引擎 `room@1` 玩，不认具体 id，所以改 id 不用改代码。以后的插画风游戏可以直接用 `her-room` 这个 id。
 
-![鲸鱼女仆的蓝色小屋：浅蓝和奶白的房间，蕾丝床幔、蝴蝶结，大肥鱼穿女仆装站在鲸鱼地毯上](img/her-room/room-day.webp)
+![鲸鱼女仆的蓝色小屋：浅蓝和奶白的房间，蕾丝床幔、蝴蝶结，大肥鱼穿女仆装站在鲸鱼地毯上](img/pixel-room/room-day.webp)
 
 图和数值都来自真实应用里的验收（`node e2e/run.js roomaccept`，见本文最后一节）：商店下载的正式包、全新存档、真实鼠标、每一轮用真实时长。
 
@@ -11,14 +13,14 @@
 
 | 入口 | 操作 |
 | --- | --- |
-| 商店 | ⚙ 设置 → 商店 → **小游戏** → 她的房间 → 下载 → **开始玩** |
+| 商店 | ⚙ 设置 → 商店 → **小游戏** → 像素房间 → 下载 → **开始玩** |
 | 托盘 / 面板 / 快捷键 | 托盘「小游戏」、右键她 → 底栏 ⌂、桌宠窗口里 `Ctrl/⌘ + Shift + H`：打开上次玩的游戏（`settings.scene.game`） |
 
 打开时桌面上的她隐藏、进到房间里；关掉（右上角 ✕、`Ctrl/⌘ + W`、托盘再点一次）后她回到桌面原来的位置。
 
 | 商店：未下载 | 已下载 | 详情页 |
 | --- | --- | --- |
-| ![商店卡片：她的房间，封面、未下载、下载](img/her-room/store-remote.webp) | ![已下载，开始玩](img/her-room/store-installed.webp) | ![详情页：大封面、已下载、开始玩、玩法要点、更新说明](img/her-room/store-detail.webp) |
+| ![商店卡片：像素房间，封面、未下载、下载](img/pixel-room/store-remote.webp) | ![已下载，开始玩](img/pixel-room/store-installed.webp) | ![详情页：大封面、已下载、开始玩、玩法要点、更新说明](img/pixel-room/store-detail.webp) |
 
 ## 2. 怎么玩
 
@@ -36,9 +38,9 @@
 
 | 睡觉 | 工作 | 看手机 |
 | --- | --- | --- |
-| ![睡觉：她躺在床上盖着被子，房间变暗，活动条 正在睡觉](img/her-room/act-sleep.webp) | ![工作：显示器在打字，台灯亮着](img/her-room/act-work.webp) | ![看手机：手机在她手里](img/her-room/act-phone.webp) |
+| ![睡觉：她躺在床上盖着被子，房间变暗，活动条 正在睡觉](img/pixel-room/act-sleep.webp) | ![工作：显示器在打字，台灯亮着](img/pixel-room/act-work.webp) | ![看手机：手机在她手里](img/pixel-room/act-phone.webp) |
 | **听音乐** | **打游戏** | **结束：数值卡飘字** |
-| ![听音乐：唱片在转，音符飘起](img/her-room/act-music.webp) | ![打游戏：电视在播，手柄在她手里](img/her-room/act-game.webp) | ![打游戏完成：顶部提示和数值卡的变化](img/her-room/act-game-done.webp) |
+| ![听音乐：唱片在转，音符飘起](img/pixel-room/act-music.webp) | ![打游戏：电视在播，手柄在她手里](img/pixel-room/act-game.webp) | ![打游戏完成：顶部提示和数值卡的变化](img/pixel-room/act-game-done.webp) |
 
 **反馈**：
 - 悬停家具：描白边，指针旁写「睡觉 · 床」；精力不够时描边变灰、提示「太累了（精力 10，要 15）· 先让她睡一觉」，点了不会开始。
@@ -54,7 +56,7 @@
 
 | 换房间 | 即将开放：午后的书房（克洛蒂） |
 | --- | --- |
-| ![五个房间：鲸鱼女仆的蓝色小屋 可以玩，午后的书房、深夜的古堡房间、星星猫窝、白龙的花园卧室 即将开放](img/her-room/themes.webp) | ![预览卡：午后的书房，即将开放](img/her-room/soon-claude.webp) |
+| ![五个房间：鲸鱼女仆的蓝色小屋 可以玩，午后的书房、深夜的古堡房间、星星猫窝、白龙的花园卧室 即将开放](img/pixel-room/themes.webp) | ![预览卡：午后的书房，即将开放](img/pixel-room/soon-claude.webp) |
 
 | 房间 | 角色 | 状态 |
 | --- | --- | --- |
@@ -66,13 +68,13 @@
 
 **她的样子**：房间主人在自己的房间里穿主题的 `outfit`（大肥鱼是像素包 `dafeiyu-pixel` 的 `daily`，招牌女仆装）；去别人的房间做客时外观不换。缺的动作走 `core/fx.js` 的回落链。
 
-![大肥鱼特写：蓝发、白色女仆头饰、白围裙、深蓝裙子和蝴蝶结](img/her-room/closeup.webp)
+![大肥鱼特写：蓝发、白色女仆头饰、白围裙、深蓝裙子和蝴蝶结](img/pixel-room/closeup.webp)
 
 **天色**：和像素小院共用 `settings.scene`（时段、天气、随时间流动），☀ 打开同一张天色卡片。房间里按一半强度调色，窗外是全强度的天色、太阳 / 月亮、云、雨、雪；夜里灯亮。
 
 **今日小事**：每天从 9 件里挑 3 件（陪她睡一整觉、陪她认真工作一轮、让她刷会儿手机、陪她听完一张唱片、陪她打完一局游戏、夜里哄她睡觉、下雨天一起听歌、五件事各做一次、摸摸她），完成一件好感 +2，每天最多 3 次（`core/affection.js` 的 `game` 来源）。好感只来自小事，做事本身不加好感。
 
-**保存什么**：精力、心情、饱腹是她自己的数值，写回 `pet.json`（桌面上也一样，应用关着时照常随时间变化）；专注、正在做的事、上一件、累计、房间选择、小事进度存在 `userData/games/.progress/her-room.json`。更新或删除游戏包都不影响进度。
+**保存什么**：精力、心情、饱腹是她自己的数值，写回 `pet.json`（桌面上也一样，应用关着时照常随时间变化）；专注、正在做的事、上一件、累计、房间选择、小事进度存在 `userData/games/.progress/pixel-room.json`。更新或删除游戏包都不影响进度。
 
 ## 3. 游戏包格式（engine `room@1`）
 
@@ -91,7 +93,7 @@ dafeiyu-sprites.json        图集索引 { 名字: { x, y, w, h } }
 ```jsonc
 {
   "schema": 1, "kind": "game", "engine": "room@1",
-  "id": "her-room", "name": "她的房间", "version": "1.0.0", "description": "…", "credit": "…",
+  "id": "pixel-room", "name": "像素房间", "version": "1.0.0", "description": "…", "credit": "…",
   "defaultTheme": "dafeiyu",
   // 五件事的数值：所有房间共用，主题不能改
   "activities": {
@@ -158,10 +160,10 @@ dafeiyu-sprites.json        图集索引 { 名字: { x, y, w, h } }
 
 以克洛蒂的「午后的书房」（`claude`，现在是 soon）为例，在游戏仓库里：
 
-1. **美术**：在 `games/her-room/art/prompts.json` 加 `claude-room`（背景，不画家具）、`claude-furniture`、`claude-props`、`claude-screens` 的提示词，`scripts/generate.sh games/her-room` 生成原图到 `art/raw/`（一次一张、每张之间停 20 秒）。
-2. **切图**：`art/layout.json` 的 `sets` 加一套 `claude`（文件名前缀），给每个精灵命名、定框和缩放；`python3 scripts/game_sprites.py build games/her-room/art/layout.json games/her-room/art/raw games/her-room/pack` 输出 `claude-room.webp`、`claude-atlas.webp`、`claude-sprites.json`（图集里不能留品红像素）。
+1. **美术**：在 `games/pixel-room/art/prompts.json` 加 `claude-room`（背景，不画家具）、`claude-furniture`、`claude-props`、`claude-screens` 的提示词，`scripts/generate.sh games/pixel-room` 生成原图到 `art/raw/`（一次一张、每张之间停 20 秒）。
+2. **切图**：`art/layout.json` 的 `sets` 加一套 `claude`（文件名前缀），给每个精灵命名、定框和缩放；`python3 scripts/game_sprites.py build games/pixel-room/art/layout.json games/pixel-room/art/raw games/pixel-room/pack` 输出 `claude-room.webp`、`claude-atlas.webp`、`claude-sprites.json`（图集里不能留品红像素）。
 3. **manifest**：把 `claude` 主题的 `status` 改成 `open`，补上 `outfit`、`world`、`images`、`sprites`、`petHeight`、`spawn`、`door`、`walk`、`furniture`、五件事的 `activities`（`at`、`spot`、`props`，躺下的给 `lie`）、`lights`、`window`、`lines`。数值不用写：五件事在所有房间里一样。
-4. **校验与预览**：`node tools/game-pack.js games/her-room`、`node --test tools/`；`python3 scripts/room_preview.py` 出静态合成图；再把 `pack/` 复制到应用仓库的 `catalog/games/her-room/`，`PIXELPET_DEV_GAMES=1 npm start` 在真实引擎里看（见下一节）。
+4. **校验与预览**：`node tools/game-pack.js games/pixel-room`、`node --test tools/`；`python3 scripts/room_preview.py` 出静态合成图；再把 `pack/` 复制到应用仓库的 `catalog/games/pixel-room/`，`PIXELPET_DEV_GAMES=1 npm start` 在真实引擎里看（见下一节）。
 5. **发版**：升 `pack/manifest.json` 的 `version`（例如 1.1.0），`CHANGELOG.md` 顶部加「## 1.1.0 · 日期」，按 [mini-games.md §9](mini-games.md#9-上架版本与升级) `node scripts/build.js && node scripts/publish.js`，推上 main。已安装的应用会提示「有更新」，进度保留。
 
 只换房间、不加新玩法时不用动应用。需要新的道具效果或新的活动种类时，要先在应用里加（`room-pack.js` 的 `FX` / `KINDS` 和 `engines/room.js`），应用发版后再发用到它的包，并在 `store.json` 写 `minAppVersion`。
@@ -170,21 +172,21 @@ dafeiyu-sprites.json        图集索引 { 名字: { x, y, w, h } }
 
 ```bash
 # 游戏仓库（rdmclin2/pixel-pet-mini-games）
-node tools/game-pack.js games/her-room && node --test tools/
-node scripts/build.js her-room            # out/her-room-1.0.0.zip + catalog.json 条目（大小、sha256、更新说明）
+node tools/game-pack.js games/pixel-room && node --test tools/
+node scripts/build.js pixel-room            # out/pixel-room-1.0.0.zip + catalog.json 条目（大小、sha256、更新说明）
 
 # 应用仓库
-cp ../pixel-pet-mini-games/games/her-room/pack/* catalog/games/her-room/   # 不经过商店，直接试玩
+cp ../pixel-pet-mini-games/games/pixel-room/pack/* catalog/games/pixel-room/   # 不经过商店，直接试玩
 PIXELPET_DEV_GAMES=1 npm start
 node scripts/sync-game-catalog.js --repo ../pixel-pet-mini-games --all     # 用本地仓库生成商店目录和封面（--all 含未发布的条目，只用来试，不提交）
 unset ELECTRON_RUN_AS_NODE
 xvfb-run -a -s "-screen 0 1600x1000x24" node e2e/run.js roomaccept       # 上架验收（下面）
-xvfb-run -a node e2e/run.js room                                           # 引擎回归（最小包 test/fixtures/games/her-room，轮次缩短）
+xvfb-run -a node e2e/run.js room                                           # 引擎回归（最小包 test/fixtures/games/pixel-room，轮次缩短）
 ```
 
-**上架**（游戏仓库）：`node scripts/publish.js her-room` 把包传到 CDN（需要 `dc` 登录）、下载回来比对、标记 `published`，推上 main；应用里跑 `node scripts/sync-game-catalog.js` 更新随应用发布的目录和封面。包写了 `minAppVersion: "0.27.0"`：之前的应用在商店里显示「需要更新应用」。
+**上架**（游戏仓库）：`node scripts/publish.js pixel-room` 把包传到 CDN（需要 `dc` 登录，或 `DC_CLI=<develop-center>/packages/cli/dist/index.js` 加环境变量 `DC_TOKEN`、`DC_BASE_URL`）、下载回来比对、标记 `published`，推上 main；应用里跑 `node scripts/sync-game-catalog.js`（游戏仓库的 PR 还没合并时加 `--repo <游戏仓库>`）更新随应用发布的目录和封面。1.0.0 已于 2026-11-05 上传：<https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/games-v1/pixel-room-1.0.0.zip>（551302 字节，sha256 `1e112e9c…`）。包写了 `minAppVersion: "0.27.0"`：之前的应用在商店里显示「需要更新应用」。
 
-**上架验收**（`e2e/her-room-accept.js`，`roomaccept`）：本地 http 服务当商店的 CDN 和游戏仓库的目录，安装包是游戏仓库 `build.js` 打出的那个（sha256 和 `src/core/game-catalog.json` 一致）。全新存档、不设 `PIXELPET_CATALOG_PREINSTALLED`，每次点击和悬停都是 Xvfb 上的真实鼠标（xdotool），整屏录像带章节，每一步的数值写进 `out/e2e/her-room-accept/obs/*.json`：
+**上架验收**（`e2e/pixel-room-accept.js`，`roomaccept`）：包从真实 CDN 下载（不设 `PIXELPET_CATALOG_URL`，下载地址和用户的一样）；开跑前先从 CDN 取回包，核对和 `src/core/game-catalog.json`、游戏仓库 `build.js` 打出的包 sha256 一致，下载后核对装好的文件和 CDN 上的包逐字节相同。游戏仓库的 `catalog.json` 由本地 http 服务提供（它的 main 分支要等 PR 合并后才有这一项）；升级用的 1.0.1 是 CDN 上的 `pixel-room-1.0.1-acceptance.zip`（内容和 1.0.0 相同，只升版本号，单独取名，不占以后正式 1.0.1 的文件名）。全新存档、不设 `PIXELPET_CATALOG_PREINSTALLED`，每次点击和悬停都是 Xvfb 上的真实鼠标（xdotool），整屏录像带章节，每一步的数值写进 `out/e2e/pixel-room-accept/obs/*.json`：
 
 - A1 全新存档，她在桌面上。
 - A2 商店：未下载（封面）→ 下载 → 已下载 · 开始玩；详情页。
@@ -193,7 +195,7 @@ xvfb-run -a node e2e/run.js room                                           # 引
 - A5 换房间：五个主题，一个可以玩、四个即将开放。
 - A6 五件事各做一整轮（真实时长）：悬停热点、点击、她走过去、进行中、结算、数值和 `pet.json` 一致；A6b 提前结束、中途切换。
 - A7 退出再启动：已下载、上次玩的游戏、房间、数值、上一件、今日小事都在。
-- A8 升级：游戏仓库发布 1.0.1 → 游戏里「有新版本」、商店「有更新」→ 更新 → v1.0.1，进度还在。
+- A8 升级：目录改成 1.0.1（CDN 上的验收包）→ 游戏里「有新版本」、商店「有更新」→ 更新 → v1.0.1，进度还在。
 
 ## 6. 代码
 
@@ -207,7 +209,7 @@ xvfb-run -a node e2e/run.js room                                           # 引
 | `src/main/pet-service.js` | `roomStats / roomSettle`（只改精力、心情、饱腹，存盘并推 `update`）、`roomLooks` |
 | `src/renderer/game/engines/room.js`、`room.css` | 引擎：场景、她的精灵、家具热点和描边、道具效果、活动条、标签、气泡、数值卡、换房间和预览卡、窗外天色 |
 | `scripts/sync-game-catalog.js` | 游戏仓库的目录和封面 → `src/core/game-catalog.json`、`src/renderer/catalog/games/`；`--repo` 读本地仓库，`--all` 含未发布条目 |
-| `e2e/her-room-accept.js` | 上架验收（`roomaccept`）；`e2e/mini-room.js` 是用最小包的引擎回归（`room`） |
+| `e2e/pixel-room-accept.js` | 上架验收（`roomaccept`）；`e2e/mini-room.js` 是用最小包的引擎回归（`room`） |
 
 ## 7. 已知限制
 

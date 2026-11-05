@@ -1,6 +1,6 @@
 'use strict';
-// 她的房间 · 游戏包校验 (src/core/room-pack.js through src/core/game-pack.js; docs/her-room-design.md §1). The pack
-// is the minimal fixture test/fixtures/games/her-room (scripts/build-room-fixture.js): one open room and four
+// 像素房间 · 游戏包校验 (src/core/room-pack.js through src/core/game-pack.js; docs/her-room-design.md §1). The pack
+// is the minimal fixture test/fixtures/games/pixel-room (scripts/build-room-fixture.js): one open room and four
 // 即将开放 ones. Each broken variant is one error that names what is wrong; the yard packs keep their own rules.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +12,7 @@ const GS = require('../src/core/game-store');
 const Room = require('../src/core/room-pack');
 const { zip, sha256 } = require('../scripts/build-character-catalog');
 
-const SRC = path.join(__dirname, 'fixtures', 'games', 'her-room');
+const SRC = path.join(__dirname, 'fixtures', 'games', 'pixel-room');
 const read = (f) => JSON.parse(fs.readFileSync(path.join(SRC, f), 'utf8'));
 const M = () => read('manifest.json');
 const FILES = fs.readdirSync(SRC);
@@ -24,7 +24,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pp-room-'));
 test('the fixture room pack is good: room@1 is an engine this app plays; the folder holds only the files it names', () => {
   assert.ok(GP.ENGINES.includes('room@1'));
   assert.deepEqual(check(M()), []);
-  assert.equal(GS.checkFolder(SRC, 'her-room'), null);
+  assert.equal(GS.checkFolder(SRC, 'pixel-room'), null);
   assert.deepEqual(GP.namedFiles(M()).sort(), ['dafeiyu-atlas.png', 'dafeiyu-room.png', 'dafeiyu-sprites.json']);
   assert.deepEqual(GP.spriteFiles(M()), ['dafeiyu-sprites.json']);
   // the fixture on disk is what the script writes
@@ -94,37 +94,37 @@ test('the yard packs keep their rules (yard@1 still validated as before)', () =>
 
 test('installArchive: a flat room pack with prefixed files installs; a folder inside it or a stray file is refused', async () => {
   const root = tmp();
-  const z = path.join(tmp(), 'her-room.zip');
+  const z = path.join(tmp(), 'pixel-room.zip');
   zip(SRC, z);
-  const entry = { id: 'her-room', version: M().version, sha256: sha256(z), bytes: fs.statSync(z).size };
-  assert.deepEqual(await GS.installArchive(root, entry, z), { ok: true, id: 'her-room' });
-  assert.deepEqual(GS.listInstalled([{ dir: root, source: 'download' }]).map((g) => [g.id, g.version]), [['her-room', M().version]]);
+  const entry = { id: 'pixel-room', version: M().version, sha256: sha256(z), bytes: fs.statSync(z).size };
+  assert.deepEqual(await GS.installArchive(root, entry, z), { ok: true, id: 'pixel-room' });
+  assert.deepEqual(GS.listInstalled([{ dir: root, source: 'download' }]).map((g) => [g.id, g.version]), [['pixel-room', M().version]]);
   // progress is outside the game folder: an update keeps it
-  GS.writeProgress(root, 'her-room', { state: { theme: 'dafeiyu', focus: { dafeiyu: 77 } } });
-  const z2 = path.join(tmp(), 'her-room-2.zip');
+  GS.writeProgress(root, 'pixel-room', { state: { theme: 'dafeiyu', focus: { dafeiyu: 77 } } });
+  const z2 = path.join(tmp(), 'pixel-room-2.zip');
   const w = tmp();
   for (const f of FILES) fs.copyFileSync(path.join(SRC, f), path.join(w, f));
   fs.writeFileSync(path.join(w, 'manifest.json'), JSON.stringify({ ...M(), version: '0.2.0' }));
   zip(w, z2);
-  assert.deepEqual(await GS.installArchive(root, { ...entry, version: '0.2.0', sha256: sha256(z2), bytes: fs.statSync(z2).size }, z2), { ok: true, id: 'her-room' });
-  assert.equal(GS.readProgress(root, 'her-room').state.focus.dafeiyu, 77);
+  assert.deepEqual(await GS.installArchive(root, { ...entry, version: '0.2.0', sha256: sha256(z2), bytes: fs.statSync(z2).size }, z2), { ok: true, id: 'pixel-room' });
+  assert.equal(GS.readProgress(root, 'pixel-room').state.focus.dafeiyu, 77);
   // a subfolder
   const bad = tmp();
   for (const f of FILES) fs.copyFileSync(path.join(SRC, f), path.join(bad, f));
   fs.mkdirSync(path.join(bad, 'dafeiyu'));
   fs.writeFileSync(path.join(bad, 'dafeiyu', 'x.png'), 'x');
-  assert.equal(GS.checkFolder(bad, 'her-room').reason, 'stray-file');
+  assert.equal(GS.checkFolder(bad, 'pixel-room').reason, 'stray-file');
   fs.rmSync(path.join(bad, 'dafeiyu'), { recursive: true });
   fs.writeFileSync(path.join(bad, 'run.js'), 'x');
-  assert.equal(GS.checkFolder(bad, 'her-room').reason, 'stray-file');
+  assert.equal(GS.checkFolder(bad, 'pixel-room').reason, 'stray-file');
 });
 
 test('game-index: a room@1 entry needs an app that has the engine, and a new enough one', () => {
   const GI = require('../src/core/game-index');
-  const e = { id: 'her-room', engine: 'room@1', minAppVersion: '0.27.0' };
+  const e = { id: 'pixel-room', engine: 'room@1', minAppVersion: '0.27.0' };
   assert.deepEqual(GI.supported(e, { engines: ['yard@1'], appVersion: '0.30.0' }), { ok: false, reason: 'engine' });
   assert.deepEqual(GI.supported(e, { engines: GP.ENGINES, appVersion: '0.26.0' }), { ok: false, reason: 'app' });
   assert.deepEqual(GI.supported(e, { engines: GP.ENGINES, appVersion: '0.27.0' }), { ok: true });
-  const index = { games: [{ ...e, name: '她的房间', version: '1.0.0', bytes: 1, screenshots: [], features: [] }] };
+  const index = { games: [{ ...e, name: '像素房间', version: '1.0.0', bytes: 1, screenshots: [], features: [] }] };
   assert.equal(GI.storeRows(index, new Map(), [], { engines: ['yard@1'], appVersion: '0.27.0' })[0].stateLabel, '需要更新应用');
 });

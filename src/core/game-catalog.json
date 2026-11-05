@@ -3,6 +3,58 @@
   "release": "games-v1",
   "games": [
     {
+      "id": "pixel-room",
+      "type": "game",
+      "name": "像素房间",
+      "version": "1.0.0",
+      "engine": "room@1",
+      "minAppVersion": "0.27.0",
+      "description": "每位角色都有一间自己风格的房间。陪她睡觉、工作、看手机、听音乐、打游戏：她会走过去做事，家具和道具跟着变，做完改变她的精力、心情、专注和饱腹。本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」，另外四间即将开放。",
+      "credit": "美术：GPT Image（gpt-image-2.5）生成后像素化；玩法与引擎：Pixel Pet Affection",
+      "features": [
+        "五件事：睡觉、工作、看手机、听音乐、打游戏",
+        "她走过去做事，家具和道具跟着变",
+        "做完改变精力、心情、专注和饱腹",
+        "五位角色各一间房，本版开放大肥鱼的蓝色小屋"
+      ],
+      "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/pixel-room",
+      "changelog": "第一版：大肥鱼的「鲸鱼女仆的蓝色小屋」——浅蓝和奶白的少女房间，蕾丝床幔、蝴蝶结、鲸鱼抱枕和鲸鱼地毯，她穿着招牌女仆装。陪她睡觉、工作、看手机、听音乐、打游戏：她走到床、书桌和电脑、床头柜上的手机、唱片机、电视和游戏机前做事，被子、显示器、唱片、电视画面跟着变，做完改变她的精力、心情、专注和饱腹。另外四位角色的房间（午后的书房、深夜的古堡房间、星星猫窝、白龙的花园卧室）可以预览，即将开放。每天三件小事，完成加好感。",
+      "picture": "catalog/games/pixel-room.webp",
+      "screenshots": [
+        {
+          "url": "catalog/games/pixel-room/01-room.webp",
+          "caption": "鲸鱼女仆的蓝色小屋：浅蓝和奶白，蕾丝床幔、蝴蝶结，她穿着女仆装"
+        },
+        {
+          "url": "catalog/games/pixel-room/02-sleep.webp",
+          "caption": "睡觉：她躺进被子里，房间暗下来"
+        },
+        {
+          "url": "catalog/games/pixel-room/03-work.webp",
+          "caption": "工作：显示器一行行打字，台灯亮起"
+        },
+        {
+          "url": "catalog/games/pixel-room/04-phone.webp",
+          "caption": "看手机：床头柜上的手机到了她手里"
+        },
+        {
+          "url": "catalog/games/pixel-room/05-music.webp",
+          "caption": "听音乐：唱片转起来，音符飘出来"
+        },
+        {
+          "url": "catalog/games/pixel-room/06-game.webp",
+          "caption": "打游戏：电视上鲸鱼在跳金币，手柄在她手里"
+        },
+        {
+          "url": "catalog/games/pixel-room/07-rooms.webp",
+          "caption": "换房间：五位角色各一间，另外四间即将开放"
+        }
+      ],
+      "file": "pixel-room-1.0.0.zip",
+      "bytes": 551302,
+      "sha256": "1e112e9c0de99cd27ca6abde96fd325effa246bf86c0a1b4aa6402e4194056d7"
+    },
+    {
       "id": "pixel-yard",
       "type": "game",
       "name": "像素小院",

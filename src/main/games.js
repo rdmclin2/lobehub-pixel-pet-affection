@@ -87,7 +87,7 @@ class GameLibrary {
     const json = JSON.stringify(state);
     if (json.length > 64 * 1024) return false;
     const p = GS.readProgress(this.userDir, id);
-    // 她的房间: the page keeps only what it chose (the room); her focus, the running round, the last one and the
+    // 像素房间: the page keeps only what it chose (the room); her focus, the running round, the last one and the
     // totals are main's (activity() below) and the page cannot write them
     const g = this.load(id);
     if (g && g.manifest.engine === 'room@1') {
@@ -101,7 +101,7 @@ class GameLibrary {
     return true;
   }
 
-  // ---- 她的房间 (room@1, docs/her-room-design.md §2–§3) ---------------------------------------------------
+  // ---- 像素房间 (room@1, docs/her-room-design.md §2–§3) ---------------------------------------------------
   // The page asks; main decides with its own clock and the installed manifest's numbers (core/room-play.js) —
   // nothing the page sends sets how much a round is worth or how long it ran. `pet`: { stats() → { base, energy,
   // mood, fullness }, settle({ energy, mood, fullness }) → stats, quest(title) → affection result }.

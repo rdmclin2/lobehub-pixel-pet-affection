@@ -1,9 +1,9 @@
-// 她的房间 (docs/her-room-design.md §7.2): the room@1 game bought in the store and played in the game window,
+// 像素房间 (docs/her-room-design.md §7.2): the room@1 game bought in the store and played in the game window,
 // driven as a user does — `xvfb-run -a node e2e/run.js room` (no tokens: fake lh). The store's CDN is a local
-// server holding an archive of the minimal room pack (test/fixtures/games/her-room, scripts/build-room-fixture.js)
-// and plays the games repository's catalog.json (PIXELPET_GAME_INDEX_URL) with a her-room entry. She is 大肥鱼.
+// server holding an archive of the minimal room pack (test/fixtures/games/pixel-room, scripts/build-room-fixture.js)
+// and plays the games repository's catalog.json (PIXELPET_GAME_INDEX_URL) with a mini-room entry. She is 大肥鱼.
 // Every click on the room is a real mouse click on the canvas (or on the room's DOM: its buttons and cards).
-//   R1  商店 → 小游戏 → 她的房间: the card, 下载 → 已下载, 开始玩: the game window opens, her desktop window hides,
+//   R1  商店 → 小游戏 → 像素房间: the card, 下载 → 已下载, 开始玩: the game window opens, her desktop window hides,
 //       WebGL draws, frames keep coming
 //   R2  into the room: the theme is dafeiyu (hers), its pictures are loaded, she wears her pack's daily sheet
 //       (招牌女仆装), the five activity pieces are there
@@ -16,10 +16,10 @@
 //   R6  energy 10: 工作 / 打游戏 are greyed out, the tip says why, a click starts nothing
 //   R7  stop early (结束) and switch (another piece mid-round): settled by how far it got; the one before first
 //   R10 天色: night darkens the room, lights it, the moon in the window; rain in the window
-//   R8  Ctrl+W mid-round: settled by how long it ran, she is back on the desktop; the tray opens 她的房间 again
+//   R8  Ctrl+W mid-round: settled by how long it ran, she is back on the desktop; the tray opens 像素房间 again
 //       (the last game played) and the card says 上一件
 //   R9  the app killed mid-round, reopened after more than a whole round: the round is settled as done
-// Screenshots: out/e2e/her-room/. With PIXELPET_ROOM_VIDEO=<file.mp4> (run under xvfb-run -s "-screen 0 1280x800x24")
+// Screenshots: out/e2e/mini-room/. With PIXELPET_ROOM_VIDEO=<file.mp4> (run under xvfb-run -s "-screen 0 1280x800x24")
 // R2–R6 are also recorded from the screen (ffmpeg x11grab, with the pointer), chapters in <file>.chapters.json.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -39,18 +39,23 @@ const SCALE = 0.15; // a 30 s round takes 4.5 s
 module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
   return async function miniRoom() {
     const S = 'room';
-    const SHOTS = path.join(OUT, 'her-room');
+    const SHOTS = path.join(OUT, 'pixel-room');
     fs.mkdirSync(SHOTS, { recursive: true });
-    const PACK = path.join(ROOT, 'test', 'fixtures', 'games', 'her-room');
-    const M = JSON.parse(fs.readFileSync(path.join(PACK, 'manifest.json'), 'utf8'));
+    // the minimal fixture is listed under its own id: the bundled catalog (src/core/game-catalog.json) has the
+    // published pixel-room 1.0.0, which would win over the fixture's 0.1.0 under the same id
+    const SRC_PACK = path.join(ROOT, 'test', 'fixtures', 'games', 'pixel-room');
+    const PACK = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-roompack-'));
+    for (const f of fs.readdirSync(SRC_PACK)) fs.copyFileSync(path.join(SRC_PACK, f), path.join(PACK, f));
+    const M = { ...JSON.parse(fs.readFileSync(path.join(SRC_PACK, 'manifest.json'), 'utf8')), id: 'mini-room', name: '像素房间（最小包）' };
+    fs.writeFileSync(path.join(PACK, 'manifest.json'), JSON.stringify(M, null, 2));
     const THEME = M.themes.find((t) => t.id === 'dafeiyu');
     // the store's CDN: an archive of the minimal pack, and the games repository's catalog with its entry
     const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-roomcdn-'));
     const { zip } = require(path.join(ROOT, 'scripts', 'build-character-catalog'));
-    const file = `her-room-${M.version}.zip`;
+    const file = `mini-room-${M.version}.zip`;
     zip(PACK, path.join(cdn, file));
     const buf = fs.readFileSync(path.join(cdn, file));
-    const entry = { id: 'her-room', type: 'game', name: '她的房间', version: M.version, engine: 'room@1', minAppVersion: null, description: M.description, credit: M.credit, features: ['睡觉 · 工作 · 看手机 · 听音乐 · 打游戏', '五位角色各一间房（大肥鱼的先开放）', '每天三件小事，完成加好感'], changelog: '开发用的最小包（像素图由脚本绘制）。', file, bytes: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), published: '2026-11-05' };
+    const entry = { id: 'mini-room', type: 'game', name: M.name, version: M.version, engine: 'room@1', minAppVersion: null, description: M.description, credit: M.credit, features: ['睡觉 · 工作 · 看手机 · 听音乐 · 打游戏', '五位角色各一间房（大肥鱼的先开放）', '每天三件小事，完成加好感'], changelog: '开发用的最小包（像素图由脚本绘制）。', file, bytes: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex'), published: '2026-11-05' };
     const catalog = { schema: 1, release: 'games-v1', games: [entry] };
     let served = 0;
     const server = http.createServer((req, res) => {
@@ -75,7 +80,7 @@ module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch })
     const T = (fn, arg) => gp.evaluate(fn, arg);
     const dbg = () => page.evaluate(() => window.pet.debugScene());
     const shot = (n) => gp.screenshot({ path: path.join(SHOTS, `${n}.png`) });
-    const progress = () => JSON.parse(fs.readFileSync(path.join(dataDir, 'games', '.progress', 'her-room.json'), 'utf8'));
+    const progress = () => JSON.parse(fs.readFileSync(path.join(dataDir, 'games', '.progress', 'mini-room.json'), 'utf8'));
     const petJson = () => { const p = JSON.parse(fs.readFileSync(path.join(dataDir, 'pet.json'), 'utf8')); return p.characters[p.speciesId]; };
     const until = async (fn, ms = 10000, what = 'condition') => {
       const t0 = Date.now();
@@ -148,29 +153,29 @@ module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch })
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
       await page.waitForTimeout(500);
 
-      await step(S, 'R1 商店 → 小游戏 → 她的房间：卡片、下载 → 已下载、开始玩：游戏窗口打开、桌宠隐藏、WebGL 在画', async () => {
+      await step(S, 'R1 商店 → 小游戏 → 像素房间：卡片、下载 → 已下载、开始玩：游戏窗口打开、桌宠隐藏、WebGL 在画', async () => {
         await page.evaluate(() => window.pet.debugTrayClick('小游戏'));
         admin = await until(async () => app.windows().find(isAdmin) || null, 30000, 'the settings window');
         await admin.waitForSelector('[data-path="/store/games"]', { timeout: 20000 });
-        await admin.waitForSelector('[data-store-game="her-room"]', { timeout: 20000 });
-        assert.equal(await admin.locator('[data-store-game="her-room"]').getAttribute('data-game-state'), 'remote');
-        const cardText = await admin.locator('[data-store-game="her-room"]').innerText();
-        assert.match(cardText, /她的房间/);
+        await admin.waitForSelector('[data-store-game="mini-room"]', { timeout: 20000 });
+        assert.equal(await admin.locator('[data-store-game="mini-room"]').getAttribute('data-game-state'), 'remote');
+        const cardText = await admin.locator('[data-store-game="mini-room"]').innerText();
+        assert.match(cardText, /像素房间/);
         await admin.screenshot({ path: path.join(SHOTS, 'r1-store-remote.png') });
-        await admin.click('[data-game-download="her-room"]');
-        await until(async () => (await admin.locator('[data-store-game="her-room"]').getAttribute('data-game-state')) === 'installed', 30000, 'installed');
-        const files = fs.readdirSync(path.join(dataDir, 'games', 'her-room')).sort();
+        await admin.click('[data-game-download="mini-room"]');
+        await until(async () => (await admin.locator('[data-store-game="mini-room"]').getAttribute('data-game-state')) === 'installed', 30000, 'installed');
+        const files = fs.readdirSync(path.join(dataDir, 'games', 'mini-room')).sort();
         assert.deepEqual(files, ['.catalog.json', 'dafeiyu-atlas.png', 'dafeiyu-room.png', 'dafeiyu-sprites.json', 'manifest.json']);
         assert.ok(served >= 1);
         await admin.screenshot({ path: path.join(SHOTS, 'r1-store-installed.png') });
-        await admin.click('[data-game-play="her-room"]');
+        await admin.click('[data-game-play="mini-room"]');
         gp = await findGame(app);
         const s = await ready();
         const d = await dbg();
         assert.equal(d.visible, true);
         assert.equal(d.petVisible, false, 'her desktop window hid');
-        assert.equal(d.game, 'her-room');
-        assert.equal(d.settings.game, 'her-room', 'the last game played is her-room');
+        assert.equal(d.game, 'mini-room');
+        assert.equal(d.settings.game, 'mini-room', 'the last game played is mini-room');
         assert.match(String(s.renderer), /webgl/i);
         const f0 = s.frames;
         await gp.waitForTimeout(1500);
@@ -412,7 +417,7 @@ module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch })
         return `brightness day ${b(day).toFixed(2)} → night ${b(night).toFixed(2)}, window ${JSON.stringify(night.windowSky)}, rain drops ${rain.windowSky.drops}`;
       });
 
-      await step(S, 'R8 工作中 Ctrl+W：按做了多久结算，她回到桌面；托盘再打开的还是她的房间，状态卡写「上一件」', async () => {
+      await step(S, 'R8 工作中 Ctrl+W：按做了多久结算，她回到桌面；托盘再打开的还是像素房间，状态卡写「上一件」', async () => {
         await idleRoom();
         await clickFurn(at('work'));
         const r = await until(async () => { const v = await R(); return v.run && v.run.kind === 'work' ? v : null; }, 20000, 'work running');
@@ -428,7 +433,7 @@ module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch })
         await page.evaluate(() => window.pet.debugTrayClick('小游戏'));
         await until(async () => (await dbg()).visible, 6000, 'reopened from the tray');
         const d = await dbg();
-        assert.equal(d.game, 'her-room');
+        assert.equal(d.game, 'mini-room');
         const v = await until(async () => { const x = await R(); return /上一件：工作（做了 \d+%）/.test(x.lastText) ? x : null; }, 5000, '上一件 on the card');
         await shot('r8-reopened');
         // her panel ⌂ too
@@ -437,7 +442,7 @@ module.exports = function miniRoomScenario({ ROOT, OUT, FAKE_LH, step, launch })
         await clickAct(page, 'scene');
         await until(async () => (await dbg()).visible, 6000, 'reopened from ⌂');
         const d2 = await dbg();
-        assert.equal(d2.game, 'her-room');
+        assert.equal(d2.game, 'mini-room');
         return `settled work at ${Math.round(st.last.fraction * 100)}%; tray → ${d.game}, ⌂ → ${d2.game}; card「${v.lastText}」; sources ${d2.sources.join(',')}`;
       });
 

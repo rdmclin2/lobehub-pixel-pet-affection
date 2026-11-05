@@ -279,14 +279,14 @@ function notifyGameUpdates() {
   if (scene) scene.send('game:update', ups.find((u) => u.id === scene.gameId) || null);
   if (admin && admin.alive) admin.send('game-updates', ups);
 }
-// 她的房间 (room@1): what games.js activity() needs from her (PetService): her numbers, settling a round into
+// 像素房间 (room@1): what games.js activity() needs from her (PetService): her numbers, settling a round into
 // them, a finished 小事 → affection
 const roomPet = {
   stats: () => service.roomStats(),
   settle: (s) => service.roomSettle(s),
   quest: (title) => service.gameQuest(title),
 };
-// the game window closed or the app quits with a round running in 她的房间: settled by how long it ran
+// the game window closed or the app quits with a round running in 像素房间: settled by how long it ran
 function settleRoom() {
   if (!scene || !scene.gameId || !games || !service || !service.pet) return null;
   try { return games.roomClose(scene.gameId, roomPet); } catch (e) { logError(e); return null; }
@@ -592,12 +592,12 @@ function wire() {
     const id = String((p && p.game) || scene.gameId || '');
     const game = games.boot(id);
     const update = game ? gameIndex.updates(installedGames()).find((u) => u.id === id) || null : null;
-    // 她的房间 (room@1): her numbers, the running round (one left open by an app that went away is settled now),
+    // 像素房间 (room@1): her numbers, the running round (one left open by an app that went away is settled now),
     // how the room's owner and each room's character look
     const room = game && game.manifest.engine === 'room@1' ? { ...games.roomBoot(id, roomPet), ...service.roomLooks(game.manifest.themes || []) } : null;
     return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update, room };
   });
-  // 她的房间: start / stop / tick / seen / theme (src/main/games.js activity): main settles with its own clock
+  // 像素房间: start / stop / tick / seen / theme (src/main/games.js activity): main settles with its own clock
   ipcMain.handle('game:activity', (e, p) => {
     if (!fromScene(e) || !p || typeof p !== 'object') return { ok: false, reason: 'invalid' };
     const id = String(scene.gameId || '');
@@ -1548,7 +1548,7 @@ app.whenReady().then(() => {
   });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   // 小游戏 (games.js): downloaded games in userData/games; a checkout's catalog/games too with PIXELPET_DEV_GAMES=1
-  // (and test/fixtures/games: the minimal packs, e.g. mini-room for 她的房间, to play without the store)
+  // (and test/fixtures/games: the minimal packs, e.g. mini-room for 像素房间, to play without the store)
   games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? [path.join(__dirname, '..', '..', 'catalog', 'games'), path.join(__dirname, '..', '..', 'test', 'fixtures', 'games')] : null });
   games.registerProtocol();
   // the games repository's catalog.json: off in tests unless PIXELPET_GAME_INDEX_URL names one

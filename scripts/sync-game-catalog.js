@@ -13,7 +13,7 @@
 // --check: fail when the bundled copy differs from the repository's (published entries only).
 // --repo <dir>: a local checkout of the games repository: its catalog.json (unless --from says otherwise), and
 //   cover / screenshot URLs on its main branch (raw.githubusercontent.com/…/main/<path>) read from <dir>/<path>,
-//   so a game that is built but not pushed yet can be tried (docs/her-room.md「试玩」).
+//   so a game that is built but not pushed yet can be tried (docs/pixel-room.md「试玩」).
 // --all: also entries that are not published yet (no `published`: not on the CDN) — local trials only, never
 //   commit the result.
 const fs = require('node:fs');
