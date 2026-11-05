@@ -20,7 +20,7 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'store':
-      return <StorePage />;
+      return <StorePage initial={sub} key="store" />;
     case 'chat':
       return <ChatPage id={sub} key="chat" navigate={navigate} />;
     case 'play':

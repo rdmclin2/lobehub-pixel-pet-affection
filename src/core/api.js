@@ -24,6 +24,9 @@ const ROUTES = [
   ['GET', '/dances', '列出舞蹈（内置示例 + 舞蹈库）：[{ id, name, duration, music, loop… }]；vrm 表示她现在能不能跳'],
   ['POST', '/dance', '让她跳舞（只有 VRM 外观能跳）：{ "id"?: "…", "name"?: "…", "loop"?: true|false }；都不给就随机一支'],
   ['POST', '/dance/stop', '让她停下不跳'],
+  ['GET', '/motions', '列出 VRM 角色现在能播的动作片段（动作库，按她的风格回退后）：{ library, motions: [{ id, slot, kind, category, group, label, duration }], manual }'],
+  ['POST', '/motion', '让 VRM 角色播一个动作片段：{ "id"?: "idle.v03@female", "slot"?: "react.nod-01", "group"?: "nod|bow|stretch|sit|…", "loop"?: true|false }；姿势/待机片段替换底层，反应片段分层叠加，结束后交叉淡回待机'],
+  ['POST', '/motion/stop', '停下手动播放的动作，平滑回到待机'],
   ['POST', '/reset-pose', '重置姿势：不管她在跳舞、吃饭、玩耍、睡觉还是动作卡住，都停下并平滑回到待机（睡着会叫醒，不扣好感）'],
   ['POST', '/observe', '插个嘴：告诉她主人正在做/写的事（不是对她说的），由她判断要不要插一句：{ "text": "…" }（需开启插个嘴和“外部程序”来源）'],
 ];
@@ -101,6 +104,31 @@ async function handle(req, ctx) {
     if (!ctx.danceStop) return fail(404, 'not-found');
     const r = await ctx.danceStop();
     return r && r.ok ? { status: 200, json: { ok: true, id: r.id } } : r && r.reason === 'not-dancing' ? { status: 200, json: { ok: true, id: null, dancing: false } } : fail(409, (r && r.reason) || 'no-pet');
+  }
+  // the motion library's clips by hand (T-5084): 409 not-vrm / not-ready, 404 no-clip
+  if (route === '/motions') {
+    if (!ctx.motions) return fail(404, 'not-found');
+    const r = await ctx.motions();
+    return r && r.ok ? { status: 200, json: { ok: true, library: r.library || null, motions: r.motions || [], manual: r.manual || null } } : fail(409, (r && r.reason) || 'no-pet');
+  }
+  if (route === '/motion') {
+    if (!ctx.motion) return fail(404, 'not-found');
+    const okStr = (v, re) => v === undefined || (typeof v === 'string' && re.test(v));
+    if (!okStr(body.id, /^[a-z]+(\.[a-z0-9-]+)+(@(female|male|neutral))?$/)) return fail(400, 'bad-id');
+    if (!okStr(body.slot, /^[a-z]+(\.[a-z0-9-]+)+$/)) return fail(400, 'bad-slot');
+    if (!okStr(body.group, /^[a-z-]{1,20}$/)) return fail(400, 'bad-group');
+    if (body.loop !== undefined && typeof body.loop !== 'boolean') return fail(400, 'bad-loop');
+    if (body.hold !== undefined && !(typeof body.hold === 'number' && body.hold > 0 && body.hold <= 600)) return fail(400, 'bad-hold');
+    if (!body.id && !body.slot && !body.group) return fail(400, 'no-motion');
+    const r = await ctx.motion({ id: body.id, slot: body.slot, group: body.group, loop: body.loop, hold: body.hold });
+    if (r && r.ok) return { status: 200, json: { ok: true, id: r.id, slot: r.slot, kind: r.kind, layer: r.layer, label: r.label, duration: r.duration, loop: !!r.loop } };
+    const reason = (r && r.reason) || 'no-pet';
+    return fail(reason === 'no-clip' ? 404 : 409, reason);
+  }
+  if (route === '/motion/stop') {
+    if (!ctx.motionStop) return fail(404, 'not-found');
+    const r = await ctx.motionStop();
+    return r && r.ok ? { status: 200, json: { ok: true, stopped: !!r.stopped, id: r.id || null } } : fail(409, (r && r.reason) || 'no-pet');
   }
   if (route === '/reset-pose') {
     if (!ctx.resetPose) return fail(404, 'not-found');

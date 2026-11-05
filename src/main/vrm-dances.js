@@ -18,17 +18,22 @@ const REPO = path.resolve(__dirname, '..', '..');
 const insideRepo = (p) => { const r = path.relative(REPO, path.resolve(p)); return !r.startsWith('..') && !path.isAbsolute(r); };
 const hasIndex = (d) => { try { return fs.statSync(path.join(d, 'library.json')).isFile(); } catch { return false; } };
 
-// { dir, source: 'env' | 'userData' | 'dev' | 'none', refused? }
-function danceDir({ env = process.env, userData, packaged = false, home = os.homedir() } = {}) {
+// { dir, source: 'env' | 'linked' | 'userData' | 'dev' | 'none', refused? }. `link`: the motion library folder the
+// user chose in the console (src/main/vrm-library.js readLink, T-5084) — its dances/ sub-folder is used when it has
+// a library.json; the development run also looks in ~/vrm-assets/baked-v2/dances (the v2 bake, T-5081) first.
+function danceDir({ env = process.env, userData, packaged = false, home = os.homedir(), link = null } = {}) {
   if (env.PIXELPET_VRM_DANCES_DIR) {
     const d = path.resolve(env.PIXELPET_VRM_DANCES_DIR.replace(/^~(?=$|\/)/, home));
     if (insideRepo(d)) return { dir: null, source: 'none', refused: d };
     return { dir: d, source: 'env' };
   }
+  // the user's own folder first: store downloads and imported dances are installed there (danceDirNow in main.js)
   const user = userData ? path.join(userData, 'vrm-dances') : null;
   if (user && hasIndex(user)) return { dir: user, source: 'userData' };
-  const dev = path.join(home, 'vrm-assets', 'baked-dances');
-  if (!packaged && env.PIXELPET_TEST !== '1' && hasIndex(dev) && !insideRepo(dev)) return { dir: dev, source: 'dev' };
+  if (link && hasIndex(path.join(link, 'dances')) && !insideRepo(link)) return { dir: path.join(link, 'dances'), source: 'linked' };
+  if (!packaged && env.PIXELPET_TEST !== '1') {
+    for (const dev of [path.join(home, 'vrm-assets', 'baked-v2', 'dances'), path.join(home, 'vrm-assets', 'baked-dances')]) if (hasIndex(dev) && !insideRepo(dev)) return { dir: dev, source: 'dev' };
+  }
   return { dir: user, source: user ? 'userData' : 'none' };
 }
 

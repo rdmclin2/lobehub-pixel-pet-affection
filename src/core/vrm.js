@@ -181,7 +181,7 @@ function vrmHasSpringBone(json) {
 }
 
 // Everything about a .vrm the app keeps: { ok: true, meta, expressions, springBone, body } or { ok: false, errors }.
-// body: { bustSpring, shoulderHip } — what core/vrm-style.js guesses the motion style from (§4.2).
+// body: { bustSpring, bustBones, vroidBust, shoulderHip } — what core/vrm-style.js guesses the motion style (§4.2) and the voice gender from.
 function inspectVrmJson(json) {
   const meta = vrmMetaFromJson(json);
   if (!meta) return { ok: false, errors: ['not a VRM model: the glTF has no VRMC_vrm (1.0) or VRM (0.x) extension'] };

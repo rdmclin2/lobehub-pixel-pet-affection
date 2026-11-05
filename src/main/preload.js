@@ -85,6 +85,11 @@ contextBridge.exposeInMainWorld('pet', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
+  setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
+  voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
+  // 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto' -> { ok, choice, state, settings }
+  setUserVoicePack: (packId) => ipcRenderer.invoke('set-user-voice-pack', { packId }),
   // 语音输入 (core/asr.js): recognition runs in main (keys and lh never come here). transcribe takes the recorder's
   // bytes (ArrayBuffer / Uint8Array) and its mime type; ms = how long the clip is.
   asr: {
@@ -127,6 +132,17 @@ contextBridge.exposeInMainWorld('pet', {
     state: () => ipcRenderer.invoke('dance:state'),
   },
   onApiStatus: on('api-status'),
+  // 她的面板 (src/main/pet-panel.js): its own small window beside her. open / toggle get { source, anchor (her box
+  // on the screen), payload (what it shows) } and answer { visible }; update re-draws it while open; onAct hears
+  // a button pressed in it ({ act, food? }), onClosed when and why it closed
+  panel: {
+    open: (p) => ipcRenderer.invoke('pet-panel:open', p),
+    toggle: (p) => ipcRenderer.invoke('pet-panel:toggle', p),
+    close: (reason) => ipcRenderer.send('pet-panel:close', { reason }),
+    update: (payload) => ipcRenderer.send('pet-panel:update', payload),
+    onAct: on('panel-act'),
+    onClosed: on('panel-closed'),
+  },
   quit: () => ipcRenderer.send('quit'),
   place: (mode) => ipcRenderer.send('place', mode),
   openLog: () => ipcRenderer.send('open-log'),
@@ -149,7 +165,12 @@ contextBridge.exposeInMainWorld('pet', {
   debugVoiceHotkey: () => ipcRenderer.invoke('debug-voice-hotkey'),
   debugVoiceHotkeyStatus: () => ipcRenderer.invoke('debug-voice-hotkey-status'),
   debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
+  debugPetPanel: () => ipcRenderer.invoke('debug-pet-panel'),
   debugHidePet: (minimize) => ipcRenderer.invoke('debug-hide-pet', { minimize }),
+  // 检查更新… (顶栏菜单 / 托盘): the dialogs it showed, the button the next one answers with, a forced Updater state
+  debugUpdateDialogs: () => ipcRenderer.invoke('debug-update-dialogs'),
+  debugUpdateAnswer: (id) => ipcRenderer.invoke('debug-update-answer', id),
+  debugUpdateState: (patch) => ipcRenderer.invoke('debug-update-state', patch),
   onUpdate: on('update'),
   onWindowShown: on('window-shown'),
   onSay: on('say'),

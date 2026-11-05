@@ -41,6 +41,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   setFraming: (mode, species) => ipcRenderer.invoke('set-framing', { mode, species }),
   // VRM 姿势: per VRM pack (settings.vrmPostures), the same channel the pet window's 衣柜 uses
   setVrmPosture: (packId, posture) => ipcRenderer.invoke('set-vrm-posture', { packId, posture }),
+  // VRM 动作库 (T-5084): where the motions come from, link another folder / forget it, and 动作试播
+  vrmLibraryInfo: () => ipcRenderer.invoke('vrm-library-info'),
+  vrmLibraryPick: () => ipcRenderer.invoke('vrm-library-pick'),
+  vrmLibraryUnlink: () => ipcRenderer.invoke('vrm-library-unlink'),
+  vrmMotions: () => ipcRenderer.invoke('vrm-motions:list'),
+  vrmMotionPlay: (opts) => ipcRenderer.invoke('vrm-motion:play', opts),
+  vrmMotionStop: () => ipcRenderer.invoke('vrm-motion:stop'),
   unlockAll: (species) => ipcRenderer.invoke('unlock-all', { species }),
   // 服饰: put on one of a character's unlocked outfits (none = the current one, as the pet window's 衣柜 did)
   equipOutfit: (id, species) => ipcRenderer.invoke('equip-outfit', { id, species }),
@@ -63,6 +70,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
   ttsClearCache: () => ipcRenderer.invoke('tts-clear-cache'),
   openVoicePacksFolder: () => ipcRenderer.send('open-voicepacks-folder'),
   reloadVoicePacks: () => ipcRenderer.invoke('voicepacks-reload'),
+  // 按角色切换语音包 (main.js set-voice-pack): { characterId, packId: <pack id> | 'auto' } -> { ok, state, settings }
+  setVoicePack: (characterId, packId) => ipcRenderer.invoke('set-voice-pack', { characterId, packId }),
+  voicePackState: (characterId) => ipcRenderer.invoke('voice-pack-state', { characterId }),
+  // 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto' -> { ok, choice, state, settings }
+  setUserVoicePack: (packId) => ipcRenderer.invoke('set-user-voice-pack', { packId }),
   asrTest: (provider) => ipcRenderer.invoke('asr-test', { provider }),
   // content & safety: adult content on only through the 18+ confirmation (confirmAge(true))
   setAdult: (on) => ipcRenderer.invoke('set-adult', { on }),
@@ -101,6 +113,12 @@ contextBridge.exposeInMainWorld('petAdmin', {
   danceStore: () => ipcRenderer.invoke('dance-store'),
   danceDownload: (id) => ipcRenderer.invoke('dance-download', { id }),
   danceDownloadCancel: (id) => ipcRenderer.invoke('dance-download-cancel', { id }),
+  // 商店 → 语音包 (core/voice-store.js): the store's style packs with their state, download / cancel / delete;
+  // progress arrives as `catalog-progress`
+  voiceStore: () => ipcRenderer.invoke('voice-store'),
+  voiceDownload: (id) => ipcRenderer.invoke('voice-download', { id }),
+  voiceDownloadCancel: (id) => ipcRenderer.invoke('voice-download-cancel', { id }),
+  voiceRemove: (id) => ipcRenderer.invoke('voice-remove', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

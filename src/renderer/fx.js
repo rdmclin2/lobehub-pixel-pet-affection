@@ -56,6 +56,8 @@
     ticklish: [['♪', 'note', 0.12, 0.06]],
   };
 
+  const THROW_MAX_MS = 15000; // a throw always lands within this, whatever the frame clock does
+
   function createEffects({ body, floatLayer, touchLayer = null, api, prefs = () => ({}), hitBox = () => null }) {
     let oneShot = null; // { key, until }
     let facing = 'right';
@@ -254,7 +256,11 @@
       let peers = [];
       let asking = false;
       const cooldown = new Map(); // peer id -> time of the last knock (no double hits while overlapping)
+      let guard = null;
       await new Promise((resolve) => {
+        // the frames drive the flight; if they stop coming (window occluded / throttled) she would hang in
+        // the air (lifted pose) for good: a wall-clock cap lands her anyway
+        guard = setTimeout(resolve, THROW_MAX_MS);
         const step = () => {
           if (flight !== run) return resolve();
           const now = performance.now();
@@ -295,6 +301,7 @@
         };
         requestAnimationFrame(step);
       });
+      clearTimeout(guard);
       body.classList.remove('flying');
       report(0, 0);
       if (run.maxImpact) stats.lastSquash = Fx.landingSquash(run.maxImpact); // the hardest landing of this throw

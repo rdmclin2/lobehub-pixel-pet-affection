@@ -8,25 +8,8 @@
 // Quaternions are [x, y, z, w] arrays, like three's toArray().
 
 // ---------- Mixamo → VRM humanoid ----------
-const MIXAMO_TO_VRM = {
-  Hips: 'hips', Spine: 'spine', Spine1: 'chest', Spine2: 'upperChest', Neck: 'neck', Head: 'head',
-  LeftShoulder: 'leftShoulder', LeftArm: 'leftUpperArm', LeftForeArm: 'leftLowerArm', LeftHand: 'leftHand',
-  RightShoulder: 'rightShoulder', RightArm: 'rightUpperArm', RightForeArm: 'rightLowerArm', RightHand: 'rightHand',
-  LeftUpLeg: 'leftUpperLeg', LeftLeg: 'leftLowerLeg', LeftFoot: 'leftFoot', LeftToeBase: 'leftToes',
-  RightUpLeg: 'rightUpperLeg', RightLeg: 'rightLowerLeg', RightFoot: 'rightFoot', RightToeBase: 'rightToes',
-};
-for (const side of ['Left', 'Right']) {
-  const s = side.toLowerCase();
-  MIXAMO_TO_VRM[`${side}HandThumb1`] = `${s}ThumbMetacarpal`;
-  MIXAMO_TO_VRM[`${side}HandThumb2`] = `${s}ThumbProximal`;
-  MIXAMO_TO_VRM[`${side}HandThumb3`] = `${s}ThumbDistal`;
-  for (const f of ['Index', 'Middle', 'Ring', 'Little']) {
-    const mx = f === 'Little' ? 'Pinky' : f;
-    MIXAMO_TO_VRM[`${side}Hand${mx}1`] = `${s}${f}Proximal`;
-    MIXAMO_TO_VRM[`${side}Hand${mx}2`] = `${s}${f}Intermediate`;
-    MIXAMO_TO_VRM[`${side}Hand${mx}3`] = `${s}${f}Distal`;
-  }
-}
+// the table lives in src/core/vrm-bone-map.js (shared with the runtime's missing-bone fold, T-5081)
+const { MIXAMO_TO_VRM } = require('../../src/core/vrm-bone-map');
 // The VRM bones a humanoid must have (VRM 1.0 spec "required").
 const VRM_REQUIRED = ['hips', 'spine', 'head', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightUpperArm', 'rightLowerArm', 'rightHand', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot'];
 // "mixamorig:Hips", "mixamorigHips" (three strips the colon), "mixamorig1:Hips" → "Hips"
@@ -232,11 +215,32 @@ function uprightClip(clip) {
   return { ...clip, bones, hips };
 }
 
+// Turned to face the user (T-5081): a source authored facing aside (many Mixamo talk / gesture clips stand 60–90°
+// off) has its hips' mean heading turned back to +Z — the hips rotation pre-multiplied by the inverse yaw and the
+// hips travel turned with it. Returns the clip as is when it already faces within 10°.
+function yawOf(q) { const x = 2 * (q[0] * q[2] + q[3] * q[1]); const z = 1 - 2 * (q[0] * q[0] + q[1] * q[1]); return Math.atan2(x, z); }
+function faceFrontClip(clip) {
+  const tr = clip.bones.hips;
+  if (!tr || !tr.values.length) return clip;
+  let sx = 0;
+  let sz = 0;
+  for (const q of tr.values) { const a = yawOf(q); sx += Math.sin(a); sz += Math.cos(a); }
+  const yaw = Math.atan2(sx, sz);
+  if (Math.abs(yaw) < (10 * Math.PI) / 180) return clip;
+  const inv = [0, Math.sin(-yaw / 2), 0, Math.cos(-yaw / 2)];
+  const c = Math.cos(-yaw);
+  const sn = Math.sin(-yaw);
+  const bones = { ...clip.bones, hips: { times: tr.times.slice(), values: tr.values.map((q) => qnorm(qmul(inv, q))) } };
+  const hips = clip.hips && { times: clip.hips.times.slice(), values: clip.hips.values.map((p) => [p[0] * c + p[2] * sn, p[1], -p[0] * sn + p[2] * c]) };
+  return { ...clip, bones, hips, faced: +((yaw * 180) / Math.PI).toFixed(1) };
+}
+
 // The parameters of a library entry, in the order they apply.
 function bakeParams(clip, e = {}) {
   let c = clip;
   if (Array.isArray(e.trim)) c = trimClip(c, e.trim[0], e.trim[1]);
   if (e.kind === 'posture' || e.hold === true || e.still) c = holdClip(c, 1); // a 2-frame pose: one held second
+  if (e.faceFront) c = faceFrontClip(c);
   if (e.inPlace) c = inPlaceClip(c);
   if (e.detrend) c = detrendClip(c);
   if (typeof e.amplitude === 'number') c = amplitudeClip(c, e.amplitude);
@@ -255,6 +259,6 @@ function bakeParams(clip, e = {}) {
 module.exports = {
   MIXAMO_TO_VRM, VRM_REQUIRED, VRM_PARENT, stripMixamo, vrmBoneOf, mirrorBone,
   qmul, qinv, qnorm, qslerp, qangle, retargetQ, mirrorQ,
-  sampleTrack, trimClip, holdClip, loopClip, qEuler, poseClip, offsetClip, uprightClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, detrendClip, travelSpeed, qpow, boostClip, centerClip, bakeParams,
+  sampleTrack, trimClip, holdClip, loopClip, qEuler, poseClip, offsetClip, uprightClip, seamAngle, seamBlend, SEAM_SPEED, mirrorClip, amplitudeClip, inPlaceClip, detrendClip, travelSpeed, qpow, boostClip, centerClip, faceFrontClip, yawOf, bakeParams,
   writeVrma, readVrma, glb,
 };

@@ -39,6 +39,8 @@ const SPECIAL_SETTINGS = {
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
   'local.folders': 'LobeHub 与本机 → 文件夹与系统权限 → AI 可读的文件夹（系统选择框添加：`ai-folders-add`；删除：`ai-folders-set`）',
   'local.allowCommands': 'LobeHub 与本机 → 文件夹与系统权限 → 允许运行命令（`ai-folders-set`）',
+  'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
+  'tts.voicePackByCharacter.<id>': '角色详情 → 语音 → 语音包（不使用 / 内置 / 已下载的风格包 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
 
 // pet-window channels the settings window reaches through a channel of its own (pet → admin)
@@ -116,6 +118,14 @@ const PET_ONLY = {
   'debug-voice-hotkey': '测试钩子：按一次快捷键唤起语音对话（调用注册的处理函数）',
   'debug-voice-hotkey-status': '测试钩子：快捷键注册状态（设置窗口从 settings.hotkeyStatus 读同一份）',
   'debug-mic-access': '测试钩子：模拟系统拒绝麦克风',
+  'pet-panel:open': '— 她的面板（右键她）：她窗口旁边的小窗口，不是设置项',
+  'pet-panel:toggle': '— 她的面板：再右键她关闭',
+  'pet-panel:close': '— 她的面板：在她窗口里按一下就关闭',
+  'pet-panel:update': '— 她的面板：打开时状态变化即时刷新',
+  'debug-pet-panel': '测试钩子：面板窗口的位置、开关记录',
+  'debug-update-dialogs': '测试钩子：检查更新… 弹过的对话框（设置窗口的 版本与更新 显示同一个 Updater 状态）',
+  'debug-update-answer': '测试钩子：下一个检查更新对话框点哪个按钮',
+  'debug-update-state': '测试钩子：直接设定 Updater 状态（下载中 / 已下载好在 Linux 上走不到）',
   'debug-hide-pet': '测试钩子：先隐藏 / 最小化桌宠，再验证快捷键把她叫出来',
 };
 
@@ -145,6 +155,7 @@ const MENU = {
   'tray:检查更新': '版本与更新 → 检查更新',
   'tray:退出': '— 退出程序',
   'app:关于 Pixel Pet': '— 系统「关于」面板；版本也在 版本与更新',
+  'app:检查更新…': '版本与更新 → 检查更新（同一个 Updater.checkNow()，结果用系统对话框告诉你）',
   'app:偏好设置…': '打开设置窗口（Ctrl/⌘ + ,）',
   'app:退出': '— 退出程序',
 };
@@ -167,6 +178,7 @@ const RUNTIME = [
   { id: 'folders', label: 'AI 可读的文件夹与系统权限', where: '设置 → LobeHub 与本机 → 文件夹与系统权限；引导页 → 授权', keys: ['localAbilities', 'local.folders', 'local.allowCommands'], actions: ['perm-status', 'perm-request', 'perm-open-settings', 'ai-folders-add', 'ai-folders-set'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
+  { id: 'vrm-motions', label: 'VRM 动作库与动作试播', where: '角色详情 → 外观 → VRM 动作库（VRM 角色）', actions: ['vrm-library-info', 'vrm-library-pick', 'vrm-library-unlink', 'vrm-motions:list', 'vrm-motion:play', 'vrm-motion:stop'] },
   { id: 'packs', label: '角色包（导入 / 导出 / 删除）', where: '设置 → 角色包；角色详情 → 外观（导入的包成为新角色）', actions: ['import-pack', 'import-live2d', 'import-vrm', 'set-pack-base', 'export-pack', 'remove-pack', 'open-packs-folder'] },
   { id: 'data', label: '数据目录与重置', where: '设置 → 数据与关于', keys: ['system.hardwareAcceleration'], actions: ['open-data-folder', 'open-log', 'release', 'new-topic', 'admin-relaunch'] },
   { id: 'theme', label: '设置窗口外观', where: '设置 → 外观主题', keys: ['ui.theme'] },
@@ -177,6 +189,7 @@ const UNUSED_OK = {
   apiStatus: '对外接口状态随 `api-status` 推送（onApiStatus），不必主动拉取',
   openLink: '外链由 setWindowOpenHandler 打开（素材署名、下载页的 <a target=_blank>）',
   chat: '聊天页面的后端（`admin-chat-*`，docs/admin-chat.md）；聊天页面由后续的 UI 任务接入',
+  voicePackState: '角色当前语音包的解析结果（`voice-pack-state`）；设置窗口直接用角色列表里的 voicePack / voicePackPick（main.js adminState 每次推送时都会重新解析），不必再单独拉取',
 };
 
 const uniq = (a) => [...new Set(a)];
@@ -205,7 +218,7 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     }
     if (INTERNAL_SETTINGS[key]) problems.push(`\`${key}\` 在 INTERNAL_SETTINGS 里，但 schema 没标 internal`);
     if (f.type === 'readonly') problems.push(`\`${key}\` 是用户设置，却是只读字段`);
-    if (['token', 'adult', 'perCharacter', 'aiFolders'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
+    if (['token', 'adult', 'perCharacter', 'aiFolders', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
     if (f.type === 'switch' || f.type === 'select' || f.type === 'segmented' || f.type === 'slider' || f.type === 'number' || f.type === 'text' || f.type === 'url' || f.type === 'visitors') {
       if (!f.live && !f.restart) problems.push(`\`${key}\` 既不是即时生效也不是重启生效`);
     }

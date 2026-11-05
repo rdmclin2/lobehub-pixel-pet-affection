@@ -356,7 +356,10 @@ test('3D touch zones (core/vrm-hit.js): the camera ray against spheres / capsule
   assert.equal(shoot(list, 0.09, 1.58), 'head', 'the side of the hair is not the face');
   assert.equal(shoot(list, 0, 1.25), 'chest');
   assert.equal(shoot(list, 0, 1.03), 'belly');
-  assert.equal(shoot(list, 0, 0.82), 'butt');
+  // T-5098: the pelvis by side — from the front it is her belly (the butt never covers it), from behind her butt
+  assert.equal(shoot(list, 0, 0.82), 'belly', 'the front of the pelvis');
+  assert.equal(H.hit(list, [0, 0.86, -5], [0, 0, 1]).zone, 'butt', 'the pelvis from behind');
+  assert.equal(H.hit(list, [0, 1.03, -5], [0, 0, 1]).zone, 'belly', 'the back above the pelvis is the spine part');
   assert.equal(shoot(list, 0.25, 0.88), 'hands');
   assert.equal(shoot(list, -0.25, 0.88), 'hands');
   assert.equal(shoot(list, 0.1, 0.6), 'legs');
