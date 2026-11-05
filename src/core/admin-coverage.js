@@ -26,6 +26,7 @@ const INTERNAL_SETTINGS = {
   ageConfirmedAt: '确认时间（同上，只读）',
   ageGateVersion: '确认文案版本（文案改了就重新询问，只读）',
   characterModel: '角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读）',
+  'local.asked': '授权页点过「授权」的系统文件夹（下载 / 桌面 / 文稿）：之后读它不再弹窗，状态可以静默检查（main/permissions.js）',
 };
 
 // settings.json leaves the generic form does not write, and the console control that does
@@ -36,6 +37,8 @@ const SPECIAL_SETTINGS = {
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'local.folders': 'LobeHub 与本机 → 文件夹与系统权限 → AI 可读的文件夹（系统选择框添加：`ai-folders-add`；删除：`ai-folders-set`）',
+  'local.allowCommands': 'LobeHub 与本机 → 文件夹与系统权限 → 允许运行命令（`ai-folders-set`）',
   'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
   'tts.voicePackByCharacter.<id>': '角色详情 → 语音 → 语音包（不使用 / 内置 / 已下载的风格包 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
@@ -172,6 +175,7 @@ const RUNTIME = [
   { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.hotkey', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
+  { id: 'folders', label: 'AI 可读的文件夹与系统权限', where: '设置 → LobeHub 与本机 → 文件夹与系统权限；引导页 → 授权', keys: ['localAbilities', 'local.folders', 'local.allowCommands'], actions: ['perm-status', 'perm-request', 'perm-open-settings', 'ai-folders-add', 'ai-folders-set'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
   { id: 'vrm-motions', label: 'VRM 动作库与动作试播', where: '角色详情 → 外观 → VRM 动作库（VRM 角色）', actions: ['vrm-library-info', 'vrm-library-pick', 'vrm-library-unlink', 'vrm-motions:list', 'vrm-motion:play', 'vrm-motion:stop'] },
@@ -214,7 +218,7 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     }
     if (INTERNAL_SETTINGS[key]) problems.push(`\`${key}\` 在 INTERNAL_SETTINGS 里，但 schema 没标 internal`);
     if (f.type === 'readonly') problems.push(`\`${key}\` 是用户设置，却是只读字段`);
-    if (['token', 'adult', 'perCharacter', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
+    if (['token', 'adult', 'perCharacter', 'aiFolders', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
     if (f.type === 'switch' || f.type === 'select' || f.type === 'segmented' || f.type === 'slider' || f.type === 'number' || f.type === 'text' || f.type === 'url' || f.type === 'visitors') {
       if (!f.live && !f.restart) problems.push(`\`${key}\` 既不是即时生效也不是重启生效`);
     }

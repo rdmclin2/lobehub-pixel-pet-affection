@@ -22,6 +22,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   reset: (keys) => ipcRenderer.invoke('admin-reset', { keys }),
   relaunch: () => ipcRenderer.invoke('admin-relaunch'),
   whoami: () => ipcRenderer.invoke('whoami'),
+  // 文件夹与系统权限 (main/permissions.js, docs/permissions.md): status, 授权 one permission, its System Settings
+  // pane, 添加文件夹… (system picker in main), remove one / 允许运行命令
+  permStatus: () => ipcRenderer.invoke('perm-status'),
+  permRequest: (kind) => ipcRenderer.invoke('perm-request', { kind }),
+  permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', { kind }),
+  aiFoldersAdd: () => ipcRenderer.invoke('ai-folders-add'),
+  aiFoldersSet: (patch) => ipcRenderer.invoke('ai-folders-set', patch),
   // { name, avatar }: the LobeHub account's avatar as a data: URL, or null (T-2839)
   userAvatar: () => ipcRenderer.invoke('user-avatar'),
   apiStatus: () => ipcRenderer.invoke('api-status'),

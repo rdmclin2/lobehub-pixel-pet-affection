@@ -73,7 +73,23 @@ function retiredScenario(scenario, instead) {
 
 // Scenarios other than the age-gate ones start with the gate already answered ("all ages"), the same
 // state an existing user is in. `gate: true` leaves settings.json alone so the first-launch gate shows.
-async function launch(env, { gate = false, video = null, args = [], videoSize = { width: 460, height: 540 } } = {}) {
+// An owner from before AI 可读的文件夹 (T-5075) who had 本机能力 on: no folder limit, so her tools still go through
+// lh connect when there is no direct way (the fake lh). For the scenarios that check that path.
+const legacyLocal = (data) => {
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, local: { folders: null, allowCommands: true } }));
+};
+// 授权 (T-5075): scenarios that are not about it go on past the 授权 page by themselves (下一步, nothing granted),
+// as before it existed; `perms: true` leaves it for the `permissions` scenario.
+const passPerms = () => {
+  const go = () => {
+    const s = document.getElementById('perms');
+    if (s && !s.classList.contains('hidden') && !s.dataset.e2ePassed) { s.dataset.e2ePassed = '1'; document.getElementById('perms-next').click(); }
+    if (s && s.classList.contains('hidden')) delete s.dataset.e2ePassed;
+  };
+  new MutationObserver(go).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class'] });
+};
+async function launch(env, { gate = false, video = null, args = [], videoSize = { width: 460, height: 540 }, perms = false } = {}) {
   const dir = env && env.PIXELPET_DATA_DIR;
   if (dir && !gate && !fs.existsSync(path.join(dir, 'settings.json'))) {
     fs.mkdirSync(dir, { recursive: true });
@@ -87,6 +103,10 @@ async function launch(env, { gate = false, video = null, args = [], videoSize = 
   app.process().stderr.on('data', (d) => { app.stderrBuf += d; });
   const page = await app.firstWindow();
   page.on('dialog', (d) => { page.lastDialog = d.message(); d.accept(); });
+  if (!perms) {
+    await page.addInitScript(passPerms).catch(() => {});
+    await page.evaluate(passPerms).catch(() => {});
+  }
   return { app, page };
 }
 
@@ -1046,6 +1066,7 @@ async function busy() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-busyfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_RUN_DELAY_MS: '3500' };
+  legacyLocal(data); // dropped files go through lh connect: an owner without the folder limit
   const { app, page } = await launch(env);
   const calls = () => fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).args);
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -1261,6 +1282,7 @@ async function oldlh() {
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-oldfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
   fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_OLD', hostname: '192.168.101.156', platform: process.platform, online: true, channels: [{ hostname: '192.168.101.156', connectedAt: new Date().toISOString() }] }]));
+  legacyLocal(data); // the device is named on each lh connect run: an owner without the folder limit
   const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, FAKE_LH_NO_AGENCY: '1' });
   try {
     await page.waitForSelector('.char-card');
@@ -11542,6 +11564,190 @@ async function adminCoverageScenario() {
   }
 }
 
+// ---------------------------------------------------------------- permissions (授权, T-5075)
+// The onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限 (main/permissions.js, docs/permissions.md).
+// Linux has no macOS prompts, so run A reports darwin (PIXELPET_E2E_PLATFORM) and plays the system's answers with
+// PIXELPET_E2E_PERMS (permissions.js fakeMac: 麦克风 asks and is granted, 下载 is granted, 桌面 is refused); the
+// folder picker answers through debug-next-open. Runs B / C are the real platform: only the folder list, and no
+// page at all without 本机能力. Free: fake lh. The real macOS prompts need a person on a Mac (docs/permissions.md §5).
+async function permissionsScenario() {
+  const S = 'permissions';
+  const SHOTS = path.join(OUT, 'permissions');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const settingsOf = (data) => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  const start = async (env = {}) => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-perms-'));
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permsfake-'));
+    fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+    fs.writeFileSync(path.join(fakeDir, 'devices.json'), JSON.stringify([{ deviceId: 'dev_E2E', hostname: os.hostname(), platform: process.platform, online: true, channels: [] }]));
+    const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, ...env }, { perms: true });
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    return { app, page, data, fakeDir };
+  };
+  const tags = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#perm-system .perm-row')].map((r) => [r.dataset.perm, r.dataset.state])));
+  const listed = (page) => page.evaluate(() => [...document.querySelectorAll('#perm-folder-list li[data-folder]')].map((li) => li.dataset.folder));
+
+  // ---- A: macOS (faked) --------------------------------------------------------------------------------------
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permshome-')));
+  for (const d of ['Downloads', 'Desktop', 'Documents']) fs.mkdirSync(path.join(home, d));
+  const extra = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pp-permsextra-')));
+  let run = null;
+  try {
+    run = await start({ PIXELPET_E2E_PLATFORM: 'darwin', PIXELPET_E2E_PERMS: JSON.stringify({ mic: 'not-determined', micAnswer: true, folders: { downloads: 'grant', desktop: 'deny' }, home }) });
+    const { page } = run;
+    await step(S, 'P1 macOS: 唤醒 with 本机能力 opens 授权 — 麦克风 + 下载 / 桌面 / 文稿 one row each, folders unknown until asked, empty list', async () => {
+      await page.check('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
+      assert.deepEqual(await tags(page), { microphone: 'not-determined', downloads: 'unknown', desktop: 'unknown', documents: 'unknown' });
+      assert.equal(await page.textContent('#perms-title'), '授予权限');
+      assert.equal(await page.locator('#perm-logo .perm-look').count(), 1, 'her portrait where LobeHub has its logo');
+      assert.equal(await page.locator('#perm-folders').isVisible(), true);
+      assert.deepEqual(await listed(page), []);
+      assert.match(await page.textContent('#perm-folder-list'), /还没有文件夹/);
+      assert.equal(await page.locator('#perm-system [data-perm-ask]').count(), 4, 'one 授权 button per row');
+      const size = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+      assert.deepEqual(size, { w: 680, h: 600 }, 'the 授权 page has a taller window');
+      assert.equal(await page.evaluate(() => { const el = document.querySelector('.perm-scroll'); return el.scrollHeight <= el.clientHeight + 1; }), true, 'everything fits without scrolling');
+      await page.waitForTimeout(700); // her portrait has loaded
+      await page.screenshot({ path: path.join(SHOTS, 'a1-mac-before.png') });
+      return JSON.stringify(await tags(page));
+    }, page);
+
+    await step(S, 'P2 macOS: 授权 asks one at a time — 麦克风 granted; 下载 granted and added to the list; 桌面 refused → 去系统设置 opens 文件与文件夹', async () => {
+      await page.click('[data-perm-ask="microphone"]');
+      await page.waitForFunction(() => document.querySelector('[data-perm="microphone"]').dataset.state === 'granted');
+      assert.equal(await page.locator('[data-perm="microphone"] .perm-done').count(), 1, 'a check instead of the button');
+      await page.click('[data-perm="downloads"] .perm-title'); // the whole row asks, as in LobeHub
+      await page.waitForFunction(() => document.querySelector('[data-perm="downloads"]').dataset.state === 'granted');
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads')]);
+      await page.click('[data-perm-ask="desktop"]');
+      await page.waitForFunction(() => document.querySelector('[data-perm="desktop"]').dataset.state === 'denied');
+      assert.match(await page.textContent('[data-perm="desktop"] .perm-desc'), /已拒绝/);
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads')], 'a refused folder is not added');
+      assert.equal(await page.locator('[data-perm="desktop"] [data-perm-ask]').count(), 0);
+      await page.click('[data-perm-settings="desktop"]');
+      await page.waitForFunction(() => window.pet.debugOpenedLinks().then((l) => l.length > 0));
+      const links = await page.evaluate(() => window.pet.debugOpenedLinks());
+      assert.deepEqual(links, ['x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders']);
+      assert.equal(await page.locator('[data-perm="documents"] [data-perm-ask]').count(), 1, '文稿 untouched: still asks');
+      await page.screenshot({ path: path.join(SHOTS, 'a2-mac-after.png') });
+      return `${JSON.stringify(await tags(page))}; opened ${links[0]}`;
+    }, page);
+
+    await step(S, 'P3 添加文件夹… adds the picked folder (system picker; e2e: debug-next-open); × removes it', async () => {
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await page.click('#perm-add');
+      await page.waitForSelector(`#perm-folder-list li[data-folder="${extra}"]`);
+      assert.deepEqual(await listed(page), [path.join(home, 'Downloads'), extra]);
+      await page.click(`#perm-folder-list li[data-folder="${extra}"] button`);
+      await page.waitForFunction((p) => !document.querySelector(`#perm-folder-list li[data-folder="${p}"]`), extra);
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await page.click('#perm-add');
+      await page.waitForSelector(`#perm-folder-list li[data-folder="${extra}"]`);
+      return (await listed(page)).join(', ');
+    }, page);
+
+    await step(S, 'P4 下一步 wakes her up; settings.json keeps the list (no commands) and the folders asked about', async () => {
+      await page.click('#perms-next');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      const l = settingsOf(run.data).local;
+      assert.deepEqual(l, { folders: [path.join(home, 'Downloads'), extra], allowCommands: false, asked: ['downloads', 'desktop'] });
+      return JSON.stringify(l);
+    }, page);
+
+    let admin = null;
+    await step(S, 'P5 设置 → LobeHub 与本机 → 文件夹与系统权限: the same rows and list; remove, add, 允许运行命令 (asks first)', async () => {
+      await page.evaluate(() => window.pet.debugSet({ localAbilities: true }));
+      admin = await openAdminWindow(run.app, page, 'connection');
+      await adminUntil(admin, () => !!document.querySelector('[data-card="permissions"] [data-perm="desktop"]'), null, 15000, 'permissions card');
+      const st = await admin.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-card="permissions"] [data-perm]')].map((r) => [r.dataset.perm, r.dataset.state])));
+      assert.deepEqual(st, { microphone: 'granted', downloads: 'granted', desktop: 'denied', documents: 'unknown' });
+      assert.match(await admin.textContent('[data-card="permissions"] [data-perm="desktop"]'), /已拒绝：只能在系统设置里打开/);
+      assert.equal(await admin.locator('[data-card="permissions"] [data-perm-settings="desktop"]').count(), 1, '去系统设置 for the refused one');
+      await admin.evaluate((p) => document.querySelector(`[data-card="permissions"] [data-folder="${p}"] button`).click(), extra);
+      await adminUntil(admin, (p) => !document.querySelector(`[data-card="permissions"] [data-folder="${p}"]`), extra, 8000, 'removed');
+      await page.evaluate((p) => window.pet.debugNextOpen(p), extra);
+      await admin.evaluate(() => document.querySelector('[data-folders-add]').click());
+      await adminUntil(admin, (p) => !!document.querySelector(`[data-card="permissions"] [data-folder="${p}"]`), extra, 8000, 'added');
+      await adminFlip(admin, 'local.allowCommands', '允许运行命令');
+      await adminUntil(admin, () => document.querySelector('[data-key="local.allowCommands"]')?.getAttribute('aria-checked') === 'true', null, 8000, 'commands on');
+      assert.equal(settingsOf(run.data).local.allowCommands, true);
+      await admin.evaluate(() => document.querySelector('[data-card="permissions"]').scrollIntoView());
+      await admin.waitForTimeout(800); // the confirm dialog has faded out
+      await admin.screenshot({ path: path.join(SHOTS, 'a5-settings-card.png') });
+      return JSON.stringify(st);
+    }, () => admin);
+
+    await step(S, 'P8 the list is in effect but there is no direct way (fake lh): she answers without tools and the pet window says why', async () => {
+      await clickAct(page, 'chat');
+      await page.fill('#chat-input', '看看下载里有什么');
+      await page.click('#chat-send');
+      await page.waitForSelector('#unlock-toast.notice:not(.hidden)', { timeout: 20000 });
+      const t = await page.evaluate(() => ({ title: document.getElementById('toast-title').textContent, body: document.getElementById('toast-body').textContent, action: document.getElementById('toast-open').textContent }));
+      assert.equal(t.title, '这次用不了本机工具');
+      assert.match(t.body, /lh connect 没法限制/);
+      assert.equal(t.action, '去设置');
+      const last = fs.readFileSync(path.join(run.fakeDir, 'runs.log'), 'utf8').trim().split('\n').map(JSON.parse).pop();
+      assert.deepEqual(last.tools || [], [], 'no --tool');
+      await page.waitForTimeout(700); // the notice has faded in
+      await page.screenshot({ path: path.join(SHOTS, 'a8-pet-notice.png') });
+      return `${t.title}: ${t.body}`;
+    }, page);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+
+  // ---- B: this platform, 本机能力 ticked: only the folder list -----------------------------------------------
+  run = null;
+  try {
+    run = await start();
+    const { page } = run;
+    await step(S, 'P6 Linux / Windows with 本机能力: 授权 shows only the folder list (no system rows); 返回 goes back, 下一步 goes on', async () => {
+      await page.check('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)', { timeout: 10000 });
+      assert.equal(await page.locator('#perm-system').isHidden(), true);
+      assert.equal(await page.locator('#perm-folders').isVisible(), true);
+      await page.screenshot({ path: path.join(SHOTS, 'b1-linux.png') });
+      await page.click('#perms-back');
+      await page.waitForSelector('#onboarding:not(.hidden)');
+      assert.equal(await page.locator('.char-card.selected[data-species="grok"]').count(), 1, '返回 keeps her chosen');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#perms:not(.hidden)');
+      await page.click('#perms-next');
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      assert.deepEqual(settingsOf(run.data).local.folders, []);
+      return 'folder list only; 返回 / 下一步';
+    }, page);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+
+  // ---- C: this platform, no 本机能力: no 授权 page, no card -----------------------------------------------------
+  run = null;
+  try {
+    run = await start();
+    const { page } = run;
+    let admin = null;
+    await step(S, 'P7 without 本机能力 (not macOS): 唤醒 goes straight to waking her up; the settings card is not drawn', async () => {
+      await page.uncheck('#local-opt');
+      await page.click('#hatch-btn');
+      await page.waitForSelector('#hatching:not(.hidden), #pet-screen:not(.hidden)', { timeout: 10000 });
+      assert.equal(await page.locator('#perms').isHidden(), true);
+      await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 40000 });
+      admin = await openAdminWindow(run.app, page, 'connection');
+      await admin.waitForTimeout(800);
+      assert.equal(await admin.locator('[data-card="permissions"]').count(), 0);
+      return 'no 授权 page, no card';
+    }, () => admin);
+  } finally {
+    if (run) await run.app.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------- admin (配置后台)
 // The settings window: opened from the ⋯ menu (and Ctrl+,) as a single instance, every page in light and
 // dark, a setting changed there takes effect in the pet window and lands in settings.json, typed values are
@@ -12535,6 +12741,7 @@ async function interjectScenario() {
   if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
+  if (which === 'permissions' || which === 'all') await permissionsScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');

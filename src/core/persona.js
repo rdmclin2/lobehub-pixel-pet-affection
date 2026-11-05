@@ -164,8 +164,9 @@ function buildFilesBlock(files, hasText) {
   return `[文件] 主人拖来了 ${files.length} 个文件/文件夹。路径在他这台电脑上，不用他再上传，请用本机工具按路径直接读取：\n${list}${ask}`;
 }
 
-function buildChatPrompt(text, pet, now, { local = false, settings = null } = {}) {
-  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}` : ''}\n${text}`;
+// `localScope`: where her tools may go (core/ai-folders.js scopeHint), added after LOCAL_HINT.
+function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '' } = {}) {
+  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}\n${text}`;
 }
 
 module.exports = {
