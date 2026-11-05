@@ -80,6 +80,43 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 #hatch-look.asleep[data-progress="2"] .look { filter: grayscale(.35) brightness(.9); }
 #hatch-look.asleep[data-progress="3"] .look { filter: grayscale(.15) brightness(.96); }
 #hatch-look.flash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,255,255,.95) 0, rgba(255,230,180,.5) 40%, transparent 70%); animation: char-sparkle .7s ease-out forwards; pointer-events: none; }
+/* 授权 (T-5075): LobeHub Desktop onboarding 的权限步骤 —— 左对齐的头部（她的立绘代替 Logo）、一个描边列表、
+   每行 40px 图标框 + 标题 + 说明 + 右侧动作；已授权整行浅底 + 对勾，等待系统回答时转圈；底部吸底的 返回 / 下一步 */
+#perms { padding: 0; background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-lg); }
+.perm-page { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; min-height: 0; }
+.perm-scroll { width: 100%; max-width: 560px; flex: 1; min-height: 0; overflow-y: auto; padding: var(--pet-space-lg) var(--lobe-padding) var(--pet-space-sm); display: flex; flex-direction: column; gap: var(--pet-space-md); }
+.perm-head { display: flex; flex-direction: column; gap: var(--pet-space-xs); align-items: flex-start; }
+.perm-head h1 { margin: 0; font-size: var(--lobe-font-size-heading-4); line-height: var(--lobe-line-height-heading-4); }
+.perm-logo { width: 48px; height: 48px; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+.perm-logo .perm-look { height: 48px; width: auto; max-width: 48px; object-fit: contain; }
+.perm-lead { margin: 0; color: var(--lobe-color-text-secondary); }
+.perm-list { border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-lg); padding: var(--pet-space-xxs); display: flex; flex-direction: column; gap: var(--pet-space-xxs); }
+.perm-row { display: flex; align-items: center; gap: var(--pet-space-md); padding: var(--pet-space-xs) var(--pet-space-sm); border-radius: var(--lobe-border-radius); transition: background var(--lobe-motion-duration-mid); }
+.perm-row.clickable { cursor: pointer; }
+.perm-row.clickable:hover { background: var(--lobe-color-fill-tertiary); }
+.perm-row[data-state="granted"] { background: var(--lobe-color-fill-secondary); }
+.perm-row[data-state="pending"] { background: var(--lobe-color-fill-tertiary); box-shadow: inset 0 0 0 1px var(--lobe-color-border); }
+.perm-icon { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius); color: var(--lobe-color-text-description); background: var(--lobe-color-bg-container); }
+.perm-icon .ico { width: 20px; height: 20px; }
+.perm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--pet-space-xxs); }
+.perm-title { font-weight: var(--lobe-font-weight-strong); }
+.perm-desc { font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); }
+.perm-row[data-state="denied"] .perm-desc, .perm-row[data-state="restricted"] .perm-desc { color: var(--lobe-color-error); }
+.perm-done { color: var(--lobe-color-success); flex: none; display: flex; }
+.perm-done .ico { width: 20px; height: 20px; }
+.perm-wait { display: flex; align-items: center; gap: var(--pet-space-xs); font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-secondary); flex: none; }
+.perm-wait .ico { animation: perm-spin 1s linear infinite; }
+@keyframes perm-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .perm-wait .ico { animation: none; } }
+.btn.btn-sm { padding: var(--pet-space-xxs) var(--pet-space-sm); font-size: var(--lobe-font-size-sm); flex: none; }
+.btn.btn-text { background: transparent; border-color: transparent; color: var(--lobe-color-text-description); }
+.btn.btn-text:hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); border-color: transparent; }
+.perm-folder-list { list-style: none; margin: 0; padding: 0 var(--pet-space-sm) var(--pet-space-xxs) calc(40px + var(--pet-space-md) + var(--pet-space-sm)); display: flex; flex-direction: column; }
+.perm-folder-list li { display: flex; align-items: center; gap: var(--pet-space-xs); min-height: 28px; font-size: var(--lobe-font-size-sm); }
+.perm-folder-list li .ico.folder { color: var(--lobe-color-text-description); }
+.perm-folder-list li .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+.perm-folder-list li.empty { color: var(--lobe-color-text-tertiary); }
+.perm-footer { width: 100%; max-width: 560px; display: flex; justify-content: space-between; align-items: center; padding: var(--pet-space-sm) var(--lobe-padding) var(--pet-space-md); background: var(--lobe-color-bg-container); }
 .space-box, .login-box { background: var(--lobe-color-bg-container); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-tertiary); padding: var(--pet-space-md) var(--lobe-padding); width: 100%; }
 .space-box { max-width: 380px; }
 .space-title { font-weight: var(--lobe-font-weight-strong); }

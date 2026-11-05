@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: pack: game:; connect-src 'self' data: blob: pack: game:; worker-src 'self' blob:" />
+  <title>小游戏</title>
+  <link rel="stylesheet" href="../design/lobe-tokens.css" />
+  <link rel="stylesheet" href="game.css" />
+</head>
+<body data-phase="day">
+  <!-- 小游戏 (src/main/game-window.js, docs/mini-games.md): the world is one PixiJS stage (game.js); the title bar,
+       the 天色 card, the toolbar, 今日小事 and her bubble are DOM on top of it. -->
+  <div id="stage" aria-label="小游戏画面：点空地让她走过去，点物件让她去玩，拖动画面平移，滚轮缩放"></div>
+  <div id="bubble" class="bubble hidden" role="status" aria-live="polite"></div>
+  <div id="tip" class="tip hidden"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <div id="loading" class="loading">正在打开小院…</div>
+
+  <header class="titlebar">
+    <span id="game-name" class="title">小游戏</span>
+    <span id="who" class="who"></span>
+    <span id="game-version" class="who"></span>
+    <button id="update-chip" class="update-chip hidden" title="在 商店 → 小游戏 里更新（进度会保留）"></button>
+    <span class="spacer"></span>
+    <button id="btn-close" class="tb-btn" title="关闭，她回到桌面（Ctrl/⌘ + W）" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </header>
+
+  <!-- 天色: like the reference video's "A changing sky" card — time of day and weather, each with a big pixel icon,
+       ‹ name ›, and a switch; Esc or the ☀ toolbar button folds it. -->
+  <section id="sky-card" class="card sky-card" aria-label="天色">
+    <div class="card-head">
+      <b>天色</b>
+      <span class="spacer"></span>
+      <button id="sky-close" class="icon-btn" title="收起（Esc）" aria-label="收起天色"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <div class="sky-cols">
+      <div class="sky-col">
+        <span class="col-label">时段</span>
+        <canvas id="time-icon" class="big-icon" width="40" height="40" aria-hidden="true"></canvas>
+        <div class="stepper">
+          <button class="step-btn" id="time-prev" title="上一个时段" aria-label="上一个时段"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="step-value"><b id="time-name">白天</b><small id="time-clock">12:00</small></span>
+          <button class="step-btn" id="time-next" title="下一个时段" aria-label="下一个时段"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+        <input id="time-slider" class="slider" type="range" min="0" max="23.75" step="0.25" aria-label="时刻" />
+        <label class="switch-row"><span>随时间流动</span><button id="day-flow" class="switch" role="switch" aria-checked="false" aria-label="随时间流动"><i></i></button></label>
+      </div>
+      <div class="sky-col">
+        <span class="col-label">天气</span>
+        <canvas id="weather-icon" class="big-icon" width="40" height="40" aria-hidden="true"></canvas>
+        <div class="stepper">
+          <button class="step-btn" id="weather-prev" title="上一种天气" aria-label="上一种天气"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="step-value"><b id="weather-name">晴朗</b><small id="weather-sub">&nbsp;</small></span>
+          <button class="step-btn" id="weather-next" title="下一种天气" aria-label="下一种天气"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+        <div class="slider-gap" aria-hidden="true"></div>
+        <label class="switch-row"><span>天气自己变</span><button id="auto-weather" class="switch" role="switch" aria-checked="false" aria-label="天气自己变"><i></i></button></label>
+      </div>
+    </div>
+    <p id="sky-hint" class="card-foot">小院的一天是 24 分钟。</p>
+  </section>
+
+  <!-- 今日小事: today's three quests (core/game-quests.js) and what she has collected -->
+  <section id="quest-card" class="card quest-card hidden" aria-label="今日小事">
+    <div class="card-head">
+      <b>今日小事</b>
+      <small id="quest-sum" class="muted"></small>
+      <span class="spacer"></span>
+      <button id="quest-close" class="icon-btn" title="收起" aria-label="收起今日小事"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <ul id="quest-list" class="quest-list"></ul>
+    <p id="items" class="card-foot"></p>
+  </section>
+
+  <nav class="toolbar" aria-label="工具栏">
+    <button id="tb-quests" class="tool" title="今日小事" aria-label="今日小事" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><em id="tb-quest-badge" class="badge hidden"></em></button>
+    <button id="tb-follow" class="tool" title="镜头跟着她" aria-label="镜头跟着她" aria-pressed="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    <button id="tb-zoom-out" class="tool" title="缩小" aria-label="缩小"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+    <button id="tb-zoom-in" class="tool" title="放大" aria-label="放大"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
+    <button id="tb-sky" class="tool" title="天色" aria-label="天色" aria-pressed="true"><svg id="tb-sky-ico" class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+    <button id="tb-clock" class="tool" title="对齐本机时间" aria-label="对齐本机时间" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
+  </nav>
+
+  <script src="../vendor/pixi/pixi.min.js"></script>
+  <script src="../vendor/pixi/unsafe-eval.min.js"></script>
+  <script src="../../core/fx.js"></script>
+  <script src="../../core/game-world.js"></script>
+  <script src="../../core/game-pet.js"></script>
+  <script src="../../core/game-sky.js"></script>
+  <script src="../../core/game-quests.js"></script>
+  <script src="game-icons.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

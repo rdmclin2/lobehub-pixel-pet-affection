@@ -22,6 +22,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   reset: (keys) => ipcRenderer.invoke('admin-reset', { keys }),
   relaunch: () => ipcRenderer.invoke('admin-relaunch'),
   whoami: () => ipcRenderer.invoke('whoami'),
+  // 文件夹与系统权限 (main/permissions.js, docs/permissions.md): status, 授权 one permission, its System Settings
+  // pane, 添加文件夹… (system picker in main), remove one / 允许运行命令
+  permStatus: () => ipcRenderer.invoke('perm-status'),
+  permRequest: (kind) => ipcRenderer.invoke('perm-request', { kind }),
+  permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', { kind }),
+  aiFoldersAdd: () => ipcRenderer.invoke('ai-folders-add'),
+  aiFoldersSet: (patch) => ipcRenderer.invoke('ai-folders-set', patch),
   // { name, avatar }: the LobeHub account's avatar as a data: URL, or null (T-2839)
   userAvatar: () => ipcRenderer.invoke('user-avatar'),
   apiStatus: () => ipcRenderer.invoke('api-status'),
@@ -112,6 +119,16 @@ contextBridge.exposeInMainWorld('petAdmin', {
   voiceDownload: (id) => ipcRenderer.invoke('voice-download', { id }),
   voiceDownloadCancel: (id) => ipcRenderer.invoke('voice-download-cancel', { id }),
   voiceRemove: (id) => ipcRenderer.invoke('voice-remove', { id }),
+  // 商店 → 小游戏 (core/game-index.js, core/game-store.js, docs/mini-games.md §7): the store's games, download / update /
+  // cancel / delete, and 开始玩 (opens the game window with her in it); progress arrives as `catalog-progress`
+  gameStore: (opts) => ipcRenderer.invoke('game-store', { refresh: !!(opts && opts.refresh) }),
+  // a newer version of an installed game came out (main read the games repository's catalog)
+  onGameUpdates: on('game-updates'),
+  gameDetail: (id) => ipcRenderer.invoke('game-detail', { id }),
+  gameDownload: (id) => ipcRenderer.invoke('game-download', { id }),
+  gameDownloadCancel: (id) => ipcRenderer.invoke('game-download-cancel', { id }),
+  gameRemove: (id) => ipcRenderer.invoke('game-remove', { id }),
+  gamePlay: (id) => ipcRenderer.invoke('game-play', { id }),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

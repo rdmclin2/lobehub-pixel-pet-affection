@@ -31,6 +31,8 @@ const AFFECTION_RULES = {
   topic: { label: '话题', delta: 2, cooldownMs: 0, dailyMax: 3 }, // plus: each topic scores once a day
   woken: { label: '吵醒', delta: -2, cooldownMs: 0, dailyMax: null },
   sleep: { label: '哄睡（22:00–02:00）', delta: 1, cooldownMs: 'day', dailyMax: 1 },
+  // 小游戏 (docs/mini-games.md §6): one of the day's small things done together in a game
+  game: { label: '小游戏 · 每日小事', delta: 2, cooldownMs: 0, dailyMax: 3 },
   // Touching a body part (core/touch-zones.js). Chest and hips only score at the top two stages,
   // and only a little; strangers who touch them lose affection (`touch_rude:*`, with a cooldown so
   // a burst of clicks costs one penalty). Poking one spot over and over is `touch_rude:spam`.

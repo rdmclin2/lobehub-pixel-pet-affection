@@ -1,0 +1,25 @@
+{
+  "schema": 1, "kind": "game", "engine": "yard@1",
+  "id": "mini-yard", "name": "小测试院", "version": "1.0.0", "description": "单元测试用的最小小游戏包", "credit": "test",
+  "world": { "width": 400, "height": 300, "background": "#000000" },
+  "images": { "terrain": "terrain.webp", "atlas": "atlas.webp" },
+  "sprites": "sprites.json",
+  "camera": { "zoom": 1, "min": 0.5, "max": 2, "start": [200, 150] },
+  "petHeight": 40, "petSpeed": 60,
+  "spawn": [60, 60],
+  "walk": { "cell": 8, "area": [[0, 0], [400, 0], [400, 300], [0, 300]], "blocked": [[[150, 0], [250, 0], [250, 200], [150, 200]]] },
+  "objects": [
+    { "id": "bench", "sprite": "bench", "x": 320, "y": 120, "block": { "cx": 320, "cy": 116, "rx": 12, "ry": 4 },
+      "use": { "at": [320, 132], "face": "left", "anim": "sit", "seconds": [5, 5], "effect": "rest", "label": "坐一会" } },
+    { "id": "pond", "hit": [[40, 220], [120, 220], [120, 280], [40, 280]],
+      "use": { "at": [80, 210], "anim": "look", "seconds": [2, 2], "effect": "ripple", "label": "看看池塘" } },
+    { "id": "t1", "sprite": "tree", "x": 100, "y": 120, "block": { "cx": 100, "cy": 118, "rx": 6, "ry": 3 } }
+  ],
+  "fx": { "fireflies": 2, "clouds": [] },
+  "items": {},
+  "quests": [
+    { "id": "bench", "title": "坐一会", "on": { "type": "use-end", "obj": "bench" } },
+    { "id": "pond", "title": "雨天看池塘", "on": { "type": "use-end", "obj": "pond", "weather": ["rain"] } }
+  ],
+  "lines": {}
+}

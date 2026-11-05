@@ -18,9 +18,28 @@ export type FieldType =
   | 'visitors'
   | 'adult'
   | 'local'
+  | 'aiFolders'
   | 'perCharacter'
   /** 我的语音包 (settings.tts.voicePack): set through set-user-voice-pack */
   | 'voicePack';
+
+export interface PermFolder {
+  id: 'desktop' | 'documents' | 'downloads';
+  inList: boolean;
+  label: string;
+  path: string | null;
+  status: 'denied' | 'granted' | 'missing' | 'unknown';
+}
+
+export interface PermStatus {
+  folders: PermFolder[];
+  local: { allowCommands: boolean; folders: string[]; limited: boolean };
+  localOn: boolean;
+  mac: boolean;
+  mic: 'denied' | 'granted' | 'not-determined' | 'restricted' | 'unknown' | null;
+  ok: boolean;
+  platform: string;
+}
 
 export interface FieldOption {
   label: string;
@@ -36,6 +55,8 @@ export interface FieldDef {
   desc?: string;
   format?: 'percent' | 'time';
   internal?: boolean;
+  /** drawn by its page's own card, not the generic form */
+  custom?: boolean;
   key: string;
   label: string;
   live?: boolean;
@@ -337,6 +358,74 @@ export interface VoiceStoreResult {
   text?: string;
 }
 
+/** 商店 → 小游戏 (core/game-index.js storeRows via src/main/games.js GameIndex) */
+export interface StoreGameRow {
+  bytes: number;
+  /** the newest version's notes (the games repository's CHANGELOG.md) */
+  changelog: string;
+  credit: string;
+  description: string;
+  engine: string;
+  error?: string;
+  features: string[];
+  id: string;
+  /** installed version, or null */
+  installedVersion: string | null;
+  installing?: boolean;
+  minAppVersion: string | null;
+  name: string;
+  percent?: number;
+  /** an <img> src: the shipped picture (../renderer/…) or a cached remote one (data:) */
+  pictureSrc: string | null;
+  /** where this entry came from: the index shipped with the app, or the games repository's newer one */
+  source: 'bundled' | 'remote';
+  /** the game's source in the games repository (rdmclin2/pixel-pet-mini-games) */
+  repo: string;
+  sizeLabel: string;
+  state: 'downloading' | 'installed' | 'remote' | 'update' | 'unsupported';
+  stateLabel: string;
+  supported: boolean;
+  unsupportedReason: 'app' | 'engine' | null;
+  /** installed, a newer version is out but this app cannot play it */
+  updateBlocked?: 'app' | 'engine';
+  version: string;
+}
+
+/** her progress in one game (src/main/games.js progress): today's 小事 and what she has collected */
+export interface GameProgress {
+  /** item id → its name in the game (manifest.items) */
+  itemNames: Record<string, string>;
+  items: Record<string, number>;
+  quests: { count: number; done: boolean; hint: string; id: string; n: number; title: string }[];
+}
+
+export interface GameUpdate {
+  changelog: string;
+  from: string;
+  id: string;
+  name: string;
+  to: string;
+}
+
+export interface GameStoreState {
+  checkedAt: number | null;
+  checkError: string | null;
+  dir: string;
+  games: StoreGameRow[];
+  last: string | null;
+}
+
+export interface GameStoreResult {
+  errors?: string[];
+  id?: string;
+  name?: string;
+  ok: boolean;
+  reason?: string;
+  store?: GameStoreState;
+  updatedFrom?: string | null;
+  text?: string;
+}
+
 /** `catalog-progress` (src/main/catalog.js) */
 export interface DownloadProgress {
   id: string;
@@ -480,7 +569,22 @@ export interface PetAdminApi {
   voiceDownload: (id: string) => Promise<VoiceStoreResult>;
   voiceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   voiceRemove: (id: string) => Promise<VoiceStoreResult>;
+  gameStore: (opts?: { refresh?: boolean }) => Promise<GameStoreState>;
+  onGameUpdates: (cb: (u: GameUpdate[]) => void) => () => void;
+  /** 商店 → 小游戏 → 详情: the game's row and, when installed, her progress in it */
+  gameDetail: (id: string) => Promise<{ checkedAt: number | null; game?: StoreGameRow; last: string | null; ok: boolean; progress: GameProgress | null; reason?: string; shots?: { caption: string; src: string }[] }>;
+  gameDownload: (id: string) => Promise<GameStoreResult>;
+  gameDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  gameRemove: (id: string) => Promise<GameStoreResult>;
+  /** 开始玩: opens the game window with her in it (main.js openScene) */
+  gamePlay: (id: string) => Promise<{ ok: boolean; reason?: string; game?: string }>;
   whoami: () => Promise<any>;
+  /** 文件夹与系统权限 (main/permissions.js): every call answers with the current PermStatus */
+  permStatus: () => Promise<PermStatus>;
+  permRequest: (kind: string) => Promise<PermStatus & { result?: string }>;
+  permOpenSettings: (kind: string) => Promise<{ ok: boolean; url?: string }>;
+  aiFoldersAdd: () => Promise<PermStatus & { added: string[] }>;
+  aiFoldersSet: (patch: { allowCommands?: boolean; remove?: string }) => Promise<PermStatus>;
   /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */

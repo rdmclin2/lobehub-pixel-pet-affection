@@ -25,7 +25,9 @@ const INTERNAL_SETTINGS = {
   ageConfirmed: '是否确认满 18 周岁（同上，只读）',
   ageConfirmedAt: '确认时间（同上，只读）',
   ageGateVersion: '确认文案版本（文案改了就重新询问，只读）',
+  'scene.game': '上次玩的小游戏（打开小游戏时写入；托盘和面板 ⌂ 打开它，只读）',
   characterModel: '角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读）',
+  'local.asked': '授权页点过「授权」的系统文件夹（下载 / 桌面 / 文稿）：之后读它不再弹窗，状态可以静默检查（main/permissions.js）',
 };
 
 // settings.json leaves the generic form does not write, and the console control that does
@@ -36,6 +38,8 @@ const SPECIAL_SETTINGS = {
   'systemRoles.<id>': '角色详情 → 设定 → 个性化设定（`set-system-role`）',
   'framings.<id>': '角色详情 → 外观 → 取景（跟随全局 / 全身 / 半身：`set-framing`）',
   'vrmPostures.<id>': '角色详情 → 外观 → VRM 姿势（VRM 角色；按角色记住，自动 / 6 种姿势：`set-vrm-posture`）',
+  'local.folders': 'LobeHub 与本机 → 文件夹与系统权限 → AI 可读的文件夹（系统选择框添加：`ai-folders-add`；删除：`ai-folders-set`）',
+  'local.allowCommands': 'LobeHub 与本机 → 文件夹与系统权限 → 允许运行命令（`ai-folders-set`）',
   'tts.voicePack': '设置 → 语音包 → 我的语音包（自动 / 通用男声 / 通用女声 / 任意语音包：`set-user-voice-pack`）',
   'tts.voicePackByCharacter.<id>': '角色详情 → 语音 → 语音包（不使用 / 内置 / 已下载的风格包 / 专属 / 通用男声 / 通用女声：`set-voice-pack`，状态 `voice-pack-state`）',
 };
@@ -120,6 +124,9 @@ const PET_ONLY = {
   'pet-panel:close': '— 她的面板：在她窗口里按一下就关闭',
   'pet-panel:update': '— 她的面板：打开时状态变化即时刷新',
   'debug-pet-panel': '测试钩子：面板窗口的位置、开关记录',
+  'scene-open': '互动：打开上次玩的小游戏（她的面板 ⌂ / Ctrl+⌘+Shift+H / 托盘「小游戏」同一功能；没下载过就打开 商店 → 小游戏）；是打开一个窗口，不是设置。时段和天气在 玩法 → 桌宠行为 → 小游戏',
+  'debug-scene': '测试钩子：小游戏窗口的开关记录、已下载的小游戏、她在游戏里做过的事、桌宠窗口是否可见',
+  'debug-scene-toggle': '测试钩子：像托盘那样开关小游戏窗口（可指定哪个游戏）',
   'debug-update-dialogs': '测试钩子：检查更新… 弹过的对话框（设置窗口的 版本与更新 显示同一个 Updater 状态）',
   'debug-update-answer': '测试钩子：下一个检查更新对话框点哪个按钮',
   'debug-update-state': '测试钩子：直接设定 Updater 状态（下载中 / 已下载好在 Linux 上走不到）',
@@ -148,6 +155,7 @@ const MENU = {
   'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
   'tray:打开设置…': '打开设置窗口',
   'tray:显示桌宠': '桌宠行为 → 位置 → 找回桌宠',
+  'tray:小游戏': '— 打开 / 关闭小游戏窗口（她的面板 ⌂、Ctrl+⌘+Shift+H 同一功能；没下载过就打开 商店 → 小游戏）；时段与天气在 玩法 → 桌宠行为 → 小游戏',
   'tray:重置姿势': '— 互动操作，不是设置：桌宠工具栏 ↺、Ctrl+⌘+Shift+R、本地 API 同一功能（T-2830）',
   'tray:检查更新': '版本与更新 → 检查更新',
   'tray:退出': '— 退出程序',
@@ -161,6 +169,7 @@ const MENU = {
 // (settings.json, keys.*, localAbilities); actions = admin-preload channels.
 const RUNTIME = [
   { id: 'roam', label: '走动', where: '玩法 → 桌宠行为', keys: ['prefs.roam'], actions: ['admin-place-pet'] },
+  { id: 'scene', label: '小游戏（时段 / 天气）', where: '玩法 → 桌宠行为 → 小游戏；小游戏窗口的天色卡片', keys: ['scene.dayFlow', 'scene.followClock', 'scene.hour', 'scene.weather', 'scene.autoWeather', 'scene.game'] },
   { id: 'size', label: '大小', where: '玩法 → 桌宠行为', keys: ['petScale'] },
   { id: 'touch', label: '触摸与音效', where: '玩法 → 桌宠行为', keys: ['prefs.touchZones', 'prefs.touchHint', 'prefs.clickSound', 'prefs.memes', 'prefs.collide'] },
   { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 和她一起 → 舞蹈', keys: ['prefs.danceVolume', 'prefs.muted'], actions: ['dance:play', 'dance:stop', 'dance:loop', 'dance-import-pick', 'dance-import-extra', 'dance-import-commit', 'dance-import-cancel', 'dance-remove'] },
@@ -172,6 +181,7 @@ const RUNTIME = [
   { id: 'asr', label: '语音输入（ASR）', where: '设置 → 语音输入', keys: ['asr.enabled', 'asr.engine', 'asr.fallback', 'asr.language', 'asr.autoSend', 'asr.hotkey', 'asr.maxSeconds', 'asr.lobehub.model', 'asr.local.endpoint', 'asr.local.api', 'asr.local.model', 'asr.local.timeoutSec', 'keys.asrlocal'], actions: ['asr-test'] },
   { id: 'api', label: '对外接口', where: '设置 → 对外接口', keys: ['api.enabled', 'api.port', 'api.token'], actions: ['set-api', 'api-status'] },
   { id: 'update', label: '更新', where: '设置 → 版本与更新', keys: ['update.autoCheck'], actions: ['update-check', 'update-install'] },
+  { id: 'folders', label: 'AI 可读的文件夹与系统权限', where: '设置 → LobeHub 与本机 → 文件夹与系统权限；引导页 → 授权', keys: ['localAbilities', 'local.folders', 'local.allowCommands'], actions: ['perm-status', 'perm-request', 'perm-open-settings', 'ai-folders-add', 'ai-folders-set'] },
   { id: 'safety', label: '安全（成人向 / 本机能力）', where: '设置 → 内容与安全；LobeHub 与本机', keys: ['adultContent', 'localAbilities'], actions: ['confirm-age', 'set-adult'] },
   { id: 'character', label: '角色（服饰 / 模型 / 设定）', where: '角色图鉴 → 角色详情', keys: ['models.<id>', 'systemRoles.<id>', 'framings.<id>', 'vrmPostures.<id>'], actions: ['switch-character', 'equip-outfit', 'set-model', 'set-system-role', 'set-live2d-height', 'set-framing', 'set-vrm-posture'] },
   { id: 'vrm-motions', label: 'VRM 动作库与动作试播', where: '角色详情 → 外观 → VRM 动作库（VRM 角色）', actions: ['vrm-library-info', 'vrm-library-pick', 'vrm-library-unlink', 'vrm-motions:list', 'vrm-motion:play', 'vrm-motion:stop'] },
@@ -214,7 +224,7 @@ function audit({ leaves, fields, restartKeys = [], adminChannels, petChannels, m
     }
     if (INTERNAL_SETTINGS[key]) problems.push(`\`${key}\` 在 INTERNAL_SETTINGS 里，但 schema 没标 internal`);
     if (f.type === 'readonly') problems.push(`\`${key}\` 是用户设置，却是只读字段`);
-    if (['token', 'adult', 'perCharacter', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
+    if (['token', 'adult', 'perCharacter', 'aiFolders', 'voicePack'].includes(f.type) && !SPECIAL_SETTINGS[key]) problems.push(`\`${key}\`（${f.type}）没写由哪个控件修改`);
     if (f.type === 'switch' || f.type === 'select' || f.type === 'segmented' || f.type === 'slider' || f.type === 'number' || f.type === 'text' || f.type === 'url' || f.type === 'visitors') {
       if (!f.live && !f.restart) problems.push(`\`${key}\` 既不是即时生效也不是重启生效`);
     }
