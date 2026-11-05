@@ -161,7 +161,7 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
 
       await step(S, 'I2 活着的画面：雨在下、光斑在闪、她在呼吸和眨眼；数值收进标题栏胶囊（没有数值面板）；「屏幕」卡片显示她的手机', async () => {
         await startRec();
-        mark('step', '进房间：深夜、下雨、蓝色月光；她趴在床上，手机锁屏亮着');
+        mark('step', '进房间：深夜、下雨、蓝色月光；手机锁屏亮着');
         const a = await settledIn('idle');
         await gp.waitForTimeout(400);
         await shot('i2-idle-moon');
