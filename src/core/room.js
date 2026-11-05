@@ -55,29 +55,45 @@ const THEMES = [
     palette: { primary: '#2C4A8A', accent: '#6FA8E8', base: '#FFFFFF', trim: '#E8D6A0' },
     outfit: 'daily',
     art: { background: 'rooms/dafeiyu/room.webp', width: 2048, height: 1152 },
+    // furniture you click, in % of the picture (x, y = top-left). `chip: 'top'`: the label sits on its top edge
+    // (where she never stands) instead of the bottom
     hotspots: {
-      bed: { label: '床', x: 0, y: 12, w: 23, h: 70 },
-      phone: { label: '手机', x: 23.5, y: 38, w: 7.5, h: 23 },
-      desk: { label: '书桌和电脑', x: 55, y: 30, w: 21, h: 32 },
-      music: { label: '唱片机', x: 77, y: 31, w: 14, h: 30 },
-      game: { label: '游戏机', x: 91.5, y: 31, w: 8.5, h: 40 },
+      bed: { label: '床', x: 0, y: 10, w: 24.5, h: 70 },
+      phone: { label: '手机', x: 23.8, y: 44, w: 7, h: 18 },
+      desk: { label: '书桌和电脑', x: 51.5, y: 28.5, w: 19.5, h: 35.5, chip: 'top' },
+      music: { label: '唱片机', x: 71.3, y: 33, w: 11, h: 30, chip: 'top' },
+      game: { label: '游戏机', x: 82.3, y: 28, w: 17.5, h: 48, chip: 'top' },
     },
-    // where she is for each activity: her feet (x, y, % of the picture) and her height (h, % of its height);
-    // `lying`: tucked into bed (x, y = the middle of her, head towards the pillow)
+    // where she is for each activity: her feet (x, y, % of the picture) and her height (h, % of its height).
+    // `tucked`: in bed under the blanket — x = her middle, y = the blanket's top edge (her chin), only her
+    // head and shoulders show. `bubble`: where her line is said (its bottom middle), when not above her head
     spots: {
-      idle: { x: 45, y: 84, h: 54 },
-      sleep: { x: 12, y: 53, h: 40, lying: true },
-      work: { x: 64, y: 74, h: 50 },
-      phone: { x: 35, y: 78, h: 52 },
-      music: { x: 84, y: 74, h: 50 },
-      game: { x: 76, y: 94, h: 54 },
+      idle: { x: 44, y: 86, h: 52 },
+      sleep: { x: 21.5, y: 52.1, h: 50, tucked: true },
+      work: { x: 60.5, y: 92, h: 50, bubble: { x: 44, y: 48 } },
+      phone: { x: 38.5, y: 80, h: 50 },
+      music: { x: 71, y: 90, h: 50, bubble: { x: 52, y: 58 } },
+      game: { x: 92.5, y: 98, h: 48, bubble: { x: 70, y: 62 } },
     },
-    // props drawn over the picture while an activity runs (% boxes): the monitor, the record, the TV, the phone
+    // props drawn over the picture while an activity runs (% boxes): the monitor's screen, the record, the
+    // TV's screen, the phone on the bedside table
     props: {
-      monitor: { x: 61.6, y: 31.5, w: 8, h: 9.5 },
-      record: { x: 78.6, y: 39.2, w: 6.4, h: 4.6 },
-      tv: { x: 94.6, y: 32.5, w: 5.4, h: 17 },
-      phone: { x: 26, y: 43.5, w: 2.2, h: 3 },
+      monitor: { x: 57.8, y: 36.6, w: 6.8, h: 6.8 },
+      record: { x: 73.5, y: 43.8, w: 4.7, h: 2.4 },
+      tv: { x: 87.4, y: 37.4, w: 9.8, h: 16.6 },
+      phone: { x: 25.1, y: 49.4, w: 1.6, h: 2 },
+    },
+    // the bed in picture pixels (art.width × art.height), for 睡觉: `blanket` = the cover over the mattress
+    // (its first two points are the lace-trimmed top edge); `front` = the parts of the bed in front of her
+    // (the foot posts and the footboard), redrawn over her and the blanket so she is tucked in, not pasted on
+    bed: {
+      blanket: [[20, 598], [492, 598], [462, 655], [440, 705], [381, 715], [344, 770], [20, 780]],
+      front: [
+        [[14, 0], [50, 0], [50, 920], [14, 920]],
+        [[343, 0], [381, 0], [381, 920], [343, 920]],
+        [[14, 717], [50, 717], [160, 697], [280, 735], [344, 755], [344, 885], [14, 885]],
+      ],
+      bow: [252, 612],
     },
     lines: {
       idle: ['咕噜~鱼片，今天想让我做什么？', '房间收拾得干干净净，女仆的本分~'],

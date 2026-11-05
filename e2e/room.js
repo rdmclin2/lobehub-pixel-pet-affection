@@ -7,6 +7,10 @@
 //       a whole round → settled: her numbers change the way the activity says, saved in pet.json
 //   R10 switching mid-round settles the first one partly; 结束 ends the second one early
 //   R11 relaunch: the room, her numbers and the totals are still there
+//   R12 closed for longer than a round while she sleeps: on relaunch the round is settled at once (a whole
+//       round, the numbers exactly so), before the room is even opened
+// In every R5 step: no hotspot label is under her (P3); 睡觉 tucks her in under a cover inside the bed (P1);
+// 工作 types line after line on the monitor's screen (P2); 打游戏's TV is wholly in the picture with a game on it (P4).
 // Screenshots: out/e2e/room/*.png (+ video/ and chapters.json for the acceptance report).
 const fs = require('node:fs');
 const os = require('node:os');
@@ -76,6 +80,26 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
     };
     const statsOnScreen = () => admin.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-room-stat]')].map((el) => [el.dataset.roomStat, Number(el.dataset.value)])));
     const noErrorPage = async () => assert.equal(await admin.evaluate(() => document.body.textContent.includes('这一页没有显示出来')), false, 'the page did not fail');
+    // the hotspot labels her body covers (her frame's body: 29–71% across, from the top of her hair down);
+    // and whether every label is painted above her (later in the scene) and inside the picture
+    const labels = () => admin.evaluate(() => {
+      const her = document.querySelector('[data-room-her]');
+      const st = her.querySelector('[data-action]').getBoundingClientRect();
+      const tucked = her.hasAttribute('data-tucked');
+      const shown = her.getBoundingClientRect();
+      const body = { l: st.left + st.width * 0.29, r: st.left + st.width * 0.71, t: st.top + st.height * 0.19, b: tucked ? shown.bottom : st.bottom };
+      const scene = document.querySelector('[data-room-scene]').getBoundingClientRect();
+      const chips = [...document.querySelectorAll('[data-room-chip]')];
+      const hit = (b) => b.left < body.r && b.right > body.l && b.top < body.b && b.bottom > body.t;
+      return {
+        covered: chips.filter((c) => hit(c.getBoundingClientRect())).map((c) => c.dataset.roomChip),
+        above: chips.every((c) => !!(her.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        inside: chips.every((c) => { const b = c.getBoundingClientRect(); return b.left >= scene.left && b.right <= scene.right && b.top >= scene.top && b.bottom <= scene.bottom; }),
+        texts: chips.map((c) => c.textContent),
+      };
+    });
+    const rectOf = (sel) => admin.evaluate((q) => { const b = document.querySelector(q).getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; }, sel);
+    const within = (a, b, pad = 0.5) => a.l >= b.l - pad && a.t >= b.t - pad && a.r <= b.r + pad && a.b <= b.b + pad;
     const hatch = async () => {
       await page.waitForSelector('.char-card');
       await page.click('.char-card[data-species="dafeiyu"]');
@@ -135,6 +159,10 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
           const txt = await admin.evaluate((x) => document.querySelector(`[data-room-preview="${x}"]`).textContent, id);
           assert.match(txt, /即将开放/);
           assert.ok(txt.length > 30, `${id}: a real preview, not an empty box`);
+          // her portrait on the card (docs/room.md §1.2), not a grey silhouette
+          await until((x) => !!document.querySelector(`[data-room-portrait="${x}"] [data-drawn]`), id, 8000, `${id} portrait drawn`);
+          const shade = await admin.evaluate((x) => document.querySelector(`[data-room-portrait="${x}"] canvas`).style.filter, id);
+          assert.equal(shade, '', `${id}: portrait, not a silhouette`);
           await noErrorPage();
           assert.equal(save().roomTheme, id, 'the pick is saved');
           await admin.waitForTimeout(300);
@@ -157,8 +185,16 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
         assert.equal(st.game.disabled, true);
         assert.equal(st.sleep.disabled, false);
         assert.match(st.work.why, /太累/);
+        // the reason is on the page, not only in a hover title (P5)
+        const why = await admin.evaluate(() => { const el = document.querySelector('[data-room-tired]'); if (!el) return null; const b = el.getBoundingClientRect(); return { text: el.textContent, visible: b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden' }; });
+        assert.ok(why && why.visible, 'a visible 太累 note in the panel');
+        assert.match(why.text, /太累了/);
+        assert.match(why.text, /工作和打游戏/);
+        assert.match(why.text, /睡一觉/);
+        const chips = (await labels()).texts;
+        assert.ok(chips.some((t) => /工作 · 太累了/.test(t)) && chips.some((t) => /打游戏 · 太累了/.test(t)), `hotspot labels say it: ${chips}`);
         await shot('r4-too-tired');
-        return JSON.stringify(st);
+        return `${JSON.stringify(st)}；页面上：「${why.text}」；热点标签：${chips.join(' / ')}`;
       }, () => admin);
 
       for (const kind of ['sleep', 'work', 'phone', 'music', 'game']) {
@@ -179,6 +215,43 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
           const pct = await admin.evaluate(() => Number(document.querySelector('[data-room-progress]').dataset.roomProgress));
           assert.ok(pct > 10 && pct < 100, `progress moves: ${pct}`);
           await shot(`r5-${kind}-running`);
+          // P3: no hotspot label under her, all of them above her and inside the picture
+          const lab = await labels();
+          assert.deepEqual(lab.covered, [], `labels under her while ${kind}: ${lab.covered}`);
+          assert.ok(lab.above && lab.inside, `labels above her and inside the picture: ${JSON.stringify(lab)}`);
+          const scene = await rectOf('[data-room-scene]');
+          let extra = '';
+          if (kind === 'sleep') {
+            // P1: tucked in — head shows, the cover is inside the bed and lace-trimmed with a bow
+            const bed = await rectOf('[data-hotspot="sleep"]');
+            const cover = await rectOf('[data-room-cover]');
+            const her = await rectOf('[data-room-her][data-tucked]');
+            assert.ok(within(cover, bed), `the cover stays on the bed: ${JSON.stringify({ cover, bed })}`);
+            assert.ok(her.h > 20 && her.b <= cover.b, 'her head and shoulders above the cover');
+            extra = `cover ${Math.round(cover.w)}×${Math.round(cover.h)} inside bed ${Math.round(bed.w)}×${Math.round(bed.h)}; her head ${Math.round(her.w)}×${Math.round(her.h)}`;
+          }
+          if (kind === 'work') {
+            // P2: the screen glow sits on the monitor's screen; lines appear one after another
+            const mon = await rectOf('[data-room-prop="monitor"]');
+            const t1 = await admin.evaluate(() => Number(document.querySelector('[data-room-prop="monitor"]').dataset.roomTyped));
+            await admin.waitForTimeout(900);
+            const t2 = await admin.evaluate(() => Number(document.querySelector('[data-room-prop="monitor"]').dataset.roomTyped));
+            const note2 = await admin.evaluate(() => document.querySelector('[data-room-work-lines]').textContent);
+            assert.ok(t2 > t1, `more lines written: ${t1} → ${t2}`);
+            assert.match(note2, /写好了 \d \/ 5 行/);
+            extra = `monitor ${Math.round(mon.w)}×${Math.round(mon.h)} at (${Math.round(mon.l - scene.l)}, ${Math.round(mon.t - scene.t)}); lines ${t1} → ${t2}; 「${note2}」`;
+          }
+          if (kind === 'game') {
+            // P4: the TV is wholly inside the picture with the game on it; she stands in front of the TV stand
+            const tv = await rectOf('[data-room-prop="tv"]');
+            assert.ok(within(tv, scene), `TV inside the picture: ${JSON.stringify({ tv, scene })}`);
+            assert.ok(await admin.evaluate(() => !!document.querySelector('[data-room-prop="tv"] [data-room-level]')), 'a game on the TV');
+            const her = await rectOf('[data-room-her] [data-action]');
+            const mid = (her.l + her.r) / 2;
+            assert.ok(mid > tv.l - tv.w * 0.3 && mid < tv.r && her.t + her.h * 0.19 >= tv.b - 1, `she is in front of the TV, below its screen: ${JSON.stringify({ her, tv })}`);
+            extra = `TV ${Math.round(tv.w)}×${Math.round(tv.h)} inside the ${Math.round(scene.w)}×${Math.round(scene.h)} picture; her middle x ${Math.round(mid - scene.l)} (TV ${Math.round(tv.l - scene.l)}–${Math.round(tv.r - scene.l)})`;
+          }
+          if (extra) note(`R5 ${kind}: ${extra}`);
           // the round ends by itself
           await until(() => document.querySelector('[data-room-scene]').dataset.roomActivity === 'idle', null, ROUND_MS + 6000, `${kind} settled`);
           await until(() => !!document.querySelector('[data-room-last]'), null, 5000, 'the result');
@@ -248,6 +321,46 @@ module.exports = function roomScenario({ ROOT, OUT, FAKE_LH, step, launch }) {
         await shot('r11-after-relaunch');
         return `before ${JSON.stringify(shown)} / after relaunch ${JSON.stringify(again)}; totals ${JSON.stringify(totals)}`;
       }, () => admin);
+
+      await step(S, 'R12 closed for longer than a round while she sleeps: settled at once on relaunch, numbers exact', async () => {
+        chapter('R12 关闭超过一轮后重开：直接结算');
+        await admin.click('[data-hotspot="sleep"]');
+        await until(() => document.querySelector('[data-room-scene]').dataset.roomActivity === 'sleep', null, 5000, 'sleep running');
+        const b = mine();
+        assert.equal(b.room.activity.kind, 'sleep');
+        const before = { energy: b.energy, mood: b.mood, focus: b.room.focus, hunger: b.hunger, completed: (b.room.totals.sleep || { completed: 0 }).completed };
+        await app.close();
+        admin = null;
+        await new Promise((r) => setTimeout(r, ROUND_MS + 2500)); // closed for longer than a whole round
+        ({ app, page } = await launch(env));
+        await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+        // settled by main at start — the room page has not been opened yet
+        const a = mine();
+        const clamp = (v) => Math.max(0, Math.min(100, v));
+        assert.equal(a.room.activity, null, 'settled at start');
+        assert.equal(a.room.last.kind, 'sleep');
+        assert.equal(a.room.last.complete, true);
+        assert.equal(a.room.last.fraction, 1);
+        assert.equal(a.room.totals.sleep.completed, before.completed + 1);
+        // a whole round of 睡觉: 精力 +35, 心情 +6, 专注 +8, 饱腹 -4 (clamped to 0..100; ±1 for the seconds of decay while closed)
+        const want = { energy: clamp(before.energy + 35), mood: clamp(before.mood + 6), focus: clamp(before.focus + 8), hunger: clamp(before.hunger + 4) };
+        const got = { energy: a.energy, mood: a.mood, focus: a.room.focus, hunger: a.hunger };
+        for (const k of Object.keys(want)) assert.ok(Math.abs(got[k] - want[k]) <= 1, `${k}: want ${want[k]}, got ${got[k]}`);
+        assert.equal(got.focus, want.focus, 'focus only moves in the room: exact');
+        await openAdmin('room');
+        await admin.waitForSelector('[data-room-scene="dafeiyu"][data-room-activity="idle"]', { timeout: 10000 });
+        await until(() => !!document.querySelector('[data-room-last]'), null, 5000, 'the result');
+        const res = await admin.evaluate(() => document.querySelector('[data-room-last]').textContent);
+        assert.match(res, /睡觉（完成）/);
+        const shown = await statsOnScreen();
+        for (const k of ['energy', 'mood', 'focus']) assert.ok(Math.abs(shown[k] - Math.round(got[k])) <= 1, `screen ${k}`);
+        assert.ok(Math.abs(shown.fullness - Math.round(100 - got.hunger)) <= 1, 'screen fullness');
+        await shot('r12-settled-after-relaunch');
+        const r = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 10) / 10]));
+        const msg = `关闭前 ${JSON.stringify(r(before))}；关闭 ${(ROUND_MS + 2500) / 1000}s 后重开，未打开房间时 pet.json：activity=null，last=${JSON.stringify(a.room.last.deltas)} complete=${a.room.last.complete}；期望 ${JSON.stringify(r(want))}，实际 ${JSON.stringify(r(got))}；页面「${res}」`;
+        note(`R12 ${msg}`);
+        return msg;
+      }, () => admin || page);
     } finally {
       await app.close().catch(() => {});
       fs.writeFileSync(path.join(SHOTS, 'chapters.json'), JSON.stringify(chapters, null, 2));

@@ -462,6 +462,8 @@ export interface RoomActivity {
   verb: string;
 }
 export interface RoomBox {
+  /** where a hotspot's label sits: its bottom edge (default) or its top edge */
+  chip?: 'top';
   h: number;
   label?: string;
   w: number;
@@ -469,14 +471,20 @@ export interface RoomBox {
   y: number;
 }
 export interface RoomSpot {
+  /** where her line is said (its bottom middle, % of the picture), when not above her head */
+  bubble?: { x: number; y: number };
   h: number;
-  lying?: boolean;
+  /** in bed under the blanket: y = the blanket's top edge (her chin), only her head and shoulders show */
+  tucked?: boolean;
   x: number;
   y: number;
 }
+type RoomPoint = [number, number];
 /** One room per default character; `soon` = 即将开放 (preview only) */
 export interface RoomTheme {
   art?: { background: string; height: number; width: number };
+  /** the bed in picture pixels: the blanket over the mattress, the parts in front of her, the bow on the lace */
+  bed?: { blanket: RoomPoint[]; bow?: RoomPoint; front: RoomPoint[][] };
   blurb: string;
   character: string;
   hotspots?: Record<string, RoomBox>;

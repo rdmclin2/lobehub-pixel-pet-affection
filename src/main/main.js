@@ -486,7 +486,9 @@ const charactersInfo = () => service.characterList().map((e) => ({ ...e, nameZh:
 
 function wire() {
   ipcMain.handle('boot', () => {
-    const v = service.init();
+    let v = service.init();
+    // 房间小游戏: a round that ran out while the app was closed is settled now (docs/room.md §2)
+    if (v && roomSvc.settleDue().length) v = service.view();
     place(v ? 'pet' : 'onboarding');
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
     return { view: v, update: updater.state, settings: service.getSettings(), species: speciesInfo(), characters: charactersInfo(), foods: FOODS, testMode: TEST_MODE };

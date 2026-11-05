@@ -4,11 +4,11 @@
  * shows it and counts a round down.
  */
 import { Alert, Block, Button, createStaticStyles, cssVar, Flexbox, Icon, Progress, Tag, Text, toast } from '@lobehub/ui';
-import { Clock3, DoorOpen, Lock, Square } from 'lucide-react';
+import { BatteryLow, Clock3, DoorOpen, Lock, Square } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, type RoomResult, type RoomSettled, type RoomState, type RoomTheme, type RosterRow } from '../api';
-import { ACTIVITY_ICON, RoomScene, roomVars } from '../stage/RoomScene';
+import { ACTIVITY_ICON, RoomScene, roomVars, typedLines, WORK_LINES } from '../stage/RoomScene';
 import { SpriteStage } from '../stage/SpriteStage';
 import { useStore } from '../store';
 
@@ -150,12 +150,14 @@ const RoomPicker = ({ room, roster, onPick }: { onPick: (id: string) => void; ro
   </div>
 );
 
-/** A room that is not open yet: its colours, who lives there and what it will have — never an empty box. */
+/** A room that is not open yet: its colours, her portrait (the picker shows her too), what it will have — never an empty box. */
 const RoomPreview = ({ theme, roster, onBack, open }: { onBack: () => void; open: RoomTheme | undefined; roster: RosterRow[]; theme: RoomTheme }) => {
   const { row, preview } = occupantOf(roster, theme);
   return (
     <div className={styles.preview} data-room-preview={theme.id} style={roomVars(theme)}>
-      <SpriteStage height={240} name={row?.nameZh ?? theme.character} preview={preview} silhouette={!row?.met} />
+      <div data-room-portrait={theme.character}>
+        <SpriteStage height={240} name={row?.nameZh ?? theme.character} preview={preview} />
+      </div>
       <Flexbox className={styles.previewText} gap={8}>
         <Flexbox align="center" gap={8} horizontal>
           <Icon icon={Lock} size={16} />
@@ -259,6 +261,8 @@ export const RoomPage = () => {
     else api().room.start(kind).then((r) => done(r));
   };
   const tired = Object.fromEntries(room.activities.filter((a) => a.needs > 0 && (view?.stats.energy ?? 100) < a.needs).map((a) => [a.id, `${name}太累了，先睡一觉再${a.label}`]));
+  // the kinds waiting for a nap (not the one running: it may go on), said on the page, not only on hover
+  const tiredKinds = Object.keys(tired).filter((k) => k !== running?.kind);
   const open = room.themes.find((t) => t.status === 'open');
   const act = room.activities.find((a) => a.id === running?.kind) ?? null;
   const idleLines = (theme.lines?.idle as string[] | undefined) ?? [];
@@ -278,7 +282,7 @@ export const RoomPage = () => {
       ) : (
         <div className={styles.layout}>
           <Flexbox gap={8}>
-            <RoomScene activities={room.activities} current={running?.kind ?? null} disabled={tired} line={line ?? (running ? null : (idleLines[0] ?? null))} name={name} onHotspot={startOrStop} preview={occupant?.preview} readOnly={!room.owner.met} theme={theme} />
+            <RoomScene activities={room.activities} current={running?.kind ?? null} disabled={tired} line={line ?? (running ? null : (idleLines[0] ?? null))} name={name} onHotspot={startOrStop} preview={occupant?.preview} progress={progress} readOnly={!room.owner.met} theme={theme} />
             <Flexbox align="center" gap={8} horizontal justify="space-between" wrap="wrap">
               <Text fontSize={12} type="secondary">
                 {theme.name} · {theme.motifs.join(' · ')}
@@ -301,6 +305,11 @@ export const RoomPage = () => {
                 )}
               </Flexbox>
               <Progress data-room-progress={Math.round(progress * 100)} percent={Math.round(progress * 100)} showInfo={false} size="small" />
+              {act?.id === 'work' && (
+                <Text data-room-work-lines fontSize={12} type="secondary">
+                  显示器上写好了 {typedLines(progress)} / {WORK_LINES} 行，第 {Math.min(WORK_LINES, typedLines(progress) + 1)} 行正在打字
+                </Text>
+              )}
               {act ? (
                 <Button block data-room-stop icon={Square} onClick={() => api().room.stop().then((r) => done(r))}>
                   结束{act.label}
@@ -352,6 +361,14 @@ export const RoomPage = () => {
                   </Button>
                 ))}
               </div>
+              {tiredKinds.length > 0 && (
+                <Flexbox align="flex-start" data-room-tired gap={6} horizontal>
+                  <Icon color={cssVar.colorWarning} icon={BatteryLow} size={14} style={{ flex: 'none', marginBlockStart: 3 }} />
+                  <Text fontSize={12} type="warning">
+                    {name}太累了（精力 {view?.stats.energy ?? 0}，要 {room.activities.find((a) => a.id === tiredKinds[0])?.needs} 才行）：{tiredKinds.map((k) => room.activities.find((a) => a.id === k)?.label).join('和')}先不能做。点床让她睡一觉就好。
+                  </Text>
+                </Flexbox>
+              )}
               {view?.last && (
                 <Text data-room-last fontSize={12} type="secondary">
                   上一件：{room.activities.find((a) => a.id === view.last!.kind)?.label}

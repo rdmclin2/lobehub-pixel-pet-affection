@@ -83,6 +83,27 @@ class RoomService {
     return this._done({ ...r, action: room.ACTIVITIES[kind].action, affection });
   }
 
+  // A round that ran out while the app was closed (重开时已满一轮) is settled at once, as a whole round, for every
+  // character with one (each room keeps its own). Called when the app starts (main.js boot), before any window
+  // shows her numbers. -> the settled results ([] when there was none).
+  settleDue() {
+    const p = this.svc.pet;
+    if (!p || !p.characters) return [];
+    const now = this.svc.now();
+    const out = [];
+    for (const [id, owner] of Object.entries(p.characters)) {
+      const a = owner && owner.room && owner.room.activity;
+      if (!a || now - a.startedAt < this.roundMs) continue;
+      const theme = room.themeById(id);
+      const settled = room.settle(owner, now, this._opts(theme));
+      if (!settled) continue;
+      this._score(owner, settled);
+      out.push({ character: id, ...settled });
+    }
+    if (out.length) this.svc._save();
+    return out;
+  }
+
   // End the running activity: finished (a whole round) or stopped early. -> { ok, settled, room }
   stop() {
     const { error, theme, owner } = this._playable();

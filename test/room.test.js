@@ -190,3 +190,40 @@ test('RoomService: a whole round of 打游戏 scores like 玩耍; a room whose c
   assert.ok(r.affection && r.affection.delta > 0, 'scored');
   assert.ok(s2._c().affection > a0);
 });
+
+test('RoomService.settleDue: a round that ran out while the app was closed is settled at start, as a whole round', async () => {
+  const { data, clock, mk } = setup();
+  const svc = mk();
+  await svc.hatch({ speciesId: 'dafeiyu', name: '小鲸' });
+  const rs = new RoomService(svc, { roundMs: 4000 });
+  svc._c().energy = 20;
+  svc._c().mood = 40;
+  svc._c().hunger = 50;
+  rs.start('work');
+  const before = { energy: svc._c().energy, mood: svc._c().mood, focus: svc._c().room.focus, hunger: svc._c().hunger };
+  assert.equal(rs.settleDue().length, 0, 'not due yet: nothing settled');
+  assert.equal(svc._c().room.activity.kind, 'work');
+
+  // closed for longer than a round, then opened again
+  clock.t += 9000;
+  const again = mk();
+  again.init();
+  const rs2 = new RoomService(again, { roundMs: 4000 });
+  const done = rs2.settleDue();
+  assert.equal(done.length, 1);
+  assert.equal(done[0].kind, 'work');
+  assert.equal(done[0].complete, true);
+  assert.equal(done[0].fraction, 1);
+  const c = again._c();
+  assert.equal(c.room.activity, null);
+  assert.deepEqual(done[0].deltas, { energy: -12, mood: -5, focus: 28, fullness: -8 }, 'the whole round of 工作');
+  assert.ok(Math.abs(c.energy - (before.energy - 12)) < 1, `energy ${before.energy} → ${c.energy}`);
+  assert.ok(Math.abs(c.mood - (before.mood - 5)) < 1);
+  assert.equal(c.room.focus, before.focus + 28);
+  assert.ok(Math.abs(c.hunger - (before.hunger + 8)) < 1);
+  assert.equal(c.room.totals.work.completed, 1);
+  const saved = JSON.parse(fs.readFileSync(path.join(data, 'pet.json'), 'utf8')).characters.dafeiyu.room;
+  assert.equal(saved.activity, null, 'saved settled');
+  assert.equal(saved.last.complete, true);
+  assert.equal(rs2.settleDue().length, 0, 'once only');
+});
