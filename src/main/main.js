@@ -41,7 +41,8 @@ const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { PetPanel } = require('./pet-panel');
 const { GameWindow } = require('./game-window');
-const { GameLibrary } = require('./games');
+const { GameLibrary, GameIndex } = require('./games');
+const GameIndexLib = require('../core/game-index');
 const GameStore = require('../core/game-store');
 const { createAdminSettings } = require('./admin-settings');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
@@ -84,6 +85,7 @@ let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in i
 let scene = null; // 小游戏 (game-window.js): the window she plays a game pack in; her desktop window hides meanwhile
 let games = null; // 小游戏 packs on disk (games.js): userData/games, plus catalog/games with PIXELPET_DEV_GAMES=1
 let gameStore = null; // 商店 → 小游戏: the downloader, unpacking into userData/games/<id>/ (core/game-store.js)
+let gameIndex = null; // 商店 → 小游戏: which games and versions are out (bundled + the games repository, games.js GameIndex)
 const sceneActs = []; // E2E only: what she did in the game (game:event)
 let voiceHotkey = null; // 快捷键唤起语音对话 (voice-hotkey.js): settings.asr.hotkey as a global shortcut
 let tts = null; // { engine, keys, cache }: the voice engines (core/tts.js); keys stay in this process
@@ -215,7 +217,17 @@ function openScene(source = 'tray', gameId = null) {
   const g = games.pick(gameId, service.settings.scene.game);
   if (!g) { openAdmin('store/games'); return Promise.resolve({ ok: false, reason: 'no-game', store: true }); }
   if (service.settings.scene.game !== g.id) service.setSection('scene', { game: g.id });
-  return scene.open(source, { id: g.id, name: g.name });
+  // the window may be the one already loaded: tell it again whether a newer version is out
+  return scene.open(source, { id: g.id, name: g.name }).then((r) => { notifyGameUpdates(); return r; });
+}
+// 小游戏: id → installed version (downloaded and, with PIXELPET_DEV_GAMES, the checkout's)
+const installedGames = () => new Map(games.list().map((g) => [g.id, g.version]));
+// a newer version of an installed game is out: the settings window refreshes 商店, the game window shows 有新版本
+function notifyGameUpdates() {
+  if (!gameIndex) return;
+  const ups = gameIndex.updates(installedGames());
+  if (scene) scene.send('game:update', ups.find((u) => u.id === scene.gameId) || null);
+  if (admin && admin.alive) admin.send('game-updates', ups);
 }
 function toggleScene(source = 'tray', gameId = null) {
   if (scene && scene.visible && (!gameId || gameId === scene.gameId)) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
@@ -517,8 +529,10 @@ function wire() {
     if (!fromScene(e)) return null;
     const id = String((p && p.game) || scene.gameId || '');
     const game = games.boot(id);
-    return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null };
+    const update = game ? gameIndex.updates(installedGames()).find((u) => u.id === id) || null : null;
+    return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update };
   });
+  ipcMain.on('game:open-store', (e) => { if (fromScene(e)) openAdmin('store/games'); });
   ipcMain.handle('game:set', (e, patch) => {
     if (!fromScene(e) || !patch || typeof patch !== 'object') return { ok: false, reason: 'invalid' };
     const clean = {};
@@ -544,27 +558,35 @@ function wire() {
   });
   ipcMain.on('game:state', (e, p) => { if (fromScene(e) && p) games.saveState(String(p.game || ''), p.state); });
   ipcMain.on('game:close', (e, p) => { if (fromScene(e)) scene.close(p && p.reason === 'key' ? 'key' : 'button'); });
-  // 商店 → 小游戏 (core/game-store.js, docs/mini-games.md §7): the store's games, each 未下载 / 下载中 / 已下载 (read
-  // from the disk every time); download (progress as `catalog-progress`), cancel, delete, and 开始玩
-  const gameStoreState = () => {
-    const have = games.installedIds();
-    return { games: GameStore.storeRows(Catalog.listGames((id) => have.has(id)), gameStore ? gameStore.state() : []), dir: games.userDir, last: service.settings.scene.game || null };
+  // 商店 → 小游戏 (core/game-index.js, core/game-store.js, docs/mini-games.md §7): the store's games — bundled
+  // and the games repository's newest — each 未下载 / 下载中 / 已下载 / 有更新 / 需要更新应用 (installed versions read
+  // from the disk every time); download or update (progress as `catalog-progress`), cancel, delete, 开始玩.
+  // Opening the store reads the repository's catalog when the last read is 10 minutes old; 检查更新 reads it now.
+  const gameStoreState = async ({ refresh = false } = {}) => {
+    const r = await gameIndex.refresh(refresh ? { maxAgeMs: 0 } : {});
+    if (r.ok && !r.cached && scene) scene.send('game:update', gameIndex.updates(installedGames()).find((u) => u.id === scene.gameId) || null);
+    return { games: gameIndex.rows(installedGames(), gameStore ? gameStore.state() : []), dir: games.userDir, last: service.settings.scene.game || null, checkedAt: gameIndex.checkedAt || null, checkError: r.ok || r.reason === 'off' ? null : gameIndex.error };
   };
-  ipcMain.handle('game-store', () => gameStoreState());
+  ipcMain.handle('game-store', (_e, p) => gameStoreState({ refresh: !!(p && p.refresh) }));
   ipcMain.handle('game-download', async (_e, { id } = {}) => {
+    const e = gameIndex.entry(String(id || ''));
+    const ok = e ? GameIndexLib.supported(e, gameIndex.ctx()) : { ok: true };
+    if (!ok.ok) return { ok: false, reason: 'unsupported', text: ok.reason === 'app' ? `这个版本需要 Pixel Pet ${e.minAppVersion} 或更新的版本，请先更新应用` : '这个小游戏需要更新版本的应用才能玩，请先更新应用', store: await gameStoreState() };
+    const was = installedGames().get(String(id || '')) || null;
+    if (was && scene.visible && scene.gameId === id) scene.close('update'); // the game being played is replaced
     const r = await gameStore.download(String(id || ''));
-    if (r.ok) scene.forget(r.id);
+    if (r.ok) { scene.forget(r.id); notifyGameUpdates(); }
     pushAdmin();
-    return { ...r, store: gameStoreState() };
+    return { ...r, updatedFrom: r.ok ? was : null, store: await gameStoreState() };
   });
   ipcMain.handle('game-download-cancel', (_e, { id } = {}) => gameStore.cancel(String(id || '')));
-  ipcMain.handle('game-remove', (_e, { id } = {}) => {
+  ipcMain.handle('game-remove', async (_e, { id } = {}) => {
     const gid = String(id || '');
     if (scene.visible && scene.gameId === gid) scene.close('removed');
     const r = GameStore.remove(games.userDir, gid);
     if (r.ok) scene.forget(gid);
     pushAdmin();
-    return { ...r, store: gameStoreState() };
+    return { ...r, store: await gameStoreState() };
   });
   ipcMain.handle('game-play', (_e, { id } = {}) => openScene('store', String(id || '')));
   ipcMain.handle('talk-topic', (_e, { id }) => service.talkTopic(String(id || '')));
@@ -1347,6 +1369,8 @@ app.whenReady().then(() => {
   // 小游戏 (games.js): downloaded games in userData/games; a checkout's catalog/games too with PIXELPET_DEV_GAMES=1
   games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? path.join(__dirname, '..', '..', 'catalog', 'games') : null });
   games.registerProtocol();
+  // the games repository's catalog.json: off in tests unless PIXELPET_GAME_INDEX_URL names one
+  gameIndex = new GameIndex({ userDir: games.userDir, appVersion: app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
   // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.
@@ -1365,8 +1389,9 @@ app.whenReady().then(() => {
   });
   gameStore = new CatalogDownloader({
     packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
-    lookup: (id) => Catalog.gameEntry(id),
-    isInstalled: (e) => GameStore.listInstalled([{ dir: games.userDir, source: 'download' }]).some((g) => g.id === e.id),
+    lookup: (id) => gameIndex.entry(id),
+    // installed and not older than the store's version (an older one is downloaded again: 更新)
+    isInstalled: (e) => { const v = GameStore.installedVersions([{ dir: games.userDir, source: 'download' }]).get(e.id); return !!v && GameIndexLib.compareVersions(v, e.version) >= 0; },
     install: (e, zipFile) => GameStore.installArchive(games.userDir, e, zipFile),
     texts: { unknown: '商店里没有这个小游戏', installed: '这个小游戏已经下载好了', invalid: '下载的小游戏文件有问题，已丢弃' },
   });
@@ -1453,6 +1478,10 @@ app.whenReady().then(() => {
   applyApi();
   syncClipboardWatch();
   updater.start();
+  // 小游戏的新版本: read the games repository's catalog a little after start, then every 6 hours
+  const checkGames = () => gameIndex.refresh({ maxAgeMs: 0 }).then(() => notifyGameUpdates()).catch(logError);
+  setTimeout(checkGames, TEST_MODE ? 500 : 8000);
+  setInterval(checkGames, 6 * 60 * 60 * 1000).unref();
   if (!TEST_MODE) setInterval(() => service.heartbeat().catch((e) => console.error(e)), HEARTBEAT_MS);
 });
 

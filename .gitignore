@@ -28,5 +28,5 @@ baked-dances/
 src/admin-ui/
 # 风格语音包的录音工作目录：源是 CDN 上发布的归档（node scripts/build-voice-catalog.js --fetch --extract），docs/voice-packs.md §9
 catalog/voicepacks/
-# 小游戏的 GPT Image 原图（几 MB 一张）：源是 CDN 上的 games-v1/pixel-yard-art.zip，docs/mini-games.md §8
-art/pixel-yard/raw/
+# 小游戏的包（源码在 rdmclin2/pixel-pet-mini-games）：node scripts/fetch-game-packs.js 从 CDN 取到这里，开发时 PIXELPET_DEV_GAMES=1 读它
+catalog/games/

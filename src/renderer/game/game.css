@@ -22,6 +22,9 @@ body { --glass: rgba(118, 150, 104, 0.5); --glass-edge: rgba(255, 255, 255, 0.18
 .titlebar { position: absolute; top: 0; left: 0; right: 0; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; -webkit-app-region: drag; background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0)); }
 .titlebar .title { font-weight: var(--lobe-font-weight-strong); }
 .titlebar .who { color: var(--ink-2); }
+/* 有新版本: a newer version of this game is out (商店 → 小游戏 → 更新) */
+.update-chip { -webkit-app-region: no-drag; height: 22px; padding: 0 10px; border: 0; border-radius: 11px; background: rgba(255, 196, 92, 0.9); color: #3a2a10; font: inherit; font-size: 12px; cursor: pointer; }
+.update-chip:hover { background: #ffd27a; }
 .tb-btn, .icon-btn { -webkit-app-region: no-drag; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--lobe-border-radius-sm); background: transparent; color: inherit; cursor: pointer; }
 .tb-btn:hover, .icon-btn:hover { background: rgba(255, 255, 255, 0.14); }
 button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 2px; }

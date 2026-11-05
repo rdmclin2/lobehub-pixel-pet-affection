@@ -1,7 +1,8 @@
 // 小游戏 (docs/mini-games.md): a game pack bought in the store and played in the game window, driven as a user
 // does — `xvfb-run -a node e2e/run.js game` (unset ELECTRON_RUN_AS_NODE first; no tokens: fake lh).
-// The store's CDN is a local server holding the archive `node scripts/build-game-packs.js` builds from
-// catalog/games (the same bytes and sha256 as src/core/game-catalog.json).
+// The store's CDN is a local server holding the published archive (fetched from the real CDN by
+// scripts/fetch-game-packs.js: the bytes and sha256 of src/core/game-catalog.json), and it also plays the games
+// repository's catalog.json (PIXELPET_GAME_INDEX_URL), so G14 can publish a newer version.
 //   G1  before any download: the tray item 「小游戏」 opens 商店 → 小游戏; the card is 未下载
 //   G2  商店 → 小游戏 → 下载: progress, 已下载, the files in userData/games/pixel-yard
 //   G3  开始玩: the game window opens with her in it, her desktop window hides; PixiJS (WebGL) draws the world,
@@ -17,6 +18,8 @@
 //   G10 press and drag her: lifted, dropped on walkable ground
 //   G11 Ctrl+W closes the game; her desktop window comes back; her panel ⌂ opens it again
 //   G12 restart: time, weather, the crops and today's 小事 are kept
+//   G14 a newer version is published (the games repository's catalog.json): 检查更新 → 有更新 with its notes,
+//       the game window says 有新版本, 开源仓库 opens the repository; 更新 replaces it, her progress stays
 //   G13 商店 → 小游戏 → 删除: gone from disk, the tray opens the store again
 // Screenshots: out/e2e/mini-game/.
 const fs = require('node:fs');
@@ -37,12 +40,17 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
     const S = 'game';
     const SHOTS = path.join(OUT, 'mini-game');
     fs.mkdirSync(SHOTS, { recursive: true });
-    // the store's CDN: the archive built from catalog/games, served over http
+    // the store's CDN: the published archive, fetched from the real CDN and checked against the shipped index
     const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gamecdn-'));
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-game-packs.js'), '--check', '--out', cdn], { stdio: 'ignore' });
+    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'fetch-game-packs.js'), '--zips', cdn], { stdio: 'ignore' });
+    const bundled = JSON.parse(fs.readFileSync(path.join(ROOT, 'src', 'core', 'game-catalog.json'), 'utf8'));
+    // the games repository's catalog.json as the app reads it: to start with, what the app shipped with
+    let catalog = { ...bundled, games: bundled.games.map((x) => ({ ...x, published: '2026-11-05' })) };
     let served = 0;
     const server = http.createServer((req, res) => {
-      const f = path.join(cdn, path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname)));
+      const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
+      if (name === 'catalog.json') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(catalog)); return; }
+      const f = path.join(cdn, name);
       if (!fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
       served += 1;
       res.writeHead(200, { 'content-type': 'application/zip', 'content-length': fs.statSync(f).size });
@@ -52,7 +60,7 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gamefake-'));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-game-'));
-    const env = { PIXELPET_DATA_DIR: dataDir, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/games` };
+    const env = { PIXELPET_DATA_DIR: dataDir, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: `http://127.0.0.1:${server.address().port}/games`, PIXELPET_GAME_INDEX_URL: `http://127.0.0.1:${server.address().port}/catalog.json` };
     let { app, page } = await launch(env);
     let gp = null;
     let admin = null;
@@ -394,9 +402,64 @@ module.exports = function miniGameScenario({ ROOT, OUT, FAKE_LH, step, launch, o
         return `hour ${s.scene.hour}, weather ${s.scene.weather}, plot-a stage ${s.world.plots['plot-a'].stage}, quests ${s.quests.filter((q) => q.done).length} done`;
       });
 
-      await step(S, 'G13 商店里删除：文件没了，托盘再点就打开商店', async () => {
+      await step(S, 'G14 发布新版本：检查更新 → 有更新和更新说明；游戏里提示有新版本；开源仓库；更新后进度还在', async () => {
+        // the games repository publishes 1.0.1: the same pack, a higher version, new notes
+        const old = bundled.games.find((x) => x.id === 'pixel-yard');
+        const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gamev2-'));
+        execFileSync('unzip', ['-q', path.join(cdn, old.file), '-d', work]);
+        const mf = JSON.parse(fs.readFileSync(path.join(work, 'manifest.json'), 'utf8'));
+        fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify({ ...mf, version: '1.0.1' }, null, 2));
+        const { zip, sha256 } = require(path.join(ROOT, 'scripts', 'build-character-catalog'));
+        const file = 'pixel-yard-1.0.1.zip';
+        zip(work, path.join(cdn, file));
+        const notes = '测试发布：小院的路灯更亮了一点，浆果长回来更快。';
+        catalog = { ...catalog, games: [{ ...old, version: '1.0.1', file, bytes: fs.statSync(path.join(cdn, file)).size, sha256: sha256(path.join(cdn, file)), changelog: notes, published: '2026-11-06' }] };
+        const stageBefore = (await g()).world.plots['plot-a'].stage;
         await gp.keyboard.press('Control+KeyW');
         admin = await openAdminWindow(app, page, 'store/games');
+        await admin.waitForSelector('[data-game-check]', { timeout: 15000 });
+        await admin.click('[data-game-check]');
+        await until(async () => (await admin.locator('[data-store-game="pixel-yard"]').getAttribute('data-game-state')) === 'update', 15000, '有更新');
+        const meta = await admin.textContent('[data-store-game-meta="pixel-yard"]');
+        assert.match(meta, /v1\.0\.0 → v1\.0\.1/);
+        assert.equal((await admin.textContent('[data-game-changelog="pixel-yard"]')).includes(notes), true, 'the notes are on the card');
+        assert.equal(await admin.textContent('[data-game-tag="pixel-yard"]'), '有更新');
+        await admin.locator('[data-game-update="pixel-yard"]').scrollIntoViewIfNeeded();
+        await admin.waitForTimeout(400);
+        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-update.png') });
+        // 开源仓库
+        await admin.click('[data-game-repo="pixel-yard"]');
+        const links = await until(async () => { const l = await page.evaluate(() => window.pet.debugOpenedLinks()); return l.some((u) => u.includes('github.com/rdmclin2/pixel-pet-mini-games')) ? l : null; }, 5000, 'the repository link');
+        // the game window: 有新版本
+        await admin.click('[data-game-play="pixel-yard"]');
+        gp = await findGame(app);
+        await until(async () => { const v = await g(); return v.update && v.update.to === '1.0.1' ? v : null; }, 8000, 'the update chip');
+        assert.equal(await gp.isVisible('#update-chip'), true);
+        assert.match(await gp.textContent('#update-chip'), /有新版本 v1\.0\.1/);
+        assert.equal(await gp.textContent('#game-version'), 'v1.0.0');
+        await gp.screenshot({ path: path.join(SHOTS, 'g14-game-chip.png') });
+        await gp.keyboard.press('Control+KeyW');
+        // 更新
+        await admin.click('[data-game-update="pixel-yard"]');
+        await until(async () => (await admin.locator('[data-store-game="pixel-yard"]').getAttribute('data-game-state')) === 'installed', 30000, 'updated');
+        const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'games', 'pixel-yard', 'manifest.json'), 'utf8')).version;
+        assert.equal(onDisk, '1.0.1');
+        await admin.locator('[data-game-play="pixel-yard"]').scrollIntoViewIfNeeded();
+        await admin.waitForTimeout(500);
+        await admin.screenshot({ path: path.join(SHOTS, 'g14-store-updated.png') });
+        await admin.click('[data-game-play="pixel-yard"]');
+        gp = await findGame(app);
+        await gp.waitForFunction(() => window.__game && window.__game().ready && window.__game().version === '1.0.1', null, { timeout: 20000 });
+        const s = await g();
+        assert.equal(s.update, null, 'no chip once up to date');
+        assert.equal(await gp.isVisible('#update-chip'), false);
+        assert.equal(s.world.plots['plot-a'].stage, stageBefore, 'her progress (the crops) survived the update');
+        return `checked → 有更新 (${meta}), notes shown, repo link ${links.filter((u) => u.includes('pixel-pet-mini-games')).pop()}, chip「有新版本 v1.0.1」, updated on disk to ${onDisk}, plot-a stage ${s.world.plots['plot-a'].stage} kept`;
+      });
+
+      await step(S, 'G13 商店里删除：文件没了，托盘再点就打开商店', async () => {
+        await gp.keyboard.press('Control+KeyW');
+        await admin.evaluate(() => { location.hash = '/store/games'; });
         await admin.waitForSelector('[data-game-remove="pixel-yard"]', { timeout: 15000 });
         await admin.click('[data-game-remove="pixel-yard"]');
         await until(async () => admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === '删除小游戏')), 8000, 'the confirm dialog');

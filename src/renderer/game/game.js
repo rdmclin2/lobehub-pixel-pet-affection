@@ -649,6 +649,17 @@
   function syncFollow() { $('tb-follow').setAttribute('aria-pressed', String(st.follow)); }
   $('tb-follow').addEventListener('click', () => { st.follow = !st.follow; syncFollow(); });
   $('btn-close').addEventListener('click', () => window.game.close('button'));
+  // 有新版本 (main read the games repository's catalog): a chip that opens 商店 → 小游戏
+  function showUpdate(u) {
+    const chip = $('update-chip');
+    st.update = u || null;
+    chip.classList.toggle('hidden', !u);
+    if (u) chip.textContent = `有新版本 v${u.to} · 去更新`;
+  }
+  $('update-chip').addEventListener('click', () => window.game.openStore());
+  if (window.game.onUpdate) window.game.onUpdate(showUpdate);
+  showUpdate(boot.update);
+  $('game-version').textContent = boot.game.version ? `v${boot.game.version}` : '';
   window.addEventListener('keydown', (e) => {
     // Ctrl/⌘+W, Ctrl/⌘+Shift+H: main's before-input-event closes the window first; synthetic input lands here
     const mod = e.ctrlKey || e.metaKey;
@@ -1074,7 +1085,7 @@
     const s = pet.state();
     const [sx, sy] = toScreen(s.x, s.y);
     return {
-      ready: true, id: M.id, name: M.name, fps: st.fps, frames: st.frames, renderer: app.renderer.name,
+      ready: true, id: M.id, name: M.name, version: M.version, update: st.update || null, fps: st.fps, frames: st.frames, renderer: app.renderer.name,
       hour: st.hour, target: st.target, phase: SKY.phaseOf(st.hour), scene: { ...st.scene },
       weather: { ...st.wx }, grade: st.lastGrade && { mul: st.lastGrade.mul, sat: st.lastGrade.sat, lights: st.lastGrade.lights, flies: st.lastGrade.flies },
       counts: { drops: drops.length, flakes: flakes.length, clouds: clouds.filter((c) => c.want).length, fliesLit: flies.filter((f) => f.a > 0.2).length, fog: fog.alpha },

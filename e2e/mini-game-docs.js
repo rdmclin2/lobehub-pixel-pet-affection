@@ -6,7 +6,7 @@
 //   act-water act-ripe act-bench act-lamp act-firefly quests .webp
 //   store-remote store-installed .webp                    商店 → 小游戏（下载前 / 下载后）
 //   mini-game-demo.mp4 (+ .gif, .chapters.json)              ≥10 s 录屏（ffmpeg x11grab，带鼠标指针）
-// and src/renderer/catalog/games/pixel-yard.webp, the store card's picture (from day-clear.png).
+// and cover.png, the store card's picture (copy it to the games repository's games/pixel-yard/cover.webp).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -23,7 +23,7 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
     const DIR = path.join(ROOT, 'docs', 'img', 'mini-games');
     fs.mkdirSync(DIR, { recursive: true });
     const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-gdcdn-'));
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-game-packs.js'), '--check', '--out', cdn], { stdio: 'ignore' });
+    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'fetch-game-packs.js'), '--zips', cdn], { stdio: 'ignore' });
     const server = http.createServer((req, res) => {
       const f = path.join(cdn, path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname)));
       if (!fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
@@ -46,7 +46,7 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
     const webp = (png) => { execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', png, '-quality', '88', png.replace(/\.png$/, '.webp')]); fs.rmSync(png); };
     const shot = async (n) => { const f = path.join(DIR, `${n}.png`); await gp.screenshot({ path: f }); if (n !== 'cover') webp(f); };
     const until = async (fn, ms, what) => { const s = Date.now(); for (;;) { const v = await fn().catch(() => null); if (v) return v; if (Date.now() - s > ms) throw new Error(`timed out: ${what}`); await wait(120); } };
-    const manifest = require(path.join(ROOT, 'catalog', 'games', 'pixel-yard', 'manifest.json'));
+    const manifest = JSON.parse(execFileSync('unzip', ['-p', path.join(cdn, fs.readdirSync(cdn).find((f) => f.startsWith('pixel-yard-'))), 'manifest.json']).toString());
     const def = (id) => manifest.objects.find((o) => o.id === id);
     // a real (gliding) click at a world point; with `card` the camera keeps the point above the cards
     const clickWorld = async (x, y, { glide = false, fold = true } = {}) => {
@@ -123,10 +123,10 @@ module.exports = function gameDocsScenario({ ROOT, FAKE_LH, step, launch, openAd
         await T(() => document.querySelectorAll('.titlebar, .toolbar, .card, #tip, #bubble').forEach((e) => { e.style.visibility = 'hidden'; }));
         await combo('cover', 12, 'clear', { card: false, at: [560, 360] });
         await T(() => document.querySelectorAll('.titlebar, .toolbar, .card, #tip, #bubble').forEach((e) => { e.style.visibility = ''; }));
+        // the cover lives in the games repository (games/pixel-yard/cover.webp); the app ships a copy of it
+        // through scripts/sync-game-catalog.js — this one is written next to the docs pictures to copy over
         const cover = path.join(DIR, 'cover.png');
-        const pic = path.join(ROOT, 'src', 'renderer', 'catalog', 'games', 'pixel-yard.webp');
-        fs.mkdirSync(path.dirname(pic), { recursive: true });
-        execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', cover, '-vf', 'scale=640:400:flags=lanczos', '-quality', '86', pic]);
+        execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', cover, '-vf', 'scale=640:400:flags=lanczos', '-quality', '86', path.join(os.tmpdir(), 'pixel-yard-cover.webp')]);
         fs.rmSync(cover);
         return 'dawn / day / dusk-cloudy / night / night-rain / storm / snow / fog + the store picture';
       });

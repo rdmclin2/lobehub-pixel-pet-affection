@@ -2,6 +2,7 @@
 
 > 商店里可以下载的小游戏，和她一起玩。第一款是「像素小院」：一座漂在空中的等距像素小院。她在院子里自己逛、做事，你可以调时段和天气，陪她完成每天的小事。
 > 引擎是 PixiJS 8（`src/renderer/vendor/pixi/`），美术由 GPT Image（gpt-image-2.5）生成后切图。小游戏包只有图片和配置，下载下来的东西不会被当作代码运行。
+> 小游戏的源码在开源仓库 **<https://github.com/rdmclin2/pixel-pet-mini-games>**：改地图、玩法数值、台词、美术，在那里升版本、发布，已安装的应用就会提示更新（§9）。
 
 ![白天 · 晴朗](img/mini-games/day-clear.webp)
 
@@ -26,6 +27,12 @@
 | 未下载 | 已下载 |
 | --- | --- |
 | ![商店：像素小院未下载](img/mini-games/store-remote.webp) | ![商店：像素小院已下载，可以开始玩](img/mini-games/store-installed.webp) |
+
+发布新版本之后（e2e G14 发布的测试版本 1.0.1）：
+
+| 商店：有更新 | 游戏窗口：有新版本 | 更新后 |
+| --- | --- | --- |
+| ![商店卡片：有更新，v1.0.0 → v1.0.1，显示更新说明和「更新到 v1.0.1」](img/mini-games/store-update.webp) | ![游戏标题栏：有新版本 v1.0.1 · 去更新](img/mini-games/game-chip.webp) | ![更新后：已下载 v1.0.1](img/mini-games/store-updated.webp) |
 
 ### 录屏
 
@@ -153,19 +160,21 @@ src/core/game-world.js     可走区域：多边形 / 椭圆 → 8 px 网格；8
 src/core/game-pet.js       她的状态机：idle → walk → use（物件的动作与时长）→ idle；touch / lift / drop；自己逛
 src/core/game-sky.js       天色：时段关键帧调色、天气参数与淡入淡出、颜色矩阵、随时间流动、天气自己变
 src/core/game-quests.js    今日小事：按日期挑 3 件、事件匹配（物件 / 收集 / 时段 / 天气）、计数与完成
-src/core/catalog.js        game-catalog.json 的读取（loadGameIndex / gameEntry / listGames）
-src/core/game-catalog.json 商店里的小游戏（名字、介绍、要点、封面、大小、sha256），随应用发布
-src/main/games.js          GameLibrary：已下载的游戏、game://<id>/<file>（只给 manifest 列出的文件）、进度、事件记录
+src/core/game-index.js     商店目录与升级：随应用发布的目录 + 游戏仓库的 catalog.json 合并（每个游戏取较高版本）、
+                           条目清洗（下载地址由应用自己拼，图片和仓库链接只能指向游戏仓库）、版本比较、
+                           商店行状态（未下载 / 已下载 / 有更新 / 需要更新应用）、哪些已装的游戏有新版本
+src/core/game-catalog.json 随应用发布的商店目录（游戏仓库 catalog.json 里已发布条目的副本，sync-game-catalog.js 写）
+src/main/games.js          GameLibrary：已下载的游戏、game://<id>/<file>（只给 manifest 列出的文件）、进度、事件记录；
+                           GameIndex：读游戏仓库的 catalog.json（启动后、打开商店时、每 6 小时）、缓存、远端封面
 src/main/game-window.js    小游戏窗口（只建一次，之后显示 / 隐藏；换游戏时带 ?game=<id> 重新载入）
-src/main/game-preload.js   页面桥：boot / set / event / saveState / touch / close
+src/main/game-preload.js   页面桥：boot / set / event / saveState / touch / close / openStore / onUpdate（有新版本）
 src/main/main.js           入口（托盘、⌂、快捷键）、game:* IPC、商店 IPC（game-store / -download / -remove / -play）
 src/renderer/game/         game.html · game.css · game.js（Pixi 场景、输入、卡片）· game-icons.js（抖动像素图标）
 src/renderer/vendor/pixi/  PixiJS 8.22.0 浏览器版 + unsafe-eval 包（页面 CSP 不开 'unsafe-eval'）
 admin/src/console/pages/StoreGames.tsx  商店 → 小游戏 标签页
-catalog/games/pixel-yard/  像素小院的包源：manifest.json、terrain.webp、atlas.webp、sprites.json
-art/pixel-yard/            提示词（prompts.json）、切图排布（layout.json）；GPT Image 原图在 CDN（README.md）
-scripts/art/game_sprites.py  原图 → 包里的图片（去品红底、切成精灵、按比例缩放、打图集）
-scripts/build-game-packs.js  catalog/games → out/game-catalog/<id>.zip + src/core/game-catalog.json（可复现）
+scripts/sync-game-catalog.js  游戏仓库的 catalog.json（已发布的条目）+ 封面 → src/core/game-catalog.json、src/renderer/catalog/games/
+scripts/fetch-game-packs.js  从 CDN 取安装包（校验）→ catalog/games/<id>/（开发、测试用，不进仓库）
+test/fixtures/games/mini-yard/  单测用的最小小游戏包
 ```
 
 **Pixi 场景**（`game.js`）：
@@ -231,51 +240,67 @@ screen         屏幕空间：雨、雪、雾、闪电
 
 新的小游戏如果只是换一个场景，同样的 `yard@1` 就够了：另画一套图，写一个 manifest。需要新玩法时，要在应用里加一个新的引擎版本（比如 `yard@2`）。
 
-## 8. 美术流水线（GPT Image）
+## 8. 源码仓库与美术（GPT Image）
 
-```bash
-# 1. 生成：每张图一条提示词（art/pixel-yard/prompts.json，带统一的风格句：等距 2:1、硬边方像素、每种材质 3–4 档色、品红底）
-lh generate image -m gpt-image-2.5-sunburst -p lobehub --param size=2048x2048 --param quality=high --json "<提示词>"
-lh generate download <generationId> <asyncTaskId> -o raw/<name>.png --timeout 900
-#    地形一张（黑底）、建筑 3 栋、树 9 棵、道具 16 件、菜园小物 26 件、云 5 朵；原图存成无损 WebP 放在 art/pixel-yard/raw/
-#    （不进仓库，源是 CDN 上的 games-v1/pixel-yard-art.zip，取回方法见 art/pixel-yard/README.md）
-# 2. 看图里有哪些精灵（去品红底、把相邻碎片并成一个、按位置列出框）
-python3 scripts/art/game_sprites.py find art/pixel-yard/raw/props.webp 16
-# 3. 切图：art/pixel-yard/layout.json 给每个精灵起名、定框和缩放（盒式缩放、半透明阈值、去品红边、打图集）
-python3 scripts/art/game_sprites.py build art/pixel-yard/layout.json art/pixel-yard/raw catalog/games/pixel-yard
-# 4. 摆放：catalog/games/pixel-yard/manifest.json 里写每个物件的位置、挡路区域、灯光和互动
+小游戏的源码在 <https://github.com/rdmclin2/pixel-pet-mini-games>（MIT），每个游戏一个目录：
+
+```
+games/<id>/pack/         安装包里的全部内容（manifest.json、sprites.json、terrain.webp、atlas.webp）
+games/<id>/art/          美术源：prompts.json（GPT Image 提示词）、layout.json（切图排布）、raw/（原图，无损 WebP）
+games/<id>/cover.webp    商店封面　· store.json 商店卡片上的玩法要点 · CHANGELOG.md 每个版本的更新说明
+catalog.json             商店目录：应用读这份文件得知有哪些游戏、最新版本、安装包大小和 sha256
+scripts/                 build.js（校验 + 打包 + 更新目录）· publish.js（传 CDN、下载回来比对）· game_sprites.py · generate.sh
+tools/game-pack.js       本应用 src/core/game-pack.js 的副本：打包前就按应用的规则校验
 ```
 
-- 需要 Pillow 和 numpy：`uv venv /tmp/artvenv && VIRTUAL_ENV=/tmp/artvenv uv pip install pillow numpy`。
-- 第 3 步由原图重建，结果和包里的图片逐字节一致。
-- 生成时一次一张、每张之间停 20 秒，不并行，见 `art/model-chan/README.md` 里关于批量被拒的说明。
+美术的做法：`scripts/generate.sh games/pixel-yard` 按 `art/prompts.json` 一张张生成原图（统一的风格句：等距 2:1、硬边方像素、每种材质 3–4 档色、品红底；地形黑底），`python3 scripts/game_sprites.py find <原图>` 去品红底、把相邻碎片并成一个精灵并列出框，`layout.json` 给每个精灵起名、定框和缩放，`game_sprites.py build` 切图打图集（盒式缩放、半透明阈值、去品红边；由原图重建结果逐字节一致）。物件的位置、挡路区域、灯光和互动写在 `pack/manifest.json`。Python 脚本需要 Pillow 和 numpy；生成时一次一张、每张之间停 20 秒，不并行。
 
-## 9. 上架到商店
+## 9. 上架、版本与升级
+
+**发一个新版本**（在游戏仓库里）：
 
 ```bash
-node scripts/build-game-packs.js            # catalog/games/* → out/game-catalog/<id>.zip，写 src/core/game-catalog.json
-node scripts/build-game-packs.js --check    # 重新打包，和索引逐字节比对（e2e 和单测也会做）
-npm run catalog:upload -- --games           # 经 Develop Center 传到 CDN（dc/ops-assets/archives/pixel-pet/games-v1/），再下载回来比对
+# 1. 改 games/<id>/pack/…，升 manifest.json 的 version，在 CHANGELOG.md 顶部加「## x.y.z · 日期」一节
+node scripts/build.js      # 校验 + 打包 out/<id>-<version>.zip + 更新 catalog.json（大小、sha256、更新说明）
+node scripts/publish.js    # 传到 CDN（dc/ops-assets/archives/pixel-pet/games-v1/），下载回来比对，标记 published
+git commit -am "🔖 <id> x.y.z" && git push    # 推上去就算上架 / 升级
 ```
 
-- 应用从 `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/games-v1/<id>.zip` 下载，按索引里的大小和 sha256 校验后再安装，见 `src/main/catalog.js` 的 `CatalogDownloader`，和角色、语音包是同一个下载器。
-- 测试或镜像可以用 `PIXELPET_CATALOG_URL` 改下载地址。
-- 内容变了要改 manifest 的 `version`，并换一个 release（`build-game-packs.js` 的 `RELEASE`）。已发布的文件不会被悄悄替换。
-- 商店卡片的封面 `src/renderer/catalog/games/<id>.webp` 随应用发布，由 `gamedocs` 截出。
-- 开发时不想下载，可以设 `PIXELPET_DEV_GAMES=1`，直接读 `catalog/games/`。这个目录不会打进安装包。
+- 安装包名字带版本号（`pixel-yard-1.0.0.zip`），已发布的包永远不改。内容变了不升版本，`build.js` 会拦下。
+- 应用从 `https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/<release>/<file>` 下载。这个地址由应用自己拼，目录里只给出文件名。下载后按目录里的大小和 sha256 校验，再由 `game-store.js` 安装（只接受图片和 JSON），和角色、语音包是同一个下载器（`src/main/catalog.js` 的 `CatalogDownloader`）。
+
+**应用怎么知道有新版本**（`src/main/games.js` 的 `GameIndex`、`core/game-index.js`）：
+
+- 读 `https://raw.githubusercontent.com/rdmclin2/pixel-pet-mini-games/main/catalog.json`。时机有三个：启动 8 秒后、打开 商店 → 小游戏 时（距上次超过 10 分钟才读）、之后每 6 小时；「检查更新」按钮会立即读。
+- 只认 `published` 的条目。读到的目录缓存在 `userData/games/.index.json`，离线时也算数；远端封面缓存在 `.covers/`。
+- 和随应用发布的目录合并，每个游戏取较高的版本。所以应用发布之后才上架的新游戏，也会出现在商店里。
+- 已安装的版本低于目录里的版本时：
+  - 商店卡片的角标变成「有更新」，版本写成「v1.0.0 → v1.0.1」，并显示这一版的更新说明，按钮是「更新到 v1.0.1」。
+  - 游戏窗口标题栏出现「有新版本 v1.0.1 · 去更新」，点一下打开商店。
+- 更新就是下载新包、校验后整个替换旧包。进度（今日小事、菜地、路灯、收集到的东西）存在包外面，会全部保留。正在玩的游戏会先关掉再更新。
+- 引擎兼容：包声明 `engine`（目前只有 `yard@1`），也可以在 `store.json` 里写 `minAppVersion`。应用不支持时：
+  - 商店显示「需要更新应用」，不能下载。
+  - 已安装的旧版本照样能玩，只是不能更新。
+
+**随应用发布的目录**：发版前在主应用仓库跑 `node scripts/sync-game-catalog.js`，把游戏仓库里已发布的条目和封面复制成 `src/core/game-catalog.json` 和 `src/renderer/catalog/games/<id>.webp`。加 `--check` 只比对、不写。
+
+**开发与测试**：
+- `node scripts/fetch-game-packs.js` 从 CDN 取安装包到 `catalog/games/<id>/`（不进仓库），配合 `PIXELPET_DEV_GAMES=1 npm start` 直接试玩，不用经过商店。
+- 要试玩游戏仓库里改过的版本，把它的 `pack/` 复制到 `catalog/games/<id>/`。
+- `PIXELPET_CATALOG_URL` 改安装包的下载地址，`PIXELPET_GAME_INDEX_URL` 改目录地址（测试和镜像用；设成空字符串就不读远端）。测试模式下默认不读远端。
 
 ## 10. 运行与验证
 
 ```bash
 npm start                                      # 先自动 build:admin；⚙ 设置 → 商店 → 小游戏 → 下载 → 开始玩
-PIXELPET_DEV_GAMES=1 npm start                 # 开发：不下载，直接玩 catalog/games 里的包
-npm test                                       # 单测：game-world / game-pet / game-sky / game-quests / game-store
+node scripts/fetch-game-packs.js && PIXELPET_DEV_GAMES=1 npm start   # 开发：不经过商店，直接玩 catalog/games 里的包
+npm test                                       # 单测：game-world / game-pet / game-sky / game-quests / game-store / game-index
 unset ELECTRON_RUN_AS_NODE
-xvfb-run -a -s "-screen 0 1280x800x24" node e2e/run.js game       # 真机 e2e（G1–G13，截图在 out/e2e/mini-game/）
+xvfb-run -a -s "-screen 0 1280x800x24" node e2e/run.js game       # 真机 e2e（G1–G14，截图在 out/e2e/mini-game/）
 xvfb-run -a -s "-screen 0 1280x800x24" node e2e/run.js gamedocs   # 重新生成本文的图、录屏和商店封面
 ```
 
-e2e `game` 用本地 http 服务当商店的 CDN，提供的是 `build-game-packs.js --check` 打出来的同一个 zip。它按用户的方式走一遍：
+e2e `game` 用本地 http 服务当商店的 CDN 和游戏仓库的目录。安装包是从真实 CDN 取来的 1.0.0，大小和 sha256 与随应用发布的目录一致。它按用户的方式走一遍：
 - G1：没下载时，托盘打开商店。
 - G2：下载。
 - G3：开始玩，确认是 WebGL 在画、帧数在走。
@@ -288,7 +313,8 @@ e2e `game` 用本地 http 服务当商店的 CDN，提供的是 `build-game-pack
 - G10：拖她。
 - G11：Ctrl+W 关闭，再用 ⌂ 打开。
 - G12：重启后时段、天气、菜地、小事都还在。
-- G13：在商店删除。
+- G14：游戏仓库发布 1.0.1。点「检查更新」后卡片显示「有更新」和更新说明；游戏窗口提示「有新版本」；「开源仓库」打开仓库地址；更新后磁盘上是 1.0.1，菜地进度还在。
+- G13：在商店删除（排在 G14 之后执行）。
 
 ## 11. 已知限制
 
@@ -296,5 +322,6 @@ e2e `game` 用本地 http 服务当商店的 CDN，提供的是 `build-game-pack
 - 同屏伙伴不进游戏，留在桌面上。
 - 游戏里没有声音。
 - 天气是整个世界一起变的，没有局部天气，也没有积雪、积水。
-- 目前只有 `yard@1` 一种玩法引擎。不同玩法的游戏要先在应用里加新的引擎版本；下载的包永远不带代码。
+- 目前只有 `yard@1` 一种玩法引擎。不同玩法的游戏要先在应用里加新的引擎版本，应用发版后再发用到它的包；下载的包永远不带代码。
+- 商店目录放在 GitHub（raw.githubusercontent.com）。网络连不上 GitHub 时，看不到应用发布之后才出的新版本，已经装好的照样能玩。
 - 在 Xvfb 软件渲染（SwiftShader）下大约 40–60 fps；有 GPU 的机器会更流畅。

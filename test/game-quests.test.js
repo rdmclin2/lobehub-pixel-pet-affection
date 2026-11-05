@@ -52,11 +52,14 @@ test('record: counts matching events, a quest is done once at its count; phase a
   assert.equal(next.progress.items.firefly, 3);
 });
 
-test('the 像素小院 pack: its quests can each be done by an event the game sends', () => {
-  const m = require('../catalog/games/pixel-yard/manifest.json');
+const fs = require('node:fs');
+const path = require('node:path');
+const PACKS = [path.join(__dirname, 'fixtures', 'games', 'mini-yard'), path.join(__dirname, '..', 'catalog', 'games', 'pixel-yard')].filter((d) => fs.existsSync(path.join(d, 'manifest.json')));
+for (const dir of PACKS) test(`the ${path.basename(dir)} pack: its quests can each be done by an event the game sends`, () => {
+  const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   const ids = new Set(m.objects.map((o) => o.id));
   for (const q of m.quests) {
     if (q.on.type === 'use-end') for (const o of [].concat(q.on.obj)) assert.ok(ids.has(o) && m.objects.find((x) => x.id === o).use, `${q.id}: ${o} can be used`);
-    if (q.on.type === 'collect') for (const it of [].concat(q.on.item)) assert.ok(m.items[it], `${q.id}: ${it} is an item`);
+    if (q.on.type === 'collect') for (const it of [].concat(q.on.item)) assert.ok((m.items || {})[it], `${q.id}: ${it} is an item`);
   }
 });

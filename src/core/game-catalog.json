@@ -7,6 +7,8 @@
       "type": "game",
       "name": "像素小院",
       "version": "1.0.0",
+      "engine": "yard@1",
+      "minAppVersion": null,
       "description": "一座漂在空中的小院：小屋、菜地、池塘和瀑布。她在院子里自己逛、坐长椅、浇菜、摘浆果，你可以调时段和天气，陪她做每天的三件小事。",
       "credit": "美术：GPT Image（gpt-image-2.5）生成后像素化；玩法与引擎：Pixel Pet Affection",
       "features": [
@@ -15,8 +17,10 @@
         "种菜、摘浆果、抓萤火虫",
         "每天三件小事，完成加好感"
       ],
+      "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/pixel-yard",
+      "changelog": "第一版：一座漂在空中的等距像素小院（小屋、木棚、鸡舍、菜地、池塘和瀑布）。她会自己逛、坐长椅、浇菜收菜、摘浆果、开关路灯、夜里抓萤火虫；时段和天气可调；每天三件小事，完成加好感。",
       "picture": "catalog/games/pixel-yard.webp",
-      "file": "pixel-yard.zip",
+      "file": "pixel-yard-1.0.0.zip",
       "bytes": 1183523,
       "sha256": "3ffe6ccb50ea3f916cf825cafbfe551a48514dcf37828efdd8b2f56f454002b3"
     }

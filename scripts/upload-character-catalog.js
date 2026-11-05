@@ -8,7 +8,6 @@
 //   npm run catalog:upload               # build the zips (checked against the index), upload, verify
 //   npm run catalog:upload -- --dry-run  # build and check only; print what would be uploaded where
 //   npm run catalog:upload -- --voices [--dry-run]   # 商店 → 语音包 instead (src/core/voice-catalog.json, voices-v1)
-//   npm run catalog:upload -- --games [--dry-run]    # 商店 → 小游戏 instead (src/core/game-catalog.json, games-v1)
 //
 // Needs `dc` on PATH (or DC_CLI=/path/to/dc/dist/index.js) logged in to the Develop Center:
 //   dc auth login --token <DC_CLI_TOKEN> --base-url <DC address>   (or DC_TOKEN / DC_BASE_URL)
@@ -26,7 +25,6 @@ const Catalog = require('../src/core/catalog');
 const ROOT = path.join(__dirname, '..');
 const DRY = process.argv.includes('--dry-run');
 const VOICES = process.argv.includes('--voices');
-const GAMES = process.argv.includes('--games');
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
@@ -37,17 +35,16 @@ function dc(args) {
 }
 
 async function main() {
-  const raw = GAMES ? Catalog.loadGameIndex() : VOICES ? Catalog.loadVoiceIndex() : Catalog.loadIndex();
-  const index = { ...raw, characters: GAMES ? raw.games : VOICES ? raw.voicePacks : raw.characters };
-  const prefix = VOICES || GAMES ? `${Catalog.UPLOAD_PREFIX_ROOT}/${raw.release}` : Catalog.UPLOAD_PREFIX;
+  const raw = VOICES ? Catalog.loadVoiceIndex() : Catalog.loadIndex();
+  const index = { ...raw, characters: VOICES ? raw.voicePacks : raw.characters };
+  const prefix = VOICES ? `${Catalog.UPLOAD_PREFIX_ROOT}/${raw.release}` : Catalog.UPLOAD_PREFIX;
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pixelpet-catalog-'));
   // the archives, rebuilt from catalog/ and checked byte for byte against the index the app ships
-  if (GAMES) execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-game-packs.js'), '--check', '--out', out], { stdio: 'inherit' });
-  else if (VOICES) execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', out], { stdio: 'inherit' });
+  if (VOICES) execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', out], { stdio: 'inherit' });
   else execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-character-catalog.js'), '--zips-only', '--out', out], { stdio: 'inherit' });
   const files = index.characters.map((c) => path.join(out, c.file));
   // where the app downloads from (PIXELPET_CATALOG_URL overrides it, as in the app: a mirror, a test server)
-  const base = VOICES || GAMES ? (process.env.PIXELPET_CATALOG_URL || `${Catalog.CDN_ORIGIN}/${prefix}`) : Catalog.baseUrl({});
+  const base = VOICES ? (process.env.PIXELPET_CATALOG_URL || `${Catalog.CDN_ORIGIN}/${prefix}`) : Catalog.baseUrl({});
   console.log(`\n${files.length} archives → ${prefix}/ (served from ${base})`);
   if (DRY) {
     for (const c of index.characters) console.log(`  ${c.file.padEnd(22)} ${String(c.bytes).padStart(9)}  ${base}/${c.file}`);

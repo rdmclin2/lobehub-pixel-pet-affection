@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('game', {
   event: (ev, ctx) => ipcRenderer.invoke('game:event', { game: gameId, ev, ctx }),
   saveState: (state) => ipcRenderer.send('game:state', { game: gameId, state }),
   close: (reason) => ipcRenderer.send('game:close', { reason }),
+  openStore: () => ipcRenderer.send('game:open-store'),
+  onUpdate: on('game:update'),
   onSettings: on('game:settings'),
   onView: on('game:view'),
   onShown: on('game:shown'),

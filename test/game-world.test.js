@@ -54,11 +54,16 @@ test('randomSpot: a reachable walkable point within the distance band', () => {
   }
 });
 
-test('the 像素小院 pack: every thing she can use is reachable from where she starts', () => {
-  const m = require('../catalog/games/pixel-yard/manifest.json');
+// the published game packs live in rdmclin2/pixel-pet-mini-games (its build checks them too); with
+// `node scripts/fetch-game-packs.js` run, the real 像素小院 is checked here as well
+const fs = require('node:fs');
+const path = require('node:path');
+const PACKS = [path.join(__dirname, 'fixtures', 'games', 'mini-yard'), path.join(__dirname, '..', 'catalog', 'games', 'pixel-yard')].filter((d) => fs.existsSync(path.join(d, 'manifest.json')));
+for (const dir of PACKS) test(`the ${path.basename(dir)} pack: every thing she can use is reachable from where she starts`, () => {
+  const m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   const blocked = [...m.walk.blocked, ...m.objects.filter((o) => o.block).map((o) => o.block)];
   const w = GW.createWorld({ width: m.world.width, height: m.world.height, walk: { cell: m.walk.cell, area: m.walk.area, blocked } });
-  assert.ok(GW.walkableCount(w) > 2000);
+  assert.ok(GW.walkableCount(w) > 500);
   assert.equal(GW.walkableAt(w, ...m.spawn), true, 'spawn');
   for (const o of m.objects.filter((x) => x.use)) {
     assert.equal(GW.walkableAt(w, ...o.use.at), true, `${o.id}: where she stands to use it is walkable`);

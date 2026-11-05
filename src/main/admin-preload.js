@@ -112,9 +112,11 @@ contextBridge.exposeInMainWorld('petAdmin', {
   voiceDownload: (id) => ipcRenderer.invoke('voice-download', { id }),
   voiceDownloadCancel: (id) => ipcRenderer.invoke('voice-download-cancel', { id }),
   voiceRemove: (id) => ipcRenderer.invoke('voice-remove', { id }),
-  // 商店 → 小游戏 (core/game-store.js, docs/mini-games.md §7): the store's games, download / cancel / delete, and
-  // 开始玩 (opens the game window with her in it); progress arrives as `catalog-progress`
-  gameStore: () => ipcRenderer.invoke('game-store'),
+  // 商店 → 小游戏 (core/game-index.js, core/game-store.js, docs/mini-games.md §7): the store's games, download / update /
+  // cancel / delete, and 开始玩 (opens the game window with her in it); progress arrives as `catalog-progress`
+  gameStore: (opts) => ipcRenderer.invoke('game-store', { refresh: !!(opts && opts.refresh) }),
+  // a newer version of an installed game came out (main read the games repository's catalog)
+  onGameUpdates: on('game-updates'),
   gameDownload: (id) => ipcRenderer.invoke('game-download', { id }),
   gameDownloadCancel: (id) => ipcRenderer.invoke('game-download-cancel', { id }),
   gameRemove: (id) => ipcRenderer.invoke('game-remove', { id }),

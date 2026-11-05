@@ -1,7 +1,7 @@
 'use strict';
-// 商店 → 小游戏 (docs/mini-games.md §7): putting a downloaded game pack in place, telling which games are on disk,
-// and what each store row shows. Electron-free so it can be tested; src/main/catalog.js CatalogDownloader fetches
-// the archive and checks its size and sha256 against src/core/game-catalog.json, then hands it to installArchive().
+// 商店 → 小游戏 (docs/mini-games.md §7): putting a downloaded game pack in place (a newer version replaces the
+// older one) and telling which games, in which versions, are on disk. The rows: core/game-index.js. Electron-free so it can be tested; src/main/catalog.js CatalogDownloader fetches
+// the archive and checks its size and sha256 against core/game-index.js, then hands it to installArchive().
 //
 //   userData/games/<id>/manifest.json   + the pictures it names, at the top level (core/game-pack.js)
 //   userData/games/<id>/.catalog.json   the marker: which store entry, version, sha256, when
@@ -12,7 +12,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const GP = require('./game-pack');
-const { deriveState, STATE_LABEL } = require('./voice-store');
 
 const MARKER = '.catalog.json';
 
@@ -69,6 +68,8 @@ function listInstalled(roots) {
   return [...out.values()];
 }
 const installedIds = (roots) => new Set(listInstalled(roots).map((g) => g.id));
+// id → installed version (from its manifest), for 有更新 (core/game-index.js storeRows)
+const installedVersions = (roots) => new Map(listInstalled(roots).map((g) => [g.id, g.version]));
 
 // A downloaded archive (sha256 checked already) into `root` as <entry.id>/: unpacked into a hidden folder next to
 // it, checked, then renamed into place.
@@ -122,12 +123,4 @@ function writeProgress(root, id, progress) {
   fs.renameSync(tmp, f);
 }
 
-function storeRows(rows, downloads = []) {
-  const jobs = new Map(downloads.map((d) => [d.id, d]));
-  return rows.map((r) => {
-    const s = deriveState(r.installed, jobs.get(r.id));
-    return { ...r, ...s, stateLabel: STATE_LABEL[s.state] };
-  });
-}
-
-module.exports = { MARKER, progressFile, REASON_TEXT, checkFolder, listInstalled, installedIds, installArchive, remove, readProgress, writeProgress, storeRows };
+module.exports = { MARKER, progressFile, REASON_TEXT, checkFolder, listInstalled, installedIds, installArchive, remove, readProgress, writeProgress, installedVersions };

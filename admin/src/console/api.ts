@@ -337,24 +337,51 @@ export interface VoiceStoreResult {
   text?: string;
 }
 
-/** 商店 → 小游戏 (core/catalog.js listGames + core/game-store.js storeRows) */
+/** 商店 → 小游戏 (core/game-index.js storeRows via src/main/games.js GameIndex) */
 export interface StoreGameRow {
   bytes: number;
+  /** the newest version's notes (the games repository's CHANGELOG.md) */
+  changelog: string;
   credit: string;
   description: string;
+  engine: string;
   error?: string;
   features: string[];
   id: string;
-  installed: boolean;
+  /** installed version, or null */
+  installedVersion: string | null;
   installing?: boolean;
+  minAppVersion: string | null;
   name: string;
   percent?: number;
-  /** relative to src/renderer: catalog/games/<id>.webp (ships with the app) */
-  picture: string | null;
+  /** an <img> src: the shipped picture (../renderer/…) or a cached remote one (data:) */
+  pictureSrc: string | null;
+  /** the game's source in the games repository (rdmclin2/pixel-pet-mini-games) */
+  repo: string;
   sizeLabel: string;
-  state: 'downloading' | 'installed' | 'remote';
+  state: 'downloading' | 'installed' | 'remote' | 'update' | 'unsupported';
   stateLabel: string;
+  supported: boolean;
+  unsupportedReason: 'app' | 'engine' | null;
+  /** installed, a newer version is out but this app cannot play it */
+  updateBlocked?: 'app' | 'engine';
   version: string;
+}
+
+export interface GameUpdate {
+  changelog: string;
+  from: string;
+  id: string;
+  name: string;
+  to: string;
+}
+
+export interface GameStoreState {
+  checkedAt: number | null;
+  checkError: string | null;
+  dir: string;
+  games: StoreGameRow[];
+  last: string | null;
 }
 
 export interface GameStoreResult {
@@ -363,7 +390,8 @@ export interface GameStoreResult {
   name?: string;
   ok: boolean;
   reason?: string;
-  store?: { dir: string; games: StoreGameRow[]; last: string | null };
+  store?: GameStoreState;
+  updatedFrom?: string | null;
   text?: string;
 }
 
@@ -510,7 +538,8 @@ export interface PetAdminApi {
   voiceDownload: (id: string) => Promise<VoiceStoreResult>;
   voiceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   voiceRemove: (id: string) => Promise<VoiceStoreResult>;
-  gameStore: () => Promise<{ dir: string; games: StoreGameRow[]; last: string | null }>;
+  gameStore: (opts?: { refresh?: boolean }) => Promise<GameStoreState>;
+  onGameUpdates: (cb: (u: GameUpdate[]) => void) => () => void;
   gameDownload: (id: string) => Promise<GameStoreResult>;
   gameDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
   gameRemove: (id: string) => Promise<GameStoreResult>;
