@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  DoorOpen,
   Gamepad2,
   House,
   Settings,
@@ -29,6 +30,7 @@ import {
 /** Rail and tile icons named in core/settings-schema.js RAIL / NAV. */
 export const ICONS: Record<string, LucideIcon> = {
   AudioLines,
+  DoorOpen,
   Gamepad2,
   House,
   Settings,

@@ -34,7 +34,7 @@ const RAIL = [
 
 const NAV = [
   { key: 'chat', section: 'chat', label: '聊天', items: [{ page: 'chat', label: '聊天', icon: 'MessageCircle' }] },
-  { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }] },
+  { key: 'home', section: 'home', label: '小屋', items: [{ page: 'overview', label: '小屋', icon: 'House' }, { page: 'room', label: '她的房间', icon: 'DoorOpen' }] },
   { key: 'characters', section: 'characters', label: '角色', items: [{ page: 'characters', label: '角色图鉴', icon: 'Users' }] },
   { key: 'store', section: 'store', label: '商店', items: [{ page: 'store', label: '商店', icon: 'Store' }] },
   {
@@ -85,6 +85,8 @@ const NAV = [
 
 const PAGES = {
   overview: { title: '小屋', description: '她现在的样子、你们的关系，和今天的陪伴状态。' },
+  // 房间小游戏 (docs/room.md): one level below 小屋 (R-05)
+  room: { title: '她的房间', description: '在她的房间里陪她睡觉、工作、看手机、听音乐、打游戏；每件事都会改变她的精力、心情、专注和饱腹。' },
   characters: { title: '角色图鉴', description: '遇见过的、还没遇见的她们。点开一位，看她的故事、给她换衣服、调她的模型和设定。' },
   store: { title: '商店', description: '下载更多内容：现在有角色，以后还会有声音包等。下载好的角色出现在角色图鉴里。' },
   chat: { title: '聊天', description: '和 AI 日常聊天：可以发图片、换模型，会话保存在这台电脑上。和桌宠的对话互不影响。' },

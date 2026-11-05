@@ -5,6 +5,7 @@ import { ChatPage } from './pages/Chat';
 import { CharacterDetailPage, CharactersPage, PacksPage } from './pages/Characters';
 import { OverviewPage } from './pages/Home';
 import { HubPage } from './pages/Hub';
+import { RoomPage } from './pages/Room';
 import { DancesPage } from './pages/Dances';
 import { StorePage } from './pages/Store';
 import { GameDetailPage } from './pages/StoreGames';
@@ -18,6 +19,8 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
   switch (page) {
     case 'overview':
       return <OverviewPage navigate={navigate} />;
+    case 'room':
+      return <RoomPage key="room" />;
     case 'characters':
       return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'store':

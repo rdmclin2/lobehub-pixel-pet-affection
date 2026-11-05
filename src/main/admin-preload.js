@@ -92,6 +92,13 @@ contextBridge.exposeInMainWorld('petAdmin', {
   openDataFolder: () => ipcRenderer.invoke('open-data-folder'),
   // the pet on the desktop plays one action (happy, pat, play …) — 和她互动 on her stage
   cue: (state) => ipcRenderer.invoke('admin-cue', { state }),
+  // 房间小游戏 (docs/room.md): the room shown (切换房间类型) and its activities; the new state also comes as onState
+  room: {
+    state: () => ipcRenderer.invoke('room-state'),
+    setTheme: (id) => ipcRenderer.invoke('room-theme', { id }),
+    start: (kind) => ipcRenderer.invoke('room-start', { kind }),
+    stop: () => ipcRenderer.invoke('room-stop'),
+  },
   // the old ⋯ menu (T-2718): 动作 (cue above, plus 'turn'), 回到右下角, 退出; 话题 and 聊天记录 (the same
   // channels the pet window used: a topic is started by the pet, history comes filtered from main)
   home: () => ipcRenderer.invoke('admin-home'),

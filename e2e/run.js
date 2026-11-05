@@ -11,6 +11,7 @@
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
+//   scenario "room" -> 房间小游戏: 小屋 → 她的房间, 切换房间类型 (5 themes, 4 即将开放), 睡觉 / 工作 / 看手机 / 听音乐 / 打游戏 each changing her numbers (saved), switching, relaunch
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
 //   scenario "gamedocs" -> 小游戏 docs pictures (time × weather, her places, interactions, the store) and the demo clip, written to docs/img/mini-games/
 //   scenario "game"     -> 小游戏 (docs/mini-games.md): 商店 → 小游戏 downloads 像素小院 (a local mirror), tray / panel ⌂ / Ctrl+Shift+H open it; Pixi renders; time and weather; she roams, walks to a click, uses things; quests give affection; persists
@@ -7131,6 +7132,8 @@ async function vrmUi() {
 // ⏻ 退出 on the toolbar (T-2827): e2e/quit-button.js
 const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, step, launch });
 const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step, launch });
+// 房间小游戏 (docs/room.md, T-6174): 小屋 → 她的房间, 切换房间类型, the five activities and her numbers
+const roomScenario = () => require('./room')({ ROOT, OUT, FAKE_LH, step, launch });
 // 小游戏 (docs/mini-games.md): the store's game packs played in the game window — download, entry, rendering, time / weather, her walking, things, quests, persistence
 const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
 const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
@@ -12747,6 +12750,7 @@ async function interjectScenario() {
   if (which === 'game' || which === 'all') await miniGameScenario()();
   if (which === 'gamedocs') await gameDocsScenario()(); // 小游戏 docs pictures + demo clip into docs/img/mini-games/ (ffmpeg x11grab; xvfb-run -s "-screen 0 1280x800x24"), not in `all`
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'room' || which === 'all') await roomScenario()();
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'permissions' || which === 'all') await permissionsScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();

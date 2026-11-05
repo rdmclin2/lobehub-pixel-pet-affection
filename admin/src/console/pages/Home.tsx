@@ -1,6 +1,6 @@
 /** 小屋 (overview): her on her stage, how close you are, and today's companionship at a glance. */
 import { Alert, Block, Button, createStaticStyles, cssVar, Flexbox, Icon, Tag, Text } from '@lobehub/ui';
-import { ChevronRight, Lock, Mic, MessageCircleHeart, Shirt, UsersRound, Volume2, Webhook } from 'lucide-react';
+import { ChevronRight, DoorOpen, Lock, Mic, MessageCircleHeart, Shirt, UsersRound, Volume2, Webhook } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { RosterRow } from '../api';
@@ -76,7 +76,46 @@ const styles = createStaticStyles(({ css }) => ({
     color: inherit;
     text-decoration: none;
   `,
+  roomThumb: css`
+    flex: none;
+    width: 160px;
+    aspect-ratio: 16 / 9;
+    border-radius: ${cssVar.borderRadius};
+    object-fit: cover;
+  `,
 }));
+
+/** 她的房间 (docs/room.md): the way into the room, with a look at it. */
+const RoomEntry = () => {
+  const { room } = useStore();
+  const t = room?.themes.find((x) => x.id === room.theme);
+  if (!room || !t) return null;
+  const busy = room.view?.activity ? room.activities.find((a) => a.id === room.view!.activity!.kind)?.label : null;
+  return (
+    <a className={styles.link} data-home-room href="#/room">
+      <Block clickable gap={16} horizontal padding={12} style={{ alignItems: 'center' }} variant="outlined">
+        {t.art ? <img alt={t.name} className={styles.roomThumb} src={`../renderer/${t.art.background}`} /> : <div className={styles.chipIcon}><Icon icon={DoorOpen} size={18} /></div>}
+        <Flexbox flex={1} gap={4} style={{ minWidth: 0 }}>
+          <Flexbox align="center" gap={6} horizontal>
+            <Text strong>她的房间</Text>
+            {busy && (
+              <Tag color="processing" size="small">
+                正在{busy}
+              </Tag>
+            )}
+          </Flexbox>
+          <Text ellipsis type="secondary">
+            {t.name}：陪她睡觉、工作、看手机、听音乐、打游戏
+          </Text>
+          <Text fontSize={12} type="secondary">
+            {room.themes.length} 种房间，{room.themes.filter((x) => x.status === 'open').length} 间已开放
+          </Text>
+        </Flexbox>
+        <Icon icon={ChevronRight} size={16} />
+      </Block>
+    </a>
+  );
+};
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -157,6 +196,9 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
               <Button data-go-looks icon={Shirt} onClick={() => navigate(`/characters/${cur.id}`)}>
                 换装扮
               </Button>
+              <Button data-go-room icon={DoorOpen} onClick={() => navigate('/room')}>
+                去她的房间
+              </Button>
               <Button onClick={() => navigate('/characters')}>换一位陪你</Button>
             </Flexbox>
             <Text fontSize={12} type="secondary">
@@ -167,6 +209,8 @@ export const OverviewPage = ({ navigate }: { navigate: (p: string) => void }) =>
       ) : (
         <Alert description="先在桌宠窗口里选一位角色并完成唤醒，她会出现在这里。" showIcon title="还没有唤醒桌宠" type="info" />
       )}
+
+      <RoomEntry />
 
       <Flexbox gap={12} style={{ marginBlockStart: 16 }}>
         <Text as="h2" fontSize={18} strong style={{ margin: 0 }}>

@@ -15,6 +15,7 @@ const { Store } = require('../core/store');
 const { ChatLog } = require('../core/chat-log');
 const { SettingsStore, petScale, clampScale } = require('../core/settings');
 const { PetService } = require('./pet-service');
+const { RoomService } = require('./room-service');
 const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS, getSpecies } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
@@ -174,10 +175,11 @@ const broadcast = createBroadcast({ pets, admin: () => admin });
 // Everything the console shows, derived again on every change: one source (PetService), no copies.
 // voicePackStateOf(base): her 语音包 in force (set in wire() next to set-voice-pack / voice-pack-state)
 let voicePackStateOf = null;
+let roomSvc = null; // 房间小游戏 (src/main/room-service.js), made with the service
 function adminState() {
   const view = service.view();
   const settings = service.getSettings();
-  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id), voicePack: voicePackStateOf }), packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
+  return { view: adminView(view), settings, roster: buildRoster(view, settings, { characters: service.characterList().map((e) => ({ ...e, pack: service._characterInfo(e).pack })), look: (id) => service.lookFor(id, 'daily'), outfitsOf: (id) => service.outfitsOf(id), voicePack: voicePackStateOf }), room: roomSvc ? roomSvc.state() : null, packs: packRows(packStore.packs), catalog: service.catalogList(), downloads: catalog ? catalog.state() : [], update: updater.state, apiStatus: apiServer ? apiServer.status() : null };
 }
 let adminPush = null;
 // What the console was last sent (JSON): a push that changes nothing it shows (most heartbeats, the second
@@ -1211,6 +1213,16 @@ function wire() {
   }));
   // 和她互动 in the settings window: the pet on the desktop answers with the same action (/anim's whitelist)
   ipcMain.handle('admin-cue', adminOnly(({ state }) => (ADMIN_CUES.includes(state) ? askRenderer('anim', { state }) : { ok: false, reason: 'bad-state' })));
+  // 房间小游戏 (docs/room.md): 切换房间类型, start / end an activity. Starting one in her own room while she is the
+  // pet: the pet on the desktop plays the same action.
+  ipcMain.handle('room-state', adminOnly(() => roomSvc.state()));
+  ipcMain.handle('room-theme', adminOnly(({ id }) => roomSvc.setTheme(String(id || ''))));
+  ipcMain.handle('room-start', adminOnly(({ kind }) => {
+    const r = roomSvc.start(String(kind || ''));
+    if (r.ok && !r.same && r.room && r.room.owner.current && CUE_STATES.includes(r.action)) askRenderer('anim', { state: r.action }).catch(() => {});
+    return r;
+  }));
+  ipcMain.handle('room-stop', adminOnly(() => roomSvc.stop()));
   // the old ⋯ menu, now in the settings window (T-2718): 回到右下角 (the pet window stops flying / walking
   // and goes back to its corner) and 退出 (asked once more in the window first)
   ipcMain.handle('admin-home', adminOnly(async () => {
@@ -1440,6 +1452,8 @@ app.whenReady().then(() => {
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
   service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  // 房间小游戏 (docs/room.md): 小屋 → 房间; e2e runs shorten a round with PIXELPET_ROOM_ROUND_MS
+  roomSvc = new RoomService(service, { roundMs: (TEST_MODE && Number(process.env.PIXELPET_ROOM_ROUND_MS)) || undefined });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

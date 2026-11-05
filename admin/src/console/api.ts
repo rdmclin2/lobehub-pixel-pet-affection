@@ -441,10 +441,85 @@ export interface AdminState {
   catalog?: CatalogRow[];
   downloads?: DownloadProgress[];
   packs: PackRow[];
+  /** 房间小游戏 (src/main/room-service.js state, docs/room.md); null before the pet exists */
+  room?: RoomState | null;
   roster: RosterRow[];
   settings: Record<string, any>;
   update: any;
   view: any;
+}
+
+/** 房间小游戏 (src/core/room.js): one activity definition */
+export type RoomStatId = 'energy' | 'mood' | 'focus' | 'fullness';
+export interface RoomActivity {
+  action: string;
+  deltas: Partial<Record<RoomStatId, number>>;
+  hotspot: string;
+  id: string;
+  label: string;
+  lines: { doing: string[]; done: string };
+  needs: number;
+  verb: string;
+}
+export interface RoomBox {
+  h: number;
+  label?: string;
+  w: number;
+  x: number;
+  y: number;
+}
+export interface RoomSpot {
+  h: number;
+  lying?: boolean;
+  x: number;
+  y: number;
+}
+/** One room per default character; `soon` = 即将开放 (preview only) */
+export interface RoomTheme {
+  art?: { background: string; height: number; width: number };
+  blurb: string;
+  character: string;
+  hotspots?: Record<string, RoomBox>;
+  id: string;
+  lines?: Record<string, string[] | { doing: string[]; done: string }>;
+  motifs: string[];
+  name: string;
+  outfit?: string;
+  palette: { accent: string; base: string; primary: string; trim: string };
+  props?: Record<string, RoomBox>;
+  spots?: Record<string, RoomSpot>;
+  status: 'open' | 'soon';
+}
+export interface RoomSettled {
+  at: number;
+  complete: boolean;
+  deltas: Partial<Record<RoomStatId, number>>;
+  fraction: number;
+  kind: string;
+  line: string;
+}
+export interface RoomView {
+  activity: null | { kind: string; progress: number; roundMs: number; startedAt: number };
+  last: RoomSettled | null;
+  roundMs: number;
+  stats: Record<RoomStatId, number>;
+  totals: Record<string, { completed: number; count: number; ms: number }>;
+}
+export interface RoomState {
+  activities: RoomActivity[];
+  owner: { character: string; current: boolean; met: boolean; name: string | null };
+  stats: { id: RoomStatId; label: string }[];
+  theme: string;
+  themes: RoomTheme[];
+  view: RoomView | null;
+}
+export interface RoomResult {
+  line?: string | null;
+  ok: boolean;
+  reason?: string;
+  room: RoomState | null;
+  same?: boolean;
+  settled?: RoomSettled | null;
 }
 
 export interface BootData extends AdminState {
@@ -486,6 +561,12 @@ export interface PetAdminApi {
   checkUpdate: () => Promise<any>;
   confirmAge: (adult: boolean) => Promise<any>;
   cue: (state: string) => Promise<{ ok: boolean; reason?: string }>;
+  room: {
+    setTheme: (id: string) => Promise<RoomResult>;
+    start: (kind: string) => Promise<RoomResult>;
+    state: () => Promise<RoomState>;
+    stop: () => Promise<RoomResult>;
+  };
   /** `species`: whose wardrobe (a character id); none = the current character's. */
   equipOutfit: (id: string, species?: string) => Promise<any>;
   exportPack: (id: string) => Promise<any>;
