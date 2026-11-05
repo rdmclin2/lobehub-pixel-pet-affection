@@ -7,7 +7,7 @@ import { PageHeader, PageTabs, Surface } from '@lobehub/ui/dashboard';
 import { Check, Download, FolderOpen, Heart, Import, Lock, Play, Shirt, Square, Store, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { api, reasonText, type VrmFigureLibrary, type VrmLibraryStatus, type VrmMotionRow, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow } from '../api';
+import { api, reasonText, type VrmFigureLibrary, type VrmLibraryStatus, type VrmMotionRow, type CatalogRow, type DownloadProgress, type OutfitRow, type PackOption, type PackRow, type RosterRow, type VoicePackOption } from '../api';
 import { ask } from '../fields';
 import { CharacterStage } from '../stage/CharacterStage';
 import { HeartMeter } from '../stage/HeartMeter';
@@ -382,8 +382,9 @@ export const CharactersPage = ({ navigate }: { navigate: (p: string) => void }) 
                 </Text>
               </Flexbox>
               <HeartMeter c={c} compact />
-              <Text data-row-meta={c.id} ellipsis fontSize={12} type="secondary">
-                {[c.sourceLabel, c.pack?.outfits ? `${c.pack.outfits} 套服饰` : '', c.voicePack ? `语音包 ${c.voicePack.lines} 句` : ''].filter(Boolean).join(' · ')}
+              {/* the 语音包 in force (专属 / 通用·男 / 通用·女), its name and lines on hover: the card line is short */}
+              <Text data-row-meta={c.id} ellipsis fontSize={12} title={c.voicePack ? `语音包：${packText(c.voicePack)}（${c.voicePack.sourceLabel}）` : undefined} type="secondary">
+                {[c.sourceLabel, c.pack?.outfits ? `${c.pack.outfits} 套服饰` : '', c.voicePack ? `语音包 ${c.voicePack.label}` : ''].filter(Boolean).join(' · ')}
               </Text>
               <Flexbox align="center" gap={8} horizontal justify="space-between" style={{ marginBlockStart: 'auto' }}>
                 <Button data-detail={c.id} href={`#/characters/${c.id}`} size="small" type="text">
@@ -478,6 +479,124 @@ const ModelTab = ({ c }: { c: RosterRow }) => {
         {m.pending && <Alert title={`待应用：她的 agent 还在用 ${modelLabel(c, m.applied)}，下次她说话前切到 ${modelLabel(c, m.current)}`} type="warning" />}
       </Flexbox>
     </Surface>
+  );
+};
+
+const GENDER_ZH: Record<string, string> = { female: '女', male: '男' };
+const GROUP_LABEL: Record<VoicePackOption['group'], string> = { generic: '通用语音包', other: '其他角色的语音包', own: '专属语音包', style: '风格语音包（已下载）' };
+
+/** One pack as the picker and her page name it: 「专属 · 克洛蒂语音 · 219 句」. */
+const packText = (p: { label: string; lines: number; name: string }) => [p.label, p.name, p.lines ? `${p.lines} 句` : '还没有录好的台词'].join(' · ');
+
+/** Why this pack: 手动指定 / 自动（专属）/ 自动回退（按性别：男）. */
+const sourceText = (c: RosterRow) => {
+  const v = c.voicePack;
+  if (!v) return '';
+  if (v.source === 'user') return '手动指定';
+  if (v.source === 'default') return '自动 · 跟随我的语音包（设置 → 语音包）';
+  if (v.source === 'own') return '自动 · 她有专属语音包';
+  return `自动回退 · 按性别（${GENDER_ZH[c.voicePackPick.gender ?? 'female']}）用通用语音包`;
+};
+
+/**
+ * 语音: which 语音包 she uses. 不使用 = none, every line read by the engine; 内置 (auto) = her own one, else the
+ * generic pack of her gender; or one picked here — the 风格语音包 downloaded from 商店 first. Store packs not on this
+ * machine are listed disabled with a link to 商店 → 语音包. A pick is saved (settings.tts.voicePackByCharacter) and is
+ * in force from her next line (main.js set-voice-pack); deleting the pack she uses puts her back on 内置.
+ */
+const VoiceTab = ({ c }: { c: RosterRow }) => {
+  const { merge } = useStore();
+  const [busy, setBusy] = useState(false);
+  const pick = c.voicePackPick;
+  const v = c.voicePack;
+  const tts = c.voice?.tts;
+  const remote = pick.notDownloaded ?? [];
+  type Opt = { disabled?: boolean; label: string; value: string };
+  const groups: { label: string; options: Opt[] }[] = (['style', 'own', 'generic', 'other'] as const)
+    .map((g) => ({ label: GROUP_LABEL[g], options: pick.options.filter((o) => o.group === g).map((o) => ({ label: packText(o), value: o.id })) }))
+    .filter((g) => g.options.length > 0);
+  if (remote.length) groups.push({ label: '未下载（先去 商店 → 语音包 下载）', options: remote.map((o) => ({ disabled: true, label: `${o.name} · 未下载`, value: `remote:${o.id}` })) });
+  const autoText = pick.userChoice && pick.userChoice !== 'auto' ? '内置（自动 · 跟随我的语音包）' : '内置（自动 · 专属或按性别）';
+  const options = [
+    { label: '不使用（全部用引擎朗读）', value: 'none' },
+    { label: `${autoText}${v && pick.choice === 'auto' ? ` · 现在是 ${v.label}` : ''}`, value: 'auto' },
+    ...groups,
+  ];
+  const nameOf = (id: string) => (id === 'none' ? '不使用' : id === 'auto' ? '内置（自动）' : pick.options.find((o) => o.id === id)?.name ?? id);
+  const onPick = async (id: string) => {
+    if (id.startsWith('remote:')) return;
+    setBusy(true);
+    try {
+      const r = await api().setVoicePack(c.base, id);
+      if (r && r.settings) merge({ settings: r.settings });
+      if (r && r.ok) toast.success(`${c.nameZh} 的语音包：${nameOf(id)}`);
+      else toast.error({ description: reasonText(r), title: '没能切换语音包' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Flexbox gap={16}>
+      <Surface description="她说话用哪个语音包。录好的台词直接播放，其余的用语音包的音色朗读。切换后她的下一句就用新的语音包，不用重启。" title="语音包">
+        <Flexbox gap={12}>
+          <Flexbox align="center" gap={8} horizontal wrap="wrap">
+            <div data-voice-pack-choice={pick.choice} data-voice-pack-select={c.base} style={{ flex: '1 1 320px', maxWidth: 420 }}>
+              <Select aria-label="语音包" disabled={busy} loading={busy} onChange={(x) => x && onPick(String(x))} options={options} style={{ width: '100%' }} value={pick.choice} />
+            </div>
+            <Button data-voice-pack-store icon={Store} onClick={() => { location.hash = '#/store/voices'; }}>
+              {remote.length ? `去商店下载（${remote.length} 个未下载）` : '去商店看看'}
+            </Button>
+          </Flexbox>
+          <Flexbox data-voice-pack-current={c.base} gap={12}>
+            <Info label="正在用">
+              {v ? (
+                <Flexbox align="center" gap={6} horizontal wrap="wrap">
+                  <Text>{v.name}</Text>
+                  <Tag color={v.kind === 'generic' ? 'processing' : v.kind === 'style' ? 'purple' : 'success'} data-voice-pack-label>
+                    {v.label}
+                  </Tag>
+                </Flexbox>
+              ) : (
+                <Text data-voice-pack-none>{pick.choice === 'none' ? '不使用语音包，全部用她自己的音色朗读' : '没有语音包，用她自己的音色朗读'}</Text>
+              )}
+            </Info>
+            {v && (
+              <Info label="来源">
+                <Text data-voice-pack-source={v.source}>{sourceText(c)}</Text>
+              </Info>
+            )}
+            {v && <Info label="台词">{v.lines ? `${v.lines} 句录好的台词 · ${v.engineLabel} · ${v.store ? '商店下载' : v.builtIn ? '内置' : '自定义'}；没录到的台词用 ${v.engineLabel} 朗读` : `还没有录好的台词，全部用 ${v.engineLabel} 朗读`}</Info>}
+            {pick.engineVoice && (
+              <Info label="朗读音色">
+                {`${pick.engineVoice.engine} · ${pick.engineVoice.voiceId ?? '默认'}${pick.engineVoice.fromPack ? '（来自语音包）' : '（她自己的）'}`}
+              </Info>
+            )}
+            {v?.credit && <Info label="音色署名">{v.credit}</Info>}
+          </Flexbox>
+          {pick.missing && (
+            <Alert
+              action={<Button onClick={() => { location.hash = '#/store/voices'; }} size="small">去商店</Button>}
+              data-voice-pack-missing={pick.missing}
+              showIcon
+              title={`你选的语音包「${remote.find((o) => o.id === pick.missing)?.name ?? pick.missing}」已经不在了（可能被删除），先用内置语音包；重新下载后自动恢复。`}
+              type="warning"
+            />
+          )}
+        </Flexbox>
+      </Surface>
+      <Surface title="角色音色">
+        <Flexbox gap={12}>
+          <Info label="引擎">
+            <Flexbox gap={4} horizontal wrap="wrap">
+              {tts ? Object.keys(tts).map((k) => <Tag key={k}>{k}</Tag>) : '--'}
+            </Flexbox>
+          </Info>
+          <Text fontSize={12} type="secondary">
+            角色音色写在角色文件里，只读。导入的通用语音包放进 设置 → 语音包 的文件夹，重新读取后就能在这里选。
+          </Text>
+        </Flexbox>
+      </Surface>
+    </Flexbox>
   );
 };
 
@@ -1337,7 +1456,6 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
   // 试穿: one of her outfits on her stage, not saved until 穿上
   const tryOpt: OutfitRow | undefined = trying ? (c.outfits ?? []).find((o) => o.id === trying && !o.locked) : undefined;
   const outfit: OutfitRow | undefined = (c.outfits ?? []).find((o) => o.equipped);
-  const tts = c.voice?.tts;
   const wearing = c.pack ? c.pack.name : c.kind === 'video' ? '原版动画' : c.kindLabel;
   return (
     <>
@@ -1401,22 +1519,7 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
               { content: <ModelTab c={c} />, label: '模型', value: 'model' },
               { content: <RoleTab c={c} />, label: '个性化设定', value: 'role' },
               {
-                content: (
-                  <Surface title="语音">
-                    <Flexbox gap={12}>
-                      <Info label="语音包">{c.voicePack ? `${c.voicePack.name} · ${c.voicePack.engineLabel} · ${c.voicePack.lines} 句 · ${c.voicePack.builtIn ? '内置' : '自定义'}` : '没有语音包'}</Info>
-                      {c.voicePack?.credit && <Info label="音色署名">{c.voicePack.credit}</Info>}
-                      <Info label="角色音色">
-                        <Flexbox gap={4} horizontal wrap="wrap">
-                          {tts ? Object.keys(tts).map((k) => <Tag key={k}>{k}</Tag>) : '--'}
-                        </Flexbox>
-                      </Info>
-                      <Text fontSize={12} type="secondary">
-                        角色音色写在角色文件里，只读。语音包可以在 设置 → 语音包 里重新读取或替换。
-                      </Text>
-                    </Flexbox>
-                  </Surface>
-                ),
+                content: <VoiceTab c={c} />,
                 label: '语音',
                 value: 'voice',
               },

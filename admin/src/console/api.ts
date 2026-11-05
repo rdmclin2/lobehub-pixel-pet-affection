@@ -18,7 +18,9 @@ export type FieldType =
   | 'visitors'
   | 'adult'
   | 'local'
-  | 'perCharacter';
+  | 'perCharacter'
+  /** 我的语音包 (settings.tts.voicePack): set through set-user-voice-pack */
+  | 'voicePack';
 
 export interface FieldOption {
   label: string;
@@ -156,10 +158,69 @@ export interface RosterRow {
   title: string;
   vendor: string;
   voice: null | { lang?: string; tts?: any };
-  voicePack: null | { builtIn: boolean; credit: string; engine: string; engineLabel: string; id: string; lines: number; name: string };
+  /** the 语音包 in force for her base (main.js voicePackState): label 专属 / 通用·男 / 通用·女; source user | own | generic */
+  voicePack: null | VoicePackRef;
+  /** the 语音包 picker: her pick ('auto' or a pack id) and what can be picked */
+  voicePackPick: VoicePackPick;
   personality: string;
   packKinds: { builtin: number; kind: string; label: string; user: number }[];
   outfits: OutfitRow[] | null;
+}
+
+export interface VoicePackRef {
+  builtIn: boolean;
+  credit: string;
+  engine: string;
+  engineLabel: string;
+  gender: 'female' | 'male' | null;
+  id: string;
+  kind: 'character' | 'generic' | 'style';
+  /** 专属 / 通用·男 / 通用·女 / 风格·可爱 / 「某某 的专属」 */
+  label: string;
+  lines: number;
+  name: string;
+  /** downloaded from 商店 → 语音包 */
+  store: boolean;
+  /** user: picked for her · default: 我的语音包 (settings.tts.voicePack) · own: her own (自动) · generic: 自动回退 to the generic pack of her gender */
+  source: 'default' | 'generic' | 'own' | 'user';
+  sourceLabel: string;
+}
+
+export interface VoicePackOption {
+  builtIn: boolean;
+  character: string | null;
+  gender: 'female' | 'male' | null;
+  group: 'generic' | 'other' | 'own' | 'style';
+  id: string;
+  kind: 'character' | 'generic' | 'style';
+  label: string;
+  lines: number;
+  name: string;
+  store: boolean;
+  style: string | null;
+}
+
+/** a 商店 → 语音包 entry not downloaded yet: listed in the picker, not pickable */
+export interface VoicePackRemote {
+  gender: 'female' | 'male' | null;
+  id: string;
+  name: string;
+  style: string | null;
+  styleLabel: string;
+}
+
+export interface VoicePackPick {
+  /** 'none' (不使用) · 'auto' (内置) · a pack id */
+  choice: string;
+  /** 我的语音包 in force ('auto' or a pack id): the default of every character without a pick of her own */
+  userChoice: string;
+  engineVoice: null | { engine: string; fromPack: boolean; voiceId: string | null };
+  gender: 'female' | 'male' | null;
+  genderSource: string | null;
+  /** a pick whose pack is gone (counts as 自动) */
+  missing: string | null;
+  notDownloaded: VoicePackRemote[];
+  options: VoicePackOption[];
 }
 
 export interface UserFace {
@@ -237,6 +298,43 @@ export interface StoreDanceRow {
   /** relative to src/renderer: catalog/dances/<id>.jpg */
   picture: string | null;
   sizeLabel: string;
+}
+
+/** 商店 → 语音包 (core/catalog.js listVoicePacks + core/voice-store.js storeRows) */
+export interface StoreVoiceRow {
+  bytes: number;
+  credit: string;
+  description: string;
+  engine: string;
+  error?: string;
+  gender: 'female' | 'male' | null;
+  id: string;
+  installed: boolean;
+  installing?: boolean;
+  lines: number;
+  name: string;
+  percent?: number;
+  /** relative to src/renderer: catalog/voices/<id>.ogg (the 试听 line, ships with the app) */
+  sample: { file: string; seconds?: number; text: string };
+  seconds: number;
+  sizeLabel: string;
+  state: 'downloading' | 'installed' | 'remote';
+  stateLabel: string;
+  style: string;
+  styleLabel: string;
+  version: string;
+  voiceId: string;
+}
+
+export interface VoiceStoreResult {
+  errors?: string[];
+  id?: string;
+  name?: string;
+  ok: boolean;
+  reason?: string;
+  settings?: any;
+  store?: { dir: string; voicePacks: StoreVoiceRow[] };
+  text?: string;
 }
 
 /** `catalog-progress` (src/main/catalog.js) */
@@ -321,6 +419,11 @@ export interface PetAdminApi {
   relaunch: () => Promise<any>;
   release: (opts: { deleteAgent: boolean }) => Promise<any>;
   reloadVoicePacks: () => Promise<{ errors: string[]; settings: any }>;
+  /** 按角色切换语音包 (main.js set-voice-pack): a pack id or 'auto'; saved and in force for her next line */
+  setVoicePack: (characterId: string, packId: string) => Promise<{ ok: boolean; reason?: string; settings?: any; state?: any }>;
+  voicePackState: (characterId?: string) => Promise<{ ok: boolean; reason?: string; state?: any }>;
+  /** 我的语音包 (main.js set-user-voice-pack): a pack id (e.g. generic-male) or 'auto'; saved in settings.tts.voicePack */
+  setUserVoicePack: (packId: string) => Promise<{ choice?: string; ok: boolean; reason?: string; settings?: any; state?: any }>;
   removePack: (id: string) => Promise<any>;
   downloadCharacter: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   cancelDownload: (id: string) => Promise<{ ok: boolean }>;
@@ -373,6 +476,10 @@ export interface PetAdminApi {
   danceStore: () => Promise<{ dances: StoreDanceRow[]; downloads: DownloadProgress[]; vrm: boolean }>;
   danceDownload: (id: string) => Promise<{ id?: string; name?: string; ok: boolean; reason?: string; text?: string }>;
   danceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  voiceStore: () => Promise<{ dir: string; voicePacks: StoreVoiceRow[] }>;
+  voiceDownload: (id: string) => Promise<VoiceStoreResult>;
+  voiceDownloadCancel: (id: string) => Promise<{ ok: boolean }>;
+  voiceRemove: (id: string) => Promise<VoiceStoreResult>;
   whoami: () => Promise<any>;
   /** the LobeHub account's avatar as a data: URL (null: none, or not reachable and never cached) — T-2839 */
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
@@ -579,6 +686,7 @@ export const REASON: Record<string, string> = {
   unknown: '找不到这一项',
   'not-found': '找不到这一项（可能已经删掉了）',
   'unknown-character': '没有这个角色',
+  'unknown-pack': '这个语音包已经不在了，先重新读取语音包',
   locked: '这套服饰还没解锁',
   hidden: '这套服饰需要先打开成人向内容',
   unavailable: '这位角色没有这套服饰',

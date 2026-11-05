@@ -75,13 +75,42 @@ test('pose guard reads clips back from .vrma and sums a library: hits, armsOut w
   assert.equal(sum.byKind.idle.vmd, 1);
   assert.equal(sum.byKind.idle.mixamo, 1);
   const lines = G.formatReport(sum);
-  assert.match(lines[lines.length - 1], /1 hit in 3 clips — FAILED/);
+  assert.match(lines[lines.length - 1], /1 T-pose hit, 1 stiff hit, 1 raised-arms base pose in 3 clips — FAILED/, 'a held T-pose is stiff with its arms out too');
   // the bake's guard: armsOut covers runs up to its maxS only
   const { poseGuard } = require('../scripts/vrm-bake');
   const g = poseGuard(dir, dir, { clips: {}, dances: {} });
   assert.equal(g.sum.hits, 1);
   fs.writeFileSync(path.join(dir, 'dances', 'library.json'), JSON.stringify({ dances: { d1: { file: 'd1/dance.vrma', src: { motion: 'd.vmd' }, armsOut: { maxS: 0.2, why: 'too short' } } } }));
   assert.equal(poseGuard(dir, dir, { clips: {}, dances: {} }).sum.hits, 2, 'a run longer than maxS is a hit again');
+});
+
+test('T-5098 pose guard: arms held out stiff (penguin_stand) — ≥ 35° out to the side, elbows open, still ≥ 2 s; moving, folded, seated or annotated is not a hit', () => {
+  // penguin_stand: both upper arms ~50° out from hanging (40° below level), held 10 s
+  const penguin = G.checkClip(held(arms(40), 10), { kind: 'idle' });
+  assert.equal(penguin.suspect, false, 'not a T-pose');
+  assert.equal(penguin.stiff, true, JSON.stringify(penguin));
+  assert.ok(penguin.stiffS >= 9.9 && Math.abs(penguin.stiffOutDeg - 50) < 0.5, JSON.stringify(penguin));
+  // the arms hanging (15° out) still for 10 s: a calm idle, not stiff
+  assert.equal(G.checkClip(held(arms(75), 10), { kind: 'idle' }).stiff, false);
+  // the same spread, but swinging ±20° every second: moving, not stiff
+  const t = []; const L = []; const Rr = [];
+  for (let i = 0; i <= 40; i++) { t.push(i * 0.25); const d = 40 + 20 * Math.sin(i * Math.PI / 2); L.push(qz(-d)); Rr.push(qz(d)); }
+  assert.equal(G.checkClip({ duration: 10, bones: { leftUpperArm: { times: t, values: L }, rightUpperArm: { times: t, values: Rr } } }, { kind: 'idle' }).stiff, false, 'swinging');
+  // shorter than holdS: not a hit
+  assert.equal(G.checkClip(held(arms(40), 1.5), { kind: 'reaction' }).stiff, false);
+  // hands on the hips (elbows bent 90°): a rest pose, not arms held out
+  assert.equal(G.checkClip(held(arms(40, { leftLowerArm: qy(-90), rightLowerArm: qy(90) }), 10), { kind: 'idle' }).stiff, false, 'akimbo');
+  // arms forward (reaching to the knees): not spread to the side
+  assert.equal(G.checkClip(held({ leftUpperArm: W.qmul(qy(-60), qz(-40)), rightUpperArm: W.qmul(qy(60), qz(40)) }, 10), { kind: 'idle' }).stiff, false, 'forward');
+  // a posture (one held pose, 1 s) with the arms out is stiff, standing or kneeling; leaning back on bent arms is not
+  assert.equal(G.checkClip(held(arms(40), 1), { kind: 'posture', group: 'stand' }).stiff, true);
+  assert.equal(G.checkClip(held(arms(40), 1), { kind: 'posture', group: 'crouch' }).stiff, true);
+  assert.equal(G.checkClip(held(arms(40, { leftLowerArm: qy(-120), rightLowerArm: qy(120) }), 1), { kind: 'posture', group: 'sit' }).stiff, false);
+  // a dance annotated armsOut.stiffS covers a hold up to that long (reported as allowed)
+  const row = { id: 'd', kind: 'dance', src: 'd.vmd', ...G.checkClip(held(arms(40), 2.2), { kind: 'dance' }) };
+  assert.equal(G.summarize([{ ...row, armsOut: { maxS: 0.5, stiffS: 2.4, why: 'a figure' } }]).stiffHits, 0);
+  assert.equal(G.summarize([{ ...row, armsOut: { maxS: 0.5, stiffS: 1, why: 'too short' } }]).stiffHits, 1);
+  assert.equal(G.summarize([row]).stiffHits, 1);
 });
 
 // MMD keys (MMD axes) for a dance written with the VMD writer
@@ -150,4 +179,19 @@ test('the baked library on this machine: 0 T-pose hits over every clip and dance
   assert.equal(s2.hits, 0, G.formatReport(s2).join('\n'));
   for (const k of ['posture', 'idle', 'reaction', 'emotion', 'talk', 'walk', 'dance']) assert.ok(s2.byKind[k] && s2.byKind[k].clips > 0, k);
   assert.equal(s2.byKind.idle.levelFrames, 0, 'no idle frame with both arms over 75° from the vertical');
+});
+
+test('T-5099 pose guard: a posture / idle holding both upper arms above level (hands behind the head) is a hit; reactions, lying poses and hanging arms are not', () => {
+  // upper arms raised 40° above level, forearms folded back (Sitting, Arms Raised): elbows bent, so not a T-pose
+  const behindHead = arms(-40, { leftLowerArm: qz(120), rightLowerArm: qz(-120) });
+  const sit = G.checkClip(held(behindHead), { kind: 'posture', group: 'sit' });
+  assert.equal(sit.suspect, false, 'not a T-pose (elbows bent)');
+  assert.equal(sit.raised, true, 'a raised-arms base pose');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'idle' }).raised, true, 'an idle too');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'reaction' }).raised, false, 'a reaction may raise the arms');
+  assert.equal(G.checkClip(held(behindHead), { kind: 'posture', group: 'lay' }).raised, false, 'lying: level arms by nature');
+  assert.equal(G.checkClip(held(arms(75)), { kind: 'posture', group: 'sit' }).raised, false, 'arms down');
+  const sum = G.summarize([{ id: 'sit.v03@female', kind: 'posture', src: 'x.fbx', frames: 31, ...sit }]);
+  assert.equal(sum.raisedHits, 1);
+  assert.match(G.formatReport(sum).join('\n'), /1 raised-arms base pose .*FAILED/);
 });
