@@ -28,6 +28,7 @@ const interjectLib = require('../core/interject');
 const Voice = require('../core/voice');
 const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
+const stickersLib = require('../core/stickers');
 const adminChat = require('../core/admin-chat');
 const chatLive = require('../core/chat-live');
 const aiFolders = require('../core/ai-folders');
@@ -46,6 +47,9 @@ const NO_LOCAL_TOOLS_LINE = '这次用不了本机工具：直连 LobeHub 不可
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
+// A 表情包 as a 聊天记录 field ({ ref, set, id, label }; desc stays out: it is for the agent, not the record).
+const stickerField = (s) => (s && s.ref ? { sticker: { ref: s.ref, set: s.set, id: s.id, label: s.label } } : {});
+
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
@@ -325,6 +329,25 @@ class PetService extends EventEmitter {
     }
   }
 
+  // A sticker of hers as 聊天记录 keeps it ({ ref, set, id, label, desc }), or null.
+  // `pick`: { set, id } from a panel (only a set she holds), or a bare meme id from a [梗图:<id>] tag.
+  _sticker(sp, pick) {
+    if (!sp || !pick) return null;
+    if (this.stickers) {
+      try {
+        if (typeof pick === 'string') return this.stickers.resolveTag(sp, pick);
+        const r = this.stickers.resolve(sp, pick.set, pick.id);
+        return r.ok ? r.sticker : null;
+      } catch {
+        return null;
+      }
+    }
+    // no sticker library (tests, old callers): her file's built-in memes only
+    const id = typeof pick === 'string' ? pick : pick.set === `builtin:${sp.id}` ? pick.id : null;
+    const m = id && (sp.memes || []).find((x) => x.id === id);
+    return m ? { ref: `builtin:${sp.id}/${m.id}.webp`, set: `builtin:${sp.id}`, id: m.id, label: m.label, desc: m.desc || '' } : null;
+  }
+
   // The settings the prompt builders get (core/persona.js buildStateBlock): with `memeList`, the hint lists
   // the owner's stickers too.
   _promptSettings() {
@@ -344,10 +367,11 @@ class PetService extends EventEmitter {
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ms = this._memeSpecies(sp);
     const ex = memes.extractMeme(text, ms);
-    const origin = this._logPet(ex.text || text, kind, turn);
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(ms, this.rnd) : null);
     const m = meme && ms.memes.find((x) => x.id === meme);
+    // the picture shown with the line is kept with it in 聊天记录 (docs/stickers-design.md §3.2)
+    const origin = this._logPet(ex.text || text, kind, turn, null, m ? this._sticker(sp, m.id) : null);
     const shown = ex.text || text;
     this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: m.url || memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
     if (this.pet) this._save();
@@ -406,11 +430,12 @@ class PetService extends EventEmitter {
 
   // ---- 聊天记录 (core/chat-log.js) ----------------------------------------------------------------
   // The owner's message opens a round; her reply (or the note that none came) closes it with the same turnId.
-  _logUser(text, origin, kind, attachments = null) {
+  // `sticker`: a 表情包 the owner sent ({ ref, set, id, label }, _sticker).
+  _logUser(text, origin, kind, attachments = null, sticker = null) {
     const turnId = `t${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`;
     const a = attachments && (attachments.images || (attachments.files && attachments.files.length)) ? { attachments } : {};
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'user', origin, kind, turnId, text, ...this._epoch(), ...a }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'user', origin, kind, turnId, text, ...this._epoch(), ...a, ...stickerField(sticker) }, this.now());
     } catch (e) {
       this.emit('error', e);
     }
@@ -423,11 +448,11 @@ class PetService extends EventEmitter {
     return n ? { topicEpoch: n } : {};
   }
 
-  _logPet(text, kind, turn = null, status = null) {
+  _logPet(text, kind, turn = null, status = null, sticker = null) {
     const origin = turn ? turn.origin : chatLog.originOfKind(kind);
     if (!this.pet) return origin;
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}) }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}), ...stickerField(sticker) }, this.now());
     } catch (e) {
       this.emit('error', e); // a full disk must not silence the pet
     }
@@ -444,7 +469,7 @@ class PetService extends EventEmitter {
   historySession(id) {
     const s = chatLog.userSessions(this.log.list()).sessions.find((x) => x.id === String(id || ''));
     if (!s) return { ok: false, reason: 'not-found' };
-    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
+    const pick = ({ id: mid, at, role, turnId, text, attachments, sticker, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments } : {}), ...(sticker ? { sticker: { ...sticker, url: stickersLib.refUrl(sticker.ref) } } : {}), ...(status ? { status } : {}) });
     return { ok: true, session: { ...s, name: this._nameOf(s.speciesId), messages: s.messages.map(pick) } };
   }
 
@@ -1128,10 +1153,14 @@ class PetService extends EventEmitter {
   // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them with her local
   // tools (run here, or through the bound device), so local abilities must be on.
   // `origin`: 'user' for the chat box; the local HTTP API passes 'api' (an outside script, not the owner).
-  async chat(text, images = [], files = [], { origin = 'user' } = {}) {
+  // `sticker`: { set, id } — a 表情包 picked in the chat box's panel (docs/stickers-design.md §3.1), only one of
+  // hers; the owner's own chat box only (the HTTP API cannot send one, §3.6).
+  async chat(text, images = [], files = [], { origin = 'user', sticker: pick = null } = {}) {
     const clean = String(text || '').trim();
     const paths = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && f).slice(0, 10);
-    if (!this.pet || (!clean && images.length === 0 && paths.length === 0)) return { ok: false, reason: 'empty' };
+    const sticker = pick && origin === 'user' && this.pet ? this._sticker(getSpecies(this.pet.speciesId), pick) : null;
+    if (pick && origin === 'user' && this.pet && !sticker) return { ok: false, reason: 'bad-sticker', message: '这张表情包已经不在了' };
+    if (!this.pet || (!clean && images.length === 0 && paths.length === 0 && !sticker)) return { ok: false, reason: 'empty' };
     if (this.busy) return { ok: false, reason: 'busy' };
     if (paths.length && !this.pet.localAbilities) return { ok: false, reason: 'local-off' };
     const t = this.now();
@@ -1141,7 +1170,8 @@ class PetService extends EventEmitter {
     this.emit('thinking', true);
     // 插个嘴: a message to her ends whatever was waiting, and may be the owner's reaction to her last remark
     if (origin === 'user') this.interjector.userChatted(clean);
-    const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) });
+    const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) }, sticker);
+    if (sticker) this.emit('chat-log', { speciesId: c.speciesId }); // the settings window's chat shows it too
     const stream = this._openStream('chat', turn);
     const trace = latency.createTrace('desktop');
     stream.trace = trace;
@@ -1173,6 +1203,7 @@ class PetService extends EventEmitter {
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
+      if (sticker) body = [body, adminChat.stickerLine(sticker)].filter(Boolean).join('\n');
       const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '' });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
@@ -1183,7 +1214,7 @@ class PetService extends EventEmitter {
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId) c.topicId = res.topicId;
-      const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
+      const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length || sticker ? 2 : 0) });
       const text = this._guard(res.text);
       this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream));
       trace.mark('doneSent');
@@ -1224,7 +1255,7 @@ class PetService extends EventEmitter {
         const conv = e ? adminChat.conversationOf(all, x.id) : [];
         const last = conv[conv.length - 1] || null;
         const lastText = last ? (last.text || '').replace(/\s+/g, ' ').trim() : '';
-        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
+        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || chatLog.stickerLabel(last) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
       }),
     };
   }
@@ -1287,7 +1318,8 @@ class PetService extends EventEmitter {
   // One round from the chat page with `speciesId`. `images`: pictures already checked and saved by main
   // ([{ path, ref }], core/admin-chat.js ChatImages). onDelta({ speciesId, turnId, text }) as the reply is written.
   // -> { ok, speciesId, turnId, userMessage, message } | { ok: false, reason, error, userMessage?, message? }
-  async chatAs(speciesId, { text, images = [] } = {}, { onDelta = () => {} } = {}) {
+  // `sticker`: { set, id } from the chat page's 表情包 panel (docs/stickers-design.md §3): only a set she holds.
+  async chatAs(speciesId, { text, images = [], sticker: pick = null } = {}, { onDelta = () => {} } = {}) {
     if (!this.pet) return { ok: false, reason: 'empty', error: '还没有领养桌宠' };
     const id = this._target(speciesId);
     if (!id) return { ok: false, reason: 'unknown-character', error: '没有这个角色' };
@@ -1295,7 +1327,9 @@ class PetService extends EventEmitter {
     if (!c) return { ok: false, reason: 'not-met', error: '还没和她见过面：先在「角色」里和她初次见面，再来聊天' };
     const clean = String(text || '').trim();
     const imgs = (Array.isArray(images) ? images : []).filter((x) => x && x.path).slice(0, adminChat.MAX_IMAGES);
-    if (!clean && !imgs.length) return { ok: false, reason: 'empty', error: '消息是空的' };
+    const sticker = pick ? this._sticker(getSpecies(id), pick) : null;
+    if (pick && !sticker) return { ok: false, reason: 'bad-sticker', error: '这张表情包已经不在了' };
+    if (!clean && !imgs.length && !sticker) return { ok: false, reason: 'empty', error: '消息是空的' };
     if (clean.length > adminChat.MAX_TEXT) return { ok: false, reason: 'too-long', error: `一条消息最多 ${adminChat.MAX_TEXT} 个字符` };
     if (this.busy) return { ok: false, reason: 'busy', error: this._consoleTurn ? '上一条消息还在回复中' : '桌宠那边正在说话，等她说完再发' };
     const sp = getSpecies(id);
@@ -1326,7 +1360,7 @@ class PetService extends EventEmitter {
       if (imgs.length && target && target.vision === false) return { ok: false, reason: 'no-vision', error: `「${target.label}」看不了图片：在模型里换一个标着「视觉」的，或者先移除图片` };
       const t = this.now();
       const conv = adminChat.conversationOf(this.log.list(), id);
-      userMessage = this._logAs(id, { role: 'user', turnId, text: clean, ...(imgs.length ? { attachments: { images: imgs.length, refs: imgs.map((x) => x.ref).filter(Boolean) } } : {}) });
+      userMessage = this._logAs(id, { role: 'user', turnId, text: clean, ...(imgs.length ? { attachments: { images: imgs.length, refs: imgs.map((x) => x.ref).filter(Boolean) } } : {}), ...stickerField(sticker) });
       this.emit('chat-log', { speciesId: id });
       trace.mark('logged');
       await this._ensurePersona(c);
@@ -1356,7 +1390,7 @@ class PetService extends EventEmitter {
         await this.lh.addFilesToMessage(mid, fileIds);
       }
       this._throwIfCanceled();
-      const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
+      const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length, sticker });
       const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings() });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
@@ -1398,7 +1432,10 @@ class PetService extends EventEmitter {
         c.topicId = res.topicId;
         c.topicMeta = { id: res.topicId, startedAt: t };
       }
-      let reply = adminChat.answerOnly(memes.extractMeme(res.text, this._memeSpecies(sp)).text || res.text);
+      const ex = memes.extractMeme(res.text, this._memeSpecies(sp));
+      // her own 表情包 at the end of the reply ([梗图:<id>]) is kept with it (it used to be dropped here)
+      const replySticker = ex.meme && this.settings.prefs.memes ? this._sticker(sp, ex.meme) : null;
+      let reply = adminChat.answerOnly(ex.text || res.text);
       if (!reply) throw Object.assign(new Error('Agent produced no answer'), { code: 'ENOREPLY' });
       const g = contentGuard.checkReply(reply);
       if (!g.ok) {
@@ -1406,10 +1443,10 @@ class PetService extends EventEmitter {
         reply = contentGuard.refusalLine(sp);
       }
       c.lastSpokeAt = this.now();
-      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}) });
+      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}), ...(g.ok ? stickerField(replySticker) : {}) });
       // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
       let affection = null;
-      if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length ? 2 : 0) }).affection;
+      if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length || sticker ? 2 : 0) }).affection;
       this._save();
       if (affection) this._reportAffection(affection);
       this.emit('update', this.view());

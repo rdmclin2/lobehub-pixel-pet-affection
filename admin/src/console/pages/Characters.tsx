@@ -1433,11 +1433,12 @@ const useStageHeight = () => {
  * tried on — and on the right her story, hearts and every setting of hers. A change of look made on the
  * right comes back as a new roster row (main rebuilds it on every change) and the stage redraws at once.
  */
-export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) => void }) => {
+const DETAIL_TABS: DetailTab[] = ['looks', 'outfits', 'affection', 'model', 'role', 'voice', 'about', 'stickers'];
+export const CharacterDetailPage = ({ id, initialTab }: { id: string; initialTab?: string; navigate: (p: string) => void }) => {
   const { roster, view, catalog } = useStore();
   const sw = useSwitch();
   const dl = useDownloads();
-  const [tab, setTab] = useState<DetailTab>('looks');
+  const [tab, setTab] = useState<DetailTab>(DETAIL_TABS.includes(initialTab as DetailTab) ? (initialTab as DetailTab) : 'looks');
   const [trying, setTrying] = useState<string | null>(null);
   const stage = useStageHeight();
   useEffect(() => setTrying(null), [id]);

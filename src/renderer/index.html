@@ -133,12 +133,20 @@
     <button id="stop-btn" class="stop-btn" title="打断它（也可以按 Esc）"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>停止</button>
     <!-- 跳舞 (a VRM look): opened from ♪ in her panel; it lies over her until a dance is picked, Esc or a click elsewhere -->
     <div id="dance-menu" class="popup dance-menu hidden" role="menu" aria-label="跳舞"></div>
+    <!-- the owner's 表情包 from the chat box, risen over it for a moment (outside #hud: it shows while she is busy) -->
+    <img id="sent-sticker" class="sent-sticker hidden" alt="" draggable="false" />
     <!-- everything below is only shown while the pointer is over the window: the chat box (opened from her panel → 聊天).
          Her state and the buttons are in her panel, its own small window beside her (src/renderer/panel/). -->
     <div id="hud" class="hud">
       <div id="attach-row" class="attach-row hidden"></div>
+      <!-- 表情包 (docs/stickers-design.md §3.1): her sets, opened from ☺ in the chat box; one click sends one -->
+      <div id="sticker-pop" class="popup sticker-pop hidden" role="dialog" aria-label="表情包">
+        <div id="sticker-tabs" class="sticker-tabs" role="tablist"></div>
+        <div id="sticker-grid" class="sticker-grid" role="grid"></div>
+      </div>
       <div id="chat-row" class="row chat-row hidden">
         <button id="attach-btn" class="btn attach-btn" title="添加图片（也可以 Ctrl/⌘+V 粘贴，或把任何文件拖进来）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
+        <button id="sticker-btn" class="btn attach-btn" title="表情包" aria-label="表情包" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></button>
         <input id="chat-input" maxlength="400" placeholder="说点什么，可粘贴图片、拖入文件…" autocomplete="off" />
         <button id="chat-mic" class="btn mic-btn hidden" data-state="idle" title="语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束" aria-label="语音输入" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
         <button id="chat-send" class="btn primary">发送</button>

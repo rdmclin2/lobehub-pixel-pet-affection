@@ -77,6 +77,7 @@ const PET_ONLY = {
   'talk-topic': '互动：按话题聊天',
   chat: '聊天',
   'pick-images': '聊天：选图片',
+  'pet-stickers-list': '聊天：聊天框的表情包面板读她的表情包（只读；管理在 角色 → 表情包，docs/stickers-design.md §3.1）',
   cancel: '聊天：停止生成',
   'mark-seen': '衣柜 / 话题面板的「新」角标',
   'history-list': '聊天记录（查看，不是配置）',

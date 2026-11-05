@@ -770,12 +770,14 @@ function wire() {
   ipcMain.handle('history-list', () => service.history());
   ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
   ipcMain.handle('mark-seen', (_e, { kind, species }) => service.markSeen(String(kind || ''), typeof species === 'string' && species ? species : undefined));
-  ipcMain.handle('chat', async (_e, { text, images, files }) => {
+  // `sticker`: { set, id } from the chat box's 表情包 panel (docs/stickers-design.md §3.1); PetService checks it is hers
+  ipcMain.handle('chat', async (_e, { text, images, files, sticker }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.
     const filePaths = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)).slice(0, 10);
+    const pick = sticker && typeof sticker === 'object' ? { set: String(sticker.set || ''), id: String(sticker.id || '') } : null;
     try {
-      return await service.chat(text, paths, filePaths);
+      return await service.chat(text, paths, filePaths, { sticker: pick });
     } finally {
       cleanup();
     }
@@ -1183,6 +1185,8 @@ function wire() {
     const stickerSpecies = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
     const stickersChanged = (speciesId) => { if (admin && admin.alive) admin.send('stickers-changed', { speciesId }); };
     ipcMain.handle('stickers-list', adminOnly(({ speciesId }) => stickerLib.list(stickerSpecies(speciesId))));
+    // the pet window's chat box panel: the companion's sets only (docs/stickers-design.md §3.1)
+    ipcMain.handle('pet-stickers-list', () => (service && service.pet ? stickerLib.list(stickerSpecies(service.pet.speciesId)) : { ok: false, reason: 'empty', sets: [] }));
     ipcMain.handle('stickers-pick-add', adminOnly(async ({ speciesId }) => {
       const sp = stickerSpecies(speciesId);
       if (!sp) return { ok: false, reason: 'bad-species', message: '没有这位角色' };
@@ -1264,7 +1268,7 @@ function wire() {
     return r.ok ? { ...r, messages: r.messages.map(chatView(r.speciesId)) } : r;
   }));
   ipcMain.handle('admin-chat-abort', adminOnly(({ speciesId }) => service.chatAbort(speciesId ? String(speciesId) : undefined)));
-  ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images }) => {
+  ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images, sticker }) => {
     const id = String(speciesId || '');
     const list = Array.isArray(images) ? images : [];
     if (list.length > CHAT_MAX_IMAGES) return { ok: false, reason: 'too-many-images', error: `一次最多发送 ${CHAT_MAX_IMAGES} 张图片` };
@@ -1277,7 +1281,8 @@ function wire() {
     } catch (e) {
       return { ok: false, reason: 'error', error: `图片没有保存下来：${e.message}` };
     }
-    const r = await service.chatAs(id, { text, images: saved }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
+    const pick = sticker && typeof sticker === 'object' ? { set: String(sticker.set || ''), id: String(sticker.id || '') } : null;
+    const r = await service.chatAs(id, { text, images: saved, sticker: pick }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
     if (!r.userMessage) for (const x of saved) fs.rmSync(x.path, { force: true }); // refused before it was kept
     const view = chatView(r.speciesId || id);
     const out = { ...r, userMessage: r.userMessage ? view(r.userMessage) : undefined, message: r.message ? view(r.message) : undefined };

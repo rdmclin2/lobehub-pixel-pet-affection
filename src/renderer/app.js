@@ -1764,6 +1764,10 @@ function bindPetUi() {
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
+    chatResult(r);
+  };
+  // what the reply to a message (or a 表情包) from this box says when it did not go through
+  const chatResult = (r) => {
     // AI 可读的文件夹 (T-5075): the folders could not be enforced this turn, so she answered without her tools
     if (r.ok && r.localNote) showNotice('这次用不了本机工具', r.localNote.replace(/^这次用不了本机工具：/, ''), { label: '去设置', admin: 'connection' });
     if (!r.ok && r.reason === 'error') say(errorLine(r), 'error', 'error', r.message);
@@ -1771,8 +1775,18 @@ function bindPetUi() {
     if (!r.ok && r.reason === 'local-off') say('（要先开启本机能力才能读文件。）', 'error', 'fallback');
     if (!r.ok && r.reason === 'canceled') say('（好吧，不想了。）', 'canceled', 'fallback');
     if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
+    if (!r.ok && r.reason === 'bad-sticker') say('（这张表情包已经不在了。）', 'error', 'fallback');
   };
   $('chat-send').addEventListener('click', send);
+  bindStickers(async (set, st) => {
+    if (thinking) return;
+    stopSpeech('new-message');
+    flashSentSticker(st);
+    $('chat-send').disabled = true;
+    const r = await window.pet.chat('', [], [], { sticker: { set: set.id, id: st.id } });
+    $('chat-send').disabled = false;
+    chatResult(r);
+  });
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
   // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
   // Only this box: nothing typed anywhere else is seen.
@@ -2203,6 +2217,94 @@ function bindHover() {
   document.addEventListener('dragenter', () => set(true));
   document.addEventListener('dragover', () => set(true));
   document.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) set(false); });
+}
+
+// ---------- 表情包 (docs/stickers-design.md §3.1) ----------
+// ☺ in the chat box opens her sets (window.pet.stickers.list: built-in memes + the owner's own, read each time
+// it opens, so one added in 设置 shows at once). A tab per set, a 5-column grid; a click sends that sticker as a
+// message of its own (the draft in the input stays). Esc or a click elsewhere closes it.
+let stickerSets = [];
+let stickerTab = null;
+function closeStickers() {
+  $('sticker-pop').classList.add('hidden');
+  $('sticker-btn').setAttribute('aria-expanded', 'false');
+}
+function renderStickers(onPick) {
+  const tabs = $('sticker-tabs');
+  const grid = $('sticker-grid');
+  tabs.textContent = '';
+  grid.textContent = '';
+  const cur = stickerSets.find((x) => x.id === stickerTab) || stickerSets[0] || null;
+  if (stickerSets.length > 1) {
+    for (const set of stickerSets) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(set === cur));
+      b.dataset.stickerTab = set.id;
+      b.textContent = `${set.name} · ${set.stickers.length}`;
+      b.addEventListener('click', () => { stickerTab = set.id; renderStickers(onPick); });
+      tabs.appendChild(b);
+    }
+  }
+  if (!cur) {
+    const e = document.createElement('div');
+    e.className = 'sticker-empty';
+    e.textContent = '她还没有表情包：在 设置 → 角色 → 表情包 里添加';
+    grid.appendChild(e);
+    return;
+  }
+  for (const st of cur.stickers) {
+    const b = document.createElement('button');
+    b.className = 'sticker-cell';
+    b.dataset.stickerCell = `${cur.id}/${st.id}`;
+    b.title = st.desc ? `${st.label}：${st.desc}` : st.label;
+    b.setAttribute('aria-label', `发送表情包：${st.label}`);
+    const img = document.createElement('img');
+    img.src = st.url;
+    img.alt = st.label;
+    img.loading = 'lazy';
+    img.draggable = false;
+    b.appendChild(img);
+    b.addEventListener('click', () => { closeStickers(); onPick(cur, st); });
+    grid.appendChild(b);
+  }
+}
+async function openStickers(onPick) {
+  const r = window.pet.stickers ? await window.pet.stickers.list() : null;
+  stickerSets = r && r.ok ? r.sets.filter((x) => x.stickers.length) : [];
+  if (!stickerSets.some((x) => x.id === stickerTab)) stickerTab = null;
+  renderStickers(onPick);
+  $('sticker-pop').classList.remove('hidden');
+  $('sticker-btn').setAttribute('aria-expanded', 'true');
+  const first = $('sticker-grid').querySelector('.sticker-cell');
+  if (first) first.focus();
+}
+function bindStickers(onPick) {
+  $('sticker-btn').addEventListener('click', () => ($('sticker-pop').classList.contains('hidden') ? (thinking ? null : openStickers(onPick)) : closeStickers()));
+  $('sticker-grid').addEventListener('keydown', (e) => {
+    const step = { ArrowDown: 5, ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5 }[e.key];
+    if (!step) return;
+    const cells = [...$('sticker-grid').querySelectorAll('.sticker-cell')];
+    const i = cells.indexOf(document.activeElement);
+    const n = cells[Math.max(0, Math.min(cells.length - 1, i < 0 ? 0 : i + step))];
+    if (n) { e.preventDefault(); n.focus(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sticker-pop').classList.contains('hidden')) { e.stopImmediatePropagation(); closeStickers(); } }, true);
+  document.addEventListener('pointerdown', (e) => {
+    if ($('sticker-pop').classList.contains('hidden') || (e.target.closest && e.target.closest('#sticker-pop, #sticker-btn'))) return;
+    closeStickers();
+  });
+}
+// the owner's sticker rises over the chat box for 1.5 s: it was sent (the desktop has no conversation view)
+let sentStickerTimer = null;
+function flashSentSticker(st) {
+  const img = $('sent-sticker');
+  img.src = st.url;
+  img.alt = st.label;
+  img.classList.remove('hidden');
+  clearTimeout(sentStickerTimer);
+  sentStickerTimer = setTimeout(() => img.classList.add('hidden'), 1500);
 }
 
 // ---------- pictures and files to send ----------
