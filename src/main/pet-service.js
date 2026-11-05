@@ -47,7 +47,7 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // 音乐创作 (T-5090): what the windows get of a song compose_music saved (the file and its facts, nothing more).
 function musicView(r) {
   const meta = (r && r.meta) || {};
-  return { id: path.basename(r.filePath), title: meta.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationMs: r.durationMs || null, format: meta.format || path.extname(r.filePath).slice(1), instrumental: !!meta.instrumental };
+  return { id: path.basename(r.filePath), title: meta.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationMs: r.durationMs || null, format: meta.format || path.extname(r.filePath).slice(1), instrumental: !!meta.instrumental, provider: meta.provider || null };
 }
 const musicNames = (list) => list.map((m) => (m.title ? `《${m.title}》` : '新曲子')).join('、');
 
@@ -240,7 +240,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, pendingRestart: this.pendingRestart() };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, musicStatus: this.musicKeysView(), pendingRestart: this.pendingRestart() };
   }
 
   // Restart-only settings (settings.RESTART_KEYS) changed since this process started: they apply after a restart.
@@ -927,28 +927,40 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? LOCAL_TOOLS : [];
   }
 
-  // ---- 音乐创作: compose_music (T-5090) -------------------------------------------------------------------
-  // Its own gate, apart from 本机能力: on when 设置 → 音乐创作 → 让她作曲 is on and a MiniMax key is set (keys.minimax
-  // or MINIMAX_API_KEY), and this turn goes the direct way (the tool is a function tool run here; `lh agent run`
-  // has no way to carry it). Local abilities stay as they are: turning music on never exposes read_file /
-  // run_command. -> { on, reason: null | 'unsupported' | 'off' | 'no-key' | 'via-device' | 'no-direct' }
+  // ---- 音乐创作: compose_music (T-5090, T-5651) --------------------------------------------------------------
+  // Its own gate, apart from 本机能力: on when 设置 → 音乐创作 → 让她作曲 is on and the service picked there
+  // (music.provider: fal / elevenlabs / minimax) has a key — keys.<slot> or its environment variable (FAL_KEY /
+  // ELEVENLABS_API_KEY / MINIMAX_API_KEY) — and this turn goes the direct way (the tool is a function tool run here;
+  // `lh agent run` has no way to carry it). Local abilities stay as they are: turning music on never exposes
+  // read_file / run_command. -> { on, provider, reason: null | 'unsupported' | 'off' | 'no-key' | 'via-device' | 'no-direct' }
   // `plain`: the settings window's 聊天 (no local tools, so the device path never applies there).
   _musicStatus({ plain = false } = {}) {
     if (!this.music) return { on: false, reason: 'unsupported' };
     const m = musicLib.normalizeMusic(this.settings.music);
-    if (!m.enabled) return { on: false, reason: 'off' };
-    if (!this._musicKey()) return { on: false, reason: 'no-key' };
+    const provider = m.provider;
+    if (!m.enabled) return { on: false, provider, reason: 'off' };
+    if (!this._musicKey(provider)) return { on: false, provider, reason: 'no-key' };
     const local = !plain && this.pet && this._tools().length > 0;
-    if (local && this.localVia !== 'direct') return { on: false, reason: 'via-device' };
-    if (local ? !(this.responses && this.responses.available()) : !this._directUp()) return { on: false, reason: 'no-direct' };
-    return { on: true, reason: null };
+    if (local && this.localVia !== 'direct') return { on: false, provider, reason: 'via-device' };
+    if (local ? !(this.responses && this.responses.available()) : !this._directUp()) return { on: false, provider, reason: 'no-direct' };
+    return { on: true, provider, reason: null };
   }
 
-  _musicKey() {
+  // The key of a music service (default: the picked one). music.key(slot) reads the key store (main.js:
+  // tts-keys.json); the environment variable is the fallback (music.keyFor).
+  _musicKey(provider = musicLib.normalizeMusic(this.settings.music).provider) {
+    const src = musicLib.KEY_SOURCES[provider];
+    if (!src) return '';
     let k = '';
-    try { k = (this.music && this.music.key && this.music.key()) || ''; } catch { /* unreadable key store: as none */ }
-    const env = (this.music && this.music.env) || process.env;
-    return (typeof k === 'string' && k.trim()) || (typeof env.MINIMAX_API_KEY === 'string' ? env.MINIMAX_API_KEY.trim() : '');
+    try { k = (this.music && this.music.key && this.music.key(src.slot)) || ''; } catch { /* unreadable key store: as none */ }
+    return musicLib.keyFor(provider, { key: typeof k === 'string' ? k : '', env: (this.music && this.music.env) || process.env });
+  }
+
+  // For the settings window: the picked service and which services have a key (never the keys themselves).
+  musicKeysView() {
+    if (!this.music) return null;
+    const provider = musicLib.normalizeMusic(this.settings.music).provider;
+    return { provider, keys: Object.fromEntries(musicLib.PROVIDER_IDS.map((id) => [id, !!this._musicKey(id)])) };
   }
 
   // Where songs are saved (and the only folder the windows may play from, main.js music-audio).
@@ -1765,6 +1777,8 @@ class PetService extends EventEmitter {
     const merged = { ...this.settings[name], ...p };
     // interject.sources is the one nested object: a patch of one source keeps the others
     if (name === 'interject' && p.sources && typeof p.sources === 'object') merged.sources = { ...this.settings.interject.sources, ...p.sources };
+    // music.fal / music.elevenlabs (T-5651) are nested too: a patch of one field keeps the others
+    if (name === 'music') for (const sub of ['fal', 'elevenlabs']) if (p[sub] && typeof p[sub] === 'object') merged[sub] = { ...this.settings.music[sub], ...p[sub] };
     this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: merged });
     if (name === 'interject' && !this.settings.interject.enabled) this.interjector.cancel();
     this.settingsStore.save(this.settings);

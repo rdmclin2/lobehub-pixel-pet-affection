@@ -169,14 +169,20 @@ const MUSIC_HINT = '[作曲] 主人要你写歌、作曲、来段音乐/纯音�
 // Why it is not offered, for a turn where the owner may still ask for a song: she says so instead of pretending.
 const MUSIC_OFF = {
   off: '在「设置 → 音乐创作」里关掉了',
-  'no-key': '还没有填 MiniMax API Key（设置 → 朗读 → MiniMax，或环境变量 MINIMAX_API_KEY）',
+  'no-key': '还没有填所选音乐服务的 API Key（设置 → 音乐创作）',
   'via-device': '本机能力现在走 lh connect 设备，这条路不支持作曲',
   'no-direct': '现在连不上 LobeHub 直连接口（需要 lh login），作曲要走直连',
 };
+// T-5651: the key that is missing is the picked service's (fal.ai → FAL_KEY, ElevenLabs, MiniMax)
+function noKeyWhy(provider) {
+  const { KEY_SOURCES, PROVIDER_LABELS } = require('./music');
+  const src = KEY_SOURCES[provider];
+  return src ? `音乐服务选的是 ${PROVIDER_LABELS[provider]}，但还没有填它的 API Key（${src.where}，或环境变量 ${src.env}）` : MUSIC_OFF['no-key'];
+}
 function musicHint(music) {
   if (!music) return '';
   if (music.on) return MUSIC_HINT;
-  const why = MUSIC_OFF[music.reason];
+  const why = music.reason === 'no-key' && music.provider ? noKeyWhy(music.provider) : MUSIC_OFF[music.reason];
   return why ? `[作曲] 这次不能作曲：${why}。主人要你写歌时如实简单说明原因，不要假装写好了，也不要编造文件。` : '';
 }
 

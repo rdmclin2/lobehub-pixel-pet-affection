@@ -68,7 +68,7 @@ const useStatus = () => {
       tts: `朗读 ${yes(p.voice)}${settings.tts?.engine ? ` · ${settings.tts.engine}` : ''}`,
       asr: `语音输入 ${yes(settings.asr?.enabled)}`,
       voicepacks: `${(settings.ttsStatus?.packs ?? []).length} 个语音包`,
-      music: `${settings.music?.model ?? 'music-3.0'} · ${settings.music?.format ?? 'mp3'} · ${settings.ttsStatus?.engines?.minimax?.hasKey ? 'MiniMax Key 已设置' : '未设置 MiniMax Key'}`,
+      music: musicTile(settings),
       packs: `${packs.length} 个角色包（导入 ${packs.filter((x) => x.source === 'user').length} 个）`,
       appearance: theme[settings.ui?.theme ?? 'auto'] ?? '跟随系统',
       connection: view?.space ? (view.space.personal ? '个人空间' : view.space.name) : '还没唤醒',
@@ -121,6 +121,19 @@ const PetStatus = () => {
       </Flexbox>
     </div>
   );
+};
+
+/** 音乐创作 tile (T-5651): the picked service · its model · whether that service has a key. */
+const MUSIC_SERVICE: Record<string, { name: string; model: (m: any) => string }> = {
+  elevenlabs: { model: (m) => m?.elevenlabs?.model ?? 'music_v2_5', name: 'ElevenLabs' },
+  fal: { model: (m) => (m?.fal?.model ?? 'fal-ai/minimax-music/v2.6').replace(/^fal-ai\//, ''), name: 'fal.ai' },
+  minimax: { model: (m) => m?.model ?? 'music-3.0', name: 'MiniMax 官方' },
+};
+const musicTile = (settings: any): string => {
+  const id: string = settings.music?.provider ?? 'fal';
+  const svc = MUSIC_SERVICE[id] ?? MUSIC_SERVICE.fal;
+  const has = !!settings.musicStatus?.keys?.[id];
+  return `${svc.name} · ${svc.model(settings.music)} · ${has ? 'Key 已设置' : '未设置 Key'}`;
 };
 
 export const HubPage = ({ place }: { place: 'play' | 'settings' }) => {

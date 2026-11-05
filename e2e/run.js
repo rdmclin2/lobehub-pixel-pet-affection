@@ -10641,8 +10641,9 @@ async function titlebarScenario() {
   }
 }
 
-// 音乐创作 (T-5088, core/music.js): 设置 → 音乐创作 shows the music settings from the schema; a change is saved into
-// settings.json `music`, an http endpoint is refused; the key is the 朗读 → MiniMax one (no music key field of its own).
+// 音乐创作 (T-5088, T-5651, core/music.js): 设置 → 音乐创作 shows the music settings from the schema — the service
+// (fal.ai default / ElevenLabs / MiniMax 官方) and that service's card; fal's key is write-only on this page; a change
+// is saved into settings.json `music`, an http endpoint is refused.
 async function musicSettingsScenario() {
   const S = 'music';
   const SHOTS = path.join(OUT, 'music');
@@ -10671,22 +10672,65 @@ async function musicSettingsScenario() {
     await admin.waitForSelector('[data-admin-page="overview"]', { timeout: 20000 });
     await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1300); });
 
-    await step(S, 'M1 设置 → 声音 has the 音乐创作 tile (model · format · key status); it opens the 音乐创作 page with its 3 cards', async () => {
+    await step(S, 'M1 设置 → 声音 has the 音乐创作 tile (service · model · key status); the page defaults to fal.ai with its own card (模型 / 队列端点 / API Key)', async () => {
       await admin.click('[data-rail="settings"]');
       await admin.waitForSelector('[data-tile="music"]');
       const tile = (await admin.textContent('[data-tile="music"]')).replace(/\s+/g, ' ').trim();
       assert.match(tile, /音乐创作/);
-      assert.match(tile, /music-3\.0 · mp3 · 未设置 MiniMax Key/);
+      assert.match(tile, /fal\.ai · minimax-music\/v2\.6 · 未设置 Key/);
       await shot('m1-settings-hub');
       await admin.click('[data-tile="music"]');
       await admin.waitForSelector('[data-path="/music"]');
       const keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
-      for (const k of ['music.endpoint', 'music.model', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputFormat', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec']) assert.ok(keys.includes(k), `${k} on the page (${keys.join(',')})`);
+      for (const k of ['music.enabled', 'music.provider', 'music.fal.model', 'music.fal.endpoint', 'keys.fal', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec']) assert.ok(keys.includes(k), `${k} on the page (${keys.join(',')})`);
+      for (const k of ['music.endpoint', 'music.model', 'music.outputFormat', 'music.elevenlabs.model']) assert.ok(!keys.includes(k), `${k} hidden while fal is picked`);
       const text = await admin.textContent('[data-path="/music"]');
-      assert.match(text, /MiniMax 音乐/);
-      assert.match(text, /MINIMAX_API_KEY/);
+      for (const re of [/音乐服务/, /fal\.ai/, /FAL_KEY/, /ELEVENLABS_API_KEY/, /MINIMAX_API_KEY/, /不再向新用户开放/]) assert.match(text, re);
+      assert.equal(await admin.textContent('[data-has-key="keys.fal"]'), '未设置');
       await shot('m1-music-page-light');
       return `tile "${tile}"; fields ${keys.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'M1b the fal.ai API Key is write-only: saved into the key store (not settings.json), the page and the tile say 已设置, the value never comes back', async () => {
+      const fake = 'e2e-fal-key-0000-not-real';
+      await admin.fill('input[data-key="keys.fal"]', fake);
+      await admin.click('[data-save="keys.fal"]');
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fal"]')?.textContent === '已设置', null, { timeout: 5000 });
+      assert.equal(await admin.inputValue('input[data-key="keys.fal"]'), '', 'not shown again');
+      assert.doesNotMatch(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'), /e2e-fal-key/);
+      const store = fs.readFileSync(path.join(data, 'tts-keys.json'), 'utf8');
+      assert.ok(JSON.parse(store).fal, 'keys.fal is in tts-keys.json');
+      const view = await admin.evaluate(async () => (await window.petAdmin.state()).settings.musicStatus);
+      assert.deepEqual(view, { provider: 'fal', keys: { fal: true, elevenlabs: false, minimax: false } });
+      await shot('m1b-fal-key-saved');
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-tile="music"]');
+      const tile = (await admin.textContent('[data-tile="music"]')).replace(/\s+/g, ' ').trim();
+      assert.match(tile, /fal\.ai · minimax-music\/v2\.6 · Key 已设置/);
+      await admin.click('[data-tile="music"]');
+      await admin.waitForSelector('[data-path="/music"]');
+      return `已设置; tts-keys.json has fal; settings.json has no key; musicStatus ${JSON.stringify(view)}; tile "${tile}"`;
+    }, () => admin);
+
+    await step(S, 'M1c 服务 → ElevenLabs shows its card (模型 / 音频格式 / 端点) and saves music.provider; → MiniMax 官方 shows the MiniMax card', async () => {
+      await admin.click('[data-key="music.provider"] >> text=ElevenLabs');
+      for (let i = 0; i < 30 && saved().music?.provider !== 'elevenlabs'; i++) await page.waitForTimeout(100);
+      assert.equal(saved().music.provider, 'elevenlabs');
+      await admin.waitForSelector('[data-key="music.elevenlabs.model"]', { timeout: 5000 });
+      let keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.elevenlabs.model', 'music.elevenlabs.outputFormat', 'music.elevenlabs.endpoint']) assert.ok(keys.includes(k), k);
+      assert.ok(!keys.includes('keys.fal') && !keys.includes('music.fal.model'));
+      await shot('m1c-provider-elevenlabs');
+      const m = await admin.evaluate(() => window.petAdmin.set('music.elevenlabs.model', 'music_v2'));
+      assert.equal(m.ok, true);
+      assert.deepEqual(saved().music.elevenlabs, { endpoint: '', model: 'music_v2', outputFormat: 'mp3_44100_128' });
+      await admin.click('[data-key="music.provider"] >> text=MiniMax 官方');
+      for (let i = 0; i < 30 && saved().music?.provider !== 'minimax'; i++) await page.waitForTimeout(100);
+      await admin.waitForSelector('input[data-key="music.endpoint"]', { timeout: 5000 });
+      keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.endpoint', 'music.model', 'music.outputFormat']) assert.ok(keys.includes(k), k);
+      await shot('m1c-provider-minimax');
+      return `provider elevenlabs → fields ${keys.length}; settings.json music.elevenlabs = ${JSON.stringify(saved().music.elevenlabs)}; then provider = ${saved().music.provider}`;
     }, () => admin);
 
     await step(S, 'M2 an http endpoint is refused and not saved; an https one is saved into settings.json music.endpoint', async () => {

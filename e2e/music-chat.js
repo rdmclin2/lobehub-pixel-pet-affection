@@ -2,8 +2,9 @@
 
 // 音乐创作 in the chat (T-5090), run.js `music` / `musicchat`: the real app (pet window + settings window) with a fake
 // lh, a stand-in for LobeHub's Responses API that answers 「来段轻松的纯音乐」 with a compose_music call the way a model
-// would (test/fixtures/fake-responses-server.js), and a stand-in for MiniMax's music endpoint that returns a real
-// 3 s mp3 (test/fixtures/fake-minimax-music.js). No tokens, no MiniMax quota.
+// would (test/fixtures/fake-responses-server.js), and stand-ins for the three music services — fal.ai's queue (the
+// default, T-5651) and ElevenLabs (test/fixtures/fake-music-services.js), MiniMax direct (fake-minimax-music.js) —
+// that return a real 3 s mp3. No tokens, no music quota.
 //   C1 natural language → the turn offers compose_music only (local abilities off: no read_file / run_command) → the
 //      bubble says 作曲中… with the time so far
 //   C2 the song is saved under userData/music; the bubble shows her reply with a card: title, length, path
@@ -12,8 +13,9 @@
 //   C4 聊天记录 keeps the song with her reply
 //   C5 settings window → 聊天: the desktop round shows the song card; ▶ plays it there
 //   C6 a song asked for in the settings window's 聊天: 作曲中… tag, then the card under her reply
-//   C7 MiniMax refuses (余额不足): she says why, no file
+//   C7 fal.ai refuses (余额不足 / 账户锁定, HTTP 403): she says why, no file
 //   C8 设置 → 音乐创作 → 让她作曲 off: the next turn has no tool and her prompt says it is off
+//   C9 设置 → 音乐创作 → 服务 switched to ElevenLabs, then MiniMax 官方: the same words go to that service
 // Screenshots + evidence in out/e2e/music/ (chat-*.png, music-chat-log.txt, requests JSON).
 
 const fs = require('node:fs');
@@ -32,6 +34,7 @@ module.exports = function musicChatScenario(ctx) {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const { startFakeResponses } = require('../test/fixtures/fake-responses-server');
     const { startFakeMiniMaxMusic, SAMPLE } = require('../test/fixtures/fake-minimax-music');
+    const { startFakeMusicServices } = require('../test/fixtures/fake-music-services');
 
     // what a model does with these words when compose_music is offered (and when it is not)
     const SONGS = {
@@ -54,12 +57,15 @@ module.exports = function musicChatScenario(ctx) {
       if (want) return { pieces: ['好呀，', '我给你写一段～'], gapMs: 150, calls: [[`call_${n}`, 'compose_music', SONGS[want]]], id };
       return { pieces: ['你好呀～'], id };
     });
-    let mmPlan = () => ({ delayMs: 3500 });
+    let mmPlan = () => ({ delayMs: 1500 });
     const mm = await startFakeMiniMaxMusic((b, k) => mmPlan(b, k));
+    // fal (default): queued → running → done, one poll each (music.pollIntervalSec 3 s): ~6 s per song
+    let falPlan = () => ({});
+    const ms = await startFakeMusicServices({ falPlan: (b, k) => falPlan(b, k), elPlan: () => ({ delayMs: 1500 }) });
     const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-musicchat-'));
     const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-musicchatfake-'));
     fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
-    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir), MINIMAX_API_KEY: 'e2e-fake-minimax-key', MINIMAX_MUSIC_ENDPOINT: mm.url };
+    const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_DIRECT: '1', LOBEHUB_SERVER: srv.url, LOBEHUB_CLI_API_KEY: 'e2e-fake-key', LOBEHUB_CLI_HOME: path.relative(os.homedir(), fakeDir), MINIMAX_API_KEY: 'e2e-fake-minimax-key', MINIMAX_MUSIC_ENDPOINT: mm.url, FAL_KEY: 'e2e-fake-fal-key', FAL_MUSIC_ENDPOINT: ms.url, ELEVENLABS_API_KEY: 'e2e-fake-elevenlabs-key', ELEVENLABS_MUSIC_ENDPOINT: ms.url };
     const { app, page } = await launch(env);
     const evidence = [];
     const note = (s) => { evidence.push(s); return s.length > 300 ? `${s.slice(0, 297)}…` : s; };
@@ -109,9 +115,11 @@ module.exports = function musicChatScenario(ctx) {
         const req = chatReq(reqAt);
         assert.deepEqual(req.tools.map((t) => t.name), ['compose_music']);
         assert.match(req.input, /\[作曲\].*compose_music/);
-        assert.equal(mm.requests.length, 1);
-        assert.equal(mm.requests[0].headers.authorization, 'Bearer e2e-fake-minimax-key');
-        return note(`request tools=${JSON.stringify(req.tools.map((t) => t.name))} (no read_file/run_command); bubble while composing: ${JSON.stringify(status)}; MiniMax POST body ${JSON.stringify(mm.requests[0].body)}`);
+        assert.equal(ms.fal.submits.length, 1);
+        assert.equal(ms.fal.submits[0].model, 'fal-ai/minimax-music/v2.6');
+        assert.equal(ms.fal.submits[0].headers.authorization, 'Key e2e-fake-fal-key');
+        assert.equal(mm.requests.length, 0, 'MiniMax direct is not used');
+        return note(`request tools=${JSON.stringify(req.tools.map((t) => t.name))} (no read_file/run_command); bubble while composing: ${JSON.stringify(status)}; fal queue POST /${ms.fal.submits[0].model} input ${JSON.stringify(ms.fal.submits[0].input)}`);
       }, page);
 
       await step(S, 'C2 the song is saved under userData/music; the bubble shows her reply with a card: title, length, path', async () => {
@@ -136,7 +144,7 @@ module.exports = function musicChatScenario(ctx) {
         const out = JSON.parse(chatReq(reqAt + 1).input[0].output);
         assert.equal(out.filePath, song);
         assert.match(out.fileUrl, /^file:\/\//);
-        return note(`bubble: ${JSON.stringify(card.bubble)}; card under it: ${JSON.stringify(card.dock)}; file ${song} (${fs.statSync(song).size} bytes, = MiniMax's audio); output to the model: ${chatReq(reqAt + 1).input[0].output}`);
+        return note(`bubble: ${JSON.stringify(card.bubble)}; card under it: ${JSON.stringify(card.dock)}; file ${song} (${fs.statSync(song).size} bytes, = the audio fal's result pointed to; status polls ${ms.fal.polls}); output to the model: ${chatReq(reqAt + 1).input[0].output}`);
       }, page);
 
       await step(S, 'C3 ▶ plays the song in the bubble (<audio>, blob:); 打开 / 文件夹 go to the system; a path outside the music folder is refused', async () => {
@@ -206,29 +214,29 @@ module.exports = function musicChatScenario(ctx) {
         assert.match(last, /夏天的风/);
         assert.doesNotMatch(last, /纯音乐/);
         await shot(admin, 'chat-c6-admin-song-card');
-        assert.equal(mm.requests.length, 2);
-        assert.match(mm.requests[1].body.lyrics, /\[Chorus\]/);
+        assert.equal(ms.fal.submits.length, 2);
+        assert.match(ms.fal.submits[1].input.lyrics, /\[Chorus\]/);
         assert.equal(songs().length, 2);
-        return note(`tag while composing ${JSON.stringify(tag)}; card ${JSON.stringify(last)}; MiniMax lyrics ${JSON.stringify(mm.requests[1].body.lyrics)}; files ${songs().join(', ')}`);
+        return note(`tag while composing ${JSON.stringify(tag)}; card ${JSON.stringify(last)}; fal lyrics ${JSON.stringify(ms.fal.submits[1].input.lyrics)}; files ${songs().join(', ')}`);
       }, () => admin);
 
-      await step(S, 'C7 MiniMax refuses (余额不足, 1008): she says why in the bubble, no file is saved', async () => {
+      await step(S, 'C7 fal.ai refuses (余额不足 / 账户锁定, HTTP 403): she says why in the bubble, no file is saved', async () => {
         // 收起 the card of the first song (it would otherwise stay up to two minutes)
         if (await page.isVisible('#music-dock')) await page.click('#music-dock-close');
         assert.equal(await page.isVisible('#music-dock'), false);
-        mmPlan = () => ({ delayMs: 800, code: 1008, msg: 'insufficient balance' });
+        falPlan = () => ({ submit: { status: 403, body: { detail: 'User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.' } } });
         const before = songs().length;
         await sendText('再来段纯音乐');
         await idle();
         await page.waitForTimeout(300);
         const text = await page.textContent('#bubble');
-        assert.match(text, /这次没写成：MiniMax 账户余额或额度不足（错误码 1008）/);
+        assert.match(text, /这次没写成：fal\.ai 账户余额不足或已被锁定，请到 fal\.ai\/dashboard\/billing 充值后再试（错误码 http-403）/);
         assert.equal(await page.isVisible('#music-dock'), false, 'no song card this time');
         assert.equal(songs().length, before);
-        await shot(page, 'chat-c7-minimax-refused');
+        await shot(page, 'chat-c7-fal-refused');
         const log = await page.evaluate(() => window.petFx.musicLog());
         assert.ok(log.some((e) => e.ev === 'failed'));
-        mmPlan = () => ({ delayMs: 300 });
+        falPlan = () => ({});
         return note(`bubble ${JSON.stringify(text)}; files still ${before}`);
       }, page);
 
@@ -243,26 +251,57 @@ module.exports = function musicChatScenario(ctx) {
         await shot(admin, 'chat-c8-music-settings-switch-off');
         assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).music.enabled, false);
         const at = srv.requests.length;
-        const mmAt = mm.requests.length;
+        const falAt = ms.fal.submits.length;
         await sendText('来段纯音乐');
         await idle();
         const req = chatReq(at);
         assert.deepEqual(req.tools, []);
         assert.match(req.input, /这次不能作曲：在「设置 → 音乐创作」里关掉了/);
-        assert.equal(mm.requests.length, mmAt);
+        assert.equal(ms.fal.submits.length, falAt);
         await page.waitForTimeout(300);
         await shot(page, 'chat-c8-music-off-bubble');
         await admin.evaluate(() => window.petAdmin.set('music.enabled', true));
-        return note(`settings.json music.enabled=false → request tools=[]; prompt hint present; MiniMax calls +0; bubble ${JSON.stringify(await page.textContent('#bubble'))}`);
+        return note(`settings.json music.enabled=false → request tools=[]; prompt hint present; fal calls +0; bubble ${JSON.stringify(await page.textContent('#bubble'))}`);
+      }, page);
+
+      await step(S, 'C9 设置 → 音乐创作 → 服务 = ElevenLabs, then MiniMax 官方: the same words go to that service (xi-api-key / Bearer), a playable song each time', async () => {
+        const out = [];
+        for (const [id, check] of [['elevenlabs', () => ms.el.requests.length], ['minimax', () => mm.requests.length]]) {
+          const r = await admin.evaluate((v) => window.petAdmin.set('music.provider', v), id);
+          assert.equal(r.ok, true, JSON.stringify(r));
+          assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).music.provider, id);
+          if (await page.isVisible('#music-dock')) await page.click('#music-dock-close');
+          const before = songs().length;
+          const calls = check();
+          const at = srv.requests.length;
+          await sendText('来段纯音乐');
+          await idle();
+          await page.waitForSelector('#music-dock .music-card', { timeout: 20000 });
+          assert.equal(check(), calls + 1, `${id} was called`);
+          assert.equal(songs().length, before + 1);
+          const fnOut = JSON.parse(srv.requests.slice(at).find((q) => Array.isArray(q.body.input) && q.body.input[0].type === 'function_call_output').body.input[0].output);
+          assert.equal(fnOut.provider, id);
+          await page.waitForTimeout(300);
+          await shot(page, `chat-c9-${id}-song`);
+          out.push(`${id}: tool output ${JSON.stringify({ ok: fnOut.ok, provider: fnOut.provider, model: fnOut.model, unsupported: fnOut.unsupported })}`);
+        }
+        const el = ms.el.requests[0];
+        assert.equal(el.headers['xi-api-key'], 'e2e-fake-elevenlabs-key');
+        assert.equal(el.body.music_length_ms, 60000);
+        assert.equal(mm.requests.at(-1).headers.authorization, 'Bearer e2e-fake-minimax-key');
+        await admin.evaluate(() => window.petAdmin.set('music.provider', 'fal'));
+        return note(`${out.join('; ')}; ElevenLabs body ${JSON.stringify(el.body)} query ${JSON.stringify(el.query)}`);
       }, page);
     } finally {
       fs.writeFileSync(path.join(SHOTS, 'music-chat-log.txt'), evidence.join('\n\n') + '\n');
       try { fs.writeFileSync(path.join(SHOTS, 'music-chat-responses-requests.json'), JSON.stringify(srv.requests.map((q) => ({ at: q.at, body: q.body })), null, 2) + '\n'); } catch { /* ignore */ }
+      try { fs.writeFileSync(path.join(SHOTS, 'music-chat-fal-requests.json'), JSON.stringify(ms.requests.map((q) => ({ at: q.at, method: q.method, path: q.path, query: q.query, auth: q.headers.authorization ? q.headers.authorization.replace(/\S+$/, '<key>') : null, xiApiKey: q.headers['xi-api-key'] ? '<key>' : null, body: q.body })), null, 2) + '\n'); } catch { /* ignore */ }
       try { fs.writeFileSync(path.join(SHOTS, 'music-chat-minimax-requests.json'), JSON.stringify(mm.requests.map((q) => ({ at: q.at, auth: q.headers.authorization, body: q.body })), null, 2) + '\n'); } catch { /* ignore */ }
       try { fs.copyFileSync(path.join(data, 'chat-log.json'), path.join(SHOTS, 'music-chat-chat-log.json')); } catch { /* ignore */ }
       await app.close().catch(() => {});
       await srv.close();
       await mm.close();
+      await ms.close();
     }
   };
 };

@@ -1,6 +1,6 @@
 # 聊天里作曲：compose_music 接入对话 / 工具调用链路（T-5090）
 
-依赖 T-5088 的 `src/core/music.js`（MiniMax `POST /v1/music_generation`，提交 → 等待 → 下载保存）。本篇只讲它怎样接进桌宠的对话：AI 在什么时候能调用、调用时界面怎样反馈、出错怎样回传。
+依赖 `src/core/music.js`（T-5088 起，T-5651 改为可切换服务：fal.ai MiniMax Music（默认）/ ElevenLabs Music / MiniMax 官方，提交 → 等待 → 下载保存，见 [music.md](music.md)）。本篇只讲它怎样接进桌宠的对话：AI 在什么时候能调用、调用时界面怎样反馈、出错怎样回传。
 
 ## 1. 接入点
 
@@ -11,7 +11,7 @@
 | `src/core/persona.js` | `MUSIC_HINT`（可作曲时）/ `musicHint()`（不可作曲时说明原因，不许假装写好） |
 | `src/core/music.js` | `music.enabled` 开关；`allowInsecureLocal`（仅测试模式允许 `http://127.0.0.1` 假端点） |
 | `src/core/settings-schema.js` | 设置 → 音乐创作 → **让她作曲**（`music.enabled`，默认开） |
-| `src/main/main.js` | 构造 `PetService({ music: { key: () => keys.get('minimax'), userDataDir } })`；IPC `music-audio` / `music-open`（桌宠窗口）、`admin-chat-music-audio` / `admin-chat-music-open`（设置窗口，`adminOnly`）；只允许音乐保存目录内（realpath 校验）的 mp3 / wav / pcm；`music` 事件转发为 `music-status` / `admin-chat-music` |
+| `src/main/main.js` | 构造 `PetService({ music: { key: (slot) => keys.get(slot), userDataDir } })`（slot = 所选服务的 Key：`fal` / `elevenlabs` / `minimax`；门控 = 所选服务有 Key）；IPC `music-audio` / `music-open`（桌宠窗口）、`admin-chat-music-audio` / `admin-chat-music-open`（设置窗口，`adminOnly`）；只允许音乐保存目录内（realpath 校验）的 mp3 / wav / pcm；`music` 事件转发为 `music-status` / `admin-chat-music` |
 | `src/main/preload.js` · `src/main/admin-preload.js` | `pet.onMusicStatus` / `pet.music.{audio,open,reveal}`；`petAdmin.chat.{onMusic,musicAudio,musicOpen,musicReveal}` |
 | `src/core/admin-chat.js` | `messageView().music`：聊天页消息带上这一轮的歌 |
 | `src/renderer/app.js` · `index.html` · `style.css` | 气泡「作曲中…《标题》 0:12」；回复后气泡下方的歌曲卡片 `#music-dock`（▶ / 暂停、标题、时长、格式、纯音乐、打开、在文件夹中显示、路径） |
@@ -65,4 +65,4 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js musicchat   # 只跑聊�
 env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js music       # 音乐设置页 M1–M4 + 聊天作曲 C1–C8
 ```
 
-e2e 用 `test/fixtures/fake-responses-server.js`（支持 `calls` 让回合停在 function_call 上）和 `test/fixtures/fake-minimax-music.js`（返回 3 秒的真 mp3 `test/fixtures/music-sample.mp3`），不花 token、不耗 MiniMax 额度；截图与请求记录在 `out/e2e/music/`（`chat-c*.png`、`music-chat-log.txt`、`music-chat-*-requests.json`）。
+e2e 用 `test/fixtures/fake-responses-server.js`（支持 `calls` 让回合停在 function_call 上）、`test/fixtures/fake-music-services.js`（fal 队列与 ElevenLabs 的替身）和 `test/fixtures/fake-minimax-music.js`（都返回 3 秒的真 mp3 `test/fixtures/music-sample.mp3`），不花 token、不耗任何音乐额度；截图与请求记录在 `out/e2e/music/`（`chat-c*.png`、`music-chat-log.txt`、`music-chat-*-requests.json`）。

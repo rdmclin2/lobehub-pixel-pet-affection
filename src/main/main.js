@@ -1168,9 +1168,11 @@ app.whenReady().then(() => {
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
-  // 音乐创作 (T-5090): compose_music uses the MiniMax key of 朗读 (keys.minimax) or MINIMAX_API_KEY; e2e runs may
-  // point MINIMAX_MUSIC_ENDPOINT at a stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
-  const music = { key: () => keys.get('minimax'), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
+  // 音乐创作 (T-5090, T-5651): compose_music uses the key of the service picked in 设置 → 音乐创作 — keys.fal (its own,
+  // set on that page), keys.elevenlabs / keys.minimax (shared with 朗读), else FAL_KEY / ELEVENLABS_API_KEY /
+  // MINIMAX_API_KEY. e2e runs may point FAL_MUSIC_ENDPOINT / ELEVENLABS_MUSIC_ENDPOINT / MINIMAX_MUSIC_ENDPOINT at a
+  // stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
+  const music = { key: (slot = 'minimax') => keys.get(slot), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
   service = new PetService({ lh, responses, music, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({

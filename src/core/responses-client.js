@@ -96,20 +96,21 @@ const LOCAL_FUNCTION_TOOLS = [
 ];
 
 // ---- 音乐创作: compose_music (T-5090) --------------------------------------------------------------------
-// A function tool of its own, NOT one of the local abilities: it only calls MiniMax (core/music.js) and saves the
-// song under the music folder, so it is offered whenever 设置 → 音乐创作 is on and a MiniMax key is set, with
+// A function tool of its own, NOT one of the local abilities: it only calls the music service picked in 设置 → 音乐创作
+// (core/music.js: fal.ai MiniMax Music / ElevenLabs / MiniMax) and saves the song under the music folder, so it is
+// offered whenever 设置 → 音乐创作 is on and that service has a key, with
 // 本机能力 on or off (pet-service _musicStatus). The parameters are core/music.js buildRequest's.
 const MUSIC_TOOL_NAME = 'compose_music';
 const MUSIC_TOOL = {
   type: 'function',
   name: MUSIC_TOOL_NAME,
   description: [
-    'Compose an original piece of music with MiniMax and save it as an audio file on the owner\'s computer; the app shows it in the chat with a play button.',
+    'Compose an original piece of music with the owner\'s music service (fal.ai MiniMax Music, ElevenLabs Music or MiniMax) and save it as an audio file on the owner\'s computer; the app shows it in the chat with a play button.',
     'Use it whenever the owner asks you to make, write, compose, sing or play a NEW song / tune / melody / BGM / lullaby / pure music (e.g. 「给我写首歌」「来段轻松的纯音乐」「唱首生日歌」「写一首关于夏天的歌」「make me a lo-fi beat」).',
     'Do not use it to recommend or find existing songs, to talk about music, or when the owner did not ask for a piece.',
-    'With vocals: write the lyrics yourself in `lyrics` (lines separated by \\n, sections tagged [Verse] [Chorus] [Bridge] …), or leave `lyrics` empty and set `lyricsOptimizer: true` to let MiniMax write them from `prompt`.',
+    'With vocals: write the lyrics yourself in `lyrics` (lines separated by \\n, sections tagged [Verse] [Chorus] [Bridge] …), or leave `lyrics` empty and set `lyricsOptimizer: true` to let the music model write them from `prompt`.',
     'Pure music / no singing / BGM: set `instrumental: true` (no lyrics).',
-    'It takes one to a few minutes; call it once per piece and never again for the same request. Tell the owner the title and that it is ready when it returns; if it returns ok:false, tell them the reason in your own words.',
+    'It takes one to a few minutes; call it once per piece and never again for the same request. Tell the owner the title and that it is ready when it returns; if it returns ok:false, tell them the reason in your own words (and whether trying later may help, from `retry`). If it lists `unsupported` fields (e.g. the length or BPM was only a hint), say so honestly.',
   ].join(' '),
   parameters: {
     type: 'object',
@@ -117,7 +118,7 @@ const MUSIC_TOOL = {
       prompt: { type: 'string', description: 'Style, genre, mood, scene and instruments in one description (≤ 2000 chars), e.g. "Relaxed lo-fi hip hop, warm Rhodes piano, rainy evening".' },
       lyrics: { type: 'string', description: 'Lyrics for a song with vocals (≤ 3500 chars), \\n between lines, sections as [Intro] [Verse] [Pre Chorus] [Chorus] [Bridge] [Outro] … Leave empty for instrumental or lyricsOptimizer.' },
       instrumental: { type: 'boolean', description: 'true = pure music without vocals (纯音乐 / BGM).' },
-      lyricsOptimizer: { type: 'boolean', description: 'true = no lyrics given; MiniMax writes them from the prompt.' },
+      lyricsOptimizer: { type: 'boolean', description: 'true = no lyrics given; the music model writes them from the prompt.' },
       title: { type: 'string', description: 'A short title (≤ 60 chars), used in the file name.' },
       genre: { type: 'string', description: 'Genre, e.g. pop, lo-fi, 民谣, jazz.' },
       mood: { type: 'string', description: 'Mood, e.g. 轻松, happy, melancholic.' },
@@ -125,7 +126,7 @@ const MUSIC_TOOL = {
       instruments: { type: 'string', description: 'Main instruments, e.g. piano, acoustic guitar.' },
       vocals: { type: 'string', description: 'Voice, e.g. 温柔女声, male tenor (ignored when instrumental).' },
       bpm: { type: 'integer', minimum: 40, maximum: 240, description: 'Tempo in BPM (a hint).' },
-      durationSec: { type: 'integer', minimum: 10, maximum: 360, description: 'Rough length in seconds (a hint; MiniMax decides the real length).' },
+      durationSec: { type: 'integer', minimum: 10, maximum: 360, description: 'Rough length in seconds (ElevenLabs follows it; on fal / MiniMax it is only a hint and the model decides the real length).' },
       structure: { type: 'array', items: { type: 'string', enum: musicLib.STRUCTURE_TAGS }, description: 'Section order, e.g. ["Intro","Verse","Chorus","Outro"].' },
     },
     required: ['prompt'],
@@ -134,10 +135,23 @@ const MUSIC_TOOL = {
 };
 
 // What the model reads back (one JSON line): the saved file, or why there is none. `r`: generateMusic's result.
+// `provider`: the service that made it (fal / elevenlabs / minimax). `unsupported`: the fields that service only
+// took as a hint in the prompt or did not take at all (e.g. durationSec on fal: MiniMax decides the length) — the
+// model is told to say so instead of promising them. A failure: reason, the service's code, retry (whether trying
+// again later may work) and a readable Chinese error.
 function musicToolOutput(r, e = null) {
-  if (e) return JSON.stringify({ ok: false, reason: e.reason || 'error', code: e.code ?? null, error: String(e.message || e).slice(0, 300), retry: ['rate-limit', 'server', 'network', 'timeout'].includes(e.reason) });
+  if (e) {
+    const retry = typeof e.retryable === 'boolean' ? e.retryable : ['rate-limit', 'server', 'network', 'timeout'].includes(e.reason);
+    return JSON.stringify({ ok: false, reason: e.reason || 'error', code: e.code ?? null, error: String(e.message || e).slice(0, 300), retry, provider: e.provider || null });
+  }
+  const m = r.meta || {};
   const sec = r.durationMs ? Math.round(r.durationMs / 100) / 10 : null;
-  return JSON.stringify({ ok: true, title: r.meta && r.meta.title ? r.meta.title : '', filePath: r.filePath, fileUrl: r.fileUrl, durationSec: sec, format: r.meta && r.meta.format, instrumental: !!(r.meta && r.meta.instrumental), shownToOwner: 'the app shows this file with a play button under your reply', warnings: (r.meta && r.meta.warnings) || [] });
+  const out = { ok: true, title: m.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationSec: sec, format: m.format, instrumental: !!m.instrumental, provider: m.provider || null, model: m.model || null, shownToOwner: 'the app shows this file with a play button under your reply', warnings: m.warnings || [] };
+  if (Array.isArray(m.unsupported) && m.unsupported.length) {
+    out.unsupported = m.unsupported;
+    out.unsupportedNote = 'these fields were only a hint in the prompt (prompt-hint) or not sent (ignored) by this music service; do not promise them to the owner';
+  }
+  return JSON.stringify(out);
 }
 
 // The tool for ResponsesClient#run's `extraTools`: { def, long, run(args, signal) -> output string }.

@@ -273,8 +273,8 @@ function messageView(m, images, speciesId) {
     via: m.via === 'console' ? 'console' : 'desktop',
     attachments: shown,
     unsavedImages: extra,
-    // 音乐创作 (T-5090): songs compose_music saved in this round ({ id, title, filePath, fileUrl, durationMs, format })
-    music: Array.isArray(a.music) ? a.music.filter((x) => x && typeof x.filePath === 'string').map((x) => ({ id: String(x.id || x.filePath), title: String(x.title || ''), filePath: x.filePath, fileUrl: String(x.fileUrl || ''), durationMs: Number(x.durationMs) || null, format: String(x.format || ''), instrumental: !!x.instrumental })) : [],
+    // 音乐创作 (T-5090): songs compose_music saved in this round ({ id, title, filePath, fileUrl, durationMs, format, provider? })
+    music: Array.isArray(a.music) ? a.music.filter((x) => x && typeof x.filePath === 'string').map((x) => ({ id: String(x.id || x.filePath), title: String(x.title || ''), filePath: x.filePath, fileUrl: String(x.fileUrl || ''), durationMs: Number(x.durationMs) || null, format: String(x.format || ''), instrumental: !!x.instrumental, ...(typeof x.provider === 'string' ? { provider: x.provider } : {}) })) : [],
   };
 }
 
