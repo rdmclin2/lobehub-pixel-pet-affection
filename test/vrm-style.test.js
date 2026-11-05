@@ -61,10 +61,10 @@ const VROID_FEMALE = rig({ shoulder: 0.141, hip: 0.1, names: ['J_Sec_L_Bust1', '
 const LIQU = rig({ shoulder: 0.152, hip: 0.1 });
 
 test('bodyFromJson counts breast bones outside VRoid\'s template (spring or not, colliders left out) and the template ones', () => {
-  assert.deepEqual(ELYSIA, { bustSpring: 0, bustBones: 4, vroidBust: 0, shoulderHip: 1.54 });
-  assert.deepEqual(LAYLA, { bustSpring: 2, bustBones: 2, vroidBust: 0, shoulderHip: 1.34 });
-  assert.deepEqual(VROID_MALE, { bustSpring: 0, bustBones: 0, vroidBust: 4, shoulderHip: 1.57 });
-  assert.deepEqual(KAZUHA, { bustSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: 1.96 });
+  assert.deepEqual(ELYSIA, { bustSpring: 0, skirtSpring: 0, bustBones: 4, vroidBust: 0, shoulderHip: 1.54 });
+  assert.deepEqual(LAYLA, { bustSpring: 2, skirtSpring: 0, bustBones: 2, vroidBust: 0, shoulderHip: 1.34 });
+  assert.deepEqual(VROID_MALE, { bustSpring: 0, skirtSpring: 0, bustBones: 0, vroidBust: 4, shoulderHip: 1.57 });
+  assert.deepEqual(KAZUHA, { bustSpring: 0, skirtSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: 1.96 });
 });
 
 test('voice gender (inferVoiceGender) is stricter than the motion style: Elysia female, Kazuha male, Layla female', () => {
@@ -74,7 +74,7 @@ test('voice gender (inferVoiceGender) is stricter than the motion style: Elysia 
   assert.deepEqual(both(LAYLA), ['female', 'female']);
   assert.deepEqual(both(VROID_MALE), ['male', 'male'], 'VRoid figure, bust on no spring, 1.57');
   assert.deepEqual(both(VROID_FEMALE), ['female', 'female']);
-  assert.deepEqual(both(LIQU), ['male', 'neutral'], '1.5–1.8 without other evidence: the voice says nothing (→ default female); the motion style is unchanged');
+  assert.deepEqual(both(LIQU), ['neutral', 'neutral'], '1.52 without other evidence: below the motion style\'s male line (MALE_SHOULDER_HIP 1.55, T-5084: Liqu is a girl) and the voice says nothing (→ default female)');
   // the thresholds
   assert.equal(S.inferVoiceGender({ bustSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: S.VRM_GENDER_RULES.voiceMaleShoulderHip }), 'male');
   assert.equal(S.inferVoiceGender({ bustSpring: 0, bustBones: 0, vroidBust: 0, shoulderHip: 1.79 }), 'neutral');

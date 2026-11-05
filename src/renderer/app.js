@@ -228,7 +228,7 @@ function lookEl(look, { className = 'look', alt = '', action = () => 'idle', spe
       const figure = LIVE_KINDS[look.kind]().createFigure(c, look, { framing: framingOf(look).mode });
       c.petFigure = figure; // syncFraming re-frames it when the settings change
       const r = { canvas: c, figure, action, ok: false, kind: look.kind };
-      figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); }, (e) => rigFailed(c, look, alt, className, e));
+      figure.ready.then((ok) => { if (ok === false) return; r.ok = true; rigs.add(r); if (look.kind === 'vrm') vrmLibraryHint(figure, look); }, (e) => rigFailed(c, look, alt, className, e));
     } catch (e) {
       setTimeout(() => rigFailed(c, look, alt, className, e));
     }
@@ -1478,6 +1478,66 @@ function updateDanceNow() {
   loop.setAttribute('aria-pressed', String(!!st.loop));
   loop.title = st.loop ? '循环播放：开（点一下关闭）' : '循环播放：关（点一下打开）';
 }
+// ---------- the VRM motion library (T-5084) ----------
+// A VRM drawn without its motion library — none found, the index unreadable, every clip failing — only breathes and
+// looks about (the procedural idle): before T-5084 that happened silently (T-5079 R1). Now the figure logs why
+// (renderer/vrm.js libraryInfo) and she says it once per model and reason in this session, with where to fix it.
+const libraryHinted = new Set();
+const LIBRARY_HINT = {
+  'no-library': '（我还没有动作库，只能站着呼吸……到 设置 → 角色 → VRM 动作库 选一下动作库文件夹吧）',
+  'empty-index': '（动作库是空的，我只能站着呼吸……到 设置 → 角色 → VRM 动作库 重新选一下吧）',
+  'fetch-failed': '（动作库读不出来，我先只能站着呼吸……）',
+  'all-failed': '（动作库里的动作都没载入成功，我先只能站着呼吸……）',
+  'no-clip-for-model': '（动作库里没有适合我这个模型的动作……）',
+};
+function vrmLibraryHint(figure, look) {
+  const info = figure.libraryInfo && figure.libraryInfo();
+  if (!info) return;
+  const text = LIBRARY_HINT[info.reason];
+  if (!text) return;
+  const key = `${look.packId}:${info.reason}`;
+  if (libraryHinted.has(key)) return;
+  libraryHinted.add(key);
+  // after whatever she is saying now (a greeting, a reply): the hint must be seen, not overwritten at once
+  let tries = 0;
+  const show = () => {
+    const b = $('bubble');
+    if (tries++ < 30 && (thinking || !b.classList.contains('hidden'))) { setTimeout(show, 1000); return; }
+    // (T-5098: still so? a library linked or another character worn meanwhile: nothing to say any more)
+    const now = vrmFigure() === figure && figure.libraryInfo ? figure.libraryInfo() : null;
+    if (!now || now.reason !== info.reason) return;
+    say(text, 'fallback', 'fallback', `vrm-library:${info.reason}`);
+  };
+  setTimeout(show, 1200);
+}
+// Play a clip of the library by hand (the console's 试播, POST /motion, a chat request): a dance stops first. → the
+// director's answer ({ ok, id, kind, layer, label, duration, loop } | { ok: false, reason })
+function playMotion(req = {}) {
+  const f = vrmFigure();
+  if (!f) return { ok: false, reason: view && view.look && view.look.kind === 'vrm' ? 'not-ready' : 'not-vrm' };
+  if (dance && dance.active()) dance.stop({ reason: 'motion' });
+  const r = f.playMotion(req);
+  // a dance still fading out: try again on the next frames
+  if (r && !r.ok && r.reason === 'dancing') return new Promise((res) => setTimeout(() => res(f.playMotion(req)), 700));
+  return r;
+}
+function stopMotion(why = 'stop') {
+  const f = vrmFigure();
+  if (!f) return { ok: false, reason: 'not-vrm' };
+  return { ok: true, ...f.stopMotion(why) };
+}
+// 聊天里说「点个头」「伸个懒腰」「坐下」「站起来」(core/vrm-motion-intent.js): local, the message still goes to her agent
+function chatMotionIntent(text) {
+  if (!window.PetMotionIntent) return;
+  const f = vrmFigure();
+  if (!f) return;
+  const plan = f.plan();
+  const m = window.PetMotionIntent.matchMotionIntent(text, { playing: !!(plan && plan.manual) });
+  if (!m) return;
+  if (m.action === 'stop') { stopMotion('chat'); return; }
+  playMotion({ group: m.group, why: 'chat' });
+}
+
 // 聊天里说「跳个舞」/「跳一下节拍摇摆」/「别跳了」(core/dance-intent.js): recognised locally, never by the model
 let danceRefusedAt = 0;
 async function chatDanceIntent(text) {
@@ -1571,7 +1631,7 @@ function bindPetUi() {
       if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
-    if (text && !imgs.length && !files.length) chatDanceIntent(text); // 「跳个舞」/「别跳了」: local, the message still goes to her agent
+    if (text && !imgs.length && !files.length) { chatDanceIntent(text); chatMotionIntent(text); } // 「跳个舞」/「别跳了」/「点个头」: local, the message still goes to her agent
     attachments = [];
     renderAttachments();
     input.value = '';
@@ -1898,9 +1958,9 @@ function vrmFigure() {
 }
 // The body part under client point (cx, cy), or null (off her art, a transparent pixel, no part there).
 // A VRM look is hit on its 3D skeleton (renderer/vrm.js zoneAt → core/vrm-hit.js), not the 2D zone table.
-function zoneAtClient(cx, cy) {
+function zoneAtClient(cx, cy, opts) {
   const vf = view && view.look && view.look.kind === 'vrm' ? vrmFigure() : null;
-  if (vf) return vf.zoneAt(cx, cy);
+  if (vf) return vf.zoneAt(cx, cy, opts); // (a click: { precise } — the part drawn under it, T-5098)
   const pt = artPoint(cx, cy);
   if (!pt) return { zone: null, pt: null };
   return { zone: TZ.zoneAt(pt.x, pt.y, { character: speciesOf(view.pet.speciesId), pose: pt.pose, opaque: pt.opaque }), pt };
@@ -1911,7 +1971,7 @@ function zoneAtClient(cx, cy) {
 async function touchAt(e) {
   if (thinking || !view) return;
   if (!touchOn() || !e || !Number.isFinite(e.clientX)) return doAct('pat');
-  const { zone, pt } = zoneAtClient(e.clientX, e.clientY);
+  const { zone, pt } = zoneAtClient(e.clientX, e.clientY, { precise: true });
   if (!zone) return doAct('pat');
   const r = await window.pet.touch(zone);
   if (r.ok) showTouch(r, pt, { x: e.clientX, y: e.clientY });
@@ -2526,6 +2586,11 @@ async function onApiCmd({ id, cmd, args }) {
     if (cmd === 'dance-loop') result = dance && dance.active() ? { ok: true, loop: dance.setLoop(args.on) } : { ok: false, reason: 'not-dancing' };
     if (cmd === 'reset-pose') result = resetPose(args.source);
     if (cmd === 'dance-state') result = { ok: true, dance: dance ? dance.state() : null };
+    // T-5084: the motion library's clips — list, play one by hand, stop it; and redraw the VRM after the library moved
+    if (cmd === 'motions') { const f = vrmFigure(); result = f ? { ok: true, library: f.libraryInfo(), motions: f.motions(), manual: (f.plan() || {}).manual || null } : { ok: false, reason: view && view.look && view.look.kind === 'vrm' ? 'not-ready' : 'not-vrm' }; }
+    if (cmd === 'motion') result = await playMotion({ id: args.id || undefined, slot: args.slot || undefined, group: args.group || undefined, loop: args.loop, hold: args.hold, why: args.why || 'api' });
+    if (cmd === 'motion-stop') result = stopMotion(args.why || 'api');
+    if (cmd === 'vrm-reload') { if (view && view.look && view.look.kind === 'vrm') { $('pet-look').dataset.key = ''; libraryHinted.clear(); applyArt(); result = { ok: true, reloaded: true }; } else result = { ok: true, reloaded: false }; }
     if (cmd === 'anim') {
       if (thinking) result = { ok: false, reason: 'busy' };
       else {

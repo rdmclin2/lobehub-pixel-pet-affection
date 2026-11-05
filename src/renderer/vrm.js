@@ -157,12 +157,17 @@
   const Hit = window.PetVrmHit;
   // the posture the user chose per pack (settings.vrmPostures, set by app.js), and the debug clock / seed
   const postures = new Map();
-  const debugCtl = { speed: 1, seed: null };
+  const debugCtl = { speed: 1, seed: null, yaw: 0 }; // yaw (deg): turned on top of her facing, for the e2e (T-5098: her back)
 
   // the motion library (vrmlib://, src/main/vrm-library.js): its index, read for each new figure (a bake or a
   // removed library shows on the next model drawn)
+  // (T-5084: with where it came from — main answers { missing, source } when there is none — and whether the fetch
+  // failed, for the hint shown when a VRM has to fall back to breathing only)
   function loadLibraryIndex() {
-    return fetch('vrmlib://index/library.json').then((r) => (r.ok ? r.json() : null)).then((j) => Lib.cleanIndex(j), () => Lib.cleanIndex(null));
+    return fetch('vrmlib://index/library.json').then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).then(
+      (j) => Object.assign(Lib.cleanIndex(j), { raw: { missing: !!(j && j.missing), source: (j && j.source) || null, entries: Object.keys((j && j.clips) || {}).length } }),
+      (e) => Object.assign(Lib.cleanIndex(null), { raw: { missing: true, source: null, entries: 0, error: String((e && e.message) || e) } }),
+    );
   }
 
   // `look` from core/packs.js resolveLook: { packId, model (pack:// URL of the .vrm), vrm: { height,
@@ -184,6 +189,15 @@
     let index = { clips: {} };
     const loaded = new Set();
     let libState = 'none';
+    let libInfo = null; // T-5084: { state, reason, set, sets, wanted, loaded, failed: [{ id, error }], source } — debug() and the hint
+    let lifeInfo = null;
+    let headBox = null; // T-5092: her drawn head for the touch zone (measureHeadBox)
+    let partBoxes = null; // T-5098: every body part as drawn, for the touch zones (measurePartBoxes)
+    // T-5092: a model whose humanoid hips bone sits on the floor (Wanderer): where her real hip joints are, so the
+    // hips turn about them and the hips travel scales with their height (loadClips sets it; null for other models)
+    let hipsRig = null;
+    const clipRepairs = { clips: 0, steps: 0, jerkClips: 0, jerkKeys: 0, jerkMaxCutDeg: 0 }; // T-5084: steps in clips' own keys spread at load (loadVrma) // T-5084: the alive layer's offsets of the last frame (debug().life)
+    let boneFold = null; // the bones this model lacks and where their turns went (foldMissingBones)
     let animState = 'none'; // none | vrma | failed
     let lookTarget = null;
     let disposed = false;
@@ -306,14 +320,111 @@
     });
 
     // A .vrma as a clip for this model. `url` must be in the pack or the motion library.
-    async function loadVrma(url, own) {
+    // T-5098: the jerk limit for one-shot reactions and holds (core/vrm-bone-map.js limitAccel): ≤ JERK_MAX °/s³ keeps
+    // their spike ≤ 10°/frame@30 at the 9–15 fps a machine without a GPU draws; idles, postures and dances are slow
+    // enough or must stay as choreographed
+    const JERK_MAX = 90000;
+    async function loadVrma(url, own, meta = null) {
       const al = new R.GLTFLoader();
       al.manager.setURLModifier((u) => (u.startsWith(own) || u.startsWith('vrmlib://') || u.startsWith('data:') || u.startsWith('blob:') ? u : 'data:application/octet-stream,'));
       al.register((parser) => new R.VRMAnimationLoaderPlugin(parser));
       const g = await al.loadAsync(url);
       const a = g.userData && g.userData.vrmAnimations && g.userData.vrmAnimations[0];
       if (!a) throw new Error('not a VRM animation');
-      return R.createVRMAnimationClip(a, vrm);
+      foldMissingBones(a);
+      const clip = R.createVRMAnimationClip(a, vrm);
+      if (hipsRig) rescaleHipsTravel(a, clip);
+      // a step in the clip's own keys (a source glitch) would be a snap however it is faded in: spread it (T-5084)
+      const BM = window.PetVrmBoneMap;
+      if (BM && BM.smoothSteps) {
+        let n = 0;
+        for (const tr of clip.tracks) if (/\.quaternion$/.test(tr.name) && !/Thumb|Index|Middle|Ring|Little|Toes/.test(tr.name)) n += BM.smoothSteps(tr.times, tr.values);
+        if (n) { clipRepairs.clips++; clipRepairs.steps += n; }
+        if (BM.limitAccel && meta && (meta.kind === 'reaction' || meta.kind === 'hold')) {
+          let keys = 0;
+          for (const tr of clip.tracks) {
+            if (!/\.quaternion$/.test(tr.name) || /Thumb|Index|Middle|Ring|Little|Toes/.test(tr.name)) continue;
+            const r = BM.limitAccel(tr.times, tr.values, { jMax: JERK_MAX });
+            if (!r) continue;
+            tr.times = r.times;
+            tr.values = r.values;
+            keys += r.fixed;
+            clipRepairs.jerkMaxCutDeg = Math.max(clipRepairs.jerkMaxCutDeg, r.maxCutDeg);
+          }
+          if (keys) { clipRepairs.jerkClips++; clipRepairs.jerkKeys += keys; }
+        }
+      }
+      return clip;
+    }
+
+    // T-5092: the hips of a model whose hips bone is on the floor. three-vrm scales a clip's hips travel by the
+    // model's hips height / the clip's: ~0 here, so every bounce and step of a dance was lost, and the hips rotation
+    // turned her whole body about her feet (a dance's lean became a fall or a squat). → { pivot (the upper legs'
+    // midpoint from the hips bone, in its parent's axes), height (of that point above the hips bone), restY }
+    function measureHipsRig() {
+      const T = R.THREE;
+      const h = vrm.humanoid;
+      const BM = window.PetVrmBoneMap;
+      const hips = h.getNormalizedBoneNode('hips');
+      const l = h.getNormalizedBoneNode('leftUpperLeg');
+      const r = h.getNormalizedBoneNode('rightUpperLeg');
+      if (!hips || !l || !r || !hips.parent || !BM || !BM.legRig) return null;
+      vrm.scene.updateMatrixWorld(true);
+      // T-5098: her hips height from her legs (core/vrm-bone-map.js legRig): the leg chain + the ankle over the floor
+      const pos = {};
+      for (const n of ['leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot']) { const b = h.getNormalizedBoneNode(n); if (b) pos[n] = b.getWorldPosition(new T.Vector3()).toArray(); }
+      const leg = BM.legRig(pos, size ? size.minY : 0);
+      if (!leg || !leg.ok) return null;
+      const mid = new T.Vector3(...leg.joints);
+      const local = hips.parent.worldToLocal(mid.clone()).sub(h.normalizedRestPose.hips.position ? new T.Vector3(...h.normalizedRestPose.hips.position) : hips.position);
+      if (!(local.y > 0.2 * leg.height)) return null;
+      // the clip's hips travel is scaled to the hip joints' height over the floor (the leg chain), the turn pivots there
+      return { pivot: local.toArray(), height: leg.height, restY: h.normalizedRestPose.hips.position[1], leg };
+    }
+    // the clip's hips travel scaled by her hip joints' height instead (rest + (raw − clip rest) × k, VRM 0.x x / z
+    // mirrored like three-vrm does)
+    function rescaleHipsTravel(a, clip) {
+      const raw = a.humanoidTracks && a.humanoidTracks.translation && a.humanoidTracks.translation.get('hips');
+      const node = vrm.humanoid.getNormalizedBoneNode('hips');
+      const tr = raw && node && clip.tracks.find((t) => t.name === `${node.name}.position`);
+      const u = a.restHipsPosition && a.restHipsPosition.y;
+      if (!tr || !(u > 0.05) || tr.values.length !== raw.values.length) return;
+      const k = hipsRig.height / u;
+      const v0 = metaVersion() === '0';
+      for (let i = 0; i < raw.values.length; i++) {
+        const c = i % 3;
+        const val = c === 1 ? hipsRig.restY + (raw.values[i] - u) * k : raw.values[i] * k;
+        tr.values[i] = v0 && c !== 1 ? -val : val;
+      }
+      hipsRig.rescaled = (hipsRig.rescaled || 0) + 1;
+    }
+    // every frame (after all rotations): the hips turned about the hip joints, not the bone on the floor
+    function pivotHips() {
+      if (!hipsRig || !vrm || !vrm.humanoid) return;
+      const n = vrm.humanoid.getNormalizedBoneNode('hips');
+      if (!n) return;
+      const T = R.THREE;
+      tmp.pv = tmp.pv || new T.Vector3();
+      const p = tmp.pv.fromArray(hipsRig.pivot);
+      const rotated = p.clone().applyQuaternion(n.quaternion);
+      n.position.add(p.sub(rotated));
+    }
+
+    // A model without an optional bone (upperChest, neck, shoulders…) would lose that bone's turn and everything
+    // below it with it (three-vrm drops the track): the rotation is carried into the present children first
+    // (core/vrm-bone-map.js foldMissing, T-5081). Counted in debug().boneFold.
+    function foldMissingBones(a) {
+      const BM = window.PetVrmBoneMap;
+      const rot = a && a.humanoidTracks && a.humanoidTracks.rotation;
+      if (!BM || !rot || !vrm || !vrm.humanoid) return;
+      const has = (b) => !!vrm.humanoid.getNormalizedBoneNode(b);
+      if ([...rot.keys()].every(has)) return;
+      const tracks = {};
+      for (const [b, tr] of rot) tracks[b] = { times: Array.from(tr.times), values: Array.from(tr.values) };
+      const r = BM.foldMissing(tracks, has);
+      for (const b of [...rot.keys()]) if (!r.tracks[b]) rot.delete(b);
+      for (const [b, tr] of Object.entries(r.tracks)) rot.set(b, new R.THREE.QuaternionKeyframeTrack(`${b}.quaternion`, tr.times, tr.values));
+      boneFold = { ...(boneFold || {}), folded: r.folded, dropped: r.dropped, level: BM.degradeLevel(has) };
     }
 
     // The library's clips for this style set (the set, female for neutral, any slot a pack override names),
@@ -321,19 +432,40 @@
     // the director falls back (§6.2), nothing here throws.
     async function loadClips(own) {
       index = await loadLibraryIndex();
-      const sets = new Set([style.set, style.set === 'neutral' ? 'female' : null].filter(Boolean));
-      const want = Object.values(index.clips).filter((c) => c.file && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
+      // the set itself, else the first set of its fallback chain the library has (core/vrm-library.js loadSets)
+      const sets = new Set(Lib.loadSets ? Lib.loadSets(index, style.set) : [style.set, style.set === 'neutral' ? 'female' : null].filter(Boolean));
+      // a model whose hips sit on the floor plays standing clips only (core/vrm-bone-map.js allowsClip, T-5081)
+      const BM = window.PetVrmBoneMap;
+      let rootHips = false;
+      if (BM && vrm.humanoid) {
+        const head = vrm.humanoid.getRawBoneNode('head');
+        const hy = head ? head.getWorldPosition(new R.THREE.Vector3()).y : 1;
+        rootHips = BM.rootHips(vrm.humanoid.normalizedRestPose.hips.position[1], hy);
+        if (rootHips) boneFold = { ...(boneFold || {}), rootHips: true };
+        hipsRig = rootHips ? measureHipsRig() : null;
+      }
+      // T-5098: retargeted on her leg chain (measureHipsRig), a hips-on-floor model sits and crouches too
+      const allowed = (c) => !BM || BM.allowsClip(c, { rootHips, legRig: hipsRig ? hipsRig.leg : null });
+      const failed = [];
+      const want = Object.values(index.clips).filter((c) => c.file && allowed(c) && (sets.has(c.style) || Object.values(cfg.motions || {}).includes(c.id)));
       // fall back to any set when the style's own set is not baked
-      const list = want.length ? want : Object.values(index.clips).filter((c) => c.file);
+      const list = want.length ? want : Object.values(index.clips).filter((c) => c.file && allowed(c));
       await Promise.all(list.map(async (c) => {
         try {
-          const clip = await loadVrma(`vrmlib://${c.file}`, own);
+          const clip = await loadVrma(`vrmlib://${c.file}`, own, c);
           if (disposed || !vrm) return;
           anim.add(c.id, clip);
           loaded.add(c.id);
-        } catch (e) { console.warn(`[vrm] motion ${c.id} off:`, e && e.message); }
+        } catch (e) { failed.push({ id: c.id, error: String((e && e.message) || e).slice(0, 120) }); console.warn(`[vrm] motion ${c.id} off:`, e && e.message); }
       }));
       libState = list.length ? (loaded.size === list.length ? 'loaded' : loaded.size ? `partial:${list.length - loaded.size}` : 'none') : 'none';
+      // T-5084: why, in one place — no library at all, an index whose clips do not suit her, clips that failed — in
+      // the console and in debug() / figure.libraryInfo() (the pet window shows a hint: renderer/app.js)
+      const raw = index.raw || {};
+      const reason = loaded.size ? (failed.length ? 'partial' : 'ok') : raw.error ? 'fetch-failed' : !Object.keys(index.clips).length ? (raw.missing ? 'no-library' : 'empty-index') : !list.length ? 'no-clip-for-model' : 'all-failed';
+      libInfo = { state: libState, reason, source: raw.source, set: style.set, style: `${style.name} (${style.source})`, sets: [...sets], wanted: list.length, loaded: loaded.size, failed: failed.slice(0, 20), rootHips, legRig: hipsRig ? hipsRig.leg : null };
+      if (reason === 'ok') console.log(`[vrm] ${look.packId}: ${loaded.size} motion clips (${[...sets].join('/')} set for style ${style.name}/${style.source})`);
+      else console.warn(`[vrm] ${look.packId}: motion library ${reason} — ${loaded.size}/${list.length} clips loaded${failed.length ? `, failed: ${failed.slice(0, 5).map((f) => f.id).join(', ')}` : ''}${raw.error ? ` (${raw.error})` : ''}; ${loaded.size ? 'the rest falls back' : 'she only breathes and looks about (procedural idle)'}`);
       if (cfg.idle) {
         try {
           if (typeof cfg.idle !== 'string' || !cfg.idle.startsWith(own)) throw new Error('an idle animation is loaded from its own pack only');
@@ -384,7 +516,24 @@
       vrm.scene.updateMatrixWorld(true);
       const y = (n) => { const b = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode(n); return b ? b.getWorldPosition(new T.Vector3()).y : null; };
       const feet = ['leftFoot', 'rightFoot', 'leftToes', 'rightToes'].map(y).filter((v) => v !== null);
-      rest = { hipsY: y('hips') || 1, feetY: feet.length ? Math.min(...feet) : 0 };
+      // T-5098: a model whose hips bone is on the floor has her hips at the hip joints (hipsW)
+      const BM = window.PetVrmBoneMap;
+      const hy = y('head');
+      legHips = !!(BM && vrm.humanoid && y('leftUpperLeg') !== null && y('rightUpperLeg') !== null && BM.rootHips(vrm.humanoid.normalizedRestPose.hips.position[1], hy || 1));
+      rest = { hipsY: (legHips ? hipsW(new T.Vector3()).y : y('hips')) || 1, feetY: feet.length ? Math.min(...feet) : 0 };
+    }
+    // where her hips are (world, into `target`): the hips bone, or — a model whose hips bone is a root on the floor
+    // (core/vrm-bone-map.js rootHips) — the midpoint of her hip joints (T-5098: the seat, the shadow, the floor
+    // under a sitting pose and the half-body camera followed a bone that stays on the floor)
+    let legHips = false;
+    function hipsW(target) {
+      const h = vrm.humanoid;
+      if (legHips) {
+        const l = h.getNormalizedBoneNode('leftUpperLeg');
+        const r = h.getNormalizedBoneNode('rightUpperLeg');
+        if (l && r) { tmp.hw = tmp.hw || new R.THREE.Vector3(); l.getWorldPosition(target); r.getWorldPosition(tmp.hw); return target.add(tmp.hw).multiplyScalar(0.5); }
+      }
+      return h.getNormalizedBoneNode('hips').getWorldPosition(target);
     }
 
     // arms down from the T-pose: what she shows before any clip (and the rest clip's pose). VRM 0.x mirrors x / z
@@ -426,6 +575,337 @@
       }
       band = FR.halfBodyBand(bones, { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y }, { head: headExtent(T), waist: look.halfBody && look.halfBody.waist }); // pack.json halfBody.waist overrides the hips
       canvas.dataset.band = band.source;
+      headBox = measureHeadBox(T);
+      partBoxes = measurePartBoxes(T);
+      pickData = buildPick();
+      bodySample = null;
+      const bl = bodyLow();
+      if (bl !== null) rest.bodyFloor = bl - vrm.scene.position.y;
+    }
+    // the lowest point of her body as drawn now (world y): a sample of the skinned vertices that are body, not cloth
+    // (pickData labels; ≤ 4000 of them, every n-th) | null
+    let bodySample = null;
+    function bodyLow() {
+      if (!pickData) return null;
+      const T = R.THREE;
+      if (!bodySample) {
+        bodySample = [];
+        let total = 0;
+        for (const m of pickData.meshes) for (let i = 0; i < m.lab.length; i++) if (m.lab[i] && m.lab[i] !== pickData.P.cloth) total++;
+        const step = Math.max(1, Math.floor(total / 4000));
+        let k = 0;
+        for (const m of pickData.meshes) for (let i = 0; i < m.lab.length; i++) if (m.lab[i] && m.lab[i] !== pickData.P.cloth && (k++ % step) === 0) bodySample.push([m.o, i]);
+      }
+      if (!bodySample.length) return null;
+      const v = tmp.bl || (tmp.bl = new T.Vector3());
+      let low = Infinity;
+      for (const [o, i] of bodySample) { if (!o.visible) continue; o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld); if (v.y < low) low = v.y; }
+      return Number.isFinite(low) ? low : null;
+    }
+
+    // T-5098: a click lands on the triangle drawn under it. Every skinned vertex gets the body part of the bone it is
+    // mostly skinned to (the same grouping as measurePartBoxes; the head with what hangs from it, a vertex an
+    // expression morph moves is her face, spring-bone cloth and hair below the head are `cloth`), at load; a click
+    // skins the meshes as drawn this frame and casts the camera ray against their triangles (meshPick). The zone is
+    // that part — the pelvis and the top of the thigh split front / back at her hip joints like the boxes —; on cloth
+    // (a coat over her butt, a skirt, hair down her back) the boxes underneath decide. The hover hint keeps the boxes.
+    let pickData = null;
+    const PICK = ['none', 'head', 'face', 'neck', 'chest', 'belly', 'pelvis', 'arm', 'hands', 'thigh', 'shin', 'feet', 'cloth'];
+    function buildPick() {
+      const h = vrm.humanoid;
+      if (!h) return null;
+      const P = Object.fromEntries(PICK.map((n, i) => [n, i]));
+      const of = new Map();
+      const put = (names, l) => { for (const n of names) { const b = h.getRawBoneNode(n); if (b) of.set(b, l); } };
+      put(['head', 'leftEye', 'rightEye', 'jaw'], P.head); put(['neck'], P.neck); put(['chest', 'upperChest'], P.chest); put(['spine'], P.belly); put(['hips'], P.pelvis);
+      put(['leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm'], P.arm);
+      const fingers = [];
+      for (const sd of ['left', 'right']) for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Little']) for (const k of ['Metacarpal', 'Proximal', 'Intermediate', 'Distal']) fingers.push(`${sd}${f}${k}`);
+      put(['leftHand', 'rightHand', ...fingers], P.hands); put(['leftUpperLeg', 'rightUpperLeg'], P.thigh); put(['leftLowerLeg', 'rightLowerLeg'], P.shin); put(['leftFoot', 'rightFoot', 'leftToes', 'rightToes'], P.feet);
+      const humanoid = new Set();
+      for (const n of Object.keys(h.humanBones || {})) { const b = h.getRawBoneNode(n); if (b) humanoid.add(b); }
+      const spring = new Set();
+      if (vrm.springBoneManager && vrm.springBoneManager.joints) for (const j of vrm.springBoneManager.joints) if (j.bone) spring.add(j.bone);
+      const labelOf = (b) => { let viaSpring = false; for (let p = b; p; p = p.parent) { if (spring.has(p)) viaSpring = true; if (humanoid.has(p)) { const l = of.get(p) || 0; return l === P.head ? P.head : viaSpring ? P.cloth : l; } } return 0; };
+      const meshes = [];
+      vrm.scene.traverse((o) => {
+        if (!o.isSkinnedMesh || !o.skeleton || !o.geometry || !o.geometry.attributes.position) return;
+        const g = o.geometry;
+        const n = g.attributes.position.count;
+        const si = g.attributes.skinIndex; const sw = g.attributes.skinWeight;
+        if (!si || !sw) return;
+        const bl = o.skeleton.bones.map(labelOf);
+        const morph = g.morphAttributes && g.morphAttributes.position ? g.morphAttributes.position : [];
+        const lab = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          let best = 0; let bw = -1;
+          for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+          let l = bl[best] || 0;
+          if (l === P.head && morph.length) for (const ma of morph) if (Math.abs(ma.getX(i)) + Math.abs(ma.getY(i)) + Math.abs(ma.getZ(i)) > 1e-5) { l = P.face; break; }
+          lab[i] = l;
+        }
+        // (T-5099) whether an expression moves any of its vertices: the face skin (and the eyes, brows, mouth on it).
+        // Only such a mesh can be her face — hair or a hat in front of the brows is her head even inside the face box
+        meshes.push({ o, lab, pos: new Float32Array(n * 3), frame: -1, box: null, faceSkin: lab.includes(P.face) });
+      });
+      // her face: the box of the vertices an expression moves, in the head bone's frame (a click on head skin inside
+      // it — a cheek, the nose — is her face; the forehead and the hair above the brows are her head)
+      const head = h.getRawBoneNode('head');
+      let face = null;
+      if (head) {
+        const T = R.THREE;
+        vrm.scene.updateMatrixWorld(true);
+        const inv = head.matrixWorld.clone().invert();
+        const v = new T.Vector3();
+        const lo = [Infinity, Infinity, Infinity]; const hi = [-Infinity, -Infinity, -Infinity];
+        let nf = 0;
+        for (const m of meshes) for (let i = 0; i < m.lab.length; i++) {
+          if (m.lab[i] !== P.face) continue;
+          m.o.getVertexPosition(i, v).applyMatrix4(m.o.matrixWorld).applyMatrix4(inv);
+          const a = v.toArray();
+          for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], a[k]); hi[k] = Math.max(hi[k], a[k]); }
+          nf++;
+        }
+        if (nf > 20) { const c = lo.map((x, k) => (x + hi[k]) / 2); const r = lo.map((x, k) => ((hi[k] - x) / 2) * 1.1); face = { lo: c.map((x, k) => x - r[k]), hi: c.map((x, k) => x + r[k]), n: nf }; }
+      }
+      return meshes.length ? { meshes, P, face } : null;
+    }
+    // a world point inside her face box (pickData.face, carried by the head bone)
+    function inFace(p) {
+      const f = pickData && pickData.face;
+      const head = f && vrm.humanoid.getRawBoneNode('head');
+      if (!head) return false;
+      const q = head.worldToLocal(new R.THREE.Vector3(...p)).toArray();
+      tmp.faceQ = q; // (the last point tested, head-bone frame: the hit's dbg)
+      return q.every((x, k) => x >= f.lo[k] && x <= f.hi[k]);
+    }
+    // the camera ray (origin, unit dir: arrays) against the drawn triangles → { t, point, label } | null
+    function meshPick(origin, dir) {
+      if (!pickData) return null;
+      const T = R.THREE;
+      const v = tmp.mp || (tmp.mp = new T.Vector3());
+      let best = null;
+      for (const m of pickData.meshes) {
+        const o = m.o;
+        if (!o.visible) continue;
+        let hidden = false;
+        for (let p = o.parent; p; p = p.parent) if (p.visible === false) hidden = true;
+        if (hidden) continue;
+        const pos = m.pos;
+        const n = m.lab.length;
+        if (m.frame !== frameN) {
+          let x0 = Infinity; let y0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let y1 = -Infinity; let z1 = -Infinity;
+          for (let i = 0; i < n; i++) {
+            o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+            pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+            if (v.x < x0) x0 = v.x; if (v.y < y0) y0 = v.y; if (v.z < z0) z0 = v.z; if (v.x > x1) x1 = v.x; if (v.y > y1) y1 = v.y; if (v.z > z1) z1 = v.z;
+          }
+          m.box = [x0, y0, z0, x1, y1, z1];
+          m.frame = frameN;
+        }
+        // the ray against the mesh's box first (slabs)
+        let tmin = 0; let tmax = Infinity;
+        for (let a = 0; a < 3; a++) {
+          const inv = 1 / (dir[a] || 1e-12);
+          let ta = (m.box[a] - origin[a]) * inv; let tb = (m.box[a + 3] - origin[a]) * inv;
+          if (ta > tb) { const sw = ta; ta = tb; tb = sw; }
+          tmin = Math.max(tmin, ta); tmax = Math.min(tmax, tb);
+        }
+        if (tmin > tmax || (best && tmin > best.t)) continue;
+        const idx = o.geometry.index ? o.geometry.index.array : null;
+        const nt = idx ? idx.length / 3 : n / 3;
+        const [ox, oy, oz] = origin; const [dx, dy, dz] = dir;
+        for (let tr = 0; tr < nt; tr++) {
+          const a = idx ? idx[tr * 3] : tr * 3; const b = idx ? idx[tr * 3 + 1] : tr * 3 + 1; const c = idx ? idx[tr * 3 + 2] : tr * 3 + 2;
+          const ax = pos[a * 3]; const ay = pos[a * 3 + 1]; const az = pos[a * 3 + 2];
+          const e1x = pos[b * 3] - ax; const e1y = pos[b * 3 + 1] - ay; const e1z = pos[b * 3 + 2] - az;
+          const e2x = pos[c * 3] - ax; const e2y = pos[c * 3 + 1] - ay; const e2z = pos[c * 3 + 2] - az;
+          const px = dy * e2z - dz * e2y; const py = dz * e2x - dx * e2z; const pz = dx * e2y - dy * e2x;
+          const det = e1x * px + e1y * py + e1z * pz;
+          if (Math.abs(det) < 1e-12) continue;
+          const id = 1 / det;
+          const sx = ox - ax; const sy = oy - ay; const sz = oz - az;
+          const u = (sx * px + sy * py + sz * pz) * id;
+          if (u < 0 || u > 1) continue;
+          const qx = sy * e1z - sz * e1y; const qy = sz * e1x - sx * e1z; const qz = sx * e1y - sy * e1x;
+          const w = (dx * qx + dy * qy + dz * qz) * id;
+          if (w < 0 || u + w > 1) continue;
+          const t = (e2x * qx + e2y * qy + e2z * qz) * id;
+          if (t <= 0 || (best && t >= best.t)) continue;
+          const la = m.lab[a]; const lb = m.lab[b]; const lc = m.lab[c];
+          let l = lb === lc ? lb : la;
+          if (l === pickData.P.face && la !== pickData.P.face && lb !== pickData.P.face) l = pickData.P.head;
+          best = { t, label: PICK[l] || 'none', faceSkin: m.faceSkin };
+        }
+      }
+      if (!best) return null;
+      best.point = [origin[0] + dir[0] * best.t, origin[1] + dir[1] * best.t, origin[2] + dir[2] * best.t];
+      return best;
+    }
+
+
+    // T-5098: every body part as drawn, for the touch zones (core/vrm-hit.js opts.parts): the vertices skinned to
+    // each humanoid bone of Hit.PART_BONES (fingers count as the hand, toes as the foot, a non-humanoid bone between
+    // humanoid ones — an MMD twist or 下半身 — as the humanoid bone above it; hair, a skirt, wings, a cape — the
+    // spring bones and what hangs from them — are no body part), in the rest pose, boxed in a frame along the bone
+    // (limbs: from the joint to the next one; the trunk: her up), 3–97th percentile per axis → ellipsoids kept in
+    // the raw bone's frame: { bone: { c, axes, r } } (partShapes carries them) | null
+    function measurePartBoxes(T) {
+      const h = vrm.humanoid;
+      if (!h || !Hit || !Hit.PART_BONES) return null;
+      vrm.scene.updateMatrixWorld(true);
+      const group = new Map(); // raw node → part bone
+      for (const n of Hit.PART_BONES) { const b = h.getRawBoneNode(n); if (b) group.set(b, n); }
+      for (const s of ['left', 'right']) {
+        for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Little']) for (const k of ['Metacarpal', 'Proximal', 'Intermediate', 'Distal']) { const b = h.getRawBoneNode(`${s}${f}${k}`); if (b) group.set(b, `${s}Hand`); }
+        const toes = h.getRawBoneNode(`${s}Toes`);
+        if (toes) group.set(toes, `${s}Foot`);
+      }
+      const humanoid = new Set();
+      for (const n of Object.keys(h.humanBones || {})) { const b = h.getRawBoneNode(n); if (b) humanoid.add(b); }
+      const spring = new Set();
+      if (vrm.springBoneManager && vrm.springBoneManager.joints) for (const j of vrm.springBoneManager.joints) if (j.bone) spring.add(j.bone);
+      // a skeleton bone → its part (or null): up to the first humanoid bone, through no spring bone
+      const partOf = (b) => { for (let p = b; p; p = p.parent) { if (spring.has(p)) return null; if (humanoid.has(p)) return group.get(p) || null; } return null; };
+      const pts = new Map(); // part → [x, y, z, …] world
+      const v = new T.Vector3();
+      let total = 0;
+      vrm.scene.traverse((o) => { if (o.isSkinnedMesh && o.visible && o.geometry && o.geometry.attributes.position) total += o.geometry.attributes.position.count; });
+      const step = Math.max(1, Math.floor(total / 150000));
+      vrm.scene.traverse((o) => {
+        if (!o.isSkinnedMesh || !o.visible || !o.skeleton || !o.geometry) return;
+        const g = o.geometry;
+        const pos = g.attributes.position;
+        const si = g.attributes.skinIndex;
+        const sw = g.attributes.skinWeight;
+        if (!pos || !si || !sw) return;
+        const parts = o.skeleton.bones.map(partOf);
+        if (!parts.some(Boolean)) return;
+        for (let i = 0; i < pos.count; i += step) {
+          let best = 0; let bw = -1;
+          for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+          const part = parts[best];
+          if (!part) continue;
+          o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+          if (!pts.has(part)) pts.set(part, []);
+          pts.get(part).push(v.x, v.y, v.z);
+        }
+      });
+      const W = (n) => { const b = h.getRawBoneNode(n); return b ? b.getWorldPosition(new T.Vector3()) : null; };
+      const la = W('leftUpperArm');
+      const ra = W('rightUpperArm');
+      const up = new T.Vector3(0, 1, 0);
+      const front = la && ra ? new T.Vector3().crossVectors(la.clone().sub(ra), up).normalize() : new T.Vector3(0, 0, 1);
+      const NEXT = { UpperArm: 'LowerArm', LowerArm: 'Hand', Hand: 'MiddleProximal', UpperLeg: 'LowerLeg', LowerLeg: 'Foot', Foot: 'Toes' };
+      const pc = (a, q) => a[Math.min(a.length - 1, Math.max(0, Math.round(q * (a.length - 1))))];
+      const out = {};
+      for (const [part, arr] of pts) {
+        const n = arr.length / 3;
+        if (n < 12) continue;
+        const node = h.getRawBoneNode(part);
+        if (!node) continue;
+        const o0 = node.getWorldPosition(new T.Vector3());
+        const m = /^(left|right)(UpperArm|LowerArm|Hand|UpperLeg|LowerLeg|Foot)$/.exec(part);
+        let u = up.clone();
+        if (m) {
+          const nx = W(`${m[1]}${NEXT[m[2]]}`);
+          if (nx && nx.distanceTo(o0) > 1e-4) u = nx.clone().sub(o0).normalize();
+          else if (m[2] === 'Hand') { const lo = W(`${m[1]}LowerArm`); if (lo) u = o0.clone().sub(lo).normalize(); } else if (m[2] === 'Foot') u = front.clone();
+        }
+        let f = front.clone().sub(u.clone().multiplyScalar(front.dot(u)));
+        if (f.length() < 0.2) f = up.clone().sub(u.clone().multiplyScalar(up.dot(u)));
+        f.normalize();
+        const w = new T.Vector3().crossVectors(u, f).normalize();
+        const axes = [u, f, w];
+        const lo = []; const hi = [];
+        for (const ax of axes) {
+          const proj = new Float64Array(n);
+          for (let i = 0; i < n; i++) proj[i] = (arr[i * 3] - o0.x) * ax.x + (arr[i * 3 + 1] - o0.y) * ax.y + (arr[i * 3 + 2] - o0.z) * ax.z;
+          proj.sort();
+          lo.push(pc(proj, 0.03)); hi.push(pc(proj, 0.97));
+        }
+        const cw = o0.clone();
+        for (let k = 0; k < 3; k++) cw.add(axes[k].clone().multiplyScalar((lo[k] + hi[k]) / 2));
+        const r = [0, 1, 2].map((k) => Math.max(0.01, ((hi[k] - lo[k]) / 2) * 1.1));
+        const inv = node.matrixWorld.clone().invert();
+        const qInv = node.getWorldQuaternion(new T.Quaternion()).invert();
+        out[part] = { c: cw.clone().applyMatrix4(inv).toArray(), axes: axes.map((a) => a.clone().applyQuaternion(qInv).toArray()), r, verts: n, world: { c: cw.toArray().map((x) => +x.toFixed(3)), r: r.map((x) => +x.toFixed(3)) } };
+      }
+      return Object.keys(out).length ? out : null;
+    }
+    // the part ellipsoids now (world): partBoxes carried by their raw bones as drawn
+    function partShapes() {
+      if (!partBoxes || !vrm || !vrm.humanoid) return null;
+      const T = R.THREE;
+      const out = {};
+      tmp.pq = tmp.pq || new T.Quaternion();
+      tmp.pc = tmp.pc || new T.Vector3();
+      tmp.pa = tmp.pa || new T.Vector3();
+      for (const [part, b] of Object.entries(partBoxes)) {
+        const node = vrm.humanoid.getRawBoneNode(part);
+        if (!node) continue;
+        node.getWorldQuaternion(tmp.pq);
+        out[part] = { c: tmp.pc.fromArray(b.c).applyMatrix4(node.matrixWorld).toArray(), axes: b.axes.map((a) => tmp.pa.fromArray(a).applyQuaternion(tmp.pq).toArray()), r: b.r };
+      }
+      return out;
+    }
+
+    // T-5092: her head as drawn, for the touch zone (core/vrm-hit.js opts.head): the vertices that move with the head
+    // bone or its children (skull, face, ears, hair, a hat) in the rest pose, from 1.3 × the neck→head length below
+    // the head bone up (hair hanging down her back is not her head), 2–98th percentile per world axis (a stray strand
+    // does not stretch it) → an ellipsoid kept in the head bone's frame: { c, axes, r } (head-bone local, for
+    // headShape) | null (no head bone, no skinned head: the zone falls back to the sphere on the bone)
+    function measureHeadBox(T) {
+      const head = vrm.humanoid && vrm.humanoid.getRawBoneNode('head');
+      if (!head) return null;
+      const neck = vrm.humanoid.getRawBoneNode('neck');
+      vrm.scene.updateMatrixWorld(true);
+      const hp = head.getWorldPosition(new T.Vector3());
+      const dn = neck ? Math.max(0.03, hp.distanceTo(neck.getWorldPosition(new T.Vector3()))) : 0.08;
+      const floor = hp.y - 1.3 * dn;
+      const under = (o) => { for (let p = o; p; p = p.parent) if (p === head) return true; return false; };
+      const xs = []; const ys = []; const zs = [];
+      const v = new T.Vector3();
+      vrm.scene.traverse((o) => {
+        if (!o.isSkinnedMesh || !o.visible || !o.skeleton || !o.geometry) return;
+        const g = o.geometry;
+        const pos = g.attributes.position;
+        const si = g.attributes.skinIndex;
+        const sw = g.attributes.skinWeight;
+        if (!pos || !si || !sw) return;
+        const inHead = o.skeleton.bones.map(under);
+        if (!inHead.some(Boolean)) return;
+        const step = Math.max(1, Math.floor(pos.count / 60000)); // a dense mesh: every n-th vertex is plenty
+        for (let i = 0; i < pos.count; i += step) {
+          let best = 0; let bw = -1;
+          for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+          if (!inHead[best]) continue;
+          o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+          if (v.y < floor) continue;
+          xs.push(v.x); ys.push(v.y); zs.push(v.z);
+        }
+      });
+      if (xs.length < 20) return null;
+      const pc = (a, q) => { const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.max(0, Math.round(q * (b.length - 1))))]; };
+      const lo = [pc(xs, 0.02), pc(ys, 0.02), pc(zs, 0.02)];
+      const hi = [pc(xs, 0.98), pc(ys, 0.98), pc(zs, 0.98)];
+      const cw = new T.Vector3((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+      // a box's corner sticks out of the ellipsoid through its faces' centres: × 1.1 gets most of the corners in
+      const r = [0, 1, 2].map((i) => Math.max(0.02, ((hi[i] - lo[i]) / 2) * 1.1));
+      const inv = head.matrixWorld.clone().invert();
+      const qInv = head.getWorldQuaternion(new T.Quaternion()).invert();
+      const c = cw.clone().applyMatrix4(inv).toArray();
+      const axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((a) => new T.Vector3(...a).applyQuaternion(qInv).toArray());
+      return { c, axes, r, verts: xs.length, world: { c: cw.toArray().map((x) => +x.toFixed(3)), r: r.map((x) => +x.toFixed(3)), headBone: hp.toArray().map((x) => +x.toFixed(3)) } };
+    }
+    // the head ellipsoid now (world): headBox carried by the head bone as it is drawn
+    function headShape() {
+      if (!headBox || !vrm || !vrm.humanoid) return null;
+      const head = vrm.humanoid.getRawBoneNode('head');
+      if (!head) return null;
+      const T = R.THREE;
+      const q = head.getWorldQuaternion(new T.Quaternion());
+      return { c: new T.Vector3(...headBox.c).applyMatrix4(head.matrixWorld).toArray(), axes: headBox.axes.map((a) => new T.Vector3(...a).applyQuaternion(q).toArray()), r: headBox.r };
     }
 
     // Her head: the top and sides of the vertices that move with the head bone or its children (skull, hair, ears,
@@ -526,11 +1006,11 @@
     const SEAT_PADS = [['hips', 0.2], ['leftUpperLeg', 0.12], ['rightUpperLeg', 0.12], ['leftLowerLeg', 0.09], ['rightLowerLeg', 0.09], ['leftFoot', 0.08], ['rightFoot', 0.08], ['leftToes', 0.05], ['rightToes', 0.05]];
     // feet on the floor whatever the clip does with the hips (sitting on the floor: the seat on it), and a
     // sitting pose centred on its own width — a reclined sit reaches far to one side (§3.6)
-    function groundOffset(sit) {
+    function groundOffset(sit, pose = null) {
       const T = R.THREE;
       tmp.g = tmp.g || new T.Vector3();
       const h = vrm.humanoid;
-      const at = (n) => { const b = h.getNormalizedBoneNode(n); return b ? b.getWorldPosition(tmp.g).clone() : null; };
+      const at = (n) => { if (n === 'hips') return hipsW(new T.Vector3()); const b = h.getNormalizedBoneNode(n); return b ? b.getWorldPosition(tmp.g).clone() : null; };
       vrm.scene.updateMatrixWorld(true);
       const sp = vrm.scene.position;
       const pts = ['leftFoot', 'rightFoot', 'leftToes', 'rightToes', 'leftLowerLeg', 'rightLowerLeg', 'hips', 'head', 'leftHand', 'rightHand'].map(at).filter(Boolean);
@@ -539,6 +1019,9 @@
       const xs = pts.map((p) => p.x - sp.x);
       const x = sit && xs.length ? -(Math.min(...xs) + Math.max(...xs)) / 2 : 0;
       let y = Number.isFinite(low) ? rest.feetY - low : 0;
+      // T-5098: crouching or lying, her lowest body vertex (not a bone: a foot on its toes, a knee on the floor) is put
+      // on the floor line where it stands standing; cloth and hair on spring bones are no part of it (bodyLow)
+      if (!sit && (pose === 'crouch' || pose === 'lay') && rest.bodyFloor !== undefined) { const bl = bodyLow(); if (bl !== null) y = rest.bodyFloor - (bl - sp.y); }
       // sitting, the knees and feet come towards the camera and the seat, thighs and skirt hang below their
       // bones: on the floor line they fell out of the bottom of the canvas (liliya's sit.rest was cut at the
       // waist, T-2684). Lift the seated body until each part's mesh (bone − pad) is above the bottom edge of
@@ -596,7 +1079,7 @@
       const h = rest.hipsY;
       vrm.scene.updateMatrixWorld(true);
       tmp.p = tmp.p || new T.Vector3();
-      const hips = vrm.humanoid.getNormalizedBoneNode('hips').getWorldPosition(tmp.p).clone();
+      const hips = hipsW(tmp.p).clone();
       const floor = size.minY + floorLift;
       // the shadow: under her hips, on the floor; lifted, smaller and fainter
       const sh = props.shadow;
@@ -670,6 +1153,157 @@
       return Math.hypot(gaze.x - before.x, gaze.y - before.y);
     }
 
+    // ---------- the jump meter (T-5084) ----------
+    // How far each main bone turned since the drawn frame before (the pose she shows, everything included), as °
+    // per frame at 30 fps (the turn × (1/30) / dt, dt the real time since the frame before, ≥ 1/120 s — not the clamped
+    // animation step: a frame that comes late shows that much more motion, not a jump; and the frame rate drops to 12 fps when she is calm,
+    // vrm-motion.js BUDGET, which must not read as a jump). That is a speed: a fast clip (a hand waving) is fast
+    // without any jump. A jump — a snap — is a turn one frame makes that its neighbours do not: `spike` = the
+    // frame's turn − the larger of the frames before and after it (per bone, ≥ 0); a smooth motion, however fast,
+    // keeps it near 0, a cut puts its whole turn in it. Every change of what plays — the base (idle, posture,
+    // dance), a reaction or hold coming in or going, a clip played by hand — opens a window of JUMP_WIN s keeping
+    // the largest speed and the largest spike in it (and the bone, and the body-only values without hands / feet,
+    // whose clips move fastest), next to the same numbers of the JUMP_WIN s before the change (`before`: the motion
+    // the clips had anyway). The spike of a window counts the bones the change moves: every bone for a new base (or
+    // a manual clip, a dance), the bones of the masks of the overlays that came or went otherwise (a nod ending moves
+    // the head and neck, not the hands an idle clip swings meanwhile). debug().jump; figure.debugCut(id) makes a cut
+    // on purpose (the meter's control).
+    const JUMP_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'];
+    const EXTREMITY = /Hand$|Foot$/;
+    const JUMP_WIN = 1.6;
+    // T-5092: the bones' angular acceleration limited right before the frame is shown (core/vrm-smooth.js): however
+    // many layers change on one frame (a touch: reaction + talk gesture + idle), no bone lurches further than the
+    // frames around it by more than PetVrmSmooth.ACCEL (°/frame@30) — the jump meter's spike is bounded by it
+    const smoother = window.PetVrmSmooth ? window.PetVrmSmooth.createLimiter() : null;
+    // T-5098: the pose as the layers made it, before the limiter — the jump meter measures it too (`raw*`), so a
+    // source snap the limiter hides is still counted (the release gate: the raw spike ≤ 10°/frame@30 as well)
+    const rawPose = new Map();
+    function smoothBones(dt) {
+      if (!vrm || !vrm.humanoid) return;
+      for (const b of JUMP_BONES) { const n = vrm.humanoid.getNormalizedBoneNode(b); if (n) rawPose.set(b, n.quaternion.toArray()); }
+      if (!smoother) return;
+      for (const b of JUMP_BONES) {
+        const n = vrm.humanoid.getNormalizedBoneNode(b);
+        if (!n) continue;
+        const q = smoother.step(b, n.quaternion.toArray(), dt);
+        n.quaternion.fromArray(q);
+      }
+    }
+    const jm = { masks: new Map(), prev: new Map(), d1: new Map(), d2: new Map(), rprev: new Map(), rd1: new Map(), rd2: new Map(), rawSpikeMax: 0, rawSpikeBone: null, frames: 0, max: 0, maxBone: null, maxAt: 0, spikeMax: 0, spikeBone: null, sig: null, open: [], done: [], recent: [], recentSpike: [], hist: [], t: 0 };
+    function jumpSig() {
+      if (!plan) return '';
+      const ov = (plan.overlays || []).filter((o) => o.weight > 0.02).map((o) => o.id).sort().join('+');
+      return `${plan.base ? plan.base.key : 0}|${plan.reactionKey || 0}|${ov}|${plan.manual ? plan.manual.id : ''}|${plan.dance ? plan.dance.state : ''}`;
+    }
+    const top = (o, k, v, b) => { if (v > o[k]) { o[k] = +v.toFixed(2); o[`${k}Bone`] = b; } };
+    function meterJump(dt) {
+      if (!vrm || !vrm.humanoid) return;
+      jm.t += dt;
+      const k30 = (1 / 30) / Math.max(1 / 120, dt);
+      // this frame's speeds, and the spikes of the frame before (now that its next frame is known)
+      const f = { speed: 0, speedBone: null, body: 0, bodyBone: null, spike: 0, spikeBone: null, bodySpike: 0, bodySpikeBone: null, spikes: {}, rawSpike: 0, rawSpikeBone: null, rawSpikes: {} };
+      let any = false;
+      // the same spike on the pose before the limiter (rawPose, smoothBones)
+      for (const b of JUMP_BONES) {
+        const q = rawPose.get(b);
+        if (!q) continue;
+        const p = jm.rprev.get(b);
+        jm.rprev.set(b, q);
+        if (!p) continue;
+        const d = window.PetVrmSmooth ? window.PetVrmSmooth.angle(p, q) * k30 : 0;
+        const d1 = jm.rd1.get(b);
+        const d2 = jm.rd2.get(b);
+        if (d1 !== undefined && d2 !== undefined) { const sp = d1 - Math.max(d2, d); if (sp > 0) { f.rawSpikes[b] = sp; top(f, 'rawSpike', sp, b); } }
+        if (d1 !== undefined) jm.rd2.set(b, d1);
+        jm.rd1.set(b, d);
+      }
+      for (const b of JUMP_BONES) {
+        const n = vrm.humanoid.getNormalizedBoneNode(b);
+        if (!n) continue;
+        const p = jm.prev.get(b);
+        if (!p) { jm.prev.set(b, n.quaternion.clone()); continue; }
+        any = true;
+        const d = ((2 * Math.acos(Math.min(1, Math.abs(p.dot(n.quaternion))))) / DEG) * k30;
+        p.copy(n.quaternion);
+        top(f, 'speed', d, b);
+        if (!EXTREMITY.test(b)) top(f, 'body', d, b);
+        const d1 = jm.d1.get(b);
+        const d2 = jm.d2.get(b);
+        if (d1 !== undefined && d2 !== undefined) {
+          const sp = d1 - Math.max(d2, d);
+          if (sp > 0) { f.spikes[b] = sp; top(f, 'spike', sp, b); if (!EXTREMITY.test(b)) top(f, 'bodySpike', sp, b); }
+        }
+        if (d1 !== undefined) jm.d2.set(b, d1);
+        jm.d1.set(b, d);
+      }
+      if (!any) return;
+      jm.frames++;
+      if (dt > 0.15) jm.late = (jm.late || 0) + 1; // a late frame (the renderer was busy): counted, its turn is over its real time
+      if (f.speed > jm.max) { jm.max = f.speed; jm.maxBone = f.speedBone; jm.maxAt = +jm.t.toFixed(3); }
+      if (f.spike > jm.spikeMax) { jm.spikeMax = f.spike; jm.spikeBone = f.spikeBone; }
+      if (f.rawSpike > jm.rawSpikeMax) { jm.rawSpikeMax = f.rawSpike; jm.rawSpikeBone = f.rawSpikeBone; }
+      jm.recent.push(f.speed);
+      jm.recentSpike.push(f.spike);
+      if (jm.recent.length > 900) { jm.recent.shift(); jm.recentSpike.shift(); }
+      jm.hist.push({ t: jm.t, ...f });
+      while (jm.hist.length && jm.hist[0].t < jm.t - JUMP_WIN) jm.hist.shift();
+      const sig = jumpSig();
+      for (const o of (plan && plan.overlays) || []) jm.masks.set(o.id, o.mask || 'upper');
+      if (jm.sig !== null && sig !== jm.sig) {
+        const [b0, r0, o0, m0, d0] = jm.sig.split('|');
+        const [b1, r1, o1, m1, d1] = sig.split('|');
+        const what = [b0 !== b1 ? `base→${plan.base ? plan.base.id : 'rest'}` : null, r0 !== r1 ? `reaction→${plan.reaction || 'none'}` : null, o0 !== o1 ? `overlays ${o0 || '-'}→${o1 || '-'}` : null, m0 !== m1 ? `manual ${m0 || '-'}→${m1 || '-'}` : null, d0 !== d1 ? `dance ${d0}→${d1}` : null].filter(Boolean).join('; ') || 'cut (no cross-fade: the control)';
+        const before = { speed: 0, body: 0, spike: 0, bodySpike: 0 };
+        for (const h of jm.hist.slice(0, -1)) for (const key of Object.keys(before)) before[key] = Math.max(before[key], h[key]);
+        for (const key of Object.keys(before)) before[key] = +before[key].toFixed(2);
+        // the bones this change moves: all for a base / manual / dance change, else those of the overlays' masks
+        let bones = null;
+        if (!jm.cut && b0 === b1 && m0 === m1 && d0 === d1) {
+          const a = new Set(o0 ? o0.split('+') : []);
+          const c = new Set(o1 ? o1.split('+') : []);
+          const changed = [...a].filter((x) => !c.has(x)).concat([...c].filter((x) => !a.has(x)));
+          const MW = window.PetVrmAnim && window.PetVrmAnim.maskWeight;
+          bones = JUMP_BONES.filter((bn) => changed.some((idc) => !MW || MW(jm.masks.get(idc) || 'full', bn) > 0));
+        }
+        jm.open.push({ at: +jm.t.toFixed(3), what, action: plan.action ? plan.action.state : null, bones: bones ? (bones.length === JUMP_BONES.length ? 'all' : bones.join(',') || 'none') : 'all', set: bones ? new Set(bones) : null, until: jm.t + JUMP_WIN, frames: 0, speed: 0, speedBone: null, body: 0, bodyBone: null, spike: 0, spikeBone: null, bodySpike: 0, bodySpikeBone: null, anySpike: 0, anySpikeBone: null, rawSpike: 0, rawSpikeBone: null, rawAnySpike: 0, rawAnySpikeBone: null, before, first: null });
+      }
+      jm.sig = sig;
+      jm.cut = false;
+      for (const o of (plan && plan.overlays) || []) jm.masks.set(o.id, o.mask || 'upper');
+      // the spike just computed belongs to the frame before: windows opened on this frame do not take it
+      for (const w of jm.open) {
+        w.frames++;
+        for (const key of ['speed', 'body']) top(w, key, f[key], f[`${key}Bone`]);
+        if (w.frames > 1) {
+          // the spike on the bones this change moves (spike / bodySpike), and on any bone (anySpike: for the record)
+          for (const [bn, sp] of Object.entries(f.spikes)) {
+            top(w, 'anySpike', sp, bn);
+            if (w.set && !w.set.has(bn)) continue;
+            top(w, 'spike', sp, bn);
+            if (!EXTREMITY.test(bn)) top(w, 'bodySpike', sp, bn);
+          }
+          for (const [bn, sp] of Object.entries(f.rawSpikes)) {
+            top(w, 'rawAnySpike', sp, bn);
+            if (w.set && !w.set.has(bn)) continue;
+            top(w, 'rawSpike', sp, bn);
+          }
+        }
+        if (w.frames === 2) w.first = { speed: +f.speed.toFixed(2), bone: f.speedBone };
+      }
+      while (jm.open.length && jm.open[0].until <= jm.t) { const w = jm.open.shift(); delete w.until; delete w.set; w.max = w.speed; w.bone = w.speedBone; jm.done.push(w); if (jm.done.length > 80) jm.done.shift(); }
+    }
+    function jumpReport() {
+      const q = (arr, k) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? +s[Math.min(s.length - 1, Math.floor(k * s.length))].toFixed(2) : 0; };
+      return { unit: 'deg/frame@30fps', t: +jm.t.toFixed(3), frames: jm.frames, max: +jm.max.toFixed(2), maxBone: jm.maxBone, maxAt: jm.maxAt, p50: q(jm.recent, 0.5), p99: q(jm.recent, 0.99), spikeMax: +jm.spikeMax.toFixed(2), spikeBone: jm.spikeBone, rawSpikeMax: +jm.rawSpikeMax.toFixed(2), rawSpikeBone: jm.rawSpikeBone, spikeP99: q(jm.recentSpike, 0.99), lateFrames: jm.late || 0, transitions: jm.done.slice(), open: jm.open.map((w) => ({ ...w, until: undefined, set: undefined })) };
+    }
+    // the meter's control: the base cut to clip `id` with no cross-fade (what every change did before a fade existed)
+    function debugCut(id) {
+      if (!anim || !anim.has(id)) return false;
+      jm.sig = `${jm.sig}|cut`;
+      jm.cut = true;
+      return anim.setBase(id, 0);
+    }
+
     // snap: the app's read-only snapshot (docs §2.2) — or an old-style { t, state } (the picture, the hatch
     // screen), wrapped by core/vrm-intent.js. Every call feeds the director (events are not lost on a frame
     // that is not drawn); drawing follows the frame budget.
@@ -723,6 +1357,7 @@
         return true;
       }
       const dt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 0, 0.1);
+      const realDt = lastRender == null ? 1 / 30 : clamp((now - lastRender) / 1000, 1 / 120, 0.5); // the jump meter's clock
       lastRender = now;
       if (glide) { lastActivity = now; fit(); } else if (frameN % 30 === 0) fit();
 
@@ -734,7 +1369,8 @@
         // never beats on the same clock twice (T-2691)
         const idleClip = plan.idleKind === 'clip' && plan.posture === null;
         // (no clip for it — no motion library, a slot it lacks — is the rest clip, cross-faded: T-2829)
-        anim.playBase(plan.base, lastBaseKey < 0 ? 0 : plan.base.fade, plan.base.dance ? { clock: 'external', time: DP.t } : idleClip ? { phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
+        anim.playBase(plan.base, lastBaseKey < 0 ? 0 : plan.base.fade, plan.base.dance ? { clock: 'external', time: DP.t } : idleClip ? { align: lastBaseKey >= 0, phase: Math.random(), speed: 0.9 + Math.random() * 0.2 } : null);
+        // (T-5084: started where its pose is nearest hers — the phase alignment of renderer/vrm-anim.js)
         lastBaseKey = plan.base.key;
       }
       // the dance: its time from the app's clock (the music), every frame (§4.1)
@@ -768,12 +1404,16 @@
       if (Math.abs(lead) > 0.05) for (const [b, k] of TURN_LEAD) { const o = lifeOut.bones[b] || (lifeOut.bones[b] = { x: 0, y: 0, z: 0 }); o.y += lead * k; }
       // dancing: the dance has its own breath, weight shifts and fingers — the alive layer keeps only the eyes (§3.1)
       if (!plan.life.dance) applyLife(lifeOut.bones);
+      // T-5084: what the alive layer laid over the clips this frame (debug().life): breathing, weight shift, gaze, blink
+      const lb = lifeOut.bones || {};
+      const deg = (o) => (o ? +Math.hypot(o.x || 0, o.y || 0, o.z || 0).toFixed(3) : 0);
+      lifeInfo = { on: !plan.life.dance, overClip: !!clips, breath: +(Number(lifeOut.breath) || 0).toFixed(3), chest: deg(lb.chest), upperChest: deg(lb.upperChest), spine: deg(lb.spine), hips: deg(lb.hips), head: deg(lb.head), bones: Object.keys(lb).length, gaze: { x: +lifeOut.gaze.x.toFixed(3), y: +lifeOut.gaze.y.toFixed(3) }, away: !!lifeOut.away, blinks: (lifeInfo ? lifeInfo.blinks : 0) + (lifeOut.blink ? 1 : 0) };
 
       // the body: on the floor, turned (not mirrored) towards where she faces
       vrm.scene.position.set(base.x, 0, 0);
-      vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
+      vrm.scene.rotation.set(0, base.yaw + (yaw + debugCtl.yaw) * DEG, 0);
       // dancing: one floor for the whole dance (the bake's 5% lowest ankle), so a jump leaves the floor (§3.1)
-      const g = DP.on && danceEntry ? { y: -(Number(danceEntry.ground) || 0) * rest.hipsY, x: 0 } : groundOffset(!!(plan.base && plan.base.sit));
+      const g = DP.on && danceEntry ? { y: -(Number(danceEntry.ground) || 0) * rest.hipsY, x: 0 } : groundOffset(!!(plan.base && plan.base.sit), plan.base ? plan.base.pose : null);
       const gk = frameN === 0 ? 1 : approach(4, dt);
       ground = lerp(ground, g.y, gk);
       shiftX = lerp(shiftX, g.x, gk);
@@ -784,7 +1424,7 @@
       // (a play hop lifts her off the floor too: × her hip height)
       const air = liftK * LIFT_UP * (size.h / share) + (actOut ? actOut.air * rest.hipsY : 0);
       vrm.scene.position.set(base.x + shiftX, base.y + ground + air, 0);
-      vrm.scene.rotation.set(0, base.yaw + yaw * DEG, 0);
+      vrm.scene.rotation.set(0, base.yaw + (yaw + debugCtl.yaw) * DEG, 0);
       placeProps(dt, !!(plan.base && plan.base.sit));
       // 半身: a seated pose brings her head down; the camera follows it (eased like the ground), standing it is 0
       const sitting = !!(plan.base && plan.base.sit) && !plan.life.lifted;
@@ -799,7 +1439,7 @@
           const hp = hb.getWorldPosition(tmp.h);
           const hx = hp.x;
           dyTarget = Math.min(0, hp.y - restHeadY);
-          const px = pb.getWorldPosition(tmp.h).x;
+          const px = hipsW(tmp.h).x;
           dxTarget = (hx + px) / 2 - (band.cx - size.cx); // her upper body now − where the half camera looks standing
         }
       }
@@ -849,6 +1489,9 @@
         vrm.expressionManager.setValue(n, face[n]);
       }
 
+      smoothBones(realDt);
+      if (clips) pivotHips(); // (the base layer put the hips position back from its memo this frame: nothing adds up)
+      meterJump(realDt);
       vrm.update(dt); // humanoid, look-at, expressions, SpringBone, constraints
       renderer.render(scene, camera);
       frameN++;
@@ -867,6 +1510,8 @@
       d.reaction = plan.reaction || '';
       d.hold = plan.hold || '';
       d.action = plan.action ? plan.action.state : '';
+      d.manual = plan.manual ? plan.manual.id : ''; // T-5084: a clip played by hand
+      d.pose = plan.pose || 'stand';
       // the procedural bodies on now (T-2831): name:weight
       d.acts = (plan.acts || []).map((a) => `${a.name}:${a.w.toFixed(2)}`).join(',');
       d.layers = anim.summary();
@@ -901,7 +1546,8 @@
     // The touch zone under client point (cx, cy): the camera ray through it against spheres and capsules on
     // this frame's skeleton (core/vrm-hit.js). → { zone, pt } like app.js zoneAtClient: pt.x / pt.y in her
     // on-screen box (0..1), pt.box (client px), pt.faceRect (the face in the box, for the blush). A miss: nulls.
-    function zoneAt(cx, cy) {
+    const TOUCH_SLOP_PX = [4, 8];
+    function zoneAt(cx, cy, opts = {}) {
       if (!vrm || !camera || !vrm.humanoid || !Hit) return { zone: null, pt: null };
       const T = R.THREE;
       const rect = canvas.getBoundingClientRect();
@@ -911,18 +1557,70 @@
       const v = new T.Vector3();
       for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
       const ry = vrm.scene.rotation.y;
-      const list = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]);
+      const list = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)], { head: headShape(), parts: partShapes() });
       const nx = ((cx - rect.left) / rect.width) * 2 - 1;
       const ny = -((cy - rect.top) / rect.height) * 2 + 1;
       const p = new T.Vector3(nx, ny, 0.5).unproject(camera);
       const dir = p.sub(camera.position).normalize().toArray();
-      const h = Hit.hit(list, camera.position.toArray(), dir);
-      if (!h.zone) return { zone: null, pt: null, miss: !h.shape };
+      let h = Hit.hit(list, camera.position.toArray(), dir);
+      // T-5098: a click (opts.precise): the part drawn under it (meshPick), the boxes only under cloth
+      let via = 'boxes';
+      if (opts.precise) {
+        let m = meshPick(camera.position.toArray(), dir);
+        // T-5099: touch slop — a click that misses her drawn mesh and every box by a few px (her hand moved on with
+        // the idle between seeing it and clicking: the smallest, fastest part) takes the nearest of the rays 4 / 8 px
+        // around it, the closest hit on the nearest ring; a click farther off stays a miss
+        if (!(m && m.label !== 'none') && !h.zone) {
+          const o0 = camera.position.toArray();
+          const rayAt = (x, y) => new T.Vector3(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize().toArray();
+          for (const r of TOUCH_SLOP_PX) {
+            let near = null;
+            for (let k = 0; k < 8; k++) {
+              const d2 = rayAt(cx + r * Math.cos((k * Math.PI) / 4), cy + r * Math.sin((k * Math.PI) / 4));
+              const m2 = meshPick(o0, d2);
+              if (m2 && m2.label !== 'none' && (!near || m2.t < near.m.t)) near = { m: m2, d: d2 };
+            }
+            if (near) { m = near.m; h = Hit.hit(list, o0, near.d); h.slopPx = r; break; }
+          }
+        }
+        if (m && m.label !== 'none') {
+          // her hip joints, her front (horizontal), the crotch line and the waist (the spine bone), in world terms
+          const pel = list.find((sh) => sh.zone === 'pelvis') || {};
+          const j = pel.joints || m.point;
+          const f0 = pel.front || [0, 0, 1];
+          const fl = Math.hypot(f0[0], f0[2]) || 1;
+          const fr = [f0[0] / fl, 0, f0[2] / fl];
+          const lat = [fr[2], 0, -fr[0]];
+          const p = m.point;
+          const below = p[1] < j[1] - (pel.drop || 0);
+          const behind = (p[0] - j[0]) * fr[0] + (p[2] - j[2]) * fr[2] < 0;
+          const waist = bones.spine ? bones.spine[1] : j[1] + (pel.drop || 0) * 2;
+          const lu = bones.leftUpperLeg; const ru = bones.rightUpperLeg;
+          const half = lu && ru ? Math.hypot(lu[0] - ru[0], lu[2] - ru[2]) / 2 : 0.08;
+          const latMax = Math.max(1.7 * half, (pel.drop || 0.1) / 0.3 * 0.35);
+          const inButt = behind && !below && p[1] <= waist && Math.abs((p[0] - j[0]) * lat[0] + (p[2] - j[2]) * lat[2]) < latMax;
+          // hair hanging below her neck is cloth too (long hair over her back and butt)
+          const neckY = bones.neck ? bones.neck[1] : null;
+          const label = m.label === 'head' && neckY !== null && p[1] < neckY ? 'cloth' : m.label;
+          const Z = { face: 'face', chest: 'chest', belly: 'belly', hands: 'hands', shin: 'legs', feet: 'feet', arm: h.zone === 'hands' ? 'hands' : null, neck: h.zone === 'face' || h.zone === 'head' ? h.zone : 'chest' };
+          let zone = Z[label];
+          if (label === 'head' && !m.faceSkin) inFace(p); // (only for the dbg: where in the face box)
+          if (label === 'head') zone = m.faceSkin && inFace(p) ? 'face' : pickData.face ? 'head' : h.zone === 'face' ? 'face' : 'head';
+          else if (label === 'pelvis') zone = below ? 'legs' : behind ? 'butt' : 'belly';
+          else if (label === 'thigh') zone = inButt ? 'butt' : 'legs';
+          // (an arm: a pat, except where its sleeve cuff overlaps the hand coming out of it — the boxes' hand rule)
+          // on cloth or hair: over her butt it is her butt; elsewhere the boxes underneath decide
+          else if (label === 'cloth') zone = inButt ? 'butt' : h.zone;
+          h = { ...h, zone: zone === undefined ? h.zone : zone, point: m.point, shape: h.shape || { zone }, mesh: m.label, dbg: { faceQ: label === 'head' && tmp.faceQ ? tmp.faceQ.map((x) => +x.toFixed(3)) : undefined, faceBox: label === 'head' && pickData.face ? { lo: pickData.face.lo.map((x) => +x.toFixed(3)), hi: pickData.face.hi.map((x) => +x.toFixed(3)), n: pickData.face.n } : undefined, below, behind, inButt, j: j.map((x) => +x.toFixed(3)), p: p.map((x) => +x.toFixed(3)), waist: +waist.toFixed(3) } };
+          via = `${label === 'cloth' && !inButt ? 'mesh: cloth → boxes' : 'mesh'}${h.slopPx ? ` (slop ${h.slopPx} px)` : ''}`;
+        }
+      }
+      if (!h.zone) return { zone: null, pt: null, miss: !h.shape, via };
       // her box on screen: the shapes projected (centres ± radius)
       const toClient = (w) => { v.fromArray(w).project(camera); return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height }; };
       const pxPerM = pxPerMetre(rect.height);
       let box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
-      for (const sh of list) for (const c of sh.kind === 'sphere' ? [sh.c] : [sh.a, sh.b]) {
+      for (const sh of list) for (const c of sh.a ? [sh.a, sh.b] : [sh.c]) {
         const q = toClient(c);
         const r = sh.r * pxPerM;
         box = { left: Math.min(box.left, q.x - r), right: Math.max(box.right, q.x + r), top: Math.min(box.top, q.y - r), bottom: Math.max(box.bottom, q.y + r) };
@@ -936,7 +1634,7 @@
         const r = head.r * pxPerM;
         faceRect = [(c.x - r * 0.6 - box.left) / bw, (c.y - r * 0.1 - box.top) / bh, (c.x + r * 0.6 - box.left) / bw, (c.y + r * 0.9 - box.top) / bh].map((k) => clamp(k, 0, 1));
       }
-      return { zone: h.zone, pt: { x: clamp((cx - box.left) / bw, 0, 1), y: clamp((cy - box.top) / bh, 0, 1), opaque: true, pose: 'vrm', box, mirrored: false, faceRect, world: h.point, framing } };
+      return { zone: h.zone, via, mesh: h.mesh, dbg: h.dbg, pt: { x: clamp((cx - box.left) / bw, 0, 1), y: clamp((cy - box.top) / bh, 0, 1), opaque: true, pose: 'vrm', box, mirrored: false, faceRect, world: h.point, framing } };
     }
 
     // where each zone's shapes are on screen (client px, the first shape's centre) — for tests and the hint
@@ -950,17 +1648,25 @@
       for (const n of Hit.BONES) { const b = vrm.humanoid.getNormalizedBoneNode(n); if (b) bones[n] = b.getWorldPosition(v).toArray(); }
       const ry = vrm.scene.rotation.y;
       const out = {};
-      for (const sh of Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)])) {
-        if (!sh.zone || out[sh.zone]) continue;
-        let c = sh.kind === 'sphere' ? sh.c : sh.a.map((x, i) => (x + sh.b[i]) / 2);
+      const shapesNow = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)], { head: headShape(), parts: partShapes() });
+      const toC = (c) => { v.fromArray(c).project(camera); return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height }; };
+      for (const sh of shapesNow) {
+        if (!sh.zone) continue;
+        let c = sh.a ? sh.a.map((x, i) => (x + sh.b[i]) / 2) : sh.c;
+        if (sh.zone === 'pelvis') {
+          // T-5098: the pelvis is her belly from the front, her butt from behind: its back, half-way out
+          const back = Hit.support(sh.axes || [[1, 0, 0], [0, 1, 0], [0, 0, 1]], sh.radii || [sh.r, sh.r, sh.r], sh.front);
+          if (!out.butt) out.butt = toC(c.map((x, i) => x - sh.front[i] * back * 0.5));
+          continue;
+        }
+        if (sh.zone === 'thigh') { if (!out.legs) out.legs = toC(c); continue; }
+        if (out[sh.zone]) continue;
         if (sh.zone === 'head') c = [c[0], c[1] + sh.r * 0.8, c[2]]; // the top (the front of the sphere is the face)
-        v.fromArray(c).project(camera);
-        out[sh.zone] = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+        out[sh.zone] = toC(c);
       }
       if (out.head) {
-        const hd = Hit.shapes(bones, [Math.sin(ry), 0, Math.cos(ry)]).find((sh) => sh.zone === 'head');
-        v.fromArray([hd.c[0] + hd.front[0] * hd.r * 0.5, hd.c[1] - hd.r * 0.35, hd.c[2] + hd.front[2] * hd.r * 0.5]).project(camera);
-        out.face = { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+        const hd = shapesNow.find((sh) => sh.zone === 'head');
+        out.face = toC([hd.c[0] + hd.front[0] * hd.r * 0.5, hd.c[1] - hd.r * 0.35, hd.c[2] + hd.front[2] * hd.r * 0.5]);
       }
       return out;
     }
@@ -993,6 +1699,18 @@
       return r;
     }
 
+    // The clips she can play by hand (loaded for her, after the style fallback): [{ id, slot, kind, category, group,
+    // label, duration, loop, mask }], grouped by category in the index's order.
+    function motionList() {
+      const out = [];
+      for (const c of Object.values((index && index.clips) || {})) {
+        if (!(c.file ? loaded.has(c.id) : c.cycle)) continue;
+        out.push({ id: c.id, slot: c.slot, style: c.style, kind: c.kind, category: c.category || (c.kind === 'posture' ? 'posture' : c.kind === 'idle' ? 'idle' : c.kind === 'hold' ? 'talk' : 'reaction'), group: c.group || null, label: c.label, duration: c.duration || null, loop: !!c.loop, mask: c.mask || 'full' });
+      }
+      const order = Lib.CATEGORIES || [];
+      return out.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || String(a.group).localeCompare(String(b.group)) || a.slot.localeCompare(b.slot));
+    }
+
     function fig() {
       return {
         canvas,
@@ -1003,20 +1721,31 @@
         setPosture: (p) => { if (director) director.setPosture(p); },
         stopAction: (why) => (director ? director.stop(why) : null),
         resetToIdle: (why) => resetToIdle(why),
+        // T-5084: the motion library in this figure, and playing one of its clips by hand (console 试播, POST /motion)
+        libraryInfo: () => (libInfo ? { ...libInfo } : null),
+        motions: () => motionList(),
+        playMotion: (req) => (director ? director.play(req || {}) : { ok: false, reason: 'not-ready' }),
+        stopMotion: (why) => (director ? director.stopManual(why || 'stop') : { stopped: false }),
+        jump: () => jumpReport(),
+        debugCut: (id) => debugCut(id),
         loadDance,
         danceInfo: () => ({ ...danceInfo }),
         zoneAt,
         zoneCenters,
+        // T-5098: what the e2e's mesh check needs (e2e/vrm-hit-truth.js): the model, the camera, the canvas
+        debugHandles: () => (vrm ? { vrm, camera, canvas, THREE: R.THREE, partBoxes, headBox } : null),
         inject: (e) => { injected.push(e); },
         pose: () => (vrm ? poseSample() : null),
         framePoints,
         debug: () => ({
-          loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
+          loaded: !!vrm, anim: animState, library: libState, clips: [...loaded], boneFold, sets: index ? (Lib.loadSets ? Lib.loadSets(index, style.set) : null) : null, mode: canvas.dataset.mode, frame: frameN, fps: meter.fps(performance.now()), state: canvas.dataset.state, lip: lipMode,
           style: { name: style.name, source: style.source, set: style.set, amplitude: style.amplitude, hipSway: style.hipSway },
           plan: plan && { base: plan.base, posture: plan.posture, postureSource: plan.postureSource, setting: plan.setting, idle: plan.idle, idleKind: plan.idleKind, hold: plan.hold, reaction: plan.reaction, reactionKey: plan.reactionKey, reactionWeight: plan.reactionWeight, overlays: plan.overlays, gaze: plan.gaze, face: plan.face, facingYaw: plan.facingYaw, turnLead: plan.turnLead, walk: plan.walk, talkSegment: plan.talkSegment, talkSegments: plan.talkSegments, action: plan.action, acts: plan.acts, actSit: plan.actSit },
           acts: actOut ? { air: +actOut.air.toFixed(4), bones: actOut.bones } : null,
           vel: [+vel[0].toFixed(1), +vel[1].toFixed(1)], walkSpeed: intent && intent.holds.walkSpeed !== undefined ? +intent.holds.walkSpeed.toFixed(4) : null,
           idleHistory: director ? director.history() : [],
+          libraryInfo: libInfo, clipRepairs: { ...clipRepairs }, headBox: headBox ? { verts: headBox.verts, ...headBox.world } : null, partBoxes: partBoxes ? Object.fromEntries(Object.entries(partBoxes).map(([k, b]) => [k, { verts: b.verts, ...b.world }])) : null, hipsRig: hipsRig ? { height: +hipsRig.height.toFixed(3), restY: +hipsRig.restY.toFixed(3), rescaled: hipsRig.rescaled || 0, leg: hipsRig.leg } : null, smooth: smoother ? smoother.stats() : null, life: lifeInfo, jump: jumpReport(), align: anim ? anim.lastAlign() : null,
+          manual: plan ? plan.manual : null, manuals: director ? director.manuals() : [], variants: director ? director.variants() : [], poses: director ? director.poses() : [], poseGroup: plan ? plan.pose : null, rest: plan ? plan.rest : null, thinkSegment: plan ? plan.thinkSegment : null,
           reactions: director ? director.reactions() : [],
           overlays: anim ? anim.overlays() : '',
           layers: anim ? anim.summary() : '', weightSum: anim ? anim.weightSum() : 0, ground, seatLift: +seatLift.toFixed(4), camDy: +camDy.toFixed(4), camDx: +camDx.toFixed(4),
@@ -1050,7 +1779,7 @@
       for (const n of POSE_BONES) { const b = hm.getNormalizedBoneNode(n); if (b) q[n] = b.quaternion.toArray().map((v) => +v.toFixed(4)); }
       const w = (n) => { const b = hm.getNormalizedBoneNode(n); return b ? b.getWorldPosition(new T.Vector3()) : null; };
       const legs = {};
-      const hipsP = w('hips');
+      const hipsP = hipsW(new T.Vector3());
       for (const s of ['left', 'right']) {
         const up = w(`${s}UpperLeg`), kn = w(`${s}LowerLeg`), an = w(`${s}Foot`);
         if (!up || !kn || !an) continue;
@@ -1141,6 +1870,14 @@
       // 重置姿势 (T-2830): back to the idle from anything, faded (core/vrm-director.js reset)
       resetToIdle: (why = 'reset') => resetToIdle(why),
       danceInfo: () => ({ ...danceInfo }),
+      // T-5084: the motion library as this figure loaded it (why it fell back, if it did), the clips it can play by
+      // hand, playing / stopping one (the director's manual layer), the jump meter
+      libraryInfo: () => (libInfo ? { ...libInfo } : null),
+      motions: () => motionList(),
+      playMotion: (req) => (director ? director.play(req || {}) : { ok: false, reason: 'not-ready' }),
+      stopMotion: (why = 'stop') => (director ? director.stopManual(why) : { stopped: false }),
+      jump: () => jumpReport(),
+      debugCut: (id) => debugCut(id),
       isReady: () => !!(vrm && director && !disposed),
       framing: () => framing,
       dispose() {
@@ -1201,12 +1938,24 @@
     // the user's stop on every figure (T-2829 / T-2831): whatever she does fades back to the idle
     stop: (why = 'stop') => [...figures].map((f) => f.stopAction(why)),
     zoneCenters: () => { const f = [...figures][0]; return f ? f.zoneCenters() : {}; },
+    zoneAt: (x, y, o) => { const f = [...figures][0]; return f && f.zoneAt ? f.zoneAt(x, y, o) : null; }, // T-5092: the zone at a client point (e2e); o.precise: as a click (T-5098)
+    // T-5098: turn her by deg on top of where she faces (180: her back to the camera), for the e2e; 0 = off
+    yaw: (deg) => { debugCtl.yaw = Number(deg) || 0; return debugCtl.yaw; },
+    handles: () => { const f = [...figures][0]; return f && f.debugHandles ? f.debugHandles() : null; },
     reactions: () => { const f = [...figures][0]; const d = f && f.director(); return d ? d.reactions() : []; },
     // the action-state transitions (T-2829 plan.action: { t, from, to, why }), newest last — acceptance evidence (T-2832)
     actions: () => { const f = [...figures][0]; const d = f && f.director(); return d && d.actions ? d.actions() : []; },
     // the pose numbers alone (legs, ankles, head / hips yaw), light enough to sample every few ms (T-2711)
     pose: () => { const f = [...figures][0]; return f ? f.pose() : null; },
     framePoints: () => { const f = [...figures][0]; return f ? f.framePoints() : null; },
+    // T-5084: the jump meter, the motion library as she loaded it, playing a clip by hand
+    jump: () => { const f = [...figures][0]; return f ? f.jump() : null; },
+    // the jump meter's control (e2e): a cut to clip `id` with no cross-fade
+    cut: (id) => { const f = [...figures][0]; return f && f.debugCut ? f.debugCut(id) : false; },
+    library: () => { const f = [...figures][0]; return f ? f.libraryInfo() : null; },
+    motions: () => { const f = [...figures][0]; return f ? f.motions() : []; },
+    play: (req) => { const f = [...figures][0]; return f ? f.playMotion(req) : { ok: false, reason: 'no-vrm' }; },
+    stopMotion: (why) => [...figures].map((f) => f.stopMotion(why)),
     // the dance's clock (renderer/vrm-dance.js): jump to t s, speed up a dance without music (§7.1)
     dance: {
       seek: (t) => (window.PetDance && window.PetDance.current ? window.PetDance.current.seek(t) : false),

@@ -22,6 +22,16 @@
   const HOLDS = ['hold.lift', 'hold.talk', 'hold.think', 'hold.eat', 'hold.walk', 'hold.talk-2', 'hold.talk-3'];
   const TALK_SEGMENTS = ['hold.talk', 'hold.talk-2', 'hold.talk-3'];
   const FACE_NAMES = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'neutral', 'blink', 'blinkLeft', 'blinkRight'];
+  // T-5081 (docs/vrm-motion-library.md §2): the index's categories, the generated slots next to the director's own
+  // (numbered within their group: idle.v03, react.nod-02, emote.shy-01, hold.talk-g04, hold.walk-02, crouch.v01),
+  // and the style fallback — a set the library lacks a slot for borrows it in this order, so any store VRM hits a clip.
+  const CATEGORIES = ['posture', 'idle', 'reaction', 'emotion', 'talk', 'walk', 'dance'];
+  const POSTURE_GROUPS = ['stand', 'sit', 'crouch', 'lay'];
+  const STYLE_FALLBACK = { female: ['female', 'neutral', 'male'], male: ['male', 'neutral', 'female'], neutral: ['neutral', 'female', 'male'] };
+  const GEN_REACTION_RE = /^(react|emote)\.[a-z]+-\d{2}$/;
+  const GEN_HOLD_RE = /^hold\.(talk-g|walk-|run-)\d{2}$/;
+  const GEN_POSTURE_RE = /^(stand|sit|crouch|lay)\.v\d{2}$/;
+  const POSES = ['stand', 'sit', 'crouch', 'lay'];
   const POSTURE_LABEL = { auto: '自动', 'stand.relaxed': '放松站', 'stand.confident': '叉腰站', 'stand.shy': '害羞站', 'stand.playful': '俏皮站', 'sit.rest': '坐着', 'sit.doze': '靠坐' };
 
   function parseId(id) {
@@ -55,12 +65,16 @@
       if (e.weight !== undefined && !(e.weight > 0 && e.weight <= 1)) out.push(`${id}: weight 0..1`);
       // baked procedural layers (scripts/lib/vrm-bake-core.js poseClip / offsetClip): { bone: [x, y, z] deg }
       for (const k of ['pose', 'offset']) if (e[k] !== undefined && !(e[k] && typeof e[k] === 'object' && !Array.isArray(e[k]) && Object.entries(e[k]).every(([b, v]) => /^[a-zA-Z]+$/.test(b) && Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(x) && Math.abs(x) <= 180)))) out.push(`${id}: ${k} is { bone: [x, y, z] } in degrees (|v| ≤ 180)`);
+      if (e.faceFront !== undefined && typeof e.faceFront !== 'boolean') out.push(`${id}: faceFront is true / false`);
       if (e.upright !== undefined && typeof e.upright !== 'boolean') out.push(`${id}: upright is true / false`);
       if (e.detrend !== undefined && typeof e.detrend !== 'boolean') out.push(`${id}: detrend is true / false`);
       if (e.boost !== undefined && !(e.boost && typeof e.boost === 'object' && !Array.isArray(e.boost) && Object.entries(e.boost).every(([b, k]) => /^[a-zA-Z]+$/.test(b) && Number.isFinite(k) && k >= 0.2 && k <= 2))) out.push(`${id}: boost is { bone: k } with k 0.2..2`);
       for (const k of ['hold', 'fadeIn', 'fadeOut']) if (e[k] !== undefined && typeof e[k] === 'number' && !(e[k] >= 0 && e[k] <= 5)) out.push(`${id}: ${k} 0..5 s`);
       if (e.gaze !== undefined && !(e.gaze && Number.isFinite(e.gaze.x) && Number.isFinite(e.gaze.y) && Math.abs(e.gaze.x) <= 2 && Math.abs(e.gaze.y) <= 2)) out.push(`${id}: gaze { x, y } in -2..2`);
-      if ((e.kind === 'reaction' || e.kind === 'hold') && !(e.kind === 'reaction' ? REACTIONS : HOLDS).includes(p.slot)) out.push(`${id}: unknown ${e.kind} slot (known: ${(e.kind === 'reaction' ? REACTIONS : HOLDS).join(', ')})`);
+      if (e.category !== undefined && !CATEGORIES.includes(e.category)) out.push(`${id}: category "${e.category}" (known: ${CATEGORIES.join(', ')})`);
+      for (const k of ['enter', 'exit']) if (e[k] !== undefined && !POSES.includes(e[k])) out.push(`${id}: ${k} is one of ${POSES.join(', ')}`);
+      if (e.kind === 'posture' && !POSTURES.includes(p.slot) && !GEN_POSTURE_RE.test(p.slot)) out.push(`${id}: unknown posture slot (known: ${POSTURES.join(', ')} or <stand|sit|crouch|lay>.vNN)`);
+      if ((e.kind === 'reaction' || e.kind === 'hold') && !(e.kind === 'reaction' ? REACTIONS : HOLDS).includes(p.slot) && !(e.kind === 'reaction' ? GEN_REACTION_RE : GEN_HOLD_RE).test(p.slot)) out.push(`${id}: unknown ${e.kind} slot (known: ${(e.kind === 'reaction' ? REACTIONS : HOLDS).join(', ')})`);
       if ((e.kind === 'reaction' || e.kind === 'hold') && !e.mask) out.push(`${id}: a ${e.kind} needs a mask (${MASKS.join(', ')})`);
     }
     return out;
@@ -76,6 +90,10 @@
       try { p = parseId(id); } catch { continue; }
       if (!e || !KINDS.includes(e.kind)) continue;
       const c = { id, slot: p.slot, style: p.style, kind: e.kind, label: typeof e.label === 'string' ? e.label.slice(0, 20) : p.slot, loop: !!e.loop, sit: !!e.sit };
+      // where it sits in the index (T-5081): category / group, and the posture it starts and ends in
+      if (CATEGORIES.includes(e.category)) c.category = e.category;
+      if (typeof e.group === 'string' && /^[a-z-]{1,20}$/.test(e.group)) c.group = e.group;
+      for (const k of ['enter', 'exit']) if (POSES.includes(e[k])) c[k] = e[k];
       // how a reaction / hold plays (docs §3.3): mask, weight, the last frame held, fades, face, gaze
       if (e.kind === 'reaction' || e.kind === 'hold') {
         const num = (v, a, b, d) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.max(a, Math.min(b, Number(v))) : d);
@@ -110,8 +128,32 @@
     const ok = (id) => !!clips[id] && (!usable || usable(clips[id]));
     const o = overrides && overrides[slot];
     if (o && ok(o)) return clips[o];
-    for (const s of [set, set === 'neutral' ? 'female' : null, 'female', 'male', 'neutral']) if (s && ok(`${slot}@${s}`)) return clips[`${slot}@${s}`];
+    for (const s of STYLE_FALLBACK[set] || STYLE_FALLBACK.female) if (ok(`${slot}@${s}`)) return clips[`${slot}@${s}`];
     return null;
+  }
+
+  // The style sets whose files a model of set `set` loads: its own when the library has any clip of it, else the
+  // first of its fallback chain that has (an old library without neutral: female). Never empty for a non-empty library.
+  function loadSets(index, set) {
+    const files = Object.values((index && index.clips) || {}).filter((c) => c.file);
+    for (const s of STYLE_FALLBACK[set] || STYLE_FALLBACK.female) if (files.some((c) => c.style === s)) return [s];
+    return [];
+  }
+
+  // Every clip of a group (nod, talk, idle, stand…) for a set, its variants numbered within the group; when the set
+  // has none, the next set of the fallback chain that has.
+  function variants(index, group, set, usable = null) {
+    const all = Object.values((index && index.clips) || {}).filter((c) => (c.group || null) === group && (!usable || usable(c)));
+    for (const s of STYLE_FALLBACK[set] || STYLE_FALLBACK.female) { const l = all.filter((c) => c.style === s); if (l.length) return l.sort((a, b) => a.slot.localeCompare(b.slot)); }
+    return [];
+  }
+
+  // How many clips of each category a set can play (after the fallback): { posture: n, idle: n, … }
+  function categoryCounts(index, set) {
+    const out = {};
+    const groups = new Set(Object.values((index && index.clips) || {}).map((c) => c.group).filter(Boolean));
+    for (const g of groups) for (const c of variants(index, g, set)) if (c.category) out[c.category] = (out[c.category] || 0) + 1;
+    return out;
   }
 
   // The slots of one kind the library can play for a set (resolved).
@@ -136,5 +178,5 @@
     return missing ? (missing === files.length ? 'none' : `partial:${missing}`) : 'loaded';
   }
 
-  return { KINDS, SETS, MASKS, POSTURES, REACTIONS, HOLDS, TALK_SEGMENTS, FACE_NAMES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
+  return { CATEGORIES, POSTURE_GROUPS, STYLE_FALLBACK, POSES, loadSets, variants, categoryCounts, KINDS, SETS, MASKS, POSTURES, REACTIONS, HOLDS, TALK_SEGMENTS, FACE_NAMES, POSTURE_LABEL, parseId, validateManifest, cleanIndex, resolve, slotsOf, playable, status };
 });
