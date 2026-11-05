@@ -16,6 +16,7 @@
 //   scenario "game"     -> 小游戏 (docs/mini-games.md): 商店 → 小游戏 downloads 像素小院 (a local mirror), tray / panel ⌂ / Ctrl+Shift+H open it; Pixi renders; time and weather; she roams, walks to a click, uses things; quests give affection; persists
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
+//   scenario "stickers" -> 角色 → 表情包 (T-6173): add several pictures to 大肥鱼 (refusals listed), delete one, restart → the rest remain; her reply uses one
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
 //   scenario "admin-chat" -> 设置窗口 → 聊天 acceptance: the chatui walk (fake) + a real companion talked to through the same page
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
@@ -7136,6 +7137,7 @@ const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step
 const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
+const stickersScenario = () => require('./stickers')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
@@ -12753,6 +12755,7 @@ async function interjectScenario() {
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');
   if (which === 'chatui' || which === 'all') await chatUiScenario();
+  if (which === 'stickers' || which === 'all') await stickersScenario(); // T-6173 角色 → 表情包：添加多张、删除、重启后仍在、她回复里用上
   if (which === 'adminchat-live') retiredScenario('adminchat-live', 'admin-chat (its real-LobeHub part)');
   if (which === 'admin-chat') await adminChatAcceptance(); // T-2773 acceptance: chatui walk + real LobeHub through the chat page (a few tokens)
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();

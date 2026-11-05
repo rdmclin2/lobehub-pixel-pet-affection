@@ -49,8 +49,9 @@ const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
+  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), stickers = null, interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
     super();
+    this.stickers = stickers; // 表情包集合 (core/stickers.js StickerLibrary): her built-in memes + the owner's own
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
     // main always passes its pack store's; the default (tests) is a repo checkout with catalog/ downloaded
@@ -311,6 +312,26 @@ class PetService extends EventEmitter {
     return contentGuard.refusalLine(getSpecies(this.pet.speciesId));
   }
 
+  // Her pictures for [梗图:<id>] (core/memes.js): the built-in memes of her file plus the ones her owner added
+  // (core/stickers.js catalog), as a species-like { id, memes } the memes helpers take. Without a sticker
+  // library (tests, old callers) just her file's.
+  _memeSpecies(sp) {
+    if (!sp) return null;
+    if (!this.stickers) return sp;
+    try {
+      return { id: sp.id, memes: this.stickers.catalog(sp) };
+    } catch {
+      return sp;
+    }
+  }
+
+  // The settings the prompt builders get (core/persona.js buildStateBlock): with `memeList`, the hint lists
+  // the owner's stickers too.
+  _promptSettings() {
+    if (!this.stickers) return this.settings;
+    return { ...this.settings, memeList: (speciesId) => this._memeSpecies(getSpecies(speciesId)) };
+  }
+
   // A line for the bubble. The agent may have tagged a meme picture ([梗图:id], core/memes.js): the tag
   // never reaches the bubble; with memes on, the picture goes with the line (an offline murmur gets a
   // random one now and then).
@@ -321,13 +342,14 @@ class PetService extends EventEmitter {
   _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null) {
     if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
-    const ex = memes.extractMeme(text, sp);
+    const ms = this._memeSpecies(sp);
+    const ex = memes.extractMeme(text, ms);
     const origin = this._logPet(ex.text || text, kind, turn);
     let meme = null;
-    if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
-    const m = meme && sp.memes.find((x) => x.id === meme);
+    if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(ms, this.rnd) : null);
+    const m = meme && ms.memes.find((x) => x.id === meme);
     const shown = ex.text || text;
-    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
+    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: m.url || memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
     if (this.pet) this._save();
     return shown;
   }
@@ -1083,7 +1105,7 @@ class PetService extends EventEmitter {
       this.budget.spend(t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this.settings) }, stream);
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildEventPrompt(kind, c, t, this._promptSettings()) }, stream);
       if (res.topicId) c.topicId = res.topicId;
       if (kind === 'greet_morning' || kind === 'greet_evening') c.lastGreetDay = new Date(t).toDateString();
       this._closeStream(stream, true, null, this._say(this._guard(res.text), 'llm', kind, null, null, null, stream));
@@ -1151,7 +1173,7 @@ class PetService extends EventEmitter {
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings, localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '' });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '' });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
@@ -1335,7 +1357,7 @@ class PetService extends EventEmitter {
       }
       this._throwIfCanceled();
       const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
-      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings() });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
       trace.set('recallMsgs', recall.length);
@@ -1376,7 +1398,7 @@ class PetService extends EventEmitter {
         c.topicId = res.topicId;
         c.topicMeta = { id: res.topicId, startedAt: t };
       }
-      let reply = adminChat.answerOnly(memes.extractMeme(res.text, sp).text || res.text);
+      let reply = adminChat.answerOnly(memes.extractMeme(res.text, this._memeSpecies(sp)).text || res.text);
       if (!reply) throw Object.assign(new Error('Agent produced no answer'), { code: 'ENOREPLY' });
       const g = contentGuard.checkReply(reply);
       if (!g.ok) {
@@ -1468,7 +1490,7 @@ class PetService extends EventEmitter {
       this.budget.spend(t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: interjectLib.buildInterjectPrompt(persona.buildStateBlock(c, t, this.settings), { text, source }) }, stream);
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: interjectLib.buildInterjectPrompt(persona.buildStateBlock(c, t, this._promptSettings()), { text, source }) }, stream);
       if (res.topicId) c.topicId = res.topicId;
       const r = sayMeta(this._guard(res.text), 'llm', stream);
       this._closeStream(stream, true, null, r.text);
@@ -1524,7 +1546,7 @@ class PetService extends EventEmitter {
       state.touch(c, t);
       await this._ensureReady();
       this._throwIfCanceled();
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this.settings) }, stream);
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt: persona.buildTopicPrompt(topic, c, t, this._promptSettings()) }, stream);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.talkedTopic(c, topic.id, this.now());
       const text = this._guard(res.text);

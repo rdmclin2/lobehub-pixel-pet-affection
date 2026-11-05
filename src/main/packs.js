@@ -26,6 +26,8 @@ function registerPackScheme() {
     { scheme: 'vrmlib', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     // 小游戏: a game pack's pictures (src/main/games.js)
     { scheme: 'game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    // 表情包 (src/main/stickers.js): sticker://blob/<sha>.<ext>, sticker://builtin/<speciesId>/<id>.webp
+    { scheme: 'sticker', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
 }
 

@@ -19,6 +19,7 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS, getSpecies } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const Stickers = require('./stickers');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
 const { GENERIC_BASE, isGenericBase } = require('../core/generic');
@@ -63,6 +64,8 @@ registerPackScheme();
 // 系统 → 硬件加速 (settings.system.hardwareAcceleration): only possible before the app is ready, so a change
 // applies after a restart (the settings window says so and offers 立即重启).
 try { if (new SettingsStore(app.getPath('userData')).load().system.hardwareAcceleration === false) app.disableHardwareAcceleration(); } catch { /* defaults */ }
+// 表情包集合 (core/stickers.js, docs/stickers-design.md): <userData>/stickers/
+const stickerLib = new Stickers.StickerLibrary(path.join(app.getPath('userData'), 'stickers'));
 
 let win = null;
 let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
@@ -416,7 +419,7 @@ const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
 // newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
 async function pickPaths(e, opts) {
   if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
-  const r = await dialog.showOpenDialog(windowOf(e) || win, opts);
+  const r = await dialog.showOpenDialog((e && windowOf(e)) || (admin && admin.win) || win, opts);
   return r.canceled ? [] : r.filePaths || [];
 }
 const danceDirNow = () => (vrmLibrary && vrmLibrary.dances && vrmLibrary.dances.dir) || null;
@@ -1175,6 +1178,31 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
+  // 角色 → 表情包 (docs/stickers-design.md §4): her sticker sets; 添加表情包 picks several pictures at once
+  {
+    const stickerSpecies = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
+    const stickersChanged = (speciesId) => { if (admin && admin.alive) admin.send('stickers-changed', { speciesId }); };
+    ipcMain.handle('stickers-list', adminOnly(({ speciesId }) => stickerLib.list(stickerSpecies(speciesId))));
+    ipcMain.handle('stickers-pick-add', adminOnly(async ({ speciesId }) => {
+      const sp = stickerSpecies(speciesId);
+      if (!sp) return { ok: false, reason: 'bad-species', message: '没有这位角色' };
+      const paths = await pickPaths(null, { title: '添加表情包', properties: ['openFile', 'multiSelections'], filters: [{ name: '图片（PNG / JPG / WebP / GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
+      if (!paths.length) return { ok: false, reason: 'canceled', added: [], rejected: [] };
+      const r = stickerLib.add(sp, Stickers.readPicked(paths));
+      if (r.added && r.added.length) stickersChanged(sp.id);
+      return { ...r, picked: paths.length };
+    }));
+    ipcMain.handle('stickers-remove', adminOnly(({ speciesId, ids }) => {
+      const r = stickerLib.remove(stickerSpecies(speciesId), ids);
+      if (r.ok) stickersChanged(String(speciesId));
+      return r;
+    }));
+    ipcMain.handle('stickers-update', adminOnly(({ speciesId, id, label, desc }) => {
+      const r = stickerLib.update(stickerSpecies(speciesId), id, { label, desc });
+      if (r.ok) stickersChanged(String(speciesId));
+      return r;
+    }));
+  }
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData.
   // Every visit to 聊天 asks; one `lh whoami` answers them for 10 minutes (30 s while there is none: a login shows soon)
@@ -1392,6 +1420,8 @@ app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   packStore = new PackStore();
   packStore.serve();
+  Stickers.serveStickers(stickerLib);
+  try { stickerLib.gc(Stickers.blobsInChatLog(app.getPath('userData'))); } catch (e) { logError(e); }
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   danceStore = new CatalogDownloader({
     packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
@@ -1439,7 +1469,7 @@ app.whenReady().then(() => {
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
-  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  service = new PetService({ lh, responses, store, stickers: stickerLib, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

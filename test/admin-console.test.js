@@ -517,7 +517,7 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'catalog-progress', 'game-updates', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色; game-updates: 小游戏有新版本
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'catalog-progress', 'game-updates', 'interject', 'stickers-changed', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色; game-updates: 小游戏有新版本; stickers-changed: 角色 → 表情包 refresh
   // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
   for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);

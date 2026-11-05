@@ -122,7 +122,7 @@ function buildStateBlock(pet, now, settings = null) {
     `体力=${describeLevel(pet.energy, ['很累', '还行', '精神'])}；` +
     `现在${hh}:${mm}（${describeTime(d)}）；距上次互动${sinceMin}分钟\n` +
     buildRelationBlock(pet, settings) +
-    (settings && settings.prefs && settings.prefs.memes ? `\n${memeHint(getSpecies(pet.speciesId))}` : '')
+    (settings && settings.prefs && settings.prefs.memes ? `\n${memeHint(typeof settings.memeList === 'function' ? settings.memeList(pet.speciesId) : getSpecies(pet.speciesId))}` : '')
   );
 }
 
