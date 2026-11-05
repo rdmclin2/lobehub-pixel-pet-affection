@@ -41,7 +41,9 @@ const petScale = (s) => clampScale(s && s.petScale);
 // automatic murmurs are read only when 朗读碎碎念 is switched on as well.
 // 取景 (core/framing.js, docs/half-body-mode.md): 'full' (head to feet) or 'half' (半身, head to waist, bigger);
 // the one non-switch pref. A character's own choice (settings.framings) and a pack's default go before it.
-const PREFS = { roam: true, clickSound: false, muted: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT, danceVolume: 60 };
+const PREFS = { roam: true, clickSound: false, muted: false, voice: false, voiceInteractions: true, voiceMurmurs: false, memes: true, collide: true, touchZones: true, touchHint: true, framing: framingLib.DEFAULT, danceVolume: 60, segmented: true, segmentMax: 6, segmentCharMs: 80 };
+// 分段式表达 (core/segments.js, docs/segmented-reply.md): how many messages one reply may become, and her typing pace
+const SEGMENT_RANGE = { segmentMax: [2, 8], segmentCharMs: [30, 200] };
 const MAX_VISITORS = 3; // other model-chan on the desktop at the same time (同屏伙伴)
 const API = { port: 7340, minPort: 1024, maxPort: 65535 };
 // 个性化设定 (her page → System Role): the owner's own words added to a character's system role
@@ -105,6 +107,7 @@ function normalizePrefs(raw) {
   out.framing = framingLib.normalizeFraming(p.framing, PREFS.framing);
   // the dance music's volume (docs/vrm-dance.md §4.2), 0–100 %
   out.danceVolume = Number.isFinite(p.danceVolume) ? Math.round(Math.max(0, Math.min(100, p.danceVolume))) : PREFS.danceVolume;
+  for (const [k, [min, max]] of Object.entries(SEGMENT_RANGE)) out[k] = Number.isInteger(p[k]) && p[k] >= min && p[k] <= max ? p[k] : PREFS[k];
   return out;
 }
 
@@ -311,4 +314,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { SEGMENT_RANGE, CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

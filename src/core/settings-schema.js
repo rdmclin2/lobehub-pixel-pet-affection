@@ -127,6 +127,11 @@ add('prefs.framing', 'behavior', '大小与取景', '取景', 'segmented', { des
 add('prefs.roam', 'behavior', '动作', '自己走动', 'switch', { desc: '空闲时在屏幕底部走几步；鼠标在她身上或她在忙时不走。' });
 add('prefs.clickSound', 'behavior', '动作', '点击音效', 'switch', { desc: '摸她、喂她时发出一声短音效。' });
 add('prefs.memes', 'behavior', '动作', '梗图', 'switch', { desc: '碎碎念时偶尔配一张梗图。' });
+// 分段式表达 (core/segments.js, docs/segmented-reply.md): one reply as several short messages, shown one after another
+const SEG = { key: 'prefs.segmented', value: true };
+add('prefs.segmented', 'behavior', '聊天', '分段式表达', 'switch', { desc: '她像发消息一样，把一次回复拆成几条短消息（可能先发一个表情），一条一条冒出来，中间有“正在输入”的停顿；语气更调皮、亲近。关闭后整段回复一次显示。聊天记录里保存完整回复（每条一行）。改动立即生效。' });
+add('prefs.segmentMax', 'behavior', '聊天', '一次最多几条', 'slider', { desc: '一次回复最多拆成几条，多出来的并进最后一条。', min: 2, max: 8, step: 1, unit: '条', dependsOn: SEG });
+add('prefs.segmentCharMs', 'behavior', '聊天', '打字速度', 'slider', { desc: '每条消息出现前“正在输入”的时长按字数算（每字多少毫秒，单条 0.5–2.4 秒，带一点随机）；越小越快。', min: 30, max: 200, step: 10, unit: '毫秒/字', dependsOn: SEG });
 add('prefs.collide', 'behavior', '动作', '互相碰撞', 'switch', { desc: '有同屏伙伴时，扔出去的桌宠会撞到别人。' });
 add('prefs.danceVolume', 'dances', '跳舞时', '音乐音量', 'slider', { desc: '跳舞时音乐的音量，跳舞中改动立即生效。她说话时会自动压低；桌宠工具栏静音时不出声，动作照跳。', min: 0, max: 100, step: 5, unit: '%' });
 add('prefs.touchZones', 'behavior', '触摸', '部位触摸', 'switch', { desc: '点到哪个部位，她就对哪个部位做出反应；关闭后点哪里都是普通的摸摸。' });

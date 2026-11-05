@@ -8,7 +8,7 @@ const { memeHint } = require('./memes');
 const crypto = require('node:crypto');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 8;
+const PERSONA_VERSION = 9;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
@@ -20,6 +20,32 @@ const CONTENT_RULES = [
   '- 不提供违法内容（毒品、暴力伤害、诈骗、侵犯隐私等）。',
   '- 遇到越界请求，用你自己的口吻温和拒绝并换个话题，不说教，不复述越界内容。',
 ].join('\n');
+
+// 分段式表达 (core/segments.js, docs/segmented-reply.md): with prefs.segmented on, she replies the way a person
+// texts — a few short messages, one per line, sometimes an emoji first — in a playful, close tone that still stays
+// inside the relationship stage. The pet window shows the lines one after another; 聊天记录 keeps the whole reply.
+function segmentOn(settings) {
+  const p = settings && settings.prefs;
+  return !p || p.segmented !== false;
+}
+function segmentMax(settings) {
+  const n = settings && settings.prefs && settings.prefs.segmentMax;
+  return Number.isInteger(n) && n >= 2 && n <= 8 ? n : 6;
+}
+function segmentRule(settings) {
+  const max = segmentMax(settings);
+  const most = Math.min(max, 5);
+  return [
+    `12. 说话像发消息：闲聊时把一次回复拆成 2–${most} 条短消息，每条单独一行（用换行分开，不要空行、不要编号），每条一般不超过 15 个字，${max} 条封顶。`,
+    '    可以先单独发一个表情（比如 😝、🥺、🤭），再一条一条地说；语气调皮、黏人、亲近一点，像在给很熟的人发微信，但只在当前关系阶段允许的语气里。',
+    '    例子（主人隔了很久才发来一句“嗨”）：',
+    '    🥺',
+    '    在吗？',
+    '    有点想你了。',
+    '    在干什么呀？',
+    '    办正事时：第一条先给结论，后面每条说一个要点；真的只有一句话就只发一条。不要用 Markdown 列表或代码块，除非主人要代码。',
+  ];
+}
 
 // System role for the LobeHub agent. The personality is flavour, not a fence: the pet is
 // also a capable little helper, so it should just do simple tasks (look things up, search,
@@ -45,6 +71,7 @@ function buildSystemRole({ speciesId, name, pet = null, settings = null }) {
     '9. 诚实：不确定就说不确定；确实做不到的事（比如需要你没有权限碰的东西），直接说清楚现在做不到、缺什么，别硬编。',
     '10. 默认始终用简体中文回复（即使其他指令提到别的默认语言），除非主人明确要求换语言。',
     '11. 你和主人的关系分五个阶段：陌生 → 熟悉 → 亲近 → 暧昧 → 恋人（成人向内容关闭时后两个阶段叫“知己 / 挚友”）。每条消息的 [关系] 块写着当前阶段、允许的语气和已解锁的话题：语气只能在“允许”的范围内，不要超前表现得比当前阶段更亲密；“成人向=关”时只用全年龄的语气，不调情、不暧昧。',
+    ...(segmentOn(settings) ? segmentRule(settings) : []),
     '',
     buildRelationSection(pet || { speciesId, relStage: 'stranger', peakStage: 'stranger', affection: 0 }, settings),
     '',
@@ -89,6 +116,7 @@ function personaKey(pet, settings) {
   // without a 个性化设定 the key stays as before, so existing agents are not edited for nothing
   const custom = customRole(pet.speciesId, settings);
   if (custom) key.push(crypto.createHash('sha1').update(custom).digest('hex').slice(0, 12));
+  key.push(segmentOn(settings) ? `seg${segmentMax(settings)}` : 'noseg'); // 分段式表达 on / off / its cap changes the role
   return key.join('|');
 }
 
@@ -205,6 +233,8 @@ module.exports = {
   personaKey,
   EVENT_HINT,
   buildSystemRole,
+  segmentOn,
+  segmentRule,
   buildStateBlock,
   buildRelationBlock,
   buildEventPrompt,

@@ -3,6 +3,7 @@
 const Fx = window.PetFx;
 const Voice = window.PetVoice;
 const IVoice = window.PetInteractionVoice;
+const Seg = window.PetSegments;
 const $ = (id) => document.getElementById(id);
 // Appearance follows the OS like the admin window (admin/src/design/theme.ts): Electron forwards nativeTheme to
 // prefers-color-scheme, and <html data-theme> picks the light / dark LobeHub tokens (design/lobe-tokens.css).
@@ -1087,6 +1088,14 @@ function bindInterjectFeedback() {
 // the bubble is corrected to it and the stream ends here.
 function say(text, kind, source, reason, meme = null, streamId = null, music = null) {
   const b = $('bubble');
+  // 分段式表达: her reply as several short messages, shown one after another (segShow) instead of all at once
+  const segPlan = segFor(text, source, kind, streamId);
+  // while a reply is still coming out in parts, a pat / touch / murmur line does not cut it off (SpeechGate does
+  // the same for reading aloud); anything else (an error, a new reply, an API line) takes the bubble
+  if (!segPlan && segPlayer.active() && source === 'fallback' && (IVoice.classify({ text, kind, source }) || {}).tier === 0) {
+    logSeg({ ev: 'held', id: segPlayer.id(), kind, text });
+    return;
+  }
   if (streamId) endStream(streamId, true);
   stopComposing();
   if (bubbleEndsReading({ text, kind, source })) stopSpeech('bubble'); // the voice follows the bubble: another line there ends the reading
@@ -1095,6 +1104,11 @@ function say(text, kind, source, reason, meme = null, streamId = null, music = n
   delete b.dataset.stream;
   delete b.dataset.streamEnd;
   b.classList.remove('hidden');
+  if (segPlan) {
+    segShow(segPlan, { id: streamId || `say${++segSaySeq}`, text, kind, source, reason, meme, music });
+    return;
+  }
+  segCancel('other-line');
   b.textContent = text;
   // 音乐创作 (T-5090): the songs compose_music saved this turn, each with ▶ / 打开 / 文件夹 and its path
   const songs = Array.isArray(music) ? music.filter((m) => m && m.filePath) : [];
@@ -1119,6 +1133,144 @@ function say(text, kind, source, reason, meme = null, streamId = null, music = n
   if (kind === 'error' && fx) { talkUntil = 0; fx.play('sad', Fx.oneShotMs(isVideo(view && view.pet.speciesId), 'sad')); }
   hideBubbleLater(Math.min(45000, 6000 + text.length * 150) + (meme ? 3000 : 0));
 }
+// ---- 分段式表达 (core/segments.js, docs/segmented-reply.md) ------------------------------------------------------
+// A reply with several lines is shown as several short messages, one after another, each after a moment of
+// 「正在输入」 (Seg.typingMs: by its length, with some jitter). The bubble becomes a stack (.bubble.segmented,
+// one .seg per message, .seg-typing for the dots). Streamed text feeds the same player: lines that ended queue
+// up and come out at her pace (a reply that arrives all at once — lh today — still comes out one by one); the
+// line still being written shows with a caret once it is its turn. The final 'say' sets the authoritative
+// messages (a tool preamble or the meme tag is corrected in place). One timer at a time, owned by the player:
+// a new message from the owner (setThinking), Esc, a failed turn or another line in the bubble cancels it.
+// 聊天记录, reading aloud (the whole reply, once), the meme picture (with the last message) and affection are
+// unchanged; the meme picture and the hide timer wait for the last message.
+let segSaySeq = 0;
+let segMeta = null; // { id, text, kind, source, reason, meme, music } of the final line, once it came
+const segLog = []; // every typing / reveal / cancel, for the e2e runs (window.petFx.segLog)
+function logSeg(e) {
+  segLog.push({ ...e, at: Math.round(performance.now()) });
+  if (segLog.length > 400) segLog.shift();
+}
+const segOn = () => !VISITOR && !(settings && settings.prefs && settings.prefs.segmented === false);
+const segOpts = () => { const p = (settings && settings.prefs) || {}; return { max: p.segmentMax, charMs: p.segmentCharMs }; };
+const segPlayer = Seg.createPlayer({
+  typing: () => segTyping(true),
+  reveal: (i, text) => segPut(i, text, false),
+  live: (i, text) => segPut(i, text, true),
+  update: (i, text) => segPut(i, text, (segPlayer.state() || {}).live === i),
+  truncate: (n) => { for (const el of $('bubble').querySelectorAll('.seg')) if (Number(el.dataset.i) >= n) el.remove(); },
+  done: (segs) => segDone(segs),
+  log: logSeg,
+});
+// The final line as messages, or null when it is one message (or 分段式表达 is off): only her own words (llm).
+function segFor(text, source, kind, streamId) {
+  if (!segOn() || source !== 'llm' || kind === 'error') return null;
+  const p = Seg.plan(text, { final: true, ...segOpts() });
+  return p.segments.length >= 2 || (streamId && segPlayer.id() === streamId) ? p : null;
+}
+// The bubble as the stack for reply `id` (a new id clears it).
+function segEnter(id, kind) {
+  const b = $('bubble');
+  stopComposing();
+  clearInterval(thinkTimer);
+  clearTimeout(bubbleTimer);
+  if (b.dataset.seg !== id) {
+    b.textContent = '';
+    b.dataset.seg = id;
+    delete b.dataset.speech;
+    $('meme-sticker').classList.add('hidden');
+    b.dataset.meme = '';
+  }
+  b.classList.remove('thinking', 'streaming', 'hidden');
+  b.classList.add('segmented');
+  b.dataset.kind = kind || '';
+  b.dataset.source = 'llm';
+}
+// streamed text: true when it went to the player (two lines or more, or this stream already did)
+function segStream(st) {
+  if (!segOn()) return false;
+  const p = Seg.plan(st.text, { final: false, ...segOpts() });
+  if (p.segments.length < 2 && segPlayer.id() !== st.id) return false;
+  segEnter(st.id, st.kind);
+  const b = $('bubble');
+  b.dataset.stream = st.id;
+  delete b.dataset.streamEnd;
+  b.dataset.reason = '';
+  segPlayer.setOptions(segOpts());
+  segPlayer.feed(st.id, p, false);
+  return true;
+}
+function segShow(p, meta) {
+  const b = $('bubble');
+  segMeta = meta;
+  segEnter(meta.id, meta.kind);
+  b.dataset.reason = meta.reason || '';
+  b.dataset.segText = meta.text;
+  // 音乐创作: the songs come with the line as before
+  const songs = Array.isArray(meta.music) ? meta.music.filter((m) => m && m.filePath) : [];
+  delete b.dataset.music;
+  if (songs.length) showMusicDock(songs);
+  segPlayer.setOptions(segOpts());
+  segPlayer.feed(meta.id, p, true);
+}
+function segTyping(on) {
+  const b = $('bubble');
+  let el = b.querySelector('.seg-typing');
+  if (!on) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'seg-typing';
+    el.setAttribute('aria-label', '正在输入');
+    el.innerHTML = '<i></i><i></i><i></i>';
+  }
+  b.appendChild(el); // always the last thing in the stack
+  b.scrollTop = b.scrollHeight;
+}
+function segPut(i, text, live) {
+  const b = $('bubble');
+  let el = b.querySelector(`.seg[data-i="${i}"]`);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'seg';
+    el.dataset.i = i;
+    const typing = b.querySelector('.seg-typing');
+    if (typing) typing.remove();
+    b.appendChild(el);
+    talkUntil = Math.max(talkUntil, performance.now() + Math.min(1600, 300 + [...text].length * 90)); // her mouth moves as each one comes
+  }
+  el.textContent = text;
+  el.classList.toggle('live', !!live);
+  el.classList.toggle('emoji', Seg.isEmojiOnly(text));
+  b.scrollTop = b.scrollHeight;
+}
+function segDone(segs) {
+  const b = $('bubble');
+  segTyping(false);
+  const m = segMeta && segMeta.id === b.dataset.seg ? segMeta : null;
+  const meme = m && m.meme;
+  b.dataset.meme = meme ? meme.id : '';
+  const st = $('meme-sticker');
+  st.classList.toggle('hidden', !meme);
+  if (meme) { st.src = meme.url; st.alt = meme.label; st.title = meme.label; }
+  const len = segs.reduce((n, x) => n + [...x].length, 0);
+  hideBubbleLater(Math.min(45000, 6000 + len * 150) + (meme ? 3000 : 0));
+}
+// Stop the reply being shown in parts (if any): no timer stays; the bubble goes back to a plain line.
+function segCancel(reason) {
+  const r = segPlayer.cancel(reason);
+  const b = $('bubble');
+  if (b.dataset.seg) {
+    segTyping(false);
+    for (const el of b.querySelectorAll('.seg.live')) el.classList.remove('live');
+  }
+  if (reason !== 'error' && reason !== 'canceled') {
+    b.classList.remove('segmented');
+    delete b.dataset.seg;
+    delete b.dataset.segText;
+  }
+  segMeta = null;
+  return r;
+}
+
 function hideBubbleLater(ms) {
   const b = $('bubble');
   clearTimeout(bubbleTimer);
@@ -1151,6 +1303,10 @@ function onChatDelta(d) {
 }
 function showStream() {
   const b = $('bubble');
+  // 分段式表达: once the reply has a second line it is shown message by message (segFeed), never as one block
+  if (b.dataset.seg && b.dataset.seg !== stream.id) segCancel('new-reply'); // the last reply's parts (still coming or not) give way
+  if (!stream.withheld && segStream(stream)) return;
+  if (segPlayer.id() === stream.id) segCancel('withheld');
   stopComposing();
   clearInterval(thinkTimer); // 思考中… gives way to her words
   clearTimeout(bubbleTimer);
@@ -1179,6 +1335,7 @@ function endStream(id, ok, reason = null) {
   const s = stream && stream.id === id ? stream : null;
   logStream({ ev: 'end', id, ok, reason, len: s ? [...s.text].length : 0 });
   if (s) stream = null;
+  if (!ok && segPlayer.id() === id) segCancel(reason || 'error'); // Esc / a failed turn: what was shown stays, nothing more comes
   const b = $('bubble');
   if (b.dataset.stream !== id) return;
   b.classList.remove('streaming');
@@ -1267,6 +1424,7 @@ function showComposing() {
   clearInterval(thinkTimer);
   clearTimeout(bubbleTimer);
   const said = stream && !stream.withheld ? stream.text : '';
+  segCancel('composing'); // her words before the song stay above 作曲中… as one block
   b.classList.remove('hidden', 'streaming');
   b.classList.add('thinking');
   b.dataset.kind = 'chat';
@@ -1576,6 +1734,7 @@ function talkFor(ms, text) { talkUntil = Math.max(talkUntil, performance.now() +
 // marked and scrolled into view. Only when the bubble still shows this reply (say() put it there).
 function showSentences(rec, text, parts) {
   const b = $('bubble');
+  if (!b.classList.contains('hidden') && b.dataset.segText === text) { b.dataset.speech = rec.n; return; } // shown in parts: keep them, the bubble stays while she reads
   if (b.classList.contains('hidden') || b.textContent !== text) return;
   b.textContent = '';
   let i = 0;
@@ -1608,6 +1767,7 @@ function setThinking(on) {
   clearInterval(thinkTimer);
   const b = $('bubble');
   if (on) {
+    segCancel('new-message'); // the owner said something new: the rest of her last reply is not shown (聊天记录 has it all)
     // nothing but the pet and this bubble while it works; the panel closes (a right click opens it again after)
     closePetPanel('busy');
     clearTimeout(bubbleTimer);
@@ -2837,6 +2997,7 @@ function listenBubble(text, state) {
   const b = $('bubble');
   if (b.dataset.kind === 'listen' && b.dataset.reason === state && b.textContent === text && !b.classList.contains('hidden')) return;
   clearTimeout(bubbleTimer);
+  segCancel('listening');
   b.classList.remove('thinking', 'streaming', 'hidden');
   delete b.dataset.stream;
   b.textContent = text;
@@ -2959,6 +3120,8 @@ window.petFx = {
   speechLog: () => speechLog.map((e) => ({ ...e })),
   // 流式回复: the pieces shown and the ends of streams, and the stream being written now
   streamLog: () => streamLog.map((e) => ({ ...e })),
+  segLog: () => segLog.map((e) => ({ ...e })),
+  segState: () => segPlayer.state(),
   musicLog: () => musicLog.map((e) => ({ ...e })),
   stream: () => stream && { ...stream },
   audioState: () => (speechAudio ? { paused: speechAudio.paused, currentTime: speechAudio.currentTime, duration: speechAudio.duration, src: speechAudio.src.slice(0, 5) } : null),
