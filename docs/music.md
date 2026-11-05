@@ -170,7 +170,19 @@ const r = await music.generateMusic(
 - 默认：`<数据目录>/music/`，例如 Linux 是 `~/.config/Pixel Pet Affection/music/20261105-071200-雨夜小憩.mp3`。改 `music.outputDir` 可以存到别处。
 - 文件名：`<年月日>-<时分秒>-<标题>.<格式>`。标题里非字母、非数字的字符换成 `-`；重名时加 `-2`、`-3`。先写 `.part` 文件，写完再改名，所以中途失败不会留下半个文件。
 - 下载音频时**不带 Key**（fal.media / MiniMax 的链接是公开的签名地址）；fal 返回的状态 / 结果 / 取消地址只有和队列端点同一个主机时才使用，否则按 `owner/app` 重新拼，Key 不会发到别的主机。
-- 歌曲卡片上的「在文件夹中显示」会打开保存目录。窗口只能读、打开保存目录里的音频，其他路径一律拒绝。
+- 歌曲卡片上的「在文件夹中显示」会打开保存目录。窗口只能读、打开保存目录里的音频和她音乐库里记着的歌（改过保存目录之后，旧目录里的歌照样能放），其他路径一律拒绝。
+
+### 5.1 她的音乐库（⚙ 设置 → 角色 → 她的页面 → 音乐）
+
+每首生成成功的歌都会记进作曲角色自己的音乐库，在 **角色详情 → 音乐** 里能找到：
+
+- **按角色归类**：记在作曲的角色名下（她的 base id，例如 `claude`；同一个角色换了形象，歌还是她的）。在桌宠聊天里写的、在设置窗口 → 聊天里写的都算，卡片上写明「在桌宠聊天里写的」或「在设置窗口聊天里写的」。
+- **能看到什么**：歌名、纯音乐标记、时长与格式、写于何时、当时要求的风格（流派 · 情绪 · 场景 · 乐器 · 人声，或描述），最新的在最上面；标题下面一行写着共几首、有人声几首、纯音乐几首。
+- **能做什么**：▶ 播放、用系统播放器打开、在文件夹中显示、复制路径；**重命名**只改歌名（音频文件名不变，聊天记录里引用的路径不会失效）；**删除**会先确认，然后从音乐库移除并删除音频文件，删除后找不回来，聊天记录里她说的话保留。
+- **文件被挪走或删掉**（在 App 外面）：卡片显示「文件找不到了」，播放和打开按钮不可点，「删除」变成只移除这条记录。
+- **聊天记录**（⚙ 设置 → 玩法 → 聊天记录）：她那句话下面也显示可播放的歌曲卡片，歌名跟着音乐库里的重命名走；歌被删除后卡片显示「文件找不到了」。
+- **存储**：`<数据目录>/music-library.json`（`core/music-library.js`），每首记录 `{ id, filePath, title, speciesId, createdAt, durationMs, format, instrumental, provider, model, kind, turnId, request }`，`request` 是当时给 `compose_music` 的参数（截短）；最多保留 2000 首，超出时最早的记录先被移除（音频文件不会被自动删除）。音乐库写不进去时，这首歌照样在回复里展示，只是不进音乐库，并记一条错误日志。
+- **通道**（设置窗口专用）：`music-library-list` / `music-library-rename` / `music-library-delete`，变更时推送 `music-library-changed`，打开着的页面会自动刷新。
 
 ## 6. 最小可运行验证（冒烟脚本）
 
@@ -259,5 +271,6 @@ musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）
 - **时长显示**：fal 与 ElevenLabs 不返回时长，App 从 MP3 帧（Xing / VBRI 或 CBR）/ WAV 头读出；读不出时卡片不显示时长。
 - **不支持**：ElevenLabs 的 composition plan（分段计划）/ 参考音频 / 微调，fal 上 v2 / v1.5 / 旧版 MiniMax Music，MiniMax 翻唱（`music-cover`）、流式输出。
 - **只能用直连**：本机能力走 `lh connect` 设备时（`lh agent run --device`），这条路带不了 function tool，作曲不可用。
+- **音乐库只记 App 里生成的歌**：手动放进保存目录的音频、本功能上线前生成的歌不会出现在音乐库里（目前还没有发布过，没有旧歌需要迁移）。
 - **Key 安全**：Key 只存在本机 `tts-keys.json` 或环境变量里，不写进 `settings.json`、日志或仓库；设置窗口只拿到「是否已设置」（`settingsView().musicStatus`）。单测会检查仓库里没有提交真实 Key（`test/music.test.js`）。
 - **真实付费调用（2026-11-05 实测）**：fal.ai（`fal-ai/minimax-music/v2.6`）真实生成已跑通，`npm run music:smoke -- --provider=fal` 与 `MUSIC_LIVE_PROVIDER=fal MUSIC_LIVE_MODE=real` 的 musiclive 都通过（提交 → 轮询 → 保存 mp3 → 聊天里播放）；ElevenLabs 免费账号返回 402 `paid_plan_required`，需付费套餐后才能真实生成；MiniMax 官方对新用户返回 2153（停售）。

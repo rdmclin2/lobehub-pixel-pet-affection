@@ -16,6 +16,10 @@
 //   C7 fal.ai refuses (余额不足 / 账户锁定, HTTP 403): she says why, no file
 //   C8 设置 → 音乐创作 → 让她作曲 off: the next turn has no tool and her prompt says it is off
 //   C9 设置 → 音乐创作 → 服务 switched to ElevenLabs, then MiniMax 官方: the same words go to that service
+//   C10 她的音乐库: 角色详情 → 音乐 lists every song she made (newest first, where she wrote it, what was asked) and
+//       plays one; another character's library is empty
+//   C11 重命名 (the title only, the file keeps its name) and 删除 (confirm → the song and its file are gone)
+//   C12 聊天记录 (玩法 → 聊天记录) shows the song card under her line and plays it
 // Screenshots + evidence in out/e2e/music/ (chat-*.png, music-chat-log.txt, requests JSON).
 
 const fs = require('node:fs');
@@ -292,6 +296,110 @@ module.exports = function musicChatScenario(ctx) {
         await admin.evaluate(() => window.petAdmin.set('music.provider', 'fal'));
         return note(`${out.join('; ')}; ElevenLabs body ${JSON.stringify(el.body)} query ${JSON.stringify(el.query)}`);
       }, page);
+
+      // ---- 她的音乐库 (core/music-library.js) ----------------------------------------------------------------
+      const library = () => JSON.parse(fs.readFileSync(path.join(data, 'music-library.json'), 'utf8')).songs;
+      const openMusicTab = async (id) => {
+        await admin.evaluate((x) => { location.hash = `#/characters/${x}`; }, id);
+        // the route names her base (claude); the page shows her current look (claude-pixel) — her songs are the base's
+        await admin.waitForFunction((x) => (document.querySelector('[data-detail-layout]')?.dataset.detailLayout || '').startsWith(x), id, { timeout: 15000 });
+        await admin.getByRole('tab', { name: '音乐' }).click();
+        await admin.waitForFunction(() => { const t = [...document.querySelectorAll('[role="tab"]')].find((x) => x.textContent.trim() === '音乐'); return t && t.getAttribute('aria-selected') === 'true'; }, null, { timeout: 5000 });
+      };
+
+      await step(S, 'C10 她的音乐库: 角色详情 → 音乐 lists every song she made (newest first, where, what was asked) and ▶ plays one; another character has none', async () => {
+        const lib = library();
+        assert.equal(lib.length, songs().length, 'every saved file is in the library');
+        assert.ok(lib.every((x) => x.speciesId === 'claude'), JSON.stringify(lib.map((x) => x.speciesId)));
+        assert.deepEqual(lib.map((x) => x.kind).slice(0, 2), ['chat', 'console']);
+        await openMusicTab('claude');
+        await until(admin, (k) => document.querySelectorAll('[data-library-list="claude"] [data-library-song]').length === k, lib.length, 10000, 'library rows');
+        const rows = await admin.evaluate(() => [...document.querySelectorAll('[data-library-song]')].map((r) => ({ id: r.dataset.librarySong, title: r.querySelector('[data-music-title]')?.textContent, when: r.querySelector('[data-song-when]')?.textContent, asked: r.querySelector('[data-song-asked]')?.textContent || '' })));
+        const newest = [...lib].sort((a, b) => b.createdAt - a.createdAt).map((x) => x.id);
+        assert.deepEqual(rows.map((r) => r.id), newest);
+        const rain = rows.find((r) => r.title === '雨夜小憩');
+        assert.match(rain.when, /在桌宠聊天里写的/);
+        assert.match(rain.asked, /轻松/);
+        assert.match(rows.find((r) => r.title === '夏天的风').when, /在设置窗口聊天里写的/);
+        const desc = await admin.evaluate(() => document.querySelector('[role="tabpanel"]').innerText);
+        assert.match(desc, /^克洛蒂写的歌/m);
+        assert.match(desc, new RegExp(`${lib.length} 首 · 有人声`));
+        await shot(admin, 'chat-c10-library');
+        const row = `[data-library-song="${rain.id}"]`;
+        await admin.click(`${row} [data-music-play]`);
+        await until(admin, (r) => document.querySelector(`${r} [data-music-card]`).dataset.musicState === 'playing', row, 8000, 'playing in the library');
+        await admin.waitForTimeout(600);
+        const t = await admin.evaluate((r) => document.querySelector(`${r} audio`).currentTime, row);
+        assert.ok(t > 0.2, `currentTime ${t}`);
+        await shot(admin, 'chat-c10-library-playing');
+        await admin.click(`${row} [data-music-play]`);
+        // another character: the empty state
+        await openMusicTab('grok');
+        await admin.waitForSelector('[data-library-empty]', { timeout: 8000 });
+        const empty = await admin.textContent('[data-library-empty]');
+        assert.match(empty, /还没有写过歌/);
+        await shot(admin, 'chat-c10-library-empty');
+        return note(`library.json: ${lib.length} songs, all claude, kinds ${lib.map((x) => x.kind).join(',')}; rows ${JSON.stringify(rows)}; played ${t.toFixed(2)} s; grok: ${JSON.stringify(empty)}`);
+      }, () => admin);
+
+      await step(S, 'C11 重命名 changes the title only (the file keeps its name); 删除 asks first, then the song and its file are gone', async () => {
+        await openMusicTab('claude');
+        const lib = library();
+        const target = lib.find((x) => x.title === '夏天的风');
+        const row = `[data-library-song="${target.id}"]`;
+        await admin.waitForSelector(row, { timeout: 8000 });
+        await admin.click(`${row} [data-song-rename]`);
+        await admin.fill(`${row} [data-song-title-input]`, '夏天的风（改）');
+        await admin.press(`${row} [data-song-title-input]`, 'Enter');
+        await until(admin, (r) => document.querySelector(`${r} [data-music-title]`)?.textContent === '夏天的风（改）', row, 8000, 'renamed row');
+        const renamed = library().find((x) => x.id === target.id);
+        assert.equal(renamed.title, '夏天的风（改）');
+        assert.equal(renamed.filePath, target.filePath);
+        assert.ok(fs.existsSync(target.filePath));
+        await shot(admin, 'chat-c11-renamed');
+        // 删除: the dialog first; 取消 keeps it
+        await admin.click(`${row} [data-song-delete]`);
+        await admin.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].some((d) => /删除《/.test(d.innerText)), null, { timeout: 5000 });
+        const dlg = await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"]')].find((d) => /删除《/.test(d.innerText)).innerText);
+        assert.match(dlg, /删除《夏天的风（改）》/);
+        assert.match(dlg, /删除这首歌/);
+        await shot(admin, 'chat-c11-delete-confirm');
+        await admin.evaluate(() => [...[...document.querySelectorAll('[role="dialog"]')].find((d) => /删除《/.test(d.innerText)).querySelectorAll('button')].filter((b) => b.textContent.trim() === '取消').pop().click());
+        await admin.waitForTimeout(400);
+        assert.ok(fs.existsSync(target.filePath), '取消 keeps it');
+        await admin.click(`${row} [data-song-delete]`);
+        await admin.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].some((d) => /删除《/.test(d.innerText)), null, { timeout: 5000 });
+        await admin.evaluate(() => [...[...document.querySelectorAll('[role="dialog"]')].find((d) => /删除《/.test(d.innerText)).querySelectorAll('button')].filter((b) => b.textContent.trim() === '删除这首歌').pop().click());
+        await until(admin, (r) => !document.querySelector(r), row, 8000, 'row gone');
+        assert.equal(fs.existsSync(target.filePath), false, 'the file is deleted');
+        assert.equal(library().some((x) => x.id === target.id), false);
+        assert.equal(library().length, lib.length - 1);
+        await shot(admin, 'chat-c11-deleted');
+        return note(`renamed ${target.id} → ${JSON.stringify(renamed.title)} (file kept: ${path.basename(renamed.filePath)}); dialog ${JSON.stringify(dlg)}; deleted → ${library().length} songs left, file gone`);
+      }, () => admin);
+
+      await step(S, 'C12 聊天记录 (玩法 → 聊天记录) shows the song card under her line, and ▶ plays it', async () => {
+        await admin.evaluate(() => { location.hash = '#/history'; });
+        await admin.waitForSelector('[data-history-list] [data-session]', { timeout: 10000 });
+        await admin.click('[data-history-list] [data-session]');
+        await admin.waitForSelector('[data-history-thread]', { timeout: 8000 });
+        await until(admin, () => !!document.querySelector('[data-history-thread] [data-music-card]'), null, 8000, 'song card in 聊天记录');
+        const card = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-music-card]')].map((c) => c.innerText));
+        assert.ok(card.some((x) => /雨夜小憩/.test(x)), JSON.stringify(card));
+        // the song deleted in C11: its card says the file is gone and ▶ is off (her words stay as they were said)
+        const gone = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-music-card]')].filter((c) => c.querySelector('[data-music-problem]')).map((c) => ({ text: c.innerText, play: c.querySelector('[data-music-play]').disabled })));
+        assert.equal(gone.length, 1, JSON.stringify(gone));
+        assert.match(gone[0].text, /夏天的风/);
+        assert.match(gone[0].text, /文件找不到了/);
+        assert.equal(gone[0].play, true);
+        const sel = '[data-history-thread] [data-music-card]';
+        await admin.click(`${sel} [data-music-play]`);
+        await until(admin, (q) => document.querySelector(q).dataset.musicState === 'playing', sel, 8000, 'playing in 聊天记录');
+        await admin.waitForTimeout(500);
+        await shot(admin, 'chat-c12-history');
+        await admin.click(`${sel} [data-music-play]`);
+        return note(`聊天记录 cards: ${JSON.stringify(card)}; deleted one: ${JSON.stringify(gone)}`);
+      }, () => admin);
     } finally {
       fs.writeFileSync(path.join(SHOTS, 'music-chat-log.txt'), evidence.join('\n\n') + '\n');
       try { fs.writeFileSync(path.join(SHOTS, 'music-chat-responses-requests.json'), JSON.stringify(srv.requests.map((q) => ({ at: q.at, body: q.body })), null, 2) + '\n'); } catch { /* ignore */ }

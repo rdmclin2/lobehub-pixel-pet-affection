@@ -23,7 +23,7 @@ import {
   Play,
   SquareArrowOutUpRight,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { api, type ChatMusic } from "../api";
 
@@ -71,7 +71,27 @@ export const clockOf = (ms: number | null | undefined) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export const MusicCard = ({ music }: { music: ChatMusic }) => {
+/**
+ * `actions`: more buttons after 打开 / 在文件夹中显示 (her music library: 重命名, 删除). `heading`: replaces the title
+ * line (an inline rename). `meta`: one more line under the title (when and where she wrote it). `missing`: the file
+ * is gone — nothing to play or open, the card says so.
+ */
+export const MusicCard = ({
+  music,
+  actions,
+  heading,
+  meta,
+  missing = false,
+  wide = false,
+}: {
+  actions?: ReactNode;
+  heading?: ReactNode;
+  meta?: ReactNode;
+  missing?: boolean;
+  music: ChatMusic;
+  /** fill the column (her music library) instead of the chat's 420 px */
+  wide?: boolean;
+}) => {
   const chat = api().chat;
   const audio = useRef<HTMLAudioElement | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -134,6 +154,7 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
   return (
     <Block
       className={styles.card}
+      style={wide ? { width: "100%" } : undefined}
       data-music-card={music.id}
       data-music-state={playing ? "playing" : "idle"}
       variant="outlined"
@@ -144,12 +165,14 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
             <Music size={20} />
           </span>
           <Flexbox flex={1} gap={2} style={{ minWidth: 0 }}>
-            <Flexbox align="center" gap={8} horizontal>
-              <Text ellipsis strong>
-                {title}
-              </Text>
-              {music.instrumental && <Tag size="small">纯音乐</Tag>}
-            </Flexbox>
+            {heading ?? (
+              <Flexbox align="center" gap={8} horizontal>
+                <Text data-music-title ellipsis strong>
+                  {title}
+                </Text>
+                {music.instrumental && <Tag size="small">纯音乐</Tag>}
+              </Flexbox>
+            )}
             <Text fontSize={12} type="secondary">
               {[
                 playing || pos
@@ -160,10 +183,12 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
                 .filter(Boolean)
                 .join(" · ")}
             </Text>
+            {meta}
           </Flexbox>
           <ActionIcon
             aria-label={playing ? `暂停《${title}》` : `播放《${title}》`}
             data-music-play
+            disabled={missing}
             icon={playing ? Pause : Play}
             loading={loading}
             onClick={toggle}
@@ -180,6 +205,7 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
         <Flexbox align="center" gap={4} horizontal wrap="wrap">
           <Button
             data-music-open
+            disabled={missing}
             icon={SquareArrowOutUpRight}
             onClick={() => open(false)}
             size="small"
@@ -189,6 +215,7 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
           </Button>
           <Button
             data-music-reveal
+            disabled={missing}
             icon={FolderOpen}
             onClick={() => open(true)}
             size="small"
@@ -196,6 +223,7 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
           >
             在文件夹中显示
           </Button>
+          {actions}
         </Flexbox>
         <Flexbox align="center" gap={4} horizontal>
           <Text
@@ -209,6 +237,11 @@ export const MusicCard = ({ music }: { music: ChatMusic }) => {
           </Text>
           <CopyButton content={music.filePath} size="small" title="复制路径" />
         </Flexbox>
+        {missing && !problem && (
+          <Text data-music-problem fontSize={12} type="warning">
+            {REASONS.missing}
+          </Text>
+        )}
         {problem && (
           <Text data-music-problem fontSize={12} type="danger">
             {problem}

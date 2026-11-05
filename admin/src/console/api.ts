@@ -589,6 +589,42 @@ export interface PetAdminApi {
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;
+  /** 她的音乐库 (core/music-library.js): the songs each character composed. */
+  musicLibrary: MusicLibraryApi;
+}
+
+// --- 她的音乐库 (core/music-library.js, docs/music.md) ----------------------------------------------------------
+/** A song in her library: what compose_music saved, who made it, when and what was asked. */
+export interface LibrarySong {
+  createdAt: number;
+  durationMs: number | null;
+  /** the audio file is still there (it may have been moved or deleted outside the app) */
+  exists: boolean;
+  filePath: string;
+  format: string;
+  id: string;
+  instrumental: boolean;
+  kind: 'chat' | 'console';
+  model: string | null;
+  provider: string | null;
+  request: { bpm?: number; durationSec?: number; genre?: string; instruments?: string; lyrics?: string; mood?: string; prompt?: string; scene?: string; structure?: string[]; vocals?: string };
+  speciesId: string;
+  title: string;
+  turnId: string | null;
+}
+
+export interface MusicLibraryView {
+  dir: string | null;
+  ok: true;
+  songs: LibrarySong[];
+  speciesId: string | null;
+}
+
+export interface MusicLibraryApi {
+  list: (speciesId: string) => Promise<MusicLibraryView>;
+  onChanged: (cb: (e: { change: 'added' | 'deleted' | 'renamed'; id: string; speciesId: string }) => void) => () => void;
+  remove: (id: string) => Promise<{ id: string; ok: true } | { message?: string; ok: false; reason: string }>;
+  rename: (id: string, title: string) => Promise<{ ok: true; song: LibrarySong } | { ok: false; reason: string }>;
 }
 
 // --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
@@ -616,6 +652,10 @@ export interface ChatAttachment {
 /** 音乐创作 (T-5090): a song compose_music saved in this round (the file lives in the music folder). */
 export interface ChatMusic {
   durationMs: number | null;
+  /** its entry in her music library (core/music-library.js), when it was recorded */
+  libraryId?: string;
+  /** 聊天记录 only: the file is gone (deleted from her music library, or outside the app) */
+  missing?: boolean;
   fileUrl: string;
   filePath: string;
   format: string;
@@ -764,7 +804,8 @@ export interface HistorySummary {
 
 export interface HistoryMessage {
   at: number;
-  attachments?: { files?: string[]; images?: number } | null;
+  /** music: songs compose_music saved with this line of hers (T-5090) */
+  attachments?: { files?: string[]; images?: number; music?: ChatMusic[] } | null;
   role: 'user' | 'pet';
   status?: string | null;
   text?: string;

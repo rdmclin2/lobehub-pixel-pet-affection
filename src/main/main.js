@@ -29,6 +29,7 @@ const danceImport = require('./dance-import');
 const VoiceStore = require('../core/voice-store');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
+const { MusicLibraryStore } = require('../core/music-library');
 const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL, defaultEngine } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
@@ -144,7 +145,8 @@ function musicFile(p) {
     return { ok: false, reason: 'missing' };
   }
   const rel = path.relative(root, real);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, reason: 'forbidden' };
+  // outside the music folder: only a song of her library (saved before 保存目录 was changed)
+  if ((!rel || rel.startsWith('..') || path.isAbsolute(rel)) && !service.isLibrarySong(real)) return { ok: false, reason: 'forbidden' };
   const ext = path.extname(real).slice(1).toLowerCase();
   if (!['mp3', 'wav', 'pcm'].includes(ext)) return { ok: false, reason: 'forbidden' };
   const st = fs.statSync(real);
@@ -1281,6 +1283,10 @@ function wire() {
   // 音乐创作 (T-5090): ▶ / 打开 / 在文件夹中显示 on a song in 聊天 (same checks as the pet window's, musicFile)
   ipcMain.handle('admin-chat-music-audio', adminOnly((p) => musicAudio(p)));
   ipcMain.handle('admin-chat-music-open', adminOnly((p) => musicOpen(p)));
+  // 她的音乐库 (core/music-library.js): 角色详情 → 音乐
+  ipcMain.handle('music-library-list', adminOnly((p) => service.musicLibraryView(p.speciesId || null)));
+  ipcMain.handle('music-library-rename', adminOnly((p) => service.renameSong(p)));
+  ipcMain.handle('music-library-delete', adminOnly((p) => service.deleteSong(p)));
   ipcMain.handle('admin-chat-abort', adminOnly(({ speciesId }) => service.chatAbort(speciesId ? String(speciesId) : undefined)));
   ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images }) => {
     const id = String(speciesId || '');
@@ -1388,6 +1394,7 @@ function wire() {
   // 音乐创作 (T-5090): 作曲中… / done / failed for the turn that called compose_music — the pet window for a desktop
   // chat, the settings window's 聊天 for its own rounds
   service.on('music', (e) => (e.kind === 'console' ? admin.send('admin-chat-music', e) : send('music-status', e)));
+  service.on('music-library', (e) => admin.send('music-library-changed', e));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
   service.on('chat-delta', (d) => send('chat-delta', d));
@@ -1494,7 +1501,7 @@ app.whenReady().then(() => {
   // MINIMAX_API_KEY. e2e runs may point FAL_MUSIC_ENDPOINT / ELEVENLABS_MUSIC_ENDPOINT / MINIMAX_MUSIC_ENDPOINT at a
   // stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
   const music = { key: (slot = 'minimax') => keys.get(slot), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
-  service = new PetService({ lh, responses, music, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  service = new PetService({ lh, responses, music, store, interjectStore: new InterjectStore(app.getPath('userData')), musicLibrary: new MusicLibraryStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

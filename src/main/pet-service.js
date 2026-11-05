@@ -16,6 +16,7 @@ const C = require('../core/characters');
 const characterMigrate = require('../core/character-migrate');
 const Catalog = require('../core/catalog');
 const modelsLib = require('../core/models');
+const fs = require('node:fs');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const latency = require('../core/latency');
@@ -31,6 +32,7 @@ const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
 const chatLive = require('../core/chat-live');
 const musicLib = require('../core/music');
+const musicLibrary = require('../core/music-library');
 const { createMusicTool, MUSIC_TOOL_NAME } = require('../core/responses-client');
 const aiFolders = require('../core/ai-folders');
 const cur = state.cur;
@@ -58,7 +60,7 @@ const musicNames = (list) => list.map((m) => (m.title ? `《${m.title}》` : '�
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, music = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
+  constructor({ lh, responses = null, music = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), musicLibrary: songStore = new musicLibrary.MemoryMusicLibraryStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -71,6 +73,8 @@ class PetService extends EventEmitter {
     // 音乐创作 (T-5090): { key: () => keys.minimax, userDataDir, env?, fetch?, allowInsecureLocal?, generate? } from
     // main; null: the compose_music tool is never offered (tests that do not ask for it).
     this.music = music;
+    // 她的音乐库 (core/music-library.js): which character made each saved song; main passes the file store
+    this.songStore = songStore;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     // 快捷键唤起语音对话: the global shortcut's state (main/voice-hotkey.js status(): ok | disabled | invalid | conflict)
     this.hotkeyStatus = hotkeyStatus;
@@ -436,8 +440,22 @@ class PetService extends EventEmitter {
   historySession(id) {
     const s = chatLog.userSessions(this.log.list()).sessions.find((x) => x.id === String(id || ''));
     if (!s) return { ok: false, reason: 'not-found' };
-    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
+    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments: this._withSongState(attachments) } : {}), ...(status ? { status } : {}) });
     return { ok: true, session: { ...s, name: this._nameOf(s.speciesId), messages: s.messages.map(pick) } };
+  }
+
+  // 聊天记录 shows a song as it is now: the title she was given in her music library (重命名), and `missing` when
+  // its file was deleted (删除 there, or outside the app) — the line itself is kept as it was said.
+  _withSongState(attachments) {
+    if (!attachments || !Array.isArray(attachments.music) || !attachments.music.length) return attachments;
+    const songs = musicLibrary.normalizeLibrary(this.songStore.load()).songs;
+    const music = attachments.music.map((m) => {
+      const lib = songs.find((x) => (m.libraryId ? x.id === m.libraryId : x.filePath === m.filePath));
+      let exists = false;
+      try { exists = fs.statSync(m.filePath).isFile(); } catch { /* gone */ }
+      return { ...m, ...(lib && lib.title ? { title: lib.title } : {}), ...(exists ? {} : { missing: true }) };
+    });
+    return { ...attachments, music };
   }
 
   _nameOf(speciesId) {
@@ -977,6 +995,65 @@ class PetService extends EventEmitter {
     }
   }
 
+  // ---- 她的音乐库 (core/music-library.js) ---------------------------------------------------------------------
+  // A song compose_music saved goes into the library under the character who made it (ctx.speciesId). A library
+  // that cannot be written must not cost the song: the reply still shows it. -> the song | null
+  _addSong(result, ctx, args) {
+    if (!ctx || !ctx.speciesId || !result || !result.filePath) return null;
+    try {
+      const r = musicLibrary.addSong(this.songStore.load(), { result, speciesId: ctx.speciesId, kind: ctx.kind, turnId: ctx.turnId, request: args, now: this.now() });
+      if (!r.song) return null;
+      this.songStore.save(r.data);
+      this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'added' });
+      return r.song;
+    } catch (e) {
+      this.emit('error', Object.assign(new Error(`音乐库写入失败：${e.message}`), { code: 'EMUSICLIB' }));
+      return null;
+    }
+  }
+
+  // 角色详情 → 音乐: her songs, newest first; `exists`: the file is still there (it may have been moved or deleted
+  // outside the app). Without `speciesId`: every character's.
+  musicLibraryView(speciesId = null) {
+    const songs = musicLibrary.songsOf(this.songStore.load(), speciesId ? String(speciesId) : null).map((s) => {
+      let exists = false;
+      try { exists = fs.statSync(s.filePath).isFile(); } catch { /* gone */ }
+      return { ...s, exists };
+    });
+    return { ok: true, speciesId: speciesId || null, dir: this.musicDir(), songs };
+  }
+
+  renameSong({ id, title } = {}) {
+    const r = musicLibrary.renameSong(this.songStore.load(), String(id || ''), title);
+    if (!r) return { ok: false, reason: typeof title === 'string' && title.trim() ? 'missing' : 'invalid' };
+    this.songStore.save(r.data);
+    this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'renamed' });
+    return { ok: true, song: r.song };
+  }
+
+  // Removes the song from her library and deletes its audio file (the 聊天记录 line keeps its words; its card then
+  // says the file is gone). A file already gone is not an error.
+  deleteSong({ id } = {}) {
+    const r = musicLibrary.removeSong(this.songStore.load(), String(id || ''));
+    if (!r) return { ok: false, reason: 'missing' };
+    try {
+      fs.unlinkSync(r.song.filePath);
+    } catch (e) {
+      if (e.code !== 'ENOENT') return { ok: false, reason: 'io', message: `删不掉这个文件：${e.message}` };
+    }
+    this.songStore.save(r.data);
+    this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'deleted' });
+    return { ok: true, id: r.song.id };
+  }
+
+  // Whether a window may play / open this file (main.js musicFile, after realpath): inside the music folder, or a
+  // song of the library (saved before the folder was changed in 设置 → 音乐创作).
+  isLibrarySong(realFile) {
+    return musicLibrary.normalizeLibrary(this.songStore.load()).songs.some((s) => {
+      try { return fs.realpathSync(s.filePath) === realFile; } catch { return false; }
+    });
+  }
+
   // One turn's compose_music tool. `ctx`: { kind, speciesId, turnId, streamId, results: [] } — the songs saved go into
   // ctx.results (the caller shows them with the reply); every step is a 'music' event for the windows (作曲中…).
   _musicTool(ctx) {
@@ -997,6 +1074,8 @@ class PetService extends EventEmitter {
           this.emit('music', { ...base, state: 'composing', stage: e.stage || null, startedAt: ctx.startedAt });
         } else if (e.state === 'done') {
           const v = musicView(e.result);
+          const song = this._addSong(e.result, ctx, e.args);
+          if (song) v.libraryId = song.id;
           ctx.results.push(v);
           this.emit('music', { ...base, state: 'done', music: v, ms: this.now() - (ctx.startedAt || this.now()) });
         } else if (e.state === 'failed') {

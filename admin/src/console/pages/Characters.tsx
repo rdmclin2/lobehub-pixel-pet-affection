@@ -14,6 +14,7 @@ import { HeartMeter } from '../stage/HeartMeter';
 import { SpriteStage } from '../stage/SpriteStage';
 import { LicenseRows, VrmLicense, vrmUi } from '../stage/VrmLicense';
 import { useStore } from '../store';
+import { MusicTab } from './MusicLibrary';
 
 const KIND_COLOR: Record<string, string> = { sprites: 'geekblue', pictures: 'cyan', rig: 'purple', live2d: 'magenta', vrm: 'volcano', video: 'gold' };
 
@@ -1393,7 +1394,7 @@ const dstyles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'about';
+type DetailTab = 'looks' | 'outfits' | 'affection' | 'model' | 'role' | 'voice' | 'music' | 'about';
 
 const STAGE_MIN = 320;
 const STAGE_MAX = 640;
@@ -1523,6 +1524,7 @@ export const CharacterDetailPage = ({ id }: { id: string; navigate: (p: string) 
                 label: '语音',
                 value: 'voice',
               },
+              { content: <MusicTab c={c} />, label: '音乐', value: 'music' },
               {
                 content: (
                   <Surface title="资料">
