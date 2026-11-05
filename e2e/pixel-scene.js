@@ -58,7 +58,11 @@ module.exports = function pixelSceneScenario({ OUT, FAKE_LH, step, launch, openA
       // a point inside the box that is the prop itself (the pond: its water at the top row)
       return clickLogical(id === 'pond' ? x + 8 : x + Math.floor(w / 2), id === 'pond' ? y + 6 : y + Math.floor(h / 2));
     };
-    const petIdle = () => until(async () => { const s = await sc(); return s.pet.mode === 'idle' ? s : null; }, 20000, 'her to stand idle');
+    // she roams by herself and may be using a prop (the bench lasts 20–40 s): a click on the ground gets her up
+    const petIdle = async () => {
+      if ((await sc()).pet.mode === 'interact') await clickLogical(150, 100);
+      return until(async () => { const s = await sc(); return s.pet.mode === 'idle' ? s : null; }, 20000, 'her to stand idle');
+    };
     try {
       await page.waitForSelector('.char-card');
       await page.locator('.char-card[data-species="claude"]').first().click();
@@ -215,20 +219,21 @@ module.exports = function pixelSceneScenario({ OUT, FAKE_LH, step, launch, openA
 
       await step(S, 'S8 与物件互动：长椅坐下、花坛浇花、路灯开关、池塘看鱼', async () => {
         const out = [];
+        await petIdle();
         await clickProp('bench');
         const sit = await until(async () => { const x = await sc(); return x.pet.act === 'sit' && x.pet.sitting ? x : null; }, 25000, 'sitting');
         await sp.waitForTimeout(400);
         await shot('s8-bench-sit');
         out.push(`长椅: act=${sit.pet.act} sitting=${sit.pet.sitting} state=${sit.pet.state} at (${sit.pet.drawX},${sit.pet.drawY})`);
+        // roaming, she may already have watered them by herself (30% of her walks go to a prop)
         const before = await sc();
-        assert.equal(before.flowers.watered, false);
         await clickProp('flowers');
         const water = await until(async () => { const x = await sc(); return x.pet.act === 'water' && x.pet.state === 'play' ? x : null; }, 25000, 'watering');
         await sp.waitForTimeout(600);
         await shot('s8-flowers-water');
         const watered = await until(async () => { const x = await sc(); return x.flowers.watered ? x : null; }, 8000, 'flowers watered');
         await shot('s8-flowers-open');
-        out.push(`花坛: state=${water.pet.state} → watered=${watered.flowers.watered}`);
+        out.push(`花坛: watered before=${before.flowers.watered} state=${water.pet.state} → watered=${watered.flowers.watered}`);
         await sp.click('[data-phase="night"]');
         await settled();
         const lampBefore = (await sc()).lamp.on;
@@ -249,8 +254,10 @@ module.exports = function pixelSceneScenario({ OUT, FAKE_LH, step, launch, openA
         await sp.waitForTimeout(300);
         await shot('s8-pond-look');
         out.push(`池塘: act=${look.pet.act} state=${look.pet.state}`);
-        const acts = (await dbg()).acts.map((a) => a.act);
-        assert.ok(['sit', 'water', 'lamp', 'look'].every((a) => acts.includes(a)), acts.join(','));
+        // the yard reports an act to main when it is done (sit: when she sits down), so `look` lands a few seconds later
+        const want = ['sit', 'water', 'lamp', 'look'];
+        const acts = await until(async () => { const a = (await dbg()).acts.map((x) => x.act); return want.every((w) => a.includes(w)) ? a : null; }, 15000, `main to record ${want.join(',')}`).catch(async () => (await dbg()).acts.map((x) => x.act));
+        assert.ok(want.every((a) => acts.includes(a)), acts.join(','));
         out.push(`main 记录的互动：${acts.join('、')}`);
         return out.join(' | ');
       }, () => sp);
