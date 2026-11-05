@@ -260,4 +260,4 @@ musiclive 在 personal 空间建一个临时 agent，跑完（包括失败时）
 - **不支持**：ElevenLabs 的 composition plan（分段计划）/ 参考音频 / 微调，fal 上 v2 / v1.5 / 旧版 MiniMax Music，MiniMax 翻唱（`music-cover`）、流式输出。
 - **只能用直连**：本机能力走 `lh connect` 设备时（`lh agent run --device`），这条路带不了 function tool，作曲不可用。
 - **Key 安全**：Key 只存在本机 `tts-keys.json` 或环境变量里，不写进 `settings.json`、日志或仓库；设置窗口只拿到「是否已设置」（`settingsView().musicStatus`）。单测会检查仓库里没有提交真实 Key（`test/music.test.js`）。
-- **真实付费调用**：T-5651 只用 mock / 本地替身验证；本机没有 `FAL_KEY` / `ELEVENLABS_API_KEY`，没有做真实连通性试调，留给下一任务。
+- **真实付费调用（2026-11-05 实测）**：fal.ai（`fal-ai/minimax-music/v2.6`）真实生成已跑通，`npm run music:smoke -- --provider=fal` 与 `MUSIC_LIVE_PROVIDER=fal MUSIC_LIVE_MODE=real` 的 musiclive 都通过（提交 → 轮询 → 保存 mp3 → 聊天里播放）；ElevenLabs 免费账号返回 402 `paid_plan_required`，需付费套餐后才能真实生成；MiniMax 官方对新用户返回 2153（停售）。
