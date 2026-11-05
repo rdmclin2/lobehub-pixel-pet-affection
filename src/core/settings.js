@@ -87,10 +87,16 @@ const SYSTEM = { hardwareAcceleration: true };
 // 检查更新 (tray, ⋯ menu, settings window) checks. Before this switch it could only be turned off with
 // PIXELPET_NO_UPDATE=1; a version already downloaded is still installed on quit.
 const UPDATE = { autoCheck: true };
+// 小游戏 (docs/mini-games.md §5): the game world's time and weather, shared by every game. dayFlow = 「随时间流动」
+// (one game day lasts 24 real minutes, from `hour`); followClock = 「对齐本机时间」 (the hour is this computer's
+// clock, it wins over dayFlow); both off = `hour` stands (0–23.75, quarter hours). autoWeather = 「天气自己变」 (a
+// manual pick turns it off). game = the game opened last (its id), so the tray / ⌂ opens that one again.
+const SCENE = { followClock: false, dayFlow: true, hour: 8, weather: 'clear', autoWeather: false, game: '' };
+const SCENE_WEATHERS = ['clear', 'cloudy', 'rain', 'snow', 'storm', 'fog'];
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, music: { ...MUSIC_DEFAULTS }, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, music: { ...MUSIC_DEFAULTS }, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -160,6 +166,20 @@ function normalizeUpdate(raw) {
   return { autoCheck: typeof u.autoCheck === 'boolean' ? u.autoCheck : UPDATE.autoCheck };
 }
 
+// Files from before 小游戏 have no `scene` (→ the defaults). An hour outside 0–24 wraps round; quarter hours.
+function normalizeScene(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const h = typeof s.hour === 'number' && Number.isFinite(s.hour) ? ((s.hour % 24) + 24) % 24 : SCENE.hour;
+  return {
+    followClock: typeof s.followClock === 'boolean' ? s.followClock : SCENE.followClock,
+    hour: (Math.round(h * 4) / 4) % 24,
+    weather: SCENE_WEATHERS.includes(s.weather) ? s.weather : SCENE.weather,
+    autoWeather: typeof s.autoWeather === 'boolean' ? s.autoWeather : SCENE.autoWeather,
+    dayFlow: typeof s.dayFlow === 'boolean' ? s.dayFlow : SCENE.dayFlow,
+    game: typeof s.game === 'string' && /^[a-z0-9][a-z0-9-]{2,63}$/.test(s.game) ? s.game : SCENE.game,
+  };
+}
+
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
 function cleanSystemRole(v) {
   return String(v || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, SYSTEM_ROLE_MAX).trim();
@@ -217,6 +237,7 @@ function normalizeSettings(raw) {
   s.ui = normalizeUi(s.ui);
   s.system = normalizeSystem(s.system);
   s.update = normalizeUpdate(s.update);
+  s.scene = normalizeScene(s.scene);
   // 本机能力 → AI 可读的文件夹 (core/ai-folders.js, T-5075): null folders = no limit (decided once by PetService.init)
   s.local = aiFolders.normalizeLocal(s.local);
   return s;
@@ -290,4 +311,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

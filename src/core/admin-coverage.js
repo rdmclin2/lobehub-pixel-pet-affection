@@ -25,6 +25,7 @@ const INTERNAL_SETTINGS = {
   ageConfirmed: '是否确认满 18 周岁（同上，只读）',
   ageConfirmedAt: '确认时间（同上，只读）',
   ageGateVersion: '确认文案版本（文案改了就重新询问，只读）',
+  'scene.game': '上次玩的小游戏（打开小游戏时写入；托盘和面板 ⌂ 打开它，只读）',
   characterModel: '角色数据版本（T-2764：2 = 每个形象是一个独立角色；旧文件启动时迁移一次，只读）',
   'local.asked': '授权页点过「授权」的系统文件夹（下载 / 桌面 / 文稿）：之后读它不再弹窗，状态可以静默检查（main/permissions.js）',
 };
@@ -126,6 +127,9 @@ const PET_ONLY = {
   'pet-panel:close': '— 她的面板：在她窗口里按一下就关闭',
   'pet-panel:update': '— 她的面板：打开时状态变化即时刷新',
   'debug-pet-panel': '测试钩子：面板窗口的位置、开关记录',
+  'scene-open': '互动：打开上次玩的小游戏（她的面板 ⌂ / Ctrl+⌘+Shift+H / 托盘「小游戏」同一功能；没下载过就打开 商店 → 小游戏）；是打开一个窗口，不是设置。时段和天气在 玩法 → 桌宠行为 → 小游戏',
+  'debug-scene': '测试钩子：小游戏窗口的开关记录、已下载的小游戏、她在游戏里做过的事、桌宠窗口是否可见',
+  'debug-scene-toggle': '测试钩子：像托盘那样开关小游戏窗口（可指定哪个游戏）',
   'debug-update-dialogs': '测试钩子：检查更新… 弹过的对话框（设置窗口的 版本与更新 显示同一个 Updater 状态）',
   'debug-update-answer': '测试钩子：下一个检查更新对话框点哪个按钮',
   'debug-update-state': '测试钩子：直接设定 Updater 状态（下载中 / 已下载好在 Linux 上走不到）',
@@ -154,6 +158,7 @@ const MENU = {
   'toolbar:wardrobe': '角色 → 她的页 → 装扮 → 衣柜（`equip-outfit`）',
   'tray:打开设置…': '打开设置窗口',
   'tray:显示桌宠': '桌宠行为 → 位置 → 找回桌宠',
+  'tray:小游戏': '— 打开 / 关闭小游戏窗口（她的面板 ⌂、Ctrl+⌘+Shift+H 同一功能；没下载过就打开 商店 → 小游戏）；时段与天气在 玩法 → 桌宠行为 → 小游戏',
   'tray:重置姿势': '— 互动操作，不是设置：桌宠工具栏 ↺、Ctrl+⌘+Shift+R、本地 API 同一功能（T-2830）',
   'tray:检查更新': '版本与更新 → 检查更新',
   'tray:退出': '— 退出程序',
@@ -167,6 +172,7 @@ const MENU = {
 // (settings.json, keys.*, localAbilities); actions = admin-preload channels.
 const RUNTIME = [
   { id: 'roam', label: '走动', where: '玩法 → 桌宠行为', keys: ['prefs.roam'], actions: ['admin-place-pet'] },
+  { id: 'scene', label: '小游戏（时段 / 天气）', where: '玩法 → 桌宠行为 → 小游戏；小游戏窗口的天色卡片', keys: ['scene.dayFlow', 'scene.followClock', 'scene.hour', 'scene.weather', 'scene.autoWeather', 'scene.game'] },
   { id: 'size', label: '大小', where: '玩法 → 桌宠行为', keys: ['petScale'] },
   { id: 'touch', label: '触摸与音效', where: '玩法 → 桌宠行为', keys: ['prefs.touchZones', 'prefs.touchHint', 'prefs.clickSound', 'prefs.memes', 'prefs.collide'] },
   { id: 'dance', label: '舞蹈（VRM）', where: '玩法 → 和她一起 → 舞蹈', keys: ['prefs.danceVolume', 'prefs.muted'], actions: ['dance:play', 'dance:stop', 'dance:loop', 'dance-import-pick', 'dance-import-extra', 'dance-import-commit', 'dance-import-cancel', 'dance-remove'] },

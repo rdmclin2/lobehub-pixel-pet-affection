@@ -1,5 +1,5 @@
 /**
- * 商店 (docs/characters.md 「内置与下载」, docs/vrm-dance.md §11): what can be downloaded. One tab per kind of
+ * 商店 (docs/characters.md 「内置与下载」, docs/vrm-dance.md §11, docs/mini-games.md §7): what can be downloaded. One tab per kind of
  * thing — 角色 (pixel / Live2D / VRM characters), 舞蹈 and 语音包. Downloaded characters stay listed here as 已下载
  * (→ her page) and show up in 角色图鉴; downloaded dances go into 舞蹈 (玩法 → 舞蹈) and can be danced from here;
  * downloaded 语音包 (core/voice-store.js, docs/voice-packs.md §7) go into userData/voicepacks/ and are listed in
@@ -15,6 +15,7 @@ import { ask } from "../fields";
 import { useStore } from "../store";
 import { SpriteStage } from "../stage/SpriteStage";
 import { CatalogGrid, downloading, KIND_NAME, storeStyles } from "./Characters";
+import { GamesShelf } from "./StoreGames";
 import { clock } from "./Dances";
 
 const CharactersShelf = () => {
@@ -530,9 +531,9 @@ const VoicesShelf = () => {
   );
 };
 
-type Shelf = "characters" | "dances" | "voices";
+type Shelf = "characters" | "dances" | "voices" | "games";
 
-const SHELVES: Shelf[] = ["characters", "dances", "voices"];
+const SHELVES: Shelf[] = ["characters", "dances", "voices", "games"];
 
 /** `initial`: the shelf a link opens (`#/store/voices`, e.g. from a character's 语音包 picker). */
 export const StorePage = ({ initial }: { initial?: string }) => {
@@ -541,7 +542,7 @@ export const StorePage = ({ initial }: { initial?: string }) => {
   return (
     <>
       <PageHeader
-        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈，语音包会出现在 设置 → 语音包；不需要了可以在她的页面、舞蹈页或这里删除。"
+        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈，语音包会出现在 设置 → 语音包，小游戏点「开始玩」就能和她一起玩；不需要了可以在她的页面、舞蹈页或这里删除。"
         title="商店"
       />
       <PageTabs
@@ -551,6 +552,7 @@ export const StorePage = ({ initial }: { initial?: string }) => {
           { content: <CharactersShelf />, label: "角色", value: "characters" },
           { content: <DancesShelf />, label: "舞蹈", value: "dances" },
           { content: <VoicesShelf />, label: "语音包", value: "voices" },
+          { content: <GamesShelf />, label: "小游戏", value: "games" },
         ]}
         value={tab}
       />
