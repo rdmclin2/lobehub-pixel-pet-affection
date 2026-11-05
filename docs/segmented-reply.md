@@ -78,6 +78,7 @@
 
 ## 六、如何触发
 
+0. 启动：`npm install` → `npm start`（Linux 无显示器：`xvfb-run -a npm start`；不登录 LobeHub 先看效果：`npm run demo`，用假 `lh`）。分段式表达默认开启，不需要额外配置。
 1. 正常唤醒她（任意角色），在聊天框随便发一句，例如“嗨”“在干嘛”。人设已经要求她分条说，回复会一条一条冒出来。
 2. 不连 LobeHub、不花 token：跑下面的 e2e 场景，它用假 `lh`（`test/fixtures/fake-lh.js` 读 `$FAKE_LH_DIR/stream-reply.json`）回复固定的分段文本。注意只有她自己的回复（`source: 'llm'`）会分段，本机接口 `POST /pixel-pet/say` 的台词和离线台词不分段。
 3. 想对比原来的样子：设置 → 桌宠行为 → 聊天 → 关掉「分段式表达」。
@@ -97,4 +98,5 @@
   | SG6 | 设置窗口 → 桌宠行为 显示「分段式表达 / 一次最多几条 / 打字速度」，默认开、6、80 |
 
   截图 `sg1-1-of-4.png … sg1-4-of-4.png`、`sg1-*-typing.png`、`sg2-streaming.png`、`sg3-*.png`、`sg4-single.png`、`sg5-off-one-bubble.png`、`sg6-settings.png`，录屏 `video/`，时间线 `seg-timeline.txt`，`renderer-logs.json`（segLog / streamLog / offerLog），`chat-log.json`。
+- e2e（真实 LobeHub agent，消耗 token，需要已 `lh login`）：`env -u ELECTRON_RUN_AS_NODE xvfb-run -a node e2e/run.js segmentedlive 50`（第 3 个参数把好感强制为 50 =「亲近」阶段，语气更黏人调皮；不传则为新唤醒的「陌生」阶段，语气按人设更克制）。SL1 检查一次回复 ≥ 4 条、按序逐条、相邻有间隔；SL2 回复途中再发消息，旧回复停止、无残留；SL3 聊天记录每轮完整、朗读每轮一次、无报错。场景结束后自动删除临时 agent。
 - 回归：`xvfb-run -a node e2e/run.js stream`（流式回复 S1–S8）不受影响。
