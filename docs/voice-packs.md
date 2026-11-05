@@ -350,3 +350,10 @@ node scripts/upload-character-catalog.js --voices            # 上传到 dc/ops-
 7. 重启：选择、已下载状态、播放来源都保持。
 
 截图、两段录屏、播放的两段 `.ogg` 和日志在 `out/e2e/voiceflow/`。另有 `voicestore`（试听、校验失败、删除）和 `voiceselect`（不使用、删除正在用的包、其他角色不受影响）两个场景覆盖分支情况。
+
+`voices-v1` 的 5 个归档已于 2026-11-05 上传到 CDN。`xvfb-run -a node e2e/run.js voiceflowcdn` 用真实 CDN 跑同一流程（需要联网，不在 `all` 里）：
+
+- 不启动本地服务器。启动前要确认没有设置 `PIXELPET_CATALOG_URL`，否则场景直接报错。
+- 主进程的每次 `net.fetch` 都记到 `out/e2e/voiceflowcdn/fetch-log.json`（地址、状态码、字节数）。F9 断言只请求了这两个包的 CDN 地址，且都返回 200、大小与目录一致。
+- 可爱 全速下载（约 0.3 秒），卡片的状态变化由页面里的监听记录在 `f3-states-style-cute.json`。
+- 少年 的响应体只放慢到约 250 KB/s（字节不变，仍来自 CDN），便于截到「下载中」。

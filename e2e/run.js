@@ -10262,9 +10262,14 @@ async function voiceSelectScenario() {
 // 语音 → 语音包 picks 可爱: the pet plays the line from style-cute; switching to 少年 plays it from style-shaonian at
 // once; after a restart she is still on 少年 and both packs are still 已下载. The played files are copied next to the
 // screenshots (played-*.ogg) so they can be listened to. Free: fake lh, no key. Evidence in out/e2e/voiceflow/.
-async function voiceFlowScenario() {
-  const S = 'voiceflow';
-  const SHOTS = path.join(OUT, 'voiceflow');
+// `voiceflowcdn` (T-5104) is the same journey against the real CDN: no local server and no PIXELPET_CATALOG_URL, so
+// the app fetches the catalog's default ${CDN_ORIGIN}/…/voices-v1/<id>.zip. Every main-process net.fetch is logged
+// (url, status, bytes) to fetch-log.json; the first pack downloads at full speed (its 未下载 → 下载中 → 已下载 seen by a
+// MutationObserver on the card), the second one's CDN body is only paced (~250 KB/s, same bytes) so 下载中 can be
+// screenshotted. Needs network. Evidence in out/e2e/voiceflowcdn/.
+async function voiceFlowScenario({ cdn = false } = {}) {
+  const S = cdn ? 'voiceflowcdn' : 'voiceflow';
+  const SHOTS = path.join(OUT, S);
   fs.rmSync(SHOTS, { recursive: true, force: true });
   fs.mkdirSync(SHOTS, { recursive: true });
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
@@ -10282,7 +10287,9 @@ async function voiceFlowScenario() {
   const built = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-voice-catalog.js'), '--check', '--out', zips], { cwd: ROOT, encoding: 'utf8' });
   const http = require('node:http');
   const served = [];
-  const server = http.createServer((req, res) => {
+  const CDN_BASE = `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/${index.release}`;
+  if (cdn) assert.ok(!process.env.PIXELPET_CATALOG_URL, 'voiceflowcdn: unset PIXELPET_CATALOG_URL');
+  const server = cdn ? { address: () => ({ port: 0 }), close: () => {} } : http.createServer((req, res) => {
     const name = path.basename(decodeURIComponent(new URL(req.url, 'http://x').pathname));
     const file = path.join(zips, name);
     served.push(name);
@@ -10294,20 +10301,54 @@ async function voiceFlowScenario() {
     const tick = () => { if (i >= buf.length) return res.end(); res.write(buf.subarray(i, i + 24 * 1024)); i += 24 * 1024; setTimeout(tick, 100); };
     tick();
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${server.address().port}/voices`;
+  if (!cdn) await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = cdn ? CDN_BASE : `http://127.0.0.1:${server.address().port}/voices`;
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflow-'));
   const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-vflowfake-'));
   fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
-  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', PIXELPET_CATALOG_URL: base };
+  const env = { PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir, PIXELPET_TRAY: '1', ...(cdn ? {} : { PIXELPET_CATALOG_URL: base }) };
   const VDIR = path.join(data, 'voicepacks');
+  // voiceflowcdn: log every main-process net.fetch; `pace` (archive names) slows only those bodies to ~250 KB/s
+  const fetchLog = [];
+  const hookFetch = async (a) => {
+    if (!cdn) return;
+    await a.evaluate(({ net }) => {
+      if (global.__vfHooked) return;
+      global.__vfHooked = true;
+      global.__vfLog = [];
+      global.__vfPace = new Set();
+      const orig = net.fetch.bind(net);
+      net.fetch = async (url, opts) => {
+        const t0 = Date.now();
+        const e = { url: String(url), t0 };
+        global.__vfLog.push(e);
+        const res = await orig(url, opts);
+        e.status = res.status; e.contentLength = res.headers.get('content-length'); e.contentType = res.headers.get('content-type');
+        const paced = [...global.__vfPace].some((n) => String(url).endsWith('/' + n));
+        e.paced = paced;
+        const reader = res.body.getReader();
+        let bytes = 0;
+        const body = new ReadableStream({
+          async pull(c) {
+            const { done, value } = await reader.read();
+            if (done) { e.bytes = bytes; e.ms = Date.now() - t0; return c.close(); }
+            bytes += value.length;
+            if (paced) await new Promise((r) => setTimeout(r, Math.ceil(value.length / 256)));
+            c.enqueue(value);
+          },
+        });
+        return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
+    });
+  };
+  const pullFetchLog = async (a) => { if (cdn) fetchLog.push(...(await a.evaluate(() => (global.__vfLog || []).filter((e) => /^https?:/.test(e.url))).catch(() => []))); };
   const evidence = [];
   const note = (x) => { evidence.push(x); return x; };
   const record = (name, text) => { fs.writeFileSync(path.join(SHOTS, name), text); return name; };
   const settingsFile = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
   const picks = () => (settingsFile().tts || {}).voicePackByCharacter;
   const ls = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).sort() : null);
-  record('f0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\nserved from ${base} (throttled ~250 KB/s, playing ${Catalog.CDN_ORIGIN}/…/${index.release}/)\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
+  record('f0-zips-built.txt', `$ node scripts/build-voice-catalog.js --check --out <tmp>\n${built}\n${cdn ? `real CDN: ${base}/ (no PIXELPET_CATALOG_URL, no local server)` : `served from ${base} (throttled ~250 KB/s, playing ${Catalog.CDN_ORIGIN}/…/${index.release}/)`}\n${index.voicePacks.map((v) => `${v.file}  ${v.bytes} bytes  sha256 ${v.sha256}`).join('\n')}\n`);
   const before = ls(data);
   // video chapters: wall-clock marks, turned into seconds from each window's recording start (videos.json)
   const marks = [];
@@ -10316,6 +10357,7 @@ async function voiceFlowScenario() {
   const VS = { width: 1180, height: 900 };
   const track = (p, name) => { videos.push({ name, start: Date.now() / 1000, page: p }); };
   let { app, page } = await launch(env, { video: path.join(SHOTS, 'video'), videoSize: VS });
+  await hookFetch(app);
   track(page, 'pet-1');
   let admin = null;
   const errors = [];
@@ -10458,10 +10500,44 @@ async function voiceFlowScenario() {
 
     const progress = {};
     for (const [i, id] of [[3, A], [4, B]]) {
-      await step(S, `F${i} 下载「${nameOf(id)}」：未下载 → 下载中（进度条、百分比、取消）→ 已下载`, async () => {
+      const fast = cdn && id === A;
+      await step(S, `F${i} 下载「${nameOf(id)}」${cdn ? (fast ? '（真实 CDN，全速）' : '（真实 CDN，仅放慢接收速度）') : ''}：未下载 → 下载中（进度条、百分比、取消）→ 已下载`, async () => {
         const st0 = (await states())[id];
+        if (cdn && !fast) await app.evaluate((_e, n) => global.__vfPace.add(n), `${id}.zip`);
+        // every state the card goes through, as rendered
+        await admin.evaluate((x) => {
+          const el = document.querySelector(`[data-store-voice="${x}"]`);
+          window.__vfStates = [{ t: Date.now(), state: el.dataset.voiceState, text: '' }];
+          const obs = new MutationObserver(() => {
+            const c = document.querySelector(`[data-store-voice="${x}"]`);
+            if (!c) return;
+            const p = c.querySelector(`[data-voice-download-progress="${x}"]`);
+            const last = window.__vfStates[window.__vfStates.length - 1];
+            const cur = { t: Date.now(), state: c.dataset.voiceState, text: p ? p.textContent : '' };
+            if (cur.state !== last.state || cur.text !== last.text) window.__vfStates.push(cur);
+          });
+          obs.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+          window.__vfObs = obs;
+        }, id);
         mark('step', `点「下载」：${nameOf(id)}`);
         await admin.click(`[data-voice-download="${id}"]`);
+        if (fast) {
+          await until(`${id} installed`, async () => (await states())[id] === 'installed', 60000);
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          const seq = timeline.map((x) => x.state).filter((x, k, a) => x !== a[k - 1]);
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+          assert.equal(seq[0], 'remote');
+          assert.ok(seq.includes('downloading'), JSON.stringify(seq));
+          assert.equal(seq[seq.length - 1], 'installed');
+          assert.deepEqual(seq, ['remote', 'downloading', 'installed'], 'no flash back to 未下载');
+          assert.equal(await admin.$eval(`[data-voice-downloaded="${id}"]`, (el) => el.textContent), '已下载');
+          const marker = JSON.parse(fs.readFileSync(path.join(VDIR, id, '.catalog.json'), 'utf8'));
+          assert.equal(marker.sha256, index.voicePacks.find((v) => v.id === id).sha256);
+          mark('check', `${id} 卡片 ${seq.join(' → ')}（全速真实 CDN）`);
+          const s2 = await ashot(`f${i}b-downloaded-${id}`);
+          progress[id] = timeline.filter((x) => x.text).map((x) => x.text).join(' / ');
+          return note(`F${i} ${id} (real CDN, full speed): card states ${seq.join(' → ')} in ${timeline[timeline.length - 1].t - timeline[0].t} ms; progress texts ${JSON.stringify(timeline.filter((x) => x.text).map((x) => x.text))}; marker ${JSON.stringify(marker)} → f${i}-states-${id}.json, ${s2}`);
+        }
         await attached(`[data-voice-download-progress="${id}"]`);
         await admin.waitForFunction((x) => /已下载 [1-9]\d?%/.test(document.querySelector(`[data-voice-download-progress="${x}"]`)?.textContent || ''), id, { timeout: 15000 });
         const st1 = (await states())[id];
@@ -10477,7 +10553,11 @@ async function voiceFlowScenario() {
         mark('check', `${id} 卡片显示「已下载」`);
         const s2 = await ashot(`f${i}b-downloaded-${id}`);
         progress[id] = mid;
-        return note(`F${i} ${id}: ${st0} → ${st1}（${mid}）→ installed; marker ${JSON.stringify(marker)} → ${s1}, ${s2}`);
+        if (cdn) {
+          const timeline = await admin.evaluate(() => { window.__vfObs.disconnect(); return window.__vfStates; });
+          record(`f${i}-states-${id}.json`, JSON.stringify(timeline.map((x) => ({ ...x, dt: x.t - timeline[0].t })), null, 2));
+        }
+        return note(`F${i} ${id}${cdn ? ' (real CDN, body paced)' : ''}: ${st0} → ${st1}（${mid}）→ installed; marker ${JSON.stringify(marker)} → ${s1}, ${s2}`);
       }, () => admin || page);
     }
 
@@ -10541,9 +10621,11 @@ async function voiceFlowScenario() {
     }, () => admin || page);
 
     await step(S, 'F8 重启应用：settings.json 仍是少年包；商店两个包仍「已下载」；角色语音页显示少年；喂食台词仍来自 style-shaonian', async () => {
+      await pullFetchLog(app);
       await app.close();
       mark('step', '重启应用（关闭后用同一个 userData 再启动）');
       ({ app, page } = await launch(env, { video: path.join(SHOTS, 'video-after-restart'), videoSize: VS }));
+      await hookFetch(app);
       track(page, 'pet-2');
       await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
       await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
@@ -10571,6 +10653,17 @@ async function voiceFlowScenario() {
     await step(S, 'F9 没有渲染错误；下载请求只打到商店地址', async () => {
       const bad = errors.filter((e) => !/favicon|DevTools/.test(e));
       assert.deepEqual(bad, []);
+      if (cdn) {
+        await pullFetchLog(app);
+        record('fetch-log.json', JSON.stringify(fetchLog, null, 2));
+        const want = [A, B].map((id) => `${CDN_BASE}/${id}.zip`).sort();
+        assert.deepEqual(fetchLog.map((e) => e.url).sort(), want);
+        for (const e of fetchLog) {
+          const v = index.voicePacks.find((x) => e.url.endsWith('/' + x.file));
+          assert.deepEqual([e.status, e.bytes, Number(e.contentLength)], [200, v.bytes, v.bytes], JSON.stringify(e));
+        }
+        return note(`F9 no console errors; main-process downloads (real CDN, no local server):\n${fetchLog.map((e) => `  GET ${e.url} → ${e.status} ${e.contentType} ${e.bytes} bytes in ${e.ms} ms${e.paced ? ' (paced)' : ''}`).join('\n')}`);
+      }
       assert.deepEqual([...new Set(served)].sort(), [`${A}.zip`, `${B}.zip`].sort());
       return note(`F9 no console errors; served: ${served.join(', ')}`);
     }, page);
@@ -12436,6 +12529,7 @@ async function interjectScenario() {
   if (which === 'voicestore' || which === 'all') await voiceStoreScenario();
   if (which === 'voiceselect' || which === 'all') await voiceSelectScenario();
   if (which === 'voiceflow' || which === 'all') await voiceFlowScenario();
+  if (which === 'voiceflowcdn') await voiceFlowScenario({ cdn: true }); // network: the real CDN (T-5104), not in `all`
   if (which === 'interject' || which === 'all') await interjectScenario();
   // Scenarios can be run separately; keep earlier results for the ones not run this time.
   const ran = new Set(results.map((r) => r.scenario));

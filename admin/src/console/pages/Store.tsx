@@ -311,14 +311,16 @@ const VoiceCard = ({
   playing: boolean;
   v: StoreVoiceRow;
 }) => {
-  const live = downloading(p);
+  // 'done' arrives a moment before the refreshed row says installed: stay on 正在安装… instead of flashing 未下载
+  const settling = p?.state === "done" && v.state !== "installed";
+  const live = downloading(p) || settling;
   const state = live ? "downloading" : v.state;
   const pct = live
     ? p && p.total
       ? Math.min(100, Math.floor(((p.received ?? 0) / p.total) * 100))
       : 0
     : (v.percent ?? 0);
-  const installing = live ? p?.state === "installing" : !!v.installing;
+  const installing = live ? p?.state === "installing" || settling : !!v.installing;
   return (
     <article className={storeStyles.card} data-store-voice={v.id} data-voice-state={state}>
       <Flexbox flex={1} gap={8} padding={12}>
