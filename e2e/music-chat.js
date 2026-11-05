@@ -80,7 +80,7 @@ module.exports = function musicChatScenario(ctx) {
     const songs = () => (fs.existsSync(musicDir) ? fs.readdirSync(musicDir).filter((f) => !f.endsWith('.part')) : []);
     const sendText = async (text) => {
       await hover(page);
-      if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+      await require('./pet-panel').openChatBar(page); // T-6162: no 聊天 tile, her own chat bar opens beside her
       await page.fill('#chat-input', text);
       await page.click('#chat-send');
     };

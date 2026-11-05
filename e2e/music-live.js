@@ -104,7 +104,7 @@ module.exports = function musicLiveScenario(ctx) {
       const ASK = process.env.MUSIC_LIVE_ASK || '给我写一首关于夏夜萤火虫的歌吧，轻快一点，短一些就好';
       await step(S, `L2 「${ASK}」→ the real model calls compose_music by itself; the bubble says 作曲中…`, async () => {
         await hover(page);
-        if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+        await require('./pet-panel').openChatBar(page); // T-6162: no 聊天 tile, her own chat bar opens beside her
         await page.fill('#chat-input', ASK);
         await shot('l2-typed');
         await page.click('#chat-send');
