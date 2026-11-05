@@ -141,6 +141,8 @@ env -u ELECTRON_RUN_AS_NODE xvfb-run -a -s "-screen 0 1280x800x24" npm run e2e -
 
 `e2e/pixel-scene-docs.js`（场景 `scenedocs`）产出本文的图：`day-clear` `dusk-cloudy` `night-rain` `snow`（四种组合）、`pos-left` `pos-right` `pos-front`（不同位置）、`act-touch` `act-bench` `act-water` `act-lamp`（互动）和 `pixel-scene-demo.mp4` / `.gif` / `.chapters.json`。
 
+验收报告（逐条对照 Goal、复现命令原始输出）：[`pixel-scene-acceptance.md`](pixel-scene-acceptance.md)。
+
 ## 6. 已知限制
 
 - **只有一张地图**：20×12 格的固定庭院，没有多场景、镜头移动或地图编辑；寻路按格走（A*），不会跳跃或游泳。
