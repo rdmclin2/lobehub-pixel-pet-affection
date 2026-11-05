@@ -146,6 +146,24 @@ contextBridge.exposeInMainWorld('petAdmin', {
   onApiStatus: on('api-status'),
   // 聊天 (docs/admin-chat.md): one conversation per character, her 聊天记录; a reply streams as onDelta events.
   // Her model is chosen with setModel(key, species) above (the same pick as her page → 模型).
+  // 角色 → 表情包 (docs/stickers-design.md §4): her sets (built-in + 我的); 添加 opens a file dialog (several
+  // pictures), each one checked in main; 删除 / 改名 only her own set.
+  stickers: {
+    list: (speciesId) => ipcRenderer.invoke('stickers-list', { speciesId }),
+    pickAndAdd: (speciesId) => ipcRenderer.invoke('stickers-pick-add', { speciesId }),
+    remove: (speciesId, ids) => ipcRenderer.invoke('stickers-remove', { speciesId, ids }),
+    update: (speciesId, id, patch = {}) => ipcRenderer.invoke('stickers-update', { speciesId, id, label: patch.label, desc: patch.desc }),
+    onChanged: on('stickers-changed'),
+  },
+  // 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B): the official sets on the CDN; 获取 for a character
+  // (progress arrives as `catalog-progress`), cancel, 移除
+  stickerStore: {
+    list: (opts = {}) => ipcRenderer.invoke('sticker-store', { refresh: !!opts.refresh }),
+    detail: (id) => ipcRenderer.invoke('sticker-store-detail', { id }),
+    get: (id, speciesId) => ipcRenderer.invoke('sticker-store-get', { id, speciesId }),
+    cancel: (id) => ipcRenderer.invoke('sticker-store-cancel', { id }),
+    remove: (id) => ipcRenderer.invoke('sticker-store-remove', { id }),
+  },
   chat: {
     listCharacters: () => ipcRenderer.invoke('admin-chat-characters'),
     history: (speciesId, opts = {}) => ipcRenderer.invoke('admin-chat-history', { speciesId, before: opts.before, limit: opts.limit }),
@@ -155,5 +173,18 @@ contextBridge.exposeInMainWorld('petAdmin', {
     onDelta: on('admin-chat-delta'),
     onDone: on('admin-chat-done'),
     onChanged: on('admin-chat-changed'),
+    // 音乐创作 (T-5090): 作曲中… / done / failed of this page's round; a song's bytes, open / show it in its folder
+    onMusic: on('admin-chat-music'),
+    musicAudio: (filePath) => ipcRenderer.invoke('admin-chat-music-audio', { filePath }),
+    musicOpen: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath }),
+    musicReveal: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath, reveal: true }),
+  },
+  // 她的音乐库 (core/music-library.js): 角色详情 → 音乐 — her songs, rename one (the title only), delete one (and its
+  // file); `onChanged` after a song was added / renamed / deleted (from any window)
+  musicLibrary: {
+    list: (speciesId) => ipcRenderer.invoke('music-library-list', { speciesId }),
+    rename: (id, title) => ipcRenderer.invoke('music-library-rename', { id, title }),
+    remove: (id) => ipcRenderer.invoke('music-library-delete', { id }),
+    onChanged: on('music-library-changed'),
   },
 });

@@ -20,6 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const chatLog = require('./chat-log');
+const stickers = require('./stickers');
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGES = 4; // per message
@@ -199,22 +200,34 @@ const picNote = (m) => {
   const n = m.attachments && Number(m.attachments.images);
   return n ? `［发了 ${n} 张图片］` : '';
 };
+const stickerNote = (m) => (m.sticker && m.sticker.label ? `［表情包：${m.sticker.label}］` : '');
 function transcript(list, name) {
   return list
-    .filter((m) => (m.text || '').trim() || picNote(m))
-    .map((m) => `[${clock(m.at)}] ${m.role === 'user' ? '主人' : name}：${(m.text || '').trim()}${m.role === 'user' ? picNote(m) : ''}`)
+    .filter((m) => (m.text || '').trim() || picNote(m) || stickerNote(m))
+    .map((m) => `[${clock(m.at)}] ${m.role === 'user' ? '主人' : name}：${(m.text || '').trim()}${m.role === 'user' ? picNote(m) : ''}${stickerNote(m)}`)
     .join('\n');
+}
+
+// What the agent is told about a sticker the owner sent (docs/stickers-design.md §3.4): words only — the
+// picture is not uploaded (many of her models cannot see, and its meaning is in its name and use).
+// sticker: { label, desc? } -> ［主人发了一个表情包：「超开心」——笑得眯起眼、开心到冒花］
+function stickerLine(sticker) {
+  if (!sticker || !sticker.label) return '';
+  const desc = String(sticker.desc || '').trim();
+  return `［主人发了一个表情包：「${sticker.label}」${desc ? `——${desc}` : ''}］请把它当作主人的一句话，自然地接话。`;
 }
 
 // What the owner's message becomes before PetService wraps it in her state block (persona.buildChatPrompt):
 // the carried-over recent rounds (fresh topic only), the recalled older rounds (a question about the past
 // only), a note about the pictures, then her words.
-function buildConsoleBody({ name, text, recent = [], recall = [], images = 0 }) {
+// `sticker`: a 表情包 the owner sent with (or as) this message, after her words.
+function buildConsoleBody({ name, text, recent = [], recall = [], images = 0, sticker = null }) {
   const parts = [];
   if (recent.length) parts.push(`【最近 4 小时的聊天（换了新话题，接着聊）】\n${transcript(recent, name)}`);
   if (recall.length) parts.push(`【更早的聊天记录摘录（主人问到以前的事，供你回忆；只在相关时引用）】\n${transcript(recall, name)}`);
   if (images) parts.push(`[图片] 主人刚发来 ${images} 张图片${text ? '和下面这句话' : ''}（就在上一条消息里），请先看图，再直接回应。`);
   parts.push(text || (images ? '（发了图片）' : ''));
+  if (sticker) parts.push(stickerLine(sticker));
   return parts.filter(Boolean).join('\n\n');
 }
 
@@ -273,6 +286,10 @@ function messageView(m, images, speciesId) {
     via: m.via === 'console' ? 'console' : 'desktop',
     attachments: shown,
     unsavedImages: extra,
+    // 音乐创作 (T-5090): songs compose_music saved in this round ({ id, title, filePath, fileUrl, durationMs, format, provider?, libraryId? })
+    music: Array.isArray(a.music) ? a.music.filter((x) => x && typeof x.filePath === 'string').map((x) => ({ id: String(x.id || x.filePath), title: String(x.title || ''), filePath: x.filePath, fileUrl: String(x.fileUrl || ''), durationMs: Number(x.durationMs) || null, format: String(x.format || ''), instrumental: !!x.instrumental, ...(typeof x.provider === 'string' ? { provider: x.provider } : {}), ...(typeof x.libraryId === 'string' ? { libraryId: x.libraryId } : {}) })) : [],
+    // 表情包 (docs/stickers-design.md §3.3): from sticker://; a picture that cannot load shows its label
+    sticker: m.sticker && stickers.refUrl(m.sticker.ref) ? { url: stickers.refUrl(m.sticker.ref), label: m.sticker.label || '表情包', set: m.sticker.set || null, id: m.sticker.id || null } : null,
   };
 }
 
@@ -333,5 +350,5 @@ function readableError(e) {
 
 module.exports = {
   ChatError, ChatImages, answerOnly, readImage, sniffImage, readableError, conversationOf, historyPage, wantsRecall, pickRecall, recentRounds,
-  buildConsoleBody, messageView, transcript, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_TEXT, CONTEXT_MS, PAGE,
+  buildConsoleBody, messageView, transcript, stickerLine, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_TEXT, CONTEXT_MS, PAGE,
 };

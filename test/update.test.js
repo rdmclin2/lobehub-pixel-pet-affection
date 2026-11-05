@@ -175,3 +175,36 @@ test('检查更新… dialog: every answer has a visible message and the buttons
   assert.equal(off.message, '当前版本不检查更新');
   assert.match(off.detail, /v0\.24\.0/);
 });
+
+test('版本与更新 checks on its own when opened, once: not again soon after, not while one is under way, not in a dev run (T-6161)', () => {
+  const { shouldAutoCheck, COOLDOWN_MS } = require('../src/core/update-auto');
+  const now = 1_800_000_000_000;
+  // never checked: opening the page checks
+  assert.equal(shouldAutoCheck({ status: 'idle', checkedAt: null }, { now }), true);
+  assert.equal(shouldAutoCheck(undefined, { now }), true, 'state not there yet: main ignores a check it cannot run');
+  // switching away and back: the check this window just started counts, so does one from the menu or the timer
+  assert.equal(shouldAutoCheck({ status: 'idle', checkedAt: null }, { now, lastAutoAt: now - 5000 }), false);
+  assert.equal(shouldAutoCheck({ status: 'latest', checkedAt: now - 60_000 }, { now }), false);
+  assert.equal(shouldAutoCheck({ status: 'error', checkedAt: now - 60_000 }, { now }), false, 'a failed check is not retried on every visit');
+  // long enough ago: checks again
+  assert.equal(shouldAutoCheck({ status: 'latest', checkedAt: now - COOLDOWN_MS }, { now, lastAutoAt: now - COOLDOWN_MS - 1 }), true);
+  assert.equal(shouldAutoCheck({ status: 'manual', checkedAt: now - COOLDOWN_MS - 1 }, { now }), true);
+  // already under way, or a build that does not update itself
+  for (const status of ['checking', 'downloading', 'ready', 'disabled']) assert.equal(shouldAutoCheck({ status, checkedAt: null }, { now }), false, status);
+});
+
+test('版本与更新 page: opening it starts the check through the shared policy, the button waits while a check runs, a failure says so (T-6161)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
+  const page = src.slice(src.indexOf('export const UpdatePage'), src.indexOf('export const AboutPage'));
+  assert.match(page, /UpdateAuto\.shouldAutoCheck\(opened\.current, \{ lastAutoAt: lastAutoCheckAt, now \}\)/);
+  assert.match(page, /lastAutoCheckAt = now;\s+check\(\);/);
+  assert.match(page, /const checking = busy \|\| update\?\.status === 'checking';/);
+  assert.match(page, /loading=\{checking\}/);
+  assert.match(page, /st\?\.status === 'error'\) toast\.error/);
+});
+
+test('版本与更新: a failed check does not show the version an earlier check found (T-6161)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'admin', 'src', 'console', 'pages', 'Pages.tsx'), 'utf8');
+  assert.match(src, /const WITH_VERSION = \['downloading', 'ready', 'manual'\];/);
+  assert.match(src, /update\?\.version && WITH_VERSION\.includes\(update\?\.status\)/);
+});

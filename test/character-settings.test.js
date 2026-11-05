@@ -203,8 +203,8 @@ test('regression: a settings.json from v0.10.0 keeps every character\'s model an
   const { models: _o, appearance: oldAppearance, ...restOld } = old;
   // 配置后台 (v0.20): 主动行为, 好感度 rules, the console theme, 硬件加速 and 自动检查更新 are new sections with their defaults
   // 小游戏 (scene): the game world's time and weather, with their defaults
-  const { proactive, interject, affectionRules, ui, system, update, scene } = require('../src/core/settings').normalizeSettings(null);
-  const newSections = { proactive, interject, affectionRules, ui, system, update, scene }; // 插个嘴 (interject) arrives switched off
+  const { proactive, interject, affectionRules, ui, system, update, music, scene } = require('../src/core/settings').normalizeSettings(null);
+  const newSections = { proactive, interject, affectionRules, ui, system, update, music, scene }; // 插个嘴 (interject) arrives switched off; 音乐创作 (music, T-5088) at its defaults
   // AI 可读的文件夹 (T-5075): her 本机能力 was off, so the list starts strict (no folder, no commands)
   newSections.local = { folders: [], allowCommands: false, asked: [] };
   // 取景 (半身模式): no per-character framings, prefs.framing 'full' (she looks as before); 静音 off

@@ -27,6 +27,10 @@
 | `chat.onDelta(cb)` | 事件 `admin-chat-delta` | `cb({ speciesId, turnId, text, restart? })`，`text` 是到目前为止的全文 | 返回取消订阅函数 |
 | `chat.onDone(cb)` | 事件 `admin-chat-done` | `cb({ speciesId, turnId, ok, reason?, error?, message })` | 返回取消订阅函数 |
 | `chat.onChanged(cb)` | 事件 `admin-chat-changed` | `cb({ speciesId })`：她的记录变了（这里或桌面上的一轮） | 返回取消订阅函数 |
+| `chat.onMusic(cb)` | 事件 `admin-chat-music` | `cb({ speciesId, turnId, state: 'composing' \| 'done' \| 'failed', title, stage?, startedAt?, music?, error? })`：这一轮 compose_music 的进度（T-5090，作曲中…） | 返回取消订阅函数 |
+| `chat.musicAudio(filePath)` | `admin-chat-music-audio` | 一首歌的绝对路径（必须在音乐保存目录里，按 realpath 校验，只认 mp3 / wav / pcm） | `{ ok, mime, data }`（字节，页面转 blob: 播放）／ `{ ok: false, reason: 'forbidden' \| 'missing' \| 'invalid' \| 'unplayable' }` |
+| `chat.musicOpen(filePath)` | `admin-chat-music-open` | 同上 | 用系统播放器打开：`{ ok }` |
+| `chat.musicReveal(filePath)` | `admin-chat-music-open` | 同上（`reveal: true`） | 在文件夹中显示：`{ ok }` |
 
 **模型**不在 `chat` 下：用已有的 `petAdmin.setModel(key, speciesId)`（与 角色 → 她的页面 → 模型 是同一个值 `settings.models[id]`），选项来自 `roster[i].model.options`（只有她所属厂商的模型，`vision` 标出能看图的）。
 
@@ -44,6 +48,7 @@ type Message = {
   via: 'console' | 'desktop';        // 在哪里聊的
   attachments: { id; name; mime; size; url: string | null }[]; // 聊天页发的图片，url 是 data URL
   unsavedImages: number;             // 桌面上发的图片只记了张数
+  music: { id; title; filePath; fileUrl; durationMs: number | null; format; instrumental }[]; // 这一轮 compose_music 存下的歌（T-5090）
 };
 
 type SendResult =

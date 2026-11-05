@@ -150,6 +150,28 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { padding: 0; a
 /* 流式回复: a blinking caret after the words while she is still writing */
 .bubble.streaming::after { content: '▍'; display: inline-block; margin-left: 1px; color: var(--lobe-color-text-tertiary); animation: caret-blink 0.9s steps(1) infinite; }
 @keyframes caret-blink { 50% { opacity: 0; } }
+/* 音乐创作 (T-5090): 作曲中… while compose_music runs, then a card per saved song (▶ / 打开 / 文件夹 / path) */
+.bubble .music-status { display: flex; align-items: center; gap: var(--pet-space-xs); color: var(--lobe-color-text-secondary); font-weight: 500; }
+.bubble .music-hint { margin-top: 0; font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-tertiary); }
+.music-dock { position: absolute; left: 50%; top: 4px; z-index: 8; width: 214px; transform: translateX(-50%); padding: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--pet-float-shadow); font-size: 12px; color: var(--lobe-color-text); }
+.music-dock.hidden { display: none; }
+.music-dock .toast-x { top: -8px; right: -8px; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: 50%; box-shadow: var(--lobe-box-shadow-tertiary); }
+.music-dock .music-card + .music-card { margin-top: var(--pet-space-xs); }
+body.visitor .music-dock { display: none !important; }
+.music-card { padding: var(--pet-space-xs) var(--pet-space-sm); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius); background: var(--lobe-color-fill-quaternary); white-space: normal; }
+.music-row { display: flex; align-items: center; gap: var(--pet-space-xs); }
+.music-row audio { display: none; }
+.music-card .music-play { flex: none; min-width: 28px; height: 28px; padding: 0; border-radius: 50%; color: var(--lobe-color-bg-container); background: var(--lobe-color-text); border-color: transparent; }
+.music-card .music-play:hover { background: var(--lobe-color-text-secondary); }
+.music-meta { min-width: 0; flex: 1; line-height: 1.3; }
+.music-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-sub { font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-tertiary); white-space: nowrap; }
+.music-actions { display: flex; flex: none; gap: var(--pet-space-xxs); }
+.music-actions .btn.icon-btn { min-width: 24px; height: 24px; padding: 0; color: var(--lobe-color-text-secondary); background: transparent; border-color: transparent; }
+.music-actions .btn.icon-btn:hover { background: var(--lobe-color-fill-tertiary); }
+.music-path { margin-top: var(--pet-space-xxs); font-family: var(--lobe-font-family-code); font-size: var(--lobe-font-size-sm); color: var(--lobe-color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; user-select: text; }
+.music-problem { margin-top: var(--pet-space-xxs); font-size: var(--lobe-font-size-sm); color: var(--lobe-color-error); }
+.music-problem.hidden { display: none; }
 .stage { zoom: var(--pet-scale, 1); width: 150px; height: 190px; position: relative; flex: none; display: flex; align-items: flex-end; justify-content: center; }
 /* ---- shared effects layer (fx.js): facing, squash, lifted, flying, particles ---- */
 .pet-body { position: relative; display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; }
@@ -197,6 +219,21 @@ body.busy .hud, body.busy .popup, body.busy .chat-row, body.busy .mic-status { o
 body.busy .pet-hit { cursor: progress; }
 
 /* attach / paste images */
+/* 表情包 panel above the chat box (docs/stickers-design.md §3.1): set tabs, a 5-column grid; one click sends */
+.sticker-pop { left: 4px; right: 4px; bottom: 96px; gap: var(--pet-space-xs); transform-origin: 0 100%; }
+.sticker-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.sticker-tabs:empty { display: none; }
+.sticker-tabs .btn { font-size: 12px; padding: 1px var(--pet-space-sm); min-height: 20px; color: var(--lobe-color-text-secondary); }
+.sticker-tabs .btn[aria-selected="true"] { background: var(--lobe-color-fill-secondary); color: var(--lobe-color-text); }
+.sticker-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--pet-space-xs); max-height: 150px; overflow-y: auto; }
+.sticker-grid .sticker-cell { aspect-ratio: 1; padding: 2px; border: none; border-radius: var(--lobe-border-radius); background: var(--lobe-color-fill-tertiary); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.sticker-grid .sticker-cell:hover { background: var(--lobe-color-fill-secondary); }
+.sticker-grid .sticker-cell:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
+.sticker-grid .sticker-cell img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.sticker-grid .sticker-empty { grid-column: 1 / -1; font-size: 12px; color: var(--lobe-color-text-secondary); padding: var(--pet-space-sm); text-align: center; }
+/* the owner's sticker floats up over the chat box for a moment after it is sent */
+.sent-sticker { position: absolute; right: 12px; bottom: 96px; width: 64px; height: 64px; object-fit: contain; z-index: 4; pointer-events: none; animation: pop-in var(--lobe-motion-duration-mid) var(--pet-ease); }
+@media (prefers-reduced-motion: reduce) { .sent-sticker, .sticker-pop { animation: none; } }
 .attach-row { display: flex; gap: var(--pet-space-xs); flex-wrap: wrap; position: absolute; left: 4px; right: 4px; bottom: 96px; z-index: 4; }
 .attach-chip { position: relative; width: 38px; height: 38px; border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-sm); background: var(--pet-surface) center/cover no-repeat; box-shadow: var(--lobe-box-shadow-tertiary); }
 .attach-chip button { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; line-height: 14px; font-size: 11px; color: var(--lobe-color-bg-container); border: none; border-radius: 50%; background: var(--lobe-color-text-secondary); cursor: pointer; }

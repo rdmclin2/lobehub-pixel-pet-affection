@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { TTS_DEFAULTS, normalizeTts } = require('./tts');
 const { ASR_DEFAULTS, normalizeAsr } = require('./asr');
+const { MUSIC_DEFAULTS, normalizeMusic } = require('./music');
 const framingLib = require('./framing');
 const hotkeyLib = require('./hotkey');
 const aiFolders = require('./ai-folders');
@@ -95,7 +96,7 @@ const SCENE_WEATHERS = ['clear', 'cloudy', 'rain', 'snow', 'storm', 'fog'];
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, music: { ...MUSIC_DEFAULTS }, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -227,6 +228,9 @@ function normalizeSettings(raw) {
   s.asr = normalizeAsr(s.asr);
   // 快捷键唤起语音对话: a valid Electron accelerator ('' = off); none yet / unreadable → the default (core/hotkey.js)
   s.asr.hotkey = normalizeHotkey(s.asr.hotkey);
+  // 音乐创作 (core/music.js, T-5088): MiniMax music generation — endpoint, model, audio format, folder, timeout.
+  // The key is keys.minimax in tts-keys.json (or MINIMAX_API_KEY), never here.
+  s.music = normalizeMusic(s.music);
   s.proactive = normalizeProactive(s.proactive);
   s.interject = normalizeInterject(s.interject);
   s.affectionRules = normalizeAffectionRules(s.affectionRules);

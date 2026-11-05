@@ -1085,9 +1085,10 @@ function bindInterjectFeedback() {
 
 // `streamId`: this line is the final text of the reply that was being written into the bubble (流式回复):
 // the bubble is corrected to it and the stream ends here.
-function say(text, kind, source, reason, meme = null, streamId = null) {
+function say(text, kind, source, reason, meme = null, streamId = null, music = null) {
   const b = $('bubble');
   if (streamId) endStream(streamId, true);
+  stopComposing();
   if (bubbleEndsReading({ text, kind, source })) stopSpeech('bubble'); // the voice follows the bubble: another line there ends the reading
   clearTimeout(bubbleTimer);
   b.classList.remove('thinking', 'streaming');
@@ -1095,6 +1096,10 @@ function say(text, kind, source, reason, meme = null, streamId = null) {
   delete b.dataset.streamEnd;
   b.classList.remove('hidden');
   b.textContent = text;
+  // 音乐创作 (T-5090): the songs compose_music saved this turn, each with ▶ / 打开 / 文件夹 and its path
+  const songs = Array.isArray(music) ? music.filter((m) => m && m.filePath) : [];
+  delete b.dataset.music;
+  if (songs.length) showMusicDock(songs);
   // a meme picture (core/memes.js): a sticker beside her while the line is shown
   b.dataset.meme = meme ? meme.id : '';
   const st = $('meme-sticker');
@@ -1146,6 +1151,7 @@ function onChatDelta(d) {
 }
 function showStream() {
   const b = $('bubble');
+  stopComposing();
   clearInterval(thinkTimer); // 思考中… gives way to her words
   clearTimeout(bubbleTimer);
   const atEnd = b.dataset.stream !== stream.id || b.scrollHeight - b.scrollTop - b.clientHeight < 8;
@@ -1186,6 +1192,189 @@ function onChatDone(d) {
   if (!d || !d.id) return;
   const turnId = stream && stream.id === d.id ? stream.turnId : d.turnId;
   endStream(d.id, d.ok, d.reason);
+  if (!d.ok) stopComposing();
+}
+
+// ---- 音乐创作 (T-5090) ----------------------------------------------------------------------------------------
+// While compose_music runs (a song takes minutes) the bubble says 作曲中… with the time so far instead of 思考中…;
+// her words before it (a streamed preamble) stay above. When the reply comes, each saved song is a card in the
+// bubble: ▶ plays it right there (an <audio> fed a blob: URL of the file's bytes from main — only files inside
+// the music folder), 打开 hands it to the system player, 文件夹 shows it in its folder; the path is shown in full on
+// hover and can be selected. Esc / 停止 still stops the turn (and the generation with it).
+let composing = null; // { title, startedAt, timer }
+const musicLog = []; // for the e2e runs (window.petFx.musicLog): every status and every play / open
+const ICO_PLAY = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+const ICO_PAUSE = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>';
+const ICO_OPEN = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+const ICO_FOLDER = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
+const musicClock = (ms) => { const t = Math.max(0, Math.round((ms || 0) / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+function musicPlaying() {
+  return [...document.querySelectorAll('#music-dock audio')].some((a) => !a.paused && !a.ended);
+}
+// The bubble is a small scroll area (her words); the songs go in a card right under it, over the top of the stage,
+// until 收起 or two idle minutes (never while one plays or the pointer is on it). It follows the bubble's height.
+let dockTimer = 0;
+let dockHold = false;
+function showMusicDock(songs) {
+  const dock = $('music-dock');
+  for (const a of dock.querySelectorAll('audio')) a.pause();
+  $('music-dock-list').replaceChildren(...songs.map(musicCard));
+  dock.classList.remove('hidden');
+  placeMusicDock();
+  hideMusicDockLater(120000);
+}
+function hideMusicDock() {
+  const dock = $('music-dock');
+  for (const a of dock.querySelectorAll('audio')) a.pause();
+  dock.classList.add('hidden');
+  clearTimeout(dockTimer);
+}
+function hideMusicDockLater(ms) {
+  clearTimeout(dockTimer);
+  dockTimer = setTimeout(() => (dockHold || musicPlaying() ? hideMusicDockLater(5000) : hideMusicDock()), ms);
+}
+function placeMusicDock() {
+  const dock = $('music-dock');
+  if (dock.classList.contains('hidden')) return;
+  const b = $('bubble');
+  const top = b.classList.contains('hidden') ? 4 : b.offsetTop + b.offsetHeight + 10;
+  dock.style.top = `${top}px`;
+}
+function onMusicStatus(e) {
+  if (!e || VISITOR) return;
+  musicLog.push({ ev: e.state, title: e.title || '', stage: e.stage || null, at: Math.round(performance.now()), ...(e.music ? { filePath: e.music.filePath } : {}), ...(e.error ? { error: e.error } : {}) });
+  if (musicLog.length > 200) musicLog.shift();
+  if (e.state === 'composing') {
+    if (!composing) composing = { title: e.title || '', startedAt: e.startedAt || Date.now(), timer: null };
+    if (e.title) composing.title = e.title;
+    showComposing();
+    if (!composing.timer) composing.timer = setInterval(showComposing, 1000);
+  } else {
+    const was = composing;
+    stopComposing();
+    if (!thinking) return;
+    // done: she is about to answer; failed: she will say why — until her words come, the bubble says so
+    const b = $('bubble');
+    b.classList.remove('hidden');
+    b.classList.add('thinking');
+    b.dataset.music = e.state;
+    b.textContent = e.state === 'done' ? `写好了${e.music && e.music.title ? `《${e.music.title}》` : ''}，马上给你……` : `这次没写成${was && was.title ? `《${was.title}》` : ''}……`;
+  }
+}
+function showComposing() {
+  if (!composing) return;
+  const b = $('bubble');
+  clearInterval(thinkTimer);
+  clearTimeout(bubbleTimer);
+  const said = stream && !stream.withheld ? stream.text : '';
+  b.classList.remove('hidden', 'streaming');
+  b.classList.add('thinking');
+  b.dataset.kind = 'chat';
+  b.dataset.music = 'composing';
+  b.textContent = said ? `${said}\n` : '';
+  const st = document.createElement('div');
+  st.className = 'music-status';
+  st.setAttribute('role', 'status');
+  st.innerHTML = ICO_MUSIC;
+  const line = document.createElement('span');
+  line.textContent = `作曲中…${composing.title ? `《${composing.title}》` : ''} ${musicClock(Date.now() - composing.startedAt)}`;
+  st.appendChild(line);
+  const hint = document.createElement('div');
+  hint.className = 'music-hint';
+  hint.textContent = '通常要 1–3 分钟，Esc 可停止';
+  b.append(st, hint);
+  b.scrollTop = b.scrollHeight; // the status line stays in view under a long preamble
+}
+function stopComposing() {
+  if (!composing) return;
+  clearInterval(composing.timer);
+  composing = null;
+  const b = $('bubble');
+  if (b.dataset.music === 'composing') delete b.dataset.music;
+}
+function musicCard(m) {
+  const title = m.title || '新曲子';
+  const card = document.createElement('div');
+  card.className = 'music-card';
+  card.dataset.musicCard = m.id || m.filePath;
+  const row = document.createElement('div');
+  row.className = 'music-row';
+  const play = document.createElement('button');
+  play.className = 'btn icon-btn music-play';
+  play.dataset.musicPlay = '';
+  play.innerHTML = ICO_PLAY;
+  play.setAttribute('aria-label', `播放《${title}》`);
+  play.title = '播放';
+  const meta = document.createElement('div');
+  meta.className = 'music-meta';
+  const name = document.createElement('div');
+  name.className = 'music-title';
+  name.textContent = title;
+  const sub = document.createElement('div');
+  sub.className = 'music-sub';
+  const facts = [m.durationMs ? musicClock(m.durationMs) : '', m.format ? String(m.format).toUpperCase() : '', m.instrumental ? '纯音乐' : ''].filter(Boolean).join(' · ');
+  sub.textContent = facts;
+  meta.append(name, sub);
+  const audio = document.createElement('audio');
+  audio.preload = 'none';
+  row.append(play, meta, audio);
+  const actions = document.createElement('div');
+  actions.className = 'music-actions';
+  const mk = (cls, icon, label, aria, fn) => {
+    const btn = document.createElement('button');
+    btn.className = `btn icon-btn ${cls}`;
+    btn.innerHTML = icon;
+    btn.title = label;
+    btn.setAttribute('aria-label', aria);
+    btn.addEventListener('click', fn);
+    return btn;
+  };
+  const problem = document.createElement('div');
+  problem.className = 'music-problem hidden';
+  problem.setAttribute('role', 'alert');
+  const fail = (r) => {
+    const why = { forbidden: '这个文件不在音乐保存目录里', missing: '文件找不到了，可能被移动或删除了', unplayable: 'pcm 放不了，点「打开」用系统播放器', invalid: '文件不对，可能被改过' };
+    problem.textContent = (r && (r.message || why[r.reason])) || '放不出来';
+    problem.classList.remove('hidden');
+    musicLog.push({ ev: 'play-failed', reason: r && r.reason, at: Math.round(performance.now()) });
+  };
+  const open = (reveal) => async () => {
+    const r = await (reveal ? window.pet.music.reveal(m.filePath) : window.pet.music.open(m.filePath));
+    musicLog.push({ ev: reveal ? 'reveal' : 'open', ok: !!(r && r.ok), at: Math.round(performance.now()) });
+    if (!r || !r.ok) fail(r);
+  };
+  actions.append(mk('music-open', ICO_OPEN, '用系统播放器打开', `用系统播放器打开《${title}》`, open(false)), mk('music-reveal', ICO_FOLDER, '在文件夹中显示', `在文件夹中显示《${title}》`, open(true)));
+  const where = document.createElement('div');
+  where.className = 'music-path';
+  where.dataset.musicPath = '';
+  where.textContent = `\u200e${m.filePath}\u200e`; // LRM: the left-cut ellipsis keeps the slashes in order
+  where.title = m.filePath;
+  const setIcon = () => {
+    const on = !audio.paused && !audio.ended;
+    play.innerHTML = on ? ICO_PAUSE : ICO_PLAY;
+    play.setAttribute('aria-label', `${on ? '暂停' : '播放'}《${title}》`);
+    play.title = on ? '暂停' : '播放';
+    card.dataset.musicState = on ? 'playing' : 'idle';
+    sub.textContent = on || audio.currentTime ? `${musicClock(audio.currentTime * 1000)} / ${musicClock((Number.isFinite(audio.duration) ? audio.duration * 1000 : m.durationMs) || 0)}${m.format ? ` · ${String(m.format).toUpperCase()}` : ''}` : facts;
+  };
+  for (const ev of ['play', 'pause', 'ended', 'timeupdate']) audio.addEventListener(ev, setIcon);
+  audio.addEventListener('play', () => musicLog.push({ ev: 'play', filePath: m.filePath, at: Math.round(performance.now()) }));
+  play.addEventListener('click', async () => {
+    if (!audio.paused) { audio.pause(); return; }
+    if (!audio.src) {
+      play.disabled = true;
+      const r = await window.pet.music.audio(m.filePath).catch(() => null);
+      play.disabled = false;
+      if (!r || !r.ok) { fail(r); return; }
+      audio.src = URL.createObjectURL(new Blob([r.data], { type: r.mime }));
+    }
+    problem.classList.add('hidden');
+    stopSpeech('music'); // her reading aloud gives way to the song
+    audio.play().catch(() => fail({ reason: 'invalid', message: '这首歌放不出来：文件可能损坏了' }));
+  });
+  row.append(actions);
+  card.append(row, where, problem);
+  return card;
 }
 
 // Read a line aloud when 朗读 is on: the agent's replies and lines sent through the local API, and with
@@ -1414,6 +1603,7 @@ function markReading(rec, i) {
 
 function setThinking(on) {
   thinking = on;
+  if (!on) stopComposing();
   document.body.classList.toggle('busy', on);
   clearInterval(thinkTimer);
   const b = $('bubble');
@@ -1764,6 +1954,10 @@ function bindPetUi() {
     $('chat-send').disabled = true;
     const r = await window.pet.chat(text, imgs, files);
     $('chat-send').disabled = false;
+    chatResult(r);
+  };
+  // what the reply to a message (or a 表情包) from this box says when it did not go through
+  const chatResult = (r) => {
     // AI 可读的文件夹 (T-5075): the folders could not be enforced this turn, so she answered without her tools
     if (r.ok && r.localNote) showNotice('这次用不了本机工具', r.localNote.replace(/^这次用不了本机工具：/, ''), { label: '去设置', admin: 'connection' });
     if (!r.ok && r.reason === 'error') say(errorLine(r), 'error', 'error', r.message);
@@ -1771,8 +1965,18 @@ function bindPetUi() {
     if (!r.ok && r.reason === 'local-off') say('（要先开启本机能力才能读文件。）', 'error', 'fallback');
     if (!r.ok && r.reason === 'canceled') say('（好吧，不想了。）', 'canceled', 'fallback');
     if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
+    if (!r.ok && r.reason === 'bad-sticker') say('（这张表情包已经不在了。）', 'error', 'fallback');
   };
   $('chat-send').addEventListener('click', send);
+  bindStickers(async (set, st) => {
+    if (thinking) return;
+    stopSpeech('new-message');
+    flashSentSticker(st);
+    $('chat-send').disabled = true;
+    const r = await window.pet.chat('', [], [], { sticker: { set: set.id, id: st.id } });
+    $('chat-send').disabled = false;
+    chatResult(r);
+  });
   $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
   // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
   // Only this box: nothing typed anywhere else is seen.
@@ -2203,6 +2407,94 @@ function bindHover() {
   document.addEventListener('dragenter', () => set(true));
   document.addEventListener('dragover', () => set(true));
   document.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) set(false); });
+}
+
+// ---------- 表情包 (docs/stickers-design.md §3.1) ----------
+// ☺ in the chat box opens her sets (window.pet.stickers.list: built-in memes + the owner's own, read each time
+// it opens, so one added in 设置 shows at once). A tab per set, a 5-column grid; a click sends that sticker as a
+// message of its own (the draft in the input stays). Esc or a click elsewhere closes it.
+let stickerSets = [];
+let stickerTab = null;
+function closeStickers() {
+  $('sticker-pop').classList.add('hidden');
+  $('sticker-btn').setAttribute('aria-expanded', 'false');
+}
+function renderStickers(onPick) {
+  const tabs = $('sticker-tabs');
+  const grid = $('sticker-grid');
+  tabs.textContent = '';
+  grid.textContent = '';
+  const cur = stickerSets.find((x) => x.id === stickerTab) || stickerSets[0] || null;
+  if (stickerSets.length > 1) {
+    for (const set of stickerSets) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(set === cur));
+      b.dataset.stickerTab = set.id;
+      b.textContent = `${set.name} · ${set.stickers.length}`;
+      b.addEventListener('click', () => { stickerTab = set.id; renderStickers(onPick); });
+      tabs.appendChild(b);
+    }
+  }
+  if (!cur) {
+    const e = document.createElement('div');
+    e.className = 'sticker-empty';
+    e.textContent = '她还没有表情包：在 设置 → 角色 → 表情包 里添加';
+    grid.appendChild(e);
+    return;
+  }
+  for (const st of cur.stickers) {
+    const b = document.createElement('button');
+    b.className = 'sticker-cell';
+    b.dataset.stickerCell = `${cur.id}/${st.id}`;
+    b.title = st.desc ? `${st.label}：${st.desc}` : st.label;
+    b.setAttribute('aria-label', `发送表情包：${st.label}`);
+    const img = document.createElement('img');
+    img.src = st.url;
+    img.alt = st.label;
+    img.loading = 'lazy';
+    img.draggable = false;
+    b.appendChild(img);
+    b.addEventListener('click', () => { closeStickers(); onPick(cur, st); });
+    grid.appendChild(b);
+  }
+}
+async function openStickers(onPick) {
+  const r = window.pet.stickers ? await window.pet.stickers.list() : null;
+  stickerSets = r && r.ok ? r.sets.filter((x) => x.stickers.length) : [];
+  if (!stickerSets.some((x) => x.id === stickerTab)) stickerTab = null;
+  renderStickers(onPick);
+  $('sticker-pop').classList.remove('hidden');
+  $('sticker-btn').setAttribute('aria-expanded', 'true');
+  const first = $('sticker-grid').querySelector('.sticker-cell');
+  if (first) first.focus();
+}
+function bindStickers(onPick) {
+  $('sticker-btn').addEventListener('click', () => ($('sticker-pop').classList.contains('hidden') ? (thinking ? null : openStickers(onPick)) : closeStickers()));
+  $('sticker-grid').addEventListener('keydown', (e) => {
+    const step = { ArrowDown: 5, ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5 }[e.key];
+    if (!step) return;
+    const cells = [...$('sticker-grid').querySelectorAll('.sticker-cell')];
+    const i = cells.indexOf(document.activeElement);
+    const n = cells[Math.max(0, Math.min(cells.length - 1, i < 0 ? 0 : i + step))];
+    if (n) { e.preventDefault(); n.focus(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sticker-pop').classList.contains('hidden')) { e.stopImmediatePropagation(); closeStickers(); } }, true);
+  document.addEventListener('pointerdown', (e) => {
+    if ($('sticker-pop').classList.contains('hidden') || (e.target.closest && e.target.closest('#sticker-pop, #sticker-btn'))) return;
+    closeStickers();
+  });
+}
+// the owner's sticker rises over the chat box for 1.5 s: it was sent (the desktop has no conversation view)
+let sentStickerTimer = null;
+function flashSentSticker(st) {
+  const img = $('sent-sticker');
+  img.src = st.url;
+  img.alt = st.label;
+  img.classList.remove('hidden');
+  clearTimeout(sentStickerTimer);
+  sentStickerTimer = setTimeout(() => img.classList.add('hidden'), 1500);
 }
 
 // ---------- pictures and files to send ----------
@@ -2667,6 +2959,7 @@ window.petFx = {
   speechLog: () => speechLog.map((e) => ({ ...e })),
   // 流式回复: the pieces shown and the ends of streams, and the stream being written now
   streamLog: () => streamLog.map((e) => ({ ...e })),
+  musicLog: () => musicLog.map((e) => ({ ...e })),
   stream: () => stream && { ...stream },
   audioState: () => (speechAudio ? { paused: speechAudio.paused, currentTime: speechAudio.currentTime, duration: speechAudio.duration, src: speechAudio.src.slice(0, 5) } : null),
   speak: (text) => speak({ text, source: 'api', kind: 'api' }),
@@ -2824,7 +3117,13 @@ async function main() {
     // 放生 / 仅重置本地 (设置 → 数据与关于): no pet any more, so back to choosing one
     if (!$('pet-screen').classList.contains('hidden')) { stopSpeech('released'); hideToast(); showOnboarding(); }
   });
-  window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme, m.streamId || null); speak(m); });
+  window.pet.onSay((m) => { say(m.text, m.kind, m.source, m.reason, m.meme, m.streamId || null, m.music || null); speak(m); });
+  window.pet.onMusicStatus(onMusicStatus);
+  $('music-dock-close').addEventListener('click', hideMusicDock);
+  $('music-dock').addEventListener('mouseenter', () => { dockHold = true; });
+  $('music-dock').addEventListener('mouseleave', () => { dockHold = false; });
+  new ResizeObserver(placeMusicDock).observe($('bubble'));
+  new MutationObserver(placeMusicDock).observe($('bubble'), { attributes: true, attributeFilter: ['class'] });
   window.pet.onChatDelta(onChatDelta);
   window.pet.onChatDone(onChatDone);
   window.pet.onApiCmd(onApiCmd);

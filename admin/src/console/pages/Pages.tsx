@@ -2,8 +2,9 @@
 import { Alert, Button, Flexbox, Select, Table, Tag, Text, toast } from '@lobehub/ui';
 import { PageHeader, Surface } from '@lobehub/ui/dashboard';
 import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import UpdateAuto from '../../../../src/core/update-auto.js';
 import { api, reasonText } from '../api';
 import { ask } from '../fields';
 import { ResetPageButton, SettingsForm } from '../SettingsForm';
@@ -49,6 +50,9 @@ const UPDATE_TEXT: Record<string, string> = {
   manual: '需要手动下载新版本',
   ready: '新版本已下载，重启即可更新',
 };
+
+// the new version is only worth naming while it is on its way or waiting; a failed check keeps the last one in state
+const WITH_VERSION = ['downloading', 'ready', 'manual'];
 
 // ---- plain settings pages ---------------------------------------------------------------------------------
 export const SimpleSettingsPage = ({ page }: { page: string }) => (
@@ -393,9 +397,32 @@ export const SafetyPage = () => (
 );
 
 // ---- 版本与更新 -------------------------------------------------------------------------------------------
+// when this window last started a check on its own: switching away and back does not start another (T-6161)
+let lastAutoCheckAt = 0;
+
 export const UpdatePage = () => {
   const { update, version } = useStore();
   const [busy, setBusy] = useState(false);
+  const checking = busy || update?.status === 'checking';
+  const check = async () => {
+    setBusy(true);
+    try {
+      const st = await api().checkUpdate();
+      if (st?.status === 'error') toast.error({ description: '请检查网络后再试。', title: '没能检查更新' });
+    } catch {
+      toast.error({ description: '请检查网络后再试。', title: '没能检查更新' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  // opening the page checks once on its own; the state at that moment decides (not every later change)
+  const opened = useRef(update);
+  useEffect(() => {
+    const now = Date.now();
+    if (!UpdateAuto.shouldAutoCheck(opened.current, { lastAutoAt: lastAutoCheckAt, now })) return;
+    lastAutoCheckAt = now;
+    check();
+  }, []);
   return (
     <>
       <Header page="update" />
@@ -405,20 +432,13 @@ export const UpdatePage = () => {
           <Row label="当前版本">
             <Text code>{version}</Text>
           </Row>
-          <Row label="状态">{UPDATE_TEXT[update?.status] ?? update?.status ?? '--'}{update?.version ? ` · ${update.version}` : ''}</Row>
+          <Row label="状态">
+            {UPDATE_TEXT[update?.status] ?? update?.status ?? '--'}
+            {update?.version && WITH_VERSION.includes(update?.status) ? ` · ${update.version}` : ''}
+          </Row>
           {update?.checkedAt && <Row label="上次检查">{new Date(update.checkedAt).toLocaleString('zh-CN')}</Row>}
           <Flexbox gap={8} horizontal>
-            <Button
-              loading={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await api().checkUpdate();
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
+            <Button data-update-check loading={checking} onClick={check}>
               检查更新
             </Button>
             {update?.status === 'ready' && (

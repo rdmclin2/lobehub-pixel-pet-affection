@@ -12,6 +12,7 @@
 const settingsLib = require('./settings');
 const { ENGINES: TTS_ENGINES, FALLBACKS, LOCAL_APIS: TTS_LOCAL_APIS, endpointOkFor } = require('./tts');
 const asrLib = require('./asr');
+const musicLib = require('./music');
 const hotkeyLib = require('./hotkey');
 
 const DEFAULTS = settingsLib.normalizeSettings(null);
@@ -60,6 +61,8 @@ const NAV = [
       { page: 'tts', label: '朗读', icon: 'Volume2' },
       { page: 'asr', label: '语音输入', icon: 'Mic' },
       { page: 'voicepacks', label: '语音包', icon: 'AudioLines' },
+      // 音乐创作 (core/music.js, T-5088 / T-5651): 音乐服务（fal.ai / ElevenLabs / MiniMax）、各服务的端点与模型、格式、保存目录与超时
+      { page: 'music', label: '音乐创作', icon: 'Music' },
     ],
   },
   {
@@ -101,6 +104,7 @@ const PAGES = {
   appearance: { title: '外观主题', description: '设置窗口的亮色 / 暗色主题。桌宠窗口保持像素风格。' },
   tts: { title: '朗读', description: '让她把回复读出来：选择引擎、填写 Key 和端点。Key 只写入，不回显。' },
   asr: { title: '语音输入', description: '按住 🎤 说话，或在任何地方按快捷键直接和她语音对话；识别成文字发给她。' },
+  music: { title: '音乐创作', description: '让她写歌：选一个音乐服务并填好它的 Key。默认用 fal.ai 托管的 MiniMax Music；ElevenLabs 的 Key 与「朗读 → ElevenLabs」共用；MiniMax 官方音乐接口已不再向新用户开放，只有已开通的老账号可用。' },
   voicepacks: { title: '语音包', description: '提前录好的台词：命中时直接播放，不用请求引擎。' },
   connection: { title: 'LobeHub 与本机', description: '登录的账号、所在空间和本机能力。' },
   api: { title: '对外接口', description: '在 127.0.0.1 上开放一个 HTTP 接口，让脚本让她说话、做动作。' },
@@ -210,6 +214,28 @@ add('asr.local.api', 'asr', '本地识别服务', '接口', 'segmented', { desc:
 add('asr.local.model', 'asr', '本地识别服务', '模型', 'text', { desc: '字母、数字和 . _ : / -，最多 80 字。', maxLength: 80, pattern: '^[A-Za-z0-9._:/-]{1,80}$' });
 add('asr.local.timeoutSec', 'asr', '本地识别服务', '超时', 'number', { desc: 'CPU 推理较慢，首个请求可能要十几秒。', unit: '秒', min: 5, max: 120, step: 5 });
 
+// ---- 音乐创作 (core/music.js, T-5088) ---------------------------------------------------------------------
+const M_RANGE = musicLib.RANGE;
+add('music.enabled', 'music', '音乐服务', '让她作曲', 'switch', { desc: '开启且所选服务有 Key 时，聊天里说「给我写首歌」「来段轻松的纯音乐」，她会调用作曲工具，歌会出现在她的回复下面，点一下就能听。不需要开启本机能力；每首歌按所选服务的价格计费。' });
+add('music.provider', 'music', '音乐服务', '服务', 'segmented', { desc: 'fal.ai：托管的 MiniMax Music，每首约 $0.15，Key 填在下面或用环境变量 FAL_KEY。ElevenLabs：按生成时长约 $0.15/分钟，需付费套餐，Key 与「朗读 → ElevenLabs」共用或用 ELEVENLABS_API_KEY。MiniMax 官方：已不再向新用户开放，Key 与「朗读 → MiniMax」共用或用 MINIMAX_API_KEY。', options: opts(musicLib.PROVIDER_IDS.map((id) => [id, { fal: 'fal.ai', elevenlabs: 'ElevenLabs', minimax: 'MiniMax 官方' }[id]])) });
+const ON_FAL = { key: 'music.provider', value: 'fal' };
+const ON_EL = { key: 'music.provider', value: 'elevenlabs' };
+const ON_MM = { key: 'music.provider', value: 'minimax' };
+add('music.fal.model', 'music', 'fal.ai', '模型', 'select', { desc: 'v2.6 是 fal 上最新的 MiniMax Music；v2.5 是上一代。两者都是每首约 $0.15。', options: opts(musicLib.FAL_MODELS.map((m) => [m, m.endsWith('v2.6') ? `${m}（推荐）` : m])), dependsOn: ON_FAL });
+add('music.fal.endpoint', 'music', 'fal.ai', '队列端点', 'url', { desc: `留空时用环境变量 FAL_MUSIC_ENDPOINT，最后是 ${musicLib.FAL_DEFAULT_ENDPOINT}。必须是 https。`, placeholder: musicLib.FAL_DEFAULT_ENDPOINT, validator: 'music', dependsOn: ON_FAL });
+add('music.elevenlabs.model', 'music', 'ElevenLabs', '模型', 'select', { desc: 'music_v2_5 是最新模型；music_v1 已弃用，将于 2027-01-31 下线。', options: opts(musicLib.ELEVENLABS_MODELS.map((m) => [m, m === 'music_v2_5' ? 'music_v2_5（推荐）' : m === 'music_v1' ? 'music_v1（已弃用）' : m])), dependsOn: ON_EL });
+add('music.elevenlabs.outputFormat', 'music', 'ElevenLabs', '音频格式', 'select', { desc: 'ElevenLabs 不用下面「音频」里的格式 / 采样率 / 码率，只用这里；192 kbps 需要较高的套餐。', options: opts([['mp3_44100_128', 'mp3 · 44.1 kHz · 128 kbps'], ['mp3_44100_192', 'mp3 · 44.1 kHz · 192 kbps']]), dependsOn: ON_EL });
+add('music.elevenlabs.endpoint', 'music', 'ElevenLabs', '端点', 'url', { desc: `留空时依次用环境变量 ELEVENLABS_MUSIC_ENDPOINT、「朗读 → ElevenLabs」的端点，最后是 ${musicLib.ELEVENLABS_DEFAULT_ENDPOINT}（数据驻留可用 https://api.us.elevenlabs.io 等）。必须是 https。`, placeholder: musicLib.ELEVENLABS_DEFAULT_ENDPOINT, validator: 'music', dependsOn: ON_EL });
+add('music.model', 'music', 'MiniMax 官方', '模型', 'select', { desc: 'music-3.0 是官方推荐的最新模型；music-2.6 是上一代。注意：官方音乐接口已不再向新用户开放（HTTP 410 / 错误码 2153）。', options: opts([['music-3.0', 'music-3.0（推荐）'], ['music-2.6', 'music-2.6']]), dependsOn: ON_MM });
+add('music.endpoint', 'music', 'MiniMax 官方', '端点', 'url', { desc: `留空时依次用环境变量 MINIMAX_MUSIC_ENDPOINT、「朗读 → MiniMax」的端点，最后是官方地址 ${musicLib.DEFAULT_ENDPOINT}（海外账号用 https://api.minimax.io）。必须是 https。`, placeholder: musicLib.DEFAULT_ENDPOINT, validator: 'music', dependsOn: ON_MM });
+add('music.outputFormat', 'music', 'MiniMax 官方', '取回方式', 'segmented', { desc: '链接 = MiniMax 返回 24 小时有效的下载地址，马上下载到本地；hex = 音频直接在回复里。两种都会保存成本地文件。', options: opts([['url', '链接下载'], ['hex', '直接返回（hex）']]), dependsOn: ON_MM });
+add('music.format', 'music', '音频', '格式', 'segmented', { desc: 'fal.ai 与 MiniMax 官方用这里的设置（ElevenLabs 用它自己的音频格式）。mp3 体积小；wav / pcm 无损但大很多。', options: opts(musicLib.FORMATS.map((f) => [f, f])) });
+add('music.sampleRate', 'music', '音频', '采样率', 'select', { desc: '44100 Hz 是 CD 音质。', options: musicLib.SAMPLE_RATES.map((v) => ({ value: v, label: `${v} Hz` })) });
+add('music.bitrate', 'music', '音频', '码率', 'select', { desc: '只对 mp3 有意义；越高越清晰、文件越大。', options: musicLib.BITRATES.map((v) => ({ value: v, label: `${v / 1000} kbps` })) });
+add('music.outputDir', 'music', '保存', '保存目录', 'text', { desc: '绝对路径。留空 = 数据目录下的 music/ 文件夹。文件名是「时间-标题.格式」。', placeholder: '留空 = 数据目录/music', maxLength: 500, pattern: '^(/|[A-Za-z]:[\\\\/]|\\\\\\\\).*$' });
+add('music.timeoutSec', 'music', '保存', '超时', 'number', { desc: '一首歌通常要一到几分钟；超过这个时间就放弃（fal.ai 上的任务会一并取消）并提示。', unit: '秒', min: M_RANGE.timeoutSec[0], max: M_RANGE.timeoutSec[1], step: 30 });
+add('music.pollIntervalSec', 'music', '保存', '查询间隔', 'number', { desc: 'fal.ai 排队 / 生成时每隔多久查一次进度（MiniMax 官方与 ElevenLabs 是一次性返回，用不到）。', unit: '秒', min: M_RANGE.pollIntervalSec[0], max: M_RANGE.pollIntervalSec[1], step: 1 });
+
 // ---- 对外接口 ---------------------------------------------------------------------------------------------
 add('api.enabled', 'api', '对外接口（本机 HTTP）', '开启对外接口', 'switch', { desc: '只监听 127.0.0.1；第一次开启时自动生成令牌。' });
 add('api.port', 'api', '对外接口（本机 HTTP）', '端口', 'number', { desc: '1024–65535。', min: settingsLib.API.minPort, max: settingsLib.API.maxPort, step: 1 });
@@ -242,7 +268,8 @@ add('systemRoles.<id>', 'character', '个性化设定', '个性化设定', 'perC
 const secret = (key, page, card, label, extra = {}) => F.push({ key, page, card, label, type: 'secret', store: 'keys', sensitive: true, ...extra });
 secret('keys.fish', 'tts', 'Fish Audio', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。' });
 secret('keys.minimax', 'tts', 'MiniMax', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。' });
-secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。请求时放在 xi-api-key 头里。' });
+secret('keys.elevenlabs', 'tts', 'ElevenLabs', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。请求时放在 xi-api-key 头里。「音乐创作 → ElevenLabs」也用这个 Key。' });
+secret('keys.fal', 'music', 'fal.ai', 'API Key', { desc: '只写入，不回显。保存后显示「已设置」。在 fal.ai/dashboard/keys 创建；也可以用环境变量 FAL_KEY。请求时放在 Authorization: Key … 头里。', dependsOn: { key: 'music.provider', value: 'fal' } });
 secret('keys.local', 'tts', '本地语音服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写。' });
 secret('keys.asrlocal', 'asr', '本地识别服务', 'API Key（可选）', { desc: '本地服务需要鉴权时填写；清除后不再发送。' });
 // AI 可读的文件夹 (core/ai-folders.js, T-5075): drawn by the connection page's own card (文件夹与系统权限), not the form
@@ -281,6 +308,7 @@ const MESSAGES = {
   range: '超出允许的范围',
   option: '不是可选的值',
   'bad-endpoint': '地址不合法：需要 https（本机或局域网可以用 http），不能带账号密码',
+  'bad-endpoint-https': '地址不合法：必须是 https，不能带账号密码',
   pattern: '格式不对',
   'too-long': '太长了',
 };
@@ -309,8 +337,8 @@ function validate(key, value) {
       if (typeof value !== 'string') return no('type');
       const v = value.trim();
       if (!v) return { ok: true, value: '' };
-      const ok = f.validator === 'asr' ? asrLib.endpointOk(v) : endpointOkFor(f.validator.slice(4), v);
-      return ok ? { ok: true, value: v } : no('bad-endpoint');
+      const ok = f.validator === 'asr' ? asrLib.endpointOk(v) : f.validator === 'music' ? musicLib.endpointOk(v) : endpointOkFor(f.validator.slice(4), v);
+      return ok ? { ok: true, value: v } : no(f.validator === 'music' ? 'bad-endpoint-https' : 'bad-endpoint');
     }
     case 'text': {
       if (typeof value !== 'string') return no('type');
@@ -348,6 +376,7 @@ function patchFor(key, value) {
   if (head === 'asr') return { setter: 'setAsr', patch: nest(parts.slice(1), value) };
   if (head === 'api') return { setter: 'setApi', patch: { [parts[1]]: value } };
   if (head === 'interject') return { setter: 'setSection', section: head, patch: nest(parts.slice(1), value) };
+  if (head === 'music') return { setter: 'setSection', section: head, patch: nest(parts.slice(1), value) };
   if (['proactive', 'affectionRules', 'ui', 'system', 'update', 'scene'].includes(head)) return { setter: 'setSection', section: head, patch: { [parts[1]]: value } };
   return null;
 }

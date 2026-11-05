@@ -122,7 +122,7 @@ function buildStateBlock(pet, now, settings = null) {
     `体力=${describeLevel(pet.energy, ['很累', '还行', '精神'])}；` +
     `现在${hh}:${mm}（${describeTime(d)}）；距上次互动${sinceMin}分钟\n` +
     buildRelationBlock(pet, settings) +
-    (settings && settings.prefs && settings.prefs.memes ? `\n${memeHint(getSpecies(pet.speciesId))}` : '')
+    (settings && settings.prefs && settings.prefs.memes ? `\n${memeHint(typeof settings.memeList === 'function' ? settings.memeList(pet.speciesId) : getSpecies(pet.speciesId))}` : '')
   );
 }
 
@@ -164,15 +164,41 @@ function buildFilesBlock(files, hasText) {
   return `[文件] 主人拖来了 ${files.length} 个文件/文件夹。路径在他这台电脑上，不用他再上传，请用本机工具按路径直接读取：\n${list}${ask}`;
 }
 
+// 音乐创作 (T-5090): the compose_music tool is offered this turn (pet-service _musicStatus().on).
+const MUSIC_HINT = '[作曲] 主人要你写歌、作曲、来段音乐/纯音乐/BGM 时，调用 compose_music 工具（纯音乐设 instrumental: true；有人声就自己写好带 [Verse]/[Chorus] 的歌词）。一次请求只调用一次，生成要一两分钟；好了用一句话告诉主人歌名，音频会自动出现在你的回复下面，不用念路径。';
+// Why it is not offered, for a turn where the owner may still ask for a song: she says so instead of pretending.
+const MUSIC_OFF = {
+  off: '在「设置 → 音乐创作」里关掉了',
+  'no-key': '还没有填所选音乐服务的 API Key（设置 → 音乐创作）',
+  'via-device': '本机能力现在走 lh connect 设备，这条路不支持作曲',
+  'no-direct': '现在连不上 LobeHub 直连接口（需要 lh login），作曲要走直连',
+};
+// T-5651: the key that is missing is the picked service's (fal.ai → FAL_KEY, ElevenLabs, MiniMax)
+function noKeyWhy(provider) {
+  const { KEY_SOURCES, PROVIDER_LABELS } = require('./music');
+  const src = KEY_SOURCES[provider];
+  return src ? `音乐服务选的是 ${PROVIDER_LABELS[provider]}，但还没有填它的 API Key（${src.where}，或环境变量 ${src.env}）` : MUSIC_OFF['no-key'];
+}
+function musicHint(music) {
+  if (!music) return '';
+  if (music.on) return MUSIC_HINT;
+  const why = music.reason === 'no-key' && music.provider ? noKeyWhy(music.provider) : MUSIC_OFF[music.reason];
+  return why ? `[作曲] 这次不能作曲：${why}。主人要你写歌时如实简单说明原因，不要假装写好了，也不要编造文件。` : '';
+}
+
 // `localScope`: where her tools may go (core/ai-folders.js scopeHint), added after LOCAL_HINT.
-function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '' } = {}) {
-  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}\n${text}`;
+function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '', music = null } = {}) {
+  const m = musicHint(music);
+  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}${m ? `\n${m}` : ''}\n${text}`;
 }
 
 module.exports = {
   buildFilesBlock,
   cleanPath,
   LOCAL_HINT,
+  MUSIC_HINT,
+  MUSIC_OFF,
+  musicHint,
   PERSONA_VERSION,
   CONTENT_RULES,
   buildRelationSection,

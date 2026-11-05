@@ -19,6 +19,9 @@ const { Updater } = require('./updater');
 const { SPECIES, SPECIES_IDS, getSpecies } = require('../core/species');
 const { FOODS } = require('../core/pet-state');
 const { registerPackScheme, PackStore } = require('./packs');
+const Stickers = require('./stickers');
+const { StickerStore } = require('./sticker-store');
+const StickerCatalog = require('../core/sticker-catalog');
 const { CatalogDownloader } = require('./catalog');
 const Catalog = require('../core/catalog');
 const { GENERIC_BASE, isGenericBase } = require('../core/generic');
@@ -29,6 +32,7 @@ const danceImport = require('./dance-import');
 const VoiceStore = require('../core/voice-store');
 const { ApiServer } = require('./api-server');
 const { InterjectStore } = require('../core/interject');
+const { MusicLibraryStore } = require('../core/music-library');
 const { screenPx } = require('../core/fx');
 const { TtsEngine, NEURAL, defaultEngine } = require('../core/tts');
 const { TtsCache } = require('../core/tts-cache');
@@ -63,6 +67,9 @@ registerPackScheme();
 // 系统 → 硬件加速 (settings.system.hardwareAcceleration): only possible before the app is ready, so a change
 // applies after a restart (the settings window says so and offers 立即重启).
 try { if (new SettingsStore(app.getPath('userData')).load().system.hardwareAcceleration === false) app.disableHardwareAcceleration(); } catch { /* defaults */ }
+// 表情包集合 (core/stickers.js, docs/stickers-design.md): <userData>/stickers/
+const stickerLib = new Stickers.StickerLibrary(path.join(app.getPath('userData'), 'stickers'));
+let stickerStore = null; // 商店 → 表情包 (sticker-store.js): the official sets on the CDN; made when the app is ready
 
 let win = null;
 let vrmLibrary = null; // where the VRM motion library is served from (src/main/vrm-library.js)
@@ -82,6 +89,7 @@ let trayMenu = null; // kept so the e2e can read and click it (debug-tray)
 let nextOpenPath = null; // E2E only (debug-next-open): what the next 导入 Live2D 模型… / 导入 VRM 模型… picks
 let nextSavePath = null; // E2E only (debug-next-save): where the next 导出… writes
 const openedLinks = []; // E2E only: links the window asked to open (not opened in tests)
+const openedMusic = []; // E2E only: songs a window asked to open with the system player / show in the folder
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in its own window beside her
 let scene = null; // 小游戏 (game-window.js): the window she plays a game pack in; her desktop window hides meanwhile
@@ -126,6 +134,45 @@ function place(mode) {
   const h = mode === 'perms' ? Math.min(want, wa.height - 48) : want; // a short screen: the page scrolls instead
   if (mode === 'onboarding' || mode === 'perms') win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   else win.setBounds({ x: wa.x + wa.width - w - 24, y: wa.y + wa.height - h - 24, width: w, height: h });
+}
+
+// 音乐创作 (T-5090): a song file the windows may touch -> { ok, file } | { ok: false, reason }
+const MUSIC_MIME = { mp3: 'audio/mpeg', wav: 'audio/wav' };
+function musicFile(p) {
+  const f = p && typeof p.filePath === 'string' ? p.filePath : '';
+  const dir = service && service.musicDir();
+  if (!f || !path.isAbsolute(f) || !dir) return { ok: false, reason: 'invalid' };
+  let real;
+  let root;
+  try {
+    real = fs.realpathSync(f);
+    root = fs.realpathSync(dir);
+  } catch {
+    return { ok: false, reason: 'missing' };
+  }
+  const rel = path.relative(root, real);
+  // outside the music folder: only a song of her library (saved before 保存目录 was changed)
+  if ((!rel || rel.startsWith('..') || path.isAbsolute(rel)) && !service.isLibrarySong(real)) return { ok: false, reason: 'forbidden' };
+  const ext = path.extname(real).slice(1).toLowerCase();
+  if (!['mp3', 'wav', 'pcm'].includes(ext)) return { ok: false, reason: 'forbidden' };
+  const st = fs.statSync(real);
+  if (!st.isFile() || st.size > 200 * 1024 * 1024) return { ok: false, reason: 'invalid' };
+  return { ok: true, file: real, ext, size: st.size };
+}
+function musicAudio(p) {
+  const r = musicFile(p);
+  if (!r.ok) return r;
+  if (!MUSIC_MIME[r.ext]) return { ok: false, reason: 'unplayable', message: 'pcm 是裸音频，窗口里放不了，用「打开」交给系统播放器' };
+  return { ok: true, mime: MUSIC_MIME[r.ext], data: fs.readFileSync(r.file) };
+}
+function musicOpen(p) {
+  const r = musicFile(p);
+  if (!r.ok) return r;
+  const reveal = !!(p && p.reveal);
+  if (TEST_MODE) { openedMusic.push({ file: r.file, reveal }); return { ok: true, test: true }; }
+  if (reveal) shell.showItemInFolder(r.file);
+  else shell.openPath(r.file);
+  return { ok: true };
 }
 
 function logFile() {
@@ -416,7 +463,7 @@ const danceLoop = (on) => askRenderer('dance-loop', { on: !!on });
 // newlines) → a draft for the confirm dialog; commit bakes it into the dance library in a worker.
 async function pickPaths(e, opts) {
   if (nextOpenPath) { const p = nextOpenPath.split('\n').filter(Boolean); nextOpenPath = null; return p; }
-  const r = await dialog.showOpenDialog(windowOf(e) || win, opts);
+  const r = await dialog.showOpenDialog((e && windowOf(e)) || (admin && admin.win) || win, opts);
   return r.canceled ? [] : r.filePaths || [];
 }
 const danceDirNow = () => (vrmLibrary && vrmLibrary.dances && vrmLibrary.dances.dir) || null;
@@ -767,12 +814,14 @@ function wire() {
   ipcMain.handle('history-list', () => service.history());
   ipcMain.handle('history-get', (_e, { id }) => service.historySession(String(id || '')));
   ipcMain.handle('mark-seen', (_e, { kind, species }) => service.markSeen(String(kind || ''), typeof species === 'string' && species ? species : undefined));
-  ipcMain.handle('chat', async (_e, { text, images, files }) => {
+  // `sticker`: { set, id } from the chat box's 表情包 panel (docs/stickers-design.md §3.1); PetService checks it is hers
+  ipcMain.handle('chat', async (_e, { text, images, files, sticker }) => {
     const { paths, cleanup } = saveImages(images);
     // Dropped files are passed by path only (never read or uploaded here): must be absolute and exist.
     const filePaths = (Array.isArray(files) ? files : []).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)).slice(0, 10);
+    const pick = sticker && typeof sticker === 'object' ? { set: String(sticker.set || ''), id: String(sticker.id || '') } : null;
     try {
-      return await service.chat(text, paths, filePaths);
+      return await service.chat(text, paths, filePaths, { sticker: pick });
     } finally {
       cleanup();
     }
@@ -788,6 +837,10 @@ function wire() {
     });
   });
   ipcMain.handle('set-local', (_e, { on }) => service.setLocalAbilities(!!on));
+  // 音乐创作 (T-5090): a song compose_music saved, for the bubble's ▶ (bytes → a blob: URL in the window, CSP media-src
+  // blob:) and 打开 / 在文件夹中显示. Only files inside the music folder (realpath, so no ../ or symlink out of it).
+  ipcMain.handle('music-audio', (_e, p) => musicAudio(p));
+  ipcMain.handle('music-open', (_e, p) => musicOpen(p));
   // 授权 (permissions.js, docs/permissions.md): the onboarding's 授权 page and 设置 → LobeHub 与本机 → 文件夹与系统权限.
   // E2E: PIXELPET_E2E_PLATFORM=darwin + PIXELPET_E2E_PERMS (JSON, permissions.js fakeMac) play macOS's answers;
   // 添加文件夹… picks debug-next-open's paths (several split by newlines).
@@ -1175,6 +1228,50 @@ function wire() {
   ipcMain.handle('open-admin', (_e, { section } = {}) => openAdmin(section));
   // the settings window's own channels answer that window only (docs §5.2)
   const adminOnly = (fn) => (e, p) => (admin.isSender(e) || TEST_MODE ? fn(p || {}) : { ok: false, reason: 'forbidden' });
+  // 角色 → 表情包 (docs/stickers-design.md §4): her sticker sets; 添加表情包 picks several pictures at once
+  {
+    const stickerSpecies = (id) => (typeof id === 'string' && (Object.hasOwn(SPECIES, id) || isGenericBase(id)) ? getSpecies(id) : null);
+    const stickersChanged = (speciesId) => { if (admin && admin.alive) admin.send('stickers-changed', { speciesId }); };
+    ipcMain.handle('stickers-list', adminOnly(({ speciesId }) => stickerLib.list(stickerSpecies(speciesId))));
+    // the pet window's chat box panel: the companion's sets only (docs/stickers-design.md §3.1)
+    ipcMain.handle('pet-stickers-list', () => (service && service.pet ? stickerLib.list(stickerSpecies(service.pet.speciesId)) : { ok: false, reason: 'empty', sets: [] }));
+    ipcMain.handle('stickers-pick-add', adminOnly(async ({ speciesId }) => {
+      const sp = stickerSpecies(speciesId);
+      if (!sp) return { ok: false, reason: 'bad-species', message: '没有这位角色' };
+      const paths = await pickPaths(null, { title: '添加表情包', properties: ['openFile', 'multiSelections'], filters: [{ name: '图片（PNG / JPG / WebP / GIF）', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] });
+      if (!paths.length) return { ok: false, reason: 'canceled', added: [], rejected: [] };
+      const r = stickerLib.add(sp, Stickers.readPicked(paths));
+      if (r.added && r.added.length) stickersChanged(sp.id);
+      return { ...r, picked: paths.length };
+    }));
+    ipcMain.handle('stickers-remove', adminOnly(({ speciesId, ids }) => {
+      const r = stickerLib.remove(stickerSpecies(speciesId), ids);
+      if (r.ok) stickersChanged(String(speciesId));
+      return r;
+    }));
+    ipcMain.handle('stickers-update', adminOnly(({ speciesId, id, label, desc }) => {
+      const r = stickerLib.update(stickerSpecies(speciesId), id, { label, desc });
+      if (r.ok) stickersChanged(String(speciesId));
+      return r;
+    }));
+    // 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B): the official sets (index from the CDN, falling back to the
+    // shipped copy); 获取 downloads one for a character (progress as `catalog-progress`), 移除 drops it
+    ipcMain.handle('sticker-store', adminOnly(({ refresh }) => stickerStore.state({ refresh: !!refresh })));
+    ipcMain.handle('sticker-store-detail', adminOnly(({ id }) => stickerStore.detail(id)));
+    ipcMain.handle('sticker-store-get', adminOnly(async ({ id, speciesId }) => {
+      const sp = stickerSpecies(speciesId);
+      if (!sp) return { ok: false, reason: 'bad-species', text: '请选择一位角色' };
+      const r = await stickerStore.get(id, sp.id);
+      if (r.ok) stickersChanged(sp.id);
+      return r;
+    }));
+    ipcMain.handle('sticker-store-cancel', adminOnly(({ id }) => stickerStore.cancel(id)));
+    ipcMain.handle('sticker-store-remove', adminOnly(({ id }) => {
+      const r = stickerStore.remove(id);
+      if (r.ok) for (const sid of r.attached || []) stickersChanged(sid);
+      return r;
+    }));
+  }
   ipcMain.handle('admin-boot', adminOnly(() => ({ schema: settingsSchema.describe(), ...bootState(), version: app.getVersion(), platform: (TEST_MODE && process.env.PIXELPET_E2E_PLATFORM) || process.platform, testMode: TEST_MODE, dataDir: app.getPath('userData') })));
   // the owner's LobeHub avatar for the console's chat (core/user-avatar.js): a data: URL, cached in userData.
   // Every visit to 聊天 asks; one `lh whoami` answers them for 10 minutes (30 s while there is none: a login shows soon)
@@ -1235,8 +1332,15 @@ function wire() {
     const r = service.chatHistory(String(speciesId || ''), { before: before ? String(before) : null, limit });
     return r.ok ? { ...r, messages: r.messages.map(chatView(r.speciesId)) } : r;
   }));
+  // 音乐创作 (T-5090): ▶ / 打开 / 在文件夹中显示 on a song in 聊天 (same checks as the pet window's, musicFile)
+  ipcMain.handle('admin-chat-music-audio', adminOnly((p) => musicAudio(p)));
+  ipcMain.handle('admin-chat-music-open', adminOnly((p) => musicOpen(p)));
+  // 她的音乐库 (core/music-library.js): 角色详情 → 音乐
+  ipcMain.handle('music-library-list', adminOnly((p) => service.musicLibraryView(p.speciesId || null)));
+  ipcMain.handle('music-library-rename', adminOnly((p) => service.renameSong(p)));
+  ipcMain.handle('music-library-delete', adminOnly((p) => service.deleteSong(p)));
   ipcMain.handle('admin-chat-abort', adminOnly(({ speciesId }) => service.chatAbort(speciesId ? String(speciesId) : undefined)));
-  ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images }) => {
+  ipcMain.handle('admin-chat-send', adminOnly(async ({ speciesId, text, images, sticker }) => {
     const id = String(speciesId || '');
     const list = Array.isArray(images) ? images : [];
     if (list.length > CHAT_MAX_IMAGES) return { ok: false, reason: 'too-many-images', error: `一次最多发送 ${CHAT_MAX_IMAGES} 张图片` };
@@ -1249,7 +1353,8 @@ function wire() {
     } catch (e) {
       return { ok: false, reason: 'error', error: `图片没有保存下来：${e.message}` };
     }
-    const r = await service.chatAs(id, { text, images: saved }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
+    const pick = sticker && typeof sticker === 'object' ? { set: String(sticker.set || ''), id: String(sticker.id || '') } : null;
+    const r = await service.chatAs(id, { text, images: saved, sticker: pick }, { onDelta: (d) => admin.send('admin-chat-delta', d) });
     if (!r.userMessage) for (const x of saved) fs.rmSync(x.path, { force: true }); // refused before it was kept
     const view = chatView(r.speciesId || id);
     const out = { ...r, userMessage: r.userMessage ? view(r.userMessage) : undefined, message: r.message ? view(r.message) : undefined };
@@ -1288,6 +1393,7 @@ function wire() {
     ipcMain.handle('debug-next-open', (_e, p) => { nextOpenPath = String(p || '') || null; return true; });
     ipcMain.handle('debug-next-save', (_e, p) => { nextSavePath = String(p || '') || null; return true; });
     ipcMain.handle('debug-opened-links', () => openedLinks.slice());
+    ipcMain.handle('debug-opened-music', () => openedMusic.slice());
     // the tray (PIXELPET_TRAY=1 in tests): its menu items, and a click on one of them as the user would
     ipcMain.handle('debug-tray', () => ({ created: !!tray, items: trayMenu ? trayMenu.items.map((i) => i.label).filter(Boolean) : [] }));
     ipcMain.handle('debug-tray-click', (_e, { label } = {}) => {
@@ -1338,6 +1444,10 @@ function wire() {
     pushAdmin();
   });
   service.on('say', (m) => send('say', m));
+  // 音乐创作 (T-5090): 作曲中… / done / failed for the turn that called compose_music — the pet window for a desktop
+  // chat, the settings window's 聊天 for its own rounds
+  service.on('music', (e) => (e.kind === 'console' ? admin.send('admin-chat-music', e) : send('music-status', e)));
+  service.on('music-library', (e) => admin.send('music-library-changed', e));
   service.on('thinking', (b) => send('thinking', b));
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
   service.on('chat-delta', (d) => send('chat-delta', d));
@@ -1392,6 +1502,16 @@ app.whenReady().then(() => {
   const store = new Store(app.getPath('userData'));
   packStore = new PackStore();
   packStore.serve();
+  Stickers.serveStickers(stickerLib);
+  try { stickerLib.gc(Stickers.blobsInChatLog(app.getPath('userData'))); } catch (e) { logError(e); }
+  // the CDN's sticker-catalog.json: off in tests unless PIXELPET_STICKER_CATALOG_URL names one ('' = off)
+  stickerStore = new StickerStore({
+    lib: stickerLib, fetch: (u, o) => net.fetch(u, o), emit: (ch, p) => broadcast(ch, p), log: logError,
+    settings: () => (service ? service.getSettings() : {}),
+    names: () => Object.fromEntries(SPECIES_IDS.map((id) => { const sp = getSpecies(id); return [id, (sp && (sp.nameZh || sp.name)) || id]; })),
+    url: process.env.PIXELPET_STICKER_CATALOG_URL ?? (TEST_MODE ? '' : StickerCatalog.REMOTE_URL),
+    base: process.env.PIXELPET_STICKER_BASE_URL || null,
+  });
   catalog = new CatalogDownloader({ packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p) });
   danceStore = new CatalogDownloader({
     packStore, settings: () => service.getSettings(), emit: (ch, p) => broadcast(ch, p),
@@ -1439,7 +1559,12 @@ app.whenReady().then(() => {
   voiceHotkey = new VoiceHotkey({ shortcuts: globalShortcut, onTrigger: onVoiceHotkey, log: logError });
   // 对话测速埋点 (core/latency.js, docs/admin-chat-latency.md): off unless PIXELPET_LATENCY=1
   if (process.env.PIXELPET_LATENCY === '1' && !process.env.PIXELPET_LATENCY_FILE) process.env.PIXELPET_LATENCY_FILE = path.join(app.getPath('userData'), 'latency.jsonl');
-  service = new PetService({ lh, responses, store, interjectStore: new InterjectStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  // 音乐创作 (T-5090, T-5651): compose_music uses the key of the service picked in 设置 → 音乐创作 — keys.fal (its own,
+  // set on that page), keys.elevenlabs / keys.minimax (shared with 朗读), else FAL_KEY / ELEVENLABS_API_KEY /
+  // MINIMAX_API_KEY. e2e runs may point FAL_MUSIC_ENDPOINT / ELEVENLABS_MUSIC_ENDPOINT / MINIMAX_MUSIC_ENDPOINT at a
+  // stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
+  const music = { key: (slot = 'minimax') => keys.get(slot), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
+  service = new PetService({ lh, responses, music, store, stickers: stickerLib, interjectStore: new InterjectStore(app.getPath('userData')), musicLibrary: new MusicLibraryStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,

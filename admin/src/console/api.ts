@@ -589,6 +589,129 @@ export interface PetAdminApi {
   userAvatar: () => Promise<UserFace | { ok: false; reason: string }>;
   /** 聊天 (docs/admin-chat.md): talk with a character — her agent, her topic, her 聊天记录. */
   chat: ChatApi;
+  /** 她的音乐库 (core/music-library.js): the songs each character composed. */
+  musicLibrary: MusicLibraryApi;
+  /** 角色 → 表情包 (docs/stickers-design.md §4): her sticker sets (built-in + 我的). */
+  stickers: StickersApi;
+  stickerStore: StickerStoreApi;
+}
+
+// --- 她的音乐库 (core/music-library.js, docs/music.md) ----------------------------------------------------------
+/** A song in her library: what compose_music saved, who made it, when and what was asked. */
+export interface LibrarySong {
+  createdAt: number;
+  durationMs: number | null;
+  /** the audio file is still there (it may have been moved or deleted outside the app) */
+  exists: boolean;
+  filePath: string;
+  format: string;
+  id: string;
+  instrumental: boolean;
+  kind: 'chat' | 'console';
+  model: string | null;
+  provider: string | null;
+  request: { bpm?: number; durationSec?: number; genre?: string; instruments?: string; lyrics?: string; mood?: string; prompt?: string; scene?: string; structure?: string[]; vocals?: string };
+  speciesId: string;
+  title: string;
+  turnId: string | null;
+}
+
+export interface MusicLibraryView {
+  dir: string | null;
+  ok: true;
+  songs: LibrarySong[];
+  speciesId: string | null;
+}
+
+export interface MusicLibraryApi {
+  list: (speciesId: string) => Promise<MusicLibraryView>;
+  onChanged: (cb: (e: { change: 'added' | 'deleted' | 'renamed'; id: string; speciesId: string }) => void) => () => void;
+  remove: (id: string) => Promise<{ id: string; ok: true } | { message?: string; ok: false; reason: string }>;
+  rename: (id: string, title: string) => Promise<{ ok: true; song: LibrarySong } | { ok: false; reason: string }>;
+}
+
+// --- 表情包集合 (docs/stickers-design.md §2, §4) ------------------------------------------------------------
+
+export interface Sticker {
+  addedAt?: number;
+  animated: boolean;
+  bytes?: number;
+  desc: string;
+  height?: number;
+  id: string;
+  label: string;
+  /** sticker://blob/<sha>.<ext> or sticker://builtin/<speciesId>/<id>.webp */
+  url: string;
+  width?: number;
+}
+
+export interface StickerSet {
+  id: string;
+  kind: 'builtin' | 'mine' | 'store';
+  name: string;
+  readOnly: boolean;
+  stickers: Sticker[];
+}
+
+export interface StickerRejected {
+  message: string;
+  name: string;
+  reason: string;
+}
+
+export type StickerList = { ok: true; sets: StickerSet[]; speciesId: string; limits: { maxBytes: number; maxSide: number; minSide: number; perSet: number } } | { message?: string; ok: false; reason: string };
+
+// --- 商店 → 表情包 (docs/stickers-design.md §5.2 方案 B) -----------------------------------------------------
+export interface StoreStickerRow {
+  attached: { id: string; name: string }[];
+  author: string;
+  bytes: number;
+  count: number;
+  coverUrl: string | null;
+  description: string;
+  forSpecies: { id: string; name: string }[];
+  id: string;
+  installed: boolean;
+  installedVersion: string | null;
+  license: string;
+  name: string;
+  official: boolean;
+  sizeLabel: string;
+  update: boolean;
+  version: string;
+}
+
+export interface StickerStoreState {
+  checkedAt: number | null;
+  downloads: DownloadProgress[];
+  /** the CDN's index could not be read just now (the shelf shows the last good one or the shipped copy) */
+  error: string | null;
+  ok: true;
+  release: string;
+  sets: StoreStickerRow[];
+  /** remote: read from the CDN now; cache: the last good read; bundled: the copy shipped with the app */
+  source: 'remote' | 'cache' | 'bundled';
+  updatedAt: string | null;
+  url: string | null;
+}
+
+export type StickerStoreResult = { attachedOnly?: boolean; id?: string; name?: string; ok: boolean; reason?: string; speciesId?: string; text?: string };
+
+export interface StickerStoreApi {
+  cancel: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  detail: (id: string) => Promise<{ ok: true; set: StoreStickerRow; stickers: { desc: string; id: string; label: string; url: string | null }[] } | { ok: false; reason: string; text?: string }>;
+  get: (id: string, speciesId: string) => Promise<StickerStoreResult>;
+  list: (opts?: { refresh?: boolean }) => Promise<StickerStoreState>;
+  remove: (id: string) => Promise<{ attached?: string[]; ok: boolean; reason?: string; text?: string }>;
+}
+
+export interface StickersApi {
+  list: (speciesId: string) => Promise<StickerList>;
+  onChanged: (cb: (d: { speciesId: string }) => void) => () => void;
+  /** opens the file dialog (several pictures); each one is checked in main */
+  pickAndAdd: (speciesId: string) => Promise<{ added: Sticker[]; count?: number; message?: string; ok: boolean; picked?: number; reason?: string; rejected: StickerRejected[] }>;
+  remove: (speciesId: string, ids: string[]) => Promise<{ count?: number; message?: string; ok: boolean; reason?: string; removed?: number }>;
+  update: (speciesId: string, id: string, patch: { desc?: string; label?: string }) => Promise<{ message?: string; ok: boolean; reason?: string; sticker?: Sticker }>;
 }
 
 // --- 聊天 (docs/admin-chat.md §1) -------------------------------------------------------------------------
@@ -613,14 +736,55 @@ export interface ChatAttachment {
   url: string | null;
 }
 
+/** 音乐创作 (T-5090): a song compose_music saved in this round (the file lives in the music folder). */
+export interface ChatMusic {
+  durationMs: number | null;
+  /** its entry in her music library (core/music-library.js), when it was recorded */
+  libraryId?: string;
+  /** 聊天记录 only: the file is gone (deleted from her music library, or outside the app) */
+  missing?: boolean;
+  fileUrl: string;
+  filePath: string;
+  format: string;
+  id: string;
+  instrumental: boolean;
+  title: string;
+}
+
+/** 作曲中… / done / failed of this page's round (`admin-chat-music`). */
+export interface ChatMusicEvent {
+  error?: string;
+  music?: ChatMusic;
+  reason?: string;
+  speciesId: string;
+  stage?: string | null;
+  startedAt?: number;
+  state: 'composing' | 'done' | 'failed';
+  title: string;
+  turnId: string;
+}
+
+export type MusicFileResult = { ok: true } | { message?: string; ok: false; reason: string };
+
+/** 表情包 sent as (or with) a message (docs/stickers-design.md §3.2): url is sticker://…; it may fail to load (gone). */
+export interface ChatSticker {
+  id: string | null;
+  label: string;
+  set: string | null;
+  url: string;
+}
+
 export interface ChatMessage {
   attachments: ChatAttachment[];
   createdAt: number;
   error?: string;
   id: string;
   model: string | null;
+  /** songs compose_music saved in this round (T-5090) */
+  music?: ChatMusic[];
   role: 'user' | 'assistant';
   status: 'done' | 'error' | 'aborted';
+  sticker?: ChatSticker | null;
   text: string;
   turnId: string | null;
   /** pictures sent on the desktop: only their count was kept */
@@ -685,11 +849,16 @@ export interface ChatApi {
   abort: (speciesId?: string) => Promise<{ aborted: boolean; ok: boolean }>;
   history: (speciesId: string, opts?: { before?: string; limit?: number }) => Promise<ChatHistory>;
   listCharacters: () => Promise<{ busy: string | null; characters: ChatCharacter[]; ok: boolean }>;
+  musicAudio: (filePath: string) => Promise<{ data: Uint8Array; mime: string; ok: true } | { message?: string; ok: false; reason: string }>;
+  musicOpen: (filePath: string) => Promise<MusicFileResult>;
+  musicReveal: (filePath: string) => Promise<MusicFileResult>;
+  onMusic: (cb: (d: ChatMusicEvent) => void) => () => void;
   onChanged: (cb: (d: { speciesId: string | null }) => void) => () => void;
   onDelta: (cb: (d: ChatDelta) => void) => () => void;
   onDone: (cb: (d: ChatDone) => void) => () => void;
   pickImages: () => Promise<{ images: ChatPickedImage[]; ok: boolean; reason?: string; rejected?: { message: string; name: string; reason: string }[] }>;
-  send: (req: { images?: ChatImageInput[]; speciesId: string; text?: string }) => Promise<ChatSendResult>;
+  /** `sticker`: one of hers from the 表情包 panel ({ set, id }); sent as its own message */
+  send: (req: { images?: ChatImageInput[]; speciesId: string; sticker?: { id: string; set: string }; text?: string }) => Promise<ChatSendResult>;
 }
 
 /** 插个嘴 (core/interject.js): a rule settled from the owner's reactions, and one decision record. */
@@ -732,9 +901,12 @@ export interface HistorySummary {
 
 export interface HistoryMessage {
   at: number;
-  attachments?: { files?: string[]; images?: number } | null;
+  /** music: songs compose_music saved with this line of hers (T-5090) */
+  attachments?: { files?: string[]; images?: number; music?: ChatMusic[] } | null;
   role: 'user' | 'pet';
   status?: string | null;
+  /** 表情包 (docs/stickers-design.md §3.3): url is sticker://… or null when the ref is not loadable */
+  sticker?: { id?: string; label: string; ref: string; set?: string; url: string | null } | null;
   text?: string;
   turnId?: string;
 }

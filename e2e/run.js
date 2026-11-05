@@ -9,6 +9,8 @@
 //   scenario "store" -> 商店 → 舞蹈 / VRM 角色: every store dance (cover, credit, 有音乐), downloading one; the VRM models with their license; a VRM in parts (sha256 refusal), worn; dancing the store dance with its music
 //   scenario "charmigrate" -> 旧数据迁移 (T-2786): an old 大肥鱼 + 形象包 dafeiyu-pixel save (outfit, 取景, VRM posture, ♥, imported pack) opens as 「大肥鱼 · 像素」, a 2nd start migrates nothing, 角色图鉴 / 衣柜 cards / switching do not leak
 //   scenario "admincov" -> 配置后台覆盖度: every kind of pack in 角色图鉴 (filter, detail tabs), 衣柜 / Live2D size / 找回桌宠 / 自动检查更新 / 数据目录, a behaviour change showing in the pet window
+//   scenario "music"  -> 音乐创作 (T-5088): 设置 → 音乐创作 page, its settings saved into settings.json `music`, http endpoint refused; then (T-5090, also alone as "musicchat") 「来段轻松的纯音乐」→ compose_music → 作曲中… → a playable song in the bubble and in 聊天 (fake Responses + fake MiniMax, no tokens)
+//   scenario "musiclive" -> 音乐创作 with the REAL model (T-5091, tokens; not in "all"): real lh + Responses API, the model calls compose_music by itself; MUSIC_LIVE_PROVIDER=fal (default) | elevenlabs | minimax, MUSIC_LIVE_MODE=fake (local stand-in, a playable mp3) | real (the real service with the local key); T-6158
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
@@ -16,6 +18,7 @@
 //   scenario "game"     -> 小游戏 (docs/mini-games.md): 商店 → 小游戏 downloads 像素小院 (a local mirror), tray / panel ⌂ / Ctrl+Shift+H open it; Pixi renders; time and weather; she roams, walks to a click, uses things; quests give affection; persists
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
+//   scenario "stickers" -> 角色 → 表情包 (T-6173): add several pictures to 大肥鱼 (refusals listed), delete one, restart → the rest remain; her reply uses one
 //   scenario "chatui" -> 设置窗口 → 聊天: one conversation per character, end to end (fake lh + fake Responses SSE)
 //   scenario "admin-chat" -> 设置窗口 → 聊天 acceptance: the chatui walk (fake) + a real companion talked to through the same page
 //   scenario "asr"    -> 语音输入: fake microphone (a WAV) → MediaRecorder → a mock whisper server → the chat box
@@ -2356,8 +2359,12 @@ async function update() {
   const http = require('node:http');
   const { version } = require('../package.json');
   let tag = `v${version}`;
+  let failFeed = false;
+  let feedHits = 0; // checks that reached the feed: opening 版本与更新 checks once on its own (T-6161)
   const server = http.createServer((req, res) => {
     if (req.url !== '/releases/latest') { res.writeHead(404); return res.end(); }
+    feedHits++;
+    if (failFeed) { res.writeHead(500); return res.end('down'); }
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ tag_name: tag, html_url: `https://github.com/rdmclin2/lobehub-pixel-pet-affection/releases/tag/${tag}` }));
   });
@@ -2387,13 +2394,28 @@ async function update() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
 
-    await step(S, '⚙ 设置 → 版本与更新 → 检查更新 shows the version and says it is the newest one', async () => {
+    await step(S, '⚙ 设置 → 版本与更新 checks on its own when opened, shows the version and says it is the newest one; switching away and back does not check again (T-6161)', async () => {
       await clickAct(page, 'settings');
       admin = await adminWin();
       await admin.waitForSelector('[data-path="/overview"]', { timeout: 15000 });
+      assert.equal(feedHits, 0, 'no check before the page is opened');
       await admin.evaluate(() => { location.hash = '/update'; });
       await admin.waitForSelector('[data-path="/update"]', { timeout: 15000 });
+      await waitStatus(/状态 已是最新版本/); // nothing clicked
+      assert.equal(feedHits, 1, 'opening the page checked once');
+      const checkedAt = (await updateText()).match(/上次检查 (.+?) 检查更新/)[1];
+      for (const hop of ['/overview', '/update', '/about', '/update']) {
+        await admin.evaluate((h) => { location.hash = h; }, hop);
+        await admin.waitForSelector(`[data-path="${hop}"]`, { timeout: 15000 });
+      }
+      await admin.waitForTimeout(1500);
+      assert.equal(feedHits, 1, 'switching pages back and forth does not check again');
+      assert.equal((await updateText()).match(/上次检查 (.+?) 检查更新/)[1], checkedAt, 'the time of the check is unchanged');
+      await admin.screenshot({ path: path.join(OUT, 'update-auto.png') });
+      // the button still checks every time it is clicked
       await admin.getByRole('button', { name: '检查更新' }).click();
+      for (let i = 0; i < 100 && feedHits < 2; i++) await new Promise((r) => setTimeout(r, 100));
+      assert.equal(feedHits, 2, '检查更新 checks again');
       await waitStatus(/状态 已是最新版本/);
       const text = await updateText();
       assert.match(text, new RegExp(`当前版本 v?${version.replace(/\./g, '\\.')} 状态`));
@@ -2424,6 +2446,20 @@ async function update() {
       assert.match(menu, /下载新版本 v9\.9\.9/);
       return `${text.slice(text.indexOf('状态'), text.indexOf('上次检查')).trim()} · bubble 「${said}」 · ⚙ → #/update: ${menu}`;
     }, page);
+
+    await step(S, 'a check that fails says so: 检查失败 in the card and a toast (T-6161)', async () => {
+      failFeed = true;
+      await admin.bringToFront();
+      await admin.getByRole('button', { name: '检查更新' }).click();
+      await waitStatus(/状态 检查失败/);
+      await admin.getByText('没能检查更新').first().waitFor({ state: 'visible', timeout: 5000 });
+      await admin.waitForTimeout(400); // the toast slides in
+      const status = (await updateText()).match(/状态 (.+?) 上次检查/)[1];
+      assert.equal(status, '检查失败', 'no version left over from the check before');
+      await admin.screenshot({ path: path.join(OUT, 'update-error.png') });
+      failFeed = false;
+      return (await updateText()).match(/状态 \S+/)[0] + ' · toast 没能检查更新';
+    }, () => admin);
   } finally {
     await app.close().catch(() => {});
     server.close();
@@ -7136,7 +7172,12 @@ const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step
 const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
+const stickersScenario = () => require('./stickers')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
+// 音乐创作 in the chat (T-5090): natural language → compose_music → a playable song in the bubble and in 聊天
+const musicChatScenario = () => require('./music-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, hover, clickAct })();
+// 音乐创作 with the real model (T-5091): costs LobeHub tokens, only by name (MUSIC_LIVE_MINIMAX=fake|real)
+const musicLiveScenario = () => require('./music-live')({ ROOT, OUT, step, launch, hover, clickAct })();
 const adminChatAcceptance = () => require('./admin-chat')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, say })();
 const live2dFrameScenarios = () => require('./live2d-frame')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, openAdminWindow, petBounds });
 // 像素 sprites 取景 (半身): e2e/sprite-frame.js
@@ -11863,6 +11904,145 @@ async function titlebarScenario() {
   }
 }
 
+// 音乐创作 (T-5088, T-5651, core/music.js): 设置 → 音乐创作 shows the music settings from the schema — the service
+// (fal.ai default / ElevenLabs / MiniMax 官方) and that service's card; fal's key is write-only on this page; a change
+// is saved into settings.json `music`, an http endpoint is refused.
+async function musicSettingsScenario() {
+  const S = 'music';
+  const SHOTS = path.join(OUT, 'music');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:admin'], { cwd: ROOT, stdio: 'ignore' });
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-music-'));
+  const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-musicfake-'));
+  fs.writeFileSync(path.join(fakeDir, 'loggedin'), '1');
+  const { app, page } = await launch({ PIXELPET_DATA_DIR: data, LH_BIN: FAKE_LH, FAKE_LH_DIR: fakeDir });
+  const saved = () => JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'));
+  let admin = null;
+  const shot = (name) => admin.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
+  try {
+    await page.waitForSelector('.char-card');
+    await page.click('.char-card[data-species="grok"]');
+    await page.uncheck('#local-opt');
+    await page.click('#hatch-btn');
+    await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
+    // the pet window's 设置 button is gone (canary): open the settings window the way the other scenarios do
+    admin = await openAdminWindow(app, page, 'overview');
+    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('admin-ui')).setContentSize(1180, 1300); });
+
+    await step(S, 'M1 设置 → 声音 has the 音乐创作 tile (service · model · key status); the page defaults to fal.ai with its own card (模型 / 队列端点 / API Key)', async () => {
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-tile="music"]');
+      const tile = (await admin.textContent('[data-tile="music"]')).replace(/\s+/g, ' ').trim();
+      assert.match(tile, /音乐创作/);
+      assert.match(tile, /fal\.ai · minimax-music\/v2\.6 · 未设置 Key/);
+      await shot('m1-settings-hub');
+      await admin.click('[data-tile="music"]');
+      await admin.waitForSelector('[data-path="/music"]');
+      const keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.enabled', 'music.provider', 'music.fal.model', 'music.fal.endpoint', 'keys.fal', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec']) assert.ok(keys.includes(k), `${k} on the page (${keys.join(',')})`);
+      for (const k of ['music.endpoint', 'music.model', 'music.outputFormat', 'music.elevenlabs.model']) assert.ok(!keys.includes(k), `${k} hidden while fal is picked`);
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^ElevenLabs$/').count(), 1, 'only the 服务 option: no empty ElevenLabs card header');
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^MiniMax 官方$/').count(), 1, 'only the 服务 option: no empty MiniMax card header');
+      const text = await admin.textContent('[data-path="/music"]');
+      for (const re of [/音乐服务/, /fal\.ai/, /FAL_KEY/, /ELEVENLABS_API_KEY/, /MINIMAX_API_KEY/, /不再向新用户开放/]) assert.match(text, re);
+      assert.equal(await admin.textContent('[data-has-key="keys.fal"]'), '未设置');
+      await shot('m1-music-page-light');
+      return `tile "${tile}"; fields ${keys.join(', ')}`;
+    }, () => admin);
+
+    await step(S, 'M1b the fal.ai API Key is write-only: saved into the key store (not settings.json), the page and the tile say 已设置, the value never comes back', async () => {
+      const fake = 'e2e-fal-key-0000-not-real';
+      await admin.fill('input[data-key="keys.fal"]', fake);
+      await admin.click('[data-save="keys.fal"]');
+      await admin.waitForFunction(() => document.querySelector('[data-has-key="keys.fal"]')?.textContent === '已设置', null, { timeout: 5000 });
+      assert.equal(await admin.inputValue('input[data-key="keys.fal"]'), '', 'not shown again');
+      assert.doesNotMatch(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'), /e2e-fal-key/);
+      const store = fs.readFileSync(path.join(data, 'tts-keys.json'), 'utf8');
+      assert.ok(JSON.parse(store).fal, 'keys.fal is in tts-keys.json');
+      const view = await admin.evaluate(async () => (await window.petAdmin.state()).settings.musicStatus);
+      assert.deepEqual(view, { provider: 'fal', keys: { fal: true, elevenlabs: false, minimax: false } });
+      await shot('m1b-fal-key-saved');
+      await admin.click('[data-rail="settings"]');
+      await admin.waitForSelector('[data-tile="music"]');
+      const tile = (await admin.textContent('[data-tile="music"]')).replace(/\s+/g, ' ').trim();
+      assert.match(tile, /fal\.ai · minimax-music\/v2\.6 · Key 已设置/);
+      await admin.click('[data-tile="music"]');
+      await admin.waitForSelector('[data-path="/music"]');
+      return `已设置; tts-keys.json has fal; settings.json has no key; musicStatus ${JSON.stringify(view)}; tile "${tile}"`;
+    }, () => admin);
+
+    await step(S, 'M1c 服务 → ElevenLabs shows its card (模型 / 音频格式 / 端点) and saves music.provider; → MiniMax 官方 shows the MiniMax card', async () => {
+      await admin.click('[data-key="music.provider"] >> text=ElevenLabs');
+      for (let i = 0; i < 30 && saved().music?.provider !== 'elevenlabs'; i++) await page.waitForTimeout(100);
+      assert.equal(saved().music.provider, 'elevenlabs');
+      await admin.waitForSelector('[data-key="music.elevenlabs.model"]', { timeout: 5000 });
+      let keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.elevenlabs.model', 'music.elevenlabs.outputFormat', 'music.elevenlabs.endpoint']) assert.ok(keys.includes(k), k);
+      assert.ok(!keys.includes('keys.fal') && !keys.includes('music.fal.model'));
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^fal\\.ai$/').count(), 1, 'only the 服务 option: no empty fal.ai card header');
+      await shot('m1c-provider-elevenlabs');
+      const m = await admin.evaluate(() => window.petAdmin.set('music.elevenlabs.model', 'music_v2'));
+      assert.equal(m.ok, true);
+      assert.deepEqual(saved().music.elevenlabs, { endpoint: '', model: 'music_v2', outputFormat: 'mp3_44100_128' });
+      await admin.click('[data-key="music.provider"] >> text=MiniMax 官方');
+      for (let i = 0; i < 30 && saved().music?.provider !== 'minimax'; i++) await page.waitForTimeout(100);
+      await admin.waitForSelector('input[data-key="music.endpoint"]', { timeout: 5000 });
+      keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
+      for (const k of ['music.endpoint', 'music.model', 'music.outputFormat']) assert.ok(keys.includes(k), k);
+      await shot('m1c-provider-minimax');
+      return `provider elevenlabs → fields ${keys.length}; settings.json music.elevenlabs = ${JSON.stringify(saved().music.elevenlabs)}; then provider = ${saved().music.provider}`;
+    }, () => admin);
+
+    await step(S, 'M2 an http endpoint is refused and not saved; an https one is saved into settings.json music.endpoint', async () => {
+      const ep = admin.locator('input[data-key="music.endpoint"]');
+      await ep.fill('http://api.minimax.io');
+      await ep.press('Enter');
+      await admin.waitForSelector('input[data-key="music.endpoint"][aria-invalid="true"]', { timeout: 5000 });
+      await shot('m2-endpoint-http-refused');
+      assert.match(await admin.textContent('[data-path="/music"]'), /地址不合法：必须是 https/);
+      assert.equal((saved().music || {}).endpoint || '', '', 'nothing saved');
+      await ep.fill('https://api.minimax.io');
+      await ep.press('Enter');
+      await page.waitForTimeout(300);
+      for (let i = 0; i < 30 && (saved().music || {}).endpoint !== 'https://api.minimax.io'; i++) await page.waitForTimeout(100);
+      assert.equal(saved().music.endpoint, 'https://api.minimax.io');
+      await shot('m2-endpoint-https-saved');
+      return `http refused (aria-invalid); settings.json music.endpoint = ${saved().music.endpoint}`;
+    }, () => admin);
+
+    await step(S, 'M3 format wav (segmented), model music-2.6, timeout 900 s and a folder are saved; a relative folder / 10 s timeout are refused', async () => {
+      await admin.click('[data-key="music.format"] >> text=wav');
+      for (let i = 0; i < 30 && saved().music.format !== 'wav'; i++) await page.waitForTimeout(100);
+      const set = (k, v) => admin.evaluate(([kk, vv]) => window.petAdmin.set(kk, vv), [k, v]);
+      const m = await set('music.model', 'music-2.6');
+      const t = await set('music.timeoutSec', 900);
+      const d = await set('music.outputDir', path.join(data, 'songs'));
+      const badDir = await set('music.outputDir', 'relative/songs');
+      const badT = await set('music.timeoutSec', 10);
+      assert.equal(m.ok && t.ok && d.ok, true);
+      assert.equal(badDir.ok, false);
+      assert.equal(badT.ok, false);
+      await admin.reload();
+      await admin.waitForSelector('[data-path="/music"]');
+      await shot('m3-music-page-after-save');
+      const mu = saved().music;
+      assert.deepEqual({ format: mu.format, model: mu.model, timeoutSec: mu.timeoutSec, outputDir: mu.outputDir }, { format: 'wav', model: 'music-2.6', timeoutSec: 900, outputDir: path.join(data, 'songs') });
+      return `settings.json music = ${JSON.stringify(mu)}; refused: outputDir relative (${badDir.message}), timeoutSec 10 (${badT.message})`;
+    }, () => admin);
+
+    await step(S, 'M4 dark theme: the 音乐创作 page renders in dark', async () => {
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'dark'));
+      await admin.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+      await admin.waitForTimeout(300);
+      await shot('m4-music-page-dark');
+      await admin.evaluate(() => window.petAdmin.set('ui.theme', 'light'));
+      return 'data-theme=dark';
+    }, () => admin);
+  } finally {
+    await app.close().catch(() => {});
+  }
+}
+
 async function adminScenario() {
   const S = 'admin';
   const SHOTS = path.join(OUT, 'admin');
@@ -12747,12 +12927,16 @@ async function interjectScenario() {
   if (which === 'game' || which === 'all') await miniGameScenario()();
   if (which === 'gamedocs') await gameDocsScenario()(); // 小游戏 docs pictures + demo clip into docs/img/mini-games/ (ffmpeg x11grab; xvfb-run -s "-screen 0 1280x800x24"), not in `all`
   if (which === 'admin' || which === 'all') await adminScenario();
+  if (which === 'music' || which === 'all') await musicSettingsScenario();
+  if (which === 'music' || which === 'musicchat' || which === 'all') await musicChatScenario();
+  if (which === 'musiclive') await musicLiveScenario(); // real LobeHub model: never in `all`
   if (which === 'titlebar' || which === 'all') await titlebarScenario();
   if (which === 'permissions' || which === 'all') await permissionsScenario();
   if (which === 'frontslim' || which === 'all') await frontslimScenario();
   if (which === 'admincov' || which === 'all') await adminCoverageScenario();
   if (which === 'adminchat') retiredScenario('adminchat', 'chatui (聊天 is one conversation per character now; docs/admin-chat.md)');
   if (which === 'chatui' || which === 'all') await chatUiScenario();
+  if (which === 'stickers' || which === 'all') await stickersScenario(); // T-6173 角色 → 表情包：添加多张、删除、重启后仍在、她回复里用上
   if (which === 'adminchat-live') retiredScenario('adminchat-live', 'admin-chat (its real-LobeHub part)');
   if (which === 'admin-chat') await adminChatAcceptance(); // T-2773 acceptance: chatui walk + real LobeHub through the chat page (a few tokens)
   if (which === 'wardrobepack' || which === 'all') await wardrobePackScenario();

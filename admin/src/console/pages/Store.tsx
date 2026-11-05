@@ -16,6 +16,7 @@ import { useStore } from "../store";
 import { SpriteStage } from "../stage/SpriteStage";
 import { CatalogGrid, downloading, KIND_NAME, storeStyles } from "./Characters";
 import { GamesShelf } from "./StoreGames";
+import { StickersShelf } from "./StoreStickers";
 import { clock } from "./Dances";
 
 const CharactersShelf = () => {
@@ -531,9 +532,9 @@ const VoicesShelf = () => {
   );
 };
 
-type Shelf = "characters" | "dances" | "voices" | "games";
+type Shelf = "characters" | "dances" | "voices" | "games" | "stickers";
 
-const SHELVES: Shelf[] = ["characters", "dances", "voices", "games"];
+const SHELVES: Shelf[] = ["characters", "dances", "voices", "games", "stickers"];
 
 /** `initial`: the shelf a link opens (`#/store/voices`, e.g. from a character's 语音包 picker). */
 export const StorePage = ({ initial }: { initial?: string }) => {
@@ -542,7 +543,7 @@ export const StorePage = ({ initial }: { initial?: string }) => {
   return (
     <>
       <PageHeader
-        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈，语音包会出现在 设置 → 语音包，小游戏点「开始玩」就能和她一起玩；不需要了可以在她的页面、舞蹈页或这里删除。"
+        description="下载更多内容。下载好的角色会出现在角色图鉴里，舞蹈会出现在 玩法 → 舞蹈，语音包会出现在 设置 → 语音包，小游戏点「开始玩」就能和她一起玩，表情包获取后出现在她的表情包和聊天面板里；不需要了可以在她的页面、舞蹈页或这里删除。"
         title="商店"
       />
       <PageTabs
@@ -553,6 +554,7 @@ export const StorePage = ({ initial }: { initial?: string }) => {
           { content: <DancesShelf />, label: "舞蹈", value: "dances" },
           { content: <VoicesShelf />, label: "语音包", value: "voices" },
           { content: <GamesShelf />, label: "小游戏", value: "games" },
+          { content: <StickersShelf />, label: "表情包", value: "stickers" },
         ]}
         value={tab}
       />

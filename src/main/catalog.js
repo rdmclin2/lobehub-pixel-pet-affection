@@ -29,7 +29,8 @@ class CatalogDownloader {
   // `emit(channel, payload)`: to every window.
   // 商店 → 舞蹈 uses the same downloader with its own index and installer: `lookup(id)` → an index entry,
   // `isInstalled(entry)`, `install(entry, zipFile)` → { ok, reason?, errors? }; the defaults are the characters'.
-  constructor({ packStore, settings, emit, lookup = null, isInstalled = null, install = null, texts = null }) {
+  // `url(entry, file, settings)`: where one file of an entry is (商店 → 表情包 has its own mirror switch).
+  constructor({ packStore, settings, emit, lookup = null, isInstalled = null, install = null, texts = null, url = null, fetch = null }) {
     this.packStore = packStore;
     this.settings = settings;
     this.emit = emit;
@@ -37,6 +38,9 @@ class CatalogDownloader {
     this.isInstalled = isInstalled || ((e) => this.packStore.installed(e.id));
     this.install = install || ((e, zipFile) => this.packStore.installDownload(e, zipFile));
     this.texts = { ...REASON_TEXT, ...(texts || {}) };
+    // `fetch`: net.fetch in the app; the tests pass their own (no Electron there)
+    this.fetch = fetch || ((u, o) => net.fetch(u, o));
+    this.url = url || ((e, file, s) => Catalog.downloadUrl({ ...e, file }, s));
     this.jobs = new Map(); // id → { received, total, controller }
   }
 
@@ -83,7 +87,7 @@ class CatalogDownloader {
       for (const part of parts) {
         let res;
         try {
-          res = await net.fetch(Catalog.downloadUrl({ ...e, file: part.file }, s), { signal: controller.signal, headers: { 'User-Agent': `PixelPetAffection/${app.getVersion()}` } });
+          res = await this.fetch(this.url(e, part.file, s), { signal: controller.signal, headers: { 'User-Agent': `PixelPetAffection/${app ? app.getVersion() : 'test'}` } });
         } catch (err) {
           out.destroy();
           return fail(controller.signal.aborted ? 'canceled' : 'network', { message: err.message });

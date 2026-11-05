@@ -346,12 +346,12 @@ test('admin preload exposes petAdmin.chat with exactly the documented methods, e
   const doc = fs.readFileSync(path.join(ROOT, 'docs', 'admin-chat.md'), 'utf8');
   const block = pre.slice(pre.indexOf('  chat: {'), pre.indexOf('\n  },', pre.indexOf('  chat: {')));
   const methods = [...block.matchAll(/^ {4}([a-zA-Z]+): /gm)].map((m) => m[1]);
-  assert.deepEqual(methods, ['listCharacters', 'history', 'pickImages', 'send', 'abort', 'onDelta', 'onDone', 'onChanged']);
+  assert.deepEqual(methods, ['listCharacters', 'history', 'pickImages', 'send', 'abort', 'onDelta', 'onDone', 'onChanged', 'onMusic', 'musicAudio', 'musicOpen', 'musicReveal']);
   for (const m of methods) assert.match(doc, new RegExp(`\`chat\\.${m}\\(`), `docs/admin-chat.md documents chat.${m}`);
   const channels = [...block.matchAll(/'(admin-chat-[a-z-]+)'/g)].map((m) => m[1]);
   for (const ch of channels) {
     assert.match(doc, new RegExp(`\`${ch}\``), `docs name ${ch}`);
-    if (!['admin-chat-delta', 'admin-chat-done', 'admin-chat-changed'].includes(ch)) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`));
+    if (!['admin-chat-delta', 'admin-chat-done', 'admin-chat-changed', 'admin-chat-music'].includes(ch)) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`));
     else assert.match(main, new RegExp(`admin\\.send\\('${ch}'`));
   }
   assert.match(pre.slice(0, 900), /petAdmin\.chat/);

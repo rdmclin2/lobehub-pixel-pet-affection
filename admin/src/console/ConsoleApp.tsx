@@ -8,6 +8,7 @@ import { HubPage } from './pages/Hub';
 import { DancesPage } from './pages/Dances';
 import { StorePage } from './pages/Store';
 import { GameDetailPage } from './pages/StoreGames';
+import { StickerSetDetailPage } from './pages/StoreStickers';
 import { DeskPage, HistoryPage, TopicsPage } from './pages/Together';
 import { AboutPage, ApiPage, AsrPage, BehaviorPage, ConnectionPage, ProactivePage, SafetyPage, SimpleSettingsPage, TtsPage, UpdatePage, VoicePacksPage } from './pages/Pages';
 import { Shell } from './Shell';
@@ -19,8 +20,10 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
     case 'overview':
       return <OverviewPage navigate={navigate} />;
     case 'characters':
-      return sub ? <CharacterDetailPage id={sub} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
+      // `#/characters/<id>/stickers`: her page opened on a tab (the chat page's 去添加表情包)
+      return sub ? <CharacterDetailPage id={sub} initialTab={path.split('/')[3]} key={sub} navigate={navigate} /> : <CharactersPage navigate={navigate} />;
     case 'store':
+      if (sub === 'sticker') return <StickerSetDetailPage id={path.split('/')[3] ?? ''} key={path} />;
       return sub === 'game' ? <GameDetailPage id={path.split('/')[3] ?? ''} key={path} /> : <StorePage initial={sub} key="store" />;
     case 'chat':
       return <ChatPage id={sub} key="chat" navigate={navigate} />;
@@ -60,6 +63,7 @@ const Page = ({ path, navigate }: { navigate: (p: string) => void; path: string 
       return <ProactivePage />;
     case 'visitors':
     case 'appearance':
+    case 'music':
       return <SimpleSettingsPage page={page} />;
     default:
       return <OverviewPage navigate={navigate} />;

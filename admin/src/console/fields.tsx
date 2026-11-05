@@ -405,6 +405,8 @@ const HotkeyControl = ({ field, value }: { field: FieldDef; value: unknown }) =>
 const hasKeyFor = (settings: any, key: string): boolean => {
   const id = key.slice('keys.'.length);
   if (id === 'asrlocal') return !!settings?.asrStatus?.local?.hasKey;
+  // 音乐创作 → fal.ai (T-5651): only "has a key" comes back, from PetService.musicKeysView
+  if (id === 'fal') return !!settings?.musicStatus?.keys?.fal;
   return !!settings?.ttsStatus?.engines?.[id]?.hasKey;
 };
 
