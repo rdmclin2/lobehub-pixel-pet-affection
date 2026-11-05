@@ -10,7 +10,9 @@ const schema = require('../core/settings-schema');
 const { NEURAL } = require('../core/tts');
 const { KEY_ID: ASR_KEY_ID } = require('../core/asr');
 
-const KEY_SLOTS = new Set([...NEURAL, ASR_KEY_ID]);
+// fal: the 音乐创作 → fal.ai key (T-5651); the others are 朗读's engines (shared with 音乐创作 for ElevenLabs / MiniMax)
+const MUSIC_KEY_ID = 'fal';
+const KEY_SLOTS = new Set([...NEURAL, ASR_KEY_ID, MUSIC_KEY_ID]);
 const noop = () => {};
 
 function createAdminSettings({ service, hooks = {} }) {
@@ -34,6 +36,7 @@ function createAdminSettings({ service, hooks = {} }) {
       if (v && !/^[\x21-\x7e]{8,256}$/.test(v)) return { ok: false, reason: 'bad-key', message: 'Key 格式不对：8–256 个可见 ASCII 字符，不能有空格', key };
       if (!h.setKey(id, v)) return { ok: false, reason: 'bad-key', message: 'Key 没有保存成功', key };
       if (id === ASR_KEY_ID) service.setAsr({});
+      else if (id === MUSIC_KEY_ID) service.setSection('music', {}); // emits `settings` (musicStatus.keys.fal)
       else { h.beforeTts(); service.setTts({}); } // a new key: try every engine again; emits `settings`
       return result(key, { ok: true }, { value: undefined, hasKey: !!v });
     }

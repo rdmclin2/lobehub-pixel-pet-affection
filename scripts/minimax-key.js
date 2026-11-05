@@ -25,7 +25,7 @@ function read(name) {
   return { value: '', from: null };
 }
 
-module.exports = { key: () => read('MINIMAX_API_KEY'), endpoint: () => read('MINIMAX_ENDPOINT').value || 'https://api.minimax.cn' };
+module.exports = { read, key: () => read('MINIMAX_API_KEY'), endpoint: () => read('MINIMAX_ENDPOINT').value || 'https://api.minimax.cn' };
 
 if (require.main === module) {
   const k = module.exports.key();

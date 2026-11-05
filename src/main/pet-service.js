@@ -16,6 +16,7 @@ const C = require('../core/characters');
 const characterMigrate = require('../core/character-migrate');
 const Catalog = require('../core/catalog');
 const modelsLib = require('../core/models');
+const fs = require('node:fs');
 const path = require('node:path');
 const contentGuard = require('../core/content-guard');
 const latency = require('../core/latency');
@@ -30,6 +31,9 @@ const InteractionVoice = require('../core/interaction-voice');
 const chatLog = require('../core/chat-log');
 const adminChat = require('../core/admin-chat');
 const chatLive = require('../core/chat-live');
+const musicLib = require('../core/music');
+const musicLibrary = require('../core/music-library');
+const { createMusicTool, MUSIC_TOOL_NAME } = require('../core/responses-client');
 const aiFolders = require('../core/ai-folders');
 const cur = state.cur;
 const { ensureLocalDevice, bindConfig, unbindConfig, LOCAL_TOOLS } = require('../core/local-device');
@@ -45,11 +49,18 @@ const PREWARM_MAX = 60; // lines synthesised ahead per character (互动语音)
 const NO_LOCAL_TOOLS_LINE = '这次用不了本机工具：直连 LobeHub 不可用，而 lh connect 没法限制在你允许的文件夹里。';
 const MEME_KINDS = ['hungry', 'bored', 'greet_morning', 'greet_evening', 'met', 'missed', 'stage_up', 'fed', 'patted', 'played', 'woke', 'switch'];
 
+// 音乐创作 (T-5090): what the windows get of a song compose_music saved (the file and its facts, nothing more).
+function musicView(r) {
+  const meta = (r && r.meta) || {};
+  return { id: path.basename(r.filePath), title: meta.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationMs: r.durationMs || null, format: meta.format || path.extname(r.filePath).slice(1), instrumental: !!meta.instrumental, provider: meta.provider || null };
+}
+const musicNames = (list) => list.map((m) => (m.title ? `《${m.title}》` : '新曲子')).join('、');
+
 // Owns the pet's lifecycle. Electron-free so it can be tested with a fake `lh`.
 // `this.pet` is the whole save (schema 3): owner-level fields plus one entry per character met
 // (`pet.characters[id]`, her own agent, topic, name, affection and needs); `this._c()` is the current one.
 class PetService extends EventEmitter {
-  constructor({ lh, responses = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), timers = undefined }) {
+  constructor({ lh, responses = null, music = null, store, settingsStore = new settingsLib.MemorySettingsStore(), now = () => Date.now(), rnd = Math.random, budget = new LlmBudget(), packs = null, ttsStatus = null, asr = null, hotkeyStatus = null, log = new chatLog.MemoryChatLog(), interjectStore = new interjectLib.MemoryInterjectStore(), musicLibrary: songStore = new musicLibrary.MemoryMusicLibraryStore(), timers = undefined }) {
     super();
     this.log = log; // 聊天记录 (core/chat-log.js): every message with its origin
     // pet packs (how the companions look); by default only the built-in ones
@@ -59,6 +70,11 @@ class PetService extends EventEmitter {
     // the direct path for turns that use this computer (core/responses-client.js); null: always `lh connect`
     this.responses = responses;
     this._responsesFailedAt = 0;
+    // 音乐创作 (T-5090): { key: () => keys.minimax, userDataDir, env?, fetch?, allowInsecureLocal?, generate? } from
+    // main; null: the compose_music tool is never offered (tests that do not ask for it).
+    this.music = music;
+    // 她的音乐库 (core/music-library.js): which character made each saved song; main passes the file store
+    this.songStore = songStore;
     this.ttsStatus = ttsStatus; // 语音: whether each engine has a key and its last error (main.js; never the keys)
     // 快捷键唤起语音对话: the global shortcut's state (main/voice-hotkey.js status(): ok | disabled | invalid | conflict)
     this.hotkeyStatus = hotkeyStatus;
@@ -232,7 +248,7 @@ class PetService extends EventEmitter {
 
   // Settings as the UI needs them: whether to show the age gate, and whether adult content is on.
   settingsView() {
-    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, pendingRestart: this.pendingRestart() };
+    return { ...this.settings, needsAgeGate: settingsLib.needsAgeGate(this.settings), petScaleRange: settingsLib.PET_SCALE, systemRoleMax: settingsLib.SYSTEM_ROLE_MAX, ttsStatus: this.ttsStatus ? this.ttsStatus() : null, asrStatus: this.asr ? this.asr.status() : null, hotkeyStatus: this.hotkeyStatus ? this.hotkeyStatus() : null, musicStatus: this.musicKeysView(), pendingRestart: this.pendingRestart() };
   }
 
   // Restart-only settings (settings.RESTART_KEYS) changed since this process started: they apply after a restart.
@@ -318,16 +334,18 @@ class PetService extends EventEmitter {
   // line is the pet's own and its origin comes from `kind` (greeting, proactive, touch, …).
   // `stream`: the reply stream (_openStream) this line ends; its id goes with the line so the window turns the
   // bubble it has been filling into this final text instead of starting a new one.
-  _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null) {
+  // `extra.music`: songs compose_music saved this turn ([musicView]); they go with the line (气泡 → 播放) and into 聊天记录.
+  _say(text, source, kind, reason = null, voiceMood = null, turn = null, stream = null, extra = {}) {
     if (this.pet) this._c().lastSpokeAt = this.now();
     const sp = this.pet ? getSpecies(this.pet.speciesId) : null;
     const ex = memes.extractMeme(text, sp);
-    const origin = this._logPet(ex.text || text, kind, turn);
+    const music = extra && Array.isArray(extra.music) && extra.music.length ? extra.music : null;
+    const origin = this._logPet(ex.text || text, kind, turn, null, music ? { attachments: { music } } : null);
     let meme = null;
     if (sp && this.settings.prefs.memes) meme = ex.meme || (source === 'fallback' && MEME_KINDS.includes(kind) ? memes.randomMeme(sp, this.rnd) : null);
     const m = meme && sp.memes.find((x) => x.id === meme);
     const shown = ex.text || text;
-    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}) });
+    this.emit('say', { text: shown, source, kind, reason, meme: m ? { id: m.id, label: m.label, url: memes.memeUrl(sp.id, m.id) } : null, speciesId: sp ? sp.id : null, origin, ...(voiceMood !== null ? { voiceMood } : {}), ...(stream ? { streamId: stream.id } : {}), ...(music ? { music } : {}) });
     if (this.pet) this._save();
     return shown;
   }
@@ -401,11 +419,11 @@ class PetService extends EventEmitter {
     return n ? { topicEpoch: n } : {};
   }
 
-  _logPet(text, kind, turn = null, status = null) {
+  _logPet(text, kind, turn = null, status = null, extra = null) {
     const origin = turn ? turn.origin : chatLog.originOfKind(kind);
     if (!this.pet) return origin;
     try {
-      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}) }, this.now());
+      this.log.append({ speciesId: this.pet.speciesId, role: 'pet', origin, kind, turnId: turn ? turn.turnId : `s${this.now().toString(36)}${Math.floor(this.rnd() * 1e6).toString(36)}`, text: String(text || ''), ...this._epoch(), ...(status ? { status } : {}), ...(extra || {}) }, this.now());
     } catch (e) {
       this.emit('error', e); // a full disk must not silence the pet
     }
@@ -422,8 +440,22 @@ class PetService extends EventEmitter {
   historySession(id) {
     const s = chatLog.userSessions(this.log.list()).sessions.find((x) => x.id === String(id || ''));
     if (!s) return { ok: false, reason: 'not-found' };
-    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments } : {}), ...(status ? { status } : {}) });
+    const pick = ({ id: mid, at, role, turnId, text, attachments, status }) => ({ id: mid, at, role, turnId, text, ...(attachments ? { attachments: this._withSongState(attachments) } : {}), ...(status ? { status } : {}) });
     return { ok: true, session: { ...s, name: this._nameOf(s.speciesId), messages: s.messages.map(pick) } };
+  }
+
+  // 聊天记录 shows a song as it is now: the title she was given in her music library (重命名), and `missing` when
+  // its file was deleted (删除 there, or outside the app) — the line itself is kept as it was said.
+  _withSongState(attachments) {
+    if (!attachments || !Array.isArray(attachments.music) || !attachments.music.length) return attachments;
+    const songs = musicLibrary.normalizeLibrary(this.songStore.load()).songs;
+    const music = attachments.music.map((m) => {
+      const lib = songs.find((x) => (m.libraryId ? x.id === m.libraryId : x.filePath === m.filePath));
+      let exists = false;
+      try { exists = fs.statSync(m.filePath).isFile(); } catch { /* gone */ }
+      return { ...m, ...(lib && lib.title ? { title: lib.title } : {}), ...(exists ? {} : { missing: true }) };
+    });
+    return { ...attachments, music };
   }
 
   _nameOf(speciesId) {
@@ -917,6 +949,144 @@ class PetService extends EventEmitter {
     return this.pet.localAbilities && this._localOk ? LOCAL_TOOLS : [];
   }
 
+  // ---- 音乐创作: compose_music (T-5090, T-5651) --------------------------------------------------------------
+  // Its own gate, apart from 本机能力: on when 设置 → 音乐创作 → 让她作曲 is on and the service picked there
+  // (music.provider: fal / elevenlabs / minimax) has a key — keys.<slot> or its environment variable (FAL_KEY /
+  // ELEVENLABS_API_KEY / MINIMAX_API_KEY) — and this turn goes the direct way (the tool is a function tool run here;
+  // `lh agent run` has no way to carry it). Local abilities stay as they are: turning music on never exposes
+  // read_file / run_command. -> { on, provider, reason: null | 'unsupported' | 'off' | 'no-key' | 'via-device' | 'no-direct' }
+  // `plain`: the settings window's 聊天 (no local tools, so the device path never applies there).
+  _musicStatus({ plain = false } = {}) {
+    if (!this.music) return { on: false, reason: 'unsupported' };
+    const m = musicLib.normalizeMusic(this.settings.music);
+    const provider = m.provider;
+    if (!m.enabled) return { on: false, provider, reason: 'off' };
+    if (!this._musicKey(provider)) return { on: false, provider, reason: 'no-key' };
+    const local = !plain && this.pet && this._tools().length > 0;
+    if (local && this.localVia !== 'direct') return { on: false, provider, reason: 'via-device' };
+    if (local ? !(this.responses && this.responses.available()) : !this._directUp()) return { on: false, provider, reason: 'no-direct' };
+    return { on: true, provider, reason: null };
+  }
+
+  // The key of a music service (default: the picked one). music.key(slot) reads the key store (main.js:
+  // tts-keys.json); the environment variable is the fallback (music.keyFor).
+  _musicKey(provider = musicLib.normalizeMusic(this.settings.music).provider) {
+    const src = musicLib.KEY_SOURCES[provider];
+    if (!src) return '';
+    let k = '';
+    try { k = (this.music && this.music.key && this.music.key(src.slot)) || ''; } catch { /* unreadable key store: as none */ }
+    return musicLib.keyFor(provider, { key: typeof k === 'string' ? k : '', env: (this.music && this.music.env) || process.env });
+  }
+
+  // For the settings window: the picked service and which services have a key (never the keys themselves).
+  musicKeysView() {
+    if (!this.music) return null;
+    const provider = musicLib.normalizeMusic(this.settings.music).provider;
+    return { provider, keys: Object.fromEntries(musicLib.PROVIDER_IDS.map((id) => [id, !!this._musicKey(id)])) };
+  }
+
+  // Where songs are saved (and the only folder the windows may play from, main.js music-audio).
+  musicDir() {
+    if (!this.music) return null;
+    try {
+      return musicLib.resolveConfig({ settings: this.settings, key: '', env: this.music.env || process.env, userDataDir: this.music.userDataDir || '', allowInsecureLocal: !!this.music.allowInsecureLocal }).outputDir || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---- 她的音乐库 (core/music-library.js) ---------------------------------------------------------------------
+  // A song compose_music saved goes into the library under the character who made it (ctx.speciesId). A library
+  // that cannot be written must not cost the song: the reply still shows it. -> the song | null
+  _addSong(result, ctx, args) {
+    if (!ctx || !ctx.speciesId || !result || !result.filePath) return null;
+    try {
+      const r = musicLibrary.addSong(this.songStore.load(), { result, speciesId: ctx.speciesId, kind: ctx.kind, turnId: ctx.turnId, request: args, now: this.now() });
+      if (!r.song) return null;
+      this.songStore.save(r.data);
+      this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'added' });
+      return r.song;
+    } catch (e) {
+      this.emit('error', Object.assign(new Error(`音乐库写入失败：${e.message}`), { code: 'EMUSICLIB' }));
+      return null;
+    }
+  }
+
+  // 角色详情 → 音乐: her songs, newest first; `exists`: the file is still there (it may have been moved or deleted
+  // outside the app). Without `speciesId`: every character's.
+  musicLibraryView(speciesId = null) {
+    const songs = musicLibrary.songsOf(this.songStore.load(), speciesId ? String(speciesId) : null).map((s) => {
+      let exists = false;
+      try { exists = fs.statSync(s.filePath).isFile(); } catch { /* gone */ }
+      return { ...s, exists };
+    });
+    return { ok: true, speciesId: speciesId || null, dir: this.musicDir(), songs };
+  }
+
+  renameSong({ id, title } = {}) {
+    const r = musicLibrary.renameSong(this.songStore.load(), String(id || ''), title);
+    if (!r) return { ok: false, reason: typeof title === 'string' && title.trim() ? 'missing' : 'invalid' };
+    this.songStore.save(r.data);
+    this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'renamed' });
+    return { ok: true, song: r.song };
+  }
+
+  // Removes the song from her library and deletes its audio file (the 聊天记录 line keeps its words; its card then
+  // says the file is gone). A file already gone is not an error.
+  deleteSong({ id } = {}) {
+    const r = musicLibrary.removeSong(this.songStore.load(), String(id || ''));
+    if (!r) return { ok: false, reason: 'missing' };
+    try {
+      fs.unlinkSync(r.song.filePath);
+    } catch (e) {
+      if (e.code !== 'ENOENT') return { ok: false, reason: 'io', message: `删不掉这个文件：${e.message}` };
+    }
+    this.songStore.save(r.data);
+    this.emit('music-library', { speciesId: r.song.speciesId, id: r.song.id, change: 'deleted' });
+    return { ok: true, id: r.song.id };
+  }
+
+  // Whether a window may play / open this file (main.js musicFile, after realpath): inside the music folder, or a
+  // song of the library (saved before the folder was changed in 设置 → 音乐创作).
+  isLibrarySong(realFile) {
+    return musicLibrary.normalizeLibrary(this.songStore.load()).songs.some((s) => {
+      try { return fs.realpathSync(s.filePath) === realFile; } catch { return false; }
+    });
+  }
+
+  // One turn's compose_music tool. `ctx`: { kind, speciesId, turnId, streamId, results: [] } — the songs saved go into
+  // ctx.results (the caller shows them with the reply); every step is a 'music' event for the windows (作曲中…).
+  _musicTool(ctx) {
+    const generate = (params, opts) => {
+      const cfg = musicLib.resolveConfig({ settings: this.settings, key: this._musicKey(), env: this.music.env || process.env, userDataDir: this.music.userDataDir || '', allowInsecureLocal: !!this.music.allowInsecureLocal });
+      if (this.music.generate) return this.music.generate(params, { ...opts, config: cfg });
+      return musicLib.generateMusic(params, { ...opts, config: cfg, fetch: this.music.fetch, now: this.now });
+    };
+    return createMusicTool({
+      generate,
+      onEvent: (e) => {
+        const title = (e.args && typeof e.args.title === 'string' && e.args.title.slice(0, 60)) || '';
+        const base = { kind: ctx.kind, speciesId: ctx.speciesId, turnId: ctx.turnId, streamId: ctx.streamId || null, tool: MUSIC_TOOL_NAME, title, instrumental: !!(e.args && e.args.instrumental) };
+        if (e.state === 'start') {
+          ctx.startedAt = this.now();
+          this.emit('music', { ...base, state: 'composing', startedAt: ctx.startedAt });
+        } else if (e.state === 'progress') {
+          this.emit('music', { ...base, state: 'composing', stage: e.stage || null, startedAt: ctx.startedAt });
+        } else if (e.state === 'done') {
+          const v = musicView(e.result);
+          const song = this._addSong(e.result, ctx, e.args);
+          if (song) v.libraryId = song.id;
+          ctx.results.push(v);
+          this.emit('music', { ...base, state: 'done', music: v, ms: this.now() - (ctx.startedAt || this.now()) });
+        } else if (e.state === 'failed') {
+          const err = e.error || {};
+          ctx.errors.push({ reason: err.reason || 'error', message: String(err.message || err).slice(0, 200) });
+          this.emit('music', { ...base, state: 'failed', reason: err.reason || 'error', error: String(err.message || err).slice(0, 200) });
+        }
+      },
+    });
+  }
+
   // ---- AI 可读的文件夹 (core/ai-folders.js, T-5075, docs/permissions.md) ------------------------------------
   // Once, the first time this version loads: owners who already had 本机能力 on keep no limit until they add a
   // folder; everyone else starts with none (and no commands).
@@ -992,15 +1162,20 @@ class PetService extends EventEmitter {
   // `stream` (_openStream): its onDelta gets the reply as it is written, on either way.
   // `plain`: no local tools whatever the setting (the settings window's 聊天, which runs no device work).
   // `trace` (core/latency.js): which way the turn went, and when a fallback started.
+  // `music`: this turn's compose_music tool (_musicTool), or null. It is a function tool run here, so it only goes
+  // with a direct turn (_musicStatus said on); an `lh agent run` turn never has it. Once it ran (a song may have been
+  // made and billed), a failure afterwards is not sent again another way: toolsRan stands, like a local tool's.
   // `extraRead`: paths the owner handed her this turn (dropped files): readable even outside her folders.
   // AI 可读的文件夹 (T-5075): while the list is in effect her tools only run here, where the folders are enforced;
   // `lh connect` runs them in its daemon, which has no way to limit them, so such a turn goes without tools.
-  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP, extraRead = [] } = {}) {
+  async _runTurn(args, stream = null, { plain = false, trace = latency.NOOP, music = null, extraRead = [] } = {}) {
     if (stream) args = { ...args, onDelta: stream.onDelta };
     if (trace.on) args = { ...args, trace };
     let tools = plain ? [] : this._tools();
     const scope = tools.length ? this._toolScope(extraRead) : null;
+    const extraTools = music ? [music] : [];
     trace.set('tools', tools.length);
+    if (music) trace.set('music', true);
     if (tools.length && scope && this.localVia !== 'direct') {
       trace.set('toolsDropped', 'folders limited, no direct way');
       this.localWarning = NO_LOCAL_TOOLS_LINE;
@@ -1014,7 +1189,7 @@ class PetService extends EventEmitter {
       }
       trace.set('via', 'direct-tools');
       try {
-        return await this.responses.run({ ...args, tools, scope });
+        return await this.responses.run({ ...args, tools, scope, extraTools });
       } catch (e) {
         if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
         if (scope) {
@@ -1049,9 +1224,9 @@ class PetService extends EventEmitter {
     }
     trace.set('via', 'direct');
     try {
-      return await this.responses.run({ ...args, tools: [] });
+      return await this.responses.run({ ...args, tools: [], extraTools });
     } catch (e) {
-      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT') throw e;
+      if (e.code === 'ECANCELED' || e.code === 'ETIMEDOUT' || e.toolsRan) throw e;
       this._throwIfCanceled();
       trace.set('via', 'lh-run-fallback');
       trace.set('fallbackReason', String(e.message).slice(0, 200));
@@ -1128,6 +1303,7 @@ class PetService extends EventEmitter {
     trace.set('textChars', clean.length);
     trace.mark('logged');
     let ok = false;
+    let musicCtx = null;
     try {
       state.touch(c, t);
       await this._ensureReady(trace);
@@ -1139,6 +1315,9 @@ class PetService extends EventEmitter {
         return { ok: false, reason: 'local-error', message: this.localError };
       }
       const local = this._tools().length > 0;
+      const musicStatus = this._musicStatus();
+      trace.set('musicReason', musicStatus.reason);
+      musicCtx = { kind: 'chat', speciesId: c.speciesId, turnId: turn ? turn.turnId : null, streamId: stream.id, results: [], errors: [] };
       let body;
       if (images.length) {
         const fileIds = [];
@@ -1151,25 +1330,37 @@ class PetService extends EventEmitter {
       } else {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings, localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '' });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this.settings, localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
       trace.mark('runStart');
       this._toolsDropped = false;
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace, extraRead: paths });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { trace, extraRead: paths, music: musicStatus.on ? this._musicTool(musicCtx) : null });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId) c.topicId = res.topicId;
       const { affection } = state.chatted(c, this.now(), { textLength: [...clean].length || (images.length || paths.length ? 2 : 0) });
       const text = this._guard(res.text);
-      this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream));
+      const music = musicCtx.results;
+      this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream, { music }));
       trace.mark('doneSent');
       this._reportAffection(affection);
       ok = true;
       // 本机能力 on but this turn went without tools (folders limited, no direct way): the pet window says so
-      return { ok: true, text, cost: res.cost, affection, ...(this._toolsDropped ? { localNote: NO_LOCAL_TOOLS_LINE } : {}) };
+      return { ok: true, text, cost: res.cost, affection, ...(music.length ? { music } : {}), ...(this._toolsDropped ? { localNote: NO_LOCAL_TOOLS_LINE } : {}) };
     } catch (e) {
+      // the song was made (and billed) but her answer after it failed: the song is still shown and kept, the turn
+      // is not sent again (toolsRan), and the bubble says it is there
+      if (e.code !== 'ECANCELED' && musicCtx && musicCtx.results.length) {
+        this.emit('error', e);
+        const music = musicCtx.results;
+        const text = `曲子写好了：${musicNames(music)}，点下面就能听～`;
+        this._closeStream(stream, true, null, this._say(text, 'fallback', 'chat', e.message, null, turn, stream, { music }));
+        this._save();
+        ok = true;
+        return { ok: true, text, partial: true, music };
+      }
       this._closeStream(stream, false, e.code === 'ECANCELED' ? 'canceled' : 'error');
       if (e.code !== 'ECANCELED') this.emit('error', e);
       this._logPet('', 'chat', turn, e.code === 'ECANCELED' ? 'canceled' : 'error');
@@ -1286,6 +1477,7 @@ class PetService extends EventEmitter {
     let userMessage = null;
     let partial = '';
     let modelKey = null;
+    let musicCtx = null;
     const trace = latency.createTrace('admin');
     trace.set('speciesId', id);
     trace.set('turnId', turnId);
@@ -1335,7 +1527,11 @@ class PetService extends EventEmitter {
       }
       this._throwIfCanceled();
       const body = adminChat.buildConsoleBody({ name: c.name, text: clean, recent, recall, images: imgs.length });
-      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings });
+      // 音乐创作 works here too: compose_music is not a local ability, so `plain` (no local tools) does not stop it
+      const musicStatus = this._musicStatus({ plain: true });
+      trace.set('musicReason', musicStatus.reason);
+      musicCtx = { kind: 'console', speciesId: id, turnId, streamId: null, results: [], errors: [] };
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this.settings, music: musicStatus });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
       trace.set('recallMsgs', recall.length);
@@ -1369,7 +1565,7 @@ class PetService extends EventEmitter {
         },
       };
       trace.mark('runStart');
-      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true, trace });
+      const res = await this._runTurn({ agentId: c.agentId, topicId: c.topicId, prompt }, stream, { plain: true, trace, music: musicStatus.on ? this._musicTool(musicCtx) : null });
       trace.mark('runEnd');
       trace.set('replyChars', (res.text || '').length);
       if (res.topicId && res.topicId !== c.topicId) {
@@ -1384,7 +1580,8 @@ class PetService extends EventEmitter {
         reply = contentGuard.refusalLine(sp);
       }
       c.lastSpokeAt = this.now();
-      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}) });
+      const music = musicCtx.results;
+      const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}), ...(music.length ? { attachments: { music } } : {}) });
       // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
       let affection = null;
       if (isCur) affection = state.chatted(c, this.now(), { textLength: [...clean].length || (imgs.length ? 2 : 0) }).affection;
@@ -1396,6 +1593,15 @@ class PetService extends EventEmitter {
     } catch (e) {
       const canceled = e.code === 'ECANCELED' || this._cancelRequested;
       if (!canceled) this.emit('error', e);
+      if (!canceled && musicCtx && musicCtx.results.length && userMessage) {
+        // the song was made but her answer after it failed: keep and show the song (see chat())
+        const music = musicCtx.results;
+        const message = this._logAs(id, { role: 'pet', turnId, text: `曲子写好了：${musicNames(music)}，点下面就能听～`, ...(modelKey ? { model: modelKey } : {}), attachments: { music } });
+        this._save();
+        this.emit('update', this.view());
+        ok = true;
+        return { ok: true, partial: true, speciesId: id, turnId, userMessage, message };
+      }
       const error = canceled ? '已停止' : adminChat.readableError(e);
       const message = userMessage ? this._logAs(id, { role: 'pet', turnId, text: canceled ? partial : '', status: canceled ? 'canceled' : 'error', ...(canceled ? {} : { error }), ...(modelKey ? { model: modelKey } : {}) }) : null;
       this._save();
@@ -1707,14 +1913,16 @@ class PetService extends EventEmitter {
   }
 
   // 后台 (admin console) sections without a setter of their own: 主动行为 (proactive), 好感度 (affectionRules),
-  // the console's theme (ui) and 系统 (system). The patch is merged into the section and normalised by
+  // the console's theme (ui), 系统 (system) and 音乐创作 (music, core/music.js). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update', 'scene'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update', 'music', 'scene'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
     const merged = { ...this.settings[name], ...p };
     // interject.sources is the one nested object: a patch of one source keeps the others
     if (name === 'interject' && p.sources && typeof p.sources === 'object') merged.sources = { ...this.settings.interject.sources, ...p.sources };
+    // music.fal / music.elevenlabs (T-5651) are nested too: a patch of one field keeps the others
+    if (name === 'music') for (const sub of ['fal', 'elevenlabs']) if (p[sub] && typeof p[sub] === 'object') merged[sub] = { ...this.settings.music[sub], ...p[sub] };
     this.settings = settingsLib.normalizeSettings({ ...this.settings, [name]: merged });
     if (name === 'interject' && !this.settings.interject.enabled) this.interjector.cancel();
     this.settingsStore.save(this.settings);

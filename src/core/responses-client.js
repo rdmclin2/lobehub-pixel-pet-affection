@@ -15,6 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const musicLib = require('./music');
 const aiFolders = require('./ai-folders');
 
 const OFFICIAL_SERVER = 'https://app.lobehub.com';
@@ -95,6 +96,94 @@ const LOCAL_FUNCTION_TOOLS = [
   { type: 'function', name: 'run_command', description: `Run a shell command on the owner's computer (${process.platform}) and get its exit code and output. Stops after ${COMMAND_TIMEOUT_MS / 1000}s.`, parameters: obj({ command: { type: 'string' }, cwd: { type: 'string' } }, ['command']) },
 ];
 
+// ---- 音乐创作: compose_music (T-5090) --------------------------------------------------------------------
+// A function tool of its own, NOT one of the local abilities: it only calls the music service picked in 设置 → 音乐创作
+// (core/music.js: fal.ai MiniMax Music / ElevenLabs / MiniMax) and saves the song under the music folder, so it is
+// offered whenever 设置 → 音乐创作 is on and that service has a key, with
+// 本机能力 on or off (pet-service _musicStatus). The parameters are core/music.js buildRequest's.
+const MUSIC_TOOL_NAME = 'compose_music';
+const MUSIC_TOOL = {
+  type: 'function',
+  name: MUSIC_TOOL_NAME,
+  description: [
+    'Compose an original piece of music with the owner\'s music service (fal.ai MiniMax Music, ElevenLabs Music or MiniMax) and save it as an audio file on the owner\'s computer; the app shows it in the chat with a play button.',
+    'Use it whenever the owner asks you to make, write, compose, sing or play a NEW song / tune / melody / BGM / lullaby / pure music (e.g. 「给我写首歌」「来段轻松的纯音乐」「唱首生日歌」「写一首关于夏天的歌」「make me a lo-fi beat」).',
+    'Do not use it to recommend or find existing songs, to talk about music, or when the owner did not ask for a piece.',
+    'With vocals: write the lyrics yourself in `lyrics` (lines separated by \\n, sections tagged [Verse] [Chorus] [Bridge] …), or leave `lyrics` empty and set `lyricsOptimizer: true` to let the music model write them from `prompt`.',
+    'Pure music / no singing / BGM: set `instrumental: true` (no lyrics).',
+    'It takes one to a few minutes; call it once per piece and never again for the same request. Tell the owner the title and that it is ready when it returns; if it returns ok:false, tell them the reason in your own words (and whether trying later may help, from `retry`). If it lists `unsupported` fields (e.g. the length or BPM was only a hint), say so honestly.',
+  ].join(' '),
+  parameters: {
+    type: 'object',
+    properties: {
+      prompt: { type: 'string', description: 'Style, genre, mood, scene and instruments in one description (≤ 2000 chars), e.g. "Relaxed lo-fi hip hop, warm Rhodes piano, rainy evening".' },
+      lyrics: { type: 'string', description: 'Lyrics for a song with vocals (≤ 3500 chars), \\n between lines, sections as [Intro] [Verse] [Pre Chorus] [Chorus] [Bridge] [Outro] … Leave empty for instrumental or lyricsOptimizer.' },
+      instrumental: { type: 'boolean', description: 'true = pure music without vocals (纯音乐 / BGM).' },
+      lyricsOptimizer: { type: 'boolean', description: 'true = no lyrics given; the music model writes them from the prompt.' },
+      title: { type: 'string', description: 'A short title (≤ 60 chars), used in the file name.' },
+      genre: { type: 'string', description: 'Genre, e.g. pop, lo-fi, 民谣, jazz.' },
+      mood: { type: 'string', description: 'Mood, e.g. 轻松, happy, melancholic.' },
+      scene: { type: 'string', description: 'Where / when it is listened to, e.g. 下雨的夜晚, studying.' },
+      instruments: { type: 'string', description: 'Main instruments, e.g. piano, acoustic guitar.' },
+      vocals: { type: 'string', description: 'Voice, e.g. 温柔女声, male tenor (ignored when instrumental).' },
+      bpm: { type: 'integer', minimum: 40, maximum: 240, description: 'Tempo in BPM (a hint).' },
+      durationSec: { type: 'integer', minimum: 10, maximum: 360, description: 'Rough length in seconds (ElevenLabs follows it; on fal / MiniMax it is only a hint and the model decides the real length).' },
+      structure: { type: 'array', items: { type: 'string', enum: musicLib.STRUCTURE_TAGS }, description: 'Section order, e.g. ["Intro","Verse","Chorus","Outro"].' },
+    },
+    required: ['prompt'],
+    additionalProperties: false,
+  },
+};
+
+// What the model reads back (one JSON line): the saved file, or why there is none. `r`: generateMusic's result.
+// `provider`: the service that made it (fal / elevenlabs / minimax). `unsupported`: the fields that service only
+// took as a hint in the prompt or did not take at all (e.g. durationSec on fal: MiniMax decides the length) — the
+// model is told to say so instead of promising them. A failure: reason, the service's code, retry (whether trying
+// again later may work) and a readable Chinese error.
+function musicToolOutput(r, e = null) {
+  if (e) {
+    const retry = typeof e.retryable === 'boolean' ? e.retryable : ['rate-limit', 'server', 'network', 'timeout'].includes(e.reason);
+    return JSON.stringify({ ok: false, reason: e.reason || 'error', code: e.code ?? null, error: String(e.message || e).slice(0, 300), retry, provider: e.provider || null });
+  }
+  const m = r.meta || {};
+  const sec = r.durationMs ? Math.round(r.durationMs / 100) / 10 : null;
+  const out = { ok: true, title: m.title || '', filePath: r.filePath, fileUrl: r.fileUrl, durationSec: sec, format: m.format, instrumental: !!m.instrumental, provider: m.provider || null, model: m.model || null, shownToOwner: 'the app shows this file with a play button under your reply', warnings: m.warnings || [] };
+  if (Array.isArray(m.unsupported) && m.unsupported.length) {
+    out.unsupported = m.unsupported;
+    out.unsupportedNote = 'these fields were only a hint in the prompt (prompt-hint) or not sent (ignored) by this music service; do not promise them to the owner';
+  }
+  return JSON.stringify(out);
+}
+
+// The tool for ResponsesClient#run's `extraTools`: { def, long, run(args, signal) -> output string }.
+// generate(params, { signal, onProgress }) -> core/music.js generateMusic's { filePath, fileUrl, durationMs, meta }.
+// onEvent({ state: 'start' | 'progress' | 'done' | 'failed', args, stage?, result?, error? }): for the UI (作曲中…).
+// A failure is answered to the model as ok:false (it tells the owner), never thrown: the turn goes on.
+function createMusicTool({ generate, onEvent = () => {} }) {
+  const fire = (e) => { try { onEvent(e); } catch { /* a display callback must not cost the turn */ } };
+  return {
+    def: MUSIC_TOOL,
+    long: true,
+    async run(args, signal) {
+      fire({ state: 'start', args });
+      try {
+        const r = await generate(args || {}, { signal, onProgress: (p) => fire({ state: 'progress', args, stage: p && p.stage }) });
+        fire({ state: 'done', args, result: r });
+        return musicToolOutput(r);
+      } catch (e) {
+        if (signal && signal.aborted) throw e;
+        fire({ state: 'failed', args, error: e });
+        return musicToolOutput(null, e);
+      }
+    },
+  };
+}
+
+const expand = (p) => {
+  const s = String(p || '');
+  if (!s) throw new Error('path is required');
+  return s === '~' || s.startsWith('~/') ? path.join(os.homedir(), s.slice(1)) : s;
+};
 // The tools offered in a turn: the folder limit (core/ai-folders.js toolScope; null = none) goes into their
 // descriptions, and run_command is left out when the owner has not allowed commands.
 function functionToolsFor(scope) {
@@ -339,8 +428,12 @@ class ResponsesClient {
   // `prompt` is the request's `input`: a string, or Responses input items (the admin chat's multimodal turn).
   // `signal` stops just this run (cancel() stops every run of this client). `trace` (core/latency.js): marks
   // token / reqSent / headers / firstByte / firstText of this run when the latency trace is on.
+  // `extraTools`: function tools of the app's own that are not local abilities (createMusicTool: compose_music),
+  // offered with or without `tools`. One marked `long` (a song takes minutes) stops the turn's clock while it runs:
+  // `timeoutMs` is for waiting on LobeHub, so a long generation never fails the round half-way (the tool has its own
+  // limit, 设置 → 音乐创作 → 超时); the clock starts again, full, for the model's answer after it.
   // `scope` (core/ai-folders.js toolScope): where the local tools may go this turn; null = no limit.
-  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], scope = null, onDelta = null, signal = null, trace = null }) {
+  async run({ agentId, prompt, topicId, timeoutMs = 120000, tools = [], scope = null, extraTools = [], onDelta = null, signal = null, trace = null }) {
     const tr = trace || { mark() {}, set() {}, add() {} };
     const ac = new AbortController();
     this._active.add(ac);
@@ -350,7 +443,9 @@ class ResponsesClient {
       else signal.addEventListener('abort', onAbort, { once: true });
     }
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs);
+    let timer = null;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs); };
+    arm();
     let toolsRan = false;
     let full = '';
     let newStep = false;
@@ -370,7 +465,8 @@ class ResponsesClient {
       const ws = await this._workspaceId();
       if (ws) headers['X-Workspace-Id'] = ws;
       const url = `${serverUrl(this.env)}/api/v1/responses`;
-      const functionTools = tools.length ? functionToolsFor(scope) : [];
+      const extra = (extraTools || []).filter((t) => t && t.def && typeof t.run === 'function');
+      const functionTools = [...(tools.length ? functionToolsFor(scope) : []), ...extra.map((t) => t.def)];
       const stream = !!onDelta;
       let body = { model: agentId, input: prompt, previous_response_id: topicId || undefined };
       let cost = null;
@@ -409,9 +505,17 @@ class ResponsesClient {
         const input = [];
         for (const call of calls) {
           let output;
+          const own = extra.find((t) => t.def.name === call.name);
           try {
+            if (!own && !tools.length) throw new Error(`${call.name} is not available: local abilities are off`);
             toolsRan = true;
-            output = await this.runTool(call.name, JSON.parse(call.arguments || '{}'), ac.signal, scope);
+            const args = JSON.parse(call.arguments || '{}');
+            if (own && own.long) clearTimeout(timer);
+            try {
+              output = own ? await own.run(args, ac.signal) : await this.runTool(call.name, args, ac.signal, scope);
+            } finally {
+              if (own && own.long && !ac.signal.aborted) arm();
+            }
           } catch (e) {
             if (ac.signal.aborted) break;
             output = `Error: ${e.message}`;
@@ -436,4 +540,4 @@ class ResponsesClient {
   }
 }
 
-module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, functionToolsFor, runLocalTool, readCliCredentials, serverUrl, createSseParser, readResponseStream };
+module.exports = { ResponsesClient, ResponsesError, LOCAL_FUNCTION_TOOLS, functionToolsFor, MUSIC_TOOL, MUSIC_TOOL_NAME, createMusicTool, musicToolOutput, runLocalTool, readCliCredentials, serverUrl, createSseParser, readResponseStream };

@@ -64,7 +64,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
   const pages = new Set([...Object.keys(schema.PAGES), 'character']);
   const navPages = schema.NAV.flatMap((g) => g.items.map((i) => i.page));
   assert.deepEqual(navPages.filter((p) => !schema.PAGES[p]), []);
-  assert.equal(navPages.length, 21, '21 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog; 舞蹈 since T-2801)');
+  assert.equal(navPages.length, 22, '22 pages under 6 rail places (docs §6.3; 话题 / 聊天记录 / 桌面上的她 since T-2718; 聊天 since T-2765; 商店 since the download catalog; 舞蹈 since T-2801; 音乐创作 since T-5088)');
   assert.deepEqual(schema.RAIL.map((r) => r.key), ['home', 'characters', 'store', 'play', 'settings', 'chat'], 'the rail holds six places (four + 商店 + 聊天, R-05), not every page');
   assert.ok(schema.NAV.every((g) => schema.RAIL.some((r) => r.key === g.section)), 'every group sits under a rail place');
   for (const r of schema.RAIL) assert.ok(schema.PAGES[r.page], r.page);
@@ -74,7 +74,7 @@ test('schema: every settings.json leaf key has a field, on a page the console ha
     if (f.store === 'settings' && !f.key.includes('<id>')) assert.deepEqual(f.default, schema.at(settingsLib.normalizeSettings(null), f.key), f.key);
   }
   // sensitive ones are masked / write-only
-  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.elevenlabs', 'keys.fish', 'keys.local', 'keys.minimax']);
+  assert.deepEqual(schema.FIELDS.filter((f) => f.sensitive).map((f) => f.key).sort(), ['api.token', 'keys.asrlocal', 'keys.elevenlabs', 'keys.fal', 'keys.fish', 'keys.local', 'keys.minimax']);
   assert.deepEqual(schema.FIELDS.filter((f) => f.restart).map((f) => f.key), ['system.hardwareAcceleration']);
   // describe() is plain data for the window
   const d = JSON.parse(JSON.stringify(schema.describe()));
@@ -517,7 +517,7 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
   for (const ch of invoked) assert.match(main, new RegExp(`ipcMain\\.(handle|on)\\('${ch}'`), `main handles ${ch}`);
   for (const bad of ['chat', 'move-by', 'move-to', 'kick', 'pose', 'hatch', 'act', 'touch', 'api-reply', 'asr-transcribe', 'tts-synthesize']) assert.ok(!invoked.includes(bad), bad);
   assert.ok(!invoked.some((c) => c.startsWith('debug-')));
-  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-state', 'api-status', 'catalog-progress', 'game-updates', 'interject', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色; game-updates: 小游戏有新版本
+  assert.deepEqual(pushed.sort(), ['admin-chat-changed', 'admin-chat-delta', 'admin-chat-done', 'admin-chat-music', 'admin-state', 'api-status', 'catalog-progress', 'game-updates', 'interject', 'music-library-changed', 'update-status']); // interject: 插个嘴 rules / records refresh; catalog-progress: 下载角色; game-updates: 小游戏有新版本; music-library-changed: 她的音乐库
   // 聊天 with a character (docs/admin-chat.md): only admin-chat-* channels, answered for that window only
   for (const ch of invoked.filter((c) => c.startsWith('admin-chat-'))) assert.match(main, new RegExp(`ipcMain\\.handle\\('${ch}', adminOnly\\(`), `${ch} is settings-window only`);
   assert.match(src, /contextBridge\.exposeInMainWorld\('petAdmin'/);

@@ -11,6 +11,7 @@ import { api, reasonText, type HistorySession, type HistorySummary, type TopicRo
 import { ask } from '../fields';
 import { ACTION_LABEL } from '../stage/CharacterStage';
 import { useStore } from '../store';
+import { MusicCard } from './MusicCard';
 
 const Header = ({ page }: { page: string }) => {
   const { schema } = useStore();
@@ -143,6 +144,9 @@ export const HistoryPage = () => {
                     {[m.attachments.images ? `📷 ${m.attachments.images} 张图片` : '', ...(m.attachments.files ?? []).map((f) => `📄 ${f}`)].filter(Boolean).join('  ')}
                   </Text>
                 ) : null}
+                {(m.attachments?.music ?? []).map((x) => (
+                  <MusicCard key={x.id} missing={!!x.missing} music={x} />
+                ))}
               </Block>
             ))}
           </Flexbox>

@@ -155,5 +155,18 @@ contextBridge.exposeInMainWorld('petAdmin', {
     onDelta: on('admin-chat-delta'),
     onDone: on('admin-chat-done'),
     onChanged: on('admin-chat-changed'),
+    // 音乐创作 (T-5090): 作曲中… / done / failed of this page's round; a song's bytes, open / show it in its folder
+    onMusic: on('admin-chat-music'),
+    musicAudio: (filePath) => ipcRenderer.invoke('admin-chat-music-audio', { filePath }),
+    musicOpen: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath }),
+    musicReveal: (filePath) => ipcRenderer.invoke('admin-chat-music-open', { filePath, reveal: true }),
+  },
+  // 她的音乐库 (core/music-library.js): 角色详情 → 音乐 — her songs, rename one (the title only), delete one (and its
+  // file); `onChanged` after a song was added / renamed / deleted (from any window)
+  musicLibrary: {
+    list: (speciesId) => ipcRenderer.invoke('music-library-list', { speciesId }),
+    rename: (id, title) => ipcRenderer.invoke('music-library-rename', { id, title }),
+    remove: (id) => ipcRenderer.invoke('music-library-delete', { id }),
+    onChanged: on('music-library-changed'),
   },
 });
