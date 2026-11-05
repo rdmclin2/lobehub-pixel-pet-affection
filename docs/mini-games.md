@@ -332,3 +332,5 @@ e2e `game` 用本地 http 服务当商店的 CDN 和游戏仓库的目录。安�
 - 目前只有 `yard@1` 一种玩法引擎。不同玩法的游戏要先在应用里加新的引擎版本，应用发版后再发用到它的包；下载的包永远不带代码。
 - 商店目录放在 GitHub（raw.githubusercontent.com）。网络连不上 GitHub 时，看不到应用发布之后才出的新版本，已经装好的照样能玩。
 - 在 Xvfb 软件渲染（SwiftShader）下大约 40–60 fps；有 GPU 的机器会更流畅。
+
+商店第二款小游戏「她的房间」（engine `room@1`）见 [her-room.md](her-room.md)。

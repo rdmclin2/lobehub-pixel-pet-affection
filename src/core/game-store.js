@@ -39,10 +39,12 @@ function checkFolder(dir, id) {
   if (m.id !== id) return { reason: 'wrong-id', errors: [`manifest id "${m.id}" is not "${id}"`] };
   let names = [];
   try { names = fs.readdirSync(dir); } catch (e) { return { reason: 'no-dir', errors: [e.message] }; }
-  const sprites = m.sprites ? readJson(path.join(dir, m.sprites)) : null;
+  // the sprites index: yard@1 has one (its JSON), room@1 one per open room ({ <file>: JSON })
+  const read = (f) => (GP.FILE_RE.test(String(f)) && names.includes(f) ? readJson(path.join(dir, f)) : null);
+  const sprites = m.engine === 'room@1' ? Object.fromEntries(GP.spriteFiles(m).map((f) => [f, read(f)]).filter(([, v]) => v)) : m.sprites ? read(m.sprites) : null;
   const errors = GP.validateManifest(m, { files: names, sprites });
   if (errors.length) return { reason: 'bad-manifest', errors };
-  const named = new Set(['manifest.json', MARKER, ...Object.values(m.images || {}), ...(m.sprites ? [m.sprites] : [])]);
+  const named = new Set(['manifest.json', MARKER, ...GP.namedFiles(m)]);
   for (const name of names) {
     const st = fs.lstatSync(path.join(dir, name));
     if (!st.isFile() || !named.has(name)) return { reason: 'stray-file', errors: [`unexpected ${st.isDirectory() ? 'folder' : 'file'} ${name}`] };

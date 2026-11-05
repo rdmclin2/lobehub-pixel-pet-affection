@@ -12,8 +12,12 @@
 //                     lines: { <event>: [text…] } }
 //   <files>         the pictures (.webp / .png) and the sprites index (.json) named there; nothing else
 //
+// engine `room@1` (她的房间, docs/her-room-design.md): the common fields here, the rest in core/room-pack.js.
+//
 // Electron-free and DOM-free (main, the build script and the tests require() it).
-const ENGINES = ['yard@1'];
+const Room = require('./room-pack');
+
+const ENGINES = ['yard@1', 'room@1'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,63}$/;
 const FILE_RE = /^[a-z0-9][a-z0-9._-]{0,63}\.(webp|png|json)$/;
 const USE_ANIMS = ['idle', 'sit', 'play', 'pat', 'look', 'happy', 'eat', 'sleep', 'think', 'lookAround'];
@@ -25,8 +29,9 @@ const poly = (p) => Array.isArray(p) && p.length >= 3 && p.every(pt);
 const shape = (s) => poly(s) || (s && num(s.cx) && num(s.cy) && num(s.rx) && num(s.ry) && s.rx > 0 && s.ry > 0);
 
 // → [error…] (empty = good). `files`: the names in the folder (when checking one on disk), to see every file the
-// manifest names is there.
-function validateManifest(m, { files = null, sprites = null } = {}) {
+// manifest names is there. `sprites`: the sprites index — for yard@1 the one file's JSON, for room@1
+// { <file>: <JSON> } of every theme's (spriteFiles(m)). `characters`: the default characters' ids (room@1 themes).
+function validateManifest(m, { files = null, sprites = null, characters } = {}) {
   const e = [];
   if (!m || typeof m !== 'object') return ['manifest is not an object'];
   if (m.schema !== 1) e.push('schema must be 1');
@@ -35,6 +40,13 @@ function validateManifest(m, { files = null, sprites = null } = {}) {
   if (!ID_RE.test(String(m.id || ''))) e.push('id must be 3–64 of a-z 0-9 -');
   if (typeof m.name !== 'string' || !m.name.trim()) e.push('name is missing');
   if (typeof m.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(m.version)) e.push('version must be x.y.z');
+  if (m.engine === 'room@1') return [...e, ...Room.validateRoom(m, { files, sprites, anims: USE_ANIMS, fileRe: FILE_RE, ...(characters ? { characters } : {}) })];
+  return [...e, ...validateYard(m, { files, sprites })];
+}
+
+// 像素小院 (yard@1): the world, the walk grid, the things
+function validateYard(m, { files = null, sprites = null } = {}) {
+  const e = [];
   const w = m.world || {};
   if (!(num(w.width) && num(w.height) && w.width > 0 && w.height > 0 && w.width <= 8192 && w.height <= 8192)) e.push('world.width / height must be 1–8192');
   const images = m.images && typeof m.images === 'object' ? m.images : {};
@@ -75,4 +87,13 @@ function validateManifest(m, { files = null, sprites = null } = {}) {
   return e;
 }
 
-module.exports = { ENGINES, ID_RE, FILE_RE, USE_ANIMS, EFFECTS, validateManifest };
+// every file a manifest names (besides manifest.json): what game:// serves and what may be in the folder
+function namedFiles(m) {
+  if (!m || typeof m !== 'object') return [];
+  if (m.engine === 'room@1') return Room.namedFiles(m);
+  return [...new Set([...Object.values(m.images && typeof m.images === 'object' ? m.images : {}), m.sprites].filter((f) => typeof f === 'string'))];
+}
+// the sprites index file(s) a manifest names
+const spriteFiles = (m) => (m && m.engine === 'room@1' ? Room.spriteFiles(m) : m && typeof m.sprites === 'string' ? [m.sprites] : []);
+
+module.exports = { ENGINES, ID_RE, FILE_RE, USE_ANIMS, EFFECTS, validateManifest, validateYard, namedFiles, spriteFiles };

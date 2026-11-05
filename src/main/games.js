@@ -15,11 +15,12 @@ const GS = require('../core/game-store');
 const GQ = require('../core/game-quests');
 const GP = require('../core/game-pack');
 const GI = require('../core/game-index');
+const RP = require('../core/room-play');
 
 class GameLibrary {
   constructor({ userDir, devDir = null }) {
     this.userDir = userDir;
-    this.roots = [{ dir: userDir, source: 'download' }, ...(devDir ? [{ dir: devDir, source: 'dev' }] : [])];
+    this.roots = [{ dir: userDir, source: 'download' }, ...[].concat(devDir || []).map((dir) => ({ dir, source: 'dev' }))];
     this._cache = new Map(); // id → { dir, mtime, manifest, sprites }
   }
 
@@ -44,7 +45,9 @@ class GameLibrary {
     const c = this._cache.get(id);
     if (c && c.dir === g.dir && c.mtime === mtime) return c;
     const manifest = JSON.parse(fs.readFileSync(mf, 'utf8'));
-    const sprites = manifest.sprites ? JSON.parse(fs.readFileSync(path.join(g.dir, manifest.sprites), 'utf8')) : {};
+    // yard@1: its one sprites index; room@1: { <file>: index } of every room's
+    const readSprites = (f) => JSON.parse(fs.readFileSync(path.join(g.dir, f), 'utf8'));
+    const sprites = manifest.engine === 'room@1' ? Object.fromEntries(GP.spriteFiles(manifest).map((f) => [f, readSprites(f)])) : manifest.sprites ? readSprites(manifest.sprites) : {};
     const out = { id, dir: g.dir, source: g.source, mtime, manifest, sprites };
     this._cache.set(id, out);
     return out;
@@ -84,8 +87,144 @@ class GameLibrary {
     const json = JSON.stringify(state);
     if (json.length > 64 * 1024) return false;
     const p = GS.readProgress(this.userDir, id);
+    // 她的房间: the page keeps only what it chose (the room); her focus, the running round, the last one and the
+    // totals are main's (activity() below) and the page cannot write them
+    const g = this.load(id);
+    if (g && g.manifest.engine === 'room@1') {
+      const st = this._roomState(p);
+      const want = JSON.parse(json);
+      if (typeof want.theme === 'string' && this._openTheme(g.manifest, want.theme)) st.theme = want.theme;
+      GS.writeProgress(this.userDir, id, { ...p, state: st });
+      return true;
+    }
     GS.writeProgress(this.userDir, id, { ...p, state: JSON.parse(json) });
     return true;
+  }
+
+  // ---- 她的房间 (room@1, docs/her-room-design.md §2–§3) ---------------------------------------------------
+  // The page asks; main decides with its own clock and the installed manifest's numbers (core/room-play.js) —
+  // nothing the page sends sets how much a round is worth or how long it ran. `pet`: { stats() → { base, energy,
+  // mood, fullness }, settle({ energy, mood, fullness }) → stats, quest(title) → affection result }.
+  _openTheme(m, id) { return (m.themes || []).find((t) => t.id === id && t.status === 'open') || null; }
+  _roomState(p) {
+    const s = p && p.state && typeof p.state === 'object' ? p.state : {};
+    return { theme: typeof s.theme === 'string' ? s.theme : null, focus: s.focus && typeof s.focus === 'object' ? { ...s.focus } : {}, run: s.run && typeof s.run === 'object' ? { ...s.run } : null, last: s.last || null, totals: s.totals && typeof s.totals === 'object' ? JSON.parse(JSON.stringify(s.totals)) : {}, ...(Number.isFinite(s.scale) ? { scale: s.scale } : {}) };
+  }
+  _stats(st, pet) {
+    const s = pet.stats() || { base: 'dafeiyu', energy: 50, mood: 50, fullness: 50 };
+    return { base: s.base, energy: s.energy, mood: s.mood, fullness: s.fullness, focus: Number.isFinite(st.focus[s.base]) ? st.focus[s.base] : RP.FOCUS_START };
+  }
+  // one settled round → her numbers (pet.json through PetService, focus here), the totals, today's quests
+  _book(id, g, p, st, settled, pet, ctx) {
+    const before = this._stats(st, pet);
+    const { stats, changed } = RP.apply(before, settled.deltas);
+    const after = pet.settle({ energy: stats.energy, mood: stats.mood, fullness: stats.fullness }) || stats;
+    st.focus[before.base] = stats.focus;
+    const tot = (st.totals[before.base] = st.totals[before.base] || {});
+    const k = (tot[settled.kind] = tot[settled.kind] || { count: 0, completed: 0, ms: 0 });
+    k.count += 1;
+    if (settled.complete) k.completed += 1;
+    k.ms += settled.elapsed;
+    st.last = { kind: settled.kind, theme: settled.theme, complete: settled.complete, fraction: settled.fraction, changed, at: settled.at, ...(settled.recovered ? { recovered: true } : {}) };
+    const ev = { type: 'activity-end', kind: settled.kind, theme: settled.theme || '', complete: settled.complete };
+    const c = { phase: String((ctx && ctx.phase) || ''), weather: String((ctx && ctx.weather) || '') };
+    const r = GQ.record(g.manifest.quests || [], p.quests, ev, c);
+    p.quests = r.progress;
+    const completed = r.completed.map((q) => ({ id: q.id, title: q.title, affection: (pet.quest(q.title) || {}).affection || null }));
+    const defs = RP.defsOf(g.manifest);
+    return { ...settled, changed, summary: RP.summary(settled, defs, changed), completed, stats: { ...stats, energy: after.energy, mood: after.mood, fullness: after.fullness } };
+  }
+  _roomView(g, p, st, pet, now) {
+    const defs = RP.defsOf(g.manifest);
+    return { stats: this._stats(st, pet), run: st.run ? { ...RP.view(st.run, now, defs), startedAt: st.run.startedAt } : null, last: st.last, theme: st.theme, quests: GQ.view(g.manifest.quests || [], p.quests), totals: st.totals };
+  }
+
+  // the game boots: a round left open by an app that went away is settled now (recover), and the room view
+  roomBoot(id, pet, { now = Date.now() } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== 'room@1') return null;
+    const p = GS.readProgress(this.userDir, id);
+    const st = this._roomState(p);
+    let recovered = null;
+    if (st.run) {
+      const settled = RP.recover(st.run, now, RP.defsOf(g.manifest));
+      st.run = null;
+      if (settled) recovered = this._book(id, g, p, st, settled, pet, {});
+      GS.writeProgress(this.userDir, id, { ...p, state: st });
+    }
+    return { ...this._roomView(g, p, st, pet, now), recovered };
+  }
+
+  // cmd: { cmd: 'start', kind, theme, ctx } · { cmd: 'stop' | 'tick', ctx } · { cmd: 'seen' } (the page is still
+  // here: the round's seenAt for recover) · { cmd: 'theme', theme } (switch rooms: the round is settled) ·
+  // { cmd: 'state' }; with testMode also { cmd: 'scale', k } (rounds k× as long, e2e)
+  activity(id, cmd, pet, { now = Date.now(), testMode = false } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== 'room@1' || !cmd || typeof cmd.cmd !== 'string') return { ok: false, reason: 'invalid' };
+    const defs = RP.defsOf(g.manifest);
+    const p = GS.readProgress(this.userDir, id);
+    const st = this._roomState(p);
+    const ctx = cmd.ctx && typeof cmd.ctx === 'object' ? cmd.ctx : {};
+    const save = () => GS.writeProgress(this.userDir, id, { ...p, state: st });
+    const out = (extra) => ({ ok: true, ...extra, ...this._roomView(g, p, st, pet, now) });
+    const settleRun = () => {
+      if (!st.run) return null;
+      const s = RP.settle(st.run, now, defs);
+      st.run = null;
+      return s ? this._book(id, g, p, st, s, pet, ctx) : null;
+    };
+    switch (cmd.cmd) {
+      case 'state': return out({});
+      case 'start': {
+        const kind = String(cmd.kind || '');
+        const theme = String(cmd.theme || st.theme || '');
+        if (!this._openTheme(g.manifest, theme)) return { ok: false, reason: 'theme' };
+        const stats = this._stats(st, pet);
+        const r = RP.start(st.run, kind, now, defs, stats, { theme, scale: testMode && Number.isFinite(st.scale) ? st.scale : 1 });
+        if (!r.ok) return { ...r, ...this._roomView(g, p, st, pet, now) };
+        if (r.already) return out({ already: true });
+        // the round before (switched): booked the same way as a stop
+        const settled = st.run ? settleRun() : null;
+        st.run = r.run;
+        st.theme = theme;
+        save();
+        return out({ started: kind, settled });
+      }
+      case 'stop': { const settled = settleRun(); if (settled) save(); return out({ settled }); }
+      case 'tick': {
+        if (!st.run) return out({ settled: null });
+        const s = RP.tick(st.run, now, defs);
+        if (!s) return out({ settled: null, early: true });
+        st.run = null;
+        const settled = this._book(id, g, p, st, s, pet, ctx);
+        save();
+        return out({ settled });
+      }
+      case 'seen': if (st.run) { st.run.seenAt = now; save(); } return out({});
+      case 'theme': {
+        const theme = String(cmd.theme || '');
+        if (!this._openTheme(g.manifest, theme)) return { ok: false, reason: 'theme' };
+        const settled = settleRun();
+        st.theme = theme;
+        save();
+        return out({ settled });
+      }
+      case 'scale': {
+        if (!testMode) return { ok: false, reason: 'test-only' };
+        st.scale = Math.max(0.01, Math.min(1, Number(cmd.k) || 1));
+        save();
+        return out({ scale: st.scale });
+      }
+      default: return { ok: false, reason: 'invalid' };
+    }
+  }
+
+  // the game window closed / the app quits with a round running: settled by how long it ran
+  roomClose(id, pet, { now = Date.now() } = {}) {
+    const g = this.load(id);
+    if (!g || g.manifest.engine !== 'room@1') return null;
+    const r = this.activity(id, { cmd: 'stop' }, pet, { now });
+    return r && r.settled ? r.settled : null;
   }
 
   // game://<id>/<file>
@@ -97,7 +236,7 @@ class GameLibrary {
       const file = decodeURIComponent(u.pathname.replace(/^\/+/, ''));
       const g = GP.ID_RE.test(id) && GP.FILE_RE.test(file) ? this.load(id) : null;
       if (!g) return new Response('not found', { status: 404 });
-      const named = new Set([...Object.values(g.manifest.images || {}), g.manifest.sprites].filter(Boolean));
+      const named = new Set(GP.namedFiles(g.manifest));
       if (!named.has(file)) return new Response('not found', { status: 404 });
       return net.fetch(pathToFileURL(path.join(g.dir, file)).toString());
     });

@@ -1,0 +1,680 @@
+{
+  "schema": 1,
+  "kind": "game",
+  "engine": "room@1",
+  "id": "her-room",
+  "name": "她的房间",
+  "version": "0.1.0",
+  "description": "每位角色都有一间自己风格的房间。陪她睡觉、工作、看手机、听音乐、打游戏，每件事都会改变她的精力、心情、专注和饱腹。（开发用的最小包：像素图由脚本绘制）",
+  "credit": "开发用最小包：scripts/build-room-fixture.js 逐像素绘制；玩法与引擎：Pixel Pet Affection",
+  "defaultTheme": "dafeiyu",
+  "activities": {
+    "sleep": {
+      "label": "睡觉",
+      "verb": "睡一觉",
+      "anim": "sleep",
+      "seconds": 30,
+      "deltas": {
+        "energy": 35,
+        "mood": 6,
+        "focus": 8,
+        "fullness": -4
+      }
+    },
+    "work": {
+      "label": "工作",
+      "verb": "工作一会儿",
+      "anim": "think",
+      "seconds": 30,
+      "deltas": {
+        "focus": 28,
+        "energy": -12,
+        "mood": -5,
+        "fullness": -8
+      },
+      "needs": {
+        "energy": 15
+      }
+    },
+    "phone": {
+      "label": "看手机",
+      "verb": "刷会儿手机",
+      "anim": "look",
+      "seconds": 20,
+      "deltas": {
+        "mood": 14,
+        "focus": -10,
+        "energy": -4
+      }
+    },
+    "music": {
+      "label": "听音乐",
+      "verb": "听几首歌",
+      "anim": "happy",
+      "seconds": 25,
+      "deltas": {
+        "mood": 16,
+        "energy": 6,
+        "focus": 6
+      }
+    },
+    "game": {
+      "label": "打游戏",
+      "verb": "打一局游戏",
+      "anim": "play",
+      "seconds": 30,
+      "deltas": {
+        "mood": 22,
+        "energy": -14,
+        "fullness": -8,
+        "focus": -6
+      },
+      "needs": {
+        "energy": 15
+      }
+    }
+  },
+  "themes": [
+    {
+      "id": "dafeiyu",
+      "character": "dafeiyu",
+      "status": "open",
+      "name": "鲸鱼女仆的蓝色小屋",
+      "blurb": "浅蓝和奶白的少女房间：蕾丝床幔、蝴蝶结、鲸鱼抱枕。",
+      "motifs": [
+        "蕾丝",
+        "蝴蝶结",
+        "鲸鱼"
+      ],
+      "palette": {
+        "primary": "#2C4A8A",
+        "accent": "#6FA8E8",
+        "base": "#FFFFFF",
+        "trim": "#E8D6A0"
+      },
+      "outfit": "daily",
+      "world": {
+        "width": 1024,
+        "height": 576,
+        "background": "#BFD9F5"
+      },
+      "images": {
+        "room": "dafeiyu-room.png",
+        "atlas": "dafeiyu-atlas.png"
+      },
+      "sprites": "dafeiyu-sprites.json",
+      "petHeight": 150,
+      "spawn": [
+        512,
+        540
+      ],
+      "door": [
+        990,
+        540
+      ],
+      "walk": {
+        "cell": 8,
+        "area": [
+          [
+            24,
+            480
+          ],
+          [
+            1000,
+            480
+          ],
+          [
+            1016,
+            572
+          ],
+          [
+            8,
+            572
+          ]
+        ],
+        "blocked": [
+          {
+            "cx": 160,
+            "cy": 524,
+            "rx": 140,
+            "ry": 22
+          }
+        ]
+      },
+      "furniture": [
+        {
+          "id": "bed",
+          "sprite": "bed",
+          "front": "bed-front",
+          "x": 160,
+          "y": 544,
+          "label": "床"
+        },
+        {
+          "id": "nightstand",
+          "sprite": "nightstand",
+          "x": 352,
+          "y": 500,
+          "label": "手机"
+        },
+        {
+          "id": "desk",
+          "sprite": "desk",
+          "x": 560,
+          "y": 498,
+          "label": "书桌和电脑"
+        },
+        {
+          "id": "desk-lamp",
+          "sprite": "desk-lamp",
+          "x": 486,
+          "y": 410,
+          "decor": true
+        },
+        {
+          "id": "record",
+          "sprite": "record-cabinet",
+          "x": 726,
+          "y": 498,
+          "label": "唱片机"
+        },
+        {
+          "id": "tv",
+          "sprite": "tv-cabinet",
+          "x": 900,
+          "y": 500,
+          "label": "游戏机"
+        },
+        {
+          "id": "beanbag",
+          "sprite": "whale-beanbag",
+          "x": 640,
+          "y": 572,
+          "flat": true,
+          "label": "鲸鱼懒人沙发",
+          "use": {
+            "at": [
+              640,
+              552
+            ],
+            "anim": "sit",
+            "seconds": [
+              8,
+              16
+            ],
+            "label": "坐一会儿"
+          }
+        }
+      ],
+      "activities": {
+        "sleep": {
+          "at": "bed",
+          "spot": [
+            318,
+            540
+          ],
+          "face": "left",
+          "pose": "tucked",
+          "lie": [
+            238,
+            466
+          ],
+          "bubble": [
+            210,
+            286
+          ],
+          "props": [
+            {
+              "fx": "dim",
+              "to": 0.55
+            },
+            {
+              "fx": "layer",
+              "sprite": "quilt",
+              "x": 176,
+              "y": 520,
+              "under": "front"
+            },
+            {
+              "fx": "emit",
+              "sprites": [
+                "z1",
+                "z2"
+              ],
+              "from": [
+                120,
+                410
+              ],
+              "every": 1.4,
+              "rise": 60
+            }
+          ],
+          "lines": {
+            "doing": [
+              "深度睡眠中……勿扰。",
+              "呼……白饭……再来一碗……"
+            ],
+            "done": [
+              "咕噜~睡饱了，精神满满！"
+            ]
+          }
+        },
+        "work": {
+          "at": "desk",
+          "spot": [
+            470,
+            532
+          ],
+          "face": "right",
+          "bubble": [
+            372,
+            334
+          ],
+          "props": [
+            {
+              "fx": "screen-type",
+              "rect": [
+                538,
+                336,
+                68,
+                46
+              ],
+              "rows": 5,
+              "color": "primary",
+              "sprite": "monitor-bg"
+            },
+            {
+              "fx": "swap",
+              "sprite": "desk-lamp",
+              "to": "desk-lamp-on"
+            },
+            {
+              "fx": "glow",
+              "x": 486,
+              "y": 380,
+              "r": 60
+            }
+          ],
+          "lines": {
+            "doing": [
+              "女仆也要认真工作的。",
+              "写完这段就去摸鱼……不，不摸。"
+            ],
+            "done": [
+              "活干完啦，鱼片夸我！"
+            ]
+          }
+        },
+        "phone": {
+          "at": "nightstand",
+          "spot": [
+            404,
+            536
+          ],
+          "face": "left",
+          "props": [
+            {
+              "fx": "hide",
+              "sprite": "phone-on-table"
+            },
+            {
+              "fx": "hold",
+              "sprite": "phone-lit",
+              "hand": [
+                0.6,
+                0.55
+              ]
+            },
+            {
+              "fx": "emit",
+              "sprites": [
+                "heart"
+              ],
+              "from": "head",
+              "every": 2.5,
+              "rise": 50
+            }
+          ],
+          "lines": {
+            "doing": [
+              "刷到一条鲸鱼视频，好可爱~",
+              "再看一条……就一条。"
+            ],
+            "done": [
+              "手机放下了，眼睛休息一下。"
+            ]
+          }
+        },
+        "music": {
+          "at": "record",
+          "spot": [
+            690,
+            532
+          ],
+          "face": "right",
+          "bubble": [
+            600,
+            262
+          ],
+          "props": [
+            {
+              "fx": "spin",
+              "sprite": "record-disc",
+              "x": 710,
+              "y": 384,
+              "squash": 0.35,
+              "rpm": 33
+            },
+            {
+              "fx": "emit",
+              "sprites": [
+                "note1",
+                "note2",
+                "note3"
+              ],
+              "from": [
+                716,
+                362
+              ],
+              "every": 0.8,
+              "rise": 90
+            },
+            {
+              "fx": "bob",
+              "target": "pet",
+              "period": 0.9,
+              "amp": 3
+            }
+          ],
+          "lines": {
+            "doing": [
+              "咕噜噜~这首歌好适合摸鱼。",
+              "唱片转呀转~"
+            ],
+            "done": [
+              "听完一整面了，心情超好~"
+            ]
+          }
+        },
+        "game": {
+          "at": "tv",
+          "spot": [
+            836,
+            558
+          ],
+          "face": "right",
+          "bubble": [
+            690,
+            300
+          ],
+          "props": [
+            {
+              "fx": "frames",
+              "rect": [
+                844,
+                328,
+                96,
+                68
+              ],
+              "sprites": [
+                "tv-1",
+                "tv-2",
+                "tv-3",
+                "tv-4"
+              ],
+              "fps": 6
+            },
+            {
+              "fx": "hold",
+              "sprite": "controller",
+              "hand": [
+                0.5,
+                0.6
+              ]
+            },
+            {
+              "fx": "emit",
+              "sprites": [
+                "star"
+              ],
+              "from": [
+                900,
+                320
+              ],
+              "every": 1.2,
+              "rise": 60
+            }
+          ],
+          "lines": {
+            "doing": [
+              "冲呀！鲸鱼女仆不会输！",
+              "这一关……让我想想。"
+            ],
+            "done": [
+              "赢啦！厉害了我的鲸~"
+            ]
+          }
+        }
+      },
+      "decor": [
+        {
+          "sprite": "phone-on-table",
+          "x": 340,
+          "y": 404
+        },
+        {
+          "sprite": "cocoa",
+          "x": 362,
+          "y": 404
+        }
+      ],
+      "lights": [
+        {
+          "x": 512,
+          "y": 66,
+          "r": 90
+        },
+        {
+          "x": 352,
+          "y": 380,
+          "r": 40
+        },
+        {
+          "x": 486,
+          "y": 390,
+          "r": 60,
+          "on": "work"
+        }
+      ],
+      "window": {
+        "rect": [
+          400,
+          90,
+          180,
+          200
+        ],
+        "arch": true
+      },
+      "lines": {
+        "idle": [
+          "咕噜~鱼片，今天想让我做什么？",
+          "房间收拾得干干净净，女仆的本分~"
+        ],
+        "enter": [
+          "欢迎回来，鱼片~"
+        ],
+        "tired": [
+          "好累……先睡一会儿再说吧。"
+        ],
+        "sky": {
+          "rain": "下雨了……鱼片出门记得带伞。",
+          "night": "夜深了，要不要让我去床上睡一会儿？"
+        }
+      }
+    },
+    {
+      "id": "claude",
+      "character": "claude",
+      "status": "soon",
+      "name": "午后的书房",
+      "blurb": "暖橘色的书房：满墙的书、热红茶和整理到一半的笔记。",
+      "motifs": [
+        "书架",
+        "红茶",
+        "菊纹"
+      ],
+      "palette": {
+        "primary": "#C4622D",
+        "accent": "#F0B48A",
+        "base": "#FFF8F0",
+        "trim": "#7A3B1C"
+      }
+    },
+    {
+      "id": "grok",
+      "character": "grok",
+      "status": "soon",
+      "name": "深夜的古堡房间",
+      "blurb": "黑金配色的吸血鬼小房间：烛台、丝绒窗帘和一杯番茄汁。",
+      "motifs": [
+        "烛台",
+        "丝绒",
+        "蝙蝠"
+      ],
+      "palette": {
+        "primary": "#8E1F33",
+        "accent": "#D4A23A",
+        "base": "#1E1418",
+        "trim": "#F2D27A"
+      }
+    },
+    {
+      "id": "gemini",
+      "character": "gemini",
+      "status": "soon",
+      "name": "星星猫窝",
+      "blurb": "紫色的星空阁楼：猫爬架、逗猫棒和一扇晒太阳的天窗。",
+      "motifs": [
+        "星星",
+        "猫爬架",
+        "天窗"
+      ],
+      "palette": {
+        "primary": "#7B5CD6",
+        "accent": "#B9A6F2",
+        "base": "#F6F2FF",
+        "trim": "#FFD166"
+      }
+    },
+    {
+      "id": "gpt",
+      "character": "gpt",
+      "status": "soon",
+      "name": "白龙的花园卧室",
+      "blurb": "白玫瑰和淡紫色的卧室：清单墙、写诗的小桌和夜里的长聊。",
+      "motifs": [
+        "白玫瑰",
+        "清单墙",
+        "龙鳞"
+      ],
+      "palette": {
+        "primary": "#8E7FC8",
+        "accent": "#D9D2F2",
+        "base": "#FFFFFF",
+        "trim": "#B8A4E0"
+      }
+    }
+  ],
+  "items": {},
+  "quests": [
+    {
+      "id": "sleep-full",
+      "title": "陪她睡一整觉",
+      "on": {
+        "type": "activity-end",
+        "kind": "sleep",
+        "complete": true
+      }
+    },
+    {
+      "id": "work-full",
+      "title": "陪她认真工作一轮",
+      "on": {
+        "type": "activity-end",
+        "kind": "work",
+        "complete": true
+      }
+    },
+    {
+      "id": "phone",
+      "title": "让她刷会儿手机",
+      "on": {
+        "type": "activity-end",
+        "kind": "phone"
+      }
+    },
+    {
+      "id": "music-full",
+      "title": "陪她听完一张唱片",
+      "on": {
+        "type": "activity-end",
+        "kind": "music",
+        "complete": true
+      }
+    },
+    {
+      "id": "game-full",
+      "title": "陪她打完一局游戏",
+      "on": {
+        "type": "activity-end",
+        "kind": "game",
+        "complete": true
+      }
+    },
+    {
+      "id": "night-sleep",
+      "title": "夜里哄她睡觉",
+      "on": {
+        "type": "activity-end",
+        "kind": "sleep",
+        "phase": "night"
+      }
+    },
+    {
+      "id": "rain-music",
+      "title": "下雨天一起听歌",
+      "on": {
+        "type": "activity-end",
+        "kind": "music",
+        "weather": [
+          "rain",
+          "storm"
+        ]
+      }
+    },
+    {
+      "id": "all-five",
+      "title": "五件事各做一次",
+      "on": {
+        "type": "activity-end"
+      },
+      "count": 5,
+      "distinct": "kind"
+    },
+    {
+      "id": "pat",
+      "title": "摸摸她",
+      "on": {
+        "type": "touch"
+      },
+      "count": 3
+    }
+  ],
+  "lines": {
+    "touch": [
+      "嘿嘿~",
+      "女仆在呢！",
+      "咕噜？"
+    ]
+  }
+}

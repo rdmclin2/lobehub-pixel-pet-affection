@@ -279,6 +279,18 @@ function notifyGameUpdates() {
   if (scene) scene.send('game:update', ups.find((u) => u.id === scene.gameId) || null);
   if (admin && admin.alive) admin.send('game-updates', ups);
 }
+// 她的房间 (room@1): what games.js activity() needs from her (PetService): her numbers, settling a round into
+// them, a finished 小事 → affection
+const roomPet = {
+  stats: () => service.roomStats(),
+  settle: (s) => service.roomSettle(s),
+  quest: (title) => service.gameQuest(title),
+};
+// the game window closed or the app quits with a round running in 她的房间: settled by how long it ran
+function settleRoom() {
+  if (!scene || !scene.gameId || !games || !service || !service.pet) return null;
+  try { return games.roomClose(scene.gameId, roomPet); } catch (e) { logError(e); return null; }
+}
 function toggleScene(source = 'tray', gameId = null) {
   if (scene && scene.visible && (!gameId || gameId === scene.gameId)) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
   return openScene(source, gameId);
@@ -580,7 +592,21 @@ function wire() {
     const id = String((p && p.game) || scene.gameId || '');
     const game = games.boot(id);
     const update = game ? gameIndex.updates(installedGames()).find((u) => u.id === id) || null : null;
-    return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update };
+    // 她的房间 (room@1): her numbers, the running round (one left open by an app that went away is settled now),
+    // how the room's owner and each room's character look
+    const room = game && game.manifest.engine === 'room@1' ? { ...games.roomBoot(id, roomPet), ...service.roomLooks(game.manifest.themes || []) } : null;
+    return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update, room };
+  });
+  // 她的房间: start / stop / tick / seen / theme (src/main/games.js activity): main settles with its own clock
+  ipcMain.handle('game:activity', (e, p) => {
+    if (!fromScene(e) || !p || typeof p !== 'object') return { ok: false, reason: 'invalid' };
+    const id = String(scene.gameId || '');
+    const r = games.activity(id, p, roomPet, { testMode: TEST_MODE });
+    if (r && r.ok && p.cmd !== 'seen' && p.cmd !== 'state') {
+      sceneActs.push({ game: id, type: `activity:${p.cmd}`, obj: String(p.kind || (r.settled && r.settled.kind) || ''), item: r.settled ? `${r.settled.complete ? 'done' : 'part'}:${r.settled.fraction}` : '', at: Date.now() });
+      if (sceneActs.length > 80) sceneActs.shift();
+    }
+    return r;
   });
   // 有新版本 · 去更新: straight to this game's page in 商店
   ipcMain.on('game:open-store', (e) => { if (fromScene(e)) openAdmin(scene.gameId ? `store/game/${scene.gameId}` : 'store/games'); });
@@ -1522,7 +1548,8 @@ app.whenReady().then(() => {
   });
   vrmLibrary = serveVrmLibrary({ protocol, net, app });
   // 小游戏 (games.js): downloaded games in userData/games; a checkout's catalog/games too with PIXELPET_DEV_GAMES=1
-  games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? path.join(__dirname, '..', '..', 'catalog', 'games') : null });
+  // (and test/fixtures/games: the minimal packs, e.g. mini-room for 她的房间, to play without the store)
+  games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? [path.join(__dirname, '..', '..', 'catalog', 'games'), path.join(__dirname, '..', '..', 'test', 'fixtures', 'games')] : null });
   games.registerProtocol();
   // the games repository's catalog.json: off in tests unless PIXELPET_GAME_INDEX_URL names one
   gameIndex = new GameIndex({ userDir: games.userDir, appVersion: app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
@@ -1624,7 +1651,7 @@ app.whenReady().then(() => {
   });
   scene = new GameWindow({
     onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); },
-    onClosed: () => { if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
+    onClosed: () => { settleRoom(); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,
     testMode: TEST_MODE,
   });
@@ -1646,6 +1673,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { if (scene) scene.quit(); });
+app.on('before-quit', () => { if (scene) { if (scene.visible) settleRoom(); scene.quit(); } });
 // every global shortcut goes with the app (快捷键唤起语音对话)
 app.on('will-quit', () => { if (voiceHotkey) voiceHotkey.dispose(); else globalShortcut.unregisterAll(); });
