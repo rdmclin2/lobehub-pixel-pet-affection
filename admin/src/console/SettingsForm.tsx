@@ -27,13 +27,16 @@ export const SettingsForm = ({ page, extra, internal, after }: { after?: Record<
   const fields = fieldsOf(schema.fields, page, { internal });
   const cards: string[] = [];
   for (const f of fields) if (!cards.includes(f.card)) cards.push(f.card);
+  // a card whose every field is hidden (e.g. 音乐创作 → the services not picked, music.provider) is left out, not
+  // shown as an empty header
+  const shown = cards.filter((card) => !!after?.[card] || fields.some((f) => f.card === card && visible(f, settings)));
   return (
     <Form
       {...FORM_STYLE}
       collapsible={false}
       data-settings-page={page}
       form={form}
-      items={cards.map((card) => ({
+      items={shown.map((card) => ({
         children: [
           ...fields
             .filter((f) => f.card === card)

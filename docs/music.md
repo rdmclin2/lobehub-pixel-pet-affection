@@ -222,7 +222,7 @@ env -u ELECTRON_RUN_AS_NODE MUSIC_LIVE_MINIMAX=fake xvfb-run -a node e2e/run.js 
 
 ## 7. 失败与错误处理
 
-所有失败都是 `MusicError`：`reason`（种类）、`code`（服务自己的码：fal 的 `error_type` / ElevenLabs 的 `detail.code` / MiniMax 的 `base_resp.status_code`，或 `http-<状态码>`）、`retryable`（稍后重试是否可能成功）、`provider` 和中文 `message`。在 App 里它们作为 `ok:false` 回传给模型（`reason` / `code` / `retry` / `provider` / `error`），她用自己的话转述；她不会自动重试，所以不会重复扣费。
+所有失败都是 `MusicError`：`reason`（种类）、`code`（服务自己的码：fal 的 `error_type` / ElevenLabs 的 `detail.code` / MiniMax 的 `base_resp.status_code`，或 `http-<状态码>`；本地失败没有服务码时就是 reason 本身，如 `timeout` / `network` / `no-key`，取消是 `cancelled`）、`retryable`（稍后重试是否可能成功）、`provider` 和中文 `message`。在 App 里它们作为 `ok:false` 回传给模型（`reason` / `code` / `retry` / `provider` / `error`），她用自己的话转述；她不会自动重试，所以不会重复扣费。
 
 | 情况 | reason | 可重试 | fal.ai | ElevenLabs | MiniMax 官方 | 她 / 脚本给出的提示（节选） |
 | --- | --- | --- | --- | --- | --- | --- |

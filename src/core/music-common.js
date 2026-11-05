@@ -25,15 +25,18 @@ const endpointAllowed = (ep, cfg) => httpsOk(ep) || !!(cfg && cfg.allowInsecureL
 // reason: what kind of failure — no-key / bad-endpoint / bad-params / auth / rate-limit / balance / sensitive / model /
 // unavailable / server / task-failed / network / timeout / aborted / empty / download / write.
 // code: the service's own code (MiniMax base_resp.status_code, fal error_type, ElevenLabs detail.code) or
-// `http-<status>` or null. retryable: whether trying the same request again later may work (told to the model).
+// `http-<status>`; for our own failures the reason (aborted → 'cancelled'). retryable: whether trying the same request again later may work (told to the model).
 // provider: 'fal' | 'elevenlabs' | 'minimax' (set by the provider that threw). message: readable Chinese, with the code.
 const RETRYABLE = new Set(['rate-limit', 'server', 'network', 'timeout']);
+const LOCAL_CODES = { aborted: 'cancelled' };
 class MusicError extends Error {
   constructor(reason, message, { code = null, status = null, traceId = null, detail = null, retryable = null, provider = null } = {}) {
     super(code != null ? `${message}（错误码 ${code}）` : message);
     this.name = 'MusicError';
     this.reason = reason;
-    this.code = code;
+    // a failure of our own (timeout, cancel, network, no key, bad params …) has no service code: its stable code is
+    // the reason itself (cancel → 'cancelled'), so the model always gets one; the message only names service codes
+    this.code = code != null ? code : LOCAL_CODES[reason] || reason;
     this.status = status;
     this.traceId = traceId;
     this.detail = detail;

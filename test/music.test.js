@@ -439,14 +439,14 @@ test('fal: auth / balance / rate limit / bad model / server / network map to rea
   await assert.rejects(go(on(503, { detail: 'busy', error_type: 'runner_scheduling_failure' })), (e) => e.reason === 'server' && e.retryable === true && e.code === 'runner_scheduling_failure');
   await assert.rejects(go(on(504, { detail: 'timeout', error_type: 'request_timeout' })), (e) => e.reason === 'timeout' && e.retryable === true);
   await assert.rejects(go(on(500, { detail: 'x' }, { 'x-fal-needs-retry': '0' })), (e) => e.reason === 'server' && e.retryable === false, 'X-Fal-Needs-Retry wins');
-  await assert.rejects(go(falFetch({ submit: () => { throw new Error('getaddrinfo ENOTFOUND queue.fal.run'); } })), (e) => e.reason === 'network' && e.retryable === true && /连不上 fal\.ai/.test(e.message));
+  await assert.rejects(go(falFetch({ submit: () => { throw new Error('getaddrinfo ENOTFOUND queue.fal.run'); } })), (e) => e.reason === 'network' && e.code === 'network' && e.retryable === true && /连不上 fal\.ai/.test(e.message));
   await assert.rejects(go(falFetch({ download: () => bin(Buffer.alloc(0), 403) })), (e) => e.reason === 'download');
 });
 
 test('fal: timeout — a task that stays IN_QUEUE is given up at the deadline and cancelled at fal (PUT …/cancel)', async () => {
   const dir = tmpDir();
   const f = falFetch({ statuses: [{ status: 'IN_QUEUE', queue_position: 9 }] });
-  await assert.rejects(music.generateMusic({ prompt: 'ambient drone pads', instrumental: true }, { config: falCfg(dir, { timeoutMs: 80, pollIntervalMs: 10 }), fetch: f }), (e) => e.reason === 'timeout' && e.retryable === true && e.provider === 'fal');
+  await assert.rejects(music.generateMusic({ prompt: 'ambient drone pads', instrumental: true }, { config: falCfg(dir, { timeoutMs: 80, pollIntervalMs: 10 }), fetch: f }), (e) => e.reason === 'timeout' && e.code === 'timeout' && e.retryable === true && e.provider === 'fal');
   const cancel = f.calls.find((c) => c.method === 'PUT');
   assert.ok(cancel, 'cancel was sent');
   assert.equal(cancel.url, `${FAL_BASE}/cancel`);
@@ -459,7 +459,7 @@ test('fal: cancel — an AbortSignal stops the polling (reason aborted, not retr
   const f = falFetch({ statuses: [{ status: 'IN_PROGRESS' }] });
   const ac = new AbortController();
   setTimeout(() => ac.abort(), 60);
-  await assert.rejects(music.generateMusic({ prompt: 'ambient drone pads', instrumental: true }, { config: falCfg(dir, { pollIntervalMs: 10 }), fetch: f, signal: ac.signal }), (e) => e.reason === 'aborted' && e.retryable === false);
+  await assert.rejects(music.generateMusic({ prompt: 'ambient drone pads', instrumental: true }, { config: falCfg(dir, { pollIntervalMs: 10 }), fetch: f, signal: ac.signal }), (e) => e.reason === 'aborted' && e.code === 'cancelled' && e.retryable === false);
   assert.equal(f.calls.filter((c) => c.method === 'PUT').length, 1);
   // the client's own cancel(): fal's answer is kept on the task
   const c = music.createMusicClient(falCfg(dir), { fetch: falFetch() });
@@ -538,7 +538,7 @@ test('ElevenLabs: errors — 401 auth, 402 / quota balance, 403 plan, bad_prompt
 
 test('ElevenLabs: timeout and cancel — the request is let go at the deadline (timeout, retryable) or on the AbortSignal (aborted); nothing is written', async () => {
   const dir = tmpDir();
-  await assert.rejects(music.generateMusic({ prompt: 'chill synthwave', instrumental: true }, { config: elCfg(dir, { timeoutMs: 60 }), fetch: hangingFetch() }), (e) => e.reason === 'timeout' && e.retryable === true && e.provider === 'elevenlabs');
+  await assert.rejects(music.generateMusic({ prompt: 'chill synthwave', instrumental: true }, { config: elCfg(dir, { timeoutMs: 60 }), fetch: hangingFetch() }), (e) => e.reason === 'timeout' && e.code === 'timeout' && e.retryable === true && e.provider === 'elevenlabs');
   const ac = new AbortController();
   setTimeout(() => ac.abort(), 30);
   await assert.rejects(music.generateMusic({ prompt: 'chill synthwave', instrumental: true }, { config: elCfg(dir), fetch: hangingFetch(), signal: ac.signal }), (e) => e.reason === 'aborted' && e.retryable === false);

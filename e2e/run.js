@@ -10684,6 +10684,8 @@ async function musicSettingsScenario() {
       const keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
       for (const k of ['music.enabled', 'music.provider', 'music.fal.model', 'music.fal.endpoint', 'keys.fal', 'music.format', 'music.sampleRate', 'music.bitrate', 'music.outputDir', 'music.timeoutSec', 'music.pollIntervalSec']) assert.ok(keys.includes(k), `${k} on the page (${keys.join(',')})`);
       for (const k of ['music.endpoint', 'music.model', 'music.outputFormat', 'music.elevenlabs.model']) assert.ok(!keys.includes(k), `${k} hidden while fal is picked`);
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^ElevenLabs$/').count(), 1, 'only the 服务 option: no empty ElevenLabs card header');
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^MiniMax 官方$/').count(), 1, 'only the 服务 option: no empty MiniMax card header');
       const text = await admin.textContent('[data-path="/music"]');
       for (const re of [/音乐服务/, /fal\.ai/, /FAL_KEY/, /ELEVENLABS_API_KEY/, /MINIMAX_API_KEY/, /不再向新用户开放/]) assert.match(text, re);
       assert.equal(await admin.textContent('[data-has-key="keys.fal"]'), '未设置');
@@ -10720,6 +10722,7 @@ async function musicSettingsScenario() {
       let keys = await admin.$$eval('[data-path="/music"] [data-key]', (els) => [...new Set(els.map((e) => e.getAttribute('data-key')))]);
       for (const k of ['music.elevenlabs.model', 'music.elevenlabs.outputFormat', 'music.elevenlabs.endpoint']) assert.ok(keys.includes(k), k);
       assert.ok(!keys.includes('keys.fal') && !keys.includes('music.fal.model'));
+      assert.equal(await admin.locator('[data-path="/music"] >> text=/^fal\\.ai$/').count(), 1, 'only the 服务 option: no empty fal.ai card header');
       await shot('m1c-provider-elevenlabs');
       const m = await admin.evaluate(() => window.petAdmin.set('music.elevenlabs.model', 'music_v2'));
       assert.equal(m.ok, true);
