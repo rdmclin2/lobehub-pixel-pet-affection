@@ -203,7 +203,7 @@ module.exports = function segmentedScenario(ctx) {
       }, page);
 
       await step(S, 'SG4 a one-sentence reply is not split: it streams with the caret into one plain bubble', async () => {
-        const PIECES = ['好呀，', '我给你讲讲', '今天的天气：', '早上有点凉，', '晚上记得加件外套哦～'];
+        const PIECES = ['好呀，', '今天的天气', '早上有点凉。', '中午出太阳了，', '可以出去走走晒晒太阳。', '晚上记得加件外套哦～'];
         const ONE = PIECES.join('');
         reply({ pieces: PIECES, gapMs: 400 });
         await startSampler();
@@ -218,6 +218,40 @@ module.exports = function segmentedScenario(ctx) {
         for (const t of partial) assert.ok(ONE.startsWith(t));
         assert.equal(samples[samples.length - 1].text, ONE);
         return note(`streamed ${partial.map((t) => `「${t}」`).join(' → ')} → 「${ONE}」, no .seg, bubble not segmented`);
+      }, page);
+
+      await step(S, 'SG4b the shape is hers: an emoji in a line stays in it; alone on a line it is a message wherever she put it', async () => {
+        reply({ pieces: ['🥺 在吗？'], gapMs: 0 });
+        await startSampler();
+        await sendText('嗨');
+        await idle();
+        await page.waitForTimeout(200);
+        await shot('sg4b-emoji-in-line');
+        const one = await stopSampler();
+        assert.ok(one.every((s) => s.segs.length === 0), 'a one-line reply with an emoji was split');
+        assert.equal(one[one.length - 1].text, '🥺 在吗？');
+        const MID = ['哈哈哈', '🤭', '被你发现了'];
+        reply({ pieces: [MID.join('\n')], gapMs: 0 });
+        await sendText('你是不是偷吃了');
+        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length === n, MID.length, { timeout: 15000 });
+        await shot('sg4b-emoji-in-the-middle');
+        const shown = await page.evaluate(() => [...document.querySelectorAll('#bubble .seg')].map((e) => [e.textContent, e.classList.contains('emoji')]));
+        assert.deepEqual(shown, [['哈哈哈', false], ['🤭', true], ['被你发现了', false]]);
+        return note(`「🥺 在吗？」 stays one bubble; ${JSON.stringify(shown)}`);
+      }, page);
+
+      await step(S, 'SG4c she knows how long the owner was away: the prompt has the absence from before this message, and a [节奏] line', async () => {
+        await page.evaluate((at) => window.pet.debugSet({ lastInteractionAt: at }), Date.now() - 3 * 86400000);
+        const mark = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').length;
+        reply({ pieces: ['你回来啦'], gapMs: 0 });
+        await sendText('嗨');
+        await idle();
+        const text = fs.readFileSync(path.join(fakeDir, 'calls.log'), 'utf8').slice(mark);
+        const away = /距上次互动(\d+)分钟/.exec(text);
+        assert.ok(away, 'no absence in the prompt');
+        assert.ok(Number(away[1]) >= 4319, `absence in the prompt: ${away[1]} min`);
+        assert.ok(/\[节奏\] 这次/.test(text), 'no [节奏] line in the prompt');
+        return note(`${away[0]}; ${/\[节奏\][^\\"]*/.exec(text)[0]}`);
       }, page);
 
       await step(S, 'SG5 分段式表达 off: the same multi-line reply shows at once as one bubble', async () => {

@@ -8,7 +8,7 @@ const { memeHint } = require('./memes');
 const crypto = require('node:crypto');
 
 // Bump when buildSystemRole changes: existing pets get their LobeHub agent's system role updated once.
-const PERSONA_VERSION = 9;
+const PERSONA_VERSION = 10;
 
 // Hard content boundary (docs/affection-design.md section 8). Applies under every setting.
 const CONTENT_RULES = [
@@ -22,8 +22,8 @@ const CONTENT_RULES = [
 ].join('\n');
 
 // 分段式表达 (core/segments.js, docs/segmented-reply.md): with prefs.segmented on, she replies the way a person
-// texts — a few short messages, one per line, sometimes an emoji first — in a playful, close tone that still stays
-// inside the relationship stage. The pet window shows the lines one after another; 聊天记录 keeps the whole reply.
+// texts: as many short messages as the moment calls for (often just one), one per line, an emoji only when she feels
+// like it, in a playful, close tone that still stays inside the relationship stage. The pet window shows the lines one after another; 聊天记录 keeps the whole reply.
 function segmentOn(settings) {
   const p = settings && settings.prefs;
   return !p || p.segmented !== false;
@@ -36,15 +36,44 @@ function segmentRule(settings) {
   const max = segmentMax(settings);
   const most = Math.min(max, 5);
   return [
-    `12. 说话像发消息：闲聊时把一次回复拆成 2–${most} 条短消息，每条单独一行（用换行分开，不要空行、不要编号），每条一般不超过 15 个字，${max} 条封顶。`,
-    '    可以先单独发一个表情（比如 😝、🥺、🤭），再一条一条地说；语气调皮、黏人、亲近一点，像在给很熟的人发微信，但只在当前关系阶段允许的语气里。',
-    '    例子（主人隔了很久才发来一句“嗨”）：',
+    '12. 像真人发消息那样说话，核心是自然，不是凑格式：',
+    `    发几条看当下想说多少：一句就够就只发一条，想说的多就分开发，想念、激动、撒娇或好久没见时可以连发到 ${most} 条。一条消息只说一件事，也不要把一句完整的话硬拆开。`,
+    '    主人的消息可能带 [节奏] 提示，那是你这一刻想说多少话，发几条就照它写几行，不要提起它；办正事要给结果时，以把事说清楚为准。',
+    `    分开发时每条单独一行（用换行分开，不要空行、不要编号），每条一般不超过 15 个字，${max} 条封顶。`,
+    '    表情看心情，可以跟在句尾，也可以单独发一条放在开头、中间或结尾。不要每次都用，更不要每次都拿表情开头。',
+    '    语气可以调皮、黏人、亲近一点，像在给很熟的人发微信，但只在当前关系阶段允许的语气里；“亲近阶段”这类设定不要说出口。',
+    '    下面只是几种自然的样子，不要照抄，也不要轮流套用：',
+    '    主人问“现在几点”：',
+    '    下午三点二十。',
+    '    主人说“哈哈你真逗”：',
+    '    那当然😏',
+    '    主人说“今天好累”：',
+    '    啊，怎么啦',
+    '    先歇会儿，我陪你',
+    '    主人隔了很久才发来一句“嗨”：',
     '    🥺',
     '    在吗？',
     '    有点想你了。',
     '    在干什么呀？',
-    '    办正事时：第一条先给结论，后面每条说一个要点；真的只有一句话就只发一条。不要用 Markdown 列表或代码块，除非主人要代码。',
+    '    办正事时：第一条先给结论，有几个要点才分几条。不要用 Markdown 列表或代码块，除非主人要代码。',
   ];
+}
+
+// How much she feels like saying this turn. Told only "vary it", the model settled on 2–3 lines every time (12 of 12
+// real turns), so the variation is rolled here, once per owner message: about half the time one message, a burst now
+// and then, and mostly a burst when the owner has been away for a long while. It is a mood, not a format: rule 12
+// lets real work override it. `rnd` is for the tests.
+const LONG_AWAY_MS = 6 * 3600 * 1000;
+function rhythmHint(pet, now, settings, rnd = Math.random) {
+  if (!segmentOn(settings)) return '';
+  const most = Math.min(segmentMax(settings), 5);
+  const away = now - pet.lastInteractionAt >= LONG_AWAY_MS;
+  const r = rnd();
+  const [burstBelow, oneBelow] = away ? [0.6, 0.75] : [0.1, 0.7];
+  const burst = r < burstBelow;
+  const count = burst ? `话有点多，连发 ${Math.min(4, most)}${most > 4 ? `–${most}` : ''} 条短消息` : r < oneBelow ? '就回一条，一句话接住就好' : `有两三句想说，分 2–${Math.min(3, most)} 条发`;
+  const emoji = rnd() < (burst ? 0.6 : 0.2) ? (burst ? '，其中一条可以只发一个表情' : '，带个表情') : '，不用表情';
+  return `[节奏] 这次${count}${emoji}。`;
 }
 
 // System role for the LobeHub agent. The personality is flavour, not a fence: the pet is
@@ -215,9 +244,12 @@ function musicHint(music) {
 }
 
 // `localScope`: where her tools may go (core/ai-folders.js scopeHint), added after LOCAL_HINT.
-function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '', music = null } = {}) {
+function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '', music = null, lastSeenAt = null, rnd = Math.random } = {}) {
   const m = musicHint(music);
-  return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}${m ? `\n${m}` : ''}\n${text}`;
+  // `lastSeenAt`: when the owner was last here, from before this message counted as an interaction
+  const seen = lastSeenAt === null ? pet : { ...pet, lastInteractionAt: lastSeenAt };
+  const beat = rhythmHint(seen, now, settings, rnd);
+  return `${buildStateBlock(seen, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}${m ? `\n${m}` : ''}${beat ? `\n${beat}` : ''}\n${text}`;
 }
 
 module.exports = {
@@ -235,6 +267,7 @@ module.exports = {
   buildSystemRole,
   segmentOn,
   segmentRule,
+  rhythmHint,
   buildStateBlock,
   buildRelationBlock,
   buildEventPrompt,

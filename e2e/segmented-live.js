@@ -1,10 +1,12 @@
 'use strict';
 
 // 分段式表达 with the REAL agent (run.js `segmentedlive`, tokens; not in "all"). Real `lh`, a real LobeHub agent in
-// the personal space (deleted at the end, also on failure). Three model calls: her hatch greeting, one chat turn,
-// and one more message sent while that reply is still coming out.
-//   SL1  one message from the owner → her real reply comes out as ≥ 4 short messages, one by one, in order, with
-//        typing gaps; screenshots at 1 / 2 / 3 / 4 messages; wall-clock timestamps of every message
+// the personal space (deleted at the end, also on failure). About 12–18 model calls: her hatch greeting, a conversation
+// of 8 turns, up to 6 messages from an owner back after days away, and a message sent while a reply is coming out.
+//   SL1  a natural conversation: every message gets a reply on topic. The shape is hers: some replies are one message,
+//        some several (one by one, in order, with typing gaps), and not most of them open with an emoji
+//   SL1b the owner is back after days away (the Goal's example): a reply of ≥ 4 messages with an emoji on its own.
+//        Every turn's shape in shapes.json; screenshots per message count
 //   SL2  a second message while a reply is still coming out: the rest of the old reply stops, the new reply plays
 //        from its first message, nothing of the old one shows up later
 //   SL3  聊天记录 (设置 → 聊天记录) has both turns whole; read aloud offered once per reply; no page / console errors
@@ -15,6 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+const Seg = require('../src/core/segments');
 
 module.exports = function segmentedLiveScenario(ctx) {
   const { OUT, step, launch, hover, clickAct, openAdminWindow, adminUntil } = ctx;
@@ -28,7 +31,19 @@ module.exports = function segmentedLiveScenario(ctx) {
     fs.mkdirSync(SHOTS, { recursive: true });
     const data = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-seglive-'));
     fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ ageGateVersion: 2, answered: true, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, prefs: { voice: true, voiceInteractions: false } }));
-    const env = { PIXELPET_DATA_DIR: data, LH_BIN: 'lh', PIXELPET_NO_CONNECT: '1' };
+    // the real lh, with a note of the [节奏] each turn was given next to the shape she chose (rhythm.log)
+    const rhythmLog = path.join(SHOTS, 'rhythm.log');
+    const lhShim = path.join(data, 'lh-rhythm.js');
+    fs.rmSync(rhythmLog, { force: true });
+    fs.writeFileSync(lhShim, `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process');
+const a = process.argv.slice(2);
+for (const x of a) { const m = /\\[节奏\\] 这次[^\\n]*/.exec(x); if (m) require('node:fs').appendFileSync(${JSON.stringify(rhythmLog)}, new Date().toISOString() + ' ' + (/距上次互动\\d+分钟/.exec(x) || [''])[0] + ' ' + m[0] + ' 主人: ' + x.split('\\n').pop() + '\\n'); }
+process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
+`, { mode: 0o755 });
+    const env = { PIXELPET_DATA_DIR: data, LH_BIN: lhShim, PIXELPET_NO_CONNECT: '1' };
+    fs.rmSync(path.join(SHOTS, 'video'), { recursive: true, force: true });
+    fs.writeFileSync(path.join(SHOTS, 'launched-at.txt'), `${Date.now()}\n`);
     const { app, page } = await launch(env, { video: path.join(SHOTS, 'video') });
     const errors = [];
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -68,6 +83,7 @@ module.exports = function segmentedLiveScenario(ctx) {
       await page.click('#chat-send');
       return t;
     };
+    const turns = [];
     try {
       await page.waitForSelector('.char-card');
       await step(S, 'SL0 real lh: a real agent is created and greets her owner', async () => {
@@ -87,7 +103,7 @@ module.exports = function segmentedLiveScenario(ctx) {
         await page.waitForTimeout(4000); // let the greeting finish playing
         const role = lh('agent', 'view', agentId);
         assert.match(role, /每条单独一行/, 'her LobeHub agent has the 分段 rule');
-        fs.writeFileSync(path.join(SHOTS, 'agent-role-excerpt.txt'), role.split('\n').filter((l) => /分段|每条单独一行|调皮|亲近|短消息|在吗/.test(l)).join('\n') + '\n');
+        fs.writeFileSync(path.join(SHOTS, 'agent-role-excerpt.txt'), role.split('\n').filter((l) => /核心是自然|发几条|每条单独一行|表情也看心情|调皮|下午三点|在吗/.test(l)).join('\n') + '\n');
         // optional: a closer relationship stage (all-ages), the tone the 分段 rule is written for; the role follows next turn
         const aff = Number(process.argv[3] || 0);
         if (aff > 0) {
@@ -106,54 +122,92 @@ module.exports = function segmentedLiveScenario(ctx) {
       }, page);
 
       let first = null;
-      await step(S, 'SL1 one message → her real reply comes out as ≥4 messages, one by one, in order, with gaps', async () => {
+      // one turn: send, follow it on screen, return what she did
+      const runTurn = async (n, text) => {
         const before = logged().length;
         await startSampler();
-        const tSend = await sendText('嗨～我刚下班回来，你今天有没有想我呀？');
-        const seenShots = new Set();
-        // wait for the reply, screenshot every count as it appears
+        const tSend = await sendText(text);
+        const seen = new Set();
         const deadline = Date.now() + 150000;
-        let doneSeen = false;
+        let petText = null;
         while (Date.now() < deadline) {
-          const n = (await segs()).length;
-          for (let k = 1; k <= Math.min(n, 6); k++) if (!seenShots.has(k)) { seenShots.add(k); await shot(`sl1-${k}-msgs`); }
-          const st = await page.evaluate(() => window.petFx.segState());
-          if (st && st.done && n > 0 && !(await page.evaluate(() => document.body.classList.contains('busy')))) { doneSeen = true; break; }
+          const k = (await segs()).length;
+          for (let c = 1; c <= Math.min(k, 6); c++) if (!seen.has(c)) { seen.add(c); await shot(`sl1-t${n}-${c}-msgs`); }
+          const added = logged().slice(before);
+          const pet = added.filter((m) => m.role === 'pet').pop();
+          const busy = await page.evaluate(() => document.body.classList.contains('busy'));
+          if (pet && !busy) {
+            const want = Seg.split(pet.text).length;
+            const done = (await segLogWall()).some((e) => e.wall >= tSend && e.ev === 'done');
+            if (want < 2 || done) { petText = pet.text; break; }
+          }
           await page.waitForTimeout(40);
         }
-        assert.ok(doneSeen, 'the reply never finished playing');
-        await page.waitForTimeout(500);
-        await shot('sl1-final');
+        assert.ok(petText !== null, `no reply to 「${text}」`);
+        await page.waitForTimeout(300);
+        await shot(`sl1-t${n}-final`);
         const samples = await stopSampler();
         const log = (await segLogWall()).filter((e) => e.wall >= tSend);
         const start = log.find((e) => e.ev === 'start');
-        assert.ok(start, `no segmented playback (bubble: ${JSON.stringify(await segs())})`);
-        const reveals = log.filter((e) => e.id === start.id && e.ev === 'reveal');
-        const msgs = reveals.map((e) => e.text);
-        assert.ok(msgs.length >= 4, `only ${msgs.length} messages: ${JSON.stringify(msgs)}`);
-        assert.deepEqual(reveals.map((e) => e.i), msgs.map((_, i) => i), 'reveals out of order');
-        // on screen: counts only grow one at a time and always show the first n messages
-        const counts = samples.map((s) => s.segs.length).filter((c, i, a) => c > 0 && (i === 0 || c !== a[i - 1]));
-        assert.deepEqual(counts, msgs.map((_, i) => i + 1), `counts went ${JSON.stringify(counts)}`);
+        const reveals = start ? log.filter((e) => e.id === start.id && e.ev === 'reveal') : [];
+        const msgs = reveals.length ? reveals.map((e) => e.text) : [petText];
         const gaps = reveals.slice(1).map((e, i) => e.wall - reveals[i].wall);
-        assert.ok(gaps.every((g) => g >= 300 && g <= 5000), `gaps ${gaps}`);
-        const added = logged().slice(before);
-        assert.equal(added.length, 2);
-        assert.equal(added[1].role, 'pet');
-        first = { id: start.id, msgs, reveals, gaps, tSend, full: added[1].text };
-        timeline.push('[SL1 真实 agent 的一次回复]', `  user sent 「嗨～我刚下班回来，你今天有没有想我呀？」 at ${iso(tSend)}`,
-          ...log.filter((e) => e.id === start.id).map((e) => `  ${iso(e.wall)}  ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}${e.reason ? ` reason=${e.reason}` : ''}`),
-          `  gaps between messages: ${gaps.map((g, i) => `#${i + 1}→#${i + 2} ${g} ms`).join(', ')}`,
-          `  on-screen counts (30 ms sampler): ${counts.join(' → ')}`,
-          `  chat-log pet text: ${JSON.stringify(added[1].text)}`, '');
-        return `${msgs.map((m) => `「${m}」`).join(' → ')}; gaps ${gaps.join('/')} ms`;
+        const counts = samples.map((x) => x.segs.length).filter((c, i, a) => c > 0 && (i === 0 || c !== a[i - 1]));
+        if (msgs.length >= 2) {
+          assert.deepEqual(reveals.map((e) => e.i), msgs.map((_, i) => i), `turn ${n}: reveals out of order`);
+          assert.deepEqual(counts, msgs.map((_, i) => i + 1), `turn ${n}: on-screen counts went ${JSON.stringify(counts)}`);
+          assert.ok(gaps.every((g) => g >= 300 && g <= 5000), `turn ${n}: gaps ${gaps}`);
+        } else {
+          assert.equal(samples.some((x) => x.segs.length > 0), false, `turn ${n}: one message but a segmented bubble`);
+        }
+        timeline.push(`[SL1 第 ${n} 轮] 主人 ${iso(tSend)}: 「${text}」`, ...log.filter((e) => start && e.id === start.id).map((e) => `  ${iso(e.wall)}  ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}`), ...(start ? [] : [`  (一条，普通气泡) 「${petText}」`]), `  ${msgs.length} 条; 间隔 ${gaps.join('/') || '-'} ms; 屏上条数 ${counts.join('→') || '-'}`, '');
+        return { n, text, tSend, msgs, gaps, firstIsEmoji: Seg.isEmojiOnly(msgs[0]), hasEmojiMsg: msgs.some((m) => Seg.isEmojiOnly(m)), reveals, full: petText };
+      };
+      // nothing here asks for a format: everyday things an owner says, for her to answer as she likes
+      const NATURAL = ['现在几点了？', '今天上班好累啊', '哈哈你真逗', '2+3 等于几', '我晚饭吃了碗牛肉面', '嗨～我刚下班回来，你今天有没有想我呀？', '好，那我去洗澡了', '我回来啦'];
+      // the owner comes back after days away (the example of the Goal): a burst is likely then
+      const MISSED = ['嗨', '好几天没理你了，你还好吗？', '在吗？', '我回来了', '好久不见呀', '想我了吗？'];
+      await step(S, 'SL1 a natural conversation: replies on topic, and their shape varies from turn to turn', async () => {
+        for (const text of NATURAL) { turns.push(await runTurn(turns.length + 1, text)); await page.waitForTimeout(1500); }
+        const lens = turns.map((t) => t.msgs.length);
+        assert.ok(lens.some((c) => c === 1), `every reply was split: ${lens}`);
+        assert.ok(lens.some((c) => c >= 2), `no reply had several messages: ${lens}`);
+        assert.ok(turns.filter((t) => t.firstIsEmoji).length <= turns.length / 2, `too many open with an emoji: ${turns.filter((t) => t.firstIsEmoji).length}/${turns.length}`);
+        timeline.push(`[SL1 汇总] ${turns.length} 轮，每轮条数 ${lens.join(',')}；以表情开头 ${turns.filter((t) => t.firstIsEmoji).length} 轮`, '');
+        return turns.map((t) => `${t.n}「${t.text}」→ ${t.msgs.map((m) => `「${m}」`).join(' ')}`).join('; ');
+      }, page);
+
+      await step(S, 'SL1b the owner is back after days away: at least one reply is ≥4 messages with an emoji on its own', async () => {
+        const back = [];
+        for (const text of MISSED) {
+          await page.evaluate((at) => window.pet.debugSet({ lastInteractionAt: at }), Date.now() - 3 * 86400000);
+          const t = await runTurn(turns.length + 1, text);
+          turns.push(t);
+          back.push(t);
+          await page.waitForTimeout(1500);
+          if (t.msgs.length >= 4 && t.hasEmojiMsg) { first = t; break; }
+        }
+        assert.ok(first, `no reply of ≥4 messages with an emoji in ${back.length} tries: ${back.map((t) => t.msgs.length)}`);
+        const gaps = first.gaps.join('/');
+        timeline.push(`[SL1b 汇总] 第 ${first.n} 轮达到 ${first.msgs.length} 条，试了 ${back.length} 次，间隔 ${gaps} ms`, '');
+        return `tries ${back.length}; 「${first.text}」→ ${first.msgs.map((m) => `「${m}」`).join(' → ')}; gaps ${gaps} ms`;
       }, page);
 
       await step(S, 'SL2 a new message while a reply is still coming out: old one stops, new one plays, nothing left over', async () => {
         await startSampler();
-        const tSend = await sendText('跟我说说你今天都做了些什么，一件一件讲给我听嘛');
-        // wait for her reply to start playing, then cut in after the first or second message
-        await page.waitForFunction(() => { const s = window.petFx.segState(); return s && !s.done && s.shown >= Math.min(2, s.total - 1) && !document.body.classList.contains('busy'); }, null, { timeout: 150000 });
+        // a burst is likely after a long absence; a one-message reply has nothing to cut into, so she is asked again
+        let tSend = 0;
+        for (let tries = 0, playing = false; !playing; tries++) {
+          assert.ok(tries < 5, 'five replies in a row had nothing left to cut into');
+          await page.evaluate((at) => window.pet.debugSet({ lastInteractionAt: at }), Date.now() - 3 * 86400000);
+          tSend = await sendText('跟我说说你今天都做了些什么，一件一件讲给我听嘛');
+          // wait for her reply to start playing, then cut in after the first or second message
+          playing = await page.waitForFunction(() => {
+            const s = window.petFx.segState();
+            return !!(s && !s.done && s.total >= 3 && s.shown >= 2 && !document.body.classList.contains('busy'));
+          }, null, { timeout: 45000 }).then(() => true).catch(() => false);
+          if (!playing) { await idle(); await page.waitForFunction(() => { const s = window.petFx.segState(); return !s || s.done; }, null, { timeout: 30000 }); await page.waitForTimeout(800); }
+        }
         await shot('sl2-before-cut');
         const tCut = await sendText('等等等等，先告诉我你现在心情怎么样？');
         await page.waitForTimeout(300);
@@ -169,9 +223,10 @@ module.exports = function segmentedLiveScenario(ctx) {
         assert.ok(starts.length >= 1, 'the first reply never played segmented');
         const oldId = starts[0].id;
         const oldReveals = log.filter((e) => e.id === oldId && e.ev === 'reveal');
-        const newStart = starts.find((e) => e.wall > tCut);
-        assert.ok(newStart, 'the new reply did not play segmented');
-        const newReveals = log.filter((e) => e.id === newStart.id && e.ev === 'reveal');
+        // her new reply may well be one message (a plain bubble, no playback of its own)
+        const newStart = starts.find((e) => e.wall > tCut) || null;
+        const newReveals = newStart ? log.filter((e) => e.id === newStart.id && e.ev === 'reveal') : [];
+        const newReply = logged().filter((m) => m.role === 'pet').pop().text;
         let cutNote;
         if (cancel) {
           assert.equal(cancel.id, oldId);
@@ -182,22 +237,23 @@ module.exports = function segmentedLiveScenario(ctx) {
         } else {
           // the old reply finished before the cut landed: then it must be done before the new one starts
           const done = log.find((e) => e.id === oldId && e.ev === 'done');
-          assert.ok(done && done.wall <= newStart.wall, 'neither canceled nor finished before the new reply');
+          assert.ok(done && (!newStart || done.wall <= newStart.wall), 'neither canceled nor finished before the new reply');
           cutNote = 'old reply had already finished';
         }
         assert.deepEqual(newReveals.map((e) => e.i), newReveals.map((_, i) => i), 'new reply out of order');
         const oldTexts = oldReveals.map((e) => e.text);
         const fullOld = logged().filter((m) => m.role === 'pet').slice(-2)[0].text;
         const unshownOld = fullOld.split('\n').map((x) => x.trim()).filter((x) => x && !oldTexts.includes(x) && !newReveals.some((r) => r.text === x));
-        const after = samples.filter((s) => s.wall > newStart.wall);
+        const after = samples.filter((s) => s.wall > (newStart ? newStart.wall : tCut + 300));
         assert.ok(after.every((s) => !s.segs.some((x) => unshownOld.includes(x))), 'an unshown old message appeared after the new reply started');
-        assert.ok(after.every((s) => s.segs.every((x, i) => x === (newReveals[i] || {}).text || i === s.segs.length - 1)), 'bubble mixed old and new messages');
+        if (newStart) assert.ok(after.every((s) => s.segs.every((x, i) => x === (newReveals[i] || {}).text || i === s.segs.length - 1)), 'bubble mixed old and new messages');
+        else assert.equal(await page.evaluate(() => document.getElementById('bubble').textContent.trim().replace(/\s*▍$/, '')), newReply, 'the new one-message reply is not what the bubble shows');
         const st = await page.evaluate(() => window.petFx.segState());
-        assert.equal(st.timer, false);
+        assert.ok(!st || st.timer === false, 'a timer was left behind'); // null: a one-message reply cleared the player
         timeline.push('[SL2 回复途中再发一条]', `  user sent 「跟我说说你今天都做了些什么，一件一件讲给我听嘛」 at ${iso(tSend)}`, `  user cut in 「等等等等，先告诉我你现在心情怎么样？」 at ${iso(tCut)}`,
-          ...log.map((e) => `  ${iso(e.wall)}  [${e.id === oldId ? 'old' : e.id === newStart.id ? 'new' : e.id}] ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}${e.reason ? ` reason=${e.reason}` : ''}${e.shown != null ? ` shown=${e.shown}/${e.total}` : ''}`),
+          ...log.map((e) => `  ${iso(e.wall)}  [${e.id === oldId ? 'old' : newStart && e.id === newStart.id ? 'new' : e.id}] ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}${e.reason ? ` reason=${e.reason}` : ''}${e.shown != null ? ` shown=${e.shown}/${e.total}` : ''}`),
           `  old reply in chat-log: ${JSON.stringify(fullOld)}`, `  old messages never shown: ${JSON.stringify(unshownOld)}`, `  player after: ${JSON.stringify(st)}`, '');
-        return `old ${oldTexts.map((m) => `「${m}」`).join(' → ')}; ${cutNote}; new ${newReveals.map((e) => `「${e.text}」`).join(' → ')}; timer=false`;
+        return `old ${oldTexts.map((m) => `「${m}」`).join(' → ')}; ${cutNote}; new ${newReveals.map((e) => `「${e.text}」`).join(' → ') || `one message 「${newReply}」`}; no timer left`;
       }, page);
 
       await step(S, 'SL3 聊天记录 keeps every turn whole; read aloud once per reply; no page/console errors', async () => {
@@ -208,7 +264,7 @@ module.exports = function segmentedLiveScenario(ctx) {
         const admin = await openAdminWindow(app, page, 'history');
         await adminUntil(admin, () => !!document.querySelector('[data-session]'), null, 10000, 'conversations');
         await admin.evaluate(() => document.querySelector('[data-session]').click());
-        const want = first.full.split('\n')[0].trim();
+        const want = (first || turns[turns.length - 1]).full.split('\n')[0].trim();
         await adminUntil(admin, (w) => [...document.querySelectorAll('[data-history-thread] [data-role="pet"] [data-history-text]')].some((e) => e.textContent.includes(w)), want, 10000, 'the saved reply');
         await admin.screenshot({ path: path.join(SHOTS, 'sl3-history.png') });
         const shown = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-history-text]')].map((e) => e.textContent));
@@ -218,6 +274,7 @@ module.exports = function segmentedLiveScenario(ctx) {
         return `chat-log ${msgs.length} entries (${pets.length} pet); read aloud offered ${offers.length}×; history page shows ${shown.length} lines; errors 0`;
       }, page);
     } finally {
+      fs.writeFileSync(path.join(SHOTS, 'shapes.json'), JSON.stringify(turns.map(({ n, text, tSend, msgs, gaps, firstIsEmoji }) => ({ n, text, sentAt: new Date(tSend).toISOString(), count: msgs.length, firstIsEmoji, msgs, gaps })), null, 2) + '\n');
       fs.writeFileSync(path.join(SHOTS, 'live-timeline.txt'), `${timeline.join('\n')}\nerrors:\n${errors.join('\n')}\n`);
       try { fs.copyFileSync(path.join(data, 'chat-log.json'), path.join(SHOTS, 'chat-log.json')); } catch { /* not written */ }
       try {

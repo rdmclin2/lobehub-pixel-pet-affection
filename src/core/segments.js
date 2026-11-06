@@ -1,7 +1,7 @@
 'use strict';
-// 分段式表达 (docs/segmented-reply.md): one reply said as several short messages, one after another, the way a
-// person texts — an emoji first, then 「在吗？」「有点想你了。」「在干什么？」. The persona asks the agent to put
-// each message on its own line (persona.js SEGMENT_RULE); this file turns the reply (final, or the text streamed
+// 分段式表达 (docs/segmented-reply.md): a reply said the way a person texts: one message or several, as she wrote
+// it — sometimes 「😝」「在吗？」「有点想你了。」「在干什么？」, often one line. Each message is one line of the reply
+// and the agent decides how many there are (persona.js segmentRule); nothing here adds a split. This file turns the reply (final, or the text streamed
 // so far) into the ordered messages and decides how long she "types" before each one. The pet window shows them
 // one by one (renderer/app.js, createPlayer below); 聊天记录, reading aloud, memes and the guard still use the
 // whole reply once.
@@ -16,7 +16,7 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.PetSegments = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const DEFAULTS = Object.freeze({ max: 6, maxLen: 36, charMs: 80 });
+  const DEFAULTS = Object.freeze({ max: 6, charMs: 80 });
   const RANGE = Object.freeze({ max: [2, 8], charMs: [30, 200] });
   // a reply longer than this (all of it) or with a code block is an answer to read, not a chat: kept whole
   const MAX_TOTAL = 400;
@@ -24,9 +24,6 @@
   // one emoji "character": a pictograph with its modifiers / ZWJ joins / variation selector, or a flag pair
   const EMOJI = '(?:\\p{Extended_Pictographic}(?:\\uFE0F|\\p{Emoji_Modifier})?(?:\\u200D\\p{Extended_Pictographic}(?:\\uFE0F|\\p{Emoji_Modifier})?)*|\\p{Regional_Indicator}{2})';
   const EMOJI_ONLY_RE = new RegExp(`^(?:${EMOJI}|\\s)+$`, 'u');
-  const LEAD_EMOJI_RE = new RegExp(`^((?:${EMOJI}\\s*)+)(?=\\S)`, 'u');
-  // sentence ends: CJK and ASCII terminators (runs of them, with closing quotes / brackets after)
-  const SENTENCE_RE = /[^。！？!?～~…]+(?:[。！？!?～~…]+|$)[」』”’）)】]*/gu;
   const LIST_RE = /^\s*(?:[-*•]\s|\d+[.)、]\s?|#{1,6}\s|\|)/;
 
   const chars = (s) => [...String(s || '')].length;
@@ -36,7 +33,6 @@
   function options(o = {}) {
     return {
       max: clampInt(o.max, RANGE.max, DEFAULTS.max),
-      maxLen: Number.isFinite(o.maxLen) && o.maxLen >= 8 ? Math.round(o.maxLen) : DEFAULTS.maxLen,
       charMs: clampInt(o.charMs, RANGE.charMs, DEFAULTS.charMs),
     };
   }
@@ -48,27 +44,6 @@
     return lines.filter((l) => LIST_RE.test(l)).length >= 2;
   }
 
-  // 「😝 在吗？」 → ['😝', '在吗？']; an emoji at the end stays with its words.
-  function splitLeadEmoji(line) {
-    const m = LEAD_EMOJI_RE.exec(line);
-    if (!m) return [line];
-    return [m[1].trim(), line.slice(m[1].length).trim()].filter(Boolean);
-  }
-
-  // A line longer than maxLen as sentences packed up to maxLen each; a sentence longer than that stays whole
-  // (cutting a sentence in the middle reads worse than a long message).
-  function splitLong(line, maxLen) {
-    if (chars(line) <= maxLen) return [line];
-    const parts = (line.match(SENTENCE_RE) || [line]).map((s) => s.trim()).filter(Boolean);
-    const out = [];
-    for (const s of parts) {
-      const last = out[out.length - 1];
-      if (last !== undefined && chars(last) + chars(s) <= maxLen && !isEmojiOnly(last)) out[out.length - 1] = last + s;
-      else out.push(s);
-    }
-    return out;
-  }
-
   // Two messages folded into one (over the cap): no space between CJK, a space between Latin words.
   function join(a, b) {
     return /[　-鿿＀-￯]$/u.test(a) || /^[　-鿿＀-￯]/u.test(b) || isEmojiOnly(a) ? `${a}${b}` : `${a} ${b}`;
@@ -78,27 +53,20 @@
     return [...segs.slice(0, max - 1), segs.slice(max - 1).reduce(join)];
   }
 
-  // The final reply as messages, in order. One short line → one message (never split). Lines are the protocol;
-  // a leading emoji is its own message; a long line is cut at sentence ends; more than `max` → the rest folds
-  // into the last one.
+  // The final reply as messages, in order: each line is one message, as she wrote it. Her line breaks are the only
+  // splits: one line stays one message however long it is, and an emoji stays where she put it (alone on a line it
+  // is a message of its own, in a line it stays in the line). More than `max` → the rest folds into the last one.
   function split(text, opts = {}) {
     const o = options(opts);
     const t = String(text || '').replace(/\r\n?/g, '\n').trim();
     if (!t) return [];
     if (keepWhole(t)) return [t];
-    const segs = [];
-    for (const raw of t.split('\n')) {
-      const line = raw.trim();
-      if (!line) continue;
-      for (const piece of splitLeadEmoji(line)) segs.push(...(isEmojiOnly(piece) ? [piece] : splitLong(piece, o.maxLen)));
-    }
-    return cap(segs, o.max);
+    return cap(t.split('\n').map((l) => l.trim()).filter(Boolean), o.max);
   }
 
   // Text streamed so far → { segments, complete }: `complete` messages are final (their line has ended), the
-  // one after them (if any) is still being written. Lines that ended are split like the final reply; the open
-  // last line only loses its leading emoji (cutting it at sentences would move as it grows). Everything up to
-  // `complete` stays the same as more text arrives, so what was shown never changes under the reader.
+  // one after them (if any) is still being written. Everything up to `complete` stays the same as more text
+  // arrives, so what was shown never changes under the reader.
   function plan(text, { final = false, ...opts } = {}) {
     if (final) {
       const segments = split(text, opts);
@@ -111,13 +79,11 @@
     const nl = t.lastIndexOf('\n');
     const done = nl < 0 ? [] : split(t.slice(0, nl), o);
     const open = nl < 0 ? t : t.slice(nl + 1);
-    const tail = open.trim() ? splitLeadEmoji(open.trim()) : [];
-    // a tail that is only an emoji may still grow into 「😝 在吗」: keep it open
+    const tail = open.trim() ? [open.trim()] : [];
     const all = [...done, ...tail];
-    let complete = done.length + Math.max(0, tail.length - 1);
+    const complete = done.length;
     if (all.length > o.max) { // the cap folds into message max-1, which then stays open until the end
-      complete = Math.min(complete, o.max - 1);
-      return { segments: cap(all, o.max), complete };
+      return { segments: cap(all, o.max), complete: Math.min(complete, o.max - 1) };
     }
     return { segments: all, complete };
   }

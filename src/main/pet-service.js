@@ -1356,6 +1356,7 @@ class PetService extends EventEmitter {
     trace.mark('logged');
     let ok = false;
     let musicCtx = null;
+    const lastSeenAt = c.lastInteractionAt; // for her prompt: touch() below makes it "just now"
     try {
       state.touch(c, t);
       await this._ensureReady(trace);
@@ -1383,7 +1384,7 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       if (sticker) body = [body, adminChat.stickerLine(sticker)].filter(Boolean).join('\n');
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus, lastSeenAt });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);

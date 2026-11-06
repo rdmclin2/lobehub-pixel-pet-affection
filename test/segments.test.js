@@ -16,36 +16,34 @@ test('split: a kaomoji on its own line is its own message (4 messages, original 
   assert.deepEqual(Seg.split('(≧▽≦)\n在吗？\n有点想你了。\n在干什么？'), ['(≧▽≦)', '在吗？', '有点想你了。', '在干什么？']);
 });
 
-test('split: a single short reply is never cut; empty is no message', () => {
+test('split: one line stays one message however long it is; empty is no message', () => {
   assert.deepEqual(Seg.split('好呀，我给你讲讲今天的天气：早上有点凉，中午出太阳～'), ['好呀，我给你讲讲今天的天气：早上有点凉，中午出太阳～']);
+  const long = '今天的天气真的很不错，早上有点凉，记得多穿一点。中午出太阳了，可以出去走走晒晒太阳。晚上又会降温，记得加件外套哦～';
+  assert.deepEqual(Seg.split(long), [long]);
+  assert.deepEqual(Seg.split(`第一条\n${long}`), ['第一条', long]);
   assert.deepEqual(Seg.split('嗯嗯'), ['嗯嗯']);
   assert.deepEqual(Seg.split(''), []);
   assert.deepEqual(Seg.split('   \n \n'), []);
   assert.deepEqual(Seg.split(null), []);
 });
 
-test('split: a leading emoji is its own message; one at the end stays with its words', () => {
-  assert.deepEqual(Seg.split('🥺 在吗？'), ['🥺', '在吗？']);
-  assert.deepEqual(Seg.split('😝😝在吗'), ['😝😝', '在吗']);
-  assert.deepEqual(Seg.split('👍🏻 收到'), ['👍🏻', '收到']); // skin tone stays with its emoji
-  assert.deepEqual(Seg.split('👨‍👩‍👧 一家人'), ['👨‍👩‍👧', '一家人']); // ZWJ sequence is one emoji
+test('split: an emoji stays where she put it: alone on a line it is a message at any position, in a line it stays', () => {
+  assert.deepEqual(Seg.split('🥺 在吗？'), ['🥺 在吗？']);
+  assert.deepEqual(Seg.split('👨‍👩‍👧 一家人'), ['👨‍👩‍👧 一家人']);
   assert.deepEqual(Seg.split('好开心😊'), ['好开心😊']);
+  assert.deepEqual(Seg.split('🥺\n在吗？'), ['🥺', '在吗？']);
+  assert.deepEqual(Seg.split('哈哈哈\n🤭\n被你发现了'), ['哈哈哈', '🤭', '被你发现了']);
+  assert.deepEqual(Seg.split('就这样\n😝'), ['就这样', '😝']);
   assert.equal(Seg.isEmojiOnly('🥺'), true);
+  assert.equal(Seg.isEmojiOnly('👍🏻'), true); // skin tone
   assert.equal(Seg.isEmojiOnly('🥺 🤭'), true);
   assert.equal(Seg.isEmojiOnly('（小声）'), false);
 });
 
-test('split: a line that is too long is cut at sentence ends, packed up to maxLen', () => {
-  const long = '今天的天气真的很不错，早上有点凉，记得多穿一点。中午出太阳了，可以出去走走晒晒太阳。晚上又会降温，记得加件外套哦～';
-  const out = Seg.split(long);
-  assert.deepEqual(out, ['今天的天气真的很不错，早上有点凉，记得多穿一点。', '中午出太阳了，可以出去走走晒晒太阳。晚上又会降温，记得加件外套哦～']);
-  assert.equal(out.join(''), long);
-  assert.ok(out.every((s) => [...s].length <= 36));
-  // one sentence longer than maxLen stays whole rather than cut mid-sentence
-  const one = '这是一句没有任何句号而且特别特别特别特别特别特别特别特别特别特别长的话';
-  assert.deepEqual(Seg.split(one, { maxLen: 12 }), [one]);
-  // a smaller maxLen makes more messages
-  assert.deepEqual(Seg.split('好的！马上去！等我一下哦！', { maxLen: 8 }), ['好的！马上去！', '等我一下哦！']);
+test('plan: a streamed line keeps its emoji, and a reply of one line never becomes several messages', () => {
+  assert.deepEqual(Seg.plan('🥺 在'), { segments: ['🥺 在'], complete: 0 });
+  assert.deepEqual(Seg.plan('🥺 在吗？', { final: true }).segments, ['🥺 在吗？']);
+  assert.deepEqual(Seg.plan('今天天气不错。晚上要降温。'), { segments: ['今天天气不错。晚上要降温。'], complete: 0 });
 });
 
 test('split: more than `max` messages — the rest folds into the last one', () => {
@@ -71,7 +69,6 @@ test('split: code, Markdown lists and long answers are kept whole', () => {
 test('plan: streamed text — ended lines are complete, the open line is not; prefix-stable as it grows', () => {
   assert.deepEqual(Seg.plan('😝\n在吗？\n有点想'), { segments: ['😝', '在吗？', '有点想'], complete: 2 });
   assert.deepEqual(Seg.plan('😝'), { segments: ['😝'], complete: 0 }); // may still grow into 「😝 在吗」
-  assert.deepEqual(Seg.plan('😝 在'), { segments: ['😝', '在'], complete: 1 });
   assert.deepEqual(Seg.plan('😝\n'), { segments: ['😝'], complete: 1 });
   assert.deepEqual(Seg.plan(''), { segments: [], complete: 0 });
   assert.deepEqual(Seg.plan('a\nb', { final: true }), { segments: ['a', 'b'], complete: 2 });
@@ -260,14 +257,53 @@ test('persona: the system role asks for short messages one per line in a playful
   const on = persona.buildSystemRole({ speciesId: 'claude', name: '小芽', settings: settings.normalizeSettings(null) });
   assert.match(on, /每条单独一行/);
   assert.match(on, /调皮/);
-  assert.match(on, /🥺\n {4}在吗？\n {4}有点想你了。/);
+  assert.match(on, /核心是自然/);
+  assert.match(on, /一句就够就只发一条/); // one message is a normal reply: not told to always split
+  assert.match(on, /\[节奏\]/);
+  assert.match(on, /不要每次都拿表情开头/);
+  assert.doesNotMatch(on, /拆成 2–/);
+  assert.match(on, /🥺\n {4}在吗？\n {4}有点想你了。/); // the long form is still there when the moment calls for it
+  assert.match(on, /下午三点二十。/); // and it is not the only example
+  assert.match(on, /连发到 5 条/);
   assert.match(on, /6 条封顶/);
   const s4 = settings.normalizeSettings({ prefs: { segmentMax: 4 } });
-  assert.match(persona.buildSystemRole({ speciesId: 'claude', name: '小芽', settings: s4 }), /2–4 条短消息/);
+  assert.match(persona.buildSystemRole({ speciesId: 'claude', name: '小芽', settings: s4 }), /连发到 4 条/);
   const off = settings.normalizeSettings({ prefs: { segmented: false } });
   assert.doesNotMatch(persona.buildSystemRole({ speciesId: 'claude', name: '小芽', settings: off }), /每条单独一行/);
   // turning it on / off or changing the cap updates her agent's role (personaKey)
   const pet = { speciesId: 'claude', name: '小芽', relStage: 'stranger', peakStage: 'stranger', affection: 0 };
   const keys = new Set([settings.normalizeSettings(null), s4, off].map((x) => persona.personaKey(pet, x)));
   assert.equal(keys.size, 3);
+});
+
+test('rhythm: each owner message rolls how much she feels like saying; a long absence makes a burst likely; off adds nothing', () => {
+  const on = settings.normalizeSettings(null);
+  const now = 1e12;
+  const near = { lastInteractionAt: now - 60000 };
+  const far = { lastInteractionAt: now - 3 * 86400000 };
+  const seq = (...v) => () => v.shift();
+  assert.equal(persona.rhythmHint(near, now, on, seq(0.05, 0.1)), '[节奏] 这次话有点多，连发 4–5 条短消息，其中一条可以只发一个表情。');
+  assert.equal(persona.rhythmHint(near, now, on, seq(0.3, 0.9)), '[节奏] 这次就回一条，一句话接住就好，不用表情。');
+  assert.equal(persona.rhythmHint(near, now, on, seq(0.3, 0.1)), '[节奏] 这次就回一条，一句话接住就好，带个表情。');
+  assert.equal(persona.rhythmHint(near, now, on, seq(0.9, 0.9)), '[节奏] 这次有两三句想说，分 2–3 条发，不用表情。');
+  assert.match(persona.rhythmHint(far, now, on, seq(0.5, 0.9)), /连发 4–5 条/); // not for someone who was just here
+  assert.match(persona.rhythmHint(near, now, on, seq(0.5, 0.9)), /就回一条/);
+  assert.match(persona.rhythmHint(near, now, settings.normalizeSettings({ prefs: { segmentMax: 3 } }), seq(0.05, 0.9)), /连发 3 条/);
+  assert.equal(persona.rhythmHint(near, now, settings.normalizeSettings({ prefs: { segmented: false } })), '');
+  // over many rolls it is a mix, and never one shape
+  let n = 0;
+  const rnd = () => { n = (n * 9301 + 49297) % 233280; return n / 233280; };
+  const hints = Array.from({ length: 400 }, () => persona.rhythmHint(near, now, on, rnd));
+  const share = (re) => hints.filter((h) => re.test(h)).length / hints.length;
+  assert.ok(share(/就回一条/) > 0.35 && share(/就回一条/) < 0.65, `one: ${share(/就回一条/)}`);
+  assert.ok(share(/连发/) > 0.03 && share(/连发/) < 0.25, `burst: ${share(/连发/)}`);
+  assert.ok(share(/不用表情/) > 0.5);
+  // it reaches the turn's prompt, right before her owner's words
+  const pet = require('../src/core/pet-state').createPet({ speciesId: 'claude', name: 'E', agentId: 'a', now });
+  assert.match(persona.buildChatPrompt('嗨', pet, now, { settings: on, rnd: seq(0.9, 0.9) }), /\[节奏\] 这次有两三句想说，分 2–3 条发，不用表情。\n嗨$/);
+  assert.doesNotMatch(persona.buildChatPrompt('嗨', pet, now, { settings: settings.normalizeSettings({ prefs: { segmented: false } }) }), /\[节奏\]/);
+  // the absence is the one from before this message: her state block says so and a burst is likely
+  const back = persona.buildChatPrompt('嗨', pet, now, { settings: on, lastSeenAt: now - 3 * 86400000, rnd: seq(0.5, 0.9) });
+  assert.match(back, /距上次互动4320分钟/);
+  assert.match(back, /连发 4–5 条/);
 });

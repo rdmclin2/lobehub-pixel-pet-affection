@@ -4,7 +4,7 @@
 //   scenario "live"   -> the real `lh` CLI against LobeHub (creates and deletes a real agent)
 //   scenario "latency" -> 聊天窗口 vs 桌面 测速 (e2e/chat-latency.js, real LobeHub, not in `all`): `node e2e/run.js latency <label>`
 //   scenario "segmented" -> 分段式表达: one reply as 4+ short messages appearing one by one with typing gaps (e2e/segmented.js)
-//   scenario "segmentedlive" -> 分段式表达 with the REAL agent (tokens; not in "all"): one turn ≥4 messages one by one, a cut-in mid-reply, 聊天记录 (e2e/segmented-live.js)
+//   scenario "segmentedlive" -> 分段式表达 with the REAL agent (tokens; not in "all"): a natural conversation whose reply shapes vary and reach ≥4 messages, a cut-in mid-reply, 聊天记录 (e2e/segmented-live.js)
 //   scenario "stream" -> 流式回复: a fake lh that prints the reply piece by piece; the bubble grows, then corrects
 //   scenario "wardrobepack" -> 衣柜按角色隔离 (T-2752/T-2764/T-2784): 「大肥鱼 · 像素」 and 「大肥鱼 · Live2D」 are two characters in 角色图鉴; each one's 衣柜 is a card list of her own outfits (try on, 穿上, 正在穿, 新, 成人), unsupported outfits refused
 //   scenario "catalogdl" -> 内置与下载: a new install offers the 5 pixel characters; the others are downloaded from 商店 (progress, sha256, 原版动画 clips, 删除下载 → 需要下载 notice)
@@ -7144,7 +7144,7 @@ const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, 
 const stickersScenario = () => require('./stickers')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 // 分段式表达 (docs/segmented-reply.md): one reply as several short messages, shown one by one (no tokens)
 const segmentedScenario = () => require('./segmented')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, adminUntil, hover, clickAct })();
-// 分段式表达 with the real agent (tokens: greeting + 2 turns; not in "all"; e2e/segmented-live.js)
+// 分段式表达 with the real agent (tokens: about 12–16 calls; not in "all"; e2e/segmented-live.js)
 const segmentedLiveScenario = () => require('./segmented-live')({ OUT, step, launch, openAdminWindow, adminUntil, hover, clickAct })();
 const chatUiScenario = () => require('./chat-ui')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
 // 音乐创作 in the chat (T-5090): natural language → compose_music → a playable song in the bubble and in 聊天
