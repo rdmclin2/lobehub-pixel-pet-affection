@@ -1324,6 +1324,20 @@ class PetService extends EventEmitter {
     }
   }
 
+  // 她的房间: main sets `roomHook(text) → note` while an illustrated room is open in the game window
+  // (main.js roomChat): it matches the message (core/room-intent.js), switches her there and returns the prompt note.
+  // A hook that throws never stops the chat.
+  async _roomNote(text, origin, attachments) {
+    if (typeof this.roomHook !== 'function' || origin !== 'user' || !text) return '';
+    try { return String((await this.roomHook(text, { attachments })) || ''); } catch (e) { this.emit('error', e); return ''; }
+  }
+
+  // her finished reply, for the room (main.js → core/room-chat.js onReply): 「我把灯关了」 → the lamp goes off in the picture
+  _roomReply(text) {
+    if (typeof this.roomReplyHook !== 'function' || !text) return;
+    try { this.roomReplyHook(text); } catch (e) { this.emit('error', e); }
+  }
+
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
   // `files`: paths of dropped files/folders; they are NOT uploaded: the agent reads them with her local
   // tools (run here, or through the bound device), so local abilities must be on.
@@ -1347,6 +1361,9 @@ class PetService extends EventEmitter {
     if (origin === 'user') this.interjector.userChatted(clean);
     const turn = this._logUser(clean, origin === 'api' ? 'api' : 'user', 'chat', { images: images.length, files: paths.map((f) => path.basename(f)) }, sticker);
     if (sticker) this.emit('chat-log', { speciesId: c.speciesId }); // the settings window's chat shows it too
+    // 她的房间 (docs/illustrated-room.md §4): with her room open, 「回床上休息吧」 switches her state right away —
+    // before the model answers — and the note tells her agent what she just did there
+    const room = await this._roomNote(clean, origin, images.length + paths.length);
     const stream = this._openStream('chat', turn);
     const trace = latency.createTrace('desktop');
     stream.trace = trace;
@@ -1383,7 +1400,7 @@ class PetService extends EventEmitter {
         body = [clean, paths.length ? persona.buildFilesBlock(paths, !!clean) : ''].filter(Boolean).join('\n');
       }
       if (sticker) body = [body, adminChat.stickerLine(sticker)].filter(Boolean).join('\n');
-      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus });
+      const prompt = persona.buildChatPrompt(body, c, t, { local, settings: this._promptSettings(), localScope: local ? aiFolders.scopeHint(this._toolScope(paths)) : '', music: musicStatus, room });
       trace.set('bodyChars', body.length);
       trace.set('promptChars', prompt.length);
       trace.set('topicFresh', !c.topicId);
@@ -1397,6 +1414,7 @@ class PetService extends EventEmitter {
       const text = this._guard(res.text);
       const music = musicCtx.results;
       this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream, { music }));
+      if (room) this._roomReply(text);
       trace.mark('doneSent');
       this._reportAffection(affection);
       ok = true;
@@ -1446,7 +1464,10 @@ class PetService extends EventEmitter {
         const conv = e ? adminChat.conversationOf(all, x.id) : [];
         const last = conv[conv.length - 1] || null;
         const lastText = last ? (last.text || '').replace(/\s+/g, ' ').trim() : '';
-        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || chatLog.stickerLabel(last) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
+        const current = x.id === this.pet.speciesId;
+        // where the companion is now: on the desktop, or in the game she is playing (her desktop window hides meanwhile)
+        const place = current ? (typeof this.placeHook === 'function' && this.placeHook() ? `在${this.placeHook()}` : '在桌面') : undefined;
+        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current, place, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || chatLog.stickerLabel(last) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
       }),
     };
   }
@@ -1587,7 +1608,9 @@ class PetService extends EventEmitter {
       const musicStatus = this._musicStatus({ plain: true });
       trace.set('musicReason', musicStatus.reason);
       musicCtx = { kind: 'console', speciesId: id, turnId, streamId: null, results: [], errors: [] };
-      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings(), music: musicStatus });
+      // 她的房间: talking here to the companion whose room is open moves her there too
+      const room = id === this.pet.speciesId ? await this._roomNote(clean, 'user', imgs.length) : '';
+      const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings(), music: musicStatus, room });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
       trace.set('recallMsgs', recall.length);
@@ -1639,6 +1662,7 @@ class PetService extends EventEmitter {
         reply = contentGuard.refusalLine(sp);
       }
       c.lastSpokeAt = this.now();
+      if (room) this._roomReply(reply);
       const music = musicCtx.results;
       const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}), ...(music.length ? { attachments: { music } } : {}), ...(g.ok ? stickerField(replySticker) : {}) });
       // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though
@@ -2134,6 +2158,50 @@ class PetService extends EventEmitter {
     this._save();
     this._reportAffection(r);
     return { ok: true, title: String(title || ''), affection: r };
+  }
+
+  // 像素房间 (docs/her-room-design.md §2.1, §3.2): her three numbers the room shows and moves — 精力, 心情 and 饱腹
+  // (100 − hunger) of her base. The room's 专注 is the game's own (src/main/games.js).
+  roomStats() {
+    if (!this.pet) return null;
+    const c = this._c();
+    const n = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : d);
+    return { base: this.pet.speciesId, energy: n(c.energy, 50), mood: n(c.mood, 50), fullness: 100 - n(c.hunger, 50) };
+  }
+
+  // 像素房间: how each room's character looks (her pack's daily outfit, for the room picker's avatars), and the
+  // room's owner in the outfit her room asks for (`theme.outfit`) — only in her own room; without that outfit in
+  // her pack she looks as she does now
+  roomLooks(themes = []) {
+    if (!this.pet) return { characters: {}, looks: {} };
+    const base = this.pet.speciesId;
+    const cid = this._cid();
+    const characters = {};
+    const looks = {};
+    for (const t of themes) {
+      if (!t || !Object.hasOwn(SPECIES, t.character)) continue;
+      if (!characters[t.character]) characters[t.character] = { id: t.character, name: SPECIES[t.character].nameZh, look: this.lookFor(t.character, outfits.DEFAULT_OUTFIT) };
+      if (t.status === 'open' && t.character === base && typeof t.outfit === 'string') {
+        const has = outfits.listOutfits(this._wearer(cid), this.settings, this._look(cid)).some((o) => o.id === t.outfit && !o.locked);
+        looks[t.id] = has ? this.lookFor(cid, t.outfit) : null;
+      }
+    }
+    return { characters, looks };
+  }
+
+  // a room activity was settled (main worked it out, core/room-play.js): only energy, mood and hunger change,
+  // held to 0–100. Her sleep state on the desktop is not touched — sleeping in the room does not put her to sleep
+  // there. Saved and pushed (`update`), so her panel and the settings window show the new numbers at once.
+  roomSettle({ energy, mood, fullness } = {}) {
+    if (!this.pet) return null;
+    const c = this._c();
+    const cl = (v) => Math.max(0, Math.min(100, Math.round(v)));
+    if (Number.isFinite(energy)) c.energy = cl(energy);
+    if (Number.isFinite(mood)) c.mood = cl(mood);
+    if (Number.isFinite(fullness)) c.hunger = cl(100 - fullness);
+    c.lastInteractionAt = this.now();
+    this._save();
+    return this.roomStats();
   }
 
   touch(target) {

@@ -14,7 +14,11 @@
 //   scenario "admin"  -> 配置后台: the settings window (single instance), every page light + dark, a change taking effect in the pet window, roster
 //   scenario "design" -> the design-system preview (admin bundle, @lobehub/ui) in light + dark, offline under CSP
 //   scenario "petpanel" -> 她的面板: right click / long press on her opens one card (state + actions), closing it, each button; 检查更新… in the menu bar
+//   scenario "roomaccept" -> 像素房间 上架验收 with the games repository's pack (e2e/pixel-room-accept.js), out/e2e/pixel-room-accept/
 //   scenario "gamedocs" -> 小游戏 docs pictures (time × weather, her places, interactions, the store) and the demo clip, written to docs/img/mini-games/
+//   scenario "herroomaccept" -> 她的房间 上架验收: the real CDN pack from the store, chat for every activity, the real agent (e2e/her-room-accept.js), out/e2e/her-room-accept/
+//   scenario "illustrated" -> 她的房间 (docs/illustrated-room.md): the illustrated sample pack from the store; living layers, the lamp, six states by real clicks, screens, hotspots, chat in the game window switching her
+//   scenario "room"     -> 像素房间 (docs/her-room-design.md): 商店 → 小游戏 downloads the minimal room pack (a local mirror); five activities by real clicks, the room picker (1 open + 4 即将开放), settling (whole / early / switch / close / killed)
 //   scenario "game"     -> 小游戏 (docs/mini-games.md): 商店 → 小游戏 downloads 像素小院 (a local mirror), tray / panel ⌂ / Ctrl+Shift+H open it; Pixi renders; time and weather; she roams, walks to a click, uses things; quests give affection; persists
 //   scenario "petui"  -> the pet window UI (bubble, HUD, chat box, food menu, toast) in light + dark (LobeHub tokens)
 //   scenario "frontslim" -> 前台精简 (T-2718): only ⚙ in the pet window; every old ⋯ menu item clicked in the settings window
@@ -7170,6 +7174,12 @@ const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step
 // 小游戏 (docs/mini-games.md): the store's game packs played in the game window — download, entry, rendering, time / weather, her walking, things, quests, persistence
 const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
 const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
+// 像素房间 (docs/her-room-design.md §7.2): the room@1 game from the store — five activities, the room picker, settling
+const miniRoomScenario = () => require('./mini-room')({ ROOT, OUT, FAKE_LH, step, launch });
+// 她的房间 (docs/illustrated-room.md): the illustrated-room@1 sample pack from the store — layers, lamp, six states, screens, hotspots, chat-driven
+const herRoomAcceptScenario = () => require('./her-room-accept')({ ROOT, OUT, step, launch });
+const illustratedRoomScenario = () => require('./illustrated-room')({ ROOT, OUT, FAKE_LH, step, launch });
+const pixelRoomAcceptScenario = () => require('./pixel-room-accept')({ ROOT, OUT, FAKE_LH, step, launch });
 const vrmScenarios = () => require('./vrm')({ ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds });
 // Live2D 取景 (半身): e2e/live2d-frame.js
 const stickersScenario = () => require('./stickers')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow })();
@@ -12925,6 +12935,10 @@ async function interjectScenario() {
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'game' || which === 'all') await miniGameScenario()();
+  if (which === 'room' || which === 'all') await miniRoomScenario()();
+  if (which === 'illustrated' || which === 'all') await illustratedRoomScenario()();
+  if (which === 'herroomaccept') await herRoomAcceptScenario()(); // 她的房间 上架验收: real CDN, real agent (tokens), real pointer, whole-screen recording (xvfb-run -s "-screen 0 1600x1000x24"), not in `all`
+  if (which === 'roomaccept') await pixelRoomAcceptScenario()(); // 像素房间 上架验收: the games repository's real pack, fresh save, real pointer (xdotool), real-length rounds, whole-screen recording (xvfb-run -s "-screen 0 1600x1000x24"), not in `all`
   if (which === 'gamedocs') await gameDocsScenario()(); // 小游戏 docs pictures + demo clip into docs/img/mini-games/ (ffmpeg x11grab; xvfb-run -s "-screen 0 1280x800x24"), not in `all`
   if (which === 'admin' || which === 'all') await adminScenario();
   if (which === 'music' || which === 'all') await musicSettingsScenario();

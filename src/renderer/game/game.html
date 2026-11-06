@@ -6,15 +6,19 @@
   <title>小游戏</title>
   <link rel="stylesheet" href="../design/lobe-tokens.css" />
   <link rel="stylesheet" href="game.css" />
+  <link rel="stylesheet" href="engines/room.css" />
+  <link rel="stylesheet" href="engines/illustrated-room.css" />
 </head>
 <body data-phase="day">
-  <!-- 小游戏 (src/main/game-window.js, docs/mini-games.md): the world is one PixiJS stage (game.js); the title bar,
-       the 天色 card, the toolbar, 今日小事 and her bubble are DOM on top of it. -->
+  <!-- 小游戏 (src/main/game-window.js, docs/mini-games.md): the world is one PixiJS stage — game.js for a yard@1
+       pack (像素小院), engines/room.js for a room@1 pack (像素房间, docs/her-room-design.md), engines/illustrated-room.js
+       for an illustrated-room@1 pack (她的房间, docs/illustrated-room.md); the title bar, the
+       天色 card, the toolbar, 今日小事 and her bubble are DOM on top of it. -->
   <div id="stage" aria-label="小游戏画面：点空地让她走过去，点物件让她去玩，拖动画面平移，滚轮缩放"></div>
   <div id="bubble" class="bubble hidden" role="status" aria-live="polite"></div>
   <div id="tip" class="tip hidden"></div>
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-  <div id="loading" class="loading">正在打开小院…</div>
+  <div id="loading" class="loading">正在打开…</div>
 
   <header class="titlebar">
     <span id="game-name" class="title">小游戏</span>
@@ -88,7 +92,13 @@
   <script src="../../core/game-pet.js"></script>
   <script src="../../core/game-sky.js"></script>
   <script src="../../core/game-quests.js"></script>
+  <script src="../../core/room-play.js"></script>
+  <script src="../../core/illustrated-room-play.js"></script>
   <script src="game-icons.js"></script>
+  <script src="game-boot.js"></script>
   <script src="game.js"></script>
+  <script src="engines/room.js"></script>
+  <script src="engines/screen-content.js"></script>
+  <script src="engines/illustrated-room.js"></script>
 </body>
 </html>
