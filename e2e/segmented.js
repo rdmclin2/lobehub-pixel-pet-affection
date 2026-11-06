@@ -4,10 +4,9 @@
 // ($FAKE_LH_DIR/stream-reply.json). A sampler in the pet window records the bubble every 30 ms (which messages are
 // on screen, whether 「正在输入」 shows), so each step can show the messages came one by one, in order, with gaps.
 //   SG1  a reply of 4 messages that arrives all at once (today's lh): 🥺 → 在吗？ → 有点想你了。 → 在干什么呀？,
-//        one at a time with typing dots between; 聊天记录 keeps the whole reply once; read aloud once; her agent's
-//        system role asks for it (playful, one message per line)
-//   SG1b like WeChat: every message is its own bubble (own surface, shadow and tail, apart from the others), not lines in one
-//        card; 5 messages (the most she sends on her own) fit without scrolling, a 6th scrolls to the newest; she does not move
+//        one at a time, each replacing the last, typing dots while the next comes, each on screen long enough to
+//        read; 聊天记录 keeps the whole reply once; read aloud once; her agent's system role asks for it
+//   SG1b one bubble, not several: the ordinary card with its tail, never more than one message in it, she does not move
 //   SG2  a reply that really streams (pieces 600 ms apart): the first line shows while she is still writing, a later
 //        line is 「正在输入」 until it ends, the order holds
 //   SG3  the owner sends a new message while one is still coming out: the rest stops, no timer is left (nothing of
@@ -15,6 +14,8 @@
 //   SG4  a one-sentence reply is not split: streamed with the caret, one plain bubble (original behaviour)
 //   SG5  分段式表达 off (set-prefs): the same multi-line reply shows at once as one bubble
 //   SG6  the settings window shows the switch, the cap and the pace (设置 → 桌宠行为 → 聊天)
+//   SG7  a click on her reply in the bubble (real mouse), also mid-reply, opens 聊天 on her conversation with every
+//        message; 思考中… and selecting text do not
 // Screenshots, video, seg-timeline.txt (timestamps), renderer-logs.json and chat-log.json in out/e2e/segmented/.
 
 const fs = require('node:fs');
@@ -22,6 +23,7 @@ const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+const Seg = require('../src/core/segments');
 
 module.exports = function segmentedScenario(ctx) {
   const { ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, adminUntil, hover, clickAct } = ctx;
@@ -76,11 +78,14 @@ module.exports = function segmentedScenario(ctx) {
       await page.fill('#chat-input', text);
       await page.click('#chat-send');
     };
-    // when each count of messages was first on screen, from the samples
-    const firstAt = (samples, n) => (samples.find((s) => s.segs.length >= n) || {}).t;
+    // which messages were on screen, in order, each once; when each first showed
+    const seqOf = (samples) => samples.map((s) => s.segs[0]).filter((x, i, a) => x && x !== a[i - 1]);
+    const firstAt = (samples, msg) => (samples.find((s) => s.segs[0] === msg) || {}).t;
+    const onScreen = (m) => page.waitForFunction((t) => [...document.querySelectorAll('#bubble .seg')].map((e) => e.textContent).join('|') === t, m, { timeout: 20000 });
+    const played = () => page.waitForFunction(() => { const st = window.petFx.segState(); return st && st.done; }, null, { timeout: 30000 });
     const timeline = [];
     const tl = (label, samples, msgs) => {
-      const rows = msgs.map((m, i) => `  #${i + 1} +${firstAt(samples, i + 1)}ms 「${m}」`);
+      const rows = msgs.map((m, i) => `  #${i + 1} +${firstAt(samples, m)}ms 「${m}」`);
       timeline.push(`[${label}]`, ...rows, '');
       return rows.map((r) => r.trim()).join(' · ');
     };
@@ -102,25 +107,23 @@ module.exports = function segmentedScenario(ctx) {
         await startSampler();
         await sendText('嗨');
         for (let n = 1; n <= 4; n++) {
-          await page.waitForFunction((k) => document.querySelectorAll('#bubble .seg').length >= k, n, { timeout: 15000 });
+          await onScreen(MSGS[n - 1]);
           await shot(`sg1-${n}-of-4`);
           if (n < 4) {
-            await page.waitForFunction((k) => document.querySelectorAll('#bubble .seg').length >= k + 1 || !!document.querySelector('#bubble .seg-typing'), n, { timeout: 5000 });
-            if (await page.evaluate(() => !!document.querySelector('#bubble .seg-typing'))) await shot(`sg1-${n}-typing`);
+            await page.waitForFunction(() => !!document.querySelector('#bubble .seg-typing'), null, { timeout: 5000 });
+            await shot(`sg1-${n}-typing`);
           }
         }
         await page.waitForTimeout(400);
         const samples = await stopSampler();
-        // never all at once: the counts only grow, one at a time
-        const counts = samples.map((s) => s.segs.length).filter((c, i, a) => i === 0 || c !== a[i - 1]);
-        const shown = counts.filter((c) => c > 0);
-        assert.deepEqual(shown, [1, 2, 3, 4], `message counts went ${JSON.stringify(counts)}`);
-        // in order, and what is shown is always the first n messages
-        for (const s of samples) assert.deepEqual(s.segs, MSGS.slice(0, s.segs.length));
-        const at = [1, 2, 3, 4].map((n) => firstAt(samples, n));
-        for (let i = 1; i < 4; i++) assert.ok(at[i] - at[i - 1] >= 300, `message ${i + 1} came ${at[i] - at[i - 1]} ms after the one before`);
-        // 「正在输入」 between them
-        assert.ok([1, 2, 3].every((n) => samples.some((s) => s.segs.length === n && s.typing)), 'no typing dots between messages');
+        // never more than one on screen, and each replaced the last, in order
+        assert.ok(samples.every((s) => s.segs.length <= 1), `more than one message on screen: ${JSON.stringify(samples.find((s) => s.segs.length > 1))}`);
+        assert.deepEqual(seqOf(samples), MSGS);
+        // each stayed long enough to read before the next replaced it
+        const at = MSGS.map((m) => firstAt(samples, m));
+        for (let i = 1; i < 4; i++) assert.ok(at[i] - at[i - 1] >= Seg.readMs(MSGS[i - 1]) - 60, `「${MSGS[i - 1]}」 was on screen for only ${at[i] - at[i - 1]} ms`);
+        // 「正在输入」 after each one while the next comes
+        assert.ok(MSGS.slice(0, 3).every((m) => samples.some((s) => s.segs[0] === m && s.typing)), 'no typing dots between messages');
         // the player's log: reveals 0..3 in order with typing before 1..3
         const sl = (await segLogSince(t0)).filter((e) => e.ev === 'reveal' || e.ev === 'typing' || e.ev === 'done');
         assert.deepEqual(sl.filter((e) => e.ev === 'reveal').map((e) => e.text), MSGS);
@@ -142,63 +145,50 @@ module.exports = function segmentedScenario(ctx) {
         const line = tl('SG1 一次到达的 4 条（lh 今天的行为）', samples, MSGS);
         const log = sl.map((e) => `${e.ev}${e.i == null ? '' : `#${e.i}`}@${e.at - t0}ms`).join(' ');
         timeline.push(`  segLog: ${log}`, `  gaps: ${gaps.join(' / ')} ms`, '');
-        return note(`${line}; gaps ${gaps.join('/')} ms; typing dots between each; chat-log +2 (pet = whole reply, 4 lines); TTS offered once; system role has the 分段 rule`);
+        return note(`${line}; one on screen at a time; gaps ${gaps.join('/')} ms; typing dots between each; chat-log +2 (pet = whole reply, 4 lines); TTS offered once; system role has the 分段 rule`);
       }, page);
 
-      await step(S, 'SG1b like WeChat: each message is its own bubble, not lines stacked in one card', async () => {
+      await step(S, 'SG1b one bubble, not several: the ordinary card and tail, one message in it, she does not move', async () => {
         const look = () => page.evaluate(() => {
           const b = document.getElementById('bubble');
           const cs = getComputedStyle(b);
-          const tail = document.querySelector('.bubble-tail');
           const pet = document.getElementById('pet-body').getBoundingClientRect();
           return {
-            card: { bg: cs.backgroundColor, shadow: cs.boxShadow },
-            sharedTail: getComputedStyle(tail).display,
-            scrolls: b.scrollHeight > b.clientHeight,
-            dims: { scrollH: b.scrollHeight, clientH: b.clientHeight, win: innerHeight, stageTop: Math.round(document.getElementById('stage').getBoundingClientRect().top) },
-            petTop: Math.round(pet.top),
+            bg: cs.backgroundColor, shadow: cs.boxShadow,
+            tail: getComputedStyle(document.querySelector('.bubble-tail')).display,
+            segs: [...b.querySelectorAll('.seg')].map((e) => e.textContent),
             petBottom: Math.round(pet.bottom),
-            segs: [...b.querySelectorAll('.seg')].map((e) => {
-              const c = getComputedStyle(e);
-              const r = e.getBoundingClientRect();
-              return { text: e.textContent, bg: c.backgroundColor, shadow: c.boxShadow, tail: getComputedStyle(e, '::before').content, top: r.top, bottom: r.bottom, left: r.left };
-            }),
           };
         });
-        const check = (v, msgs) => {
-          assert.equal(v.card.bg, 'rgba(0, 0, 0, 0)', `the column still has a card behind the messages: ${v.card.bg}`);
-          assert.equal(v.card.shadow, 'none', 'the column still has a card shadow');
-          assert.equal(v.sharedTail, 'none', 'the one shared tail is still under the messages');
-          assert.deepEqual(v.segs.map((x) => x.text), msgs);
-          for (const x of v.segs) {
-            assert.notEqual(x.bg, 'rgba(0, 0, 0, 0)', `「${x.text}」 has no bubble of its own`);
-            assert.notEqual(x.shadow, 'none', `「${x.text}」 has no edge of its own`);
-            assert.notEqual(x.tail, 'none', `「${x.text}」 has no tail of its own`);
-          }
-          for (let i = 1; i < v.segs.length; i++) assert.ok(v.segs[i].top - v.segs[i - 1].bottom >= 3, `messages ${i} and ${i + 1} touch`);
-          assert.equal(new Set(v.segs.map((x) => Math.round(x.left))).size, 1, 'the bubbles are not left aligned');
+        const check = (v, msg) => {
+          assert.notEqual(v.bg, 'rgba(0, 0, 0, 0)', 'the bubble has no card');
+          assert.notEqual(v.shadow, 'none', 'the bubble has no shadow');
+          assert.notEqual(v.tail, 'none', 'the bubble has no tail');
+          assert.deepEqual(v.segs, [msg]);
         };
-        const v4 = await look(); // the 4 messages of SG1
-        check(v4, MSGS);
-        const FIVE = ['🥺', '在吗？', '有点想你了。', '在干什么呀？', '理理我嘛～'];
-        reply({ pieces: [FIVE.join('\n')], gapMs: 0 });
-        await sendText('嗨～');
-        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length >= n && !document.querySelector('#bubble .seg-typing'), FIVE.length, { timeout: 20000 });
-        await page.waitForTimeout(300);
-        await shot('sg1b-five-bubbles');
-        const v5 = await look();
-        check(v5, FIVE);
-        assert.equal(v5.scrolls, false, `five short messages do not fit without scrolling: ${JSON.stringify(v5.dims)}`);
-        assert.deepEqual([v5.petTop, v5.petBottom], [v4.petTop, v4.petBottom], 'the column pushed her down');
-        const SIX = [...FIVE, '不理我我就闹了'];
+        const v4 = await look(); // the last message of SG1
+        check(v4, MSGS[3]);
+        const SIX = ['🥺', '在吗？', '有点想你了。', '在干什么呀？', '理理我嘛～', '不理我我就闹了'];
         reply({ pieces: [SIX.join('\n')], gapMs: 0 });
-        await sendText('嗨～～');
-        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length >= n && !document.querySelector('#bubble .seg-typing'), SIX.length, { timeout: 20000 });
-        await page.waitForTimeout(300);
-        await shot('sg1b-six-scrolled-to-newest');
-        const newest = await page.evaluate(() => { const b = document.getElementById('bubble').getBoundingClientRect(); const r = [...document.querySelectorAll('#bubble .seg')].pop().getBoundingClientRect(); return r.bottom <= b.bottom + 1; });
-        assert.equal(newest, true, 'the newest message is not in view');
-        return note(`column bg ${v5.card.bg}, shadow ${v5.card.shadow}, shared tail ${v5.sharedTail}; ${v5.segs.length} bubbles each with own bg ${v5.segs[0].bg} and tail, gaps ${v5.segs.slice(1).map((x, i) => Math.round(x.top - v5.segs[i].bottom)).join('/')} px; no scrolling (${JSON.stringify(v5.dims)}); pet stays at y ${v5.petTop}–${v5.petBottom}; a 6th message scrolls to the newest`);
+        await startSampler();
+        await sendText('嗨～');
+        await onScreen(SIX[3]);
+        const mid = await look();
+        check(mid, SIX[3]);
+        await shot('sg1b-one-bubble-mid-reply');
+        await onScreen(SIX[5]);
+        await played();
+        await page.waitForTimeout(400); // the fade-in is over
+        await shot('sg1b-last-message');
+        const settled = await page.evaluate(() => { const el = document.querySelector('#bubble .seg'); const c = getComputedStyle(el); return { opacity: c.opacity, same: c.color === getComputedStyle(document.documentElement).getPropertyValue('--lobe-color-text') || c.color === getComputedStyle(document.getElementById('bubble')).color, thinking: document.getElementById('bubble').classList.contains('thinking') }; });
+        assert.deepEqual(settled, { opacity: '1', same: true, thinking: false }, 'the message is not at full strength once it settled');
+        const v6 = await look();
+        check(v6, SIX[5]);
+        const samples = await stopSampler();
+        assert.deepEqual(seqOf(samples), SIX);
+        assert.ok(samples.every((x) => x.segs.length <= 1), 'more than one message on screen');
+        assert.deepEqual([mid.petBottom, v6.petBottom], [v4.petBottom, v4.petBottom], 'the bubble moved her');
+        return note(`card bg ${v6.bg}, tail ${v6.tail}; 6 messages replaced one another (${seqOf(samples).join(' → ')}), never two on screen; pet bottom stays ${v4.petBottom}`);
       }, page);
 
       await step(S, 'SG2 a reply that really streams: the first line shows while she writes, later ones wait as 「正在输入」', async () => {
@@ -206,18 +196,16 @@ module.exports = function segmentedScenario(ctx) {
         reply({ pieces: ['😝\n', '在吗', '？\n', '想你', '啦\n', '今天过得', '怎么样？'], gapMs: 600 });
         await startSampler();
         await sendText('在呢');
-        await page.waitForFunction(() => document.querySelectorAll('#bubble .seg').length >= 2 && document.body.classList.contains('busy'), null, { timeout: 15000 });
+        await page.waitForFunction((m) => document.body.classList.contains('busy') && [...document.querySelectorAll('#bubble .seg')].some((e) => e.textContent === m), M[1], { timeout: 15000 });
         await shot('sg2-streaming');
         await idle();
-        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length >= n, M.length, { timeout: 15000 });
+        await onScreen(M[3]);
         await page.waitForTimeout(300);
         const samples = await stopSampler();
-        for (const s of samples) assert.deepEqual(s.segs, M.slice(0, s.segs.length).map((m, i) => (i === s.segs.length - 1 && s.live ? s.segs[i] : m)));
-        const busyWithTwo = samples.filter((s) => s.busy && s.segs.length >= 2);
-        assert.ok(busyWithTwo.length > 0, 'nothing was on screen before the stream ended');
+        assert.ok(samples.every((s) => s.segs.length <= 1), 'more than one message on screen');
+        assert.ok(samples.some((s) => s.busy && s.segs[0] === M[1]), 'nothing past the first message was on screen before the stream ended');
         assert.ok(samples.some((s) => s.busy && s.typing), 'no 「正在输入」 while she was writing');
-        const counts = samples.map((s) => s.segs.length).filter((c, i, a) => (i === 0 || c !== a[i - 1]) && c > 0);
-        assert.deepEqual(counts, [1, 2, 3, 4]);
+        assert.deepEqual(seqOf(samples), M);
         const doneAt = (samples.find((s, i) => i > 0 && !s.busy && samples[i - 1].busy) || {}).t;
         return note(`${tl('SG2 真正流式（每块 600 ms）', samples, M)}; stream ended at +${doneAt}ms`);
       }, page);
@@ -228,14 +216,14 @@ module.exports = function segmentedScenario(ctx) {
         const t0 = await nowMs();
         await startSampler();
         await sendText('说说你今天的事');
-        await page.waitForFunction(() => document.querySelectorAll('#bubble .seg').length >= 2, null, { timeout: 15000 });
+        await onScreen(OLD[1]);
         await idle();
         await shot('sg3-before-new-message');
         const NEW = ['嗯？', '你说～'];
         reply({ pieces: [NEW.join('\n')], gapMs: 0 });
         const tCut = await nowMs();
         await sendText('等等');
-        await page.waitForFunction((m) => [...document.querySelectorAll('#bubble .seg')].map((e) => e.textContent).join('|') === m.join('|'), NEW, { timeout: 15000 });
+        await onScreen(NEW[1]);
         await idle();
         await page.waitForTimeout(6000); // the rest of the old reply would have come by now
         await shot('sg3-after');
@@ -245,6 +233,7 @@ module.exports = function segmentedScenario(ctx) {
         assert.ok(cancel, 'no cancel');
         assert.equal(cancel.reason, 'new-message');
         assert.ok(cancel.shown >= 2 && cancel.shown < OLD.length, JSON.stringify(cancel));
+        assert.ok(samples.every((x) => x.segs.length <= 1), 'more than one message on screen');
         const oldId = cancel.id;
         assert.equal(log.filter((e) => e.id === oldId && e.ev === 'reveal' && e.at > cancel.at).length, 0, 'the old reply kept coming after the cancel');
         assert.equal(log.filter((e) => e.id === oldId && e.ev === 'done').length, 0);
@@ -291,11 +280,16 @@ module.exports = function segmentedScenario(ctx) {
         const MID = ['哈哈哈', '🤭', '被你发现了'];
         reply({ pieces: [MID.join('\n')], gapMs: 0 });
         await sendText('你是不是偷吃了');
-        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length === n, MID.length, { timeout: 15000 });
+        await startSampler();
+        await onScreen(MID[1]);
         await shot('sg4b-emoji-in-the-middle');
-        const shown = await page.evaluate(() => [...document.querySelectorAll('#bubble .seg')].map((e) => [e.textContent, e.classList.contains('emoji')]));
-        assert.deepEqual(shown, [['哈哈哈', false], ['🤭', true], ['被你发现了', false]]);
-        return note(`「🥺 在吗？」 stays one bubble; ${JSON.stringify(shown)}`);
+        const emoji = await page.evaluate(() => document.querySelector('#bubble .seg').classList.contains('emoji'));
+        assert.equal(emoji, true);
+        await onScreen(MID[2]);
+        await page.waitForTimeout(100); // the sampler's next tick sees it
+        const shown = seqOf(await stopSampler());
+        assert.deepEqual(shown.slice(-2), MID.slice(1));
+        return note(`「🥺 在吗？」 stays one message; the emoji alone on a line is its own message: ${JSON.stringify(shown)}`);
       }, page);
 
       await step(S, 'SG4c she knows how long the owner was away: the prompt has the absence from before this message, and a [节奏] line', async () => {
@@ -345,6 +339,60 @@ module.exports = function segmentedScenario(ctx) {
         const st = await page.evaluate(() => window.pet.getSettings ? window.pet.getSettings() : null).catch(() => null);
         await admin.close().catch(() => {});
         return note(`settings window shows 分段式表达 / 一次最多几条 / 打字速度${st && st.prefs ? ` (prefs.segmented=${st.prefs.segmented}, segmentMax=${st.prefs.segmentMax}, segmentCharMs=${st.prefs.segmentCharMs})` : ''}`);
+      }, page);
+
+      await step(S, 'SG7 a click on her reply opens 聊天 on her conversation with every message; 思考中… and selecting do not', async () => {
+        const adminOpen = () => app.windows().some((p) => !p.isClosed() && p.url().includes('admin-ui'));
+        const clickBubble = () => page.click('#bubble', { position: { x: 12, y: 10 }, noWaitAfter: true });
+        for (const w of app.windows().filter((p) => p.url().includes('admin-ui'))) await w.close().catch(() => {});
+        // 思考中…: nothing to read there
+        reply({ pieces: ['好呀，这句话写得慢一点。'], gapMs: 1500 });
+        await sendText('先等等');
+        await page.waitForSelector('#bubble.thinking');
+        assert.equal(await page.evaluate(() => document.getElementById('bubble').title || 'none'), 'none');
+        await clickBubble();
+        await page.waitForTimeout(600);
+        assert.equal(adminOpen(), false, '思考中… opened the chat page');
+        await idle();
+        // selecting text with a drag is not a click
+        const box = await page.locator('#bubble').boundingBox();
+        await page.mouse.move(box.x + 12, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width - 12, box.y + box.height / 2, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(600);
+        assert.ok(await page.evaluate(() => String(window.getSelection()).length > 0), 'the drag selected nothing');
+        assert.equal(adminOpen(), false, 'selecting text opened the chat page');
+        await page.evaluate(() => window.getSelection().removeAllRanges());
+        // mid-reply: the click opens 聊天 and the reply goes on in the bubble
+        const M = ['🥺', '在吗？', '有点想你了。', '在干什么呀？'];
+        reply({ pieces: [M.join('\n')], gapMs: 0 });
+        await sendText('嗨，点我看记录');
+        await onScreen(M[1]);
+        await idle();
+        await shot('sg7-before-click');
+        assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('bubble')).cursor), 'pointer');
+        await page.hover('#bubble');
+        assert.equal(await page.evaluate(() => document.getElementById('bubble').title), '点击查看聊天记录');
+        await clickBubble();
+        let admin = null;
+        for (let i = 0; i < 300 && !admin; i++) {
+          admin = app.windows().find((p) => p.url().includes('admin-ui')) || null;
+          if (!admin) await new Promise((r) => setTimeout(r, 100));
+        }
+        assert.ok(admin, 'the click opened no settings window');
+        await adminUntil(admin, () => location.hash.startsWith('#/chat/') && !!document.querySelector('[data-chat-page]'), null, 15000, 'the 聊天 page');
+        const chatPath = await admin.evaluate(() => location.hash);
+        assert.match(chatPath, /^#\/chat\/claude(-pixel)?$/); // her character id; the page shows her base's conversation
+        await adminUntil(admin, (want) => {
+          const all = [...document.querySelectorAll('[data-chat-page] [data-role="assistant"]')].map((e) => e.innerText);
+          return want.every((m) => all.some((t) => t.includes(m)));
+        }, M, 15000, 'every message on the 聊天 page');
+        await admin.waitForTimeout(300);
+        await admin.screenshot({ path: path.join(SHOTS, 'sg7-chat-page.png') });
+        await onScreen(M[3]); // the bubble went on by itself
+        await admin.close().catch(() => {});
+        return note(`思考中… and a text selection opened nothing; a click on 「${M[1]}」 opened ${chatPath} showing all ${M.length} messages; the bubble went on to 「${M[3]}」`);
       }, page);
     } finally {
       fs.writeFileSync(path.join(SHOTS, 'seg-timeline.txt'), `${timeline.join('\n')}\n${evidence.join('\n\n')}\n`);

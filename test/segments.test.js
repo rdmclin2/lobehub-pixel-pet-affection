@@ -123,7 +123,7 @@ function clock() {
     },
   };
 }
-function harness(opts = {}) {
+function harness(opts = {}, hooks = {}) {
   const c = clock();
   const ev = [];
   const p = Seg.createPlayer({
@@ -134,6 +134,7 @@ function harness(opts = {}) {
     update: (i, t) => ev.push(['update', i, t]),
     truncate: (n) => ev.push(['truncate', n]),
     done: (s) => ev.push(['done', s.length, c.now()]),
+    ...hooks,
   }, opts);
   return { c, ev, p };
 }
@@ -168,6 +169,32 @@ test('player: a reply that streams in all at once (lh today) is still paced', ()
   assert.equal(ev.filter((e) => e[0] === 'reveal').length, 2); // 在吗？ after 560 ms of typing
   c.advance(10000);
   assert.deepEqual(ev.filter((e) => e[0] === 'reveal').map((e) => e[2]), ['🥺', '在吗？', '有点想你了。', '在干什么呀？']);
+});
+
+test('readMs: long enough to read before the next replaces it, 1–4 s, an emoji less', () => {
+  assert.equal(Seg.readMs('🥺'), 800);
+  assert.equal(Seg.readMs('好'), 1000);
+  assert.equal(Seg.readMs('有点想你了。'), 1600);
+  assert.equal(Seg.readMs('一'.repeat(100)), 4000);
+});
+
+test('player: with holdMs each message stays long enough to read before the next one, typing or not', () => {
+  const { c, ev, p } = harness({}, { holdMs: Seg.readMs });
+  p.feed('r1', Seg.plan('😝\n在吗？\n有点想你了。\n在干什么？', { final: true }), true);
+  c.advance(10000);
+  // gaps: max(typing of the next, reading of the last): 800, 1150, 1600
+  assert.deepEqual(ev.filter((e) => e[0] === 'reveal').map((e) => e[3]), [0, 800, 1950, 3550]);
+  assert.deepEqual(ev[ev.length - 1], ['done', 4, 3550]);
+});
+
+test('player: holdMs counts from when the message appeared, not from when the next line ended (streamed)', () => {
+  const { c, ev, p } = harness({}, { holdMs: () => 3000 });
+  p.feed('r1', Seg.plan('早呀\n', { final: false }), false);
+  c.advance(2000);
+  p.feed('r1', Seg.plan('早呀\n今天好\n', { final: false }), false);
+  assert.equal(ev.filter((e) => e[0] === 'reveal').length, 1); // only 2 s since the first
+  c.advance(1000);
+  assert.deepEqual(ev.filter((e) => e[0] === 'reveal').map((e) => e[3]), [0, 3000]);
 });
 
 test('player: while streaming, the first line shows live; a later open line is 「正在输入」 and its typing time counts', () => {

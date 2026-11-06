@@ -9,6 +9,7 @@
 //   split(text, opts)            → ['😝', '在吗？', '有点想你了。', '在干什么？']   final reply → messages
 //   plan(text, { final })        → { segments, complete }   streamed text: the last line may still be written
 //   typingMs(seg, i, opts, rnd)  → ms of 「对方正在输入…」 before message i appears
+//   readMs(seg)                  → ms a message stays before the next may replace it (the pet window shows one at a time)
 //   createPlayer(hooks, opts)    → feeds plans in, reveals one message at a time with timers it owns
 //
 // Pure and DOM-free: the renderer loads it as a <script> (window.PetSegments), main and the tests require() it.
@@ -99,6 +100,13 @@
     return Math.round(base * jitter);
   }
 
+  // How long a message needs to be readable, for a surface where the next one replaces it (the pet window's one
+  // bubble): no jitter, this is a floor, the owner who did not finish clicks through to 聊天记录.
+  function readMs(seg) {
+    if (isEmojiOnly(seg)) return 800;
+    return Math.max(1000, Math.min(4000, 700 + chars(seg) * 150));
+  }
+
   // The schedule for showing one reply: give it plans (feed) as the text streams and once more with the final
   // text; it reveals one message at a time. Hooks (all optional):
   //   typing(i)          she starts typing message i (show 「…」; it goes when reveal(i) comes)
@@ -108,6 +116,7 @@
   //   truncate(n)        only the first n messages stay
   //   done(segments)     the last message of the final reply is on screen
   //   log(event)         every step, for the e2e runs
+  //   holdMs(seg)        optional: message i-1 stays at least this long before message i (it replaces it on screen)
   // The player owns exactly one timer at a time; cancel() clears it (a new message from the owner, another
   // line taking the bubble), so nothing fires after it.
   function createPlayer(hooks = {}, opts = {}) {
@@ -127,6 +136,7 @@
     const reveal = (i, extra = {}) => {
       st.typing = -1;
       st.shown++;
+      st.revealAt = now();
       call('reveal', i, st.segments[i]);
       log('reveal', { i, text: st.segments[i], ...extra });
     };
@@ -148,7 +158,8 @@
         }
         // she has been typing it since its line opened (streamed): that time counts
         const ms = typingMs(st.segments[i], i, o, rnd);
-        const wait = Math.max(0, st.typing === i ? ms - (now() - st.typingAt) : ms);
+        const held = i > 0 && h.holdMs ? h.holdMs(st.segments[i - 1]) - (now() - st.revealAt) : 0;
+        const wait = Math.max(0, st.typing === i ? ms - (now() - st.typingAt) : ms, held);
         if (wait <= 0) { // the first one, or typed long enough already: at once
           reveal(i, { ms });
           return pump();
@@ -179,7 +190,7 @@
       feed(id, p, final = false) {
         if (!st || st.id !== id) {
           stopTimer();
-          st = { id, segments: [], complete: 0, final: false, shown: 0, live: -1, timer: null, typing: -1, typingAt: 0, done: false };
+          st = { id, segments: [], complete: 0, final: false, shown: 0, live: -1, timer: null, typing: -1, typingAt: 0, revealAt: 0, done: false };
           log('start');
         }
         if (st.done && final) return; // the same final text again
@@ -217,5 +228,5 @@
     };
   }
 
-  return { DEFAULTS, RANGE, MAX_TOTAL, options, split, plan, typingMs, isEmojiOnly, keepWhole, createPlayer };
+  return { DEFAULTS, RANGE, MAX_TOTAL, options, split, plan, typingMs, readMs, isEmojiOnly, keepWhole, createPlayer };
 });

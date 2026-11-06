@@ -146,24 +146,25 @@ process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
         assert.ok(petText !== null, `no reply to 「${text}」`);
         await page.waitForTimeout(300);
         await shot(`sl1-t${n}-final`);
-        // like WeChat: each message is its own bubble, the column behind them has no card
-        const look = await page.evaluate(() => { const b = document.getElementById('bubble'); const c = getComputedStyle(b); return { segmented: b.classList.contains('segmented'), bg: c.backgroundColor, shadow: c.boxShadow, own: [...b.querySelectorAll('.seg')].every((e) => getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)') }; });
-        if (look.segmented) assert.deepEqual([look.bg, look.shadow, look.own], ['rgba(0, 0, 0, 0)', 'none', true], `turn ${n}: not separate bubbles`);
+        // one bubble: the ordinary card, one message in it
+        const look = await page.evaluate(() => { const b = document.getElementById('bubble'); const c = getComputedStyle(b); return { n: b.querySelectorAll('.seg').length, shadow: c.boxShadow }; });
+        assert.ok(look.n <= 1 && look.shadow !== 'none', `turn ${n}: not one bubble: ${JSON.stringify(look)}`);
         const samples = await stopSampler();
         const log = (await segLogWall()).filter((e) => e.wall >= tSend);
         const start = log.find((e) => e.ev === 'start');
         const reveals = start ? log.filter((e) => e.id === start.id && e.ev === 'reveal') : [];
         const msgs = reveals.length ? reveals.map((e) => e.text) : [petText];
         const gaps = reveals.slice(1).map((e, i) => e.wall - reveals[i].wall);
-        const counts = samples.map((x) => x.segs.length).filter((c, i, a) => c > 0 && (i === 0 || c !== a[i - 1]));
+        const seq = samples.map((x) => x.segs[0]).filter((x, i, a) => x && x !== a[i - 1]);
         if (msgs.length >= 2) {
           assert.deepEqual(reveals.map((e) => e.i), msgs.map((_, i) => i), `turn ${n}: reveals out of order`);
-          assert.deepEqual(counts, msgs.map((_, i) => i + 1), `turn ${n}: on-screen counts went ${JSON.stringify(counts)}`);
-          assert.ok(gaps.every((g) => g >= 300 && g <= 5000), `turn ${n}: gaps ${gaps}`);
+          assert.ok(samples.every((x) => x.segs.length <= 1), `turn ${n}: more than one message on screen`);
+          assert.deepEqual(seq, msgs, `turn ${n}: on screen went ${JSON.stringify(seq)}`);
+          assert.ok(gaps.every((g, i) => g >= Seg.readMs(msgs[i]) - 60 && g <= 6000), `turn ${n}: gaps ${gaps}`);
         } else {
           assert.equal(samples.some((x) => x.segs.length > 0), false, `turn ${n}: one message but a segmented bubble`);
         }
-        timeline.push(`[SL1 第 ${n} 轮] 主人 ${iso(tSend)}: 「${text}」`, ...log.filter((e) => start && e.id === start.id).map((e) => `  ${iso(e.wall)}  ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}`), ...(start ? [] : [`  (一条，普通气泡) 「${petText}」`]), `  ${msgs.length} 条; 间隔 ${gaps.join('/') || '-'} ms; 屏上条数 ${counts.join('→') || '-'}`, '');
+        timeline.push(`[SL1 第 ${n} 轮] 主人 ${iso(tSend)}: 「${text}」`, ...log.filter((e) => start && e.id === start.id).map((e) => `  ${iso(e.wall)}  ${e.ev}${e.i == null ? '' : `#${e.i}`}${e.text ? ` 「${e.text}」` : ''}`), ...(start ? [] : [`  (一条，普通气泡) 「${petText}」`]), `  ${msgs.length} 条; 间隔 ${gaps.join('/') || '-'} ms; 屏上条数 ${seq.join('→') || '-'}`, '');
         return { n, text, tSend, msgs, gaps, firstIsEmoji: Seg.isEmojiOnly(msgs[0]), hasEmojiMsg: msgs.some((m) => Seg.isEmojiOnly(m)), reveals, full: petText };
       };
       // nothing here asks for a format: everyday things an owner says, for her to answer as she likes
@@ -249,7 +250,7 @@ process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
         const unshownOld = fullOld.split('\n').map((x) => x.trim()).filter((x) => x && !oldTexts.includes(x) && !newReveals.some((r) => r.text === x));
         const after = samples.filter((s) => s.wall > (newStart ? newStart.wall : tCut + 300));
         assert.ok(after.every((s) => !s.segs.some((x) => unshownOld.includes(x))), 'an unshown old message appeared after the new reply started');
-        if (newStart) assert.ok(after.every((s) => s.segs.every((x, i) => x === (newReveals[i] || {}).text || i === s.segs.length - 1)), 'bubble mixed old and new messages');
+        if (newStart) assert.ok(after.every((s) => s.segs.length <= 1), 'more than one message on screen');
         else assert.equal(await page.evaluate(() => document.getElementById('bubble').textContent.trim().replace(/\s*▍$/, '')), newReply, 'the new one-message reply is not what the bubble shows');
         const st = await page.evaluate(() => window.petFx.segState());
         assert.ok(!st || st.timer === false, 'a timer was left behind'); // null: a one-message reply cleared the player

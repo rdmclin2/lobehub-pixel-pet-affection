@@ -1135,8 +1135,9 @@ function say(text, kind, source, reason, meme = null, streamId = null, music = n
 }
 // ---- 分段式表达 (core/segments.js, docs/segmented-reply.md) ------------------------------------------------------
 // A reply with several lines is shown as several short messages, one after another, each after a moment of
-// 「正在输入」 (Seg.typingMs: by its length, with some jitter). Like WeChat each message is its own bubble: #bubble
-// turns into the column holding them (.bubble.segmented: no surface of its own), one .seg per message, .seg-typing for the dots. Streamed text feeds the same player: lines that ended queue
+// 「正在输入」 (Seg.typingMs: by its length, with some jitter). The window has one bubble and it shows one message at a
+// time: the next replaces the last (Seg.readMs keeps each long enough to read); a click on the bubble opens 聊天 with all
+// of them (bindBubbleClick). .seg is the message on screen, .seg-typing the dots after it. Streamed text feeds the same player: lines that ended queue
 // up and come out at her pace (a reply that arrives all at once — lh today — still comes out one by one); the
 // line still being written shows with a caret once it is its turn. The final 'say' sets the authoritative
 // messages (a tool preamble or the meme tag is corrected in place). One timer at a time, owned by the player:
@@ -1144,6 +1145,8 @@ function say(text, kind, source, reason, meme = null, streamId = null, music = n
 // 聊天记录, reading aloud (the whole reply, once), the meme picture (with the last message) and affection are
 // unchanged; the meme picture and the hide timer wait for the last message.
 let segSaySeq = 0;
+let segAt = -1; // which message of the reply is in the bubble
+let segTexts = []; // the messages so far, for going back when the final text has fewer
 let segMeta = null; // { id, text, kind, source, reason, meme, music } of the final line, once it came
 const segLog = []; // every typing / reveal / cancel, for the e2e runs (window.petFx.segLog)
 function logSeg(e) {
@@ -1157,7 +1160,8 @@ const segPlayer = Seg.createPlayer({
   reveal: (i, text) => segPut(i, text, false),
   live: (i, text) => segPut(i, text, true),
   update: (i, text) => segPut(i, text, (segPlayer.state() || {}).live === i),
-  truncate: (n) => { for (const el of $('bubble').querySelectorAll('.seg')) if (Number(el.dataset.i) >= n) el.remove(); },
+  truncate: segTruncate,
+  holdMs: Seg.readMs, // the next message replaces this one: it has to stay long enough to be read
   done: (segs) => segDone(segs),
   log: logSeg,
 });
@@ -1167,7 +1171,7 @@ function segFor(text, source, kind, streamId) {
   const p = Seg.plan(text, { final: true, ...segOpts() });
   return p.segments.length >= 2 || (streamId && segPlayer.id() === streamId) ? p : null;
 }
-// The bubble as the column of messages for reply `id` (a new id clears it).
+// The bubble as the place for reply `id`'s messages (a new id clears it).
 function segEnter(id, kind) {
   const b = $('bubble');
   stopComposing();
@@ -1175,6 +1179,8 @@ function segEnter(id, kind) {
   clearTimeout(bubbleTimer);
   if (b.dataset.seg !== id) {
     b.textContent = '';
+    segAt = -1;
+    segTexts = [];
     b.dataset.seg = id;
     delete b.dataset.speech;
     $('meme-sticker').classList.add('hidden');
@@ -1217,30 +1223,43 @@ function segTyping(on) {
   let el = b.querySelector('.seg-typing');
   if (!on) { if (el) el.remove(); return; }
   if (!el) {
-    el = document.createElement('div');
+    el = document.createElement('span');
     el.className = 'seg-typing';
     el.setAttribute('aria-label', '正在输入');
     el.innerHTML = '<i></i><i></i><i></i>';
   }
-  b.appendChild(el); // always the last thing in the column
-  b.scrollTop = b.scrollHeight;
+  b.appendChild(el); // after the message on screen, which stays until the next one replaces it
 }
+// One message at a time: a later message replaces the one on screen; an earlier one the final text corrected is
+// only remembered (it is gone from the bubble, 聊天记录 has it).
 function segPut(i, text, live) {
   const b = $('bubble');
-  let el = b.querySelector(`.seg[data-i="${i}"]`);
-  if (!el) {
-    el = document.createElement('div');
+  segTexts[i] = text;
+  if (i < segAt) return;
+  let el = b.querySelector('.seg');
+  if (i !== segAt || !el) {
+    if (el) el.remove();
+    el = document.createElement('span'); // a new element so the fade-in plays for each message
     el.className = 'seg';
-    el.dataset.i = i;
-    const typing = b.querySelector('.seg-typing');
-    if (typing) typing.remove();
-    b.appendChild(el);
+    b.prepend(el);
+    segAt = i;
+    b.scrollTop = 0;
     talkUntil = Math.max(talkUntil, performance.now() + Math.min(1600, 300 + [...text].length * 90)); // her mouth moves as each one comes
   }
+  el.dataset.i = i;
   el.textContent = text;
   el.classList.toggle('live', !!live);
   el.classList.toggle('emoji', Seg.isEmojiOnly(text));
-  b.scrollTop = b.scrollHeight;
+  if (live) b.scrollTop = b.scrollHeight;
+}
+// The final text has fewer messages than were shown: the bubble goes back to its last one.
+function segTruncate(n) {
+  segTexts.length = Math.min(segTexts.length, n);
+  if (segAt < n) return;
+  const el = $('bubble').querySelector('.seg');
+  if (el) el.remove();
+  segAt = -1;
+  if (n > 0) segPut(n - 1, segTexts[n - 1], false);
 }
 function segDone(segs) {
   const b = $('bubble');
@@ -1251,7 +1270,7 @@ function segDone(segs) {
   const st = $('meme-sticker');
   st.classList.toggle('hidden', !meme);
   if (meme) { st.src = meme.url; st.alt = meme.label; st.title = meme.label; }
-  const len = segs.reduce((n, x) => n + [...x].length, 0);
+  const len = [...(segs[segs.length - 1] || '')].length; // only the last message is on screen by now
   hideBubbleLater(Math.min(45000, 6000 + len * 150) + (meme ? 3000 : 0));
 }
 // Stop the reply being shown in parts (if any): no timer stays; the bubble goes back to a plain line.
@@ -1269,6 +1288,22 @@ function segCancel(reason) {
   }
   segMeta = null;
   return r;
+}
+
+// A click on her reply in the bubble opens 设置窗口 → 聊天 on her conversation: she may have said more than the owner
+// managed to read. Selecting text is not a click; other lines (pats, errors, 思考中…) stay as they are.
+function bubbleOpensChat() {
+  const b = $('bubble');
+  return !VISITOR && b.dataset.source === 'llm' && !b.classList.contains('hidden') && !b.classList.contains('thinking');
+}
+function bindBubbleClick() {
+  const b = $('bubble');
+  b.addEventListener('mouseenter', () => { b.title = bubbleOpensChat() ? '点击查看聊天记录' : ''; });
+  b.addEventListener('click', () => {
+    if (!bubbleOpensChat() || String(window.getSelection() || '')) return;
+    const id = view && view.pet && (view.pet.characterId || view.pet.speciesId);
+    window.pet.openAdmin(/^[a-z0-9-]{1,40}$/.test(id || '') ? `chat/${id}` : 'chat'); // 'chat' alone: the companion on the desktop
+  });
 }
 
 function hideBubbleLater(ms) {
@@ -2186,6 +2221,7 @@ function bindPetUi() {
     window.pet.openScene('key');
   });
   bindInterjectFeedback();
+  bindBubbleClick();
   $('bubble').addEventListener('mouseenter', () => { bubbleHold = true; });
   $('bubble').addEventListener('mouseleave', () => { bubbleHold = false; });
   // leaving the window straight from the bubble (or the window losing focus) may not fire the bubble's
