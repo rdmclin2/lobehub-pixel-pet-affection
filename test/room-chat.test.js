@@ -44,10 +44,10 @@ function setup({ decide } = {}) {
 // what `lh generate decide` answers: the state question and the lamp question
 const answer = (state, lamp = 'none', p = 0.97) => async () => ({ answers: { state: { type: 'choice', choice: state, confidence: p, probabilities: { [state]: p } }, lamp: { type: 'choice', choice: lamp, confidence: p, probabilities: { [lamp]: p } } } });
 
-test('「玩把游戏吧」 (no word for it): the model decides, the engine moves her to 打游戏, the note says she did', async () => {
+test('「开黑吧」 (no word for it): the model decides, the engine moves her to 打游戏, the note says she did', async () => {
   const t = setup({ decide: answer('game') });
   t.set({ state: 'music' });
-  const note = await t.chat.onMessage('玩把游戏吧');
+  const note = await t.chat.onMessage('开黑吧');
   assert.equal(t.calls.length, 1, 'the word list missed, so the model is asked');
   assert.equal(t.room().state, 'game');
   assert.equal(t.pushed.at(-1).state, 'game', 'the game window is told');
@@ -74,7 +74,7 @@ test('the model fails or times out: nothing moves, and the note says it did not 
   for (const decide of [async () => { throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }); }, async () => ({ answers: {} })]) {
     const t = setup({ decide });
     t.set({ state: 'music' });
-    const note = await t.chat.onMessage('玩把游戏吧');
+    const note = await t.chat.onMessage('开黑吧');
     assert.equal(t.room().state, 'music', 'the state stays');
     assert.equal(t.room().lamp, false, 'the lamp stays');
     assert.match(note, /状态没变/);
@@ -88,7 +88,7 @@ test('the model never answers: she does not wait past the timeout, and nothing m
   t.set({ state: 'music' });
   const chat = t.make({ decideTimeoutMs: 30 });
   const t0 = Date.now();
-  const note = await chat.onMessage('玩把游戏吧');
+  const note = await chat.onMessage('开黑吧');
   assert.ok(Date.now() - t0 < 2000, 'she does not hang');
   assert.equal(t.room().state, 'music');
   assert.match(note, /没听明白/);
