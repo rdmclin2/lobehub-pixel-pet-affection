@@ -157,6 +157,17 @@ test('room-intent: the reference video’s own sentences', () => {
   assert.deepEqual(pickI(m('现在回床上休息吧，不玩了')), { state: 'sleep', lamp: null, screen: null, stop: false }, '不玩了 does not beat 回床上');
   assert.equal(m('大肥鱼，能收消息吗'), null);
 });
+test('room-intent: 「会儿」「一会儿」 between the verb and its object still asks for it', () => {
+  const cases = [
+    ['看会儿手机吧', 'phone'], ['玩会手机', 'phone'], ['刷一会儿手机', 'phone'],
+    ['来打会儿游戏吧', 'game'], ['玩会儿游戏', 'game'], ['打一会游戏', 'game'],
+    ['听会儿歌', 'music'], ['听一会音乐吧', 'music'], ['放一首歌吧', 'music'], ['写会儿代码吧', 'work'],
+  ];
+  for (const [t, state] of cases) { const r = m(t); assert.ok(r, `${t} → something`); assert.equal(r.state, state, t); }
+  assert.equal(m('别看会儿手机了').state, null, 'still negated: a stop, not a switch');
+  assert.equal(m('我在看会儿手机'), null, 'still about the owner');
+  assert.equal(m('你看会儿手机了吗'), null, 'still a question');
+});
 function pickI(r) { return r && { state: r.state, lamp: r.lamp, screen: r.screen, stop: r.stop }; }
 
 test('room-intent: each activity, the screen it plays, and where 刷抖音 happens', () => {

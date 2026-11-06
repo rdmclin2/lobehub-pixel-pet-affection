@@ -3,6 +3,62 @@
   "release": "games-v1",
   "games": [
     {
+      "id": "her-room",
+      "type": "game",
+      "name": "她的房间",
+      "version": "1.0.0",
+      "engine": "illustrated-room@1",
+      "minAppVersion": "0.28.0",
+      "description": "深夜下雨的房间里，大肥鱼趴在床上刷手机、坐在床边发呆犯懒、坐到书桌前用电脑、戴着耳机听歌、握着手柄打游戏、盖着被子睡觉。在聊天里叫她做什么，她就去做。",
+      "credit": "美术：GPT Image（gpt-image-2.5）；玩法与引擎：Pixel Pet Affection",
+      "features": [
+        "日系手绘插画，深夜下雨、蓝色月光",
+        "在聊天里叫她做事，她切到对应的姿势并回复；也可以直接点状态栏（发呆、犯懒都有按钮",
+        "七个专门画的姿势，台灯开关两套光照，开灯后整屋变暖",
+        "屏幕上放真实内容：短视频、网页、带封面和歌词的正在播放，还有小游戏"
+      ],
+      "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/her-room",
+      "changelog": "第一版：大肥鱼的「鲸鱼女仆的雨夜小屋」——日系手绘插画的深夜房间，蓝色月光、窗外下雨、城市灯光虚化成光斑。她有七个专门画的姿势：坐在床边发呆、犯懒，趴在床上看手机，靠在床头戴耳机听歌，盖着被子睡觉，背对镜头用电脑，侧身握手柄打游戏；每个姿势都有台灯关和开两版光照，开灯时书桌最暖、暖光铺满整屋，床和书桌之间会先起身再过去。屏幕上放的是真实内容：一段段真实短视频、能滚动的网页、带封面和歌词的正在播放，还有小游戏；雨、光斑、呼吸和眨眼一直在动。在聊天里说「回床上休息吧」「打开电脑刷抖音」，她就去做，也可以直接点状态栏（发呆、犯懒都有自己的按钮）和画面。",
+      "picture": "catalog/games/her-room.webp",
+      "screenshots": [
+        {
+          "url": "catalog/games/her-room/01-idle.webp",
+          "caption": "深夜、下雨、蓝色月光：她坐在床边发呆，手机锁屏亮着"
+        },
+        {
+          "url": "catalog/games/her-room/02-lamp.webp",
+          "caption": "台灯一开，书桌最暖，暖光铺满整屋，窗外还是蓝色的雨夜"
+        },
+        {
+          "url": "catalog/games/her-room/03-lazy.webp",
+          "caption": "犯懒：眼睛半闭、肩膀垂着，点状态栏的「犯懒」或说一句「好懒啊」她就这样了"
+        },
+        {
+          "url": "catalog/games/her-room/04-phone.webp",
+          "caption": "看手机：趴在床上刷短视频，屏幕卡片里看得更清楚"
+        },
+        {
+          "url": "catalog/games/her-room/05-music.webp",
+          "caption": "听音乐：靠在床头戴着耳机轻轻晃，手机上是封面、歌名和跟着走的歌词"
+        },
+        {
+          "url": "catalog/games/her-room/06-sleep.webp",
+          "caption": "睡觉：盖着被子，呼吸慢下来，Z 飘起来"
+        },
+        {
+          "url": "catalog/games/her-room/07-work.webp",
+          "caption": "工作：背对镜头坐在书桌前，电脑上写周报、看网页"
+        },
+        {
+          "url": "catalog/games/her-room/08-game.webp",
+          "caption": "打游戏：侧身握着手柄，电脑上的鲸鱼在跳"
+        }
+      ],
+      "file": "her-room-1.0.0.zip",
+      "bytes": 4319416,
+      "sha256": "b62eca5e28a5702bb0874e11fd46d75f65b48f4b16c5294709eaa92c1c63f62c"
+    },
+    {
       "id": "pixel-room",
       "type": "game",
       "name": "像素房间",

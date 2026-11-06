@@ -45,6 +45,8 @@
   const NEXT_RE = /下一个|换一个|下一条|换一条|划走|往下划/;
 
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+  // 「看会儿手机」「打一会游戏」「放一首歌」 say the same as 看手机 / 打游戏 / 放首歌: looked up without the filler
+  const plain = (t) => t.replace(/(看|玩|刷|听|打|写)一?会儿?/g, '$1').replace(/(放|听|来)一首/g, '$1首');
   // every place a word occurs, and whether it is negated there
   function hits(text, word) {
     const out = [];
@@ -87,18 +89,19 @@
     if (!raw || raw.length > 60) return null; // a long message is a conversation, not an order
     const t = norm(raw);
     const V = vocab(roomIntents);
+    const said = plain(t);
     const isQuestion = QUESTION_RE.test(t) && !IMPERATIVE_RE.test(t);
     // states: the last word that is asked for (not negated) wins — 「先别玩游戏了，去睡觉」 → sleep
     let best = null;
     for (const [state, words] of Object.entries(V.states)) {
       for (const w of words) {
         if (!w) continue;
-        for (const h of hits(t, w)) if (!h.negated && (!best || h.end > best.end || (h.end === best.end && w.length > best.len))) best = { state, end: h.end, len: w.length };
+        for (const h of hits(said, w)) if (!h.negated && (!best || h.end > best.end || (h.end === best.end && w.length > best.len))) best = { state, end: h.end, len: w.length };
       }
     }
     let screen = null;
     let screenAt = -1;
-    for (const [c, words] of Object.entries(V.screens)) for (const w of words) for (const h of hits(t, w)) if (!h.negated && h.end > screenAt) { screen = c; screenAt = h.end; }
+    for (const [c, words] of Object.entries(V.screens)) for (const w of words) for (const h of hits(said, w)) if (!h.negated && h.end > screenAt) { screen = c; screenAt = h.end; }
     let lamp = null;
     if (LAMP_OFF_RE.test(t)) lamp = false;
     else if (LAMP_ON_RE.test(t)) lamp = true;

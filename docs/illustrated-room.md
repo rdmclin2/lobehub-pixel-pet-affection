@@ -90,16 +90,16 @@ DOM：标题栏胶囊 ⚡♥、「屏幕」卡片（左下，屏幕内容放大�
 | 现在去试一下打开电脑刷抖音吧 / 打开电脑刷抖音 / 用电脑刷视频 | `work` + 屏幕 `clips` |
 | 去工作 / 写周报 / 打开电脑 | `work`（屏幕 `page`） |
 | 搜一下明天天气 | `work` + `page`，搜索词「明天天气」 |
-| 看手机吧 / 刷会儿抖音 / 看手机刷视频吧 | `phone`（+ `clips`） |
+| 看手机吧 / 看会儿手机吧 / 刷会儿抖音 / 看手机刷视频吧 | `phone`（+ `clips`） |
 | 放首歌听听 / 听歌 | `music` + `player` |
-| 去打游戏 / 来一局吧 | `game` |
+| 去打游戏 / 来打会儿游戏吧 / 来一局吧 | `game` |
 | 发会儿呆吧 / 歇会吧 | `idle` |
 | 开灯 / 把台灯打开；关灯睡觉吧 | `lamp: true`；`sleep` + `lamp: false` |
 | 别玩手机了 | `stop`（回发呆） |
 | 下一个（正在刷短视频时） | 下一条 |
 | 大肥鱼，能收消息吗 / 你睡了吗 / 我不想睡觉 / 我在看手机 / 今天好累啊，工作好多 | 不切（问句、否定、说自己、没有祈使的长句） |
 
-超过 60 字不算指令；多个状态词取最后一个没被否定的（「先别玩游戏了，去睡觉」→ 睡觉）；房间可以在 manifest `intents` 里加自己的说法（和通用词重复时归这个房间说的状态，比如正式包的「犯懒」归 `idle-lazy`）。没命中时提示词仍带一行「你正在 X」。〔房间:xxx〕标记（让模型自己决定换状态）是方案里的第二阶段，这次没做。
+动词和宾语中间的「会儿 / 一会儿」、「一首」查词时去掉（看会儿手机 = 看手机，放一首歌 = 放首歌）。超过 60 字不算指令；多个状态词取最后一个没被否定的（「先别玩游戏了，去睡觉」→ 睡觉）；房间可以在 manifest `intents` 里加自己的说法（和通用词重复时归这个房间说的状态，比如正式包的「犯懒」归 `idle-lazy`）。没命中时提示词仍带一行「你正在 X」。〔房间:xxx〕标记（让模型自己决定换状态）是方案里的第二阶段，这次没做。
 
 ## 6. 直接点选与数值
 
@@ -114,7 +114,14 @@ DOM：标题栏胶囊 ⚡♥、「屏幕」卡片（左下，屏幕内容放大�
 - 小样的屏幕内容是程序画的循环。正式包用真实素材：`frames.clips` + `images.clips`（视频帧图集）、`player.tracks[].cover` / `lyrics`（封面和带时间的歌词，没有音频）、`page.templates[].image`（真实网页长图）；屏幕卡片放大显示。
 - 小样插画里本来就画了雨和光斑，引擎的雨和光斑叠在上面是动的那一层。
 
-## 8. 运行
+## 8. 上架（T-11725）
+
+- 包：`https://chat-cloud.lobeobjects.space/dc/ops-assets/archives/pixel-pet/games-v1/her-room-1.0.0.zip`（4319416 字节，sha256 `b62eca5e…`），2026-11-06 由游戏仓库的 `scripts/publish.js her-room` 上传。
+- 目录：游戏仓库的 `catalog.json` 已有条目，合并它的 PR 后应用才读得到。应用自带的目录（`src/core/game-catalog.json`、`src/renderer/catalog/games/her-room*`）已用 `sync-game-catalog.js --repo` 同步。
+- `minAppVersion` 是 0.28.0，假设引擎随 0.28.0 发布。发版时版本号变了要改包。
+- 验收：`PIXELPET_E2E_APP_VERSION=0.28.0 xvfb-run -a -s "-screen 0 1600x1000x24" node e2e/run.js herroomaccept`。真实 CDN、真实 agent（花几轮 token）、真实鼠标、整屏录屏带章节，输出在 `out/e2e/her-room-accept/`。`PIXELPET_E2E_APP_VERSION` 只在测试模式生效，让还没发版的分支通过商店的版本比较。
+
+## 9. 运行
 
 ```bash
 npm test

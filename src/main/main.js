@@ -1596,7 +1596,7 @@ app.whenReady().then(() => {
   games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? [path.join(__dirname, '..', '..', 'catalog', 'games'), path.join(__dirname, '..', '..', 'test', 'fixtures', 'games')] : null });
   games.registerProtocol();
   // the games repository's catalog.json: off in tests unless PIXELPET_GAME_INDEX_URL names one
-  gameIndex = new GameIndex({ userDir: games.userDir, appVersion: app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
+  gameIndex = new GameIndex({ userDir: games.userDir, appVersion: (TEST_MODE && process.env.PIXELPET_E2E_APP_VERSION) || app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
   // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.
