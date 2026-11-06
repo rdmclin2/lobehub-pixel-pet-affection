@@ -58,6 +58,15 @@ async function clickAct(page, act) {
   await pp.click(`[data-act="${act}"]`);
   return pp;
 }
+// the 对话气泡 beside her (T-6162), as a user presses it: the chat box is open under her feet after this
+async function clickChatBubble(page) {
+  if (await page.isVisible('#chat-input') || await page.isVisible('#voice-hold')) return;
+  await page.mouse.move(110, 150);
+  await page.waitForSelector('body.hover', { timeout: 5000 });
+  await page.click('#chat-open');
+  await page.waitForSelector('#chat-row:not(.hidden)');
+  await page.waitForFunction(() => document.getElementById('pet-screen').style.height !== '');
+}
 // 喂食 → a food (the i-th): opens the panel, the foods, and picks one
 async function pickFood(page, i = 0) {
   const pp = await clickAct(page, 'feed');
@@ -133,7 +142,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await page.mouse.move(p.x, p.y);
         await page.waitForSelector('body.hover', { timeout: 5000 });
         await page.waitForTimeout(300);
-        const vis = await page.evaluate(() => ({ statusInPetWindow: !!document.getElementById('status-panel'), buttonsInPetWindow: document.querySelectorAll('[data-act]').length, hudShown: [...document.getElementById('hud').children].filter((c) => !c.classList.contains('hidden') && getComputedStyle(c).display !== 'none').map((c) => c.id) }));
+        const vis = await page.evaluate(() => ({ statusInPetWindow: !!document.getElementById('status-panel'), buttonsInPetWindow: document.querySelectorAll('[data-act]').length, hudShown: document.getElementById('chat-row').classList.contains('hidden') ? [] : ['chat-row'] }));
         assert.equal(vis.statusInPetWindow, false);
         assert.equal(vis.buttonsInPetWindow, 0);
         assert.deepEqual(vis.hudShown, []);
@@ -143,7 +152,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
       }, page);
 
       for (const theme of ['light', 'dark']) {
-        await step(S, `P2 ${theme}: 右键她 → 旁边弹出一张卡片（不挡住她）：名字 · 角色 · 阶段、好感、三项状态、四个操作、底栏`, async () => {
+        await step(S, `P2 ${theme}: 右键她 → 旁边弹出一张卡片（不挡住她）：名字 · 角色 · 阶段、好感、三项状态、三个操作、底栏`, async () => {
           await app.evaluate(({ nativeTheme }, t) => { nativeTheme.themeSource = t; }, theme);
           await page.emulateMedia({ colorScheme: theme });
           await page.waitForTimeout(250);
@@ -151,7 +160,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
           await pp.emulateMedia({ colorScheme: theme });
           const g = await geom(pp);
           assert.equal(g.theme, theme);
-          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
+          assert.deepEqual(g.acts, ['feed', 'play', 'sleep', 'mute', 'scene', 'settings', 'quit']);
           assert.ok(g.card.x >= 0 && g.card.r <= g.win.w && g.card.b <= g.win.h, `the card fits its window: ${JSON.stringify(g)}`);
           assert.equal(g.name, '小克');
           assert.ok(g.char && g.stage && /^\d+\/100$/.test(g.aff), JSON.stringify(g));
@@ -257,13 +266,7 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await pshot(pp, 'p5-muted');
         await pp.click('#btn-mute');
         notes.push(`静音 ${m0} → ${m1}, panel stays`);
-        await pp.click('[data-act="chat"]');
-        await waitPanel(page, false);
-        await page.waitForSelector('#chat-row:not(.hidden)');
-        await page.mouse.move(110, 150);
-        await shot('p5-chat-open');
-        notes.push('聊天 → panel closed, the chat box is open');
-        pp = await openPetPanel(page);
+        assert.equal(await pp.locator('[data-act="chat"]').count(), 0, 'no 聊天 tile: chat opens from the 对话气泡 beside her');
         await pp.click('#btn-settings');
         let admin = null;
         for (let i = 0; i < 300 && !admin; i++) { admin = app.windows().find((w) => w.url().includes('admin-ui')) || null; if (!admin) await page.waitForTimeout(100); }
@@ -298,6 +301,123 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await both(pp, 'p6-right-edge');
         await pp.keyboard.press('Escape');
         return `long press → ${src} (on her ${st1.side}); at the right edge → on her ${st2.side} ${JSON.stringify(st2.bounds)}`;
+      }, page);
+
+      await step(S, 'P8 对话气泡：悬停出现在她身边，点开输入框在她脚下不挡她；屏幕放不下时窗口上移，关掉后回原位；✕ / Esc / 气泡都能关', async () => {
+        const winBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith('renderer/index.html')).getBounds());
+        const layout = () => page.evaluate(() => {
+          const r = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+          return { stage: r('stage'), box: r('chat-row'), bubble: r('chat-open'), inner: innerHeight };
+        });
+        const waitSized = async (want) => { for (let i = 0; i < 40; i++) { const b = await winBounds(); if (want(b)) return b; await page.waitForTimeout(50); } return winBounds(); };
+        const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        const notes = [];
+        await page.mouse.move(110, 150);
+        await page.waitForSelector('body.hover');
+        await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '1');
+        await shot('p8-bubble-on-hover');
+        const cloud = await page.evaluate(() => { const b = document.getElementById('chat-open').getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height, innerWidth, innerHeight, hit: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.id }; });
+        assert.ok(cloud.width >= 60 && cloud.height >= 44, `the cloud is big enough to hit (${cloud.width}×${cloud.height})`);
+        assert.ok(cloud.left >= 0 && cloud.right <= cloud.innerWidth && cloud.top >= 0 && cloud.bottom <= cloud.innerHeight, `the cloud is inside her window (${JSON.stringify(cloud)})`);
+        assert.equal(cloud.hit, 'chat-open', 'its middle takes the click');
+        notes.push(`cloud ${cloud.width}×${cloud.height} in a ${cloud.innerWidth}×${cloud.innerHeight} window`);
+        assert.equal(await page.isVisible('#chat-row'), false, 'no chat box until it is asked for');
+        // she starts in the bottom right corner of the screen: no room under her
+        const low = await winBounds();
+        const before = await layout();
+        await page.click('#chat-open');
+        await page.waitForSelector('#chat-input', { state: 'visible' });
+        const up = await waitSized((b) => b.height > low.height);
+        await page.waitForTimeout(100);
+        const open = await layout();
+        await shot('p8-chat-box-under-her');
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'chat-input', 'the box has the focus');
+        assert.ok(open.box.top >= open.stage.bottom, `the box is under her (${open.box.top} vs ${open.stage.bottom})`);
+        assert.ok(!overlaps(open.box, open.stage), 'the box does not cover her');
+        assert.ok(open.box.bottom <= open.inner, 'the whole box is in the window');
+        assert.equal(open.stage.top, before.stage.top, 'she did not move inside the window');
+        assert.ok(up.y < low.y, 'no room below: the window went up');
+        notes.push(`at the bottom: window y ${low.y} → ${up.y}, h ${low.height} → ${up.height}`);
+        // her size changes with the box open: the box stays under her
+        const scale0 = await page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--pet-scale')) || 1);
+        await page.evaluate((k) => window.pet.previewPetScale(k), scale0 * 1.2);
+        await page.evaluate((k) => document.documentElement.style.setProperty('--pet-scale', String(k)), scale0 * 1.2);
+        await page.waitForTimeout(250);
+        const scaled = await layout();
+        assert.ok(scaled.box.top >= scaled.stage.bottom && scaled.box.bottom <= scaled.inner, `bigger: still under her and in the window (${JSON.stringify(scaled)})`);
+        await page.evaluate((k) => window.pet.previewPetScale(k), scale0);
+        await page.evaluate((k) => document.documentElement.style.setProperty('--pet-scale', String(k)), scale0);
+        await waitSized((b) => b.height === up.height);
+        await page.waitForTimeout(150);
+        // the pointer leaving does not take it away
+        await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+        await page.waitForFunction(() => !document.body.classList.contains('hover'));
+        assert.equal(await page.isVisible('#chat-input'), true, 'it stays until closed');
+        await page.mouse.move(110, 150);
+        // a multi-line box: Shift+Enter a new line, the box and the window grow; an IME Enter sends nothing
+        assert.equal(await page.isDisabled('#chat-send'), true, '发送 is off while the box is empty');
+        const h0 = await page.evaluate(() => document.getElementById('chat-input').offsetHeight);
+        await page.focus('#chat-input');
+        await page.keyboard.type('第一行');
+        for (const t of ['第二行', '第三行', '第四行']) { await page.keyboard.press('Shift+Enter'); await page.keyboard.type(t); }
+        const grown = await waitSized((b) => b.height > up.height);
+        assert.ok(grown.height > up.height, 'the window grew with the text');
+        assert.ok(grown.y + grown.height <= low.y + low.height + 24 + 1, 'still on the screen');
+        assert.ok((await page.evaluate(() => document.getElementById('chat-input').offsetHeight)) > h0);
+        await page.waitForTimeout(150);
+        const tall = await layout();
+        assert.ok(!overlaps(tall.box, tall.stage), 'still not over her');
+        assert.ok(tall.box.bottom <= tall.inner, `the whole box is in the window (${tall.box.bottom} / ${tall.inner})`);
+        await shot('p8-four-lines');
+        const typed = await page.inputValue('#chat-input');
+        assert.equal(typed, '第一行\n第二行\n第三行\n第四行');
+        await page.evaluate(() => document.getElementById('chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true })));
+        await page.waitForTimeout(150);
+        assert.equal(await page.inputValue('#chat-input'), typed, 'the IME Enter sent nothing');
+        // Enter sends; the box stays for the next line, and shrinks back
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => document.getElementById('chat-input').value === '');
+        await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
+        assert.equal(await page.isVisible('#chat-input'), true, 'typing goes on while she thinks');
+        assert.equal(await page.isDisabled('#chat-send'), true, 'nothing to send until she is free');
+        await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+        await waitSized((b) => b.height === up.height);
+        notes.push(`4 lines → h ${grown.height}, sent, back to ${(await winBounds()).height}`);
+        // the three ways to close it; each puts her back where she was
+        await page.click('#chat-close');
+        const shut = await waitSized((b) => b.height === low.height);
+        assert.deepEqual(shut, low, '✕: she is back where she was');
+        await page.mouse.move(110, 150);
+        await page.waitForSelector('body.hover');
+        await page.click('#chat-open');
+        await waitSized((b) => b.height > low.height);
+        await page.keyboard.press('Escape');
+        assert.deepEqual(await waitSized((b) => b.height === low.height), low, 'Esc');
+        await page.mouse.move(110, 150);
+        await page.waitForSelector('body.hover');
+        await page.click('#chat-open');
+        await waitSized((b) => b.height > low.height);
+        assert.equal(await page.getAttribute('#chat-open', 'aria-expanded'), 'true');
+        await page.click('#chat-open');
+        assert.deepEqual(await waitSized((b) => b.height === low.height), low, 'the bubble again');
+        // with room under her the window only grows down
+        await page.evaluate(() => window.pet.moveTo(600, 200));
+        const high = await waitSized((b) => b.y === 200);
+        await page.mouse.move(110, 150);
+        await page.waitForSelector('body.hover');
+        await page.click('#chat-open');
+        const roomy = await waitSized((b) => b.height > high.height);
+        assert.equal(roomy.y, 200, 'she stays put');
+        // moved while it is open: where she was put counts when it closes
+        await page.evaluate(() => window.pet.moveTo(500, 150));
+        await waitSized((b) => b.y === 150);
+        await page.click('#chat-close');
+        const moved = await waitSized((b) => b.height === high.height);
+        assert.equal(moved.y, 150);
+        notes.push(`with room: y stays ${roomy.y}, h ${high.height} → ${roomy.height}; closed after a move: y ${moved.y}`);
+        await page.evaluate((b) => window.pet.moveTo(b.x, b.y), low);
+        await waitSized((b) => b.y === low.y);
+        return notes.join('; ');
       }, page);
 
       await step(S, 'P7 她在思考时：面板自动关闭，右键也不打开；想完后右键照常打开', async () => {
@@ -382,4 +502,4 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
     }
   };
 };
-Object.assign(module.exports, { openPetPanel, clickAct, pickFood, panelPage, panelState });
+Object.assign(module.exports, { openPetPanel, clickAct, clickChatBubble, pickFood, panelPage, panelState });

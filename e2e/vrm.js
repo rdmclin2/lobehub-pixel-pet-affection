@@ -70,7 +70,7 @@ function makeModel(root, tag, opts = {}) {
 
 module.exports = function vrmScenarios(ctx) {
   const { ROOT, OUT, FAKE_LH, step, launch, openCurrentPage, clickAct, openAdminWindow, petBounds } = ctx;
-  const { pickFood, openPetPanel } = require('./pet-panel');
+  const { pickFood, openPetPanel, clickChatBubble } = require('./pet-panel');
   const SHOTS = path.join(OUT, 'vrm');
   fs.mkdirSync(SHOTS, { recursive: true });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -854,7 +854,7 @@ module.exports = function vrmScenarios(ctx) {
 
       await step(S, '思考/等待回复 → 说话: the chat waits (hold.think, eyes up), the reply talks (hold.talk + the mouth moving together)', async () => {
         await settle();
-        await clickAct(page, 'chat');
+        await clickChatBubble(page);
         await page.fill('#chat-input', '你在想什么呀');
         await page.press('#chat-input', 'Enter');
         await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
@@ -2535,7 +2535,7 @@ module.exports = function vrmScenarios(ctx) {
       return { ...r, appMB: +(m / 1024).toFixed(0) };
     };
     const say = async (text) => {
-      if (await page.evaluate(() => document.getElementById('chat-row').classList.contains('hidden'))) await clickAct(page, 'chat');
+      if (await page.evaluate(() => document.getElementById('chat-row').classList.contains('hidden'))) await clickChatBubble(page);
       await page.fill('#chat-input', text);
       await page.press('#chat-input', 'Enter');
     };

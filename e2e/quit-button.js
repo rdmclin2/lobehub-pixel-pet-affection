@@ -48,7 +48,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
       await step(S, 'Q1 像素外观：面板底栏 ⏻ 退出紧挨 ⚙ 设置右边（共 7 个按钮）', async () => {
         await hover();
         const g = await geom();
-        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
+        checkRow(g, ['feed', 'play', 'sleep', 'mute', 'scene', 'settings', 'quit']);
         assert.equal(g.label, '退出');
         assert.match(g.title, /^退出：/);
         await shot('q1-pixel-pet');
@@ -82,7 +82,7 @@ module.exports = function quitButtonScenario({ OUT, FAKE_LH, ROOT, step, launch 
         await page.waitForFunction(() => window.__petStatus().dance.show && window.__petStatus().reset, null, { timeout: 5000 });
         await hover();
         const g = await geom();
-        checkRow(g, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'dance', 'reset', 'settings', 'quit']);
+        checkRow(g, ['feed', 'play', 'sleep', 'mute', 'scene', 'dance', 'reset', 'settings', 'quit']);
         await shot('q3-vrm-pet');
         await barShot('q3-vrm-toolbar');
         return `window ${g.win}px, toolbar ${g.toolbar.w}×${g.toolbar.h}; ⚙ x${g.settings.x}–${g.settings.r}, ⏻ x${g.quit.x}–${g.quit.r}`;

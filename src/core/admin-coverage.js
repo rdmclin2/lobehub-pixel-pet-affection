@@ -77,6 +77,7 @@ const PET_ONLY = {
   'talk-topic': '互动：按话题聊天',
   chat: '聊天',
   'pick-images': '聊天：选图片',
+  'composer-space': '聊天：她脚下的输入框占多高（她的窗口跟着长高，运行时布局，不是配置）',
   'pet-stickers-list': '聊天：聊天框的表情包面板读她的表情包（只读；管理在 角色 → 表情包，docs/stickers-design.md §3.1）',
   cancel: '聊天：停止生成',
   'mark-seen': '衣柜 / 话题面板的「新」角标',
@@ -329,7 +330,7 @@ function renderMatrix(r) {
   L.push('');
   L.push(`### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：${r.menu.length} 项`);
   L.push('');
-  L.push('桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。');
+  L.push('桌宠窗口只保留 喂食 / 玩耍 / 睡觉、身边的对话气泡 + ⚙ 设置（T-2718、T-6162）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。');
   L.push('');
   L.push('| 菜单项 | 后台对应 |');
   L.push('| --- | --- |');

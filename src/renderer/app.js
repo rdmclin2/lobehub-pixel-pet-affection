@@ -893,6 +893,7 @@ function enterPet(v) {
   fx.clear();
   fx.stopThrow();
   $('pet-video').dataset.key = '';
+  closeChat();
   window.pet.place('pet');
   show('pet-screen');
   applyArt();
@@ -1605,6 +1606,7 @@ function setThinking(on) {
   thinking = on;
   if (!on) stopComposing();
   document.body.classList.toggle('busy', on);
+  syncChatSend();
   clearInterval(thinkTimer);
   const b = $('bubble');
   if (on) {
@@ -1923,7 +1925,7 @@ function runAct(act, food) {
   if (act === 'dance') openDanceMenu();
   else if (act === 'feed') doAct('feed', food);
   else if (act === 'play' || act === 'sleep') doAct(act);
-  else if (act === 'chat') { pointerInside = true; openChat(); } // the panel was beside her: the box shows at once
+  else if (act === 'chat') openChat(); // /pixel-pet/act from outside: the box under her feet
   else if (act === 'settings') openSettings();
   else if (act === 'mute') toggleMute();
   else if (act === 'reset') window.pet.resetPose('button');
@@ -1933,28 +1935,42 @@ function runAct(act, food) {
 function bindPetUi() {
   bindDanceMenu();
   window.pet.panel.onAct((m) => { if (m && m.act) runAct(String(m.act), m.food ? String(m.food) : undefined); });
-  const send = async () => {
+  // `spoken`: what 按住说话 recognised (T-6162). It goes straight to her, with any pictures waiting, and leaves what
+  // is typed in the box alone; if it could not go, it lands in the box so it is not lost.
+  const send = async (spoken) => {
     const input = $('chat-input');
-    const text = input.value.trim();
+    const isSpoken = typeof spoken === 'string';
+    const text = (isSpoken ? spoken : input.value).trim();
+    const clearInput = () => { if (!isSpoken) { input.value = ''; fitChatInput(); } };
+    const giveBack = () => {
+      if (!isSpoken || !text) return;
+      const cur = input.value.trimEnd();
+      input.value = `${cur}${cur ? ' ' : ''}${text}`.slice(0, input.maxLength);
+      setChatMode('text');
+      fitChatInput();
+    };
     // 「别跳了」 while she is still thinking about the last message: the dance part still happens
-    if (thinking && text && !attachments.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { input.value = ''; chatDanceIntent(text); return; }
-    if ((!text && attachments.length === 0) || thinking) return;
+    if (thinking && text && !attachments.length && window.PetDanceIntent && window.PetDanceIntent.matchDanceIntent(text, [], { dancing: !!(dance && dance.active()) })) { clearInput(); chatDanceIntent(text); return; }
+    if ((!text && attachments.length === 0) || thinking) { giveBack(); return; }
     const imgs = attachments.filter((a) => a.kind === 'image');
     const files = attachments.filter((a) => a.kind === 'path').map((a) => a.path);
     if (files.length && !(view && view.local && view.local.enabled)) {
-      if (!confirm('读本机文件需要先开启“本机能力”（让宠物使用这台电脑）。现在开启吗？')) return;
+      if (!confirm('读本机文件需要先开启“本机能力”（让宠物使用这台电脑）。现在开启吗？')) { giveBack(); return; }
       const on = await window.pet.setLocal(true);
-      if (!on.ok) { say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
+      if (!on.ok) { giveBack(); say(`（没能开启本机能力：${String(on.message || '未知原因').slice(0, 60)}）`, 'error', 'fallback', on.message); return; }
     }
     stopSpeech('new-message'); // she stops reading the last reply as soon as the owner says something
     if (text && !imgs.length && !files.length) { chatDanceIntent(text); chatMotionIntent(text); } // 「跳个舞」/「别跳了」/「点个头」: local, the message still goes to her agent
     attachments = [];
     renderAttachments();
-    input.value = '';
-    $('chat-send').disabled = true;
+    clearInput();
+    chatSending = true;
+    syncChatSend();
     const r = await window.pet.chat(text, imgs, files);
-    $('chat-send').disabled = false;
+    chatSending = false;
+    syncChatSend();
     chatResult(r);
+    if (!r.ok && (r.reason === 'busy' || r.reason === 'empty')) giveBack();
   };
   // what the reply to a message (or a 表情包) from this box says when it did not go through
   const chatResult = (r) => {
@@ -1967,20 +1983,30 @@ function bindPetUi() {
     if (!r.ok && r.reason === 'busy') say('等等，我还在想上一句……', 'busy');
     if (!r.ok && r.reason === 'bad-sticker') say('（这张表情包已经不在了。）', 'error', 'fallback');
   };
-  $('chat-send').addEventListener('click', send);
+  sendSpoken = send;
+  $('chat-send').addEventListener('click', () => send());
   bindStickers(async (set, st) => {
     if (thinking) return;
     stopSpeech('new-message');
     flashSentSticker(st);
-    $('chat-send').disabled = true;
+    chatSending = true;
+    syncChatSend();
     const r = await window.pet.chat('', [], [], { sticker: { set: set.id, id: st.id } });
-    $('chat-send').disabled = false;
+    chatSending = false;
+    syncChatSend();
     chatResult(r);
   });
-  $('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  $('chat-input').addEventListener('keydown', (e) => {
+    // Enter sends; Shift+Enter is a new line; an Enter that confirms an IME composition sends nothing
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    send();
+  });
+  bindComposer();
   // 插个嘴 source 聊天框: the unsent draft goes to main (debounced there) only while 插个嘴 and this source are on.
   // Only this box: nothing typed anywhere else is seen.
   $('chat-input').addEventListener('input', () => {
+    fitChatInput();
     const ij = settings && settings.interject;
     if (VISITOR || !ij || !ij.enabled || !ij.sources || !ij.sources.chatDraft) return;
     window.pet.interject.draft($('chat-input').value);
@@ -1989,7 +2015,7 @@ function bindPetUi() {
   // ---- pictures: paste (Ctrl/⌘+V), drag in, or the 📎 button; Escape stops a running task
   document.addEventListener('paste', (e) => {
     const files = [...((e.clipboardData && e.clipboardData.files) || [])];
-    if (!files.length || $('pet-screen').classList.contains('hidden') || !pointerInside) return; // hover the pet first
+    if (!files.length || $('pet-screen').classList.contains('hidden') || (!pointerInside && !chatIsOpen())) return; // hover the pet first
     e.preventDefault();
     if (thinking) return;
     openChat();
@@ -2010,7 +2036,12 @@ function bindPetUi() {
     for (const img of picked) pushAttachment({ kind: 'image', ...img });
   });
   bindMic();
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && thinking) window.pet.cancel(); else if (e.key === 'Escape' && dance && dance.active()) dance.stop({ reason: 'esc' }); });
+  document.addEventListener('keydown', (e) => { 
+    if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return; // Esc cancels an IME composition first
+    if (thinking) window.pet.cancel();
+    else if (dance && dance.active()) dance.stop({ reason: 'esc' });
+    else closeChat();
+  });
   $('stop-btn').addEventListener('click', () => { if (thinking) window.pet.cancel(); });
   // 重置姿势 Ctrl/⌘+Shift+R: main catches it first (before-input-event, which also keeps Electron's force reload
   // off it); a key event main did not see (synthetic input) lands here
@@ -2386,15 +2417,11 @@ function throwPet(v) {
 }
 
 // Controls are hidden unless the pointer is over the window (or one is in use).
-// The controls exist only while the pointer is over the pet window (and it is not working). Nothing
-// keeps them open: moving away hides everything, even an open chat box. The draft text and attached
-// files are kept and come back with the next hover.
+// The controls (the 对话气泡, the resize grip) exist only while the pointer is over the pet window and she is
+// not working. An open chat box is not one of them: it stays until it is closed.
 function syncHover() {
   document.body.classList.toggle('over', pointerInside); // pointer over the window (used by the stop button)
   document.body.classList.toggle('hover', !thinking && (pointerInside || micActive() || voiceHeld())); // listening (or a hotkey call) keeps 🎤 in reach
-  if (!pointerInside && !micActive() && !voiceHeld()) {
-    if (document.activeElement === $('chat-input')) $('chat-input').blur(); // keystrokes must not go into a hidden box
-  }
 }
 function bindHover() {
   const root = document.documentElement;
@@ -2502,10 +2529,111 @@ const MAX_ATTACH = 10;
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+// ---------- the chat box (T-6162) ----------
+// The 对话气泡 beside her opens it under her feet: her window makes the room (composerSpace), and #pet-screen keeps
+// the height it had, so she does not move inside the window and nothing of the box is over her. It stays until
+// ✕, Esc or the bubble again closes it, whatever the pointer does; what is typed and attached stays for next time.
+const CHAT_INPUT_MAX_H = 112; // about six lines; past that the box scrolls
+const COMPOSER_ROOM = 12; // transparent room under the card for its shadow
+const CHAT_HINT = { text: 'Shift+Enter 换行', voice: '松开就发给她' };
+const CHAT_MODE_KEY = 'pet.chatMode';
+const MODE_ICON = {
+  voice: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>',
+  text: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>',
+};
+let chatMode = 'text'; // 'text' | 'voice' (按住说话)
+let chatSending = false;
+let sendSpoken = null; // bindPetUi: what 按住说话 recognised goes to her through this
+let composerExtra = 0;
+let composerPinned = false;
+let composerQueue = Promise.resolve();
+const chatIsOpen = () => !$('chat-row').classList.contains('hidden');
+
+function syncComposerSpace() {
+  const open = chatIsOpen() && !$('pet-screen').classList.contains('hidden');
+  const extra = open ? Math.ceil($('chat-row').offsetHeight) + COMPOSER_ROOM : 0;
+  if (extra === composerExtra) return;
+  composerExtra = extra;
+  const screenEl = $('pet-screen');
+  if (open && !composerPinned) { // before the window grows: she stays exactly where she is in it
+    composerPinned = true;
+    screenEl.style.height = `${window.innerHeight}px`;
+  }
+  composerQueue = composerQueue.then(() => window.pet.composerSpace(extra)).then((r) => {
+    if (!r || composerExtra !== extra) return;
+    if (extra) screenEl.style.height = `${r.base}px`;
+    else { composerPinned = false; screenEl.style.height = ''; }
+  }).catch(() => {});
+}
+function fitChatInput() {
+  const input = $('chat-input');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, CHAT_INPUT_MAX_H)}px`;
+  input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_H ? 'auto' : 'hidden';
+  syncChatSend();
+}
+// 发送 is for something to send, once she is free; typing goes on while she thinks
+function syncChatSend() {
+  $('chat-send').disabled = chatSending || thinking || (!$('chat-input').value.trim() && !attachments.length);
+  $('voice-hold').disabled = thinking && !micActive();
+}
+function syncChatMode() {
+  const b = $('chat-mode');
+  const voice = chatMode === 'voice';
+  b.innerHTML = voice ? MODE_ICON.text : MODE_ICON.voice;
+  b.dataset.state = chatMode;
+  b.setAttribute('aria-pressed', String(voice));
+  const label = voice ? '切换到打字' : asrOn() ? '切换到语音：按住说话，松开就发给她' : '语音输入还没开：点一下去 设置 → 语音输入 打开';
+  b.title = label;
+  b.setAttribute('aria-label', label);
+}
+function setChatMode(m) {
+  chatMode = m === 'voice' ? 'voice' : 'text';
+  const voice = chatMode === 'voice';
+  $('chat-row').dataset.mode = chatMode;
+  $('chat-input').classList.toggle('hidden', voice);
+  $('voice-hold').classList.toggle('hidden', !voice);
+  $('chat-hint').textContent = CHAT_HINT[chatMode];
+  try { localStorage.setItem(CHAT_MODE_KEY, chatMode); } catch { /* it only remembers the choice */ }
+  syncChatMode();
+  if (voice) $('voice-hold').focus({ preventScroll: true });
+  else { fitChatInput(); if (chatIsOpen()) $('chat-input').focus({ preventScroll: true }); }
+}
 function openChat() {
+  const wasOpen = chatIsOpen();
   $('chat-row').classList.remove('hidden');
+  $('chat-open').setAttribute('aria-expanded', 'true');
+  if (!wasOpen) {
+    let saved = null;
+    try { saved = localStorage.getItem(CHAT_MODE_KEY); } catch { /* the default then */ }
+    setChatMode(saved === 'voice' && asrOn() ? 'voice' : 'text');
+  }
   syncHover();
-  $('chat-input').focus();
+  fitChatInput();
+  syncComposerSpace();
+  $(chatMode === 'voice' ? 'voice-hold' : 'chat-input').focus({ preventScroll: true });
+}
+function closeChat() {
+  if (!chatIsOpen()) return false;
+  if (micActive()) micStop(true);
+  closeStickers();
+  $('chat-row').classList.add('hidden');
+  $('chat-open').setAttribute('aria-expanded', 'false');
+  syncComposerSpace();
+  return true;
+}
+function bindComposer() {
+  $('chat-open').addEventListener('click', () => { if (chatIsOpen()) closeChat(); else openChat(); });
+  $('chat-close').addEventListener('click', () => closeChat());
+  $('chat-mode').addEventListener('click', () => {
+    if (micActive()) return;
+    if (chatMode === 'voice') { setChatMode('text'); return; }
+    if (!asrOn()) { openSettings('asr'); return; }
+    setChatMode('voice');
+  });
+  new ResizeObserver(syncComposerSpace).observe($('chat-row'));
+  window.pet.onComposerBase((h) => { if (composerPinned && Number(h) > 0) $('pet-screen').style.height = `${h}px`; });
+  syncChatMode();
 }
 
 function pushAttachment(a) {
@@ -2550,6 +2678,7 @@ function renderAttachments() {
     row.appendChild(chip);
   });
   row.classList.toggle('hidden', attachments.length === 0);
+  syncChatSend();
 }
 
 // ---------- render loop ----------
@@ -2603,15 +2732,15 @@ let lastPose = 0;
 
 // Test and debugging handle: what the pet is doing, and cues to trigger every effect by hand.
 // ---------- 语音输入 (recognition runs in main: core/asr.js; docs/asr-design.md §5–7) ----------
-// 🎤 next to the chat box, shown while 语音输入 is on. A quick click starts and a second click stops; holding
-// it down records until it is let go (按住说话). Esc cancels. MediaRecorder's webm/opus goes to main over IPC
-// (window.pet.asr.transcribe); the text lands in the chat box, or is sent at once (识别后直接发送).
+// The chat box's voice mode (chat-mode → 按住说话, T-6162): hold the button, speak, let go, and what was said goes
+// to her at once; sliding off the button or Esc throws it away. The 快捷键 uses the same recorder; in the typing
+// mode its text lands in the box, or is sent at once with 识别后直接发送. MediaRecorder's webm/opus goes to main
+// over IPC (window.pet.asr.transcribe).
 const MIC_MIN_MS = 400; // shorter than this is a slip of the finger, not something said
-const MIC_HOLD_MS = 350; // held longer than this: 按住说话 (letting go stops); shorter: a click that toggles
 const CHAT_PLACEHOLDER = '说点什么，可粘贴图片、拖入文件…';
 const ASR_NAME = { lobehub: 'LobeHub 云端识别', local: '本地识别服务（whisper）' };
 const ASR_REASON = {
-  'too-short': '太短了，没录到。点一下 🎤 开始、说完再点一下；或者按住 🎤 说话。',
+  'too-short': '太短了，没录到。按住说话，说完再松开。',
   empty: '没听清，再说一遍？',
   unauthorized: '语音识别要先登录 LobeHub。',
   model: '识别模型用不了，去 高级设置 → 语音输入 换一个。',
@@ -2626,7 +2755,7 @@ const ASR_REASON = {
   'mic-error': '麦克风打不开',
   canceled: '已取消。',
 };
-let mic = { state: 'idle', rec: null, stream: null, chunks: [], t0: 0, ms: 0, timer: null, tick: null, pressAt: 0, cancel: false };
+let mic = { state: 'idle', target: 'box', off: false, rec: null, stream: null, chunks: [], t0: 0, ms: 0, timer: null, tick: null, pressAt: 0, cancel: false };
 let lastAsr = null; // the last outcome (e2e reads it through petFx.lastAsr)
 const asrOn = () => !!(settings && settings.asr && settings.asr.enabled && settings.asr.engine !== 'off');
 const micActive = () => mic.state !== 'idle';
@@ -2649,26 +2778,26 @@ function asrReasonText(r) {
   return base;
 }
 
-// The 🎤 button, the status line above the box and the box itself follow mic.state.
+// 按住说话, the status line above the box and the box itself follow mic.state.
 function paintMic() {
-  const b = $('chat-mic');
+  const b = $('voice-hold');
   if (!b) return;
   const input = $('chat-input');
   const st = $('mic-status');
   const s = mic.state;
+  const held = mic.target === 'voice';
   b.dataset.state = s;
+  b.dataset.off = String(s === 'recording' && !!mic.off);
   b.setAttribute('aria-pressed', String(s === 'recording'));
   const sec = s === 'recording' ? Math.floor((performance.now() - mic.t0) / 1000) : 0;
   const max = (settings && settings.asr && settings.asr.maxSeconds) || 60;
-  if (s === 'recording') b.textContent = `■ ${sec}s`;
-  else if (s === 'idle') b.innerHTML = MIC_ICON;
-  else b.innerHTML = '<span class="spin" aria-hidden="true"></span>';
-  b.title = s === 'recording' ? '再点一下（或松开）结束，Esc 取消' : s === 'idle' ? '语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束' : '识别中…';
+  b.textContent = s === 'recording' ? (mic.off ? '松开取消' : `松开发送 · ${sec}s`) : s === 'starting' ? '正在打开麦克风…' : s === 'idle' ? '按住说话' : '识别中…';
+  if (chatMode === 'voice') $('chat-hint').textContent = s === 'recording' ? '拖开或 Esc 取消' : CHAT_HINT.voice;
   input.classList.toggle('listening', s === 'recording');
   input.classList.toggle('recognizing', s === 'transcribing' || s === 'stopping');
   input.placeholder = s === 'recording' ? '正在听…' : s === 'transcribing' || s === 'stopping' ? '识别中…' : CHAT_PLACEHOLDER;
   const engine = settings && settings.asr ? ASR_NAME[settings.asr.engine] || '' : '';
-  const line = s === 'recording' ? `🔴 正在听 ${sec}s / ${max}s · 再点或松开结束，Esc 取消`
+  const line = held ? '' : s === 'recording' ? `🔴 正在听 ${sec}s / ${max}s · 再按一次结束，Esc 取消`
     : s === 'starting' ? '🎤 正在打开麦克风…'
       : s === 'stopping' || s === 'transcribing' ? `⏳ 识别中…（${engine}）` : '';
   st.textContent = line;
@@ -2700,13 +2829,12 @@ async function toggleMute() {
   if (r && r.settings) setSettings(r.settings);
 }
 
-// Shown or hidden with 语音输入; switching it off mid-recording drops the recording.
+// With 语音输入 switched off the box goes back to typing, and a recording is dropped.
 function syncMic() {
-  const b = $('chat-mic');
-  if (!b) return;
   const on = asrOn() && !VISITOR;
-  b.classList.toggle('hidden', !on);
   if (!on && micActive()) micStop(true);
+  if (!on && chatMode === 'voice') setChatMode('text');
+  syncChatMode();
 }
 
 function micRelease() {
@@ -2718,8 +2846,10 @@ function micRelease() {
   mic.chunks = [];
 }
 
-async function micStart() {
+async function micStart(target = 'box') {
   if (mic.state !== 'idle' || !asrOn() || thinking) return;
+  mic.target = target;
+  mic.off = false;
   mic.state = 'starting';
   paintMic();
   syncHover();
@@ -2755,7 +2885,14 @@ async function micStart() {
 
 // Stop listening: the clip goes to be recognised, or (cancel) is thrown away.
 function micStop(cancel = false) {
-  if (mic.state === 'starting') { mic.state = 'idle'; paintMic(); syncHover(); endVoiceCall('canceled'); return; }
+  if (mic.state === 'starting') {
+    mic.state = 'idle';
+    paintMic();
+    syncHover();
+    if (mic.target === 'voice' && !cancel) asrFail({ ok: false, reason: 'too-short' }); // let go before it even opened
+    else endVoiceCall('canceled');
+    return;
+  }
   if (mic.state !== 'recording') {
     if (cancel && mic.state === 'transcribing') window.pet.asr.cancel();
     return;
@@ -2792,10 +2929,17 @@ async function micDone(rec) {
   syncHover();
   lastAsr = { ...r, bytes: blob.size, mime, clipMs: ms, at: Date.now() };
   if (!r.ok) { if (r.reason !== 'canceled') asrFail(r); else endVoiceCall('canceled'); return; }
+  if (mic.target === 'voice') { // 按住说话: nothing to read over or fix first, it goes to her
+    lastAsr.sent = !thinking;
+    if (sendSpoken) sendSpoken(r.text);
+    endVoiceCall('ok', lastAsr);
+    return;
+  }
   const input = $('chat-input');
   const cur = input.value.trimEnd();
-  input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 400);
-  if (!$('chat-row').classList.contains('hidden')) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  input.value = `${cur}${cur && !/\s$/.test(cur) ? ' ' : ''}${r.text}`.slice(0, Number(input.maxLength) > 0 ? Number(input.maxLength) : 2000);
+  fitChatInput();
+  if (chatIsOpen()) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
   if (settings.asr.autoSend) {
     if (thinking) showNotice('🎤 已填进输入框', '她还在回上一句，等她说完再点“发送”。');
     else { lastAsr.sent = true; $('chat-send').click(); }
@@ -2895,7 +3039,7 @@ function onVoiceHotkey(p) {
   document.body.classList.add('voice-call');
   logVoice('start');
   openChat();
-  micStart(); // she turns to listen (petStatus → look, the ear over her) for as long as it records
+  micStart(chatMode === 'voice' ? 'voice' : 'box'); // she turns to listen (petStatus → look, the ear over her) for as long as it records
 }
 
 // A short notice in the toast box (the one 关系升级 uses): title, one line, optionally a button to a page of
@@ -2914,26 +3058,34 @@ function showNotice(title, text, action = null, ms = 8000) {
 }
 
 function bindMic() {
-  const b = $('chat-mic');
-  b.addEventListener('mousedown', (e) => e.preventDefault()); // the chat box keeps the focus
-  b.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    if (mic.state === 'recording') { mic.pressAt = 0; micStop(); return; } // the second click
-    if (mic.state !== 'idle') return;
-    try { b.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
-    mic.pressAt = performance.now();
-    micStart();
-  });
+  const b = $('voice-hold');
+  const press = () => { mic.pressAt = performance.now(); micStart('voice'); };
   const release = () => {
-    const held = mic.pressAt && performance.now() - mic.pressAt > MIC_HOLD_MS;
+    if (!mic.pressAt) return;
     mic.pressAt = 0;
-    if (held) micStop(); // 按住说话: letting go ends it. A quick click keeps listening until the next one.
+    micStop(!!mic.off); // slid off the button: it is thrown away
   };
+  b.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || mic.state !== 'idle' || thinking) return;
+    try { b.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    press();
+  });
+  b.addEventListener('pointermove', (e) => {
+    if (!mic.pressAt) return;
+    const r = b.getBoundingClientRect();
+    const off = e.clientX < r.left - 24 || e.clientX > r.right + 24 || e.clientY < r.top - 24 || e.clientY > r.bottom + 24;
+    if (off !== mic.off) { mic.off = off; paintMic(); }
+  });
   b.addEventListener('pointerup', release);
   b.addEventListener('pointercancel', release);
-  // Enter / Space on the focused button: start, and stop
-  b.addEventListener('click', (e) => { if (e.detail !== 0) return; if (mic.state === 'recording') micStop(); else micStart(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && micActive()) { e.stopImmediatePropagation(); micStop(true); } }, true);
+  // Space / Enter on the focused button: held the same way
+  b.addEventListener('keydown', (e) => {
+    if ((e.key !== ' ' && e.key !== 'Enter') || e.repeat) return;
+    e.preventDefault();
+    if (mic.state === 'idle' && !thinking) press();
+  });
+  b.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); release(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && micActive()) { e.stopImmediatePropagation(); mic.pressAt = 0; micStop(true); } }, true);
   syncMic();
   paintMic();
 }

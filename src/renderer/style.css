@@ -192,20 +192,48 @@ body.visitor .music-dock { display: none !important; }
 #hatch-vwrap { width: 192px; height: 192px; }
 #hatch-vwrap video { width: 418px; height: 235px; left: -113px; top: -32px; }
 
-.hud { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; opacity: 0; pointer-events: none; transition: opacity .12s; }
-body.hover .hud { opacity: 1; pointer-events: auto; }
 /* 静音: the speaker shows what you'd hear now; muted = speaker crossed out, in the secondary text colour */
 #btn-mute .mute-off, #btn-mute[aria-pressed="true"] .mute-on { display: none; }
 #btn-mute[aria-pressed="true"] .mute-off { display: inline-block; }
 #btn-mute[aria-pressed="true"] { color: var(--lobe-color-text-tertiary); }
 
-/* chat input: the LobeHub chat input bar (one elevated card holding the attach, the text box, the mic and send) */
-.chat-row { position: absolute; left: 4px; right: 4px; bottom: 60px; margin: 0; gap: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); padding: var(--pet-space-xs); }
-.chat-row input { flex: 1; padding: 2px var(--pet-space-xs); border: none; background: transparent; box-shadow: none; font-size: 12px; }
-.chat-row input:focus { box-shadow: none; }
-.chat-row .btn { padding: 2px var(--pet-space-sm); min-height: 24px; font-size: 12px; }
-.chat-row .btn:not(.primary) { border-color: transparent; background: transparent; color: var(--lobe-color-text-secondary); }
-.chat-row .btn:not(.primary):hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text); }
+/* 对话气泡: a cloud beside her, in the margin of her window, only while the pointer is over her. The whole button takes the click, also between the cloud's bumps */
+.chat-open { position: absolute; right: 6px; bottom: calc(112px * var(--pet-scale, 1)); z-index: 6; width: 64px; height: 46px; padding: 0; color: var(--lobe-color-text-secondary); background: none; border: 0; border-radius: var(--lobe-border-radius-lg); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity var(--lobe-motion-duration-mid) var(--pet-ease), color var(--lobe-motion-duration-mid) var(--pet-ease); }
+.chat-cloud { display: block; width: 100%; height: 100%; fill: currentColor; pointer-events: none; overflow: visible; filter: drop-shadow(0 2px 4px rgba(43,34,51,.28)); }
+.chat-cloud-shape { fill: var(--pet-surface); stroke: var(--pet-line-soft); stroke-width: 1; }
+body.hover .chat-open { opacity: 1; pointer-events: auto; }
+.chat-open:hover, .chat-open[aria-expanded="true"] { color: var(--lobe-color-text); }
+.chat-open:focus-visible { opacity: 1; pointer-events: auto; outline: 2px solid var(--lobe-color-info); outline-offset: 1px; }
+/* the chat box: under her feet (top: 100% of her part of the window; the window makes the room, app.js composer
+   space), LobeHub's chat input in small: one framed card with the text and a bar under it. It grows with the text
+   up to about six lines, then scrolls. */
+.chat-row { position: absolute; top: 100%; left: 4px; right: 4px; margin-top: 2px; display: flex; flex-direction: column; gap: var(--pet-space-xs); }
+.chat-row.hidden { display: none; }
+.chat-box { position: relative; display: flex; flex-direction: column; gap: var(--pet-space-xxs); padding: var(--pet-space-xs); background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: 0 1px 4px color-mix(in srgb, var(--lobe-color-text) 14%, transparent); }
+.chat-box:focus-within { border-color: var(--lobe-color-text-tertiary); }
+.chat-box textarea { display: block; width: 100%; resize: none; overflow-y: hidden; min-height: 40px; padding: var(--pet-space-xxs) 20px var(--pet-space-xxs) var(--pet-space-xs); border: none; background: transparent; box-shadow: none; font-size: 12px; line-height: 18px; user-select: text; }
+.chat-box textarea:hover, .chat-box textarea:focus { border: none; box-shadow: none; }
+.chat-box textarea.hidden { display: none; }
+.chat-box textarea.listening { color: var(--lobe-color-error); }
+.chat-box textarea.recognizing { color: var(--lobe-color-text-tertiary); }
+.chat-close { position: absolute; top: 2px; right: 2px; z-index: 1; width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--lobe-color-text-tertiary); background: transparent; border: none; border-radius: var(--lobe-border-radius-sm); cursor: pointer; }
+.chat-close .ico { width: 13px; height: 13px; }
+.chat-close:hover { background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text); }
+.chat-close:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
+.chat-bar { display: flex; align-items: center; gap: var(--pet-space-xxs); }
+.chat-bar .chat-tool { flex: none; min-width: 24px; min-height: 24px; padding: 2px; border-color: transparent; background: transparent; color: var(--lobe-color-text-tertiary); }
+.chat-bar .chat-tool .ico { width: 14px; height: 14px; }
+.chat-bar .chat-tool:hover:not(:disabled) { border-color: transparent; background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text); }
+.chat-hint { flex: 1; min-width: 0; padding-left: var(--pet-space-xxs); font-size: 11px; line-height: 16px; color: var(--lobe-color-text-quaternary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-bar .btn.primary { flex: none; min-height: 24px; padding: 2px var(--pet-space-sm); font-size: 12px; }
+.chat-row[data-mode="voice"] #chat-send { display: none; }
+/* 按住说话: the whole box is the button; red while it listens, quiet while it is recognised */
+.voice-hold { width: calc(100% - 22px); min-height: 40px; font-size: 12px; touch-action: none; user-select: none; }
+.voice-hold.hidden { display: none; }
+.voice-hold[data-state="recording"], .voice-hold[data-state="recording"]:hover:not(:disabled) { background: var(--lobe-color-error); border-color: var(--lobe-color-error); color: var(--pet-on-solid); animation: mic-pulse 1s ease-in-out infinite; }
+.voice-hold[data-state="recording"][data-off="true"], .voice-hold[data-state="recording"][data-off="true"]:hover:not(:disabled) { background: var(--lobe-color-text-tertiary); border-color: var(--lobe-color-text-tertiary); animation: none; }
+.voice-hold[data-state="starting"], .voice-hold[data-state="stopping"], .voice-hold[data-state="transcribing"] { cursor: progress; color: var(--lobe-color-text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .voice-hold[data-state="recording"] { animation: none; } }
 /* menus: the LobeHub dropdown (elevated surface, radius lg, items as quiet rows with a hover fill) */
 .popup { position: absolute; bottom: 36px; right: 4px; display: flex; flex-direction: column; gap: 1px; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow); padding: var(--pet-space-xs); z-index: 5; animation: pop-in var(--lobe-motion-duration-mid) var(--pet-ease); transform-origin: 100% 100%; }
 .popup .btn { justify-content: flex-start; text-align: left; font-size: 12px; font-weight: 400; padding: var(--pet-space-xs) var(--pet-space-sm); border-color: transparent; background: transparent; border-radius: var(--lobe-border-radius-sm); }
@@ -215,12 +243,12 @@ body.hover .hud { opacity: 1; pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .popup, .unlock-toast { animation: none !important; } }
 
 /* While the pet is working nothing else can be done: hide every control, even on hover. */
-body.busy .hud, body.busy .popup, body.busy .chat-row, body.busy .mic-status { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; transition: none !important; }
+body.busy .chat-open, body.busy .popup, body.busy .mic-status { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; transition: none !important; }
 body.busy .pet-hit { cursor: progress; }
 
 /* attach / paste images */
 /* 表情包 panel above the chat box (docs/stickers-design.md §3.1): set tabs, a 5-column grid; one click sends */
-.sticker-pop { left: 4px; right: 4px; bottom: 96px; gap: var(--pet-space-xs); transform-origin: 0 100%; }
+.sticker-pop { position: static; gap: var(--pet-space-xs); transform-origin: 0 100%; }
 .sticker-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
 .sticker-tabs:empty { display: none; }
 .sticker-tabs .btn { font-size: 12px; padding: 1px var(--pet-space-sm); min-height: 20px; color: var(--lobe-color-text-secondary); }
@@ -234,21 +262,13 @@ body.busy .pet-hit { cursor: progress; }
 /* the owner's sticker floats up over the chat box for a moment after it is sent */
 .sent-sticker { position: absolute; right: 12px; bottom: 96px; width: 64px; height: 64px; object-fit: contain; z-index: 4; pointer-events: none; animation: pop-in var(--lobe-motion-duration-mid) var(--pet-ease); }
 @media (prefers-reduced-motion: reduce) { .sent-sticker, .sticker-pop { animation: none; } }
-.attach-row { display: flex; gap: var(--pet-space-xs); flex-wrap: wrap; position: absolute; left: 4px; right: 4px; bottom: 96px; z-index: 4; }
+.attach-row { display: flex; gap: var(--pet-space-xs); flex-wrap: wrap; padding-top: 6px; }
 .attach-chip { position: relative; width: 38px; height: 38px; border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius-sm); background: var(--pet-surface) center/cover no-repeat; box-shadow: var(--lobe-box-shadow-tertiary); }
 .attach-chip button { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; line-height: 14px; font-size: 11px; color: var(--lobe-color-bg-container); border: none; border-radius: 50%; background: var(--lobe-color-text-secondary); cursor: pointer; }
 .attach-chip button:hover { background: var(--lobe-color-text); }
-.chat-row .attach-btn { padding: 2px var(--pet-space-xs); }
-/* 语音输入: the mic next to the box; red while it listens, a spinner while it is being recognised */
-.chat-row .mic-btn { padding: 2px var(--pet-space-xs); min-width: 26px; touch-action: none; user-select: none; }
-.chat-row .mic-btn[data-state="recording"] { background: var(--lobe-color-error); border-color: var(--lobe-color-error); color: var(--pet-on-solid); animation: mic-pulse 1s ease-in-out infinite; }
-.chat-row .mic-btn[data-state="starting"], .chat-row .mic-btn[data-state="stopping"], .chat-row .mic-btn[data-state="transcribing"] { cursor: progress; }
-.chat-row .mic-btn .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: mic-spin .7s linear infinite; vertical-align: -1px; }
-.chat-row input.listening { background: transparent; color: var(--lobe-color-error); }
-.chat-row input.recognizing { background: transparent; color: var(--lobe-color-text-tertiary); }
 @keyframes mic-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lobe-color-error) 30%, transparent); } }
 @keyframes mic-spin { to { transform: rotate(360deg); } }
-.mic-status { position: absolute; left: 4px; right: 4px; bottom: 96px; z-index: 6; background: var(--lobe-color-text); color: var(--lobe-color-bg-container); font-size: 11px; padding: 2px var(--pet-space-sm); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--lobe-box-shadow-secondary); pointer-events: none; }
+.mic-status { background: var(--lobe-color-text); color: var(--lobe-color-bg-container); font-size: 11px; padding: 2px var(--pet-space-sm); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--lobe-box-shadow-secondary); pointer-events: none; }
 .mic-status[data-state="recording"] { background: var(--lobe-color-error); color: var(--pet-on-solid); }
 /* 快捷键唤起语音对话: the bubble while she listens — a pulsing red dot while recording, a spinner while it is recognised */
 .bubble[data-kind="listen"] { border: 1px solid var(--pet-line-soft); }
@@ -387,7 +407,7 @@ canvas.sprite { object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .char-wrap[data-status="walk"] .char, .score-pop { animation: none; } }
 /* a visitor window: only the character; hovering shows her name and the × that sends her home */
 body.visitor #pet-screen { justify-content: flex-end; }
-body.visitor .hud, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #unlock-toast { display: none !important; }
+body.visitor .chat-open, body.visitor .chat-row, body.visitor #bubble, body.visitor .bubble-tail, body.visitor #stop-btn, body.visitor #resize-grip, body.visitor #unlock-toast { display: none !important; }
 body.visitor .visitor-bar { display: flex; position: absolute; top: 2px; left: 2px; right: 2px; gap: var(--pet-space-xs); align-items: center; justify-content: space-between; font-size: 11px; color: var(--lobe-color-text); background: var(--pet-surface); border-radius: var(--lobe-border-radius-sm); box-shadow: var(--pet-float-shadow); padding: 1px 2px 1px var(--pet-space-sm); opacity: 0; pointer-events: none; transition: opacity .12s; }
 body.visitor.hover .visitor-bar { opacity: 1; pointer-events: auto; }
 body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px; border-color: transparent; background: transparent; min-width: 24px; min-height: 22px; }

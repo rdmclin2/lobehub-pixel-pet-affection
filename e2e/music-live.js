@@ -24,6 +24,7 @@ const { execFileSync } = require('node:child_process');
 
 module.exports = function musicLiveScenario(ctx) {
   const { ROOT, OUT, step, launch, hover, clickAct } = ctx;
+  const { clickChatBubble } = require('./pet-panel');
   return async function musicLive() {
     const legacy = process.env.MUSIC_LIVE_MINIMAX;
     const PROVIDER = legacy ? 'minimax' : ['minimax', 'elevenlabs'].includes(process.env.MUSIC_LIVE_PROVIDER) ? process.env.MUSIC_LIVE_PROVIDER : 'fal';
@@ -104,7 +105,7 @@ module.exports = function musicLiveScenario(ctx) {
       const ASK = process.env.MUSIC_LIVE_ASK || '给我写一首关于夏夜萤火虫的歌吧，轻快一点，短一些就好';
       await step(S, `L2 「${ASK}」→ the real model calls compose_music by itself; the bubble says 作曲中…`, async () => {
         await hover(page);
-        if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+        if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
         await page.fill('#chat-input', ASK);
         await shot('l2-typed');
         await page.click('#chat-send');

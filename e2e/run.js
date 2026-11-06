@@ -121,7 +121,7 @@ async function launch(env, { gate = false, video = null, args = [], videoSize = 
 // The pet's buttons live in her panel now (a right click on her opens it): `hover` points at her and opens it.
 const hover = async (page) => { await page.mouse.move(110, 150); await page.waitForSelector('body.hover', { timeout: 5000 }); };
 // Her buttons are in her panel (its own window: a right click on her opens it; e2e/pet-panel.js)
-const { clickAct, pickFood } = require('./pet-panel');
+const { clickAct, clickChatBubble, pickFood } = require('./pet-panel');
 // what her panel shows, on one line (「小蓝 · 格萝可 · 像素 · 陌生 ♥14 · 距「熟悉」1」): app.js window.__petStatus
 const statusLine = (page) => page.evaluate(() => window.__petStatus().summary);
 // ⋯ → 角色列表, optionally opening `id`'s page (her model, look and affection), as a user clicks it.
@@ -202,7 +202,7 @@ async function adminRelease(app, page, deleteAgent = true) {
 const adminSet = (admin, key, value) => admin.evaluate(([k, v]) => window.petAdmin.set(k, v), [key, value]);
 // The pet window (BrowserWindow.getAllWindows() also lists the settings window once it is open)
 const petBounds = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().includes('admin-ui') && !w.webContents.getURL().includes('visitor=') && !w.webContents.getURL().includes('/panel/')).getBounds());
-const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('hud')).opacity);
+const hudOpacity = (page) => page.evaluate(() => getComputedStyle(document.getElementById('chat-open')).opacity);
 // Hands real on-disk files to the page as a drop: an <input type=file> gives File objects that carry real
 // paths, so webUtils.getPathForFile resolves them exactly like a file dragged from Finder.
 async function dropFiles(page, paths) {
@@ -334,11 +334,11 @@ async function fresh() {
 
     await step(S, 'hovering the pet reveals the controls and moving away hides them again', async () => {
       await hover(page);
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1');
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '1');
       await page.screenshot({ path: path.join(OUT, 'hover-shown.png') });
       await page.mouse.move(-20, -20);
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '0', null, { timeout: 5000 });
     }, () => page);
 
     await step(S, 'feeding lowers hunger and shows food', async () => {
@@ -1030,7 +1030,7 @@ async function dafeiyu() {
       assert.equal(await page.locator('#char-wrap').isHidden(), true);
       // the pointer is still where the Hatch button was; a real user would move away
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '0', null, { timeout: 5000 });
       const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
       assert.deepEqual([b.width, b.height], [268, 388], 'default 125%: window 268x388');
       return `window ${b.width}x${b.height}, clip idle`;
@@ -1090,24 +1090,27 @@ async function busy() {
       assert.ok(fs.existsSync(path.join(fakeDir, 'daemon-started')));
     });
 
-    await step(S, 'with the chat box open, moving the pointer away hides everything; the draft returns on the next hover', async () => {
-      await clickAct(page, 'chat'); // opens the chat box, pointer inside
+    await step(S, 'with the chat box open, moving the pointer away hides the controls but not the box; ✕ closes it and the draft stays', async () => {
+      await clickChatBubble(page);
       await page.fill('#chat-input', '草稿还在');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'chat-input');
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '0', null, { timeout: 5000 });
       assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), false);
-      assert.notEqual(await page.evaluate(() => document.activeElement.id), 'chat-input', 'the hidden box must not keep keyboard focus');
-      await page.screenshot({ path: path.join(OUT, 'away-hidden.png') });
+      assert.equal(await page.isVisible('#chat-input'), true, 'the box stays until it is closed');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'chat-input', 'typing goes on');
+      await page.screenshot({ path: path.join(OUT, 'away-box-stays.png') });
       await hover(page);
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1', null, { timeout: 5000 });
+      await page.click('#chat-close');
+      assert.equal(await page.isVisible('#chat-input'), false);
+      await clickChatBubble(page);
       assert.equal(await page.inputValue('#chat-input'), '草稿还在');
       await page.fill('#chat-input', '');
-      await clickAct(page, 'chat'); // close it again for the next steps
+      await page.click('#chat-close');
     }, () => page);
 
     await step(S, 'while the pet works the controls stay hidden even under the pointer, and actions are refused', async () => {
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '帮我看看下载文件夹里有什么');
       await page.click('#chat-send');
       await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
@@ -1123,7 +1126,7 @@ async function busy() {
     await step(S, 'when the reply arrives the controls come back on hover', async () => {
       await idle();
       await page.mouse.move(100, 150);
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '1', null, { timeout: 5000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '1', null, { timeout: 5000 });
       assert.match(await page.textContent('#bubble'), /echo:/);
     }, () => page);
 
@@ -1144,7 +1147,7 @@ async function busy() {
       await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
       await page.mouse.move(110, 150);
       await page.waitForFunction(() => getComputedStyle(document.getElementById('stop-btn')).display !== 'none', null, { timeout: 5000 });
-      await page.waitForFunction(() => getComputedStyle(document.getElementById('hud')).opacity === '0', null, { timeout: 5000 });
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '0', null, { timeout: 5000 });
       assert.equal((await require('./pet-panel').panelState(page)).visible, false, 'no panel while she thinks');
       // pointer leaves: the button goes away with it
       await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
@@ -1299,7 +1302,7 @@ async function oldlh() {
     await step(S, 'an lh that cannot write the binding still works, and the pet says to upgrade lh', async () => {
       await page.waitForFunction(() => /升级/.test(document.getElementById('bubble').textContent), null, { timeout: 8000 });
       await hover(page);
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '读一下桌面上有什么');
       await page.click('#chat-send');
       await page.waitForFunction(() => document.body.classList.contains('busy'), null, { timeout: 5000 });
@@ -1414,7 +1417,7 @@ async function live() {
     }, page);
 
     await step(S, 'chat: the pet answers and remembers what it was told (same LobeHub topic)', async () => {
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '我叫小李，我最喜欢吃面条，记住哦');
       await page.click('#chat-send');
       await page.waitForFunction(() => document.getElementById('bubble').classList.contains('thinking'), null, { timeout: 5000 }).catch(() => {});
@@ -2854,7 +2857,7 @@ async function rosterOne(ch) {
     }, page);
     await step(S, 'E11a work status: thinking while the agent works', async () => {
       await page.evaluate(() => window.pet.debugSet({ mood: 55 }));
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '帮我想想今天吃什么');
       await page.press('#chat-input', 'Enter');
       await leave();
@@ -3070,7 +3073,7 @@ async function rosterOne(ch) {
     await step(S, 'N10 memes: a reply tagged with one of her memes shows the picture in the bubble', async () => {
       await page.waitForTimeout(3200);
       await idle();
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', `看这个 [梗图:${meme}]`);
       await page.press('#chat-input', 'Enter');
       await leave();
@@ -4033,7 +4036,7 @@ async function voice() {
       // a reply the owner asked for, read by ElevenLabs: the bubble marks the sentence being played
       const prevN = played.n;
       mock.perCharMs = 250; // a longer tone, so the screenshot lands while it plays
-      if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+      if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
       await page.fill('#chat-input', '请用 ElevenLabs 的声音回答我');
       await page.press('#chat-input', 'Enter');
       const reading = await page.waitForFunction((p) => { const r = window.petFx.lastSpeech(); const m = document.querySelector('#bubble .sentence.reading'); const au = window.petFx.audioState(); return r && r.n > p && r.provider === 'elevenlabs' && r.status === 'playing' && r.started && au && !au.paused && au.currentTime > 0.3 && m && { n: r.n, provider: r.provider, status: r.status, mime: r.mime, bytes: r.bytes, text: r.text, marked: m.textContent, bubble: document.getElementById('bubble').textContent.trim(), started: r.started, audio: au }; }, prevN, { timeout: 20000 }).then((h) => h.jsonValue());
@@ -5525,7 +5528,7 @@ async function chatvoice() {
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
   // type a message in the chat box and send it, as the owner would
   const send = async (text) => {
-    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
     await page.fill('#chat-input', text);
     await page.press('#chat-input', 'Enter');
   };
@@ -5790,7 +5793,7 @@ async function history() {
 
     await step(S, 'H3 the owner sends one message from the chat box and gets a reply', async () => {
       if (await page.isVisible('#unlock-toast')) await page.click('#toast-close');
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '今天也辛苦啦，晚上想吃什么？');
       await page.press('#chat-input', 'Enter');
       await page.waitForFunction(() => /echo: 今天也辛苦啦/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
@@ -5850,7 +5853,7 @@ async function history() {
       await admin.evaluate(() => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === '重新开始话题').pop().click());
       await adminUntil(admin, () => ![...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === '重新开始话题'), null, 8000, 'the dialog to close');
       await page.bringToFront();
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '我们聊点新的吧');
       await page.press('#chat-input', 'Enter');
       await page.waitForFunction(() => /echo: 我们聊点新的吧/.test(document.getElementById('bubble').textContent), null, { timeout: 20000 });
@@ -7295,9 +7298,19 @@ async function asrScenario() {
   };
   const openChatBox = async () => {
     await hover(page);
-    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
-    await page.waitForSelector('#chat-input', { state: 'visible' });
+    await clickChatBubble(page);
+    await page.waitForSelector('#chat-row:not(.hidden)');
   };
+  // 按住说话 (T-6162): the mode switch, then a press on the button that stays down until page.mouse.up()
+  const holdMic = async () => {
+    await openChatBox();
+    await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+    if ((await page.getAttribute('#chat-row', 'data-mode')) !== 'voice') await page.click('#chat-mode');
+    const box = await page.locator('#voice-hold').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+  };
+  const fillDraft = (text) => page.evaluate((t) => { const i = document.getElementById('chat-input'); i.value = t; i.dispatchEvent(new Event('input', { bubbles: true })); }, text);
   const waitMic = (st, timeout = 10000) => page.waitForFunction((s) => window.petFx.micState() === s, st, { timeout });
   // the outcome after `n` recognitions have been asked of the server
   const settled = () => page.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 30000 });
@@ -7315,12 +7328,13 @@ async function asrScenario() {
       assert.equal(a.enabled, false);
       assert.equal(a.autoSend, false);
       await openChatBox();
-      assert.equal(await page.isVisible('#chat-mic'), false, '🎤 hidden while 语音输入 is off');
+      assert.match(await page.getAttribute('#chat-mode', 'title'), /语音输入还没开/, 'the switch says how to turn 语音输入 on');
+      assert.equal(await page.isVisible('#voice-hold'), false);
       // the microphone is refused while 语音输入 is off (main.js permission handler)
       const denied = await page.evaluate(() => navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; }, (e) => e.name));
       assert.equal(denied, 'NotAllowedError');
       await shot('a0-chat-row-no-mic');
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       return note(`settings.asr defaults ${JSON.stringify(a)}; 🎤 hidden; getUserMedia(audio) with ASR off → ${denied}`);
     }, page);
 
@@ -7375,31 +7389,34 @@ async function asrScenario() {
       return note(`http://evil.example.com:8179 → 「${refused}」; 测试连接 → 「${test}」; request ${JSON.stringify(req)}; settings.asr ${JSON.stringify(a)}`);
     }, () => admin || page);
 
-    await step(S, 'A2 click 🎤, speak, click again: recording → 识别中 → the text is in the chat box', async () => {
-      chapter('A2 点一下 🎤 开始、再点一下结束：录音中 → 识别中 → 文字出现在输入框');
+    await step(S, 'A2 按住说话: hold, speak, let go: recording → 识别中 → it goes to her, the typed draft untouched', async () => {
+      chapter('A2 切到语音、按住说话、松开：录音中 → 识别中 → 直接发给她，打字的草稿不动');
       await openChatBox();
-      assert.equal(await page.isVisible('#chat-mic'), true, '🎤 shown');
-      await page.fill('#chat-input', '');
+      await fillDraft('还没写完的草稿');
       const before = mock.log.length;
-      await page.click('#chat-mic');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(1600);
-      const recBtn = await page.textContent('#chat-mic');
-      const recLine = await page.textContent('#mic-status');
-      assert.match(recLine, /正在听 \d+s/);
-      assert.equal(await page.getAttribute('#chat-input', 'placeholder'), '正在听…');
+      const recBtn = await page.textContent('#voice-hold');
+      assert.match(recBtn, /松开发送 · \d+s/);
+      assert.equal(await page.isVisible('#mic-status'), false, 'the button says it all');
       // 🎤 too: she is listening while you speak (look, the ear over her)
       const lis = await page.evaluate(() => { const f = window.petFx.state(); return { state: f.state, listening: f.listening, fx: f.fx }; });
       assert.deepEqual(lis, { state: 'look', listening: true, fx: '👂' }, 'listening while 🎤 records');
       await shot('a2-recording');
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await waitMic('transcribing');
-      const busyLine = await page.textContent('#mic-status');
+      const busyLine = await page.textContent('#voice-hold');
       assert.match(busyLine, /识别中/);
       await shot('a2-transcribing');
       await settled();
-      await page.waitForFunction((t) => document.getElementById('chat-input').value === t, mock.TEXT, { timeout: 5000 });
+      await page.waitForFunction((t) => document.getElementById('chat-input').value === '还没写完的草稿', mock.TEXT, { timeout: 5000 });
       const r = await lastAsr();
+      assert.equal(r.sent, true, 'it went to her');
+      await waitReply(page, 30000);
+      await page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 30000 });
+      assert.equal(await page.inputValue('#chat-input'), '还没写完的草稿');
+      await fillDraft('');
       const req = mock.log[before];
       assert.equal(mock.log.length, before + 1);
       assert.equal(req.path, '/v1/audio/transcriptions');
@@ -7414,43 +7431,39 @@ async function asrScenario() {
       // the microphone is released once the clip is taken
       const live = await page.evaluate(() => window.petFx.micState());
       assert.equal(live, 'idle');
-      await shot('a2-text-in-chat-input');
-      return note(`button while recording 「${recBtn.trim()}」, status 「${recLine.trim()}」 → 「${busyLine.trim()}」; server got ${req.filename} ${req.type} ${req.bytes} bytes magic=${req.magic} model=${req.model} language=${req.language}; clip ${r.clipMs} ms, ${r.ms} ms to text; #chat-input = 「${await page.inputValue('#chat-input')}」`);
+      await shot('a2-sent');
+      return note(`button while recording 「${recBtn.trim()}」, → 「${busyLine.trim()}」; server got ${req.filename} ${req.type} ${req.bytes} bytes magic=${req.magic} model=${req.model} language=${req.language}; clip ${r.clipMs} ms, ${r.ms} ms to text; #chat-input = 「${await page.inputValue('#chat-input')}」`);
     }, page);
 
-    await step(S, 'A3 按住说话: hold 🎤 for 1.5 s and let go; the text is added after what is typed', async () => {
-      chapter('A3 按住 🎤 说话、松开结束：文字接在已输入内容后面');
-      await openChatBox();
-      await page.fill('#chat-input', '我说：');
+    await step(S, 'A3 slide off the button and let go: thrown away, nothing recognised or sent', async () => {
+      chapter('A3 按住后拖开再松开：取消，不识别不发送');
       const before = mock.log.length;
-      const box = await page.locator('#chat-mic').boundingBox();
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
+      await holdMic();
       await waitMic('recording');
-      await page.waitForTimeout(1500);
-      assert.equal(await micState(), 'recording', 'still listening while held');
-      await shot('a3-holding');
+      await page.waitForTimeout(700);
+      const box = await page.locator('#voice-hold').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y - 120);
+      await page.waitForFunction(() => document.getElementById('voice-hold').textContent === '松开取消');
+      await shot('a3-slide-off');
       await page.mouse.up();
-      await settled();
-      assert.equal(mock.log.length, before + 1);
-      const v = await page.inputValue('#chat-input');
-      assert.equal(v, `我说： ${mock.TEXT}`);
-      const r = await lastAsr();
-      assert.ok(r.clipMs >= 1400, `clip ${r.clipMs} ms`);
-      await shot('a3-hold-text-appended');
-      return note(`held ${r.clipMs} ms → #chat-input = 「${v}」`);
+      await waitMic('idle');
+      await page.waitForTimeout(500);
+      assert.equal(mock.log.length, before, 'no request');
+      assert.equal((await lastAsr()).reason, 'canceled');
+      return note('松开取消 → canceled, 0 requests');
     }, page);
 
     await step(S, 'A4 Esc while listening throws the recording away; nothing is sent', async () => {
       chapter('A4 录音中按 Esc：丢弃，不发送');
       await openChatBox();
-      await page.fill('#chat-input', '');
+      await fillDraft('');
       const before = mock.log.length;
-      await page.click('#chat-mic');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(800);
       await page.keyboard.press('Escape');
       await waitMic('idle');
+      await page.mouse.up();
       await page.waitForTimeout(700);
       assert.equal(mock.log.length, before, 'no request');
       assert.equal(await page.inputValue('#chat-input'), '');
@@ -7462,9 +7475,9 @@ async function asrScenario() {
       chapter('A5 太短的点按：提示，不请求');
       await openChatBox();
       const before = mock.log.length;
-      await page.click('#chat-mic');
+      await holdMic();
       await waitMic('recording');
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await waitMic('idle');
       await page.waitForSelector('#unlock-toast:not(.hidden)');
       const t = await page.textContent('#unlock-toast');
@@ -7479,11 +7492,11 @@ async function asrScenario() {
       chapter('A6 识别服务出错：失败 toast，输入框内容保留');
       mock.mode = '500';
       await openChatBox();
-      await page.fill('#chat-input', '原来的草稿');
-      await page.click('#chat-mic');
+      await fillDraft('原来的草稿');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(1000);
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await settled();
       await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
       const t = await page.textContent('#unlock-toast');
@@ -7522,11 +7535,11 @@ async function asrScenario() {
       assert.equal((await getSet()).local.endpoint, dead);
       await closeAdmin();
       await openChatBox();
-      await page.fill('#chat-input', '草稿还在');
-      await page.click('#chat-mic');
+      await fillDraft('草稿还在');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(1000);
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await settled();
       await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
       const t = await page.textContent('#unlock-toast');
@@ -7546,18 +7559,18 @@ async function asrScenario() {
       assert.equal((await getSet()).fallback, true);
       await closeAdmin();
       await openChatBox();
-      await page.fill('#chat-input', '');
-      await page.click('#chat-mic');
+      await fillDraft('');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(1000);
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await settled();
       const f = await lastAsr();
       assert.equal(f.ok, true);
       assert.equal(f.provider, 'lobehub');
       assert.deepEqual(f.fellBackFrom.map((x) => x.id), ['local']);
-      const box = await page.inputValue('#chat-input');
-      assert.match(box, /^heard gpt-4o-mini-transcribe zh/);
+      assert.match(f.text, /^heard gpt-4o-mini-transcribe zh/);
+      assert.equal(f.sent, true);
       await shot('a6b-fallback-lobehub-text');
       // back to the mock host, fallback off, for the steps after this one
       await openAsr();
@@ -7570,11 +7583,11 @@ async function asrScenario() {
       assert.equal(back.local.endpoint, mock.url);
       await closeAdmin();
       await openChatBox();
-      await page.fill('#chat-input', '');
-      return note(`dead host ${dead} → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, tried: r.tried })}; fallback on → provider ${f.provider}, fellBackFrom ${JSON.stringify(f.fellBackFrom)}, box 「${box}」`);
+      await fillDraft('');
+      return note(`dead host ${dead} → toast 「${t.replace(/\s+/g, ' ').replace('×', '').trim()}」, lastAsr ${JSON.stringify({ ok: r.ok, reason: r.reason, tried: r.tried })}; fallback on → provider ${f.provider}, fellBackFrom ${JSON.stringify(f.fellBackFrom)}, f.text 「${f.text}」`);
     }, page);
 
-    await step(S, 'A7 识别后直接发送: the recognised text goes to her at once and she answers', async () => {
+    await step(S, 'A7 with 识别后直接发送 on too, 按住说话 goes to her and she answers; it is in 聊天记录', async () => {
       chapter('A7 打开“识别后直接发送”：识别后直接发给她');
       await openAsr();
       await admin.click('[data-key="asr.autoSend"]');
@@ -7582,11 +7595,11 @@ async function asrScenario() {
       assert.equal((await getSet()).autoSend, true);
       await closeAdmin();
       await openChatBox();
-      await page.fill('#chat-input', '');
-      await page.click('#chat-mic');
+      await fillDraft('');
+      await holdMic();
       await waitMic('recording');
       await page.waitForTimeout(1200);
-      await page.click('#chat-mic');
+      await page.mouse.up();
       await settled();
       const r = await lastAsr();
       assert.equal(r.sent, true);
@@ -7618,15 +7631,15 @@ async function asrScenario() {
         await ashot('a8-real-whisper-settings-test');
         await closeAdmin();
         await openChatBox();
-        await page.fill('#chat-input', '');
-        await page.click('#chat-mic');
+        await fillDraft('');
+        await holdMic();
         await waitMic('recording');
         await page.waitForTimeout(Number(process.env.PIXELPET_E2E_ASR_MS || 4500));
-        await page.click('#chat-mic');
+        await page.mouse.up();
         await settled();
         const r = await lastAsr();
         assert.equal(r.ok, true, JSON.stringify(r));
-        const v = await page.inputValue('#chat-input');
+        const v = r.text;
         if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
         await shot('a8-real-whisper-text');
         return note(`测试连接 → 「${tested}」; real whisper ${process.env.PIXELPET_E2E_WHISPER}: clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
@@ -7652,18 +7665,18 @@ async function asrScenario() {
           await ashot('a8b-lobehub-test-ok');
           await closeAdmin();
           await openChatBox();
-          await page.fill('#chat-input', '');
-          await page.click('#chat-mic');
+          await fillDraft('');
+          await holdMic();
           await waitMic('recording');
           await page.waitForTimeout(Number(process.env.PIXELPET_E2E_ASR_MS || 4500));
-          await page.click('#chat-mic');
+          await page.mouse.up();
           await waitMic('transcribing');
           await shot('a8b-lobehub-transcribing');
           await page.waitForFunction(() => window.petFx.micState() === 'idle', null, { timeout: 90000 });
           const r = await lastAsr();
           assert.equal(r.ok, true, JSON.stringify(r));
           assert.equal(r.provider, 'lobehub');
-          const v = await page.inputValue('#chat-input');
+          const v = r.text;
           if (process.env.PIXELPET_E2E_ASR_EXPECT) assert.match(v, new RegExp(process.env.PIXELPET_E2E_ASR_EXPECT));
           await shot('a8b-lobehub-text');
           return note(`测试连接 → 「${tested}」; real LobeHub (${(await getSet()).lobehub.model}): clip ${r.clipMs} ms ${r.bytes} bytes → ${r.ms} ms → 「${v}」`);
@@ -7686,7 +7699,9 @@ async function asrScenario() {
       assert.equal((await getSet()).engine, 'off');
       await closeAdmin();
       await openChatBox();
-      assert.equal(await page.isVisible('#chat-mic'), false);
+      assert.equal(await page.isVisible('#voice-hold'), false, 'back to typing');
+      assert.equal(await page.isVisible('#chat-input'), true);
+      assert.match(await page.getAttribute('#chat-mode', 'title'), /语音输入还没开/);
       await shot('a9-engine-off-no-mic');
       return note(`getUserMedia(video) → ${cam}; engine off → 🎤 hidden`);
     }, page);
@@ -7701,9 +7716,10 @@ async function asrScenario() {
       assert.equal((await getSet()).engine, 'local');
       const before = mock.log.length;
       await openChatBox();
-      await page.fill('#chat-input', '打字还能用');
-      await page.click('#chat-mic');
+      await fillDraft('打字还能用');
+      await holdMic();
       await settled();
+      await page.mouse.up();
       await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
       const t = await page.textContent('#unlock-toast');
       assert.match(t, /语音输入没成功/);
@@ -7721,8 +7737,9 @@ async function asrScenario() {
         session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(false));
         session.defaultSession.setPermissionCheckHandler(() => false);
       });
-      await page.click('#chat-mic');
+      await holdMic();
       await settled();
+      await page.mouse.up();
       await page.waitForSelector('#unlock-toast.notice:not(.hidden)');
       const t2 = await page.textContent('#unlock-toast');
       const r2 = await lastAsr();
@@ -7730,7 +7747,7 @@ async function asrScenario() {
       assert.equal(r2.reason, 'mic-denied');
       assert.equal(mock.log.length, before);
       await page.click('#toast-close');
-      await page.fill('#chat-input', '');
+      await fillDraft('');
       // A10 expects the engine 关闭 as A9 left it
       await openAsr();
       assert.equal((await adminSet(admin, 'asr.engine', 'off')).ok, true);
@@ -7772,8 +7789,8 @@ async function asrScenario() {
       admin = null;
       await p.bringToFront();
       await hover(p);
-      await clickAct(p, 'chat');
-      assert.equal(await p.isVisible('#chat-mic'), true);
+      await clickChatBubble(p);
+      assert.match(await p.getAttribute('#chat-mode', 'title'), /按住说话/);
       return note(`relaunched with the same data dir → 语音输入 controls ${JSON.stringify(ui)}; engine → local shows 🎤 again`);
     }, () => again && again.page);
     if (again) await again.app.close().catch(() => {});
@@ -7934,8 +7951,8 @@ async function voiceHotkeyScenario() {
       assert.equal(await page.evaluate(() => document.body.classList.contains('voice-call')), true);
       assert.equal(await page.evaluate(() => document.body.classList.contains('hover')), true, 'controls up without the pointer');
       assert.equal(await page.isVisible('#chat-input'), true, 'chat box open');
-      assert.equal(await page.getAttribute('#chat-mic', 'data-state'), 'recording');
-      assert.match(await page.textContent('#chat-mic'), /■ \d+s/);
+      assert.equal(await page.getAttribute('#voice-hold', 'data-state'), 'recording');
+      assert.match(await page.textContent('#mic-status'), /正在听 \d+s/);
       assert.match(await page.textContent('#mic-status'), /正在听/);
       const b = await bubble();
       assert.equal(b.kind, 'listen');
@@ -7953,7 +7970,7 @@ async function voiceHotkeyScenario() {
       }
       const ps = samples[0].state;
       const s = await shot('v2-listening');
-      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#chat-mic')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet while recording ${JSON.stringify(samples)}; ${s}`);
+      return note(`via ${via}; triggers=${st.triggers}; petVisible=${st.petVisible} focused=${st.petFocused}; mic=recording, 🎤 「${(await page.textContent('#mic-status')).trim()}」, status 「${(await page.textContent('#mic-status')).trim()}」, bubble 「${b.text.replace(/\n/g, ' ')}」, pet while recording ${JSON.stringify(samples)}; ${s}`);
     }, page);
 
     await step(S, 'V3 second press: stops, recognises (mock whisper), the text waits in the box; bubble 「听到啦」', async () => {
@@ -8210,7 +8227,7 @@ async function streamScenario() {
   const stopSampler = () => page.evaluate(() => { clearInterval(window.__sampler); return window.__samples; });
   const sendText = async (text) => {
     await hover(page);
-    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
     await page.fill('#chat-input', text);
     await page.click('#chat-send');
   };
@@ -8418,7 +8435,7 @@ async function streamDirectScenario() {
   const stopSampler = () => page.evaluate(() => { clearInterval(window.__sampler); return window.__samples; });
   const sendText = async (text) => {
     await hover(page);
-    if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat');
+    if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
     await page.fill('#chat-input', text);
     await page.click('#chat-send');
   };
@@ -8658,7 +8675,7 @@ async function frontslimScenario() {
     await page.waitForSelector('#pet-screen:not(.hidden)', { timeout: 30000 });
     await idle();
 
-    await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉/聊天 + 🔊 静音 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
+    await step(S, 'F1 前台：工具栏只剩 喂食/玩耍/睡觉 + 🔊 静音 + ⚙ 设置；没有 话题、衣柜、⋯ 菜单和面板', async () => {
       // the buttons live in her panel now (a right click on her)
       const pp = await require('./pet-panel').openPetPanel(page);
       await pp.screenshot({ path: path.join(SHOTS, 'f1-pet-toolbar.png') });
@@ -8673,7 +8690,7 @@ async function frontslimScenario() {
       ui.gone = gone;
       await pp.keyboard.press('Escape');
       // canary #107 (T-2733) added the one-click 静音 speaker between 聊天 and ⚙; still no 话题 / 衣柜 / ⋯ menu
-      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'chat:聊天', 'mute:静音', 'scene:小游戏', 'settings:设置', 'quit:退出']);
+      assert.deepEqual(ui.acts, ['feed:喂食', 'play:玩耍', 'sleep:睡觉', 'mute:静音', 'scene:小游戏', 'settings:设置', 'quit:退出']);
       assert.equal(ui.visible, 7);
       assert.deepEqual(ui.gone, []);
       assert.equal(ui.menuBtn, 0);
@@ -8689,7 +8706,7 @@ async function frontslimScenario() {
       await pp.screenshot({ path: path.join(SHOTS, 'f2-food-menu.png') });
       await pp.click('#food-menu .btn >> nth=0');
       await idle();
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.waitForSelector('#chat-row:not(.hidden)');
       await page.fill('#chat-input', '你好呀，今天过得怎么样？');
       await page.click('#chat-send');
@@ -9126,7 +9143,7 @@ async function petuiScenario() {
         return `scale ${typeof k === 'object' ? JSON.stringify(k) : k}: panel ${JSON.stringify(st.bounds)} on her ${st.side}`;
       }, page);
       await step(S, `${theme}: 聊天输入框（附件 / 麦克风 / 发送）`, async () => {
-        await clickAct(page, 'chat');
+        await clickChatBubble(page);
         await page.waitForFunction(() => document.activeElement === document.getElementById('chat-input'));
         await hover(page);
         await shot('03a-chat-row-placeholder'); // empty and focused: the placeholder
@@ -9137,14 +9154,14 @@ async function petuiScenario() {
         await idle();
         await hover(page);
         await shot('04-chat-reply');
-        await page.evaluate(() => document.getElementById('chat-row').classList.add('hidden'));
+        await page.click('#chat-close');
       }, page);
       await step(S, `${theme}: 面板按钮（喂食 / 玩耍 / 睡觉 / 聊天 + 🔈 静音 + ⚙ 设置 + ⏻ 退出，无 ⋯ 菜单）`, async () => {
         const pp = await PP.openPetPanel(page);
         await pp.screenshot({ path: path.join(SHOTS, '05-toolbar.png') });
         // a pixel look: ♪ 跳舞 and ↺ (VRM only) are in the panel but hidden
         const acts = await pp.$$eval('#toolbar [data-act]:not(.hidden)', (b) => b.map((x) => x.dataset.act));
-        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'chat', 'mute', 'scene', 'settings', 'quit']);
+        assert.deepEqual(acts, ['feed', 'play', 'sleep', 'mute', 'scene', 'settings', 'quit']);
         assert.equal(await page.evaluate(() => !window.__petStatus().dance.show), true, '♪ hidden on a pixel look');
         return acts.join(' / ');
       }, page);
@@ -11733,7 +11750,7 @@ async function permissionsScenario() {
     }, () => admin);
 
     await step(S, 'P8 the list is in effect but there is no direct way (fake lh): she answers without tools and the pet window says why', async () => {
-      await clickAct(page, 'chat');
+      await clickChatBubble(page);
       await page.fill('#chat-input', '看看下载里有什么');
       await page.click('#chat-send');
       await page.waitForSelector('#unlock-toast.notice:not(.hidden)', { timeout: 20000 });
@@ -12634,7 +12651,7 @@ async function interjectScenario() {
   const bubble = () => page.evaluate(() => { const b = document.getElementById('bubble'); return b.classList.contains('hidden') ? '' : b.textContent.trim(); });
   const feedbackRow = () => page.evaluate(() => { const r = document.getElementById('ij-feedback'); return { shown: !r.classList.contains('hidden'), buttons: [...r.querySelectorAll('.ij-btn')].filter((b) => !b.classList.contains('hidden')).map((b) => b.textContent.trim()), done: r.querySelector('.ij-done').classList.contains('hidden') ? '' : r.querySelector('.ij-done').textContent, decision: r.dataset.decision || null, result: r.dataset.result || null }; });
   const idle = () => page.waitForFunction(() => !document.body.classList.contains('busy'), null, { timeout: 20000 });
-  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await clickAct(page, 'chat'); await page.waitForSelector('#chat-input', { state: 'visible' }); };
+  const openChat = async () => { await hover(page); if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page); await page.waitForSelector('#chat-input', { state: 'visible' }); };
   const typeDraft = async (text) => { await openChat(); await page.fill('#chat-input', ''); await page.type('#chat-input', text, { delay: 15 }); };
   const lastDecision = async () => (await page.evaluate(() => window.pet.interject.decisions())).decisions.pop();
   const rules = async () => (await page.evaluate(() => window.pet.interject.rules())).rules;
