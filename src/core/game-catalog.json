@@ -3,12 +3,68 @@
   "release": "games-v1",
   "games": [
     {
+      "id": "her-room",
+      "type": "game",
+      "name": "她的房间",
+      "version": "1.0.2",
+      "engine": "illustrated-room@1",
+      "minAppVersion": "0.28.0",
+      "description": "深夜下雨的房间里，大肥鱼趴在床上刷手机、坐在床边发呆犯懒、坐到书桌前用电脑、戴着耳机听歌、握着手柄打游戏、盖着被子睡觉。在聊天里叫她做什么，她就去做。",
+      "credit": "美术：GPT Image（gpt-image-2.5）；玩法与引擎：Pixel Pet Affection",
+      "features": [
+        "日系手绘插画，深夜下雨、蓝色月光",
+        "在聊天里叫她做事，她切到对应的姿势并回复；也可以直接点状态栏（发呆、犯懒都有按钮",
+        "七个专门画的姿势，台灯开关两套光照：开灯后书桌、桌边的墙和地板暖起来，床还在蓝色",
+        "屏幕上放真实内容：短视频、网页、带封面和歌词的正在播放，还有小游戏"
+      ],
+      "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/her-room",
+      "changelog": "开灯时桌边那面墙亮起来了：暖光从台灯铺开，一直到窗帘边和床后面，床、窗帘和左半边房间还是饱和的蓝色。睡觉时露出被子的尾鳍换回和其他姿势一样的深蓝色和浅色下缘，开灯也不再发灰。",
+      "picture": "catalog/games/her-room.webp",
+      "screenshots": [
+        {
+          "url": "catalog/games/her-room/01-idle.webp",
+          "caption": "深夜、下雨、蓝色月光：她坐在床边发呆，手机锁屏亮着"
+        },
+        {
+          "url": "catalog/games/her-room/02-lamp.webp",
+          "caption": "台灯一开，暖光铺满书桌和桌边那面墙，落到地板和床沿；床和窗外还是蓝色的雨夜"
+        },
+        {
+          "url": "catalog/games/her-room/03-lazy.webp",
+          "caption": "犯懒：眼睛半闭、肩膀垂着，点状态栏的「犯懒」或说一句「好懒啊」她就这样了"
+        },
+        {
+          "url": "catalog/games/her-room/04-phone.webp",
+          "caption": "看手机：趴在床上刷短视频，屏幕卡片里看得更清楚"
+        },
+        {
+          "url": "catalog/games/her-room/05-music.webp",
+          "caption": "听音乐：靠在床头戴着耳机轻轻晃，手机上是封面、歌名和跟着走的歌词"
+        },
+        {
+          "url": "catalog/games/her-room/06-sleep.webp",
+          "caption": "睡觉：盖着被子，呼吸慢下来，Z 飘起来"
+        },
+        {
+          "url": "catalog/games/her-room/07-work.webp",
+          "caption": "工作：背对镜头坐在书桌前，电脑上写周报、看网页"
+        },
+        {
+          "url": "catalog/games/her-room/08-game.webp",
+          "caption": "打游戏：侧身握着手柄，电脑上的鲸鱼在跳"
+        }
+      ],
+      "file": "her-room-1.0.2.zip",
+      "bytes": 4381322,
+      "sha256": "c171836ef8a2fb7c0cf8e51abe800d9232bb512a632e7a525c881723b93c2e94"
+    },
+    {
       "id": "pixel-room",
       "type": "game",
       "name": "像素房间",
       "version": "1.0.0",
       "engine": "room@1",
-      "minAppVersion": "0.27.0",
+      "minAppVersion": "0.28.0",
       "description": "每位角色都有一间自己风格的房间。陪她睡觉、工作、看手机、听音乐、打游戏：她会走过去做事，家具和道具跟着变，做完改变她的精力、心情、专注和饱腹。本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」，另外四间即将开放。",
       "credit": "美术：GPT Image（gpt-image-2.5）生成后像素化；玩法与引擎：Pixel Pet Affection",
       "features": [

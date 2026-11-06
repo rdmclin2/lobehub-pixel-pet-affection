@@ -724,6 +724,8 @@ export interface ChatCharacter {
   lastAt: number | null;
   met: boolean;
   name: string;
+  /** where the companion is now: 在桌面, or 在<游戏名> while a game window is open */
+  place?: string;
   preview: string;
 }
 

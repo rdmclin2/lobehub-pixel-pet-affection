@@ -48,6 +48,8 @@ const { GameWindow } = require('./game-window');
 const { GameLibrary, GameIndex } = require('./games');
 const GameIndexLib = require('../core/game-index');
 const GameStore = require('../core/game-store');
+const { createRoomChat } = require('../core/room-chat');
+const IRP = require('../core/illustrated-room-play');
 const { createAdminSettings } = require('./admin-settings');
 const { createPermissions, fakeMac } = require('./permissions');
 const { ChatImages, readImage: readChatImage, messageView: chatMessageView, MAX_IMAGES: CHAT_MAX_IMAGES } = require('../core/admin-chat');
@@ -289,7 +291,13 @@ const roomPet = {
 // the game window closed or the app quits with a round running in 像素房间: settled by how long it ran
 function settleRoom() {
   if (!scene || !scene.gameId || !games || !service || !service.pet) return null;
-  try { return games.roomClose(scene.gameId, roomPet); } catch (e) { logError(e); return null; }
+  try { return games.roomClose(scene.gameId, roomPet) || games.illustratedClose(scene.gameId, roomPet); } catch (e) { logError(e); return null; }
+}
+// 她的房间 (illustrated-room@1) open in the game window: its id, else null
+function illustratedOpen() {
+  if (!scene || !scene.visible || !scene.gameId || !games) return null;
+  const g = games.load(scene.gameId);
+  return g && g.manifest.engine === IRP.ENGINE ? g : null;
 }
 function toggleScene(source = 'tray', gameId = null) {
   if (scene && scene.visible && (!gameId || gameId === scene.gameId)) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
@@ -594,7 +602,7 @@ function wire() {
     const update = game ? gameIndex.updates(installedGames()).find((u) => u.id === id) || null : null;
     // 像素房间 (room@1): her numbers, the running round (one left open by an app that went away is settled now),
     // how the room's owner and each room's character look
-    const room = game && game.manifest.engine === 'room@1' ? { ...games.roomBoot(id, roomPet), ...service.roomLooks(game.manifest.themes || []) } : null;
+    const room = game && game.manifest.engine === 'room@1' ? { ...games.roomBoot(id, roomPet), ...service.roomLooks(game.manifest.themes || []) } : game && game.manifest.engine === IRP.ENGINE ? games.illustratedBoot(id, roomPet) : null;
     return { view: service.view(), scene: service.settings.scene, roam: service.settings.prefs.roam, testMode: TEST_MODE, game, progress: game ? games.progress(id) : null, update, room };
   });
   // 像素房间: start / stop / tick / seen / theme (src/main/games.js activity): main settles with its own clock
@@ -607,6 +615,24 @@ function wire() {
       if (sceneActs.length > 80) sceneActs.shift();
     }
     return r;
+  });
+  // 她的房间: the status bar / the picture / the page's timer (src/main/games.js illustratedCommand)
+  ipcMain.handle('game:room', (e, p) => {
+    if (!fromScene(e) || !p || typeof p !== 'object') return { ok: false, reason: 'invalid' };
+    const id = String(scene.gameId || '');
+    const r = games.illustratedCommand(id, p, roomPet, { testMode: TEST_MODE });
+    if (r && p.cmd !== 'seen' && p.cmd !== 'state' && (r.ok || r.reason === 'tired')) {
+      sceneActs.push({ game: id, type: `room:${p.cmd}`, obj: String(r.to || p.state || ''), item: r.settled ? `${r.settled.complete ? 'done' : 'part'}:${r.settled.fraction}` : '', at: Date.now() });
+      if (sceneActs.length > 80) sceneActs.shift();
+    }
+    return r;
+  });
+  // 她的房间 · 聊天栏: the same chat as her desktop box (PetService.chat: her agent, her topic, 聊天记录); her reply
+  // comes back as game:say / game:say-delta
+  ipcMain.handle('game:chat', async (e, p) => {
+    if (!fromScene(e) || !service || !service.pet) return { ok: false, reason: 'invalid' };
+    const text = String((p && p.text) || '').slice(0, 2000);
+    return service.chat(text, [], [], { origin: 'user' });
   });
   // 有新版本 · 去更新: straight to this game's page in 商店
   ipcMain.on('game:open-store', (e) => { if (fromScene(e)) openAdmin(scene.gameId ? `store/game/${scene.gameId}` : 'store/games'); });
@@ -1469,14 +1495,14 @@ function wire() {
     speciesSig = sig;
     pushAdmin();
   });
-  service.on('say', (m) => send('say', m));
+  service.on('say', (m) => { send('say', m); if (illustratedOpen()) scene.send('game:say', m); });
   // 音乐创作 (T-5090): 作曲中… / done / failed for the turn that called compose_music — the pet window for a desktop
   // chat, the settings window's 聊天 for its own rounds
   service.on('music', (e) => (e.kind === 'console' ? admin.send('admin-chat-music', e) : send('music-status', e)));
   service.on('music-library', (e) => admin.send('music-library-changed', e));
-  service.on('thinking', (b) => send('thinking', b));
+  service.on('thinking', (b) => { send('thinking', b); if (illustratedOpen()) scene.send('game:thinking', b); });
   // 流式回复: the reply as it is written, then the end of that stream (pet-service _openStream; ids per turn)
-  service.on('chat-delta', (d) => send('chat-delta', d));
+  service.on('chat-delta', (d) => { send('chat-delta', d); if (illustratedOpen()) scene.send('game:say-delta', d); });
   service.on('chat-done', (d) => { send('chat-done', d); admin.send('admin-chat-changed', { speciesId: service.pet ? service.pet.speciesId : null }); });
   service.on('chat-log', (d) => admin.send('admin-chat-changed', d));
   service.on('affection', (a) => send('affection', a));
@@ -1552,7 +1578,7 @@ app.whenReady().then(() => {
   games = new GameLibrary({ userDir: path.join(app.getPath('userData'), 'games'), devDir: process.env.PIXELPET_DEV_GAMES === '1' ? [path.join(__dirname, '..', '..', 'catalog', 'games'), path.join(__dirname, '..', '..', 'test', 'fixtures', 'games')] : null });
   games.registerProtocol();
   // the games repository's catalog.json: off in tests unless PIXELPET_GAME_INDEX_URL names one
-  gameIndex = new GameIndex({ userDir: games.userDir, appVersion: app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
+  gameIndex = new GameIndex({ userDir: games.userDir, appVersion: (TEST_MODE && process.env.PIXELPET_E2E_APP_VERSION) || app.getVersion(), fetch: (u, o) => net.fetch(u, o), log: logError, url: process.env.PIXELPET_GAME_INDEX_URL ?? (TEST_MODE ? '' : GameIndexLib.REMOTE_URL) });
   for (const p of packStore.problems) logError(new Error(`pet pack ${p.dir} skipped: ${p.errors.join('; ')}`));
   // macOS: no keychain (ad-hoc signing loses "Always Allow" on every update → password prompt); keys are a
   // 0600 file, and ones older versions encrypted are read once and rewritten. See core/tts-keys.js.
@@ -1592,6 +1618,21 @@ app.whenReady().then(() => {
   // stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
   const music = { key: (slot = 'minimax') => keys.get(slot), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
   service = new PetService({ lh, responses, music, store, stickers: stickerLib, interjectStore: new InterjectStore(app.getPath('userData')), musicLibrary: new MusicLibraryStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
+  // 她的房间 · 聊天驱动 (core/room-chat.js): PetService.chat() asks before every message from the owner while her room is open
+  const roomChat = createRoomChat({
+    open: illustratedOpen,
+    games,
+    pet: roomPet,
+    testMode: TEST_MODE,
+    decide: (req) => lh.decide({ ...req, model: service.settings.interject.model }),
+    push: (r) => scene.send('game:room', r),
+    acted: (a) => { sceneActs.push(a); if (sceneActs.length > 80) sceneActs.shift(); },
+    log: logError,
+  });
+  service.roomHook = (text, ctx) => roomChat.onMessage(text, ctx);
+  service.roomReplyHook = (text) => roomChat.onReply(text);
+  // 设置 → 聊天: while a game is open she is there, not on the desktop
+  service.placeHook = () => { if (!scene || !scene.visible || !scene.gameId) return null; const g = games.load(scene.gameId); return g ? g.manifest.name : null; };
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -1650,8 +1691,8 @@ app.whenReady().then(() => {
     testMode: TEST_MODE,
   });
   scene = new GameWindow({
-    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); },
-    onClosed: () => { settleRoom(); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
+    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); setImmediate(() => admin.send('admin-chat-changed', {})); }, // 设置 → 聊天 shows where she is now
+    onClosed: () => { settleRoom(); admin.send('admin-chat-changed', {}); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,
     testMode: TEST_MODE,
   });

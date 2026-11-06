@@ -803,7 +803,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                     <Text className={styles.ellipsis} ellipsis>
                       {c.name}
                     </Text>
-                    {c.current && <Tag size="small">在桌面</Tag>}
+                    {c.current && <Tag size="small">{c.place || '在桌面'}</Tag>}
                     {live?.speciesId === c.id && <Spin size="small" />}
                   </Flexbox>
                   <Text className={styles.ellipsis} fontSize={12} type="secondary">
