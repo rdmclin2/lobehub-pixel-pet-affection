@@ -723,7 +723,7 @@
     pipG.drawImage(s.content.canvas, 0, 0, pip.width, pip.height);
     const info = s.content.info();
     $('ir-pip-title').textContent = `${SCREEN_NAME[s.id] || '屏幕'} · ${KIND_NAME[s.kind] || ''}`;
-    $('ir-pip-cap').textContent = s.kind === 'clips' && info.clip ? info.clip.caption : s.kind === 'player' && info.track ? `《${info.track.title}》 ${info.track.time}${info.track.lyric ? ` · ${info.track.lyric}` : ''}` : s.kind === 'page' ? (st.view.query ? `搜索：${st.view.query}` : (info.page && info.page.title) || '') : s.kind === 'game' ? `得分 ${info.score}` : '';
+    $('ir-pip-cap').textContent = s.kind === 'clips' && info.clip ? info.clip.caption : s.kind === 'player' && info.track ? `《${info.track.title}》 ${info.track.time}` : s.kind === 'page' ? (st.view.query ? `搜索：${st.view.query}` : (info.page && info.page.title) || '') : s.kind === 'game' ? `得分 ${info.score}` : '';
   }
   $('ir-pip-close').addEventListener('click', () => { st.pipOpen = false; renderPip(); });
 

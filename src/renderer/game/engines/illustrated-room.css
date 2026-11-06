@@ -34,7 +34,7 @@ body.engine-illustrated .tip { background: rgba(10, 18, 44, 0.86); color: var(--
 .ir-pip-head .ico { width: 14px; height: 14px; }
 .ir-pip-head .icon-btn { width: 22px; height: 22px; }
 .ir-pip canvas { display: block; align-self: flex-start; flex: none; border-radius: 9px; background: #000; }
-.ir-pip-cap { width: 0; min-width: 100%; box-sizing: border-box; padding: 0 4px 2px; color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ir-pip-cap { width: 0; min-width: 100%; box-sizing: border-box; padding: 0 4px 2px; color: var(--ink-2); font-size: 12px; line-height: 1.35; white-space: normal; }
 
 /* bottom: what the owner just said, the chat bar, the status bar */
 .ir-said { align-self: flex-end; max-width: 80%; padding: 5px 12px; border-radius: 14px 14px 4px 14px; background: rgba(111, 168, 232, 0.92); color: #0c1a3a; font-size: var(--lobe-font-size-sm); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
