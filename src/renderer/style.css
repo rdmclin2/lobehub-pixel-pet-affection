@@ -487,3 +487,16 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .dance-menu .btn.dance-more { margin-top: var(--pet-space-xs); color: var(--lobe-color-text-secondary); border-top: 1px solid var(--pet-line-soft); border-radius: 0; }
 .dance-menu .btn:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { #btn-dance.loading .ico { animation: none; } }
+/* 分段式表达 (docs/segmented-reply.md): the one bubble shows one message at a time, the next replaces it; the dots follow
+   the message while she types the next. A click on her reply opens 聊天 (the whole conversation) */
+.bubble[data-source="llm"]:not(.thinking) { cursor: pointer; }
+.bubble.segmented .seg { display: inline-block; max-width: 100%; animation: seg-in 0.22s ease-out; }
+.bubble.segmented .seg.emoji { font-size: 18px; line-height: 1.2; }
+.bubble.segmented .seg.live::after { content: '▍'; display: inline-block; margin-left: 1px; color: var(--lobe-color-text-tertiary); animation: caret-blink 0.9s steps(1) infinite; }
+.bubble.segmented .seg-typing { display: inline-flex; align-items: center; gap: 3px; height: 1em; margin-left: var(--pet-space-xs); vertical-align: middle; }
+.bubble.segmented .seg-typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--lobe-color-text-tertiary); animation: seg-dot 1s ease-in-out infinite; }
+.bubble.segmented .seg-typing i:nth-of-type(2) { animation-delay: 0.15s; }
+.bubble.segmented .seg-typing i:nth-of-type(3) { animation-delay: 0.3s; }
+@keyframes seg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes seg-dot { 0%, 60%, 100% { opacity: 0.3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .bubble.segmented .seg, .bubble.segmented .seg-typing i { animation: none; } }
