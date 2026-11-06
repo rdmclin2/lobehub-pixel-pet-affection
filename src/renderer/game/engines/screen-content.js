@@ -164,12 +164,9 @@
     canvas.width = w; canvas.height = h;
     const g = canvas.getContext('2d');
     const C = room.content || {};
-    const st = { t: 0, acc: 0, swipe: 0, swipeFrom: 0, idx: 0, nextSwipe: 0, lum: 0.6, lumT: 0, score: 0, jump: 0, obstacles: [], typed: 0, track: 0, pos: 0 };
+    const st = { t: 0, acc: 0, swipe: 0, swipeFrom: 0, idx: 0, lum: 0.6, lumT: 0, score: 0, jump: 0, obstacles: [], typed: 0, track: 0, pos: 0 };
     const clips = (C.clips && C.clips.list) || [];
-    const swipeEvery = (C.clips && C.clips.swipeEvery) || [8, 15];
     const rnd = Math.random;
-    const scheduleSwipe = () => { st.nextSwipe = st.t + swipeEvery[0] + rnd() * (swipeEvery[1] - swipeEvery[0]); };
-    scheduleSwipe();
     // clips from the pack's frames only change at their own rate (a swipe still redraws every tick)
     const framed = kind === 'clips' && clips.some((c) => c.frames !== undefined);
     const FPS = framed ? Math.max(8, (C.clips && C.clips.fps) || 12) : kind === 'clips' || kind === 'game' ? 24 : 12;
@@ -442,14 +439,18 @@
     let drawn = false;
     return {
       canvas, kind,
-      // dt in seconds; ctx: { progress (the round 0–1), query, clip (how many 下一个 so far) }. → redrawn this call
+      // dt in seconds; ctx: { progress (the round 0–1), query, clip (which clip: main's timeline, IllustratedRoomPlay.clipNow) }. → redrawn this call
       update(dt, ctx = {}) {
         st.t += dt;
         st.acc += dt;
         if (kind === 'clips') {
-          if (Number.isInteger(ctx.clip) && ctx.clip !== st.clipAsked) { if (st.clipAsked !== undefined) this.next(); st.clipAsked = ctx.clip; }
+          // the screen never picks a clip itself: what she says is about main's clip (first call: no swipe, it is just on)
+          if (Number.isInteger(ctx.clip) && ctx.clip !== st.clipAsked) {
+            const to = clips.length ? ((ctx.clip % clips.length) + clips.length) % clips.length : 0;
+            if (st.clipAsked !== undefined && to !== st.idx) { st.swipeFrom = st.idx; st.swipe = 0.0001; }
+            st.idx = to; st.clipAsked = ctx.clip;
+          }
           if (st.swipe > 0) { st.swipe += dt / 0.35; if (st.swipe >= 1) st.swipe = 0; }
-          if (st.t >= st.nextSwipe) this.next();
         }
         if (kind === 'player') st.pos += dt;
         if (kind === 'page') st.lastPage = ctx.query ? null : pageNow();
@@ -463,7 +464,6 @@
         return true;
       },
       brightness: () => st.lum,
-      next() { if (kind !== 'clips' || !clips.length) return; st.swipeFrom = st.idx; st.idx = (st.idx + 1) % clips.length; st.swipe = 0.0001; scheduleSwipe(); },
       info() {
         const clip = clips.length ? clips[st.idx % clips.length] : null;
         const tracks = (C.player && C.player.tracks) || [];

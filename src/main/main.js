@@ -310,7 +310,10 @@ function roomChat(text) {
   if (!now0 || !now0.ok) return '';
   const room = IRP.roomOf(g.manifest, now0.room);
   const intent = RoomIntent.matchRoomIntent(text, room && room.intents, { state: now0.state, screen: Object.values(now0.screens || {})[0] || null });
-  if (!intent) return games.illustratedNote(g.id, null);
+  if (!intent) {
+    scene.send('game:room', { ...games.illustratedCommand(g.id, { cmd: 'hold' }, roomPet), via: 'chat' }); // she may be asked about this clip: it stays until she has answered
+    return games.illustratedNote(g.id, null);
+  }
   const r = games.illustratedCommand(g.id, { cmd: 'set', ...intent, from: 'chat' }, roomPet, { testMode: TEST_MODE });
   sceneActs.push({ game: g.id, type: 'room:chat', obj: String(r.to || intent.state || ''), item: `${intent.lamp === null ? '' : `lamp:${intent.lamp}`}${intent.screen ? ` screen:${intent.screen}` : ''}`, at: Date.now() });
   if (sceneActs.length > 80) sceneActs.shift();

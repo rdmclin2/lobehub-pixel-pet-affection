@@ -38,6 +38,7 @@ const CHATS = [
   { key: 'idle', title: '发呆', say: '发会儿呆吧', state: 'idle' },
   { key: 'lazy', title: '犯懒', say: '好懒啊，犯懒吧', state: 'idle-lazy' },
   { key: 'douyin', title: '打开电脑刷抖音', say: '打开电脑刷抖音', state: 'work', screen: 'clips' },
+  { key: 'douyin-next', title: '抖音换一条', say: '下一个', state: 'work', screen: 'clips', swipe: true },
 ];
 
 module.exports = function herRoomAcceptScenario({ ROOT, OUT, step: stepFn, launch }) {
@@ -261,13 +262,21 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, step: stepFn, launc
           const sc = s.screens.find((x) => x.kind !== 'lock') || s.screens[0] || null;
           if (c.screen) assert.equal(s.screens.find((x) => x.kind === c.screen)?.kind, c.screen, `${c.say}: screen`);
           assert.ok(s.events.some((e) => e.via === 'chat' && e.to === c.state), `${c.say}: via chat`);
+          const clipSent = c.screen === 'clips' ? s.screens.find((x) => x.kind === 'clips').clip : null;
           const r = await until(async () => { const x = await g(); return x.chat.reply && x.chat.reply !== prev && !x.chat.busy ? x : null; }, FAKE ? 15000 : 180000, `the reply to ${c.say}`);
+          // T-11726: what she talks about is what the screen plays — the clip when she was asked is the clip when she answers
+          const clipReply = c.screen === 'clips' ? r.screens.find((x) => x.kind === 'clips').clip : null;
+          if (clipSent) {
+            assert.equal(clipReply.caption, clipSent.caption, `${c.say}: the clip stayed while she answered`);
+            assert.ok(r.chat.reply && r.pip.caption === clipReply.caption, `${c.say}: the card shows this clip's caption`);
+            mark('check', `屏幕这条「${clipReply.caption}」，她回：「${r.chat.reply.slice(0, 60)}」`);
+          }
           prev = r.chat.reply;
           assert.equal(r.state, c.state, `${c.say}: still in the state when she replied`);
           await wait(300);
           await shot(`h3-${c.key}`);
           mark('check', `「${c.say}」→ ${r.state}（${ms} ms 开始切换），她回：「${r.chat.reply.slice(0, 40)}」`);
-          transcript.push({ activity: c.title, said: c.say, reply: r.chat.reply, state: r.state, switchedAfterMs: ms, screens: r.screens.map((x) => `${x.id}=${x.kind}`), card: `${r.pip.title} ${r.pip.caption}`.trim(), shot: `h3-${c.key}.png`, screenKind: sc ? sc.kind : null });
+          transcript.push({ activity: c.title, said: c.say, reply: r.chat.reply, state: r.state, switchedAfterMs: ms, screens: r.screens.map((x) => `${x.id}=${x.kind}`), card: `${r.pip.title} ${r.pip.caption}`.trim(), ...(clipReply ? { clipOnScreen: clipReply.caption } : {}), shot: `h3-${c.key}.png`, screenKind: sc ? sc.kind : null });
           fs.writeFileSync(path.join(DIR, 'transcript.json'), JSON.stringify(transcript, null, 1) + '\n');
           await wait(2500);
         }

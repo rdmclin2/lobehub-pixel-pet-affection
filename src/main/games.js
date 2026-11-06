@@ -265,7 +265,7 @@ class GameLibrary {
     return { ...this._illView(g, p, st, pet, now), recovered };
   }
   // cmd: { cmd: 'set', state?, lamp?, screen?, query?, stop?, next?, from } · { cmd: 'tick' } (the page's timer)
-  // · { cmd: 'seen' } · { cmd: 'state' }; with testMode also { cmd: 'scale', k }
+  // · { cmd: 'seen' } · { cmd: 'state' } · { cmd: 'hold' }; with testMode also { cmd: 'scale', k }
   // → { ok, … the room view, path, settled, started, lampChanged, completed, line } | { ok: false, reason, … }
   illustratedCommand(id, cmd, pet, { now = Date.now(), testMode = false } = {}) {
     const g = this.load(id);
@@ -278,6 +278,7 @@ class GameLibrary {
     const out = (next, extra) => ({ ok: true, ...extra, ...this._illView(g, p, next, pet, now) });
     switch (cmd.cmd) {
       case 'state': return out(st, {});
+      case 'hold': { const next = IRP.holdClip(st, g.manifest, now); save(next); return out(next, {}); } // a chat turn that changed nothing still talks about the clip on the screen
       case 'seen': if (st.run) { st.run.seenAt = now; save(st); } return out(st, {});
       case 'scale': {
         if (!testMode) return { ok: false, reason: 'test-only' };

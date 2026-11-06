@@ -10,7 +10,7 @@
 //                    defaultRoom, activities: { sleep|work|phone|music|game|idle: { label, seconds, deltas, needs } },
 //                    rooms: [room…], quests: [ … ] }
 //   room           { id, character, status: 'open' | 'soon', name, blurb, palette, world: { width, height, background },
-//                    lighting: { lamp: { default, at, glow: { r, alpha, color }, rampOn, rampOff, flicker }, grade },
+//                    lighting: { lamp: { default, at, glow: { r, alpha, color }, rampOn, rampOff, flicker }, grade: { saturation, tint, litTint, vignette } },
 //                    window: { panes: [poly…] | poly, rain, bokeh }, screens: { <id>: { corners, size, glow } },
 //                    states: { <key>: state }, defaultState, transition: { seconds }, content, hotspots, intents, lines,
 //                    images / frames / sprites (optional atlases) }
@@ -151,7 +151,7 @@ function validateOpenRoom(r, at, { files, sprites, fileRe }) {
   }
   if (L.grade !== undefined) {
     const g = L.grade;
-    if (!isObj(g) || (g.saturation !== undefined && !inRange(g.saturation, 0, 2)) || (g.vignette !== undefined && !inRange(g.vignette, 0, 1)) || (g.tint !== undefined && !COLOR_RE.test(g.tint))) e.push(`${at}.lighting.grade: saturation 0–2, vignette 0–1, tint #rrggbb`);
+    if (!isObj(g) || (g.saturation !== undefined && !inRange(g.saturation, 0, 2)) || (g.vignette !== undefined && !inRange(g.vignette, 0, 1)) || (g.tint !== undefined && !COLOR_RE.test(g.tint)) || (g.litTint !== undefined && !COLOR_RE.test(g.litTint))) e.push(`${at}.lighting.grade: saturation 0–2, vignette 0–1, tint / litTint #rrggbb`);
   }
   // the window: panes in the world, rain and bokeh within bounds
   if (r.window !== undefined) {

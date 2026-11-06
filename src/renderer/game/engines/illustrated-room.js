@@ -281,13 +281,16 @@
     motes.push({ s, x: LAMP.at[0] + (rnd() - 0.5) * 360, y: LAMP.at[1] + rnd() * 340, ph: rnd() * 6.28, sp: 6 + rnd() * 10 });
   }
   const TINT = (() => { const h = (room.lighting && room.lighting.grade && room.lighting.grade.tint) || '#ffffff'; return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255]; })();
+  // grade.litTint: where the tint goes with the lamp on, for a pack whose lit pictures already carry their light (blue
+  // stays blue on the bed); without it the tint warms towards white and the whole room changes with it
+  const LIT_TINT = (() => { const h = room.lighting && room.lighting.grade && room.lighting.grade.litTint; return h ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) : null; })();
   const SAT = (room.lighting && room.lighting.grade && room.lighting.grade.saturation) || 1;
   let gradeKey = '';
   function applyGrade() {
     // moonlight: a cool tint; with the lamp on it warms towards white (the whole room changes with it)
     const L = st.lamp;
     const mix = (a, b) => a + (b - a) * L * 0.75;
-    const t = [mix(TINT[0], 1.04), mix(TINT[1], 0.99), mix(TINT[2], 0.9)];
+    const t = LIT_TINT ? TINT.map((v, i) => v + (LIT_TINT[i] - v) * L) : [mix(TINT[0], 1.04), mix(TINT[1], 0.99), mix(TINT[2], 0.9)];
     const key = t.map((v) => v.toFixed(3)).join(',');
     if (key === gradeKey) return;
     gradeKey = key;
@@ -537,7 +540,7 @@
     for (const s of sc.screens) s.texture.destroy(true);
     sc.c.destroy({ children: true });
   }
-  const ctxOfScreen = () => ({ progress: runProgress(), query: st.view.query, clip: st.view.clip || 0 });
+  const ctxOfScreen = () => ({ progress: runProgress(), query: st.view.query, clip: IRP.clipNow(room, st.view.clipAnchor, Date.now()) });
 
   // ---- crossfade ---------------------------------------------------------------------------------------------
   const ease = (k) => 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, k)));
@@ -606,7 +609,6 @@
     if (st.events.length > 80) st.events.shift();
     const prevScreens = JSON.stringify(st.view.screens || {});
     const prevQuery = st.view.query;
-    const prevClip = st.view.clip;
     setView(r);
     setLampTarget(!!r.lamp);
     if (r.ok === false && r.reason === 'tired') { say(r.line || '好累……', { hold: 4 }); flashTired(r.kind); }
@@ -617,7 +619,6 @@
     if (r.path && r.path.length) { if (r.line) say(r.line, { hold: 3.5 }); await playPath(r.path); }
     else if (st.scene && (JSON.stringify(r.screens || {}) !== prevScreens || r.query !== prevQuery)) { rebuildScreens(st.scene); if (r.line) say(r.line, { hold: 3 }); }
     else if (r.line) say(r.line, { hold: 3 });
-    if (r.clip !== prevClip && st.scene) for (const s of st.scene.screens) if (s.kind === 'clips') s.content.next();
   }
   async function command(cmd) {
     try {
@@ -902,7 +903,7 @@
   window.__gameTest = {
     toScreen, toWorld,
     command, setRoundScale: (k) => window.game.room({ cmd: 'scale', k }),
-    nextClip: () => { if (st.scene) for (const s of st.scene.screens) if (s.kind === 'clips') s.content.next(); },
+    nextClip: () => command({ next: true, from: 'key' }),
     refresh: async () => { const r = await window.game.room({ cmd: 'state' }); setView(r); return r; },
     openStats,
     // the screen's own canvas, as a data URL: the acceptance's close-ups of what the screen shows

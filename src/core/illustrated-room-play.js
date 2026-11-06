@@ -6,7 +6,7 @@
 // plays what it is told. The numbers are 像素房间's (core/room-play.js): a state's `activity` is one of its five
 // kinds and runs as one round; 发呆 (idle) is not timed and moves nothing.
 //
-//   st   { engine, room, state, lamp, screen, query, clip, since, run, last, focus, totals }
+//   st   { engine, room, state, lamp, screen, query, clip, clipSince, clipHold, since, run, last, focus, totals }
 //
 // Pure and DOM-free; every function takes `now` (ms). window.IllustratedRoomPlay in the page, require() in main.
 (function (root, factory) {
@@ -71,6 +71,23 @@
     return [to];
   }
 
+  // which short video is on the screen. Main decides, the page plays the same timeline (it has the same clock), so what
+  // she says and what the screen shows cannot drift: an anchor { clip, since, hold } → one clip per
+  // content.clips.swipeEvery (its middle: a fixed rhythm both sides can compute), starting after `hold` ms. The index
+  // only grows; every reader takes it modulo the list.
+  const CLIP_HOLD_MS = 60000; // a chat turn holds the clip this long: her reply takes seconds and talks about this one
+  const clipAnchor = (st) => ({ clip: st.clip || 0, since: Number.isFinite(st.clipSince) ? st.clipSince : st.since, hold: st.clipHold || 0 });
+  function clipNow(room, anchor, now) {
+    if (!anchor) return 0;
+    const se = room && room.content && room.content.clips && room.content.clips.swipeEvery;
+    const every = (Array.isArray(se) && se.length === 2 ? (se[0] + se[1]) / 2 : 11.5) * 1000;
+    return anchor.clip + Math.max(0, Math.floor((now - anchor.since - anchor.hold) / every));
+  }
+  // the clip she is about to talk about stays until her reply is out
+  function holdClip(st, manifest, now) {
+    return { ...st, clip: clipNow(roomOf(manifest, st.room), clipAnchor(st), now), clipSince: now, clipHold: CLIP_HOLD_MS };
+  }
+
   // what each screen of a state plays: { <screen id>: content } — the state's own, or `screen` (what the owner asked
   // for: 「打开电脑刷抖音」 → clips) on the state's first screen that is on
   function screensFor(room, key, screen = null) {
@@ -101,6 +118,8 @@
       screen: typeof s.screen === 'string' ? s.screen : null,
       query: typeof s.query === 'string' ? s.query.slice(0, 40) : null,
       clip: Number.isInteger(s.clip) ? s.clip : 0,
+      ...(Number.isFinite(s.clipSince) ? { clipSince: s.clipSince } : {}),
+      ...(Number.isFinite(s.clipHold) ? { clipHold: s.clipHold } : {}),
       since: Number.isFinite(s.since) ? s.since : now,
       run: isObj(s.run) && s.run.theme === room.id ? { ...s.run } : null,
       last: s.last || null,
@@ -147,12 +166,14 @@
       next.screen = null;
       next.query = null;
       next.clip = 0;
+      next.clipSince = now;
+      next.clipHold = 0;
     }
     if (typeof cmd.screen === 'string' && cmd.screen) next.screen = cmd.screen;
     if (typeof cmd.query === 'string' && cmd.query) { next.query = cmd.query.slice(0, 40); if (!cmd.screen) next.screen = 'page'; }
-    if (cmd.next) next.clip = (st.clip || 0) + 1;
+    if (cmd.next) { next.clip = clipNow(room, clipAnchor(st), now) + 1; next.clipSince = now; next.clipHold = 0; }
     const already = !changed && next.screen === st.screen && next.query === st.query && next.lamp === lampBefore && !cmd.next;
-    return { ok: true, st: next, from: st.state, to: next.state, path: changed ? path(room, st.state, next.state) : [], settled, started, lampChanged: next.lamp !== lampBefore, already };
+    return { ok: true, st: cmd.from === 'chat' ? holdClip(next, manifest, now) : next, from: st.state, to: next.state, path: changed ? path(room, st.state, next.state) : [], settled, started, lampChanged: next.lamp !== lampBefore, already };
   }
 
   // the page's timer says the round is over: when main's clock agrees it is settled and she goes back to her
@@ -162,7 +183,7 @@
     if (!room || !st || !st.run) return null;
     const s = RoomPlay.tick(st.run, now, RoomPlay.defsOf(manifest));
     if (!s) return null;
-    const next = { ...st, run: null, state: room.defaultState, since: now, screen: null, query: null, clip: 0 };
+    const next = { ...st, run: null, state: room.defaultState, since: now, screen: null, query: null, clip: 0, clipSince: now, clipHold: 0 };
     return { st: next, settled: s, from: st.state, to: next.state, path: path(room, st.state, next.state) };
   }
 
@@ -172,7 +193,7 @@
     if (!room || !st) return null;
     const s = stateOf(room, st.state) || {};
     const defs = RoomPlay.defsOf(manifest);
-    return { room: room.id, state: st.state, activity: s.activity || null, label: s.label || '', lamp: !!st.lamp, screen: st.screen, query: st.query, clip: st.clip || 0, screens: screensFor(room, st.state, st.screen), since: st.since, run: st.run ? { ...RoomPlay.view(st.run, now, defs), startedAt: st.run.startedAt } : null };
+    return { room: room.id, state: st.state, activity: s.activity || null, label: s.label || '', lamp: !!st.lamp, screen: st.screen, query: st.query, clip: clipNow(room, clipAnchor(st), now), clipAnchor: clipAnchor(st), screens: screensFor(room, st.state, st.screen), since: st.since, run: st.run ? { ...RoomPlay.view(st.run, now, defs), startedAt: st.run.startedAt } : null };
   }
 
   const pick = (list, rnd = Math.random) => (Array.isArray(list) && list.length ? list[Math.floor(rnd() * list.length) % list.length] : '');
@@ -220,10 +241,10 @@
       if (r.to && r.to !== r.from) did.push((stateOf(room, r.to) && stateOf(room, r.to).doing) || DOING[v.activity] || `开始${label(r.to)}`);
       if (r.lampChanged) did.push(v.lamp ? '把台灯打开了' : '把台灯关了');
       if (!did.length && screen) did.push('换了屏幕上的内容');
-      return `[房间] ${scene}。主人刚在聊天里叫你做事，你已经${did.join('，')}${screen ? `；${screen}` : ''}。用一两句话回应主人，像刚做完这件事，可以提一句屏幕上看到的东西。`;
+      return `[房间] ${scene}。主人刚在聊天里叫你做事，你已经${did.join('，')}${screen ? `；${screen}` : ''}。用一两句话回应主人，像刚做完这件事，可以提一句屏幕上看到的东西（只说上面写的这条，别编别的内容）。`;
     }
     return `[房间] ${scene}，你正在${label(st.state)}${screen ? `，${screen}` : ''}。`;
   }
 
-  return { ENGINE, KINDS, DOING, ACK, roomOf, stateOf, activityOf, resolve, zoneOf, path, screensFor, restore, command, tick, view, line, screenWords, chatNote };
+  return { ENGINE, KINDS, DOING, ACK, roomOf, stateOf, activityOf, resolve, zoneOf, path, screensFor, restore, command, tick, view, line, screenWords, chatNote, clipNow, holdClip, CLIP_HOLD_MS };
 });
