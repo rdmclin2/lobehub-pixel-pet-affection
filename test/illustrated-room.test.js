@@ -309,12 +309,13 @@ test('state machine: chatNote — what she just did, the screen in words, tired,
   const st0 = IRP.restore(M, null, T0);
   const r = IRP.command(st0, { state: 'work', screen: 'clips' }, { manifest: M, now: T0, stats: stats() });
   const note = IRP.chatNote(M, r.st, r, { now: T0 });
-  assert.match(note, /^\[房间\] 你在自己的房间「鲸鱼女仆的雨夜小屋」里/);
-  assert.match(note, /你已经坐到书桌前，打开了笔记本电脑，把台灯打开了；电脑屏幕上在刷短视频，现在这条是「深海里的水母，看着好安静」/);
+  assert.match(note, /^\[房间·真实情况，回复必须和它一致\] 你在自己的房间「鲸鱼女仆的雨夜小屋」里/);
+  assert.match(note, /状态已切换，从「发呆」到「工作」，你已经坐到书桌前，打开了笔记本电脑/);
+  assert.match(note, /电脑屏幕上在刷短视频，现在这条是「深海里的水母，看着好安静」；台灯开着（这一轮刚打开）/);
   const music = IRP.command(st0, { state: 'music' }, { manifest: M, now: T0, stats: stats() });
   assert.match(IRP.chatNote(M, music.st, music), /手机上在放《雨夜的鲸鱼》（大肥鱼）/);
   const tired = IRP.command(st0, { state: 'work' }, { manifest: M, now: T0, stats: stats(5) });
-  assert.match(IRP.chatNote(M, tired.st, tired), /你太累了（精力 5，至少要 15），没有去，还在发呆/);
+  assert.match(IRP.chatNote(M, tired.st, tired), /你正在发呆.*你太累了（精力 5，至少要 15），没有去/);
   assert.match(IRP.chatNote(M, st0, null), /你正在发呆/);
   assert.equal(IRP.line(ROOM, 'ack', 'sleep'), '回来了，躺下了。');
   assert.equal(IRP.line({}, 'ack', 'game'), '来一局！', 'the engine’s own when the room has none');

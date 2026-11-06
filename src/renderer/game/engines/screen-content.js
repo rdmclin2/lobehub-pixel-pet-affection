@@ -407,7 +407,7 @@
       g.globalCompositeOperation = 'source-over';
       const d = new Date();
       g.fillStyle = '#fff'; g.textAlign = 'center';
-      g.font = font(Math.round(h * 0.13), 300); g.fillText(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, w / 2, h * 0.24);
+      g.font = font(Math.round(h * 0.13), 300); g.fillText(window.IllustratedRoomPlay.roomClock(d.getTime()), w / 2, h * 0.24); // the room's own night clock, not the real time
       g.font = font(Math.round(h * 0.032), 500); g.fillText(`${d.getMonth() + 1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`, w / 2, h * 0.29);
       g.fillStyle = 'rgba(255,255,255,0.85)'; roundRect(g, w * 0.07, h * 0.36, w * 0.86, h * 0.1, 14); g.fill();
       g.fillStyle = '#223'; g.textAlign = 'left'; g.font = font(Math.round(h * 0.026), 800); g.fillText('消息 · 现在', w * 0.12, h * 0.395);

@@ -226,25 +226,42 @@
     return parts.join('，');
   }
 
-  // the note that goes into this turn's prompt (persona.buildChatPrompt `room`), so her reply matches the picture
-  // r: what command() did for this message (null: nothing was asked, the note only says where she is)
-  function chatNote(manifest, st, r, { now = Date.now() } = {}) {
+  // It is always the small hours in her room, whatever the real time: the picture is a rainy night. The room keeps its own
+  // clock, 23:00–03:59, moving with the real minutes (the same minute of the real day is always the same time here).
+  // Her phone's lock screen shows it and her prompt note gives it to her, so what she says, the screen and the picture agree.
+  const NIGHT_FROM = 23 * 60;
+  const NIGHT_SPAN = 5 * 60;
+  function roomClock(now = Date.now()) {
+    const d = new Date(now);
+    const m = (NIGHT_FROM + ((d.getHours() * 60 + d.getMinutes()) % NIGHT_SPAN)) % (24 * 60);
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+
+  // the note that goes into this turn's prompt (persona.buildChatPrompt `room`): what really happened this turn, so her
+  // reply matches the picture. r: what command() did for this message (null: nothing was asked). heard: 'unsure' when
+  // the model could not tell what the owner wanted (failed, timed out): nothing moved, she must not pretend.
+  function chatNote(manifest, st, r, { now = Date.now(), heard = null } = {}) {
     const room = roomOf(manifest, st && st.room);
     if (!room || !st) return '';
     const v = view(st, { manifest, now });
-    const scene = `你在自己的房间「${room.name}」里，${room.blurb ? `${String(room.blurb).replace(/[。.]$/, '')}。` : ''}台灯${v.lamp ? '开着' : '关着'}`;
     const label = (s) => (stateOf(room, s) && stateOf(room, s).label) || s;
-    if (r && r.ok === false && r.reason === 'tired') return `[房间] ${scene}。主人刚让你去${label(resolve(room, r.kind) || r.kind)}，但你太累了（精力 ${r.have}，至少要 ${r.need}），没有去，还在${label(st.state)}。用一两句话告诉主人你累了，想先睡一会儿。`;
     const screen = screenWords(room, v);
-    if (r && r.ok && !r.already) {
-      const did = [];
-      if (r.to && r.to !== r.from) did.push((stateOf(room, r.to) && stateOf(room, r.to).doing) || DOING[v.activity] || `开始${label(r.to)}`);
-      if (r.lampChanged) did.push(v.lamp ? '把台灯打开了' : '把台灯关了');
-      if (!did.length && screen) did.push('换了屏幕上的内容');
-      return `[房间] ${scene}。主人刚在聊天里叫你做事，你已经${did.join('，')}${screen ? `；${screen}` : ''}。用一两句话回应主人，像刚做完这件事，可以提一句屏幕上看到的东西（只说上面写的这条，别编别的内容）。`;
-    }
-    return `[房间] ${scene}，你正在${label(st.state)}${screen ? `，${screen}` : ''}。`;
+    const moved = !!(r && r.ok && r.to && r.from && r.to !== r.from);
+    const lampMoved = !!(r && r.lampChanged);
+    const doing = moved ? (stateOf(room, r.to) && stateOf(room, r.to).doing) || DOING[v.activity] || `开始${label(r.to)}` : '';
+    const parts = [
+      `[房间·真实情况，回复必须和它一致] 你在自己的房间「${room.name}」里，${room.blurb ? String(room.blurb).replace(/[。.]$/, '') : '深夜'}。`,
+      moved ? `这一轮：状态已切换，从「${label(r.from)}」到「${label(r.to)}」，你已经${doing}。` : '这一轮：状态没变。',
+      `现在：你正在${label(st.state)}${screen ? `，${screen}` : ''}；台灯${v.lamp ? '开着' : '关着'}（${lampMoved ? `这一轮刚${v.lamp ? '打开' : '关上'}` : '这一轮没动过'}）；房间里是深夜 ${roomClock(now)}（聊到时间就按这个说，别提现实时间）。`,
+    ];
+    if (r && r.ok === false && r.reason === 'tired') parts.push(`主人刚让你去${label(resolve(room, r.kind) || r.kind)}，但你太累了（精力 ${r.have}，至少要 ${r.need}），没有去。用一两句话告诉主人你累了，想先睡一会儿，不要说你去了。`);
+    else if (heard === 'unsure') parts.push('你没听明白主人是不是想让你做什么，所以什么都没动。不要说你已经做了什么；如果主人像是在叫你做事，老实说你没反应过来，请主人再说一次或者点下面的状态栏。');
+    else if (moved || lampMoved || (r && r.ok && !r.already)) {
+      parts.push(`用一两句话回应主人，像刚做完这件事，可以提一句屏幕上看到的东西（只说上面写的这条，别编别的内容）。${lampMoved ? '' : '台灯这一轮没动过，不要说你开灯或关灯。'}`);
+    } else if (r && r.ok && r.already) parts.push('主人说的这件事你本来就在做。不要说你刚去做了别的事，也不要说你开灯或关灯。');
+    else parts.push('主人这句话没有叫你换事情做。不要说、也不要暗示你去做了别的事（起身、躺下、拿手柄、开电脑、戴耳机、开灯关灯都算）；你想提议可以问一句，但不算做了。就按上面的真实情况聊。');
+    return parts.join('');
   }
 
-  return { ENGINE, KINDS, DOING, ACK, roomOf, stateOf, activityOf, resolve, zoneOf, path, screensFor, restore, command, tick, view, line, screenWords, chatNote, clipNow, holdClip, CLIP_HOLD_MS };
+  return { ENGINE, KINDS, DOING, ACK, roomOf, stateOf, activityOf, resolve, zoneOf, path, screensFor, restore, command, tick, view, line, screenWords, chatNote, roomClock, clipNow, holdClip, CLIP_HOLD_MS };
 });

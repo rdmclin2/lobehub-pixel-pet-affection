@@ -48,7 +48,7 @@ const { GameWindow } = require('./game-window');
 const { GameLibrary, GameIndex } = require('./games');
 const GameIndexLib = require('../core/game-index');
 const GameStore = require('../core/game-store');
-const RoomIntent = require('../core/room-intent');
+const { createRoomChat } = require('../core/room-chat');
 const IRP = require('../core/illustrated-room-play');
 const { createAdminSettings } = require('./admin-settings');
 const { createPermissions, fakeMac } = require('./permissions');
@@ -298,27 +298,6 @@ function illustratedOpen() {
   if (!scene || !scene.visible || !scene.gameId || !games) return null;
   const g = games.load(scene.gameId);
   return g && g.manifest.engine === IRP.ENGINE ? g : null;
-}
-// 她的房间 · 聊天驱动 (docs/illustrated-room.md §4): PetService.chat() asks before every message from the owner while
-// her room is open — 「回床上休息吧」 (core/room-intent.js) switches her now, before the model answers (the game
-// window plays it at once), and the note for the prompt says what she just did there. Nothing matched: the note only
-// says where she is and what she is doing. No room open: '' (the chat is as always).
-function roomChat(text) {
-  const g = illustratedOpen();
-  if (!g) return '';
-  const now0 = games.illustratedCommand(g.id, { cmd: 'state' }, roomPet);
-  if (!now0 || !now0.ok) return '';
-  const room = IRP.roomOf(g.manifest, now0.room);
-  const intent = RoomIntent.matchRoomIntent(text, room && room.intents, { state: now0.state, screen: Object.values(now0.screens || {})[0] || null });
-  if (!intent) {
-    scene.send('game:room', { ...games.illustratedCommand(g.id, { cmd: 'hold' }, roomPet), via: 'chat' }); // she may be asked about this clip: it stays until she has answered
-    return games.illustratedNote(g.id, null);
-  }
-  const r = games.illustratedCommand(g.id, { cmd: 'set', ...intent, from: 'chat' }, roomPet, { testMode: TEST_MODE });
-  sceneActs.push({ game: g.id, type: 'room:chat', obj: String(r.to || intent.state || ''), item: `${intent.lamp === null ? '' : `lamp:${intent.lamp}`}${intent.screen ? ` screen:${intent.screen}` : ''}`, at: Date.now() });
-  if (sceneActs.length > 80) sceneActs.shift();
-  scene.send('game:room', { ...r, via: 'chat', words: String(text).slice(0, 60) });
-  return games.illustratedNote(g.id, r);
 }
 function toggleScene(source = 'tray', gameId = null) {
   if (scene && scene.visible && (!gameId || gameId === scene.gameId)) { scene.close('toggle'); return Promise.resolve({ ok: true, visible: false }); }
@@ -1639,7 +1618,21 @@ app.whenReady().then(() => {
   // stand-in on http://127.0.0.1 (allowInsecureLocal, test mode only)
   const music = { key: (slot = 'minimax') => keys.get(slot), userDataDir: app.getPath('userData'), allowInsecureLocal: TEST_MODE };
   service = new PetService({ lh, responses, music, store, stickers: stickerLib, interjectStore: new InterjectStore(app.getPath('userData')), musicLibrary: new MusicLibraryStore(app.getPath('userData')), log: new ChatLog(app.getPath('userData')), settingsStore: new SettingsStore(app.getPath('userData')), packs: packStore.packs, ttsStatus, asr, hotkeyStatus: () => voiceHotkey.status() });
-  service.roomHook = roomChat; // 她的房间 · 聊天驱动
+  // 她的房间 · 聊天驱动 (core/room-chat.js): PetService.chat() asks before every message from the owner while her room is open
+  const roomChat = createRoomChat({
+    open: illustratedOpen,
+    games,
+    pet: roomPet,
+    testMode: TEST_MODE,
+    decide: (req) => lh.decide({ ...req, model: service.settings.interject.model }),
+    push: (r) => scene.send('game:room', r),
+    acted: (a) => { sceneActs.push(a); if (sceneActs.length > 80) sceneActs.shift(); },
+    log: logError,
+  });
+  service.roomHook = (text, ctx) => roomChat.onMessage(text, ctx);
+  service.roomReplyHook = (text) => roomChat.onReply(text);
+  // 设置 → 聊天: while a game is open she is there, not on the desktop
+  service.placeHook = () => { if (!scene || !scene.visible || !scene.gameId) return null; const g = games.load(scene.gameId); return g ? g.manifest.name : null; };
   updater = new Updater({ isBusy: () => service.busy, log: logError, autoCheck: () => !!(service && service.settings.update && service.settings.update.autoCheck) });
   apiServer = new ApiServer({
     token: () => service.settings.api.token,
@@ -1698,8 +1691,8 @@ app.whenReady().then(() => {
     testMode: TEST_MODE,
   });
   scene = new GameWindow({
-    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); },
-    onClosed: () => { settleRoom(); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
+    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); setImmediate(() => admin.send('admin-chat-changed', {})); }, // 设置 → 聊天 shows where she is now
+    onClosed: () => { settleRoom(); admin.send('admin-chat-changed', {}); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,
     testMode: TEST_MODE,
   });

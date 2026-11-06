@@ -1327,9 +1327,15 @@ class PetService extends EventEmitter {
   // 她的房间: main sets `roomHook(text) → note` while an illustrated room is open in the game window
   // (main.js roomChat): it matches the message (core/room-intent.js), switches her there and returns the prompt note.
   // A hook that throws never stops the chat.
-  _roomNote(text, origin, attachments) {
+  async _roomNote(text, origin, attachments) {
     if (typeof this.roomHook !== 'function' || origin !== 'user' || !text) return '';
-    try { return String(this.roomHook(text, { attachments }) || ''); } catch (e) { this.emit('error', e); return ''; }
+    try { return String((await this.roomHook(text, { attachments })) || ''); } catch (e) { this.emit('error', e); return ''; }
+  }
+
+  // her finished reply, for the room (main.js → core/room-chat.js onReply): 「我把灯关了」 → the lamp goes off in the picture
+  _roomReply(text) {
+    if (typeof this.roomReplyHook !== 'function' || !text) return;
+    try { this.roomReplyHook(text); } catch (e) { this.emit('error', e); }
   }
 
   // `images`: local picture files to upload so the model can see them (pasted screenshots).
@@ -1357,7 +1363,7 @@ class PetService extends EventEmitter {
     if (sticker) this.emit('chat-log', { speciesId: c.speciesId }); // the settings window's chat shows it too
     // 她的房间 (docs/illustrated-room.md §4): with her room open, 「回床上休息吧」 switches her state right away —
     // before the model answers — and the note tells her agent what she just did there
-    const room = this._roomNote(clean, origin, images.length + paths.length);
+    const room = await this._roomNote(clean, origin, images.length + paths.length);
     const stream = this._openStream('chat', turn);
     const trace = latency.createTrace('desktop');
     stream.trace = trace;
@@ -1408,6 +1414,7 @@ class PetService extends EventEmitter {
       const text = this._guard(res.text);
       const music = musicCtx.results;
       this._closeStream(stream, true, null, this._say(text, 'llm', 'chat', null, null, turn, stream, { music }));
+      if (room) this._roomReply(text);
       trace.mark('doneSent');
       this._reportAffection(affection);
       ok = true;
@@ -1457,7 +1464,10 @@ class PetService extends EventEmitter {
         const conv = e ? adminChat.conversationOf(all, x.id) : [];
         const last = conv[conv.length - 1] || null;
         const lastText = last ? (last.text || '').replace(/\s+/g, ' ').trim() : '';
-        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current: x.id === this.pet.speciesId, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || chatLog.stickerLabel(last) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
+        const current = x.id === this.pet.speciesId;
+        // where the companion is now: on the desktop, or in the game she is playing (her desktop window hides meanwhile)
+        const place = current ? (typeof this.placeHook === 'function' && this.placeHook() ? `在${this.placeHook()}` : '在桌面') : undefined;
+        return { id: x.id, met: !!e, name: e ? e.name : getSpecies(x.id).nameZh, current, place, count: conv.length, lastAt: last ? last.at : null, preview: lastText.slice(0, 60) || chatLog.stickerLabel(last) || (last && last.attachments && last.attachments.images ? '［图片］' : '') };
       }),
     };
   }
@@ -1599,7 +1609,7 @@ class PetService extends EventEmitter {
       trace.set('musicReason', musicStatus.reason);
       musicCtx = { kind: 'console', speciesId: id, turnId, streamId: null, results: [], errors: [] };
       // 她的房间: talking here to the companion whose room is open moves her there too
-      const room = id === this.pet.speciesId ? this._roomNote(clean, 'user', imgs.length) : '';
+      const room = id === this.pet.speciesId ? await this._roomNote(clean, 'user', imgs.length) : '';
       const prompt = persona.buildChatPrompt(body, c, t, { local: false, settings: this._promptSettings(), music: musicStatus, room });
       trace.set('topicFresh', roll.fresh);
       trace.set('recentMsgs', recent.length);
@@ -1652,6 +1662,7 @@ class PetService extends EventEmitter {
         reply = contentGuard.refusalLine(sp);
       }
       c.lastSpokeAt = this.now();
+      if (room) this._roomReply(reply);
       const music = musicCtx.results;
       const message = this._logAs(id, { role: 'pet', turnId, text: reply, ...(modelKey ? { model: modelKey } : {}), ...(music.length ? { attachments: { music } } : {}), ...(g.ok ? stickerField(replySticker) : {}) });
       // chatting counts for her like chatting on the desktop; only the companion's needs and mood run, though

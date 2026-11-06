@@ -317,12 +317,12 @@ class GameLibrary {
       default: return { ok: false, reason: 'invalid' };
     }
   }
-  // the note for this chat turn's prompt (core/illustrated-room-play.js chatNote); r: what the message did
-  illustratedNote(id, r, { now = Date.now() } = {}) {
+  // the note for this chat turn's prompt (core/illustrated-room-play.js chatNote); r: what the message did, heard: 'unsure'
+  illustratedNote(id, r, { now = Date.now(), heard = null } = {}) {
     const g = this.load(id);
     if (!g || g.manifest.engine !== IRP.ENGINE) return '';
     const st = IRP.restore(g.manifest, GS.readProgress(this.userDir, id).state, now);
-    return IRP.chatNote(g.manifest, st, r, { now });
+    return IRP.chatNote(g.manifest, st, r, { now, heard });
   }
   // the game window closed / the app quits with a round running: settled by how long it ran; she stays where she is
   illustratedClose(id, pet, { now = Date.now() } = {}) {

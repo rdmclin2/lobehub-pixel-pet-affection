@@ -1,8 +1,9 @@
 'use strict';
 // 她的房间 · 聊天里说「回床上休息吧」(docs/illustrated-room.md §4, design §8.2): recognise what the owner asks her to
-// do in her room from what they typed — locally, with rules, never with the model (the Responses path has no tool
-// calls; a rule is free, instant and predictable, the same way as core/dance-intent.js). Only while her room is
-// open in the game window; the message still goes to her agent, with a note of what she just did.
+// do in her room from what they typed. A plain order is matched here with rules (free, instant, works offline, the
+// same way as core/dance-intent.js). Everything else goes to the decision model (core/room-chat.js through
+// buildDecision / readDecision, `lh generate decide`), and the engine carries out its answer; her reply is written
+// after that, knowing what happened. Only while her room is open in the game window.
 // Pure; UMD (window.RoomIntent in the game page, require() in main and the tests).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -35,7 +36,7 @@
   // a word preceded by one of these (within 3 characters, same clause) is not asked for: 不想睡 / 别玩手机了 / 没在工作
   const NEG_RE = /(不想|不要|不用|不能|不会|不许|别|没|甭|不)$/;
   // a question about what she does is not an order: 你睡了吗 / 在工作么 — unless it also says do it (吧 / 去 / 快 …)
-  const QUESTION_RE = /[吗么嘛？?]|是不是|有没有|在不在/;
+  const QUESTION_RE = /吗|(?<!什)么|嘛|[？?]|是不是|有没有|在不在/;
   const IMPERATIVE_RE = /吧|去|快|帮我|给我|现在|先|一下|来|赶紧|马上|要不|回|该/;
   // the owner talking about themselves: 我在看手机 / 我今天工作好多
   const SELF_RE = /^我(在|刚|也|正在|要|想|今天|还|都|已经|最近)/;
@@ -43,6 +44,10 @@
   const SHORT = 8;
   const SEARCH_RE = /(?:搜一下|查一下|搜索|搜搜|查查|百度一下|百度)\s*([^，。！？,.!?]{1,24})/;
   const NEXT_RE = /下一个|换一个|下一条|换一条|划走|往下划/;
+  // words that make a sentence an order to her; anything else holding an activity word (「工作好累啊」「我累了想睡觉」)
+  // is for the model to judge
+  const ORDER_RE = /吧|帮我|给我|赶紧|马上|现在|快去|^去|^来|^先|^回|^快/;
+  const FILLER_RE = /[，。！？,.!?、~～…\s]|了|呀|啊|呢|嘛|哦|啦|一下/g;
 
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
   // 「看会儿手机」「打一会游戏」「放一首歌」 say the same as 看手机 / 打游戏 / 放首歌: looked up without the filler
@@ -129,8 +134,56 @@
     // an activity word in a sentence that does not ask for it: 「今天好累啊，工作好多」 / 「我在看手机」
     if (state && (SELF_RE.test(t) || (t.length > SHORT && !IMPERATIVE_RE.test(t)))) { state = null; screen = null; }
     if (!state && lamp === null && !stop && !next && !query) return null;
-    return { state, lamp, screen: screen || (query ? 'page' : null), query, stop, next, words: raw };
+    // sure: nothing in the sentence but the order itself, or it says so in as many words. Not sure: the model judges
+    let rest = said;
+    for (const w of Object.values(V.states).concat(Object.values(V.screens)).flat().sort((a, b) => b.length - a.length)) if (w) rest = rest.split(w).join('');
+    const sure = !state || ORDER_RE.test(t) || rest.replace(FILLER_RE, '').length <= 1;
+    return { state, lamp, screen: screen || (query ? 'page' : null), query, stop, next, words: raw, sure };
   }
 
-  return { WORDS, SCREEN_WORDS, matchRoomIntent, vocab };
+  // ---- the decision model: what the rules could not tell --------------------------------------------------------
+  const DECISION_MIN = 0.6; // below this she stays where she is: a wrong move is worse than asking again
+  // room, now: the room, its view (state, label, lamp). → { questions, state } for `lh generate decide`. The choices
+  // are the room's own states, so another room's pack needs nothing here.
+  function buildDecision(room, now, text) {
+    const criteria = {};
+    for (const [k, s] of Object.entries((room && room.states) || {})) {
+      if (s && !s.transient) criteria[k] = `主人叫她现在去「${s.label || k}」${s.doing ? `（${s.doing}）` : ''}`;
+    }
+    criteria.none = '不是在叫她换事情做：闲聊、问问题、感叹、说主人自己的事、夸她或说她、只是提到这件事、叫她别做某事';
+    return {
+      questions: {
+        state: { type: 'choice', instructions: '主人在聊天里对房间里的她说了一句话。判断主人是不是要她现在换一件事做。只有明确或口语化地让她去做，才选那件事（「玩把游戏吧」「开黑吧」「该睡了」都算；「别动了，偷懒吧」这种先叫她别做再叫她做的，选后面那件）；拿不准就选 none。', criteria },
+        lamp: { type: 'choice', instructions: '同一句话，判断主人是不是要她开或关台灯（嫌太暗、太亮也算）。', criteria: { on: '要她开灯', off: '要她关灯', none: '没有说灯的事' } },
+      },
+      state: `她现在：${(now && now.label) || (now && now.state) || ''}；台灯${now && now.lamp ? '开着' : '关着'}。\n主人说：${String(text).slice(0, 200)}`,
+    };
+  }
+  // the model's answer → { state, lamp } (null: stay / not mentioned), or null when the answer makes no sense
+  function readDecision(res, room) {
+    const a = res && res.answers;
+    if (!a || !a.state || !a.lamp || typeof a.state.choice !== 'string') return null;
+    const sure = (q) => (q.choice !== 'none' && Number(q.confidence) >= DECISION_MIN ? q.choice : null);
+    const state = sure(a.state);
+    const lamp = sure(a.lamp);
+    return { state: state && room && room.states && room.states[state] && !room.states[state].transient ? state : null, lamp: lamp === 'on' ? true : lamp === 'off' ? false : null };
+  }
+
+  // ---- what she said in her reply ---------------------------------------------------------------------------------
+  // 「那我把灯也熄了」 with the lamp on: the picture follows what she said. Only a thing she did, sentence by sentence: not a
+  // mention (台灯还亮着), a question (要不要关灯), what she did not do (没开灯 / 不关灯) or what the owner might do (你开灯吧).
+  const SAID_OFF_RE = /(关|熄|灭)(掉|了|上)?台?灯|台?灯(也|都|就)?(给|被)?(关|熄|灭)(掉|了|上)/;
+  const SAID_ON_RE = /(开|打开|点亮|拧亮|按亮|亮)(了|上)?(一下)?台?灯|台?灯(也|都|就)?(给|被)?(打开|开|点亮|亮)(了|上)/;
+  const NOT_DONE_RE = /[没不别未甭]|要不|吗|么|？|\?|想|你|等|记得|待会|一会|如果|要是|的话|应该|可以|该/;
+  function replyLampClaim(text) {
+    let claim = null;
+    for (const clause of String(text || '').split(/[，。！!~～…；;\n,]/)) {
+      if (NOT_DONE_RE.test(clause)) continue;
+      if (SAID_OFF_RE.test(clause)) claim = false;
+      else if (SAID_ON_RE.test(clause)) claim = true;
+    }
+    return claim;
+  }
+
+  return { WORDS, SCREEN_WORDS, matchRoomIntent, vocab, buildDecision, readDecision, replyLampClaim };
 });

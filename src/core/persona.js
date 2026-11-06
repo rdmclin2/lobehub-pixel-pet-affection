@@ -187,11 +187,11 @@ function musicHint(music) {
 }
 
 // `localScope`: where her tools may go (core/ai-folders.js scopeHint), added after LOCAL_HINT.
-// `room`: 她的房间 is open in the game window (src/main/games.js illustratedNote): where she is, what she just did
-// there for this message, so her reply matches the picture. One line, before the owner's words (which stay last).
+// `room`: 她的房间 is open in the game window (src/main/games.js illustratedNote): what really happened there for this
+// message, so her reply matches the picture. One line, before the owner's words (which stay last).
 function buildChatPrompt(text, pet, now, { local = false, settings = null, localScope = '', music = null, room = '' } = {}) {
   const m = musicHint(music);
-  const roomLine = room ? `\n${String(room).replace(/\s*\n\s*/g, ' ').slice(0, 400)}` : '';
+  const roomLine = room ? `\n${String(room).replace(/\s*\n\s*/g, ' ').slice(0, 1000)}` : '';
   return `${buildStateBlock(pet, now, settings)}${local ? `\n${LOCAL_HINT}${localScope ? `\n${localScope}` : ''}` : ''}${m ? `\n${m}` : ''}${roomLine}\n${text}`;
 }
 
