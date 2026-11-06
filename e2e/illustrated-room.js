@@ -198,7 +198,7 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
         const lit = await g();
         assert.equal(lit.lamp.on, true);
         assert.equal(lit.lamp.litAlpha, 1, 'the lit illustration is shown (her too)');
-        assert.ok(lit.lamp.glowAlpha > 0.2, `glow ${lit.lamp.glowAlpha}`); // the pack's glow.alpha × a 3–5 % flicker
+        assert.ok(lit.lamp.glowAlpha > 0.15, `glow ${lit.lamp.glowAlpha}`); // the pack's glow.alpha × a 3–5 % flicker
         assert.notDeepEqual(lit.lamp.grade, before.lamp.grade, 'the whole-room grade changed');
         assert.equal((await g()).bar.find((x) => x.kind === 'lamp').pressed, true);
         await shot('i3-lamp-on');

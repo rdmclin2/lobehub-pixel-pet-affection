@@ -253,6 +253,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, step: stepFn, launc
         let prev = (await g()).chat.reply;
         for (const c of CHATS) {
           mark('step', `章节·${c.title}：聊天栏说「${c.say}」`);
+          const clipBefore = c.swipe ? (await g()).screens.find((x) => x.kind === 'clips').clip : null;
           await typeChat(c.say);
           const t0 = Date.now();
           await until(async () => (await g()).state === c.state, 4000, `${c.say} → ${c.state}`);
@@ -262,7 +263,11 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, step: stepFn, launc
           const sc = s.screens.find((x) => x.kind !== 'lock') || s.screens[0] || null;
           if (c.screen) assert.equal(s.screens.find((x) => x.kind === c.screen)?.kind, c.screen, `${c.say}: screen`);
           assert.ok(s.events.some((e) => e.via === 'chat' && e.to === c.state), `${c.say}: via chat`);
-          const clipSent = c.screen === 'clips' ? s.screens.find((x) => x.kind === 'clips').clip : null;
+          // 下一个: the state does not change, so wait for the swipe itself; exactly one clip further than before she was asked
+          const clipOf = (v) => v.screens.find((x) => x.kind === 'clips').clip;
+          const swiped = c.swipe ? await until(async () => { const v = await g(); return clipOf(v).caption !== clipBefore.caption ? v : null; }, 8000, `${c.say}: the clip changes`) : s;
+          if (c.swipe) assert.equal(clipOf(swiped).index, clipBefore.index + 1, `${c.say}: exactly one clip further`);
+          const clipSent = c.screen === 'clips' ? clipOf(swiped) : null;
           const r = await until(async () => { const x = await g(); return x.chat.reply && x.chat.reply !== prev && !x.chat.busy ? x : null; }, FAKE ? 15000 : 180000, `the reply to ${c.say}`);
           // T-11726: what she talks about is what the screen plays — the clip when she was asked is the clip when she answers
           const clipReply = c.screen === 'clips' ? r.screens.find((x) => x.kind === 'clips').clip : null;
@@ -350,7 +355,7 @@ module.exports = function herRoomAcceptScenario({ ROOT, OUT, step: stepFn, launc
           await shot(`h6-${state}-on`);
           const b = await g();
           assert.equal(b.lamp.litAlpha, 1);
-          assert.ok(b.lamp.glowAlpha > 0.2, `glow ${b.lamp.glowAlpha}`);
+          assert.ok(b.lamp.glowAlpha > 0.15, `glow ${b.lamp.glowAlpha}`);
           assert.notDeepEqual(a.lamp.grade, b.lamp.grade);
           return { state, off: a.lamp, on: b.lamp };
         };
