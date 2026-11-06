@@ -221,7 +221,8 @@
         parts.push(`${where}在刷短视频${clip && clip.caption ? `，现在这条是「${clip.caption}」` : ''}`);
       } else if (c === 'page') parts.push(v.query ? `${where}打开了搜索「${v.query}」的网页` : `${where}开着${(C.page && C.page.templates && C.page.templates[0] && C.page.templates[0].title) || '文档'}`);
       else if (c === 'player') { const t = (C.player && C.player.tracks && C.player.tracks[0]) || null; parts.push(`${where}在放${t ? `《${t.title}》${t.artist ? `（${t.artist}）` : ''}` : '歌'}`); }
-      else if (c === 'game') parts.push(`${where}是游戏画面`);
+      else if (c === 'game') parts.push(`${where}是小游戏《鲸鱼跳跳》：一只小鲸鱼一路往前跳、吃金币、攒分，没有怪也没有血条`);
+      else if (c === 'lock') parts.push(`${where}是锁屏，亮着时间和一条消息「主人：早点睡呀，晚安～」`);
     }
     return parts.join('，');
   }
@@ -257,9 +258,9 @@
     if (r && r.ok === false && r.reason === 'tired') parts.push(`主人刚让你去${label(resolve(room, r.kind) || r.kind)}，但你太累了（精力 ${r.have}，至少要 ${r.need}），没有去。用一两句话告诉主人你累了，想先睡一会儿，不要说你去了。`);
     else if (heard === 'unsure') parts.push('你没听明白主人是不是想让你做什么，所以什么都没动。不要答应下来，也不要说你已经做了什么；如果主人像是在叫你做事，老实说你刚才没反应过来，还在做现在这件事，请主人再说一次或者点下面的状态栏。');
     else if (moved || lampMoved || (r && r.ok && !r.already)) {
-      parts.push(`用一两句话回应主人，像刚做完这件事，可以提一句屏幕上看到的东西（只说上面写的这条，别编别的内容）。这件事才开始、还在进行，不要说已经做完、停下或放下了；写动作只写上面这个姿势。${lampMoved ? '' : '台灯这一轮没动过，不要说你开灯或关灯。'}`);
+      parts.push(`用一两句话回应主人，像刚做完这件事，${screen ? '可以提一句屏幕上看到的东西，只说上面写的这些，没写的（别的窗口、软件、下一条、新内容）一律没有。' : ''}这件事才开始、还在进行，不要说已经做完、停下或放下了；写动作只写上面这个姿势。${lampMoved ? '' : '台灯这一轮没动过，不要说你开灯或关灯。'}`);
     } else if (r && r.ok && r.already) parts.push('主人说的这件事你本来就在做，还在继续。不要说已经做完、放下了或去做了别的事，也不要说你开灯或关灯。');
-    else parts.push('主人这句话没有叫你换事情做。不要说、也不要暗示你去做了别的事（起身、躺下、拿手柄、开电脑、戴耳机、开灯关灯都算）；你想提议可以问一句，但不算做了。就按上面的真实情况聊。');
+    else parts.push('主人这句话没有叫你换事情做。不要说、也不要暗示你去做了别的事（起身、躺下、拿手柄、开电脑、戴耳机、开灯关灯都算）；你想提议可以问一句，但不算做了。提到屏幕只说上面写的。就按上面的真实情况聊。');
     return parts.join('');
   }
 
