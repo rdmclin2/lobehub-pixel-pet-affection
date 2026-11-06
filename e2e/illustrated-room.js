@@ -12,6 +12,8 @@
 //   I4  the six activities from the status bar: each a crossfade (~1.4 s, both of her half-visible in its middle),
 //       each its own picture and screen content — phone: short videos, music: the player (title, time running),
 //       work: the document, game: the little game (score going up), sleep: Z, idle: the lock screen
+//   I4c (real pack) the screens' real content: the video's frames advance and every clip plays, the laptop's real web
+//       page scrolls, the player has its cover and lyrics in time; screen close-ups via __gameTest.screenPng
 //   I5  the picture's hotspots: hover the bed shows 「睡觉 · 床」, a click on the bed / the desk switches
 //   I6  chat: 「现在去试一下打开电脑刷抖音吧」 → at the desk within 2 s, the laptop plays short videos, the lamp on
 //       (work turns it on); her reply in the bubble; the prompt had the [房间] note; 「回床上休息吧」 → in bed;
@@ -186,7 +188,7 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
       });
 
       await step(S, 'I3 台灯：点状态栏「台灯」0.2 秒内亮起（开灯插画、暖光晕、整屋调色一起变，她也被照到）；点画面里的台灯关掉；L 键也能开关', async () => {
-        mark('step', '点「台灯」：桌面暖起来，床一侧还是月光');
+        mark('step', '点「台灯」：桌面最暖，整屋跟着变暖（真实包），窗外仍是蓝色雨夜');
         const before = await g();
         await press('#ir-lamp');
         const t0 = Date.now();
@@ -280,7 +282,18 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
           const def = R.states[key];
           mark('step', `${def.label}：专门的姿势，台灯关 / 开`);
           if (key === 'idle-lazy') {
+            // 备用入口：状态栏有自己的「犯懒」按钮（真实鼠标），聊天和 7 键也能进
+            await press('#ir-bar .ir-act[data-state="idle-lazy"]');
+            const v = await settledIn('idle-lazy', 8000);
+            assert.equal(v.bar.find((x) => x.kind === 'idle-lazy').current, true, '「犯懒」按钮高亮');
+            assert.equal(v.bar.find((x) => x.kind === 'idle').current, false, '「发呆」按钮不高亮');
+            await pressAct('idle');
+            await settledIn('idle', 8000);
             await typeChat('好懒啊，犯懒吧');
+            await settledIn('idle-lazy', 8000);
+            await pressAct('idle');
+            await settledIn('idle', 8000);
+            await gp.keyboard.press('7');
             await settledIn('idle-lazy', 8000);
           } else if (R.states[(await g()).state].zone !== def.zone) {
             // 床 ↔ 书桌 goes through 起身: she is seen standing on the way
@@ -322,6 +335,102 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
         const end = await g();
         assert.deepEqual(end.errors, []);
         return `${out.join(' | ')}; ${end.fps} fps; bokeh ${end.window.bokeh} spots`;
+      });
+
+      if (REAL_PACK) await step(S, 'I4c 屏幕真实内容：手机放视频帧并上滑换片、电脑放真实网页并滚动、播放器有封面和跟着时间走的歌词', async () => {
+        const R = M.rooms[0];
+        const dump = async (name, id) => {
+          const url = await gp.evaluate((sid) => window.__gameTest.screenPng(sid), id);
+          const buf = Buffer.from(url.split(',')[1], 'base64');
+          fs.writeFileSync(path.join(SHOTS, `${name}.png`), buf);
+          return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 10);
+        };
+        const out = [];
+        // 屏幕卡片不压聊天栏和状态栏，不被歌词撑宽拉伸；状态栏文字一行
+        const layoutOk = async (where) => {
+          const hit = (a, b) => a && b && a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+          const v = await g();
+          assert.ok(!hit(v.pip.rect, v.chat.rect), `${where}: the card clear of the chat bar (${v.pip.rect} / ${v.chat.rect})`);
+          for (const b of v.bar) assert.ok(!hit(v.pip.rect, b.rect), `${where}: the card clear of ${b.kind}`);
+          const m = await gp.evaluate(() => { const c = document.getElementById('ir-pip-canvas'); const r = c.getBoundingClientRect(); return { aspect: r.width / r.height, want: c.width / c.height, lines: [...document.querySelectorAll('#ir-bar .ir-act span')].map((x) => x.getBoundingClientRect().height) }; });
+          assert.ok(Math.abs(m.aspect - m.want) < 0.02, `${where}: the screen keeps its proportions (${m.aspect} vs ${m.want})`);
+          assert.ok(Math.max(...m.lines) < 26, `${where}: every label on one line (${m.lines})`);
+        };
+        // 短视频：真实帧（不是程序画的），帧在走，画面在变；上滑换一段
+        await pressAct('phone');
+        await settledIn('phone', 8000);
+        mark('step', '看手机：屏幕放视频帧，「屏幕」卡片放大显示');
+        const c1 = (await g()).screens[0];
+        assert.ok(c1.clip.frames >= 20, `clip ${c1.clip.id} has its frames (${c1.clip.frames})`);
+        const h1 = await dump(`i4c-clip-${c1.clip.id}-a`, 'phone');
+        await gp.waitForTimeout(900);
+        const c1b = (await g()).screens[0];
+        assert.ok(c1b.clip.frame > c1.clip.frame, `frames advance (${c1.clip.frame} → ${c1b.clip.frame})`);
+        const h2 = await dump(`i4c-clip-${c1.clip.id}-b`, 'phone');
+        assert.notEqual(h1, h2, 'the picture changed');
+        await layoutOk('phone');
+        await shot('i4c-phone-video');
+        const shown = [c1.clip.id];
+        for (let i = 1; i < R.content.clips.list.length; i++) {
+          await gp.evaluate(() => window.__gameTest.nextClip());
+          await gp.waitForTimeout(700);
+          const c = (await g()).screens[0].clip;
+          assert.ok(c.frames >= 20);
+          shown.push(c.id);
+          await dump(`i4c-clip-${c.id}`, 'phone');
+          if (i === 1) await shot('i4c-phone-video-next');
+        }
+        assert.equal(new Set(shown).size, R.content.clips.list.length, 'every clip plays');
+        mark('check', `手机放真实视频帧：${shown.join(' → ')}，帧 ${c1.clip.frame} → ${c1b.clip.frame}`);
+        out.push(`clips ${shown.join('→')}, ${c1.clip.frames} frames each, frame ${c1.clip.frame}→${c1b.clip.frame}, sha ${h1}≠${h2}`);
+        // 听音乐：封面（包里的图）、歌名、时间、歌词
+        await pressAct('music');
+        await settledIn('music', 8000);
+        mark('step', '听音乐：封面、歌名、进度、歌词');
+        const seen = new Set();
+        const t0 = (await g()).screens[0].track;
+        assert.equal(t0.cover, true, 'the track has its cover picture');
+        for (let i = 0; i < 28; i++) { seen.add((await g()).screens[0].track.lyric); await gp.waitForTimeout(500); }
+        const t1 = (await g()).screens[0].track;
+        assert.ok(t1.pos > t0.pos, 'the song plays');
+        assert.ok(seen.size >= 2, `the lyrics move (${[...seen].join(' / ')})`);
+        await layoutOk('music');
+        await dump('i4c-player', 'phone');
+        await shot('i4c-music-player');
+        mark('check', `播放器《${t1.title}》${t1.time}，歌词走到「${t1.lyric}」`);
+        out.push(`player《${t1.title}》${t1.time}, cover ${t1.cover}, lyrics ${[...seen].join(' / ')}`);
+        // 工作：文档和真实网页轮流，网页在滚动
+        await pressAct('work');
+        await settledIn('work', 8000);
+        mark('step', '工作：电脑屏幕上文档和真实网页轮流');
+        const page = () => g().then((v) => v.screens.find((x) => x.id === 'laptop').page);
+        await dump('i4c-laptop-doc', 'laptop');
+        const pg = await until(async () => { const v = await page(); return v && v.real && v.scroll > 40 ? v : null; }, 22000, 'the real page to come up and scroll');
+        await gp.waitForTimeout(2500);
+        const pg2 = await page();
+        assert.ok(pg2.real && pg2.scroll > pg.scroll, `the page scrolls (${pg.scroll} → ${pg2.scroll})`);
+        await layoutOk('work');
+        await dump('i4c-laptop-web', 'laptop');
+        await shot('i4c-work-web');
+        const seenWork = await g();
+        assert.match(seenWork.pip.caption, new RegExp(pg2.title));
+        mark('check', `电脑上是真实网页「${pg2.title}」${pg2.url}，滚动 ${pg.scroll} → ${pg2.scroll} px`);
+        out.push(`web「${pg2.title}」${pg2.url}, scroll ${pg.scroll}→${pg2.scroll}`);
+        // 打游戏：小游戏在跑
+        await pressAct('game');
+        await settledIn('game', 8000);
+        const s0 = (await g()).screens[0].score;
+        await gp.waitForTimeout(2000);
+        const s1 = (await g()).screens[0].score;
+        assert.ok(s1 > s0);
+        await layoutOk('game');
+        await dump('i4c-laptop-game', 'laptop');
+        mark('check', `打游戏：小游戏在跑，得分 ${s0} → ${s1}`);
+        out.push(`game score ${s0}→${s1}`);
+        await pressAct('idle');
+        await settledIn('idle', 8000);
+        assert.deepEqual((await g()).errors, []);
+        return out.join('; ');
       });
 
       await step(S, 'I5 画面热点：悬停床显示「睡觉 · 床」并描边；真实鼠标点床 → 睡觉，点书桌 → 工作', async () => {

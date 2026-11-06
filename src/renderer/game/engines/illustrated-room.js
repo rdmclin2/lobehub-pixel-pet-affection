@@ -15,7 +15,7 @@
 //   ├ vignette
 //   └ hover          the hovered hotspot's outline
 //   ui (DOM)         title-bar capsule ⚡ ♥ (her numbers, folded), the 屏幕 card (the screen enlarged), her bubble,
-//                    the status bar (六件事 + 台灯) and the chat bar
+//                    the status bar (六件事, a state's variants such as 犯懒, 台灯) and the chat bar
 //
 // Main is the only authority (src/main/games.js illustratedCommand): a click, a key, a hotspot or the chat
 // (main.js roomChat, core/room-intent.js) sends a command; whatever comes back — or is pushed (game:room) — is
@@ -44,6 +44,7 @@
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     game: '<rect x="2" y="7" width="20" height="10" rx="4"/><path d="M7 11v2M6 12h2M16 11h.01M18 13h.01"/>',
     idle: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 1.5 4 1.5 4-1.5 4-1.5"/><path d="M9 9.5h.01M15 9.5h.01"/>',
+    variant: '<circle cx="12" cy="12" r="9"/><path d="M9 15.5h6"/><path d="M7.5 10h3M13.5 10h3"/>',
     lamp: '<path d="M9 18h6M10 22h4"/><path d="M12 2a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5v1h6v-1c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 2z"/>',
     send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
     screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/>',
@@ -75,6 +76,11 @@
   window.addEventListener('unhandledrejection', (e) => { st.errors.push(String((e.reason && e.reason.message) || e.reason)); });
 
   // ---- the room's DOM ------------------------------------------------------------------------------------
+  // a state's `variants` (犯懒 beside 发呆) get their own button right after the activity's
+  const VARIANTS = {};
+  for (const s of Object.values(room.states)) if (!s.transient && s.variants) (VARIANTS[s.activity] = VARIANTS[s.activity] || []).push(...s.variants);
+  const VARIANT_KEYS = KINDS.flatMap((k) => VARIANTS[k] || []);
+  const isVariant = (key) => VARIANT_KEYS.includes(key);
   const ui = document.createElement('div');
   ui.id = 'ir-ui';
   const actBtn = (k) => `<button class="ir-act" data-kind="${k}" title="${(M.activities[k] && M.activities[k].label) || k}（${KINDS.indexOf(k) + 1}）">${svg(k)}<span>${(M.activities[k] && M.activities[k].label) || k}</span><i class="ir-prog"><b></b></i></button>`;
@@ -98,7 +104,7 @@
         <button id="ir-chat-send" class="ir-send" type="submit" title="发送（Enter）" aria-label="发送">${svg('send')}</button>
       </form>
       <nav id="ir-bar" class="ir-bar" aria-label="她在做什么">
-        ${KINDS.map(actBtn).join('')}
+        ${KINDS.map((k) => actBtn(k) + (VARIANTS[k] || []).map((v) => `<button class="ir-act ir-variant" data-state="${v}" title="${room.states[v].label}（${KINDS.length + VARIANT_KEYS.indexOf(v) + 1}）">${svg('variant')}<span>${room.states[v].label}</span></button>`).join('')).join('')}
         <span class="ir-sep"></span>
         <button id="ir-lamp" class="ir-act ir-lamp" title="台灯（L）" aria-pressed="false">${svg('lamp')}<span>台灯</span></button>
       </nav>
@@ -376,7 +382,24 @@
     return partsLoad;
   }
 
+  // what the screens show from the pack: { images: { <room.images key>: bitmap }, frames: { clips: index } }
+  let contentLoad = null;
+  function contentAssets() {
+    if (!contentLoad) {
+      contentLoad = (async () => {
+        const images = {};
+        for (const [name, file] of Object.entries(room.images || {})) if (name !== 'parts') images[name] = (await load(file)).bmp;
+        const f = room.frames && room.frames.clips;
+        return { images, frames: f && boot.game.sprites ? { clips: boot.game.sprites[f] || null } : {} };
+      })();
+      contentLoad.catch(() => { contentLoad = null; });
+    }
+    return contentLoad;
+  }
+  let content = { images: {}, frames: {} };
+
   async function buildScene(key) {
+    content = await contentAssets();
     const def = room.states[key];
     const [off, lit] = await Promise.all([load(def.images.off), def.images.lit ? load(def.images.lit) : Promise.resolve(null)]);
     const c = new P.Container();
@@ -430,9 +453,9 @@
     const S = room.screens[id];
     const corners = (def.screens[id] && def.screens[id].corners) || S.corners;
     const [w, h] = S.size;
-    const content = SC.create(kind, { w, h, room, seed: id.length * 31 + kind.length });
-    content.update(0, ctxOfScreen());
-    const texture = P.Texture.from(content.canvas);
+    const screen = SC.create(kind, { w, h, room, images: content.images, frames: content.frames, seed: id.length * 31 + kind.length });
+    screen.update(0, ctxOfScreen());
+    const texture = P.Texture.from(screen.canvas);
     const mesh = new P.PerspectiveMesh({ texture, verticesX: 10, verticesY: 10, x0: corners[0][0], y0: corners[0][1], x1: corners[1][0], y1: corners[1][1], x2: corners[2][0], y2: corners[2][1], x3: corners[3][0], y3: corners[3][1] });
     const g = new P.Sprite(SOFT);
     g.anchor.set(0.5);
@@ -441,7 +464,7 @@
     g.position.set(cx, cy);
     g.width = g.height = ((S.glow && S.glow.r) || 120) * 2;
     g.tint = S.glow && S.glow.color ? parseInt(S.glow.color.slice(1), 16) : 0xddeeff;
-    return { id, kind, content, texture, mesh, glow: g, corners };
+    return { id, kind, content: screen, texture, mesh, glow: g, corners };
   }
   function rebuildScreens(sc) {
     for (const s of sc.screens) { s.mesh.destroy(); s.glow.destroy(); s.texture.destroy(true); }
@@ -642,11 +665,17 @@
     const act = st.view.activity;
     for (const b of document.querySelectorAll('#ir-bar .ir-act[data-kind]')) {
       const k = b.dataset.kind;
-      b.classList.toggle('current', k === act);
-      b.setAttribute('aria-pressed', k === act ? 'true' : 'false');
+      const on = k === act && !isVariant(st.view.state);
+      b.classList.toggle('current', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
       const t = tiredFor(k);
       b.classList.toggle('tired', !!t && k !== act);
       b.title = t ? `${M.activities[k].label}：太累了（精力 ${t.have}，要 ${t.need}）· 先让她睡一觉` : `${M.activities[k].label}（${KINDS.indexOf(k) + 1}）`;
+    }
+    for (const b of document.querySelectorAll('#ir-bar .ir-act[data-state]')) {
+      const on = b.dataset.state === st.view.state;
+      b.classList.toggle('current', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
   }
   function renderProgress() {
@@ -687,14 +716,14 @@
     const key = `${s.id}:${s.kind}:${portrait}`;
     if (key !== pipKey) {
       pipKey = key;
-      pip.width = portrait ? 117 : 160;
-      pip.height = portrait ? 208 : 100;
+      pip.width = portrait ? 144 : 320;
+      pip.height = portrait ? 256 : 200;
       $('ir-pip').classList.toggle('landscape', !portrait);
     }
     pipG.drawImage(s.content.canvas, 0, 0, pip.width, pip.height);
     const info = s.content.info();
     $('ir-pip-title').textContent = `${SCREEN_NAME[s.id] || '屏幕'} · ${KIND_NAME[s.kind] || ''}`;
-    $('ir-pip-cap').textContent = s.kind === 'clips' && info.clip ? info.clip.caption : s.kind === 'player' && info.track ? `《${info.track.title}》 ${info.track.time}` : s.kind === 'page' ? (st.view.query ? `搜索：${st.view.query}` : '周报.docx') : s.kind === 'game' ? `得分 ${info.score}` : '';
+    $('ir-pip-cap').textContent = s.kind === 'clips' && info.clip ? info.clip.caption : s.kind === 'player' && info.track ? `《${info.track.title}》 ${info.track.time}${info.track.lyric ? ` · ${info.track.lyric}` : ''}` : s.kind === 'page' ? (st.view.query ? `搜索：${st.view.query}` : (info.page && info.page.title) || '') : s.kind === 'game' ? `得分 ${info.score}` : '';
   }
   $('ir-pip-close').addEventListener('click', () => { st.pipOpen = false; renderPip(); });
 
@@ -731,6 +760,7 @@
 
   // ---- input: bar, hotspots, keys ------------------------------------------------------------------------------
   for (const b of document.querySelectorAll('#ir-bar .ir-act[data-kind]')) b.addEventListener('click', () => command({ state: b.dataset.kind, from: 'click' }));
+  for (const b of document.querySelectorAll('#ir-bar .ir-act[data-state]')) b.addEventListener('click', () => command({ state: b.dataset.state, from: 'click' }));
   $('ir-lamp').addEventListener('click', () => command({ lamp: st.lampTarget !== 1, from: 'click' }));
   $('btn-close').addEventListener('click', () => window.game.close('button'));
   const HOT = room.hotspots || [];
@@ -771,6 +801,7 @@
     if (e.key === 'Escape') { if (st.statsOpen) openStats(false); else if (typing) document.activeElement.blur(); return; }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[1-6]$/.test(e.key)) { command({ state: KINDS[Number(e.key) - 1], from: 'key' }); e.preventDefault(); }
+    else if (/^[7-9]$/.test(e.key) && VARIANT_KEYS[Number(e.key) - 7]) { command({ state: VARIANT_KEYS[Number(e.key) - 7], from: 'key' }); e.preventDefault(); }
     else if (e.key === 'l' || e.key === 'L') command({ lamp: st.lampTarget !== 1, from: 'key' });
     else if (e.key === '/') { $('ir-chat-input').focus(); e.preventDefault(); }
   });
@@ -859,7 +890,7 @@
       transitions: st.transitions.map((t) => ({ ...t })), fading: st.fades.length > 0, scenesOnStage: scenes.children.length,
       view: { ...st.view }, run: st.runLocal ? { progress: runProgress(), seconds: st.runLocal.seconds } : null,
       bubble: { text: st.bubbleT > 0 ? st.bubbleText : null, rect: rectOf($('bubble')) },
-      bar: [...document.querySelectorAll('#ir-bar .ir-act')].map((x) => ({ kind: x.dataset.kind || 'lamp', current: x.classList.contains('current'), tired: x.classList.contains('tired'), pressed: x.getAttribute('aria-pressed') === 'true', rect: rectOf(x), progress: x.querySelector('.ir-prog b') ? parseFloat(x.querySelector('.ir-prog b').style.width) || 0 : null })),
+      bar: [...document.querySelectorAll('#ir-bar .ir-act')].map((x) => ({ kind: x.dataset.kind || x.dataset.state || 'lamp', current: x.classList.contains('current'), tired: x.classList.contains('tired'), pressed: x.getAttribute('aria-pressed') === 'true', rect: rectOf(x), progress: x.querySelector('.ir-prog b') ? parseFloat(x.querySelector('.ir-prog b').style.width) || 0 : null })),
       capsule: { text: capsule.textContent, open: st.statsOpen, rect: rectOf(capsule) }, statsCard: rectOf($('ir-stats')),
       pip: { open: !$('ir-pip').classList.contains('hidden'), title: $('ir-pip-title').textContent, caption: $('ir-pip-cap').textContent, rect: rectOf($('ir-pip')) },
       chat: { said: st.saidT > 0 ? $('ir-said').textContent : null, rect: rectOf($('ir-chat')), input: rectOf($('ir-chat-input')), note: $('ir-chat-note').textContent, busy: st.chatBusy, last: st.lastChat || null, reply: st.lastReply || null },
@@ -874,6 +905,8 @@
     nextClip: () => { if (st.scene) for (const s of st.scene.screens) if (s.kind === 'clips') s.content.next(); },
     refresh: async () => { const r = await window.game.room({ cmd: 'state' }); setView(r); return r; },
     openStats,
+    // the screen's own canvas, as a data URL: the acceptance's close-ups of what the screen shows
+    screenPng: (id) => { const s = st.scene && st.scene.screens.find((x) => (id ? x.id === id : x.kind !== 'lock')); return s ? s.content.canvas.toDataURL('image/png') : null; },
     holdBlink: (seconds) => { const sc = st.scene; if (sc && sc.blink) { drawBlink(sc); sc.blink.g.visible = true; sc.blinkLeft = seconds; } },
   };
 })();

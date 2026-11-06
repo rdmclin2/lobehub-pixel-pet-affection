@@ -14,6 +14,10 @@
 //                    window: { panes: [poly…] | poly, rain, bokeh }, screens: { <id>: { corners, size, glow } },
 //                    states: { <key>: state }, defaultState, transition: { seconds }, content, hotspots, intents, lines,
 //                    images / frames / sprites (optional atlases) }
+//   content        { clips: { fps, swipeEvery, list: [{ id, caption, author, likes, scene | frames: true, pingpong }] },
+//                    page: { seconds, templates: [{ id, title, url, image? }] }, player: { tracks: [{ title, artist,
+//                    seconds, cover?, lyrics?: [[seconds, line]…] }] }, game }. cover and image name a key of `images`;
+//                    `frames.clips` indexes `images.clips` with frames named "<clip id>-<nn>".
 //   state          { activity, label, images: { off, lit? }, breath: { rect, amp, period }, blink, screens:
 //                    { <screen id>: { content, on, corners? } }, bubble, lampOnEnter, fx, transient, enterVia, zone }
 //
@@ -24,7 +28,7 @@ const KINDS = ['sleep', 'work', 'phone', 'music', 'game', 'idle'];
 const STATS = ['energy', 'mood', 'focus', 'fullness'];
 const CONTENT = ['lock', 'clips', 'page', 'player', 'game', 'chat', 'off'];
 const CLIP_SCENES = ['jellyfish', 'rain-window', 'hearts', 'city', 'cat'];
-const LIMITS = { rooms: 12, states: 16, screens: 4, hotspots: 12, files: 40, words: 24, wordLen: 12, line: 60 };
+const LIMITS = { rooms: 12, states: 16, screens: 4, hotspots: 12, files: 40, words: 24, wordLen: 12, line: 60, lyrics: 80 };
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -254,9 +258,19 @@ function validateOpenRoom(r, at, { files, sprites, fileRe }) {
   if (usedContent.has('player')) {
     const tracks = C.player && Array.isArray(C.player.tracks) ? C.player.tracks : [];
     if (!tracks.length) e.push(`${at}.content.player.tracks: a screen plays music, so at least one`);
-    for (const [i, t] of tracks.entries()) if (!isObj(t) || typeof t.title !== 'string' || !t.title || !inRange(t.seconds, 10, 1200)) e.push(`${at}.content.player.tracks[${i}]: title and seconds 10–1200`);
+    for (const [i, t] of tracks.entries()) {
+      if (!isObj(t) || typeof t.title !== 'string' || !t.title || !inRange(t.seconds, 10, 1200)) { e.push(`${at}.content.player.tracks[${i}]: title and seconds 10–1200`); continue; }
+      if (t.cover !== undefined && !(r.images && r.images[t.cover])) e.push(`${at}.content.player.tracks[${i}].cover: no images.${t.cover}`);
+      if (t.lyrics !== undefined && !(Array.isArray(t.lyrics) && t.lyrics.length <= LIMITS.lyrics && t.lyrics.every((l) => Array.isArray(l) && l.length === 2 && inRange(l[0], 0, t.seconds) && typeof l[1] === 'string' && l[1].length <= LIMITS.line))) e.push(`${at}.content.player.tracks[${i}].lyrics: up to ${LIMITS.lyrics} [seconds within the track, line ≤ ${LIMITS.line} characters]`);
+    }
   }
-  if (usedContent.has('page') && C.page !== undefined && !(isObj(C.page) && Array.isArray(C.page.templates) && C.page.templates.every((t) => isObj(t) && typeof t.id === 'string'))) e.push(`${at}.content.page.templates: [{ id, title, … }]`);
+  if (usedContent.has('page') && C.page !== undefined) {
+    if (!(isObj(C.page) && Array.isArray(C.page.templates) && C.page.templates.every((t) => isObj(t) && typeof t.id === 'string'))) e.push(`${at}.content.page.templates: [{ id, title, … }]`);
+    else {
+      if (C.page.seconds !== undefined && !inRange(C.page.seconds, 3, 120)) e.push(`${at}.content.page.seconds must be 3–120`);
+      for (const [i, t] of C.page.templates.entries()) if (t.image !== undefined && !(r.images && r.images[t.image])) e.push(`${at}.content.page.templates[${i}].image: no images.${t.image}`);
+    }
+  }
   // hotspots
   const hs = r.hotspots === undefined ? [] : r.hotspots;
   if (!Array.isArray(hs)) e.push(`${at}.hotspots must be a list`);

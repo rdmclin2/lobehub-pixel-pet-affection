@@ -1,12 +1,14 @@
 'use strict';
 // 她的房间 · 屏幕内容 (docs/illustrated-room.md §5, design §7). What her phone or laptop shows, drawn by the app into
 // an offscreen 2D canvas the engine maps onto the screen's four corners (a PerspectiveMesh) and shows enlarged in
-// the 屏幕 card. Nothing comes from the network: every kind is drawn here from the manifest's data.
+// the 屏幕 card. Nothing comes from the network: every kind is drawn here from the manifest's data and the pack's pictures.
 //   clips    短视频: a vertical feed — each clip a looping animated scene (jellyfish, rain-window, hearts, city,
 //            cat) or the pack's frames; it swipes up to the next one every 8–15 s (or on 下一个), with the like /
 //            comment / share column, the author, the caption and the progress line
-//   page     a browser: a document typed line by line as the round goes on, or a search page for 「搜一下 X」
-//   player   正在播放: cover, title, artist, the progress bar and time, a spectrum
+//   page     a browser: the pack's real web pages (a long rendered picture, scrolling as she reads) taking turns with
+//            a document typed line by line as the round goes on, or a search page for 「搜一下 X」
+//   player   正在播放: the track's cover (the pack's picture), title, artist, its lyrics in time, the progress bar and
+//            time, a spectrum
 //   game     鲸鱼跳跳: a little side-scroller playing itself, with its score
 //   lock     the lock screen: the time, the date, a notification
 // window.ScreenContent.create(kind, opts) → { canvas, kind, update(dt, ctx) → redrawn?, brightness(), next(), info() }
@@ -178,7 +180,7 @@
       g.translate(0, yOff);
       g.beginPath(); g.rect(0, 0, w, h); g.clip();
       const f = c.frames !== undefined && frames.clips && images.clips ? Object.entries(frames.clips).filter(([n]) => n.startsWith(`${c.id}-`)).map(([, r]) => r) : null;
-      if (f && f.length) { const r = f[Math.floor(st.t * ((C.clips && C.clips.fps) || 12)) % f.length]; g.drawImage(images.clips, r.x, r.y, r.w, r.h, 0, 0, w, h); }
+      if (f && f.length) { const n = Math.floor(st.t * ((C.clips && C.clips.fps) || 12)); const span = Math.max(1, f.length * 2 - 2); const r = f[c.pingpong ? (n % span < f.length ? n % span : span - (n % span)) : n % f.length]; st.frame = n; g.drawImage(images.clips, r.x, r.y, r.w, r.h, 0, 0, w, h); }
       else (SCENES[c.scene] || SCENES.jellyfish)(g, w, h, st.t, seeded(seed * 97 + i * 13));
       // the feed's chrome
       const shade = g.createLinearGradient(0, h * 0.62, 0, h);
@@ -236,17 +238,29 @@
       g.restore();
     }
 
+    // the pages taking turns: the manifest's templates (an `image` is a real page, `doc` is the typed document)
+    const PAGES = ((C.page && C.page.templates) || []).filter((t) => (t.image ? images[t.image] : t.id === 'doc'));
+    const DOC = { id: 'doc', title: '周报.docx', url: 'https://docs.example.cn/d/weekly-report' };
+    function pageNow() {
+      const list = PAGES.length ? PAGES : [DOC];
+      const turn = (C.page && C.page.seconds) || 14;
+      const n = Math.floor(st.t / turn);
+      st.pageFrac = Math.min(1, (st.t % turn) / (turn * 0.85));
+      const t = list[n % list.length];
+      return { ...DOC, ...t, url: t.url || DOC.url };
+    }
     function drawPage(ctx) {
       const query = ctx.query;
       g.fillStyle = '#eef1f6'; g.fillRect(0, 0, w, h);
       // the browser: tabs, address bar
       g.fillStyle = '#d9dee8'; g.fillRect(0, 0, w, h * 0.09);
       g.fillStyle = '#fff'; roundRect(g, w * 0.02, h * 0.02, w * 0.3, h * 0.07, 6); g.fill();
-      g.fillStyle = '#334'; g.font = font(Math.round(h * 0.035), 600); g.fillText(query ? `${query} - 搜索` : '周报.docx', w * 0.04, h * 0.068, w * 0.26);
+      const tpl = query ? null : pageNow();
+      g.fillStyle = '#334'; g.font = font(Math.round(h * 0.035), 600); g.fillText(query ? `${query} - 搜索` : tpl.title, w * 0.04, h * 0.068, w * 0.26);
       g.fillStyle = '#fff'; g.fillRect(0, h * 0.09, w, h * 0.08);
       g.fillStyle = '#f1f3f7'; roundRect(g, w * 0.1, h * 0.105, w * 0.8, h * 0.05, 12); g.fill();
       g.fillStyle = '#556'; g.font = font(Math.round(h * 0.03), 500);
-      g.fillText(query ? `https://www.so.com/s?q=${query}` : 'https://docs.example.cn/d/weekly-report', w * 0.13, h * 0.14, w * 0.74);
+      g.fillText(query ? `https://www.so.com/s?q=${query}` : tpl.url, w * 0.13, h * 0.14, w * 0.74);
       for (let i = 0; i < 3; i++) { g.fillStyle = ['#ff6058', '#ffbd2e', '#28c940'][i]; g.beginPath(); g.arc(w * (0.93 + i * 0.0) - i * 14, h * 0.045, 4, 0, TAU); g.fill(); }
       const top = h * 0.2;
       if (query) {
@@ -262,6 +276,18 @@
           g.fillStyle = '#0b8043'; g.font = font(Math.round(h * 0.026), 400); g.fillText(`www.example${i + 1}.cn › ${encodeURIComponent(query).slice(0, 12)}`, w * 0.06, y + h * 0.035, w * 0.8);
           g.fillStyle = '#c9ced8'; g.fillRect(w * 0.06, y + h * 0.05, w * 0.82, 5); g.fillRect(w * 0.06, y + h * 0.068, w * 0.6, 5);
         });
+        return;
+      }
+      // a real page: the pack's long picture, scrolling down slowly and back to the top with the next turn
+      const pic = tpl.image && images[tpl.image];
+      if (pic) {
+        const k = w / pic.width;
+        const span = Math.max(0, pic.height * k - (h - h * 0.17));
+        const at = st.pageFrac * span;
+        st.scroll = Math.round(at);
+        g.save(); g.beginPath(); g.rect(0, h * 0.17, w, h * 0.83); g.clip();
+        g.drawImage(pic, 0, h * 0.17 - at, w, pic.height * k);
+        g.restore();
         return;
       }
       // a document typed as the round goes on
@@ -282,6 +308,16 @@
       });
     }
 
+    // [[seconds, line]…] → the line being sung and the next; the lyrics repeat if they end before the song
+    function lyricAt(tr, pos) {
+      const L = Array.isArray(tr.lyrics) ? tr.lyrics : [];
+      if (!L.length) return { now: '', next: '' };
+      const end = L[L.length - 1][0] + 6;
+      const t = pos % Math.max(1, end);
+      let i = 0;
+      for (let k = 0; k < L.length; k++) if (L[k][0] <= t) i = k;
+      return { now: L[i][1], next: L[(i + 1) % L.length][1] };
+    }
     function drawPlayer() {
       const tracks = (C.player && C.player.tracks) || [{ title: '未知歌曲', artist: '', seconds: 180 }];
       const tr = tracks[st.track % tracks.length];
@@ -292,25 +328,31 @@
       const cs = Math.min(w * 0.72, h * 0.42); const cx = (w - cs) / 2; const cy = h * 0.1;
       const cov = g.createLinearGradient(cx, cy, cx + cs, cy + cs);
       cov.addColorStop(0, '#6fa8e8'); cov.addColorStop(1, '#2c4a8a');
+      const coverPic = tr.cover && images[tr.cover];
       g.save(); roundRect(g, cx, cy, cs, cs, 14); g.clip();
       g.fillStyle = cov; g.fillRect(cx, cy, cs, cs);
+      if (coverPic) { g.drawImage(coverPic, cx, cy, cs, cs); g.restore(); } else {
       g.fillStyle = '#fff6d8'; g.beginPath(); g.arc(cx + cs * 0.72, cy + cs * 0.26, cs * 0.1, 0, TAU); g.fill();
       g.fillStyle = '#1c2f63';
       const wy = cy + cs * 0.62 + Math.sin(st.t * 1.4) * 4;
       g.beginPath(); g.ellipse(cx + cs * 0.45, wy, cs * 0.28, cs * 0.13, -0.1, 0, TAU); g.fill();
       g.beginPath(); g.moveTo(cx + cs * 0.18, wy); g.lineTo(cx + cs * 0.05, wy - cs * 0.12); g.lineTo(cx + cs * 0.08, wy + cs * 0.08); g.fill();
       g.fillStyle = '#fff'; g.beginPath(); g.arc(cx + cs * 0.6, wy - cs * 0.02, cs * 0.018, 0, TAU); g.fill();
-      g.restore();
+      g.restore(); }
       g.fillStyle = '#fff'; g.font = font(Math.round(h * 0.045), 800); g.textAlign = 'center';
       g.fillText(tr.title, w / 2, h * 0.6, w * 0.9);
       g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = font(Math.round(h * 0.03), 500); g.fillText(tr.artist || '', w / 2, h * 0.645, w * 0.9);
+      // the lyrics, in time with the song
+      const lyr = lyricAt(tr, st.pos % tr.seconds);
+      if (lyr.now) { g.fillStyle = '#fff'; g.font = font(Math.round(h * 0.032), 700); g.fillText(lyr.now, w / 2, h * 0.695, w * 0.92); }
+      if (lyr.next) { g.fillStyle = 'rgba(255,255,255,0.5)'; g.font = font(Math.round(h * 0.026), 500); g.fillText(lyr.next, w / 2, h * 0.732, w * 0.92); }
       // spectrum
       const n = 20; const bw = (w * 0.8) / n;
       for (let i = 0; i < n; i++) {
         const v = 0.25 + 0.75 * Math.abs(Math.sin(st.t * (2.1 + (i % 5) * 0.37) + i * 1.3) * Math.sin(st.t * 0.9 + i * 0.4));
         g.fillStyle = `rgba(160,210,255,${0.5 + v * 0.5})`;
-        const bh = h * 0.08 * v;
-        g.fillRect(w * 0.1 + i * bw + 1, h * 0.75 - bh, bw - 3, bh);
+        const bh = h * (tr.lyrics ? 0.024 : 0.08) * v;
+        g.fillRect(w * 0.1 + i * bw + 1, h * (tr.lyrics ? 0.775 : 0.75) - bh, bw - 3, bh);
       }
       // progress
       const pos = st.pos % tr.seconds;
@@ -408,6 +450,7 @@
           if (st.t >= st.nextSwipe) this.next();
         }
         if (kind === 'player') st.pos += dt;
+        if (kind === 'page') st.lastPage = ctx.query ? null : pageNow();
         if (kind === 'game') stepGame(dt);
         if (drawn && st.acc < 1 / FPS) return false;
         st.acc = 0;
@@ -423,7 +466,9 @@
         const clip = clips.length ? clips[st.idx % clips.length] : null;
         const tracks = (C.player && C.player.tracks) || [];
         const tr = tracks.length ? tracks[st.track % tracks.length] : null;
-        return { kind, t: st.t, clip: clip ? { id: clip.id, caption: clip.caption, index: st.idx } : null, swiping: st.swipe > 0, track: tr ? { title: tr.title, artist: tr.artist, pos: Math.floor(st.pos % tr.seconds), seconds: tr.seconds, time: `${fmt(st.pos % tr.seconds)} / ${fmt(tr.seconds)}` } : null, score: Math.floor(st.score), lum: st.lum };
+        const clipFrames = clip && clip.frames !== undefined && frames.clips && images.clips ? Object.keys(frames.clips).filter((n) => n.startsWith(`${clip.id}-`)).length : 0;
+        const pg = kind === 'page' ? st.lastPage : null;
+        return { kind, t: st.t, clip: clip ? { id: clip.id, caption: clip.caption, index: st.idx, frames: clipFrames, frame: st.frame || 0 } : null, swiping: st.swipe > 0, page: pg ? { id: pg.id, title: pg.title, url: pg.url, real: !!(pg.image && images[pg.image]), scroll: st.scroll || 0 } : null, track: tr ? { title: tr.title, artist: tr.artist, cover: !!(tr.cover && images[tr.cover]), lyric: lyricAt(tr, st.pos % tr.seconds).now, pos: Math.floor(st.pos % tr.seconds), seconds: tr.seconds, time: `${fmt(st.pos % tr.seconds)} / ${fmt(tr.seconds)}` } : null, score: Math.floor(st.score), lum: st.lum };
       },
     };
   }

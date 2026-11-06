@@ -77,6 +77,9 @@ test('manifest: states — every activity has one, the default is not transient,
   bad((r) => { r.states.stand = { transient: true, label: '起身', images: { off: 'dafeiyu-work-off.webp' } }; r.defaultState = 'stand'; }, /defaultState must be a state that is not transient/);
   bad((r) => { r.states.work.enterVia = 'phone'; }, /enterVia must be a transient state/);
   bad((r) => { r.states.idle.variants = ['work']; }, /variants: "work" must be a state of the same activity/);
+  bad((r) => { r.states.phone.screens = { phone: { content: 'player', corners: r.states.phone.screens.phone.corners } }; r.content = { player: { tracks: [{ title: 'x', seconds: 60, cover: 'nope' }] } }; }, /tracks\[0\]\.cover: no images\.nope/);
+  bad((r) => { r.states.phone.screens = { phone: { content: 'player', corners: r.states.phone.screens.phone.corners } }; r.content = { player: { tracks: [{ title: 'x', seconds: 60, lyrics: [[90, '过了歌尾']] }] } }; }, /tracks\[0\]\.lyrics/);
+  bad((r) => { r.states.phone.screens = { phone: { content: 'page', corners: r.states.phone.screens.phone.corners } }; r.content = { page: { templates: [{ id: 'web', title: 'x', image: 'nope' }] } }; }, /templates\[0\]\.image: no images\.nope/);
   bad((r) => { r.states.sleep.activity = 'nap'; }, /states\.sleep\.activity must be one of/);
   bad((r) => { r.states.phone.breath = { rect: [1800, 1000, 400, 200], amp: 1, period: 3 }; }, /breath: rect/);
   bad((r) => { r.states.phone.breath.amp = 9; }, /breath: rect .* amp 0–4/);
