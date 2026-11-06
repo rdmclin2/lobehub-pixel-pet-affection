@@ -17,7 +17,7 @@
 | 骨架 | 用自建的 MMD 参考骨架解 IK，产物与模型无关；运行时由 `createVRMAnimationClip` 按目标模型 hips 高度缩放 | 一支舞配所有 VRM，换角色不用重烤；21 支素材里 16 支是为 Tda 式初音ミク 做的动作（§2.4） |
 | 与动作层 | 新增独占的**舞蹈层 D**：替换 L0/L1 基础层，L2/L3 叠加层全部让位，L4 只留眨眼与视线；进入 0.6 s、退出 0.5 s 交叉淡化（T-2829 由 0.8 s 改为 0.5 s） | 舞蹈是全身动作，任何上半身叠加都会破坏它；复用 `vrm-anim.js` 的「权重和恒为 1」淡化，杜绝 T-pose（§3） |
 | 打断 | 拖起 = 暂停、放下后 0.6 s 续跳；点击 = 只出表情；说话 = 继续跳 + 音乐压低；喂食/玩耍/睡觉/换角色 = 停止 | 按「是否必须用到身体」区分（§3.4） |
-| 取景 | 窗口不放大；hips 水平「漂移」软限幅（同一偏移施加到双脚 IK 目标）+ 相机按烘焙时量出的伸展范围拉远 | 230×340 的透明窗口一放大就会挡住桌面点击；实测 `センター` 水平偏移最大 0.5–4.2 m（§3.6） |
+| 取景 | 窗口不放大；hips 水平「漂移」软限幅（同一偏移施加到双脚 IK 目标）；相机不动，跳舞时和跳舞前一样大（T-12268） | 230×340 的透明窗口一放大就会挡住桌面点击；实测 `センター` 水平偏移最大 0.5–4.2 m（§3.6） |
 | 同步 | 有音乐时**音频时钟为主钟**，每帧把动作时间设成 `audio.currentTime + offset`；无音乐用渲染时钟 | 不累积漂移；vidol 用帧间隔推进、音画会漂（§4） |
 | 舞蹈库 | `<userData>/vrm-dances/<id>/`，索引 `library.json`，走 `vrmlib://dance/…`；内置示例是仓库自制的原创小舞 + 合成节拍 | 第三方素材一律不入库、不打包；示例舞没有版权问题，也是 e2e 夹具（§5） |
 | 入口 | 桌宠工具栏新增「跳舞」图标按钮 → 舞蹈列表浮层；设置窗口 玩法 → 和她一起 → 舞蹈；聊天里说「跳个舞」；本地 API `POST /pixel-pet/dance`。**不加右键菜单** | 右键已定为「打开设置」（T-2718 去掉了桌宠窗口的菜单）；工具栏只有 230 px 宽，用图标按钮（§6） |
@@ -243,7 +243,7 @@ VMD 帧号按 30 fps；每个骨骼帧带 X / Y / Z / 旋转 4 条三次贝塞�
 ### 2.10 烘焙输出与校验
 
 - 输出 `.vrma`：节点树为参考骨架换算后的 humanoid rest（与现有 FBX 烘焙相同的 `writeVrma`），rotation 全骨骼 + translation 仅 hips + 可选表情轨道；用 `src/core/vrm.js` 的 `inspectVrmaJson` 校验。
-- 同时算出写进索引的度量（§5.3）：`duration`、`extent`（整段里双手 / 头相对 hips 的最大上方与侧向伸展，单位 hips 高度——相机取景用）、`stage.clampHits`（限幅生效帧占比）、`unmapped` 骨名、`ik`（`on` / `fk` / `mixed`）。
+- 同时算出写进索引的度量（§5.3）：`duration`、`extent`（整段里双手 / 头相对 hips 的最大上方与侧向伸展，单位 hips 高度，只是度量，运行时不用它调相机（§3.6））、`stage.clampHits`（限幅生效帧占比）、`unmapped` 骨名、`ik`（`on` / `fk` / `mixed`）。
 
 ### 2.11 D1 实现记录（T-2799）
 
@@ -284,13 +284,13 @@ VMD 帧号按 30 fps；每个骨骼帧带 X / Y / Z / 旋转 4 条三次贝塞�
 - `src/core/vrm-director.js`：新增 `dance` 状态机（`off → cueing → in → on ⇄ paused → out → off`），由新增语义持续量 / 事件驱动：`holds.dance = { id, loop, startedAt }`（来自 app 的舞蹈状态）、`events: dance:start | dance:stop | dance:end`。`PRIORITY` 表新增 `dance`，位于 `drag:lift` 之下、`touch:*` 之上。
 - `src/core/vrm-intent.js`：快照新增 `dance`（app 维护的播放状态：id、是否暂停、loop），转成上面的持续量 / 边沿事件；不含任何动作词（保持动作文档 §2.2 的原则）。
 - `src/renderer/vrm-anim.js`：`setBase(id, dur, opts)` 增加 `opts.loop: false`（`LoopOnce` + `clampWhenFinished`，末帧定住而不是回 rest——vidol 的缺陷）、`opts.clock: 'external'`（`timeScale = 0`，每帧由 `seekBase(t)` 设 `action.time`，§4.1）；循环换段用同一片段的克隆 action 做 A/B 交叉淡化（three 的 `clipAction` 按 clip+root 唯一）。
-- `src/renderer/vrm.js`：舞蹈片段按需加载（`vrmlib://dance/<id>/dance.vrma`，不进 24 个 LRU 动作缓存，单独持有、停舞后 30 s 释放）；舞蹈相机（§3.6）；调试字段（§7.1）。
+- `src/renderer/vrm.js`：舞蹈片段按需加载（`vrmlib://dance/<id>/dance.vrma`，不进 24 个 LRU 动作缓存，单独持有、停舞后 30 s 释放）；调试字段（§7.1）。
 - `src/renderer/app.js`：只在 `look.kind === 'vrm'` 分支加舞蹈状态与音频（§4），像素路径不动；动作文档 §9.3「明确不改」的文件（`fx.js`、`touch-zones.js`、`pet-state.js`、`rig.js`、`live2d.js`、`renderer/fx.js`）继续不改。
 
 ### 3.2 开始
 
 1. 渲染进程拿到 `dance.vrma`（首次 fetch + `createVRMAnimationClip` 约 100–400 ms），**加载完成前不出声、不动**，工具栏按钮显示加载中。
-2. `cueing`：基础层 0.6 s 交叉淡化到舞蹈第 0 帧（片段 `time = 0` 定住）；同时相机 0.6 s 过渡到舞蹈取景（§3.6）。
+2. `cueing`：基础层 0.6 s 交叉淡化到舞蹈第 0 帧（片段 `time = 0` 定住），相机不动（§3.6）。
 3. `in → on`：淡化完成的那一帧同时开始音乐和动作时钟。理由：先「站到起始姿势」再开拍，避免音乐响了人还在从 idle 往过渡（vidol 是音乐先响）。
 
 ### 3.3 结束、停止、循环
@@ -339,14 +339,14 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 | 方案 | 做法 | 问题 |
 |---|---|---|
 | A. 临时放大窗口 | 跳舞时窗口扩到约 2.5×，结束还原 | 透明大窗口会挡住其下桌面的点击（需要逐像素穿透，Electron 的 `setIgnoreMouseEvents(true, {forward:true})` 在 Linux 上不转发）；靠近屏幕边时没法往外扩；与「大小」设置、多显示器定位冲突 |
-| **B. 窗口不变：限位 + 相机拉远（采用）** | 烘焙时对 hips 水平位移做「漂移软限幅」，运行时相机按片段伸展范围拉远 | 跳得「更原地」、人更小一些 |
+| **B. 窗口不变：限位（采用）** | 烘焙时对 hips 水平位移做「漂移软限幅」 | 跳得「更原地」；动作幅度最大时手脚可能碰到画布边缘 |
 | C. 让窗口跟着 hips 移动 | 把 hips 水平位移转成窗口位移 | 窗口移动是系统调用、不均匀（动作文档 T-2711 的实测），跟不上 30 fps 的舞步；还会把窗口带出屏幕 |
 
 **B 的细节**：
 
 1. **漂移软限幅（烘焙时）**：hips 水平位移 `p(t)` 拆成慢漂移 `p̄(t)`（2 s 居中滑动平均）与律动 `p − p̄`；输出 `p' = (p − p̄) + R·tanh(|p̄|/R)·p̄/|p̄|`，`R = 0.15 × hips 高度`（约 0.12 m）；律动分量再整体夹在 `0.35 × hips 高度` 内。修正量 `p' − p` 同时加到两只脚的 IK 目标上（§2.6）。纵向（蹲、跳）不限。转身（hips 旋转）不动。
-2. **舞蹈取景（运行时）**：`extent`（§2.10）给出整段里手 / 头相对 hips 的最大上伸与侧伸（hips 高度为单位）；舞蹈相机 = 全身取景，再按 `max(1, 上伸 / 站立头高, 侧伸 / 画布半宽可容纳量)` 拉远，使整段都在画内（她大约缩到画布高度的 0.6–0.7）。半身取景（`data-framing=half`）在跳舞期间临时切到全身，停舞后切回，沿用现有 0.35 s 相机滑动。
-3. 设置项「舞台范围」：`原地`（上面的 R）/ `小范围`（R = 0.3 × hips 高度，相机再拉远）——放到 D5，P1 先只做「原地」。
+2. **舞蹈取景（运行时，T-12268）**：跳舞不动相机，沿用她当前的取景：跳舞前、中、后一样大，半身取景也留在半身。原设计按 `extent` 把相机拉远（×1–2.5）让整段都在画内，半身还会切到全身，结果她在跳舞时明显变小（实测 liliya.vrm：全身 ×1.33–1.72，半身 ×2.56），所以取消。取舍：大小优先于手脚不出画。实测 Last Surprise（`extent` 最大）全身取景 24 个采样点里 2 个有手或脚的骨骼点超出画布，头始终在画内。
+3. 设置项「舞台范围」：`原地`（上面的 R）/ `小范围`（R = 0.3 × hips 高度）——放到 D5，P1 先只做「原地」。
 
 ### 3.7 D2 运行时实现记录（T-2800）
 
@@ -402,7 +402,7 @@ app 是唯一持有「当前在跳哪支、是否暂停」的地方（与 `think
 
 #### 调试字段（e2e 断言用）
 
-VRM 画布：`data-dance`（id 或空）、`data-dance-state`（off/cueing/in/on/paused/out）、`data-dance-t`（进度 s）、`data-dance-audio`、`data-dance-drift`（ms）、`data-dance-hips`（x,z m）、`data-dance-cam`（相机拉远倍数）、`data-dance-exclusive`（1 = 独占全身）；`#pet-body[data-dancing="1"]`；`window.PetVRM.debug().figures[0].dance`（含 `weightSum`、`layers`、`clips`）；`window.PetVRM.director.dance.seek(t) / speed(k)`；`window.PetVRM.director.framePoints()`；`window.petFx.dance()`（控制器状态 + 计数 `lastStop`）。
+VRM 画布：`data-dance`（id 或空）、`data-dance-state`（off/cueing/in/on/paused/out）、`data-dance-t`（进度 s）、`data-dance-audio`、`data-dance-drift`（ms）、`data-dance-hips`（x,z m）、`data-dance-exclusive`（1 = 独占全身）；`#pet-body[data-dancing="1"]`；`window.PetVRM.debug().figures[0].dance`（含 `weightSum`、`layers`、`clips`）；`window.PetVRM.director.dance.seek(t) / speed(k)`；`window.PetVRM.director.framePoints()`；`window.petFx.dance()`（控制器状态 + 计数 `lastStop`）。
 
 ---
 
@@ -666,7 +666,6 @@ Pipeline：00-brief → 40-flow → 70-detail
 | `data-dance-audio` | `playing` / `paused` / `muted` / `ducked` / `none` / `failed` | 静音、压低、无音乐 |
 | `data-dance-drift` | 动作时间 − 音频时钟推算值（ms，整数） | 同步 |
 | `data-dance-hips` | hips 水平偏移（m，2 位小数）`x,z` | 限位 |
-| `data-dance-cam` | 舞蹈相机相对常规全身取景的拉远倍数 | 取景 |
 
 现有字段在跳舞时的预期：`data-layers` 只有 `dance:<id>:1.00`（淡化期间两项、和为 1）、`data-overlays` 为空（拎起时为 `hold:hold.lift:…`）、`data-reaction` 为空、`data-mode=active`。
 
@@ -700,7 +699,7 @@ Pipeline：00-brief → 40-flow → 70-detail
 4. **开跳**：点测试舞 → `data-dance-state` 依次出现 `cueing`/`in` → `on`；淡化期间 `data-layers` 两项和为 1；`on` 后只有 `dance:<id>:1.00`，`data-overlays` 空，`data-mode=active`，`data-dance-audio=playing`。
 5. **重定向正确性**：`director.dance.seek(1.0)` → `pose.rightUpperArm` 与水平夹角 < 8°；`seek(2.0)` → 左臂同理；`seek(0)` → 双臂下垂角与 θ 差 < 8°（A-pose 补偿）；`seek(4.0)` → 双膝屈曲 > 30°、膝盖朝前（IK）、脚踝高度 < 3 cm（不穿地不悬空）。
 6. **同步**：连续 5 s 每 200 ms 采样，`|data-dance-drift| ≤ 40`；`data-dance-t` 与 `audio.currentTime` 差 ≤ 0.05 s。
-7. **限位与取景**：t = 3–3.5 s `data-dance-hips` 的 |x| ≤ 0.15 × hips 高度 + 0.01；所有采样帧里头顶与双手的屏幕投影都在画布内；`data-dance-cam` > 1。
+7. **限位与取景**：t = 3–3.5 s `data-dance-hips` 的 |x| ≤ 0.15 × hips 高度 + 0.01；所有采样帧里头顶的屏幕投影都在画布内；`debug().figures[0].camera` 与跳舞前、停舞后相同（T-12268）。
 8. **静音 / 音量**：点静音 → `data-dance-audio=muted`、`data-dance-t` 仍在增长；取消静音恢复；设置页音量 30% → `debug().dance.audio.gain` ≈ 0.3。
 9. **拖起**：拖起 → `paused`、`data-dance-t` 冻结、`data-overlays` 含 `hold.lift`；放下 → ≤ 1.2 s 回到 `on`，`t` 从冻结值继续（差 < 0.2 s）。
 10. **点击**：点头 → `data-reaction` 仍为空、`data-expr` 出现该触摸的表情、好感值按 touch-zones 规则变化。
@@ -753,7 +752,7 @@ Pipeline：00-brief → 40-flow → 70-detail
 | 舞曲版权 / 动作授权 | 法律 | 只本机使用；不分发、不进 git / 安装包 / 角色包；展示 readme 署名；守卫测试 |
 | 聊天识别误触（「跳过」「舞台」） | 意外开跳 | 关键词需含「跳 + 舞」或明确舞名；否定词表；设置开关；单测反例 |
 | 跳舞时 CPU / GPU 占用（持续 active 帧率） | 发热、耗电 | 窗口隐藏即暂停；帧率上限 30 fps（舞蹈素材本身 30 fps） |
-| 透明窗口里大动作被画布裁切 | 出画 | 相机按 `extent` 拉远；e2e 第 7 步断言投影在画布内 |
+| 透明窗口里大动作被画布裁切 | 出画 | 接受（大小优先，§3.6）；hips 限位减小幅度，e2e 第 7 步断言头在画布内 |
 
 ---
 
@@ -853,7 +852,7 @@ node scripts/check-dance-packaging.js           # 打包守卫（真实 electron
 | `src/core/vrm-director.js` | 舞蹈层 D 状态机（cueing / in / on / paused / out），独占全身、拎起暂停 / 超时停止、触摸只出表情、说话 / 录音压低 | T-2800 |
 | `src/core/vrm-intent.js` | 快照 → `holds.dance` / `holds.recording`、`dance:start|stop` 事件 | T-2800 |
 | `src/renderer/vrm-anim.js` | 外部时钟 `setBase(…, { clock: 'external' })`、`seekBase`、循环 A/B 接缝 | T-2800 |
-| `src/renderer/vrm.js` | 舞蹈片段加载 / 释放、舞蹈相机、固定地面、调试字段 `data-dance-*`、`director.dance.seek/speed`、`pose()` / `framePoints()` | T-2800 |
+| `src/renderer/vrm.js` | 舞蹈片段加载 / 释放、固定地面、调试字段 `data-dance-*`、`director.dance.seek/speed`、`pose()` / `framePoints()` | T-2800 |
 | `src/renderer/vrm-dance.js` | 渲染端控制器：`<audio>` 主钟、音量 / 静音 / 压低、暂停 / 续跳、循环、停止原因统计 | T-2800 |
 | `src/renderer/app.js`、`index.html`、`style.css` | 接入快照；工具栏 ♪ 与浮层（列表、正在跳、循环、停止、键盘）；Esc / 喂食 / 玩耍 / 睡觉 / `/anim` 先停舞；跳舞时不漫游 | T-2800 / T-2801 |
 | `src/main/vrm-dances.js`、`src/main/vrm-library.js` | 舞蹈目录优先级（env / userData / dev）、`vrmlib://dance/…` 白名单与 Range、列表 | T-2800 |
