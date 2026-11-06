@@ -1506,6 +1506,7 @@ module.exports = function vrmScenarios(ctx) {
     const sample = async (ms, every = 50) => { const out = []; const s0 = Date.now(); while (Date.now() - s0 < ms) { out.push({ at: Date.now() - s0, d: await ds(), f: await dfig() }); await sleep(every); } return out; };
     const sumOf = (layers) => String(layers || '').split(',').filter(Boolean).reduce((s, x) => s + Number(x.split(':').pop()), 0);
     let ID = null;
+    let camBeforeDance = null;
     const ST = async (name, fn) => { chapters.push({ at: (Date.now() - t0) / 1000, title: name }); return step(S, name, fn, page); };
     try {
       await ST('像素外观：不能跳舞 — 本地 API 409 not-vrm 并说明原因，IPC 同样；列表标明 vrm:false', async () => {
@@ -1551,6 +1552,7 @@ module.exports = function vrmScenarios(ctx) {
       });
 
       await ST('开跳（API）：cueing → on；淡入时两层权重和为 1；之后只有舞蹈层（独占）、无叠加、active 帧率、音乐 playing', async () => {
+        camBeforeDance = (await H.fig()).camera;
         const r = await api('POST', '/dance', { id: 'e2e-test', loop: true });
         assert.equal(r.status, 200, JSON.stringify(r.json));
         assert.equal(r.json.music, true);
@@ -1621,18 +1623,18 @@ module.exports = function vrmScenarios(ctx) {
         return H.note(`t ${a0.t}: arms ${JSON.stringify(a0.p.arms)}; t ${a1.t}: ${JSON.stringify(a1.p.arms)}; t ${a2.t}: ${JSON.stringify(a2.p.arms)}; t ${a4.t}: knees ${a4.p.legs.left.knee}° / ${a4.p.legs.right.knee}°, ankles ${a4.p.legs.left.ankleY} / ${a4.p.legs.right.ankleY} (standing ${a0.p.legs.left.ankleY})`);
       });
 
-      await ST('舞台限位与取景：大位移时 hips 被限住，头和双手始终在画布内，舞蹈相机拉远 (>1)', async () => {
+      await ST('舞台限位与取景：大位移时 hips 被限住，头始终在画布内，相机和跳舞前同一个位置（T-12268：她不会变小）', async () => {
         await page.evaluate(() => window.PetVRM.director.dance.seek(2.8));
         const out = [];
-        for (let i = 0; i < 16; i++) { const d = await ds(); const fp = await page.evaluate(() => window.PetVRM.director.framePoints()); out.push({ t: Number(d.danceT), hips: d.danceHips.split(',').map(Number), cam: Number(d.danceCam), fp }); await sleep(60); }
+        for (let i = 0; i < 16; i++) { const d = await ds(); const fp = await page.evaluate(() => window.PetVRM.director.framePoints()); const f = await H.fig(); out.push({ t: Number(d.danceT), hips: d.danceHips.split(',').map(Number), cam: f.camera, fp }); await sleep(60); }
         const hipsY = (await page.evaluate(() => window.PetVRM.director.pose())).legs.hipsY;
         const maxX = Math.max(...out.map((x) => Math.abs(x.hips[0])));
         assert.ok(maxX <= 0.5 * hipsY + 0.03, `hips ${maxX} m vs hips height ${hipsY}`);
-        for (const x of out) for (const [n, [px, py]] of Object.entries(x.fp)) assert.ok(Math.abs(px) <= 1 && Math.abs(py) <= 1, `${n} out of the canvas at t ${x.t}: ${px},${py} (cam ${x.cam}, hips ${x.hips})`);
-        assert.ok(out[0].cam > 1, `camera ${out[0].cam}`);
+        for (const x of out) { const [px, py] = x.fp.head; assert.ok(Math.abs(px) <= 1 && Math.abs(py) <= 1, `head out of the canvas at t ${x.t}: ${px},${py} (hips ${x.hips})`); }
+        for (const x of out) assert.deepEqual(x.cam, camBeforeDance, 'the camera does not move for a dance');
         await H.shot('4-stage');
         const ts = out.map((x) => x.t).filter((t) => t >= 2.7);
-        return H.note(`t ${Math.min(...ts)}–${Math.max(...ts)}: max |hips x| ${maxX} m (hips ${hipsY} m, raw centre move 30 MMD units ≈ 2.4 m); data-dance-cam ${out[0].cam}; head/hands/feet NDC all in [-1,1]`);
+        return H.note(`t ${Math.min(...ts)}–${Math.max(...ts)}: max |hips x| ${maxX} m (hips ${hipsY} m, raw centre move 30 MMD units ≈ 2.4 m); camera z ${out[0].cam.z.toFixed(3)} = before the dance ${camBeforeDance.z.toFixed(3)}; head NDC in [-1,1]`);
       });
 
       await ST('静音 / 音量：静音后音乐 muted、动作照跳；取消恢复；音量 30% → gain ≈ 0.3', async () => {
@@ -1746,6 +1748,7 @@ module.exports = function vrmScenarios(ctx) {
         const c = await ctl();
         assert.equal(c.state, null);
         assert.equal(c.stats.lastStop.reason, 'end');
+        assert.deepEqual((await H.fig()).camera, camBeforeDance, 'after the dance she is as big as before it (T-12268)');
         return H.note(`states ${[...new Set(states)].join(' → ')}; last on → off ${firstOff.at - lastOn.at} ms; weights 1 on all ${out.length} frames; after: layers ${d.layers}, idle ${d.idle}, last stop ${JSON.stringify(c.stats.lastStop)}`);
       });
 

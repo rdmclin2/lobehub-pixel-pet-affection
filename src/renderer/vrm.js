@@ -29,7 +29,7 @@
 // Dancing (docs/vrm-dance.md §7.1): data-dance (the dance id or ''), data-dance-state (off | cueing | in | on |
 // paused | out), data-dance-t (the time in the dance, s), data-dance-audio (playing | paused | muted | ducked |
 // none | failed), data-dance-drift (ms: the time shown − the music's clock), data-dance-hips (x,z m: her hips
-// off centre), data-dance-cam (how much the dance camera pulls back), data-dance-exclusive (1: the dance has
+// off centre), data-dance-exclusive (1: the dance has
 // the whole body).
 // window.PetVRM.debug() has the same and more. figure.zoneAt(x, y) tells
 // which touch zone a click hits, on the 3D skeleton (core/vrm-hit.js), for app.js.
@@ -206,11 +206,9 @@
     let band = null;
     let framing = startFraming === 'half' ? 'half' : 'full';
     let glide = null; // { from (camera), t0, dur } while switching
-    // the dance layer (docs/vrm-dance.md §3): its clips (id → { entry, duration, faceTrack }), whether the
-    // camera frames a dance now and how far it pulls back, the debug numbers of the last frame
+    // the dance layer (docs/vrm-dance.md §3): its clips (id → { entry, duration, faceTrack }), the debug numbers
+    // of the last frame
     const dances = new Map();
-    let danceCam = 1;
-    let danceView = false;
     let danceInfo = { id: '', state: 'off', t: 0, drift: 0, hips: [0, 0], audio: 'none' };
     let danceRelease = null;
     let lastLoops = null;
@@ -491,19 +489,6 @@
       dances.set(entry.id, { entry, duration: clip.duration, faceTrack });
       return { duration: clip.duration, faceTrack };
     }
-    // how far the dance camera pulls back so the whole dance stays in the window (§3.6): her reach up and to
-    // the side (entry.extent, in hips heights) against the standing 全身 frame, ×1..2
-    function danceCamFor(entry) {
-      const ext = (entry && entry.extent) || { up: 1, side: 0.8 };
-      const H = Math.max(0.1, rest.hipsY - size.minY);
-      const visible = size.h / share;
-      const aspect = camera ? camera.aspect : 332 / 452;
-      // margins: the top 10 %, and the sides 20 % (a hand reaching out also comes towards the camera: bigger)
-      const up = (H * (1 + ext.up)) / 0.9 / visible;
-      const side = (2 * (ext.side + ((entry && entry.stage && entry.stage.radius) || 0)) * H) / (0.8 * aspect) / visible;
-      return clamp(Math.max(1, up, side), 1, 2.5);
-    }
-
     function startDirector() {
       const rand = debugCtl.seed !== null ? D.seeded(debugCtl.seed) : Math.random;
       director = D.createDirector({ style, index, loaded, overrides: cfg.motions || null, posture: postures.get(look.packId) || 'auto', packIdle: anim.has('pack.idle'), rand });
@@ -950,7 +935,6 @@
     // 半身 = the band (top of her head to the waist) filling the canvas, the cut on its bottom edge. x: where it
     // looks sideways (the model is moved so her box centre is at 0; 半身 centres on the head–hips line instead).
     function cameraFor(mode) {
-      if (mode === 'dance') return { ...FR.cameraFor({ top: size.minY + size.h, bottom: size.minY }, { fov: camera.fov, share: share / danceCam, mode: 'full' }), x: 0 };
       const full = { ...FR.cameraFor({ top: size.minY + size.h, bottom: size.minY }, { fov: camera.fov, share, mode: 'full' }), x: 0 };
       if (mode === 'half' && band) return { ...FR.cameraFor(band, { fov: camera.fov, mode: 'half', aspect: camera.aspect, maxVisible: full.visible }), x: band.cx - size.cx };
       return full;
@@ -981,24 +965,23 @@
         renderer.setSize(Math.round(W * k), Math.round(H * k), false);
       }
       camera.aspect = W / H;
-      let cam = cameraFor(danceView ? 'dance' : framing);
+      let cam = cameraFor(framing);
       if (glide) {
         const t = (performance.now() - glide.t0) / 1000 / (glide.dur || GLIDE_S);
         if (t >= 1) glide = null;
         else cam = FR.blendCamera(glide.from, cam, t);
       }
       camNow = cam;
-      const dy = framing === 'half' && !danceView ? camDy : 0;
-      const dx = framing === 'half' && !danceView ? camDx : 0;
+      const dy = framing === 'half' ? camDy : 0;
+      const dx = framing === 'half' ? camDx : 0;
       camera.position.set(cam.x + dx, cam.y + dy, size.cz + cam.dist);
       camera.near = Math.max(0.01, cam.dist / 20);
       camera.far = cam.dist * 4;
       camera.updateProjectionMatrix();
       camera.lookAt(cam.x + dx, cam.y + dy, size.cz);
       const d = canvas.dataset;
-      const shown = danceView ? 'full' : framing; // a dance is framed whole (§3.6), 半身 comes back after it
-      if (d.framing !== shown) d.framing = shown;
-      const cut = shown === 'half' && band ? band.cut.toFixed(3) : '1';
+      if (d.framing !== framing) d.framing = framing;
+      const cut = framing === 'half' && band ? band.cut.toFixed(3) : '1';
       if (d.cut !== cut) d.cut = cut;
     }
 
@@ -1379,13 +1362,6 @@
       lastLoops = dIn ? dIn.loops : null;
       if (DP.on) anim.seekBase(DP.t, { blend: wrapped });
       const danceEntry = DP.id && dances.get(DP.id) ? dances.get(DP.id).entry : null;
-      const wantView = DP.on && !!danceEntry;
-      if (wantView !== danceView) {
-        if (wantView) danceCam = danceCamFor(danceEntry);
-        glide = camNow ? { from: { ...camNow }, t0: performance.now(), dur: 0.6 } : null;
-        danceView = wantView;
-        fit(true);
-      }
       // a dance's clip is let go 30 s after it ended (§3.1)
       if (DP.state === 'off' && dances.size && !danceRelease) danceRelease = setTimeout(() => { danceRelease = null; if (!anim || (plan && plan.dance && plan.dance.state !== 'off')) return; for (const id of [...dances.keys()]) if (anim.remove(`dance:${id}`)) dances.delete(id); }, 30000);
       if (DP.state !== 'off' && danceRelease) { clearTimeout(danceRelease); danceRelease = null; }
@@ -1430,7 +1406,7 @@
       const sitting = !!(plan.base && plan.base.sit) && !plan.life.lifted;
       let dyTarget = 0;
       let dxTarget = 0;
-      if (framing === 'half' && !danceView && sitting && restHeadY !== null && band) {
+      if (framing === 'half' && sitting && restHeadY !== null && band) {
         const hb = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('head');
         const pb = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('hips');
         if (hb && pb) {
@@ -1449,7 +1425,7 @@
       const moved = Math.abs(nextDy - camDy) > 1e-5 || Math.abs(nextDx - camDx) > 1e-5;
       camDy = nextDy;
       camDx = nextDx;
-      if (moved && camNow && framing === 'half' && !danceView && !glide) {
+      if (moved && camNow && framing === 'half' && !glide) {
         camera.position.set(camNow.x + camDx, camNow.y + camDy, camera.position.z);
         camera.lookAt(camNow.x + camDx, camNow.y + camDy, size.cz);
       }
@@ -1524,14 +1500,13 @@
       if (hipsW) { tmp.dh = tmp.dh || new R.THREE.Vector3(); hipsW.getWorldPosition(tmp.dh); hips = [+(tmp.dh.x - vrm.scene.position.x).toFixed(3), +(tmp.dh.z - vrm.scene.position.z).toFixed(3)]; }
       const shownT = DP.on && anim.external() ? anim.baseTime() : DP.t;
       const clockT = DP.on && dIn && dIn.playing && !dIn.paused && typeof dIn.clockNow === 'function' ? dIn.clockNow() : null;
-      danceInfo = { id: DP.on ? DP.id : '', state: DP.state, t: +(shownT || 0).toFixed(3), drift: clockT === null ? 0 : Math.round(((shownT || 0) - Math.min(clockT, (dances.get(DP.id) || { duration: Infinity }).duration - 1e-3)) * 1000), hips, audio: DP.on && dIn ? dIn.audioState || 'none' : 'none', cam: danceView ? +danceCam.toFixed(3) : 1, request: DP.request || null, duck: DP.duck, exclusive: !!DP.exclusive, faceTrack: !!(dances.get(DP.id) || {}).faceTrack };
+      danceInfo = { id: DP.on ? DP.id : '', state: DP.state, t: +(shownT || 0).toFixed(3), drift: clockT === null ? 0 : Math.round(((shownT || 0) - Math.min(clockT, (dances.get(DP.id) || { duration: Infinity }).duration - 1e-3)) * 1000), hips, audio: DP.on && dIn ? dIn.audioState || 'none' : 'none', request: DP.request || null, duck: DP.duck, exclusive: !!DP.exclusive, faceTrack: !!(dances.get(DP.id) || {}).faceTrack };
       d.dance = danceInfo.id || '';
       d.danceState = DP.state;
       d.danceT = (danceInfo.t || 0).toFixed(1);
       d.danceAudio = danceInfo.audio;
       d.danceDrift = String(danceInfo.drift);
       d.danceHips = `${hips[0].toFixed(2)},${hips[1].toFixed(2)}`;
-      d.danceCam = danceInfo.cam.toFixed(2);
       d.danceExclusive = danceInfo.exclusive ? '1' : '0';
       return true;
     }
