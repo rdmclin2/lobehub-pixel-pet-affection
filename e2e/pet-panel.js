@@ -316,6 +316,11 @@ module.exports = function petPanelScenario({ OUT, FAKE_LH, step, launch }) {
         await page.waitForSelector('body.hover');
         await page.waitForFunction(() => getComputedStyle(document.getElementById('chat-open')).opacity === '1');
         await shot('p8-bubble-on-hover');
+        const cloud = await page.evaluate(() => { const b = document.getElementById('chat-open').getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height, innerWidth, innerHeight, hit: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.id }; });
+        assert.ok(cloud.width >= 60 && cloud.height >= 44, `the cloud is big enough to hit (${cloud.width}×${cloud.height})`);
+        assert.ok(cloud.left >= 0 && cloud.right <= cloud.innerWidth && cloud.top >= 0 && cloud.bottom <= cloud.innerHeight, `the cloud is inside her window (${JSON.stringify(cloud)})`);
+        assert.equal(cloud.hit, 'chat-open', 'its middle takes the click');
+        notes.push(`cloud ${cloud.width}×${cloud.height} in a ${cloud.innerWidth}×${cloud.innerHeight} window`);
         assert.equal(await page.isVisible('#chat-row'), false, 'no chat box until it is asked for');
         // she starts in the bottom right corner of the screen: no room under her
         const low = await winBounds();

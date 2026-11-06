@@ -85,6 +85,17 @@ test('HUD meters use semantic token colours; inline icons do not swallow toolbar
   for (const id of ['btn-settings', 'food-menu', 'aff-stage', 'bar-affection', 'bar-hunger']) assert.match(panelHtml, new RegExp(`id="${id}"`), id);
 });
 
+test('对话气泡 is a cloud, big enough to hit (T-6162)', () => {
+  const button = html.match(/<button id="chat-open"[^>]*>([\s\S]*?)<\/button>/)[1];
+  assert.match(button, /<svg class="chat-cloud"/);
+  assert.match(button, /class="chat-cloud-shape"/);
+  const rule = rulesFor('.chat-open');
+  assert.ok(parseInt(rule.match(/(?:^|;)\s*width:\s*(\d+)px/)[1], 10) >= 60, 'wide enough to hit');
+  assert.ok(parseInt(rule.match(/(?:^|;)\s*height:\s*(\d+)px/)[1], 10) >= 44, 'tall enough to hit');
+  assert.match(rule, /background:\s*none/, 'the cloud is the shape, not a box around it');
+  assert.match(rulesFor('.chat-cloud'), /pointer-events:\s*none/, 'a click on the cloud reaches the button');
+});
+
 test('her panel (right click on her): its own window — one card, state on top, actions below, split by hairlines', () => {
   const body = panelHtml.match(/<div id="pet-panel" class="pet-panel"[^>]*>([\s\S]*?)<script/)[1];
   for (const id of ['status-panel', 'pp-name', 'pp-char', 'aff-stage', 'aff-row', 'bar-affection', 'aff-num', 'meta', 'bars', 'bar-hunger', 'bar-mood', 'bar-energy', 'val-hunger', 'val-mood', 'val-energy', 'toolbar', 'food-menu', 'btn-mute', 'btn-dance', 'btn-reset', 'btn-settings', 'btn-quit']) assert.match(body, new RegExp(`id="${id}"`), `#${id} is in the panel`);
