@@ -44,6 +44,8 @@ test('validateRoom: one error per broken thing', () => {
     ['deltas over ±40', edit((m) => { m.activities.sleep.deltas.energy = 80; }), /deltas.energy must be −40 to 40/],
     ['a delta key it does not know', edit((m) => { m.activities.game.deltas.affection = 5; }), /deltas.affection: only energy/],
     ['seconds out of range', edit((m) => { m.activities.work.seconds = 3; }), /work.seconds must be 5–600/],
+    ['a lying scale out of range', edit((m, t) => { t.activities.sleep.lieScale = 2; }), /lieScale/],
+    ['smooth that is not a boolean', edit((m, t) => { t.smooth = 'yes'; }), /smooth/],
     ['lying down with no place to lie (she would lie on the floor)', edit((m, t) => { delete t.activities.sleep.lie; }), /pose "tucked" needs lie/],
     ['a room changing the numbers', edit((m, t) => { t.activities.work.deltas = { focus: 40 }; }), /a room cannot change the numbers/],
     ['a file not named after its room', edit((m, t) => { t.images.atlas = 'atlas.png'; }), /must start with "dafeiyu-"/],

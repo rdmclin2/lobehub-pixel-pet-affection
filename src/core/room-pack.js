@@ -148,6 +148,7 @@ function checkOpen(t, at, { files, sprites, anims, kinds }) {
   const map = (typeof t.sprites === 'string' && sprites && sprites[t.sprites]) || null;
   if (typeof t.sprites === 'string' && sprites && !map) e.push(`${at}: ${t.sprites} is not a sprites index`);
   const has = (name) => !map || (typeof name === 'string' && !!map[name] && num(map[name].w) && num(map[name].h));
+  if (t.smooth !== undefined && typeof t.smooth !== 'boolean') e.push(`${at}.smooth must be true / false`);
   if (t.petHeight !== undefined && !inRange(t.petHeight, [24, 400])) e.push(`${at}.petHeight must be 24–400`);
   if (t.outfit !== undefined && !(typeof t.outfit === 'string' && /^[a-z0-9_-]{1,32}$/.test(t.outfit))) e.push(`${at}.outfit`);
   const walk = t.walk || {};
@@ -193,6 +194,7 @@ function checkOpen(t, at, { files, sprites, anims, kinds }) {
     if (a.anim !== undefined && !anims.includes(a.anim)) e.push(`${aa}.anim "${a.anim}"`);
     if (a.bubble !== undefined && !pt(a.bubble)) e.push(`${aa}.bubble must be [x, y]`);
     if (a.lie !== undefined && !(pt(a.lie) && a.lie[0] >= 0 && a.lie[1] >= 0 && a.lie[0] <= world.width && a.lie[1] <= world.height)) e.push(`${aa}.lie must be [x, y] in the world`);
+    if (a.lieScale !== undefined && !inRange(a.lieScale, [0.3, 1])) e.push(`${aa}.lieScale must be 0.3–1`);
     if (a.props !== undefined && !(Array.isArray(a.props) && a.props.length <= 8)) e.push(`${aa}.props must be a list of up to 8`);
     else for (const [j, p] of (a.props || []).entries()) e.push(...checkProp(p, `${aa}.props[${j}]`, { has, world }));
     e.push(...checkLines(a.lines, `${aa}.lines`));
