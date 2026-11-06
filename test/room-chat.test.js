@@ -79,6 +79,7 @@ test('the model fails or times out: nothing moves, and the note says it did not 
     assert.equal(t.room().lamp, false, 'the lamp stays');
     assert.match(note, /状态没变/);
     assert.match(note, /没听明白|没反应过来/);
+    assert.equal(t.pushed.at(-1).heard, 'unsure', 'the chat bar is told, whatever her reply says');
   }
 });
 

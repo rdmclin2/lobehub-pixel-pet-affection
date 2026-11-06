@@ -60,6 +60,7 @@ function createRoomChat({ open, games, pet, decide = null, push = () => {}, acte
     }
     if (!intent) {
       record(g, heard === 'unsure' ? 'failed' : 'none', null, null);
+      if (heard) push({ ...run(g.id, { cmd: 'state' }), via: 'chat', heard }); // the chat bar says so, whatever her reply says
       return games.illustratedNote(g.id, null, { now: now(), heard });
     }
     const r = run(g.id, { cmd: 'set', ...intent, from: 'chat' });

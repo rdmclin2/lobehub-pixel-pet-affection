@@ -611,6 +611,7 @@
     const prevQuery = st.view.query;
     setView(r);
     setLampTarget(!!r.lamp);
+    if (r.heard === 'unsure') { st.chatNote = '刚才没判断出要不要换状态，她还在原来的状态。可以再说一次，或者点下面的按钮'; renderChat(); }
     if (r.ok === false && r.reason === 'tired') { say(r.line || '好累……', { hold: 4 }); flashTired(r.kind); }
     if (r.settled && r.settled.summary) toast(r.settled.summary);
     for (const q of r.completed || []) toast(`今日小事完成：${q.title}${q.affection && q.affection.delta ? `（好感 +${q.affection.delta}）` : ''}`);
